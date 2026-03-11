@@ -1,0 +1,377 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R  Q U E S T       |
+;|      ----------------------       |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|            sp.game.s              |
+;|___________________________________|
+
+
+ public compil
+ public compile
+
+ on nocar goto link.term
+ i$="startup":gosub trace
+game
+ f$= dr$+"rand":kill f$:create f$
+ open #1,f$:print #1,"0":close:log vj$
+gamen
+ print\"There are Two Games of Chance in operation"
+ print "------------------------------------------"
+ print "   (1)   Digital Wheel of Fortune"
+ print "   (2)   IRON BROW's Spacers Dare"
+ print "   [Q]   Leave this Den of Inequity"
+ print "------------------------------------------"
+ print "        Choice: [ ]";
+gamo
+ print chr$(8,2);:gosub getkey
+ if i$=cr$ i$="Q"
+ if i$="1" print "1]":goto wof
+ if i$="2" print "2]":goto dare
+ if i$="Q" print "Q]":link"sp.bar","hang1"
+ print "?]";:goto gamo
+
+wof
+ if (ui>0) and (uh>ui) goto gak
+ gi=0:a=0:x=0:ik=0
+ gosub crfix
+ print chr$(12)
+game1
+ if nd>0 goto gam2
+ ui=12
+gam2
+ print\"Play [Astral Digital Wheel of Fortune]? [Y]/(N): ";
+ gosub getkey
+ a=0
+ if i$="N" print"No":goto lnk
+ ee=1:print"Yes"
+ gz=0
+numb
+ if uh>ui goto gak
+ print chr$(12)
+nmb
+ print\"Bet which number? (1-20) (Q)uit: ";:input@3"";a$
+ if ((a$="") or (a$="Q")  or (a$="q")) a$="Q"
+ if len(a$)>2 print\ro$:goto numb
+ if (a$="Q") or (a$="q") print\"....Leaving.....":goto gamen
+ a=val(a$)
+ if a<1 print\"None":goto nmb
+ if a>20 print\ro$:goto numb
+chse
+ print\"Choose how many rolls (3-7) (<C-R>=Same) (Q)uit: ";:gosub getkey
+ if i$="Q" print"Quit":goto gamen
+ if (i$=cr$) and (ik>0) print ik;" Rolls":goto cho
+ i=val(i$)
+ if (i<3) or (i>7) print ro$:goto chse
+ ik=i
+ print i" Rolls"
+cho
+ y=20/ik
+ y=y-1
+ print\chr$(32,50);"Payoff Odds: "y" to 1"
+bet
+ gosub crfix
+ print\\"[Cr:"g$"]:Bet? (0-1000) (<C-R>=Same Bet) (Q)uit:";:input@3""i$
+ if (i$="Q") or (i$="q") goto gamen
+ if len(i$)>4 print rr$:goto bet
+ if (i$="") and (gi>0) print chr$(32,50);gi;" cr":goto btg
+ if i$="" goto bet
+ gi=val(i$)
+ if gi>1000 print\"This is a low-stakes game!":goto bet
+ if gi<1 print\"Quitting?":goto game1
+btg
+ if gi>g2 gosub crinc
+ if gi>g2 print ng$:goto bet
+ for k=1 to 500:next
+ print chr$(12)
+ print\\\"--------------------------------"
+ print"    Digital Wheel of Fortune"
+ print"--------------------------------"
+ print\"[Cr:"g$"]:[#:"a"]:[Odds:"y":1] Bet: "gi">===> ";
+ i=0
+wheel
+ gz=gz+1
+ r=20:gosub rand:x=i:i=0
+ if x>10 r=10:gosub rand:x=i:i=0:goto whl
+ if x<11 r=20:gosub rand:x=i:i=0
+ if x<11 x=x+10
+whl
+ if (a=x) and (uj=x) r=x:gosub rand:x=i:i=0
+ if x<=1 r=20:gosub rand:x=i:i=0
+ if a=x uj=x:goto arrow
+ if x<10 print" ";x;
+ if x>9 print x;
+ print chr$(8,2);
+ for k= 1 to 200:next
+ print"  ";chr$(8,2);
+ if gz>=ik gz=0:goto pot
+ if x<>a goto wheel
+arrow
+ gz=0
+ print chr$(7);"["x"] <-=$$]$[$$=-> Winning Number!"
+pot
+ if x=a print\"You win..."(gi*y)" credits!!!":g2=g2+(gi*y):uh=uh+1:goto arw
+ if x<>a print"You lose..."gi" credits!!!";:g2=g2-gi
+ gosub crinc
+ if g2<1 print\"Sorry 'bout that...you are flat busted!":g2=0:goto lnk
+arw
+ gosub crfix
+ print\"You now have "g$" cr"
+ print\"Want to try your luck again? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto lnk
+ print"Yes":goto numb
+
+gak
+ print\"Digital W. of F. closed for renovations"
+
+lnk
+ print\"You started with....: "g1$" cr"
+ print "You now have........: "g$" cr"
+ print\"......Hey!......come again......."
+ goto gamen
+
+dare
+;---------------------------------------
+; Gaming segment for Spacer Quest Game
+; Written 08/10/90 - by IRON BROW Sysop
+; MILE HIGH APPLE PIE BBS (719-632-9126)
+;---------------------------------------
+;*********************
+;*                   *
+;*  SPACER DARE SEG  *
+;*                   *
+;*    version 1.2    *
+;*********************
+
+ x$="1919101007070710101919"
+ gosub crfix
+ print\\"         _______________________"
+ print"        | _____________________ |"
+ print"        | |                   | |"
+ print"        | |    WELCOME TO     | |"
+ print"        | |                   | |"
+ print"        | |        THE        | |"
+ print"        | |   SPACER'S DARE   | |"
+ print"        | |     GAMBLING      | |"
+ print"        | |     COMPUTER      | |"
+ print"        | |___________________| |"
+ print"        |_______________________|"
+ print"         | oooooooooooooooo oo |"
+ print"         |  oooooooooooooooooo |"
+ print"         |  oo =========== oo  |"
+ print"         |_____Apple XIIGS_____|"
+
+begin
+ print\"[Cr:"g$":] Play the hottest game in the galaxy? [Y]/(N): ";
+ gosub getkey
+ if i$="N" print"No":goto game
+ print"Yes":g1$=g$
+ print\"Do you need to read the rules? (Y)/[N]: ";:gosub getkey
+ if i$="Y" print"Yes":goto begn
+ print"No":goto init
+begn
+ f$="dare.doc":gosub show.file:print\"[Cr:"g$":] "
+ print"Okay...let's get this show on the road....Human!";:gosub getit
+ f$="dare.doc"
+
+init
+ gosub nocred
+init1
+ ee=1
+ input @2\"Play how many *BUZZZ* rounds *CLICK* [3-10]? (Q)uit "i$
+ if ((i$="Q") or (i$="")) goto gamen
+ o7=val(i$)
+ if (o7<3) or (o7>10) print\"The limits are 3-10...try again...":goto init1
+
+get.mult
+ input\"What score-multiplier would you like [1-3]? "o8
+ if (o8<1) or (o8>3) print\"The limits are 1-3...try again...":goto get.mult
+ z7=0:x=0:o5=0:o6=0:z6=0:o9=0:z4=0:o2=0
+ print\"Got your fat little fingers on the keyboard?...Let's get with it!"\
+ gosub getit
+
+strat
+ print chr$(12)
+ print\\"            Spacers Dare"\
+ z7=z7+1
+ if (z7=o7) print\"This is the LAST *CLICK* round..."
+ gosub roll.dice
+ x=1
+ o2=z8+z9
+ print\"       Round # "z7
+ print "--------------------------"
+ print\"Roll # "x"____[ "o2" ]";
+ goto addit2
+
+foolish
+ x=x+1:gosub roll.dice
+ z4=z8+z9
+ if x<10 print"Roll # ";:else print"Roll #";
+ print x"____( "z4" )";
+ if z4<>o2 goto addit2
+ print"<----- Gotcha Human!"chr$(7):x=0:z6=0:goto comp.turn
+addit2
+ z6=z6+z4:print"....Roll again? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto addit3
+ if i$="Z"  o5=o5+z6
+ print"Yes":goto foolish
+addit3
+ print\"    You stay on "z6" cr."
+ o5=o5+z6:x=0:z6=0:z4=0
+
+comp.turn
+ print\"Step back and let a real PRO handle those *BUZZ* *CLICK* dice!"
+ gosub getit
+ x=1
+ gosub roll.dice
+ o2=z8+z9
+ print"Roll # "x"____[ "o2" ]"
+ o4=val(mid$(x$,((o2-1)*2)-1,2))
+comp1
+ x=x+1
+ gosub roll.dice
+ z4=z8+z9
+ if x<10 print"Roll # ";:else print"Roll #";
+ print x"____( "z4" )";
+ if z4<>o2 print" ":goto comp2
+ print"<-----*WHIRR* *CLICK* Bad Ram Chip!"chr$(7):goto comp3
+comp2
+ z6=z6+z4
+ if o4>x goto comp1
+ o6=o6+z6:print\"    Computer stays on "z6" cr."
+comp3
+ z6=0:x=0:z4=0:o2=0
+ if o7=z7 print\"Final Score:";
+ if z7<o7 print\"End of Round "z7"____Score:";
+ print"____Human: "o5" cr____Computer: "o6" cr"
+ gosub getit
+ if o7>z7 gosub nocred:goto strat
+ if o6>o5 goto loser
+;
+win
+ o9=(o5-o6)
+ o0=0:if o9<1 o9=0
+;..Break our winnings down into 2 variables
+win2
+ if o9>9999 o0=o0+1:o9=o9-10000:goto win2
+;..multiply the lo and hi winnings by the multiplier
+ o9=o9*o8
+ if o0 o0=o0*o8
+;..Break our winnings down some more and set rd$ to show winnings
+win3
+ if o9>9999 o0=o0+1:o9=o9-10000:goto win3
+ rd$=str$(o9):if o0 rd$=str$(o0)+right$("000"+str$(o9),4)
+ print\"Congratulations Human on a game *CLICK* *BURP* well-played!"
+ print\"Calculating your winnings...."(o5-o6)" multiplied by "o8
+ print"You have just increased your bankroll by "rd$" credits!"
+;..Fix the current credits before adding our high and low winnings
+ gosub crfix
+ g1=g1+o0
+ g2=g2+o9
+ gosub crfix
+ goto exit
+;
+loser
+ o9=(o6-o5)*o8
+ if o9>g2 then o9=g2
+ print\"You lose Human...pay the pit boss as you leave."
+ print\"Calculating your losses...."(o6-o5)" multiplied by "o8
+ print"You have just lost "o9" credits! *BUZZ* *WHIR* *CLICK*"
+ g2=g2-o9
+ gosub crfix
+ goto exit
+
+nocred
+ if g2<750 gosub crinc
+ if g2<750 goto nocred2
+ return
+nocred2
+ print\"At least *BUZZ* *POP* 750 credits required to play this game."
+ print"Sorry No Small Fries allowed....Beat it Space Bum! *WHIR* *CLICK*"
+ pop
+ goto game
+
+exit
+ print\"You began the game with "g1$" credits"
+ print\"You ended the game with "g$" credits"\
+ gosub getit
+ goto dare
+
+roll.dice
+ open #1, dr$+"rand":input #1,rd$:close
+ z8=(random(9)+1)*10:for k=1 to z8:next:rd$=rnd$
+ z8=(random(6)):if z8<1 z8=1
+ if z8>6 z8=6
+ open #1, dr$+"rand":input #1,rd$:close
+ z9=(random(9)+1)*10:for k=1 to z9:next:rd$=rnd$
+ z9=(random(6)):if z9<1 z9=1
+ if z9>6 z9=6
+ log vj$:return
+
+show.file
+ setint(1):copy f$:setint(""):return
+getit
+ print"....type anykey to go on....";:gosub getkey
+ print chr$(8,28)chr$(32,28)chr$(8,28):return
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+rand
+ open #1, dr$+"rand":input #1,rd$:close:log vj$
+ i=(random(9)+1)*10:for k=1 to i:next
+ rd$=rnd$:i=(random(r))
+ if (i>r) i=r
+ if (i<1) i=1
+ return
+
+crfix
+ if g2>9999 g1=g1+1:g2=g2-10000:goto crfix
+ g$=str$(g2):if g1 g$=str$(g1)+right$("000"+str$(g2),4)
+ return
+
+crinc
+ if g1<1 return
+ g2=g2+10000:g1=g1-1
+ return
+
+compil
+ print "...compiled":link "sp.sysop","comp"
+
+compile
+ if info(5) print "OK..":link "a:system.seg"
+link.term
+ link dr$+"sp.link","term"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.game "+i$+"           ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.game "i$" "time$:close
+ log vj$:zz$=i$
+ return
+
+; end

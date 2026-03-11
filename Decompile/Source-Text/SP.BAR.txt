@@ -1,0 +1,434 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R  Q U E S T       |
+;|      ----------------------       |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|             sp.bar.s              |
+;|___________________________________|
+
+ public hang1
+ public compil
+
+ on nocar goto link.term
+
+ i$="startup":gosub trace
+ ee=0:dz=0:yt=0
+ zm$=chr$(45,49)
+
+cherce
+ if kk=5 goto begin
+ if sp$<>"Sun-3" goto hanger
+ print\chr$(45,28)\"Spacers: [H]angout  (B)rig  (Q)uit: ";:gosub getkey
+ if i$="B" print"Visiting The Brig":goto brig
+ if i$="Q" print"Leaving":goto linker
+ print\chr$(12)
+
+hanger
+ if h1$="" print\"Only spacers with space ships allowed here.":goto linker
+ if len(nz$)<2 print\"Your space ship must first have a name.":goto linker
+
+begin
+ print chr$(45,31)\"Welcome to The Spacers Hangout!"\chr$(45,31)
+hang
+ if (q2<1) and (kk=5) print\"They're waiting for you in back!":goto gain
+ print\"You step over an old spacer sprawled on the floor mumbling"
+ print"...'what black hole hit me?'...'all I had were four drinks'..."
+hang1
+ on nocar goto link.term
+ i$="hang1":gosub trace
+ om=0
+ print\"[:"g$":][Spacers Hangout]:  (G)amble  (D)rinks (I)nfo  [Q]uit"
+ print\"Hello Spacer "na$". What'll it be? ";:gosub getkey
+ if i$=cr$ i$="Q"
+ if i$="Q" print"Leaving":goto linker
+ ee=1
+ if i$="G" print"Gambling":g1$=g$:link"sp.game"
+ if i$="D" print"Slurp! Guzzle! Barf!":dz=dz+1:goto hang1
+ if i$="I" print"Information":goto inform
+ print"Whoops!...one too many!":goto hang1
+inform
+ if dz>4 print\chr$(7);"ALL MAL GIR WIN WEA SHI PIR FIR RAI STA RIM GEM SAG"
+ if dz>8 print\chr$(7);"DRI ROB NAV LIF HUL COO CLO RAN BAT SPA SMU CHR WIS"
+ dz=0
+ input@2\"What info do you need? ";i$
+ if i$="" i$="Q"
+ if instr("RAI",i$) goto raid
+ if instr("WIS",i$) print"Try Polaris-1":goto hang1
+ if instr("SAG",i$) print"Try Mizar-9":goto hang1
+ if instr("CHR",i$) print"Chrysalis is best life support system":goto hang1
+ if instr("ALL",i$) print"Looking for an alliance with someone...eh?":goto nfm
+ if instr("MAL",i$) print"You mean the rogue star?":copy"barmal":goto hang1
+ if instr("GIR",i$) print"The ladies go for spacers like you":goto hang1
+ if instr("WIN",i$) print"Have the best ship and the most wealth":goto hang1
+ if instr("WEA",i$) print"Star Buster is the Big Gun":goto hang1
+ if instr("SHI",i$) print"ARCH-ANGEL Shield is the best":goto hang1
+ if instr("PIR",i$) print"Pirates attack Cargo Transports":goto hang1
+ if instr("DRI",i$) print"Better Drives increase speed":goto hang1
+ if instr("ROB",i$) print"Robotic/Computer needed in battle":goto hang1
+ if instr("NAV",i$) print"Manual Navigation is tricky business":goto hang1
+ if instr("LIF",i$) print"Space Patrol knows about life support":goto hang1
+ if instr("HUL",i$) print"Titanium strengthened hulls best":goto hang1
+ if instr("FIR",i$) print"Firefox wrote this entire dad-blamed game":goto hang1
+ if instr("COO",i$) print"MALIGNA's coordinates are 13-33-99":goto hang1
+ if instr("CLO",i$) print"Special armour for smaller ships":goto hang1
+ if instr("RAN",i$) print"Access increases with rank":goto hang1
+ if instr("BAT",i$) print"B/F = Hull/Rank/Drives/#Trips/Life/#Wins":goto hang1
+ if instr("SPA",i$) print"Owning a Space Port generates income":goto hang1
+ if instr("STA",i$) print"Treasure can be found in the Rim Stars":goto hang1
+ if instr("RIM",i$) print"Rim Star Worlds found in flight":goto hang1
+ if instr("SMU",i$) print"Smuggling pays big bucks":goto smug
+ if instr("GEM",i$) print"Gems contain an infinity of answers":goto hang1
+ if i$="Q" goto hang1
+ print"Don't know what you're talking about"
+ hd=hd+1:if hd>4 hd=0:print"Why don't you have another drink...spacer!"
+ goto inform
+
+nfm
+ if pp$="" print\"Only Lieutenants and higher may join an alliance":goto hang1
+ im$=right$(nz$,2)
+ if im$="-+" ll$="The Astro League":goto oldmem
+ if im$="-@" ll$="The Space Dragons":goto oldmem
+ if im$="-&" ll$="The Warlord Confed":goto oldmem
+ if im$="-^" ll$="The Rebel Alliance":goto oldmem
+ om=0:goto newmem
+oldmem
+ om=1:sw=0
+ print\"You're already a member of "ll$"."
+ if (ap$<>"") and (o1<1) print\"First check your space port account":goto hang1
+ print"It will cost you all your credits to switch alliances"
+ if o1>0 print"As well as the loss of your Space Port "ap$
+ print"Donate all your credits to The Old Spacers Home? (Y)/[N]: ";
+ gosub getkey
+ if i$=cr$ i$="N"
+ if i$<>"Y" print"No":goto hang1
+ print"Yes":g1=0:g2=0:gosub crfix
+ if o1<1 goto bsw
+ close
+ open #1,"sp.bank"
+ position #1,256,o1
+ input #1,m4$\m5$\m6$\m7$
+ input #1,m4,m5,m6,m7,m8,m9
+ m5$="":m6$="":m7$="":m5=0:m7=0:m8=0:m9=0
+ position #1,256,o1
+ print #1,m4$\m5$\m6$\m7$
+ print #1,m4,m5,m6,m7,m8,m9
+ close
+ o1=0:ap$=""
+bsw
+ sw=1
+ goto contmem
+newmem
+ print\"Interested in joining an alliance? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto hang1
+ print"Yes"\
+contmem
+ copy"ally"
+join
+ print\"Which of these are you interested in joining? [Q]uits: ";:gosub getkey
+ if (i$=cr$) or (i$="Q") print"Leaving":goto hang1
+ print i$
+ if i$="+" ll$="The Astro League":goto allfix
+ if i$="@" ll$="The Space Dragons":goto allfix
+ if i$="&" ll$="The Warlord Confed":goto allfix
+ if i$="^" ll$="The Rebel Alliance":goto allfix
+ if i$="0" goto allfix
+ print"Whazza matta bub...fat fingers? (per Lazarus Long)":goto join
+allfix
+ if om<1 goto allfix1
+ lw=len(nz$):lw=(lw-2)
+ nz$=left$(nz$,lw)
+allfix1
+ if i$="0" goto hang1
+ gosub allck:if left$(k$,4)="That" print k$:goto contmem
+ nz$=nz$+"-"+i$
+ print k$\"Your "nz$" is now a part of the "ll$
+ print"Treat your allies well and do not betray them"
+ i$=da$+" : "+pp$+" "+na$+"/"+nz$+" joined "+ll$
+ open #1,"sp.great":append #1:print #1,i$:close
+ goto hang1
+allck
+ a=0:open #1,"spacers1"
+ for x=1 to np:position #1,256,x:input #1,j$\k$
+ if i$=right$(k$,1) a=a+1
+ next:close:k$="The "+i$+"-Alliance is accepting allies"
+ if (a>(np/3)) and (a>4) k$="That Alliance is full...try another"
+ a=0:return
+
+raid
+ if kk=9 print\"Sorry, don't know anything about raiding":goto hang1
+ print\"Must belong to an alliance to fully succeed in a raid"
+ print"Want to do a little armed corporate raiding..eh?"
+ print\chr$(45,32)\"Raiding an Alliance Star System:"\chr$(45,32)
+ print"You will be given forged papers which will allow you to pass the"
+ print"Launch Control Officer's inspection at the Space Port Launch Bays"
+ print\"Still want to get up a lil' ol' raiding party...eh? [Y]/(N): ";
+ gosub getkey:if i$="N" print"No":goto hang1
+ print"Yes":copy"sp.legend"
+raid1
+ print\"Which Star System are you planning to raid? (1-14) [Q]uit: ";
+ input@3"";i$
+ if (i$="") or (i$="q") i$="Q"
+ if i$="Q" print\".......not today!.....":goto hang1
+ if i$="?" copy"sp.legend":goto raid1
+ i=val(i$)
+ if (i<1) or (i>14) print"...."ro$:goto raid1
+ gosub sys.name
+ open #1,"sp.star"
+ position #1,256,i
+ input #1,o3$\o4$\o5$\o6$\o7$
+ input #1,o3,o4,o5,o6,o7,o8,o9
+ close
+ if right$(nz$,1)=o6$ print\"Hey! "o3$" is owned by your "o4$"!":goto raid1
+ if o4$="" print\o3$" is an unaligned system....sorry!":goto raid1
+ print\o3$"'s DEFCON:   Weapons: "o7"00...Shielding: "o7"00"
+ print\"You've chosen "ll$"...Are you sure? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto raid1
+ print"Yes"
+ wb=0:lb=0:q3=1:q5=1
+ q4$=ll$:q1=1:q2=10:q4=i:kk=4
+ gosub dist:q6=y:f2=fy
+ print\"Note: Previous cargo contract will be voided"
+ print"      And...this is your last trip for today"
+ an$=na$:cs=0:cc=0:nj=3
+ q2$="Plans for Raid"
+ print chr$(45,39)\"      [:-=:[ Battle Plans ]:=-:]"
+ print"   Raider: "pp$;" ";na$\chr$(45,39)
+ print"   Raiding Alliance: "o4$\"   Documents       : "q2$
+ print"   Loaded Pods     : "q1\"   Origin          : "sp$
+ print"   Destination     : "q4$\"   Fuel Required   : "f2" units"
+ print"   Distance        : "q6" Astrec(s)"\chr$(45,39):gosub getit:goto linker
+
+smug
+ if kk=9 nj=3
+ if (z1>2) or (nj>2) print\"Syndicate closed down by Space Patrol":goto hang1
+ if s1<10 print\"You don't have enough cargo pods":goto hang1
+ i$="Your cargo pods already contain contraband"
+ if (q1>0) and (q2$="Contraband") print\i$:goto hang1
+ print\"Interested in smuggling some contra-band? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto hang1
+ if (info(5)) and (val(i$)>0) input"Sysop: What system? (1-14): "i:goto sysdes
+ print"Yes"
+ if ye>0 i=20:goto srnd
+ r=20:gosub rand:i=x
+ if i=sp i=20
+srnd
+ if i>14 print\"Space Patrol snooping about...Nothing here!":nj=nj+1:goto hang1
+ ye=1
+sysdes
+ gosub sys.name
+ print\"We have a shipment for "ll$
+ gosub dist
+ x=(14000+(100*y))-(h1*500)
+ if x<1 x=500:print\"The syndicate isn't sure "nz$" will clear customs."
+ print\"Destination: "ll$"......Distance: "y
+ print"Fuel Required: "fy"..........Pays: "x" cr"
+ print chr$(45,40)\"...Want to give it a go?  [Y]/(N): ";
+ gosub getkey
+ if i$="N" print"No":x=0:y=0:fy=0:goto hang1
+ print"Yes"
+ print\"There's the risk of possible interception by the Space Patrol"
+ q6=y:q1=s1:q2=10:q3=30000:q4=i:q2$="Contraband":q5=x
+ f2=fy:wb=0:lb=0:cs=0:cc=0:kk=5:q4$=ll$
+ print\"Don't get caught....they treat smugglers harshly!"
+ nj=3:goto hang1
+
+gain
+ ye=0
+ if q2$="Contraband" goto gain1
+ print\"Where's da goods?...if you're gonna work for da Syndicate"
+ print"Ya gotta learn to deliver or you're gonna get deep-spaced!"
+ print"Now...get outta here...come back when you got what it takes"
+ goto gain2
+gain1
+ print\"You hand over the cargo invoice to a swarthy fat man"
+ print"in a pin-stripe suit who looks up and says...."
+ print\"Ah...the smuggled goods....Here's your pay: "q5" cr"
+ print"A profitable venture for all concerned....spacer "na$
+ print"The Syndicate is always happy to do business with you"
+ g2=g2+q5
+gain2
+ gosub crfix
+ q1=0:q2=0:q3=0:q5=0:q6=0:q2$="":q4$=""
+ kk=0:goto hang1
+
+dist
+ x=i:gosub dist1:x=y
+ free
+ fy=0:if x<1 return
+ af=d1:if af>21 af=21
+ fy=(21-af)+(10-d2)
+ if fy<1 fy=1
+ fy=fy*x:ty=fy+10:if ty>100 ty=100
+ fy=ty/2
+ return
+dist1
+ if sp>x y=(sp-x)
+ if sp<x y=(x-sp)
+ if sp=x y=1
+ return
+
+
+sys.name
+ if i=1 ll$="Sun-3"
+ if i=2 ll$="Aldebaran-1"
+ if i=3 ll$="Altair-3"
+ if i=4 ll$="Arcturus-6"
+ if i=5 ll$="Deneb-4"
+ if i=6 ll$="Denebola-5"
+ if i=7 ll$="Fomalhaut-2"
+ if i=8 ll$="Mira-9"
+ if i=9 ll$="Pollux-7"
+ if i=10 ll$="Procyon-5"
+ if i=11 ll$="Regulus-6"
+ if i=12 ll$="Rigel-8"
+ if i=13 ll$="Spica-3"
+ if i=14 ll$="Vega-6"
+ return
+
+brig
+ copy"brig0"
+ i$="brig":gosub trace
+ print\"Hmmm...Let's see who we have locked up...."
+ xb=0
+ print zm$
+ close
+ open #1,"spacers1"
+ kill dr$+"jail":create dr$+"jail":open #2, dr$+"jail"
+ for x=1 to np
+ position #1,256,x
+ input #1,i$\j$
+ if left$(i$,2)<>"J%" next:goto brig1
+ xb=xb+1
+ print #2,"Cell #";
+ a$="(#0"+right$("000"+str$(x),4)+")"
+ print #2,a$;
+ print #2,"..."i$"...Ship: "j$
+ next
+
+brig1
+ close
+ print chr$(12)
+ if xb>0 copy"brig2":copy dr$+"jail":log vj$
+ if xb<1 copy"brig1"
+ print zm$
+ if xb>0 print"That's the scurvy lot of them"
+ if xb<1 print"The Brig is vacant right now"
+ print zm$
+ if xb<1 goto brig2
+brgm
+ print\"(L)ook 'em over again  (B)ail out convict  (Q)uit: ";:gosub getkey
+ if i$="L" goto brig1
+ if i$="Q" goto brig2
+ if i$="B" goto bail
+ goto brgm
+bail
+ input@3\"Bail out convict in which cell #?  <C-R> quits: "i$
+ if i$="" goto brgm
+ i=val(i$)
+ if i<1 goto brgm
+ if i>np print\ro$:goto bail
+ open #1,"spacers1":position #1,256,i:input #1,j$\k$:close
+ if left$(j$,2)<>"J%" print\"That cell is empty!":goto bail
+ print\"Convict: "j$"....of the space ship: "k$
+ print"Bail out this miscreant? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto bail
+ print"Yes"
+ i$="2"
+ if pp=6 i$="20"
+ print"Bail is set at "i$",000 cr......pay it? [Y]/(N): "; :gosub getkey
+ if i$="N" print"No":goto bail
+ print"Yes"
+ if pp=6 goto pp6
+pp5
+ if g2<2000 gosub crinc
+ if g2<2000 print ng$:goto brig2
+ g2=g2-2000
+ goto opn
+pp6
+ if g1<2 gosub crfix
+ if g1<2 print ng$:goto brig2
+ g1=g1-2
+opn
+ gosub crfix
+ lw=len(j$):lw=lw-2:j$=right$(j$,lw)
+ open #1,"spacers1"
+ position #1,256,i
+ input #1,ia$\ib$\ic$\id$\ie$\ig$\ih$\ii$ \ij$\ik$\il$\im$\io$\ip$\iq$\iu$
+ close
+ open #1,"spacers1"
+ position #1,256,i
+ print #1,j$\ib$\ic$\id$\ie$\ig$\ih$\ii$\ij$ \ik$\il$\im$\io$\ip$\iq$\iu$
+ close
+ gosub crfix
+ print\"Bail paid for "iq$" "j$"....The prisoner is free to go"
+
+brig2
+ xb=0
+ kill dr$+"jail":log vj$:goto cherce
+
+getit
+ print"....type anykey to go on....";:gosub getkey
+ print chr$(8,28)chr$(32,28)chr$(8,28):return
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+linker
+ link dr$+"sp.link"
+
+rand
+ x=(random(1))+1:rd$=rnd$
+ open #1, dr$+"rand":input #1,rd$:close:log vj$
+ x=(random(r))+1
+ if (x>r) x=r
+ if (x<1) x=1
+ return
+
+crinc
+ if g1<1 return
+ g2=g2+10000:g1=g1-1
+ return
+
+crfix
+ if (g2>9999) g1=(g1+1):g2=(g2-10000):goto crfix
+ g$=str$(g2):if g1 g$=str$(g1)+right$("000"+str$(g2),4)
+ return
+
+compil
+ print "...compiled":link"sp.sysop","comp"
+
+link.term
+ link dr$+"sp.link","term"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.bar "+i$+"           ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.bar "i$" "time$:close
+ log vj$:zz$=i$
+ return
+
+;end

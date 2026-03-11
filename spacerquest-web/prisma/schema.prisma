@@ -1,0 +1,403 @@
+// SpacerQuest v4.0 - Database Schema
+// Based on original SpacerQuest v3.4 by Firefox (1991)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id            String    @id @default(uuid())
+  bbsUserId     String    @unique  // OAuth provider user ID
+  email         String    @unique
+  displayName   String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+  
+  characters    Character[]
+  sessions      Session[]
+  
+  @@index([bbsUserId])
+}
+
+model Session {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  token           String    @unique
+  expiresAt       DateTime
+  ipAddress       String?
+  userAgent       String?
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([token])
+}
+
+// ============================================================================
+// CHARACTER & PROGRESSION
+// ============================================================================
+
+enum Rank {
+  LIEUTENANT
+  COMMANDER
+  CAPTAIN
+  COMMODORE
+  ADMIRAL
+  TOP_DOG
+  GRAND_MUFTI
+  MEGA_HERO
+  GIGA_HERO
+}
+
+enum AllianceType {
+  NONE
+  ASTRO_LEAGUE
+  SPACE_DRAGONS
+  WARLORD_CONFED
+  REBEL_ALLIANCE
+}
+
+model Character {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Identity
+  spacerId        Int       @unique @default(autoincrement())
+  name            String    // Player name (na$)
+  shipName        String?   // Ship name (nz$)
+  allianceSymbol  AllianceType @default(NONE)
+  
+  // Credits (split like original: g1=high, g2=low)
+  creditsHigh     Int       @default(0)  // g1 - 10,000s
+  creditsLow      Int       @default(1000)  // g2 - units
+  
+  // Rank & Progression
+  rank            Rank      @default(LIEUTENANT)
+  score           Int       @default(0)  // s2 - total points
+  promotions      Int       @default(0)  // sc - promotion count
+  
+  // Vital Stats
+  tripsCompleted  Int       @default(0)  // u1
+  astrecsTraveled Int       @default(0)  // j1
+  cargoDelivered  Int       @default(0)  // k1
+  battlesWon      Int       @default(0)  // e1
+  battlesLost     Int       @default(0)  // m1
+  rescuesPerformed Int      @default(0)  // b1
+  
+  // Current State
+  currentSystem   Int       @default(1)  // sp - current system ID
+  tripCount       Int       @default(0)  // z1 - trips today
+  lastTripDate    DateTime? @default(now())  // t$ - last trip date
+  
+  // Mission State
+  missionType     Int       @default(0)  // kk - current mission
+  cargoPods       Int       @default(0)  // q1
+  cargoType       Int       @default(0)  // q2
+  cargoPayment    Int       @default(0)  // q5
+  destination     Int       @default(0)  // q4
+  cargoManifest   String?   // q2$ - cargo description
+  
+  // Special Flags
+  isConqueror     Boolean   @default(false)
+  isLost          Boolean   @default(false)
+  lostLocation    Int?
+  patrolSector    Int?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  ship            Ship?
+  portOwnership   PortOwnership?
+  allianceMembership AllianceMembership?
+  duelEntries     DuelEntry[]
+  battleRecords   BattleRecord[]
+  gameLogs        GameLog[]
+  travelStates    TravelState[]
+  
+  @@index([userId])
+  @@index([spacerId])
+  @@index([allianceSymbol])
+  @@index([rank])
+}
+
+// ============================================================================
+// SHIP & COMPONENTS
+// ============================================================================
+
+model Ship {
+  id              String    @id @default(uuid())
+  characterId     String    @unique
+  character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  // Components (strength/condition pairs like original)
+  hullStrength    Int       @default(0)
+  hullCondition   Int       @default(0)
+  driveStrength   Int       @default(0)
+  driveCondition  Int       @default(0)
+  cabinStrength   Int       @default(0)
+  cabinCondition  Int       @default(0)
+  lifeSupportStrength Int   @default(0)
+  lifeSupportCondition Int  @default(0)
+  weaponStrength  Int       @default(0)
+  weaponCondition Int       @default(0)
+  navigationStrength Int    @default(0)
+  navigationCondition Int   @default(0)
+  roboticsStrength Int      @default(0)
+  roboticsCondition Int     @default(0)
+  shieldStrength  Int       @default(0)
+  shieldCondition Int       @default(0)
+  
+  // Resources
+  fuel            Int       @default(0)
+  cargoPods       Int       @default(0)
+  maxCargoPods    Int       @default(0)
+  
+  // Special Equipment
+  hasCloaker      Boolean   @default(false)
+  hasAutoRepair   Boolean   @default(false)
+  hasStarBuster   Boolean   @default(false)
+  hasArchAngel    Boolean   @default(false)
+  isAstraxialHull Boolean   @default(false)
+  
+  // Damage Tracking (for repair system)
+  damageFlags     Json      @default("[]")
+  
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([characterId])
+}
+
+// ============================================================================
+// SPACE PORT OWNERSHIP
+// ============================================================================
+
+model PortOwnership {
+  id              String    @id @default(uuid())
+  characterId     String    @unique
+  character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  systemId        Int       @unique  // Which system owned
+  purchaseDate    DateTime  @default(now())
+  lastActiveDate  DateTime  @default(now())
+  
+  // Financials
+  fuelPrice       Int       @default(25)  // Owner-set price
+  fuelStored      Int       @default(3000)
+  fuelCapacity    Int       @default(20000)
+  bankCreditsHigh Int       @default(0)
+  bankCreditsLow  Int       @default(0)
+  
+  // DEFCON (alliance systems)
+  defconLevel     Int       @default(0)
+  
+  // Daily tracking
+  dailyLandingFees Int      @default(0)
+  dailyFuelSales   Int      @default(0)
+  lastFeeCollection DateTime @default(now())
+  
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([systemId])
+  @@index([characterId])
+}
+
+// ============================================================================
+// ALLIANCE SYSTEM
+// ============================================================================
+
+model AllianceMembership {
+  id              String    @id @default(uuid())
+  characterId     String    @unique
+  character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  alliance        AllianceType
+  joinedAt        DateTime  @default(now())
+  
+  // Investment account
+  creditsHigh     Int       @default(0)
+  creditsLow      Int       @default(0)
+  
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([alliance])
+  @@index([characterId])
+}
+
+model AllianceSystem {
+  id              String    @id @default(uuid())
+  systemId        Int       @unique
+  alliance        AllianceType
+  ownerCharacterId String?
+  defconLevel     Int       @default(1)
+  lastTakeoverAttempt DateTime?
+  
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([alliance])
+  @@index([systemId])
+}
+
+// ============================================================================
+// STAR SYSTEMS
+// ============================================================================
+
+enum SystemType {
+  CORE
+  RIM
+  ANDROMEDA
+  SPECIAL
+}
+
+model StarSystem {
+  id              Int       @id
+  name            String    @unique
+  coordinates     Json      @default("{\"x\":0,\"y\":0,\"z\":0}")
+  type            SystemType @default(CORE)
+  features        Json      @default("{}")
+  
+  // Dynamic state
+  portOwner       String?
+  fuelPrice       Int       @default(25)
+  fuelStored      Int       @default(3000)
+  allianceControl AllianceType @default(NONE)
+  defconLevel     Int       @default(1)
+  
+  visitCount      Int       @default(0)
+  lastActivity    DateTime  @default(now())
+  
+  @@index([type])
+}
+
+// ============================================================================
+// COMBAT & BATTLES
+// ============================================================================
+
+enum BattleResult {
+  VICTORY
+  DEFEAT
+  RETREAT
+  SURRENDER
+}
+
+model BattleRecord {
+  id              String    @id @default(uuid())
+  characterId     String
+  character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  enemyType       String    // pirate, patrol, rim_pirate, etc.
+  enemyName       String
+  enemyClass      String?
+  systemId        Int
+  
+  result          BattleResult
+  rounds          Int
+  battleFactor    Int
+  
+  lootCredits     Int       @default(0)
+  damageTaken     Json      @default("{}")
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([characterId])
+  @@index([createdAt])
+  @@index([result])
+}
+
+// ============================================================================
+// DUELING ARENA
+// ============================================================================
+
+enum DuelStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+}
+
+model DuelEntry {
+  id              String    @id @default(uuid())
+  challengerId    String
+  challenger      Character @relation(fields: [challengerId], references: [id], onDelete: Cascade)
+  
+  contenderId     String?
+  stakesType      String    // points, components, credits
+  stakesAmount    Int
+  arenaType       Int
+  handicap        Int
+  
+  status          DuelStatus @default(PENDING)
+  result          BattleResult?
+  
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  
+  @@index([challengerId])
+  @@index([status])
+}
+
+// ============================================================================
+// GAME LOGS & EVENTS
+// ============================================================================
+
+enum LogType {
+  VISITOR
+  BATTLE
+  TRADE
+  PORT_FEE
+  PROMOTION
+  ACHIEVEMENT
+  ALLIANCE
+  DUEL
+  MISSION
+  SYSTEM
+}
+
+model GameLog {
+  id              String    @id @default(uuid())
+  type            LogType
+  characterId     String?
+  character       Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  systemId        Int?
+  message         String
+  metadata        Json?
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([type])
+  @@index([createdAt])
+  @@index([characterId])
+}
+
+// ============================================================================
+// TRAVEL STATE (for real-time tracking)
+// ============================================================================
+
+model TravelState {
+  id              String    @id @default(uuid())
+  characterId     String    @unique
+  character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  originSystem    Int
+  destinationSystem Int
+  departureTime   DateTime
+  expectedArrival DateTime
+  fuelReserved    Int
+  inTransit       Boolean   @default(true)
+  
+  @@index([characterId])
+  @@index([inTransit])
+}

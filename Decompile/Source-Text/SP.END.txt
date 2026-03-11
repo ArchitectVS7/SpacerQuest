@@ -1,0 +1,445 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R  Q U E S T       |
+;|      ----------------------       |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|             sp.end.s              |
+;|___________________________________|
+
+
+ public jail
+ public vat
+ public exit
+ public compil
+
+ on nocar goto link.term
+ i$="startup":gosub trace
+ da$=da$:print chr$(12):if (nz$<>"") or (s2>0) goto begin
+ print\"Having a space ship is required in order to be saved to the game"
+ print"On your next visit....give the game a try....it's a good 'un"
+ na$="":nz$="":h1$="":s2=0:gosub shpwr:goto menu
+begin
+ if pp=8 print\nz$" currently in dueling mode":goto vat
+ if ap>0 print\"Gonna kick back and await the rescue ship":goto vax
+menu
+ if info(5) z1=0:t1=0:print "(sp.menu11)"
+ copy"sp.menu11"
+start
+ print\"     Your Choice: ";:gosub getkey
+ if i$=cr$ i$="R"
+ if i$="R" print"Returning to Space Port":link dr$+"sp.link"
+ if i$="Q" print"Quitting":goto vaca
+ if i$="?" print"Menu":goto menu
+ if nz$="" pp=0:print"Need space ship":goto start
+ if (h2<1) or (d2<1) pp=0:gosub fcc1:goto start
+ if f1<50 gosub fcc2:goto start
+ if s2>9999 print hl$"Congratulations!!!"of$:goto link.main
+ if i$="P" print"A Pirating We Will Go...":goto pirate
+ if i$="S" print"Star Patrol":goto squad
+ if i$="C" print"Smuggler Patrol":goto squad
+ if i$="W" print"Dueling Arena":link"sp.arena1"
+ print"Whoops....":goto menu
+
+pirate
+ if q1>0 gosub fcc3
+ print\"Really want to go 'a pirating'? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto menu
+ print"Yes"
+pir0
+ if info(5) print "(sp.legend)"
+ copy"sp.legend"
+pirate1
+ print\"In which system do you wish to lurk? (1-14) [Q]uits: ";:input@3""i$
+ if (i$="") or (i$="q") i$="Q"
+ if i$="?" goto pir0
+ if i$="Q" goto menu
+ i=val(i$):if (i<1) or (i>14) print ro$:goto pir0
+ gosub sys.name:print"Is "ll$" your choice? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto pir0
+ print"Yes":q4$=ll$:sp$=ll$:q4=i:sp=i
+ if q1=1 q1=0
+ open #1,"pir.num":input #1,pn:close
+ if pn<1 pn=1
+ po=1:open #1,"pirates"
+pirread
+ if po>pn close:pn=pn+1:po=pn:goto pirwrite
+ position #1,256,po
+ input #1,p3$\p4$\p5$\p6$\p7$
+ input #1,p3,p4,p5,p6,p7,p8,s7,s8,p9,s9,bl,bw,s3,s4,s5
+ if p4$=na$ close:goto pirwrite
+ if p4$="" close:goto pirwrite
+ if (p3=0) and (p3$="") close:goto pirwrite
+ po=po+1:goto pirread
+
+pirwrite
+ p5=0:bl=0:bw=0:p6$=""
+ f$="pir.num":kill f$:create f$:open #1,f$:print #1,pn:close
+ open #1,"pirates":position #1,256,po
+ print #1,h1$\na$\nz$\p6$\q4$
+ print #1,q4,oo,p5,f1,w1,w2,p1,p2,h2,l2,bl,bw,d1,d2,h1:close
+ print\\"Outside the space port and under cover of darkness..."
+ print "Your ship lifts off from a small secret launch pad."
+ print "Auto-Nav settings guide you to "q4$
+ print "Where you lie in wait to prey upon the trade routes....."
+ q1=0:q2=0:q3=0:q4=0:q5=0:q6=0
+ q2$="":q4$="":pp=1
+ goto link.main
+
+vaca
+ if s2<2000 goto vat
+ print\"[::"sp$"::][Launch/Docking Bays]"
+ print"Leaving your "nz$" parked unattended"
+ print"Could easily result in damage from vandalism..."
+ print\"That's a big ship....hmmm...20 guards would cost 10,000 cr"
+ if ap$=sp$ print\"Sorry Sir!...The guards still need to be paid!"
+vact
+ print\"[Cr:"g$":]...Hire the guards? (Y)/(N)/[R]: ";:gosub getkey
+ if i$="N" print"No":gosub vand:goto vat
+ if i$<>"Y" print"Returning":goto start
+ print"Yes...Wise choice!"
+ gosub crfix:if g1<1 print ng$:goto vact
+ g1=g1-1:gosub crfix:gosub comm
+vat
+ on nocar goto link.term
+ i$="vat":gosub trace
+ print\\"...Gonna kick back and get some much needed rest"
+ print"...At the famous health spa on "sp$
+vax
+ if pp<>8 pp=0
+ goto link.main
+vand
+ x=(random(1))+1:rd$=rnd$
+ open #1, dr$+"rand":input #1,rd$:close:log vj$
+ r=10:x=(random(r))+1:if (x>r) x=r
+ if (x<1) x=1
+ i$=""
+ if (x=7) and (l2>6) l1=l1-x:i$=l1$
+ if (x=6) and (d1>0) d1=d1-1:i$=d1$
+ if (x=5) and (c2>4) c2=c2-x:i$=c1$
+ if (x=4) and (h2>3) h2=h2-x:i$=h1$
+ if (x<4) and (s1>(x*10)) s1=s1-(x*10):i$="Pods"
+ if i$<>"" print\i$" damaged by thieving vandals"
+ return
+comm
+ open #1,"sp.bank"
+ position #1,256,sp
+ input #1,m4$\m5$\m6$\m7$
+ input #1,m4,m5,m6,m7,m8,m9
+ m8=m8+1000:if (m8>9999) m8=m8-10000:m7=m7+1
+ position #1,256,sp
+ print #1,m4$\m5$\m6$\m7$
+ print #1,m4,m5,m6,m7,m8,m9
+ close:return
+
+squad
+ xe=0:if q1>0 gosub fcc3
+ if i$<>"C" goto squ0
+ print\"Patrol for smugglers? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto menu
+ xe=1:print"Yes"
+squ0
+ if info(5) print "(sp.legend)"
+ copy"sp.legend"
+squad1
+ input@3\"Join which Star System Squadron Patrol? (1-14) [Q]uit: ";i$
+ if (i$="") or (i$="q") i$="Q"
+ if i$="Q" goto menu
+ if i$="?" goto squ0
+ if len(i$)>2 print ro$:goto squad1
+ i=val(i$):if (i<1) or (i>14) print ro$:goto squ0
+ gosub sys.name
+ open #1,"sp.star":position #1,256,i
+ input #1,o3$\o4$\o5$\o6$\o7$
+ input #1,o3,o4,o5,o6,o7,o8,o9
+ close
+ if xe=1 goto squdn
+ if right$(nz$,1)<>o6$ print\"You're not in that Alliance":goto squ0
+squdn
+ open #1,"pat.num":input #1,a:close
+ x=1:q4=i
+ print\"...entering coordinates into your ship's "n1$" computer"
+ open #1,"sp.pat"
+squad2
+ position #1,256,x
+ input #1,i1$\i2$\i3$\i4$\i5$
+ input #1,i1,i2,i3,i4,i5,i6,i7,i8,i9,w4,w5,w6,w7,w8,w9
+ if i2$=na$ close:goto sqdrite
+ if i2$="" close:goto sqdrite
+ if x<a x=x+1:goto squad2
+ close
+ if x=a x=x+1:f$="pat.num":kill f$:create f$:open #1,f$:print #1,x:close
+sqdrite
+ bl=0:bw=0:i4$=""
+ open #1,"sp.pat"
+ position #1,256,x
+ print #1,h1$\na$\nz$\i4$\ll$
+ print #1,q4,oo,o3,f1,w1,w2,p1,p2,h2,l2,bl,bw,d1,d2,h1
+ close
+ if x>a a=x:f$="pat.num":kill f$:create f$:open #1,f$:print #1,a:close
+ print\"You lift off from the "sp$" Launch Bays........."
+ i=x:open #1,"pat.num":input #1,a:close
+ if a<1 print"....and commence.....":goto sqden
+ lw=len(o4$):lw=lw+26
+ zm$=chr$(45,lw):print\zm$\"The "o4$" Star Patrol Squadron:"\zm$
+ open #1,"sp.pat"
+ for x=1 to a
+ position #1,256,x
+ input #1,i1$\i2$\i3$\i4$\i5$
+ input #1,i1,i2,i3,i4,i5,i6,i7,i8,i9,w4,w5,w6,w7,w8,w9
+ if (i1=q4) and (right$(i3$,2)=right$(nz$,2)) print i2$" : "i3$
+ next:close:print zm$
+sqden
+ print\"Patrolling the "ll$" Star System"
+ if xe=1 print "Mission: Space Patrol Search & Destroy Smuggling"
+ if xe=0 print "To Defend against any and all corporate raiders"
+ xe=0:pp=4:gosub getit:goto link.main
+
+sys.name
+ if i=1 ll$="Sun-3"
+ if i=2 ll$="Aldebaran-1"
+ if i=3 ll$="Altair-3"
+ if i=4 ll$="Arcturus-6"
+ if i=5 ll$="Deneb-4"
+ if i=6 ll$="Denebola-5"
+ if i=7 ll$="Fomalhaut-2"
+ if i=8 ll$="Mira-9"
+ if i=9 ll$="Pollux-7"
+ if i=10 ll$="Procyon-5"
+ if i=11 ll$="Regulus-6"
+ if i=12 ll$="Rigel-8"
+ if i=13 ll$="Spica-3"
+ if i>13 ll$="Vega-6":i=14
+ return
+
+fcc1
+ print\"Functioning ship and drives needed first!":return
+fcc2
+ print\"Not enough fuel to undertake mission!":return
+fcc3
+ print\"Cargo contracts you have will be voided!":return
+
+jail
+ on nocar goto link.term
+ i$="jail":gosub trace
+ da$=da$:print chr$(12)\\:copy"brig2"
+ print\na$", You have been sentenced to a term in The Brig"
+ print "For crimes committed against your fellow spacers"
+ if left$(na$,2)="J%" goto crime
+appeal
+ if info(5) print "(brigx)"
+ copy"brigx":gosub getit:goto linkez
+crime
+ if pp<6 goto crime1
+ if pp=6 goto crime2
+ if pp=7 goto crime3
+crime1
+ print"You were caught and convicted of smuggling contraband":a=1
+ goto crime4
+crime2
+ print"You were involved in modem disconnect during battle":a=10
+ goto crime4
+crime3
+ print"You were involved in conduct not in the spirit of the game":a=20
+crime4
+ print\"You may pay a fine of "a",000 cr and be released forthwith"
+ print "Pay the fine? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto appeal
+ print"Yes":gosub crfix:i$="Not enough credits!"
+ if (a=1) and (g2<1000) gosub crinc
+ if (a=1) and (g2<1000) print i$:goto appeal
+ if (a=10) and (g1<1) print i$:goto appeal
+ if (a=20) and (g1<2) print i$:goto appeal
+ na$=a1$
+ print\"Spacer "na$"...The debt is paid!....The prisoner is released!"
+ print\chr$(32,29)"Admiral Juris P. Magnus, Esq"
+ print chr$(32,33)"Space Provost Marshall":gosub getit
+ if a=1 g2=g2-a
+ if a>1 g1=g1-a
+ gosub crfix:kk=0:pp=0:pb=0:sp=1:sp$="Sun-3"
+ ee=1:gosub promo:link dr$+"sp.link"
+
+link.main
+ if (nz$="") and (s2<1) goto linkit
+ t1=t1+1:if t$<>da$ t1=0:z1=0:t$=da$
+ if (not info(5)) goto visitlog
+ print\"Hey Sysop! Include "nz$" in TopScore? (Y)/[N]: ";:gosub getkey
+ if i$="Y" print"Yes":q2$="":goto logi
+ print"No":q2$="!!"
+logi
+ print\"......Include "nz$" in TopGun? (Y)/[N]: ";:gosub getkey
+ if i$="Y" print"Yes":q2$="":goto logm
+ print"No":if q2$="!!" q2$="*!":goto logm
+ q2$="**"
+logm
+ print\"..... Log you in? (Y)/[N]: ";:gosub getkey
+ if i$="Y" print"Yes":goto visitlog
+ print"No":goto linkez
+visitlog
+ lm$=na$:gosub spfix1:ln$=nz$:gosub spfix2:goto vislog
+spfix1
+ lw=len(lm$):lw=(20-lw):for k=1 to lw:lm$=lm$+".":next
+ return
+spfix2
+ lw=len(ln$):lw=(20-lw):for k=1 to lw:ln$=ln$+".":next
+ return
+vislog
+ if ap>0 lo$="Lost In Space"
+ if ap<1 lo$="On "+sp$
+ close
+ open #1,"sp.log":append #1
+ print #1,t$;" ";time$;": ";lm$;ln$;lo$:close
+linkez
+ ye=0:gosub promo:gosub topscore
+ if s2>9999 link"sp.sysop","newspcr"
+linkit
+ if t1<2 goto exit
+ print\"You have completed 2 turns through Spacer Quest today"
+ print\\"  ...The Wonders of Space Await Your Return......"
+ print\"    ........Please call again tomorrow........"\\\
+exit
+ i$="exit":gosub trace
+ clear #10:mark(10)=0:print #10,rs$,yy$
+ recall "a:var"
+ mark(10)=0:input #10,a$,i$
+ link a$,i$
+
+topscore
+ if (info(5)) and (right$(q2$,1)="!") print \"(topscore)"\: copy "topscore":return
+ if s2>9999 gosub grite
+ tr$=a1$:t=21
+ close:clear #8:a=0:open #1,"topscore"
+ for x=1 to t
+ input #1,i$,xs
+ if (tr$=i$) and (s2=xs) x=t:next:close:goto topshow
+ if s2<xs goto top1
+ if not(a) print #8,tr$,s2:a=1
+top1
+ if tr$=i$ next:goto top2
+ print #8,i$,xs:next
+top2
+ close:if not(a) goto topshow
+ kill "topscore":create "topscore"
+ open #1,"topscore":copy #8,#1:close:a=x
+topshow
+ if info(5) print "(uses topscore file)"
+ clear #8
+ print chr$(12)\:r$="SPACER QUEST.....TOP 20 High Scores as of  "+da$
+ print " "chr$(95,75)" "
+ print "|"chr$(32,75)"|"
+ print "|"chr$(32,12)""r$""chr$(32,12)"|"
+ print "|"chr$(95,75)"|"
+ print "|  |"chr$(32,34)"|  |"chr$(32,34)"|"
+ t=20:open #1,"topscore"
+ for x=1 to t:input #1,i$,xr
+ rx$=str$(xr)
+ z=(x mod 2)
+ if z print "|";right$("00"+str$(x),2)"| ";left$(i$+chr$(32,20),20);
+ if z print chr$(32,6);right$("_____"+rx$,5)"  ";
+ if z=0 print "|";right$("00"+str$(x),2)"| ";left$(i$+chr$(32,20),20);
+ if z=0 print chr$(32,6);right$("_____"+rx$,5)"  |"
+ next:close
+ print "|__|"chr$(95,34)"|__|"chr$(95,34)"|"
+ gosub getit:return
+
+grite
+ i$=da$+":_"+pp$+"_"+a1$+"_"+nz$+"_CONQUERED_SPACER_QUEST!"
+ print\i$\
+ open #1,"sp.great":append #1:print #1,i$:close
+ i$=da$+": "+pp$+"_"+a1$+"/"+nz$+"___Victorious Hero!"
+ open #1,"sp.hero":append #1:print #1,i$:close
+ gosub getit:return
+
+promo
+ a=0:j=0
+ if left$(pp$,9)="Giga Hero" goto shpwr
+ if s2<150 goto shp
+ x=s2/150:if x<sc x=0:goto shpwr
+ sc=x
+shp
+ xi=0:a$=""
+ if right$(pp$,2)="][" xi=1
+ if sc>17 a$="Giga Hero":a=15:goto shp1
+ if (sc>14) and (sc<18) a$="Mega Hero":a=12:goto shp1
+ if (sc>10) and (sc<14) a$="Grand Mufti":a=10:goto shp1
+ if (sc>7) and (sc<11) a$="Top Dog":a=8:goto shp1
+ if (sc>4) and (sc<8) a$="Admiral":a=5:goto shp1
+ if (sc=3) or (sc=4) a$="Commodore":a=4:goto shp1
+ if sc=2 a$="Captain":a=3:goto shp1
+ if sc=1 a$="Commander":a=2:goto shp1
+ if sc=0 a$="Lieutenant":a=1
+shp1
+ if a$="" goto shpwr
+ if xi>0 a$=a$+"]["
+ if a$=pp$ goto shpwr
+ print\"Congratulations! "pp$" "na$\\"...On your recent promotion to "a$
+ print\"...Along with an honorarium of "a"0,000 cr"
+ g1=g1+a:pp$=a$:a$="":a=0:gosub getit
+shpwr
+ f$="ckdate":open #1,f$:input #1,a$:close:if a$<>da$ t$=a$
+ xi=0:j=0:close
+ open #1,"spacers1"
+ position #1,256,oo
+ print #1,na$\nz$\h1$\d1$\c1$\l1$\w1$\ n1$\r1$\p1$\t$\q2$\q4$\sp$\pp$\ap$
+ close
+ open #1,"spacers2"
+ position #1,256,oo
+ print #1,h1,d1,c1,l1,w1,n1,r1,p1,g1,f1
+ print #1,h2,d2,c2,l2,w2,n2,r2,p2,g2,f2
+ print #1,s1,j1,k1,m1,sc,e1,u1,b1,sp,pp
+ print #1,s2,q1,q2,q3,q4,q5,o1,z1,t1,ap,q6
+ close:return
+
+getit
+ print"....type anykey to go on....";:gosub getkey
+ print chr$(8,28)chr$(32,28)chr$(8,28):return
+getkey
+ if (clock(1)>clock(2))and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+crfix
+ if g2>9999 g1=g1+1:g2=g2-10000:goto crfix
+ g$=str$(g2):if g1 g$=str$(g1)+right$("000"+str$(g2),4)
+ return
+
+crinc
+ if g1<1 return
+ g2=g2+10000:g1=g1-1:return
+
+compil
+ print "...compiled":link"sp.sysop","comp"
+
+link.term
+ link dr$+"sp.link","term"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.end "+i$+"           ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.end "i$" "time$:close
+ log vj$:zz$=i$
+ return
+
+; end

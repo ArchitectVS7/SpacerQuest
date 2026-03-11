@@ -1,0 +1,475 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R   Q U E S T      |
+;|      -----------------------      |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|            sp.dock2.s             |
+;|___________________________________|
+
+
+ public rim1a
+ public compil
+
+ on nocar goto link.term
+ i$="startup":gosub trace
+rim
+ r=0:ww=0:cc=0:cs=0:nj=0:jr=0:jc=1:gosub crfix
+ print\nz$" arriving at the "q4$" Star Port"
+rimg
+ print\"[:"q4$" Star Port:]:[Cr:"g$":]:[Fuel:"f1":]"
+ a=(q4 mod 14):zh=1000
+ if mp$="][" zh=zh-100
+ if mq$="LSS C" zh=zh-400
+ x=a*zh
+ print\"Docking Fee: "x" cr...pay it? [Y]/(N): ";
+ if left$(q2$,3)="Sec" print\\"On Space Patrol Business...fee waived":goto gogo
+ gosub getkey
+ if i$="N" print"No":jr=1:goto rymla
+ print"Yes"
+ if g2<x gosub crinc
+ if g2<x print ng$:jr=1:goto rymla
+ g2=g2-x:zh=x:gosub crfix
+ zp=0:z1=z1+1:print\"Docking fee paid in full..."
+ gosub feed
+gogo
+ if n1>60 goto rimf
+ print"Excessive orbiting and docking maneuvers consume precious fuel"
+ x=61-n1
+ if f1>=x f1=f1-x
+ if f1<x f1=0
+rimf
+ if z1<4 goto rmmm
+ h2=h2-(z1-3)
+ if h2<1 h2=0:h1=0:h1$=jk$
+ hx=h1:if h1>9 hx=(h1-10)
+ if right$(h1$,1)="*" hx=hx+5
+ s1=(h2+1)*hx
+ print\"Hull damaged -"(z1-3)" during docking procedure due to fatigue"
+rmmm
+ if (w1+p1)<60 goto rid
+ if (mq$="LSS C") or (l1$=jk$) goto rid
+ x=1:if z1>2 x=(z1-2)
+ print\l1$" damaged -"x" (str)"
+ print"Due to improper air-lock connection"
+ l1=(l1-x):if l1<1 l1=0:l2=0:l1$=jk$
+ if x>2 print"Sir..."nz$" needs a better air-lock!"
+rid
+ print"Entering "q4$" cargo-receiving dock"
+ y=4
+ if q3$="X" y=8
+ gosub varfix
+ if q4<>16 goto rid1
+ if mq$<>"LSS C" goto rid1
+ if q4$=q8$ print\"Our warehouses are full of "q2$"...sorry":goto rid1
+ print\"We on "q4$" honor the conqueror of Nemesis."
+ print pp$", Your cargo is always welcome here":q2=19
+rid1
+ if (q2$="0") or (q2$="") print\"Your pods are empty":q1=0:q5=0:ww=0:goto rimx
+ if q2=20 print\"No need for "q2$" here":goto rimo
+ i$=left$(q2$,4)
+ if i$="Cont" print\"Smuggled goods not needed...Dump'em!":goto rimx
+ if i$="Plan" print\"Nothing here for corporate raiders":goto rim1
+ print\"Your cargo of "q2$" is off-loaded by droid workers"
+ if q3$<>"X" goto ridk
+ y=q4-14:q3$=""
+ print"You receive payment of "q5"0,000 cr";
+ if y=q2 g1=(g1+q5+5):print" + 50K Bonus!"\"..."q2$" needed here!":goto rimx
+ g1=g1+q5:print\"Guess we can find a use for your "q2$:goto rimx
+ridk
+ if q5<2 q5=2
+ if (q4<15) or (q4>20) q4=15:print\"Manifest not entirely correct!"
+ gosub upod
+ if q1<=s1 goto parv
+ if (q5>q1) and (q1>0) x=(q5/q1):q5=x*s1
+parv
+ gosub crfix
+ ia=0:ib=0
+ a=1:if q4>14 a=(q4-14)
+ y=1:if q5>1 y=(q5/2)
+ for k=1 to a:g2=g2+y:gosub crfix:ib=ib+y:gosub crfx:next
+ print"You receive payment of "ir$
+ ww=1
+rimx
+ gosub crfix
+ print\"[:"q4$" Star Port:]:[Cr:"g$":]:[Fuel:"f1":]":gosub getit
+ print"The port agent apologizes for the lack of facilities"
+ print"Being way out on the edge of the galaxy."\"We don't get many visitors."
+ if ww>0 print"But your cargo of "q2$" is much needed."
+ if s1<1 print\"No servicable pods to load":q1=0:q2=0:q2$="":q5=0:goto rim1
+ a=1:if s2>10 a=(s2/10)
+ if a>300 a=300
+ x=0:if s1>10 x=(s1/10):if x>9 x=9
+ q5=a*x:if q5<1 q5=0
+ gosub carname:q1=s1:print\"Droids load your "q1" pods with "q2$" from "q4$
+ print"...Payment of "q5" cr to be P.O.D. at a space port":q2=20
+rimo
+ print\"(#"q4") "q4$" Star Port Facilities:"\chr$(32,35);
+ if q4=15 print"Shield Repair"
+ if q4=16 print"Drive Repair"
+ if q4=17 print"Wise One"\chr$(32,35)"Cabin Repair"
+ if q4=18 print"The Sage"\chr$(32,35)"Robot. Repair"
+ if q4=19 print"Navig. Repair"
+ if q4>19 print"No Repair Shop"
+rimy
+ print chr$(32,35);
+ if q4=20 print"No ";
+ print"Fueling Depot"
+rim1
+ print\"[Cr:"g$":]:Choice:  (L)aunch  ";
+ if q4=17 print"(W)ise One Visit  ";
+ if q4=18 print"(S)age Visit  ";
+ if q4<20 print"(R)epairs  ";
+ if q4<20 print"(F)uel Depot  ";
+ print":  ";
+mri
+ gosub getkey
+ if (i$="W") and (q4=17) print chr$(8);i$:goto wise
+ if (i$="S") and (q4=18) print chr$(8);i$:goto sage
+ if (i$="R") and (q4<20) print chr$(8);i$:goto rdam
+ if (i$="F") and (q4<20) print chr$(8);i$:goto rfuel
+ if i$<>"L" print chr$(8);"?";:goto mri
+ print chr$(8);i$
+rim1a
+ on nocar goto link.term
+ i$="rim1a":gosub trace
+ r=0:print\chr$(45,45)\q4$" Operations - Mission Planning"\chr$(45,45)
+ if q4<>15 goto rymla
+ print"(A)ndromedan Missions"\"(M)ilky Way Missions"\"(Q)uit"\chr$(45,45)
+ print"Choice: ";:gosub getkey:if i$=cr$ i$="Q"
+ print i$
+ if i$="Q" goto rimo
+ if i$="M" goto rymla
+ if i$<>"A" goto rim1a
+ if (z1>2) and (not info(5)) print\"...Closed for today!":goto rymla
+ link"sp.black"
+rymla
+ copy "sp.legend2"
+rymlr
+ input@3\"Input new destination (star system #): "i$
+ if i$="" i$="Q"
+ if (i$="Q") or (i$="q") goto rimo
+ if len(i$)>2 print ro$:goto rymlr
+ i=val(i$):if (i<1) or (i>20) print ro$:goto rymlr
+ if i=q4 print"You're already there!":goto rymlr
+ gosub desname:q9$=l$:q8$=q4$:gosub fcost
+ print\"[:"q4$" Star Port:]:[Cr:"g$":]:[Fuel:"f1":]"
+ print"Orig: "q4$"....Dest: "q9$"....Fuel required: "f2
+ if f2<=f1 goto rim1b
+ if jr>0 goto rim1b
+ print\"Not enough fuel...return to Port Facilities? [Y]/(N): ";
+ gosub getkey:if i$="N" print"No":goto rim1b
+ print"Yes":goto rimo
+rim1b
+ print\"[:"q4$" Star Port:]:[Cr:"g$":]:[Fuel:"f1":]";
+ if jr<1 print": Launch? [Y]/(N): ";
+ if jr>0 print\:goto rrmm
+ gosub getkey:if i$="N" print"No":goto rimo
+ print"Yes"
+rrmm
+ if jr>0 x=(h1*5):f1=(f1-x)
+ if f1<1 f1=0:print"....No Fuel!"
+ if (jr<1) and (f2>f1) print"Not enough Fuel!":goto rim2a
+ if (d1<1) or (d2<1) print\"The "nz$"'s "d1$" are ";:goto rim2
+ if (h1<1) or (h2<1) print\"The "nz$"'s "h1$" is ";:goto rim2
+ if q4<>20 goto rim1c
+ if z1<4 goto rim1c
+ if qu>0 goto rim1c
+ gosub crfix:y=(w1+p1+d1+h1+n1)
+ if y>9 y=(y/10)
+ if y>g1 goto rim1c
+ print\"...pssst...wanna zero your trip counter for "y"0,000 cr? (Y)/[N]: ";
+ gosub getkey:if i$<>"Y" print"No":goto rim1c
+ print"Yes":t1=0:z1=0:g1=g1-y:qu=1:gosub crfix
+rim1c
+ print\nz$"'s "n1$" confirms your choice for "l$
+ print\"Engaging your "d1$" drives you lift off from "q4$
+ q4=i:q4$=q9$:goto rim3
+rim2
+ print"...disabled"
+rim2a
+ print\"Space tugs tow "nz$" out to the space lanes to await rescue"
+rim3
+ if jr>0 print\"Turn-around fuel used: "x
+ gosub shipwrite:kk=1:if q4>14 kk=6
+ if jr<1 link"sp.warp"
+ if q4=15 zp=0
+ tt=0:link"sp.warp","menu"
+
+feed
+ a$=str$(zh):lm$=q4$:lw=len(lm$)
+ lw=14-lw:for k=1 to lw:lm$=lm$+".":next
+ ln$=na$+"/"+nz$:lw=len(ln$)
+ if lw>33 lw=33:ln$=left$(ln$,33)
+ lw=34-lw:for k=1 to lw:ln$=ln$+".":next
+ i$=da$+": "+lm$+ln$+" - Fee Paid: "+a$+" cr"
+ open #1,"sp.fee":append #1:print #1,i$:close
+ return
+
+rfuel
+ gosub crfix
+ print\"[:"q4$" Star Port:]:[Cr:"g$":]:[Fuel:"f1":]"
+ print\q4$" Refueling Depot:  (B)uy fuel  (S)ell fuel [Q]uit: ";:gosub getkey
+ if i$=cr$ i$="Q"
+ print i$
+ if i$="B" goto bfuel
+ if i$="S" goto sfuel
+ goto rimo
+sfuel
+ gosub crfix:print\"[:"q4$" Star Port:]:[Cr:"g$":]:[Fuel:"f1":]":gf=25-q4
+ if q4=15 gf=5
+ print"We pay "gf" cr per fuel unit...interested? [Y]/(N): ";
+ gosub getkey:if i$="N" print"No":goto rfuel
+ print"Yes"
+sfu1
+ print\"[:"q4$" Star Port:]:[Cr:"g$":]:[Fuel:"f1":]"
+ print"Sell off how much from your tanks? (0-"f1"): ";:input@3""i$
+ if i$="" goto rfuel
+ if len(i$)>4 print\ro$:goto sfu1
+ i=val(i$):if i=0 goto rfuel
+ if (i>f1) or (i>3000) print\ro$:goto sfu1
+ a=gf*i:print\"Payment of "a" cr for "i" units of fuel....thanx!"
+ f1=f1-i
+sfchk
+ if a>9999 g1=g1+1:a=a-10000:goto sfchk
+ g2=g2+a:goto sfu1
+
+bfuel
+ print\q4$" Fuel Depot has fuel for sale....Price: 25 cr per unit"
+bful
+ gosub crfix:x=((h2+1)*10)*h1
+ if f1>x print\"You have too much fuel....sell off some!":goto rfuel
+ if f1=x print\"Your tanks are full!":goto rfuel
+ x=x-f1:print\"[:"q4$" Star Port:]:[Cr:"g$":]:[Fuel:"f1":]"
+ print"Buy how much fuel for your ship? (0-"x"): ";:input@3""i$
+ if i$="" i$="Q"
+ if i$="Q" print"...leaving":goto rimo
+ if (len(i$))>4 print ro$:goto bful
+ i=val(i$):if i<1 print"...none...leaving":goto rimo
+ if i>2900 print ro$:goto bful
+ ia=i:ib=0:if i>100 ib=(i/100):ia=(i mod 100)
+ id=0:ih=0:if ia>0 id=(ia*25)
+ if ib<1 goto bff
+ for k=1 to ib:id=id+(100*25)
+bfx
+ if id>9999 ih=(ih+1):id=(id-10000):goto bfx
+ next
+bff
+ id$=str$(id):if ih id$=str$(ih)+right$("000"+str$(id),4)
+ print\"Cost for "i" units = "id$" cr"
+ gosub crfix
+ if ih>g1 print ng$:goto bful
+ if (id>g2) gosub crinc
+ if (ih>g1) and (id>g2) print ng$:goto bful
+ f1=(f1+i):g1=(g1-ih):g2=(g2-id):goto bful
+
+rdam
+ if q4=15 xl$="Shields":l$=p1$:x=p1:y=p2:gosub rmfx:p2=y:p1=x
+ if q4=16 xl$="Drives":l$=d1$:x=d1:y=d2:gosub rmfx:d2=y:d1=x
+ if q4=17 xl$="Cabin":l$=c1$:x=c1:y=c2:gosub rmfx:c2=y:c1=x
+ if q4=18 xl$="Robotics":l$=r1$:x=r1:y=r2:gosub rmfx:r2=y:r1=x
+ if q4=19 xl$="Navigation":l$=n1$:x=n1:y=n2:gosub rmfx:n2=y:n1=x
+ goto rimo
+rmfx
+ if x>199 x=199
+ if (l$=jk$) or (x<1) print\"Your "xl$" = "jk$"!":return
+ if y>8 print\l$" is in perfect condition!":return
+ print\l$" is now at...S:["x"]...C:["y"]"
+ a=x*100:print"Only "xl$" repairs on "q4$"...cost:"a" per 1+"
+ print\"[:"q4$" Star Port:]:[Cr:"g$":]:[Fuel:"f1":]"
+ print"Repair "l$"?  [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":return
+ print"Yes":if g2<a gosub crinc
+ if (g2<a) and (g1>0) gosub crinc
+ if g2<a print ng$:return
+ y=y+1:g2=g2-a:gosub crfix
+ print l$" is now at...S:["x"]...C:["y"]"
+ return
+
+sage
+ if kj>0 goto sage1
+ print chr$(12)\\"Greetings "pp$" "na$
+ copy"sp.sage":gosub getit
+ r=13:gosub rand:if x=1 j$="ALGOL":k$="A"
+ if x=2 j$="CAPELLA":k$="B"
+ if x=3 j$="RIGEL":k$="C"
+ if x=4 j$="ALDEBARON":k$="D"
+ if x=5 j$="DENEB":k$="E"
+ if x=6 j$="ALTAIR":k$="F"
+ if x=7 j$="ANTARES":k$="G"
+ if x=8 j$="VEGA":k$="H"
+ if x=9 j$="SPICA":k$="I"
+ if x=10 j$="ARCTURUS":k$="J"
+ if x=11 j$="REGULUS":k$="K"
+ if x=12 j$="DENEBOLA":k$="K"
+ if x=13 j$="POLLUX":k$="L"
+ print chr$(12):copy"sp.cons"
+ print\"The Question (9 nano-chrons to answer):"
+ print"In which constellation is "j$" to be found? (A-P): "; :gy=0:gosub getkey
+ if i$="+" print\:goto sage1
+ if i$=cr$ i$="?"
+ if i$="*" i$=k$
+ print chr$(8);i$
+ if i$<>k$ print\"You must study more the heavenly mysteries.":goto sage1
+ print\"You have answered correctly....Your understanding is admirable!"
+ print\"As a small token of compensation accept this cabin enhancement"
+ print\c1$"_____[S:"c1":] ----> [S:";:c1=c1+1:c2=9:print c1":]=[C:"c2":]"
+sage1
+ r=0:kj=1:print\"The sage needs his rest....have a safe journey."
+ gosub getit:goto rimo
+
+wise
+ print\:copy"sp.wise":r=9:gosub rand:kn=x
+ print\".....Number Key = ["kn"]...";:gosub getit:goto rimo
+
+carname
+ if q4=15 q2$="Titanium Ore"
+ if q4=16 q2$="Capellan Herbals":q5=q5*2
+ if q4=17 q2$="Raw Dilithium":q5=q5*3
+ if q4=18 q2$="Mizarian Liquor":q5=q5*4
+ if q4=19 q2$="Achernarian Gems":q5=q5*5
+ if q4=20 q2$="Algolian RDNA":q5=q5*6
+ return
+
+desname
+ if i=1 l$="Sun-3"
+ if i=2 l$="Aldebaran-1"
+ if i=3 l$="Altair-3"
+ if i=4 l$="Arcturus-6"
+ if i=5 l$="Deneb-4"
+ if i=6 l$="Denebola-5"
+ if i=7 l$="Fomalhaut-2"
+ if i=8 l$="Mira-9"
+ if i=9 l$="Pollux-7"
+ if i=10 l$="Procyon-5"
+ if i=11 l$="Regulus-6"
+ if i=12 l$="Rigel-8"
+ if i=13 l$="Spica-3"
+ if i=14 l$="Vega-6"
+ if i=15 l$="Antares-5"
+ if i=16 l$="Capella-4"
+ if i=17 l$="Polaris-1"
+ if i=18 l$="Mizar-9"
+ if i=19 l$="Achernar-5"
+ if i=20 l$="Algol-2"
+ return
+
+fcost
+ if q4>i q6=q4-i
+ if q4<i q6=i-q4
+ free:f2=0
+ if (d1<1) or (d2<1) return
+ if (h1<1) or (h2<1) return
+ if q6<1 return
+ af=d1:if af>21 af=21
+ f2=(21-af)+(10-d2):if f2<1 f2=1
+ f2=f2*q6:ty=f2+10:if ty>100 ty=100
+ f2=ty/2:return
+
+rand
+ x=((random(9))+1)*10:for k=1 to x:next
+ rd$=rnd$:x=(random(r)):if x>r x=r
+ if x<1 x=1
+ return
+
+;..Keypatch timer by Vince Andrews
+
+getit
+ print"....type anykey to go on....";:gosub getkey
+ print chr$(8,28)chr$(32,28)chr$(8,28):return
+ zy=val(mid$(" "+time$,8,2)):gy=0
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ if zy=val(mid$(" "+time$,8,2)) goto getkey
+ zy=val(mid$(" "+time$,8,2))
+ gy=gy+1:if r=13 print chr$(8);gy;
+ if r=13 if gy>9 r=0:i$="+":print"....Zzzzzzz ....":return
+ if gy=60 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if gy=90 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if gy<120 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+crfix
+ if (g2>9999) g1=g1+1:g2=g2-10000:goto crfix
+ g$=str$(g2):if g1 g$=str$(g1)+right$("000"+str$(g2),4)
+ return
+
+crinc
+ if g1<1 return
+ g2=g2+10000:g1=g1-1
+ return
+
+crfx
+ if (ib>9999) ia=ia+1:ib=ib-10000:goto crfx
+ ir$=str$(ib):if ia ir$=str$(ia)+right$("000"+str$(ib),4)
+ return
+
+varfix
+ if f1<1 f1=0
+ f2=0:k1=k1+q1:if (k1>29999):k1=0
+ j1=j1+q6:if (j1>29999):j1=0
+ u1=u1+1:e1=e1+wb:m1=m1+lb
+ s2=(s2+wb+q6+y)-lb:wb=0:lb=0
+ if s2<1 s2=0
+ y=0:return
+
+upod
+ x=0
+ if (s1<1) or (h1<1) x=1:return
+ if h2<1 s1=1:return
+ x=((h2+1)*s1)
+ if x<10 x=10
+ s1=x/10
+ return
+
+link.start
+ gosub shipwrite
+ link"sp.start","hailstart"
+
+shipwrite
+ open #1,"spacers1"
+ position #1,256,oo
+ print#1,na$\nz$\h1$\d1$\c1$\l1$\w1$\n1$\ r1$\p1$\t$\q2$\q4$\sp$\pp$\ap$
+ close
+ open #1,"spacers2"
+ position #1,256,oo
+ print#1,h1,d1,c1,l1,w1,n1,r1,p1,g1,f1
+ print#1,h2,d2,c2,l2,w2,n2,r2,p2,g2,f2
+ print#1,s1,j1,k1,m1,sc,e1,u1,b1,sp,pp
+ print#1,s2,q1,q2,q3,q4,q5,o1,z1,t1,ap,q6
+ close
+ return
+
+compil
+ print "...compiled":link"sp.sysop","comp"
+
+link.term
+ link dr$+"sp.link","term"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.dock2 "+i$+"          ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.dock2 "i$" "time$:close
+ log vj$:zz$=i$
+ return
+
+; end

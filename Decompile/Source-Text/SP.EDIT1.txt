@@ -1,0 +1,352 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R   Q U E S T      |
+;|      -----------------------      |
+;|                                   |
+;|     Version 3.4 - by Firefox      |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|            sp.edit1.s             |
+;|___________________________________|
+
+ public compil
+ public compile
+
+ on nocar goto link.term
+
+ if not info(5) goto link.back
+ i$="startup":gosub trace
+ zk$=chr$(45,50)
+
+start
+ close
+ open #1,"sp.num":input #1,np:close
+ xp=np:x=0:tb=0:t2=0:t4=0:na$=""
+main
+ print\"  _"
+ print " | |    (L)ist of players"
+ print " |M|    (S)ingle read of an spacer"
+ print " | |    (V)iew a spacer"
+ print " |E|    (W)rite spacer's stats"
+ print " | |    (D)efault values write"
+ print " |N|    (I)nactivate a spacer"
+ print " | |    (E)dit a spacer"
+ print " |U|"
+ print " |_|    (Q)uit"
+main.1
+ print\"[Memory]["x"]["na$"] Choice: [ ] ('?'= menu) "chr$(8,15);
+ gosub getkey:if i$=chr$(13) i$=" "
+ print i$
+mainline
+ if i$="?" goto main
+ if i$="L" gosub lister:goto main.1
+ if i$="S" gosub scan:if np>xp np=xp:goto main.1
+ if i$="Q" goto link.back
+ if t2=0  print"Must read a player stats first":goto main.1
+ if i$="V" gosub view:goto main.1
+ if i$="W" gosub filer:gosub changeo:gosub writer:goto main.1
+ if i$="E" gosub editor:goto main.1
+ if i$="D" gosub default:goto main.1
+ if i$="I" gosub inact:goto main.1
+ goto main.1
+spot
+scan
+ tb=0:x=0:a$=""
+ print\"Scan for (N)umber  (P)layer name  (Q)uits)? ";:gosub getkey
+ if i$="Q" print "Quit":return
+ if i$="P" input @3 "Who? "a$:x=1:goto read.user
+ if i$="N" print"Which number? (1-"np"): ";:goto scanner
+ goto scan
+scanner
+ input @3 ""i$
+ x=val(i$)
+ if x>np xp=np:np=x:xa$="Empty Slot"
+ if x>0 tb=1:gosub filer:open #1,f$:goto look.1
+ return
+
+filer
+ print\"[C]urrent or (B)ackup Player file or (Q)uits: ";:gosub getkey
+ if i$="Q" print"Quit":pop:goto main.1
+ if i$=chr$(13) i$="C"
+ if i$="C" f$="spacers1":f1$="spacers2":print f$" & "f1$:return
+ if i$<>"B" print i$:goto filer
+ print\"Are you sure? ([Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto filer
+ f$="spacers.bu1":f1$="spacers.bu2"
+ open #1,f$
+ a=mark(1):if a close:f$="":print"No such file!":pop:goto main.1
+ close:print f$"...."f1$:return
+
+read.user
+ close
+ f$="spacers1":f1$="spacers2"
+ open #1,f$
+look.1
+ position #1,256,x
+ input #1,na$\nz$\h1$\d1$\c1$\l1$\w1$\n1$\r1$\ p1$\t$\q2$\q4$\sp$\pp$\ap$
+ close
+ open #1,f1$
+ position #1,256,x
+ input #1,h1,d1,c1,l1,w1,n1,r1,p1,g1,f1
+ input #1,h2,d2,c2,l2,w2,n2,r2,p2,g2,f2
+ input #1,s1,j1,k1,m1,sc,e1,u1,b1,sp,pp
+ input #1,s2,q1,q2,q3,q4,q5,o1,z1,t1,ap,q6
+ if tb=1 close:t2=1:return
+ if (tb=0) and (na$=a$) close:t2=1:return
+look.2
+ if (x<np) x=x+1:goto look.1
+ close
+ if tb=1:print"Number "x" not found!"
+ if tb=0:print"Name "a$" not found!":a$="":na$=""
+ return
+
+view
+ print chr$(12)
+ print\\"................Viewing Stats for #["x"] "na$
+ print\" 1) Spacer Name (na$) : "na$
+ print " 2) Ship Name   (nz$) : "nz$
+ print " 3) Hull        (h1$) : "h1$
+ print " 4) Drive       (d1$) : "d1$
+ print " 5) Cabin       (c1$) : "c1$
+ print " 6) Life Sup    (l1$) : "l1$
+ print " 7) Weaponery   (w1$) : "w1$
+ print " 8) Navig       (n1$) : "n1$
+ print " 9) Robotics    (r1$) : "r1$
+ print "10) Shields     (p1$) : "p1$
+ print "11) Last on      (t$) : "t$
+ print "12) Credits 10K  (g1) : "g1
+ print "13) Credits      (g2) : "g2
+ print "14) Hull #       (h1) : "h1
+ print "15) Drive #      (d1) : "d1
+ gosub getit:if i$="Q" print"...Stopping here...":return
+ print chr$(12)\\
+ print "16) Cabin #      (c1) : "c1
+ print "17) Life Sup #   (l1) : "l1
+ print "18) Weapon #     (w1) : "w1
+ print "19) Navig #      (n1) : "n1
+ print "20) Robotic #    (r1) : "r1
+ print "21) Shield #     (p1) : "p1
+ print "22) Fuel Units   (f1) : "f1
+ print "23) Storage Pods (s1) : "s1
+ print "24) Astrecs Trav (j1) : "j1
+ print "25) Cargo Deliv  (k1) : "k1
+ print "26) Batt.Lost    (m1) : "m1
+ print "27) Score        (sc) : "sc
+ print "28) Batt.Won     (e1) : "e1
+ print "29) Cmplet.trips (u1) : "u1
+ print "30) Total rescues(b1) : "b1
+ gosub getit:if i$="Q" print"...Stopping here...":return
+ print chr$(12)\\
+ print "31) SP # owned   (o1) : "o1
+ print "32) # trips      (z1) : "z1
+ print "33) # calls      (t1) : "t1
+ print "34) hull status  (h2) : "h2
+ print "35) drive status (d2) : "d2
+ print "36) cabin status (c2) : "c2
+ print "37) life status  (l2) : "l2
+ print "38) weap. status (w2) : "w2
+ print "39) nav.status   (n2) : "n2
+ print "40) robot status (r2) : "r2
+ print "41) shield.status(p2) : "p2
+ print "42) trip fuel    (f2) : "f2
+ print "43) total score  (s2) : "s2
+ print "44) full pods    (q1) : "q1
+ print "45) cargo type   (q2) : "q2
+ gosub getit:if i$="Q" print"...Stopping here...":return
+ print chr$(12)\\
+ print "46) cargo value  (q3) : "q3
+ print "47) destination# (q4) : "q4
+ print "48) pay          (q5) : "q5
+ print "49) name cargo  (q2$) : "q2$
+ print "50) destin name (q4$) : "q4$
+ print "51) origin name (sp$) : "sp$
+ print "52) SP Rank     (pp$) : "pp$
+ print "53) Port Owner  (ap$) : "ap$
+ print "54) origin#      (sp) : "sp
+ print "55) extracurr    (pp) : "pp
+ print "56) lost in space(ap) : "ap
+ print "57) distance     (q6) : "q6
+ gosub getit:if i$="Q" print"...Stopping here..."
+ return
+
+editor
+ input@3"Type in number of variable to edit: "i$
+ if (i$="") or (i$="q") i$="Q"
+ if i$="Q" return
+ xi=val(i$):if (xi<1) or (xi>57) goto editor
+ if xi=1 print"na$= "na$;:gosub editx:na$=i$
+ if xi=2 print"nz$= "nz$;:gosub editx:nz$=i$
+ if xi=3 print"h1$= "h1$;:gosub editx:h1$=i$
+ if xi=4 print"d1$= "d1$;:gosub editx:d1$=i$
+ if xi=5 print"c1$= "c1$;:gosub editx:c1$=i$
+ if xi=6 print"l1$= "l1$;:gosub editx:l1$=i$
+ if xi=7 print"w1$= "w1$;:gosub editx:w1$=i$
+ if xi=8 print"n1$= "n1$;:gosub editx:n1$=i$
+ if xi=9 print"r1$= "r1$;:gosub editx:r1$=i$
+ if xi=10 print"p1$= "p1$;:gosub editx:p1$=i$
+ if xi=11 print"t$ = "t$;:gosub editx:t$=i$
+ if xi=12 print"g1 = "g1;:gosub editx:g1=xj
+ if xi=13 print"g2 = "g2;:gosub editx:g2=xj
+ if xi=14 print"h1 = "h1;:gosub editx:h1=xj
+ if xi=15 print"d1 = "d1;:gosub editx:d1=xj
+ if xi=16 print"c1 = "c1;:gosub editx:c1=xj
+ if xi=17 print"l1 = "l1;:gosub editx:l1=xj
+ if xi=18 print"w1 = "w1;:gosub editx:w1=xj
+ if xi=19 print"n1 = "n1;:gosub editx:n1=xj
+ if xi=20 print"r1 = "r1;:gosub editx:r1=xj
+ if xi=21 print"p1 = "p1;:gosub editx:p1=xj
+ if xi=22 print"f1 = "f1;:gosub editx:f1=xj
+ if xi=23 print"s1 = "s1;:gosub editx:s1=xj
+ if xi=24 print"j1 = "j1;:gosub editx:j1=xj
+ if xi=25 print"k1 = "k1;:gosub editx:k1=xj
+ if xi=26 print"m1 = "m1;:gosub editx:m1=xj
+ if xi=27 print"sc = "sc;:gosub editx:sc=xj
+ if xi=28 print"e1 = "e1;:gosub editx:e1=xj
+ if xi=29 print"u1 = "u1;:gosub editx:u1=xj
+ if xi=30 print"b1 = "b1;:gosub editx:b1=xj
+ if xi=31 print"o1 = "o1;:gosub editx:o1=xj
+ if xi=32 print"z1 = "z1;:gosub editx:z1=xj
+ if xi=33 print"t1 = "t1;:gosub editx:t1=xj
+ if xi=34 print"h2 = "h2;:gosub editx:h2=xj
+ if xi=35 print"d2 = "d2;:gosub editx:d2=xj
+ if xi=36 print"c2 = "c2;:gosub editx:c2=xj
+ if xi=37 print"l2 = "l2;:gosub editx:l2=xj
+ if xi=38 print"w2 = "w2;:gosub editx:w2=xj
+ if xi=39 print"n2 = "n2;:gosub editx:n2=xj
+ if xi=40 print"r2 = "r2;:gosub editx:r2=xj
+ if xi=41 print"p2 = "p2;:gosub editx:p2=xj
+ if xi=42 print"f2 = "f2;:gosub editx:f2=xj
+ if xi=43 print"s2 = "s2;:gosub editx:s2=xj
+ if xi=44 print"q1 = "q1;:gosub editx:q1=xj
+ if xi=45 print"q2 = "q2;:gosub editx:q2=xj
+ if xi=46 print"q3 = "q3;:gosub editx:q3=xj
+ if xi=47 print"q4 = "q4;:gosub editx:q4=xj
+ if xi=48 print"q5 = "q5;:gosub editx:q5=xj
+ if xi=49 print"q2$= "q2$;:gosub editx:q2$=i$
+ if xi=50 print"q4$= "q4$;:gosub editx:q4$=i$
+ if xi=51 print"sp$= "sp$;:gosub editx:sp$=i$
+ if xi=52 print"pp$= "pp$;:gosub editx:pp$=i$
+ if xi=53 print"ap$= "ap$;:gosub editx:ap$=i$
+ if xi=54 print"sp = "sp;:gosub editx:sp=xj
+ if xi=55 print"pp = "pp;:gosub editx:pp=xj
+ if xi=56 print"ap = "ap;:gosub editx:ap=xj
+ if xi=57 print"q6 = "q6;:gosub editx:q6=xj
+ goto editor
+editx
+ input@3"...(/=0)...(<C-R>=nc)...New value: "i$
+ if i$="" pop:goto editor
+ if i$="/" i$=""
+ xj=val(i$)
+ return
+
+changeo
+ print\"Write data to a different numbered account? (Y)/[N]: ";:gosub getkey
+ if i$<>"Y" print"No":return
+ print"Yes":print\"Which account? (1-"np"): ";:input@3""i$
+ if i$="" goto changeo
+ a=val(i$)
+ if (a<1) or (a>np) print"Out of range!":goto changeo
+ print\"Write "na$" to # "a"'s account? (Y)/[N]: ";:gosub getkey
+ if i$<>"Y" print"No":goto changeo
+ print"Yes"
+ x=a:a=0
+ return
+
+writer
+ t2=0
+ open #1,f$
+writeoff
+ print\"....writing new data on "na$" to "f$"....";
+ position #1,256,x
+ print #1,na$\nz$\h1$\d1$\c1$\l1$\w1$\n1$ \r1$\p1$\t$\q2$\q4$\sp$\pp$\ap$
+ close:print"....Done"
+ print\"....writing new data on "na$" to "f1$"....";
+ open #1,f1$
+ position #1,256,x
+ print #1,h1,d1,c1,l1,w1,n1,r1,p1,g1,f1
+ print #1,h2,d2,c2,l2,w2,n2,r2,p2,g2,f2
+ print #1,s1,j1,k1,m1,sc,e1,u1,b1,sp,pp
+ print #1,s2,q1,q2,q3,q4,q5,o1,z1,t1,ap,q6
+ close:print"....Done"
+ x=0:na$="":return
+
+default
+ na$=na$:nz$="":h1$="":d1$="":c1$=""
+ l1$="":w1$="":n1$="":r1$ ="":p1$=""
+ t$="00/00/00":g1=1:g2=0:h1=0:d1=0
+ c1=0:l1=0:w1=0:n1=0:r1=0:p1=0:f1=0:s1=0
+ j1=0:k1=0:m1=0:sc=0:e1=0:u1=0
+ b1=0:o1=0:z1=0:t1=0:h2=0:d2=0: c2=0:l2=0:w2=0
+ n2=0:r2=0:p2=0:f2=0:s2=0:q1=0
+ q2=0:q3=0:q4=0:q5=0:q6=0:q2$="":q4$=""
+ sp=1:ap=0:pp=0:pp$="":sp$="Sun-3":ap$=""
+ return
+
+inact
+ print "Kill "na$;:input @2" y/[N]:"i$
+ if i$<>"Y" print "Aborted":return
+ print\"Spacer "na$" is now no more!"
+ na$="":nz$=""
+ return
+
+lister
+ open #1,"spacers1"
+ for a=1 to np
+ position #1,256,a
+ input #1,j$\k$\j1$\j2$\j3$\j4$\j5$\j6$\j7$\j8$\j9$
+ j$=left$(j$+chr$(95,20),20)
+ k$=left$(k$+chr$(95,20),20)
+ print"("right$(" "+str$(a),2)")___"j$;
+ print "_Ship: "k$"___Last on: "j9$
+ y=key(0):if y=32 a=np
+ next:close:print zk$:a=0
+ return
+
+getit
+ print"....type anykey to go on....";:gosub getkey
+ print chr$(8,28)chr$(32,28)chr$(8,28);:return
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+link.back
+ link"sp.sysop"
+
+compil
+ print "...compiled":link"sp.sysop","comp"
+
+link.term
+ recall dr$+"var"
+ link"a:logoff.seg","term1"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.edit1 "+i$+"          ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.edit1 "i$" "time$:close
+ log vj$:zz$=i$
+ return
+
+compile
+ print "ok..":link "k:system.seg"
+
+;end

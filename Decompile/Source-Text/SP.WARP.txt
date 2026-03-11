@@ -1,0 +1,491 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R   Q U E S T      |
+;|      -----------------------      |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|             sp.warp.s             |
+;|___________________________________|
+;
+; kk=1.....Ordinary cargo run (Stars 1-14)
+; kk=2.....Space Patrol vs pirates
+; kk=3.....Maligna mission
+; kk=4.....Raider on alliance holding run
+; kk=5.....Smuggling run
+; kk=6.....Cargo run (Stars 15-20)
+; kk=9.....Nemesis mission
+; kk=10....Andromeda Trips
+
+
+ public menu
+ public starter
+ public guard
+ public dock
+ public gems
+ public snx
+ public compil
+
+ on nocar goto link.term
+ i$="startup":gosub trace
+ mx=0:tt=0:tr=0:ty=0:po=0:wb=0:lb=0:dr=0:bh=0
+ q9$=q4$:hh=0:dk=0:ry=0:tp=0:ls=0:zp=0:yr=3
+ mg$="MALIGNA":ni$="NEMESIS"
+ mp$=right$(pp$,2):mq$=left$(l1$,5)
+ mf$=" Malfunction":as$=left$(h1$,3)
+ if kk<>9 goto gems
+ print\\\\"Input new course change for NEMESIS or risk being 'lost in space'"
+ gosub getit:q4$="=-Space-=":q2$="0":q4=0:q6=10
+gems
+ on nocar goto link.term
+ i$="gems":gosub trace
+ ad$=chr$(7)+"[[[[[[[[[[[[[[: Destination Arrived:]]]]]]]]]]]]]]"
+ gosub tchk:goto menu
+
+starter
+ on nocar goto link.term
+ i$="starter":gosub trace
+ at=(f1*2):goto start1
+
+guard
+ on nocar goto link.term
+ i$="guard":gosub trace
+ if pb=3 pb=0:kk=1
+
+menu
+ on nocar goto link.term
+ i$="menu":gosub trace
+ tp=0:if tt<1 gosub tchk
+ if kk=3 kk=1
+ if mx=1 kk=3
+ goto getm
+
+start
+ on nocar goto link.term
+ at=(f1*2):ty$=right$("00"+str$(ty),3)
+ if tt<>(ty/3) tp=0
+ print\"Trip #"(z1+1)"--------"q4$": ETA: ";ty$;"--------: "nz$
+start1
+ if kk<1 kk=1
+ if tt>=ty dk=1
+ print"[:Ship Bridge:][Fuel:     ][:Chronos:  [    ]";
+ gosub getime
+ if dk<1 goto sttt
+ if (bh>0) and (left$(q4$,2)="=-") f1=0:goto lost
+ if (q2$="0") and (left$(q4$,2)="=-") f1=0:goto lost
+ if (kk=4) or (mx>0) print" ":link"sp.mal"
+ if kk=10 print\ad$\"<C-R> to land on "q4$;:input@3" "i$:link"sp.black","dock"
+ if zp>0 goto sttt
+ if q4>14 goto link.fight
+sttt
+ if dk>0 print\ad$:input@3\"<C-R> to Shut Down Drives and Dock."i$:goto dock
+ if (f1<1) and (ls<1) print nz$" fuel tanks are empty...":goto lost
+ if (tp>0) and (mx<1) tp=0:goto link.fight
+ if (kk=10) and (hh=2) hh=0:goto snap
+ if hh>0 hh=0:print" ":goto haza
+ if tn>1 tn=1:print"Navigation Console":goto nman
+ if ls>0 ls=0:goto lost
+ if i$=cr$ print\:goto getm
+ print chr$(32,15);"Command: ";
+ if i$="D" print"Ship's Data Banks":goto data
+ if i$="N" print"Navigation System":goto navig
+ if i$="W" print"Ship's Armament":goto weap
+ if i$="?" print"Menu":goto getm
+ if i$="Q" print"Quit":goto link.quit
+ print"...Data Entry Error!...":goto getm
+
+getm
+ clear key:print chr$(12)
+ if r2<2 copy"sp.menu5g":goto start
+ if (kk=10) and (bh=1) copy"sp.menu5f":goto start
+ if kk=10 copy"sp.menu5e":goto start
+ if kk=6 copy"sp.menu5d":goto start
+ if mx=2 copy"sp.menu5c":goto start
+ if mx=1 copy"sp.menu5b":goto start
+ if mx=0 copy"sp.menu5a"
+ goto start
+
+link.fight
+ print\"...."hl$"Intruder Alert"of$".....";
+ if (kk=1) or (kk=5) goto flank
+linkft
+ link"sp.fight1"
+flank
+ if right$(p1$,1)<>"=" link"sp.fight1"
+ a$="OFF"
+ print\"Morton's Cloaking Device: (space bar toggles Cloaking  [G]o)"
+ print"[:>>> Cloaker....... [OFF]";
+flink
+ print chr$(8,4)a$"]";
+ gosub getkey
+ if i$=cr$ i$="G"
+ if i$="G" goto flock
+ if (a$="ON ") and (i$=chr$(32)) a$="OFF":goto flink
+ if (a$="OFF") and (i$=chr$(32)) a$="ON ":goto flink
+ goto flink
+contin
+ if a$="OFF" print\\:goto linkft
+ if a$="ON " print"...the "nz$" is Cloaked!":goto start1
+flock
+ if kk<>5 goto contin
+ r=(c1+c2):gosub rand
+ if x>c1 print chr$(7)"Cloaker"mf$"!":goto linkft
+ goto contin
+
+data
+ copy"sp.menu6"
+data1
+ print\"Data Banks Command: ";:gosub getkey:if i$=cr$ i$="Q"
+ if i$="M" print" Spatial Map":goto map
+ if i$="X" print" Ship Stats":goto staz
+ if i$="H" print\:setint(1):copy"sp.help":setint(""):gosub getit:goto start
+ if i$="Q" print" Return to Bridge":goto getm
+ if i$="?" print\:goto data
+ print"...Data Entry Error!...":goto data1
+
+navig
+ x=(n2+1)*10:y=(n1*n2)
+ if y<1 y=0
+ if y>3 a=(y/4):else a=1
+ print\"Status of "n1$" System: "x"% of Normal...Precision = "a"%"
+ if x<20 print mf$"!..."n1$" "hl$"damaged"of$:goto nman
+ print"Course Settings on Automatic Nav for "q4$
+ if left$(q4$,3)="NGC" print\"No course changes while on mission":goto madd
+ if (q2$="0") and (kk=1) goto vigna
+ if (left$(q2$,5)="Contr") and (kk=5) goto vigna
+ if (kk=9) and (left$(q4$,2)="=-") goto vigna
+ if (bh<1) and (left$(q4$,2)="=-") print\"Transit Black Hole First!":goto madd
+vigna
+ print\"Go to Manual Navigation? (M)anual/(C)ancel: ";:gosub getkey
+ if i$="M" print"Manual Over-Ride":goto ndam
+ if i$="C" print"Cancel Order":goto start
+ print"...Whoops!...try again":goto vigna
+ndam
+ if (kk<10) or (bh>0) goto nddd
+ if left$(q2$,5)<>"Nemes" goto nddd
+madd
+ gosub getit:goto getm
+nddd
+ print\n1$": "yr" course change limit per trip"
+ x=(h1*5):gosub display
+ print"[F:"f1":]..."x" extra fuel required for each course change"
+ if f1<=x print"Not enough fuel to change course":gosub getit:goto getm
+ if ry>5 print n1$" locked into last course setting":gosub getit:goto getm
+nman
+ print" ":copy"sp.legend2"
+ print\"Enter Destination Manually"
+ print"Type '0' for uncharted...'1-20' for known systems"
+ input@3"Which Star System ID#? (0-20)  [Q]uits: ";i$
+ if (i$="") or (i$="q") i$="Q"
+ if i$="Q" print"No change in course":goto start
+ if len(i$)>2 print ro$:goto nman
+ i=val(i$):if (i<0) or (i>20) print ro$:goto nman
+ if i<1 goto ndes
+ y=0:if (n1>0) and (n2>0) y=(n1*n2)
+ if y>9 y=(y/10):else y=0
+ r=40:gosub rand:if y>x goto desn
+nxxx
+ r=20:gosub rand:if x<>i print\n1$;mf$"....";chr$(7)
+ i=x
+desn
+ gosub desname:goto nmn
+ndes
+ input@2"Destination (Star System Name) (Q)uits: "l$
+ if l$="Q" goto ndam
+nma1
+ if (l$=mg$) and (mp$="][") mx=0:q4=0:goto nxxx
+ if l$=mg$ mx=1
+ if (l$=ni$) and (mq$="LSS C") mx=0:q4=0:goto nxxx
+ if (l$=ni$) and (kk=9) mx=2:q4=0
+ if mx>0 print"Coordinates required":a$=l$:goto malnav
+nmn
+ mx=0:if i<1 goto ndam
+ if (kk=4) or (kk=5) goto nmnz
+ if (i>0) and (i<15) kk=1
+nmnz
+ if (i>14) and (i<21) kk=6
+ print\"The "n1$" Computer...";
+ if l$=q4$ print"Continues course for "l$:goto chco
+ print"Changes course for "l$:q4$=l$
+ x=(h1*5):yr=yr-1:if yr<1 yr=0
+ f1=f1-x:print"Course change fuel consumption = "x
+ if i>q4 a=i-q4
+ if i<q4 a=q4-i
+ if i=q4 a=i
+ if tt<ty q6=(a+(ty-tt)):else q6=a
+ if (q2=20) or (left$(q9$,2)="=-") q9$=q4$
+ if (q3$="X") or (q2$="0") q9$=q4$
+ q4=i:dk=0:ry=ry+2
+ if tt>=ry tt=(tt+ry):else tt=ry
+ if f1>(ry*2) f1=(f1-(ry*2)):else f1=0
+chco
+ gosub tchk:if tt>=ty tt=ty
+ gosub getit:goto getm
+
+malnav
+ if mx=1 ya$="13":yb$="33":yc$="99"
+ if mx=2 ya$="00":yb$="00":yc$="00"
+ print\"Enter X-Y-Z Coordinates for "a$"....<C-R> quits"
+ input@3"[X]...X = "i$
+ if i$="" goto ndam
+ if i$<>ya$ goto malnav
+ input@3"[Y]...Y = "i$
+ if i$="" goto ndam
+ if i$<>yb$ goto malnav
+ input@3"[Z]...Z = "i$
+ if i$="" goto ndam
+ if i$<>yc$ goto malnav
+ print\"Dangerous course change. Are you sure, "pp$"? [Y]/(N): ";
+ gosub getkey:if i$="N" print"No":goto ndam
+ print"Yes":yr=yr-1:if yr<1 yr=0
+ print\r1$" Settings: X:"ya$" - Y:"yb$" - Z:"yc$
+ if mx=1 q6=22:q4=0:q4$=mg$:kk=3
+ if mx=2 q6=24:q4=0:q4$=ni$
+ print "Course changed for "q4$" Star System"\
+ dk=0:tt=0:gosub tchk:gosub getit:goto getm
+
+weap
+ x=(w2+1)*10
+ print\"Status: "w1$" Weapon System: "x"% of normal....On Stand-By"
+ x=(p2+1)*10
+ print "Status: "p1$" Shield System: "x"% of normal....Down"
+ print "Battles Won: "wb"_____Battles Lost: "lb\
+ goto data1
+
+staz
+ if h1>19 hx=19:goto sss
+ if h1>9 hx=(h1-10):else hx=h1
+sss
+ ic$="spic."+str$(hx)
+ copy ic$
+ print"  Ship: "nz$
+ print"Component                  Strngth  Cond."
+ print"-------------------        -------  -----"
+ l$=h1$ x=h1:y=h2:gosub stfx
+ l$=d1$ x=d1:y=d2:gosub stfx
+ l$=c1$ x=c1:y=c2:gosub stfx
+ l$=l1$ x=l1:y=l2:gosub stfx
+ l$=w1$ x=w1:y=w2:gosub stfx
+ l$=n1$ x=n1:y=n2:gosub stfx
+ l$=r1$ x=r1:y=r2:gosub stfx
+ l$=p1$ x=p1:y=p2:gosub stfx
+ gosub display
+ print"Fuel Units"chr$(95,17)"[:"h2":]__[:"f1":]"
+ print"Cargo Pods"chr$(95,17)"[:"h2":]__[:"s1":] - ";
+ if q1>0 print" "q2$:else print" Empty"
+ goto data1
+stfx
+ l=len(l$):l=27-l:for j=1 to l:l$=l$+"_":next
+ lm$=right$("  "+str$(x),3):ln$=str$(y)
+ print l$"[:"lm$":]__[:"ln$":]":return
+
+map
+ print chr$(12):copy"sp.map"
+leg
+ print"Type 'L' for map legend...<C-R> quits...";:gosub getkey
+ if i$=cr$ i$=" "
+ print i$:if i$="L" copy"sp.legend":goto data1
+
+dock
+ on nocar goto link.term
+ i$="dock":gosub trace
+ if dk<1 goto start
+ if q4<15 link"sp.dock1"
+ link"sp.dock2"
+
+getime
+ gosub display:print chr$(8,24)" "at$"][:Chronos:  ["it$"]";
+time2
+ tz=peek(-16384)
+ if (tz=129) or (tz=150) get i$:print" ":tz=0:return
+ tz=key(0)
+ if (tz>96) and (tz<123) tz=tz-32
+ if tz<>0 i$=chr$(tz):tz=0:print" ":return
+ if dk<1 goto time3
+ tt=tt+1:at=at-1
+ it$=str$(tt):lw=len(it$)
+ if tt>=ty tt=ty:goto time3
+ gosub display:print chr$(8,24)" "at$"][:Chronos:  ["it$"]";
+ goto time2
+time3
+ tt=tt+1:at=at-1:it$=str$(tt):lw=len(it$)
+ gosub display:print chr$(8,24)" "at$"][:Chronos:  ["it$"]";
+ if tt>=ty dk=1:return
+ if (n2<1) and (tn<1) print\\n1$" not functioning!":tn=2:return
+ if h2<1 print\\hl$"Hull has been holed"of$:ls=1:return
+ if d2<1 print\\hl$"Drives disabled"of$:ls=1:return
+ if f1<1 print\\hl$"Out of fuel"of$:ls=1:return
+ if tt=(ty/4) hh=1:return
+ if (tt=(ty/3)) and (mx<1) tp=1:tt=tt+1:at=at-1:return
+ if (tt=(ty/2)) and (kk=10) hh=2:return
+ if tt=(ty/2) hh=1:return
+ if mx<1 goto time2
+ if tt=(ty/3) hh=1:return
+ if tt=(ty/9) hh=1:return
+ if tt=(ty/8) hh=1:return
+ if tt=(ty/7) hh=1:return
+ if tt=(ty/6) hh=1:return
+ if tt=(ty/5) hh=1:return
+ goto time2
+
+display
+ f1=0:if at>1 f1=(at/2)
+ at$=right$("   "+str$(f1),4):it$=right$("   "+str$(tt),4)
+ return
+
+haza
+ free:r=0:ht=0:print hl$"Warning! Hazard Alert"of$;
+ if p2<1 goto haz0
+ r=10:gosub rand:if x<>5 print"...All Clear!...";chr$(8,47);:goto haze
+ l$=p1$:ht=p2:gosub hazl:p2=ht:goto haze
+haz0
+ r=5:gosub rand:r=0
+ if (x=1) and (d2>0) l$=d1$:ht=d2:gosub hazl:d2=ht:goto haze
+ if (x=2) and (r2>0) l$=r1$:ht=r2:gosub hazl:r2=ht:goto haze
+ if (x=3) and (n2>0) l$=n1$:ht=n2:gosub hazl:n2=ht:goto haze
+ if (x=4) and (w2>0) l$=w1$:ht=w2:gosub hazl:w2=ht:goto haze
+ if (x=5) and (h2>0) l$=h1$:ht=h2:gosub hazl:h2=ht:goto haze
+ print"...All Clear!!!.";chr$(8,47);:goto haze
+hazl
+ r=4:gosub rand:i$=" Damages ":if l$=p1$ i$=" Drains "
+ if x=1 print"X-Rad Shower";
+ if x=2 print"Plasma-Ion Cloud";
+ if x=3 print"Proton Radiation";
+ if x=4 print"Micro-Asteroid";
+ ht=(ht-1):print i$;l$;chr$(7);
+ if ht<1 ht=0
+ return
+haze
+ ht=0:hh=0:print" ":goto start1
+
+tchk
+ free
+ f2=0:if q6<1 return
+ af=d1:if af>21 af=21
+ f2=(21-af)+(10-d2):if f2<1 f2=1
+ f2=(f2*q6):ty=(f2+10):if ty>100 ty=100
+ f2=(ty/2):return
+
+snap
+ print chr$(12)\\"...."hl$"Entering Black Hole"of$"....";:
+ r=0:for k=1 to 200:if (k mod 10)=0:print".";:next
+ print\:clear key:for k=1 to 15:print chr$(32,40)"!"
+ y=key(0):if y=32 k=15:r=1
+ next
+ if r>0 print chr$(32,40)"!"chr$(62,34):link"sp.patpir","black"
+ print chr$(32,33)"S__N__A__P__!"chr$(7)\\\\\
+ r=6:gosub rand:if as$="Ast" x=1
+ y=x:r=8:if (as$="Ast") and (n1>9) r=(n1/10)+10
+ gosub rand
+ if (as$="Ast") and (x=1) x=16
+ if x=1 j=h1:gosub sny:l$=h1$:h1=j
+ if x=2 j=d1:gosub sny:l$=d1$:d1=j
+ if x=3 j=c1:gosub sny:l$=c1$:c1=j
+ if x=4 j=l1:gosub sny:l$=l1$:l1=j
+ if x=5 j=w1:gosub sny:l$=w1$:w1=j
+ if x=6 j=n1:gosub sny:l$=n1$:n1=j
+ if x=7 j=r1:gosub sny:l$=r1$:r1=j
+ if x=8 j=p1:gosub sny:l$=p1$:p1=j
+ if x>8 print\"Safe transit!":goto snx
+ print\l$" suffers loss of -"y" str caused by stress of transit"
+snx
+ on nocar goto link.term
+ i$="snx":gosub trace
+ if left$(q4$,2)="=-" print\"Need New Nav Headings!"chr$(7)\ :bh=1:goto navig
+ gosub getit:bh=1:print chr$(12):copy"sp.menu5g"
+ for k=1 to ku:next
+ goto getm
+
+sny
+ j=j-y:if j<1 j=0
+ return
+
+link.quit
+ print\"10% chance of being 'Lost in Space' requiring rescue"
+ print"Do you really want to chance this? (Y)/[N].......";:gosub getkey
+ if i$="Y" print"Yes":goto linkq
+ print"No":goto start
+linkq
+ r=10:gosub rand
+ if x=5 print\"Tele-Transporter"mf$"...":goto lost
+ print\"Successful Tele-Transportation to Main Level":goto link.main
+
+lost
+ print\"......"hl$"Lost In Space"of$"......"
+ link"sp.damage","lost"
+
+getit
+ print"....type anykey to go on....";:gosub getkey
+ print chr$(8,28)chr$(32,28)chr$(8,28):return
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+rand
+ x=((random(9))+1)*10:for k=1 to x:next
+ rd$=rnd$:x=(random(r)):if x>r x=r
+ if x<1 x=1
+ return
+
+desname
+ if i=1 l$="Sun-3"
+ if i=2 l$="Aldebaran-1"
+ if i=3 l$="Altair-3"
+ if i=4 l$="Arcturus-6"
+ if i=5 l$="Deneb-4"
+ if i=6 l$="Denebola-5"
+ if i=7 l$="Fomalhaut-2"
+ if i=8 l$="Mira-9"
+ if i=9 l$="Pollux-7"
+ if i=10 l$="Procyon-5"
+ if i=11 l$="Regulus-6"
+ if i=12 l$="Rigel-8"
+ if i=13 l$="Spica-3"
+ if i=14 l$="Vega-6"
+ if i=15 l$="Antares-5"
+ if i=16 l$="Capella-4"
+ if i=17 l$="Polaris-1"
+ if i=18 l$="Mizar-9"
+ if i=19 l$="Achernar-5"
+ if i=20 l$="Algol-2"
+ return
+
+compil
+ print "...compiled":link"sp.sysop","comp"
+
+link.term
+ link dr$+"sp.link","term"
+
+link.main
+ link vj$+"sp.end","exit"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.warp "+i$+"           ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.warp "i$" "time$:close
+ zz$=i$:log vj$
+ return
+
+; end

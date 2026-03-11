@@ -1,0 +1,202 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R   Q U E S T      |
+;|      -----------------------      |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|            sp.dock1.s             |
+;|___________________________________|
+
+
+ public compil
+
+ on nocar goto link.term
+
+ i$="startup":gosub trace
+dock
+ jc=1:ee=1
+ if (kk=4) and (pz$="Guard") goto arrival
+ pz$=""
+
+arrival
+ z1=z1+1:cs=0:cc=0:nj=0:zp=0:dk=0:qi$=q4$
+ if (left$(q9$,2)="=-") and (q9$<>q4$) q9$=q4$
+ if q9$="MALIGNA" q9$="Vega-6":q4$="Vega-6":q4=14:qi$="MALIGNA"
+ if q9$="NEMESIS" q9$="Sun-3":q4$="Sun-3":q4=1:qi$="NEMESIS"
+ print\"The "nz$" enters the "q4$" docking facility."
+arriv1
+ print\"...Grind";:gosub delay
+ print "...Crunch";:gosub delay
+ print "...Bump";:gosub delay
+ print "...Scrape";:gosub delay
+ print "...Clank";:gosub delay
+ print "...Swoosh";:gosub delay
+ print "... Click!"
+ if qi$<>"MALIGNA" sp$=q4$:sp=q4
+ print\"......Docking Completed....the "nz$" is secured."
+ print\"Entering [:Cargo Receiving:] on "sp$
+ print\"Welcome "pp$;" ";na$
+ if kk<>9 goto sarr
+ if (left$(q2$,3)="Nem") y=10:gosub varfix:gosub getit:link"sp.top","gems"
+ if kk=9 kk=0
+sarr
+ if right$(pp$,2)="][" goto malarriv
+arrv
+ if q2$="0" q5=0:q1=0:goto arriv3
+ if q3$="X" q9$=q4$
+ if kk=4 gosub raid:goto arriv2
+ if q1<1 print\"Lost your cargo in battle...tough luck!" :s2=s2-5:q2$=""
+ if right$(q2$,4)="Raid" print\"Luckily you burned the plans":q2$="":q1=0:q5=0
+ if (q1<1) or (q2$="") q9$=q4$:q5=0::goto arriv3
+ if kk=5 goto arriv3
+ if q9$<>q4$ print\"Wrong Space Port...Invoice has: "q9$:s2=s2-5:goto arriv2
+ gosub upod
+ print\"For delivery of ";
+ if q1>=s1 print s1;
+ if s1>q1 print q1;
+ print" pods of "q2$
+ if (q3$="X") and (q5>69) q5=70
+ if q3$="X" q3$="":q5=(q5*300)+(q4*500):goto parv
+ if q1<=s1 goto parv
+ if (q5>q1) and (q1>0) x=(q5/q1):q5=x*s1
+parv
+ print"Payment of "q5" cr will be credited to your account."
+ print"It's always a pleasure doing business with you."
+arriv2
+ if q9$=q4$ goto arriv3
+ ll$=q9$:gosub destiny:sp=i:sp$=ll$
+ print\"Your port of entry should have been "q9$
+ print "Your ship will be transported to "sp$" immediately!"
+ print "Cargo pods and fuel tanks are emptied to decrease"
+ print "The "nz$"'s mass for the Mark VIII transporter"
+ print\"Coordinates are entered into the Mark VIII's console"
+ gosub getit
+ print chr$(12);\\\\"....";
+ print hl$"ZZZZZZZZAAAAAAAAAAAAAPPPPPPPPPP!!!!"of$\\\
+ print "Your ship "nz$" is suddenly in the "sp$" launch bays"
+ f1=0:kk=0:q1=0:q2=0:q3=0:q4=sp:q5=0:q2$="":q4$=sp$:kk=0
+arriv3
+ y=2:gosub varfix
+ if kk=5 print\"You leave directly for the Spacers Hangout":q2=0:link"sp.bar"
+ print\"Be sure and check out the fine port facilities here on "sp$"."
+archk
+ if q5>9999 g1=g1+1:q5=q5-10000:goto archk
+ g2=g2+q5:gosub crfix
+ q1=0:q2=0:q3=0:q5=0:q6=0:q2$="":q4$=""
+ gosub getit
+ po=0:kk=0
+ print\"[Cr:"g$":] Require Damage Repairs on your ship? [Y]/(N): ";
+ gosub getkey
+ if i$="N" print "No":link dr$+"sp.link"
+ print"Yes":link"sp.damage"
+malarriv
+ if qi$<>"MALIGNA" goto arrv
+ print\"You have performed a most heroic and courageous feat"
+ print "Ablation of the rogue star will save us all for a time"
+ print "Until another brave soul should undertake the same quest"
+ print "If and when the rogue should return":g1=g1+10:sp$="Vega-6":sp=14
+ s2=s2+100
+ goto arriv2
+
+destiny
+ if ll$="Sun-3":i=1:return
+ if ll$="Aldebaran-1":i=2:return
+ if ll$="Altair-3":i=3:return
+ if ll$="Arcturus-6":i=4:return
+ if ll$="Deneb-4":i=5:return
+ if ll$="Denebola-5":i=6:return
+ if ll$="Fomalhaut-2":i=7:return
+ if ll$="Mira-9":i=8:return
+ if ll$="Pollux-7":i=9:return
+ if ll$="Procyon-5":i=10:return
+ if ll$="Regulus-6":i=11:return
+ if ll$="Rigel-8":i=12:return
+ if ll$="Spica-3":i=13:return
+ if ll$="Vega-6":i=14:return
+ ll$="Spica-3":i=13:return
+
+raid
+ if pz$<>"Guard" pz$="":return
+ print\"The Armed Take-Over of "q4$" is successful!"
+ print\"Here are the legal documents to activate new ownership"
+ print "Please take them immediately to Alliance Investment Ltd"
+ pz$=q4$:s2=s2+5:z1=3
+ return
+
+getit
+ print"....type anykey to go on....";:gosub getkey
+ print chr$(8,28)chr$(32,28)chr$(8,28):return
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+crfix
+ if (g2>9999) g1=g1+1:g2=g2-10000:goto crfix
+ g$=str$(g2):if g1 g$=str$(g1)+right$("000"+str$(g2),4)
+ return
+
+crinc
+ if g1<1 return
+ g2=g2+10000:g1=g1-1
+ return
+
+varfix
+ if f1<1 f1=0
+ f2=0:k1=k1+q1:if (k1>29999):k1=0
+ j1=j1+q6:if (j1>29999):j1=0
+ u1=u1+1:e1=e1+wb:m1=m1+lb
+ s2=(s2+wb+q6+y)-lb:wb=0:lb=0
+ if s2<1 s2=0
+ y=0
+ return
+
+upod
+ y=0:x=0
+ if (s1<1) or (h1<1) x=1:return
+ if h2<1 x=1:return
+ y=h2+1:x=s1*y
+ if x<10 x=10
+ x=x/10
+ return
+
+delay
+ for zx=1 to 10000:next
+ return
+
+compil
+ print "...compiled":link"sp.sysop","comp"
+
+link.term
+ link dr$+"sp.link","term"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.dock1 "+i$+"          ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.dock1 "i$" "time$:close
+ log vj$:zz$=i$
+ return
+
+; end

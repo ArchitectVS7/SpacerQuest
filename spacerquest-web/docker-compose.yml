@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://spacerquest:spacerquest@db:5432/spacerquest
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - BBS_PORTAL_CLIENT_ID=${BBS_PORTAL_CLIENT_ID}
+      - BBS_PORTAL_CLIENT_SECRET=${BBS_PORTAL_CLIENT_SECRET}
+      - BBS_PORTAL_AUTH_URL=${BBS_PORTAL_AUTH_URL}
+      - BBS_PORTAL_TOKEN_URL=${BBS_PORTAL_TOKEN_URL}
+      - BBS_PORTAL_CALLBACK_URL=${BBS_PORTAL_CALLBACK_URL}
+      - BBS_PORTAL_USERINFO_URL=${BBS_PORTAL_USERINFO_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - spacerquest
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=spacerquest
+      - POSTGRES_USER=spacerquest
+      - POSTGRES_PASSWORD=spacerquest
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spacerquest -d spacerquest"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - spacerquest
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - spacerquest
+
+  worker:
+    build: .
+    command: node dist/jobs/worker.js
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://spacerquest:spacerquest@db:5432/spacerquest
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    networks:
+      - spacerquest
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  spacerquest:
+    driver: bridge

@@ -1,0 +1,307 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R  Q U E S T       |
+;|      ----------------------       |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|            sp.arena2.s            |
+;|___________________________________|
+
+ public compil
+
+ on nocar goto link.term
+
+ i$="startup":gosub trace
+chall
+ print\chr$(45,26)\"C"c$" "b$\chr$(45,26)
+ print"(L)ist of Space Ships"\"(I)ssue C"c$\"[Q]uit"\chr$(45,26)
+cha2
+ print"[Cr:"g$":]: Choice: [ ]";:gosub chc
+ if i$="?" goto chall
+ if i$="Q" link"sp.arena1","start2"
+ if i$="L" goto list
+ if i$<>"I" goto chall
+issue
+ gosub zerox:gosub rost
+ if dt<1 print\"No "b$"s to C"c$"!":goto chall
+issy
+ print\"C"c$" which ship? Type ID#: [Q]uits: ";:input@3""i$
+ if (i$="") or (i$="q") or (i$="Q") goto chall
+ if len(i$)>3 print\ro$:goto issue
+ i=val(i$)
+ if (i<1) or (i>np) print\ro$:goto issue
+ x=1:open #1,f2$
+iss2
+ gosub kili
+ if i=x1 close:goto iss2a
+ if x<dt x=x+1:goto iss2
+ close:print\i$" not in roster":goto issue
+iss2a
+ if (xn>0) and (xn<>oo) print\"Duel is not with you!":goto issue
+ if x2$=nz$ print\"Can't c"c$" own ship!":goto issue
+ if x5$<>"" print\x2$" already c"c$"d by "x5$:goto issue
+ if (x4=1) and (s2<150) print\"Need more total points":goto issue
+ if (x4=3) and (g1<h) print\ng$:goto issue
+ i=x6:gosub chk:if i>6 goto issue
+ print\"C"c$" the "x2$" for "x3$" in "x4$" Arena? [Y]/(N): ";
+ gosub getkey:if i$="N" print"No":goto issue
+ print"Yes"
+ if x4=1 xo=((s2/h)/10)
+ if (x4=2) or (x4=3) xo=h
+ ee=1:x5$=nz$:xh=h:gosub due3
+ print\"Battle commences in the "x4$" Arena....."\
+ gosub afill:kg=0:kc=0:zm$=chr$(45,65)
+ yo$=t$+" - "+sp$+" - "+x4$+" Dueling Arena":j=0:k=0
+ gosub salv:y1$=i$:gosub salv:y2$=i$:gosub salv:y3$=i$
+ gosub salv:y4$=i$:gosub salv:y5$=i$:gosub salv:y6$=i$
+ gosub salv:y7$=i$:gosub salv:y8$=i$ gosub salv:y9$=i$
+ kg$=str$(kg):kc$=str$(kc)
+ if kg>kc yy$=x2$+"["+kg$+"] beats C"+c$+"r: "+nz$+"["+kc$+"]":hh$=nz$
+ if kc>kg yy$=x2$+"["+kg$+"] loses to C"+c$+"r: "+nz$+"["+kc$+"]":hh$=x2$
+ if kg=kc yy$=x2$+"["+kg$+"] and "+nz$+"["+kc$+"] Duel to a Draw":hh$=""
+ print zm$\yy$\zm$:goto fini
+salv
+ r=9:gosub rand:if x=j x=x+1
+ j=x:bx=((x+1)*10)+x5
+salx
+ gosub rand:if x=k x=x+1
+ k=x:cx=(x*10)+a
+ if bx>cx y=(bx-cx):i$=x2$+" Salvo hits ["+str$(y)+"] => "+nz$+"!":kg=kg+1
+ if cx>bx y=(cx-bx):i$=nz$+" Salvo hits ["+str$(y)+"] => "+x2$+"!":kc=kc+1
+ if cx=bx i$=x2$+" and "+nz$+" Shields deflect Salvos!"
+ print i$:return
+
+fini
+ pp=9:f5$=ma$+"duel."+str$(x1)
+ kill f5$:create f5$:open #1,f5$
+ print #1,zm$\yo$\zm$\y1$\y2$\y3$\y4$\y5$\y6$\y7$\ y8$\y9$\zm$\yy$\zm$
+ close:log vj$
+ gosub getit
+ if kc=kg print\"Battle a Draw!...stakes cancelled!":v=0:goto dlog
+ t=h+x2
+ if h>x2 s=((x2*10)/t):u=(x3*s)
+ if x2>h s=((h*10)/t):u=(xo*s)
+ if h=x2 s=((h*10)/t):u=(xo*s)
+ v=1:if u>9 v=(u/10)
+ print\hh$" Loses: "v;:if x4=3 print"0,000 cr"
+ print:x=x1:gosub gladr
+ if x4=1 p=s4:q=s2:print\nz$" Points: "s2" => ";:gosub spo3:s4=p:s2=q:print s2
+ if x4=2 print\nz$" Component Strength":gosub spo3:a=0:goto compfx
+ if x4<>3 goto spox
+ p=x3:q=g1:gosub crfx:print\nz$": "g$" => ";:gosub spo3:x3=p:g1=q
+ g3=g3+x3:x3=0:gosub crfx:print g$
+spox
+ s2=s2+10:s4=s4+10:ee=1:gosub shipw:x=x1:gosub gladw
+dlog
+ a$=left$(x4$,1):j$=left$(x3$,1)
+ i$=t$+": "+yy$+" - "+a$+"/"+j$+"/"+str$(v)
+ open #1,f3$:append #1:print #1,i$:close
+ i$="":link"sp.arena1","start2"
+spo3
+ if kg>kc p=p+v:q=q-v:m=1:e3=e3+1:m1=m1+1
+ if kc>kg p=p-v:q=q+v:m=0:e1=e1+1:m3=m3+1
+ if p<1 p=0
+ if q<1 q=0
+ return
+compfx
+ a=a+1:r=7
+cpfx
+ gosub rand:if x=y goto cpfx
+ y=x
+ if x=1 j=d1:k=d3:l$=d1$:gosub cost:d1=j:d3=k
+ if x=2 j=c1:k=c3:l$=c1$:gosub cost:c1=j:c3=k
+ if x=3 j=l1:k=l3:l$=l1$:gosub cost:l1=j:l3=k
+ if x=4 j=w1:k=w3:l$=w1$:gosub cost:w1=j:w3=k
+ if x=5 j=n1:k=n3:l$=n1$:gosub cost:n1=j:n3=k
+ if x=6 j=r1:k=r3:l$=r1$:gosub cost:r1=j:r3=k
+ if x=7 j=p1:k=p3:l$=p1$:gosub cost:p1=j:p3=k
+ if a<v goto compfx
+ goto spox
+cost
+ print"   "l$": "j" => ";
+ if m=1 j=j-1:k=k+1
+ if m=0 j=j+1:k=k-1
+ if k<0 k=0
+ if j<0 j=0
+ if k>199 k=199
+ if j>199 j=199
+ print j:return
+
+chc
+ gosub getkey:if i$=chr$(13) i$="Q"
+ print chr$(8,2);i$"]"
+ i=val(i$):return
+
+chk
+ i$=x4$+" Arena Closed!...Need more "
+ if (i=1) and (u1<50) print\i$;" space trips":i=7
+ if (i=2) and (j1<100) print\i$;" astrecs travelled":i=7
+ if (i=3) and (k1<100) print\i$;" cargo delivered":i=7
+ if (i=4) and (b1<1) print\i$;" rescues":i=7
+ return
+
+afill
+ if x6=1 a=(u1/50)
+ if x6=2 a=(j1/100)
+ if x6=3 a=(k1/100)
+ if x6=4 a=(b1*10)
+ if x6=5 a=((e1+1000)-m1)
+ if x6=6 a=0
+ return
+
+rost
+ open #1,f1$:input #1,dt:close
+ if dt<1 print\"No "b$"s in dueling roster":return
+ gosub head
+ros2
+ gosub kili
+ if (x1$<>"") and (x5$="") gosub sfix
+ if x<dt x=x+1:goto ros2
+ close:gosub zerox:return
+sfix
+ lm$=right$("__"+str$(x1),3)
+ ln$=x2$:l=len(ln$):l=(19-l):for k=1 to l:ln$=ln$+"_":next
+ lo$=x3$:lp$=x4$
+ lq$=right$("__"+str$(x2),3)
+ lr$=x5$
+ if (xn<1) and (x5$="") lr$="...anyone...?"
+ if (xn>0) and (x5$="") lr$="awaiting...#"+str$(xn)
+ l=len(lr$):l=(19-l):for k=1 to l:lr$=lr$+"_":next
+ print tt$"__"lm$"__"ln$"__"lo$"__"lp$"__"lq$"__"lr$:return
+
+head
+ print\\"Date      ID#  Ship Name            Stakes  Arena HCP  C"c$"r"
+ print"--------  ---  -------------------  ------  ------ ---  ------------"
+ x=1:open #1,f2$:return
+
+kili
+ position #1,256,x
+ input #1,x1$\x2$\x3$\x4$\x5$\x6$\tt$
+ input #1,x1,x2,x3,x4,x5,x6,x7,x8,x9,xh,xn,xo
+ return
+
+list
+ print\chr$(45,52)\"List of Fellow Spacers"\chr$(45,52)
+ print"ID#   Ship Name             Owner Name"
+ print"---   -------------------   -------------------"
+ open #1,"spacers1"
+list2
+ for x=1 to np
+ position #1,256,x
+ input #1,b1$\b2$
+ if b1$="" goto list3
+ lm$=right$("  "+str$(x),3)
+ l=len(b2$):ln$=b2$:l=(19-l):for k=1 to l:ln$=ln$+"_":next
+ l=len(b1$):lo$=b1$:l=(19-l):for k=1 to l:lo$=lo$+"_":next
+ print lm$"___"ln$"___"lo$
+ y=key(0):if y=32 x=np
+list3
+ next:close:goto cha2
+
+due3
+ open #1,f2$:position #1,256,x
+ print #1,x1$\x2$\x3$\x4$\x5$\x6$\t$
+ print #1,x1,x2,x3,x4,x5,x6,x7,x8,x9,xh,xn,xo
+ close
+ if x>dt dt=x:kill f1$:create f1$:open #1,f1$:print #1,dt:close
+ return
+
+getit
+ print"....type anykey to go on....";:gosub getkey
+ print chr$(8,28)chr$(32,28)chr$(8,28):return
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+crfx
+ g$=str$(g2):if g1 g$=str$(g1)+right$("000"+str$(g2),4)
+ return
+
+rand
+ rd$=rnd$:x=(random(9)+1)*10:for k=1 to x:next
+ x=(random(r)):if x<1 x=1
+ if x>r x=r
+ return
+
+zerox
+ x1$="":x2$="":x3$="":x4$="":x5$="":x6$=""
+ x1=0:x2=0:x3=0:x4=0:x5=0:x6=0:x7=0:x8=0:x9=0:xn=0:return
+
+gladr
+ open #1,"spacers2":position #1,256,x
+ input #1,h3,d3,c3,l3,w3,n3,r3,p3,g3,f3
+ input #1,h4,d4,c4,l4,w4,n4,r4,p4,g4,f4
+ input #1,s3,j3,k3,m3,sd,e3,u3,b3,se,pf
+ input #1,s4,v1,v2,v3,v4,v5,o3,z3,t3,af,v6
+ close:return
+
+gladw
+ open #1,"spacers2":position #1,256,x
+ print #1,h3,d3,c3,l3,w3,n3,r3,p3,g3,f3
+ print #1,h4,d4,c4,l4,w4,n4,r4,p4,g4,f4
+ print #1,s3,j3,k3,m3,sd,e3,u3,b3,se,pf
+ print #1,s4,v1,v2,v3,v4,v5,o3,z3,t3,af,v6
+ close:return
+
+shipr
+ free:open #1,"spacers1":position #1,256,oo
+ input #1,na$\nz$\h1$\d1$\c1$\l1$\w1$\n1$\r1$\ p1$\t$\q2$\q4$\sp$\pp$\ap$
+ close
+ open #1,"spacers2":position #1,256,oo
+ input #1,h1,d1,c1,l1,w1,n1,r1,p1,g1,f1
+ input #1,h2,d2,c2,l2,w2,n2,r2,p2,g2,f2
+ input #1,s1,j1,k1,m1,sc,e1,u1,b1,sp,pp
+ input #1,s2,q1,q2,q3,q4,q5,o1,z1,t1,ap,q6
+ close:return
+
+link.term
+ if not info(5) x=oo:na$="J%"+na$:pp=7:ee=1:gosub shipw
+ kill "a:var2":recall "a:var"
+ link"a:logoff.seg","term1"
+
+shipw
+ if ee<1 return
+ open #1,"spacers1":position #1,256,oo
+ print #1,na$\nz$\h1$\d1$\c1$\l1$\w1$\n1$\r1$\p1$\ t$\q2$\q4$\sp$\pp$\ap$
+ close
+ open #1,"spacers2":position #1,256,oo
+ print #1,h1,d1,c1,l1,w1,n1,r1,p1,g1,f1
+ print #1,h2,d2,c2,l2,w2,n2,r2,p2,g2,f2
+ print #1,s1,j1,k1,m1,sc,e1,u1,b1,sp,pp
+ print #1,s2,q1,q2,q3,q4,q5,o1,z1,t1,ap,q6
+ close:ee=0:return
+
+compil
+ print "...compiled":link"sp.sysop","comp"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.arena2 "+i$+"         ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.arena2 "i$" "time$:close
+ log vj$:zz$=i$
+ return
+
+; end

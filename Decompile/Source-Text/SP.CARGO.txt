@@ -1,0 +1,447 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R  Q U E S T       |
+;|      ----------------------       |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|            sp.cargo.s             |
+;|___________________________________|
+
+
+ public compil
+
+ on nocar goto link.term
+ ee=0
+ i$="startup":gosub trace
+greet
+ print\"Welcome "na$" to the Cargo Dispatch Office"
+ if cc<1 goto manif
+start
+ if q1>0 print\"You have a valid contract":goto board
+ if ((w1+p1)<50) or (kk=9) goto stt0
+ if (left$(l1$,5)="LSS C") or (left$(h1$,3)="Ast") goto stt0
+ print\"The Space Commandant wishes to speak to you [Y]/(N): ";:gosub getkey
+ ie=1
+ if i$<>"N" print"Yes":link"sp.top","wins"
+ print"Not now"
+stt0
+ print\"We have cargo transport contracts ready for you to sign"
+ jc=1
+board
+ goto chart
+boardx
+ if h1<1 print\"You need a ship first!":goto linker
+ if cs>0 print\"You already have Space Patrol Orders!":goto linker
+ if (q1>0) and (kk<>5) print\"You already have a valid contract!":
+ gosub upod
+ if x<2 print\"No servicable cargo pods!":goto linker
+ i$=right$("   "+str$(x),4)
+ print\nz$" servicable cargo pods: "i$
+ gosub fcap:x=0:x=len(nz$)+3
+ i$=right$("   "+str$(f1),4)
+ print chr$(32,x)"current fuel units : "i$
+ i$=right$("   "+str$(z),4)
+ print chr$(32,x)"empty fuel capacity: "i$
+board1
+ x=0:gosub crfix
+ if ie>0 goto brdf
+ ce$="":de$=""
+ r=5:gosub rand:ru=(x-1):r=10:gosub rand:x=(x+ru):gosub desname:de$=ll$
+ if x=sp goto board2
+ if x>sp ie=x-sp
+ if x<sp ie=sp-x
+ ie=ie*1000:if ie>10000 ie=10000
+ if de$=v3$ ce$=v1$ goto brdf
+ if de$=v7$ ce$=v5$ goto brdf
+ if de$=y3$ ce$=y1$ goto brdf
+ if de$=y7$ ce$=y5$ goto brdf
+ ie=1:de$="":ce$="":goto board2
+brdf
+ if ie=1 goto board2
+ print\de$" needs "ce$". "ie" cr bonus paid for stat delivery"
+board2
+ if s2<150 ej=0:goto bddd
+ if ej>0 goto bddd
+ r=8:gosub rand:ej=x+3
+bddd
+ clear key
+ i$=" has specials on Upgrades at the Speede Shoppe"
+ if ej>0 x=ej:gosub desname:print\"Today: "ll$;i$
+ print\"[Cr:"g$":]:[Manifest Board] (B)oard (Q)uits : ";
+ if (h1>0) and (q1<1) print"Choose: (1-4) ";
+ gosub getkey
+ if i$=chr$(13) i$="Q"
+ if i$="B" print"Board":goto chart
+ if i$="Q" print"Quit":goto linker
+ i=val(i$):if (i<1) or (i>4) print ro$:goto board2
+ print\"You choose manifest # "i". Are you sure? [Y]/(N): ";
+ gosub getkey:if i$="N" print"No":goto board2
+ print"Yes"
+ if i=1 q2=v1:q3=v2:q4=v3:q5=v4:q6=d6:q2$=v1$:q4$=v3$
+ if i=2 q2=v5:q3=v6:q4=v7:q5=v8:q6=d7:q2$=v5$:q4$=v7$
+ if i=3 q2=y1:q3=y2:q4=y3:q5=y4:q6=d8:q2$=y1$:q4$=y3$
+ if i=4 q2=y5:q3=y6:q4=y7:q5=y8:q6=d9:q2$=y5$:q4$=y7$
+ x=q6:gosub fcost
+ ez=0
+ if (q2$=ce$) and (q4$=de$) ez=1
+ gosub deal1
+ print"Sign the contract? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No"
+ if i$="N" q1=0:q2=0:q3=0:q4=0:q5=0 :q6=0:f2=0:q2$="":q4$="":an$="":goto board1
+fine
+ print"Yes"
+ if kk<>9 kk=3
+ gosub upod
+ q1=x:ee=1:pz$=""
+ if ie=1 goto fingo
+ if (q2$=ce$) and (q4$=de$) q5=q5+ie:print\ie" cr Bonus Awarded!":goto fingo
+ ie=1
+fingo
+ if f2>f1 print\"Mission will require additional "(f2-f1)" fuel units."
+ goto linker
+
+chart
+ print\"Cargo Manifest for "sp$" System - "da$
+ print " "chr$(95,64)\"| "chr$(45,62)" |"
+ print "|    Cargo                 Val  Destination   Dis Paymnt  Fuel   |"
+ print "|    -------------------   ---  -----------   --- ------  ----   |"
+
+ lm$=v1$:gosub spfix1
+ print "| 1. "lm$"  ";
+ lo$=right$("  "+str$(v2),3)
+ print lo$"  ";
+ ln$=v3$:gosub spfix2
+ print ln$"  ";
+ lp$=right$("  "+str$(d6),3)
+ print lp$"   ";
+ gosub pay1
+ lq$=right$("    "+str$(v4),5)
+ print lq$"   ";
+ lz$=right$("  "+str$(f4),3)
+ print lz$"  |"
+
+ lm$=v5$:gosub spfix1
+ print "| 2. "lm$"  ";
+ lo$=right$("  "+str$(v6),3)
+ print lo$"  ";
+ ln$=v7$:gosub spfix2
+ print ln$"  ";
+ lp$=right$("  "+str$(d7),3)
+ print lp$"   ";
+ gosub pay2
+ lq$=right$("    "+str$(v8),5)
+ print lq$"   ";
+ lz$=right$("  "+str$(f5),3)
+ print lz$"  |"
+
+ lm$=y1$:gosub spfix1
+ print "| 3. "lm$"  ";
+ lo$=right$("  "+str$(y2),3)
+ print lo$"  ";
+ ln$=y3$:gosub spfix2
+ print ln$"  ";
+ lp$=right$("  "+str$(d8),3)
+ print lp$"   ";
+ gosub pay3
+ lq$=right$("    "+str$(y4),5)
+ print lq$"   ";
+ lz$=right$("  "+str$(f6),3)
+ print lz$"  |"
+
+ lm$=y5$:gosub spfix1
+ print "| 4. "lm$"  ";
+ lo$=right$("  "+str$(y6),3)
+ print lo$"  ";
+ ln$=y7$:gosub spfix2
+ print ln$"  ";
+ lp$=right$("  "+str$(d9),3)
+ print lp$"   ";
+ gosub pay4
+ lq$=right$("    "+str$(y8),5)
+ print lq$"   ";
+ lz$=right$("  "+str$(f7),3)
+ print lz$"  |"
+ print "|"chr$(95,64)"|"
+ goto boardx
+
+spfix1
+ lw=len(lm$):lw=(20-lw)
+ for k=1 to lw:lm$=lm$+" "
+ next
+ return
+spfix2
+ lw=len(ln$):lw=(12-lw)
+ for k=1 to lw:ln$=ln$+" "
+ next
+ return
+
+deal
+ if q1<1 print\"You do not yet have a contract with us":return
+deal1
+ print\chr$(45,37)\"[:  $$$-=:[ Legal Contract ]:=-$$$ :]"\chr$(45,37)
+ print "   Cargo         : "q2$
+ print "   Value         : "q3" cr per pod"
+ print "   Number of Pods: "s1
+ print "   Origin        : "sp$
+ print "   Destination   : "q4$
+ print "   Fuel Required : "f2" units"
+ print "   Distance      : "q6" Astrec(s)"
+ print "   Pay           : "q5" cr";
+ an$="":if q1>0 an$=na$:print" "
+ if (ez<1) and (q1<1) print" "
+ if (ez>0) and (an$<>na$) print" + "ie" Bonus"
+ print\"        Signed by: "an$
+ print\" Attested to by the Cargo Dispatch Officer"\chr$(45,37)
+ return
+
+manif
+ if cc>0 goto start
+ ie=0
+ print\"Setting up cargo manifest board for "da$"......"
+ r=9
+ gosub rand:v1=x:gosub carname:v1$=ll$
+ gosub rand:v5=x:gosub carname:v5$=ll$
+ gosub rand:y1=x:gosub carname:y1$=ll$
+ gosub rand:y5=x:gosub carname:y5$=ll$
+ r=14
+nov1
+ gosub rand:if sp=x gosub spx
+ gosub desname:v3=x:v3$=ll$
+nov2
+ gosub rand:if sp=x gosub spx
+ gosub desname:v7=x:v7$=ll$
+nov3
+ gosub rand:if sp=x gosub spx
+ gosub desname:y3=x:y3$=ll$
+nov4
+ gosub rand:if sp=x gosub spx
+ gosub desname:y7=x:y7$=ll$
+
+man1
+ x=v3:gosub man2:d6=y:x=v7:gosub man2:d7=y
+ x=y3:gosub man2:d8=y:x=y7:gosub man2:d9=y
+ goto man3
+man2
+ if (sp>x) y=(sp-x):return
+ if (sp<x) y=(x-sp):return
+ y=1:return
+
+spx
+ if sp<14 x=x+1
+ if sp=14 x=x-1
+ return
+
+man3
+ v2=v1*3:v6=v5*3:y2=y1*3:y6=y5*3
+ cc=1:cs=0:goto start
+
+pay1
+ if s1<1 v4=0:return
+ v4=(v2*d6):if v4<3 v4=3
+ v4=v4/3
+ gosub upod:v4=v4*x
+ x=d6:gosub fcost:v4=v4+(f2*5)+1000:f4=f2
+ if v4>15000 v4=15000
+ x=(v4/s1):v4=(x*s1)
+ return
+pay2
+ if s1<1 v8=0:return
+ v8=(v6*d7):if v8<3 v8=3
+ v8=v8/3
+ gosub upod:v8=v8*x
+ x=d7:gosub fcost:v8=v8+(f2*5)+1000:f5=f2
+ if v8>15000 v8=15000
+ x=(v8/s1):v8=(x*s1)
+ return
+pay3
+ if s1<1 y4=0:return
+ y4=(y2*d8):if y4<3 y4=3
+ y4=y4/3
+ gosub upod:y4=y4*x
+ x=d8:gosub fcost:y4=y4+(f2*5)+1000:f6=f2
+ if y4>15000 y4=15000
+ x=(y4/s1):y4=(x*s1)
+ return
+pay4
+ if s1<1 y8=0:return
+ y8=(y6*d9):if y8<3 y8=3
+ y8=y8/3
+ gosub upod:y8=y8*x
+ x=d9:gosub fcost:y8=y8+(f2*5)+1000:f7=f2
+ if y8>15000 y8=15000
+ x=(y8/s1):y8=(x*s1)
+ return
+
+upod
+ y=0:x=0
+ if (s1<1) or (h1<1) x=1:return
+ if h2<1 x=1:return
+ y=h2+1:if (t$=da$) and (t1>0) and (jc<1) y=y/2
+ x=s1*y:if x<10 x=10
+ x=(x/10):return
+
+fcost
+ free:f2=0
+ if x<1 return
+ af=d1:if af>21 af=21
+ f2=(21-af)+(10-d2)
+ if f2<1 f2=1
+ f2=f2*x:ty=f2+10
+ if ty>100 ty=100
+ f2=ty/2
+ return
+
+fcap
+ x=0:y=0:x=(h2+1)*h1
+ if x<1 x=1
+ y=x*10
+ if f1>y z=0:return
+ z=y-f1
+ return
+
+carname
+ if x<=1 ll$="Dry Goods":x=1
+ if x=2 ll$="Nutri Goods"
+ if x=3 ll$="Spices"
+ if x=4 ll$="Medicinals"
+ if x=5 ll$="Electronics"
+ if x=6 ll$="Precious Metals"
+ if x=7 ll$="Rare Elements"
+ if x=8 ll$="Photonic Components"
+ if x>=9 ll$="Dilithium Crystal":x=9
+ return
+
+desname
+ if x<=1 ll$="Sun-3":x=1
+ if x=2 ll$="Aldebaran-1"
+ if x=3 ll$="Altair-3"
+ if x=4 ll$="Arcturus-6"
+ if x=5 ll$="Deneb-4"
+ if x=6 ll$="Denebola-5"
+ if x=7 ll$="Fomalhaut-2"
+ if x=8 ll$="Mira-9"
+ if x=9 ll$="Pollux-7"
+ if x=10 ll$="Procyon-5"
+ if x=11 ll$="Regulus-6"
+ if x=12 ll$="Rigel-8"
+ if x=13 ll$="Spica-3"
+ if x>=14 ll$="Vega-6":x=14
+ return
+
+stats
+ gosub crfix
+ print" "chr$(95,49)\"|"\"|          Stats For "na$\"|"
+ print"| Name of Ship..............: "nz$
+ print"| Space Patrol Rank.........: "pp$
+ print"| Credits...................: "g$" cr"
+ print"| Cargo to Deliver (pods)...: "q1" "q2$
+ print"| Point of Origin...........: "sp$
+ print"| Destination Point.........: "q4$
+ print"| Completed Trips...........: "u1
+ print"| Battles Won...............: "e1
+ print"| Battles Lost..............: "m1
+ print"| Total Astrecs Travelled...: "j1" Astrecs"
+ print"| Total Cargo Delivered.....: "k1" pods"
+ print"| Total Rescues Performed...: "b1
+ print"| Total Score...............: "s2
+ print"| Rating....................: "sc
+ print"| Space Port Owned..........: "ap$
+ print"| Trips Today...............: "z1
+ print"| Visits Today..............: "(t1+1)\"|"chr$(95,49)
+ return
+
+shipstat
+ if h1>19 hx=19:goto sss
+ if h1>9 hx=(h1-10):else hx=h1
+sss
+ ic$="spic."+str$(hx)
+ copy ic$
+ print"Ship's Name...: "nz$
+ print" Section        Type"chr$(32,23)"Cond    Strength"
+ print" -------        ----"chr$(32,23)"-----   --------"
+ ll$=h1$:gosub statfix
+ print" Hull___________"ll$"[ "h2" ]______"h1
+ ll$=d1$:gosub statfix
+ print" Drive__________"ll$"[ "d2" ]______"d1
+ ll$=c1$:gosub statfix
+ print" Cabin__________"ll$"[ "c2" ]______"c1
+ ll$=l1$:gosub statfix
+ print" Life Support___"ll$"[ "l2" ]______"l1
+ ll$=w1$:gosub statfix
+ print" Weapons________"ll$"[ "w2" ]______"w1
+ ll$=n1$:gosub statfix
+ print" Navigation_____"ll$"[ "n2" ]______"n1
+ ll$=r1$:gosub statfix
+ print" Robotics_______"ll$"[ "r2" ]______"r1
+ ll$=p1$:gosub statfix
+ print" Shields________"ll$"[ "p2" ]______"p1
+ print" Fuel Units"chr$(95,32)"[ "h2" ]______"f1
+ print" Cargo Pods"chr$(95,32)"[ "h2" ]______"s1;
+ if q1>0 print" "q2$:else print" Empty"
+ return
+statfix
+ lw=len(ll$):lw=27-lw:for x=1 to lw:ll$=ll$+"_":next
+ return
+
+leg
+ print"Type 'L' for map legend...<C-R> returns: ";:gosub getkey
+ if i$=chr$(13) i$=" "
+ print i$
+ if i$="L" copy"sp.legend"
+ return
+
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+rand
+ x=((random(1))+1)*10:for k=1 to x:next
+ rd$=rnd$:x=(random(r)):if x>r x=r
+ if x<1 x=1
+ return
+
+crfix
+ if g2>9999 g1=g1+1:g2=g2-10000:goto crfix
+ g$=str$(g2):if g1 g$=str$(g1)+right$("000"+str$(g2),4)
+ return
+
+linker
+ for k=1 to ku:next:link dr$+"sp.link"
+
+compil
+ print "...compiled":link "sp.sysop","comp"
+
+link.term
+ link dr$+"sp.link","term"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.cargo "+i$+"          ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.cargo "i$" "time$:close
+ zz$=i$:log vj$
+ return
+
+; end

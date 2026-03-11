@@ -1,0 +1,499 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R  Q U E S T       |
+;|      ----------------------       |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|             sp.mal.s              |
+;|___________________________________|
+
+ public compil
+
+ on nocar goto link.term
+ i$="startup":gosub trace
+ sb$="STAR-BUSTER++":jk$="Junk"
+ k8=0:k9=0:pb=0:ee=0:kg=0:kc=0 :z9=0:tk=0
+ if (kk=3) or (kk=4) goto warn
+ if kk=9 goto warn
+ goto linker
+warn
+ print chr$(12)
+ print\\\"Caution: losing carrier by either 'timing out' or 'disconnecting'"
+ print"Will result in alterations to your ship and a term in the brig"
+ print nz$":.......Fuel:[:"f1":]........Credits:[:"g$":]"
+ print"Do you wish to (X)-it this segment now or (C)ontinue on? ";
+warn1
+ gosub getkey:if i$=cr$ i$="Q"
+ print i$
+ if i$="X" goto linker
+ if i$<>"C" goto warn1
+ if kk=4 goto starsys
+ if kk=9 o4$="Nemesian":o3$="Nemesis-6":goto starwar
+ kk=3:goto maligna
+
+starsys
+ oy=q4:open #1,"sp.star":position #1,256,q4
+ input #1,o3$\o4$\o5$\o6$\o7$
+ input #1,o3,o4,o5,o6,o7,o8,o9
+ close
+starwar
+ print chr$(12)\\\"You have arrived and the "nz$" takes up an attack position"
+ print"Over the fortified "o4$" headquarters on the planet "o3$
+ print"You issue your demand for unconditional surrender!"
+ for k=1 to 15:print".";:next
+ print"...there is no response from "o3$
+ if kk=9 goto nemwar
+ p5$=o3$:p4$=o3$
+ if o7<1 s7=1:s8=10:p7=1:p8=10:p9=9:s9=9:p6=100
+ if o7>0 s7=(10*o7):s8=10:p7=(10*o7):p8=10:p9=9:s9=9:p6=(o7*100)
+ goto mattack
+
+maligna
+ copy"sp.maligna"
+mal1
+ print\"Ready to start pounding on the red star? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto mal2
+ print"Yes":goto malwar
+mal2
+ print"While you remain undecided your "p1$" shields are weakening"
+ print"The "nz$" cannot escape the massive gravity of Maligna"
+ print"...So let's get on with it":goto mal1
+malwar
+ p7=10:p8=60:s7=10:s8=15:p9=12:s9=12
+ p5$="MALIGNA":p4$=p5$:p6 =2000
+ goto mattack
+nemwar
+ p7=25:p8=10:s7=25:s8=10:p9=30:s9=40
+ p5$="NEMESIS":p4$=p5$:p6 =2000
+
+mattack
+ on nocar goto linkit
+ k8=w1:if w1$=sb$ k8=(w1+18)
+ if left$(w1$,1)="?" k8=(k8+150)
+ k9=p1:if p1$="ARCH-ANGEL++" k9=(p1+18)
+ print\r1$" Battle Computer <<:[F:"f1":]";chr$(7,3);
+ print hl$"Battle Stations!!!"of$
+ x8=k8:if (k8>0) and (w2>0) x8=(k8*w2)
+ x9=k9:if (k9>0) and (p2>0) x9=(k9*p2)
+ y8=(p7*p8):y9=(s7*s8)
+
+armvar
+ kg=(kg+1)
+ if x8>y9 wj=(x8-y9)
+ if x8<=y9 wj=0
+ if y8>x9 wk=(y8-x9)
+ if y8<=x9 wk=0
+ if x8<1 w1$=jk$:w1=0:w2=0
+ if x9<1 p1$=jk$:p1=0:p2=0
+ava
+ if kk=3 k=0:for k=1 to ku:next:goto rmv
+ print\"[Round#"kg"]:Continue your seige of "p4$" [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto amv
+ print"Yes":goto rmv
+amv
+ if kg>14 print\"The Battle is Over!":kk=1:gosub zerox:gosub shipw:goto linkup
+ print\"Pay reparations for this attack? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":pb=0:goto smv
+ print"Yes"\\"10,000 cr will be acceptable....";
+ if g1<1 gosub crfix
+ if g1<1 print"Didn't bring enough credits, eh?":goto smv
+ g1=g1-1:o3=o3+1:print"The account is squared....'bye":pb=3:goto mbcp
+smv
+ print\"Surrender your ship, "nz$"? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":pb=0:goto rmv
+ print"Yes"\\"The "o4$" Alliance salvages the "nz$"'s weapons (-10)"
+ print"For battle reparations of 100,000 cr"
+ w1=w1-10:o3=o3+10:if w1<1 w1=1
+ pb=3:goto mbcp
+rmv
+ if r2<1 print\r1$" Battle Computer mal-functioning!":goto malzat
+ print chr$(95,78)
+ lx=26:l$=p1$:gosub malfix
+ print\l$"Shields";
+ a$="DOWN":if x9>0 a$="UP"
+ print"_________________[ "hl$;a$;of$;" ]"
+ l$=w1$:gosub malfix
+ print l$"Auto-Track/n/Fire";
+ a$="OFF":if x8>0 a$="ON"
+ print"_______[ "a$" ]":a$=""
+
+malzat
+ if (r2<1) and (kk>3) goto fbegin
+ if r2<1 goto malbegin
+ lx=21:l$=nz$:gosub malfix
+ lm$=right$("   "+str$(f1),4)
+ print\l$"[F:"lm$"]____Weaponry:["x8"]____Shields:["x9"]"
+ l$=p5$:gosub malfix
+ lm$=right$("   "+str$(p6),4)
+ print l$"[F:"lm$"]____Weaponry:["y8"]____Shields:["y9"]"
+ print chr$(95,78):if kk>3 goto fbegin
+ goto malbegin
+malfix
+ l=len(l$):l=(lx-l):for k=1 to l:l$=l$+"_":next:return
+
+malbegin
+ if w1>1 wf=w1/2
+ if w1=1 wf=1
+ if x8<1 l$=w1$:gosub chrg1:goto malfite
+ if f1<wf l$=w1$:gosub chrg2:goto malfite
+ f1=f1-wf:if f1<1 f1=0
+ if wj>0 goto malbeg
+ if x8>0 r=12:gosub rand
+ if (x8>0) and (x>3) goto malbigg
+malbeg
+ x=wj
+ if wj<1 print\p4$;"'s Force Field Deflects Your "w1$:goto malfite
+ if x8<1 print\"Your "w1$" Fails To Function!":goto malfite
+malbigg
+ if y9<1 goto malfail
+ if (x>y9) and (y9>0) x=y9
+ y9=y9-x:if y9<1 y9=0
+ print\p4$;"'s Force Field Damaged!";:goto malfailx
+malfail
+ print\p4$;"'s Force Field Has Dissipated!"
+ if x8<1 print\"Your weapon fails to fire!":goto malfite
+ if x>1 x=x/2
+ if x<1 x=1
+ if (x>p9) and (p9>0) x=p9
+ if p9>0 p9=p9-x:print\"Solid Hit on ";p4$;:goto malfailx
+ if (x>y8) and (y8>0) x=y8
+ if y8>0 y8=y8-x:print\"Mantle Cratered!";:goto malfailx
+ if (x>s9) and (s9>0) x=s9
+ if s9>0 s9=s9-x:print\"Blasting the Core!";:goto malfailx
+ goto malfite
+malfailx
+ print chr$(7);"...*"x"*"
+ if y9<1 y9=0
+ if y8<1 y8=0
+ if p9<1 p9=0
+ if s9<1 s9=0
+ goto malfite
+
+fbegin
+ if w1>1 wf=w1/2
+ if w1=1 wf=1
+ if x8<1 l$=w1$:gosub chrg1:goto malfite
+ if f1<wf l$=w1$:gosub chrg2:goto malfite
+ f1=f1-wf:if f1<1 f1=0
+ if wj>0 goto fbeg
+ if x8>0 r=12:gosub rand
+ if (x8>0) and (x>3) goto fbigg
+fbeg
+ x=wj
+ if wj<1 print\p4$;"'s Shielding Deflects Your "w1$:goto malfite
+ if x8<1 print\"Your "w1$" Fails To Function!":goto malfite
+fbigg
+ if y9<1 goto ffail
+ if (x>y9) and (y9>0) x=y9
+ y9=y9-x
+ if y9<1 y9=0
+ print\p4$;"'s Shielding Damaged!";:goto ffx
+ffail
+ print\p4$;"'s Shielding Destroyed!"
+ if x8<1 print\"Your weapon fails to fire!":goto malfite
+ if x>1 x=x/2
+ if x<1 x=1
+ if (x>p9) and (p9>0) x=p9
+ if p9>0 p9=p9-x:print\"Direct Hit on ";p4$;:goto ffx
+ if (x>y8) and (y8>0) x=y8
+ if y8>0 y8=y8-x:print\"Direct Blast on "p4$"!";:goto ffx
+ if (x>s9) and (s9>0) x=s9
+ if s9>0 s9=s9-x:print\"Direct Salvo on HQ Complex!";:goto ffx
+ goto malfite
+ffx
+ print chr$(7);"...*"x"*"
+ if y9<1 y9=0
+ if y8<1 y8=0
+ if p9<1 p9=0
+ if s9<1 s9=0
+
+malfite
+ print chr$(95,78)
+ if p7>1 wg=(p7/2)
+ if p7=1 wg=1
+ if y8<1 l$="Weaponery":gosub chrg1:goto mbcp
+ if p6<wg l$="weapons":gosub chrg2:goto mbcp
+ p6=p6-wg:if p6<1 p6=0
+ if wk>0 goto malgar
+ if y8>0 r=6:gosub rand
+ if (y8>0) and (x>3) goto malgen
+malgar
+ x=wk:a$="Flares"
+ if kk>3 a$="Shots"
+ if (wk<1) and (x9>0) print\"Your "p1$" Deflects "p4$"'s "a$:goto mbcp
+ if y8>0 goto malgen
+ if kk=3 print\"X-Radiation from "p4$" has ceased!":goto mbcp
+ print\p4$"'s weaponry destroyed!":goto mbcp
+malgen
+ if x9<1 goto galfail
+ if (x>x9) and (x9>0) x=x9
+ x9=x9-x
+ print \pp$;" Your "p1$" Shields "on$"weakening! "of$;
+ goto gfx
+
+galfail
+ print\"Your Shields Have "hl$"Failed!"of$
+ if x>10 x=x/10
+ if (x>s1) and (s1>0) x=s1
+ if s1>0 s1=s1-x:print\"Pods Damaged!";:goto gfx
+ if (x>d2) and (d2>0) x=d2
+ if d2>0 d2=d2-x:print\"Your "d1$" Hit!";:goto gfx
+ if (x>c2) and (c2>0) x=c2
+ if c2>0 c2=c2-x:print\"Your "c1$" Hit!";:goto gfx
+ if (x>n2) and (n2>0) x=n2
+ if n2>0 n2=n2-x:print\"Your "n1$" Hit!";:goto gfx
+ if (x>r2) and (r2>0) x=r2
+ if r2>0 r2=r2-x:print\"Your "r1$" Hit!";:goto gfx
+ if (x>h2) and (h2>0) x=h2
+ if h2>0 h2=h2-x:print\"Your Hull Hit!";:goto gfx
+ if (x>x8) and (x8>0) x=x8
+ if x8>0 x8=x8-x:print\"Your "w1$" Hit!";:goto gfx
+ if (x>l2) and (l2>0) x=l2
+ if l2>0 l2=l2-x:print\"Your "l1$" Hit!";:goto gfx
+ goto mbcp
+gfx
+ print chr$(7);"...*"x"*"
+ if x9<1 x9=0
+ if h2<1 h2=0
+ if d2<1 d2=0
+ if c2<1 c2=0
+ if l2<1 l2=0
+ if w2<1 w2=0
+ if n2<1 n2=0
+ if r2<1 r2=0
+ if s1<1 s1=0
+
+mbcp
+ if x8<1 x8=0:w2=0:w1=0:k8=0
+ if x9<1 x9=0:p2=0:p1=0:k9=0
+ if y8<1 y8=0:p8=0:p7=0
+ if y9<1 y9=0:s8=0:s7=0
+ free
+mc4
+ print chr$(95,78)
+ if pb=3 goto mc5
+ if (s9>0) and (l2>0) goto armvar
+mc5
+ w2=0:if (w1>0) and (x8>w1) w2=(x8/w1)
+ if w2>9 w2=9
+ if w2<1 w2=0:w1=0:w1$=jk$
+ p2=0:if (p1>0) and (x9>p1) p2=(x9/p1)
+ if p2>9 p2=9
+ if p2<1 p2=0:p1=0:p1$=jk$
+ if pb=3 goto mquit
+ a$="rogue star"
+ if kk=4 a$=o4$
+ if kk=9 a$="Nemesian Forces"
+ q9$=q4$
+ if l2<1 print\"You were no match for the "a$"!":goto malwin
+ if kk=4 a$="beaten the "+o4$:goto mc6
+ if kk=9 a$="beaten the Nemesian Forces":goto mc6
+ a$="put "+p5$+"'s fire out"
+mc6
+ if s9<1 print\"You've "a$"!":goto mallose
+
+mallose
+ if kk=9 e1=(e1+1):goto nemgem
+ if kk=4 e1=(e1+1):pz$="Guard":goto mallosex
+ print"The awesome gravitational pull of the red dwarf is no more."
+ print"Your ship is now free to return to your own galaxy."
+ print"A Hero's Welcome awaits your triumphant return."
+mallosex
+ if l2<1 l2=1
+ if h2<1 h2=1
+ if d2<1 print"You somehow jury-rig your drives so you can limp home":d2=1
+ sc=(sc+1):j1=(j1+10):if j1>29999 j1=0
+ u1=(u1+1):z1=0:ne=0:pb=1
+ if kk<>9 q1=0:q2=0:q3=0
+ s2=(s2+q6+5)
+ if f1<1 f1=0
+ if kk<>9 q5=0:q6=0:q2$=""
+ if kk=4 i$=da$+" : "+pp$+" "+na$+":"+nz$+" Conquered "+p5$:goto mallox
+ if kk=9 i$=da$+" : "+pp$+" "+na$+":"+nz$+" Conquered "+p5$:goto mallox
+ pp$=pp$+"][":i$=da$+" : "+pp$+" "+na$+":"+nz$+" Ablated Star "+p5$
+mallox
+ open #1,"sp.great":append #1:print #1,i$
+ close:gosub malbatt:gosub shipw:goto linkup
+
+malwin
+ if kk=4 goto malwx
+ i$="the rogue star":if kk=9 i$="Nemesis"
+ print"Your brave ship was destroyed in your battle with "i$
+ print"Your courage will be immortalized in the annals of the Space Patrol"
+malwx
+ if kk=4 pz$="":print\"The "o4$" claims your wasted ship for salvage":o3=o3+2
+ if kk=9 print\"Your ship is salvaged by The Nemesians but you escape"
+ pb=2:s2=s2-10:if s2<1 s2=0
+ gosub malbatt
+ h1$="":d1$="":c1$="":l1$="":w1$="":n1$=""
+ r1$="":p1$="":q2$= "":q4$=sp$
+ h1=0:d1=0:c1=0:l1=0:w1=0:n1=0:r1=0:p1=0:f1=0:nz$=""
+ h2=0:d2=0:c2=0:l2=0:w2=0:n2=0:r2=0:p2=0:f2=0
+ s1=0:m1=m1+1:q1=0:q2=0:q3=0:q4=sp:q6=0:pp=3
+ gosub shipw:gosub getit:link"sp.start"
+
+chrg1
+ print\l$" Malfunction!":return
+chrg2
+ print\"Not enough fuel to charge "l$"!":return
+
+mquit
+ print\"You retreat and call off your seige of "p5$
+ m1=(m1-1):z1=3:t1=2:pb=3:s2=(s2-5):if s2<1 s2=0
+ gosub malbatt:gosub shipw:goto linkup
+
+malbatt
+ if pb=1 xi$="L":yi$="W"
+ if pb=2 xi$="W":yi$="L"
+ if pb=3 xi$="D":yi$="D"
+ lm$=nz$+" ["+yi$+"]":gosub spfix1
+ ln$=p5$+" ["+xi$+"]":gosub spfix2
+ goto balog
+spfix1
+ l=len(lm$):l=(22-l)
+ for k=1 to l:lm$=lm$+".":next:return
+spfix2
+ l=len(ln$):l=(22-l)
+ for k=1 to l:ln$=ln$+".":next:return
+balog
+ a$="SP":if kk=4 a$="CR"
+ i$="..."+a$+":"+lm$+" -> "+ln$+" - "+q4$
+ close:ready "sp.batt"
+ if msg(0)=512 kill #msg(1):crunch
+ a=msg(0)+1
+ print #msg(a),da$\i$
+ print #6,chr$(0):msg(a)=a:update
+ return
+
+nemgem
+ i=0:copy"nemesis"
+nemg1
+ input@2"What say you to The Lattice? ";i$
+ if i$="" goto nemo
+ if len(i$)<4 goto nemo
+ if i$="INFINITY" goto nemg2
+ if instr("HELP",i$) print\"Ah...the finite cry..."
+ if instr("FINIT",i$) print\"...Very warm!"
+ if instr("SHIT",i$) print\"Getting a craving for soap"
+ if instr("FUCK",i$) print\"You taste soap!"
+ if instr("DAMN",i$) print\"...Frustrated???....."
+ if instr("SPACE",i$) print\"Nice try"
+ if instr("ETERN",i$) print\"....Close...but no cigar"
+ if instr("FIREFOX",i$) print\"Calling on dieties doesn't help"
+ if instr("QUIT",i$) goto nemx
+nemo
+ print\".....Nothing happens!":i=i+1:if i<3 goto nemg1
+nemx
+ print\"Leave without the jewels? (Y)/[N]: ";:gosub getkey
+ if i$="Y" print"Yes":i=0:pb=3:q4$=q9$:kk=1:gosub zero:goto linkup
+ i=0:print"No":goto nemg1
+nemg2
+ print\"The crystal lattice shatters into fine dust. You take the gems"
+ q2$="Nemesian Star Jewels":q4$="Sun-3":q4=1:q6=20
+ gosub zero:goto mallosex
+
+linkup
+ i$="Alien weapon enhancement vaporizes causing damage -5 to "+w1$
+ if left$(w1$,3)="?ST" w1$=sb$:w1=w1-5:print\i$
+ if left$(w1$,1)="?" w1=0:w2=0:print\"Your "w1$" fuses into "jk$:w1$=jk$
+ mx=0:gosub getit:print chr$(12)
+ if kk=9 pb=0:link"sp.warp","gems"
+ if (kk=4) and (pb=3) link"sp.warp","guard"
+ if kk=4 pb=0:dk=1:link"sp.warp","dock"
+ kk=1:pb=0:link"sp.warp","menu"
+
+zero
+ mx=0:tt=0:tr=0:ty=0:at=0:po=0:wb=0
+ lb=0:dr=0:ne=0:hh=0:dk=0
+zerox
+ q9$=q4$:return
+
+getit
+ print"....type anykey to go on....";:gosub getkey
+ print chr$(8,28)chr$(32,28)chr$(8,28):return
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto linkit
+
+rand
+ x=((random(9))+1)*10:for k=1 to x:next
+ rd$=rnd$:x=(random(r)):if x>r x=r
+ if x<1 x=1
+ return
+
+crinc
+ if g1<1 return
+ g2=g2+10000:g1=g1-1:return
+
+crfix
+ if (g2>9999) g1=(g1+1):g2=(g2-10000):goto crfix
+ g$=str$(g2):if g1 g$=str$(g1)+right$("000"+str$(g2),4):return
+
+linkit
+ if info(5) goto link.term
+ if left$(w1$,5)="?STAR" w1$=sb$
+ if left$(w1$,1)="?" w1$=jk$:w1=0:w2=0
+ pp=6:na$="J%"+na$:kk=0:w2=1:p2=1:d2=1
+ w1=w1-2:p1=p1-2:z1=3:t1=2:h1$=jk$:h1=0:h2=0
+ kk=1:gosub shipw
+
+link.term
+ recall "a:var"
+ link"a:logoff.seg","term1"
+
+linker
+ z1=z1+1:t1=t1+1:kk=1:gosub shipw
+ link vj$+"sp.end","exit"
+
+shipw
+ open #1,"spacers1":position #1,256,oo
+ print #1,na$\nz$\h1$\d1$\c1$\l1$\w1$\n1$\r1$\ p1$\t$\q2$\q4$\sp$\pp$\ap$
+ close
+ open #1,"spacers2":position #1,256,oo
+ print #1,h1,d1,c1,l1,w1,n1,r1,p1,g1,f1
+ print #1,h2,d2,c2,l2,w2,n2,r2,p2,g2,f2
+ print #1,s1,j1,k1,m1,sc,e1,u1,b1,sp,pp
+ print #1,s2,q1,q2,q3,q4,q5,o1,z1,t1,ap,q6
+ close:ee=0
+ if kk<>4 return
+ if p7<1 o7=(o7-1)
+ if o7<1 o7=0
+ open #1,"sp.star":position #1,256,oy
+ print #1,o3$\o4$\o5$\o6$\o7$
+ print #1,o3,o4,o5,o6,o7,o8,o9
+ close:return
+
+compil
+ print "...compiled":link"sp.sysop","comp"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.mal "+i$+"          ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.mal "i$" "time$:close
+ log vj$:zz$=i$
+ return
+
+; end

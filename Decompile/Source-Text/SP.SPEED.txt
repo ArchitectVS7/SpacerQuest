@@ -1,0 +1,370 @@
+; ___________________________________
+;|                                   |
+;|      S P A C E R  Q U E S T       |
+;|      ----------------------       |
+;|                                   |
+;| Version 3.4 - Written by Firefox  |
+;|                                   |
+;|    for  The Den of The Firefox    |
+;|             05/25/91              |
+;|          --------------           |
+;| 145 megs/24hr/GBBS/STAC/12/24/96  |
+;|                                   |
+;|           209-526-1771            |
+;|                                   |
+;|   Long Live The Rebel Alliance!   |
+;|___________________________________|
+;|                                   |
+;|            sp.speed.s             |
+;|___________________________________|
+
+
+ public compil
+
+ on nocar goto link.term
+ ee=0:jk$="Junk"
+ i$="startup":gosub trace
+menu
+ setint(1):copy"sp.menu10":setint("")
+ if right$(h1$,1)<>"!" print"........(special today on A-R modules)"
+start
+ x1=10000:x2=9000:x3=8000:x4=7000
+ x5=6000:x6=5000:x7=4000:x8=3000
+ gosub crfix
+start1
+ print"Spacer "na$" - [Cr:"g$":]: Command: ";:gosub getkey
+ if i$=cr$ i$="Q"
+ print i$
+ if i$="Q" link dr$+"sp.link"
+ if i$="?" goto menu
+ if i$="A" goto assess
+ if i$="X" goto shipstat
+ i=val(i$):if (i<1) or (i>9) print"Whoops....try again!":goto start
+ if i=1 x=x1:gosub type:xl$=h1$:gosub choose:h1$=xl$+"+*" :h1=h1+10:h2=9
+ if i=2 x=x2:gosub type:xl$=d1$:gosub choose:d1$=xl$+"+*" :d1=d1+10:d2=9
+ if i=3 x=x8:gosub type:xl$=c1$:gosub choose:c1$=xl$+"+*" :c1=c1+10:c2=9
+ if i=4 x=x6:gosub type:xl$=l1$:gosub choose:l1$=xl$+"+*" :l1=l1+10:l2=9
+ if i=5 x=x3:gosub type:xl$=w1$:gosub choose:w1$=xl$+"+*" :w1=w1+10:w2=9
+ if i=6 x=x5:gosub type:xl$=n1$:gosub choose:n1$=xl$+"+*" :n1=n1+10:n2=9
+ if i=7 x=x7:gosub type:xl$=r1$:gosub choose:r1$=xl$+"+*" :r1=r1+10:r2=9
+ if i=8 x=x4:gosub type:xl$=p1$:gosub choose:p1$=xl$+"+*" :p1=p1+10:p2=9
+ if i=9 print"Special Armaments":goto special
+ goto start
+
+special
+ i=0
+ print\chr$(45,44)\"        Special Armament Section"\chr$(45,44)
+ if right$(h1$,1)<>"!" print"   (A)uto-Repair Module"
+ if h1<5 print"   (C)loaking Device"
+ if sc>0 print"   (E)xotic Weapon/Shield Systems"
+ if s2>19 print"   (U)grade Current Components"
+ print"   [Q]uit this section"\chr$(45,44)
+spc
+ gosub crfix:print"[Cr:"g$":]....Choice: ";:gosub getkey
+ if i$=cr$ i$="Q"
+ print i$
+ if i$="Q" goto start
+ if (i$="A") and (right$(h1$,1)<>"!") goto autorep
+ if (sc>0) and (i$="E") goto maligna
+ if (s2>19) and (i$="U") goto upgrad
+ if (h1<5) and (i$="C") goto cloak
+ goto spc
+
+autorep
+ if h1<1 print\"Need a hull first":goto special
+ l$=right$(h1$,1)
+ if l$="!" print\"You already have the A-R module!":goto special
+ print\"The Auto-Repair module will repair all components +1 during battle"
+ print\"Do you wish to install the A-R module? [Y]/(N): ";
+ gosub getkey
+ if i$="N" print"No":goto special
+ print"Yes"
+ if h1>20 x=20000:goto aarp
+ x=h1*1000
+aarp
+ if l$="*" print\"Requires removing the Titanium Enhancement"
+ print\"The cost of the A-R module is "x" cr....Install? [Y]/(N): ";
+ gosub getkey
+ if i$="N" print"No":goto special
+ print"Yes"
+ gosub crfix
+ if g2<x gosub crinc
+ if g2<x gosub crinc
+ if g2<x print ng$:goto special
+ g2=g2-x:ee=1
+ print\"Grind...rip...%#!%&!!...clank...click!..."
+ if l$="*" lw=len(h1$):lw=lw-2:h1$=left$(h1$,lw) :h1=h1-10:s1=s1-5
+ h1$=h1$+"+!":h2=9
+ print h1$"...Strength:["h1"]...Condition:["h2"]...done!"
+ goto special
+
+cloak
+ if h1<1 print\"You need a ship's hull before we can help you!":goto start
+ if h1>4 print\"We can't help you here!":goto special
+ if right$(p1$,1)="=" print"You already have it!":goto special
+ if p1<1 print"You need to have a shield system first":goto start
+ i$="We can't put the cloaker on '"+jk$+"'"
+ if (h1$=jk$) or (p1$=jk$) print\i$:goto start
+ i$=right$(p1$,2)
+ if (i$="+*") or (i$="++") print\"Cloaker won't fit on "p1$:goto special
+ print\"We have a cloaking device for smaller hulls which"
+ print "Will allow them to pass unnoticed by heavier ships"
+ print "Are you interested? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto special
+ print"Yes":print"Fine!...it's the Morton's Cloaker and costs 500 cr"
+ if g2<500 gosub crinc
+ if g2<500 print ng$:goto start
+ print"Purchase the enhancement? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto special
+ print"Yes":print\"It's easily installed"
+ g2=g2-500
+ print\p1$;chr$(46,14);
+ p1$=p1$+"=":p2=9:h2=9:ee=1
+ print p1$".....there...it's done!"
+ goto special
+
+upgrad
+ if s2<20 goto special
+ k=0
+ print\chr$(45,44)\"   StarShip Component Upgrades by Roscoe"\chr$(45,44)
+ if ej=sp print"Special Prices on Upgrades Today!"\
+ print" (W)eapon [";:x=w1:gosub up2
+ print" (S)hield [";:x=p1:gosub up2
+ print" (D)rives [";:x=d1:gosub up2
+ print" (N)avig. [";:x=n1:gosub up2
+ print" (R)obot. [";:x=r1:gosub up2
+ print" (L)ife S [";:x=l1:gosub up2
+ print\"       [Q]uit this section"\chr$(45,44)
+hanc
+ k=0:gosub crfix:print"[Cr:"g$":].......Choice: ";:gosub getkey
+ if i$=cr$ i$="Q"
+ print i$
+ if i$="Q" goto special
+ if i$="?" goto upgrad
+ if i$="W" l$=w1$:x=w1:a$="firepower":gosub up1:w1=x:goto hanc
+ if i$="S" l$=p1$:x=p1:a$="protection":gosub up1:p1=x:goto hanc
+ if i$="D" l$=d1$:x=d1:a$="speed":gosub up1:d1=x:goto hanc
+ if i$="N" l$=n1$:x=n1:a$="reliability":gosub up1:n1=x:goto hanc
+ if i$="R" l$=r1$:x=r1:a$="accuracy":gosub up1:r1=x:goto hanc
+ if i$<>"L" goto hanc
+ gosub upit:l$=l1$:x=l1:a$="viability":gosub up1:l1=x
+ goto hanc
+upit
+ if (left$(l1$,5)="LSS C") or (l1<51) return
+ i$="":l1=50:print\"The "l1$" can't support a strength >50"
+ return
+up1
+ if l$=jk$ print\"We can't upgrade '"jk$"'"\:return
+ if x<1 print\"You need a functioning component"\:return
+ if x>198 x=199:print\"Component strength at max of 199"\:return
+ if left$(l$,1)="?" print\w1$" not upgradeable due to alien mod."\:return
+ print\"We can increase your "l$"'s "a$" ["x"] by 1 factor"
+ k=1:gosub up3
+ print"Cost will be "a"0,000 cr.........do this? [Y]/(N): ";
+ gosub getkey
+ if i$="N" print"No"\:return
+ print"Yes"
+ if g1<a print ng$\:return
+ x=x+1:g1=g1-a:ee=1
+ print".....done...."l$" now at "x" strength"\
+ return
+up2
+ a$=right$("  "+str$(x),3)
+up3
+ a=1:if x>9 a=((x/10)+1)
+ if ej<>sp goto up4
+ if a<3 a=(a-1):goto up4
+ if a<5 a=(a-2):goto up4
+ if a<7 a=(a-3):goto up4
+ a=(a-4)
+up4
+ if a<1 a=1
+ if k>0 k=0:return
+ j$=right$("  "+str$(a),3)
+ print a$"]....1+ Increase....cost: "j$"0,000 cr"
+ return
+
+maligna
+ print\"Hello "pp$
+ print "For highly qualified spacers like yourself...we can install"
+ print "A very powerful weapon system and a special shield system"
+ print\"Are you interested? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":goto special
+ print"Yes"
+nem1
+ ne=0
+ print\"Which are you interested in?  (W)eapon  (S)hield [Q]uit: ";
+ gosub getkey
+ if i$=cr$ i$="Q"
+ if i$="Q" print"Leaving":goto special
+ if i$="W" print\"Ah...Yes!...The STAR-BUSTER Weapon System!":goto nweap
+ if i$="S" print\"Ah...Yes!...The ARCH-ANGEL Shield System!":goto nshi
+ print"?":goto nem1
+nweap
+ l$="STAR-BUSTER"
+ print\"The "l$" is a high-magnitude 'Stellar Seige Weapon'!"
+ xl$=w1$
+ gosub nemget
+ if ne=1 ne=0:goto nem1
+ w1$=l$+"++":w1=w1+1:w2=9
+ goto nem1
+nshi
+ l$="ARCH-ANGEL"
+ print\"The "l$" is a very special shielding system!"
+ xl$=p1$
+ gosub nemget
+ if ne=1 ne=0:goto nem1
+ p1$=l$+"++":p1=p1+1:p2=9
+ goto nem1
+nemget
+ if xl$="" print\"You need to have a system in place first":goto nem1
+ if left$(xl$,1)="?" print\xl$" not upgradeable due to alien mod."\:return
+ if right$(xl$,1)<>"*" print\"Maybe you should enhance your "xl$" first"
+ if right$(xl$,2)="++" print\"You already have The "xl$:ne=1:return
+ if right$(xl$,1)="=" print\"The Morton's Cloaker will be lost"
+ print\"The cost is 10,000 cr. Do you wish to install it? [Y]/(N): ";
+ gosub getkey
+ if i$="N" print"No":ne=1:return
+ print"Yes"
+ if g1<1 gosub crfix
+ if g1<1 print ng$:ne=1:return
+ g1=g1-1:ne=0:ee=1
+ print\"Replacing your "xl$" with The "l$".....done!":return
+
+choose
+ gosub crfix
+ if xl$="" print\"No component in ship!":pop:goto start
+ if xl$=jk$ print\"We can't enhance '"xl$"'":pop:goto start
+ if right$(xl$,2)="*!" print\"The "xl$" is not modifiable!":pop:goto start
+ if right$(xl$,2)="+!" print\"The A-R module will be lost"
+ if right$(xl$,1)="=" print\"Your Morton's Cloaker will be lost"
+ if right$(xl$,2)="++" print\"The "xl$" is not modifiable!":pop:goto start
+ if right$(xl$,1)="*" print\"You already have that mod.":pop:goto start
+ print\"You've chosen "l$"....Purchase? [Y]/(N): ";:gosub getkey
+ if i$="N" print"No":pop:goto start
+ print"Yes":print\"Okay...We'll upgrade your "xl$" with a "l$
+ print\"The cost to you will be "x" cr"
+ if g2<x gosub crinc
+ if g2<x print ng$:pop:goto start
+ if right$(xl$,2)="+!" lw=len(xl$):lw=lw-2:xl$=left$(xl$,lw)
+ if right$(xl$,1)="=" lw=len(xl$):lw=lw-1:xl$=left$(xl$,lw)
+ if i=1 s1=s1+50
+  print \"...clank...bang...hammer...%&!%*#!...crunch...grind.. .click";
+ g2=g2-x:ee=1:i=0:print".....Done!"
+ return
+
+type
+ if i=1 l$="Titanium Hull Reinforcement"
+ if i=2 l$="Trans-Warp Accelerator"
+ if i=3 l$="Kool Rad Pad"
+ if i=4 l$="The Good Life - Life Support"
+ if i=5 l$="Speedo Multi-Fire"
+ if i=6 l$="Darkover Navigation Aid"
+ if i=7 l$="Robbie The Robot"
+ if i=8 l$="Force Field Enhanced Shields"
+ return
+
+assess
+ k8=0:k9=0:k6=0:k7=0
+ a$=w1$:if left$(a$,1)="?" l=(len(a$))-1:a$=right$(w1$,l)
+ k8=w1:if a$="STAR-BUSTER++" k8=w1+18
+ k9=p1:if p1$="ARCH-ANGEL++" k9=p1+18
+ if w1<1 x8=0:else x8=(w2*w1)
+ if x8<1 x8=0
+ if p1<1 x9=0:else x9=(p2*p1)
+ if x9<1 x9=0
+ gosub ranfix:print\"Extra Battle Factors Index:"\chr$(45,27)
+ print nz$;":______B/F______["r9"]"
+ print "Weapon Strength: "w1"__________Shield Strength: "p1
+ print\"Conventional Battle Armament Max Strength:"\chr$(45,42)
+ print nz$;":______"w1$":["x8"]______"p1$":["x9"]"
+ if (k6>0) and (k7>0) k6=0:k7=0:print" ":goto start
+ if w2<1 x8=0:else x8=(k8*w2)
+ if p2<1 x9=0:else x9=(k9*p2)
+ if left$(w1$,1)="?" x8=((k8+150)*w2)
+ print\"Planetary Battle Armament Max Strength:"\chr$(45,42)
+ print nz$;":______"w1$":["x8"]______"p1$":["x9"]"\
+ goto start
+
+ranfix
+ r4=0:r9=0:a=0
+ a=(c2+1)*c1:gosub rfix
+ a=(l2+1)*l1:gosub rfix
+ a=(n2+1)*n1:gosub rfix
+ a=(d2+1)*d1:gosub rfix
+ a=(r2+1)*r1:gosub rfix
+ a=(h2+1)*h1:gosub rfix
+ if u1>49 r4=r4+(u1/50)
+ a=e1+r4
+ r9=0:if a>4 r9=(a/5)
+ return
+rfix
+ x=0:if a>9 x=(a/10)
+ r4=r4+x
+ return
+
+shipstat
+ if h1>19 hx=19:goto sss
+ if h1>9 hx=(h1-10):else hx=h1
+sss
+ ic$="spic."+str$(hx):copy ic$
+ print"Ship's Name...: "nz$
+ print" Section        Type"chr$(32,23)"Strength   Cond."
+ print" -------        ----"chr$(32,23)"--------   -----"
+ lm$="Hull":l$=h1$:j=h1:k=h2:gosub stfx
+ lm$="Drive":l$=d1$:j=d1:k=d2:gosub stfx
+ lm$="Cabin":l$=c1$:j=c1:k=c2:gosub stfx
+ lm$="Life Support":l$=l1$:j=l1:k=l2:gosub stfx
+ lm$="Weapons":l$=w1$:j=w1:k=w2:gosub stfx
+ lm$="Navigation":l$=n1$:j=n1:k=n2:gosub stfx
+ lm$="Robotics":l$=r1$:j=r1:k=r2:gosub stfx
+ lm$="Shields":l$=p1$:j=p1:k=p2:gosub stfx
+ lm$="Fuel Units":l$="___":j=f1:k=h2:gosub stfx
+ lm$="Cargo Pods":l$="___":j=s1:k=h2:gosub stfx
+ goto start1
+stfx
+ lm$=left$(lm$+chr$(95,14),15):l$=left$(l$+chr$(95,26),27)
+ ln$=right$("   "+str$(j),4)
+ print" "lm$""l$"[:"ln$":]___[:"k":]":return
+
+getkey
+ if (clock(1)>clock(2)) and (clock(2)<>0) goto getx
+ zx=peek(-16384)
+ if (zx=129) or (zx=150) get i$:print chr$(8);:zy=0:return
+ zx=key(0):if (zx>96) and (zx<123) zx=zx-32
+ if zx<>0 i$=chr$(zx):zy=0:return
+ zy=zy+1
+ if zy=3000 print" Hey! "na$"...wake up..."chr$(7);:goto getkey
+ if zy=6000 print" Hey! Still playin'?..."chr$(7,3);:goto getkey
+ if zy<9000 goto getkey
+getx
+ print\tl$:pop:modem(1):goto link.term
+
+crfix
+ if g1<1 g1=0
+ if g2<1 g2=0
+ if g2>9999 g1=g1+1:g2=g2-10000:goto crfix
+ g$=str$(g2):if g1 g$=str$(g1)+right$("000"+str$(g2),4)
+ return
+
+crinc
+ if g1<1 return
+ g2=g2+10000:g1=g1-1:return
+
+compil
+ print "...compiled":link "sp.sysop","comp"
+
+link.term
+ link dr$+"sp.link","term"
+
+trace
+ poke 37,0:poke 36,0
+ print #3,"[x=  ] ["left$("sp.speed "+i$+"          ",16)"]"
+ poke 37,0:poke 36,3:print #3,right$(" "+str$(x),2)
+ poke 37,23:poke 36,0
+ if i$=zz$ return
+ open #1,"a:trace":print #1,"sp.speed "i$" "time$:close
+ zz$=i$:log vj$
+ return
+
+; end
