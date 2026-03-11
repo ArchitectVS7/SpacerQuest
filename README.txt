@@ -28,5 +28,5 @@
 |   /____[|]____\                            |
 |        ]^[         The Den of The Firefox  |
 |                                            |
-| Modified by Computist BBS                  |
+| Modified by Computist BBS (Dave Goforth)   |
 |____________________________________________|
