@@ -5,7 +5,7 @@
  * All formulas preserved exactly from the original
  */
 
-import { PrismaClient, BattleResult, Rank } from '@prisma/client';
+import { BattleResult, Rank } from '@prisma/client';
 import {
   RANK_BF_BONUS,
   EXPERIENCE_BF_DIVISOR,
@@ -19,8 +19,6 @@ import {
   PIRATE_CLASSES,
 } from '../constants';
 import { calculateComponentPower, rollD100, rollDice, checkProbability, randomInt } from '../utils.js';
-
-const prisma = new PrismaClient();
 
 // ============================================================================
 // ENCOUNTER GENERATION
@@ -189,6 +187,10 @@ export interface ShipStats {
   roboticsCondition: number;
   lifeSupportStrength: number;
   lifeSupportCondition: number;
+  navigationStrength: number;
+  navigationCondition: number;
+  driveStrength: number;
+  driveCondition: number;
   hasAutoRepair: boolean;
 }
 
@@ -502,7 +504,7 @@ export function enemyDemandsTribute(
  * Record battle result in database
  */
 export async function recordBattle(
-  characterId: number,
+  characterId: string,
   enemy: Enemy,
   result: BattleResult,
   rounds: number,
@@ -510,9 +512,11 @@ export async function recordBattle(
   lootCredits: number,
   damageTaken: Record<string, number>
 ): Promise<void> {
+  const { prisma } = await import('../../db/prisma.js');
+  
   await prisma.battleRecord.create({
     data: {
-      characterId: String(characterId),
+      characterId,
       enemyType: enemy.type.toLowerCase(),
       enemyName: enemy.name,
       enemyClass: enemy.class,

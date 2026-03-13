@@ -21,7 +21,7 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
     };
     
     const prisma = new PrismaClient();
-    const { validateLaunch, startTravel } = await import('../game/systems/travel.js');
+    const { validateLaunch, startTravel } = await import('../../game/systems/travel.js');
     
     const character = await prisma.character.findFirst({
       where: { userId },
@@ -98,7 +98,7 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Character not found' });
     }
     
-    const { getTravelProgress } = await import('../game/systems/travel.js');
+    const { getTravelProgress } = await import('../../game/systems/travel.js');
     const progress = await getTravelProgress(character.id);
     
     await prisma.$disconnect();
@@ -121,7 +121,7 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
     const { newSystemId } = request.body as { newSystemId: number };
     
     const prisma = new PrismaClient();
-    const { processCourseChange } = await import('../game/systems/travel.js');
+    const { processCourseChange } = await import('../../game/systems/travel.js');
     
     const character = await prisma.character.findFirst({ where: { userId } });
     
@@ -163,8 +163,11 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Character not found' });
     }
     
-    const { completeTravel } = await import('../game/systems/travel.js');
+    const { completeTravel } = await import('../../game/systems/travel.js');
     await completeTravel(character.id, character.destination || character.currentSystem);
+    
+    const { processDocking } = await import('../../game/systems/docking.js');
+    await processDocking(character.id, character.destination || character.currentSystem);
     
     await prisma.$disconnect();
     

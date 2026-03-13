@@ -4,9 +4,9 @@
 
 import { FastifyInstance } from 'fastify';
 
+import { prisma } from '../../db/prisma.js';
+
 export async function registerCharacterRoutes(fastify: FastifyInstance) {
-  const { PrismaClient } = await import('@prisma/client');
-  
   // Get character status
   fastify.get('/api/character', {
     preValidation: [async (request, reply) => {
@@ -15,7 +15,6 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
     }],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const prisma = new PrismaClient();
     
     const character = await prisma.character.findFirst({
       where: { userId },
@@ -25,17 +24,13 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
       },
     });
     
-    await prisma.$disconnect();
-    
     if (!character) {
       return reply.status(404).send({ error: 'Character not found' });
     }
     
     // Calculate daily trips remaining
-    const { canTravel } = await import('../game/systems/travel.js');
+    const { canTravel } = await import('../../game/systems/travel.js');
     const tripStatus = canTravel(character.tripCount, character.lastTripDate);
-    
-    await prisma.$disconnect();
     
     return {
       character: {
@@ -97,20 +92,17 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
     const { shipName } = request.body as { shipName: string };
-    const prisma = new PrismaClient();
     
-    const { validateName } = await import('../game/utils.js');
+    const { validateName } = await import('../../game/utils.js');
     const validation = validateName(shipName);
     
     if (!validation.valid) {
-      await prisma.$disconnect();
       return reply.status(400).send({ error: validation.error });
     }
     
     const character = await prisma.character.findFirst({ where: { userId } });
     
     if (!character) {
-      await prisma.$disconnect();
       return reply.status(404).send({ error: 'Character not found' });
     }
     
@@ -118,8 +110,6 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
       where: { id: character.id },
       data: { shipName },
     });
-    
-    await prisma.$disconnect();
     
     return { success: true, shipName };
   });
@@ -133,12 +123,10 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
     const { alliance } = request.body as { alliance: string };
-    const prisma = new PrismaClient();
     
     const character = await prisma.character.findFirst({ where: { userId } });
     
     if (!character) {
-      await prisma.$disconnect();
       return reply.status(404).send({ error: 'Character not found' });
     }
     
@@ -174,8 +162,6 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
         where: { characterId: character.id },
       });
     }
-    
-    await prisma.$disconnect();
     
     return { success: true, alliance };
   });

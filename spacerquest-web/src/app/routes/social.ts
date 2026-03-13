@@ -3,14 +3,11 @@
  */
 
 import { FastifyInstance } from 'fastify';
+import { prisma } from '../../db/prisma.js';
 
 export async function registerSocialRoutes(fastify: FastifyInstance) {
-  const { PrismaClient } = await import('@prisma/client');
-  
   // Get spacer directory
   fastify.get('/api/social/directory', async (request, reply) => {
-    const prisma = new PrismaClient();
-    
     const spacers = await prisma.character.findMany({
       select: {
         spacerId: true,
@@ -23,9 +20,7 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       orderBy: { score: 'desc' },
       take: 100,
     });
-    
-    await prisma.$disconnect();
-    
+
     return {
       spacers: spacers.map(s => ({
         id: s.spacerId,
@@ -37,45 +32,15 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       })),
     };
   });
-  
-  // Get Top Gun rankings
+
+  // Get Top Gun rankings - Full category list from original
   fastify.get('/api/social/topgun', async (request, reply) => {
-    const prisma = new PrismaClient();
-    
-    // Get top ships by various categories
-    const topDrives = await prisma.character.findFirst({
-      where: { ship: { driveStrength: { gt: 0 } } },
-      include: { ship: true },
-      orderBy: { ship: { driveStrength: 'desc' } },
-    });
-    
-    const topWeapons = await prisma.character.findFirst({
-      where: { ship: { weaponStrength: { gt: 0 } } },
-      include: { ship: true },
-      orderBy: { ship: { weaponStrength: 'desc' } },
-    });
-    
-    const topShields = await prisma.character.findFirst({
-      where: { ship: { shieldStrength: { gt: 0 } } },
-      include: { ship: true },
-      orderBy: { ship: { shieldStrength: 'desc' } },
-    });
-    
-    await prisma.$disconnect();
-    
-    return {
-      categories: [
-        { name: 'Fastest Drives', leader: topDrives?.shipName || 'N/A', value: topDrives?.ship?.driveStrength || 0 },
-        { name: 'Strongest Weapons', leader: topWeapons?.shipName || 'N/A', value: topWeapons?.ship?.weaponStrength || 0 },
-        { name: 'Strongest Shields', leader: topShields?.shipName || 'N/A', value: topShields?.ship?.shieldStrength || 0 },
-      ],
-    };
+    const topgunSystem = await import('../../game/systems/topgun.js');
+    return topgunSystem.getTopGunRankings();
   });
-  
+
   // Get high score leaderboard
   fastify.get('/api/social/leaderboard', async (request, reply) => {
-    const prisma = new PrismaClient();
-    
     const scores = await prisma.character.findMany({
       select: {
         name: true,
@@ -85,9 +50,7 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       orderBy: { score: 'desc' },
       take: 20,
     });
-    
-    await prisma.$disconnect();
-    
+
     return {
       scores: scores.map((s, i) => ({
         rank: i + 1,
@@ -97,7 +60,7 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       })),
     };
   });
-  
+
   // Get battle log
   fastify.get('/api/social/battles', {
     preValidation: [async (request, reply) => {
@@ -106,26 +69,22 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
     }],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const prisma = new PrismaClient();
-    
+
     const character = await prisma.character.findFirst({ where: { userId } });
-    
+
     if (!character) {
-      await prisma.$disconnect();
       return reply.status(404).send({ error: 'Character not found' });
     }
-    
+
     const battles = await prisma.battleRecord.findMany({
       where: { characterId: character.id },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });
-    
-    await prisma.$disconnect();
-    
+
     return { battles };
   });
-  
+
   // Challenge to duel
   fastify.post('/api/duel/challenge', {
     preValidation: [async (request, reply) => {
@@ -140,19 +99,32 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       stakesAmount: number;
       arenaType: number;
     };
-    
-    const prisma = new PrismaClient();
-    
+
     const character = await prisma.character.findFirst({
       where: { userId },
       include: { ship: true },
     });
-    
+
     if (!character || !character.ship) {
-      await prisma.$disconnect();
       return reply.status(400).send({ error: 'No ship found' });
     }
+
+    // Enforce arena requirements
+    const { ARENA_REQUIREMENTS } = await import('../../game/constants.js');
     
+    if (arenaType === 1 && character.tripsCompleted < ARENA_REQUIREMENTS.ION_CLOUD.trips) {
+      return reply.status(400).send({ error: `Ion Cloud arena requires ${ARENA_REQUIREMENTS.ION_CLOUD.trips} trips completed` });
+    }
+    if (arenaType === 2 && character.astrecsTraveled < ARENA_REQUIREMENTS.PROTON_STORM.astrecs) {
+      return reply.status(400).send({ error: `Proton Storm arena requires ${ARENA_REQUIREMENTS.PROTON_STORM.astrecs} astrecs traveled` });
+    }
+    if (arenaType === 3 && character.cargoDelivered < ARENA_REQUIREMENTS.COSMIC_RADIATION.cargo) {
+      return reply.status(400).send({ error: `Cosmic Radiation arena requires ${ARENA_REQUIREMENTS.COSMIC_RADIATION.cargo} cargo deliveries` });
+    }
+    if (arenaType === 4 && character.rescuesPerformed < ARENA_REQUIREMENTS.BLACK_HOLE.rescues) {
+      return reply.status(400).send({ error: `Black Hole arena requires ${ARENA_REQUIREMENTS.BLACK_HOLE.rescues} rescues` });
+    }
+
     // Calculate handicap
     const h = character.ship.hullStrength * character.ship.hullCondition;
     const d = character.ship.driveStrength * character.ship.driveCondition;
@@ -162,9 +134,9 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
     const n = character.ship.navigationStrength * character.ship.navigationCondition;
     const r = character.ship.roboticsStrength * character.ship.roboticsCondition;
     const p = character.ship.shieldStrength * character.ship.shieldCondition;
-    
+
     const handicap = Math.floor((h + d + c + l + w + n + r + p) / 500);
-    
+
     // Create duel entry
     const duel = await prisma.duelEntry.create({
       data: {
@@ -176,9 +148,7 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
         handicap,
       },
     });
-    
-    await prisma.$disconnect();
-    
+
     return {
       success: true,
       duel: {
@@ -188,6 +158,217 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
         arenaType: duel.arenaType,
         handicap: duel.handicap,
         status: duel.status,
+      },
+    };
+  });
+
+  // Accept duel challenge
+  fastify.post('/api/duel/accept/:duelId', {
+    preValidation: [async (request, reply) => {
+      try { await request.jwtVerify(); }
+      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
+    }],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const { duelId } = request.params as { duelId: string };
+
+    const character = await prisma.character.findFirst({
+      where: { userId },
+      include: { ship: true },
+    });
+
+    if (!character || !character.ship) {
+      return reply.status(400).send({ error: 'No ship found' });
+    }
+
+    const duel = await prisma.duelEntry.findUnique({
+      where: { id: duelId },
+      include: {
+        challenger: { include: { ship: true } },
+      },
+    });
+
+    if (!duel) {
+      return reply.status(404).send({ error: 'Duel not found' });
+    }
+
+    if (duel.status !== 'PENDING') {
+      return reply.status(400).send({ error: 'Duel is not pending' });
+    }
+
+    if (duel.contenderId && duel.contenderId !== character.id) {
+      return reply.status(400).send({ error: 'This duel is not for you' });
+    }
+
+    // Accept the duel
+    await prisma.duelEntry.update({
+      where: { id: duelId },
+      data: {
+        contenderId: character.id,
+        status: 'ACCEPTED',
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Duel accepted! Prepare for combat.',
+      duel: {
+        id: duel.id,
+        challenger: duel.challenger.name,
+        contender: character.name,
+        stakesType: duel.stakesType,
+        stakesAmount: duel.stakesAmount,
+        arenaType: duel.arenaType,
+      },
+    };
+  });
+
+  // Resolve duel (simulate combat)
+  fastify.post('/api/duel/resolve/:duelId', {
+    preValidation: [async (request, reply) => {
+      try { await request.jwtVerify(); }
+      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
+    }],
+  }, async (request, reply) => {
+    const { duelId } = request.params as { duelId: string };
+
+    const duel = await prisma.duelEntry.findUnique({
+      where: { id: duelId },
+      include: {
+        challenger: { include: { ship: true } },
+        contender: { include: { ship: true } },
+      },
+    });
+
+    if (!duel || !duel.challenger.ship || !duel.contender.ship) {
+      return reply.status(404).send({ error: 'Duel not found or ships missing' });
+    }
+
+    if (duel.status !== 'ACCEPTED') {
+      return reply.status(400).send({ error: 'Duel is not ready to resolve' });
+    }
+
+    // Calculate battle factors
+    const { calculateBattleFactor } = await import('../../game/systems/combat.js');
+
+    const challengerBF = calculateBattleFactor(
+      {
+        weaponStrength: duel.challenger.ship.weaponStrength,
+        weaponCondition: duel.challenger.ship.weaponCondition,
+        shieldStrength: duel.challenger.ship.shieldStrength,
+        shieldCondition: duel.challenger.ship.shieldCondition,
+        cabinStrength: duel.challenger.ship.cabinStrength,
+        cabinCondition: duel.challenger.ship.cabinCondition,
+        roboticsStrength: duel.challenger.ship.roboticsStrength,
+        roboticsCondition: duel.challenger.ship.roboticsCondition,
+        lifeSupportStrength: duel.challenger.ship.lifeSupportStrength,
+        lifeSupportCondition: duel.challenger.ship.lifeSupportCondition,
+        navigationStrength: duel.challenger.ship.navigationStrength,
+        navigationCondition: duel.challenger.ship.navigationCondition,
+        driveStrength: duel.challenger.ship.driveStrength,
+        driveCondition: duel.challenger.ship.driveCondition,
+        hasAutoRepair: duel.challenger.ship.hasAutoRepair,
+      },
+      duel.challenger.rank,
+      duel.challenger.battlesWon
+    );
+
+    const contenderBF = calculateBattleFactor(
+      {
+        weaponStrength: duel.contender.ship.weaponStrength,
+        weaponCondition: duel.contender.ship.weaponCondition,
+        shieldStrength: duel.contender.ship.shieldStrength,
+        shieldCondition: duel.contender.ship.shieldCondition,
+        cabinStrength: duel.contender.ship.cabinStrength,
+        cabinCondition: duel.contender.ship.cabinCondition,
+        roboticsStrength: duel.contender.ship.roboticsStrength,
+        roboticsCondition: duel.contender.ship.roboticsCondition,
+        lifeSupportStrength: duel.contender.ship.lifeSupportStrength,
+        lifeSupportCondition: duel.contender.ship.lifeSupportCondition,
+        navigationStrength: duel.contender.ship.navigationStrength,
+        navigationCondition: duel.contender.ship.navigationCondition,
+        driveStrength: duel.contender.ship.driveStrength,
+        driveCondition: duel.contender.ship.driveCondition,
+        hasAutoRepair: duel.contender.ship.hasAutoRepair,
+      },
+      duel.contender.rank,
+      duel.contender.battlesWon
+    );
+
+    // Add randomness
+    const challengerRoll = challengerBF * (0.8 + Math.random() * 0.4);
+    const contenderRoll = contenderBF * (0.8 + Math.random() * 0.4);
+
+    const winner = challengerRoll > contenderRoll ? duel.challenger : duel.contender;
+    const loser = challengerRoll > contenderRoll ? duel.contender : duel.challenger;
+
+    // Update winner stats
+    await prisma.character.update({
+      where: { id: winner.id },
+      data: {
+        battlesWon: { increment: 1 },
+        score: { increment: duel.stakesAmount / 10 },
+      },
+    });
+
+    // Update loser stats
+    await prisma.character.update({
+      where: { id: loser.id },
+      data: {
+        battlesLost: { increment: 1 },
+      },
+    });
+
+    // Handle stakes transfer
+    if (duel.stakesType === 'credits') {
+      const { subtractCredits, addCredits } = await import('../../game/utils.js');
+      
+      const loserCredits = subtractCredits(loser.creditsHigh, loser.creditsLow, duel.stakesAmount);
+      if (loserCredits.success) {
+        const winnerCredits = addCredits(winner.creditsHigh, winner.creditsLow, duel.stakesAmount);
+        
+        await prisma.character.update({
+          where: { id: loser.id },
+          data: { creditsHigh: loserCredits.high, creditsLow: loserCredits.low },
+        });
+        await prisma.character.update({
+          where: { id: winner.id },
+          data: { creditsHigh: winnerCredits.high, creditsLow: winnerCredits.low },
+        });
+      }
+    }
+
+    // Mark duel as completed
+    await prisma.duelEntry.update({
+      where: { id: duelId },
+      data: {
+        status: 'COMPLETED',
+        result: winner.id === duel.challenger.id ? 'VICTORY' : 'DEFEAT',
+        completedAt: new Date(),
+      },
+    });
+
+    // Log the duel
+    await prisma.gameLog.create({
+      data: {
+        type: 'DUEL',
+        message: `Duel: ${winner.name} defeated ${loser.name}`,
+        metadata: {
+          winnerId: winner.id,
+          loserId: loser.id,
+          stakesType: duel.stakesType,
+          stakesAmount: duel.stakesAmount,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      result: {
+        winner: winner.name,
+        loser: loser.name,
+        winnerBF: Math.floor(challengerRoll > contenderRoll ? challengerRoll : contenderRoll),
+        loserBF: Math.floor(challengerRoll > contenderRoll ? contenderRoll : challengerRoll),
       },
     };
   });

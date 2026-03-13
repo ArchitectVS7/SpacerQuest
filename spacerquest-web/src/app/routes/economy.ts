@@ -3,10 +3,9 @@
  */
 
 import { FastifyInstance } from 'fastify';
+import { prisma } from '../../db/prisma.js';
 
 export async function registerEconomyRoutes(fastify: FastifyInstance) {
-  const { PrismaClient } = await import('@prisma/client');
-  
   // Buy fuel
   fastify.post('/api/economy/fuel/buy', {
     preValidation: [async (request, reply) => {
@@ -16,28 +15,27 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
     const { units } = request.body as { units: number };
-    
-    const prisma = new PrismaClient();
-    const { getFuelPrice, calculateFuelBuyCost } = await import('../game/systems/economy.js');
-    
+
+    const { getFuelPrice, calculateFuelBuyCost } = await import('../../game/systems/economy.js');
+
     const character = await prisma.character.findFirst({
       where: { userId },
       include: { ship: true },
     });
     
     if (!character || !character.ship) {
-      await prisma.$disconnect();
+      
       return reply.status(400).send({ error: 'No ship found' });
     }
     
     const fuelPrice = getFuelPrice(character.currentSystem);
     const cost = calculateFuelBuyCost(units, fuelPrice);
     
-    const { subtractCredits, addCredits } = await import('../game/utils.js');
+    const { subtractCredits, addCredits } = await import('../../game/utils.js');
     const { success } = subtractCredits(character.creditsHigh, character.creditsLow, cost);
     
     if (!success) {
-      await prisma.$disconnect();
+      
       return reply.status(400).send({ error: 'Not enough credits' });
     }
     
@@ -53,7 +51,7 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
       data: { creditsHigh: high, creditsLow: low },
     });
     
-    await prisma.$disconnect();
+    
     
     return { success: true, units, cost, fuelPrice };
   });
@@ -68,8 +66,7 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
     const { userId } = request.user as { userId: string };
     const { units } = request.body as { units: number };
     
-    const prisma = new PrismaClient();
-    const { getFuelPrice, calculateFuelSaleProceeds } = await import('../game/systems/economy.js');
+    const { getFuelPrice, calculateFuelSaleProceeds } = await import('../../game/systems/economy.js');
     
     const character = await prisma.character.findFirst({
       where: { userId },
@@ -77,12 +74,12 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
     });
     
     if (!character || !character.ship) {
-      await prisma.$disconnect();
+      
       return reply.status(400).send({ error: 'No ship found' });
     }
     
     if (character.ship.fuel < units) {
-      await prisma.$disconnect();
+      
       return reply.status(400).send({ error: 'Not enough fuel' });
     }
     
@@ -95,14 +92,14 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
       data: { fuel: character.ship.fuel - units },
     });
     
-    const { addCredits } = await import('../game/utils.js');
+    const { addCredits } = await import('../../game/utils.js');
     const { high, low } = addCredits(character.creditsHigh, character.creditsLow, proceeds);
     await prisma.character.update({
       where: { id: character.id },
       data: { creditsHigh: high, creditsLow: low },
     });
     
-    await prisma.$disconnect();
+    
     
     return { success: true, units, proceeds };
   });
@@ -116,8 +113,7 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
     
-    const prisma = new PrismaClient();
-    const { generateCargoContract } = await import('../game/systems/economy.js');
+    const { generateCargoContract } = await import('../../game/systems/economy.js');
     
     const character = await prisma.character.findFirst({
       where: { userId },
@@ -125,12 +121,12 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
     });
     
     if (!character || !character.ship) {
-      await prisma.$disconnect();
+      
       return reply.status(400).send({ error: 'No ship found' });
     }
     
     if (character.ship.cargoPods < 1) {
-      await prisma.$disconnect();
+      
       return reply.status(400).send({ error: 'No cargo pods available' });
     }
     
@@ -151,7 +147,7 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
       },
     });
     
-    await prisma.$disconnect();
+    
     
     return {
       success: true,
@@ -174,15 +170,14 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
     
-    const prisma = new PrismaClient();
-    const { calculateCargoPayment } = await import('../game/systems/economy.js');
+    const { calculateCargoPayment } = await import('../../game/systems/economy.js');
     
     const character = await prisma.character.findFirst({
       where: { userId },
     });
     
     if (!character || character.cargoPods < 1) {
-      await prisma.$disconnect();
+      
       return reply.status(400).send({ error: 'No cargo to deliver' });
     }
     
@@ -201,7 +196,7 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
     );
     
     // Add payment to credits
-    const { addCredits } = await import('../game/utils.js');
+    const { addCredits } = await import('../../game/utils.js');
     const { high, low } = addCredits(character.creditsHigh, character.creditsLow, total);
     
     await prisma.character.update({
@@ -218,8 +213,53 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
       },
     });
     
-    await prisma.$disconnect();
+    
     
     return { success: true, payment, bonus, total, message };
+  });
+
+  // Alliance Invest
+  fastify.post('/api/economy/alliance/invest', {
+    preValidation: [async (request, reply) => {
+      try { await request.jwtVerify(); }
+      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
+    }],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const { amount, type, systemId, levels } = request.body as any;
+    
+    const character = await prisma.character.findFirst({ where: { userId } });
+    if (!character) return reply.status(404).send({ error: 'Character not found' });
+
+    const allianceSystem = await import('../../game/systems/alliance.js');
+    
+    if (type === 'DEFCON') {
+      const result = await allianceSystem.investInDefcon(character.id, systemId || character.currentSystem, levels || 1);
+      if (!result.success) return reply.status(400).send({ error: result.error });
+      return result;
+    } else {
+      const result = await allianceSystem.investInAlliance(character.id, amount);
+      if (!result.success) return reply.status(400).send({ error: result.error });
+      return result;
+    }
+  });
+
+  // Alliance Withdraw
+  fastify.post('/api/economy/alliance/withdraw', {
+    preValidation: [async (request, reply) => {
+      try { await request.jwtVerify(); }
+      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
+    }],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const { amount } = request.body as any;
+    
+    const character = await prisma.character.findFirst({ where: { userId } });
+    if (!character) return reply.status(404).send({ error: 'Character not found' });
+
+    const allianceSystem = await import('../../game/systems/alliance.js');
+    const result = await allianceSystem.withdrawFromAlliance(character.id, amount);
+    if (!result.success) return reply.status(400).send({ error: result.error });
+    return result;
   });
 }

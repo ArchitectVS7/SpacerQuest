@@ -5,7 +5,6 @@
  * All formulas preserved exactly from the original
  */
 
-import { PrismaClient } from '@prisma/client';
 import {
   FUEL_BASE_COST,
   COURSE_CHANGE_FUEL_MULTIPLIER,
@@ -13,8 +12,6 @@ import {
   DAILY_TRIP_LIMIT,
 } from '../constants';
 import { calculateDistance } from '../utils';
-
-const prisma = new PrismaClient();
 
 // ============================================================================
 // FUEL CALCULATIONS
@@ -191,7 +188,8 @@ export async function validateLaunch(
 ): Promise<LaunchValidationResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
-  
+  const { prisma } = await import('../../db/prisma.js');
+
   // Get character and ship data
   const character = await prisma.character.findUnique({
     where: { id: characterId },
@@ -199,11 +197,11 @@ export async function validateLaunch(
   });
   
   if (!character) {
-    return { valid: false, errors: ['Character not found'] };
+    return { valid: false, errors: ['Character not found'], warnings: [] };
   }
-  
+
   if (!character.ship) {
-    return { valid: false, errors: ['No ship found'] };
+    return { valid: false, errors: ['No ship found'], warnings: [] };
   }
   
   const ship = character.ship;
@@ -258,6 +256,17 @@ export async function validateLaunch(
     }
   }
   
+  // Special handling for Endgame destinations
+  if (destinationSystemId === 28) {
+    if (!character.cargoManifest || !character.cargoManifest.includes('Nemesis')) {
+      errors.push('Access Denied: You do not have the Nemesis mission orders.');
+    }
+  } else if (destinationSystemId === 27) {
+    if (!character.cargoManifest || !character.cargoManifest.includes('Maligna')) {
+      errors.push('Access Denied: You do not have the Maligna mission orders.');
+    }
+  }
+  
   return {
     valid: errors.length === 0,
     errors,
@@ -290,6 +299,8 @@ export async function processCourseChange(
   newDestinationId: number,
   courseChangesRemaining: number
 ): Promise<CourseChangeResult> {
+  const { prisma } = await import('../../db/prisma.js');
+  
   const character = await prisma.character.findUnique({
     where: { id: characterId },
     include: { ship: true },
@@ -354,6 +365,7 @@ export async function startTravel(
   destinationSystem: number,
   fuelReserved: number
 ): Promise<void> {
+  const { prisma } = await import('../../db/prisma.js');
   const now = new Date();
   const distance = calculateDistance(originSystem, destinationSystem);
   const arrivalTime = calculateArrivalTime(now, distance);
@@ -397,6 +409,8 @@ export async function completeTravel(
   characterId: string,
   destinationSystem: number
 ): Promise<void> {
+  const { prisma } = await import('../../db/prisma.js');
+  
   // Remove travel state
   await prisma.travelState.deleteMany({
     where: { characterId },
@@ -431,6 +445,8 @@ export async function getTravelProgress(characterId: string): Promise<{
   origin?: number;
   destination?: number;
 } | null> {
+  const { prisma } = await import('../../db/prisma.js');
+  
   const travelState = await prisma.travelState.findUnique({
     where: { characterId },
   });
@@ -467,6 +483,8 @@ export async function registerLostInSpace(
   characterId: string,
   location: number
 ): Promise<void> {
+  const { prisma } = await import('../../db/prisma.js');
+  
   await prisma.character.update({
     where: { id: characterId },
     data: {

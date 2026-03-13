@@ -1,0 +1,59 @@
+/**
+ * SpacerQuest v4.0 - Global Styles
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Courier New', Courier, monospace;
+  background-color: #000000;
+  color: #00ff00;
+}
+
+/* Utility classes */
+.text-terminal {
+  color: #00ff00;
+}
+
+.bg-terminal {
+  background-color: #000000;
+}
+
+.border-terminal {
+  border-color: #00ff00;
+}
+
+/* CRT flicker animation */
+@keyframes flicker {
+  0% { opacity: 0.97; }
+  50% { opacity: 1; }
+  100% { opacity: 0.98; }
+}
+
+.crt-flicker {
+  animation: flicker 0.15s infinite;
+}
+
+/* Blinking cursor */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.blink {
+  animation: blink 1s step-end infinite;
+}

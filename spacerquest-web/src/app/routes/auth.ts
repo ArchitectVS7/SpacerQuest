@@ -1,11 +1,14 @@
 /**
  * SpacerQuest v4.0 - Authentication Routes
- * 
+ *
  * OAuth integration with BBS Portal
+ * DB-backed session management for revocation support
  */
 
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { prisma } from '../../db/prisma.js';
+import { randomUUID } from 'crypto';
 
 const createBodySchema = z.object({
   name: z.string().min(3).max(15),
@@ -19,44 +22,56 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
   // OAuth login callback
   fastify.get('/auth/callback', async (request, reply) => {
     const { code } = request.query as { code?: string };
-    
+
     if (!code) {
       return reply.status(400).send({ error: 'Authorization code required' });
     }
-    
+
     try {
-      // Exchange code for token (mock for now - would call BBS Portal)
-      const tokenResponse = await fetch(process.env.BBS_PORTAL_TOKEN_URL!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          client_id: process.env.BBS_PORTAL_CLIENT_ID!,
-          client_secret: process.env.BBS_PORTAL_CLIENT_SECRET!,
-          redirect_uri: process.env.BBS_PORTAL_CALLBACK_URL!,
-        }),
-      });
-      
-      if (!tokenResponse.ok) {
-        throw new Error('OAuth token exchange failed');
+      // Check if using mock OAuth
+      const isMock = process.env.NODE_ENV === 'development' || 
+                     process.env.BBS_PORTAL_TOKEN_URL?.includes('mock');
+
+      let userInfo: any;
+
+      if (isMock) {
+        // Use mock user info for development
+        userInfo = {
+          id: `dev-user-${randomUUID().slice(0, 8)}`,
+          email: 'dev@spacerquest.test',
+          displayName: 'Dev User',
+        };
+      } else {
+        // Exchange code for token (would call BBS Portal in production)
+        const tokenResponse = await fetch(process.env.BBS_PORTAL_TOKEN_URL!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'authorization_code',
+            code,
+            client_id: process.env.BBS_PORTAL_CLIENT_ID!,
+            client_secret: process.env.BBS_PORTAL_CLIENT_SECRET!,
+            redirect_uri: process.env.BBS_PORTAL_CALLBACK_URL!,
+          }),
+        });
+
+        if (!tokenResponse.ok) {
+          throw new Error('OAuth token exchange failed');
+        }
+
+        const tokenData = await tokenResponse.json();
+
+        // Get user info
+        const userInfoResponse = await fetch(process.env.BBS_PORTAL_USERINFO_URL!, {
+          headers: {
+            'Authorization': `Bearer ${tokenData.access_token}`,
+          },
+        });
+
+        userInfo = await userInfoResponse.json();
       }
       
-      const tokenData = await tokenResponse.json();
-      
-      // Get user info
-      const userInfoResponse = await fetch(process.env.BBS_PORTAL_USERINFO_URL!, {
-        headers: {
-          'Authorization': `Bearer ${tokenData.access_token}`,
-        },
-      });
-      
-      const userInfo = await userInfoResponse.json();
-      
       // Find or create user in SpacerQuest
-      const { PrismaClient } = await import('@prisma/client');
-      const prisma = new PrismaClient();
-      
       let user = await prisma.user.findUnique({
         where: { bbsUserId: userInfo.id },
       });
@@ -71,12 +86,28 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
         });
       }
       
-      await prisma.$disconnect();
+      // Update last login
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
       
       // Generate JWT for SpacerQuest session
       const jwt = fastify.jwt.sign({ 
         userId: user.id, 
         bbsUserId: user.bbsUserId 
+      });
+      
+      // Create session record in database for revocation support
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+      await prisma.session.create({
+        data: {
+          userId: user.id,
+          token: jwt,
+          expiresAt,
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'],
+        },
       });
       
       // Redirect to game with token
@@ -99,15 +130,10 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
     
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
-    
     const character = await prisma.character.findFirst({
       where: { userId },
       include: { ship: true },
     });
-    
-    await prisma.$disconnect();
     
     return {
       hasCharacter: !!character,
@@ -133,89 +159,22 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
     const { userId } = request.user as { userId: string };
     const body = createBodySchema.parse(request.body);
     
-    // Validate names
-    const { validateName } = await import('../game/utils.js');
+    // Validate and register character
+    const registrySystem = await import('../../game/systems/registry.js');
+    const result = await registrySystem.registerCharacter(userId, body.name, body.shipName);
     
-    const nameValidation = validateName(body.name);
-    if (!nameValidation.valid) {
-      return reply.status(400).send({ error: nameValidation.error });
+    if (!result.success) {
+      return reply.status(400).send({ error: result.error });
     }
-    
-    const shipValidation = validateName(body.shipName);
-    if (!shipValidation.valid) {
-      return reply.status(400).send({ error: `Ship name: ${shipValidation.error}` });
-    }
-    
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
-    
-    // Check if user already has character
-    const existing = await prisma.character.findFirst({
-      where: { userId },
-    });
-    
-    if (existing) {
-      await prisma.$disconnect();
-      return reply.status(400).send({ error: 'Character already exists' });
-    }
-    
-    // Create character with starter ship
-    const character = await prisma.character.create({
-      data: {
-        userId,
-        name: body.name,
-        shipName: body.shipName,
-        creditsHigh: 0,
-        creditsLow: 1000, // Starting 1,000 cr
-        currentSystem: 1, // Sun-3
-      },
-    });
-    
-    // Create empty ship (needs components purchased)
-    await prisma.ship.create({
-      data: {
-        characterId: character.id,
-        hullStrength: 0,
-        hullCondition: 0,
-        driveStrength: 0,
-        driveCondition: 0,
-        cabinStrength: 0,
-        cabinCondition: 0,
-        lifeSupportStrength: 0,
-        lifeSupportCondition: 0,
-        weaponStrength: 0,
-        weaponCondition: 0,
-        navigationStrength: 0,
-        navigationCondition: 0,
-        roboticsStrength: 0,
-        roboticsCondition: 0,
-        shieldStrength: 0,
-        shieldCondition: 0,
-        fuel: 0,
-        cargoPods: 0,
-        maxCargoPods: 0,
-      },
-    });
-    
-    await prisma.$disconnect();
-    
-    // Log creation
-    await prisma.gameLog.create({
-      data: {
-        type: 'SYSTEM',
-        characterId: character.id,
-        message: `New spacer created: ${body.name} of the ship ${body.shipName}`,
-      },
-    });
     
     return reply.status(201).send({
-      id: character.id,
-      name: character.name,
-      shipName: character.shipName,
+      id: result.character!.id,
+      name: result.character!.name,
+      shipName: result.character!.shipName,
     });
   });
   
-  // Logout
+  // Logout with session revocation
   fastify.post('/auth/logout', {
     preValidation: [async (request, reply) => {
       try {
@@ -225,7 +184,129 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
       }
     }],
   }, async (request, reply) => {
-    // In production, would invalidate session in database
-    return { success: true };
+    const { userId } = request.user as { userId: string };
+    const authHeader = request.headers.authorization;
+    const token = authHeader?.replace('Bearer ', '') || (request.query as { token?: string }).token;
+    
+    const saveSystem = await import('../../game/systems/save.js');
+    await saveSystem.saveAndLogout(userId, token);
+    
+    return { success: true, message: 'Logged out successfully' };
   });
+  
+  // Get active sessions for user
+  fastify.get('/auth/sessions', {
+    preValidation: [async (request, reply) => {
+      try {
+        await request.jwtVerify();
+      } catch (err) {
+        reply.code(401).send({ error: 'Unauthorized' });
+      }
+    }],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    
+    const sessions = await prisma.session.findMany({
+      where: {
+        userId,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        expiresAt: true,
+        ipAddress: true,
+        userAgent: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+    
+    return {
+      sessions: sessions.map(s => ({
+        id: s.id,
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+        ipAddress: s.ipAddress,
+        userAgent: s.userAgent,
+        current: s.userAgent === request.headers['user-agent'],
+      })),
+    };
+  });
+  
+  // Revoke specific session
+  fastify.delete('/auth/sessions/:sessionId', {
+    preValidation: [async (request, reply) => {
+      try {
+        await request.jwtVerify();
+      } catch (err) {
+        reply.code(401).send({ error: 'Unauthorized' });
+      }
+    }],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const { sessionId } = request.params as { sessionId: string };
+    
+    const deleted = await prisma.session.deleteMany({
+      where: {
+        id: sessionId,
+        userId,
+      },
+    });
+    
+    return { 
+      success: deleted.count > 0,
+      message: deleted.count > 0 ? 'Session revoked' : 'Session not found',
+    };
+  });
+  
+  // Revoke all sessions (emergency logout everywhere)
+  fastify.post('/auth/logout-all', {
+    preValidation: [async (request, reply) => {
+      try {
+        await request.jwtVerify();
+      } catch (err) {
+        reply.code(401).send({ error: 'Unauthorized' });
+      }
+    }],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    
+    const saveSystem = await import('../../game/systems/save.js');
+    await saveSystem.emergencyLogoutAll(userId);
+    
+    return { success: true, message: 'All sessions revoked' };
+  });
+
+  // Dev Login (only in development)
+  if (process.env.NODE_ENV !== 'production') {
+    fastify.get('/auth/dev-login', async (request, reply) => {
+      try {
+        let user = await prisma.user.findFirst();
+        
+        if (!user) {
+          user = await prisma.user.create({
+            data: {
+              bbsUserId: 'dev-local-user-id',
+              email: 'dev@localhost.test',
+              displayName: 'Local Dev User',
+            },
+          });
+        }
+        
+        const jwt = fastify.jwt.sign({ 
+          userId: user.id, 
+          bbsUserId: user.bbsUserId 
+        });
+        
+        return reply.redirect(`/?token=${jwt}`);
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({ error: 'Dev login failed' });
+      }
+    });
+  }
 }

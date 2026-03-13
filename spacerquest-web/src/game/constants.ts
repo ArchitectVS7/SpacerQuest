@@ -17,16 +17,18 @@ export const CREDITS_PER_PROMOTION = 10000;      // 10,000 cr units
 // RANK SYSTEM
 // ============================================================================
 
+// Score-based thresholds from original SpacerQuest v3.4
+// Promotions are earned at these SCORE thresholds (not promotion count)
 export const RANK_THRESHOLDS = {
-  LIEUTENANT: 0,
-  COMMANDER: 1,
-  CAPTAIN: 2,
-  COMMODORE: 3,
-  ADMIRAL: 5,
-  TOP_DOG: 8,
-  GRAND_MUFTI: 11,
-  MEGA_HERO: 14,
-  GIGA_HERO: 18,
+  LIEUTENANT: 0,      // Starting rank
+  COMMANDER: 150,     // 1 promotion earned
+  CAPTAIN: 300,       // 2 promotions
+  COMMODORE: 450,     // 3-4 promotions
+  ADMIRAL: 600,       // 5-7 promotions
+  TOP_DOG: 900,       // 8-10 promotions
+  GRAND_MUFTI: 1100,  // 11-13 promotions
+  MEGA_HERO: 1350,    // 14-16 promotions
+  GIGA_HERO: 2700,    // 18+ promotions (endgame)
 } as const;
 
 export const RANK_HONORARIA = {

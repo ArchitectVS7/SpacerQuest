@@ -244,10 +244,10 @@ describe('Utilities', () => {
   describe('calculateRank', () => {
     it('should calculate correct rank from score', () => {
       expect(calculateRank(0)).toBe(Rank.LIEUTENANT);
-      expect(calculateRank(1)).toBe(Rank.COMMANDER);
-      expect(calculateRank(2)).toBe(Rank.CAPTAIN);
-      expect(calculateRank(5)).toBe(Rank.ADMIRAL);
-      expect(calculateRank(18)).toBe(Rank.GIGA_HERO);
+      expect(calculateRank(150)).toBe(Rank.COMMANDER);
+      expect(calculateRank(300)).toBe(Rank.CAPTAIN);
+      expect(calculateRank(600)).toBe(Rank.ADMIRAL);
+      expect(calculateRank(2700)).toBe(Rank.GIGA_HERO);
     });
   });
   

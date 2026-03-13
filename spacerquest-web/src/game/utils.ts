@@ -81,17 +81,28 @@ export function getTotalCredits(high: number, low: number): number {
 // ============================================================================
 
 /**
- * Calculate rank from score (original promotion thresholds)
+ * Calculate rank from score
+ * 
+ * Original PRD thresholds:
+ * - Lieutenant: 0
+ * - Commander: 150
+ * - Captain: 300
+ * - Commodore: 450
+ * - Admiral: 600
+ * - Top Dog: 900
+ * - Grand Mufti: 1100
+ * - Mega Hero: 1350
+ * - Giga Hero: 2700
  */
 export function calculateRank(score: number): Rank {
-  if (score >= RANK_THRESHOLDS.GIGA_HERO) return Rank.GIGA_HERO;
-  if (score >= RANK_THRESHOLDS.MEGA_HERO) return Rank.MEGA_HERO;
-  if (score >= RANK_THRESHOLDS.GRAND_MUFTI) return Rank.GRAND_MUFTI;
-  if (score >= RANK_THRESHOLDS.TOP_DOG) return Rank.TOP_DOG;
-  if (score >= RANK_THRESHOLDS.ADMIRAL) return Rank.ADMIRAL;
-  if (score >= RANK_THRESHOLDS.COMMODORE) return Rank.COMMODORE;
-  if (score >= RANK_THRESHOLDS.CAPTAIN) return Rank.CAPTAIN;
-  if (score >= RANK_THRESHOLDS.COMMANDER) return Rank.COMMANDER;
+  if (score >= 2700) return Rank.GIGA_HERO;
+  if (score >= 1350) return Rank.MEGA_HERO;
+  if (score >= 1100) return Rank.GRAND_MUFTI;
+  if (score >= 900) return Rank.TOP_DOG;
+  if (score >= 600) return Rank.ADMIRAL;
+  if (score >= 450) return Rank.COMMODORE;
+  if (score >= 300) return Rank.CAPTAIN;
+  if (score >= 150) return Rank.COMMANDER;
   return Rank.LIEUTENANT;
 }
 

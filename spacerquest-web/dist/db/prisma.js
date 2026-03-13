@@ -1,0 +1,15 @@
+/**
+ * SpacerQuest v4.0 - Prisma Client Singleton
+ *
+ * Single shared Prisma client instance for the application
+ * Prevents connection exhaustion from creating clients per-request
+ */
+import { PrismaClient } from '@prisma/client';
+export const prisma = globalThis.prisma ?? new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+});
+if (process.env.NODE_ENV !== 'production') {
+    globalThis.prisma = prisma;
+}
+export default prisma;
+//# sourceMappingURL=prisma.js.map

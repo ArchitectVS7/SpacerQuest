@@ -6,6 +6,7 @@
 
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { Socket } from 'socket.io';
+import { prisma } from '../db/prisma.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -14,8 +15,8 @@ interface AuthenticatedSocket extends Socket {
 
 export async function registerWebSocketHandler(fastify: FastifyInstance) {
   fastify.get('/ws', { websocket: true }, async (connection, req) => {
-    const socket = connection as AuthenticatedSocket;
-    
+    const socket = connection as any as AuthenticatedSocket;
+
     fastify.log.info('WebSocket client connected');
     
     // Handle authentication
@@ -25,9 +26,6 @@ export async function registerWebSocketHandler(fastify: FastifyInstance) {
         socket.userId = decoded.userId;
         
         // Get character ID
-        const { PrismaClient } = await import('@prisma/client');
-        const prisma = new PrismaClient();
-        
         const character = await prisma.character.findFirst({
           where: { userId: decoded.userId },
         });
@@ -36,8 +34,6 @@ export async function registerWebSocketHandler(fastify: FastifyInstance) {
           socket.characterId = character.id;
           socket.join(`character:${character.id}`);
         }
-        
-        await prisma.$disconnect();
         
         socket.emit('authenticated', { success: true });
         fastify.log.info(`WebSocket authenticated for user ${decoded.userId}`);
@@ -50,14 +46,9 @@ export async function registerWebSocketHandler(fastify: FastifyInstance) {
     socket.on('request:travel-progress', async () => {
       if (!socket.characterId) return;
       
-      const { PrismaClient } = await import('@prisma/client');
-      const prisma = new PrismaClient();
-      
       const travelState = await prisma.travelState.findUnique({
         where: { characterId: socket.characterId },
       });
-      
-      await prisma.$disconnect();
       
       if (travelState && travelState.inTransit) {
         const now = new Date();
@@ -79,14 +70,108 @@ export async function registerWebSocketHandler(fastify: FastifyInstance) {
     });
     
     // Combat action
-    socket.on('combat:action', async (data: { action: string }) => {
-      if (!socket.characterId) return;
+    socket.on('combat:action', async (data: { action: 'FIRE' | 'RETREAT' | 'SURRENDER', round?: number, enemy?: any }) => {
+      if (!socket.characterId || !socket.userId) return;
       
-      // Emit combat round result (actual logic in HTTP API)
-      socket.emit('combat:round', {
-        round: 1,
-        combatLog: [`Action: ${data.action}`],
+      const { processCombatRound, calculateBattleFactor, attemptRetreat } = 
+        await import('../game/systems/combat.js');
+        
+      const character = await prisma.character.findFirst({
+        where: { id: socket.characterId },
+        include: { ship: true },
       });
+      
+      if (!character || !character.ship) {
+        socket.emit('combat:error', { error: 'No ship found' });
+        return;
+      }
+      
+      if (data.action === 'RETREAT') {
+        const retreat = attemptRetreat(
+          character.ship.driveStrength * character.ship.driveCondition,
+          data.enemy?.driveStrength * data.enemy?.driveCondition || 100,
+          character.ship.hasCloaker
+        );
+        
+        socket.emit('combat:round', {
+          success: retreat.success,
+          message: retreat.message,
+          retreated: retreat.success,
+        });
+        return;
+      }
+      
+      const playerBF = calculateBattleFactor(
+        {
+          weaponStrength: character.ship.weaponStrength,
+          weaponCondition: character.ship.weaponCondition,
+          shieldStrength: character.ship.shieldStrength,
+          shieldCondition: character.ship.shieldCondition,
+          cabinStrength: character.ship.cabinStrength,
+          cabinCondition: character.ship.cabinCondition,
+          roboticsStrength: character.ship.roboticsStrength,
+          roboticsCondition: character.ship.roboticsCondition,
+          lifeSupportStrength: character.ship.lifeSupportStrength,
+          lifeSupportCondition: character.ship.lifeSupportCondition,
+          navigationStrength: character.ship.navigationStrength,
+          navigationCondition: character.ship.navigationCondition,
+          driveStrength: character.ship.driveStrength,
+          driveCondition: character.ship.driveCondition,
+          hasAutoRepair: character.ship.hasAutoRepair,
+        },
+        character.rank,
+        character.battlesWon
+      );
+      
+      const combatRound = processCombatRound(
+        playerBF,
+        character.ship.weaponStrength,
+        character.ship.weaponCondition,
+        character.ship.shieldStrength,
+        character.ship.shieldCondition,
+        data.enemy || {
+          weaponStrength: 20,
+          weaponCondition: 7,
+          shieldStrength: 15,
+          shieldCondition: 7,
+          battleFactor: 200,
+        },
+        data.round || 1
+      );
+      
+      socket.emit('combat:round', combatRound);
+    });
+    
+    // Handle screen request
+    socket.on('screen:request', async (data: { screen: string }) => {
+      if (!socket.characterId) return;
+      const { handleScreenRequest } = await import('./screen-router.js');
+      try {
+        const response = await handleScreenRequest(socket.characterId, data.screen);
+        socket.emit('screen:render', response);
+      } catch (err) {
+        fastify.log.error(err);
+        socket.emit('screen:render', { output: '\x1b[31mScreen error.\x1b[0m\r\n' });
+      }
+    });
+
+    // Handle screen input
+    socket.on('screen:input', async (data: { screen: string, input: string }) => {
+      if (!socket.characterId) return;
+      const { handleScreenInput, handleScreenRequest } = await import('./screen-router.js');
+      try {
+        const response = await handleScreenInput(socket.characterId, data.screen, data.input);
+        
+        socket.emit('screen:render', response);
+        
+        if (response.nextScreen) {
+          const nextResponse = await handleScreenRequest(socket.characterId, response.nextScreen);
+          socket.emit('screen:render', { ...nextResponse, screenChangedTo: response.nextScreen });
+        }
+      } catch (err) {
+        fastify.log.error(err);
+        socket.emit('screen:render', { output: '\x1b[31mInput error.\x1b[0m\r\n' });
+      }
     });
     
     // Handle disconnect
@@ -99,15 +184,5 @@ export async function registerWebSocketHandler(fastify: FastifyInstance) {
       message: 'Welcome to SpacerQuest v4.0',
       version: '4.0.0',
     });
-  });
-  
-  // Broadcast function for game events
-  fastify.decorate('broadcastGameEvent', async (
-    characterId: string,
-    eventType: string,
-    data: any
-  ) => {
-    const io = fastify.io;
-    io.to(`character:${characterId}`).emit(eventType, data);
   });
 }

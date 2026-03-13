@@ -1,6 +1,6 @@
 /**
  * SpacerQuest v4.0 - Main Application Server
- * 
+ *
  * Fastify-based API server with WebSocket support
  */
 
@@ -13,16 +13,17 @@ import { fileURLToPath } from 'url';
 import pino from 'pino';
 
 // Import routes
-import { registerAuthRoutes } from './app/routes/auth.js';
-import { registerCharacterRoutes } from './app/routes/character.js';
-import { registerNavigationRoutes } from './app/routes/navigation.js';
-import { registerCombatRoutes } from './app/routes/combat.js';
-import { registerEconomyRoutes } from './app/routes/economy.js';
-import { registerShipRoutes } from './app/routes/ship.js';
-import { registerSocialRoutes } from './app/routes/social.js';
+import { registerAuthRoutes } from './routes/auth.js';
+import { registerCharacterRoutes } from './routes/character.js';
+import { registerNavigationRoutes } from './routes/navigation.js';
+import { registerCombatRoutes } from './routes/combat.js';
+import { registerEconomyRoutes } from './routes/economy.js';
+import { registerShipRoutes } from './routes/ship.js';
+import { registerSocialRoutes } from './routes/social.js';
+import { registerMissionsRoutes } from './routes/missions.js';
 
 // Import WebSocket handler
-import { registerWebSocketHandler } from './sockets/game.js';
+import { registerWebSocketHandler } from '../sockets/game.js';
 
 // Load environment
 import dotenv from 'dotenv';
@@ -52,34 +53,41 @@ const fastify = Fastify({
 // PLUGINS
 // ============================================================================
 
-// CORS
-await fastify.register(cors, {
-  origin: process.env.NODE_ENV === 'production' ? false : true,
-  credentials: true,
-});
+async function registerPlugins() {
+  // CORS
+  await fastify.register(cors, {
+    origin: process.env.NODE_ENV === 'production' ? false : true,
+    credentials: true,
+  });
 
-// JWT
-await fastify.register(jwt, {
-  secret: process.env.JWT_SECRET || 'default-secret-change-in-production',
-  sign: {
-    expiresIn: '30d',
-  },
-});
+  // JWT
+  await fastify.register(jwt, {
+    secret: process.env.JWT_SECRET || 'default-secret-change-in-production',
+    sign: {
+      expiresIn: '30d',
+    },
+  });
 
-// WebSocket
-await fastify.register(websocket);
+  // WebSocket
+  await fastify.register(websocket);
 
-// Static files (for frontend)
-await fastify.register(import('@fastify/static'), {
-  root: join(__dirname, '../../public'),
-  prefix: '/',
-});
+  // Static files (for frontend) - only in production
+  if (process.env.NODE_ENV === 'production') {
+    const fastifyStatic = await import('@fastify/static');
+    await fastify.register(fastifyStatic.default, {
+      root: join(__dirname, '../../public'),
+      prefix: '/',
+    });
+  }
+}
+
+await registerPlugins();
 
 // ============================================================================
 // HEALTH CHECK
 // ============================================================================
 
-fastify.get('/health', async (request, reply) => {
+fastify.get('/health', async () => {
   return {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -112,6 +120,9 @@ await registerShipRoutes(fastify);
 // Social (directory, rankings, duels)
 await registerSocialRoutes(fastify);
 
+// Missions (Endgame)
+await registerMissionsRoutes(fastify);
+
 // ============================================================================
 // WEBSOCKET
 // ============================================================================
@@ -122,9 +133,9 @@ fastify.register(registerWebSocketHandler);
 // ERROR HANDLING
 // ============================================================================
 
-fastify.setErrorHandler((error, request, reply) => {
+fastify.setErrorHandler((error, _request, reply) => {
   fastify.log.error(error);
-  
+
   reply.status(error.statusCode || 500).send({
     error: error.name,
     message: error.message,
@@ -139,7 +150,7 @@ fastify.setErrorHandler((error, request, reply) => {
 const start = async () => {
   const host = process.env.HOST || '0.0.0.0';
   const port = parseInt(process.env.PORT || '3000');
-  
+
   try {
     await fastify.listen({ port, host });
     fastify.log.info(`🚀 SpacerQuest v4.0 server running at http://${host}:${port}`);

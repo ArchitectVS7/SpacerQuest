@@ -4,9 +4,9 @@
 
 import { FastifyInstance } from 'fastify';
 
+import { prisma } from '../../db/prisma.js';
+
 export async function registerCombatRoutes(fastify: FastifyInstance) {
-  const { PrismaClient } = await import('@prisma/client');
-  
   // Start combat encounter
   fastify.post('/api/combat/engage', {
     preValidation: [async (request, reply) => {
@@ -17,9 +17,8 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
     const { userId } = request.user as { userId: string };
     const { attack } = request.body as { attack: boolean };
     
-    const prisma = new PrismaClient();
     const { generateEncounter, calculateBattleFactor, calculateEnemyBattleFactor } = 
-      await import('../game/systems/combat.js');
+      await import('../../game/systems/combat.js');
     
     const character = await prisma.character.findFirst({
       where: { userId },
@@ -27,7 +26,6 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
     });
     
     if (!character || !character.ship) {
-      await prisma.$disconnect();
       return reply.status(400).send({ error: 'No ship found' });
     }
     
@@ -39,7 +37,6 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
     );
     
     if (!enemy) {
-      await prisma.$disconnect();
       return { encounter: false, message: 'No enemy encountered' };
     }
     
@@ -56,6 +53,10 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
         roboticsCondition: character.ship.roboticsCondition,
         lifeSupportStrength: character.ship.lifeSupportStrength,
         lifeSupportCondition: character.ship.lifeSupportCondition,
+        navigationStrength: character.ship.navigationStrength,
+        navigationCondition: character.ship.navigationCondition,
+        driveStrength: character.ship.driveStrength,
+        driveCondition: character.ship.driveCondition,
         hasAutoRepair: character.ship.hasAutoRepair,
       },
       character.rank,
@@ -63,8 +64,6 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
     );
     
     enemy.battleFactor = calculateEnemyBattleFactor(enemy);
-    
-    await prisma.$disconnect();
     
     return {
       encounter: true,
@@ -94,9 +93,8 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       enemy?: any;
     };
     
-    const prisma = new PrismaClient();
     const { processCombatRound, calculateBattleFactor, attemptRetreat } = 
-      await import('../game/systems/combat.js');
+      await import('../../game/systems/combat.js');
     
     const character = await prisma.character.findFirst({
       where: { userId },
@@ -104,7 +102,6 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
     });
     
     if (!character || !character.ship) {
-      await prisma.$disconnect();
       return reply.status(400).send({ error: 'No ship found' });
     }
     
@@ -114,8 +111,6 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
         enemy?.driveStrength * enemy?.driveCondition || 100,
         character.ship.hasCloaker
       );
-      
-      await prisma.$disconnect();
       
       return {
         success: retreat.success,
@@ -137,6 +132,10 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
         roboticsCondition: character.ship.roboticsCondition,
         lifeSupportStrength: character.ship.lifeSupportStrength,
         lifeSupportCondition: character.ship.lifeSupportCondition,
+        navigationStrength: character.ship.navigationStrength,
+        navigationCondition: character.ship.navigationCondition,
+        driveStrength: character.ship.driveStrength,
+        driveCondition: character.ship.driveCondition,
         hasAutoRepair: character.ship.hasAutoRepair,
       },
       character.rank,
@@ -158,8 +157,6 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       },
       round
     );
-    
-    await prisma.$disconnect();
     
     return combatRound;
   });

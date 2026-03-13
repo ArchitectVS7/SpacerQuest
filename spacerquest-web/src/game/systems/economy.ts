@@ -103,8 +103,8 @@ export function generateCargoContract(
 ): CargoContract {
   // Determine cargo type based on origin
   let cargoType = 1;
-  let baseRate = CARGO_BASE_RATES[1 as keyof typeof CARGO_BASE_RATES];
-  
+  let baseRate = Number(CARGO_BASE_RATES[1 as keyof typeof CARGO_BASE_RATES]);
+
   if (originSystem >= 15 && originSystem <= 20) {
     // Rim Stars have special cargo
     const rimCargo: Record<number, { type: number; rate: number }> = {
@@ -121,7 +121,7 @@ export function generateCargoContract(
       baseRate = cargo.rate;
     }
   }
-  
+
   if (isSmuggling) {
     cargoType = 10;
     baseRate = Math.floor(baseRate * 1.5); // Smuggling pays 50% more
