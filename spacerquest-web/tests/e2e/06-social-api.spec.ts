@@ -1,128 +1,140 @@
 /**
- * SpacerQuest v4.0 - Social Features and API E2E Tests
+ * SpacerQuest v4.0 - Social API E2E Tests (strict)
+ *
+ * PRD values asserted:
+ *   - Top Gun has exactly 12 categories
+ *   - Category names match the 12 original categories
+ *   - Each category has name, leader, value
+ *   - Leaderboard entries have rank, name, score, characterRank
+ *   - Directory entries have id, name, shipName, rank, alliance, score
+ *   - Battles endpoint requires authentication
  */
 
 import { test, expect } from '@playwright/test';
-import { LoginPage } from './pages/LoginPage';
-import { SpacerQuestAPI } from './api';
+import { API, getAuthToken, ensureCharacter } from './helpers';
 
-test.describe('Social Features and API', () => {
-  let loginPage: LoginPage;
-  let api: SpacerQuestAPI;
+// Expected category name substrings (actual names are longer, e.g. 'Fastest Drives')
+const EXPECTED_CATEGORY_KEYWORDS = [
+  'Drives', 'Weapons', 'Shields', 'Hull', 'Cabin',
+  'Life Support', 'Navigation', 'Robotics', 'Cargo',
+  'Rescuer', 'Battle', 'Promotions',
+];
 
-  test.beforeEach(async ({ page, request }) => {
-    loginPage = new LoginPage(page);
-    api = new SpacerQuestAPI(request);
-    
-    // Login and get token
-    await loginPage.devLogin();
-    await page.waitForTimeout(3000);
-    
-    // Extract token for API calls
-    const url = new URL(page.url());
-    const token = url.searchParams.get('token');
-    if (token) {
-      api.setToken(token);
+test.describe('Top Gun Rankings', () => {
+  test('GET /api/social/topgun returns 200 with categories array', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/topgun`);
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.categories)).toBe(true);
+  });
+
+  test('Top Gun has exactly 12 categories', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/topgun`);
+    const body = await res.json();
+    expect(body.categories.length).toBe(12);
+  });
+
+  test('all 12 expected category keywords are present in category names', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/topgun`);
+    const body = await res.json();
+    const categoryNames: string[] = body.categories.map((c: any) => c.name);
+
+    for (const keyword of EXPECTED_CATEGORY_KEYWORDS) {
+      const found = categoryNames.some(name =>
+        name.toLowerCase().includes(keyword.toLowerCase())
+      );
+      expect(found, `Missing category containing "${keyword}"`).toBe(true);
     }
   });
 
-  test('should get Top Gun rankings', async () => {
-    const rankings = await api.getTopGun();
-    
-    expect(rankings).toBeDefined();
-    expect(rankings.categories).toBeDefined();
-    expect(Array.isArray(rankings.categories)).toBeTruthy();
-    expect(rankings.categories.length).toBeGreaterThan(0);
-  });
-
-  test('should have all Top Gun categories', async () => {
-    const rankings = await api.getTopGun();
-    
-    const expectedCategories = [
-      'Drives', 'Weapons', 'Shields', 'Hull', 'Cabin',
-      'Life Support', 'Navigation', 'Robotics', 'Cargo',
-      'Rescuer', 'Battle', 'Promotions'
-    ];
-    
-    const categoryNames = rankings.categories.map((c: any) => c.name.toLowerCase());
-    
-    // Check for at least some expected categories
-    const foundCategories = expectedCategories.filter(cat =>
-      categoryNames.some(name => name.includes(cat.toLowerCase()))
-    );
-    
-    expect(foundCategories.length).toBeGreaterThan(5);
-  });
-
-  test('should get leaderboard', async () => {
-    const leaderboard = await api.getLeaderboard();
-    
-    expect(leaderboard).toBeDefined();
-    expect(leaderboard.scores).toBeDefined();
-    expect(Array.isArray(leaderboard.scores)).toBeTruthy();
-  });
-
-  test('should show character data in leaderboard', async () => {
-    const leaderboard = await api.getLeaderboard();
-    
-    if (leaderboard.scores.length > 0) {
-      const entry = leaderboard.scores[0];
-      expect(entry.name).toBeDefined();
-      expect(entry.score).toBeDefined();
-      expect(entry.rank).toBeDefined();
+  test('each category has name (string), leader (string), value (number)', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/topgun`);
+    const body = await res.json();
+    for (const cat of body.categories) {
+      expect(typeof cat.name).toBe('string');
+      expect(cat.name.length).toBeGreaterThan(0);
+      // leader is 'N/A' when no holder, otherwise a ship/character name
+      expect(typeof cat.leader).toBe('string');
+      expect(typeof cat.value).toBe('number');
     }
   });
 
-  test('should handle travel status API', async () => {
-    const travelStatus = await api.getTravelStatus();
-    
-    // Should return travel state (may be in transit or not)
-    expect(travelStatus).toBeDefined();
-    // inTransit will be false when not traveling
-    expect(['boolean', 'undefined'].includes(typeof travelStatus.inTransit)).toBeTruthy();
+  test('Top Gun is publicly accessible (no auth required)', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/topgun`);
+    expect(res.status()).toBe(200);
+  });
+});
+
+test.describe('Leaderboard', () => {
+  test('GET /api/social/leaderboard returns 200 with scores array', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/leaderboard`);
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.scores)).toBe(true);
   });
 
-  test('should handle launch API with valid destination', async () => {
-    // First check if character has enough fuel
-    const character = await api.getCharacter();
-    
-    if (character && character.ship && character.ship.fuel > 100) {
-      const result = await api.launch(2); // Launch to system 2
-      
-      // Should either succeed or give validation error
-      expect(result).toBeDefined();
+  test('leaderboard entries have rank, name, score, characterRank', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/leaderboard`);
+    const body = await res.json();
+    for (const entry of body.scores) {
+      expect(typeof entry.rank).toBe('number');
+      expect(typeof entry.name).toBe('string');
+      expect(typeof entry.score).toBe('number');
+      expect(typeof entry.characterRank).toBe('string');
     }
   });
 
-  test('should handle launch API with insufficient fuel', async () => {
-    const result = await api.launch(14); // Far destination
-    
-    // Should return error if insufficient fuel
-    if (result.error) {
-      expect(result.error).toBeDefined();
-    }
+  test('leaderboard ranks are sequential starting at 1', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/leaderboard`);
+    const body = await res.json();
+    body.scores.forEach((entry: any, idx: number) => {
+      expect(entry.rank).toBe(idx + 1);
+    });
+  });
+});
+
+test.describe('Spacer Directory', () => {
+  test('GET /api/social/directory returns 200 with spacers array', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/directory`);
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.spacers)).toBe(true);
   });
 
-  test('should get character data', async () => {
-    const character = await api.getCharacter();
-    
-    if (character) {
-      expect(character.character).toBeDefined();
-      expect(character.character.name).toBeDefined();
-      expect(character.character.rank).toBeDefined();
+  test('directory entries have id, name, shipName, rank, alliance, score', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/directory`);
+    const body = await res.json();
+    for (const spacer of body.spacers) {
+      expect(spacer.id).toBeDefined();
+      expect(typeof spacer.name).toBe('string');
+      expect(typeof spacer.shipName).toBe('string');
+      expect(typeof spacer.rank).toBe('string');
+      // alliance may be null/empty for unaffiliated characters
+      expect(spacer).toHaveProperty('alliance');
+      expect(typeof spacer.score).toBe('number');
     }
   });
+});
 
-  test('should show ship data with character', async () => {
-    const character = await api.getCharacter();
-    
-    if (character) {
-      expect(character.ship).toBeDefined();
-      
-      if (character.ship) {
-        expect(character.ship.hullStrength !== undefined).toBeTruthy();
-        expect(character.ship.fuel !== undefined).toBeTruthy();
-      }
-    }
+test.describe('Battle Log', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    token = await getAuthToken(request);
+    await ensureCharacter(request, token);
+  });
+
+  test('GET /api/social/battles without token returns 401', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/battles`);
+    expect(res.status()).toBe(401);
+  });
+
+  test('GET /api/social/battles with token returns 200 with battles array', async ({ request }) => {
+    const res = await request.get(`${API}/api/social/battles`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.battles)).toBe(true);
   });
 });

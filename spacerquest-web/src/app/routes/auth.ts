@@ -36,9 +36,11 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
 
       if (isMock) {
         // Use mock user info for development
+        // Each call gets a unique ID and email so parallel tests don't collide
+        const mockId = `dev-user-${randomUUID().slice(0, 8)}`;
         userInfo = {
-          id: `dev-user-${randomUUID().slice(0, 8)}`,
-          email: 'dev@spacerquest.test',
+          id: mockId,
+          email: `${mockId}@spacerquest.test`,
           displayName: 'Dev User',
         };
       } else {
@@ -157,8 +159,13 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
     }],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const body = createBodySchema.parse(request.body);
-    
+    let body: { name: string; shipName: string };
+    try {
+      body = createBodySchema.parse(request.body);
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.errors?.[0]?.message || 'Invalid input' });
+    }
+
     // Validate and register character
     const registrySystem = await import('../../game/systems/registry.js');
     const result = await registrySystem.registerCharacter(userId, body.name, body.shipName);

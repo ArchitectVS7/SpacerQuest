@@ -1,119 +1,133 @@
 /**
- * SpacerQuest v4.0 - Economy and Trading E2E Tests
+ * SpacerQuest v4.0 - Economy E2E Tests (strict PRD values)
+ *
+ * PRD values asserted:
+ *   - Fuel price at system 1: 8 cr/unit  (FUEL_PRICES_BY_SYSTEM[1] = 8)
+ *   - Fuel sell multiplier: 50%          (FUEL_SELL_MULTIPLIER = 0.5)
+ *   - Starting credits: 1000
  */
 
 import { test, expect } from '@playwright/test';
-import { LoginPage } from './pages/LoginPage';
-import { MainGamePage } from './pages/MainGamePage';
-import { SpacerQuestAPI } from './api';
+import { API, getAuthToken, ensureCharacter } from './helpers';
 
-test.describe('Economy and Trading', () => {
-  let loginPage: LoginPage;
-  let mainGame: MainGamePage;
-  let api: SpacerQuestAPI;
+test.describe('Economy - Fuel', () => {
+  let token: string;
 
-  test.beforeEach(async ({ page, request }) => {
-    loginPage = new LoginPage(page);
-    mainGame = new MainGamePage(page);
-    api = new SpacerQuestAPI(request);
-    
-    // Login and get token
-    await loginPage.devLogin();
-    await page.waitForTimeout(3000);
-    
-    // Extract token for API calls
-    const url = new URL(page.url());
-    const token = url.searchParams.get('token');
-    if (token) {
-      api.setToken(token);
-    }
-    
-    // Setup character if needed
-    const isOnCharacterCreation = await page.locator('text=CREATE NEW SPACER').isVisible().catch(() => false);
-    if (isOnCharacterCreation) {
-      const timestamp = Date.now();
-      await api.createCharacter(`TestEcon${timestamp}`, `Ship${timestamp}`);
-      await page.reload();
-      await page.waitForTimeout(2000);
-    }
-    
-    await mainGame.waitForTerminal();
+  test.beforeAll(async ({ request }) => {
+    token = await getAuthToken(request);
+    await ensureCharacter(request, token);
   });
 
-  test('should buy fuel via API', async () => {
-    // Test fuel purchase through API
-    const result = await api.buyFuel(100);
-    
-    expect(result.success).toBeTruthy();
-    expect(result.units).toBe(100);
-    expect(result.cost).toBeGreaterThan(0);
+  test('buy 1 unit of fuel at system 1: fuelPrice=8, cost=8', async ({ request }) => {
+    const res = await request.post(`${API}/api/economy/fuel/buy`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { units: 1 },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.fuelPrice).toBe(8);
+    expect(body.cost).toBe(8);
+    expect(body.success).toBe(true);
   });
 
-  test('should display fuel price on Traders screen', async ({ page }) => {
-    await mainGame.waitForMainMenu();
-    await mainGame.goToTraders();
-    await page.waitForTimeout(1000);
-    
-    const terminalText = await mainGame.getTerminalText();
-    expect(terminalText).toMatch(/Fuel Price:|fuel.*cr/i);
+  test('buy 10 more units: cost=80', async ({ request }) => {
+    const res = await request.post(`${API}/api/economy/fuel/buy`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { units: 10 },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.cost).toBe(80); // 10 * 8 = 80
   });
 
-  test('should accept cargo contract via API', async () => {
-    const result = await api.acceptCargo();
-    
-    if (result.success) {
-      expect(result.contract).toBeDefined();
-      expect(result.contract.pods).toBeGreaterThan(0);
-      expect(result.contract.destination).toBeDefined();
-      expect(result.contract.payment).toBeGreaterThan(0);
-    }
+  test('sell 10 units at system 1: proceeds=40 (50% of 8 = 4 cr/unit)', async ({ request }) => {
+    const res = await request.post(`${API}/api/economy/fuel/sell`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { units: 10 },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.proceeds).toBe(40); // 10 * 8 * 0.5 = 40
+    expect(body.success).toBe(true);
   });
 
-  test('should display cargo information on Traders screen', async ({ page }) => {
-    await mainGame.waitForMainMenu();
-    await mainGame.goToTraders();
-    await page.waitForTimeout(1000);
-    
-    const terminalText = await mainGame.getTerminalText();
-    
-    // Should show cargo types or contract info
-    expect(terminalText).toMatch(/Cargo|cargo|pods|pods/i);
+  test('buying more fuel than credits allows returns 400 with credits error', async ({ request }) => {
+    // After: bought 11 units (88 cr), sold 10 (+40 cr), net: 1000-88+40=952 credits
+    // Buying 200 units = 1600 > 952: should fail
+    const res = await request.post(`${API}/api/economy/fuel/buy`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { units: 200 },
+    });
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/credit/i);
   });
 
-  test('should show cargo type descriptions', async ({ page }) => {
-    await mainGame.waitForMainMenu();
-    await mainGame.goToTraders();
-    await page.waitForTimeout(1000);
-    
-    const terminalText = await mainGame.getTerminalText();
-    
-    // Should list some cargo types
-    const cargoTypes = [
-      'Titanium', 'Herbals', 'Dilithium', 
-      'Liquor', 'Gems', 'RDNA', 'Ore'
-    ];
-    
-    const hasCargoType = cargoTypes.some(type => 
-      terminalText.includes(type)
-    );
-    expect(hasCargoType).toBeTruthy();
+  test('selling more fuel than in tank returns 400 with fuel error', async ({ request }) => {
+    // After above: tank has 1 unit (bought 11, sold 10)
+    const res = await request.post(`${API}/api/economy/fuel/sell`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { units: 50 },
+    });
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/fuel/i);
+  });
+});
+
+test.describe('Economy - Cargo', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    token = await getAuthToken(request);
+    await ensureCharacter(request, token);
   });
 
-  test('should display credits correctly', async ({ page }) => {
-    await mainGame.waitForMainMenu();
-    
-    const terminalText = await mainGame.getTerminalText();
-    
-    // Credits should be displayed as number
-    expect(terminalText).toMatch(/Credits:.*\d+/i);
+  test('accept cargo with 0 pods returns 400', async ({ request }) => {
+    const res = await request.post(`${API}/api/economy/cargo/accept`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    // New ship has 0 cargo pods
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBeTruthy();
   });
 
-  test('should show ship cargo capacity', async ({ page }) => {
-    await mainGame.waitForMainMenu();
-    await mainGame.goToTraders();
-    await page.waitForTimeout(1000);
-    
-    const terminalText = await mainGame.getTerminalText();
-    expect(terminalText).toMatch(/Cargo Pods:|pods|capacity/i);
+  test('deliver cargo with no cargo loaded returns 400', async ({ request }) => {
+    const res = await request.post(`${API}/api/economy/cargo/deliver`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBeTruthy();
+  });
+
+  test('buy fuel without token returns 401', async ({ request }) => {
+    const res = await request.post(`${API}/api/economy/fuel/buy`, {
+      data: { units: 1 },
+    });
+    expect(res.status()).toBe(401);
+  });
+
+  test('sell fuel without token returns 401', async ({ request }) => {
+    const res = await request.post(`${API}/api/economy/fuel/sell`, {
+      data: { units: 1 },
+    });
+    expect(res.status()).toBe(401);
   });
 });

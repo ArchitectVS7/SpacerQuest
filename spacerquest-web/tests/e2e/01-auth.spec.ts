@@ -1,69 +1,94 @@
 /**
- * SpacerQuest v4.0 - Authentication E2E Tests
+ * SpacerQuest v4.0 - Authentication E2E Tests (strict)
  */
 
 import { test, expect } from '@playwright/test';
-import { LoginPage } from './pages/LoginPage';
+
+const API = 'http://localhost:3000';
+
+function extractToken(location: string): string {
+  const url = new URL(location, API);
+  const token = url.searchParams.get('token');
+  if (!token) throw new Error('No token in redirect URL');
+  return token;
+}
 
 test.describe('Authentication', () => {
-  let loginPage: LoginPage;
-
-  test.beforeEach(async ({ page }) => {
-    loginPage = new LoginPage(page);
+  test('GET /health returns 200 with status ok and version 4.0.0', async ({ request }) => {
+    const res = await request.get(`${API}/health`);
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('ok');
+    expect(body.version).toBe('4.0.0');
   });
 
-  test('should display login page on first visit', async ({ page }) => {
-    await loginPage.goto();
-    
-    // Check for login page elements
-    await expect(loginPage.welcomeText).toBeVisible();
-    await expect(loginPage.devLoginButton).toBeVisible();
+  test('GET /auth/dev-login returns 302 with token in Location', async ({ request }) => {
+    const res = await request.get(`${API}/auth/dev-login`, { maxRedirects: 0 });
+    expect(res.status()).toBe(302);
+    const location = res.headers()['location'];
+    expect(location).toBeTruthy();
+    expect(location).toContain('token=');
   });
 
-  test('should complete dev login flow', async ({ page }) => {
-    await loginPage.devLogin();
-    
-    // Should redirect with token
-    await expect(page).toHaveURL(/.*token=.+/);
-    
-    // Should either show character creation or main menu
-    const hasCharacterCreation = page.locator('text=CREATE NEW SPACER, text=Character Creation');
-    const hasMainMenu = page.locator('text=MAIN MENU, text=SPACERQUEST');
-    
-    await expect(
-      hasCharacterCreation.or(hasMainMenu)
-    ).toBeVisible({ timeout: 10000 });
-  });
-
-  test('should handle OAuth callback with token', async ({ page }) => {
-    // Simulate OAuth redirect
-    await page.goto('/?token=test-token-123');
-    
-    // Should process the token (may show loading or redirect)
-    await page.waitForTimeout(2000);
-    
-    // Should either be on main menu or character creation
-    const url = page.url();
-    expect(url).toMatch(/\/(\?token=.+)?/);
-  });
-
-  test('should persist session across page reload', async ({ page, context }) => {
-    // Login
-    await loginPage.devLogin();
-    await page.waitForTimeout(2000);
-    
-    // Get token from URL or localStorage
-    const url = new URL(page.url());
-    const token = url.searchParams.get('token');
-    
-    if (token) {
-      // Reload page
-      await page.reload();
-      
-      // Should still be logged in (token in localStorage or URL)
-      await page.waitForTimeout(2000);
-      const currentUrl = page.url();
-      expect(currentUrl).not.toContain('login');
+  test('token from dev-login is a 3-segment JWT', async ({ request }) => {
+    const res = await request.get(`${API}/auth/dev-login`, { maxRedirects: 0 });
+    const token = extractToken(res.headers()['location']);
+    // JWT format: header.payload.signature
+    const parts = token.split('.');
+    expect(parts.length).toBe(3);
+    for (const part of parts) {
+      expect(part.length).toBeGreaterThan(0);
     }
+  });
+
+  test('GET /auth/status with valid token returns 200 with hasCharacter boolean', async ({ request }) => {
+    const loginRes = await request.get(`${API}/auth/dev-login`, { maxRedirects: 0 });
+    const token = extractToken(loginRes.headers()['location']);
+
+    const res = await request.get(`${API}/auth/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(typeof body.hasCharacter).toBe('boolean');
+  });
+
+  test('GET /auth/status without token returns 401', async ({ request }) => {
+    const res = await request.get(`${API}/auth/status`);
+    expect(res.status()).toBe(401);
+  });
+
+  test('GET /auth/sessions without token returns 401', async ({ request }) => {
+    const res = await request.get(`${API}/auth/sessions`);
+    expect(res.status()).toBe(401);
+  });
+
+  test('GET /auth/sessions with valid token returns 200 with sessions array', async ({ request }) => {
+    const loginRes = await request.get(`${API}/auth/dev-login`, { maxRedirects: 0 });
+    const token = extractToken(loginRes.headers()['location']);
+
+    const res = await request.get(`${API}/auth/sessions`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.sessions)).toBe(true);
+  });
+
+  test('POST /auth/logout with valid token returns 200 success', async ({ request }) => {
+    const loginRes = await request.get(`${API}/auth/dev-login`, { maxRedirects: 0 });
+    const token = extractToken(loginRes.headers()['location']);
+
+    const res = await request.post(`${API}/auth/logout`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  test('POST /auth/logout without token returns 401', async ({ request }) => {
+    const res = await request.post(`${API}/auth/logout`);
+    expect(res.status()).toBe(401);
   });
 });

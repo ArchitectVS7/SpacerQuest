@@ -1,141 +1,204 @@
 /**
- * SpacerQuest v4.0 - Ship and Combat E2E Tests
+ * SpacerQuest v4.0 - Ship and Combat E2E Tests (strict)
+ *
+ * PRD values asserted:
+ *   - Ship has exactly 8 components: Hull, Drives, Weapons, Shields,
+ *     Life Support, Navigation, Robotics, Cabin
+ *   - HULL upgrade costs 10,000 cr — new character can't afford it
+ *   - Combat engage returns consistent structure
+ *   - RETREAT action returns retreated + message
+ *   - FIRE action returns CombatRound with playerDamage, enemyDamage
  */
 
 import { test, expect } from '@playwright/test';
-import { LoginPage } from './pages/LoginPage';
-import { MainGamePage } from './pages/MainGamePage';
-import { SpacerQuestAPI } from './api';
+import { API, getAuthToken, ensureCharacter } from './helpers';
 
-test.describe('Ship and Combat', () => {
-  let loginPage: LoginPage;
-  let mainGame: MainGamePage;
-  let api: SpacerQuestAPI;
+const EXPECTED_COMPONENTS = [
+  'Hull', 'Drives', 'Cabin', 'Life Support',
+  'Weapons', 'Navigation', 'Robotics', 'Shields',
+];
 
-  test.beforeEach(async ({ page, request }) => {
-    loginPage = new LoginPage(page);
-    mainGame = new MainGamePage(page);
-    api = new SpacerQuestAPI(request);
-    
-    // Login and get token
-    await loginPage.devLogin();
-    await page.waitForTimeout(3000);
-    
-    // Extract token for API calls
-    const url = new URL(page.url());
-    const token = url.searchParams.get('token');
-    if (token) {
-      api.setToken(token);
-    }
-    
-    // Setup character if needed
-    const isOnCharacterCreation = await page.locator('text=CREATE NEW SPACER').isVisible().catch(() => false);
-    if (isOnCharacterCreation) {
-      const timestamp = Date.now();
-      await api.createCharacter(`TestShip${timestamp}`, `Ship${timestamp}`);
-      await page.reload();
-      await page.waitForTimeout(2000);
-    }
-    
-    await mainGame.waitForTerminal();
+test.describe('Ship Status', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    token = await getAuthToken(request);
+    await ensureCharacter(request, token);
   });
 
-  test('should display ship status via API', async () => {
-    const shipStatus = await api.getShipStatus();
-    
-    expect(shipStatus).toBeDefined();
-    expect(shipStatus.shipName).toBeDefined();
-    expect(shipStatus.components).toBeDefined();
-    expect(Array.isArray(shipStatus.components)).toBeTruthy();
+  test('GET /api/ship/status returns 200 with shipName, components, fuel, specialEquipment', async ({ request }) => {
+    const res = await request.get(`${API}/api/ship/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(typeof body.shipName).toBe('string');
+    expect(Array.isArray(body.components)).toBe(true);
+    expect(typeof body.fuel).toBe('number');
+    expect(Array.isArray(body.specialEquipment)).toBe(true);
   });
 
-  test('should show component status on Shipyard screen', async ({ page }) => {
-    await mainGame.waitForMainMenu();
-    await mainGame.goToShipyard();
-    await page.waitForTimeout(1000);
-    
-    const terminalText = await mainGame.getTerminalText();
-    
-    // Should show component names
-    const components = [
-      'Hull', 'Drives', 'Cabin', 'Life Support',
-      'Weapons', 'Navigation', 'Robotics', 'Shields'
-    ];
-    
-    const hasComponent = components.some(comp => 
-      terminalText.includes(comp)
-    );
-    expect(hasComponent).toBeTruthy();
+  test('ship has exactly 8 components', async ({ request }) => {
+    const res = await request.get(`${API}/api/ship/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json();
+    expect(body.components.length).toBe(8);
   });
 
-  test('should display component strength and condition', async ({ page }) => {
-    await mainGame.waitForMainMenu();
-    await mainGame.goToShipyard();
-    await page.waitForTimeout(1000);
-    
-    const terminalText = await mainGame.getTerminalText();
-    
-    // Should show STR and COND headers or values
-    expect(terminalText).toMatch(/STR|Strength|COND|Condition/i);
-  });
-
-  test('should show upgrade options on Shipyard screen', async ({ page }) => {
-    await mainGame.waitForMainMenu();
-    await mainGame.goToShipyard();
-    await page.waitForTimeout(1000);
-    
-    const terminalText = await mainGame.getTerminalText();
-    expect(terminalText).toMatch(/Upgrade|upgrade|\[U\]/i);
-  });
-
-  test('should show repair options on Shipyard screen', async ({ page }) => {
-    await mainGame.waitForMainMenu();
-    await mainGame.goToShipyard();
-    await page.waitForTimeout(1000);
-    
-    const terminalText = await mainGame.getTerminalText();
-    expect(terminalText).toMatch(/Repair|repair|\[R\]/i);
-  });
-
-  test('should display ship fuel level', async () => {
-    const shipStatus = await api.getShipStatus();
-    
-    expect(shipStatus.fuel).toBeDefined();
-    expect(typeof shipStatus.fuel).toBe('number');
-  });
-
-  test('should display special equipment if owned', async () => {
-    const shipStatus = await api.getShipStatus();
-    
-    if (shipStatus.specialEquipment && shipStatus.specialEquipment.length > 0) {
-      expect(Array.isArray(shipStatus.specialEquipment)).toBeTruthy();
+  test('each component has name, strength (number), condition (0-9)', async ({ request }) => {
+    const res = await request.get(`${API}/api/ship/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json();
+    for (const comp of body.components) {
+      expect(typeof comp.name).toBe('string');
+      expect(comp.name.length).toBeGreaterThan(0);
+      expect(typeof comp.strength).toBe('number');
+      expect(comp.strength).toBeGreaterThanOrEqual(0);
+      expect(typeof comp.condition).toBe('number');
+      expect(comp.condition).toBeGreaterThanOrEqual(0);
+      expect(comp.condition).toBeLessThanOrEqual(9);
     }
   });
 
-  test('should handle combat engage via API', async ({ request }) => {
-    // Test combat engagement endpoint
-    const response = await request.post('http://localhost:3000/api/combat/engage', {
-      headers: api.token ? { 'Authorization': `Bearer ${api.token}` } : {},
+  test('all 8 expected component names are present', async ({ request }) => {
+    const res = await request.get(`${API}/api/ship/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json();
+    const names: string[] = body.components.map((c: any) => c.name);
+    for (const expected of EXPECTED_COMPONENTS) {
+      expect(names).toContain(expected);
+    }
+  });
+
+  test('GET /api/ship/status without token returns 401', async ({ request }) => {
+    const res = await request.get(`${API}/api/ship/status`);
+    expect(res.status()).toBe(401);
+  });
+});
+
+test.describe('Ship Upgrade', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    token = await getAuthToken(request);
+    await ensureCharacter(request, token);
+  });
+
+  test('upgrading HULL (10,000 cr) with 1,000 starting credits returns 400 with error', async ({ request }) => {
+    const res = await request.post(`${API}/api/ship/upgrade`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { component: 'HULL', upgradeType: 'STRENGTH' },
+    });
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBeTruthy();
+  });
+
+  test('upgrading ROBOTICS (4,000 cr) with 1,000 starting credits returns 400 with error', async ({ request }) => {
+    const res = await request.post(`${API}/api/ship/upgrade`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { component: 'ROBOTICS', upgradeType: 'STRENGTH' },
+    });
+    expect(res.status()).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBeTruthy();
+  });
+
+  test('repair endpoint returns 200 or 400 (never 500)', async ({ request }) => {
+    const res = await request.post(`${API}/api/ship/repair`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect([200, 400]).toContain(res.status());
+  });
+});
+
+test.describe('Combat', () => {
+  let token: string;
+
+  test.beforeAll(async ({ request }) => {
+    token = await getAuthToken(request);
+    await ensureCharacter(request, token);
+  });
+
+  test('POST /api/combat/engage returns 200 with encounter boolean', async ({ request }) => {
+    const res = await request.post(`${API}/api/combat/engage`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
       data: { attack: true },
     });
-    
-    const result = await response.json();
-    
-    // Should return encounter result (may or may not encounter enemy)
-    expect(result).toBeDefined();
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(typeof body.encounter).toBe('boolean');
   });
 
-  test('should show battle factor in combat', async ({ request }) => {
-    const response = await request.post('http://localhost:3000/api/combat/engage', {
-      headers: api.token ? { 'Authorization': `Bearer ${api.token}` } : {},
+  test('when encounter=true, enemy and playerBattleFactor are present', async ({ request }) => {
+    // Try a few times to get an encounter (30% base chance)
+    for (let i = 0; i < 5; i++) {
+      const res = await request.post(`${API}/api/combat/engage`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        data: { attack: true },
+      });
+      expect(res.status()).toBe(200);
+      const body = await res.json();
+      if (body.encounter) {
+        expect(typeof body.playerBattleFactor).toBe('number');
+        expect(body.playerBattleFactor).toBeGreaterThanOrEqual(0);
+        expect(body.enemy).toBeDefined();
+        expect(typeof body.enemy.type).toBe('string');
+        expect(typeof body.enemy.battleFactor).toBe('number');
+        break;
+      }
+    }
+  });
+
+  test('combat action FIRE returns combat round with playerDamage and enemyDamage', async ({ request }) => {
+    const res = await request.post(`${API}/api/combat/action`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { action: 'FIRE', round: 1 },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(typeof body.playerDamage).toBe('number');
+    expect(typeof body.enemyDamage).toBe('number');
+    expect(typeof body.battleAdvantage).toBe('string');
+    expect(Array.isArray(body.combatLog)).toBe(true);
+  });
+
+  test('combat action RETREAT returns retreated boolean and message string', async ({ request }) => {
+    const res = await request.post(`${API}/api/combat/action`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      data: { action: 'RETREAT' },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(typeof body.retreated).toBe('boolean');
+    expect(typeof body.message).toBe('string');
+  });
+
+  test('combat engage without token returns 401', async ({ request }) => {
+    const res = await request.post(`${API}/api/combat/engage`, {
       data: { attack: true },
     });
-    
-    const result = await response.json();
-    
-    if (result.encounter) {
-      expect(result.playerBattleFactor).toBeDefined();
-      expect(result.enemy).toBeDefined();
-    }
+    expect(res.status()).toBe(401);
   });
 });
