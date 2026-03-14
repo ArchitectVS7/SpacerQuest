@@ -7,7 +7,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
 import { useGameStore } from '../store/gameStore';
 import { wsClient } from '../sockets/wsClient';
 import '../styles/terminal.css';

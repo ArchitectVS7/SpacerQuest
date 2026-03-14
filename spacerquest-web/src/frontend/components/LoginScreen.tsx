@@ -2,7 +2,7 @@
  * SpacerQuest v4.0 - Login Screen Component
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { wsClient } from '../sockets/wsClient';
 
@@ -64,12 +64,12 @@ export function LoginScreen() {
   };
 
   // Auto-handle OAuth callback
-  useState(() => {
+  useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('token')) {
       handleLogin();
     }
-  });
+  }, []);
 
   return (
     <div className="min-h-screen bg-black text-green-500 flex items-center justify-center p-4">

@@ -1,6 +1,7 @@
 /**
  * SpacerQuest v4.0 - Terminal Styles
  */
+@import "xterm/css/xterm.css";
 
 .terminal-container {
   width: 100%;
