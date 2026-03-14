@@ -55,18 +55,19 @@ Spacers from across the galaxy share stories here.
       case 'M':
         return { output: '\x1b[2J\x1b[H', nextScreen: 'main-menu' };
       
-      case 'G':
+      case 'G': {
         // Get latest gossip from game logs
         const logs = await prisma.gameLog.findMany({
           where: { type: { in: ['BATTLE', 'PROMOTION', 'ALLIANCE'] } },
           orderBy: { createdAt: 'desc' },
           take: 5,
         });
-        
+
         const gossip = logs.map(log => `  • ${log.message}`).join('\n');
-        return { 
-          output: `\r\n\x1b[33mLatest Gossip:\x1b[0m\r\n${gossip || '  Nothing new...'}\r\n> ` 
+        return {
+          output: `\r\n\x1b[33mLatest Gossip:\x1b[0m\r\n${gossip || '  Nothing new...'}\r\n> `
         };
+      }
       
       case 'W':
         return { 

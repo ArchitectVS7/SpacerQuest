@@ -48,7 +48,7 @@ const log = {
 // HEALTH CHECK SERVER
 // ============================================================================
 
-let healthStatus = {
+const healthStatus = {
   status: 'starting',
   uptime: process.uptime(),
   lastDailyTick: null as Date | null,

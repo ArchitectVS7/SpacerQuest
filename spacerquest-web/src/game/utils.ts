@@ -12,6 +12,7 @@ import {
   NAME_MIN_LENGTH,
   NAME_MAX_LENGTH,
   RESERVED_PREFIXES,
+  RESERVED_SUFFIXES,
 } from './constants.js';
 
 // ============================================================================
@@ -170,7 +171,13 @@ export function validateName(name: string): { valid: boolean; error?: string } {
       return { valid: false, error: `Name cannot start with '${prefix}'` };
     }
   }
-  
+
+  for (const suffix of RESERVED_SUFFIXES) {
+    if (upperName.endsWith(suffix)) {
+      return { valid: false, error: `Name cannot end with '${suffix}'` };
+    }
+  }
+
   return { valid: true };
 }
 

@@ -87,12 +87,12 @@ Market rates fluctuate based on supply/demand.
           output: '\r\n\x1b[33mUse /api/economy/fuel/sell endpoint\x1b[0m\r\n> ' 
         };
       
-      case 'C':
+      case 'C': {
         // Check current cargo contract
         const character = await prisma.character.findUnique({
           where: { id: characterId },
         });
-        
+
         if (character && character.cargoPods > 0 && character.cargoType !== 0) {
           const cargoDesc = getCargoDescription(character.cargoType);
           return {
@@ -102,6 +102,7 @@ Market rates fluctuate based on supply/demand.
         return {
           output: '\r\n\x1b[33mNo active cargo contract\x1b[0m\r\n> '
         };
+      }
       
       default:
         return { 

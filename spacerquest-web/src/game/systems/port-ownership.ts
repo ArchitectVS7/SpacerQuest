@@ -11,7 +11,7 @@ export async function buyPort(characterId: string, systemId: number) {
   const character = await prisma.character.findUnique({ where: { id: characterId } });
   if (!character) return { success: false, error: 'Character not found' };
 
-  let port = await prisma.allianceSystem.findUnique({ where: { systemId } });
+  const port = await prisma.allianceSystem.findUnique({ where: { systemId } });
   if (port && port.ownerCharacterId) {
     return { success: false, error: 'Port is already owned' };
   }
