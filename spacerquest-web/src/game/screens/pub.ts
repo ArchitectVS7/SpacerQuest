@@ -70,13 +70,26 @@ Spacers from across the galaxy share stories here.
       }
       
       case 'W':
-        return { 
-          output: '\r\n\x1b[33mWheel of Fortune - Use API endpoint /api/economy/gamble/wheel\x1b[0m\r\n> ' 
+        return {
+          output: `\r\n\x1b[33;1m=== ASTRAL DIGITAL WHEEL OF FORTUNE ===\x1b[0m\r\n` +
+            `\r\nPick a number (1-20), choose 3-7 rolls, bet up to 1000 cr.\r\n` +
+            `Fewer rolls = higher odds!\r\n` +
+            `  3 rolls: 5:1 odds\r\n` +
+            `  4 rolls: 4:1 odds\r\n` +
+            `  5 rolls: 3:1 odds\r\n` +
+            `  7 rolls: 1:1 odds\r\n` +
+            `\r\nUse: POST /api/economy/gamble/wheel { betNumber, betAmount, rolls }\r\n> `,
+          nextScreen: 'pub-wheel',
         };
-      
+
       case 'D':
-        return { 
-          output: '\r\n\x1b[33mDare Game - High stakes! Use API endpoint\x1b[0m\r\n> ' 
+        return {
+          output: `\r\n\x1b[33;1m=== SPACER'S DARE ===\x1b[0m\r\n` +
+            `\r\nRoll dice vs the computer! Doubles = bust.\r\n` +
+            `Choose 3-10 rounds and 1-3x multiplier.\r\n` +
+            `Minimum 750 cr to play.\r\n` +
+            `\r\nUse: POST /api/economy/gamble/dare { rounds, multiplier }\r\n> `,
+          nextScreen: 'pub-dare',
         };
       
       case 'B': {

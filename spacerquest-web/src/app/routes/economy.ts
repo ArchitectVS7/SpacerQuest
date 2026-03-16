@@ -244,6 +244,91 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Wheel of Fortune
+  fastify.post('/api/economy/gamble/wheel', {
+    preValidation: [async (request, reply) => {
+      try { await request.jwtVerify(); }
+      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
+    }],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const { betNumber, betAmount, rolls } = request.body as { betNumber: number; betAmount: number; rolls: number };
+
+    const character = await prisma.character.findFirst({ where: { userId } });
+    if (!character) return reply.status(404).send({ error: 'Character not found' });
+
+    const { playWheelOfFortune } = await import('../../game/systems/gambling.js');
+    const result = playWheelOfFortune({
+      betNumber,
+      betAmount,
+      rolls,
+      creditsHigh: character.creditsHigh,
+      creditsLow: character.creditsLow,
+    });
+
+    if (!result.success) return reply.status(400).send({ error: result.error });
+
+    // Update credits
+    const { addCredits, subtractCredits } = await import('../../game/utils.js');
+    let high = character.creditsHigh;
+    let low = character.creditsLow;
+
+    if (result.won) {
+      ({ high, low } = addCredits(high, low, result.payout!));
+    } else {
+      ({ high, low } = subtractCredits(high, low, result.cost!));
+    }
+
+    await prisma.character.update({
+      where: { id: character.id },
+      data: { creditsHigh: high, creditsLow: low },
+    });
+
+    return result;
+  });
+
+  // Spacer's Dare
+  fastify.post('/api/economy/gamble/dare', {
+    preValidation: [async (request, reply) => {
+      try { await request.jwtVerify(); }
+      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
+    }],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const { rounds, multiplier } = request.body as { rounds: number; multiplier: number };
+
+    const character = await prisma.character.findFirst({ where: { userId } });
+    if (!character) return reply.status(404).send({ error: 'Character not found' });
+
+    const { playSpacersDare } = await import('../../game/systems/gambling.js');
+    const result = playSpacersDare({
+      rounds,
+      multiplier,
+      creditsHigh: character.creditsHigh,
+      creditsLow: character.creditsLow,
+    });
+
+    if (!result.success) return reply.status(400).send({ error: result.error });
+
+    // Update credits
+    const { addCredits, subtractCredits } = await import('../../game/utils.js');
+    let high = character.creditsHigh;
+    let low = character.creditsLow;
+
+    if (result.netCredits! > 0) {
+      ({ high, low } = addCredits(high, low, result.netCredits!));
+    } else if (result.netCredits! < 0) {
+      ({ high, low } = subtractCredits(high, low, Math.abs(result.netCredits!)));
+    }
+
+    await prisma.character.update({
+      where: { id: character.id },
+      data: { creditsHigh: high, creditsLow: low },
+    });
+
+    return result;
+  });
+
   // Alliance Withdraw
   fastify.post('/api/economy/alliance/withdraw', {
     preValidation: [async (request, reply) => {
