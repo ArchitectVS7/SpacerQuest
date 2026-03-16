@@ -1,15 +1,4 @@
- ___________________________________
-|                                   |
-|      S P A C E R  Q U E S T       |
-|      ----------------------       |
-|                                   |
-| Version 3.4 - Written by Firefox  |
-|                                   |
-|    for  The Den of The Firefox    |
-|             05/25/91              | |
-|___________________________________|
-
- ____________________________________________
+____________________________________________
 |                                            |
 |                                            |
 |         |                 S                |
@@ -26,5 +15,7 @@
 |   /____[|]____\                            |
 |        ]^[         The Den of The Firefox  |
 |                                            |
+| Version 3.4 - Written by Firefox 05/25/91  |
 | Modified by Computist BBS (Dave Goforth)   |
+| Version 4.0 - Converted by VS7 and Claude  |
 |____________________________________________|
