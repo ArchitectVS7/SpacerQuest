@@ -5,14 +5,12 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../db/prisma.js';
 import { NEMESIS_REQUIREMENT_WINS } from '../../game/constants.js';
+import { requireAuth } from '../middleware/auth.js';
 
 export async function registerMissionsRoutes(fastify: FastifyInstance) {
   // Accept Nemesis Mission
   fastify.post('/api/missions/nemesis', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
 
@@ -46,8 +44,8 @@ export async function registerMissionsRoutes(fastify: FastifyInstance) {
       where: { id: character.id },
       data: {
         cargoManifest: 'Nemesis Orders - Coordinates: 00,00,00',
-        destination: 28, // Nemesis system ID
-        missionType: 3, // Assigned Nemesis mission type
+        destination: 28,
+        missionType: 3,
       },
     });
 
@@ -65,10 +63,7 @@ export async function registerMissionsRoutes(fastify: FastifyInstance) {
 
   // Accept Maligna Mission
   fastify.post('/api/missions/maligna', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
 
@@ -93,8 +88,8 @@ export async function registerMissionsRoutes(fastify: FastifyInstance) {
       where: { id: character.id },
       data: {
         cargoManifest: 'MALIGNA MISSION - Coordinates: 13,33,99',
-        destination: 27, // Maligna system ID
-        missionType: 4, // Assigned Maligna mission type
+        destination: 27,
+        missionType: 4,
       },
     });
 

@@ -8,15 +8,12 @@
  * - Generate daily news
  */
 
-import { PrismaClient, Rank } from '@prisma/client';
+import { Rank } from '@prisma/client';
 import { addCredits, isDayDifferent, getDateString } from '../game/utils.js';
 import {
-  DAILY_TRIP_LIMIT,
   PORT_EVICTION_DAYS,
-  RANK_HONORARIA,
 } from '../game/constants.js';
-
-const prisma = new PrismaClient();
+import { prisma } from '../db/prisma.js';
 
 export interface DailyTickResult {
   date: string;

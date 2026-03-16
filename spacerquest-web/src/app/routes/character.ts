@@ -3,35 +3,33 @@
  */
 
 import { FastifyInstance } from 'fastify';
-
 import { prisma } from '../../db/prisma.js';
+import { requireAuth } from '../middleware/auth.js';
+import { shipNameBody, allianceBody } from '../schemas.js';
 
 export async function registerCharacterRoutes(fastify: FastifyInstance) {
   // Get character status
   fastify.get('/api/character', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    
+
     const character = await prisma.character.findFirst({
       where: { userId },
-      include: { 
+      include: {
         ship: true,
         user: true,
       },
     });
-    
+
     if (!character) {
       return reply.status(404).send({ error: 'Character not found' });
     }
-    
+
     // Calculate daily trips remaining
     const { canTravel } = await import('../../game/systems/travel.js');
     const tripStatus = canTravel(character.tripCount, character.lastTripDate);
-    
+
     return {
       character: {
         id: character.id,
@@ -82,54 +80,56 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
       dailyTripsRemaining: tripStatus.remainingTrips,
     };
   });
-  
+
   // Rename ship
   fastify.put('/api/character/ship-name', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const { shipName } = request.body as { shipName: string };
-    
+    const body = shipNameBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+    const { shipName } = body.data;
+
     const { validateName } = await import('../../game/utils.js');
     const validation = validateName(shipName);
-    
+
     if (!validation.valid) {
       return reply.status(400).send({ error: validation.error });
     }
-    
+
     const character = await prisma.character.findFirst({ where: { userId } });
-    
+
     if (!character) {
       return reply.status(404).send({ error: 'Character not found' });
     }
-    
+
     await prisma.character.update({
       where: { id: character.id },
       data: { shipName },
     });
-    
+
     return { success: true, shipName };
   });
-  
+
   // Join/leave alliance
   fastify.put('/api/character/alliance', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const { alliance } = request.body as { alliance: string };
-    
+    const body = allianceBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+    const { alliance } = body.data;
+
     const character = await prisma.character.findFirst({ where: { userId } });
-    
+
     if (!character) {
       return reply.status(404).send({ error: 'Character not found' });
     }
-    
+
     // Map alliance string to enum
     const allianceMap: Record<string, any> = {
       'NONE': 'NONE',
@@ -138,23 +138,23 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
       '&': 'WARLORD_CONFED',
       '^': 'REBEL_ALLIANCE',
     };
-    
+
     const allianceEnum = allianceMap[alliance] || 'NONE';
-    
+
     // Update character alliance symbol
     await prisma.character.update({
       where: { id: character.id },
       data: { allianceSymbol: allianceEnum },
     });
-    
+
     // Create or update alliance membership
     if (allianceEnum !== 'NONE') {
       await prisma.allianceMembership.upsert({
         where: { characterId: character.id },
-        update: { alliance: allianceEnum },
+        update: { alliance: allianceEnum as any },
         create: {
           characterId: character.id,
-          alliance: allianceEnum,
+          alliance: allianceEnum as any,
         },
       });
     } else {
@@ -162,7 +162,7 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
         where: { characterId: character.id },
       });
     }
-    
+
     return { success: true, alliance };
   });
 }

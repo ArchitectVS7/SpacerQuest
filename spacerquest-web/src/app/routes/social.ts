@@ -4,10 +4,12 @@
 
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../db/prisma.js';
+import { requireAuth } from '../middleware/auth.js';
+import { rescueBody, duelChallengeBody } from '../schemas.js';
 
 export async function registerSocialRoutes(fastify: FastifyInstance) {
   // Get spacer directory
-  fastify.get('/api/social/directory', async (request, reply) => {
+  fastify.get('/api/social/directory', async (_request, _reply) => {
     const spacers = await prisma.character.findMany({
       select: {
         spacerId: true,
@@ -34,13 +36,13 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
   });
 
   // Get Top Gun rankings - Full category list from original
-  fastify.get('/api/social/topgun', async (request, reply) => {
+  fastify.get('/api/social/topgun', async (_request, _reply) => {
     const topgunSystem = await import('../../game/systems/topgun.js');
     return topgunSystem.getTopGunRankings();
   });
 
   // Get high score leaderboard
-  fastify.get('/api/social/leaderboard', async (request, reply) => {
+  fastify.get('/api/social/leaderboard', async (_request, _reply) => {
     const scores = await prisma.character.findMany({
       select: {
         name: true,
@@ -63,10 +65,7 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
   // Get battle log
   fastify.get('/api/social/battles', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
 
@@ -87,11 +86,8 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
   // List lost ships for rescue service
   fastify.get('/api/social/lost-ships', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
-  }, async (request, reply) => {
+    preValidation: [requireAuth],
+  }, async (_request, _reply) => {
     const lostShips = await prisma.character.findMany({
       where: { isLost: true },
       select: {
@@ -116,13 +112,15 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
   // Perform rescue
   fastify.post('/api/economy/rescue', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const { targetId } = request.body as { targetId: string };
+    const body = rescueBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+    const { targetId } = body.data;
 
     const rescuer = await prisma.character.findFirst({
       where: { userId },
@@ -201,18 +199,15 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
   // Challenge to duel
   fastify.post('/api/duel/challenge', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const { targetId, stakesType, stakesAmount, arenaType } = request.body as {
-      targetId?: number;
-      stakesType: string;
-      stakesAmount: number;
-      arenaType: number;
-    };
+    const body = duelChallengeBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+    const { targetId, stakesType, stakesAmount, arenaType } = body.data;
 
     const character = await prisma.character.findFirst({
       where: { userId },
@@ -225,7 +220,7 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
     // Enforce arena requirements
     const { ARENA_REQUIREMENTS } = await import('../../game/constants.js');
-    
+
     if (arenaType === 1 && character.tripsCompleted < ARENA_REQUIREMENTS.ION_CLOUD.trips) {
       return reply.status(400).send({ error: `Ion Cloud arena requires ${ARENA_REQUIREMENTS.ION_CLOUD.trips} trips completed` });
     }
@@ -278,10 +273,7 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
   // Accept duel challenge
   fastify.post('/api/duel/accept/:duelId', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
     const { duelId } = request.params as { duelId: string };
@@ -339,10 +331,7 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
   // Resolve duel (simulate combat)
   fastify.post('/api/duel/resolve/:duelId', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
   }, async (request, reply) => {
     const { duelId } = request.params as { duelId: string };
 
@@ -436,11 +425,11 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
     // Handle stakes transfer
     if (duel.stakesType === 'credits') {
       const { subtractCredits, addCredits } = await import('../../game/utils.js');
-      
+
       const loserCredits = subtractCredits(loser.creditsHigh, loser.creditsLow, duel.stakesAmount);
       if (loserCredits.success) {
         const winnerCredits = addCredits(winner.creditsHigh, winner.creditsLow, duel.stakesAmount);
-        
+
         await prisma.character.update({
           where: { id: loser.id },
           data: { creditsHigh: loserCredits.high, creditsLow: loserCredits.low },

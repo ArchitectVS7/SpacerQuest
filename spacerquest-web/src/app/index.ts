@@ -7,6 +7,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
@@ -67,6 +68,13 @@ async function registerPlugins() {
     sign: {
       expiresIn: '30d',
     },
+  });
+
+  // Rate limiting
+  await fastify.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+    keyGenerator: (request) => request.ip,
   });
 
   // (WebSocket via Socket.IO is initialized elsewhere)

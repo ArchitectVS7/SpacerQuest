@@ -7,11 +7,10 @@
  * - Update fuel prices based on supply/demand
  */
 
-import { PrismaClient, AllianceType, BattleResult } from '@prisma/client';
+import { AllianceType } from '@prisma/client';
 import { randomInt, checkProbability } from '../game/utils.js';
-import { generateEncounter, calculateBattleFactor, calculateEnemyBattleFactor } from '../game/systems/combat.js';
-
-const prisma = new PrismaClient();
+import { calculateBattleFactor } from '../game/systems/combat.js';
+import { prisma } from '../db/prisma.js';
 
 export interface EncounterJobResult {
   botCombats: number;
