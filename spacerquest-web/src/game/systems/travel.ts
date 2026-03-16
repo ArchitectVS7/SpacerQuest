@@ -256,6 +256,21 @@ export async function validateLaunch(
     }
   }
   
+  // Black hole transit check for Andromeda systems
+  const { isAndromedaSystem, canTransitBlackHole } = await import('./black-hole.js');
+  if (isAndromedaSystem(destinationSystemId)) {
+    const transitCheck = canTransitBlackHole({
+      isAstraxialHull: ship.isAstraxialHull,
+      hullCondition: ship.hullCondition,
+      driveCondition: ship.driveCondition,
+      driveStrength: ship.driveStrength,
+      fuel: ship.fuel,
+    });
+    if (!transitCheck.canTransit) {
+      errors.push(transitCheck.reason!);
+    }
+  }
+
   // Special handling for Endgame destinations
   if (destinationSystemId === 28) {
     if (!character.cargoManifest || !character.cargoManifest.includes('Nemesis')) {

@@ -85,6 +85,120 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
     return { battles };
   });
 
+  // List lost ships for rescue service
+  fastify.get('/api/social/lost-ships', {
+    preValidation: [async (request, reply) => {
+      try { await request.jwtVerify(); }
+      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
+    }],
+  }, async (request, reply) => {
+    const lostShips = await prisma.character.findMany({
+      where: { isLost: true },
+      select: {
+        id: true,
+        name: true,
+        shipName: true,
+        lostLocation: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      lostShips: lostShips.map(s => ({
+        id: s.id,
+        name: s.name,
+        shipName: s.shipName || 'unnamed',
+        lostLocation: s.lostLocation,
+        lostAt: s.updatedAt,
+      })),
+    };
+  });
+
+  // Perform rescue
+  fastify.post('/api/economy/rescue', {
+    preValidation: [async (request, reply) => {
+      try { await request.jwtVerify(); }
+      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
+    }],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const { targetId } = request.body as { targetId: string };
+
+    const rescuer = await prisma.character.findFirst({
+      where: { userId },
+      include: { ship: true },
+    });
+
+    if (!rescuer || !rescuer.ship) {
+      return reply.status(400).send({ error: 'Character or ship not found' });
+    }
+
+    const { validateRescueAttempt, calculateRescueRewards } = await import('../../game/systems/rescue.js');
+    const validation = validateRescueAttempt({
+      fuel: rescuer.ship.fuel,
+      isLost: rescuer.isLost,
+    });
+
+    if (!validation.canRescue) {
+      return reply.status(400).send({ error: validation.reason });
+    }
+
+    const target = await prisma.character.findUnique({ where: { id: targetId } });
+    if (!target || !target.isLost) {
+      return reply.status(400).send({ error: 'Target is not lost in space' });
+    }
+
+    const rewards = calculateRescueRewards();
+
+    const { addCredits } = await import('../../game/utils.js');
+
+    // Update rescuer: +credits, -fuel, +score, +rescue count
+    const { high, low } = addCredits(rescuer.creditsHigh, rescuer.creditsLow, rewards.creditsFee);
+    await prisma.character.update({
+      where: { id: rescuer.id },
+      data: {
+        creditsHigh: high,
+        creditsLow: low,
+        score: { increment: rewards.scoreBonus },
+        rescuesPerformed: { increment: 1 },
+      },
+    });
+
+    await prisma.ship.update({
+      where: { id: rescuer.ship.id },
+      data: { fuel: rescuer.ship.fuel - rewards.fuelCost },
+    });
+
+    // Update rescued character: no longer lost
+    await prisma.character.update({
+      where: { id: targetId },
+      data: {
+        isLost: false,
+        lostLocation: null,
+      },
+    });
+
+    // Log the rescue
+    await prisma.gameLog.create({
+      data: {
+        type: 'RESCUE',
+        characterId: rescuer.id,
+        message: `${rescuer.name} rescued ${target.name} from near system ${target.lostLocation}`,
+        metadata: {
+          rescuerId: rescuer.id,
+          targetId: target.id,
+          location: target.lostLocation,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      message: `Rescued ${target.name}! Salvage fee: ${rewards.creditsFee} cr`,
+      rewards,
+    };
+  });
+
   // Challenge to duel
   fastify.post('/api/duel/challenge', {
     preValidation: [async (request, reply) => {

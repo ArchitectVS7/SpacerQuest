@@ -1,726 +1,420 @@
 # SpacerQuest v4.0 - Implementation Audit Report
 
-**Audit Date:** March 12, 2026  
-**Auditor:** Automated Code Analysis  
-**PRD Version:** v4.0 (Modern Rewrite)  
-**Codebase:** spacerquest-web  
+**Audit Date:** March 16, 2026 (Updated)
+**Previous Audit:** March 12, 2026
+**Auditor:** Manual Code Analysis + Cross-reference with Original Source
+**PRD Version:** v4.0 (Modern Rewrite)
+**Codebase:** spacerquest-web
+**Original Source:** Decompile/Source-Text/SP.*.txt (Apple II ACOS BASIC)
 
 ---
 
 ## Executive Summary
 
-| Category | Status | Completion |
-|----------|--------|------------|
-| **Overall Implementation** | ✅ COMPLETE | 95% |
-| **Core Game Systems** | ✅ COMPLETE | 100% |
-| **API Routes** | ✅ COMPLETE | 100% |
-| **Database Schema** | ✅ COMPLETE | 100% |
-| **Frontend/Terminal** | ✅ COMPLETE | 100% |
-| **Background Jobs** | ✅ COMPLETE | 100% |
-| **WebSocket/Real-time** | ✅ COMPLETE | 95% |
-| **OAuth Integration** | ⚠️ PARTIAL | 70% |
-| **Tests** | ✅ COMPLETE | 100% |
+| Category | Status | Completion | Change |
+|----------|--------|------------|--------|
+| **Database Schema** | ✅ COMPLETE | 100% | — |
+| **Core Game Systems** | ✅ COMPLETE | 95% | — |
+| **API Routes** | ✅ COMPLETE | 95% | ↑ corrected |
+| **Frontend/Terminal** | ✅ COMPLETE | 100% | — |
+| **Background Jobs** | ✅ COMPLETE | 100% | ↑ was incorrectly marked incomplete |
+| **WebSocket/Real-time** | ✅ COMPLETE | 90% | ↑ was 50%, now verified |
+| **Screen System** | ⚠️ PARTIAL | 75% | NEW — screens missing vs original |
+| **Gambling Mini-games** | ❌ NOT IMPLEMENTED | 10% | NEW — constants only, no logic |
+| **Travel Hazards** | ❌ NOT IMPLEMENTED | 0% | NEW — missing from original |
+| **Rescue Service UI** | ⚠️ PARTIAL | 60% | NEW — backend logic exists, no screen |
+| **OAuth Integration** | ⚠️ PARTIAL | 70% | — |
+| **NPC/Scripted Enemies** | ✅ COMPLETE | 100% | — |
+| **Tests** | ✅ COMPLETE | 100% | — |
+| **Overall** | ⚠️ MOSTLY COMPLETE | ~85% | ↓ was overstated at 95% |
+
+**Key finding:** The previous audit overstated completion at 95-100%. Several features from the original Apple II source (SP.BAR.S, SP.WARP.S, SP.ARENA1.S) have constants defined but no functional implementation. The core gameplay loop works, but the game is missing gambling, travel hazards, rescue UI, and some screen modules that existed in the original.
+
+---
+
+## Corrections from Previous Audit (March 12)
+
+The previous audit contained contradictory information. These have been resolved:
+
+| Item | Previous Status | Actual Status |
+|------|----------------|---------------|
+| `worker.ts` | Listed as both ✅ and ❌ | ✅ Fully implemented (scheduler, health checks, graceful shutdown) |
+| `mission-generation.ts` | Listed as both ✅ and ❌ | ✅ Fully implemented (patrol, Nemesis, Maligna, events) |
+| `encounter-generation.ts` | Listed as both ✅ and ❌ | ✅ Fully implemented (bot combats, takeovers, fuel prices) |
+| WebSocket events | Listed as 50% and 95% | ~90% — core events work, some push notifications missing |
+| Docker worker service | Listed as missing | ✅ Exists in docker-compose.yml |
+| Screen system | Listed as 100% | ~75% — missing screens vs original game |
+| Background Jobs section | Contradicted itself | ✅ All 4 job files fully implemented |
+| Test coverage | Listed as both "needs expansion" and "100%" | ✅ 46+ tests, full E2E coverage |
 
 ---
 
 ## 1. Database Schema (✅ 100% Complete)
 
-### Implemented Models
+No changes from previous audit. All 12 models implemented:
+`User`, `Session`, `Character`, `Ship`, `PortOwnership`, `AllianceMembership`, `AllianceSystem`, `StarSystem`, `BattleRecord`, `DuelEntry`, `GameLog`, `TravelState`
 
-| Model | Status | Notes |
-|-------|--------|-------|
-| `User` | ✅ | Full OAuth integration ready |
-| `Session` | ✅ | Token-based with revocation support |
-| `Character` | ✅ | All fields from PRD implemented |
-| `Ship` | ✅ | All 8 components + special equipment |
-| `PortOwnership` | ✅ | Including DEFCON and daily tracking |
-| `AllianceMembership` | ✅ | Investment accounts included |
-| `AllianceSystem` | ✅ | DEFCON levels and takeover tracking |
-| `StarSystem` | ✅ | All 28 systems with coordinates |
-| `BattleRecord` | ✅ | Full combat logging |
-| `DuelEntry` | ✅ | Complete dueling system |
-| `GameLog` | ✅ | All log types supported |
-| `TravelState` | ✅ | Real-time travel tracking |
-
-### Seed Data
-- ✅ All 28 star systems seeded (14 Core, 6 Rim, 6 Andromeda, 2 Special)
-- ✅ Alliance systems initialized
-- ✅ Initial game log created
+All 28 star systems seeded (14 Core, 6 Rim, 6 Andromeda, 2 Special).
 
 ---
 
 ## 2. Core Game Systems (✅ 95% Complete)
 
-### Travel System (`src/game/systems/travel.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Fuel cost calculation | ✅ | Original formula preserved exactly |
-| Travel time calculation | ✅ | distance × 3 chronos |
-| Fuel capacity calculation | ✅ | (condition+1) × strength × 10 |
-| Daily trip limit tracking | ✅ | 3 trips per day limit |
-| Course change mechanics | ✅ | Hull × 5 fuel cost |
-| Launch validation | ✅ | Comprehensive checks |
-| Travel state management | ✅ | Start/complete/progress tracking |
-| Lost in space registration | ✅ | For damaged ships |
+All 11 system files are fully implemented:
 
-### Combat System (`src/game/systems/combat.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Encounter generation | ✅ | Based on system type and mission |
-| Pirate classes (SPX/SPY/SPZ) | ✅ | Power-matched encounters |
-| Battle Factor calculation | ✅ | Exact original formula |
-| Combat round processing | ✅ | Shield and system damage |
-| Retreat mechanics | ✅ | Drive comparison + cloaker |
-| Surrender/tribute system | ✅ | Tribute demands |
-| Loot calculation | ✅ | Based on enemy class |
-| Battle recording | ✅ | Full database logging |
-| Damage application | ✅ | Random component hits |
+| System | File | Status |
+|--------|------|--------|
+| Travel | `systems/travel.ts` (511 lines) | ✅ Fuel cost, travel time, course changes, lost-in-space |
+| Combat | `systems/combat.ts` (579 lines) | ✅ All enemy types, BF calculation, rounds, retreat, loot |
+| Economy | `systems/economy.ts` (498 lines) | ✅ Fuel, cargo, ports, patrol pay, rescue payment |
+| Alliance | `systems/alliance.ts` (200 lines) | ✅ Invest, withdraw, DEFCON, takeover |
+| Upgrades | `systems/upgrades.ts` (81 lines) | ✅ All 8 components + special equipment |
+| Repairs | `systems/repairs.ts` (53 lines) | ✅ Full repair, cost calculation |
+| Registry | `systems/registry.ts` (59 lines) | ✅ Character/ship creation, validation |
+| Top Gun | `systems/topgun.ts` (97 lines) | ✅ All 12 ranking categories |
+| Docking | `systems/docking.ts` (23 lines) | ✅ Port arrival logic |
+| Port Ownership | `systems/port-ownership.ts` (47 lines) | ✅ Purchase, management, fees |
+| Save | `systems/save.ts` (24 lines) | ✅ Session revocation, cleanup |
 
-### Economy System (`src/game/systems/economy.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Fuel pricing | ✅ | System-specific + owner pricing |
-| Fuel buy/sell | ✅ | 50% resale value |
-| Cargo contract generation | ✅ | Based on origin system |
-| Cargo payment calculation | ✅ | Destination bonus/penalty |
-| Port purchase | ✅ | 100,000 cr base price |
-| Port resale | ✅ | 50% resale value |
-| Landing fee calculation | ✅ | Hull-based fees |
-| Patrol pay calculation | ✅ | 500 base + 1000 per battle |
-| Rescue service payment | ✅ | 1000 cr fee |
+### Missing from Original (Not in any system file)
 
-### Upgrades System (`src/game/systems/upgrades.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Component strength upgrades | ✅ | +10 strength per upgrade |
-| Component condition upgrades | ✅ | +1 condition (max 9) |
-| All 8 components supported | ✅ | Hull, Drives, Cabin, Life Support, Weapons, Nav, Robotics, Shields |
-| Credit deduction | ✅ | Proper high/low split handling |
-
-### Repairs System (`src/game/systems/repairs.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Full ship repair | ✅ | All components to condition 9 |
-| Cost calculation | ✅ | damage × strength per component |
-| Credit deduction | ✅ | Proper high/low split |
-
-### Alliance System (`src/game/systems/alliance.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Invest in alliance | ✅ | Credit conversion to investment |
-| Withdraw from alliance | ✅ | Partial withdrawals supported |
-| DEFCON investment | ✅ | 100,000 cr per level |
-| System takeover | ✅ | Weaken enemy DEFCON or conquer |
-| Alliance system creation | ✅ | Automatic on first investment |
-
-### Registry System (`src/game/systems/registry.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Character creation | ✅ | Name validation included |
-| Ship creation | ✅ | All components initialized to 0 |
-| Name validation | ✅ | Length and reserved prefix checks |
-| Starting credits | ✅ | 1,000 cr (g1=0, g2=1000) |
-
-### Top Gun System (`src/game/systems/topgun.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| All 12 categories | ✅ | Drives, Weapons, Shields, Hull, Cabin, Life Support, Nav, Robotics, Cargo, Rescues, Battles, Promotions |
-| Live rankings | ✅ | Database queries |
-
-### Save System (`src/game/systems/save.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Session revocation | ✅ | On logout |
-| Emergency logout | ✅ | Revoke all sessions |
-| Session cleanup | ✅ | Expired sessions removed |
+| Feature | Original Source | Status | Notes |
+|---------|----------------|--------|-------|
+| Gambling logic (Wheel of Fortune) | SP.GAME.S | ❌ | Constants exist, no game logic |
+| Gambling logic (Spacer's Dare) | SP.GAME.S | ❌ | Constants exist, no game logic |
+| Travel hazards (X-Rad, asteroids) | SP.WARP.S | ❌ | No hazard generation during travel |
+| Black hole transit mechanic | SP.WARP.S | ❌ | Astraxial hull defined but no transit logic |
+| Rescue service flow (list lost ships, initiate rescue) | SP.REG.S | ⚠️ | Backend payment logic exists, no screen/UI flow |
+| Smuggling risk/patrol encounters | SP.CARGO.S | ⚠️ | Enemy type exists, trigger logic unclear |
 
 ---
 
-## 3. API Routes (✅ 90% Complete)
+## 3. Screen System (⚠️ 75% Complete)
 
-### Authentication (`src/app/routes/auth.ts`)
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| `GET /auth/callback` | ✅ | OAuth token exchange |
-| `GET /auth/status` | ✅ | Check character existence |
-| `POST /auth/character` | ✅ | Create new character |
-| `POST /auth/logout` | ✅ | Session revocation |
-| `GET /auth/sessions` | ✅ | List active sessions |
-| `DELETE /auth/sessions/:id` | ✅ | Revoke specific session |
-| `POST /auth/logout-all` | ✅ | Emergency logout everywhere |
-| `GET /auth/dev-login` | ✅ | Development login |
+### Implemented Screens (14 files)
 
-### Character (`src/app/routes/character.ts`)
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| `GET /api/character` | ✅ | Full character + ship status |
-| `PUT /api/character/ship-name` | ✅ | Rename ship |
-| `PUT /api/character/alliance` | ✅ | Join/leave alliance |
+| Screen | File | Status | Original |
+|--------|------|--------|----------|
+| Main Menu | `screens/main-menu.ts` | ✅ | SP.MAIN1.S |
+| Bank | `screens/bank.ts` | ✅ | SP.BANK.S |
+| Bank Deposit | `screens/bank-deposit.ts` | ✅ | SP.BANK.S |
+| Bank Withdraw | `screens/bank-withdraw.ts` | ✅ | SP.BANK.S |
+| Bank Transfer | `screens/bank-transfer.ts` | ✅ | SP.BANK.S |
+| Pub | `screens/pub.ts` | ⚠️ | SP.BAR.S (gambling stubs only) |
+| Shipyard | `screens/shipyard.ts` | ✅ | SP.SPEED.S |
+| Shipyard Upgrade | `screens/shipyard-upgrade.ts` | ✅ | SP.SPEED.S |
+| Traders | `screens/traders.ts` | ✅ | SP.CARGO.S |
+| Traders Cargo | `screens/traders-cargo.ts` | ✅ | SP.CARGO.S |
+| Traders Buy Fuel | `screens/traders-buy-fuel.ts` | ✅ | SP.CARGO.S |
+| Traders Sell Fuel | `screens/traders-sell-fuel.ts` | ✅ | SP.CARGO.S |
+| Navigate | `screens/navigate.ts` | ✅ | SP.LIFT.S |
+| Types | `screens/types.ts` | ✅ | — |
 
-### Navigation (`src/app/routes/navigation.ts`)
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| `POST /api/navigation/launch` | ✅ | Launch with validation |
-| `GET /api/navigation/travel-status` | ✅ | Poll travel progress |
-| `POST /api/navigation/course-change` | ✅ | Manual course change |
-| `POST /api/navigation/arrive` | ✅ | Complete travel |
+### Missing Screens (from original game)
 
-### Combat (`src/app/routes/combat.ts`)
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| `POST /api/combat/engage` | ✅ | Start encounter |
-| `POST /api/combat/action` | ✅ | Combat round actions |
-
-### Economy (`src/app/routes/economy.ts`)
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| `POST /api/economy/fuel/buy` | ✅ | Purchase fuel |
-| `POST /api/economy/fuel/sell` | ✅ | Sell fuel |
-| `POST /api/economy/cargo/accept` | ✅ | Accept cargo contract |
-| `POST /api/economy/cargo/deliver` | ✅ | Deliver cargo |
-| `POST /api/economy/alliance/invest` | ✅ | Invest in alliance/DEFCON |
-| `POST /api/economy/alliance/withdraw` | ✅ | Withdraw from alliance |
-
-### Ship (`src/app/routes/ship.ts`)
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| `GET /api/ship/status` | ✅ | Full ship status |
-| `POST /api/ship/upgrade` | ✅ | Upgrade components |
-| `POST /api/ship/repair` | ✅ | Repair all damage |
-
-### Social (`src/app/routes/social.ts`)
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| `GET /api/social/directory` | ✅ | List all spacers |
-| `GET /api/social/topgun` | ✅ | Top Gun rankings |
-| `GET /api/social/leaderboard` | ✅ | High scores |
-| `GET /api/social/battles` | ✅ | Battle history |
-| `POST /api/duel/challenge` | ✅ | Challenge to duel |
-| `POST /api/duel/accept/:id` | ✅ | Accept duel |
-| `POST /api/duel/resolve/:id` | ✅ | Resolve duel combat |
-
-### Missions (`src/app/routes/missions.ts`)
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| `POST /api/missions/nemesis` | ✅ | Accept Nemesis mission |
-| `POST /api/missions/maligna` | ✅ | Accept Maligna mission |
+| Screen | Original Source | Priority | Notes |
+|--------|----------------|----------|-------|
+| Registry/Directory | SP.REG.S | Medium | Ship directory, alliance holdings, port list — data exists via API but no terminal screen |
+| Rescue Service | SP.REG.S | Medium | List lost ships, initiate rescue — backend logic exists |
+| Combat Display | SP.FIGHT1.S | Medium | ANSI combat rounds display — handled via WebSocket events, no dedicated screen |
+| Travel/Bridge | SP.WARP.S | Low | Ship bridge during travel — travel handled via API polling |
+| Dueling Arena | SP.ARENA1.S | Low | Arena challenge/accept UI — API endpoints exist but no terminal screen |
+| Special Equipment Shop | SP.SPEED.S | Low | Cloaker, Auto-Repair, etc. — may be in shipyard but needs verification |
+| Alliance Bulletin Board | SP.BAR.S | Low | Alliance-only messaging — not in PRD requirements |
 
 ---
 
-## 4. Frontend/Terminal Interface (✅ 100% Complete)
+## 4. API Routes (✅ 95% Complete)
 
-### Implemented Components
+All 8 route files implemented with 25+ endpoints. No changes from previous audit except:
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| React Application | ✅ | Full React 18 + TypeScript app |
-| xterm.js Integration | ✅ | Configured for 80x24 terminal with classic green phosphor theme |
-| Screen Components | ✅ | All backend screens integrated with WebSocket rendering |
-| State Management (Zustand) | ✅ | Persistent store with auth, character, and game state |
-| WebSocket Client | ✅ | Socket.io client with event handlers |
-| Tailwind CSS Styling | ✅ | Non-terminal UI styled with Tailwind |
-| Build Configuration (Vite) | ✅ | Vite 5 with React plugin, proxy to backend |
+### Missing Endpoints
 
-### Implemented Files
-
-| File | Status | Notes |
-|------|--------|-------|
-| `src/frontend/main.tsx` | ✅ | React entry point |
-| `src/frontend/App.tsx` | ✅ | Main app with auth routing |
-| `src/frontend/store/gameStore.ts` | ✅ | Zustand store with persistence |
-| `src/frontend/sockets/wsClient.ts` | ✅ | WebSocket client wrapper |
-| `src/frontend/components/Terminal.tsx` | ✅ | xterm.js terminal component |
-| `src/frontend/components/LoginScreen.tsx` | ✅ | OAuth login flow |
-| `src/frontend/components/CharacterCreation.tsx` | ✅ | Character creation form |
-| `src/frontend/styles/global.css` | ✅ | Tailwind + custom styles |
-| `src/frontend/styles/terminal.css` | ✅ | Terminal styling with CRT effects |
-
-### Build Configuration
-
-| File | Status | Notes |
-|------|--------|-------|
-| `vite.config.ts` | ✅ | Vite config with React plugin and API proxy |
-| `tailwind.config.js` | ✅ | Tailwind config with custom colors |
-| `postcss.config.js` | ✅ | PostCSS config for Tailwind |
-| `tsconfig.json` | ✅ | Updated for React JSX and DOM types |
-| `index.html` | ✅ | HTML entry point |
-| `package.json` | ✅ | Updated with frontend dependencies and scripts |
-
-### Screen System Integration
-
-The backend screen system (`src/game/screens/`) is fully integrated with the frontend:
-- `main-menu.ts` - ✅ Full main menu with all commands
-- `bank.ts` - ✅ Banking interface
-- `shipyard.ts` - ✅ Ship upgrades and repairs
-- `pub.ts` - ✅ Gambling and gossip
-- `traders.ts` - ✅ Cargo trading
-
-**Status:** Frontend is now complete and builds successfully. The game is playable through the terminal interface.
+| Endpoint | Priority | Notes |
+|----------|----------|-------|
+| `POST /api/economy/gamble/wheel` | High | Referenced in pub screen but doesn't exist |
+| `POST /api/economy/gamble/dare` | High | Referenced in pub screen but doesn't exist |
+| `GET /api/social/lost-ships` | Medium | List ships needing rescue |
+| `POST /api/economy/rescue` | Medium | Initiate rescue of lost ship |
+| `POST /api/navigation/hazard` | Low | Process travel hazard encounters |
 
 ---
 
 ## 5. Background Jobs (✅ 100% Complete)
 
-### Implemented Jobs
+**All 4 job files are fully implemented and functional.** Previous audit incorrectly listed these as empty/missing.
 
-| Job | Schedule | Status | Notes |
-|-----|----------|--------|-------|
-| Daily Tick | Midnight UTC | ✅ | Trip resets, port income, evictions, promotions |
-| Encounter Generation | Every 5 minutes | ✅ | Bot combats, takeover attempts, fuel prices |
-| Mission Generation | Every 6 hours | ✅ | Patrol missions, Nemesis, Maligna, events |
+| File | Lines | Status | Schedule |
+|------|-------|--------|----------|
+| `worker.ts` | ~150 | ✅ | Scheduler with health checks, graceful shutdown |
+| `daily-tick.ts` | ~200 | ✅ | Midnight UTC — trip resets, port income, evictions, promotions |
+| `encounter-generation.ts` | ~180 | ✅ | Every 5 min — bot combats, takeovers, fuel prices |
+| `mission-generation.ts` | ~160 | ✅ | Every 6 hours — patrol, Nemesis, Maligna, events |
 
-### Worker Features
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Health Check Server | ✅ | Port 3001, /health and /ready endpoints |
-| Graceful Shutdown | ✅ | SIGINT/SIGTERM handling |
-| Structured Logging | ✅ | Timestamped, leveled logging |
-| Error Tracking | ✅ | Errors tracked in health status |
-| Test Mode | ✅ | `--once` flag for testing all jobs |
-
-### Job Files
-
-| File | Status | Notes |
-|------|--------|-------|
-| `src/jobs/worker.ts` | ✅ | Main worker with scheduler |
-| `src/jobs/daily-tick.ts` | ✅ | Complete daily processing |
-| `src/jobs/encounter-generation.ts` | ✅ | Bot combats, takeovers, prices |
-| `src/jobs/mission-generation.ts` | ✅ | Patrol, Nemesis, Maligna missions |
-
-### Commands
-
-```bash
-npm run worker       # Run worker continuously
-npm run worker:once  # Run all jobs once (testing)
-```
-
-### Health Check
-
-```bash
-curl http://localhost:3001/health
-```
-
-Returns:
-```json
-{
-  "status": "healthy",
-  "uptime": 3600.5,
-  "lastDailyTick": "2026-03-13T00:00:00.000Z",
-  "lastEncounterJob": "2026-03-13T02:00:00.000Z",
-  "lastMissionJob": "2026-03-13T00:00:00.000Z",
-  "errors": []
-}
-```
-
-**Status:** Worker is complete and tested. All jobs run successfully.
-
-### Daily Tick Job (`src/jobs/daily-tick.ts`)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Trip counter reset | ✅ | All players reset at midnight UTC |
-| Port income processing | ✅ | Landing fees and fuel sales |
-| Inactive port eviction | ✅ | 30-day eviction |
-| Promotion checks | ✅ | Score-based promotions |
-| Daily news generation | ✅ | Event logging |
-
-### Missing Jobs
-
-| Job | Status | Notes |
-|-----|--------|-------|
-| Encounter Generation | ❌ | File exists but empty/not implemented |
-| Mission Generation | ❌ | File exists but empty/not implemented |
-| Worker Process | ❌ | No worker runner implemented |
-
-### Job Files Status
-- `src/jobs/daily-tick.ts` - ✅ Complete
-- `src/jobs/encounter-generation.ts` - ❌ Empty/Not implemented
-- `src/jobs/mission-generation.ts` - ❌ Empty/Not implemented
-- `src/jobs/worker.ts` - ❌ Not implemented
+Worker service exists in `docker-compose.yml`.
 
 ---
 
-## 6. WebSocket/Real-time Events (⚠️ 50% Complete)
+## 6. WebSocket/Real-time Events (✅ 90% Complete)
 
-### Implemented (`src/sockets/game.ts`)
+### Implemented Events
 
-| Event | Direction | Status | Notes |
-|-------|-----------|--------|-------|
-| `authenticate` | Client→Server | ✅ | JWT verification |
-| `authenticated` | Server→Client | ✅ | Auth result |
-| `request:travel-progress` | Client→Server | ✅ | Progress polling |
-| `travel:progress` | Server→Client | ✅ | Progress updates |
-| `combat:action` | Client→Server | ✅ | Combat actions |
-| `combat:round` | Server→Client | ✅ | Combat round results |
-| `screen:request` | Client→Server | ✅ | Screen rendering |
-| `screen:render` | Server→Client | ✅ | Screen output |
-| `screen:input` | Client→Server | ✅ | Screen input handling |
-| `welcome` | Server→Client | ✅ | Connection greeting |
+| Event | Direction | Status |
+|-------|-----------|--------|
+| `authenticate` / `authenticated` | Bidirectional | ✅ |
+| `request:travel-progress` / `travel:progress` | Bidirectional | ✅ |
+| `combat:action` / `combat:round` | Bidirectional | ✅ |
+| `screen:request` / `screen:render` | Bidirectional | ✅ |
+| `screen:input` | Client→Server | ✅ |
+| `welcome` | Server→Client | ✅ |
 
-### Missing Events (from PRD)
+### Missing Push Events
 
-| Event | Direction | Status | Notes |
-|-------|-----------|--------|-------|
-| `TRAVEL_COMPLETE` | Server→Client | ❌ | Auto-notify on arrival |
-| `ENCOUNTER` | Server→Client | ❌ | Push encounter events |
-| `COMBAT_END` | Server→Client | ❌ | Combat resolution |
-| `WORLD_EVENT` | Server→Client | ❌ | Port takeovers, alliance wars |
-| `DAILY_TICK` | Server→Client | ❌ | Daily reset notifications |
+| Event | Priority | Notes |
+|-------|----------|-------|
+| `TRAVEL_COMPLETE` | Low | Client polls via `request:travel-progress` — works but not push |
+| `WORLD_EVENT` | Low | Port takeovers, alliance wars — logged but not pushed |
+| `DAILY_TICK` | Low | Daily resets — no client notification |
+
+These are polish items. The game functions without them since the client polls for updates.
 
 ---
 
-## 7. OAuth Integration (⚠️ 70% Complete)
+## 7. NPC/Scripted Enemy System (✅ 100% Complete)
 
-### Implemented
+This is a key requirement for the web port (replacing human multiplayer with scripted NPCs).
+
 | Feature | Status | Notes |
 |---------|--------|-------|
-| OAuth callback handler | ✅ | Token exchange implemented |
-| User creation/linking | ✅ | BBS user to SpacerQuest mapping |
-| JWT session generation | ✅ | 30-day tokens |
-| Session database storage | ✅ | Revocation support |
-| Session listing | ✅ | View active sessions |
-| Session revocation | ✅ | Single and bulk revoke |
-| Dev login (non-prod) | ✅ | Local development support |
-
-### Missing/Incomplete
-| Feature | Status | Notes |
-|---------|--------|-------|
-| BBS Portal integration | ⚠️ | Mock implementation, needs real URLs |
-| User info fetching | ⚠️ | Depends on BBS Portal API |
-| Environment configuration | ⚠️ | Requires BBS_PORTAL_* env vars |
+| Pirate generation (SPX/SPY/SPZ) | ✅ | Power-matched to player strength |
+| Space Patrol encounters | ✅ | For mission/smuggling contexts |
+| Rim Pirates (1.5x strength) | ✅ | Rim system encounters |
+| Brigand encounters | ✅ | Enemy type defined and generated |
+| Reptiloid/Alien encounters | ✅ | Andromeda galaxy enemies |
+| Bot-vs-bot combats | ✅ | Encounter generation job runs every 5 min |
+| Random ship/commander names | ✅ | Hardcoded name arrays in combat.ts |
+| Port takeover attempts | ✅ | 1% daily chance, DEFCON-modified |
+| Fuel price fluctuations | ✅ | Supply/demand updates in encounter job |
 
 ---
 
-## 8. Game Constants (✅ 100% Complete)
+## 8. Gambling Mini-games (❌ 10% Complete)
 
-All constants from the PRD are implemented in `src/game/constants.ts`:
+**This is the biggest gap.** Constants are fully defined but there is zero functional implementation.
 
-| Category | Status | Notes |
-|----------|--------|-------|
-| Credits & Economy | ✅ | Starting credits, promotion bonuses |
-| Rank System | ✅ | All 9 ranks with thresholds and honoraria |
-| Ship Components | ✅ | Prices, max strength/condition |
-| Special Equipment | ✅ | Cloaker, Auto-Repair, Star Buster, Arch Angel, Astraxial |
-| Fuel System | ✅ | Prices, capacity, sell multiplier |
-| Travel & Navigation | ✅ | Trip limits, course change costs |
-| Combat System | ✅ | Encounter rates, Battle Factor bonuses |
-| Cargo System | ✅ | Base rates, cargo types |
-| Port Ownership | ✅ | Prices, eviction policy |
-| Alliance System | ✅ | Investment, DEFCON costs |
-| Mission System | ✅ | Nemesis, Maligna requirements |
-| Dueling Arena | ✅ | Arena requirements, handicap calculation |
-| Gambling | ✅ | Wheel of Fortune, Dare game |
-| Pirate Classes | ✅ | SPX, SPY, SPZ power ranges |
-| Star Systems | ✅ | System counts by region |
-| Validation | ✅ | Name length, reserved prefixes |
-
----
-
-## 9. Testing (✅ 100% Complete)
-
-### Implemented Tests
-
-#### Unit Tests (`tests/core.test.ts`)
-| Test Suite | Status | Coverage |
-|------------|--------|----------|
-| Travel System | ✅ | Fuel cost, travel time, fuel capacity |
-| Combat System | ✅ | Battle Factor, combat rounds |
-| Utilities | ✅ | Credits, rank, name validation, distance |
-
-#### E2E Tests (`tests/e2e/`)
-| Test File | Status | Coverage |
-|-----------|--------|----------|
-| `01-auth.spec.ts` | ✅ | Login, OAuth, session persistence |
-| `02-character-creation.spec.ts` | ✅ | Character creation, name validation |
-| `03-navigation.spec.ts` | ✅ | Screen navigation, commands |
-| `04-economy.spec.ts` | ✅ | Fuel, cargo, trading |
-| `05-ship-combat.spec.ts` | ✅ | Ship status, combat engagement |
-| `06-social-api.spec.ts` | ✅ | Top Gun, leaderboard, travel |
-| `07-api-integration.spec.ts` | ✅ | Backend API endpoints |
-
-### Test Infrastructure
+### Wheel of Fortune (SP.GAME.S)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Playwright | ✅ | Configured with Chromium |
-| Page Objects | ✅ | Login, CharacterCreation, MainGame |
-| API Helper | ✅ | SpacerQuestAPI class for direct API calls |
-| Fixtures | ✅ | Custom test fixtures with test accounts |
-| Global Setup | ✅ | Server health checks |
-| Auto-start Servers | ✅ | Backend + frontend start automatically |
-| HTML Reports | ✅ | Generated after test runs |
-| Screenshots | ✅ | On failure |
-| Video | ✅ | On failure |
-| Trace | ✅ | On first retry |
+| Constants (max bet, rolls, odds) | ✅ | In `constants.ts` |
+| Game logic (number selection, rolling, payout) | ❌ | Not implemented anywhere |
+| API endpoint | ❌ | Referenced in pub.ts but doesn't exist |
+| Terminal screen | ❌ | Pub shows placeholder text |
 
-### Test Commands
+Original mechanic: Bet 1-1000 cr, pick number 1-20, choose 3-7 rolls, odds-based payout.
 
-```bash
-npm run test:e2e         # Run all E2E tests
-npm run test:e2e:ui      # Run with UI mode
-npm run test:e2e:debug   # Run with debug mode
-```
+### Spacer's Dare (SP.GAME.S)
 
-### Test Coverage Summary
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Constants (min rounds, multipliers, min credits) | ✅ | In `constants.ts` |
+| Game logic (dice rolling, scoring, computer opponent) | ❌ | Not implemented anywhere |
+| API endpoint | ❌ | Referenced in pub.ts but doesn't exist |
+| Terminal screen | ❌ | Pub shows placeholder text |
 
-- **Authentication Flow**: ✅ Complete
-- **Character Creation**: ✅ Complete
-- **Navigation**: ✅ Complete
-- **Economy**: ✅ Complete
-- **Combat**: ✅ Complete
-- **Social Features**: ✅ Complete
-- **API Endpoints**: ✅ Complete
-
-**Total Tests:** 46+ tests across 7 test files
+Original mechanic: 3-10 rounds, 1-3x multiplier, player vs computer dice, min 750 cr to play.
 
 ---
 
-## 10. Configuration Files
+## 9. Travel Hazards (❌ 0% Complete)
 
-### Implemented
-| File | Status | Notes |
-|------|--------|-------|
-| `package.json` | ✅ | All dependencies listed |
-| `tsconfig.json` | ✅ | TypeScript configuration |
-| `docker-compose.yml` | ✅ | PostgreSQL, Redis, app, worker |
-| `Dockerfile` | ✅ | Multi-stage build |
-| `.env.example` | ✅ | Environment template |
-| `prisma/schema.prisma` | ✅ | Complete database schema |
-| `prisma/seed.ts` | ✅ | Database seeding |
-| `vitest.config.ts` | ✅ | Test configuration |
+The original game (SP.WARP.S) featured random hazards during travel that could damage ship components. None of this is implemented.
 
----
+| Hazard | Original Source | Status |
+|--------|----------------|--------|
+| X-Rad Shower (shield damage) | SP.WARP.S | ❌ |
+| Asteroid collision (hull damage) | SP.WARP.S | ❌ |
+| Component failure (random component) | SP.WARP.S | ❌ |
+| Black hole transit (Andromeda access) | SP.WARP.S | ❌ |
 
-## 11. Critical Gaps Summary
-
-### High Priority (All Resolved)
-
-1. **Frontend Application** ✅ RESOLVED
-   - React + Vite + TypeScript frontend implemented
-   - xterm.js terminal configured for 80x24
-   - Zustand state management implemented
-   - WebSocket client integrated
-   - **Status:** Complete and builds successfully
-
-2. **Background Job Workers** ✅ RESOLVED
-   - Daily tick job complete
-   - Encounter generation implemented and tested
-   - Mission generation implemented and tested
-   - Worker process with health checks implemented
-   - **Status:** Complete and tested with `npm run worker:once`
-
-3. **WebSocket Events** ✅ MOSTLY COMPLETE
-   - Travel completion notifications implemented
-   - Encounter push events implemented
-   - Combat round events working
-   - **Status:** Core events working, some polish needed
-
-4. **E2E Tests** ✅ RESOLVED
-   - 45+ Playwright tests implemented
-   - Full coverage of auth, character creation, navigation, economy, combat
-   - API integration tests for all endpoints
-   - Auto-start servers for tests
-   - **Status:** Complete and passing
-
-### Medium Priority
-
-5. **Screen System** ✅ COMPLETE
-   - All main screens implemented
-   - Backend screen modules integrated with WebSocket
-   - **Status:** Complete
-
-6. **OAuth Integration** ⚠️ NEEDS REAL PROVIDER
-   - Structure complete
-   - Needs real BBS Portal endpoints for production
-   - **Status:** Dev login works, production needs integration
-
-7. **Limited Test Coverage** ⚠️
-   - Core game logic tested
-   - No API or E2E tests yet
-   - **Status:** Needs expansion
-
-### Low Priority
-
-8. **Missing Original Source References**
-   - No comments linking to original SP.*.S files in all places
-   - **Impact:** Harder to verify authenticity
+The Astraxial hull (required for black hole transit) is fully defined in constants and the upgrade system, but there's no actual black hole encounter or transit mechanic.
 
 ---
 
-## 12. Recommendations
+## 10. Frontend/Terminal, Tests, Config, OAuth
 
-### Phase 1: Production Readiness (Current Priority)
+No material changes from previous audit:
 
-1. **Complete Background Jobs**
-   - Implement worker process to run Bull jobs
-   - Complete mission generation job
-   - Test encounter generation in production
-
-2. **OAuth Integration**
-   - Replace mock OAuth with real BBS Portal endpoints
-   - Test full authentication flow
-   - Add error handling for OAuth failures
-
-3. **Expand Test Coverage** (✅ DONE)
-   - ✅ Unit tests for core game systems
-   - ✅ API integration tests
-   - ✅ Playwright E2E tests (46+ tests)
-
-### Phase 2: Polish & Authenticity
-
-4. **Verify Original Formulas**
-   - Cross-reference all calculations with original source
-   - Add source file comments (e.g., "From SP.FIGHT1.S line 45")
-   - Test edge cases from original game
-
-5. **Complete Missing Features**
-   - Gambling games (Wheel of Fortune, Dare)
-   - Rescue service mechanics
-   - Lost in space mechanics
-   - Black hole travel to Andromeda
-
-6. **UI/UX Improvements**
-   - Add loading states
-   - Improve error messages
-   - Add help/tooltips for new players
+- **Frontend**: ✅ Complete — React 18 + xterm.js + Zustand + Socket.io client
+- **Tests**: ✅ Complete — 46+ tests across 7 E2E spec files + unit tests
+- **Configuration**: ✅ Complete — Vite, Docker, Prisma, TypeScript all configured
+- **OAuth**: ⚠️ 70% — Structure works, needs real BBS Portal endpoints for production
 
 ---
 
-## 13. File Inventory
+## 11. Prioritized TODO List
 
-### Backend Implementation (Complete)
+### Priority 1: Core Gameplay Gaps (Missing from Original)
+
+These features existed in the 1991 original and should be implemented for faithful port.
+
+| # | Task | Effort | Impact | Original Source |
+|---|------|--------|--------|----------------|
+| 1 | **Implement Wheel of Fortune gambling game** | Medium | High | SP.GAME.S |
+|   | Create `src/game/systems/gambling.ts` with WOF logic | | | |
+|   | Add `POST /api/economy/gamble/wheel` endpoint | | | |
+|   | Update pub.ts screen to render actual game | | | |
+| 2 | **Implement Spacer's Dare gambling game** | Medium | High | SP.GAME.S |
+|   | Add Dare logic to `gambling.ts` | | | |
+|   | Add `POST /api/economy/gamble/dare` endpoint | | | |
+|   | Update pub.ts screen to render actual game | | | |
+| 3 | **Implement travel hazards during transit** | Medium | High | SP.WARP.S |
+|   | Add hazard generation to travel system | | | |
+|   | Random component damage events during travel | | | |
+|   | WebSocket push for hazard notifications | | | |
+| 4 | **Implement black hole transit to Andromeda** | Small | Medium | SP.WARP.S |
+|   | Add Astraxial hull check for Andromeda destinations | | | |
+|   | Gate Andromeda star systems behind hull requirement | | | |
+| 5 | **Implement rescue service screen/flow** | Medium | Medium | SP.REG.S |
+|   | Add `GET /api/social/lost-ships` endpoint | | | |
+|   | Add `POST /api/economy/rescue` endpoint | | | |
+|   | Create rescue service terminal screen | | | |
+|   | Backend payment logic already exists | | | |
+
+### Priority 2: Screen Completeness
+
+| # | Task | Effort | Impact |
+|---|------|--------|--------|
+| 6 | **Add Registry/Directory terminal screen** | Small | Medium |
+|   | Ship directory, port directory, alliance holdings | | |
+|   | Data available via existing API endpoints | | |
+| 7 | **Add Dueling Arena terminal screen** | Medium | Medium |
+|   | Challenge/accept/view roster UI | | |
+|   | API endpoints already exist | | |
+| 8 | **Add Combat Display terminal screen** | Medium | Medium |
+|   | ANSI-rendered combat rounds with ship status | | |
+|   | Currently handled via WebSocket events | | |
+
+### Priority 3: Polish & Production
+
+| # | Task | Effort | Impact |
+|---|------|--------|--------|
+| 9 | **Add WebSocket push events** | Small | Low |
+|   | TRAVEL_COMPLETE, WORLD_EVENT, DAILY_TICK | | |
+|   | Game works without these (client polls) | | |
+| 10 | **Configure OAuth for production** | Small | High (for deploy) |
+|   | Replace mock OAuth with real BBS Portal endpoints | | |
+|   | Only needed when BBS Portal is ready | | |
+| 11 | **Add special equipment purchase screen** | Small | Low |
+|   | Verify Cloaker/Auto-Repair/Star-Buster/Arch-Angel/Astraxial purchase flow | | |
+|   | May already work through shipyard upgrade | | |
+| 12 | **Cross-reference formulas with original source** | Large | Low |
+|   | Add SP.*.S line references as comments | | |
+|   | Verify edge cases against original BASIC code | | |
+
+### Not Required (Verified against PRD)
+
+These were in the original but are **not needed** for the web port:
+
+- Jail/Brig/Crime system — Sysop feature, not needed
+- Player-to-player messaging — Not in PRD, GameLog serves as public log
+- Alliance bulletin boards — Not in PRD requirements
+- Wise One / Sage NPCs — Flavor text, not a game mechanic
+- Carrier-loss penalty — Anti-save-scum for BBS, not applicable to web
+
+---
+
+## 12. File Inventory (Verified)
+
+### Backend (47 TypeScript files)
 ```
 src/
 ├── app/
-│   ├── index.ts                    ✅ Main server
+│   ├── index.ts                    ✅ Main Fastify server
 │   └── routes/
-│       ├── auth.ts                 ✅
-│       ├── character.ts            ✅
-│       ├── navigation.ts           ✅
-│       ├── combat.ts               ✅
-│       ├── economy.ts              ✅
-│       ├── ship.ts                 ✅
-│       ├── social.ts               ✅
-│       └── missions.ts             ✅
+│       ├── auth.ts                 ✅ 8 endpoints
+│       ├── character.ts            ✅ 3 endpoints
+│       ├── navigation.ts           ✅ 4 endpoints
+│       ├── combat.ts               ✅ 2 endpoints
+│       ├── economy.ts              ✅ 6 endpoints (gambling missing)
+│       ├── ship.ts                 ✅ 3 endpoints
+│       ├── social.ts               ✅ 7 endpoints
+│       └── missions.ts             ✅ 2 endpoints
 ├── db/
-│   └── prisma.ts                   ✅
+│   └── prisma.ts                   ✅ Prisma singleton
 ├── game/
-│   ├── constants.ts                ✅
-│   ├── utils.ts                    ✅
+│   ├── constants.ts                ✅ All balance values
+│   ├── utils.ts                    ✅ Shared utilities
 │   ├── systems/
-│   │   ├── travel.ts               ✅
-│   │   ├── combat.ts               ✅
-│   │   ├── economy.ts              ✅
-│   │   ├── upgrades.ts             ✅
-│   │   ├── repairs.ts              ✅
-│   │   ├── alliance.ts             ✅
-│   │   ├── registry.ts             ✅
-│   │   ├── topgun.ts               ✅
-│   │   ├── save.ts                 ✅
-│   │   ├── docking.ts              ✅
-│   │   └── port-ownership.ts       ✅
+│   │   ├── travel.ts               ✅ 511 lines
+│   │   ├── combat.ts               ✅ 579 lines
+│   │   ├── economy.ts              ✅ 498 lines
+│   │   ├── alliance.ts             ✅ 200 lines
+│   │   ├── upgrades.ts             ✅ 81 lines
+│   │   ├── repairs.ts              ✅ 53 lines
+│   │   ├── registry.ts             ✅ 59 lines
+│   │   ├── topgun.ts               ✅ 97 lines
+│   │   ├── docking.ts              ✅ 23 lines
+│   │   ├── port-ownership.ts       ✅ 47 lines
+│   │   └── save.ts                 ✅ 24 lines
 │   └── screens/
-│       ├── types.ts                ✅
-│       ├── main-menu.ts            ✅
-│       ├── bank.ts                 ✅
-│       ├── shipyard.ts             ✅
-│       ├── pub.ts                  ✅
-│       └── traders.ts              ✅
+│       ├── types.ts                ✅ Interface definitions
+│       ├── main-menu.ts            ✅ 83 lines
+│       ├── bank.ts                 ✅ 77 lines
+│       ├── bank-deposit.ts         ✅ 77 lines
+│       ├── bank-withdraw.ts        ✅ 77 lines
+│       ├── bank-transfer.ts        ✅ 66 lines
+│       ├── pub.ts                  ⚠️ 109 lines (gambling stubs)
+│       ├── shipyard.ts             ✅ 97 lines
+│       ├── shipyard-upgrade.ts     ✅ 77 lines
+│       ├── traders.ts              ✅ 106 lines
+│       ├── traders-cargo.ts        ✅ 118 lines
+│       ├── traders-buy-fuel.ts     ✅ 81 lines
+│       ├── traders-sell-fuel.ts    ✅ 84 lines
+│       └── navigate.ts            ✅ 78 lines
 ├── sockets/
-│   ├── game.ts                     ✅
-│   └── screen-router.ts            ✅
+│   ├── game.ts                     ✅ WebSocket handler
+│   └── screen-router.ts            ✅ Screen routing
 └── jobs/
-    ├── daily-tick.ts               ✅
-    ├── encounter-generation.ts     ✅
-    ├── mission-generation.ts       ⚠️
-    └── worker.ts                   ❌
+    ├── worker.ts                   ✅ Job scheduler + health server
+    ├── daily-tick.ts               ✅ Daily processing
+    ├── encounter-generation.ts     ✅ Bot combats + world events
+    └── mission-generation.ts       ✅ Mission + event generation
 ```
 
-### Frontend (Complete)
+### Frontend
 ```
 src/frontend/
-├── main.tsx                        ✅ React entry point
-├── App.tsx                         ✅ Main app component
+├── main.tsx                        ✅
+├── App.tsx                         ✅
 ├── components/
-│   ├── Terminal.tsx                ✅ xterm.js terminal
-│   ├── LoginScreen.tsx             ✅ OAuth login
-│   └── CharacterCreation.tsx       ✅ Character creation
-├── store/
-│   └── gameStore.ts                ✅ Zustand state management
-├── sockets/
-│   └── wsClient.ts                 ✅ WebSocket client
-├── screens/                        (Backend renders via WebSocket)
+│   ├── Terminal.tsx                ✅ xterm.js
+│   ├── LoginScreen.tsx             ✅
+│   └── CharacterCreation.tsx       ✅
+├── store/gameStore.ts              ✅ Zustand
+├── sockets/wsClient.ts             ✅ Socket.io client
 └── styles/
-    ├── global.css                  ✅ Tailwind + custom
-    └── terminal.css                ✅ Terminal styling
-```
-
-### Configuration (Complete)
-```
-├── vite.config.ts                  ✅ Vite configuration
-├── tailwind.config.js              ✅ Tailwind configuration
-├── postcss.config.js               ✅ PostCSS configuration
-├── tsconfig.json                   ✅ TypeScript configuration
-├── index.html                      ✅ HTML entry point
-├── package.json                    ✅ Dependencies + scripts
-└── .env                            ✅ Environment variables
-```
-
-### Tests (Complete)
-```
-tests/
-├── core.test.ts                    ✅ Core game logic
-├── e2e/
-│   ├── fixtures/
-│   │   └── spacerquest.ts          ✅ Custom fixtures
-│   ├── pages/
-│   │   ├── LoginPage.ts            ✅ Login page object
-│   │   ├── CharacterCreationPage.ts ✅ Character creation
-│   │   └── MainGamePage.ts         ✅ Main game terminal
-│   ├── 01-auth.spec.ts             ✅ Authentication tests
-│   ├── 02-character-creation.spec.ts ✅ Character creation
-│   ├── 03-navigation.spec.ts       ✅ Navigation tests
-│   ├── 04-economy.spec.ts          ✅ Economy tests
-│   ├── 05-ship-combat.spec.ts      ✅ Ship & combat tests
-│   ├── 06-social-api.spec.ts       ✅ Social API tests
-│   ├── 07-api-integration.spec.ts  ✅ API integration tests
-│   ├── api.ts                      ✅ API helper class
-│   ├── global-setup.ts             ✅ Global setup
-│   └── README.md                   ✅ Test documentation
-├── integration/                    ⚠️ Needs expansion
-└── unit/                           ⚠️ Needs expansion
+    ├── global.css                  ✅
+    └── terminal.css                ✅
 ```
 
 ---
 
-## 14. Conclusion
+## 13. Conclusion
 
-The SpacerQuest v4.0 codebase is now **100% complete** and production-ready:
+SpacerQuest v4.0 has a **solid, working foundation** — the core gameplay loop (travel, combat, trading, upgrades, alliances) is complete with original formulas preserved. The infrastructure (database, API, WebSocket, jobs, frontend, tests) is production-quality.
 
-### ✅ Complete Implementation
-- **Full React + TypeScript Frontend** - Playable terminal interface with xterm.js
-- **Complete Database Schema** - All 12 models with correct relationships
-- **All Core Game Logic** - Travel, combat, economy use original formulas
-- **Full API Coverage** - 25+ endpoints across 8 route files
-- **Game Constants** - All values from original preserved exactly
-- **Seed Data** - All 28 star systems populated
-- **WebSocket Integration** - Real-time events for combat, travel, screens
-- **Screen System** - All main menu screens implemented and integrated
-- **Authentication Flow** - OAuth structure with dev login and mock service
-- **Comprehensive E2E Tests** - 45+ Playwright tests covering all features
-- **Background Job Worker** - Daily tick, encounters, missions with health checks
+**Actual completion: ~85%** of a faithful port of the original game.
 
-### ⚠️ Remaining Work (Optional/Production)
-- **OAuth Production Integration** - Needs real BBS Portal endpoints for production deployment
-- **Docker Deployment** - Worker container needs to be added to docker-compose
+The remaining 15% consists of:
+- Gambling mini-games (Wheel of Fortune + Dare) — constants defined, zero logic
+- Travel hazards — not implemented at all
+- Black hole / Andromeda transit gating — no mechanic
+- Rescue service UI — backend exists, no screen
+- Several terminal screens that exist as API endpoints but lack ANSI terminal renderers
 
-**Estimated Completion:** 100% of core features
-
-**Next Steps (Production Deployment):**
-1. Configure real BBS Portal OAuth endpoints
-2. Add worker to docker-compose.yml
-3. Deploy and test in production environment
+**Recommended next steps:** Implement Priority 1 items (gambling, travel hazards, black hole, rescue) to achieve a faithful port of the original gameplay experience.
 
 ---
 
-*Audit updated after E2E test implementation - March 12, 2026*
+*Audit updated March 16, 2026 — Full cross-reference with Decompile/Source-Text/ original BASIC source*
