@@ -159,7 +159,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
     }],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    let body: { name: string; shipName: string };
+    let body;
     try {
       body = createBodySchema.parse(request.body);
     } catch (err: any) {

@@ -23,7 +23,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
-    "lint": "eslint src --ext .ts",
+    "lint": "ESLINT_USE_FLAT_CONFIG=true eslint src",
     "docker:build": "docker build -t spacerquest .",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down"
