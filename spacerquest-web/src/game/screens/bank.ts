@@ -21,6 +21,7 @@ export const BankScreen: ScreenModule = {
     }
 
     const credits = formatCredits(character.creditsHigh, character.creditsLow);
+    const inBank = formatCredits(character.bankHigh, character.bankLow);
 
     const output = `
 \x1b[36;1m_________________________________________\x1b[0m
@@ -30,7 +31,8 @@ export const BankScreen: ScreenModule = {
 \x1b[32mWelcome, ${character.name}\x1b[0m
 
 \x1b[37mCurrent Balance:\x1b[0m
-  ${credits} credits
+  ${credits} credits (On Hand)
+  ${inBank} credits (In Bank)
 
 \x1b[33m"Your credits are safe with us"\x1b[0m
   - Management
@@ -39,8 +41,8 @@ export const BankScreen: ScreenModule = {
 \x1b[33;1m           BANKING MENU                  \x1b[0m
 \x1b[37;1m=========================================\x1b[0m
 
-  [D]eposit credits (API endpoint)
-  [W]ithdraw credits (API endpoint)
+  [D]eposit credits
+  [W]ithdraw credits
   [T]ransfer to alliance account
   [R]eturn to Main Menu
 
@@ -58,19 +60,13 @@ export const BankScreen: ScreenModule = {
         return { output: '\x1b[2J\x1b[H', nextScreen: 'main-menu' };
       
       case 'D':
-        return { 
-          output: '\r\n\x1b[33mUse the /api/economy/fuel/buy endpoint for transactions\x1b[0m\r\n> ' 
-        };
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'bank-deposit' };
       
       case 'W':
-        return { 
-          output: '\r\n\x1b[33mUse the /api/economy/fuel/sell endpoint for transactions\x1b[0m\r\n> ' 
-        };
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'bank-withdraw' };
       
       case 'T':
-        return { 
-          output: '\r\n\x1b[33mUse the /api/economy/alliance/invest endpoint\x1b[0m\r\n> ' 
-        };
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'bank-transfer' };
       
       default:
         return { 

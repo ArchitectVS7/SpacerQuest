@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+
+# Vite cache
+.vite/
+
+# Test output
+playwright-report/
+test-results/
+coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor
+.DS_Store
+*.local
+
+# Logs
+*.log
+npm-debug.log*

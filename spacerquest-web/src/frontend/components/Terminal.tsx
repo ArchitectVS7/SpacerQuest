@@ -166,15 +166,28 @@ export function TerminalComponent() {
     clearTerminal();
   }, [terminalBuffer, clearTerminal]);
 
-  // Handle screen changes
+  // Handle screen changes — also re-request when WebSocket reconnects
   useEffect(() => {
     const terminal = terminalInstance.current;
     if (!terminal) return;
+    if (currentScreen === 'login' || currentScreen === 'character-create') return;
 
-    // Request screen render when screen changes
-    if (currentScreen !== 'login' && currentScreen !== 'character-create') {
-      wsClient.requestScreen(currentScreen);
-    }
+    // Request immediately (works if WS is already connected)
+    wsClient.requestScreen(currentScreen);
+
+    // Also request after authentication completes (handles race condition
+    // where terminal mounts before the WebSocket is connected)
+    const onAuth = (data: { success: boolean }) => {
+      if (data.success) {
+        // Server now auto-sends main-menu on auth, but this ensures
+        // the correct screen is shown if currentScreen isn't main-menu
+        if (currentScreen !== 'main-menu') {
+          wsClient.requestScreen(currentScreen);
+        }
+      }
+    };
+    wsClient.on('authenticated', onAuth);
+    return () => { wsClient.off('authenticated', onAuth); };
   }, [currentScreen]);
 
   return (

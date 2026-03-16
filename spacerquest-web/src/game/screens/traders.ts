@@ -72,20 +72,13 @@ Market rates fluctuate based on supply/demand.
         return { output: '\x1b[2J\x1b[H', nextScreen: 'main-menu' };
       
       case 'A':
-        // Accept cargo contract via API
-        return { 
-          output: '\r\n\x1b[33mUse /api/economy/cargo/accept endpoint\x1b[0m\r\n> ' 
-        };
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'traders-cargo' };
       
       case 'B':
-        return { 
-          output: '\r\n\x1b[33mUse /api/economy/fuel/buy endpoint\x1b[0m\r\n> ' 
-        };
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'traders-buy-fuel' };
       
       case 'S':
-        return { 
-          output: '\r\n\x1b[33mUse /api/economy/fuel/sell endpoint\x1b[0m\r\n> ' 
-        };
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'traders-sell-fuel' };
       
       case 'C': {
         // Check current cargo contract

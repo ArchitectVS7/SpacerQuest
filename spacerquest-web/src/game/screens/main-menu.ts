@@ -64,12 +64,7 @@ export const MainMenuScreen: ScreenModule = {
       'S': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'shipyard' }),
       'P': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'pub' }),
       'T': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'traders' }),
-      'N': async () => {
-        // Navigate command - would trigger navigation flow
-        return { 
-          output: '\r\n\x1b[33mNavigation Control - Use API or WebSocket for travel\x1b[0m\r\n> ' 
-        };
-      },
+      'N': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'navigate' }),
       'Q': async () => {
         // Quit - save and logout
         return { 

@@ -8,6 +8,7 @@ import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { formatCredits } from '../utils.js';
 import { COMPONENT_PRICES } from '../constants.js';
+import { repairAllComponents } from '../systems/repairs.js';
 
 export const ShipyardScreen: ScreenModule = {
   name: 'shipyard',
@@ -70,18 +71,21 @@ export const ShipyardScreen: ScreenModule = {
         return { output: '\x1b[2J\x1b[H', nextScreen: 'main-menu' };
       
       case 'U':
-        return { 
-          output: '\r\n\x1b[33mUse /api/ship/upgrade endpoint with component and type\x1b[0m\r\n> ' 
-        };
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'shipyard-upgrade' };
       
-      case 'R':
+      case 'R': {
+        const result = await repairAllComponents(characterId);
+        if (!result.success) {
+          return { output: `\r\n\x1b[31mRepair failed: ${result.error}\x1b[0m\r\n> ` };
+        }
         return { 
-          output: '\r\n\x1b[33mUse /api/ship/repair endpoint\x1b[0m\r\n> ' 
+          output: `\r\n\x1b[32m${result.message} (-${result.cost} cr)\x1b[0m\r\n> ` 
         };
+      }
       
       case 'S':
         return { 
-          output: '\r\n\x1b[33mSpecial equipment: Cloaker, Auto-Repair, STAR-BUSTER++\x1b[0m\r\n> ' 
+          output: '\r\n\x1b[33mSpecial equipment unavailable in this sector.\x1b[0m\r\n> ' 
         };
       
       default:

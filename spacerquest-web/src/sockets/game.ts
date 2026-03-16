@@ -13,10 +13,8 @@ interface AuthenticatedSocket extends Socket {
   characterId?: string;
 }
 
-export async function registerWebSocketHandler(fastify: FastifyInstance) {
-  fastify.get('/ws', { websocket: true }, async (connection, req) => {
-    const socket = connection as any as AuthenticatedSocket;
-
+export function registerWebSocketHandler(io: import('socket.io').Server, fastify: FastifyInstance) {
+  io.on('connection', (socket: AuthenticatedSocket) => {
     fastify.log.info('WebSocket client connected');
     
     // Handle authentication
@@ -37,6 +35,17 @@ export async function registerWebSocketHandler(fastify: FastifyInstance) {
         
         socket.emit('authenticated', { success: true });
         fastify.log.info(`WebSocket authenticated for user ${decoded.userId}`);
+
+        // Automatically send the main menu after successful auth
+        if (character) {
+          const { handleScreenRequest } = await import('./screen-router.js');
+          try {
+            const menuResponse = await handleScreenRequest(character.id, 'main-menu');
+            socket.emit('screen:render', menuResponse);
+          } catch (err) {
+            fastify.log.error(err, 'Failed to send initial main menu');
+          }
+        }
       } catch (err) {
         socket.emit('authenticated', { success: false, error: 'Invalid token' });
       }
@@ -158,16 +167,13 @@ export async function registerWebSocketHandler(fastify: FastifyInstance) {
     // Handle screen input
     socket.on('screen:input', async (data: { screen: string, input: string }) => {
       if (!socket.characterId) return;
-      const { handleScreenInput, handleScreenRequest } = await import('./screen-router.js');
+      const { handleScreenInput } = await import('./screen-router.js');
       try {
         const response = await handleScreenInput(socket.characterId, data.screen, data.input);
         
+        // Let the frontend handle the nextScreen transition logic by requesting the screen via useEffect
         socket.emit('screen:render', response);
         
-        if (response.nextScreen) {
-          const nextResponse = await handleScreenRequest(socket.characterId, response.nextScreen);
-          socket.emit('screen:render', { ...nextResponse, screenChangedTo: response.nextScreen });
-        }
       } catch (err) {
         fastify.log.error(err);
         socket.emit('screen:render', { output: '\x1b[31mInput error.\x1b[0m\r\n' });

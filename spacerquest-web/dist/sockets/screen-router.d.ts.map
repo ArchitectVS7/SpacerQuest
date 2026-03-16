@@ -1,1 +1,0 @@
-{"version":3,"file":"screen-router.d.ts","sourceRoot":"","sources":["../../src/sockets/screen-router.ts"],"names":[],"mappings":"AAAA;;GAEG;AAQH,eAAO,MAAM,OAAO,EAAE,MAAM,CAAC,MAAM,EAAE,GAAG,CAMvC,CAAC;AAEF,wBAAsB,mBAAmB,CAAC,WAAW,EAAE,MAAM,EAAE,UAAU,EAAE,MAAM,gBAGhF;AAED,wBAAsB,iBAAiB,CAAC,WAAW,EAAE,MAAM,EAAE,UAAU,EAAE,MAAM,EAAE,KAAK,EAAE,MAAM,gBAG7F"}

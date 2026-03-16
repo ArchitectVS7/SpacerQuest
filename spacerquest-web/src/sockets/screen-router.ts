@@ -5,15 +5,31 @@
 import { MainMenuScreen } from '../game/screens/main-menu.js';
 import { BankScreen } from '../game/screens/bank.js';
 import { ShipyardScreen } from '../game/screens/shipyard.js';
+import { ShipyardUpgradeScreen } from '../game/screens/shipyard-upgrade.js';
 import { PubScreen } from '../game/screens/pub.js';
 import { TradersScreen } from '../game/screens/traders.js';
+import { TradersBuyFuelScreen } from '../game/screens/traders-buy-fuel.js';
+import { TradersSellFuelScreen } from '../game/screens/traders-sell-fuel.js';
+import { TradersCargoScreen } from '../game/screens/traders-cargo.js';
+import { NavigateScreen } from '../game/screens/navigate.js';
+import { BankDepositScreen } from '../game/screens/bank-deposit.js';
+import { BankWithdrawScreen } from '../game/screens/bank-withdraw.js';
+import { BankTransferScreen } from '../game/screens/bank-transfer.js';
 
 export const screens: Record<string, any> = {
   'main-menu': MainMenuScreen,
   'bank': BankScreen,
   'shipyard': ShipyardScreen,
+  'shipyard-upgrade': ShipyardUpgradeScreen,
   'pub': PubScreen,
   'traders': TradersScreen,
+  'traders-buy-fuel': TradersBuyFuelScreen,
+  'traders-sell-fuel': TradersSellFuelScreen,
+  'traders-cargo': TradersCargoScreen,
+  'navigate': NavigateScreen,
+  'bank-deposit': BankDepositScreen,
+  'bank-withdraw': BankWithdrawScreen,
+  'bank-transfer': BankTransferScreen,
 };
 
 export async function handleScreenRequest(characterId: string, screenName: string) {

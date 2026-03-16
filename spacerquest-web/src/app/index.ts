@@ -11,6 +11,7 @@ import websocket from '@fastify/websocket';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import pino from 'pino';
+import { Server as SocketIOServer } from 'socket.io';
 
 // Import routes
 import { registerAuthRoutes } from './routes/auth.js';
@@ -68,8 +69,7 @@ async function registerPlugins() {
     },
   });
 
-  // WebSocket
-  await fastify.register(websocket);
+  // (WebSocket via Socket.IO is initialized elsewhere)
 
   // Static files (for frontend) - only in production
   if (process.env.NODE_ENV === 'production') {
@@ -127,7 +127,7 @@ await registerMissionsRoutes(fastify);
 // WEBSOCKET
 // ============================================================================
 
-fastify.register(registerWebSocketHandler);
+// We initialize websockets in the start() function.
 
 // ============================================================================
 // ERROR HANDLING
@@ -152,6 +152,14 @@ const start = async () => {
   const port = parseInt(process.env.PORT || '3000');
 
   try {
+    const io = new SocketIOServer(fastify.server, {
+      cors: {
+        origin: process.env.NODE_ENV === 'production' ? false : true,
+        credentials: true,
+      },
+    });
+    registerWebSocketHandler(io, fastify);
+
     await fastify.listen({ port, host });
     fastify.log.info(`🚀 SpacerQuest v4.0 server running at http://${host}:${port}`);
     fastify.log.info(`📡 WebSocket endpoint: ws://${host}:${port}/ws`);

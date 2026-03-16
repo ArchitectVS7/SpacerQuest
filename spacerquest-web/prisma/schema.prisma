@@ -84,6 +84,10 @@ model Character {
   creditsHigh     Int       @default(0)  // g1 - 10,000s
   creditsLow      Int       @default(1000)  // g2 - units
   
+  // Personal Bank Account
+  bankHigh        Int       @default(0)
+  bankLow         Int       @default(0)
+  
   // Rank & Progression
   rank            Rank      @default(LIEUTENANT)
   score           Int       @default(0)  // s2 - total points

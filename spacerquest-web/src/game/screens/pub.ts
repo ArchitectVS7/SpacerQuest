@@ -6,7 +6,7 @@
 
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
-import { formatCredits } from '../utils.js';
+import { formatCredits, subtractCredits } from '../utils.js';
 
 export const PubScreen: ScreenModule = {
   name: 'pub',
@@ -79,10 +79,26 @@ Spacers from across the galaxy share stories here.
           output: '\r\n\x1b[33mDare Game - High stakes! Use API endpoint\x1b[0m\r\n> ' 
         };
       
-      case 'B':
+      case 'B': {
+        const character = await prisma.character.findUnique({
+          where: { id: characterId }
+        });
+        if (!character) return { output: '\x1b[31mError: Character not found.\x1b[0m\r\n> ' };
+
+        const { success, high, low } = subtractCredits(character.creditsHigh, character.creditsLow, 50);
+        if (!success) {
+          return { output: '\r\n\x1b[31mYou don\'t have enough credits for a drink!\x1b[0m\r\n> ' };
+        }
+
+        await prisma.character.update({
+          where: { id: characterId },
+          data: { creditsHigh: high, creditsLow: low }
+        });
+
         return { 
           output: '\r\n\x1b[32m*gulp* That hit the spot! (-50 cr)\x1b[0m\r\n> ' 
         };
+      }
       
       default:
         return { 
