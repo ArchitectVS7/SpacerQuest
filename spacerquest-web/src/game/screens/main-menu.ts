@@ -48,6 +48,7 @@ export const MainMenuScreen: ScreenModule = {
   [P]ub - Gossip and games
   [T]raders - Buy and sell cargo
   [N]avigate - Travel between systems
+  [R]egistry - Spacer directory
   [Q]uit - Save and logout
 
 \x1b[32m:\x1b[0m${character.currentSystem} Port Accounts:\x1b[32m:(?=Menu): Command:\x1b[0m
@@ -65,6 +66,7 @@ export const MainMenuScreen: ScreenModule = {
       'P': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'pub' }),
       'T': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'traders' }),
       'N': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'navigate' }),
+      'R': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'registry' }),
       'Q': async () => {
         // Quit - save and logout
         return { 
