@@ -7,14 +7,12 @@
  * - Generate special events
  */
 
-import { PrismaClient } from '@prisma/client';
 import { randomInt } from '../game/utils.js';
 import {
   NEMESIS_REQUIREMENT_WINS,
   PATROL_BASE_PAY,
 } from '../game/constants.js';
-
-const prisma = new PrismaClient();
+import { prisma } from '../db/prisma.js';
 
 export interface MissionJobResult {
   patrolMissionsGenerated: number;

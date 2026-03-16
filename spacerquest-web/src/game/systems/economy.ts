@@ -5,7 +5,6 @@
  * from original SP.REAL.S, SP.LIFT.S, SP.DOCK1.S, SP.DOCK2.S
  */
 
-import { PrismaClient } from '@prisma/client';
 import {
   CARGO_BASE_RATES,
   CARGO_WRONG_DESTINATION_PENALTY,
@@ -18,8 +17,7 @@ import {
   PATROL_BATTLE_BONUS,
 } from '../constants';
 import { calculateDistance, addCredits, subtractCredits, getTotalCredits } from '../utils.js';
-
-const prisma = new PrismaClient();
+import { prisma } from '../../db/prisma.js';
 
 // ============================================================================
 // FUEL ECONOMY

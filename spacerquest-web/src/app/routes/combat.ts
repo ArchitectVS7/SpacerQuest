@@ -3,43 +3,46 @@
  */
 
 import { FastifyInstance } from 'fastify';
-
 import { prisma } from '../../db/prisma.js';
+import { requireAuth } from '../middleware/auth.js';
+import { engageBody, combatActionBody } from '../schemas.js';
 
 export async function registerCombatRoutes(fastify: FastifyInstance) {
   // Start combat encounter
   fastify.post('/api/combat/engage', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const { attack } = request.body as { attack: boolean };
-    
-    const { generateEncounter, calculateBattleFactor, calculateEnemyBattleFactor } = 
+    const body = engageBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+    const { attack } = body.data;
+
+    const { generateEncounter, calculateBattleFactor, calculateEnemyBattleFactor } =
       await import('../../game/systems/combat.js');
-    
+
     const character = await prisma.character.findFirst({
       where: { userId },
       include: { ship: true },
     });
-    
+
     if (!character || !character.ship) {
       return reply.status(400).send({ error: 'No ship found' });
     }
-    
+
     // Generate enemy
     const enemy = generateEncounter(
       character.currentSystem,
       character.missionType,
       character.score
     );
-    
+
     if (!enemy) {
       return { encounter: false, message: 'No enemy encountered' };
     }
-    
+
     // Calculate battle factors
     const playerBF = calculateBattleFactor(
       {
@@ -62,9 +65,9 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       character.rank,
       character.battlesWon
     );
-    
+
     enemy.battleFactor = calculateEnemyBattleFactor(enemy);
-    
+
     return {
       encounter: true,
       enemy: {
@@ -78,47 +81,45 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       attack,
     };
   });
-  
+
   // Combat round action
   fastify.post('/api/combat/action', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const { action, round = 1, enemy } = request.body as {
-      action: 'FIRE' | 'RETREAT' | 'SURRENDER';
-      round?: number;
-      enemy?: any;
-    };
-    
-    const { processCombatRound, calculateBattleFactor, attemptRetreat } = 
+    const body = combatActionBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+    const { action, round = 1, enemy } = body.data;
+
+    const { processCombatRound, calculateBattleFactor, attemptRetreat } =
       await import('../../game/systems/combat.js');
-    
+
     const character = await prisma.character.findFirst({
       where: { userId },
       include: { ship: true },
     });
-    
+
     if (!character || !character.ship) {
       return reply.status(400).send({ error: 'No ship found' });
     }
-    
+
     if (action === 'RETREAT') {
       const retreat = attemptRetreat(
         character.ship.driveStrength * character.ship.driveCondition,
         enemy?.driveStrength * enemy?.driveCondition || 100,
         character.ship.hasCloaker
       );
-      
+
       return {
         success: retreat.success,
         message: retreat.message,
         retreated: retreat.success,
       };
     }
-    
+
     // Process combat round
     const playerBF = calculateBattleFactor(
       {
@@ -141,7 +142,7 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       character.rank,
       character.battlesWon
     );
-    
+
     const combatRound = processCombatRound(
       playerBF,
       character.ship.weaponStrength,
@@ -157,7 +158,7 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       },
       round
     );
-    
+
     return combatRound;
   });
 }

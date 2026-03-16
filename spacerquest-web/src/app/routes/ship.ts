@@ -3,31 +3,26 @@
  */
 
 import { FastifyInstance } from 'fastify';
+import { prisma } from '../../db/prisma.js';
+import { requireAuth } from '../middleware/auth.js';
+import { upgradeBody } from '../schemas.js';
 
 export async function registerShipRoutes(fastify: FastifyInstance) {
-  const { PrismaClient } = await import('@prisma/client');
-  
   // Get ship status
   fastify.get('/api/ship/status', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const prisma = new PrismaClient();
-    
+
     const character = await prisma.character.findFirst({
       where: { userId },
       include: { ship: true },
     });
-    
-    await prisma.$disconnect();
-    
+
     if (!character || !character.ship) {
       return reply.status(404).send({ error: 'No ship found' });
     }
-    
+
     return {
       shipName: character.shipName,
       components: [
@@ -52,46 +47,43 @@ export async function registerShipRoutes(fastify: FastifyInstance) {
       ].filter(Boolean),
     };
   });
-  
+
   // Upgrade component
   fastify.post('/api/ship/upgrade', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    const { component, upgradeType } = request.body as {
-      component: string;
-      upgradeType: 'STRENGTH' | 'CONDITION';
-    };
-    
+    const body = upgradeBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+    const { component, upgradeType } = body.data;
+
     const upgradesSystem = await import('../../game/systems/upgrades.js');
     const result = await upgradesSystem.upgradeShipComponent(userId, component, upgradeType);
-    
+
     if (!result.success) {
       return reply.status(400).send({ error: result.error });
     }
-    
+
     return result;
   });
-  
+
   // Repair all damage
   fastify.post('/api/ship/repair', {
-    preValidation: [async (request, reply) => {
-      try { await request.jwtVerify(); }
-      catch (err) { reply.code(401).send({ error: 'Unauthorized' }); }
-    }],
+    preValidation: [requireAuth],
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
-    
+
     const repairsSystem = await import('../../game/systems/repairs.js');
     const result = await repairsSystem.repairAllComponents(userId);
 
     if (!result.success) {
       return reply.status(400).send({ error: result.error });
     }
-    
+
     return result;
   });
 }
