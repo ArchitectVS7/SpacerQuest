@@ -16,6 +16,9 @@ import { BankDepositScreen } from '../game/screens/bank-deposit.js';
 import { BankWithdrawScreen } from '../game/screens/bank-withdraw.js';
 import { BankTransferScreen } from '../game/screens/bank-transfer.js';
 import { RescueScreen } from '../game/screens/rescue.js';
+import { RegistryScreen } from '../game/screens/registry.js';
+import { ArenaScreen } from '../game/screens/arena.js';
+import { CombatScreen } from '../game/screens/combat.js';
 
 export const screens: Record<string, any> = {
   'main-menu': MainMenuScreen,
@@ -32,6 +35,9 @@ export const screens: Record<string, any> = {
   'bank-withdraw': BankWithdrawScreen,
   'bank-transfer': BankTransferScreen,
   'rescue': RescueScreen,
+  'registry': RegistryScreen,
+  'arena': ArenaScreen,
+  'combat': CombatScreen,
 };
 
 export async function handleScreenRequest(characterId: string, screenName: string) {
