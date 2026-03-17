@@ -1,5 +1,8 @@
 FROM node:20-alpine AS builder
 
+# Prisma needs OpenSSL to detect the correct binary variant at generate time
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Copy package files (paths relative to repo root — Railway build context)
