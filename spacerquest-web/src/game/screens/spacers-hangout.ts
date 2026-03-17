@@ -14,9 +14,21 @@
 
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
-import { formatCredits } from '../utils.js';
-import { isJailed } from '../systems/jail.js';
-import { ALLIANCE_INFO } from '../systems/alliance-rules.js';
+import { formatCredits, subtractCredits } from '../utils.js';
+import { calculateBailCost, releasePlayer, CrimeType } from '../systems/jail.js';
+import { ALLIANCE_INFO, canJoinAlliance } from '../systems/alliance-rules.js';
+import { AllianceType } from '@prisma/client';
+
+// Module-level state maps keyed by characterId
+const pendingAllianceSwitch = new Map<string, AllianceType>();
+const pendingBailPrompt = new Set<string>();
+
+const ALLIANCE_KEY_MAP: Record<string, AllianceType> = {
+  '+': AllianceType.ASTRO_LEAGUE,
+  '@': AllianceType.SPACE_DRAGONS,
+  '&': AllianceType.WARLORD_CONFED,
+  '^': AllianceType.REBEL_ALLIANCE,
+};
 
 export const SpacersHangoutScreen: ScreenModule = {
   name: 'spacers-hangout',
@@ -61,7 +73,66 @@ Hello Spacer ${character.name}. What'll it be?
   },
 
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
-    const key = input.trim().toUpperCase();
+    const raw = input.trim();
+    const key = raw.toUpperCase();
+
+    // -----------------------------------------------------------------------
+    // Bail ID input — pending bail prompt is active, user typed a number
+    // -----------------------------------------------------------------------
+    if (pendingBailPrompt.has(characterId) && /^\d+$/.test(raw)) {
+      pendingBailPrompt.delete(characterId);
+
+      const targetSpacerId = parseInt(raw, 10);
+
+      const [caller, target] = await Promise.all([
+        prisma.character.findUnique({ where: { id: characterId } }),
+        prisma.character.findFirst({ where: { spacerId: targetSpacerId } }),
+      ]);
+
+      if (!caller) {
+        return { output: '\r\n\x1b[31mError: Character not found.\x1b[0m\r\n> ' };
+      }
+
+      if (!target) {
+        return { output: `\r\n\x1b[31mNo spacer with ID #${targetSpacerId} found.\x1b[0m\r\n> ` };
+      }
+
+      if (target.crimeType === null) {
+        return { output: `\r\n\x1b[31m${target.name} is not in the brig.\x1b[0m\r\n> ` };
+      }
+
+      const crimeType = target.crimeType as unknown as CrimeType;
+      const bailCost = calculateBailCost(crimeType);
+      const deductResult = subtractCredits(caller.creditsHigh, caller.creditsLow, bailCost);
+
+      if (!deductResult.success) {
+        return {
+          output: `\r\n\x1b[31mYou don't have enough credits to post bail (need ${bailCost} cr).\x1b[0m\r\n> `,
+        };
+      }
+
+      const releasedName = releasePlayer(target.name);
+
+      await Promise.all([
+        prisma.character.update({
+          where: { id: caller.id },
+          data: { creditsHigh: deductResult.high, creditsLow: deductResult.low },
+        }),
+        prisma.character.update({
+          where: { id: target.id },
+          data: { crimeType: null, name: releasedName },
+        }),
+      ]);
+
+      return {
+        output: `\r\n\x1b[32mBail posted! ${releasedName} walks free.\x1b[0m\r\n> `,
+      };
+    }
+
+    // If bail prompt is active but user typed something non-numeric, cancel it
+    if (pendingBailPrompt.has(characterId)) {
+      pendingBailPrompt.delete(characterId);
+    }
 
     switch (key) {
       case 'Q':
@@ -86,7 +157,7 @@ Hello Spacer ${character.name}. What'll it be?
         };
 
       case 'A': {
-        // Alliance display
+        // Alliance display — show member counts then prompt for choice
         const lines = ['\r\n\x1b[33;1mAlliance Recruitment:\x1b[0m\r\n'];
         for (const a of ALLIANCE_INFO) {
           const count = await prisma.allianceMembership.count({
@@ -95,8 +166,119 @@ Hello Spacer ${character.name}. What'll it be?
           lines.push(`  (${a.symbol}) ${a.name} - ${count} members\r\n`);
         }
         lines.push('\r\nRequires Lieutenant rank or higher.\r\n');
-        lines.push('Use PUT /api/character/alliance to join.\r\n> ');
-        return { output: lines.join('') };
+        lines.push('\r\nChoose: (+)Astro League  (@)Space Dragons\r\n');
+        lines.push('        (&)Warlord Confed (^)Rebel Alliance\r\n');
+        lines.push('        (Q)Cancel\r\n> ');
+        return { output: lines.join(''), data: { awaitingAllianceChoice: true } };
+      }
+
+      case '+':
+      case '@':
+      case '&':
+      case '^': {
+        const allianceEnum = ALLIANCE_KEY_MAP[key];
+        const allianceInfo = ALLIANCE_INFO.find(a => a.symbol === key)!;
+
+        const character = await prisma.character.findUnique({
+          where: { id: characterId },
+          include: { ship: true },
+        });
+
+        if (!character) {
+          return { output: '\r\n\x1b[31mError: Character not found.\x1b[0m\r\n> ' };
+        }
+
+        const [totalPlayers, allianceMemberCount] = await Promise.all([
+          prisma.character.count(),
+          prisma.allianceMembership.count({ where: { alliance: allianceEnum } }),
+        ]);
+
+        const joinResult = canJoinAlliance(
+          character.rank,
+          character.allianceSymbol as AllianceType,
+          totalPlayers,
+          allianceMemberCount
+        );
+
+        if (!joinResult.allowed) {
+          return {
+            output: `\r\n\x1b[31m${joinResult.reason}\x1b[0m\r\n> `,
+          };
+        }
+
+        if (joinResult.hasExistingAlliance) {
+          // Store pending switch and ask for confirmation
+          pendingAllianceSwitch.set(characterId, allianceEnum);
+          return {
+            output: `\r\n\x1b[33;1mSwitching costs ALL your credits and port ownership!\x1b[0m\r\n` +
+              `Join ${allianceInfo.name}? (Y)es (N)o\r\n> `,
+          };
+        }
+
+        // No existing alliance — join immediately
+        await prisma.character.update({
+          where: { id: character.id },
+          data: { allianceSymbol: allianceEnum },
+        });
+        await prisma.allianceMembership.upsert({
+          where: { characterId: character.id },
+          update: { alliance: allianceEnum },
+          create: { characterId: character.id, alliance: allianceEnum },
+        });
+
+        return {
+          output: `\r\n\x1b[32mWelcome to ${allianceInfo.name}!\x1b[0m\r\n> `,
+        };
+      }
+
+      case 'Y': {
+        const pendingAlliance = pendingAllianceSwitch.get(characterId);
+        if (!pendingAlliance) {
+          return { output: '\r\n\x1b[31mWhoops!...one too many!\x1b[0m\r\n> ' };
+        }
+
+        pendingAllianceSwitch.delete(characterId);
+
+        const allianceInfo = ALLIANCE_INFO.find(a => a.enum === pendingAlliance)!;
+
+        const character = await prisma.character.findUnique({
+          where: { id: characterId },
+        });
+
+        if (!character) {
+          return { output: '\r\n\x1b[31mError: Character not found.\x1b[0m\r\n> ' };
+        }
+
+        // Apply switch cost: zero credits, delete port ownership
+        await Promise.all([
+          prisma.character.update({
+            where: { id: character.id },
+            data: {
+              creditsHigh: 0,
+              creditsLow: 0,
+              allianceSymbol: pendingAlliance,
+            },
+          }),
+          prisma.portOwnership.deleteMany({ where: { characterId: character.id } }),
+          prisma.allianceMembership.upsert({
+            where: { characterId: character.id },
+            update: { alliance: pendingAlliance },
+            create: { characterId: character.id, alliance: pendingAlliance },
+          }),
+        ]);
+
+        return {
+          output: `\r\n\x1b[32mAlliance switched! Welcome to ${allianceInfo.name}.\x1b[0m\r\n` +
+            `\x1b[33mAll your credits and port ownership have been forfeited.\x1b[0m\r\n> `,
+        };
+      }
+
+      case 'N': {
+        if (pendingAllianceSwitch.has(characterId)) {
+          pendingAllianceSwitch.delete(characterId);
+          return { output: '\r\n\x1b[33mAlliance switch cancelled.\x1b[0m\r\n> ' };
+        }
+        return { output: '\r\n\x1b[31mWhoops!...one too many!\x1b[0m\r\n> ' };
       }
 
       case 'B': {
@@ -119,12 +301,17 @@ Hello Spacer ${character.name}. What'll it be?
           `  Cell #${i + 1} (#${String(j.spacerId).padStart(4, '0')})...${j.name}...Ship: ${j.shipName || 'none'}`
         ).join('\r\n');
 
+        // Set bail prompt flag so next numeric input is treated as a spacer ID
+        pendingBailPrompt.add(characterId);
+
         return {
           output: `\r\n\x1b[36;1m${'_'.repeat(49)}\x1b[0m\r\n` +
             `\x1b[33mHmmm...Let's see who we have locked up....\x1b[0m\r\n` +
             `\x1b[36;1m${'_'.repeat(49)}\x1b[0m\r\n` +
             `\r\n${cells}\r\n` +
-            `\r\nThat's the scurvy lot of them\r\n> `,
+            `\r\nThat's the scurvy lot of them\r\n` +
+            `\r\n  \x1b[37;1m(B)\x1b[0mail spacer #___  to bail someone out\r\n` +
+            `\r\nEnter spacer ID to bail: `,
         };
       }
 

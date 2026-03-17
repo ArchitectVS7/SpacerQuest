@@ -8,6 +8,8 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import _websocket from '@fastify/websocket';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
@@ -23,9 +25,12 @@ import { registerEconomyRoutes } from './routes/economy.js';
 import { registerShipRoutes } from './routes/ship.js';
 import { registerSocialRoutes } from './routes/social.js';
 import { registerMissionsRoutes } from './routes/missions.js';
+import { registerAllianceRoutes } from './routes/alliance.js';
 
 // Import WebSocket handler
 import { registerWebSocketHandler } from '../sockets/game.js';
+import { setIO } from '../sockets/io.js';
+import { subscribeToWorkerEvents } from '../sockets/worker-bridge.js';
 
 // Load environment
 import dotenv from 'dotenv';
@@ -75,6 +80,42 @@ async function registerPlugins() {
     max: 100,
     timeWindow: '1 minute',
     keyGenerator: (request) => request.ip,
+  });
+
+  // OpenAPI / Swagger
+  await fastify.register(swagger, {
+    openapi: {
+      info: {
+        title: 'SpacerQuest v4.0 API',
+        description: 'BBS Museum Edition — space trading and combat game API',
+        version: '4.0.0',
+      },
+      servers: [{ url: '/' }],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+        },
+      },
+      security: [{ bearerAuth: [] }],
+      tags: [
+        { name: 'auth', description: 'Authentication & session management' },
+        { name: 'character', description: 'Character management & jail' },
+        { name: 'navigation', description: 'Travel & navigation' },
+        { name: 'combat', description: 'Combat encounters' },
+        { name: 'economy', description: 'Trading, fuel, gambling, ports' },
+        { name: 'ship', description: 'Ship upgrades & repairs' },
+        { name: 'social', description: 'Directory, rankings, duels' },
+        { name: 'missions', description: 'Endgame missions' },
+        { name: 'alliance', description: 'Alliance bulletin board' },
+      ],
+    },
+  });
+  await fastify.register(swaggerUi, {
+    routePrefix: '/docs',
   });
 
   // (WebSocket via Socket.IO is initialized elsewhere)
@@ -131,6 +172,9 @@ await registerSocialRoutes(fastify);
 // Missions (Endgame)
 await registerMissionsRoutes(fastify);
 
+// Alliance bulletin board
+await registerAllianceRoutes(fastify);
+
 // ============================================================================
 // WEBSOCKET
 // ============================================================================
@@ -166,12 +210,15 @@ const start = async () => {
         credentials: true,
       },
     });
+    setIO(io);
     registerWebSocketHandler(io, fastify);
+    subscribeToWorkerEvents(io, fastify);
 
     await fastify.listen({ port, host });
     fastify.log.info(`🚀 SpacerQuest v4.0 server running at http://${host}:${port}`);
     fastify.log.info(`📡 WebSocket endpoint: ws://${host}:${port}/ws`);
     fastify.log.info(`🏥 Health check: http://${host}:${port}/health`);
+    fastify.log.info(`📖 API docs: http://${host}:${port}/docs`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

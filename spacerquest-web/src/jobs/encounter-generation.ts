@@ -11,6 +11,10 @@ import { AllianceType } from '@prisma/client';
 import { randomInt, checkProbability } from '../game/utils.js';
 import { calculateBattleFactor } from '../game/systems/combat.js';
 import { prisma } from '../db/prisma.js';
+import { publishWorldEvent } from './event-publisher.js';
+import { workerLogger } from './worker.js';
+
+const log = workerLogger.child({ job: 'encounter' });
 
 export interface EncounterJobResult {
   botCombats: number;
@@ -30,7 +34,7 @@ export async function runEncounterJob(): Promise<EncounterJobResult> {
     priceUpdates: 0,
   };
   
-  console.log('[Encounter Job] Starting encounter generation...');
+  log.info('Starting encounter generation');
   
   // 1. Generate bot-vs-bot combats
   result.botCombats = await generateBotCombats();
@@ -43,7 +47,7 @@ export async function runEncounterJob(): Promise<EncounterJobResult> {
   // 3. Update fuel prices (simple supply/demand)
   result.priceUpdates = await updateFuelPrices();
   
-  console.log(`[Encounter Job] Completed: ${result.botCombats} bot combats, ${result.takeoverAttempts} takeover attempts`);
+  log.info(`Completed: ${result.botCombats} bot combats, ${result.takeoverAttempts} takeover attempts`);
   
   return result;
 }
@@ -229,18 +233,22 @@ async function processTakeoverAttempts(): Promise<{ attempts: number; successes:
         },
       });
       
+      const takeoverMsg = `${attackingAlliance} seized control of system ${system.systemId} from ${system.alliance}!`;
       await prisma.gameLog.create({
         data: {
           type: 'ALLIANCE',
           systemId: system.systemId,
-          message: `${attackingAlliance} seized control of system ${system.systemId} from ${system.alliance}!`,
+          message: takeoverMsg,
           metadata: {
             fromAlliance: system.alliance,
             toAlliance: attackingAlliance,
           },
         },
       });
-      
+
+      // Push world event to connected clients
+      await publishWorldEvent({ type: 'ALLIANCE_TAKEOVER', message: takeoverMsg });
+
       successes++;
     } else {
       // Failed attempt - update cooldown

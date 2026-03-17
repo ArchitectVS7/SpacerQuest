@@ -31,7 +31,7 @@ export async function repairAllComponents(characterId: string) {
     return { success: false, error: `Not enough credits. Repair cost: ${totalCost} cr` };
   }
 
-  const updateData: any = {};
+  const updateData: Record<string, number> = {};
   for (const comp of components) {
     updateData[`${comp}Condition`] = 9;
   }

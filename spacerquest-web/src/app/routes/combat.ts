@@ -6,6 +6,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../../db/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { engageBody, combatActionBody } from '../schemas.js';
+import { calculateComponentPower } from '../../game/utils.js';
 
 export async function registerCombatRoutes(fastify: FastifyInstance) {
   // Start combat encounter
@@ -68,6 +69,39 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
 
     enemy.battleFactor = calculateEnemyBattleFactor(enemy);
 
+    // Create CombatSession for disconnect mitigation
+    await prisma.combatSession.upsert({
+      where: { characterId: character.id },
+      update: {
+        playerWeaponPower: calculateComponentPower(character.ship.weaponStrength, character.ship.weaponCondition),
+        playerShieldPower: calculateComponentPower(character.ship.shieldStrength, character.ship.shieldCondition),
+        playerDrivePower: calculateComponentPower(character.ship.driveStrength, character.ship.driveCondition),
+        playerBattleFactor: playerBF,
+        enemyWeaponPower: enemy.weaponStrength || 20,
+        enemyShieldPower: enemy.shieldStrength || 15,
+        enemyDrivePower: enemy.driveStrength || 10,
+        enemyBattleFactor: enemy.battleFactor,
+        enemyHullCondition: enemy.hullCondition || 5,
+        currentRound: 1,
+        active: true,
+        result: null,
+      },
+      create: {
+        characterId: character.id,
+        playerWeaponPower: calculateComponentPower(character.ship.weaponStrength, character.ship.weaponCondition),
+        playerShieldPower: calculateComponentPower(character.ship.shieldStrength, character.ship.shieldCondition),
+        playerDrivePower: calculateComponentPower(character.ship.driveStrength, character.ship.driveCondition),
+        playerBattleFactor: playerBF,
+        enemyWeaponPower: enemy.weaponStrength || 20,
+        enemyShieldPower: enemy.shieldStrength || 15,
+        enemyDrivePower: enemy.driveStrength || 10,
+        enemyBattleFactor: enemy.battleFactor,
+        enemyHullCondition: enemy.hullCondition || 5,
+        currentRound: 1,
+        active: true,
+      },
+    });
+
     return {
       encounter: true,
       enemy: {
@@ -109,15 +143,31 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
     if (action === 'RETREAT') {
       const retreat = attemptRetreat(
         character.ship.driveStrength * character.ship.driveCondition,
-        enemy?.driveStrength * enemy?.driveCondition || 100,
+        ((enemy?.driveStrength as number) ?? 10) * ((enemy?.driveCondition as number) ?? 7) || 100,
         character.ship.hasCloaker
       );
+
+      // Mark CombatSession inactive on successful retreat
+      if (retreat.success) {
+        await prisma.combatSession.updateMany({
+          where: { characterId: character.id, active: true },
+          data: { active: false, result: 'RETREAT' },
+        });
+      }
 
       return {
         success: retreat.success,
         message: retreat.message,
         retreated: retreat.success,
       };
+    }
+
+    if (action === 'SURRENDER') {
+      await prisma.combatSession.updateMany({
+        where: { characterId: character.id, active: true },
+        data: { active: false, result: 'SURRENDER' },
+      });
+      return { success: true, message: 'You surrender to the enemy.', surrendered: true };
     }
 
     // Process combat round
@@ -149,15 +199,32 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       character.ship.weaponCondition,
       character.ship.shieldStrength,
       character.ship.shieldCondition,
-      enemy || {
+      (enemy || {
         weaponStrength: 20,
         weaponCondition: 7,
         shieldStrength: 15,
         shieldCondition: 7,
         battleFactor: 200,
-      },
+      }) as unknown as import('../../game/systems/combat.js').Enemy,
       round
     );
+
+    // Update CombatSession round counter
+    await prisma.combatSession.updateMany({
+      where: { characterId: character.id, active: true },
+      data: { currentRound: round + 1 },
+    });
+
+    // If combat ended, mark session inactive
+    // Combat ends when either side's shields are destroyed (damage >= shield power)
+    const combatEnded = combatRound.enemyShieldDamage >= 100 || combatRound.playerShieldDamage >= 100;
+    if (combatEnded) {
+      const result = combatRound.enemyShieldDamage >= 100 ? 'VICTORY' : 'DEFEAT';
+      await prisma.combatSession.updateMany({
+        where: { characterId: character.id, active: true },
+        data: { active: false, result },
+      });
+    }
 
     return combatRound;
   });

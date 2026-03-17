@@ -39,7 +39,7 @@ export const engageBody = z.object({
 export const combatActionBody = z.object({
   action: z.enum(['FIRE', 'RETREAT', 'SURRENDER']),
   round: z.number().int().min(1).optional(),
-  enemy: z.any().optional(),
+  enemy: z.record(z.string(), z.unknown()).optional(),
 });
 
 // ── Economy ─────────────────────────────────────────────────────────────────

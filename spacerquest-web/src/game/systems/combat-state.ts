@@ -13,7 +13,7 @@
  * state in the database so it survives disconnections.
  */
 
-import { randomInt, checkProbability } from '../utils.js';
+// randomInt and checkProbability available from ../utils.js if needed
 
 // ============================================================================
 // TYPES

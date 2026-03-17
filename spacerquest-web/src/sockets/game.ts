@@ -79,7 +79,8 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
     });
     
     // Combat action
-    socket.on('combat:action', async (data: { action: 'FIRE' | 'RETREAT' | 'SURRENDER', round?: number, enemy?: any }) => {
+    // Enemy data is a partial snapshot sent by the client; cast to Enemy at call sites
+    socket.on('combat:action', async (data: { action: 'FIRE' | 'RETREAT' | 'SURRENDER', round?: number, enemy?: Partial<import('../game/systems/combat.js').Enemy> }) => {
       if (!socket.characterId || !socket.userId) return;
       
       const { processCombatRound, calculateBattleFactor, attemptRetreat } = 
@@ -98,7 +99,7 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
       if (data.action === 'RETREAT') {
         const retreat = attemptRetreat(
           character.ship.driveStrength * character.ship.driveCondition,
-          data.enemy?.driveStrength * data.enemy?.driveCondition || 100,
+          (data.enemy?.driveStrength ?? 10) * (data.enemy?.driveCondition ?? 7) || 100,
           character.ship.hasCloaker
         );
         
@@ -138,13 +139,13 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
         character.ship.weaponCondition,
         character.ship.shieldStrength,
         character.ship.shieldCondition,
-        data.enemy || {
+        (data.enemy || {
           weaponStrength: 20,
           weaponCondition: 7,
           shieldStrength: 15,
           shieldCondition: 7,
           battleFactor: 200,
-        },
+        }) as import('../game/systems/combat.js').Enemy,
         data.round || 1
       );
       
@@ -180,9 +181,72 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
       }
     });
     
-    // Handle disconnect
-    socket.on('disconnect', () => {
+    // Handle disconnect — resolve active combat sessions
+    socket.on('disconnect', async () => {
       fastify.log.info('WebSocket client disconnected');
+
+      if (!socket.characterId) return;
+
+      try {
+        // Check for active combat session
+        const combatSession = await prisma.combatSession.findFirst({
+          where: { characterId: socket.characterId, active: true },
+        });
+
+        if (combatSession) {
+          const { resolveCombatOnDisconnect, createCombatState } =
+            await import('../game/systems/combat-state.js');
+
+          // Build combat state from session record
+          const state = createCombatState(
+            combatSession.characterId,
+            {
+              weaponPower: combatSession.playerWeaponPower,
+              shieldPower: combatSession.playerShieldPower,
+              drivePower: combatSession.playerDrivePower,
+              battleFactor: combatSession.playerBattleFactor,
+            },
+            {
+              weaponPower: combatSession.enemyWeaponPower,
+              shieldPower: combatSession.enemyShieldPower,
+              drivePower: combatSession.enemyDrivePower,
+              battleFactor: combatSession.enemyBattleFactor,
+              hullCondition: combatSession.enemyHullCondition,
+            },
+            combatSession.currentRound
+          );
+
+          // Resolve combat server-side
+          const resolution = resolveCombatOnDisconnect(state);
+
+          // Persist resolution
+          await prisma.combatSession.update({
+            where: { id: combatSession.id },
+            data: {
+              active: false,
+              result: resolution.outcome,
+              currentRound: resolution.roundsPlayed,
+            },
+          });
+
+          // Apply combat outcome to character
+          if (resolution.outcome === 'DEFEAT') {
+            await prisma.character.update({
+              where: { id: socket.characterId },
+              data: { battlesLost: { increment: 1 } },
+            });
+          } else if (resolution.outcome === 'VICTORY') {
+            await prisma.character.update({
+              where: { id: socket.characterId },
+              data: { battlesWon: { increment: 1 } },
+            });
+          }
+
+          fastify.log.info(`Combat resolved on disconnect for ${socket.characterId}: ${resolution.outcome}`);
+        }
+      } catch (err) {
+        fastify.log.error(err, 'Error resolving combat on disconnect');
+      }
     });
     
     // Send initial greeting
