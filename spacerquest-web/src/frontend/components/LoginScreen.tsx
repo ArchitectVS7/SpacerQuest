@@ -20,10 +20,10 @@ export function LoginScreen() {
       setAuthenticated(urlToken, '');
       wsClient.connect();
       wsClient.authenticate(urlToken);
-      
+
       // Clean URL
       window.history.replaceState({}, document.title, '/');
-      
+
       // Fetch character data
       fetchCharacter(urlToken);
     }
@@ -44,7 +44,7 @@ export function LoginScreen() {
       if (response.ok) {
         const data = await response.json();
         const { setCharacter, setShip, setCurrentSystem, setDailyTripsRemaining } = useGameStore.getState();
-        
+
         if (data.character) {
           setCharacter(data.character);
         }
@@ -71,25 +71,48 @@ export function LoginScreen() {
     }
   }, []);
 
+  // Handle "D" keypress for dev login
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'd' || e.key === 'D') {
+        handleDevLogin();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div className="min-h-screen bg-black text-green-500 flex items-center justify-center p-4">
       <div className="max-w-2xl w-full">
-        <pre className="text-green-500 text-xs md:text-sm leading-tight mb-8">
-{`
-\x1b[36;1m_________________________________________\x1b[0m
-\x1b[33;1m                                        \x1b[0m
-\x1b[33;1m     S P A C E R  Q U E S T             \x1b[0m
-\x1b[33;1m     ----------------------             \x1b[0m
-\x1b[33;1m                                        \x1b[0m
-\x1b[37m     Version 4.0 - Web Museum Edition    \x1b[0m
-\x1b[33;1m                                        \x1b[0m
-\x1b[36;1m_________________________________________\x1b[0m
-`}
+        <pre className="text-cyan-400 text-xs md:text-sm leading-tight mb-8 text-center">{
+`____________________________________________
+|                                            |
+|                                            |`}
+<span className="text-yellow-300">{`
+|         |                 S                |
+|         ^                   P              |
+|        /|\\                    A            |
+|       <|||>                     C          |
+|        [_]                Q       E        |
+|        |-|                  U       R      |
+|        |_|                    E            |
+|       /|||\\                     S          |
+|      / ||| \\                      T        |
+|     /  |||  \\                              |
+|    /   |||   \\          Presented by       |
+|   /____[|]____\\                            |
+|        ]^[         The Den of The Firefox  |`}</span>{`
+|                                            |`}
+<span className="text-white">{`
+| Version 4.0 - Web Museum Edition           |
+| Converted by VS7 and Claude                |`}</span>{`
+|____________________________________________|`}
         </pre>
 
         <div className="border border-green-500 p-6 mb-6">
           <h1 className="text-xl mb-4 text-center">SpacerQuest Authentication</h1>
-          
+
           <div className="space-y-4">
             <button
               onClick={handleDevLogin}
@@ -97,7 +120,7 @@ export function LoginScreen() {
             >
               [D] Development Login
             </button>
-            
+
             <div className="text-center text-sm text-green-400 mt-4">
               <p>Press [D] or click above to login</p>
             </div>

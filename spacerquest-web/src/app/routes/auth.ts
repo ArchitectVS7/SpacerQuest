@@ -232,32 +232,30 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
     return { success: true, message: 'All sessions revoked' };
   });
 
-  // Dev Login (only in development)
-  if (process.env.NODE_ENV !== 'production') {
-    fastify.get('/auth/dev-login', async (request, reply) => {
-      try {
-        let user = await prisma.user.findFirst();
+  // Quick Login (museum edition — no OAuth provider needed)
+  fastify.get('/auth/dev-login', async (request, reply) => {
+    try {
+      let user = await prisma.user.findFirst();
 
-        if (!user) {
-          user = await prisma.user.create({
-            data: {
-              bbsUserId: 'dev-local-user-id',
-              email: 'dev@localhost.test',
-              displayName: 'Local Dev User',
-            },
-          });
-        }
-
-        const jwt = fastify.jwt.sign({
-          userId: user.id,
-          bbsUserId: user.bbsUserId
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            bbsUserId: 'dev-local-user-id',
+            email: 'dev@localhost.test',
+            displayName: 'Local Dev User',
+          },
         });
-
-        return reply.redirect(`/?token=${jwt}`);
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.status(500).send({ error: 'Dev login failed' });
       }
-    });
-  }
+
+      const jwt = fastify.jwt.sign({
+        userId: user.id,
+        bbsUserId: user.bbsUserId
+      });
+
+      return reply.redirect(`/?token=${jwt}`);
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({ error: 'Login failed' });
+    }
+  });
 }
