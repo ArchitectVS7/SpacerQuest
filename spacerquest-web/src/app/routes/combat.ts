@@ -21,7 +21,7 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
     }
     const { attack } = body.data;
 
-    const { generateEncounter, calculateBattleFactor, calculateEnemyBattleFactor } =
+    const { generateEncounter, calculateBattleFactor, calculateEnemyBattleFactor, isNpcFriendly } =
       await import('../../game/systems/combat.js');
 
     const character = await prisma.character.findFirst({
@@ -33,8 +33,8 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'No ship found' });
     }
 
-    // Generate enemy
-    const enemy = generateEncounter(
+    // Generate enemy from NPC roster (async DB lookup)
+    const enemy = await generateEncounter(
       character.currentSystem,
       character.missionType,
       character.score
@@ -42,6 +42,21 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
 
     if (!enemy) {
       return { encounter: false, message: 'No enemy encountered' };
+    }
+
+    // Same-alliance NPC check — original SP.FIGHT1.S:138
+    if (isNpcFriendly(enemy, character.allianceSymbol)) {
+      return {
+        encounter: true,
+        friendly: true,
+        message: `${enemy.name} Hails A Friendly Greeting.`,
+        enemy: {
+          type: enemy.type,
+          class: enemy.class,
+          name: enemy.name,
+          commander: enemy.commander,
+        },
+      };
     }
 
     // Calculate battle factors
@@ -73,6 +88,7 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
     await prisma.combatSession.upsert({
       where: { characterId: character.id },
       update: {
+        npcRosterId: enemy.npcRosterId || null,
         playerWeaponPower: calculateComponentPower(character.ship.weaponStrength, character.ship.weaponCondition),
         playerShieldPower: calculateComponentPower(character.ship.shieldStrength, character.ship.shieldCondition),
         playerDrivePower: calculateComponentPower(character.ship.driveStrength, character.ship.driveCondition),
@@ -88,6 +104,7 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       },
       create: {
         characterId: character.id,
+        npcRosterId: enemy.npcRosterId || null,
         playerWeaponPower: calculateComponentPower(character.ship.weaponStrength, character.ship.weaponCondition),
         playerShieldPower: calculateComponentPower(character.ship.shieldStrength, character.ship.shieldCondition),
         playerDrivePower: calculateComponentPower(character.ship.driveStrength, character.ship.driveCondition),
@@ -110,6 +127,8 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
         name: enemy.name,
         commander: enemy.commander,
         battleFactor: enemy.battleFactor,
+        npcRosterId: enemy.npcRosterId,
+        alliance: enemy.alliance,
       },
       playerBattleFactor: playerBF,
       attack,

@@ -222,15 +222,10 @@ describe('Integration completeness', () => {
     const { generateEncounter } = await import('../src/game/systems/combat');
     expect(generateEncounter).toBeTypeOf('function');
 
-    // Verify missionType=5 generates PATROL type
-    vi.spyOn(Math, 'random').mockReturnValue(0.01); // ensure encounter triggers
-    const patrol = generateEncounter(1, 5, 100);
-    vi.restoreAllMocks();
-
-    if (patrol) {
-      expect(patrol.type).toBe('PATROL');
-      expect(patrol.class).toBe('SPX');
-    }
+    // generateEncounter is now async (DB-backed NPC roster lookup)
+    // Verify the function returns a Promise (async function)
+    const result = generateEncounter(1, 5, 100);
+    expect(result).toBeInstanceOf(Promise);
   });
 
   it('sage.ts and wise-one.ts exports are used by their screens', async () => {

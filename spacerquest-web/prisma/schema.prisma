@@ -294,6 +294,68 @@ model StarSystem {
 }
 
 // ============================================================================
+// NPC ROSTER (Original SP.FIGHT1.S persistent NPC data files)
+// ============================================================================
+
+enum NpcType {
+  PIRATE        // PIRATES file (core pirates, kk=1 cargo runs)
+  PATROL        // SP.PAT file (space patrol, kk=2/4/5)
+  RIM_PIRATE    // SP.RIMPIR file (rim stars, kk=6)
+  BRIGAND       // SP.BRIGAND file (smuggling, kk=5 sk=5)
+  REPTILOID     // SP.REPTILE file (andromeda, kk=10)
+}
+
+model NpcRoster {
+  id              String    @id @default(uuid())
+
+  // Identity (original string fields: p3$, p4$, p5$)
+  type            NpcType
+  shipClass       String    // p3$ - Hull class (e.g. "Junk", "Sailfish", "S1-Snake")
+  commander       String    // p4$ - Commander name (e.g. "][-Lt.Savage", "RP-Black Bart")
+  shipName        String    // p5$ - Ship name (e.g. "SP1.Thor", "Gypsy Lee")
+  homeSystem      String    // p7$ - Home star system name
+
+  // Alliance affiliation (derived from commander prefix in original)
+  // K)( = unaffiliated pirate, ][- = patrol, RP- = rim pirate
+  // Ship name suffix determines alliance: + = Astro, @ = Dragon, & = Warlord, ^ = Rebel
+  alliance        AllianceType @default(NONE)
+
+  // Original numeric fields (p3..s5 from input #1,p3,p4,p5,p6,p7,p8,s7,s8,p9,s9,bl,bw,s3,s4,s5)
+  rosterIndex     Int       // p4 - position/ID within original file
+  creditValue     Int       // p5 - bounty/credit reward
+  fuelCapacity    Int       // p6 - fuel stored
+
+  // Combat components (strength, condition pairs)
+  weaponStrength  Int       // p7
+  weaponCondition Int       // p8
+  shieldStrength  Int       // s7
+  shieldCondition Int       // s8
+  hullCondition   Int       // p9
+  lifeSupportCond Int       // s9
+  driveStrength   Int       // s3
+  driveCondition  Int       // s4
+  hullStrength    Int       // s5
+
+  // Persistent battle record (updated after each fight)
+  battlesLost     Int       @default(0) // bl
+  battlesWon      Int       @default(0) // bw
+
+  // Seed flag: true for original 65 NPCs, false for generated expansions
+  isOriginal      Boolean   @default(false)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  combatSessions  CombatSession[]
+  battleRecords   BattleRecord[]
+
+  @@index([type])
+  @@index([alliance])
+  @@index([isOriginal])
+}
+
+// ============================================================================
 // COMBAT & BATTLES
 // ============================================================================
 
@@ -308,24 +370,29 @@ model BattleRecord {
   id              String    @id @default(uuid())
   characterId     String
   character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  
+
   enemyType       String    // pirate, patrol, rim_pirate, etc.
   enemyName       String
   enemyClass      String?
   systemId        Int
-  
+
+  // NPC roster reference (null for legacy/generated enemies)
+  npcRosterId     String?
+  npcRoster       NpcRoster? @relation(fields: [npcRosterId], references: [id], onDelete: SetNull)
+
   result          BattleResult
   rounds          Int
   battleFactor    Int
-  
+
   lootCredits     Int       @default(0)
   damageTaken     Json      @default("{}")
-  
+
   createdAt       DateTime  @default(now())
-  
+
   @@index([characterId])
   @@index([createdAt])
   @@index([result])
+  @@index([npcRosterId])
 }
 
 // ============================================================================
@@ -406,6 +473,10 @@ model CombatSession {
   characterId     String    @unique
   character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 
+  // NPC roster reference (for identity persistence across disconnect)
+  npcRosterId     String?
+  npcRoster       NpcRoster? @relation(fields: [npcRosterId], references: [id], onDelete: SetNull)
+
   playerWeaponPower   Int
   playerShieldPower   Int
   playerDrivePower    Int
@@ -426,6 +497,7 @@ model CombatSession {
 
   @@index([characterId])
   @@index([active])
+  @@index([npcRosterId])
 }
 
 // ============================================================================

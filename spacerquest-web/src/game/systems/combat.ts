@@ -1,8 +1,13 @@
 /**
  * SpacerQuest v4.0 - Combat System
- * 
+ *
  * Implements battle mechanics from original SP.FIGHT1.S
  * All formulas preserved exactly from the original
+ *
+ * NPC encounters use the persistent NpcRoster table, matching the
+ * original Apple II data files (PIRATES, SP.PAT, SP.RIMPIR,
+ * SP.BRIGAND, SP.REPTILE). A random NPC is selected from the roster
+ * based on mission type and system, mirroring SP.FIGHT1.S:62-88.
  */
 
 import { BattleResult, Rank } from '@prisma/client';
@@ -16,9 +21,8 @@ import {
   CLOAKING_ESCAPE_CHANCE,
   ENCOUNTER_BASE_CHANCE,
   ENCOUNTER_RIM_CHANCE,
-  PIRATE_CLASSES,
 } from '../constants';
-import { calculateComponentPower, rollDice, checkProbability, randomInt } from '../utils.js';
+import { calculateComponentPower, checkProbability, randomInt } from '../utils.js';
 
 // ============================================================================
 // ENCOUNTER GENERATION
@@ -40,136 +44,103 @@ export interface Enemy {
   hullCondition: number;
   battleFactor: number;
   fuel: number;
+  /** NpcRoster.id if this enemy came from the persistent roster */
+  npcRosterId?: string;
+  /** Credit bounty from the NPC roster */
+  creditValue?: number;
+  /** Alliance affiliation from the NPC roster */
+  alliance?: string;
 }
 
 /**
- * Generate random encounter during travel
- * 
- * Original from SP.FIGHT1.S:
- *   r=4: if sk=5 r=3 ... if sk=3 r=pz ... gosub rand
+ * Generate encounter during travel by selecting from the NPC roster.
+ *
+ * Original from SP.FIGHT1.S:62-88:
+ *   if sk=1 f$="pirates" ... if sk=2 f$="sp.pat" ...
+ *   r=pn:gosub rand:pz=x:po=x  (random selection from roster)
  */
-export function generateEncounter(
+export async function generateEncounter(
   currentSystem: number,
   missionType: number,
-  playerPower: number
-): Enemy | null {
+  _playerPower: number
+): Promise<Enemy | null> {
   // Determine encounter chance based on system type
   const encounterChance = currentSystem > 14 ? ENCOUNTER_RIM_CHANCE : ENCOUNTER_BASE_CHANCE;
-  
-  // Roll for encounter
+
   if (!checkProbability(encounterChance)) {
     return null;
   }
-  
-  // Determine enemy type based on mission
+
+  const { prisma } = await import('../../db/prisma.js');
+
+  // Determine NPC type based on mission — mirrors SP.FIGHT1.S:62-68
+  let npcType: string;
   if (missionType === 2) {
-    // Space Patrol mission - encounter pirates
-    return generatePirate(playerPower);
+    // Space Patrol mission (kk=2) — encounter pirates
+    npcType = 'PIRATE';
+  } else if (missionType === 5) {
+    // Smuggling (kk=5) — encounter patrol
+    npcType = 'PATROL';
+  } else if (missionType === 10) {
+    // Andromeda trip (kk=10) — encounter reptiloids
+    npcType = 'REPTILOID';
+  } else if (currentSystem > 20) {
+    // Andromeda systems (21-26) — reptiloids
+    npcType = 'REPTILOID';
+  } else if (currentSystem > 14) {
+    // Rim Stars (15-20) — rim pirates
+    npcType = 'RIM_PIRATE';
+  } else {
+    // Standard cargo run (kk=1) — pirates or brigands
+    npcType = missionType === 4 ? 'PATROL' : 'PIRATE';
   }
-  
-  if (missionType === 5) {
-    // Smuggling - encounter patrol
-    return generatePatrol(playerPower);
+
+  // Select a random NPC from the roster — mirrors "r=pn:gosub rand:pz=x:po=x"
+  const rosterCount = await prisma.npcRoster.count({ where: { type: npcType as any } });
+
+  if (rosterCount === 0) {
+    // Fallback: if no NPCs of this type exist, return null
+    return null;
   }
-  
-  if (currentSystem > 14) {
-    // Rim Stars - rim pirates
-    return generateRimPirate(playerPower);
+
+  const skipCount = randomInt(0, rosterCount - 1);
+  const npc = await prisma.npcRoster.findFirst({
+    where: { type: npcType as any },
+    skip: skipCount,
+  });
+
+  if (!npc) {
+    return null;
   }
-  
-  // Standard cargo run - pirate encounter
-  return generatePirate(playerPower);
+
+  // Build Enemy from the persistent NPC record
+  return npcToEnemy(npc, currentSystem);
 }
 
 /**
- * Generate pirate enemy
+ * Convert an NpcRoster record to an Enemy combat object.
  */
-function generatePirate(playerPower: number): Enemy {
-  const pirateClass = getPirateClassForPower(playerPower);
-  const powerMultiplier = getPiratePowerMultiplier(pirateClass);
-  
+function npcToEnemy(npc: any, systemOverride?: number): Enemy {
   return {
-    type: 'PIRATE',
-    class: pirateClass.name,
-    name: generatePirateShipName(),
-    commander: generatePirateName(),
-    system: randomInt(1, 14),
-    weaponStrength: Math.floor(20 * powerMultiplier),
-    weaponCondition: randomInt(5, 9),
-    shieldStrength: Math.floor(15 * powerMultiplier),
-    shieldCondition: randomInt(5, 9),
-    driveStrength: Math.floor(15 * powerMultiplier),
-    driveCondition: randomInt(5, 9),
-    hullStrength: Math.floor(20 * powerMultiplier),
-    hullCondition: randomInt(5, 9),
-    battleFactor: 0, // Calculated below
-    fuel: randomInt(100, 500),
+    type: npc.type as Enemy['type'],
+    class: npc.shipClass,
+    name: npc.shipName,
+    commander: npc.commander,
+    system: systemOverride ?? 1,
+    weaponStrength: npc.weaponStrength,
+    weaponCondition: npc.weaponCondition,
+    shieldStrength: npc.shieldStrength,
+    shieldCondition: npc.shieldCondition,
+    driveStrength: npc.driveStrength,
+    driveCondition: npc.driveCondition,
+    hullStrength: npc.hullStrength,
+    hullCondition: npc.hullCondition,
+    battleFactor: 0, // Calculated by caller via calculateEnemyBattleFactor()
+    fuel: npc.fuelCapacity,
+    npcRosterId: npc.id,
+    creditValue: npc.creditValue,
+    alliance: npc.alliance,
   };
-}
-
-/**
- * Generate Space Patrol enemy (for smugglers)
- */
-function generatePatrol(playerPower: number): Enemy {
-  const powerMultiplier = 1.0 + (playerPower / 500);
-  
-  return {
-    type: 'PATROL',
-    class: 'SPX',
-    name: 'Space Patrol Interceptor',
-    commander: 'Patrol Commander',
-    system: randomInt(1, 14),
-    weaponStrength: Math.floor(25 * powerMultiplier),
-    weaponCondition: 9,
-    shieldStrength: Math.floor(20 * powerMultiplier),
-    shieldCondition: 9,
-    driveStrength: Math.floor(20 * powerMultiplier),
-    driveCondition: 9,
-    hullStrength: Math.floor(25 * powerMultiplier),
-    hullCondition: 9,
-    battleFactor: 0,
-    fuel: 1000,
-  };
-}
-
-/**
- * Generate Rim Pirate enemy
- */
-function generateRimPirate(playerPower: number): Enemy {
-  const powerMultiplier = 1.5 + (playerPower / 400);
-  
-  return {
-    type: 'RIM_PIRATE',
-    class: 'RIM',
-    name: generatePirateShipName(),
-    commander: generatePirateName(),
-    system: randomInt(15, 20),
-    weaponStrength: Math.floor(30 * powerMultiplier),
-    weaponCondition: randomInt(6, 9),
-    shieldStrength: Math.floor(25 * powerMultiplier),
-    shieldCondition: randomInt(6, 9),
-    driveStrength: Math.floor(20 * powerMultiplier),
-    driveCondition: randomInt(6, 9),
-    hullStrength: Math.floor(30 * powerMultiplier),
-    hullCondition: randomInt(6, 9),
-    battleFactor: 0,
-    fuel: randomInt(200, 600),
-  };
-}
-
-function getPirateClassForPower(playerPower: number) {
-  for (const pc of PIRATE_CLASSES) {
-    if (playerPower >= pc.minPower && playerPower <= pc.maxPower) {
-      return pc;
-    }
-  }
-  return PIRATE_CLASSES[2]; // SPZ
-}
-
-function getPiratePowerMultiplier(pirateClass: typeof PIRATE_CLASSES[number]): number {
-  if (pirateClass.name === 'SPX') return 1.0;
-  if (pirateClass.name === 'SPY') return 1.5;
-  return 2.0; // SPZ
 }
 
 // ============================================================================
@@ -196,9 +167,9 @@ export interface ShipStats {
 
 /**
  * Calculate Battle Factor
- * 
+ *
  * Original from SP.FIGHT1.S:
- *   BF = (weapon × condition) + (shield × condition) + 
+ *   BF = (weapon × condition) + (shield × condition) +
  *        (cabin × condition / 10) + (robotics × condition / 10) +
  *        (life support × condition / 10) + rank_bonus + experience_bonus
  */
@@ -210,33 +181,37 @@ export function calculateBattleFactor(
   // Component contributions
   const weaponBF = calculateComponentPower(ship.weaponStrength, ship.weaponCondition);
   const shieldBF = calculateComponentPower(ship.shieldStrength, ship.shieldCondition);
-  
+
   // Computer contributions (divided by 10)
   const cabinBF = Math.floor(calculateComponentPower(ship.cabinStrength, ship.cabinCondition) / 10);
   const roboticsBF = Math.floor(calculateComponentPower(ship.roboticsStrength, ship.roboticsCondition) / 10);
   const lifeBF = Math.floor(calculateComponentPower(ship.lifeSupportStrength, ship.lifeSupportCondition) / 10);
-  
+
   // Rank bonus
   const rankBonus = RANK_BF_BONUS[rank as keyof typeof RANK_BF_BONUS] || 0;
-  
+
   // Experience bonus (battles won / 10)
   const experienceBonus = Math.floor(battlesWon / EXPERIENCE_BF_DIVISOR);
-  
+
   // Auto-repair module bonus
   const autoRepairBonus = ship.hasAutoRepair ? AUTO_REPAIR_BF_BONUS : 0;
-  
+
   return weaponBF + shieldBF + cabinBF + roboticsBF + lifeBF + rankBonus + experienceBonus + autoRepairBonus;
 }
 
 /**
  * Calculate enemy battle factor
+ *
+ * Original SP.FIGHT1.S ranfix routine: sums all component powers
+ * and derives jg (enemy BF bonus) from the total.
  */
 export function calculateEnemyBattleFactor(enemy: Enemy): number {
   const weaponBF = calculateComponentPower(enemy.weaponStrength, enemy.weaponCondition);
   const shieldBF = calculateComponentPower(enemy.shieldStrength, enemy.shieldCondition);
-  
-  // Enemies get simplified calculation
-  return weaponBF + shieldBF;
+  const driveBF = Math.floor(calculateComponentPower(enemy.driveStrength, enemy.driveCondition) / 10);
+  const hullBF = Math.floor(calculateComponentPower(enemy.hullStrength, enemy.hullCondition) / 10);
+
+  return weaponBF + shieldBF + driveBF + hullBF;
 }
 
 // ============================================================================
@@ -257,7 +232,7 @@ export interface CombatRound {
 
 /**
  * Process one round of combat
- * 
+ *
  * Original from SP.FIGHT1.S:
  *   x8=w2*w1 (player weapon power)
  *   y8=p8*p7 (enemy weapon power)
@@ -274,24 +249,24 @@ export function processCombatRound(
   round: number
 ): CombatRound {
   const combatLog: string[] = [];
-  
+
   // Calculate power levels
   const playerWeaponPower = playerWeaponStr * playerWeaponCond;
   const playerShieldPower = playerShieldStr * playerShieldCond;
   const enemyWeaponPower = enemy.weaponStrength * enemy.weaponCondition;
   const enemyShieldPower = enemy.shieldStrength * enemy.shieldCondition;
-  
+
   // Determine battle advantage
   const battleAdvantage = playerBF > enemy.battleFactor ? 'PLAYER' :
                           playerBF < enemy.battleFactor ? 'ENEMY' : 'EVEN';
-  
+
   combatLog.push(`Round #${round} - Battle Advantage: ${battleAdvantage}`);
-  
+
   // Player attacks
   let playerDamage = 0;
   let playerShieldDamage = 0;
   let playerSystemDamage = 0;
-  
+
   if (playerWeaponPower > enemyShieldPower) {
     const excessDamage = playerWeaponPower - enemyShieldPower;
     playerShieldDamage = Math.floor(excessDamage / 10);
@@ -301,12 +276,12 @@ export function processCombatRound(
   } else {
     combatLog.push('Enemy shields deflect your attack');
   }
-  
+
   // Enemy attacks
   let enemyDamage = 0;
   let enemyShieldDamage = 0;
   let enemySystemDamage = 0;
-  
+
   if (enemyWeaponPower > playerShieldPower) {
     const excessDamage = enemyWeaponPower - playerShieldPower;
     enemyShieldDamage = Math.floor(excessDamage / 10);
@@ -316,7 +291,7 @@ export function processCombatRound(
   } else {
     combatLog.push('Your shields deflect the enemy attack');
   }
-  
+
   return {
     round,
     playerDamage,
@@ -356,7 +331,7 @@ export function applyShieldDamage(
 
 /**
  * Apply system damage (random component hit)
- * 
+ *
  * Original from SP.FIGHT1.S - damage can hit:
  * Cabin, Nav, Drives, Robotics, Weapons, Hull
  */
@@ -365,11 +340,11 @@ export function applySystemDamage(
   _damage: number
 ): DamageResult & { updatedShip: ShipStats } {
   const updatedShip = { ...ship };
-  const damageRoll = rollDice(6);
-  
+  const damageRoll = randomInt(1, 6);
+
   let componentDamaged = '';
   let conditionLost = 0;
-  
+
   switch (damageRoll) {
     case 1: // Cabin
       if (updatedShip.cabinCondition > 0) {
@@ -414,7 +389,7 @@ export function applySystemDamage(
       }
       break;
   }
-  
+
   return {
     shieldsReduced: 0,
     systemDamaged: componentDamaged ? { component: componentDamaged, conditionLost } : undefined,
@@ -433,7 +408,7 @@ export interface RetreatResult {
 
 /**
  * Attempt to retreat from combat
- * 
+ *
  * Original: Check if faster ship, then retreat chance
  */
 export function attemptRetreat(
@@ -448,7 +423,7 @@ export function attemptRetreat(
       message: 'Morton\'s Cloaker activates... you escape!',
     };
   }
-  
+
   // Compare speeds
   if (playerDrivePower > enemyDrivePower) {
     if (checkProbability(RETREAT_SUCCESS_CHANCE)) {
@@ -458,7 +433,7 @@ export function attemptRetreat(
       };
     }
   }
-  
+
   return {
     success: false,
     message: 'Enemy prevents your retreat!',
@@ -473,7 +448,7 @@ export interface SurrenderResult {
 
 /**
  * Enemy demands tribute
- * 
+ *
  * Original from SP.FIGHT1.S:
  *   kc=(kg*1000):if kg>12 kc=10000
  */
@@ -485,10 +460,10 @@ export function enemyDemandsTribute(
   let tribute = combatRounds * TRIBUTE_BASE_MULTIPLIER;
   if (combatRounds > 12) tribute = TRIBUTE_MAX;
   tribute = Math.min(tribute, TRIBUTE_MAX);
-  
+
   // Cap at player's available credits
   tribute = Math.min(tribute, playerCredits);
-  
+
   return {
     accepted: true,
     tributeDemanded: tribute,
@@ -501,7 +476,10 @@ export function enemyDemandsTribute(
 // ============================================================================
 
 /**
- * Record battle result in database
+ * Record battle result in database and update NPC battle stats.
+ *
+ * Original SP.FIGHT1.S wrote updated NPC stats back to the data file
+ * via pirwrite (line 134-139). We do the same by updating NpcRoster.
  */
 export async function recordBattle(
   characterId: string,
@@ -513,7 +491,7 @@ export async function recordBattle(
   damageTaken: Record<string, number>
 ): Promise<void> {
   const { prisma } = await import('../../db/prisma.js');
-  
+
   await prisma.battleRecord.create({
     data: {
       characterId,
@@ -521,6 +499,7 @@ export async function recordBattle(
       enemyName: enemy.name,
       enemyClass: enemy.class,
       systemId: enemy.system,
+      npcRosterId: enemy.npcRosterId || null,
       result,
       rounds,
       battleFactor: playerBF,
@@ -528,6 +507,17 @@ export async function recordBattle(
       damageTaken,
     },
   });
+
+  // Update NPC roster battle stats — mirrors original pirwrite
+  if (enemy.npcRosterId) {
+    const isPlayerWin = result === 'VICTORY';
+    await prisma.npcRoster.update({
+      where: { id: enemy.npcRosterId },
+      data: isPlayerWin
+        ? { battlesLost: { increment: 1 } }
+        : { battlesWon: { increment: 1 } },
+    });
+  }
 }
 
 // ============================================================================
@@ -536,44 +526,41 @@ export async function recordBattle(
 
 /**
  * Calculate loot from defeated enemy
- * 
- * Original from SP.FIGHT1.S:
- *   p5=p5+10000 (for big wins)
- *   g2=g2+p5
+ *
+ * When enemy comes from the NPC roster, use the creditValue field.
+ * Otherwise fall back to class-based calculation.
  */
 export function calculateLoot(enemy: Enemy, playerBF: number): number {
-  // Base loot from enemy class
+  // Use NPC roster credit value if available
+  if (enemy.creditValue && enemy.creditValue > 0) {
+    return enemy.creditValue;
+  }
+
+  // Fallback for legacy enemies without roster data
   let baseLoot = 0;
   if (enemy.class === 'SPX') baseLoot = 500;
   if (enemy.class === 'SPY') baseLoot = 1000;
   if (enemy.class === 'SPZ') baseLoot = 2000;
   if (enemy.type === 'RIM_PIRATE') baseLoot = 3000;
-  
+
   // Bonus for player's battle factor
   const bfBonus = Math.floor(playerBF / 10);
-  
+
   return baseLoot + bfBonus;
 }
 
 // ============================================================================
-// NAME GENERATION
+// ALLIANCE CHECK
 // ============================================================================
 
-const PIRATE_NAMES = [
-  'Black Star', 'Crimson Raider', 'Void Hunter', 'Nebula Shark',
-  'Dark Matter', 'Star Vulture', 'Cosmic Wolf', 'Plasma Jackal',
-  'Quantum Bandit', 'Asteroid King', 'Comet Reaper', 'Solar Marauder',
-];
-
-const PIRATE_COMMANDERS = [
-  'Captain Vex', 'Commander Shadow', 'Admiral Void', 'Captain Blood',
-  'Major Chaos', 'General Dark', 'Captain Storm', 'Commander Fire',
-];
-
-function generatePirateShipName(): string {
-  return PIRATE_NAMES[randomInt(0, PIRATE_NAMES.length - 1)];
-}
-
-function generatePirateName(): string {
-  return PIRATE_COMMANDERS[randomInt(0, PIRATE_COMMANDERS.length - 1)];
+/**
+ * Check if the NPC is friendly (same alliance as player).
+ *
+ * Original SP.FIGHT1.S:138:
+ *   if right$(p5$,2)=right$(nz$,2) print pz$" "p5$" Hails A Friendly Greeting."
+ */
+export function isNpcFriendly(enemy: Enemy, playerAlliance: string): boolean {
+  if (!enemy.alliance || enemy.alliance === 'NONE') return false;
+  if (!playerAlliance || playerAlliance === 'NONE') return false;
+  return enemy.alliance === playerAlliance;
 }
