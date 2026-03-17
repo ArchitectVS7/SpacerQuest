@@ -13,6 +13,8 @@ Railway hosts four services from one project:
 
 The Dockerfile produces a single image that serves both the API and the pre-built React frontend as static files. The worker reuses the same image with an overridden start command.
 
+**Important:** The `railway.json` at the repo root tells Railway to use `spacerquest-web/Dockerfile` with `spacerquest-web/` as the build context, since the Dockerfile is not at the repo root.
+
 ---
 
 ## Prerequisites
