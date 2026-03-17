@@ -13,7 +13,6 @@ import swaggerUi from '@fastify/swagger-ui';
 import _websocket from '@fastify/websocket';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
-import pino from 'pino';
 import { Server as SocketIOServer } from 'socket.io';
 
 // Import routes
@@ -44,7 +43,7 @@ const __dirname = join(__filename, '..');
 // ============================================================================
 
 const fastify = Fastify({
-  logger: pino({
+  logger: {
     level: process.env.LOG_LEVEL || 'info',
     transport: process.env.NODE_ENV === 'development' ? {
       target: 'pino-pretty',
@@ -53,7 +52,7 @@ const fastify = Fastify({
         ignore: 'pid,hostname',
       },
     } : undefined,
-  }),
+  },
 });
 
 // ============================================================================
@@ -124,7 +123,7 @@ async function registerPlugins() {
   if (process.env.NODE_ENV === 'production') {
     const fastifyStatic = await import('@fastify/static');
     await fastify.register(fastifyStatic.default, {
-      root: join(__dirname, '../../public'),
+      root: join(__dirname, '../public'),
       prefix: '/',
     });
   }

@@ -39,10 +39,6 @@ COPY --from=builder /app/prisma ./prisma
 COPY spacerquest-web/scripts/start.sh ./scripts/start.sh
 RUN chmod +x ./scripts/start.sh
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD node dist/app/healthcheck.js
-
 EXPOSE 3000
 
 # Run migrations then start the server
