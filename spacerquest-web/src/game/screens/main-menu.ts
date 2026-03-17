@@ -26,6 +26,23 @@ export const MainMenuScreen: ScreenModule = {
       return { output: '\x1b[2J\x1b[H', nextScreen: 'jail' };
     }
 
+    // Check for resolved combat from disconnect
+    let combatNotice = '';
+    const resolvedCombat = await prisma.combatSession.findFirst({
+      where: { characterId, active: false, result: { not: null } },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (resolvedCombat) {
+      const outcomeMessages: Record<string, string> = {
+        VICTORY: '\x1b[32;1mWhile you were away, your ship prevailed in combat!\x1b[0m',
+        DEFEAT: '\x1b[31;1mWhile you were away, your ship was defeated in combat.\x1b[0m',
+        DRAW: '\x1b[33;1mWhile you were away, your combat ended in a draw.\x1b[0m',
+      };
+      combatNotice = `\r\n${outcomeMessages[resolvedCombat.result!] || ''}\r\n`;
+      // Clear the resolved session so it doesn't show again
+      await prisma.combatSession.delete({ where: { id: resolvedCombat.id } });
+    }
+
     const credits = formatCredits(character.creditsHigh, character.creditsLow);
     const allianceSymbol = getAllianceSymbol(character.allianceSymbol);
     const displayName = allianceSymbol ? `${character.name}-${allianceSymbol}` : character.name;
@@ -33,7 +50,7 @@ export const MainMenuScreen: ScreenModule = {
     const membership = await prisma.allianceMembership.findUnique({ where: { characterId } });
     const hasAlliance = !!(membership && membership.alliance !== 'NONE');
 
-    const output = `
+    const output = `${combatNotice}
 \x1b[36;1m_________________________________________\x1b[0m
 \x1b[33;1m                                        \x1b[0m
 \x1b[33;1m     S P A C E R  Q U E S T             \x1b[0m

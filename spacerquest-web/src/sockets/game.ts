@@ -180,9 +180,72 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
       }
     });
     
-    // Handle disconnect
-    socket.on('disconnect', () => {
+    // Handle disconnect — resolve active combat sessions
+    socket.on('disconnect', async () => {
       fastify.log.info('WebSocket client disconnected');
+
+      if (!socket.characterId) return;
+
+      try {
+        // Check for active combat session
+        const combatSession = await prisma.combatSession.findFirst({
+          where: { characterId: socket.characterId, active: true },
+        });
+
+        if (combatSession) {
+          const { resolveCombatOnDisconnect, createCombatState } =
+            await import('../game/systems/combat-state.js');
+
+          // Build combat state from session record
+          const state = createCombatState(
+            combatSession.characterId,
+            {
+              weaponPower: combatSession.playerWeaponPower,
+              shieldPower: combatSession.playerShieldPower,
+              drivePower: combatSession.playerDrivePower,
+              battleFactor: combatSession.playerBattleFactor,
+            },
+            {
+              weaponPower: combatSession.enemyWeaponPower,
+              shieldPower: combatSession.enemyShieldPower,
+              drivePower: combatSession.enemyDrivePower,
+              battleFactor: combatSession.enemyBattleFactor,
+              hullCondition: combatSession.enemyHullCondition,
+            },
+            combatSession.currentRound
+          );
+
+          // Resolve combat server-side
+          const resolution = resolveCombatOnDisconnect(state);
+
+          // Persist resolution
+          await prisma.combatSession.update({
+            where: { id: combatSession.id },
+            data: {
+              active: false,
+              result: resolution.outcome,
+              currentRound: resolution.roundsPlayed,
+            },
+          });
+
+          // Apply combat outcome to character
+          if (resolution.outcome === 'DEFEAT') {
+            await prisma.character.update({
+              where: { id: socket.characterId },
+              data: { battlesLost: { increment: 1 } },
+            });
+          } else if (resolution.outcome === 'VICTORY') {
+            await prisma.character.update({
+              where: { id: socket.characterId },
+              data: { battlesWon: { increment: 1 } },
+            });
+          }
+
+          fastify.log.info(`Combat resolved on disconnect for ${socket.characterId}: ${resolution.outcome}`);
+        }
+      } catch (err) {
+        fastify.log.error(err, 'Error resolving combat on disconnect');
+      }
     });
     
     // Send initial greeting
