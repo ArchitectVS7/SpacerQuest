@@ -185,7 +185,7 @@ await registerAllianceRoutes(fastify);
 // ERROR HANDLING
 // ============================================================================
 
-fastify.setErrorHandler((error, _request, reply) => {
+fastify.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
   fastify.log.error(error);
 
   reply.status(error.statusCode || 500).send({
