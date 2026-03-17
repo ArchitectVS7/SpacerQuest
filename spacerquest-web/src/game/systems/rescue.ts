@@ -106,7 +106,7 @@ export function calculateRescueRewards(): RescueRewards {
  *   Lists lost ships with format: [#]. [name] Lost near [system]
  *   Shows rescue fee and instructions
  */
-export function renderRescueScreen(lostShips: LostShip[], rescuerName: string): string {
+export function renderRescueScreen(lostShips: LostShip[], _rescuerName: string): string {
   let output = '';
 
   output += '\x1b[36;1m=========================================\x1b[0m\r\n';

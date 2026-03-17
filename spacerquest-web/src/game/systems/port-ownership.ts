@@ -3,7 +3,7 @@
  */
 
 import { prisma } from '../../db/prisma.js';
-import { subtractCredits, addCredits } from '../utils.js';
+import { subtractCredits } from '../utils.js';
 
 const PORT_BASE_PRICE = 500000;
 
@@ -41,7 +41,7 @@ export async function buyPort(characterId: string, systemId: number) {
   return { success: true, message: `Successfully purchased Port ${systemId}` };
 }
 
-export async function collectPortDividends(characterId: string, systemId: number) {
+export async function collectPortDividends(_characterId: string, _systemId: number) {
   // Simplistic dividend collection logic for now, in lieu of full daily processing
   return { success: false, error: 'Dividends collect automatically at day reset' };
 }

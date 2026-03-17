@@ -7,8 +7,7 @@
 
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
-import { renderRescueScreen, validateRescueAttempt } from '../systems/rescue.js';
-import { formatCredits } from '../utils.js';
+import { renderRescueScreen } from '../systems/rescue.js';
 
 export const RescueScreen: ScreenModule = {
   name: 'rescue',

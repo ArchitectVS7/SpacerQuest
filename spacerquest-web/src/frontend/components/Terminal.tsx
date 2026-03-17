@@ -27,13 +27,11 @@ export function TerminalComponent() {
   const terminalInstance = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   
-  const { 
-    currentScreen, 
-    inputMode, 
+  const {
+    currentScreen,
     terminalBuffer,
     appendToTerminal,
     clearTerminal,
-    setPendingAction,
   } = useGameStore();
 
   // Initialize terminal
@@ -105,7 +103,7 @@ export function TerminalComponent() {
     const terminal = terminalInstance.current;
     if (!terminal) return;
 
-    const { currentScreen, pendingAction } = useGameStore.getState();
+    const { currentScreen } = useGameStore.getState();
 
     // Handle special keys
     if (data === '\r') {
@@ -150,7 +148,7 @@ export function TerminalComponent() {
   }, [appendToTerminal]);
 
   // Character creation input handler
-  const handleCharacterCreateInput = useCallback((input: string) => {
+  const handleCharacterCreateInput = useCallback((_input: string) => {
     // Would handle character name input here
   }, []);
 

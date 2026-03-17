@@ -8,7 +8,7 @@ import { wsClient } from '../sockets/wsClient';
 
 export function LoginScreen() {
   const { setAuthenticated } = useGameStore();
-  const [token, setToken] = useState('');
+  const [_token, setToken] = useState('');
 
   const handleLogin = () => {
     // Check for token in URL (from OAuth callback)

@@ -4,7 +4,7 @@
  * Real-time game events via Socket.io
  */
 
-import { FastifyInstance, FastifyRequest } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import { Socket } from 'socket.io';
 import { prisma } from '../db/prisma.js';
 

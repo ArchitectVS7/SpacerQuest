@@ -11,10 +11,8 @@ import { CharacterCreationScreen } from './components/CharacterCreation';
 import './styles/global.css';
 
 export function App() {
-  const { 
-    isAuthenticated, 
-    token, 
-    character, 
+  const {
+    isAuthenticated,
     currentScreen,
     setAuthenticated,
     setCurrentScreen,

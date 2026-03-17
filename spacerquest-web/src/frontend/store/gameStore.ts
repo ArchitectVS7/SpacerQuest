@@ -145,7 +145,7 @@ export interface GameState {
 
 export const useGameStore = create<GameState>()(
   persist(
-    (set, get) => ({
+    (set, _get) => ({
       // Initial State
       isAuthenticated: false,
       token: null,
