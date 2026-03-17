@@ -22,6 +22,7 @@ import { AllianceType } from '@prisma/client';
 // Module-level state maps keyed by characterId
 const pendingAllianceSwitch = new Map<string, AllianceType>();
 const pendingBailPrompt = new Set<string>();
+const inAllianceMenu = new Set<string>();
 
 const ALLIANCE_KEY_MAP: Record<string, AllianceType> = {
   '+': AllianceType.ASTRO_LEAGUE,
@@ -64,7 +65,8 @@ You step over an old spacer sprawled on the floor mumbling
 \x1b[32m[:\x1b[0m${credits}\x1b[32m:][Spacers Hangout]:\x1b[0m
 
   \x1b[37;1m(G)\x1b[0mamble    \x1b[37;1m(D)\x1b[0mrinks    \x1b[37;1m(I)\x1b[0mnfo
-  \x1b[37;1m(A)\x1b[0mlliance  \x1b[37;1m(B)\x1b[0mrig     \x1b[37;1m[Q]\x1b[0muit
+  \x1b[37;1m(A)\x1b[0mlliance  \x1b[37;1m(B)\x1b[0mrig      \x1b[37;1m(N)\x1b[0mews
+  \x1b[37;1m[Q]\x1b[0muit
 
 Hello Spacer ${character.name}. What'll it be?
 > `;
@@ -75,6 +77,17 @@ Hello Spacer ${character.name}. What'll it be?
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
     const raw = input.trim();
     const key = raw.toUpperCase();
+
+    // -----------------------------------------------------------------------
+    // Alliance sub-menu: route (B) to bulletin board
+    // -----------------------------------------------------------------------
+    if (inAllianceMenu.has(characterId)) {
+      inAllianceMenu.delete(characterId);
+      if (key === 'B') {
+        return { output: '\r\n', nextScreen: 'bulletin-board' };
+      }
+      // Fall through to normal handling for alliance symbols, Q, etc.
+    }
 
     // -----------------------------------------------------------------------
     // Bail ID input — pending bail prompt is active, user typed a number
@@ -141,6 +154,9 @@ Hello Spacer ${character.name}. What'll it be?
       case 'G':
         return { output: '\x1b[33mGambling...\x1b[0m\r\n', nextScreen: 'pub' };
 
+      case 'N':
+        return { output: '\x1b[33mSpace News...\x1b[0m\r\n', nextScreen: 'space-news' };
+
       case 'D':
         return { output: '\r\n\x1b[32mSlurp! Guzzle! Barf!\x1b[0m\r\n> ' };
 
@@ -153,8 +169,12 @@ Hello Spacer ${character.name}. What'll it be?
             `  PIR - Pirates attack Cargo Transports\r\n` +
             `  SMU - Smuggling pays big bucks\r\n` +
             `  SPA - Owning a Space Port generates income\r\n` +
-            `  BAT - B/F = Hull/Rank/Drives/#Trips/Life/#Wins\r\n> `,
+            `  BAT - B/F = Hull/Rank/Drives/#Trips/Life/#Wins\r\n` +
+            `  \x1b[37;1m(R)\x1b[0maid - Armed corporate raiding\r\n> `,
         };
+
+      case 'R':
+        return { output: '\r\n', nextScreen: 'raid' };
 
       case 'A': {
         // Alliance display — show member counts then prompt for choice
@@ -168,7 +188,8 @@ Hello Spacer ${character.name}. What'll it be?
         lines.push('\r\nRequires Lieutenant rank or higher.\r\n');
         lines.push('\r\nChoose: (+)Astro League  (@)Space Dragons\r\n');
         lines.push('        (&)Warlord Confed (^)Rebel Alliance\r\n');
-        lines.push('        (Q)Cancel\r\n> ');
+        lines.push('        (B)ulletin Board  (Q)Cancel\r\n> ');
+        inAllianceMenu.add(characterId);
         return { output: lines.join(''), data: { awaitingAllianceChoice: true } };
       }
 

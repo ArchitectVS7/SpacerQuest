@@ -24,6 +24,8 @@ import { WiseOneScreen } from '../game/screens/wise-one.js';
 import { SageScreen } from '../game/screens/sage.js';
 import { JailScreen } from '../game/screens/jail.js';
 import { BulletinBoardScreen } from '../game/screens/bulletin-board.js';
+import { SpaceNewsScreen } from '../game/screens/space-news.js';
+import { RaidScreen } from '../game/screens/raid.js';
 import { AllianceInvestScreen } from '../game/screens/alliance-invest.js';
 
 export const screens: Record<string, any> = {
@@ -49,6 +51,8 @@ export const screens: Record<string, any> = {
   'sage': SageScreen,
   'jail': JailScreen,
   'bulletin-board': BulletinBoardScreen,
+  'space-news': SpaceNewsScreen,
+  'raid': RaidScreen,
   'alliance-invest': AllianceInvestScreen,
 };
 

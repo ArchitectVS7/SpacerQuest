@@ -16,6 +16,7 @@ import {
 import { prisma } from '../db/prisma.js';
 import { publishDailyTick } from './event-publisher.js';
 import { workerLogger } from './worker.js';
+import { generateNpcBulletinPosts } from '../game/systems/bulletin-board.js';
 
 const log = workerLogger.child({ job: 'daily-tick' });
 
@@ -26,6 +27,7 @@ export interface DailyTickResult {
   totalIncomeCollected: number;
   portsEvicted: number;
   promotionsGranted: number;
+  npcBulletinPosts: number;
   newsGenerated: string[];
 }
 
@@ -43,6 +45,7 @@ export async function runDailyTick(): Promise<DailyTickResult> {
     totalIncomeCollected: 0,
     portsEvicted: 0,
     promotionsGranted: 0,
+    npcBulletinPosts: 0,
     newsGenerated: [],
   };
   
@@ -156,8 +159,18 @@ export async function runDailyTick(): Promise<DailyTickResult> {
   }
   
   log.info(`Granted ${result.promotionsGranted} promotions`);
-  
-  // 4. Generate daily news log
+
+  // 4. Generate NPC bulletin board posts
+  log.info('Generating NPC bulletin board posts');
+  try {
+    const npcPosts = await generateNpcBulletinPosts();
+    result.npcBulletinPosts = npcPosts;
+    log.info(`Generated ${npcPosts} NPC bulletin board posts`);
+  } catch (err) {
+    log.warn('Failed to generate NPC bulletin posts (NPC roster may not be seeded yet)');
+  }
+
+  // 5. Generate daily news log
   if (result.newsGenerated.length > 0) {
     await prisma.gameLog.create({
       data: {

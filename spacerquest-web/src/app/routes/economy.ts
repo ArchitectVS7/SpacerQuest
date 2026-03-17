@@ -184,7 +184,7 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
         character.ship.shieldCondition
       );
 
-      const patrol = generateEncounter(character.currentSystem, 5, playerPower);
+      const patrol = await generateEncounter(character.currentSystem, 5, playerPower);
 
       if (patrol) {
         // Patrol intercepted the smuggling run — cargo confiscated, no payment, player jailed
