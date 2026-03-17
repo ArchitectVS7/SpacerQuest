@@ -169,8 +169,12 @@ Hello Spacer ${character.name}. What'll it be?
             `  PIR - Pirates attack Cargo Transports\r\n` +
             `  SMU - Smuggling pays big bucks\r\n` +
             `  SPA - Owning a Space Port generates income\r\n` +
-            `  BAT - B/F = Hull/Rank/Drives/#Trips/Life/#Wins\r\n> `,
+            `  BAT - B/F = Hull/Rank/Drives/#Trips/Life/#Wins\r\n` +
+            `  \x1b[37;1m(R)\x1b[0maid - Armed corporate raiding\r\n> `,
         };
+
+      case 'R':
+        return { output: '\r\n', nextScreen: 'raid' };
 
       case 'A': {
         // Alliance display — show member counts then prompt for choice
