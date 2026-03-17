@@ -57,9 +57,25 @@ The jail system is deeply integrated into the smuggling gameplay loop. Smuggling
 
 ### How It Worked in the Original
 
-The original game had a **bulletin board system** accessed from The Spacers Hangout (SP.BAR). This was a BBS-within-a-BBS: players could read and post public messages. The bulletin board at SP.TOP.S also recorded alliance activity (takeovers, investments, member changes).
+There was **no private 1:1 messaging**. Instead, the game had **alliance-specific bulletin boards** (SP.TOP.S), restricted to alliance members only. Each alliance had its own board stored in a separate file (`astro`, `dragon`, `warlord`, `rebel`).
 
-There was no private 1:1 messaging system. All communication was public, visible to anyone visiting the Hangout.
+**Bulletin board operations:**
+- `(R)eread` — view existing messages
+- `(W)rite msg` — post a message (79 char max, auto-prepended with date + player name)
+- `(K)ill msgs` — wipe all messages (board reset)
+- `(Q)uit` — exit
+
+**Access control:** Players could only read/write their own alliance's board. The header read "Confidential Bulletins For Alliance Members Only." Sysops could read any alliance's board.
+
+**PRD-Original.md requirements (still on record):**
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| AL-201 | System shall provide alliance bulletin boards | Must Have |
+| AL-202 | System shall restrict bulletins to alliance members | Must Have |
+| AL-203 | System shall support raid planning against rival alliances | Should Have |
+
+Source: SP.TOP.S (bulletin board code), USERS-MANUAL.md Section 7.3
 
 ### Current Implementation
 
@@ -67,18 +83,20 @@ There was no private 1:1 messaging system. All communication was public, visible
 
 ### Recommendation: IMPLEMENT (with LLM stub)
 
-The bulletin board is the social heart of the game. In a single-player-with-NPCs context:
+The alliance bulletin board is the social heart of the game and was explicitly a **Must Have** in the original PRD. In a single-player-with-NPCs context:
 
-1. **Phase 1 (now):** Implement a read-only "Spacers Hangout News Board" that displays GameLog entries formatted as BBS posts. This gives the player a sense of a living world ("Firefox's ship was destroyed by Brigands near Rigel-7", "The Warlord Confederation has taken over System 4").
+1. **Phase 1 (now):** Implement alliance bulletin boards with the original operations (Read/Write/Quit). Populate with auto-generated entries from GameLog events (takeovers, raids, member joins). NPC "posts" can be templated initially (e.g., "Commander Zark: Raided System 5 today. DEFCON was laughable. —Z").
 
-2. **Phase 2 (LLM integration):** Add NPC-authored messages. NPCs post contextual messages: threats before attacking, trade tips, alliance recruitment pitches, taunts after winning duels. This transforms the bulletin board from a log viewer into a simulated social space.
+2. **Phase 1 (now):** Implement a public "Spacers Hangout News Board" (non-alliance) that displays recent GameLog entries formatted as BBS posts. This gives the player a sense of a living world even before joining an alliance.
 
-3. **Phase 2 (LLM integration):** Add player posting ability. When the player posts, nearby NPCs can "respond" via LLM-generated replies, creating the illusion of a multi-player conversation.
+3. **Phase 2 (LLM integration):** Replace templated NPC posts with LLM-generated contextual messages: threats before attacking, trade tips, alliance recruitment pitches, taunts after winning duels. Allow player posts to trigger NPC "responses," simulating multi-player conversation.
 
 **Implementation scope (Phase 1):**
 - Create a Spacers Hangout screen (SP.BAR equivalent) at Sun-3
-- Display recent GameLog entries formatted as bulletin board posts
-- Add a news ticker showing recent events
+- Add alliance bulletin board model (or use GameLog with alliance filter)
+- Implement Read/Write/Kill operations per the original SP.TOP.S flow
+- Restrict board access to alliance members (original AL-202)
+- Display public news board with recent GameLog entries
 
 ---
 
