@@ -5,6 +5,7 @@
  * Original source: SP.DOCK1.S
  */
 
+import { AllianceType } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 
 export async function processDocking(characterId: string, systemId: number) {
@@ -50,7 +51,7 @@ export async function processDocking(characterId: string, systemId: number) {
  */
 async function completeRaid(
   characterId: string,
-  character: { name: string; allianceSymbol: string; score: number; missionType: number },
+  character: { name: string; allianceSymbol: AllianceType; score: number; missionType: number },
   systemId: number
 ) {
   const targetSystem = await prisma.starSystem.findUnique({

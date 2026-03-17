@@ -17,7 +17,8 @@
 
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
-import { calculateDistance, calculateFuelCost } from '../systems/travel.js';
+import { calculateFuelCost } from '../systems/travel.js';
+import { calculateDistance } from '../utils.js';
 
 // ============================================================================
 // MULTI-STEP STATE
