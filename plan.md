@@ -7,10 +7,10 @@
 
 ## Production Readiness
 
-| # | Item | Detail |
-|---|------|--------|
-| 9 | **OAuth production endpoints** | Mock OAuth works for dev. Real BBS Portal provider endpoints needed for production. Unused `passport`/`passport-oauth2` packages should be removed. |
-| 10 | **Production deployment runbook** | Docker setup works, no ops guide for monitoring, backups, or scaling. |
+| # | Item | Status | Detail |
+|---|------|--------|--------|
+| 9 | **OAuth production endpoints** | **DONE** | Auth route (`src/app/routes/auth.ts`) supports any OAuth 2.0 provider via `BBS_PORTAL_*` env vars. Mock OAuth available for dev/demo. Unused `passport` packages already removed. Provider setup instructions in `DEPLOY.md`. |
+| 10 | **Production deployment runbook** | **DONE** | Full Railway deployment runbook in `spacerquest-web/DEPLOY.md`. Covers: 4-service topology (app, worker, Postgres, Redis), env var configuration, OAuth provider setup, database seeding, monitoring, backups, scaling, rollback, and troubleshooting. Dockerfile fixed to use npm (matching lockfile) and auto-run migrations on startup. |
 
 ---
 

@@ -56,7 +56,7 @@ services:
 
   worker:
     build: .
-    command: node dist/jobs/worker.js
+    command: ["sh", "-c", "npx prisma migrate deploy && node dist/jobs/worker.js"]
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://spacerquest:spacerquest@db:5432/spacerquest
