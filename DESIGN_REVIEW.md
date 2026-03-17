@@ -7,11 +7,11 @@
 
 ## Critical Finding: No NPC System Exists
 
-Before addressing individual features, a core requirement must be flagged: **the codebase has zero NPC infrastructure.** There are no NPC characters, no NPC behavior scripts, no NPC movement jobs, no NPC trading or combat AI. The `Character` model in the Prisma schema has no `isNpc` flag or equivalent.
+Before addressing individual features, a core requirement must be flagged: **the codebase has no player-like NPC characters.** There are no NPC `Character` records, no `isNpc` flag in the schema, no NPC movement/trading/combat AI, and no NPC creation in the seed.
 
-The project goal states we would "use scripted NPCs to simulate the multiplayer experience." This is entirely unimplemented. The game currently functions as a single-player experience with no simulated opponents, trading partners, or alliance members.
+The project goal states we would "use scripted NPCs to simulate the multiplayer experience." This is largely unimplemented. Some background simulation exists — `encounter-generation.ts` runs automated alliance takeover attempts (alliance-vs-alliance, no individual NPC actors), and `mission-generation.ts` generates "Alliance War Bulletin" flavor text. But there are no NPC spacers that the player can encounter, trade with, duel, bail out of jail, or see in the directory as fellow players.
 
-**Recommendation:** NPC simulation is a prerequisite for most of the features discussed below and should be treated as Priority 0.
+**Recommendation:** NPC simulation is a prerequisite for most of the features discussed below and should be treated as Priority 0. The existing background jobs provide a foundation for alliance-level simulation, but individual NPC characters are needed for the multiplayer illusion.
 
 ---
 
@@ -134,35 +134,48 @@ Alliances were a **major strategic system**, not a minor feature:
 - Recorded takeovers, investments, member changes
 - Alliance-specific news visible to members
 
-### Current Implementation: PARTIALLY IMPLEMENTED
+### Current Implementation: MODERATELY IMPLEMENTED
 
 **What exists:**
-- Database models: `AllianceType` enum, `AllianceMembership`, `AllianceSystem` with DEFCON
-- Alliance constants: startup investment (10,000), DEFCON cost (100,000), max level (20), symbols
-- Investment system: `systems/alliance.ts` — invest, withdraw, DEFCON increase, hostile takeover logic (201 lines, fully functional)
-- Join/leave API: `PUT /api/character/alliance` in `routes/character.ts`
-- Alliance display in spacer directory and registry
+- **Database models:** `AllianceType` enum (4 alliances + NONE), `AllianceMembership` (with investment credits), `AllianceSystem` (with DEFCON), `StarSystem.allianceControl`
+- **Alliance constants:** startup investment (10,000), DEFCON cost (100,000), max level (20), size divisor (1/3), min members (4), symbols — all defined in `constants.ts`
+- **Investment system:** `systems/alliance.ts` — invest, withdraw, DEFCON increase, hostile takeover logic with attack/defend/weaken mechanics (201 lines, fully functional)
+- **Join/leave API:** `PUT /api/character/alliance` in `routes/character.ts` — maps symbols to enums, creates/deletes `AllianceMembership`
+- **Economy routes:** `POST /api/economy/alliance/invest` and `/withdraw` — routes to alliance system functions
+- **Terminal screens:**
+  - Bank Transfer screen shows alliance membership status and invested credits
+  - Registry screen has `[A]lliance Directory` showing players grouped by alliance
+  - Main Menu appends alliance symbol to player name
+  - Pub screen includes alliance events in "Latest Gossip"
+- **Background jobs (alliance-level simulation):**
+  - `encounter-generation.ts:processTakeoverAttempts()` — runs every 5 minutes, 1% daily chance per system, random rival alliance attacks, DEFCON defense reduces success chance (30% base - 2% per level, min 5%), 7-day cooldown
+  - `mission-generation.ts` — 20% chance per run to generate "Alliance War Bulletin" flavor messages between random alliances
+- **Utility functions:** `getAllianceSymbol()`, `appendAllianceSymbol()`, `removeAllianceSymbol()` in `utils.ts`
 
 **What's missing:**
-- **No Spacers Hangout screen** — nowhere for the player to join an alliance through the terminal UI
-- **No alliance bulletin board** — no screen or route for viewing alliance news
-- **No rank check on join** — the API accepts any player regardless of rank
-- **No cost to switch** — the API allows free alliance switching (original cost all credits)
-- **No alliance raids** — the original SP.BAR.S raid mechanic is unimplemented
-- **No NPC alliance membership** — without NPCs, the player is the only alliance member, making the entire system meaningless (no rivals to take over systems, no allies to contribute DEFCON)
+- **No Spacers Hangout screen** — no terminal UI for joining an alliance (only raw API)
+- **No alliance bulletin board screen** — no way to view alliance-specific news in-game
+- **No rank check on join** — API accepts any player (original required Lieutenant+)
+- **No cost to switch** — API allows free alliance switching (original cost all credits + ports)
+- **No 1/3 cap enforcement** — constants defined but not checked in join logic
+- **No alliance raids** — the original SP.BAR.S player-initiated raid mechanic is unimplemented (only automated background takeover attempts exist)
+- **No alliance investment screen** — no SP.VEST equivalent terminal UI for investing in systems
+- **No NPC alliance members** — no individual NPC spacers in alliances; the background jobs simulate alliance-level wars abstractly (no named NPC actors)
+- **No same-alliance PvP protection** — no enforcement preventing allied players from attacking each other
 
 ### Recommendation: IMPLEMENT FULLY (critical for gameplay)
 
-Alliances are not a "nice-to-have." They are a core strategic endgame system. Without them, the economic investment, territorial control, and inter-faction warfare dimensions of the game do not exist. However, **alliances are meaningless without NPCs** — there must be NPC spacers in alliances for the player to compete against.
+Alliances are not a "nice-to-have." They are a core strategic endgame system. The backend logic is solid — investment, DEFCON, takeovers all work. The background jobs already simulate alliance territorial wars. What's missing is the **player-facing UI** and **original rule enforcement** that makes the system accessible and fair, plus **NPC spacers** that give the player someone to compete against.
 
 **Implementation scope:**
 - Create Spacers Hangout screen (Sun-3) with alliance joining UI
-- Enforce rank requirement (Lieutenant+)
-- Enforce switching cost (all credits)
-- Enforce 1/3 cap per alliance
+- Enforce rank requirement (Lieutenant+) in join logic
+- Enforce switching cost (all credits + port loss) in join logic
+- Enforce 1/3 cap per alliance in join logic
+- Create alliance investment screen (SP.VEST equivalent) — terminal UI for system acquisition, DEFCON investment, treasury management
 - Create alliance bulletin board screen showing alliance-specific GameLog entries
-- Create alliance investment screen (SP.VEST equivalent)
-- **NPC integration:** NPCs must join alliances, invest in systems, raise DEFCON, and execute takeovers against each other and the player
+- Add same-alliance PvP protection
+- **NPC integration:** NPCs must join alliances as named characters visible in the directory, invest in systems, and provide visible rivals for the player
 
 ---
 
@@ -250,8 +263,8 @@ The original penalty (ship destroyed, 10,000 cr fine, jail) is too harsh for a w
 | **NPC Simulation System** | IMPLEMENT | P0 (prerequisite) | N/A |
 | **Jail/Brig/Crime** | IMPLEMENT | P1 | Low (smuggling works solo, bail needs NPCs) |
 | **Bulletin Board** | IMPLEMENT | P1 | Medium (NPC posts make it alive) |
-| **Alliances (full)** | IMPLEMENT | P1 | High (meaningless without NPC rivals) |
-| **Alliance Bulletin Board** | IMPLEMENT | P1 | High (follows alliance implementation) |
+| **Alliances (UI + rules)** | IMPLEMENT | P1 | Medium (backend works, UI/rules needed; NPCs enrich it) |
+| **Alliance Bulletin Board** | IMPLEMENT | P1 | Medium (follows alliance implementation) |
 | **Wise One & Sage** | IMPLEMENT | P2 | None (self-contained) |
 | **Carrier-Loss Penalty** | DO NOT IMPLEMENT | N/A | N/A |
 | **Combat disconnect mitigation** | IMPLEMENT | P1 | None |
