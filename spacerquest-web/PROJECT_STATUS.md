@@ -7,7 +7,7 @@
 
 ## Current State: ~92% Complete
 
-The core gameplay loop is fully functional. All game systems have logic, tests, routes, and terminal screens. The remaining work is route-level integration for three systems whose logic exists but isn't wired into the travel flow, plus polish items.
+The core gameplay loop is fully functional. All game systems have logic, tests, routes, and terminal screens. The remaining work is route-level integration for two systems whose logic exists but isn't wired into the travel flow, plus polish items.
 
 ### What's Done
 
@@ -35,26 +35,27 @@ These systems have complete game logic and passing unit tests but are not called
 
 | # | Item | What Exists | What's Missing |
 |---|------|-------------|----------------|
-| 1 | **Travel hazards during transit** | `systems/hazards.ts` with `checkHazardTrigger()`, `generateHazard()`, `applyHazardDamage()` + 13 tests | Navigation routes don't call hazard checks during travel. Need to integrate into `POST /api/navigation/launch` or travel progress flow |
-| 2 | **Black hole transit to Andromeda** | `systems/black-hole.ts` with `isAndromedaSystem()`, `canTransitBlackHole()`, `getBlackHoleTransitCost()` + 11 tests | Navigation routes don't gate Andromeda destinations (systems 21-26) behind Astraxial hull check |
-| 3 | **Smuggling patrol encounters** | `systems/combat.ts` has smuggling encounter generation; `systems/economy.ts` has smuggling pay multiplier | No trigger point in cargo delivery flow to spawn patrol encounters |
+| 1 | **Travel hazards during transit** | `systems/hazards.ts` with `checkHazardTrigger()`, `generateHazard()`, `applyHazardDamage()` + 13 tests | Navigation routes don't call hazard checks during travel. Need to integrate into travel progress flow or `POST /api/navigation/arrive` |
+| 2 | **Smuggling patrol encounters** | `systems/combat.ts` has smuggling encounter generation; `systems/economy.ts` has smuggling pay multiplier | No trigger point in cargo delivery flow to spawn patrol encounters |
+
+**Resolved:** Black hole transit to Andromeda is fully integrated into `validateLaunch()` in `travel.ts:258-271` — Astraxial hull check gates Andromeda destinations.
 
 ### Priority 2: Polish
 
 | # | Item | Notes |
 |---|------|-------|
-| 4 | **WebSocket push events** | `TRAVEL_COMPLETE`, `WORLD_EVENT`, `DAILY_TICK` — game works without these (client polls), but push would improve responsiveness |
-| 5 | **Pub screen gambling flow** | Pub screen shows gambling menus and references API routes, but the terminal-based interactive play session (pick number, see rolls) happens via raw API calls, not through the screen renderer flow |
-| 6 | **`console.*` → Pino logging** | 30 `console.*` statements remain (14 in frontend, 16 in jobs). Backend should use Fastify's built-in Pino logger |
-| 7 | **`any` type usage** | 23 `any` casts remain. Manageable given `strict: false`, but should be reduced over time |
+| 3 | **WebSocket push events** | `TRAVEL_COMPLETE`, `WORLD_EVENT`, `DAILY_TICK` — game works without these (client polls), but push would improve responsiveness |
+| 4 | **Pub screen gambling flow** | Pub screen shows gambling menus and references API routes, but the terminal-based interactive play session (pick number, see rolls) happens via raw API calls, not through the screen renderer flow |
+| 5 | **`console.*` → Pino logging** | 30 `console.*` statements remain (14 in frontend, 16 in jobs). Backend should use Fastify's built-in Pino logger |
+| 6 | **`any` type usage** | 23 `any` casts remain. Manageable given `strict: false`, but should be reduced over time |
 
 ### Priority 3: Production Readiness
 
 | # | Item | Notes |
 |---|------|-------|
-| 8 | **OAuth production config** | Mock OAuth works for dev. Need real BBS Portal provider endpoints for production deployment |
-| 9 | **OpenAPI/Swagger spec** | No API documentation beyond source code |
-| 10 | **Production deployment runbook** | Docker setup works, but no ops guide for monitoring, backups, or scaling |
+| 7 | **OAuth production config** | Mock OAuth works for dev. Need real BBS Portal provider endpoints for production deployment |
+| 8 | **OpenAPI/Swagger spec** | No API documentation beyond source code |
+| 9 | **Production deployment runbook** | Docker setup works, but no ops guide for monitoring, backups, or scaling |
 
 ### Not Required (verified against PRD)
 
