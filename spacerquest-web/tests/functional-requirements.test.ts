@@ -312,13 +312,16 @@ describe('FR-COMBAT', () => {
   });
 
   describe('calculateEnemyBattleFactor', () => {
-    it('enemy BF = (weaponStr × weaponCond) + (shieldStr × shieldCond)', () => {
+    it('enemy BF = weapon + shield + drive/10 + hull/10', () => {
       const enemy = makeEnemy({
         weaponStrength: 20, weaponCondition: 8,
         shieldStrength: 15, shieldCondition: 7,
+        driveStrength: 10, driveCondition: 5,
+        hullStrength: 10, hullCondition: 5,
       });
-      // 20×8 + 15×7 = 160 + 105 = 265
-      expect(calculateEnemyBattleFactor(enemy)).toBe(265);
+      // weapon: 20×8=160, shield: 15×7=105, drive: floor(10×5/10)=5, hull: floor(10×5/10)=5
+      // Total: 160 + 105 + 5 + 5 = 275
+      expect(calculateEnemyBattleFactor(enemy)).toBe(275);
     });
   });
 
