@@ -194,7 +194,7 @@ spacerquest-web/
 - **Author**: Firefox
 - **Original Release**: May 25, 1991
 - **Platform**: Apple II GBBS
-- **BBS**: The Den of The Firefox (209-526-1771)
+- **BBS**: The Den of The Firefox 
 
 ## License
 
