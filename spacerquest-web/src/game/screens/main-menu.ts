@@ -7,6 +7,7 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { formatCredits, getAllianceSymbol } from '../utils.js';
+import { isJailed } from '../systems/jail.js';
 
 export const MainMenuScreen: ScreenModule = {
   name: 'main-menu',
@@ -18,6 +19,11 @@ export const MainMenuScreen: ScreenModule = {
 
     if (!character) {
       return { output: '\x1b[31mError: Character not found.\x1b[0m\r\n' };
+    }
+
+    // Jailed players get redirected to jail screen
+    if (isJailed(character.name)) {
+      return { output: '\x1b[2J\x1b[H', nextScreen: 'jail' };
     }
 
     const credits = formatCredits(character.creditsHigh, character.creditsLow);

@@ -23,6 +23,7 @@ import { registerEconomyRoutes } from './routes/economy.js';
 import { registerShipRoutes } from './routes/ship.js';
 import { registerSocialRoutes } from './routes/social.js';
 import { registerMissionsRoutes } from './routes/missions.js';
+import { registerAllianceRoutes } from './routes/alliance.js';
 
 // Import WebSocket handler
 import { registerWebSocketHandler } from '../sockets/game.js';
@@ -130,6 +131,9 @@ await registerSocialRoutes(fastify);
 
 // Missions (Endgame)
 await registerMissionsRoutes(fastify);
+
+// Alliance bulletin board
+await registerAllianceRoutes(fastify);
 
 // ============================================================================
 // WEBSOCKET

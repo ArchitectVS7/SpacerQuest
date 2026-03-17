@@ -22,6 +22,7 @@ import { CombatScreen } from '../game/screens/combat.js';
 import { SpacersHangoutScreen } from '../game/screens/spacers-hangout.js';
 import { WiseOneScreen } from '../game/screens/wise-one.js';
 import { SageScreen } from '../game/screens/sage.js';
+import { JailScreen } from '../game/screens/jail.js';
 
 export const screens: Record<string, any> = {
   'main-menu': MainMenuScreen,
@@ -44,6 +45,7 @@ export const screens: Record<string, any> = {
   'spacers-hangout': SpacersHangoutScreen,
   'wise-one': WiseOneScreen,
   'sage': SageScreen,
+  'jail': JailScreen,
 };
 
 export async function handleScreenRequest(characterId: string, screenName: string) {

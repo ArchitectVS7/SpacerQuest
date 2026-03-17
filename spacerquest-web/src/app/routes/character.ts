@@ -3,9 +3,13 @@
  */
 
 import { FastifyInstance } from 'fastify';
+import { AllianceType } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { shipNameBody, allianceBody } from '../schemas.js';
+import { canJoinAlliance, calculateSwitchCost } from '../../game/systems/alliance-rules.js';
+import { canPayFine, payFine, releasePlayer, CrimeType, calculateBailCost } from '../../game/systems/jail.js';
+import { subtractCredits } from '../../game/utils.js';
 
 export async function registerCharacterRoutes(fastify: FastifyInstance) {
   // Get character status
@@ -131,15 +135,62 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
     }
 
     // Map alliance string to enum
-    const allianceMap: Record<string, any> = {
-      'NONE': 'NONE',
-      '+': 'ASTRO_LEAGUE',
-      '@': 'SPACE_DRAGONS',
-      '&': 'WARLORD_CONFED',
-      '^': 'REBEL_ALLIANCE',
+    const allianceMap: Record<string, AllianceType> = {
+      'NONE': AllianceType.NONE,
+      '+': AllianceType.ASTRO_LEAGUE,
+      '@': AllianceType.SPACE_DRAGONS,
+      '&': AllianceType.WARLORD_CONFED,
+      '^': AllianceType.REBEL_ALLIANCE,
     };
 
-    const allianceEnum = allianceMap[alliance] || 'NONE';
+    const allianceEnum = allianceMap[alliance] ?? AllianceType.NONE;
+
+    // Validate the join if not leaving
+    if (allianceEnum !== AllianceType.NONE) {
+      // Count total players and members in target alliance
+      const [totalPlayers, allianceMemberCount] = await Promise.all([
+        prisma.character.count(),
+        prisma.allianceMembership.count({ where: { alliance: allianceEnum } }),
+      ]);
+
+      const joinResult = canJoinAlliance(
+        character.rank,
+        character.allianceSymbol as AllianceType,
+        totalPlayers,
+        allianceMemberCount
+      );
+
+      if (!joinResult.allowed) {
+        return reply.status(400).send({ error: joinResult.reason });
+      }
+
+      // If switching alliances, apply switch cost
+      if (joinResult.hasExistingAlliance) {
+        const ownsPort = await prisma.portOwnership.findFirst({
+          where: { characterId: character.id },
+        });
+
+        calculateSwitchCost(
+          character.creditsHigh,
+          character.creditsLow,
+          ownsPort !== null
+        );
+
+        // Deduct all credits
+        await prisma.character.update({
+          where: { id: character.id },
+          data: {
+            creditsHigh: 0,
+            creditsLow: 0,
+          },
+        });
+
+        // Delete port ownership
+        await prisma.portOwnership.deleteMany({
+          where: { characterId: character.id },
+        });
+      }
+    }
 
     // Update character alliance symbol
     await prisma.character.update({
@@ -148,13 +199,13 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
     });
 
     // Create or update alliance membership
-    if (allianceEnum !== 'NONE') {
+    if (allianceEnum !== AllianceType.NONE) {
       await prisma.allianceMembership.upsert({
         where: { characterId: character.id },
-        update: { alliance: allianceEnum as any },
+        update: { alliance: allianceEnum },
         create: {
           characterId: character.id,
-          alliance: allianceEnum as any,
+          alliance: allianceEnum,
         },
       });
     } else {
@@ -164,5 +215,104 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
     }
 
     return { success: true, alliance };
+  });
+
+  // Pay fine to get out of jail
+  fastify.post('/api/character/jail/pay-fine', {
+    preValidation: [requireAuth],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+
+    const character = await prisma.character.findFirst({ where: { userId } });
+
+    if (!character) {
+      return reply.status(404).send({ error: 'Character not found' });
+    }
+
+    if (character.crimeType === null) {
+      return reply.status(400).send({ error: 'You are not in jail' });
+    }
+
+    const crimeType = character.crimeType as unknown as CrimeType;
+
+    if (!canPayFine(character.creditsHigh, character.creditsLow, crimeType)) {
+      return reply.status(400).send({ error: 'Not enough credits to pay fine' });
+    }
+
+    const fineResult = payFine(character.creditsHigh, character.creditsLow, crimeType);
+    const releasedName = releasePlayer(character.name);
+
+    await prisma.character.update({
+      where: { id: character.id },
+      data: {
+        creditsHigh: fineResult.creditsHigh,
+        creditsLow: fineResult.creditsLow,
+        crimeType: null,
+        name: releasedName,
+      },
+    });
+
+    return { success: true, message: 'Fine paid. You are free to go.' };
+  });
+
+  // Bail out another player
+  fastify.post('/api/character/jail/bail/:targetId', {
+    preValidation: [requireAuth],
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const { targetId } = request.params as { targetId: string };
+
+    const caller = await prisma.character.findFirst({ where: { userId } });
+
+    if (!caller) {
+      return reply.status(404).send({ error: 'Character not found' });
+    }
+
+    const targetSpacerId = parseInt(targetId, 10);
+    if (isNaN(targetSpacerId)) {
+      return reply.status(400).send({ error: 'Invalid target ID' });
+    }
+
+    const target = await prisma.character.findFirst({
+      where: { spacerId: targetSpacerId },
+    });
+
+    if (!target) {
+      return reply.status(404).send({ error: 'Target character not found' });
+    }
+
+    if (target.crimeType === null) {
+      return reply.status(400).send({ error: 'That player is not in jail' });
+    }
+
+    const crimeType = target.crimeType as unknown as CrimeType;
+    const bailCost = calculateBailCost(crimeType);
+
+    const deductResult = subtractCredits(caller.creditsHigh, caller.creditsLow, bailCost);
+
+    if (!deductResult.success) {
+      return reply.status(400).send({ error: 'Not enough credits to post bail' });
+    }
+
+    const releasedName = releasePlayer(target.name);
+
+    await Promise.all([
+      prisma.character.update({
+        where: { id: caller.id },
+        data: {
+          creditsHigh: deductResult.high,
+          creditsLow: deductResult.low,
+        },
+      }),
+      prisma.character.update({
+        where: { id: target.id },
+        data: {
+          crimeType: null,
+          name: releasedName,
+        },
+      }),
+    ]);
+
+    return { success: true, message: `Bailed out ${releasedName}` };
   });
 }
