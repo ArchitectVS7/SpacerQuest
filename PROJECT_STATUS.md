@@ -46,8 +46,8 @@ These systems have complete game logic and passing unit tests but are not called
 |---|------|-------|
 | 3 | **WebSocket push events** | `TRAVEL_COMPLETE`, `WORLD_EVENT`, `DAILY_TICK` — game works without these (client polls), but push would improve responsiveness |
 | 4 | **Pub screen gambling flow** | Pub screen shows gambling menus and references API routes, but the terminal-based interactive play session (pick number, see rolls) happens via raw API calls, not through the screen renderer flow |
-| 5 | **`console.*` → Pino logging** | 30 `console.*` statements remain (14 in frontend, 16 in jobs). Backend should use Fastify's built-in Pino logger |
-| 6 | **`any` type usage** | 23 `any` casts remain. Manageable given `strict: false`, but should be reduced over time |
+| 5 | **`console.*` → Pino logging** | ~27 `console.*` statements remain (~12 in frontend, ~15 in jobs). Backend routes use Fastify's Pino logger correctly; jobs and frontend still use console |
+| 6 | **`any` type usage** | 18 `any` casts remain (down from 23). Manageable given `strict: false`, but should be reduced over time |
 
 ### Priority 3: Production Readiness
 
