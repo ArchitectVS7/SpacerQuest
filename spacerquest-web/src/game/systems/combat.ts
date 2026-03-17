@@ -18,7 +18,7 @@ import {
   ENCOUNTER_RIM_CHANCE,
   PIRATE_CLASSES,
 } from '../constants';
-import { calculateComponentPower, rollD100, rollDice, checkProbability, randomInt } from '../utils.js';
+import { calculateComponentPower, rollDice, checkProbability, randomInt } from '../utils.js';
 
 // ============================================================================
 // ENCOUNTER GENERATION
@@ -362,7 +362,7 @@ export function applyShieldDamage(
  */
 export function applySystemDamage(
   ship: ShipStats,
-  damage: number
+  _damage: number
 ): DamageResult & { updatedShip: ShipStats } {
   const updatedShip = { ...ship };
   const damageRoll = rollDice(6);

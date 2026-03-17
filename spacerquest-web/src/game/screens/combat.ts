@@ -8,12 +8,10 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import {
-  renderEncounterAlert,
   renderBattleStatusBar,
   renderCombatActions,
-  renderPostBattleSummary,
 } from '../systems/combat-display.js';
-import { calculateComponentPower, formatCredits } from '../utils.js';
+import { calculateComponentPower } from '../utils.js';
 
 export const CombatScreen: ScreenModule = {
   name: 'combat',

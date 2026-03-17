@@ -16,7 +16,7 @@ import {
   PATROL_BASE_PAY,
   PATROL_BATTLE_BONUS,
 } from '../constants';
-import { calculateDistance, addCredits, subtractCredits, getTotalCredits } from '../utils.js';
+import { addCredits, subtractCredits, getTotalCredits } from '../utils.js';
 import { prisma } from '../../db/prisma.js';
 
 // ============================================================================
@@ -196,7 +196,7 @@ export interface PortPurchaseResult {
  * Original from SP.REAL.S:
  *   Based on system, typically 10,000 cr units (100,000 cr)
  */
-export function calculatePortPrice(systemId: number): number {
+export function calculatePortPrice(_systemId: number): number {
   // Base price for all systems
   return PORT_BASE_PRICE;
 }

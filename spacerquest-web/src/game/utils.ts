@@ -6,7 +6,6 @@
 
 import { Rank, AllianceType } from '@prisma/client';
 import {
-  RANK_THRESHOLDS,
   RANK_HONORARIA,
   ALLIANCE_SYMBOLS,
   NAME_MIN_LENGTH,

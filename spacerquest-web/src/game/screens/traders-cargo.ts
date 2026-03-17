@@ -1,6 +1,6 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
-import { generateCargoContract, getCargoDescription } from '../systems/economy.js';
+import { generateCargoContract } from '../systems/economy.js';
 
 export const TradersCargoScreen: ScreenModule = {
   name: 'traders-cargo',

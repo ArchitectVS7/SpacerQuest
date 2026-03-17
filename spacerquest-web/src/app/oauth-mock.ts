@@ -31,7 +31,7 @@ export async function registerOAuthMock(fastify: FastifyInstance) {
 
   // Mock OAuth token endpoint
   fastify.post('/auth/mock/token', async (request, reply) => {
-    const body = request.body as any;
+    const _body = request.body as any;
     
     fastify.log.info('[OAuth Mock] Token exchange request');
 
