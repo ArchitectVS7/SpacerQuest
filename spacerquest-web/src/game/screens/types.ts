@@ -5,7 +5,7 @@
 export interface ScreenResponse {
   output: string; // ANSI text to render
   nextScreen?: string; // If navigating
-  data?: any; // Additional structured data if helpful
+  data?: Record<string, unknown>; // Additional structured data if helpful
 }
 
 export interface ScreenModule {

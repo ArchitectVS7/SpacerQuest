@@ -79,7 +79,8 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
     });
     
     // Combat action
-    socket.on('combat:action', async (data: { action: 'FIRE' | 'RETREAT' | 'SURRENDER', round?: number, enemy?: any }) => {
+    // Enemy data is a partial snapshot sent by the client; cast to Enemy at call sites
+    socket.on('combat:action', async (data: { action: 'FIRE' | 'RETREAT' | 'SURRENDER', round?: number, enemy?: Partial<import('../game/systems/combat.js').Enemy> }) => {
       if (!socket.characterId || !socket.userId) return;
       
       const { processCombatRound, calculateBattleFactor, attemptRetreat } = 
@@ -98,7 +99,7 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
       if (data.action === 'RETREAT') {
         const retreat = attemptRetreat(
           character.ship.driveStrength * character.ship.driveCondition,
-          data.enemy?.driveStrength * data.enemy?.driveCondition || 100,
+          (data.enemy?.driveStrength ?? 10) * (data.enemy?.driveCondition ?? 7) || 100,
           character.ship.hasCloaker
         );
         
@@ -138,13 +139,13 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
         character.ship.weaponCondition,
         character.ship.shieldStrength,
         character.ship.shieldCondition,
-        data.enemy || {
+        (data.enemy || {
           weaponStrength: 20,
           weaponCondition: 7,
           shieldStrength: 15,
           shieldCondition: 7,
           battleFactor: 200,
-        },
+        }) as import('../game/systems/combat.js').Enemy,
         data.round || 1
       );
       

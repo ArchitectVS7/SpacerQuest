@@ -143,7 +143,7 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
     if (action === 'RETREAT') {
       const retreat = attemptRetreat(
         character.ship.driveStrength * character.ship.driveCondition,
-        enemy?.driveStrength * enemy?.driveCondition || 100,
+        ((enemy?.driveStrength as number) ?? 10) * ((enemy?.driveCondition as number) ?? 7) || 100,
         character.ship.hasCloaker
       );
 
@@ -199,13 +199,13 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       character.ship.weaponCondition,
       character.ship.shieldStrength,
       character.ship.shieldCondition,
-      enemy || {
+      (enemy || {
         weaponStrength: 20,
         weaponCondition: 7,
         shieldStrength: 15,
         shieldCondition: 7,
         battleFactor: 200,
-      },
+      }) as unknown as import('../../game/systems/combat.js').Enemy,
       round
     );
 
@@ -215,9 +215,11 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       data: { currentRound: round + 1 },
     });
 
-    // If combat ended (victory/defeat), mark session inactive
-    if (combatRound.victory || combatRound.defeat) {
-      const result = combatRound.victory ? 'VICTORY' : 'DEFEAT';
+    // If combat ended, mark session inactive
+    // Combat ends when either side's shields are destroyed (damage >= shield power)
+    const combatEnded = combatRound.enemyShieldDamage >= 100 || combatRound.playerShieldDamage >= 100;
+    if (combatEnded) {
+      const result = combatRound.enemyShieldDamage >= 100 ? 'VICTORY' : 'DEFEAT';
       await prisma.combatSession.updateMany({
         where: { characterId: character.id, active: true },
         data: { active: false, result },

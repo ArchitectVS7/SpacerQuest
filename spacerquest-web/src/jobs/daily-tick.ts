@@ -14,6 +14,10 @@ import {
   PORT_EVICTION_DAYS,
 } from '../game/constants.js';
 import { prisma } from '../db/prisma.js';
+import { publishDailyTick } from './event-publisher.js';
+import { workerLogger } from './worker.js';
+
+const log = workerLogger.child({ job: 'daily-tick' });
 
 export interface DailyTickResult {
   date: string;
@@ -42,19 +46,19 @@ export async function runDailyTick(): Promise<DailyTickResult> {
     newsGenerated: [],
   };
   
-  console.log(`[Daily Tick] Starting daily tick for ${dateStr}...`);
+  log.info(`Starting daily tick for ${dateStr}`);
   
   // 1. Reset trip counters for all players
-  console.log('[Daily Tick] Resetting trip counters...');
+  log.info('Resetting trip counters');
   const tripResetResult = await prisma.character.updateMany({
     where: { tripCount: { gt: 0 } },
     data: { tripCount: 0 },
   });
   result.tripsReset = tripResetResult.count;
-  console.log(`[Daily Tick] Reset ${result.tripsReset} character trip counters`);
+  log.info(`Reset ${result.tripsReset} character trip counters`);
   
   // 2. Process port income
-  console.log('[Daily Tick] Processing port income...');
+  log.info('Processing port income');
   const ports = await prisma.portOwnership.findMany({
     include: {
       character: true,
@@ -101,10 +105,10 @@ export async function runDailyTick(): Promise<DailyTickResult> {
     }
   }
   
-  console.log(`[Daily Tick] Processed ${result.portsProcessed} ports, collected ${result.totalIncomeCollected} cr`);
+  log.info(`Processed ${result.portsProcessed} ports, collected ${result.totalIncomeCollected} cr`);
   
   // 3. Check for promotions
-  console.log('[Daily Tick] Checking for promotions...');
+  log.info('Checking for promotions');
   const characters = await prisma.character.findMany({
     where: {
       rank: {
@@ -151,7 +155,7 @@ export async function runDailyTick(): Promise<DailyTickResult> {
     }
   }
   
-  console.log(`[Daily Tick] Granted ${result.promotionsGranted} promotions`);
+  log.info(`Granted ${result.promotionsGranted} promotions`);
   
   // 4. Generate daily news log
   if (result.newsGenerated.length > 0) {
@@ -172,15 +176,23 @@ export async function runDailyTick(): Promise<DailyTickResult> {
     });
   }
   
-  console.log(`[Daily Tick] Daily tick completed successfully`);
-  
+  log.info('Daily tick completed successfully');
+
+  // Publish summary to connected clients via Redis pub/sub
+  await publishDailyTick({
+    tripsReset: result.tripsReset,
+    portsProcessed: result.portsProcessed,
+    promotionsGranted: result.promotionsGranted,
+    newsGenerated: result.newsGenerated,
+  });
+
   return result;
 }
 
 /**
  * Calculate daily income for a port
  */
-function calculateDailyIncome(port: any): number {
+function calculateDailyIncome(port: { dailyLandingFees: number; dailyFuelSales: number }): number {
   // Base income from landing fees (simulated)
   const baseIncome = port.dailyLandingFees || 0;
   
@@ -221,7 +233,7 @@ async function evictPortOwner(portId: string, characterId: string): Promise<void
     },
   });
   
-  console.log(`[Daily Tick] Evicted port owner from system ${port.systemId}`);
+  log.info(`Evicted port owner from system ${port.systemId}`);
 }
 
 /**

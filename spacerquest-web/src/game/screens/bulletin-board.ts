@@ -71,7 +71,7 @@ async function renderBoard(characterId: string): Promise<ScreenResponse> {
     posts.length === 0
       ? '  No messages posted.\r\n'
       : posts
-          .map((p, i) => `  ${String(i + 1).padStart(2)}. ${p.content}`)
+          .map((p, i) => `  ${String(i + 1).padStart(2)}. ${p.message}`)
           .join('\r\n') + '\r\n';
 
   const output =
@@ -146,7 +146,7 @@ export const BulletinBoardScreen: ScreenModule = {
           alliance: membership.alliance,
           authorName: character.name,
           characterId,
-          content: formatted,
+          message: formatted,
         },
       });
 

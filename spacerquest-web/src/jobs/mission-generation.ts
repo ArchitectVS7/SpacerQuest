@@ -13,6 +13,9 @@ import {
   PATROL_BASE_PAY,
 } from '../game/constants.js';
 import { prisma } from '../db/prisma.js';
+import { workerLogger } from './worker.js';
+
+const log = workerLogger.child({ job: 'mission' });
 
 export interface MissionJobResult {
   patrolMissionsGenerated: number;
@@ -30,7 +33,7 @@ export async function runMissionJob(): Promise<MissionJobResult> {
     specialEvents: 0,
   };
   
-  console.log('[Mission Job] Starting mission generation...');
+  log.info('Starting mission generation');
   
   // 1. Generate patrol missions for eligible players
   result.patrolMissionsGenerated = await generatePatrolMissions();
@@ -41,7 +44,7 @@ export async function runMissionJob(): Promise<MissionJobResult> {
   // 3. Generate special events
   result.specialEvents = await generateSpecialEvents();
   
-  console.log(`[Mission Job] Completed: ${result.patrolMissionsGenerated} patrol missions, ${result.nemesisOffers} Nemesis offers`);
+  log.info(`Completed: ${result.patrolMissionsGenerated} patrol missions, ${result.nemesisOffers} Nemesis offers`);
   
   return result;
 }

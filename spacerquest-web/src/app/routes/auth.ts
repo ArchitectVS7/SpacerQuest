@@ -30,7 +30,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
       const isMock = process.env.NODE_ENV === 'development' ||
                      process.env.BBS_PORTAL_TOKEN_URL?.includes('mock');
 
-      let userInfo: any;
+      let userInfo: { id: string; email: string; displayName: string };
 
       if (isMock) {
         const mockId = `dev-user-${randomUUID().slice(0, 8)}`;

@@ -11,6 +11,7 @@
  *   npm run worker:once         # Run all jobs once (for testing)
  */
 
+import pino from 'pino';
 import { runDailyTick } from './daily-tick.js';
 import { runEncounterJob } from './encounter-generation.js';
 import { runMissionJob } from './mission-generation.js';
@@ -30,19 +31,15 @@ const CONFIG = {
 // LOGGING
 // ============================================================================
 
-const log = {
-  info: (msg: string) => {
-    if (CONFIG.logLevel !== 'silent') {
-      console.log(`[${new Date().toISOString()}] [INFO] ${msg}`);
-    }
-  },
-  error: (msg: string, err?: any) => {
-    console.error(`[${new Date().toISOString()}] [ERROR] ${msg}`, err || '');
-  },
-  warn: (msg: string) => {
-    console.warn(`[${new Date().toISOString()}] [WARN] ${msg}`);
-  },
-};
+const log = pino({
+  level: CONFIG.logLevel,
+  transport: process.env.NODE_ENV === 'development' ? {
+    target: 'pino-pretty',
+    options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
+  } : undefined,
+});
+
+export { log as workerLogger };
 
 // ============================================================================
 // HEALTH CHECK SERVER
@@ -60,7 +57,7 @@ const healthStatus = {
 async function startHealthServer() {
   const http = await import('http');
   
-  const server = http.default.createServer((req: any, res: any) => {
+  const server = http.default.createServer((req: import('http').IncomingMessage, res: import('http').ServerResponse) => {
     if (req.url === '/health') {
       healthStatus.status = 'healthy';
       healthStatus.uptime = process.uptime();
@@ -105,7 +102,7 @@ function scheduleDailyTick() {
       log.info(`Daily tick completed: ${result.tripsReset} trips reset, ${result.portsProcessed} ports processed`);
     } catch (error) {
       healthStatus.errors.push(`Daily tick failed: ${error}`);
-      log.error('Daily tick failed', error);
+      log.error({ err: error }, 'Daily tick failed');
     }
 
     // Schedule next daily tick
@@ -124,7 +121,7 @@ function scheduleEncounterJob() {
       log.info(`Encounter job completed: ${result.botCombats} bot combats, ${result.takeoverAttempts} takeover attempts`);
     } catch (error) {
       healthStatus.errors.push(`Encounter job failed: ${error}`);
-      log.error('Encounter job failed', error);
+      log.error({ err: error }, 'Encounter job failed');
     }
   }, CONFIG.encounterInterval);
 }
@@ -140,7 +137,7 @@ function scheduleMissionJob() {
       log.info(`Mission job completed: ${result.patrolMissionsGenerated} patrol missions, ${result.nemesisOffers} Nemesis offers`);
     } catch (error) {
       healthStatus.errors.push(`Mission job failed: ${error}`);
-      log.error('Mission job failed', error);
+      log.error({ err: error }, 'Mission job failed');
     }
   }, CONFIG.missionInterval);
 }
@@ -157,7 +154,7 @@ export async function runAllJobsOnce() {
     const dailyResult = await runDailyTick();
     log.info(`Daily tick: ${dailyResult.tripsReset} trips, ${dailyResult.portsProcessed} ports`);
   } catch (error) {
-    log.error('Daily tick failed', error);
+    log.error({ err: error }, 'Daily tick failed');
   }
 
   try {
@@ -165,7 +162,7 @@ export async function runAllJobsOnce() {
     const encounterResult = await runEncounterJob();
     log.info(`Encounters: ${encounterResult.botCombats} combats, ${encounterResult.takeoverAttempts} takeovers`);
   } catch (error) {
-    log.error('Encounter job failed', error);
+    log.error({ err: error }, 'Encounter job failed');
   }
 
   try {
@@ -173,7 +170,7 @@ export async function runAllJobsOnce() {
     const missionResult = await runMissionJob();
     log.info(`Missions: ${missionResult.patrolMissionsGenerated} patrol, ${missionResult.nemesisOffers} Nemesis`);
   } catch (error) {
-    log.error('Mission job failed', error);
+    log.error({ err: error }, 'Mission job failed');
   }
 
   log.info('All jobs completed');
@@ -221,7 +218,7 @@ function shutdown(signal: string) {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (error) => {
-  log.error('Uncaught exception', error);
+  log.error({ err: error }, 'Uncaught exception');
   healthStatus.errors.push(`Uncaught exception: ${error}`);
 });
 

@@ -146,10 +146,11 @@ describe('Combat Route Wiring', () => {
 
   it('combat.ts /action marks CombatSession inactive on combat end', () => {
     const src = readRoute('../src/app/routes/combat.ts');
-    // active: false is set when victory or defeat is determined
+    // active: false is set when combat ends (shield destruction)
     expect(src).toContain('active: false');
-    expect(src).toContain('combatRound.victory');
-    expect(src).toContain('combatRound.defeat');
+    expect(src).toContain('combatEnded');
+    expect(src).toContain("'VICTORY'");
+    expect(src).toContain("'DEFEAT'");
   });
 
   it('combat.ts /action marks CombatSession inactive on successful retreat', () => {

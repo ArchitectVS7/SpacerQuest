@@ -6,6 +6,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../../db/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { launchBody, courseChangeBody } from '../schemas.js';
+import { getIO } from '../../sockets/io.js';
 
 export async function registerNavigationRoutes(fastify: FastifyInstance) {
   // Launch to destination
@@ -225,6 +226,17 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
 
     const { processDocking } = await import('../../game/systems/docking.js');
     await processDocking(character.id, character.destination || character.currentSystem);
+
+    // Push travel:complete to the character's socket room
+    const destinationId = character.destination || character.currentSystem;
+    const destSystem = await prisma.starSystem.findUnique({ where: { id: destinationId } });
+    const io = getIO();
+    if (io) {
+      io.to(`character:${character.id}`).emit('travel:complete', {
+        systemId: destinationId,
+        systemName: destSystem?.name || `System ${destinationId}`,
+      });
+    }
 
     return {
       success: true,
