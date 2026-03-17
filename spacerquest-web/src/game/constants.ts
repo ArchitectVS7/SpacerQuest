@@ -286,3 +286,20 @@ export const NAME_MIN_LENGTH = 3;
 export const NAME_MAX_LENGTH = 15;
 export const RESERVED_PREFIXES = ['THE ', 'J%', '*'];
 export const RESERVED_SUFFIXES = ['+!', '++', '='];
+
+// ============================================================================
+// JAIL / CRIME SYSTEM (SP.END.S)
+// ============================================================================
+
+export const CRIME_FINE_SMUGGLING = 1000;   // pp=5: 1,000 cr
+export const CRIME_FINE_CARRIER = 10000;    // pp=6: 10,000 cr
+export const CRIME_FINE_CONDUCT = 20000;    // pp=7: 20,000 cr
+export const BAIL_MULTIPLIER = 2;           // Bail = 2× fine
+
+// ============================================================================
+// SAGE & WISE ONE (SP.DOCK2.S)
+// ============================================================================
+
+export const SAGE_TIMER_SECONDS = 9;        // 9 nano-chrons to answer
+export const WISE_ONE_SYSTEM = 17;          // Polaris-1
+export const SAGE_SYSTEM = 18;              // Mizar-9

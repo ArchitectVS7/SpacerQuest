@@ -119,6 +119,11 @@ model Character {
   isLost          Boolean   @default(false)
   lostLocation    Int?
   patrolSector    Int?
+
+  // Jail/Crime State (SP.END.S:233-271)
+  // crimeType maps to original pp: 5=smuggling, 6=carrier loss, 7=conduct
+  crimeType       Int?              // null = not jailed
+  sageVisited     Boolean   @default(false)  // Once-per-session Sage flag (kj)
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -132,6 +137,7 @@ model Character {
   battleRecords   BattleRecord[]
   gameLogs        GameLog[]
   travelStates    TravelState[]
+  combatSession   CombatSession?
   
   @@index([userId])
   @@index([spacerId])
@@ -389,6 +395,53 @@ model GameLog {
   @@index([type])
   @@index([createdAt])
   @@index([characterId])
+}
+
+// ============================================================================
+// COMBAT STATE (for disconnect mitigation)
+// ============================================================================
+
+model CombatSession {
+  id              String    @id @default(uuid())
+  characterId     String    @unique
+  character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  playerWeaponPower   Int
+  playerShieldPower   Int
+  playerDrivePower    Int
+  playerBattleFactor  Int
+
+  enemyWeaponPower    Int
+  enemyShieldPower    Int
+  enemyDrivePower     Int
+  enemyBattleFactor   Int
+  enemyHullCondition  Int       @default(5)
+
+  currentRound    Int         @default(1)
+  active          Boolean     @default(true)
+  result          String?     // VICTORY, DEFEAT, DRAW
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([characterId])
+  @@index([active])
+}
+
+// ============================================================================
+// ALLIANCE BULLETIN BOARD (SP.TOP.S)
+// ============================================================================
+
+model BulletinPost {
+  id              String    @id @default(uuid())
+  alliance        AllianceType
+  authorName      String
+  characterId     String?
+  message         String
+  createdAt       DateTime  @default(now())
+
+  @@index([alliance])
+  @@index([createdAt])
 }
 
 // ============================================================================

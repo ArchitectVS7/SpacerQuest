@@ -1834,6 +1834,119 @@ test('complete game flow: create character, travel, fight', async ({ page }) => 
 
 ---
 
+## 9.5 Rim Star Special Encounters
+
+### 9.5.1 The Wise One (Polaris-1, System #17)
+
+Available via `(W)ise One Visit` in the Polaris-1 docking menu. Displays atmospheric text about alien weapon enhancements found on derelicts in The Great Void, then generates a random **Number Key** (1-9) shown to the player.
+
+**Original source:** SP.DOCK2.S:332-334, text file SP.WISE
+
+### 9.5.2 The Sage / Ancient One (Mizar-9, System #18)
+
+Available via `(S)age Visit` in the Mizar-9 docking menu. Runs an interactive constellation knowledge quiz:
+
+1. Display constellation chart (16 constellations A-P: Perseus, Auriga, Orion, Taurus, Cygnus, Aquila, Scorpius, Lyra, Virgo, Bootes, Leo, Gemini, Draco, Hercules, Sagittarius, Pegasus)
+2. Select random star (ALGOL, CAPELLA, RIGEL, ALDEBARON, DENEB, ALTAIR, ANTARES, VEGA, SPICA, ARCTURUS, REGULUS, DENEBOLA, POLLUX)
+3. Ask "In which constellation is [STAR] to be found?" with 9-second time limit
+4. Correct answer reward: +1 Cabin strength, condition set to 9 (perfect)
+5. Visitable once per session (flag `kj`)
+
+**Original source:** SP.DOCK2.S:300-330, text files SP.SAGE and SP.CONS
+
+### 9.5.3 Star-to-Constellation Mapping (from original)
+
+| Star | Constellation |
+|------|---------------|
+| ALGOL | A (Perseus) |
+| CAPELLA | B (Auriga) |
+| RIGEL | C (Orion) |
+| ALDEBARON | D (Taurus) |
+| DENEB | E (Cygnus) |
+| ALTAIR | F (Aquila) |
+| ANTARES | G (Scorpius) |
+| VEGA | H (Lyra) |
+| SPICA | I (Virgo) |
+| ARCTURUS | J (Bootes) |
+| REGULUS | K (Leo) |
+| DENEBOLA | K (Leo) |
+| POLLUX | L (Gemini) |
+
+## 9.6 Jail / Brig / Crime System
+
+### 9.6.1 Crime Types and Fines
+
+| Crime Code | Trigger | Fine |
+|------------|---------|------|
+| pp=5 | Caught smuggling contraband (patrol intercept + surrender) | 1,000 cr |
+| pp=6 | Modem disconnect during battle (carrier loss) | 10,000 cr |
+| pp=7 | Conduct against spirit of game (sysop-triggered) | 20,000 cr |
+
+### 9.6.2 Jail Mechanics
+
+- Jailed players have name prefixed with `J%` (persistent marker in character record)
+- On login, `J%` prefix redirects player to jail screen (SP.START.S:132)
+- Players can pay fines to Admiral Juris P. Magnus for release
+- Other players can visit the Brig at The Spacers Hangout (Sun-3) and bail out imprisoned spacers for double the fine
+- Crime pp=5 (smuggling): player name is prefixed with `J%` during combat surrender (SP.FIGHT1.S:252)
+
+**Implementation note:** Only crime code pp=5 (smuggling) is implemented in the web version. Modem disconnect (pp=6) and sysop conduct (pp=7) are not applicable.
+
+**Original source:** SP.END.S:233-271, SP.BAR.S:300-379, SP.FIGHT1.S:247-253
+
+## 9.7 Spacers Hangout (Sun-3)
+
+Central social hub accessible at Sun-3 (system #1). Original source: SP.BAR.S
+
+### 9.7.1 Menu Structure
+
+```
+Spacers: [H]angout  (B)rig  (Q)uit
+```
+
+### 9.7.2 Hangout Features
+
+- **(G)amble** - Links to gambling games (Wheel of Fortune, Dare)
+- **(D)rinks** - Social flavor (incrementing drink counter, unlocks info hints after 4+ drinks)
+- **(I)nfo** - Information broker system with keyword queries (ALL, MAL, GIR, WIN, WEA, SHI, PIR, FIR, RAI, STA, RIM, GEM, SAG, DRI, ROB, NAV, LIF, HUL, COO, CLO, RAN, BAT, SPA, SMU, CHR, WIS)
+- Alliance joining UI (requires Lieutenant+ rank)
+- Smuggling contract pickup
+- Alliance raid planning
+
+### 9.7.3 Brig Viewing
+
+Players can visit the Brig to see jailed spacers and optionally bail them out. Bail costs double the fine amount.
+
+## 9.8 Alliance Bulletin Boards
+
+Alliance-specific bulletin boards (SP.TOP.S). Each alliance has its own board, restricted to members only.
+
+### 9.8.1 Operations
+
+- **(R)eread** - View existing messages
+- **(W)rite msg** - Post a message (79 char max, auto-prepended with date + player name)
+- **(K)ill msgs** - Wipe all messages (board reset)
+- **(Q)uit** - Exit
+
+### 9.8.2 Access Control
+
+Players can only read/write their own alliance's board. Header reads "Confidential Bulletins For Alliance Members Only."
+
+**Original source:** SP.TOP.S:175-239
+
+## 9.9 Combat Disconnect Mitigation
+
+When a player disconnects during combat (browser tab close, network loss), combat state must be resolved server-side rather than cancelled.
+
+### 9.9.1 Implementation
+
+- Store active combat state in database (CombatState model)
+- If player disconnects mid-combat, resolve remaining rounds server-side using existing combat formulas
+- On reconnection, show combat result
+- No extra penalties beyond natural combat outcome
+
+---
+
 ## 10. Appendix
 
 ### 10.1 Glossary
