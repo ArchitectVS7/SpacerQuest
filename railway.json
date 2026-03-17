@@ -2,7 +2,6 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "dockerfilePath": "spacerquest-web/Dockerfile",
-    "dockerContext": "spacerquest-web",
     "watchPatterns": ["spacerquest-web/**"]
   },
   "deploy": {

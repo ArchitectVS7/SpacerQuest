@@ -2,14 +2,14 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
+# Copy package files (paths relative to repo root — Railway build context)
+COPY spacerquest-web/package.json spacerquest-web/package-lock.json ./
 
 # Install dependencies
 RUN npm ci
 
 # Copy source code
-COPY . .
+COPY spacerquest-web/ .
 
 # Generate Prisma client
 RUN npm run db:generate
@@ -23,7 +23,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Copy package files and install production deps only
-COPY package.json package-lock.json ./
+COPY spacerquest-web/package.json spacerquest-web/package-lock.json ./
 RUN npm ci --omit=dev
 
 # Copy built application, Prisma artifacts, and schema
