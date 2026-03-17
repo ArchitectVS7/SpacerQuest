@@ -19,7 +19,7 @@
 |---|------|--------|--------|
 | 2 | ~~**Same-alliance PvP protection**~~ | plan.md §7.4 | **DONE.** Added to duel challenge and accept routes in `social.ts`. PvP lives in the duel system, not `combat.ts` (which is PvE encounter generation). |
 | 3 | ~~**Bulletin board link in Spacers Hangout**~~ | plan.md §6.4 | **DONE.** `(B)ulletin Board` option added to Alliance `(A)` sub-menu in `spacers-hangout.ts`. |
-| 4 | **Public news board in Hangout** | plan.md §6.3 | `(N)ews` option querying `GameLog` entries as BBS-style public posts. Not implemented. |
+| 4 | ~~**Public news board in Hangout**~~ | plan.md §6.3 | **DONE.** `(N)ews` option added to Spacers Hangout. New `space-news` screen displays GameLog entries in BBS-style format matching original SP.TOP.S filer routine (Battle Log, Alliance Transactions, All News categories). |
 
 ---
 
@@ -28,7 +28,7 @@
 | # | Item | Detail |
 |---|------|--------|
 | 5 | ~~**NPC encounter roster (original fidelity)**~~ | **DONE.** Added `NpcRoster` Prisma model with all original BASIC variable mappings. Seeded all 65 original NPCs (9 pirates, 11 patrols, 21 rim pirates, 12 brigands, 12 reptiloids). Rewrote `generateEncounter()` from sync random generation to async DB-backed roster lookup. Added `isNpcFriendly()` for same-alliance greeting check. Updated combat/economy routes and integration tests. |
-| 6 | **NPC bulletin board posts** | Templated NPC-authored entries for alliance boards. |
+| 6 | ~~**NPC bulletin board posts**~~ | **DONE.** Added `generateNpcBulletinPosts()` to bulletin-board system with 10 templates adapted from original SP.VEST.S news entries (acquisition, DEFCON, withdrawal, deposit, takeover reports). Integrated into daily tick job. Allied NPCs from the roster post templated messages to their alliance boards. |
 | 7 | **Player-initiated alliance raids** | Background takeover job exists but players cannot manually initiate raids. Only DEFCON investment/weakening exists. |
 | 8 | **CARRIER_LOSS jail trigger** | `CrimeType.CARRIER_LOSS = 6` exists in jail.ts but nothing sets it. Combat disconnect resolves server-side (by design — see DESIGN_REVIEW §5). Intentionally omitted per "DO NOT IMPLEMENT carrier-loss penalty" guidance. Confirm intent. |
 

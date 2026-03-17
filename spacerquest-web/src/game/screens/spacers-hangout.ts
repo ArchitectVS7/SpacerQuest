@@ -65,7 +65,8 @@ You step over an old spacer sprawled on the floor mumbling
 \x1b[32m[:\x1b[0m${credits}\x1b[32m:][Spacers Hangout]:\x1b[0m
 
   \x1b[37;1m(G)\x1b[0mamble    \x1b[37;1m(D)\x1b[0mrinks    \x1b[37;1m(I)\x1b[0mnfo
-  \x1b[37;1m(A)\x1b[0mlliance  \x1b[37;1m(B)\x1b[0mrig     \x1b[37;1m[Q]\x1b[0muit
+  \x1b[37;1m(A)\x1b[0mlliance  \x1b[37;1m(B)\x1b[0mrig      \x1b[37;1m(N)\x1b[0mews
+  \x1b[37;1m[Q]\x1b[0muit
 
 Hello Spacer ${character.name}. What'll it be?
 > `;
@@ -152,6 +153,9 @@ Hello Spacer ${character.name}. What'll it be?
 
       case 'G':
         return { output: '\x1b[33mGambling...\x1b[0m\r\n', nextScreen: 'pub' };
+
+      case 'N':
+        return { output: '\x1b[33mSpace News...\x1b[0m\r\n', nextScreen: 'space-news' };
 
       case 'D':
         return { output: '\r\n\x1b[32mSlurp! Guzzle! Barf!\x1b[0m\r\n> ' };
