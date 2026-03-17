@@ -7,11 +7,20 @@
 
 ## Critical Finding: No NPC System Exists
 
-Before addressing individual features, a core requirement must be flagged: **the codebase has no player-like NPC characters.** There are no NPC `Character` records, no `isNpc` flag in the schema, no NPC movement/trading/combat AI, and no NPC creation in the seed.
+Before addressing individual features, a core requirement must be flagged: **the codebase has no persistent NPC characters.**
 
-The project goal states we would "use scripted NPCs to simulate the multiplayer experience." This is largely unimplemented. Some background simulation exists — `encounter-generation.ts` runs automated alliance takeover attempts (alliance-vs-alliance, no individual NPC actors), and `mission-generation.ts` generates "Alliance War Bulletin" flavor text. But there are no NPC spacers that the player can encounter, trade with, duel, bail out of jail, or see in the directory as fellow players.
+The game has meaningful **simulation infrastructure** that creates a "living world" feel:
+- **Procedural enemy generation** — `combat.ts` generates pirates (SPX/SPY/SPZ scaled to player power), Space Patrol (for smugglers), Rim Pirates, Brigands, and Reptiloids on-demand during combat
+- **Bot-vs-bot combat** — `encounter-generation.ts` runs every 5 minutes, picks 1-5 random pairs of existing characters and simulates combat between them (updating scores, win/loss stats, logging to GameLog)
+- **Alliance territorial wars** — same job runs automated takeover attempts (1% daily chance per system, DEFCON defense, 7-day cooldown)
+- **Economic simulation** — fuel prices fluctuate ±2 credits every 5 minutes, missions generated every 6 hours, alliance tension bulletins
+- **Daily tick** — promotions, port income, inactive owner eviction
 
-**Recommendation:** NPC simulation is a prerequisite for most of the features discussed below and should be treated as Priority 0. The existing background jobs provide a foundation for alliance-level simulation, but individual NPC characters are needed for the multiplayer illusion.
+**The critical gap:** All of this simulation operates on **real player characters**. The bot-vs-bot combat picks from existing `Character` records. In a single-player scenario, there is nobody to simulate. The seed creates 28 star systems but **zero characters**. There is no `isNpc` flag, no NPC creation, no NPC behavior AI.
+
+The project goal states we would "use scripted NPCs to simulate the multiplayer experience." What's needed is a set of **persistent NPC Character records** (seeded on startup, flagged as NPCs) that the existing simulation infrastructure can operate on. The background jobs would then generate meaningful events — NPC-vs-NPC combat, NPC alliance activity — that populate the GameLog and make the world feel alive even for a solo player.
+
+**Recommendation:** NPC character creation is a prerequisite for most features below and should be treated as Priority 0. The simulation engine already exists; it just needs characters to simulate.
 
 ---
 
