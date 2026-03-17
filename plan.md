@@ -27,7 +27,7 @@
 
 | # | Item | Detail |
 |---|------|--------|
-| 5 | **NPC encounter roster (original fidelity)** | Current `generateEncounter()` creates ephemeral random stat blocks. The original game used a **persistent NPC roster** (~65 NPCs across 5 data files: PIRATES, SP.PAT, SP.RIMPIR, SP.BRIGAND, SP.REPTILE). NPCs were selected randomly from the roster, had alliance affiliations, and their battle stats persisted after combat. **Agreed approach:** Seed the original roster and rework encounter generation to select from it, matching the original's `position #1,256,po` lookup pattern. Add a generation system to expand the roster over time. NPCs do **not** get full Character records at this stage — they remain a separate lightweight model. |
+| 5 | ~~**NPC encounter roster (original fidelity)**~~ | **DONE.** Added `NpcRoster` Prisma model with all original BASIC variable mappings. Seeded all 65 original NPCs (9 pirates, 11 patrols, 21 rim pirates, 12 brigands, 12 reptiloids). Rewrote `generateEncounter()` from sync random generation to async DB-backed roster lookup. Added `isNpcFriendly()` for same-alliance greeting check. Updated combat/economy routes and integration tests. |
 | 6 | **NPC bulletin board posts** | Templated NPC-authored entries for alliance boards. |
 | 7 | **Player-initiated alliance raids** | Background takeover job exists but players cannot manually initiate raids. Only DEFCON investment/weakening exists. |
 | 8 | **CARRIER_LOSS jail trigger** | `CrimeType.CARRIER_LOSS = 6` exists in jail.ts but nothing sets it. Combat disconnect resolves server-side (by design — see DESIGN_REVIEW §5). Intentionally omitted per "DO NOT IMPLEMENT carrier-loss penalty" guidance. Confirm intent. |
