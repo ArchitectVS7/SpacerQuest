@@ -162,10 +162,54 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
 
     const character = await prisma.character.findFirst({
       where: { userId },
+      include: { ship: true },
     });
 
     if (!character || character.cargoPods < 1) {
       return reply.status(400).send({ error: 'No cargo to deliver' });
+    }
+
+    // Smuggling patrol encounter check (cargoType 10 = contraband)
+    // Original: SP.FIGHT1.S — smuggling missions trigger Space Patrol encounters
+    if (character.cargoType === 10 && character.ship) {
+      const { generateEncounter } = await import('../../game/systems/combat.js');
+      const { calculateComponentPower } = await import('../../game/utils.js');
+
+      const playerPower = calculateComponentPower(
+        character.ship.weaponStrength,
+        character.ship.weaponCondition
+      ) + calculateComponentPower(
+        character.ship.shieldStrength,
+        character.ship.shieldCondition
+      );
+
+      const patrol = generateEncounter(character.currentSystem, 5, playerPower);
+
+      if (patrol) {
+        // Patrol intercepted the smuggling run — cargo confiscated, no payment
+        await prisma.character.update({
+          where: { id: character.id },
+          data: {
+            cargoPods: 0,
+            cargoType: 0,
+            cargoPayment: 0,
+            cargoManifest: null,
+            destination: 0,
+          },
+        });
+
+        return {
+          success: false,
+          intercepted: true,
+          patrol: {
+            type: patrol.type,
+            class: patrol.class,
+            name: patrol.name,
+            commander: patrol.commander,
+          },
+          message: 'Space Patrol intercepts your smuggling run! Contraband confiscated!',
+        };
+      }
     }
 
     const contract = {

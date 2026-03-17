@@ -48,7 +48,7 @@ export const MainMenuScreen: ScreenModule = {
   [P]ub - Gossip and games
   [T]raders - Buy and sell cargo
   [N]avigate - Travel between systems
-  [R]egistry - Spacer directory
+  [R]egistry - Spacer directory${character.currentSystem === 17 ? '\n  [W]ise One - Visit the Wise One' : ''}${character.currentSystem === 18 ? '\n  [A]ncient One - Visit the Sage' : ''}
   [Q]uit - Save and logout
 
 \x1b[32m:\x1b[0m${character.currentSystem} Port Accounts:\x1b[32m:(?=Menu): Command:\x1b[0m
@@ -60,6 +60,8 @@ export const MainMenuScreen: ScreenModule = {
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
     const key = input.trim().toUpperCase();
 
+    const character = await prisma.character.findUnique({ where: { id: characterId } });
+
     const actions: Record<string, () => Promise<ScreenResponse>> = {
       'B': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'bank' }),
       'S': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'shipyard' }),
@@ -67,10 +69,22 @@ export const MainMenuScreen: ScreenModule = {
       'T': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'traders' }),
       'N': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'navigate' }),
       'R': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'registry' }),
+      'W': async () => {
+        if (character?.currentSystem !== 17) {
+          return { output: '\r\n\x1b[31mThe Wise One is only at Polaris-1 (System 17).\x1b[0m\r\n> ' };
+        }
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'wise-one' };
+      },
+      'A': async () => {
+        if (character?.currentSystem !== 18) {
+          return { output: '\r\n\x1b[31mThe Sage is only at Mizar-9 (System 18).\x1b[0m\r\n> ' };
+        }
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'sage' };
+      },
       'Q': async () => {
         // Quit - save and logout
-        return { 
-          output: '\r\n\x1b[32mGame saved. Thank you for playing SpacerQuest!\x1b[0m\r\n' 
+        return {
+          output: '\r\n\x1b[32mGame saved. Thank you for playing SpacerQuest!\x1b[0m\r\n'
         };
       },
     };

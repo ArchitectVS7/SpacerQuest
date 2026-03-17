@@ -136,10 +136,88 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
 
-    const character = await prisma.character.findFirst({ where: { userId } });
+    const character = await prisma.character.findFirst({
+      where: { userId },
+      include: { ship: true },
+    });
 
     if (!character) {
       return reply.status(404).send({ error: 'Character not found' });
+    }
+
+    // Check for travel hazards that occurred during transit
+    // Original SP.WARP.S: hazards trigger at 1/4 and 1/2 travel time
+    const hazardEvents: Array<{ hazardName: string; component: string; action: string; newCondition: number; evaded: boolean }> = [];
+
+    if (character.ship) {
+      const { checkHazardTrigger, generateHazard } = await import('../../game/systems/hazards.js');
+
+      const travelState = await prisma.travelState.findUnique({
+        where: { characterId: character.id },
+      });
+
+      if (travelState) {
+        const totalDuration = travelState.expectedArrival.getTime() - travelState.departureTime.getTime();
+        const travelTimeUnits = Math.max(1, Math.floor(totalDuration / 1000)); // seconds as units
+
+        // Check both hazard trigger points (1/4 and 1/2)
+        const quarterMark = Math.floor(travelTimeUnits / 4);
+        const halfMark = Math.floor(travelTimeUnits / 2);
+        const checkPoints = [quarterMark, halfMark].filter(cp => cp > 0);
+
+        const shipData = {
+          hullCondition: character.ship.hullCondition,
+          driveCondition: character.ship.driveCondition,
+          cabinCondition: character.ship.cabinCondition,
+          lifeSupportCondition: character.ship.lifeSupportCondition,
+          weaponCondition: character.ship.weaponCondition,
+          navigationCondition: character.ship.navigationCondition,
+          roboticsCondition: character.ship.roboticsCondition,
+          shieldCondition: character.ship.shieldCondition,
+          shieldStrength: character.ship.shieldStrength,
+        };
+
+        for (const checkpoint of checkPoints) {
+          if (checkHazardTrigger(checkpoint, travelTimeUnits)) {
+            const hazard = generateHazard(shipData);
+            if (hazard) {
+              hazardEvents.push(hazard);
+
+              // Apply damage to shipData for subsequent checks
+              if (!hazard.evaded && hazard.component !== 'none') {
+                const conditionKey = hazard.component === 'shields' ? 'shieldCondition' :
+                  hazard.component === 'drives' ? 'driveCondition' :
+                  hazard.component === 'weapons' ? 'weaponCondition' :
+                  hazard.component === 'navigation' ? 'navigationCondition' :
+                  hazard.component === 'robotics' ? 'roboticsCondition' :
+                  hazard.component === 'hull' ? 'hullCondition' : null;
+
+                if (conditionKey) {
+                  (shipData as Record<string, number>)[conditionKey] = hazard.newCondition;
+                }
+              }
+            }
+          }
+        }
+
+        // Persist any hazard damage to the ship
+        const damageOccurred = hazardEvents.some(h => !h.evaded && h.component !== 'none');
+        if (damageOccurred) {
+          await prisma.ship.update({
+            where: { id: character.ship.id },
+            data: {
+              hullCondition: shipData.hullCondition,
+              driveCondition: shipData.driveCondition,
+              cabinCondition: shipData.cabinCondition,
+              lifeSupportCondition: shipData.lifeSupportCondition,
+              weaponCondition: shipData.weaponCondition,
+              navigationCondition: shipData.navigationCondition,
+              roboticsCondition: shipData.roboticsCondition,
+              shieldCondition: shipData.shieldCondition,
+            },
+          });
+        }
+      }
     }
 
     const { completeTravel } = await import('../../game/systems/travel.js');
@@ -148,6 +226,10 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
     const { processDocking } = await import('../../game/systems/docking.js');
     await processDocking(character.id, character.destination || character.currentSystem);
 
-    return { success: true, system: character.destination };
+    return {
+      success: true,
+      system: character.destination,
+      hazards: hazardEvents.length > 0 ? hazardEvents : undefined,
+    };
   });
 }

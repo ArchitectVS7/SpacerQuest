@@ -20,6 +20,8 @@ import { RegistryScreen } from '../game/screens/registry.js';
 import { ArenaScreen } from '../game/screens/arena.js';
 import { CombatScreen } from '../game/screens/combat.js';
 import { SpacersHangoutScreen } from '../game/screens/spacers-hangout.js';
+import { WiseOneScreen } from '../game/screens/wise-one.js';
+import { SageScreen } from '../game/screens/sage.js';
 
 export const screens: Record<string, any> = {
   'main-menu': MainMenuScreen,
@@ -40,6 +42,8 @@ export const screens: Record<string, any> = {
   'arena': ArenaScreen,
   'combat': CombatScreen,
   'spacers-hangout': SpacersHangoutScreen,
+  'wise-one': WiseOneScreen,
+  'sage': SageScreen,
 };
 
 export async function handleScreenRequest(characterId: string, screenName: string) {
