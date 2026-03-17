@@ -14,8 +14,6 @@ export async function registerAllianceRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
 
-    const { canAccessBoard } = await import('../../game/systems/bulletin-board.js');
-
     const character = await prisma.character.findFirst({ where: { userId } });
     if (!character) {
       return reply.status(400).send({ error: 'Character not found' });

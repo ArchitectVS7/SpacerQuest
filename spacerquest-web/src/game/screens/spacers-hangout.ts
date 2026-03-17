@@ -15,8 +15,8 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { formatCredits, subtractCredits } from '../utils.js';
-import { isJailed, calculateBailCost, releasePlayer, CrimeType } from '../systems/jail.js';
-import { ALLIANCE_INFO, canJoinAlliance, calculateSwitchCost } from '../systems/alliance-rules.js';
+import { calculateBailCost, releasePlayer, CrimeType } from '../systems/jail.js';
+import { ALLIANCE_INFO, canJoinAlliance } from '../systems/alliance-rules.js';
 import { AllianceType } from '@prisma/client';
 
 // Module-level state maps keyed by characterId
