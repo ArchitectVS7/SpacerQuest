@@ -57,15 +57,6 @@ These systems have complete game logic and passing unit tests but are not called
 | 8 | **OpenAPI/Swagger spec** | No API documentation beyond source code |
 | 9 | **Production deployment runbook** | Docker setup works, but no ops guide for monitoring, backups, or scaling |
 
-### Not Required (verified against PRD)
-
-These were in the original 1991 game but are explicitly out of scope:
-- Jail/Brig/Crime system (Sysop feature)
-- Player-to-player messaging (GameLog serves as public log)
-- Alliance bulletin boards
-- Wise One / Sage NPCs (flavor text only)
-- Carrier-loss penalty (anti-save-scum for BBS, not applicable to web)
-
 ---
 
 ## Architecture Summary
