@@ -20,6 +20,9 @@ RUN npm run build
 # Production image
 FROM node:20-alpine
 
+# Prisma requires OpenSSL at runtime
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Copy package files and install production deps only
