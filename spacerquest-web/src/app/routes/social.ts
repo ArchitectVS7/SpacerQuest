@@ -218,6 +218,14 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'No ship found' });
     }
 
+    // Same-alliance PvP protection: prevent targeting alliance members
+    if (targetId) {
+      const target = await prisma.character.findFirst({ where: { spacerId: targetId } });
+      if (target && character.allianceSymbol !== 'NONE' && character.allianceSymbol === target.allianceSymbol) {
+        return reply.status(400).send({ error: 'You cannot duel a member of your own alliance' });
+      }
+    }
+
     // Enforce arena requirements
     const { ARENA_REQUIREMENTS } = await import('../../game/constants.js');
 
@@ -304,6 +312,11 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
     if (duel.contenderId && duel.contenderId !== character.id) {
       return reply.status(400).send({ error: 'This duel is not for you' });
+    }
+
+    // Same-alliance PvP protection
+    if (character.allianceSymbol !== 'NONE' && character.allianceSymbol === duel.challenger.allianceSymbol) {
+      return reply.status(400).send({ error: 'You cannot duel a member of your own alliance' });
     }
 
     // Accept the duel

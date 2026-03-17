@@ -22,6 +22,7 @@ import { AllianceType } from '@prisma/client';
 // Module-level state maps keyed by characterId
 const pendingAllianceSwitch = new Map<string, AllianceType>();
 const pendingBailPrompt = new Set<string>();
+const inAllianceMenu = new Set<string>();
 
 const ALLIANCE_KEY_MAP: Record<string, AllianceType> = {
   '+': AllianceType.ASTRO_LEAGUE,
@@ -75,6 +76,17 @@ Hello Spacer ${character.name}. What'll it be?
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
     const raw = input.trim();
     const key = raw.toUpperCase();
+
+    // -----------------------------------------------------------------------
+    // Alliance sub-menu: route (B) to bulletin board
+    // -----------------------------------------------------------------------
+    if (inAllianceMenu.has(characterId)) {
+      inAllianceMenu.delete(characterId);
+      if (key === 'B') {
+        return { output: '\r\n', nextScreen: 'bulletin-board' };
+      }
+      // Fall through to normal handling for alliance symbols, Q, etc.
+    }
 
     // -----------------------------------------------------------------------
     // Bail ID input — pending bail prompt is active, user typed a number
@@ -168,7 +180,8 @@ Hello Spacer ${character.name}. What'll it be?
         lines.push('\r\nRequires Lieutenant rank or higher.\r\n');
         lines.push('\r\nChoose: (+)Astro League  (@)Space Dragons\r\n');
         lines.push('        (&)Warlord Confed (^)Rebel Alliance\r\n');
-        lines.push('        (Q)Cancel\r\n> ');
+        lines.push('        (B)ulletin Board  (Q)Cancel\r\n> ');
+        inAllianceMenu.add(characterId);
         return { output: lines.join(''), data: { awaitingAllianceChoice: true } };
       }
 
