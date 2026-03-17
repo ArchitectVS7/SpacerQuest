@@ -32,10 +32,12 @@ WORKDIR /app
 COPY spacerquest-web/package.json spacerquest-web/package-lock.json ./
 RUN npm ci --omit=dev
 
-# Copy built application, Prisma artifacts, and schema
+# Copy built application, Prisma artifacts, schema, and startup script
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
+COPY spacerquest-web/scripts/start.sh ./scripts/start.sh
+RUN chmod +x ./scripts/start.sh
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
@@ -44,4 +46,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 EXPOSE 3000
 
 # Run migrations then start the server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/app/index.js"]
+CMD ["sh", "./scripts/start.sh"]
