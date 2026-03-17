@@ -30,6 +30,9 @@ export const MainMenuScreen: ScreenModule = {
     const allianceSymbol = getAllianceSymbol(character.allianceSymbol);
     const displayName = allianceSymbol ? `${character.name}-${allianceSymbol}` : character.name;
 
+    const membership = await prisma.allianceMembership.findUnique({ where: { characterId } });
+    const hasAlliance = !!(membership && membership.alliance !== 'NONE');
+
     const output = `
 \x1b[36;1m_________________________________________\x1b[0m
 \x1b[33;1m                                        \x1b[0m
@@ -54,7 +57,7 @@ export const MainMenuScreen: ScreenModule = {
   [P]ub - Gossip and games
   [T]raders - Buy and sell cargo
   [N]avigate - Travel between systems
-  [R]egistry - Spacer directory${character.currentSystem === 17 ? '\n  [W]ise One - Visit the Wise One' : ''}${character.currentSystem === 18 ? '\n  [A]ncient One - Visit the Sage' : ''}
+  [R]egistry - Spacer directory${hasAlliance ? '\n  [I]nvest - Alliance investment center' : ''}${character.currentSystem === 17 ? '\n  [W]ise One - Visit the Wise One' : ''}${character.currentSystem === 18 ? '\n  [A]ncient One - Visit the Sage' : ''}
   [Q]uit - Save and logout
 
 \x1b[32m:\x1b[0m${character.currentSystem} Port Accounts:\x1b[32m:(?=Menu): Command:\x1b[0m
@@ -75,6 +78,13 @@ export const MainMenuScreen: ScreenModule = {
       'T': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'traders' }),
       'N': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'navigate' }),
       'R': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'registry' }),
+      'I': async () => {
+        const membership = await prisma.allianceMembership.findUnique({ where: { characterId } });
+        if (!membership || membership.alliance === 'NONE') {
+          return { output: '\r\n\x1b[31mYou must be in an alliance to invest.\x1b[0m\r\n> ' };
+        }
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'alliance-invest' };
+      },
       'W': async () => {
         if (character?.currentSystem !== 17) {
           return { output: '\r\n\x1b[31mThe Wise One is only at Polaris-1 (System 17).\x1b[0m\r\n> ' };

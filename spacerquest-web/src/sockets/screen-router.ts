@@ -23,6 +23,8 @@ import { SpacersHangoutScreen } from '../game/screens/spacers-hangout.js';
 import { WiseOneScreen } from '../game/screens/wise-one.js';
 import { SageScreen } from '../game/screens/sage.js';
 import { JailScreen } from '../game/screens/jail.js';
+import { BulletinBoardScreen } from '../game/screens/bulletin-board.js';
+import { AllianceInvestScreen } from '../game/screens/alliance-invest.js';
 
 export const screens: Record<string, any> = {
   'main-menu': MainMenuScreen,
@@ -46,6 +48,8 @@ export const screens: Record<string, any> = {
   'wise-one': WiseOneScreen,
   'sage': SageScreen,
   'jail': JailScreen,
+  'bulletin-board': BulletinBoardScreen,
+  'alliance-invest': AllianceInvestScreen,
 };
 
 export async function handleScreenRequest(characterId: string, screenName: string) {

@@ -6,6 +6,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../../db/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { fuelBody, allianceInvestBody, allianceWithdrawBody, wheelBody, dareBody } from '../schemas.js';
+import { jailPlayer, CrimeType } from '../../game/systems/jail.js';
 
 export async function registerEconomyRoutes(fastify: FastifyInstance) {
   // Buy fuel
@@ -186,7 +187,7 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
       const patrol = generateEncounter(character.currentSystem, 5, playerPower);
 
       if (patrol) {
-        // Patrol intercepted the smuggling run — cargo confiscated, no payment
+        // Patrol intercepted the smuggling run — cargo confiscated, no payment, player jailed
         await prisma.character.update({
           where: { id: character.id },
           data: {
@@ -195,6 +196,8 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
             cargoPayment: 0,
             cargoManifest: null,
             destination: 0,
+            crimeType: CrimeType.SMUGGLING,
+            name: jailPlayer(character.name),
           },
         });
 
@@ -207,7 +210,7 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
             name: patrol.name,
             commander: patrol.commander,
           },
-          message: 'Space Patrol intercepts your smuggling run! Contraband confiscated!',
+          message: 'Space Patrol intercepts your smuggling run! Contraband confiscated! You have been arrested!',
         };
       }
     }
