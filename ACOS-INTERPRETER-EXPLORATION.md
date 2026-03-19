@@ -57,7 +57,7 @@ GBBS Pro source (including the ACOS runtime in 6502 assembly) is open source und
 
 ---
 
-## 3. ACOS Command Inventory (Extracted from SpacerQuest Source)
+## 3. ACOS Command Inventory (Extracted from SpacerQuest Source + GBBS Research)
 
 ### General-Purpose (BASIC-like)
 
@@ -66,8 +66,11 @@ These are standard BASIC commands that any BASIC interpreter would handle:
 | Command | Usage in SQ | Notes |
 |---------|-------------|-------|
 | `print` | Everywhere | Text output, supports `\` for newline, `hl$`/`of$` for ANSI highlights |
+| `print #3` | Various | Output to specific device (device 3 = local screen only) |
 | `input` | Everywhere | User text input, `input #1,var` for file input |
+| `input @N` | Various | Input with options (N controls behavior/timeout) |
 | `if` ... `goto`/assignment | Everywhere | Conditionals (no `then` keyword, just inline) |
+| `if` ... `else` | Various | `if expr goto x:else statement` |
 | `goto` | Everywhere | Label-based jumps |
 | `gosub` / `return` | Everywhere | Subroutine calls |
 | `on` ... `goto` | SP.WARP, etc. | Computed goto |
@@ -76,9 +79,16 @@ These are standard BASIC commands that any BASIC interpreter would handle:
 | `str$()` | SP.WARP, etc. | Number to string |
 | `len()` | SP.START, etc. | String length |
 | `left$()` / `right$()` | SP.WARP, etc. | String slicing |
+| `mid$(s,pos,len)` | Various | Substring extraction |
 | `chr$()` | Everywhere | Character from code, supports multi-arg: `chr$(13)`, `chr$(45,49)` |
+| `chr$(n,count)` | Various | Repeat character N times (non-standard!) |
+| `asc()` | Various | Character to ASCII code |
+| `instr(s1,s2)` | Various | Find substring position |
 | `not` / `and` / `or` | Everywhere | Boolean operators |
 | `mod` / `div` | SP.FIGHT, etc. | Integer arithmetic |
+| `random(n)` | Various | Random number generation |
+
+**Important limitation:** ACOS integers cap at ~32767. SpacerQuest works around this by splitting credits across two variables: `g1` (10K multiples) and `g2` (remainder <10K), with a `crfix` subroutine to handle overflow between them.
 
 ### File I/O
 
@@ -93,8 +103,10 @@ These are standard BASIC commands that any BASIC interpreter would handle:
 | `create filename` | SP.START | Create new file |
 | `kill filename` | SP.START | Delete file |
 | `copy filename` | SP.YARD, etc. | **Display text file to terminal** (not file copy!) |
-| `append` | SP.TOP, etc. | Append mode |
+| `copy (N) #F` | Various | Display N lines from file handle |
+| `append #N` | SP.TOP, etc. | Set append mode on channel |
 | `delete` | Various | Delete record |
+| `eof(N)` | Various | End-of-file check |
 
 ### BBS/GBBS-Specific Commands
 
@@ -103,18 +115,26 @@ These are the **problematic** ones -- they have no analog in standard BASIC:
 | Command | Usage | What It Does |
 |---------|-------|-------------|
 | `link "segment"` | Everywhere | **Load and execute another ACOS segment** -- this is the inter-module call mechanism. Equivalent to loading another compiled program. |
+| `link "seg","label"` | Various | **Link to segment at specific exported label** |
 | `on nocar goto label` | Every module | **Modem carrier-loss trap** -- jumps to cleanup code when the remote user disconnects. This is an interrupt/signal handler. |
 | `store "a:var"` | SP.START | **Persist all variables to disk** -- saves the entire variable state to a file for segment switching. |
 | `recall "a:var"` | Implied by link | **Restore all variables from disk** -- loads variable state after segment switch. |
-| `log` | SP.START, etc. | **Write to BBS audit log** |
+| `log` | SP.START, etc. | **Write to BBS audit log** / set default volume |
 | `info(N)` | SP.START | **Query BBS system info** -- `info(5)` = is user a sysop, etc. |
-| `setint()` | Not in SQ directly | **Set interface mode** (modem settings) |
+| `setint(N)` | Not in SQ directly | **Set interface/interrupt mode** (modem settings) |
+| `modem(N)` | Various | **Direct modem control** |
+| `clock(N)` | Various | **System clock access** -- `clock(1)` = elapsed time, `clock(2)` = time limit |
+| `time$` / `date$` | Various | **Current time/date strings** |
+| `flag(N)` | Various | **BBS system flag access** |
+| `edit(N)` | Various | **Editor/system mode query** |
 | `free` | SP.FIGHT1 | **Release memory** / garbage collect |
 | `public label` | Every module | **Export label** for inter-segment linking |
 | `seg` | SP.START | **Segment marker** -- indicates start of a compiled segment |
 | `pop` | SP.YARD | **Pop return address** from gosub stack (discard pending return) |
-| `get` / `key` | Various | **Single-character input** (non-blocking or blocking keypress) |
-| `peek` / `poke` | Various | **Direct memory access** (6502 memory map) |
+| `get` | Various | **Single-character input** (blocking keypress) |
+| `key(N)` | Various | **Non-blocking keypress check** -- `key(0)` polls for input |
+| `clear key` | Various | **Clear keyboard buffer** |
+| `peek` / `poke` | Various | **Direct memory access** (6502 memory map) -- SQ uses `peek(-16384)` for keyboard latch, `poke 37,0` for cursor position |
 
 ### ANSI/Terminal Control (via conventions, not commands)
 
@@ -247,15 +267,56 @@ The TRS-80 Color Computer shipped with **Color BASIC**, a Microsoft BASIC varian
 | **Disk Extended Color BASIC** | ROM (disk controller) | `OPEN`, `CLOSE`, `WRITE`, `GET`, `PUT`, disk file I/O |
 | **Super Extended Color BASIC** | ROM (CoCo 3 only) | Enhanced graphics modes, `WIDTH`, `PALETTE`, `HSCREEN` |
 
+### Complete Keyword Sets (from ROM source analysis)
+
+**Color BASIC statements:** `AUDIO ON/OFF`, `CLEAR`, `CLOAD`, `CLOADM`, `CLOSE`, `CLS`, `CONT`, `CSAVE`, `CSAVEM`, `DATA`, `DIM`, `END`, `EXEC`, `FOR..TO..STEP/NEXT`, `GOSUB`, `GOTO`, `IF..THEN..ELSE`, `INPUT`, `LET`, `LINE INPUT`, `LIST`, `LLIST`, `MOTOR ON/OFF`, `NEW`, `ON..GOTO`, `ON..GOSUB`, `OPEN`, `POKE`, `PRINT`, `PRINT @`, `READ`, `REM`, `RENUM`, `RESET`, `RESTORE`, `RETURN`, `RUN`, `SET`, `SKIPF`, `SOUND`, `STOP`
+
+**Color BASIC functions:** `ABS`, `ASC`, `CHR$`, `COS`, `EOF`, `EXP`, `FIX`, `HEX$`, `INKEY$`, `INT`, `JOYSTK`, `LEFT$`, `LEN`, `LOG`, `MEM`, `MID$`, `PEEK`, `POINT`, `POS`, `RIGHT$`, `RND`, `SGN`, `SIN`, `SQR`, `STR$`, `STRING$`, `TAB`, `TAN`, `ATN`, `USR`, `VAL`
+
+**Extended Color BASIC additions:** `CIRCLE`, `COLOR`, `DEF FN`, `DEF USR`, `DEL`, `DLOAD`, `DRAW`, `EDIT`, `GET`, `LINE`, `PAINT`, `PCLEAR`, `PCLS`, `PCOPY`, `PLAY`, `PMODE`, `PRESET`, `PSET`, `PUT`, `SCREEN`, `TIMER`, `BUTTON`, `INSTR`, `PPOINT`, `USRn`, `VARPTR`
+
+**Disk Extended Color BASIC additions:** `BACKUP`, `CLOSE`, `COPY`, `CVN`, `DIR`, `DRIVE`, `DSKI$`, `DSKO$`, `DSKINI`, `FIELD`, `FILES`, `FREE`, `GET`, `KILL`, `LOAD`, `LOADM`, `LOC`, `LOF`, `LSET`, `MERGE`, `MKN$`, `OPEN`, `PUT`, `RENAME`, `RSET`, `SAVE`, `SAVEM`, `UNLOAD`, `WRITE`
+
+**Super Extended Color BASIC additions (CoCo 3):** `ATTR`, `HBUFF`, `HCIRCLE`, `HCLS`, `HCOLOR`, `HDRAW`, `HGET`, `HLINE`, `HPAINT`, `HPOINT`, `HPRINT`, `HPUT`, `HRESET`, `HSCREEN`, `HSET`, `HSTAT`, `LOCATE`, `LPEEK`, `LPOKE`, `ON BRK`, `ON ERR`, `PALETTE`, `PALETTE CMP`, `PALETTE RGB`, `RGB`, `WIDTH`
+
+### Existing CoCo Tools and Emulators
+
+Unlike ACOS, there is a rich ecosystem of existing tools:
+
+| Tool | Type | Notes |
+|------|------|-------|
+| [XRoar](https://www.6809.org.uk/xroar/) | Emulator | Full CoCo emulator, **has a WebAssembly/browser build** |
+| MAME/MESS | Emulator | Multi-system, supports CoCo 1/2/3 |
+| VCC | Emulator | Virtual Color Computer (Windows) |
+| [coco_roms](https://github.com/tomctomc/coco_roms) | Source | Complete 6809 assembly source for all Color BASIC ROM versions |
+| [BASIC-To-6809](https://github.com/nowhereman999/BASIC-To-6809) | Compiler | CoCo BASIC compiler to native 6809 code |
+| [coco-tools](https://github.com/jamieleecho/coco-tools) | Tools | Python tools including Color BASIC converter |
+| [Color Computer Archive](https://colorcomputerarchive.com/) | Archive | Comprehensive CoCo software/docs library |
+
+The ROM source code being available on GitHub means the complete specification is known. No reverse engineering needed.
+
 ### Building a CoCo BASIC Interpreter: Feasibility
 
 **This is significantly easier than ACOS** because:
 
-1. **Well-documented** -- Microsoft BASIC is thoroughly documented. The CoCo BASIC reference manual is freely available online.
+1. **Well-documented** -- Microsoft BASIC is thoroughly documented. The CoCo BASIC reference manual is freely available online. The complete ROM source code is on GitHub.
 2. **Standard dialect** -- It's a superset of standard Microsoft BASIC. Many interpreters already exist.
 3. **No BBS coupling** -- CoCo BASIC is a general-purpose language. No `link`/`store`/`recall` segment management.
-4. **Existing implementations** -- Multiple CoCo emulators exist (MAME/MESS, XRoar, VCC). The BASIC interpreter ROM is well-understood.
+4. **Existing implementations** -- Multiple CoCo emulators exist. XRoar already runs in the browser via WebAssembly.
 5. **Hardware abstraction is bounded** -- Graphics (PMODE, HSCREEN), sound (PLAY, SOUND), and joystick (JOYSTK) are the main hardware interfaces. These map cleanly to HTML5 Canvas and Web Audio.
+
+### CoCo BASIC: Unique Features vs. Standard BASIC
+
+Things a CoCo BASIC interpreter must handle that generic BASIC interpreters don't:
+- **`PRINT @`** -- Position-based printing using screen positions 0-511
+- **`SET(x,y,color)` / `RESET` / `POINT`** -- 64x32 semigraphics block characters
+- **`PMODE 0-4`** -- Page-based graphics modes (not standard pixel coordinates)
+- **`DRAW`** -- Turtle-like vector graphics via string macros ("U5R3D5L3")
+- **`PLAY`** -- Music macro language for sound synthesis ("T120O4L4CDEFGAB")
+- **`JOYSTK(0-3)`** -- Joystick axis values 0-63
+- **`CLOAD`/`CSAVE`** -- Cassette I/O (virtual in an interpreter)
+- **`DSKI$`/`DSKO$`** -- Direct sector I/O (Disk Extended only)
+- **Line numbers required** -- Programs use line numbers, not labels
 
 ### CoCo BASIC vs. ACOS: Key Differences
 
@@ -316,5 +377,9 @@ Note: Existing open-source BASIC interpreters (like [EndBASIC](https://github.co
 - [Color BASIC (Wikipedia)](https://en.wikipedia.org/wiki/Color_BASIC)
 - [Extended Color BASIC (Wikipedia)](https://en.wikipedia.org/wiki/Extended_Color_BASIC)
 - [TRS-80 Color Computer (CoCopedia)](https://www.cocopedia.com/wiki/index.php/TRS-80_Color_Computer)
+- [Disk Extended Color BASIC (Wikipedia)](https://en.wikipedia.org/wiki/Disk_Extended_Color_BASIC)
+- [Color BASIC Unravelled (PDF)](https://techheap.packetizer.com/computers/coco/unravelled_series/color-basic-unravelled.pdf)
+- [CoCo ROM Source (GitHub)](https://github.com/tomctomc/coco_roms)
+- [Color Computer Archive](https://colorcomputerarchive.com/)
 - SpacerQuest original source: `/home/user/SpacerQuest/Decompile/Source-Text/`
 - SpacerQuest variable map: `/home/user/SpacerQuest/SQ/SQ.VAR`
