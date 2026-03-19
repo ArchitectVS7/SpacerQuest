@@ -18,6 +18,12 @@ import '../styles/terminal.css';
 const TERMINAL_COLS = 80;
 const TERMINAL_ROWS = 24;
 
+const BUFFERED_SCREENS = [
+  'traders-buy-fuel', 'traders-sell-fuel', 'traders-cargo',
+  'navigate', 'bank-deposit', 'bank-withdraw', 'bank-transfer',
+  'shipyard-upgrade', 'registry-search', 'alliance-invest'
+];
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -26,6 +32,7 @@ export function TerminalComponent() {
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminalInstance = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const inputBufferRef = useRef<string>('');
   
   const {
     currentScreen,
@@ -98,22 +105,50 @@ export function TerminalComponent() {
     };
   }, []);
 
+  // Login input handler
+  const handleLoginInput = useCallback((input: string) => {
+    if (input === 'L') {
+      // Login with OAuth
+      window.location.href = '/auth/dev-login';
+    } else if (input === 'N') {
+      // New character - would need to handle OAuth first
+      appendToTerminal('\r\nPlease login first with [L]\r\n');
+    }
+  }, [appendToTerminal]);
+
+  // Character creation input handler
+  const handleCharacterCreateInput = useCallback((_input: string) => {
+    // Would handle character name input here
+  }, []);
+
   // Handle terminal input
   const handleTerminalInput = useCallback((data: string) => {
     const terminal = terminalInstance.current;
     if (!terminal) return;
 
     const { currentScreen } = useGameStore.getState();
+    const isBuffered = BUFFERED_SCREENS.includes(currentScreen);
 
-    // Handle special keys
-    if (data === '\r') {
-      // Enter key - process current input
-      terminal.writeln('');
+    if (isBuffered) {
+      if (data === '\r') {
+        const input = inputBufferRef.current;
+        wsClient.sendScreenInput(currentScreen, input);
+        inputBufferRef.current = '';
+        terminal.writeln('');
+      } else if (data === '\x7f' || data === '\b') {
+        if (inputBufferRef.current.length > 0) {
+          inputBufferRef.current = inputBufferRef.current.slice(0, -1);
+          terminal.write('\b \b');
+        }
+      } else {
+        inputBufferRef.current += data.toUpperCase();
+        terminal.write(data.toUpperCase());
+      }
       return;
     }
 
-    if (data === '\x7f' || data === '\b') {
-      // Backspace
+    // Default unbuffered handling (single key commands)
+    if (data === '\r' || data === '\n' || data === '\x7f' || data === '\b') {
       return;
     }
 
@@ -134,23 +169,7 @@ export function TerminalComponent() {
 
     // Echo input to terminal
     terminal.write(input);
-  }, []);
-
-  // Login input handler
-  const handleLoginInput = useCallback((input: string) => {
-    if (input === 'L') {
-      // Login with OAuth
-      window.location.href = '/auth/dev-login';
-    } else if (input === 'N') {
-      // New character - would need to handle OAuth first
-      appendToTerminal('\r\nPlease login first with [L]\r\n');
-    }
-  }, [appendToTerminal]);
-
-  // Character creation input handler
-  const handleCharacterCreateInput = useCallback((_input: string) => {
-    // Would handle character name input here
-  }, []);
+  }, [handleLoginInput, handleCharacterCreateInput]);
 
   // Update terminal when buffer changes
   useEffect(() => {

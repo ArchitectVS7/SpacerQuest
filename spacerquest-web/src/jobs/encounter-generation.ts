@@ -12,7 +12,7 @@ import { randomInt, checkProbability } from '../game/utils.js';
 import { calculateBattleFactor } from '../game/systems/combat.js';
 import { prisma } from '../db/prisma.js';
 import { publishWorldEvent } from './event-publisher.js';
-import { workerLogger } from './worker.js';
+import { workerLogger } from './logger.js';
 
 const log = workerLogger.child({ job: 'encounter' });
 

@@ -118,7 +118,8 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
     }
 
     const { processCourseChange } = await import('../../game/systems/travel.js');
-    const result = await processCourseChange(character.id, newSystemId, 5);
+    const { COURSE_CHANGE_LIMIT_BASE } = await import('../../game/constants.js');
+    const result = await processCourseChange(character.id, newSystemId, COURSE_CHANGE_LIMIT_BASE);
 
     if (!result.success) {
       return reply.status(400).send({ error: result.error });
@@ -150,21 +151,23 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
     // Original SP.WARP.S: hazards trigger at 1/4 and 1/2 travel time
     const hazardEvents: Array<{ hazardName: string; component: string; action: string; newCondition: number; evaded: boolean }> = [];
 
+    // Read travel state to get actual destination (character.destination is cargo delivery target)
+    const travelState = await prisma.travelState.findUnique({
+      where: { characterId: character.id },
+    });
+
     if (character.ship) {
       const { checkHazardTrigger, generateHazard } = await import('../../game/systems/hazards.js');
-
-      const travelState = await prisma.travelState.findUnique({
-        where: { characterId: character.id },
-      });
 
       if (travelState) {
         const totalDuration = travelState.expectedArrival.getTime() - travelState.departureTime.getTime();
         const travelTimeUnits = Math.max(1, Math.floor(totalDuration / 1000)); // seconds as units
 
-        // Check both hazard trigger points (1/4 and 1/2)
+        // Check all hazard trigger points (1/4, 1/3, and 1/2)
         const quarterMark = Math.floor(travelTimeUnits / 4);
+        const thirdMark = Math.floor(travelTimeUnits / 3);
         const halfMark = Math.floor(travelTimeUnits / 2);
-        const checkPoints = [quarterMark, halfMark].filter(cp => cp > 0);
+        const checkPoints = [quarterMark, thirdMark, halfMark].filter(cp => cp > 0);
 
         const shipData = {
           hullCondition: character.ship.hullCondition,
@@ -221,27 +224,100 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
       }
     }
 
+    const travelDestination = travelState?.destinationSystem || character.currentSystem;
+
+    // ── Encounter generation ────────────────────────────────────────────
+    // Original SP.WARP.S: at tt=(ty/3), tp=1 → link.fight
+    // Every trip has a deterministic encounter at 1/3 travel time.
+    // Pirates find you — you don't go looking for them.
+    let encounterResult: any = undefined;
+    try {
+      const { generateEncounter, calculateBattleFactor, calculateEnemyBattleFactor, isNpcFriendly } =
+        await import('../../game/systems/combat.js');
+      const enemy = await generateEncounter(
+        travelDestination,
+        character.missionType,
+        0
+      );
+
+      if (enemy && character.ship) {
+        const enemyBF = calculateEnemyBattleFactor(enemy);
+        enemy.battleFactor = enemyBF;
+
+        // Check if friendly (same alliance) — original SP.FIGHT1.S:138
+        if (isNpcFriendly(enemy, character.allianceSymbol)) {
+          encounterResult = {
+            encounter: true,
+            friendly: true,
+            enemy: { name: enemy.commander, class: enemy.class, type: enemy.type },
+            message: `${enemy.commander} Hails A Friendly Greeting.`,
+          };
+        } else {
+          // Hostile encounter — store as pending for the client to resolve
+          // Create a combat record so the player can respond
+          const playerBF = calculateBattleFactor(
+            {
+              weaponStrength: character.ship.weaponStrength,
+              weaponCondition: character.ship.weaponCondition,
+              shieldStrength: character.ship.shieldStrength,
+              shieldCondition: character.ship.shieldCondition,
+              cabinStrength: character.ship.cabinStrength,
+              cabinCondition: character.ship.cabinCondition,
+              roboticsStrength: character.ship.roboticsStrength,
+              roboticsCondition: character.ship.roboticsCondition,
+              lifeSupportStrength: character.ship.lifeSupportStrength,
+              lifeSupportCondition: character.ship.lifeSupportCondition,
+              navigationStrength: character.ship.navigationStrength,
+              navigationCondition: character.ship.navigationCondition,
+              driveStrength: character.ship.driveStrength,
+              driveCondition: character.ship.driveCondition,
+              hasAutoRepair: character.ship.hasAutoRepair,
+            },
+            character.rank as any,
+            character.battlesWon
+          );
+
+          encounterResult = {
+            encounter: true,
+            friendly: false,
+            enemy: {
+              name: enemy.commander,
+              class: enemy.class,
+              type: enemy.type,
+              battleFactor: enemyBF,
+            },
+            playerBF,
+            message: `Intruder Alert! ${enemy.commander} in a ${enemy.class} is attacking!`,
+          };
+        }
+      }
+    } catch (err) {
+      // Encounter generation failure is non-fatal — travel still completes
+      // This can happen if NpcRoster table is empty or CombatEncounter model doesn't exist yet
+    }
+
     const { completeTravel } = await import('../../game/systems/travel.js');
-    await completeTravel(character.id, character.destination || character.currentSystem);
+    await completeTravel(character.id, travelDestination);
 
     const { processDocking } = await import('../../game/systems/docking.js');
-    await processDocking(character.id, character.destination || character.currentSystem);
+    await processDocking(character.id, travelDestination);
 
     // Push travel:complete to the character's socket room
-    const destinationId = character.destination || character.currentSystem;
-    const destSystem = await prisma.starSystem.findUnique({ where: { id: destinationId } });
+    const destSystem = await prisma.starSystem.findUnique({ where: { id: travelDestination } });
     const io = getIO();
     if (io) {
       io.to(`character:${character.id}`).emit('travel:complete', {
-        systemId: destinationId,
-        systemName: destSystem?.name || `System ${destinationId}`,
+        systemId: travelDestination,
+        systemName: destSystem?.name || `System ${travelDestination}`,
+        encounter: encounterResult,
       });
     }
 
     return {
       success: true,
-      system: character.destination,
+      system: travelDestination,
       hazards: hazardEvents.length > 0 ? hazardEvents : undefined,
+      encounter: encounterResult,
     };
   });
 }

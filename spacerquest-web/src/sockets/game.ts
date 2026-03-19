@@ -98,7 +98,7 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
       
       if (data.action === 'RETREAT') {
         const retreat = attemptRetreat(
-          character.ship.driveStrength * character.ship.driveCondition,
+          (character.ship.driveStrength + (character.ship.hasTransWarpDrive ? 10 : 0)) * character.ship.driveCondition,
           (data.enemy?.driveStrength ?? 10) * (data.enemy?.driveCondition ?? 7) || 100,
           character.ship.hasCloaker
         );
@@ -139,6 +139,7 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
         character.ship.weaponCondition,
         character.ship.shieldStrength,
         character.ship.shieldCondition,
+        character.ship.hasAutoRepair,
         (data.enemy || {
           weaponStrength: 20,
           weaponCondition: 7,

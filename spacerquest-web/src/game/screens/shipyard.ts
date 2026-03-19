@@ -84,9 +84,7 @@ export const ShipyardScreen: ScreenModule = {
       }
       
       case 'S':
-        return { 
-          output: '\r\n\x1b[33mSpecial equipment unavailable in this sector.\x1b[0m\r\n> ' 
-        };
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'shipyard-special' };
       
       default:
         return { 

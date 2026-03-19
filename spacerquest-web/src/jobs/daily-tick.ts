@@ -9,14 +9,15 @@
  */
 
 import { Rank } from '@prisma/client';
-import { addCredits, isDayDifferent, getDateString } from '../game/utils.js';
+import { addCredits, isDayDifferent, getDateString, calculateRank, getHonorarium } from '../game/utils.js';
 import {
   PORT_EVICTION_DAYS,
 } from '../game/constants.js';
 import { prisma } from '../db/prisma.js';
 import { publishDailyTick } from './event-publisher.js';
-import { workerLogger } from './worker.js';
+import { workerLogger } from './logger.js';
 import { generateNpcBulletinPosts } from '../game/systems/bulletin-board.js';
+import { isClassicMode } from '../bots/config.js';
 
 const log = workerLogger.child({ job: 'daily-tick' });
 
@@ -51,14 +52,18 @@ export async function runDailyTick(): Promise<DailyTickResult> {
   
   log.info(`Starting daily tick for ${dateStr}`);
   
-  // 1. Reset trip counters for all players
-  log.info('Resetting trip counters');
-  const tripResetResult = await prisma.character.updateMany({
-    where: { tripCount: { gt: 0 } },
-    data: { tripCount: 0 },
-  });
-  result.tripsReset = tripResetResult.count;
-  log.info(`Reset ${result.tripsReset} character trip counters`);
+  // 1. Reset trip counters for all players (only in classic mode)
+  if (isClassicMode()) {
+    log.info('Resetting trip counters (classic mode)');
+    const tripResetResult = await prisma.character.updateMany({
+      where: { tripCount: { gt: 0 } },
+      data: { tripCount: 0 },
+    });
+    result.tripsReset = tripResetResult.count;
+    log.info(`Reset ${result.tripsReset} character trip counters`);
+  } else {
+    log.info('Skipping trip reset (end-turn mode handles trip resets)');
+  }
   
   // 2. Process port income
   log.info('Processing port income');
@@ -121,10 +126,10 @@ export async function runDailyTick(): Promise<DailyTickResult> {
   });
   
   for (const char of characters) {
-    const newRank = calculateRankFromScore(char.score);
-    
+    const newRank = calculateRank(char.score);
+
     if (newRank !== char.rank) {
-      const honorarium = getHonorariumForRank(newRank);
+      const honorarium = getHonorarium(newRank);
       
       // Update character
       await prisma.character.update({
@@ -249,38 +254,8 @@ async function evictPortOwner(portId: string, characterId: string): Promise<void
   log.info(`Evicted port owner from system ${port.systemId}`);
 }
 
-/**
- * Calculate rank from score (matches utils.ts)
- */
-function calculateRankFromScore(score: number): Rank {
-  if (score >= 2700) return Rank.GIGA_HERO;
-  if (score >= 1350) return Rank.MEGA_HERO;
-  if (score >= 1100) return Rank.GRAND_MUFTI;
-  if (score >= 900) return Rank.TOP_DOG;
-  if (score >= 600) return Rank.ADMIRAL;
-  if (score >= 450) return Rank.COMMODORE;
-  if (score >= 300) return Rank.CAPTAIN;
-  if (score >= 150) return Rank.COMMANDER;
-  return Rank.LIEUTENANT;
-}
-
-/**
- * Get honorarium for rank
- */
-function getHonorariumForRank(rank: Rank): number {
-  const honoraria: Record<Rank, number> = {
-    LIEUTENANT: 0,
-    COMMANDER: 20000,
-    CAPTAIN: 30000,
-    COMMODORE: 40000,
-    ADMIRAL: 50000,
-    TOP_DOG: 80000,
-    GRAND_MUFTI: 100000,
-    MEGA_HERO: 120000,
-    GIGA_HERO: 150000,
-  };
-  return honoraria[rank] || 0;
-}
+// calculateRank and getHonorarium are now imported from '../game/utils.js'
+// (previously had stale thresholds — e.g. Admiral=600 instead of correct 750)
 
 /**
  * Reset daily landing fees and fuel sales tracking

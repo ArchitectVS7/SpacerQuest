@@ -82,24 +82,18 @@ export function getTotalCredits(high: number, low: number): number {
 
 /**
  * Calculate rank from score
- * 
- * Original PRD thresholds:
- * - Lieutenant: 0
- * - Commander: 150
- * - Captain: 300
- * - Commodore: 450
- * - Admiral: 600
- * - Top Dog: 900
- * - Grand Mufti: 1100
- * - Mega Hero: 1350
- * - Giga Hero: 2700
+ *
+ * Source formula: sc = floor(score/150), rank fires at sc > N
+ * Thresholds (score): Lieutenant=0, Commander=150, Captain=300,
+ * Commodore=450, Admiral=750, Top Dog=1200, Grand Mufti=1650,
+ * Mega Hero=2250, Giga Hero=2700.
  */
 export function calculateRank(score: number): Rank {
   if (score >= 2700) return Rank.GIGA_HERO;
-  if (score >= 1350) return Rank.MEGA_HERO;
-  if (score >= 1100) return Rank.GRAND_MUFTI;
-  if (score >= 900) return Rank.TOP_DOG;
-  if (score >= 600) return Rank.ADMIRAL;
+  if (score >= 2250) return Rank.MEGA_HERO;
+  if (score >= 1650) return Rank.GRAND_MUFTI;
+  if (score >= 1200) return Rank.TOP_DOG;
+  if (score >= 750) return Rank.ADMIRAL;
   if (score >= 450) return Rank.COMMODORE;
   if (score >= 300) return Rank.CAPTAIN;
   if (score >= 150) return Rank.COMMANDER;

@@ -13,7 +13,7 @@ import {
   PATROL_BASE_PAY,
 } from '../game/constants.js';
 import { prisma } from '../db/prisma.js';
-import { workerLogger } from './worker.js';
+import { workerLogger } from './logger.js';
 
 const log = workerLogger.child({ job: 'mission' });
 

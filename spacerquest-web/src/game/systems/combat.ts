@@ -14,13 +14,9 @@ import { BattleResult, Rank } from '@prisma/client';
 import {
   RANK_BF_BONUS,
   EXPERIENCE_BF_DIVISOR,
-  AUTO_REPAIR_BF_BONUS,
   TRIBUTE_BASE_MULTIPLIER,
   TRIBUTE_MAX,
-  RETREAT_SUCCESS_CHANCE,
   CLOAKING_ESCAPE_CHANCE,
-  ENCOUNTER_BASE_CHANCE,
-  ENCOUNTER_RIM_CHANCE,
 } from '../constants';
 import { calculateComponentPower, checkProbability, randomInt } from '../utils.js';
 
@@ -55,21 +51,23 @@ export interface Enemy {
 /**
  * Generate encounter during travel by selecting from the NPC roster.
  *
- * Original from SP.FIGHT1.S:62-88:
+ * Original from SP.WARP.S + SP.FIGHT1.S:62-88:
+ *   At tt=(ty/3), tp=1 is set unconditionally — EVERY trip has an encounter.
  *   if sk=1 f$="pirates" ... if sk=2 f$="sp.pat" ...
  *   r=pn:gosub rand:pz=x:po=x  (random selection from roster)
+ *
+ * In the original game, encounters are DETERMINISTIC — they happen on every
+ * trip at 1/3 of travel time. There is no probability roll. Pirates find you
+ * regardless of your ship stats. The 30% probability was a v4.0 deviation
+ * from the original that has been corrected.
  */
 export async function generateEncounter(
   currentSystem: number,
   missionType: number,
   _playerPower: number
 ): Promise<Enemy | null> {
-  // Determine encounter chance based on system type
-  const encounterChance = currentSystem > 14 ? ENCOUNTER_RIM_CHANCE : ENCOUNTER_BASE_CHANCE;
-
-  if (!checkProbability(encounterChance)) {
-    return null;
-  }
+  // Original SP.WARP.S: encounters are deterministic at 1/3 travel time.
+  // No probability check — every trip generates an encounter.
 
   const { prisma } = await import('../../db/prisma.js');
 
@@ -193,10 +191,9 @@ export function calculateBattleFactor(
   // Experience bonus (battles won / 10)
   const experienceBonus = Math.floor(battlesWon / EXPERIENCE_BF_DIVISOR);
 
-  // Auto-repair module bonus
-  const autoRepairBonus = ship.hasAutoRepair ? AUTO_REPAIR_BF_BONUS : 0;
-
-  return weaponBF + shieldBF + cabinBF + roboticsBF + lifeBF + rankBonus + experienceBonus + autoRepairBonus;
+  // Auto-repair module bonus has been removed. Original behavior repairs components instead.
+  
+  return weaponBF + shieldBF + cabinBF + roboticsBF + lifeBF + rankBonus + experienceBonus;
 }
 
 /**
@@ -226,6 +223,7 @@ export interface CombatRound {
   enemyShieldDamage: number;
   playerSystemDamage: number;
   enemySystemDamage: number;
+  playerRepairs: number;
   battleAdvantage: 'PLAYER' | 'ENEMY' | 'EVEN';
   combatLog: string[];
 }
@@ -245,6 +243,7 @@ export function processCombatRound(
   playerWeaponCond: number,
   playerShieldStr: number,
   playerShieldCond: number,
+  hasAutoRepair: boolean,
   enemy: Enemy,
   round: number
 ): CombatRound {
@@ -292,6 +291,12 @@ export function processCombatRound(
     combatLog.push('Your shields deflect the enemy attack');
   }
 
+  let playerRepairs = 0;
+  if (hasAutoRepair) {
+    playerRepairs = 1;
+    combatLog.push('Auto-Repair module restores +1 condition to all systems');
+  }
+
   return {
     round,
     playerDamage,
@@ -300,6 +305,7 @@ export function processCombatRound(
     enemyShieldDamage,
     playerSystemDamage,
     enemySystemDamage,
+    playerRepairs,
     battleAdvantage,
     combatLog,
   };
@@ -340,54 +346,31 @@ export function applySystemDamage(
   _damage: number
 ): DamageResult & { updatedShip: ShipStats } {
   const updatedShip = { ...ship };
-  const damageRoll = randomInt(1, 6);
-
   let componentDamaged = '';
   let conditionLost = 0;
 
-  switch (damageRoll) {
-    case 1: // Cabin
-      if (updatedShip.cabinCondition > 0) {
-        updatedShip.cabinCondition = Math.max(0, updatedShip.cabinCondition - 1);
-        componentDamaged = 'Cabin';
-        conditionLost = 1;
-      }
-      break;
-    case 2: // Navigation
-      if (updatedShip.navigationCondition > 0) {
-        updatedShip.navigationCondition = Math.max(0, updatedShip.navigationCondition - 1);
-        componentDamaged = 'Navigation';
-        conditionLost = 1;
-      }
-      break;
-    case 3: // Drives
-      if (updatedShip.driveCondition > 0) {
-        updatedShip.driveCondition = Math.max(0, updatedShip.driveCondition - 1);
-        componentDamaged = 'Drives';
-        conditionLost = 1;
-      }
-      break;
-    case 4: // Robotics
-      if (updatedShip.roboticsCondition > 0) {
-        updatedShip.roboticsCondition = Math.max(0, updatedShip.roboticsCondition - 1);
-        componentDamaged = 'Robotics';
-        conditionLost = 1;
-      }
-      break;
-    case 5: // Weapons
-      if (updatedShip.weaponCondition > 0) {
-        updatedShip.weaponCondition = Math.max(0, updatedShip.weaponCondition - 1);
-        componentDamaged = 'Weapons';
-        conditionLost = 1;
-      }
-      break;
-    case 6: // Hull
-      if (updatedShip.lifeSupportCondition > 0) {
-        updatedShip.lifeSupportCondition = Math.max(0, updatedShip.lifeSupportCondition - 1);
-        componentDamaged = 'Life Support';
-        conditionLost = 1;
-      }
-      break;
+  // Original SP.FIGHT1.S ordered cascade: Cabin -> Nav -> Drives -> Shields -> Hull(Life Support)
+  // Instead of a random roll, we check components in order and damage the first one that has condition > 0
+  if (updatedShip.cabinCondition > 0) {
+    updatedShip.cabinCondition = Math.max(0, updatedShip.cabinCondition - 1);
+    componentDamaged = 'Cabin';
+    conditionLost = 1;
+  } else if (updatedShip.navigationCondition > 0) {
+    updatedShip.navigationCondition = Math.max(0, updatedShip.navigationCondition - 1);
+    componentDamaged = 'Navigation';
+    conditionLost = 1;
+  } else if (updatedShip.driveCondition > 0) {
+    updatedShip.driveCondition = Math.max(0, updatedShip.driveCondition - 1);
+    componentDamaged = 'Drives';
+    conditionLost = 1;
+  } else if (updatedShip.shieldCondition > 0) {
+    updatedShip.shieldCondition = Math.max(0, updatedShip.shieldCondition - 1);
+    componentDamaged = 'Shields';
+    conditionLost = 1;
+  } else if (updatedShip.lifeSupportCondition > 0) {
+    updatedShip.lifeSupportCondition = Math.max(0, updatedShip.lifeSupportCondition - 1);
+    componentDamaged = 'Life Support';
+    conditionLost = 1;
   }
 
   return {
@@ -426,7 +409,7 @@ export function attemptRetreat(
 
   // Compare speeds
   if (playerDrivePower > enemyDrivePower) {
-    if (checkProbability(RETREAT_SUCCESS_CHANCE)) {
+    if (checkProbability(0.5)) {
       return {
         success: true,
         message: 'Your superior drives allow you to escape!',
@@ -458,8 +441,8 @@ export function enemyDemandsTribute(
 ): SurrenderResult {
   // Calculate tribute demand
   let tribute = combatRounds * TRIBUTE_BASE_MULTIPLIER;
-  if (combatRounds > 12) tribute = TRIBUTE_MAX;
-  tribute = Math.min(tribute, TRIBUTE_MAX);
+  if (combatRounds > 12) tribute = 10000;
+  tribute = Math.min(tribute, 10000);
 
   // Cap at player's available credits
   tribute = Math.min(tribute, playerCredits);
@@ -531,17 +514,15 @@ export async function recordBattle(
  * Otherwise fall back to class-based calculation.
  */
 export function calculateLoot(enemy: Enemy, playerBF: number): number {
-  // Use NPC roster credit value if available
-  if (enemy.creditValue && enemy.creditValue > 0) {
-    return enemy.creditValue;
-  }
-
-  // Fallback for legacy enemies without roster data
+  // Original pirate salvage formula based on cargo type
   let baseLoot = 0;
+  // Fallback to creditValue if no class logic found, otherwise rely on class/type
   if (enemy.class === 'SPX') baseLoot = 500;
-  if (enemy.class === 'SPY') baseLoot = 1000;
-  if (enemy.class === 'SPZ') baseLoot = 2000;
-  if (enemy.type === 'RIM_PIRATE') baseLoot = 3000;
+  else if (enemy.class === 'SPY') baseLoot = 1000;
+  else if (enemy.class === 'SPZ') baseLoot = 2000;
+  else if (enemy.type === 'RIM_PIRATE') baseLoot = 3000;
+  else if (enemy.type === 'PIRATE') baseLoot = 1000; // Base estimate for standard pirates
+  else if (enemy.creditValue && enemy.creditValue > 0) baseLoot = enemy.creditValue;
 
   // Bonus for player's battle factor
   const bfBonus = Math.floor(playerBF / 10);

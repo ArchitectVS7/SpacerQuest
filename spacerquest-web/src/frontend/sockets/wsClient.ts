@@ -68,12 +68,22 @@ class WebSocketClient implements WsClient {
 
     this.socket.on('travel:progress', (data) => {
       console.log('[WS] Travel progress:', data);
-      const { setTravelState, setTravelProgress, setInTransit } = useGameStore.getState();
+      const { setTravelState, setTravelProgress, setInTransit, token } = useGameStore.getState();
       
       if (data.inTransit) {
         setTravelState(data);
         setTravelProgress(data.progress);
         setInTransit(true);
+        
+        // Trigger arrival if complete
+        if (data.progress >= 100 && token) {
+          fetch('/api/navigation/arrive', {
+             method: 'POST',
+             headers: { 'Authorization': `Bearer ${token}` }
+          }).then(res => {
+            if (!res.ok) console.error('Failed to arrive:', res.statusText);
+          }).catch(console.error);
+        }
       } else {
         setTravelState(null);
         setTravelProgress(0);

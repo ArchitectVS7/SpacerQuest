@@ -1,25 +1,58 @@
 # SpacerQuest v4.0 — Open Items
 
-**Updated:** March 17, 2026
-**Consolidates:** Previous plan.md, DESIGN_REVIEW.md, PROJECT_STATUS.md
+**Updated:** March 19, 2026
 
 ---
 
-## Production Readiness
 
-| # | Item | Status | Detail |
-|---|------|--------|--------|
-| 9 | **OAuth production endpoints** | **DONE** | Auth route (`src/app/routes/auth.ts`) supports any OAuth 2.0 provider via `BBS_PORTAL_*` env vars. Mock OAuth available for dev/demo. Unused `passport` packages already removed. Provider setup instructions in `DEPLOY.md`. |
-| 10 | **Production deployment runbook** | **DONE** | Full Railway deployment runbook in `spacerquest-web/DEPLOY.md`. Covers: 4-service topology (app, worker, Postgres, Redis), env var configuration, OAuth provider setup, database seeding, monitoring, backups, scaling, rollback, and troubleshooting. Dockerfile fixed to use npm (matching lockfile) and auto-run migrations on startup. |
+## 50-Turn Strategic Playtest (E2E Test 09)
+
+**Priority: High** — The original testing goal from the dev notes.
+
+Test 09 (`tests/e2e/09-browser-game-agent.spec.ts`) currently has 25 serial feature tests. The plan calls for restructuring it into a strategic agent that plays 50 full turns, exercising as many game features as possible per turn.
+
+**Prerequisites:** Items 1 (gambling wired) and 2 (bots tested) must be complete. The player needs to be able to end their turn and have bots run so they can take another turn.
+
+**Work:**
+- Restructure test 09 as a phase-driven decision engine:
+  - **Phase 1 (Turns 1-5):** Cheap actions — pub drink, gossip, buy Cloaker (500 cr, before hull upgrade), accept cargo, deliver
+  - **Phase 2 (Turns 6-15):** Earn credits — cargo runs, gambling (Wheel + Dare), fuel arbitrage at cheap systems (Sun-3, Mira-9)
+  - **Phase 3 (Turns 16-30):** Upgrades — systematic component upgrades, Auto-Repair purchase, combat encounters
+  - **Phase 4 (Turns 31-50):** Advanced — alliance join/invest, bulletin board, visit Sage (sys 18) and Wise One (sys 17), special equipment
+- End-turn flow between turns: press `D` → `Y` → wait for bot summary → back to main menu
+- Internal scorecard tracking ~40 game features (checked/unchecked)
+- Single long-running test with 30-minute timeout
+- Strategic decisions based on current state (credits, fuel, location, ship condition)
+
+**Coverage target:** 100+ of 163 game actions (up from current 56)
+
+**Untested areas to specifically target:**
+- Wheel of Fortune & Spacer's Dare
+- All 5 special equipment purchases (Cloaker, Auto-Repair, Star-Buster, Arch-Angel, Astraxial if possible)
+- Surrender in combat
+- Sage & Wise One visits
+- Port ownership (if credits allow)
+- Alliance bulletin board
+- Travel hazards & course changes
+- Jail bail mechanic (via smuggling → arrest → pay fine)
+- Bank transfer
+
+**Files:** `tests/e2e/09-browser-game-agent.spec.ts`, `tests/e2e/helpers/`
 
 ---
 
-## Future Mods
+## 4. NPC Encounter Roster Alliance Tuning **POST LAUNCH - DO NOT IMPLEMENT**
 
-Items below are deferred design work — beyond the original game's scope but of interest for the project's evolution.
+**Priority: Low** — Polish work, not blocking anything.
 
-| # | Item | Detail |
-|---|------|--------|
-| 11 | **Bot players (full Character records for NPCs)** | Promote NPCs from the lightweight encounter roster to full `Character` records (flagged `isNpc`). This would allow NPCs to appear in leaderboards, own ports, accumulate score, hold alliance memberships as first-class members, and participate in all systems that real players do. Design step: define which Character fields are meaningful for bots, how bot "sessions" are simulated, and how bot density scales with real player count. |
-| 12 | **NPC alliance distribution tuning** | The original roster's alliance distribution is preserved as-is for now. A future pass could rebalance NPC alliance membership to create intentional faction asymmetry — e.g., more Warlord NPCs in rim systems, more Patrol in core systems — to give each region a distinct factional character. |
-| 13 | **NPC life simulation** | The original game only persisted NPC battle stats. A richer simulation could have NPCs travel between systems, trade cargo, earn promotions, post on bulletin boards, and accumulate wealth — making the world feel populated even with few real players. Scope and tick frequency TBD. Depends on item 11 (bot players). |
+The 65 original NPC encounter opponents (NpcRoster table) have alliance distributions preserved from the 1991 data files. A future pass could rebalance to create regional faction character — more Warlord NPCs in rim systems, more Patrol in core.
+
+This is about the **NpcRoster** (combat enemies), NOT the 20 simulated players (bot Characters). These are distinct systems:
+- **NpcRoster** (65): Lightweight combat opponents from original Apple II data files (PIRATES, SP.PAT, SP.RIMPIR, SP.BRIGAND, SP.REPTILE). Commander names like `"][-Lt.Savage"`, `"RP-Black Bart"`.
+- **Simulated Players** (20): Full User+Character+Ship records (`isBot: true`) that take turns like a real 1991 BBS player. Names like `"Iron Vex"`, display as `"[BOT] Iron Vex"`.
+
+**Files:** `prisma/seed.ts`, NPC roster data
+
+---
+
+

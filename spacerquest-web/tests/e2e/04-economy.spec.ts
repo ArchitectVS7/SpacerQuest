@@ -76,13 +76,14 @@ test.describe('Economy - Fuel', () => {
   });
 
   test('selling more fuel than in tank returns 400 with fuel error', async ({ request }) => {
-    // After above: tank has 1 unit (bought 11, sold 10)
+    // After above: tank has 51 units (started 50, bought 11, sold 10)
+    // Selling 100 should fail — more than the 51 in tank
     const res = await request.post(`${API}/api/economy/fuel/sell`, {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      data: { units: 50 },
+      data: { units: 100 },
     });
     expect(res.status()).toBe(400);
     const body = await res.json();

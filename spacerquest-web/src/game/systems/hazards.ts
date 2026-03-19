@@ -76,9 +76,11 @@ const DAMAGEABLE_COMPONENTS = [
 export function checkHazardTrigger(elapsed: number, travelTime: number): boolean {
   if (travelTime <= 0) return false;
   const quarterMark = Math.floor(travelTime / 4);
+  const thirdMark = Math.floor(travelTime / 3);
   const halfMark = Math.floor(travelTime / 2);
 
   if (quarterMark > 0 && elapsed === quarterMark) return true;
+  if (thirdMark > 0 && elapsed === thirdMark) return true;
   if (halfMark > 0 && elapsed === halfMark) return true;
   return false;
 }

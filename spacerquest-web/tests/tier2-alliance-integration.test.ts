@@ -168,18 +168,17 @@ describe('Interactive Join in Spacers Hangout', () => {
     expect(screenCode).toContain('pendingAllianceSwitch.delete(characterId)');
   });
 
-  it('direct join (no existing alliance) creates membership immediately', async () => {
+  it('direct join and switch both prompt for confirmation via pendingAllianceSwitch', async () => {
     const fs = await import('fs');
     const screenCode = fs.readFileSync(
       new URL('../src/game/screens/spacers-hangout.ts', import.meta.url),
       'utf-8'
     );
 
-    // When hasExistingAlliance is false, it should upsert directly without setting pending
+    // When hasExistingAlliance is true or false, it prompts
     expect(screenCode).toContain('joinResult.hasExistingAlliance');
-    expect(screenCode).toContain('allianceMembership.upsert');
-    // Direct path must update character alliance symbol as well
-    expect(screenCode).toContain('allianceSymbol: allianceEnum');
+    expect(screenCode).toContain('pendingAllianceSwitch.set');
+    expect(screenCode).toContain('Join ${allianceInfo.name}? (Y)es (N)o');
   });
 });
 

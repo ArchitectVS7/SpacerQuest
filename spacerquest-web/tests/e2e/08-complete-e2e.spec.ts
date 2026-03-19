@@ -22,20 +22,32 @@ test.describe('Complete E2E Flow', () => {
   let token: string;
   let characterName: string;
 
-  test.beforeAll(async ({ request }) => {
-    token = await getAuthToken(request);
+  test.beforeAll(async () => {
+    // Use native fetch (not Playwright's test-scoped request fixture) to ensure
+    // beforeAll runs exactly once and all tests share the same token/character.
+    const code = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const callbackRes = await fetch(`${API}/auth/callback?code=${code}`, { redirect: 'manual' });
+    const location = callbackRes.headers.get('location');
+    if (!location) {
+      throw new Error(`No redirect from /auth/callback (status ${callbackRes.status})`);
+    }
+    token = new URL(location, API).searchParams.get('token')!;
+    if (!token) {
+      throw new Error('No token in redirect URL');
+    }
+
     const ts = Date.now().toString();
     characterName = `E${ts}`.slice(0, 15);
-    // Create character explicitly so we can verify the 201 response
-    const res = await request.post(`${API}/auth/character`, {
+    const res = await fetch(`${API}/auth/character`, {
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      data: { name: characterName, shipName: `SHP${ts}`.slice(0, 15) },
+      body: JSON.stringify({ name: characterName, shipName: `SHP${ts}`.slice(0, 15) }),
     });
-    if (res.status() !== 201) {
-      throw new Error(`Character creation failed: ${res.status()} ${await res.text()}`);
+    if (res.status !== 201) {
+      throw new Error(`Character creation failed: ${res.status} ${await res.text()}`);
     }
   });
 
@@ -71,8 +83,9 @@ test.describe('Complete E2E Flow', () => {
     expect(char.name).toBe(characterName);
     expect(char.rank).toBe('LIEUTENANT');
     expect(char.currentSystem).toBe(1);
-    expect(char.creditsHigh).toBe(0);
-    expect(char.creditsLow).toBe(1000);
+    // Source: start at 0 cr + Lieutenant honorarium (10,000 cr) = creditsHigh:1, creditsLow:0
+    expect(char.creditsHigh).toBe(1);
+    expect(char.creditsLow).toBe(0);
     expect(char.battlesWon).toBe(0);
   });
 
@@ -108,12 +121,12 @@ test.describe('Complete E2E Flow', () => {
     }
   });
 
-  test('3.2 ship starts with fuel=0 and specialEquipment=[]', async ({ request }) => {
+  test('3.2 ship starts with fuel=50 and specialEquipment=[]', async ({ request }) => {
     const res = await request.get(`${API}/api/ship/status`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const body = await res.json();
-    expect(body.fuel).toBe(0);
+    expect(body.fuel).toBe(50); // PRD starting fuel
     expect(body.specialEquipment.length).toBe(0);
   });
 
@@ -134,12 +147,12 @@ test.describe('Complete E2E Flow', () => {
     expect(body.cost).toBe(400); // 50 * 8
   });
 
-  test('4.2 ship fuel = 50 after purchase', async ({ request }) => {
+  test('4.2 ship fuel = 100 after purchase', async ({ request }) => {
     const res = await request.get(`${API}/api/ship/status`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const body = await res.json();
-    expect(body.fuel).toBe(50);
+    expect(body.fuel).toBe(100); // 50 starting + 50 bought
   });
 
   test('4.3 credits reduced to 600 after buying 50 fuel at 8 cr', async ({ request }) => {
@@ -148,7 +161,7 @@ test.describe('Complete E2E Flow', () => {
     });
     const body = await res.json();
     const total = body.character.creditsHigh * 10000 + body.character.creditsLow;
-    expect(total).toBe(600); // 1000 - 400
+    expect(total).toBe(9600); // 10,000 (Lieutenant honorarium) - 400 (50 fuel × 8 cr)
   });
 
   test('4.4 sell 20 fuel → proceeds=80 (4 cr/unit at 50%)', async ({ request }) => {
@@ -182,7 +195,7 @@ test.describe('Complete E2E Flow', () => {
     expect(body.inTransit).toBe(false);
   });
 
-  test('5.2 launch → 400 (no drives/life support/navigation on new char)', async ({ request }) => {
+  test('5.2 launch → 200 (new char has functional drives/life support/navigation)', async ({ request }) => {
     const res = await request.post(`${API}/api/navigation/launch`, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -190,10 +203,9 @@ test.describe('Complete E2E Flow', () => {
       },
       data: { destinationSystemId: 2 },
     });
-    expect(res.status()).toBe(400);
+    expect(res.status()).toBe(200);
     const body = await res.json();
-    expect(body.error).toBeTruthy();
-    expect(Array.isArray(body.details)).toBe(true);
+    expect(body.success).toBe(true);
   });
 
   // ─── 6. Combat ───────────────────────────────────────────────────────────────

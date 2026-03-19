@@ -17,7 +17,7 @@ import { createCharacterBody } from '../schemas.js';
 export async function registerAuthRoutes(fastify: FastifyInstance) {
   // OAuth login callback
   fastify.get('/auth/callback', {
-    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    config: { rateLimit: { max: process.env.NODE_ENV === 'production' ? 10 : 100, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { code } = request.query as { code?: string };
 
@@ -134,7 +134,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
   // Create new character
   fastify.post('/auth/character', {
     preValidation: [requireAuth],
-    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+    config: { rateLimit: { max: process.env.NODE_ENV === 'production' ? 5 : 100, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
     const parsed = createCharacterBody.safeParse(request.body);

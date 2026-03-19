@@ -8,6 +8,8 @@ import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { formatCredits, getAllianceSymbol } from '../utils.js';
 import { isJailed } from '../systems/jail.js';
+import { applyVandalism } from '../systems/extra-curricular.js';
+import { isClassicMode } from '../../bots/config.js';
 
 export const MainMenuScreen: ScreenModule = {
   name: 'main-menu',
@@ -74,7 +76,8 @@ export const MainMenuScreen: ScreenModule = {
   [P]ub - Gossip and games
   [T]raders - Buy and sell cargo
   [N]avigate - Travel between systems
-  [R]egistry - Spacer directory${hasAlliance ? '\n  [I]nvest - Alliance investment center' : ''}${character.currentSystem === 17 ? '\n  [W]ise One - Visit the Wise One' : ''}${character.currentSystem === 18 ? '\n  [A]ncient One - Visit the Sage' : ''}
+  [R]egistry - Spacer directory
+  [E]xtra-Curricular - Pirate, patrol, duels${!isClassicMode() ? '\n  [D]one - End Turn (run other spacers)' : ''}${hasAlliance ? '\n  [I]nvest - Alliance investment center' : ''}${character.currentSystem === 17 ? '\n  [W]ise One - Visit the Wise One' : ''}${character.currentSystem === 18 ? '\n  [A]ncient One - Visit the Sage' : ''}
   [Q]uit - Save and logout
 
 \x1b[32m:\x1b[0m${character.currentSystem} Port Accounts:\x1b[32m:(?=Menu): Command:\x1b[0m
@@ -95,6 +98,13 @@ export const MainMenuScreen: ScreenModule = {
       'T': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'traders' }),
       'N': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'navigate' }),
       'R': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'registry' }),
+      'E': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'extra-curricular' }),
+      'D': async () => {
+        if (isClassicMode()) {
+          return { output: '\r\n\x1b[33mClassic mode — wait for next day.\x1b[0m\r\n> ' };
+        }
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'end-turn' };
+      },
       'I': async () => {
         const membership = await prisma.allianceMembership.findUnique({ where: { characterId } });
         if (!membership || membership.alliance === 'NONE') {
@@ -115,9 +125,18 @@ export const MainMenuScreen: ScreenModule = {
         return { output: '\x1b[2J\x1b[H', nextScreen: 'sage' };
       },
       'Q': async () => {
-        // Quit - save and logout
+        // Quit — apply vandalism if no ship guard (SP.END.txt lines 100-134)
+        const vandalResult = await applyVandalism(characterId);
+        let msg = '';
+        if (vandalResult.vandalized) {
+          const comp = vandalResult.component!.replace(/([A-Z])/g, ' $1').trim();
+          msg = `\r\n\x1b[31;1mVandals damaged your ${comp}! (STR -${vandalResult.strengthLoss}, COND -${vandalResult.conditionLoss})\x1b[0m\r\n`;
+          msg += '\x1b[33mHire a ship guard next time to prevent this!\x1b[0m\r\n';
+        } else if (vandalResult.guardConsumed) {
+          msg = '\r\n\x1b[32mYour ship guard protected your vessel.\x1b[0m\r\n';
+        }
         return {
-          output: '\r\n\x1b[32mGame saved. Thank you for playing SpacerQuest!\x1b[0m\r\n'
+          output: `${msg}\r\n\x1b[32mGame saved. Thank you for playing SpacerQuest!\x1b[0m\r\n`
         };
       },
     };

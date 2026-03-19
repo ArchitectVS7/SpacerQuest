@@ -60,8 +60,13 @@ export async function registerShipRoutes(fastify: FastifyInstance) {
     }
     const { component, upgradeType } = body.data;
 
+    const character = await prisma.character.findFirst({ where: { userId } });
+    if (!character) {
+      return reply.status(404).send({ error: 'Character not found' });
+    }
+
     const upgradesSystem = await import('../../game/systems/upgrades.js');
-    const result = await upgradesSystem.upgradeShipComponent(userId, component, upgradeType);
+    const result = await upgradesSystem.upgradeShipComponent(character.id, component, upgradeType);
 
     if (!result.success) {
       return reply.status(400).send({ error: result.error });
@@ -77,8 +82,13 @@ export async function registerShipRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
 
+    const character = await prisma.character.findFirst({ where: { userId } });
+    if (!character) {
+      return reply.status(404).send({ error: 'Character not found' });
+    }
+
     const repairsSystem = await import('../../game/systems/repairs.js');
-    const result = await repairsSystem.repairAllComponents(userId);
+    const result = await repairsSystem.repairAllComponents(character.id);
 
     if (!result.success) {
       return reply.status(400).send({ error: result.error });

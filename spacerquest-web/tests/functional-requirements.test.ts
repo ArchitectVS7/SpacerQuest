@@ -139,12 +139,12 @@ describe('FR-TRAVEL', () => {
       const today = new Date();
       const result = canTravel(0, today);
       expect(result.canTravel).toBe(true);
-      expect(result.remainingTrips).toBe(3);
+      expect(result.remainingTrips).toBe(2);
     });
 
-    it('blocks travel at 3 trips today', () => {
+    it('blocks travel at 2 trips today', () => {
       const today = new Date();
-      const result = canTravel(3, today);
+      const result = canTravel(2, today);
       expect(result.canTravel).toBe(false);
       expect(result.remainingTrips).toBe(0);
     });
@@ -153,15 +153,17 @@ describe('FR-TRAVEL', () => {
       const today = new Date();
       const result = canTravel(1, today);
       expect(result.canTravel).toBe(true);
-      expect(result.remainingTrips).toBe(2);
+      expect(result.remainingTrips).toBe(1);
     });
 
     it('resets trip counter on a new calendar day', () => {
+      process.env.CLASSIC_MODE = 'true';
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
-      const result = canTravel(3, yesterday);
+      const result = canTravel(2, yesterday);
       expect(result.canTravel).toBe(true);
-      expect(result.remainingTrips).toBe(3);
+      expect(result.remainingTrips).toBe(2);
+      delete process.env.CLASSIC_MODE;
     });
 
     it('allows travel when lastTripDate is null', () => {
@@ -276,12 +278,12 @@ describe('FR-COMBAT', () => {
       expect(enemyDemandsTribute(5, 1_000_000).tributeDemanded).toBe(5000);
     });
 
-    it('tribute is capped at TRIBUTE_MAX (20000) for many rounds', () => {
-      expect(enemyDemandsTribute(30, 1_000_000).tributeDemanded).toBe(20000);
+    it('tribute is capped at TRIBUTE_MAX (10000) for many rounds', () => {
+      expect(enemyDemandsTribute(30, 1_000_000).tributeDemanded).toBe(10000);
     });
 
     it('rounds > 12 immediately trigger TRIBUTE_MAX cap', () => {
-      expect(enemyDemandsTribute(13, 1_000_000).tributeDemanded).toBe(20000);
+      expect(enemyDemandsTribute(13, 1_000_000).tributeDemanded).toBe(10000);
     });
 
     it('tribute is capped at player credits when player is poor', () => {
@@ -332,7 +334,7 @@ describe('FR-COMBAT', () => {
         shieldStrength: 10, shieldCondition: 5, // 50 shield power
       });
       // player weapon: 5×5=25, enemy shield: 10×5=50 → no penetration
-      const round = processCombatRound(100, 5, 5, 20, 8, enemy, 1);
+      const round = processCombatRound(100, 5, 5, 20, 8, false, enemy, 1);
       expect(round.playerDamage).toBe(0);
     });
 
@@ -342,7 +344,7 @@ describe('FR-COMBAT', () => {
         shieldStrength: 5, shieldCondition: 3,
       });
       // player shield: 50×9=450 → enemy 15 cannot penetrate
-      const round = processCombatRound(100, 20, 8, 50, 9, enemy, 1);
+      const round = processCombatRound(100, 20, 8, 50, 9, false, enemy, 1);
       expect(round.enemyDamage).toBe(0);
     });
   });
@@ -430,16 +432,16 @@ describe('FR-ECONOMY', () => {
   });
 
   describe('calculateLandingFee', () => {
-    it('fee = (hullStrength × 10) + ((15 - systemId) × 10)', () => {
-      // hull=10, system=1: 100 + 140 = 240
-      expect(calculateLandingFee(10, 1)).toBe(240);
-      // hull=1, system=14: 10 + 10 = 20
-      expect(calculateLandingFee(1, 14)).toBe(20);
+    it('fee = (systemId % 14) * 1000 - Life Support * 10 - Drive * 10', () => {
+      // system=15 (15%14 = 1), LSS=10, Drive=10: 1000 - 100 - 100 = 800
+      expect(calculateLandingFee(15, 10, 10)).toBe(800);
+      // system=14 (14%14 = 0), LSS=1, Drive=1: 0 - 10 - 10 = -20 -> min 10
+      expect(calculateLandingFee(14, 1, 1)).toBe(10);
     });
 
     it('minimum fee is 10 cr', () => {
-      // hull=0, system=15: 0 + 0 = 0 → min 10
-      expect(calculateLandingFee(0, 15)).toBe(10);
+      // system=14 (0), LSS=0, Drive=0: 0 -> min 10
+      expect(calculateLandingFee(14, 0, 0)).toBe(10);
     });
   });
 
@@ -476,28 +478,33 @@ describe('FR-RANK', () => {
       expect(calculateRank(450)).toBe(Rank.COMMODORE);
     });
 
-    it('Top Dog at score 900', () => {
-      expect(calculateRank(900)).toBe(Rank.TOP_DOG);
+    it('Admiral at score 750 (source: sc≥5)', () => {
+      expect(calculateRank(750)).toBe(Rank.ADMIRAL);
     });
 
-    it('Grand Mufti at score 1100', () => {
-      expect(calculateRank(1100)).toBe(Rank.GRAND_MUFTI);
+    it('Top Dog at score 1200 (source: sc≥8)', () => {
+      expect(calculateRank(1200)).toBe(Rank.TOP_DOG);
     });
 
-    it('Mega Hero at score 1350', () => {
-      expect(calculateRank(1350)).toBe(Rank.MEGA_HERO);
+    it('Grand Mufti at score 1650 (source: sc≥11)', () => {
+      expect(calculateRank(1650)).toBe(Rank.GRAND_MUFTI);
+    });
+
+    it('Mega Hero at score 2250 (source: sc≥15)', () => {
+      expect(calculateRank(2250)).toBe(Rank.MEGA_HERO);
     });
 
     it('score just below a threshold stays at lower rank', () => {
       expect(calculateRank(149)).toBe(Rank.LIEUTENANT);
       expect(calculateRank(449)).toBe(Rank.CAPTAIN);
+      expect(calculateRank(749)).toBe(Rank.COMMODORE);
       expect(calculateRank(2699)).toBe(Rank.MEGA_HERO);
     });
   });
 
   describe('getHonorarium', () => {
     it('returns correct honorarium for all 9 ranks', () => {
-      expect(getHonorarium(Rank.LIEUTENANT)).toBe(0);
+      expect(getHonorarium(Rank.LIEUTENANT)).toBe(10000);
       expect(getHonorarium(Rank.COMMANDER)).toBe(20000);
       expect(getHonorarium(Rank.CAPTAIN)).toBe(30000);
       expect(getHonorarium(Rank.COMMODORE)).toBe(40000);

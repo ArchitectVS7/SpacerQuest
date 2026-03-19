@@ -125,7 +125,19 @@ export function App() {
     wsClient.on('travel:complete', handleTravelComplete);
     wsClient.on('encounter', handleEncounter);
 
+    // Initial check
+    wsClient.requestTravelProgress();
+
+    // Poll travel progress
+    const travelInterval = setInterval(() => {
+      const { inTransit } = useGameStore.getState();
+      if (inTransit) {
+        wsClient.requestTravelProgress();
+      }
+    }, 1000);
+
     return () => {
+      clearInterval(travelInterval);
       wsClient.off('screen:render', handleScreenRender);
       wsClient.off('travel:complete', handleTravelComplete);
       wsClient.off('encounter', handleEncounter);

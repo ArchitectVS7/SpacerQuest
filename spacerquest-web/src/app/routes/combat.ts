@@ -161,7 +161,7 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
 
     if (action === 'RETREAT') {
       const retreat = attemptRetreat(
-        character.ship.driveStrength * character.ship.driveCondition,
+        (character.ship.driveStrength + (character.ship.hasTransWarpDrive ? 10 : 0)) * character.ship.driveCondition,
         ((enemy?.driveStrength as number) ?? 10) * ((enemy?.driveCondition as number) ?? 7) || 100,
         character.ship.hasCloaker
       );
@@ -218,6 +218,7 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
       character.ship.weaponCondition,
       character.ship.shieldStrength,
       character.ship.shieldCondition,
+      character.ship.hasAutoRepair,
       (enemy || {
         weaponStrength: 20,
         weaponCondition: 7,

@@ -106,6 +106,10 @@ describe('Combat System', () => {
         cabinCondition: 5,
         roboticsStrength: 8,
         roboticsCondition: 4,
+        navigationStrength: 10,
+        navigationCondition: 5,
+        driveStrength: 10,
+        driveCondition: 5,
         lifeSupportStrength: 10,
         lifeSupportCondition: 5,
         hasAutoRepair: false,
@@ -115,7 +119,6 @@ describe('Combat System', () => {
       // shield: 15 * 7 = 105
       // cabin: 10 * 5 / 10 = 5
       // robotics: 8 * 4 / 10 = 3
-      // life: 10 * 5 / 10 = 5
       // Total: 160 + 105 + 5 + 3 + 5 = 278
       const bf = calculateBattleFactor(ship, Rank.LIEUTENANT, 0);
       expect(bf).toBe(278);
@@ -127,6 +130,8 @@ describe('Combat System', () => {
         shieldStrength: 0, shieldCondition: 0,
         cabinStrength: 0, cabinCondition: 0,
         roboticsStrength: 0, roboticsCondition: 0,
+        navigationStrength: 0, navigationCondition: 0,
+        driveStrength: 0, driveCondition: 0,
         lifeSupportStrength: 0, lifeSupportCondition: 0,
         hasAutoRepair: false,
       };
@@ -141,6 +146,8 @@ describe('Combat System', () => {
         shieldStrength: 0, shieldCondition: 0,
         cabinStrength: 0, cabinCondition: 0,
         roboticsStrength: 0, roboticsCondition: 0,
+        navigationStrength: 0, navigationCondition: 0,
+        driveStrength: 0, driveCondition: 0,
         lifeSupportStrength: 0, lifeSupportCondition: 0,
         hasAutoRepair: false,
       };
@@ -155,6 +162,8 @@ describe('Combat System', () => {
         shieldStrength: 0, shieldCondition: 0,
         cabinStrength: 0, cabinCondition: 0,
         roboticsStrength: 0, roboticsCondition: 0,
+        navigationStrength: 0, navigationCondition: 0,
+        driveStrength: 0, driveCondition: 0,
         lifeSupportStrength: 0, lifeSupportCondition: 0,
         hasAutoRepair: false,
       };
@@ -162,7 +171,7 @@ describe('Combat System', () => {
       const shipAR = { ...shipNoAR, hasAutoRepair: true };
       
       expect(calculateBattleFactor(shipAR, Rank.LIEUTENANT, 0) - 
-             calculateBattleFactor(shipNoAR, Rank.LIEUTENANT, 0)).toBe(10);
+             calculateBattleFactor(shipNoAR, Rank.LIEUTENANT, 0)).toBe(0);
     });
   });
   
@@ -172,6 +181,7 @@ describe('Combat System', () => {
         300, // player BF
         20, 8, // player weapon
         15, 7, // player shield
+        true, // hasAutoRepair
         {
           type: 'PIRATE',
           class: 'SPX',
@@ -242,11 +252,18 @@ describe('Utilities', () => {
   });
   
   describe('calculateRank', () => {
-    it('should calculate correct rank from score', () => {
+    it('should calculate correct rank from score (source formula sc=floor(score/150))', () => {
       expect(calculateRank(0)).toBe(Rank.LIEUTENANT);
+      expect(calculateRank(149)).toBe(Rank.LIEUTENANT);
       expect(calculateRank(150)).toBe(Rank.COMMANDER);
       expect(calculateRank(300)).toBe(Rank.CAPTAIN);
-      expect(calculateRank(600)).toBe(Rank.ADMIRAL);
+      expect(calculateRank(450)).toBe(Rank.COMMODORE);
+      expect(calculateRank(749)).toBe(Rank.COMMODORE);
+      expect(calculateRank(750)).toBe(Rank.ADMIRAL);
+      expect(calculateRank(1199)).toBe(Rank.ADMIRAL);
+      expect(calculateRank(1200)).toBe(Rank.TOP_DOG);
+      expect(calculateRank(1650)).toBe(Rank.GRAND_MUFTI);
+      expect(calculateRank(2250)).toBe(Rank.MEGA_HERO);
       expect(calculateRank(2700)).toBe(Rank.GIGA_HERO);
     });
   });

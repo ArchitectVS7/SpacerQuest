@@ -31,14 +31,7 @@ const CONFIG = {
 // LOGGING
 // ============================================================================
 
-const log = pino({
-  level: CONFIG.logLevel,
-  transport: process.env.NODE_ENV === 'development' ? {
-    target: 'pino-pretty',
-    options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
-  } : undefined,
-});
-
+import { workerLogger as log } from './logger.js';
 export { log as workerLogger };
 
 // ============================================================================

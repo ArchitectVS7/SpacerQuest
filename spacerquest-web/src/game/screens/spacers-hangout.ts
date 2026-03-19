@@ -147,6 +147,16 @@ Hello Spacer ${character.name}. What'll it be?
       pendingBailPrompt.delete(characterId);
     }
 
+    // Handle alliance switch confirmation before main switch
+    // (Y/N keys have dual meaning: alliance confirm vs normal menu)
+    if (pendingAllianceSwitch.has(characterId) && (key === 'Y' || key === 'N')) {
+      if (key === 'N') {
+        pendingAllianceSwitch.delete(characterId);
+        return { output: '\r\n\x1b[33mAlliance switch cancelled.\x1b[0m\r\n> ' };
+      }
+      // key === 'Y' falls through to the switch case below
+    }
+
     switch (key) {
       case 'Q':
         return { output: '\x1b[33mLeaving the Hangout...\x1b[0m\r\n', nextScreen: 'main-menu' };
@@ -234,22 +244,14 @@ Hello Spacer ${character.name}. What'll it be?
             output: `\r\n\x1b[33;1mSwitching costs ALL your credits and port ownership!\x1b[0m\r\n` +
               `Join ${allianceInfo.name}? (Y)es (N)o\r\n> `,
           };
+        } else {
+          // Store pending join and ask for confirmation
+          pendingAllianceSwitch.set(characterId, allianceEnum);
+          return {
+            output: `\r\n\x1b[33;1mJoining an alliance requires you to donate ALL your credits!\x1b[0m\r\n` +
+              `Join ${allianceInfo.name}? (Y)es (N)o\r\n> `,
+          };
         }
-
-        // No existing alliance — join immediately
-        await prisma.character.update({
-          where: { id: character.id },
-          data: { allianceSymbol: allianceEnum },
-        });
-        await prisma.allianceMembership.upsert({
-          where: { characterId: character.id },
-          update: { alliance: allianceEnum },
-          create: { characterId: character.id, alliance: allianceEnum },
-        });
-
-        return {
-          output: `\r\n\x1b[32mWelcome to ${allianceInfo.name}!\x1b[0m\r\n> `,
-        };
       }
 
       case 'Y': {
@@ -292,14 +294,6 @@ Hello Spacer ${character.name}. What'll it be?
           output: `\r\n\x1b[32mAlliance switched! Welcome to ${allianceInfo.name}.\x1b[0m\r\n` +
             `\x1b[33mAll your credits and port ownership have been forfeited.\x1b[0m\r\n> `,
         };
-      }
-
-      case 'N': {
-        if (pendingAllianceSwitch.has(characterId)) {
-          pendingAllianceSwitch.delete(characterId);
-          return { output: '\r\n\x1b[33mAlliance switch cancelled.\x1b[0m\r\n> ' };
-        }
-        return { output: '\r\n\x1b[31mWhoops!...one too many!\x1b[0m\r\n> ' };
       }
 
       case 'B': {

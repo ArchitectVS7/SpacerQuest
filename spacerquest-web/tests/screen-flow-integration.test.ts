@@ -27,6 +27,7 @@ describe('Screen Registry Completeness', () => {
     'bank',
     'shipyard',
     'shipyard-upgrade',
+    'shipyard-special',
     'pub',
     'traders',
     'traders-buy-fuel',
@@ -38,6 +39,7 @@ describe('Screen Registry Completeness', () => {
     'bank-transfer',
     'rescue',
     'registry',
+    'registry-search',
     'arena',
     'combat',
     'spacers-hangout',
@@ -45,7 +47,11 @@ describe('Screen Registry Completeness', () => {
     'sage',
     'jail',
     'bulletin-board',
+    'space-news',
+    'raid',
     'alliance-invest',
+    'extra-curricular',
+    'end-turn',
   ];
 
   it('all expected screens exist in the registry', async () => {

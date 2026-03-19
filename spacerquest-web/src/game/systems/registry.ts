@@ -3,31 +3,36 @@
  */
 
 import { prisma } from '../../db/prisma.js';
-import { validateName } from '../utils.js';
+import { validateName, addCredits } from '../utils.js';
+import { RANK_HONORARIA } from '../constants.js';
 
 export async function registerCharacter(userId: string, name: string, shipName: string) {
   const nameValidation = validateName(name);
   if (!nameValidation.valid) {
     return { success: false, error: nameValidation.error };
   }
-  
+
   const shipValidation = validateName(shipName);
   if (!shipValidation.valid) {
     return { success: false, error: `Ship name: ${shipValidation.error}` };
   }
-  
+
   const existing = await prisma.character.findFirst({ where: { userId } });
   if (existing) {
     return { success: false, error: 'Character already exists' };
   }
-  
+
+  // Source: characters start at 0 cr, then receive Lieutenant honorarium (a=1, g1=g1+a → 10,000 cr)
+  // Fire the promotion at creation to match source behavior (promo fires on first session entry)
+  const startingCredits = addCredits(0, 0, RANK_HONORARIA.LIEUTENANT);
+
   const character = await prisma.character.create({
     data: {
       userId,
       name,
       shipName,
-      creditsHigh: 0,
-      creditsLow: 1000, // Starting 1,000 cr
+      creditsHigh: startingCredits.high,
+      creditsLow: startingCredits.low,
       currentSystem: 1, // Sun-3
     },
   });
@@ -35,15 +40,15 @@ export async function registerCharacter(userId: string, name: string, shipName: 
   await prisma.ship.create({
     data: {
       characterId: character.id,
-      hullStrength: 0, hullCondition: 0,
-      driveStrength: 0, driveCondition: 0,
-      cabinStrength: 0, cabinCondition: 0,
-      lifeSupportStrength: 0, lifeSupportCondition: 0,
-      weaponStrength: 0, weaponCondition: 0,
-      navigationStrength: 0, navigationCondition: 0,
-      roboticsStrength: 0, roboticsCondition: 0,
-      shieldStrength: 0, shieldCondition: 0,
-      fuel: 0, cargoPods: 0, maxCargoPods: 0,
+      hullStrength: 5, hullCondition: 9,
+      driveStrength: 5, driveCondition: 9,
+      cabinStrength: 1, cabinCondition: 9,
+      lifeSupportStrength: 5, lifeSupportCondition: 9,
+      weaponStrength: 1, weaponCondition: 9,
+      navigationStrength: 5, navigationCondition: 9,
+      roboticsStrength: 1, roboticsCondition: 9,
+      shieldStrength: 1, shieldCondition: 9,
+      fuel: 50, cargoPods: 0, maxCargoPods: 1,
     },
   });
   

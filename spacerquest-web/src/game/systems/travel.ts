@@ -10,7 +10,8 @@ import {
   TRAVEL_TIME_MULTIPLIER,
   DAILY_TRIP_LIMIT,
 } from '../constants';
-import { calculateDistance } from '../utils';
+import { calculateDistance } from '../utils.js';
+import { isClassicMode } from '../../bots/config.js';
 
 // ============================================================================
 // FUEL CALCULATIONS
@@ -33,10 +34,12 @@ import { calculateDistance } from '../utils';
 export function calculateFuelCost(
   driveStrength: number,
   driveCondition: number,
-  distance: number
+  distance: number,
+  hasTransWarpDrive: boolean = false
 ): number {
+  const effectiveStrength = driveStrength + (hasTransWarpDrive ? 10 : 0);
   // Cap drive strength at 21 (original behavior)
-  const af = Math.min(driveStrength, 21);
+  const af = Math.min(effectiveStrength, 21);
   
   // Base fuel cost
   let fuelCost = (21 - af) + (10 - driveCondition);
@@ -140,8 +143,8 @@ export function canTravel(
 ): { canTravel: boolean; reason?: string; remainingTrips: number } {
   const remainingTrips = Math.max(0, DAILY_TRIP_LIMIT - tripCount);
   
-  // Check if it's a new day
-  if (lastTripDate) {
+  // Check if it's a new day (only in classic mode)
+  if (lastTripDate && isClassicMode()) {
     const today = new Date();
     const lastTrip = new Date(lastTripDate);
     
@@ -233,6 +236,12 @@ export async function validateLaunch(
   if (ship.driveCondition < 1) {
     errors.push('Drives inoperable');
   }
+
+  if (ship.navigationStrength < 61) {
+    if (Math.random() < 0.3) { // 30% fail chance
+      errors.push('Navigation precision error: Course calculation failed. Try again.');
+    }
+  }
   
   // Check daily trip limit
   const tripCheck = canTravel(character.tripCount, character.lastTripDate);
@@ -242,7 +251,7 @@ export async function validateLaunch(
   
   // Check fuel
   const distance = calculateDistance(character.currentSystem, destinationSystemId);
-  const fuelRequired = calculateFuelCost(ship.driveStrength, ship.driveCondition, distance);
+  const fuelRequired = calculateFuelCost(ship.driveStrength, ship.driveCondition, distance, ship.hasTransWarpDrive);
   
   if (ship.fuel < fuelRequired) {
     errors.push(`Not enough fuel. Need ${fuelRequired}, have ${ship.fuel}`);
@@ -329,6 +338,13 @@ export async function processCourseChange(
   // Check if navigation is functional
   if (ship.navigationStrength < 1 || ship.navigationCondition < 1) {
     return { success: false, fuelUsed: 0, remainingChanges: 0, error: 'Navigation system not functioning' };
+  }
+
+  // Navigation Precision check
+  if (ship.navigationStrength < 61) {
+    if (Math.random() < 0.3) {
+      return { success: false, fuelUsed: 0, remainingChanges: courseChangesRemaining, error: 'Navigation precision error: Course rejected.' };
+    }
   }
   
   // Check course change limit

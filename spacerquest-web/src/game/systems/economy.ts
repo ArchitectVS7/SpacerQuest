@@ -339,11 +339,12 @@ export async function sellPort(
  * Calculate daily port income
  * 
  * Original from SP.LIFT.S:
- *   Landing fees based on hull strength
+ *   (destination_id % 14) * 1000 - LSS/drive reductions
  */
-export function calculateLandingFee(hullStrength: number, systemId: number): number {
-  const baseFee = (hullStrength * 10) + ((15 - systemId) * 10);
-  return Math.max(10, baseFee);
+export function calculateLandingFee(systemId: number, lifeSupportStrength: number, driveStrength: number): number {
+  const baseFee = (systemId % 14) * 1000;
+  const reducedFee = baseFee - (lifeSupportStrength * 10) - (driveStrength * 10);
+  return Math.max(10, reducedFee);
 }
 
 /**
@@ -352,10 +353,11 @@ export function calculateLandingFee(hullStrength: number, systemId: number): num
 export async function collectPortFees(
   portId: string,
   characterId: string,
-  hullStrength: number,
-  systemId: number
+  systemId: number,
+  lifeSupportStrength: number,
+  driveStrength: number
 ): Promise<number> {
-  const fee = calculateLandingFee(hullStrength, systemId);
+  const fee = calculateLandingFee(systemId, lifeSupportStrength, driveStrength);
   
   // Add to port bank
   const port = await prisma.portOwnership.findUnique({
@@ -387,7 +389,7 @@ export async function collectPortFees(
       characterId,
       systemId,
       message: `Port fee collected: ${fee} cr from landing at system ${systemId}`,
-      metadata: { fee, hullStrength },
+      metadata: { fee, lifeSupportStrength, driveStrength },
     },
   });
   

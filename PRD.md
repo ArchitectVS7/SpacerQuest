@@ -67,7 +67,7 @@ The SpacerQuest universe consists of:
 │                                                                 │
 │  2. ONBOARDING                                                  │
 │     • Create spacer character (or link existing)                │
-│     • Receive starting credits (1,000 new / 10,000 conqueror)   │
+│     • Receive starting credits (10,000 cr via Lieutenant honorarium on first session)   │
 │     • Tutorial prompts (optional, can skip)                     │
 │                                                                 │
 │  3. INITIAL GOALS                                               │
@@ -241,7 +241,7 @@ model Character {
   
   // Credits (split like original: g1=high, g2=low)
   creditsHigh     Int       @default(0)  // g1 - 10,000s
-  creditsLow      Int       @default(1000)  // g2 - units
+  creditsLow      Int       @default(0)  // g2 - units (10,000 cr awarded as Lieutenant honorarium on first session)
   
   // Rank & Progression
   rank            Rank      @default(LIEUTENANT)
@@ -1343,17 +1343,20 @@ function calculateCargoPayment(
 ### 5.5 Progression System
 
 ```typescript
-// Rank calculation
+// Rank calculation (exact formula from SP.END.S `promo` routine)
+// sc = floor(score / 150); rank determined by sc tier
+// NOTE: sc=14 (score 2100-2249) is a gap in original code — no promotion fires
 function calculateRank(score: number): Rank {
-  if (score >= 2700) return Rank.GIGA_HERO;
-  if (score >= 2100) return Rank.MEGA_HERO;
-  if (score >= 1650) return Rank.GRAND_MUFTI;
-  if (score >= 1350) return Rank.TOP_DOG;
-  if (score >= 900) return Rank.ADMIRAL;
-  if (score >= 600) return Rank.COMMODORE;
-  if (score >= 450) return Rank.CAPTAIN;
-  if (score >= 150) return Rank.COMMANDER;
-  return Rank.LIEUTENANT;
+  const sc = Math.floor(score / 150);
+  if (sc > 17) return Rank.GIGA_HERO;           // score >= 2700
+  if (sc > 14 && sc < 18) return Rank.MEGA_HERO; // score >= 2250 (sc 15-17)
+  if (sc > 10 && sc < 14) return Rank.GRAND_MUFTI; // score >= 1650 (sc 11-13)
+  if (sc > 7 && sc < 11) return Rank.TOP_DOG;   // score >= 1200 (sc 8-10)
+  if (sc > 4 && sc < 8) return Rank.ADMIRAL;    // score >= 750 (sc 5-7)
+  if (sc === 3 || sc === 4) return Rank.COMMODORE; // score >= 450
+  if (sc === 2) return Rank.CAPTAIN;             // score >= 300
+  if (sc === 1) return Rank.COMMANDER;           // score >= 150
+  return Rank.LIEUTENANT;                        // score 0-149
 }
 
 // Promotion check and processing
@@ -1400,8 +1403,10 @@ async function checkPromotion(characterId: string): Promise<PromotionResult | nu
 }
 
 function getHonorarium(rank: Rank): number {
+  // Exact values from SP.END.S: `g1=g1+a` where text says "honorarium of [a]0,000 cr"
+  // LIEUTENANT honorarium (a=1, 10,000 cr) fires on first session for new characters
   const honoraria: Record<Rank, number> = {
-    LIEUTENANT: 0,
+    LIEUTENANT: 10000,
     COMMANDER: 20000,
     CAPTAIN: 30000,
     COMMODORE: 40000,
@@ -1414,6 +1419,40 @@ function getHonorarium(rank: Rank): number {
   return honoraria[rank];
 }
 ```
+
+### 5.6 Special Equipment Rules (Roscoe's Speede Shoppe)
+
+From SP.SPEED.S (`special` / `cloak` / `autorep` routines):
+
+#### Morton's Cloaking Device
+
+- **Hull restriction:** Only available when `hullStrength < 5` (hulls 1–4). The menu option is hidden at hull 5+. Source check: `if h1<5 print "(C)loaking Device"` / `if h1>4 print "We can't help you here!"`.
+- **Shield prerequisite:** Player must have a functioning shield system installed (`p1 >= 1`).
+- **Incompatibility:** Cloaker cannot be installed on shields already enhanced with Titanium (`+*`) or Speedo upgrade (`++`). Check: `if right$(p1$,2)="+*" or right$(p1$,2)="++" → "Cloaker won't fit"`.
+- **Cost:** 500 cr.
+- **Effect:** Appends `=` suffix to shield name string (`p1$=p1$+"="`); condition reset to 9.
+- **Permanence:** Upgrading hull to tier 5+ permanently loses cloaker eligibility. Installing ARCH-ANGEL or STAR-BUSTER will remove the cloaker.
+
+#### Auto-Repair Module
+
+- Requires hull installed (`h1 >= 1`).
+- Cannot be installed if hull already has the module (`right$(h1$,1)="!"`).
+- Cost: `hull_strength * 1,000 cr` (max 20,000 cr for hulls 20+).
+- Titanium Enhancement (`*`) is removed if present when installing A-R module.
+- Effect: appends `+!` to hull name; repairs all components +1 per combat round.
+
+#### Exotic Weapon/Shield Systems (Maligna Equipment)
+
+- Available when `sc > 0` (Commander rank or higher).
+- **STAR-BUSTER Weapon:** Requires existing weapon system with `+*` suffix (Speedo-enhanced). Replaces weapon with STAR-BUSTER++; strength +1, condition 9. Cost: 10,000 cr.
+- **ARCH-ANGEL Shield:** Same requirement for shield. Replaces with ARCH-ANGEL++; strength +1, condition 9. Cloaker is lost if present.
+
+#### Component Upgrade Service (s2 >= 20 required)
+
+- Available for Weapon, Shield, Drive, Navigation, Robotics, Life Support.
+- Cost formula: `a = floor(strength/10) + 1` (in 10,000 cr units). Special discount days when `ej=sp`.
+- Life Support capped at strength 50 if ship is "LSS Class" or strength already < 51.
+- Cannot upgrade alien-modified components (`left$(component,1)="?"`).
 
 ---
 
@@ -1731,7 +1770,7 @@ describe('Character API', () => {
       
       expect(response.status).toBe(201);
       expect(response.body.character.name).toBe('TestPlayer');
-      expect(response.body.character.creditsLow).toBe(1000);
+      expect(response.body.character.creditsLow).toBe(0);  // starts at 0; 10,000 granted on first session via Lieutenant honorarium
     });
     
     it('should reject names shorter than 3 characters', async () => {
@@ -1831,6 +1870,60 @@ test('complete game flow: create character, travel, fight', async ({ page }) => 
 | Preservation | Full source code documented and archived |
 | Education | Code comments explain original design decisions |
 | Community | Active player base, forum discussions |
+
+---
+
+## 9.4 Extra-Curricular Menu
+
+Accessible from the docking/exit screen (SP.END.S) before a player departs a system. Displayed via SP.MENU11. This is the menu that lets players enter pirate, patrol, or smuggler suppression mode, or challenge the dueling arena.
+
+### 9.4.1 Menu Text (verbatim from SP.MENU11)
+
+```
+ ___________________________________
+|                                   |
+|   [:  Extra-Curricular Menu  :]   |
+|___________________________________|
+|                                   |
+|    (P)  Pirate Activity           |
+|    (S)  Squadron Star Patrol      |
+|    (C)  Control Smugglers         |
+|    (W)  Dueling Arena             |
+|                                   |
+|    [R]  Return to Space Terminal  |
+|                                   |
+|    (Q)  Quit Game                 |
+|___________________________________|
+```
+
+### 9.4.2 Command Behavior
+
+| Key | Action | Requirement |
+|-----|--------|-------------|
+| `P` | Enter Pirate Activity mode (`pp=1`) | Functioning ship + drives + 50+ fuel |
+| `S` | Join Squadron Star Patrol (`pp=4`) | Same + must be in alliance system |
+| `C` | Control Smugglers patrol (`pp=4`, `xe=1`) | Same |
+| `W` | Enter Dueling Arena | Links to `sp.arena1` |
+| `R` | Return to Space Port (Main Terminal) | — |
+| `Q` | Quit game (with optional ship guard prompt if ship value > 2,000) | — |
+
+**Note:** `P`, `S`, `C`, `W` all require a ship with functioning hull, functioning drives (`h2>0 && d2>0`), and at least 50 fuel units. Active cargo contracts are voided when entering these modes.
+
+### 9.4.3 Pirate Activity (P)
+
+Player selects a system (1-14) to lurk in. The entry writes their pirate record to the `pirates` file (`pp=1`) and they lift off to the chosen system to intercept trade routes. Returning from pirate mode presents a Vicarious Activities Report showing battles won/lost, loot, and fuel consumed.
+
+### 9.4.4 Squadron Star Patrol (S)
+
+Player joins a system's alliance patrol (`pp=4`). Must be a member of the alliance that controls the target system (matched by `right$(nz$,2)` hull suffix). Lists current patrol roster for the system.
+
+### 9.4.5 Control Smugglers (C)
+
+Same as Squadron Star Patrol but sets the smuggler-suppression flag (`xe=1`). Mission text: "Space Patrol Search & Destroy Smuggling."
+
+### 9.4.6 Quit with Ship Guard
+
+If character has > 2,000 cr and quits, the game offers to hire 20 guards for the ship at 10,000 cr (`g1=g1-1`). Declining risks random component vandalism (1 of 5 components damaged).
 
 ---
 

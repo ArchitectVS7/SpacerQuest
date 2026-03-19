@@ -82,7 +82,7 @@ model Character {
   
   // Credits (split like original: g1=high, g2=low)
   creditsHigh     Int       @default(0)  // g1 - 10,000s
-  creditsLow      Int       @default(1000)  // g2 - units
+  creditsLow      Int       @default(0)  // g2 - units (source: start at 0, honorarium applied at creation)
   
   // Personal Bank Account
   bankHigh        Int       @default(0)
@@ -115,10 +115,15 @@ model Character {
   cargoManifest   String?   // q2$ - cargo description
   
   // Special Flags
+  isBot           Boolean   @default(false)
   isConqueror     Boolean   @default(false)
   isLost          Boolean   @default(false)
   lostLocation    Int?
   patrolSector    Int?
+
+  // Extra-Curricular Mode (SP.END.txt sp.menu11)
+  // P=pirate, S=star_patrol, C=smuggler_patrol, null=none
+  extraCurricularMode String?
 
   // Jail/Crime State (SP.END.S:233-271)
   // crimeType maps to original pp: 5=smuggling, 6=carrier loss, 7=conduct
@@ -143,6 +148,7 @@ model Character {
   @@index([spacerId])
   @@index([allianceSymbol])
   @@index([rank])
+  @@index([isBot])
 }
 
 // ============================================================================
@@ -183,6 +189,9 @@ model Ship {
   hasStarBuster   Boolean   @default(false)
   hasArchAngel    Boolean   @default(false)
   isAstraxialHull Boolean   @default(false)
+  hasTitaniumHull   Boolean   @default(false)
+  hasTransWarpDrive Boolean   @default(false)
+  hasShipGuard    Boolean   @default(false)   // SP.END.txt: 10,000 cr guard, prevents vandalism on quit
   
   // Damage Tracking (for repair system)
   damageFlags     Json      @default("[]")

@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { COMPONENT_PRICES } from '../src/game/constants';
 import { getTotalCredits } from '../src/game/utils';
+import { calculateUpgradeMultiplier, calculateUpgradePrice } from '../src/game/systems/upgrades';
 
 // ============================================================================
 // PURE LOGIC TESTS
@@ -34,6 +35,34 @@ describe('Upgrades system - pure logic', () => {
       expect(Math.min(9, 8 + 1)).toBe(9);
       expect(Math.min(9, 9 + 1)).toBe(9); // Already at max
       expect(Math.min(9, 5 + 1)).toBe(6);
+    });
+  });
+
+  describe('Exponential and tiered pricing', () => {
+    it('multiplier = 1 for strength ≤ 9', () => {
+      expect(calculateUpgradeMultiplier(0)).toBe(1);
+      expect(calculateUpgradeMultiplier(5)).toBe(1);
+      expect(calculateUpgradeMultiplier(9)).toBe(1);
+    });
+
+    it('multiplier = floor(strength/10) + 1 for strength > 9', () => {
+      expect(calculateUpgradeMultiplier(10)).toBe(2);
+      expect(calculateUpgradeMultiplier(15)).toBe(2);
+      expect(calculateUpgradeMultiplier(20)).toBe(3);
+      expect(calculateUpgradeMultiplier(50)).toBe(6);
+      expect(calculateUpgradeMultiplier(100)).toBe(11);
+    });
+
+    it('uses exponential array for tiers 1-9 (strength 0-89)', () => {
+      expect(calculateUpgradePrice(0, 5000)).toBe(50); // Tier 1
+      expect(calculateUpgradePrice(10, 5000)).toBe(100); // Tier 2
+      expect(calculateUpgradePrice(20, 5000)).toBe(200); // Tier 3
+      expect(calculateUpgradePrice(80, 5000)).toBe(10000); // Tier 9
+    });
+
+    it('falls back to multiplier logic for tiers > 9 (strength 90+)', () => {
+      expect(calculateUpgradePrice(90, 5000)).toBe(50000); // Tier 10 * 5000 = 50000
+      expect(calculateUpgradePrice(100, 5000)).toBe(55000); // Tier 11 * 5000 = 55000
     });
   });
 
@@ -125,34 +154,34 @@ describe('Upgrades system - DB functions', () => {
   });
 
   it('returns error when not enough credits', async () => {
-    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(0, 500));
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(0, 49));
     const result = await upgradeShipComponent('char-1', 'HULL', 'STRENGTH');
     expect(result.success).toBe(false);
     expect(result.error).toBe('Not enough credits');
   });
 
-  it('succeeds with STRENGTH upgrade for HULL', async () => {
-    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(2, 0));
+  it('succeeds with STRENGTH upgrade for HULL (tiered pricing)', async () => {
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(10, 0));
     prisma.$transaction.mockResolvedValue(undefined);
 
     const result = await upgradeShipComponent('char-1', 'HULL', 'STRENGTH');
     expect(result.success).toBe(true);
-    expect(result.cost).toBe(COMPONENT_PRICES.HULL);
+    expect(result.cost).toBe(200);
     expect(result.newStrength).toBe(30); // 20 + 10
   });
 
-  it('succeeds with CONDITION upgrade for DRIVES', async () => {
-    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(2, 0));
+  it('succeeds with CONDITION upgrade for DRIVES (tiered pricing)', async () => {
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(10, 0));
     prisma.$transaction.mockResolvedValue(undefined);
 
     const result = await upgradeShipComponent('char-1', 'DRIVES', 'CONDITION');
     expect(result.success).toBe(true);
-    expect(result.cost).toBe(COMPONENT_PRICES.DRIVES);
+    expect(result.cost).toBe(100);
     expect(result.newCondition).toBe(8); // 7 + 1
   });
 
   it('caps condition at 9', async () => {
-    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(2, 0, { hullCondition: 9 }));
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(10, 0, { hullCondition: 9 }));
     prisma.$transaction.mockResolvedValue(undefined);
 
     const result = await upgradeShipComponent('char-1', 'HULL', 'CONDITION');
@@ -161,22 +190,31 @@ describe('Upgrades system - DB functions', () => {
   });
 
   it('handles case-insensitive component names', async () => {
-    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(2, 0));
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(10, 0));
     prisma.$transaction.mockResolvedValue(undefined);
 
     const result = await upgradeShipComponent('char-1', 'hull', 'STRENGTH');
     expect(result.success).toBe(true);
   });
 
-  it('deducts correct price for each component', async () => {
-    for (const [comp, price] of Object.entries(COMPONENT_PRICES)) {
+  it('deducts correct tiered price for each component', async () => {
+    // Map component names to the mock ship's starting strength values
+    const strengthMap: Record<string, number> = {
+      HULL: 20, DRIVES: 15, CABIN: 10, LIFE_SUPPORT: 12,
+      WEAPONS: 25, NAVIGATION: 18, ROBOTICS: 8, SHIELDS: 20,
+    };
+
+    for (const [comp, basePrice] of Object.entries(COMPONENT_PRICES)) {
       vi.clearAllMocks();
-      prisma.character.findUnique.mockResolvedValue(makeCharWithShip(10, 0));
+      prisma.character.findUnique.mockResolvedValue(makeCharWithShip(100, 0));
       prisma.$transaction.mockResolvedValue(undefined);
+
+      const strength = strengthMap[comp];
+      const expectedPrice = calculateUpgradePrice(strength, basePrice);
 
       const result = await upgradeShipComponent('char-1', comp, 'STRENGTH');
       expect(result.success).toBe(true);
-      expect(result.cost).toBe(price);
+      expect(result.cost).toBe(expectedPrice);
     }
   });
 });

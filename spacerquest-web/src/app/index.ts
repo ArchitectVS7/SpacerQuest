@@ -74,9 +74,10 @@ async function registerPlugins() {
     },
   });
 
-  // Rate limiting
+  // Rate limiting — higher limits in dev/test to avoid 429s during E2E test runs
+  const isProduction = process.env.NODE_ENV === 'production';
   await fastify.register(rateLimit, {
-    max: 100,
+    max: isProduction ? 100 : 1000,
     timeWindow: '1 minute',
     keyGenerator: (request) => request.ip,
   });
