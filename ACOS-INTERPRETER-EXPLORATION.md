@@ -349,7 +349,137 @@ Note: Existing open-source BASIC interpreters (like [EndBASIC](https://github.co
 
 ---
 
-## 8. Recommendations
+## 8. CoCo BASIC Native Interpreter: Language Without the Hardware
+
+### The Core Idea
+
+Rather than running CoCo BASIC inside an emulator (which emulates the entire CoCo 3 hardware — 6809 CPU, GIME chip, PIAs, SAM — just to interpret BASIC), build a **standalone interpreter** that understands CoCo BASIC syntax but executes natively on modern hardware. Strip the language from the machine.
+
+This is what **QB64 did for QBasic** and **FreeBASIC did for QuickBASIC**. Nobody has done it for CoCo Color BASIC.
+
+### What You Get
+
+- Write programs in the familiar CoCo BASIC syntax — line numbers, `GOTO`, `GOSUB`, the whole feel
+- Run on any modern OS (Windows, macOS, Linux) or in a browser
+- No ROM images needed (you're not emulating hardware, you're interpreting a language)
+- No 64K memory ceiling, no 0.89MHz clock, no 32K BASIC program limit
+- Access to modern resources: large arrays, long strings, fast execution, native filesystem
+
+### What Translates Cleanly (~70% of the language)
+
+All core BASIC has zero hardware dependency and just works:
+
+- **Flow control** — `IF/THEN/ELSE`, `FOR/NEXT`, `GOTO`, `GOSUB`, `ON...GOTO`, `WHILE/WEND`
+- **Variables** — strings, numbers (upgradeable from 5-byte Microsoft float to full double precision)
+- **String functions** — `LEFT$`, `RIGHT$`, `MID$`, `LEN`, `CHR$`, `ASC`, `INSTR`, `STRING$`, `STR$`, `VAL`
+- **Math** — `ABS`, `SIN`, `COS`, `TAN`, `ATN`, `SQR`, `LOG`, `EXP`, `INT`, `FIX`, `SGN`, `RND`
+- **I/O** — `PRINT`, `INPUT`, `LINE INPUT`, `INKEY$` (text in/out, maps to terminal or window)
+- **Arrays** — `DIM` (remove the size limits)
+- **Data** — `DATA` / `READ` / `RESTORE` (for non-machine-code uses)
+- **Functions** — `DEF FN` user-defined functions
+- **File I/O** — `OPEN`, `CLOSE`, `INPUT#`, `PRINT#`, `WRITE`, `EOF`, `LOF` (map to native filesystem)
+
+### What Needs an Abstraction Layer (~20%)
+
+These features are hardware-coupled but have clean modern equivalents:
+
+**Graphics:**
+CoCo BASIC's `PMODE 0-4`, `HSCREEN`, `SET/RESET/POINT` are tied to specific video hardware, but the *concepts* are simple geometric operations:
+
+| CoCo Command | What It Does | Modern Backend |
+|---|---|---|
+| `PSET(X,Y,C)` | Draw pixel | SDL2 / HTML5 Canvas |
+| `LINE(X1,Y1)-(X2,Y2),C` | Draw line | SDL2 / Canvas |
+| `CIRCLE(X,Y,R,C)` | Draw circle | SDL2 / Canvas |
+| `PAINT(X,Y,C)` | Flood fill | SDL2 / Canvas |
+| `DRAW "U5R3D5L3"` | Turtle graphics via string macros | SDL2 / Canvas |
+| `SET(X,Y,C)` / `RESET` | Block semigraphics (64x32) | Canvas with scaled blocks |
+| `HSCREEN` modes | CoCo 3 hi-res (320x200, 640x200) | Canvas at native or scaled resolution |
+
+Two modes could be offered: a **compatibility mode** (emulating original resolution, e.g., 256x192 for PMODE 4, scaled up) and an **unleashed mode** (arbitrary modern resolutions).
+
+**Sound:**
+| CoCo Command | Modern Backend |
+|---|---|
+| `SOUND freq, duration` | Web Audio API / SDL2 Audio |
+| `PLAY "T120O4L4CDEFGAB"` | Parse music macro language, synthesize via Web Audio |
+
+The `PLAY` music macro language is well-documented and self-contained — a fun parser to build.
+
+**`PRINT @`:**
+Position-based printing (`PRINT @320, "HELLO"` puts text at screen position 320). Maps to cursor positioning in a terminal or text overlay in a graphical window. Trivial.
+
+### What Breaks (~10%)
+
+**`PEEK` / `POKE` to hardware addresses:**
+These are meaningless without CoCo hardware. But they have *semantic* equivalents. A keyboard read is still a keyboard read. The interpreter could maintain a **virtual address map** for commonly-used addresses:
+
+| Address | Original Purpose | Native Mapping |
+|---|---|---|
+| `PEEK(65280)` / `$FF00` | PIA — keyboard column | Intercept → return keyboard state |
+| `POKE 65281,x` / `$FF01` | PIA — keyboard row select | Intercept → set keyboard scan mode |
+| `PEEK(339)` | Current cursor position | Intercept → return cursor pos |
+| `POKE 65497,0` | High-speed mode (CoCo 3) | Intercept → set speed flag |
+| `POKE 1024-1535` | Direct video RAM writes | Intercept → route to display layer |
+
+You wouldn't map all 65536 addresses — just the ~50 that programs actually use. Unknown addresses could warn or no-op.
+
+**`DATA` / `POKE` / `EXEC` for machine code:**
+When a program POKEs 6809 opcodes into memory and `EXEC`s them, those bytes literally cannot run on x86/ARM. Options:
+
+1. **Ignore it** — many programs are pure BASIC. This covers most casual/educational use.
+2. **Embed a 6809 CPU core** — only invoked on `EXEC`. Not emulating the whole CoCo, just a tiny CPU for those code blocks.
+3. **Provide modern alternatives** — `USR` could invoke a plugin/FFI system instead of machine code routines.
+
+Machine code in CoCo BASIC was used for performance-critical routines (scrolling, sprite movement, sound effects) that a modern interpreter wouldn't need — native speed makes them unnecessary.
+
+### Beyond Nostalgia: What Modern Extensions Could Look Like
+
+The exciting part — CoCo BASIC syntax with modern capabilities:
+
+| Old Limitation | Modern Extension |
+|---|---|
+| 64K RAM total | Unlimited `DIM` arrays, megabyte strings |
+| 5-byte floats (~9 digit precision) | Full IEEE 754 double precision |
+| 256x192 max graphics (PMODE 4) | Arbitrary resolution, true color |
+| Line numbers required | Keep for nostalgia, optionally allow labels too |
+| 255-character string limit | Unlimited strings |
+| No structured programming | Optional: `WHILE/WEND`, `SUB/END SUB`, `SELECT CASE` |
+| Cassette/floppy I/O only | Native filesystem, possibly network I/O |
+| No error handling (pre-CoCo 3) | `ON ERR` available from Super Extended, could extend further |
+
+You'd have a language that *feels* like 1988 but *runs* like 2026.
+
+### Available Building Blocks
+
+The pieces exist to make this feasible:
+
+| Resource | What It Provides |
+|---|---|
+| [ANTLR4 grammar](https://github.com/ssorrrell/coco3-extended-color-basic-vscode) | Parser grammar for CoCo BASIC (VS Code extension) |
+| [CoCo ROM source](https://github.com/tomctomc/coco_roms) | Exact behavior of every keyword, in 6809 assembly |
+| [Color BASIC Unravelled](https://techheap.packetizer.com/computers/coco/unravelled_series/color-basic-unravelled.pdf) | Annotated ROM disassembly with full commentary |
+| Existing BASIC interpreters | [EndBASIC](https://github.com/endbasic/endbasic), [PC-BASIC](https://github.com/robhagemans/pcbasic), [jsbasic](https://github.com/nickthecook/jsbasic) as reference/starting points |
+| SDL2 / HTML5 Canvas | Graphics and sound backends |
+
+### Estimated Effort (Native Interpreter, Not Emulator)
+
+| Component | Effort | Notes |
+|---|---|---|
+| Lexer + parser (CoCo BASIC syntax) | 1-2 weeks | ANTLR4 grammar exists as starting point |
+| Core interpreter (variables, expressions, flow control) | 2-3 weeks | Well-understood problem space |
+| Text I/O (`PRINT`, `INPUT`, `INKEY$`, `PRINT @`) | 1 week | Terminal or windowed output |
+| File I/O (Disk Extended BASIC) | 1 week | Map to native filesystem |
+| Graphics abstraction (PMODE, HSCREEN, DRAW, etc.) | 2-3 weeks | SDL2 or Canvas backend |
+| Sound (PLAY, SOUND) | 1 week | Web Audio or SDL2 Audio |
+| PEEK/POKE virtual address map | 1 week | ~50 commonly-used addresses |
+| **Total** | **9-12 weeks** | For a fully-featured interpreter |
+
+A minimal text-only interpreter (no graphics, no sound) could be done in **4-5 weeks**.
+
+---
+
+## 9. Recommendations
 
 ### For SpacerQuest Specifically
 **Continue with the current TypeScript approach.** The rewrite is well along, tests exist, and the architecture is sound. Building an ACOS interpreter now would be scope creep that delays delivery.
@@ -362,8 +492,121 @@ Note: Existing open-source BASIC interpreters (like [EndBASIC](https://github.co
 4. Use SpacerQuest's 29 modules as the primary test suite
 5. Target Node.js/TypeScript for the interpreter (natural web deployment)
 
-### For CoCo BASIC
+### For CoCo BASIC (Emulator Path)
 **Start from an existing BASIC interpreter** and add CoCo-specific commands. The language is standard enough that 60-70% of the work is already done by existing open-source projects. This is a cleaner, more bounded project than an ACOS interpreter.
+
+### For CoCo BASIC (Native Interpreter Path)
+**Build a standalone CoCo BASIC interpreter** that runs the language natively, divorced from the 6809/CoCo 3 hardware. This is the "QB64 for CoCo BASIC" approach — nostalgia for the language, freedom from the hardware. Start text-only (4-5 weeks), add graphics/sound as a second phase. Use the ANTLR4 grammar and ROM source as specification. Target TypeScript (browser deployment) or Rust/Go (native CLI) depending on delivery goals.
+
+---
+
+## 10. Deep Dive: CoCo BASIC Interpreter Ecosystem Research
+
+Research conducted March 2026 into existing tools, grammars, and interpreter projects relevant to building a native CoCo Color BASIC interpreter.
+
+### ANTLR4 Grammar (ssorrrell/coco3-extended-color-basic-vscode)
+
+**Status**: Partial/Pre-release (version 0.x)
+
+The project references a separate "BASICLanguageParser" repository containing the grammar work. It targets approximately 140 reserved words from Color BASIC and is designed for **syntax parsing** (tokenization, syntax highlighting) rather than execution. The README explicitly states: "Most of the features have been temporarily disconnected to debug issues with the language server."
+
+**Verdict**: Not suitable as a starting point for a native interpreter. The grammar is incomplete and designed for IDE features (hover documentation, syntax coloring), not runtime semantics.
+
+### Existing Standalone CoCo BASIC Interpreter Projects
+
+**Finding**: No standalone native interpreters found in JavaScript, TypeScript, Python, or Rust.
+
+What does exist:
+- **Rusty CoCo** (Rust) — A full hardware emulator that runs the original CoCo ROM-based BASIC interpreter. Achieves compatibility by running actual system ROMs via 6809 CPU emulation, not by reimplementing BASIC.
+- **BasTo6809 Compiler** (CoCo community) — Compiles CoCo BASIC to 6809 assembly, not an interpreter.
+- Various archived emulators and tools, but no modern native interpreter projects.
+
+**Conclusion**: The CoCo BASIC native interpreter space is empty. All existing solutions either run the original ROM or compile to assembly. This represents a genuine gap.
+
+### QB64 and FreeBASIC: Architecture Analysis
+
+These two projects represent the closest precedents for "old BASIC dialect on modern hardware":
+
+**QB64** (Modern QBasic):
+- **Architecture**: Compiler-based — transpiles BASIC source → C++ → GCC native binaries
+- **Language**: C (64.2%), C++ (21.4%), Python (10.7%)
+- **Compatibility**: Full QBasic/QuickBASIC 4.5 + extended modern features
+- **Modern integration**: MP3/Ogg/WAV audio, 32-bit color, TrueType fonts, BMP/PNG/JPEG images, multithreading
+- **Key design choice**: Compilation over interpretation for performance and native binaries
+
+**FreeBASIC** (Self-hosting QuickBASIC compiler):
+- **Architecture**: Self-hosting compiler with modular design, uses GNU Binutils backend
+- **Features**: OOP, namespaces, function overloading, inline assembly, C-style preprocessor
+- **Compatibility mode**: Optionally backwards-compatible with QuickBASIC
+- **Active development**: 2004–2025 (continuous updates)
+- **Key design choice**: Modular, self-hosting architecture for maintainability
+
+**Common pattern**: Both chose **compilation** over interpretation. This avoids runtime interpretation overhead and generates native executables. For a CoCo BASIC project targeting the browser (TypeScript), interpretation is more natural; for a native CLI tool (Rust/Go), compilation could be considered.
+
+### PC-BASIC and EndBASIC as Starting Points
+
+**PC-BASIC** (Python, GPL v3):
+- Implements GW-BASIC, BASICA, PCjr Cartridge Basic, and Tandy 1000 GWBASIC
+- Goal: "Bug-for-bug compatibility" with original interpreters
+- Python-based (80.3% of codebase), modular architecture separating interpreter core from hardware emulation
+- Implements Microsoft Binary Format (MBF) floating-point arithmetic for data file compatibility
+- **For CoCo**: GW-BASIC is a closer ancestor to Color BASIC than most alternatives. Modular architecture suggests adaptability, but CoCo-specific graphics/sound would require substantial new implementation.
+
+**EndBASIC** (Rust, cross-platform):
+- Hybrid dialect inspired by Amstrad Locomotive BASIC 1.1 and QuickBASIC 4.5
+- Education-focused; pure Rust implementation
+- Multiple interfaces: web-based REPL, CLI, graphical console
+- Hardware integration (Raspberry Pi GPIO)
+- **For CoCo**: Cleaner modern architecture, good cross-platform story. However, Locomotive BASIC semantics differ significantly from Color BASIC.
+
+**Assessment**: PC-BASIC's modular interpreter core is more directly applicable (GW-BASIC is closer to Color BASIC than Locomotive BASIC), but both would require substantial divergence for CoCo-specific features. A fresh interpreter modeled after PC-BASIC's architecture may be more practical than forking either project.
+
+### PLAY Command: Music Macro Language (MML) Specification
+
+The `PLAY` command implements **Music Macro Language (MML)**, a micro-language for synthesizing music. First implemented in Sharp MZ series, standardized through Microsoft's GW-BASIC.
+
+**Core syntax**:
+- **Notes**: `C D E F G A B` (case-insensitive)
+- **Accidentals**: `+` or `#` for sharp, `-` for flat (e.g., `C#`, `D-`)
+- **Duration**: Number = fraction of whole note — `L1` whole, `L4` quarter, `L8` eighth, `L16` sixteenth
+- **Rest**: `R` followed by duration (e.g., `R4` quarter rest)
+- **Octave**: `On` sets octave (0–6), `<` down, `>` up
+- **Tempo**: `Tn` quarter-notes per minute (T32–T255, default T120)
+
+**Implementation complexity**: Moderate. Requires:
+1. String tokenization (notes, commands)
+2. State machine for octave/tempo/duration tracking
+3. Audio synthesis (frequency calculation + waveform generation via Web Audio API)
+4. Buffer management (GW-BASIC holds 32 PLAY commands in buffer; exceeding halts until drained)
+
+No nested structures, conditionals, or complex control flow — this is a self-contained domain that can be implemented independently once the core interpreter is stable.
+
+**CoCo-specific**: Color Computers could use the optional Sound Cartridge (26-3144A) or SAM speech/sound cartridge. The PLAY command follows GW-BASIC MML syntax with hardware-specific limitations.
+
+### Key Insights Summary
+
+1. **No existing native CoCo BASIC interpreters** — this is a genuine gap in the retro computing ecosystem
+2. **QB64 and FreeBASIC** demonstrate compilation as the preferred model for old BASIC dialects on modern hardware
+3. **PC-BASIC** is the most complete BASIC interpreter in modern code (Python), with modular architecture closest to what we'd need
+4. **The ANTLR4 grammar** is not usable for execution — only for syntax highlighting
+5. **PLAY/MML** is well-specified and moderately complex — a fun standalone parsing problem
+6. **Architectural recommendation**: A fresh interpreter in TypeScript (for browser deployment) or Rust (for native performance) modeled after PC-BASIC's modular design would be more practical than adapting any existing project
+
+### Additional References (from research)
+
+- [QB64 Repository](https://github.com/QB64Team/qb64)
+- [FreeBASIC Repository](https://github.com/freebasic/fbc)
+- [FreeBASIC Wiki](https://www.freebasic.net/)
+- [PC-BASIC (PyPI)](https://pypi.org/project/pcbasic/)
+- [PC-BASIC (GitHub)](https://github.com/robhagemans/pcbasic)
+- [EndBASIC (GitHub)](https://github.com/endbasic/endbasic)
+- [Rusty CoCo (GitHub)](https://github.com/gorsat/coco)
+- [Music Macro Language (Wikipedia)](https://en.wikipedia.org/wiki/Music_Macro_Language)
+- [Microsoft BASIC MML (VGMPF Wiki)](https://www.vgmpf.com/Wiki/index.php?title=Microsoft_BASIC_MML)
+- [GW-BASIC PLAY Documentation](https://hwiegman.home.xs4all.nl/gw-man/PLAY.html)
+- [CoCo Central - TRS-80 Manuals](https://cococentral.com/trs-80-manuals/)
+- [CoCo 3 BASIC Quick Reference Manual (PDF)](https://colorcomputerarchive.com/repo/Documents/Manuals/Hardware/Color%20Computer%203%20BASIC%20Quick%20Reference%20Manual%20(Tandy).pdf)
+- [Color Computer Hardware Programming (Lomont)](https://www.lomont.org/software/misc/coco/Lomont_CoCoHardware.pdf)
 
 ---
 
