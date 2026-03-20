@@ -2,7 +2,7 @@
  * SpacerQuest v4.0 - 50-Turn Strategic Playtest Agent
  *
  * Phase-driven decision engine that plays 50 full turns, exercising
- * as many game features as possible. Each turn = 3 trips + end-turn.
+ * as many game features as possible. Each turn = 2 trips + end-turn.
  *
  * Run:
  *   cd spacerquest-web
@@ -950,10 +950,10 @@ test.describe.serial('SpacerQuest 50-Turn Strategic Playtest', () => {
       const phase = turn <= 5 ? 1 : turn <= 15 ? 2 : turn <= 30 ? 3 : 4;
       const snap = await api.snapshotState();
       const char = await api.getCharacter();
-      console.log(`\n  ══ Turn ${turn}/${TOTAL_TURNS} (Phase ${phase}) — sys ${snap.system}, ${snap.credits} cr, ${snap.fuel} fuel, trips ${char.tripCount}/3 ══`);
+      console.log(`\n  ══ Turn ${turn}/${TOTAL_TURNS} (Phase ${phase}) — sys ${snap.system}, ${snap.credits} cr, ${snap.fuel} fuel, trips ${char.tripCount}/2 ══`);
 
       // Ensure trip count is 0 at start of turn
-      if (char.tripCount >= 3) {
+      if (char.tripCount >= 2) {
         await resetTrips();
       }
 
@@ -967,8 +967,8 @@ test.describe.serial('SpacerQuest 50-Turn Strategic Playtest', () => {
         console.log(`    [!] Phase action error: ${err.message?.substring(0, 100)}`);
       }
 
-      // ── 3 Trips per turn ──
-      for (let trip = 1; trip <= 3; trip++) {
+      // ── 2 Trips per turn (original: 2 turns per day) ──
+      for (let trip = 1; trip <= 2; trip++) {
         const currentSnap = await api.snapshotState();
         const currentChar = await api.getCharacter();
 

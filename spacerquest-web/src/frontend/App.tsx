@@ -99,12 +99,34 @@ export function App() {
       }
     };
 
-    const handleTravelComplete = (data: { systemId: number; systemName: string }) => {
-      const { setCurrentSystem, setInTransit, appendToTerminal } = useGameStore.getState();
-      
+    const handleTravelComplete = (data: { systemId: number; systemName: string; encounter?: any; hazards?: any[] }) => {
+      const { setCurrentSystem, setInTransit, appendToTerminal, setCurrentScreen } = useGameStore.getState();
+
       setCurrentSystem(data.systemId);
       setInTransit(false);
+
+      // Show hazard events that occurred during transit
+      if (data.hazards && data.hazards.length > 0) {
+        for (const h of data.hazards) {
+          if (h.evaded) {
+            appendToTerminal(`\r\n\x1b[36m${h.hazardName} detected! Shields deflect it.\x1b[0m`);
+          } else {
+            appendToTerminal(`\r\n\x1b[31m${h.hazardName}! ${h.action} ${h.component}!\x1b[0m`);
+          }
+        }
+      }
+
       appendToTerminal(`\r\n\x1b[32mArrived at ${data.systemName}!\x1b[0m\r\n`);
+
+      // Handle encounter from travel
+      if (data.encounter && data.encounter.encounter) {
+        if (data.encounter.friendly) {
+          appendToTerminal(`\r\n\x1b[36m${data.encounter.message}\x1b[0m\r\n`);
+        } else {
+          appendToTerminal(`\r\n\x1b[31;1m${data.encounter.message}\x1b[0m\r\n`);
+          setCurrentScreen('combat');
+        }
+      }
     };
 
     const handleEncounter = (data: any) => {

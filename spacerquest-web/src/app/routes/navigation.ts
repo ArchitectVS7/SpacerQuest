@@ -253,8 +253,8 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
             message: `${enemy.commander} Hails A Friendly Greeting.`,
           };
         } else {
-          // Hostile encounter — store as pending for the client to resolve
-          // Create a combat record so the player can respond
+          // Hostile encounter — create CombatSession so combat screen can process rounds
+          const { calculateComponentPower } = await import('../../game/utils.js');
           const playerBF = calculateBattleFactor(
             {
               weaponStrength: character.ship.weaponStrength,
@@ -276,6 +276,41 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
             character.rank as any,
             character.battlesWon
           );
+
+          // Create CombatSession for the combat screen to read
+          await prisma.combatSession.upsert({
+            where: { characterId: character.id },
+            update: {
+              npcRosterId: enemy.npcRosterId || null,
+              playerWeaponPower: calculateComponentPower(character.ship.weaponStrength, character.ship.weaponCondition),
+              playerShieldPower: calculateComponentPower(character.ship.shieldStrength, character.ship.shieldCondition),
+              playerDrivePower: calculateComponentPower(character.ship.driveStrength, character.ship.driveCondition),
+              playerBattleFactor: playerBF,
+              enemyWeaponPower: enemy.weaponStrength || 20,
+              enemyShieldPower: enemy.shieldStrength || 15,
+              enemyDrivePower: enemy.driveStrength || 10,
+              enemyBattleFactor: enemyBF,
+              enemyHullCondition: enemy.hullCondition || 5,
+              currentRound: 1,
+              active: true,
+              result: null,
+            },
+            create: {
+              characterId: character.id,
+              npcRosterId: enemy.npcRosterId || null,
+              playerWeaponPower: calculateComponentPower(character.ship.weaponStrength, character.ship.weaponCondition),
+              playerShieldPower: calculateComponentPower(character.ship.shieldStrength, character.ship.shieldCondition),
+              playerDrivePower: calculateComponentPower(character.ship.driveStrength, character.ship.driveCondition),
+              playerBattleFactor: playerBF,
+              enemyWeaponPower: enemy.weaponStrength || 20,
+              enemyShieldPower: enemy.shieldStrength || 15,
+              enemyDrivePower: enemy.driveStrength || 10,
+              enemyBattleFactor: enemyBF,
+              enemyHullCondition: enemy.hullCondition || 5,
+              currentRound: 1,
+              active: true,
+            },
+          });
 
           encounterResult = {
             encounter: true,
@@ -310,6 +345,7 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
         systemId: travelDestination,
         systemName: destSystem?.name || `System ${travelDestination}`,
         encounter: encounterResult,
+        hazards: hazardEvents.length > 0 ? hazardEvents : undefined,
       });
     }
 

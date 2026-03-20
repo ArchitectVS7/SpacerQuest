@@ -630,15 +630,14 @@ describe('End Turn Integration', () => {
 
     expect(validateEndTurn(0).canEnd).toBe(false);
     expect(validateEndTurn(1).canEnd).toBe(false);
-    expect(validateEndTurn(2).canEnd).toBe(false);
-    expect(validateEndTurn(0).reason).toContain('3 trip(s) remaining');
+    expect(validateEndTurn(0).reason).toContain('2 trip(s) remaining');
   });
 
   it('validateEndTurn allows at trip limit', async () => {
     vi.stubEnv('CLASSIC_MODE', 'false');
     const { validateEndTurn } = await import('../src/game/systems/end-turn');
 
-    expect(validateEndTurn(3).canEnd).toBe(true);
+    expect(validateEndTurn(2).canEnd).toBe(true);
     expect(validateEndTurn(5).canEnd).toBe(true);
   });
 

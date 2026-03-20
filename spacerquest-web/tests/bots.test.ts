@@ -17,33 +17,33 @@ describe('Bot Config', () => {
   it('getBotCount returns 20 by default', async () => {
     vi.stubEnv('BOT_COUNT', '');
     const { getBotCount } = await import('../src/bots/config.js');
-    expect(getBotCount()).toBe(20);
+    expect(await getBotCount()).toBe(20);
   });
 
   it('getBotCount accepts 0, 5, 10, 20', async () => {
     const { getBotCount } = await import('../src/bots/config.js');
 
     vi.stubEnv('BOT_COUNT', '0');
-    expect(getBotCount()).toBe(0);
+    expect(await getBotCount()).toBe(0);
 
     vi.stubEnv('BOT_COUNT', '5');
-    expect(getBotCount()).toBe(5);
+    expect(await getBotCount()).toBe(5);
 
     vi.stubEnv('BOT_COUNT', '10');
-    expect(getBotCount()).toBe(10);
+    expect(await getBotCount()).toBe(10);
 
     vi.stubEnv('BOT_COUNT', '20');
-    expect(getBotCount()).toBe(20);
+    expect(await getBotCount()).toBe(20);
   });
 
   it('getBotCount defaults to 20 for invalid values', async () => {
     const { getBotCount } = await import('../src/bots/config.js');
 
     vi.stubEnv('BOT_COUNT', '7');
-    expect(getBotCount()).toBe(20);
+    expect(await getBotCount()).toBe(20);
 
     vi.stubEnv('BOT_COUNT', 'abc');
-    expect(getBotCount()).toBe(20);
+    expect(await getBotCount()).toBe(20);
   });
 
   it('isClassicMode returns false by default', async () => {
@@ -347,7 +347,7 @@ describe('End Turn Validation', () => {
 
     const result = validateEndTurn(1);
     expect(result.canEnd).toBe(false);
-    expect(result.reason).toContain('2 trip(s) remaining');
+    expect(result.reason).toContain('1 trip(s) remaining');
   });
 
   it('allows end turn at 3 trips', async () => {
