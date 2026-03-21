@@ -245,19 +245,20 @@ describe('App Registration', () => {
 // ============================================================================
 
 describe('Hangout Integration', () => {
-  it('spacers-hangout.ts includes alliance menu which leads to bulletin board', async () => {
+  it('spacers-hangout.ts routes to bulletin board from alliance info path', async () => {
     const fs = await import('fs');
     const hangoutCode = fs.readFileSync(
       new URL('../src/game/screens/spacers-hangout.ts', import.meta.url),
       'utf-8'
     );
 
-    // The hangout has an alliance option (A) which is the gateway to alliance features
-    expect(hangoutCode).toContain("case 'A':");
+    // Original SP.BAR.S:71 — alliance is accessed via Info (I) → typing "ALL"
+    // inAllianceMenu state tracks when player is in alliance selection sub-menu
+    // The (B) key from that sub-menu goes to bulletin-board (SP.TOP.S)
+    expect(hangoutCode).toContain('inAllianceMenu');
+    expect(hangoutCode).toContain("nextScreen: 'bulletin-board'");
 
-    // Bulletin board redirects back to spacers-hangout, so that screen exists as context
-    // The (Q)uit from bulletin-board returns to spacers-hangout — verified in screen source
-    // The hangout itself serves as the hub; board access is through alliance membership
+    // Alliance names must appear (for display to player)
     expect(hangoutCode).toContain('Alliance');
   });
 

@@ -53,18 +53,22 @@ export const RANK_HONORARIA = {
 // SHIP COMPONENTS
 // ============================================================================
 
+// SP.SPEED.txt lines 31-32: x1=10000,x2=9000,x3=8000,x4=7000,x5=6000,x6=5000,x7=4000,x8=3000
+// Price assignments (lines 43-50): i=1→x1(Hull), i=2→x2(Drives), i=3→x8(Cabin),
+// i=4→x6(LifeSupport), i=5→x3(Weapons), i=6→x5(Navigation), i=7→x7(Robotics), i=8→x4(Shields)
 export const COMPONENT_PRICES = {
-  HULL: 10000,       // +10 strength
-  DRIVES: 9000,      // +10 strength
-  WEAPONS: 8000,     // +10 strength
-  SHIELDS: 7000,     // +10 strength
-  LIFE_SUPPORT: 6000, // +10 strength
-  NAVIGATION: 5000,  // +10 strength
-  ROBOTICS: 4000,    // +10 strength
-  CABIN: 8000,       // +10 strength
+  HULL: 10000,        // x1=10000 — i=1
+  DRIVES: 9000,       // x2=9000  — i=2
+  WEAPONS: 8000,      // x3=8000  — i=5
+  SHIELDS: 7000,      // x4=7000  — i=8
+  NAVIGATION: 6000,   // x5=6000  — i=6
+  LIFE_SUPPORT: 5000, // x6=5000  — i=4
+  ROBOTICS: 4000,     // x7=4000  — i=7
+  CABIN: 3000,        // x8=3000  — i=3
 } as const;
 
-export const COMPONENT_MAX_STRENGTH = 209;
+// SP.SPEED.txt line 159: "if x>198 x=199" — max component strength is 199
+export const COMPONENT_MAX_STRENGTH = 199;
 export const COMPONENT_MAX_CONDITION = 9;
 export const COMPONENT_MIN_CONDITION = 0;
 
@@ -125,15 +129,31 @@ export const SPECIAL_EQUIPMENT = {
 
 export const FUEL_BASE_COST = 21;          // Base for fuel calculation
 export const FUEL_MAX_CAPACITY = 20000;    // Max fuel depot capacity
-export const FUEL_DEFAULT_PRICE = 25;      // Space Authority default price
+// SP.LIFT.S fueler section: fh=5 (default Space Authority buy price)
+export const FUEL_DEFAULT_PRICE = 5;       // Space Authority default buy price (original: fh=5)
 
 export const FUEL_PRICES_BY_SYSTEM: Record<number, number> = {
-  1: 8,   // Sun-3
-  8: 4,   // Mira-9 (cheap)
-  14: 6,  // Vega-6
+  1: 8,   // Sun-3 (SP.LIFT.S: if sp=1 fh=8)
+  8: 4,   // Mira-9 (SP.LIFT.S: if sp=8 fh=4)
+  14: 6,  // Vega-6 (SP.LIFT.S: if sp=14 fh=6)
 };
 
-export const FUEL_SELL_MULTIPLIER = 0.5;   // Sell at 50% of buy price
+// SP.LIFT.S seller section: hf (sell price per unit), Space Authority defaults
+export const FUEL_SELL_DEFAULT_PRICE = 2;  // Default Space Authority sell price (original: hf=2)
+export const FUEL_SELL_PRICES_BY_SYSTEM: Record<number, number> = {
+  1: 1,   // Sun-3  (SP.LIFT.S: if sp=1 hf=1)
+  8: 3,   // Mira-9 (SP.LIFT.S: if sp=8 hf=3)
+  13: 5,  // Spica-3 (SP.LIFT.S: if sp=13 hf=5)
+  14: 4,  // Vega-6 (SP.LIFT.S: if sp=14 hf=4)
+};
+
+// Kept for backward compatibility with calculateFuelSaleProceeds (used in some tests/routes)
+export const FUEL_SELL_MULTIPLIER = 0.5;   // Legacy: sell proceeds multiplier (not used by getFuelSellPrice)
+
+// Fuel depot (port owner operations) — SP.REAL.txt lines 168-230
+export const FUEL_DEPOT_WHOLESALE_PRICE = 10;  // SP.REAL.txt line 193: 10 cr/unit from Main Port Storage
+export const FUEL_DEPOT_MAX_PRICE = 50;        // SP.REAL.txt line 184: owner fuel price range 0-50
+export const FUEL_DEPOT_TRANSFER_MAX = 2900;   // SP.REAL.txt line 225: max single transfer from ship
 
 // ============================================================================
 // TRAVEL & NAVIGATION
@@ -154,9 +174,9 @@ export const ENCOUNTER_BASE_CHANCE = 0.3;    // 30% base encounter rate
 export const ENCOUNTER_RIM_CHANCE = 0.4;     // 40% in Rim Stars
 
 export const TRIBUTE_BASE_MULTIPLIER = 1000; // Base tribute demand
-export const TRIBUTE_MAX = 20000;            // Maximum tribute
-
-export const RETREAT_SUCCESS_CHANCE = 0.5;   // 50% base retreat success
+// Original SP.FIGHT1.S:227: kc=(kg*1000):if kg>12 kc=10000
+// Maximum tribute demand is 10,000 cr (hit after 12+ rounds)
+export const TRIBUTE_MAX = 10000;            // Maximum tribute demand (capped at round 12)
 
 export const CLOAKING_ESCAPE_CHANCE = 0.7;   // 70% escape with cloaker
 
@@ -180,14 +200,50 @@ export const AUTO_REPAIR_BF_BONUS = 10;
 // CARGO SYSTEM
 // ============================================================================
 
+// Original cargo type names from carname subroutine (SP.CARGO.txt lines 313-323)
+// Types 1-9 only; type 10 (Contraband) is a modern addition for smuggling missions
+export const CARGO_TYPES: Record<number, string> = {
+  1: 'Dry Goods',
+  2: 'Nutri Goods',
+  3: 'Spices',
+  4: 'Medicinals',
+  5: 'Electronics',
+  6: 'Precious Metals',
+  7: 'Rare Elements',
+  8: 'Photonic Components',
+  9: 'Dilithium Crystal',
+  10: 'Contraband',  // Modern addition: smuggling missions
+};
+
+// Core system names from desname subroutine (SP.CARGO.txt lines 325-340)
+// Systems 1-14 are the core star systems used for cargo destinations
+export const CORE_SYSTEM_NAMES: Record<number, string> = {
+  1: 'Sun-3',
+  2: 'Aldebaran-1',
+  3: 'Altair-3',
+  4: 'Arcturus-6',
+  5: 'Deneb-4',
+  6: 'Denebola-5',
+  7: 'Fomalhaut-2',
+  8: 'Mira-9',
+  9: 'Pollux-7',
+  10: 'Procyon-5',
+  11: 'Regulus-6',
+  12: 'Rigel-8',
+  13: 'Spica-3',
+  14: 'Vega-6',
+};
+
+// NOTE: CARGO_BASE_RATES is retained for backward compatibility but is NOT used
+// by the cargo payment formula. The original uses cargoType * 3 as value-per-pod.
 export const CARGO_BASE_RATES = {
-  1: 1000,  // Titanium Ore
-  2: 2000,  // Capellan Herbals
-  3: 3000,  // Raw Dilithium
-  4: 4000,  // Mizarian Liquor
-  5: 5000,  // Achernarian Gems
-  6: 6000,  // Algolian RDNA
-  10: 1000, // Contraband (base)
+  1: 1000,
+  2: 2000,
+  3: 3000,
+  4: 4000,
+  5: 5000,
+  6: 6000,
+  10: 1000,
 } as const;
 
 export const CARGO_POD_BONUS_HULL = 50;      // Titanium hull gives +50 pods
@@ -251,6 +307,14 @@ export const RESCUE_FEE = 1000;         // 1,000 cr rescue fee (1000 in original
 export const RESCUE_FUEL_COST = 50;     // 50 fuel units for rescue
 export const RESCUE_POINTS_BONUS = 11;  // s2 + 11 for successful rescue
 
+// Self-rescue cost formula (SP.LINK.txt line 61):
+// xo=20000:if sc<20 xo=(sc*1000)
+// sc = floor(score/150); cost capped at 20,000 cr
+export function calculateSelfRescueCost(score: number): number {
+  const sc = Math.floor(score / 150);
+  return sc < 20 ? sc * 1000 : 20000;
+}
+
 // ============================================================================
 // GAMBLING
 // ============================================================================
@@ -259,6 +323,7 @@ export const WOF_MAX_BET = 1000;
 export const WOF_MIN_ROLLS = 3;
 export const WOF_MAX_ROLLS = 7;
 export const WOF_NUMBERS = 20;
+export const WOF_DAILY_WIN_CAP = 12; // ui=12 in SP.GAME.S line 53
 
 export const DARE_MIN_ROUNDS = 3;
 export const DARE_MAX_ROUNDS = 10;
@@ -321,18 +386,53 @@ export const CRIME_FINE_CONDUCT = 20000;    // pp=7: 20,000 cr
 export const BAIL_MULTIPLIER = 2;           // Bail = 2× fine
 
 // ============================================================================
-// SAGE & WISE ONE (SP.DOCK2.S)
+// RIM PORTS (SP.DOCK2.S)
 // ============================================================================
+
+/** Rim cargo names and payment multipliers (SP.DOCK2.S carname: lines 336-343) */
+export const RIM_CARGO: Record<number, { name: string; multiplier: number }> = {
+  15: { name: 'Titanium Ore', multiplier: 1 },
+  16: { name: 'Capellan Herbals', multiplier: 2 },
+  17: { name: 'Raw Dilithium', multiplier: 3 },
+  18: { name: 'Mizarian Liquor', multiplier: 4 },
+  19: { name: 'Achernarian Gems', multiplier: 5 },
+  20: { name: 'Algolian RDNA', multiplier: 6 },
+};
+
+/** Rim star system display names */
+export const RIM_SYSTEM_NAMES: Record<number, string> = {
+  15: 'Antares-5',
+  16: 'Capella-4',
+  17: 'Polaris-1',
+  18: 'Mizar-9',
+  19: 'Achernar-5',
+  20: 'Algol-2',
+};
+
+/** Rim port single-component repair mapping (SP.DOCK2.S:277-282) */
+export const RIM_REPAIR_MAP: Record<number, { component: string; label: string } | null> = {
+  15: { component: 'shield', label: 'Shield Repair' },
+  16: { component: 'drive', label: 'Drive Repair' },
+  17: { component: 'cabin', label: 'Cabin Repair' },
+  18: { component: 'robotics', label: 'Robot. Repair' },
+  19: { component: 'navigation', label: 'Navig. Repair' },
+  20: null,  // Algol-2: no repair shop
+};
+
+export const ALGOL_SYSTEM_ID = 20;
+export const TRIP_ZERO_MIN_TRIPS = 4;   // z1 >= 4 to qualify for trip counter zero
+export const RIM_FUEL_BUY_PRICE = 25;   // fixed 25 cr/unit at rim fuel depots
+export const RIM_FUEL_MAX_BUY = 2900;   // max per purchase (SP.DOCK2.S:260)
+export const RIM_FUEL_MAX_SELL = 3000;   // max per sale (SP.DOCK2.S:241)
 
 // ============================================================================
 // EXTRA-CURRICULAR (SP.END.txt sp.menu11)
 // ============================================================================
 
 export const SHIP_GUARD_COST = 10000;         // 10,000 cr to hire ship guard (g1=g1-1)
-export const VANDALISM_STRENGTH_MIN = 1;      // Min random component strength loss on quit without guard
-export const VANDALISM_STRENGTH_MAX = 5;      // Max random component strength loss
-export const VANDALISM_CONDITION_MIN = 1;     // Min condition loss
-export const VANDALISM_CONDITION_MAX = 3;     // Max condition loss
+// Vandalism roll: x=1-10; x<4 damages cargo pods, x=4 hull cond, x=5 cabin cond, x=6 drive str, x=7 life support str, x=8-10 no damage
+// Source: SP.END.txt lines 122-134
+export const FUEL_MIN_MISSIONS = 50;          // f1<50 → "Not enough fuel to undertake mission!" (SP.END.txt line 47)
 
 // ============================================================================
 // SAGE & WISE ONE (SP.DOCK2.S)

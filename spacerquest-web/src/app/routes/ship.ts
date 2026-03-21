@@ -5,7 +5,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../db/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
-import { upgradeBody } from '../schemas.js';
+import { upgradeBody, repairBody } from '../schemas.js';
 
 export async function registerShipRoutes(fastify: FastifyInstance) {
   // Get ship status
@@ -75,12 +75,17 @@ export async function registerShipRoutes(fastify: FastifyInstance) {
     return result;
   });
 
-  // Repair all damage
+  // Repair damage (all or single component)
+  // Original: SP.DAMAGE.S — (R)epair All or choose component 1-8 with (A)ll/(S)ingle DX
   fastify.post('/api/ship/repair', {
     preValidation: [requireAuth],
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { userId } = request.user as { userId: string };
+    const body = repairBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
 
     const character = await prisma.character.findFirst({ where: { userId } });
     if (!character) {
@@ -88,12 +93,19 @@ export async function registerShipRoutes(fastify: FastifyInstance) {
     }
 
     const repairsSystem = await import('../../game/systems/repairs.js');
-    const result = await repairsSystem.repairAllComponents(character.id);
 
+    if (body.data.component) {
+      const result = await repairsSystem.repairSingleComponent(character.id, body.data.component, body.data.mode);
+      if (!result.success) {
+        return reply.status(400).send({ error: result.error });
+      }
+      return result;
+    }
+
+    const result = await repairsSystem.repairAllComponents(character.id);
     if (!result.success) {
       return reply.status(400).send({ error: result.error });
     }
-
     return result;
   });
 }

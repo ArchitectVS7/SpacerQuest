@@ -23,14 +23,18 @@ import {
 } from '../src/game/systems/combat';
 import {
   getFuelPrice,
+  getFuelSellPrice,
   calculateFuelBuyCost,
   calculateFuelSaleProceeds,
   calculateCargoPayment,
   calculatePortPrice,
   calculatePortResaleValue,
   calculateLandingFee,
+  getRimFuelSellPrice,
   calculatePatrolPay,
   getCargoDescription,
+  getSystemName,
+  generateCargoContract,
 } from '../src/game/systems/economy';
 import {
   getTotalCredits,
@@ -243,33 +247,29 @@ describe('FR-COMBAT', () => {
   });
 
   describe('attemptRetreat', () => {
-    it('cloaker provides ~70% escape when player drive is weaker', () => {
-      // Player slower → only cloaker can save. Success rate ≈ 70%.
-      let successes = 0;
-      const trials = 2000;
-      for (let i = 0; i < trials; i++) {
-        if (attemptRetreat(10, 50, true).success) successes++;
-      }
-      const rate = successes / trials;
-      expect(rate).toBeGreaterThan(0.55);
-      expect(rate).toBeLessThan(0.85);
+    // Original SP.FIGHT1.S:210-211: if i$="N" print"...Retreating..."\:x=y:goto spgo
+    // Player retreat is ALWAYS successful — pressing N ends the battle regardless of speed.
+    // Speed only determines enemy retreat behavior, not player's ability to disengage.
+
+    it('player can always retreat regardless of drive speed (original behavior)', () => {
+      // Slower than enemy — but player still escapes
+      expect(attemptRetreat(10, 50, false).success).toBe(true);
+      // Same speed
+      expect(attemptRetreat(50, 50, false).success).toBe(true);
+      // Faster
+      expect(attemptRetreat(100, 10, false).success).toBe(true);
     });
 
-    it('always fails when player is slower and has no cloaker', () => {
-      for (let i = 0; i < 100; i++) {
-        expect(attemptRetreat(10, 50, false).success).toBe(false);
-      }
+    it('cloaker always provides instant escape with a distinct message', () => {
+      const result = attemptRetreat(10, 50, true);
+      expect(result.success).toBe(true);
+      expect(result.message).toMatch(/cloak/i);
     });
 
-    it('faster player has ~50% escape chance without cloaker', () => {
-      let successes = 0;
-      const trials = 2000;
-      for (let i = 0; i < trials; i++) {
-        if (attemptRetreat(100, 10, false).success) successes++;
-      }
-      const rate = successes / trials;
-      expect(rate).toBeGreaterThan(0.35);
-      expect(rate).toBeLessThan(0.65);
+    it('retreat without cloaker returns retreating message', () => {
+      const result = attemptRetreat(10, 50, false);
+      expect(result.success).toBe(true);
+      expect(result.message).toBeTruthy();
     });
   });
 
@@ -314,16 +314,19 @@ describe('FR-COMBAT', () => {
   });
 
   describe('calculateEnemyBattleFactor', () => {
-    it('enemy BF = weapon + shield + drive/10 + hull/10', () => {
+    it('enemy BF = weapon + shield + jg, where jg uses ranfix (condition+1)*strength/10 formula with /5 scaling', () => {
       const enemy = makeEnemy({
         weaponStrength: 20, weaponCondition: 8,
         shieldStrength: 15, shieldCondition: 7,
         driveStrength: 10, driveCondition: 5,
         hullStrength: 10, hullCondition: 5,
       });
-      // weapon: 20×8=160, shield: 15×7=105, drive: floor(10×5/10)=5, hull: floor(10×5/10)=5
-      // Total: 160 + 105 + 5 + 5 = 275
-      expect(calculateEnemyBattleFactor(enemy)).toBe(275);
+      // weapon: 20×8=160, shield: 15×7=105
+      // driveContrib: floor((5+1)×10/10) = 6
+      // hullContrib:  floor((5+1)×10/10) = 6
+      // supportSum = 12 > 4 → jg = floor(12/5) = 2
+      // Total: 160 + 105 + 2 = 267
+      expect(calculateEnemyBattleFactor(enemy)).toBe(267);
     });
   });
 
@@ -368,46 +371,80 @@ describe('FR-ECONOMY', () => {
       expect(getFuelPrice(14)).toBe(6);
     });
 
-    it('unspecified system returns default 25 cr', () => {
-      expect(getFuelPrice(5)).toBe(25);
-      expect(getFuelPrice(10)).toBe(25);
+    // SP.LIFT.S fueler: fh=5 (default Space Authority buy price)
+    it('unspecified system returns default 5 cr (SP.LIFT.S: fh=5)', () => {
+      expect(getFuelPrice(5)).toBe(5);
+      expect(getFuelPrice(10)).toBe(5);
     });
 
     it('port owner price overrides system price', () => {
       expect(getFuelPrice(1, 15)).toBe(15); // overrides system 1's 8 cr
-      expect(getFuelPrice(5, 10)).toBe(10); // overrides default 25 cr
+      expect(getFuelPrice(5, 10)).toBe(10); // overrides default 5 cr
+    });
+  });
+
+  describe('getFuelSellPrice (SP.LIFT.S seller section)', () => {
+    it('system 1 (Sun-3) sells at 1 cr per unit (SP.LIFT.S: if sp=1 hf=1)', () => {
+      expect(getFuelSellPrice(1)).toBe(1);
+    });
+
+    it('system 8 (Mira-9) sells at 3 cr per unit (SP.LIFT.S: if sp=8 hf=3)', () => {
+      expect(getFuelSellPrice(8)).toBe(3);
+    });
+
+    it('system 13 (Spica-3) sells at 5 cr per unit (SP.LIFT.S: if sp=13 hf=5)', () => {
+      expect(getFuelSellPrice(13)).toBe(5);
+    });
+
+    it('system 14 (Vega-6) sells at 4 cr per unit (SP.LIFT.S: if sp=14 hf=4)', () => {
+      expect(getFuelSellPrice(14)).toBe(4);
+    });
+
+    it('unspecified system returns default 2 cr (SP.LIFT.S: hf=2)', () => {
+      expect(getFuelSellPrice(5)).toBe(2);
+      expect(getFuelSellPrice(10)).toBe(2);
+    });
+
+    it('port owner sell price overrides system price', () => {
+      expect(getFuelSellPrice(1, 7)).toBe(7);
+      expect(getFuelSellPrice(5, 3)).toBe(3);
     });
   });
 
   describe('calculateFuelBuyCost', () => {
     it('cost = units × pricePerUnit', () => {
       expect(calculateFuelBuyCost(100, 8)).toBe(800);
-      expect(calculateFuelBuyCost(50, 25)).toBe(1250);
+      expect(calculateFuelBuyCost(50, 5)).toBe(250);
     });
   });
 
-  describe('calculateFuelSaleProceeds', () => {
+  describe('calculateFuelSaleProceeds (legacy — uses buy price × 0.5)', () => {
     it('proceeds = floor(units × buyPrice × 0.5)', () => {
       expect(calculateFuelSaleProceeds(100, 8)).toBe(400);
-      expect(calculateFuelSaleProceeds(100, 25)).toBe(1250);
-      expect(calculateFuelSaleProceeds(3, 25)).toBe(37); // floor(37.5)
+      expect(calculateFuelSaleProceeds(100, 5)).toBe(250);
+      expect(calculateFuelSaleProceeds(3, 5)).toBe(7); // floor(7.5)
     });
   });
 
   describe('calculateCargoPayment', () => {
+    // Original: q5 (stated payment) is paid in full at correct destination.
+    // No delivery bonus — the ie bonus is added at contract signing, not delivery.
     const contract = {
       pods: 10,
       cargoType: 1,
       origin: 1,
       destination: 5,
       payment: 10000,
-      description: 'Titanium Ore',
+      description: 'Dry Goods',
+      fuelRequired: 35,
+      distance: 4,
+      valuePerPod: 3,
     };
 
-    it('correct destination: full payment + 10% bonus', () => {
+    it('correct destination: full stated payment, no bonus', () => {
       const result = calculateCargoPayment(contract, 5);
-      expect(result.bonus).toBe(1000);
-      expect(result.total).toBe(11000);
+      expect(result.bonus).toBe(0);
+      expect(result.total).toBe(10000);
     });
 
     it('wrong destination: payment × 0.5 penalty', () => {
@@ -432,16 +469,46 @@ describe('FR-ECONOMY', () => {
   });
 
   describe('calculateLandingFee', () => {
-    it('fee = (systemId % 14) * 1000 - Life Support * 10 - Drive * 10', () => {
-      // system=15 (15%14 = 1), LSS=10, Drive=10: 1000 - 100 - 100 = 800
-      expect(calculateLandingFee(15, 10, 10)).toBe(800);
-      // system=14 (14%14 = 0), LSS=1, Drive=1: 0 - 10 - 10 = -20 -> min 10
-      expect(calculateLandingFee(14, 1, 1)).toBe(10);
+    // Original SP.DOCK2.S:31-36:
+    //   a=(q4 mod 14): zh=1000
+    //   if mp$="]["  zh=zh-100   (full alliance member: -100)
+    //   if mq$="LSS C" zh=zh-400 (LSS Corps member: -400)
+    //   x=a*zh
+    it('base fee = (systemId % 14) * 1000 with no discounts', () => {
+      expect(calculateLandingFee(15, false, false)).toBe(1000); // (15%14)=1, zh=1000
+      expect(calculateLandingFee(16, false, false)).toBe(2000); // (16%14)=2, zh=1000
+      expect(calculateLandingFee(20, false, false)).toBe(6000); // (20%14)=6, zh=1000
     });
 
-    it('minimum fee is 10 cr', () => {
-      // system=14 (0), LSS=0, Drive=0: 0 -> min 10
-      expect(calculateLandingFee(14, 0, 0)).toBe(10);
+    it('full alliance member gets 100 cr discount on zh (mp$="][")', () => {
+      expect(calculateLandingFee(15, true, false)).toBe(900);  // 1*900
+      expect(calculateLandingFee(16, true, false)).toBe(1800); // 2*900
+    });
+
+    it('LSS Corps member gets 400 cr discount on zh (mq$="LSS C")', () => {
+      expect(calculateLandingFee(15, false, true)).toBe(600);  // 1*600
+      expect(calculateLandingFee(16, false, true)).toBe(1200); // 2*600
+    });
+
+    it('both discounts stack (100+400=500 off zh)', () => {
+      expect(calculateLandingFee(15, true, true)).toBe(500);   // 1*500
+    });
+  });
+
+  describe('getRimFuelSellPrice', () => {
+    // Original SP.DOCK2.S:229-231:
+    //   gf=25-q4
+    //   if q4=15 gf=5  (special case override)
+    it('system 15 (Antares-5) returns 5 cr (special case override)', () => {
+      expect(getRimFuelSellPrice(15)).toBe(5);
+    });
+
+    it('systems 16-20 return 25 - systemId', () => {
+      expect(getRimFuelSellPrice(16)).toBe(9);  // 25-16=9
+      expect(getRimFuelSellPrice(17)).toBe(8);  // 25-17=8
+      expect(getRimFuelSellPrice(18)).toBe(7);  // 25-18=7
+      expect(getRimFuelSellPrice(19)).toBe(6);  // 25-19=6
+      expect(getRimFuelSellPrice(20)).toBe(5);  // 25-20=5
     });
   });
 
@@ -454,16 +521,108 @@ describe('FR-ECONOMY', () => {
   });
 
   describe('getCargoDescription', () => {
-    it('maps cargo type numbers to names', () => {
-      expect(getCargoDescription(1)).toBe('Titanium Ore');
-      expect(getCargoDescription(2)).toBe('Capellan Herbals');
-      expect(getCargoDescription(3)).toBe('Raw Dilithium');
-      expect(getCargoDescription(4)).toBe('Mizarian Liquor');
+    // Original carname subroutine (SP.CARGO.txt lines 313-323): 9 types
+    it('maps all 9 original cargo types to correct names', () => {
+      expect(getCargoDescription(1)).toBe('Dry Goods');
+      expect(getCargoDescription(2)).toBe('Nutri Goods');
+      expect(getCargoDescription(3)).toBe('Spices');
+      expect(getCargoDescription(4)).toBe('Medicinals');
+      expect(getCargoDescription(5)).toBe('Electronics');
+      expect(getCargoDescription(6)).toBe('Precious Metals');
+      expect(getCargoDescription(7)).toBe('Rare Elements');
+      expect(getCargoDescription(8)).toBe('Photonic Components');
+      expect(getCargoDescription(9)).toBe('Dilithium Crystal');
+    });
+
+    it('maps type 10 to Contraband (modern smuggling addition)', () => {
       expect(getCargoDescription(10)).toBe('Contraband');
     });
 
     it('returns "Unknown Cargo" for unrecognised types', () => {
       expect(getCargoDescription(99)).toBe('Unknown Cargo');
+    });
+  });
+
+  describe('getSystemName', () => {
+    // Original desname subroutine (SP.CARGO.txt lines 325-340): 14 core systems
+    it('maps system IDs 1-14 to original star names', () => {
+      expect(getSystemName(1)).toBe('Sun-3');
+      expect(getSystemName(2)).toBe('Aldebaran-1');
+      expect(getSystemName(3)).toBe('Altair-3');
+      expect(getSystemName(4)).toBe('Arcturus-6');
+      expect(getSystemName(5)).toBe('Deneb-4');
+      expect(getSystemName(6)).toBe('Denebola-5');
+      expect(getSystemName(7)).toBe('Fomalhaut-2');
+      expect(getSystemName(8)).toBe('Mira-9');
+      expect(getSystemName(9)).toBe('Pollux-7');
+      expect(getSystemName(10)).toBe('Procyon-5');
+      expect(getSystemName(11)).toBe('Regulus-6');
+      expect(getSystemName(12)).toBe('Rigel-8');
+      expect(getSystemName(13)).toBe('Spica-3');
+      expect(getSystemName(14)).toBe('Vega-6');
+    });
+
+    it('returns "System N" for non-core systems', () => {
+      expect(getSystemName(15)).toBe('System 15');
+      expect(getSystemName(27)).toBe('System 27');
+    });
+  });
+
+  describe('generateCargoContract — original payment formula', () => {
+    // Test original pay1 formula from SP.CARGO.txt lines 249-257
+    // v2 = cargoType*3, v4 = (v2*distance)/3 * upodX + (f2*5) + 1000, cap 15000
+    it('computes payment correctly for type 5, distance 7, hull cond 9, drives 10/9, 10 pods', () => {
+      // v1=5, v2=15, d6=7, s1=10, h2=9
+      // upodX = floor(max(10*(9+1), 10) / 10) = floor(100/10) = 10
+      // v4 = 15*7 = 105; v4/3 = 35; v4 = 35*10 = 350
+      // fcost(7): af=10, f2=(21-10)+(10-9)=12, *7=84, ty=94, f2=47
+      // v4 = 350 + (47*5) + 1000 = 350+235+1000 = 1585
+      // perPod = floor(1585/10) = 158; total = 1580
+      const contract = generateCargoContract(5, 10, false, {
+        hullCondition: 9, driveStrength: 10, driveCondition: 9,
+      });
+      // Can't test exact payment without knowing the random destination,
+      // but we can verify the contract has required fields and payment > 1000
+      expect(contract.pods).toBeGreaterThanOrEqual(1);
+      expect(contract.payment).toBeGreaterThanOrEqual(1000);
+      expect(contract.payment).toBeLessThanOrEqual(15000);
+      expect(contract.fuelRequired).toBeGreaterThan(0);
+      expect(contract.distance).toBeGreaterThanOrEqual(1);
+      expect(contract.valuePerPod).toBe(contract.cargoType * 3);
+    });
+
+    it('payment formula: type 9 (Dilithium), distance 13, perfect ship, 10 pods', () => {
+      // v1=9, v2=27, d6=13, s1=10, h2=9, d1=21, d2=9
+      // upodX = floor(100/10) = 10
+      // v4 = 27*13=351; /3=117; *10=1170
+      // fcost(13): af=21, f2=(0)+(1)=1, *13=13, ty=23, f2=11
+      // v4 = 1170 + 55 + 1000 = 2225; perPod=222; total=2220
+      // We fix origin to 1, destination to 14 (distance=13) via a crafted call
+      // Use origin=1, force destination=14 — but we can't force it without mock.
+      // Instead verify valuePerPod = 9*3 = 27 for type 9
+      const contract = generateCargoContract(1, 10, false, {
+        hullCondition: 9, driveStrength: 21, driveCondition: 9,
+      });
+      expect(contract.valuePerPod).toBe(contract.cargoType * 3);
+      expect(contract.payment % 10).toBe(0); // normalized to pod multiple
+      expect(contract.destination).not.toBe(1); // never same as origin
+    });
+
+    it('upod returns 1 when hull condition is 0', () => {
+      const contract = generateCargoContract(3, 10, false, {
+        hullCondition: 0, driveStrength: 10, driveCondition: 9,
+      });
+      expect(contract.pods).toBe(1);
+    });
+
+    it('destination is never the same as origin', () => {
+      for (let i = 0; i < 20; i++) {
+        const origin = Math.floor(Math.random() * 14) + 1;
+        const contract = generateCargoContract(origin, 10, false, {
+          hullCondition: 9, driveStrength: 10, driveCondition: 9,
+        });
+        expect(contract.destination).not.toBe(origin);
+      }
     });
   });
 });

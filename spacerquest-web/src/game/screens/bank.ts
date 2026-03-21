@@ -1,23 +1,37 @@
 /**
- * SpacerQuest v4.0 - Bank Screen (SP.BANK.S)
- * 
- * Banking system for deposits, withdrawals, and balance checks
+ * SpacerQuest v4.0 - Bank Screen (SP.BANK.S / SP.LINK.S Financial Section)
+ *
+ * Banking system for deposits, withdrawals, and balance checks.
+ *
+ * SP.LINK.S lines 89-98 (finan):
+ *   if (pp$="") or (left$(pp$,4)="Lieu") goto fink
+ *   fink: print "Space Patrol rank of Commander or higher"
+ *         print "Required for admittance into the Financial Section"
+ *         goto linker
+ *
+ * Lieutenants are blocked from the Financial Section entirely.
  */
 
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { formatCredits } from '../utils.js';
+import { Rank } from '@prisma/client';
 
 export const BankScreen: ScreenModule = {
   name: 'bank',
   render: async (characterId: string): Promise<ScreenResponse> => {
-    const character = await prisma.character.findUnique({ 
+    const character = await prisma.character.findUnique({
       where: { id: characterId },
       include: { ship: true }
     });
 
-    if (!character) {
-      return { output: '\x1b[31mError: Character not found.\x1b[0m\r\n' };
+    // SP.LINK.S finan lines 92-98: Lieutenants cannot access Financial Section
+    if (!character || character.rank === Rank.LIEUTENANT) {
+      return {
+        output: '\r\n\x1b[31mSpace Patrol rank of Commander or higher\x1b[0m\r\n' +
+                '\x1b[31mRequired for admittance into the Financial Section\x1b[0m\r\n',
+        nextScreen: 'main-menu',
+      };
     }
 
     const credits = formatCredits(character.creditsHigh, character.creditsLow);

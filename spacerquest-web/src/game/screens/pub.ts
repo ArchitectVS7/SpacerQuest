@@ -14,6 +14,7 @@ import {
   WOF_MIN_ROLLS,
   WOF_MAX_ROLLS,
   WOF_NUMBERS,
+  WOF_DAILY_WIN_CAP,
   DARE_MIN_ROUNDS,
   DARE_MAX_ROUNDS,
   DARE_MAX_MULTIPLIER,
@@ -121,6 +122,19 @@ Spacers from across the galaxy share stories here.
       }
 
       case 'W': {
+        // SP.GAME.S line 47: if (ui>0) and (uh>ui) goto gak
+        // Check daily win cap before starting WOF
+        const wofChar = await prisma.character.findUnique({ where: { id: characterId } });
+        if (wofChar) {
+          const today = new Date().toISOString().slice(0, 10);
+          const winsToday = wofChar.wofWinsDate === today ? wofChar.wofWinsToday : 0;
+          if (winsToday > WOF_DAILY_WIN_CAP) {
+            // SP.GAME.S line 136-137: gak — "Digital W. of F. closed for renovations"
+            return {
+              output: '\r\n\x1b[33;1mDigital W. of F. closed for renovations\x1b[0m\r\n> ',
+            };
+          }
+        }
         // Start Wheel of Fortune flow
         wofStates.set(characterId, { step: 'NUMBER' });
         return {
@@ -146,7 +160,7 @@ Spacers from across the galaxy share stories here.
         dareStates.set(characterId, { step: 'ROUNDS' });
         return {
           output: `\r\n\x1b[33;1m=== SPACER'S DARE ===\x1b[0m\r\n` +
-            `\r\nYou and the computer roll dice. Doubles = bust.\r\n` +
+            `\r\nRoll dice, accumulate score. Roll your reference number again = bust!\r\n` +
             `Net difference x multiplier = credits won or lost.\r\n` +
             `\r\nHow many rounds? (${DARE_MIN_ROUNDS}-${DARE_MAX_ROUNDS}), or Q to cancel: `,
         };
@@ -254,9 +268,17 @@ async function handleWofInput(characterId: string, raw: string): Promise<ScreenR
     if (result.won) {
       const payout = result.payout!;
       const newCredits = addCredits(character.creditsHigh, character.creditsLow, payout);
+      // SP.GAME.S line 125: uh=uh+1 — increment daily win counter
+      const today = new Date().toISOString().slice(0, 10);
+      const currentWins = character.wofWinsDate === today ? character.wofWinsToday : 0;
       await prisma.character.update({
         where: { id: characterId },
-        data: { creditsHigh: newCredits.high, creditsLow: newCredits.low },
+        data: {
+          creditsHigh: newCredits.high,
+          creditsLow: newCredits.low,
+          wofWinsToday: currentWins + 1,
+          wofWinsDate: today,
+        },
       });
       out += `\r\n\x1b[32;1mWINNER! Number ${state.betNumber} hit! +${payout} cr\x1b[0m\r\n`;
     } else {
@@ -329,17 +351,24 @@ async function handleDareInput(characterId: string, raw: string): Promise<Screen
 
     // Display round-by-round results
     let out = '\r\n\x1b[33;1mDice are rolling...\x1b[0m\r\n';
-    out += `\r\n  ${'Round'.padEnd(7)} ${'You'.padEnd(8)} ${'Computer'.padEnd(10)} Winner\r\n`;
-    out += `  ${'-'.repeat(38)}\r\n`;
+    out += `\r\n  ${'Round'.padEnd(7)} ${'You'.padEnd(10)} ${'Computer'.padEnd(12)} Winner\r\n`;
+    out += `  ${'-'.repeat(42)}\r\n`;
 
     for (let i = 0; i < result.roundResults!.length; i++) {
       const r = result.roundResults![i];
-      const pRoll = r.playerRolls[0];
-      const cRoll = r.computerRolls[0];
-      const pDisplay = pRoll.isDoubles ? `${pRoll.die1}+${pRoll.die2}=BUST` : `${pRoll.die1}+${pRoll.die2}=${pRoll.total}`;
-      const cDisplay = cRoll.isDoubles ? `${cRoll.die1}+${cRoll.die2}=BUST` : `${cRoll.die1}+${cRoll.die2}=${cRoll.total}`;
+      // Show ref roll + score (busted if score == 0 and rolls > 1)
+      const pRef = r.playerRolls[0];
+      const cRef = r.computerRolls[0];
+      const pBusted = r.playerScore === 0 && r.playerRolls.length > 1;
+      const cBusted = r.computerScore === 0 && r.computerRolls.length > 1;
+      const pDisplay = pBusted
+        ? `ref=${pRef.total} BUST`
+        : `ref=${pRef.total} acc=${r.playerScore}`;
+      const cDisplay = cBusted
+        ? `ref=${cRef.total} BUST`
+        : `ref=${cRef.total} acc=${r.computerScore}`;
       const winColor = r.roundWinner === 'PLAYER' ? '\x1b[32m' : r.roundWinner === 'COMPUTER' ? '\x1b[31m' : '\x1b[33m';
-      out += `  ${String(i + 1).padEnd(7)} ${pDisplay.padEnd(8)} ${cDisplay.padEnd(10)} ${winColor}${r.roundWinner}\x1b[0m\r\n`;
+      out += `  ${String(i + 1).padEnd(7)} ${pDisplay.padEnd(10)} ${cDisplay.padEnd(12)} ${winColor}${r.roundWinner}\x1b[0m\r\n`;
     }
 
     out += `\r\n  Total: You \x1b[36;1m${result.playerTotal}\x1b[0m — Computer \x1b[36;1m${result.computerTotal}\x1b[0m`;

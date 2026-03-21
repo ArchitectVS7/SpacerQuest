@@ -38,6 +38,7 @@ describe('Screen Registry Completeness', () => {
     'bank-withdraw',
     'bank-transfer',
     'rescue',
+    'rescue-self',
     'registry',
     'registry-search',
     'arena',

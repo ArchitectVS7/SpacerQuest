@@ -45,7 +45,7 @@ export async function registerMissionsRoutes(fastify: FastifyInstance) {
       data: {
         cargoManifest: 'Nemesis Orders - Coordinates: 00,00,00',
         destination: 28,
-        missionType: 3,
+        missionType: 9,
       },
     });
 
@@ -89,7 +89,7 @@ export async function registerMissionsRoutes(fastify: FastifyInstance) {
       data: {
         cargoManifest: 'MALIGNA MISSION - Coordinates: 13,33,99',
         destination: 27,
-        missionType: 4,
+        missionType: 3,
       },
     });
 

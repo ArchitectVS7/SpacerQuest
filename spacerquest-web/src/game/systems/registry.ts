@@ -130,19 +130,61 @@ const ALLIANCE_NAMES: Record<string, { name: string; symbol: string }> = {
 /**
  * Render the Space Registry main menu header
  *
- * Original from SP.REG.S:
- *   Menu options: [R]ecord, [L]ibrary, [A]lliance, [Q]uit
+ * Original from SP.REG.S (lines 36-45):
+ *   [L] Library
+ *   [R] Rescue Service    (requires functional ship + ship name)
+ *   [S] Space Patrol HQ   (requires functional ship + ship name)
+ *   [Q] Quit
+ *   [?] Menu
  */
 export function renderRegistryHeader(): string {
   let out = '';
   out += '\x1b[36;1m=========================================\x1b[0m\r\n';
   out += '\x1b[33;1m         SPACE REGISTRY                  \x1b[0m\r\n';
   out += '\x1b[36;1m=========================================\x1b[0m\r\n\r\n';
-  out += '  [R]ecord  - View a spacer\'s record\r\n';
-  out += '  [L]ibrary - Game information & help\r\n';
-  out += '  [A]lliance Directory\r\n';
-  out += '  [Q]uit    - Return to main menu\r\n';
-  out += '\r\n\x1b[32m[Space Registry]:Command:\x1b[0m ';
+  out += '  [L]ibrary         - Game information & help\r\n';
+  out += '  [R]escue Service  - Rescue lost spacers\r\n';
+  out += '  [S]pace Patrol HQ - Patrol mission center\r\n';
+  out += '  [Q]uit            - Return to main menu\r\n';
+  out += '\r\n\x1b[32m[Registry]: Command:\x1b[0m ';
+  return out;
+}
+
+/**
+ * Render the Library submenu
+ *
+ * Original from SP.REG.S (lines 47-66):
+ *   [H] Help
+ *   [P] Past Greats
+ *   [1] Star System Layout
+ *   [2] Game Log
+ *   [3] Help
+ *   [4] Directory of Spacers
+ *   [5] Game Formulae
+ *   [6] Ship Naming
+ *   [7] Game Rules/Documentation
+ *   [8] Top Gun List
+ *   [9] Alliance Directories
+ *   [Q] Quit back to Registry
+ */
+export function renderLibraryMenu(): string {
+  let out = '';
+  out += '\x1b[36;1m=========================================\x1b[0m\r\n';
+  out += '\x1b[33;1m              LIBRARY                    \x1b[0m\r\n';
+  out += '\x1b[36;1m=========================================\x1b[0m\r\n\r\n';
+  out += '  [H] Help\r\n';
+  out += '  [P] Past Greats\r\n';
+  out += '  [1] Star System Layout\r\n';
+  out += '  [2] Game Log\r\n';
+  out += '  [3] Help\r\n';
+  out += '  [4] Directory of Spacers\r\n';
+  out += '  [5] Game Formulae\r\n';
+  out += '  [6] Ship Naming\r\n';
+  out += '  [7] Game Rules\r\n';
+  out += '  [8] Top Gun List\r\n';
+  out += '  [9] Alliance Directories\r\n';
+  out += '  [Q] Quit\r\n';
+  out += '\r\n\x1b[32m[Library]: Command:\x1b[0m ';
   return out;
 }
 

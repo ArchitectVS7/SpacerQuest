@@ -13,7 +13,7 @@
  *   (Q) Quit
  */
 
-import { ARENA_REQUIREMENTS } from '../constants';
+import { ARENA_REQUIREMENTS, DUEL_HANDICAP_DIVISOR } from '../constants';
 
 // ============================================================================
 // TYPES
@@ -236,4 +236,244 @@ export function renderDuelResult(result: DuelResultDisplay): string {
 
   out += '\x1b[36;1m=========================================\x1b[0m\r\n';
   return out;
+}
+
+// ============================================================================
+// STAT SCREEN (stat section, SP.ARENA1.S lines 320-338)
+// ============================================================================
+
+export interface ArenaStatData {
+  shipName: string;
+  ownerName: string;
+  hullStrength: number; hullCondition: number;
+  driveStrength: number; driveCondition: number;
+  cabinStrength: number; cabinCondition: number;
+  lifeSupportStrength: number; lifeSupportCondition: number;
+  weaponStrength: number; weaponCondition: number;
+  navigationStrength: number; navigationCondition: number;
+  roboticsStrength: number; roboticsCondition: number;
+  shieldStrength: number; shieldCondition: number;
+  tripsCompleted: number;
+  astrecsTraveled: number;
+  cargoDelivered: number;
+  rescuesPerformed: number;
+  battlesWon: number;
+  battlesLost: number;
+  score: number;
+  creditsHigh: number;
+  creditsLow: number;
+  handicap: number;
+}
+
+/**
+ * Render ship/character stat screen (stat section, SP.ARENA1.S lines 320-338)
+ *
+ * Original output format:
+ *   Component                  Strngth  Cond.  |  Vital Stats
+ *   Hull [h1] [h2] | Completed Trips: u1
+ *   ...
+ *   Handicap (HCP) for [shipName]: [h]
+ */
+export function renderArenaStat(data: ArenaStatData): string {
+  function stfx(label: string, str: number, cnd: number, vitalStat: string): string {
+    const lPad = (label + '_'.repeat(27)).slice(0, 27);
+    const strStr = String(str).padStart(3);
+    return `${lPad}[: ${strStr} :]__[: ${cnd} :]  |  ${vitalStat}\r\n`;
+  }
+
+  const credits = data.creditsHigh > 0
+    ? `${data.creditsHigh}${String(data.creditsLow).padStart(4, '0')}`
+    : String(data.creditsLow);
+
+  let out = '';
+  out += '\r\n' + '-'.repeat(74) + '\r\n';
+  out += `     Ship: ${data.shipName} - Owner: ${data.ownerName}\r\n`;
+  out += '-'.repeat(74) + '\r\n';
+  out += 'Component                  Strngth  Cond.  |  Vital Stats\r\n';
+  out += '-------------------        -------  -----  | -------------------\r\n';
+  out += stfx('Hull', data.hullStrength, data.hullCondition, `Completed Trips   : ${data.tripsCompleted}`);
+  out += stfx('Drives', data.driveStrength, data.driveCondition, `Astrecs Travelled : ${data.astrecsTraveled}`);
+  out += stfx('Cabin', data.cabinStrength, data.cabinCondition, `Cargo Delivered   : ${data.cargoDelivered}`);
+  out += stfx('Life Support', data.lifeSupportStrength, data.lifeSupportCondition, `Total Rescues     : ${data.rescuesPerformed}`);
+  out += stfx('Weapons', data.weaponStrength, data.weaponCondition, `Battles Won       : ${data.battlesWon}`);
+  out += stfx('Navigation', data.navigationStrength, data.navigationCondition, `Battles Lost      : ${data.battlesLost}`);
+  out += stfx('Robotics', data.roboticsStrength, data.roboticsCondition, `Total Points      : ${data.score}`);
+  out += stfx('Shields', data.shieldStrength, data.shieldCondition, `Credits On Hand   : ${credits}`);
+  out += '-'.repeat(74) + '\r\n';
+  out += `Handicap (HCP) for ${data.shipName}: [: ${data.handicap} :]\r\n`;
+  out += '-'.repeat(74) + '\r\n';
+  return out;
+}
+
+// ============================================================================
+// ARENA GAME LOGIC (SP.ARENA1.S / SP.ARENA2.S)
+// ============================================================================
+
+export interface ShipComponents {
+  hullStrength: number; hullCondition: number;
+  driveStrength: number; driveCondition: number;
+  cabinStrength: number; cabinCondition: number;
+  lifeSupportStrength: number; lifeSupportCondition: number;
+  weaponStrength: number; weaponCondition: number;
+  navigationStrength: number; navigationCondition: number;
+  roboticsStrength: number; roboticsCondition: number;
+  shieldStrength: number; shieldCondition: number;
+}
+
+/**
+ * Calculate ship handicap (hand subroutine, SP.ARENA1.S line 344-347)
+ *
+ * Original: h=(h1*h2)+(d1*d2)+(c1*c2)+(l1*l2)+(w1*w2)+(n1*n2)+(r1*r2)+(p1*p2)
+ *           if h<500 h=0: return
+ *           h=(h/500): return
+ */
+export function calculateDuelHandicap(ship: ShipComponents): number {
+  const total =
+    ship.hullStrength * ship.hullCondition +
+    ship.driveStrength * ship.driveCondition +
+    ship.cabinStrength * ship.cabinCondition +
+    ship.lifeSupportStrength * ship.lifeSupportCondition +
+    ship.weaponStrength * ship.weaponCondition +
+    ship.navigationStrength * ship.navigationCondition +
+    ship.roboticsStrength * ship.roboticsCondition +
+    ship.shieldStrength * ship.shieldCondition;
+  if (total < DUEL_HANDICAP_DIVISOR) return 0;
+  return Math.floor(total / DUEL_HANDICAP_DIVISOR);
+}
+
+/**
+ * Calculate arena-specific handicap (arena subroutine SP.ARENA1.S lines 124-129 / afill SP.ARENA2.S lines 155-160)
+ *
+ * Original (afill):
+ *   if x6=1 a=(u1/50)
+ *   if x6=2 a=(j1/100)
+ *   if x6=3 a=(k1/100)
+ *   if x6=4 a=(b1*10)
+ *   if x6=5 a=((e1+1000)-m1)
+ *   if x6=6 a=0
+ */
+export function calculateArenaHandicap(
+  arenaType: number,
+  tripsCompleted: number,
+  astrecsTraveled: number,
+  cargoDelivered: number,
+  rescuesPerformed: number,
+  battlesWon: number,
+  battlesLost: number
+): number {
+  switch (arenaType) {
+    case 1: return Math.floor(tripsCompleted / 50);
+    case 2: return Math.floor(astrecsTraveled / 100);
+    case 3: return Math.floor(cargoDelivered / 100);
+    case 4: return rescuesPerformed * 10;
+    case 5: return (battlesWon + 1000) - battlesLost;
+    case 6: return 0;
+    default: return 0;
+  }
+}
+
+export interface DuelCombatResult {
+  /** Hits scored by the person who posted the duel (original Contender, bx side) */
+  posterHits: number;
+  /** Hits scored by the person who accepted the duel (original Challenger, cx side) */
+  accepterHits: number;
+  /** Whether the battle ended in a draw (equal hits) */
+  isDraw: boolean;
+  /** Round-by-round salvo log */
+  salvos: string[];
+}
+
+/**
+ * Simulate arena duel combat (salv subroutine, SP.ARENA2.S lines 74-83)
+ *
+ * NOTE: naming here uses "poster" for the person who posted to the roster (original Contender)
+ * and "accepter" for the person who issued the challenge / accepted (original Challenger).
+ * Modern DB schema uses the reverse names (challengerId=poster, contenderId=accepter).
+ *
+ * Original salv (9 rounds):
+ *   r=9: rand → j (1-9), bx=((j+1)*10)+x5  (poster's arena handicap x5, +1 advantage)
+ *         rand → k (1-9), cx=(k*10)+a        (accepter's arena handicap a)
+ *   bx>cx → posterHits++; cx>bx → accepterHits++; equal → deflect
+ */
+export function simulateDuelCombat(
+  posterShipName: string,
+  accepterShipName: string,
+  posterArenaHandicap: number,
+  accepterArenaHandicap: number
+): DuelCombatResult {
+  let posterHits = 0;
+  let accepterHits = 0;
+  const salvos: string[] = [];
+  let prevJ = 0;
+  let prevK = 0;
+  const R = 9;
+
+  for (let round = 0; round < 9; round++) {
+    // Poster salvo: bx=((j+1)*10)+posterArenaHandicap
+    let j = Math.floor(Math.random() * R) + 1;
+    if (j === prevJ) j = Math.min(j + 1, R + 1);
+    prevJ = j;
+    const bx = (j + 1) * 10 + posterArenaHandicap;
+
+    // Accepter salvo: cx=(k*10)+accepterArenaHandicap
+    let k = Math.floor(Math.random() * R) + 1;
+    if (k === prevK) k = Math.min(k + 1, R + 1);
+    prevK = k;
+    const cx = k * 10 + accepterArenaHandicap;
+
+    if (bx > cx) {
+      salvos.push(`${posterShipName} Salvo hits [${bx - cx}] => ${accepterShipName}!`);
+      posterHits++;
+    } else if (cx > bx) {
+      salvos.push(`${accepterShipName} Salvo hits [${cx - bx}] => ${posterShipName}!`);
+      accepterHits++;
+    } else {
+      salvos.push(`${posterShipName} and ${accepterShipName} Shields deflect Salvos!`);
+    }
+  }
+
+  return {
+    posterHits,
+    accepterHits,
+    isDraw: posterHits === accepterHits,
+    salvos,
+  };
+}
+
+/**
+ * Calculate proportional stakes transfer amount (fini section, SP.ARENA2.S lines 92-96)
+ *
+ * Original:
+ *   t=h+x2
+ *   if h>x2  s=((x2*10)/t):u=(x3*s)   <- accepter stronger: use poster's (weaker) handicap × poster's stakes
+ *   if x2>h  s=((h*10)/t):u=(xo*s)    <- poster stronger:   use accepter's (weaker) handicap × accepter's stakes
+ *   if h=x2  s=((h*10)/t):u=(xo*s)    <- equal:             same as poster-stronger case
+ *   v=1:if u>9 v=(u/10)
+ *
+ * NOTE: "poster" = original Contender (modern challenger), "accepter" = original Challenger (modern contender)
+ * posterHandicap = x2 in original; accepterHandicap = h in original
+ * posterStakes = x3 (credits/components = posterHandicap; points = floor(posterScore/posterHandicap/10))
+ * accepterStakes = xo (credits/components = accepterHandicap; points = floor(accepterScore/accepterHandicap/10))
+ */
+export function calculateProportionalStakes(
+  posterHandicap: number,
+  accepterHandicap: number,
+  posterStakes: number,
+  accepterStakes: number
+): number {
+  const t = posterHandicap + accepterHandicap;
+  if (t === 0) return 1;
+
+  let u: number;
+  if (accepterHandicap > posterHandicap) {
+    // accepter is stronger: use poster's (weaker) handicap and poster's stakes
+    const s = (posterHandicap * 10) / t;
+    u = posterStakes * s;
+  } else {
+    // poster is stronger or equal: use accepter's (weaker) handicap and accepter's stakes
+    const s = (accepterHandicap * 10) / t;
+    u = accepterStakes * s;
+  }
+
+  return Math.max(1, Math.floor(u / 10));
 }

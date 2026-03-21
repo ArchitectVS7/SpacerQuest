@@ -24,7 +24,10 @@ export const ShipyardSpecialScreen: ScreenModule = {
 
     const credits = formatCredits(character.creditsHigh, character.creditsLow);
     const ship = character.ship;
-    const autoRepairPrice = ship.hullStrength * SPECIAL_EQUIPMENT.AUTO_REPAIR.priceMultiplier;
+    // SP.SPEED.txt lines 82-83: price = hull * 1000, capped at 20,000 when hull > 20
+    const rawAutoRepairPrice = ship.hullStrength * SPECIAL_EQUIPMENT.AUTO_REPAIR.priceMultiplier;
+    const autoRepairPrice = ship.hullStrength > 20 ? 20000 : rawAutoRepairPrice;
+    const titaniumHullPrice = autoRepairPrice; // Same formula per original
 
     const owned = (flag: boolean) => flag ? ' \x1b[32m[OWNED]\x1b[0m' : '';
 
@@ -36,10 +39,10 @@ export const ShipyardSpecialScreen: ScreenModule = {
 \x1b[32mCredits:\x1b[0m ${credits} cr
 
   [1] Morton's Cloaker   -   500 cr  (hull < 5, shields req'd)${owned(ship.hasCloaker)}
-  [2] Auto-Repair System - ${String(autoRepairPrice).padStart(5)} cr  (hull × 1,000)${owned(ship.hasAutoRepair)}
+  [2] Auto-Repair System - ${String(autoRepairPrice).padStart(5)} cr  (hull × 1,000, max 20k)${owned(ship.hasAutoRepair)}
   [3] Star-Buster        - 10,000 cr  (Commander rank)${owned(ship.hasStarBuster)}
   [4] Arch-Angel         - 10,000 cr  (Commander rank)${owned(ship.hasArchAngel)}
-  [5] Titanium Hull      - ${String(autoRepairPrice).padStart(5)} cr  (hull × 1,000, +50 pods)${owned(ship.hasTitaniumHull)}
+  [5] Titanium Hull      - ${String(titaniumHullPrice).padStart(5)} cr  (hull × 1,000, max 20k, +50 pods)${owned(ship.hasTitaniumHull)}
   [6] Trans-Warp Accel.  - 10,000 cr  (+10 drive speed)${owned(ship.hasTransWarpDrive)}
   [7] Astraxial Hull     - 100,000 cr (Conqueror, drives ≥ 25)${owned(ship.isAstraxialHull)}
 

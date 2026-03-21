@@ -108,39 +108,116 @@ export const CombatScreen: ScreenModule = {
           session.currentRound,
         );
 
-        // Update round counter
+        // SP.FIGHT1.S:310 — f1=(f1-x) where x=w1/2: fuel consumed per attack round
+        const fuelConsumed = Math.floor(ship.weaponStrength / 2);
+        const newFuel = Math.max(0, ship.fuel - fuelConsumed);
+
+        // SP.FIGHT2.S:106-112 — victory by hull condition reaching 0
+        // Track cumulative damage via enemyHullCondition in the session
+        const newEnemyHull = Math.max(0, session.enemyHullCondition - (round.playerSystemDamage > 0 ? 1 : 0));
+        const newPlayerHull = Math.max(0, ship.hullCondition - (round.enemySystemDamage > 0 ? 1 : 0));
+
+        // Update round counter and enemy hull
         await prisma.combatSession.update({
           where: { id: session.id },
-          data: { currentRound: session.currentRound + 1 },
+          data: { currentRound: session.currentRound + 1, enemyHullCondition: newEnemyHull },
+        });
+
+        // Single ship update: always write fuel, also write hull if player took system damage
+        await prisma.ship.update({
+          where: { characterId },
+          data: {
+            fuel: newFuel,
+            ...(round.enemySystemDamage > 0 ? { hullCondition: newPlayerHull } : {}),
+          },
         });
 
         let out = `\r\n\x1b[33;1m── Round ${session.currentRound} ──\x1b[0m\r\n`;
 
-        // Check for victory (enemy shields destroyed)
-        const enemyDestroyed = round.enemyShieldDamage >= 100;
-        const playerDestroyed = round.playerShieldDamage >= 100;
+        const enemyDestroyed = newEnemyHull <= 0;
+        const playerDestroyed = newPlayerHull <= 0;
 
         if (enemyDestroyed) {
+          const { calculateSalvage, applySalvage, calculateLoot } =
+            await import('../systems/combat.js');
+
+          // SP.FIGHT2.S:31-40 — w2=(x8/w1): weapon condition recalculated from remaining power.
+          const roundsPlayed = session.currentRound;
+          const newWeaponCond = Math.max(0, ship.weaponCondition - Math.floor(roundsPlayed / 2));
           await prisma.combatSession.update({
             where: { id: session.id },
             data: { active: false, result: 'VICTORY' },
           });
-          // Award bounty and increment battles won
+
+          // Award bounty (credit loot from safe/boarding)
           const npc = session.npcRosterId
             ? await prisma.npcRoster.findUnique({ where: { id: session.npcRosterId } })
             : null;
           const bounty = npc?.creditValue || 500;
           const newCredits = addCredits(character.creditsHigh, character.creditsLow, bounty);
-          await prisma.character.update({
-            where: { id: characterId },
-            data: {
-              battlesWon: { increment: 1 },
-              creditsHigh: newCredits.high,
-              creditsLow: newCredits.low,
-            },
-          });
+
+          // SP.FIGHT2.S:139-193 — salvage wreckage for component upgrades
+          const enemyType = (session.enemyType || 'PIRATE') as any;
+          const enemyName = session.enemyName || 'Unknown';
+          const salvage = calculateSalvage(
+            enemyType,
+            character.tripCount,
+            character.battlesWon,
+            enemyName,
+            npc?.battlesWon || 3,
+          );
+
+          // Apply salvage to ship if it's a non-confirmation component
+          const shipUpdates: Record<string, any> = { weaponCondition: newWeaponCond };
+          let salvageCredits = 0;
+
+          if (salvage.component === 'gold') {
+            salvageCredits = salvage.amount;
+          } else if (!salvage.requiresConfirmation && salvage.component !== 'nothing') {
+            const componentUpdates = applySalvage(salvage, ship);
+            Object.assign(shipUpdates, componentUpdates);
+          } else if (salvage.requiresConfirmation && !salvage.isDefective) {
+            // Auto-accept beneficial weapon enhancements (beam intensifier)
+            // Original has a Y/N prompt; in web version we auto-accept beneficial ones
+            const componentUpdates = applySalvage(salvage, ship);
+            Object.assign(shipUpdates, componentUpdates);
+          }
+          // Defective weapons (isDefective=true) are auto-rejected for safety
+
+          const totalCredits = addCredits(newCredits.high, newCredits.low, salvageCredits);
+
+          await Promise.all([
+            prisma.character.update({
+              where: { id: characterId },
+              data: {
+                battlesWon: { increment: 1 },
+                creditsHigh: totalCredits.high,
+                creditsLow: totalCredits.low,
+              },
+            }),
+            prisma.ship.update({
+              where: { characterId },
+              data: shipUpdates,
+            }),
+          ]);
 
           out += `\x1b[32;1mVICTORY! Enemy destroyed! +${bounty} cr\x1b[0m\r\n`;
+          if (newWeaponCond < ship.weaponCondition) {
+            out += `\x1b[33mWeapons depleted: condition ${ship.weaponCondition} → ${newWeaponCond}\x1b[0m\r\n`;
+          }
+
+          // Display salvage results
+          out += `\r\n\x1b[36m...Searching Derelict for Salvage...\x1b[0m\r\n`;
+          if (salvage.component === 'nothing') {
+            out += `\x1b[37m...Nothing Useful found in wreckage of ${enemyName}\x1b[0m\r\n`;
+          } else if (salvage.component === 'gold') {
+            out += `\x1b[33;1m${salvage.description}.....found in wreckage of ${enemyName}\x1b[0m\r\n`;
+          } else if (salvage.isDefective) {
+            out += `\x1b[31mDefective weapon found — discarded for safety.\x1b[0m\r\n`;
+          } else {
+            out += `\x1b[32m${salvage.description}.....found in wreckage of ${enemyName}\x1b[0m\r\n`;
+          }
+
           out += '\r\n\x1b[37;1mPress any key to continue...\x1b[0m';
           return { output: out, nextScreen: 'main-menu' };
         }
@@ -161,7 +238,8 @@ export const CombatScreen: ScreenModule = {
         }
 
         out += `  Your attack: \x1b[32m${round.playerDamage || 'glancing'}\x1b[0m  `;
-        out += `Enemy attack: \x1b[31m${round.enemyDamage || 'glancing'}\x1b[0m\r\n`;
+        out += `Enemy attack: \x1b[31m${round.enemyDamage || 'glancing'}\x1b[0m  `;
+        out += `Fuel: \x1b[33m${newFuel}\x1b[0m\r\n`;
         out += '\r\n  [A]ttack  [R]etreat  [S]urrender  [Q]uit\r\n> ';
         return { output: out };
       }
@@ -190,23 +268,81 @@ export const CombatScreen: ScreenModule = {
       }
 
       case 'S': {
-        const tribute = Math.min(session.currentRound * 1000, 20000);
-        const { success, high, low } = subtractCredits(
-          character.creditsHigh, character.creditsLow, tribute,
+        // Full tribute system — 5 paths from SP.FIGHT1.S:222-271
+        const { calculateTribute } = await import('../systems/combat.js');
+
+        const totalCredits = character.creditsHigh * 10000 + character.creditsLow;
+        const enemyType = (session.enemyType || 'PIRATE') as any;
+
+        const tribute = calculateTribute(
+          character.missionType,
+          enemyType,
+          session.currentRound,
+          totalCredits,
+          ship.fuel,
+          character.cargoPods,
+          character.cargoManifest,
+          ship.cargoPods,
         );
-        if (success) {
-          await prisma.character.update({
-            where: { id: characterId },
-            data: { creditsHigh: high, creditsLow: low },
-          });
+
+        // Apply tribute effects
+        const charUpdates: Record<string, any> = {};
+        const shipUpdates: Record<string, any> = {};
+
+        if (tribute.creditsLost > 0) {
+          const { success, high, low } = subtractCredits(
+            character.creditsHigh, character.creditsLow, tribute.creditsLost,
+          );
+          if (success) {
+            charUpdates.creditsHigh = high;
+            charUpdates.creditsLow = low;
+          }
         }
-        await prisma.combatSession.update({
-          where: { id: session.id },
-          data: { active: false, result: 'SURRENDER' },
-        });
+
+        if (tribute.fuelLost > 0) {
+          shipUpdates.fuel = Math.max(0, ship.fuel - tribute.fuelLost);
+        }
+
+        if (tribute.cargoLost) {
+          charUpdates.cargoPods = 0;
+          charUpdates.cargoType = 0;
+          charUpdates.cargoPayment = 0;
+          charUpdates.cargoManifest = null;
+        }
+
+        if (tribute.storagePodsTaken > 0) {
+          shipUpdates.cargoPods = Math.max(0, ship.cargoPods - tribute.storagePodsTaken);
+        }
+
+        if (tribute.criminalRecord) {
+          charUpdates.crimeType = 5; // pp=5 smuggling
+          charUpdates.tripCount = character.tripCount + 1;
+        }
+
+        // Persist
+        const updates: Promise<any>[] = [
+          prisma.combatSession.update({
+            where: { id: session.id },
+            data: { active: false, result: 'SURRENDER' },
+          }),
+        ];
+        if (Object.keys(charUpdates).length > 0) {
+          updates.push(prisma.character.update({
+            where: { id: characterId },
+            data: charUpdates,
+          }));
+        }
+        if (Object.keys(shipUpdates).length > 0) {
+          updates.push(prisma.ship.update({
+            where: { characterId },
+            data: shipUpdates,
+          }));
+        }
+        await Promise.all(updates);
+
         return {
-          output: `\r\n\x1b[33mYou surrender and pay ${tribute} cr tribute.\x1b[0m\r\n`,
-          nextScreen: 'main-menu',
+          output: `\r\n\x1b[33m${tribute.message}\x1b[0m\r\n`,
+          nextScreen: tribute.criminalRecord ? 'main-menu' : 'main-menu',
         };
       }
 

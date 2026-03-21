@@ -39,7 +39,7 @@ function renderHeader(allianceName: string, investedStr: string, creditsStr: str
     `\r\n` +
     `  (I)nvest   - Deposit credits into alliance treasury\r\n` +
     `  (W)ithdraw - Withdraw from treasury\r\n` +
-    `  (D)EFCON   - Increase system defense level\r\n` +
+    `  (D)/(F)ort - Increase system defense level\r\n` +
     `  (S)ystems  - View alliance-controlled systems\r\n` +
     `  (Q)uit     - Return to main menu\r\n` +
     `\r\n` +
@@ -101,10 +101,11 @@ export const AllianceInvestScreen: ScreenModule = {
 
       if (state.step === 'system') {
         const systemId = parseInt(input.trim(), 10);
-        if (isNaN(systemId) || systemId < 1 || systemId > 28) {
+        // SP.VEST.S line 219: only systems 1-14 are investable (14 core star systems)
+        if (isNaN(systemId) || systemId < 1 || systemId > 14) {
           pendingDefcon.delete(characterId);
           return {
-            output: `\r\n\x1b[31mInvalid system number. Must be 1–28.\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
+            output: `\r\n\x1b[31mInvalid system number. Must be 1–14.\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
           };
         }
         pendingDefcon.set(characterId, { step: 'levels', systemId });
@@ -201,9 +202,11 @@ export const AllianceInvestScreen: ScreenModule = {
         return { output: '\r\nHow much to withdraw? (Enter amount): ' };
       }
 
+      case 'F': // F = Fortify (alias for D=DEFCON)
       case 'D': {
         pendingDefcon.set(characterId, { step: 'system' });
-        return { output: '\r\nWhich system? (1-28): ' };
+        // SP.VEST.S line 219: systems 1-14 only
+        return { output: '\r\nWhich system? (1-14): ' };
       }
 
       case 'S': {
@@ -238,7 +241,7 @@ export const AllianceInvestScreen: ScreenModule = {
 
       default: {
         return {
-          output: `\r\n\x1b[31mInvalid command. Press I, W, D, S, or Q.\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
+          output: `\r\n\x1b[31mInvalid command. Press I, W, D/F, S, or Q.\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
         };
       }
     }

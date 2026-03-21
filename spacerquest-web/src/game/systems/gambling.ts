@@ -122,7 +122,6 @@ export interface DareRoll {
   die1: number;
   die2: number;
   total: number;
-  isDoubles: boolean;
 }
 
 /**
@@ -135,12 +134,7 @@ export interface DareRoll {
 export function rollDare(): DareRoll {
   const die1 = Math.floor(Math.random() * 6) + 1;
   const die2 = Math.floor(Math.random() * 6) + 1;
-  return {
-    die1,
-    die2,
-    total: die1 + die2,
-    isDoubles: die1 === die2,
-  };
+  return { die1, die2, total: die1 + die2 };
 }
 
 /**
@@ -148,17 +142,24 @@ export function rollDare(): DareRoll {
  *
  * Original AI table from SP.GAME.S:
  *   x$="1919101007070710101919"
- * Paired values for totals 2-12, used as continuation threshold.
- * Computer keeps rolling if current roll count < threshold for this total.
+ *   o4=val(mid$(x$,((o2-1)*2)-1,2))
+ *
+ * Paired values indexed by reference total (2-12):
+ *   total 2→19, 3→19, 4→10, 5→10, 6→7, 7→7, 8→7, 9→10, 10→10, 11→19, 12→19
+ *
+ * Rare totals (2,3,11,12) get high threshold (keep rolling — bust unlikely).
+ * Common totals (6,7,8) get low threshold (stop early — bust likely).
+ *
+ * @param referenceTotal  o2: the first roll total of this round (the "bust number")
+ * @param rollCount       x: how many additional rolls have been taken so far
+ * @returns true if computer should keep rolling (o4 > rollCount in original)
  */
 const COMPUTER_AI_TABLE = [19, 19, 10, 10, 7, 7, 7, 10, 10, 19, 19];
 // Index 0 = total 2, index 10 = total 12
 
-export function computerDareStrategy(currentScore: number, rollCount: number): boolean {
-  // Computer rolls once to get a reference total, then decides
-  const testRoll = rollDare();
-  const tableIndex = testRoll.total - 2; // totals range 2-12, index 0-10
-  const threshold = COMPUTER_AI_TABLE[tableIndex] || 10;
+export function computerDareStrategy(referenceTotal: number, rollCount: number): boolean {
+  const tableIndex = referenceTotal - 2; // totals range 2-12, index 0-10
+  const threshold = COMPUTER_AI_TABLE[tableIndex] ?? 10;
   return rollCount < threshold;
 }
 
@@ -189,14 +190,61 @@ export interface DareResult {
 }
 
 /**
+ * Simulate one turn in Spacer's Dare (Pig-style dice game)
+ *
+ * Original mechanic from SP.GAME.S (strat / foolish / comp.turn labels):
+ *   1. Roll once → reference total (o2). This roll is NOT scored.
+ *   2. Keep rolling:
+ *      - If total == o2 → BUST (score = 0 for this round)
+ *      - Otherwise → accumulate total into z6
+ *   3. Stop when bust or strategy says stop.
+ *   4. Round score = accumulated z6 (0 if busted).
+ *
+ * @param strategy  Returns true (keep rolling) given (referenceTotal, rollCount).
+ *                  rollCount starts at 1 after the reference roll.
+ */
+function simulateDareTurn(strategy: (ref: number, count: number) => boolean): {
+  rolls: DareRoll[];
+  score: number;
+  busted: boolean;
+  referenceTotal: number;
+} {
+  const rolls: DareRoll[] = [];
+
+  // First roll sets the reference (not scored) — original: gosub roll.dice; o2=z8+z9
+  const refRoll = rollDare();
+  rolls.push(refRoll);
+  const referenceTotal = refRoll.total;
+
+  let accum = 0;
+  let rollCount = 1; // x in original, starts at 1
+
+  while (strategy(referenceTotal, rollCount)) {
+    const roll = rollDare();
+    rolls.push(roll);
+    rollCount++;
+    if (roll.total === referenceTotal) {
+      // BUST — original: "Gotcha Human!" / "Bad Ram Chip!"
+      return { rolls, score: 0, busted: true, referenceTotal };
+    }
+    // Accumulate — original: z6=z6+z4
+    accum += roll.total;
+  }
+
+  return { rolls, score: accum, busted: false, referenceTotal };
+}
+
+/**
  * Play Spacer's Dare
  *
- * Original from SP.GAME.S:
- *   - Player and computer take turns rolling two dice
- *   - Doubles = bust (0 points for that round)
- *   - Otherwise accumulate total
- *   - Each round, higher score wins
- *   - Net difference × multiplier = credits won/lost
+ * Original from SP.GAME.S (strat / foolish / comp.turn labels):
+ *   - Each round: player and computer each roll a reference total, then keep
+ *     rolling to accumulate score.
+ *   - Rolling the reference total again = BUST (0 points that round).
+ *   - Computer strategy is driven by AI table indexed by its own reference total.
+ *   - Player strategy mirrors the computer AI table (original is interactive;
+ *     this automated version uses the same table as a stand-in).
+ *   - Net cumulative score difference × multiplier = credits won/lost.
  */
 export function playSpacersDare(input: DareInput): DareResult {
   const { rounds, multiplier, creditsHigh, creditsLow } = input;
@@ -218,17 +266,14 @@ export function playSpacersDare(input: DareInput): DareResult {
   let computerTotal = 0;
 
   for (let r = 0; r < rounds; r++) {
-    // Player turn: single roll (doubles = bust)
-    const playerRolls: DareRoll[] = [];
-    const playerRoll = rollDare();
-    playerRolls.push(playerRoll);
-    const playerScore = playerRoll.isDoubles ? 0 : playerRoll.total;
+    // Player turn — uses computer AI table as strategy (original is interactive)
+    const playerTurn = simulateDareTurn(computerDareStrategy);
 
-    // Computer turn: single roll (doubles = bust)
-    const computerRolls: DareRoll[] = [];
-    const computerRoll = rollDare();
-    computerRolls.push(computerRoll);
-    const computerScore = computerRoll.isDoubles ? 0 : computerRoll.total;
+    // Computer turn — uses AI table keyed to its reference total
+    const computerTurn = simulateDareTurn(computerDareStrategy);
+
+    const playerScore = playerTurn.score;
+    const computerScore = computerTurn.score;
 
     let roundWinner: 'PLAYER' | 'COMPUTER' | 'TIE' = 'TIE';
     if (playerScore > computerScore) roundWinner = 'PLAYER';
@@ -241,8 +286,8 @@ export function playSpacersDare(input: DareInput): DareResult {
       playerScore,
       computerScore,
       roundWinner,
-      playerRolls,
-      computerRolls,
+      playerRolls: playerTurn.rolls,
+      computerRolls: computerTurn.rolls,
     });
   }
 

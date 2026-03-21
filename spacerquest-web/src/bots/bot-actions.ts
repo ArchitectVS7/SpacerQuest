@@ -106,7 +106,11 @@ export async function botAcceptCargo(characterId: string): Promise<{ action: Bot
   const pods = Math.min(character.ship.maxCargoPods, 10); // Reasonable cargo load
   if (pods <= 0) return null;
 
-  const contract = generateCargoContract(character.currentSystem, pods);
+  const contract = generateCargoContract(character.currentSystem, pods, false, {
+    hullCondition: character.ship.hullCondition,
+    driveStrength: character.ship.driveStrength,
+    driveCondition: character.ship.driveCondition,
+  });
 
   await prisma.character.update({
     where: { id: characterId },
@@ -144,6 +148,9 @@ export async function botDeliverCargo(characterId: string): Promise<BotAction | 
     destination: character.destination,
     payment: character.cargoPayment,
     description: character.cargoManifest || 'Cargo',
+    fuelRequired: 0,
+    distance: 0,
+    valuePerPod: 0,
   };
 
   const result = calculateCargoPayment(contract, character.currentSystem);
@@ -423,12 +430,13 @@ export async function botManagePort(characterId: string, profile: BotProfile): P
   const character = await prisma.character.findUnique({ where: { id: characterId } });
   if (!character) return null;
   
+  const { PORT_BASE_PRICE } = await import('../game/constants.js');
   const total = getTotalCredits(character.creditsHigh, character.creditsLow);
-  if (total < 500000) return null;
+  if (total < PORT_BASE_PRICE) return null;
 
-  const res = await buyPort(characterId, character.currentSystem);
+  const res = await buyPort(characterId, character.currentSystem, character.creditsHigh, character.creditsLow);
   if (res.success) {
-    return { type: 'MANAGE_PORT', detail: `Purchased Port ${character.currentSystem}`, creditsSpent: 500000 };
+    return { type: 'MANAGE_PORT', detail: `Purchased Port ${character.currentSystem}`, creditsSpent: PORT_BASE_PRICE };
   }
   return null;
 }

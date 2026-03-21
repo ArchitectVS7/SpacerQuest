@@ -2,11 +2,12 @@ import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { getFuelPrice } from '../systems/economy.js';
 import { formatCredits, subtractCredits } from '../utils.js';
+import { calculateFuelCapacity } from '../systems/travel.js';
 
 export const TradersBuyFuelScreen: ScreenModule = {
   name: 'traders-buy-fuel',
   render: async (characterId: string): Promise<ScreenResponse> => {
-    const character = await prisma.character.findUnique({ 
+    const character = await prisma.character.findUnique({
       where: { id: characterId },
       include: { ship: true }
     });
@@ -17,6 +18,8 @@ export const TradersBuyFuelScreen: ScreenModule = {
 
     const price = getFuelPrice(character.currentSystem);
     const credits = formatCredits(character.creditsHigh, character.creditsLow);
+    const capacity = calculateFuelCapacity(character.ship.hullStrength, character.ship.hullCondition);
+    const spaceLeft = Math.max(0, capacity - character.ship.fuel);
 
     const output = `
 \x1b[36;1m_________________________________________\x1b[0m
@@ -26,8 +29,9 @@ export const TradersBuyFuelScreen: ScreenModule = {
 \x1b[32mPrice:\x1b[0m ${price} cr per unit
 \x1b[32mCredits:\x1b[0m ${credits} cr
 \x1b[32mCurrent Fuel:\x1b[0m ${character.ship.fuel} units
+\x1b[32mTank Space Left:\x1b[0m ${spaceLeft} units
 
-Enter units to buy (0 to cancel):
+Enter units to buy (0 to cancel, max 2900 per transaction):
 \x1b[32m:\x1b[0m${character.currentSystem} Traders Buy Fuel:\x1b[32m: Amount:\x1b[0m
 > `;
 
@@ -45,6 +49,11 @@ Enter units to buy (0 to cancel):
       return { output: '\r\n\x1b[31mInvalid amount.\x1b[0m\r\n> ' };
     }
 
+    // SP.LIFT.S buyer: if i>2900 print ro$ (max 2900 per transaction)
+    if (units > 2900) {
+      return { output: '\r\n\x1b[31mToo Much!\x1b[0m\r\n> ' };
+    }
+
     const character = await prisma.character.findUnique({
       where: { id: characterId },
       include: { ship: true }
@@ -52,6 +61,14 @@ Enter units to buy (0 to cancel):
 
     if (!character || !character.ship) {
       return { output: '\x1b[31mError: Character not found.\x1b[0m\r\n', nextScreen: 'main-menu' };
+    }
+
+    const capacity = calculateFuelCapacity(character.ship.hullStrength, character.ship.hullCondition);
+    const newFuelLevel = character.ship.fuel + units;
+
+    // SP.LIFT.S buyer: if (f1+i)>ye → capex "Fueling capacity exceeded"
+    if (newFuelLevel > capacity) {
+      return { output: `\r\n\x1b[31mFueling capacity exceeded! Max capacity: ${capacity} units.\x1b[0m\r\n> ` };
     }
 
     const price = getFuelPrice(character.currentSystem);
@@ -69,13 +86,13 @@ Enter units to buy (0 to cancel):
       }),
       prisma.ship.update({
         where: { id: character.ship.id },
-        data: { fuel: character.ship.fuel + units }
+        data: { fuel: newFuelLevel }
       })
     ]);
 
-    return { 
-      output: `\x1b[2J\x1b[H\x1b[32mBought ${units} fuel for ${totalCost} cr.\x1b[0m\r\n`, 
-      nextScreen: 'traders' 
+    return {
+      output: `\x1b[2J\x1b[H\x1b[32mBought ${units} fuel for ${totalCost} cr.\x1b[0m\r\n`,
+      nextScreen: 'traders'
     };
   }
 };

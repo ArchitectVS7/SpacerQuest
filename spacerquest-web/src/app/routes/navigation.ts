@@ -282,6 +282,8 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
             where: { characterId: character.id },
             update: {
               npcRosterId: enemy.npcRosterId || null,
+              enemyType: enemy.type,
+              enemyName: enemy.name,
               playerWeaponPower: calculateComponentPower(character.ship.weaponStrength, character.ship.weaponCondition),
               playerShieldPower: calculateComponentPower(character.ship.shieldStrength, character.ship.shieldCondition),
               playerDrivePower: calculateComponentPower(character.ship.driveStrength, character.ship.driveCondition),
@@ -298,6 +300,8 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
             create: {
               characterId: character.id,
               npcRosterId: enemy.npcRosterId || null,
+              enemyType: enemy.type,
+              enemyName: enemy.name,
               playerWeaponPower: calculateComponentPower(character.ship.weaponStrength, character.ship.weaponCondition),
               playerShieldPower: calculateComponentPower(character.ship.shieldStrength, character.ship.shieldCondition),
               playerDrivePower: calculateComponentPower(character.ship.driveStrength, character.ship.driveCondition),
@@ -346,6 +350,8 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
         systemName: destSystem?.name || `System ${travelDestination}`,
         encounter: encounterResult,
         hazards: hazardEvents.length > 0 ? hazardEvents : undefined,
+        // Rim ports (15-20) have their own arrival screen instead of main-menu
+        screenOverride: (travelDestination >= 15 && travelDestination <= 20) ? 'rim-port' : undefined,
       });
     }
 

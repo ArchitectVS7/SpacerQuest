@@ -1,12 +1,12 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
-import { getFuelPrice, calculateFuelSaleProceeds } from '../systems/economy.js';
+import { getFuelSellPrice } from '../systems/economy.js';
 import { formatCredits, addCredits } from '../utils.js';
 
 export const TradersSellFuelScreen: ScreenModule = {
   name: 'traders-sell-fuel',
   render: async (characterId: string): Promise<ScreenResponse> => {
-    const character = await prisma.character.findUnique({ 
+    const character = await prisma.character.findUnique({
       where: { id: characterId },
       include: { ship: true }
     });
@@ -15,9 +15,7 @@ export const TradersSellFuelScreen: ScreenModule = {
       return { output: '\x1b[31mError: No ship found.\x1b[0m\r\n', nextScreen: 'main-menu' };
     }
 
-    const buyPrice = getFuelPrice(character.currentSystem);
-    // Usually sell price is half of buy price or determined by FUEL_SELL_MULTIPLIER
-    const sellPricePerUnit = calculateFuelSaleProceeds(1, buyPrice);
+    const sellPricePerUnit = getFuelSellPrice(character.currentSystem);
     const credits = formatCredits(character.creditsHigh, character.creditsLow);
 
     const output = `
@@ -29,7 +27,7 @@ export const TradersSellFuelScreen: ScreenModule = {
 \x1b[32mCredits:\x1b[0m ${credits} cr
 \x1b[32mCurrent Fuel:\x1b[0m ${character.ship.fuel} units
 
-Enter units to sell (0 to cancel):
+Enter units to sell (0 to cancel, max 2900 per transaction):
 \x1b[32m:\x1b[0m${character.currentSystem} Traders Sell Fuel:\x1b[32m: Amount:\x1b[0m
 > `;
 
@@ -47,6 +45,11 @@ Enter units to sell (0 to cancel):
       return { output: '\r\n\x1b[31mInvalid amount.\x1b[0m\r\n> ' };
     }
 
+    // SP.LIFT.S seller: if i>2900 print ro$ (max 2900 per transaction)
+    if (units > 2900) {
+      return { output: '\r\n\x1b[31mToo Much!\x1b[0m\r\n> ' };
+    }
+
     const character = await prisma.character.findUnique({
       where: { id: characterId },
       include: { ship: true }
@@ -60,8 +63,8 @@ Enter units to sell (0 to cancel):
       return { output: '\r\n\x1b[31mYou do not have that much fuel to sell!\x1b[0m\r\n> ' };
     }
 
-    const buyPrice = getFuelPrice(character.currentSystem);
-    const totalProceeds = calculateFuelSaleProceeds(units, buyPrice);
+    const sellPrice = getFuelSellPrice(character.currentSystem);
+    const totalProceeds = units * sellPrice;
 
     const { high, low } = addCredits(character.creditsHigh, character.creditsLow, totalProceeds);
 
@@ -76,9 +79,9 @@ Enter units to sell (0 to cancel):
       })
     ]);
 
-    return { 
-      output: `\x1b[2J\x1b[H\x1b[32mSold ${units} fuel for ${totalProceeds} cr.\x1b[0m\r\n`, 
-      nextScreen: 'traders' 
+    return {
+      output: `\x1b[2J\x1b[H\x1b[32mSold ${units} fuel for ${totalProceeds} cr.\x1b[0m\r\n`,
+      nextScreen: 'traders'
     };
   }
 };

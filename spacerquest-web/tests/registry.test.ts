@@ -15,6 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   renderRegistryHeader,
+  renderLibraryMenu,
   renderSpacerRecord,
   renderSpacerDirectory,
   renderAllianceDirectory,
@@ -33,12 +34,58 @@ describe('Registry/Directory Screen', () => {
       expect(output).toMatch(/space registry/i);
     });
 
-    it('should include menu options R, L, A, Q', () => {
+    it('should include menu options L, R, S, Q (original SP.REG.S lines 38-45)', () => {
+      // Original top-level menu: [L]ibrary, [R]escue Service, [S]pace Patrol HQ, [Q]uit
+      // [A]lliance is NOT a top-level key — it lives inside Library (option 9)
       const output = renderRegistryHeader();
-      expect(output).toContain('[R]');
       expect(output).toContain('[L]');
-      expect(output).toContain('[A]');
+      expect(output).toContain('[R]');
+      expect(output).toContain('[S]');
       expect(output).toContain('[Q]');
+    });
+
+    it('should NOT include [A] as a top-level option (alliance is inside Library)', () => {
+      // [A]lliance directory is Library option 9, not a top-level Registry key
+      const output = renderRegistryHeader();
+      // The header may reference 'Alliance' in a description but should not have [A] as a standalone key
+      expect(output).not.toMatch(/^\s*\[A\]/m);
+    });
+  });
+
+  // ============================================================================
+  // LIBRARY MENU TESTS
+  // ============================================================================
+
+  describe('renderLibraryMenu', () => {
+    it('should include all 9 numbered options (original SP.REG.S lines 57-65)', () => {
+      // Original library options: 1=layout, 2=log, 3=help, 4=directory, 5=formulae,
+      // 6=shipname, 7=dox, 8=topgun, 9=allies
+      const output = renderLibraryMenu();
+      for (let i = 1; i <= 9; i++) {
+        expect(output).toContain(`[${i}]`);
+      }
+    });
+
+    it('should include [H] Help and [P] Past Greats options', () => {
+      const output = renderLibraryMenu();
+      expect(output).toContain('[H]');
+      expect(output).toContain('[P]');
+    });
+
+    it('should include [Q] quit option', () => {
+      const output = renderLibraryMenu();
+      expect(output).toContain('[Q]');
+    });
+
+    it('should include spacer directory (option 4) and alliance directory (option 9)', () => {
+      const output = renderLibraryMenu();
+      expect(output).toMatch(/\[4\].*[Dd]irectory/);
+      expect(output).toMatch(/\[9\].*[Aa]lliance/);
+    });
+
+    it('should include ship naming (option 6)', () => {
+      const output = renderLibraryMenu();
+      expect(output).toMatch(/\[6\].*[Ss]hip/);
     });
   });
 

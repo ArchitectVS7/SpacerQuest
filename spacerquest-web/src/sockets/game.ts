@@ -11,6 +11,7 @@ import { prisma } from '../db/prisma.js';
 interface AuthenticatedSocket extends Socket {
   userId?: string;
   characterId?: string;
+  isAdmin?: boolean;
 }
 
 export function registerWebSocketHandler(io: import('socket.io').Server, fastify: FastifyInstance) {
@@ -22,7 +23,14 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
       try {
         const decoded = fastify.jwt.verify(data.token) as { userId: string };
         socket.userId = decoded.userId;
-        
+
+        // Look up user admin status
+        const user = await prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: { isAdmin: true },
+        });
+        socket.isAdmin = user?.isAdmin ?? false;
+
         // Get character ID
         const character = await prisma.character.findFirst({
           where: { userId: decoded.userId },

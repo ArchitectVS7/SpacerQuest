@@ -109,6 +109,26 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Character not found' });
     }
 
+    // Original SP.REG.S shipname subroutine (lines 113-121):
+    // If ship name ends in an alliance symbol (+/@/&/^), the player
+    // must already be a member of that alliance.
+    // "Seek out the Spacers Hangout before being / Using that symbol in your ship's name."
+    const ALLIANCE_SYMBOL_MAP: Record<string, AllianceType> = {
+      '+': AllianceType.ASTRO_LEAGUE,
+      '@': AllianceType.SPACE_DRAGONS,
+      '&': AllianceType.WARLORD_CONFED,
+      '^': AllianceType.REBEL_ALLIANCE,
+    };
+    const lastChar = shipName.slice(-1);
+    if (ALLIANCE_SYMBOL_MAP[lastChar]) {
+      const requiredAlliance = ALLIANCE_SYMBOL_MAP[lastChar];
+      if (character.allianceSymbol !== requiredAlliance) {
+        return reply.status(400).send({
+          error: 'Seek out the Spacers Hangout before using that symbol in your ship\'s name.',
+        });
+      }
+    }
+
     await prisma.character.update({
       where: { id: character.id },
       data: { shipName },

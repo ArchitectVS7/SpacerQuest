@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   calculateFuelCost,
+  calculatePatrolFuelCost,
   calculateTravelTime,
   calculateFuelCapacity,
 } from '../src/game/systems/travel';
@@ -66,6 +67,41 @@ describe('Travel System', () => {
     });
   });
   
+  describe('calculatePatrolFuelCost (SP.REG.S fcost, lines 250-256)', () => {
+    // SP.REG fcost differs from SP.LIFT fcost: no cap at 100
+    // Original: af=d1:if af>21 af=21; f2=(21-af)+(10-d2); f2*=q6; ty=f2+10; f2=ty/2 (NO cap)
+
+    it('should match the uncapped formula for drive-10, condition-9, distance 5', () => {
+      // af = min(10,21) = 10
+      // f2 = (21-10)+(10-9) = 11+1 = 12
+      // f2 = 12*5 = 60
+      // ty = 60+10 = 70
+      // result = floor(70/2) = 35  — same as capped version here since 70 < 100
+      expect(calculatePatrolFuelCost(10, 9, 5)).toBe(35);
+    });
+
+    it('should NOT cap at 100 unlike SP.LIFT fcost (original SP.REG.S lines 254-255)', () => {
+      // drive-1, condition-1, distance 10
+      // af = 1
+      // f2 = (21-1)+(10-1) = 20+9 = 29
+      // f2 = 29*10 = 290
+      // ty = 290+10 = 300
+      // SP.REG: result = floor(300/2) = 150  (NO cap)
+      // SP.LIFT: would cap ty at 100 → result = floor(100/2) = 50
+      expect(calculatePatrolFuelCost(1, 1, 10)).toBe(150);
+    });
+
+    it('should cap drive strength at 21', () => {
+      expect(calculatePatrolFuelCost(50, 9, 5)).toBe(calculatePatrolFuelCost(21, 9, 5));
+    });
+
+    it('should have minimum f2 of 1', () => {
+      // Best drives: d1=21, d2=9 → f2 = (21-21)+(10-9) = 1
+      // f2 = 1*1 = 1, ty = 1+10 = 11, result = floor(11/2) = 5
+      expect(calculatePatrolFuelCost(21, 9, 1)).toBe(5);
+    });
+  });
+
   describe('calculateTravelTime', () => {
     it('should calculate travel time based on distance', () => {
       expect(calculateTravelTime(5)).toBe(15);
@@ -115,13 +151,18 @@ describe('Combat System', () => {
         hasAutoRepair: false,
       };
       
-      // weapon: 20 * 8 = 160
-      // shield: 15 * 7 = 105
-      // cabin: 10 * 5 / 10 = 5
-      // robotics: 8 * 4 / 10 = 3
-      // Total: 160 + 105 + 5 + 3 + 5 = 278
+      // Original ranfix formula: (condition+1)*strength/10 per support component, then /5
+      // weapon: 20*8 = 160 (x8, direct)
+      // shield: 15*7 = 105 (x9, direct)
+      // cabin:    floor((5+1)*10/10) = 6
+      // lss:      floor((5+1)*10/10) = 6
+      // nav:      floor((5+1)*10/10) = 6
+      // drives:   floor((5+1)*10/10) = 6
+      // robotics: floor((4+1)*8/10)  = 4
+      // supportSum = 6+6+6+6+4 = 28, r9 = floor(28/5) = 5
+      // Total: 160 + 105 + r9(5) + rankBonus(0) = 270
       const bf = calculateBattleFactor(ship, Rank.LIEUTENANT, 0);
-      expect(bf).toBe(278);
+      expect(bf).toBe(270);
     });
     
     it('should include rank bonus', () => {
@@ -136,8 +177,11 @@ describe('Combat System', () => {
         hasAutoRepair: false,
       };
       
-      expect(calculateBattleFactor(ship, Rank.ADMIRAL, 0)).toBe(20);
-      expect(calculateBattleFactor(ship, Rank.GIGA_HERO, 0)).toBe(60);
+      // All strengths=0: all component contribs=0, supportSum=0≤4 → r9=10 (original floor)
+      // ADMIRAL rankBonus=20: 0+0+r9(10)+20 = 30
+      // GIGA_HERO rankBonus=60: 0+0+r9(10)+60 = 70
+      expect(calculateBattleFactor(ship, Rank.ADMIRAL, 0)).toBe(30);
+      expect(calculateBattleFactor(ship, Rank.GIGA_HERO, 0)).toBe(70);
     });
     
     it('should include experience bonus', () => {
@@ -152,8 +196,10 @@ describe('Combat System', () => {
         hasAutoRepair: false,
       };
       
-      // 100 battles won / 10 = 10 BF bonus
-      expect(calculateBattleFactor(ship, Rank.LIEUTENANT, 100)).toBe(10);
+      // Original ranfix: x=e1:gosub rfox → e1 added directly (no /10 division)
+      // expContrib=100, supportSum=100 (sum > 4), r9=floor(100/5)=20
+      // Total: 0+0+r9(20)+rankBonus(0) = 20
+      expect(calculateBattleFactor(ship, Rank.LIEUTENANT, 100)).toBe(20);
     });
     
     it('should include auto-repair bonus', () => {

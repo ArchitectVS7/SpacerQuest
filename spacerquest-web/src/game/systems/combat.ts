@@ -164,51 +164,94 @@ export interface ShipStats {
 }
 
 /**
- * Calculate Battle Factor
+ * Calculate Battle Factor (total player power for battle advantage)
  *
- * Original from SP.FIGHT1.S:
- *   BF = (weapon × condition) + (shield × condition) +
- *        (cabin × condition / 10) + (robotics × condition / 10) +
- *        (life support × condition / 10) + rank_bonus + experience_bonus
+ * Original from SP.FIGHT1.S: hx=x8+x9+r9
+ *   x8 = w2*w1  (weapon condition × weapon strength — weapon power)
+ *   x9 = p2*p1  (shield condition × shield strength — shield power)
+ *   r9 = BF bonus from ranfix routine (support components + experience)
+ *
+ * The ranfix routine (FIGHT1.S:471-491) computes r9:
+ *   For each of [cabin, life support, nav, drives, robotics, hull]:
+ *     sum += floor((condition+1) * strength / 10)
+ *   sum += floor(battlesWon / 10)       [e1 = battles won]
+ *   r9 = sum/5  (if sum > 4)
+ *   r9 = 10     (if sum <= 4)
+ *
+ * NOTE: Weapon and shield are NOT in ranfix. They are separate (x8, x9).
+ * NOTE: Rank bonus is NOT in the original ranfix — only battlesWon (e1).
+ * NOTE: Auto-repair does NOT give a BF bonus — it repairs components post-battle.
  */
 export function calculateBattleFactor(
   ship: ShipStats,
   rank: Rank,
   battlesWon: number
 ): number {
-  // Component contributions
-  const weaponBF = calculateComponentPower(ship.weaponStrength, ship.weaponCondition);
-  const shieldBF = calculateComponentPower(ship.shieldStrength, ship.shieldCondition);
+  // Weapon power (x8 = w2*w1) and shield power (x9 = p2*p1)
+  const weaponPower = calculateComponentPower(ship.weaponStrength, ship.weaponCondition);
+  const shieldPower = calculateComponentPower(ship.shieldStrength, ship.shieldCondition);
 
-  // Computer contributions (divided by 10)
-  const cabinBF = Math.floor(calculateComponentPower(ship.cabinStrength, ship.cabinCondition) / 10);
-  const roboticsBF = Math.floor(calculateComponentPower(ship.roboticsStrength, ship.roboticsCondition) / 10);
-  const lifeBF = Math.floor(calculateComponentPower(ship.lifeSupportStrength, ship.lifeSupportCondition) / 10);
+  // ranfix: support component contributions use (condition+1)*strength/10
+  // This means even a fully-damaged component (condition=0) still contributes strength/10
+  const cabinContrib   = Math.floor((ship.cabinCondition + 1)        * ship.cabinStrength / 10);
+  const lssContrib     = Math.floor((ship.lifeSupportCondition + 1)  * ship.lifeSupportStrength / 10);
+  const navContrib     = Math.floor((ship.navigationCondition + 1)   * ship.navigationStrength / 10);
+  const driveContrib   = Math.floor((ship.driveCondition + 1)        * ship.driveStrength / 10);
+  const roboticsContrib= Math.floor((ship.roboticsCondition + 1)     * ship.roboticsStrength / 10);
 
-  // Rank bonus
+  // Experience contribution: e1 (battles won) added DIRECTLY via rfox (not /10)
+  // Original ranfix: x=e1:gosub rfox → rfox just does y=y+x (no division)
+  // Component pairs go through rfix (/10), but e1 bypasses rfix and uses rfox directly
+  void EXPERIENCE_BF_DIVISOR; // constant kept for documentation, not used here
+  const expContrib = battlesWon;
+
+  // Sum all support contributions
+  const supportSum = cabinContrib + lssContrib + navContrib + driveContrib + roboticsContrib + expContrib;
+
+  // Original: if a>4 r9=(a/5) / if a<5 r9=10
+  const r9 = supportSum > 4 ? Math.floor(supportSum / 5) : 10;
+
+  // Rank bonus preserved from v4.0 (not in original ranfix, but kept for gameplay balance)
   const rankBonus = RANK_BF_BONUS[rank as keyof typeof RANK_BF_BONUS] || 0;
 
-  // Experience bonus (battles won / 10)
-  const experienceBonus = Math.floor(battlesWon / EXPERIENCE_BF_DIVISOR);
-
-  // Auto-repair module bonus has been removed. Original behavior repairs components instead.
-  
-  return weaponBF + shieldBF + cabinBF + roboticsBF + lifeBF + rankBonus + experienceBonus;
+  // Total: x8 + x9 + r9 + rank (modern addition)
+  return weaponPower + shieldPower + r9 + rankBonus;
 }
 
 /**
- * Calculate enemy battle factor
+ * Calculate enemy battle factor (total enemy power: y8 + y9 + jg)
  *
- * Original SP.FIGHT1.S ranfix routine: sums all component powers
- * and derives jg (enemy BF bonus) from the total.
+ * Original SP.FIGHT1.S ranfix routine (FIGHT1.S:483-491):
+ *   Enemy contributions to jg (BF bonus):
+ *     ni  = enemy cabin (pre-set from rand rolls)
+ *     ns  = enemy nav
+ *     nc  = enemy command center
+ *     s3/s4 = enemy drive strength/condition → (s4+1)*s3/10
+ *     p9/s5 = enemy hull condition/strength  → (p9+1)*s5/10
+ *     s9    = enemy shield condition         → (s9+1)*15/10
+ *     bw    = enemy battles won
+ *     rx    = enemy random factor
+ *   jg = sum/5 (if sum > 4) or 10 (if sum < 5)
+ *   jg += z1*5  (z1 = player crime count adds to enemy difficulty)
+ *
+ * In v4.0 with NPC roster, enemy stats map to the same formula:
+ *   y8 = weaponCondition * weaponStrength  (enemy weapon power)
+ *   y9 = shieldCondition * shieldStrength  (enemy shield power)
+ *   jg from drive + hull contributions (simplified)
  */
 export function calculateEnemyBattleFactor(enemy: Enemy): number {
-  const weaponBF = calculateComponentPower(enemy.weaponStrength, enemy.weaponCondition);
-  const shieldBF = calculateComponentPower(enemy.shieldStrength, enemy.shieldCondition);
-  const driveBF = Math.floor(calculateComponentPower(enemy.driveStrength, enemy.driveCondition) / 10);
-  const hullBF = Math.floor(calculateComponentPower(enemy.hullStrength, enemy.hullCondition) / 10);
+  // Enemy weapon power (y8) and shield power (y9)
+  const weaponPower = calculateComponentPower(enemy.weaponStrength, enemy.weaponCondition);
+  const shieldPower = calculateComponentPower(enemy.shieldStrength, enemy.shieldCondition);
 
-  return weaponBF + shieldBF + driveBF + hullBF;
+  // Enemy support components using same (condition+1)*strength/10 formula as ranfix
+  const driveContrib = Math.floor((enemy.driveCondition + 1) * enemy.driveStrength / 10);
+  const hullContrib  = Math.floor((enemy.hullCondition + 1)  * enemy.hullStrength / 10);
+
+  const supportSum = driveContrib + hullContrib;
+  const jg = supportSum > 4 ? Math.floor(supportSum / 5) : 10;
+
+  return weaponPower + shieldPower + jg;
 }
 
 // ============================================================================
@@ -392,34 +435,39 @@ export interface RetreatResult {
 /**
  * Attempt to retreat from combat
  *
- * Original: Check if faster ship, then retreat chance
+ * Original SP.FIGHT1.S:210-211:
+ *   if i$="N" print"...Retreating..."\:x=y:goto spgo
+ *   → When player chooses N (retreat), battle ends immediately.
+ *
+ * Player retreat is ALWAYS successful in the original. There is no probability
+ * check for the player — they can always disengage by pressing N.
+ *
+ * Speed (drive power) only determines whether the ENEMY retreats or makes
+ * another attack run on the next round (FIGHT1.S:455-465). It does not
+ * affect the player's ability to retreat.
+ *
+ * Cloaker activates immediately when used (always succeeds).
  */
 export function attemptRetreat(
   playerDrivePower: number,
   enemyDrivePower: number,
   hasCloaker: boolean
 ): RetreatResult {
-  // Cloaking device provides escape chance
-  if (hasCloaker && checkProbability(CLOAKING_ESCAPE_CHANCE)) {
+  // Cloaking device: always succeeds (player explicitly activates it)
+  if (hasCloaker) {
     return {
       success: true,
       message: 'Morton\'s Cloaker activates... you escape!',
     };
   }
 
-  // Compare speeds
-  if (playerDrivePower > enemyDrivePower) {
-    if (checkProbability(0.5)) {
-      return {
-        success: true,
-        message: 'Your superior drives allow you to escape!',
-      };
-    }
-  }
-
+  // Player retreat is always successful — original FIGHT1.S:210-211
+  // Speed advantage only affects the post-round enemy behavior, not player retreat
+  void playerDrivePower;
+  void enemyDrivePower;
   return {
-    success: false,
-    message: 'Enemy prevents your retreat!',
+    success: true,
+    message: '...Retreating...',
   };
 }
 
@@ -432,25 +480,27 @@ export interface SurrenderResult {
 /**
  * Enemy demands tribute
  *
- * Original from SP.FIGHT1.S:
+ * Original SP.FIGHT1.S:227-230:
  *   kc=(kg*1000):if kg>12 kc=10000
+ *
+ * Demands rise by 1000 per round (1000 at round 1, 12000 at round 12).
+ * After round 12, tribute is fixed at 10000.
+ * Note: round 12 demand (12000) exceeds the post-round-12 cap (10000).
  */
 export function enemyDemandsTribute(
   combatRounds: number,
   playerCredits: number
 ): SurrenderResult {
-  // Calculate tribute demand
-  let tribute = combatRounds * TRIBUTE_BASE_MULTIPLIER;
-  if (combatRounds > 12) tribute = 10000;
-  tribute = Math.min(tribute, 10000);
+  // Original: kc=(kg*1000):if kg>12 kc=10000
+  const tribute = combatRounds > 12 ? TRIBUTE_MAX : combatRounds * TRIBUTE_BASE_MULTIPLIER;
 
   // Cap at player's available credits
-  tribute = Math.min(tribute, playerCredits);
+  const actual = Math.min(tribute, playerCredits);
 
   return {
     accepted: true,
-    tributeDemanded: tribute,
-    message: `Enemy demands ${tribute} cr tribute!`,
+    tributeDemanded: actual,
+    message: `Enemy demands ${actual} cr tribute!`,
   };
 }
 
@@ -508,26 +558,501 @@ export async function recordBattle(
 // ============================================================================
 
 /**
- * Calculate loot from defeated enemy
+ * Calculate credit loot from defeated enemy (boarding + safe contents)
+ *
+ * Original SP.FIGHT2.S:132-136:
+ *   x=0:if p6>1 x=(p6/2)           — take half enemy fuel
+ *   if (s8<1) and (x>0) "Boarding... x Fuel taken"
+ *   if s5<1 "The pz$'s safe contained p5 cr" — take enemy credits
  *
  * When enemy comes from the NPC roster, use the creditValue field.
  * Otherwise fall back to class-based calculation.
  */
 export function calculateLoot(enemy: Enemy, playerBF: number): number {
-  // Original pirate salvage formula based on cargo type
   let baseLoot = 0;
-  // Fallback to creditValue if no class logic found, otherwise rely on class/type
   if (enemy.class === 'SPX') baseLoot = 500;
   else if (enemy.class === 'SPY') baseLoot = 1000;
   else if (enemy.class === 'SPZ') baseLoot = 2000;
   else if (enemy.type === 'RIM_PIRATE') baseLoot = 3000;
-  else if (enemy.type === 'PIRATE') baseLoot = 1000; // Base estimate for standard pirates
+  else if (enemy.type === 'PIRATE') baseLoot = 1000;
   else if (enemy.creditValue && enemy.creditValue > 0) baseLoot = enemy.creditValue;
 
-  // Bonus for player's battle factor
   const bfBonus = Math.floor(playerBF / 10);
 
   return baseLoot + bfBonus;
+}
+
+// ============================================================================
+// SALVAGE SYSTEM (SP.FIGHT2.S:139-193)
+// ============================================================================
+
+/**
+ * Component types that can be found in wreckage salvage.
+ */
+export type SalvageComponent =
+  | 'gold'
+  | 'drive'
+  | 'cabin'
+  | 'lifeSupport'
+  | 'weapon'        // beam intensifier (beneficial)
+  | 'navigation'
+  | 'robotics'
+  | 'shield'
+  | 'weaponDefective' // defective power unit (harmful)
+  | 'nothing';
+
+export interface SalvageResult {
+  component: SalvageComponent;
+  amount: number;
+  description: string;
+  /** True if weapon enhancement requires player confirmation (risk/reward) */
+  requiresConfirmation: boolean;
+  /** True if this is a defective weapon that will REDUCE weapon strength */
+  isDefective: boolean;
+}
+
+/**
+ * Salvage names for each component type, matching original FIGHT2.S:147-156
+ *
+ * sk=1/2 (pirate/patrol) names:
+ *   Gold Bullion, Drive: Non-Friction Bearings, Cabin: Grav-Less Water Bed,
+ *   LSS: Auto-Doc Specialist, Weapon: Beam Intensifier, Nav: Auto-True-Focus,
+ *   Robotic: Lightning Battle Chip, Shield: Photonic Deflector,
+ *   Weapon: Power Unit!...Defective!
+ *
+ * sk>=3 (rim/reptiloid) names (FIGHT2.S:173-178):
+ *   Weapon: Ionic Crystal, Drive: Relay Matrix, Shield: Protecto-Fuse,
+ *   Robotic: Iridium Chip, Nav: Sextant Arc, LSS: Recycle Unit
+ */
+const SALVAGE_NAMES_STANDARD: Record<number, { component: SalvageComponent; prefix: string }> = {
+  1: { component: 'gold', prefix: 'Gold Bullion' },
+  2: { component: 'drive', prefix: 'Drive: Non-Friction Bearings' },
+  3: { component: 'cabin', prefix: 'Cabin: Grav-Less Water Bed' },
+  4: { component: 'lifeSupport', prefix: 'LSS: Auto-Doc Specialist' },
+  5: { component: 'weapon', prefix: 'Weapon: Beam Intensifier' },
+  6: { component: 'navigation', prefix: 'Nav: Auto-True-Focus' },
+  7: { component: 'robotics', prefix: 'Robotic: Lightning Battle Chip' },
+  8: { component: 'shield', prefix: 'Shield: Photonic Deflector' },
+  9: { component: 'weaponDefective', prefix: 'Weapon: Power Unit!...Defective!' },
+};
+
+const SALVAGE_NAMES_RIM: Record<number, { component: SalvageComponent; prefix: string }> = {
+  1: { component: 'weapon', prefix: 'Weapon: Ionic Crystal' },
+  2: { component: 'drive', prefix: 'Drive: Relay Matrix' },
+  3: { component: 'shield', prefix: 'Shield: Protecto-Fuse' },
+  4: { component: 'robotics', prefix: 'Robotic: Iridium Chip' },
+  5: { component: 'navigation', prefix: 'Nav: Sextant Arc' },
+  6: { component: 'lifeSupport', prefix: 'LSS: Recycle Unit' },
+};
+
+/**
+ * Calculate salvage from defeated enemy wreckage.
+ *
+ * Original SP.FIGHT2.S:139-193 (scav/scavr routines):
+ *
+ * For sk=1 (pirates, core systems):
+ *   - Amount based on 2nd char of enemy ship name (original: a$=mid$(p5$,2,1))
+ *   - Roll determines component: r=(z1+4) + r=7, combined into x
+ *   - x=1: gold (+a * 10,000 cr), x=2-4,6-8: component upgrades
+ *   - x=5: weapon beam intensifier (requires confirmation)
+ *   - x=9: defective weapon power unit (requires confirmation, reduces weapon)
+ *   - x>9: nothing useful
+ *
+ * For sk=2 (patrol): amount fixed at 1
+ *
+ * For sk>=3 (rim pirates, reptiloids — scavr routine):
+ *   - Different component pool (weapon, drive, shield, robotics, nav, LSS)
+ *   - Amount based on enemy rank (p3) with modifier for sk=3
+ *   - Roll: r=(z1+wb+7), only values 1-6 yield components, rest nothing
+ *
+ * @param enemyType - Type of enemy (maps to sk value)
+ * @param playerTripCount - z1 (trips today), affects roll range
+ * @param playerBattlesWon - wb (battles won by player)
+ * @param enemyName - p5$ (ship name, 2nd char used for amount in sk=1)
+ * @param enemyRank - p3 (enemy's rank/power tier for rim salvage)
+ */
+export function calculateSalvage(
+  enemyType: Enemy['type'],
+  playerTripCount: number,
+  playerBattlesWon: number,
+  enemyName: string,
+  enemyRank: number,
+): SalvageResult {
+  // Map enemy type to sk value
+  const sk = enemyTypeToSk(enemyType);
+
+  if (sk >= 3) {
+    return calculateSalvageRim(playerTripCount, playerBattlesWon, enemyRank, sk);
+  }
+
+  // sk=1 or sk=2: standard salvage (scav routine)
+  return calculateSalvageStandard(sk, playerTripCount, enemyName);
+}
+
+function enemyTypeToSk(type: Enemy['type']): number {
+  switch (type) {
+    case 'PIRATE': return 1;
+    case 'PATROL': return 2;
+    case 'RIM_PIRATE': return 3;
+    case 'REPTILOID': return 4;
+    case 'BRIGAND': return 5;
+    default: return 1;
+  }
+}
+
+/**
+ * Standard salvage for pirates/patrol (FIGHT2.S:139-165, sk=1 or sk=2)
+ */
+function calculateSalvageStandard(
+  sk: number,
+  playerTripCount: number,
+  enemyName: string,
+): SalvageResult {
+  // Determine salvage amount
+  let amount: number;
+  if (sk === 2) {
+    // Patrol: fixed amount of 1 (FIGHT2.S:142)
+    amount = 1;
+  } else {
+    // Pirate: amount from 2nd char of ship name (FIGHT2.S:143)
+    // Original: a$=mid$(p5$,2,1):r=(val(a$)+1):gosub rand:a=i
+    const nameChar = enemyName.length >= 2 ? enemyName.charAt(1) : '1';
+    const nameVal = parseInt(nameChar, 10);
+    const rollRange = (isNaN(nameVal) ? 1 : nameVal) + 1;
+    amount = randomInt(1, Math.max(1, rollRange));
+  }
+
+  // Determine component type
+  // Original: r=(z1+4):gosub rand:x=i:r=7:gosub rand:x=(x+i)
+  const roll1 = randomInt(1, Math.max(1, playerTripCount + 4));
+  const roll2 = randomInt(1, 7);
+  const x = roll1 + roll2;
+
+  // x=5 or x=9 map to xk=5 (same search animation length)
+  // Original: if (x=5) or (x=9) xk=5
+
+  if (x > 9) {
+    return { component: 'nothing', amount: 0, description: '...Nothing Useful', requiresConfirmation: false, isDefective: false };
+  }
+
+  const entry = SALVAGE_NAMES_STANDARD[x];
+  if (!entry) {
+    return { component: 'nothing', amount: 0, description: '...Nothing Useful', requiresConfirmation: false, isDefective: false };
+  }
+
+  // Gold is special: credits = amount * 10,000 (FIGHT2.S:147: g1=g1+a → a * 10,000 cr)
+  if (x === 1) {
+    return {
+      component: 'gold',
+      amount: amount * 10000,
+      description: `${entry.prefix} +${amount}0,000 cr`,
+      requiresConfirmation: false,
+      isDefective: false,
+    };
+  }
+
+  // Weapon enhancements (x=5 or x=9) require confirmation
+  if (x === 5 || x === 9) {
+    return {
+      component: entry.component,
+      amount,
+      description: `${entry.prefix} +${amount}`,
+      requiresConfirmation: true,
+      isDefective: x === 9,
+    };
+  }
+
+  // Standard component upgrade
+  return {
+    component: entry.component,
+    amount,
+    description: `${entry.prefix} +${amount}`,
+    requiresConfirmation: false,
+    isDefective: false,
+  };
+}
+
+/**
+ * Rim/Reptiloid salvage (FIGHT2.S:167-180, scavr routine)
+ *
+ * Original:
+ *   r=(z1+wb+7):gosub rand:x=i
+ *   if (x>6) → nothing useful
+ *   y=p3:if sk=3 y=(p3+2):r=(y/2):gosub rand:y=i
+ */
+function calculateSalvageRim(
+  playerTripCount: number,
+  playerBattlesWon: number,
+  enemyRank: number,
+  sk: number,
+): SalvageResult {
+  const rollRange = Math.max(1, playerTripCount + playerBattlesWon + 7);
+  const x = randomInt(1, rollRange);
+
+  if (x < 1 || x > 6) {
+    return { component: 'nothing', amount: 0, description: '...Nothing Useful', requiresConfirmation: false, isDefective: false };
+  }
+
+  // Amount calculation
+  let baseAmount = enemyRank;
+  if (sk === 3) baseAmount = enemyRank + 2;
+  const amountRange = Math.max(1, Math.floor(baseAmount / 2));
+  const amount = randomInt(1, amountRange);
+
+  const entry = SALVAGE_NAMES_RIM[x];
+  if (!entry) {
+    return { component: 'nothing', amount: 0, description: '...Nothing Useful', requiresConfirmation: false, isDefective: false };
+  }
+
+  return {
+    component: entry.component,
+    amount,
+    description: `${entry.prefix} +${amount}`,
+    requiresConfirmation: false,
+    isDefective: false,
+  };
+}
+
+/**
+ * Apply salvage result to ship components.
+ * Returns a partial Ship update object for Prisma.
+ *
+ * Caps LSS at 50 strength (FIGHT2.S:186: if l1>50 l1=50)
+ * Caps all components at 199 strength (FIGHT2.S:52/FIGHT1.S:71: if x>199 x=199)
+ */
+export function applySalvage(
+  salvage: SalvageResult,
+  currentShip: {
+    driveStrength: number;
+    cabinStrength: number;
+    lifeSupportStrength: number;
+    weaponStrength: number;
+    navigationStrength: number;
+    roboticsStrength: number;
+    shieldStrength: number;
+  },
+): Record<string, number> {
+  const MAX_STRENGTH = 199;
+  const LSS_MAX = 50; // FIGHT2.S:186
+
+  const updates: Record<string, number> = {};
+
+  switch (salvage.component) {
+    case 'drive':
+      updates.driveStrength = Math.min(MAX_STRENGTH, currentShip.driveStrength + salvage.amount);
+      break;
+    case 'cabin':
+      updates.cabinStrength = Math.min(MAX_STRENGTH, currentShip.cabinStrength + salvage.amount);
+      break;
+    case 'lifeSupport':
+      updates.lifeSupportStrength = Math.min(LSS_MAX, currentShip.lifeSupportStrength + salvage.amount);
+      break;
+    case 'weapon':
+      updates.weaponStrength = Math.min(MAX_STRENGTH, currentShip.weaponStrength + salvage.amount);
+      break;
+    case 'weaponDefective':
+      updates.weaponStrength = Math.max(0, currentShip.weaponStrength - salvage.amount);
+      break;
+    case 'navigation':
+      updates.navigationStrength = Math.min(MAX_STRENGTH, currentShip.navigationStrength + salvage.amount);
+      break;
+    case 'robotics':
+      updates.roboticsStrength = Math.min(MAX_STRENGTH, currentShip.roboticsStrength + salvage.amount);
+      break;
+    case 'shield':
+      updates.shieldStrength = Math.min(MAX_STRENGTH, currentShip.shieldStrength + salvage.amount);
+      break;
+    // 'gold' and 'nothing' don't affect ship components
+  }
+
+  return updates;
+}
+
+// ============================================================================
+// TRIBUTE / SURRENDER SYSTEM (SP.FIGHT1.S:222-271)
+// ============================================================================
+
+/**
+ * The 5 surrender paths from the original, determined by mission type (kk) and
+ * encounter context (sk).
+ */
+export type TributePath =
+  | 'ALLIANCE_RAID'     // kk=4: plans & fuel confiscated (pb=6)
+  | 'SMUGGLING'         // kk=5: cargo confiscated, criminal record (pb=5)
+  | 'RIM_CONFISCATION'  // sk=3 & pz=21: cargo confiscated by rim pirate (pb=7)
+  | 'CREDIT_TRIBUTE'    // Default: pay credits (pb=7)
+  | 'INSUFFICIENT_CREDITS'; // ckc: not enough credits, take cargo/pods/fuel
+
+export interface TributeResult {
+  path: TributePath;
+  tributeCredits: number;
+  /** Credits lost (may differ from tribute if insufficient) */
+  creditsLost: number;
+  /** Fuel confiscated */
+  fuelLost: number;
+  /** Cargo pods confiscated */
+  cargoLost: boolean;
+  /** Storage pods lost (from ckc fallback) */
+  storagePodsTaken: number;
+  /** Player gets criminal record (smuggling caught) */
+  criminalRecord: boolean;
+  /** Message describing what happened */
+  message: string;
+}
+
+/**
+ * Calculate full tribute/surrender outcome based on mission context.
+ *
+ * Original SP.FIGHT1.S:222-271 has 5 distinct paths:
+ *
+ * 1. ctk4 (kk=4, alliance raid): Plans & fuel confiscated.
+ *    pb=6. Half fuel taken by enemy. (FIGHT1.S:243-246)
+ *
+ * 2. ctk5 (kk=5, smuggling): Cargo confiscated, criminal record.
+ *    pb=5. na$ gets "J%" prefix (jailbird). z1 incremented. (FIGHT1.S:247-253)
+ *
+ * 3. ctk5 (sk=3, pz=21, rim pirate #21): Cargo confiscated.
+ *    pb=7. No criminal record. (FIGHT1.S:249)
+ *
+ * 4. ctk (default): Pay credit tribute. Amount = kc=(kg*1000), capped at 10000 after round 12.
+ *    Modifiers: smuggling halves (kc/2), alliance raids or high pirates double (kc*2).
+ *    pb=7. (FIGHT1.S:254-262)
+ *
+ * 5. ckc (insufficient credits fallback): Enemy takes cargo, then pods, then fuel.
+ *    (FIGHT1.S:264-267)
+ *
+ * @param missionType - kk value (1=cargo, 2=patrol, 4=alliance raid, 5=smuggling, etc.)
+ * @param enemyType - Maps to sk
+ * @param combatRounds - kg (current round number)
+ * @param playerCredits - Total credits available
+ * @param playerFuel - Current fuel
+ * @param playerCargoPods - q1 (cargo pods carried)
+ * @param playerCargoManifest - q2$ (cargo description)
+ * @param playerStoragePods - s1 (storage pods on ship)
+ * @param enemyRosterId - pz (NPC roster index, 21 = special rim pirate)
+ */
+export function calculateTribute(
+  missionType: number,
+  enemyType: Enemy['type'],
+  combatRounds: number,
+  playerCredits: number,
+  playerFuel: number,
+  playerCargoPods: number,
+  playerCargoManifest: string | null,
+  playerStoragePods: number,
+  enemyRosterId?: number,
+): TributeResult {
+  const sk = enemyTypeToSk(enemyType);
+
+  // Path 1: Alliance raid (kk=4) — plans & fuel confiscated
+  if (missionType === 4) {
+    const fuelTaken = playerFuel >= 2 ? Math.floor(playerFuel / 2) : 0;
+    return {
+      path: 'ALLIANCE_RAID',
+      tributeCredits: 0,
+      creditsLost: 0,
+      fuelLost: fuelTaken,
+      cargoLost: true,
+      storagePodsTaken: 0,
+      criminalRecord: false,
+      message: `Plans & Fuel confiscated! ${fuelTaken} fuel taken.`,
+    };
+  }
+
+  // Path 2: Smuggling caught (kk=5) — cargo confiscated, criminal record
+  if (missionType === 5) {
+    return {
+      path: 'SMUGGLING',
+      tributeCredits: 0,
+      creditsLost: 0,
+      fuelLost: 0,
+      cargoLost: true,
+      storagePodsTaken: 0,
+      criminalRecord: true,
+      message: `Cargo of ${playerCargoManifest || 'contraband'} confiscated! Criminal record added.`,
+    };
+  }
+
+  // Path 3: Rim pirate #21 confiscation (sk=3, pz=21)
+  if (sk === 3 && enemyRosterId === 21 && playerCargoPods > 0) {
+    return {
+      path: 'RIM_CONFISCATION',
+      tributeCredits: 0,
+      creditsLost: 0,
+      fuelLost: 0,
+      cargoLost: true,
+      storagePodsTaken: 0,
+      criminalRecord: false,
+      message: `Cargo of ${playerCargoManifest || 'goods'} confiscated by Rim Pirate!`,
+    };
+  }
+
+  // Path 4/5: Credit tribute (default)
+  // Original: kc=(kg*1000):if kg>12 kc=10000
+  let kc = combatRounds > 12 ? TRIBUTE_MAX : combatRounds * TRIBUTE_BASE_MULTIPLIER;
+
+  // Modifiers from original FIGHT1.S:227-228
+  if (missionType === 5) kc = Math.floor(kc / 2); // smuggling halves
+  if (missionType === 4 || (enemyRosterId && enemyRosterId > 10)) kc = kc * 2; // alliance/high pirates double
+
+  // Cap at TRIBUTE_MAX
+  if (kc > TRIBUTE_MAX) kc = TRIBUTE_MAX;
+
+  // Can player afford it?
+  if (playerCredits >= kc) {
+    // Path 4: Pay credits
+    return {
+      path: 'CREDIT_TRIBUTE',
+      tributeCredits: kc,
+      creditsLost: kc,
+      fuelLost: 0,
+      cargoLost: false,
+      storagePodsTaken: 0,
+      criminalRecord: false,
+      message: `You pay ${kc} cr tribute.`,
+    };
+  }
+
+  // Path 5: Insufficient credits (ckc) — take cargo, then pods, then fuel
+  // Original FIGHT1.S:264-267
+  if (playerCargoPods > 0) {
+    return {
+      path: 'INSUFFICIENT_CREDITS',
+      tributeCredits: kc,
+      creditsLost: 0,
+      fuelLost: 0,
+      cargoLost: true,
+      storagePodsTaken: 0,
+      criminalRecord: false,
+      message: `Not enough credits! Enemy takes your ${playerCargoManifest || 'cargo'}.`,
+    };
+  }
+
+  if (playerStoragePods > 0) {
+    return {
+      path: 'INSUFFICIENT_CREDITS',
+      tributeCredits: kc,
+      creditsLost: 0,
+      fuelLost: 0,
+      cargoLost: false,
+      storagePodsTaken: playerStoragePods,
+      criminalRecord: false,
+      message: `Not enough credits! Enemy takes ${playerStoragePods} storage pods.`,
+    };
+  }
+
+  // Last resort: take fuel
+  const fuelTaken = playerFuel > 0 ? playerFuel : 0;
+  return {
+    path: 'INSUFFICIENT_CREDITS',
+    tributeCredits: kc,
+    creditsLost: 0,
+    fuelLost: fuelTaken,
+    cargoLost: false,
+    storagePodsTaken: 0,
+    criminalRecord: false,
+    message: `Not enough credits! Enemy drains ${fuelTaken} fuel.`,
+  };
 }
 
 // ============================================================================

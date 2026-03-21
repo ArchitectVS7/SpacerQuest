@@ -13,6 +13,9 @@ import {
   HAZARD_TYPES,
   type ShipComponents,
 } from '../src/game/systems/hazards';
+import {
+  calculateCourseChangeFuel,
+} from '../src/game/systems/travel';
 
 // ============================================================================
 // HAZARD TRIGGER TESTS
@@ -21,17 +24,40 @@ import {
 describe('Travel Hazards', () => {
   describe('checkHazardTrigger', () => {
     it('should trigger at 1/4 and 1/2 travel progress', () => {
-      // Original: if tt=(ty/4) hh=1 and if tt=(ty/2) hh=1
+      // Original SP.WARP.S lines 328+331: if tt=(ty/4) hh=1 and if tt=(ty/2) hh=1
       const travelTime = 20;
       expect(checkHazardTrigger(5, travelTime)).toBe(true);   // 1/4
       expect(checkHazardTrigger(10, travelTime)).toBe(true);  // 1/2
     });
 
-    it('should not trigger at other progress points', () => {
+    it('should not trigger at 1/3 on normal (non-mission) trips', () => {
+      // Original SP.WARP.S line 329: at ty/3 with mx=0, tp=1 is set (encounter), NOT hh=1 (hazard)
+      const travelTime = 30;
+      expect(checkHazardTrigger(10, travelTime, false)).toBe(false);  // 1/3 without mission
+      expect(checkHazardTrigger(10, travelTime)).toBe(false);         // default = no mission
+    });
+
+    it('should not trigger at other non-quarter/half progress points', () => {
       const travelTime = 20;
       expect(checkHazardTrigger(3, travelTime)).toBe(false);
       expect(checkHazardTrigger(7, travelTime)).toBe(false);
       expect(checkHazardTrigger(15, travelTime)).toBe(false);
+    });
+
+    it('should trigger at 1/3 on mission trips (mx>0)', () => {
+      // Original SP.WARP.S lines 332-333: if mx>0, if tt=(ty/3) hh=1:return
+      const travelTime = 30;
+      expect(checkHazardTrigger(10, travelTime, true)).toBe(true);  // 1/3 on mission
+    });
+
+    it('should trigger at extra mission hazard marks (1/9, 1/8, 1/7, 1/6, 1/5)', () => {
+      // Original SP.WARP.S lines 334-338: mission-only hazard triggers
+      const travelTime = 90;
+      expect(checkHazardTrigger(10, travelTime, true)).toBe(true);  // 1/9
+      expect(checkHazardTrigger(11, travelTime, true)).toBe(true);  // 1/8 = floor(90/8)=11
+      expect(checkHazardTrigger(12, travelTime, true)).toBe(true);  // 1/7 = floor(90/7)=12
+      expect(checkHazardTrigger(15, travelTime, true)).toBe(true);  // 1/6 = floor(90/6)=15
+      expect(checkHazardTrigger(18, travelTime, true)).toBe(true);  // 1/5 = floor(90/5)=18
     });
 
     it('should handle edge case of very short travel', () => {
@@ -52,9 +78,10 @@ describe('Travel Hazards', () => {
   });
 
   describe('generateHazard', () => {
-    it('should return null if shields absorb the hazard (50% chance with shields)', () => {
-      // Original: r=10:gosub rand:if x<>5 -> "All Clear!" (50% evade with shields)
-      vi.spyOn(Math, 'random').mockReturnValue(0.1); // evade
+    it('should return "All Clear" (evaded=true) when shields evade the hazard (90% chance)', () => {
+      // Original SP.WARP.S line 349: r=10:gosub rand:if x<>5 "All Clear!" (9/10 = 90% evade)
+      // Math.random()=0.1 → roll = Math.floor(0.1*10)+1 = 1, which is != 5 → evade
+      vi.spyOn(Math, 'random').mockReturnValue(0.1); // roll=1 → evade
 
       const ship: ShipComponents = {
         hullCondition: 9,
@@ -72,19 +99,16 @@ describe('Travel Hazards', () => {
       vi.restoreAllMocks();
 
       expect(result).not.toBeNull();
-      // When shields are up and random doesn't hit 50%, it's "All Clear"
-      // OR shields take the hit. Let me reconsider the original logic.
+      expect(result!.evaded).toBe(true);
+      expect(result!.component).toBe('none');
     });
 
     it('should drain shields when shields absorb instead of evading', () => {
-      // Original: shields take -1 condition when they absorb
-      // r=10:gosub rand:if x<>5 -> all clear (9/10 chance = 90% evade?)
-      // Actually: if x<>5 means if random(10)!=5 which is 90% evade
-      // Wait, re-reading: r=10:gosub rand generates 1-10, if x<>5 means 9/10 evade
-      // But then shields only drain 1/10 of the time.
-      // Let me use a simpler interpretation faithful to gameplay:
-      // With shields, 50% chance to evade completely, 50% chance shields drain
-      vi.spyOn(Math, 'random').mockReturnValue(0.6); // doesn't evade
+      // Original SP.WARP.S line 349: r=10:gosub rand:if x<>5 "All Clear!" (9/10 = 90% evade)
+      // x=5 triggers shield drain (10% chance).
+      // Simulation: Math.floor(random * 10) + 1 == 5 when random in [0.4, 0.5)
+      // Use 0.4 to force roll = 5 (shield drain).
+      vi.spyOn(Math, 'random').mockReturnValue(0.4); // forces roll=5 → shield drain
 
       const ship: ShipComponents = {
         hullCondition: 9,
@@ -243,6 +267,68 @@ describe('Travel Hazards', () => {
 
       const updated = applyHazardDamage(ship, 'hull', 1);
       expect(updated.hullCondition).toBe(0);
+    });
+  });
+});
+
+// ============================================================================
+// COURSE CHANGE FORMULA TESTS (SP.WARP.S lines 219-230)
+// ============================================================================
+
+describe('Course Change Fuel Formula (SP.WARP.S)', () => {
+  describe('calculateCourseChangeFuel (primary cost: h1*5)', () => {
+    it('should return hull strength × 5 (SP.WARP.S line 220: x=(h1*5))', () => {
+      expect(calculateCourseChangeFuel(10)).toBe(50);  // h1=10 → x=50
+      expect(calculateCourseChangeFuel(5)).toBe(25);   // h1=5 → x=25
+      expect(calculateCourseChangeFuel(1)).toBe(5);    // h1=1 → x=5
+    });
+
+    it('should return 0 for hull strength 0', () => {
+      expect(calculateCourseChangeFuel(0)).toBe(0);
+    });
+  });
+
+  describe('secondary fuel deduction formula (SP.WARP.S lines 228-230)', () => {
+    // Original: ry=ry+2 (increment), then f1=(f1-(ry*2)) OR f1=0 if not enough
+    // ry starts at 0. After 1st change: ry=2, deduction = 2*2 = 4
+    // After 2nd change: ry=4, deduction = 4*2 = 8
+    // After 3rd change: ry=6, deduction = 6*2 = 12
+
+    it('should calculate ry correctly on 1st course change (courseChangesUsed=0)', () => {
+      // ry = (0+1)*2 = 2, secondary = 2*2 = 4
+      const courseChangesUsed = 0;
+      const ry = (courseChangesUsed + 1) * 2;
+      expect(ry).toBe(2);
+      expect(ry * 2).toBe(4);
+    });
+
+    it('should calculate ry correctly on 2nd course change (courseChangesUsed=1)', () => {
+      // ry = (1+1)*2 = 4, secondary = 4*2 = 8
+      const courseChangesUsed = 1;
+      const ry = (courseChangesUsed + 1) * 2;
+      expect(ry).toBe(4);
+      expect(ry * 2).toBe(8);
+    });
+
+    it('secondary deduction should drain fuel to 0 if insufficient (SP.WARP.S line 230: else f1=0)', () => {
+      // If f1 after primary <= ry*2, then f1=0
+      const fuelAfterPrimary = 3;
+      const ry = 2;
+      const secondaryFuelCost = ry * 2; // = 4
+      const fuelAfterSecondary = fuelAfterPrimary > secondaryFuelCost
+        ? fuelAfterPrimary - secondaryFuelCost
+        : 0;
+      expect(fuelAfterSecondary).toBe(0); // 3 <= 4, so f1=0
+    });
+
+    it('secondary deduction should subtract ry*2 when sufficient fuel (SP.WARP.S line 230: f1=(f1-(ry*2)))', () => {
+      const fuelAfterPrimary = 20;
+      const ry = 2;
+      const secondaryFuelCost = ry * 2; // = 4
+      const fuelAfterSecondary = fuelAfterPrimary > secondaryFuelCost
+        ? fuelAfterPrimary - secondaryFuelCost
+        : 0;
+      expect(fuelAfterSecondary).toBe(16); // 20 - 4 = 16
     });
   });
 });

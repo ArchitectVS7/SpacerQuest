@@ -254,6 +254,29 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
     const handicap = Math.floor((h + d + c + l + w + n + r + p) / 500);
 
+    // Must have adequate handicap (SP.ARENA1.S line 68: if h<1 → "Inadequate for dueling!")
+    if (handicap < 1) {
+      return reply.status(400).send({ error: `${character.shipName || character.name} Inadequate for dueling!` });
+    }
+
+    // Validate stakes for POINTS type (SP.ARENA1.S line 104: if s2<150 → "Not enough points!")
+    if (stakesType === 'POINTS' && character.score < 150) {
+      return reply.status(400).send({ error: 'Not enough points! (minimum 150 required)' });
+    }
+
+    // Deduct credits immediately for CREDITS type (SP.ARENA1.S line 152: if x4=3 g1=g1-h)
+    if (stakesType === 'CREDITS' || stakesType === 'credits') {
+      const { getTotalCredits, subtractCredits } = await import('../../game/utils.js');
+      if (getTotalCredits(character.creditsHigh, character.creditsLow) < handicap) {
+        return reply.status(400).send({ error: 'Insufficient credits to post this duel' });
+      }
+      const result = subtractCredits(character.creditsHigh, character.creditsLow, handicap);
+      await prisma.character.update({
+        where: { id: character.id },
+        data: { creditsHigh: result.high, creditsLow: result.low },
+      });
+    }
+
     // Create duel entry
     const duel = await prisma.duelEntry.create({
       data: {
@@ -319,6 +342,57 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'You cannot duel a member of your own alliance' });
     }
 
+    // Can't challenge your own ship (iss2a, SP.ARENA2.S line 52)
+    if (character.id === duel.challengerId) {
+      return reply.status(400).send({ error: "Can't challenge own ship!" });
+    }
+
+    const { calculateDuelHandicap, calculateArenaHandicap, ARENA_NAMES } = await import('../../game/systems/arena.js');
+    const { getTotalCredits } = await import('../../game/utils.js');
+    const { ARENA_REQUIREMENTS: areReqs } = await import('../../game/constants.js');
+
+    // Accepter must meet arena requirements (chk subroutine, SP.ARENA2.S lines 146-152)
+    const arenaType = duel.arenaType;
+    if (arenaType === 1 && character.tripsCompleted < areReqs.ION_CLOUD.trips) {
+      return reply.status(400).send({ error: `${ARENA_NAMES[0]} Arena Closed!...Need more space trips` });
+    }
+    if (arenaType === 2 && character.astrecsTraveled < areReqs.PROTON_STORM.astrecs) {
+      return reply.status(400).send({ error: `${ARENA_NAMES[1]} Arena Closed!...Need more astrecs travelled` });
+    }
+    if (arenaType === 3 && character.cargoDelivered < areReqs.COSMIC_RADIATION.cargo) {
+      return reply.status(400).send({ error: `${ARENA_NAMES[2]} Arena Closed!...Need more cargo delivered` });
+    }
+    if (arenaType === 4 && character.rescuesPerformed < areReqs.BLACK_HOLE.rescues) {
+      return reply.status(400).send({ error: `${ARENA_NAMES[3]} Arena Closed!...Need more rescues` });
+    }
+
+    // Stakes-type validation for accepter (iss2a, SP.ARENA2.S lines 54-55)
+    const accepterHandicap = calculateDuelHandicap(character.ship);
+    if (duel.stakesType === 'POINTS' && character.score < 150) {
+      return reply.status(400).send({ error: 'Need more total points (minimum 150)' });
+    }
+    if ((duel.stakesType === 'CREDITS' || duel.stakesType === 'credits') && getTotalCredits(character.creditsHigh, character.creditsLow) < accepterHandicap) {
+      return reply.status(400).send({ error: 'Insufficient credits to accept this duel' });
+    }
+
+    // Accepter must have adequate handicap (h<1 check, SP.ARENA1.S line 68)
+    if (accepterHandicap < 1) {
+      return reply.status(400).send({ error: `${character.shipName || character.name} Inadequate for dueling!` });
+    }
+
+    // Deduct credits from accepter immediately if CREDITS type (parallel to contender's deduction)
+    if (duel.stakesType === 'CREDITS' || duel.stakesType === 'credits') {
+      const { subtractCredits } = await import('../../game/utils.js');
+      const result = subtractCredits(character.creditsHigh, character.creditsLow, accepterHandicap);
+      if (!result.success) {
+        return reply.status(400).send({ error: 'Insufficient credits to accept this duel' });
+      }
+      await prisma.character.update({
+        where: { id: character.id },
+        data: { creditsHigh: result.high, creditsLow: result.low },
+      });
+    }
+
     // Accept the duel
     await prisma.duelEntry.update({
       where: { id: duelId },
@@ -356,7 +430,7 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       },
     });
 
-    if (!duel || !duel.challenger.ship || !duel.contender.ship) {
+    if (!duel || !duel.challenger.ship || !duel.contender?.ship) {
       return reply.status(404).send({ error: 'Duel not found or ships missing' });
     }
 
@@ -364,94 +438,194 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Duel is not ready to resolve' });
     }
 
-    // Calculate battle factors
-    const { calculateBattleFactor } = await import('../../game/systems/combat.js');
+    const {
+      calculateArenaHandicap,
+      calculateDuelHandicap,
+      simulateDuelCombat,
+      calculateProportionalStakes,
+    } = await import('../../game/systems/arena.js');
 
-    const challengerBF = calculateBattleFactor(
-      {
-        weaponStrength: duel.challenger.ship.weaponStrength,
-        weaponCondition: duel.challenger.ship.weaponCondition,
-        shieldStrength: duel.challenger.ship.shieldStrength,
-        shieldCondition: duel.challenger.ship.shieldCondition,
-        cabinStrength: duel.challenger.ship.cabinStrength,
-        cabinCondition: duel.challenger.ship.cabinCondition,
-        roboticsStrength: duel.challenger.ship.roboticsStrength,
-        roboticsCondition: duel.challenger.ship.roboticsCondition,
-        lifeSupportStrength: duel.challenger.ship.lifeSupportStrength,
-        lifeSupportCondition: duel.challenger.ship.lifeSupportCondition,
-        navigationStrength: duel.challenger.ship.navigationStrength,
-        navigationCondition: duel.challenger.ship.navigationCondition,
-        driveStrength: duel.challenger.ship.driveStrength,
-        driveCondition: duel.challenger.ship.driveCondition,
-        hasAutoRepair: duel.challenger.ship.hasAutoRepair,
-      },
-      duel.challenger.rank,
-      duel.challenger.battlesWon
+    // NOTE: DB naming is SWAPPED from original:
+    //   duel.challenger = person who POSTED (original's Contender, bx side, "poster")
+    //   duel.contender  = person who ACCEPTED (original's Challenger, cx side, "accepter")
+
+    const posterShip = duel.challenger.ship;
+    const accepterShip = duel.contender.ship;
+    const poster = duel.challenger;
+    const accepter = duel.contender;
+
+    // Calculate arena handicaps for each player (afill, SP.ARENA2.S lines 154-161)
+    const posterArenaHcp = calculateArenaHandicap(
+      duel.arenaType,
+      poster.tripsCompleted,
+      poster.astrecsTraveled,
+      poster.cargoDelivered,
+      poster.rescuesPerformed,
+      poster.battlesWon,
+      poster.battlesLost
+    );
+    const accepterArenaHcp = calculateArenaHandicap(
+      duel.arenaType,
+      accepter.tripsCompleted,
+      accepter.astrecsTraveled,
+      accepter.cargoDelivered,
+      accepter.rescuesPerformed,
+      accepter.battlesWon,
+      accepter.battlesLost
     );
 
-    const contenderBF = calculateBattleFactor(
-      {
-        weaponStrength: duel.contender.ship.weaponStrength,
-        weaponCondition: duel.contender.ship.weaponCondition,
-        shieldStrength: duel.contender.ship.shieldStrength,
-        shieldCondition: duel.contender.ship.shieldCondition,
-        cabinStrength: duel.contender.ship.cabinStrength,
-        cabinCondition: duel.contender.ship.cabinCondition,
-        roboticsStrength: duel.contender.ship.roboticsStrength,
-        roboticsCondition: duel.contender.ship.roboticsCondition,
-        lifeSupportStrength: duel.contender.ship.lifeSupportStrength,
-        lifeSupportCondition: duel.contender.ship.lifeSupportCondition,
-        navigationStrength: duel.contender.ship.navigationStrength,
-        navigationCondition: duel.contender.ship.navigationCondition,
-        driveStrength: duel.contender.ship.driveStrength,
-        driveCondition: duel.contender.ship.driveCondition,
-        hasAutoRepair: duel.contender.ship.hasAutoRepair,
-      },
-      duel.contender.rank,
-      duel.contender.battlesWon
+    // Run 9-salvo combat (salv subroutine, SP.ARENA2.S lines 74-83)
+    const combat = simulateDuelCombat(
+      poster.shipName || poster.name,
+      accepter.shipName || accepter.name,
+      posterArenaHcp,
+      accepterArenaHcp
     );
 
-    // Add randomness
-    const challengerRoll = challengerBF * (0.8 + Math.random() * 0.4);
-    const contenderRoll = contenderBF * (0.8 + Math.random() * 0.4);
+    // Handle draw: stakes cancelled (SP.ARENA2.S line 91)
+    if (combat.isDraw) {
+      await prisma.duelEntry.update({
+        where: { id: duelId },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+      await prisma.gameLog.create({
+        data: {
+          type: 'DUEL',
+          message: `Duel Draw: ${poster.name} and ${accepter.name} — stakes cancelled`,
+          metadata: { duelId, salvos: combat.salvos },
+        },
+      });
+      return {
+        success: true,
+        result: {
+          draw: true,
+          salvos: combat.salvos,
+          message: 'Battle a Draw!...stakes cancelled!',
+        },
+      };
+    }
 
-    const winner = challengerRoll > contenderRoll ? duel.challenger : duel.contender;
-    const loser = challengerRoll > contenderRoll ? duel.contender : duel.challenger;
+    // Determine winner: poster wins if posterHits > accepterHits
+    const posterWon = combat.posterHits > combat.accepterHits;
+    const winner = posterWon ? poster : accepter;
+    const loser = posterWon ? accepter : poster;
 
-    // Update winner stats
+    // Calculate proportional stakes (fini, SP.ARENA2.S lines 92-96)
+    const posterHandicap = duel.handicap; // stored at post time (x2 in original)
+    const accepterHandicap = calculateDuelHandicap(accepterShip);
+
+    // Compute each player's stakes amount for proportional formula
+    let posterStakes: number;
+    let accepterStakes: number;
+    if (duel.stakesType === 'POINTS') {
+      // x3=((s2/h)/10) for poster; xo=((s2/h)/10) for accepter
+      posterStakes = posterHandicap > 0 ? Math.max(1, Math.floor(poster.score / posterHandicap / 10)) : 1;
+      accepterStakes = accepterHandicap > 0 ? Math.max(1, Math.floor(accepter.score / accepterHandicap / 10)) : 1;
+    } else {
+      // CREDITS / COMPONENTS: x3=h, xo=h (each stakes their own handicap)
+      posterStakes = Math.max(1, posterHandicap);
+      accepterStakes = Math.max(1, accepterHandicap);
+    }
+
+    const v = calculateProportionalStakes(posterHandicap, accepterHandicap, posterStakes, accepterStakes);
+
+    // Update winner: +battlesWon, +10 score (s2=s2+10, SP.ARENA2.S line 105)
     await prisma.character.update({
       where: { id: winner.id },
       data: {
         battlesWon: { increment: 1 },
-        score: { increment: duel.stakesAmount / 10 },
+        score: { increment: 10 },
       },
     });
 
-    // Update loser stats
+    // Update loser: +battlesLost
     await prisma.character.update({
       where: { id: loser.id },
-      data: {
-        battlesLost: { increment: 1 },
-      },
+      data: { battlesLost: { increment: 1 } },
     });
 
-    // Handle stakes transfer
-    if (duel.stakesType === 'credits') {
-      const { subtractCredits, addCredits } = await import('../../game/utils.js');
+    // Apply stakes transfer (spo3 / compfx, SP.ARENA2.S lines 99-130)
+    const { subtractCredits, addCredits } = await import('../../game/utils.js');
 
-      const loserCredits = subtractCredits(loser.creditsHigh, loser.creditsLow, duel.stakesAmount);
-      if (loserCredits.success) {
-        const winnerCredits = addCredits(winner.creditsHigh, winner.creditsLow, duel.stakesAmount);
-
+    if (duel.stakesType === 'CREDITS' || duel.stakesType === 'credits') {
+      // Transfer v * 10,000 raw credits (v is in g1-units where 1 g1 = 10,000 cr)
+      const creditTransfer = v * 10000;
+      const loserResult = subtractCredits(loser.creditsHigh, loser.creditsLow, creditTransfer);
+      if (loserResult.success) {
+        const winnerResult = addCredits(winner.creditsHigh, winner.creditsLow, creditTransfer);
         await prisma.character.update({
           where: { id: loser.id },
-          data: { creditsHigh: loserCredits.high, creditsLow: loserCredits.low },
+          data: { creditsHigh: loserResult.high, creditsLow: loserResult.low },
         });
         await prisma.character.update({
           where: { id: winner.id },
-          data: { creditsHigh: winnerCredits.high, creditsLow: winnerCredits.low },
+          data: { creditsHigh: winnerResult.high, creditsLow: winnerResult.low },
         });
       }
+    } else if (duel.stakesType === 'COMPONENTS' || duel.stakesType === 'components') {
+      // compfx: randomly damage v components of loser, repair v of winner (SP.ARENA2.S lines 117-130)
+      // Original cost: loser str+1, cnd-1 (degraded); winner str-1, cnd+1
+      // NOTE: original operates on contender's ship only but modifies based on m flag;
+      // here we apply symmetrically: loser str-1 cnd+1, winner str+1 cnd-1 (net transfer of strength)
+      const componentStrKeys = [
+        'driveStrength', 'cabinStrength', 'lifeSupportStrength',
+        'weaponStrength', 'navigationStrength', 'roboticsStrength', 'shieldStrength',
+      ] as const;
+      const componentCndKeys = [
+        'driveCondition', 'cabinCondition', 'lifeSupportCondition',
+        'weaponCondition', 'navigationCondition', 'roboticsCondition', 'shieldCondition',
+      ] as const;
+
+      const loserShip = loser.id === poster.id ? posterShip : accepterShip;
+      const winnerShip = winner.id === poster.id ? posterShip : accepterShip;
+      const loserShipUpdates: Record<string, number> = {};
+      const winnerShipUpdates: Record<string, number> = {};
+      const usedIndices = new Set<number>();
+
+      for (let i = 0; i < v && i < componentStrKeys.length; i++) {
+        let idx: number;
+        do { idx = Math.floor(Math.random() * componentStrKeys.length); }
+        while (usedIndices.has(idx));
+        usedIndices.add(idx);
+
+        const strKey = componentStrKeys[idx];
+        const cndKey = componentCndKeys[idx];
+
+        const loserShipRec = loserShip as unknown as Record<string, number>;
+        const winnerShipRec = winnerShip as unknown as Record<string, number>;
+
+        const loserStr = loserShipRec[strKey] ?? 0;
+        loserShipUpdates[strKey] = Math.max(0, (loserShipUpdates[strKey] ?? loserStr) - 1);
+
+        const winnerStr = winnerShipRec[strKey] ?? 0;
+        winnerShipUpdates[strKey] = Math.min(199, (winnerShipUpdates[strKey] ?? winnerStr) + 1);
+
+        // condition adjustments (cnd+1 for loser = wear; cnd-1 for winner = usage)
+        const loserCnd = loserShipRec[cndKey] ?? 0;
+        loserShipUpdates[cndKey] = Math.min(199, (loserShipUpdates[cndKey] ?? loserCnd) + 1);
+
+        const winnerCnd = winnerShipRec[cndKey] ?? 0;
+        winnerShipUpdates[cndKey] = Math.max(0, (winnerShipUpdates[cndKey] ?? winnerCnd) - 1);
+      }
+
+      const loserShipId = loser.id === poster.id ? posterShip.id : accepterShip.id;
+      const winnerShipId = winner.id === poster.id ? posterShip.id : accepterShip.id;
+      if (Object.keys(loserShipUpdates).length > 0) {
+        await prisma.ship.update({ where: { id: loserShipId }, data: loserShipUpdates });
+      }
+      if (Object.keys(winnerShipUpdates).length > 0) {
+        await prisma.ship.update({ where: { id: winnerShipId }, data: winnerShipUpdates });
+      }
+    } else if (duel.stakesType === 'POINTS' || duel.stakesType === 'points') {
+      // Transfer v score points: winner+v, loser-v (spo3 for points, SP.ARENA2.S lines 99, 112-115)
+      await prisma.character.update({
+        where: { id: winner.id },
+        data: { score: { increment: v } },
+      });
+      await prisma.character.update({
+        where: { id: loser.id },
+        data: { score: { decrement: v } },
+      });
     }
 
     // Mark duel as completed
@@ -459,21 +633,23 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       where: { id: duelId },
       data: {
         status: 'COMPLETED',
-        result: winner.id === duel.challenger.id ? 'VICTORY' : 'DEFEAT',
+        result: posterWon ? 'VICTORY' : 'DEFEAT',
         completedAt: new Date(),
       },
     });
 
-    // Log the duel
+    // Log the duel (dlog, SP.ARENA2.S lines 106-109)
     await prisma.gameLog.create({
       data: {
         type: 'DUEL',
-        message: `Duel: ${winner.name} defeated ${loser.name}`,
+        message: `Duel: ${winner.name} [${posterWon ? combat.posterHits : combat.accepterHits}] beats ${loser.name} [${posterWon ? combat.accepterHits : combat.posterHits}]`,
         metadata: {
+          duelId,
           winnerId: winner.id,
           loserId: loser.id,
           stakesType: duel.stakesType,
-          stakesAmount: duel.stakesAmount,
+          stakesTransferred: v,
+          salvos: combat.salvos,
         },
       },
     });
@@ -483,8 +659,10 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       result: {
         winner: winner.name,
         loser: loser.name,
-        winnerBF: Math.floor(challengerRoll > contenderRoll ? challengerRoll : contenderRoll),
-        loserBF: Math.floor(challengerRoll > contenderRoll ? contenderRoll : challengerRoll),
+        winnerHits: posterWon ? combat.posterHits : combat.accepterHits,
+        loserHits: posterWon ? combat.accepterHits : combat.posterHits,
+        stakesTransferred: v,
+        salvos: combat.salvos,
       },
     };
   });

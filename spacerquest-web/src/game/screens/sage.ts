@@ -36,7 +36,7 @@ export const SageScreen: ScreenModule = {
     if (character.currentSystem !== 18) {
       return {
         output: '\x1b[33mThe Sage can only be visited at Mizar-9 (System 18).\x1b[0m\r\n',
-        nextScreen: 'main-menu',
+        nextScreen: 'rim-port',
       };
     }
 
@@ -44,7 +44,7 @@ export const SageScreen: ScreenModule = {
     if (character.sageVisited) {
       return {
         output: '\x1b[33mThe Ancient One has already spoken to you this session.\x1b[0m\r\n',
-        nextScreen: 'main-menu',
+        nextScreen: 'rim-port',
       };
     }
 
@@ -89,7 +89,7 @@ export const SageScreen: ScreenModule = {
     if (!star) {
       return {
         output: '\x1b[31mThe Sage has no question for you.\x1b[0m\r\n',
-        nextScreen: 'main-menu',
+        nextScreen: 'rim-port',
       };
     }
 
@@ -98,7 +98,7 @@ export const SageScreen: ScreenModule = {
     if (answer.length !== 1 || answer < 'A' || answer > 'P') {
       return {
         output: '\x1b[31mThe Sage frowns... "That is not a valid answer."\x1b[0m\r\n',
-        nextScreen: 'main-menu',
+        nextScreen: 'rim-port',
       };
     }
 
@@ -117,7 +117,7 @@ export const SageScreen: ScreenModule = {
         output: `\x1b[32;1m"Correct!" The Sage smiles.\x1b[0m\r\n` +
           `\x1b[33mYour cabin systems have been enhanced!\x1b[0m\r\n` +
           `\x1b[36mCabin Strength: ${reward.cabinStrength} | Condition: ${reward.cabinCondition}\x1b[0m\r\n`,
-        nextScreen: 'main-menu',
+        nextScreen: 'rim-port',
       };
     }
 

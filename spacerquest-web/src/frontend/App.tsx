@@ -99,7 +99,7 @@ export function App() {
       }
     };
 
-    const handleTravelComplete = (data: { systemId: number; systemName: string; encounter?: any; hazards?: any[] }) => {
+    const handleTravelComplete = (data: { systemId: number; systemName: string; encounter?: any; hazards?: any[]; screenOverride?: string }) => {
       const { setCurrentSystem, setInTransit, appendToTerminal, setCurrentScreen } = useGameStore.getState();
 
       setCurrentSystem(data.systemId);
@@ -125,7 +125,13 @@ export function App() {
         } else {
           appendToTerminal(`\r\n\x1b[31;1m${data.encounter.message}\x1b[0m\r\n`);
           setCurrentScreen('combat');
+          return; // combat takes priority
         }
+      }
+
+      // Rim ports and other special screens override the default arrival
+      if (data.screenOverride) {
+        setCurrentScreen(data.screenOverride);
       }
     };
 

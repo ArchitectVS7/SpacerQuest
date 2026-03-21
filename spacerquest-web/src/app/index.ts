@@ -25,6 +25,7 @@ import { registerShipRoutes } from './routes/ship.js';
 import { registerSocialRoutes } from './routes/social.js';
 import { registerMissionsRoutes } from './routes/missions.js';
 import { registerAllianceRoutes } from './routes/alliance.js';
+import { registerAdminRoutes } from './routes/admin.js';
 
 // Import WebSocket handler
 import { registerWebSocketHandler } from '../sockets/game.js';
@@ -111,6 +112,7 @@ async function registerPlugins() {
         { name: 'social', description: 'Directory, rankings, duels' },
         { name: 'missions', description: 'Endgame missions' },
         { name: 'alliance', description: 'Alliance bulletin board' },
+        { name: 'admin', description: 'Admin panel (sysop)' },
       ],
     },
   });
@@ -174,6 +176,9 @@ await registerMissionsRoutes(fastify);
 
 // Alliance bulletin board
 await registerAllianceRoutes(fastify);
+
+// Admin panel (sysop)
+await registerAdminRoutes(fastify);
 
 // ============================================================================
 // WEBSOCKET

@@ -17,7 +17,8 @@ import { BankDepositScreen } from '../game/screens/bank-deposit.js';
 import { BankWithdrawScreen } from '../game/screens/bank-withdraw.js';
 import { BankTransferScreen } from '../game/screens/bank-transfer.js';
 import { RescueScreen } from '../game/screens/rescue.js';
-import { RegistryScreen } from '../game/screens/registry.js';
+import { RescueSelfScreen } from '../game/screens/rescue-self.js';
+import { RegistryScreen, LibraryScreen } from '../game/screens/registry.js';
 import { RegistrySearchScreen } from '../game/screens/registry-search.js';
 import { ArenaScreen } from '../game/screens/arena.js';
 import { CombatScreen } from '../game/screens/combat.js';
@@ -31,6 +32,19 @@ import { RaidScreen } from '../game/screens/raid.js';
 import { AllianceInvestScreen } from '../game/screens/alliance-invest.js';
 import { ExtraCurricularScreen } from '../game/screens/extra-curricular.js';
 import { EndTurnScreen } from '../game/screens/end-turn.js';
+import { AdminMenuScreen } from '../game/screens/admin-menu.js';
+import { AdminPlayersScreen } from '../game/screens/admin-players.js';
+import { AdminNpcsScreen } from '../game/screens/admin-npcs.js';
+import { AdminConfigScreen } from '../game/screens/admin-config.js';
+import { AdminLogsScreen } from '../game/screens/admin-logs.js';
+import { AdminSystemsScreen } from '../game/screens/admin-systems.js';
+import { BlackHoleEventScreen } from '../game/screens/black-hole-event.js';
+import { FuelDepotScreen } from '../game/screens/fuel-depot.js';
+import { FuelDepotPriceScreen } from '../game/screens/fuel-depot-price.js';
+import { FuelDepotBuyScreen } from '../game/screens/fuel-depot-buy.js';
+import { FuelDepotTransferScreen } from '../game/screens/fuel-depot-transfer.js';
+import { PortFuelPricesScreen } from '../game/screens/port-fuel-prices.js';
+import { RimPortScreen } from '../game/screens/rim-port.js';
 
 export const screens: Record<string, any> = {
   'main-menu': MainMenuScreen,
@@ -48,8 +62,12 @@ export const screens: Record<string, any> = {
   'bank-withdraw': BankWithdrawScreen,
   'bank-transfer': BankTransferScreen,
   'rescue': RescueScreen,
+  'rescue-self': RescueSelfScreen,
   'registry': RegistryScreen,
+  'library': LibraryScreen,
   'registry-search': RegistrySearchScreen,
+  // Space Patrol HQ (SP.REG.S 'S' key) — falls back to extra-curricular until full patrol screen exists
+  'space-patrol': ExtraCurricularScreen,
   'arena': ArenaScreen,
   'combat': CombatScreen,
   'spacers-hangout': SpacersHangoutScreen,
@@ -62,6 +80,19 @@ export const screens: Record<string, any> = {
   'alliance-invest': AllianceInvestScreen,
   'extra-curricular': ExtraCurricularScreen,
   'end-turn': EndTurnScreen,
+  'admin-menu': AdminMenuScreen,
+  'admin-players': AdminPlayersScreen,
+  'admin-npcs': AdminNpcsScreen,
+  'admin-config': AdminConfigScreen,
+  'admin-logs': AdminLogsScreen,
+  'admin-systems': AdminSystemsScreen,
+  'black-hole-event': BlackHoleEventScreen,
+  'fuel-depot': FuelDepotScreen,
+  'fuel-depot-price': FuelDepotPriceScreen,
+  'fuel-depot-buy': FuelDepotBuyScreen,
+  'fuel-depot-transfer': FuelDepotTransferScreen,
+  'port-fuel-prices': PortFuelPricesScreen,
+  'rim-port': RimPortScreen,
 };
 
 export async function handleScreenRequest(characterId: string, screenName: string) {

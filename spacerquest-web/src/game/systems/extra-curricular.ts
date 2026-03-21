@@ -9,24 +9,37 @@
 import { prisma } from '../../db/prisma.js';
 import {
   SHIP_GUARD_COST,
-  VANDALISM_STRENGTH_MIN,
-  VANDALISM_STRENGTH_MAX,
-  VANDALISM_CONDITION_MIN,
-  VANDALISM_CONDITION_MAX,
 } from '../constants.js';
-import { getTotalCredits, subtractCredits, randomInt } from '../utils.js';
+import { getTotalCredits, subtractCredits } from '../utils.js';
 
 export type ExtraCurricularMode = 'pirate' | 'star_patrol' | 'smuggler_patrol' | null;
 
 /**
- * Set a character's extra-curricular mode
+ * Set a character's extra-curricular mode and patrol sector.
+ * Original SP.END.txt: pirate writes q4 (system id) to pirates file (line 91),
+ * patrol writes q4 to sp.pat (line 188). Both void cargo contracts.
+ *
+ * @param patrolSector — target system 1-14, or null to clear
  */
-export async function setMode(characterId: string, mode: ExtraCurricularMode) {
+export async function setMode(characterId: string, mode: ExtraCurricularMode, patrolSector: number | null = null) {
+  // Original SP.END.txt line 96: q1=0:q2=0:q3=0:q4=0:q5=0:q6=0 — void cargo on mode set
+  const data: Record<string, unknown> = {
+    extraCurricularMode: mode,
+    patrolSector: patrolSector,
+  };
+  if (mode) {
+    // Void cargo contracts (original fcc3 warning + variable reset)
+    data.cargoPods = 0;
+    data.cargoType = 0;
+    data.cargoPayment = 0;
+    data.destination = 0;
+    data.cargoManifest = null;
+  }
   await prisma.character.update({
     where: { id: characterId },
-    data: { extraCurricularMode: mode },
+    data,
   });
-  return { success: true, mode };
+  return { success: true, mode, patrolSector };
 }
 
 /**
@@ -67,9 +80,56 @@ export async function hireShipGuard(characterId: string) {
   return { success: true, cost: SHIP_GUARD_COST };
 }
 
+export interface VandalShipStats {
+  cargoPods: number;
+  hullCondition: number;
+  cabinCondition: number;
+  driveStrength: number;
+  lifeSupportCondition: number;
+  lifeSupportStrength: number;
+}
+
+export interface VandalDamage {
+  vandalized: boolean;
+  component?: string;
+  damageDescription?: string;
+  /** The Prisma field to update and its new value */
+  field?: string;
+  newValue?: number;
+}
+
+/**
+ * Pure function: determine vandalism damage from roll x (1-10) and ship stats.
+ * Source: SP.END.txt lines 125-133 (vand subroutine)
+ *   x < 4 and cargoPods > x*10   → cargoPods -= x*10   (Pods damaged)
+ *   x = 4 and hullCondition > 3  → hullCondition -= 4   (Hull damaged)
+ *   x = 5 and cabinCondition > 4 → cabinCondition -= 5  (Cabin damaged)
+ *   x = 6 and driveStrength > 0  → driveStrength -= 1   (Drives damaged)
+ *   x = 7 and lifeSupportCondition > 6 → lifeSupportStrength -= 7 (Life Support damaged)
+ *   x = 8,9,10                   → no damage
+ */
+export function computeVandalDamage(x: number, ship: VandalShipStats): VandalDamage {
+  if (x < 4 && ship.cargoPods > x * 10) {
+    return { vandalized: true, component: 'Pods', damageDescription: `${x * 10} cargo pods stolen`, field: 'cargoPods', newValue: ship.cargoPods - x * 10 };
+  }
+  if (x === 4 && ship.hullCondition > 3) {
+    return { vandalized: true, component: 'Hull', damageDescription: 'condition -4', field: 'hullCondition', newValue: Math.max(0, ship.hullCondition - 4) };
+  }
+  if (x === 5 && ship.cabinCondition > 4) {
+    return { vandalized: true, component: 'Cabin', damageDescription: 'condition -5', field: 'cabinCondition', newValue: Math.max(0, ship.cabinCondition - 5) };
+  }
+  if (x === 6 && ship.driveStrength > 0) {
+    return { vandalized: true, component: 'Drives', damageDescription: 'strength -1', field: 'driveStrength', newValue: Math.max(0, ship.driveStrength - 1) };
+  }
+  if (x === 7 && ship.lifeSupportCondition > 6) {
+    return { vandalized: true, component: 'Life Support', damageDescription: 'strength -7', field: 'lifeSupportStrength', newValue: Math.max(0, ship.lifeSupportStrength - 7) };
+  }
+  // x=8,9,10 or conditions not met → no damage
+  return { vandalized: false };
+}
+
 /**
  * Apply vandalism on quit if no ship guard (SP.END.txt lines 110-134)
- * Random component gets strength -1 to -5, condition -1 to -3
  */
 export async function applyVandalism(characterId: string) {
   const character = await prisma.character.findUnique({
@@ -90,37 +150,22 @@ export async function applyVandalism(characterId: string) {
     return { vandalized: false, guardConsumed: true };
   }
 
-  // Pick a random component to vandalize
-  const components = [
-    'hull', 'drive', 'cabin', 'lifeSupport',
-    'weapon', 'navigation', 'robotics', 'shield',
-  ];
-  const target = components[Math.floor(Math.random() * components.length)];
-  const strengthField = `${target}Strength`;
-  const conditionField = `${target}Condition`;
+  const ship = character.ship;
+  const x = Math.floor(Math.random() * 10) + 1; // 1-10
 
-  const currentStrength = Number(character.ship[strengthField as keyof typeof character.ship]);
-  const currentCondition = Number(character.ship[conditionField as keyof typeof character.ship]);
-
-  const strengthLoss = randomInt(VANDALISM_STRENGTH_MIN, VANDALISM_STRENGTH_MAX);
-  const conditionLoss = randomInt(VANDALISM_CONDITION_MIN, VANDALISM_CONDITION_MAX);
-
-  const newStrength = Math.max(0, currentStrength - strengthLoss);
-  const newCondition = Math.max(0, currentCondition - conditionLoss);
-
-  const updateData: Record<string, number> = {};
-  updateData[strengthField] = newStrength;
-  updateData[conditionField] = newCondition;
+  const damage = computeVandalDamage(x, ship);
+  if (!damage.vandalized) {
+    return { vandalized: false };
+  }
 
   await prisma.ship.update({
-    where: { id: character.ship.id },
-    data: updateData,
+    where: { id: ship.id },
+    data: { [damage.field!]: damage.newValue! },
   });
 
   return {
     vandalized: true,
-    component: target,
-    strengthLoss,
-    conditionLoss,
+    component: damage.component,
+    damageDescription: damage.damageDescription,
   };
 }

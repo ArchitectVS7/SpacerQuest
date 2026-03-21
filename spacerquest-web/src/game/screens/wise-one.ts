@@ -25,11 +25,18 @@ export const WiseOneScreen: ScreenModule = {
     if (character.currentSystem !== 17) {
       return {
         output: '\x1b[33mThe Wise One can only be visited at Polaris-1 (System 17).\x1b[0m\r\n',
-        nextScreen: 'main-menu',
+        nextScreen: 'rim-port',
       };
     }
 
     const numberKey = generateNumberKey();
+
+    // Persist kn (number key) to character record — SP.PATPIR.S black section line 164
+    // uses kn to validate the player's input in The Great Void
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { numberKey },
+    });
 
     const output = `
 \x1b[36;1m${'-'.repeat(50)}\x1b[0m
@@ -51,7 +58,7 @@ export const WiseOneScreen: ScreenModule = {
   handleInput: async (_characterId: string, _input: string): Promise<ScreenResponse> => {
     return {
       output: '\x1b[33mYou leave the presence of The Wise One...\x1b[0m\r\n',
-      nextScreen: 'main-menu',
+      nextScreen: 'rim-port',
     };
   },
 };

@@ -5,7 +5,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../../db/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
-import { fuelBody, allianceInvestBody, allianceWithdrawBody, wheelBody, dareBody } from '../schemas.js';
+import { fuelBody, depotSetPriceBody, depotBuyBody, depotTransferBody, allianceInvestBody, allianceWithdrawBody, wheelBody, dareBody } from '../schemas.js';
 import { jailPlayer, CrimeType } from '../../game/systems/jail.js';
 
 export async function registerEconomyRoutes(fastify: FastifyInstance) {
@@ -69,7 +69,7 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
     }
     const { units } = body.data;
 
-    const { getFuelPrice, calculateFuelSaleProceeds } = await import('../../game/systems/economy.js');
+    const { getFuelSellPrice } = await import('../../game/systems/economy.js');
 
     const character = await prisma.character.findFirst({
       where: { userId },
@@ -84,8 +84,8 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Not enough fuel' });
     }
 
-    const fuelPrice = getFuelPrice(character.currentSystem);
-    const proceeds = calculateFuelSaleProceeds(units, fuelPrice);
+    const sellPrice = getFuelSellPrice(character.currentSystem);
+    const proceeds = units * sellPrice;
 
     // Update ship fuel and character credits
     await prisma.ship.update({
@@ -127,7 +127,12 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
     const contract = generateCargoContract(
       character.currentSystem,
       character.ship.cargoPods,
-      false
+      false,
+      {
+        hullCondition: character.ship.hullCondition,
+        driveStrength: character.ship.driveStrength,
+        driveCondition: character.ship.driveCondition,
+      }
     );
 
     await prisma.character.update({
@@ -222,6 +227,9 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
       destination: character.destination,
       payment: character.cargoPayment,
       description: character.cargoManifest || '',
+      fuelRequired: 0,
+      distance: 0,
+      valuePerPod: 0,
     };
 
     const { payment, bonus, total, message } = calculateCargoPayment(
@@ -384,5 +392,144 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
     const result = await allianceSystem.withdrawFromAlliance(character.id, amount);
     if (!result.success) return reply.status(400).send({ error: result.error });
     return result;
+  });
+
+  // ── Fuel Depot (port owner operations) ───────────────────────────────────
+
+  // Set fuel depot price
+  fastify.post('/api/economy/depot/price', {
+    preValidation: [requireAuth],
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const body = depotSetPriceBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+
+    const { validateDepotPrice } = await import('../../game/systems/economy.js');
+
+    const character = await prisma.character.findFirst({
+      where: { userId },
+      include: { portOwnership: true },
+    });
+
+    if (!character?.portOwnership) {
+      return reply.status(400).send({ error: 'Not a port owner' });
+    }
+
+    const result = validateDepotPrice(body.data.price);
+    if (!result.success) {
+      return reply.status(400).send({ error: result.message });
+    }
+
+    await prisma.portOwnership.update({
+      where: { id: character.portOwnership.id },
+      data: { fuelPrice: result.newPrice },
+    });
+
+    return { success: true, newPrice: result.newPrice };
+  });
+
+  // Buy fuel wholesale for depot
+  fastify.post('/api/economy/depot/buy', {
+    preValidation: [requireAuth],
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const body = depotBuyBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+
+    const { calculateDepotBuy } = await import('../../game/systems/economy.js');
+
+    const character = await prisma.character.findFirst({
+      where: { userId },
+      include: { portOwnership: true },
+    });
+
+    if (!character?.portOwnership) {
+      return reply.status(400).send({ error: 'Not a port owner' });
+    }
+
+    const result = calculateDepotBuy(
+      body.data.units,
+      character.portOwnership.fuelStored,
+      character.creditsHigh,
+      character.creditsLow,
+    );
+
+    if (!result.success) {
+      return reply.status(400).send({ error: result.message });
+    }
+
+    await prisma.$transaction([
+      prisma.character.update({
+        where: { id: character.id },
+        data: { creditsHigh: result.creditsHigh, creditsLow: result.creditsLow },
+      }),
+      prisma.portOwnership.update({
+        where: { id: character.portOwnership.id },
+        data: { fuelStored: result.newFuelStored },
+      }),
+    ]);
+
+    return { success: true, units: result.units, cost: result.cost, newFuelStored: result.newFuelStored };
+  });
+
+  // Transfer fuel from ship to depot
+  fastify.post('/api/economy/depot/transfer', {
+    preValidation: [requireAuth],
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { userId } = request.user as { userId: string };
+    const body = depotTransferBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.issues[0]?.message || 'Invalid input' });
+    }
+
+    const { calculateDepotTransfer } = await import('../../game/systems/economy.js');
+
+    const character = await prisma.character.findFirst({
+      where: { userId },
+      include: { ship: true, portOwnership: true },
+    });
+
+    if (!character?.ship) {
+      return reply.status(400).send({ error: 'No ship found' });
+    }
+
+    if (!character.portOwnership) {
+      return reply.status(400).send({ error: 'Not a port owner' });
+    }
+
+    // SP.REAL.txt line 218: must be docked at port's system
+    if (character.currentSystem !== character.portOwnership.systemId) {
+      return reply.status(400).send({ error: 'Must be docked at your port to transfer fuel' });
+    }
+
+    const result = calculateDepotTransfer(
+      body.data.units,
+      character.ship.fuel,
+      character.portOwnership.fuelStored,
+    );
+
+    if (!result.success) {
+      return reply.status(400).send({ error: result.message });
+    }
+
+    await prisma.$transaction([
+      prisma.ship.update({
+        where: { id: character.ship.id },
+        data: { fuel: result.newShipFuel },
+      }),
+      prisma.portOwnership.update({
+        where: { id: character.portOwnership.id },
+        data: { fuelStored: result.newFuelStored },
+      }),
+    ]);
+
+    return { success: true, units: result.units, newFuelStored: result.newFuelStored, newShipFuel: result.newShipFuel };
   });
 }

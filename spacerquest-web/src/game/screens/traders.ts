@@ -39,14 +39,17 @@ Market rates fluctuate based on supply/demand.
 \x1b[33;1m         CARGO TYPES                     \x1b[0m
 \x1b[37;1m=========================================\x1b[0m
 
-  Type    Description         Base Rate
-  ─────────────────────────────────────
-  [1]     Titanium Ore        1000 cr/pod
-  [2]     Capellan Herbals    2000 cr/pod
-  [3]     Raw Dilithium       3000 cr/pod
-  [4]     Mizarian Liquor     4000 cr/pod
-  [5]     Achernarian Gems    5000 cr/pod
-  [6]     Algolian RDNA       6000 cr/pod
+  Type    Description
+  ────────────────────────────────────
+  [1]     Dry Goods
+  [2]     Nutri Goods
+  [3]     Spices
+  [4]     Medicinals
+  [5]     Electronics
+  [6]     Precious Metals
+  [7]     Rare Elements
+  [8]     Photonic Components
+  [9]     Dilithium Crystal
 
 \x1b[37;1m=========================================\x1b[0m
 \x1b[33;1m           TRADERS MENU                  \x1b[0m

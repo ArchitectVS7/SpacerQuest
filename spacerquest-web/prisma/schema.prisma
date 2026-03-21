@@ -22,7 +22,8 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastLoginAt   DateTime?
-  
+  isAdmin       Boolean   @default(false)
+
   characters    Character[]
   sessions      Session[]
   
@@ -129,7 +130,17 @@ model Character {
   // crimeType maps to original pp: 5=smuggling, 6=carrier loss, 7=conduct
   crimeType       Int?              // null = not jailed
   sageVisited     Boolean   @default(false)  // Once-per-session Sage flag (kj)
-  
+  tripZeroUsed    Boolean   @default(false)  // Once-per-session Algol-2 trip counter zero flag (qu)
+
+  // Black Hole Number Key (SP.PATPIR.S:161-165 "black" section)
+  // Set by Wise One (kn variable). Player must enter this to unlock The Great Void weapon enhancement.
+  // null means not yet obtained from Wise One.
+  numberKey       Int?              // kn (1-9), null = not obtained
+
+  // Wheel of Fortune daily win tracking (SP.GAME.S lines 47, 53: uh wins vs ui=12 cap)
+  wofWinsToday    Int       @default(0)   // uh — wins accumulated today
+  wofWinsDate     String?                 // date string (YYYY-MM-DD) of last WOF win day
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   
@@ -192,7 +203,18 @@ model Ship {
   hasTitaniumHull   Boolean   @default(false)
   hasTransWarpDrive Boolean   @default(false)
   hasShipGuard    Boolean   @default(false)   // SP.END.txt: 10,000 cr guard, prevents vandalism on quit
+  hasWeaponMark   Boolean   @default(false)   // SP.PATPIR.S blk4: alien enhancement installed (w1$="?"+w1$)
   
+  // Component Names (SP.YARD.S tier purchase names)
+  hullName        String?
+  driveName       String?
+  cabinName       String?
+  lifeSupportName String?
+  weaponName      String?
+  navigationName  String?
+  roboticsName    String?
+  shieldName      String?
+
   // Damage Tracking (for repair system)
   damageFlags     Json      @default("[]")
   
@@ -215,7 +237,7 @@ model PortOwnership {
   lastActiveDate  DateTime  @default(now())
   
   // Financials
-  fuelPrice       Int       @default(25)  // Owner-set price
+  fuelPrice       Int       @default(5)   // Owner-set price; original SP.REAL.txt line 97: m5=5
   fuelStored      Int       @default(3000)
   fuelCapacity    Int       @default(20000)
   bankCreditsHigh Int       @default(0)
@@ -486,6 +508,10 @@ model CombatSession {
   npcRosterId     String?
   npcRoster       NpcRoster? @relation(fields: [npcRosterId], references: [id], onDelete: SetNull)
 
+  // Enemy identity for salvage/tribute calculations (SP.FIGHT2.S)
+  enemyType       String    @default("PIRATE")  // PIRATE, PATROL, RIM_PIRATE, BRIGAND, REPTILOID
+  enemyName       String    @default("")         // p5$ - ship name
+
   playerWeaponPower   Int
   playerShieldPower   Int
   playerDrivePower    Int
@@ -543,4 +569,19 @@ model TravelState {
   
   @@index([characterId])
   @@index([inTransit])
+}
+
+// ============================================================================
+// GAME CONFIGURATION (SP.EDIT3 sp.conf — sysop-tunable battle/difficulty settings)
+// ============================================================================
+
+model GameConfig {
+  id                    String   @id @default("default")
+  battleDifficulty      Int      @default(5)    // ff: 1-9
+  maxCombatRounds       Int      @default(12)   // qq: 1-15
+  pirateAttackThreshold Int      @default(20)   // jw
+  patrolAttackThreshold Int      @default(25)   // jx
+  attackRandomMin       Int      @default(3)    // ju: 1-9
+  attackRandomMax       Int      @default(5)    // jv: 1-9
+  updatedAt             DateTime @updatedAt
 }

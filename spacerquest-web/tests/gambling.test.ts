@@ -202,21 +202,35 @@ describe("Spacer's Dare", () => {
         expect(total).toBe(die1 + die2);
       }
     });
-
-    it('should detect doubles', () => {
-      vi.spyOn(Math, 'random').mockReturnValue(0.5); // both dice = 4
-      const result = rollDare();
-      expect(result.die1).toBe(result.die2);
-      expect(result.isDoubles).toBe(true);
-      vi.restoreAllMocks();
-    });
   });
 
   describe('computerDareStrategy', () => {
-    it('should return whether computer keeps rolling based on AI table', () => {
-      // Computer uses threshold table from original: "1919101007070710101919"
-      const decision = computerDareStrategy(0, 1);
-      expect(typeof decision).toBe('boolean');
+    // Original AI table from x$="1919101007070710101919":
+    //   total 2→19, 3→19, 4→10, 5→10, 6→7, 7→7, 8→7, 9→10, 10→10, 11→19, 12→19
+    it('should keep rolling for rare totals (2,3) up to threshold 19', () => {
+      expect(computerDareStrategy(2, 18)).toBe(true);   // rollCount 18 < 19
+      expect(computerDareStrategy(2, 19)).toBe(false);  // rollCount 19 not < 19
+      expect(computerDareStrategy(3, 18)).toBe(true);
+    });
+
+    it('should stop early for common totals (6,7,8) at threshold 7', () => {
+      expect(computerDareStrategy(7, 6)).toBe(true);   // rollCount 6 < 7
+      expect(computerDareStrategy(7, 7)).toBe(false);  // rollCount 7 not < 7
+      expect(computerDareStrategy(6, 7)).toBe(false);
+      expect(computerDareStrategy(8, 7)).toBe(false);
+    });
+
+    it('should use threshold 10 for medium totals (4,5,9,10)', () => {
+      expect(computerDareStrategy(4, 9)).toBe(true);
+      expect(computerDareStrategy(4, 10)).toBe(false);
+      expect(computerDareStrategy(9, 9)).toBe(true);
+      expect(computerDareStrategy(9, 10)).toBe(false);
+    });
+
+    it('should use threshold 19 for high rare totals (11,12)', () => {
+      expect(computerDareStrategy(11, 18)).toBe(true);
+      expect(computerDareStrategy(11, 19)).toBe(false);
+      expect(computerDareStrategy(12, 18)).toBe(true);
     });
   });
 
@@ -285,32 +299,21 @@ describe("Spacer's Dare", () => {
         expect(round).toHaveProperty('roundWinner');
         expect(round.playerScore).toBeGreaterThanOrEqual(0);
         expect(round.computerScore).toBeGreaterThanOrEqual(0);
+        // Each turn must have at least 1 roll (the reference roll)
+        expect(round.playerRolls.length).toBeGreaterThanOrEqual(1);
+        expect(round.computerRolls.length).toBeGreaterThanOrEqual(1);
       });
     });
 
-    it('should apply multiplier to net credits result', () => {
-      // Force deterministic outcomes
-      let callIdx = 0;
-      const values = [
-        // Round 1: player rolls 6+5=11 (no doubles), computer rolls 2+3=5
-        0.83, 0.66, // player dice: 6, 5
-        0.16, 0.33, // computer dice: 2, 3
-        // Round 2: player rolls 6+5=11, computer rolls 2+3=5
-        0.83, 0.66,
-        0.16, 0.33,
-        // Round 3: player rolls 6+5=11, computer rolls 2+3=5
-        0.83, 0.66,
-        0.16, 0.33,
-      ];
-      vi.spyOn(Math, 'random').mockImplementation(() => {
-        const val = values[callIdx % values.length];
-        callIdx++;
-        return val;
-      });
+    it('should bust when a subsequent roll matches the reference total', () => {
+      // Math.floor(0 * 6) + 1 = 1, so r=0 → die=1. Both dice=1 → total=2.
+      // reference total = 2 → threshold from AI table = 19 (keep rolling).
+      // All subsequent rolls also total 2 → matches reference → BUST every time.
+      vi.spyOn(Math, 'random').mockReturnValue(0);
 
       const result = playSpacersDare({
         rounds: 3,
-        multiplier: 2,
+        multiplier: 1,
         creditsHigh: 1,
         creditsLow: 0,
       });
@@ -318,10 +321,29 @@ describe("Spacer's Dare", () => {
       vi.restoreAllMocks();
 
       expect(result.success).toBe(true);
-      // Net credits should be multiplied by 2
-      if (result.netCredits! > 0) {
-        expect(result.multiplier).toBe(2);
-      }
+      // Every round: reference=2, next=2 → bust → score=0
+      result.roundResults!.forEach(round => {
+        expect(round.playerScore).toBe(0);
+        // Must have at least 2 rolls: reference + bust
+        expect(round.playerRolls.length).toBeGreaterThanOrEqual(2);
+        expect(round.playerRolls[0].total).toBe(2);
+        expect(round.playerRolls[1].total).toBe(2);
+      });
+    });
+
+    it('should apply multiplier to net credits result', () => {
+      const result = playSpacersDare({
+        rounds: 3,
+        multiplier: 2,
+        creditsHigh: 1,
+        creditsLow: 0,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.multiplier).toBe(2);
+      // |netCredits| = |playerTotal - computerTotal| * multiplier
+      const expectedAbs = Math.abs(result.playerTotal! - result.computerTotal!) * 2;
+      expect(Math.abs(result.netCredits!)).toBe(expectedAbs);
     });
 
     it('should return overall winner', () => {

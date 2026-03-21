@@ -41,7 +41,7 @@ Test 09 (`tests/e2e/09-browser-game-agent.spec.ts`) currently has 25 serial feat
 
 ---
 
-## 4. NPC Encounter Roster Alliance Tuning **POST LAUNCH - DO NOT IMPLEMENT**
+## NPC Encounter Roster Alliance Tuning **POST LAUNCH - DO NOT IMPLEMENT**
 
 **Priority: Low** — Polish work, not blocking anything.
 

@@ -5,7 +5,7 @@
  */
 
 import { prisma } from '../../db/prisma.js';
-import { DEFCON_COST_PER_LEVEL } from '../constants.js';
+import { DEFCON_MAX } from '../constants.js';
 import { addCredits, subtractCredits } from '../utils.js';
 
 export async function investInAlliance(characterId: string, amount: number) {
@@ -30,10 +30,13 @@ export async function investInAlliance(characterId: string, amount: number) {
     return { success: false, error: 'Not enough credits' };
   }
 
-  const investedHigh = membership.creditsHigh + Math.floor(amount / 100000);
-  const investedLow = membership.creditsLow + (amount % 100000);
-  const normalizedHigh = investedHigh + Math.floor(investedLow / 100000);
-  const normalizedLow = investedLow % 100000;
+  // Original (SP.SAVE lines 113-114): o4=o4+ia:o3=o3+ib
+  // Uses 10,000-unit split (same as g1/g2 player credits), not 100,000.
+  const { high: normalizedHigh, low: normalizedLow } = addCredits(
+    membership.creditsHigh,
+    membership.creditsLow,
+    amount
+  );
 
   await prisma.$transaction([
     prisma.character.update({
@@ -46,7 +49,7 @@ export async function investInAlliance(characterId: string, amount: number) {
     })
   ]);
 
-  return { success: true, newBalance: normalizedHigh * 100000 + normalizedLow };
+  return { success: true, newBalance: normalizedHigh * 10000 + normalizedLow };
 }
 
 export async function withdrawFromAlliance(characterId: string, amount: number) {
@@ -96,8 +99,21 @@ export async function withdrawFromAlliance(characterId: string, amount: number) 
   return { success: true, withdrawn: amount };
 }
 
+/**
+ * Calculate DEFCON fortification cost per level (SP.VEST.S lines 83, 85).
+ * Original: j=1 if o7<=9, j=2 if o7>9. Cost per level = j*10 * 10,000 cr.
+ * Tier 1 (current DEFCON ≤ 9): 100,000 cr per level.
+ * Tier 2 (current DEFCON > 9): 200,000 cr per level.
+ */
+export function calculateDefconCostPerLevel(currentDefcon: number): number {
+  return currentDefcon > 9 ? 200000 : 100000;
+}
+
 export async function investInDefcon(characterId: string, systemId: number, levels: number) {
-  const cost = levels * DEFCON_COST_PER_LEVEL;
+  // Original SP.VEST.S line 219: only systems 1-14 are investable
+  if (systemId < 1 || systemId > 14) {
+    return { success: false, error: 'System must be 1–14' };
+  }
 
   const character = await prisma.character.findUnique({
     where: { id: characterId },
@@ -115,6 +131,27 @@ export async function investInDefcon(characterId: string, systemId: number, leve
     return { success: false, error: 'Not in an alliance' };
   }
 
+  // Get or create AllianceSystem to know current DEFCON before computing cost
+  let allianceSystem = await prisma.allianceSystem.findUnique({
+    where: { systemId },
+  });
+
+  const currentDefcon = allianceSystem ? allianceSystem.defconLevel : 0;
+
+  // SP.VEST.S line 82: maximum DEFCON is 20
+  if (currentDefcon >= DEFCON_MAX) {
+    return { success: false, error: `Maximum DEFCON (${DEFCON_MAX}) already achieved for system ${systemId}` };
+  }
+
+  // Clamp levels so we don't exceed DEFCON_MAX
+  const effectiveLevels = Math.min(levels, DEFCON_MAX - currentDefcon);
+
+  // SP.VEST.S lines 83, 85: cost per level is tier-based.
+  // j=1 if currentDefcon ≤ 9, j=2 if currentDefcon > 9.
+  // Each fortification costs j * 100,000 cr (= 10*j * 10,000 in original units).
+  const costPerLevel = calculateDefconCostPerLevel(currentDefcon);
+  const cost = effectiveLevels * costPerLevel;
+
   // Deduct from player's credits
   const { success: canAfford, high, low } = subtractCredits(
     character.creditsHigh,
@@ -126,24 +163,19 @@ export async function investInDefcon(characterId: string, systemId: number, leve
     return { success: false, error: 'Not enough credits for this DEFCON increase' };
   }
 
-  // Get or create AllianceSystem
-  let allianceSystem = await prisma.allianceSystem.findUnique({
-    where: { systemId },
-  });
-
   if (!allianceSystem) {
     allianceSystem = await prisma.allianceSystem.create({
       data: {
         systemId,
         alliance: membership.alliance,
-        defconLevel: 1 + levels,
+        defconLevel: 1 + effectiveLevels,
         ownerCharacterId: characterId,
       },
     });
   } else {
     // Port Takeover Logic
     if (allianceSystem.alliance !== membership.alliance) {
-      if (allianceSystem.defconLevel > levels) {
+      if (allianceSystem.defconLevel > effectiveLevels) {
         // Did not beat existing DEFCON, just weaken it
         await prisma.$transaction([
           prisma.character.update({
@@ -152,13 +184,13 @@ export async function investInDefcon(characterId: string, systemId: number, leve
           }),
           prisma.allianceSystem.update({
             where: { systemId },
-            data: { defconLevel: allianceSystem.defconLevel - levels },
+            data: { defconLevel: allianceSystem.defconLevel - effectiveLevels },
           }),
         ]);
-        return { success: true, message: `Weakened enemy DEFCON. It is now level ${allianceSystem.defconLevel - levels}.` };
+        return { success: true, message: `Weakened enemy DEFCON. It is now level ${allianceSystem.defconLevel - effectiveLevels}.` };
       } else {
         // Takeover success
-        const remainingLevels = levels - allianceSystem.defconLevel;
+        const remainingLevels = effectiveLevels - allianceSystem.defconLevel;
         allianceSystem = await prisma.allianceSystem.update({
           where: { systemId },
           data: {
@@ -168,7 +200,7 @@ export async function investInDefcon(characterId: string, systemId: number, leve
             lastTakeoverAttempt: new Date(),
           },
         });
-        
+
         // Log takeover
         await prisma.gameLog.create({
           data: {
@@ -180,11 +212,12 @@ export async function investInDefcon(characterId: string, systemId: number, leve
         });
       }
     } else {
-      // Friendly: just add levels
+      // Friendly: just add levels (clamped to DEFCON_MAX)
+      const newDefcon = Math.min(allianceSystem.defconLevel + effectiveLevels, DEFCON_MAX);
       allianceSystem = await prisma.allianceSystem.update({
         where: { systemId },
         data: {
-          defconLevel: allianceSystem.defconLevel + levels,
+          defconLevel: newDefcon,
         },
       });
     }

@@ -1,6 +1,6 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
-import { generateCargoContract } from '../systems/economy.js';
+import { generateCargoContract, getSystemName } from '../systems/economy.js';
 
 export const TradersCargoScreen: ScreenModule = {
   name: 'traders-cargo',
@@ -29,15 +29,12 @@ export const TradersCargoScreen: ScreenModule = {
       };
     }
 
-    // Generate a contract proposal
-    const contract = generateCargoContract(character.currentSystem, maxCargo, false);
-    
-    // Store proposal in cache/db or just pass it in output state
-    // For BBS simplicity, we can just save it to character directly when accepted
-    // Wait, we need to know what they are accepting. We can securely regenerate or store it.
-    // For now, we will save the proposed contract fields to the character's missionType temporarily
-    // Or just store it via a unique id. Let's just generate and assume they accept the random one right away.
-    // Actually, in SpacerQuest, it's just a direct choice: "We have X pods bound for Y for Z cr. Accept? Y/N"
+    // Generate a contract proposal using the original payment formula
+    const contract = generateCargoContract(character.currentSystem, maxCargo, false, {
+      hullCondition: character.ship.hullCondition,
+      driveStrength: character.ship.driveStrength,
+      driveCondition: character.ship.driveCondition,
+    });
 
     await prisma.character.update({
         where: { id: characterId },
@@ -50,20 +47,23 @@ export const TradersCargoScreen: ScreenModule = {
         }
     });
 
+    const destName = getSystemName(contract.destination);
+    const originName = getSystemName(character.currentSystem);
     const output = `
-\x1b[36;1m_________________________________________\x1b[0m
-\x1b[33;1m      CARGO CONTRACT PROPOSAL             \x1b[0m
-\x1b[36;1m_________________________________________\x1b[0m
+\x1b[36;1m-------------------------------------\x1b[0m
+\x1b[33;1m   [:  $$$-=:[ Legal Contract ]:=-$$$ :]\x1b[0m
+\x1b[36;1m-------------------------------------\x1b[0m
 
-The trader looks over your ship and offers a deal:
+   Cargo         : ${contract.description}
+   Value         : ${contract.valuePerPod} cr per pod
+   Number of Pods: ${contract.pods}
+   Origin        : ${originName}
+   Destination   : ${destName}
+   Fuel Required : ${contract.fuelRequired} units
+   Distance      : ${contract.distance} Astrec(s)
+   Pay           : ${contract.payment} cr
 
-\x1b[32mCargo:\x1b[0m ${contract.pods} pods of ${contract.description}
-\x1b[32mDestination:\x1b[0m System ${contract.destination}
-\x1b[32mPayment:\x1b[0m ${contract.payment} cr upon delivery
-
-Accept this contract? (Y/N)
-\x1b[32m:\x1b[0m${character.currentSystem} Cargo Contract:\x1b[32m: Command:\x1b[0m
-> `;
+Sign the contract? [Y]/(N): `;
 
     return { output };
   },

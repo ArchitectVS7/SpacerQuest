@@ -181,9 +181,9 @@ describe('Economy Route Wiring', () => {
     expect(src).toContain('calculateFuelBuyCost');
   });
 
-  it('economy.ts /fuel/sell imports calculateFuelSaleProceeds from economy.js', () => {
+  it('economy.ts /fuel/sell imports getFuelSellPrice from economy.js', () => {
     const src = readRoute('../src/app/routes/economy.ts');
-    expect(src).toContain('calculateFuelSaleProceeds');
+    expect(src).toContain('getFuelSellPrice');
   });
 
   it('economy.ts /cargo/accept imports generateCargoContract from economy.js', () => {
