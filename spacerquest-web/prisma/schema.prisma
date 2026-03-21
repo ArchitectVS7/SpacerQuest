@@ -23,6 +23,7 @@ model User {
   updatedAt     DateTime  @updatedAt
   lastLoginAt   DateTime?
   isAdmin       Boolean   @default(false)
+  hasConquered  Boolean   @default(false)
 
   characters    Character[]
   sessions      Session[]
@@ -121,6 +122,11 @@ model Character {
   isLost          Boolean   @default(false)
   lostLocation    Int?
   patrolSector    Int?
+
+  // Space Patrol HQ commission state (SP.REG.S patrol subroutine)
+  hasPatrolCommission Boolean   @default(false)  // cs — oath taken at Space Patrol HQ
+  patrolBattlesWon    Int       @default(0)       // wb — battles won this patrol mission
+  patrolBattlesLost   Int       @default(0)       // lb — battles lost this patrol mission
 
   // Extra-Curricular Mode (SP.END.txt sp.menu11)
   // P=pirate, S=star_patrol, C=smuggler_patrol, null=none
@@ -285,10 +291,14 @@ model AllianceSystem {
   alliance        AllianceType
   ownerCharacterId String?
   defconLevel     Int       @default(1)
+  // System treasury assets (SP.VEST.S o3/o4 variables)
+  // Stored as raw credit value; original uses 10k-unit split (o3=high, o4=low)
+  assetsHigh      Int       @default(0)  // o3 — assets in 10,000 cr units
+  assetsLow       Int       @default(0)  // o4 — assets remainder
   lastTakeoverAttempt DateTime?
-  
+
   updatedAt       DateTime  @updatedAt
-  
+
   @@index([alliance])
   @@index([systemId])
 }

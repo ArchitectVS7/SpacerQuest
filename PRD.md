@@ -1920,20 +1920,25 @@ Accessible from the main terminal hub via key `R`. Routes to `src/game/screens/r
 Accessible via Library option `6`:
 - 3-15 characters
 - Cannot start with "THE " (checked as `left$(name, 4)`)
-- Cannot end with an alliance symbol (`+`, `@`, `&`, `^`) unless the player is already a member of that alliance
-  - If they use an alliance symbol without membership: "Seek out the Spacers Hangout before using that symbol in your ship's name."
+- Cannot end with an alliance symbol (`+`, `@`, `&`, `^`) — these are managed by the system, never user-entered
+  - "Seek out the Spacers Hangout before being / Using that symbol in your ship's name."
+  - Alliance membership does NOT grant permission to type the symbol; the system auto-manages it
 - Returns to Library menu after naming
 
-#### Space Patrol HQ (SP.REG.S patrol subroutine, lines 177-267) — Partially Implemented
+#### Space Patrol HQ (SP.REG.S patrol subroutine, lines 177-267)
 
-**Blocked features (require schema additions):**
-- Join/Oath (`J` key): sets cs=1 (patrol oath), initializes q1=1, q2=10, q5=500, q2$="Secret Battle Codes"
-- Choose system to patrol (`C` key, 1-14): prompts for system number, sets q4/q4$
-- View orders (`O` key): displays patrol orders screen with cargo, destination, fuel required, pay
-- Launch (`L` key): adds fuel requirement (patrol fcost, NO cap at 100), sets kk=2, initiates combat mission
-- Key legend (`K` key): shows system legend (sp.legend)
-- Trip limit: max 3 completed patrol trips (z1 > 2 rejects)
-- Patrol pay formula: base 500 cr + 1000 cr per battle won
+Implemented in `src/game/screens/space-patrol.ts` and `src/game/systems/patrol.ts`.
+
+- Join/Oath (`J` key): sets `hasPatrolCommission=true`, `cargoPods=1`, `cargoManifest='Secret Battle Codes'`, `cargoPayment=500`, then prompts for patrol system
+- Choose system (`C` key, 1-14): prompts for system number, sets `destination`; Y/N confirmation
+- View orders (`O` key): displays patrol orders screen (cargo, destination, distance, pay)
+- Key legend (`K` key): shows core system legend (1-14)
+- Launch (`L` key): checks fuel via patrol fcost, sets `missionType=2`, routes to combat
+- Post-combat dock: render() detects `missionType===2`, fires payoff and zerout
+- Patrol payoff: `s2=(s2+wb+q6+1)-lb`; pay = `q5+(1000*wb)` on win, `q5` on loss
+- Score promotion: every 100th `(battlesWon+rescuesPerformed)` → +1 promotions, +1 w1/p1/d1
+- Trip limit: `tripCount > 2` blocks entry ("Only 3 completed trips allowed per day")
+- Schema fields added: `hasPatrolCommission`, `patrolBattlesWon`, `patrolBattlesLost`
 
 **Patrol fuel cost (SP.REG.S fcost, lines 250-256):**
 ```
@@ -2953,11 +2958,11 @@ When a player disconnects during combat (browser tab close, network loss), comba
 | SP.REAL.S | `src/game/systems/port-ownership.ts` |
 | SP.SAVE.S | `src/game/systems/alliance.ts` + `src/game/screens/alliance-invest.ts` (Alliance Banking and Trust — per-member investment ledger; shared-treasury banker/CEO/password mechanics not yet implemented) |
 | SP.VEST.S | `src/game/systems/alliance.ts` + `src/game/screens/alliance-invest.ts` (Alliance Investments Ltd — star system DEFCON investment and hostile takeover) |
-| SP.REG.S | `src/game/systems/registry.ts` + `src/game/screens/registry.ts` + `src/game/screens/rescue.ts` + `src/game/systems/rescue.ts` |
+| SP.REG.S | `src/game/systems/registry.ts` + `src/game/screens/registry.ts` + `src/game/screens/rescue.ts` + `src/game/systems/rescue.ts` + `src/game/screens/ship-name.ts` (Library option 6) |
 | SP.END.S | `src/game/systems/save.ts` |
 | SP.BAR.S | `src/game/screens/spacers-hangout.ts` |
 | SP.GAME.S | `src/game/systems/gambling.ts` + `src/game/screens/pub.ts` |
-| SP.TOP.S | `src/game/systems/topgun.ts` |
+| SP.TOP.S | `src/game/systems/topgun.ts` + `src/game/screens/topgun.ts` (Library option 8) |
 | SP.MAL.S | `src/game/systems/maligna-battle.ts` (battle engine) + `src/game/systems/docking.ts` (battle integration on arrival) |
 | SP.SYSOP.S | _Removed (single-player/museum)_ |
 

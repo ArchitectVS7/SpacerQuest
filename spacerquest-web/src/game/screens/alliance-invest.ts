@@ -8,8 +8,8 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { formatCredits } from '../utils.js';
-import { investInAlliance, withdrawFromAlliance, investInDefcon } from '../systems/alliance.js';
-import { DEFCON_COST_PER_LEVEL } from '../constants.js';
+import { investInAlliance, withdrawFromAlliance, investInDefcon, acquireSystem, hostileTakeover, calculateTakeoverCost } from '../systems/alliance.js';
+import { DEFCON_COST_PER_LEVEL, CORE_SYSTEM_NAMES, CORE_SYSTEMS, ALLIANCE_STARTUP_INVESTMENT } from '../constants.js';
 
 // ── Pending-input state (module-level maps keyed by characterId) ─────────────
 
@@ -21,6 +21,22 @@ interface DefconState {
   systemId?: number;
 }
 const pendingDefcon: Map<string, DefconState> = new Map();
+
+interface AcquireState {
+  step: 'system' | 'confirm';
+  systemId?: number;
+  systemName?: string;
+}
+const pendingAcquire: Map<string, AcquireState> = new Map();
+
+interface TakeoverState {
+  step: 'system' | 'confirm';
+  systemId?: number;
+  systemName?: string;
+  cost?: number;
+  previousAlliance?: string;
+}
+const pendingTakeover: Map<string, TakeoverState> = new Map();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,9 +53,11 @@ function renderHeader(allianceName: string, investedStr: string, creditsStr: str
     `\r\n` +
     `\x1b[37;1m=========================================\x1b[0m\r\n` +
     `\r\n` +
-    `  (I)nvest   - Deposit credits into alliance treasury\r\n` +
+    `  (I)nvest   - Acquire an unowned star system\r\n` +
+    `  (T)akeover - Hostile takeover of enemy system\r\n` +
+    `  (D)eposit  - Deposit credits into alliance treasury\r\n` +
     `  (W)ithdraw - Withdraw from treasury\r\n` +
-    `  (D)/(F)ort - Increase system defense level\r\n` +
+    `  (F)ort     - Increase system defense level\r\n` +
     `  (S)ystems  - View alliance-controlled systems\r\n` +
     `  (Q)uit     - Return to main menu\r\n` +
     `\r\n` +
@@ -140,7 +158,17 @@ export const AllianceInvestScreen: ScreenModule = {
       }
     }
 
-    // ── Invest multi-step flow ──────────────────────────────────────────────
+    // ── Acquire (Invest) multi-step flow ─────────────────────────────────────
+    if (pendingAcquire.has(characterId)) {
+      return handleAcquireFlow(characterId, input.trim(), membership);
+    }
+
+    // ── Hostile Takeover multi-step flow ───────────────────────────────────
+    if (pendingTakeover.has(characterId)) {
+      return handleTakeoverFlow(characterId, input.trim(), membership);
+    }
+
+    // ── Deposit multi-step flow ───────────────────────────────────────────
     if (pendingInvest.has(characterId)) {
       pendingInvest.delete(characterId);
 
@@ -155,12 +183,12 @@ export const AllianceInvestScreen: ScreenModule = {
 
       if (!result.success) {
         return {
-          output: `\r\n\x1b[31mInvestment failed: ${result.error}\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
+          output: `\r\n\x1b[31mDeposit failed: ${result.error}\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
         };
       }
 
       return {
-        output: `\r\n\x1b[32m${amount.toLocaleString()} cr invested successfully. New balance: ${result.newBalance?.toLocaleString()} cr.\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
+        output: `\r\n\x1b[32m${amount.toLocaleString()} cr deposited successfully. New balance: ${result.newBalance?.toLocaleString()} cr.\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
       };
     }
 
@@ -192,9 +220,28 @@ export const AllianceInvestScreen: ScreenModule = {
     const key = input.trim().toUpperCase();
 
     switch (key) {
+      // SP.VEST.S: I = Invest (Acquire unowned system)
       case 'I': {
+        pendingAcquire.set(characterId, { step: 'system' });
+        return {
+          output: renderSystemLegend() +
+            `\r\nWhich Star System? (1-${CORE_SYSTEMS}) (Q)uit: `,
+        };
+      }
+
+      // SP.VEST.S: T = Hostile Take-Over
+      case 'T': {
+        pendingTakeover.set(characterId, { step: 'system' });
+        return {
+          output: renderSystemLegend() +
+            `\r\nWhich Star System? (1-${CORE_SYSTEMS}) (Q)uit: `,
+        };
+      }
+
+      // SP.VEST.S: D = Deposit Funds
+      case 'D': {
         pendingInvest.set(characterId, true);
-        return { output: '\r\nHow much to invest? (Enter amount): ' };
+        return { output: '\r\nHow much to deposit? (Enter amount): ' };
       }
 
       case 'W': {
@@ -202,10 +249,9 @@ export const AllianceInvestScreen: ScreenModule = {
         return { output: '\r\nHow much to withdraw? (Enter amount): ' };
       }
 
-      case 'F': // F = Fortify (alias for D=DEFCON)
-      case 'D': {
+      // SP.VEST.S: F = Fortifications (DEFCON)
+      case 'F': {
         pendingDefcon.set(characterId, { step: 'system' });
-        // SP.VEST.S line 219: systems 1-14 only
         return { output: '\r\nWhich system? (1-14): ' };
       }
 
@@ -221,18 +267,27 @@ export const AllianceInvestScreen: ScreenModule = {
           };
         }
 
+        // SP.VEST.S show: system, alliance, CEO, assets, DEFCON
         let list =
           `\r\n\x1b[36;1m Alliance Systems for ${membership.alliance}:\x1b[0m\r\n` +
-          `\x1b[37m ─────────────────────────────────────────\x1b[0m\r\n`;
+          `\x1b[37m ─────────────────────────────────────────────────\x1b[0m\r\n` +
+          ` ${'#'.padEnd(4)} ${'System'.padEnd(16)} ${'Assets'.padEnd(12)} DEFCON\r\n` +
+          ` ${'---'.padEnd(4)} ${'------'.padEnd(16)} ${'------'.padEnd(12)} ------\r\n`;
 
         for (const sys of systems) {
-          list += ` System \x1b[33m${String(sys.systemId).padStart(2, ' ')}\x1b[0m  DEFCON: \x1b[32m${sys.defconLevel}\x1b[0m\r\n`;
+          const sysName = CORE_SYSTEM_NAMES[sys.systemId] || `System ${sys.systemId}`;
+          const assets = formatCredits(sys.assetsHigh, sys.assetsLow);
+          list += ` ${String(sys.systemId).padStart(2, ' ')}   ${sysName.padEnd(16)} ${(assets + ' cr').padEnd(12)} F:${String(sys.defconLevel).padStart(2, ' ')}\r\n`;
         }
 
-        list += `\x1b[37m ─────────────────────────────────────────\x1b[0m\r\n`;
+        list += `\x1b[37m ─────────────────────────────────────────────────\x1b[0m\r\n`;
         list += `\x1b[32mCommand:\x1b[0m `;
 
         return { output: list };
+      }
+
+      case '?': {
+        return AllianceInvestScreen.render(characterId);
       }
 
       case 'Q': {
@@ -241,9 +296,189 @@ export const AllianceInvestScreen: ScreenModule = {
 
       default: {
         return {
-          output: `\r\n\x1b[31mInvalid command. Press I, W, D/F, S, or Q.\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
+          output: `\r\n\x1b[31mWhoops!...hit <C-R> to continue...\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
         };
       }
     }
   },
 };
+
+// ============================================================================
+// System Legend helper
+// ============================================================================
+
+function renderSystemLegend(): string {
+  let legend = '\r\n\x1b[36;1mCore Star Systems:\x1b[0m\r\n';
+  for (let i = 1; i <= CORE_SYSTEMS; i++) {
+    legend += `  ${String(i).padStart(2, ' ')}. ${CORE_SYSTEM_NAMES[i]}\r\n`;
+  }
+  return legend;
+}
+
+// ============================================================================
+// ACQUIRE flow (SP.VEST.S invall, lines 55-67)
+// ============================================================================
+
+async function handleAcquireFlow(
+  characterId: string, raw: string, membership: any
+): Promise<ScreenResponse> {
+  const state = pendingAcquire.get(characterId)!;
+  const key = raw.toUpperCase();
+
+  if (state.step === 'system') {
+    if (key === 'Q' || key === '') {
+      pendingAcquire.delete(characterId);
+      return { output: '\r\n\x1b[32mCommand:\x1b[0m ' };
+    }
+    if (key === 'L') {
+      return { output: renderSystemLegend() + `\r\nWhich Star System? (1-${CORE_SYSTEMS}) (Q)uit: ` };
+    }
+
+    const systemId = parseInt(raw, 10);
+    if (isNaN(systemId) || systemId < 1 || systemId > CORE_SYSTEMS) {
+      return { output: '\r\n\x1b[31mOutta range!\x1b[0m\r\nWhich Star System? (1-14) (Q)uit: ' };
+    }
+
+    // Check if system is already owned
+    const existing = await prisma.allianceSystem.findUnique({ where: { systemId } });
+    if (existing) {
+      const sysName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+      return {
+        output: `\r\n${sysName} belongs to The ${existing.alliance}\r\nWhich Star System? (1-14) (Q)uit: `,
+      };
+    }
+
+    const systemName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+    pendingAcquire.set(characterId, { step: 'confirm', systemId, systemName });
+    // SP.VEST.S line 59: "Startup funds of 10,000 cr are required....Do this? [Y]/(N)"
+    return {
+      output: `\r\n${systemName} - Available for Investment\r\n` +
+        `\r\nStartup funds of ${ALLIANCE_STARTUP_INVESTMENT.toLocaleString()} cr are required....Do this? \x1b[37;1m[Y]\x1b[0m/(N): `,
+    };
+  }
+
+  if (state.step === 'confirm') {
+    if (key === 'N') {
+      pendingAcquire.delete(characterId);
+      return { output: 'No\r\n\x1b[32mCommand:\x1b[0m ' };
+    }
+
+    pendingAcquire.delete(characterId);
+    const result = await acquireSystem(characterId, state.systemId!);
+
+    if (!result.success) {
+      return {
+        output: `\r\n\x1b[31m${result.error}\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
+      };
+    }
+
+    return {
+      output: `Yes\r\n` +
+        `\r\nYou are now the  C E O  of the board for ${result.systemName}\r\n` +
+        `\x1b[32mCommand:\x1b[0m `,
+    };
+  }
+
+  pendingAcquire.delete(characterId);
+  return { output: '\r\n\x1b[32mCommand:\x1b[0m ' };
+}
+
+// ============================================================================
+// HOSTILE TAKEOVER flow (SP.VEST.S invtak, lines 170-192)
+// ============================================================================
+
+async function handleTakeoverFlow(
+  characterId: string, raw: string, membership: any
+): Promise<ScreenResponse> {
+  const state = pendingTakeover.get(characterId)!;
+  const key = raw.toUpperCase();
+
+  if (state.step === 'system') {
+    if (key === 'Q' || key === '') {
+      pendingTakeover.delete(characterId);
+      return { output: '\r\n\x1b[32mCommand:\x1b[0m ' };
+    }
+    if (key === 'L') {
+      return { output: renderSystemLegend() + `\r\nWhich Star System? (1-${CORE_SYSTEMS}) (Q)uit: ` };
+    }
+
+    const systemId = parseInt(raw, 10);
+    if (isNaN(systemId) || systemId < 1 || systemId > CORE_SYSTEMS) {
+      return { output: '\r\n\x1b[31mOutta range!\x1b[0m\r\nWhich Star System? (1-14) (Q)uit: ' };
+    }
+
+    const allianceSystem = await prisma.allianceSystem.findUnique({ where: { systemId } });
+    const systemName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+
+    if (!allianceSystem) {
+      return {
+        output: `\r\n${systemName} belongs to no alliance\r\nWhich Star System? (1-14) (Q)uit: `,
+      };
+    }
+
+    if (allianceSystem.alliance === membership.alliance) {
+      return {
+        output: `\r\n${systemName} already belongs to your alliance\r\nWhich Star System? (1-14) (Q)uit: `,
+      };
+    }
+
+    // SP.VEST.S line 176: if o3>=200 → safe from takeover
+    if (allianceSystem.assetsHigh >= 200) {
+      return {
+        output: `\r\nAssets greater than 1,999,999...${systemName} safe from Take-Over\r\nWhich Star System? (1-14) (Q)uit: `,
+      };
+    }
+
+    const cost = calculateTakeoverCost(allianceSystem.assetsHigh);
+
+    // Show current CEO if any
+    let ceoInfo = '';
+    if (allianceSystem.ownerCharacterId) {
+      const ceo = await prisma.character.findUnique({ where: { id: allianceSystem.ownerCharacterId } });
+      if (ceo) {
+        ceoInfo = `\r\n${ceo.name} is current  C E O  of the board for ${systemName}`;
+      }
+    }
+
+    pendingTakeover.set(characterId, {
+      step: 'confirm',
+      systemId,
+      systemName,
+      cost,
+      previousAlliance: allianceSystem.alliance,
+    });
+
+    // SP.VEST.S lines 181-182
+    return {
+      output: `\r\n${systemName} - Owned by ${allianceSystem.alliance}` +
+        ceoInfo +
+        `\r\n\r\nTake-Over requires ${cost.toLocaleString()} cr....Do this? \x1b[37;1m[Y]\x1b[0m/(N): `,
+    };
+  }
+
+  if (state.step === 'confirm') {
+    if (key === 'N') {
+      pendingTakeover.delete(characterId);
+      return { output: 'No\r\n\x1b[32mCommand:\x1b[0m ' };
+    }
+
+    pendingTakeover.delete(characterId);
+    const result = await hostileTakeover(characterId, state.systemId!);
+
+    if (!result.success) {
+      return {
+        output: `\r\n\x1b[31m${result.error}\x1b[0m\r\n\x1b[32mCommand:\x1b[0m `,
+      };
+    }
+
+    return {
+      output: `Yes\r\n` +
+        `\r\nYou are now the new  C E O  of the board of ${result.systemName} Ltd\r\n` +
+        `The ${membership.alliance} now controls this star system\r\n` +
+        `\x1b[32mCommand:\x1b[0m `,
+    };
+  }
+
+  pendingTakeover.delete(characterId);
+  return { output: '\r\n\x1b[32mCommand:\x1b[0m ' };
+}

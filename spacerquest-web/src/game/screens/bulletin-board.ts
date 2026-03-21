@@ -54,7 +54,7 @@ async function renderBoard(characterId: string): Promise<ScreenResponse> {
     return {
       output:
         '\r\n\x1b[31mYou must belong to an alliance to read bulletins.\x1b[0m\r\n',
-      nextScreen: 'spacers-hangout',
+      nextScreen: 'main-menu',
     };
   }
 
@@ -135,7 +135,7 @@ export const BulletinBoardScreen: ScreenModule = {
         return {
           output:
             '\r\n\x1b[31mYou must belong to an alliance to post bulletins.\x1b[0m\r\n',
-          nextScreen: 'spacers-hangout',
+          nextScreen: 'main-menu',
         };
       }
 
@@ -172,7 +172,7 @@ export const BulletinBoardScreen: ScreenModule = {
           return {
             output:
               '\r\n\x1b[31mYou must belong to an alliance to manage bulletins.\x1b[0m\r\n',
-            nextScreen: 'spacers-hangout',
+            nextScreen: 'main-menu',
           };
         }
 
@@ -213,7 +213,7 @@ export const BulletinBoardScreen: ScreenModule = {
         };
 
       case 'Q':
-        return { output: '\r\n', nextScreen: 'spacers-hangout' };
+        return { output: '\r\n', nextScreen: 'main-menu' };
 
       default:
         return {

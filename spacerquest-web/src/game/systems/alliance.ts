@@ -5,8 +5,8 @@
  */
 
 import { prisma } from '../../db/prisma.js';
-import { DEFCON_MAX } from '../constants.js';
-import { addCredits, subtractCredits } from '../utils.js';
+import { DEFCON_MAX, ALLIANCE_STARTUP_INVESTMENT, CORE_SYSTEM_NAMES } from '../constants.js';
+import { addCredits, subtractCredits, getTotalCredits } from '../utils.js';
 
 export async function investInAlliance(characterId: string, amount: number) {
   const character = await prisma.character.findUnique({
@@ -230,4 +230,205 @@ export async function investInDefcon(characterId: string, systemId: number, leve
   });
 
   return { success: true, message: `System ${systemId} DEFCON is now ${allianceSystem.defconLevel} for ${allianceSystem.alliance}.` };
+}
+
+// ============================================================================
+// ACQUIRE UNOWNED SYSTEM (SP.VEST.S lines 55-67, invall)
+// ============================================================================
+
+/**
+ * Acquire an unowned star system for the player's alliance.
+ * Original flow: costs 10,000 cr startup, player becomes CEO, alliance takes ownership.
+ * Sets starting assets to 1 (= 10,000 cr in 10k units).
+ */
+export async function acquireSystem(characterId: string, systemId: number) {
+  if (systemId < 1 || systemId > 14) {
+    return { success: false, error: 'System must be 1–14' };
+  }
+
+  const character = await prisma.character.findUnique({
+    where: { id: characterId },
+  });
+  if (!character) {
+    return { success: false, error: 'Character not found' };
+  }
+
+  const membership = await prisma.allianceMembership.findUnique({
+    where: { characterId },
+  });
+  if (!membership || membership.alliance === 'NONE') {
+    return { success: false, error: 'Not in an alliance' };
+  }
+
+  // SP.VEST.S ckceo: player can only be CEO of one system
+  const existingCeo = await prisma.allianceSystem.findFirst({
+    where: { ownerCharacterId: characterId },
+  });
+  if (existingCeo) {
+    return { success: false, error: 'You are already a CEO!' };
+  }
+
+  // Check system is unowned
+  const existing = await prisma.allianceSystem.findUnique({
+    where: { systemId },
+  });
+  if (existing) {
+    const systemName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+    return { success: false, error: `${systemName} belongs to The ${existing.alliance}` };
+  }
+
+  // SP.VEST.S line 59: startup costs 10,000 cr (g1<1 check = need at least 10k)
+  const { success: canAfford, high, low } = subtractCredits(
+    character.creditsHigh, character.creditsLow, ALLIANCE_STARTUP_INVESTMENT
+  );
+  if (!canAfford) {
+    return { success: false, error: 'Not enough credits (10,000 cr required)' };
+  }
+
+  // SP.VEST.S line 63: o3=1 (starting assets = 1 unit of 10k = 10,000 cr)
+  await prisma.$transaction([
+    prisma.character.update({
+      where: { id: characterId },
+      data: { creditsHigh: high, creditsLow: low },
+    }),
+    prisma.allianceSystem.create({
+      data: {
+        systemId,
+        alliance: membership.alliance,
+        ownerCharacterId: characterId,
+        defconLevel: 1,
+        assetsHigh: 1, // o3=1
+        assetsLow: 0,  // o4=0
+      },
+    }),
+  ]);
+
+  // Log the acquisition
+  const systemName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+  await prisma.gameLog.create({
+    data: {
+      type: 'ALLIANCE',
+      systemId,
+      message: `: ${character.name} of The ${membership.alliance} Acquires ${systemName}`,
+      metadata: { event: 'ACQUIRE', systemId, alliance: membership.alliance },
+    },
+  });
+
+  return { success: true, systemName };
+}
+
+// ============================================================================
+// HOSTILE TAKEOVER (SP.VEST.S lines 170-192, invtak)
+// ============================================================================
+
+/**
+ * Calculate hostile takeover cost based on system assets.
+ * SP.VEST.S lines 180-182:
+ *   if o3<1 y=1       → cost = 10,000 cr (minimum)
+ *   if o3>0 y=(o3*2)  → cost = o3 * 2 * 10,000 cr
+ *
+ * @param assetsHigh — o3: system assets in 10,000 cr units
+ * @returns cost in credits
+ */
+export function calculateTakeoverCost(assetsHigh: number): number {
+  const y = assetsHigh < 1 ? 1 : assetsHigh * 2;
+  return y * 10000;
+}
+
+/**
+ * Perform a hostile takeover of an owned system.
+ * Original eligibility rules (SP.VEST.S lines 170-177):
+ *   - Cannot take over if assets >= 200 (2,000,000 cr) — "safe from Take-Over"
+ *   - Cannot take over your own alliance's system
+ *   - System must be owned by another alliance
+ *
+ * Cost formula: y = max(1, o3*2) × 10,000 cr
+ * After takeover: o3 = o3 + y (assets increase by cost paid)
+ */
+export async function hostileTakeover(characterId: string, systemId: number) {
+  if (systemId < 1 || systemId > 14) {
+    return { success: false, error: 'System must be 1–14' };
+  }
+
+  const character = await prisma.character.findUnique({
+    where: { id: characterId },
+  });
+  if (!character) {
+    return { success: false, error: 'Character not found' };
+  }
+
+  const membership = await prisma.allianceMembership.findUnique({
+    where: { characterId },
+  });
+  if (!membership || membership.alliance === 'NONE') {
+    return { success: false, error: 'Not in an alliance' };
+  }
+
+  const allianceSystem = await prisma.allianceSystem.findUnique({
+    where: { systemId },
+  });
+
+  const systemName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+
+  if (!allianceSystem) {
+    return { success: false, error: `${systemName} belongs to no alliance` };
+  }
+
+  if (allianceSystem.alliance === membership.alliance) {
+    return { success: false, error: `${systemName} already belongs to your alliance` };
+  }
+
+  // SP.VEST.S line 176: if o3>=200 → safe from takeover (assets ≥ 2,000,000 cr)
+  if (allianceSystem.assetsHigh >= 200) {
+    return { success: false, error: `Assets greater than 1,999,999...${systemName} safe from Take-Over` };
+  }
+
+  // SP.VEST.S lines 173-174: eligibility check
+  // Must have assets between 10k-199k range OR o3<1 and o4<10000
+  // (Systems with very low assets are also vulnerable)
+
+  const cost = calculateTakeoverCost(allianceSystem.assetsHigh);
+
+  // Check if player can afford
+  const { success: canAfford, high, low } = subtractCredits(
+    character.creditsHigh, character.creditsLow, cost
+  );
+  if (!canAfford) {
+    return { success: false, error: 'Not enough credits', cost };
+  }
+
+  const previousAlliance = allianceSystem.alliance;
+
+  // SP.VEST.S line 187: if pz$="" o3=o3+y (assets increase by cost units paid)
+  const y = allianceSystem.assetsHigh < 1 ? 1 : allianceSystem.assetsHigh * 2;
+  const newAssetsHigh = allianceSystem.assetsHigh + y;
+
+  await prisma.$transaction([
+    prisma.character.update({
+      where: { id: characterId },
+      data: { creditsHigh: high, creditsLow: low },
+    }),
+    prisma.allianceSystem.update({
+      where: { systemId },
+      data: {
+        alliance: membership.alliance,
+        ownerCharacterId: characterId,
+        assetsHigh: newAssetsHigh,
+        assetsLow: 0,
+        lastTakeoverAttempt: new Date(),
+      },
+    }),
+  ]);
+
+  // Log takeover
+  await prisma.gameLog.create({
+    data: {
+      type: 'ALLIANCE',
+      systemId,
+      message: `: [${membership.alliance}] - Take-Over ${systemName} from ${previousAlliance} by ${character.name}`,
+      metadata: { event: 'TAKEOVER', systemId, newAlliance: membership.alliance, previousAlliance },
+    },
+  });
+
+  return { success: true, systemName, cost, previousAlliance };
 }

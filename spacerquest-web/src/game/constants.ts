@@ -10,7 +10,7 @@
 // ============================================================================
 
 export const STARTING_CREDITS_NEW = 0;           // Source: characters start at 0 cr
-export const STARTING_CREDITS_CONQUEROR = 10000; // Conqueror returning bonus
+export const STARTING_CREDITS_CONQUEROR = 100000; // Conqueror returning bonus (g1=10 → 10×10,000 cr)
 export const CREDITS_PER_PROMOTION = 10000;      // 10,000 cr units
 
 // ============================================================================
@@ -275,6 +275,8 @@ export const DEFCON_COST_PER_LEVEL = 100000; // 100,000 cr per DEFCON level (100
 
 export const PATROL_BASE_PAY = 500;
 export const PATROL_BATTLE_BONUS = 1000;
+export const PATROL_DAILY_LIMIT = 2;          // z1>2 blocks — tripCount > PATROL_DAILY_LIMIT
+export const PATROL_SCORE_PROMOTION_INTERVAL = 100; // every 100th (battlesWon+rescuesPerformed)
 
 export const NEMESIS_REQUIREMENT_WINS = 500;
 export const NEMESIS_REWARD_CREDITS = 150000;

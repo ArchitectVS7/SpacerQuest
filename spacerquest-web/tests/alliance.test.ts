@@ -8,7 +8,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DEFCON_MAX } from '../src/game/constants';
 import { subtractCredits, addCredits } from '../src/game/utils';
-import { calculateDefconCostPerLevel } from '../src/game/systems/alliance';
+import { calculateDefconCostPerLevel, calculateTakeoverCost } from '../src/game/systems/alliance';
+import { ALLIANCE_STARTUP_INVESTMENT } from '../src/game/constants';
 
 // ============================================================================
 // PURE LOGIC TESTS (no DB dependency)
@@ -33,6 +34,40 @@ describe('Alliance system - pure logic', () => {
     });
     it('DEFCON_MAX is 20', () => {
       expect(DEFCON_MAX).toBe(20);
+    });
+  });
+
+  describe('Hostile takeover cost formula (SP.VEST.S lines 180-182)', () => {
+    // Original: if o3<1 y=1; if o3>0 y=(o3*2); cost = y * 10,000 cr
+    it('returns 10,000 cr when assetsHigh is 0 (minimum cost y=1)', () => {
+      expect(calculateTakeoverCost(0)).toBe(10000);
+    });
+
+    it('returns 10,000 cr when assetsHigh is negative (edge case, y=1)', () => {
+      expect(calculateTakeoverCost(-1)).toBe(10000);
+    });
+
+    it('returns 20,000 cr when assetsHigh is 1 (y=1*2=2)', () => {
+      expect(calculateTakeoverCost(1)).toBe(20000);
+    });
+
+    it('returns 100,000 cr when assetsHigh is 5 (y=5*2=10)', () => {
+      expect(calculateTakeoverCost(5)).toBe(100000);
+    });
+
+    it('returns 2,000,000 cr when assetsHigh is 100 (y=100*2=200)', () => {
+      expect(calculateTakeoverCost(100)).toBe(2000000);
+    });
+
+    it('returns 3,980,000 cr when assetsHigh is 199 (max before safe)', () => {
+      // y = 199*2 = 398; cost = 398 * 10,000 = 3,980,000
+      expect(calculateTakeoverCost(199)).toBe(3980000);
+    });
+  });
+
+  describe('ALLIANCE_STARTUP_INVESTMENT constant', () => {
+    it('is 10,000 cr (SP.VEST.S line 59: g1=g1-1)', () => {
+      expect(ALLIANCE_STARTUP_INVESTMENT).toBe(10000);
     });
   });
 

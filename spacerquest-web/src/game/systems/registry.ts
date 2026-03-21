@@ -4,7 +4,7 @@
 
 import { prisma } from '../../db/prisma.js';
 import { validateName, addCredits } from '../utils.js';
-import { RANK_HONORARIA } from '../constants.js';
+import { RANK_HONORARIA, STARTING_CREDITS_CONQUEROR } from '../constants.js';
 
 export async function registerCharacter(userId: string, name: string, shipName: string) {
   const nameValidation = validateName(name);
@@ -22,9 +22,12 @@ export async function registerCharacter(userId: string, name: string, shipName: 
     return { success: false, error: 'Character already exists' };
   }
 
-  // Source: characters start at 0 cr, then receive Lieutenant honorarium (a=1, g1=g1+a → 10,000 cr)
-  // Fire the promotion at creation to match source behavior (promo fires on first session entry)
-  const startingCredits = addCredits(0, 0, RANK_HONORARIA.LIEUTENANT);
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { hasConquered: true } });
+
+  // Conquerors restart with g1=10 (100,000 cr) per SP.SYSOP.S newspcr; others get Lieutenant honorarium (10,000 cr)
+  const startingCredits = user?.hasConquered
+    ? addCredits(0, 0, STARTING_CREDITS_CONQUEROR)
+    : addCredits(0, 0, RANK_HONORARIA.LIEUTENANT);
 
   const character = await prisma.character.create({
     data: {

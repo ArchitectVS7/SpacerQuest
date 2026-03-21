@@ -183,6 +183,15 @@ export async function processDocking(characterId: string, systemId: number) {
     void targetSystem; // referenced in completeRaid
   }
 
+  // ── Free-bribe launch clearance (SP.DOCK1.S: if q2$="0" q5=0:q1=0:goto arriv3) ──
+  // After a bribed free launch, destination=0 means no delivery obligation — clear cargo, no payment.
+  if (character.missionType === 1 && character.destination === 0 && character.cargoPods > 0) {
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { missionType: 0, cargoPods: 0, cargoType: 0, cargoManifest: null, destination: 0, cargoPayment: 0 },
+    });
+  }
+
   // ── Rim port arrival effects (SP.DOCK2.S:47-67) ───────────────────────
   // Systems 15-20 are rim star ports with extra arrival penalties.
   if (systemId >= 15 && systemId <= 20 && character.ship) {

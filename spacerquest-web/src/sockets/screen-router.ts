@@ -45,6 +45,9 @@ import { FuelDepotBuyScreen } from '../game/screens/fuel-depot-buy.js';
 import { FuelDepotTransferScreen } from '../game/screens/fuel-depot-transfer.js';
 import { PortFuelPricesScreen } from '../game/screens/port-fuel-prices.js';
 import { RimPortScreen } from '../game/screens/rim-port.js';
+import { TopgunScreen } from '../game/screens/topgun.js';
+import { ShipNameScreen } from '../game/screens/ship-name.js';
+import { SpacePatrolScreen } from '../game/screens/space-patrol.js';
 
 export const screens: Record<string, any> = {
   'main-menu': MainMenuScreen,
@@ -66,8 +69,7 @@ export const screens: Record<string, any> = {
   'registry': RegistryScreen,
   'library': LibraryScreen,
   'registry-search': RegistrySearchScreen,
-  // Space Patrol HQ (SP.REG.S 'S' key) — falls back to extra-curricular until full patrol screen exists
-  'space-patrol': ExtraCurricularScreen,
+  'space-patrol': SpacePatrolScreen,
   'arena': ArenaScreen,
   'combat': CombatScreen,
   'spacers-hangout': SpacersHangoutScreen,
@@ -93,6 +95,8 @@ export const screens: Record<string, any> = {
   'fuel-depot-transfer': FuelDepotTransferScreen,
   'port-fuel-prices': PortFuelPricesScreen,
   'rim-port': RimPortScreen,
+  'topgun': TopgunScreen,
+  'ship-name': ShipNameScreen,
 };
 
 export async function handleScreenRequest(characterId: string, screenName: string) {

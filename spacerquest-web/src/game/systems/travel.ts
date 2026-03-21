@@ -198,6 +198,50 @@ export function canTravel(
 }
 
 // ============================================================================
+// LIFT-OFF FEE (SP.LIFT.S lines 127-160)
+// ============================================================================
+
+/**
+ * Calculate port lift-off fee
+ *
+ * Original formula from SP.LIFT.S:
+ *   zh=(h1*10)+((15-sp)*10)          — base fee
+ *   if sc>4 zh=zh+(sc*100)           — rank surcharge
+ *   if zl>0 zh=zh/2                  — 50% allies discount
+ *
+ * Fee is waived entirely if:
+ *   - Player owns the port (ap$=sp$)
+ *   - Player has a commission (cs>0) — not yet implemented in modern game
+ *
+ * @param hullStrength - Hull strength (h1)
+ * @param systemId - Current system ID (sp, 1-14 for core systems)
+ * @param scoreLevel - Score level sc = floor(score/150)
+ * @param isAllyPort - Whether player's alliance matches port alliance
+ * @returns Fee amount in credits
+ */
+export function calculateLiftOffFee(
+  hullStrength: number,
+  systemId: number,
+  scoreLevel: number,
+  isAllyPort: boolean = false
+): number {
+  // Base fee: zh=(h1*10)+((15-sp)*10)
+  let fee = (hullStrength * 10) + ((15 - systemId) * 10);
+
+  // Rank surcharge: if sc>4 zh=zh+(sc*100)
+  if (scoreLevel > 4) {
+    fee = fee + (scoreLevel * 100);
+  }
+
+  // 50% allies discount: if zl>0 zh=zh/2
+  if (isAllyPort) {
+    fee = Math.floor(fee / 2);
+  }
+
+  return fee;
+}
+
+// ============================================================================
 // LAUNCH VALIDATION
 // ============================================================================
 

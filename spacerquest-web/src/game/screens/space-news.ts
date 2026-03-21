@@ -108,7 +108,7 @@ export const SpaceNewsScreen: ScreenModule = {
       '  \x1b[37;1m(B)\x1b[0mattles     - Recent Battles\r\n' +
       '  \x1b[37;1m(A)\x1b[0mlliance    - Alliance Holding Transactions\r\n' +
       '  \x1b[37;1m(S)\x1b[0mhow All    - All Space News\r\n' +
-      '  \x1b[37;1m(Q)\x1b[0muit        - Return to Hangout\r\n' +
+      '  \x1b[37;1m(Q)\x1b[0muit        - Return to Main Menu\r\n' +
       '\r\n> ';
 
     return { output };
@@ -143,7 +143,7 @@ export const SpaceNewsScreen: ScreenModule = {
       }
 
       case 'Q':
-        return { output: '\r\n', nextScreen: 'spacers-hangout' };
+        return { output: '\r\n', nextScreen: 'main-menu' };
 
       default:
         return { output: '\r\n\x1b[31mInvalid command.\x1b[0m\r\n> ' };

@@ -62,7 +62,7 @@ describe('Bulletin Board Screen Wiring', () => {
     expect(screenCode).toContain('formatBulletinPost');
   });
 
-  it('render checks alliance membership and redirects non-members to spacers-hangout', async () => {
+  it('render checks alliance membership and redirects non-members to main-menu', async () => {
     const fs = await import('fs');
     const screenCode = fs.readFileSync(
       new URL('../src/game/screens/bulletin-board.ts', import.meta.url),
@@ -73,8 +73,8 @@ describe('Bulletin Board Screen Wiring', () => {
     expect(screenCode).toContain('allianceMembership.findUnique');
     expect(screenCode).toContain('AllianceType.NONE');
 
-    // Non-members must be redirected to spacers-hangout
-    expect(screenCode).toContain("nextScreen: 'spacers-hangout'");
+    // Non-members must be redirected to main-menu (screen is now globally accessible)
+    expect(screenCode).toContain("nextScreen: 'main-menu'");
   });
 
   it('render queries prisma.bulletinPost.findMany', async () => {
@@ -262,15 +262,15 @@ describe('Hangout Integration', () => {
     expect(hangoutCode).toContain('Alliance');
   });
 
-  it('bulletin-board Q key routes back to spacers-hangout', async () => {
+  it('bulletin-board Q key routes back to main-menu', async () => {
     const fs = await import('fs');
     const screenCode = fs.readFileSync(
       new URL('../src/game/screens/bulletin-board.ts', import.meta.url),
       'utf-8'
     );
 
-    // Q must return nextScreen: 'spacers-hangout'
-    expect(screenCode).toContain("nextScreen: 'spacers-hangout'");
+    // Q must return nextScreen: 'main-menu' (screen is now globally accessible)
+    expect(screenCode).toContain("nextScreen: 'main-menu'");
   });
 });
 

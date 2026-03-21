@@ -18,6 +18,7 @@ import {
   WOF_MIN_ROLLS,
   WOF_MAX_ROLLS,
   WOF_NUMBERS,
+  WOF_DAILY_WIN_CAP,
   DARE_MIN_ROUNDS,
   DARE_MAX_ROUNDS,
   DARE_MIN_CREDITS,
@@ -183,6 +184,16 @@ describe('Wheel of Fortune', () => {
       });
       expect(result.odds).toBe(4);
     });
+  });
+});
+
+// ============================================================================
+// WOF DAILY WIN CAP (SP.GAME.S lines 47, 53)
+// ============================================================================
+
+describe('WOF_DAILY_WIN_CAP constant', () => {
+  it('is 12 (SP.GAME.S line 53: ui=12)', () => {
+    expect(WOF_DAILY_WIN_CAP).toBe(12);
   });
 });
 

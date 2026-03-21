@@ -19,6 +19,7 @@ import { prisma } from '../../db/prisma.js';
 import { renderRescueScreen } from '../systems/rescue.js';
 import { addCredits } from '../utils.js';
 import { RESCUE_FEE, RESCUE_FUEL_COST, RESCUE_POINTS_BONUS } from '../constants.js';
+import { checkScorePromotion } from '../systems/patrol.js';
 
 const PENDING_RESCUE_PREFIX = 'RESCUE_PENDING:';
 
@@ -136,6 +137,13 @@ export const RescueScreen: ScreenModule = {
           RESCUE_FEE
         );
 
+        // SP.REG.S rescue line 407: gosub score after each rescue
+        // y = e1 + b1 = battlesWon + (rescuesPerformed + 1)
+        const { promoted } = checkScorePromotion(
+          character.battlesWon,
+          character.rescuesPerformed + 1,
+        );
+
         await prisma.character.update({
           where: { id: characterId },
           data: {
@@ -144,6 +152,7 @@ export const RescueScreen: ScreenModule = {
             tripsCompleted: { increment: 1 },    // u1=u1+1
             rescuesPerformed: { increment: 1 },  // b1=b1+1
             score: { increment: RESCUE_POINTS_BONUS }, // s2=s2+11
+            ...(promoted ? { promotions: { increment: 1 } } : {}),
             cargoManifest: null,
           },
         });
@@ -151,7 +160,15 @@ export const RescueScreen: ScreenModule = {
         if (character.ship) {
           await prisma.ship.update({
             where: { id: character.ship.id },
-            data: { fuel: { decrement: RESCUE_FUEL_COST } }, // f1=f1-50
+            data: {
+              fuel: { decrement: RESCUE_FUEL_COST }, // f1=f1-50
+              // Score promotion: w1+=1, p1+=1, d1+=1 (weaponStr, shieldStr, driveStr)
+              ...(promoted ? {
+                weaponStrength: { increment: 1 },
+                shieldStrength: { increment: 1 },
+                driveStrength: { increment: 1 },
+              } : {}),
+            },
           });
         }
 
@@ -164,13 +181,17 @@ export const RescueScreen: ScreenModule = {
           },
         });
 
-        return {
-          output: `Yes\r\n\r\nYou scan for the lost spaceship near system ${target.lostLocation}........\r\n` +
-            `You find it and using a tractor beam tow it into port\r\n` +
-            `Congratulations ${character.name} on a successful rescue\r\n\r\n` +
-            `A salvage fee of ${RESCUE_FEE} cr is paid by the Rescue Service\r\n`,
-          nextScreen: 'registry',
-        };
+        let rescueOut = `Yes\r\n\r\nYou scan for the lost spaceship near system ${target.lostLocation}........\r\n` +
+          `You find it and using a tractor beam tow it into port\r\n` +
+          `Congratulations ${character.name} on a successful rescue\r\n\r\n` +
+          `A salvage fee of ${RESCUE_FEE} cr is paid by the Rescue Service\r\n`;
+
+        if (promoted) {
+          rescueOut += '\r\n\x1b[32;1m*** PROMOTION! Every hundred missions pays off! ***\x1b[0m\r\n';
+          rescueOut += '+1 Weapon Strength  +1 Shield Strength  +1 Drive Strength\r\n';
+        }
+
+        return { output: rescueOut, nextScreen: 'registry' };
       }
 
       // Any other key — stay in pending state

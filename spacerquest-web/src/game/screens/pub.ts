@@ -8,7 +8,7 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { formatCredits, subtractCredits, addCredits, getTotalCredits } from '../utils.js';
-import { playWheelOfFortune, playSpacersDare, calculateWofOdds } from '../systems/gambling.js';
+import { playWheelOfFortune, calculateWofOdds, rollDare, computerDareStrategy } from '../systems/gambling.js';
 import {
   WOF_MAX_BET,
   WOF_MIN_ROLLS,
@@ -32,8 +32,18 @@ interface WofState {
 }
 
 interface DareState {
-  step: 'ROUNDS' | 'MULTIPLIER';
+  step: 'ROUNDS' | 'MULTIPLIER' | 'PLAYER_ROLLING';
   rounds?: number;
+  multiplier?: number;
+  // Active game state
+  totalRounds?: number;
+  currentRound?: number;
+  playerTotal?: number;     // o5 — cumulative player score
+  computerTotal?: number;   // o6 — cumulative computer score
+  // Current player turn
+  referenceTotal?: number;  // o2 — the bust number for this round
+  accumulated?: number;     // z6 — accumulated score this turn
+  rollCount?: number;       // x — rolls taken this turn
 }
 
 const wofStates = new Map<string, WofState>();
@@ -302,7 +312,9 @@ async function handleWofInput(characterId: string, raw: string): Promise<ScreenR
 }
 
 // ============================================================================
-// SPACER'S DARE — multi-step handler
+// SPACER'S DARE — interactive multi-step handler
+// Original SP.GAME.S: player rolls interactively with "Roll again? [Y]/(N)"
+// per roll. Computer uses AI table (automated).
 // ============================================================================
 
 async function handleDareInput(characterId: string, raw: string): Promise<ScreenResponse> {
@@ -314,92 +326,213 @@ async function handleDareInput(characterId: string, raw: string): Promise<Screen
   const state = dareStates.get(characterId)!;
   const num = parseInt(raw, 10);
 
+  // ── Setup: get round count ────────────────────────────────────────────
   if (state.step === 'ROUNDS') {
     if (isNaN(num) || num < DARE_MIN_ROUNDS || num > DARE_MAX_ROUNDS) {
-      return { output: `\r\n\x1b[31mChoose ${DARE_MIN_ROUNDS}-${DARE_MAX_ROUNDS} rounds.\x1b[0m\r\nRounds: ` };
+      return { output: `\r\n\x1b[31mThe limits are ${DARE_MIN_ROUNDS}-${DARE_MAX_ROUNDS}...try again...\x1b[0m\r\nRounds: ` };
     }
     state.rounds = num;
     state.step = 'MULTIPLIER';
     return {
-      output: `\r\n${num} rounds. Stakes multiplier? (1-${DARE_MAX_MULTIPLIER}): `,
+      output: `\r\nWhat score-multiplier would you like [1-${DARE_MAX_MULTIPLIER}]? `,
     };
   }
 
+  // ── Setup: get multiplier, then start first round ─────────────────────
   if (state.step === 'MULTIPLIER') {
     if (isNaN(num) || num < 1 || num > DARE_MAX_MULTIPLIER) {
-      return { output: `\r\n\x1b[31mMultiplier 1-${DARE_MAX_MULTIPLIER}.\x1b[0m\r\nMultiplier: ` };
+      return { output: `\r\n\x1b[31mThe limits are 1-${DARE_MAX_MULTIPLIER}...try again...\x1b[0m\r\nMultiplier: ` };
     }
 
-    const character = await prisma.character.findUnique({ where: { id: characterId } });
-    if (!character) {
-      dareStates.delete(characterId);
-      return { output: '\x1b[31mError.\x1b[0m\r\n> ' };
+    state.multiplier = num;
+    state.totalRounds = state.rounds!;
+    state.currentRound = 1;
+    state.playerTotal = 0;
+    state.computerTotal = 0;
+
+    // Start first round
+    return startPlayerTurn(state);
+  }
+
+  // ── Player rolling: Y/N per roll ──────────────────────────────────────
+  if (state.step === 'PLAYER_ROLLING') {
+    const key = raw.toUpperCase();
+
+    if (key === 'N') {
+      // SP.GAME.S addit3: "You stay on z6 cr."
+      const stayScore = state.accumulated!;
+      state.playerTotal! += stayScore;
+
+      let out = `No\r\n    You stay on ${stayScore} cr.\r\n`;
+
+      // Computer's turn (automated)
+      out += computerTurn(state);
+
+      // Check if more rounds
+      return advanceRound(characterId, state, out);
     }
 
-    const result = playSpacersDare({
-      rounds: state.rounds!,
-      multiplier: num,
-      creditsHigh: character.creditsHigh,
-      creditsLow: character.creditsLow,
-    });
+    // Y (or any key) → roll again (SP.GAME.S line 229: goto foolish)
+    state.rollCount! += 1;
+    const roll = rollDare();
+    const x = state.rollCount!;
 
-    dareStates.delete(characterId);
+    let out = 'Yes\r\n';
+    out += `Roll #${x < 10 ? ' ' : ''}${x}____( ${roll.total} )`;
 
-    if (!result.success) {
-      return { output: `\r\n\x1b[31m${result.error}\x1b[0m\r\n> ` };
+    // SP.GAME.S line 223: if z4==o2 → BUST
+    if (roll.total === state.referenceTotal!) {
+      out += `<----- Gotcha Human!\x07\r\n`;
+      // Bust: score = 0, don't add to playerTotal
+      // Computer's turn
+      out += computerTurn(state);
+      return advanceRound(characterId, state, out);
     }
 
-    // Display round-by-round results
-    let out = '\r\n\x1b[33;1mDice are rolling...\x1b[0m\r\n';
-    out += `\r\n  ${'Round'.padEnd(7)} ${'You'.padEnd(10)} ${'Computer'.padEnd(12)} Winner\r\n`;
-    out += `  ${'-'.repeat(42)}\r\n`;
-
-    for (let i = 0; i < result.roundResults!.length; i++) {
-      const r = result.roundResults![i];
-      // Show ref roll + score (busted if score == 0 and rolls > 1)
-      const pRef = r.playerRolls[0];
-      const cRef = r.computerRolls[0];
-      const pBusted = r.playerScore === 0 && r.playerRolls.length > 1;
-      const cBusted = r.computerScore === 0 && r.computerRolls.length > 1;
-      const pDisplay = pBusted
-        ? `ref=${pRef.total} BUST`
-        : `ref=${pRef.total} acc=${r.playerScore}`;
-      const cDisplay = cBusted
-        ? `ref=${cRef.total} BUST`
-        : `ref=${cRef.total} acc=${r.computerScore}`;
-      const winColor = r.roundWinner === 'PLAYER' ? '\x1b[32m' : r.roundWinner === 'COMPUTER' ? '\x1b[31m' : '\x1b[33m';
-      out += `  ${String(i + 1).padEnd(7)} ${pDisplay.padEnd(10)} ${cDisplay.padEnd(12)} ${winColor}${r.roundWinner}\x1b[0m\r\n`;
-    }
-
-    out += `\r\n  Total: You \x1b[36;1m${result.playerTotal}\x1b[0m — Computer \x1b[36;1m${result.computerTotal}\x1b[0m`;
-    out += ` (x${result.multiplier} multiplier)\r\n`;
-
-    const net = result.netCredits!;
-    if (result.winner === 'PLAYER') {
-      const newCredits = addCredits(character.creditsHigh, character.creditsLow, net);
-      await prisma.character.update({
-        where: { id: characterId },
-        data: { creditsHigh: newCredits.high, creditsLow: newCredits.low },
-      });
-      out += `\r\n\x1b[32;1mYou win! +${net} cr\x1b[0m\r\n`;
-    } else if (result.winner === 'COMPUTER') {
-      const loss = Math.abs(net);
-      const newCredits = subtractCredits(character.creditsHigh, character.creditsLow, loss);
-      if (newCredits.success) {
-        await prisma.character.update({
-          where: { id: characterId },
-          data: { creditsHigh: newCredits.high, creditsLow: newCredits.low },
-        });
-      }
-      out += `\r\n\x1b[31;1mYou lose! -${loss} cr\x1b[0m\r\n`;
-    } else {
-      out += `\r\n\x1b[33;1mIt's a tie! No credits change.\x1b[0m\r\n`;
-    }
-
-    out += '> ';
+    // SP.GAME.S line 226: z6=z6+z4 — accumulate
+    state.accumulated! += roll.total;
+    out += `....Roll again? \x1b[37;1m[Y]\x1b[0m/(N): `;
     return { output: out };
   }
 
   dareStates.delete(characterId);
   return { output: '\r\n> ' };
+}
+
+/**
+ * Start a new player turn: roll reference dice, show header, prompt.
+ * SP.GAME.S lines 205-216 (strat label)
+ */
+function startPlayerTurn(state: DareState): ScreenResponse {
+  const refRoll = rollDare();
+  state.referenceTotal = refRoll.total;
+  state.accumulated = 0;
+  state.rollCount = 1;
+  state.step = 'PLAYER_ROLLING';
+
+  const round = state.currentRound!;
+  const isLast = round === state.totalRounds!;
+
+  let out = '\r\n\x1b[33;1m            Spacers Dare\x1b[0m\r\n';
+  if (isLast) {
+    out += '\r\nThis is the LAST round...\r\n';
+  }
+  out += `\r\n       Round # ${round}\r\n`;
+  out += ` --------------------------\r\n`;
+  // SP.GAME.S line 215: reference roll displayed with brackets [ ]
+  out += `\r\nRoll # 1____[ ${state.referenceTotal} ]`;
+  // SP.GAME.S line 226: z6=z6+z4, but z4=0 on first call → reference not scored
+  out += `....Roll again? \x1b[37;1m[Y]\x1b[0m/(N): `;
+
+  return { output: out };
+}
+
+/**
+ * Run the computer's turn automatically using AI table.
+ * SP.GAME.S lines 234-255 (comp.turn / comp1 / comp2 / comp3)
+ */
+function computerTurn(state: DareState): string {
+  let out = '\r\nStep back and let a real PRO handle those dice!\r\n';
+
+  // Computer reference roll
+  const refRoll = rollDare();
+  const compRef = refRoll.total;
+  out += `Roll # 1____[ ${compRef} ]\r\n`;
+
+  let accum = 0;
+  let rollCount = 1;
+
+  // Computer keeps rolling based on AI table
+  while (computerDareStrategy(compRef, rollCount)) {
+    rollCount++;
+    const roll = rollDare();
+    out += `Roll #${rollCount < 10 ? ' ' : ''}${rollCount}____( ${roll.total} )`;
+
+    if (roll.total === compRef) {
+      // SP.GAME.S line 249: "Bad Ram Chip!"
+      out += `<-----*WHIRR* *CLICK* Bad Ram Chip!\x07\r\n`;
+      accum = 0;
+      break;
+    }
+    out += '\r\n';
+    accum += roll.total;
+  }
+
+  if (accum > 0) {
+    out += `\r\n    Computer stays on ${accum} cr.\r\n`;
+  }
+
+  state.computerTotal! += accum;
+  return out;
+}
+
+/**
+ * After both player and computer have played a round, show score and advance.
+ */
+async function advanceRound(
+  characterId: string,
+  state: DareState,
+  out: string,
+): Promise<ScreenResponse> {
+  const round = state.currentRound!;
+  const totalRounds = state.totalRounds!;
+
+  // SP.GAME.S lines 256-258: score display
+  const label = round === totalRounds ? 'Final Score' : `End of Round ${round}____Score`;
+  out += `\r\n${label}:____Human: ${state.playerTotal} cr____Computer: ${state.computerTotal} cr\r\n`;
+
+  if (round < totalRounds) {
+    // More rounds to play
+    state.currentRound! += 1;
+    const nextRoundOutput = startPlayerTurn(state);
+    return { output: out + nextRoundOutput.output };
+  }
+
+  // Game over — calculate winner and update credits
+  const playerTotal = state.playerTotal!;
+  const computerTotal = state.computerTotal!;
+  const multiplier = state.multiplier!;
+
+  dareStates.delete(characterId);
+
+  const character = await prisma.character.findUnique({ where: { id: characterId } });
+  if (!character) {
+    return { output: out + '\r\n\x1b[31mError.\x1b[0m\r\n> ' };
+  }
+
+  if (playerTotal > computerTotal) {
+    // SP.GAME.S lines 263-284: winner
+    const diff = playerTotal - computerTotal;
+    const winnings = diff * multiplier;
+    const newCredits = addCredits(character.creditsHigh, character.creditsLow, winnings);
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { creditsHigh: newCredits.high, creditsLow: newCredits.low },
+    });
+    out += `\r\nCongratulations Human on a game well-played!\r\n`;
+    out += `Calculating your winnings....${diff} multiplied by ${multiplier}\r\n`;
+    out += `\x1b[32;1mYou have just increased your bankroll by ${winnings.toLocaleString()} credits!\x1b[0m\r\n`;
+  } else if (computerTotal > playerTotal) {
+    // SP.GAME.S lines 286-294: loser
+    const diff = computerTotal - playerTotal;
+    let loss = diff * multiplier;
+    const totalCredits = getTotalCredits(character.creditsHigh, character.creditsLow);
+    // SP.GAME.S line 288: if o9>g2 then o9=g2 — can't lose more than you have
+    if (loss > totalCredits) loss = totalCredits;
+    const newCredits = subtractCredits(character.creditsHigh, character.creditsLow, loss);
+    if (newCredits.success) {
+      await prisma.character.update({
+        where: { id: characterId },
+        data: { creditsHigh: newCredits.high, creditsLow: newCredits.low },
+      });
+    }
+    out += `\r\nYou lose Human...pay the pit boss as you leave.\r\n`;
+    out += `Calculating your losses....${diff} multiplied by ${multiplier}\r\n`;
+    out += `\x1b[31;1mYou have just lost ${loss.toLocaleString()} credits!\x1b[0m\r\n`;
+  } else {
+    out += `\r\n\x1b[33;1mIt's a tie! No credits change.\x1b[0m\r\n`;
+  }
+
+  out += '> ';
+  return { output: out };
 }

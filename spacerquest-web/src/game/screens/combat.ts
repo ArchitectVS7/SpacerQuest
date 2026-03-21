@@ -186,14 +186,20 @@ export const CombatScreen: ScreenModule = {
 
           const totalCredits = addCredits(newCredits.high, newCredits.low, salvageCredits);
 
+          // Space Patrol mission (kk=2): also increment per-mission wb counter
+          const charVictoryUpdate: Record<string, any> = {
+            battlesWon: { increment: 1 },
+            creditsHigh: totalCredits.high,
+            creditsLow: totalCredits.low,
+          };
+          if (character.missionType === 2) {
+            charVictoryUpdate.patrolBattlesWon = { increment: 1 };
+          }
+
           await Promise.all([
             prisma.character.update({
               where: { id: characterId },
-              data: {
-                battlesWon: { increment: 1 },
-                creditsHigh: totalCredits.high,
-                creditsLow: totalCredits.low,
-              },
+              data: charVictoryUpdate,
             }),
             prisma.ship.update({
               where: { characterId },
@@ -219,7 +225,9 @@ export const CombatScreen: ScreenModule = {
           }
 
           out += '\r\n\x1b[37;1mPress any key to continue...\x1b[0m';
-          return { output: out, nextScreen: 'main-menu' };
+          // Space Patrol (kk=2): dock at HQ for payoff; otherwise main-menu
+          const victoryNext = character.missionType === 2 ? 'space-patrol' : 'main-menu';
+          return { output: out, nextScreen: victoryNext };
         }
 
         if (playerDestroyed) {
@@ -227,14 +235,21 @@ export const CombatScreen: ScreenModule = {
             where: { id: session.id },
             data: { active: false, result: 'DEFEAT' },
           });
+
+          // Space Patrol (kk=2): track per-mission loss, dock at HQ for payoff
+          const charDefeatUpdate: Record<string, any> = { battlesLost: { increment: 1 } };
+          if (character.missionType === 2) {
+            charDefeatUpdate.patrolBattlesLost = { increment: 1 };
+          }
           await prisma.character.update({
             where: { id: characterId },
-            data: { battlesLost: { increment: 1 } },
+            data: charDefeatUpdate,
           });
 
           out += `\x1b[31;1mDEFEAT! Your ship has been overwhelmed.\x1b[0m\r\n`;
           out += '\r\n\x1b[37;1mPress any key to continue...\x1b[0m';
-          return { output: out, nextScreen: 'main-menu' };
+          const defeatNext = character.missionType === 2 ? 'space-patrol' : 'main-menu';
+          return { output: out, nextScreen: defeatNext };
         }
 
         out += `  Your attack: \x1b[32m${round.playerDamage || 'glancing'}\x1b[0m  `;

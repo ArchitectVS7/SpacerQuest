@@ -40,15 +40,28 @@ export const MainMenuScreen: ScreenModule = {
     // When score reaches 10,000, player is a Conqueror and their character
     // is reset so they can start over with a new role slot.
     if (character.score >= 10000 && !character.isConqueror) {
-      await prisma.character.update({
-        where: { id: characterId },
-        data: { isConqueror: true },
+      // Mark user as having conquered (persists across character resets for restart bonus)
+      await prisma.user.update({
+        where: { id: character.userId },
+        data: { hasConquered: true },
       });
+      // Cascade-delete the character so the player can create a new one
+      await prisma.$transaction([
+        prisma.combatSession.deleteMany({ where: { characterId } }),
+        prisma.battleRecord.deleteMany({ where: { characterId } }),
+        prisma.travelState.deleteMany({ where: { characterId } }),
+        prisma.gameLog.deleteMany({ where: { characterId } }),
+        prisma.portOwnership.deleteMany({ where: { characterId } }),
+        prisma.allianceMembership.deleteMany({ where: { characterId } }),
+        prisma.ship.deleteMany({ where: { characterId } }),
+        prisma.character.delete({ where: { id: characterId } }),
+      ]);
       return {
         output: '\x1b[2J\x1b[H\r\n\x1b[33;1mHail Conqueror of Spacer Quest!...can you do it again?\x1b[0m\r\n' +
-                '\r\nYour legendary status has been recorded.\r\n' +
-                'Your character will be reset so you can start a new role.\r\n' +
+                '\r\nYour legendary status has been recorded for all time.\r\n' +
+                'Your character has been retired. Create a new character to continue.\r\n' +
                 '\r\n\x1b[32mThank you for playing SpacerQuest!\x1b[0m\r\n',
+        nextScreen: 'character-create',
       };
     }
 
@@ -110,7 +123,8 @@ ${character.isLost ? '\x1b[33m  (Navigation disabled while lost in space)\x1b[0m
   [N]avigate - Travel between systems
   [R]egistry - Spacer directory
   [E]xtra-Curricular - Pirate, patrol, duels
-  [G]alactic Port Prices - Fuel prices all ports${!isClassicMode() ? '\n  [D]one - End Turn (run other spacers)' : ''}${hasAlliance ? '\n  [I]nvest - Alliance investment center' : ''}${character.currentSystem === 17 ? '\n  [W]ise One - Visit the Wise One' : ''}${character.currentSystem === 18 ? '\n  [A]ncient One - Visit the Sage' : ''}${character.portOwnership ? '\n  [F]uel Depot - Manage your port fuel' : ''}${character.user.isAdmin ? '\n  \x1b[31m[*] Admin Panel (Sysop)\x1b[0m' : ''}`}
+  [G]alactic Port Prices - Fuel prices all ports
+  [J]ournal - Space news and battles log${hasAlliance ? '\n  [U]pdate Board - Alliance bulletins' : ''}${!isClassicMode() ? '\n  [D]one - End Turn (run other spacers)' : ''}${hasAlliance ? '\n  [I]nvest - Alliance investment center' : ''}${character.currentSystem === 17 ? '\n  [W]ise One - Visit the Wise One' : ''}${character.currentSystem === 18 ? '\n  [A]ncient One - Visit the Sage' : ''}${character.portOwnership ? '\n  [F]uel Depot - Manage your port fuel' : ''}${character.user.isAdmin ? '\n  \x1b[31m[*] Admin Panel (Sysop)\x1b[0m' : ''}`}
   [Q]uit - Save and logout
 
 \x1b[32m:\x1b[0m${character.currentSystem} Port Accounts:\x1b[32m:(?=Menu): Command:\x1b[0m
@@ -217,6 +231,14 @@ ${character.isLost ? '\x1b[33m  (Navigation disabled while lost in space)\x1b[0m
       'R': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'registry' }),
       'E': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'extra-curricular' }),
       'G': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'port-fuel-prices' }),
+      'J': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'space-news' }),
+      'U': async () => {
+        const membership = await prisma.allianceMembership.findUnique({ where: { characterId } });
+        if (!membership || membership.alliance === 'NONE') {
+          return { output: '\r\n\x1b[31mYou must be in an alliance to view bulletins.\x1b[0m\r\n> ' };
+        }
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'bulletin-board' };
+      },
       'D': async () => {
         if (isClassicMode()) {
           return { output: '\r\n\x1b[33mClassic mode — wait for next day.\x1b[0m\r\n> ' };

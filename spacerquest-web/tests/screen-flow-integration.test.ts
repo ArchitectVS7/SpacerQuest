@@ -441,14 +441,14 @@ describe('New Tier 2 Screens', () => {
     expect(jailCode).toContain("'P'");
   });
 
-  it('bulletin-board screen routes to spacers-hangout on quit', async () => {
+  it('bulletin-board screen routes to main-menu on quit', async () => {
     const fs = await import('fs');
     const bbCode = fs.readFileSync(
       new URL('../src/game/screens/bulletin-board.ts', import.meta.url),
       'utf-8'
     );
 
-    expect(bbCode).toContain("nextScreen: 'spacers-hangout'");
+    expect(bbCode).toContain("nextScreen: 'main-menu'");
     expect(bbCode).toContain("'Q'");
   });
 

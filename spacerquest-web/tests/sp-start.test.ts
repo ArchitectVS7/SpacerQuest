@@ -33,10 +33,17 @@ vi.mock('../src/db/prisma', () => ({
     character: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      delete: vi.fn(),
     },
-    allianceMembership: { findUnique: vi.fn() },
-    combatSession: { findFirst: vi.fn(), delete: vi.fn() },
-    ship: {},
+    user: { update: vi.fn() },
+    allianceMembership: { findUnique: vi.fn(), deleteMany: vi.fn() },
+    combatSession: { findFirst: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
+    battleRecord: { deleteMany: vi.fn() },
+    travelState: { deleteMany: vi.fn() },
+    gameLog: { deleteMany: vi.fn() },
+    portOwnership: { deleteMany: vi.fn() },
+    ship: { deleteMany: vi.fn() },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -81,6 +88,7 @@ function makeShip(overrides: Record<string, unknown> = {}) {
 function makeCharacter(overrides: Record<string, unknown> = {}) {
   return {
     id: 'char-1',
+    userId: 'user-1',
     name: 'TestSpacer',
     shipName: 'Nova Star',
     rank: Rank.COMMANDER,
@@ -127,6 +135,8 @@ describe('SP.START val.start — Conqueror detection', () => {
     prisma.allianceMembership.findUnique.mockResolvedValue(null);
     prisma.combatSession.findFirst.mockResolvedValue(null);
     prisma.character.update.mockResolvedValue({});
+    prisma.user.update.mockResolvedValue({});
+    prisma.$transaction.mockResolvedValue([]);
   });
 
   it('SP.START val.start line 124: shows Conqueror message when score >= 10000', async () => {
@@ -139,14 +149,14 @@ describe('SP.START val.start — Conqueror detection', () => {
     expect(result.output).toContain('Hail Conqueror');
   });
 
-  it('SP.START val.start: sets isConqueror=true when score >= 10000', async () => {
+  it('SP.START val.start: sets user.hasConquered=true when score >= 10000', async () => {
     const char = makeCharacter({ score: 10000, isConqueror: false });
     prisma.character.findUnique.mockResolvedValue(char);
 
     await MainMenuScreen.render('char-1');
-    expect(prisma.character.update).toHaveBeenCalledWith(
+    expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ isConqueror: true }),
+        data: expect.objectContaining({ hasConquered: true }),
       })
     );
   });
@@ -326,12 +336,13 @@ describe('Conqueror detection — source code structure', () => {
     expect(code).toContain('Hail Conqueror');
   });
 
-  it('main-menu.ts sets isConqueror=true when conqueror is detected', async () => {
+  it('main-menu.ts sets user.hasConquered=true and deletes character when conqueror is detected', async () => {
     const fs = await import('fs');
     const code = fs.readFileSync(
       new URL('../src/game/screens/main-menu.ts', import.meta.url),
       'utf-8'
     );
-    expect(code).toContain('isConqueror: true');
+    expect(code).toContain('hasConquered: true');
+    expect(code).toContain('character.delete');
   });
 });
