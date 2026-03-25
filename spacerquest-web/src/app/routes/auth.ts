@@ -258,4 +258,60 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Login failed' });
     }
   });
+
+  // Dev-only: bootstrap the authenticated user's character to a playable state for playtesting.
+  // Sets hull/drive/nav/lifesupport to strength 10 / condition 9 and gives starting credits + fuel.
+  fastify.post('/auth/dev-setup-character', {
+    preValidation: [requireAuth],
+  }, async (request, reply) => {
+    if (process.env.NODE_ENV === 'production') {
+      return reply.status(403).send({ error: 'Not available in production' });
+    }
+
+    const { userId } = request.user as { userId: string };
+    const character = await prisma.character.findFirst({ where: { userId }, include: { ship: true } });
+    if (!character) {
+      return reply.status(404).send({ error: 'Character not found' });
+    }
+
+    // Reset playtest character to a clean, playable state
+    await prisma.character.update({
+      where: { id: character.id },
+      data: {
+        creditsHigh: 10, creditsLow: 0, // 100,000 Cr — enough for upgrades + launches
+        tripCount: 0,         // reset daily trip limit so cargo dispatch is open
+        missionType: 0,       // no active mission
+        cargoPods: 0,         // no loaded cargo
+        cargoType: 0,
+        cargoPayment: 0,
+        destination: 0,
+        cargoManifest: null,
+        currentSystem: 1,     // start at Sun-3
+      },
+    });
+
+    // Clear any active travel or combat sessions
+    await prisma.travelState.deleteMany({ where: { characterId: character.id } });
+    await prisma.combatSession.deleteMany({ where: { characterId: character.id } });
+
+    // Set ship to a fully launchable state with hull=20 (100 pods), drive=10, nav=10, lifesupport=10
+    await prisma.ship.update({
+      where: { characterId: character.id },
+      data: {
+        hullStrength: 30, hullCondition: 9,
+        driveStrength: 10, driveCondition: 9,
+        cabinStrength: 5,  cabinCondition: 9,
+        lifeSupportStrength: 10, lifeSupportCondition: 9,
+        weaponStrength: 10, weaponCondition: 9,
+        navigationStrength: 40, navigationCondition: 9,
+        roboticsStrength: 5, roboticsCondition: 9,
+        shieldStrength: 10, shieldCondition: 9,
+        fuel: 800,
+        cargoPods: 0,
+        maxCargoPods: 200,
+      },
+    });
+
+    return { success: true, message: 'Character bootstrapped for playtest' };
+  });
 }

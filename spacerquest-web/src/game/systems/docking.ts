@@ -11,7 +11,7 @@ import { AllianceType, Rank } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { addCredits } from '../utils.js';
 import { simulateMalignaBattle, MalignaMissionType } from './maligna-battle.js';
-import { NEMESIS_REWARD_CREDITS } from '../constants.js';
+import { checkPortEviction } from './economy.js';
 
 /**
  * Process ship arrival at a star system.
@@ -27,6 +27,8 @@ export async function processDocking(characterId: string, systemId: number) {
   if (!character) return { success: false, error: 'Character not found' };
 
   const messages: string[] = [];
+  // varfix tracks whether u1=u1+1 (tripsCompleted) has been applied this docking
+  let varfixDone = false;
 
   // Log docking event
   await prisma.gameLog.create({
@@ -47,6 +49,7 @@ export async function processDocking(characterId: string, systemId: number) {
       return { success: true, message: battleResult.message, battleLost: true };
     }
     // mallosex rewards + Maligna-specific bonus (SP.MAL.S line 319 + DOCK1.S:103-110)
+    // Note: astrecsTraveled already incremented by completeTravel, so just add +10 bonus here
     const { high, low } = addCredits(character.creditsHigh, character.creditsLow, 100000);
     await prisma.character.update({
       where: { id: characterId },
@@ -62,7 +65,7 @@ export async function processDocking(characterId: string, systemId: number) {
         cargoType: 0,
         tripsCompleted: character.tripsCompleted + 1,
         tripCount: 0,
-        astrecsTraveled: (character.astrecsTraveled + 10) > 29999 ? 0 : character.astrecsTraveled + 10,
+        astrecsTraveled: (character.astrecsTraveled + 10) > 29999 ? 0 : character.astrecsTraveled + 10,  // SP.MAL.S:317 bonus
       },
     });
     await prisma.gameLog.create({
@@ -83,82 +86,32 @@ export async function processDocking(characterId: string, systemId: number) {
     return { success: true, message: messages.join('\r\n'), malignaCompleted: true };
   }
 
-  // ── NEMESIS quest (SP.MAL.S kk=9 + SP.TOP.S gems) — battle then reward ──
+  // ── NEMESIS quest (SP.MAL.S kk=9 + SP.TOP.S gems) — battle then lattice puzzle ──
   // missionType=9, destination=28
+  // SP.MAL.S:307 e1+1 on victory; then goto nemgem for the crystal lattice puzzle
   if (systemId === 28 && character.missionType === 9 && character.ship) {
     const battleResult = await runSpecialMissionBattle(characterId, character, 9 as MalignaMissionType, 1);
     if (!battleResult.playerWon) {
       return { success: true, message: battleResult.message, battleLost: true };
     }
 
-    // mallosex rewards (SP.MAL.S lines 316-321):
-    //   sc=(sc+1): promotions+1
-    //   j1=(j1+10): astrecs+10
-    //   u1=(u1+1): trips+1
-    //   z1=0: tripCount=0
-    //   s2=(s2+q6+5): score += 20+5 = 25 (q6=20 for Nemesis, set at SP.TOP.S:148 / SP.MAL.S:403)
-    //   e1=(e1+1): battlesWon+1 (SP.MAL.S:307)
+    // SP.MAL.S:307: e1=(e1+1) — battlesWon increment happens on victory, before nemgem
+    // pendingLattice=true routes client to nemesis-lattice screen (SP.MAL.S nemgem subroutine)
+    // Rewards (mallosex + gems) are NOT awarded here — they are awarded by the lattice screen on success
     await prisma.character.update({
       where: { id: characterId },
       data: {
-        score: character.score + 25,   // s2+q6+5 where q6=20 (SP.MAL.S:319, SP.TOP.S:148)
         battlesWon: character.battlesWon + 1,
-        promotions: character.promotions + 1,
-        tripsCompleted: character.tripsCompleted + 1,
-        tripCount: 0,
-        astrecsTraveled: (character.astrecsTraveled + 10) > 29999 ? 0 : character.astrecsTraveled + 10,
-        missionType: 0,
-        destination: 0,
-        cargoManifest: null,
+        pendingLattice: true,
       },
     });
 
-    // gems rewards (SP.TOP.S lines 169-172):
-    //   g1=g1+15 → credits += 150,000
-    //   l1=l1+50: life support strength +50
-    //   l2=9: life support condition = 9
-    //   p1=25, p2=9: shield strength=25, condition=9
-    //   w1=25, w2=2: weapon strength=25, condition=2
-    //   w1$="STAR-BUSTER++", p1$="ARCH-ANGEL++", l1$="LSS Chrysalis+*"
-    const { high, low } = addCredits(character.creditsHigh, character.creditsLow, NEMESIS_REWARD_CREDITS);
-    const ship = character.ship;
-    await prisma.ship.update({
-      where: { characterId },
-      data: {
-        lifeSupportStrength: ship.lifeSupportStrength + 50,
-        lifeSupportCondition: 9,
-        shieldStrength: 25,
-        shieldCondition: 9,
-        weaponStrength: 25,
-        weaponCondition: 2,
-        hasStarBuster: true,   // w1$="STAR-BUSTER++"
-        hasArchAngel: true,    // p1$="ARCH-ANGEL++"
-      },
-    });
-    await prisma.character.update({
-      where: { id: characterId },
-      data: {
-        creditsHigh: high,
-        creditsLow: low,
-      },
-    });
-
-    await prisma.gameLog.create({
-      data: {
-        type: 'MISSION',
-        characterId,
-        message: `${character.name} Conquered Nemesian Forces and returned with the Star Jewels`,
-        metadata: { event: 'NEMESIS_COMPLETE', reward: NEMESIS_REWARD_CREDITS },
-      },
-    });
     messages.push(
       `${battleResult.message}\r\n` +
       `You have beaten the Nemesian Forces!\r\n` +
-      `+25 score points awarded.\r\n` +
-      `The Nemesian Star Jewels have altered your weaponry, shields, and life support!\r\n` +
-      `150,000 cr honorarium awarded by the Space Authority.`
+      `You approach the glowing crystal lattice...`
     );
-    return { success: true, message: messages.join('\r\n'), nemesisCompleted: true };
+    return { success: true, message: messages.join('\r\n'), pendingLattice: true };
   }
 
   // ── Raid completion (SP.DOCK1.S:129-135 + SP.MAL.S kk=4) ─────────────
@@ -192,12 +145,151 @@ export async function processDocking(characterId: string, systemId: number) {
     });
   }
 
-  // ── Rim port arrival effects (SP.DOCK2.S:47-67) ───────────────────────
-  // Systems 15-20 are rim star ports with extra arrival penalties.
+  // ── Raid manifest burn (SP.DOCK1.S:60) ────────────────────────────────────
+  // if right$(q2$,4)="Raid" → player carrying raid documents, burn them on any arrival
+  if (character.missionType === 1 && character.cargoManifest?.endsWith('Raid')) {
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { missionType: 0, cargoPods: 0, cargoType: 0, cargoManifest: null, destination: 0, cargoPayment: 0 },
+    });
+    messages.push('Luckily you burned the plans');
+    // Cargo cleared — fall through to rest of docking (rim effects, etc.)
+    // Re-fetch is not needed: subsequent cargo checks will not fire (cargoPods already cleared in DB)
+    return { success: true, message: messages.join('\r\n') };
+  }
+
+  // ── Mark VIII Teleportation for wrong-port delivery (SP.DOCK1.S:75-87) ──
+  // If player has cargo (q1>0) but is at wrong destination (q9$<>q4$), teleport to correct port.
+  // Andromeda cargo (cargoManifest='X') is always deliverable at current port — skip teleport.
+  // Cargo pods and fuel are emptied, ship appears at correct destination launch bays.
+  // missionType=1: bribed cargo; missionType=3: regular cargo from Traders (SP.CARGO.S:104 kk=3)
+  if ((character.missionType === 1 || character.missionType === 3) && character.cargoPods > 0 && character.destination > 0
+      && character.destination !== systemId && character.cargoManifest !== 'X') {
+    const targetSystem = await prisma.starSystem.findUnique({ where: { id: character.destination } });
+    if (targetSystem) {
+      // SP.DOCK1.S:84-87 — clear cargo, fuel, and teleport
+      await prisma.$transaction([
+        prisma.ship.update({
+          where: { id: character.ship!.id },
+          data: { fuel: 0, cargoPods: 0 },
+        }),
+        prisma.character.update({
+          where: { id: characterId },
+          data: {
+            currentSystem: character.destination,
+            missionType: 0,
+            cargoPods: 0,
+            cargoType: 0,
+            cargoPayment: 0,
+            cargoManifest: null,
+            destination: 0,
+            // SP.DOCK1.S:63 — s2=s2-5: score penalty for wrong-port delivery
+            score: Math.max(0, character.score - 5),
+          },
+        }),
+        prisma.gameLog.create({
+          data: {
+            type: 'SYSTEM',
+            characterId,
+            systemId: character.destination,
+            message: `${character.name} used Mark VIII transporter to ${targetSystem.name}`,
+            metadata: { event: 'MARK_VIII_TELEPORT', fromSystem: systemId, toSystem: character.destination },
+          },
+        }),
+      ]);
+      messages.push(
+        `Your port of entry should have been ${targetSystem.name}`,
+        `Your ship will be transported to ${targetSystem.name} immediately!`,
+        `Cargo pods and fuel tanks are emptied to decrease`,
+        `The ${character.shipName || 'ship'}'s mass for the Mark VIII transporter`,
+        `....ZZZZZZZZAAAAAAAAAAAAAPPPPPPPPPP!!!!`,
+        `Your ship ${character.shipName || ''} is suddenly in the ${targetSystem.name} launch bays`
+      );
+      // Return early with teleport message — docking complete at new location
+      return { success: true, message: messages.join('\r\n'), teleported: true, teleportedTo: character.destination };
+    }
+  }
+
+  // ── Correct port delivery (SP.DOCK1.S:64-76, varfix) ─────────────────────
+  // Fires when player has cargo and is at the correct destination, OR has Andromeda cargo,
+  // OR has a bribed manifest (left$(q9$,2)="=-" → SP.DOCK1.S:34 auto-match any port).
+  // SP.DOCK1.S:57 — Andromeda (q3$="X"): q9$=q4$ sets destination = current port (always matches).
+  // SP.DOCK1.S:69-70 — Andromeda payment: q5=(min(q5,70)*300)+(q4*500); where q5=distance, q4=systemId.
+  // SP.DOCK1.S:34 — Bribed manifest "=-Space-=": left$(q9$,2)="=-" → q9$=q4$ (any port OK, no payment).
+  // SP.LIFT.S:107 — Bribed launch: q6=20 stored in cargoPayment for arriv3/varfix scoring.
+  // Regular cargo: cargoPayment is the computed payment stored at contract acceptance.
+  // missionType=1: bribed cargo; missionType=3: regular cargo from Traders (SP.CARGO.S:104 kk=3)
+  const isBribedManifest = character.cargoManifest?.startsWith('=-') ?? false;
+  if ((character.missionType === 1 || character.missionType === 3) && character.cargoPods > 0 && character.cargoManifest
+      && (character.destination === systemId || character.cargoManifest === 'X' || isBribedManifest)) {
+    const isAndromeda = character.cargoManifest === 'X';
+    let payment: number;
+    // q6 = distance for varfix scoring: bribed=20 (stored in cargoPayment), Andromeda=not used, regular=TBD
+    const q6ForScoring = isBribedManifest ? character.cargoPayment : 0;
+
+    if (isAndromeda) {
+      // SP.DOCK1.S:69: if (q3$="X") and (q5>69) q5=70; then q5=(q5*300)+(q4*500)
+      // cargoPayment stores the distance (q5 set at black hole loading)
+      const cappedDist = Math.min(character.cargoPayment, 70);
+      payment = cappedDist * 300 + systemId * 500;
+    } else if (isBribedManifest) {
+      // SP.DOCK1.S:arrv line: if q2$="0" q5=0:q1=0:goto arriv3 — no payment for bribed
+      payment = 0;
+    } else {
+      // Regular: cargoPayment was computed at contract time (upod-scaled payment)
+      payment = character.cargoPayment;
+    }
+
+    // SP.DOCK1.S:arriv3: y=2:gosub varfix — score += wb + q6 + 2 - lb (wb/lb=0 for cargo trips)
+    const newScore = Math.max(0, character.score + q6ForScoring + 2);
+
+    const { high, low } = addCredits(character.creditsHigh, character.creditsLow, payment);
+    // SP.DOCK1.S varfix: k1=k1+q1:if (k1>29999):k1=0 — track cargo pods delivered
+    const newCargoDelivered = (character.cargoDelivered + character.cargoPods) > 29999
+      ? 0
+      : character.cargoDelivered + character.cargoPods;
+    await prisma.character.update({
+      where: { id: characterId },
+      data: {
+        creditsHigh: high,
+        creditsLow: low,
+        score: newScore,
+        cargoDelivered: newCargoDelivered,
+        missionType: 0,
+        cargoPods: 0,
+        cargoType: 0,
+        cargoManifest: null,
+        destination: 0,
+        cargoPayment: 0,
+        manifestBoard: null,
+        manifestDate: null,
+        // SP.DOCK1.S:arriv3/varfix: u1=u1+1
+        tripsCompleted: { increment: 1 },
+      },
+    });
+    varfixDone = true;
+    if (!isBribedManifest) {
+      messages.push(
+        `For delivery of ${character.cargoPods} pods of ${character.cargoManifest}\r\n` +
+        `Payment of ${payment.toLocaleString()} cr will be credited to your account.\r\n` +
+        "It's always a pleasure doing business with you."
+      );
+    } else {
+      messages.push("Forged manifest accepted. No payment.");
+    }
+  }
+
+  // ── Rim port arrival effects (SP.DOCK2.S:47-72) ──────────────────────
+  // Systems 15-20 are rim star ports with extra arrival penalties + score bonus.
   if (systemId >= 15 && systemId <= 20 && character.ship) {
     const ship = character.ship;
     const shipUpdates: Record<string, number> = {};
     const charUpdates: Record<string, number> = {};
+
+    // SP.DOCK2.S:70-72: y=4; if q3$="X" y=8; gosub varfix → s2=(s2+y)
+    // Andromeda mission cargo (cargoManifest='X') doubles the rim arrival score bonus.
+    const rimScoreBonus = character.cargoManifest === 'X' ? 8 : 4;
+    charUpdates.score = character.score + rimScoreBonus;
 
     // Fuel consumption on docking (SP.DOCK2.S:47-51):
     //   if n1>60 goto rimf (skip)
@@ -223,11 +315,13 @@ export async function processDocking(characterId: string, systemId: number) {
     }
 
     // Airlock damage (SP.DOCK2.S:61-67):
-    //   if (w1+p1)<60 and l1$ not destroyed:
+    //   if (w1+p1)<60 goto rid (SKIP — damage only fires when >=60)
+    //   if (mq$="LSS C") or (l1$=jk$) goto rid (SKIP — Chrysalis immune, or already junk)
     //   x=1: if z1>2 x=(z1-2)
     //   l1=(l1-x): if l1<1 l1=0:l2=0
     const combinedWeaponShield = ship.weaponStrength + ship.shieldStrength;
-    if (combinedWeaponShield < 60 && ship.lifeSupportCondition > 0) {
+    const isLSSChrysalis = ship.lifeSupportName?.startsWith('LSS C') ?? false;
+    if (combinedWeaponShield >= 60 && !isLSSChrysalis && ship.lifeSupportCondition > 0) {
       const x = character.tripCount > 2 ? character.tripCount - 2 : 1;
       const newLSCond = Math.max(0, ship.lifeSupportCondition - x);
       shipUpdates.lifeSupportCondition = newLSCond;
@@ -249,6 +343,63 @@ export async function processDocking(characterId: string, systemId: number) {
         data: charUpdates,
       });
     }
+  }
+
+  // ── SP.LIFT.S fueler subroutine (lines 213-229): Port eviction check ─────
+  // Runs once per docking (fp flag in original = per-visit, we run at arrival).
+  // Only applies to core systems (1-14) that can have owned ports.
+  if (systemId >= 1 && systemId <= 14) {
+    const port = await prisma.portOwnership.findUnique({ where: { systemId } });
+    if (port) {
+      const freshChar = await prisma.character.findUnique({ where: { id: characterId } });
+      const ownerChar = await prisma.character.findUnique({ where: { id: port.characterId } });
+      if (freshChar && ownerChar) {
+        const evictionResult = checkPortEviction(
+          port.fuelStored,
+          port.bankCreditsHigh,
+          ownerChar.name,
+          freshChar.name,
+        );
+        if (evictionResult.shouldAutoBuy) {
+          // SP.LIFT.S faut: m9=m9+1000:m7=m7-2 — auto-buy 1000 fuel, deduct 2 high cr
+          await prisma.portOwnership.update({
+            where: { id: port.id },
+            data: {
+              fuelStored: port.fuelStored + 1000,
+              bankCreditsHigh: port.bankCreditsHigh - 2,
+            },
+          });
+          messages.push(evictionResult.autoBuyMessage);
+        } else if (evictionResult.shouldEvict) {
+          // SP.LIFT.S fneg: gosub evict — clear owner, reset defaults m5=5:m9=3000
+          await prisma.$transaction([
+            prisma.portOwnership.delete({ where: { id: port.id } }),
+            prisma.starSystem.update({ where: { id: systemId }, data: { portOwner: null } }),
+          ]);
+          messages.push(evictionResult.evictMessage);
+        }
+      }
+    }
+  }
+
+  // ── Andromeda arrival score bonus (SP.BLACK.S:98: y=10:gosub varfix) ────
+  // varfix: s2=(s2+wb+q6+y)-lb where q6=10 (set at SP.BLACK.S:87) and y=10.
+  // Total score gain = q6(10) + y(10) = +20. wb=lb=0 for transit (no patrol/cargo bonuses).
+  if (systemId >= 21 && systemId <= 26 && character.missionType === 10) {
+    const freshChar = await prisma.character.findUnique({ where: { id: characterId }, select: { score: true } });
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { score: (freshChar?.score ?? character.score) + 20 },
+    });
+  }
+
+  // SP.DOCK1.S:arriv3/varfix: u1=u1+1 — fires for all dockings that didn't already call varfix
+  // (cargo delivery path sets varfixDone=true above; wrong-port teleport returns early without varfix)
+  if (!varfixDone) {
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { tripsCompleted: { increment: 1 } },
+    });
   }
 
   const msg = messages.length > 0 ? messages.join('\r\n') : `Docked at System ${systemId}`;
@@ -279,6 +430,7 @@ async function runSpecialMissionBattle(
       weaponStrength: number; weaponCondition: number;
       shieldStrength: number; shieldCondition: number;
       hasStarBuster: boolean; hasArchAngel: boolean;
+      hasWeaponMark: boolean;
       fuel: number; lifeSupportCondition: number;
       cargoPods: number; driveCondition: number;
       cabinCondition: number; navigationCondition: number;
@@ -303,6 +455,7 @@ async function runSpecialMissionBattle(
       shieldCondition: ship.shieldCondition,
       hasStarBuster: ship.hasStarBuster,
       hasArchAngel: ship.hasArchAngel,
+      hasWeaponMark: ship.hasWeaponMark,  // SP.MAL.S line 83: +150 k8 bonus
       fuel: ship.fuel,
       lifeSupportCond: ship.lifeSupportCondition,
       cargoPods: ship.cargoPods,
@@ -316,6 +469,7 @@ async function runSpecialMissionBattle(
 
   if (result.playerLost) {
     // SP.MAL.S malwin lines 337-343: all stats zeroed, battlesLost+1, score-10
+    // Also clear hasWeaponMark since weapon is destroyed (ship total loss)
     const newScore = Math.max(0, character.score - 10);
     await prisma.$transaction([
       prisma.ship.update({
@@ -330,6 +484,7 @@ async function runSpecialMissionBattle(
           roboticsStrength: 0, roboticsCondition: 0,
           shieldStrength: 0, shieldCondition: 0,
           fuel: 0, cargoPods: 0,
+          hasWeaponMark: false, hasStarBuster: false, hasArchAngel: false,
         },
       }),
       prisma.character.update({
@@ -349,25 +504,45 @@ async function runSpecialMissionBattle(
   }
 
   // Player won — update ship conditions from battle result (mallosex: l2>=1, h2>=1, d2>=1 ensured)
+  // SP.MAL.S linkup (lines 407-409): alien weapon enhancement vaporizes on mission exit
+  //   if left$(w1$,3)="?ST" w1$=sb$:w1=w1-5   → "?STAR-BUSTER": -5 strength, revert to STAR-BUSTER
+  //   if left$(w1$,1)="?" w1=0:w2=0:w1$=jk$    → other alien-enhanced: weapon destroyed
+  const shipData: Record<string, unknown> = {
+    fuel: result.fuelRemaining,
+    lifeSupportCondition: Math.max(1, result.lifeSupportCond),
+    cargoPods: result.cargoPods,
+    driveCondition: Math.max(1, result.driveCondition),
+    cabinCondition: result.cabinCondition,
+    navigationCondition: result.navigationCondition,
+    roboticsCondition: result.roboticsCondition,
+    hullCondition: Math.max(1, result.hullCondition),
+    weaponCondition: result.finalWeaponCondition,
+    shieldCondition: result.finalShieldCondition,
+  };
+  let alienWeaponMsg = '';
+  if (ship.hasWeaponMark) {
+    if (ship.hasStarBuster) {
+      // "?STAR-BUSTER": revert to STAR-BUSTER (-5 str), left$(w1$,3)="?ST"
+      shipData.weaponStrength = Math.max(1, ship.weaponStrength - 5);
+      shipData.hasWeaponMark = false;
+      alienWeaponMsg = `\r\nAlien weapon enhancement vaporizes causing damage -5 to STAR-BUSTER`;
+    } else {
+      // other alien-enhanced weapon: completely destroyed → JUNK
+      shipData.weaponStrength = 0;
+      shipData.weaponCondition = 0;
+      shipData.hasWeaponMark = false;
+      shipData.hasArchAngel = false;
+      alienWeaponMsg = `\r\nYour weapon fuses into JUNK`;
+    }
+  }
   await prisma.ship.update({
     where: { id: ship.id },
-    data: {
-      fuel: result.fuelRemaining,
-      lifeSupportCondition: Math.max(1, result.lifeSupportCond),
-      cargoPods: result.cargoPods,
-      driveCondition: Math.max(1, result.driveCondition),
-      cabinCondition: result.cabinCondition,
-      navigationCondition: result.navigationCondition,
-      roboticsCondition: result.roboticsCondition,
-      hullCondition: Math.max(1, result.hullCondition),
-      weaponCondition: result.finalWeaponCondition,
-      shieldCondition: result.finalShieldCondition,
-    },
+    data: shipData,
   });
 
   return {
     playerWon: true,
-    message: result.log.slice(-5).join('\r\n'),
+    message: result.log.slice(-5).join('\r\n') + alienWeaponMsg,
   };
 }
 
@@ -411,57 +586,31 @@ async function completeRaid(
     return { message: `Raid on ${targetSystem.name} failed — target is no longer enemy-controlled.` };
   }
 
-  const previousAlliance = allianceSystem.alliance;
-
-  // Transfer system ownership — original: pz$=q4$ then register at Investment Center
-  // Simplified: apply takeover directly, set DEFCON to 1
-  // z1=3 → tripCount=3 (original line 134: trip counter set to 3 after raid)
-  await prisma.$transaction([
-    prisma.allianceSystem.update({
-      where: { systemId },
-      data: {
-        alliance: character.allianceSymbol,
-        ownerCharacterId: characterId,
-        defconLevel: 1,
-        lastTakeoverAttempt: new Date(),
-      },
-    }),
-    // Award score: original s2=s2+5; set tripCount=3 (original z1=3)
-    prisma.character.update({
-      where: { id: characterId },
-      data: {
-        score: character.score + 5,
-        tripCount: 3,
-        missionType: 0,
-        cargoManifest: null,
-        destination: 0,
-        cargoPods: 0,
-        cargoType: 0,
-      },
-    }),
-    // Log the raid takeover (generates news entry per SP.VEST.S:187)
-    prisma.gameLog.create({
-      data: {
-        type: 'ALLIANCE',
-        characterId,
-        systemId,
-        message: `: [${character.allianceSymbol}] - Take-Over ${targetSystem.name} from ${previousAlliance} by ${character.name}`,
-        metadata: {
-          event: 'RAID_TAKEOVER',
-          systemId,
-          systemName: targetSystem.name,
-          newAlliance: character.allianceSymbol,
-          previousAlliance,
-        },
-      },
-    }),
-  ]);
+  // SP.DOCK1.S:130-135 — pz$=q4$ two-step flow:
+  //   print "The Armed Take-Over of {system} is successful!"
+  //   print "Here are the legal documents to activate new ownership"
+  //   print "Please take them immediately to Alliance Investment Ltd"
+  //   pz$=q4$:s2=s2+5:z1=3
+  // Ownership transfer happens later at Investment Center (SP.VEST.S invtak2)
+  await prisma.character.update({
+    where: { id: characterId },
+    data: {
+      score: character.score + 5,
+      tripCount: 3,
+      missionType: 0,
+      cargoManifest: null,
+      destination: 0,
+      cargoPods: 0,
+      cargoType: 0,
+      raidDocument: targetSystem.name,
+    },
+  });
 
   return {
     message:
       `The Armed Take-Over of ${targetSystem.name} is successful!\r\n` +
       `Here are the legal documents to activate new ownership\r\n` +
-      `The ${character.allianceSymbol} now controls ${targetSystem.name}!\r\n` +
+      `Please take them immediately to Alliance Investment Ltd\r\n` +
       `+5 score points awarded.`,
   };
 }
