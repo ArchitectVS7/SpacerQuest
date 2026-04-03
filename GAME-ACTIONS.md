@@ -71,7 +71,7 @@ Available from the main menu screen. Key bindings:
 |--------|------|-------------|
 | 21-26 | Andromeda systems | Astraxial hull required; black hole transit |
 | 27 | Maligna's Lair | Conqueror status + Astraxial hull |
-| 28 | Nemesis Coordinates | 500+ battle wins, all components at condition 9 |
+| 28 | Nemesis Coordinates | weapon_strength + shield_strength >= 50 |
 
 ### Black Hole Transit (to Andromeda)
 
@@ -107,8 +107,7 @@ If the NPC shares your alliance, they hail a friendly greeting — no combat occ
 |--------|-----|---------|
 | **Attack** | `A` | Standard combat round — both sides deal damage |
 | **Retreat** | `R` | 50% success if your drive power > enemy's; Cloaker gives 70% success |
-| **Surrender** | `S` | Pay tribute: `combat_rounds * 1,000` cr (max 20,000, capped at your credits) |
-| **Ram** | `M` | Direct assault — high risk, damages both ships |
+| **Surrender** | `S` | Pay tribute: `combat_rounds * 1,000` cr (max 10,000, capped at your credits) |
 
 ### Battle Factor (BF)
 
@@ -178,11 +177,12 @@ Press `R`. Restores all components to condition 9. Cost = sum of `(9 - current_c
 
 | Equipment | Price | Requirement | Effect |
 |-----------|-------|-------------|--------|
-| Morton's Cloaker | 500 cr | Hull strength <= 49 | 70% escape chance on retreat |
+| Morton's Cloaker | 500 cr | Hull strength <= 4 | 70% escape chance on retreat |
 | Auto-Repair Module | `hull_strength * 1,000` cr | None | +10 BF bonus in combat |
-| Star-Buster++ | 10,000 cr | Conqueror status | Special weapon for Nemesis mission |
-| Arch-Angel++ | 10,000 cr | Conqueror status | Enhanced combat capability |
-| Astraxial Hull | 100,000 cr | Conqueror + drives >= 25 | +29 hull STR, +190 cargo pods, +2,900 fuel capacity, unlocks Andromeda |
+| Star-Buster++ | — | Awarded directly on Nemesis completion | Special weapon (weapon STR set to 25) |
+| Arch-Angel++ | — | Awarded directly on Nemesis completion | Enhanced shields (shield STR set to 25) |
+| LSS Chrysalis+* | — | Awarded directly on Nemesis completion | Life support upgrade; required for Astraxial Hull |
+| Astraxial Hull | 100,000 cr | Conqueror rank + LSS Chrysalis | +29 hull STR, +190 cargo pods, +2,900 fuel capacity, unlocks Andromeda |
 
 ### Component Effects
 
@@ -210,7 +210,7 @@ Press `B`, enter units. Cost = `units * fuel_price`.
 | System 1 (Sun-3) | 8 cr/unit |
 | System 8 (Mira-9) | 4 cr/unit |
 | System 14 (Vega-6) | 6 cr/unit |
-| All others | 25 cr/unit |
+| All other core systems (2-14) | 5 cr/unit |
 | Player-owned port | Custom price set by owner |
 
 ### Sell Fuel
@@ -220,6 +220,22 @@ Press `S`, enter units. Proceeds = `units * buy_price * 0.5` (50% sell multiplie
 ### Accept Cargo Contract
 
 Press `A`. Requires at least 1 cargo pod (hull strength >= 50).
+
+**Core system cargo types** (Systems 1–14):
+
+| Cargo Type | Notes |
+|------------|-------|
+| Dry Goods | Standard commodity |
+| Nutri Goods | Standard commodity |
+| Spices | Standard commodity |
+| Medicinals | Standard commodity |
+| Electronics | Standard commodity |
+| Precious Metals | Standard commodity |
+| Rare Elements | Standard commodity |
+| Photonic Components | Standard commodity |
+| Dilithium Crystal | Standard commodity |
+
+**Rim Star cargo types** (Systems 15–20 as destination):
 
 | Cargo Type | Base Payment per Pod |
 |------------|---------------------|
@@ -238,7 +254,7 @@ Automatic on docking at destination, or press `D` at Traders.
 | Delivery Outcome | Payment |
 |------------------|---------|
 | Correct destination | Full payment + 10% bonus |
-| Wrong destination | 50% payment penalty |
+| Wrong destination | -5 score points; cargo and fuel emptied; transported via Mark VIII transporter to the correct port at no credit charge |
 | Contraband detected | Jailed + 1,000 cr fine |
 
 ### Check Contract
@@ -248,6 +264,8 @@ Press `C` to view current cargo manifest, destination, and payment.
 ---
 
 ## Banking — First Galactic Bank
+
+**Requirement**: Commander rank or higher. Lieutenants are turned away.
 
 | Action | Key | Details |
 |--------|-----|---------|
@@ -264,11 +282,10 @@ No interest earned. No fees. Full balance available at all times.
 
 | Action | Key | Details |
 |--------|-----|---------|
-| Gossip | `G` | View latest 5 game events (battles, promotions, alliance news) |
-| Buy a Drink | `B` | -50 cr. Flavor text, no mechanical effect. |
-| Wheel of Fortune | `W` | Gambling mini-game (see below) |
-| Spacer's Dare | `D` | Dice gambling mini-game (see below) |
-| Return to Main Menu | `M` | Exit pub |
+| Gamble | `G` | Opens gambling sub-menu: 1 = Wheel of Fortune, 2 = Spacer's Dare, Q = Leave |
+| Buy a Drink | `D` | -50 cr. Flavor text, no mechanical effect. |
+| Info | `I` | Game information / help text |
+| Quit | `Q` | Return to main menu |
 
 ### Wheel of Fortune (Astral Digital)
 
@@ -317,7 +334,7 @@ Available at Spacers' Hangout. Four alliances:
 ### DEFCON System Control
 
 - **Levels**: 1-20
-- **Cost per level**: 100,000 cr from alliance pool
+- **Cost per level**: 100,000 cr (levels 1–10) or 200,000 cr (levels 11–20) from alliance pool
 - **Takeover**: Must invest more levels than enemy DEFCON to flip control
 - **Defense**: Higher DEFCON makes system harder to take over
 - Successful raid: enemy control removed, your alliance DEFCON set to 1, +5 score
@@ -341,9 +358,9 @@ Press `R` from main menu.
 
 | Action | Key | Details |
 |--------|-----|---------|
-| Record | `R` | Search for a spacer by name/ID, view full record |
-| Library | `L` | Game information and help |
-| Alliance Directory | `A` | View all spacers grouped by alliance |
+| Rescue Service | `R` | Rescue a lost spacer (see Rescue Service section) |
+| Space Patrol HQ | `S` | Accept a Space Patrol mission (see Missions section) |
+| Library | `L` | Game information and help; contains Alliance Directory as option 9 |
 | Quit | `Q` | Return to main menu |
 
 ### Spacer Record Shows
@@ -464,16 +481,16 @@ Your name is prefixed with `J%`. Jail screen appears instead of main menu.
 
 ### Nemesis Mission (Endgame)
 
-- **Requirement**: 500+ battles won, all ship components at condition 9
+- **Requirement**: weapon_strength + shield_strength >= 50 (no battle count or condition requirement)
 - **Destination**: System 28
-- **Reward**: 150,000 cr + Conqueror status
-- **Unlocks**: Star-Buster++, Arch-Angel++, Astraxial Hull purchase, Maligna mission
+- **Reward**: Conqueror status; Star-Buster++, Arch-Angel++, and LSS Chrysalis+* assigned directly to your ship; life support strength +50; enables Astraxial Hull purchase and Maligna mission
 
 ### Maligna Mission (Post-Conqueror)
 
 - **Requirement**: Conqueror status + Astraxial hull
-- **Destination**: System 27 (Andromeda)
-- **Reward**: +100 score points
+- **Destination**: System 27
+- **Resolution**: On docking, mission resolves at Vega-6 (System 14)
+- **Reward**: +100,000 cr + 100 score points
 - **Significance**: Ultimate achievement in the game
 
 ### Alliance Raid
@@ -495,10 +512,10 @@ Rank advances automatically when your score reaches the threshold.
 | Commander | 150 | 20,000 cr | +5 |
 | Captain | 300 | 30,000 cr | +10 |
 | Commodore | 450 | 40,000 cr | +15 |
-| Admiral | 600 | 50,000 cr | +20 |
-| Top Dog | 900 | 80,000 cr | +30 |
-| Grand Mufti | 1,100 | 100,000 cr | +40 |
-| Mega Hero | 1,350 | 120,000 cr | +50 |
+| Admiral | 750 | 50,000 cr | +20 |
+| Top Dog | 1,200 | 80,000 cr | +30 |
+| Grand Mufti | 1,650 | 100,000 cr | +40 |
+| Mega Hero | 2,250 | 120,000 cr | +50 |
 | Giga Hero | 2,700 | 150,000 cr | +60 |
 
 ### Score Sources

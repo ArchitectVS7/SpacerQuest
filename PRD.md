@@ -1128,22 +1128,24 @@ function useGameInput() {
 
 ### 5.1 Travel System
 
-#### SP.LIFT.S Launch Bay — Pre-Flight Checks (lines 56-74)
+#### SP.LIFT.S Launch Bay — Pre-Flight Checks (lines 47-74)
 
-All checks are **blocking errors** (original: `goto start`). Each check is on component **strength only** (not condition), except hull condition (h2) and drive condition (d2) which are separate checks:
+All checks are **blocking errors** (original: `goto start`). Ship name check fires first (line 47). Component checks are on **strength only** (not condition), except hull condition (h2) and drive condition (d2):
 
-| Check | Variable | Error Message |
+| Check | Original | Error Message |
 |-------|----------|---------------|
-| Trip limit | `z1>2` | "Only 2 trips allowed per turn" |
-| Drive strength | `d1<1` | "No Drives" |
-| Cabin strength | `c1<1` | "No cabin" |
-| Life support strength | `l1<1` | "No life support system" |
-| Navigation strength | `n1<1` | "No navigation system" |
-| Robotics strength | `r1<1` | "No computer/robotic system" |
-| Hull condition | `h2<1` | "Ship too badly damaged to lift off!" |
-| Drive condition | `d2<1` | "Drives inoperable!" |
+| Ship name | `nz$=""` (line 47) | "It would be nice if your ship had a name" |
+| Contract/bribe | `q1<1` (line 67) | "Valid contract required for launch clearance!" → bribe screen |
+| Trip limit | `z1>2` (line 56) | Approved deviation: modern uses `tripCount >= 2` (2 trips/turn) |
+| Drive strength | `d1<1` (line 60) | "No Drives" |
+| Cabin strength | `c1<1` (line 61) | "No cabin" |
+| Life support strength | `l1<1` (line 62) | "No life support system" |
+| Navigation strength | `n1<1` (line 63) | "No navigation system" |
+| Robotics strength | `r1<1` (line 64) | "No computer/robotic system" |
+| Hull condition | `h2<1` (line 65) | "Ship too badly damaged to lift off!" |
+| Drive condition | `d2<1` (line 66) | "Drives inoperable!" |
 
-No contract required check (q1<1 / bribe system) is implemented in the modern version — the original BBS concept of launch clearance contracts has been removed as a non-essential BBS-era mechanic.
+The bribe system (SP.LIFT.S lines 76-109) is implemented: if q1<1, player is offered the chance to bribe their way to a launch contract (random 1-10 threshold, cost 1-10 thousand credits, choice of Cargo or Smuggling manifest papers). Any active mission (missionType > 0) or cargo pods satisfy the contract check.
 
 #### SP.LIFT.S Fuel Depot — Buy Prices (fueler/buyer section)
 
@@ -1243,6 +1245,30 @@ Hazards (`hh=1`) trigger at these travel progress points:
 
 The 4 hazard event types (SP.WARP.S hazl subroutine, lines 361-364): X-Rad Shower, Plasma-Ion Cloud, Proton Radiation, Micro-Asteroid.
 
+#### SP.WARP.S Nav Precision Check (navig section, lines 194-199)
+
+When player manually enters a destination (nman path), the navigation system may deliver the wrong system:
+
+```
+y = n1*n2                         ← nav power (strength × condition)
+if y > 9: precision = floor(y/10)  ← normalize to precision %
+else: precision = 0
+roll 1-40
+if precision > roll → correct destination (desn:)
+else (nxxx:):
+  roll 1-20 → wrong destination (≠ intended)
+  print nav malfunction warning + bell char
+  set destination = random system
+```
+
+**Modern implementation:** `checkNavPrecision(navStrength, navCondition, intendedDest, roll40?, roll20?)` in `src/game/systems/travel.ts`. Called in `navigate.ts` `handleFeeConfirmation` just before `startTravel`. If malfunction fires, the actual launch destination is the random wrong system.
+
+#### SP.WARP.S Bridge Banner (line 109)
+
+Original: `if r2<2 copy"sp.menu5g":goto start` — if robotics condition < 2, show basic bridge banner (degraded nav console).
+
+**Modern implementation:** `getNavigationMenuBanner()` checks `roboticsCondition < 2` (previously incorrectly checked `rank === 'LIEUTENANT'`).
+
 ### 5.2 Combat System
 
 ```typescript
@@ -1253,15 +1279,15 @@ The 4 hazard event types (SP.WARP.S hazl subroutine, lines 361-364): X-Rad Showe
 //   x8 = weapon_condition * weapon_strength    (weapon power, direct)
 //   x9 = shield_condition * shield_strength    (shield power, direct)
 //   r9 = BF bonus from support components:
-//     For each [cabin, lss, nav, drives, robotics]:
+//     For each [cabin, lss, nav, drives, robotics, hull]:  ← hull included (ranfix line 478)
 //       sum += floor((condition+1) * strength / 10)
 //     sum += battlesWon   (e1 added directly via rfox — NOT divided by 10)
+//     sum += floor(tripCount/50) if tripCount > 49  (u1>49 bonus, ranfix line 479)
 //     r9 = floor(sum/5) if sum > 4, else r9 = 10
 //
 // DEVIATIONS from original:
 //   - Rank bonus (v4.0 addition — not in original ranfix)
 //   - Auto-repair does NOT give a BF bonus (corrected); original only repairs post-battle
-//   - Hull not included in r9 calculation (simplified vs original which includes it)
 function calculateBattleFactor(
   ship: Ship,
   rank: Rank,
@@ -1278,11 +1304,14 @@ function calculateBattleFactor(
   const navContrib      = Math.floor((ship.navigationCondition + 1)  * ship.navigationStrength / 10);
   const driveContrib    = Math.floor((ship.driveCondition + 1)       * ship.driveStrength / 10);
   const roboticsContrib = Math.floor((ship.roboticsCondition + 1)    * ship.roboticsStrength / 10);
+  const hullContrib     = Math.floor((ship.hullCondition + 1)        * ship.hullStrength / 10); // ranfix line 478
 
   // Experience: e1 added directly (not /10) — original: x=e1:gosub rfox
   const expContrib = battlesWon;
+  // Trip count bonus: if u1>49 x=(u1/50):gosub rfox — ranfix line 479
+  const tripContrib = tripCount > 49 ? Math.floor(tripCount / 50) : 0;
 
-  const supportSum = cabinContrib + lssContrib + navContrib + driveContrib + roboticsContrib + expContrib;
+  const supportSum = cabinContrib + lssContrib + navContrib + driveContrib + roboticsContrib + hullContrib + expContrib + tripContrib;
   const r9 = supportSum > 4 ? Math.floor(supportSum / 5) : 10;
 
   // Rank bonus (v4.0 deviation — not in original ranfix)
@@ -1306,27 +1335,27 @@ function getRankBonus(rank: Rank): number {
   return bonuses[rank];
 }
 
-// Damage calculation (per round)
-function calculateDamage(
-  weaponStrength: number,
-  weaponCondition: number,
-  targetShields: number,
-  targetShieldCondition: number
-): { shieldDamage: number; systemDamage: number } {
-  const attackPower = weaponStrength * weaponCondition;
-  const shieldPower = targetShields * targetShieldCondition;
-  
-  if (attackPower <= shieldPower) {
-    // Shields absorb all damage
-    return { shieldDamage: 0, systemDamage: 0 };
-  }
-  
-  const excessDamage = attackPower - shieldPower;
-  const shieldDamage = Math.floor(excessDamage / 10);
-  const systemDamage = excessDamage % 10;
-  
-  return { shieldDamage, systemDamage };
-}
+// Damage calculation per round (SP.FIGHT1.S begin subroutine, lines 306-328)
+// e6=(x8+r9):e9=(y9+jg) — battle factors are added to weapon/shield power
+// e8=(y8+jg):e7=(x9+r9) — for enemy attack
+//
+// Player attack:
+//   e6 = playerWeaponPower + playerBF
+//   e9 = enemyShieldPower + enemyBF
+//   if e6 > e9: damage = e6 - e9; if roboticsCondition=0 (BC malfunction): damage /= 2
+//   if e6 ≤ e9 (shields deflect):
+//     r=5:gosub rand:if x=3 AND r1≥10 AND r2≥1 → Lucky Shot
+//       a = (r1×r2)/10; a = (a + playerBF)/2; if a>e6 and e6>1: a = e6/2
+//
+// Enemy attack:
+//   e8 = enemyWeaponPower + enemyBF
+//   e7 = playerShieldPower + playerBF
+//   if e8 > e7: damage = e8 - e7
+//
+// System damage (SP.FIGHT1.S sfff, lines 396-436):
+//   r=7:gosub rand:x=x+1
+//   x=3 → Nav; x=5 → Drives; x=7 → Robotics; else → Cabin
+//   Cascade: Cabin → Nav → Drives → Robotics → Weapon → Hull
 ```
 
 ### 5.3 Encounter Generation
@@ -1399,6 +1428,56 @@ function generatePirateEncounter(playerPower: number): Encounter {
 }
 ```
 
+### 5.3a Speed/Chase Check (SP.FIGHT1.S spedo:/spedck:)
+
+After each combat round, the game checks whether the enemy is faster and earns a bonus attack. Original subroutines:
+
+**spedck (FIGHT1.S:515-518)**
+```
+x = d1*d2   ← player speed (drive strength × drive condition)
+y = s3*s4   ← enemy speed (enemy drive strength × enemy drive condition)
+```
+
+**spedo (FIGHT1.S:451-465)**
+```
+if x >= y → tied or player faster → normal next round
+if y > x (enemy faster):
+  if (y9>0) and (y8>0) → guaranteed bonus run ("The faster X is making another run")
+  r=3:gosub rand:if x=1 → 1/3 chance bonus run
+  gosp: if (y8>0) and (nc>0) → bonus run (fallback)
+  xspy: "The faster X retreats from conflict" (we=1, battle ends)
+```
+
+Where:
+- `y9` = enemy shield condition
+- `y8` = enemy weapon power (condition × strength)
+- `nc` = enemy command center stat
+- `we=1` = retreat flag (battle ends after this round)
+
+**Modern implementation:** `checkEnemySpeedChase()` in `src/game/systems/combat.ts`. The combat screen's `A` handler calls this after each round: if enemy chases, apply a bonus enemy attack pass; if enemy retreats, end the battle with `result: 'RETREAT'`.
+
+### 5.3b Combat Round Limit (SP.FIGHT1.S:452 — `if kg>qq`)
+
+Battles are capped at `qq` rounds (configurable via `GameConfig.maxCombatRounds`, default 12, valid range 1–15). If the round counter (`kg`) exceeds `qq` at the start of a new round, the battle ends immediately with result `RETREAT` and the player returns to the main menu. This mirrors the original: `if kg>qq x=y:goto spgo`.
+
+**Original variable:** `qq` (set in SP.CONFIG or system defaults)
+**Modern field:** `GameConfig.maxCombatRounds` — checked in the combat screen `A` key handler before each new round.
+
+### 5.3c NPC Attack Thresholds (SP.FIGHT1.S:113-126 — `jw/jx/ju/jv`)
+
+Before any NPC engages the player, the game checks the player's weapon strength against configurable thresholds from `sp.conf` (`GameConfig`):
+
+- **Patrol SPX (Inferno):** Player weapon must be `>= jw` (`pirateAttackThreshold`). If below, SPX passes without engaging.
+- **Patrol SPZ (Infinity):** Player weapon must be `>= jx` (`patrolAttackThreshold`). If below, SPZ passes without engaging.
+- **Pirates K1-K9:** Player weapon must fall within `[jm, jn]` where `jm = (ju × tier) + 15` and `jn = jm + (jv × 5)`. If player weapon is outside this range, the pirate passes without engaging.
+
+These checks only apply to PIRATE and PATROL types (not RIM_PIRATE, REPTILOID, or BRIGAND).
+
+**Original variables:** `jw`, `jx`, `ju`, `jv` (all stored in `sp.conf`)
+**Modern fields:** `GameConfig.pirateAttackThreshold`, `GameConfig.patrolAttackThreshold`, `GameConfig.attackRandomMin`, `GameConfig.attackRandomMax` — checked in `generateEncounter()` in `src/game/systems/combat.ts`.
+
+The admin `sp.conf` view (SP.EDIT3 bat2b subroutine) also displays the attack strength table for each tier, showing the expected weapon strength range `jm–jn` per tier. This is rendered in `admin-config.ts` `renderConfigView()`.
+
 ### 5.4 Economy System
 
 #### SP.REAL.S — Space Port Accounts & Fuel Depot
@@ -1423,9 +1502,19 @@ Port ownership is tracked in the `PortOwnership` table. Key facts from original 
 - Fuel transfer from ship to depot: max `min(f1, 2900)` units per transfer (`T` command)
 - Fuel stored defaults to 3,000 on purchase
 
+**Port Accounts Gateway Screen (SP.REAL.txt start1 lines 40-57) — `port-accounts` screen:**
+- Entry via `F` key from main menu; available to all players
+- Menu: `M` (Stock Report), `N` (Fee Report), `P` (Prospectus), `B` (Buy), `Q` (Quit)
+- Owner-only additions: `S` (Sell), `W` (Withdraw), `D` (Deposit), `F` (Fuel Depot → `fuel-depot` screen)
+
+**Prospectus (SP.REAL.txt proshow lines 62-79):**
+- Lists all 14 core systems with their purchase price and current owner (or "(for sale)")
+- Accessible via `P` key; displayed as tabular ASCII list before the buy flow
+
 **Port Bank Account (SP.REAL.txt lines 126-166):**
 - Port owners can deposit/withdraw from their port's bank account (`D`/`W` commands)
 - Bank balance tracked as `bankCreditsHigh`/`bankCreditsLow` in PortOwnership
+- Amount encoding: input `"25000"` → last 4 digits = low units (5000), prefix = high units (2 × 10000) → 25,000 cr total
 
 ```typescript
 // Port ownership income (daily)
@@ -1684,7 +1773,7 @@ When buying a new hull (SP.YARD.S lines 260–305):
 2. Player is offered optional component transfer to the new hull for **500 cr**:
    - Transfer: cargo pods salvaged at **2 cr each** (`s1=0`), all other components kept.
    - No transfer: all installed components are salvaged at their trade-in values (`xe = sum of all component swap values`), all components cleared.
-3. All cargo contract/mission state is wiped (`q1=q6=0`).
+3. If the player has an active cargo contract (`q1 > 0`, i.e. `character.cargoPods > 0`), all cargo/mission state is voided: `q1=q2=q3=q4=q5=q6=0`, `q2$=""`, `q4$=""` → `cargoPods=cargoType=destination=cargoPayment=0`, `cargoManifest=null`, `missionType=0`. Message: "As of now...your Cargo Contract is null and void!" (SP.YARD.S line 301–302).
 4. Hull condition, fuel, cloaking flag are reset on new hull purchase.
 5. When buying a new hull (`b=1`), the player is prompted for a ship name (see shipname subroutine).
 
@@ -1723,11 +1812,13 @@ From SP.SPEED.S (`special` / `cloak` / `autorep` routines):
 #### Morton's Cloaking Device
 
 - **Hull restriction:** Only available when `hullStrength < 5` (hulls 1–4). The menu option is hidden at hull 5+. Source check: `if h1<5 print "(C)loaking Device"` / `if h1>4 print "We can't help you here!"`.
+- **Hull prerequisite:** Requires hull to be installed (`h1 >= 1`). Check: `if h1<1 print "You need a ship's hull before we can help you!"`.
 - **Shield prerequisite:** Player must have a functioning shield system installed (`p1 >= 1`).
-- **Incompatibility:** Cloaker cannot be installed on shields already enhanced with Titanium (`+*`) or Speedo upgrade (`++`). Check: `if right$(p1$,2)="+*" or right$(p1$,2)="++" → "Cloaker won't fit"`.
+- **Incompatibility:** Cloaker cannot be installed on shields already enhanced with Titanium (`+*`) or Speedo upgrade (`++`). Check: `if right$(p1$,2)="++" → "Cloaker won't fit"`. In modern: ARCH-ANGEL installed on shield also blocks cloaker.
 - **Cost:** 500 cr.
-- **Effect:** Appends `=` suffix to shield name string (`p1$=p1$+"="`); condition reset to 9.
-- **Permanence:** Upgrading hull to tier 5+ permanently loses cloaker eligibility. Installing ARCH-ANGEL or STAR-BUSTER will remove the cloaker.
+- **Effect:** Appends `=` suffix to shield name string (`p1$=p1$+"="`); shield condition and **hull condition** both reset to 9 (`p2=9:h2=9`).
+- **Auto-strip on hull upgrade:** SP.YARD.S main menu line 32: `if (h1>4) and (right$(p1$,1)="=")` strips the cloaker suffix. When hull strength exceeds 4 (hull tier 5+ purchased or hull upgraded past 4), the Morton's Cloaker is automatically removed.
+- **Installing ARCH-ANGEL or STAR-BUSTER** also removes the cloaker (SP.SPEED.S nemget: `if right$(xl$,1)="=" print "Morton's Cloaker will be lost"`).
 
 #### Auto-Repair Module
 
@@ -1735,7 +1826,67 @@ From SP.SPEED.S (`special` / `cloak` / `autorep` routines):
 - Cannot be installed if hull already has the module (`right$(h1$,1)="!"`).
 - Cost: `hull_strength * 1,000 cr` (max 20,000 cr for hulls 20+).
 - Titanium Enhancement (`*`) is removed if present when installing A-R module.
-- Effect: appends `+!` to hull name; repairs all components +1 per combat round.
+- Effect: appends `+!` to hull name. After winning a combat, restores **+1 condition** to each installed (strength > 0) component that is below condition 9 (SP.FIGHT2.S:41-64 `fixr` subroutine).
+- If a component is at condition 0 and strength > 0, the A-R module offers reconstruction: costs −1 strength and −500 fuel to bring condition to 9.
+
+#### Shield Recharger (Titanium Hull Enhancement)
+
+- Detected by hull name ending in `*` (`right$(h1$,1)="*"`).
+- After winning a combat, if shield strength > 0 and condition < 9: loop spending `shieldStrength` fuel per +1 shield condition until condition reaches 9 or fuel is insufficient (SP.FIGHT2.S:66-75).
+- Prompts player confirmation in original (`[Y]/(N)` each loop); modern implementation auto-applies.
+
+#### Post-Battle Weapon/Shield Condition Recalculation (SP.FIGHT2.S:31-40)
+
+After each combat, weapon and shield conditions are recalculated from their accumulated power pools:
+- `w2 = x8 / w1` — weapon condition = remaining weapon power / weapon strength (capped at 9)
+- `p2 = x9 / p1` — shield condition = remaining shield power / shield strength (capped at 9)
+- If power pool `x8 < w1`, condition becomes 0 (weapon exhausted).
+
+In the modern implementation, component conditions are updated incrementally per round via `applySystemDamage`; the post-battle pool recalculation is approximated by this per-round tracking.
+
+#### Combat Salvage — Derelict Search (SP.FIGHT2.S:139-193)
+
+After defeating an enemy (except escape), the player searches the derelict wreckage for salvage.
+
+**Standard salvage (sk=1 pirate, sk=2 patrol — scav routine):**
+- Amount: based on 2nd character of enemy ship name (pirates) or fixed 1 (patrol).
+- Roll determines component: combined `r=(z1+4)` and `r=7` rolls into `x`.
+- `x=1`: Gold Bullion — `+a×10,000 cr`
+- `x=2`: Drive: Non-Friction Bearings `+a`
+- `x=3`: Cabin: Grav-Less Water Bed `+a`
+- `x=4`: LSS: Auto-Doc Specialist `+a` (LSS capped at 50)
+- `x=5`: Weapon: Beam Intensifier `+a` — **requires player confirmation** (scavx)
+- `x=6`: Nav: Auto-True-Focus `+a`
+- `x=7`: Robotic: Lightning Battle Chip `+a`
+- `x=8`: Shield: Photonic Deflector `+a`
+- `x=9`: Weapon: Power Unit!...Defective! `-a` — **requires player confirmation** (scavx)
+- `x>9`: Nothing Useful
+
+**Malignite weapon enhancement (scavx — SP.FIGHT2.S:157-165):**
+Player is prompted: "You found a Malignite weapon enhancement. Install even if possibly defective? [Y]/(N):"
+- The prompt is identical for both x=5 (beneficial) and x=9 (defective) — the player does not know which it is.
+- `Y`: enhancement is installed; weapon strength changes (`+a` or `-a`). Item description printed.
+- `N` + x=5 (beneficial): "Unlucky choice!....it was a Weapon: Beam Intensifier +a"
+- `N` + x=9 (defective): "Smart move!....it was a Weapon: Power Unit!...Defective! -a"
+
+**Rim/Reptiloid salvage (sk≥3 — scavr routine):**
+Different component pool: Weapon: Ionic Crystal, Drive: Relay Matrix, Shield: Protecto-Fuse, Robotic: Iridium Chip, Nav: Sextant Arc, LSS: Recycle Unit. No player confirmation prompt.
+
+**Original source:** SP.FIGHT2.S:139-193
+
+#### Defeat Boarding — `pirwin` (SP.FIGHT2.S:195-220)
+
+When the player's shields reach 0 and the enemy wins, the enemy boards and takes loot in this priority order:
+
+1. **Cargo pods** (`q1 > 0`): enemy takes all cargo pods. Message: `"The Xs take N pods of Y"`. Cargo count, type, manifest, and payment are all cleared.
+2. **Storage pods** (`s1 >= 2`): enemy takes half the installed storage pods (`floor(s1/2)`). Message: `"The Xs take N storage pods"`.
+3. **Fuel** (fallback): enemy drains half the fuel (`floor(f1/2)`) if fuel ≥ 2, else 0. Message: `"The Xs drain N fuel from your tanks"`.
+
+Only one of the three paths fires. Modern implementation: `calculateDefeatConsequences()` in `src/game/systems/combat.ts`.
+
+**Original source:** SP.FIGHT2.S:195-220
+
+---
 
 #### MALIGNA Quest Completion Rewards (SP.DOCK1.S:103-110)
 
@@ -1760,7 +1911,7 @@ When a player arrives at system 27 (MALIGNA) after completing the ablation missi
 - Cost formula (SP.SPEED.S lines 173–174): `a = 1` if `strength <= 9`, else `a = floor(strength/10) + 1`. Cost = `a * 10,000 cr`.
 - Special discount days when `ej = sp` (the "special prices" flag).
 - This is distinct from the SP.YARD tier purchase prices (50–10,000) and the SP.SPEED Titanium Enhancement flat prices (3,000–10,000).
-- Life Support capped at strength 50 if ship is "LSS Class" or strength already < 51.
+- Life Support strength is capped at 50 for non-Chrysalis LSS units (SP.SPEED.S upit lines 152–154). If `left$(l1$,5)<>"LSS C"` and the upgrade would push strength above 50, the upgrade is blocked. LSS Chrysalis (name starting with "LSS C") has no cap.
 - Cannot upgrade alien-modified components (`left$(component,1)="?"`).
 
 ### 5.7 Repair System (Ron the Recka's — SP.DAMAGE.S)
@@ -1796,10 +1947,27 @@ Original source (SP.DAMAGE.S):
   - `mode=single`: repairs 1 DX unit — `1*strength + rebuildFee` (original: `(S)ingle DX`)
   - No inspection fee for single component repairs.
 
+#### Enhancement Stripping on Rebuild (SP.DAMAGE.S enca/enhc, lines 86-96)
+
+When repairing a component that has condition=0 AND whose name ends in `+*` (Titanium enhancement):
+- The `+*` suffix is stripped from the component name.
+- Strength is reduced by 10 (`j = j - 10`).
+- If strength was already < 10, it is zeroed out (`j=0, a=0`).
+- Display: "Unable to save [name] enhancement...sorry"
+
+This applies in both `repairSingleComponent` and `repairAllComponents`.
+
+#### Hull-Strength Component Caps (SP.DAMAGE.S spfix, lines 113-115)
+
+During damage assessment at Ron's repair station, component strengths are capped based on hull size:
+- Hull strength < 10: all component strengths capped at **99**. Display: "A Titanium-enhanced hull is required to contain components with strength greater than 99 points."
+- Hull strength ≥ 10: all component strengths capped at **199**. Display: "Max strength limited to 199"
+
+Applied via `applyHullStrengthCaps()` at the start of `repairAllComponents`.
+
 #### Blocked Features (schema not yet supported)
 
-- **Junk component handling** — original marks components as "Junk" (in component name string). Junk components cannot be repaired ("99% Damaged! Replace it!"). Requires `hullName`/`driveName`/... fields in Ship schema.
-- **Enhancement stripping on rebuild** — when a component with `+*` (Titanium) enhancement has condition=0, the enhancement is stripped and strength reduced by 10 upon repair. Requires component name fields.
+- **Junk component handling** — original marks components as "Junk" (in component name string). Junk components cannot be repaired ("99% Damaged! Replace it!"). Requires checking `componentName === 'Junk'`; component name fields exist in schema but junk-check not implemented.
 
 ---
 
@@ -1867,7 +2035,7 @@ When `isLost = true`:
 - If player **is** lost:
   - Show cost and ask `[Y]/(N)`
   - Cost formula (SP.LINK.txt line 61): `cost = sc < 20 ? sc * 1000 : 20000` where `sc = floor(score/150)`
-  - `Y`: deduct credits, set `isLost = false`, `lostLocation = null`, return to main menu
+  - `Y`: deduct credits, set `isLost = false`, `lostLocation = null`, return to main menu. Write a `RESCUE` GameLog entry (SP.LINK.txt lines 84-86: `open #1,"sp.great":append #1:print #1,...`), so the rescue appears in Space News.
   - `N`: return to main menu
   - If insufficient credits: show "Not enough credits" and return to main menu
 
@@ -1929,6 +2097,13 @@ Accessible via Library option `6`:
 
 Implemented in `src/game/screens/space-patrol.ts` and `src/game/systems/patrol.ts`.
 
+**Space Commandant promotion check (SP.REG.S:177-183):** Before showing the HQ menu, the screen checks:
+- `(weaponStrength + shieldStrength) >= 50` AND `missionType !== 9` (not on Nemesis mission)
+- Life support name does not start with `"LSS C"` (Chrysalis guard)
+- Hull name does not start with `"Ast"` (Astraxial hull guard)
+- If all conditions met → prompt `"The Space Commandant wishes to speak to you [Y]/(N):"` with Y→topgun **wins** subroutine (SP.REG.S:183: `link"sp.top","wins"`), N→continue to HQ menu
+- The `wins` subroutine (SP.TOP.S:111-150) shows the Nemesis mission offer with `(D)ecline  (M)ission  [T]alk about it` choices. Pressing M and confirming sets `missionType=9`, `destination=28`, `cargoManifest='Nemesis Orders'`, `cargoPayment=20` (`q6=20`), `cargoType=0`, then routes to navigate.
+
 - Join/Oath (`J` key): sets `hasPatrolCommission=true`, `cargoPods=1`, `cargoManifest='Secret Battle Codes'`, `cargoPayment=500`, then prompts for patrol system
 - Choose system (`C` key, 1-14): prompts for system number, sets `destination`; Y/N confirmation
 - View orders (`O` key): displays patrol orders screen (cargo, destination, distance, pay)
@@ -1936,6 +2111,8 @@ Implemented in `src/game/screens/space-patrol.ts` and `src/game/systems/patrol.t
 - Launch (`L` key): checks fuel via patrol fcost, sets `missionType=2`, routes to combat
 - Post-combat dock: render() detects `missionType===2`, fires payoff and zerout
 - Patrol payoff: `s2=(s2+wb+q6+1)-lb`; pay = `q5+(1000*wb)` on win, `q5` on loss
+- Payoff report includes `"Star System Patrolled: <name>"` as the first stat line (SP.REG.S:287: `print"Star System Patrolled................: "q4$`)
+- Lost in space during patrol (ship destroyed): score = `max(0, (s2+wb-lb)-10)`; sets `isLost=true`, `lostLocation=currentSystem` (SP.REG.S `lostnow` lines 354-366: `s2=(s2+wb)-lb:s2=s2-10:if s2<1 s2=0`)
 - Score promotion: every 100th `(battlesWon+rescuesPerformed)` → +1 promotions, +1 w1/p1/d1
 - Trip limit: `tripCount > 2` blocks entry ("Only 3 completed trips allowed per day")
 - Schema fields added: `hasPatrolCommission`, `patrolBattlesWon`, `patrolBattlesLost`
@@ -1983,6 +2160,18 @@ The **Best All-Around Ship** (`a$`) is computed by the `tgfx` subroutine summing
 
 Strongest Hull, Most Cargo, Top Rescuer, Battle Champion, Most Promotions — added for web play visibility, do not affect gameplay.
 
+#### wins subroutine (SP.TOP.S lines 111-150) — Nemesis Mission Offer
+
+SP.TOP.S also contains the `wins` subroutine, which is a separate entry point from the rankings. It is triggered by the Space Commandant promotion check (see section 5.8.4) when Y is pressed. It shows an interactive mission-offer screen:
+
+- `(D)ecline` → return to main menu
+- `(M)ission` → confirm → assign Nemesis mission and route to navigate
+- `[T]alk about it` (default on Enter) → flavor text about the Star Jewels, re-show menu
+
+When M is confirmed: `missionType=9`, `destination=28`, `cargoManifest='Nemesis Orders'`, `cargoPayment=20`, `cargoType=0` are written to the character.
+
+Implemented in `src/game/screens/topgun.ts` via `pendingWins` state map. Space Patrol and Cargo Dispatch screens set `pendingWins` before routing to `nextScreen:'topgun'`.
+
 ---
 
 ### 5.9 Special Mission Battle Engine (SP.MAL.S)
@@ -2010,6 +2199,7 @@ Where `o7` = DEFCON level of the target star system.
 #### Player Weapon/Shield Effectiveness (SP.MAL.S lines 82-88)
 
 - `k8 = w1 + 18` if STAR-BUSTER equipped; else `k8 = w1`
+- `k8 = k8 + 150` if alien weapon mark installed (`left$(w1$,1)="?"`, i.e. `hasWeaponMark=true`) — SP.MAL.S:83
 - `x8 = k8 * w2` if both > 0, else `x8 = k8`
 - `k9 = p1 + 18` if ARCH-ANGEL equipped; else `k9 = p1`
 - `x9 = k9 * p2` if both > 0, else `x9 = k9`
@@ -2051,10 +2241,10 @@ After beating the Nemesian Forces and returning with the Star Jewels, upon arriv
 - `lifeSupportStrength += 50`, `lifeSupportCondition = 9` (`l1=l1+50:l2=9`)
 - `shieldStrength = 25`, `shieldCondition = 9` (`p1=25:p2=9`)
 - `weaponStrength = 25`, `weaponCondition = 2` (`w1=25:w2=2`)
-- Weapon upgraded to **STAR-BUSTER++** (`hasStarBuster = true`)
-- Shield upgraded to **ARCH-ANGEL++** (`hasArchAngel = true`)
-- Life support named **LSS Chrysalis+\*** (flavor text only)
-- All mission state cleared (`missionType=0`, `cargoManifest=null`, mission flags zeroed)
+- Weapon upgraded to **STAR-BUSTER++** (`hasStarBuster = true`, `weaponName = 'STAR-BUSTER++'`)
+- Shield upgraded to **ARCH-ANGEL++** (`hasArchAngel = true`, `shieldName = 'ARCH-ANGEL++'`)
+- Life support named **LSS Chrysalis+\*** (`lifeSupportName = 'LSS Chrysalis+*'`) — this name is load-bearing: it gates airlock immunity (`lifeSupportName.startsWith('LSS C')`) and Space Commandant prompt suppression
+- All mission state cleared (`missionType=0`, `cargoManifest=null`, `cargoPods=0`, `cargoType=0`, `cargoPayment=0`, `destination=0`)
 
 #### Defeat Consequences — `malwin` (SP.MAL.S lines 337-343)
 
@@ -2520,7 +2710,13 @@ Accessible from the docking/exit screen (SP.END.S) before a player departs a sys
 
 ### 9.4.3 Pirate Activity (P)
 
-Player selects a system (1-14) to lurk in. The entry writes their pirate record to the `pirates` file (`pp=1`) and they lift off to the chosen system to intercept trade routes. Returning from pirate mode presents a Vicarious Activities Report showing battles won/lost, loot, and fuel consumed.
+Player selects a system (1-14) to lurk in. The entry writes their pirate record to the `pirates` file (`pp=1`) and they lift off to the chosen system to intercept trade routes.
+
+**Lurk mechanic (SP.END.S:86-98):** When another player travels to the pirate's target system, their arrival triggers a combat encounter using the lurking pirate character's ship stats. The pirate does not need to be online — their frozen ship stats are used as the enemy. This is resolved identically to any other PIRATE combat encounter, using the pirate character's actual battle factor.
+
+**Modern implementation:** `extraCurricularMode='pirate'` + `patrolSector=targetSystem` stored on the pirate's Character record. On travel arrival, the system checks for any character with `extraCurricularMode='pirate'` and `patrolSector=destinationSystem` and spawns a CombatSession if found.
+
+Returning from pirate mode presents a Vicarious Activities Report showing battles won/lost, loot, and fuel consumed.
 
 ### 9.4.4 Squadron Star Patrol (S)
 
@@ -2561,7 +2757,7 @@ Accessible from the Extra-Curricular Menu via `W`. Entry awards a "Carrier-Loss 
 |-----|--------|
 | `1` | Contender — post yourself to the dueling roster |
 | `2` | Challenger — accept a pending duel from the roster |
-| `3` | Remove self from the dueling roster |
+| `3` | Remove self from the dueling roster (prompts `[Y]/(N)` confirmation; default N; refunds credits if stakes type was Credits) |
 | `R` | View the dueling roster (pending challenges) |
 | `B` | View the battle log (completed duels) |
 | `V` | View a duel battle file |
@@ -2601,6 +2797,7 @@ Each duel runs **9 salvos**. For each salvo:
 
 - **Poster salvo (bx):** `bx = (rand1 + 1) * 10 + posterArenaHandicap`  (rand1 = 1–9, poster gets +1 advantage)
 - **Accepter salvo (cx):** `cx = rand2 * 10 + accepterArenaHandicap`  (rand2 = 1–9)
+- Each round's rand1/rand2 must differ from the previous round's value; if the deduplicated value would exceed 9 it is clamped to 9 (original `rand` subroutine: `if x>r x=r`)
 - `bx > cx` → poster scores a hit; `cx > bx` → accepter scores a hit; equal → shields deflect
 
 Winner = player with more hits. **Draw** (equal hits) cancels all stakes.
@@ -2620,7 +2817,7 @@ v = max(1, floor(u / 10))
 
 For Credits: `v * 10,000 credits` transferred from loser to winner.
 For Points: `v` score points transferred.
-For Components: `v` random ship components of loser degraded (str-1), winner improved (str+1).
+For Components: `v` random ship components of loser degraded (str-1), winner improved (str+1). `v` may exceed 7 (the number of component types); the loop iterates the full `v` times with no cap, picking a random component each time (skipping only if same as immediately prior pick). Strength clamped 0–199.
 
 ### Winner Bonus
 
@@ -2656,6 +2853,11 @@ Upon arrival at any Rim Star system (systems 15-20), three arrival penalties may
   - Damage `x = 1`; if `tripCount > 2`: `x = tripCount - 2`
   - `lifeSupportCondition -= x`; if reaches 0: `lifeSupportStrength = 0`
 
+**Rim arrival score bonus (SP.DOCK2.S:70-72):**
+- `y = 4` on any rim port arrival
+- If `cargoManifest === 'X'` (Andromeda mission cargo): `y = 8` (double bonus)
+- Applied via varfix: `score += y` (SP.DOCK2.S rid→varfix: `s2=(s2+wb+q6+y)-lb`; `wb=lb=0` for non-patrol)
+
 **Rim port docking fee (SP.DOCK2.S:31-36):**
 - Base formula: `fee = (systemId % 14) × zh` where `zh = 1000`
 - Full alliance member discount: `zh -= 100` (−100 per unit)
@@ -2685,7 +2887,7 @@ Triggered on Andromeda arrival (`kk=10`) via `link "sp.black","dock"` in SP.WARP
 
 **Flow:**
 
-1. **Component damage** (blkx subroutine, lines 147-158): On exit, one of 7 ship components is selected at random (drives, cabin, life-support, weapons, navigation, robotics, hull). A random damage amount (1-7) is applied if the component strength > 5. If strength ≤ 5, no damage is applied (`i=i+1:return`).
+1. **Component damage** (blkx subroutine, lines 147-158): On exit, a starting component is selected at random (1-7: drives, cabin, life-support, weapons, navigation, robotics, hull). A random damage amount (1-7) is applied if the component strength > 5. If strength ≤ 5, the `blkx` subroutine increments `i` (`i=i+1`) and returns; since the subsequent `if i=N` checks are sequential ACOS-BASIC statements, the next component is evaluated — this **cascades** until a component with strength > 5 is found or all 7 components are exhausted (no damage).
 
 2. **The Great Void** (blk2, lines 160-165): Player is prompted to input their Number Key. If the entered key matches the persisted `kn` value, the alien weapon enhancement discovery triggers. If not, "Only empty space rewards your diligent scanning" and the event ends.
 
@@ -2699,6 +2901,106 @@ Triggered on Andromeda arrival (`kk=10`) via `link "sp.black","dock"` in SP.WARP
 
 **Original source:** SP.PATPIR.S lines 142-198
 
+### 9.5.1b The Black Hole Hub (SP.BLACK.S start/gogo/black sections, lines 29-89)
+
+Triggered when a player arrives at system 28 (black hole) **without** `pendingLattice` (Nemesis battle). Implemented as the `black-hole-hub` screen.
+
+**Flow:**
+
+1. **start section (lines 29-56):** If player hull is NOT Astraxial (`left$(h1$,6)<>"Astrax"`), display the black hole ASCII art and ask `Interested? [Y]/(N):`.
+   - **N** → linkback (return to main-menu).
+   - **Y** → check eligibility:
+     - `driveStrength < 25` → `The Astraxial-*! hull can only accept drives of >24 str.` → gogo
+     - Not `isConqueror` OR no LSS Chrysalis (`lifeSupportName` not starting with `"LSS C"`) → `By order of The Rim Stars Space Authority, Only Conquerors of Maligna and Nemesis allowed...` → gogo
+     - `creditsHigh < 10` (< 100,000 cr) → not enough credits → gogo
+     - Otherwise → stt section: show cost (100,000 cr), `Purchase it? [Y]/(N):`
+       - **N** → gogo
+       - **Y** → purchase: deduct 100,000 cr, SET `hullName='Astraxial-*!'`, `hullStrength=29`, `hullCondition=9`, `fuel=2900` (SET not add), `maxCargoPods=190`, `isAstraxialHull=true` → show ship stats → gogo
+
+2. **gogo/gogo1/androm sections (lines 57-72):** Show Andromeda destination menu (`gosub androm`). Status line `[Cr:X:]:[F:fuel:]:[P:pods:]` followed by `Choice:` prompt.
+   - Keys: **1-6** → select NGC destination → black section
+   - **Q** (or Enter) → linkback (main-menu)
+   - **?** → re-display androm menu
+   - **X** → show ship stats → re-prompt
+   - **A** → show black hole info (ASCII art) → re-prompt
+   - Invalid key → `Outta Range!` → re-display androm menu
+
+3. **black section (lines 74-89):** Show destination coordinates locked, `[L]aunch (A)bort :`.
+   - **A** → back to gogo (androm menu)
+   - **L** → check fuel ≥ `getBlackHoleTransitCost(driveStrength, driveCondition)`, then:
+     - Set `character.missionType = 10` (kk=10), `character.destination = ngcSystemId`
+     - Deduct fuel, call `startTravel(characterId, 28, ngcSystemId, fuelCost)`
+     - Show launch cinematic → `nextScreen: 'main-menu'`
+
+**Andromeda destination mapping:**
+| Selection | NGC Name | System ID |
+|-----------|----------|-----------|
+| 1 | NGC-44 | 21 |
+| 2 | NGC-55 | 22 |
+| 3 | NGC-66 | 23 |
+| 4 | NGC-77 | 24 |
+| 5 | NGC-88 | 25 |
+| 6 | NGC-99 | 26 |
+
+**Navigation route:** `navigation.ts` routes system 28 arrivals without `pendingLattice` to `black-hole-hub` via `screenOverride`.
+
+**Original source:** SP.BLACK.S lines 29-89
+
+### 9.5.1c Andromeda Dock (SP.BLACK.S dock section, lines 91-149)
+
+Triggered when a player arrives at an Andromeda system (21-26) with `missionType=10`. Implemented as the `andromeda-dock` screen.
+
+**Arrival scoring (SP.BLACK.S:98 varfix):** On Andromeda arrival, `varfix` runs with `y=10` and `q6=10` (the transit scoring value set at SP.BLACK.S:87). Total score gain = q6(10) + y(10) = **+20 score**.
+
+**Cargo selection (SP.BLACK.S:99-115):**
+- Show planet surface description (planet subroutine, i=1-6 for NGC-44 through NGC-99)
+- Show goods menu with 6 slots. Each NGC planet has exactly **2 valid cargo slots**; other slots are empty.
+- Selecting an empty slot shows "It's wise to choose a cargo" and loops back to selection.
+- Selecting a slot with cargo proceeds to confirmation: `Are you satisfied? (Y)/(N)/(Q):`
+- N → back to cargo selection; Q → proceed to departure
+- Requires at least 10 pods (`upod` value); fewer shows "Too few pods to complete mission!" and departs.
+
+**NGC cargo data (SP.BLACK.S sys2 subroutine, lines 201-207):**
+
+| System | NGC Name | Valid Slot (option#) | Cargo Name |
+|--------|----------|----------------------|------------|
+| 21 | NGC-44 | 1 (Ore) | Dragonium Ore |
+| 21 | NGC-44 | 5 (Gems) | Rarium Gems |
+| 22 | NGC-55 | 4 (Liquors) | Merusian Liquor |
+| 22 | NGC-55 | 6 (Biologicals) | Anti-Virion Serum |
+| 23 | NGC-66 | 1 (Ore) | Mystium Ore |
+| 23 | NGC-66 | 3 (Crystals) | Clyrium Crystal |
+| 24 | NGC-77 | 2 (Herbals) | Oreganol Herbs |
+| 24 | NGC-77 | 4 (Liquors) | Ferlian Elixre |
+| 25 | NGC-88 | 3 (Crystals) | Sonolide Crystal |
+| 25 | NGC-88 | 5 (Gems) | Arachnid Gems |
+| 26 | NGC-99 | 2 (Herbals) | Infernum Spice |
+| 26 | NGC-99 | 6 (Biologicals) | Grundgy Vaccine |
+
+**Cargo commitment (SP.BLACK.S:116-119):**
+- `cargoPods = upodPods`, `cargoType = selected index (1-6)`, `cargoManifest = 'X'`, `missionType = 10`
+- Payment: `r = floor(upodPods/10)+1; x = rand(1,r); if x<5 x=5` → stored as `cargoPayment`
+
+**Fuel cache (SP.BLACK.S:120-133, 1/5 chance):**
+- After cargo loading: roll 1-5; if roll=3 → offer fuel cache exchange (no shield condition gate)
+- "A cache of fuel units is discovered in a cave nearby"
+- Y → `fuelGained = (shieldCondition+1)*200; fuel += fuelGained; shieldCondition = 0`
+- N → skip cache, depart
+
+**Original source:** SP.BLACK.S lines 91-149
+
+### 9.5.1d Black Hole Transit Strength Damage (SP.WARP.S snap subroutine, lines 379-411)
+
+During Andromeda trips (kk=10), at the halfway point (`tt = ty/2`, `hh=2`), the ship transits the black hole (SP.WARP.S `snap`). This applies random **strength** damage to one component:
+
+1. Roll 1–6 to pick component (1=Hull, 2=Drive, 3=Cabin, 4=Life Support, 5=Weapon, 6=Nav; 7=Robotics, 8=Shields possible only for Astraxial hull roll).
+2. Roll 1–8 for damage amount `y`. If Astraxial hull and `navigationStrength > 9`: roll 1–(floor(nav/10)+10) instead.
+3. **Astraxial hull exception:** if componentRoll=1 (Hull), effectiveComponent becomes 16 → safe transit (no damage).
+4. If effectiveComponent > 8: safe transit, no damage.
+5. Otherwise: `componentStrength -= y` (minimum 0). Message: `"[component] suffers loss of -y str caused by stress of transit"`.
+
+Modern implementation: applied in `navigation.ts` arrive route when setting `blackHoleTransited=true` at the halfway time mark.
+
 ### 9.5.2 The Sage / Ancient One (Mizar-9, System #18)
 
 Available via `(S)age Visit` in the Mizar-9 docking menu. Runs an interactive constellation knowledge quiz:
@@ -2707,7 +3009,9 @@ Available via `(S)age Visit` in the Mizar-9 docking menu. Runs an interactive co
 2. Select random star (ALGOL, CAPELLA, RIGEL, ALDEBARON, DENEB, ALTAIR, ANTARES, VEGA, SPICA, ARCTURUS, REGULUS, DENEBOLA, POLLUX)
 3. Ask "In which constellation is [STAR] to be found?" with 9-second time limit
 4. Correct answer reward: +1 Cabin strength, condition set to 9 (perfect)
-5. Visitable once per session (flag `kj`)
+5. Wrong answer: "You must study more the heavenly mysteries."
+6. Both paths: "The sage needs his rest....have a safe journey." → return to Mizar-9 rim port menu (not main-menu)
+7. Visitable once per session (flag `kj`)
 
 **Original source:** SP.DOCK2.S:300-330, text files SP.SAGE and SP.CONS
 
@@ -2746,6 +3050,7 @@ Available via `(S)age Visit` in the Mizar-9 docking menu. Runs an interactive co
 - Players can pay fines to Admiral Juris P. Magnus for release
 - Other players can visit the Brig at The Spacers Hangout (Sun-3) and bail out imprisoned spacers for double the fine
 - Crime pp=5 (smuggling): player name is prefixed with `J%` during combat surrender (SP.FIGHT1.S:252)
+- **On release** (fine paid or bailed out): player is teleported to Sun-3 (System 1), mission type reset to 0, and extra-curricular mode cleared. Original SP.END.S:270: `kk=0:pp=0:pb=0:sp=1:sp$="Sun-3"`
 
 **Implementation note:** Only crime code pp=5 (smuggling) is implemented in the web version. Modem disconnect (pp=6) and sysop conduct (pp=7) are not applicable.
 
@@ -2772,7 +3077,7 @@ The `(B)rig` option was originally a Sun-3 top-level menu before entering the ha
 - **(I)nfo** - Interactive text-input information broker. Player types a keyword (up to 3 chars). Responds using `instr(KEYWORD, input)` substring matching. After 4 unknown queries, suggests "have another drink". Keywords (in match order): RAI, WIS, SAG, CHR, ALL, MAL, GIR, WIN, WEA, SHI, PIR, DRI, ROB, NAV, LIF, HUL, FIR, COO, CLO, RAN, BAT, SPA, STA, RIM, SMU, GEM.
   - `ALL` → Alliance joining sub-menu (requires Lieutenant+ rank). Choose `+/@/&/^` to pick alliance, then confirm with Y/N.
   - `RAI` → Alliance raid planning screen
-  - `SMU` → Smuggling info (full contract system blocked pending schema migration for `nj` field)
+  - `SMU` → Smuggling contract pickup (full system: confirm → random destination 1-20 → pay formula → confirm → set missionType=5, cargoManifest='Contraband')
 - **(B)rig** - View jailed spacers. Sub-menu: (L)ook again, (B)ail out convict, (Q)uit. Bail requires two confirmations: "Bail out this miscreant?" and "Bail is set at X cr...pay it?". Bail costs double the fine.
 - **[Q]uit** - Return to main menu
 
@@ -2787,7 +3092,23 @@ Original: SP.BAR.S:45-46, 247-264
 
 ### 9.7.4 Smuggling Contract Pickup
 
-**Blocked — Needs Discussion**: Full smuggling contract system requires a `nj` field (smuggling attempts this session) to be added to the Character schema. Without it, the `nj>2` guard that prevents repeated runs cannot be implemented. The `SMU` keyword currently shows the info message only.
+When a player types `SMU` at the info broker and passes the guards:
+
+1. Guards:
+   - `tripCount > 2 || nj > 2` (session) → "Syndicate closed down by Space Patrol"
+   - `cargoPods < 10` → "not enough cargo pods"
+   - `cargoType > 0 && cargoManifest === 'Contraband'` → "pods already contain contraband"
+2. Confirm: "Interested in smuggling some contra-band? [Y]/(N)"
+3. Pick destination: roll 1-20; if `roll > 14` or `roll === currentSystem` → "Space Patrol snooping about...Nothing here!" (increments nj)
+4. Show contract: destination, distance, fuel required, payment
+   - Payment formula: `(14000 + 100*distance) - (hullStrength*500)`; clamp to 500 min
+5. Confirm: "...Want to give it a go? [Y]/(N)"
+6. On Y: sets `missionType=5, cargoType=10, destination, cargoManifest='Contraband', cargoPayment`
+   - Sets session `nj=3, ye=1` (prevents further contracts this session)
+
+Note: `nj` and `ye` are session-only (in-memory) and not persisted to the database, matching the original BBS session-based behavior.
+
+Original: SP.BAR.S:213-245 (smug subroutine)
 
 ### 9.7.5 Brig Viewing
 
@@ -2816,7 +3137,7 @@ There are Two Games of Chance in operation
 - Maximum bet: 1,000 credits
 - If ANY roll matches the bet number → WIN: credits += bet × odds
 - If no roll matches → LOSE: credits -= bet
-- Original daily win limit: `uh` wins tracked against `ui=12` daily cap. Closed for renovations if `uh > ui`. **Blocked — requires `wofWinsToday` field on Character schema.**
+- Daily win limit: `uh` wins tracked against `ui=12` daily cap. Closed for renovations if `uh > ui`. Implemented: `wofWinsToday` / `wofWinsDate` fields on Character track daily wins; cap is `WOF_DAILY_WIN_CAP=12`.
 
 ### 9.7b.3 IRON BROW's Spacer's Dare
 
@@ -2834,7 +3155,7 @@ Pig-style dice game. Minimum 750 credits required to play.
   - Common totals (6,7,8) → threshold 7 (stop early; bust likely)
 - Winner of each game = highest cumulative score after all rounds
 - Winnings: `(playerTotal - computerTotal) × multiplier` added to credits
-- Losses: `(computerTotal - playerTotal) × multiplier` deducted (capped at current credits)
+- Losses: `(computerTotal - playerTotal) × multiplier` deducted (capped at `creditsLow` / g2, max 9,999 cr — high credits are not at risk per SP.GAME.S line 288: `if o9>g2 then o9=g2`)
 - **Note:** Original game has interactive per-roll decisions. Current automated version uses the computer AI table as a player strategy proxy. Full interactive flow is a known deviation.
 
 Original source: SP.GAME.S (dare / strat / foolish / comp.turn labels)
@@ -2864,7 +3185,7 @@ Each of the four alliances has a single shared treasury account (not per-member)
 
 **Original source:** SP.SAVE.S (Alliance Banking and Trust)
 
-**Implementation status:** Modern code tracks investments per-member rather than in a shared treasury. Banker/CEO role, password protection, and 10,000-cr startup cost are not yet implemented. The credit split math was corrected to use the 10,000-unit boundary (was incorrectly using 100,000).
+**Implementation status:** Modern code tracks investments per-member rather than in a shared treasury. Banker/CEO role, password protection, and 10,000-cr startup cost are not yet implemented. The credit split math was corrected to use the 10,000-unit boundary (was incorrectly using 100,000). Each successful deposit and withdrawal now writes an `ALLIANCE` GameLog entry (matching SP.SAVE.S `news` subroutine, lines 88-89 and 119-120), so the N key transaction log shows banking activity.
 
 ## 9.7c Alliance Investments Ltd (SP.VEST.S)
 
@@ -2877,7 +3198,7 @@ Star system DEFCON investment and hostile takeover mechanics. Only the 14 core s
 - Cost per DEFCON level is **tier-based** (SP.VEST.S lines 83, 85):
   - Tier 1 (current DEFCON ≤ 9): `j=1` → **100,000 cr** per level.
   - Tier 2 (current DEFCON > 9): `j=2` → **200,000 cr** per level.
-- Cost is deducted from the player's personal credits (the modern equivalent of the original's `g1=g1-j` deduction).
+- Cost is deducted from **system assets** (`o3 -= 10 * j`), not from player credits (SP.VEST.S line 89).
 
 ### 9.7c.2 Hostile Takeover
 
@@ -2896,7 +3217,18 @@ Star system DEFCON investment and hostile takeover mechanics. Only the 14 core s
 
 **Original source:** SP.VEST.S
 
-**Implementation status:** System range (1–14) and DEFCON max cap (20) enforced. Tier-based DEFCON cost implemented. Hostile takeover via DEFCON combat implemented. Legacy direct takeover (T command with asset-based formula) and initial system acquisition (I command, CEO role) are not yet implemented as separate commands; currently routed through the DEFCON flow.
+### 9.7c.4 Holdings Display (S Command)
+
+The `S` (Holdings/Show) command displays **all 14 core star systems** with their ownership status (SP.VEST.S `show` subroutine, lines 255–280):
+
+- All 14 systems are listed regardless of which alliance owns them.
+- Each row shows: `#`, `Star System`, `Alliance`, `C E O`, `Assets`, `DEFCON`.
+- Unowned systems show "Available" in the Alliance column.
+- CEO name is shown when a character holds the CEO role for that system.
+
+**Implementation status:** All commands fully implemented. System range (1–14) and DEFCON max cap (20) enforced. Tier-based DEFCON cost deducted from system assets. Initial system acquisition (I command, CEO role, 10,000 cr startup), direct hostile takeover (T command, asset-based cost formula), DEFCON fortification (F command, asset-requirement check), Holdings display (S command, all 14 systems), Alliance transaction log (N command), CEO password management (P command), and raid-document free takeover (`pz$` flow) are all implemented.
+
+**raidDocument lifecycle:** `raidDocument` (= `pz$`) is set when a raid completes (`completeRaid()`). It is consumed (set to `null`) when the player uses it to perform a free takeover at the Investment Center (SP.VEST.S invtak2). It is also cleared to `null` when a player signs a new cargo contract at the Cargo Dispatch Office (SP.CARGO.S:106 `pz$=""`), preventing stale raid documents from persisting across unrelated missions.
 
 ## 9.8 Alliance Bulletin Boards
 

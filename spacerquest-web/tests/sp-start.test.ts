@@ -40,7 +40,7 @@ vi.mock('../src/db/prisma', () => ({
     combatSession: { findFirst: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
     battleRecord: { deleteMany: vi.fn() },
     travelState: { deleteMany: vi.fn() },
-    gameLog: { deleteMany: vi.fn() },
+    gameLog: { deleteMany: vi.fn(), createMany: vi.fn(), findMany: vi.fn(), create: vi.fn() },
     portOwnership: { deleteMany: vi.fn() },
     ship: { deleteMany: vi.fn() },
     $transaction: vi.fn(),
@@ -344,5 +344,311 @@ describe('Conqueror detection — source code structure', () => {
     );
     expect(code).toContain('hasConquered: true');
     expect(code).toContain('character.delete');
+  });
+});
+
+// ============================================================================
+// SP.END grite subroutine — CONQUEST + HERO GameLog writes (lines ~355-362)
+// ============================================================================
+
+describe('SP.END grite — CONQUEST and HERO GameLog entries on conquest', () => {
+  let prisma: any;
+  let MainMenuScreen: any;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const prismaMod = await import('../src/db/prisma');
+    prisma = prismaMod.prisma;
+    const mod = await import('../src/game/screens/main-menu');
+    MainMenuScreen = mod.MainMenuScreen;
+    prisma.allianceMembership.findUnique.mockResolvedValue(null);
+    prisma.combatSession.findFirst.mockResolvedValue(null);
+    prisma.user.update.mockResolvedValue({});
+    prisma.$transaction.mockResolvedValue([]);
+    prisma.gameLog.createMany.mockResolvedValue({ count: 2 });
+  });
+
+  it('SP.END grite: writes CONQUEST GameLog entry on conquest (sp.great)', async () => {
+    // Original: open #1,"sp.great":append #1:print #1, da$+":_"+pp$+"_"+a1$+"_"+nz$+"_CONQUERED_SPACER_QUEST!"
+    const char = makeCharacter({ score: 10000, isConqueror: false, name: 'BoldSpacer', shipName: 'Pegasus', rank: Rank.ADMIRAL });
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    await MainMenuScreen.render('char-1');
+
+    expect(prisma.gameLog.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ type: 'CONQUEST', message: expect.stringContaining('CONQUERED_SPACER_QUEST!') }),
+        ]),
+      })
+    );
+  });
+
+  it('SP.END grite: writes HERO GameLog entry on conquest (sp.hero)', async () => {
+    // Original: open #1,"sp.hero":append #1:print #1, da$+": "+pp$+"_"+a1$+"/"+nz$+"___Victorious Hero!"
+    const char = makeCharacter({ score: 10000, isConqueror: false, name: 'BoldSpacer', shipName: 'Pegasus', rank: Rank.ADMIRAL });
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    await MainMenuScreen.render('char-1');
+
+    expect(prisma.gameLog.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ type: 'HERO', message: expect.stringContaining('Victorious Hero!') }),
+        ]),
+      })
+    );
+  });
+
+  it('SP.END grite: CONQUEST message includes player name and ship (pp$, a1$, nz$)', async () => {
+    const char = makeCharacter({ score: 10000, isConqueror: false, name: 'BoldSpacer', shipName: 'Pegasus', rank: Rank.ADMIRAL });
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    await MainMenuScreen.render('char-1');
+
+    const call = prisma.gameLog.createMany.mock.calls[0][0];
+    const conquestEntry = call.data.find((d: any) => d.type === 'CONQUEST');
+    expect(conquestEntry.message).toContain('BoldSpacer');
+    expect(conquestEntry.message).toContain('Pegasus');
+  });
+
+  it('SP.END grite: HERO message includes player name/ship with slash separator (a1$+"/"+nz$)', async () => {
+    const char = makeCharacter({ score: 10000, isConqueror: false, name: 'BoldSpacer', shipName: 'Pegasus', rank: Rank.ADMIRAL });
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    await MainMenuScreen.render('char-1');
+
+    const call = prisma.gameLog.createMany.mock.calls[0][0];
+    const heroEntry = call.data.find((d: any) => d.type === 'HERO');
+    expect(heroEntry.message).toContain('BoldSpacer/Pegasus');
+  });
+
+  it('SP.END grite: writes both entries before character deletion', async () => {
+    // Entries must be written BEFORE $transaction deletes the character
+    const char = makeCharacter({ score: 10000, isConqueror: false });
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    const callOrder: string[] = [];
+    prisma.gameLog.createMany.mockImplementation(() => { callOrder.push('createMany'); return Promise.resolve({ count: 2 }); });
+    prisma.$transaction.mockImplementation(() => { callOrder.push('$transaction'); return Promise.resolve([]); });
+
+    await MainMenuScreen.render('char-1');
+
+    expect(callOrder.indexOf('createMany')).toBeLessThan(callOrder.indexOf('$transaction'));
+  });
+
+  it('SP.END grite: does NOT write logs when score < 10000', async () => {
+    const char = makeCharacter({ score: 9999, isConqueror: false });
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    await MainMenuScreen.render('char-1');
+
+    expect(prisma.gameLog.createMany).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// SP.START.S G key — Hall of Fame (copy"sp.great")
+// SP.START.S S key — Space Heroes (copy"sp.hero")
+// ============================================================================
+
+describe('SP.START G/H keys — Hall of Fame and Space Heroes (space-news.ts)', () => {
+  it('space-news.ts has (G)reat menu option for Hall of Fame (SP.START.S: if i$="G" copy"sp.great")', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/space-news.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(code).toContain("'G'");
+    expect(code).toContain('(G)');
+    expect(code).toContain('Hall of Fame');
+  });
+
+  it('space-news.ts has (H)eroes menu option for Space Heroes (SP.START.S: if i$="S" copy"sp.hero")', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/space-news.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(code).toContain("'H'");
+    expect(code).toContain('(H)');
+    expect(code).toContain('Space Heroes');
+  });
+
+  it('space-news.ts G key queries CONQUEST log type (sp.great = CONQUEST entries)', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/space-news.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(code).toContain("'CONQUEST'");
+    expect(code).toContain('Hall of Fame');
+  });
+
+  it('space-news.ts H key queries HERO log type (sp.hero = HERO entries)', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/space-news.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(code).toContain("'HERO'");
+    expect(code).toContain('Space Heroes');
+  });
+
+  it('main-menu.ts writes CONQUEST type to GameLog on conquest (sp.great → CONQUEST)', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/main-menu.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(code).toContain("type: 'CONQUEST'");
+    expect(code).toContain('CONQUERED_SPACER_QUEST!');
+  });
+
+  it('main-menu.ts writes HERO type to GameLog on conquest (sp.hero → HERO)', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/main-menu.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(code).toContain("type: 'HERO'");
+    expect(code).toContain('Victorious Hero!');
+  });
+});
+
+// ============================================================================
+// SP.START.S portf — Port Fuel Prices display (lines 217-249)
+// ============================================================================
+
+describe('SP.START.S portf — Port Fuel Prices display', () => {
+  it('shows system number column (# per original portf header)', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/port-fuel-prices.ts', import.meta.url),
+      'utf-8'
+    );
+    // Original header: " #   Port               Owner                  A Fuel Sell  Buy"
+    expect(code).toContain('#   Port');
+  });
+
+  it('shows fuel-in-storage column (m9 in original)', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/port-fuel-prices.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(code).toContain('fuelStored');
+    expect(code).toContain('fuelStr');
+  });
+
+  it('shows "(for sale)" when no owner (original: if m5$="" lo$="_____(for sale)_____")', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/port-fuel-prices.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(code).toContain('for sale');
+  });
+
+  it('displays sell price (m5) and buy price (m5/2) separately', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/port-fuel-prices.ts', import.meta.url),
+      'utf-8'
+    );
+    // sell = port.fuelPrice, buy = floor(fuelPrice/2)
+    expect(code).toContain('port.fuelPrice / 2');
+    expect(code).toContain('sellStr');
+    expect(code).toContain('buyStr');
+  });
+
+  it('shows "?" for sell/buy when price is 0 (original: if m5<1 lq$="?")', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/port-fuel-prices.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(code).toContain("'   ?'");
+    expect(code).toContain("'  ?'");
+  });
+});
+
+// ============================================================================
+// SP.LINK.S rescue subroutine (lines 84-86) — RESCUE GameLog on self-rescue
+// ============================================================================
+
+describe('SP.LINK.S rescue — RESCUE GameLog entry on successful self-rescue', () => {
+  let prisma: any;
+  let RescueSelfScreen: any;
+
+  const makeCharacter = (overrides: Record<string, unknown> = {}) => ({
+    id: 'char-rescue',
+    userId: 'user-1',
+    name: 'LostSpacer',
+    shipName: 'Wanderer',
+    score: 1500,  // sc = floor(1500/150) = 10 → cost = 10000 cr
+    creditsHigh: 1,
+    creditsLow: 5000,  // total = 15000 > 10000 cost
+    isLost: true,
+    lostLocation: 5,
+    rank: 'COMMANDER',
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const prismaMod = await import('../src/db/prisma');
+    prisma = prismaMod.prisma;
+    const mod = await import('../src/game/screens/rescue-self');
+    RescueSelfScreen = mod.RescueSelfScreen;
+    prisma.character.update.mockResolvedValue({});
+    prisma.gameLog.create.mockResolvedValue({});
+  });
+
+  it('SP.LINK.S rescue lines 84-86: writes RESCUE GameLog when self-rescue succeeds', async () => {
+    // Original: open #1,"sp.great":append #1:print #1, da$+" : The "+sp$+" Rescue Service rescued "+nz$:close
+    const char = makeCharacter();
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    await RescueSelfScreen.handleInput('char-rescue', 'Y');
+
+    expect(prisma.gameLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'RESCUE',
+          characterId: 'char-rescue',
+          message: expect.stringContaining('Rescue Service rescued'),
+        }),
+      })
+    );
+  });
+
+  it('SP.LINK.S rescue: RESCUE log message includes ship name (nz$)', async () => {
+    const char = makeCharacter({ shipName: 'Wanderer' });
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    await RescueSelfScreen.handleInput('char-rescue', 'Y');
+
+    const call = prisma.gameLog.create.mock.calls[0][0];
+    expect(call.data.message).toContain('Wanderer');
+  });
+
+  it('SP.LINK.S rescue: does NOT write RESCUE log when player declines rescue (N)', async () => {
+    const char = makeCharacter();
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    await RescueSelfScreen.handleInput('char-rescue', 'N');
+
+    expect(prisma.gameLog.create).not.toHaveBeenCalled();
+  });
+
+  it('SP.LINK.S rescue: does NOT write RESCUE log when player lacks credits', async () => {
+    // cost = floor(1500/150)*1000 = 10000 cr; player has only 500 cr
+    const char = makeCharacter({ creditsHigh: 0, creditsLow: 500 });
+    prisma.character.findUnique.mockResolvedValue(char);
+
+    await RescueSelfScreen.handleInput('char-rescue', 'Y');
+
+    expect(prisma.gameLog.create).not.toHaveBeenCalled();
   });
 });

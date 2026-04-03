@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   renderArenaHeader,
+  renderArenaMenu12,
   renderDuelRoster,
   renderBattleLog,
   renderArenaOptions,
@@ -56,6 +57,54 @@ describe('Dueling Arena Screen', () => {
       expect(output).toContain('(R)');
       expect(output).toContain('(B)');
       expect(output).toContain('(Q)');
+    });
+
+    it('should include (O)ptions menu entry (SP.ARENA1.S line 63: O key shows sp.menu12)', () => {
+      const output = renderArenaHeader();
+      expect(output).toContain('(O)');
+    });
+  });
+
+  // ============================================================================
+  // ARENA MENU12 (SP.ARENA1.S lines 63, 102: if i$="O" i$="sp.menu12":gosub show)
+  // ============================================================================
+
+  describe('renderArenaMenu12 (sp.menu12)', () => {
+    it('shows Stakes Options section header', () => {
+      // Original sp.menu12: S_t_a_k_e_s___O_p_t_i_o_n_s
+      const output = renderArenaMenu12();
+      expect(output).toMatch(/S_t_a_k_e_s.*O_p_t_i_o_n_s/);
+    });
+
+    it('shows all three stakes descriptions', () => {
+      // Original: Portion of Total Points / Ship Component Strength / Credits
+      const output = renderArenaMenu12();
+      expect(output).toContain('Portion of Total Points proportionate to Handicap');
+      expect(output).toContain('Ship Component Strength proportionate to Handicap');
+      expect(output).toContain('Credits on hand equal to (Handicap x 10,000)');
+    });
+
+    it('shows Arena Options section header', () => {
+      // Original sp.menu12: A_r_e_n_a___O_p_t_i_o_n_s
+      const output = renderArenaMenu12();
+      expect(output).toMatch(/A_r_e_n_a.*O_p_t_i_o_n_s/);
+    });
+
+    it('shows all 6 arena types with handicap formulas', () => {
+      // Original sp.menu12 lists each arena with its handicap formula
+      const output = renderArenaMenu12();
+      expect(output).toContain('Ion Cloud Arena');
+      expect(output).toContain('completed trips/50');
+      expect(output).toContain('Proton Storm Arena');
+      expect(output).toContain('astrecs travelled/100');
+      expect(output).toContain('Cosmic Radiation Arena');
+      expect(output).toContain('cargo delivered/100');
+      expect(output).toContain('Black Hole Proximity Arena');
+      expect(output).toContain('rescues x 10');
+      expect(output).toContain('Super-Nova Flare Arena');
+      expect(output).toContain('(battles won +1000)-battles lost');
+      expect(output).toContain('Deep Space Arena');
+      expect(output).toContain('no conditions existent');
     });
   });
 
@@ -512,6 +561,52 @@ describe('Dueling Arena Screen', () => {
       const output = renderArenaStat(testStat);
       // creditsHigh=5, creditsLow=3200 → "53200"
       expect(output).toContain('53200');
+    });
+  });
+
+  // ============================================================================
+  // SALVO RANDOM CLAMP (SP.ARENA2.S lines 75-79, rand subroutine line 243)
+  // ============================================================================
+
+  describe('simulateDuelCombat — random clamp regression (rand: if x>r x=r)', () => {
+    it('j and k values should always be in range 1-9 (rand clamps at r=9)', () => {
+      // Original SP.ARENA2.S rand: if x>r x=r — meaning max value is 9 not 10
+      // bx = (j+1)*10 + posterArenaHandicap → if j=9, bx=(9+1)*10+handicap=100+handicap
+      // If j were allowed to be 10, bx=(10+1)*10=110 which is wrong
+      // We verify this indirectly: with equal handicaps=0, max bx=100, max cx=90.
+      // If j could be 10, we'd see bx=110 which is impossible in original.
+      // Verify: no salvo damage should ever be > 90 when both handicaps=0
+      for (let i = 0; i < 500; i++) {
+        const result = simulateDuelCombat('A', 'B', 0, 0);
+        for (const salvo of result.salvos) {
+          const match = salvo.match(/\[(\d+)\]/);
+          if (match) {
+            const dmg = parseInt(match[1], 10);
+            // Max damage with handicap=0: bx=100 (j=9→(9+1)*10), cx=90 (k=9→9*10); max diff=10
+            // bx=20 (j=1), cx=90 (k=9) → cx-bx=70 max accepter hit
+            // bx=100 (j=9), cx=10 (k=1) → bx-cx=90 max poster hit
+            // If j were wrongly 10: bx=110, cx=10 → diff=100 — should never happen
+            expect(dmg).toBeLessThanOrEqual(90);
+          }
+        }
+      }
+    });
+  });
+
+  // ============================================================================
+  // COMPFX ITERATION (SP.ARENA2.S lines 118-129: a=0..v loop, no cap at 7)
+  // ============================================================================
+
+  describe('calculateProportionalStakes — compfx can return v > 7', () => {
+    it('v can exceed the number of component types (7) when handicaps differ greatly', () => {
+      // posterHcp=50, accepterHcp=1, posterStakes=50, accepterStakes=1
+      // accepterHcp=1 is weaker (< posterHcp), so poster stronger path:
+      //   t=51, s=(1*10)/51≈0.196, u=accepterStakes(1)*0.196=0.196, v=max(1,floor(0.196/10))=1
+      // This is small, but with equal large handicaps:
+      // posterHcp=50, accepterHcp=50, posterStakes=50, accepterStakes=100
+      //   equal: s=(50*10)/100=5, u=accepterStakes(100)*5=500, v=floor(500/10)=50
+      const v = calculateProportionalStakes(50, 50, 50, 100);
+      expect(v).toBe(50); // v=50 > 7 components — loop must iterate full 50 times
     });
   });
 });

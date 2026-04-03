@@ -162,6 +162,17 @@ export const AdminConfigScreen: ScreenModule = {
 async function renderConfigView(): Promise<ScreenResponse> {
   const config = await getGameConfig();
 
+  // SP.EDIT3 bat2b subroutine (lines 122-126): attack strength table per tier
+  // jm=((ju*x)+15): jn=(jm+(jv*5)) for x=1 to 9
+  const ju = config.attackRandomMin;
+  const jv = config.attackRandomMax;
+  let attackTable = '';
+  for (let x = 1; x <= 9; x++) {
+    const jm = (ju * x) + 15;
+    const jn = jm + (jv * 5);
+    attackTable += `  SP${x} and K${x} Attacks Spacer with Weap.Str: ${jm} - ${jn}\r\n`;
+  }
+
   const output = `
 \x1b[36;1m_________________________________________\x1b[0m
 \x1b[31;1m      BATTLE CONFIG  (SP.EDIT3)           \x1b[0m
@@ -176,6 +187,8 @@ async function renderConfigView(): Promise<ScreenResponse> {
   ju = ${config.attackRandomMin}    Attack Random Min     (1-9)
   jv = ${config.attackRandomMax}    Attack Random Max     (1-9)
 
+\x1b[33mAttack Strength Table (SP.EDIT3 bat2b):\x1b[0m
+${attackTable}
   Last updated: ${config.updatedAt.toISOString()}
 
   [E]dit  [R]eset Game  [M]ain Menu

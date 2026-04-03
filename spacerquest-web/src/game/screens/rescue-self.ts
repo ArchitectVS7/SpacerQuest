@@ -100,6 +100,19 @@ Want to be rescued now? [Y]/(N): `;
       },
     });
 
+    // SP.LINK.txt lines 84-86:
+    //   i$=da$+" : The "+sp$+" Rescue Service rescued "+nz$
+    //   open #1,"sp.great":append #1:print #1,i$:close
+    // Write a RESCUE GameLog entry so the event appears in Space News.
+    await prisma.gameLog.create({
+      data: {
+        type: 'RESCUE',
+        characterId,
+        message: `: The Rescue Service rescued ${character.shipName || character.name}`,
+        metadata: { characterName: character.name, shipName: character.shipName, cost },
+      },
+    });
+
     return {
       output: `Yes\r\n\x1b[32mYour ship has been rescued! ${cost} cr deducted.\x1b[0m\r\n`,
       nextScreen: 'main-menu',

@@ -20,6 +20,7 @@ import { Goal, GoalProgress, SessionStats, checkGoal, initialStats } from './goa
 import { ApiValidator } from '../helpers/api-validator';
 import { getTerminalText, waitForText, pressKey, typeAndEnter, detectScreen, BUFFERED_SCREENS } from '../helpers/terminal';
 import { writeFileSync } from 'fs';
+import { CoverageTracker } from './coverage-tracker';
 
 const MAX_ACTIONS = 2000;       // Safety cap — prevents infinite loops
 const MAX_RESTARTS = 3;         // Max session restarts before surfacing to user
@@ -49,6 +50,9 @@ export class GameLoop {
   private turnNumber = 0;
   /** Track last N action signatures to detect stuck loops */
   private recentActionSignatures: string[] = [];
+  private coverage: CoverageTracker;
+  /** Track which critical failures have already been logged (avoid spam) */
+  private loggedCriticalFailures = new Set<string>();
 
   constructor(page: Page, api: ApiValidator, player: ClaudePlayer, goal: Goal) {
     this.page = page;
@@ -56,6 +60,7 @@ export class GameLoop {
     this.player = player;
     this.goal = goal;
     this.stats = initialStats();
+    this.coverage = new CoverageTracker();
   }
 
   async run(): Promise<LoopResult> {
@@ -101,6 +106,7 @@ export class GameLoop {
 
       // Build context and ask Claude for the next action
       const ctx = await this.buildContext();
+      this.log(`  [STATE] screen=${ctx.currentScreen ?? '?'} cr=${ctx.stats.credits} pods=${ctx.stats.cargoPods}/${ctx.stats.maxCargoPods} dest=${ctx.stats.destination||'none'} trips=${ctx.stats.tripCount}/2 fuel=${ctx.stats.fuel}`);
       const action = await this.player.decideNextAction(ctx);
 
       this.log(`[T${this.turnNumber}:A${this.totalActions}] ${action.type}:${action.value} — ${action.reasoning}`);
@@ -108,10 +114,17 @@ export class GameLoop {
       // Repetition detector: if the last 5 actions are all identical, the agent is stuck
       const sig = `${action.type}:${action.value}`;
       this.recentActionSignatures.push(sig);
-      if (this.recentActionSignatures.length > 5) this.recentActionSignatures.shift();
-      if (this.recentActionSignatures.length === 5 &&
-          this.recentActionSignatures.every(s => s === this.recentActionSignatures[0])) {
-        this.log(`  [!] STUCK LOOP detected — same action repeated 5 times: ${sig}. Forcing recovery.`);
+      if (this.recentActionSignatures.length > 6) this.recentActionSignatures.shift();
+      const sigs = this.recentActionSignatures;
+      const identicalLoop = sigs.length >= 5 && sigs.slice(-5).every(s => s === sigs[sigs.length - 1]);
+      // Alternating A/B/A/B/A/B oscillation detector (e.g. press_key:T / press_key:M loop)
+      const oscillationLoop = sigs.length === 6 &&
+        sigs[0] === sigs[2] && sigs[2] === sigs[4] &&
+        sigs[1] === sigs[3] && sigs[3] === sigs[5] &&
+        sigs[0] !== sigs[1];
+      if (identicalLoop || oscillationLoop) {
+        const pattern = oscillationLoop ? `${sigs[0]} ↔ ${sigs[1]}` : sig;
+        this.log(`  [!] STUCK LOOP detected — ${oscillationLoop ? 'oscillation' : 'same action 5x'}: ${pattern}. Forcing recovery.`);
         await this.restartSession();
         this.recentActionSignatures = [];
         continue;
@@ -124,12 +137,72 @@ export class GameLoop {
 
       // Execute action
       const before = await getTerminalText(this.page);
+      const screenBefore = await detectScreen(this.page);
       await this.executeAction(action);
       this.totalActions++;
       this.stats.totalActions++;
 
+      // Map actions to coverage features
+      const screenAfterAction = await detectScreen(this.page);
+
+      if (action.type === 'press_key') {
+        // Combat features: check what screen we were ON before the keypress
+        if (screenBefore === 'combat') {
+          if (action.value.toLowerCase() === 'a') this.coverage.record('combat.attack');
+          if (action.value.toLowerCase() === 'r') this.coverage.record('combat.retreat');
+          if (action.value.toLowerCase() === 's') this.coverage.record('combat.surrender');
+        }
+        // Nav launch: N key from main-menu → navigate screen
+        if (screenBefore === 'main-menu' && action.value.toLowerCase() === 'n') {
+          this.coverage.record('nav.launch');
+        }
+        // Shipyard view: S key from main-menu always opens shipyard
+        // NOTE: detectScreen never returns 'shipyard' (timing issue with DB render),
+        // so we record based on navigation intent.
+        if (screenBefore === 'main-menu' && action.value.toLowerCase() === 's') {
+          this.coverage.record('shipyard.view');
+        }
+        // Shipyard repair: R key on shipyard-upgrade screen (only screen where R=repair)
+        // OR when screenBefore is null (shipyard main menu not detected) and R key pressed
+        if (screenBefore === 'shipyard' && action.value.toLowerCase() === 'r') {
+          this.coverage.record('shipyard.repair');
+        }
+        // Pub drink: B key on pub screen
+        if (screenBefore === 'pub' && action.value.toLowerCase() === 'b') {
+          this.coverage.record('pub.drink');
+        }
+        // Pub gamble: D or W key on pub screen (dare game or wheel of fortune)
+        if (screenBefore === 'pub' && (action.value.toLowerCase() === 'd' || action.value.toLowerCase() === 'w')) {
+          this.coverage.record('pub.gamble');
+        }
+      }
+      if (action.type === 'type_and_enter') {
+        // Cargo accept: Y confirmation on traders-cargo → moves back to traders
+        if (screenBefore === 'traders-cargo' && action.value.toLowerCase() === 'y') {
+          this.coverage.record('traders.accept_cargo');
+        }
+        // Fuel buy: number entered on traders-buy-fuel screen
+        if (screenBefore === 'traders-buy-fuel' && /^\d+$/.test(action.value)) {
+          this.coverage.record('traders.buy_fuel');
+        }
+        // Fuel sell: number entered on traders-sell-fuel screen
+        if (screenBefore === 'traders-sell-fuel' && /^\d+$/.test(action.value)) {
+          this.coverage.record('traders.sell_fuel');
+        }
+      }
+      // Cargo delivery: detected when cargoPods went to 0 after travel (from travel handler)
+      if (screenAfterAction === 'traders-cargo') this.coverage.record('traders.accept_cargo');
+
       // Verify outcome (polls for up to 3s for the screen to change)
       const outcomeOk = await this.verifyOutcome(action, before);
+
+      // Post-outcome coverage: shipyard upgrade (success only, no Upgrade failed error)
+      // Success message disappears immediately (nextScreen:'shipyard' re-renders before read),
+      // so we check outcome success instead of terminal text.
+      if (outcomeOk && action.type === 'type_and_enter' &&
+          screenBefore === 'shipyard-upgrade' && /^\d$/.test(action.value)) {
+        this.coverage.record('shipyard.upgrade');
+      }
 
       if (!outcomeOk) {
         this.consecutiveErrors++;
@@ -209,10 +282,42 @@ export class GameLoop {
   private async executeAction(action: PlayerAction): Promise<void> {
     switch (action.type) {
       case 'press_key': {
+        // Guard: model sometimes returns press_key:end_turn instead of end_turn action type
+        if (action.value === 'end_turn') {
+          this.log(`  [NORMALIZE] press_key:end_turn → end_turn action`);
+          await this.executeEndTurn();
+          break;
+        }
+        // Guard: empty key string causes playwright crash — fall back to Escape
+        if (!action.value || action.value.trim() === '') {
+          this.log(`  [NORMALIZE] press_key:(empty) → Escape`);
+          await pressKey(this.page, 'Escape');
+          break;
+        }
         // On buffered screens, single keypresses accumulate in the xterm buffer
         // without being sent to the server. Auto-convert to type_and_enter so each
         // key is immediately processed, preventing buffer corruption.
         const currentScreen = await detectScreen(this.page);
+
+        // Screen-specific key normalization: models sometimes use M to exit screens
+        // that don't support M. Remap to the correct exit key for each screen.
+        const mKey = action.value.toLowerCase() === 'm';
+        if (mKey && currentScreen === 'traders-cargo') {
+          this.log(`  [NORMALIZE] press_key:M on traders-cargo → type_and_enter:Q`);
+          await typeAndEnter(this.page, 'Q');
+          break;
+        }
+        if (mKey && currentScreen === 'navigate') {
+          this.log(`  [NORMALIZE] press_key:M on navigate → type_and_enter:Q`);
+          await typeAndEnter(this.page, 'Q');
+          break;
+        }
+        if (mKey && currentScreen === 'bank') {
+          this.log(`  [NORMALIZE] press_key:M on bank → type_and_enter:M (bank uses buffered input)`);
+          await typeAndEnter(this.page, 'M');
+          break;
+        }
+
         if (currentScreen && BUFFERED_SCREENS.includes(currentScreen)) {
           this.log(`  [BUFFERED] Converting press_key:${action.value} to type_and_enter on ${currentScreen}`);
           await typeAndEnter(this.page, action.value);
@@ -261,6 +366,8 @@ export class GameLoop {
       this.stats.actionsThisTurn = 0;
       this.turnNumber++;
       this.log(`  [TURN ${this.stats.turnsCompleted} COMPLETE]`);
+      // Clear conversation history so the next turn starts fresh without stale context
+      this.player.clearHistory();
     } else {
       this.log(`  [WARN] End-turn prompt not found — text: ${text.slice(-100)}`);
     }
@@ -305,6 +412,15 @@ export class GameLoop {
     const detectedScreen = await detectScreen(this.page);
     if (detectedScreen) this.log(`  [screen] ${detectedScreen}`);
 
+    // Check for new critical coverage failures (log each only once)
+    const criticalFailures = this.coverage.getCriticallyFailing();
+    for (const f of criticalFailures) {
+      if (!this.loggedCriticalFailures.has(f)) {
+        this.loggedCriticalFailures.add(f);
+        this.log(`  [COVERAGE CRITICAL] Feature "${f}" has consistent screen mismatches — possible bug`);
+      }
+    }
+
     return true;
   }
 
@@ -341,6 +457,8 @@ export class GameLoop {
     this.stats.restarts++;
     this.log(`\n=== SESSION RESTART ${this.stats.restarts}/${MAX_RESTARTS} ===`);
     this.consecutiveErrors = 0;
+    // Clear stale conversation history so the agent starts fresh
+    this.player.clearHistory();
 
     // Try to get back to a known state: main menu
     for (const key of ['Escape', 'm', 'q', 'Escape', 'm']) {
@@ -416,7 +534,11 @@ export class GameLoop {
       this.stats.currentRank = rankMatch[1];
     }
 
+    // Auto-detect coverage features from terminal text
+    this.coverage.detectFromTerminal(terminalText);
+
     this.stats.actionsThisTurn++;
+    this.stats.coveragePercent = this.coverage.getCoveragePercent();
   }
 
   private async buildContext(): Promise<GameContext> {
@@ -425,11 +547,15 @@ export class GameLoop {
     const terminalText = await getTerminalText(this.page);
     const screen = await detectScreen(this.page);
 
+    // Auto-detect coverage features from screen name
+    this.coverage.detectFromScreen(screen);
+
     let gameState = {
       credits: 0,
       fuel: 0,
       system: 0,
       cargoPods: 0,
+      maxCargoPods: 0,
       cargoType: 0,
       destination: 0,
       tripCount: 0,
@@ -437,10 +563,13 @@ export class GameLoop {
       rank: this.stats.currentRank,
       turnsCompleted: this.stats.turnsCompleted,
       upgradesDone: this.stats.upgradesDone,
+      hullStr: 0,
+      score: 0,
     };
 
     try {
       const snapshot = await this.api.snapshotState();
+      const hullComp = snapshot.components?.find((c: any) => c.name === 'Hull' || c.slot === 'hull');
       gameState = {
         ...gameState,
         credits: snapshot.credits,
@@ -450,6 +579,10 @@ export class GameLoop {
         cargoType: snapshot.cargoType,
         destination: snapshot.destination,
         tripCount: snapshot.tripCount,
+        maxCargoPods: snapshot.maxCargoPods ?? 0,
+        hullStr: hullComp?.strength ?? 0,
+        score: snapshot.score ?? 0,
+        rank: snapshot.rank ?? this.stats.currentRank,
       };
     } catch {
       // Parse from terminal as fallback
@@ -460,11 +593,17 @@ export class GameLoop {
     return {
       terminalText,
       currentScreen: screen,
-      stats: gameState,
+      stats: {
+        ...gameState,
+        // Include actions taken this turn so hints can limit exploration time
+        actionsThisTurn: this.stats.actionsThisTurn,
+      },
       goalDescription: this.goal.description,
       goalProgress: progress.summary,
       recentActions: this.recentActions.slice(-5),
       turnNumber: this.turnNumber,
+      uncoveredFeatures: this.coverage.getUncovered(),
+      coveragePercent: this.coverage.getCoveragePercent(),
     };
   }
 
@@ -523,6 +662,7 @@ export class GameLoop {
       this.log(`  [TRAVEL] Now at system ${snapshot.system}, cargoPods=${snapshot.cargoPods}`);
       if (snapshot.cargoPods === 0 && snapshot.destination === 0) {
         this.stats.cargoDeliveries++;
+        this.coverage.record('nav.cargo_delivery');
         this.log(`  [+] Cargo delivered via travel (total: ${this.stats.cargoDeliveries})`);
       }
     } catch {
@@ -542,6 +682,8 @@ export class GameLoop {
 
   private flushLog(): void {
     try {
+      const coverageReport = this.coverage.getReport();
+      this.log('\n' + coverageReport);
       writeFileSync(ACTION_LOG_PATH, this.actionLog.join('\n'), 'utf-8');
       console.log(`\nAction log written to: ${ACTION_LOG_PATH}`);
     } catch {

@@ -1,6 +1,6 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
-import { validateLaunch, startTravel, calculateLiftOffFee } from '../systems/travel.js';
+import { validateLaunch, startTravel, calculateLiftOffFee, checkNavPrecision } from '../systems/travel.js';
 import { CORE_SYSTEM_NAMES } from '../constants.js';
 
 // Pending launch state: after validation passes, we show the fee and wait for Y/N
@@ -23,12 +23,65 @@ const pendingLaunches = new Map<string, PendingLaunch>();
 const pendingBribes = new Map<string, PendingBribe>();
 
 // SP.LIFT.S lines 30, 67: player has a valid launch contract
+// Original: if q1<1 goto bribe — q1=0 is no contract, q1=1 covers ALL mission types (kk=1-10)
+// Any non-zero missionType means q1=1 in the original.
 function hasActiveContract(missionType: number, cargoPods: number): boolean {
-  return missionType === 1 || missionType === 3 || missionType === 4 || missionType === 9 || cargoPods >= 1;
+  return missionType > 0 || cargoPods >= 1;
 }
 
-function destinationPromptOutput(currentSystem: number, fuel: number): string {
-  return `\r\n\x1b[36;1m_________________________________________\x1b[0m\r\n\x1b[33;1m      NAVIGATION CONTROL                   \x1b[0m\r\n\x1b[36;1m_________________________________________\x1b[0m\r\n\r\n\x1b[32mCurrent Location:\x1b[0m System ${currentSystem}\r\n\x1b[32mFuel Remaining:\x1b[0m ${fuel} units\r\n\r\nEnter destination system ID to travel to.\r\nOr enter 0 or leave blank to abort.\r\n\r\n\x1b[32m:\x1b[0m${currentSystem} Navigation:\x1b[32m: Destination System ID:\x1b[0m\r\n> `;
+/**
+ * SP.WARP.S lines 107-116: Seven navigation menu variants based on game state.
+ *
+ * Original menu selection:
+ *   if r2<2             → sp.menu5g  (low-rank: basic bridge)
+ *   if (kk=10) and bh=1 → sp.menu5f  (Andromeda + black hole transited)
+ *   if kk=10            → sp.menu5e  (Andromeda trip)
+ *   if kk=6             → sp.menu5d  (Rim cargo run)
+ *   if mx=2             → sp.menu5c  (Nemesis mission)
+ *   if mx=1             → sp.menu5b  (Maligna mission)
+ *   if mx=0             → sp.menu5a  (Normal operation)
+ *
+ * In modern web, these display as contextual banners on the Navigation screen.
+ */
+function getNavigationMenuBanner(missionType: number, _rank: string, cargoManifest: string | null, roboticsCondition = 0): string {
+  // sp.menu5g: r2<2 → Basic Bridge banner (original SP.WARP.S:109: if r2<2 copy"sp.menu5g")
+  // r2 = robotics condition; < 2 means robotics non-functional → degraded nav console
+  if (roboticsCondition < 2) {
+    return '\x1b[33m  [Ship Bridge - Basic Nav Console]\x1b[0m\r\n  Commands: [D]ata Banks  [N]avigation  [W]eapons  [?]Menu  [Q]uit\r\n';
+  }
+
+  // sp.menu5f: Andromeda trip, black hole transited
+  if (missionType === 10 && cargoManifest && cargoManifest.includes('NGC')) {
+    return '\x1b[35;1m  [Ship Bridge - Andromeda Transit]\x1b[0m\r\n  Black Hole transited. \x1b[33mNeed New Nav Headings!\x1b[0m\r\n  Commands: [D]ata Banks  [N]avigation  [W]eapons  [?]Menu  [Q]uit\r\n';
+  }
+
+  // sp.menu5e: Andromeda trip
+  if (missionType === 10) {
+    return '\x1b[35;1m  [Ship Bridge - Andromeda Mission]\x1b[0m\r\n  Commands: [D]ata Banks  [N]avigation  [W]eapons  [?]Menu  [Q]uit\r\n';
+  }
+
+  // sp.menu5d: Rim cargo run (kk=6)
+  if (missionType === 6) {
+    return '\x1b[36;1m  [Ship Bridge - Rim Stars Cargo Run]\x1b[0m\r\n  Commands: [D]ata Banks  [N]avigation  [W]eapons  [?]Menu  [Q]uit\r\n';
+  }
+
+  // sp.menu5c: Nemesis mission (mx=2 / kk=9)
+  if (missionType === 9) {
+    return '\x1b[31;1m  [Ship Bridge - NEMESIS MISSION]\x1b[0m\r\n  \x1b[31mDangerous course! Input new course change or risk being lost in space.\x1b[0m\r\n  Commands: [D]ata Banks  [N]avigation  [W]eapons  [?]Menu  [Q]uit\r\n';
+  }
+
+  // sp.menu5b: Cargo mission (kk=3 in SP.CARGO.S = regular cargo run)
+  if (missionType === 3) {
+    return '\x1b[32;1m  [Ship Bridge - CARGO MISSION]\x1b[0m\r\n  Commands: [D]ata Banks  [N]avigation  [W]eapons  [?]Menu  [Q]uit\r\n';
+  }
+
+  // sp.menu5a: Normal operation (mx=0)
+  return '\x1b[33;1m  [Ship Bridge]\x1b[0m\r\n  Commands: [D]ata Banks  [N]avigation  [W]eapons  [?]Menu  [Q]uit\r\n';
+}
+
+function destinationPromptOutput(currentSystem: number, fuel: number, missionType: number = 1, rank: string = 'LIEUTENANT', cargoManifest: string | null = null, roboticsCondition = 0): string {
+  const banner = getNavigationMenuBanner(missionType, rank, cargoManifest, roboticsCondition);
+  return `\r\n\x1b[36;1m_________________________________________\x1b[0m\r\n\x1b[33;1m      NAVIGATION CONTROL                   \x1b[0m\r\n\x1b[36;1m_________________________________________\x1b[0m\r\n\r\n${banner}\r\n\x1b[32mCurrent Location:\x1b[0m System ${currentSystem}\r\n\x1b[32mFuel Remaining:\x1b[0m ${fuel} units\r\n\r\nEnter destination system ID to travel to.\r\nOr enter 0 or leave blank to abort.\r\n\r\n\x1b[32m:\x1b[0m${currentSystem} Navigation:\x1b[32m: Destination System ID:\x1b[0m\r\n> `;
 }
 
 export const NavigateScreen: ScreenModule = {
@@ -54,7 +107,7 @@ export const NavigateScreen: ScreenModule = {
       return { output };
     }
 
-    return { output: destinationPromptOutput(character.currentSystem, character.ship?.fuel || 0) };
+    return { output: destinationPromptOutput(character.currentSystem, character.ship?.fuel || 0, character.missionType, character.rank, character.cargoManifest, character.ship?.roboticsCondition || 0) };
   },
 
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
@@ -250,6 +303,8 @@ async function handleBribe(
     while (newLow < 0 && newHigh > 0) { newHigh -= 1; newLow += 10000; }
 
     // Set free contract state (SP.LIFT.S lines 106–107)
+    // q5=0:q6=20:q4$="=-Space-=" — payment=0, distance override q6=20 for scoring, any-port manifest
+    // Store q6=20 in cargoPayment so delivery scoring can use it (varfix: s2=s2+q6+2)
     await prisma.character.update({
       where: { id: characterId },
       data: {
@@ -260,7 +315,7 @@ async function handleBribe(
         destination: 0,
         cargoManifest,
         cargoType,
-        cargoPayment: 0,
+        cargoPayment: 20,  // SP.LIFT.S q6=20: distance override for scoring at arriv3/varfix
       },
     });
 
@@ -269,7 +324,7 @@ async function handleBribe(
     const ship = await prisma.ship.findUnique({ where: { characterId } });
     const fuel = ship?.fuel || 0;
     const confirmMsg = `${key}\r\n\r\nHere's the Forged ${cargoLabel} Manifest Papers.\r\nInput your new destination after lift-off\r\n`;
-    return { output: confirmMsg + destinationPromptOutput(character.currentSystem, fuel) };
+    return { output: confirmMsg + destinationPromptOutput(character.currentSystem, fuel, character.missionType, character.rank, character.cargoManifest) };
   }
 
   // Shouldn't reach here
@@ -350,11 +405,36 @@ async function handleFeeConfirmation(
     });
   }
 
+  // SP.WARP.S lines 194-199: nav precision check — may redirect to wrong system
+  const ship = character.ship!;
+  const navCheck = checkNavPrecision(
+    ship.navigationStrength,
+    ship.navigationCondition,
+    pending.destinationSystemId,
+  );
+
+  let actualDest = pending.destinationSystemId;
+  let navMalfunctionMsg = '';
+
+  if (navCheck.malfunction) {
+    actualDest = navCheck.actualDestination;
+    const navName = ship.navigationName || 'Nav System';
+    navMalfunctionMsg = `\r\n\x1b[31m${navName} Malfunction!....${String.fromCharCode(7)}\x1b[0m\r\n`;
+  }
+
+  // SP.LIFT.S: fuel is consumed on lift-off. Deduct from ship before calling startTravel.
+  const newFuel = Math.max(0, character.ship!.fuel - pending.fuelRequired);
+  await prisma.ship.update({
+    where: { id: character.ship!.id },
+    data: { fuel: newFuel },
+  });
+
   // Launch!
   try {
-    await startTravel(characterId, character.currentSystem, pending.destinationSystemId, pending.fuelRequired);
+    await startTravel(characterId, character.currentSystem, actualDest, pending.fuelRequired);
+    const destName = CORE_SYSTEM_NAMES[actualDest] || `System ${actualDest}`;
     return {
-      output: `Yes\r\n\r\n\x1b[36;1mThank you ${character.name}. Your ship and papers are in order.\x1b[0m\r\n\x1b[32mYou are cleared for Lift-Off!\x1b[0m\r\n\r\n\x1b[36;1mENGAGING DRIVES...\x1b[0m\r\n\x1b[33mFuel consumed: ${pending.fuelRequired}\x1b[0m\r\n\r\n\x1b[32mYou have Lift-Off!..Lookin' Good!...Bon Voyage ${character.name}!\x1b[0m\r\n`,
+      output: `Yes\r\n\r\n\x1b[36;1mThank you ${character.name}. Your ship and papers are in order.\x1b[0m\r\n\x1b[32mYou are cleared for Lift-Off!\x1b[0m\r\n\r\n\x1b[36;1mENGAGING DRIVES...\x1b[0m\r\n\x1b[33mFuel consumed: ${pending.fuelRequired}\x1b[0m\r\n${navMalfunctionMsg}\r\n\x1b[32mYou have Lift-Off!..Lookin' Good!...Bon Voyage ${character.name}! Heading: ${destName}\x1b[0m\r\n`,
       nextScreen: 'main-menu'
     };
   } catch (err) {

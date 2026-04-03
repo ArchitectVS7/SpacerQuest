@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { calculateSmugglingContract } from '../src/game/systems/economy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const hangoutCode = fs.readFileSync(
@@ -302,5 +303,139 @@ describe('SP.BAR.S Smuggling Completion (Gain)', () => {
     expect(hangoutCode).toContain('cargoPods: 0');
     expect(hangoutCode).toContain('cargoPayment: 0');
     expect(hangoutCode).toContain('cargoManifest: null');
+  });
+});
+
+// ============================================================================
+// SP.BAR.S:32-37 — Sun-3 Entry Sub-Menu (H/B/Q)
+// Original: "if sp$<>"Sun-3" goto hanger"
+//           "print Spacers: [H]angout  (B)rig  (Q)uit:"
+// ============================================================================
+
+describe('SP.BAR.S Sun-3 Entry Sub-Menu (lines 32-37)', () => {
+  it('render shows Sun-3 entry sub-menu with H/B/Q options', () => {
+    // SP.BAR.S line 33: "Spacers: [H]angout  (B)rig  (Q)uit:"
+    expect(hangoutCode).toContain('inSun3EntryMenu');
+    expect(hangoutCode).toContain('[H]');
+    expect(hangoutCode).toContain('(B)rig');
+    expect(hangoutCode).toContain('(Q)uit');
+  });
+
+  it('entry sub-menu is set in render before showing hangout (inSun3EntryMenu.add)', () => {
+    // The render function must set inSun3EntryMenu BEFORE returning sub-menu output
+    expect(hangoutCode).toContain('inSun3EntryMenu.add(characterId)');
+  });
+
+  it('handleInput Priority 0 handles inSun3EntryMenu state before other flows', () => {
+    // Must be checked before smuggling/bail/brig states
+    const priority0Idx = hangoutCode.indexOf('inSun3EntryMenu.has(characterId)');
+    const smugIdx = hangoutCode.indexOf('Priority 1: Smuggling');
+    expect(priority0Idx).toBeGreaterThan(0);
+    expect(priority0Idx).toBeLessThan(smugIdx);
+  });
+
+  it("entry sub-menu Q key returns nextScreen: 'main-menu'", () => {
+    // SP.BAR.S line 35: "if i$='Q' print 'Leaving': goto linker"
+    const entryBlock = hangoutCode.slice(
+      hangoutCode.indexOf('inSun3EntryMenu.has(characterId)'),
+      hangoutCode.indexOf('Priority 1: Smuggling'),
+    );
+    expect(entryBlock).toContain("nextScreen: 'main-menu'");
+  });
+
+  it('entry sub-menu B key calls showBrig', () => {
+    // SP.BAR.S line 34: "if i$='B' print 'Visiting The Brig': goto brig"
+    const entryBlock = hangoutCode.slice(
+      hangoutCode.indexOf('inSun3EntryMenu.has(characterId)'),
+      hangoutCode.indexOf('Priority 1: Smuggling'),
+    );
+    expect(entryBlock).toContain('showBrig(characterId)');
+  });
+
+  it('entry sub-menu H key calls renderHangoutContent', () => {
+    // SP.BAR.S: default (H/Enter) → goto hanger then begin
+    const entryBlock = hangoutCode.slice(
+      hangoutCode.indexOf('inSun3EntryMenu.has(characterId)'),
+      hangoutCode.indexOf('Priority 1: Smuggling'),
+    );
+    expect(entryBlock).toContain('renderHangoutContent(characterId)');
+  });
+
+  it('render skips entry sub-menu when kk=5 (smuggling mission: if kk=5 goto begin)', () => {
+    // SP.BAR.S line 30: "if kk=5 goto begin" — skips sub-menu
+    // Modern: missionType === 5 → renderHangoutContent directly
+    expect(hangoutCode).toContain('missionType === 5');
+    const renderBlock = hangoutCode.slice(
+      hangoutCode.indexOf('render: async'),
+      hangoutCode.indexOf('handleInput: async'),
+    );
+    // Should call renderHangoutContent early for smuggling
+    expect(renderBlock).toContain('renderHangoutContent(characterId)');
+  });
+
+  it('renderHangoutContent is a module-level helper function', () => {
+    expect(hangoutCode).toContain('async function renderHangoutContent(');
+  });
+});
+
+// ============================================================================
+// calculateSmugglingContract (SP.BAR.S smug subroutine lines 213-245)
+// ============================================================================
+
+describe('calculateSmugglingContract (SP.BAR.S:213-245)', () => {
+  // SP.BAR.S:227 — if i>14: "Space Patrol snooping about...Nothing here!"
+  it('roll > 14 returns intercepted (Space Patrol snooping)', () => {
+    const result = calculateSmugglingContract(1, 5, 5, 5, 15);
+    expect(result.intercepted).toBe(true);
+  });
+
+  it('roll = 20 returns intercepted', () => {
+    const result = calculateSmugglingContract(1, 5, 5, 5, 20);
+    expect(result.intercepted).toBe(true);
+  });
+
+  // SP.BAR.S:225 — if i=sp i=20 (same system → snooping)
+  it('roll matching current system is rerouted to 20 → intercepted', () => {
+    // Current system = 5, roll = 5 → redirected to 20 → intercepted
+    const result = calculateSmugglingContract(5, 5, 5, 5, 5);
+    expect(result.intercepted).toBe(true);
+  });
+
+  it('roll <= 14 and not current system returns valid contract', () => {
+    const result = calculateSmugglingContract(1, 5, 5, 5, 7);
+    expect(result.intercepted).toBe(false);
+    expect(result.destinationSystemId).toBe(7);
+    expect(result.distance).toBeGreaterThan(0);
+    expect(result.fuelRequired).toBeGreaterThan(0);
+    expect(result.payment).toBeGreaterThan(0);
+  });
+
+  // SP.BAR.S:233 — x=(14000+(100*y))-(h1*500); if x<1 x=500
+  it('payment formula: 14000 + 100*distance - h1*500', () => {
+    // System 1 to system 10 = distance 9; hullStrength=5
+    // payment = 14000 + 100*9 - 5*500 = 14000 + 900 - 2500 = 12400
+    const result = calculateSmugglingContract(1, 5, 5, 5, 10);
+    expect(result.payment).toBe(12400);
+  });
+
+  it('payment clamped to 500 when formula gives negative result', () => {
+    // hullStrength=30, distance=1: 14000 + 100 - 30*500 = 14100 - 15000 = -900 → 500
+    const result = calculateSmugglingContract(1, 30, 5, 5, 2);
+    expect(result.payment).toBe(500);
+    expect(result.lowPayWarning).toBe(true);
+  });
+
+  it('smuggling contract setup guard fields are present in screen code', () => {
+    // SP.BAR.S:216 — if s1<10 "not enough cargo pods"
+    expect(hangoutCode).toContain('cargoPods < 10');
+    // SP.BAR.S:215 — if (z1>2) or (nj>2) → syndicate closed
+    expect(hangoutCode).toContain('tripCount > 2');
+    // SP.BAR.S:217-218 — if q1>0 and q2$="Contraband"
+    expect(hangoutCode).toContain("'Contraband'");
+    // SP.BAR.S:223 — if ye>0 i=20 (already got a contract this session)
+    expect(hangoutCode).toContain('smugYe');
+    // SP.BAR.S:241-244 — contract fields set on acceptance
+    expect(hangoutCode).toContain('missionType: 5');
+    expect(hangoutCode).toContain("cargoManifest: 'Contraband'");
   });
 });

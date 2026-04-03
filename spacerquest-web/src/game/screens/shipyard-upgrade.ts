@@ -41,7 +41,7 @@ Enter number:
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
     const key = input.trim();
     
-    if (key === '0' || !key) {
+    if (key === '0' || !key || key.toUpperCase() === 'M' || key.toUpperCase() === 'Q') {
       return { output: '\x1b[2J\x1b[H\x1b[33mUpgrade cancelled.\x1b[0m\r\n', nextScreen: 'shipyard' };
     }
 

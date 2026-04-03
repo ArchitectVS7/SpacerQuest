@@ -10,6 +10,10 @@ import {
   calculateSalvage,
   applySalvage,
   calculateTribute,
+  applyAutoRepair,
+  applyShieldRecharge,
+  checkEnemySpeedChase,
+  calculateDefeatConsequences,
   Enemy,
   SalvageResult,
 } from '../src/game/systems/combat';
@@ -43,31 +47,155 @@ describe('Combat System Alignments', () => {
     });
   });
 
-  describe('Component Damage Cascade', () => {
-    it('should damage components in specific order: Cabin -> Nav -> Drives -> Shields -> LifeSupport', () => {
-      const ship: ShipStats = {
-        weaponStrength: 10, weaponCondition: 5,
-        shieldStrength: 10, shieldCondition: 1,
-        cabinStrength: 10, cabinCondition: 2,
-        roboticsStrength: 10, roboticsCondition: 5,
-        lifeSupportStrength: 10, lifeSupportCondition: 3,
-        navigationStrength: 10, navigationCondition: 4,
-        driveStrength: 10, driveCondition: 2,
-        hasAutoRepair: false,
-      };
+  // SP.FIGHT1.S sfff subroutine (lines 396-436):
+  //   r=7:gosub rand:x=x+1
+  //   if x=3 goto sfa2 (Nav); if x=5 goto sfa3 (Drives); if x=7 goto sfa4 (Robotics)
+  //   default (x=2,4,6,8) → sfa1 (Cabin)
+  //   Cascade: Cabin → Nav → Drives → Robotics → Weapon → Hull
+  describe('Component Damage Cascade (SP.FIGHT1.S sfff)', () => {
+    const ship: ShipStats = {
+      weaponStrength: 10, weaponCondition: 5,
+      shieldStrength: 10, shieldCondition: 1,
+      cabinStrength: 10, cabinCondition: 2,
+      roboticsStrength: 10, roboticsCondition: 5,
+      lifeSupportStrength: 10, lifeSupportCondition: 3,
+      navigationStrength: 10, navigationCondition: 4,
+      driveStrength: 10, driveCondition: 2,
+      hullStrength: 10, hullCondition: 5,
+      hasAutoRepair: false,
+    };
 
-      // 1st damage: Cabin (2 -> 1)
-      let result = applySystemDamage(ship, 1);
+    it('roll=1 (x=2, even) → starts at Cabin: Cabin (2->1), Nav undisturbed', () => {
+      const result = applySystemDamage(ship, 1, 1); // roll=1 → x=2 → cabin
       expect(result.updatedShip.cabinCondition).toBe(1);
-      expect(result.updatedShip.navigationCondition).toBe(4); // Nav undisturbed
+      expect(result.updatedShip.navigationCondition).toBe(4);
+    });
 
-      // 2nd damage: Cabin (1 -> 0)
-      result = applySystemDamage(result.updatedShip, 1);
-      expect(result.updatedShip.cabinCondition).toBe(0);
-
-      // 3rd damage: Nav (4 -> 3)
-      result = applySystemDamage(result.updatedShip, 1);
+    it('roll=2 (x=3, odd) → starts at Nav: Nav (4->3), Cabin undisturbed', () => {
+      const result = applySystemDamage(ship, 1, 2); // roll=2 → x=3 → nav
       expect(result.updatedShip.navigationCondition).toBe(3);
+      expect(result.updatedShip.cabinCondition).toBe(2); // cabin undisturbed
+    });
+
+    it('roll=4 (x=5, odd) → starts at Drives: Drives (2->1)', () => {
+      const result = applySystemDamage(ship, 1, 4); // roll=4 → x=5 → drives
+      expect(result.updatedShip.driveCondition).toBe(1);
+      expect(result.updatedShip.cabinCondition).toBe(2); // cabin undisturbed
+    });
+
+    it('roll=6 (x=7, odd) → starts at Robotics: Robotics (5->4)', () => {
+      const result = applySystemDamage(ship, 1, 6); // roll=6 → x=7 → robotics
+      expect(result.updatedShip.roboticsCondition).toBe(4);
+      expect(result.updatedShip.cabinCondition).toBe(2); // cabin undisturbed
+    });
+
+    it('cascade: when cabin=0 and roll starts at cabin, cascades to Nav', () => {
+      const zeroCabin = { ...ship, cabinCondition: 0 };
+      const result = applySystemDamage(zeroCabin, 1, 1); // roll=1 → cabin → cascade to nav
+      expect(result.updatedShip.navigationCondition).toBe(3); // 4→3
+      expect(result.updatedShip.cabinCondition).toBe(0); // still 0
+    });
+
+    it('cascade: when cabin=0 and nav=0 and roll starts at cabin, cascades to Drives', () => {
+      const depleted = { ...ship, cabinCondition: 0, navigationCondition: 0 };
+      const result = applySystemDamage(depleted, 1, 1);
+      expect(result.updatedShip.driveCondition).toBe(1); // 2→1
+    });
+
+    it('weapon and hull are reachable in cascade (sfff sfa5/sfa6)', () => {
+      const almostDead = { ...ship, cabinCondition: 0, navigationCondition: 0, driveCondition: 0, roboticsCondition: 0 };
+      const result = applySystemDamage(almostDead, 1, 1);
+      expect(result.updatedShip.weaponCondition).toBe(4); // 5→4
+    });
+  });
+
+  // SP.FIGHT1.S:306-328 begin subroutine — e6/e9 damage formula + Lucky Shot + BC malfunction
+  describe('processCombatRound — battle factor damage formula (SP.FIGHT1.S:311)', () => {
+    const baseEnemy: Enemy = {
+      type: 'PIRATE', class: 'SPX', name: 'T', commander: 'C', system: 1,
+      weaponStrength: 1, weaponCondition: 1,   // y8=1
+      shieldStrength: 5, shieldCondition: 10,  // y9=50
+      driveStrength: 1, driveCondition: 1,
+      hullStrength: 10, hullCondition: 5,
+      battleFactor: 0, fuel: 100,
+    };
+
+    it('e6 = playerWeaponPower + playerBF penetrates e9 = enemyShieldPower + enemyBF (SP.FIGHT1.S:311)', () => {
+      // e6 = 40×9 + 100 = 460; e9 = 5×10 + 0 = 50 → damage = 410
+      const round = processCombatRound(100, 40, 9, 20, 5, false, baseEnemy, 1, 10, 5);
+      expect(round.playerDamage).toBeGreaterThan(0);
+      expect(round.isLuckyShot).toBe(false);
+    });
+
+    it('enemyBF (jg) adds to enemy defense: high enemyBF blocks player attack', () => {
+      const strongEnemy = { ...baseEnemy, battleFactor: 500 };
+      // e6 = 25 + 10 = 35; e9 = 50 + 500 = 550 → shields deflect
+      const round = processCombatRound(10, 5, 5, 20, 5, false, strongEnemy, 1, 0, 0, 4); // luckyShotRoll=4≠3
+      expect(round.playerDamage).toBe(0);
+      expect(round.isLuckyShot).toBe(false);
+    });
+
+    it('BC malfunction (r2<1): player damage halved when roboticsCondition=0 (SP.FIGHT1.S:323)', () => {
+      // baseEnemy shieldPower = 5×10 = 50; enemyBF=0 → e9=50
+      // e6 = 10×5 + 50 = 100 → damage = 100-50=50; r2=0 → halved → floor(50/2)=25
+      const round = processCombatRound(50, 10, 5, 20, 5, false, baseEnemy, 1, 10, 0);
+      expect(round.playerDamage).toBe(25); // floor(50/2)=25
+      expect(round.combatLog.some(m => m.includes('Malfunction'))).toBe(true);
+    });
+  });
+
+  // SP.FIGHT1.S:313-318 Lucky Shot (r=5:gosub rand:if x<>3)
+  describe('Lucky Shot (SP.FIGHT1.S:313-318)', () => {
+    const enemy: Enemy = {
+      type: 'PIRATE', class: 'SPX', name: 'T', commander: 'C', system: 1,
+      weaponStrength: 1, weaponCondition: 1,
+      shieldStrength: 5, shieldCondition: 10,  // y9=50
+      driveStrength: 1, driveCondition: 1,
+      hullStrength: 10, hullCondition: 5,
+      battleFactor: 500,  // high enemyBF ensures e9 > e6 → shields deflect
+      fuel: 100,
+    };
+
+    it('fires when roll=3, r1>=10, r2>=1 (1/5 probability gate)', () => {
+      // e6 = 25+10=35; e9 = 50+500=550 → deflected → lucky shot
+      // a=(r1*r2)/10 = (10*5)/10=5; a=(5+10)/2=7.5→7
+      const round = processCombatRound(10, 5, 5, 20, 5, false, enemy, 1, 10, 5, 3);
+      expect(round.isLuckyShot).toBe(true);
+      expect(round.playerDamage).toBeGreaterThan(0);
+      expect(round.combatLog.some(m => m.includes('Lucky Shot'))).toBe(true);
+    });
+
+    it('does NOT fire when roll≠3 (only roll=3 triggers lucky shot)', () => {
+      for (const roll of [1, 2, 4, 5] as const) {
+        const round = processCombatRound(10, 5, 5, 20, 5, false, enemy, 1, 10, 5, roll);
+        expect(round.isLuckyShot).toBe(false);
+        expect(round.playerDamage).toBe(0);
+      }
+    });
+
+    it('does NOT fire when r2<1 (roboticsCondition=0)', () => {
+      const round = processCombatRound(10, 5, 5, 20, 5, false, enemy, 1, 10, 0, 3);
+      expect(round.isLuckyShot).toBe(false);
+    });
+
+    it('does NOT fire when r1<10 (roboticsStrength<10)', () => {
+      const round = processCombatRound(10, 5, 5, 20, 5, false, enemy, 1, 9, 5, 3);
+      expect(round.isLuckyShot).toBe(false);
+    });
+
+    it('damage formula: a=((r1*r2)/10 + playerBF)/2, capped at e6/2 when a>e6>1 (SP.FIGHT1.S:316-317)', () => {
+      // r1=20, r2=9: a=(20*9)/10=18; a=(18+10)/2=14; e6=25+10=35; 14<35 → no cap → damage=14
+      const round = processCombatRound(10, 5, 5, 20, 5, false, enemy, 1, 20, 9, 3);
+      expect(round.playerDamage).toBe(14);
+    });
+
+    it('isLuckyShot=false when shields do NOT deflect (direct hit path, not lucky shot)', () => {
+      const weakEnemy = { ...enemy, battleFactor: 0 };
+      // e6=25+10=35; e9=50+0=50 → still deflects! playerBF too small
+      // Use stronger weapon: e6=900+10=910 > e9=550 → direct hit
+      const round = processCombatRound(10, 30, 30, 20, 5, false, weakEnemy, 1, 10, 5, 3);
+      expect(round.isLuckyShot).toBe(false);
+      expect(round.playerDamage).toBeGreaterThan(0);
     });
   });
 
@@ -114,6 +242,7 @@ describe('Combat System Alignments', () => {
       lifeSupportStrength: 10, lifeSupportCondition: 5,
       navigationStrength: 10, navigationCondition: 5,
       driveStrength: 10, driveCondition: 5,
+      hullStrength: 0, hullCondition: 0, // hull at 0 strength = 0 contribution
       hasAutoRepair: false,
     };
 
@@ -435,5 +564,435 @@ describe('Combat System Alignments', () => {
       expect(result.cargoLost).toBe(false);
       expect(result.storagePodsTaken).toBe(0);
     });
+
+    it('should double tribute for Reptiloid encounter (sk=4) — original FIGHT1.S:228: if (sk=4) or (pz>10)', () => {
+      // REPTILOID = sk=4 in original. Round 3: kc=3000 * 2 = 6000.
+      const result = calculateTribute(10, 'REPTILOID', 3, 50000, 500, 10, 'Goods', 0);
+      expect(result.path).toBe('CREDIT_TRIBUTE');
+      expect(result.creditsLost).toBe(6000); // 3000 * 2
+    });
+
+    it('should halve tribute for Brigand encounter (sk=5) — original FIGHT1.S:227: if sk=5 kc=(kc/2)', () => {
+      // Brigand = sk=5 in original. Round 4: kc=4000, halved to 2000.
+      const result = calculateTribute(1, 'BRIGAND', 4, 50000, 500, 10, 'Goods', 0);
+      expect(result.path).toBe('CREDIT_TRIBUTE');
+      expect(result.creditsLost).toBe(2000); // 4000 / 2
+    });
+  });
+
+  describe('Hull in Player Battle Factor — SP.FIGHT1.S ranfix line 478', () => {
+    it('should include hull contribution in r9 — original: a=(h2+1)*h1:gosub rfix', () => {
+      // Ship with hull strength=10, condition=5: hullContrib = floor((5+1)*10/10) = 6
+      // All other support at 0. supportSum = 6. r9 = floor(6/5) = 1.
+      const shipWithHull: ShipStats = {
+        weaponStrength: 0, weaponCondition: 0,
+        shieldStrength: 0, shieldCondition: 0,
+        cabinStrength: 0, cabinCondition: 0,
+        roboticsStrength: 0, roboticsCondition: 0,
+        lifeSupportStrength: 0, lifeSupportCondition: 0,
+        navigationStrength: 0, navigationCondition: 0,
+        driveStrength: 0, driveCondition: 0,
+        hullStrength: 10, hullCondition: 5,
+        hasAutoRepair: false,
+      };
+      const shipNoHull: ShipStats = { ...shipWithHull, hullStrength: 0, hullCondition: 0 };
+      const bfWithHull = calculateBattleFactor(shipWithHull, Rank.LIEUTENANT, 0);
+      const bfNoHull = calculateBattleFactor(shipNoHull, Rank.LIEUTENANT, 0);
+      // With hull: supportSum=6 → r9=1 (sum>4). Without: supportSum=0 → r9=10.
+      // So BF with hull (r9=1) < BF without hull (r9=10) due to minimum floor
+      // But the point is hull participates in the ranfix formula
+      expect(bfWithHull).toBe(1); // 0+0+r9(1)+0
+      expect(bfNoHull).toBe(10); // 0+0+r9(10)+0
+    });
+
+    it('should include trip count bonus (u1>49 → r9 += u1/50) — original FIGHT1.S:479', () => {
+      const ship: ShipStats = {
+        weaponStrength: 0, weaponCondition: 0,
+        shieldStrength: 0, shieldCondition: 0,
+        cabinStrength: 0, cabinCondition: 0,
+        roboticsStrength: 0, roboticsCondition: 0,
+        lifeSupportStrength: 0, lifeSupportCondition: 0,
+        navigationStrength: 0, navigationCondition: 0,
+        driveStrength: 0, driveCondition: 0,
+        hullStrength: 0, hullCondition: 0,
+        hasAutoRepair: false,
+      };
+      // tripCount=100: tripContrib = floor(100/50) = 2, supportSum=2 ≤ 4 → r9=10 (floor)
+      // tripCount=250: tripContrib = floor(250/50) = 5, supportSum=5 > 4 → r9=floor(5/5)=1
+      const bfTrip100 = calculateBattleFactor(ship, Rank.LIEUTENANT, 0, 100);
+      const bfTrip250 = calculateBattleFactor(ship, Rank.LIEUTENANT, 0, 250);
+      const bfNoTrip = calculateBattleFactor(ship, Rank.LIEUTENANT, 0, 0);
+      expect(bfNoTrip).toBe(10); // r9=10 (sum=0)
+      expect(bfTrip100).toBe(10); // supportSum=2 ≤ 4, r9=10 (floor)
+      expect(bfTrip250).toBe(1);  // supportSum=5 > 4, r9=floor(5/5)=1
+    });
+  });
+
+  describe('Crime Count in Enemy Battle Factor — SP.FIGHT1.S ranfix line 491', () => {
+    it('should add crimeCount*5 to enemy jg — original: jg=jg+(z1*5)', () => {
+      const enemy: Enemy = {
+        type: 'PIRATE',
+        class: 'P1',
+        name: 'Test',
+        commander: 'Test',
+        system: 1,
+        weaponStrength: 0, weaponCondition: 0,
+        shieldStrength: 0, shieldCondition: 0,
+        driveStrength: 0, driveCondition: 0,
+        hullStrength: 0, hullCondition: 0,
+        battleFactor: 0,
+        fuel: 100,
+        npcRosterId: 1,
+        creditValue: 0,
+        alliance: null,
+      };
+      const bfNoCrime = calculateEnemyBattleFactor(enemy, 0);
+      const bfCrime3 = calculateEnemyBattleFactor(enemy, 3);
+      // No crime: supportSum=0, jg=10. Crime=3: jg=10+(3*5)=25.
+      expect(bfNoCrime).toBe(10); // 0+0+10
+      expect(bfCrime3).toBe(25);  // 0+0+10+(3*5)=25
+    });
+  });
+
+  // ============================================================================
+  // POST-BATTLE: AUTO-REPAIR (SP.FIGHT2.S:41-64)
+  // ============================================================================
+
+  describe('applyAutoRepair (SP.FIGHT2.S:41-64)', () => {
+    it('should increment condition +1 for each non-zero-strength component below 9', () => {
+      const ship = {
+        driveStrength: 10, driveCondition: 5,
+        cabinStrength: 8, cabinCondition: 3,
+        lifeSupportStrength: 10, lifeSupportCondition: 7,
+        weaponStrength: 20, weaponCondition: 4,
+        navigationStrength: 10, navigationCondition: 6,
+        roboticsStrength: 5, roboticsCondition: 2,
+        shieldStrength: 15, shieldCondition: 8,
+      };
+      const { updates, messages } = applyAutoRepair(ship);
+      expect(updates.driveCondition).toBe(6);
+      expect(updates.cabinCondition).toBe(4);
+      expect(updates.lifeSupportCondition).toBe(8);
+      expect(updates.weaponCondition).toBe(5);
+      expect(updates.navigationCondition).toBe(7);
+      expect(updates.roboticsCondition).toBe(3);
+      expect(updates.shieldCondition).toBe(9);
+      expect(messages).toHaveLength(7);
+    });
+
+    it('should not repair a component at condition 9 (already maxed)', () => {
+      const ship = {
+        driveStrength: 10, driveCondition: 9,
+        cabinStrength: 0, cabinCondition: 0,
+        lifeSupportStrength: 10, lifeSupportCondition: 9,
+        weaponStrength: 10, weaponCondition: 9,
+        navigationStrength: 10, navigationCondition: 9,
+        roboticsStrength: 10, roboticsCondition: 9,
+        shieldStrength: 10, shieldCondition: 9,
+      };
+      const { updates } = applyAutoRepair(ship);
+      expect(Object.keys(updates)).toHaveLength(0);
+    });
+
+    it('should not repair a component with zero strength (junk/not installed)', () => {
+      // SP.FIGHT2.S fixr: if x<1 return (strength=0 → skip repair)
+      const ship = {
+        driveStrength: 0, driveCondition: 5,
+        cabinStrength: 0, cabinCondition: 3,
+        lifeSupportStrength: 0, lifeSupportCondition: 2,
+        weaponStrength: 0, weaponCondition: 4,
+        navigationStrength: 0, navigationCondition: 6,
+        roboticsStrength: 0, roboticsCondition: 2,
+        shieldStrength: 0, shieldCondition: 8,
+      };
+      const { updates } = applyAutoRepair(ship);
+      expect(Object.keys(updates)).toHaveLength(0);
+    });
+
+    it('should produce human-readable messages for each repaired component', () => {
+      const ship = {
+        driveStrength: 10, driveCondition: 4,
+        cabinStrength: 10, cabinCondition: 5,
+        lifeSupportStrength: 10, lifeSupportCondition: 6,
+        weaponStrength: 10, weaponCondition: 7,
+        navigationStrength: 10, navigationCondition: 8,
+        roboticsStrength: 0, roboticsCondition: 3,
+        shieldStrength: 10, shieldCondition: 9,
+      };
+      const { messages } = applyAutoRepair(ship);
+      expect(messages).toContain('Drives: 4→5');
+      expect(messages).toContain('Cabin: 5→6');
+      expect(messages).toContain('Nav: 8→9');
+      // robotics: strength=0, no repair
+      expect(messages.some(m => m.startsWith('Robotics'))).toBe(false);
+      // shields: already at 9, no repair
+      expect(messages.some(m => m.startsWith('Shields'))).toBe(false);
+    });
+  });
+
+  // ============================================================================
+  // POST-BATTLE: SHIELD RECHARGER (SP.FIGHT2.S:66-75)
+  // ============================================================================
+
+  describe('applyShieldRecharge (SP.FIGHT2.S:66-75)', () => {
+    it('should recharge shields spending shieldStrength fuel per +1 condition', () => {
+      // Shield strength=10, condition=5, fuel=500
+      // 4 recharges needed (5→9), costs 4*10=40 fuel
+      const result = applyShieldRecharge(10, 5, 500);
+      expect(result.shieldCondition).toBe(9);
+      expect(result.fuel).toBe(460);
+    });
+
+    it('should stop recharging when fuel insufficient', () => {
+      // Shield strength=100, condition=3, fuel=250
+      // Can only do 2 recharges (250/100=2), stops at condition=5
+      const result = applyShieldRecharge(100, 3, 250);
+      expect(result.shieldCondition).toBe(5);
+      expect(result.fuel).toBe(50);
+    });
+
+    it('should not recharge if shield condition already at 9', () => {
+      const result = applyShieldRecharge(10, 9, 1000);
+      expect(result.shieldCondition).toBe(9);
+      expect(result.fuel).toBe(1000);
+    });
+
+    it('should not recharge if no fuel', () => {
+      const result = applyShieldRecharge(10, 5, 0);
+      expect(result.shieldCondition).toBe(5);
+      expect(result.fuel).toBe(0);
+    });
+
+    it('should not recharge if shieldStrength is 0', () => {
+      // No shields installed — shieldStrength=0 → guard prevents divide/loop
+      const result = applyShieldRecharge(0, 5, 1000);
+      expect(result.shieldCondition).toBe(5);
+      expect(result.fuel).toBe(1000);
+    });
+  });
+
+  // ============================================================================
+  // checkEnemySpeedChase (SP.FIGHT1.S spedck/spedo)
+  // ============================================================================
+
+  describe('checkEnemySpeedChase (SP.FIGHT1.S speed:/spedo:)', () => {
+    it('player tied speed: no chase', () => {
+      // x=d1*d2=20, y=s3*s4=20 → tied → no chase
+      const result = checkEnemySpeedChase(4, 5, 4, 5, 50, 9);
+      expect(result.enemyFaster).toBe(false);
+      expect(result.enemyChases).toBe(false);
+      expect(result.enemyRetreats).toBe(false);
+    });
+
+    it('player faster speed: no chase', () => {
+      // x=d1*d2=30, y=s3*s4=20 → player faster → no chase
+      const result = checkEnemySpeedChase(6, 5, 4, 5, 50, 9);
+      expect(result.enemyFaster).toBe(false);
+      expect(result.enemyChases).toBe(false);
+    });
+
+    it('enemy faster with shields AND weapon: guaranteed chase', () => {
+      // y=s3*s4=40 > x=d1*d2=20; y9>0 and y8>0 → guaranteed chase
+      const result = checkEnemySpeedChase(4, 5, 8, 5, 50, 9);
+      expect(result.enemyFaster).toBe(true);
+      expect(result.enemyChases).toBe(true);
+      expect(result.enemyRetreats).toBe(false);
+    });
+
+    it('enemy faster, no shields (y9=0): 1/3 chance (roll=1 → chases)', () => {
+      // y9=0 → no guaranteed chase; roll=1 → chases
+      const result = checkEnemySpeedChase(4, 5, 8, 5, 50, 0, 1);
+      expect(result.enemyFaster).toBe(true);
+      expect(result.enemyChases).toBe(true);
+    });
+
+    it('enemy faster, no shields (y9=0): roll=2 → enemy retreats', () => {
+      const result = checkEnemySpeedChase(4, 5, 8, 5, 50, 0, 2);
+      expect(result.enemyFaster).toBe(true);
+      expect(result.enemyChases).toBe(false);
+      expect(result.enemyRetreats).toBe(true);
+    });
+
+    it('enemy faster, no weapon (y8=0): roll=1 → chases', () => {
+      // y8=0 → no guaranteed chase; but 1/3 chance still applies
+      const result = checkEnemySpeedChase(4, 5, 8, 5, 0, 9, 1);
+      expect(result.enemyFaster).toBe(true);
+      expect(result.enemyChases).toBe(true);
+    });
+
+    it('enemy faster, no weapon (y8=0): roll=3 → enemy retreats', () => {
+      const result = checkEnemySpeedChase(4, 5, 8, 5, 0, 9, 3);
+      expect(result.enemyFaster).toBe(true);
+      expect(result.enemyChases).toBe(false);
+      expect(result.enemyRetreats).toBe(true);
+    });
+
+    it('drive condition 0 makes speed 0: tied → no chase', () => {
+      // Drive condition 0 → x=d1*0=0, y=s3*0=0 → tied
+      const result = checkEnemySpeedChase(10, 0, 10, 0, 50, 9);
+      expect(result.enemyFaster).toBe(false);
+    });
+  });
+});
+
+// ============================================================================
+// SP.FIGHT2.S scavx — Malignite weapon enhancement Y/N prompt parity
+// ============================================================================
+
+import * as fs from 'fs';
+import * as path from 'path';
+
+describe('SP.FIGHT2.S scavx — Malignite weapon enhancement prompt parity', () => {
+  const screenCode = fs.readFileSync(
+    path.join(__dirname, '../src/game/screens/combat.ts'),
+    'utf-8'
+  );
+  const navCode = fs.readFileSync(
+    path.join(__dirname, '../src/app/routes/navigation.ts'),
+    'utf-8'
+  );
+
+  // SP.FIGHT2.S:158 — "You found a Malignite weapon enhancement."
+  it('combat screen shows Malignite enhancement prompt (SP.FIGHT2.S:158)', () => {
+    expect(screenCode).toContain('Malignite weapon enhancement');
+    expect(screenCode).toContain('Install even if possibly defective');
+  });
+
+  // SP.FIGHT2.S:159 — same prompt for both x=5 and x=9 (player doesn't know which)
+  it('pendingWeaponEnhancement map defers resolution until Y/N (SP.FIGHT2.S:159)', () => {
+    expect(screenCode).toContain('pendingWeaponEnhancement');
+    expect(screenCode).toContain('pendingWeaponEnhancement.set(characterId');
+    expect(screenCode).toContain('pendingWeaponEnhancement.get(characterId');
+  });
+
+  // SP.FIGHT2.S:160 — N + x=5 (beneficial): "Unlucky choice!....it was a [name]"
+  it('N on beneficial enhancement shows "Unlucky choice" (SP.FIGHT2.S:160)', () => {
+    expect(screenCode).toContain('Unlucky choice!....it was a');
+  });
+
+  // SP.FIGHT2.S:161 — N + x=9 (defective): "Smart move!....it was a [name]"
+  it('N on defective enhancement shows "Smart move" (SP.FIGHT2.S:161)', () => {
+    expect(screenCode).toContain('Smart move!....it was a');
+  });
+
+  // SP.FIGHT2.S:163-164 — Y installs: w1=w1+a or w1=w1-a
+  it('Y installs enhancement: weapon strength updated in DB (SP.FIGHT2.S:163-164)', () => {
+    expect(screenCode).toContain('weaponStrength: newStrength');
+  });
+
+  // SP.FIGHT2.S:165 — scav1: item description printed after Y
+  it('Y shows item description and enemy name (SP.FIGHT2.S:165 scav1)', () => {
+    expect(screenCode).toContain('.....found in wreckage of');
+  });
+
+  // ── SP.END.S pirate lurk (lines 86-98) ─────────────────────────────────
+  // SP.END.S: player activates pirate mode (pp=1) with target system (q4=sp).
+  // When another player enters that system, SP.PATPIR detects the lurk.
+  // Modern equivalent: Character WHERE extraCurricularMode='pirate' AND patrolSector=$dest
+
+  it('navigation arrive checks for lurking human pirates (SP.END.S:86-98)', () => {
+    expect(navCode).toContain("extraCurricularMode: 'pirate'");
+    expect(navCode).toContain('patrolSector: travelDestination');
+  });
+
+  it('lurking pirate triggers CombatSession with pirate ship stats', () => {
+    expect(navCode).toContain('lurkingPirate?.ship');
+    expect(navCode).toContain("enemyType: 'PIRATE'");
+    // Battle factor uses player formula (calculateBattleFactor), not NPC formula
+    expect(navCode).toContain('pirateBF');
+  });
+
+  it('pirate ambush message matches SP.END.S flavour text (lines 93-95)', () => {
+    // SP.END.S:93-95: "Your ship lifts off..." / "Auto-Nav settings guide you to..."
+    // / "Where you lie in wait to prey upon the trade routes..."
+    // Modern: ambush message references the pirate name + ship
+    expect(navCode).toContain('springs from cover');
+  });
+});
+
+// ── SP.FIGHT1.S:245 ctk4 fuel floor ───────────────────────────────────────
+// Original: if f1<2 f1=2   (before f1=int(f1/2))
+// Ensures enemy always takes at least 1 fuel even when player has 0 or 1 fuel.
+describe('SP.FIGHT1.S:245 — ctk4 fuel floor (if f1<2 f1=2)', () => {
+  it('player with 0 fuel: effective fuel clamped to 2, takes 1 fuel', () => {
+    const result = calculateTribute(4, 'PATROL', 3, 50000, 0, 0, null, 0);
+    expect(result.path).toBe('ALLIANCE_RAID');
+    // effectiveFuel = max(0, 2) = 2; fuelTaken = floor(2/2) = 1
+    expect(result.fuelLost).toBe(1);
+  });
+
+  it('player with 1 fuel: effective fuel clamped to 2, takes 1 fuel', () => {
+    const result = calculateTribute(4, 'PATROL', 3, 50000, 1, 0, null, 0);
+    expect(result.path).toBe('ALLIANCE_RAID');
+    // effectiveFuel = max(1, 2) = 2; fuelTaken = floor(2/2) = 1
+    expect(result.fuelLost).toBe(1);
+  });
+
+  it('player with 10 fuel: takes half normally (5 fuel)', () => {
+    const result = calculateTribute(4, 'PATROL', 3, 50000, 10, 0, null, 0);
+    expect(result.fuelLost).toBe(5);
+  });
+
+  it('player with 7 fuel: takes floor(7/2)=3 fuel', () => {
+    const result = calculateTribute(4, 'PATROL', 3, 50000, 7, 0, null, 0);
+    expect(result.fuelLost).toBe(3);
+  });
+});
+
+// ── SP.FIGHT2.S pirwin:195-220 — player defeat boarding ───────────────────
+// Original: if q1>0 → take cargo; elif s1>=2 → take half storage pods; else take half fuel
+describe('SP.FIGHT2.S pirwin:195-220 — calculateDefeatConsequences boarding priority', () => {
+  it('priority 1: cargo pods taken when player has cargo (q1>0)', () => {
+    const result = calculateDefeatConsequences(5, 'Iron Ore', 4, 100, 'Pirate');
+    expect(result.cargoLost).toBe(true);
+    expect(result.storagePodsLost).toBe(0);
+    expect(result.fuelLost).toBe(0);
+    expect(result.message).toContain('5 pods');
+    expect(result.message).toContain('Iron Ore');
+  });
+
+  it('priority 1: cargo message uses fallback "cargo" when manifest is null', () => {
+    const result = calculateDefeatConsequences(3, null, 4, 100, 'Brigand');
+    expect(result.cargoLost).toBe(true);
+    expect(result.message).toContain('cargo');
+  });
+
+  it('priority 2: half storage pods taken when no cargo but s1>=2', () => {
+    const result = calculateDefeatConsequences(0, null, 6, 100, 'Patrol');
+    expect(result.cargoLost).toBe(false);
+    // floor(6/2) = 3
+    expect(result.storagePodsLost).toBe(3);
+    expect(result.fuelLost).toBe(0);
+    expect(result.message).toContain('3 storage pods');
+  });
+
+  it('priority 2: exactly 2 storage pods — takes 1', () => {
+    const result = calculateDefeatConsequences(0, null, 2, 100, 'Reptiloid');
+    expect(result.storagePodsLost).toBe(1);
+  });
+
+  it('priority 2: 1 storage pod (s1<2) — skips to fuel', () => {
+    const result = calculateDefeatConsequences(0, null, 1, 80, 'Pirate');
+    expect(result.cargoLost).toBe(false);
+    expect(result.storagePodsLost).toBe(0);
+    // floor(80/2) = 40
+    expect(result.fuelLost).toBe(40);
+  });
+
+  it('priority 3: half fuel drained when no cargo and s1<2', () => {
+    const result = calculateDefeatConsequences(0, null, 0, 50, 'Brigand');
+    expect(result.fuelLost).toBe(25);
+    expect(result.cargoLost).toBe(false);
+    expect(result.storagePodsLost).toBe(0);
+  });
+
+  it('priority 3: player with 1 fuel drains 0 (floor(1/2)=0)', () => {
+    const result = calculateDefeatConsequences(0, null, 0, 1, 'Pirate');
+    expect(result.fuelLost).toBe(0);
+  });
+
+  it('priority 3: player with 0 fuel drains 0', () => {
+    const result = calculateDefeatConsequences(0, null, 0, 0, 'Pirate');
+    expect(result.fuelLost).toBe(0);
   });
 });

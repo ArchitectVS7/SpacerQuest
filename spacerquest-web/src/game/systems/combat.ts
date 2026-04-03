@@ -21,6 +21,71 @@ import {
 import { calculateComponentPower, checkProbability, randomInt } from '../utils.js';
 
 // ============================================================================
+// CLOAKING DEVICE TOGGLE (SP.WARP.S lines 118-143)
+// ============================================================================
+
+/**
+ * SP.WARP.S flank/flock logic for cloaking device during encounters.
+ *
+ * Original flow:
+ *   if (kk=1) or (kk=5) goto flank
+ *   flank: if right$(p1$,1)<>"=" link "sp.fight1"  (no cloaker → fight)
+ *   Player toggles cloaker ON/OFF with spacebar, presses G to engage
+ *   flock: if kk<>5 goto contin (non-smuggling: cloaker always works if ON)
+ *          r=(c1+c2):gosub rand:if x>c1 → "Cloaker Malfunction!" → fight
+ *          goto contin
+ *   contin: if a$="OFF" → fight
+ *           if a$="ON " → "the ship is Cloaked!" → skip fight
+ *
+ * In the web version, cloaker is auto-engaged when present. The player
+ * does not need to press spacebar interactively — the system automatically
+ * attempts to cloak.
+ *
+ * @param missionType    - kk value (1=cargo, 5=smuggling)
+ * @param hasCloaker     - whether ship has Morton's Cloaker (p1$ ends with "=")
+ * @param cabinStrength  - c1: cabin strength (used in malfunction check)
+ * @param cabinCondition - c2: cabin condition (used in malfunction check)
+ * @returns { cloaked: true } to skip fight, { cloaked: false, malfunction?: true } to proceed to fight
+ */
+export function attemptCloakDuringTravel(
+  missionType: number,
+  hasCloaker: boolean,
+  cabinStrength: number,
+  cabinCondition: number,
+): { cloaked: boolean; malfunction: boolean; message: string } {
+  // Only cargo (kk=1) and smuggling (kk=5) missions can use cloaker during travel
+  if (missionType !== 1 && missionType !== 5) {
+    return { cloaked: false, malfunction: false, message: '' };
+  }
+
+  // No cloaker equipped — go straight to fight
+  if (!hasCloaker) {
+    return { cloaked: false, malfunction: false, message: '' };
+  }
+
+  // For smuggling runs (kk=5), cloaker has a malfunction chance
+  // Original: r=(c1+c2):gosub rand:if x>c1 → malfunction
+  if (missionType === 5) {
+    const r = cabinStrength + cabinCondition;
+    const x = r > 0 ? randomInt(1, r) : 1;
+    if (x > cabinStrength) {
+      return {
+        cloaked: false,
+        malfunction: true,
+        message: 'Cloaker Malfunction!',
+      };
+    }
+  }
+
+  // Cloaker works — ship is cloaked, skip the fight
+  return {
+    cloaked: true,
+    malfunction: false,
+    message: `Morton's Cloaking Device engaged...the ship is Cloaked!`,
+  };
+}
+
+// ============================================================================
 // ENCOUNTER GENERATION
 // ============================================================================
 
@@ -64,7 +129,7 @@ export interface Enemy {
 export async function generateEncounter(
   currentSystem: number,
   missionType: number,
-  _playerPower: number
+  playerWeaponStrength: number
 ): Promise<Enemy | null> {
   // Original SP.WARP.S: encounters are deterministic at 1/3 travel time.
   // No probability check — every trip generates an encounter.
@@ -109,6 +174,37 @@ export async function generateEncounter(
 
   if (!npc) {
     return null;
+  }
+
+  // SP.FIGHT1.S lines 113-126: attack threshold check using sp.conf (jw/jx/ju/jv)
+  // Pirates K1-K9: player weapon must be in [jm, jn] where jm=(ju*tier+15), jn=jm+(jv*5)
+  // Patrol SPX: player weapon must be >= jw; Patrol SPZ: player weapon must be >= jx
+  // Only applied for PIRATE and PATROL types (not rim, reptiloid, brigand)
+  if ((npcType === 'PIRATE' || npcType === 'PATROL') && playerWeaponStrength > 0) {
+    const { getGameConfig } = await import('./game-config.js');
+    const gameConfig = await getGameConfig();
+    const ju = gameConfig.attackRandomMin;
+    const jv = gameConfig.attackRandomMax;
+    const jw = gameConfig.pirateAttackThreshold;
+    const jx = gameConfig.patrolAttackThreshold;
+
+    if (npcType === 'PATROL') {
+      // SPX: weapon >= jw; SPZ: weapon >= jx (SP.FIGHT1.S lines 120-121)
+      const shipName = npc.shipName || '';
+      const prefix = shipName.substring(0, 3).toUpperCase();
+      if (prefix === 'SPX' && playerWeaponStrength < jw) return null;
+      if (prefix === 'SPZ' && playerWeaponStrength < jx) return null;
+    } else if (npcType === 'PIRATE') {
+      // K1-K9: player weapon must be in [jm, jn] (SP.FIGHT1.S lines 125-126)
+      const shipName = npc.shipName || '';
+      const tierStr = shipName.substring(1, 2); // 'K1!!!!'.substring(1,2) → '1'
+      const tier = parseInt(tierStr, 10);
+      if (!isNaN(tier) && tier >= 1 && tier <= 9) {
+        const jm = (ju * tier) + 15;
+        const jn = jm + (jv * 5);
+        if (playerWeaponStrength < jm || playerWeaponStrength > jn) return null;
+      }
+    }
   }
 
   // Build Enemy from the persistent NPC record
@@ -160,6 +256,8 @@ export interface ShipStats {
   navigationCondition: number;
   driveStrength: number;
   driveCondition: number;
+  hullStrength: number;
+  hullCondition: number;
   hasAutoRepair: boolean;
 }
 
@@ -185,7 +283,8 @@ export interface ShipStats {
 export function calculateBattleFactor(
   ship: ShipStats,
   rank: Rank,
-  battlesWon: number
+  battlesWon: number,
+  tripCount = 0,
 ): number {
   // Weapon power (x8 = w2*w1) and shield power (x9 = p2*p1)
   const weaponPower = calculateComponentPower(ship.weaponStrength, ship.weaponCondition);
@@ -198,6 +297,8 @@ export function calculateBattleFactor(
   const navContrib     = Math.floor((ship.navigationCondition + 1)   * ship.navigationStrength / 10);
   const driveContrib   = Math.floor((ship.driveCondition + 1)        * ship.driveStrength / 10);
   const roboticsContrib= Math.floor((ship.roboticsCondition + 1)     * ship.roboticsStrength / 10);
+  // Original ranfix line 478: a=(h2+1)*h1:gosub rfix — hull included in player BF
+  const hullContrib    = Math.floor((ship.hullCondition + 1)         * ship.hullStrength / 10);
 
   // Experience contribution: e1 (battles won) added DIRECTLY via rfox (not /10)
   // Original ranfix: x=e1:gosub rfox → rfox just does y=y+x (no division)
@@ -205,8 +306,11 @@ export function calculateBattleFactor(
   void EXPERIENCE_BF_DIVISOR; // constant kept for documentation, not used here
   const expContrib = battlesWon;
 
+  // Trip count bonus: original ranfix line 479: if u1>49 x=(u1/50):gosub rfox
+  const tripContrib = tripCount > 49 ? Math.floor(tripCount / 50) : 0;
+
   // Sum all support contributions
-  const supportSum = cabinContrib + lssContrib + navContrib + driveContrib + roboticsContrib + expContrib;
+  const supportSum = cabinContrib + lssContrib + navContrib + driveContrib + roboticsContrib + hullContrib + expContrib + tripContrib;
 
   // Original: if a>4 r9=(a/5) / if a<5 r9=10
   const r9 = supportSum > 4 ? Math.floor(supportSum / 5) : 10;
@@ -239,7 +343,7 @@ export function calculateBattleFactor(
  *   y9 = shieldCondition * shieldStrength  (enemy shield power)
  *   jg from drive + hull contributions (simplified)
  */
-export function calculateEnemyBattleFactor(enemy: Enemy): number {
+export function calculateEnemyBattleFactor(enemy: Enemy, crimeCount = 0): number {
   // Enemy weapon power (y8) and shield power (y9)
   const weaponPower = calculateComponentPower(enemy.weaponStrength, enemy.weaponCondition);
   const shieldPower = calculateComponentPower(enemy.shieldStrength, enemy.shieldCondition);
@@ -249,7 +353,10 @@ export function calculateEnemyBattleFactor(enemy: Enemy): number {
   const hullContrib  = Math.floor((enemy.hullCondition + 1)  * enemy.hullStrength / 10);
 
   const supportSum = driveContrib + hullContrib;
-  const jg = supportSum > 4 ? Math.floor(supportSum / 5) : 10;
+  let jg = supportSum > 4 ? Math.floor(supportSum / 5) : 10;
+
+  // Original ranfix line 491: jg=jg+(z1*5) — player crime count increases enemy BF
+  jg += crimeCount * 5;
 
   return weaponPower + shieldPower + jg;
 }
@@ -269,16 +376,29 @@ export interface CombatRound {
   playerRepairs: number;
   battleAdvantage: 'PLAYER' | 'ENEMY' | 'EVEN';
   combatLog: string[];
+  /** SP.FIGHT1.S:318 — 1/5 lucky shot fired when enemy shields deflect */
+  isLuckyShot: boolean;
 }
 
 /**
  * Process one round of combat
  *
- * Original from SP.FIGHT1.S:
+ * Original from SP.FIGHT1.S begin subroutine (lines 306-328):
  *   x8=w2*w1 (player weapon power)
  *   y8=p8*p7 (enemy weapon power)
  *   x9=p2*p1 (player shield power)
  *   y9=s8*s7 (enemy shield power)
+ *   e6=(x8+r9):e9=(y9+jg)  ← battle factors added to weapon/shield power
+ *   x=0:if e6>e9 x=(e6-e9)
+ *   if x>0 goto big
+ *   r=5:gosub rand:if x<>3 x=0:goto dbig  ← 1/5 Lucky Shot probability
+ *   if r2<1 x=0:goto dbig                  ← requires robotics condition > 0
+ *   a=0:if (r1<10) or (r2<1) x=0:goto dbig ← requires robotics strength >= 10
+ *   a=((r1*r2)/10):a=((a+r9)/2)            ← Lucky Shot damage formula
+ *
+ * @param roboticsStrength  r1 (robotics strength — needed for Lucky Shot)
+ * @param roboticsCondition r2 (robotics condition — needed for Lucky Shot + BC malfunction)
+ * @param luckyShotRoll     Optional 1–5 roll override for deterministic testing
  */
 export function processCombatRound(
   playerBF: number,
@@ -288,47 +408,78 @@ export function processCombatRound(
   playerShieldCond: number,
   hasAutoRepair: boolean,
   enemy: Enemy,
-  round: number
+  round: number,
+  roboticsStrength = 0,
+  roboticsCondition = 0,
+  luckyShotRoll?: number,
 ): CombatRound {
   const combatLog: string[] = [];
 
   // Calculate power levels
-  const playerWeaponPower = playerWeaponStr * playerWeaponCond;
-  const playerShieldPower = playerShieldStr * playerShieldCond;
-  const enemyWeaponPower = enemy.weaponStrength * enemy.weaponCondition;
-  const enemyShieldPower = enemy.shieldStrength * enemy.shieldCondition;
+  const playerWeaponPower = playerWeaponStr * playerWeaponCond;  // x8
+  const playerShieldPower = playerShieldStr * playerShieldCond;  // x9
+  const enemyWeaponPower = enemy.weaponStrength * enemy.weaponCondition;  // y8
+  const enemyShieldPower = enemy.shieldStrength * enemy.shieldCondition;  // y9
+  const enemyBF = enemy.battleFactor || 0;  // jg
 
-  // Determine battle advantage
-  const battleAdvantage = playerBF > enemy.battleFactor ? 'PLAYER' :
-                          playerBF < enemy.battleFactor ? 'ENEMY' : 'EVEN';
+  // SP.FIGHT1.S:311 — e6=(x8+r9):e9=(y9+jg)  battle factors contribute to attack/defense
+  const e6 = playerWeaponPower + playerBF;   // player attack power
+  const e9 = enemyShieldPower + enemyBF;     // enemy defense power
+  // SP.FIGHT1.S:384 — e8=(y8+jg):e7=(x9+r9)
+  const e8 = enemyWeaponPower + enemyBF;     // enemy attack power
+  const e7 = playerShieldPower + playerBF;   // player defense power
+
+  // SP.FIGHT1.S:195 — hx=x8+x9+r9:kx=y8+y9+jg  (battle advantage display)
+  const playerTotal = playerWeaponPower + playerShieldPower + playerBF;
+  const enemyTotal  = enemyWeaponPower  + enemyShieldPower  + enemyBF;
+  const battleAdvantage = playerTotal > enemyTotal ? 'PLAYER' :
+                          playerTotal < enemyTotal ? 'ENEMY' : 'EVEN';
 
   combatLog.push(`Round #${round} - Battle Advantage: ${battleAdvantage}`);
 
-  // Player attacks
+  // ── Player attacks (SP.FIGHT1.S:306-328 begin subroutine) ──────────────────
   let playerDamage = 0;
   let playerShieldDamage = 0;
   let playerSystemDamage = 0;
+  let isLuckyShot = false;
 
-  if (playerWeaponPower > enemyShieldPower) {
-    const excessDamage = playerWeaponPower - enemyShieldPower;
-    playerShieldDamage = Math.floor(excessDamage / 10);
-    playerSystemDamage = excessDamage % 10;
-    playerDamage = playerShieldDamage + playerSystemDamage;
+  if (e6 > e9) {
+    // SP.FIGHT1.S:311 — direct hit: x=(e6-e9)
+    let x = e6 - e9;
+    // SP.FIGHT1.S:323 — if r2<1 y=(y/2): Battle Computer malfunction halves damage
+    if (roboticsCondition < 1) {
+      x = Math.floor(x / 2);
+      combatLog.push('Battle Computer Malfunction! Damage halved.');
+    }
+    playerDamage = x;
+    playerSystemDamage = playerDamage > 0 ? 1 : 0;
     combatLog.push(`Your weapons hit for ${playerDamage} damage!`);
   } else {
-    combatLog.push('Enemy shields deflect your attack');
+    // SP.FIGHT1.S:313 — r=5:gosub rand:if x<>3 x=0:goto dbig  (1/5 Lucky Shot)
+    const roll = luckyShotRoll !== undefined ? luckyShotRoll : randomInt(1, 5);
+    if (roll === 3 && roboticsCondition >= 1 && roboticsStrength >= 10) {
+      // SP.FIGHT1.S:316 — a=((r1*r2)/10):a=((a+r9)/2):if (a>e6) and (e6>1) a=(e6/2)
+      let a = (roboticsStrength * roboticsCondition) / 10;
+      a = (a + playerBF) / 2;
+      if (a > e6 && e6 > 1) a = e6 / 2;
+      playerDamage = Math.floor(a);
+      playerSystemDamage = playerDamage > 0 ? 1 : 0;
+      isLuckyShot = true;
+      combatLog.push('*:Lucky Shot:*');
+    } else {
+      combatLog.push('Enemy shields deflect your attack');
+    }
   }
 
-  // Enemy attacks
+  // ── Enemy attacks (SP.FIGHT1.S:381-388 pirfite section) ────────────────────
   let enemyDamage = 0;
   let enemyShieldDamage = 0;
   let enemySystemDamage = 0;
 
-  if (enemyWeaponPower > playerShieldPower) {
-    const excessDamage = enemyWeaponPower - playerShieldPower;
-    enemyShieldDamage = Math.floor(excessDamage / 10);
-    enemySystemDamage = excessDamage % 10;
-    enemyDamage = enemyShieldDamage + enemySystemDamage;
+  if (e8 > e7) {
+    const x = e8 - e7;
+    enemyDamage = x;
+    enemySystemDamage = 1;
     combatLog.push(`Enemy weapons hit for ${enemyDamage} damage!`);
   } else {
     combatLog.push('Your shields deflect the enemy attack');
@@ -351,6 +502,7 @@ export function processCombatRound(
     playerRepairs,
     battleAdvantage,
     combatLog,
+    isLuckyShot,
   };
 }
 
@@ -379,41 +531,84 @@ export function applyShieldDamage(
 }
 
 /**
- * Apply system damage (random component hit)
+ * Apply system damage — random component hit
  *
- * Original from SP.FIGHT1.S - damage can hit:
- * Cabin, Nav, Drives, Robotics, Weapons, Hull
+ * Original SP.FIGHT1.S sfff subroutine (lines 396-436):
+ *   r=7:gosub rand:x=x+1
+ *   if (x mod 2)<>0 y=(y/2)   ← halve damage for odd x values (3,5,7)
+ *   if x=3 goto sfa2  (Nav)
+ *   if x=5 goto sfa3  (Drives)
+ *   if x=7 goto sfa4  (Robotics)
+ *   sfa1: Cabin → sfa2: Nav → sfa3: Drives → sfa4: Robotics → sfa5: Weapons → sfa6: Hull
+ *
+ * The roll selects which component to START the cascade at:
+ *   roll 1,3,5,7 (even x after +1 = 2,4,6,8) → start at Cabin
+ *   roll 2 (x=3, odd) → start at Nav
+ *   roll 4 (x=5, odd) → start at Drives
+ *   roll 6 (x=7, odd) → start at Robotics
+ * If the selected component condition = 0, cascade to the next.
+ *
+ * @param roll  Optional 1–7 random roll for deterministic testing
  */
 export function applySystemDamage(
   ship: ShipStats,
-  _damage: number
+  _damage: number,
+  roll?: number,
 ): DamageResult & { updatedShip: ShipStats } {
   const updatedShip = { ...ship };
   let componentDamaged = '';
   let conditionLost = 0;
 
-  // Original SP.FIGHT1.S ordered cascade: Cabin -> Nav -> Drives -> Shields -> Hull(Life Support)
-  // Instead of a random roll, we check components in order and damage the first one that has condition > 0
-  if (updatedShip.cabinCondition > 0) {
-    updatedShip.cabinCondition = Math.max(0, updatedShip.cabinCondition - 1);
-    componentDamaged = 'Cabin';
-    conditionLost = 1;
-  } else if (updatedShip.navigationCondition > 0) {
-    updatedShip.navigationCondition = Math.max(0, updatedShip.navigationCondition - 1);
-    componentDamaged = 'Navigation';
-    conditionLost = 1;
-  } else if (updatedShip.driveCondition > 0) {
-    updatedShip.driveCondition = Math.max(0, updatedShip.driveCondition - 1);
-    componentDamaged = 'Drives';
-    conditionLost = 1;
-  } else if (updatedShip.shieldCondition > 0) {
-    updatedShip.shieldCondition = Math.max(0, updatedShip.shieldCondition - 1);
-    componentDamaged = 'Shields';
-    conditionLost = 1;
-  } else if (updatedShip.lifeSupportCondition > 0) {
-    updatedShip.lifeSupportCondition = Math.max(0, updatedShip.lifeSupportCondition - 1);
-    componentDamaged = 'Life Support';
-    conditionLost = 1;
+  // SP.FIGHT1.S:397 — r=7:gosub rand:x=x+1  (x is 2-8)
+  const r = roll !== undefined ? roll : randomInt(1, 7);
+  const x = r + 1;
+
+  // SP.FIGHT1.S:399-401 — random starting component based on x value
+  // Start at Cabin for even x (2,4,6,8); Nav for x=3; Drives for x=5; Robotics for x=7
+  type ComponentKey = 'cabin' | 'nav' | 'drives' | 'robotics' | 'weapon' | 'hull';
+  let startAt: ComponentKey;
+  if (x === 3) startAt = 'nav';
+  else if (x === 5) startAt = 'drives';
+  else if (x === 7) startAt = 'robotics';
+  else startAt = 'cabin';
+
+  // Cascade: Cabin → Nav → Drives → Robotics → Weapon → Hull (sfa1–sfa6)
+  const cascade: ComponentKey[] = ['cabin', 'nav', 'drives', 'robotics', 'weapon', 'hull'];
+  const startIdx = cascade.indexOf(startAt);
+
+  for (let i = startIdx; i < cascade.length; i++) {
+    const comp = cascade[i];
+    if (comp === 'cabin' && updatedShip.cabinCondition > 0) {
+      updatedShip.cabinCondition = Math.max(0, updatedShip.cabinCondition - 1);
+      componentDamaged = 'Cabin';
+      conditionLost = 1;
+      break;
+    } else if (comp === 'nav' && updatedShip.navigationCondition > 0) {
+      updatedShip.navigationCondition = Math.max(0, updatedShip.navigationCondition - 1);
+      componentDamaged = 'Navigation';
+      conditionLost = 1;
+      break;
+    } else if (comp === 'drives' && updatedShip.driveCondition > 0) {
+      updatedShip.driveCondition = Math.max(0, updatedShip.driveCondition - 1);
+      componentDamaged = 'Drives';
+      conditionLost = 1;
+      break;
+    } else if (comp === 'robotics' && updatedShip.roboticsCondition > 0) {
+      updatedShip.roboticsCondition = Math.max(0, updatedShip.roboticsCondition - 1);
+      componentDamaged = 'Robotics';
+      conditionLost = 1;
+      break;
+    } else if (comp === 'weapon' && updatedShip.weaponCondition > 0) {
+      updatedShip.weaponCondition = Math.max(0, updatedShip.weaponCondition - 1);
+      componentDamaged = 'Weapon';
+      conditionLost = 1;
+      break;
+    } else if (comp === 'hull' && updatedShip.hullCondition > 0) {
+      updatedShip.hullCondition = Math.max(0, updatedShip.hullCondition - 1);
+      componentDamaged = 'Hull';
+      conditionLost = 1;
+      break;
+    }
   }
 
   return {
@@ -421,6 +616,74 @@ export function applySystemDamage(
     systemDamaged: componentDamaged ? { component: componentDamaged, conditionLost } : undefined,
     updatedShip,
   };
+}
+
+// ============================================================================
+// SPEED / CHASE CHECK (SP.FIGHT1.S speed:/spedo:)
+// ============================================================================
+
+export interface SpeedChaseResult {
+  /** True if enemy drive power exceeds player drive power */
+  enemyFaster: boolean;
+  /** True if enemy gets a bonus attack run this round */
+  enemyChases: boolean;
+  /** True if slower enemy retreats from conflict (we=1) */
+  enemyRetreats: boolean;
+}
+
+/**
+ * Post-round speed/chase check (SP.FIGHT1.S spedo:/spedck:)
+ *
+ * Original spedck (FIGHT1.S:515-518):
+ *   x = d1*d2   ← player speed (drive strength × condition)
+ *   y = s3*s4   ← enemy speed (drive strength × condition)
+ *
+ * Original spedo (FIGHT1.S:451-465):
+ *   if x >= y → tied/player faster → normal next round
+ *   if y > x (enemy faster):
+ *     if (y9>0) and (y8>0) → guaranteed bonus run ("making another run")
+ *     r=3:gosub rand:if x=1 → 1/3 chance bonus run
+ *     gosp: if (y8>0) and (nc>0) → bonus run
+ *     xspy: enemy retreats ("retreats from conflict"), we=1
+ *
+ * @param playerDriveStrength  d1
+ * @param playerDriveCondition d2
+ * @param enemyDriveStrength   s3
+ * @param enemyDriveCondition  s4
+ * @param enemyWeaponPower     y8 = p8*p7 (enemy weapon condition × strength)
+ * @param enemyShieldCondition y9
+ * @param roll                 Optional 1-3 random roll for testing (default: random)
+ */
+export function checkEnemySpeedChase(
+  playerDriveStrength: number,
+  playerDriveCondition: number,
+  enemyDriveStrength: number,
+  enemyDriveCondition: number,
+  enemyWeaponPower: number,
+  enemyShieldCondition: number,
+  roll?: number,
+): SpeedChaseResult {
+  const playerSpeed = Math.max(0, playerDriveStrength * playerDriveCondition);
+  const enemySpeed = Math.max(0, enemyDriveStrength * enemyDriveCondition);
+
+  // Player tied or faster — no chase
+  if (playerSpeed >= enemySpeed) {
+    return { enemyFaster: false, enemyChases: false, enemyRetreats: false };
+  }
+
+  // Enemy is faster — guaranteed chase if enemy has both shields and weapons
+  if (enemyShieldCondition > 0 && enemyWeaponPower > 0) {
+    return { enemyFaster: true, enemyChases: true, enemyRetreats: false };
+  }
+
+  // 1/3 chance chase (r=3:gosub rand:if x=1)
+  const r = roll !== undefined ? roll : randomInt(1, 3);
+  if (r === 1) {
+    return { enemyFaster: true, enemyChases: true, enemyRetreats: false };
+  }
+
+  // Enemy retreats from conflict (xspy: we=1)
+  return { enemyFaster: true, enemyChases: false, enemyRetreats: true };
 }
 
 // ============================================================================
@@ -945,8 +1208,10 @@ export function calculateTribute(
   const sk = enemyTypeToSk(enemyType);
 
   // Path 1: Alliance raid (kk=4) — plans & fuel confiscated
+  // SP.FIGHT1.S:245 — if f1<2 f1=2 before taking half (enemy always gets at least 1 fuel)
   if (missionType === 4) {
-    const fuelTaken = playerFuel >= 2 ? Math.floor(playerFuel / 2) : 0;
+    const effectiveFuel = playerFuel < 2 ? 2 : playerFuel;  // original: if f1<2 f1=2
+    const fuelTaken = Math.floor(effectiveFuel / 2);
     return {
       path: 'ALLIANCE_RAID',
       tributeCredits: 0,
@@ -992,8 +1257,10 @@ export function calculateTribute(
   let kc = combatRounds > 12 ? TRIBUTE_MAX : combatRounds * TRIBUTE_BASE_MULTIPLIER;
 
   // Modifiers from original FIGHT1.S:227-228
-  if (missionType === 5) kc = Math.floor(kc / 2); // smuggling halves
-  if (missionType === 4 || (enemyRosterId && enemyRosterId > 10)) kc = kc * 2; // alliance/high pirates double
+  // Original line 227: if sk=5 kc=(kc/2) — Brigand encounter halves tribute
+  if (sk === 5) kc = Math.floor(kc / 2);
+  // Original line 228: if (sk=4) or (pz>10) kc=kc*2 — Reptiloid (sk=4) or high-rank pirate (pz>10) doubles
+  if (sk === 4 || (enemyRosterId !== undefined && enemyRosterId > 10)) kc = kc * 2;
 
   // Cap at TRIBUTE_MAX
   if (kc > TRIBUTE_MAX) kc = TRIBUTE_MAX;
@@ -1069,4 +1336,166 @@ export function isNpcFriendly(enemy: Enemy, playerAlliance: string): boolean {
   if (!enemy.alliance || enemy.alliance === 'NONE') return false;
   if (!playerAlliance || playerAlliance === 'NONE') return false;
   return enemy.alliance === playerAlliance;
+}
+
+// ============================================================================
+// POST-BATTLE PROCESSING (SP.FIGHT2.S:41-75)
+// ============================================================================
+
+export interface AutoRepairResult {
+  /** Map of condition field names to new condition values */
+  updates: Record<string, number>;
+  /** Human-readable repair messages e.g. "Drives: 5→6" */
+  messages: string[];
+}
+
+/**
+ * Apply Auto-Repair module post-battle (SP.FIGHT2.S:41-64)
+ *
+ * Original: if right$(h1$,1)="!" → fixr routine for each component
+ *   fixr: if strength>0 and condition<9 → condition+1 (printing the repair)
+ *         also handles total-damage reconstruction at -1 strength, -500 fuel
+ *
+ * NOTE: This function handles the +1 condition path only. The reconstruction
+ * dialog (totally damaged component) is handled in the screen handler.
+ *
+ * @param ship  Current ship stats (conditions may already include per-round damage)
+ * @returns     Condition updates and display messages
+ */
+export function applyAutoRepair(ship: Pick<ShipStats,
+  'driveStrength' | 'driveCondition' |
+  'cabinStrength' | 'cabinCondition' |
+  'lifeSupportStrength' | 'lifeSupportCondition' |
+  'weaponStrength' | 'weaponCondition' |
+  'navigationStrength' | 'navigationCondition' |
+  'roboticsStrength' | 'roboticsCondition' |
+  'shieldStrength' | 'shieldCondition'
+>): AutoRepairResult {
+  const updates: Record<string, number> = {};
+  const messages: string[] = [];
+  const comps = [
+    { str: 'driveStrength',      cond: 'driveCondition',      label: 'Drives' },
+    { str: 'cabinStrength',      cond: 'cabinCondition',      label: 'Cabin' },
+    { str: 'lifeSupportStrength',cond: 'lifeSupportCondition',label: 'Life Support' },
+    { str: 'weaponStrength',     cond: 'weaponCondition',     label: 'Weapons' },
+    { str: 'navigationStrength', cond: 'navigationCondition', label: 'Nav' },
+    { str: 'roboticsStrength',   cond: 'roboticsCondition',   label: 'Robotics' },
+    { str: 'shieldStrength',     cond: 'shieldCondition',     label: 'Shields' },
+  ] as const;
+  for (const c of comps) {
+    const strength = (ship as Record<string, number>)[c.str];
+    const cond = (ship as Record<string, number>)[c.cond];
+    if (strength > 0 && cond < 9) {
+      updates[c.cond] = cond + 1;
+      messages.push(`${c.label}: ${cond}→${cond + 1}`);
+    }
+  }
+  return { updates, messages };
+}
+
+export interface ShieldRechargeResult {
+  /** New shield condition (may be unchanged) */
+  shieldCondition: number;
+  /** Remaining fuel after recharge */
+  fuel: number;
+}
+
+/**
+ * Apply Shield Recharger module post-battle (SP.FIGHT2.S:66-75)
+ *
+ * Original: if right$(h1$,1)="*"
+ *   loop: f1-=p1, p2+=1  while p2<9 and f1>=p1
+ *
+ * Costs shieldStrength fuel per +1 shieldCondition.
+ *
+ * @param shieldStrength  p1 — fuel cost per shield unit
+ * @param shieldCondition p2 — current shield condition
+ * @param fuel            f1 — current fuel
+ * @returns               New shield condition and remaining fuel
+ */
+export function applyShieldRecharge(
+  shieldStrength: number,
+  shieldCondition: number,
+  fuel: number,
+): ShieldRechargeResult {
+  let p2 = shieldCondition;
+  let f1 = fuel;
+  if (shieldStrength > 0) {
+    while (p2 < 9 && f1 >= shieldStrength) {
+      f1 -= shieldStrength;
+      p2 += 1;
+    }
+  }
+  return { shieldCondition: p2, fuel: f1 };
+}
+
+// ============================================================================
+// DEFEAT CONSEQUENCES (SP.FIGHT2.S pirwin: lines 195-220)
+// ============================================================================
+
+export interface DefeatConsequences {
+  /** Cargo pods lost (q1=0 if enemy boards and takes cargo) */
+  cargoLost: boolean;
+  /** Storage pods lost (s1 reduced by half) */
+  storagePodsLost: number;
+  /** Fuel drained (f1 reduced by half) */
+  fuelLost: number;
+  /** Message describing what was taken */
+  message: string;
+}
+
+/**
+ * Calculate what the enemy takes when the player loses (SP.FIGHT2.S pirwin:195-220).
+ *
+ * Original pirwin path (player ship defeated):
+ *   if p2>0 goto pirwin4  ← skip boarding if player still has shields (already at 0 here)
+ *   if q1>0: enemy takes all cargo pods ("The pz$s take q1 pods of q2$")
+ *   elif s1>=2: enemy takes half storage pods  a=(s1/2)
+ *   else: enemy drains half fuel  x=(f1/2)
+ *
+ * Note: this is called when player shields are gone (p2<1 in original),
+ * which is the condition under which boarding occurs.
+ *
+ * @param playerCargoPods    q1 — cargo pods being carried
+ * @param playerCargoManifest q2$ — cargo description
+ * @param playerStoragePods  s1 — installed storage pods
+ * @param playerFuel         f1 — current fuel
+ * @param enemyTypeName      pz$ — enemy type name for message
+ */
+export function calculateDefeatConsequences(
+  playerCargoPods: number,
+  playerCargoManifest: string | null,
+  playerStoragePods: number,
+  playerFuel: number,
+  enemyTypeName: string,
+): DefeatConsequences {
+  // Priority 1: cargo pods (q1 > 0)
+  if (playerCargoPods > 0) {
+    return {
+      cargoLost: true,
+      storagePodsLost: 0,
+      fuelLost: 0,
+      message: `The ${enemyTypeName}s take ${playerCargoPods} pods of ${playerCargoManifest || 'cargo'}`,
+    };
+  }
+
+  // Priority 2: storage pods (s1 >= 2)
+  if (playerStoragePods >= 2) {
+    const taken = Math.floor(playerStoragePods / 2);
+    return {
+      cargoLost: false,
+      storagePodsLost: taken,
+      fuelLost: 0,
+      message: `The ${enemyTypeName}s take ${taken} storage pods`,
+    };
+  }
+
+  // Priority 3: half fuel
+  const fuelDrained = playerFuel >= 2 ? Math.floor(playerFuel / 2) : 0;
+  return {
+    cargoLost: false,
+    storagePodsLost: 0,
+    fuelLost: fuelDrained,
+    message: `The ${enemyTypeName}s drain ${fuelDrained} fuel from your tanks`,
+  };
 }

@@ -325,6 +325,19 @@ describe('Traders Flow', () => {
     expect(tradersCode).toContain("nextScreen: 'traders-cargo'");
   });
 
+  it('traders cargo dispatch gate: SP.LINK.S lkcargo checks present in code', async () => {
+    // SP.LINK.S:229-236 — tripCount>=3 || hasPatrolCommission || missionType===5 → CLOSED
+    const fs = await import('fs');
+    const tradersCode = fs.readFileSync(
+      new URL('../src/game/screens/traders.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(tradersCode).toContain('tripCount >= 3');
+    expect(tradersCode).toContain('hasPatrolCommission');
+    expect(tradersCode).toContain('missionType === 5');
+    expect(tradersCode).toContain('Cargo Dispatch Office is Closed for Today');
+  });
+
   it("traders 'M' routes back to main-menu", async () => {
     const fs = await import('fs');
     const tradersCode = fs.readFileSync(

@@ -30,6 +30,9 @@ import {
   validatePatrolEntry,
   calculatePatrolPayoff,
 } from '../systems/patrol.js';
+import { calculateRank, getHonorarium } from '../utils.js';
+import { addCredits } from '../utils.js';
+import { pendingWins } from './topgun.js';
 
 // ============================================================================
 // State machine — pick_system and confirm_system multi-step flow
@@ -42,6 +45,9 @@ interface PatrolState {
 }
 
 const pendingState = new Map<string, PatrolState>();
+
+// Players awaiting Space Commandant Y/N prompt (SP.REG.S patrol:177-183)
+const pendingCommandant = new Set<string>();
 
 // ============================================================================
 // Helpers
@@ -117,6 +123,10 @@ async function applyPayoffAndZerout(
     battlesLost: character.battlesLost,
     score: character.score,
     rescuesPerformed: character.rescuesPerformed,
+    // SP.REG.S line 287: include destination name in payoff report (q4$)
+    destinationName: character.destination > 0
+      ? CORE_SYSTEM_NAMES[character.destination]
+      : undefined,
   });
 
   // Apply all DB updates — zerout + payoff + z1++
@@ -142,8 +152,31 @@ async function applyPayoffAndZerout(
     patrolBattlesLost: 0,
   };
 
-  if (payoff.promoted) {
+  // SP.END.S promo subroutine — check if score-based rank promotion fires on return.
+  // Original: called at linkez (session-end) after every patrol return.
+  // Awards a × 10,000 cr honorarium where a = rank multiplier (1=Cmdr → 15=Giga Hero).
+  const newScoreRank = calculateRank(payoff.newScore);
+  const rankPromoted = newScoreRank !== character.rank;
+  if (rankPromoted) {
+    const honorarium = getHonorarium(newScoreRank);
+    const withHonorar = addCredits(
+      payoff.newCreditsHigh, payoff.newCreditsLow, honorarium,
+    );
+    charUpdate.creditsHigh = withHonorar.high;
+    charUpdate.creditsLow = withHonorar.low;
+    charUpdate.rank = newScoreRank;
     charUpdate.promotions = { increment: 1 };
+    payoff.reportLines.push('');
+    payoff.reportLines.push(
+      `\x1b[32;1mCongratulations! Promoted to ${newScoreRank}!\x1b[0m`,
+    );
+    payoff.reportLines.push(
+      `\x1b[33m...Along with an honorarium of ${honorarium.toLocaleString()} cr\x1b[0m`,
+    );
+  }
+
+  if (payoff.promoted) {
+    if (!rankPromoted) charUpdate.promotions = { increment: 1 };
     await Promise.all([
       prisma.character.update({ where: { id: characterId }, data: charUpdate }),
       prisma.ship.update({
@@ -196,6 +229,7 @@ export const SpacePatrolScreen: ScreenModule = {
 
   render: async (characterId: string): Promise<ScreenResponse> => {
     pendingState.delete(characterId);
+    pendingCommandant.delete(characterId);
 
     const character = await prisma.character.findUnique({
       where: { id: characterId },
@@ -211,7 +245,13 @@ export const SpacePatrolScreen: ScreenModule = {
     if (character.missionType === 2) {
       // Check ship is still operational (lines 274-275)
       if (character.ship.hullCondition < 1 || character.ship.driveCondition < 1) {
-        // Ship destroyed — lost in space (simplified: just clear and return)
+        // Ship destroyed — SP.REG.S lostnow subroutine (lines 354-366):
+        //   s2=(s2+wb)-lb; s2=s2-10: if s2<1 s2=0
+        const wb = character.patrolBattlesWon;
+        const lb = character.patrolBattlesLost;
+        const rawScore = character.score + wb - lb - 10;
+        const newScore = Math.max(0, rawScore);
+
         await prisma.character.update({
           where: { id: characterId },
           data: {
@@ -219,10 +259,16 @@ export const SpacePatrolScreen: ScreenModule = {
             cargoPods: 0, cargoType: 0, cargoPayment: 0,
             destination: 0, cargoManifest: null,
             patrolBattlesWon: 0, patrolBattlesLost: 0,
+            // SP.REG.S lostnow: e1=e1+wb: m1=m1+lb
+            battlesWon: { increment: wb },
+            battlesLost: { increment: lb },
+            score: newScore,
+            isLost: true,
+            lostLocation: character.currentSystem,
           },
         });
         return {
-          output: '\r\n\x1b[31mYour ship is too damaged. Patrol aborted.\x1b[0m\r\n',
+          output: '\r\n\x1b[31mYou are Lost In Space!\x1b[0m\r\n',
           nextScreen: 'main-menu',
         };
       }
@@ -246,6 +292,24 @@ export const SpacePatrolScreen: ScreenModule = {
       };
     }
 
+    // SP.REG.S patrol (lines 177-183): Space Commandant promotion check
+    // if ((w1+p1)<50) or (kk=9) goto pat0
+    // if (left$(l1$,5)="LSS C") or (left$(h1$,3)="Ast") goto pat0
+    // print "The Space Commandant wishes to speak to you [Y]/(N): "
+    const ship = character.ship;
+    const canCommandant =
+      (ship.weaponStrength + ship.shieldStrength) >= 50 &&
+      character.missionType !== 9 &&
+      !ship.lifeSupportName?.startsWith('LSS C') &&
+      !ship.hullName?.startsWith('Ast');
+
+    if (canCommandant) {
+      pendingCommandant.add(characterId);
+      return {
+        output: '\r\nThe Space Commandant wishes to speak to you \x1b[33m[Y]\x1b[0m/(N): ',
+      };
+    }
+
     return { output: hqMenu() };
   },
 
@@ -262,6 +326,17 @@ export const SpacePatrolScreen: ScreenModule = {
     }
 
     const ship = character.ship;
+
+    // ── Space Commandant Y/N (SP.REG.S patrol:181-183) ────────────────────
+    if (pendingCommandant.has(characterId)) {
+      pendingCommandant.delete(characterId);
+      if (key !== 'N') {
+        // SP.REG.S:183: link"sp.top","wins" — route to wins mission-offer screen
+        pendingWins.set(characterId, 'menu');
+        return { output: 'Yes\r\n', nextScreen: 'topgun' };
+      }
+      return { output: 'Not now\r\n' + hqMenu() };
+    }
 
     // ── Multi-step: system pick ────────────────────────────────────────────
     const state = pendingState.get(characterId);
@@ -402,25 +477,27 @@ export const SpacePatrolScreen: ScreenModule = {
 
     if (key === 'L') {
       // Launch — SP.REG.S launch label (lines 258-267)
+      // Original: f1=f1+f2 — government pre-loads required fuel at launch (no fuel check in original)
       if (character.destination < 1) {
         return { output: '\r\nDestination System Required!\r\n' + hqMenu() };
       }
 
-      // Calculate fuel required
+      // Calculate fuel required (f2) and pre-load into ship (SP.REG.S:262 f1=f1+f2)
       const distance = calculatePatrolDistance(character.currentSystem, character.destination);
       const fuelRequired = calculatePatrolFuelCost(ship.driveStrength, ship.driveCondition, distance);
-
-      if (ship.fuel < fuelRequired) {
-        return {
-          output: `\r\nInsufficient fuel. Need ${fuelRequired} units (have ${ship.fuel}).\r\n` + hqMenu(),
-        };
-      }
+      const newFuel = ship.fuel + fuelRequired;
 
       const destName = CORE_SYSTEM_NAMES[character.destination];
-      await prisma.character.update({
-        where: { id: characterId },
-        data: { missionType: 2 },
-      });
+      await prisma.$transaction([
+        prisma.character.update({
+          where: { id: characterId },
+          data: { missionType: 2 },
+        }),
+        prisma.ship.update({
+          where: { characterId },
+          data: { fuel: newFuel },
+        }),
+      ]);
 
       return {
         output:

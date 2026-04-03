@@ -184,3 +184,256 @@ describe('sellPort - bank balance refund', () => {
     // PortOwnership record which includes bankCreditsHigh/bankCreditsLow.
   });
 });
+
+// ============================================================================
+// PORT ACCOUNTS SCREEN — SP.REAL.S start1 menu
+// ============================================================================
+// Tests for port-accounts.ts: prospectus, buy, sell, deposit, withdraw flows.
+
+describe('Port Accounts screen (SP.REAL.S start1)', () => {
+  // Re-use the existing prisma mock from above.
+  // We need to add findMany mock.
+  let prismaM: any;
+  let screen: any;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const prismaMod = await import('../src/db/prisma');
+    prismaM = prismaMod.prisma;
+    // Ensure all portOwnership methods are mocked
+    prismaM.portOwnership.findMany = vi.fn().mockResolvedValue([]);
+    prismaM.portOwnership.update = vi.fn().mockResolvedValue({});
+    // Ensure gameLog.findMany is mocked
+    if (!prismaM.gameLog) {
+      prismaM.gameLog = { findMany: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({}) };
+    } else {
+      prismaM.gameLog.findMany = vi.fn().mockResolvedValue([]);
+    }
+    // Ensure $transaction is mocked
+    prismaM.$transaction = vi.fn(async (ops: any[]) => Promise.all(ops));
+    const mod = await import('../src/game/screens/port-accounts');
+    screen = mod.PortAccountsScreen;
+  });
+
+  const makeChar = (overrides: Record<string, any> = {}) => ({
+    id: 'c1',
+    name: 'Zara',
+    creditsHigh: 20,
+    creditsLow: 0,
+    portOwnership: null,
+    ...overrides,
+  });
+
+  const makePort = (overrides: Record<string, any> = {}) => ({
+    id: 'p1',
+    systemId: 3,
+    characterId: 'c1',
+    fuelPrice: 5,
+    fuelStored: 3000,
+    fuelCapacity: 20000,
+    bankCreditsHigh: 0,
+    bankCreditsLow: 5000,
+    purchaseDate: new Date('2026-01-01'),
+    character: { name: 'Zara' },
+    ...overrides,
+  });
+
+  describe('render', () => {
+    it('shows standard menu without owner options when no port', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar());
+      const resp = await screen.render('c1');
+      expect(resp.output).toContain('(P)rospectus');
+      expect(resp.output).toContain('(B)uy');
+      expect(resp.output).not.toContain('(S)ell');
+      expect(resp.output).not.toContain('(W)ithdraw');
+    });
+
+    it('shows owner options when player owns a port', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar({ portOwnership: makePort() }));
+      const resp = await screen.render('c1');
+      expect(resp.output).toContain('(S)ell');
+      expect(resp.output).toContain('(W)ithdraw');
+      expect(resp.output).toContain('(D)eposit');
+      expect(resp.output).toContain('(F)uel Depot');
+    });
+  });
+
+  describe('Q — quit', () => {
+    it('Q returns to main-menu', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar());
+      await screen.render('c1');
+      const resp = await screen.handleInput('c1', 'Q');
+      expect(resp.nextScreen).toBe('main-menu');
+    });
+  });
+
+  describe('B — buy port (SP.REAL.S bshow/buy/buy1 lines 59-98)', () => {
+    it('B rejects player who already owns a port', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar({ portOwnership: makePort() }));
+      prismaM.portOwnership.findMany.mockResolvedValue([]);
+      await screen.render('c1');
+      const resp = await screen.handleInput('c1', 'B');
+      expect(resp.output).toContain('already own');
+    });
+
+    it('B → system number → Y → price confirm prompt', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar());
+      prismaM.portOwnership.findMany.mockResolvedValue([]);
+      prismaM.portOwnership.findUnique.mockResolvedValue(null);
+      await screen.render('c1');
+      await screen.handleInput('c1', 'B');            // shows prospectus + choice prompt
+      await screen.handleInput('c1', '5');             // pick system 5
+      // Should ask "Is Deneb-4 your choice?"
+      prismaM.character.findUnique.mockResolvedValue(makeChar());
+      const resp = await screen.handleInput('c1', 'Y'); // confirm system → check price
+      expect(resp.output).toContain('requires');
+      expect(resp.output).toContain('100,000');
+    });
+
+    it('N at system confirm re-prompts for choice', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar());
+      prismaM.portOwnership.findMany.mockResolvedValue([]);
+      prismaM.portOwnership.findUnique.mockResolvedValue(null);
+      await screen.render('c1');
+      await screen.handleInput('c1', 'B');
+      await screen.handleInput('c1', '5');
+      const resp = await screen.handleInput('c1', 'N');
+      expect(resp.output).toContain('Choice: (1-14)');
+    });
+
+    it('already-owned system gives error and re-prompts (SP.REAL.S line 92)', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar());
+      prismaM.portOwnership.findMany.mockResolvedValue([]);
+      prismaM.portOwnership.findUnique.mockResolvedValue({ id: 'p-other', characterId: 'other' });
+      await screen.render('c1');
+      await screen.handleInput('c1', 'B');
+      await screen.handleInput('c1', '7');
+      const resp = await screen.handleInput('c1', 'Y');
+      expect(resp.output).toContain('already owned');
+    });
+
+    it('insufficient credits blocks buy (SP.REAL.S line 93)', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar({ creditsHigh: 0, creditsLow: 500 }));
+      prismaM.portOwnership.findMany.mockResolvedValue([]);
+      prismaM.portOwnership.findUnique.mockResolvedValue(null);
+      await screen.render('c1');
+      await screen.handleInput('c1', 'B');
+      await screen.handleInput('c1', '2');
+      const resp = await screen.handleInput('c1', 'Y');
+      expect(resp.output).toContain('Not enough');
+    });
+  });
+
+  describe('S — sell port (SP.REAL.S sell/sell1 lines 100-124)', () => {
+    it('S rejected if not a port owner', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar());
+      await screen.render('c1');
+      const resp = await screen.handleInput('c1', 'S');
+      expect(resp.output).toContain('Not a port owner');
+    });
+
+    it('sell flow: S → S → pick system → Y → shows resale 50,000 (SP.REAL.S:112)', async () => {
+      const port = makePort({ systemId: 3 });
+      prismaM.character.findUnique.mockResolvedValue(makeChar({ portOwnership: port }));
+      prismaM.portOwnership.findMany.mockResolvedValue([port]);
+      await screen.render('c1');
+      await screen.handleInput('c1', 'S');             // sell-prompt
+      await screen.handleInput('c1', 'S');             // confirm sell → shows prospectus + choice
+      await screen.handleInput('c1', '3');             // pick system 3
+      prismaM.character.findUnique.mockResolvedValue(makeChar({ portOwnership: port }));
+      const resp = await screen.handleInput('c1', 'Y'); // confirm system → see price
+      expect(resp.output).toContain('50,000');
+    });
+  });
+
+  describe('W — withdraw from port bank (SP.REAL.S draw: lines 126-145)', () => {
+    it('W rejected if not port owner', async () => {
+      prismaM.character.findUnique.mockResolvedValue(makeChar());
+      await screen.render('c1');
+      const resp = await screen.handleInput('c1', 'W');
+      expect(resp.output).toContain('Not a port owner');
+    });
+
+    it('withdraw 5000 credits from port bank', async () => {
+      const port = makePort({ bankCreditsHigh: 0, bankCreditsLow: 5000 });
+      prismaM.character.findUnique
+        .mockResolvedValueOnce(makeChar({ portOwnership: port }))  // render
+        .mockResolvedValueOnce(makeChar({ portOwnership: port }))  // W key
+        .mockResolvedValueOnce(makeChar({ creditsHigh: 20, creditsLow: 0, portOwnership: port })); // processWithdraw
+      prismaM.portOwnership.update.mockResolvedValue({});
+      prismaM.character.update.mockResolvedValue({});
+      prismaM.$transaction.mockResolvedValue([{}, {}]);
+      await screen.render('c1');
+      await screen.handleInput('c1', 'W');
+      const resp = await screen.handleInput('c1', '5000');
+      expect(resp.output).toContain('Withdrew');
+      expect(resp.output).toContain('5,000');
+    });
+
+    it('withdraw more than bank balance returns Too Much (SP.REAL.S:140-141)', async () => {
+      const port = makePort({ bankCreditsHigh: 0, bankCreditsLow: 100 });
+      prismaM.character.findUnique
+        .mockResolvedValueOnce(makeChar({ portOwnership: port }))
+        .mockResolvedValueOnce(makeChar({ portOwnership: port }))
+        .mockResolvedValueOnce(makeChar({ portOwnership: port }));
+      await screen.render('c1');
+      await screen.handleInput('c1', 'W');
+      const resp = await screen.handleInput('c1', '9999');
+      expect(resp.output).toContain('Too Much');
+    });
+  });
+
+  describe('D — deposit to port bank (SP.REAL.S depo: lines 147-166)', () => {
+    it('deposit 10000 credits to port bank', async () => {
+      const port = makePort({ bankCreditsHigh: 0, bankCreditsLow: 0 });
+      prismaM.character.findUnique
+        .mockResolvedValueOnce(makeChar({ portOwnership: port }))
+        .mockResolvedValueOnce(makeChar({ portOwnership: port }))
+        .mockResolvedValueOnce(makeChar({ creditsHigh: 20, creditsLow: 0, portOwnership: port }));
+      prismaM.character.update.mockResolvedValue({});
+      prismaM.portOwnership.update.mockResolvedValue({});
+      prismaM.$transaction.mockResolvedValue([{}, {}]);
+      await screen.render('c1');
+      await screen.handleInput('c1', 'D');
+      const resp = await screen.handleInput('c1', '10000');
+      expect(resp.output).toContain('Deposited');
+      expect(resp.output).toContain('10,000');
+    });
+
+    it('deposit more than on-hand credits returns Too Much', async () => {
+      const port = makePort();
+      prismaM.character.findUnique
+        .mockResolvedValueOnce(makeChar({ creditsHigh: 0, creditsLow: 50, portOwnership: port }))
+        .mockResolvedValueOnce(makeChar({ creditsHigh: 0, creditsLow: 50, portOwnership: port }))
+        .mockResolvedValueOnce(makeChar({ creditsHigh: 0, creditsLow: 50, portOwnership: port }));
+      await screen.render('c1');
+      await screen.handleInput('c1', 'D');
+      const resp = await screen.handleInput('c1', '1000');
+      expect(resp.output).toContain('Too Much');
+    });
+  });
+
+  describe('withdraw credit encoding (SP.REAL.S draw: lw-based split)', () => {
+    // The original encodes amounts as: last 4 digits = low (0-9999), prefix = high (×10000).
+    // "25000" → ia=5000, ib=2 → 25000 cr total
+    it('encodes "25000" as 2×10000 + 5000 = 25,000 cr', () => {
+      const raw = '25000';
+      const lw = raw.length;
+      const iaStr = lw <= 4 ? raw : raw.slice(-4);
+      const ibStr = lw > 4 ? raw.slice(0, lw - 4) : '0';
+      const ia = parseInt(iaStr, 10);
+      const ib = parseInt(ibStr, 10);
+      expect(ib * 10000 + ia).toBe(25000);
+    });
+
+    it('encodes "9999" as 0×10000 + 9999 = 9,999 cr', () => {
+      const raw = '9999';
+      const lw = raw.length;
+      const iaStr = lw <= 4 ? raw : raw.slice(-4);
+      const ibStr = lw > 4 ? raw.slice(0, lw - 4) : '0';
+      const ia = parseInt(iaStr, 10);
+      const ib = parseInt(ibStr, 10);
+      expect(ib * 10000 + ia).toBe(9999);
+    });
+  });
+});

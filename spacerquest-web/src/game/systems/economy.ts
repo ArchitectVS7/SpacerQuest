@@ -25,7 +25,7 @@ import {
   PATROL_BATTLE_BONUS,
   RIM_CARGO,
 } from '../constants';
-import { addCredits, subtractCredits, getTotalCredits } from '../utils.js';
+import { addCredits, subtractCredits, getTotalCredits, calculateDistance } from '../utils.js';
 import { prisma } from '../../db/prisma.js';
 
 // ============================================================================
@@ -98,11 +98,14 @@ export interface CargoContract {
   cargoType: number;     // q2: cargo type index (1-9)
   origin: number;        // sp: origin system ID
   destination: number;   // q4: destination system ID
-  payment: number;       // q5: total payment in credits
+  payment: number;       // q5: total payment in credits (includes bonus if applicable)
   description: string;   // q2$: cargo name string
   fuelRequired: number;  // f2: fuel units required for the trip
   distance: number;      // q6: distance in Astrecs
   valuePerPod: number;   // q3: value per pod (cargoType * 3)
+  deliveryBonus: number; // ie: special delivery bonus (SP.CARGO.txt lines 65-72)
+  bonusCargo: string;    // ce$: what the destination needs (empty if no bonus)
+  bonusDest: string;     // de$: destination name for bonus (empty if no bonus)
 }
 
 /**
@@ -166,6 +169,9 @@ export function generateCargoContract(
       fuelRequired: 0,
       distance: dist,
       valuePerPod: 0,
+      deliveryBonus: 0,
+      bonusCargo: '',
+      bonusDest: '',
     };
   }
 
@@ -224,6 +230,39 @@ export function generateCargoContract(
     payment = perPod * cargoPods;
   }
 
+  // ── SP.CARGO.txt lines 59-72: Special delivery bonuses ──
+  // The original generates 4 manifests simultaneously and checks if any
+  // manifest's destination matches another manifest's origin (port alias system).
+  // In single-contract generation, we simulate this by checking if a random
+  // secondary manifest would create a matching pair.
+  //
+  // Original logic:
+  //   r=5:gosub rand:ru=(x-1):r=10:gosub rand:x=(x+ru):gosub desname:de$=ll$
+  //   ie = |x - sp| * 1000, cap 10000
+  //   if de$=v3$ ce$=v1$ → bonus (destination needs cargo from manifest 1)
+  //   if de$=v7$ ce$=v5$ → bonus (destination needs cargo from manifest 2)
+  //   etc.
+  //
+  // Simplified: ~25% chance of a delivery bonus, scaled by distance
+  let deliveryBonus = 0;
+  let bonusCargo = '';
+  let bonusDest = '';
+
+  // Random check for special delivery (simulates port alias match)
+  const bonusRoll = Math.floor(Math.random() * 5); // r=5 in original
+  const bonusOffset = Math.floor(Math.random() * 10) + 1; // r=10 in original
+  const bonusSystemId = Math.min(14, Math.max(1, bonusRoll + bonusOffset));
+
+  if (bonusSystemId !== originSystem && bonusRoll < 2) {
+    // Bonus applies — calculate ie = |bonusSystem - origin| * 1000, cap 10000
+    const bonusDist = Math.abs(bonusSystemId - originSystem);
+    deliveryBonus = Math.min(bonusDist * 1000, 10000);
+    bonusDest = getSystemName(destination);
+    bonusCargo = getCargoDescription(cargoType);
+    // Add bonus to payment (SP.CARGO.txt line 108: q5=q5+ie)
+    payment = payment + deliveryBonus;
+  }
+
   return {
     pods: upodX,
     cargoType,
@@ -234,6 +273,9 @@ export function generateCargoContract(
     fuelRequired,
     distance,
     valuePerPod,
+    deliveryBonus,
+    bonusCargo,
+    bonusDest,
   };
 }
 
@@ -848,4 +890,281 @@ export function calculateTripZeroCost(ship: {
           ship.hullStrength + ship.navigationStrength;
   if (y > 9) y = Math.floor(y / 10);
   return { cost: y * 10000, costDisplay: y };
+}
+
+// ============================================================================
+// SP.CARGO.S upod subroutine — Serviceable Pod Calculation
+// ============================================================================
+
+/**
+ * Compute serviceable pod count (SP.CARGO.S upod subroutine, lines 286-292).
+ *
+ *   y=0:x=0
+ *   if (s1<1) or (h1<1) x=1:return
+ *   if h2<1 x=1:return
+ *   y=h2+1:if (t$=da$) and (t1>0) and (jc<1) y=y/2
+ *   x=s1*y:if x<10 x=10
+ *   x=x/10:return
+ *
+ * @param cargoPods     s1 — number of cargo pod bays
+ * @param hullStrength  h1 — hull strength (0 = no hull)
+ * @param hullCondition h2 — hull condition (0 = destroyed)
+ * @param halve         Daily penalty: second visit same day with trips made (jc<1 in original)
+ */
+export function calculateUpod(
+  cargoPods: number,
+  hullStrength: number,
+  hullCondition: number,
+  halve: boolean = false,
+): number {
+  if (cargoPods < 1 || hullStrength < 1) return 1;
+  if (hullCondition < 1) return 1;
+  let y = hullCondition + 1;
+  if (halve) y = y / 2;
+  let x = cargoPods * y;
+  if (x < 10) x = 10;
+  return Math.floor(x / 10);
+}
+
+// ============================================================================
+// 4-MANIFEST CARGO BOARD (SP.CARGO.S manif subroutine, lines 208-247)
+// ============================================================================
+
+export interface ManifestEntry {
+  cargoType: number;    // v1/v5/y1/y5 (1-9)
+  valuePerPod: number;  // v2/v6/y2/y6 = type*3
+  destId: number;       // v3/v7/y3/y7
+  destName: string;
+  payment: number;      // v4/v8/y4/y8
+  distance: number;     // d6/d7/d8/d9
+  fuelRequired: number; // f4/f5/f6/f7
+}
+
+/**
+ * Generate 4 cargo manifest entries for the daily board.
+ * SP.CARGO.S:208-247 (manif subroutine)
+ *
+ * Each manifest: random cargo type (1-9), random destination (1-14 ≠ currentSystem),
+ * distance from currentSystem, fuel cost, and payment via original formula.
+ *
+ * @param currentSystem  — player's current system (sp)
+ * @param maxCargoPods   — hull cargo capacity (s1)
+ * @param hullCondition  — hull condition (h2) for upod calculation
+ * @param driveStrength  — drive strength (d1) for fuel calc
+ * @param driveCondition — drive condition (d2) for fuel calc
+ */
+export function generateManifestBoard(
+  currentSystem: number,
+  maxCargoPods: number,
+  hullCondition: number,
+  driveStrength: number,
+  driveCondition: number,
+): ManifestEntry[] {
+  const entries: ManifestEntry[] = [];
+
+  // SP.CARGO.S:212-229 — 4 cargo types + 4 destinations
+  for (let i = 0; i < 4; i++) {
+    // SP.CARGO.S:213 — r=9: random cargo type 1-9
+    const cargoType = Math.floor(Math.random() * 9) + 1;
+    const valuePerPod = cargoType * 3;  // v2/v6/y2/y6 = type*3 (man3 line 246)
+
+    // SP.CARGO.S:219 — r=14: random destination 1-14, avoid current system (spx)
+    let destId = Math.floor(Math.random() * 14) + 1;
+    if (destId === currentSystem) {
+      destId = currentSystem < 14 ? destId + 1 : destId - 1;
+    }
+    const destName = CORE_SYSTEM_NAMES[destId] ?? `System ${destId}`;
+
+    // man2 subroutine: distance = abs(sp - dest) or 1 if same
+    const distance = calculateDistance(currentSystem, destId);
+
+    // fcost: fuel required (same formula as generateCargoContract)
+    const af = Math.min(driveStrength, 21);
+    let f2 = (21 - af) + (10 - driveCondition);
+    if (f2 < 1) f2 = 1;
+    f2 = f2 * distance;
+    const ty = f2 + 10;
+    const fuelRequired = Math.floor(Math.min(ty, 100) / 2);
+
+    // upod: effective pods for payment calc
+    // SP.CARGO.S:286-302 — upod subroutine
+    let upodX = maxCargoPods;
+    if (maxCargoPods > 0 && hullCondition > 0) {
+      const y = hullCondition + 1;
+      let rawX = maxCargoPods * y;
+      if (rawX < 10) rawX = 10;
+      upodX = Math.floor(rawX / 10);
+    }
+
+    // pay1-pay4 formulas (identical): payment = (type*3*dist)/3 * upod + fuel*5 + 1000; cap 15000
+    let payment = valuePerPod * distance;
+    if (payment < 3) payment = 3;
+    payment = Math.floor(payment / 3);
+    payment = payment * upodX;
+    payment = payment + (fuelRequired * 5) + 1000;
+    if (payment > 15000) payment = 15000;
+    // Normalize to pod multiple (x=(v4/s1):v4=(x*s1))
+    if (maxCargoPods > 0) {
+      payment = Math.floor(payment / maxCargoPods) * maxCargoPods;
+    }
+
+    entries.push({ cargoType, valuePerPod, destId, destName, payment, distance, fuelRequired });
+  }
+
+  return entries;
+}
+
+// ============================================================================
+// SMUGGLING CONTRACT (SP.BAR.S smug subroutine, lines 213-245)
+// ============================================================================
+
+export interface SmugglingContractResult {
+  intercepted: boolean;        // x>14: "Space Patrol snooping about"
+  destinationSystemId?: number;
+  destinationName?: string;
+  distance?: number;           // y (dist1 subroutine)
+  fuelRequired?: number;       // fy (dist subroutine)
+  payment?: number;            // x = (14000 + 100*y) - (h1*500)
+  lowPayWarning?: boolean;     // x<1 → clamped to 500, show warning
+}
+
+/**
+ * Calculate a smuggling contract from SP.BAR.
+ * SP.BAR.S:213-245 (smug subroutine)
+ *   r=20; x=random(r)+1; if i=sp i=20; if i>14 → intercepted
+ *   dist subroutine: fy = fuel cost; y = distance
+ *   payment = (14000 + 100*y) - (h1*500); if <1 → 500
+ *
+ * @param currentSystem — player's current system (sp)
+ * @param hullStrength  — hull strength (h1) used in payment formula
+ * @param driveStrength — drive strength (d1) for fuel calc
+ * @param driveCondition — drive condition (d2) for fuel calc
+ * @param roll          — optional 1-20 roll for deterministic testing (random if omitted)
+ */
+export function calculateSmugglingContract(
+  currentSystem: number,
+  hullStrength: number,
+  driveStrength: number,
+  driveCondition: number,
+  roll?: number,
+): SmugglingContractResult {
+  // SP.BAR.S:224 — r=20: x=random(r)+1
+  const rawRoll = roll ?? (Math.floor(Math.random() * 20) + 1);
+
+  // SP.BAR.S:225 — if i=sp i=20 (same system as current → snooping)
+  const effectiveX = rawRoll === currentSystem ? 20 : rawRoll;
+
+  // SP.BAR.S:227 — if i>14 "Space Patrol snooping about...Nothing here!"
+  if (effectiveX > 14) {
+    return { intercepted: true };
+  }
+
+  const destinationSystemId = effectiveX;
+  const destinationName = CORE_SYSTEM_NAMES[destinationSystemId] ?? `System ${destinationSystemId}`;
+
+  // dist1 subroutine: y = abs(sp - i) (1 if same — but same is already rerouted above)
+  const y = calculateDistance(currentSystem, destinationSystemId);
+
+  // dist subroutine: fy = fuel required
+  // af=min(d1,21); fy=(21-af)+(10-d2); if fy<1 fy=1; fy*=dist; ty=fy+10; cap 100; fy=ty/2
+  const af = Math.min(driveStrength, 21);
+  let fy = (21 - af) + (10 - driveCondition);
+  if (fy < 1) fy = 1;
+  fy = fy * y;
+  const ty = fy + 10;
+  const fuelRequired = Math.floor(Math.min(ty, 100) / 2);
+
+  // SP.BAR.S:233 — x=(14000+(100*y))-(h1*500); if x<1 x=500
+  let payment = (14000 + (100 * y)) - (hullStrength * 500);
+  const lowPayWarning = payment < 1;
+  if (payment < 1) payment = 500;
+
+  return {
+    intercepted: false,
+    destinationSystemId,
+    destinationName,
+    distance: y,
+    fuelRequired,
+    payment,
+    lowPayWarning,
+  };
+}
+
+// ============================================================================
+// SP.LIFT.S fueler subroutine (lines 213-229): Port auto-buy and eviction check
+//
+// Original logic:
+//   fueler: if fp>0 goto fler         (skip if already checked this session)
+//           if (m5$="") or (m9>0) goto fler  (skip if no owner or fuel>0)
+//   faut:   if m7<2 goto fneg
+//           if m9>2899 goto fler
+//           m9=m9+1000:m7=m7-2        (auto-buy 1000 fuel, costs 2 high cr)
+//   fneg:   if m9>999 goto fler
+//           ...evict (clear owner, reset m5=5:m9=3000)
+// ============================================================================
+
+export interface PortEvictionCheck {
+  /** true if the port owner should be evicted */
+  shouldEvict: boolean;
+  /** true if auto-buy should fire (1000 fuel, deduct 2 bankCreditsHigh) */
+  shouldAutoBuy: boolean;
+  /** message to show if evicted */
+  evictMessage: string;
+  /** message to show if auto-buy fires */
+  autoBuyMessage: string;
+}
+
+/**
+ * checkPortEviction — SP.LIFT.S fueler subroutine (lines 213-229)
+ *
+ * Called when any player visits a port (once per docking).
+ * Checks if the port is out of fuel and handles auto-buy or eviction.
+ *
+ * @param fuelStored   - m9: current fuel in depot
+ * @param bankHigh     - m7: high part of port bank credits
+ * @param ownerName    - m5$: name of port owner ("" = no owner)
+ * @param visitorName  - na$: name of visiting player
+ */
+export function checkPortEviction(
+  fuelStored: number,
+  bankHigh: number,
+  ownerName: string,
+  visitorName: string,
+): PortEvictionCheck {
+  const noCheck: PortEvictionCheck = {
+    shouldEvict: false,
+    shouldAutoBuy: false,
+    evictMessage: '',
+    autoBuyMessage: '',
+  };
+
+  // SP.LIFT.S fueler: if (m5$="") or (m9>0) goto fler — skip if no owner or fuel>0
+  if (!ownerName || fuelStored > 0) return noCheck;
+
+  // faut: if m7<2 goto fneg — skip auto-buy if insufficient credits
+  if (bankHigh >= 2) {
+    // Auto-buy 1000 fuel: m9=m9+1000:m7=m7-2
+    return {
+      shouldEvict: false,
+      shouldAutoBuy: true,
+      evictMessage: '',
+      autoBuyMessage: 'Port Auto-Buys 1000 fuel from main depot',
+    };
+  }
+
+  // fneg: if m9>999 goto fler — skip eviction if fuel > 999 (but we know m9==0 here)
+  if (fuelStored > 999) return noCheck;
+
+  // Evict
+  const isOwner = ownerName === visitorName;
+  const evictMsg = isOwner
+    ? `${ownerName} Space Port poorly maintained....no fuel/funds in depot\r\nPort can be lost if no fuel in depot`
+    : `${ownerName} Space Port poorly maintained....no fuel/funds in depot\r\n${ownerName} has lost the franchise and the port is now up For-Sale`;
+
+  return {
+    shouldEvict: true,
+    shouldAutoBuy: false,
+    evictMessage: evictMsg,
+    autoBuyMessage: '',
+  };
 }

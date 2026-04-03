@@ -585,12 +585,13 @@ describe('COMPONENT_TIER_NAMES', () => {
     expect(COMPONENT_TIER_NAMES.hull[8]).toBeTruthy();
   });
 
-  it('life support tier 6 name is "LSS Chry" (original game special)', () => {
-    // SP.YARD.S: lifeSupportName is forced to "LSS Chry" for tiers 6-9
-    expect(COMPONENT_TIER_NAMES.lifeSupport[5]).toBe('LSS Chry');
-    expect(COMPONENT_TIER_NAMES.lifeSupport[6]).toBe('LSS Chry');
-    expect(COMPONENT_TIER_NAMES.lifeSupport[7]).toBe('LSS Chry');
-    expect(COMPONENT_TIER_NAMES.lifeSupport[8]).toBe('LSS Chry');
+  it('life support tiers use original "LSS Model XA" names (SP.YARD.S life subroutine)', () => {
+    // SP.YARD.S life subroutine (lines 114-123): a$="LSS Model ": x1$=a$+"1A" ... x9$=a$+"9A"
+    // "LSS Chrysalis+*" is a quest reward (SP.TOP.S:171), NOT a yard purchase tier.
+    expect(COMPONENT_TIER_NAMES.lifeSupport[0]).toBe('LSS Model 1A');
+    expect(COMPONENT_TIER_NAMES.lifeSupport[4]).toBe('LSS Model 5A');
+    expect(COMPONENT_TIER_NAMES.lifeSupport[5]).toBe('LSS Model 6A');
+    expect(COMPONENT_TIER_NAMES.lifeSupport[8]).toBe('LSS Model 9A');
   });
 
   it('weapon tier names are distinct (no duplicates across tiers)', () => {
@@ -779,33 +780,46 @@ describe('SP.YARD Main Office — purchaseShipComponent', () => {
     expect(result.componentName).toBe(COMPONENT_TIER_NAMES.cabin[5]);
   });
 
-  it('Life Support tier 6 name is forced to "LSS Chry"', async () => {
-    // SP.YARD.S special: life support tier ≥ 6 always gets "LSS Chry"
+  it('Life Support tier 6 uses original name "LSS Model 6A" (SP.YARD.S life subroutine)', async () => {
+    // Original SP.YARD.S: all LSS tiers are "LSS Model XA". Chrysalis is a quest reward only.
     prisma.character.findUnique.mockResolvedValue(makeCharWithShip(0, 2000));
     prisma.$transaction.mockResolvedValue(undefined);
 
     const result = await purchaseShipComponentFn({ characterId: 'char-1', componentType: 'lifeSupport', tierIndex: 6 });
     expect(result.success).toBe(true);
-    expect(result.componentName).toBe('LSS Chry');
+    expect(result.componentName).toBe('LSS Model 6A');
   });
 
-  it('Life Support tier 7 name is forced to "LSS Chry"', async () => {
+  it('Life Support tier 7 uses original name "LSS Model 7A"', async () => {
     prisma.character.findUnique.mockResolvedValue(makeCharWithShip(0, 5000));
     prisma.$transaction.mockResolvedValue(undefined);
 
     const result = await purchaseShipComponentFn({ characterId: 'char-1', componentType: 'lifeSupport', tierIndex: 7 });
     expect(result.success).toBe(true);
-    expect(result.componentName).toBe('LSS Chry');
+    expect(result.componentName).toBe('LSS Model 7A');
   });
 
-  it('Life Support tier 5 name is NOT "LSS Chry" (below override threshold)', async () => {
+  it('Life Support tier 5 uses standard name "LSS Model 5A"', async () => {
     prisma.character.findUnique.mockResolvedValue(makeCharWithShip(0, 1000));
     prisma.$transaction.mockResolvedValue(undefined);
 
     const result = await purchaseShipComponentFn({ characterId: 'char-1', componentType: 'lifeSupport', tierIndex: 5 });
     expect(result.success).toBe(true);
-    expect(result.componentName).not.toBe('LSS Chry');
+    expect(result.componentName).toBe('LSS Model 5A');
     expect(result.componentName).toBe(COMPONENT_TIER_NAMES.lifeSupport[4]);
+  });
+
+  it('Life Support Chrysalis downgrade guard blocks replacement (SP.YARD.S:107-110)', async () => {
+    // SP.YARD.S: if left$(l1$,8)="LSS Chry" → print warning and return
+    // "LSS Chrysalis+*" is the quest reward — cannot be replaced at the yard
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(0, 50000, {
+      lifeSupportName: 'LSS Chrysalis+*',
+    }));
+
+    const result = await purchaseShipComponentFn({ characterId: 'char-1', componentType: 'lifeSupport', tierIndex: 9 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('LSS Chrysalis+*');
+    expect(result.error).toMatch(/very doubtful/i);
   });
 
   it('Life Support tier 1 uses standard name', async () => {
@@ -830,6 +844,57 @@ describe('SP.YARD Main Office — purchaseShipComponent', () => {
     });
     expect(result.success).toBe(true);
     expect(result.netCost).toBe(550); // 50 + 500 transfer fee
+  });
+
+  it('SP.YARD.S scrap: pod salvage at 2 cr each reduces net cost on hull transfer', async () => {
+    // SP.YARD.S: g2=g2+(s1*2):s1=0 — pods salvaged at 2 cr each when transferring
+    // 10 pods × 2 cr = 20 cr salvage; tier 1 hull=50, transfer=500 → 550-20=530
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(0, 1000, { cargoPods: 10 }));
+    prisma.$transaction.mockResolvedValue(undefined);
+
+    const result = await purchaseShipComponentFn({
+      characterId: 'char-1',
+      componentType: 'hull',
+      tierIndex: 1,
+      transferComponents: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.podSalvage).toBe(20); // 10 pods × 2 cr = 20 cr
+    expect(result.netCost).toBe(530);   // 50 + 500 - 20
+  });
+
+  it('SP.YARD.S scrap: cargoPods cleared to 0 in ship update on hull transfer', async () => {
+    // SP.YARD.S: g2=g2+(s1*2):s1=0 — s1=0 means cargoPods zeroed out
+    // 5 pods × 2 cr = 10 cr salvage; tier 1 hull=50, transfer=500 → 550-10=540
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(0, 1000, { cargoPods: 5 }));
+    prisma.$transaction.mockResolvedValue(undefined);
+
+    const result = await purchaseShipComponentFn({
+      characterId: 'char-1',
+      componentType: 'hull',
+      tierIndex: 1,
+      transferComponents: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.podSalvage).toBe(10);  // 5 pods × 2 cr
+    expect(result.netCost).toBe(540);    // 50 + 500 - 10
+  });
+
+  it('SP.YARD.S scrap: no pod salvage when transferComponents is false', async () => {
+    // If not transferring, pods stay — no salvage
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(0, 1000, { cargoPods: 10 }));
+    prisma.$transaction.mockResolvedValue(undefined);
+
+    const result = await purchaseShipComponentFn({
+      characterId: 'char-1',
+      componentType: 'hull',
+      tierIndex: 1,
+      transferComponents: false,
+    });
+    expect(result.success).toBe(true);
+    expect(result.podSalvage).toBe(0);
+    expect(result.netCost).toBe(50); // no transfer fee, no salvage
   });
 
   it('hull replacement without transfer flag has no extra charge', async () => {
@@ -876,5 +941,435 @@ describe('SP.YARD Main Office — purchaseShipComponent', () => {
     });
     expect(result.success).toBe(false);
     expect(result.error).toBe('Not enough credits');
+  });
+
+  // SP.YARD.S scrap2 (lines 301-302): if q1>0 void cargo contract on hull scrap
+  // Original: q1=0:q2=0:q3=0:q4=0:q5=0:q6=0:q2$="":q4$=""
+  it('SP.YARD.S scrap2: contractVoided=true when hull scrap with active cargo contract', async () => {
+    prisma.character.findUnique.mockResolvedValue({
+      ...makeCharWithShip(0, 2000),
+      cargoPods: 5,
+      cargoType: 3,
+      destination: 7,
+      cargoPayment: 1500,
+      cargoManifest: 'Ore Shipment',
+      missionType: 1,
+    });
+    prisma.$transaction.mockResolvedValue(undefined);
+
+    const result = await purchaseShipComponentFn({
+      characterId: 'char-1',
+      componentType: 'hull',
+      tierIndex: 1,
+      transferComponents: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.contractVoided).toBe(true);
+  });
+
+  it('SP.YARD.S scrap2: contractVoided=false when hull scrap but no active cargo (q1=0)', async () => {
+    prisma.character.findUnique.mockResolvedValue({
+      ...makeCharWithShip(0, 2000),
+      cargoPods: 0,
+      missionType: 1,
+    });
+    prisma.$transaction.mockResolvedValue(undefined);
+
+    const result = await purchaseShipComponentFn({
+      characterId: 'char-1',
+      componentType: 'hull',
+      tierIndex: 1,
+      transferComponents: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.contractVoided).toBe(false);
+  });
+
+  it('SP.YARD.S scrap2: contractVoided=false when hull purchase without transfer', async () => {
+    prisma.character.findUnique.mockResolvedValue({
+      ...makeCharWithShip(0, 2000),
+      cargoPods: 5,
+      missionType: 1,
+    });
+    prisma.$transaction.mockResolvedValue(undefined);
+
+    const result = await purchaseShipComponentFn({
+      characterId: 'char-1',
+      componentType: 'hull',
+      tierIndex: 1,
+      transferComponents: false,
+    });
+    expect(result.success).toBe(true);
+    expect(result.contractVoided).toBe(false);
+  });
+
+  it('SP.YARD.S scrap2: character update clears all cargo fields when contractVoided', async () => {
+    // SP.YARD.S:302: q1=0:q2=0:q3=0:q4=0:q5=0:q6=0:q2$="":q4$=""
+    // Modern: cargoPods/cargoType/destination/cargoPayment/cargoManifest/missionType all cleared
+    prisma.character.findUnique.mockResolvedValue({
+      ...makeCharWithShip(0, 2000),
+      cargoPods: 8,
+      cargoType: 2,
+      destination: 5,
+      cargoPayment: 3000,
+      cargoManifest: 'Medical Supplies',
+      missionType: 1,
+    });
+    prisma.ship.update.mockResolvedValue({});
+    prisma.character.update.mockResolvedValue({});
+    prisma.$transaction.mockImplementation(async (ops: any[]) => Promise.all(ops));
+
+    const result = await purchaseShipComponentFn({
+      characterId: 'char-1',
+      componentType: 'hull',
+      tierIndex: 1,
+      transferComponents: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.contractVoided).toBe(true);
+    expect(prisma.character.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cargoPods: 0,
+          cargoType: 0,
+          destination: 0,
+          cargoPayment: 0,
+          cargoManifest: null,
+          missionType: 0,
+        }),
+      })
+    );
+  });
+});
+
+// ============================================================================
+// SP.SPEED.S nemget: Cloaker stripping when STAR-BUSTER or ARCH-ANGEL installed
+// Original: if right$(xl$,1)="=" print "The Morton's Cloaker will be lost"
+// Cloaker is on shield slot (p1$="="). ARCH-ANGEL replaces shield → cloaker lost.
+// STAR-BUSTER replaces weapon → defensively stripped if hasCloaker is set.
+// ============================================================================
+
+describe('SP.SPEED.S nemget — cloaker stripped by STAR-BUSTER / ARCH-ANGEL', () => {
+  const upgradesCode = (() => {
+    const fs = require('fs');
+    const path = require('path');
+    return fs.readFileSync(
+      path.join(__dirname, '../src/game/systems/upgrades.ts'),
+      'utf-8'
+    );
+  })();
+
+  it('ARCH_ANGEL path checks cloaker strip (p1$ shield has "=" suffix in original)', () => {
+    // SP.SPEED.S nemget: xl$=p1$; if right$(xl$,1)="=" → cloaker lost
+    expect(upgradesCode).toContain("equipment === 'ARCH_ANGEL'");
+  });
+
+  it('STAR_BUSTER path also checks cloaker strip (xl$=w1$ defensive check)', () => {
+    expect(upgradesCode).toContain("equipment === 'STAR_BUSTER'");
+  });
+
+  it('sets hasCloaker = false when installing ARCH_ANGEL or STAR_BUSTER (SP.SPEED.S nemget)', () => {
+    expect(upgradesCode).toContain('shipUpdate.hasCloaker = false');
+  });
+
+  it('strips cloaker only when ship.hasCloaker is true (conditional check)', () => {
+    expect(upgradesCode).toContain('ship.hasCloaker');
+  });
+});
+
+// ============================================================================
+// SP.SPEED.S — New requirement guards added in regression audit
+// ============================================================================
+
+describe('SP.SPEED.S — purchaseSpecialEquipment requirement guards (regression audit)', () => {
+  let prisma: any;
+  let purchaseSpecialEquipmentFn: any;
+
+  const makeCharWithShip = (
+    creditsHigh: number,
+    creditsLow: number,
+    shipOverrides: Record<string, any> = {},
+    charOverrides: Record<string, any> = {}
+  ) => ({
+    id: 'char-1',
+    creditsHigh,
+    creditsLow,
+    score: 200,
+    isConqueror: false,
+    ...charOverrides,
+    ship: {
+      id: 'ship-1',
+      hullStrength: 2,     // small hull — valid for cloaker
+      hullCondition: 7,
+      shieldStrength: 5,   // shields present
+      shieldCondition: 9,
+      driveStrength: 30,   // for Astraxial Hull eligibility
+      driveCondition: 9,
+      weaponStrength: 5,
+      weaponCondition: 9,
+      lifeSupportStrength: 20,
+      lifeSupportCondition: 9,
+      lifeSupportName: 'LSS Model 2A',
+      hasCloaker: false,
+      hasAutoRepair: false,
+      hasStarBuster: false,
+      hasArchAngel: false,
+      isAstraxialHull: false,
+      hasTitaniumHull: false,
+      hasTransWarpDrive: false,
+      cargoPods: 0,
+      maxCargoPods: 10,
+      ...shipOverrides,
+    },
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const prismaMod = await import('../src/db/prisma');
+    prisma = prismaMod.prisma;
+    const upgradeMod = await import('../src/game/systems/upgrades');
+    purchaseSpecialEquipmentFn = upgradeMod.purchaseSpecialEquipment;
+  });
+
+  // ── SP.SPEED.S autorep line 74: if h1<1 → "Need a hull first" ────────────
+
+  it('AUTO_REPAIR: blocks install when hull strength is 0 (SP.SPEED.S autorep:74)', async () => {
+    // Original: if h1<1 print "Need a hull first":goto special
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(10, 0, { hullStrength: 0 })
+    );
+    const result = await purchaseSpecialEquipmentFn('char-1', 'AUTO_REPAIR');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('hull');
+  });
+
+  it('AUTO_REPAIR: allows install when hull strength > 0', async () => {
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(10, 0, { hullStrength: 10 })
+    );
+    prisma.$transaction.mockResolvedValue(undefined);
+    const result = await purchaseSpecialEquipmentFn('char-1', 'AUTO_REPAIR');
+    expect(result.success).toBe(true);
+  });
+
+  // ── SP.SPEED.S cloak line 102: if h1<1 → need hull before cloaker ────────
+
+  it('CLOAKER: blocks install when hull strength is 0 (SP.SPEED.S cloak:102)', async () => {
+    // Original: if h1<1 print "You need a ship's hull before we can help you!"
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(10, 0, { hullStrength: 0 })
+    );
+    const result = await purchaseSpecialEquipmentFn('char-1', 'CLOAKER');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("ship's hull");
+  });
+
+  // ── SP.SPEED.S cloak lines 108-109: if right$(p1$,2)="++" → won't fit ────
+
+  it('CLOAKER: blocks install when ARCH-ANGEL already installed (SP.SPEED.S cloak:108)', async () => {
+    // Original: if right$(p1$,2)="++" print "Cloaker won't fit on [p1$]"
+    // "++" means ARCH-ANGEL is on the shield slot
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(10, 0, { hasArchAngel: true })
+    );
+    const result = await purchaseSpecialEquipmentFn('char-1', 'CLOAKER');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Arch-Angel');
+  });
+
+  it('CLOAKER: allows install when no ARCH-ANGEL (SP.SPEED.S cloak:108)', async () => {
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(0, 1000)  // 500 cr for cloaker
+    );
+    prisma.$transaction.mockResolvedValue(undefined);
+    const result = await purchaseSpecialEquipmentFn('char-1', 'CLOAKER');
+    expect(result.success).toBe(true);
+  });
+
+  // ── SP.SPEED.S cloak line 122: p2=9:h2=9 — restores hull + shield condition ─
+
+  it('CLOAKER: restores hull condition to 9 on install (SP.SPEED.S cloak:122 h2=9)', async () => {
+    // Original: p1$=p1$+"=":p2=9:h2=9 — hull condition (h2) also set to 9
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(0, 1000, { hullCondition: 3 })
+    );
+    prisma.ship.update.mockResolvedValue({});
+    prisma.character.update.mockResolvedValue({});
+    prisma.$transaction.mockImplementation(async (ops: any[]) => Promise.all(ops));
+    await purchaseSpecialEquipmentFn('char-1', 'CLOAKER');
+    expect(prisma.ship.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ hullCondition: 9 }),
+      })
+    );
+  });
+
+  it('CLOAKER: restores shield condition to 9 on install (SP.SPEED.S cloak:122 p2=9)', async () => {
+    // Original: p2=9 — shield condition restored
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(0, 1000, { shieldCondition: 2 })
+    );
+    prisma.ship.update.mockResolvedValue({});
+    prisma.character.update.mockResolvedValue({});
+    prisma.$transaction.mockImplementation(async (ops: any[]) => Promise.all(ops));
+    await purchaseSpecialEquipmentFn('char-1', 'CLOAKER');
+    expect(prisma.ship.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ shieldCondition: 9 }),
+      })
+    );
+  });
+});
+
+// ============================================================================
+// SP.YARD.S main menu line 32: auto-strip cloaker when hull > 4
+// Original: if (h1>4) and (right$(p1$,1)="=") lw=len(p1$):lw=lw-1:p1$=left$(p1$,lw)
+// ============================================================================
+
+describe('SP.YARD.S main menu — auto-strip cloaker when hull exceeds tier 4', () => {
+  let prisma: any;
+  let purchaseShipComponentFn: any;
+
+  const makeCharWithShip = (
+    creditsHigh: number,
+    creditsLow: number,
+    shipOverrides: Record<string, any> = {}
+  ) => ({
+    id: 'char-1',
+    creditsHigh,
+    creditsLow,
+    cargoPods: 0,
+    ship: {
+      id: 'ship-1',
+      hullStrength: 4,
+      hullCondition: 9,
+      driveStrength: 0, driveCondition: 9,
+      cabinStrength: 0, cabinCondition: 9,
+      lifeSupportStrength: 0, lifeSupportCondition: 9,
+      weaponStrength: 0, weaponCondition: 9,
+      navigationStrength: 0, navigationCondition: 9,
+      roboticsStrength: 0, roboticsCondition: 9,
+      shieldStrength: 0, shieldCondition: 9,
+      cargoPods: 0,
+      maxCargoPods: 10,
+      hasTitaniumHull: false,
+      hasCloaker: true,  // cloaker installed
+      isAstraxialHull: false,
+      hullName: 'Viper',
+      driveName: null, cabinName: null, lifeSupportName: null,
+      weaponName: null, navigationName: null, roboticsName: null, shieldName: null,
+      ...shipOverrides,
+    },
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const prismaMod = await import('../src/db/prisma');
+    prisma = prismaMod.prisma;
+    const upgradeMod = await import('../src/game/systems/upgrades');
+    purchaseShipComponentFn = upgradeMod.purchaseShipComponent;
+  });
+
+  it('strips cloaker when new hull tier pushes strength > 4 (SP.YARD.S main:32)', async () => {
+    // Current hull=4, buying tier 5 hull → strength=50 → > 4 → strip cloaker
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(5, 0));
+    prisma.ship.update.mockResolvedValue({});
+    prisma.character.update.mockResolvedValue({});
+    prisma.$transaction.mockImplementation(async (ops: any[]) => Promise.all(ops));
+
+    await purchaseShipComponentFn({ characterId: 'char-1', componentType: 'hull', tierIndex: 5 });
+    expect(prisma.ship.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ hasCloaker: false }),
+      })
+    );
+  });
+
+  it('does NOT strip cloaker when new hull tier is tier 1 (strength=10 > 4 but no cloaker)', async () => {
+    // If no cloaker, no stripping needed
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(0, 500, { hasCloaker: false })
+    );
+    prisma.ship.update.mockResolvedValue({});
+    prisma.character.update.mockResolvedValue({});
+    prisma.$transaction.mockImplementation(async (ops: any[]) => Promise.all(ops));
+
+    await purchaseShipComponentFn({ characterId: 'char-1', componentType: 'hull', tierIndex: 1 });
+    const shipCall = prisma.ship.update.mock.calls[0];
+    // hasCloaker should NOT be in the update (no need to set it)
+    expect(shipCall?.[0]?.data?.hasCloaker).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// SP.SPEED.S upit — Life support strength cap at 50 for non-Chrysalis LSS
+// Original: if (left$(l1$,5)="LSS C") or (l1<51) return; l1=50
+// ============================================================================
+
+describe('SP.SPEED.S upit — Life support strength cap at 50', () => {
+  let prisma: any;
+  let upgradeShipComponentFn: any;
+
+  const makeCharWithShip = (
+    creditsHigh: number,
+    creditsLow: number,
+    shipOverrides: Record<string, any> = {}
+  ) => ({
+    id: 'char-1',
+    creditsHigh,
+    creditsLow,
+    ship: {
+      id: 'ship-1',
+      hullStrength: 20, hullCondition: 9,
+      driveStrength: 10, driveCondition: 9,
+      cabinStrength: 10, cabinCondition: 9,
+      lifeSupportStrength: 40, lifeSupportCondition: 9,
+      lifeSupportName: 'LSS Model 4A',
+      weaponStrength: 10, weaponCondition: 9,
+      navigationStrength: 10, navigationCondition: 9,
+      roboticsStrength: 10, roboticsCondition: 9,
+      shieldStrength: 10, shieldCondition: 9,
+      cargoPods: 0, maxCargoPods: 10,
+      hasTitaniumHull: false, isAstraxialHull: false,
+      ...shipOverrides,
+    },
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const prismaMod = await import('../src/db/prisma');
+    prisma = prismaMod.prisma;
+    const upgradeMod = await import('../src/game/systems/upgrades');
+    upgradeShipComponentFn = upgradeMod.upgradeShipComponent;
+  });
+
+  it('blocks LIFE_SUPPORT upgrade at strength 40 when non-Chrysalis (next step = 50, allowed)', async () => {
+    // LSS Model 4A at strength 40 → upgrade to 50 is OK (l1<51 → return in original, upgrade allowed)
+    prisma.character.findUnique.mockResolvedValue(makeCharWithShip(100, 0));
+    prisma.$transaction.mockResolvedValue(undefined);
+    const result = await upgradeShipComponentFn('char-1', 'LIFE_SUPPORT', 'STRENGTH');
+    expect(result.success).toBe(true);
+    expect(result.newStrength).toBe(50);
+  });
+
+  it('blocks LIFE_SUPPORT upgrade when current strength=50 and non-Chrysalis (would exceed 50)', async () => {
+    // LSS Model 5A at strength 50 → upgrade would be 60 > 50 → blocked
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(100, 0, { lifeSupportStrength: 50, lifeSupportName: 'LSS Model 5A' })
+    );
+    const result = await upgradeShipComponentFn('char-1', 'LIFE_SUPPORT', 'STRENGTH');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('50');
+  });
+
+  it('allows LIFE_SUPPORT upgrade beyond 50 when LSS Chrysalis ("LSS C" prefix)', async () => {
+    // SP.SPEED.S upit: if left$(l1$,5)="LSS C" → return (skip cap, upgrade OK)
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharWithShip(100, 0, { lifeSupportStrength: 50, lifeSupportName: 'LSS Chrysalis+*' })
+    );
+    prisma.$transaction.mockResolvedValue(undefined);
+    const result = await upgradeShipComponentFn('char-1', 'LIFE_SUPPORT', 'STRENGTH');
+    expect(result.success).toBe(true);
+    expect(result.newStrength).toBe(60);
   });
 });

@@ -196,11 +196,9 @@ export function TerminalComponent() {
     // where terminal mounts before the WebSocket is connected)
     const onAuth = (data: { success: boolean }) => {
       if (data.success) {
-        // Server now auto-sends main-menu on auth, but this ensures
-        // the correct screen is shown if currentScreen isn't main-menu
-        if (currentScreen !== 'main-menu') {
-          wsClient.requestScreen(currentScreen);
-        }
+        // Always enforce requesting the current screen on auth to avoid race conditions.
+        // It's fine if the server sends it twice.
+        wsClient.requestScreen(currentScreen);
       }
     };
     wsClient.on('authenticated', onAuth);

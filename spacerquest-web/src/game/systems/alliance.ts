@@ -49,6 +49,18 @@ export async function investInAlliance(characterId: string, amount: number) {
     })
   ]);
 
+  // SP.SAVE.S lines 119-120: news subroutine — post deposit event to alliance log
+  // Original: i$=" "+o6$+" "+ll$+"Deposits_"+yj$+" cr___"+zj$:gosub news
+  const allianceName = membership.alliance.replace(/_/g, ' ');
+  await prisma.gameLog.create({
+    data: {
+      type: 'ALLIANCE',
+      characterId,
+      message: ` ${allianceName} ${character.name}...Deposits ${amount} cr`,
+      metadata: { event: 'DEPOSIT', alliance: membership.alliance, amount },
+    },
+  });
+
   return { success: true, newBalance: normalizedHigh * 10000 + normalizedLow };
 }
 
@@ -96,19 +108,54 @@ export async function withdrawFromAlliance(characterId: string, amount: number) 
     })
   ]);
 
+  // SP.SAVE.S lines 88-89: news subroutine — post withdraw event to alliance log
+  // Original: i$=" "+o6$+" "+ll$+"Withdraws"+yj$+" cr___"+zj$:gosub news
+  const allianceName = membership.alliance.replace(/_/g, ' ');
+  await prisma.gameLog.create({
+    data: {
+      type: 'ALLIANCE',
+      characterId,
+      message: ` ${allianceName} ${character.name}...Withdraws ${amount} cr`,
+      metadata: { event: 'WITHDRAW', alliance: membership.alliance, amount },
+    },
+  });
+
   return { success: true, withdrawn: amount };
 }
 
 /**
- * Calculate DEFCON fortification cost per level (SP.VEST.S lines 83, 85).
- * Original: j=1 if o7<=9, j=2 if o7>9. Cost per level = j*10 * 10,000 cr.
- * Tier 1 (current DEFCON ≤ 9): 100,000 cr per level.
- * Tier 2 (current DEFCON > 9): 200,000 cr per level.
+ * Calculate DEFCON fortification cost tier (SP.VEST.S lines 83, 85).
+ * Original: j=1 if o7<=9, j=2 if o7>9.
+ * Returns j value (cost multiplier tier).
  */
-export function calculateDefconCostPerLevel(currentDefcon: number): number {
-  return currentDefcon > 9 ? 200000 : 100000;
+export function getDefconTier(currentDefcon: number): number {
+  return currentDefcon > 9 ? 2 : 1;
 }
 
+/**
+ * Calculate cost per level based on current DEFCON.
+ * Tier 1 (DEFCON 0-9): 100,000 cr per level (j=1, cost = j*100,000).
+ * Tier 2 (DEFCON 10-19): 200,000 cr per level (j=2, cost = j*100,000).
+ */
+export function calculateDefconCostPerLevel(currentDefcon: number): number {
+  return getDefconTier(currentDefcon) * 100000;
+}
+
+/**
+ * Invest in DEFCON fortification for an alliance-owned system.
+ *
+ * CRITICAL: Matches SP.VEST.S fortpass loop (lines 79-95) exactly:
+ *   1. System must be owned by player's alliance
+ *   2. Maximum DEFCON = 20 (line 82: if o7>19)
+ *   3. Cost tier: j=1 for DEFCON 0-9, j=2 for DEFCON 10-19 (line 83)
+ *   4. Asset requirement: (j*10) <= o3 — system assets must support level (line 84)
+ *   5. Cost deducted from SYSTEM ASSETS, not player credits (line 89: o3=(o3-(10*j)))
+ *   6. Each level processed individually (loop: goto fortpass)
+ *
+ * @param characterId - The character requesting fortification
+ * @param systemId - The star system to fortify (1-14)
+ * @param levels - How many DEFCON levels to add
+ */
 export async function investInDefcon(characterId: string, systemId: number, levels: number) {
   // Original SP.VEST.S line 219: only systems 1-14 are investable
   if (systemId < 1 || systemId > 14) {
@@ -131,105 +178,84 @@ export async function investInDefcon(characterId: string, systemId: number, leve
     return { success: false, error: 'Not in an alliance' };
   }
 
-  // Get or create AllianceSystem to know current DEFCON before computing cost
-  let allianceSystem = await prisma.allianceSystem.findUnique({
+  const allianceSystem = await prisma.allianceSystem.findUnique({
     where: { systemId },
   });
 
-  const currentDefcon = allianceSystem ? allianceSystem.defconLevel : 0;
-
-  // SP.VEST.S line 82: maximum DEFCON is 20
-  if (currentDefcon >= DEFCON_MAX) {
-    return { success: false, error: `Maximum DEFCON (${DEFCON_MAX}) already achieved for system ${systemId}` };
-  }
-
-  // Clamp levels so we don't exceed DEFCON_MAX
-  const effectiveLevels = Math.min(levels, DEFCON_MAX - currentDefcon);
-
-  // SP.VEST.S lines 83, 85: cost per level is tier-based.
-  // j=1 if currentDefcon ≤ 9, j=2 if currentDefcon > 9.
-  // Each fortification costs j * 100,000 cr (= 10*j * 10,000 in original units).
-  const costPerLevel = calculateDefconCostPerLevel(currentDefcon);
-  const cost = effectiveLevels * costPerLevel;
-
-  // Deduct from player's credits
-  const { success: canAfford, high, low } = subtractCredits(
-    character.creditsHigh,
-    character.creditsLow,
-    cost
-  );
-
-  if (!canAfford) {
-    return { success: false, error: 'Not enough credits for this DEFCON increase' };
-  }
-
+  // SP.VEST.S line 71: if o4$="" → system must be owned
   if (!allianceSystem) {
-    allianceSystem = await prisma.allianceSystem.create({
-      data: {
-        systemId,
-        alliance: membership.alliance,
-        defconLevel: 1 + effectiveLevels,
-        ownerCharacterId: characterId,
-      },
-    });
-  } else {
-    // Port Takeover Logic
-    if (allianceSystem.alliance !== membership.alliance) {
-      if (allianceSystem.defconLevel > effectiveLevels) {
-        // Did not beat existing DEFCON, just weaken it
-        await prisma.$transaction([
-          prisma.character.update({
-            where: { id: characterId },
-            data: { creditsHigh: high, creditsLow: low },
-          }),
-          prisma.allianceSystem.update({
-            where: { systemId },
-            data: { defconLevel: allianceSystem.defconLevel - effectiveLevels },
-          }),
-        ]);
-        return { success: true, message: `Weakened enemy DEFCON. It is now level ${allianceSystem.defconLevel - effectiveLevels}.` };
-      } else {
-        // Takeover success
-        const remainingLevels = effectiveLevels - allianceSystem.defconLevel;
-        allianceSystem = await prisma.allianceSystem.update({
-          where: { systemId },
-          data: {
-            alliance: membership.alliance,
-            defconLevel: 1 + remainingLevels,
-            ownerCharacterId: characterId,
-            lastTakeoverAttempt: new Date(),
-          },
-        });
-
-        // Log takeover
-        await prisma.gameLog.create({
-          data: {
-            type: 'ALLIANCE',
-            systemId,
-            message: `${membership.alliance} has forcibly TAKEN OVER System ${systemId}!`,
-            metadata: { event: 'TAKEOVER', systemId, newAlliance: membership.alliance },
-          },
-        });
-      }
-    } else {
-      // Friendly: just add levels (clamped to DEFCON_MAX)
-      const newDefcon = Math.min(allianceSystem.defconLevel + effectiveLevels, DEFCON_MAX);
-      allianceSystem = await prisma.allianceSystem.update({
-        where: { systemId },
-        data: {
-          defconLevel: newDefcon,
-        },
-      });
-    }
+    const systemName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+    return { success: false, error: `${systemName} is open for investment` };
   }
 
-  // Finalize credit deduction for non-weakening cases
-  await prisma.character.update({
-    where: { id: characterId },
-    data: { creditsHigh: high, creditsLow: low },
+  // SP.VEST.S line 72: must be your alliance's system
+  if (allianceSystem.alliance !== membership.alliance) {
+    return { success: false, error: `You are not in The ${allianceSystem.alliance}` };
+  }
+
+  let currentDefcon = allianceSystem.defconLevel;
+  let assetsHigh = allianceSystem.assetsHigh;
+  let assetsLow = allianceSystem.assetsLow;
+  let levelsAdded = 0;
+
+  // SP.VEST.S fortpass loop (lines 80-90): process each level individually
+  // Original loop: check max, compute j, check assets, deduct from assets, increment DEFCON
+  for (let i = 0; i < levels; i++) {
+    // SP.VEST.S line 82: if o7>19 → maximum DEFCON achieved
+    if (currentDefcon >= DEFCON_MAX) {
+      break;
+    }
+
+    // SP.VEST.S line 83: j=1:if o7>9 j=2
+    const j = getDefconTier(currentDefcon);
+
+    // SP.VEST.S line 84: if (j*10)>o3 → need more assets
+    if ((j * 10) > assetsHigh) {
+      if (levelsAdded === 0) {
+        const systemName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+        return { success: false, error: `Need more assets in ${systemName}` };
+      }
+      break; // Partial fortification: applied what we could
+    }
+
+    // SP.VEST.S line 89: o7=(o7+1):o3=(o3-(10*j))
+    currentDefcon += 1;
+    assetsHigh -= (10 * j);
+    levelsAdded += 1;
+  }
+
+  if (levelsAdded === 0) {
+    return { success: false, error: 'No DEFCON levels could be added' };
+  }
+
+  // Persist updated DEFCON and assets
+  await prisma.allianceSystem.update({
+    where: { systemId },
+    data: {
+      defconLevel: currentDefcon,
+      assetsHigh: assetsHigh,
+      assetsLow: assetsLow,
+    },
   });
 
-  return { success: true, message: `System ${systemId} DEFCON is now ${allianceSystem.defconLevel} for ${allianceSystem.alliance}.` };
+  // SP.VEST.S line 93-94: news log and display
+  const systemName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+  await prisma.gameLog.create({
+    data: {
+      type: 'ALLIANCE',
+      systemId,
+      message: `: ${character.name} - ${membership.alliance} - Increases ${systemName} DEFCON to: ${currentDefcon}`,
+      metadata: { event: 'DEFCON', systemId, newDefcon: currentDefcon, levelsAdded },
+    },
+  });
+
+  // SP.VEST.S line 94: weaponry and shielding = o7 * 100 each
+  return {
+    success: true,
+    message: `${systemName} DEFCON is now ${currentDefcon}.\r\nCurrent DEFCON: Weaponry:____${currentDefcon}00______Shielding:____${currentDefcon}00`,
+    newDefcon: currentDefcon,
+    levelsAdded,
+  };
 }
 
 // ============================================================================
@@ -240,8 +266,9 @@ export async function investInDefcon(characterId: string, systemId: number, leve
  * Acquire an unowned star system for the player's alliance.
  * Original flow: costs 10,000 cr startup, player becomes CEO, alliance takes ownership.
  * Sets starting assets to 1 (= 10,000 cr in 10k units).
+ * Also sets account password for fortification/withdrawals (SP.VEST.S line 67: gosub passwd).
  */
-export async function acquireSystem(characterId: string, systemId: number) {
+export async function acquireSystem(characterId: string, systemId: number, password?: string) {
   if (systemId < 1 || systemId > 14) {
     return { success: false, error: 'System must be 1–14' };
   }
@@ -286,6 +313,7 @@ export async function acquireSystem(characterId: string, systemId: number) {
   }
 
   // SP.VEST.S line 63: o3=1 (starting assets = 1 unit of 10k = 10,000 cr)
+  // SP.VEST.S line 67: o7$ = password (account password for fortification/withdrawals)
   await prisma.$transaction([
     prisma.character.update({
       where: { id: characterId },
@@ -299,6 +327,7 @@ export async function acquireSystem(characterId: string, systemId: number) {
         defconLevel: 1,
         assetsHigh: 1, // o3=1
         assetsLow: 0,  // o4=0
+        password: password || null, // SP.VEST.S line 67: gosub passwd
       },
     }),
   ]);
@@ -378,14 +407,20 @@ export async function hostileTakeover(characterId: string, systemId: number) {
     return { success: false, error: `${systemName} already belongs to your alliance` };
   }
 
-  // SP.VEST.S line 176: if o3>=200 → safe from takeover (assets ≥ 2,000,000 cr)
-  if (allianceSystem.assetsHigh >= 200) {
-    return { success: false, error: `Assets greater than 1,999,999...${systemName} safe from Take-Over` };
+  // SP.VEST.S takeover eligibility (lines 170-173):
+  //   line 170: if (o3<1) and (o4<10000) goto invtak1  → bankrupt → eligible
+  //   line 171: if o3<10 → "Assets need to be > 99,999 for Take-Over" → reject
+  //   line 172: if o3<200 goto invtak1  → assets 10-199 (100k-1.99M) → eligible
+  //   line 173: "Assets greater than 1,999,999...safe from Take-Over" → reject
+  const isBankrupt = allianceSystem.assetsHigh < 1 && allianceSystem.assetsLow < 10000;
+  if (!isBankrupt) {
+    if (allianceSystem.assetsHigh >= 200) {
+      return { success: false, error: `Assets greater than 1,999,999...${systemName} safe from Take-Over` };
+    }
+    if (allianceSystem.assetsHigh < 10) {
+      return { success: false, error: `${systemName}'s Assets need to be > 99,999 for Take-Over` };
+    }
   }
-
-  // SP.VEST.S lines 173-174: eligibility check
-  // Must have assets between 10k-199k range OR o3<1 and o4<10000
-  // (Systems with very low assets are also vulnerable)
 
   const cost = calculateTakeoverCost(allianceSystem.assetsHigh);
 

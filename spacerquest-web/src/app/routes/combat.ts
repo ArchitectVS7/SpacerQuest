@@ -76,13 +76,16 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
         navigationCondition: character.ship.navigationCondition,
         driveStrength: character.ship.driveStrength,
         driveCondition: character.ship.driveCondition,
+        hullStrength: character.ship.hullStrength,
+        hullCondition: character.ship.hullCondition,
         hasAutoRepair: character.ship.hasAutoRepair,
       },
       character.rank,
-      character.battlesWon
+      character.battlesWon,
+      character.tripCount,
     );
 
-    enemy.battleFactor = calculateEnemyBattleFactor(enemy);
+    enemy.battleFactor = calculateEnemyBattleFactor(enemy, character.tripCount);
 
     // Create CombatSession for disconnect mitigation
     await prisma.combatSession.upsert({
@@ -206,10 +209,13 @@ export async function registerCombatRoutes(fastify: FastifyInstance) {
         navigationCondition: character.ship.navigationCondition,
         driveStrength: character.ship.driveStrength,
         driveCondition: character.ship.driveCondition,
+        hullStrength: character.ship.hullStrength,
+        hullCondition: character.ship.hullCondition,
         hasAutoRepair: character.ship.hasAutoRepair,
       },
       character.rank,
-      character.battlesWon
+      character.battlesWon,
+      character.tripCount,
     );
 
     const combatRound = processCombatRound(

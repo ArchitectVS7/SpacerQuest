@@ -12,6 +12,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 
 vi.mock('../src/db/prisma', () => ({
   prisma: {
@@ -190,5 +192,48 @@ describe('ShipNameScreen (SP.REG.S shipname subroutine)', () => {
     expect(result.output).toContain('Enter the new name'); // re-prompt
     expect(result.nextScreen).toBeUndefined();
     expect(prisma.character.update).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// SP.YARD.S alliance ship-name suffix — hull replacement parity
+// SP.YARD.S:323: if b=1 s1=0:gosub shipname
+//   → before prompt, reads zn (alliance suffix) from right$(nz$,2)
+//   → after confirmation, appends: if zn=1 nz$=nz$+"-+" etc.
+//
+// Modern architecture: allianceSymbol stored separately in Character.allianceSymbol
+// (NOT embedded in shipName), so hull replacement can NEVER strip the suffix.
+// SP.YARD.S parity: upgrades.ts purchaseShipComponent does NOT modify allianceSymbol.
+// ============================================================================
+
+describe('SP.YARD.S alliance suffix after hull replacement parity', () => {
+  it('upgrades.ts purchaseShipComponent does not modify allianceSymbol (suffix always preserved)', () => {
+    const upgradesCode = fs.readFileSync(
+      path.join(__dirname, '../src/game/systems/upgrades.ts'),
+      'utf-8'
+    );
+    // purchaseShipComponent should never touch allianceSymbol
+    expect(upgradesCode).not.toContain('allianceSymbol');
+  });
+
+  it('schema stores allianceSymbol as separate field on Character (not embedded in shipName)', () => {
+    const schemaCode = fs.readFileSync(
+      path.join(__dirname, '../prisma/schema.prisma'),
+      'utf-8'
+    );
+    expect(schemaCode).toContain('allianceSymbol');
+    expect(schemaCode).toContain('shipName');
+    // shipName and allianceSymbol are distinct fields — suffix cannot be lost on rename
+    const allianceSymbolLine = schemaCode.split('\n').find(l => l.includes('allianceSymbol') && l.includes('AllianceType'));
+    expect(allianceSymbolLine).toBeDefined();
+  });
+
+  it('ship-name.ts notes architectural deviation: allianceSymbol is separate (SP.YARD.S zn preservation)', () => {
+    const shipNameCode = fs.readFileSync(
+      path.join(__dirname, '../src/game/screens/ship-name.ts'),
+      'utf-8'
+    );
+    // Comment in ship-name.ts documents the architectural equivalence
+    expect(shipNameCode).toContain('allianceSymbol');
   });
 });

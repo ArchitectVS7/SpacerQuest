@@ -51,6 +51,14 @@ export async function getTopGunRankings(): Promise<{ categories: TopGunCategory[
   // ── Ship component categories (original SP.TOP.S lines 48-68) ───────────
   // Each category: find the character with the highest strength×condition product.
 
+  // SP.TOP.S tie logic (lines 49,52,55,58,61,64,67,72):
+  //   if (td=i) and (len(td$)<40) td$=td$+"/"+nz$   ← tie: append ship name
+  //   if td<i td$=nz$:td=i                           ← new leader: replace
+  function appendTie(leader: string, shipName: string): string {
+    if (leader.length < 40) return leader + '/' + shipName;
+    return leader; // cap at 40 chars
+  }
+
   function bestByComponent(
     field: 'drive' | 'cabin' | 'lifeSupport' | 'weapon' | 'navigation' | 'robotics' | 'shield' | 'hull',
   ): { shipName: string; value: number } {
@@ -71,7 +79,9 @@ export async function getTopGunRankings(): Promise<{ categories: TopGunCategory[
         default: continue;
       }
       const score = tgfx(strength, condition);
-      if (score > best.value) {
+      if (score > 0 && score === best.value) {
+        best = { shipName: appendTie(best.shipName, c.shipName), value: score };
+      } else if (score > best.value) {
         best = { shipName: c.shipName, value: score };
       }
     }
@@ -94,7 +104,9 @@ export async function getTopGunRankings(): Promise<{ categories: TopGunCategory[
         tgfx(s.navigationStrength,  s.navigationCondition)  +
         tgfx(s.roboticsStrength,    s.roboticsCondition)    +
         tgfx(s.shieldStrength,      s.shieldCondition);
-      if (score > best.value) {
+      if (score > 0 && score === best.value) {
+        best = { shipName: appendTie(best.shipName, c.shipName), value: score };
+      } else if (score > best.value) {
         best = { shipName: c.shipName, value: score };
       }
     }

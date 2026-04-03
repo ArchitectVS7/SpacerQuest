@@ -262,6 +262,8 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
     const fineResult = payFine(character.creditsHigh, character.creditsLow, crimeType);
     const releasedName = releasePlayer(character.name);
 
+    // Original SP.END.S:270 — on release: kk=0:pp=0:pb=0:sp=1:sp$="Sun-3"
+    // Reset mission type (kk=0), extra-curricular mode (pp=0), and teleport to Sun-3 (sp=1).
     await prisma.character.update({
       where: { id: character.id },
       data: {
@@ -269,6 +271,9 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
         creditsLow: fineResult.creditsLow,
         crimeType: null,
         name: releasedName,
+        currentSystem: 1,          // sp=1 → Sun-3
+        missionType: 0,            // kk=0 → no active mission
+        extraCurricularMode: null, // pp=0 → no active mode
       },
     });
 
@@ -324,11 +329,15 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
           creditsLow: deductResult.low,
         },
       }),
+      // Original SP.END.S:270 — on release: kk=0:pp=0:sp=1:sp$="Sun-3"
       prisma.character.update({
         where: { id: target.id },
         data: {
           crimeType: null,
           name: releasedName,
+          currentSystem: 1,          // sp=1 → Sun-3
+          missionType: 0,            // kk=0 → no active mission
+          extraCurricularMode: null, // pp=0 → no active mode
         },
       }),
     ]);

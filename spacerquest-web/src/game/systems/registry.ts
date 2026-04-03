@@ -40,18 +40,22 @@ export async function registerCharacter(userId: string, name: string, shipName: 
     },
   });
   
+  // Original SP.SYSOP.S pstat subroutine (lines 277-285):
+  // h1=d1=c1=l1=w1=n1=r1=p1=0, h2=d2=c2=l2=w2=n2=r2=p2=0, f1=0, s1=0
+  // All component names blank. Player must visit Shipyard first.
+  // SP.LINK lkcargo (line 227): "if h1<1 → A space ship is required!"
   await prisma.ship.create({
     data: {
       characterId: character.id,
-      hullStrength: 5, hullCondition: 9,
-      driveStrength: 5, driveCondition: 9,
-      cabinStrength: 1, cabinCondition: 9,
-      lifeSupportStrength: 5, lifeSupportCondition: 9,
-      weaponStrength: 1, weaponCondition: 9,
-      navigationStrength: 5, navigationCondition: 9,
-      roboticsStrength: 1, roboticsCondition: 9,
-      shieldStrength: 1, shieldCondition: 9,
-      fuel: 50, cargoPods: 0, maxCargoPods: 1,
+      hullStrength: 0, hullCondition: 0,
+      driveStrength: 0, driveCondition: 0,
+      cabinStrength: 0, cabinCondition: 0,
+      lifeSupportStrength: 0, lifeSupportCondition: 0,
+      weaponStrength: 0, weaponCondition: 0,
+      navigationStrength: 0, navigationCondition: 0,
+      roboticsStrength: 0, roboticsCondition: 0,
+      shieldStrength: 0, shieldCondition: 0,
+      fuel: 0, cargoPods: 0, maxCargoPods: 0,
     },
   });
   

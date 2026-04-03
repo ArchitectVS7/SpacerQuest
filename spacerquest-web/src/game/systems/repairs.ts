@@ -15,10 +15,102 @@
 import { prisma } from '../../db/prisma.js';
 import { getTotalCredits, subtractCredits } from '../utils.js';
 
-export type ComponentKey = 'hull' | 'drive' | 'cabin' | 'lifeSupport' | 'weapon' | 'navigation' | 'robotics' | 'shield';
+export type ComponentKey = 'hull' | 'drive' | 'cabin' | 'lifeSupport' | 'weapon' | 'navigation' | 'robotics' | 'shield' | 'cargoPods';
+
+// SP.DAMAGE.S:28-29: ri$ and jk$ — junk gate error message
+export const JUNK_REPAIR_ERROR = 'Too badly damaged to repair...recommend replacement';
 
 const INSPECTION_FEE = 100; // "100 credits just to put your old tub up on the rack"
 const REBUILD_FEE = 2000;   // Extra charge when condition=0 (fully destroyed)
+
+// ============================================================================
+// ENHANCEMENT STRIPPING (SP.DAMAGE.S enca/enhc subroutines, lines 86-96, 172-182)
+// ============================================================================
+
+export interface EnhancementCheckResult {
+  name: string;
+  strength: number;
+  /** How many strength points were subtracted (0 or 10) */
+  penalty: number;
+  stripped: boolean;
+}
+
+/**
+ * Apply the enca/enhc logic before repairing a component at condition=0.
+ *
+ * Original SP.DAMAGE.S enca (line 86-96):
+ *   if x>0 a=0:return             ← if condition > 0, no stripping
+ *   if right$(l$,2)<>"+*" a=0:return  ← only strip "+*" (Titanium) enhancements
+ *   l=len(l$):l=l-2
+ *   a$=left$(l$,l):l$=a$:a=10    ← strip "+*", set strength penalty a=10
+ *   if j<10 j=0:a=0              ← if strength < 10, can't save, zero out
+ *   print "Unable to save enhancement...sorry"
+ *
+ * @param name      Component name string (may end in "+*")
+ * @param strength  Current component strength (j in original)
+ * @param condition Current component condition (x in original)
+ */
+export function checkEnhancementStripping(
+  name: string,
+  strength: number,
+  condition: number,
+): EnhancementCheckResult {
+  // if condition > 0, no stripping needed
+  if (condition > 0) {
+    return { name, strength, penalty: 0, stripped: false };
+  }
+  // only strip if name ends with "+*" (Titanium enhancement marker)
+  if (!name.endsWith('+*')) {
+    return { name, strength, penalty: 0, stripped: false };
+  }
+  // Strip the "+*" suffix
+  const strippedName = name.slice(0, -2);
+  // if strength < 10, component cannot be saved at all (j=0, a=0)
+  if (strength < 10) {
+    return { name: strippedName, strength: 0, penalty: 0, stripped: true };
+  }
+  // Apply penalty of 10 strength points
+  return { name: strippedName, strength: strength - 10, penalty: 10, stripped: true };
+}
+
+// ============================================================================
+// HULL-STRENGTH CAPS (SP.DAMAGE.S spfix subroutine, lines 113-115)
+// ============================================================================
+
+export interface HullCapResult {
+  /** Updated strength values per component (only for components that were capped) */
+  updates: Record<string, number>;
+  /** Number of components that exceeded the cap */
+  cappedCount: number;
+}
+
+/**
+ * Enforce hull-based component strength caps (SP.DAMAGE.S spfix lines 113-115).
+ *
+ * Original:
+ *   if (h1<10) and (j>99) di=di+1:j=99   ← small hull: cap at 99
+ *   if (h1>9) and (j>199) di=di+1:j=199  ← large hull: cap at 199
+ *
+ * Called during damage assessment display, modifying actual strength values.
+ *
+ * @param hullStrength  h1 — player's hull strength
+ * @param components    Map of {strengthField: currentStrength} for all components
+ */
+export function applyHullStrengthCaps(
+  hullStrength: number,
+  components: Record<string, number>,
+): HullCapResult {
+  const maxStrength = hullStrength >= 10 ? 199 : 99;
+  const updates: Record<string, number> = {};
+  let cappedCount = 0;
+  for (const [field, strength] of Object.entries(components)) {
+    if (strength > maxStrength) {
+      updates[field] = maxStrength;
+      cappedCount++;
+    }
+  }
+  return { updates, cappedCount };
+}
 
 /**
  * Calculate cost to repair a component.
@@ -33,6 +125,10 @@ function componentRepairCost(strength: number, condition: number, units: number)
  * Repair all damaged components.
  * Charges 100 cr inspection fee + (damage units * strength + rebuild fee per component).
  * Original: SP.DAMAGE.S ala/alr/repauto subroutines.
+ *
+ * Also applies:
+ * - Enhancement stripping (enca/enhc): if condition=0 and name ends "+*", strip enhancement and reduce strength by 10 (SP.DAMAGE.S:172-182)
+ * - Hull strength caps (spfix): enforced when damage assessment is run (SP.DAMAGE.S:113-115)
  */
 export async function repairAllComponents(characterId: string) {
   const character = await prisma.character.findUnique({
@@ -47,24 +143,55 @@ export async function repairAllComponents(characterId: string) {
   const ship = character.ship;
   const components: ComponentKey[] = ['hull', 'drive', 'cabin', 'lifeSupport', 'weapon', 'navigation', 'robotics', 'shield'];
 
-  let repairCost = 0;
+  // Apply hull strength caps first (SP.DAMAGE.S spfix lines 113-115)
+  const compStrengths: Record<string, number> = {};
   for (const comp of components) {
-    const strength = ship[`${comp}Strength` as keyof typeof ship] as number;
+    compStrengths[`${comp}Strength`] = ship[`${comp}Strength` as keyof typeof ship] as number;
+  }
+  const { updates: capUpdates } = applyHullStrengthCaps(ship.hullStrength, compStrengths);
+  const effectiveStrengths: Record<string, number> = { ...compStrengths, ...capUpdates };
+
+  // Apply enhancement stripping and compute repair cost
+  let repairCost = 0;
+  const updateData: Record<string, number | string> = {};
+  const strippedComponents: string[] = [];
+
+  for (const comp of components) {
+    let strength = effectiveStrengths[`${comp}Strength`];
     const condition = ship[`${comp}Condition` as keyof typeof ship] as number;
-    if (condition < 9) {
+    const nameField = `${comp}Name`;
+    const name = (ship[nameField as keyof typeof ship] as string) ?? '';
+
+    // SP.DAMAGE.S enhc:175 — if l$=jk$ goto ala (skip Junk components in repair-all)
+    // Junk = strength===0: too badly damaged, cannot repair (recommend replacement)
+    if (strength === 0) {
+      continue;
+    }
+
+    // Enhancement stripping (enca/enhc): only applies when condition=0
+    if (condition === 0 && name) {
+      const ec = checkEnhancementStripping(name, strength, condition);
+      if (ec.stripped) {
+        updateData[nameField] = ec.name;
+        updateData[`${comp}Strength`] = ec.strength;
+        strength = ec.strength;
+        strippedComponents.push(comp);
+      }
+    }
+
+    if (condition < 9 && strength > 0) {
       repairCost += componentRepairCost(strength, condition, 9 - condition);
     }
+    updateData[`${comp}Condition`] = 9;
   }
+
+  // Apply hull caps to strength fields in updateData
+  Object.assign(updateData, capUpdates);
 
   const totalCost = INSPECTION_FEE + repairCost;
   const totalCredits = getTotalCredits(character.creditsHigh, character.creditsLow);
   if (totalCredits < totalCost) {
     return { success: false, error: `Not enough credits. Repair cost: ${repairCost} cr + ${INSPECTION_FEE} cr inspection fee` };
-  }
-
-  const updateData: Record<string, number> = {};
-  for (const comp of components) {
-    updateData[`${comp}Condition`] = 9;
   }
 
   const { high, low } = subtractCredits(character.creditsHigh, character.creditsLow, totalCost);
@@ -80,7 +207,10 @@ export async function repairAllComponents(characterId: string) {
     })
   ]);
 
-  return { success: true, cost: totalCost, repairCost, inspectionFee: INSPECTION_FEE, message: 'All components repaired to full condition!' };
+  const msg = strippedComponents.length > 0
+    ? `All components repaired. Enhancement stripped on: ${strippedComponents.join(', ')}`
+    : 'All components repaired to full condition!';
+  return { success: true, cost: totalCost, repairCost, inspectionFee: INSPECTION_FEE, message: msg };
 }
 
 /**
@@ -160,12 +290,20 @@ export async function repairRimComponent(
  * Original: SP.DAMAGE.S repo subroutine — "(A)ll DX  (S)ingle DX  [Q]uit"
  * mode='single' → repair 1 DX unit (original: y=1)
  * mode='all'    → repair all damage (original: y=(9-x))
+ *
+ * Also applies enhancement stripping (enca): if condition=0 and name ends "+*",
+ * strip enhancement and reduce strength by 10 before repair (SP.DAMAGE.S:86-96).
  */
 export async function repairSingleComponent(
   characterId: string,
   component: ComponentKey,
   mode: 'single' | 'all' = 'all'
 ) {
+  // SP.DAMAGE.S:83 — if i=9 print "Pods repaired free": no cost, no update
+  if (component === 'cargoPods') {
+    return { success: true, cost: 0, newCondition: 9, message: 'Pods repaired free' };
+  }
+
   const character = await prisma.character.findUnique({
     where: { id: characterId },
     include: { ship: true },
@@ -176,11 +314,27 @@ export async function repairSingleComponent(
   }
 
   const ship = character.ship;
-  const strength = ship[`${component}Strength` as keyof typeof ship] as number;
+  let strength = ship[`${component}Strength` as keyof typeof ship] as number;
   const condition = ship[`${component}Condition` as keyof typeof ship] as number;
+
+  // SP.DAMAGE.S enca:88 — if l$=jk$ print l$;ri$:pop:goto rep1 (Junk = strength 0: too badly damaged)
+  if (strength === 0) {
+    return { success: false, error: JUNK_REPAIR_ERROR };
+  }
 
   if (condition >= 9) {
     return { success: true, cost: 0, newCondition: 9, message: `${component} needs no repair` };
+  }
+
+  // Enhancement stripping (enca): applied before repair when condition=0
+  const nameField = `${component}Name`;
+  const name = (ship[nameField as keyof typeof ship] as string) ?? '';
+  const ec = checkEnhancementStripping(name, strength, condition);
+  const extraUpdates: Record<string, number | string> = {};
+  if (ec.stripped) {
+    strength = ec.strength;
+    extraUpdates[nameField] = ec.name;
+    extraUpdates[`${component}Strength`] = ec.strength;
   }
 
   const units = mode === 'single' ? 1 : (9 - condition);
@@ -197,7 +351,7 @@ export async function repairSingleComponent(
   await prisma.$transaction([
     prisma.ship.update({
       where: { id: ship.id },
-      data: { [`${component}Condition`]: newCondition },
+      data: { [`${component}Condition`]: newCondition, ...extraUpdates },
     }),
     prisma.character.update({
       where: { id: characterId },
@@ -205,5 +359,8 @@ export async function repairSingleComponent(
     }),
   ]);
 
-  return { success: true, cost, newCondition, message: `${component} repaired!` };
+  const msg = ec.stripped
+    ? `${component} repaired! Enhancement stripped (strength -10).`
+    : `${component} repaired!`;
+  return { success: true, cost, newCondition, message: msg };
 }

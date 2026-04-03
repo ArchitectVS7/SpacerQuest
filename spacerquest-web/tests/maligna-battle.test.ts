@@ -12,7 +12,24 @@
  *   lines 312-319: mallosex victory rewards
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+
+vi.mock('../src/db/prisma.js', () => ({
+  prisma: {
+    character: {
+      findUnique: vi.fn(),
+      update:     vi.fn(),
+    },
+    ship: {
+      update: vi.fn(),
+    },
+    gameLog: {
+      create: vi.fn(),
+    },
+  },
+}));
 import {
   initEnemyStats,
   calcPlayerWeapon,
@@ -98,6 +115,20 @@ describe('calcPlayerWeapon', () => {
   it('w2=0: x8=k8 (weapon condition at zero passes through strength)', () => {
     const { k8, x8 } = calcPlayerWeapon(10, 0, false);
     expect(x8).toBe(k8); // condition=0, so x8=k8 (from line 87 guard)
+  });
+
+  it('with alien weapon mark (hasWeaponMark): k8=(k8+150) — SP.MAL.S line 83', () => {
+    // Original: if left$(w1$,1)="?" k8=(k8+150)
+    // With weaponStrength=10, no STAR-BUSTER, but alien mark: k8=10+150=160
+    const { k8, x8 } = calcPlayerWeapon(10, 9, false, true);
+    expect(k8).toBe(160); // 10 + 150
+    expect(x8).toBe(1440); // 160 * 9
+  });
+
+  it('with both STAR-BUSTER and alien mark: k8=w1+18+150 — SP.MAL.S lines 82-83', () => {
+    // STAR-BUSTER applies first: k8=10+18=28, then alien mark: k8=28+150=178
+    const { k8 } = calcPlayerWeapon(10, 9, true, true);
+    expect(k8).toBe(178); // 10+18+150
   });
 });
 
@@ -262,5 +293,176 @@ describe('battle log', () => {
     }, alwaysMax);
     const lastLog = result.log[result.log.length - 1];
     expect(lastLog).toContain('Battle over');
+  });
+});
+
+// ============================================================================
+// SP.MAL.S nemgem subroutine — Nemesis Lattice Puzzle
+// SP.MAL.S:379-405: crystal lattice puzzle after defeating Nemesian Forces
+// ============================================================================
+
+describe('SP.MAL.S nemgem — Nemesis Lattice Puzzle (nemesis-lattice.ts)', () => {
+  // Source-code parity checks
+  const latticeCode = fs.readFileSync(
+    path.join(__dirname, '../src/game/screens/nemesis-lattice.ts'),
+    'utf-8'
+  );
+
+  it('source contains "INFINITY" as the correct answer (SP.MAL.S:385)', () => {
+    expect(latticeCode).toContain("=== 'INFINITY'");
+  });
+
+  it('source contains lattice shatters message (SP.MAL.S:402)', () => {
+    expect(latticeCode).toContain('crystal lattice shatters into fine dust');
+  });
+
+  it('source contains "Nothing happens!" for wrong answers (SP.MAL.S:396)', () => {
+    expect(latticeCode).toContain('.....Nothing happens!');
+  });
+
+  it('source contains FINIT hint "Very warm" (SP.MAL.S:388)', () => {
+    expect(latticeCode).toContain('Very warm');
+  });
+
+  it('source contains ETERN hint "no cigar" (SP.MAL.S:390)', () => {
+    expect(latticeCode).toContain('no cigar');
+  });
+
+  it('source contains "Leave without the jewels?" abandon prompt (SP.MAL.S:398)', () => {
+    expect(latticeCode).toContain('Leave without the jewels?');
+  });
+
+  it('source awards pendingLattice=false, score+25, promotions+1, tripCount=0 on solve (mallosex SP.MAL.S:316-321)', () => {
+    expect(latticeCode).toContain('pendingLattice: false');
+    expect(latticeCode).toContain('score: character.score + 25');
+    expect(latticeCode).toContain('promotions: character.promotions + 1');
+    expect(latticeCode).toContain('tripCount: 0');
+  });
+
+  it('source awards shieldStrength=25, weaponStrength=25, hasStarBuster, hasArchAngel on solve (SP.TOP.S:169-172)', () => {
+    expect(latticeCode).toContain('shieldStrength: 25');
+    expect(latticeCode).toContain('weaponStrength: 25');
+    expect(latticeCode).toContain('hasStarBuster: true');
+    expect(latticeCode).toContain('hasArchAngel: true');
+  });
+
+  it('source sets component names on gems award (SP.TOP.S:171 w1$="STAR-BUSTER++", p1$="ARCH-ANGEL++", l1$="LSS Chrysalis+*")', () => {
+    // These names drive gameplay guards (lifeSupportName startsWith "LSS C" = airlock immunity)
+    expect(latticeCode).toContain("weaponName: 'STAR-BUSTER++'");
+    expect(latticeCode).toContain("shieldName: 'ARCH-ANGEL++'");
+    expect(latticeCode).toContain("lifeSupportName: 'LSS Chrysalis+*'");
+  });
+
+  it('source clears cargoPods, cargoType, cargoPayment on gems zerout (SP.TOP.S:169 q1=0:q2=0:q5=0)', () => {
+    // Full zerout: q1=0, q2=0, q4=0, q5=0, q6=0
+    expect(latticeCode).toContain('cargoPods: 0');
+    expect(latticeCode).toContain('cargoType: 0');
+    expect(latticeCode).toContain('cargoPayment: 0');
+  });
+
+  it('source awards +150,000 cr (NEMESIS_REWARD_CREDITS) on solve (SP.TOP.S:169 g1+15)', () => {
+    expect(latticeCode).toContain('NEMESIS_REWARD_CREDITS');
+    expect(latticeCode).toContain('addCredits');
+  });
+
+  it('source contains awaitingAbandon state tracking for 3-attempt limit (SP.MAL.S:396 i<3)', () => {
+    expect(latticeCode).toContain('awaitingAbandon');
+    expect(latticeCode).toContain('attempts >= 3');
+  });
+
+  it('source abandons mission on Y (pendingLattice=false, missionType=0) — SP.MAL.S:399 pb=3:kk=1', () => {
+    expect(latticeCode).toContain("pendingLattice: false");
+    expect(latticeCode).toContain('missionType: 0');
+    expect(latticeCode).toContain("nextScreen: 'main-menu'");
+  });
+
+  // Behavioural tests using prisma mock
+  describe('screen behaviour', () => {
+    let prisma: any;
+
+    beforeEach(async () => {
+      const mod = await import('../src/db/prisma.js');
+      prisma = (mod as any).prisma;
+      vi.clearAllMocks();
+    });
+
+    it('render() resets state and shows lattice prompt', async () => {
+      const { NemesisLatticeScreen } = await import('../src/game/screens/nemesis-lattice.js');
+      const result = await NemesisLatticeScreen.render('test-char');
+      expect(result.output).toContain('What say you to The Lattice?');
+      expect(result.output).toContain('N E M E S I S');
+    });
+
+    it('handleInput("INFINITY") awards gems and routes to main-menu', async () => {
+      const { NemesisLatticeScreen } = await import('../src/game/screens/nemesis-lattice.js');
+      await NemesisLatticeScreen.render('char-inf');
+
+      prisma.character.findUnique.mockResolvedValue({
+        id: 'char-inf',
+        name: 'TestPilot',
+        score: 10,
+        creditsHigh: 0, creditsLow: 0,
+        promotions: 1, tripsCompleted: 5, tripCount: 2,
+        astrecsTraveled: 100,
+        ship: {
+          lifeSupportStrength: 10, lifeSupportCondition: 5,
+          shieldStrength: 10, shieldCondition: 5,
+          weaponStrength: 10, weaponCondition: 5,
+          hasStarBuster: false, hasArchAngel: false,
+        },
+      });
+      prisma.character.update.mockResolvedValue(undefined);
+      prisma.ship.update.mockResolvedValue(undefined);
+      prisma.gameLog.create.mockResolvedValue(undefined);
+
+      const result = await NemesisLatticeScreen.handleInput('char-inf', 'INFINITY');
+      expect(result.nextScreen).toBe('main-menu');
+      expect(result.output).toContain('crystal lattice shatters');
+      expect(result.output).toContain('150,000');
+    });
+
+    it('handleInput with wrong answer shows "Nothing happens!" and increments counter', async () => {
+      const { NemesisLatticeScreen } = await import('../src/game/screens/nemesis-lattice.js');
+      await NemesisLatticeScreen.render('char-wrong');
+
+      const result = await NemesisLatticeScreen.handleInput('char-wrong', 'WRONG');
+      expect(result.output).toContain('Nothing happens!');
+      expect(result.nextScreen).toBeUndefined();
+    });
+
+    it('handleInput with FINIT hint prints "Very warm" then "Nothing happens!" (fall-through)', async () => {
+      const { NemesisLatticeScreen } = await import('../src/game/screens/nemesis-lattice.js');
+      await NemesisLatticeScreen.render('char-hint');
+
+      const result = await NemesisLatticeScreen.handleInput('char-hint', 'FINITE');
+      expect(result.output).toContain('Very warm');
+      expect(result.output).toContain('Nothing happens!');
+    });
+
+    it('after 3 wrong answers, shows "Leave without the jewels?" abandon prompt (SP.MAL.S:396-398)', async () => {
+      const { NemesisLatticeScreen } = await import('../src/game/screens/nemesis-lattice.js');
+      await NemesisLatticeScreen.render('char-3x');
+
+      await NemesisLatticeScreen.handleInput('char-3x', 'WRONG1');
+      await NemesisLatticeScreen.handleInput('char-3x', 'WRONG2');
+      const result = await NemesisLatticeScreen.handleInput('char-3x', 'WRONG3');
+      expect(result.output).toContain('Leave without the jewels?');
+    });
+
+    it('Y after abandon prompt clears pendingLattice and routes main-menu (SP.MAL.S:399)', async () => {
+      const { NemesisLatticeScreen } = await import('../src/game/screens/nemesis-lattice.js');
+      await NemesisLatticeScreen.render('char-quit');
+
+      // QUIT → awaitingAbandon
+      await NemesisLatticeScreen.handleInput('char-quit', 'QUIT');
+
+      prisma.character.update.mockResolvedValue(undefined);
+      const result = await NemesisLatticeScreen.handleInput('char-quit', 'Y');
+      expect(result.nextScreen).toBe('main-menu');
+      // pendingLattice cleared
+      const updateCall = prisma.character.update.mock.calls[0][0];
+      expect(updateCall.data.pendingLattice).toBe(false);
+      expect(updateCall.data.missionType).toBe(0);
+    });
   });
 });

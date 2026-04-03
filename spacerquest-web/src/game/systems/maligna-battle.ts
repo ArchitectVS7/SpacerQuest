@@ -80,12 +80,14 @@ export function initEnemyStats(missionType: MalignaMissionType, defconLevel = 1)
  * Calculate player weapon effectiveness (k8, x8).
  * SP.MAL.S lines 82-83, 87.
  *
- * k8 = w1 + 18 if STAR-BUSTER, +150 if alien-enhanced (not in modern code)
- * x8 = k8 * w2 (if both > 0)
+ * k8 = w1 + 18 if STAR-BUSTER (line 82)
+ * k8 += 150 if alien-enhanced weapon (left$(w1$,1)="?") (line 83)
+ * x8 = k8 * w2 (if both > 0) (line 87)
  */
-export function calcPlayerWeapon(weaponStrength: number, weaponCondition: number, hasStarBuster: boolean): { k8: number; x8: number } {
+export function calcPlayerWeapon(weaponStrength: number, weaponCondition: number, hasStarBuster: boolean, hasWeaponMark = false): { k8: number; x8: number } {
   let k8 = weaponStrength;
   if (hasStarBuster) k8 = weaponStrength + 18;  // SP.MAL.S line 82
+  if (hasWeaponMark) k8 = k8 + 150;            // SP.MAL.S line 83: if left$(w1$,1)="?" k8=(k8+150)
   const x8 = k8 > 0 && weaponCondition > 0 ? k8 * weaponCondition : k8;  // line 87
   return { k8, x8 };
 }
@@ -181,6 +183,7 @@ export function simulateMalignaBattle(
     shieldCondition: number;
     hasStarBuster: boolean;
     hasArchAngel: boolean;
+    hasWeaponMark?: boolean;  // SP.MAL.S line 83: if left$(w1$,1)="?" k8=(k8+150)
     fuel: number;
     lifeSupportCond: number;
     cargoPods: number;
@@ -194,7 +197,7 @@ export function simulateMalignaBattle(
   rng: () => number = Math.random
 ): MalignaBattleResult {
   const enemy = initEnemyStats(missionType, defconLevel);
-  const { k8, x8: initX8 } = calcPlayerWeapon(player.weaponStrength, player.weaponCondition, player.hasStarBuster);
+  const { k8, x8: initX8 } = calcPlayerWeapon(player.weaponStrength, player.weaponCondition, player.hasStarBuster, player.hasWeaponMark ?? false);
   const { k9, x9: initX9 } = calcPlayerShield(player.shieldStrength, player.shieldCondition, player.hasArchAngel);
 
   const state: BattleState = {

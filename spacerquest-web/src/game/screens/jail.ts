@@ -109,6 +109,9 @@ export const JailScreen: ScreenModule = {
 
         const releasedName = releasePlayer(character.name);
 
+        // Original SP.END.S:270 — on release: kk=0:pp=0:pb=0:sp=1:sp$="Sun-3"
+        // Reset mission type (kk=0), extra-curricular mode (pp=0),
+        // and teleport player back to Sun-3 (sp=1).
         await prisma.character.update({
           where: { id: characterId },
           data: {
@@ -116,6 +119,9 @@ export const JailScreen: ScreenModule = {
             creditsLow: result.creditsLow,
             crimeType: null,
             name: releasedName,
+            currentSystem: 1,        // sp=1 → Sun-3
+            missionType: 0,          // kk=0 → no active mission
+            extraCurricularMode: null, // pp=0 → no active mode
           },
         });
 

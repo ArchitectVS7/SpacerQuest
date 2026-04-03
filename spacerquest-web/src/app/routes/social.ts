@@ -242,6 +242,14 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: `Black Hole arena requires ${ARENA_REQUIREMENTS.BLACK_HOLE.rescues} rescues` });
     }
 
+    // SP.ARENA1.S line 70: pp=8 → "You are already a Contender" — reject if already has pending duel
+    const existingChallenge = await prisma.duelEntry.findFirst({
+      where: { challengerId: character.id, status: 'PENDING' },
+    });
+    if (existingChallenge) {
+      return reply.status(400).send({ error: 'You are already a Contender' });
+    }
+
     // Calculate handicap
     const h = character.ship.hullStrength * character.ship.hullCondition;
     const d = character.ship.driveStrength * character.ship.driveCondition;
@@ -264,8 +272,18 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Not enough points! (minimum 150 required)' });
     }
 
+    // Validate ship has component strength for COMPONENTS type (SP.ARENA1.S line 96)
+    if (stakesType === 'COMPONENTS') {
+      const ship = character.ship!;
+      const totalStr = ship.driveStrength + ship.cabinStrength + ship.lifeSupportStrength +
+        ship.weaponStrength + ship.navigationStrength + ship.roboticsStrength + ship.shieldStrength;
+      if (totalStr < 1) {
+        return reply.status(400).send({ error: 'Ship has no component strength to wager' });
+      }
+    }
+
     // Deduct credits immediately for CREDITS type (SP.ARENA1.S line 152: if x4=3 g1=g1-h)
-    if (stakesType === 'CREDITS' || stakesType === 'credits') {
+    if (stakesType === 'CREDITS') {
       const { getTotalCredits, subtractCredits } = await import('../../game/utils.js');
       if (getTotalCredits(character.creditsHigh, character.creditsLow) < handicap) {
         return reply.status(400).send({ error: 'Insufficient credits to post this duel' });
@@ -347,6 +365,14 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: "Can't challenge own ship!" });
     }
 
+    // SP.ARENA1.S line 72: pp=9 → "Only 1 challenge per visit"
+    const existingAccepted = await prisma.duelEntry.findFirst({
+      where: { contenderId: character.id, status: 'ACCEPTED' },
+    });
+    if (existingAccepted) {
+      return reply.status(400).send({ error: 'Only 1 challenge per visit' });
+    }
+
     const { calculateDuelHandicap, calculateArenaHandicap, ARENA_NAMES } = await import('../../game/systems/arena.js');
     const { getTotalCredits } = await import('../../game/utils.js');
     const { ARENA_REQUIREMENTS: areReqs } = await import('../../game/constants.js');
@@ -371,8 +397,16 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
     if (duel.stakesType === 'POINTS' && character.score < 150) {
       return reply.status(400).send({ error: 'Need more total points (minimum 150)' });
     }
-    if ((duel.stakesType === 'CREDITS' || duel.stakesType === 'credits') && getTotalCredits(character.creditsHigh, character.creditsLow) < accepterHandicap) {
+    if (duel.stakesType === 'CREDITS' && getTotalCredits(character.creditsHigh, character.creditsLow) < accepterHandicap) {
       return reply.status(400).send({ error: 'Insufficient credits to accept this duel' });
+    }
+    if (duel.stakesType === 'COMPONENTS') {
+      const ship = character.ship;
+      const totalStr = ship.driveStrength + ship.cabinStrength + ship.lifeSupportStrength +
+        ship.weaponStrength + ship.navigationStrength + ship.roboticsStrength + ship.shieldStrength;
+      if (totalStr < 1) {
+        return reply.status(400).send({ error: 'Ship has no component strength to wager' });
+      }
     }
 
     // Accepter must have adequate handicap (h<1 check, SP.ARENA1.S line 68)
@@ -563,34 +597,31 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
         });
       }
     } else if (duel.stakesType === 'COMPONENTS' || duel.stakesType === 'components') {
-      // compfx: randomly damage v components of loser, repair v of winner (SP.ARENA2.S lines 117-130)
-      // Original cost: loser str+1, cnd-1 (degraded); winner str-1, cnd+1
-      // NOTE: original operates on contender's ship only but modifies based on m flag;
-      // here we apply symmetrically: loser str-1 cnd+1, winner str+1 cnd-1 (net transfer of strength)
+      // compfx / cost (SP.ARENA2.S lines 117-139):
+      //   For v iterations: pick random component 1-7 (drive..shield, no hull)
+      //   Original cost: if m=1 j=j-1:k=k+1 / if m=0 j=j+1:k=k-1 (STRENGTH only, no condition)
+      //   Winner's component strength +1; loser's component strength -1, clamped 0-199
       const componentStrKeys = [
         'driveStrength', 'cabinStrength', 'lifeSupportStrength',
         'weaponStrength', 'navigationStrength', 'roboticsStrength', 'shieldStrength',
-      ] as const;
-      const componentCndKeys = [
-        'driveCondition', 'cabinCondition', 'lifeSupportCondition',
-        'weaponCondition', 'navigationCondition', 'roboticsCondition', 'shieldCondition',
       ] as const;
 
       const loserShip = loser.id === poster.id ? posterShip : accepterShip;
       const winnerShip = winner.id === poster.id ? posterShip : accepterShip;
       const loserShipUpdates: Record<string, number> = {};
       const winnerShipUpdates: Record<string, number> = {};
-      const usedIndices = new Set<number>();
+      let lastIdx = -1;
 
-      for (let i = 0; i < v && i < componentStrKeys.length; i++) {
+      // Original SP.ARENA2.S compfx (lines 118-129): iterate a=0..v times (no cap at 7)
+      // r=7: pick 1-7, skip if same as last pick (x=y check), repeat for full v iterations
+      for (let i = 0; i < v; i++) {
+        // Original: if x=y goto cpfx (skip if same as last pick, not a full dedup)
         let idx: number;
         do { idx = Math.floor(Math.random() * componentStrKeys.length); }
-        while (usedIndices.has(idx));
-        usedIndices.add(idx);
+        while (idx === lastIdx);
+        lastIdx = idx;
 
         const strKey = componentStrKeys[idx];
-        const cndKey = componentCndKeys[idx];
-
         const loserShipRec = loserShip as unknown as Record<string, number>;
         const winnerShipRec = winnerShip as unknown as Record<string, number>;
 
@@ -599,13 +630,6 @@ export async function registerSocialRoutes(fastify: FastifyInstance) {
 
         const winnerStr = winnerShipRec[strKey] ?? 0;
         winnerShipUpdates[strKey] = Math.min(199, (winnerShipUpdates[strKey] ?? winnerStr) + 1);
-
-        // condition adjustments (cnd+1 for loser = wear; cnd-1 for winner = usage)
-        const loserCnd = loserShipRec[cndKey] ?? 0;
-        loserShipUpdates[cndKey] = Math.min(199, (loserShipUpdates[cndKey] ?? loserCnd) + 1);
-
-        const winnerCnd = winnerShipRec[cndKey] ?? 0;
-        winnerShipUpdates[cndKey] = Math.max(0, (winnerShipUpdates[cndKey] ?? winnerCnd) - 1);
       }
 
       const loserShipId = loser.id === poster.id ? posterShip.id : accepterShip.id;

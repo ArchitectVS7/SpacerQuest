@@ -72,11 +72,13 @@ export async function resolveBotCombat(
     navigationCondition: ship.navigationCondition,
     driveStrength: ship.driveStrength,
     driveCondition: ship.driveCondition,
+    hullStrength: ship.hullStrength,
+    hullCondition: ship.hullCondition,
     hasAutoRepair: ship.hasAutoRepair,
   };
 
-  const playerBF = calculateBattleFactor(shipStats, character.rank, character.battlesWon);
-  const enemyBF = calculateEnemyBattleFactor(enemy);
+  const playerBF = calculateBattleFactor(shipStats, character.rank, character.battlesWon, character.tripCount);
+  const enemyBF = calculateEnemyBattleFactor(enemy, character.tripCount);
   enemy.battleFactor = enemyBF;
 
   const bfRatio = enemyBF > 0 ? playerBF / enemyBF : 10;

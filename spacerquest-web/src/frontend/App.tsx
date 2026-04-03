@@ -88,14 +88,18 @@ export function App() {
     if (!isAuthenticated) return;
 
     const handleScreenRender = (data: { output: string; nextScreen?: string }) => {
-      const { appendToTerminal, setCurrentScreen } = useGameStore.getState();
+      const { appendToTerminal, setCurrentScreen, logout } = useGameStore.getState();
       
       if (data.output) {
         appendToTerminal(data.output);
       }
       
       if (data.nextScreen) {
-        setCurrentScreen(data.nextScreen);
+        if (data.nextScreen === 'login') {
+          logout();
+        } else {
+          setCurrentScreen(data.nextScreen);
+        }
       }
     };
 
@@ -156,13 +160,11 @@ export function App() {
     // Initial check
     wsClient.requestTravelProgress();
 
-    // Poll travel progress
+    // Poll travel progress — always poll so we detect travel that started after login
+    // Server returns immediately with {inTransit:false} when not traveling; no wasted work.
     const travelInterval = setInterval(() => {
-      const { inTransit } = useGameStore.getState();
-      if (inTransit) {
-        wsClient.requestTravelProgress();
-      }
-    }, 1000);
+      wsClient.requestTravelProgress();
+    }, 2000);
 
     return () => {
       clearInterval(travelInterval);

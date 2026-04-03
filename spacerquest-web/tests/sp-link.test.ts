@@ -197,3 +197,44 @@ describe('Lost in Space guard (SP.LINK.txt line 45)', () => {
     expect(navActionsPos).toBeGreaterThan(lostGuardPos);
   });
 });
+
+// ============================================================================
+// CARGO DISPATCH GUARDS — SP.LINK.txt lkcargo lines 227-228
+// ============================================================================
+
+describe('Cargo Dispatch T key guards (SP.LINK.txt lkcargo)', () => {
+  it('T key guard: blocks access when hullStrength < 1 with "A space ship is required!"', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/main-menu.ts', import.meta.url),
+      'utf-8'
+    );
+    // SP.LINK.txt line 227: if h1<1 print "A space ship is required!":goto linker
+    expect(code).toContain('hullStrength < 1');
+    expect(code).toContain('A space ship is required!');
+  });
+
+  it('T key guard: blocks access when cargoPods < 1 with "You have no pods"', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/main-menu.ts', import.meta.url),
+      'utf-8'
+    );
+    // SP.LINK.txt line 228: if s1<1 print "You have no pods":goto linker
+    expect(code).toContain('cargoPods < 1');
+    expect(code).toContain('You have no pods');
+  });
+
+  it('T key guard: hull check precedes pods check (original order)', async () => {
+    const fs = await import('fs');
+    const code = fs.readFileSync(
+      new URL('../src/game/screens/main-menu.ts', import.meta.url),
+      'utf-8'
+    );
+    // SP.LINK.txt line 227 (hull) comes before line 228 (pods)
+    const hullCheckPos = code.indexOf('hullStrength < 1');
+    const podsCheckPos = code.indexOf('cargoPods < 1');
+    expect(hullCheckPos).toBeGreaterThan(0);
+    expect(podsCheckPos).toBeGreaterThan(hullCheckPos);
+  });
+});

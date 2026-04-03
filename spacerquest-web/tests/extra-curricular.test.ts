@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeVandalDamage, VandalShipStats } from '../src/game/systems/extra-curricular.js';
+import { computeVandalDamage, isVandalismEligible, VandalShipStats } from '../src/game/systems/extra-curricular.js';
 import { FUEL_MIN_MISSIONS } from '../src/game/constants.js';
 
 // ---------------------------------------------------------------------------
@@ -135,6 +135,25 @@ describe('computeVandalDamage (SP.END.txt vand subroutine)', () => {
   it('life support strength does not go below 0', () => {
     const r = computeVandalDamage(7, { ...richShip, lifeSupportStrength: 3, lifeSupportCondition: 9 });
     expect(r.newValue).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Score gate — SP.END.S vaca: if s2<2000 goto vat
+// ---------------------------------------------------------------------------
+
+describe('isVandalismEligible (SP.END.S vaca score gate)', () => {
+  it('score < 2000 → not eligible', () => {
+    expect(isVandalismEligible(0)).toBe(false);
+    expect(isVandalismEligible(1999)).toBe(false);
+  });
+
+  it('score = 2000 → eligible', () => {
+    expect(isVandalismEligible(2000)).toBe(true);
+  });
+
+  it('score > 2000 → eligible', () => {
+    expect(isVandalismEligible(5000)).toBe(true);
   });
 });
 

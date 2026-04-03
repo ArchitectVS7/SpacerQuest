@@ -49,7 +49,11 @@ export interface GameSnapshot {
   cargoPods: number;
   cargoType: number;
   destination: number;
+  tripCount: number;
   components: ShipComponent[];
+  maxCargoPods: number;
+  score: number;
+  rank: string;
 }
 
 export class ApiValidator {
@@ -106,7 +110,11 @@ export class ApiValidator {
       cargoPods: char.cargoPods,
       cargoType: char.cargoType,
       destination: char.destination,
+      tripCount: char.tripCount,
       components: ship.components,
+      maxCargoPods: ship.maxCargoPods ?? 0,
+      score: (char as any).score ?? 0,
+      rank: (char as any).rank ?? 'LIEUTENANT',
     };
   }
 

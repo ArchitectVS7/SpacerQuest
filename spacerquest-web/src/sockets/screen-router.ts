@@ -40,6 +40,7 @@ import { AdminLogsScreen } from '../game/screens/admin-logs.js';
 import { AdminSystemsScreen } from '../game/screens/admin-systems.js';
 import { BlackHoleEventScreen } from '../game/screens/black-hole-event.js';
 import { FuelDepotScreen } from '../game/screens/fuel-depot.js';
+import { PortAccountsScreen } from '../game/screens/port-accounts.js';
 import { FuelDepotPriceScreen } from '../game/screens/fuel-depot-price.js';
 import { FuelDepotBuyScreen } from '../game/screens/fuel-depot-buy.js';
 import { FuelDepotTransferScreen } from '../game/screens/fuel-depot-transfer.js';
@@ -48,6 +49,10 @@ import { RimPortScreen } from '../game/screens/rim-port.js';
 import { TopgunScreen } from '../game/screens/topgun.js';
 import { ShipNameScreen } from '../game/screens/ship-name.js';
 import { SpacePatrolScreen } from '../game/screens/space-patrol.js';
+import { CloakerToggleScreen } from '../game/screens/cloaker-toggle.js';
+import { NemesisLatticeScreen } from '../game/screens/nemesis-lattice.js';
+import { AndromedaDockScreen } from '../game/screens/andromeda-dock.js';
+import { BlackHoleHubScreen } from '../game/screens/black-hole-hub.js';
 
 export const screens: Record<string, any> = {
   'main-menu': MainMenuScreen,
@@ -89,6 +94,7 @@ export const screens: Record<string, any> = {
   'admin-logs': AdminLogsScreen,
   'admin-systems': AdminSystemsScreen,
   'black-hole-event': BlackHoleEventScreen,
+  'port-accounts': PortAccountsScreen,
   'fuel-depot': FuelDepotScreen,
   'fuel-depot-price': FuelDepotPriceScreen,
   'fuel-depot-buy': FuelDepotBuyScreen,
@@ -97,6 +103,10 @@ export const screens: Record<string, any> = {
   'rim-port': RimPortScreen,
   'topgun': TopgunScreen,
   'ship-name': ShipNameScreen,
+  'cloaker-toggle': CloakerToggleScreen,
+  'nemesis-lattice': NemesisLatticeScreen,
+  'andromeda-dock': AndromedaDockScreen,
+  'black-hole-hub': BlackHoleHubScreen,
 };
 
 export async function handleScreenRequest(characterId: string, screenName: string) {

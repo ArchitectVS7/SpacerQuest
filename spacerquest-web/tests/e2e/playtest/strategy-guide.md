@@ -110,6 +110,65 @@ Delivering to the correct destination earns the full payout; wrong destination =
 
 ---
 
+## EXPLORATION MANDATE — Your Primary Objective
+
+You are a QA agent. Your job is NOT to optimize credits. Your job is to exercise every game feature so bugs can be found.
+
+**Every turn, check COVERAGE in your STATE and deliberately visit uncovered features.**
+
+### Feature Checklist — Hit Every Item At Least Once
+
+**Navigation & Combat (turns 1–3):**
+1. Navigate to at least 3 different systems
+2. When in combat: ATTACK at least once (even if you lose — the attack flow must be tested)
+3. If a hazard message appears (X-Rad, Plasma-Ion, etc.) — note it and continue
+
+**Economy (turns 2–5):**
+4. Visit TRADERS → press S to SELL some fuel (even a small amount)
+5. Visit TRADERS → accept cargo and deliver it (establishes income)
+6. Visit SHIPYARD → press R to REPAIR after components degrade
+
+**Social & Services (turns 3–7):**
+7. Visit PUB (press P) → press B to buy a drink (50cr). ⚠️ D=Dare Game (NOT drink), B=Buy drink. Press M to exit pub.
+8. Visit PUB → press W then 1 to try Wheel of Fortune (small bet)
+9. Visit BANK (press B) → press D to deposit some credits, then W to withdraw them
+   ⚠️ BANK REQUIRES COMMANDER RANK. If you press B and it bounces back to main-menu, you are still a Lieutenant. Skip bank until rank shows Commander in STATE. Earn score via cargo deliveries (~2 pts each) or combat victories. Need 150 score total.
+10. Visit REGISTRY (press R) → browse the screens
+
+**Special Destinations (turns 5–15):**
+11. Navigate to System 18 (Mizar-9) → talk to the Sage → answer the constellation quiz
+12. Navigate to System 17 (Polaris-1) → visit the Wise One
+
+**Advanced (turns 10+):**
+13. Visit SHIPYARD → press U → upgrade a component
+14. Try Space Patrol: REGISTRY → S to accept patrol mission
+
+### Per-Turn Decision Rule
+
+Before each turn, ask: "What is the first item in my COVERAGE uncovered list?" Then do that, even if it means a suboptimal credit turn.
+
+**Acceptable to skip only if:** you have active cargo to deliver (deliver it first), or fuel is critically low (refuel first at Mira-9).
+
+### Combat Strategy
+
+- BF < 15: Always retreat (R)
+- BF 15–30: ATTACK at least once for testing purposes; retreat if you lose round 1
+- BF > 30: Attack freely
+
+**The test REQUIRES at least one combat.attack across the session. Do not skip all fights.**
+
+### Cargo Delivery (still required for turn completion)
+
+- Must complete 2 trips per turn to use end_turn
+- Cargo is still your primary income — use it between feature exploration
+- The cargo flow: T → A → pick contract → Y → M → N → destination# → Y → wait for arrival → repeat
+
+### Fuel Management
+
+- Mira-9 (System 8): 4 cr/unit — cheapest in galaxy
+- Standard: 5-8 cr/unit
+- Keep fuel > 100 units at all times
+
 ## Upgrade Priority — What to Buy First
 
 ### Phase 0: Brand New Character Setup
@@ -182,6 +241,26 @@ Press **N** → type_and_enter destination number → fee confirmation shown (sc
 - 21–26: Andromeda (requires Astraxial Hull)
 - 17: Wise One · 18: Sage · 28: Black Hole (Nemesis mission)
 
+### ⚠️ DANGER: System 28 (Black Hole / Nemesis)
+**DO NOT navigate to System 28** during normal gameplay. It is a death trap:
+- Enemy BF is 600+ (Admiral class) — you WILL lose
+- Losing combat sets hull strength = 0, which blocks Traders access
+- The system may not have regular Traders — you cannot buy fuel or cargo
+- Navigation out requires "Valid contract" which you cannot get without pods
+
+**If you accidentally reach System 28:**
+1. Go to Shipyard → U → type_and_enter 1 (Hull upgrade) — requires 10,000 cr
+2. Upgrade Hull TWICE to get pods back (hullStr 0→10=no pods, 10→20=100 pods)
+3. Use Shipyard → Special (S) → Titanium Hull if you have 10,000 cr
+4. If no credits: Registry → R (Rescue Service) to escape
+
+### The Space Commandant
+When `weaponStrength + shieldStrength ≥ 50`, the Space Commandant appears when you access the cargo board. Options:
+- **Press N**: Decline the mission → cargo board appears normally (recommended for cargo runs)
+- **Press Y**: Accept the TopGun/Nemesis mission → YOU WILL BE SENT TO SYSTEM 28 (dangerous!)
+
+**Recommendation**: Always press N to decline the Commandant. Keep weapon+shield strength BELOW 50 to avoid triggering it (do NOT upgrade both weapons and shields heavily).
+
 **Optimal routing:**
 - For cargo runs: Accept at current system → travel to destination → return for new contract
 - When low on fuel: Detour through Mira-9 (System 8)
@@ -225,10 +304,15 @@ Random events during travel (unavoidable):
 
 ## The Pub (Press P)
 
+- **B** — Buy a drink (50 cr): minor morale boost ← USE THIS for pub.drink coverage
 - **G** — Gossip: hear news about other players and systems
-- **D** — Drink: minor morale boost
+- **D** — Dare Game (Spacer's Dare): double-or-nothing dice game ← WARNING: This is NOT the drink!
 - **W** — Wheel of Fortune: bet credits on a 1–20 number spin (slightly negative EV — entertainment only)
-- **E** — Spacer's Dare: double-or-nothing dice game (negative EV — entertainment only)
+- **M** — Return to Main Menu
+
+⚠️ Key confusion: **D=Dare Game** (NOT drink). **B=Buy drink**. Always use B for pub.drink coverage.
+
+**pub.gamble coverage:** To test gambling, press **W** (Wheel of Fortune) → type the number 10 → type the bet amount 100 → Enter. This tests the gamble flow once. You can also press **D** for the Dare Game.
 
 **Gambling strategy:** Never bet more than 10% of your credits. Use Wheel of Fortune for small bets if you want to try it. Don't rely on gambling for income.
 
@@ -292,14 +376,16 @@ You get jailed for: smuggling contraband, disconnecting during combat, or conduc
 ## Decision Framework — What to Do Right Now
 
 ### At the start of a session:
-1. Check credits, fuel, cargo status, component conditions
+1. Check credits, fuel, cargo status, component conditions, and COVERAGE uncovered list
 2. **If hull = 0**: go to Shipyard (S) → upgrade hull first (U → type_and_enter "1")
-3. If any component condition < 5: repair it at Shipyard
+3. If any component condition < 5: repair it at Shipyard (S → R)
 4. If cargo is loaded: travel to destination and deliver
 5. If no cargo and hull ≥ 1: go to Traders → accept a contract (rim if possible)
 6. If fuel < 50: go to Mira-9 first (System 8, fuel at 4 cr/unit)
+7. **Check COVERAGE** — pick the first uncovered feature from the list and do it this session
 
 ### Each action:
+- **What uncovered feature can I tackle now?** Check COVERAGE and act on it.
 - **Is my cargo delivered?** If not, travel to destination.
 - **Do I have a contract?** If not, go to Traders.
 - **Do I have enough credits for an upgrade?** Go to Shipyard.
@@ -308,17 +394,17 @@ You get jailed for: smuggling contraband, disconnecting during combat, or conduc
 
 ### Signs you are playing wrong:
 - 10+ actions with no cargo deliveries
-- Never fighting any combat with BF > 30
-- Credits below 1,000 after 5 turns
+- Never visiting the Bank, Pub, or Registry
+- Never fighting any combat (even once) with BF >= 15
 - No ship upgrades after 10 turns
-- Making dozens of trips with no cargo pods (no cargo = no money)
+- Coverage percent not increasing each session
 
 ### Signs you are playing right:
+- Coverage percent climbing each turn
 - Credits growing each session
 - Cargo deliveries happening every 1–2 trips
 - Ship components steadily improving
 - Rank advancing every few sessions
-- Fighting and winning combat when BF allows
 
 ---
 

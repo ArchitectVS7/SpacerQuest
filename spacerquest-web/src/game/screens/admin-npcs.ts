@@ -27,22 +27,26 @@ const NPC_TYPE_LABELS: Record<string, NpcType> = {
   '5': 'REPTILOID' as NpcType,
 };
 
-// SP.EDIT2: all editable NPC fields (expanded from 9 to 14)
+// SP.EDIT2: all editable NPC fields — 20 variables from psho/pedit subroutines
+// SP.EDIT2.txt lines 84-94 (psho): 20 fields shown; lines 137-156 (pdt): fields 1-20 editable
 const EDITABLE_NPC_FIELDS: Record<string, { field: string; label: string }> = {
-  '1': { field: 'weaponStrength', label: 'Weapon Strength (p7)' },
-  '2': { field: 'weaponCondition', label: 'Weapon Condition (p8)' },
-  '3': { field: 'shieldStrength', label: 'Shield Strength (s7)' },
-  '4': { field: 'shieldCondition', label: 'Shield Condition (s8)' },
-  '5': { field: 'hullStrength', label: 'Hull Strength (s5)' },
-  '6': { field: 'hullCondition', label: 'Hull Condition (p9)' },
-  '7': { field: 'driveStrength', label: 'Drive Strength (s3)' },
-  '8': { field: 'driveCondition', label: 'Drive Condition (s4)' },
-  '9': { field: 'creditValue', label: 'Credit Value (p5)' },
-  'A': { field: 'fuelCapacity', label: 'Fuel Capacity (p6)' },
-  'B': { field: 'lifeSupportCond', label: 'Life Support (s9)' },
-  'C': { field: 'shipClass', label: 'Ship Class (p3$)' },
-  'D': { field: 'commander', label: 'Commander (p4$)' },
-  'E': { field: 'shipName', label: 'Ship Name (p5$)' },
+  '1':  { field: 'weaponStrength', label: 'Weapon Strength (p7)' },
+  '2':  { field: 'weaponCondition', label: 'Weapon Condition (p8)' },
+  '3':  { field: 'shieldStrength', label: 'Shield Strength (s7)' },
+  '4':  { field: 'shieldCondition', label: 'Shield Condition (s8)' },
+  '5':  { field: 'hullStrength', label: 'Hull Strength (s5)' },
+  '6':  { field: 'hullCondition', label: 'Hull Condition (p9)' },
+  '7':  { field: 'driveStrength', label: 'Drive Strength (s3)' },
+  '8':  { field: 'driveCondition', label: 'Drive Condition (s4)' },
+  '9':  { field: 'creditValue', label: 'Credit Value (p5)' },
+  'A':  { field: 'fuelCapacity', label: 'Fuel Capacity (p6)' },
+  'B':  { field: 'lifeSupportCond', label: 'Life Support (s9)' },
+  // SP.EDIT2.txt lines 147-148 (xi=11: bl=battlesLost, xi=12: bw=battlesWon)
+  'C':  { field: 'battlesLost', label: 'Battles Lost (bl)' },
+  'D':  { field: 'battlesWon', label: 'Battles Won (bw)' },
+  'E':  { field: 'shipClass', label: 'Ship Hull Class (p3$)' },
+  'F':  { field: 'commander', label: 'Commander/Owner (p4$)' },
+  'G':  { field: 'shipName', label: 'Ship Name (p5$)' },
 };
 
 // SP.EDIT2.txt lines 181-192: patrol auto-generate templates by strength 1-9
@@ -58,9 +62,10 @@ const PATROL_TEMPLATES: Record<number, { commander: string; shipName: string; sh
   9: { commander: 'Adm.Hutchins', shipName: 'SP9.Incredible', shipClass: 'BATTLESHIP' },
 };
 
-// SP.EDIT2.txt lines 194-205: pirate auto-generate templates
+// SP.EDIT2.txt lines 194-205: pirate auto-generate templates (mpir subroutine)
+// Exact ship names from original: K1!!!!  K2@@@@  K3####  K4$$$$  K5%%%%  K6^^^^  K7&&&&  K8****  K9((((
 const PIRATE_TEMPLATES: Record<number, { commander: string; shipName: string; shipClass: string }> = {
-  1: { commander: 'K)(akj', shipName: 'K1++++', shipClass: 'Maligna Bat' },
+  1: { commander: 'K)(akj', shipName: 'K1!!!!', shipClass: 'Maligna Bat' },
   2: { commander: 'K)(ych', shipName: 'K2@@@@', shipClass: 'Maligna Cat' },
   3: { commander: 'K)(sfy', shipName: 'K3####', shipClass: 'Maligna Rat' },
   4: { commander: 'K)(sdf', shipName: 'K4$$$$', shipClass: 'Maligna Tat' },

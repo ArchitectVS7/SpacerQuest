@@ -135,10 +135,13 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
           navigationCondition: character.ship.navigationCondition,
           driveStrength: character.ship.driveStrength,
           driveCondition: character.ship.driveCondition,
+          hullStrength: character.ship.hullStrength,
+          hullCondition: character.ship.hullCondition,
           hasAutoRepair: character.ship.hasAutoRepair,
         },
         character.rank,
-        character.battlesWon
+        character.battlesWon,
+        character.tripCount,
       );
       
       const combatRound = processCombatRound(

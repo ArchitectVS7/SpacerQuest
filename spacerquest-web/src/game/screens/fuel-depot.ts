@@ -9,7 +9,10 @@ import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { formatCredits } from '../utils.js';
 import { getSystemName } from '../systems/economy.js';
-import { FUEL_MAX_CAPACITY } from '../constants.js';
+import { FUEL_MAX_CAPACITY, CORE_SYSTEM_NAMES, CORE_SYSTEMS } from '../constants.js';
+
+// SP.REAL.S port section: M key stock report — pending ratio input
+const pendingStockRatio = new Map<string, boolean>();
 
 export const FuelDepotScreen: ScreenModule = {
   name: 'fuel-depot',
@@ -49,6 +52,8 @@ export const FuelDepotScreen: ScreenModule = {
     }
 
     output += `\r\n\r\n`;
+    output += `  (M)arket    - Space port stock activity report\r\n`;
+    output += `  (N)ews      - Port fee collection report\r\n`;
     output += `  (P)rice     - Set fuel selling price\r\n`;
     output += `  (T)ransfer  - Transfer fuel from ship\r\n`;
     output += `  (B)uy       - Buy fuel wholesale\r\n`;
@@ -62,7 +67,8 @@ export const FuelDepotScreen: ScreenModule = {
     const key = input.trim().toUpperCase();
 
     if (!key || key === 'Q') {
-      return { output: '\x1b[33mLeaving\x1b[0m\r\n', nextScreen: 'main-menu' };
+      // SP.REAL.S fuel subroutine line 175: "if i$='Q' goto start1"
+      return { output: '\x1b[33mLeaving\x1b[0m\r\n', nextScreen: 'port-accounts' };
     }
 
     // Need port ownership data to check 20K limit
@@ -76,6 +82,39 @@ export const FuelDepotScreen: ScreenModule = {
     }
 
     const stored = character.portOwnership.fuelStored;
+
+    // SP.REAL.S port section: ratio input for stock report
+    if (pendingStockRatio.has(characterId)) {
+      pendingStockRatio.delete(characterId);
+      const raw = input.trim();
+      if (raw === '' || raw.toUpperCase() === 'Q') {
+        return FuelDepotScreen.render(characterId);
+      }
+      const ratio = parseInt(raw, 10);
+      if (isNaN(ratio) || ratio < 1 || ratio > 100) {
+        return { output: '\r\n\x1b[31m...Enter 1-100...\x1b[0m\r\nInput number: (Q)uits: ' };
+      }
+      return renderStockReport(ratio);
+    }
+
+    // SP.REAL.S start1 line 47: "if i$='N' print 'Fee Report': copy'sp.fee': goto start1"
+    // Modern: query GameLog PORT_FEE entries for this port's system
+    if (key === 'N') {
+      return renderFeeReport(character.portOwnership.systemId);
+    }
+
+    // SP.REAL.S start1 line 46: "if i$='M' print 'Stock Report': goto port"
+    if (key === 'M') {
+      pendingStockRatio.set(characterId, true);
+      return {
+        output:
+          '\r\n\x1b[37;1m-------------------------\x1b[0m\r\n' +
+          'Space Port Stock Activity\r\n' +
+          '\x1b[37;1m-------------------------\x1b[0m\r\n' +
+          'Choose a projection ratio: [1-100] (<C-R>=1:1)\r\n' +
+          'Input number: (Q)uits: ',
+      };
+    }
 
     if (key === 'P') {
       return { output: '\x1b[2J\x1b[H', nextScreen: 'fuel-depot-price' };
@@ -99,3 +138,87 @@ export const FuelDepotScreen: ScreenModule = {
     return { output: '\r\n\x1b[31m...Whoops...\x1b[0m\r\n> ' };
   },
 };
+
+// ============================================================================
+// SP.REAL.S start1 N key — Fee Report (copy"sp.fee")
+// Original: sp.fee is a BBS file appended to on each spacer launch at the port.
+// Modern: query GameLog PORT_FEE entries for the port's system.
+// ============================================================================
+
+async function renderFeeReport(systemId: number): Promise<ScreenResponse> {
+  const systemName = CORE_SYSTEM_NAMES[systemId] || `System ${systemId}`;
+
+  const fees = await prisma.gameLog.findMany({
+    where: { type: 'PORT_FEE', systemId },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    include: { character: { select: { name: true, shipName: true } } },
+  });
+
+  let out = '\r\n';
+  out += '\x1b[37m-------------------------------------------------------------------------------\x1b[0m\r\n';
+  out += `Space Port Collected Fees List for: \x1b[33m${systemName}\x1b[0m\r\n`;
+  out += '\x1b[37m-------------------------------------------------------------------------------\x1b[0m\r\n';
+
+  if (fees.length === 0) {
+    out += 'No fees collected yet.\r\n';
+  } else {
+    for (const entry of fees) {
+      const date = entry.createdAt.toISOString().slice(0, 10);
+      const name = entry.character?.name ?? 'Unknown';
+      const ship = entry.character?.shipName ?? '';
+      const meta = entry.metadata as Record<string, any> | null;
+      const fee = meta?.fee ?? 0;
+      const nameShip = ship ? `${name}/${ship}` : name;
+      out += `${date}: ${nameShip.padEnd(34)} - Fee Paid: ${fee} cr\r\n`;
+    }
+  }
+
+  out += '\x1b[37m-------------------------------------------------------------------------------\x1b[0m\r\n';
+  out += `\x1b[32m> \x1b[0m`;
+  return { output: out };
+}
+
+// ============================================================================
+// SP.REAL.S port: / prtr: — Space Port Stock Activity bar chart
+// Original: reads sp.stk (i, y per system); bar = scaled by ratio a; max 60 chars
+// Modern: queries GameLog for DOCK events grouped by systemId
+// ============================================================================
+
+async function renderStockReport(ratio: number): Promise<ScreenResponse> {
+  // Count DOCK arrivals per system from GameLog
+  const logs = await prisma.gameLog.findMany({
+    where: { type: 'SYSTEM', metadata: { path: ['event'], equals: 'DOCK' } },
+    select: { metadata: true },
+  });
+
+  // Tally per-system trip counts
+  const counts: Record<number, number> = {};
+  for (let i = 1; i <= CORE_SYSTEMS; i++) counts[i] = 0;
+  for (const log of logs) {
+    const meta = log.metadata as Record<string, any> | null;
+    const sid = meta?.systemId as number | undefined;
+    if (sid && sid >= 1 && sid <= CORE_SYSTEMS) {
+      counts[sid] = (counts[sid] || 0) + 1;
+    }
+  }
+
+  let out =
+    `\r\n\x1b[37;1m  Projection Ratio = ${ratio}:1\x1b[0m\r\n\r\n` +
+    `  Space_Port_____Trips`;
+  out += `____.____|____.____|____.____|____.____|____.____|____.____|__\r\n`;
+
+  for (let x = 1; x <= CORE_SYSTEMS; x++) {
+    const y = counts[x] || 0;
+    const name = (CORE_SYSTEM_NAMES[x] || `System ${x}`).padEnd(13).slice(0, 13);
+    // SP.REAL.S prtr: a$=a$+right$("____"+str$(y),5)
+    const tripStr = ('____' + y).slice(-5);
+    // SP.REAL.S: if y>=a iz=floor(y/a); if y<a iz=0; if iz>60 iz=60
+    const iz = y >= ratio ? Math.min(Math.floor(y / ratio), 60) : 0;
+    const bar = '_'.repeat(iz);
+    out += `  ${name}${tripStr}${bar}\r\n`;
+  }
+
+  out += `\r\n\x1b[37;1m....type anykey to go on....\x1b[0m\r\n> `;
+  return { output: out };
+}

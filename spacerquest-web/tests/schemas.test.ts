@@ -289,7 +289,7 @@ describe('upgradeBody', () => {
 describe('duelChallengeBody', () => {
   it('accepts valid duel challenge', () => {
     const result = duelChallengeBody.safeParse({
-      stakesType: 'credits',
+      stakesType: 'CREDITS',
       stakesAmount: 5000,
       arenaType: 1,
     });
@@ -299,7 +299,7 @@ describe('duelChallengeBody', () => {
   it('accepts challenge with optional targetId', () => {
     const result = duelChallengeBody.safeParse({
       targetId: 42,
-      stakesType: 'credits',
+      stakesType: 'CREDITS',
       stakesAmount: 1000,
       arenaType: 3,
     });
@@ -308,16 +308,16 @@ describe('duelChallengeBody', () => {
 
   it('rejects arenaType outside 1-6', () => {
     expect(duelChallengeBody.safeParse({
-      stakesType: 'credits', stakesAmount: 100, arenaType: 0,
+      stakesType: 'CREDITS', stakesAmount: 100, arenaType: 0,
     }).success).toBe(false);
     expect(duelChallengeBody.safeParse({
-      stakesType: 'credits', stakesAmount: 100, arenaType: 7,
+      stakesType: 'CREDITS', stakesAmount: 100, arenaType: 7,
     }).success).toBe(false);
   });
 
   it('rejects negative stakesAmount', () => {
     expect(duelChallengeBody.safeParse({
-      stakesType: 'credits', stakesAmount: -1, arenaType: 1,
+      stakesType: 'CREDITS', stakesAmount: -1, arenaType: 1,
     }).success).toBe(false);
   });
 
@@ -325,6 +325,23 @@ describe('duelChallengeBody', () => {
     expect(duelChallengeBody.safeParse({
       stakesAmount: 100, arenaType: 1,
     }).success).toBe(false);
+  });
+
+  it('rejects invalid stakesType values', () => {
+    expect(duelChallengeBody.safeParse({
+      stakesType: 'invalid', stakesAmount: 100, arenaType: 1,
+    }).success).toBe(false);
+    expect(duelChallengeBody.safeParse({
+      stakesType: 'credits', stakesAmount: 100, arenaType: 1,
+    }).success).toBe(false); // must be uppercase
+  });
+
+  it('accepts all valid stakesType values', () => {
+    for (const type of ['POINTS', 'CREDITS', 'COMPONENTS']) {
+      expect(duelChallengeBody.safeParse({
+        stakesType: type, stakesAmount: 100, arenaType: 1,
+      }).success).toBe(true);
+    }
   });
 });
 

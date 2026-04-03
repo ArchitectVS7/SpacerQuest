@@ -77,6 +77,8 @@ export function calculatePatrolFuelCost(
   driveCondition: number,
   distance: number
 ): number {
+  // Original: f2=0:if q6<1 return — zero distance returns 0 immediately
+  if (distance < 1) return 0;
   const af = Math.min(driveStrength, 21);
   let f2 = (21 - af) + (10 - driveCondition);
   if (f2 < 1) f2 = 1;
@@ -187,9 +189,10 @@ export function canTravel(
   }
   
   if (tripCount >= DAILY_TRIP_LIMIT) {
+    // SP.START.S:315 + cally: flavor text on trip limit exceeded
     return {
       canTravel: false,
-      reason: `Only ${DAILY_TRIP_LIMIT} trips allowed per day`,
+      reason: `You have completed ${DAILY_TRIP_LIMIT} turns through Spacer Quest today\r\n.....The Wonders of Space Await You......\r\n...........Please call again tomorrow........`,
       remainingTrips: 0,
     };
   }
@@ -280,6 +283,11 @@ export async function validateLaunch(
   
   const ship = character.ship;
   
+  // SP.LIFT.S line 47: if nz$="" print "It would be nice if your ship had a name":goto start
+  if (!character.shipName || character.shipName.trim() === '') {
+    errors.push("It would be nice if your ship had a name");
+  }
+
   // Check ship systems — each check matches original SP.LIFT.S launch section exactly.
   // Only check component strength (not condition) per original: if d1<1, c1<1, l1<1, n1<1, r1<1
   // Condition checks are separate: h2<1 (hull too damaged), d2<1 (drives inoperable)
@@ -415,7 +423,7 @@ export async function processCourseChange(
 
   const character = await prisma.character.findUnique({
     where: { id: characterId },
-    include: { ship: true },
+    include: { ship: true, travelStates: true },
   });
 
   if (!character || !character.ship) {
@@ -423,6 +431,20 @@ export async function processCourseChange(
   }
 
   const ship = character.ship;
+  const travelState = character.travelStates?.[0] || null;
+
+  // ── SP.WARP.S line 167: Black hole transit restriction ───────────────────
+  // Andromeda mission (kk=10): cannot change course until black hole transited (bh=1)
+  // Original: "if (kk=10) and (bh=0) → no course change allowed"
+  // This prevents players from chickening out mid-warp or skipping the black hole.
+  if (character.missionType === 10 && travelState && !travelState.blackHoleTransited) {
+    return { 
+      success: false, 
+      fuelUsed: 0, 
+      remainingChanges: 0, 
+      error: 'Course change locked — must transit black hole first on Andromeda mission' 
+    };
+  }
 
   // Check if navigation is functional (SP.WARP.S navig section, line 161)
   // Original: if x<20 print mf$"!"...n1$" damaged" -> goto nman (can still change course manually)
@@ -493,7 +515,69 @@ export async function processCourseChange(
 
 /**
  * Start travel for a character
+ *
+ * For Andromeda missions (kk=10), blackHoleTransited starts false and is set
+ * to true after the black hole event completes (SP.WARP.S bh variable).
  */
+
+// ============================================================================
+// NAV PRECISION CHECK (SP.WARP.S lines 194-199)
+// ============================================================================
+
+export interface NavPrecisionResult {
+  /** True if navigation is on-course to intended destination */
+  onCourse: boolean;
+  /** Actual destination (may differ from intended on failure) */
+  actualDestination: number;
+  /** True if nav malfunction warning should be shown */
+  malfunction: boolean;
+}
+
+/**
+ * Check if nav system delivers correct destination (SP.WARP.S:194-199)
+ *
+ * Original (WARP.S navig section):
+ *   y=0:if (n1>0) and (n2>0) y=(n1*n2)
+ *   if y>9 y=(y/10):else y=0          ← nav precision %
+ *   r=40:gosub rand:if y>x goto desn  ← roll 1-40, success if precision > roll
+ *  nxxx:
+ *   r=20:gosub rand:if x<>i           ← roll 1-20 wrong destination
+ *   print n1$;mf$"....";chr$(7)       ← nav malfunction warning
+ *   i=x                               ← replace intended dest with random one
+ *  desn: (normal flow, dest=intended)
+ *
+ * @param navStrength   n1
+ * @param navCondition  n2
+ * @param intendedDest  i (1-20)
+ * @param roll40        Optional 1-40 roll (for testing)
+ * @param roll20        Optional 1-20 roll for misfire destination (for testing)
+ */
+export function checkNavPrecision(
+  navStrength: number,
+  navCondition: number,
+  intendedDest: number,
+  roll40?: number,
+  roll20?: number,
+): NavPrecisionResult {
+  // y = n1*n2; if y>9 → precision = floor(y/10); else precision = 0
+  const navPower = navStrength * navCondition;
+  const precision = navPower > 9 ? Math.floor(navPower / 10) : 0;
+
+  // Roll 1-40 for precision check
+  const r40 = roll40 !== undefined ? roll40 : Math.ceil(Math.random() * 40);
+
+  // If precision > roll: on course
+  if (precision > r40) {
+    return { onCourse: true, actualDestination: intendedDest, malfunction: false };
+  }
+
+  // Nav precision failure — roll 1-20 for random destination
+  const r20 = roll20 !== undefined ? roll20 : Math.ceil(Math.random() * 20);
+  const wrongDest = r20 !== intendedDest ? r20 : (r20 === 20 ? 1 : r20 + 1); // ensure it's different
+
+  return { onCourse: false, actualDestination: wrongDest, malfunction: true };
+}
+
 export async function startTravel(
   characterId: string,
   originSystem: number,
@@ -501,10 +585,14 @@ export async function startTravel(
   fuelReserved: number
 ): Promise<void> {
   const { prisma } = await import('../../db/prisma.js');
+  const { isAndromedaSystem } = await import('./black-hole.js');
   const now = new Date();
   const distance = calculateDistance(originSystem, destinationSystem);
   const arrivalTime = calculateArrivalTime(now, distance);
-  
+
+  // Check if this is an Andromeda transit (for kk=10 course change lock)
+  const isAndromedaTransit = isAndromedaSystem(destinationSystem);
+
   await prisma.travelState.upsert({
     where: { characterId },
     update: {
@@ -514,6 +602,7 @@ export async function startTravel(
       expectedArrival: arrivalTime,
       fuelReserved,
       inTransit: true,
+      blackHoleTransited: !isAndromedaTransit, // Start false for Andromeda, true otherwise
     },
     create: {
       characterId,
@@ -523,6 +612,7 @@ export async function startTravel(
       expectedArrival: arrivalTime,
       fuelReserved,
       inTransit: true,
+      blackHoleTransited: !isAndromedaTransit, // Start false for Andromeda, true otherwise
     },
   });
   
@@ -535,36 +625,65 @@ export async function startTravel(
       lastTripDate: now,
     },
   });
+
+  // SP.LIFT.S feek subroutine (lines 186-191): increment visit count for ORIGIN system at lift-off
+  // Original: y=y+1:if y>6000 y=6000 — fires for origin system (sp) at departure, not arrival
+  await prisma.starSystem.update({
+    where: { id: originSystem },
+    data: { visitCount: { increment: 1 } },
+  });
 }
 
 /**
  * Complete travel for a character
+ *
+ * Original SP.DOCK1.txt varfix subroutine (line 147):
+ *   j1=j1+q6:if (j1>29999):j1=0
+ *   k1=k1+q1:if (k1>29999):k1=0
  */
 export async function completeTravel(
   characterId: string,
   destinationSystem: number
 ): Promise<void> {
   const { prisma } = await import('../../db/prisma.js');
-  
+  const { calculateDistance } = await import('../utils.js');
+
+  // Get character and travel state to calculate distance
+  const character = await prisma.character.findUnique({
+    where: { id: characterId },
+  });
+
+  if (!character) return;
+
+  // Get origin from TravelState (character.currentSystem is 0 during transit)
+  // SP.DOCK1.txt varfix: j1=j1+q6 where q6 is distance from origin to destination
+  const travelState = await prisma.travelState.findUnique({
+    where: { characterId },
+  });
+  const origin = travelState?.originSystem ?? character.currentSystem;
+  const distance = calculateDistance(origin, destinationSystem);
+
   // Remove travel state
   await prisma.travelState.deleteMany({
     where: { characterId },
   });
-  
-  // Update character position
+
+  // Update character position and astrecs traveled (SP.DOCK1.txt varfix: j1=j1+q6)
   await prisma.character.update({
     where: { id: characterId },
     data: {
       currentSystem: destinationSystem,
       tripsCompleted: { increment: 1 },
+      astrecsTraveled: (character.astrecsTraveled + distance) > 29999
+        ? 0
+        : { increment: distance },
     },
   });
-  
-  // Update system visit count
+
+  // Update system last activity on arrival (visit count is incremented at lift-off in startTravel)
   await prisma.starSystem.update({
     where: { id: destinationSystem },
     data: {
-      visitCount: { increment: 1 },
       lastActivity: new Date(),
     },
   });

@@ -8,6 +8,7 @@ import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import {
   renderArenaHeader,
+  renderArenaMenu12,
   renderDuelRoster,
   renderBattleLog,
   renderArenaOptions,
@@ -15,18 +16,83 @@ import {
   calculateDuelHandicap,
 } from '../systems/arena.js';
 
+// Per-character pending confirmation state
+// 'remove_confirm' — waiting Y/N for roster removal (SP.ARENA1.S lines 86-88)
+// 'quit_confirm'   — waiting Y/N for Contender quit warning (SP.ARENA1.S lines 271-274)
+const pendingConfirm = new Map<string, 'remove_confirm' | 'quit_confirm'>();
+
 export const ArenaScreen: ScreenModule = {
   name: 'arena',
-  render: async (_characterId: string): Promise<ScreenResponse> => {
+  render: async (characterId: string): Promise<ScreenResponse> => {
+    pendingConfirm.delete(characterId);
     return { output: renderArenaHeader() };
   },
 
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
     const key = input.trim().toUpperCase();
 
+    // ── Handle pending Y/N confirmations ──────────────────────────────────────
+    const pending = pendingConfirm.get(characterId);
+    if (pending === 'remove_confirm') {
+      pendingConfirm.delete(characterId);
+      if (key === 'Y') {
+        // Confirmed — proceed with removal
+        const duelEntry = await prisma.duelEntry.findFirst({
+          where: { challengerId: characterId, status: 'PENDING' },
+        });
+        if (!duelEntry) {
+          return { output: '\r\nYes\r\n\x1b[31mEntry no longer found.\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
+        }
+        if (duelEntry.stakesType === 'CREDITS' || duelEntry.stakesType === 'credits') {
+          const { addCredits } = await import('../utils.js');
+          const char = await prisma.character.findUnique({ where: { id: characterId } });
+          if (char) {
+            const refund = addCredits(char.creditsHigh, char.creditsLow, duelEntry.handicap);
+            await prisma.character.update({
+              where: { id: characterId },
+              data: { creditsHigh: refund.high, creditsLow: refund.low },
+            });
+          }
+        }
+        await prisma.duelEntry.update({ where: { id: duelEntry.id }, data: { status: 'CANCELLED' } });
+        return { output: '\r\nYes\r\nRemoved from dueling roster.\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
+      } else {
+        // Default is N (original: [Y]/(N) — N is default)
+        return { output: '\r\nNo\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
+      }
+    }
+
+    if (pending === 'quit_confirm') {
+      pendingConfirm.delete(characterId);
+      if (key === 'Y') {
+        // SP.ARENA1.S line 274: print"Yes":goto linker
+        return { output: '\r\nYes\r\n\x1b[2J\x1b[H', nextScreen: 'main-menu' };
+      } else {
+        // Default is N (original: [Y]/(N))
+        return { output: '\r\nNo\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
+      }
+    }
+
     switch (key) {
-      case 'Q':
+      case 'Q': {
+        // SP.ARENA1.S lines 267-274: if pp=8 show Contender quit warning
+        const contenderCheck = await prisma.duelEntry.findFirst({
+          where: { challengerId: characterId, status: 'PENDING' },
+        });
+        if (contenderCheck) {
+          // Original: "Leaving with your ship as Contender will exit you from Spacer Quest"
+          pendingConfirm.set(characterId, 'quit_confirm');
+          return {
+            output: '\r\n\x1b[33mLeaving with your ship as Contender will exit you from Spacer Quest\x1b[0m\r\nQuit the game? [Y]/(N): ',
+          };
+        }
         return { output: '\x1b[2J\x1b[H', nextScreen: 'main-menu' };
+      }
+
+      case 'O':
+        // SP.ARENA1.S line 63: if i$="O" print:i$="sp.menu12":gosub show:goto startx
+        // SP.ARENA1.S line 102: if i$="O" print:i$="sp.menu12":gosub show:goto liab
+        return { output: renderArenaMenu12() + '\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
 
       case '?':
         // Redisplay arena header/menu (SP.ARENA1.S line 65: if i$="?" goto start)
@@ -41,6 +107,15 @@ export const ArenaScreen: ScreenModule = {
         });
         if (!character?.ship) {
           return { output: '\r\n\x1b[31mNo ship found.\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
+        }
+        // SP.ARENA1.S line 70: if pp=8 → "You are already a Contender"
+        const existingChallenge = await prisma.duelEntry.findFirst({
+          where: { challengerId: characterId, status: 'PENDING' },
+        });
+        if (existingChallenge) {
+          return {
+            output: `\r\n\x1b[33mYou are already a Contender\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m `,
+          };
         }
         const hcp = calculateDuelHandicap(character.ship);
         if (hcp < 1) {
@@ -65,6 +140,15 @@ export const ArenaScreen: ScreenModule = {
         });
         if (!character?.ship) {
           return { output: '\r\n\x1b[31mNo ship found.\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
+        }
+        // SP.ARENA1.S line 72: if pp=9 → "Only 1 challenge per visit"
+        const existingAccepted = await prisma.duelEntry.findFirst({
+          where: { contenderId: characterId, status: 'ACCEPTED' },
+        });
+        if (existingAccepted) {
+          return {
+            output: `\r\n\x1b[33mOnly 1 challenge per visit\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m `,
+          };
         }
         const hcp = calculateDuelHandicap(character.ship);
         if (hcp < 1) {
@@ -99,34 +183,23 @@ export const ArenaScreen: ScreenModule = {
       }
 
       case '3': {
-        // Remove from roster (remove section, SP.ARENA1.S lines 76-90)
-        const pending = await prisma.duelEntry.findFirst({
+        // Remove from roster — show confirmation first (SP.ARENA1.S lines 86-88)
+        // Original: "Remove [shipName] from roster? [Y]/(N): " → default N
+        const duelEntry = await prisma.duelEntry.findFirst({
           where: { challengerId: characterId, status: 'PENDING' },
         });
-        if (!pending) {
+        if (!duelEntry) {
           const char = await prisma.character.findUnique({ where: { id: characterId } });
           return {
             output: `\r\n\x1b[31m${char?.shipName || 'Your ship'} not entered in dueling roster\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m `,
           };
         }
-        // Cancel the duel entry and refund credits if CREDITS type
-        if (pending.stakesType === 'CREDITS' || pending.stakesType === 'credits') {
-          const { addCredits } = await import('../utils.js');
-          const char = await prisma.character.findUnique({ where: { id: characterId } });
-          if (char) {
-            const refund = addCredits(char.creditsHigh, char.creditsLow, pending.handicap);
-            await prisma.character.update({
-              where: { id: characterId },
-              data: { creditsHigh: refund.high, creditsLow: refund.low },
-            });
-          }
-        }
-        await prisma.duelEntry.update({
-          where: { id: pending.id },
-          data: { status: 'CANCELLED' },
-        });
+        // Show confirmation prompt and set pending state
+        const char = await prisma.character.findUnique({ where: { id: characterId } });
+        const shipName = char?.shipName || char?.name || 'Your ship';
+        pendingConfirm.set(characterId, 'remove_confirm');
         return {
-          output: '\r\nRemoved from dueling roster.\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ',
+          output: `\r\nRemove ${shipName} from roster? [Y]/(N): `,
         };
       }
 
@@ -287,7 +360,7 @@ export const ArenaScreen: ScreenModule = {
 
       default:
         return {
-          output: '\r\n\x1b[31mInvalid. Press 1, 2, 3, R, B, V, L, X, ?, or Q.\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ',
+          output: '\r\n\x1b[31mInvalid. Press 1, 2, 3, R, B, V, L, X, O, ?, or Q.\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ',
         };
     }
   },

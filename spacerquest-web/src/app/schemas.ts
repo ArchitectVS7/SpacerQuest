@@ -106,7 +106,8 @@ export const upgradeBody = z.object({
 });
 
 export const repairBody = z.object({
-  component: z.enum(['hull', 'drive', 'cabin', 'lifeSupport', 'weapon', 'navigation', 'robotics', 'shield']).optional(),
+  // SP.DAMAGE.S item 9: 'cargoPods' → free repair (no cost, no condition field)
+  component: z.enum(['hull', 'drive', 'cabin', 'lifeSupport', 'weapon', 'navigation', 'robotics', 'shield', 'cargoPods']).optional(),
   mode: z.enum(['single', 'all']).optional().default('all'),
 });
 
@@ -114,7 +115,7 @@ export const repairBody = z.object({
 
 export const duelChallengeBody = z.object({
   targetId: z.number().int().optional(),
-  stakesType: z.string().min(1),
+  stakesType: z.enum(['POINTS', 'CREDITS', 'COMPONENTS']),
   stakesAmount: z.number().int().min(0),
   arenaType: z.number().int().min(1).max(6),
 });

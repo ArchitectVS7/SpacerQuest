@@ -9,6 +9,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getTotalCredits, subtractCredits } from '../src/game/utils';
+import {
+  checkEnhancementStripping,
+  applyHullStrengthCaps,
+} from '../src/game/systems/repairs';
 
 // ============================================================================
 // PURE LOGIC TESTS - Repair cost formula
@@ -384,6 +388,71 @@ describe('Repairs system - DB functions', () => {
       expect(result.cost).toBe((9 - 4) * 12); // 60
       expect(result.newCondition).toBe(9);
     });
+
+    // ── SP.DAMAGE.S:83 — Free cargo pod repair (item 9) ──────────────────────
+
+    it('cargoPods: free repair — no DB query, cost=0, message "Pods repaired free"', async () => {
+      // SP.DAMAGE.S:83: if i=9 print "Pods repaired free":goto rep1
+      // No credits deducted, no ship update, no character lookup needed
+      const result = await repairSingleComponent('char-1', 'cargoPods', 'all');
+      expect(result.success).toBe(true);
+      expect(result.cost).toBe(0);
+      expect(result.message).toContain('Pods repaired free');
+      // No DB call needed for free cargo pod repair
+      expect(prisma.character.findUnique).not.toHaveBeenCalled();
+    });
+
+    // ── SP.DAMAGE.S enca:88 — Junk gate ──────────────────────────────────────
+
+    it('Junk gate: strength=0 blocks repair with "Too badly damaged" error', async () => {
+      // SP.DAMAGE.S enca:88: if l$=jk$ print l$;ri$:pop:goto rep1
+      // Junk = strength 0 (original: h1$=jk$ set when h2<1 in SP.FIGHT1.S:435)
+      prisma.character.findUnique.mockResolvedValue({
+        id: 'char-1',
+        creditsHigh: 0, creditsLow: 5000,
+        ship: makeShip({ hullStrength: 0, hullCondition: 0 }), // Junk hull
+      });
+
+      const result = await repairSingleComponent('char-1', 'hull', 'all');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Too badly damaged');
+    });
+
+    it('Junk gate: only blocks when strength=0 (not just condition=0)', async () => {
+      // strength>0, condition=0 → still repairable (with rebuild fee)
+      prisma.character.findUnique.mockResolvedValue({
+        id: 'char-1',
+        creditsHigh: 0, creditsLow: 5000,
+        ship: makeShip({ hullStrength: 20, hullCondition: 0 }), // damaged but not Junk
+      });
+      prisma.$transaction.mockResolvedValue(undefined);
+
+      const result = await repairSingleComponent('char-1', 'hull', 'all');
+      expect(result.success).toBe(true); // repairable with rebuild fee
+    });
+  });
+
+  // ── SP.DAMAGE.S enhc:175 — Junk gate for repair-all ─────────────────────
+
+  describe('SP.DAMAGE.S enhc:175 — Junk gate for repairAllComponents', () => {
+    it('skips strength=0 components entirely (no cost, no condition update)', async () => {
+      // Original: if l$=jk$ goto ala (skip in repair-all loop)
+      // Strength=0 components should not be included in repairCost and condition not set to 9
+      prisma.character.findUnique.mockResolvedValue({
+        id: 'char-1',
+        creditsHigh: 0, creditsLow: 500,
+        ship: makeShip({
+          hullStrength: 0, hullCondition: 0, // Junk — skip
+          driveCondition: 5,                  // repairable: (9-5)*15=60
+        }),
+      });
+      prisma.$transaction.mockResolvedValue(undefined);
+
+      const result = await repairAllComponents('char-1');
+      expect(result.success).toBe(true);
+      // Hull (strength=0) should be skipped: cost = only drive repair + inspection
+      expect(result.repairCost).toBe((9 - 5) * 15); // 60, hull junk not included
+    });
   });
 
   // Rim port repair (SP.DOCK2.S rmfx subroutine)
@@ -472,5 +541,99 @@ describe('Repairs system - DB functions', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('Not enough credits');
     });
+  });
+});
+
+// ============================================================================
+// PURE LOGIC: Enhancement Stripping (SP.DAMAGE.S enca, lines 86-96)
+// ============================================================================
+
+describe('checkEnhancementStripping (SP.DAMAGE.S enca)', () => {
+  it('should not strip if condition > 0', () => {
+    const r = checkEnhancementStripping('Pulse Drive+*', 20, 3);
+    expect(r.stripped).toBe(false);
+    expect(r.strength).toBe(20);
+    expect(r.name).toBe('Pulse Drive+*');
+  });
+
+  it('should not strip if name does not end in +*', () => {
+    const r = checkEnhancementStripping('Pulse Drive', 20, 0);
+    expect(r.stripped).toBe(false);
+    expect(r.name).toBe('Pulse Drive');
+  });
+
+  it('should strip +* suffix and apply -10 strength penalty when condition=0', () => {
+    // SP.DAMAGE.S enca line 93-94: strip "+*", a=10, j=j-a
+    const r = checkEnhancementStripping('Pulse Drive+*', 30, 0);
+    expect(r.stripped).toBe(true);
+    expect(r.name).toBe('Pulse Drive');
+    expect(r.strength).toBe(20);  // 30 - 10
+    expect(r.penalty).toBe(10);
+  });
+
+  it('should zero out strength if strength < 10 (cannot save low-strength component)', () => {
+    // SP.DAMAGE.S enca line 94: if j<10 j=0:a=0
+    const r = checkEnhancementStripping('Junk Drive+*', 8, 0);
+    expect(r.stripped).toBe(true);
+    expect(r.name).toBe('Junk Drive');
+    expect(r.strength).toBe(0);
+    expect(r.penalty).toBe(0);
+  });
+
+  it('should handle exactly strength=10 (minimum to save)', () => {
+    const r = checkEnhancementStripping('Basic Drive+*', 10, 0);
+    expect(r.stripped).toBe(true);
+    expect(r.strength).toBe(0);  // 10 - 10 = 0
+    expect(r.penalty).toBe(10);
+  });
+});
+
+// ============================================================================
+// PURE LOGIC: Hull Strength Caps (SP.DAMAGE.S spfix, lines 113-115)
+// ============================================================================
+
+describe('applyHullStrengthCaps (SP.DAMAGE.S spfix)', () => {
+  it('should cap all component strengths at 99 when hull < 10', () => {
+    // h1<10 → max 99
+    const result = applyHullStrengthCaps(9, {
+      weaponStrength: 120,
+      shieldStrength: 99,
+      driveStrength: 50,
+    });
+    expect(result.updates.weaponStrength).toBe(99);
+    expect(result.updates.shieldStrength).toBeUndefined(); // already at cap
+    expect(result.updates.driveStrength).toBeUndefined();  // below cap
+    expect(result.cappedCount).toBe(1);
+  });
+
+  it('should cap all component strengths at 199 when hull >= 10', () => {
+    // h1>9 → max 199
+    const result = applyHullStrengthCaps(10, {
+      weaponStrength: 200,
+      shieldStrength: 199,
+      driveStrength: 150,
+    });
+    expect(result.updates.weaponStrength).toBe(199);
+    expect(result.updates.shieldStrength).toBeUndefined(); // at exact cap, not over
+    expect(result.updates.driveStrength).toBeUndefined();
+    expect(result.cappedCount).toBe(1);
+  });
+
+  it('should cap multiple components at once', () => {
+    const result = applyHullStrengthCaps(5, {
+      weaponStrength: 150, shieldStrength: 200, driveStrength: 30,
+    });
+    expect(result.updates.weaponStrength).toBe(99);
+    expect(result.updates.shieldStrength).toBe(99);
+    expect(result.updates.driveStrength).toBeUndefined();
+    expect(result.cappedCount).toBe(2);
+  });
+
+  it('should return empty updates when all components are within cap', () => {
+    const result = applyHullStrengthCaps(15, {
+      weaponStrength: 50, shieldStrength: 30,
+    });
+    expect(Object.keys(result.updates)).toHaveLength(0);
+    expect(result.cappedCount).toBe(0);
   });
 });

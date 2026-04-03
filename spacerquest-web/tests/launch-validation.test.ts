@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { calculateLiftOffFee } from '../src/game/systems/travel';
+import { calculateLiftOffFee, checkNavPrecision } from '../src/game/systems/travel';
 
 vi.mock('../src/db/prisma', () => ({
   prisma: {
@@ -60,6 +60,7 @@ const makeCharacter = (overrides: Record<string, unknown> = {}) => ({
   cargoType: 0,
   destination: 0,
   cargoManifest: null,
+  shipName: 'Nova Star',  // SP.LIFT.S line 47: ship must have a name
   ship: makeShip(),
   ...overrides,
 });
@@ -190,13 +191,41 @@ describe('SP.LIFT.S launch validation (validateLaunch)', () => {
   });
 
   // SP.LIFT.S line 56: if z1>2 → trip limit check (modern: tripCount >= DAILY_TRIP_LIMIT=2)
+  // SP.START.S:315+cally flavor text: "You have completed 2 turns through Spacer Quest today"
   it('blocks launch when trip limit reached', async () => {
     prisma.character.findUnique.mockResolvedValue(
       makeCharacter({ tripCount: 2, lastTripDate: new Date() })
     );
     const result = await validateLaunch('char-1', 8);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e: string) => e.includes('trip'))).toBe(true);
+    expect(result.errors.some((e: string) => e.includes('turns through Spacer Quest'))).toBe(true);
+  });
+
+  // SP.LIFT.S line 47: if nz$="" print "It would be nice if your ship had a name":goto start
+  it('blocks launch when ship has no name (nz$="")', async () => {
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharacter({ shipName: null })
+    );
+    const result = await validateLaunch('char-1', 8);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('It would be nice if your ship had a name');
+  });
+
+  it('blocks launch when ship name is empty string', async () => {
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharacter({ shipName: '' })
+    );
+    const result = await validateLaunch('char-1', 8);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('It would be nice if your ship had a name');
+  });
+
+  it('does NOT block launch when ship has a valid name', async () => {
+    prisma.character.findUnique.mockResolvedValue(
+      makeCharacter({ shipName: 'Nova Star' })
+    );
+    const result = await validateLaunch('char-1', 8);
+    expect(result.errors).not.toContain('It would be nice if your ship had a name');
   });
 
 });
@@ -431,7 +460,7 @@ describe('SP.LIFT.S lines 76–109: contract gate and bribe system (NavigateScre
           destination: 0,
           cargoManifest: '=-Space-=',
           cargoType: 0,
-          cargoPayment: 0,
+          cargoPayment: 20, // SP.LIFT.S q6=20: distance override stored for scoring at arriv3/varfix
         }),
       })
     );
@@ -464,6 +493,65 @@ describe('SP.LIFT.S lines 76–109: contract gate and bribe system (NavigateScre
     );
     expect(result.output).toContain('Forged Smuggling Manifest Papers');
     vi.restoreAllMocks();
+  });
+});
+
+// ============================================================================
+// checkNavPrecision (SP.WARP.S lines 194-199)
+// ============================================================================
+
+describe('checkNavPrecision (SP.WARP.S navig:194-199)', () => {
+  it('high precision (nav power 50 → precision=5) with low roll → on course', () => {
+    // navStrength=10, navCondition=5 → navPower=50 → precision=5
+    // roll40=3 < 5 → on course
+    const result = checkNavPrecision(10, 5, 7, 3);
+    expect(result.onCourse).toBe(true);
+    expect(result.actualDestination).toBe(7);
+    expect(result.malfunction).toBe(false);
+  });
+
+  it('precision=0 (nav power ≤ 9) always fails nav check', () => {
+    // navStrength=3, navCondition=3 → navPower=9 → precision=0
+    // Any roll40 > 0 → fails; roll20=14 != 7 → wrong dest
+    const result = checkNavPrecision(3, 3, 7, 1, 14);
+    expect(result.onCourse).toBe(false);
+    expect(result.malfunction).toBe(true);
+    expect(result.actualDestination).toBe(14);
+  });
+
+  it('precision fails when roll40 ≥ precision → malfunction, wrong destination', () => {
+    // navStrength=10, navCondition=5 → precision=5; roll40=5 (not > 5) → fails
+    // roll20=12 != 7 → actualDestination=12
+    const result = checkNavPrecision(10, 5, 7, 5, 12);
+    expect(result.onCourse).toBe(false);
+    expect(result.malfunction).toBe(true);
+    expect(result.actualDestination).toBe(12);
+  });
+
+  it('when random dest same as intended, shifts by 1', () => {
+    // If roll20 lands on intended dest (7), should be different
+    const result = checkNavPrecision(3, 3, 7, 5, 7);
+    expect(result.actualDestination).not.toBe(7);
+  });
+
+  it('nav condition 0 → precision 0 → always malfunction', () => {
+    const result = checkNavPrecision(10, 0, 5, 1, 3);
+    expect(result.onCourse).toBe(false);
+    expect(result.malfunction).toBe(true);
+  });
+
+  it('nav strength 0 → precision 0 → always malfunction', () => {
+    const result = checkNavPrecision(0, 9, 5, 1, 3);
+    expect(result.onCourse).toBe(false);
+    expect(result.malfunction).toBe(true);
+  });
+
+  it('very high precision (nav power 300 → precision 30) easily passes', () => {
+    // navStrength=10, navCondition=30 → navPower=300 → precision=30
+    // roll40=25 < 30 → on course
+    const result = checkNavPrecision(10, 30, 8, 25);
+    expect(result.onCourse).toBe(true);
+    expect(result.actualDestination).toBe(8);
   });
 });
 

@@ -301,6 +301,12 @@ async function handleWofInput(characterId: string, raw: string): Promise<ScreenR
         });
       }
       out += `\r\n\x1b[31mNo luck. Number ${state.betNumber} didn't come up. -${cost} cr\x1b[0m\r\n`;
+      // SP.GAME.S line 128: if g2<1 print"Sorry 'bout that...you are flat busted!":g2=0:goto lnk
+      if (newCredits.success && newCredits.high === 0 && newCredits.low <= 0) {
+        out += `\r\n\x1b[31;1mSorry 'bout that...you are flat busted!\x1b[0m\r\n`;
+        out += '> ';
+        return { output: out };
+      }
     }
 
     out += '> ';
@@ -516,9 +522,9 @@ async function advanceRound(
     // SP.GAME.S lines 286-294: loser
     const diff = computerTotal - playerTotal;
     let loss = diff * multiplier;
-    const totalCredits = getTotalCredits(character.creditsHigh, character.creditsLow);
-    // SP.GAME.S line 288: if o9>g2 then o9=g2 — can't lose more than you have
-    if (loss > totalCredits) loss = totalCredits;
+    // SP.GAME.S line 288: if o9>g2 then o9=g2 — cap is creditsLow (g2) only, NOT total credits.
+    // Original uses g2 (low 0-9999) as the cap. High credits (g1) are not at risk.
+    if (loss > character.creditsLow) loss = character.creditsLow;
     const newCredits = subtractCredits(character.creditsHigh, character.creditsLow, loss);
     if (newCredits.success) {
       await prisma.character.update({

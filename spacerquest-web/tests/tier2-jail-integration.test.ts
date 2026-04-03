@@ -182,6 +182,35 @@ describe('Jail Screen Logic', () => {
     expect(screenCode).toContain('crimeType: null');
   });
 
+  // SP.END.S:270 — on release: kk=0:pp=0:sp=1:sp$="Sun-3"
+  it('handleInput P resets currentSystem to 1 (Sun-3) on release (SP.END.S:270)', async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/jail.ts', import.meta.url),
+      'utf-8'
+    );
+    // Expect the update to set currentSystem: 1
+    expect(screenCode).toContain('currentSystem: 1');
+  });
+
+  it('handleInput P resets missionType to 0 on release (SP.END.S:270 kk=0)', async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/jail.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(screenCode).toContain('missionType: 0');
+  });
+
+  it('handleInput P resets extraCurricularMode to null on release (SP.END.S:270 pp=0)', async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/jail.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(screenCode).toContain('extraCurricularMode: null');
+  });
+
   it('handleInput W case exists for waiting in brig', async () => {
     const fs = await import('fs');
     const screenCode = fs.readFileSync(
@@ -252,6 +281,34 @@ describe('Fine Payment Route', () => {
 
     expect(routeCode).toContain('crimeType: null');
   });
+
+  // SP.END.S:270 — on release: sp=1:kk=0:pp=0
+  it('pay-fine route resets currentSystem to 1 (SP.END.S:270 sp=1)', async () => {
+    const fs = await import('fs');
+    const routeCode = fs.readFileSync(
+      new URL('../src/app/routes/character.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(routeCode).toContain('currentSystem: 1');
+  });
+
+  it('pay-fine route resets missionType to 0 (SP.END.S:270 kk=0)', async () => {
+    const fs = await import('fs');
+    const routeCode = fs.readFileSync(
+      new URL('../src/app/routes/character.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(routeCode).toContain('missionType: 0');
+  });
+
+  it('pay-fine route resets extraCurricularMode to null (SP.END.S:270 pp=0)', async () => {
+    const fs = await import('fs');
+    const routeCode = fs.readFileSync(
+      new URL('../src/app/routes/character.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(routeCode).toContain('extraCurricularMode: null');
+  });
 });
 
 // ============================================================================
@@ -310,6 +367,16 @@ describe('Bail Route', () => {
 
     // The bail endpoint must clear the target character's crimeType
     expect(routeCode).toContain('crimeType: null');
+  });
+
+  // SP.END.S:270 — bail release should also reset sp=1, kk=0, pp=0
+  it('bail route resets target currentSystem to 1 (SP.END.S:270 sp=1)', async () => {
+    const fs = await import('fs');
+    const routeCode = fs.readFileSync(
+      new URL('../src/app/routes/character.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(routeCode).toContain('currentSystem: 1');
   });
 });
 

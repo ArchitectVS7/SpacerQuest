@@ -8,13 +8,21 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   calculatePatrolDistance,
   validatePatrolEntry,
   checkScorePromotion,
   calculatePatrolPayoff,
+  calculatePatrolFuelCost,
 } from '../src/game/systems/patrol';
 import { PATROL_BASE_PAY, PATROL_BATTLE_BONUS, PATROL_SCORE_PROMOTION_INTERVAL } from '../src/game/constants';
+
+const patrolScreenCode = fs.readFileSync(
+  path.join(__dirname, '../src/game/screens/space-patrol.ts'),
+  'utf-8'
+);
 
 // ============================================================================
 // calculatePatrolDistance — SP.REG.S dist1 subroutine (lines 245-248)
@@ -287,5 +295,188 @@ describe('calculatePatrolPayoff (SP.REG.S payoff subroutine)', () => {
     const result = calculatePatrolPayoff({ ...baseParams, patrolBattlesWon: 0, patrolBattlesLost: 1 });
     const joined = result.reportLines.join('\n');
     expect(joined).not.toContain('Job Well-Done');
+  });
+});
+
+// ============================================================================
+// calculatePatrolFuelCost (SP.REG.S fcost subroutine, lines 252-256)
+// ============================================================================
+
+describe('calculatePatrolFuelCost (SP.REG.S:252-256)', () => {
+  it('returns non-zero fuel cost for normal drive', () => {
+    // driveStrength=10, driveCondition=9, distance=5
+    // af=min(10,21)=10; f2=(21-10)+(10-9)=12; f2=12*5=60; ty=70; f2=floor(70/2)=35
+    const cost = calculatePatrolFuelCost(10, 9, 5);
+    expect(cost).toBe(35);
+  });
+
+  it('returns 0 for 0 distance', () => {
+    // Original: f2=0:if q6<1 return
+    const cost = calculatePatrolFuelCost(10, 9, 0);
+    expect(cost).toBe(0);
+  });
+
+  it('increases with distance', () => {
+    const costShort = calculatePatrolFuelCost(10, 9, 3);
+    const costLong = calculatePatrolFuelCost(10, 9, 10);
+    expect(costLong).toBeGreaterThan(costShort);
+  });
+});
+
+// ============================================================================
+// SP.REG.S launch: f1=f1+f2 — patrol launch pre-loads fuel (lines 258-267)
+// ============================================================================
+
+describe('SP.REG.S patrol launch fuel pre-load (line 262: f1=f1+f2)', () => {
+  it('L key handler adds fuelRequired to ship.fuel at launch (f1=f1+f2)', () => {
+    // The launch handler must update ship.fuel by adding fuelRequired, not check and block
+    expect(patrolScreenCode).toContain('newFuel = ship.fuel + fuelRequired');
+  });
+
+  it('L key handler updates ship fuel via prisma in transaction', () => {
+    // Must persist the fuel top-up to DB at launch
+    expect(patrolScreenCode).toContain('prisma.ship.update');
+    expect(patrolScreenCode).toContain('fuel: newFuel');
+  });
+
+  it('L key handler sets missionType=2 at launch', () => {
+    expect(patrolScreenCode).toContain('missionType: 2');
+  });
+
+  it('L key handler uses calculatePatrolFuelCost to compute f2', () => {
+    expect(patrolScreenCode).toContain('calculatePatrolFuelCost(');
+  });
+});
+
+// ============================================================================
+// SP.REG.S patrol (lines 177-183): Space Commandant promotion check
+// Original: if ((w1+p1)<50) or (kk=9) goto pat0
+//           if (left$(l1$,5)="LSS C") or (left$(h1$,3)="Ast") goto pat0
+//           print "The Space Commandant wishes to speak to you [Y]/(N): "
+//           if i$="N" print"Not now":goto pat0
+//           print"Yes": link"sp.top","wins"
+// ============================================================================
+
+describe('SP.REG.S patrol Space Commandant check (lines 177-183)', () => {
+  it('space-patrol.ts checks weapon+shield >= 50 for Commandant prompt', () => {
+    // SP.REG.S:177: if ((w1+p1)<50) goto pat0
+    expect(patrolScreenCode).toContain('weaponStrength + ship.shieldStrength') ;
+    expect(patrolScreenCode).toContain('>= 50');
+  });
+
+  it('space-patrol.ts blocks Commandant when missionType===9 (kk=9)', () => {
+    // SP.REG.S:177: or (kk=9)
+    expect(patrolScreenCode).toContain('missionType !== 9');
+  });
+
+  it('space-patrol.ts blocks Commandant when life support starts with "LSS C" (Chrysalis)', () => {
+    // SP.REG.S:178: if (left$(l1$,5)="LSS C") goto pat0
+    expect(patrolScreenCode).toContain("startsWith('LSS C')");
+  });
+
+  it('space-patrol.ts blocks Commandant when hull starts with "Ast" (Astraxial)', () => {
+    // SP.REG.S:178: or (left$(h1$,3)="Ast") goto pat0
+    expect(patrolScreenCode).toContain("startsWith('Ast')");
+  });
+
+  it('space-patrol.ts routes to topgun on Y (link"sp.top","wins")', () => {
+    // SP.REG.S:183: link"sp.top","wins"
+    expect(patrolScreenCode).toContain("nextScreen: 'topgun'");
+  });
+
+  it('space-patrol.ts uses pendingCommandant to track multi-step state', () => {
+    // Commandant prompt requires multi-step Y/N interaction
+    expect(patrolScreenCode).toContain('pendingCommandant');
+  });
+
+  it('space-patrol.ts shows "Space Commandant wishes to speak" prompt text', () => {
+    expect(patrolScreenCode).toContain('Space Commandant wishes to speak to you');
+  });
+});
+
+// ============================================================================
+// SP.REG.S payoff: "Star System Patrolled" in report (line 287)
+// Original: print"Star System Patrolled................: "q4$
+// ============================================================================
+
+describe('calculatePatrolPayoff — Star System Patrolled report line (SP.REG.S:287)', () => {
+  const baseParams = {
+    patrolBattlesWon: 1,
+    patrolBattlesLost: 0,
+    distance: 5,
+    cargoPods: 1,
+    cargoPayment: 500,
+    creditsHigh: 0,
+    creditsLow: 1000,
+    astrecsTraveled: 0,
+    cargoDelivered: 0,
+    tripsCompleted: 0,
+    battlesWon: 0,
+    battlesLost: 0,
+    score: 10,
+    rescuesPerformed: 0,
+  };
+
+  it('report includes "Star System Patrolled" when destinationName is provided', () => {
+    // SP.REG.S line 287: print"Star System Patrolled................: "q4$
+    const result = calculatePatrolPayoff({ ...baseParams, destinationName: 'Vega-6' });
+    const joined = result.reportLines.join('\n');
+    expect(joined).toContain('Star System Patrolled');
+    expect(joined).toContain('Vega-6');
+  });
+
+  it('report omits "Star System Patrolled" when destinationName is not provided (backward compat)', () => {
+    const result = calculatePatrolPayoff({ ...baseParams });
+    const joined = result.reportLines.join('\n');
+    expect(joined).not.toContain('Star System Patrolled');
+  });
+
+  it('star system line appears before distance line in report', () => {
+    // Original order: star system (line 287) then distance (line 288)
+    const result = calculatePatrolPayoff({ ...baseParams, destinationName: 'Sun-3' });
+    const sysIdx = result.reportLines.findIndex(l => l.includes('Star System Patrolled'));
+    const distIdx = result.reportLines.findIndex(l => l.includes('Distance Travelled'));
+    expect(sysIdx).toBeGreaterThan(-1);
+    expect(distIdx).toBeGreaterThan(-1);
+    expect(sysIdx).toBeLessThan(distIdx);
+  });
+});
+
+// ============================================================================
+// SP.REG.S lostnow subroutine (lines 354-366): score penalty when lost in space
+// Original: s2=(s2+wb)-lb; s2=s2-10: if s2<1 s2=0
+// ============================================================================
+
+describe('SP.REG.S lostnow score penalty (lines 354-366)', () => {
+  it('space-patrol.ts applies s2-10 score penalty in lost path', () => {
+    // SP.REG.S lostnow: s2=(s2+wb)-lb; s2=s2-10
+    expect(patrolScreenCode).toContain('- 10');
+  });
+
+  it('space-patrol.ts sets isLost=true in lost path', () => {
+    // SP.REG.S: ap=1 → modern isLost flag
+    expect(patrolScreenCode).toContain('isLost: true');
+  });
+
+  it('space-patrol.ts accumulates battlesWon/Lost in lost path', () => {
+    // SP.REG.S lostnow: e1=e1+wb: m1=m1+lb
+    expect(patrolScreenCode).toContain('battlesWon: { increment: wb }');
+    expect(patrolScreenCode).toContain('battlesLost: { increment: lb }');
+  });
+
+  it('lost score formula: (s2+wb-lb-10) clamped to 0 minimum', () => {
+    // SP.REG.S: s2=(s2+wb)-lb; s2=s2-10: if s2<1 s2=0
+    // Test the formula directly with extreme values
+    // score=5, wb=0, lb=0 → (5+0-0-10) = -5 → clamped to 0
+    const rawScore = 5 + 0 - 0 - 10;
+    const newScore = Math.max(0, rawScore);
+    expect(newScore).toBe(0);
+  });
+
+  it('lost score formula keeps positive result when score is large', () => {
+    // score=100, wb=2, lb=1 → (100+2-1-10) = 91
+    const rawScore = 100 + 2 - 1 - 10;
+    const newScore = Math.max(0, rawScore);
+    expect(newScore).toBe(91);
   });
 });

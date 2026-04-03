@@ -45,93 +45,102 @@ export const YARD_COMPONENT_TIER_PRICES = [50, 100, 200, 400, 800, 1500, 3000, 5
  * Index 0 = tier 1 (weakest), index 8 = tier 9 (strongest).
  */
 export const COMPONENT_TIER_NAMES: Record<string, string[]> = {
+  // SP.YARD.S hull subroutine (lines 58-66)
   hull: [
-    'Junk Hull',      // tier 1 - strength 10
-    'Scout Hull',     // tier 2 - strength 20
-    'Clipper Hull',   // tier 3 - strength 30
-    'Corsair Hull',   // tier 4 - strength 40
-    'Falcon Hull',    // tier 5 - strength 50
-    'Firebird Hull',  // tier 6 - strength 60
-    'Dragon Hull',    // tier 7 - strength 70
-    'Titan Hull',     // tier 8 - strength 80
-    'Nova Hull',      // tier 9 - strength 90
+    'Reliable',       // tier 1 - strength 10
+    'Flyer',          // tier 2 - strength 20
+    'Racer',          // tier 3 - strength 30
+    'Viper',          // tier 4 - strength 40
+    'Tiger',          // tier 5 - strength 50
+    'Mark IV',        // tier 6 - strength 60
+    'Dreadnought',    // tier 7 - strength 70
+    'Invincible',     // tier 8 - strength 80
+    'Battle Star',    // tier 9 - strength 90
   ],
+  // SP.YARD.S drive subroutine (lines 75-83)
   drive: [
-    'Ion Drive',      // tier 1
-    'Pulse Drive',    // tier 2
-    'Ramjet',         // tier 3
-    'Hyper Drive',    // tier 4
-    'Quantum Drive',  // tier 5
-    'Photon Drive',   // tier 6
-    'Warp Drive',     // tier 7
-    'Star Drive',     // tier 8
-    'Nova Drive',     // tier 9
+    'Pulse Engines',          // tier 1
+    'Reaction Mass Engines',  // tier 2
+    'Hydrogen Ram Scoop',     // tier 3
+    'Plasma Ion Drive',       // tier 4
+    'Anti-Matter Drive',      // tier 5
+    'Ultra-Grav System',      // tier 6
+    'Supra-Grav System',      // tier 7
+    'Photonic LS Drive',      // tier 8
+    'Harmonic FTL Drive',     // tier 9
   ],
+  // SP.YARD.S cabin subroutine (lines 92-100)
   cabin: [
-    'Steel Cabin',    // tier 1
-    'Alloy Cabin',    // tier 2
-    'Comfort Cabin',  // tier 3
-    'Deluxe Cabin',   // tier 4
-    'Elite Cabin',    // tier 5
-    'Luxury Cabin',   // tier 6
-    'Imperial Cabin', // tier 7
-    'Royal Cabin',    // tier 8
-    'Omega Cabin',    // tier 9
+    'Simple Accomodations',   // tier 1
+    'Basic Comforts',         // tier 2
+    'Comfortable Habitat',    // tier 3
+    'Deluxe Staterooms',      // tier 4
+    'Luxury Accomodations',   // tier 5
+    'Pent-House',             // tier 6
+    'Estate Digs',            // tier 7
+    'Athenia Pad',            // tier 8
+    'Plaza Suite',            // tier 9
   ],
+  // SP.YARD.S life subroutine (lines 114-123): "LSS Model " + number + "A"
+  // "LSS Chrysalis+*" is a quest reward (SP.TOP.S:171), NOT a yard tier.
   lifeSupport: [
-    'LSS Basic',      // tier 1
-    'LSS Plus',       // tier 2
-    'LSS Mark III',   // tier 3
-    'LSS Mark IV',    // tier 4
-    'LSS Mark V',     // tier 5
-    'LSS Chry',       // tier 6 — special override per SP.YARD.S
-    'LSS Chry',       // tier 7
-    'LSS Chry',       // tier 8
-    'LSS Chry',       // tier 9
+    'LSS Model 1A',   // tier 1
+    'LSS Model 2A',   // tier 2
+    'LSS Model 3A',   // tier 3
+    'LSS Model 4A',   // tier 4
+    'LSS Model 5A',   // tier 5
+    'LSS Model 6A',   // tier 6
+    'LSS Model 7A',   // tier 7
+    'LSS Model 8A',   // tier 8
+    'LSS Model 9A',   // tier 9
   ],
+  // SP.YARD.S weapon subroutine (lines 132-140)
   weapon: [
-    'Laser Canon',    // tier 1
-    'Pulse Blaster',  // tier 2
-    'Plasma Cannon',  // tier 3
-    'Ion Cannon',     // tier 4
-    'Disruptor',      // tier 5
-    'Photon Torpedo', // tier 6
-    'Annihilator',    // tier 7
-    'Death Ray',      // tier 8
-    'Nova Cannon',    // tier 9
+    'Atomic Missiles',          // tier 1
+    'Phasor Guns',              // tier 2
+    'Laser Guns',               // tier 3
+    'Plasma Flamer',            // tier 4
+    'Photon Torpedoes',         // tier 5
+    'Ion Disruptor',            // tier 6
+    'Particle Ray Generator',   // tier 7
+    'Neutron Beam Projector',   // tier 8
+    'Astral ASDRS',             // tier 9
   ],
+  // SP.YARD.S nav subroutine (lines 149-157)
   navigation: [
-    'Basic Nav',      // tier 1
-    'Star Chart',     // tier 2
-    'Deep Nav',       // tier 3
-    'Astro Guide',    // tier 4
-    'Cosmic Mapper',  // tier 5
-    'Stellar Nav',    // tier 6
-    'Quantum Nav',    // tier 7
-    'Hyper Nav',      // tier 8
-    'Omni Nav',       // tier 9
+    'Solar Nav Aid System',   // tier 1
+    'Galactic Nav Device',    // tier 2
+    'Astral Plane Hardware',  // tier 3
+    'Harmonic Void Marks',    // tier 4
+    'Ethereal Seeker',        // tier 5
+    'Super Astro-Guide',      // tier 6
+    'LOGRUS NAV',             // tier 7
+    'Pathfinder:][',          // tier 8
+    'Astrolabe MK-VI',        // tier 9
   ],
+  // SP.YARD.S robot subroutine (lines 166-174)
   robotics: [
-    'Robot Mk I',     // tier 1
-    'Robot Mk II',    // tier 2
-    'Robot Mk III',   // tier 3
-    'Robot Mk IV',    // tier 4
-    'Robot Mk V',     // tier 5
-    'Robot Mk VI',    // tier 6
-    'Android I',      // tier 7
-    'Android II',     // tier 8
-    'Android III',    // tier 9
+    'Basic Auto-Pilot',       // tier 1
+    'SW Auto Robotic Sys',    // tier 2
+    'Ultra Robotic Control',  // tier 3
+    'COMPU-TRAK XM',          // tier 4
+    'Spiffy Controller',      // tier 5
+    'Auto-Battler Console',   // tier 6
+    'Robo-Mentor',            // tier 7
+    'Psion-O-Tac',            // tier 8
+    'Colossus A:I',           // tier 9
   ],
+  // SP.YARD.S prot subroutine (lines 183-191)
   shield: [
-    'Deflector',      // tier 1
-    'Force Shield',   // tier 2
-    'Barrier',        // tier 3
-    'Aegis Shield',   // tier 4
-    'Titan Shield',   // tier 5
-    'Nova Shield',    // tier 6
-    'Phalanx',        // tier 7
-    'Omni Shield',    // tier 8
-    'Invincible',     // tier 9
+    'Power',            // tier 1
+    'Hi-Energy',        // tier 2
+    'Atomic',           // tier 3
+    'Protector',        // tier 4
+    'Guardian',         // tier 5
+    'Guardian-II',      // tier 6
+    'Guardian-]I[',     // tier 7
+    'Carapace-XM',      // tier 8
+    'ION-MAG Shield',   // tier 9
   ],
 };
 
@@ -191,6 +200,8 @@ export interface PurchaseShipComponentResult {
   tradeinValue?: number;
   netCost?: number;
   newCredits?: number;
+  podSalvage?: number;
+  contractVoided?: boolean;
 }
 
 /**
@@ -203,7 +214,7 @@ export interface PurchaseShipComponentResult {
  *   4. Credits checked, deducted
  *   5. Component strength set to tierIndex*10, name assigned from name.data
  *   6. Hull replacement optionally transfers cargo pods for 500 cr
- *   7. Life Support tier ≥ 6 always named "LSS Chry"
+ *   7. Life Support with "LSS Chry" prefix blocks replacement (Chrysalis downgrade guard)
  */
 export async function purchaseShipComponent(
   params: PurchaseShipComponentParams
@@ -236,6 +247,21 @@ export async function purchaseShipComponent(
   const currentStrength = Number(ship[strengthField] ?? 0);
   const isTitaniumEnhanced = ship.hasTitaniumHull && componentType === 'hull';
 
+  // SP.YARD.S life subroutine (lines 107-110): LSS Chrysalis downgrade guard.
+  // Original: if left$(l1$,8)<>"LSS Chry" goto lifex
+  //   print "It will cost 1,500,000 cr to remove the [lss name]"
+  //   print "Very doubtful you wish to proceed....."
+  //   pop:goto main
+  if (componentType === 'lifeSupport') {
+    const currentLssName = (ship[nameField] as string) ?? '';
+    if (currentLssName.startsWith('LSS Chry')) {
+      return {
+        success: false,
+        error: `It will cost 1,500,000 cr to remove the ${currentLssName}. Very doubtful you wish to proceed.....`,
+      };
+    }
+  }
+
   // SP.YARD.S swap subroutine: trade-in existing component
   const tradeinValue = calculateTradeInValue(currentStrength, isTitaniumEnhanced);
 
@@ -247,7 +273,13 @@ export async function purchaseShipComponent(
 
   // Hull component transfer fee (500 cr) on top of net cost
   const transferFee = (componentType === 'hull' && transferComponents) ? 500 : 0;
-  const totalCost = netCost + transferFee;
+
+  // SP.YARD.S scrap subroutine: "Pods salvageable @ 2 cr each" — g2=g2+(s1*2):s1=0
+  // When transferring components to new hull, salvage existing pods at 2 cr each.
+  const podSalvage = (componentType === 'hull' && transferComponents) ? (ship.cargoPods ?? 0) * 2 : 0;
+
+  // Net cost = component cost - tradein + transferFee - podSalvage
+  const totalCost = Math.max(0, netCost + transferFee - podSalvage);
 
   if (totalCredits < totalCost) {
     return { success: false, error: 'Not enough credits' };
@@ -256,14 +288,13 @@ export async function purchaseShipComponent(
   // New strength = tierIndex * 10 (tier 1 = 10, tier 9 = 90)
   const newStrength = tierIndex * 10;
 
-  // Determine component name
-  let componentName: string;
-  // Special rule: Life Support tier ≥ 6 is always named "LSS Chry"
-  if (componentType === 'lifeSupport' && tierIndex >= 6) {
-    componentName = 'LSS Chry';
-  } else {
-    componentName = COMPONENT_TIER_NAMES[componentType][tierIndex - 1];
-  }
+  // Determine component name from original SP.YARD.S name tables
+  const componentName = COMPONENT_TIER_NAMES[componentType][tierIndex - 1];
+
+  // SP.YARD.S scrap2 (lines 301-302): if q1>0 void the cargo contract
+  // "As of now...your Cargo Contract is null and void!"
+  // q1=0:q2=0:q3=0:q4=0:q5=0:q6=0:q2$="":q4$=""
+  const contractVoided = componentType === 'hull' && !!transferComponents && character.cargoPods > 0;
 
   const { high, low } = subtractCredits(character.creditsHigh, character.creditsLow, totalCost);
   const newCredits = getTotalCredits(high, low);
@@ -273,10 +304,30 @@ export async function purchaseShipComponent(
     [nameField]: componentName,
   };
 
-  // Recalculate maxCargoPods if hull changed
+  // Recalculate maxCargoPods if hull changed; also clear pods on transfer (SP.YARD.S s1=0)
   if (componentType === 'hull') {
     const newCondition = Number(ship.hullCondition);
     shipUpdate.maxCargoPods = calculateMaxCargoPods(newStrength, newCondition, ship.hasTitaniumHull);
+    if (transferComponents) {
+      // SP.YARD.S scrap: g2=g2+(s1*2):s1=0 — pods cleared after salvage
+      shipUpdate.cargoPods = 0;
+    }
+    // SP.YARD.S main menu line 32: if (h1>4) and (right$(p1$,1)="=") → strip cloaker
+    // When the new hull strength exceeds 4, the Morton's Cloaker is removed automatically.
+    if (newStrength > 4 && ship.hasCloaker) {
+      shipUpdate.hasCloaker = false;
+    }
+  }
+
+  const characterUpdate: Record<string, unknown> = { creditsHigh: high, creditsLow: low };
+  if (contractVoided) {
+    // SP.YARD.S scrap2:301-302: void active cargo contract on hull scrap
+    characterUpdate.cargoPods = 0;
+    characterUpdate.cargoType = 0;
+    characterUpdate.destination = 0;
+    characterUpdate.cargoPayment = 0;
+    characterUpdate.cargoManifest = null;
+    characterUpdate.missionType = 0;
   }
 
   await db.$transaction([
@@ -286,7 +337,7 @@ export async function purchaseShipComponent(
     }),
     db.character.update({
       where: { id: characterId },
-      data: { creditsHigh: high, creditsLow: low },
+      data: characterUpdate,
     }),
   ]);
 
@@ -297,6 +348,8 @@ export async function purchaseShipComponent(
     tradeinValue,
     netCost: totalCost,
     newCredits,
+    podSalvage,
+    contractVoided,
   };
 }
 
@@ -384,12 +437,24 @@ export async function upgradeShipComponent(
     return { success: false, error: 'Not enough credits' };
   }
 
-  const updateData: Record<string, number> = {};
+  const updateData: Record<string, number | boolean> = {};
   if (upgradeType === 'STRENGTH') {
     const newStrength = currentStrength + 10;
     if (newStrength > COMPONENT_MAX_STRENGTH) {
       return { success: false, error: 'Component already at maximum strength' };
     }
+
+    // SP.SPEED.S upit subroutine (lines 152-154):
+    // if (left$(l1$,5)="LSS C") or (l1<51) return
+    // i$="":l1=50:print "The [l1$] can't support a strength >50"
+    // Life support strength cannot exceed 50 unless it is the LSS Chrysalis ("LSS C" prefix).
+    if (component.toUpperCase() === 'LIFE_SUPPORT') {
+      const lssName = (character.ship['lifeSupportName' as keyof typeof character.ship] as string) ?? '';
+      if (!lssName.startsWith('LSS C') && newStrength > 50) {
+        return { success: false, error: "This Life Support cannot exceed strength 50" };
+      }
+    }
+
     updateData[strengthField] = newStrength;
 
     // Recalculate max cargo if hull upgraded
@@ -397,6 +462,12 @@ export async function upgradeShipComponent(
     if (component.toUpperCase() === 'HULL' && !character.ship.isAstraxialHull) {
       const condition = Number(character.ship.hullCondition);
       updateData.maxCargoPods = calculateMaxCargoPods(newStrength, condition, character.ship.hasTitaniumHull);
+
+      // SP.YARD.S main menu line 32: if (h1>4) and (right$(p1$,1)="=") → strip cloaker
+      // When hull strength passes 4 (i.e. new strength > 4) and cloaker is installed, remove it.
+      if (newStrength > 4 && character.ship.hasCloaker) {
+        updateData.hasCloaker = false;
+      }
     }
   } else {
     const newCondition = Math.min(9, Number(character.ship[conditionField as keyof typeof character.ship]) + 1);
@@ -535,6 +606,10 @@ export async function purchaseSpecialEquipment(
 
   // Equipment-specific requirement checks
   if (equipment === 'CLOAKER') {
+    // SP.SPEED.S cloak line 102: if h1<1 → need hull first
+    if (ship.hullStrength < 1) {
+      return { success: false, error: "You need a ship's hull before we can help you!" };
+    }
     if (ship.hullStrength >= 5) {
       return { success: false, error: 'Hull too large for cloaker (must be < 5 strength)' };
     }
@@ -544,12 +619,25 @@ export async function purchaseSpecialEquipment(
     if (ship.hasAutoRepair) {
       return { success: false, error: 'Cloaker incompatible with auto-repair' };
     }
+    // SP.SPEED.S cloak lines 108-109: if right$(p1$,2)="++" → cloaker won't fit
+    // "++" in the original means ARCH-ANGEL is installed on the shield slot
+    if (ship.hasArchAngel) {
+      return { success: false, error: "Cloaker won't fit with Arch-Angel shield installed" };
+    }
   }
 
   if (equipment === 'AUTO_REPAIR') {
+    // SP.SPEED.S autorep line 74: if h1<1 → need a hull first
+    if (ship.hullStrength < 1) {
+      return { success: false, error: 'Need a hull first' };
+    }
     if (ship.hasCloaker) {
       return { success: false, error: 'Auto-repair incompatible with cloaker' };
     }
+    // SP.SPEED.txt lines 85-96: Titanium enhancement and A-R cannot coexist.
+    // Installing A-R removes Titanium. The cost warning is shown but we proceed.
+    // Original: if l$="*" print "Requires removing the Titanium Enhancement"
+    // Line 96: h1=h1-10:s1=s1-5 (remove titanium strength bonus and pod bonus)
   }
 
   if (equipment === 'STAR_BUSTER' || equipment === 'ARCH_ANGEL') {
@@ -602,11 +690,50 @@ export async function purchaseSpecialEquipment(
     shipUpdate.hullStrength = bonus.hullStrength;
     shipUpdate.hullCondition = bonus.hullCondition;
     shipUpdate.maxCargoPods = bonus.cargoPods;
-    shipUpdate.fuel = ship.fuel + bonus.fuel;
+    // SP.BLACK.S:53: f1=2900 — SET fuel to 2900 (not add); full fuel tanks included in purchase
+    shipUpdate.fuel = bonus.fuel;
   }
   
+  // ── SP.SPEED.txt lines 85-96: Component mutual exclusivity ──
+  // Titanium Enhancement (+*) and Auto-Repair (+!) cannot coexist.
+  // Installing one removes the other with appropriate stat adjustments.
+
+  if (equipment === 'AUTO_REPAIR' && ship.hasTitaniumHull) {
+    // SP.SPEED.txt line 96: remove titanium — h1=h1-10, s1=s1-5
+    // Original strips the +* suffix and reverts strength/pod bonuses
+    shipUpdate.hasTitaniumHull = false;
+    shipUpdate.hullStrength = Math.max(1, ship.hullStrength - 10);
+    shipUpdate.maxCargoPods = Math.max(0, ship.maxCargoPods - 50);
+    // Note: s1=s1-5 in original refers to cargo pod capacity factor, which
+    // in the modern system is the +50 pod bonus from Titanium
+  }
+
+  if (equipment === 'TITANIUM_HULL' && ship.hasAutoRepair) {
+    // SP.SPEED.txt choose subroutine lines 249: if right$(xl$,2)="+!" strip it
+    // Original: lw=len(xl$):lw=lw-2:xl$=left$(xl$,lw)
+    // Installing Titanium removes Auto-Repair module
+    shipUpdate.hasAutoRepair = false;
+  }
+
+  // ── SP.SPEED.S nemget subroutine: cloaker stripping ──────────────────────
+  // Original: if right$(xl$,1)="=" print "The Morton's Cloaker will be lost"
+  // Cloaker is installed on shield slot (p1$="="). ARCH-ANGEL replaces the shield
+  // → hasCloaker must be cleared. STAR-BUSTER checks w1$ (weapon, no "=") — strip
+  // defensively in case of edge-case state.
+  if ((equipment === 'ARCH_ANGEL' || equipment === 'STAR_BUSTER') && ship.hasCloaker) {
+    // SP.SPEED.S nemget: replacing component loses the Morton's Cloaker (="= suffix)
+    shipUpdate.hasCloaker = false;
+  }
+
   if (equipment === 'TITANIUM_HULL') {
     shipUpdate.maxCargoPods = ship.maxCargoPods + 50;
+  }
+
+  // SP.SPEED.S cloak line 122: p1$=p1$+"=":p2=9:h2=9
+  // Installing the Morton's Cloaker also restores shield condition and hull condition to 9.
+  if (equipment === 'CLOAKER') {
+    shipUpdate.shieldCondition = 9;
+    shipUpdate.hullCondition = 9;
   }
 
   await prisma.$transaction([

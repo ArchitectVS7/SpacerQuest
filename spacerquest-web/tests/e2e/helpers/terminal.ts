@@ -21,6 +21,7 @@ export const BUFFERED_SCREENS = [
   'traders-buy-fuel', 'traders-sell-fuel', 'traders-cargo',
   'navigate', 'bank-deposit', 'bank-withdraw', 'bank-transfer',
   'shipyard-upgrade', 'registry-search', 'alliance-invest',
+  'pub-wof',
 ];
 
 /**
@@ -94,28 +95,47 @@ export async function typeAndEnter(page: Page, text: string): Promise<void> {
  * Known screen headers mapped to screen names.
  */
 const SCREEN_PATTERNS: Array<[RegExp, string]> = [
-  [/MAIN MENU/i, 'main-menu'],
+  [/SpacerQuest Authentication/i, 'login'],
+  [/CREATE NEW SPACER/i, 'character-create'],
+  [/JAIL|BRIG/i, 'jail'],
+  [/COMBAT|Intruder Alert|A\]ttack.*S\]urrender/i, 'combat'],
+  [/MAIN MENU|Port Accounts/i, 'main-menu'],
+  [/Star Port Facilities|Docking Fee.*pay it/i, 'rim-port'],
+  [/ALLIANCE INVESTMENT CENTER/i, 'alliance-invest'],
+  [/Manifest Board/i, 'traders-cargo'],
+  // Buy/sell fuel: actual headers are "BUY TRANSCEND FUEL" and "SELL TRANSCEND FUEL"
+  [/BUY TRANSCEND FUEL|units to buy/i, 'traders-buy-fuel'],
+  [/SELL TRANSCEND FUEL|TRANSFER TRANSCEND FUEL|units to sell/i, 'traders-sell-fuel'],
+  [/Enter amount to deposit/i, 'bank-deposit'],
+  [/Enter amount to withdraw/i, 'bank-withdraw'],
   [/GALACTIC BANK|BANKING MENU/i, 'bank'],
-  [/GALACTIC SHIPYARD|SHIP.*STATUS/i, 'shipyard'],
+  [/GALACTIC SHIPYARD|SHIP.*STATUS|SHIPYARD MENU/i, 'shipyard'],
+  [/COMPONENT UPGRADE|Select a component to upgrade|Upgrade failed|Invalid component selection/i, 'shipyard-upgrade'],
+  [/Special Equipment/i, 'shipyard-special'],
   [/LONELY ASTEROID PUB|PUB MENU/i, 'pub'],
+  [/How many rolls\?|Bet amount\? \(1-/i, 'pub-wof'],
+  [/The wheel spins|WINNER! Number|No luck\. Number|closed for renovations/i, 'pub-result'],
   [/INTERGALACTIC TRADERS|TRADERS MENU/i, 'traders'],
   [/SPACE REGISTRY|REGISTRY/i, 'registry'],
+  [/SPACE PATROL HEADQUARTERS|Space Patrol Orders/i, 'space-patrol'],
   [/NAVIGATE|DESTINATION/i, 'navigate'],
-  [/COMBAT|ENCOUNTER/i, 'combat'],
-  [/ALLIANCE INVESTMENT|INVEST/i, 'alliance-invest'],
-  [/CREATE NEW SPACER/i, 'character-create'],
-  [/SpacerQuest Authentication/i, 'login'],
-  [/JAIL|BRIG/i, 'jail'],
+  [/END YOUR TURN|End your turn\?/i, 'end-turn'],
 ];
 
 /**
  * Detect which screen is currently displayed by matching terminal text
  * against known headers.
+ *
+ * Only checks the most recent 2000 characters to avoid false matches
+ * against xterm.js scrollback buffer content from past screens.
  */
 export async function detectScreen(page: Page): Promise<string | null> {
   const text = await getTerminalText(page);
+  // Use only recent content — xterm.js scrollback retains old screens after \x1b[2J clears
+  // the visible area, so checking the full buffer causes stale screen mis-detection.
+  const recent = text.slice(-3000);
   for (const [pattern, name] of SCREEN_PATTERNS) {
-    if (pattern.test(text)) {
+    if (pattern.test(recent)) {
       return name;
     }
   }

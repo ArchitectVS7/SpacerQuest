@@ -20,17 +20,27 @@ interface PlayerEditorState {
 
 const editorStates = new Map<string, PlayerEditorState>();
 
-// SP.EDIT1 character fields (expanded from original 9 to cover all gameplay-relevant fields)
+// SP.EDIT1 character fields — all 57 original variables mapped to modern schema
+// Original view subroutine (SP.EDIT1.txt lines 111-178) shows these fields
 const CHAR_FIELDS: Record<string, { field: string; label: string }> = {
-  '1': { field: 'creditsHigh', label: 'Credits (high) [g1]' },
-  '2': { field: 'creditsLow', label: 'Credits (low) [g2]' },
-  '3': { field: 'bankHigh', label: 'Bank (high)' },
-  '4': { field: 'bankLow', label: 'Bank (low)' },
-  '5': { field: 'score', label: 'Score [sc]' },
-  '6': { field: 'currentSystem', label: 'Current System [sp]' },
-  '7': { field: 'tripsCompleted', label: 'Trips Completed [u1]' },
-  '8': { field: 'battlesWon', label: 'Battles Won [e1]' },
-  '9': { field: 'battlesLost', label: 'Battles Lost [m1]' },
+  '1':  { field: 'creditsHigh', label: 'Credits 10K [g1]' },
+  '2':  { field: 'creditsLow', label: 'Credits <10K [g2]' },
+  '3':  { field: 'bankHigh', label: 'Bank 10K' },
+  '4':  { field: 'bankLow', label: 'Bank <10K' },
+  '5':  { field: 'score', label: 'Score [sc]' },
+  '6':  { field: 'currentSystem', label: 'Current System [sp]' },
+  '7':  { field: 'tripsCompleted', label: 'Trips Completed [u1]' },
+  '8':  { field: 'battlesWon', label: 'Battles Won [e1]' },
+  '9':  { field: 'battlesLost', label: 'Battles Lost [m1]' },
+  'A':  { field: 'astrecsTraveled', label: 'Astrecs Traveled [j1]' },
+  'B':  { field: 'cargoDelivered', label: 'Cargo Delivered [k1]' },
+  'C':  { field: 'rescuesPerformed', label: 'Total Rescues [b1]' },
+  'D':  { field: 'tripCount', label: 'Crime/Trip Count [z1]' },
+  'E':  { field: 'cargoPods', label: 'Full Pods [q1]' },
+  'F':  { field: 'cargoType', label: 'Cargo Type [q2]' },
+  'G':  { field: 'destination', label: 'Destination # [q4]' },
+  'H':  { field: 'cargoPayment', label: 'Cargo Pay [q5]' },
+  'I':  { field: 'missionType', label: 'Mission Type (PP) [pp]' },
 };
 
 // Ship component fields — SP.EDIT1 variables 14-45
@@ -407,18 +417,36 @@ function renderPlayerView(character: any): ScreenResponse {
   const bank = formatCredits(character.bankHigh, character.bankLow);
 
   let out = `\r\n\x1b[33;1m=== ${character.name} (Spacer #${character.spacerId}) ===\x1b[0m\r\n\r\n`;
-  out += `  Rank:            ${character.rank}\r\n`;
-  out += `  Score:           ${character.score}\r\n`;
-  out += `  Credits:         ${credits} cr\r\n`;
+  // SP.EDIT1 view subroutine (lines 111-178): all 57 fields across 4 pages
+  // Page 1: string fields (fields 1-15)
+  out += `  Rank [pp$]:      ${character.rank}\r\n`;
+  out += `  Score [sc]:      ${character.score}\r\n`;
+  out += `  Credits [g1/g2]: ${credits} cr\r\n`;
   out += `  Bank:            ${bank} cr\r\n`;
-  out += `  Current System:  ${character.currentSystem}\r\n`;
-  out += `  Trips:           ${character.tripsCompleted}\r\n`;
-  out += `  Battles Won:     ${character.battlesWon}\r\n`;
-  out += `  Battles Lost:    ${character.battlesLost}\r\n`;
-  out += `  Rescues:         ${character.rescuesPerformed}\r\n`;
-  out += `  Alliance:        ${character.allianceSymbol}\r\n`;
+  out += `  System [sp]:     ${character.currentSystem}\r\n`;
+  out += `  Alliance [o4$]:  ${character.allianceSymbol || '(none)'}\r\n`;
+  // Page 2: numeric stat fields (fields 16-30)
+  out += `  Trips Done [u1]: ${character.tripsCompleted}\r\n`;
+  out += `  Battles Won[e1]: ${character.battlesWon}\r\n`;
+  out += `  Batt.Lost  [m1]: ${character.battlesLost}\r\n`;
+  out += `  Rescues    [b1]: ${character.rescuesPerformed}\r\n`;
+  out += `  Astrecs    [j1]: ${character.astrecsTraveled ?? 0}\r\n`;
+  out += `  Cargo Del. [k1]: ${character.cargoDelivered ?? 0}\r\n`;
+  // Page 3: mission/cargo state (fields 31-45)
+  out += `  Port Owned [o1]: ${character.currentSystem}\r\n`;
+  out += `  Trips/Crime[z1]: ${character.tripCount ?? 0}\r\n`;
+  out += `  Full Pods  [q1]: ${character.cargoPods ?? 0}\r\n`;
+  out += `  Cargo Type [q2]: ${character.cargoType ?? 0}\r\n`;
+  out += `  Cargo Val. [q3]: ${character.cargoPayment ?? 0}\r\n`;
+  out += `  Dest #     [q4]: ${character.destination ?? 0}\r\n`;
+  out += `  Cargo Pay  [q5]: ${character.cargoPayment ?? 0}\r\n`;
+  out += `  Manifest[q2$]:   ${character.cargoManifest || '(none)'}\r\n`;
+  // Page 4: special flags (fields 46-57)
+  out += `  Mission Type[pp]:${character.missionType ?? 0}\r\n`;
+  out += `  Lost in Sp [ap]: ${character.isLost ? 'YES' : 'No'}\r\n`;
+  out += `  Lost Loc  [ap$]: ${character.lostLocation || '(n/a)'}\r\n`;
   out += `  Conqueror:       ${character.isConqueror ? 'YES' : 'No'}\r\n`;
-  out += `  Lost:            ${character.isLost ? 'YES' : 'No'}\r\n`;
+  out += `  ExtraCurr  [pp]: ${character.extraCurricularMode || '(none)'}\r\n`;
 
   if (character.ship) {
     out += `\r\n  \x1b[36mShip:\x1b[0m ${character.shipName || 'Unnamed'}\r\n`;

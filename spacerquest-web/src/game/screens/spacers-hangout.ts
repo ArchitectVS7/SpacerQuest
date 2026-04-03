@@ -17,6 +17,7 @@ import { prisma } from '../../db/prisma.js';
 import { formatCredits, subtractCredits, addCredits } from '../utils.js';
 import { calculateBailCost, releasePlayer, CrimeType } from '../systems/jail.js';
 import { ALLIANCE_INFO, canJoinAlliance } from '../systems/alliance-rules.js';
+import { calculateSmugglingContract, SmugglingContractResult } from '../systems/economy.js';
 import { AllianceType } from '@prisma/client';
 
 // ============================================================================
@@ -36,6 +37,20 @@ const pendingInfoInput = new Set<string>();
 
 // Brig sub-menu state (L/B/Q after listing)
 const inBrigMenu = new Set<string>();
+
+// SP.BAR.S:32-37 — Sun-3 entry sub-menu (H/B/Q): shown before entering hangout
+const inSun3EntryMenu = new Set<string>();
+
+// Smuggling session state (SP.BAR.S:213-245 smug subroutine)
+// nj: no-jobs counter (>2 = syndicate closed); ye: already got a contract this session
+const smugNj = new Map<string, number>();   // nj per character session
+const smugYe = new Map<string, number>();   // ye per character session
+
+interface SmugConfirmState {
+  step: 'confirm_smug' | 'confirm_contract';
+  contract?: SmugglingContractResult;
+}
+const pendingSmug = new Map<string, SmugConfirmState>();
 
 // Bail multi-step confirmation
 interface BailConfirmState {
@@ -122,34 +137,45 @@ export const SpacersHangoutScreen: ScreenModule = {
     // Clear transient input states on re-render
     pendingInfoInput.delete(characterId);
     inBrigMenu.delete(characterId);
+    inSun3EntryMenu.delete(characterId);
 
-    // SP.BAR.S:45-46 — gain section check
-    // "if (q2<1) and (kk=5) print 'They're waiting for you in back!': goto gain"
-    // q2 = cargoType (set to 10 on smuggling setup, cleared to 0 on delivery)
-    // kk=5 = missionType 5 (smuggling)
-    if (character.missionType === 5 && character.cargoType < 1) {
-      return renderGain(character);
+    // SP.BAR.S:30 — "if kk=5 goto begin": smuggling mission skips sub-menu entirely
+    if (character.missionType === 5) {
+      return renderHangoutContent(characterId);
     }
 
-    const credits = formatCredits(character.creditsHigh, character.creditsLow);
-
-    // SP.BAR.S:43-53 — hang / hang1 labels: welcome message + menu
-    const output =
-      `\r\n\x1b[36;1m${'-'.repeat(31)}\x1b[0m\r\n` +
-      '\x1b[33;1m Welcome to The Spacers Hangout!\x1b[0m\r\n' +
-      `\x1b[36;1m${'-'.repeat(31)}\x1b[0m\r\n\r\n` +
-      'You step over an old spacer sprawled on the floor mumbling\r\n' +
-      "...'what black hole hit me?'...'all I had were four drinks'...\r\n\r\n" +
-      `\x1b[32m[:\x1b[0m${credits}\x1b[32m:][Spacers Hangout]:\x1b[0m\r\n\r\n` +
-      '  \x1b[37;1m(G)\x1b[0mamble  \x1b[37;1m(D)\x1b[0mrinks  \x1b[37;1m(I)\x1b[0mnfo  \x1b[37;1m[Q]\x1b[0muit\r\n\r\n' +
-      `Hello Spacer ${character.name}. What'll it be? `;
-
-    return { output };
+    // SP.BAR.S:32-37 — Sun-3 entry sub-menu: shown before hangout at Sun-3
+    // Original: "if sp$<>"Sun-3" goto hanger"
+    //           "print Spacers: [H]angout  (B)rig  (Q)uit:":gosub getkey
+    // H → continue to hangout; B → go straight to brig; Q → leave
+    inSun3EntryMenu.add(characterId);
+    return {
+      output: `\r\n${'-'.repeat(28)}\r\nSpacers: \x1b[37;1m[H]\x1b[0mangout  (B)rig  (Q)uit: `,
+    };
   },
 
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
     const raw = input.trim();
     const key = raw.toUpperCase();
+
+    // ── Priority 0: Sun-3 entry sub-menu (SP.BAR.S:32-37 — H/B/Q before hangout) ──
+    if (inSun3EntryMenu.has(characterId)) {
+      inSun3EntryMenu.delete(characterId);
+      if (key === 'Q') {
+        return { output: 'Leaving\r\n', nextScreen: 'main-menu' };
+      }
+      if (key === 'B') {
+        return showBrig(characterId);
+      }
+      // H or Enter → proceed to hangout (hanger label)
+      return renderHangoutContent(characterId);
+    }
+
+    // ── Priority 1: Smuggling multi-step (SP.BAR.S smug subroutine) ─────────────
+    const smugState = pendingSmug.get(characterId);
+    if (smugState) {
+      return handleSmugStep(characterId, key, smugState);
+    }
 
     // ── Priority 1: Bail confirmation (two-step: confirm_bail → confirm_payment) ──
     const bailConfirm = pendingBailConfirm.get(characterId);
@@ -369,6 +395,35 @@ export const SpacersHangoutScreen: ScreenModule = {
 };
 
 // ============================================================================
+// HANGOUT CONTENT — SP.BAR.S:39-56 (hanger/begin/hang1 labels)
+// Entered via H from Sun-3 entry sub-menu, or directly for non-Sun-3 entry
+// ============================================================================
+
+async function renderHangoutContent(characterId: string): Promise<ScreenResponse> {
+  const character = await prisma.character.findUnique({
+    where: { id: characterId },
+    include: { ship: true },
+  });
+  if (!character) return { output: '\x1b[31mError: Character not found.\x1b[0m\r\n' };
+
+  if (character.missionType === 5 && character.cargoType < 1) {
+    return renderGain(character);
+  }
+
+  const credits = formatCredits(character.creditsHigh, character.creditsLow);
+  const output =
+    `\r\n\x1b[36;1m${'-'.repeat(31)}\x1b[0m\r\n` +
+    '\x1b[33;1m Welcome to The Spacers Hangout!\x1b[0m\r\n' +
+    `\x1b[36;1m${'-'.repeat(31)}\x1b[0m\r\n\r\n` +
+    'You step over an old spacer sprawled on the floor mumbling\r\n' +
+    "...'what black hole hit me?'...'all I had were four drinks'...\r\n\r\n" +
+    `\x1b[32m[:\x1b[0m${credits}\x1b[32m:][Spacers Hangout]:\x1b[0m\r\n\r\n` +
+    '  \x1b[37;1m(G)\x1b[0mamble  \x1b[37;1m(D)\x1b[0mrinks  \x1b[37;1m(I)\x1b[0mnfo  \x1b[37;1m[Q]\x1b[0muit\r\n\r\n' +
+    `Hello Spacer ${character.name}. What'll it be? `;
+  return { output };
+}
+
+// ============================================================================
 // GAIN SECTION — SP.BAR.S:247-264
 // Entered when kk=5 (smuggling mission) and q2<1 (cargo delivered)
 // ============================================================================
@@ -396,7 +451,7 @@ async function renderGain(character: {
     );
     creditsUpdate = { creditsHigh: newCredits.high, creditsLow: newCredits.low };
     gainOutput =
-      '\r\n\x1b[33mThey\'re waiting for you in back!\x1b[0m\r\n\r\n' +
+      "\r\n\x1b[33mThey're waiting for you in back!\x1b[0m\r\n\r\n" +
       'You hand over the cargo invoice to a swarthy fat man\r\n' +
       'in a pin-stripe suit who looks up and says....\r\n\r\n' +
       `\x1b[32mAh...the smuggled goods....Here's your pay: ${character.cargoPayment} cr\x1b[0m\r\n` +
@@ -519,11 +574,7 @@ async function handleInfoInput(characterId: string, raw: string): Promise<Screen
       }
       if (entry.action === 'smug') {
         // SP.BAR.S:91 — "if instr('SMU',i$) goto smug"
-        // Smuggling contract pickup requires nj/z1 fields (schema migration needed)
-        // For now: show info message and return to hang1
-        return {
-          output: '\r\n\x1b[33mSmuggling pays big bucks\x1b[0m\r\n> ',
-        };
+        return handleSmugEntry(characterId);
       }
       // Standard keyword: print response, goto hang1
       return { output: `\r\n\x1b[33m${entry.response}\x1b[0m\r\n> ` };
@@ -618,4 +669,157 @@ async function handleAllianceSymbol(
         `Join ${allianceInfo.name}? (Y)es (N)o\r\n> `,
     };
   }
+}
+
+// ============================================================================
+// SMUGGLING CONTRACT SETUP — SP.BAR.S:213-245 (smug subroutine)
+// ============================================================================
+
+/**
+ * Entry point when player types "SMU" at the info broker.
+ * SP.BAR.S:213-220 — guards + initial confirm
+ */
+async function handleSmugEntry(characterId: string): Promise<ScreenResponse> {
+  const character = await prisma.character.findUnique({
+    where: { id: characterId },
+    include: { ship: true },
+  });
+  if (!character || !character.ship) {
+    return { output: '\r\n\x1b[31mError: Character not found.\x1b[0m\r\n> ' };
+  }
+
+  const nj = smugNj.get(characterId) ?? 0;
+
+  // SP.BAR.S:214 — if kk=9 nj=3 (syndicate banned)
+  // SP.BAR.S:215 — if (z1>2) or (nj>2) → "Syndicate closed down by Space Patrol"
+  if (character.tripCount > 2 || nj > 2) {
+    return { output: '\r\n\x1b[31mSyndicate closed down by Space Patrol\x1b[0m\r\n> ' };
+  }
+
+  // SP.BAR.S:216 — if s1<10 → "not enough cargo pods"
+  if (character.cargoPods < 10) {
+    return { output: "\r\n\x1b[33mYou don't have enough cargo pods\x1b[0m\r\n> " };
+  }
+
+  // SP.BAR.S:217-218 — if q1>0 and q2$="Contraband" → already have contract
+  if (character.cargoType > 0 && character.cargoManifest === 'Contraband') {
+    return { output: '\r\n\x1b[33mYour cargo pods already contain contraband\x1b[0m\r\n> ' };
+  }
+
+  // SP.BAR.S:219 — "Interested in smuggling some contra-band? [Y]/(N)"
+  pendingSmug.set(characterId, { step: 'confirm_smug' });
+  return {
+    output: '\r\n\x1b[33mInterested in smuggling some contra-band?\x1b[0m \x1b[37;1m[Y]\x1b[0m/(N): ',
+  };
+}
+
+/**
+ * Handle Y/N for the smuggling confirm steps.
+ */
+async function handleSmugStep(
+  characterId: string,
+  key: string,
+  state: SmugConfirmState,
+): Promise<ScreenResponse> {
+  // ── confirm_smug: "Interested in smuggling?" ──────────────────────────────
+  if (state.step === 'confirm_smug') {
+    if (key === 'N' || key === '') {
+      pendingSmug.delete(characterId);
+      return { output: '\r\nNo\r\n> ' };
+    }
+
+    // Y — generate contract
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+      include: { ship: true },
+    });
+    if (!character || !character.ship) {
+      pendingSmug.delete(characterId);
+      return { output: '\r\n\x1b[31mError.\x1b[0m\r\n> ' };
+    }
+
+    const ye = smugYe.get(characterId) ?? 0;
+
+    // SP.BAR.S:223 — if ye>0 i=20 (already got a contract this session → snooping)
+    let contract: SmugglingContractResult;
+    if (ye > 0) {
+      contract = { intercepted: true };
+    } else {
+      contract = calculateSmugglingContract(
+        character.currentSystem,
+        character.ship.hullStrength,
+        character.ship.driveStrength,
+        character.ship.driveCondition,
+      );
+    }
+
+    // SP.BAR.S:227 — if i>14 → Space Patrol snooping
+    if (contract.intercepted) {
+      const nj = (smugNj.get(characterId) ?? 0) + 1;
+      smugNj.set(characterId, nj);
+      pendingSmug.delete(characterId);
+      return { output: '\r\n\x1b[33mSpace Patrol snooping about...Nothing here!\x1b[0m\r\n> ' };
+    }
+
+    // Show destination + pay + confirm
+    pendingSmug.set(characterId, { step: 'confirm_contract', contract });
+    const warnLine = contract.lowPayWarning
+      ? `\r\n\x1b[33mThe syndicate isn't sure ${character.shipName ?? 'your ship'} will clear customs.\x1b[0m`
+      : '';
+    return {
+      output:
+        `\r\nYes\r\n\r\nWe have a shipment for ${contract.destinationName}${warnLine}\r\n` +
+        `Destination: ${contract.destinationName}......Distance: ${contract.distance}\r\n` +
+        `Fuel Required: ${contract.fuelRequired}..........Pays: ${contract.payment} cr\r\n` +
+        `${'-'.repeat(40)}\r\n...Want to give it a go?  \x1b[37;1m[Y]\x1b[0m/(N): `,
+    };
+  }
+
+  // ── confirm_contract: "Want to give it a go?" ────────────────────────────
+  if (state.step === 'confirm_contract') {
+    if (key === 'N' || key === '') {
+      pendingSmug.delete(characterId);
+      return { output: '\r\nNo\r\n> ' };
+    }
+
+    // Y — accept contract
+    const contract = state.contract!;
+    pendingSmug.delete(characterId);
+
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+      include: { ship: true },
+    });
+    if (!character || !character.ship) {
+      return { output: '\r\n\x1b[31mError.\x1b[0m\r\n> ' };
+    }
+
+    // SP.BAR.S:241-244 — set contract fields
+    // q6=y (distance), q1=s1 (all pods), q2=10 (cargo type), q4=i (dest), q2$="Contraband"
+    // q5=x (pay), f2=fy, wb=0:lb=0:cs=0:cc=0, kk=5, q4$=ll$
+    // nj=3 (block further contracts)
+    await prisma.character.update({
+      where: { id: characterId },
+      data: {
+        missionType: 5,
+        cargoPods: character.cargoPods,
+        cargoType: 10,
+        destination: contract.destinationSystemId!,
+        cargoManifest: 'Contraband',
+        cargoPayment: contract.payment!,
+      },
+    });
+
+    smugNj.set(characterId, 3);   // nj=3 — prevent further contracts
+    smugYe.set(characterId, 1);   // ye=1 — mark session as used
+
+    return {
+      output:
+        `\r\nYes\r\n\r\nThere's the risk of possible interception by the Space Patrol\r\n` +
+        `\x1b[33mDon't get caught....they treat smugglers harshly!\x1b[0m\r\n> `,
+    };
+  }
+
+  pendingSmug.delete(characterId);
+  return { output: '\r\n> ' };
 }

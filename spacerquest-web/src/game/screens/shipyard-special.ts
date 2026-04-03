@@ -39,10 +39,10 @@ export const ShipyardSpecialScreen: ScreenModule = {
 \x1b[32mCredits:\x1b[0m ${credits} cr
 
   [1] Morton's Cloaker   -   500 cr  (hull < 5, shields req'd)${owned(ship.hasCloaker)}
-  [2] Auto-Repair System - ${String(autoRepairPrice).padStart(5)} cr  (hull × 1,000, max 20k)${owned(ship.hasAutoRepair)}
+  [2] Auto-Repair System - ${String(autoRepairPrice).padStart(5)} cr  (hull × 1,000, max 20k)${owned(ship.hasAutoRepair)}${ship.hasTitaniumHull && !ship.hasAutoRepair ? ' \x1b[33m(removes Titanium)\x1b[0m' : ''}
   [3] Star-Buster        - 10,000 cr  (Commander rank)${owned(ship.hasStarBuster)}
   [4] Arch-Angel         - 10,000 cr  (Commander rank)${owned(ship.hasArchAngel)}
-  [5] Titanium Hull      - ${String(titaniumHullPrice).padStart(5)} cr  (hull × 1,000, max 20k, +50 pods)${owned(ship.hasTitaniumHull)}
+  [5] Titanium Hull      - ${String(titaniumHullPrice).padStart(5)} cr  (hull × 1,000, max 20k, +50 pods)${owned(ship.hasTitaniumHull)}${ship.hasAutoRepair && !ship.hasTitaniumHull ? ' \x1b[33m(removes A-R module)\x1b[0m' : ''}
   [6] Trans-Warp Accel.  - 10,000 cr  (+10 drive speed)${owned(ship.hasTransWarpDrive)}
   [7] Astraxial Hull     - 100,000 cr (Conqueror, drives ≥ 25)${owned(ship.isAstraxialHull)}
 

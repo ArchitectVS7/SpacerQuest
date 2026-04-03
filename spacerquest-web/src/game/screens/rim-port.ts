@@ -480,13 +480,16 @@ async function processCargoArrival(
     const rimIndex = sysId - 14;
     const basePayment = character.cargoPayment || 0;
     let andPayment = basePayment;
+    // Derive NGC name for the cargo's origin/bonus rim match (cargoType 1-6 → NGC-44 to NGC-99)
+    const ngcNames: Record<number, string> = { 1:'NGC-44', 2:'NGC-55', 3:'NGC-66', 4:'NGC-77', 5:'NGC-88', 6:'NGC-99' };
+    const ngcName = ngcNames[character.cargoType] ?? 'Andromeda';
     let bonusMsg = '';
     if (rimIndex === character.cargoType) {
       // Matching cargo for this rim port → +50K bonus
       andPayment = basePayment + 5; // in 10K units
-      bonusMsg = ` + 50K Bonus!\r\n...${character.cargoManifest} needed here!`;
+      bonusMsg = ` + 50K Bonus!\r\n...${ngcName} cargo needed here!`;
     } else {
-      bonusMsg = `\r\nGuess we can find a use for your ${character.cargoManifest}`;
+      bonusMsg = `\r\nGuess we can find a use for your ${ngcName} cargo`;
     }
     const { high, low } = addCredits(character.creditsHigh, character.creditsLow, andPayment * 10000);
     msgs.push(`You receive payment of ${andPayment}0,000 cr${bonusMsg}`);
@@ -523,9 +526,17 @@ async function processCargoArrival(
   st.cargoOffloadMsg = msgs.join('\r\n');
 
   // ── Load new rim cargo (SP.DOCK2.S:104-116) ────────────────────────
-  // Recalculate serviceable pods
-  const hx = ship.hullStrength > 9 ? ship.hullStrength - 10 : ship.hullStrength;
-  const s1 = (ship.hullCondition + 1) * hx;
+  // Apply upod formula: s1 = floor(max((h2+1)*s1, 10) / 10)
+  // Original SP.DOCK2.S upod sub (lines 432-439) destructively mutates s1.
+  // We compute it here from ship.cargoPods (same formula, not persisted).
+  let s1 = ship.cargoPods;
+  if (s1 > 0 && ship.hullStrength > 0) {
+    if (ship.hullCondition < 1) {
+      s1 = 1;
+    } else {
+      s1 = Math.floor(Math.max((ship.hullCondition + 1) * s1, 10) / 10);
+    }
+  }
 
   // Re-fetch character for updated credits
   const refreshed = await prisma.character.findUnique({ where: { id: characterId } });

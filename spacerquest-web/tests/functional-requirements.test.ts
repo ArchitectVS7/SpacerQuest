@@ -35,6 +35,7 @@ import {
   getCargoDescription,
   getSystemName,
   generateCargoContract,
+  generateManifestBoard,
 } from '../src/game/systems/economy';
 import {
   getTotalCredits,
@@ -151,6 +152,16 @@ describe('FR-TRAVEL', () => {
       const result = canTravel(2, today);
       expect(result.canTravel).toBe(false);
       expect(result.remainingTrips).toBe(0);
+    });
+
+    it('uses original SP.START.S:315 flavor text on trip limit (not generic error)', () => {
+      // Original: print "You have completed 2 turns through Spacer Quest today"
+      // + cally: ".....The Wonders of Space Await You......" / "...........Please call again tomorrow........"
+      const today = new Date();
+      const result = canTravel(2, today);
+      expect(result.reason).toContain('You have completed 2 turns through Spacer Quest today');
+      expect(result.reason).toContain('Wonders of Space Await You');
+      expect(result.reason).toContain('Please call again tomorrow');
     });
 
     it('returns correct remainingTrips at 1 trip today', () => {
@@ -622,6 +633,62 @@ describe('FR-ECONOMY', () => {
           hullCondition: 9, driveStrength: 10, driveCondition: 9,
         });
         expect(contract.destination).not.toBe(origin);
+      }
+    });
+  });
+
+  describe('generateManifestBoard (SP.CARGO.S manif subroutine)', () => {
+    // SP.CARGO.S:212-246 — generates 4 manifests with random cargo types and destinations
+
+    it('always returns exactly 4 entries', () => {
+      const board = generateManifestBoard(1, 10, 9, 10, 9);
+      expect(board).toHaveLength(4);
+    });
+
+    it('each entry has cargoType 1-9', () => {
+      const board = generateManifestBoard(1, 10, 9, 10, 9);
+      for (const m of board) {
+        expect(m.cargoType).toBeGreaterThanOrEqual(1);
+        expect(m.cargoType).toBeLessThanOrEqual(9);
+      }
+    });
+
+    it('valuePerPod = cargoType * 3 (SP.CARGO.S man3 line 246)', () => {
+      const board = generateManifestBoard(1, 10, 9, 10, 9);
+      for (const m of board) {
+        expect(m.valuePerPod).toBe(m.cargoType * 3);
+      }
+    });
+
+    it('no destination equals currentSystem (spx subroutine)', () => {
+      for (let trial = 0; trial < 10; trial++) {
+        const origin = Math.floor(Math.random() * 14) + 1;
+        const board = generateManifestBoard(origin, 10, 9, 10, 9);
+        for (const m of board) {
+          expect(m.destId).not.toBe(origin);
+        }
+      }
+    });
+
+    it('payment is within 1-15000 range', () => {
+      const board = generateManifestBoard(1, 10, 9, 10, 9);
+      for (const m of board) {
+        expect(m.payment).toBeGreaterThan(0);
+        expect(m.payment).toBeLessThanOrEqual(15000);
+      }
+    });
+
+    it('fuelRequired is positive', () => {
+      const board = generateManifestBoard(1, 10, 9, 10, 9);
+      for (const m of board) {
+        expect(m.fuelRequired).toBeGreaterThan(0);
+      }
+    });
+
+    it('distance is positive', () => {
+      const board = generateManifestBoard(1, 10, 9, 10, 9);
+      for (const m of board) {
+        expect(m.distance).toBeGreaterThan(0);
       }
     });
   });

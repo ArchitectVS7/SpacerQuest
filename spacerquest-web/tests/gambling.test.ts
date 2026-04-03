@@ -6,6 +6,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 import {
   calculateWofOdds,
   playWheelOfFortune,
@@ -24,6 +27,12 @@ import {
   DARE_MIN_CREDITS,
   DARE_MAX_MULTIPLIER,
 } from '../src/game/constants';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pubCode = fs.readFileSync(
+  path.join(__dirname, '../src/game/screens/pub.ts'),
+  'utf-8'
+);
 
 // ============================================================================
 // WHEEL OF FORTUNE TESTS
@@ -367,5 +376,74 @@ describe("Spacer's Dare", () => {
       expect(result.success).toBe(true);
       expect(['PLAYER', 'COMPUTER', 'TIE']).toContain(result.winner);
     });
+  });
+});
+
+// ============================================================================
+// SP.GAME.S SCREEN PARITY CHECKS (pub.ts source inspection)
+// ============================================================================
+
+describe('SP.GAME.S pub.ts parity (SP.GAME.S source fidelity)', () => {
+  // SP.GAME.S line 288: if o9>g2 then o9=g2
+  // Loss must be capped against creditsLow (g2) ONLY, not total credits.
+  // High credits (g1) are not at risk from Dare losses.
+  it('Dare loss cap uses character.creditsLow not getTotalCredits (SP.GAME.S line 288)', () => {
+    // The code must cap against creditsLow directly, not the total
+    expect(pubCode).toContain('loss > character.creditsLow');
+    // Must NOT cap against getTotalCredits for the loss path in advanceRound
+    // Find the loser section and verify it uses creditsLow, not totalCredits
+    const loserIdx = pubCode.indexOf('SP.GAME.S lines 286-294: loser');
+    const loserSection = pubCode.slice(loserIdx, loserIdx + 400);
+    expect(loserSection).toContain('character.creditsLow');
+    expect(loserSection).not.toContain('getTotalCredits');
+  });
+
+  // SP.GAME.S line 128: if g2<1 print"Sorry 'bout that...you are flat busted!":g2=0:goto lnk
+  it('WOF shows flat-busted message when credits reach 0 after loss', () => {
+    expect(pubCode).toContain("flat busted");
+  });
+
+  // SP.GAME.S line 125: g2=g2+(gi*y) — win pays bet × odds
+  it('WOF win payout uses addCredits', () => {
+    expect(pubCode).toContain('addCredits(character.creditsHigh, character.creditsLow, payout)');
+  });
+
+  // SP.GAME.S line 136-137: gak — closed for renovations when daily win cap exceeded
+  it('WOF gak: closed for renovations message present', () => {
+    expect(pubCode).toContain('closed for renovations');
+  });
+
+  // SP.GAME.S line 53: ui=12 — daily win cap is 12
+  it('WOF_DAILY_WIN_CAP is 12 (SP.GAME.S line 53: ui=12)', () => {
+    expect(WOF_DAILY_WIN_CAP).toBe(12);
+  });
+
+  // SP.GAME.S lines 263-278: win path adds winnings to credits
+  it('Dare win path adds winnings to credits', () => {
+    expect(pubCode).toContain('Congratulations Human on a game well-played!');
+    expect(pubCode).toContain('increased your bankroll by');
+  });
+
+  // SP.GAME.S lines 289-291: loser shows loss amount
+  it('Dare loser path shows credits lost message', () => {
+    expect(pubCode).toContain('You lose Human...pay the pit boss as you leave.');
+    expect(pubCode).toContain('You have just lost');
+  });
+
+  // SP.GAME.S lines 296-304: nocred — 750 minimum
+  it('Dare requires DARE_MIN_CREDITS (750) to play', () => {
+    expect(DARE_MIN_CREDITS).toBe(750);
+    expect(pubCode).toContain('DARE_MIN_CREDITS');
+  });
+
+  // SP.GAME.S line 249: comp.turn — "Bad Ram Chip!" on computer bust
+  it('Computer Dare bust shows "Bad Ram Chip!" message', () => {
+    expect(pubCode).toContain('Bad Ram Chip!');
+  });
+
+  // SP.GAME.S line 123-124: arrow — winning number highlighted on WOF hit
+  it('WOF winning roll is highlighted with WINNER message', () => {
+    // Screen marks the winning roll visually — original: "[x] <-=$$]$[$$=-> Winning Number!"
+    expect(pubCode).toContain('WINNER!');
   });
 });

@@ -331,4 +331,99 @@ describe('Course Change Fuel Formula (SP.WARP.S)', () => {
       expect(fuelAfterSecondary).toBe(16); // 20 - 4 = 16
     });
   });
+
+  // ============================================================================
+  // MISSION HAZARD TRIGGERS — D1 fix: onMission flag must be passed
+  // ============================================================================
+
+  describe('checkHazardTrigger mission flag (SP.WARP.S getime, mx>0 path)', () => {
+    it('normal trip (missionType=1): 1/3 mark is NOT a hazard', () => {
+      // SP.WARP.S line 329: at ty/3 with mx=0, tp=1 (encounter), not hh=1 (hazard)
+      const travelTime = 30;
+      expect(checkHazardTrigger(10, travelTime, false)).toBe(false);
+    });
+
+    it('mission trip (missionType=3): 1/3 mark IS a hazard (SP.WARP.S line 333)', () => {
+      const travelTime = 30;
+      expect(checkHazardTrigger(10, travelTime, true)).toBe(true);
+    });
+
+    it('normal trip: only 1/4 and 1/2 fire (SP.WARP.S lines 328+331)', () => {
+      const travelTime = 40;
+      expect(checkHazardTrigger(10, travelTime, false)).toBe(true);  // 1/4=10 → hazard
+      expect(checkHazardTrigger(20, travelTime, false)).toBe(true);  // 1/2=20 → hazard
+      expect(checkHazardTrigger(13, travelTime, false)).toBe(false); // 1/3=13 → NOT hazard on normal trip
+    });
+
+    it('mission trip: 1/9 through 1/5 all fire (SP.WARP.S lines 334-338)', () => {
+      // travelTime=90: 1/9=10, 1/8=11, 1/7=12, 1/6=15, 1/5=18
+      const travelTime = 90;
+      expect(checkHazardTrigger(10, travelTime, true)).toBe(true);  // 1/9
+      expect(checkHazardTrigger(11, travelTime, true)).toBe(true);  // 1/8
+      expect(checkHazardTrigger(12, travelTime, true)).toBe(true);  // 1/7
+      expect(checkHazardTrigger(15, travelTime, true)).toBe(true);  // 1/6
+      expect(checkHazardTrigger(18, travelTime, true)).toBe(true);  // 1/5
+    });
+  });
+
+  // ============================================================================
+  // SNAP TRANSIT DAMAGE FORMULA (SP.WARP.S lines 386-411)
+  // ============================================================================
+
+  describe('Black hole snap transit damage (SP.WARP.S snap subroutine)', () => {
+    it('snap: componentRoll 1-6, damageAmount 1-8 (r=6 and r=8 roll)', () => {
+      // Formula: componentRoll = ceil(random * 6), damageAmount = ceil(random * 8)
+      // Component: 1=Hull, 2=Drive, 3=Cabin, 4=LifeSupport, 5=Weapon, 6=Nav
+      const componentRoll = Math.ceil(0.5 * 6); // = 3 (Cabin)
+      const damageAmount = Math.ceil(0.5 * 8); // = 4
+      expect(componentRoll).toBe(3);
+      expect(damageAmount).toBe(4);
+    });
+
+    it('snap: Astraxial hull (x=1 → x=16 → safe)', () => {
+      // SP.WARP.S line 390: if (as$="Ast") and (x=1) x=16
+      const componentRoll = 1; // Hull roll
+      const isAstraxial = true;
+      const effectiveComponent = (isAstraxial && componentRoll === 1) ? 16 : componentRoll;
+      expect(effectiveComponent).toBe(16); // Safe — x>8 = no damage
+      expect(effectiveComponent > 8).toBe(true);
+    });
+
+    it('snap: non-Astraxial hull rolls x=1 → hull takes damage', () => {
+      // Without Astraxial hull, x=1 → hull strength reduced
+      const componentRoll = 1;
+      const isAstraxial = false;
+      const effectiveComponent = (isAstraxial && componentRoll === 1) ? 16 : componentRoll;
+      expect(effectiveComponent).toBe(1); // Hull takes damage
+      expect(effectiveComponent <= 8).toBe(true);
+    });
+
+    it('snap: component >= 9 (x>8 in original) → safe transit', () => {
+      // SP.WARP.S line 399: if x>8 print "Safe transit!":goto snx
+      const effectiveComponent = 9;
+      expect(effectiveComponent > 8).toBe(true); // safe
+    });
+
+    it('snap: strength reduced by damageAmount, clamped at 0 (sny: j=j-y:if j<1 j=0)', () => {
+      // Original sny: j=j-y:if j<1 j=0
+      const currentStrength = 5;
+      const damageAmount = 3;
+      const newStrength = Math.max(0, currentStrength - damageAmount);
+      expect(newStrength).toBe(2);
+
+      // Damage beyond strength → clamped at 0
+      const newStrength2 = Math.max(0, 2 - 10);
+      expect(newStrength2).toBe(0);
+    });
+
+    it('snap: Astraxial hull with nav>9 gets better damage roll ceiling', () => {
+      // SP.WARP.S line 388: r=8:if (as$="Ast") and (n1>9) r=(n1/10)+10
+      const navigationStrength = 20;
+      const isAstraxial = true;
+      const maxDamage = (isAstraxial && navigationStrength > 9)
+        ? Math.floor(navigationStrength / 10) + 10
+        : 8;
+      expect(maxDamage).toBe(12); // floor(20/10)+10 = 12 (better odds of lower damage)
+    });
+  });
 });

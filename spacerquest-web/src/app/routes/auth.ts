@@ -6,6 +6,7 @@
  */
 
 import { FastifyInstance } from 'fastify';
+import { Rank } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { randomUUID } from 'crypto';
 import { requireAuth } from '../middleware/auth.js';
@@ -279,8 +280,13 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
       where: { id: character.id },
       data: {
         creditsHigh: 10, creditsLow: 0, // 100,000 Cr — enough for upgrades + launches
+        score: 148,           // 2 points short of COMMANDER (150) so rank advance fires naturally
+        rank: Rank.LIEUTENANT, // reset rank so promotion is tested via gameplay
         tripCount: 0,         // reset daily trip limit so cargo dispatch is open
         missionType: 0,       // no active mission
+        hasPatrolCommission: false, // clear any patrol state
+        patrolBattlesWon: 0,
+        patrolBattlesLost: 0,
         cargoPods: 0,         // no loaded cargo
         cargoType: 0,
         cargoPayment: 0,

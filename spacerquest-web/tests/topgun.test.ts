@@ -228,4 +228,110 @@ describe('Top Gun rankings system', () => {
     await getTopGunRankings();
     expect(prisma.character.findMany).toHaveBeenCalledTimes(1);
   });
+
+  // SP.TOP.S tie logic (lines 49,52,55,58,61,64,67,72):
+  //   if (td=i) and (len(td$)<40) td$=td$+"/"+nz$
+  //   if td<i td$=nz$:td=i
+  it('SP.TOP.S tie: appends /shipName when two ships tie on strength×condition', async () => {
+    prisma.character.findMany.mockResolvedValue([
+      {
+        id: '1', name: 'Alpha', shipName: 'StarA',
+        ship: {
+          driveStrength: 50, driveCondition: 9,   // 450 — tied!
+          cabinStrength: 0, cabinCondition: 0,
+          lifeSupportStrength: 0, lifeSupportCondition: 0,
+          weaponStrength: 0, weaponCondition: 0,
+          navigationStrength: 0, navigationCondition: 0,
+          roboticsStrength: 0, roboticsCondition: 0,
+          shieldStrength: 0, shieldCondition: 0,
+          hullStrength: 0, hullCondition: 0,
+        },
+      },
+      {
+        id: '2', name: 'Beta', shipName: 'StarB',
+        ship: {
+          driveStrength: 50, driveCondition: 9,   // 450 — tied!
+          cabinStrength: 0, cabinCondition: 0,
+          lifeSupportStrength: 0, lifeSupportCondition: 0,
+          weaponStrength: 0, weaponCondition: 0,
+          navigationStrength: 0, navigationCondition: 0,
+          roboticsStrength: 0, roboticsCondition: 0,
+          shieldStrength: 0, shieldCondition: 0,
+          hullStrength: 0, hullCondition: 0,
+        },
+      },
+    ]);
+    prisma.character.findFirst.mockResolvedValue(null);
+
+    const result = await getTopGunRankings();
+    const drives = result.categories.find((c: any) => c.name === 'Fastest Drives');
+    expect(drives.leader).toBe('StarA/StarB');
+    expect(drives.value).toBe(450);
+  });
+
+  it('SP.TOP.S tie: does not append beyond 40 characters (len(td$)<40 guard)', async () => {
+    // "Star" repeated in shipNames to fill up the 40-char limit
+    const chars = Array.from({ length: 10 }, (_, i) => ({
+      id: String(i),
+      name: `Pilot${i}`,
+      shipName: `Ship${i}`,
+      ship: {
+        driveStrength: 50, driveCondition: 9,
+        cabinStrength: 0, cabinCondition: 0,
+        lifeSupportStrength: 0, lifeSupportCondition: 0,
+        weaponStrength: 0, weaponCondition: 0,
+        navigationStrength: 0, navigationCondition: 0,
+        roboticsStrength: 0, roboticsCondition: 0,
+        shieldStrength: 0, shieldCondition: 0,
+        hullStrength: 0, hullCondition: 0,
+      },
+    }));
+    prisma.character.findMany.mockResolvedValue(chars);
+    prisma.character.findFirst.mockResolvedValue(null);
+
+    const result = await getTopGunRankings();
+    const drives = result.categories.find((c: any) => c.name === 'Fastest Drives');
+    // Original: appends while len(td$)<40 — final append can push past 40, but
+    // not all 10 ships should appear (the guard stops appending once cap is hit)
+    const shipCount = (drives.leader.match(/\//g) || []).length + 1;
+    expect(shipCount).toBeLessThan(10);
+  });
+
+  it('SP.TOP.S tie: new leader replaces old (td<i: td$=nz$:td=i)', async () => {
+    prisma.character.findMany.mockResolvedValue([
+      {
+        id: '1', name: 'Old', shipName: 'SlowShip',
+        ship: {
+          driveStrength: 10, driveCondition: 9,   // 90
+          cabinStrength: 0, cabinCondition: 0,
+          lifeSupportStrength: 0, lifeSupportCondition: 0,
+          weaponStrength: 0, weaponCondition: 0,
+          navigationStrength: 0, navigationCondition: 0,
+          roboticsStrength: 0, roboticsCondition: 0,
+          shieldStrength: 0, shieldCondition: 0,
+          hullStrength: 0, hullCondition: 0,
+        },
+      },
+      {
+        id: '2', name: 'New', shipName: 'FastShip',
+        ship: {
+          driveStrength: 50, driveCondition: 9,   // 450 — beats SlowShip
+          cabinStrength: 0, cabinCondition: 0,
+          lifeSupportStrength: 0, lifeSupportCondition: 0,
+          weaponStrength: 0, weaponCondition: 0,
+          navigationStrength: 0, navigationCondition: 0,
+          roboticsStrength: 0, roboticsCondition: 0,
+          shieldStrength: 0, shieldCondition: 0,
+          hullStrength: 0, hullCondition: 0,
+        },
+      },
+    ]);
+    prisma.character.findFirst.mockResolvedValue(null);
+
+    const result = await getTopGunRankings();
+    const drives = result.categories.find((c: any) => c.name === 'Fastest Drives');
+    // Only FastShip, not SlowShip/FastShip
+    expect(drives.leader).toBe('FastShip');
+    expect(drives.value).toBe(450);
+  });
 });

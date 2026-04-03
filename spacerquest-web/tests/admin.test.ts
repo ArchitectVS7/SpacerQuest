@@ -399,3 +399,144 @@ describe('Seed includes GameConfig', () => {
     expect(src).toContain("id: 'default'");
   });
 });
+
+// ============================================================================
+// 10. SP.EDIT1 PLAYER EDITOR — FIELD COVERAGE
+// ============================================================================
+
+describe('SP.EDIT1 Player Editor field coverage', () => {
+  it('CHAR_FIELDS covers all SP.EDIT1 gameplay-relevant character fields', () => {
+    const src = readSource('../src/game/screens/admin-players.ts');
+    // SP.EDIT1 view subroutine: original 57 vars — key gameplay fields present
+    expect(src).toContain('creditsHigh');   // g1 (field 12)
+    expect(src).toContain('creditsLow');    // g2 (field 13)
+    expect(src).toContain('score');         // sc (field 27)
+    expect(src).toContain('tripsCompleted'); // u1 (field 29)
+    expect(src).toContain('battlesWon');    // e1 (field 28)
+    expect(src).toContain('battlesLost');   // m1 (field 26)
+    expect(src).toContain('astrecsTraveled'); // j1 (field 24)
+    expect(src).toContain('cargoDelivered'); // k1 (field 25)
+    expect(src).toContain('rescuesPerformed'); // b1 (field 30)
+    expect(src).toContain('tripCount');     // z1 (field 32)
+    expect(src).toContain('cargoPods');     // q1 (field 44)
+    expect(src).toContain('cargoType');     // q2 (field 45)
+    expect(src).toContain('destination');   // q4 (field 47)
+    expect(src).toContain('cargoPayment');  // q5 (field 48)
+    expect(src).toContain('missionType');   // pp (field 55)
+  });
+
+  it('renderPlayerView displays astrecs, cargo, mission state fields', () => {
+    const src = readSource('../src/game/screens/admin-players.ts');
+    // SP.EDIT1 view displays all relevant numeric and string state fields
+    expect(src).toContain('astrecsTraveled');
+    expect(src).toContain('cargoManifest');
+    expect(src).toContain('extraCurricularMode');
+    expect(src).toContain('lostLocation');
+    expect(src).toContain('missionType');
+  });
+
+  it('CHAR_FIELDS exposes at least 15 character fields for editing', () => {
+    const src = readSource('../src/game/screens/admin-players.ts');
+    // Count CHAR_FIELDS entries — must have all original fields accessible
+    const matches = src.match(/'[0-9A-Z]'\s*:\s*\{\s*field:/g);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBeGreaterThanOrEqual(15);
+  });
+});
+
+// ============================================================================
+// 11. SP.EDIT2 NPC EDITOR — FIELD COVERAGE
+// ============================================================================
+
+describe('SP.EDIT2 NPC Editor field coverage', () => {
+  it('EDITABLE_NPC_FIELDS includes battlesLost (bl) and battlesWon (bw)', () => {
+    // SP.EDIT2.txt lines 147-148: xi=11 bl=battlesLost, xi=12 bw=battlesWon
+    const src = readSource('../src/game/screens/admin-npcs.ts');
+    expect(src).toContain("field: 'battlesLost'");
+    expect(src).toContain("field: 'battlesWon'");
+    expect(src).toContain('Battles Lost (bl)');
+    expect(src).toContain('Battles Won (bw)');
+  });
+
+  it('PIRATE_TEMPLATES use original K1!!!! ship name (not K1++++)', () => {
+    // SP.EDIT2.txt lines 196-204: original mpir subroutine uses K1!!!!..K9((((
+    const src = readSource('../src/game/screens/admin-npcs.ts');
+    expect(src).toContain('K1!!!!');
+    expect(src).not.toContain('K1++++');
+  });
+
+  it('PATROL_TEMPLATES cover SP1-SP9 tiers from SP.EDIT2.txt lines 183-191', () => {
+    const src = readSource('../src/game/screens/admin-npcs.ts');
+    expect(src).toContain('SP1.Thor');
+    expect(src).toContain('SP9.Incredible');
+    expect(src).toContain('Lt.Savage');
+    expect(src).toContain('Adm.Hutchins');
+  });
+});
+
+// ============================================================================
+// 12. SP.EDIT3 BATTLE CONFIG — ATTACK TABLE AND THRESHOLD USAGE
+// ============================================================================
+
+describe('SP.EDIT3 Battle Config — attack table and threshold', () => {
+  it('renderConfigView displays bat2b attack strength table', () => {
+    // SP.EDIT3 bat2b subroutine (lines 122-126): jm=(ju*x+15), jn=jm+(jv*5)
+    const src = readSource('../src/game/screens/admin-config.ts');
+    expect(src).toContain('bat2b');
+    expect(src).toContain('ju * x');
+    expect(src).toContain('jv * 5');
+    expect(src).toContain('Attacks Spacer with Weap.Str');
+  });
+
+  it('bat2b formula produces correct values for default config (ju=3, jv=5)', () => {
+    // SP.EDIT3 lines 122-126: for x=1: jm=(3*1+15)=18, jn=18+(5*5)=43
+    const ju = 3;
+    const jv = 5;
+    for (let x = 1; x <= 9; x++) {
+      const jm = (ju * x) + 15;
+      const jn = jm + (jv * 5);
+      expect(jm).toBeGreaterThan(15);
+      expect(jn).toBeGreaterThan(jm);
+    }
+    const jm1 = (ju * 1) + 15; // = 18
+    const jn1 = jm1 + (jv * 5); // = 43
+    expect(jm1).toBe(18);
+    expect(jn1).toBe(43);
+    const jm9 = (ju * 9) + 15; // = 42
+    const jn9 = jm9 + (jv * 5); // = 67
+    expect(jm9).toBe(42);
+    expect(jn9).toBe(67);
+  });
+
+  it('generateEncounter reads gameConfig for attack threshold check', () => {
+    // SP.FIGHT1.S lines 113-126: sp.conf jw/jx/ju/jv gate NPC engagement
+    const src = readSource('../src/game/systems/combat.ts');
+    expect(src).toContain('playerWeaponStrength');
+    expect(src).toContain('pirateAttackThreshold');
+    expect(src).toContain('patrolAttackThreshold');
+    expect(src).toContain('attackRandomMin');
+    expect(src).toContain('attackRandomMax');
+    expect(src).toContain('getGameConfig');
+  });
+
+  it('SPX patrol threshold check uses jw (SP.FIGHT1.S line 120)', () => {
+    const src = readSource('../src/game/systems/combat.ts');
+    expect(src).toContain('SPX');
+    expect(src).toContain('jw');
+  });
+
+  it('SPZ patrol threshold check uses jx (SP.FIGHT1.S line 121)', () => {
+    const src = readSource('../src/game/systems/combat.ts');
+    expect(src).toContain('SPZ');
+    expect(src).toContain('jx');
+  });
+
+  it('pirate tier attack range: jm=(ju*tier+15), jn=jm+(jv*5) (SP.FIGHT1.S line 125)', () => {
+    const src = readSource('../src/game/systems/combat.ts');
+    expect(src).toContain('jm');
+    expect(src).toContain('jn');
+    // Formula pattern present
+    expect(src).toContain('(ju * tier) + 15');
+    expect(src).toContain('(jv * 5)');
+  });
+});

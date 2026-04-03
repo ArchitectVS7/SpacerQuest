@@ -9,6 +9,20 @@ import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { calculateComponentPower } from '../utils.js';
 import { subtractCredits, addCredits } from '../utils.js';
+import { calculateDefeatConsequences } from '../systems/combat.js';
+
+// ── SP.FIGHT2.S scavx: Malignite weapon enhancement Y/N prompt ───────────────
+// After combat victory with x=5 (Beam Intensifier) or x=9 (Defective Power Unit),
+// player is prompted "Install even if possibly defective? [Y]/(N)".
+// The prompt reveals no information — both cases use the same message.
+interface PendingWeaponEnhancement {
+  salvageDescription: string;
+  salvageAmount: number;
+  isDefective: boolean;
+  enemyName: string;
+  nextScreen: string;
+}
+const pendingWeaponEnhancement = new Map<string, PendingWeaponEnhancement>();
 
 export const CombatScreen: ScreenModule = {
   name: 'combat',
@@ -49,6 +63,36 @@ export const CombatScreen: ScreenModule = {
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
     const key = input.trim().toUpperCase();
 
+    // ── SP.FIGHT2.S scavx: resolve pending Malignite weapon enhancement Y/N ──
+    const pending = pendingWeaponEnhancement.get(characterId);
+    if (pending) {
+      pendingWeaponEnhancement.delete(characterId);
+      let out = '';
+      if (key === 'Y' || key === '') {
+        // Install: apply weapon strength delta (FIGHT2.S: w1=w1+a or w1=w1-a)
+        const delta = pending.isDefective ? -pending.salvageAmount : pending.salvageAmount;
+        const ship = await prisma.ship.findFirst({ where: { characterId } });
+        if (ship) {
+          const newStrength = Math.max(0, Math.min(199, ship.weaponStrength + delta));
+          await prisma.ship.update({
+            where: { id: ship.id },
+            data: { weaponStrength: newStrength },
+          });
+        }
+        // SP.FIGHT2.S line 165: goto scav1 → "a$;'.....found in wreckage of 'p5$"
+        out += `Yes\r\n\x1b[32m${pending.salvageDescription}.....found in wreckage of ${pending.enemyName}\x1b[0m\r\n`;
+      } else {
+        // N: reveal what it was (FIGHT2.S lines 160-161)
+        if (pending.isDefective) {
+          out += `Smart move!....it was a ${pending.salvageDescription}\r\n`;
+        } else {
+          out += `Unlucky choice!....it was a ${pending.salvageDescription}\r\n`;
+        }
+      }
+      out += '\r\n\x1b[37;1mPress any key to continue...\x1b[0m';
+      return { output: out, nextScreen: pending.nextScreen };
+    }
+
     const character = await prisma.character.findUnique({
       where: { id: characterId },
       include: { ship: true },
@@ -70,6 +114,22 @@ export const CombatScreen: ScreenModule = {
 
     switch (key) {
       case 'A': {
+        // SP.FIGHT1.S:452 — if kg>qq x=y:goto spgo — max rounds from GameConfig (qq)
+        const { getGameConfig } = await import('../systems/game-config.js');
+        const gameConfig = await getGameConfig();
+        const maxRounds = gameConfig.maxCombatRounds ?? 12;
+        if (session.currentRound > maxRounds) {
+          // Round limit exceeded — battle ends as a draw ("The Battle is Over!")
+          await prisma.combatSession.update({
+            where: { id: session.id },
+            data: { active: false, result: 'RETREAT' },
+          });
+          return {
+            output: `\r\n\x1b[33mThe Battle is Over! Round limit (${maxRounds}) reached.\x1b[0m\r\n`,
+            nextScreen: 'main-menu',
+          };
+        }
+
         const { processCombatRound, calculateBattleFactor } =
           await import('../systems/combat.js');
 
@@ -82,10 +142,12 @@ export const CombatScreen: ScreenModule = {
             lifeSupportStrength: ship.lifeSupportStrength, lifeSupportCondition: ship.lifeSupportCondition,
             navigationStrength: ship.navigationStrength, navigationCondition: ship.navigationCondition,
             driveStrength: ship.driveStrength, driveCondition: ship.driveCondition,
+            hullStrength: ship.hullStrength, hullCondition: ship.hullCondition,
             hasAutoRepair: ship.hasAutoRepair,
           },
           character.rank,
           character.battlesWon,
+          character.tripCount,
         );
 
         const enemy = {
@@ -106,10 +168,13 @@ export const CombatScreen: ScreenModule = {
           ship.hasAutoRepair,
           enemy as any,
           session.currentRound,
+          ship.roboticsStrength,
+          ship.roboticsCondition,
         );
 
-        // SP.FIGHT1.S:310 — f1=(f1-x) where x=w1/2: fuel consumed per attack round
-        const fuelConsumed = Math.floor(ship.weaponStrength / 2);
+        // SP.FIGHT1.S:308 — x=1:if w1>1 x=(w1/2): fuel consumed per attack round
+        // When weaponStrength=1, x stays 1 (not Math.floor(1/2)=0)
+        const fuelConsumed = ship.weaponStrength > 1 ? Math.floor(ship.weaponStrength / 2) : 1;
         const newFuel = Math.max(0, ship.fuel - fuelConsumed);
 
         // SP.FIGHT2.S:106-112 — victory by hull condition reaching 0
@@ -138,12 +203,13 @@ export const CombatScreen: ScreenModule = {
         const playerDestroyed = newPlayerHull <= 0;
 
         if (enemyDestroyed) {
-          const { calculateSalvage, applySalvage, calculateLoot } =
+          const { calculateSalvage, applySalvage, calculateLoot, applyAutoRepair, applyShieldRecharge } =
             await import('../systems/combat.js');
 
-          // SP.FIGHT2.S:31-40 — w2=(x8/w1): weapon condition recalculated from remaining power.
-          const roundsPlayed = session.currentRound;
-          const newWeaponCond = Math.max(0, ship.weaponCondition - Math.floor(roundsPlayed / 2));
+          // SP.FIGHT2.S:31-40 — post-combat weapon/shield condition recalculation.
+          // Original: w2=(x8/w1) where x8=weapon power tracked during combat.
+          // In the modern system, component conditions are tracked per-round via
+          // applySystemDamage; no additional post-battle decrement is applied here.
           await prisma.combatSession.update({
             where: { id: session.id },
             data: { active: false, result: 'VICTORY' },
@@ -167,8 +233,8 @@ export const CombatScreen: ScreenModule = {
             npc?.battlesWon || 3,
           );
 
-          // Apply salvage to ship if it's a non-confirmation component
-          const shipUpdates: Record<string, any> = { weaponCondition: newWeaponCond };
+          // Ship stat updates to accumulate (no baseline weapon decrement)
+          const shipUpdates: Record<string, any> = {};
           let salvageCredits = 0;
 
           if (salvage.component === 'gold') {
@@ -176,13 +242,49 @@ export const CombatScreen: ScreenModule = {
           } else if (!salvage.requiresConfirmation && salvage.component !== 'nothing') {
             const componentUpdates = applySalvage(salvage, ship);
             Object.assign(shipUpdates, componentUpdates);
-          } else if (salvage.requiresConfirmation && !salvage.isDefective) {
-            // Auto-accept beneficial weapon enhancements (beam intensifier)
-            // Original has a Y/N prompt; in web version we auto-accept beneficial ones
-            const componentUpdates = applySalvage(salvage, ship);
-            Object.assign(shipUpdates, componentUpdates);
           }
-          // Defective weapons (isDefective=true) are auto-rejected for safety
+          // requiresConfirmation (x=5 Beam Intensifier or x=9 Defective Power Unit):
+          // SP.FIGHT2.S scavx: player is prompted AFTER other post-battle updates.
+          // The weapon strength change is deferred until Y/N response.
+
+          // SP.FIGHT2.S:41-64 — Auto-Repair module (uses extracted pure function)
+          const autoRepairMsgs: string[] = [];
+          if (ship.hasAutoRepair) {
+            const arShip = {
+              driveStrength: ship.driveStrength,
+              driveCondition: (shipUpdates['driveCondition'] ?? ship.driveCondition) as number,
+              cabinStrength: ship.cabinStrength,
+              cabinCondition: (shipUpdates['cabinCondition'] ?? ship.cabinCondition) as number,
+              lifeSupportStrength: ship.lifeSupportStrength,
+              lifeSupportCondition: (shipUpdates['lifeSupportCondition'] ?? ship.lifeSupportCondition) as number,
+              weaponStrength: ship.weaponStrength,
+              weaponCondition: (shipUpdates['weaponCondition'] ?? ship.weaponCondition) as number,
+              navigationStrength: ship.navigationStrength,
+              navigationCondition: (shipUpdates['navigationCondition'] ?? ship.navigationCondition) as number,
+              roboticsStrength: ship.roboticsStrength,
+              roboticsCondition: (shipUpdates['roboticsCondition'] ?? ship.roboticsCondition) as number,
+              shieldStrength: ship.shieldStrength,
+              shieldCondition: (shipUpdates['shieldCondition'] ?? ship.shieldCondition) as number,
+            };
+            const ar = applyAutoRepair(arShip);
+            Object.assign(shipUpdates, ar.updates);
+            autoRepairMsgs.push(...ar.messages);
+          }
+
+          // SP.FIGHT2.S:66-75 — Shield recharger (uses extracted pure function)
+          const hasShieldRecharger = ship.hullName?.endsWith('*') ?? false;
+          const fuelBefore = ship.fuel;
+          let fuelNow = fuelBefore;
+          let shieldCondNow = (shipUpdates['shieldCondition'] ?? ship.shieldCondition) as number;
+          if (hasShieldRecharger) {
+            const sr = applyShieldRecharge(ship.shieldStrength, shieldCondNow, fuelNow);
+            shieldCondNow = sr.shieldCondition;
+            fuelNow = sr.fuel;
+            if (fuelNow !== fuelBefore) {
+              shipUpdates['shieldCondition'] = shieldCondNow;
+              shipUpdates['fuel'] = fuelNow;
+            }
+          }
 
           const totalCredits = addCredits(newCredits.high, newCredits.low, salvageCredits);
 
@@ -208,25 +310,43 @@ export const CombatScreen: ScreenModule = {
           ]);
 
           out += `\x1b[32;1mVICTORY! Enemy destroyed! +${bounty} cr\x1b[0m\r\n`;
-          if (newWeaponCond < ship.weaponCondition) {
-            out += `\x1b[33mWeapons depleted: condition ${ship.weaponCondition} → ${newWeaponCond}\x1b[0m\r\n`;
+          if (ship.hasAutoRepair && autoRepairMsgs.length > 0) {
+            out += `\x1b[36mA-R Module repairs (+1): ${autoRepairMsgs.join(', ')}\x1b[0m\r\n`;
+          }
+          if (hasShieldRecharger && fuelNow !== fuelBefore) {
+            out += `\x1b[36mShield Recharge: condition ${ship.shieldCondition}→${shieldCondNow}\x1b[0m\r\n`;
           }
 
           // Display salvage results
           out += `\r\n\x1b[36m...Searching Derelict for Salvage...\x1b[0m\r\n`;
+
+          // Space Patrol (kk=2): dock at HQ for payoff; otherwise main-menu
+          const victoryNext = character.missionType === 2 ? 'space-patrol' : 'main-menu';
+
+          if (salvage.requiresConfirmation) {
+            // SP.FIGHT2.S scavx lines 158-159: prompt before revealing which one it is
+            // Both beam intensifier (x=5) and defective unit (x=9) use the same prompt.
+            pendingWeaponEnhancement.set(characterId, {
+              salvageDescription: salvage.description,
+              salvageAmount: salvage.amount,
+              isDefective: salvage.isDefective,
+              enemyName,
+              nextScreen: victoryNext,
+            });
+            out += `\x1b[33mYou found a Malignite weapon enhancement.\x1b[0m\r\n`;
+            out += `Install even if possibly defective? \x1b[37;1m[Y]\x1b[0m/(N): `;
+            return { output: out }; // no nextScreen — wait for Y/N
+          }
+
           if (salvage.component === 'nothing') {
             out += `\x1b[37m...Nothing Useful found in wreckage of ${enemyName}\x1b[0m\r\n`;
           } else if (salvage.component === 'gold') {
             out += `\x1b[33;1m${salvage.description}.....found in wreckage of ${enemyName}\x1b[0m\r\n`;
-          } else if (salvage.isDefective) {
-            out += `\x1b[31mDefective weapon found — discarded for safety.\x1b[0m\r\n`;
           } else {
             out += `\x1b[32m${salvage.description}.....found in wreckage of ${enemyName}\x1b[0m\r\n`;
           }
 
           out += '\r\n\x1b[37;1mPress any key to continue...\x1b[0m';
-          // Space Patrol (kk=2): dock at HQ for payoff; otherwise main-menu
-          const victoryNext = character.missionType === 2 ? 'space-patrol' : 'main-menu';
           return { output: out, nextScreen: victoryNext };
         }
 
@@ -236,15 +356,48 @@ export const CombatScreen: ScreenModule = {
             data: { active: false, result: 'DEFEAT' },
           });
 
+          // SP.FIGHT2.S pirwin:195-220 — enemy boards and takes cargo/pods/fuel
+          const enemyTypeName = session.enemyType === 'RIM_PIRATE' ? 'Rim Pirate'
+            : session.enemyType === 'REPTILOID' ? 'Reptiloid'
+            : session.enemyType === 'PATROL' ? 'Guard'
+            : 'Pirate';
+          const boarding = calculateDefeatConsequences(
+            character.cargoPods,
+            character.cargoManifest,
+            ship.cargoPods,
+            ship.fuel,
+            enemyTypeName,
+          );
+
+          out += `\r\nYour ship is defeated and boarded.\r\n`;
+          out += `\x1b[31m${boarding.message}\x1b[0m\r\n`;
+
           // Space Patrol (kk=2): track per-mission loss, dock at HQ for payoff
           const charDefeatUpdate: Record<string, any> = { battlesLost: { increment: 1 } };
           if (character.missionType === 2) {
             charDefeatUpdate.patrolBattlesLost = { increment: 1 };
           }
-          await prisma.character.update({
-            where: { id: characterId },
-            data: charDefeatUpdate,
-          });
+          if (boarding.cargoLost) {
+            charDefeatUpdate.cargoPods = 0;
+            charDefeatUpdate.cargoType = 0;
+            charDefeatUpdate.cargoPayment = 0;
+            charDefeatUpdate.cargoManifest = null;
+          }
+
+          const defeatShipUpdate: Record<string, any> = {};
+          if (boarding.storagePodsLost > 0) {
+            defeatShipUpdate.cargoPods = Math.max(0, ship.cargoPods - boarding.storagePodsLost);
+          }
+          if (boarding.fuelLost > 0) {
+            defeatShipUpdate.fuel = Math.max(0, ship.fuel - boarding.fuelLost);
+          }
+
+          await Promise.all([
+            prisma.character.update({ where: { id: characterId }, data: charDefeatUpdate }),
+            ...(Object.keys(defeatShipUpdate).length > 0
+              ? [prisma.ship.update({ where: { characterId }, data: defeatShipUpdate })]
+              : []),
+          ]);
 
           out += `\x1b[31;1mDEFEAT! Your ship has been overwhelmed.\x1b[0m\r\n`;
           out += '\r\n\x1b[37;1mPress any key to continue...\x1b[0m';
@@ -255,6 +408,65 @@ export const CombatScreen: ScreenModule = {
         out += `  Your attack: \x1b[32m${round.playerDamage || 'glancing'}\x1b[0m  `;
         out += `Enemy attack: \x1b[31m${round.enemyDamage || 'glancing'}\x1b[0m  `;
         out += `Fuel: \x1b[33m${newFuel}\x1b[0m\r\n`;
+
+        // SP.FIGHT1.S speed:/spedo: post-round speed/chase check
+        // After each round, if enemy drive > player drive, enemy may get a bonus attack run.
+        const { checkEnemySpeedChase } = await import('../systems/combat.js');
+        const enemyName = session.enemyName || 'Enemy';
+        const speedResult = checkEnemySpeedChase(
+          ship.driveStrength,
+          ship.driveCondition,
+          session.enemyDrivePower,
+          9, // enemy drive condition (s4) — full condition from session spawn
+          enemy.weaponStrength * enemy.weaponCondition,
+          9, // enemy shield condition (y9) — full condition from session spawn
+        );
+
+        if (speedResult.enemyChases) {
+          // Enemy gets a bonus attack run: "The faster X is making another run"
+          out += `\r\n\x1b[31mThe faster ${enemyName} is making another run\x1b[0m\r\n`;
+
+          // Apply the bonus enemy attack (same weapon vs player shields logic)
+          const enemyWeaponPowerBonus = enemy.weaponStrength * enemy.weaponCondition;
+          const playerShieldPowerNow = ship.shieldStrength * (ship.shieldCondition ?? 9);
+          if (enemyWeaponPowerBonus > playerShieldPowerNow) {
+            const bonusDamage = enemyWeaponPowerBonus - playerShieldPowerNow;
+            const bonusHullDmg = bonusDamage % 10;
+            if (bonusHullDmg > 0) {
+              const bonusHull = Math.max(0, newPlayerHull - 1);
+              await prisma.ship.update({
+                where: { characterId },
+                data: { hullCondition: bonusHull },
+              });
+              out += `\x1b[31mBonus run hit! Additional hull damage.\x1b[0m\r\n`;
+              if (bonusHull <= 0) {
+                await prisma.combatSession.update({
+                  where: { id: session.id },
+                  data: { active: false, result: 'DEFEAT' },
+                });
+                const charBonusDefeat: Record<string, any> = { battlesLost: { increment: 1 } };
+                if (character.missionType === 2) charBonusDefeat.patrolBattlesLost = { increment: 1 };
+                await prisma.character.update({ where: { id: characterId }, data: charBonusDefeat });
+                out += `\x1b[31;1mDEFEAT! Your ship has been overwhelmed.\x1b[0m\r\n`;
+                out += '\r\n\x1b[37;1mPress any key to continue...\x1b[0m';
+                const bonusDefeatNext = character.missionType === 2 ? 'space-patrol' : 'main-menu';
+                return { output: out, nextScreen: bonusDefeatNext };
+              }
+            }
+          } else {
+            out += `\x1b[32mYour shields deflect the bonus run.\x1b[0m\r\n`;
+          }
+        } else if (speedResult.enemyRetreats) {
+          // Enemy is faster but retreats: "The faster X retreats from conflict"
+          out += `\r\n\x1b[32mThe faster ${enemyName} retreats from conflict\x1b[0m\r\n`;
+          await prisma.combatSession.update({
+            where: { id: session.id },
+            data: { active: false, result: 'RETREAT' },
+          });
+          out += '\r\n\x1b[37;1mPress any key to continue...\x1b[0m';
+          return { output: out, nextScreen: 'main-menu' };
+        }
+
         out += '\r\n  [A]ttack  [R]etreat  [S]urrender  [Q]uit\r\n> ';
         return { output: out };
       }

@@ -99,6 +99,14 @@ export interface VandalDamage {
 }
 
 /**
+ * Pure function: whether vandalism can happen at all.
+ * Original SP.END.S vaca: if s2<2000 goto vat — no risk below 2000 score.
+ */
+export function isVandalismEligible(score: number): boolean {
+  return score >= 2000;
+}
+
+/**
  * Pure function: determine vandalism damage from roll x (1-10) and ship stats.
  * Source: SP.END.txt lines 125-133 (vand subroutine)
  *   x < 4 and cargoPods > x*10   → cargoPods -= x*10   (Pods damaged)
@@ -138,6 +146,11 @@ export async function applyVandalism(characterId: string) {
   });
 
   if (!character || !character.ship) {
+    return { vandalized: false };
+  }
+
+  // Original SP.END.S vaca: if s2<2000 goto vat — no vandalism risk for low-score characters
+  if (!isVandalismEligible(character.score)) {
     return { vandalized: false };
   }
 

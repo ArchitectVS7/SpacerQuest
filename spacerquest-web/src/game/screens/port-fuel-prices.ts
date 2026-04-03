@@ -30,37 +30,47 @@ export const PortFuelPricesScreen: ScreenModule = {
     // Build a lookup map by systemId
     const ownerMap = new Map(ownerships.map(o => [o.systemId, o]));
 
+    // SP.START.S portf: fetch fuelStored from portOwnership
+    const fuelStoredMap = new Map(ownerships.map(o => [o.systemId, o.fuelStored]));
+
     let output = '\x1b[2J\x1b[H';
     output += '\x1b[36;1m_________________________________________\x1b[0m\r\n';
     output += '\x1b[33;1m      PORT FUEL PRICES                   \x1b[0m\r\n';
     output += '\x1b[36;1m_________________________________________\x1b[0m\r\n\r\n';
 
-    // Header
-    output += `  ${'System'.padEnd(12)} ${'Owner'.padEnd(14)} ${'A'.padEnd(2)} ${'Buy'.padStart(4)} ${'Sell'.padStart(4)}\r\n`;
-    output += `  \x1b[36m${'-'.repeat(42)}\x1b[0m\r\n`;
+    // SP.START.S portf header (original format)
+    output += ` #   Port               Owner                  A  Fuel  Sell  Buy\r\n`;
+    output += `--   ----------------   --------------------   -  ----  ----  ---\r\n`;
 
     for (const sysId of CORE_SYSTEMS) {
-      const sysName = getSystemName(sysId).padEnd(12);
       const port = ownerMap.get(sysId);
+      const sysName = getSystemName(sysId).padEnd(16).slice(0, 16);
+      const sysNum = String(sysId).padStart(2);
 
       let ownerName: string;
       let allianceSym: string;
-      let buyPrice: number;
-      let sellPrice: number;
+      let sellStr: string;  // sell TO player (m5)
+      let buyStr: string;   // buy FROM player (m5/2)
+      let fuelStr: string;
 
       if (port) {
-        ownerName = port.character.name.substring(0, 13).padEnd(14);
-        allianceSym = getAllianceSymbol(port.character.allianceSymbol as AllianceType) || ' ';
-        buyPrice = getFuelPrice(sysId, port.fuelPrice);
-        sellPrice = getFuelSellPrice(sysId, Math.floor(port.fuelPrice / 2) || null);
+        ownerName = port.character.name.substring(0, 20).padEnd(20);
+        allianceSym = getAllianceSymbol(port.character.allianceSymbol as AllianceType) || '_';
+        const sell = port.fuelPrice;
+        const buy = Math.floor(port.fuelPrice / 2);
+        sellStr = sell > 0 ? String(sell).padStart(4) : '   ?';
+        buyStr = buy > 0 ? String(buy).padStart(3) : '  ?';
+        fuelStr = String(fuelStoredMap.get(sysId) ?? 0).padStart(4);
       } else {
-        ownerName = 'Space Authority'.padEnd(14);
-        allianceSym = ' ';
-        buyPrice = getFuelPrice(sysId);
-        sellPrice = getFuelSellPrice(sysId);
+        // SP.START.S: if m5$="" lo$="_____(for sale)_____"
+        ownerName = '(for sale)'.padEnd(20);
+        allianceSym = '_';
+        sellStr = '   ?';
+        buyStr = '  ?';
+        fuelStr = '3000';  // default (new port)
       }
 
-      output += `  ${sysName} ${ownerName} ${allianceSym.padEnd(2)} ${String(buyPrice).padStart(4)} ${String(sellPrice).padStart(4)}\r\n`;
+      output += `${sysNum}   ${sysName}   ${ownerName}   ${allianceSym}  ${fuelStr}  ${sellStr}  ${buyStr}\r\n`;
     }
 
     output += '\r\n\x1b[32mPress any key to return...\x1b[0m\r\n> ';

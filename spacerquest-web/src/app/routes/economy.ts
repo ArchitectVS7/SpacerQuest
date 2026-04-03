@@ -230,6 +230,9 @@ export async function registerEconomyRoutes(fastify: FastifyInstance) {
       fuelRequired: 0,
       distance: 0,
       valuePerPod: 0,
+      deliveryBonus: 0,
+      bonusCargo: '',
+      bonusDest: '',
     };
 
     const { payment, bonus, total, message } = calculateCargoPayment(

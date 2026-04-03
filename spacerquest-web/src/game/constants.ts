@@ -164,7 +164,7 @@ export const COURSE_CHANGE_FUEL_MULTIPLIER = 5; // hull × 5 per course change
 export const COURSE_CHANGE_LIMIT_BASE = 3;      // Base course changes per trip
 export const COURSE_CHANGE_LIMIT_INCREMENT = 2; // Additional per trip
 
-export const TRAVEL_TIME_MULTIPLIER = 3; // distance × 3 = chronos
+export const TRAVEL_TIME_MULTIPLIER = 1; // distance × 1 = chronos (reduced from 3 for playtest speed; TODO: evaluate final value — if kept at 3, players need meaningful activity during 25s wait)
 
 // ============================================================================
 // COMBAT SYSTEM
@@ -248,6 +248,10 @@ export const CARGO_BASE_RATES = {
 
 export const CARGO_POD_BONUS_HULL = 50;      // Titanium hull gives +50 pods
 export const CARGO_WRONG_DESTINATION_PENALTY = 0.5; // 50% pay for wrong destination
+
+// Special cargo type sentinels
+export const CARGO_TYPE_CONTRABAND  = 10;  // Smuggling (SP.BAR kk=5)
+// Note: Andromeda cargo is identified via cargoManifest==='X' (SP.BLACK.S q3$="X"), not a numeric type.
 
 // ============================================================================
 // PORT OWNERSHIP

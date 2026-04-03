@@ -148,6 +148,8 @@ describe('Combat System', () => {
         driveCondition: 5,
         lifeSupportStrength: 10,
         lifeSupportCondition: 5,
+        hullStrength: 0,
+        hullCondition: 0,
         hasAutoRepair: false,
       };
       
@@ -174,6 +176,7 @@ describe('Combat System', () => {
         navigationStrength: 0, navigationCondition: 0,
         driveStrength: 0, driveCondition: 0,
         lifeSupportStrength: 0, lifeSupportCondition: 0,
+        hullStrength: 0, hullCondition: 0,
         hasAutoRepair: false,
       };
       
@@ -193,6 +196,7 @@ describe('Combat System', () => {
         navigationStrength: 0, navigationCondition: 0,
         driveStrength: 0, driveCondition: 0,
         lifeSupportStrength: 0, lifeSupportCondition: 0,
+        hullStrength: 0, hullCondition: 0,
         hasAutoRepair: false,
       };
       
@@ -211,6 +215,7 @@ describe('Combat System', () => {
         navigationStrength: 0, navigationCondition: 0,
         driveStrength: 0, driveCondition: 0,
         lifeSupportStrength: 0, lifeSupportCondition: 0,
+        hullStrength: 0, hullCondition: 0,
         hasAutoRepair: false,
       };
       

@@ -22,6 +22,45 @@ import {
   type SpacerRecord,
   type DirectoryEntry,
 } from '../src/game/systems/registry';
+import * as fs from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+// ============================================================================
+// NEW CHARACTER STARTING SHIP — SP.SYSOP.S pstat subroutine (lines 277-285)
+// ============================================================================
+
+describe('New character starting ship stats (SP.SYSOP.S pstat)', () => {
+  it('registerCharacter creates ship with all component strengths = 0', () => {
+    const registryPath = fileURLToPath(new URL('../src/game/systems/registry.ts', import.meta.url));
+    const code = fs.readFileSync(registryPath, 'utf-8');
+    // Original pstat: h1=d1=c1=l1=w1=n1=r1=p1=0, h2=d2=c2=l2=w2=n2=r2=p2=0
+    // Modern: all strength and condition fields must be 0
+    expect(code).toContain('hullStrength: 0');
+    expect(code).toContain('hullCondition: 0');
+    expect(code).toContain('driveStrength: 0');
+    expect(code).toContain('driveCondition: 0');
+    expect(code).toContain('weaponStrength: 0');
+    expect(code).toContain('weaponCondition: 0');
+    expect(code).toContain('shieldStrength: 0');
+    expect(code).toContain('shieldCondition: 0');
+  });
+
+  it('registerCharacter creates ship with fuel = 0 (original f1=0)', () => {
+    const registryPath = fileURLToPath(new URL('../src/game/systems/registry.ts', import.meta.url));
+    const code = fs.readFileSync(registryPath, 'utf-8');
+    // SP.SYSOP.S pstat line: f1=0
+    expect(code).toContain('fuel: 0');
+  });
+
+  it('registerCharacter creates ship with cargoPods = 0 (original s1=0)', () => {
+    const registryPath = fileURLToPath(new URL('../src/game/systems/registry.ts', import.meta.url));
+    const code = fs.readFileSync(registryPath, 'utf-8');
+    // SP.SYSOP.S pstat line: s1=0 (cargo pods)
+    expect(code).toContain('cargoPods: 0');
+    expect(code).toContain('maxCargoPods: 0');
+  });
+});
 
 // ============================================================================
 // REGISTRY HEADER TESTS

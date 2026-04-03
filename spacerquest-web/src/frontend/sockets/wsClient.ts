@@ -42,6 +42,9 @@ class WebSocketClient implements WsClient {
       reconnectionAttempts: 10,
     });
 
+    // Expose for E2E test access
+    (window as any).__socketIO = this.socket;
+
     this.socket.on('connect', () => {
       console.log('[WS] Connected to server');
       

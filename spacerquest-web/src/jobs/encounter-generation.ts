@@ -107,10 +107,13 @@ async function generateBotCombats(): Promise<number> {
         navigationCondition: attacker.ship.navigationCondition,
         driveStrength: attacker.ship.driveStrength,
         driveCondition: attacker.ship.driveCondition,
+        hullStrength: attacker.ship.hullStrength,
+        hullCondition: attacker.ship.hullCondition,
         hasAutoRepair: attacker.ship.hasAutoRepair,
       },
       attacker.rank,
-      attacker.battlesWon
+      attacker.battlesWon,
+      attacker.tripCount,
     );
 
     const defenderBF = calculateBattleFactor(
@@ -129,10 +132,13 @@ async function generateBotCombats(): Promise<number> {
         navigationCondition: defender.ship.navigationCondition,
         driveStrength: defender.ship.driveStrength,
         driveCondition: defender.ship.driveCondition,
+        hullStrength: defender.ship.hullStrength,
+        hullCondition: defender.ship.hullCondition,
         hasAutoRepair: defender.ship.hasAutoRepair,
       },
       defender.rank,
-      defender.battlesWon
+      defender.battlesWon,
+      defender.tripCount,
     );
     
     // Determine winner (higher BF wins, with some randomness)

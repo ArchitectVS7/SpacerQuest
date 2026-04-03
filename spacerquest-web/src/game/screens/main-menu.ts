@@ -40,6 +40,28 @@ export const MainMenuScreen: ScreenModule = {
     // When score reaches 10,000, player is a Conqueror and their character
     // is reset so they can start over with a new role slot.
     if (character.score >= 10000 && !character.isConqueror) {
+      // SP.END.S grite subroutine (lines ~355-362):
+      //   open #1,"sp.great":append #1: print #1, da$+":_"+pp$+"_"+a1$+"_"+nz$+"_CONQUERED_SPACER_QUEST!"
+      //   open #1,"sp.hero":append #1: print #1, da$+": "+pp$+"_"+a1$+"/"+nz$+"___Victorious Hero!"
+      // Modern: write two GameLog entries (no characterId — persist after character deletion)
+      const conquestDate = new Date().toISOString().slice(0, 10);
+      const rankLabel = character.rank as string;
+      const heroName = character.name;
+      const heroShip = character.shipName || 'Unknown';
+      await prisma.gameLog.createMany({
+        data: [
+          {
+            type: 'CONQUEST',
+            message: `:_${rankLabel}_${heroName}_${heroShip}_CONQUERED_SPACER_QUEST!`,
+            metadata: { date: conquestDate, rank: rankLabel, name: heroName, ship: heroShip },
+          },
+          {
+            type: 'HERO',
+            message: `: ${rankLabel}_${heroName}/${heroShip}___Victorious Hero!`,
+            metadata: { date: conquestDate, rank: rankLabel, name: heroName, ship: heroShip },
+          },
+        ],
+      });
       // Mark user as having conquered (persists across character resets for restart bonus)
       await prisma.user.update({
         where: { id: character.userId },
@@ -151,7 +173,10 @@ ${character.isLost ? '\x1b[33m  (Navigation disabled while lost in space)\x1b[0m
       } else if (vandalResult.guardConsumed) {
         msg = '\r\n\x1b[32mYour ship guard protected your vessel.\x1b[0m\r\n';
       }
-      return { output: `${msg}\r\n\x1b[32mGame saved. Thank you for playing SpacerQuest!\x1b[0m\r\n` };
+      return { 
+        output: `${msg}\r\n\x1b[32mGame saved. Thank you for playing SpacerQuest!\x1b[0m\r\n`,
+        nextScreen: 'login'
+      };
     }
 
     // SP.LINK.txt line 39: if i$="X" print" Ship's Stats":goto shipstat (always allowed)
@@ -226,7 +251,19 @@ ${character.isLost ? '\x1b[33m  (Navigation disabled while lost in space)\x1b[0m
       'B': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'bank' }),
       'S': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'shipyard' }),
       'P': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'pub' }),
-      'T': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'traders' }),
+      'T': async () => {
+        // SP.LINK lkcargo line 227: if h1<1 print "A space ship is required!":goto linker
+        const ship = character?.ship;
+        if (!ship || ship.hullStrength < 1) {
+          return { output: '\r\n\x1b[31mA space ship is required!\x1b[0m\r\n> ' };
+        }
+        // SP.LINK lkcargo line 228: if s1<1 print "You have no pods":goto linker
+        const cargoPods = ship.maxCargoPods;
+        if (cargoPods < 1) {
+          return { output: '\r\n\x1b[31mYou have no pods — upgrade Hull at Shipyard first.\x1b[0m\r\n> ' };
+        }
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'traders' };
+      },
       'N': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'navigate' }),
       'R': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'registry' }),
       'E': async () => ({ output: '\x1b[2J\x1b[H', nextScreen: 'extra-curricular' }),
@@ -265,10 +302,9 @@ ${character.isLost ? '\x1b[33m  (Navigation disabled while lost in space)\x1b[0m
         return { output: '\x1b[2J\x1b[H', nextScreen: 'sage' };
       },
       'F': async () => {
-        if (!character?.portOwnership) {
-          return { output: '\r\n\x1b[31mNot a port owner!\x1b[0m\r\n> ' };
-        }
-        return { output: '\x1b[2J\x1b[H', nextScreen: 'fuel-depot' };
+        // SP.REAL.S: F/6 key → Port Accounts gateway (start1 menu).
+        // Available to all players; owner-only sub-options shown if they own a port.
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'port-accounts' };
       },
       '*': async () => {
         if (!character?.user.isAdmin) {

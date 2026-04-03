@@ -161,6 +161,7 @@ export function calculatePatrolPayoff(params: {
   battlesLost: number;           // m1
   score: number;                 // s2
   rescuesPerformed: number;      // b1 — for score promotion check
+  destinationName?: string;      // q4$ — for report display (SP.REG.S line 287)
 }): PatrolPayoffResult {
   const {
     patrolBattlesWon: wb,
@@ -177,6 +178,7 @@ export function calculatePatrolPayoff(params: {
     battlesLost,
     score,
     rescuesPerformed,
+    destinationName,
   } = params;
 
   // Credits earned
@@ -203,6 +205,8 @@ export function calculatePatrolPayoff(params: {
     '\x1b[36;1m' + '─'.repeat(38) + '\x1b[0m',
     '\x1b[33;1mReport on Your Space Patrol Activities\x1b[0m',
     '\x1b[36;1m' + '─'.repeat(38) + '\x1b[0m',
+    // SP.REG.S line 287: print"Star System Patrolled................: "q4$
+    ...(destinationName ? [`Star System Patrolled................: ${destinationName}`] : []),
     `Distance Travelled (Astrecs).........: ${q6}`,
     `Successful Attacks...................: ${wb}`,
     `Unsuccessful Attacks.................: ${lb}`,

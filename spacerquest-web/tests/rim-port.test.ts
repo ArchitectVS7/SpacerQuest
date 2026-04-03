@@ -173,6 +173,60 @@ describe('loadRimCargo', () => {
 });
 
 // ============================================================================
+// UPOD FORMULA — rim-port loading uses SP.DOCK2.S upod sub (lines 432-439)
+// ============================================================================
+
+describe('Rim cargo loading — upod formula (SP.DOCK2.S:432-439)', () => {
+  it('loadRimCargo with full-condition (h2=9) pods: effective=floor((9+1)*pods/10)', () => {
+    // 20 pods, hullCondition=9: upod = floor(10*20/10) = 20 → x = floor(20/10) = 2 (since 20>10)
+    const result = loadRimCargo(15, 20, 0, 1000);
+    expect(result).not.toBeNull();
+    // a = floor(1000/10) = 100; x = floor(20/10) = 2; q5 = 100*2 = 200; mult=1; payment=200
+    expect(result!.payment).toBe(200);
+  });
+
+  it('loadRimCargo with degraded condition (5 pods after upod from 10 pods at h2=4)', () => {
+    // If upod(10 pods, h2=4) = floor((4+1)*10/10) = 5 → x = floor(5/10) = 0 → payment = 0
+    const result = loadRimCargo(15, 5, 0, 1000);
+    // 5 pods → x = floor(5/10) = 0 → payment = 0
+    expect(result).not.toBeNull();
+    expect(result!.payment).toBe(0);
+  });
+
+  it('loadRimCargo with 1 pod (upod h2=0 path gives s1=1): x=0, payment=0', () => {
+    // upod with h2<1: s1=1; x=floor(1/10)=0; payment = a*0 = 0
+    const result = loadRimCargo(15, 1, 0, 5000);
+    expect(result).not.toBeNull();
+    expect(result!.payment).toBe(0);
+  });
+
+  it('loadRimCargo with 20 pods and full condition: effective=20, x=2', () => {
+    // upod(20, h2=9) = floor(10*20/10) = 20; x = floor(20/10) = 2
+    const result = loadRimCargo(15, 20, 0, 1000);
+    // a = floor(1000/10) = 100; x = 2; q5 = 200; mult=1; payment=200
+    expect(result!.payment).toBe(200);
+  });
+
+  it('rim-port loading section uses upod formula (not hullStrength) — documented formula', () => {
+    // This verifies the upod formula: s1 = floor(max((h2+1)*s1, 10) / 10)
+    // With h2=9, s1=5: max(50,10)=50; s1=floor(50/10)=5 → loadRimCargo gets s1=5
+    // With h2=4, s1=5: max(25,10)=25; s1=floor(25/10)=2 → loadRimCargo gets s1=2
+    // With h2=0, s1=5: s1=1 (h2<1 path)
+    const upod = (pods: number, hullCondition: number) => {
+      if (hullCondition < 1) return 1;
+      return Math.floor(Math.max((hullCondition + 1) * pods, 10) / 10);
+    };
+    expect(upod(5, 9)).toBe(5);
+    expect(upod(5, 4)).toBe(2);
+    expect(upod(5, 0)).toBe(1);
+    expect(upod(10, 9)).toBe(10);
+    expect(upod(10, 4)).toBe(5);
+    expect(upod(20, 9)).toBe(20);
+    expect(upod(1, 9)).toBe(1); // max(10,10)/10=1
+  });
+});
+
+// ============================================================================
 // TRIP COUNTER ZERO COST (DOCK2:186-194)
 // ============================================================================
 

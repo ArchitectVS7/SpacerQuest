@@ -272,6 +272,146 @@ describe('Alliance Investment Screen', () => {
 
     expect(screenCode).toContain('prisma.allianceSystem');
   });
+
+  // SP.VEST.S show (lines 255-280): for i=1 to 14 — ALL 14 systems, not just player's alliance
+  it("'S' case loops all 14 core systems (SP.VEST.S show: for i=1 to 14)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    // Must iterate i from 1 to CORE_SYSTEMS (14), not filter by alliance
+    expect(screenCode).toContain('for (let i = 1; i <= CORE_SYSTEMS; i++)');
+  });
+
+  it("'S' case does NOT filter systems by alliance only (SP.VEST.S show: all systems)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    // The old (wrong) query filtered by alliance — verify that's gone from the S case.
+    // The correct query fetches all systems without a where-alliance filter.
+    // We verify it calls findMany without alliance filter by checking the show section
+    // has allSystemRecords (all 14) rather than the alliance-filtered query.
+    expect(screenCode).toContain('allSystemRecords');
+  });
+
+  it("'S' case header includes Alliance and C E O columns (SP.VEST.S invsh1 column headers)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    // SP.VEST.S lines 256-259: oc$ includes "Alliance" and "C E O" columns
+    expect(screenCode).toContain('C E O');
+    expect(screenCode).toContain('Alliance');
+    expect(screenCode).toContain('DEFCON');
+  });
+
+  it("'S' case shows unowned systems as 'Available' (SP.VEST.S invsh1: o4$='' means Available)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    // Unowned systems show 'Available' in the alliance column
+    expect(screenCode).toContain('Available');
+  });
+
+  // SP.VEST.S line 37: "if i$="N" print"Alliance Transactions":iz=2:iy=4:link"sp.top","filer""
+  it("'N' case is present in handleInput switch (Alliance Transaction log)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    expect(screenCode).toContain("case 'N':");
+  });
+
+  it("'N' case queries prisma.gameLog with type ALLIANCE (SP.VEST.S iz=2 news-log filter)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    // Must query gameLog for ALLIANCE type transactions
+    expect(screenCode).toContain('prisma.gameLog.findMany');
+    expect(screenCode).toContain("type: 'ALLIANCE'");
+  });
+
+  it("'N' case shows Alliance Transaction Log heading", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    expect(screenCode).toContain('Alliance Transaction Log');
+  });
+
+  // SP.VEST.S line 38: "if i$="P" print i$:gosub starget:gosub passwd:gosub starite:goto invest1"
+  it("'P' case is present in handleInput switch (CEO password change)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    expect(screenCode).toContain("case 'P':");
+  });
+
+  it("'P' case sets pendingPassword state (SP.VEST.S passwd multi-step flow)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    expect(screenCode).toContain('pendingPassword');
+    expect(screenCode).toContain('PasswordState');
+  });
+
+  it("'P' flow enforces CEO-only privilege (SP.VEST.S passwd: o5$<>na$ check)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    // CEO check: ownerCharacterId must match characterId
+    expect(screenCode).toContain('ownerCharacterId !== characterId');
+    expect(screenCode).toContain('C E O  privilege only!');
+  });
+
+  it("'P' flow enforces 4-8 character password constraint (SP.VEST.S passwd: len check)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    // SP.VEST.S passwd: if (len(i$)<4) or (len(i$)>8) goto passwd
+    expect(screenCode).toContain('pw.length < 4');
+    expect(screenCode).toContain('pw.length > 8');
+  });
+
+  it("'P' flow has confirm step asking player to verify password (SP.VEST.S passwd: '[Y]/(N)' confirm)", async () => {
+    const fs = await import('fs');
+    const screenCode = fs.readFileSync(
+      new URL('../src/game/screens/alliance-invest.ts', import.meta.url),
+      'utf-8'
+    );
+
+    // SP.VEST.S passwd: print o7$" <---...is this the password you wish?"
+    expect(screenCode).toContain('<---...is this the password you wish?');
+  });
 });
 
 // ============================================================================

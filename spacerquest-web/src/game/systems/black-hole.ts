@@ -88,16 +88,24 @@ export function canTransitBlackHole(ship: TransitShipState): BlackHoleTransitChe
 }
 
 /**
- * Calculate fuel cost for black hole transit
+ * Calculate fuel cost for black hole transit.
  *
- * Better drives = lower cost. Uses similar formula structure to regular travel.
+ * SP.BLACK.S fcost subroutine (lines 309-317), called with q6=10:
+ *   af=d1: if af>21 af=21
+ *   f2=(21-af)+(10-d2): if f2<1 f2=1
+ *   f2=(f2*q6): ty=(f2+10)
+ *   if ty>100 ty=100
+ *   f2=(ty/2): return
  */
 export function getBlackHoleTransitCost(driveStrength: number, driveCondition: number): number {
+  const q6 = 10; // SP.BLACK.S: q6=10 before gosub fcost
   const af = Math.min(driveStrength, 21);
-  const efficiency = af + driveCondition;
-  // Higher efficiency = lower cost
-  const cost = Math.max(50, BLACK_HOLE_BASE_FUEL - (efficiency * 5));
-  return cost;
+  let f2 = (21 - af) + (10 - driveCondition);
+  if (f2 < 1) f2 = 1;
+  f2 = f2 * q6;
+  let ty = f2 + 10;
+  if (ty > 100) ty = 100;
+  return Math.floor(ty / 2);
 }
 
 // ============================================================================
@@ -144,22 +152,27 @@ export interface BlackHoleDamageResult {
  * Pure function: compute black hole exit component damage.
  *
  * Original SP.PATPIR.S black section lines 147-158:
- *   r=7:gosub rand           → pick component index i (1-7)
- *   y=i:gosub rand           → pick damage amount y (1-7, using new rand)
+ *   r=7:gosub rand           → pick damage amount y (1-7, first rand)
+ *   y=i:gosub rand           → pick component index i (1-7, second rand)
  *   if i=1 j=d1: ... gosub blkx: d1=j
  *   if i=2 j=c1: ... gosub blkx: c1=j
  *   ...
  *   blkx:
  *     if j>5 j=(j-y):print l$" damaged -"y:return
- *     i=i+1:return            → if strength <= 5, skip (try next component)
+ *     i=i+1:return            → if strength <= 5, increment i and return
  *
- * Selection is random (1-7) for component, then random (1-7) for damage.
- * Damage only applied if component strength > 5.
- * If strength <= 5, the blkx subroutine does i=i+1 (shifts to next component)
- * but does NOT loop — so effectively: if component strength <= 5, no damage.
+ * The blkx cascade: since the `if i=N` checks are sequential ACOS-BASIC
+ * statements on consecutive lines, incrementing i inside blkx causes the
+ * NEXT `if i=N` to fire on the same pass. This cascades until a component
+ * with strength > 5 is found or all 7 components are exhausted (no damage).
  *
- * @param componentIndex  1-7 selecting component (from r=7 rand roll)
- * @param damageAmount    1-7 damage to apply (from y=i rand roll, i=7)
+ * Selection: componentIndex (1-7) selects the starting component.
+ * Damage: damageAmount (1-7) is subtracted from the component's strength.
+ * Cascade: if selected component has strength <= 5, tries componentIndex+1,
+ *          componentIndex+2, ... up to 7. If none qualify, no damage occurs.
+ *
+ * @param componentIndex  1-7 selecting starting component (second rand roll)
+ * @param damageAmount    1-7 damage to apply (first rand roll, stored in y)
  * @param ship            Current ship component strengths
  */
 export function computeBlackHoleDamage(
@@ -183,25 +196,31 @@ export function computeBlackHoleDamage(
     { key: 'hull',         label: 'Hull',          field: 'hullStrength',        strength: ship.hullStrength },
   ];
 
-  // Clamp index to valid range (1-7 from original rand)
-  const idx = Math.max(1, Math.min(7, componentIndex)) - 1;
-  const comp = components[idx];
+  // Clamp starting index to valid range (1-7 from original rand), convert to 0-based
+  const startIdx = Math.max(1, Math.min(7, componentIndex)) - 1;
 
-  // blkx: if j>5 j=(j-y) → only applies damage if strength > 5
-  // if j<=5 → i=i+1 (no damage applied in this invocation)
-  if (comp.strength <= 5) {
-    return { damaged: false };
+  // blkx cascade: try startIdx, then startIdx+1, ..., up to index 6 (component 7)
+  // Original: blkx increments i and returns; sequential if-checks cause next to fire.
+  // If component strength <= 5 → cascade to next. If strength > 5 → apply damage.
+  for (let idx = startIdx; idx < components.length; idx++) {
+    const comp = components[idx];
+    if (comp.strength > 5) {
+      // blkx: if j>5 j=(j-y) → apply damage
+      const newStrength = Math.max(0, comp.strength - damageAmount);
+      return {
+        damaged: true,
+        component: comp.key,
+        field: comp.field,
+        label: comp.label,
+        damageAmount,
+        newStrength,
+      };
+    }
+    // blkx: i=i+1 → cascade to next component
   }
 
-  const newStrength = Math.max(0, comp.strength - damageAmount);
-  return {
-    damaged: true,
-    component: comp.key,
-    field: comp.field,
-    label: comp.label,
-    damageAmount,
-    newStrength,
-  };
+  // All components from startIdx to 7 have strength <= 5 — no damage
+  return { damaged: false };
 }
 
 /**

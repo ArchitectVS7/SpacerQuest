@@ -115,7 +115,12 @@ model Character {
   cargoPayment    Int       @default(0)  // q5
   destination     Int       @default(0)  // q4
   cargoManifest   String?   // q2$ - cargo description
+  raidDocument    String?   // pz$ - owner documents from completed raid (system name)
   
+  // Cargo Manifest Board — SP.CARGO.S (4-contract daily board, cc/cs flags)
+  manifestBoard   Json?     // 4 daily contracts: array of {cargoType,valuePerPod,dest,destName,payment,distance,fuelRequired}
+  manifestDate    String?   // Date string for current manifest (cc flag — regenerate when date changes)
+
   // Special Flags
   isBot           Boolean   @default(false)
   isConqueror     Boolean   @default(false)
@@ -143,6 +148,10 @@ model Character {
   // null means not yet obtained from Wise One.
   numberKey       Int?              // kn (1-9), null = not obtained
 
+  // Nemesis lattice puzzle state (SP.MAL.S nemgem subroutine)
+  // Set to true after winning Nemesis battle; cleared when player solves or abandons the lattice
+  pendingLattice  Boolean   @default(false) // true = waiting at the crystal lattice
+
   // Wheel of Fortune daily win tracking (SP.GAME.S lines 47, 53: uh wins vs ui=12 cap)
   wofWinsToday    Int       @default(0)   // uh — wins accumulated today
   wofWinsDate     String?                 // date string (YYYY-MM-DD) of last WOF win day
@@ -154,6 +163,7 @@ model Character {
   ship            Ship?
   portOwnership   PortOwnership?
   allianceMembership AllianceMembership?
+  allianceSystems AllianceSystem[] @relation("AllianceSystemOwner")
   duelEntries     DuelEntry[] @relation("DuelChallenger")
   duelContests    DuelEntry[] @relation("DuelContender")
   battleRecords   BattleRecord[]
@@ -290,11 +300,14 @@ model AllianceSystem {
   systemId        Int       @unique
   alliance        AllianceType
   ownerCharacterId String?
+  ownerCharacter  Character? @relation("AllianceSystemOwner", fields: [ownerCharacterId], references: [id])
   defconLevel     Int       @default(1)
   // System treasury assets (SP.VEST.S o3/o4 variables)
   // Stored as raw credit value; original uses 10k-unit split (o3=high, o4=low)
   assetsHigh      Int       @default(0)  // o3 — assets in 10,000 cr units
   assetsLow       Int       @default(0)  // o4 — assets remainder
+  // Account password for fortification/withdrawals (SP.VEST.S o7$)
+  password        String?
   lastTakeoverAttempt DateTime?
 
   updatedAt       DateTime  @updatedAt
@@ -487,6 +500,8 @@ enum LogType {
   MISSION
   SYSTEM
   RESCUE
+  CONQUEST
+  HERO
 }
 
 model GameLog {
@@ -569,7 +584,7 @@ model TravelState {
   id              String    @id @default(uuid())
   characterId     String    @unique
   character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  
+
   originSystem    Int
   destinationSystem Int
   departureTime   DateTime
@@ -577,6 +592,11 @@ model TravelState {
   fuelReserved    Int
   inTransit       Boolean   @default(true)
   
+  // Black hole transit flag (SP.WARP.S bh variable)
+  // Set to true after transiting black hole on Andromeda mission (kk=10)
+  // Required before course changes are allowed in Andromeda space
+  blackHoleTransited Boolean @default(false)
+
   @@index([characterId])
   @@index([inTransit])
 }

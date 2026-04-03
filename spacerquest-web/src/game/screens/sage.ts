@@ -113,18 +113,21 @@ export const SageScreen: ScreenModule = {
         },
       });
 
+      // Original SP.DOCK2.S:325-329: correct answer → cabin reward → sage1 → "rest" → rimo
       return {
-        output: `\x1b[32;1m"Correct!" The Sage smiles.\x1b[0m\r\n` +
-          `\x1b[33mYour cabin systems have been enhanced!\x1b[0m\r\n` +
-          `\x1b[36mCabin Strength: ${reward.cabinStrength} | Condition: ${reward.cabinCondition}\x1b[0m\r\n`,
+        output: `\x1b[32;1mYou have answered correctly....Your understanding is admirable!\x1b[0m\r\n` +
+          `\x1b[33mAs a small token of compensation accept this cabin enhancement\x1b[0m\r\n` +
+          `\x1b[36m${character.ship.cabinName || 'Cabin'}_____[S:${character.ship.cabinStrength}:] ----> [S:${reward.cabinStrength}:]=[C:${reward.cabinCondition}:]\x1b[0m\r\n` +
+          'The sage needs his rest....have a safe journey.\r\n',
         nextScreen: 'rim-port',
       };
     }
 
+    // Original SP.DOCK2.S:324: goto sage1 → "The sage needs his rest..." → goto rimo
     return {
-      output: '\x1b[31m"Incorrect..." The Sage shakes his head slowly.\x1b[0m\r\n' +
-        '\x1b[33mPerhaps next time you will study the constellations.\x1b[0m\r\n',
-      nextScreen: 'main-menu',
+      output: '\x1b[31mYou must study more the heavenly mysteries.\x1b[0m\r\n' +
+        'The sage needs his rest....have a safe journey.\r\n',
+      nextScreen: 'rim-port',
     };
   },
 };

@@ -102,6 +102,7 @@ export function renderArenaHeader(): string {
   out += '  (R)oster - View pending duels\r\n';
   out += '  (B)attle Log - View past results\r\n';
   out += '  (L)ist - List all ships\r\n';
+  out += '  (O)ptions - Stakes and Arena descriptions\r\n';
   out += '  (Q)uit - Return to main menu\r\n';
   out += '\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ';
   return out;
@@ -135,6 +136,38 @@ export function renderArenaOptions(): string {
     out += `    (${i + 1}) ${name}\r\n`;
   });
 
+  return out;
+}
+
+// ============================================================================
+// ARENA MENU12 (sp.menu12 — SP.ARENA1.S lines 63, 102: if i$="O" i$="sp.menu12":gosub show)
+// ============================================================================
+
+/**
+ * Render SP.MENU12 content — Stakes Options and Arena Options descriptions.
+ * Original file was displayed verbatim via `copy i$` in ACOS-BASIC.
+ */
+export function renderArenaMenu12(): string {
+  const L = '\r\n';
+  let out = L;
+  out += ' _______________________________________________________________________' + L;
+  out += '|                                                                       |' + L;
+  out += '|_____________________S_t_a_k_e_s___O_p_t_i_o_n_s______________________|' + L;
+  out += '|                                                                       |' + L;
+  out += '|           Portion of Total Points proportionate to Handicap          |' + L;
+  out += '|           Ship Component Strength proportionate to Handicap          |' + L;
+  out += '|             Credits on hand equal to (Handicap x 10,000)             |' + L;
+  out += '|_______________________________________________________________________|' + L;
+  out += '|                                                                       |' + L;
+  out += '|______________________A_r_e_n_a___O_p_t_i_o_n_s_______________________|' + L;
+  out += '|                                                                       |' + L;
+  out += '|     Ion Cloud Arena..............(completed trips/50)                |' + L;
+  out += '|     Proton Storm Arena...........(astrecs travelled/100)             |' + L;
+  out += '|     Cosmic Radiation Arena.......(cargo delivered/100)               |' + L;
+  out += '|     Black Hole Proximity Arena...(rescues x 10)                      |' + L;
+  out += '|     Super-Nova Flare Arena.......((battles won +1000)-battles lost)  |' + L;
+  out += '|     Deep Space Arena.............(no conditions existent)            |' + L;
+  out += '|_______________________________________________________________________|' + L;
   return out;
 }
 
@@ -410,14 +443,18 @@ export function simulateDuelCombat(
 
   for (let round = 0; round < 9; round++) {
     // Poster salvo: bx=((j+1)*10)+posterArenaHandicap
+    // Original SP.ARENA2.S line 75-76: r=9:gosub rand:if x=j x=x+1 / j=x / bx=((x+1)*10)+x5
+    // rand subroutine clamps: if x>r x=r (so max is 9, not 10)
     let j = Math.floor(Math.random() * R) + 1;
-    if (j === prevJ) j = Math.min(j + 1, R + 1);
+    if (j === prevJ) j = Math.min(j + 1, R); // clamp to R (9), not R+1
     prevJ = j;
     const bx = (j + 1) * 10 + posterArenaHandicap;
 
     // Accepter salvo: cx=(k*10)+accepterArenaHandicap
+    // Original SP.ARENA2.S line 78-79: gosub rand:if x=k x=x+1 / k=x / cx=(x*10)+a
+    // rand subroutine clamps: if x>r x=r (so max is 9, not 10)
     let k = Math.floor(Math.random() * R) + 1;
-    if (k === prevK) k = Math.min(k + 1, R + 1);
+    if (k === prevK) k = Math.min(k + 1, R); // clamp to R (9), not R+1
     prevK = k;
     const cx = k * 10 + accepterArenaHandicap;
 
