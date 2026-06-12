@@ -75,10 +75,11 @@ async function registerPlugins() {
     },
   });
 
-  // Rate limiting — higher limits in dev/test to avoid 429s during E2E test runs
+  // Rate limiting — disabled during UGT AI training, higher limits in dev
   const isProduction = process.env.NODE_ENV === 'production';
+  const isTraining = process.env.UGT_TRAINING === '1';
   await fastify.register(rateLimit, {
-    max: isProduction ? 100 : 1000,
+    max: isTraining ? 1000000 : (isProduction ? 100 : 1000),
     timeWindow: '1 minute',
     keyGenerator: (request) => request.ip,
   });

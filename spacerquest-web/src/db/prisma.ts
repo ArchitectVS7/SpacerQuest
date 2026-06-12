@@ -12,8 +12,9 @@ declare global {
   var prisma: PrismaClient | undefined;
 }
 
+const isTraining = process.env.UGT_TRAINING === '1';
 export const prisma = globalThis.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  log: isTraining ? ['error'] : (process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error']),
 });
 
 if (process.env.NODE_ENV !== 'production') {

@@ -1,0 +1,252 @@
+{
+  "project": "SpacerQuest",
+  "profile": "growth",
+  "model": "/Users/vs7/Dev/Games/SpacerQuest/spacerquest-web/models/ppo_growth_final.zip",
+  "algorithm": "PPO",
+  "total_episodes": 20,
+  "outcomes": {
+    "wins": 0,
+    "losses": 20,
+    "win_rate": "0.00%"
+  },
+  "reward_stats": {
+    "mean": -19.91,
+    "median": -19.9,
+    "std": 0.02,
+    "min": -20.0,
+    "max": -19.9
+  },
+  "step_stats": {
+    "mean": 199.1,
+    "median": 199.0,
+    "min": 199,
+    "max": 200
+  },
+  "action_distribution": {
+    "upgrade-ship": 3001,
+    "repair": 980
+  },
+  "evaluation_duration_seconds": 16.0,
+  "episodes": [
+    {
+      "episode": 1,
+      "outcome": "Loss",
+      "reward": -20.0,
+      "steps": 200,
+      "action_distribution": {
+        "upgrade-ship": 151,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 2,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 3,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 4,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 5,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 6,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 7,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 8,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 9,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 10,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 11,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 12,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 13,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 14,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 15,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 16,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 17,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 18,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 19,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 20,
+      "outcome": "Loss",
+      "reward": -19.9,
+      "steps": 199,
+      "action_distribution": {
+        "upgrade-ship": 150,
+        "repair": 49
+      },
+      "game_telemetry": {}
+    }
+  ]
+}
