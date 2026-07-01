@@ -21,9 +21,9 @@ import {
   botPostBail,
   botPostBulletin,
   botManagePort,
-  botChallengeDuel,
   botRescuePlayer,
 } from './bot-actions.js';
+import { botArenaPhase } from './bot-arena.js';
 import { calculateFuelCost } from '../game/systems/travel.js';
 import { completeTravel } from '../game/systems/travel.js';
 import { generateEncounter } from '../game/systems/combat.js';
@@ -181,6 +181,16 @@ export async function executeBotTurn(
     }
   }
 
+  // Arena phase: the async PvP moment — this bot may accept an open challenge
+  // (the player's posted duel, or another bot's) and post one of its own.
+  const arenaEvents = await botArenaPhase(characterId, profile, rng);
+  if (arenaEvents.length > 0) {
+    for (const ev of arenaEvents) {
+      result.actions.push({ type: 'CHALLENGE_DUEL', detail: ev });
+      result.notableEvents.push(ev);
+    }
+  }
+
   return result;
 }
 
@@ -206,8 +216,6 @@ async function executePortAction(
       return botPostBulletin(characterId, profile);
     case 'MANAGE_PORT':
       return botManagePort(characterId, profile);
-    case 'CHALLENGE_DUEL':
-      return botChallengeDuel(characterId, profile);
     case 'RESCUE_PLAYER':
       return botRescuePlayer(characterId, profile);
     default:

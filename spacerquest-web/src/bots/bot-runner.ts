@@ -46,6 +46,12 @@ export async function runAllBotTurns(
     summary.events.push(...result.notableEvents);
   }
 
+  // Withdraw stale arena postings no one took (refunding escrowed stakes)
+  try {
+    const { expireStaleDuels } = await import('../game/systems/duel.js');
+    await expireStaleDuels();
+  } catch { /* arena expiry is best-effort */ }
+
   // Run promotion checks for all characters
   await checkPromotions();
 

@@ -444,32 +444,8 @@ export async function botManagePort(characterId: string, profile: BotProfile): P
   return null;
 }
 
-/**
- * Challenge to a duel in the arena (Enhanced)
- */
-export async function botChallengeDuel(characterId: string, profile: BotProfile): Promise<BotAction | null> {
-  if (profile.aggression < 0.7) return null;
-  const character = await prisma.character.findUnique({ where: { id: characterId }, include: { ship: true } });
-  if (!character || !character.ship) return null;
-
-  // Don't spam duels, check if one already exists
-  const existing = await prisma.duelEntry.findFirst({ where: { challengerId: characterId, status: 'PENDING' } });
-  if (existing) return null;
-
-  const stakesAmount = 1000 + Math.floor(Math.random() * 4000);
-
-  await prisma.duelEntry.create({
-    data: {
-      challengerId: character.id,
-      stakesType: 'Credits',
-      stakesAmount,
-      arenaType: 6, // Deep Space
-      handicap: 0,
-    }
-  });
-
-  return { type: 'CHALLENGE_DUEL', detail: 'Posted Arena Duel Challenge' };
-}
+// Arena dueling now lives in its own personality-driven phase — see bots/bot-arena.ts
+// (botArenaPhase), which posts AND accepts+resolves duels via the shared duel module.
 
 /**
  * Rescue a stranded player (Enhanced)

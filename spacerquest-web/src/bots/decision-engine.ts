@@ -94,10 +94,7 @@ export function planTrip(
     if (profile.greed > 0.6 && credits > 500000 && rng() < 0.1) {
       portActions.push({ type: 'MANAGE_PORT', priority: 25, detail: 'Purchase Port' });
     }
-    // Arena duel
-    if (profile.aggression > 0.7 && rng() < 0.05) {
-      portActions.push({ type: 'CHALLENGE_DUEL', priority: 20, detail: 'Arena Duel' });
-    }
+    // (Arena dueling is handled in its own post-turn phase — see bots/bot-arena.ts)
     // Rescue
     if (profile.aggression <= 0.5 && ship.fuel >= 50 && rng() < 0.1) {
       portActions.push({ type: 'RESCUE_PLAYER', priority: 45, detail: 'Rescue Stranded Player' });
