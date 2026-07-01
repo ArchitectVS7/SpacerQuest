@@ -167,7 +167,7 @@ describe('Combat System', () => {
       expect(bf).toBe(270);
     });
     
-    it('should include rank bonus', () => {
+    it('rank does NOT affect battle factor (faithful to SP.FIGHT1.S ranfix)', () => {
       const ship = {
         weaponStrength: 0, weaponCondition: 0,
         shieldStrength: 0, shieldCondition: 0,
@@ -179,12 +179,13 @@ describe('Combat System', () => {
         hullStrength: 0, hullCondition: 0,
         hasAutoRepair: false,
       };
-      
-      // All strengths=0: all component contribs=0, supportSum=0≤4 → r9=10 (original floor)
-      // ADMIRAL rankBonus=20: 0+0+r9(10)+20 = 30
-      // GIGA_HERO rankBonus=60: 0+0+r9(10)+60 = 70
-      expect(calculateBattleFactor(ship, Rank.ADMIRAL, 0)).toBe(30);
-      expect(calculateBattleFactor(ship, Rank.GIGA_HERO, 0)).toBe(70);
+
+      // All strengths=0: supportSum=0≤4 → r9=10 (original floor). The removed v4.0
+      // RANK_BF_BONUS previously added 20 (Admiral) / 60 (Giga-Hero); now rank is
+      // irrelevant — combat power comes from ship investment, not accumulated score.
+      expect(calculateBattleFactor(ship, Rank.LIEUTENANT, 0)).toBe(10);
+      expect(calculateBattleFactor(ship, Rank.ADMIRAL, 0)).toBe(10);
+      expect(calculateBattleFactor(ship, Rank.GIGA_HERO, 0)).toBe(10);
     });
     
     it('should include experience bonus', () => {

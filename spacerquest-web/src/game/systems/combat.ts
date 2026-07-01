@@ -12,7 +12,6 @@
 
 import { BattleResult, Rank } from '@prisma/client';
 import {
-  RANK_BF_BONUS,
   EXPERIENCE_BF_DIVISOR,
   TRIBUTE_BASE_MULTIPLIER,
   TRIBUTE_MAX,
@@ -315,11 +314,14 @@ export function calculateBattleFactor(
   // Original: if a>4 r9=(a/5) / if a<5 r9=10
   const r9 = supportSum > 4 ? Math.floor(supportSum / 5) : 10;
 
-  // Rank bonus preserved from v4.0 (not in original ranfix, but kept for gameplay balance)
-  const rankBonus = RANK_BF_BONUS[rank as keyof typeof RANK_BF_BONUS] || 0;
+  // NOTE: the original ranfix has NO rank term. A v4.0 RANK_BF_BONUS was previously
+  // added here "for balance", but rank is derived from ever-growing score, so it made
+  // PvE compound-easier the longer you played (power from rank on top of ship upgrades).
+  // Removed 2026-07-01 to keep combat power tied to SHIP INVESTMENT, as the original intended.
+  void rank;
 
-  // Total: x8 + x9 + r9 + rank (modern addition)
-  return weaponPower + shieldPower + r9 + rankBonus;
+  // Total: x8 + x9 + r9  (faithful to SP.FIGHT1.S ranfix: hx = x8 + x9 + r9)
+  return weaponPower + shieldPower + r9;
 }
 
 /**
