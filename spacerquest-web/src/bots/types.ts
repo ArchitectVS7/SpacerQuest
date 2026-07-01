@@ -72,6 +72,8 @@ export interface BotRunSummary {
   totalBattles: number;
   totalCargoDelivered: number;
   events: string[];
+  /** Curated "galactic news wire" highlights for the end-turn digest. */
+  digest: string[];
 }
 
 export type RngFunction = () => number;

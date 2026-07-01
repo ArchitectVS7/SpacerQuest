@@ -47,7 +47,7 @@ Your ship has 8 components, each with **Strength** (0–50) and **Condition** (0
 BF = (weapon_strength × weapon_condition)
    + (shield_strength × shield_condition)
    + (cabin + life_support + navigation + drives + robotics + hull) × condition / 10
-   + rank_bonus + (battles_won / 10) + auto_repair_bonus (+10 if equipped)
+   + (battles_won / 10) + auto_repair_bonus (+10 if equipped)
 ```
 
 **Rank BF bonuses:**

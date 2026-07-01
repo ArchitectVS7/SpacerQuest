@@ -1,7 +1,7 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { validateLaunch, startTravel, calculateLiftOffFee, checkNavPrecision } from '../systems/travel.js';
-import { CORE_SYSTEM_NAMES } from '../constants.js';
+import { getSystemName } from '../systems/economy.js';
 
 // Pending launch state: after validation passes, we show the fee and wait for Y/N
 interface PendingLaunch {
@@ -191,8 +191,8 @@ export const NavigateScreen: ScreenModule = {
     );
 
     // Build trip summary output (SP.LIFT.S lines 129-141)
-    const destName = CORE_SYSTEM_NAMES[destinationSystemId] || `System ${destinationSystemId}`;
-    const originName = CORE_SYSTEM_NAMES[currentSystem] || `System ${currentSystem}`;
+    const destName = getSystemName(destinationSystemId);
+    const originName = getSystemName(currentSystem);
     const tripNumber = (character.tripCount || 0) + 1;
 
     let output = '\r\n';
@@ -203,6 +203,11 @@ export const NavigateScreen: ScreenModule = {
     output += `  Estimated Travel Time  : ${validation.travelTime}\r\n`;
     output += `  Estimated Fuel Required: ${validation.fuelRequired} units\r\n`;
     output += `  Fuel On-Board          : ${ship.fuel} units\r\n`;
+
+    // Last-chance risk cue for a Rim run (systems 15-20 = pirate territory).
+    if (destinationSystemId >= 15 && destinationSystemId <= 20) {
+      output += `\r\n\x1b[31m  ⚠ Rim route: RIM_PIRATE activity — ensure weapons, shields & fuel are ready.\x1b[0m\r\n`;
+    }
 
     if (feeWaived) {
       output += `\r\n${waiveReason}\r\n`;
@@ -432,7 +437,7 @@ async function handleFeeConfirmation(
   // Launch!
   try {
     await startTravel(characterId, character.currentSystem, actualDest, pending.fuelRequired);
-    const destName = CORE_SYSTEM_NAMES[actualDest] || `System ${actualDest}`;
+    const destName = getSystemName(actualDest);
     return {
       output: `Yes\r\n\r\n\x1b[36;1mThank you ${character.name}. Your ship and papers are in order.\x1b[0m\r\n\x1b[32mYou are cleared for Lift-Off!\x1b[0m\r\n\r\n\x1b[36;1mENGAGING DRIVES...\x1b[0m\r\n\x1b[33mFuel consumed: ${pending.fuelRequired}\x1b[0m\r\n${navMalfunctionMsg}\r\n\x1b[32mYou have Lift-Off!..Lookin' Good!...Bon Voyage ${character.name}! Heading: ${destName}\x1b[0m\r\n`,
       nextScreen: 'main-menu'

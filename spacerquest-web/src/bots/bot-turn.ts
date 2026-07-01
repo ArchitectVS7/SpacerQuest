@@ -73,6 +73,10 @@ export async function executeBotTurn(
         result.actions.push(executed);
         if (executed.creditsSpent) result.creditsSpent += executed.creditsSpent;
         if (executed.creditsEarned) result.creditsEarned += executed.creditsEarned;
+        // Surface the dramatic port actions to the news wire (rescues, port takeovers)
+        if (executed.type === 'RESCUE_PLAYER' || executed.type === 'MANAGE_PORT') {
+          result.notableEvents.push(executed.detail);
+        }
       }
     }
 

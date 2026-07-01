@@ -575,9 +575,14 @@ describe('FR-ECONOMY', () => {
       expect(getSystemName(14)).toBe('Vega-6');
     });
 
-    it('returns "System N" for non-core systems', () => {
-      expect(getSystemName(15)).toBe('System 15');
+    it('resolves Rim system names (15-20)', () => {
+      expect(getSystemName(15)).toBe('Antares-5');
+      expect(getSystemName(20)).toBe('Algol-2');
+    });
+
+    it('falls through to "System N" for ids with no named entry', () => {
       expect(getSystemName(27)).toBe('System 27');
+      expect(getSystemName(99)).toBe('System 99');
     });
   });
 
@@ -647,6 +652,35 @@ describe('FR-ECONOMY', () => {
       expect(board).toHaveLength(4);
     });
 
+    it('the "stat delivery" bonus is faithful: at most one manifest, ie=|dest-origin|*1000 (cap 10000)', () => {
+      // SP.CARGO.S board1 — the bonus attaches to whichever manifest's destination
+      // matched the roll; it is |dest-origin|*1000 capped at 10000, and never on the origin.
+      let sawBonus = false;
+      for (let i = 0; i < 200; i++) {
+        const origin = Math.floor(Math.random() * 14) + 1;
+        const board = generateManifestBoard(origin, 10, 9, 10, 9);
+        const withBonus = board.filter(m => (m.bonus ?? 0) > 0);
+        expect(withBonus.length).toBeLessThanOrEqual(1);          // one demand per board
+        for (const m of withBonus) {
+          sawBonus = true;
+          expect(m.destId).not.toBe(origin);
+          expect(m.bonus).toBe(Math.min(Math.abs(m.destId - origin) * 1000, 10000));
+          expect(m.bonus).toBeGreaterThan(1);
+        }
+      }
+      expect(sawBonus).toBe(true); // the mechanic actually fires across many boards
+    });
+
+    it('the single-contract path (generateCargoContract) carries no board bonus', () => {
+      // The stat-delivery bonus is a 4-manifest-board mechanic; a lone contract never gets it.
+      for (let i = 0; i < 50; i++) {
+        const contract = generateCargoContract((i % 14) + 1, 10, false, {
+          hullCondition: 9, driveStrength: 10, driveCondition: 9,
+        });
+        expect(contract.deliveryBonus).toBe(0);
+      }
+    });
+
     it('each entry has cargoType 1-9', () => {
       const board = generateManifestBoard(1, 10, 9, 10, 9);
       for (const m of board) {
@@ -692,6 +726,64 @@ describe('FR-ECONOMY', () => {
       for (const m of board) {
         expect(m.distance).toBeGreaterThan(0);
       }
+    });
+
+    describe('Rim contracts (risk/reward)', () => {
+      it('an ineligible player gets a CORE-only board (no rim, all destinations 1-14)', () => {
+        for (let i = 0; i < 50; i++) {
+          const board = generateManifestBoard(1, 10, 9, 10, 9); // no opts → rimEligible false
+          for (const m of board) {
+            expect(m.riskTier).toBe('CORE');
+            expect(m.destId).toBeLessThanOrEqual(14);
+            expect(m.destId).toBeGreaterThanOrEqual(1);
+          }
+        }
+      });
+
+      it('an eligible player is offered up to maxRim Rim runs (destinations 15-20, tagged RIM)', () => {
+        let sawRim = false;
+        for (let i = 0; i < 50; i++) {
+          const board = generateManifestBoard(1, 10, 9, 10, 9, { rimEligible: true, maxRim: 1 });
+          const rim = board.filter(m => m.riskTier === 'RIM');
+          expect(rim.length).toBeLessThanOrEqual(1);           // guardrail: ≥3 core options remain
+          for (const m of rim) {
+            sawRim = true;
+            expect(m.destId).toBeGreaterThanOrEqual(15);
+            expect(m.destId).toBeLessThanOrEqual(20);
+          }
+        }
+        expect(sawRim).toBe(true);                             // the opportunity actually appears
+      });
+
+      it('the stat-delivery bonus rides on the Rim run when the board has one', () => {
+        let bonusOnRim = false;
+        for (let i = 0; i < 80 && !bonusOnRim; i++) {
+          const board = generateManifestBoard(1, 10, 9, 10, 9, { rimEligible: true, maxRim: 2 });
+          const rimWithBonus = board.find(m => m.riskTier === 'RIM' && (m.bonus ?? 0) > 0);
+          if (rimWithBonus) bonusOnRim = true;
+          // when a rim run exists, no CORE entry should carry the bonus
+          if (board.some(m => m.riskTier === 'RIM')) {
+            expect(board.some(m => m.riskTier === 'CORE' && (m.bonus ?? 0) > 0)).toBe(false);
+          }
+        }
+        expect(bonusOnRim).toBe(true);
+      });
+
+      it('Rim runs pay a premium over core (distance-matched)', () => {
+        // Compare rim payment vs a core run of the SAME distance from Sun-3(1): dest 15 (dist 14)
+        // vs dest 14 core Vega-6 (dist 13). Rim premium (×1.4, cap 25000) should keep rim ≥ core.
+        let rimPay = 0, corePay = 0;
+        for (let i = 0; i < 100; i++) {
+          const rim = generateManifestBoard(1, 10, 9, 10, 9, { rimEligible: true, maxRim: 4 })
+            .find(m => m.destId === 15);
+          if (rim) rimPay = Math.max(rimPay, rim.payment);
+          const core = generateManifestBoard(1, 10, 9, 10, 9).find(m => m.destId === 14);
+          if (core) corePay = Math.max(corePay, core.payment);
+        }
+        expect(rimPay).toBeGreaterThan(0);
+        expect(corePay).toBeGreaterThan(0);
+        expect(rimPay).toBeGreaterThanOrEqual(corePay);        // premium + higher cap
+      });
     });
   });
 });

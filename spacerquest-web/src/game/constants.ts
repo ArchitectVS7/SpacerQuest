@@ -192,6 +192,12 @@ export const TRIBUTE_MAX = 10000;            // Maximum tribute demand (capped a
 export const CLOAKING_ESCAPE_CHANCE = 0.7;   // 70% escape with cloaker
 
 // Battle Factor bonuses
+/**
+ * @deprecated Not applied as of 2026-07-01. The original SP.FIGHT1.S ranfix has no
+ * rank term; adding one made PvE compound-easier with score/rank on top of ship
+ * upgrades. Kept only for reference/reversibility — combat power is tied to ship
+ * investment. See calculateBattleFactor in systems/combat.ts.
+ */
 export const RANK_BF_BONUS = {
   LIEUTENANT: 0,
   COMMANDER: 5,

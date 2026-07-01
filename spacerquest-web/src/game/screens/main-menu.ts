@@ -13,6 +13,7 @@ import { isJailed } from '../systems/jail.js';
 import { applyVandalism } from '../systems/extra-curricular.js';
 import { isClassicMode } from '../../bots/config.js';
 import { getSystemName } from '../systems/economy.js';
+import { getNextRankInfo, selectObjective, rankTitle } from '../systems/player-goals.js';
 
 export const MainMenuScreen: ScreenModule = {
   name: 'main-menu',
@@ -116,6 +117,20 @@ export const MainMenuScreen: ScreenModule = {
       ? '\r\n\x1b[31;1m*** YOUR SHIP IS LOST IN SPACE! Press [0] for Rescue Service. ***\x1b[0m\r\n'
       : '';
 
+    // ── Dashboard: progress + a single "what now?" objective ────────────────
+    const nextRank = getNextRankInfo(character.score);
+    const nextRankLine = nextRank.nextRank
+      ? `Next: ${rankTitle(nextRank.nextRank)} in ${nextRank.pointsToNext} pts`
+      : 'Rank maxed — Giga Hero';
+    const objective = selectObjective({
+      score: character.score,
+      fuel: character.ship?.fuel ?? 0,
+      credits: character.creditsHigh * 10000 + character.creditsLow,
+      cargoPods: character.cargoPods,
+      destination: character.destination,
+      isConqueror: character.isConqueror,
+    });
+
     const output = `${combatNotice}${lostNotice}
 \x1b[36;1m_________________________________________\x1b[0m
 \x1b[33;1m                                        \x1b[0m
@@ -127,9 +142,11 @@ export const MainMenuScreen: ScreenModule = {
 
 \x1b[32mSpacer:\x1b[0m ${displayName}
 \x1b[32mShip:\x1b[0m ${character.shipName || 'None'}
-\x1b[32mLocation:\x1b[0m System ${character.currentSystem}
+\x1b[32mLocation:\x1b[0m ${getSystemName(character.currentSystem)}
 \x1b[32mCredits:\x1b[0m ${credits} cr
 \x1b[32mRank:\x1b[0m ${character.rank}
+\x1b[32mFuel:\x1b[0m ${character.ship?.fuel ?? 0}   \x1b[32mScore:\x1b[0m ${character.score}   \x1b[36m${nextRankLine}\x1b[0m
+\x1b[33mObjective:\x1b[0m ${objective}
 
 \x1b[37;1m=========================================\x1b[0m
 \x1b[33;1m           MAIN MENU                     \x1b[0m
