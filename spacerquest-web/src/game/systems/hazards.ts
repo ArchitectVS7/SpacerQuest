@@ -142,16 +142,24 @@ export function checkHazardTrigger(elapsed: number, travelTime: number, onMissio
  *       x=5 → hull (h2)
  *     If the chosen component's condition > 0: condition -1 (gosub hazl)
  *     If all conditions = 0: "All Clear!!!"
+ *
+ * @param ship  Current ship component conditions
+ * @param rng   Optional 0..1 random source for deterministic testing (default Math.random).
+ *              Consumed in order: hazard-type pick, then either the shielded evade roll
+ *              (shields present) or the damaged-component pick (no shields).
  */
-export function generateHazard(ship: ShipComponents): HazardResult | null {
+export function generateHazard(
+  ship: ShipComponents,
+  rng: () => number = Math.random,
+): HazardResult | null {
   // Pick a random hazard type (x=1-4 from r=4:gosub rand in hazl)
-  const hazardIndex = Math.floor(Math.random() * HAZARD_TYPES.length);
+  const hazardIndex = Math.floor(rng() * HAZARD_TYPES.length);
   const hazardName = HAZARD_TYPES[hazardIndex].name;
 
   // With shields (p2>0): r=10:gosub rand → x=1-10, "All Clear" if x<>5 (90% evade)
   if (ship.shieldCondition > 0 && ship.shieldStrength > 0) {
     // Simulate r=10:gosub rand — random integer 1-10
-    const roll = Math.floor(Math.random() * 10) + 1;
+    const roll = Math.floor(rng() * 10) + 1;
     if (roll !== 5) {
       // 9/10 = 90% "All Clear" — shields hold
       return {
@@ -176,7 +184,7 @@ export function generateHazard(ship: ShipComponents): HazardResult | null {
   // No shields (haz0): r=5:gosub rand — picks component x=1-5
   // Original lines 353-357: only damages if component condition > 0
   // If chosen component is at 0, falls through to "All Clear!!!" (line 358)
-  const componentIndex = Math.floor(Math.random() * DAMAGEABLE_COMPONENTS.length);
+  const componentIndex = Math.floor(rng() * DAMAGEABLE_COMPONENTS.length);
   const component = DAMAGEABLE_COMPONENTS[componentIndex];
 
   const conditionKey = `${component === 'hull' ? 'hull' : component === 'drives' ? 'drive' : component === 'weapons' ? 'weapon' : component === 'navigation' ? 'navigation' : component === 'robotics' ? 'robotics' : component}Condition` as keyof ShipComponents;

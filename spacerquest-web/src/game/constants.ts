@@ -164,7 +164,18 @@ export const COURSE_CHANGE_FUEL_MULTIPLIER = 5; // hull × 5 per course change
 export const COURSE_CHANGE_LIMIT_BASE = 3;      // Base course changes per trip
 export const COURSE_CHANGE_LIMIT_INCREMENT = 2; // Additional per trip
 
-export const TRAVEL_TIME_MULTIPLIER = 1; // distance × 1 = chronos (reduced from 3 for playtest speed; TODO: evaluate final value — if kept at 3, players need meaningful activity during 25s wait)
+// Game travel-time units (the original "ty"): distance × 3 = chronos.
+// These units drive hazard checkpoint spacing (ty/4, ty/2, mission marks) and the
+// flavor "travel time" shown to the player. They are GAME units, NOT wall-clock seconds.
+export const TRAVEL_TIME_MULTIPLIER = 3;
+
+// ACCEPTED DEVIATION from the 1991 original: travel is a FIXED short wall-clock wait
+// regardless of distance, instead of real-time proportional to distance. The original
+// BBS resolved travel within the session; making a modern single-player wait 25s at an
+// empty screen is bad UX. Encounters and hazards are unaffected — they are rolled at
+// arrival based on distance-derived game units (TRAVEL_TIME_MULTIPLIER above), not on
+// how long the player waits. See EVALUATION.md §6 and calculateArrivalTime().
+export const TRAVEL_WALLCLOCK_SECONDS = 3;
 
 // ============================================================================
 // COMBAT SYSTEM

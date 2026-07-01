@@ -14,22 +14,44 @@ import {
   renderArenaOptions,
   renderArenaStat,
   calculateDuelHandicap,
+  ARENA_NAMES,
 } from '../systems/arena.js';
+import {
+  createDuelChallenge, acceptDuelChallenge, resolveDuel, arenaRequirementError, StakesType,
+} from '../systems/duel.js';
 
 // Per-character pending confirmation state
 // 'remove_confirm' — waiting Y/N for roster removal (SP.ARENA1.S lines 86-88)
 // 'quit_confirm'   — waiting Y/N for Contender quit warning (SP.ARENA1.S lines 271-274)
 const pendingConfirm = new Map<string, 'remove_confirm' | 'quit_confirm'>();
 
+// Multi-step keystroke flows for posting (Contender) and accepting (Challenger) a duel.
+type ArenaFlow =
+  | { kind: 'post'; step: 'stakes' | 'arena' | 'confirm'; stakesType?: StakesType; arenaType?: number }
+  | { kind: 'accept'; step: 'pick'; duelIds: string[] };
+const pendingFlow = new Map<string, ArenaFlow>();
+
+const CMD = '\x1b[32m[Spacer Arena]:Command:\x1b[0m ';
+const STAKES_BY_NUM: Record<string, StakesType> = { '1': 'POINTS', '2': 'COMPONENTS', '3': 'CREDITS' };
+
 export const ArenaScreen: ScreenModule = {
   name: 'arena',
   render: async (characterId: string): Promise<ScreenResponse> => {
     pendingConfirm.delete(characterId);
+    pendingFlow.delete(characterId);
     return { output: renderArenaHeader() };
   },
 
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
     const key = input.trim().toUpperCase();
+
+    // ── Multi-step Contender/Challenger keystroke flows ───────────────────────
+    const flow = pendingFlow.get(characterId);
+    if (flow) {
+      return flow.kind === 'post'
+        ? handlePostFlow(characterId, input, flow)
+        : handleAcceptFlow(characterId, input, flow);
+    }
 
     // ── Handle pending Y/N confirmations ──────────────────────────────────────
     const pending = pendingConfirm.get(characterId);
@@ -43,18 +65,9 @@ export const ArenaScreen: ScreenModule = {
         if (!duelEntry) {
           return { output: '\r\nYes\r\n\x1b[31mEntry no longer found.\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
         }
-        if (duelEntry.stakesType === 'CREDITS' || duelEntry.stakesType === 'credits') {
-          const { addCredits } = await import('../utils.js');
-          const char = await prisma.character.findUnique({ where: { id: characterId } });
-          if (char) {
-            const refund = addCredits(char.creditsHigh, char.creditsLow, duelEntry.handicap);
-            await prisma.character.update({
-              where: { id: characterId },
-              data: { creditsHigh: refund.high, creditsLow: refund.low },
-            });
-          }
-        }
-        await prisma.duelEntry.update({ where: { id: duelEntry.id }, data: { status: 'CANCELLED' } });
+        // Withdraw + refund the escrowed stake (zerout, SP.ARENA1.S:296-297)
+        const { cancelDuel } = await import('../systems/duel.js');
+        await cancelDuel(duelEntry.id, true);
         return { output: '\r\nYes\r\nRemoved from dueling roster.\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
       } else {
         // Default is N (original: [Y]/(N) — N is default)
@@ -120,49 +133,55 @@ export const ArenaScreen: ScreenModule = {
         const hcp = calculateDuelHandicap(character.ship);
         if (hcp < 1) {
           return {
-            output: `\r\n\x1b[31m${character.shipName || character.name} Inadequate for dueling!\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m `,
+            output: `\r\n\x1b[31m${character.shipName || character.name} Inadequate for dueling!\x1b[0m\r\n${CMD}`,
           };
         }
-        const options = renderArenaOptions();
+        // Begin the Contender post flow (cont/liab, SP.ARENA1.S lines 92-109)
+        pendingFlow.set(characterId, { kind: 'post', step: 'stakes' });
         return {
-          output: '\r\n\x1b[33;1m=== POST A DUEL ===\x1b[0m\r\n\r\n' + options +
-            '\r\nUse: POST /api/duel/challenge { stakesType, stakesAmount, arenaType }\r\n' +
-            '\x1b[32m[Spacer Arena]:Command:\x1b[0m ',
+          output: '\r\n\x1b[33;1m=== POST A DUEL ===\x1b[0m\r\n\r\nSet stakes for duel:\r\n' +
+            '  (1) Total Points\r\n  (2) Ship Component Strength\r\n  (3) Credits\r\n  [Q]uit\r\n\r\nChoice: ',
         };
       }
 
       case '2': {
-        // Challenger - show roster to pick a duel (links to SP.ARENA2 flow)
-        // Check handicap adequacy first (SP.ARENA1.S line 68)
+        // Challenger - list pending duels to pick from (issue, SP.ARENA2.S lines 35-59)
         const character = await prisma.character.findUnique({
           where: { id: characterId },
           include: { ship: true },
         });
         if (!character?.ship) {
-          return { output: '\r\n\x1b[31mNo ship found.\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m ' };
+          return { output: `\r\n\x1b[31mNo ship found.\x1b[0m\r\n${CMD}` };
         }
         // SP.ARENA1.S line 72: if pp=9 → "Only 1 challenge per visit"
         const existingAccepted = await prisma.duelEntry.findFirst({
           where: { contenderId: characterId, status: 'ACCEPTED' },
         });
         if (existingAccepted) {
-          return {
-            output: `\r\n\x1b[33mOnly 1 challenge per visit\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m `,
-          };
+          return { output: `\r\n\x1b[33mOnly 1 challenge per visit\x1b[0m\r\n${CMD}` };
         }
         const hcp = calculateDuelHandicap(character.ship);
         if (hcp < 1) {
           return {
-            output: `\r\n\x1b[31m${character.shipName || character.name} Inadequate for dueling!\x1b[0m\r\n\x1b[32m[Spacer Arena]:Command:\x1b[0m `,
+            output: `\r\n\x1b[31m${character.shipName || character.name} Inadequate for dueling!\x1b[0m\r\n${CMD}`,
           };
         }
 
+        // Postings open to this challenger (not their own; open-to-anyone or targeted at them)
         const duels = await prisma.duelEntry.findMany({
-          where: { status: 'PENDING' },
+          where: {
+            status: 'PENDING',
+            challengerId: { not: characterId },
+            OR: [{ contenderId: null }, { contenderId: characterId }],
+          },
           include: { challenger: true },
           orderBy: { createdAt: 'desc' },
           take: 20,
         });
+
+        if (duels.length === 0) {
+          return { output: `\r\n\x1b[37mNo Contenders to challenge!\x1b[0m\r\n${CMD}` };
+        }
 
         const roster = duels.map(d => ({
           id: d.id,
@@ -175,10 +194,10 @@ export const ArenaScreen: ScreenModule = {
           createdAt: d.createdAt,
         }));
 
-        const output = renderDuelRoster(roster);
+        pendingFlow.set(characterId, { kind: 'accept', step: 'pick', duelIds: duels.map(d => d.id) });
         return {
-          output: output + '\r\nUse: POST /api/duel/accept/:duelId to accept\r\n' +
-            '\x1b[32m[Spacer Arena]:Command:\x1b[0m ',
+          output: renderDuelRoster(roster) +
+            '\r\nChallenge which ship? Type the # (or [Q]uit): ',
         };
       }
 
@@ -365,3 +384,110 @@ export const ArenaScreen: ScreenModule = {
     }
   },
 };
+
+// ============================================================================
+// CONTENDER — multi-step post flow (cont/liab/arena/duet, SP.ARENA1.S:92-167)
+// ============================================================================
+async function handlePostFlow(
+  characterId: string,
+  input: string,
+  flow: Extract<ArenaFlow, { kind: 'post' }>,
+): Promise<ScreenResponse> {
+  const key = input.trim().toUpperCase();
+  const cancel = () => { pendingFlow.delete(characterId); };
+
+  if (flow.step === 'stakes') {
+    if (key === 'Q' || key === '') { cancel(); return { output: `\r\n${CMD}` }; }
+    const stakesType = STAKES_BY_NUM[key];
+    if (!stakesType) return { output: '\r\nChoice (1-3) or [Q]uit: ' };
+
+    // Light pre-validation for clearer UX (createDuelChallenge re-checks authoritatively)
+    const character = await prisma.character.findUnique({ where: { id: characterId }, include: { ship: true } });
+    if (!character?.ship) { cancel(); return { output: `\r\n\x1b[31mNo ship.\x1b[0m\r\n${CMD}` }; }
+    if (stakesType === 'POINTS' && character.score < 150) {
+      return { output: '\r\n\x1b[31m...Not enough points!\x1b[0m\r\nChoice (1-3) or [Q]uit: ' };
+    }
+    if (stakesType === 'CREDITS') {
+      const { getTotalCredits } = await import('../utils.js');
+      const hcp = calculateDuelHandicap(character.ship);
+      if (getTotalCredits(character.creditsHigh, character.creditsLow) < hcp) {
+        return { output: '\r\n\x1b[31m...Insufficient credits!\x1b[0m\r\nChoice (1-3) or [Q]uit: ' };
+      }
+    }
+
+    pendingFlow.set(characterId, { kind: 'post', step: 'arena', stakesType });
+    return { output: `\r\n\x1b[36m${stakesType} at stake\x1b[0m\r\n\r\n` + renderArenaOptions() + '\r\nChoose Arena (1-6) or [Q]uit: ' };
+  }
+
+  if (flow.step === 'arena') {
+    if (key === 'Q' || key === '') { cancel(); return { output: `\r\n${CMD}` }; }
+    const arenaType = parseInt(key, 10);
+    if (isNaN(arenaType) || arenaType < 1 || arenaType > 6) {
+      return { output: '\r\nChoose Arena (1-6) or [Q]uit: ' };
+    }
+    const character = await prisma.character.findUnique({ where: { id: characterId } });
+    if (!character) { cancel(); return { output: `\r\n\x1b[31mError.\x1b[0m\r\n${CMD}` }; }
+    const reqErr = arenaRequirementError(arenaType, character);
+    if (reqErr) return { output: `\r\n\x1b[31m${reqErr}\x1b[0m\r\nChoose Arena (1-6) or [Q]uit: ` };
+
+    const arena = ARENA_NAMES[arenaType - 1];
+    pendingFlow.set(characterId, { kind: 'post', step: 'confirm', stakesType: flow.stakesType, arenaType });
+    return { output: `\r\nWrite your ship to the roster — ${flow.stakesType} stakes in the ${arena} Arena? [Y]/(N): ` };
+  }
+
+  // step === 'confirm'
+  cancel();
+  if (key !== 'Y') return { output: `\r\nNo\r\n${CMD}` };
+
+  const result = await createDuelChallenge(characterId, {
+    stakesType: flow.stakesType!, stakesAmount: 1, arenaType: flow.arenaType!,
+  });
+  if (result.ok === false) return { output: `\r\nYes\r\n\x1b[31m${result.error}\x1b[0m\r\n${CMD}` };
+
+  const arena = ARENA_NAMES[(flow.arenaType ?? 6) - 1];
+  return {
+    output: `\r\nYes\r\n\x1b[32mYour ship is posted to the ${arena} Arena roster, awaiting challenge.\x1b[0m\r\n` +
+      `\x1b[37m(Other spacers may take it up while you are away.)\x1b[0m\r\n${CMD}`,
+  };
+}
+
+// ============================================================================
+// CHALLENGER — pick a posting and fight it (issue/salv/fini, SP.ARENA2.S:35-105)
+// ============================================================================
+async function handleAcceptFlow(
+  characterId: string,
+  input: string,
+  flow: Extract<ArenaFlow, { kind: 'accept' }>,
+): Promise<ScreenResponse> {
+  const key = input.trim().toUpperCase();
+  if (key === 'Q' || key === '') { pendingFlow.delete(characterId); return { output: `\r\n${CMD}` }; }
+
+  const idx = parseInt(key, 10);
+  if (isNaN(idx) || idx < 1 || idx > flow.duelIds.length) {
+    return { output: '\r\nType the # (or [Q]uit): ' };
+  }
+  pendingFlow.delete(characterId);
+  const duelId = flow.duelIds[idx - 1];
+
+  const accepted = await acceptDuelChallenge(duelId, characterId);
+  if (accepted.ok === false) return { output: `\r\n\x1b[31m${accepted.error}\x1b[0m\r\n${CMD}` };
+
+  const resolved = await resolveDuel(duelId);
+  if (resolved.ok === false) return { output: `\r\n\x1b[31m${resolved.error}\x1b[0m\r\n${CMD}` };
+
+  const r = resolved.resolution;
+  const arena = ARENA_NAMES[r.arenaType - 1] || 'Deep Space';
+  let out = `\r\n\x1b[36mBattle commences in the ${arena} Arena.....\x1b[0m\r\n\r\n`;
+  for (const salvo of r.salvos) out += `  ${salvo}\r\n`;
+  out += '\r\n';
+  if (r.draw) {
+    out += `\x1b[33mBattle a Draw!...stakes cancelled!\x1b[0m\r\n`;
+  } else {
+    const youWon = r.winnerId === characterId;
+    out += youWon
+      ? `\x1b[32;1m${r.message} — you WIN!\x1b[0m\r\n`
+      : `\x1b[31m${r.message}\x1b[0m\r\n`;
+    out += `\x1b[37mStakes transferred: ${r.stakesTransferred} (${r.stakesType.toLowerCase()})\x1b[0m\r\n`;
+  }
+  return { output: out + CMD };
+}

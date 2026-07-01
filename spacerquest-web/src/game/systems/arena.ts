@@ -432,7 +432,8 @@ export function simulateDuelCombat(
   posterShipName: string,
   accepterShipName: string,
   posterArenaHandicap: number,
-  accepterArenaHandicap: number
+  accepterArenaHandicap: number,
+  rng: () => number = Math.random,
 ): DuelCombatResult {
   let posterHits = 0;
   let accepterHits = 0;
@@ -445,7 +446,7 @@ export function simulateDuelCombat(
     // Poster salvo: bx=((j+1)*10)+posterArenaHandicap
     // Original SP.ARENA2.S line 75-76: r=9:gosub rand:if x=j x=x+1 / j=x / bx=((x+1)*10)+x5
     // rand subroutine clamps: if x>r x=r (so max is 9, not 10)
-    let j = Math.floor(Math.random() * R) + 1;
+    let j = Math.floor(rng() * R) + 1;
     if (j === prevJ) j = Math.min(j + 1, R); // clamp to R (9), not R+1
     prevJ = j;
     const bx = (j + 1) * 10 + posterArenaHandicap;
@@ -453,7 +454,7 @@ export function simulateDuelCombat(
     // Accepter salvo: cx=(k*10)+accepterArenaHandicap
     // Original SP.ARENA2.S line 78-79: gosub rand:if x=k x=x+1 / k=x / cx=(x*10)+a
     // rand subroutine clamps: if x>r x=r (so max is 9, not 10)
-    let k = Math.floor(Math.random() * R) + 1;
+    let k = Math.floor(rng() * R) + 1;
     if (k === prevK) k = Math.min(k + 1, R); // clamp to R (9), not R+1
     prevK = k;
     const cx = k * 10 + accepterArenaHandicap;

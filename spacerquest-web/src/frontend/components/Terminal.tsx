@@ -24,6 +24,11 @@ const BUFFERED_SCREENS = [
   'shipyard-upgrade', 'registry-search', 'alliance-invest'
 ];
 
+// Screens that draw their own live display in response to each keystroke (e.g. the
+// cloaker toggle uses relative cursor moves). Local echo would offset that redraw,
+// so we let the server output be the sole source of truth for these.
+const NO_ECHO_SCREENS = ['cloaker-toggle'];
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -167,8 +172,10 @@ export function TerminalComponent() {
       wsClient.sendScreenInput(currentScreen, input);
     }
 
-    // Echo input to terminal
-    terminal.write(input);
+    // Echo input to terminal (unless this screen redraws itself per keystroke)
+    if (!NO_ECHO_SCREENS.includes(currentScreen)) {
+      terminal.write(input);
+    }
   }, [handleLoginInput, handleCharacterCreateInput]);
 
   // Update terminal when buffer changes

@@ -29,13 +29,19 @@ describe('Travel Hazard Route Integration', () => {
       'utf-8'
     );
 
-    // The arrive endpoint must import hazard functions
-    expect(routeCode).toContain('checkHazardTrigger');
-    expect(routeCode).toContain('generateHazard');
-    expect(routeCode).toContain('hazards.js');
+    // The arrive endpoint delegates hazard resolution to the extracted, testable
+    // helper in travel.ts (resolveArrivalHazards) rather than inlining the loop.
+    expect(routeCode).toContain('resolveArrivalHazards');
 
-    // It must persist damage to the ship
-    expect(routeCode).toContain('prisma.ship.update');
+    // It must persist damage to the ship (in the extracted helper)
+    const travelCode = fs.readFileSync(
+      new URL('../src/game/systems/travel.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(travelCode).toContain('checkHazardTrigger');
+    expect(travelCode).toContain('generateHazard');
+    expect(travelCode).toContain('./hazards.js');
+    expect(travelCode).toContain('prisma.ship.update');
 
     // The response must include hazard events
     expect(routeCode).toContain('hazards:');
@@ -43,27 +49,27 @@ describe('Travel Hazard Route Integration', () => {
 
   it('hazard check uses both 1/4 and 1/2 trigger points from original SP.WARP.S', async () => {
     const fs = await import('fs');
-    const routeCode = fs.readFileSync(
-      new URL('../src/app/routes/navigation.ts', import.meta.url),
+    const travelCode = fs.readFileSync(
+      new URL('../src/game/systems/travel.ts', import.meta.url),
       'utf-8'
     );
 
-    // Must check both quarter and half marks
-    expect(routeCode).toContain('quarterMark');
-    expect(routeCode).toContain('halfMark');
+    // Must check both quarter and half marks (in the extracted helper)
+    expect(travelCode).toContain('quarterMark');
+    expect(travelCode).toContain('halfMark');
   });
 
   it('hazard damage is applied cumulatively across checkpoints', async () => {
     // Verify the code updates shipData between checkpoint iterations
     const fs = await import('fs');
-    const routeCode = fs.readFileSync(
-      new URL('../src/app/routes/navigation.ts', import.meta.url),
+    const travelCode = fs.readFileSync(
+      new URL('../src/game/systems/travel.ts', import.meta.url),
       'utf-8'
     );
 
     // Must update shipData within the loop so second hazard uses damaged state
-    expect(routeCode).toContain('shipData');
-    expect(routeCode).toContain('hazard.newCondition');
+    expect(travelCode).toContain('shipData');
+    expect(travelCode).toContain('hazard.newCondition');
   });
 });
 

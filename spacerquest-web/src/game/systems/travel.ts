@@ -8,6 +8,7 @@
 import {
   COURSE_CHANGE_FUEL_MULTIPLIER,
   TRAVEL_TIME_MULTIPLIER,
+  TRAVEL_WALLCLOCK_SECONDS,
   DAILY_TRIP_LIMIT,
 } from '../constants';
 import { calculateDistance } from '../utils.js';
@@ -132,8 +133,12 @@ export function hasEnoughFuel(
 // ============================================================================
 
 /**
- * Calculate travel time in chronos
- * 
+ * Calculate travel time in chronos (GAME units, not wall-clock seconds).
+ *
+ * This is the original "ty": it sets hazard checkpoint spacing (ty/4, ty/2, mission
+ * marks) and the flavor travel-time shown to the player. It is intentionally NOT the
+ * real time the player waits — see calculateArrivalTime().
+ *
  * @param distance - Distance in astrecs
  * @returns Travel time in chronos units
  */
@@ -142,16 +147,23 @@ export function calculateTravelTime(distance: number): number {
 }
 
 /**
- * Calculate expected arrival time
- * 
+ * Calculate expected (wall-clock) arrival time.
+ *
+ * ACCEPTED DEVIATION: travel takes a FIXED short wait (TRAVEL_WALLCLOCK_SECONDS)
+ * regardless of distance, rather than real-time proportional to distance. The 1991
+ * original resolved travel within the session; a modern single-player game should not
+ * park the player at an empty screen for 25s on a long haul.
+ *
+ * This does NOT weaken encounters or hazards: both are rolled server-side in
+ * /api/navigation/arrive from the distance-derived game units (calculateTravelTime),
+ * independent of how long this wall-clock wait is.
+ *
  * @param departureTime - When travel started
- * @param distance - Distance in astrecs
+ * @param _distance - Distance in astrecs (unused for wall-clock; kept for call-site clarity)
  * @returns Expected arrival Date
  */
-export function calculateArrivalTime(departureTime: Date, distance: number): Date {
-  const chronos = calculateTravelTime(distance);
-  // Convert chronos to milliseconds (1 chronos = 1 second for gameplay)
-  return new Date(departureTime.getTime() + chronos * 1000);
+export function calculateArrivalTime(departureTime: Date, _distance?: number): Date {
+  return new Date(departureTime.getTime() + TRAVEL_WALLCLOCK_SECONDS * 1000);
 }
 
 // ============================================================================
@@ -576,6 +588,117 @@ export function checkNavPrecision(
   const wrongDest = r20 !== intendedDest ? r20 : (r20 === 20 ? 1 : r20 + 1); // ensure it's different
 
   return { onCourse: false, actualDestination: wrongDest, malfunction: true };
+}
+
+/**
+ * Resolve the travel hazards that occurred during a completed transit and persist
+ * any component damage to the ship. This is the exact hazard logic the arrival flow
+ * (`POST /api/navigation/arrive`) runs; it is extracted here so it is (a) reusable and
+ * (b) deterministically testable via the injected `rng` seam, without changing default
+ * gameplay (default `rng` is Math.random, so live behavior is unchanged).
+ *
+ * Hazard checkpoints key off DISTANCE-derived game units (the original "ty"), NOT the
+ * fixed wall-clock wait — see calculateArrivalTime(). Reads the active TravelState to
+ * know the origin/destination distance.
+ *
+ * @param characterId  Character arriving
+ * @param rng          Optional 0..1 random source (default Math.random) threaded into
+ *                     generateHazard for deterministic hazard outcomes in tests.
+ * @returns            The hazard events that fired (for display); [] if none / no state.
+ */
+export async function resolveArrivalHazards(
+  characterId: string,
+  rng: () => number = Math.random,
+): Promise<import('./hazards.js').HazardResult[]> {
+  const { prisma } = await import('../../db/prisma.js');
+  const { checkHazardTrigger, generateHazard } = await import('./hazards.js');
+
+  const character = await prisma.character.findUnique({
+    where: { id: characterId },
+    include: { ship: true },
+  });
+  if (!character || !character.ship) return [];
+
+  const travelState = await prisma.travelState.findUnique({ where: { characterId } });
+  if (!travelState) return [];
+
+  const travelDistanceUnits = calculateDistance(travelState.originSystem, travelState.destinationSystem);
+  const travelTimeUnits = Math.max(1, calculateTravelTime(travelDistanceUnits));
+
+  // SP.WARP.S getime: hazard marks depend on mission type (mx = missionType > 1).
+  // Normal (mx=0): 1/4 and 1/2 only (1/3 is the encounter mark, not a hazard).
+  // Mission (mx>0): 1/4, 1/2, plus mission-only marks: 1/3, 1/9, 1/8, 1/7, 1/6, 1/5.
+  const onMission = character.missionType > 1;
+  const quarterMark = Math.floor(travelTimeUnits / 4);
+  const halfMark = Math.floor(travelTimeUnits / 2);
+  const checkPoints: number[] = [quarterMark, halfMark];
+  if (onMission) {
+    checkPoints.push(
+      Math.floor(travelTimeUnits / 3),
+      Math.floor(travelTimeUnits / 9),
+      Math.floor(travelTimeUnits / 8),
+      Math.floor(travelTimeUnits / 7),
+      Math.floor(travelTimeUnits / 6),
+      Math.floor(travelTimeUnits / 5),
+    );
+  }
+  const uniqueCheckPoints = [...new Set(checkPoints)].filter(cp => cp > 0);
+
+  const shipData = {
+    hullCondition: character.ship.hullCondition,
+    driveCondition: character.ship.driveCondition,
+    cabinCondition: character.ship.cabinCondition,
+    lifeSupportCondition: character.ship.lifeSupportCondition,
+    weaponCondition: character.ship.weaponCondition,
+    navigationCondition: character.ship.navigationCondition,
+    roboticsCondition: character.ship.roboticsCondition,
+    shieldCondition: character.ship.shieldCondition,
+    shieldStrength: character.ship.shieldStrength,
+  };
+
+  const hazardEvents: import('./hazards.js').HazardResult[] = [];
+  for (const checkpoint of uniqueCheckPoints) {
+    if (checkHazardTrigger(checkpoint, travelTimeUnits, onMission)) {
+      const hazard = generateHazard(shipData, rng);
+      if (hazard) {
+        hazardEvents.push(hazard);
+
+        // Apply damage to shipData for subsequent checks
+        if (!hazard.evaded && hazard.component !== 'none') {
+          const conditionKey = hazard.component === 'shields' ? 'shieldCondition' :
+            hazard.component === 'drives' ? 'driveCondition' :
+            hazard.component === 'weapons' ? 'weaponCondition' :
+            hazard.component === 'navigation' ? 'navigationCondition' :
+            hazard.component === 'robotics' ? 'roboticsCondition' :
+            hazard.component === 'hull' ? 'hullCondition' : null;
+
+          if (conditionKey) {
+            (shipData as Record<string, number>)[conditionKey] = hazard.newCondition;
+          }
+        }
+      }
+    }
+  }
+
+  // Persist any hazard damage to the ship
+  const damageOccurred = hazardEvents.some(h => !h.evaded && h.component !== 'none');
+  if (damageOccurred) {
+    await prisma.ship.update({
+      where: { id: character.ship.id },
+      data: {
+        hullCondition: shipData.hullCondition,
+        driveCondition: shipData.driveCondition,
+        cabinCondition: shipData.cabinCondition,
+        lifeSupportCondition: shipData.lifeSupportCondition,
+        weaponCondition: shipData.weaponCondition,
+        navigationCondition: shipData.navigationCondition,
+        roboticsCondition: shipData.roboticsCondition,
+        shieldCondition: shipData.shieldCondition,
+      },
+    });
+  }
+
+  return hazardEvents;
 }
 
 export async function startTravel(

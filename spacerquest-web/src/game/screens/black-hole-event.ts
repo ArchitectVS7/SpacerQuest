@@ -3,16 +3,20 @@
  *
  * Implements the "black" public entry from SP.PATPIR.S lines 142-198.
  *
+ * Reached only via the Andromeda black-hole transit (arrive handler sets
+ * screenOverride='black-hole-event' when the crossing occurs). The 1991 trigger was an
+ * undocumented spacebar press during warp; here it is offered as a choice — see the
+ * render() comment and EVALUATION.md §7.
+ *
  * Flow:
- *   1. On arrival: random component damage (blkx, lines 147-158)
- *   2. Player enters Great Void — must input Number Key to find weapon enhancement
- *      (lines 160-165)
- *   3. If correct key: weapon enhancement discovery + Y/N install prompt
- *      (lines 166-190)
- *   4. Return to warp (link "sp.warp","snx") via navigate screen
+ *   1. Nudge: "Investigate the derelict craft? [Y]/(N)" — N presses on to Andromeda.
+ *   2. On Y: exit-stress component damage (blkx, lines 147-158), then the Great Void —
+ *      player must input their Number Key (from the Wise One) to find the enhancement.
+ *   3. If correct key: weapon enhancement discovery + Y/N install prompt (lines 166-190).
+ *   4. All paths continue to the Andromeda destination (andromeda-dock).
  *
  * State machine:
- *   'arrive'       → show damage, prompt for number key
+ *   'nudge'        → offer to investigate the derelict (Y/N)
  *   'void_prompt'  → waiting for number key input
  *   'install'      → weapon enhancement found, prompt install Y/N
  */
@@ -29,7 +33,7 @@ import {
 // Session state
 // ============================================================================
 
-type BhState = 'void_prompt' | 'install';
+type BhState = 'nudge' | 'void_prompt' | 'install';
 const sessionState = new Map<string, BhState>();
 // Track first-install-prompt inner state: a$ in original = first Y/N answer
 const installFirstAnswer = new Map<string, 'Y' | 'N' | null>();
@@ -71,42 +75,84 @@ export const BlackHoleEventScreen: ScreenModule = {
       return { output: '\x1b[31mError: Character not found.\x1b[0m\r\n', nextScreen: 'main-menu' };
     }
 
-    const ship = character.ship;
-
-    // --- Step 1: Apply black hole exit damage (SP.PATPIR.S lines 147-158) ---
-    const { componentIndex, damageAmount } = rollBlackHoleDamage();
-    const dmg = computeBlackHoleDamage(componentIndex, damageAmount, {
-      driveStrength:       ship.driveStrength,
-      cabinStrength:       ship.cabinStrength,
-      lifeSupportStrength: ship.lifeSupportStrength,
-      weaponStrength:      ship.weaponStrength,
-      navigationStrength:  ship.navigationStrength,
-      roboticsStrength:    ship.roboticsStrength,
-      hullStrength:        ship.hullStrength,
-    });
-
-    if (dmg.damaged && dmg.field && dmg.newStrength !== undefined) {
-      await prisma.ship.update({
-        where: { id: ship.id },
-        data: { [dmg.field]: dmg.newStrength },
-      });
-    }
-
-    // --- Step 2: Prompt for Number Key (blk2, lines 160-163) ---
-    sessionState.set(characterId, 'void_prompt');
+    // ── Discoverability nudge (see EVALUATION.md §7) ─────────────────────────
+    // The 1991 original triggered the Great Void via an UNDOCUMENTED spacebar press
+    // during warp — invisible to a single-player audience with no BBS grapevine. Here
+    // the derelict is OFFERED instead. Investigating still carries the authentic cost:
+    // it applies the "precipitous 90-degree exit" stress damage (SP.PATPIR.S 147-158,
+    // a SEPARATE roll from the transit snap the arrive handler already applied), and the
+    // reward remains gated on the Wise One's Number Key. Decline = clean, no discovery.
+    sessionState.set(characterId, 'nudge');
     installFirstAnswer.delete(characterId);
 
     const output =
-      buildDamageOutput(character.shipName || 'Ship', dmg) +
-      '\r\nYou find yourself in the vacuous darkness of The Great Void\r\n' +
-      `\r\nInput your 'NUMBER KEY' into your Navigation System: `;
+      '\r\n\x1b[2J\x1b[H' +
+      '\r\n\x1b[36;1mYou tear through the black hole into the vacuous darkness of The Great Void.\x1b[0m\r\n' +
+      '\r\nAs your sensors settle, a faintly illuminated shape looms in the distance —\r\n' +
+      'a derelict craft of unknown origin, drifting in the silence.\r\n' +
+      '\r\n\x1b[33mBreaking off to investigate will stress your ship further, and the Void\r\n' +
+      'yields its secrets only to those who know their Number Key.\x1b[0m\r\n' +
+      '\r\nInvestigate the derelict craft? \x1b[37;1m[Y]\x1b[0m/(N): ';
 
     return { output };
   },
 
   handleInput: async (characterId: string, input: string): Promise<ScreenResponse> => {
     const raw = input.trim();
-    const state = sessionState.get(characterId) ?? 'void_prompt';
+    const state = sessionState.get(characterId) ?? 'nudge';
+
+    // ── Discoverability nudge: investigate the derelict, or press on? ──────
+    if (state === 'nudge') {
+      const key = raw.toUpperCase() === '' ? 'Y' : raw.toUpperCase(); // Enter = default [Y]
+      if (key === 'N') {
+        sessionState.delete(characterId);
+        return {
+          output:
+            'N\r\n\r\nYou leave the derelict to the darkness and press on toward Andromeda......\r\n' +
+            '\r\nPress any key to continue...',
+          nextScreen: 'andromeda-dock',
+        };
+      }
+      if (key !== 'Y') {
+        return { output: '\r\nInvestigate the derelict craft? \x1b[37;1m[Y]\x1b[0m/(N): ' };
+      }
+
+      // Y — investigating costs the exit-stress damage (SP.PATPIR.S 147-158),
+      // then presents the Great Void Number-Key challenge.
+      const character = await prisma.character.findUnique({
+        where: { id: characterId },
+        include: { ship: true },
+      });
+      if (!character || !character.ship) {
+        return { output: '\x1b[31mError: Character not found.\x1b[0m\r\n', nextScreen: 'andromeda-dock' };
+      }
+      const ship = character.ship;
+      const { componentIndex, damageAmount } = rollBlackHoleDamage();
+      const dmg = computeBlackHoleDamage(componentIndex, damageAmount, {
+        driveStrength:       ship.driveStrength,
+        cabinStrength:       ship.cabinStrength,
+        lifeSupportStrength: ship.lifeSupportStrength,
+        weaponStrength:      ship.weaponStrength,
+        navigationStrength:  ship.navigationStrength,
+        roboticsStrength:    ship.roboticsStrength,
+        hullStrength:        ship.hullStrength,
+      });
+      if (dmg.damaged && dmg.field && dmg.newStrength !== undefined) {
+        await prisma.ship.update({
+          where: { id: ship.id },
+          data: { [dmg.field]: dmg.newStrength },
+        });
+      }
+
+      sessionState.set(characterId, 'void_prompt');
+      return {
+        output:
+          'Y\r\n' +
+          buildDamageOutput(character.shipName || 'Ship', dmg) +
+          `\r\nYou pick your way toward the derelict......\r\n` +
+          `\r\nInput your 'NUMBER KEY' into your Navigation System: `,
+      };
+    }
 
     // ── Void prompt: player enters Number Key (lines 162-165) ──────────────
     if (state === 'void_prompt') {
@@ -142,7 +188,7 @@ export const BlackHoleEventScreen: ScreenModule = {
             'And head back to the last plotted position\r\n' +
             'Of the black hole......\r\n\r\n' +
             'Press any key to continue...',
-          nextScreen: 'navigate',
+          nextScreen: 'andromeda-dock',
         };
       }
 
@@ -203,7 +249,7 @@ export const BlackHoleEventScreen: ScreenModule = {
           });
 
           if (!character || !character.ship) {
-            return { output: '\x1b[31mError: Character not found.\x1b[0m\r\n', nextScreen: 'navigate' };
+            return { output: '\x1b[31mError: Character not found.\x1b[0m\r\n', nextScreen: 'andromeda-dock' };
           }
 
           // Original blk4: if left$(w1$,1)="?" goto blk5 (already enhanced)
@@ -227,7 +273,7 @@ export const BlackHoleEventScreen: ScreenModule = {
               'And head back to the last plotted position\r\n' +
               'Of the black hole......\r\n\r\n' +
               'Press any key to continue...',
-            nextScreen: 'navigate',
+            nextScreen: 'andromeda-dock',
           };
         }
 
@@ -243,7 +289,7 @@ export const BlackHoleEventScreen: ScreenModule = {
             'And head back to the last plotted position\r\n' +
             'Of the black hole......\r\n\r\n' +
             'Press any key to continue...',
-          nextScreen: 'navigate',
+          nextScreen: 'andromeda-dock',
         };
       }
 
@@ -253,6 +299,6 @@ export const BlackHoleEventScreen: ScreenModule = {
 
     // Fallback: any key at blk9 (end state)
     sessionState.delete(characterId);
-    return { output: '\r\n', nextScreen: 'navigate' };
+    return { output: '\r\n', nextScreen: 'andromeda-dock' };
   },
 };

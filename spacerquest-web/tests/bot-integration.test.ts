@@ -52,6 +52,13 @@ vi.mock('../src/db/prisma', () => ({
       findMany: vi.fn(),
       count: vi.fn(),
     },
+    duelEntry: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      findUnique: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
