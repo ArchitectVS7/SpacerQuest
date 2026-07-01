@@ -148,7 +148,30 @@ Extended the headless playtest from **32 → 50 deterministic actions** and rais
 - **DEFCON funding:** `alliance-invest` `F`ortify flow raises `AllianceSystem.defconLevel` and draws from system assets.
 - **Rank progression:** a Space Patrol payoff (`space-patrol` render) recalculates rank from the new score.
 
-**Now genuinely outstanding:** only the *player-vs-player* duel lifecycle (challenge/accept/resolve) has no keystroke path — it is REST-only by design in this build. The browser test 09 remains the higher-fidelity (but flakier) complement; the headless test is the reliable regression net.
+### Update — Single-player Arena: async PvP with bots (2026-07-01)
+**RESOLVED — the arena is now a working async PvP loop, no longer REST-only.** The 1991 mechanic (a Contender posts a challenge and *logs off*; whoever arrives next fights the stored ship) is mapped onto our turn structure: the player posts and ends their turn, and during `runAllBotTurns` the bots decide — strategically or foolishly, by personality — whether to accept it, and post their own for the player to answer next turn.
+
+- **Shared duel module** `systems/duel.ts` (`createDuelChallenge`/`acceptDuelChallenge`/`resolveDuel`/`cancelDuel`/`expireStaleDuels`, rng-injectable); the three REST endpoints are now thin wrappers over it; `simulateDuelCombat` gained an rng seam.
+- **Bots** `bots/bot-arena.ts` — `botArenaPhase` (accept + post) in `executeBotTurn`; a personality decision model (`perceivedWinProb = truth + aggression-bias + misjudgement-noise`) makes brave bots take bad duels and cautious bots hold back; stale postings are expired+refunded.
+- **Human keystrokes** `screens/arena.ts` — the *"use the API"* stubs are gone: **(1) Contender** posts via stakes→arena→confirm (with credit escrow), **(2) Challenger** lists open postings and accepts+resolves one (9-salvo log + result).
+- **Economics fix** — credit stakes escrow/transfer coherently in ×10,000-cr units (`DUEL_CREDIT_UNIT`); a resolved credit duel is now a conservative symmetric ±v transfer (previously escrows were mis-scaled and never returned — a permanent double-loss bug).
+- **Tests** `tests/arena-pvp.test.ts` (8): human post (POINTS + CREDITS escrow), withdraw+refund, human accept+fight, deterministic bot accept (aggressive) vs decline (cautious), credit conservation, expiry+refund. Full design in `ARENA_DESIGN.md`.
+
+### Update — §5 player-path coverage push complete (2026-07-01)
+Extended the headless playtest from **50 → 69 deterministic actions** (regression floor 45 → 60); `npm test` = **1913 passing, 49 files, exit 0.** Every §5 item that lacked a keystroke test now has one, each asserting a real DB effect:
+
+- **Special equipment** — all five installs (Star-Buster, Arch-Angel, Morton's Cloaker, Trans-Warp, Astraxial) via `shipyard-special`, plus a **condition-repair vs strength-upgrade** distinction (repair restores condition to 9 without touching strength).
+- **Jail post-bail** — bail another spacer out of the Hangout brig (target released, payer charged 2× fine).
+- **Alliance** — **withdraw** from the treasury (member credits up, treasury down) and the full **Alliance Raid** arc: accept via the `raid` screen → win the SP.MAL kk=4 battle (`processDocking`) → activate the conquest at the Investment Center (`AllianceSystem` transfers to the raider's alliance).
+- **Port ownership** — owner **sets the fuel price** at the depot and **sells** the port (ownership removed, credits returned). *(Landing fees have no owner-facing screen — auto-computed at lift-off; noted, not a gap.)*
+- **Smuggling run** — take a Syndicate contraband contract (Info → SMU) and collect the payout on delivery at the Hangout.
+- **Space Patrol** — the full commission arc Join → pick sector → confirm → Launch (hands off to `combat` as a patrol).
+- **Bulletin write** — a member posts to the alliance board (`BulletinPost` persisted).
+- **Rescue Service** — rescue a stranded spacer (target recovered; rescuer charged fuel + gains points) and self-rescue.
+
+One small screen fix landed with this: `alliance-invest` `render` now clears transient multi-step flow state (the DEFCON fortify loop previously leaked `pendingDefcon` across a re-entry).
+
+**Now genuinely remaining** (faithfulness follow-ups, not coverage): the single-contract cargo-bonus approximation — two code paths disagree (§2.3); the rank-combat-bonus balance decision (§2.2); thin player-side port ownership vs the bot side (§4); and the flaky browser test 09 / LLM-playtest harness (§4). The design "big wins" in §6 (onboarding, the full "while you were away" digest, economic-goal surfacing, rank-curve tuning) remain open by design. The headless test is the reliable regression net.
 
 ---
 

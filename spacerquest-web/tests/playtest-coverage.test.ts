@@ -13,12 +13,12 @@
  * Requires Postgres (seeded) — same as the tier1/tier2 integration tests.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { handleScreenRequest, handleScreenInput } from '../src/sockets/screen-router';
 import { prisma } from '../src/db/prisma';
 import { resolveArrivalHazards, processCourseChange } from '../src/game/systems/travel';
 import { processDocking } from '../src/game/systems/docking';
-import { calculateRank, getRankIndex } from '../src/game/utils';
+import { calculateRank, getRankIndex, getTotalCredits } from '../src/game/utils';
 
 // ── Coverage scorecard ──────────────────────────────────────────────────────
 const COVERED = new Set<string>();
@@ -540,6 +540,41 @@ describe('Port ownership', () => {
   });
 });
 
+// ── Throwaway NPC fixtures (for multi-character features: bail, rescue) ──────
+async function makeNpc(bbs: string, charData: Record<string, unknown>, shipData: Record<string, unknown> = {}) {
+  await delNpc(bbs);
+  const user = await prisma.user.create({ data: { bbsUserId: bbs, email: `${bbs}@sq.test`, displayName: bbs } });
+  const c = await prisma.character.create({
+    data: {
+      userId: user.id, name: 'Npc', shipName: 'NPC-SHIP', currentSystem: 1,
+      creditsHigh: 10, creditsLow: 0, rank: 'LIEUTENANT', score: 100, ...charData,
+    },
+  });
+  await prisma.ship.create({
+    data: {
+      characterId: c.id,
+      hullStrength: 10, hullCondition: 9, driveStrength: 10, driveCondition: 9,
+      cabinStrength: 10, cabinCondition: 9, lifeSupportStrength: 10, lifeSupportCondition: 9,
+      weaponStrength: 10, weaponCondition: 9, navigationStrength: 10, navigationCondition: 9,
+      roboticsStrength: 10, roboticsCondition: 9, shieldStrength: 10, shieldCondition: 9,
+      fuel: 100, ...shipData,
+    },
+  });
+  return prisma.character.findUnique({ where: { id: c.id } });
+}
+async function delNpc(bbs: string) {
+  const u = await prisma.user.findUnique({ where: { bbsUserId: bbs } });
+  if (!u) return;
+  const c = await prisma.character.findFirst({ where: { userId: u.id } });
+  if (c) {
+    await prisma.duelEntry.deleteMany({ where: { OR: [{ challengerId: c.id }, { contenderId: c.id }] } });
+    await prisma.gameLog.deleteMany({ where: { characterId: c.id } });
+    await prisma.ship.deleteMany({ where: { characterId: c.id } });
+    await prisma.character.delete({ where: { id: c.id } });
+  }
+  await prisma.user.delete({ where: { id: u.id } });
+}
+
 // ============================================================================
 // COMBAT — surrender & retreat as RESOLVED outcomes (keystroke path)
 // These paths are deterministic in the engine (attemptRetreat always succeeds;
@@ -892,12 +927,351 @@ describe('Rank progression (Space Patrol payoff)', () => {
 });
 
 // ============================================================================
+// SPECIAL EQUIPMENT — all five purchases + strength/condition distinction
+// ============================================================================
+describe('Special equipment', () => {
+  beforeAll(async () => { await setup({ currentSystem: 1, creditsHigh: 100, creditsLow: 0, rank: 'COMMANDER', score: 300 }); });
+
+  it('Star-Buster (Commander+) installs', async () => {
+    await setShip({ hasStarBuster: false, hasCloaker: false, weaponStrength: 20, weaponCondition: 9 });
+    await press('shipyard-special', '3');
+    expect((await char())!.ship!.hasStarBuster).toBe(true);
+    track('equip.star_buster');
+  });
+  it('Arch-Angel (Commander+) installs', async () => {
+    await setShip({ hasArchAngel: false, hasCloaker: false, shieldStrength: 20, shieldCondition: 9 });
+    await press('shipyard-special', '4');
+    expect((await char())!.ship!.hasArchAngel).toBe(true);
+    track('equip.arch_angel');
+  });
+  it("Morton's Cloaker (hull<5) installs", async () => {
+    await setShip({ hasCloaker: false, hasAutoRepair: false, hasArchAngel: false, hullStrength: 3, hullCondition: 9, shieldStrength: 10 });
+    await press('shipyard-special', '1');
+    expect((await char())!.ship!.hasCloaker).toBe(true);
+    track('equip.cloaker');
+  });
+  it('Trans-Warp accelerator installs', async () => {
+    await setShip({ hasTransWarpDrive: false });
+    await press('shipyard-special', '6');
+    expect((await char())!.ship!.hasTransWarpDrive).toBe(true);
+    track('equip.transwarp');
+  });
+  it('Astraxial Hull (Conqueror + drive≥25) transforms the hull', async () => {
+    await setup({ isConqueror: true });
+    await setShip({ isAstraxialHull: false, driveStrength: 25, driveCondition: 9 });
+    await press('shipyard-special', '7');
+    const after = await char();
+    expect(after!.ship!.isAstraxialHull).toBe(true);
+    expect(after!.ship!.hullStrength).toBe(29);         // SP special-hull bonus
+    track('equip.astraxial');
+    await setup({ isConqueror: false });
+  });
+
+  it('condition repair restores condition to 9 without changing strength', async () => {
+    await setShip({ driveStrength: 12, driveCondition: 3, weaponStrength: 15, weaponCondition: 4 });
+    await press('shipyard', 'R');
+    const after = await char();
+    expect(after!.ship!.driveCondition).toBe(9);          // repaired
+    expect(after!.ship!.driveStrength).toBe(12);          // strength untouched (vs a STRENGTH upgrade)
+    track('shipyard.condition_repair');
+  });
+});
+
+// ============================================================================
+// ALLIANCE TREASURY — withdraw invested credits back to the member
+// ============================================================================
+describe('Alliance treasury withdraw', () => {
+  beforeAll(async () => {
+    await setup({ currentSystem: 1, allianceSymbol: 'ASTRO_LEAGUE', creditsHigh: 0, creditsLow: 0 });
+    await prisma.allianceMembership.upsert({
+      where: { characterId: CID },
+      update: { alliance: 'ASTRO_LEAGUE', creditsHigh: 20, creditsLow: 0 },   // 200,000 invested
+      create: { characterId: CID, alliance: 'ASTRO_LEAGUE', creditsHigh: 20, creditsLow: 0 },
+    });
+  });
+
+  it('withdraw moves credits from the alliance treasury to the member', async () => {
+    const before = await char();
+    await render('alliance-invest');
+    await press('alliance-invest', 'W');
+    await press('alliance-invest', '50000');
+    const after = await char();
+    const m = await prisma.allianceMembership.findUnique({ where: { characterId: CID } });
+    expect(getTotalCredits(after!.creditsHigh, after!.creditsLow))
+      .toBe(getTotalCredits(before!.creditsHigh, before!.creditsLow) + 50000);
+    expect(m!.creditsHigh * 10000 + m!.creditsLow).toBe(200000 - 50000);
+    track('alliance.withdraw');
+  });
+});
+
+// ============================================================================
+// PORT OWNERSHIP MANAGEMENT — set fuel price, then sell the port
+// ============================================================================
+describe('Port ownership management', () => {
+  beforeAll(async () => {
+    await setup({ currentSystem: 2, creditsHigh: 100, creditsLow: 0 });
+    await prisma.portOwnership.deleteMany({ where: { characterId: CID } });
+    await prisma.portOwnership.create({ data: { characterId: CID, systemId: 2, fuelPrice: 10 } });
+  });
+
+  it('the owner sets the fuel price at the depot', async () => {
+    await render('port-accounts');
+    await press('port-accounts', 'F');   // Fuel Depot
+    await press('fuel-depot', 'P');       // set Price
+    await press('fuel-depot-price', '25');
+    const po = await prisma.portOwnership.findFirst({ where: { characterId: CID } });
+    expect(po!.fuelPrice).toBe(25);
+    track('port.set_fuel_price');
+  });
+
+  it('the owner sells the port (ownership removed, credits returned)', async () => {
+    const before = await char();
+    await render('port-accounts');
+    await press('port-accounts', 'S');   // Sell
+    await press('port-accounts', 'S');   // confirm enter sell flow
+    await press('port-accounts', '2');   // system 2
+    await press('port-accounts', 'Y');   // confirm system
+    await press('port-accounts', 'Y');   // confirm price
+    const po = await prisma.portOwnership.findFirst({ where: { characterId: CID, systemId: 2 } });
+    expect(po).toBeNull();
+    const after = await char();
+    expect(getTotalCredits(after!.creditsHigh, after!.creditsLow))
+      .toBeGreaterThan(getTotalCredits(before!.creditsHigh, before!.creditsLow));
+    track('port.sell');
+  });
+});
+
+// ============================================================================
+// BULLETIN BOARD — a member posts a message
+// ============================================================================
+describe('Bulletin board write', () => {
+  beforeAll(async () => {
+    await setup({ currentSystem: 1, allianceSymbol: 'ASTRO_LEAGUE' });
+    await prisma.allianceMembership.upsert({
+      where: { characterId: CID },
+      update: { alliance: 'ASTRO_LEAGUE' },
+      create: { characterId: CID, alliance: 'ASTRO_LEAGUE' },
+    });
+    await prisma.bulletinPost.deleteMany({ where: { characterId: CID } });
+  });
+
+  it('a member posts a bulletin (persisted for the alliance)', async () => {
+    await render('bulletin-board');
+    await press('bulletin-board', 'W');
+    await press('bulletin-board', 'Rendezvous at Vega-6 at dawn');
+    const post = await prisma.bulletinPost.findFirst({ where: { characterId: CID } });
+    expect(post).not.toBeNull();
+    expect(post!.alliance).toBe('ASTRO_LEAGUE');
+    expect(post!.message).toMatch(/Vega-6/);
+    track('bulletin.write');
+  });
+});
+
+// ============================================================================
+// SPACE PATROL — the full commission arc up to launch (SP.REG.S)
+// ============================================================================
+describe('Space Patrol commission', () => {
+  it('Join → pick system → confirm → Launch hands off to combat as a patrol', async () => {
+    await setup({ currentSystem: 1, missionType: 0, destination: 0, tripCount: 0, hasPatrolCommission: false });
+    // Weapons+shields < 50 skips the Space Commandant promotion prompt
+    await setShip({ weaponStrength: 10, weaponCondition: 9, shieldStrength: 10, shieldCondition: 9,
+      hullCondition: 9, driveCondition: 9, driveStrength: 20, fuel: 500 });
+    await render('space-patrol');
+    await press('space-patrol', 'J');    // Join / take the oath
+    expect((await char())!.hasPatrolCommission).toBe(true);
+    await press('space-patrol', '3');    // patrol sector
+    await press('space-patrol', 'Y');    // confirm sector
+    const [, next] = await press('space-patrol', 'L');   // Launch
+    const after = await char();
+    expect(after!.missionType).toBe(2);              // on patrol
+    expect(next).toBe('combat');                     // hands off to the combat screen
+    track('patrol.commission');
+    // Clean up patrol state for later tests
+    await setup({ missionType: 0, hasPatrolCommission: false, destination: 0, cargoManifest: null, cargoPods: 0 });
+  });
+});
+
+// ============================================================================
+// SMUGGLING RUN — take a contraband contract, deliver it, collect the payout
+// ============================================================================
+describe('Smuggling run', () => {
+  it('take a smuggling contract from the Syndicate (Info → SMU)', async () => {
+    await setup({ currentSystem: 1, missionType: 0, cargoType: 0, cargoManifest: null, cargoPods: 10, cargoPayment: 0, tripCount: 0 });   // ≥10 pods to carry contraband
+    // The Syndicate contract roll (calculateSmugglingContract) is 1-20 and "intercepted" if >14;
+    // pin it to a valid destination so the run is deterministic (roll 3 = System 3, not Sun-3).
+    const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.1);
+    try {
+      await render('spacers-hangout');
+      await press('spacers-hangout', 'H');   // enter hangout
+      await press('spacers-hangout', 'I');   // info broker
+      await press('spacers-hangout', 'SMU'); // ask about smuggling work
+      await press('spacers-hangout', 'Y');   // accept the run
+      await press('spacers-hangout', 'Y');   // confirm the contract
+    } finally {
+      rnd.mockRestore();
+    }
+    const after = await char();
+    expect(after!.missionType).toBe(5);
+    expect(after!.cargoType).toBe(10);
+    expect(after!.cargoManifest).toMatch(/Contraband/i);
+    expect(after!.cargoPayment).toBeGreaterThan(0);
+    track('smuggling.take_contract');
+  });
+
+  it('delivering the contraband collects the Syndicate payout at the Hangout', async () => {
+    // The goods are dropped at the destination (cargoType cleared); the player returns to
+    // Sun-3 to collect. Position to the delivered state, then collect through the Hangout.
+    await setup({ currentSystem: 1, cargoType: 0 });   // cargo delivered → renderGain path
+    const before = await char();
+    expect(before!.missionType).toBe(5);
+    const pay = before!.cargoPayment;
+    const out = await render('spacers-hangout');       // missionType 5 + cargoType<1 → gain
+    const after = await char();
+    expect(out).toMatch(/smuggled goods|pay|Syndicate/i);
+    expect(getTotalCredits(after!.creditsHigh, after!.creditsLow))
+      .toBe(getTotalCredits(before!.creditsHigh, before!.creditsLow) + pay);
+    expect(after!.missionType).toBe(0);                // mission cleared
+    track('smuggling.deliver');
+  });
+});
+
+// ============================================================================
+// SELF-RESCUE — a Lost-In-Space player pays to recover
+// ============================================================================
+describe('Self-rescue', () => {
+  it('a lost player self-rescues, clearing the lost flag for a fee', async () => {
+    await setup({ currentSystem: 1, isLost: true, creditsHigh: 100, creditsLow: 0, score: 300 });
+    const before = await char();
+    await render('rescue-self');
+    await press('rescue-self', 'Y');
+    const after = await char();
+    expect(after!.isLost).toBe(false);
+    expect(getTotalCredits(after!.creditsHigh, after!.creditsLow))
+      .toBeLessThan(getTotalCredits(before!.creditsHigh, before!.creditsLow));
+    track('rescue.self');
+  });
+});
+
+// ============================================================================
+// JAIL BAIL — bail another spacer out of the Hangout brig (2× fine)
+// ============================================================================
+describe('Jail bail', () => {
+  let victimSpacerId = 0;
+  beforeAll(async () => {
+    await setup({ currentSystem: 1, creditsHigh: 100, creditsLow: 0 });
+    const v = await makeNpc('coverage-jail-victim', { name: 'J%Victim', crimeType: 5 });
+    victimSpacerId = v!.spacerId;
+  });
+  afterAll(async () => { await delNpc('coverage-jail-victim'); });
+
+  it('a player bails a jailed spacer out of the brig', async () => {
+    const before = await char();
+    await render('spacers-hangout');
+    await press('spacers-hangout', 'B');                    // to the brig
+    await press('spacers-hangout', 'B');                    // bail
+    await press('spacers-hangout', String(victimSpacerId)); // convict spacer #
+    await press('spacers-hangout', 'Y');                    // confirm bail
+    await press('spacers-hangout', 'Y');                    // confirm payment
+    const victim = await prisma.character.findFirst({ where: { spacerId: victimSpacerId } });
+    const after = await char();
+    expect(victim!.crimeType).toBeNull();                  // released
+    expect(victim!.name.startsWith('J%')).toBe(false);
+    expect(getTotalCredits(after!.creditsHigh, after!.creditsLow))
+      .toBeLessThan(getTotalCredits(before!.creditsHigh, before!.creditsLow)); // bail paid
+    track('jail.post_bail');
+  });
+});
+
+// ============================================================================
+// RESCUE SERVICE — rescue a stranded (Lost-In-Space) spacer
+// ============================================================================
+describe('Rescue Service', () => {
+  let lostId = '';
+  beforeAll(async () => {
+    await setup({ currentSystem: 1, isLost: false, rescuesPerformed: 0, score: 300, creditsHigh: 10, creditsLow: 0 });
+    await setShip({ fuel: 500 });
+    // Make the fixture the ONLY lost ship, so it is roster entry #1
+    await prisma.character.updateMany({ where: { isLost: true }, data: { isLost: false } });
+    const l = await makeNpc('coverage-rescue-lost', { name: 'Castaway', isLost: true, lostLocation: 7 });
+    lostId = l!.id;
+  });
+  afterAll(async () => { await delNpc('coverage-rescue-lost'); });
+
+  it('a player rescues a stranded spacer (fee + fuel + points)', async () => {
+    const before = await char();
+    await render('rescue');
+    await press('rescue', '1');   // the (only) lost ship
+    await press('rescue', 'Y');   // confirm the rescue
+    const target = await prisma.character.findUnique({ where: { id: lostId } });
+    const after = await char();
+    expect(target!.isLost).toBe(false);                     // recovered
+    expect(after!.rescuesPerformed).toBe(before!.rescuesPerformed + 1);
+    expect(after!.ship!.fuel).toBeLessThan(before!.ship!.fuel);
+    track('rescue.other');
+  });
+});
+
+// ============================================================================
+// ALLIANCE RAID — accept → win the battle → activate the conquest (SP.MAL kk=4)
+// ============================================================================
+describe('Alliance raid', () => {
+  beforeAll(async () => {
+    await setup({
+      currentSystem: 1, allianceSymbol: 'ASTRO_LEAGUE', missionType: 0, raidDocument: null,
+      cargoManifest: null, cargoPods: 0, cargoType: 0, destination: 0, score: 300,
+    });
+    await prisma.allianceMembership.upsert({
+      where: { characterId: CID },
+      update: { alliance: 'ASTRO_LEAGUE' },
+      create: { characterId: CID, alliance: 'ASTRO_LEAGUE' },
+    });
+    // A rival-alliance system to raid
+    await prisma.allianceSystem.upsert({
+      where: { systemId: 5 },
+      update: { alliance: 'SPACE_DRAGONS', defconLevel: 1, ownerCharacterId: null },
+      create: { systemId: 5, alliance: 'SPACE_DRAGONS', defconLevel: 1 },
+    });
+  });
+  afterAll(async () => { await prisma.allianceSystem.deleteMany({ where: { systemId: 5 } }); });
+
+  it('accept a raid mission against a rival-alliance system (keystrokes)', async () => {
+    await render('raid');
+    await press('raid', 'Y');   // confirm the raid
+    await press('raid', '5');   // target system 5 (SPACE_DRAGONS-held)
+    await press('raid', 'Y');   // confirm target
+    const after = await char();
+    expect(after!.missionType).toBe(4);
+    expect(after!.destination).toBe(5);
+    expect(after!.cargoManifest).toMatch(/Raid/i);
+    track('raid.accept');
+  });
+
+  it('winning the raid yields conquest documents, then activation transfers the system', async () => {
+    await setShip({ ...MAX_SHIP });
+    await processDocking(CID, 5);          // raid battle → completeRaid
+    const won = await char();
+    expect(won!.raidDocument).toBeTruthy();
+    expect(won!.score).toBeGreaterThanOrEqual(305);   // +5 for the raid
+    track('raid.win');
+
+    // Activate at the Investment Center (raidDocument holder → free takeover)
+    await render('alliance-invest');
+    await press('alliance-invest', '5');
+    const sys = await prisma.allianceSystem.findUnique({ where: { systemId: 5 } });
+    const done = await char();
+    expect(sys!.alliance).toBe('ASTRO_LEAGUE');       // conquered
+    expect(done!.raidDocument).toBeNull();
+    track('raid.activate');
+  });
+});
+
+// ============================================================================
 // FINAL — coverage assertion
 // ============================================================================
 describe('Coverage', () => {
   it('exercised a substantial set of high-value actions through the terminal', () => {
     // Regression floor — this many distinct actions must remain reachable & working.
-    expect(COVERED.size).toBeGreaterThanOrEqual(45);
+    expect(COVERED.size).toBeGreaterThanOrEqual(60);
   });
 
   it('all session-wired features are exercised', () => {
@@ -912,6 +1286,13 @@ describe('Coverage', () => {
       'andromeda.hub_launch', 'andromeda.dock_cargo',
       // arena, DEFCON funding, rank progression
       'arena.remove_duel', 'alliance.defcon_funding', 'rank.progression',
+      // §5 coverage push: special equipment, jail bail, alliance withdraw/raid,
+      // port management, smuggling, patrol commission, bulletin write, rescue
+      'equip.star_buster', 'equip.arch_angel', 'equip.cloaker', 'equip.astraxial',
+      'shipyard.condition_repair', 'jail.post_bail', 'alliance.withdraw',
+      'port.set_fuel_price', 'port.sell', 'smuggling.take_contract', 'smuggling.deliver',
+      'patrol.commission', 'bulletin.write', 'rescue.self', 'rescue.other',
+      'raid.accept', 'raid.win', 'raid.activate',
     ]) {
       expect(COVERED.has(id), `expected coverage of ${id}`).toBe(true);
     }

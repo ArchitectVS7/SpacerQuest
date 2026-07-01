@@ -85,6 +85,15 @@ export const AllianceInvestScreen: ScreenModule = {
   name: 'alliance-invest',
 
   render: async (characterId: string): Promise<ScreenResponse> => {
+    // Reset any transient multi-step flow state on (re-)entry, so returning to the
+    // screen always lands on the command prompt (e.g. after a DEFCON fortify loop).
+    pendingDefcon.delete(characterId);
+    pendingAcquire.delete(characterId);
+    pendingTakeover.delete(characterId);
+    pendingInvest.delete(characterId);
+    pendingWithdraw.delete(characterId);
+    pendingPassword.delete(characterId);
+
     const character = await prisma.character.findUnique({
       where: { id: characterId },
       include: { ship: true },
