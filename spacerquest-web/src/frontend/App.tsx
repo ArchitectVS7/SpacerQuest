@@ -88,15 +88,35 @@ export function App() {
     if (!isAuthenticated) return;
 
     const handleScreenRender = (data: { output: string; nextScreen?: string }) => {
-      const { appendToTerminal, setCurrentScreen, logout } = useGameStore.getState();
-      
+      const { appendToTerminal, setCurrentScreen, logout, token } = useGameStore.getState();
+
       if (data.output) {
         appendToTerminal(data.output);
       }
-      
+
       if (data.nextScreen) {
         if (data.nextScreen === 'login') {
           logout();
+        } else if (data.nextScreen === 'cloaker-resolve') {
+          // Morton's Cloaker engaged (player chose ON). 'cloaker-resolve' is not a
+          // screen — resolve it server-side, then branch: cloaked → fight skipped,
+          // back to port; malfunction/failure → into combat.
+          fetch('/api/navigation/cloaker-resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ cloakerOn: true }),
+          })
+            .then((res) => res.json())
+            .then((result: { cloaked: boolean; malfunction: boolean; message: string }) => {
+              if (result.message) {
+                appendToTerminal(`\r\n\x1b[36m${result.message}\x1b[0m\r\n`);
+              }
+              setCurrentScreen(result.cloaked ? 'main-menu' : 'combat');
+            })
+            .catch((err) => {
+              console.error('Cloaker resolve failed:', err);
+              setCurrentScreen('combat'); // fail safe into the fight
+            });
         } else {
           setCurrentScreen(data.nextScreen);
         }
@@ -128,8 +148,10 @@ export function App() {
           appendToTerminal(`\r\n\x1b[36m${data.encounter.message}\x1b[0m\r\n`);
         } else {
           appendToTerminal(`\r\n\x1b[31;1m${data.encounter.message}\x1b[0m\r\n`);
-          setCurrentScreen('combat');
-          return; // combat takes priority
+          // Cargo/smuggling ships carrying Morton's Cloaker get the interactive
+          // toggle screen first (SP.WARP.S); everyone else goes straight to combat.
+          setCurrentScreen(data.encounter.cloakerEligible ? 'cloaker-toggle' : 'combat');
+          return; // combat / cloaker takes priority
         }
       }
 
@@ -162,9 +184,10 @@ export function App() {
 
     // Poll travel progress — always poll so we detect travel that started after login
     // Server returns immediately with {inTransit:false} when not traveling; no wasted work.
+    // 1s cadence so the fixed ~3s travel wait resolves promptly (see TRAVEL_WALLCLOCK_SECONDS).
     const travelInterval = setInterval(() => {
       wsClient.requestTravelProgress();
-    }, 2000);
+    }, 1000);
 
     return () => {
       clearInterval(travelInterval);

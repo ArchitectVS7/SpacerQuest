@@ -146,7 +146,7 @@ ${character.isLost ? '\x1b[33m  (Navigation disabled while lost in space)\x1b[0m
   [R]egistry - Spacer directory
   [E]xtra-Curricular - Pirate, patrol, duels
   [G]alactic Port Prices - Fuel prices all ports
-  [J]ournal - Space news and battles log${hasAlliance ? '\n  [U]pdate Board - Alliance bulletins' : ''}${!isClassicMode() ? '\n  [D]one - End Turn (run other spacers)' : ''}${hasAlliance ? '\n  [I]nvest - Alliance investment center' : ''}${character.currentSystem === 17 ? '\n  [W]ise One - Visit the Wise One' : ''}${character.currentSystem === 18 ? '\n  [A]ncient One - Visit the Sage' : ''}${character.portOwnership ? '\n  [F]uel Depot - Manage your port fuel' : ''}${character.user.isAdmin ? '\n  \x1b[31m[*] Admin Panel (Sysop)\x1b[0m' : ''}`}
+  [J]ournal - Space news and battles log${hasAlliance ? '\n  [U]pdate Board - Alliance bulletins' : ''}${!isClassicMode() ? '\n  [D]one - End Turn (run other spacers)' : ''}${hasAlliance ? '\n  [I]nvest - Alliance investment center' : ''}${character.currentSystem === 1 ? '\n  [H]angout - Spacers Hangout (join alliance, brig, info)' : ''}${character.currentSystem === 17 ? '\n  [W]ise One - Visit the Wise One' : ''}${character.currentSystem === 18 ? '\n  [A]ncient One - Visit the Sage' : ''}${character.portOwnership ? '\n  [F]uel Depot - Manage your port fuel' : ''}${character.user.isAdmin ? '\n  \x1b[31m[*] Admin Panel (Sysop)\x1b[0m' : ''}`}
   [Q]uit - Save and logout
 
 \x1b[32m:\x1b[0m${character.currentSystem} Port Accounts:\x1b[32m:(?=Menu): Command:\x1b[0m
@@ -288,6 +288,15 @@ ${character.isLost ? '\x1b[33m  (Navigation disabled while lost in space)\x1b[0m
           return { output: '\r\n\x1b[31mYou must be in an alliance to invest.\x1b[0m\r\n> ' };
         }
         return { output: '\x1b[2J\x1b[H', nextScreen: 'alliance-invest' };
+      },
+      'H': async () => {
+        // SP.BAR.S: the Spacers Hangout social hub is at Sun-3 (System 1).
+        // This is the only place to JOIN an alliance (Info broker), view the brig,
+        // and take smuggling/raid contracts — gate matches the screen's own check.
+        if (character?.currentSystem !== 1) {
+          return { output: '\r\n\x1b[31mThe Spacers Hangout is only at Sun-3 (System 1).\x1b[0m\r\n> ' };
+        }
+        return { output: '\x1b[2J\x1b[H', nextScreen: 'spacers-hangout' };
       },
       'W': async () => {
         if (character?.currentSystem !== 17) {

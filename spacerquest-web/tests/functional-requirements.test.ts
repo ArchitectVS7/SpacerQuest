@@ -55,6 +55,7 @@ import {
   calculateRank,
 } from '../src/game/utils';
 import { Rank, AllianceType } from '@prisma/client';
+import { TRAVEL_WALLCLOCK_SECONDS } from '../src/game/constants';
 
 // ============================================================================
 // TEST HELPERS
@@ -125,17 +126,18 @@ describe('FR-TRAVEL', () => {
   });
 
   describe('calculateArrivalTime', () => {
-    it('arrival = departure + distance × 3 seconds', () => {
+    // ACCEPTED DEVIATION: arrival is a FIXED wall-clock wait (TRAVEL_WALLCLOCK_SECONDS),
+    // independent of distance. Encounters/hazards still scale with distance server-side.
+    it('arrival = departure + fixed wall-clock wait, regardless of a long distance', () => {
       const departure = new Date('2000-01-01T12:00:00.000Z');
       const arrival = calculateArrivalTime(departure, 10);
-      // distance=10 → chronos=30 → 30000ms
-      expect(arrival.getTime()).toBe(departure.getTime() + 30 * 1000);
+      expect(arrival.getTime()).toBe(departure.getTime() + TRAVEL_WALLCLOCK_SECONDS * 1000);
     });
 
-    it('distance=1 adds exactly 3 seconds', () => {
+    it('arrival = departure + the same fixed wait for a short distance', () => {
       const departure = new Date('2000-01-01T00:00:00.000Z');
       const arrival = calculateArrivalTime(departure, 1);
-      expect(arrival.getTime()).toBe(departure.getTime() + 3 * 1000);
+      expect(arrival.getTime()).toBe(departure.getTime() + TRAVEL_WALLCLOCK_SECONDS * 1000);
     });
   });
 

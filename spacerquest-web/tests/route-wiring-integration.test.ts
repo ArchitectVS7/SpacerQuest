@@ -62,29 +62,34 @@ describe('Navigation Route Wiring', () => {
     expect(src).toContain('getTravelProgress');
   });
 
-  it('navigation.ts /arrive endpoint imports from hazards.js', () => {
+  it('navigation.ts /arrive delegates hazard resolution to resolveArrivalHazards', () => {
     const src = readRoute('../src/app/routes/navigation.ts');
-    expect(src).toContain('hazards.js');
+    expect(src).toContain('resolveArrivalHazards');
   });
 
-  it('navigation.ts /arrive endpoint calls checkHazardTrigger', () => {
-    const src = readRoute('../src/app/routes/navigation.ts');
+  it('travel.ts resolveArrivalHazards imports from hazards.js', () => {
+    const src = readRoute('../src/game/systems/travel.ts');
+    expect(src).toContain('./hazards.js');
+  });
+
+  it('travel.ts resolveArrivalHazards calls checkHazardTrigger', () => {
+    const src = readRoute('../src/game/systems/travel.ts');
     expect(src).toContain('checkHazardTrigger');
   });
 
-  it('navigation.ts /arrive endpoint calls generateHazard', () => {
-    const src = readRoute('../src/app/routes/navigation.ts');
+  it('travel.ts resolveArrivalHazards calls generateHazard', () => {
+    const src = readRoute('../src/game/systems/travel.ts');
     expect(src).toContain('generateHazard');
   });
 
-  it('navigation.ts /arrive checks both quarter and half travel marks', () => {
-    const src = readRoute('../src/app/routes/navigation.ts');
+  it('travel.ts resolveArrivalHazards checks both quarter and half travel marks', () => {
+    const src = readRoute('../src/game/systems/travel.ts');
     expect(src).toContain('quarterMark');
     expect(src).toContain('halfMark');
   });
 
-  it('navigation.ts /arrive applies and persists hazard damage via prisma.ship.update', () => {
-    const src = readRoute('../src/app/routes/navigation.ts');
+  it('travel.ts resolveArrivalHazards applies and persists hazard damage via prisma.ship.update', () => {
+    const src = readRoute('../src/game/systems/travel.ts');
     expect(src).toContain('hazard.newCondition');
     expect(src).toContain('prisma.ship.update');
   });

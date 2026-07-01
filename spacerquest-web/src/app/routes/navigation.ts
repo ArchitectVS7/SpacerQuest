@@ -151,90 +151,23 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
     // Original SP.WARP.S: hazards trigger at 1/4 and 1/2 travel time
     const hazardEvents: Array<{ hazardName: string; component: string; action: string; newCondition: number; evaded: boolean }> = [];
 
+    // Set when THIS arrival is the black-hole crossing on an Andromeda run — routes the
+    // player into the Great Void event screen (see black-hole-event.ts) before docking.
+    let enteredGreatVoid = false;
+
     // Read travel state to get actual destination (character.destination is cargo delivery target)
     const travelState = await prisma.travelState.findUnique({
       where: { characterId: character.id },
     });
 
     if (character.ship) {
-      const { checkHazardTrigger, generateHazard } = await import('../../game/systems/hazards.js');
-
       if (travelState) {
-        const totalDuration = travelState.expectedArrival.getTime() - travelState.departureTime.getTime();
-        const travelTimeUnits = Math.max(1, Math.floor(totalDuration / 1000)); // seconds as units
-
-        // SP.WARP.S getime: hazard marks depend on mission type (mx = missionType > 1)
-        // Normal (mx=0): 1/4 and 1/2 only. At 1/3, tp=1 (encounter), not hazard.
-        // Mission (mx>0): 1/4, 1/2, plus mission-only marks: 1/3, 1/9, 1/8, 1/7, 1/6, 1/5
-        const onMission = character.missionType > 1;
-        const quarterMark = Math.floor(travelTimeUnits / 4);
-        const halfMark = Math.floor(travelTimeUnits / 2);
-        const checkPoints: number[] = [quarterMark, halfMark];
-        if (onMission) {
-          // SP.WARP.S lines 332-338: additional mission hazard triggers
-          checkPoints.push(
-            Math.floor(travelTimeUnits / 3),
-            Math.floor(travelTimeUnits / 9),
-            Math.floor(travelTimeUnits / 8),
-            Math.floor(travelTimeUnits / 7),
-            Math.floor(travelTimeUnits / 6),
-            Math.floor(travelTimeUnits / 5),
-          );
-        }
-        const uniqueCheckPoints = [...new Set(checkPoints)].filter(cp => cp > 0);
-
-        const shipData = {
-          hullCondition: character.ship.hullCondition,
-          driveCondition: character.ship.driveCondition,
-          cabinCondition: character.ship.cabinCondition,
-          lifeSupportCondition: character.ship.lifeSupportCondition,
-          weaponCondition: character.ship.weaponCondition,
-          navigationCondition: character.ship.navigationCondition,
-          roboticsCondition: character.ship.roboticsCondition,
-          shieldCondition: character.ship.shieldCondition,
-          shieldStrength: character.ship.shieldStrength,
-        };
-
-        for (const checkpoint of uniqueCheckPoints) {
-          if (checkHazardTrigger(checkpoint, travelTimeUnits, onMission)) {
-            const hazard = generateHazard(shipData);
-            if (hazard) {
-              hazardEvents.push(hazard);
-
-              // Apply damage to shipData for subsequent checks
-              if (!hazard.evaded && hazard.component !== 'none') {
-                const conditionKey = hazard.component === 'shields' ? 'shieldCondition' :
-                  hazard.component === 'drives' ? 'driveCondition' :
-                  hazard.component === 'weapons' ? 'weaponCondition' :
-                  hazard.component === 'navigation' ? 'navigationCondition' :
-                  hazard.component === 'robotics' ? 'roboticsCondition' :
-                  hazard.component === 'hull' ? 'hullCondition' : null;
-
-                if (conditionKey) {
-                  (shipData as Record<string, number>)[conditionKey] = hazard.newCondition;
-                }
-              }
-            }
-          }
-        }
-
-        // Persist any hazard damage to the ship
-        const damageOccurred = hazardEvents.some(h => !h.evaded && h.component !== 'none');
-        if (damageOccurred) {
-          await prisma.ship.update({
-            where: { id: character.ship.id },
-            data: {
-              hullCondition: shipData.hullCondition,
-              driveCondition: shipData.driveCondition,
-              cabinCondition: shipData.cabinCondition,
-              lifeSupportCondition: shipData.lifeSupportCondition,
-              weaponCondition: shipData.weaponCondition,
-              navigationCondition: shipData.navigationCondition,
-              roboticsCondition: shipData.roboticsCondition,
-              shieldCondition: shipData.shieldCondition,
-            },
-          });
-        }
+        // Hazards trigger at distance-derived checkpoints (ty/4, ty/2, mission marks)
+        // and any component damage is persisted. Extracted to travel.ts so the same
+        // logic is reusable and deterministically testable (see resolveArrivalHazards).
+        const { resolveArrivalHazards } = await import('../../game/systems/travel.js');
+        const events = await resolveArrivalHazards(character.id);
+        hazardEvents.push(...events);
       }
 
       // ── SP.WARP.S line 167: Black hole transit flag ─────────────────────
@@ -249,6 +182,8 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
         
         // If we've passed the halfway point, black hole transit is complete
         if (now >= halfwayPoint && !travelState.blackHoleTransited && character.ship) {
+          // This arrival IS the black-hole crossing → offer the Great Void event.
+          enteredGreatVoid = true;
           await prisma.travelState.update({
             where: { characterId: character.id },
             data: { blackHoleTransited: true },
@@ -317,7 +252,10 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
     // Every trip has a deterministic encounter at 1/3 travel time.
     // Pirates find you — you don't go looking for them.
     let encounterResult: any = undefined;
-    try {
+    // No pirate ambush on the black-hole crossing arrival — it is its own event (the
+    // Great Void), so the one-shot Void is never preempted by a combat encounter that
+    // would route the client to the combat screen and skip the screenOverride.
+    if (!enteredGreatVoid) try {
       const { generateEncounter, calculateBattleFactor, calculateEnemyBattleFactor, isNpcFriendly } =
         await import('../../game/systems/combat.js');
       const enemy = await generateEncounter(
@@ -437,8 +375,9 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
     // in the destination system. In the modern game this is extraCurricularMode='pirate'
     // with patrolSector matching the destination system.
     // Pirate encounters take priority over NPC encounters (original: sp.patpir runs
-    // independently from the regular encounter chain).
-    if (!encounterResult) {
+    // independently from the regular encounter chain). Skipped on the black-hole
+    // crossing so the Great Void event is not preempted.
+    if (!encounterResult && !enteredGreatVoid) {
       const lurkingPirate = await prisma.character.findFirst({
         where: {
           extraCurricularMode: 'pirate',
@@ -553,7 +492,9 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
     if (travelDestination >= 15 && travelDestination <= 20) {
       screenOverride = 'rim-port';
     } else if (travelDestination >= 21 && travelDestination <= 26) {
-      screenOverride = 'andromeda-dock';
+      // On the black-hole crossing, drop the player into the Great Void event first;
+      // it routes onward to andromeda-dock. Otherwise dock directly.
+      screenOverride = enteredGreatVoid ? 'black-hole-event' : 'andromeda-dock';
     } else if (travelDestination === 28) {
       const updatedChar = await prisma.character.findUnique({
         where: { id: character.id },
