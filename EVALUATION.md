@@ -187,7 +187,17 @@ This game predates ~30 years of design refinement. The most impactful modernizat
 
 2. **Onboarding / "what do I do now?"** The 1991 game assumed a manual and a BBS community. Add a 60-second guided first turn (accept cargo → travel → deliver → upgrade) and surface the *next sensible action* on the main menu. Biggest driver of whether a new player bounces.
 
-3. **Make the bot world legible.** The simulated players are the best modern feature here, but they're invisible. Show a short "while you were away…" digest each end-turn (who got rich, who got jailed, port/alliance shifts, the leaderboard moving). Turns silent simulation into a living galaxy — huge payoff for low effort since the data already exists.
+3. ~~**Make the bot world legible.**~~ **DONE 2026-07-01.** The end-turn screen now prints a **Galactic News Wire** — a curated "while you were away" digest, not a full action log. `bots/galactic-digest.ts` (`buildGalacticDigest`, rng-injectable) selects the highlights from the bot turns: the bloodiest run (top fighter), the biggest haul and a notable bust (net-credit superlatives), the two highest-drama intrigue beats (arena wins > raids/bail/rescues > kills, low-drama trades filtered out), any promotion, and the current leaderboard #1 — wrapped in varied flavour openers/sign-offs so it reads fresh each turn. Bot turns now also surface rescues/port-takeovers; `runAllBotTurns` gathers per-bot results + promotions + the leader and returns `summary.digest`. Tested deterministically (`tests/galactic-digest.test.ts`). Example:
+> ```
+> While you were away, 4 spacers worked the space lanes. 6 shots were traded in anger.
+> ⚔  Iron Vex left a trail of wreckage — 3 kills this cycle.
+> 💰 Cargo King's holds runneth over — banked 48,000 cr.
+> 📉 Lucky Seven bled 13,000 cr into the dark — a rough run.
+> 🏟  Iron Vex accepted Cargo King's Deep Space duel and WON (5-3)
+> 🔓  Posted 4000 cr bail for Doomed Dan
+> 📈 Iron Vex earned a promotion to Commodore!
+> 🏆 Cargo King holds the top spot — 1,450 pts, Top Dog.
+> ```
 
 4. **Economic feedback / goals.** Surface fuel arbitrage spreads, show profit per run, and give the player visible mid-term goals (next rank, next ship tier, first port) so the grind has a target. A simple "best buy/sell right now" hint mirrors what a veteran already knew.
 

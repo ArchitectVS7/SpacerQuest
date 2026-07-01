@@ -6,12 +6,15 @@
  */
 
 import { prisma } from '../db/prisma.js';
-import { BotRunSummary, RngFunction } from './types.js';
+import { BotRunSummary, BotTurnResult, RngFunction } from './types.js';
 import { getBotCount } from './config.js';
 import { ensureBotsExist } from './bot-setup.js';
 import { executeBotTurn } from './bot-turn.js';
 import { getProfileForBot } from './profiles.js';
 import { calculateRank } from '../game/utils.js';
+import { buildGalacticDigest, DigestPromotion } from './galactic-digest.js';
+
+const cleanName = (n?: string | null) => (n ?? '').replace(/^\[BOT\]\s*/, '');
 
 export async function runAllBotTurns(
   playerCharacterId: string,
@@ -32,13 +35,16 @@ export async function runAllBotTurns(
     totalBattles: 0,
     totalCargoDelivered: 0,
     events: [],
+    digest: [],
   };
 
+  const results: BotTurnResult[] = [];
   for (const bot of bots) {
     const profile = getProfileForBot(bot.name);
     if (!profile) continue;
 
     const result = await executeBotTurn(bot.id, profile, rng);
+    results.push(result);
 
     summary.botsProcessed++;
     summary.totalBattles += result.battlesWon + result.battlesLost;
@@ -52,8 +58,20 @@ export async function runAllBotTurns(
     await expireStaleDuels();
   } catch { /* arena expiry is best-effort */ }
 
-  // Run promotion checks for all characters
-  await checkPromotions();
+  // Run promotion checks for all characters (returns who advanced, for the wire)
+  const promotions = await checkPromotions();
+
+  // Current #1 spacer for the leaderboard beat
+  const leaderChar = await prisma.character.findFirst({
+    orderBy: { score: 'desc' },
+    select: { name: true, score: true, rank: true },
+  });
+  const leader = leaderChar?.name
+    ? { name: cleanName(leaderChar.name), score: leaderChar.score ?? 0, rank: (leaderChar.rank as string) ?? 'LIEUTENANT' }
+    : null;
+
+  // Curate the galactic news wire
+  summary.digest = buildGalacticDigest({ results, promotions, leader }, rng);
 
   // Reset ALL trip counts (player + bots)
   await prisma.character.updateMany({
@@ -67,7 +85,7 @@ export async function runAllBotTurns(
  * Check and apply promotions for all characters.
  * Reuses the same logic as daily-tick but isolated for end-turn flow.
  */
-async function checkPromotions(): Promise<void> {
+async function checkPromotions(): Promise<DigestPromotion[]> {
   const { Rank } = await import('@prisma/client');
   const { getHonorarium, addCredits: addCr } = await import('../game/utils.js');
 
@@ -75,6 +93,7 @@ async function checkPromotions(): Promise<void> {
     where: { rank: { not: Rank.GIGA_HERO } },
   });
 
+  const promoted: DigestPromotion[] = [];
   for (const char of characters) {
     const newRank = calculateRank(char.score);
     if (newRank !== char.rank) {
@@ -99,6 +118,8 @@ async function checkPromotions(): Promise<void> {
           metadata: { fromRank: char.rank, toRank: newRank, honorarium },
         },
       });
+      promoted.push({ name: cleanName(char.name), rank: newRank });
     }
   }
+  return promoted;
 }

@@ -75,19 +75,22 @@ This may take a moment...
       try {
         const summary = await executeEndTurn(characterId);
 
-        output += `\x1b[32;1m${summary.botsProcessed} spacers took their turns.\x1b[0m\r\n`;
-        output += `\x1b[37mBattles: ${summary.totalBattles} | Trips: ${summary.totalCargoDelivered}\x1b[0m\r\n`;
-
-        if (summary.events.length > 0) {
-          output += '\r\n\x1b[33mNotable events:\x1b[0m\r\n';
-          // Show up to 10 events
-          const displayEvents = summary.events.slice(0, 10);
-          for (const event of displayEvents) {
-            output += `  \x1b[36m*\x1b[0m ${event}\r\n`;
+        // ── Galactic News Wire: curated highlights (not a full action log) ──
+        if (summary.digest.length > 0) {
+          output += '\x1b[36;1m═══════════════════════════════════════════\x1b[0m\r\n';
+          output += '\x1b[33;1m        ⟢  G A L A C T I C   N E W S   W I R E  ⟣\x1b[0m\r\n';
+          output += '\x1b[36;1m═══════════════════════════════════════════\x1b[0m\r\n\r\n';
+          // First line is the dateline/opener; the rest are headline beats.
+          output += `\x1b[37m${summary.digest[0]}\x1b[0m\r\n\r\n`;
+          for (const line of summary.digest.slice(1, -1)) {
+            output += `  ${line}\r\n`;
           }
-          if (summary.events.length > 10) {
-            output += `  ... and ${summary.events.length - 10} more\r\n`;
-          }
+          // Last line is the sign-off
+          output += `\r\n\x1b[36;3m${summary.digest[summary.digest.length - 1]}\x1b[0m\r\n`;
+          output += '\x1b[36;1m═══════════════════════════════════════════\x1b[0m\r\n';
+        } else {
+          output += `\x1b[32;1m${summary.botsProcessed} spacers took their turns.\x1b[0m\r\n`;
+          output += `\x1b[37mA quiet cycle across the sector.\x1b[0m\r\n`;
         }
 
         output += '\r\n\x1b[32mYour trips have been reset. Ready for a new turn!\x1b[0m\r\n';
