@@ -1292,12 +1292,48 @@ describe('Cargo delivery bonus', () => {
 });
 
 // ============================================================================
+// ECONOMIC-GOAL SURFACING — main-menu dashboard + risk-labeled cargo board
+// ============================================================================
+describe('Economic goals & risk', () => {
+  it('the main menu shows the progress dashboard + an Objective nudge', async () => {
+    await setup({ currentSystem: 1, score: 130, cargoPods: 0, destination: 0, creditsHigh: 0, creditsLow: 0 });
+    await setShip({ fuel: 240 });
+    const out = await render('main-menu');
+    expect(out).toMatch(/Fuel:/);
+    expect(out).toMatch(/Score:/);
+    expect(out).toMatch(/Next:.*COMMANDER|Commander/i);   // 20 pts to Commander from 130
+    expect(out).toMatch(/Objective:/);
+    track('goals.dashboard');
+  });
+
+  it('a capable player is offered a labeled Rim contract; a weak one is not', async () => {
+    // Capable: Commander score + armed (weapon+shield ≥ 50) → board carries a RIM run.
+    await setup({ currentSystem: 1, score: 300, cargoPods: 0, missionType: 0, manifestBoard: null, manifestDate: null });
+    await setShip({ maxCargoPods: 5, hullStrength: 40, hullCondition: 9, hullName: 'Standard', lifeSupportName: 'LSS', weaponStrength: 30, weaponCondition: 9, shieldStrength: 30, shieldCondition: 9, fuel: 500 });
+    let board = await render('traders-cargo');
+    if (/Commandant/i.test(board)) [board] = await press('traders-cargo', 'N'); // decline → board
+    expect(board).toMatch(/Risk/);                 // risk column present
+    expect(board).toMatch(/RIM/);                  // a lucrative-but-dangerous rim run is offered
+    track('cargo.rim_contract');
+
+    // Weak: same score but under-armed → core-only board, no rim.
+    await setup({ manifestBoard: null, manifestDate: null });
+    await setShip({ weaponStrength: 10, shieldStrength: 10 });   // weapon+shield = 20 < 50
+    let core = await render('traders-cargo');
+    if (/Commandant/i.test(core)) [core] = await press('traders-cargo', 'N');
+    expect(core).toMatch(/core/);
+    expect(core).not.toMatch(/RIM/);
+    track('cargo.core_only_for_weak');
+  });
+});
+
+// ============================================================================
 // FINAL — coverage assertion
 // ============================================================================
 describe('Coverage', () => {
   it('exercised a substantial set of high-value actions through the terminal', () => {
     // Regression floor — this many distinct actions must remain reachable & working.
-    expect(COVERED.size).toBeGreaterThanOrEqual(60);
+    expect(COVERED.size).toBeGreaterThanOrEqual(65);
   });
 
   it('all session-wired features are exercised', () => {
@@ -1319,6 +1355,8 @@ describe('Coverage', () => {
       'port.set_fuel_price', 'port.sell', 'smuggling.take_contract', 'smuggling.deliver',
       'patrol.commission', 'bulletin.write', 'rescue.self', 'rescue.other',
       'raid.accept', 'raid.win', 'raid.activate',
+      // economic-goal surfacing + risk/reward contracts
+      'goals.dashboard', 'cargo.rim_contract', 'cargo.core_only_for_weak',
     ]) {
       expect(COVERED.has(id), `expected coverage of ${id}`).toBe(true);
     }

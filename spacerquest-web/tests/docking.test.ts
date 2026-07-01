@@ -387,7 +387,8 @@ describe('Docking system', () => {
       await processDocking('char-1', 15);
 
       const charUpdate = prisma.character.update.mock.calls[0]?.[0];
-      expect(charUpdate?.data?.score).toBe(14); // 10 + 4
+      // Applied atomically so it stacks on any delivery award rather than overwriting it.
+      expect(charUpdate?.data?.score).toEqual({ increment: 4 });
     });
 
     it('adds +8 score when carrying Andromeda mission cargo (q3$="X", y=8)', async () => {
@@ -405,7 +406,7 @@ describe('Docking system', () => {
       await processDocking('char-1', 15);
 
       const charUpdate = prisma.character.update.mock.calls[0]?.[0];
-      expect(charUpdate?.data?.score).toBe(18); // 10 + 8
+      expect(charUpdate?.data?.score).toEqual({ increment: 8 });
     });
 
     it('applies rim score bonus only to rim systems (15-20), not core (1-14)', async () => {
@@ -583,6 +584,31 @@ describe('Docking system', () => {
       expect(updateCall.data.cargoPods).toBe(0);
       expect(updateCall.data.missionType).toBe(0);
       expect(updateCall.data.cargoManifest).toBeNull();
+    });
+
+    it('rim cargo delivery stacks the +2 delivery award with the +4 rim bonus (guards score-overwrite fix)', async () => {
+      prisma.character.findUnique.mockResolvedValue(
+        makeCharacter({
+          missionType: 3, destination: 18,        // rim system (15-20)
+          cargoPods: 4, cargoType: 2, cargoPayment: 9000,
+          cargoManifest: 'Antares-5',
+          score: 100, creditsHigh: 0, creditsLow: 0,
+          ship: makeShip({ navigationStrength: 70 }), // nav>60 → no rim fuel penalty noise
+        })
+      );
+      prisma.gameLog.create.mockResolvedValue(undefined);
+      prisma.character.update.mockResolvedValue(undefined);
+
+      await processDocking('char-1', 18);
+
+      const datas = prisma.character.update.mock.calls.map(c => c[0].data);
+      // Delivery block writes the +2 award (absolute) and the payment...
+      const delivery = datas.find(d => typeof d.score === 'number');
+      expect(delivery?.score).toBe(102);              // 100 + 2
+      expect(delivery?.creditsLow).toBe(9000);
+      // ...and the rim block adds its +4 ATOMICALLY, so it stacks (→ 106) rather than clobbering.
+      const rim = datas.find(d => d.score && typeof d.score === 'object');
+      expect(rim?.score).toEqual({ increment: 4 });
     });
 
     it('awards y=2 score bonus on standard cargo delivery (SP.DOCK1.S:90 arriv3: y=2:gosub varfix)', async () => {

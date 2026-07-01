@@ -18,7 +18,7 @@ import {
   getSystemName,
   ManifestEntry,
 } from '../systems/economy.js';
-import { CARGO_TYPES } from '../constants.js';
+import { CARGO_TYPES, RANK_THRESHOLDS } from '../constants.js';
 import { pendingWins } from './topgun.js';
 
 // ============================================================================
@@ -48,10 +48,10 @@ function renderManifestBoard(manifests: ManifestEntry[], systemName: string, dat
   const padStart = (s: string, n: number) => s.padStart(n, ' ');
 
   let out = `\r\n\x1b[36;1mCargo Manifest for ${systemName} System - ${date}\x1b[0m\r\n`;
-  out += ` ${'_'.repeat(64)}\r\n`;
-  out += `| ${'─'.repeat(62)} |\r\n`;
-  out += `|    Cargo                 Val  Destination   Dis Paymnt  Fuel   |\r\n`;
-  out += `|    -------------------   ---  -----------   --- ------  ----   |\r\n`;
+  out += ` ${'_'.repeat(70)}\r\n`;
+  out += `| ${'─'.repeat(68)} |\r\n`;
+  out += `|    Cargo                 Val  Destination   Dis Paymnt  Fuel  Risk  |\r\n`;
+  out += `|    -------------------   ---  -----------   --- ------  ----  ----  |\r\n`;
 
   for (let i = 0; i < manifests.length; i++) {
     const m = manifests[i];
@@ -61,10 +61,12 @@ function renderManifestBoard(manifests: ManifestEntry[], systemName: string, dat
     const dis = padStart(String(m.distance), 3);
     const pay = padStart(String(m.payment), 6);
     const fuel = padStart(String(m.fuelRequired), 4);
-    out += `| ${i + 1}. ${cargo}  ${val}  ${dest}  ${dis} ${pay}  ${fuel}   |\r\n`;
+    // Risk tag: Rim runs (pirate territory) in red; safe core runs dimmed.
+    const risk = m.riskTier === 'RIM' ? '\x1b[31mRIM ⚠\x1b[0m' : '\x1b[37mcore \x1b[0m';
+    out += `| ${i + 1}. ${cargo}  ${val}  ${dest}  ${dis} ${pay}  ${fuel}  ${risk} |\r\n`;
   }
 
-  out += `|__${'_'.repeat(62)}|\r\n`;
+  out += `|__${'_'.repeat(68)}|\r\n`;
 
   // SP.CARGO.S:72 — advertise the "stat delivery" bonus (de$ needs ce$)
   const bonusEntry = manifests.find(m => (m.bonus ?? 0) > 0);
@@ -145,6 +147,13 @@ export const TradersCargoScreen: ScreenModule = {
       // Use existing board (cc=1 flag — persistent for the day)
       manifests = character.manifestBoard as unknown as ManifestEntry[];
     } else {
+      // Capability gate for Rim contracts: Commander (score≥150) AND armed enough to
+      // survive rim pirates (weapon+shield≥50, the existing Commandant readiness bar).
+      // Early/weak players get a safe core-only board. Captain+ may see up to 2 Rim runs.
+      const rimEligible = character.score >= RANK_THRESHOLDS.COMMANDER
+        && (character.ship.weaponStrength + character.ship.shieldStrength) >= 50;
+      const maxRim = character.score >= RANK_THRESHOLDS.CAPTAIN ? 2 : 1;
+
       // SP.CARGO.S:208-247 — manif: generate fresh 4-contract board
       manifests = generateManifestBoard(
         character.currentSystem,
@@ -152,6 +161,7 @@ export const TradersCargoScreen: ScreenModule = {
         character.ship.hullCondition,
         character.ship.driveStrength,
         character.ship.driveCondition,
+        { rimEligible, maxRim },
       );
       await prisma.character.update({
         where: { id: characterId },
@@ -294,10 +304,14 @@ export const TradersCargoScreen: ScreenModule = {
       // SP.CARGO.S:88 — "You choose manifest # i. Are you sure? [Y]/(N)"
       pendingManifestChoice.set(characterId, { index: choice - 1, entry });
       const cargoDesc = getCargoDescription(entry.cargoType);
+      const bonusNote = (entry.bonus ?? 0) > 0 ? ` \x1b[33m(+${entry.bonus} cr bonus)\x1b[0m` : '';
+      const riskNote = entry.riskTier === 'RIM'
+        ? `\r\n  \x1b[31m⚠ Rim route — RIM_PIRATE territory. Bring weapons & fuel.\x1b[0m`
+        : '';
       return {
         output:
           `\r\nYou choose manifest # ${choice}. Are you sure? \x1b[37;1m[Y]\x1b[0m/(N): ` +
-          `\r\n  (${cargoDesc} → ${entry.destName}, ${entry.payment} cr) `,
+          `\r\n  (${cargoDesc} → ${entry.destName}, ${entry.payment} cr)${bonusNote}${riskNote} `,
       };
     }
 

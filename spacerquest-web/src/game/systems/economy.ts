@@ -9,6 +9,7 @@ import {
   CARGO_BASE_RATES,
   CARGO_TYPES,
   CORE_SYSTEM_NAMES,
+  RIM_SYSTEM_NAMES,
   CARGO_WRONG_DESTINATION_PENALTY,
   FUEL_DEFAULT_PRICE,
   FUEL_MAX_CAPACITY,
@@ -123,7 +124,7 @@ export function getCargoDescription(type: number): string {
  * Returns the original BBS system name (e.g. "Deneb-4") for systems 1-14.
  */
 export function getSystemName(systemId: number): string {
-  return CORE_SYSTEM_NAMES[systemId] ?? `System ${systemId}`;
+  return CORE_SYSTEM_NAMES[systemId] ?? RIM_SYSTEM_NAMES[systemId] ?? `System ${systemId}`;
 }
 
 /**
@@ -914,6 +915,8 @@ export interface ManifestEntry {
   payment: number;      // v4/v8/y4/y8
   distance: number;     // d6/d7/d8/d9
   fuelRequired: number; // f4/f5/f6/f7
+  /** Danger tier of the destination: CORE (systems 1-14) or RIM (15-20, pirate territory). */
+  riskTier: 'CORE' | 'RIM';
   /**
    * SP.CARGO.S board1 "stat delivery" bonus (ie). A single random "port needs cargo"
    * demand attaches to whichever manifest's destination matches the roll; delivering
@@ -921,6 +924,17 @@ export interface ManifestEntry {
    */
   bonus?: number;
 }
+
+/** Options controlling whether the board offers lucrative-but-dangerous Rim contracts. */
+export interface ManifestOptions {
+  /** True once the player is capable enough to be offered Rim runs (Commander + armed). */
+  rimEligible?: boolean;
+  /** Max Rim contracts to place on the 4-slot board (guardrail: keeps ≥1 safe core option). */
+  maxRim?: number;
+}
+
+const RIM_PAY_PREMIUM = 1.4;      // Rim runs pay ~40% more to reward the danger
+const RIM_PAY_CAP = 25000;        // higher cap than the 15000 core cap
 
 /**
  * Generate 4 cargo manifest entries for the daily board.
@@ -941,21 +955,38 @@ export function generateManifestBoard(
   hullCondition: number,
   driveStrength: number,
   driveCondition: number,
+  opts: ManifestOptions = {},
 ): ManifestEntry[] {
   const entries: ManifestEntry[] = [];
 
+  // Decide which of the 4 slots (if any) offer a lucrative-but-dangerous Rim run.
+  // Only when the player is capable enough (rimEligible), capped so a safe core option
+  // always remains. Slots are chosen at random so Rim isn't always the same row.
+  const maxRim = Math.max(0, Math.min(opts.maxRim ?? 0, 3));
+  const rimSlots = new Set<number>();
+  if (opts.rimEligible && maxRim > 0) {
+    const pool = [0, 1, 2, 3];
+    for (let k = 0; k < maxRim && pool.length > 0; k++) {
+      rimSlots.add(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+  }
+
   // SP.CARGO.S:212-229 — 4 cargo types + 4 destinations
   for (let i = 0; i < 4; i++) {
+    const isRim = rimSlots.has(i);
     // SP.CARGO.S:213 — r=9: random cargo type 1-9
     const cargoType = Math.floor(Math.random() * 9) + 1;
     const valuePerPod = cargoType * 3;  // v2/v6/y2/y6 = type*3 (man3 line 246)
 
-    // SP.CARGO.S:219 — r=14: random destination 1-14, avoid current system (spx)
-    let destId = Math.floor(Math.random() * 14) + 1;
-    if (destId === currentSystem) {
-      destId = currentSystem < 14 ? destId + 1 : destId - 1;
+    // Core: SP.CARGO.S:219 — r=14: random 1-14 ≠ current. Rim: 15-20 (pirate territory).
+    let destId: number;
+    if (isRim) {
+      destId = 15 + Math.floor(Math.random() * 6);       // 15-20
+    } else {
+      destId = Math.floor(Math.random() * 14) + 1;
+      if (destId === currentSystem) destId = currentSystem < 14 ? destId + 1 : destId - 1;
     }
-    const destName = CORE_SYSTEM_NAMES[destId] ?? `System ${destId}`;
+    const destName = getSystemName(destId);
 
     // man2 subroutine: distance = abs(sp - dest) or 1 if same
     const distance = calculateDistance(currentSystem, destId);
@@ -978,35 +1009,42 @@ export function generateManifestBoard(
       upodX = Math.floor(rawX / 10);
     }
 
-    // pay1-pay4 formulas (identical): payment = (type*3*dist)/3 * upod + fuel*5 + 1000; cap 15000
+    // pay1-pay4 formulas (identical): payment = (type*3*dist)/3 * upod + fuel*5 + 1000
     let payment = valuePerPod * distance;
     if (payment < 3) payment = 3;
     payment = Math.floor(payment / 3);
     payment = payment * upodX;
     payment = payment + (fuelRequired * 5) + 1000;
-    if (payment > 15000) payment = 15000;
+    // Rim premium (reward for the danger); higher cap than the core 15000.
+    if (isRim) payment = Math.floor(payment * RIM_PAY_PREMIUM);
+    const payCap = isRim ? RIM_PAY_CAP : 15000;
+    if (payment > payCap) payment = payCap;
     // Normalize to pod multiple (x=(v4/s1):v4=(x*s1))
     if (maxCargoPods > 0) {
       payment = Math.floor(payment / maxCargoPods) * maxCargoPods;
     }
 
-    entries.push({ cargoType, valuePerPod, destId, destName, payment, distance, fuelRequired });
+    entries.push({ cargoType, valuePerPod, destId, destName, payment, distance, fuelRequired, riskTier: isRim ? 'RIM' : 'CORE' });
   }
 
   // ── SP.CARGO.S board1 (lines 58-72): "stat delivery" bonus ──────────────────
-  // The board advertises one random "port X needs cargo Y" demand. It attaches to
-  // whichever of the 4 manifests has its DESTINATION equal to the rolled system:
-  //   r=5:gosub rand:ru=(x-1)   → ru ∈ 0..4
-  //   r=10:gosub rand:x=(x+ru)  → bonus target system bx ∈ 1..14
-  //   if x=sp → no bonus; else ie=|x-sp|*1000 (cap 10000)
-  //   if de$=v3$ ce$=v1$ ... → the matching manifest earns `ie` on delivery (line 108).
-  const ru = Math.floor(Math.random() * 5);            // (rand 1-5) - 1
-  const bx = Math.floor(Math.random() * 10) + 1 + ru;  // (rand 1-10) + ru → 1..14
-  if (bx !== currentSystem) {
-    const ie = Math.min(Math.abs(bx - currentSystem) * 1000, 10000);
-    if (ie > 1) {
-      const match = entries.find(e => e.destId === bx);
-      if (match) match.bonus = ie;
+  // The board advertises one "port needs cargo" demand. When the board carries a Rim
+  // run, the bonus rides on it (the danger is where the reward lives); otherwise it uses
+  // the original core roll: bx = rand target system, matched against a manifest's dest.
+  const rimEntries = entries.filter(e => e.riskTier === 'RIM');
+  if (rimEntries.length > 0) {
+    const target = rimEntries[Math.floor(Math.random() * rimEntries.length)];
+    const ie = Math.min(Math.abs(target.destId - currentSystem) * 1000, 10000);
+    if (ie > 1) target.bonus = ie;
+  } else {
+    const ru = Math.floor(Math.random() * 5);            // (rand 1-5) - 1
+    const bx = Math.floor(Math.random() * 10) + 1 + ru;  // (rand 1-10) + ru → 1..14
+    if (bx !== currentSystem) {
+      const ie = Math.min(Math.abs(bx - currentSystem) * 1000, 10000);
+      if (ie > 1) {
+        const match = entries.find(e => e.destId === bx);
+        if (match) match.bonus = ie;
+      }
     }
   }
 

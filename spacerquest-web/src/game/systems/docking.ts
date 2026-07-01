@@ -284,12 +284,14 @@ export async function processDocking(characterId: string, systemId: number) {
   if (systemId >= 15 && systemId <= 20 && character.ship) {
     const ship = character.ship;
     const shipUpdates: Record<string, number> = {};
-    const charUpdates: Record<string, number> = {};
 
     // SP.DOCK2.S:70-72: y=4; if q3$="X" y=8; gosub varfix → s2=(s2+y)
     // Andromeda mission cargo (cargoManifest='X') doubles the rim arrival score bonus.
+    // Applied ATOMICALLY (increment) — this block runs after the cargo-delivery block
+    // above, which may already have written score+2 for the delivered contract; using the
+    // stale `character.score` here would clobber that. (Latent until rim cargo contracts
+    // exist; increment stacks the rim bonus on top of the delivery award.)
     const rimScoreBonus = character.cargoManifest === 'X' ? 8 : 4;
-    charUpdates.score = character.score + rimScoreBonus;
 
     // Fuel consumption on docking (SP.DOCK2.S:47-51):
     //   if n1>60 goto rimf (skip)
@@ -337,12 +339,10 @@ export async function processDocking(characterId: string, systemId: number) {
         data: shipUpdates,
       });
     }
-    if (Object.keys(charUpdates).length > 0) {
-      await prisma.character.update({
-        where: { id: characterId },
-        data: charUpdates,
-      });
-    }
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { score: { increment: rimScoreBonus } },
+    });
   }
 
   // ── SP.LIFT.S fueler subroutine (lines 213-229): Port eviction check ─────
