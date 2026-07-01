@@ -49,10 +49,14 @@ No subsystem is missing or majorly divergent. Classification:
 | Rescue / Lost-in-Space | ✅ Faithful | Self-rescue cost scaled & capped; player-to-player salvage |
 | Special locations (Wise One, Sage, jail/bail, black hole, Andromeda) | ✅ Faithful | Constellation quiz, bail = 2× fine, NGC cargo tables transcribed |
 
-**The 3 deliberate departures from 1991 (all flagged in code):**
-1. **Real-time travel** — `distance × 1s` wall-clock wait. Biggest behavioral change; a multiplayer-era design choice. (Design §6.)
-2. **Rank combat bonus** — `RANK_BF_BONUS` tilts combat toward high-rank players beyond the original formula.
-3. **Single-contract cargo bonus is approximated** — a "~25% chance" stand-in (`economy.ts:246`) instead of the original deterministic 4-manifest port-alias match (the accurate version exists in `generateManifestBoard`, so the two code paths disagree).
+**The deliberate departures from 1991 (all flagged in code):**
+1. **Real-time travel** — `distance × 1s` wall-clock wait. Biggest behavioral change; a multiplayer-era design choice. (Design §6.) *(Since resolved to a fixed ~3s wait — §6.1.)*
+2. **Rank combat bonus** — `RANK_BF_BONUS` tilts combat toward high-rank players beyond the original formula. *(Open keep/remove/tune decision — see §2.2 note below.)*
+3. ~~**Single-contract cargo bonus is approximated**~~ **RESOLVED 2026-07-01.** The player manifest board (`generateManifestBoard` via `traders-cargo`) now implements the faithful SP.CARGO.S "stat delivery" bonus: one random "port X needs cargo Y" demand attaches to whichever of the 4 manifests matches (`ie = |dest−origin|×1000`, cap 10000), advertised on the board and added to `cargoPayment` only when the player signs that specific manifest. The unfaithful ~25% random stand-in was removed from the single-contract path (`generateCargoContract`) — the bonus is a board-only mechanic, so a lone contract/bot pick correctly gets none. The two code paths no longer disagree. Tests: `functional-requirements` (bonus invariants + no-bonus on the single path) and `playtest-coverage` (`cargo.delivery_bonus` — signing the advertised manifest pays payment+bonus via keystrokes).
+
+> **§2.2 — Rank combat bonus (open decision):** `RANK_BF_BONUS` (Lieutenant 0 → Giga-Hero 60) is added flat to the player's battle factor in `calculateBattleFactor` (`combat.ts:319`); the original `ranfix` had no such term. It is not used in arena duels (those use arena handicap), only PvE. Keep (progression reward, mild PvE easing), remove (faithful to 1991), or tune. Left as-is pending a design call.
+
+> **§3/§4 — Player-side port ownership (assessed 2026-07-01):** largely a non-issue. The player screens (`port-accounts`, `fuel-depot*`) call the same `economy.ts` functions (`purchasePort`/`sellPort`/price/bank) that bots use; `systems/port-ownership.ts` is only a thin bot-facing re-export of those plus a `collectPortDividends` stub. Player port management (buy / set fuel price / deposit-withdraw bank / sell) is covered by keystroke tests (`port.buy`, `port.set_fuel_price`, `port.sell`). The only genuinely thin piece is the unimplemented dividend stub, which neither side depends on.
 
 ---
 

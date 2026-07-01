@@ -230,38 +230,14 @@ export function generateCargoContract(
     payment = perPod * cargoPods;
   }
 
-  // ── SP.CARGO.txt lines 59-72: Special delivery bonuses ──
-  // The original generates 4 manifests simultaneously and checks if any
-  // manifest's destination matches another manifest's origin (port alias system).
-  // In single-contract generation, we simulate this by checking if a random
-  // secondary manifest would create a matching pair.
-  //
-  // Original logic:
-  //   r=5:gosub rand:ru=(x-1):r=10:gosub rand:x=(x+ru):gosub desname:de$=ll$
-  //   ie = |x - sp| * 1000, cap 10000
-  //   if de$=v3$ ce$=v1$ → bonus (destination needs cargo from manifest 1)
-  //   if de$=v7$ ce$=v5$ → bonus (destination needs cargo from manifest 2)
-  //   etc.
-  //
-  // Simplified: ~25% chance of a delivery bonus, scaled by distance
-  let deliveryBonus = 0;
-  let bonusCargo = '';
-  let bonusDest = '';
-
-  // Random check for special delivery (simulates port alias match)
-  const bonusRoll = Math.floor(Math.random() * 5); // r=5 in original
-  const bonusOffset = Math.floor(Math.random() * 10) + 1; // r=10 in original
-  const bonusSystemId = Math.min(14, Math.max(1, bonusRoll + bonusOffset));
-
-  if (bonusSystemId !== originSystem && bonusRoll < 2) {
-    // Bonus applies — calculate ie = |bonusSystem - origin| * 1000, cap 10000
-    const bonusDist = Math.abs(bonusSystemId - originSystem);
-    deliveryBonus = Math.min(bonusDist * 1000, 10000);
-    bonusDest = getSystemName(destination);
-    bonusCargo = getCargoDescription(cargoType);
-    // Add bonus to payment (SP.CARGO.txt line 108: q5=q5+ie)
-    payment = payment + deliveryBonus;
-  }
+  // ── SP.CARGO.S "stat delivery" bonus (ie) is a MANIFEST-BOARD mechanic ──────
+  // It requires the full 4-manifest board to match a randomly-demanded (port, cargo)
+  // pair (see generateManifestBoard). A single generated contract has no board context,
+  // so no delivery bonus applies here — the previous ~25% random stand-in was an
+  // unfaithful approximation and is removed. Fields kept at 0 for interface stability.
+  const deliveryBonus = 0;
+  const bonusCargo = '';
+  const bonusDest = '';
 
   return {
     pods: upodX,
@@ -938,6 +914,12 @@ export interface ManifestEntry {
   payment: number;      // v4/v8/y4/y8
   distance: number;     // d6/d7/d8/d9
   fuelRequired: number; // f4/f5/f6/f7
+  /**
+   * SP.CARGO.S board1 "stat delivery" bonus (ie). A single random "port needs cargo"
+   * demand attaches to whichever manifest's destination matches the roll; delivering
+   * that specific cargo/destination pair pays this extra on top of `payment`. 0 = none.
+   */
+  bonus?: number;
 }
 
 /**
@@ -1009,6 +991,23 @@ export function generateManifestBoard(
     }
 
     entries.push({ cargoType, valuePerPod, destId, destName, payment, distance, fuelRequired });
+  }
+
+  // ── SP.CARGO.S board1 (lines 58-72): "stat delivery" bonus ──────────────────
+  // The board advertises one random "port X needs cargo Y" demand. It attaches to
+  // whichever of the 4 manifests has its DESTINATION equal to the rolled system:
+  //   r=5:gosub rand:ru=(x-1)   → ru ∈ 0..4
+  //   r=10:gosub rand:x=(x+ru)  → bonus target system bx ∈ 1..14
+  //   if x=sp → no bonus; else ie=|x-sp|*1000 (cap 10000)
+  //   if de$=v3$ ce$=v1$ ... → the matching manifest earns `ie` on delivery (line 108).
+  const ru = Math.floor(Math.random() * 5);            // (rand 1-5) - 1
+  const bx = Math.floor(Math.random() * 10) + 1 + ru;  // (rand 1-10) + ru → 1..14
+  if (bx !== currentSystem) {
+    const ie = Math.min(Math.abs(bx - currentSystem) * 1000, 10000);
+    if (ie > 1) {
+      const match = entries.find(e => e.destId === bx);
+      if (match) match.bonus = ie;
+    }
   }
 
   return entries;

@@ -65,6 +65,13 @@ function renderManifestBoard(manifests: ManifestEntry[], systemName: string, dat
   }
 
   out += `|__${'_'.repeat(62)}|\r\n`;
+
+  // SP.CARGO.S:72 — advertise the "stat delivery" bonus (de$ needs ce$)
+  const bonusEntry = manifests.find(m => (m.bonus ?? 0) > 0);
+  if (bonusEntry) {
+    const bonusCargo = (CARGO_TYPES[bonusEntry.cargoType] ?? 'cargo');
+    out += `\x1b[33m${bonusEntry.destName} needs ${bonusCargo}: +${bonusEntry.bonus} cr bonus paid for stat delivery\x1b[0m\r\n`;
+  }
   return out;
 }
 
@@ -218,6 +225,11 @@ export const TradersCargoScreen: ScreenModule = {
           ? `\r\n\x1b[33mMission will require additional ${m.fuelRequired - character.ship.fuel} fuel units.\x1b[0m\r\n`
           : '';
 
+        // SP.CARGO.S:107-108 — if this manifest is the advertised (port needs cargo)
+        // pair, the stat-delivery bonus `ie` is added to the payment at sign time.
+        const bonus = m.bonus ?? 0;
+        const totalPayment = m.payment + bonus;
+
         // SP.CARGO.S:106 — q1=x; ee=1; pz$="" — set contract, clear raid document
         await prisma.character.update({
           where: { id: characterId },
@@ -227,13 +239,14 @@ export const TradersCargoScreen: ScreenModule = {
             cargoType: m.cargoType,
             destination: m.destId,
             cargoManifest: m.destName,
-            cargoPayment: m.payment,
+            cargoPayment: totalPayment,
             raidDocument: null, // SP.CARGO.S:106 pz$=""
           },
         });
 
+        const bonusMsg = bonus > 0 ? `\x1b[33m${bonus} cr Bonus Awarded!\x1b[0m\r\n` : '';
         return {
-          output: `\r\nYes${fuelWarning}\r\n\x1b[32mContract signed! Cargo loaded.\x1b[0m\r\n`,
+          output: `\r\nYes${fuelWarning}\r\n${bonusMsg}\x1b[32mContract signed! Cargo loaded.\x1b[0m\r\n`,
           nextScreen: 'traders',
         };
       }

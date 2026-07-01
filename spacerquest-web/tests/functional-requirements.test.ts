@@ -647,6 +647,35 @@ describe('FR-ECONOMY', () => {
       expect(board).toHaveLength(4);
     });
 
+    it('the "stat delivery" bonus is faithful: at most one manifest, ie=|dest-origin|*1000 (cap 10000)', () => {
+      // SP.CARGO.S board1 — the bonus attaches to whichever manifest's destination
+      // matched the roll; it is |dest-origin|*1000 capped at 10000, and never on the origin.
+      let sawBonus = false;
+      for (let i = 0; i < 200; i++) {
+        const origin = Math.floor(Math.random() * 14) + 1;
+        const board = generateManifestBoard(origin, 10, 9, 10, 9);
+        const withBonus = board.filter(m => (m.bonus ?? 0) > 0);
+        expect(withBonus.length).toBeLessThanOrEqual(1);          // one demand per board
+        for (const m of withBonus) {
+          sawBonus = true;
+          expect(m.destId).not.toBe(origin);
+          expect(m.bonus).toBe(Math.min(Math.abs(m.destId - origin) * 1000, 10000));
+          expect(m.bonus).toBeGreaterThan(1);
+        }
+      }
+      expect(sawBonus).toBe(true); // the mechanic actually fires across many boards
+    });
+
+    it('the single-contract path (generateCargoContract) carries no board bonus', () => {
+      // The stat-delivery bonus is a 4-manifest-board mechanic; a lone contract never gets it.
+      for (let i = 0; i < 50; i++) {
+        const contract = generateCargoContract((i % 14) + 1, 10, false, {
+          hullCondition: 9, driveStrength: 10, driveCondition: 9,
+        });
+        expect(contract.deliveryBonus).toBe(0);
+      }
+    });
+
     it('each entry has cargoType 1-9', () => {
       const board = generateManifestBoard(1, 10, 9, 10, 9);
       for (const m of board) {

@@ -1266,6 +1266,32 @@ describe('Alliance raid', () => {
 });
 
 // ============================================================================
+// CARGO DELIVERY BONUS — the faithful SP.CARGO "stat delivery" board bonus
+// ============================================================================
+describe('Cargo delivery bonus', () => {
+  it('signing the advertised (port needs cargo) manifest adds the stat-delivery bonus', async () => {
+    await setup({ currentSystem: 1, cargoPods: 0, missionType: 0, cargoType: 0, cargoManifest: null, tripCount: 0 });
+    await setShip({ maxCargoPods: 10, hullCondition: 9, weaponStrength: 10, shieldStrength: 10 }); // <50 → no Commandant
+    const today = new Date().toISOString().slice(0, 10);
+    const board = [
+      { cargoType: 3, valuePerPod: 9, destId: 6, destName: 'System 6', payment: 2000, distance: 5, fuelRequired: 20, bonus: 5000 },
+      { cargoType: 4, valuePerPod: 12, destId: 8, destName: 'System 8', payment: 2500, distance: 7, fuelRequired: 25 },
+      { cargoType: 2, valuePerPod: 6, destId: 3, destName: 'System 3', payment: 1500, distance: 2, fuelRequired: 10 },
+      { cargoType: 5, valuePerPod: 15, destId: 10, destName: 'System 10', payment: 3000, distance: 9, fuelRequired: 30 },
+    ];
+    await prisma.character.update({ where: { id: CID }, data: { manifestBoard: board as object[], manifestDate: today } });
+    const shown = await render('traders-cargo');
+    expect(shown).toMatch(/bonus/i);                    // the board advertises the demand
+    await press('traders-cargo', '1');                  // choose the bonus manifest
+    const [out] = await press('traders-cargo', 'Y');    // sign
+    const after = await char();
+    expect(out).toMatch(/Bonus Awarded/i);
+    expect(after!.cargoPayment).toBe(2000 + 5000);      // payment + stat-delivery bonus
+    track('cargo.delivery_bonus');
+  });
+});
+
+// ============================================================================
 // FINAL — coverage assertion
 // ============================================================================
 describe('Coverage', () => {
