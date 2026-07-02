@@ -175,7 +175,23 @@ Extended the headless playtest from **50 → 69 deterministic actions** (regress
 
 One small screen fix landed with this: `alliance-invest` `render` now clears transient multi-step flow state (the DEFCON fortify loop previously leaked `pendingDefcon` across a re-entry).
 
+> **⚠ This paragraph was superseded — see the 2026-07-01 status reconciliation below.** It was written mid-session and listed items that later commits in the same day resolved. Kept for history; the current status is the reconciliation entry that follows.
+
 **Now genuinely remaining** (faithfulness follow-ups, not coverage): the single-contract cargo-bonus approximation — two code paths disagree (§2.3); the rank-combat-bonus balance decision (§2.2); thin player-side port ownership vs the bot side (§4); and the flaky browser test 09 / LLM-playtest harness (§4). The design "big wins" in §6 (onboarding, the full "while you were away" digest, economic-goal surfacing, rank-curve tuning) remain open by design. The headless test is the reliable regression net.
+
+### Status reconciliation — head-of-branch as of 2026-07-01
+The "Now genuinely remaining" list above is **stale**: it was written before the day's final commits, several of which closed items it names. Reconciled against the actual source at `HEAD`, and re-verified with a full `npm test` = **1940 passing, 51 files, exit 0** (the headless playtest now covers **70** deterministic actions; regression floor 60 → **66**, plus the newly-added end-turn/Galactic-News-Wire keystroke test).
+
+**Resolved since that paragraph was written (verified in code):**
+- **Cargo-bonus disagreement (§2.3)** — RESOLVED (`a07608e2`). Board bonus `ie = min(|dest−origin|×1000, 10000)` (`economy.ts:103`); single-contract path sets `deliveryBonus = 0` (`economy.ts:239`). The two paths no longer disagree.
+- **Rank-combat-bonus decision (§2.2)** — RESOLVED (`bebce707`). `calculateBattleFactor` returns `weaponPower + shieldPower + r9` with no rank term (`combat.ts:324`); `RANK_BF_BONUS` kept `@deprecated`.
+- **"While you were away" digest (§6.3)** — DONE (`9586d124`). `bots/galactic-digest.ts` → `end-turn.ts:79`.
+- **Economic-goal surfacing (§6.4)** — DONE (`7620ba17`). `player-goals.ts selectObjective` + dashboard on `main-menu.ts`; risk/reward Rim contracts (`RIM_PAY_PREMIUM=1.4`, Commander+armed gate).
+- **Rank-curve tuning (§6.5)** — RESOLVED (bonus removed; rewards are prestige/access/Rim-unlock).
+
+**Genuinely still open — a short, mostly by-design tail:**
+- *Deferred by design:* scripted guided first-turn tutorial (§6.2 — the "what do I do now?" `Objective:` driver is done; the scripted tutorial is not); fuel-arbitrage best-buy/sell advisor on `port-fuel-prices` (§6.4 nicety, confirmed absent); Great Void quest expansion (§7 — explicitly "do not expand now"); the `collectPortDividends` stub (§4 — nothing depends on it).
+- *~~One real loose end (not by design): the flaky browser test 09 / LLM-playtest harness (§4).~~* **RESOLVED 2026-07-02 — see §8.**
 
 ---
 
@@ -247,3 +263,49 @@ Wired **modern-friendly with one discoverability nudge**: on the Andromeda black
 
 ### ⭐ Future opportunity — expand into a real quest
 The Great Void is currently a single beat (transit → riddle → weapon). It is an ideal seed for a **larger optional endgame quest** later: e.g. a multi-step Wise One → Void arc (collect fragments across visits, a rotating/escalating number-key puzzle, multiple derelict discoveries with branching rewards, or a "cartography of the Void" that ties into the Andromeda systems and the Nemesis/Maligna endgame). Flagging so we can revisit and give this genuinely evocative moment the room it deserves rather than leaving it a one-shot. **Do not expand now — note for a later content pass.**
+
+---
+
+## 8. Browser + LLM playtest harnesses — the last loose end, RESOLVED (2026-07-02)
+
+The one non-deferred item from §5/§4 — the flaky browser playtest and the LLM
+harness sitting outside the green vitest suite — is fixed. Root cause was **not**
+game logic but a frontend WebSocket race plus brittle test synchronization; the
+last recorded scripted run had died at the login screen, never reaching gameplay.
+
+**Root cause & fix (frontend, benefits real players too):**
+- **WS listener race** — `App.tsx` connected+authenticated the socket before the
+  `screen:render` listeners registered (a separate `[isAuthenticated]` effect), and
+  `wsClient.emit()` silently dropped events with no listener → the main menu was
+  lost → stuck at auth. Fixed by (a) **buffering & replaying** missed handshake
+  events in `wsClient` (curated `REPLAY_EVENTS`), (b) registering the listeners on
+  mount **before** connect, and (c) making `connect()` idempotent (StrictMode-safe).
+- **Stable readiness signal** — `Terminal.tsx` now exposes `data-screen` /
+  `data-render-seq` / `data-ready` markers; tests wait on these instead of polling
+  xterm scrollback with fixed sleeps.
+
+**Test-side:**
+- New shared boot fixture `tests/e2e/helpers/boot.ts` (`bootToMainMenu`) with the
+  **correct** login selector (`[D] Development Login` — the old `"Dev Login"` match
+  was the bug); the reload+`__socketIO.emit` hacks are deleted.
+- `helpers/terminal.ts` `pressKey`/`typeAndEnter` now wait on `data-render-seq`
+  instead of fixed 300/500ms sleeps.
+- LLM harness (`agent.spec.ts`) resolves its provider **Anthropic-key → local
+  Ollama → skip**, boots via the fixture, and drives travel through the UI poll
+  (the REST `arrive()` control was removed — reads stay).
+- Two real bugs the fix exposed (previously unreachable) were fixed: `bank.withdraw`
+  now withdraws ≤ the actual bank balance; `returnToMainMenu` trusts the DOM
+  `data-screen` marker, ending stale-scrollback false "pub" detections (~41 → 0).
+- Feature list de-duplicated into one canonical `features.ts`; the superseded
+  `09-browser-game-agent.spec.ts` was retired.
+
+**Enforcement:** new `.github/workflows/ci.yml` (Postgres+Redis services) runs
+vitest + a 5× **boot smoke** (`boot-smoke.spec.ts`) + the scripted engine gate.
+Scripts: `test:e2e:smoke`, `test:e2e:playtest`, `test:e2e:llm`.
+
+**Verified:** vitest 1940 green; boot smoke **5/5** (~300–670ms each, zero reloads);
+the scripted engine (Harness B) runs a full **50 turns, 23/26 features (88%), 0
+FAILs**, with `bank.*` and `score.rank_advance` now PASSing through real gameplay;
+the LLM harness boots on local Ollama (`llama3:8b`) and plays via terminal
+keystrokes. (`nav.hazard`/`nav.malfunction` are RNG-gated and simply weren't rolled
+in a given run — not failures.)

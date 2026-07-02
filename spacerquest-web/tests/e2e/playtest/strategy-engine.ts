@@ -22,6 +22,8 @@ import {
   typeAndEnter,
   waitForText,
   waitForScreen,
+  waitForReady,
+  getScreenName,
   detectScreen,
 } from '../helpers/terminal';
 import { PlaytestReport } from './playtest-report';
@@ -354,6 +356,11 @@ export class StrategyEngine {
 
   async returnToMainMenu(): Promise<void> {
     for (let attempt = 0; attempt < 8; attempt++) {
+      // Trust the DOM marker first: data-screen reflects the app's real current
+      // screen, immune to xterm scrollback staleness that makes detectScreen()'s
+      // text regex falsely match a prior screen (e.g. a lingering "PUB MENU").
+      if ((await getScreenName(this.page)) === 'main-menu') return;
+
       const screen = await detectScreen(this.page);
       if (screen === 'main-menu') return;
 
@@ -420,11 +427,10 @@ export class StrategyEngine {
       await this.page.waitForTimeout(600);
     }
 
-    // Last resort: page reload
+    // Last resort: page reload, then wait on the stable readiness marker.
     this.log('  [RECOVERY] Last resort — reloading page');
-    await this.page.reload({ waitUntil: 'load' });
-    await this.page.waitForTimeout(2000);
-    await waitForScreen(this.page, 'main-menu', 15000);
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForReady(this.page, 20000);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1336,7 +1342,8 @@ export class StrategyEngine {
       await pressKey(this.page, 'D');
       await waitForScreen(this.page, 'bank-deposit', 8000);
       const before = await this.snap();
-      const amount = Math.min(5000, Math.max(100, Math.floor(state.credits * 0.2)));
+      // Cap at on-hand credits so we never attempt to deposit more than we have.
+      const amount = Math.min(5000, Math.max(100, Math.floor(state.credits * 0.2)), Math.max(0, state.credits));
       this.log(`  [DEPOSIT] ${amount} credits`);
       await typeAndEnter(this.page, String(amount));
       await this.page.waitForTimeout(800);
@@ -1355,24 +1362,38 @@ export class StrategyEngine {
       await waitForScreen(this.page, 'bank', 5000).catch(() => null);
     }
 
-    // Withdraw
+    // Withdraw — the amount must not exceed the current bank balance, which the
+    // withdraw screen prints ("Credits in bank: N cr"). Withdrawing more just
+    // errors ("You do not have that many credits in the bank!") and leaves credits
+    // unchanged, which would look like a bug. Read the balance and withdraw ≤ it.
     if (!this.report.isTested('bank.withdraw')) {
       await pressKey(this.page, 'W');
       await waitForScreen(this.page, 'bank-withdraw', 8000);
-      const before = await this.snap();
-      this.log('  [WITHDRAW] 1000 credits');
-      await typeAndEnter(this.page, '1000');
-      await this.page.waitForTimeout(800);
-      const after = await this.snap();
-      if (after.credits > before.credits) {
-        this.report.pass('bank.withdraw', 'Withdrew 1000 credits',
-          { credits: before.credits }, { credits: after.credits },
-          `credits ${before.credits}→${after.credits}`);
+      const screenText = await getTerminalText(this.page);
+      const bankBalance = parseInt(screenText.match(/Credits in bank:\s*(\d+)/i)?.[1] ?? '0', 10);
+
+      if (bankBalance <= 0) {
+        // Nothing to withdraw — legitimate game constraint, not a bug.
+        this.log('  [WITHDRAW] Bank balance is 0 — skipping');
+        this.report.skip('bank.withdraw', 'Bank balance is 0 — nothing to withdraw');
+        await typeAndEnter(this.page, '0'); // cancel out of the withdraw prompt
       } else {
-        const term = await getTerminalText(this.page);
-        this.report.fail('bank.withdraw', 'Attempted withdrawal of 1000',
-          { credits: before.credits }, { credits: after.credits },
-          'Credits unchanged', term.slice(-200));
+        const amount = Math.min(1000, bankBalance);
+        const before = await this.snap();
+        this.log(`  [WITHDRAW] ${amount} credits (bank balance ${bankBalance})`);
+        await typeAndEnter(this.page, String(amount));
+        await this.page.waitForTimeout(800);
+        const after = await this.snap();
+        if (after.credits > before.credits) {
+          this.report.pass('bank.withdraw', `Withdrew ${amount} credits`,
+            { credits: before.credits }, { credits: after.credits },
+            `credits ${before.credits}→${after.credits}`);
+        } else {
+          const term = await getTerminalText(this.page);
+          this.report.fail('bank.withdraw', `Attempted withdrawal of ${amount}`,
+            { credits: before.credits }, { credits: after.credits },
+            'Credits unchanged', term.slice(-200));
+        }
       }
       // After withdraw, server returns nextScreen:'bank' — wait for bank to confirm
       await waitForScreen(this.page, 'bank', 5000).catch(() => null);

@@ -6,43 +6,11 @@
  * from terminal text or current screen name.
  */
 
-export const FEATURES: Record<string, string> = {
-  // Navigation
-  'nav.launch':           'Launch to another system',
-  'nav.cargo_delivery':   'Deliver cargo on arrival',
-  'nav.hazard':           'Travel hazard encountered',
-  'nav.encounter':        'Combat encounter triggered during travel',
-  'nav.malfunction':      'Nav system malfunction (redirected to random system)',
-  // Combat
-  'combat.attack':        'Attack in combat (press A)',
-  'combat.retreat':       'Retreat from combat (press R)',
-  'combat.surrender':     'Surrender in combat (press S)',
-  'combat.victory':       'Win a combat battle',
-  // Shipyard
-  'shipyard.view':        'Visit the Shipyard screen',
-  'shipyard.upgrade':     'Upgrade a ship component',
-  'shipyard.repair':      'Repair ship components (press R at shipyard)',
-  // Traders
-  'traders.buy_fuel':     'Buy fuel at Traders',
-  'traders.sell_fuel':    'Sell fuel at Traders',
-  'traders.accept_cargo': 'Accept a cargo contract',
-  // Bank
-  'bank.visit':           'Visit the Bank screen',
-  'bank.deposit':         'Deposit credits to bank',
-  'bank.withdraw':        'Withdraw credits from bank',
-  // Pub
-  'pub.visit':            'Visit the Pub screen',
-  'pub.drink':            'Buy a drink at the pub',
-  'pub.gamble':           'Gamble at the pub',
-  // Registry
-  'registry.visit':       'Visit the Space Registry screen',
-  'registry.patrol':      'Accept a Space Patrol mission',
-  // Special
-  'npc.sage':             'Visit the Sage (System 18)',
-  'npc.wise_one':         'Visit the Wise One (System 17)',
-  // Progress
-  'score.rank_advance':   'Advance to a new rank',
-};
+import { FEATURE_DESCRIPTIONS } from './features';
+
+// Derived from the canonical single source of truth (features.ts) so the LLM
+// tracker and the scripted report can never drift out of sync.
+export const FEATURES: Record<string, string> = FEATURE_DESCRIPTIONS;
 
 export interface CoverageSummary {
   observed: string[];

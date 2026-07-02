@@ -16,12 +16,12 @@
 
 import { test, expect, BrowserContext, Page, APIRequestContext, request as apiRequest } from '@playwright/test';
 import { ApiValidator } from '../helpers/api-validator';
-import { waitForText } from '../helpers/terminal';
+import { waitForReady } from '../helpers/terminal';
+import { bootToMainMenu } from '../helpers/boot';
 import { StrategyEngine } from './strategy-engine';
 import { ALL_FEATURES } from './playtest-report';
 import { appendFileSync, writeFileSync } from 'fs';
 
-const BASE_URL = 'http://localhost:5173';
 const API_URL  = 'http://localhost:3000';
 const LOG_PATH = process.env.PLAYTEST_LOG ?? '/tmp/spacerquest-playtest.log';
 
@@ -55,101 +55,40 @@ test('scripted agent plays SpacerQuest — 50 turns with verified actions', asyn
     appendFileSync(LOG_PATH, line + '\n');
   };
 
-  // ── 1. Login ──────────────────────────────────────────────────────────────
+  // ── 1. Boot to main menu (shared fixture: real UI login, no reload/poke hacks) ──
 
-  await page.goto(BASE_URL);
-  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForTimeout(2000);
-
-  const bodyText = await page.textContent('body') ?? '';
-  if (/SpacerQuest Authentication|Login/i.test(bodyText)) {
-    const devLink = page.locator(
-      'a[href*="dev-login"], button:has-text("Dev Login"), a:has-text("Dev")'
-    );
-    if (await devLink.count() > 0) {
-      await devLink.first().click();
-    } else {
-      await page.goto(`${BASE_URL}/auth/dev-login`);
-    }
-    await page.waitForTimeout(2000);
-  }
-
-  // ── 2. Character creation ─────────────────────────────────────────────────
-
-  await Promise.race([
-    page.waitForSelector('text=CREATE NEW SPACER', { timeout: 10000 }).catch(() => null),
-    page.locator('.xterm-rows').waitFor({ state: 'attached', timeout: 10000 }).catch(() => null),
-  ]);
-
-  const bodyAfterLogin = await page.textContent('body') ?? '';
-  if (/CREATE NEW SPACER|Spacer Name/i.test(bodyAfterLogin)) {
-    const charName = `Scout${Date.now().toString().slice(-4)}`;
-    const shipName = 'Wayfarer';
-    const inputs = page.locator('input[type="text"]');
-    await inputs.nth(0).fill(charName);
-    await inputs.nth(1).fill(shipName);
-    await page.click('button:has-text("Create Character")');
-    await page.waitForTimeout(3000);
-    log(`Character created: ${charName} / ${shipName}`);
-  }
-
-  // ── 3. Wait for main menu ─────────────────────────────────────────────────
-
-  await page.reload({ waitUntil: 'load' });
-  await page.waitForTimeout(2000);
-
-  const termCheck = await page.locator('.xterm-rows').textContent().catch(() => '');
-  if (!/Port Accounts|MAIN MENU/i.test(termCheck ?? '')) {
-    await page.evaluate(() => {
-      const raw = localStorage.getItem('spacerquest-storage');
-      const store = raw ? JSON.parse(raw) : {};
-      const token = store?.state?.token;
-      if (token) {
-        const io = (window as any).__socketIO;
-        if (io) io.emit('authenticate', { token });
-      }
-    });
-    await page.waitForTimeout(2000);
-  }
-
-  await waitForText(page, /Port Accounts|MAIN MENU/i, 30000);
+  const { token } = await bootToMainMenu(page);
   log('Main menu reached — starting playtest\n');
-
-  // ── 4. Auth token ─────────────────────────────────────────────────────────
-
-  const token = await page.evaluate((): string => {
-    try {
-      const raw = localStorage.getItem('spacerquest-storage');
-      if (!raw) return '';
-      return (JSON.parse(raw) as any)?.state?.token ?? '';
-    } catch { return ''; }
-  });
 
   const api = new ApiValidator(token, requestCtx);
 
-  // ── 5. Bootstrap character ────────────────────────────────────────────────
+  // ── 2. Bootstrap character to a playable state ────────────────────────────
+  // Backend setup (state mutation for the test fixture), not player gameplay.
+  // Deliberately seeds score=148 (2 short of Commander) so rank-advance and the
+  // Commander-gated bank unlock through gameplay — do not force Commander here.
 
   if (token) {
     const setupRes = await requestCtx.post(`${API_URL}/auth/dev-setup-character`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     log(setupRes.ok()
-      ? 'Character bootstrapped (hull=20, fuel=400, credits=30,000)'
+      ? 'Character bootstrapped (playable state)'
       : `Bootstrap failed (${setupRes.status()}) — using defaults`);
+
+    // The character changed server-side, so re-render the menu to reflect it.
+    // A fresh load is legitimate here (state actually changed), not a race workaround.
+    if (setupRes.ok()) {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await waitForReady(page, 20000);
+    }
   }
 
-  // Reload to reflect bootstrapped state
-  await page.reload({ waitUntil: 'load' });
-  await page.waitForTimeout(2000);
-  await waitForText(page, /Port Accounts|MAIN MENU/i, 15000);
-
-  // ── 6. Run strategy engine ────────────────────────────────────────────────
+  // ── 3. Run strategy engine ────────────────────────────────────────────────
 
   const engine = new StrategyEngine(page, api, log);
   const report = await engine.run();
 
-  // ── 7. Output report ──────────────────────────────────────────────────────
+  // ── 4. Output report ──────────────────────────────────────────────────────
 
   const formatted = report.formatReport();
   const summary = report.getSummary();
@@ -163,7 +102,7 @@ test('scripted agent plays SpacerQuest — 50 turns with verified actions', asyn
   console.log('═'.repeat(60));
   console.log(`\nFull log: ${LOG_PATH}`);
 
-  // ── 8. Assertions ─────────────────────────────────────────────────────────
+  // ── 5. Assertions ─────────────────────────────────────────────────────────
 
   // Fail the test if any features FAILED (potential bugs)
   if (summary.featuresFailed.length > 0) {

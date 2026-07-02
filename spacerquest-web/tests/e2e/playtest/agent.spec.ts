@@ -36,7 +36,48 @@ import { ClaudePlayer } from './claude-player';
 import { GameLoop } from './game-loop';
 import { parseGoal } from './goals';
 import { ApiValidator } from '../helpers/api-validator';
-import { waitForText, typeAndEnter } from '../helpers/terminal';
+import { waitForReady } from '../helpers/terminal';
+import { bootToMainMenu } from '../helpers/boot';
+
+/**
+ * Resolve which LLM provider to use, in priority order:
+ *   1. Anthropic — when ANTHROPIC_API_KEY is set (and a Claude model is requested).
+ *   2. Local Ollama — when reachable; picks PLAYTEST_MODEL if present, else the
+ *      first installed model.
+ *   3. null — neither available → the test skips cleanly.
+ */
+async function resolveProvider(): Promise<{ model: string; provider: 'anthropic' | 'ollama' } | null> {
+  const explicitModel = process.env.PLAYTEST_MODEL;
+  const hasKey = !!process.env.ANTHROPIC_API_KEY;
+  const ollamaUrl = process.env.OLLAMA_URL ?? 'http://localhost:11434';
+
+  // 1. Anthropic when a key is present and the model is a Claude model (or default).
+  if (hasKey && (!explicitModel || explicitModel.includes('claude'))) {
+    return { model: explicitModel ?? 'claude-haiku-4-5-20251001', provider: 'anthropic' };
+  }
+
+  // 2. Fall back to local Ollama if it's up and has at least one model.
+  try {
+    const res = await fetch(`${ollamaUrl}/api/tags`);
+    if (res.ok) {
+      const data = (await res.json()) as { models?: Array<{ name: string }> };
+      const models = (data.models ?? []).map((m) => m.name);
+      if (models.length > 0) {
+        const model = explicitModel && models.includes(explicitModel) ? explicitModel : models[0];
+        return { model, provider: 'ollama' };
+      }
+    }
+  } catch {
+    /* Ollama not running — fall through. */
+  }
+
+  // 3. A Claude model was requested with a key but Ollama is also unavailable.
+  if (hasKey) {
+    return { model: explicitModel ?? 'claude-haiku-4-5-20251001', provider: 'anthropic' };
+  }
+
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -45,22 +86,12 @@ let ctx: BrowserContext;
 let page: Page;
 let requestCtx: APIRequestContext;
 
-const BASE_URL = 'http://localhost:5173';
 const API_URL = 'http://localhost:3000';
 
 // ---------------------------------------------------------------------------
 // Setup: launch browser, login, create character
 // ---------------------------------------------------------------------------
 test.beforeAll(async ({ browser }) => {
-  const playtestModel = process.env.PLAYTEST_MODEL ?? 'claude-haiku';
-  const isOllama = process.env.PLAYTEST_PROVIDER === 'ollama' || !playtestModel.includes('claude');
-  if (!process.env.ANTHROPIC_API_KEY && !isOllama) {
-    throw new Error(
-      'ANTHROPIC_API_KEY is required to run the LLM playtest agent with Claude.\n' +
-      'Set it in your environment or use a local model via PLAYTEST_MODEL=qwen3-coder:latest.',
-    );
-  }
-
   ctx = await browser.newContext();
   page = await ctx.newPage();
   requestCtx = await apiRequest.newContext({ baseURL: API_URL });
@@ -75,120 +106,49 @@ test.afterAll(async () => {
 // Main test
 // ---------------------------------------------------------------------------
 test('LLM agent plays SpacerQuest to reach the configured goal', async () => {
+  // --- Provider resolution: Anthropic (key) → local Ollama → skip ---
+  const resolved = await resolveProvider();
+  test.skip(!resolved, 'No LLM provider available — set ANTHROPIC_API_KEY or run Ollama.');
+  if (!resolved) return; // narrows the type for TS below
+
+  const { model, provider } = resolved;
+  if (provider === 'ollama') process.env.PLAYTEST_PROVIDER = 'ollama';
+
   // Local LLMs (Ollama) are much slower than cloud APIs — allow 8 hours
-  const isOllama = process.env.PLAYTEST_PROVIDER === 'ollama';
-  test.setTimeout(isOllama ? 8 * 60 * 60 * 1000 : 60 * 60 * 1000);
+  test.setTimeout(provider === 'ollama' ? 8 * 60 * 60 * 1000 : 60 * 60 * 1000);
   const goal = parseGoal(process.env.PLAYTEST_GOAL);
-  const model = process.env.PLAYTEST_MODEL ?? 'claude-haiku-4-5-20251001';
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`SpacerQuest LLM Playtest`);
+  console.log(`  Provider: ${provider}`);
   console.log(`  Model: ${model}`);
   console.log(`  Goal:  ${goal.description}`);
   console.log(`${'='.repeat(60)}\n`);
 
-  // --- Step 1: Dev login ---
-  // Clear stale auth state from previous runs to avoid "Invalid token" errors
-  await page.goto(BASE_URL);
-  await page.evaluate(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-  });
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForTimeout(2000);
-
-  const pageText = await page.textContent('body') ?? '';
-  if (/SpacerQuest Authentication|Login/i.test(pageText)) {
-    // Click dev login link — redirects to /?token=JWT
-    const devLink = page.locator('a[href*="dev-login"], button:has-text("Dev Login"), button:has-text("Development Login"), a:has-text("Dev")');
-    if (await devLink.count() > 0) {
-      await devLink.first().click();
-    } else {
-      await page.goto(`${API_URL}/auth/dev-login`);
-    }
-    await page.waitForTimeout(2000);
-  }
-
-  // --- Step 2: Character creation or load ---
-  // Wait for either the DOM character creation screen or the terminal to render
-  await Promise.race([
-    page.waitForSelector('text=CREATE NEW SPACER', { timeout: 10000 }).catch(() => null),
-    page.locator('.xterm-rows').waitFor({ state: 'attached', timeout: 10000 }).catch(() => null),
-  ]);
-
-  const bodyAfterLogin = await page.textContent('body') ?? '';
-  if (/CREATE NEW SPACER|Spacer Name/i.test(bodyAfterLogin)) {
-    const charName = `LLMAgent${Date.now().toString().slice(-4)}`;
-    const shipName = 'Claude-1';
-
-    const textInputs = page.locator('input[type="text"]');
-    await textInputs.nth(0).fill(charName);
-    await textInputs.nth(1).fill(shipName);
-    await page.click('button:has-text("Create Character")');
-    await page.waitForTimeout(3000);
-  }
-
-  // --- Step 3: Wait for main menu ---
-  // On the first load after dev-login redirect, a WebSocket race condition
-  // causes the server's screen:render (main menu) to fire before React
-  // registers the listener (App.tsx useEffect depends on isAuthenticated
-  // which hasn't re-rendered yet). Reloading forces Zustand to hydrate
-  // isAuthenticated=true from localStorage synchronously, so ALL listeners
-  // are registered before the WebSocket connects.
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForTimeout(2000);
-
-  // If the main menu still hasn't appeared (e.g. WebSocket connected slowly),
-  // explicitly request it via page JS.
-  const terminalText = await page.locator('.xterm-rows').textContent().catch(() => '');
-  if (!/Port Accounts|MAIN MENU/i.test(terminalText ?? '')) {
-    // Poke the WebSocket to re-send the current screen
-    await page.evaluate(() => {
-      const store = JSON.parse(localStorage.getItem('spacerquest-storage') || '{}');
-      const token = store?.state?.token;
-      if (token) {
-        // Re-emit authenticate to trigger server's auto-send of main-menu
-        const sockets = (window as any).__socketIO;
-        if (sockets) sockets.emit('authenticate', { token });
-      }
-    });
-    await page.waitForTimeout(2000);
-  }
-
-  await waitForText(page, /Port Accounts|MAIN MENU/i, 30000);
+  // --- Step 1: Boot to main menu through the real UI (shared fixture) ---
+  const { token } = await bootToMainMenu(page, { characterName: `LLMAgent${Date.now().toString().slice(-4)}`, shipName: 'Claude-1' });
   console.log('Main menu reached — starting playtest\n');
-
-  // --- Step 4: Get auth token for API state queries ---
-  // Read the JWT that the game already stored in Zustand/localStorage.
-  // DO NOT call dev-login again — that creates a new user with empty state.
-  const token = await page.evaluate(() => {
-    try {
-      const raw = localStorage.getItem('spacerquest-storage');
-      if (!raw) return '';
-      const store = JSON.parse(raw) as { state?: { token?: string } };
-      return store?.state?.token ?? '';
-    } catch {
-      return '';
-    }
-  });
 
   const api = new ApiValidator(token, requestCtx);
 
-  // --- Step 4.5: Bootstrap character to a playable state ---
-  // New characters start with hull=0, fuel=0, and 10,000 Cr (only enough for one hull upgrade).
-  // We need hull=20, proper drive/nav/lifesupport, fuel, and enough credits to demonstrate trading.
+  // --- Step 2: Bootstrap character to a playable state (backend setup) ---
+  // New characters start with hull=0, fuel=0. This seeds a playable ship + credits.
+  // It's a test fixture (state mutation), not player gameplay.
   if (token) {
     const setupRes = await requestCtx.post(`${API_URL}/auth/dev-setup-character`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (setupRes.ok()) {
-      console.log('Character bootstrapped for playtest (hull=20, fuel=400, credits=30,000)');
+      console.log('Character bootstrapped for playtest (playable state)');
+      // State changed server-side — re-render the menu to reflect it.
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await waitForReady(page, 20000);
     } else {
       console.warn(`Character setup failed: ${setupRes.status()} — proceeding anyway`);
     }
   }
 
-  // --- Step 5: Run the game loop ---
+  // --- Step 3: Run the game loop ---
   const player = new ClaudePlayer(model);
   const loop = new GameLoop(page, api, player, goal);
   const result = await loop.run();

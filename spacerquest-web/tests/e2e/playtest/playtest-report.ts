@@ -13,6 +13,8 @@
  * not player-initiated but still need verification.
  */
 
+import { ALL_FEATURE_IDS } from './features';
+
 export type ActionStatus = 'PASS' | 'FAIL' | 'SKIP' | 'EVENT';
 
 export interface ActionResult {
@@ -48,18 +50,8 @@ export interface PlaytestSummary {
   events: ActionResult[];
 }
 
-/** All trackable features from GAME-ACTIONS.md */
-export const ALL_FEATURES = [
-  'nav.launch', 'nav.cargo_delivery', 'nav.hazard', 'nav.encounter', 'nav.malfunction',
-  'combat.attack', 'combat.retreat', 'combat.surrender', 'combat.victory',
-  'shipyard.view', 'shipyard.upgrade', 'shipyard.repair',
-  'traders.buy_fuel', 'traders.sell_fuel', 'traders.accept_cargo',
-  'bank.visit', 'bank.deposit', 'bank.withdraw',
-  'pub.visit', 'pub.drink', 'pub.gamble',
-  'registry.visit', 'registry.patrol',
-  'npc.sage', 'npc.wise_one',
-  'score.rank_advance',
-];
+/** All trackable features — derived from the canonical single source of truth. */
+export const ALL_FEATURES = ALL_FEATURE_IDS;
 
 export class PlaytestReport {
   private results: ActionResult[] = [];

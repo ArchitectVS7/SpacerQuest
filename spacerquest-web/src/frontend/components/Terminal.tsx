@@ -4,7 +4,7 @@
  * xterm.js terminal emulator configured for 80x24 BBS display
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { useGameStore } from '../store/gameStore';
@@ -38,6 +38,11 @@ export function TerminalComponent() {
   const terminalInstance = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const inputBufferRef = useRef<string>('');
+
+  // Monotonic counter bumped once per applied server render. Exposed on the DOM
+  // (data-render-seq) so E2E tests can wait on "a new screen was drawn" instead of
+  // polling xterm scrollback text with fixed sleeps. Purely a test signal.
+  const [renderSeq, setRenderSeq] = useState(0);
   
   const {
     currentScreen,
@@ -186,8 +191,11 @@ export function TerminalComponent() {
     terminalBuffer.forEach((line) => {
       terminal.writeln(line);
     });
-    
+
     clearTerminal();
+    // Signal to tests that a render was applied. clearTerminal() empties the buffer,
+    // so this effect re-runs and early-returns above without a second bump.
+    setRenderSeq((s) => s + 1);
   }, [terminalBuffer, clearTerminal]);
 
   // Handle screen changes — also re-request when WebSocket reconnects
@@ -213,7 +221,12 @@ export function TerminalComponent() {
   }, [currentScreen]);
 
   return (
-    <div className="terminal-container">
+    <div
+      className="terminal-container"
+      data-screen={currentScreen}
+      data-render-seq={renderSeq}
+      data-ready={renderSeq > 0 && currentScreen === 'main-menu' ? 'true' : 'false'}
+    >
       <div className="terminal-wrapper">
         <div ref={terminalRef} className="crt-flicker" />
       </div>

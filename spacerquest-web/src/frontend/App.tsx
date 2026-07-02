@@ -21,72 +21,13 @@ export function App() {
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
   const [needsCharacter, setNeedsCharacter] = useState(false);
 
-  // Check authentication status on mount
+  // Register WebSocket event listeners ON MOUNT — BEFORE checkAuth() connects and
+  // authenticates the socket. The server auto-sends the main-menu `screen:render`
+  // the instant it processes `authenticate`; if the listener isn't registered yet
+  // that render is lost (see wsClient buffering, which is the belt to this braces).
+  // These handlers read state via useGameStore.getState(), so they never depend on
+  // React state/props and are safe to register once for the app's lifetime.
   useEffect(() => {
-    const checkAuth = async () => {
-      // Check for token in URL first
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlToken = urlParams.get('token');
-
-      if (urlToken) {
-        setAuthenticated(urlToken, '');
-        wsClient.connect();
-        wsClient.authenticate(urlToken);
-        window.history.replaceState({}, document.title, '/');
-        
-        // Check if user has character
-        await checkCharacterStatus(urlToken);
-        setHasCheckedAuth(true);
-        return;
-      }
-
-      // Check for stored token
-      const storedToken = localStorage.getItem('spacerquest-storage');
-      if (storedToken) {
-        try {
-          const parsed = JSON.parse(storedToken);
-          if (parsed.state?.token) {
-            setAuthenticated(parsed.state.token, parsed.state.userId || '');
-            wsClient.connect();
-            wsClient.authenticate(parsed.state.token);
-            
-            await checkCharacterStatus(parsed.state.token);
-          }
-        } catch (e) {
-          console.error('Failed to parse stored auth:', e);
-        }
-      }
-      
-      setHasCheckedAuth(true);
-    };
-
-    checkAuth();
-  }, []);
-
-  const checkCharacterStatus = async (authToken: string) => {
-    try {
-      const response = await fetch('/auth/status', {
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (!data.hasCharacter) {
-          setNeedsCharacter(true);
-          setCurrentScreen('character-create');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to check character status:', error);
-    }
-  };
-
-  // Handle WebSocket events
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
     const handleScreenRender = (data: { output: string; nextScreen?: string }) => {
       const { appendToTerminal, setCurrentScreen, logout, token } = useGameStore.getState();
 
@@ -163,7 +104,7 @@ export function App() {
 
     const handleEncounter = (data: any) => {
       const { setInCombat, setCombatState, appendToTerminal } = useGameStore.getState();
-      
+
       setInCombat(true);
       setCombatState({
         inCombat: true,
@@ -171,7 +112,7 @@ export function App() {
         round: 1,
         playerBattleFactor: data.playerBF,
       });
-      
+
       appendToTerminal(`\r\n\x1b[31m⚠ ENCOUNTER: ${data.enemy.name}!\x1b[0m\r\n`);
     };
 
@@ -179,10 +120,85 @@ export function App() {
     wsClient.on('travel:complete', handleTravelComplete);
     wsClient.on('encounter', handleEncounter);
 
+    return () => {
+      wsClient.off('screen:render', handleScreenRender);
+      wsClient.off('travel:complete', handleTravelComplete);
+      wsClient.off('encounter', handleEncounter);
+    };
+  }, []);
+
+  // Check authentication status on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      // Check for token in URL first
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('token');
+
+      if (urlToken) {
+        setAuthenticated(urlToken, '');
+        wsClient.connect();
+        wsClient.authenticate(urlToken);
+        window.history.replaceState({}, document.title, '/');
+        
+        // Check if user has character
+        await checkCharacterStatus(urlToken);
+        setHasCheckedAuth(true);
+        return;
+      }
+
+      // Check for stored token
+      const storedToken = localStorage.getItem('spacerquest-storage');
+      if (storedToken) {
+        try {
+          const parsed = JSON.parse(storedToken);
+          if (parsed.state?.token) {
+            setAuthenticated(parsed.state.token, parsed.state.userId || '');
+            wsClient.connect();
+            wsClient.authenticate(parsed.state.token);
+            
+            await checkCharacterStatus(parsed.state.token);
+          }
+        } catch (e) {
+          console.error('Failed to parse stored auth:', e);
+        }
+      }
+      
+      setHasCheckedAuth(true);
+    };
+
+    checkAuth();
+  }, []);
+
+  const checkCharacterStatus = async (authToken: string) => {
+    try {
+      const response = await fetch('/auth/status', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (!data.hasCharacter) {
+          setNeedsCharacter(true);
+          setCurrentScreen('character-create');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check character status:', error);
+    }
+  };
+
+  // Travel-progress polling — requires an authenticated socket, so this stays
+  // gated on isAuthenticated (the screen:render/travel:complete/encounter listeners
+  // are registered unconditionally on mount above, before connect()).
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     // Initial check
     wsClient.requestTravelProgress();
 
-    // Poll travel progress — always poll so we detect travel that started after login
+    // Poll travel progress — always poll so we detect travel that started after login.
     // Server returns immediately with {inTransit:false} when not traveling; no wasted work.
     // 1s cadence so the fixed ~3s travel wait resolves promptly (see TRAVEL_WALLCLOCK_SECONDS).
     const travelInterval = setInterval(() => {
@@ -191,9 +207,6 @@ export function App() {
 
     return () => {
       clearInterval(travelInterval);
-      wsClient.off('screen:render', handleScreenRender);
-      wsClient.off('travel:complete', handleTravelComplete);
-      wsClient.off('encounter', handleEncounter);
     };
   }, [isAuthenticated]);
 

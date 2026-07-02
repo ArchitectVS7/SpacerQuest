@@ -1328,12 +1328,47 @@ describe('Economic goals & risk', () => {
 });
 
 // ============================================================================
+// END TURN — the core "Done" loop. [D] on the main menu advances to the
+// end-turn confirmation; [Y] runs every other spacer's turn and surfaces the
+// "Galactic News Wire" digest. This is the single most-pressed action in the
+// game, driven here through the exact keystroke path a real player uses.
+// ============================================================================
+describe('End turn & Galactic News Wire', () => {
+  it('[D] → [Y] ends the turn, runs the sector, and surfaces the news wire', async () => {
+    // Trips must be exhausted (DAILY_TRIP_LIMIT = 2) for the turn to be endable.
+    await setup({ currentSystem: 1, tripCount: 2 });
+
+    // [D]one on the main menu routes to the end-turn confirmation screen.
+    const [, toEndTurn] = await press('main-menu', 'D');
+    expect(toEndTurn).toBe('end-turn');
+
+    // The confirmation renders, then [Y] processes the rest of the galaxy.
+    const confirm = await render('end-turn');
+    expect(confirm).toMatch(/End your turn\?/i);
+    const [out] = await press('end-turn', 'Y');
+
+    // The News Wire banner is surfaced (the seeded spacers always act → the
+    // digest carries at least an opener + a leaderboard beat + a sign-off).
+    expect(out).toMatch(/G A L A C T I C\s+N E W S\s+W I R E/);
+    expect(out).toMatch(/trips have been reset/i);
+
+    // The player's trip counter is reset for the new turn.
+    expect((await char())!.tripCount).toBe(0);
+    track('turn.end_news_wire');
+
+    // Any key dismisses the results view back to the main menu.
+    const [, back] = await press('end-turn', ' ');
+    expect(back).toBe('main-menu');
+  });
+});
+
+// ============================================================================
 // FINAL — coverage assertion
 // ============================================================================
 describe('Coverage', () => {
   it('exercised a substantial set of high-value actions through the terminal', () => {
     // Regression floor — this many distinct actions must remain reachable & working.
-    expect(COVERED.size).toBeGreaterThanOrEqual(65);
+    expect(COVERED.size).toBeGreaterThanOrEqual(66);
   });
 
   it('all session-wired features are exercised', () => {
@@ -1357,6 +1392,8 @@ describe('Coverage', () => {
       'raid.accept', 'raid.win', 'raid.activate',
       // economic-goal surfacing + risk/reward contracts
       'goals.dashboard', 'cargo.rim_contract', 'cargo.core_only_for_weak',
+      // core end-turn loop + Galactic News Wire digest (keystroke path)
+      'turn.end_news_wire',
     ]) {
       expect(COVERED.has(id), `expected coverage of ${id}`).toBe(true);
     }
