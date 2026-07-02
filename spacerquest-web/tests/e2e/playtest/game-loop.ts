@@ -18,7 +18,7 @@ import { Page, APIRequestContext } from '@playwright/test';
 import { ClaudePlayer, PlayerAction, GameContext } from './claude-player';
 import { Goal, GoalProgress, SessionStats, checkGoal, initialStats } from './goals';
 import { ApiValidator } from '../helpers/api-validator';
-import { getTerminalText, waitForText, waitForReady, pressKey, typeAndEnter, detectScreen, BUFFERED_SCREENS } from '../helpers/terminal';
+import { getTerminalText, waitForText, waitForReady, getScreenName, pressKey, typeAndEnter, detectScreen, BUFFERED_SCREENS } from '../helpers/terminal';
 import { writeFileSync } from 'fs';
 import { CoverageTracker } from './coverage-tracker';
 
@@ -544,7 +544,10 @@ export class GameLoop {
     // Brief wait to let the terminal stabilize after any screen transitions
     await this.page.waitForTimeout(800);
     const terminalText = await getTerminalText(this.page);
-    const screen = await detectScreen(this.page);
+    // Prefer the DOM marker (the app's real current screen) over xterm-text
+    // regex, which can falsely match a lingering word in scrollback (e.g. "JAIL")
+    // and mislabel the screen — that stale label wasted LLM turns on phantom states.
+    const screen = (await getScreenName(this.page)) || (await detectScreen(this.page));
 
     // Auto-detect coverage features from screen name
     this.coverage.detectFromScreen(screen);

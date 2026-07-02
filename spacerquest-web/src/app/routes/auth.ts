@@ -293,6 +293,9 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
         destination: 0,
         cargoManifest: null,
         currentSystem: 1,     // start at Sun-3
+        crimeType: null,      // clear any jail sentence from a prior run (else every
+                              // playtest starts stuck in the brig — jail ignores most keys)
+        isLost: false,        // clear lost-in-space so navigation isn't disabled at start
       },
     });
 

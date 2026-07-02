@@ -106,6 +106,12 @@ export class ClaudePlayer {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: this.model,
+            // Disable chain-of-thought for reasoning models (e.g. gemma4): with it
+            // on, the model spends the whole num_predict budget in a separate
+            // `thinking` channel and returns EMPTY `content`, which the harness
+            // reads as no action. think:false makes it emit the action JSON directly
+            // (and is a harmless no-op for non-reasoning models like llama3).
+            think: false,
             messages: [
               { role: 'system', content: system },
               ...messages
@@ -120,7 +126,10 @@ export class ClaudePlayer {
           return '{}';
         }
         const data = await res.json() as any;
-        return data.message?.content || '{}';
+        // Prefer content; fall back to the thinking channel if a reasoning model
+        // ignored think:false, so parseAction can still recover the action JSON.
+        const msg = data.message ?? {};
+        return (msg.content?.trim() || msg.thinking?.trim() || '{}');
       } catch (err) {
         console.error(`[claude-player] Local LLM fetch failed:`, err);
         return '{}';
