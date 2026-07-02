@@ -28,13 +28,31 @@ export interface WsClient {
 // CLIENT IMPLEMENTATION
 // ============================================================================
 
+// Handshake/one-shot events whose FIRST delivery must not be lost if it arrives
+// before a listener has registered (the auth → main-menu race). Buffered when no
+// listener is present and replayed to the first subscriber. Deliberately curated:
+// high-frequency events like `travel:progress` are handled internally every 1s and
+// must NOT buffer (they would grow unbounded and replay stale frames).
+const REPLAY_EVENTS = new Set(['screen:render', 'authenticated', 'travel:complete', 'encounter']);
+const MAX_BUFFERED_PER_EVENT = 20;
+
 class WebSocketClient implements WsClient {
   private socket: Socket | null = null;
   private eventListeners: Map<string, Set<(...args: any[]) => void>> = new Map();
+  // Payloads that arrived for a REPLAY_EVENTS event while it had zero listeners.
+  private bufferedEvents: Map<string, any[]> = new Map();
 
   connect() {
+    // Idempotent: React StrictMode double-mounts the app, calling connect() twice.
+    // socket.io handles drops via its own reconnection, so reuse the live socket
+    // rather than orphaning it (which left window.__socketIO pointing at a dead one).
+    if (this.socket) return;
+
+    // Fresh connection — drop any stale buffered payloads from a prior session.
+    this.bufferedEvents.clear();
+
     const wsUrl = import.meta.env.VITE_WS_URL || `ws://${window.location.hostname}:3000`;
-    
+
     this.socket = io(wsUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -132,6 +150,8 @@ class WebSocketClient implements WsClient {
       this.socket.disconnect();
       this.socket = null;
     }
+    // Prevent a stale main-menu (or other) render from replaying after logout.
+    this.bufferedEvents.clear();
   }
 
   authenticate(token: string) {
@@ -169,6 +189,17 @@ class WebSocketClient implements WsClient {
       this.eventListeners.set(event, new Set());
     }
     this.eventListeners.get(event)!.add(callback);
+
+    // Replay any payloads that arrived before this event had a listener. The
+    // buffer only fills while listener-count is zero, so this is the first
+    // subscriber — flushing to it == flushing to all, no double dispatch.
+    const buffered = this.bufferedEvents.get(event);
+    if (buffered && buffered.length > 0) {
+      this.bufferedEvents.delete(event);
+      for (const data of buffered) {
+        (callback as (data: any) => void)(data);
+      }
+    }
   }
 
   off(event: string, callback?: (...args: any[]) => void) {
@@ -181,8 +212,17 @@ class WebSocketClient implements WsClient {
 
   private emit(event: string, data: any) {
     const listeners = this.eventListeners.get(event);
-    if (listeners) {
+    if (listeners && listeners.size > 0) {
       listeners.forEach(listener => listener(data));
+      return;
+    }
+    // No listener yet — buffer curated handshake events so the first subscriber
+    // still receives them (fixes the auth → main-menu render race).
+    if (REPLAY_EVENTS.has(event)) {
+      const buf = this.bufferedEvents.get(event) ?? [];
+      buf.push(data);
+      if (buf.length > MAX_BUFFERED_PER_EVENT) buf.shift();
+      this.bufferedEvents.set(event, buf);
     }
   }
 

@@ -18,7 +18,7 @@ import { Page, APIRequestContext } from '@playwright/test';
 import { ClaudePlayer, PlayerAction, GameContext } from './claude-player';
 import { Goal, GoalProgress, SessionStats, checkGoal, initialStats } from './goals';
 import { ApiValidator } from '../helpers/api-validator';
-import { getTerminalText, waitForText, pressKey, typeAndEnter, detectScreen, BUFFERED_SCREENS } from '../helpers/terminal';
+import { getTerminalText, waitForText, waitForReady, pressKey, typeAndEnter, detectScreen, BUFFERED_SCREENS } from '../helpers/terminal';
 import { writeFileSync } from 'fs';
 import { CoverageTracker } from './coverage-tracker';
 
@@ -471,13 +471,12 @@ export class GameLoop {
       }
     }
 
-    // Full page reload
+    // Full page reload, then wait on the stable readiness marker.
     this.log(`  Hard reload...`);
-    await this.page.reload();
-    await this.page.waitForTimeout(3000);
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
 
     try {
-      await waitForText(this.page, /Port Accounts|MAIN MENU/i, 20000);
+      await waitForReady(this.page, 20000);
       this.log(`  Recovered after reload`);
     } catch {
       this.log(`  [CRITICAL] Cannot recover to main menu after reload`);
@@ -623,12 +622,11 @@ export class GameLoop {
   // ---------------------------------------------------------------------------
 
   /**
-   * After any action, check if the character just entered transit.
-   * If so, wait for the travel timer to expire, call /arrive, and log arrival.
-   *
-   * Root cause: the frontend poll only fires when inTransit===true, so after
-   * the navigate screen fires startTravel and returns main-menu, the poll
-   * never kicks in. This method bridges the gap by polling the API directly.
+   * After any action, detect whether the character entered transit and, if so,
+   * WAIT for the UI to complete the trip. The frontend runs an always-on 1s travel
+   * poll (App.tsx) that calls /api/navigation/arrive itself once the timer expires
+   * and renders the arrival — so the test only OBSERVES here (read-only state polls),
+   * it never drives arrival via the API. This keeps travel a genuine UI flow.
    */
   private async checkAndWaitForTravel(): Promise<void> {
     try {
@@ -638,26 +636,22 @@ export class GameLoop {
       const timeRemaining = (status.timeRemaining ?? 30) as number;
       this.log(`  [TRAVEL] In transit to system ${status.destination} — ${timeRemaining}s remaining`);
 
-      // Poll until the timer expires (with a 2-minute hard cap)
-      const deadline = Date.now() + Math.min(timeRemaining * 1000 + 5000, 120000);
+      // Poll (read-only) until the frontend's own arrive() lands and transit clears.
+      const deadline = Date.now() + Math.min(timeRemaining * 1000 + 15000, 120000);
+      let arrived = false;
       while (Date.now() < deadline) {
-        await this.page.waitForTimeout(2000);
+        await this.page.waitForTimeout(1000);
         const current = await this.api.getTravelStatus();
-        if (!current.inTransit) break;
+        if (!current.inTransit) { arrived = true; break; }
       }
+      this.log(arrived
+        ? `  [TRAVEL] Arrived — docking processed by the UI`
+        : `  [TRAVEL] Transit did not clear within deadline (non-fatal)`);
 
-      // Call arrive to run docking (cargo delivery, encounter, screen override)
-      try {
-        await this.api.arrive();
-        this.log(`  [TRAVEL] Arrived — docking processed`);
-      } catch {
-        this.log(`  [TRAVEL] Arrive already processed or error (non-fatal)`);
-      }
+      // Let the socket emit travel:complete and repaint the terminal.
+      await this.page.waitForTimeout(1500);
 
-      // Give the socket time to emit travel:complete and update the terminal
-      await this.page.waitForTimeout(2000);
-
-      // Check if cargo was delivered
+      // Check if cargo was delivered (read-only observation).
       const snapshot = await this.api.snapshotState();
       this.log(`  [TRAVEL] Now at system ${snapshot.system}, cargoPods=${snapshot.cargoPods}`);
       if (snapshot.cargoPods === 0 && snapshot.destination === 0) {

@@ -191,7 +191,7 @@ The "Now genuinely remaining" list above is **stale**: it was written before the
 
 **Genuinely still open — a short, mostly by-design tail:**
 - *Deferred by design:* scripted guided first-turn tutorial (§6.2 — the "what do I do now?" `Objective:` driver is done; the scripted tutorial is not); fuel-arbitrage best-buy/sell advisor on `port-fuel-prices` (§6.4 nicety, confirmed absent); Great Void quest expansion (§7 — explicitly "do not expand now"); the `collectPortDividends` stub (§4 — nothing depends on it).
-- *One real loose end (not by design):* the flaky **browser test 09 / LLM-playtest harness** (§4). No `.skip` markers, but it's separate from the green vitest suite and not confirmed passing. This is the only outstanding non-deferred item.
+- *~~One real loose end (not by design): the flaky browser test 09 / LLM-playtest harness (§4).~~* **RESOLVED 2026-07-02 — see §8.**
 
 ---
 
@@ -263,3 +263,49 @@ Wired **modern-friendly with one discoverability nudge**: on the Andromeda black
 
 ### ⭐ Future opportunity — expand into a real quest
 The Great Void is currently a single beat (transit → riddle → weapon). It is an ideal seed for a **larger optional endgame quest** later: e.g. a multi-step Wise One → Void arc (collect fragments across visits, a rotating/escalating number-key puzzle, multiple derelict discoveries with branching rewards, or a "cartography of the Void" that ties into the Andromeda systems and the Nemesis/Maligna endgame). Flagging so we can revisit and give this genuinely evocative moment the room it deserves rather than leaving it a one-shot. **Do not expand now — note for a later content pass.**
+
+---
+
+## 8. Browser + LLM playtest harnesses — the last loose end, RESOLVED (2026-07-02)
+
+The one non-deferred item from §5/§4 — the flaky browser playtest and the LLM
+harness sitting outside the green vitest suite — is fixed. Root cause was **not**
+game logic but a frontend WebSocket race plus brittle test synchronization; the
+last recorded scripted run had died at the login screen, never reaching gameplay.
+
+**Root cause & fix (frontend, benefits real players too):**
+- **WS listener race** — `App.tsx` connected+authenticated the socket before the
+  `screen:render` listeners registered (a separate `[isAuthenticated]` effect), and
+  `wsClient.emit()` silently dropped events with no listener → the main menu was
+  lost → stuck at auth. Fixed by (a) **buffering & replaying** missed handshake
+  events in `wsClient` (curated `REPLAY_EVENTS`), (b) registering the listeners on
+  mount **before** connect, and (c) making `connect()` idempotent (StrictMode-safe).
+- **Stable readiness signal** — `Terminal.tsx` now exposes `data-screen` /
+  `data-render-seq` / `data-ready` markers; tests wait on these instead of polling
+  xterm scrollback with fixed sleeps.
+
+**Test-side:**
+- New shared boot fixture `tests/e2e/helpers/boot.ts` (`bootToMainMenu`) with the
+  **correct** login selector (`[D] Development Login` — the old `"Dev Login"` match
+  was the bug); the reload+`__socketIO.emit` hacks are deleted.
+- `helpers/terminal.ts` `pressKey`/`typeAndEnter` now wait on `data-render-seq`
+  instead of fixed 300/500ms sleeps.
+- LLM harness (`agent.spec.ts`) resolves its provider **Anthropic-key → local
+  Ollama → skip**, boots via the fixture, and drives travel through the UI poll
+  (the REST `arrive()` control was removed — reads stay).
+- Two real bugs the fix exposed (previously unreachable) were fixed: `bank.withdraw`
+  now withdraws ≤ the actual bank balance; `returnToMainMenu` trusts the DOM
+  `data-screen` marker, ending stale-scrollback false "pub" detections (~41 → 0).
+- Feature list de-duplicated into one canonical `features.ts`; the superseded
+  `09-browser-game-agent.spec.ts` was retired.
+
+**Enforcement:** new `.github/workflows/ci.yml` (Postgres+Redis services) runs
+vitest + a 5× **boot smoke** (`boot-smoke.spec.ts`) + the scripted engine gate.
+Scripts: `test:e2e:smoke`, `test:e2e:playtest`, `test:e2e:llm`.
+
+**Verified:** vitest 1940 green; boot smoke **5/5** (~300–670ms each, zero reloads);
+the scripted engine (Harness B) runs a full **50 turns, 23/26 features (88%), 0
+FAILs**, with `bank.*` and `score.rank_advance` now PASSing through real gameplay;
+the LLM harness boots on local Ollama (`llama3:8b`) and plays via terminal
+keystrokes. (`nav.hazard`/`nav.malfunction` are RNG-gated and simply weren't rolled
+in a given run — not failures.)

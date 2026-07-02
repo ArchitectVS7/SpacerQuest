@@ -67,28 +67,97 @@ export async function waitForText(
   );
 }
 
+/** Selector for the terminal container carrying the test-only readiness markers. */
+const TERMINAL_CONTAINER = '.terminal-container';
+
+/**
+ * Read the monotonic render counter the Terminal component exposes
+ * (`data-render-seq`), bumped once per applied server render. Returns -1 when the
+ * container isn't mounted yet (e.g. login/character-create screens).
+ */
+export async function getRenderSeq(page: Page): Promise<number> {
+  const raw = await page.getAttribute(TERMINAL_CONTAINER, 'data-render-seq').catch(() => null);
+  if (raw === null) return -1;
+  const n = parseInt(raw, 10);
+  return Number.isNaN(n) ? -1 : n;
+}
+
+/**
+ * Wait until the render counter advances past `prevSeq` (i.e. the server drew a
+ * new screen in response to our input). Best-effort: resolves quietly on timeout,
+ * since some keys are pure local echo and never trigger a server render.
+ */
+export async function waitForRenderAfter(
+  page: Page,
+  prevSeq: number,
+  timeoutMs = 4000,
+): Promise<void> {
+  // No container (pre-terminal screen) → nothing to wait on; give the DOM a beat.
+  if (prevSeq < 0) {
+    await page.waitForTimeout(200);
+    return;
+  }
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if ((await getRenderSeq(page)) > prevSeq) return;
+    await page.waitForTimeout(50);
+  }
+}
+
+/**
+ * Wait until the terminal signals it has drawn the main menu and is ready for
+ * input (`data-ready="true"`). This is the stable, race-free replacement for
+ * polling xterm text for "Port Accounts"/"MAIN MENU".
+ */
+export async function waitForReady(page: Page, timeoutMs = 30000): Promise<void> {
+  await page.waitForSelector(`${TERMINAL_CONTAINER}[data-ready="true"]`, { timeout: timeoutMs });
+}
+
+/** Current screen name from the terminal's `data-screen` marker (or '' if none). */
+export async function getScreenName(page: Page): Promise<string> {
+  return (await page.getAttribute(TERMINAL_CONTAINER, 'data-screen').catch(() => null)) ?? '';
+}
+
+export interface KeyOptions {
+  /** Wait for a server render after the key (default true). Set false for
+   *  known pure-echo keys that don't round-trip to the server. */
+  expectRender?: boolean;
+  /** Max time to wait for the render before giving up (default 4000ms). */
+  timeoutMs?: number;
+}
+
 /**
  * Focus the xterm hidden textarea and press a single key.
- * Used for unbuffered screens that react to individual keypresses.
+ * Waits for the resulting server render (data-render-seq bump) rather than a
+ * fixed sleep, eliminating the classic keypress→render timing race.
  */
-export async function pressKey(page: Page, key: string): Promise<void> {
+export async function pressKey(page: Page, key: string, opts: KeyOptions = {}): Promise<void> {
+  const { expectRender = true, timeoutMs = 4000 } = opts;
+  const prevSeq = await getRenderSeq(page);
   const input = page.locator(XTERM_INPUT);
   await input.focus();
   await page.keyboard.press(key);
-  // Small delay to let the server process the input and render
-  await page.waitForTimeout(300);
+  if (expectRender) {
+    await waitForRenderAfter(page, prevSeq, timeoutMs);
+  } else {
+    // Pure echo — just let xterm paint the character.
+    await page.waitForTimeout(100);
+  }
 }
 
 /**
  * Focus the xterm hidden textarea, type text character by character,
- * then press Enter. Used for buffered screens.
+ * then press Enter. Used for buffered screens. The Enter always triggers a
+ * `screen:input → screen:render` round-trip, so we wait on the render counter.
  */
-export async function typeAndEnter(page: Page, text: string): Promise<void> {
+export async function typeAndEnter(page: Page, text: string, opts: KeyOptions = {}): Promise<void> {
+  const { timeoutMs = 4000 } = opts;
+  const prevSeq = await getRenderSeq(page);
   const input = page.locator(XTERM_INPUT);
   await input.focus();
-  await page.keyboard.type(text, { delay: 50 });
+  await page.keyboard.type(text, { delay: 30 });
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(500);
+  await waitForRenderAfter(page, prevSeq, timeoutMs);
 }
 
 /**
