@@ -34,6 +34,12 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
     const { canTravel } = await import('../../game/systems/travel.js');
     const tripStatus = canTravel(character.tripCount, character.lastTripDate);
 
+    // Active combat session? (observability for automated testers — in_combat obs field)
+    const activeCombat = await prisma.combatSession.findFirst({
+      where: { characterId: character.id, active: true },
+      select: { id: true },
+    });
+
     return {
       character: {
         id: character.id,
@@ -54,6 +60,15 @@ export async function registerCharacterRoutes(fastify: FastifyInstance) {
         cargoType: character.cargoType,
         destination: character.destination,
         missionType: character.missionType,
+        // Observability fields for automated testers (UGT). These are real game state that
+        // the terminal UI surfaces indirectly; exposing them here lets a black-box tester
+        // observe win-state, stranded-state, bank balance, and jail-state directly.
+        bankHigh: character.bankHigh,
+        bankLow: character.bankLow,
+        isConqueror: character.isConqueror,
+        isLost: character.isLost,
+        crimeType: character.crimeType, // null = not jailed; non-null = in the brig (soft-lock signal)
+        inCombat: activeCombat !== null,
       },
       ship: character.ship ? {
         hullStrength: character.ship.hullStrength,
