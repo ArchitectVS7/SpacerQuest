@@ -303,6 +303,10 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
         hasPatrolCommission: false, // clear any patrol state
         patrolBattlesWon: 0,
         patrolBattlesLost: 0,
+        battlesWon: 0,        // battle counters feed Battle Factor and salvage —
+        battlesLost: 0,       // leaking them across runs makes later runs fight better
+        bankHigh: 0,          // clear banked credits for the same run-isolation reason
+        bankLow: 0,
         cargoPods: 0,         // no loaded cargo
         cargoType: 0,
         cargoPayment: 0,
