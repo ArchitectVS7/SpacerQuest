@@ -190,3 +190,41 @@ After fixes, a cheap re-verification from the UGT repo (server up with `CLASSIC_
 `python3 integrations/spacerquest/run_llm_playtest.py 3 100 anthropic claude-sonnet-5` — expect score
 velocity to jump ~5–15× (Finding 1), combat fuel spend to bite (Finding 2), and no change in the 0-violation
 robustness record.
+
+---
+
+## RE-VERIFICATION RESULT (2026-07-06) — run from the UGT repo against this branch's fixes
+
+3×100 LLM actions (`claude-haiku-4-5-20251001`, user-directed; a same-model old-code control run scored
+17/100 vs sonnet's 18.4, so the model swap barely moves the baseline). Raw data in the UGT repo:
+`integrations/spacerquest/results/reverify-newcode-2026-07-06/` (+ `oldcode-haiku-2026-07-06/` control).
+
+- **Finding 1 CONFIRMED FIXED.** Per-delivery score = 2 + trip distance + wins − losses, verified
+  per-step through the real UI/HTTP path (+11 for a 9-distance haul; +7 probe-verified for a clean 1→6
+  hop on both the cargo and plain-docking paths). Score velocity 33.7 mean [11, 50, 40] per 100 actions
+  vs 17 same-model old-code (~2–3×). The full 5–15× needs combat wins and long hauls — the agent went
+  0W/14L (see next line), so −lb dockings dragged the mean. Directionally and mechanically correct.
+- **Finding 2 CONFIRMED FIXED — and it bites hard.** Keystroke-path probe at fuel 1: "Weapons
+  Malfunction!", 0 fuel burned, enemy still fires. In campaign play the agent (which over-upgraded
+  weapons to 99 → ~50 fuel/attack) went **0W/14L across 300 actions**, losing every fight it entered
+  at low fuel — the pre-fix 35W/1L record was the free-attack exploit at work. Fuel logistics is now a
+  real combat constraint, as in the original.
+- **Finding 6 CONFIRMED** (3 trips/turn), **Finding 4 no recurrence** (0 silent contract-refusal
+  stretches in 300 actions; weapons+shields crossed 50 — the old trigger — in every run).
+- **Robustness held: 0 invariant violations in 300 actions.**
+
+### New findings from this pass (unranked, for triage)
+
+1. **CONFIRMED · MED · Bare `POST /api/navigation/arrive` is a score pump + encounter spawner.** With no
+   active TravelState the route still runs `processDocking` — the (new) plain-docking varfix awards +2
+   (q6=0) and an encounter spawns, every call, without limit (probe: 148→156 in 4 back-to-back calls,
+   never leaving Sun-3). Introduced by the Finding-1 fix extending varfix to plain docking. Not
+   reachable from the UI (the frontend only calls arrive after travel), but trivially scriptable.
+   Guard: reject `/api/navigation/arrive` when no TravelState exists.
+2. **CONFIRMED · LOW-MED · Poverty trap between `end_turn` and `buy_fuel`.** `validateEndTurn`
+   (`systems/end-turn.ts:22`) refuses until `tripCount == DAILY_TRIP_LIMIT` (now 3), and
+   `traders-buy-fuel.ts:79` refuses when credits < cost. Both print a terminal message but change
+   nothing in game state (UGT's contradiction detector auto-flagged both: run 1 steps 35 and 56). A
+   player too broke to fund a 3rd trip can neither fly nor end the turn — with the cap raised 2→3 this
+   state is easier to reach. Recoverable in our runs, but consider allowing end_turn with unused trips:
+   the original treated the 3 daily trips as an allowance (Manual §2.8), not an obligation to fly.
