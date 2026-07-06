@@ -160,6 +160,16 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
       where: { characterId: character.id },
     });
 
+    // Guard: arrival requires an active travel. Without a TravelState the handler
+    // would silently fall back to the current system and still run encounter
+    // generation + docking (+2 plain-docking score, free encounter spawn), making
+    // a bare POST /arrive a repeatable score pump / encounter farm. completeTravel
+    // consumes the TravelState on success, so this also rejects a double arrive.
+    // Must sit before ANY state mutation (hazards, black-hole snap, encounters, docking).
+    if (!travelState) {
+      return reply.status(400).send({ error: 'No active travel' });
+    }
+
     if (character.ship) {
       if (travelState) {
         // Hazards trigger at distance-derived checkpoints (ty/4, ty/2, mission marks)

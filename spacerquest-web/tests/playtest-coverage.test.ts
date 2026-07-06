@@ -14,10 +14,14 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import Fastify from 'fastify';
+import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
 import { handleScreenRequest, handleScreenInput } from '../src/sockets/screen-router';
 import { prisma } from '../src/db/prisma';
 import { resolveArrivalHazards, processCourseChange, completeTravel } from '../src/game/systems/travel';
 import { processDocking } from '../src/game/systems/docking';
+import { registerNavigationRoutes } from '../src/app/routes/navigation';
 import { calculateRank, getRankIndex, getTotalCredits, calculateDistance } from '../src/game/utils';
 
 // ── Coverage scorecard ──────────────────────────────────────────────────────
@@ -1544,6 +1548,147 @@ describe('UGT findings — Commandant prompt no longer hijacks cargo signing (Fi
   });
 });
 
+// UGT findings — bare arrive requires an active travel (score-pump / encounter-farm).
+// POST /api/navigation/arrive used to silently fall back to the current system when no
+// TravelState existed, running encounter generation + docking (+2 plain-docking score,
+// free encounter spawn) on every call. This exercises the real route through fastify
+// inject (like tests/routes.test.ts) and asserts the guard rejects it before any mutation.
+describe('UGT findings — bare arrive requires active travel (Finding 5)', () => {
+  let app: any;
+  let token = '';
+
+  const fullShip = {
+    driveStrength: 20, driveCondition: 9, hullStrength: 20, hullCondition: 9,
+    navigationStrength: 50, navigationCondition: 9,
+    weaponStrength: 10, weaponCondition: 9, shieldStrength: 10, shieldCondition: 9,
+    cabinStrength: 10, cabinCondition: 9, lifeSupportStrength: 10, lifeSupportCondition: 9,
+    roboticsStrength: 10, roboticsCondition: 9, fuel: 500, hasCloaker: false,
+  } as const;
+
+  const arrive = () => app.inject({
+    method: 'POST', url: '/api/navigation/arrive',
+    headers: { authorization: `Bearer ${token}` },
+  });
+
+  beforeAll(async () => {
+    app = Fastify({ logger: false });
+    await app.register(jwt, { secret: 'test-secret' });
+    await app.register(rateLimit, { max: 1000, timeWindow: '1 minute' });
+    await registerNavigationRoutes(app);
+    await app.ready();
+    const c = await prisma.character.findUnique({ where: { id: CID } });
+    token = app.jwt.sign({ userId: c!.userId });
+  });
+
+  afterAll(async () => { await app.close(); });
+
+  it('a bare arrive with no TravelState is rejected 400 and mutates nothing', async () => {
+    await prisma.travelState.deleteMany({ where: { characterId: CID } });
+    await prisma.combatSession.deleteMany({ where: { characterId: CID } });
+    await setup({
+      currentSystem: 1, missionType: 0, destination: 0,
+      score: 250, patrolBattlesWon: 0, patrolBattlesLost: 0,
+    });
+    await setShip(fullShip);
+    const before = await char();
+
+    const res = await arrive();
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'No active travel' });
+
+    const after = await char();
+    expect(after!.score).toBe(before!.score);              // no +2 score pump
+    expect(await combatSession()).toBeNull();              // no encounter spawned
+    expect(await prisma.travelState.findUnique({ where: { characterId: CID } })).toBeNull();
+    track('navigation.bare_arrive_guard');
+  });
+
+  it('a double arrive is rejected: launch → arrive (ok) → arrive (400, no extra score)', async () => {
+    await prisma.travelState.deleteMany({ where: { characterId: CID } });
+    await prisma.combatSession.deleteMany({ where: { characterId: CID } });
+    await setup({
+      currentSystem: 1, missionType: 0, cargoPods: 0, cargoType: 0,
+      destination: 0, cargoManifest: null, cargoPayment: 0,
+      score: 250, patrolBattlesWon: 0, patrolBattlesLost: 0,
+      tripCount: 0, lastTripDate: null, creditsHigh: 10, creditsLow: 0,
+    });
+    await setShip(fullShip);
+
+    // Launch through the real route → creates the TravelState.
+    const launch = await app.inject({
+      method: 'POST', url: '/api/navigation/launch',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { destinationSystemId: 5 },
+    });
+    expect(launch.statusCode).toBe(200);
+    expect(await prisma.travelState.findUnique({ where: { characterId: CID } })).not.toBeNull();
+
+    // First arrive succeeds and consumes (deletes) the TravelState.
+    const first = await arrive();
+    expect(first.statusCode).toBe(200);
+    expect(await prisma.travelState.findUnique({ where: { characterId: CID } })).toBeNull();
+    const afterFirst = await char();
+
+    // Second arrive: TravelState already consumed → rejected, no further score change.
+    const second = await arrive();
+    expect(second.statusCode).toBe(400);
+    expect(second.json()).toEqual({ error: 'No active travel' });
+    const afterSecond = await char();
+    expect(afterSecond!.score).toBe(afterFirst!.score);
+
+    // Clean up the encounter the legitimate first arrival may have spawned.
+    await prisma.combatSession.deleteMany({ where: { characterId: CID } });
+    track('navigation.double_arrive_guard');
+  });
+});
+
+describe('UGT findings — end-turn is an allowance, not a quota (poverty-trap fix)', () => {
+  it('ending the turn with unused trips succeeds: confirm flow completes, bots run, tripCount resets', async () => {
+    // A player with trips left unspent must still be able to end the turn — daily
+    // trips are an allowance, not a mandatory quota to burn before the day can
+    // advance. Previously validateEndTurn refused until tripCount hit
+    // DAILY_TRIP_LIMIT, trapping a broke player who couldn't afford a 3rd trip's
+    // fuel: unable to fly (no credits) and unable to end the turn (trips unused).
+    await setup({ tripCount: 1 });
+
+    const [, toEndTurn] = await press('main-menu', 'D');
+    expect(toEndTurn).toBe('end-turn');
+
+    // The confirm prompt surfaces the unused trips instead of refusing outright.
+    const confirm = await render('end-turn');
+    expect(confirm).toMatch(/2 unused trip\(s\)/i);
+    expect(confirm).toMatch(/End turn anyway\?/i);
+    expect(confirm).toMatch(/End your turn\?/i);
+
+    const [out] = await press('end-turn', 'Y');
+    expect(out).toMatch(/G A L A C T I C\s+N E W S\s+W I R E/);
+    expect(out).toMatch(/trips have been reset/i);
+
+    // The allowance refreshes for the next day exactly as a full-trip end-turn does.
+    expect((await char())!.tripCount).toBe(0);
+    track('turn.end_turn_allowance');
+
+    // Dismiss the results view back to the main menu.
+    const [, back] = await press('end-turn', ' ');
+    expect(back).toBe('main-menu');
+  });
+
+  it('ending the turn having spent zero trips all day also succeeds', async () => {
+    await setup({ tripCount: 0 });
+
+    const confirm = await render('end-turn');
+    expect(confirm).toMatch(/3 unused trip\(s\)/i);
+
+    const [out] = await press('end-turn', 'Y');
+    expect(out).toMatch(/trips have been reset/i);
+    expect((await char())!.tripCount).toBe(0);
+    track('turn.end_turn_zero_trips');
+
+    await press('end-turn', ' ');
+  });
+});
+
 // ============================================================================
 // FINAL — coverage assertion
 // ============================================================================
@@ -1579,6 +1724,8 @@ describe('Coverage', () => {
       // UGT Phase-2 findings fixes (UGT-PLAYTEST-FINDINGS.md, 2026-07)
       'score.docking_varfix', 'travel.trip_limit', 'combat.fuel_malfunction',
       'shipyard.upgrade_plus1', 'cargo.commandant_guard',
+      'navigation.bare_arrive_guard', 'navigation.double_arrive_guard',
+      'turn.end_turn_allowance', 'turn.end_turn_zero_trips',
     ]) {
       expect(COVERED.has(id), `expected coverage of ${id}`).toBe(true);
     }

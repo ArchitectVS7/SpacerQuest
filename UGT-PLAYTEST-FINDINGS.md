@@ -215,6 +215,14 @@ robustness record.
 
 ### New findings from this pass (unranked, for triage)
 
+> **FIX STATUS (2026-07-06, same-day):** both findings below are **FIXED on `main`** (code + tests, suite
+> 51 files / 1,953 passing). 1: arrive now 400s (`No active travel`) with no TravelState, before any state
+> mutation — double-arrive also rejected (tests `navigation.bare_arrive_guard`, `navigation.double_arrive_guard`).
+> 2: `validateEndTurn` now treats daily trips as an allowance — end_turn allowed at any tripCount outside
+> classic mode, 3-trip launch cap unchanged, confirm screen shows "You have N unused trip(s) today. End turn
+> anyway?" (tests `turn.end_turn_allowance`, `turn.end_turn_zero_trips`). Live re-verification from the UGT
+> harness pending (queued with the sonnet-competence velocity run).
+
 1. **CONFIRMED · MED · Bare `POST /api/navigation/arrive` is a score pump + encounter spawner.** With no
    active TravelState the route still runs `processDocking` — the (new) plain-docking varfix awards +2
    (q6=0) and an encounter spawns, every call, without limit (probe: 148→156 in 4 back-to-back calls,

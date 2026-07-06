@@ -7,6 +7,7 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { validateEndTurn, executeEndTurn } from '../systems/end-turn.js';
+import { DAILY_TRIP_LIMIT } from '../constants.js';
 
 // Track which characters are awaiting confirmation or viewing results
 const awaitingConfirm = new Set<string>();
@@ -32,13 +33,21 @@ export const EndTurnScreen: ScreenModule = {
     awaitingConfirm.add(characterId);
     hasResults.delete(characterId);
 
+    // Trips are an allowance, not a quota — flag unused ones so the player
+    // makes an informed choice instead of being silently blocked or misled
+    // into thinking they were required to spend them all.
+    const unusedTrips = Math.max(0, DAILY_TRIP_LIMIT - character.tripCount);
+    const tripLine = unusedTrips > 0
+      ? `\x1b[33mYou have ${unusedTrips} unused trip(s) today. End turn anyway?\x1b[0m`
+      : `You have completed your ${character.tripCount} trips for this turn.`;
+
     return {
       output: `
 \x1b[36;1m_________________________________________\x1b[0m
 \x1b[33;1m           END YOUR TURN                  \x1b[0m
 \x1b[36;1m_________________________________________\x1b[0m
 
-You have completed your ${character.tripCount} trips for this turn.
+${tripLine}
 
 All other spacers in the galaxy will now take their turns.
 This may take a moment...

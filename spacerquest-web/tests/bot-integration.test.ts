@@ -631,13 +631,14 @@ describe('End Turn Integration', () => {
     vi.unstubAllEnvs();
   });
 
-  it('validateEndTurn blocks when trips remaining', async () => {
+  it('validateEndTurn allows ending with unused trips (allowance, not a quota)', async () => {
     vi.stubEnv('CLASSIC_MODE', 'false');
     const { validateEndTurn } = await import('../src/game/systems/end-turn');
 
-    expect(validateEndTurn(0).canEnd).toBe(false);
-    expect(validateEndTurn(2).canEnd).toBe(false);
-    expect(validateEndTurn(0).reason).toContain('3 trip(s) remaining');
+    // UGT finding: trips are an allowance the player may leave unspent — ending
+    // the turn must never be blocked by tripCount, including at zero trips used.
+    expect(validateEndTurn(0).canEnd).toBe(true);
+    expect(validateEndTurn(2).canEnd).toBe(true);
   });
 
   it('validateEndTurn allows at trip limit', async () => {

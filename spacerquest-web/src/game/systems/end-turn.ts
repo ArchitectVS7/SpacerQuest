@@ -6,7 +6,6 @@
 
 import { isClassicMode } from '../../bots/config.js';
 import { runAllBotTurns } from '../../bots/bot-runner.js';
-import { DAILY_TRIP_LIMIT } from '../constants.js';
 import { BotRunSummary } from '../../bots/types.js';
 
 export interface EndTurnValidation {
@@ -19,11 +18,10 @@ export function validateEndTurn(tripCount: number): EndTurnValidation {
     return { canEnd: false, reason: 'Classic mode — wait for next day' };
   }
 
-  if (tripCount < DAILY_TRIP_LIMIT) {
-    const remaining = DAILY_TRIP_LIMIT - tripCount;
-    return { canEnd: false, reason: `You still have ${remaining} trip(s) remaining` };
-  }
-
+  // Daily trips are an ALLOWANCE, not a quota: a player is never forced to spend
+  // all of them before ending the turn (tripCount is unused here on purpose —
+  // kept in the signature since callers still pass it and the DAILY_TRIP_LIMIT
+  // CAP on *launching* a 4th trip lives separately in travel launch validation).
   return { canEnd: true };
 }
 

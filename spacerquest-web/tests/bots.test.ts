@@ -341,13 +341,12 @@ describe('Decision Engine', () => {
 // ============================================================================
 
 describe('End Turn Validation', () => {
-  it('validates trip count', async () => {
+  it('allows ending the turn with unused trips (allowance, not a quota)', async () => {
     vi.stubEnv('CLASSIC_MODE', 'false');
     const { validateEndTurn } = await import('../src/game/systems/end-turn.js');
 
     const result = validateEndTurn(1);
-    expect(result.canEnd).toBe(false);
-    expect(result.reason).toContain('2 trip(s) remaining');
+    expect(result.canEnd).toBe(true);
   });
 
   it('allows end turn at 3 trips', async () => {
