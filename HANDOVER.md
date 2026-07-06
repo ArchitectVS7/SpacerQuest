@@ -8,19 +8,35 @@
 
 You are continuing work on **SpacerQuest**, a faithful web remake of a 1991 Apple II BBS game. The remake lives in `spacerquest-web/` (server-side terminal "screens" over sockets to an xterm frontend; the computer plays the other 20 spacers' turns). Working dir: `/Users/vs7/Dev/Games/SpacerQuest`.
 
-**Read `EVALUATION.md` first — it is the source of truth** for what's been evaluated, fixed, and what's still open. In the last session we: fixed real-time travel (now a fixed ~3s wait, encounters/hazards preserved — accepted deviation), fixed a test-suite SIGSEGV, wired the Cloaker UI, revived the Spacers Hangout + Raid (which unlocked the entire alliance system — it was the only place to join an alliance), wired the Great Void black-hole event with a discoverability nudge (see §7 — great story), deleted dead `combat-display.ts`, and added a deterministic headless coverage playtest (`tests/playtest-coverage.test.ts`, 32 actions). All 1869 tests pass.
+**Read `UGT-PLAYTEST-FINDINGS.md` first — it is the current work order.** In the last session, the UGT
+(Universal Game Tester) project ran a full LLM balance campaign against the LIVE server (~1,300 competent
+actions through the real screens, 10×100 + 1×300 runs) and a sub-agent design-intent review board delivered a
+verdict: **economy meets the design intent; progression deviates via confirmed rewrite bugs vs the 1991
+source.** Robustness was perfect (0 crashes/violations). Two bugs were already fixed on this branch during
+the campaign (nondeterministic user/character resolution; dev-setup run-isolation leaks — commits `c0f1b9fa`,
+`7e671acc`). `EVALUATION.md` remains the broader evaluation ledger; its §5 coverage gaps (RNG seams, boss
+missions, arena) are still open but now SECOND in priority.
 
-**Your task: tackle the remaining playthrough-coverage gaps in `EVALUATION.md` §5 ("Still outstanding")**, in this priority order:
-1. **Forced-RNG seams** so these become deterministically testable through the UI: **combat surrender & retreat** as resolved outcomes, and **travel hazards & course changes**. Right now they depend on `Math.random()` with no injection seam — add test seams (dependency-injected rolls / env or param overrides) without changing default gameplay behavior.
-2. **Boss-mission playthrough end-to-end:** Nemesis (system 28) and Maligna (system 27) battles + full Andromeda transit (black-hole-hub → NGC → Great Void → dock), driven through the keystroke path.
-3. **Arena dueling, DEFCON funding, and a rank-progression arc** as player-path coverage.
+**Your task: fix the ranked findings in `UGT-PLAYTEST-FINDINGS.md`**, in its suggested order:
+1. **Cargo-docking score dropped the original's `+distance+wins` terms** (`docking.ts:227-244`, flat +2 vs
+   `SP.DOCK1.txt` varfix; `patrol.ts:197` already does it right) + **`DAILY_TRIP_LIMIT` conflates 2
+   sessions/day with 3 trips/day** (`constants.ts:162`). Together these are why conquest extrapolates to
+   ~54,000 actions instead of the authentic months-scale.
+2. **No fuel gate on attacking** — free full-power attacks at fuel 0 (`screens/combat.ts:177-178`); original
+   made weapons "Malfunction!" and skip your round (`SP.FIGHT1.txt:308-310`).
+3. **Roscoe's upgrade grants +10 strength at the per-+1 price** (`upgrades.ts:442` vs `SP.SPEED.txt:158-179`,
+   contradicts its own comment at `upgrades.ts:10-15`).
+4. **Silent cargo-contract refusal state** (near-soft-lock, root cause open — repro data referenced in the
+   findings doc, §Finding 4).
+5. Docs: Manual Appendix A rank thresholds (Admiral+ wrong); PRD §9.2's unachievable "~50% combat win rate".
 
-Then extend `tests/playtest-coverage.test.ts` (or add sibling files) to cover them and raise its regression floor.
+Each fix needs tests through the keystroke path; extend `tests/playtest-coverage.test.ts` where it fits.
 
 **Hard rules (from the user's global CLAUDE.md — follow exactly):**
 - **Test through the UI, never the API.** Drive actions via the keystroke path — `handleScreenInput`/`handleScreenRequest` on the screen-router (what a real keypress runs). Never use REST/`fetch` to bypass a screen a player would navigate. Assert real effects (DB/state changes), not just "a screen rendered."
 - **All tests must pass before committing.** Never dismiss a failure as "pre-existing" — investigate the root cause and fix it. A statistical anomaly (e.g. expecting 30% hazards, seeing 0) is a bug to investigate, not an observation to log.
-- Don't commit or push unless asked. Nothing from the last session is committed yet.
+- Don't commit or push unless asked. (As of 2026-07-05 the tree is clean; branch
+  `playthrough-coverage-rng-seams` is pushed and current.)
 
 **Environment setup (do this first):**
 ```
@@ -56,4 +72,8 @@ Confirm the baseline is green before changing anything.
 
 **Do NOT do yet:** expanding the Great Void into a larger quest — it's flagged in `EVALUATION.md` §7 as a deliberate future content pass, not now.
 
-**Uncommitted changes from last session** (all green, nothing committed): `constants.ts`, `travel.ts`, `App.tsx`, `Terminal.tsx`, `main-menu.ts`, `black-hole-event.ts`, `navigation.ts`, `vitest.config.ts`, `functional-requirements.test.ts`; new `tests/vitest.setup.ts`, `tests/playtest-coverage.test.ts`, `EVALUATION.md`; deleted `combat-display.ts` + its test.
+**Session state (2026-07-05):** working tree clean; everything committed on `playthrough-coverage-rng-seams`
+(latest: UGT dual-validation fixes `c0f1b9fa`/`7e671acc` + this handover/findings doc). Note `origin/main`
+has moved ahead separately — reconcile when merging. The UGT test harness lives in the sibling repo
+`../_UGT Universal Game Tester` (see its `PLAN-FORWARD.md` for the campaign record; re-verification one-liner
+is at the bottom of `UGT-PLAYTEST-FINDINGS.md`).
