@@ -31,9 +31,13 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
         });
         socket.isAdmin = user?.isAdmin ?? false;
 
-        // Get character ID
+        // Get character ID. Oldest-first so the socket binds the SAME character every
+        // HTTP route resolves (dev-setup keeps the oldest and deletes duplicates — an
+        // unordered findFirst here could bind a dupe that then gets deleted, bricking
+        // every screen render for the rest of the session).
         const character = await prisma.character.findFirst({
           where: { userId: decoded.userId },
+          orderBy: { createdAt: 'asc' },
         });
         
         if (character) {

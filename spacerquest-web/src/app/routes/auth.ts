@@ -236,7 +236,11 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
   // Quick Login (museum edition — no OAuth provider needed)
   fastify.get('/auth/dev-login', async (request, reply) => {
     try {
-      let user = await prisma.user.findFirst();
+      // Deterministic dev identity: always the OLDEST user. A bare findFirst() has no
+      // ordering guarantee, so with multiple users in the DB (e.g. from old test runs)
+      // each dev-login could mint a token for a DIFFERENT user — flipping which
+      // character every subsequent findFirst({ userId }) resolves mid-test-suite.
+      let user = await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } });
 
       if (!user) {
         user = await prisma.user.create({
@@ -270,9 +274,21 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
     }
 
     const { userId } = request.user as { userId: string };
-    const character = await prisma.character.findFirst({ where: { userId }, include: { ship: true } });
+    // Enforce ONE character per user: every route resolves the character with a bare
+    // findFirst({ userId }) (no orderBy), so duplicate characters (e.g. left behind by a
+    // conquest restart or old test runs) make HTTP and socket sessions nondeterministically
+    // bind to DIFFERENT characters. Keep the oldest, delete the rest.
+    const characters = await prisma.character.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      include: { ship: true },
+    });
+    const character = characters[0];
     if (!character) {
       return reply.status(404).send({ error: 'Character not found' });
+    }
+    for (const dupe of characters.slice(1)) {
+      await prisma.character.delete({ where: { id: dupe.id } });
     }
 
     // Reset playtest character to a clean, playable state
@@ -287,6 +303,10 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
         hasPatrolCommission: false, // clear any patrol state
         patrolBattlesWon: 0,
         patrolBattlesLost: 0,
+        battlesWon: 0,        // battle counters feed Battle Factor and salvage —
+        battlesLost: 0,       // leaking them across runs makes later runs fight better
+        bankHigh: 0,          // clear banked credits for the same run-isolation reason
+        bankLow: 0,
         cargoPods: 0,         // no loaded cargo
         cargoType: 0,
         cargoPayment: 0,
@@ -296,6 +316,8 @@ export async function registerAuthRoutes(fastify: FastifyInstance) {
         crimeType: null,      // clear any jail sentence from a prior run (else every
                               // playtest starts stuck in the brig — jail ignores most keys)
         isLost: false,        // clear lost-in-space so navigation isn't disabled at start
+        isConqueror: false,   // clear win flag — a stale true makes every subsequent
+                              // playtest run report a win it didn't earn
       },
     });
 
