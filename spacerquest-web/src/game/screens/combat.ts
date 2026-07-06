@@ -161,6 +161,18 @@ export const CombatScreen: ScreenModule = {
           hullCondition: session.enemyHullCondition,
         };
 
+        // SP.FIGHT1.S:308 — x=1:if w1>1 x=(w1/2): fuel consumed per attack round
+        // When weaponStrength=1, x stays 1 (not Math.floor(1/2)=0)
+        const fuelConsumed = ship.weaponStrength > 1 ? Math.floor(ship.weaponStrength / 2) : 1;
+
+        // SP.FIGHT1.S:308-310 — if (x8<1) or (f1<x) print w1$;fz$:goto pirfite
+        // Without enough fuel for a full-power shot (or with dead weapons) your
+        // attack "Malfunction!"s: it is skipped, burns no fuel, and the enemy
+        // still fires its round. Retreat remains free.
+        const weaponsMalfunction =
+          ship.weaponStrength * ship.weaponCondition < 1 || ship.fuel < fuelConsumed;
+        const newFuel = weaponsMalfunction ? ship.fuel : Math.max(0, ship.fuel - fuelConsumed);
+
         const round = processCombatRound(
           playerBF,
           ship.weaponStrength, ship.weaponCondition,
@@ -170,12 +182,9 @@ export const CombatScreen: ScreenModule = {
           session.currentRound,
           ship.roboticsStrength,
           ship.roboticsCondition,
+          undefined,           // luckyShotRoll — live play uses the internal RNG
+          weaponsMalfunction,
         );
-
-        // SP.FIGHT1.S:308 — x=1:if w1>1 x=(w1/2): fuel consumed per attack round
-        // When weaponStrength=1, x stays 1 (not Math.floor(1/2)=0)
-        const fuelConsumed = ship.weaponStrength > 1 ? Math.floor(ship.weaponStrength / 2) : 1;
-        const newFuel = Math.max(0, ship.fuel - fuelConsumed);
 
         // SP.FIGHT2.S:106-112 — victory by hull condition reaching 0
         // Track cumulative damage via enemyHullCondition in the session
@@ -288,15 +297,15 @@ export const CombatScreen: ScreenModule = {
 
           const totalCredits = addCredits(newCredits.high, newCredits.low, salvageCredits);
 
-          // Space Patrol mission (kk=2): also increment per-mission wb counter
+          // Per-trip wb counter (original wb): accumulates for EVERY battle and is
+          // consumed + reset by the next docking varfix (s2=(s2+wb+q6+y)-lb) or by
+          // the Space Patrol payoff. Not patrol-specific despite the field name.
           const charVictoryUpdate: Record<string, any> = {
             battlesWon: { increment: 1 },
+            patrolBattlesWon: { increment: 1 },
             creditsHigh: totalCredits.high,
             creditsLow: totalCredits.low,
           };
-          if (character.missionType === 2) {
-            charVictoryUpdate.patrolBattlesWon = { increment: 1 };
-          }
 
           await Promise.all([
             prisma.character.update({
@@ -372,11 +381,12 @@ export const CombatScreen: ScreenModule = {
           out += `\r\nYour ship is defeated and boarded.\r\n`;
           out += `\x1b[31m${boarding.message}\x1b[0m\r\n`;
 
-          // Space Patrol (kk=2): track per-mission loss, dock at HQ for payoff
-          const charDefeatUpdate: Record<string, any> = { battlesLost: { increment: 1 } };
-          if (character.missionType === 2) {
-            charDefeatUpdate.patrolBattlesLost = { increment: 1 };
-          }
+          // Per-trip lb counter (original lb): every loss counts; consumed + reset by
+          // the next docking varfix or Space Patrol payoff.
+          const charDefeatUpdate: Record<string, any> = {
+            battlesLost: { increment: 1 },
+            patrolBattlesLost: { increment: 1 },
+          };
           if (boarding.cargoLost) {
             charDefeatUpdate.cargoPods = 0;
             charDefeatUpdate.cargoType = 0;
@@ -405,7 +415,12 @@ export const CombatScreen: ScreenModule = {
           return { output: out, nextScreen: defeatNext };
         }
 
-        out += `  Your attack: \x1b[32m${round.playerDamage || 'glancing'}\x1b[0m  `;
+        if (round.weaponsMalfunction) {
+          // SP.FIGHT1.S:41 fz$ — print w1$;" Malfunction!"
+          out += `  \x1b[31;1m${ship.weaponName || 'Weapons'} Malfunction!\x1b[0m  `;
+        } else {
+          out += `  Your attack: \x1b[32m${round.playerDamage || 'glancing'}\x1b[0m  `;
+        }
         out += `Enemy attack: \x1b[31m${round.enemyDamage || 'glancing'}\x1b[0m  `;
         out += `Fuel: \x1b[33m${newFuel}\x1b[0m\r\n`;
 
@@ -444,8 +459,10 @@ export const CombatScreen: ScreenModule = {
                   where: { id: session.id },
                   data: { active: false, result: 'DEFEAT' },
                 });
-                const charBonusDefeat: Record<string, any> = { battlesLost: { increment: 1 } };
-                if (character.missionType === 2) charBonusDefeat.patrolBattlesLost = { increment: 1 };
+                const charBonusDefeat: Record<string, any> = {
+                  battlesLost: { increment: 1 },
+                  patrolBattlesLost: { increment: 1 },  // per-trip lb — see victory path
+                };
                 await prisma.character.update({ where: { id: characterId }, data: charBonusDefeat });
                 out += `\x1b[31;1mDEFEAT! Your ship has been overwhelmed.\x1b[0m\r\n`;
                 out += '\r\n\x1b[37;1mPress any key to continue...\x1b[0m';

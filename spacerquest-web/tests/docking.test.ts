@@ -50,6 +50,9 @@ const makeCharacter = (overrides: Record<string, unknown> = {}) => ({
   cargoManifest: null,
   cargoDelivered: 0,
   allianceSymbol: 'NONE',
+  tripsCompleted: 0,
+  patrolBattlesWon: 0,   // wb — per-trip battle counter consumed by docking varfix
+  patrolBattlesLost: 0,  // lb
   ship: null,
   ...overrides,
 });
@@ -372,8 +375,8 @@ describe('Docking system', () => {
 
   // ── Rim port score bonus (SP.DOCK2.S:70-72) ────────────────────────────
   describe('Rim port arrival score bonus (SP.DOCK2.S:70-72)', () => {
-    it('adds +4 score on normal rim port arrival (y=4)', async () => {
-      // SP.DOCK2.S:70: y=4; gosub varfix → s2=(s2+y)
+    it('adds +4 score on normal rim port arrival (y=4 varfix: s2=(s2+wb+q6+y)-lb)', async () => {
+      // SP.DOCK2.S:70-72: y=4; gosub varfix → s2=(s2+wb+q6+y)-lb, wb/lb reset
       prisma.character.findUnique.mockResolvedValue(
         makeCharacter({
           score: 10,
@@ -387,12 +390,31 @@ describe('Docking system', () => {
       await processDocking('char-1', 15);
 
       const charUpdate = prisma.character.update.mock.calls[0]?.[0];
-      // Applied atomically so it stacks on any delivery award rather than overwriting it.
-      expect(charUpdate?.data?.score).toEqual({ increment: 4 });
+      expect(charUpdate?.data?.score).toBe(14); // 10 + 0wb + 0q6 + 4 - 0lb
+      expect(charUpdate?.data?.patrolBattlesWon).toBe(0);  // varfix: wb=0
+      expect(charUpdate?.data?.patrolBattlesLost).toBe(0); // varfix: lb=0
+    });
+
+    it('rim varfix includes per-trip battles and distance (wb + q6 + 4 - lb)', async () => {
+      prisma.character.findUnique.mockResolvedValue(
+        makeCharacter({
+          score: 10,
+          patrolBattlesWon: 2, patrolBattlesLost: 1,
+          cargoManifest: null,
+          ship: makeShip({ navigationStrength: 70 }),
+        })
+      );
+      prisma.character.update.mockResolvedValue(undefined);
+      prisma.gameLog.create.mockResolvedValue(undefined);
+
+      await processDocking('char-1', 15, 7); // tripDistance q6=7
+
+      const charUpdate = prisma.character.update.mock.calls[0]?.[0];
+      expect(charUpdate?.data?.score).toBe(22); // 10 + 2wb + 7q6 + 4 - 1lb
     });
 
     it('adds +8 score when carrying Andromeda mission cargo (q3$="X", y=8)', async () => {
-      // SP.DOCK2.S:71: if q3$="X" y=8; gosub varfix → s2=(s2+y)
+      // SP.DOCK2.S:71: if q3$="X" y=8; gosub varfix
       prisma.character.findUnique.mockResolvedValue(
         makeCharacter({
           score: 10,
@@ -406,7 +428,7 @@ describe('Docking system', () => {
       await processDocking('char-1', 15);
 
       const charUpdate = prisma.character.update.mock.calls[0]?.[0];
-      expect(charUpdate?.data?.score).toEqual({ increment: 8 });
+      expect(charUpdate?.data?.score).toBe(18); // 10 + 0 + 0 + 8 - 0
     });
 
     it('applies rim score bonus only to rim systems (15-20), not core (1-14)', async () => {
@@ -602,13 +624,16 @@ describe('Docking system', () => {
       await processDocking('char-1', 18);
 
       const datas = prisma.character.update.mock.calls.map(c => c[0].data);
-      // Delivery block writes the +2 award (absolute) and the payment...
-      const delivery = datas.find(d => typeof d.score === 'number');
-      expect(delivery?.score).toBe(102);              // 100 + 2
+      // Delivery block writes the y=2 varfix award (absolute) and the payment...
+      const delivery = datas.find(d => d.creditsLow !== undefined);
+      expect(delivery?.score).toBe(102);              // 100 + 0wb + 0q6 + 2 - 0lb
       expect(delivery?.creditsLow).toBe(9000);
-      // ...and the rim block adds its +4 ATOMICALLY, so it stacks (→ 106) rather than clobbering.
-      const rim = datas.find(d => d.score && typeof d.score === 'object');
-      expect(rim?.score).toEqual({ increment: 4 });
+      // ...and the rim block re-reads score and stacks its y=4 on top. (The mock
+      // returns the stale score=100 on the re-read, so the write is 104; live, the
+      // re-read sees 102 and writes 106. Counters were already consumed → wb/lb=0,
+      // and q6 is not double-counted after the delivery varfix.)
+      const rim = datas.find(d => d.creditsLow === undefined && typeof d.score === 'number');
+      expect(rim?.score).toBe(104);
     });
 
     it('awards y=2 score bonus on standard cargo delivery (SP.DOCK1.S:90 arriv3: y=2:gosub varfix)', async () => {
@@ -1114,9 +1139,11 @@ describe('Docking system', () => {
     });
   });
 
-  // ── SP.DOCK1.S varfix: u1=u1+1 tripsCompleted on every docking ──────────
-  describe('tripsCompleted increment on docking (SP.DOCK1.S:arriv3/varfix: u1=u1+1)', () => {
-    it('increments tripsCompleted on cargo delivery (varfix fires at arriv3)', async () => {
+  // ── SP.DOCK1.S varfix at docking — score award + wb/lb reset ────────────
+  // tripsCompleted (u1) is incremented once per arrival by completeTravel(), NOT by
+  // processDocking — incrementing in both places double-counted every trip.
+  describe('docking varfix (SP.DOCK1.S:arriv3: s2=(s2+wb+q6+y)-lb, u1 handled by completeTravel)', () => {
+    it('does NOT increment tripsCompleted on cargo delivery (completeTravel owns u1)', async () => {
       prisma.character.findUnique.mockResolvedValue(
         makeCharacter({
           missionType: 1,
@@ -1139,23 +1166,60 @@ describe('Docking system', () => {
       const cargoUpdateCall = prisma.character.update.mock.calls.find(
         (c: any[]) => c[0]?.data?.cargoDelivered !== undefined
       );
-      expect(cargoUpdateCall?.[0]?.data?.tripsCompleted).toEqual({ increment: 1 });
+      expect(cargoUpdateCall?.[0]?.data?.tripsCompleted).toBeUndefined();
+      // varfix consumed the per-trip counters
+      expect(cargoUpdateCall?.[0]?.data?.patrolBattlesWon).toBe(0);
+      expect(cargoUpdateCall?.[0]?.data?.patrolBattlesLost).toBe(0);
     });
 
-    it('increments tripsCompleted on no-cargo docking (varfix fires at arriv3)', async () => {
+    it('cargo delivery score includes wb + q6 - lb (SP.DOCK1.txt varfix)', async () => {
       prisma.character.findUnique.mockResolvedValue(
-        makeCharacter({ missionType: 0, cargoPods: 0, tripsCompleted: 3, ship: makeShip() })
+        makeCharacter({
+          missionType: 1,
+          destination: 5,
+          cargoPods: 4,
+          cargoType: 1,
+          cargoPayment: 2000,
+          cargoManifest: 'Foodstuffs',
+          score: 100,
+          patrolBattlesWon: 3,   // wb
+          patrolBattlesLost: 1,  // lb
+          creditsHigh: 0, creditsLow: 0,
+          ship: makeShip(),
+        })
       );
       prisma.gameLog.create.mockResolvedValue(undefined);
       prisma.character.update.mockResolvedValue(undefined);
 
-      await processDocking('char-1', 5);
+      await processDocking('char-1', 5, 15); // q6 = 15 astrecs
 
-      // The general tripsCompleted increment fires for no-cargo dockings
-      const tripsUpdateCall = prisma.character.update.mock.calls.find(
-        (c: any[]) => c[0]?.data?.tripsCompleted !== undefined
+      const cargoUpdateCall = prisma.character.update.mock.calls.find(
+        (c: any[]) => c[0]?.data?.cargoDelivered !== undefined
       );
-      expect(tripsUpdateCall?.[0]?.data?.tripsCompleted).toEqual({ increment: 1 });
+      // s2 = (100 + 3wb + 15q6 + 2y) - 1lb = 119
+      expect(cargoUpdateCall?.[0]?.data?.score).toBe(119);
+    });
+
+    it('applies the y=2 varfix on no-cargo core docking (score + wb + q6 + 2 - lb)', async () => {
+      prisma.character.findUnique.mockResolvedValue(
+        makeCharacter({
+          missionType: 0, cargoPods: 0, tripsCompleted: 3, score: 50,
+          patrolBattlesWon: 1, patrolBattlesLost: 0,
+          ship: makeShip(),
+        })
+      );
+      prisma.gameLog.create.mockResolvedValue(undefined);
+      prisma.character.update.mockResolvedValue(undefined);
+
+      await processDocking('char-1', 5, 8); // q6 = 8
+
+      // Original arrv: no cargo → goto arriv3 → y=2 varfix still fires
+      const varfixCall = prisma.character.update.mock.calls.find(
+        (c: any[]) => c[0]?.data?.score !== undefined
+      );
+      expect(varfixCall?.[0]?.data?.score).toBe(61); // 50 + 1wb + 8q6 + 2 - 0lb
+      expect(varfixCall?.[0]?.data?.patrolBattlesWon).toBe(0);
+      expect(varfixCall?.[0]?.data?.tripsCompleted).toBeUndefined();
     });
 
     it('does NOT increment tripsCompleted on wrong-port Mark VIII teleport (no varfix in original)', async () => {

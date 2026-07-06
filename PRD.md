@@ -2654,11 +2654,18 @@ test('complete game flow: create character, travel, fight', async ({ page }) => 
 | Daily Active Users | Track over time | Game logs |
 | Session Length | 15-30 min avg | Session tracking |
 | Trip Completion Rate | Track per user | Character stats |
-| Combat Win Rate | ~50% (balanced) | Battle records |
+| Combat Win Rate | High for invested ships (by design) | Battle records |
 | Promotion Rate | Track rank distribution | Character ranks |
 | Port Ownership | Track distribution | PortOwnership table |
 | Alliance Participation | Track membership | AllianceMembership |
 | Mission Completion | Track Nemesis/Maligna | Mission logs |
+
+> **Note on combat win rate:** a ~50% target is unachievable by design. The authentic
+> jm/jn encounter-band matchmaking (GameConfig ju=3/jv=5) only engages opponents inside
+> the player's battle-factor band — under-armed and over-armed ships are skipped — so an
+> invested ship legitimately wins the large majority of the fights it is offered. Watch
+> for *degenerate* values (near-0% for invested ships, or losses concentrated in one
+> band) rather than deviation from 50%.
 
 ### 9.3 Museum Goals
 

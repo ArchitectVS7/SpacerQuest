@@ -40,7 +40,7 @@ No subsystem is missing or majorly divergent. Classification:
 | Subsystem | Verdict | Note |
 |---|---|---|
 | Economy (cargo, fuel, credit hi/lo math) | ✅ Faithful | Original `pay1-4`, `upod`, `fcost`, fuel tables, 2900/20000 caps reproduced |
-| Navigation & travel | ✅ Faithful + 1 modern add | Fuel/hazard/course-change/3-trip-cap intact; **travel is now real-time wall-clock** (was instant) |
+| Navigation & travel | ✅ Faithful + 1 modern add | Fuel/hazard/course-change intact; 3-trip-cap restored 2026-07 (`DAILY_TRIP_LIMIT` had shipped as 2, conflating the separate 2-sessions/day cap — UGT Finding 6); **travel is now real-time wall-clock** (was instant) |
 | Combat | ✅ Faithful + 1 modern add | Roster-driven encounters, retreat, 5 tribute/surrender paths; **adds a rank battle-factor bonus** the original lacked (flagged in-code) |
 | Ranks & scoring | ✅ Faithful | `sc=floor(score/150)`, even preserves the original `sc=14` gap bug; 10,000 Conqueror reset |
 | Special equipment (Cloaker, Auto-Repair, Star-Buster, Arch-Angel, Astraxial) | ✅ Faithful logic | All five exist and have functional effects + mutual-exclusion rules — **but Cloaker has no UI to activate it (see §3)** |

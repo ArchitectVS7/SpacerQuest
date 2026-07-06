@@ -191,15 +191,21 @@ export const TradersCargoScreen: ScreenModule = {
     // ── SP.CARGO.S:33-38 — Space Commandant prompt Y/N ───────────────────────
     if (pendingCommandant.has(characterId)) {
       pendingCommandant.delete(characterId);
-      if (key !== 'N' && key !== '') {
-        // SP.CARGO.S:36: if i$<>"N" print"Yes":link"sp.top","wins"
+      // DELIBERATE DEVIATION from SP.CARGO.S:36 (if i$<>"N" → Yes): only an explicit
+      // Y consents. The original's any-key-yes turned a buffered "1" (meant for the
+      // manifest board behind this prompt) into consent and warped the player into
+      // the Top Gun mission-offer menu — which swallows all keys except D/M. UGT
+      // playtest run 3 lost 57/100 actions to exactly this loop (silent
+      // contract-refusal finding). Any non-Y key now reads as "Not now".
+      if (key === 'Y') {
         pendingWins.set(characterId, 'menu');
         return { output: 'Yes\r\n', nextScreen: 'topgun' };
       }
       // SP.CARGO.S:38: print"Not now" → fall through to manifest board
       // Mark as declined so the re-render skips the Commandant check this cycle
       declinedCommandant.add(characterId);
-      return TradersCargoScreen.render(characterId);
+      const boardScreen = await TradersCargoScreen.render(characterId);
+      return { ...boardScreen, output: 'Not now\r\n' + boardScreen.output };
     }
 
     // ── Pending confirmation (manifest index chosen, waiting for Y/N) ────────

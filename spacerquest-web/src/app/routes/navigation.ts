@@ -481,11 +481,18 @@ export async function registerNavigationRoutes(fastify: FastifyInstance) {
       }
     }
 
+    // Trip distance (q6) must be computed before completeTravel deletes the
+    // TravelState — the docking varfix scores s2=(s2+wb+q6+y)-lb from it.
+    const { calculateDistance } = await import('../../game/utils.js');
+    const tripDistance = travelState
+      ? calculateDistance(travelState.originSystem, travelDestination)
+      : 0;
+
     const { completeTravel } = await import('../../game/systems/travel.js');
     await completeTravel(character.id, travelDestination);
 
     const { processDocking } = await import('../../game/systems/docking.js');
-    await processDocking(character.id, travelDestination);
+    await processDocking(character.id, travelDestination, tripDistance);
 
     // Check if Nemesis lattice puzzle is pending (SP.MAL.S nemgem subroutine)
     let screenOverride: string | undefined;

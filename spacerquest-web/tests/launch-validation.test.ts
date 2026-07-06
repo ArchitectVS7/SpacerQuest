@@ -190,15 +190,15 @@ describe('SP.LIFT.S launch validation (validateLaunch)', () => {
     expect(result.errors).toContain('Drives inoperable!');
   });
 
-  // SP.LIFT.S line 56: if z1>2 → trip limit check (modern: tripCount >= DAILY_TRIP_LIMIT=2)
-  // SP.START.S:315+cally flavor text: "You have completed 2 turns through Spacer Quest today"
+  // SP.REG.S:196: if z1>2 → trip limit check (tripCount >= DAILY_TRIP_LIMIT=3)
+  // "Only 3 completed trips allowed per day"
   it('blocks launch when trip limit reached', async () => {
     prisma.character.findUnique.mockResolvedValue(
-      makeCharacter({ tripCount: 2, lastTripDate: new Date() })
+      makeCharacter({ tripCount: 3, lastTripDate: new Date() })
     );
     const result = await validateLaunch('char-1', 8);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e: string) => e.includes('turns through Spacer Quest'))).toBe(true);
+    expect(result.errors.some((e: string) => e.includes('completed trips allowed per day'))).toBe(true);
   });
 
   // SP.LIFT.S line 47: if nz$="" print "It would be nice if your ship had a name":goto start

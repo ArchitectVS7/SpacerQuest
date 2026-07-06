@@ -130,8 +130,11 @@ model Character {
 
   // Space Patrol HQ commission state (SP.REG.S patrol subroutine)
   hasPatrolCommission Boolean   @default(false)  // cs — oath taken at Space Patrol HQ
-  patrolBattlesWon    Int       @default(0)       // wb — battles won this patrol mission
-  patrolBattlesLost   Int       @default(0)       // lb — battles lost this patrol mission
+  // wb/lb — per-TRIP battle counters (not patrol-only despite the names): every
+  // battle won/lost increments these; the docking varfix (s2=(s2+wb+q6+y)-lb,
+  // SP.DOCK1.txt) and the Space Patrol payoff consume and reset them.
+  patrolBattlesWon    Int       @default(0)       // wb — battles won this trip
+  patrolBattlesLost   Int       @default(0)       // lb — battles lost this trip
 
   // Extra-Curricular Mode (SP.END.txt sp.menu11)
   // P=pirate, S=star_patrol, C=smuggler_patrol, null=none

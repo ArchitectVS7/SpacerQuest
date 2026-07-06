@@ -16,9 +16,9 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { handleScreenRequest, handleScreenInput } from '../src/sockets/screen-router';
 import { prisma } from '../src/db/prisma';
-import { resolveArrivalHazards, processCourseChange } from '../src/game/systems/travel';
+import { resolveArrivalHazards, processCourseChange, completeTravel } from '../src/game/systems/travel';
 import { processDocking } from '../src/game/systems/docking';
-import { calculateRank, getRankIndex, getTotalCredits } from '../src/game/utils';
+import { calculateRank, getRankIndex, getTotalCredits, calculateDistance } from '../src/game/utils';
 
 // ── Coverage scorecard ──────────────────────────────────────────────────────
 const COVERED = new Set<string>();
@@ -1335,8 +1335,8 @@ describe('Economic goals & risk', () => {
 // ============================================================================
 describe('End turn & Galactic News Wire', () => {
   it('[D] → [Y] ends the turn, runs the sector, and surfaces the news wire', async () => {
-    // Trips must be exhausted (DAILY_TRIP_LIMIT = 2) for the turn to be endable.
-    await setup({ currentSystem: 1, tripCount: 2 });
+    // Trips must be exhausted (DAILY_TRIP_LIMIT = 3) for the turn to be endable.
+    await setup({ currentSystem: 1, tripCount: 3 });
 
     // [D]one on the main menu routes to the end-turn confirmation screen.
     const [, toEndTurn] = await press('main-menu', 'D');
@@ -1359,6 +1359,188 @@ describe('End turn & Galactic News Wire', () => {
     // Any key dismisses the results view back to the main menu.
     const [, back] = await press('end-turn', ' ');
     expect(back).toBe('main-menu');
+  });
+});
+
+// ============================================================================
+// UGT PHASE-2 FIXES (2026-07) — the ranked findings from UGT-PLAYTEST-FINDINGS.md,
+// each proven through the keystroke path with real DB effects.
+// ============================================================================
+describe('UGT findings — docking varfix score (Finding 1)', () => {
+  it('cargo delivery awards score = wb + distance + 2 - lb and resets per-trip counters', async () => {
+    // A real trip: contract state set, launch driven via the Navigation screen,
+    // then the exact arrival mechanism the route runs (completeTravel + processDocking
+    // with the trip distance) — same pattern as the boss-mission arrivals above.
+    await prisma.travelState.deleteMany({ where: { characterId: CID } });
+    await prisma.combatSession.deleteMany({ where: { characterId: CID } });
+    await setup({
+      currentSystem: 1, missionType: 3, cargoPods: 4, cargoType: 2,
+      destination: 5, cargoManifest: 'Herbals', cargoPayment: 2000,
+      score: 100, patrolBattlesWon: 2, patrolBattlesLost: 1,   // wb=2, lb=1 this trip
+      tripCount: 0, lastTripDate: null, creditsHigh: 0, creditsLow: 5000,   // covers the lift-off fee
+      manifestBoard: undefined, manifestDate: null,
+    });
+    await setShip({
+      driveStrength: 20, driveCondition: 9, hullStrength: 20, hullCondition: 9,
+      navigationStrength: 50, navigationCondition: 9,   // precision 45 > max roll 40 → never misfires
+      weaponStrength: 10, weaponCondition: 9, shieldStrength: 10, shieldCondition: 9,
+      cabinStrength: 10, cabinCondition: 9, lifeSupportStrength: 10, lifeSupportCondition: 9,
+      roboticsStrength: 10, roboticsCondition: 9, fuel: 500, hasCloaker: false,
+    });
+
+    // Launch to the contract port via keystrokes.
+    await render('navigate');
+    await press('navigate', '5');
+    const [liftoff] = await press('navigate', 'Y');
+    expect(liftoff).toMatch(/Lift-?Off|Voyage|cleared/i);
+    const ts = await prisma.travelState.findUnique({ where: { characterId: CID } });
+    expect(ts).not.toBeNull();
+
+    const before = await char();
+    const q6 = calculateDistance(ts!.originSystem, 5);
+    expect(q6).toBeGreaterThan(0);
+    await completeTravel(CID, 5);
+    await processDocking(CID, 5, q6);
+    const after = await char();
+
+    // SP.DOCK1.txt varfix: s2 = (s2 + wb + q6 + 2) - lb = 100 + 2 + q6 + 2 - 1
+    expect(after!.score).toBe(100 + 2 + q6 + 2 - 1);
+    // varfix consumed the per-trip battle counters
+    expect(after!.patrolBattlesWon).toBe(0);
+    expect(after!.patrolBattlesLost).toBe(0);
+    // Payment credited, contract cleared
+    expect(getTotalCredits(after!.creditsHigh, after!.creditsLow))
+      .toBe(getTotalCredits(before!.creditsHigh, before!.creditsLow) + 2000);
+    expect(after!.destination).toBe(0);
+    // u1 exactly once per arrival (completeTravel owns it — no docking double-count)
+    expect(after!.tripsCompleted).toBe(before!.tripsCompleted + 1);
+    track('score.docking_varfix');
+  });
+});
+
+describe('UGT findings — 3-trip daily cap (Finding 6)', () => {
+  it('the 4th launch of the day is refused with the authentic trip-cap message', async () => {
+    await prisma.travelState.deleteMany({ where: { characterId: CID } });
+    // Active contract so the Navigation screen goes straight to the destination
+    // prompt (no bribe interstitial); the cap check fires on the destination press.
+    await setup({
+      currentSystem: 1, missionType: 3, cargoPods: 1, cargoType: 1,
+      destination: 5, cargoManifest: 'Herbals', cargoPayment: 1000,
+      tripCount: 3, lastTripDate: new Date(), creditsHigh: 1, creditsLow: 0,
+    });
+    await setShip({ fuel: 500, driveCondition: 9, hullCondition: 9 });
+
+    await render('navigate');
+    const [out] = await press('navigate', '5');
+    expect(out).toMatch(/Only 3 completed trips allowed per day/i);
+    const ts = await prisma.travelState.findUnique({ where: { characterId: CID } });
+    expect(ts).toBeNull();   // no launch happened
+    // Reset the contract fixture for the following tests
+    await setup({ missionType: 0, cargoPods: 0, cargoType: 0, destination: 0, cargoManifest: null, cargoPayment: 0, tripCount: 0 });
+    track('travel.trip_limit');
+  });
+});
+
+describe('UGT findings — weapons fuel malfunction (Finding 2)', () => {
+  it('attacking with fuel below weapons/2 prints Malfunction!, burns no fuel, enemy still fires', async () => {
+    await setup({ missionType: 0, currentSystem: 1 });
+    await setShip({
+      weaponStrength: 40, weaponCondition: 9,   // full-power shot costs 20 fuel
+      shieldStrength: 30, shieldCondition: 9,
+      hullStrength: 20, hullCondition: 9, fuel: 5,   // 5 < 20 → malfunction
+      hasAutoRepair: false,
+    });
+    const session = await startCombat({ enemyHullCondition: 9, currentRound: 1 });
+    await render('combat');
+    const [out] = await press('combat', 'A');
+
+    expect(out).toMatch(/Malfunction!/);
+    const after = await char();
+    expect(after!.ship!.fuel).toBe(5);   // SP.FIGHT1.S: no fuel burned on malfunction
+    const s = await combatSession();
+    expect(s!.currentRound).toBe(2);                    // the round still ran
+    expect(s!.enemyHullCondition).toBe(9);              // your attack was skipped
+    expect(out).toMatch(/Enemy attack/i);               // pirfite: enemy still fired
+    expect(s!.id).toBe(session.id);
+    track('combat.fuel_malfunction');
+  });
+
+  it('with enough fuel the same attack fires and burns weapons/2 fuel', async () => {
+    await setShip({ fuel: 500, weaponStrength: 40, weaponCondition: 9 });
+    await startCombat({ enemyHullCondition: 9, currentRound: 1 });
+    await render('combat');
+    const [out] = await press('combat', 'A');
+    expect(out).not.toMatch(/Malfunction!/);
+    const after = await char();
+    expect(after!.ship!.fuel).toBe(500 - 20);   // x = w1/2 = 20
+    await prisma.combatSession.deleteMany({ where: { characterId: CID } });
+  });
+});
+
+describe('UGT findings — Roscoe upgrade grants +1 (Finding 3)', () => {
+  it('a strength upgrade adds exactly +1 at the tiered per-point price', async () => {
+    await setup({ currentSystem: 1, creditsHigh: 100, creditsLow: 0 });
+    await setShip({ weaponStrength: 30, weaponCondition: 9 });
+    const before = await char();
+    const [out] = await press('shipyard-upgrade', '5');   // [5] Weapons
+    const after = await char();
+
+    expect(after!.ship!.weaponStrength).toBe(31);   // SP.SPEED.S up1: x=x+1
+    // price = (floor(30/10)+1) * 10,000 = 40,000
+    expect(getTotalCredits(after!.creditsHigh, after!.creditsLow))
+      .toBe(getTotalCredits(before!.creditsHigh, before!.creditsLow) - 40000);
+    expect(out).toMatch(/upgraded successfully/i);
+    track('shipyard.upgrade_plus1');
+  });
+});
+
+describe('UGT findings — Commandant prompt no longer hijacks cargo signing (Finding 4)', () => {
+  beforeAll(async () => {
+    // weapons+shields >= 50 arms the Space Commandant interstitial on cargo entry —
+    // the state UGT run 3 was trapped in for 57/100 actions.
+    await setup({
+      currentSystem: 1, missionType: 0, cargoPods: 0, cargoType: 0,
+      destination: 0, cargoManifest: null, cargoPayment: 0,
+      tripCount: 0, manifestBoard: undefined, manifestDate: null,
+      score: 300, creditsHigh: 10, creditsLow: 0,
+    });
+    await setShip({ weaponStrength: 30, shieldStrength: 30, maxCargoPods: 10, hullStrength: 20 });
+  });
+
+  it('explicit [Y] still reaches the Top Gun offer, and the offer menu surfaces its exits', async () => {
+    const prompt = await render('traders-cargo');
+    expect(prompt).toMatch(/Space Commandant wishes to speak/i);
+    const [yes, toTopgun] = await press('traders-cargo', 'Y');
+    expect(yes).toMatch(/Yes/);
+    expect(toTopgun).toBe('topgun');
+    await render('topgun');
+    // A stray key inside the offer no longer silently loops — it shows the exits.
+    const [hint] = await press('topgun', 'Q');
+    expect(hint).toMatch(/\(D\)ecline, \(M\)ission/i);
+    const [, back] = await press('topgun', 'D');
+    expect(back).toBe('main-menu');
+  });
+
+  it('a buffered "1" reads as Not-now and the contract still gets signed', async () => {
+    const prompt = await render('traders-cargo');
+    expect(prompt).toMatch(/Space Commandant wishes to speak/i);
+
+    // The key a macro/fast player would send for "manifest #1" — previously
+    // interpreted as consent and warped into the Top Gun loop.
+    const [notNow, next1] = await press('traders-cargo', '1');
+    expect(next1).not.toBe('topgun');
+    expect(notNow).toMatch(/Not now/i);
+    expect(notNow).toMatch(/Manifest/i);   // the board is right there
+
+    const [choice] = await press('traders-cargo', '1');
+    expect(choice).toMatch(/Are you sure/i);
+    await press('traders-cargo', 'Y');
+
+    const after = await char();
+    expect(after!.missionType).toBe(3);
+    expect(after!.destination).toBeGreaterThan(0);
+    expect(after!.cargoPods).toBeGreaterThan(0);
+    track('cargo.commandant_guard');
   });
 });
 
@@ -1394,6 +1576,9 @@ describe('Coverage', () => {
       'goals.dashboard', 'cargo.rim_contract', 'cargo.core_only_for_weak',
       // core end-turn loop + Galactic News Wire digest (keystroke path)
       'turn.end_news_wire',
+      // UGT Phase-2 findings fixes (UGT-PLAYTEST-FINDINGS.md, 2026-07)
+      'score.docking_varfix', 'travel.trip_limit', 'combat.fuel_malfunction',
+      'shipyard.upgrade_plus1', 'cargo.commandant_guard',
     ]) {
       expect(COVERED.has(id), `expected coverage of ${id}`).toBe(true);
     }

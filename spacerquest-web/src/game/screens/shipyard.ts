@@ -52,7 +52,7 @@ export const ShipyardScreen: ScreenModule = {
 \x1b[33;1m           SHIPYARD MENU                 \x1b[0m
 \x1b[37;1m=========================================\x1b[0m
 
-  [U]pgrade component (+10 STR or +1 COND)
+  [U]pgrade component (+1 STR or +1 COND)
   [R]epair all damage
   [S]pecial equipment
   [M]ain Menu

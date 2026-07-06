@@ -330,8 +330,11 @@ export const SpacePatrolScreen: ScreenModule = {
     // ── Space Commandant Y/N (SP.REG.S patrol:181-183) ────────────────────
     if (pendingCommandant.has(characterId)) {
       pendingCommandant.delete(characterId);
-      if (key !== 'N') {
-        // SP.REG.S:183: link"sp.top","wins" — route to wins mission-offer screen
+      // DELIBERATE DEVIATION from SP.REG.S:183 (any non-N key = Yes): only an
+      // explicit Y consents, so buffered menu keys can't warp the player into the
+      // Top Gun mission-offer loop (see traders-cargo.ts Commandant note / UGT
+      // silent contract-refusal finding).
+      if (key === 'Y') {
         pendingWins.set(characterId, 'menu');
         return { output: 'Yes\r\n', nextScreen: 'topgun' };
       }

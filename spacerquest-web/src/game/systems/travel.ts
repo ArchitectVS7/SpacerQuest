@@ -201,10 +201,12 @@ export function canTravel(
   }
   
   if (tripCount >= DAILY_TRIP_LIMIT) {
-    // SP.START.S:315 + cally: flavor text on trip limit exceeded
+    // SP.REG.S:196 — if z1>2 print "Only 3 completed trips allowed per day"
+    // (The "please call again tomorrow" text belongs to the 2-sessions/day cap,
+    // a separate concept from the 3-trips/day cap.)
     return {
       canTravel: false,
-      reason: `You have completed ${DAILY_TRIP_LIMIT} turns through Spacer Quest today\r\n.....The Wonders of Space Await You......\r\n...........Please call again tomorrow........`,
+      reason: `Only ${DAILY_TRIP_LIMIT} completed trips allowed per day\r\n.....The Wonders of Space Await You......\r\n...........Please call again tomorrow........`,
       remainingTrips: 0,
     };
   }

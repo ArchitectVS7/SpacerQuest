@@ -69,9 +69,11 @@ Enter number:
       return { output: `\r\n\x1b[31mUpgrade failed: ${result.error}\x1b[0m\r\n> ` };
     }
 
-    return { 
-      output: `\x1b[2J\x1b[H\x1b[32m${component} upgraded successfully! (-${result.cost} cr)\x1b[0m\r\n`, 
-      nextScreen: 'shipyard' 
+    // SP.SPEED.S up1: ".....done...."l$" now at "x" strength"
+    const nowAt = result.newStrength !== undefined ? ` — now at ${result.newStrength} strength` : '';
+    return {
+      output: `\x1b[2J\x1b[H\x1b[32m${component} upgraded successfully!${nowAt} (-${result.cost} cr)\x1b[0m\r\n`,
+      nextScreen: 'shipyard'
     };
   }
 };

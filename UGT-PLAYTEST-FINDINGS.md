@@ -12,6 +12,24 @@ UGT `PLAN-FORWARD.md` § "GATE C VERDICT".
 
 ---
 
+## FIX STATUS (2026-07-06) — all ranked findings resolved on this branch
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Cargo-docking score terms | `docking.ts` now applies the full varfix `s2=(s2+wb+q6+y)-lb` on every arrival (cargo y=2, no-cargo core y=2, rim y=4/8, wrong-port teleport −5 then y=2). `patrolBattlesWon/Lost` generalized to per-trip wb/lb counters (incremented for ALL battles in `screens/combat.ts` + disconnect resolution, consumed+reset at docking/patrol payoff). Trip distance (q6) is computed in `/api/navigation/arrive` before `completeTravel` deletes the TravelState and passed to `processDocking`. Also fixed en route: `tripsCompleted` (u1) was double-incremented (both `completeTravel` and `processDocking`) — now once per arrival, owned by `completeTravel`. |
+| 2 | Free attacks at fuel 0 | `screens/combat.ts` + `processCombatRound`: if `fuel < floor(weaponStr/2)` or weapon power < 1, the attack prints `<weapon> Malfunction!`, is skipped, burns no fuel, and the enemy still fires (SP.FIGHT1.txt begin). |
+| 3 | Roscoe's +10 for +1 price | `upgrades.ts`: strength upgrades grant exactly **+1** (SP.SPEED.S up1 `x=x+1`) at the unchanged tiered price. The ej=sp "Special Prices Today" discount is still unmodeled (noted in-code; needs per-session state). |
+| 4 | Silent cargo-contract refusal | **Root cause found**: the Space Commandant interstitial (armed at weapons+shields ≥ 50 — which run 3 crossed via the Finding-3 bug) treated ANY key except N as "Yes", so a buffered "1" (meant for the manifest board) consented and warped the player into the Top Gun D/M/T offer menu, which swallowed every other key forever. Fixes: Commandant prompts (traders-cargo + space-patrol) now require an explicit **Y**; any other key = "Not now" + the board renders immediately; the Top Gun offer menu surfaces its exits on unrecognized keys. Credits were a proxy: the upgrade spree that crossed w+s≥50 is also what drained credits. |
+| 5 | Manual Appendix A ranks | Corrected from `SP.END.txt:373-381` / `constants.ts` (Admiral 750, Top Dog 1,200, Grand Mufti 1,650, Mega Hero 2,250, Giga Hero 2,700); §4.8 scoring rewritten around the varfix formula (+1 per battle win at docking, not +10). |
+| 6 | `DAILY_TRIP_LIMIT` | Now **3** (`constants.ts`), with the authentic SP.REG.S refusal text ("Only 3 completed trips allowed per day"); `EVALUATION.md` claim corrected. |
+| 7 | PRD §9.2 ~50% win rate | Metric amended with a note explaining band matchmaking makes 50% unachievable by design; watch for degenerate values instead. |
+
+All fixes are covered by keystroke-path tests in `tests/playtest-coverage.test.ts`
+(§"UGT PHASE-2 FIXES") asserting real DB effects; full suite green (51 files / 1,949 tests).
+The re-verification one-liner at the bottom of this doc remains the acceptance check.
+
+---
+
 ## Executive verdict
 
 **The economy meets the game's documented design intent. The progression does not — and every deviation

@@ -246,15 +246,17 @@ export function registerWebSocketHandler(io: import('socket.io').Server, fastify
           });
 
           // Apply combat outcome to character
+          // Also bump the per-trip wb/lb counters (consumed by the next docking
+          // varfix / patrol payoff) so disconnect-resolved battles score like others.
           if (resolution.outcome === 'DEFEAT') {
             await prisma.character.update({
               where: { id: socket.characterId },
-              data: { battlesLost: { increment: 1 } },
+              data: { battlesLost: { increment: 1 }, patrolBattlesLost: { increment: 1 } },
             });
           } else if (resolution.outcome === 'VICTORY') {
             await prisma.character.update({
               where: { id: socket.characterId },
-              data: { battlesWon: { increment: 1 } },
+              data: { battlesWon: { increment: 1 }, patrolBattlesWon: { increment: 1 } },
             });
           }
 

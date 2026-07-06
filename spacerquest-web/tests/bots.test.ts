@@ -347,7 +347,7 @@ describe('End Turn Validation', () => {
 
     const result = validateEndTurn(1);
     expect(result.canEnd).toBe(false);
-    expect(result.reason).toContain('1 trip(s) remaining');
+    expect(result.reason).toContain('2 trip(s) remaining');
   });
 
   it('allows end turn at 3 trips', async () => {

@@ -159,7 +159,10 @@ export const FUEL_DEPOT_TRANSFER_MAX = 2900;   // SP.REAL.txt line 225: max sing
 // TRAVEL & NAVIGATION
 // ============================================================================
 // Travel limitations
-export const DAILY_TRIP_LIMIT = 2;
+// SP.LIFT.S: "Only 3 completed trips allowed per day" (z1>2 blocks the 4th).
+// The original also capped LOGIN SESSIONS at 2/day — that is a separate concept
+// (not modeled here) and must not be conflated with the trip cap.
+export const DAILY_TRIP_LIMIT = 3;
 export const COURSE_CHANGE_FUEL_MULTIPLIER = 5; // hull × 5 per course change
 export const COURSE_CHANGE_LIMIT_BASE = 3;      // Base course changes per trip
 export const COURSE_CHANGE_LIMIT_INCREMENT = 2; // Additional per trip

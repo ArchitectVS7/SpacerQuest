@@ -6,41 +6,37 @@
 
 ## PROMPT (paste this)
 
-You are continuing work on **SpacerQuest**, a faithful web remake of a 1991 Apple II BBS game. The remake lives in `spacerquest-web/` (server-side terminal "screens" over sockets to an xterm frontend; the computer plays the other 20 spacers' turns). Working dir: `/Users/vs7/Dev/Games/SpacerQuest`.
+You are continuing work on **SpacerQuest**, a faithful web remake of a 1991 Apple II BBS game. The remake lives in `spacerquest-web/` (server-side terminal "screens" over sockets to an xterm frontend; the computer plays the other 20 spacers' turns). Working dir: `C:\dev\Games\SpacerQuest` (Windows as of 2026-07-06; was previously a Mac).
 
-**Read `UGT-PLAYTEST-FINDINGS.md` first — it is the current work order.** In the last session, the UGT
-(Universal Game Tester) project ran a full LLM balance campaign against the LIVE server (~1,300 competent
-actions through the real screens, 10×100 + 1×300 runs) and a sub-agent design-intent review board delivered a
-verdict: **economy meets the design intent; progression deviates via confirmed rewrite bugs vs the 1991
-source.** Robustness was perfect (0 crashes/violations). Two bugs were already fixed on this branch during
-the campaign (nondeterministic user/character resolution; dev-setup run-isolation leaks — commits `c0f1b9fa`,
-`7e671acc`). `EVALUATION.md` remains the broader evaluation ledger; its §5 coverage gaps (RNG seams, boss
-missions, arena) are still open but now SECOND in priority.
+**Read `UGT-PLAYTEST-FINDINGS.md` first** — its "FIX STATUS (2026-07-06)" table records that ALL
+seven ranked findings from the UGT Phase-2 balance campaign are now FIXED in the working tree
+(session of 2026-07-06, **uncommitted**): docking varfix score restoration (+wb+q6+y−lb, per-trip
+battle counters, u1 double-count), 3-trip daily cap, combat fuel Malfunction! gate, Roscoe +1
+upgrades, the Commandant-prompt hijack behind the "silent contract refusal" (root cause found), and
+the Manual/PRD/EVALUATION doc corrections. Each fix has keystroke-path tests in
+`tests/playtest-coverage.test.ts` §"UGT PHASE-2 FIXES". Suite green: 51 files / 1,949 tests; tsc clean.
 
-**Your task: fix the ranked findings in `UGT-PLAYTEST-FINDINGS.md`**, in its suggested order:
-1. **Cargo-docking score dropped the original's `+distance+wins` terms** (`docking.ts:227-244`, flat +2 vs
-   `SP.DOCK1.txt` varfix; `patrol.ts:197` already does it right) + **`DAILY_TRIP_LIMIT` conflates 2
-   sessions/day with 3 trips/day** (`constants.ts:162`). Together these are why conquest extrapolates to
-   ~54,000 actions instead of the authentic months-scale.
-2. **No fuel gate on attacking** — free full-power attacks at fuel 0 (`screens/combat.ts:177-178`); original
-   made weapons "Malfunction!" and skip your round (`SP.FIGHT1.txt:308-310`).
-3. **Roscoe's upgrade grants +10 strength at the per-+1 price** (`upgrades.ts:442` vs `SP.SPEED.txt:158-179`,
-   contradicts its own comment at `upgrades.ts:10-15`).
-4. **Silent cargo-contract refusal state** (near-soft-lock, root cause open — repro data referenced in the
-   findings doc, §Finding 4).
-5. Docs: Manual Appendix A rank thresholds (Admiral+ wrong); PRD §9.2's unachievable "~50% combat win rate".
-
-Each fix needs tests through the keystroke path; extend `tests/playtest-coverage.test.ts` where it fits.
+**Your task, in order:**
+1. If the user approves, commit the working tree (branch first — you are on `main`; suggested name
+   `ugt-findings-fixes`). Diff spans: `constants.ts`, `travel.ts`, `docking.ts`, `navigation.ts`,
+   `screens/combat.ts`, `systems/combat.ts`, `upgrades.ts`, `screens/{traders-cargo,space-patrol,topgun,shipyard,shipyard-upgrade}.ts`,
+   `sockets/game.ts`, `prisma/schema.prisma` (comments only), 8 test files, and the 4 root docs.
+2. Re-verification: from the UGT repo (NOT on this machine — it lived at
+   `/Users/vs7/Dev/Games/_UGT Universal Game Tester` on the Mac), server up with `CLASSIC_MODE=false`:
+   `python3 integrations/spacerquest/run_llm_playtest.py 3 100 anthropic claude-sonnet-5` — expect
+   score velocity up ~5-15×, combat fuel spend to bite, 0 violations still.
+3. Then `EVALUATION.md` §5 coverage gaps (RNG seams, boss missions, arena) — the standing second priority.
 
 **Hard rules (from the user's global CLAUDE.md — follow exactly):**
 - **Test through the UI, never the API.** Drive actions via the keystroke path — `handleScreenInput`/`handleScreenRequest` on the screen-router (what a real keypress runs). Never use REST/`fetch` to bypass a screen a player would navigate. Assert real effects (DB/state changes), not just "a screen rendered."
 - **All tests must pass before committing.** Never dismiss a failure as "pre-existing" — investigate the root cause and fix it. A statistical anomaly (e.g. expecting 30% hazards, seeing 0) is a bug to investigate, not an observation to log.
-- Don't commit or push unless asked. (As of 2026-07-05 the tree is clean; branch
-  `playthrough-coverage-rng-seams` is pushed and current.)
+- Don't commit or push unless asked.
 
 **Environment setup (do this first):**
 ```
-cd /Users/vs7/Dev/Games/SpacerQuest/spacerquest-web
+cd C:\dev\Games\SpacerQuest\spacerquest-web    # Windows; Git Bash path /c/dev/Games/SpacerQuest/spacerquest-web
+# If fresh checkout/machine: npm install; if fresh DB volume: npx prisma db push && npm run db:seed
+# (migrations lag schema.prisma — User.isAdmin has no migration; db push is the sync mechanism)
 docker compose up -d db redis                 # Postgres :5454, Redis :6380 (game's own, not Supabase)
 export DATABASE_URL="postgresql://spacerquest:spacerquest@localhost:5454/spacerquest"
 npx prisma migrate deploy   # (only if a fresh volume; usually already seeded: 28 systems, 65 NPCs, 20 bots)
@@ -72,8 +68,9 @@ Confirm the baseline is green before changing anything.
 
 **Do NOT do yet:** expanding the Great Void into a larger quest — it's flagged in `EVALUATION.md` §7 as a deliberate future content pass, not now.
 
-**Session state (2026-07-05):** working tree clean; everything committed on `playthrough-coverage-rng-seams`
-(latest: UGT dual-validation fixes `c0f1b9fa`/`7e671acc` + this handover/findings doc). Note `origin/main`
-has moved ahead separately — reconcile when merging. The UGT test harness lives in the sibling repo
-`../_UGT Universal Game Tester` (see its `PLAN-FORWARD.md` for the campaign record; re-verification one-liner
-is at the bottom of `UGT-PLAYTEST-FINDINGS.md`).
+**Session state (2026-07-06):** on `main` (PR #14 merged the previous branch; `origin/main` up to date at
+session start). **All 7 UGT findings fixed in the working tree, UNCOMMITTED** — suite green (51 files /
+1,949 tests), `tsc --noEmit` clean. Machine moved Mac → Windows: fresh `npm install` + `prisma db push` +
+`npm run db:seed` were needed. The UGT test harness repo (`_UGT Universal Game Tester`) is NOT on this
+machine — re-verification must run wherever it lives (see the one-liner at the bottom of
+`UGT-PLAYTEST-FINDINGS.md`).

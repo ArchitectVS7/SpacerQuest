@@ -154,13 +154,22 @@ export const TopgunScreen: ScreenModule = {
         };
       }
 
-      // T (or default): show talk text, re-show menu
-      pendingWins.set(characterId, 'talk');
-      const character = await prisma.character.findUnique({ where: { id: characterId } });
-      const prefix = character?.rank || '';
-      const name = character?.name || '';
+      if (effective === 'T') {
+        // Talk: show talk text, re-show menu
+        pendingWins.set(characterId, 'talk');
+        const character = await prisma.character.findUnique({ where: { id: characterId } });
+        const prefix = character?.rank || '';
+        const name = character?.name || '';
+        return {
+          output: `${effective}\r\n` + winsTalkText() + winsMenuText(prefix, name),
+        };
+      }
+
+      // Unrecognized key: surface the exits instead of silently re-looping.
+      // (UGT silent-refusal finding: buffered keys trapped players here with no
+      // visible way out — the loop must always show D/M/T.)
       return {
-        output: `${effective}\r\n` + winsTalkText() + winsMenuText(prefix, name),
+        output: `${effective}\r\n\x1b[33mChoose (D)ecline, (M)ission, or [T]alk about it:\x1b[0m `,
       };
     }
 
@@ -177,13 +186,21 @@ export const TopgunScreen: ScreenModule = {
         pendingWins.set(characterId, 'confirm');
         return { output: `${key2}\r\nSure you want to take on this mission? [Y]/(N): ` };
       }
-      // T again
-      pendingWins.set(characterId, 'talk');
-      const character = await prisma.character.findUnique({ where: { id: characterId } });
-      const prefix = character?.rank || '';
-      const name = character?.name || '';
+      if (key2 === 'T') {
+        // T again
+        pendingWins.set(characterId, 'talk');
+        const character = await prisma.character.findUnique({ where: { id: characterId } });
+        const prefix = character?.rank || '';
+        const name = character?.name || '';
+        return {
+          output: `${key2}\r\n` + winsTalkText() + winsMenuText(prefix, name),
+        };
+      }
+
+      // Unrecognized key: keep the exits visible (see 'menu' state note).
+      pendingWins.set(characterId, 'menu');
       return {
-        output: `${key2}\r\n` + winsTalkText() + winsMenuText(prefix, name),
+        output: `${key2}\r\n\x1b[33mChoose (D)ecline, (M)ission, or [T]alk about it:\x1b[0m `,
       };
     }
 

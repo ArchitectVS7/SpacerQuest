@@ -146,22 +146,23 @@ describe('FR-TRAVEL', () => {
       const today = new Date();
       const result = canTravel(0, today);
       expect(result.canTravel).toBe(true);
-      expect(result.remainingTrips).toBe(2);
+      expect(result.remainingTrips).toBe(3);
     });
 
-    it('blocks travel at 2 trips today', () => {
+    it('blocks travel at 3 trips today (SP.REG.S: if z1>2)', () => {
       const today = new Date();
-      const result = canTravel(2, today);
+      expect(canTravel(2, today).canTravel).toBe(true); // 3rd trip still allowed
+      const result = canTravel(3, today);
       expect(result.canTravel).toBe(false);
       expect(result.remainingTrips).toBe(0);
     });
 
-    it('uses original SP.START.S:315 flavor text on trip limit (not generic error)', () => {
-      // Original: print "You have completed 2 turns through Spacer Quest today"
-      // + cally: ".....The Wonders of Space Await You......" / "...........Please call again tomorrow........"
+    it('uses original SP.REG.S:196 trip-cap text on trip limit (not the session-cap text)', () => {
+      // Original: print "Only 3 completed trips allowed per day" — the
+      // "completed N turns" text belongs to the separate 2-sessions/day cap.
       const today = new Date();
-      const result = canTravel(2, today);
-      expect(result.reason).toContain('You have completed 2 turns through Spacer Quest today');
+      const result = canTravel(3, today);
+      expect(result.reason).toContain('Only 3 completed trips allowed per day');
       expect(result.reason).toContain('Wonders of Space Await You');
       expect(result.reason).toContain('Please call again tomorrow');
     });
@@ -170,16 +171,16 @@ describe('FR-TRAVEL', () => {
       const today = new Date();
       const result = canTravel(1, today);
       expect(result.canTravel).toBe(true);
-      expect(result.remainingTrips).toBe(1);
+      expect(result.remainingTrips).toBe(2);
     });
 
     it('resets trip counter on a new calendar day', () => {
       process.env.CLASSIC_MODE = 'true';
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
-      const result = canTravel(2, yesterday);
+      const result = canTravel(3, yesterday);
       expect(result.canTravel).toBe(true);
-      expect(result.remainingTrips).toBe(2);
+      expect(result.remainingTrips).toBe(3);
       delete process.env.CLASSIC_MODE;
     });
 

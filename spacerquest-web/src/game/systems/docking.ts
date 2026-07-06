@@ -18,8 +18,12 @@ import { checkPortEviction } from './economy.js';
  *
  * Covers SP.DOCK1.S arrival logic (core systems 1-14, special systems 27-28)
  * and SP.DOCK2.S rim arrival logic (systems 15-20).
+ *
+ * @param tripDistance q6 — the just-completed trip's distance in astrecs. Feeds the
+ *   varfix score award (s2=(s2+wb+q6+y)-lb, SP.DOCK1.txt varfix). The arrival route
+ *   passes calculateDistance(origin, destination); direct callers may omit it (0).
  */
-export async function processDocking(characterId: string, systemId: number) {
+export async function processDocking(characterId: string, systemId: number, tripDistance: number = 0) {
   const character = await prisma.character.findUnique({
     where: { id: characterId },
     include: { ship: true },
@@ -27,8 +31,13 @@ export async function processDocking(characterId: string, systemId: number) {
   if (!character) return { success: false, error: 'Character not found' };
 
   const messages: string[] = [];
-  // varfix tracks whether u1=u1+1 (tripsCompleted) has been applied this docking
+  // varfix tracks whether the arriv3 varfix (score award + wb/lb reset) has been
+  // applied this docking. NOTE: tripsCompleted (u1) is incremented once per arrival
+  // by completeTravel(), NOT here — incrementing in both places double-counted trips.
   let varfixDone = false;
+  // Per-trip battle counters (original wb/lb) — consumed and reset by varfix below.
+  const wb = character.patrolBattlesWon;
+  const lb = character.patrolBattlesLost;
 
   // Log docking event
   await prisma.gameLog.create({
@@ -63,7 +72,7 @@ export async function processDocking(characterId: string, systemId: number) {
         destination: 0,
         cargoPods: 0,
         cargoType: 0,
-        tripsCompleted: character.tripsCompleted + 1,
+        // tripsCompleted (u1) already incremented by completeTravel for this arrival
         tripCount: 0,
         astrecsTraveled: (character.astrecsTraveled + 10) > 29999 ? 0 : character.astrecsTraveled + 10,  // SP.MAL.S:317 bonus
       },
@@ -183,8 +192,12 @@ export async function processDocking(characterId: string, systemId: number) {
             cargoPayment: 0,
             cargoManifest: null,
             destination: 0,
-            // SP.DOCK1.S:63 — s2=s2-5: score penalty for wrong-port delivery
-            score: Math.max(0, character.score - 5),
+            // SP.DOCK1.S:63 — s2=s2-5: wrong-port penalty. The original then falls
+            // through arriv2 → arriv3, so the y=2 varfix still applies:
+            // s2 = (s2 - 5 + wb + q6 + 2) - lb, clamped at 0.
+            score: Math.max(0, character.score - 5 + wb + tripDistance + 2 - lb),
+            patrolBattlesWon: 0,
+            patrolBattlesLost: 0,
           },
         }),
         prisma.gameLog.create({
@@ -224,8 +237,10 @@ export async function processDocking(characterId: string, systemId: number) {
       && (character.destination === systemId || character.cargoManifest === 'X' || isBribedManifest)) {
     const isAndromeda = character.cargoManifest === 'X';
     let payment: number;
-    // q6 = distance for varfix scoring: bribed=20 (stored in cargoPayment), Andromeda=not used, regular=TBD
-    const q6ForScoring = isBribedManifest ? character.cargoPayment : 0;
+    // q6 = trip distance in astrecs for varfix scoring (SP.DOCK1.txt varfix).
+    // Bribed manifests use the q6=20 stored at forge time (SP.LIFT.S:107, kept in
+    // cargoPayment); regular and Andromeda deliveries use the actual trip distance.
+    const q6ForScoring = isBribedManifest ? character.cargoPayment : tripDistance;
 
     if (isAndromeda) {
       // SP.DOCK1.S:69: if (q3$="X") and (q5>69) q5=70; then q5=(q5*300)+(q4*500)
@@ -240,8 +255,11 @@ export async function processDocking(characterId: string, systemId: number) {
       payment = character.cargoPayment;
     }
 
-    // SP.DOCK1.S:arriv3: y=2:gosub varfix — score += wb + q6 + 2 - lb (wb/lb=0 for cargo trips)
-    const newScore = Math.max(0, character.score + q6ForScoring + 2);
+    // SP.DOCK1.S:arriv3: y=2:gosub varfix — s2=(s2+wb+q6+y)-lb with y=2, where
+    // wb/lb are the per-trip battle counters and q6 the trip distance. This is the
+    // main progression pump: a long haul with a battle win pays ~+15-40 score.
+    // (patrol.ts:calculatePatrolPayoff implements the same formula with y=1.)
+    const newScore = Math.max(0, character.score + wb + q6ForScoring + 2 - lb);
 
     const { high, low } = addCredits(character.creditsHigh, character.creditsLow, payment);
     // SP.DOCK1.S varfix: k1=k1+q1:if (k1>29999):k1=0 — track cargo pods delivered
@@ -263,8 +281,9 @@ export async function processDocking(characterId: string, systemId: number) {
         cargoPayment: 0,
         manifestBoard: null,
         manifestDate: null,
-        // SP.DOCK1.S:arriv3/varfix: u1=u1+1
-        tripsCompleted: { increment: 1 },
+        // varfix: wb=0:lb=0 — per-trip battle counters consumed by the score award
+        patrolBattlesWon: 0,
+        patrolBattlesLost: 0,
       },
     });
     varfixDone = true;
@@ -285,12 +304,8 @@ export async function processDocking(characterId: string, systemId: number) {
     const ship = character.ship;
     const shipUpdates: Record<string, number> = {};
 
-    // SP.DOCK2.S:70-72: y=4; if q3$="X" y=8; gosub varfix → s2=(s2+y)
+    // SP.DOCK2.S:70-72: y=4; if q3$="X" y=8; gosub varfix → s2=(s2+wb+q6+y)-lb
     // Andromeda mission cargo (cargoManifest='X') doubles the rim arrival score bonus.
-    // Applied ATOMICALLY (increment) — this block runs after the cargo-delivery block
-    // above, which may already have written score+2 for the delivered contract; using the
-    // stale `character.score` here would clobber that. (Latent until rim cargo contracts
-    // exist; increment stacks the rim bonus on top of the delivery award.)
     const rimScoreBonus = character.cargoManifest === 'X' ? 8 : 4;
 
     // Fuel consumption on docking (SP.DOCK2.S:47-51):
@@ -339,10 +354,25 @@ export async function processDocking(characterId: string, systemId: number) {
         data: shipUpdates,
       });
     }
-    await prisma.character.update({
+    // Rim varfix. Re-read score/wb/lb: the cargo-delivery block above may already
+    // have written score and reset the counters (then fresh wb/lb are 0 and only
+    // the rim y bonus stacks — no double-count of distance/battles).
+    const freshRim = await prisma.character.findUnique({
       where: { id: characterId },
-      data: { score: { increment: rimScoreBonus } },
+      select: { score: true, patrolBattlesWon: true, patrolBattlesLost: true },
     });
+    if (freshRim) {
+      const rimQ6 = varfixDone ? 0 : tripDistance;
+      await prisma.character.update({
+        where: { id: characterId },
+        data: {
+          score: Math.max(0, freshRim.score + freshRim.patrolBattlesWon + rimQ6 + rimScoreBonus - freshRim.patrolBattlesLost),
+          patrolBattlesWon: 0,
+          patrolBattlesLost: 0,
+        },
+      });
+    }
+    varfixDone = true;
   }
 
   // ── SP.LIFT.S fueler subroutine (lines 213-229): Port eviction check ─────
@@ -393,13 +423,27 @@ export async function processDocking(characterId: string, systemId: number) {
     });
   }
 
-  // SP.DOCK1.S:arriv3/varfix: u1=u1+1 — fires for all dockings that didn't already call varfix
-  // (cargo delivery path sets varfixDone=true above; wrong-port teleport returns early without varfix)
-  if (!varfixDone) {
-    await prisma.character.update({
+  // SP.DOCK1.S:arriv3 varfix for every non-cargo core arrival (1-14): the original
+  // runs y=2:gosub varfix on ALL arrivals (arrv falls through to arriv3 with no
+  // cargo), so plain docking also awards s2=(s2+wb+q6+2)-lb and resets wb/lb.
+  // Rim arrivals ran their own y=4/8 varfix above; systems 21+ have their own
+  // arrival scoring (SP.BLACK / SP.MAL paths) and are left untouched here.
+  // (tripsCompleted/u1 is incremented once per arrival by completeTravel.)
+  if (!varfixDone && systemId >= 1 && systemId <= 14) {
+    const fresh = await prisma.character.findUnique({
       where: { id: characterId },
-      data: { tripsCompleted: { increment: 1 } },
+      select: { score: true, patrolBattlesWon: true, patrolBattlesLost: true },
     });
+    if (fresh) {
+      await prisma.character.update({
+        where: { id: characterId },
+        data: {
+          score: Math.max(0, fresh.score + fresh.patrolBattlesWon + tripDistance + 2 - fresh.patrolBattlesLost),
+          patrolBattlesWon: 0,
+          patrolBattlesLost: 0,
+        },
+      });
+    }
   }
 
   const msg = messages.length > 0 ? messages.join('\r\n') : `Docked at System ${systemId}`;

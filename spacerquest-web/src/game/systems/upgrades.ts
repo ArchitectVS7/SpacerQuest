@@ -439,8 +439,15 @@ export async function upgradeShipComponent(
 
   const updateData: Record<string, number | boolean> = {};
   if (upgradeType === 'STRENGTH') {
-    const newStrength = currentStrength + 10;
-    if (newStrength > COMPONENT_MAX_STRENGTH) {
+    // SP.SPEED.S up1 (lines 158-179): x=x+1 — each purchase buys exactly +1
+    // strength at the tiered price (floor(str/10)+1)*10,000 cr. This is the
+    // deliberate late-game sink for pushing 90→199 past the shipyard tiers;
+    // granting +10 here made Roscoe's ~10× too generous vs the 1991 original.
+    // (Not yet modeled: the ej=sp "Special Prices on Upgrades Today!" discount —
+    // SP.CARGO.txt:76 rolls a random special-price system per session.)
+    const newStrength = currentStrength + 1;
+    if (currentStrength >= COMPONENT_MAX_STRENGTH) {
+      // SP.SPEED.S up1: if x>198 x=199 "Component strength at max of 199"
       return { success: false, error: 'Component already at maximum strength' };
     }
 

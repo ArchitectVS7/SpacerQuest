@@ -37,9 +37,9 @@ describe('Upgrades system - pure logic', () => {
   });
 
   describe('Upgrade mechanics', () => {
-    it('STRENGTH upgrade adds +10', () => {
+    it('STRENGTH upgrade adds +1 (SP.SPEED.S up1: x=x+1)', () => {
       const currentStrength = 20;
-      expect(currentStrength + 10).toBe(30);
+      expect(currentStrength + 1).toBe(21);
     });
 
     it('CONDITION upgrade adds +1 capped at 9', () => {
@@ -368,7 +368,7 @@ describe('Upgrades system - DB functions', () => {
     const result = await upgradeShipComponent('char-1', 'HULL', 'STRENGTH');
     expect(result.success).toBe(true);
     expect(result.cost).toBe(30000); // SP.SPEED.S: a=3, cost=3*10,000=30,000
-    expect(result.newStrength).toBe(30); // 20 + 10
+    expect(result.newStrength).toBe(21); // 20 + 1 (SP.SPEED.S up1: x=x+1)
   });
 
   it('succeeds with CONDITION upgrade for DRIVES (SP.SPEED upgrad pricing)', async () => {
@@ -1343,13 +1343,13 @@ describe('SP.SPEED.S upit — Life support strength cap at 50', () => {
     upgradeShipComponentFn = upgradeMod.upgradeShipComponent;
   });
 
-  it('blocks LIFE_SUPPORT upgrade at strength 40 when non-Chrysalis (next step = 50, allowed)', async () => {
-    // LSS Model 4A at strength 40 → upgrade to 50 is OK (l1<51 → return in original, upgrade allowed)
+  it('allows LIFE_SUPPORT upgrade at strength 40 when non-Chrysalis (41 <= 50 cap)', async () => {
+    // LSS Model 4A at strength 40 → +1 = 41 is OK (l1<51 → return in original, upgrade allowed)
     prisma.character.findUnique.mockResolvedValue(makeCharWithShip(100, 0));
     prisma.$transaction.mockResolvedValue(undefined);
     const result = await upgradeShipComponentFn('char-1', 'LIFE_SUPPORT', 'STRENGTH');
     expect(result.success).toBe(true);
-    expect(result.newStrength).toBe(50);
+    expect(result.newStrength).toBe(41);
   });
 
   it('blocks LIFE_SUPPORT upgrade when current strength=50 and non-Chrysalis (would exceed 50)', async () => {
@@ -1370,6 +1370,6 @@ describe('SP.SPEED.S upit — Life support strength cap at 50', () => {
     prisma.$transaction.mockResolvedValue(undefined);
     const result = await upgradeShipComponentFn('char-1', 'LIFE_SUPPORT', 'STRENGTH');
     expect(result.success).toBe(true);
-    expect(result.newStrength).toBe(60);
+    expect(result.newStrength).toBe(51);
   });
 });

@@ -959,14 +959,15 @@ Combat happens automatically when a pirate intercepts you. The combat loop:
 
 ### 4.8 The Scoring System
 
-**Score (`sc`) accumulates from:**
-- Completing cargo trips (+1 per trip, with modifiers)
-- Winning battles (+10 per win)
+**Score (`s2`) accumulates mainly through the docking `varfix`: on every arrival,
+`s2 = (s2 + wb + q6 + y) − lb`, where `wb`/`lb` are battles won/lost during the trip,
+`q6` is the trip distance in astrecs, and `y` is the arrival bonus (2 at a core port,
+4 at a rim port — 8 with Andromeda cargo, 1 on a Space Patrol payoff). In practice:**
+- Docking after a trip (+2 core / +4 rim, plus trip distance in astrecs)
+- Winning battles (+1 per win, credited at the next docking; −1 per loss)
 - Being rescued, rescuing others (+bonus)
-- Completing Patrol missions
-- Distance traveled (astrecs, `j1`)
-- Cargo delivered (`k1`)
-- Defeating Maligna (+100)
+- Completing Patrol missions (same formula with y=1)
+- Defeating Maligna (+100 and +5 mission bonus)
 
 **Total points** (`s2`) is the master leaderboard value combining all activity.
 
@@ -1132,19 +1133,19 @@ At 10,001 total points, you are written into the Great Heroes list — and you c
 
 Rank is stored in the `pp$` variable and is displayed alongside your name in battle logs, cargo manifests, and patrol orders. Rank gates access to the Special Armament Section in the Speede Shoppe (Lieutenant minimum to join an alliance; higher ranks unlock advanced weaponry).
 
-The rank names below are confirmed from the source (they appear in `pp$` throughout the codebase). The point thresholds and credit honorariums come from the companion manual and are **not independently verified** against the sysop configuration files — treat them as approximate until confirmed against a live `SP.SYSOP.S` review.
+The rank names and point thresholds below are verified against the source (`SP.END.txt:373-381`; the promotion check is `sc = floor(score/150)` with rank steps at sc ≥ 1, 2, 3, 5, 8, 11, 15, 18). Note the sc=14 gap (score 2,100–2,249 still ranks Grand Mufti) is an original quirk, preserved in the remake.
 
-| Rank | Approx. Points Required | Notes |
-|------|------------------------|-------|
+| Rank | Points Required | Notes |
+|------|----------------|-------|
 | Lieutenant | 0–149 | Minimum to join an alliance |
 | Commander | 150–299 | |
 | Captain | 300–449 | |
-| Commodore | 450–599 | |
-| Admiral | 600–899 | Patrol NPCs carry Admiral rank (Wong, Hutchins, Bruiser, Borgia) |
-| Top Dog | 900–1,099 | |
-| Grand Mufti | 1,100–1,399 | |
-| Mega Hero | 1,400–1,699 | |
-| Giga Hero | 1,700+ | Qualifies for all Special Armament; endgame-ready |
+| Commodore | 450–749 | |
+| Admiral | 750–1,199 | Patrol NPCs carry Admiral rank (Wong, Hutchins, Bruiser, Borgia) |
+| Top Dog | 1,200–1,649 | |
+| Grand Mufti | 1,650–2,249 | |
+| Mega Hero | 2,250–2,699 | |
+| Giga Hero | 2,700+ | Qualifies for all Special Armament; endgame-ready |
 
 Patrol rank is referenced in `SP.BAR.S` (`mp$=right$(pp$,2)`) and `SP.WARP.S` to determine access to the Maligna/Nemesis missions. `][` as the right two characters of `pp$` identifies a Space Patrol officer — patrol ships carry this prefix in their commander names.
 

@@ -380,6 +380,8 @@ export interface CombatRound {
   combatLog: string[];
   /** SP.FIGHT1.S:318 — 1/5 lucky shot fired when enemy shields deflect */
   isLuckyShot: boolean;
+  /** SP.FIGHT1.S:308-310 — weapons malfunctioned (no power/fuel): attack skipped */
+  weaponsMalfunction: boolean;
 }
 
 /**
@@ -414,6 +416,7 @@ export function processCombatRound(
   roboticsStrength = 0,
   roboticsCondition = 0,
   luckyShotRoll?: number,
+  weaponsMalfunction = false,
 ): CombatRound {
   const combatLog: string[] = [];
 
@@ -445,7 +448,12 @@ export function processCombatRound(
   let playerSystemDamage = 0;
   let isLuckyShot = false;
 
-  if (e6 > e9) {
+  if (weaponsMalfunction) {
+    // SP.FIGHT1.S:308-310 — if (x8<1) or (f1<x) print w1$;fz$:goto pirfite
+    // Your attack is skipped entirely (not even a lucky-shot roll); the enemy
+    // still fires below. Out of fuel = defenseless, retreat-or-pay.
+    combatLog.push('Weapons Malfunction!');
+  } else if (e6 > e9) {
     // SP.FIGHT1.S:311 — direct hit: x=(e6-e9)
     let x = e6 - e9;
     // SP.FIGHT1.S:323 — if r2<1 y=(y/2): Battle Computer malfunction halves damage
@@ -505,6 +513,7 @@ export function processCombatRound(
     battleAdvantage,
     combatLog,
     isLuckyShot,
+    weaponsMalfunction,
   };
 }
 
