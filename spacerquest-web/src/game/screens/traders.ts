@@ -8,26 +8,8 @@ import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
 import { formatCredits } from '../utils.js';
 import { getCargoDescription, getFuelPrice, getSystemName } from '../systems/economy.js';
-import { CORE_SYSTEM_NAMES } from '../constants.js';
-
-/**
- * SP.CARGO.txt lines 74-80: Daily upgrade specials.
- *
- * Original:
- *   if s2<150 ej=0:goto bddd       — need score >= 150 (Commander rank)
- *   if ej>0 goto bddd              — already set for today
- *   r=8:gosub rand:ej=x+3          — random system 4-11 (rand 1-8 + 3)
- *   "Today: "ll$" has specials on Upgrades at the Speede Shoppe"
- *
- * We generate a deterministic daily special using the date as seed.
- */
-function getDailyUpgradeSpecialSystem(): number {
-  const now = new Date();
-  // Use date components to create a pseudo-random but deterministic daily value
-  const seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
-  // Original: r=8:gosub rand:ej=x+3 → system 4-11
-  return (seed % 8) + 4;
-}
+import { getDailyUpgradeSpecialSystem } from '../systems/upgrades.js';
+import { CORE_SYSTEM_NAMES, RANK_THRESHOLDS } from '../constants.js';
 
 export const TradersScreen: ScreenModule = {
   name: 'traders',
@@ -46,9 +28,8 @@ export const TradersScreen: ScreenModule = {
 
     // SP.CARGO.txt lines 74-80: Daily upgrade specials
     // Only show if player has score >= 150 (Commander rank, matching s2<150 check)
-    const scoreLevel = Math.floor(character.score / 150);
     let upgradeSpecialLine = '';
-    if (scoreLevel >= 1) {
+    if (character.score >= RANK_THRESHOLDS.COMMANDER) {
       const specialSystemId = getDailyUpgradeSpecialSystem();
       const specialSystemName = CORE_SYSTEM_NAMES[specialSystemId] || `System ${specialSystemId}`;
       upgradeSpecialLine = `\r\n\x1b[33;1mToday: ${specialSystemName} has specials on Upgrades at the Speede Shoppe\x1b[0m\r\n`;

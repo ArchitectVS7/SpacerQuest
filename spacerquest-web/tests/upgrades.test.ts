@@ -15,6 +15,9 @@ import {
   YARD_COMPONENT_TIER_PRICES,
   COMPONENT_TIER_NAMES,
   purchaseShipComponent,
+  getDailyUpgradeSpecialSystem,
+  applySpecialUpgradeDiscount,
+  isUpgradeSpecialActive,
 } from '../src/game/systems/upgrades';
 
 // ============================================================================
@@ -138,6 +141,53 @@ describe('Upgrades system - pure logic', () => {
       // The second parameter does not affect price — original uses a fixed 10,000 multiplier
       expect(calculateUpgradePrice(5, 0)).toBe(10000);
       expect(calculateUpgradePrice(5, 99999)).toBe(10000);
+    });
+  });
+
+  describe('SP.SPEED "Special Prices on Upgrades Today!" (ej=sp discount)', () => {
+    // SP.SPEED.S up3 (lines 175-181): if ej=sp, step the cost tier `a` down:
+    //   if a<3 a=a-1 : if a<5 a=a-2 : if a<7 a=a-3 : else a=a-4 : if a<1 a=1
+    it('applySpecialUpgradeDiscount matches the up3 step table (floored at 1)', () => {
+      expect(applySpecialUpgradeDiscount(1)).toBe(1);  // a<3: 1-1=0 → 1
+      expect(applySpecialUpgradeDiscount(2)).toBe(1);  // a<3: 2-1=1
+      expect(applySpecialUpgradeDiscount(3)).toBe(1);  // a<5: 3-2=1
+      expect(applySpecialUpgradeDiscount(4)).toBe(2);  // a<5: 4-2=2
+      expect(applySpecialUpgradeDiscount(5)).toBe(2);  // a<7: 5-3=2
+      expect(applySpecialUpgradeDiscount(6)).toBe(3);  // a<7: 6-3=3
+      expect(applySpecialUpgradeDiscount(7)).toBe(3);  // else: 7-4=3
+      expect(applySpecialUpgradeDiscount(11)).toBe(7); // else: 11-4=7
+    });
+
+    it('calculateUpgradePrice applies the discount only when applySpecial=true', () => {
+      // strength 20 → base a=3 → 30,000; discounted → a=1 → 10,000
+      expect(calculateUpgradePrice(20, 0, false)).toBe(30000);
+      expect(calculateUpgradePrice(20, 0, true)).toBe(10000);
+      // strength 90 → base a=10 → 100,000; discounted → a=6 → 60,000
+      expect(calculateUpgradePrice(90, 0, false)).toBe(100000);
+      expect(calculateUpgradePrice(90, 0, true)).toBe(60000);
+      // strength ≤9 → a=1 stays 10,000 even discounted (floored)
+      expect(calculateUpgradePrice(5, 0, true)).toBe(10000);
+    });
+
+    it('getDailyUpgradeSpecialSystem is deterministic per date and in 4..11', () => {
+      const d = new Date(2026, 6, 9); // fixed date
+      expect(getDailyUpgradeSpecialSystem(d)).toBe(getDailyUpgradeSpecialSystem(d));
+      // sweep a month of dates: all land in the original random(8)+3 range
+      for (let day = 1; day <= 31; day++) {
+        const sys = getDailyUpgradeSpecialSystem(new Date(2026, 0, day));
+        expect(sys).toBeGreaterThanOrEqual(4);
+        expect(sys).toBeLessThanOrEqual(11);
+      }
+    });
+
+    it('isUpgradeSpecialActive requires Commander (score≥150) AND being in the special system', () => {
+      const d = new Date(2026, 6, 9);
+      const special = getDailyUpgradeSpecialSystem(d);
+      const other = special === 4 ? 5 : 4;
+      expect(isUpgradeSpecialActive(300, special, d)).toBe(true);
+      expect(isUpgradeSpecialActive(300, other, d)).toBe(false);   // wrong system
+      expect(isUpgradeSpecialActive(149, special, d)).toBe(false); // below Commander
+      expect(isUpgradeSpecialActive(150, special, d)).toBe(true);  // exactly Commander
     });
   });
 

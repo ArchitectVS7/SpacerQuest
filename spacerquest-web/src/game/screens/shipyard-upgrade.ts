@@ -1,6 +1,6 @@
 import { ScreenModule, ScreenResponse } from './types.js';
 import { prisma } from '../../db/prisma.js';
-import { upgradeShipComponent } from '../systems/upgrades.js';
+import { upgradeShipComponent, isUpgradeSpecialActive } from '../systems/upgrades.js';
 
 export const ShipyardUpgradeScreen: ScreenModule = {
   name: 'shipyard-upgrade',
@@ -14,11 +14,16 @@ export const ShipyardUpgradeScreen: ScreenModule = {
       return { output: '\x1b[31mError: No ship found.\x1b[0m\r\n', nextScreen: 'main-menu' };
     }
 
+    // SP.SPEED.S upgrad (line 130): if ej=sp print "Special Prices on Upgrades Today!"
+    const specialLine = isUpgradeSpecialActive(character.score, character.currentSystem)
+      ? '\r\n\x1b[33;1mSpecial Prices on Upgrades Today!\x1b[0m\r\n'
+      : '';
+
     const output = `
 \x1b[36;1m_________________________________________\x1b[0m
 \x1b[33;1m      COMPONENT UPGRADE                   \x1b[0m
 \x1b[36;1m_________________________________________\x1b[0m
-
+${specialLine}
 Select a component to upgrade:
   [1] Hull
   [2] Drives
@@ -71,8 +76,9 @@ Enter number:
 
     // SP.SPEED.S up1: ".....done...."l$" now at "x" strength"
     const nowAt = result.newStrength !== undefined ? ` — now at ${result.newStrength} strength` : '';
+    const special = result.specialApplied ? ' \x1b[33;1m[Special Price!]\x1b[0m' : '';
     return {
-      output: `\x1b[2J\x1b[H\x1b[32m${component} upgraded successfully!${nowAt} (-${result.cost} cr)\x1b[0m\r\n`,
+      output: `\x1b[2J\x1b[H\x1b[32m${component} upgraded successfully!${nowAt} (-${result.cost} cr)${special}\x1b[0m\r\n`,
       nextScreen: 'shipyard'
     };
   }

@@ -23,6 +23,7 @@ import { resolveArrivalHazards, processCourseChange, completeTravel } from '../s
 import { processDocking } from '../src/game/systems/docking';
 import { registerNavigationRoutes } from '../src/app/routes/navigation';
 import { calculateRank, getRankIndex, getTotalCredits, calculateDistance } from '../src/game/utils';
+import { getDailyUpgradeSpecialSystem } from '../src/game/systems/upgrades';
 
 // ── Coverage scorecard ──────────────────────────────────────────────────────
 const COVERED = new Set<string>();
@@ -263,6 +264,39 @@ describe('Shipyard', () => {
     const after = await char();
     expect(after!.ship!.hasAutoRepair).toBe(true);
     track('shipyard.special_purchase');
+  });
+
+  // SP.SPEED up3 — "Special Prices on Upgrades Today!" (ej=sp) discount, driven
+  // through the real upgrade screen. Compares the identical purchase in vs out of
+  // the day's special-price system: strength 20 → base 30,000 cr, discounted 10,000.
+  it('Roscoe special-price discount charges the stepped-down cost in the special system', async () => {
+    const special = getDailyUpgradeSpecialSystem();
+
+    // In the special system, as a Commander: charge should be the discounted 10,000.
+    await setup({ currentSystem: special, rank: 'COMMANDER', score: 300, creditsHigh: 100, creditsLow: 0 });
+    await setShip({ driveStrength: 20 });
+    const banner = await render('shipyard-upgrade');
+    expect(banner).toContain('Special Prices on Upgrades Today!');
+    let before = await char();
+    await press('shipyard-upgrade', '2');   // [2] Drives
+    let after = await char();
+    const specialSpend = getTotalCredits(before!.creditsHigh, before!.creditsLow)
+      - getTotalCredits(after!.creditsHigh, after!.creditsLow);
+    expect(specialSpend).toBe(10000);
+
+    // Same purchase in a non-special system (Sun-3 is never 4..11): full 30,000.
+    await setup({ currentSystem: 1, rank: 'COMMANDER', score: 300, creditsHigh: 100, creditsLow: 0 });
+    await setShip({ driveStrength: 20 });
+    const noBanner = await render('shipyard-upgrade');
+    expect(noBanner).not.toContain('Special Prices on Upgrades Today!');
+    before = await char();
+    await press('shipyard-upgrade', '2');   // [2] Drives
+    after = await char();
+    const fullSpend = getTotalCredits(before!.creditsHigh, before!.creditsLow)
+      - getTotalCredits(after!.creditsHigh, after!.creditsLow);
+    expect(fullSpend).toBe(30000);
+
+    track('shipyard.upgrade_special_price');
   });
 });
 
@@ -1726,6 +1760,8 @@ describe('Coverage', () => {
       'shipyard.upgrade_plus1', 'cargo.commandant_guard',
       'navigation.bare_arrive_guard', 'navigation.double_arrive_guard',
       'turn.end_turn_allowance', 'turn.end_turn_zero_trips',
+      // Roscoe "Special Prices on Upgrades Today!" (ej=sp) discount
+      'shipyard.upgrade_special_price',
     ]) {
       expect(COVERED.has(id), `expected coverage of ${id}`).toBe(true);
     }

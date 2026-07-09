@@ -3,7 +3,12 @@
  */
 
 import { prisma } from '../../db/prisma.js';
-import { COMPONENT_PRICES, SPECIAL_EQUIPMENT, COMPONENT_MAX_STRENGTH } from '../constants.js';
+import {
+  COMPONENT_PRICES,
+  SPECIAL_EQUIPMENT,
+  COMPONENT_MAX_STRENGTH,
+  RANK_THRESHOLDS,
+} from '../constants.js';
 import { getTotalCredits, subtractCredits } from '../utils.js';
 
 /**
@@ -18,11 +23,61 @@ export function calculateUpgradeMultiplier(currentStrength: number): number {
   return currentStrength <= 9 ? 1 : Math.floor(currentStrength / 10) + 1;
 }
 
-export function calculateUpgradePrice(currentStrength: number, _basePrice: number): number {
+/**
+ * SP.CARGO.txt board2 (lines 74-76): the daily "Special Prices on Upgrades" system.
+ *   if s2<150 ej=0            — no special below Commander rank
+ *   if ej>0 goto bddd         — set once and held for the day
+ *   r=8:gosub rand:ej=x+3     — random(1..8)+3 → a system in 4..11
+ *
+ * The original re-rolled `ej` per login session. In the web remake there is one
+ * board per calendar day (manifestDate), so we derive the special system from the
+ * date instead: deterministic per day, no stored column, matching the "Today:"
+ * framing. `date` is injectable so the discount is testable without freezing the clock.
+ */
+export function getDailyUpgradeSpecialSystem(date: Date = new Date()): number {
+  const seed = date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
+  return (seed % 8) + 4; // 4..11, matching random(8)+3
+}
+
+/**
+ * SP.SPEED.S up3 (lines 175-181): when the player is docked in the special-price
+ * system (ej=sp), the tiered cost `a` is stepped down before being charged:
+ *   if a<3 a=a-1 : if a<5 a=a-2 : if a<7 a=a-3 : else a=a-4   (then floored at 1)
+ * Pure integer transform on the cost tier `a`.
+ */
+export function applySpecialUpgradeDiscount(a: number): number {
+  let discounted: number;
+  if (a < 3) discounted = a - 1;
+  else if (a < 5) discounted = a - 2;
+  else if (a < 7) discounted = a - 3;
+  else discounted = a - 4;
+  return discounted < 1 ? 1 : discounted; // up4: if a<1 a=1
+}
+
+export function calculateUpgradePrice(
+  currentStrength: number,
+  _basePrice: number,
+  applySpecial = false,
+): number {
   // SP.SPEED.S lines 173-174: a=1: if x>9 a=((x/10)+1)
-  // Cost = a * 10,000 cr
-  const a = currentStrength <= 9 ? 1 : Math.floor(currentStrength / 10) + 1;
+  let a = currentStrength <= 9 ? 1 : Math.floor(currentStrength / 10) + 1;
+  // SP.SPEED.S up3: ej=sp "Special Prices on Upgrades Today!" steps the tier down.
+  if (applySpecial) a = applySpecialUpgradeDiscount(a);
   return a * 10000;
+}
+
+/**
+ * True when this character gets Roscoe's daily upgrade discount: Commander rank
+ * (score ≥ 150, the SP.CARGO s2<150 gate) AND currently docked in the day's
+ * special-price system (SP.SPEED ej=sp).
+ */
+export function isUpgradeSpecialActive(
+  score: number,
+  currentSystem: number,
+  date: Date = new Date(),
+): boolean {
+  return score >= RANK_THRESHOLDS.COMMANDER
+    && currentSystem === getDailyUpgradeSpecialSystem(date);
 }
 
 /**
@@ -428,9 +483,14 @@ export async function upgradeShipComponent(
 
   const currentStrength = Number(character.ship[strengthField as keyof typeof character.ship]);
 
-  // Apply source tiered pricing multiplier
+  // Apply source tiered pricing multiplier. Roscoe's daily "Special Prices on
+  // Upgrades Today!" (SP.SPEED up3) discounts the tier when the player is a
+  // Commander (score≥150) docked in the day's special-price system — strength
+  // upgrades only, matching the original's upgrad path.
+  const specialActive = upgradeType === 'STRENGTH'
+    && isUpgradeSpecialActive(character.score, character.currentSystem);
   const multiplier = calculateUpgradeMultiplier(currentStrength);
-  const price = calculateUpgradePrice(currentStrength, basePrice);
+  const price = calculateUpgradePrice(currentStrength, basePrice, specialActive);
 
   const totalCredits = getTotalCredits(character.creditsHigh, character.creditsLow);
   if (totalCredits < price) {
@@ -443,8 +503,8 @@ export async function upgradeShipComponent(
     // strength at the tiered price (floor(str/10)+1)*10,000 cr. This is the
     // deliberate late-game sink for pushing 90→199 past the shipyard tiers;
     // granting +10 here made Roscoe's ~10× too generous vs the 1991 original.
-    // (Not yet modeled: the ej=sp "Special Prices on Upgrades Today!" discount —
-    // SP.CARGO.txt:76 rolls a random special-price system per session.)
+    // The ej=sp "Special Prices on Upgrades Today!" discount (SP.SPEED up3) is
+    // applied above via `specialActive` when docked in the day's special system.
     const newStrength = currentStrength + 1;
     if (currentStrength >= COMPONENT_MAX_STRENGTH) {
       // SP.SPEED.S up1: if x>198 x=199 "Component strength at max of 199"
@@ -501,7 +561,7 @@ export async function upgradeShipComponent(
     })
   ]);
 
-  return { success: true, cost: price, multiplier, newStrength: updateData[strengthField], newCondition: updateData[conditionField] };
+  return { success: true, cost: price, multiplier, specialApplied: specialActive, newStrength: updateData[strengthField], newCondition: updateData[conditionField] };
 }
 
 /**
