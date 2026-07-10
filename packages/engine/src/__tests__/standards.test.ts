@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NPC_PROFILES } from '@spacerquest/content';
+import { distance, NPC_PROFILES, STAR_SYSTEMS } from '@spacerquest/content';
 import { createInitialState } from '../state.js';
 import { advanceDay } from '../day.js';
 import { resolveTrade } from '../actions/trade.js';
@@ -256,5 +256,25 @@ describe('Local fuel price comes from canon tables', () => {
     state.player.currentSystemId = 1; // Sun-3
     const { state: next } = advanceDay(state, []);
     expect(next.market.localFuelPrice).toBe(8);
+  });
+});
+
+describe('Starmap distance', () => {
+  it('matches foundation same-line distance for Sun-3 to Vega-6', () => {
+    const sun = STAR_SYSTEMS[1];
+    const vega = STAR_SYSTEMS[14];
+
+    expect(sun.coordinates).toEqual({ x: 0, y: 0 });
+    expect(vega.coordinates).toEqual({ x: 13, y: 0 });
+
+    const foundationSameLineDistance = Math.abs(vega.coordinates.x - sun.coordinates.x) || 1;
+    expect(distance(1, 14)).toBe(foundationSameLineDistance);
+    expect(foundationSameLineDistance).toBe(13);
+  });
+
+  it('uses 2D coordinates for non-collinear systems', () => {
+    expect(distance(1, 21)).toBe(50);
+    expect(distance(21, 1)).toBe(50);
+    expect(distance(1, 1)).toBe(1);
   });
 });

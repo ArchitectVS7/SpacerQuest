@@ -54,6 +54,28 @@ describe('Player Actions', () => {
     expect(events.some((e) => e.type === 'TravelEvent')).toBe(true);
   });
 
+  it('uses starmap distance for travel fuel', () => {
+    const state = createInitialState(123);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.currentSystemId = 1;
+    state.player.ship.fuel = 1000;
+    state.player.ship.drives = { strength: 21, condition: 10 };
+
+    const { state: nextState, events } = resolveTravel(
+      state,
+      {
+        type: 'Travel',
+        destinationId: 21,
+        spendDie: 0,
+      },
+      new SeededRng(123),
+    );
+
+    const travel = events.find((e) => e.type === 'TravelEvent');
+    expect(travel).toMatchObject({ fuelUsed: Math.floor((50 + 10) / 2) });
+    expect(nextState.player.ship.fuel).toBe(970);
+  });
+
   it('resolves combat run', () => {
     const state = createInitialState(123);
     state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);

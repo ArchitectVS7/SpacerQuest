@@ -1,3 +1,4 @@
+import { distance as systemDistance } from '@spacerquest/content';
 import { CargoContract, ShipState } from './types.js';
 import { SeededRng } from './rng.js';
 
@@ -24,8 +25,7 @@ export function generateManifestBoard(
       else destination -= 1;
     }
 
-    // Distance = |origin - destination|
-    const distance = Math.max(1, Math.abs(destination - originSystem));
+    const routeDistance = systemDistance(originSystem, destination);
 
     // Serviceable pods = cargoPods * (hullCondition + 1) / 10
     const cargoPods = shipState.cargoPods;
@@ -44,13 +44,13 @@ export function generateManifestBoard(
     const af = Math.min(driveStrength, 21);
     let f2 = 21 - af + (10 - driveCondition);
     if (f2 < 1) f2 = 1;
-    f2 = f2 * distance;
+    f2 = f2 * routeDistance;
     const ty = f2 + 10;
     const fuelRequired = Math.floor(Math.min(ty, 100) / 2);
 
     // Payment formula
     const valuePerPod = cargoType * 3;
-    let payment = valuePerPod * distance;
+    let payment = valuePerPod * routeDistance;
     if (payment < 3) payment = 3;
     payment = Math.floor(payment / 3);
     payment = payment * upodX;

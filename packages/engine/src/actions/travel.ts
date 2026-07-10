@@ -1,4 +1,4 @@
-import { Stat } from '@spacerquest/content';
+import { distance as systemDistance, Stat } from '@spacerquest/content';
 import { GameState, GameEvent, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
@@ -20,11 +20,7 @@ export function resolveTravel(
 
   const origin = nextState.player.currentSystemId;
   const destination = action.destinationId;
-
-  // Deliberate v0 simplification: distance = |id difference|, not the 2D
-  // coordinates in the seed data. Revisit when the starmap lands
-  // (TECH-STACK.md deferred decisions).
-  const distance = Math.max(1, Math.abs(destination - origin));
+  const routeDistance = systemDistance(origin, destination);
 
   // Calculate fuel cost (Legacy math)
   const drives = nextState.player.ship.drives;
@@ -33,13 +29,13 @@ export function resolveTravel(
   const af = Math.min(effectiveStrength, 21);
   let fuelCost = 21 - af + (10 - drives.condition);
   if (fuelCost < 1) fuelCost = 1;
-  fuelCost = fuelCost * distance;
+  fuelCost = fuelCost * routeDistance;
   const ty = fuelCost + 10;
   const capped = Math.min(ty, 100);
   const fuelRequired = Math.floor(capped / 2);
 
   // Pilot check
-  const travelDc = 8 + Math.floor(distance / 2); // Stub DC based on distance
+  const travelDc = 8 + Math.floor(routeDistance / 2); // Stub DC based on distance
 
   const result = check(die, nextState.player.stats[Stat.PILOT], travelDc);
   events.push({

@@ -38,7 +38,7 @@ In `packages/sim`: a `runCampaign(seed, days, policy)` harness that drives `adva
 
 ## M1 — Engine core (the rules of the game)
 
-### T-101 · Starmap coordinates & real distance — `status: TODO` · `coder: opus`
+### T-101 · Starmap coordinates & real distance — `status: DONE` · `coder: opus`
 Add 2D coordinates to `content/systems.ts` (port from `foundation/cast/npc-roster.seed.ts`), replace all `|id difference|` distance math (travel, manifest generation) with `calculateDistance` per `foundation/rules/utils.ts`. Export a `distance(a, b)` helper from content or engine.
 **Accept:** the two marked "v0 simplification" comments are gone; manifest payments and fuel costs shift accordingly; tests updated + a test that Sun-3→Vega-6 distance matches the foundation formula on the seeded coordinates.
 
