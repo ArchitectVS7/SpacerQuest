@@ -14,6 +14,7 @@ describe('NPC Resolution', () => {
       currentSystemId: 1,
       credits: 1000,
       fuel: 1000,
+      disposition: 0,
     };
 
     const { npc: nextNpc, events } = resolveNpcDay(npc, rng, { day: 1 });

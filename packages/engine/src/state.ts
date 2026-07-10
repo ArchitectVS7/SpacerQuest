@@ -33,6 +33,7 @@ export function createInitialState(seed: number): GameState {
     currentSystemId: (index % 20) + 1, // Spread them out
     credits: 5000,
     fuel: 1000,
+    disposition: 0,
   }));
 
   return {
@@ -40,6 +41,14 @@ export function createInitialState(seed: number): GameState {
     rngState: seed,
     dayPhase: DayPhase.DAWN,
     dayEventCount: 0,
+    era: 'TOUR_ONE',
+    flags: {},
+    storylets: {
+      available: [],
+      completed: {},
+      scheduled: [],
+      offeredToday: [],
+    },
     player: {
       // Tour One opening position (PRD §5.1): pocket money plus a 25,000cr
       // Merchant Guild debt due on day 30 — tracked as a ledger, never as a
@@ -100,6 +109,18 @@ export function deserializeState(json: string): GameState {
   const parsed = JSON.parse(json) as GameState;
   parsed.dayPhase ??= DayPhase.DAWN;
   parsed.dayEventCount ??= 0;
+  parsed.era ??= 'TOUR_ONE';
+  parsed.flags ??= {};
+  parsed.storylets ??= {
+    available: [],
+    completed: {},
+    scheduled: [],
+    offeredToday: [],
+  };
+  parsed.storylets.available ??= [];
+  parsed.storylets.completed ??= {};
+  parsed.storylets.scheduled ??= [];
+  parsed.storylets.offeredToday ??= [];
   parsed.eventLog ??= [];
   parsed.player.tier ??= 1;
   if (parsed.player.registry === undefined) {
@@ -122,6 +143,10 @@ export function deserializeState(json: string): GameState {
   parsed.player.ship.hasArchAngel ??= false;
   parsed.player.ship.isAstraxialHull ??= false;
   parsed.player.ship.hasTitaniumHull ??= false;
+  parsed.npcs ??= [];
+  parsed.npcs.forEach((npc) => {
+    npc.disposition ??= 0;
+  });
   parsed.encounter ??= null;
   return parsed;
 }

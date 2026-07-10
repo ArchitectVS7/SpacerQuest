@@ -242,6 +242,7 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
       currentSystemId: 1,
       credits: 5000,
       fuel: 1000,
+      disposition: 0,
     };
   }
 

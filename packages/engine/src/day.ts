@@ -9,6 +9,7 @@ import { resolveTravel } from './actions/travel.js';
 import { applyEncounterDuskPressure, resolveCombat } from './actions/combat.js';
 import { resolveShipyard } from './actions/shipyard.js';
 import { evaluateDeeds } from './deeds.js';
+import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
 
 function localFuelPrice(systemId: number): number {
   const system = STAR_SYSTEMS[systemId];
@@ -27,13 +28,14 @@ function appendEvents(state: GameState, events: GameEvent[]): void {
 
 export function startDay(state: GameState): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = cloneState(state);
+  let nextState = cloneState(state);
 
   if (nextState.dayPhase !== DayPhase.DAWN) {
     throw new Error('startDay requires DAWN phase');
   }
 
   const dayRng = new SeededRng(nextState.rngState).fork(`day-${nextState.day}`);
+  nextState.storylets.offeredToday = [];
 
   // Generate manifest board and price the local depot from canon tables
   const manifestBoard = generateManifestBoard(
@@ -56,6 +58,10 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
     day: nextState.day,
     hand: [...playerHand.dice],
   });
+
+  const refreshed = refreshAvailableStorylets(nextState);
+  nextState = refreshed.state;
+  events.push(...refreshed.events);
   events.push(...evaluateDeeds(nextState, events));
 
   nextState.rngState = dayRng.getState();
@@ -77,7 +83,11 @@ export function applyPlayerAction(
   }
 
   if (action.type === 'Wait') {
-    return { state: nextState, events: [] };
+    const refreshed = refreshAvailableStorylets(nextState);
+    const events = refreshed.events;
+    refreshed.state.dayEventCount = nextState.dayEventCount + events.length;
+    appendEvents(refreshed.state, events);
+    return { state: refreshed.state, events };
   }
 
   if (nextState.encounter && action.type !== 'Combat') {
@@ -107,14 +117,23 @@ export function applyPlayerAction(
   } else if (action.type === 'Shipyard') {
     dayRng.fork(`action-shipyard-${actionEventIndex}`);
     result = resolveShipyard(nextState, action);
-  } else {
+  } else if (action.type === 'Combat') {
     result = resolveCombat(nextState, action, dayRng.fork(`action-combat-${actionEventIndex}`));
+  } else {
+    result = resolveStoryletChoice(
+      nextState,
+      action,
+      dayRng.fork(`action-storylet-${actionEventIndex}`),
+    );
   }
 
-  const resolvedState = result.state;
+  let resolvedState = result.state;
   resolvedState.rngState = dayRng.getState();
   resolvedState.dayPhase = DayPhase.DAY;
-  const events = [...result.events, ...evaluateDeeds(resolvedState, result.events)];
+  const deedEvents = evaluateDeeds(resolvedState, result.events);
+  const refreshed = refreshAvailableStorylets(resolvedState);
+  resolvedState = refreshed.state;
+  const events = [...result.events, ...deedEvents, ...refreshed.events];
   resolvedState.dayEventCount = actionEventIndex + events.length;
   appendEvents(resolvedState, events);
 

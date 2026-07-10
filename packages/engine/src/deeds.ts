@@ -32,6 +32,7 @@ const EVENT_PATHS: Readonly<Record<string, readonly string[]>> = {
   DebtPayment: ['amount', 'remaining'],
   StatCheck: ['actor', 'stat', 'dc', 'result.success', 'result.total', 'actionContext'],
   ShipyardEvent: ['action', 'cost', 'component', 'tier', 'repairMode', 'quantity', 'equipment'],
+  StoryletDeedProgress: ['storyletId', 'choiceId', 'deedId', 'amount'],
 };
 
 const STATE_PATHS = ['player.ship.fuel'] as const;

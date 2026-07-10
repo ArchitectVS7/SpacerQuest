@@ -3,7 +3,10 @@ import {
   PowerTier,
   RenownRankId,
   RouteDangerLevel,
+  EraId,
+  FlagValue,
   Stat,
+  StoryletChoiceDefinition,
   StatBlock,
 } from '@spacerquest/content';
 
@@ -79,6 +82,34 @@ export interface DeedRegistryState {
   matchCounts: Record<string, number>;
 }
 
+export interface StoryletOffer {
+  storyletId: string;
+  title: string;
+  prose: string;
+  choices: readonly {
+    id: string;
+    label: string;
+    prose: string;
+    requirements?: StoryletChoiceDefinition['requirements'];
+  }[];
+  day: number;
+  scheduled: boolean;
+}
+
+export interface StoryletScheduleState {
+  storyletId: string;
+  dueDay: number;
+  sourceStoryletId: string;
+  sourceChoiceId: string;
+}
+
+export interface StoryletState {
+  available: StoryletOffer[];
+  completed: Record<string, number>;
+  scheduled: StoryletScheduleState[];
+  offeredToday: string[];
+}
+
 export interface TradeEvent {
   type: 'TradeEvent';
   characterId: string;
@@ -102,7 +133,7 @@ export type GameEvent =
       stat: Stat;
       dc: number;
       result: CheckResult;
-      actionContext?: 'haggle';
+      actionContext?: 'haggle' | 'storylet';
     }
   | { type: 'FlawCheck'; npcId: string; flaw: string; die: number; dc: number; resisted: boolean }
   | { type: 'NpcAction'; npcId: string; actionDetails: string }
@@ -126,8 +157,59 @@ export type GameEvent =
   | {
       type: 'ActionBlocked';
       day: number;
-      actionType: 'Trade' | 'Travel' | 'Shipyard';
+      actionType: 'Trade' | 'Travel' | 'Shipyard' | 'Storylet';
       reason: 'active-encounter';
+    }
+  | { type: 'StoryletOffered'; day: number; storyletId: string; scheduled: boolean }
+  | {
+      type: 'StoryletChoiceResolved';
+      day: number;
+      storyletId: string;
+      choiceId: string;
+      success?: boolean;
+    }
+  | {
+      type: 'StoryletChoiceBlocked';
+      day: number;
+      storyletId: string;
+      choiceId: string;
+      reason: 'not-available' | 'unknown-choice' | 'insufficient-credits' | 'missing-die';
+    }
+  | {
+      type: 'StoryletEffectApplied';
+      day: number;
+      storyletId: string;
+      choiceId: string;
+      effect:
+        | 'credits'
+        | 'fuel'
+        | 'flag'
+        | 'flag-cleared'
+        | 'active-contract-cleared'
+        | 'manifest-contract-added'
+        | 'disposition';
+      amount?: number;
+      flag?: string;
+      value?: FlagValue;
+      npcId?: string;
+      cargoType?: number;
+      destination?: number;
+    }
+  | {
+      type: 'StoryletScheduled';
+      day: number;
+      storyletId: string;
+      choiceId: string;
+      scheduledStoryletId: string;
+      dueDay: number;
+    }
+  | {
+      type: 'StoryletDeedProgress';
+      day: number;
+      storyletId: string;
+      choiceId: string;
+      deedId: string;
+      amount: number;
     }
   | {
       type: 'TravelEvent';
@@ -288,6 +370,7 @@ export type PlayerAction =
       quantity?: number;
       equipment?: SpecialEquipmentId;
     }
+  | { type: 'Storylet'; storyletId: string; choiceId: string; spendDie?: number }
   | { type: 'Wait' };
 
 export type NpcActionType = 'Trade' | 'Travel' | 'Combat' | 'Patrol' | 'FlawOverride';
@@ -304,6 +387,7 @@ export interface NpcState {
   currentSystemId: number;
   credits: number;
   fuel: number;
+  disposition: number;
   lastAction?: NpcAction;
 }
 
@@ -367,6 +451,9 @@ export interface GameState {
   rngState: number; // Storing the seed state to resume
   dayPhase: DayPhase;
   dayEventCount: number;
+  era: EraId;
+  flags: Record<string, FlagValue>;
+  storylets: StoryletState;
   player: PlayerState;
   market: MarketState;
   npcs: NpcState[];

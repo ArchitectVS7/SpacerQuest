@@ -75,7 +75,7 @@ Era events as content data (blockade, plague, dilithium rush, patrol crackdown �
 Deeds as content data: id, period-voice citation, trigger predicate over events/state (declarative condition DSL kept tiny: event type + count/threshold matchers). ~15 launch Deeds (first delivery, debt cleared, first combat win, Mercy Runner, fuel-fumes arrival, etc.). Renown = f(deeds) climbing the 9 canon ranks (names from `foundation/rules/constants.ts`, thresholds NOT ported — deeds-driven per PRD §8.2).
 **Accept:** deeds fire from the event stream exactly once each; rank-up emits a wire entry; registry serializes; a sim run earns ≥3 deeds in 100 days.
 
-### T-110 · Storylet engine — `status: TODO` · `coder: fable` · `after: T-102`
+### T-110 · Storylet engine — `status: DONE` · `coder: fable` · `after: T-102`
 Data-driven storylets in content: trigger (system/cargo/NPC/era/day-range/flag conditions), prose, 2–4 choices with requirements (stat check, credits, die) and effects (credits, fuel, cargo, flags, disposition, deed progress, follow-up storylet scheduling). Engine surfaces eligible storylets as part of day state; choice resolution is a player action. Flags namespace on `GameState`.
 **Accept:** schema documented in content README; 3 demo storylets (one cargo-attached, one port, one chained pair) fully playable headless in tests; deterministic eligibility; malformed storylet data fails validation loudly at load, not silently mid-game.
 
