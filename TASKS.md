@@ -42,7 +42,7 @@ In `packages/sim`: a `runCampaign(seed, days, policy)` harness that drives `adva
 Add 2D coordinates to `content/systems.ts` (port from `foundation/cast/npc-roster.seed.ts`), replace all `|id difference|` distance math (travel, manifest generation) with `calculateDistance` per `foundation/rules/utils.ts`. Export a `distance(a, b)` helper from content or engine.
 **Accept:** the two marked "v0 simplification" comments are gone; manifest payments and fuel costs shift accordingly; tests updated + a test that Sun-3→Vega-6 distance matches the foundation formula on the seeded coordinates.
 
-### T-102 · Interactive day lifecycle — `status: TODO` · `coder: fable` · `after: —`
+### T-102 · Interactive day lifecycle — `status: DONE` · `coder: fable` · `after: —`
 Refactor the batch `advanceDay(state, actions[])` into `startDay(state)` → `applyPlayerAction(state, action)` (any number, dice permitting) → `endDay(state)` (dusk: NPCs, wire, debt). Keep `advanceDay` as a thin composition so sim/tests still batch. Determinism must hold: same seed + same action sequence = same state regardless of call granularity.
 **Accept:** existing tests pass unchanged via the composed `advanceDay`; new test proves step-wise vs batch equivalence on a 10-day scripted run; RNG state serializes mid-day.
 

@@ -1,6 +1,51 @@
 import { describe, it, expect } from 'vitest';
-import { advanceDay } from '../day.js';
+import { advanceDay, applyPlayerAction, endDay, startDay } from '../day.js';
 import { createInitialState, serializeState, deserializeState } from '../state.js';
+import { DayPhase, PlayerAction } from '../types.js';
+
+const TEN_DAY_SCRIPT: PlayerAction[][] = [
+  [
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 20, spendDie: 0 },
+    { type: 'Travel', destinationId: 2, spendDie: 1 },
+    { type: 'Trade', action: 'pay-debt', amount: 50 },
+  ],
+  [
+    { type: 'Combat', stance: 'talk', targetId: 'pirate-1', spendDie: 0 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 5, spendDie: 1 },
+  ],
+  [
+    { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
+    { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 1 },
+    { type: 'Travel', destinationId: 3, spendDie: 2 },
+  ],
+  [
+    { type: 'Trade', action: 'pay-debt', amount: 25 },
+    { type: 'Combat', stance: 'run', targetId: 'raider-2', spendDie: 0 },
+    { type: 'Travel', destinationId: 4, spendDie: 1 },
+  ],
+  [{ type: 'Wait' }],
+  [
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+    { type: 'Combat', stance: 'fight', targetId: 'pirate-3', spendDie: 1 },
+  ],
+  [
+    { type: 'Travel', destinationId: 5, spendDie: 0 },
+    { type: 'Trade', action: 'pay-debt', amount: 100 },
+  ],
+  [
+    { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 1 },
+  ],
+  [
+    { type: 'Combat', stance: 'talk', targetId: 'raider-4', spendDie: 0 },
+    { type: 'Travel', destinationId: 6, spendDie: 1 },
+  ],
+  [
+    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+    { type: 'Wait' },
+    { type: 'Trade', action: 'pay-debt', amount: 10 },
+  ],
+];
 
 describe('Day loop', () => {
   it('advances day deterministically', () => {
@@ -12,6 +57,14 @@ describe('Day loop', () => {
 
     // Should increment day
     expect(result1.state.day).toBe(2);
+    expect(result1.state.dayPhase).toBe(DayPhase.DAWN);
+    expect(result1.state.dayEventCount).toBe(0);
+    expect(result1.events[result1.events.length - 1]).toEqual({ type: 'DayAdvanced', day: 2 });
+    expect(result1.state.eventLog[result1.state.eventLog.length - 1]).toEqual({
+      type: 'DayAdvanced',
+      day: 2,
+    });
+    expect(result1.state.eventLog).toEqual(result1.events);
 
     // Hand should be populated and marked fully spent because player waited
     expect(result1.state.player.dawnHand).toBeDefined();
@@ -30,5 +83,89 @@ describe('Day loop', () => {
     const restored = deserializeState(json);
 
     expect(restored).toEqual(nextState);
+    expect(restored.dayPhase).toBe(DayPhase.DAWN);
+    expect(restored.dayEventCount).toBe(0);
+  });
+
+  it('emits DayAdvanced after dusk events in returned events and eventLog', () => {
+    const state = createInitialState(321);
+    state.player.debtDueDay = 1;
+
+    const result = advanceDay(state, []);
+    const dayAdvanced = { type: 'DayAdvanced', day: 2 };
+    const returnedDebtDueIndex = result.events.findIndex((event) => event.type === 'DebtDue');
+    const returnedDayAdvancedIndex = result.events.findIndex(
+      (event) => event.type === 'DayAdvanced',
+    );
+    const loggedDebtDueIndex = result.state.eventLog.findIndex((event) => event.type === 'DebtDue');
+    const loggedDayAdvancedIndex = result.state.eventLog.findIndex(
+      (event) => event.type === 'DayAdvanced',
+    );
+
+    expect(result.events[result.events.length - 1]).toEqual(dayAdvanced);
+    expect(result.state.eventLog[result.state.eventLog.length - 1]).toEqual(dayAdvanced);
+    expect(result.state.eventLog).toEqual(result.events);
+    expect(returnedDebtDueIndex).toBeGreaterThan(-1);
+    expect(loggedDebtDueIndex).toBeGreaterThan(-1);
+    expect(returnedDayAdvancedIndex).toBeGreaterThan(returnedDebtDueIndex);
+    expect(loggedDayAdvancedIndex).toBeGreaterThan(loggedDebtDueIndex);
+  });
+
+  it('produces the same results when advanced in phases for 10 scripted days', () => {
+    let batchState = createInitialState(456);
+    let steppedState = createInitialState(456);
+
+    for (const actions of TEN_DAY_SCRIPT) {
+      const batchResult = advanceDay(batchState, actions);
+
+      const dawn = startDay(steppedState);
+      let nextSteppedState = dawn.state;
+      const steppedEvents = [...dawn.events];
+
+      for (const action of actions) {
+        const result = applyPlayerAction(nextSteppedState, action);
+        nextSteppedState = result.state;
+        steppedEvents.push(...result.events);
+      }
+
+      const dusk = endDay(nextSteppedState);
+      steppedEvents.push(...dusk.events);
+
+      expect(steppedEvents).toEqual(batchResult.events);
+
+      batchState = batchResult.state;
+      steppedState = dusk.state;
+    }
+
+    expect(steppedState).toEqual(batchState);
+  });
+
+  it('can serialize and resume mid-day with the same final state as batch advance', () => {
+    const state = createInitialState(789);
+    const actions: PlayerAction[] = [
+      { type: 'Trade', action: 'buy-fuel', fuelAmount: 12, spendDie: 0 },
+      { type: 'Travel', destinationId: 2, spendDie: 1 },
+      { type: 'Trade', action: 'pay-debt', amount: 25 },
+    ];
+
+    const batch = advanceDay(state, actions);
+
+    const dawn = startDay(state);
+    const firstAction = applyPlayerAction(dawn.state, actions[0]);
+    const restored = deserializeState(serializeState(firstAction.state));
+
+    expect(restored.dayPhase).toBe(DayPhase.DAY);
+    expect(restored.rngState).toBe(firstAction.state.rngState);
+    expect(restored.dayEventCount).toBe(firstAction.state.dayEventCount);
+
+    let resumedState = restored;
+    for (const action of actions.slice(1)) {
+      const result = applyPlayerAction(resumedState, action);
+      resumedState = result.state;
+    }
+
+    const resumed = endDay(resumedState);
+
+    expect(resumed.state).toEqual(batch.state);
   });
 });

@@ -1,5 +1,5 @@
 import { STAR_SYSTEMS, FUEL_DEFAULT_BUY_PRICE, RIM_FUEL_BUY_PRICE } from '@spacerquest/content';
-import { GameState, GameEvent, PlayerAction } from './types.js';
+import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
 import { SeededRng } from './rng.js';
 import { rollDawnHand } from './dice.js';
 import { resolveNpcDay } from './npc.js';
@@ -15,14 +15,22 @@ function localFuelPrice(systemId: number): number {
   return system.fuelBuyPrice ?? FUEL_DEFAULT_BUY_PRICE;
 }
 
-export function advanceDay(
-  state: GameState,
-  playerActions: PlayerAction[],
-): { state: GameState; events: GameEvent[] } {
-  const events: GameEvent[] = [];
-  let nextState = JSON.parse(JSON.stringify(state)) as GameState;
+function cloneState(state: GameState): GameState {
+  return JSON.parse(JSON.stringify(state)) as GameState;
+}
 
-  // 1. DAWN
+function appendEvents(state: GameState, events: GameEvent[]): void {
+  state.eventLog.push(...events);
+}
+
+export function startDay(state: GameState): { state: GameState; events: GameEvent[] } {
+  const events: GameEvent[] = [];
+  const nextState = cloneState(state);
+
+  if (nextState.dayPhase !== DayPhase.DAWN) {
+    throw new Error('startDay requires DAWN phase');
+  }
+
   const dayRng = new SeededRng(nextState.rngState).fork(`day-${nextState.day}`);
 
   // Generate manifest board and price the local depot from canon tables
@@ -47,32 +55,58 @@ export function advanceDay(
     hand: [...playerHand.dice],
   });
 
-  // 2. DAY (Player Actions)
-  for (const action of playerActions) {
-    if (action.type === 'Trade') {
-      const result = resolveTrade(nextState, action, dayRng.fork(`action-trade-${events.length}`));
-      nextState = result.state;
-      events.push(...result.events);
-    } else if (action.type === 'Travel') {
-      const result = resolveTravel(
-        nextState,
-        action,
-        dayRng.fork(`action-travel-${events.length}`),
-      );
-      nextState = result.state;
-      events.push(...result.events);
-    } else if (action.type === 'Combat') {
-      const result = resolveCombat(
-        nextState,
-        action,
-        dayRng.fork(`action-combat-${events.length}`),
-      );
-      nextState = result.state;
-      events.push(...result.events);
-    } else if (action.type === 'Wait') {
-      // Do nothing
-    }
+  nextState.rngState = dayRng.getState();
+  nextState.dayPhase = DayPhase.DAY;
+  nextState.dayEventCount = events.length;
+  appendEvents(nextState, events);
+
+  return { state: nextState, events };
+}
+
+export function applyPlayerAction(
+  state: GameState,
+  action: PlayerAction,
+): { state: GameState; events: GameEvent[] } {
+  const nextState = cloneState(state);
+
+  if (nextState.dayPhase !== DayPhase.DAY) {
+    throw new Error('applyPlayerAction requires DAY phase');
   }
+
+  if (action.type === 'Wait') {
+    return { state: nextState, events: [] };
+  }
+
+  const dayRng = new SeededRng(nextState.rngState);
+  const actionEventIndex = nextState.dayEventCount;
+
+  let result: { state: GameState; events: GameEvent[] };
+  if (action.type === 'Trade') {
+    result = resolveTrade(nextState, action, dayRng.fork(`action-trade-${actionEventIndex}`));
+  } else if (action.type === 'Travel') {
+    result = resolveTravel(nextState, action, dayRng.fork(`action-travel-${actionEventIndex}`));
+  } else {
+    result = resolveCombat(nextState, action, dayRng.fork(`action-combat-${actionEventIndex}`));
+  }
+
+  const resolvedState = result.state;
+  resolvedState.rngState = dayRng.getState();
+  resolvedState.dayPhase = DayPhase.DAY;
+  resolvedState.dayEventCount = actionEventIndex + result.events.length;
+  appendEvents(resolvedState, result.events);
+
+  return { state: resolvedState, events: result.events };
+}
+
+export function endDay(state: GameState): { state: GameState; events: GameEvent[] } {
+  const events: GameEvent[] = [];
+  const nextState = cloneState(state);
+
+  if (nextState.dayPhase !== DayPhase.DAY) {
+    throw new Error('endDay requires DAY phase');
+  }
+
+  const dayRng = new SeededRng(nextState.rngState);
 
   // Set all dice to spent if player didn't use them (day is over)
   if (nextState.player.dawnHand) {
@@ -122,9 +156,34 @@ export function advanceDay(
   }
 
   // 4. NEXT DAY PREP
-  nextState.day += 1;
+  const nextDay = nextState.day + 1;
+  nextState.day = nextDay;
   nextState.rngState = dayRng.getState();
-  nextState.eventLog.push(...events);
+  nextState.dayPhase = DayPhase.DAWN;
+  nextState.dayEventCount = 0;
+  events.push({ type: 'DayAdvanced', day: nextDay });
+  appendEvents(nextState, events);
 
   return { state: nextState, events };
+}
+
+export function advanceDay(
+  state: GameState,
+  playerActions: PlayerAction[],
+): { state: GameState; events: GameEvent[] } {
+  const events: GameEvent[] = [];
+  const dawn = startDay(state);
+  let nextState = dawn.state;
+  events.push(...dawn.events);
+
+  for (const action of playerActions) {
+    const result = applyPlayerAction(nextState, action);
+    nextState = result.state;
+    events.push(...result.events);
+  }
+
+  const dusk = endDay(nextState);
+  events.push(...dusk.events);
+
+  return { state: dusk.state, events };
 }

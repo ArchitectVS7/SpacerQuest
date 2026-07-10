@@ -133,6 +133,8 @@ export interface MarketState {
 export interface GameState {
   day: number;
   rngState: number; // Storing the seed state to resume
+  dayPhase: DayPhase;
+  dayEventCount: number;
   player: PlayerState;
   market: MarketState;
   npcs: NpcState[];

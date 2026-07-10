@@ -1,4 +1,4 @@
-import { GameState, NpcState } from './types.js';
+import { DayPhase, GameState, NpcState } from './types.js';
 import { NPC_PROFILES, Stat } from '@spacerquest/content';
 
 export function createInitialState(seed: number): GameState {
@@ -15,6 +15,8 @@ export function createInitialState(seed: number): GameState {
   return {
     day: 1,
     rngState: seed,
+    dayPhase: DayPhase.DAWN,
+    dayEventCount: 0,
     player: {
       // Tour One opening position (PRD §5.1): pocket money plus a 25,000cr
       // Merchant Guild debt due on day 30 — tracked as a ledger, never as a
@@ -58,5 +60,8 @@ export function serializeState(state: GameState): string {
 }
 
 export function deserializeState(json: string): GameState {
-  return JSON.parse(json) as GameState;
+  const parsed = JSON.parse(json) as GameState;
+  parsed.dayPhase ??= DayPhase.DAWN;
+  parsed.dayEventCount ??= 0;
+  return parsed;
 }
