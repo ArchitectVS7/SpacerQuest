@@ -30,7 +30,7 @@ Statuses: `TODO` | `IN-PROGRESS` | `DONE` | `BLOCKED(reason)`
 GitHub Actions workflow: on push/PR run `npm ci`, `npx tsc -b`, `npm test` across workspaces. Add ESLint (typescript-eslint, no-floating-promises on) + Prettier with scripts and a lint CI step.
 **Accept:** workflow file present and green on the branch; `npm run lint` clean; lint catches an unused import (prove by test-fixture or local demonstration in PR notes).
 
-### T-002 · Headless balance runner (sim package) — `status: TODO` · `coder: opus` · `after: —`
+### T-002 · Headless balance runner (sim package) — `status: DONE` · `coder: opus` · `after: —`
 In `packages/sim`: a `runCampaign(seed, days, policy)` harness that drives `advanceDay` with pluggable policies. Ship three naive policies (idle, greedy-trader stub, random-legal-action) and a stats report (credits curve, debt-cleared day, fuel-starvation days, flaw-override rate, wire volume) as JSON to stdout.
 **Accept:** `npm run sim -- --seed 1 --days 100 --policy greedy` prints a stats JSON; same seed twice → byte-identical output; a vitest asserts determinism.
 
