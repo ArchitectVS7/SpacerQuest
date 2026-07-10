@@ -1,0 +1,13 @@
+{
+  "name": "@spacerquest/content",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
