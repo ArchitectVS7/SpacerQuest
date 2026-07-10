@@ -9,10 +9,7 @@ const TEN_DAY_SCRIPT: PlayerAction[][] = [
     { type: 'Travel', destinationId: 2, spendDie: 1 },
     { type: 'Trade', action: 'pay-debt', amount: 50 },
   ],
-  [
-    { type: 'Combat', stance: 'talk', targetId: 'pirate-1', spendDie: 0 },
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 5, spendDie: 1 },
-  ],
+  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 5, spendDie: 1 }],
   [
     { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
     { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 1 },
@@ -20,14 +17,10 @@ const TEN_DAY_SCRIPT: PlayerAction[][] = [
   ],
   [
     { type: 'Trade', action: 'pay-debt', amount: 25 },
-    { type: 'Combat', stance: 'run', targetId: 'raider-2', spendDie: 0 },
     { type: 'Travel', destinationId: 4, spendDie: 1 },
   ],
   [{ type: 'Wait' }],
-  [
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
-    { type: 'Combat', stance: 'fight', targetId: 'pirate-3', spendDie: 1 },
-  ],
+  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 }, { type: 'Wait' }],
   [
     { type: 'Travel', destinationId: 5, spendDie: 0 },
     { type: 'Trade', action: 'pay-debt', amount: 100 },
@@ -36,10 +29,7 @@ const TEN_DAY_SCRIPT: PlayerAction[][] = [
     { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
     { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 1 },
   ],
-  [
-    { type: 'Combat', stance: 'talk', targetId: 'raider-4', spendDie: 0 },
-    { type: 'Travel', destinationId: 6, spendDie: 1 },
-  ],
+  [{ type: 'Travel', destinationId: 6, spendDie: 1 }],
   [
     { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
     { type: 'Wait' },
@@ -191,11 +181,15 @@ describe('Day loop', () => {
       routeDangerChance: 0.08,
       encounterRoll: 0.01,
       round: 1,
+      enemyHull: 1,
     };
 
     const dusk = endDay(dawn.state);
 
     expect(dusk.state.dayPhase).toBe(DayPhase.DAWN);
-    expect(dusk.state.encounter).toEqual(dawn.state.encounter);
+    expect(dusk.state.encounter?.round).toBe(2);
+    expect(dusk.events).toContainEqual(
+      expect.objectContaining({ type: 'EnemyCounterAction', pressure: 'day-end' }),
+    );
   });
 });

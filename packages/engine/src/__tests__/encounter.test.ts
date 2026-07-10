@@ -35,6 +35,7 @@ function fixtureEncounter(overrides: Partial<EncounterState> = {}): EncounterSta
     routeDangerChance: 0.08,
     encounterRoll: 0.01,
     round: 1,
+    enemyHull: 1,
     ...overrides,
   };
 }
@@ -47,6 +48,21 @@ function findEncounterSeed(): number {
     }
   }
   throw new Error('No encounter seed found');
+}
+
+function selectRattlesnakeInterceptor() {
+  const state = readyState();
+  state.player.tier = 3;
+  state.npcs = state.npcs.filter((npc) => npc.profileId === 'npc-rattlesnake');
+
+  for (let seed = 1; seed <= 10_000; seed += 1) {
+    const interceptor = selectEncounterInterceptor(state, 1, 2, 3, new SeededRng(seed));
+    if (interceptor.profileId === 'npc-rattlesnake') {
+      return interceptor;
+    }
+  }
+
+  throw new Error('No seed selected Rattlesnake as named interceptor');
 }
 
 function resolveEncounterAction(
@@ -99,6 +115,18 @@ describe('Encounter system', () => {
     expect(deserializeState(serializeState(state))).toEqual(state);
   });
 
+  it('rejects combat without an active encounter instead of running legacy stub DCs', () => {
+    const state = readyState();
+
+    expect(() =>
+      resolveCombat(
+        state,
+        { type: 'Combat', stance: 'run', targetId: 'npc-1', spendDie: 0 },
+        new SeededRng(1),
+      ),
+    ).toThrow('Combat requires an active encounter');
+  });
+
   it('blocks travel, trade, and shipyard while an encounter is active', () => {
     const state = readyState();
     state.encounter = fixtureEncounter();
@@ -141,6 +169,7 @@ describe('Encounter system', () => {
     const state = readyState();
     state.player.dawnHand = { dice: [1], spent: [false] };
     state.player.stats[Stat.TRADE] = 0;
+    state.player.credits = 0;
     state.encounter = fixtureEncounter();
 
     const { state: nextState, events } = resolveCombat(
@@ -151,13 +180,16 @@ describe('Encounter system', () => {
 
     expect(nextState.encounter?.round).toBe(2);
     expect(events).toContainEqual(
+      expect.objectContaining({ type: 'TributeDemanded', amount: 1000, affordable: false }),
+    );
+    expect(events).toContainEqual(expect.objectContaining({ type: 'EnemyCounterAction' }));
+    expect(events).toContainEqual(
       expect.objectContaining({ type: 'EncounterRound', continues: true, stance: 'talk' }),
     );
   });
 
   it.each([
     ['talk', 'talked-down'],
-    ['run', 'escaped'],
     ['fight', 'defeated'],
   ] as const)(
     'successful %s clears the encounter and completes pending travel',
@@ -178,6 +210,147 @@ describe('Encounter system', () => {
       );
     },
   );
+
+  it('successful run escapes without completing the pending travel', () => {
+    const { state: nextState, events } = resolveEncounterAction('run');
+
+    expect(nextState.encounter).toBeNull();
+    expect(nextState.player.currentSystemId).toBe(1);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'EncounterResolved', resolution: 'escaped' }),
+    );
+    expect(
+      events.some(
+        (event) => event.type === 'TravelEvent' && event.resumedFromEncounterId === 'enc-test',
+      ),
+    ).toBe(false);
+  });
+
+  it('failed talk pays tribute when affordable and resolves as talked-down', () => {
+    const state = readyState();
+    state.player.dawnHand = { dice: [1], spent: [false] };
+    state.player.credits = 1500;
+    state.encounter = fixtureEncounter();
+
+    const { state: nextState, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: state.encounter.interceptor.id, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(nextState.encounter).toBeNull();
+    expect(nextState.player.credits).toBe(500);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'TributeDemanded', amount: 1000, affordable: true }),
+    );
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 1000 }));
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'EncounterResolved', resolution: 'talked-down' }),
+    );
+  });
+
+  it('caps tribute escalation at the foundation maximum', () => {
+    const state = readyState();
+    state.player.dawnHand = { dice: [1], spent: [false] };
+    state.player.credits = 20_000;
+    state.encounter = fixtureEncounter({ round: 12 });
+
+    const { state: nextState, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: state.encounter.interceptor.id, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(nextState.player.credits).toBe(10_000);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'TributeDemanded', amount: 10_000 }),
+    );
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 10_000 }));
+  });
+
+  it('enemy flaw check can refuse tribute and keep combat active', () => {
+    const rattlesnake = selectRattlesnakeInterceptor();
+    const state = readyState();
+    state.player.dawnHand = { dice: [1], spent: [false] };
+    state.player.credits = 10_000;
+    state.encounter = fixtureEncounter({ interceptor: rattlesnake });
+
+    const { state: nextState, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: state.encounter.interceptor.id, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(nextState.encounter?.round).toBe(2);
+    expect(nextState.player.credits).toBe(10_000);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'FlawCheck',
+        npcId: rattlesnake.id,
+        flaw: 'Vengeful',
+        dc: 14,
+        resisted: false,
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'TributeDemanded', refused: true, affordable: true }),
+    );
+    expect(events.some((event) => event.type === 'TributePaid')).toBe(false);
+  });
+
+  it('plays a deterministic three-round combat state machine', () => {
+    let state = readyState();
+    state.player.dawnHand = { dice: [1, 20, 20], spent: [false, false, false] };
+    state.player.credits = 0;
+    state.encounter = fixtureEncounter({
+      enemyHull: 2,
+      interceptor: {
+        ...fixtureEncounter().interceptor,
+        stats: { PILOT: 1, GUNS: 20, TRADE: 0, GRIT: 0, GUILE: 1 },
+      },
+    });
+
+    const roundOne = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: state.encounter.interceptor.id, spendDie: 0 },
+      new SeededRng(1),
+    );
+    state = roundOne.state;
+    const roundTwo = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'fight', targetId: state.encounter!.interceptor.id, spendDie: 1 },
+      new SeededRng(2),
+    );
+    state = roundTwo.state;
+    const roundThree = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'fight', targetId: state.encounter!.interceptor.id, spendDie: 2 },
+      new SeededRng(3),
+    );
+
+    expect(roundOne.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'TributeDemanded', round: 1, amount: 1000 }),
+        expect.objectContaining({
+          type: 'ComponentDamaged',
+          component: 'shields',
+          newCondition: 8,
+        }),
+      ]),
+    );
+    expect(roundTwo.state.encounter?.round).toBe(3);
+    expect(roundTwo.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'CombatEvent', stance: 'fight', enemyHullRemaining: 1 }),
+        expect.objectContaining({ type: 'ComponentDamaged', component: 'drives', newCondition: 8 }),
+      ]),
+    );
+    expect(roundThree.state.encounter).toBeNull();
+    expect(roundThree.state.player.currentSystemId).toBe(2);
+    expect(roundThree.events).toContainEqual(
+      expect.objectContaining({ type: 'EncounterResolved', resolution: 'defeated' }),
+    );
+  });
 
   it.each([
     ['run', 9],
@@ -200,6 +373,34 @@ describe('Encounter system', () => {
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'EncounterRound', continues: true, insufficientFuel: true }),
     );
+    expect(events).toContainEqual(expect.objectContaining({ type: 'EnemyCounterAction' }));
+  });
+
+  it('enemy pressure can damage components and emit ShipLost', () => {
+    const state = readyState();
+    state.player.dawnHand = { dice: [1], spent: [false] };
+    state.player.ship.hull.condition = 1;
+    state.encounter = fixtureEncounter({
+      round: 4,
+      interceptor: {
+        ...fixtureEncounter().interceptor,
+        stats: { PILOT: 1, GUNS: 20, TRADE: 0, GRIT: 0, GUILE: 1 },
+      },
+    });
+
+    const { state: nextState, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'run', targetId: state.encounter.interceptor.id, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(nextState.encounter).toBeNull();
+    expect(nextState.player.ship.hull.condition).toBe(0);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'ComponentDamaged', component: 'hull', newCondition: 0 }),
+    );
+    expect(events).toContainEqual(expect.objectContaining({ type: 'ShipLost' }));
+    expect(deserializeState(serializeState(nextState))).toEqual(nextState);
   });
 
   it('delivers contracts only after encounter resolution', () => {

@@ -5,6 +5,31 @@ import { resolveCombat } from '../actions/combat.js';
 import { createInitialState } from '../state.js';
 import { SeededRng } from '../rng.js';
 import { rollDawnHand } from '../dice.js';
+import { EncounterState } from '../types.js';
+
+function fixtureEncounter(): EncounterState {
+  return {
+    id: 'enc-action',
+    pendingTravel: { origin: 1, destination: 2, fuelUsed: 5 },
+    interceptor: {
+      id: 'anon-pirate-1',
+      source: 'anonymous',
+      name: 'K)(akj',
+      shipName: 'K1++++',
+      shipClass: 'Maligna Bat',
+      homeSystem: 'Pollux-7',
+      kind: 'PIRATE',
+      rosterIndex: 1,
+      stats: { PILOT: 1, GUNS: 0, TRADE: 0, GRIT: 0, GUILE: 1 },
+      tier: 1,
+    },
+    routeDangerLevel: 1,
+    routeDangerChance: 0.08,
+    encounterRoll: 0.01,
+    round: 1,
+    enemyHull: 1,
+  };
+}
 
 describe('Player Actions', () => {
   it('resolves buying fuel', () => {
@@ -79,6 +104,7 @@ describe('Player Actions', () => {
   it('resolves combat run', () => {
     const state = createInitialState(123);
     state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.encounter = fixtureEncounter();
     const initialFuel = state.player.ship.fuel;
 
     const { state: nextState, events } = resolveCombat(
@@ -86,7 +112,7 @@ describe('Player Actions', () => {
       {
         type: 'Combat',
         stance: 'run',
-        targetId: 'npc-1',
+        targetId: state.encounter.interceptor.id,
         spendDie: 0,
       },
       new SeededRng(123),

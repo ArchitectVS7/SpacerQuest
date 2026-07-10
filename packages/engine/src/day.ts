@@ -6,7 +6,7 @@ import { resolveNpcDay } from './npc.js';
 import { generateManifestBoard } from './economy.js';
 import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
-import { resolveCombat } from './actions/combat.js';
+import { applyEncounterDuskPressure, resolveCombat } from './actions/combat.js';
 import { resolveShipyard } from './actions/shipyard.js';
 import { evaluateDeeds } from './deeds.js';
 
@@ -136,6 +136,15 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     for (let i = 0; i < nextState.player.dawnHand.spent.length; i++) {
       nextState.player.dawnHand.spent[i] = true;
     }
+  }
+
+  if (nextState.encounter) {
+    events.push(
+      ...applyEncounterDuskPressure(
+        nextState,
+        dayRng.fork(`encounter-dusk-${nextState.encounter.id}-${nextState.encounter.round}`),
+      ),
+    );
   }
 
   // 3. DUSK (NPC Actions)

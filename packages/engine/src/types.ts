@@ -41,6 +41,8 @@ export interface EncounterInterceptorState {
   profileId?: string;
   stats: StatBlock;
   tier: PowerTier;
+  flaw?: string;
+  flawDc?: number;
 }
 
 export interface EncounterState {
@@ -51,6 +53,7 @@ export interface EncounterState {
   routeDangerChance: number;
   encounterRoll: number;
   round: number;
+  enemyHull?: number;
 }
 
 export enum DayPhase {
@@ -143,10 +146,11 @@ export type GameEvent =
       type: 'CombatEvent';
       characterId: string;
       targetId: string;
-      stance: string;
+      stance: 'run' | 'talk' | 'fight';
       fuelUsed: number;
       success: boolean;
       insufficientFuel?: boolean;
+      enemyHullRemaining?: number;
     }
   | { type: 'EncounterStarted'; encounter: EncounterState }
   | {
@@ -158,6 +162,46 @@ export type GameEvent =
       success: boolean;
       fuelUsed: number;
       insufficientFuel?: boolean;
+    }
+  | {
+      type: 'TributeDemanded';
+      encounterId: string;
+      round: number;
+      amount: number;
+      refused: boolean;
+      affordable: boolean;
+    }
+  | {
+      type: 'TributePaid';
+      encounterId: string;
+      round: number;
+      amount: number;
+      creditsRemaining: number;
+    }
+  | {
+      type: 'EnemyCounterAction';
+      encounterId: string;
+      round: number;
+      interceptorId: string;
+      pressure: 'between-rounds' | 'day-end';
+      check: CheckResult;
+      success: boolean;
+    }
+  | {
+      type: 'ComponentDamaged';
+      encounterId: string;
+      component: ShipComponentId;
+      previousCondition: number;
+      newCondition: number;
+      amount: number;
+    }
+  | {
+      type: 'ShipLost';
+      day: number;
+      encounterId: string;
+      interceptorId: string;
+      reason: 'combat-defeat';
+      component?: ShipComponentId;
     }
   | {
       type: 'EncounterResolved';

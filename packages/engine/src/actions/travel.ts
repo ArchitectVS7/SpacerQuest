@@ -114,6 +114,8 @@ function buildNamedCandidates(
         profileId: profile.id,
         stats: profile.stats,
         tier: profile.tier,
+        flaw: profile.flaw,
+        flawDc: profile.flawDc,
       },
     ];
   });
@@ -210,6 +212,7 @@ export function generateEncounter(
     routeDangerChance,
     encounterRoll,
     round: 1,
+    enemyHull: 1,
   };
 }
 

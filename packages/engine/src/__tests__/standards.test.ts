@@ -7,7 +7,7 @@ import { resolveCombat, RUN_FUEL_COST, FIGHT_FUEL_COST } from '../actions/combat
 import { resolveNpcDay } from '../npc.js';
 import { rollDawnHand } from '../dice.js';
 import { SeededRng } from '../rng.js';
-import { NpcState } from '../types.js';
+import { EncounterState, NpcState } from '../types.js';
 
 describe('Debt is a ledger, not a negative balance', () => {
   it('starts the player with pocket money and a separate Guild debt', () => {
@@ -69,10 +69,35 @@ describe('Debt is a ledger, not a negative balance', () => {
 });
 
 describe('Combat fuel gates (no free volleys, no free getaways)', () => {
+  function fixtureEncounter(): EncounterState {
+    return {
+      id: 'enc-fuel',
+      pendingTravel: { origin: 1, destination: 2, fuelUsed: 5 },
+      interceptor: {
+        id: 'anon-pirate-1',
+        source: 'anonymous',
+        name: 'K)(akj',
+        shipName: 'K1++++',
+        shipClass: 'Maligna Bat',
+        homeSystem: 'Pollux-7',
+        kind: 'PIRATE',
+        rosterIndex: 1,
+        stats: { PILOT: 1, GUNS: 0, TRADE: 0, GRIT: 0, GUILE: 1 },
+        tier: 1,
+      },
+      routeDangerLevel: 1,
+      routeDangerChance: 0.08,
+      encounterRoll: 0.01,
+      round: 1,
+      enemyHull: 1,
+    };
+  }
+
   function combatState(fuel: number) {
     const state = createInitialState(9);
     state.player.ship.fuel = fuel;
     state.player.dawnHand = rollDawnHand(new SeededRng(9), 5);
+    state.encounter = fixtureEncounter();
     return state;
   }
 
@@ -83,7 +108,7 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
       {
         type: 'Combat',
         stance: 'fight',
-        targetId: 'npc-x',
+        targetId: state.encounter!.interceptor.id,
         spendDie: 0,
       },
       new SeededRng(9),
@@ -92,7 +117,8 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
     expect(next.player.ship.fuel).toBe(FIGHT_FUEL_COST - 1); // untouched
     const combat = events.find((e) => e.type === 'CombatEvent');
     expect(combat).toMatchObject({ fuelUsed: 0, success: false, insufficientFuel: true });
-    expect(events.some((e) => e.type === 'StatCheck')).toBe(false);
+    expect(events.some((e) => e.type === 'StatCheck' && e.actor === 'Player')).toBe(false);
+    expect(events.some((e) => e.type === 'EnemyCounterAction')).toBe(true);
   });
 
   it('running on fumes fails automatically — escape is never free', () => {
@@ -102,7 +128,7 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
       {
         type: 'Combat',
         stance: 'run',
-        targetId: 'npc-x',
+        targetId: state.encounter!.interceptor.id,
         spendDie: 0,
       },
       new SeededRng(9),
@@ -111,7 +137,8 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
     expect(next.player.ship.fuel).toBe(RUN_FUEL_COST - 1);
     const combat = events.find((e) => e.type === 'CombatEvent');
     expect(combat).toMatchObject({ fuelUsed: 0, success: false, insufficientFuel: true });
-    expect(events.some((e) => e.type === 'StatCheck')).toBe(false);
+    expect(events.some((e) => e.type === 'StatCheck' && e.actor === 'Player')).toBe(false);
+    expect(events.some((e) => e.type === 'EnemyCounterAction')).toBe(true);
   });
 });
 

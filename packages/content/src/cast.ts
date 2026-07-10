@@ -94,7 +94,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     stats: { PILOT: 2, GUNS: 3, TRADE: 3, GRIT: 2, GUILE: 1 },
     ideal: 'Profit',
     bond: 'Loyal to the Warlord Confed',
-    flaw: 'Greedy',
+    flaw: 'Vengeful',
     flawDc: 14,
     tier: 3,
   },

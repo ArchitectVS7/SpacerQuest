@@ -173,16 +173,6 @@ export function availablePlannedActions(state: GameState): PlayerAction[] {
     spendDie,
   }));
 
-  const firstNpc = state.npcs[0];
-  if (firstNpc) {
-    appendDieAction(actions, (spendDie) => ({
-      type: 'Combat',
-      stance: 'talk',
-      targetId: firstNpc.id,
-      spendDie,
-    }));
-  }
-
   if (state.player.debt > 0 && state.player.credits > 0) {
     actions.push({
       type: 'Trade',
