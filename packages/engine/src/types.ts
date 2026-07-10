@@ -106,7 +106,60 @@ export type GameEvent =
       resolution: 'escaped' | 'talked-down' | 'defeated';
       round: number;
       interceptorId: string;
-    };
+    }
+  | ShipyardEvent
+  | ShipyardFail;
+
+export type ShipComponentId =
+  'hull' | 'drives' | 'cabin' | 'lifeSupport' | 'weapons' | 'navigation' | 'robotics' | 'shields';
+
+export type SpecialEquipmentId =
+  | 'CLOAKER'
+  | 'AUTO_REPAIR'
+  | 'STAR_BUSTER'
+  | 'ARCH_ANGEL'
+  | 'ASTRAXIAL_HULL'
+  | 'TITANIUM_HULL'
+  | 'TRANS_WARP';
+
+export type ShipyardActionKind =
+  'buy-component-tier' | 'repair' | 'buy-cargo-pods' | 'buy-special-equipment';
+
+export type ShipyardFailureReason =
+  | 'INSUFFICIENT_CREDITS'
+  | 'AT_MAX_CONDITION'
+  | 'NO_HULL'
+  | 'CAPACITY_EXCEEDED'
+  | 'MUTUALLY_EXCLUSIVE_EQUIPMENT'
+  | 'PREREQUISITE_NOT_MET'
+  | 'ALREADY_INSTALLED';
+
+export interface ShipyardEvent {
+  type: 'ShipyardEvent';
+  action: ShipyardActionKind;
+  cost: number;
+  component?: ShipComponentId;
+  tier?: number;
+  repairMode?: 'all' | 'single';
+  quantity?: number;
+  equipment?: SpecialEquipmentId;
+}
+
+export interface ShipyardFail {
+  type: 'ShipyardFail';
+  action: ShipyardActionKind;
+  reason: ShipyardFailureReason;
+  component?: ShipComponentId;
+  tier?: number;
+  repairMode?: 'all' | 'single';
+  quantity?: number;
+  equipment?: SpecialEquipmentId;
+  conflictingEquipment?: SpecialEquipmentId;
+  prerequisite?: string;
+  cost?: number;
+  credits?: number;
+  maxPods?: number;
+}
 
 // Player actions
 export type PlayerAction =
@@ -120,6 +173,16 @@ export type PlayerAction =
     }
   | { type: 'Travel'; destinationId: number; spendDie?: number }
   | { type: 'Combat'; stance: 'run' | 'talk' | 'fight'; targetId: string; spendDie?: number }
+  | {
+      type: 'Shipyard';
+      action: ShipyardActionKind;
+      spendDie: number;
+      component?: ShipComponentId;
+      tier?: number;
+      repairMode?: 'all' | 'single';
+      quantity?: number;
+      equipment?: SpecialEquipmentId;
+    }
   | { type: 'Wait' };
 
 export type NpcActionType = 'Trade' | 'Travel' | 'Combat' | 'Patrol' | 'FlawOverride';
@@ -157,10 +220,18 @@ export interface ShipState {
   robotics: ComponentState;
   cabin: ComponentState;
   hasTransWarpDrive?: boolean;
+  hasCloaker?: boolean;
+  hasAutoRepair?: boolean;
+  hasStarBuster?: boolean;
+  hasArchAngel?: boolean;
+  isAstraxialHull?: boolean;
+  hasTitaniumHull?: boolean;
 }
 
 export interface PlayerState {
   credits: number;
+  score: number;
+  isConqueror?: boolean;
   /** Outstanding Merchant Guild debt — a ledger entry, NOT negative credits.
    *  Modeling debt as a negative balance recreates the UGT poverty trap
    *  (can't buy fuel, can't earn, can't recover). */

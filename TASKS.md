@@ -54,7 +54,7 @@ Travel can be intercepted: encounter generation rolls against route danger, pick
 Combat becomes a round-based state machine per PRD §7.4: per-round stance (run/talk/fight), enemy behavior driven by their sheet + flaw (Rattlesnake won't take tribute from someone who insulted him), tribute escalation per `foundation/rules/combat.ts`, component damage on hits, running burns fuel per round, defeat = ship loss trigger (consumed by T-108). Player fuel gates from the current combat.ts carry over per round.
 **Accept:** a scripted 3-round fight test with exact expected state; enemy flaw behavior property test; tribute escalation matches foundation constants; defeat emits `ShipLost` event.
 
-### T-105 · Ship upgrades & shipyard — `status: TODO` · `coder: opus` · `after: T-102`
+### T-105 · Ship upgrades & shipyard — `status: DONE` · `coder: opus` · `after: T-102`
 Shipyard actions: component tier purchases, condition repairs, cargo pod expansion, and the 7 special-equipment items with mutual-exclusion rules — prices from `foundation/rules/upgrades.ts`/`constants.ts` (with the UGT-corrected Roscoe economics; leave Roscoe itself out of v1). Component condition affects the formulas that already read it.
 **Accept:** buying each tier/equipment works and is die+credit priced; mutual exclusions enforced with typed fail events; a test that hull-condition change moves manifest `pods`.
 

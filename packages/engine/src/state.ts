@@ -22,6 +22,8 @@ export function createInitialState(seed: number): GameState {
       // Merchant Guild debt due on day 30 — tracked as a ledger, never as a
       // negative balance.
       credits: 1000,
+      score: 0,
+      isConqueror: false,
       debt: 25000,
       debtDueDay: 30,
       stats: {
@@ -45,6 +47,13 @@ export function createInitialState(seed: number): GameState {
         lifeSupport: { strength: 10, condition: 9 },
         robotics: { strength: 10, condition: 9 },
         cabin: { strength: 1, condition: 9 },
+        hasTransWarpDrive: false,
+        hasCloaker: false,
+        hasAutoRepair: false,
+        hasStarBuster: false,
+        hasArchAngel: false,
+        isAstraxialHull: false,
+        hasTitaniumHull: false,
       },
     },
     market: {
@@ -66,6 +75,15 @@ export function deserializeState(json: string): GameState {
   parsed.dayPhase ??= DayPhase.DAWN;
   parsed.dayEventCount ??= 0;
   parsed.player.tier ??= 1;
+  parsed.player.score ??= 0;
+  parsed.player.isConqueror ??= false;
+  parsed.player.ship.hasTransWarpDrive ??= false;
+  parsed.player.ship.hasCloaker ??= false;
+  parsed.player.ship.hasAutoRepair ??= false;
+  parsed.player.ship.hasStarBuster ??= false;
+  parsed.player.ship.hasArchAngel ??= false;
+  parsed.player.ship.isAstraxialHull ??= false;
+  parsed.player.ship.hasTitaniumHull ??= false;
   parsed.encounter ??= null;
   return parsed;
 }

@@ -7,6 +7,7 @@ import { generateManifestBoard } from './economy.js';
 import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
 import { resolveCombat } from './actions/combat.js';
+import { resolveShipyard } from './actions/shipyard.js';
 
 function localFuelPrice(systemId: number): number {
   const system = STAR_SYSTEMS[systemId];
@@ -81,7 +82,10 @@ export function applyPlayerAction(
     if (action.type === 'Travel') {
       throw new Error('Cannot travel during an active encounter');
     }
-    throw new Error('Cannot trade during an active encounter');
+    if (action.type === 'Trade') {
+      throw new Error('Cannot trade during an active encounter');
+    }
+    throw new Error('Cannot use shipyard during an active encounter');
   }
 
   const dayRng = new SeededRng(nextState.rngState);
@@ -92,6 +96,9 @@ export function applyPlayerAction(
     result = resolveTrade(nextState, action, dayRng.fork(`action-trade-${actionEventIndex}`));
   } else if (action.type === 'Travel') {
     result = resolveTravel(nextState, action, dayRng.fork(`action-travel-${actionEventIndex}`));
+  } else if (action.type === 'Shipyard') {
+    dayRng.fork(`action-shipyard-${actionEventIndex}`);
+    result = resolveShipyard(nextState, action);
   } else {
     result = resolveCombat(nextState, action, dayRng.fork(`action-combat-${actionEventIndex}`));
   }

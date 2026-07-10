@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { distance } from '@spacerquest/content';
 import { generateManifestBoard } from '../economy.js';
+import { resolveShipyard } from '../actions/shipyard.js';
+import { createInitialState } from '../state.js';
 import { SeededRng } from '../rng.js';
 import { ShipState } from '../types.js';
 
@@ -43,5 +45,28 @@ describe('economy', () => {
       pods: 10,
       payment: 5390,
     });
+  });
+
+  it('uses repaired hull condition when generating manifest pod counts', () => {
+    const state = createInitialState(777);
+    state.player.credits = 1000;
+    state.player.dawnHand = { dice: [20], spent: [false] };
+    state.player.ship.cargoPods = 20;
+    state.player.ship.hull.condition = 4;
+
+    const damagedBoard = generateManifestBoard(1, new SeededRng(2468), state.player.ship);
+    expect(damagedBoard[0].pods).toBe(10);
+
+    const repaired = resolveShipyard(state, {
+      type: 'Shipyard',
+      action: 'repair',
+      component: 'hull',
+      repairMode: 'all',
+      spendDie: 0,
+    });
+
+    const repairedBoard = generateManifestBoard(1, new SeededRng(2468), repaired.state.player.ship);
+    expect(repaired.state.player.ship.hull.condition).toBe(9);
+    expect(repairedBoard[0].pods).toBe(20);
   });
 });
