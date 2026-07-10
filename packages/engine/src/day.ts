@@ -81,13 +81,19 @@ export function applyPlayerAction(
   }
 
   if (nextState.encounter && action.type !== 'Combat') {
-    if (action.type === 'Travel') {
-      throw new Error('Cannot travel during an active encounter');
-    }
-    if (action.type === 'Trade') {
-      throw new Error('Cannot trade during an active encounter');
-    }
-    throw new Error('Cannot use shipyard during an active encounter');
+    // Trade/Travel/Shipyard during an active encounter are player-possible acts,
+    // not malformed input — surface a typed ActionBlocked event instead of
+    // throwing. Refusals are logged (ShipyardFail precedent): the event is
+    // appended to the event log, but no die is spent, dayEventCount is not
+    // bumped, and no other state changes.
+    const blocked: GameEvent = {
+      type: 'ActionBlocked',
+      day: nextState.day,
+      actionType: action.type,
+      reason: 'active-encounter',
+    };
+    appendEvents(nextState, [blocked]);
+    return { state: nextState, events: [blocked] };
   }
 
   const dayRng = new SeededRng(nextState.rngState);

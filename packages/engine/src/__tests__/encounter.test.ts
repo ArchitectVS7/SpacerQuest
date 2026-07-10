@@ -99,16 +99,42 @@ describe('Encounter system', () => {
     expect(deserializeState(serializeState(state))).toEqual(state);
   });
 
-  it('blocks travel and trade while an encounter is active', () => {
+  it('blocks travel, trade, and shipyard while an encounter is active', () => {
     const state = readyState();
     state.encounter = fixtureEncounter();
+    const before = structuredClone(state);
 
-    expect(() =>
-      applyPlayerAction(state, { type: 'Travel', destinationId: 2, spendDie: 0 }),
-    ).toThrow('Cannot travel during an active encounter');
-    expect(() =>
-      applyPlayerAction(state, { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 }),
-    ).toThrow('Cannot trade during an active encounter');
+    const attempts: readonly { actionType: string; action: PlayerAction }[] = [
+      { actionType: 'Travel', action: { type: 'Travel', destinationId: 2, spendDie: 0 } },
+      {
+        actionType: 'Trade',
+        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+      },
+      {
+        actionType: 'Shipyard',
+        action: { type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1, spendDie: 0 },
+      },
+    ];
+
+    for (const { actionType, action } of attempts) {
+      const result = applyPlayerAction(state, action);
+      const blocked = {
+        type: 'ActionBlocked',
+        day: state.day,
+        actionType,
+        reason: 'active-encounter',
+      };
+
+      // The refusal is logged, but no die is spent, dayEventCount is not
+      // bumped, and everything else is untouched.
+      expect(result.events).toEqual([blocked]);
+      expect(result.state.eventLog).toEqual([...before.eventLog, blocked]);
+      expect({ ...result.state, eventLog: undefined }).toEqual({
+        ...before,
+        eventLog: undefined,
+      });
+      expect(result.state.dayEventCount).toBe(before.dayEventCount);
+    }
   });
 
   it('keeps and increments the encounter round after a failed talk check', () => {

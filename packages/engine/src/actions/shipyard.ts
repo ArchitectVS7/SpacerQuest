@@ -1,4 +1,4 @@
-import { YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
+import { SPECIAL_EQUIPMENT, YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
 import {
   GameEvent,
   GameState,
@@ -8,6 +8,7 @@ import {
   SpecialEquipmentId,
 } from '../types.js';
 import { spendDie } from '../dice.js';
+import { renownRankIndex } from '../deeds.js';
 
 const COMPONENT_IDS: readonly ShipComponentId[] = [
   'hull',
@@ -277,6 +278,19 @@ function specialEquipmentFailure(
     });
   }
 
+  // Renown gate: special equipment unlocks are driven by Deeds/Renown rank
+  // (declared in content SPECIAL_EQUIPMENT), replacing foundation's vestigial
+  // score/conqueror gates that were never incremented.
+  const requiredRank = SPECIAL_EQUIPMENT.find(
+    (entry) => entry.id === equipment,
+  )?.requiredRenownRank;
+  if (
+    requiredRank &&
+    renownRankIndex(state.player.registry.renownRank) < renownRankIndex(requiredRank)
+  ) {
+    return fail(action, { reason: 'INSUFFICIENT_RENOWN', requiredRank });
+  }
+
   if (equipment === 'CLOAKER') {
     if (ship.hull.strength < 1 || ship.hull.strength > 4) {
       return fail(action, { reason: 'PREREQUISITE_NOT_MET', prerequisite: 'HULL_STRENGTH_1_TO_4' });
@@ -286,17 +300,8 @@ function specialEquipmentFailure(
     }
   } else if (equipment === 'AUTO_REPAIR' && ship.hull.strength < 1) {
     return fail(action, { reason: 'NO_HULL' });
-  } else if (equipment === 'STAR_BUSTER' && state.player.score < 150) {
-    return fail(action, { reason: 'PREREQUISITE_NOT_MET', prerequisite: 'SCORE_150' });
-  } else if (equipment === 'ARCH_ANGEL' && state.player.score < 150) {
-    return fail(action, { reason: 'PREREQUISITE_NOT_MET', prerequisite: 'SCORE_150' });
-  } else if (equipment === 'ASTRAXIAL_HULL') {
-    if (state.player.isConqueror !== true) {
-      return fail(action, { reason: 'PREREQUISITE_NOT_MET', prerequisite: 'CONQUEROR' });
-    }
-    if (ship.drives.strength < 25) {
-      return fail(action, { reason: 'PREREQUISITE_NOT_MET', prerequisite: 'DRIVES_STRENGTH_25' });
-    }
+  } else if (equipment === 'ASTRAXIAL_HULL' && ship.drives.strength < 25) {
+    return fail(action, { reason: 'PREREQUISITE_NOT_MET', prerequisite: 'DRIVES_STRENGTH_25' });
   }
 
   return null;

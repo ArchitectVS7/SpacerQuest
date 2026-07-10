@@ -256,10 +256,8 @@ export function resolveTravel(
   const events: GameEvent[] = [];
   const nextState = JSON.parse(JSON.stringify(state)) as GameState;
 
-  if (nextState.encounter) {
-    throw new Error('Cannot travel during an active encounter');
-  }
-
+  // Encounter gating lives in day.ts applyPlayerAction (the only runtime caller),
+  // which emits a typed ActionBlocked event before this resolver is reached.
   if (action.spendDie === undefined) {
     throw new Error('Must spend a die to travel');
   }

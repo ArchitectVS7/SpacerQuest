@@ -88,6 +88,14 @@ describe('deed registry', () => {
         citation: 'Duplicate entries are ignored.',
         renownRank: 'CAPTAIN',
       },
+      {
+        type: 'TravelEvent',
+        characterId: 'player',
+        origin: 1,
+        destination: 2,
+        fuelUsed: 10,
+        success: true,
+      },
     ];
 
     const raw = JSON.parse(serializeState(state)) as { player: { registry?: unknown } };
@@ -112,6 +120,14 @@ describe('deed registry', () => {
       },
     ]);
     expect(restored.player.registry.renownRank).toBe('CAPTAIN');
+    // matchCounts is rebuilt from the raw log: the successful TravelEvent matches
+    // first_jump, road_regular (count deed), and fuel_fumes_arrival (its state
+    // matcher is not part of event matching); DeedEarned/WireEntry match nothing.
+    expect(restored.player.registry.matchCounts).toEqual({
+      first_jump: 1,
+      road_regular: 1,
+      fuel_fumes_arrival: 1,
+    });
   });
 
   it('fires first delivery and Mercy Runner from structured delivery events', () => {
@@ -175,19 +191,43 @@ describe('deed registry', () => {
     expect(state.player.registry.earned.map((deed) => deed.eventIndex)).toEqual([0, 1]);
   });
 
-  it('advances renown by deed count, not score', () => {
+  it('derives renown rank purely from earned deed count', () => {
     const state = createInitialState(4);
-    state.player.score = 9999;
 
+    expect(state.player.registry.earned).toHaveLength(0);
     expect(state.player.registry.renownRank).toBe('LIEUTENANT');
     expect(rankForDeedCount(0)).toBe('LIEUTENANT');
 
     evaluateDeeds(state, [signContractEvent()]);
 
+    // Rank tracks the number of earned deeds and nothing else.
+    expect(state.player.registry.earned).toHaveLength(1);
     expect(state.player.registry.renownRank).toBe('COMMANDER');
     expect(rankForDeedCount(2)).toBe('CAPTAIN');
     expect(rankForDeedCount(3)).toBe('COMMODORE');
     expect(rankForDeedCount(4)).toBe('COMMODORE');
+  });
+
+  it('evaluates deeds independent of event-log length', () => {
+    const emptyLog = createInitialState(7);
+    const bigLog = createInitialState(7);
+    // A 5,000-entry historical log (none matching any deed) must not change the
+    // emitted events: evaluation reads the cached matchCounts, not the log.
+    bigLog.eventLog = Array.from({ length: 5000 }, (_unused, day): GameEvent => ({
+      type: 'DayAdvanced',
+      day,
+    }));
+
+    const source = [signContractEvent()];
+    const emptyEvents = evaluateDeeds(emptyLog, source);
+    const bigEvents = evaluateDeeds(bigLog, source);
+
+    expect(bigEvents).toEqual(emptyEvents);
+    expect(bigLog.player.registry.earned.map((deed) => deed.id)).toEqual(
+      emptyLog.player.registry.earned.map((deed) => deed.id),
+    );
+    expect(bigLog.player.registry.renownRank).toBe(emptyLog.player.registry.renownRank);
+    expect(bigLog.player.registry.matchCounts).toEqual(emptyLog.player.registry.matchCounts);
   });
 
   it('emits a rank-up wire entry when a deed crosses a threshold', () => {

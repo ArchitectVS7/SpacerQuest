@@ -1,23 +1,6 @@
 import { DayPhase, EarnedDeedState, GameEvent, GameState, NpcState } from './types.js';
-import {
-  NPC_PROFILES,
-  RENOWN_DEED_THRESHOLDS,
-  RENOWN_RANKS,
-  Stat,
-  type RenownRankId,
-} from '@spacerquest/content';
-
-const RENOWN_RANK_ORDER = Object.keys(RENOWN_RANKS) as RenownRankId[];
-
-function renownRankForDeedCount(deedCount: number): RenownRankId {
-  let rank: RenownRankId = 'LIEUTENANT';
-  for (const candidate of RENOWN_RANK_ORDER) {
-    if (deedCount >= RENOWN_DEED_THRESHOLDS[candidate]) {
-      rank = candidate;
-    }
-  }
-  return rank;
-}
+import { NPC_PROFILES, Stat } from '@spacerquest/content';
+import { computeMatchCounts, rankForDeedCount } from './deeds.js';
 
 function reconstructEarnedDeeds(eventLog: readonly GameEvent[]): EarnedDeedState[] {
   const seen = new Set<string>();
@@ -62,8 +45,6 @@ export function createInitialState(seed: number): GameState {
       // Merchant Guild debt due on day 30 — tracked as a ledger, never as a
       // negative balance.
       credits: 1000,
-      score: 0,
-      isConqueror: false,
       debt: 25000,
       debtDueDay: 30,
       stats: {
@@ -98,6 +79,7 @@ export function createInitialState(seed: number): GameState {
       registry: {
         earned: [],
         renownRank: 'LIEUTENANT',
+        matchCounts: {},
       },
     },
     market: {
@@ -120,17 +102,19 @@ export function deserializeState(json: string): GameState {
   parsed.dayEventCount ??= 0;
   parsed.eventLog ??= [];
   parsed.player.tier ??= 1;
-  parsed.player.score ??= 0;
-  parsed.player.isConqueror ??= false;
   if (parsed.player.registry === undefined) {
     parsed.player.registry = {
       earned: reconstructEarnedDeeds(parsed.eventLog),
       renownRank: 'LIEUTENANT',
+      matchCounts: computeMatchCounts(parsed.eventLog),
     };
-  } else if (parsed.player.registry.earned === undefined) {
-    parsed.player.registry.earned = reconstructEarnedDeeds(parsed.eventLog);
+  } else {
+    if (parsed.player.registry.earned === undefined) {
+      parsed.player.registry.earned = reconstructEarnedDeeds(parsed.eventLog);
+    }
+    parsed.player.registry.matchCounts ??= computeMatchCounts(parsed.eventLog);
   }
-  parsed.player.registry.renownRank = renownRankForDeedCount(parsed.player.registry.earned.length);
+  parsed.player.registry.renownRank = rankForDeedCount(parsed.player.registry.earned.length);
   parsed.player.ship.hasTransWarpDrive ??= false;
   parsed.player.ship.hasCloaker ??= false;
   parsed.player.ship.hasAutoRepair ??= false;

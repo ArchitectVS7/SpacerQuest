@@ -80,8 +80,7 @@ describe('shipyard', () => {
     state.player.ship.hull = { strength: 1, condition: 4 };
     state.player.ship.shields = { strength: 1, condition: 3 };
     state.player.ship.weapons = { strength: 1, condition: 2 };
-    state.player.score = 150;
-    state.player.isConqueror = true;
+    state.player.registry.renownRank = 'GIGA_HERO';
     state.player.ship.drives.strength = 25;
     state.player.ship.cargoPods = 10;
     state.player.ship.fuel = 300;
@@ -131,6 +130,43 @@ describe('shipyard', () => {
   });
 
   it.each([
+    ['STAR_BUSTER', 'LIEUTENANT', 'CAPTAIN'],
+    ['ARCH_ANGEL', 'LIEUTENANT', 'CAPTAIN'],
+    ['ASTRAXIAL_HULL', 'CAPTAIN', 'GIGA_HERO'],
+  ] as const)(
+    'refuses %s below the required renown rank with a typed failure',
+    (equipment, currentRank, requiredRank) => {
+      const state = shipyardState();
+      state.player.registry.renownRank = currentRank;
+      state.player.ship.drives.strength = 25; // isolate the renown gate for ASTRAXIAL_HULL
+      const startingCredits = state.player.credits;
+      const startingShip = structuredClone(state.player.ship);
+
+      const result = resolveShipyard(state, {
+        type: 'Shipyard',
+        action: 'buy-special-equipment',
+        equipment,
+        spendDie: 0,
+      });
+
+      expect(result.state.player.credits).toBe(startingCredits);
+      expect(result.state.player.ship).toEqual(startingShip);
+      // Shipyard spends the die before business checks (established ShipyardFail
+      // convention) — the refusal still consumes the die.
+      expectSpentDie(result.state);
+      expect(result.events).toEqual([
+        {
+          type: 'ShipyardFail',
+          action: 'buy-special-equipment',
+          equipment,
+          reason: 'INSUFFICIENT_RENOWN',
+          requiredRank,
+        },
+      ]);
+    },
+  );
+
+  it.each([
     ['AUTO_REPAIR', 'CLOAKER', 'AUTO_REPAIR'],
     ['CLOAKER', 'AUTO_REPAIR', 'CLOAKER'],
     ['ARCH_ANGEL', 'CLOAKER', 'ARCH_ANGEL'],
@@ -147,7 +183,7 @@ describe('shipyard', () => {
       const state = shipyardState();
       state.player.ship.hull.strength = 1;
       state.player.ship.shields.strength = 1;
-      state.player.score = 150;
+      state.player.registry.renownRank = 'GIGA_HERO';
       if (installed === 'AUTO_REPAIR') state.player.ship.hasAutoRepair = true;
       if (installed === 'CLOAKER') state.player.ship.hasCloaker = true;
       if (installed === 'ARCH_ANGEL') state.player.ship.hasArchAngel = true;

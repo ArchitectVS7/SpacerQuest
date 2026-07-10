@@ -118,19 +118,25 @@ function citationFor(deed: DeedDefinition, day: number): string {
 function anchorForCandidate(
   deed: DeedDefinition,
   sourceMatches: readonly EventMatch[],
-  historyMatches: readonly EventMatch[],
-  sourceStartIndex: number,
+  previousCount: number,
 ): EventMatch | undefined {
   if (!deed.trigger.count) {
     return sourceMatches[0];
   }
 
-  const thresholdMatch = historyMatches[deed.trigger.count.gte - 1];
-  if (thresholdMatch && thresholdMatch.index >= sourceStartIndex) {
-    return thresholdMatch;
+  // The threshold match is the (count.gte)-th matching event overall. If it lands
+  // inside this source batch, anchor to it; otherwise the threshold was crossed in
+  // history, so fall back to the first source match (matches legacy behavior).
+  const thresholdOffset = deed.trigger.count.gte - previousCount - 1;
+  if (thresholdOffset >= 0 && thresholdOffset < sourceMatches.length) {
+    return sourceMatches[thresholdOffset];
   }
 
   return sourceMatches[0];
+}
+
+export function renownRankIndex(rank: RenownRankId): number {
+  return RENOWN_RANK_ORDER.indexOf(rank);
 }
 
 export function rankForDeedCount(deedCount: number): RenownRankId {
@@ -143,14 +149,29 @@ export function rankForDeedCount(deedCount: number): RenownRankId {
   return rank;
 }
 
+/** One-time scan used only when reconstructing a registry from a raw event log
+ *  (deserialize/save-compat). Runtime evaluation never calls this — it relies on
+ *  the cached registry.matchCounts. */
+export function computeMatchCounts(eventLog: readonly GameEvent[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const event of eventLog) {
+    for (const deed of DEEDS) {
+      if (matchesEvent(event, deed)) {
+        counts[deed.id] = (counts[deed.id] ?? 0) + 1;
+      }
+    }
+  }
+  return counts;
+}
+
 export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent[]): GameEvent[] {
   if (sourceEvents.length === 0) {
     return [];
   }
 
   const emitted: GameEvent[] = [];
-  const history = [...state.eventLog, ...sourceEvents];
-  const earnedIds = new Set(state.player.registry.earned.map((deed) => deed.id));
+  const registry = state.player.registry;
+  const earnedIds = new Set(registry.earned.map((deed) => deed.id));
   const sourceStartIndex = state.eventLog.length;
   const candidates: DeedCandidate[] = [];
 
@@ -166,17 +187,21 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
       continue;
     }
 
-    const historyMatches = history
-      .map((event, index) => ({ event, index }))
-      .filter(({ event }) => matchesEvent(event, deed));
-    if (deed.trigger.count && historyMatches.length < deed.trigger.count.gte) {
+    // Cached cumulative match count keeps evaluation O(sourceEvents), independent
+    // of eventLog length. Update it for every source match so count deeds see an
+    // accurate running total across calls even before they unlock.
+    const previousCount = registry.matchCounts[deed.id] ?? 0;
+    const totalCount = previousCount + sourceMatches.length;
+    registry.matchCounts[deed.id] = totalCount;
+
+    if (deed.trigger.count && totalCount < deed.trigger.count.gte) {
       continue;
     }
     if (!matchesState(state, deed.trigger.state)) {
       continue;
     }
 
-    const anchor = anchorForCandidate(deed, sourceMatches, historyMatches, sourceStartIndex);
+    const anchor = anchorForCandidate(deed, sourceMatches, previousCount);
     if (!anchor) {
       continue;
     }

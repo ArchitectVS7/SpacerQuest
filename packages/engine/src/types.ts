@@ -71,6 +71,9 @@ export interface EarnedDeedState {
 export interface DeedRegistryState {
   earned: EarnedDeedState[];
   renownRank: RenownRankId;
+  /** Cached historical match count per deed id, so deed evaluation stays O(source
+   *  events) instead of rescanning the full event log on every call. */
+  matchCounts: Record<string, number>;
 }
 
 export interface TradeEvent {
@@ -116,6 +119,12 @@ export type GameEvent =
       previousRank: RenownRankId;
       newRank: RenownRankId;
       deedCount: number;
+    }
+  | {
+      type: 'ActionBlocked';
+      day: number;
+      actionType: 'Trade' | 'Travel' | 'Shipyard';
+      reason: 'active-encounter';
     }
   | {
       type: 'TravelEvent';
@@ -182,6 +191,7 @@ export type ShipyardFailureReason =
   | 'CAPACITY_EXCEEDED'
   | 'MUTUALLY_EXCLUSIVE_EQUIPMENT'
   | 'PREREQUISITE_NOT_MET'
+  | 'INSUFFICIENT_RENOWN'
   | 'ALREADY_INSTALLED';
 
 export interface ShipyardEvent {
@@ -206,6 +216,7 @@ export interface ShipyardFail {
   equipment?: SpecialEquipmentId;
   conflictingEquipment?: SpecialEquipmentId;
   prerequisite?: string;
+  requiredRank?: RenownRankId;
   cost?: number;
   credits?: number;
   maxPods?: number;
@@ -280,8 +291,6 @@ export interface ShipState {
 
 export interface PlayerState {
   credits: number;
-  score: number;
-  isConqueror?: boolean;
   /** Outstanding Merchant Guild debt — a ledger entry, NOT negative credits.
    *  Modeling debt as a negative balance recreates the UGT poverty trap
    *  (can't buy fuel, can't earn, can't recover). */
