@@ -110,6 +110,11 @@ export function TerminalComponent() {
     terminal.writeln('\x1b[32mBBS Museum Edition\x1b[0m');
     terminal.writeln('');
 
+    // Grab keyboard focus on mount so the player can type immediately — xterm
+    // otherwise swallows keystrokes until the user clicks into the terminal,
+    // which reads as "the prompt is frozen".
+    terminal.focus();
+
     return () => {
       terminal.dispose();
     };
@@ -206,6 +211,9 @@ export function TerminalComponent() {
 
     // Request immediately (works if WS is already connected)
     wsClient.requestScreen(currentScreen);
+    // Re-focus after navigating into a game screen (e.g. login → main-menu) so
+    // the terminal is ready for input without a click.
+    terminal.focus();
 
     // Also request after authentication completes (handles race condition
     // where terminal mounts before the WebSocket is connected)
@@ -214,6 +222,7 @@ export function TerminalComponent() {
         // Always enforce requesting the current screen on auth to avoid race conditions.
         // It's fine if the server sends it twice.
         wsClient.requestScreen(currentScreen);
+        terminal.focus();
       }
     };
     wsClient.on('authenticated', onAuth);
@@ -226,6 +235,7 @@ export function TerminalComponent() {
       data-screen={currentScreen}
       data-render-seq={renderSeq}
       data-ready={renderSeq > 0 && currentScreen === 'main-menu' ? 'true' : 'false'}
+      onMouseDown={() => terminalInstance.current?.focus()}
     >
       <div className="terminal-wrapper">
         <div ref={terminalRef} className="crt-flicker" />
