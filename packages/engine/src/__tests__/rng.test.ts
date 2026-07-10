@@ -5,7 +5,7 @@ describe('SeededRng', () => {
   it('is deterministic', () => {
     const rng1 = new SeededRng(42);
     const rng2 = new SeededRng(42);
-    
+
     expect(rng1.next()).toBe(rng2.next());
     expect(rng1.d20()).toBe(rng2.d20());
     expect(rng1.rollHand(5)).toEqual(rng2.rollHand(5));

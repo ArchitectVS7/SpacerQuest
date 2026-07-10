@@ -5,7 +5,7 @@ import { NPC_PROFILES, FLAWS } from '@spacerquest/content';
 export function resolveNpcDay(
   npc: NpcState,
   rng: SeededRng,
-  context: { day: number }
+  _context: { day: number },
 ): { npc: NpcState; events: GameEvent[] } {
   const events: GameEvent[] = [];
   const updatedNpc = JSON.parse(JSON.stringify(npc)) as NpcState;
@@ -50,8 +50,7 @@ export function resolveNpcDay(
   // flawDc: disciplined characters resist easily, volatile ones rarely.
   const flawDef = FLAWS[profile.flaw];
   const touchesFlaw =
-    flawDef !== undefined &&
-    (flawDef.triggers as string[]).includes(intendedAction.type);
+    flawDef !== undefined && (flawDef.triggers as string[]).includes(intendedAction.type);
 
   if (touchesFlaw) {
     const die = rng.d20();

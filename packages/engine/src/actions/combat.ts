@@ -11,7 +11,7 @@ export const FIGHT_FUEL_COST = 50;
 export function resolveCombat(
   state: GameState,
   action: Extract<PlayerAction, { type: 'Combat' }>,
-  _rng: SeededRng
+  _rng: SeededRng,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
   const nextState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -36,7 +36,7 @@ export function resolveCombat(
         stance: 'run',
         fuelUsed: 0,
         success: false,
-        insufficientFuel: true
+        insufficientFuel: true,
       });
       return { state: nextState, events };
     }
@@ -49,7 +49,7 @@ export function resolveCombat(
       actor: 'Player',
       stat: Stat.PILOT,
       dc: 12,
-      result
+      result,
     });
 
     events.push({
@@ -58,7 +58,7 @@ export function resolveCombat(
       targetId,
       stance: 'run',
       fuelUsed: RUN_FUEL_COST,
-      success: result.success
+      success: result.success,
     });
   } else if (action.stance === 'talk') {
     const result = check(die, stats[Stat.TRADE], 14); // Stub DC
@@ -67,7 +67,7 @@ export function resolveCombat(
       actor: 'Player',
       stat: Stat.TRADE,
       dc: 14,
-      result
+      result,
     });
 
     events.push({
@@ -76,7 +76,7 @@ export function resolveCombat(
       targetId,
       stance: 'talk',
       fuelUsed: 0,
-      success: result.success
+      success: result.success,
     });
   } else if (action.stance === 'fight') {
     if (nextState.player.ship.fuel < FIGHT_FUEL_COST) {
@@ -88,7 +88,7 @@ export function resolveCombat(
         stance: 'fight',
         fuelUsed: 0,
         success: false,
-        insufficientFuel: true
+        insufficientFuel: true,
       });
       return { state: nextState, events };
     }
@@ -101,7 +101,7 @@ export function resolveCombat(
       actor: 'Player',
       stat: Stat.GUNS,
       dc: 10,
-      result
+      result,
     });
 
     events.push({
@@ -110,7 +110,7 @@ export function resolveCombat(
       targetId,
       stance: 'fight',
       fuelUsed: FIGHT_FUEL_COST,
-      success: result.success
+      success: result.success,
     });
   }
 

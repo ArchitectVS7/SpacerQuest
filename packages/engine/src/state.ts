@@ -42,11 +42,11 @@ export function createInitialState(seed: number): GameState {
         lifeSupport: { strength: 10, condition: 9 },
         robotics: { strength: 10, condition: 9 },
         cabin: { strength: 1, condition: 9 },
-      }
+      },
     },
     market: {
       manifestBoard: [],
-      localFuelPrice: 5
+      localFuelPrice: 5,
     },
     npcs,
     eventLog: [],

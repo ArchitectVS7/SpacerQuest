@@ -26,7 +26,7 @@ Statuses: `TODO` | `IN-PROGRESS` | `DONE` | `BLOCKED(reason)`
 
 ## M0 — Infrastructure
 
-### T-001 · CI for the monorepo — `status: TODO` · `coder: opus`
+### T-001 · CI for the monorepo — `status: DONE` · `coder: opus`
 GitHub Actions workflow: on push/PR run `npm ci`, `npx tsc -b`, `npm test` across workspaces. Add ESLint (typescript-eslint, no-floating-promises on) + Prettier with scripts and a lint CI step.
 **Accept:** workflow file present and green on the branch; `npm run lint` clean; lint catches an unused import (prove by test-fixture or local demonstration in PR notes).
 

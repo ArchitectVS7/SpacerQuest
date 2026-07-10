@@ -22,7 +22,7 @@ export const STAR_SYSTEMS: Record<number, StarSystem> = {
   12: { id: 12, name: 'Rigel-8', isRim: false },
   13: { id: 13, name: 'Spica-3', isRim: false, fuelSellPrice: 5 },
   14: { id: 14, name: 'Vega-6', isRim: false, fuelBuyPrice: 6, fuelSellPrice: 4 },
-  
+
   // Rim Systems
   15: { id: 15, name: 'Antares-5', isRim: true },
   16: { id: 16, name: 'Capella-4', isRim: true },

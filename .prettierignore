@@ -1,0 +1,11 @@
+legacy/
+foundation/
+docs/
+node_modules/
+dist/
+package-lock.json
+*.tsbuildinfo
+*.d.ts
+*.d.ts.map
+*.md
+packages/*/src/**/*.js

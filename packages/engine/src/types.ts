@@ -31,15 +31,37 @@ export type GameEvent =
   | { type: 'NpcAction'; npcId: string; actionDetails: string }
   | { type: 'WireEntry'; day: number; message: string }
   | { type: 'DayAdvanced'; day: number }
-  | { type: 'TravelEvent'; characterId: string; origin: number; destination: number; fuelUsed: number; success: boolean }
+  | {
+      type: 'TravelEvent';
+      characterId: string;
+      origin: number;
+      destination: number;
+      fuelUsed: number;
+      success: boolean;
+    }
   | { type: 'TradeEvent'; characterId: string; actionDetails: string }
   | { type: 'DebtPayment'; characterId: string; amount: number; remaining: number }
   | { type: 'DebtDue'; day: number; outstanding: number }
-  | { type: 'CombatEvent'; characterId: string; targetId: string; stance: string; fuelUsed: number; success: boolean; insufficientFuel?: boolean };
+  | {
+      type: 'CombatEvent';
+      characterId: string;
+      targetId: string;
+      stance: string;
+      fuelUsed: number;
+      success: boolean;
+      insufficientFuel?: boolean;
+    };
 
 // Player actions
 export type PlayerAction =
-  | { type: 'Trade'; action: 'buy-fuel' | 'sign-contract' | 'haggle' | 'pay-debt'; contractIndex?: number; fuelAmount?: number; amount?: number; spendDie?: number }
+  | {
+      type: 'Trade';
+      action: 'buy-fuel' | 'sign-contract' | 'haggle' | 'pay-debt';
+      contractIndex?: number;
+      fuelAmount?: number;
+      amount?: number;
+      spendDie?: number;
+    }
   | { type: 'Travel'; destinationId: number; spendDie?: number }
   | { type: 'Combat'; stance: 'run' | 'talk' | 'fight'; targetId: string; spendDie?: number }
   | { type: 'Wait' };
@@ -62,7 +84,7 @@ export interface NpcState {
 }
 
 export interface ComponentState {
-  strength: number;  // 1-199
+  strength: number; // 1-199
   condition: number; // 0-9
 }
 

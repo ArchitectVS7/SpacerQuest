@@ -6,7 +6,7 @@ import { check, spendDie } from '../dice.js';
 export function resolveTrade(
   state: GameState,
   action: Extract<PlayerAction, { type: 'Trade' }>,
-  _rng: SeededRng
+  _rng: SeededRng,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
   const nextState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -33,13 +33,13 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
-        actionDetails: `Bought ${action.fuelAmount} fuel for ${cost} credits.`
+        actionDetails: `Bought ${action.fuelAmount} fuel for ${cost} credits.`,
       });
     } else {
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
-        actionDetails: `Failed to buy fuel: Not enough credits.`
+        actionDetails: `Failed to buy fuel: Not enough credits.`,
       });
     }
   } else if (action.action === 'sign-contract') {
@@ -59,7 +59,7 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
-        actionDetails: 'Cannot sign: already carrying an active contract.'
+        actionDetails: 'Cannot sign: already carrying an active contract.',
       });
     } else {
       const { hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
@@ -71,7 +71,7 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
-        actionDetails: `Signed contract to deliver cargo to ${contract.destination} for ${contract.payment} credits.`
+        actionDetails: `Signed contract to deliver cargo to ${contract.destination} for ${contract.payment} credits.`,
       });
     }
   } else if (action.action === 'haggle') {
@@ -88,7 +88,7 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
-        actionDetails: 'The broker will not renegotiate this contract again.'
+        actionDetails: 'The broker will not renegotiate this contract again.',
       });
     } else {
       const { die, hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
@@ -102,7 +102,7 @@ export function resolveTrade(
         actor: 'Player',
         stat: Stat.TRADE,
         dc: haggleDc,
-        result
+        result,
       });
 
       if (result.success) {
@@ -110,13 +110,13 @@ export function resolveTrade(
         events.push({
           type: 'TradeEvent',
           characterId: 'player',
-          actionDetails: `Haggle successful! Contract payment increased to ${contract.payment} credits.`
+          actionDetails: `Haggle successful! Contract payment increased to ${contract.payment} credits.`,
         });
       } else {
         events.push({
           type: 'TradeEvent',
           characterId: 'player',
-          actionDetails: `Haggle failed.`
+          actionDetails: `Haggle failed.`,
         });
       }
     }
@@ -140,7 +140,7 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
-        actionDetails: 'Debt payment failed: no credits to send.'
+        actionDetails: 'Debt payment failed: no credits to send.',
       });
     }
   }

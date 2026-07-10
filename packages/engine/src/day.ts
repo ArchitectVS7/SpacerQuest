@@ -17,7 +17,7 @@ function localFuelPrice(systemId: number): number {
 
 export function advanceDay(
   state: GameState,
-  playerActions: PlayerAction[]
+  playerActions: PlayerAction[],
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
   let nextState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -26,7 +26,11 @@ export function advanceDay(
   const dayRng = new SeededRng(nextState.rngState).fork(`day-${nextState.day}`);
 
   // Generate manifest board and price the local depot from canon tables
-  const manifestBoard = generateManifestBoard(nextState.player.currentSystemId, dayRng.fork('market'), nextState.player.ship);
+  const manifestBoard = generateManifestBoard(
+    nextState.player.currentSystemId,
+    dayRng.fork('market'),
+    nextState.player.ship,
+  );
   nextState.market = {
     manifestBoard,
     localFuelPrice: localFuelPrice(nextState.player.currentSystemId),
@@ -50,11 +54,19 @@ export function advanceDay(
       nextState = result.state;
       events.push(...result.events);
     } else if (action.type === 'Travel') {
-      const result = resolveTravel(nextState, action, dayRng.fork(`action-travel-${events.length}`));
+      const result = resolveTravel(
+        nextState,
+        action,
+        dayRng.fork(`action-travel-${events.length}`),
+      );
       nextState = result.state;
       events.push(...result.events);
     } else if (action.type === 'Combat') {
-      const result = resolveCombat(nextState, action, dayRng.fork(`action-combat-${events.length}`));
+      const result = resolveCombat(
+        nextState,
+        action,
+        dayRng.fork(`action-combat-${events.length}`),
+      );
       nextState = result.state;
       events.push(...result.events);
     } else if (action.type === 'Wait') {
@@ -64,11 +76,10 @@ export function advanceDay(
 
   // Set all dice to spent if player didn't use them (day is over)
   if (nextState.player.dawnHand) {
-      for(let i = 0; i < nextState.player.dawnHand.spent.length; i++) {
-          nextState.player.dawnHand.spent[i] = true;
-      }
+    for (let i = 0; i < nextState.player.dawnHand.spent.length; i++) {
+      nextState.player.dawnHand.spent[i] = true;
+    }
   }
-
 
   // 3. DUSK (NPC Actions)
   const npcOrder = dayRng.shuffle([...nextState.npcs]);
@@ -94,7 +105,7 @@ export function advanceDay(
         events.push({
           type: 'WireEntry',
           day: nextState.day,
-          message: `${npc.name} ${npc.lastAction.details}`
+          message: `${npc.name} ${npc.lastAction.details}`,
         });
       }
     }

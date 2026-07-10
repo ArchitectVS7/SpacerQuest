@@ -17,9 +17,9 @@ export class SeededRng {
   // mulberry32 implementation returning [0, 1)
   public next(): number {
     this.state |= 0;
-    this.state = this.state + 0x6D2B79F5 | 0;
+    this.state = (this.state + 0x6d2b79f5) | 0;
     let t = Math.imul(this.state ^ (this.state >>> 15), 1 | this.state);
-    t = t + Math.imul(t ^ (t >>> 7), 61 | t) ^ t;
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
@@ -40,7 +40,7 @@ export class SeededRng {
   public fork(label: string): SeededRng {
     let hash = this.state;
     for (let i = 0; i < label.length; i++) {
-      hash = ((hash << 5) - hash) + label.charCodeAt(i);
+      hash = (hash << 5) - hash + label.charCodeAt(i);
       hash |= 0; // Convert to 32bit int
     }
     // Advance parent state a bit when forking just to ensure progress

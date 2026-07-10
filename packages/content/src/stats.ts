@@ -3,7 +3,7 @@ export enum Stat {
   GUNS = 'GUNS',
   TRADE = 'TRADE',
   GRIT = 'GRIT',
-  GUILE = 'GUILE'
+  GUILE = 'GUILE',
 }
 
 export type StatBlock = Record<Stat, number>;

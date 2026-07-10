@@ -16,7 +16,7 @@ export const CARGO_TYPES: Record<number, CargoType> = {
   8: { id: 8, name: 'Photonic Components', isContraband: false, baseRate: 8000 },
   9: { id: 9, name: 'Dilithium Crystal', isContraband: false, baseRate: 9000 },
   10: { id: 10, name: 'Contraband', isContraband: true, baseRate: 1000 }, // Special handling for contraband
-  
+
   // Rim specific cargo
   15: { id: 15, name: 'Titanium Ore', isContraband: false, baseRate: 1000 }, // Multiplier 1
   16: { id: 16, name: 'Capellan Herbals', isContraband: false, baseRate: 2000 }, // Multiplier 2

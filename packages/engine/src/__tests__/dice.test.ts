@@ -9,7 +9,7 @@ describe('Dice', () => {
 
     expect(hand.dice).toHaveLength(5);
     expect(hand.spent).toEqual([false, false, false, false, false]);
-    
+
     // Check descending order
     for (let i = 0; i < hand.dice.length - 1; i++) {
       expect(hand.dice[i]).toBeGreaterThanOrEqual(hand.dice[i + 1]);
@@ -42,7 +42,7 @@ describe('Dice', () => {
   it('spends dice correctly', () => {
     const rng = new SeededRng(1);
     let hand = rollDawnHand(rng, 3);
-    
+
     expect(isDayOver(hand)).toBe(false);
     expect(remainingDice(hand)).toHaveLength(3);
 

@@ -6,7 +6,7 @@ import { check, spendDie } from '../dice.js';
 export function resolveTravel(
   state: GameState,
   action: Extract<PlayerAction, { type: 'Travel' }>,
-  _rng: SeededRng
+  _rng: SeededRng,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
   const nextState = JSON.parse(JSON.stringify(state)) as GameState;
@@ -31,7 +31,7 @@ export function resolveTravel(
   const hasTransWarp = nextState.player.ship.hasTransWarpDrive || false;
   const effectiveStrength = drives.strength + (hasTransWarp ? 10 : 0);
   const af = Math.min(effectiveStrength, 21);
-  let fuelCost = (21 - af) + (10 - drives.condition);
+  let fuelCost = 21 - af + (10 - drives.condition);
   if (fuelCost < 1) fuelCost = 1;
   fuelCost = fuelCost * distance;
   const ty = fuelCost + 10;
@@ -47,7 +47,7 @@ export function resolveTravel(
     actor: 'Player',
     stat: Stat.PILOT,
     dc: travelDc,
-    result
+    result,
   });
 
   if (nextState.player.ship.fuel >= fuelRequired) {
@@ -61,21 +61,23 @@ export function resolveTravel(
         origin,
         destination,
         fuelUsed: fuelRequired,
-        success: true
+        success: true,
       });
 
       // Check if they completed a contract
-      if (nextState.player.activeContract && nextState.player.activeContract.destination === destination) {
+      if (
+        nextState.player.activeContract &&
+        nextState.player.activeContract.destination === destination
+      ) {
         const payment = nextState.player.activeContract.payment;
         nextState.player.credits += payment;
         events.push({
           type: 'TradeEvent',
           characterId: 'player',
-          actionDetails: `Delivered cargo! Earned ${payment} credits.`
+          actionDetails: `Delivered cargo! Earned ${payment} credits.`,
         });
         nextState.player.activeContract = null; // Clear contract
       }
-
     } else {
       events.push({
         type: 'TravelEvent',
@@ -83,12 +85,12 @@ export function resolveTravel(
         origin,
         destination,
         fuelUsed: fuelRequired,
-        success: false
+        success: false,
       });
       events.push({
         type: 'WireEntry',
         day: nextState.day,
-        message: `Player experienced a navigation malfunction en route to system ${destination}.`
+        message: `Player experienced a navigation malfunction en route to system ${destination}.`,
       });
     }
   } else {
@@ -99,12 +101,12 @@ export function resolveTravel(
       origin,
       destination,
       fuelUsed: 0,
-      success: false
+      success: false,
     });
     events.push({
       type: 'WireEntry',
       day: nextState.day,
-      message: `Player attempted jump to system ${destination} without enough fuel.`
+      message: `Player attempted jump to system ${destination} without enough fuel.`,
     });
   }
 

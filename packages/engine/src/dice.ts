@@ -3,7 +3,7 @@ import { DawnHand, CheckResult } from './types.js';
 
 export function rollDawnHand(rng: SeededRng, handSize: number): DawnHand {
   const dice = rng.rollHand(handSize);
-  const spent = new Array(handSize).fill(false);
+  const spent = new Array<boolean>(handSize).fill(false);
   return { dice, spent };
 }
 

@@ -9,7 +9,7 @@ import { SeededRng } from './rng.js';
 export function generateManifestBoard(
   originSystem: number,
   rng: SeededRng,
-  shipState: ShipState
+  shipState: ShipState,
 ): CargoContract[] {
   const board: CargoContract[] = [];
 
@@ -42,7 +42,7 @@ export function generateManifestBoard(
     const driveStrength = shipState.drives.strength;
     const driveCondition = shipState.drives.condition;
     const af = Math.min(driveStrength, 21);
-    let f2 = (21 - af) + (10 - driveCondition);
+    let f2 = 21 - af + (10 - driveCondition);
     if (f2 < 1) f2 = 1;
     f2 = f2 * distance;
     const ty = f2 + 10;
@@ -54,7 +54,7 @@ export function generateManifestBoard(
     if (payment < 3) payment = 3;
     payment = Math.floor(payment / 3);
     payment = payment * upodX;
-    payment = payment + (fuelRequired * 5) + 1000;
+    payment = payment + fuelRequired * 5 + 1000;
     if (payment > 15000) payment = 15000;
 
     // Normalize to pod multiple

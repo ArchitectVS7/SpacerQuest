@@ -21,14 +21,23 @@ describe('Debt is a ledger, not a negative balance', () => {
     const state = createInitialState(1);
     state.player.credits = 5000;
 
-    const { state: next, events } = resolveTrade(state, {
-      type: 'Trade', action: 'pay-debt', amount: 3000,
-    }, new SeededRng(1));
+    const { state: next, events } = resolveTrade(
+      state,
+      {
+        type: 'Trade',
+        action: 'pay-debt',
+        amount: 3000,
+      },
+      new SeededRng(1),
+    );
 
     expect(next.player.credits).toBe(2000);
     expect(next.player.debt).toBe(22000);
     expect(events).toContainEqual({
-      type: 'DebtPayment', characterId: 'player', amount: 3000, remaining: 22000,
+      type: 'DebtPayment',
+      characterId: 'player',
+      amount: 3000,
+      remaining: 22000,
     });
   });
 
@@ -36,9 +45,15 @@ describe('Debt is a ledger, not a negative balance', () => {
     const state = createInitialState(1);
     state.player.credits = 500;
 
-    const { state: next } = resolveTrade(state, {
-      type: 'Trade', action: 'pay-debt', amount: 99999,
-    }, new SeededRng(1));
+    const { state: next } = resolveTrade(
+      state,
+      {
+        type: 'Trade',
+        action: 'pay-debt',
+        amount: 99999,
+      },
+      new SeededRng(1),
+    );
 
     expect(next.player.credits).toBe(0);
     expect(next.player.debt).toBe(24500);
@@ -63,9 +78,16 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
 
   it('fight with dry tanks is a weapons malfunction: no check, no fuel lied about', () => {
     const state = combatState(FIGHT_FUEL_COST - 1);
-    const { state: next, events } = resolveCombat(state, {
-      type: 'Combat', stance: 'fight', targetId: 'npc-x', spendDie: 0,
-    }, new SeededRng(9));
+    const { state: next, events } = resolveCombat(
+      state,
+      {
+        type: 'Combat',
+        stance: 'fight',
+        targetId: 'npc-x',
+        spendDie: 0,
+      },
+      new SeededRng(9),
+    );
 
     expect(next.player.ship.fuel).toBe(FIGHT_FUEL_COST - 1); // untouched
     const combat = events.find((e) => e.type === 'CombatEvent');
@@ -75,9 +97,16 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
 
   it('running on fumes fails automatically — escape is never free', () => {
     const state = combatState(RUN_FUEL_COST - 1);
-    const { state: next, events } = resolveCombat(state, {
-      type: 'Combat', stance: 'run', targetId: 'npc-x', spendDie: 0,
-    }, new SeededRng(9));
+    const { state: next, events } = resolveCombat(
+      state,
+      {
+        type: 'Combat',
+        stance: 'run',
+        targetId: 'npc-x',
+        spendDie: 0,
+      },
+      new SeededRng(9),
+    );
 
     expect(next.player.ship.fuel).toBe(RUN_FUEL_COST - 1);
     const combat = events.find((e) => e.type === 'CombatEvent');
@@ -99,9 +128,16 @@ describe('Contracts', () => {
 
   it('signing costs a die and takes the contract off the board', () => {
     const state = marketState();
-    const { state: next } = resolveTrade(state, {
-      type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 2,
-    }, new SeededRng(3));
+    const { state: next } = resolveTrade(
+      state,
+      {
+        type: 'Trade',
+        action: 'sign-contract',
+        contractIndex: 0,
+        spendDie: 2,
+      },
+      new SeededRng(3),
+    );
 
     expect(next.player.activeContract?.destination).toBe(5);
     expect(next.market.manifestBoard).toHaveLength(1);
@@ -112,32 +148,59 @@ describe('Contracts', () => {
     const state = marketState();
     state.player.activeContract = { destination: 5, cargoType: 4, payment: 3000, pods: 10 };
 
-    const { state: next, events } = resolveTrade(state, {
-      type: 'Trade', action: 'sign-contract', contractIndex: 1, spendDie: 0,
-    }, new SeededRng(3));
+    const { state: next, events } = resolveTrade(
+      state,
+      {
+        type: 'Trade',
+        action: 'sign-contract',
+        contractIndex: 1,
+        spendDie: 0,
+      },
+      new SeededRng(3),
+    );
 
     expect(next.player.activeContract?.destination).toBe(5); // unchanged
-    expect(next.market.manifestBoard).toHaveLength(2);       // nothing taken
-    expect(next.player.dawnHand?.spent[0]).toBe(false);      // die not wasted
-    expect(events.some((e) => e.type === 'TradeEvent' && e.actionDetails.includes('Cannot sign'))).toBe(true);
+    expect(next.market.manifestBoard).toHaveLength(2); // nothing taken
+    expect(next.player.dawnHand?.spent[0]).toBe(false); // die not wasted
+    expect(
+      events.some((e) => e.type === 'TradeEvent' && e.actionDetails.includes('Cannot sign')),
+    ).toBe(true);
   });
 
   it("haggle uses the player's actual TRADE stat and is once per contract", () => {
     const state = marketState();
     state.player.stats.TRADE = 3;
 
-    const first = resolveTrade(state, {
-      type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0,
-    }, new SeededRng(3));
+    const first = resolveTrade(
+      state,
+      {
+        type: 'Trade',
+        action: 'haggle',
+        contractIndex: 0,
+        spendDie: 0,
+      },
+      new SeededRng(3),
+    );
 
     const statCheck = first.events.find((e) => e.type === 'StatCheck');
     expect(statCheck && statCheck.type === 'StatCheck' && statCheck.result.modifier).toBe(3);
     expect(first.state.market.manifestBoard[0].haggled).toBe(true);
 
-    const second = resolveTrade(first.state, {
-      type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 1,
-    }, new SeededRng(3));
-    expect(second.events.some((e) => e.type === 'TradeEvent' && e.actionDetails.includes('not renegotiate'))).toBe(true);
+    const second = resolveTrade(
+      first.state,
+      {
+        type: 'Trade',
+        action: 'haggle',
+        contractIndex: 0,
+        spendDie: 1,
+      },
+      new SeededRng(3),
+    );
+    expect(
+      second.events.some(
+        (e) => e.type === 'TradeEvent' && e.actionDetails.includes('not renegotiate'),
+      ),
+    ).toBe(true);
     expect(second.state.player.dawnHand?.spent[1]).toBe(false); // die not wasted
   });
 });
@@ -146,15 +209,21 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
   function npcFor(profileId: string): NpcState {
     const profile = NPC_PROFILES.find((p) => p.id === profileId)!;
     return {
-      id: profile.id, name: profile.name, profileId: profile.id,
-      currentSystemId: 1, credits: 5000, fuel: 1000,
+      id: profile.id,
+      name: profile.name,
+      profileId: profile.id,
+      currentSystemId: 1,
+      credits: 5000,
+      fuel: 1000,
     };
   }
 
   it('Iron Vex (Bloodthirsty, combat-facing) always risks his flaw; the check uses HIS flawDc', () => {
     const profile = NPC_PROFILES.find((p) => p.id === 'npc-iron-vex')!;
     for (let seed = 1; seed <= 200; seed++) {
-      const { npc, events } = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), { day: 1 });
+      const { npc, events } = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), {
+        day: 1,
+      });
       const flawCheck = events.find((e) => e.type === 'FlawCheck');
       // His intents (Combat/Patrol) always touch Bloodthirsty
       expect(flawCheck).toBeDefined();
@@ -171,7 +240,9 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
 
   it('Stellar Monk (Pacifist) never faces his flaw while trading and travelling', () => {
     for (let seed = 1; seed <= 200; seed++) {
-      const { npc, events } = resolveNpcDay(npcFor('npc-stellar-monk'), new SeededRng(seed), { day: 1 });
+      const { npc, events } = resolveNpcDay(npcFor('npc-stellar-monk'), new SeededRng(seed), {
+        day: 1,
+      });
       // His intents (Trade/Travel) never touch Pacifist (Combat/Patrol)
       expect(events.some((e) => e.type === 'FlawCheck')).toBe(false);
       expect(npc.lastAction?.type).not.toBe('FlawOverride');
