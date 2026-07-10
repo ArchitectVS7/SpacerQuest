@@ -231,11 +231,17 @@ export function completePendingTravel(
   });
 
   if (state.player.activeContract && state.player.activeContract.destination === destination) {
-    const payment = state.player.activeContract.payment;
+    const contract = state.player.activeContract;
+    const payment = contract.payment;
     state.player.credits += payment;
     events.push({
       type: 'TradeEvent',
       characterId: 'player',
+      action: 'deliver-cargo',
+      success: true,
+      destination: contract.destination,
+      cargoType: contract.cargoType,
+      payment,
       actionDetails: `Delivered cargo! Earned ${payment} credits.`,
     });
     state.player.activeContract = null;
@@ -322,11 +328,17 @@ export function resolveTravel(
           nextState.player.activeContract &&
           nextState.player.activeContract.destination === destination
         ) {
-          const payment = nextState.player.activeContract.payment;
+          const contract = nextState.player.activeContract;
+          const payment = contract.payment;
           nextState.player.credits += payment;
           events.push({
             type: 'TradeEvent',
             characterId: 'player',
+            action: 'deliver-cargo',
+            success: true,
+            destination: contract.destination,
+            cargoType: contract.cargoType,
+            payment,
             actionDetails: `Delivered cargo! Earned ${payment} credits.`,
           });
           nextState.player.activeContract = null; // Clear contract

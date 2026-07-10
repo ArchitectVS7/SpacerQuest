@@ -341,9 +341,15 @@ describe('shipyard', () => {
     });
 
     expect(result.state.player.ship.cargoPods).toBe(10);
-    expect(result.events).toEqual([
-      { type: 'ShipyardEvent', action: 'buy-cargo-pods', quantity: 1, cost: 10 },
-    ]);
-    expect(result.state.eventLog[result.state.eventLog.length - 1]).toEqual(result.events[0]);
+    expect(result.events[0]).toEqual({
+      type: 'ShipyardEvent',
+      action: 'buy-cargo-pods',
+      quantity: 1,
+      cost: 10,
+    });
+    expect(
+      result.events.filter((event) => event.type === 'DeedEarned').map((event) => event.deedId),
+    ).toEqual(['yard_rat', 'cargo_expansion']);
+    expect(result.state.eventLog.slice(-result.events.length)).toEqual(result.events);
   });
 });

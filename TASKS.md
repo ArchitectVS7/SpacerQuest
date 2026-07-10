@@ -70,7 +70,7 @@ Era events as content data (blockade, plague, dilithium rush, patrol crackdown �
 `ShipLost` resolution per PRD §5.2: successor inherits charts (visited systems + known fragments), half the bank, Deeds, and every NPC disposition; debt survives; ship resets to starter. Emits `LegacySuccession` event with a wire obituary/inheritance line.
 **Accept:** full inheritance test (what carries, what resets); game continues playable post-death in a 10-day sim; serialization round-trip mid-succession.
 
-### T-109 · Deeds registry & Renown ranks — `status: TODO` · `coder: opus` · `after: T-102`
+### T-109 · Deeds registry & Renown ranks — `status: DONE` · `coder: opus` · `after: T-102`
 Deeds as content data: id, period-voice citation, trigger predicate over events/state (declarative condition DSL kept tiny: event type + count/threshold matchers). ~15 launch Deeds (first delivery, debt cleared, first combat win, Mercy Runner, fuel-fumes arrival, etc.). Renown = f(deeds) climbing the 9 canon ranks (names from `foundation/rules/constants.ts`, thresholds NOT ported — deeds-driven per PRD §8.2).
 **Accept:** deeds fire from the event stream exactly once each; rank-up emits a wire entry; registry serializes; a sim run earns ≥3 deeds in 100 days.
 

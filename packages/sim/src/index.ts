@@ -1,4 +1,4 @@
-import { STAR_SYSTEMS } from '@spacerquest/content';
+import { STAR_SYSTEMS, type RenownRankId } from '@spacerquest/content';
 import {
   advanceDay,
   createInitialState,
@@ -27,6 +27,9 @@ export interface CampaignDayStats {
   wireEntries: number;
   flawChecks: number;
   flawOverrides: number;
+  deedsEarned: string[];
+  deedCount: number;
+  renownRank: RenownRankId;
 }
 
 export interface CampaignStatsReport {
@@ -38,6 +41,9 @@ export interface CampaignStatsReport {
   fuelStarvationDays: number;
   flawOverrideRate: number;
   wireVolume: number;
+  deedCount: number;
+  deedsEarned: string[];
+  renownRank: RenownRankId;
   finalState: {
     day: number;
     credits: number;
@@ -99,10 +105,12 @@ function countDailyEvents(events: GameEvent[]): {
   wireEntries: number;
   flawChecks: number;
   flawOverrides: number;
+  deedsEarned: string[];
 } {
   let wireEntries = 0;
   let flawChecks = 0;
   let flawOverrides = 0;
+  const deedsEarned: string[] = [];
 
   for (const event of events) {
     if (event.type === 'WireEntry') {
@@ -112,10 +120,12 @@ function countDailyEvents(events: GameEvent[]): {
       if (!event.resisted) {
         flawOverrides += 1;
       }
+    } else if (event.type === 'DeedEarned') {
+      deedsEarned.push(event.deedId);
     }
   }
 
-  return { wireEntries, flawChecks, flawOverrides };
+  return { wireEntries, flawChecks, flawOverrides, deedsEarned };
 }
 
 function appendDieAction(
@@ -220,23 +230,24 @@ export const greedyTraderPolicy: SimPolicy = ({ state }) => {
     ];
   }
 
-  if (state.player.debt > 0 && state.player.credits > 2000) {
-    return [
-      {
-        type: 'Trade',
-        action: 'pay-debt',
-        amount: Math.min(state.player.credits - 1000, state.player.debt),
-      },
-    ];
-  }
-
-  return [
+  const actions: PlayerAction[] = [
     {
-      type: 'Travel',
-      destinationId: nextSystemId(state.player.currentSystemId),
+      type: 'Trade',
+      action: 'sign-contract',
+      contractIndex: 0,
       spendDie: 0,
     },
   ];
+
+  if (state.player.debt > 0 && state.player.credits > 2000) {
+    actions.push({
+      type: 'Trade',
+      action: 'pay-debt',
+      amount: Math.min(state.player.credits - 1000, state.player.debt),
+    });
+  }
+
+  return actions;
 };
 
 export const randomLegalActionPolicy: SimPolicy = ({ state, rng }) => {
@@ -318,6 +329,9 @@ export function runCampaign(
       wireEntries: counts.wireEntries,
       flawChecks: counts.flawChecks,
       flawOverrides: counts.flawOverrides,
+      deedsEarned: counts.deedsEarned,
+      deedCount: state.player.registry.earned.length,
+      renownRank: state.player.registry.renownRank,
     });
   }
 
@@ -330,6 +344,9 @@ export function runCampaign(
     fuelStarvationDays,
     flawOverrideRate: flawChecks === 0 ? 0 : flawOverrides / flawChecks,
     wireVolume,
+    deedCount: state.player.registry.earned.length,
+    deedsEarned: state.player.registry.earned.map((deed) => deed.id),
+    renownRank: state.player.registry.renownRank,
     finalState: {
       day: state.day,
       credits: state.player.credits,

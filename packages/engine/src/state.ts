@@ -1,5 +1,45 @@
-import { DayPhase, GameState, NpcState } from './types.js';
-import { NPC_PROFILES, Stat } from '@spacerquest/content';
+import { DayPhase, EarnedDeedState, GameEvent, GameState, NpcState } from './types.js';
+import {
+  NPC_PROFILES,
+  RENOWN_DEED_THRESHOLDS,
+  RENOWN_RANKS,
+  Stat,
+  type RenownRankId,
+} from '@spacerquest/content';
+
+const RENOWN_RANK_ORDER = Object.keys(RENOWN_RANKS) as RenownRankId[];
+
+function renownRankForDeedCount(deedCount: number): RenownRankId {
+  let rank: RenownRankId = 'LIEUTENANT';
+  for (const candidate of RENOWN_RANK_ORDER) {
+    if (deedCount >= RENOWN_DEED_THRESHOLDS[candidate]) {
+      rank = candidate;
+    }
+  }
+  return rank;
+}
+
+function reconstructEarnedDeeds(eventLog: readonly GameEvent[]): EarnedDeedState[] {
+  const seen = new Set<string>();
+  const earned: EarnedDeedState[] = [];
+
+  eventLog.forEach((event, index) => {
+    if (event.type !== 'DeedEarned' || seen.has(event.deedId)) {
+      return;
+    }
+
+    seen.add(event.deedId);
+    earned.push({
+      id: event.deedId,
+      title: event.title,
+      citation: event.citation,
+      day: event.day,
+      eventIndex: index,
+    });
+  });
+
+  return earned;
+}
 
 export function createInitialState(seed: number): GameState {
   // Initialize the cast
@@ -55,6 +95,10 @@ export function createInitialState(seed: number): GameState {
         isAstraxialHull: false,
         hasTitaniumHull: false,
       },
+      registry: {
+        earned: [],
+        renownRank: 'LIEUTENANT',
+      },
     },
     market: {
       manifestBoard: [],
@@ -74,9 +118,19 @@ export function deserializeState(json: string): GameState {
   const parsed = JSON.parse(json) as GameState;
   parsed.dayPhase ??= DayPhase.DAWN;
   parsed.dayEventCount ??= 0;
+  parsed.eventLog ??= [];
   parsed.player.tier ??= 1;
   parsed.player.score ??= 0;
   parsed.player.isConqueror ??= false;
+  if (parsed.player.registry === undefined) {
+    parsed.player.registry = {
+      earned: reconstructEarnedDeeds(parsed.eventLog),
+      renownRank: 'LIEUTENANT',
+    };
+  } else if (parsed.player.registry.earned === undefined) {
+    parsed.player.registry.earned = reconstructEarnedDeeds(parsed.eventLog);
+  }
+  parsed.player.registry.renownRank = renownRankForDeedCount(parsed.player.registry.earned.length);
   parsed.player.ship.hasTransWarpDrive ??= false;
   parsed.player.ship.hasCloaker ??= false;
   parsed.player.ship.hasAutoRepair ??= false;

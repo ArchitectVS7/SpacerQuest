@@ -1,6 +1,7 @@
 import {
   AnonymousInterceptorKind,
   PowerTier,
+  RenownRankId,
   RouteDangerLevel,
   Stat,
   StatBlock,
@@ -59,14 +60,63 @@ export enum DayPhase {
   DUSK = 'DUSK',
 }
 
+export interface EarnedDeedState {
+  id: string;
+  title: string;
+  citation: string;
+  day: number;
+  eventIndex: number;
+}
+
+export interface DeedRegistryState {
+  earned: EarnedDeedState[];
+  renownRank: RenownRankId;
+}
+
+export interface TradeEvent {
+  type: 'TradeEvent';
+  characterId: string;
+  actionDetails: string;
+  action?: 'buy-fuel' | 'sign-contract' | 'haggle' | 'deliver-cargo' | 'pay-debt-failed';
+  success?: boolean;
+  amount?: number;
+  fuelAmount?: number;
+  cost?: number;
+  destination?: number;
+  cargoType?: number;
+  payment?: number;
+}
+
 // Discriminator for game events
 export type GameEvent =
   | { type: 'DawnRoll'; day: number; hand: number[] }
-  | { type: 'StatCheck'; actor: string; stat: Stat; dc: number; result: CheckResult }
+  | {
+      type: 'StatCheck';
+      actor: string;
+      stat: Stat;
+      dc: number;
+      result: CheckResult;
+      actionContext?: 'haggle';
+    }
   | { type: 'FlawCheck'; npcId: string; flaw: string; die: number; dc: number; resisted: boolean }
   | { type: 'NpcAction'; npcId: string; actionDetails: string }
   | { type: 'WireEntry'; day: number; message: string }
   | { type: 'DayAdvanced'; day: number }
+  | {
+      type: 'DeedEarned';
+      day: number;
+      deedId: string;
+      title: string;
+      citation: string;
+      renownRank: RenownRankId;
+    }
+  | {
+      type: 'RenownRankUp';
+      day: number;
+      previousRank: RenownRankId;
+      newRank: RenownRankId;
+      deedCount: number;
+    }
   | {
       type: 'TravelEvent';
       characterId: string;
@@ -77,7 +127,7 @@ export type GameEvent =
       interrupted?: boolean;
       resumedFromEncounterId?: string;
     }
-  | { type: 'TradeEvent'; characterId: string; actionDetails: string }
+  | TradeEvent
   | { type: 'DebtPayment'; characterId: string; amount: number; remaining: number }
   | { type: 'DebtDue'; day: number; outstanding: number }
   | {
@@ -242,6 +292,7 @@ export interface PlayerState {
   currentSystemId: number;
   dawnHand?: DawnHand;
   ship: ShipState;
+  registry: DeedRegistryState;
   activeContract?: CargoContract | null;
 }
 

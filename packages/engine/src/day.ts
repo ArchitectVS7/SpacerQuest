@@ -8,6 +8,7 @@ import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
 import { resolveCombat } from './actions/combat.js';
 import { resolveShipyard } from './actions/shipyard.js';
+import { evaluateDeeds } from './deeds.js';
 
 function localFuelPrice(systemId: number): number {
   const system = STAR_SYSTEMS[systemId];
@@ -55,6 +56,7 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
     day: nextState.day,
     hand: [...playerHand.dice],
   });
+  events.push(...evaluateDeeds(nextState, events));
 
   nextState.rngState = dayRng.getState();
   nextState.dayPhase = DayPhase.DAY;
@@ -106,10 +108,11 @@ export function applyPlayerAction(
   const resolvedState = result.state;
   resolvedState.rngState = dayRng.getState();
   resolvedState.dayPhase = DayPhase.DAY;
-  resolvedState.dayEventCount = actionEventIndex + result.events.length;
-  appendEvents(resolvedState, result.events);
+  const events = [...result.events, ...evaluateDeeds(resolvedState, result.events)];
+  resolvedState.dayEventCount = actionEventIndex + events.length;
+  appendEvents(resolvedState, events);
 
-  return { state: resolvedState, events: result.events };
+  return { state: resolvedState, events };
 }
 
 export function endDay(state: GameState): { state: GameState; events: GameEvent[] } {
@@ -168,6 +171,8 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       outstanding: nextState.player.debt,
     });
   }
+
+  events.push(...evaluateDeeds(nextState, events));
 
   // 4. NEXT DAY PREP
   const nextDay = nextState.day + 1;

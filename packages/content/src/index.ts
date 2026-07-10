@@ -4,3 +4,4 @@ export * from './cargo.js';
 export * from './cast.js';
 export * from './flaws.js';
 export * from './upgrades.js';
+export * from './deeds.js';

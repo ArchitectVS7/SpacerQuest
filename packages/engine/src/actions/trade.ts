@@ -33,12 +33,20 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
+        action: 'buy-fuel',
+        success: true,
+        fuelAmount: action.fuelAmount,
+        cost,
         actionDetails: `Bought ${action.fuelAmount} fuel for ${cost} credits.`,
       });
     } else {
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
+        action: 'buy-fuel',
+        success: false,
+        fuelAmount: action.fuelAmount,
+        cost,
         actionDetails: `Failed to buy fuel: Not enough credits.`,
       });
     }
@@ -59,6 +67,8 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
+        action: 'sign-contract',
+        success: false,
         actionDetails: 'Cannot sign: already carrying an active contract.',
       });
     } else {
@@ -71,6 +81,11 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
+        action: 'sign-contract',
+        success: true,
+        destination: contract.destination,
+        cargoType: contract.cargoType,
+        payment: contract.payment,
         actionDetails: `Signed contract to deliver cargo to ${contract.destination} for ${contract.payment} credits.`,
       });
     }
@@ -88,6 +103,8 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
+        action: 'haggle',
+        success: false,
         actionDetails: 'The broker will not renegotiate this contract again.',
       });
     } else {
@@ -103,6 +120,7 @@ export function resolveTrade(
         stat: Stat.TRADE,
         dc: haggleDc,
         result,
+        actionContext: 'haggle',
       });
 
       if (result.success) {
@@ -110,12 +128,17 @@ export function resolveTrade(
         events.push({
           type: 'TradeEvent',
           characterId: 'player',
+          action: 'haggle',
+          success: true,
+          payment: contract.payment,
           actionDetails: `Haggle successful! Contract payment increased to ${contract.payment} credits.`,
         });
       } else {
         events.push({
           type: 'TradeEvent',
           characterId: 'player',
+          action: 'haggle',
+          success: false,
           actionDetails: `Haggle failed.`,
         });
       }
@@ -140,6 +163,9 @@ export function resolveTrade(
       events.push({
         type: 'TradeEvent',
         characterId: 'player',
+        action: 'pay-debt-failed',
+        success: false,
+        amount: action.amount,
         actionDetails: 'Debt payment failed: no credits to send.',
       });
     }

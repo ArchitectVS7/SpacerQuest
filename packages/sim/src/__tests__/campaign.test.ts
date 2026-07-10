@@ -18,6 +18,12 @@ describe('campaign runner', () => {
     expect(report.daily).toHaveLength(100);
     expect(typeof report.wireVolume).toBe('number');
     expect(typeof report.flawOverrideRate).toBe('number');
+    expect(report.deedCount).toBeGreaterThanOrEqual(3);
+    expect(report.deedsEarned).toEqual(
+      expect.arrayContaining(['first_manifest', 'first_jump', 'first_delivery']),
+    );
+    expect(report.renownRank).not.toBe('LIEUTENANT');
+    expect(report.daily[report.daily.length - 1]?.deedCount).toBe(report.deedCount);
   });
 
   it('serializes deterministically for the same seed', () => {
@@ -56,11 +62,13 @@ describe('campaign runner', () => {
       days?: unknown;
       policy?: unknown;
       daily?: unknown;
+      deedCount?: unknown;
     };
 
     expect(parsed.seed).toBe(1);
     expect(parsed.days).toBe(5);
     expect(parsed.policy).toBe('greedy');
+    expect(typeof parsed.deedCount).toBe('number');
     expect(Array.isArray(parsed.daily)).toBe(true);
     expect(parsed.daily).toHaveLength(5);
   });
