@@ -112,8 +112,8 @@ describe('Day loop', () => {
   });
 
   it('produces the same results when advanced in phases for 10 scripted days', () => {
-    let batchState = createInitialState(456);
-    let steppedState = createInitialState(456);
+    let batchState = createInitialState(1);
+    let steppedState = createInitialState(1);
 
     for (const actions of TEN_DAY_SCRIPT) {
       const batchResult = advanceDay(batchState, actions);
@@ -167,5 +167,35 @@ describe('Day loop', () => {
     const resumed = endDay(resumedState);
 
     expect(resumed.state).toEqual(batch.state);
+  });
+
+  it('persists active encounters across day end', () => {
+    const state = createInitialState(246);
+    const dawn = startDay(state);
+    dawn.state.encounter = {
+      id: 'enc-persist',
+      pendingTravel: { origin: 1, destination: 2, fuelUsed: 5 },
+      interceptor: {
+        id: 'anon-pirate-1',
+        source: 'anonymous',
+        name: 'K)(akj',
+        shipName: 'K1++++',
+        shipClass: 'Maligna Bat',
+        homeSystem: 'Pollux-7',
+        kind: 'PIRATE',
+        rosterIndex: 1,
+        stats: { PILOT: 1, GUNS: 0, TRADE: 0, GRIT: 0, GUILE: 1 },
+        tier: 1,
+      },
+      routeDangerLevel: 1,
+      routeDangerChance: 0.08,
+      encounterRoll: 0.01,
+      round: 1,
+    };
+
+    const dusk = endDay(dawn.state);
+
+    expect(dusk.state.dayPhase).toBe(DayPhase.DAWN);
+    expect(dusk.state.encounter).toEqual(dawn.state.encounter);
   });
 });

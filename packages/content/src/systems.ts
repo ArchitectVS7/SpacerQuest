@@ -82,6 +82,47 @@ export const FUEL_DEFAULT_BUY_PRICE = 5;
 export const FUEL_DEFAULT_SELL_PRICE = 2;
 export const RIM_FUEL_BUY_PRICE = 25;
 
+export type RouteDangerLevel = 1 | 2 | 3 | 4 | 5;
+
+export const SYSTEM_DANGER_LEVELS: Record<number, RouteDangerLevel> = {
+  1: 1,
+  2: 1,
+  3: 1,
+  4: 1,
+  5: 1,
+  6: 1,
+  7: 1,
+  8: 1,
+  9: 1,
+  10: 1,
+  11: 1,
+  12: 1,
+  13: 1,
+  14: 1,
+  15: 3,
+  16: 3,
+  17: 3,
+  18: 3,
+  19: 3,
+  20: 3,
+  21: 4,
+  22: 4,
+  23: 4,
+  24: 4,
+  25: 4,
+  26: 4,
+  27: 5,
+  28: 5,
+};
+
+export const ROUTE_DANGER_CHANCE: Record<RouteDangerLevel, number> = {
+  1: 0.08,
+  2: 0.14,
+  3: 0.22,
+  4: 0.32,
+  5: 0.45,
+};
+
 export function calculateDistance(origin: StarCoordinates, destination: StarCoordinates): number {
   const raw = Math.hypot(destination.x - origin.x, destination.y - origin.y);
   return raw === 0 ? 1 : Math.ceil(raw);

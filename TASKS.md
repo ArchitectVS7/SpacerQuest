@@ -46,7 +46,7 @@ Add 2D coordinates to `content/systems.ts` (port from `foundation/cast/npc-roste
 Refactor the batch `advanceDay(state, actions[])` into `startDay(state)` → `applyPlayerAction(state, action)` (any number, dice permitting) → `endDay(state)` (dusk: NPCs, wire, debt). Keep `advanceDay` as a thin composition so sim/tests still batch. Determinism must hold: same seed + same action sequence = same state regardless of call granularity.
 **Accept:** existing tests pass unchanged via the composed `advanceDay`; new test proves step-wise vs batch equivalence on a 10-day scripted run; RNG state serializes mid-day.
 
-### T-103 · Encounter system — `status: TODO` · `coder: fable` · `after: T-101, T-102`
+### T-103 · Encounter system — `status: DONE` · `coder: fable` · `after: T-101, T-102`
 Travel can be intercepted: encounter generation rolls against route danger, picks an interceptor from NPCs/anonymous tiers (tier-band matchmaking per PRD §6; the 65-NPC roster in `foundation/cast/npc-roster.seed.ts` becomes the anonymous tier pool in content). Produces an `EncounterState` on `GameState` that blocks further travel until resolved.
 **Accept:** deterministic encounters (seeded); tier bands respected in a 500-seed property test; an encounter mid-travel round-trips through JSON; talk/fight/run resolve or continue the encounter.
 

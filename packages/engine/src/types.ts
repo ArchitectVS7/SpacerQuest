@@ -1,4 +1,10 @@
-import { Stat, StatBlock } from '@spacerquest/content';
+import {
+  AnonymousInterceptorKind,
+  PowerTier,
+  RouteDangerLevel,
+  Stat,
+  StatBlock,
+} from '@spacerquest/content';
 
 export interface DawnHand {
   dice: number[];
@@ -14,6 +20,36 @@ export interface CheckResult {
   margin: number;
   nat20: boolean;
   nat1: boolean;
+}
+
+export interface PendingTravelState {
+  origin: number;
+  destination: number;
+  fuelUsed: number;
+}
+
+export interface EncounterInterceptorState {
+  id: string;
+  source: 'named' | 'anonymous';
+  name: string;
+  shipName: string;
+  shipClass?: string;
+  homeSystem?: string;
+  kind?: AnonymousInterceptorKind;
+  rosterIndex?: number;
+  profileId?: string;
+  stats: StatBlock;
+  tier: PowerTier;
+}
+
+export interface EncounterState {
+  id: string;
+  pendingTravel: PendingTravelState;
+  interceptor: EncounterInterceptorState;
+  routeDangerLevel: RouteDangerLevel;
+  routeDangerChance: number;
+  encounterRoll: number;
+  round: number;
 }
 
 export enum DayPhase {
@@ -38,6 +74,8 @@ export type GameEvent =
       destination: number;
       fuelUsed: number;
       success: boolean;
+      interrupted?: boolean;
+      resumedFromEncounterId?: string;
     }
   | { type: 'TradeEvent'; characterId: string; actionDetails: string }
   | { type: 'DebtPayment'; characterId: string; amount: number; remaining: number }
@@ -50,6 +88,24 @@ export type GameEvent =
       fuelUsed: number;
       success: boolean;
       insufficientFuel?: boolean;
+    }
+  | { type: 'EncounterStarted'; encounter: EncounterState }
+  | {
+      type: 'EncounterRound';
+      encounterId: string;
+      round: number;
+      stance: 'run' | 'talk' | 'fight';
+      continues: boolean;
+      success: boolean;
+      fuelUsed: number;
+      insufficientFuel?: boolean;
+    }
+  | {
+      type: 'EncounterResolved';
+      encounterId: string;
+      resolution: 'escaped' | 'talked-down' | 'defeated';
+      round: number;
+      interceptorId: string;
     };
 
 // Player actions
@@ -111,6 +167,7 @@ export interface PlayerState {
   debt: number;
   debtDueDay: number;
   stats: StatBlock;
+  tier: PowerTier;
   currentSystemId: number;
   dawnHand?: DawnHand;
   ship: ShipState;
@@ -138,5 +195,6 @@ export interface GameState {
   player: PlayerState;
   market: MarketState;
   npcs: NpcState[];
+  encounter: EncounterState | null;
   eventLog: GameEvent[];
 }

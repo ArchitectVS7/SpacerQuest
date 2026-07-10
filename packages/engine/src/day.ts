@@ -77,6 +77,13 @@ export function applyPlayerAction(
     return { state: nextState, events: [] };
   }
 
+  if (nextState.encounter && action.type !== 'Combat') {
+    if (action.type === 'Travel') {
+      throw new Error('Cannot travel during an active encounter');
+    }
+    throw new Error('Cannot trade during an active encounter');
+  }
+
   const dayRng = new SeededRng(nextState.rngState);
   const actionEventIndex = nextState.dayEventCount;
 

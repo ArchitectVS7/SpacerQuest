@@ -31,6 +31,7 @@ export function createInitialState(seed: number): GameState {
         [Stat.GRIT]: 1,
         [Stat.GUILE]: 0,
       },
+      tier: 1,
       currentSystemId: 1, // Sun-3
       ship: {
         fuel: 300,
@@ -51,6 +52,7 @@ export function createInitialState(seed: number): GameState {
       localFuelPrice: 5,
     },
     npcs,
+    encounter: null,
     eventLog: [],
   };
 }
@@ -63,5 +65,7 @@ export function deserializeState(json: string): GameState {
   const parsed = JSON.parse(json) as GameState;
   parsed.dayPhase ??= DayPhase.DAWN;
   parsed.dayEventCount ??= 0;
+  parsed.player.tier ??= 1;
+  parsed.encounter ??= null;
   return parsed;
 }

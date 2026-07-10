@@ -132,6 +132,18 @@ function appendDieAction(
 export function availablePlannedActions(state: GameState): PlayerAction[] {
   const actions: PlayerAction[] = [{ type: 'Wait' }];
 
+  if (state.encounter) {
+    for (const stance of ['talk', 'run', 'fight'] as const) {
+      appendDieAction(actions, (spendDie) => ({
+        type: 'Combat',
+        stance,
+        targetId: state.encounter!.interceptor.id,
+        spendDie,
+      }));
+    }
+    return actions;
+  }
+
   const fuelToBuy = affordableFuelAmount(state);
   if (state.player.ship.fuel < state.player.ship.maxFuel && fuelToBuy >= 1) {
     appendDieAction(actions, (spendDie) => ({
@@ -175,6 +187,17 @@ export function availablePlannedActions(state: GameState): PlayerAction[] {
 export const idlePolicy: SimPolicy = () => [{ type: 'Wait' }];
 
 export const greedyTraderPolicy: SimPolicy = ({ state }) => {
+  if (state.encounter) {
+    return [
+      {
+        type: 'Combat',
+        stance: 'talk',
+        targetId: state.encounter.interceptor.id,
+        spendDie: 0,
+      },
+    ];
+  }
+
   if (state.player.activeContract) {
     return [
       {
