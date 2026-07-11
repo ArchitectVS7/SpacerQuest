@@ -499,6 +499,128 @@ body {
   font-weight: 600;
 }
 
+/* ---- haggle affordance + drag/drop assignment ---- */
+.haggle {
+  margin-left: auto;
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 10px;
+  background: transparent;
+  color: var(--ember);
+  border: 1px solid var(--amber);
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.haggle:hover:not(:disabled) {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+.haggle:disabled {
+  color: var(--amber-dim);
+  border-color: var(--amber-dim);
+  cursor: not-allowed;
+}
+.die[draggable='true'] {
+  cursor: grab;
+}
+.die[draggable='true']:active {
+  cursor: grabbing;
+}
+.contract.dropready {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+  background: linear-gradient(180deg, #1f1408, #120c06);
+}
+
+/* ---- honest check breakdown (reusable readout) ---- */
+.check-breakdown {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--hair);
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  color: var(--amber);
+}
+.check-breakdown .cb-lbl {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  color: var(--amber);
+}
+.check-breakdown .cb-expr b {
+  color: var(--ember);
+}
+.check-breakdown.crit .cb-expr b,
+.check-breakdown.crit .cb-lbl {
+  color: var(--ember-hi);
+}
+.nat-juice {
+  font-family: var(--font-display);
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  padding: 2px 9px;
+  font-weight: 700;
+}
+.nat-juice.crit {
+  color: var(--tube);
+  background: var(--ember-hi);
+  box-shadow: var(--glow-hi);
+  text-shadow: none;
+}
+.nat-juice.fumble {
+  /* reverse-video fumble — distinct from an ordinary miss */
+  color: var(--tube);
+  background: var(--ember);
+  border: 1px solid var(--ember-hi);
+}
+@media not (prefers-reduced-motion: reduce) {
+  .check-breakdown {
+    animation: cb-reveal 0.32s ease-out 1;
+  }
+  .nat-juice.crit {
+    animation: cb-crit 0.6s ease-out 1;
+  }
+}
+@keyframes cb-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes cb-crit {
+  0% {
+    box-shadow: 0 0 0 rgba(255, 225, 166, 0);
+  }
+  40% {
+    box-shadow: 0 0 24px 5px rgba(255, 225, 166, 0.75);
+  }
+  100% {
+    box-shadow: var(--glow-hi);
+  }
+}
+
+/* ---- hand spent / day-end banner ---- */
+.day-end {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--ember-hi);
+  border: 1px solid var(--ember);
+  padding: 3px 10px;
+  text-shadow: var(--glow);
+  box-shadow: var(--glow);
+}
+
 /* ---- wire ---- */
 .wire {
   border: 1px solid var(--hair);

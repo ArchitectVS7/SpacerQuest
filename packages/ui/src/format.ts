@@ -1,5 +1,27 @@
-import { STAR_SYSTEMS, CARGO_TYPES, distance } from '@spacerquest/content';
-import type { GameEvent, GameState } from '@spacerquest/engine';
+import { STAR_SYSTEMS, CARGO_TYPES, distance, Stat } from '@spacerquest/content';
+import type { CheckResult, GameEvent, GameState } from '@spacerquest/engine';
+
+/** Display label for a stat. The Stat enum values are already the labels we
+ * want, so this is a stable pure lookup (no fabricated names). */
+export function statName(stat: Stat): string {
+  return String(stat).toUpperCase();
+}
+
+/**
+ * Derive the styling verdict for a resolved check from the engine's result —
+ * never recomputed, only read. Nat 20 / nat 1 outrank ordinary pass/miss so the
+ * readout can give them distinct juice (PRD: the dice are honest and visible).
+ */
+export function checkVerdict(r: CheckResult): 'crit' | 'fumble' | 'pass' | 'miss' {
+  if (r.nat20) return 'crit';
+  if (r.nat1) return 'fumble';
+  return r.success ? 'pass' : 'miss';
+}
+
+/** Signed margin, e.g. "+3" / "-2" / "0", for the honest readout. */
+export function signedMargin(margin: number): string {
+  return margin > 0 ? `+${margin}` : `${margin}`;
+}
 
 export function systemName(id: number): string {
   return STAR_SYSTEMS[id]?.name ?? `System-${id}`;

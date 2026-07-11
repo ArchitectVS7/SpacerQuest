@@ -1,4 +1,11 @@
-import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  memo,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type DragEvent as ReactDragEvent,
+} from 'react';
 import { CARGO_TYPES } from '@spacerquest/content';
 import type { GameState } from '@spacerquest/engine';
 import {
@@ -8,11 +15,36 @@ import {
   endDay,
   selectDie,
   signContract,
+  haggleContract,
   toggleFx,
   clearBloom,
   type CockpitState,
 } from './store';
-import { systemName, cargoName, jumpsBetween, starNodes, wireLines } from './format';
+import {
+  systemName,
+  cargoName,
+  jumpsBetween,
+  starNodes,
+  wireLines,
+  statName,
+  checkVerdict,
+  signedMargin,
+} from './format';
+
+const DIE_MIME = 'application/x-sq-die';
+
+// Bridge a native HTML5 drop back into the store's selection model, then run the
+// action. Click-to-select is the primary path (what Playwright drives); drag is
+// an accessible-parallel affordance. Selecting the dropped die first keeps the
+// store the sole engine caller — the drop never reaches into the engine itself.
+function dropDie(e: ReactDragEvent, run: () => void): void {
+  e.preventDefault();
+  const raw = e.dataTransfer.getData(DIE_MIME);
+  const idx = Number.parseInt(raw, 10);
+  if (!Number.isFinite(idx)) return;
+  if (getSnapshot().selectedDie !== idx) selectDie(idx);
+  run();
+}
 
 function useCockpit(): CockpitState {
   return useSyncExternalStore(subscribe, getSnapshot);
@@ -233,6 +265,15 @@ function Manifest({ state }: { state: CockpitState }) {
               key={i}
               data-testid="contract"
               onClick={() => signContract(i)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.currentTarget.classList.add('dropready');
+              }}
+              onDragLeave={(e) => e.currentTarget.classList.remove('dropready')}
+              onDrop={(e) => {
+                e.currentTarget.classList.remove('dropready');
+                dropDie(e, () => signContract(i));
+              }}
             >
               <div className="row1">
                 <span className="goods">
@@ -256,12 +297,78 @@ function Manifest({ state }: { state: CockpitState }) {
                 </span>
                 <span className="arrow">&rarr;</span>
                 <span className="mono">{armed ? 'commit to sign' : 'assign a die'}</span>
+                <button
+                  className="haggle"
+                  data-testid="haggle"
+                  disabled={c.haggled}
+                  title={
+                    c.haggled
+                      ? 'The broker will not renegotiate this contract again.'
+                      : armed
+                        ? 'Roll TRADE vs DC 12 to bump the payment'
+                        : 'Pick a die first, then haggle'
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    haggleContract(i);
+                  }}
+                >
+                  HAGGLE
+                </button>
               </div>
             </div>
           );
         })}
       </div>
+      <CheckBreakdown state={state} />
     </section>
+  );
+}
+
+// Reusable honest-check readout. Renders ANY resolved StatCheck the store
+// captured — die + stat + modifier + total vs DC + margin + verdict, in reading
+// order (PRD: "the dice are honest and visible"). Nat 1/20 get distinct juice.
+// Every number is read straight off the engine's CheckResult; nothing is
+// recomputed in the UI. Travel/combat checks (T-304/T-307) will reuse this.
+function CheckBreakdown({ state }: { state: CockpitState }) {
+  const lc = state.lastCheck;
+  if (!lc) return null;
+  const r = lc.result;
+  const verdict = checkVerdict(r);
+  const pass = r.success;
+  return (
+    <div
+      className={`check-breakdown ${verdict}`}
+      data-testid="check-breakdown"
+      data-verdict={verdict}
+      key={state.lastCheckKey}
+    >
+      <span className="cb-lbl">CHECK{lc.context ? ` · ${lc.context.toUpperCase()}` : ''}</span>
+      <span className="cb-expr">
+        d20 <b data-testid="check-die">{r.die}</b>
+        {' + '}
+        <span data-testid="check-stat">{statName(lc.stat)}</span> <b>{r.modifier}</b>
+        {' = '}
+        <b data-testid="check-total">{r.total}</b>
+        {' vs DC '}
+        <b data-testid="check-dc">{r.dc}</b>
+        {' → margin '}
+        <b data-testid="check-margin">{signedMargin(r.margin)}</b>
+      </span>
+      <span className={pass ? 'result clear' : 'result fail'} data-testid="check-result">
+        {pass ? 'SUCCESS' : 'FAILURE'}
+      </span>
+      {r.nat20 && (
+        <span className="nat-juice crit" data-testid="check-nat20">
+          NATURAL 20
+        </span>
+      )}
+      {r.nat1 && (
+        <span className="nat-juice fumble" data-testid="check-nat1">
+          NATURAL 1
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -305,6 +412,7 @@ function HandDock({ state }: { state: CockpitState }) {
     return () => clearTimeout(t);
   }, [state.bloomDie]);
 
+  const handSpent = dice.length > 0 && remaining === 0;
   const hint =
     remaining === 0
       ? 'Hand empty. Close the day — dusk moves the galaxy.'
@@ -315,12 +423,12 @@ function HandDock({ state }: { state: CockpitState }) {
           : 'Pick a die, then assign it to an action.';
 
   return (
-    <div className="dock">
+    <div className="dock" data-hand-spent={handSpent ? '1' : '0'}>
       <div className="dlabel">
         Dawn Hand
         <b>DAY {state.game.day}</b>
       </div>
-      <div className="hand" data-testid="hand">
+      <div className="hand" data-testid="hand" data-hand-spent={handSpent ? '1' : '0'}>
         {dice.map((v, i) => {
           const isSpent = spent[i];
           const cls = [
@@ -338,7 +446,23 @@ function HandDock({ state }: { state: CockpitState }) {
               key={i}
               data-testid="die"
               data-spent={isSpent ? '1' : '0'}
+              role="button"
+              tabIndex={isSpent ? -1 : 0}
+              aria-pressed={state.selectedDie === i}
+              aria-label={isSpent ? `die ${i + 1} spent` : `die ${i + 1}, value ${v}`}
+              draggable={!isSpent}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(DIE_MIME, String(i));
+                e.dataTransfer.effectAllowed = 'move';
+                if (state.selectedDie !== i) selectDie(i);
+              }}
               onClick={() => selectDie(i)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  selectDie(i);
+                }
+              }}
             >
               <span>{isSpent ? v : display[i]}</span>
               <span className="dl">{isSpent ? 'SPENT' : 'd20'}</span>
@@ -347,6 +471,11 @@ function HandDock({ state }: { state: CockpitState }) {
         })}
       </div>
       <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+        {handSpent && (
+          <span className="day-end" data-testid="day-end">
+            HAND SPENT · dusk is ready
+          </span>
+        )}
         <button className="btn" data-testid="end-day" onClick={endDay}>
           {remaining === 0 ? 'Begin next day' : 'End day'}
         </button>
