@@ -17,6 +17,9 @@ export interface FlawDef {
   credits?: number;
   /** Fuel delta when succumbing; 'drain' empties the tank. */
   fuel?: number | 'drain';
+  /** Interceptors carrying this flaw refuse tribute in combat when they fail to
+   *  resist it — talking cannot buy them off (they want blood, not credits). */
+  refusesTribute?: true;
 }
 
 export const FLAWS: Record<string, FlawDef> = {
@@ -24,8 +27,13 @@ export const FLAWS: Record<string, FlawDef> = {
     triggers: ['Combat', 'Patrol'],
     detail: 'went on a rampage, attacking everything in sight.',
     fuel: -200,
+    refusesTribute: true,
   },
-  Vengeful: { triggers: ['Combat', 'Trade'], detail: 'abandoned the job to hunt an old enemy.' },
+  Vengeful: {
+    triggers: ['Combat', 'Trade'],
+    detail: 'abandoned the job to hunt an old enemy.',
+    refusesTribute: true,
+  },
   Cowardly: {
     triggers: ['Combat', 'Patrol'],
     detail: 'panicked and fled the system, burning reserves.',
@@ -54,7 +62,11 @@ export const FLAWS: Record<string, FlawDef> = {
     triggers: ['Trade'],
     detail: 'refused to spend a single credit, letting the contract lapse.',
   },
-  Cruel: { triggers: ['Combat'], detail: 'kept firing long after the enemy struck their colors.' },
+  Cruel: {
+    triggers: ['Combat'],
+    detail: 'kept firing long after the enemy struck their colors.',
+    refusesTribute: true,
+  },
   'Savior Complex': {
     triggers: ['Travel', 'Patrol'],
     detail: 'dropped everything to answer a mayday no one else could hear.',
@@ -113,6 +125,7 @@ export const FLAWS: Record<string, FlawDef> = {
     triggers: ['Patrol', 'Combat'],
     detail: 'pursued a fleeing mark far beyond the patrol line.',
     fuel: -100,
+    refusesTribute: true,
   },
   Vain: {
     triggers: ['Trade', 'Combat'],

@@ -220,7 +220,7 @@ export const STORYLETS = defineStorylets([
         effects: {
           credits: 125,
           disposition: [{ npcId: 'npc-doc-salvage', delta: 2 }],
-          deedProgress: [{ deedId: 'mercy_runner', amount: 1 }],
+          deedProgress: [{ deedId: 'beacon_keeper', amount: 1 }],
           flags: [{ name: 'chain.doc-salvage.rescue_logged', value: true }],
         },
       },
@@ -230,7 +230,7 @@ export const STORYLETS = defineStorylets([
         prose: 'Tell Doc to spend the chit on bandages and beacon batteries.',
         effects: {
           disposition: [{ npcId: 'npc-doc-salvage', delta: 3 }],
-          deedProgress: [{ deedId: 'mercy_runner', amount: 1 }],
+          deedProgress: [{ deedId: 'beacon_keeper', amount: 1 }],
           flags: [{ name: 'chain.doc-salvage.payment_refused', value: true }],
         },
       },

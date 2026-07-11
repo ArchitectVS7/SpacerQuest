@@ -224,4 +224,18 @@ export const DEEDS: readonly DeedDefinition[] = [
       match: [{ path: 'action', equals: 'buy-cargo-pods' }],
     },
   },
+  {
+    // Storylet-fed deed: advanced only by StoryletDeedProgress effects that name
+    // it (see the doc-salvage rescue chain), never by a raw runtime event. The
+    // engine credits registry.matchCounts[id] by each progress amount and earns
+    // the deed once the count meets the threshold.
+    id: 'beacon_keeper',
+    title: 'Beacon Keeper',
+    citationTemplate:
+      'On day {day}, an answered mayday earned this captain a quiet line in the beacon-net logs.',
+    trigger: {
+      eventType: 'StoryletDeedProgress',
+      count: { gte: 1 },
+    },
+  },
 ];

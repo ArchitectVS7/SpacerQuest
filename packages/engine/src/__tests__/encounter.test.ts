@@ -165,11 +165,11 @@ describe('Encounter system', () => {
     }
   });
 
-  it('keeps and increments the encounter round after a failed talk check', () => {
+  it('a failed talk check refuses to bargain: no tribute, round escalates', () => {
     const state = readyState();
     state.player.dawnHand = { dice: [1], spent: [false] };
     state.player.stats[Stat.TRADE] = 0;
-    state.player.credits = 0;
+    state.player.credits = 5000;
     state.encounter = fixtureEncounter();
 
     const { state: nextState, events } = resolveCombat(
@@ -178,13 +178,21 @@ describe('Encounter system', () => {
       new SeededRng(1),
     );
 
+    // Failure means no deal this round — tribute is NOT demanded (they refuse to
+    // bargain), the encounter continues under enemy pressure, and the round
+    // advances so the next tribute is dearer.
     expect(nextState.encounter?.round).toBe(2);
-    expect(events).toContainEqual(
-      expect.objectContaining({ type: 'TributeDemanded', amount: 1000, affordable: false }),
-    );
+    expect(nextState.player.credits).toBe(5000);
+    expect(events.some((event) => event.type === 'TributeDemanded')).toBe(false);
+    expect(events.some((event) => event.type === 'TributePaid')).toBe(false);
     expect(events).toContainEqual(expect.objectContaining({ type: 'EnemyCounterAction' }));
     expect(events).toContainEqual(
-      expect.objectContaining({ type: 'EncounterRound', continues: true, stance: 'talk' }),
+      expect.objectContaining({
+        type: 'EncounterRound',
+        continues: true,
+        success: false,
+        stance: 'talk',
+      }),
     );
   });
 
@@ -226,9 +234,11 @@ describe('Encounter system', () => {
     ).toBe(false);
   });
 
-  it('failed talk pays tribute when affordable and resolves as talked-down', () => {
+  it('successful talk pays the current round tribute and resolves as talked-down', () => {
     const state = readyState();
-    state.player.dawnHand = { dice: [1], spent: [false] };
+    // die 19 + TRADE 1 beats DC 11: a success that is NOT a natural 20, so the
+    // interceptor accepts (rather than waives) this round's tribute.
+    state.player.dawnHand = { dice: [19], spent: [false] };
     state.player.credits = 1500;
     state.encounter = fixtureEncounter();
 
@@ -249,9 +259,35 @@ describe('Encounter system', () => {
     );
   });
 
+  it('a natural 20 talk waives tribute and resolves as talked-down for free', () => {
+    const state = readyState();
+    // The hand die at the spent index is what the check reads: index 0 holds 20.
+    state.player.dawnHand = { dice: [20, 19, 4, 3, 1], spent: [false, false, false, false, false] };
+    state.player.credits = 1500;
+    state.encounter = fixtureEncounter();
+
+    const { state: nextState, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: state.encounter.interceptor.id, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(nextState.encounter).toBeNull();
+    expect(nextState.player.credits).toBe(1500);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'TributeDemanded', amount: 1000, waived: true }),
+    );
+    expect(events.some((event) => event.type === 'TributePaid')).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'EncounterResolved', resolution: 'talked-down' }),
+    );
+  });
+
   it('caps tribute escalation at the foundation maximum', () => {
     const state = readyState();
-    state.player.dawnHand = { dice: [1], spent: [false] };
+    // A non-nat-20 success (19 + TRADE 1 vs DC 11) at a late round pays the
+    // capped tribute (round 12 → 10,000, per foundation constants).
+    state.player.dawnHand = { dice: [19], spent: [false] };
     state.player.credits = 20_000;
     state.encounter = fixtureEncounter({ round: 12 });
 
@@ -298,6 +334,37 @@ describe('Encounter system', () => {
     expect(events.some((event) => event.type === 'TributePaid')).toBe(false);
   });
 
+  it('a Pacifist interceptor never refuses tribute (no flaw roll at all)', () => {
+    const state = readyState();
+    // die 19 + TRADE 1 clears DC 11: a plain success that should pay tribute.
+    state.player.dawnHand = { dice: [19], spent: [false] };
+    state.player.credits = 5000;
+    state.encounter = fixtureEncounter({
+      interceptor: {
+        ...fixtureEncounter().interceptor,
+        id: 'anon-pacifist-1',
+        flaw: 'Pacifist',
+        flawDc: 10,
+      },
+    });
+
+    const { state: nextState, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: state.encounter.interceptor.id, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    // Pacifist has no refusesTribute flag: no FlawCheck is rolled, and tribute is
+    // accepted normally.
+    expect(events.some((event) => event.type === 'FlawCheck')).toBe(false);
+    expect(nextState.encounter).toBeNull();
+    expect(nextState.player.credits).toBe(4000);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 1000 }));
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'EncounterResolved', resolution: 'talked-down' }),
+    );
+  });
+
   it('plays a deterministic three-round combat state machine', () => {
     let state = readyState();
     state.player.dawnHand = { dice: [1, 20, 20], spent: [false, false, false] };
@@ -328,9 +395,12 @@ describe('Encounter system', () => {
       new SeededRng(3),
     );
 
+    // Round one is a failed talk (die 1): no tribute is demanded, but enemy
+    // pressure still lands and the round advances.
+    expect(roundOne.events.some((event) => event.type === 'TributeDemanded')).toBe(false);
+    expect(roundOne.state.encounter?.round).toBe(2);
     expect(roundOne.events).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: 'TributeDemanded', round: 1, amount: 1000 }),
         expect.objectContaining({
           type: 'ComponentDamaged',
           component: 'shields',
@@ -350,6 +420,42 @@ describe('Encounter system', () => {
     expect(roundThree.events).toContainEqual(
       expect.objectContaining({ type: 'EncounterResolved', resolution: 'defeated' }),
     );
+  });
+
+  it('defeats a tier-3 interceptor in three volleys, hull counting 2,1,0 for 150 fuel', () => {
+    let state = readyState();
+    state.player.dawnHand = { dice: [20, 20, 20], spent: [false, false, false] };
+    state.player.stats[Stat.GUNS] = 20;
+    state.encounter = fixtureEncounter({
+      enemyHull: 3,
+      interceptor: { ...fixtureEncounter().interceptor, tier: 3 },
+    });
+    const startFuel = state.player.ship.fuel;
+    const hullRemaining: number[] = [];
+
+    for (let volley = 0; volley < 3; volley += 1) {
+      const result = resolveCombat(
+        state,
+        {
+          type: 'Combat',
+          stance: 'fight',
+          targetId: state.encounter!.interceptor.id,
+          spendDie: volley,
+        },
+        new SeededRng(1),
+      );
+      state = result.state;
+      const combatEvent = result.events.find(
+        (event) => event.type === 'CombatEvent' && event.stance === 'fight',
+      );
+      if (combatEvent && combatEvent.type === 'CombatEvent') {
+        hullRemaining.push(combatEvent.enemyHullRemaining ?? -1);
+      }
+    }
+
+    expect(hullRemaining).toEqual([2, 1, 0]);
+    expect(startFuel - state.player.ship.fuel).toBe(150);
+    expect(state.encounter).toBeNull();
   });
 
   it.each([

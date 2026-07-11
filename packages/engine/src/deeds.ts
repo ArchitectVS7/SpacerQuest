@@ -40,7 +40,6 @@ const STATE_PATHS = ['player.ship.fuel'] as const;
 export const RENOWN_RANK_ORDER = Object.keys(RENOWN_RANKS) as RenownRankId[];
 
 type ComparableValue = string | number | boolean;
-type EventMatch = { event: GameEvent; index: number };
 type DeedCandidate = {
   deed: DeedDefinition;
   definitionIndex: number;
@@ -83,7 +82,20 @@ function matchesValue(value: unknown, matcher: FieldMatcher | StateMatcher): boo
   return isComparableValue(value);
 }
 
+/** Storylet deed progress carries an explicit `amount` and is keyed by `deedId`,
+ *  so it is credited directly to matchCounts rather than counted as a generic
+ *  trigger match. Clamp to a positive integer so content can't stall or reverse
+ *  a count. */
+function clampProgressAmount(amount: number): number {
+  return Math.max(1, Math.floor(amount));
+}
+
 function matchesEvent(event: GameEvent, deed: DeedDefinition): boolean {
+  // StoryletDeedProgress never counts as a generic trigger match — it advances
+  // the named deed's count directly (see evaluateDeeds / computeMatchCounts).
+  if (event.type === 'StoryletDeedProgress') {
+    return false;
+  }
   if (event.type !== deed.trigger.eventType) {
     return false;
   }
@@ -116,24 +128,32 @@ function citationFor(deed: DeedDefinition, day: number): string {
   return deed.citationTemplate.replaceAll('{day}', String(day));
 }
 
-function anchorForCandidate(
+/** A single unit of count progress for a deed within the source batch: a real
+ *  trigger match weighs 1, a StoryletDeedProgress weighs its clamped amount. */
+type CountContribution = { index: number; amount: number };
+
+function anchorIndexFor(
   deed: DeedDefinition,
-  sourceMatches: readonly EventMatch[],
+  contributions: readonly CountContribution[],
   previousCount: number,
-): EventMatch | undefined {
+): number {
+  const first = contributions[0]?.index ?? 0;
   if (!deed.trigger.count) {
-    return sourceMatches[0];
+    return first;
   }
 
-  // The threshold match is the (count.gte)-th matching event overall. If it lands
-  // inside this source batch, anchor to it; otherwise the threshold was crossed in
-  // history, so fall back to the first source match (matches legacy behavior).
-  const thresholdOffset = deed.trigger.count.gte - previousCount - 1;
-  if (thresholdOffset >= 0 && thresholdOffset < sourceMatches.length) {
-    return sourceMatches[thresholdOffset];
+  // The threshold is crossed by the contribution that carries the running total
+  // to count.gte. If the batch never reaches it (crossed in history), fall back
+  // to the first contribution — matches legacy behavior.
+  let running = previousCount;
+  for (const contribution of contributions) {
+    running += contribution.amount;
+    if (running >= deed.trigger.count.gte) {
+      return contribution.index;
+    }
   }
 
-  return sourceMatches[0];
+  return first;
 }
 
 export function renownRankIndex(rank: RenownRankId): number {
@@ -156,6 +176,10 @@ export function rankForDeedCount(deedCount: number): RenownRankId {
 export function computeMatchCounts(eventLog: readonly GameEvent[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const event of eventLog) {
+    if (event.type === 'StoryletDeedProgress') {
+      counts[event.deedId] = (counts[event.deedId] ?? 0) + clampProgressAmount(event.amount);
+      continue;
+    }
     for (const deed of DEEDS) {
       if (matchesEvent(event, deed)) {
         counts[deed.id] = (counts[deed.id] ?? 0) + 1;
@@ -176,23 +200,48 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
   const sourceStartIndex = state.eventLog.length;
   const candidates: DeedCandidate[] = [];
 
+  // Storylet deed progress advances a named count deed directly (dead wire fix):
+  // collect each StoryletDeedProgress as a weighted contribution keyed by deedId.
+  const storyletProgress = new Map<string, CountContribution[]>();
+  sourceEvents.forEach((event, index) => {
+    if (event.type !== 'StoryletDeedProgress') {
+      return;
+    }
+    const contributions = storyletProgress.get(event.deedId) ?? [];
+    contributions.push({
+      index: sourceStartIndex + index,
+      amount: clampProgressAmount(event.amount),
+    });
+    storyletProgress.set(event.deedId, contributions);
+  });
+
   for (const [definitionIndex, deed] of DEEDS.entries()) {
     if (earnedIds.has(deed.id)) {
       continue;
     }
 
-    const sourceMatches = sourceEvents
+    const triggerMatches = sourceEvents
       .map((event, index) => ({ event, index: sourceStartIndex + index }))
       .filter(({ event }) => matchesEvent(event, deed));
-    if (sourceMatches.length === 0) {
+
+    // Only count-gte deeds can be advanced by storylet progress that names them.
+    const progress = deed.trigger.count ? (storyletProgress.get(deed.id) ?? []) : [];
+
+    if (triggerMatches.length === 0 && progress.length === 0) {
       continue;
     }
 
-    // Cached cumulative match count keeps evaluation O(sourceEvents), independent
-    // of eventLog length. Update it for every source match so count deeds see an
-    // accurate running total across calls even before they unlock.
+    // Event-ordered contribution list: real matches weigh 1, storylet progress
+    // weighs its clamped amount. Cached cumulative counts keep evaluation
+    // O(sourceEvents), independent of eventLog length.
+    const contributions: CountContribution[] = [
+      ...triggerMatches.map((match) => ({ index: match.index, amount: 1 })),
+      ...progress,
+    ].sort((left, right) => left.index - right.index);
+
     const previousCount = registry.matchCounts[deed.id] ?? 0;
-    const totalCount = previousCount + sourceMatches.length;
+    const increment = contributions.reduce((sum, contribution) => sum + contribution.amount, 0);
+    const totalCount = previousCount + increment;
     registry.matchCounts[deed.id] = totalCount;
 
     if (deed.trigger.count && totalCount < deed.trigger.count.gte) {
@@ -202,12 +251,11 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
       continue;
     }
 
-    const anchor = anchorForCandidate(deed, sourceMatches, previousCount);
-    if (!anchor) {
-      continue;
-    }
-
-    candidates.push({ deed, definitionIndex, anchorIndex: anchor.index });
+    candidates.push({
+      deed,
+      definitionIndex,
+      anchorIndex: anchorIndexFor(deed, contributions, previousCount),
+    });
   }
 
   candidates.sort(

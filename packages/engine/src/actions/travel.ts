@@ -212,7 +212,8 @@ export function generateEncounter(
     routeDangerChance,
     encounterRoll,
     round: 1,
-    enemyHull: 1,
+    // Toughness scales with tier (1-5): a tier-3 interceptor soaks three volleys.
+    enemyHull: interceptor.tier,
   };
 }
 

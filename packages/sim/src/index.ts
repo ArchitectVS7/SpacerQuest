@@ -186,6 +186,48 @@ export function availablePlannedActions(state: GameState): PlayerAction[] {
 
 export const idlePolicy: SimPolicy = () => [{ type: 'Wait' }];
 
+type StoryletOfferChoice = GameState['storylets']['available'][number]['choices'][number];
+
+function choiceRequiresDie(choice: StoryletOfferChoice): boolean {
+  return Boolean(choice.requirements?.spendDie || choice.requirements?.statCheck);
+}
+
+function canAffordChoice(state: GameState, choice: StoryletOfferChoice): boolean {
+  const credits = choice.requirements?.credits;
+  if (!credits) {
+    return true;
+  }
+  if (credits.gte !== undefined && state.player.credits < credits.gte) {
+    return false;
+  }
+  if (credits.lte !== undefined && state.player.credits > credits.lte) {
+    return false;
+  }
+  if (credits.equals !== undefined && state.player.credits !== credits.equals) {
+    return false;
+  }
+  return true;
+}
+
+/** Greedy storylet pick: first available offer with an affordable choice,
+ *  preferring no-die choices; a die choice spends the lowest die (index 0, the
+ *  policy's single die action of the day). Deterministic — content order only. */
+function chooseStoryletAction(state: GameState): PlayerAction | null {
+  for (const offer of state.storylets.available) {
+    const affordable = offer.choices.filter((choice) => canAffordChoice(state, choice));
+    const chosen = affordable.find((choice) => !choiceRequiresDie(choice)) ?? affordable[0];
+    if (chosen) {
+      return {
+        type: 'Storylet',
+        storyletId: offer.storyletId,
+        choiceId: chosen.id,
+        ...(choiceRequiresDie(chosen) ? { spendDie: 0 } : {}),
+      };
+    }
+  }
+  return null;
+}
+
 export const greedyTraderPolicy: SimPolicy = ({ state }) => {
   if (state.encounter) {
     return [
@@ -196,6 +238,11 @@ export const greedyTraderPolicy: SimPolicy = ({ state }) => {
         spendDie: 0,
       },
     ];
+  }
+
+  const storyletAction = chooseStoryletAction(state);
+  if (storyletAction) {
+    return [storyletAction];
   }
 
   if (state.player.activeContract) {

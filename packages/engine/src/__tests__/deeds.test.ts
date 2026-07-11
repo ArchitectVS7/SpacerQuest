@@ -191,6 +191,33 @@ describe('deed registry', () => {
     expect(state.player.registry.earned.map((deed) => deed.eventIndex)).toEqual([0, 1]);
   });
 
+  it('credits storylet deedProgress by a clamped amount and earns the count deed once', () => {
+    const state = createInitialState(9);
+    const progress = (amount: number): GameEvent => ({
+      type: 'StoryletDeedProgress',
+      day: 1,
+      storyletId: 'chain.doc-salvage.follow-up',
+      choiceId: 'accept-thanks',
+      deedId: 'beacon_keeper',
+      amount,
+    });
+
+    // A malformed non-positive amount is clamped up to 1, still crossing the
+    // gte:1 threshold and earning beacon_keeper exactly once.
+    const first = evaluateDeeds(state, [progress(-5)]);
+    state.eventLog.push(...first);
+
+    expect(state.player.registry.matchCounts['beacon_keeper']).toBe(1);
+    expect(
+      first.filter((event) => event.type === 'DeedEarned' && event.deedId === 'beacon_keeper'),
+    ).toHaveLength(1);
+
+    // Once earned, further progress cannot re-earn it.
+    const second = evaluateDeeds(state, [progress(3)]);
+    expect(second.filter((event) => event.type === 'DeedEarned')).toHaveLength(0);
+    expect(state.player.registry.earned.map((deed) => deed.id)).toEqual(['beacon_keeper']);
+  });
+
   it('derives renown rank purely from earned deed count', () => {
     const state = createInitialState(4);
 

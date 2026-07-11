@@ -159,6 +159,62 @@ describe('Day loop', () => {
     expect(resumed.state).toEqual(batch.state);
   });
 
+  it('produces identical batch vs stepped results across a Storylet action', () => {
+    // The Sun-3 auditor storylet is deterministically available on day 1 (start
+    // system 1, TOUR_ONE), so it can anchor the batch/stepped equivalence.
+    const actions: PlayerAction[] = [
+      { type: 'Storylet', storyletId: 'port.sun3.guild-auditor', choiceId: 'argue', spendDie: 0 },
+      { type: 'Travel', destinationId: 2, spendDie: 1 },
+    ];
+
+    const availability = startDay(createInitialState(555));
+    expect(availability.state.storylets.available.map((offer) => offer.storyletId)).toContain(
+      'port.sun3.guild-auditor',
+    );
+
+    const batch = advanceDay(createInitialState(555), actions);
+
+    const dawn = startDay(createInitialState(555));
+    let steppedState = dawn.state;
+    const steppedEvents = [...dawn.events];
+    for (const action of actions) {
+      const result = applyPlayerAction(steppedState, action);
+      steppedState = result.state;
+      steppedEvents.push(...result.events);
+    }
+    const dusk = endDay(steppedState);
+    steppedEvents.push(...dusk.events);
+
+    expect(steppedEvents).toEqual(batch.events);
+    expect(dusk.state).toEqual(batch.state);
+  });
+
+  it('serializes and resumes mid-day across a Storylet action', () => {
+    const actions: PlayerAction[] = [
+      { type: 'Storylet', storyletId: 'port.sun3.guild-auditor', choiceId: 'argue', spendDie: 0 },
+      { type: 'Travel', destinationId: 2, spendDie: 1 },
+      { type: 'Trade', action: 'pay-debt', amount: 25 },
+    ];
+
+    const batch = advanceDay(createInitialState(777), actions);
+
+    const dawn = startDay(createInitialState(777));
+    const firstAction = applyPlayerAction(dawn.state, actions[0]);
+    const restored = deserializeState(serializeState(firstAction.state));
+
+    expect(restored.dayPhase).toBe(DayPhase.DAY);
+    expect(restored.rngState).toBe(firstAction.state.rngState);
+    expect(restored.dayEventCount).toBe(firstAction.state.dayEventCount);
+
+    let resumedState = restored;
+    for (const action of actions.slice(1)) {
+      resumedState = applyPlayerAction(resumedState, action).state;
+    }
+    const resumed = endDay(resumedState);
+
+    expect(resumed.state).toEqual(batch.state);
+  });
+
   it('persists active encounters across day end', () => {
     const state = createInitialState(246);
     const dawn = startDay(state);

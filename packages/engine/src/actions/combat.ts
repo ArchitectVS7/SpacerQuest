@@ -8,6 +8,9 @@ import { completePendingTravel } from './travel.js';
  *  free when the tank is short — no free volleys AND no free getaways. */
 export const RUN_FUEL_COST = 10;
 export const FIGHT_FUEL_COST = 50;
+// Tribute escalates 1,000 cr per round and caps at 10,000 cr — values match
+// foundation/rules/constants.ts:190-193 (original SP.FIGHT1.S:227
+// kc=(kg*1000):if kg>12 kc=10000).
 export const TRIBUTE_BASE_MULTIPLIER = 1000;
 export const TRIBUTE_MAX = 10_000;
 
@@ -39,7 +42,7 @@ function enemyRefusesTribute(
   if (!flaw) return false;
 
   const flawDef = FLAWS[flaw];
-  if (!flawDef || !(flawDef.triggers as string[]).includes('Combat')) return false;
+  if (!flawDef || !flawDef.refusesTribute) return false;
 
   const dc = encounter.interceptor.flawDc ?? 10;
   const die = rng.d20();
@@ -241,13 +244,19 @@ export function resolveCombat(
     nextState.player.ship.fuel -= fuelUsed;
   }
 
-  const stat =
-    action.stance === 'run' ? Stat.PILOT : action.stance === 'talk' ? Stat.TRADE : Stat.GUNS;
+  // Talk is the credit-cost corner of the triangle: a deal always costs the
+  // round's tribute (or a nat-20 waiver). Handled ahead of the generic check so
+  // the flaw-refusal roll fires first (Repair A).
+  if (action.stance === 'talk') {
+    return resolveTalk(nextState, encounter, targetId, die, dc, rng, events);
+  }
+
+  const stat = action.stance === 'run' ? Stat.PILOT : Stat.GUNS;
   const result = check(die, nextState.player.stats[stat], dc);
   events.push({ type: 'StatCheck', actor: 'Player', stat, dc, result });
 
   if (action.stance === 'fight' && result.success) {
-    const enemyHull = Math.max(1, encounter.enemyHull ?? 1) - 1;
+    const enemyHull = Math.max(1, encounter.enemyHull) - 1;
     encounter.enemyHull = enemyHull;
     events.push({
       type: 'CombatEvent',
@@ -286,6 +295,8 @@ export function resolveCombat(
   });
 
   if (result.success) {
+    // Only a successful run reaches here (talk is handled above, a fight win
+    // returned earlier); a clean getaway escapes without completing travel.
     events.push({
       type: 'EncounterRound',
       encounterId: encounter.id,
@@ -295,49 +306,8 @@ export function resolveCombat(
       success: true,
       fuelUsed,
     });
-    resolveEncounter(
-      nextState,
-      encounter,
-      events,
-      action.stance === 'run' ? 'escaped' : 'talked-down',
-    );
+    resolveEncounter(nextState, encounter, events, 'escaped');
     return { state: nextState, events };
-  }
-
-  if (action.stance === 'talk') {
-    const amount = tributeForRound(encounter.round);
-    const refused = enemyRefusesTribute(encounter, rng, events);
-    const affordable = nextState.player.credits >= amount;
-    events.push({
-      type: 'TributeDemanded',
-      encounterId: encounter.id,
-      round: encounter.round,
-      amount,
-      refused,
-      affordable,
-    });
-
-    if (!refused && affordable) {
-      nextState.player.credits -= amount;
-      events.push({
-        type: 'TributePaid',
-        encounterId: encounter.id,
-        round: encounter.round,
-        amount,
-        creditsRemaining: nextState.player.credits,
-      });
-      events.push({
-        type: 'EncounterRound',
-        encounterId: encounter.id,
-        round: encounter.round,
-        stance: 'talk',
-        continues: false,
-        success: false,
-        fuelUsed,
-      });
-      resolveEncounter(nextState, encounter, events, 'talked-down');
-      return { state: nextState, events };
-    }
   }
 
   events.push({
@@ -352,4 +322,150 @@ export function resolveCombat(
   continueEncounter(nextState, encounter, rng, events);
 
   return { state: nextState, events };
+}
+
+/** Talk resolution: tribute always has a price. See Repair A for the full
+ *  decision table (flaw refusal → nat-20 waiver → pay → unaffordable → refuse). */
+function resolveTalk(
+  state: GameState,
+  encounter: EncounterState,
+  targetId: string,
+  die: number,
+  dc: number,
+  rng: SeededRng,
+  events: GameEvent[],
+): { state: GameState; events: GameEvent[] } {
+  const round = encounter.round;
+  const amount = tributeForRound(round);
+
+  // 1. Flaw refusal FIRST: some interceptors want blood, not credits. Talking
+  //    cannot resolve — the enemy presses on and the tribute escalates.
+  if (enemyRefusesTribute(encounter, rng, events)) {
+    const affordable = state.player.credits >= amount;
+    events.push({
+      type: 'CombatEvent',
+      characterId: 'player',
+      targetId,
+      stance: 'talk',
+      fuelUsed: 0,
+      success: false,
+    });
+    events.push({
+      type: 'TributeDemanded',
+      encounterId: encounter.id,
+      round,
+      amount,
+      refused: true,
+      affordable,
+    });
+    events.push({
+      type: 'EncounterRound',
+      encounterId: encounter.id,
+      round,
+      stance: 'talk',
+      continues: true,
+      success: false,
+      fuelUsed: 0,
+    });
+    continueEncounter(state, encounter, rng, events);
+    return { state, events };
+  }
+
+  // 2. Talk stat check.
+  const result = check(die, state.player.stats[Stat.TRADE], dc);
+  events.push({ type: 'StatCheck', actor: 'Player', stat: Stat.TRADE, dc, result });
+  const affordable = state.player.credits >= amount;
+  events.push({
+    type: 'CombatEvent',
+    characterId: 'player',
+    targetId,
+    stance: 'talk',
+    fuelUsed: 0,
+    success: result.success,
+  });
+
+  // Natural 20: the interceptor waves you through free of charge.
+  if (result.nat20) {
+    events.push({
+      type: 'TributeDemanded',
+      encounterId: encounter.id,
+      round,
+      amount,
+      refused: false,
+      affordable,
+      waived: true,
+    });
+    events.push({
+      type: 'EncounterRound',
+      encounterId: encounter.id,
+      round,
+      stance: 'talk',
+      continues: false,
+      success: true,
+      fuelUsed: 0,
+    });
+    resolveEncounter(state, encounter, events, 'talked-down');
+    return { state, events };
+  }
+
+  // Non-nat-20 success: the interceptor accepts this round's tribute.
+  if (result.success) {
+    events.push({
+      type: 'TributeDemanded',
+      encounterId: encounter.id,
+      round,
+      amount,
+      refused: false,
+      affordable,
+    });
+
+    if (affordable) {
+      state.player.credits -= amount;
+      events.push({
+        type: 'TributePaid',
+        encounterId: encounter.id,
+        round,
+        amount,
+        creditsRemaining: state.player.credits,
+      });
+      events.push({
+        type: 'EncounterRound',
+        encounterId: encounter.id,
+        round,
+        stance: 'talk',
+        continues: false,
+        success: true,
+        fuelUsed: 0,
+      });
+      resolveEncounter(state, encounter, events, 'talked-down');
+      return { state, events };
+    }
+
+    // Deal struck but the tank of credits is empty — no payment, encounter runs on.
+    events.push({
+      type: 'EncounterRound',
+      encounterId: encounter.id,
+      round,
+      stance: 'talk',
+      continues: true,
+      success: true,
+      fuelUsed: 0,
+    });
+    continueEncounter(state, encounter, rng, events);
+    return { state, events };
+  }
+
+  // Failure: they refuse to bargain this round — no tribute is demanded, and the
+  // price escalates for the next attempt.
+  events.push({
+    type: 'EncounterRound',
+    encounterId: encounter.id,
+    round,
+    stance: 'talk',
+    continues: true,
+    success: false,
+    fuelUsed: 0,
+  });
+  continueEncounter(state, encounter, rng, events);
+  return { state, events };
 }

@@ -56,7 +56,9 @@ export interface EncounterState {
   routeDangerChance: number;
   encounterRoll: number;
   round: number;
-  enemyHull?: number;
+  /** Hull points the interceptor starts with; each successful fight volley
+   *  removes one. Scales with interceptor tier (1-5). Always present. */
+  enemyHull: number;
 }
 
 export enum DayPhase {
@@ -252,6 +254,8 @@ export type GameEvent =
       amount: number;
       refused: boolean;
       affordable: boolean;
+      /** A natural-20 talk check waves the ship through free of charge. */
+      waived?: boolean;
     }
   | {
       type: 'TributePaid';

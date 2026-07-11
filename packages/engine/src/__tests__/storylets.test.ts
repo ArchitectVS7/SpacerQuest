@@ -183,9 +183,15 @@ describe('storylet engine', () => {
       day: 2,
       storyletId: 'chain.doc-salvage.follow-up',
       choiceId: 'accept-thanks',
-      deedId: 'mercy_runner',
+      deedId: 'beacon_keeper',
       amount: 1,
     });
+    // The deedProgress wire is real: the count deed advances and earns.
+    expect(resolved.state.player.registry.matchCounts['beacon_keeper']).toBe(1);
+    expect(resolved.events).toContainEqual(
+      expect.objectContaining({ type: 'DeedEarned', deedId: 'beacon_keeper' }),
+    );
+    expect(resolved.state.player.registry.earned.map((deed) => deed.id)).toContain('beacon_keeper');
   });
 
   it('keeps deterministic eligibility in content order', () => {
