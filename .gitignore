@@ -4,4 +4,6 @@ playwright-report/
 .DS_Store
 node_modules/
 dist/
+dist-web/
+.vite/
 *.tsbuildinfo

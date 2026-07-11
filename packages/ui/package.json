@@ -3,16 +3,28 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -b"
+    "predev": "npm run build -w @spacerquest/engine",
+    "dev": "vite",
+    "prebuild": "npm run build -w @spacerquest/engine",
+    "build": "vite build",
+    "preview": "vite preview --port 5173",
+    "typecheck": "tsc -b",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@spacerquest/content": "*",
     "@spacerquest/engine": "*",
-    "@spacerquest/content": "*"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.9.3",
+    "vite": "^6.0.7"
   }
 }

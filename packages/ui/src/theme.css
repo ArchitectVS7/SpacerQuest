@@ -1,0 +1,787 @@
+/* =========================================================================
+   SPACER QUEST · RIMWARD — CRT aesthetic system (T-302)
+   "P3 Amber, an instrument you hold."
+
+   Design commitments (see docs concept / frontend-design pass):
+   - One phosphor colour. Emphasis is REVERSE VIDEO, never a second hue.
+   - Chakra Petch (display chrome) + IBM Plex Mono (tabular instrument data).
+   - Phosphor persistence: state changes bloom bright, then decay to afterglow.
+   - The effect layer (scanline / vignette / flicker / curvature) is pure CSS on
+     a static element — React never re-renders it per frame.
+   ========================================================================= */
+
+:root {
+  --tube: #0b0906;
+  --panel: #140e07;
+  --ember: #ffb000;
+  --ember-hi: #ffe1a6;
+  --amber: #c0781a;
+  --amber-dim: #5e3b0e;
+  --hair: #3a2408;
+
+  --font-display: 'Chakra Petch', system-ui, sans-serif;
+  --font-data: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  --glow: 0 0 2px rgba(255, 176, 0, 0.55), 0 0 10px rgba(255, 176, 0, 0.18);
+  --glow-hi: 0 0 3px rgba(255, 225, 166, 0.9), 0 0 16px rgba(255, 176, 0, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: #050403;
+  color: var(--ember);
+  font-family: var(--font-data);
+  font-size: 15px;
+  line-height: 1.45;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- the tube: fills the viewport ---- */
+.tube {
+  position: relative;
+  height: 100%;
+  padding: 22px 26px;
+  background: radial-gradient(130% 130% at 50% 40%, #150e07 0%, #0b0906 60%, #070502 100%);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* ---- effect layer: static, CSS-only (no per-frame React) ---- */
+.fx {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+}
+.fx::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(130% 120% at 50% 50%, transparent 56%, rgba(0, 0, 0, 0.55) 100%);
+  mix-blend-mode: multiply;
+}
+.fx::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+  opacity: 0.55;
+  animation: flicker 5.5s infinite steps(60);
+}
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  47% {
+    opacity: 0.53;
+  }
+  48% {
+    opacity: 0.64;
+  }
+  49% {
+    opacity: 0.5;
+  }
+}
+/* Effects OFF — keeps a faint vignette for depth, kills scanline + flicker. */
+:root[data-fx='off'] .fx::after {
+  display: none;
+}
+:root[data-fx='off'] .fx::before {
+  background: radial-gradient(130% 120% at 50% 50%, transparent 74%, rgba(0, 0, 0, 0.3) 100%);
+}
+
+/* boot sweep — one orchestrated dawn moment */
+.sweep {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 36%;
+  z-index: 95;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 176, 0, 0.16), transparent);
+  animation: sweep 1100ms ease-out 1 forwards;
+}
+@keyframes sweep {
+  0% {
+    transform: translateY(-40%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(320%);
+    opacity: 0;
+  }
+}
+
+/* ---- grid ---- */
+.screen {
+  position: relative;
+  z-index: 10;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 12px;
+}
+
+/* ---- bezel ---- */
+.bezel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 20px;
+  align-items: center;
+  padding-bottom: 10px;
+  /* reserve the top-right corner for the CRT / New game controls */
+  padding-right: 220px;
+  border-bottom: 1px solid var(--hair);
+}
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.brand h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: 0.32em;
+  margin: 0;
+  text-shadow: var(--glow);
+  text-transform: uppercase;
+}
+.brand .sub {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  font-size: 11px;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+.loc {
+  color: var(--amber);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+.loc b {
+  color: var(--ember);
+}
+.readouts {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-self: end;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+.chip {
+  border: 1px solid var(--hair);
+  padding: 5px 10px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: var(--amber);
+}
+.chip b {
+  color: var(--ember);
+}
+.chip.rev {
+  background: var(--ember);
+  color: var(--tube);
+  border-color: var(--ember);
+  font-weight: 600;
+  text-shadow: none;
+}
+.era {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+}
+.fuel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fuel .bar {
+  width: 96px;
+  height: 11px;
+  border: 1px solid var(--amber-dim);
+  position: relative;
+  background: #0a0704;
+}
+.fuel .bar i {
+  position: absolute;
+  inset: 1px;
+  background: repeating-linear-gradient(90deg, var(--ember) 0 5px, transparent 5px 7px);
+  box-shadow: var(--glow);
+}
+.fuel b {
+  color: var(--ember);
+}
+
+/* ---- main columns ---- */
+.main {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 12px;
+  min-height: 0;
+}
+.col {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+}
+.col.left {
+  grid-template-rows: 1fr auto;
+}
+.pane {
+  border: 1px solid var(--hair);
+  background: linear-gradient(180deg, var(--panel) 0, #0d0905 100%);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.pane > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+}
+.pane > header h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  font-size: 12px;
+  margin: 0;
+  text-transform: uppercase;
+  color: var(--ember);
+  text-shadow: var(--glow);
+}
+.pane > header .tag {
+  font-size: 11px;
+  color: var(--amber);
+  letter-spacing: 0.12em;
+}
+.pane .body {
+  padding: 12px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.pane .body::-webkit-scrollbar {
+  width: 9px;
+}
+.pane .body::-webkit-scrollbar-thumb {
+  background: var(--amber-dim);
+}
+
+/* ---- starmap (scaffold nav grid; coordinate map is T-304) ---- */
+.navgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+  align-content: start;
+}
+.navcell {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--hair);
+  padding: 6px 8px;
+  font-size: 11px;
+  /* readable amber (5.6:1 on tube) — AA even for unvisited systems */
+  color: var(--amber);
+  position: relative;
+  overflow: hidden;
+}
+.navcell .navdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7a4e14;
+  flex: none;
+}
+.navcell .navname {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.navcell.rim {
+  color: var(--amber);
+}
+.navcell.rim .navdot {
+  background: var(--amber);
+}
+.navcell.visited {
+  color: var(--ember);
+  border-color: var(--amber-dim);
+}
+.navcell.visited .navdot {
+  background: var(--ember);
+  box-shadow: 0 0 5px rgba(255, 176, 0, 0.6);
+}
+.navcell.here {
+  color: var(--tube);
+  background: var(--ember);
+  border-color: var(--ember);
+  font-weight: 600;
+  box-shadow: var(--glow);
+}
+.navcell.here .navdot {
+  background: var(--tube);
+}
+.navcell .navhere {
+  margin-left: auto;
+  color: var(--tube);
+}
+
+/* ---- ship status ---- */
+.ship .body {
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 18px;
+  align-content: start;
+}
+.comp {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.comp .nm {
+  color: var(--amber);
+  letter-spacing: 0.05em;
+}
+.cond {
+  display: flex;
+  gap: 2px;
+}
+.cond i {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--amber-dim);
+}
+.cond i.on {
+  background: var(--ember);
+  border-color: var(--ember);
+  box-shadow: 0 0 4px rgba(255, 176, 0, 0.6);
+}
+.comp.hurt .nm {
+  color: var(--ember);
+}
+
+/* ---- manifest ---- */
+.contract {
+  border: 1px solid var(--hair);
+  padding: 10px 11px;
+  margin-bottom: 10px;
+  position: relative;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+  background: linear-gradient(180deg, #170f07, #0e0a05);
+}
+.contract:last-child {
+  margin-bottom: 0;
+}
+.contract.pickable:hover {
+  border-color: var(--amber);
+  cursor: pointer;
+}
+.contract .row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.contract .goods {
+  color: var(--ember);
+  letter-spacing: 0.03em;
+  font-weight: 500;
+}
+.contract .dest {
+  color: var(--amber);
+  font-size: 12px;
+}
+.contract .pay {
+  color: var(--ember-hi);
+  font-weight: 600;
+  text-shadow: var(--glow);
+  white-space: nowrap;
+}
+.flag {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  padding: 2px 6px;
+  margin-left: 8px;
+}
+.flag.urgent {
+  background: var(--ember);
+  color: var(--tube);
+  font-weight: 700;
+}
+.flag.shady {
+  border: 1px solid var(--amber);
+  color: var(--amber);
+}
+
+/* ---- honest check block (signature micro-component) ---- */
+.check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  border-top: 1px dashed var(--hair);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.check .lbl {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  color: var(--amber);
+  margin-right: 10px;
+}
+.slot {
+  min-width: 34px;
+  height: 26px;
+  border: 1px dashed var(--amber-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--amber-dim);
+  margin-right: 7px;
+  font-weight: 600;
+}
+.slot.ready {
+  border-style: solid;
+  border-color: var(--ember);
+  color: var(--tube);
+  background: var(--ember);
+  box-shadow: var(--glow);
+}
+.mono {
+  color: var(--amber);
+}
+.mono b {
+  color: var(--ember);
+}
+.arrow {
+  margin: 0 8px;
+  color: var(--amber);
+}
+.result.clear {
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
+  font-weight: 600;
+}
+.result.fail {
+  background: var(--ember);
+  color: var(--tube);
+  padding: 1px 7px;
+  font-weight: 600;
+}
+
+/* ---- wire ---- */
+.wire {
+  border: 1px solid var(--hair);
+  background: #0c0805;
+  overflow: hidden;
+  position: relative;
+}
+.wire .cap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  z-index: 3;
+  background: linear-gradient(90deg, #12100a 70%, transparent);
+  font-family: var(--font-display);
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  color: var(--ember);
+}
+.wire .cap .dot {
+  width: 7px;
+  height: 7px;
+  background: var(--ember);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--ember);
+  animation: pulse 1.6s infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+.ticker {
+  white-space: nowrap;
+  padding: 9px 0 9px 138px;
+  animation: tick 40s linear infinite;
+  font-size: 13px;
+  color: var(--amber);
+}
+.ticker:hover {
+  animation-play-state: paused;
+}
+.ticker .it {
+  margin-right: 44px;
+}
+.ticker .it b {
+  color: var(--ember);
+}
+.ticker .sep {
+  color: var(--amber-dim);
+  margin: 0 6px;
+}
+@keyframes tick {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- hand dock ---- */
+.dock {
+  border: 1px solid var(--hair);
+  background: linear-gradient(180deg, #17100a, #0b0805);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px;
+}
+.dlabel {
+  font-family: var(--font-display);
+  letter-spacing: 0.2em;
+  font-size: 12px;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+.dlabel b {
+  display: block;
+  color: var(--ember);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  margin-top: 3px;
+}
+.hand {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+.die {
+  width: 56px;
+  height: 56px;
+  position: relative;
+  cursor: pointer;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-data);
+  font-weight: 600;
+  font-size: 21px;
+  color: var(--ember);
+  background: radial-gradient(120% 120% at 50% 35%, #221607, #0e0a05);
+  border: 1px solid var(--amber-dim);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  transition:
+    transform 0.18s,
+    color 0.18s,
+    border-color 0.18s,
+    box-shadow 0.18s;
+  text-shadow: var(--glow);
+}
+.die:hover {
+  transform: translateY(-4px);
+}
+.die.sel {
+  border-color: var(--ember);
+  color: var(--ember-hi);
+  box-shadow: var(--glow-hi);
+  transform: translateY(-8px);
+}
+.die .dl {
+  position: absolute;
+  bottom: 5px;
+  font-family: var(--font-display);
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+  opacity: 0.7;
+}
+.die.spent {
+  color: var(--amber-dim);
+  border-color: #241708;
+  cursor: default;
+  background: radial-gradient(120% 120% at 50% 35%, #120c06, #0a0704);
+}
+.die.spent:hover {
+  transform: none;
+}
+.die.nat {
+  border-color: var(--ember-hi);
+}
+.die.bloom {
+  animation: bloom 0.7s ease-out 1;
+}
+@keyframes bloom {
+  0% {
+    box-shadow: 0 0 0 rgba(255, 225, 166, 0);
+    color: var(--ember-hi);
+  }
+  22% {
+    box-shadow: 0 0 26px 6px rgba(255, 225, 166, 0.7);
+    color: #fff;
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(255, 176, 0, 0);
+  }
+}
+.hint {
+  font-size: 11.5px;
+  color: var(--amber);
+  letter-spacing: 0.05em;
+  justify-self: end;
+  text-align: right;
+  max-width: 260px;
+}
+.hint b {
+  color: var(--ember);
+}
+.btn {
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ember);
+  border: 1px solid var(--amber);
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn:hover {
+  background: var(--ember);
+  color: var(--tube);
+}
+.btn:disabled {
+  color: var(--amber-dim);
+  border-color: var(--hair);
+  cursor: default;
+}
+.btn:disabled:hover {
+  background: transparent;
+  color: var(--amber-dim);
+}
+
+/* ---- top-right controls ---- */
+.ctrls {
+  position: absolute;
+  right: 26px;
+  top: 18px;
+  z-index: 40;
+  display: flex;
+  gap: 8px;
+  font-size: 10.5px;
+}
+.ctrls button {
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  background: transparent;
+  color: var(--amber);
+  border: 1px solid var(--hair);
+  padding: 4px 9px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.ctrls button:hover {
+  color: var(--ember);
+  border-color: var(--amber);
+}
+
+/* new-game seed dialog */
+.seedbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.seedbar input {
+  font-family: var(--font-data);
+  background: #0a0704;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  padding: 6px 8px;
+  width: 90px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx::after {
+    animation: none;
+  }
+  .sweep {
+    display: none;
+  }
+  .ticker {
+    animation: none;
+    padding-left: 138px;
+  }
+  .die.bloom {
+    animation: none;
+  }
+  .wire .cap .dot,
+  .star.here {
+    animation: none;
+  }
+}
+@media (max-width: 900px) {
+  .bezel {
+    grid-template-columns: 1fr;
+    padding-right: 0;
+    padding-top: 34px;
+  }
+  .readouts {
+    justify-self: start;
+  }
+  .main {
+    grid-template-columns: 1fr;
+  }
+  .col.left {
+    grid-template-rows: 200px auto;
+  }
+  .dock {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    text-align: center;
+  }
+  .hint {
+    justify-self: center;
+    text-align: center;
+  }
+}
