@@ -99,7 +99,7 @@ export function createInitialState(seed: number): GameState {
       },
       // Charts seed with the starting system — the spacer knows where they woke
       // up. Every subsequent arrival appends here (T-108 persistent knowledge).
-      charts: { visitedSystemIds: [1] },
+      charts: { visitedSystemIds: [1], discoveredPois: [] },
       legacy: { successionCount: 0 },
     },
     market: {
@@ -160,8 +160,13 @@ export function deserializeState(json: string): GameState {
   // Save-compat: pre-T-108 fixtures have no charts/legacy. Seed charts with the
   // spacer's current system (they demonstrably know where they are) and start
   // the succession counter at 0.
-  parsed.player.charts ??= { visitedSystemIds: [parsed.player.currentSystemId] };
+  parsed.player.charts ??= {
+    visitedSystemIds: [parsed.player.currentSystemId],
+    discoveredPois: [],
+  };
   parsed.player.charts.visitedSystemIds ??= [parsed.player.currentSystemId];
+  // Save-compat: pre-T-111a states have no charted POIs. Default to empty.
+  parsed.player.charts.discoveredPois ??= [];
   parsed.player.legacy ??= { successionCount: 0 };
   parsed.player.legacy.successionCount ??= 0;
   parsed.npcs ??= [];

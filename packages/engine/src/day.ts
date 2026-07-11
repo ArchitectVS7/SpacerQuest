@@ -13,6 +13,7 @@ import {
   resolveInterceptorFled,
 } from './actions/combat.js';
 import { resolveShipyard } from './actions/shipyard.js';
+import { resolveExploration } from './actions/exploration.js';
 import { evaluateDeeds } from './deeds.js';
 import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
 
@@ -125,6 +126,12 @@ export function applyPlayerAction(
     result = resolveShipyard(nextState, action);
   } else if (action.type === 'Combat') {
     result = resolveCombat(nextState, action, dayRng.fork(`action-combat-${actionEventIndex}`));
+  } else if (action.type === 'Explore') {
+    result = resolveExploration(
+      nextState,
+      action,
+      dayRng.fork(`action-explore-${actionEventIndex}`),
+    );
   } else {
     result = resolveStoryletChoice(
       nextState,

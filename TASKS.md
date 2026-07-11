@@ -79,7 +79,7 @@ Deeds as content data: id, period-voice citation, trigger predicate over events/
 Data-driven storylets in content: trigger (system/cargo/NPC/era/day-range/flag conditions), prose, 2–4 choices with requirements (stat check, credits, die) and effects (credits, fuel, cargo, flags, disposition, deed progress, follow-up storylet scheduling). Engine surfaces eligible storylets as part of day state; choice resolution is a player action. Flags namespace on `GameState`.
 **Accept:** schema documented in content README; 3 demo storylets (one cargo-attached, one port, one chained pair) fully playable headless in tests; deterministic eligibility; malformed storylet data fails validation loudly at load, not silently mid-game.
 
-### T-111a · Exploration Action — `status: TODO` · `coder: opus` · `after: T-110`
+### T-111a · Exploration Action — `status: DONE` · `coder: opus` · `after: T-110`
 Add off-lane `Explore` action to `day.ts` and `types.ts` (consumes die + nav check), surfacing seeded points of interest — beacons and derelicts — per PRD §7.2.
 **Accept:** discovery deterministic per seed; nav checks respect PILOT modifier; both POI types (beacon, derelict) reachable in a seed sweep.
 

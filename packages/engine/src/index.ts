@@ -13,3 +13,4 @@ export * from './actions/trade.js';
 export * from './actions/travel.js';
 export * from './actions/combat.js';
 export * from './actions/shipyard.js';
+export * from './actions/exploration.js';

@@ -1,5 +1,6 @@
 import {
   AnonymousInterceptorKind,
+  PoiType,
   PowerTier,
   RenownRankId,
   RouteDangerLevel,
@@ -219,8 +220,26 @@ export type GameEvent =
   | {
       type: 'ActionBlocked';
       day: number;
-      actionType: 'Trade' | 'Travel' | 'Shipyard' | 'Storylet';
+      actionType: 'Trade' | 'Travel' | 'Shipyard' | 'Storylet' | 'Explore';
       reason: 'active-encounter';
+    }
+  | {
+      /** An Explore nav check succeeded and charted a point of interest
+       *  (T-111a). The reward (loot/fragments) is attached in T-111b. */
+      type: 'PoiDiscovered';
+      day: number;
+      poiId: string;
+      poiType: PoiType;
+      systemId: number;
+      name: string;
+    }
+  | {
+      /** An Explore attempt produced nothing — a failed nav check or a dry tank
+       *  (T-111a). The die is still spent. */
+      type: 'ExplorationFailed';
+      day: number;
+      systemId: number;
+      reason: 'nav-check' | 'insufficient-fuel';
     }
   | { type: 'StoryletOffered'; day: number; storyletId: string; scheduled: boolean }
   | {
@@ -448,6 +467,7 @@ export type PlayerAction =
       equipment?: SpecialEquipmentId;
     }
   | { type: 'Storylet'; storyletId: string; choiceId: string; spendDie?: number }
+  | { type: 'Explore'; spendDie?: number }
   | { type: 'Wait' };
 
 export type NpcActionType =
@@ -497,6 +517,21 @@ export interface ShipState {
   hasTitaniumHull?: boolean;
 }
 
+/** A point of interest the spacer has charted off the lane (T-111a). Part of
+ *  the persistent charts knowledge — it survives death and passes to the
+ *  successor. T-111b socket: loot (salvage credits, Contraband pods, Signal
+ *  fragments) and the Nemesis file attach to a discovered POI by `id`/`type`. */
+export interface DiscoveredPoi {
+  id: string;
+  type: PoiType;
+  /** System the POI was charted off (the spacer's location at discovery). */
+  systemId: number;
+  /** Flavor name chosen deterministically from the seeded discovery roll. */
+  name: string;
+  /** Day the POI was discovered. */
+  day: number;
+}
+
 export interface ChartsState {
   /** Every system the spacer has personally arrived at — recorded on each
    *  successful arrival (travel completion) and seeded with the starting
@@ -504,6 +539,9 @@ export interface ChartsState {
    *  passes wholesale to the successor (T-108 legacy).
    *  // T-111 socket: fragments join the charts inheritance */
   visitedSystemIds: number[];
+  /** Points of interest charted via the Explore action (T-111a). Also part of
+   *  the persistent knowledge that survives death. */
+  discoveredPois: DiscoveredPoi[];
 }
 
 export interface LegacyState {
