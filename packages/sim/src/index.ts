@@ -22,6 +22,11 @@ import {
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// T-202 · UGT adapter — the pure protocol core (message types, handleMessage,
+// legal-actions enumerator, state-summary builder). Transport shell lives in
+// ./protocol-stdio.ts. See PROTOCOL.md.
+export * from './protocol.js';
+
 export type SimPolicyName = 'idle' | 'greedy' | 'random' | 'trader' | 'fighter' | 'explorer';
 
 export interface RunCampaignOptions {
