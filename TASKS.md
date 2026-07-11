@@ -87,7 +87,7 @@ Add off-lane `Explore` action to `day.ts` and `types.ts` (consumes die + nav che
 Create loot tables for POIs (salvage, contraband, Signal fragment) per PRD §7.2. Fragments are knowledge items on a `nemesisFile` on `PlayerState` that persists through legacy (T-108, per the `types.ts:505` charts-inheritance socket) and feeds the decoded-lore index. Wire in the Wise One (Polaris-1) and Sage (Mizar-9) as storylet-driven fragment brokers (sell/decode).
 **Accept:** fragment count monotonically grows a decoded-lore index; fragments survive succession test; at least one derelict storylet uses the T-110 engine; a Wise One or Sage storylet grants/decodes a fragment.
 
-### T-112a · State Validation Schemas — `status: TODO` · `coder: opus` · `after: T-108, T-110`
+### T-112a · State Validation Schemas — `status: DONE` · `coder: opus` · `after: T-108, T-110`
 Write Zod schemas for the entire `GameState` to provide load-time validation.
 **Accept:** corrupt JSON fails with typed Zod errors.
 

@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './rng.js';
 export * from './dice.js';
 export * from './state.js';
+export * from './schema.js';
 export * from './day.js';
 export * from './npc.js';
 export * from './economy.js';
