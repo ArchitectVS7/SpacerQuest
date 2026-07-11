@@ -156,7 +156,10 @@ describe('protocol echo — full day', () => {
 const REPLAY_LOG: ProtocolRequest[] = [
   { type: 'new-game', seed: 5 },
   { type: 'start-day' },
-  { type: 'apply-action', action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 2, spendDie: 0 } },
+  {
+    type: 'apply-action',
+    action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 2, spendDie: 0 },
+  },
   { type: 'apply-action', action: { type: 'Travel', destinationId: 2, spendDie: 1 } },
   { type: 'end-day' },
   { type: 'start-day' },
@@ -288,7 +291,9 @@ describe('legal-actions enumerator', () => {
   it('offers a bounded fuel amount and unbounded params as shapes, not enumerations', () => {
     const opened = handleMessage(null, { type: 'new-game', seed: 3 });
     const dayStarted = handleMessage(opened.session, { type: 'start-day' });
-    const legal = expectLegal(handleMessage(dayStarted.session, { type: 'legal-actions' }).response);
+    const legal = expectLegal(
+      handleMessage(dayStarted.session, { type: 'legal-actions' }).response,
+    );
 
     const buyFuel = legal.actions.find(
       (action) => action.type === 'Trade' && action.action === 'buy-fuel',

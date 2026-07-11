@@ -203,9 +203,7 @@ describe('GameStateSchema — accepts real serialized states', () => {
       const raw = JSON.parse(serializeState(playedState(seed, 30))) as unknown;
       const result = safeValidateGameState(raw);
       if (!result.success) {
-        throw new Error(
-          `seed ${seed} rejected: ${JSON.stringify(result.error.issues, null, 2)}`,
-        );
+        throw new Error(`seed ${seed} rejected: ${JSON.stringify(result.error.issues, null, 2)}`);
       }
     }
   });
@@ -292,9 +290,7 @@ describe('GameStateSchema — rejects corrupt states with typed ZodErrors', () =
     const result = safeValidateGameState(bad);
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(
-        result.error.issues.some((i) => i.path.join('.') === 'player.stats.PILOT'),
-      ).toBe(true);
+      expect(result.error.issues.some((i) => i.path.join('.') === 'player.stats.PILOT')).toBe(true);
     }
   });
 });

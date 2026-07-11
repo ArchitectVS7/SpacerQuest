@@ -30,9 +30,7 @@ export function hasFragment(file: NemesisFileState, fragmentId: string): boolean
 
 /** True if the file holds this fragment and it has NOT yet been decoded. */
 export function hasUndecodedFragment(file: NemesisFileState, fragmentId: string): boolean {
-  return file.fragments.some(
-    (fragment) => fragment.fragmentId === fragmentId && !fragment.decoded,
-  );
+  return file.fragments.some((fragment) => fragment.fragmentId === fragmentId && !fragment.decoded);
 }
 
 /** True if the file holds any fragment that has not yet been decoded. */

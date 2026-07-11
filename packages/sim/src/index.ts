@@ -1,6 +1,7 @@
 import {
   EXPLORATION_FUEL_COST,
   FLAWS,
+  SPECIAL_EQUIPMENT,
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
   distance as systemDistance,
@@ -12,12 +13,14 @@ import {
   createInitialState,
   endDay,
   jumpFuelCost,
+  renownRankIndex,
   startDay,
   applyPlayerAction,
   SeededRng,
   type GameEvent,
   type GameState,
   type PlayerAction,
+  type SpecialEquipmentId,
 } from '@spacerquest/engine';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +30,8 @@ import { fileURLToPath } from 'node:url';
 // ./protocol-stdio.ts. See PROTOCOL.md.
 export * from './protocol.js';
 
-export type SimPolicyName = 'idle' | 'greedy' | 'random' | 'trader' | 'fighter' | 'explorer';
+export type SimPolicyName =
+  'idle' | 'greedy' | 'random' | 'trader' | 'fighter' | 'explorer' | 'veteran';
 
 export interface RunCampaignOptions {
   seed: number;
@@ -120,6 +124,7 @@ const POLICY_NAMES: readonly SimPolicyName[] = [
   'trader',
   'fighter',
   'explorer',
+  'veteran',
 ];
 
 function isSimPolicyName(value: string): value is SimPolicyName {
@@ -540,14 +545,23 @@ export const traderPolicy: SimPolicy = ({ state }) => {
     // slipped) — finish it before signing anything new.
     const die = ledger.takeBest();
     if (die !== undefined) {
-      actions.push({ type: 'Travel', destinationId: state.player.activeContract.destination, spendDie: die });
+      actions.push({
+        type: 'Travel',
+        destinationId: state.player.activeContract.destination,
+        spendDie: die,
+      });
     }
   } else if (ranked.length > 0) {
     const best = ranked[0];
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
-      actions.push({ type: 'Trade', action: 'sign-contract', contractIndex: best.index, spendDie: signDie });
+      actions.push({
+        type: 'Trade',
+        action: 'sign-contract',
+        contractIndex: best.index,
+        spendDie: signDie,
+      });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
 
       // Second run while the debt still bites: throughput matters more than the
@@ -565,8 +579,17 @@ export const traderPolicy: SimPolicy = ({ state }) => {
           secondTravelDie !== undefined &&
           projectedFuel >= second.fuel
         ) {
-          actions.push({ type: 'Trade', action: 'sign-contract', contractIndex: liveIndex, spendDie: secondSignDie });
-          actions.push({ type: 'Travel', destinationId: second.destination, spendDie: secondTravelDie });
+          actions.push({
+            type: 'Trade',
+            action: 'sign-contract',
+            contractIndex: liveIndex,
+            spendDie: secondSignDie,
+          });
+          actions.push({
+            type: 'Travel',
+            destinationId: second.destination,
+            spendDie: secondTravelDie,
+          });
         }
       }
     }
@@ -594,7 +617,11 @@ function componentTradeInValue(strength: number): number {
 /** Net cost of a component-tier upgrade — the yard sticker price less the
  *  trade-in on the current fit. Mirrors the engine's shipyard math so the
  *  fighter never burns a die on an unaffordable purchase. */
-function componentTierNetCost(state: GameState, component: 'weapons' | 'hull' | 'shields' | 'drives', tier: number): number {
+function componentTierNetCost(
+  state: GameState,
+  component: 'weapons' | 'hull' | 'shields' | 'drives',
+  tier: number,
+): number {
   const price = YARD_COMPONENT_TIER_PRICES[tier - 1] ?? Infinity;
   let strength = state.player.ship[component].strength;
   if (component === 'hull' && state.player.ship.hasTitaniumHull && strength > 9) strength -= 10;
@@ -672,20 +699,34 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
-      actions.push({ type: 'Travel', destinationId: state.player.activeContract.destination, spendDie: die });
+      actions.push({
+        type: 'Travel',
+        destinationId: state.player.activeContract.destination,
+        spendDie: die,
+      });
     }
   } else if (ranked.length > 0) {
     const best = ranked[0];
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
-      actions.push({ type: 'Trade', action: 'sign-contract', contractIndex: best.index, spendDie: signDie });
+      actions.push({
+        type: 'Trade',
+        action: 'sign-contract',
+        contractIndex: best.index,
+        spendDie: signDie,
+      });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
     }
   }
 
   const upgrade = planFighterUpgrade(state, ledger);
   if (upgrade) actions.push(upgrade);
+
+  // Once renown opens the gate (CAPTAIN, from combat/trade deeds), spend the
+  // war chest on the offensive special equipment through EARNED rank (T-114a).
+  const special = planSpecialEquipment(state, ledger, FIGHTER_RESERVE);
+  if (special) actions.push(special);
 
   // Keep the marker from festering, but never at the cost of the war chest.
   const debtPayment = planDebtPayment(state, FIGHTER_RESERVE, refuel?.cost ?? 0);
@@ -715,14 +756,23 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
-      actions.push({ type: 'Travel', destinationId: state.player.activeContract.destination, spendDie: die });
+      actions.push({
+        type: 'Travel',
+        destinationId: state.player.activeContract.destination,
+        spendDie: die,
+      });
     }
   } else if (ranked.length > 0) {
     const best = ranked[0];
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
-      actions.push({ type: 'Trade', action: 'sign-contract', contractIndex: best.index, spendDie: signDie });
+      actions.push({
+        type: 'Trade',
+        action: 'sign-contract',
+        contractIndex: best.index,
+        spendDie: signDie,
+      });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
     }
   }
@@ -754,6 +804,222 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   return actions.length > 0 ? actions : [{ type: 'Wait' }];
 };
 
+/** Mirror of the engine's private `specialEquipmentCost` (shipyard.ts) so a
+ *  policy never burns a die on an unaffordable special-equipment purchase. */
+function simSpecialEquipmentCost(state: GameState, equipment: SpecialEquipmentId): number {
+  const hullStrength = state.player.ship.hull.strength;
+  if (equipment === 'CLOAKER') return 500;
+  if (equipment === 'AUTO_REPAIR' || equipment === 'TITANIUM_HULL') {
+    return Math.min(hullStrength * 1000, 20000);
+  }
+  if (equipment === 'ASTRAXIAL_HULL') return 100000;
+  return 10000; // STAR_BUSTER, ARCH_ANGEL, TRANS_WARP
+}
+
+/** Whether the equipment is already installed — mirrors engine `alreadyInstalled`. */
+function simEquipmentInstalled(state: GameState, equipment: SpecialEquipmentId): boolean {
+  const ship = state.player.ship;
+  switch (equipment) {
+    case 'CLOAKER':
+      return ship.hasCloaker === true;
+    case 'AUTO_REPAIR':
+      return ship.hasAutoRepair === true;
+    case 'STAR_BUSTER':
+      return ship.hasStarBuster === true;
+    case 'ARCH_ANGEL':
+      return ship.hasArchAngel === true;
+    case 'ASTRAXIAL_HULL':
+      return ship.isAstraxialHull === true;
+    case 'TITANIUM_HULL':
+      return ship.hasTitaniumHull === true;
+    default:
+      return ship.hasTransWarpDrive === true;
+  }
+}
+
+/**
+ * Buy the next affordable, renown-gated special-equipment item the ship can
+ * legally install. This is what makes special equipment reachable through
+ * EARNED play (T-114a): the gate is `state.player.registry.renownRank`, climbed
+ * by deeds — no test sets the rank. Priority runs cheapest-gate first so
+ * STAR_BUSTER/ARCH_ANGEL (CAPTAIN) land long before ASTRAXIAL_HULL (GIGA_HERO).
+ */
+function planSpecialEquipment(
+  state: GameState,
+  ledger: DieLedger,
+  reserve: number,
+): PlayerAction | null {
+  const ship = state.player.ship;
+  const priority: SpecialEquipmentId[] = ['STAR_BUSTER', 'ARCH_ANGEL', 'ASTRAXIAL_HULL'];
+  for (const equipment of priority) {
+    if (simEquipmentInstalled(state, equipment)) continue;
+    // STAR_BUSTER conflicts with a cloaker; the veteran never buys one, but keep
+    // the guard honest so we never queue an install the yard will reject.
+    if (equipment === 'STAR_BUSTER' && ship.hasCloaker) continue;
+    if (equipment === 'ASTRAXIAL_HULL' && ship.drives.strength < 25) continue;
+
+    const requiredRank = SPECIAL_EQUIPMENT.find((e) => e.id === equipment)?.requiredRenownRank;
+    if (
+      requiredRank &&
+      renownRankIndex(state.player.registry.renownRank) < renownRankIndex(requiredRank)
+    ) {
+      continue;
+    }
+    const cost = simSpecialEquipmentCost(state, equipment);
+    if (state.player.credits < reserve + cost) continue;
+    const die = ledger.takeWorst();
+    if (die === undefined) return null;
+    return { type: 'Shipyard', action: 'buy-special-equipment', equipment, spendDie: die };
+  }
+  return null;
+}
+
+const VETERAN_RESERVE = 3000;
+
+/**
+ * VETERAN — the endgame balance instrument and the T-114a reachability proof.
+ * A full-loop pilot that deliberately earns its way up the Renown ladder and
+ * spends the winnings on the renown-gated special equipment — including the
+ * ASTRAXIAL_HULL at GIGA_HERO. It is registry-driven: each dawn it reads which
+ * Deeds are still unearned and steers toward them (haggle for broker_shark, a
+ * mercy_runner / rim contract when offered, varied combat stance for the three
+ * encounter deeds, a low-fuel arrival for the fuel-fumes deed), then trades to
+ * fund the fit. It is NOT in COMPETENT_POLICIES: it is an endgame grinder, not
+ * a lean balance baseline, so it is exempt from the poverty-trap sweep.
+ */
+export const veteranPolicy: SimPolicy = ({ state }) => {
+  const ledger = dieLedger(state);
+  const earned = new Set(state.player.registry.earned.map((deed) => deed.id));
+  const need = (id: string): boolean => !earned.has(id);
+
+  // Combat: collect first_combat_win / silver_tongue / clean_getaway by picking
+  // the still-unearned outcome we can act on this encounter.
+  if (state.encounter) {
+    const encounter = state.encounter;
+    const targetId = encounter.interceptor.id;
+    const hull = Math.max(1, encounter.enemyHull);
+    const fuelVolleys = Math.floor(state.player.ship.fuel / FIGHT_FUEL_COST);
+    const canWin =
+      state.player.ship.weapons.strength > 1 && Math.min(fuelVolleys, ledger.remaining()) >= hull;
+    if (need('first_combat_win') && canWin) {
+      const fights: PlayerAction[] = [];
+      for (let i = 0; i < hull; i += 1) {
+        const die = ledger.takeBest();
+        if (die === undefined) break;
+        fights.push({ type: 'Combat', stance: 'fight', targetId, spendDie: die });
+      }
+      if (fights.length > 0) return fights;
+    }
+    if (need('silver_tongue')) {
+      const die = ledger.takeBest();
+      if (die !== undefined) return [{ type: 'Combat', stance: 'talk', targetId, spendDie: die }];
+    }
+    if (need('clean_getaway') && state.player.ship.fuel >= RUN_FUEL_COST) {
+      const die = ledger.takeBest();
+      if (die !== undefined) return [{ type: 'Combat', stance: 'run', targetId, spendDie: die }];
+    }
+    return planPacifistCombat(state, ledger);
+  }
+
+  // A storylet in the queue is taken as a standalone day (matches the other
+  // policies) so its die spend never collides with the trade-day ledger — this
+  // is how beacon_keeper and chained storylets progress.
+  const storyletAction = chooseStoryletAction(state);
+  if (storyletAction) return [storyletAction];
+
+  const actions: PlayerAction[] = [];
+
+  // Fuel: normally keep topped. While fuel_fumes_arrival is still unearned, let
+  // the tank run lower (only top up near-empty) so a delivery jump can land us
+  // at <= 25 fuel — without ever hard-stranding.
+  let refuelCost = 0;
+  const refuel = need('fuel_fumes_arrival')
+    ? planRefuel(state, ledger, 0, 30, 60)
+    : planRefuel(state, ledger, 0);
+  if (refuel) {
+    actions.push(refuel.action);
+    refuelCost = refuel.cost;
+  }
+
+  const board = state.market.manifestBoard;
+  if (state.player.activeContract) {
+    const die = ledger.takeBest();
+    if (die !== undefined) {
+      actions.push({
+        type: 'Travel',
+        destinationId: state.player.activeContract.destination,
+        spendDie: die,
+      });
+    }
+  } else {
+    // Steer the contract choice toward missing delivery/travel deeds, else richest.
+    let idx = -1;
+    if (need('mercy_runner')) {
+      idx = board.findIndex((c) => c.cargoType === 4 && c.destination === 7);
+    }
+    if (idx < 0 && need('rimward_bound')) {
+      idx = board.findIndex((c) => c.destination >= 15 && c.destination <= 20);
+    }
+    if (idx < 0) {
+      const ranked = rankedContracts(state);
+      idx = ranked.length > 0 ? ranked[0].index : -1;
+    }
+    if (idx >= 0) {
+      // Haggle the chosen board offer before signing → broker_shark. Needs three
+      // dice for haggle + sign + travel, so gate on the remaining budget.
+      if (need('broker_shark') && !board[idx].haggled && ledger.remaining() >= 3) {
+        const haggleDie = ledger.takeWorst();
+        if (haggleDie !== undefined) {
+          actions.push({
+            type: 'Trade',
+            action: 'haggle',
+            contractIndex: idx,
+            spendDie: haggleDie,
+          });
+        }
+      }
+      const signDie = ledger.takeWorst();
+      const travelDie = ledger.takeBest();
+      if (signDie !== undefined && travelDie !== undefined) {
+        actions.push({
+          type: 'Trade',
+          action: 'sign-contract',
+          contractIndex: idx,
+          spendDie: signDie,
+        });
+        actions.push({
+          type: 'Travel',
+          destinationId: board[idx].destination,
+          spendDie: travelDie,
+        });
+      }
+    }
+  }
+
+  // Yard: a cargo-pod expansion (earns yard_rat + cargo_expansion), then combat
+  // tiers (weapons first, so first_combat_win becomes winnable), then the
+  // renown-gated special equipment once the rank opens.
+  if (
+    need('cargo_expansion') &&
+    state.player.credits >= VETERAN_RESERVE + 1000 &&
+    ledger.remaining() > 0
+  ) {
+    const die = ledger.takeWorst();
+    if (die !== undefined) {
+      actions.push({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1, spendDie: die });
+    }
+  }
+  const upgrade = planFighterUpgrade(state, ledger);
+  if (upgrade) actions.push(upgrade);
+  const special = planSpecialEquipment(state, ledger, VETERAN_RESERVE);
+  if (special) actions.push(special);
+
+  const debtPayment = planDebtPayment(state, VETERAN_RESERVE, refuelCost);
+  if (debtPayment) actions.push(debtPayment);
+
+  return actions.length > 0 ? actions : [{ type: 'Wait' }];
+};
+
 export function resolvePolicy(policy: SimPolicyName | SimPolicy): ResolvedPolicy {
   if (typeof policy === 'function') {
     return { name: 'random', policy, dawnBlind: true };
@@ -777,6 +1043,10 @@ export function resolvePolicy(policy: SimPolicyName | SimPolicy): ResolvedPolicy
 
   if (policy === 'explorer') {
     return { name: policy, policy: explorerPolicy, dawnBlind: false };
+  }
+
+  if (policy === 'veteran') {
+    return { name: policy, policy: veteranPolicy, dawnBlind: false };
   }
 
   return { name: policy, policy: randomLegalActionPolicy, dawnBlind: true };
@@ -951,7 +1221,7 @@ export function reportToJson(report: CampaignStatsReport): string {
 
 function usage(): string {
   return [
-    'Usage: npm run sim -- --seed <integer> --days <integer> --policy <idle|greedy|random|trader|fighter|explorer>',
+    'Usage: npm run sim -- --seed <integer> --days <integer> --policy <idle|greedy|random|trader|fighter|explorer|veteran>',
     'Defaults: --seed 1 --days 100 --policy idle',
     'Alias: --policy random-legal-action',
   ].join('\n');

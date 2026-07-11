@@ -220,7 +220,9 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
         nemesis.hasUndecodedFragmentId !== undefined &&
         !SIGNAL_FRAGMENTS[nemesis.hasUndecodedFragmentId]
       ) {
-        errors.push(`${path}.trigger.nemesis.hasUndecodedFragmentId is not a valid Signal Fragment ID`);
+        errors.push(
+          `${path}.trigger.nemesis.hasUndecodedFragmentId is not a valid Signal Fragment ID`,
+        );
       }
     }
 

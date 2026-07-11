@@ -74,6 +74,67 @@ describe('era events — modifier plumbing', () => {
   });
 });
 
+// The destination of the single highest-paying offer on a board — a local copy
+// of the sim's private `bestOfferDestination` (packages/sim/src/index.ts). The
+// engine cannot import from sim (dependency graph runs sim → engine), so the
+// ~10-line helper is reimplemented here.
+function bestOfferDestination(board: ReturnType<typeof generateManifestBoard>): number | null {
+  let destination: number | null = null;
+  let bestPayment = -1;
+  for (const offer of board) {
+    if (offer.payment > bestPayment) {
+      bestPayment = offer.payment;
+      destination = offer.destination;
+    }
+  }
+  return destination;
+}
+
+describe('era events — route churn is CAUSED by eras, not board RNG (T-107)', () => {
+  it('a scoped era flips the top-paying route to its afflicted system vs the same-seed no-era control', () => {
+    // Isolation by A/B on identical seeds: the ONLY difference between the two
+    // boards is the era, so any change in the best-paying destination is caused
+    // by the era. We count seeds where the afflicted system was NOT the top route
+    // without the era but BECOMES the top route with it — a shift that is
+    // impossible if eras did nothing (the weak `topShare <= 0.6` cap the old
+    // campaign test used would pass even then, from board RNG alone).
+    let shiftedTowardAfflicted = 0;
+    let controlAlreadyTop = 0;
+    const SEEDS = 60;
+    for (let seed = 1; seed <= SEEDS; seed += 1) {
+      const baseline = generateManifestBoard(1, new SeededRng(seed), SHIP_STUB, 120);
+      // The plague boosts Medicinals (cargo 4) payments INTO its scope, so it can
+      // only move the top route if such an offer exists to a non-origin system.
+      const medicinals = baseline.find((offer) => offer.cargoType === 4 && offer.destination !== 1);
+      if (!medicinals) continue;
+      const afflicted = medicinals.destination;
+
+      const plague: EraEventState = {
+        defId: 'plague',
+        startedDay: 1,
+        endsDay: 20,
+        affectedSystemIds: [afflicted],
+      };
+      const eraBoard = generateManifestBoard(1, new SeededRng(seed), SHIP_STUB, 120, plague);
+
+      const baseTop = bestOfferDestination(baseline);
+      const eraTop = bestOfferDestination(eraBoard);
+      if (baseTop === afflicted) {
+        controlAlreadyTop += 1;
+        continue;
+      }
+      if (eraTop === afflicted) shiftedTowardAfflicted += 1;
+    }
+
+    // The era demonstrably churns the optimal route: on real seeds it promotes
+    // the afflicted system to best-paying where the no-era control did not.
+    expect(shiftedTowardAfflicted).toBeGreaterThan(0);
+    // Guard against a degenerate sweep where the control already had the
+    // afflicted system on top every time (then the shift count would be moot).
+    expect(controlAlreadyTop).toBeLessThan(SEEDS);
+  });
+});
+
 describe('era events — scheduler', () => {
   it('expires at the day boundary (natural expiry)', () => {
     const era: EraEventState = {

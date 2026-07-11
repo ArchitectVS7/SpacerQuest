@@ -126,9 +126,9 @@ describe('T-113b Tour One resolution — debt unpaid', () => {
     expect(resolved.player.debt).toBe(debtBefore);
 
     // No cleared Deed on this path.
-    expect(events.some((event) => event.type === 'DeedEarned' && event.deedId === 'tour_one_cleared')).toBe(
-      false,
-    );
+    expect(
+      events.some((event) => event.type === 'DeedEarned' && event.deedId === 'tour_one_cleared'),
+    ).toBe(false);
 
     // The unpaid resolution storylet is forced at the next dawn and is playable.
     const dawn31 = startDay(resolved);

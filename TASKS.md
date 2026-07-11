@@ -119,6 +119,19 @@ Upgrade sim policies to competent play: trader (route+fuel planning), fighter (u
 A thin protocol layer in sim exposing state-summary + legal-actions + apply-action over stdio/WebSocket, matching what the UGT harness (sibling repo) drives. Document the message schema.
 **Accept:** protocol doc; an echo test driving a full day through the adapter; deterministic replay from a logged session.
 
+### T-115 · Second-audit repairs (2026-07-11) — `status: DONE` · `coder: opus` · `after: —`
+Findings from the second adversarial audit of the DONE tasks (T-001/T-104/T-105/T-106/T-107/T-112a/T-114). Nine findings, all resolved:
+- **(#1, T-001)** CI was red on the branch: `format:check` (a CI step) failed on 12 committed files. Fixed with `npm run format`; branch is prettier-clean.
+- **(#2, T-114 clause a)** Renown-gated special equipment was unreachable in real play and masked by tests that set `renownRank` by hand. Added a `planSpecialEquipment` purchase path (wired into the fighter) and a new `veteranPolicy` that earns its way to GIGA_HERO and buys the ASTRAXIAL_HULL through gameplay — proven by a sim test that sets no rank/score.
+- **(#3, T-107)** The "no stable optimal route" assertion would pass even if eras did nothing. Added a same-seed A/B control test proving eras flip the top-paying route toward the afflicted system, plus a temporal-churn assertion (dominant route shifts across windows).
+- **(#4, T-104)** Combat balance numbers moved out of engine logic into `@spacerquest/content` (`combat.ts`); the tribute round-cap divergence from foundation is now documented as intentional; flaw-behavior and tribute-escalation examples upgraded to seeded property tests.
+- **(#5, T-106)** A contract snipe now emits a typed `DispositionChanged{reason:'contract-sniped'}` (applied after dusk decay so the grudge persists), with a test.
+- **(#6, T-105)** The `min(hull.strength*1000, 20000)` special-equipment price cap is documented as an intentional divergence and covered by a boundary test.
+- **(#7, T-112a)** Added a compile-time schema-drift guard (top-level `keyof GameState` vs `z.infer<GameStateSchema>`); forward-compat preserved (no runtime `.strict()`).
+- **(#8, T-114 clause d)** Deed-eval cost guard now pads the log with MATCHING events so a quadratic re-scan would actually fail it.
+- **(#9, infra)** CI job carries `timeout-minutes: 15`; redundant sweep trimmed to offset the new veteran run.
+**Accept:** `npx tsc -b` clean (incl. the new compile-time guard); `npm run lint` + `npm run format:check` exit 0; `npm test` all green including the veteran earned-play test (reaches GIGA_HERO + installs ASTRAXIAL_HULL with no manual rank), era A/B, snipe disposition, price-cap boundary, property tests, and the rewritten deed-guard.
+
 ---
 
 ## M3 — UI (the cockpit)

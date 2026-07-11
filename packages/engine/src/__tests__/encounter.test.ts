@@ -283,10 +283,12 @@ describe('Encounter system', () => {
     );
   });
 
-  it('caps tribute escalation at the foundation maximum', () => {
+  it('caps tribute escalation at the engine maximum (intentional foundation divergence)', () => {
     const state = readyState();
     // A non-nat-20 success (19 + TRADE 1 vs DC 11) at a late round pays the
-    // capped tribute (round 12 → 10,000, per foundation constants).
+    // capped tribute. The engine applies min(round*1000, 10000), so round 12 →
+    // 10,000 — deliberately diverging from foundation's enemyDemandsTribute
+    // (which would yield 12,000 at round 12); see packages/content/src/combat.ts.
     state.player.dawnHand = { dice: [19], spent: [false] };
     state.player.credits = 20_000;
     state.encounter = fixtureEncounter({ round: 12 });
@@ -363,6 +365,72 @@ describe('Encounter system', () => {
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'EncounterResolved', resolution: 'talked-down' }),
     );
+  });
+
+  it('property: a refuses-tribute flaw never takes tribute when the flaw fires (seed sweep)', () => {
+    // Rattlesnake is Vengeful (refusesTribute). Across a seed sweep the flaw roll
+    // varies, so both outcomes occur — but the invariant is absolute: whenever the
+    // flaw fires (resisted:false) the interceptor takes NO tribute and combat
+    // stays live; only when it resists its own flaw does the tribute change hands.
+    const rattlesnake = selectRattlesnakeInterceptor();
+    let firedCount = 0;
+    let resistedCount = 0;
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const state = readyState();
+      state.player.dawnHand = { dice: [19], spent: [false] }; // talk clears DC 11
+      state.player.credits = 10_000;
+      state.encounter = fixtureEncounter({ interceptor: rattlesnake });
+
+      const { state: next, events } = resolveCombat(
+        state,
+        { type: 'Combat', stance: 'talk', targetId: rattlesnake.id, spendDie: 0 },
+        new SeededRng(seed),
+      );
+
+      const flaw = events.find((event) => event.type === 'FlawCheck');
+      expect(flaw).toBeDefined();
+      if (flaw?.type !== 'FlawCheck') throw new Error('unreachable');
+      const paidTribute = events.some((event) => event.type === 'TributePaid');
+
+      if (flaw.resisted === false) {
+        expect(paidTribute).toBe(false);
+        expect(next.encounter).not.toBeNull();
+        expect(next.player.credits).toBe(10_000);
+        firedCount += 1;
+      } else {
+        expect(paidTribute).toBe(true);
+        resistedCount += 1;
+      }
+    }
+    // The roll is non-degenerate: both branches are actually exercised.
+    expect(firedCount).toBeGreaterThan(0);
+    expect(resistedCount).toBeGreaterThan(0);
+  });
+
+  it('property: tribute demand escalates monotonically and caps at 10,000 across rounds', () => {
+    // Sweep the round counter; the demanded tribute must be exactly the content
+    // schedule min(round*1000, 10000): non-decreasing, capped from round 10 on.
+    let previous = 0;
+    for (let round = 1; round <= 14; round += 1) {
+      const state = readyState();
+      state.player.dawnHand = { dice: [19], spent: [false] };
+      state.player.credits = 50_000;
+      state.encounter = fixtureEncounter({ round });
+
+      const { events } = resolveCombat(
+        state,
+        { type: 'Combat', stance: 'talk', targetId: state.encounter.interceptor.id, spendDie: 0 },
+        new SeededRng(1),
+      );
+
+      const demanded = events.find((event) => event.type === 'TributeDemanded');
+      expect(demanded).toBeDefined();
+      if (demanded?.type !== 'TributeDemanded') throw new Error('unreachable');
+      expect(demanded.amount).toBe(Math.min(round * 1000, 10_000));
+      expect(demanded.amount).toBeGreaterThanOrEqual(previous);
+      previous = demanded.amount;
+    }
+    expect(previous).toBe(10_000);
   });
 
   it('plays a deterministic three-round combat state machine', () => {

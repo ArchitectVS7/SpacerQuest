@@ -332,7 +332,8 @@ export const STORYLETS = defineStorylets([
       {
         id: 'brace',
         label: 'Log it and run the numbers',
-        prose: 'Read the figure twice, close the wire, and start counting what the hold can still earn.',
+        prose:
+          'Read the figure twice, close the wire, and start counting what the hold can still earn.',
         effects: {
           flags: [{ name: 'guild.pressure.tour-one.day25.braced', value: true }],
         },
@@ -340,7 +341,8 @@ export const STORYLETS = defineStorylets([
       {
         id: 'defy',
         label: 'Tell them to wait',
-        prose: 'Fire back that the marker gets paid on your schedule. Bravado is cheap; the Guild is not.',
+        prose:
+          'Fire back that the marker gets paid on your schedule. Bravado is cheap; the Guild is not.',
         effects: {
           flags: [{ name: 'guild.pressure.tour-one.day25.defied', value: true }],
         },
@@ -401,7 +403,8 @@ export const STORYLETS = defineStorylets([
       {
         id: 'walk-away',
         label: 'Walk away',
-        prose: 'Tell the old spacer the debt comes first. The sliver goes back in a pocket. "It will keep," they say. "It has kept this long."',
+        prose:
+          'Tell the old spacer the debt comes first. The sliver goes back in a pocket. "It will keep," they say. "It has kept this long."',
         effects: {
           flags: [{ name: 'wise-one.polaris.hook_declined', value: true }],
         },
@@ -458,7 +461,7 @@ export const STORYLETS = defineStorylets([
     id: 'derelict.sealed-pod',
     title: 'The Sealed Pod',
     prose:
-      'Bolted into the derelict\'s hold is a sealed cargo pod, Guild stamps ground off, mag-locks still live. No manifest. Whatever is inside, someone did not want it logged — and someone else will pay not to ask.',
+      "Bolted into the derelict's hold is a sealed cargo pod, Guild stamps ground off, mag-locks still live. No manifest. Whatever is inside, someone did not want it logged — and someone else will pay not to ask.",
     repeat: 'daily',
     trigger: {
       flags: [{ name: 'signal.contraband.pending', exists: true }],

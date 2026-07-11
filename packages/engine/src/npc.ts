@@ -142,7 +142,7 @@ export function applyDisposition(
   state: GameState,
   npcId: string,
   delta: number,
-  reason: 'tribute' | 'defeat' | 'player-fled' | 'decay' | 'storylet',
+  reason: 'tribute' | 'defeat' | 'player-fled' | 'decay' | 'storylet' | 'contract-sniped',
   events: GameEvent[],
 ): void {
   const npc = state.npcs.find((candidate) => candidate.id === npcId);

@@ -129,6 +129,34 @@ describe('shipyard', () => {
     }
   });
 
+  it.each([['AUTO_REPAIR'], ['TITANIUM_HULL']] as const)(
+    'caps %s hull-scaled price at 20,000 for a high-strength hull (T-105 boundary)',
+    (equipment) => {
+      // Price is min(hull.strength * 1000, 20000). A strength-25 hull would price
+      // at 25,000 without the cap; the intentional 20,000 ceiling holds it there.
+      const state = shipyardState();
+      state.player.ship.hull = { strength: 25, condition: 4 };
+      const startingCredits = state.player.credits;
+
+      const result = resolveShipyard(state, {
+        type: 'Shipyard',
+        action: 'buy-special-equipment',
+        equipment,
+        spendDie: 0,
+      });
+
+      expect(result.state.player.credits).toBe(startingCredits - 20000);
+      expect(result.events).toContainEqual(
+        expect.objectContaining({
+          type: 'ShipyardEvent',
+          action: 'buy-special-equipment',
+          equipment,
+          cost: 20000,
+        }),
+      );
+    },
+  );
+
   it.each([
     ['STAR_BUSTER', 'LIEUTENANT', 'CAPTAIN'],
     ['ARCH_ANGEL', 'LIEUTENANT', 'CAPTAIN'],

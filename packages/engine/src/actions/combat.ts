@@ -1,4 +1,11 @@
-import { FLAWS, Stat } from '@spacerquest/content';
+import {
+  FLAWS,
+  Stat,
+  RUN_FUEL_COST,
+  FIGHT_FUEL_COST,
+  TRIBUTE_BASE_MULTIPLIER,
+  TRIBUTE_MAX,
+} from '@spacerquest/content';
 import { GameState, GameEvent, PlayerAction, EncounterState, ShipComponentId } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
@@ -6,15 +13,11 @@ import { completePendingTravel } from './travel.js';
 import { applyDisposition } from '../npc.js';
 import { applySuccession } from '../legacy.js';
 
-/** Fuel gates (UGT Finding 2's lesson): NOTHING in combat that burns fuel is
- *  free when the tank is short — no free volleys AND no free getaways. */
-export const RUN_FUEL_COST = 10;
-export const FIGHT_FUEL_COST = 50;
-// Tribute escalates 1,000 cr per round and caps at 10,000 cr — values match
-// foundation/rules/constants.ts:190-193 (original SP.FIGHT1.S:227
-// kc=(kg*1000):if kg>12 kc=10000).
-export const TRIBUTE_BASE_MULTIPLIER = 1000;
-export const TRIBUTE_MAX = 10_000;
+// Combat balance numbers are data — sourced from @spacerquest/content
+// (see packages/content/src/combat.ts for values, foundation citation, and the
+// intentional round-cap divergence). Re-exported here so existing engine/sim
+// importers of these names keep resolving through the engine surface.
+export { RUN_FUEL_COST, FIGHT_FUEL_COST, TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX };
 
 const DAMAGE_COMPONENTS: readonly ShipComponentId[] = [
   'shields',

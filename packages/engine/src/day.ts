@@ -260,6 +260,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // stays cheap; the loss is legible on the wire and in tomorrow's board).
   const npcOrder = dayRng.shuffle([...nextState.npcs]);
   let boardClaimSpent = false;
+  let snipingNpcId: string | null = null;
 
   for (const npc of npcOrder) {
     // The bond-hook rescuer already spent their day intervening.
@@ -279,10 +280,12 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       eraEvent: nextState.eraEvent,
     });
 
+    let sniped = false;
     if (claimedContractIndex !== undefined) {
       boardClaimSpent = true;
       const [claimed] = nextState.market.manifestBoard.splice(claimedContractIndex, 1);
       if (claimed) {
+        sniped = true;
         nextState.market.npcClaims = (nextState.market.npcClaims ?? 0) + 1;
         const cargoName = CARGO_TYPES[claimed.cargoType]?.name ?? 'cargo';
         const destinationName =
@@ -307,6 +310,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     if (npcIndex !== -1) {
       nextState.npcs[npcIndex] = updatedNpc;
     }
+    if (sniped) snipingNpcId = updatedNpc.id;
     events.push(...npcEvents);
   }
 
@@ -316,6 +320,14 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     if (npc.disposition !== 0) {
       applyDisposition(nextState, npc.id, npc.disposition > 0 ? -1 : 1, 'decay', events);
     }
+  }
+
+  // An NPC that undercut the player on a board contract registers as a rival:
+  // the competitive act ticks their disposition toward the player down by one
+  // (T-106). Applied AFTER dusk decay so the fresh grudge actually persists to
+  // the next day instead of being cancelled by the same-dusk fade.
+  if (snipingNpcId) {
+    applyDisposition(nextState, snipingNpcId, -1, 'contract-sniped', events);
   }
 
   // Generate daily wire entries from notable events

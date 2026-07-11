@@ -17,6 +17,19 @@ function signContractEvent(): GameEvent {
   };
 }
 
+/** A successful player jump — matches the `first_jump` and (at count >= 5)
+ *  `road_regular` deed triggers. Used to prove the cost guard actually bites. */
+function travelEvent(destination: number): GameEvent {
+  return {
+    type: 'TravelEvent',
+    characterId: 'player',
+    origin: 1,
+    destination,
+    fuelUsed: 10,
+    success: true,
+  };
+}
+
 describe('deed registry', () => {
   it('fires each deed exactly once across repeated matching events', () => {
     const state = createInitialState(1);
@@ -235,15 +248,21 @@ describe('deed registry', () => {
     expect(rankForDeedCount(4)).toBe('COMMODORE');
   });
 
-  it('evaluates deeds independent of event-log length', () => {
+  it('evaluates deeds from the source events only, never re-scanning the event log', () => {
     const emptyLog = createInitialState(7);
     const bigLog = createInitialState(7);
-    // A 5,000-entry historical log (none matching any deed) must not change the
-    // emitted events: evaluation reads the cached matchCounts, not the log.
-    bigLog.eventLog = Array.from({ length: 5000 }, (_unused, day): GameEvent => ({
-      type: 'DayAdvanced',
-      day,
-    }));
+    // The historical log is padded with 5,000 entries that DO match deed
+    // triggers (successful player jumps → first_jump, and >= 5 of them →
+    // road_regular). A correct O(source) implementation reads the cached
+    // matchCounts and ignores the log entirely, so both states emit the same
+    // events for the same source. A quadratic implementation that re-scanned
+    // `state.eventLog` would fold these 5,000 matches into bigLog's counts —
+    // firing first_jump/road_regular and diverging — so this test now actually
+    // guards the complexity invariant (the old DayAdvanced filler matched
+    // nothing and couldn't tell the two implementations apart).
+    bigLog.eventLog = Array.from({ length: 5000 }, (_unused, i): GameEvent =>
+      travelEvent((i % 20) + 1),
+    );
 
     const source = [signContractEvent()];
     const emptyEvents = evaluateDeeds(emptyLog, source);

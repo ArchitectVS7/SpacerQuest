@@ -33,11 +33,7 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
 export const CURRENT_SAVE_VERSION = 1;
 
 export type SaveErrorCode =
-  | 'corrupt-json'
-  | 'bad-envelope'
-  | 'no-migration'
-  | 'future-version'
-  | 'invalid-state';
+  'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';
 
 /**
  * Typed error for every way a save can fail to load. `code` lets callers (the

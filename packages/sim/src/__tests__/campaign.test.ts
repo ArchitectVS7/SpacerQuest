@@ -7,6 +7,7 @@ import {
   createInitialState,
   DayPhase,
   endDay,
+  renownRankIndex,
   SeededRng,
   startDay,
   type GameState,
@@ -21,6 +22,7 @@ import {
   reportToJson,
   runCampaign,
   traderPolicy,
+  veteranPolicy,
   type SimPolicy,
 } from '../index.js';
 
@@ -110,17 +112,24 @@ describe('campaign runner', () => {
     expect(credits[credits.length - 1]).toBeLessThanOrEqual(10 * median);
   }, 30000);
 
-  it('churns routes: no destination dominates a 100-day window over 300 days (T-107)', () => {
+  it('churns routes: the dominant route shifts across windows over 300 days (T-107)', () => {
     const report = runCampaign(1, 300, 'greedy');
 
     expect(report.routeDiversity).toHaveLength(3);
     for (const window of report.routeDiversity) {
       expect(window.sampleCount).toBeGreaterThan(0);
-      // Era events bias the best-payment offer toward the afflicted system, but
-      // they rotate and expire — so no single destination owns more than 60% of
-      // any window's dawns. The economy keeps churning.
+      // Secondary sanity bound: no single destination owns more than 60% of a
+      // window's dawns. (This alone is weak — board RNG keeps it under 0.6 even
+      // with no eras — so the temporal-churn assertion below is the real test.)
       expect(window.topShare).toBeLessThanOrEqual(0.6);
     }
+
+    // Temporal churn: the single most-frequent best-paying destination is NOT the
+    // same across all three 100-day windows. A stable optimal route would pin the
+    // same topDestination in every window; era onset/expiry keeps it moving. This
+    // measures a SHIFT over time, which the static per-window cap cannot.
+    const tops = report.routeDiversity.map((window) => window.topDestination);
+    expect(new Set(tops).size).toBeGreaterThan(1);
   }, 30000);
 
   it('plans upcoming-day die actions without inspecting spent dice', () => {
@@ -174,7 +183,10 @@ function longestZeroIncomeStreak(daily: { incomeActionCount: number }[]): number
 function driveCompetentCampaign(policy: SimPolicy, seed: number, days: number): GameState {
   let state = createInitialState(seed);
   for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
-    const rng = new SeededRng(seed).fork('policy').fork(`day-${state.day}`).fork(`index-${dayIndex}`);
+    const rng = new SeededRng(seed)
+      .fork('policy')
+      .fork(`day-${state.day}`)
+      .fork(`index-${dayIndex}`);
     const dawn = startDay(state);
     let dayState = dawn.state;
     const actions = policy({ state: dayState, dayIndex, rng });
@@ -250,8 +262,10 @@ describe('T-201 competent policies', () => {
   );
 
   it('no competent policy triggers a poverty trap across a seed sweep', () => {
+    // Three seeds per policy (trimmed from four to offset the new veteran
+    // earned-play run): still a genuine multi-seed sweep of the invariant.
     for (const policy of COMPETENT_POLICIES) {
-      for (let seed = 1; seed <= 4; seed += 1) {
+      for (let seed = 1; seed <= 3; seed += 1) {
         const report = runCampaign(seed, 120, policy);
         expect(longestZeroIncomeStreak(report.daily)).toBeLessThan(5);
       }
@@ -283,4 +297,33 @@ describe('T-201 competent policies', () => {
     expect(state.player.debt).toBe(0);
     expect(state.player.credits).toBeGreaterThan(0);
   }, 30000);
+});
+
+// ---------------------------------------------------------------------------
+// T-114a · Special-equipment reachability THROUGH EARNED RENOWN. The original
+// audit found the renown-gated special equipment unreachable in real play and
+// masked by tests that set `renownRank` by hand. The veteran policy proves the
+// gate opens through gameplay: it earns Deeds by actually playing (haggling,
+// varied combat, rim + mercy runs, storylets) and buys the equipment its
+// climbed rank unlocks — up to the ASTRAXIAL_HULL at GIGA_HERO. NOTHING in this
+// test sets a score or a rank; the rank is a pure function of Deeds earned.
+// ---------------------------------------------------------------------------
+describe('T-114a special-equipment reachability (earned, not set)', () => {
+  it('the veteran climbs to GIGA_HERO and installs the ASTRAXIAL_HULL through play', () => {
+    // A real, deterministic long campaign. The only inputs are the seed and the
+    // policy — no manual rank/score assignment anywhere in the drive.
+    const state = driveCompetentCampaign(veteranPolicy, 3, 500);
+
+    // The top rank was reached by earning Deeds, not by fiat.
+    expect(renownRankIndex(state.player.registry.renownRank)).toBeGreaterThanOrEqual(
+      renownRankIndex('GIGA_HERO'),
+    );
+    // ...and the GIGA_HERO-gated hull was actually bought and installed. This is
+    // the piece that was unreachable before: the deepest renown gate, cleared by
+    // gameplay and spent through the shipyard.
+    expect(state.player.ship.isAstraxialHull).toBe(true);
+    // Sanity: the assertion above cannot be satisfied by a set rank — confirm the
+    // deeds that drive it were genuinely earned.
+    expect(state.player.registry.earned.length).toBeGreaterThanOrEqual(15);
+  }, 60000);
 });

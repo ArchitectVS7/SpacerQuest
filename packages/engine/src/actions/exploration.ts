@@ -119,7 +119,12 @@ export function resolveExploration(
   // Fuel gate (PRD §7.2: reaching an off-lane POI burns fuel). The die is spent
   // regardless — the detour was attempted — mirroring Travel's dry-tank path.
   if (nextState.player.ship.fuel < EXPLORATION_FUEL_COST) {
-    events.push({ type: 'ExplorationFailed', day: nextState.day, systemId, reason: 'insufficient-fuel' });
+    events.push({
+      type: 'ExplorationFailed',
+      day: nextState.day,
+      systemId,
+      reason: 'insufficient-fuel',
+    });
     events.push({
       type: 'WireEntry',
       day: nextState.day,

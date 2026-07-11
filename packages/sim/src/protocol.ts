@@ -80,11 +80,7 @@ export type ProtocolRequest =
   | { type: 'apply-action'; action: PlayerAction };
 
 export type ProtocolErrorCode =
-  | 'no-session'
-  | 'wrong-phase'
-  | 'action-blocked'
-  | 'apply-failed'
-  | 'unknown-request';
+  'no-session' | 'wrong-phase' | 'action-blocked' | 'apply-failed' | 'unknown-request';
 
 export type ProtocolResponse =
   | { type: 'state-summary'; summary: StateSummary }

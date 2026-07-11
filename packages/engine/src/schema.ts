@@ -103,13 +103,7 @@ const ShipyardFailureReasonSchema = z.enum([
 ]);
 
 /** PowerTier = 1|2|3|4|5 and RouteDangerLevel = 1|2|3|4|5 (content). */
-const TierSchema = z.union([
-  z.literal(1),
-  z.literal(2),
-  z.literal(3),
-  z.literal(4),
-  z.literal(5),
-]);
+const TierSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]);
 
 /** FlagValue = string | number | boolean (content). */
 const FlagValueSchema = z.union([z.string(), z.number(), z.boolean()]);
@@ -313,15 +307,7 @@ const EncounterStateSchema = z.object({
 });
 
 const NpcActionSchema = z.object({
-  type: z.enum([
-    'Trade',
-    'Travel',
-    'Combat',
-    'Patrol',
-    'Socialize',
-    'Idle',
-    'FlawOverride',
-  ]),
+  type: z.enum(['Trade', 'Travel', 'Combat', 'Patrol', 'Socialize', 'Idle', 'FlawOverride']),
   details: z.string(),
 });
 
@@ -399,7 +385,7 @@ const GameEventSchema = z.discriminatedUnion('type', [
     npcId: z.string(),
     delta: z.number(),
     disposition: z.number(),
-    reason: z.enum(['tribute', 'defeat', 'player-fled', 'decay', 'storylet']),
+    reason: z.enum(['tribute', 'defeat', 'player-fled', 'decay', 'storylet', 'contract-sniped']),
   }),
   z.object({
     type: z.literal('BondIntervention'),
@@ -764,6 +750,22 @@ export const GameStateSchema = z.object({
 
 /** Zod's inferred type. Structurally equal to {@link GameState}. */
 export type GameStateSchemaType = z.infer<typeof GameStateSchema>;
+
+// ---------------------------------------------------------------------------
+// Compile-time schema-drift guard (T-112a).
+//
+// The schema strips unknown keys by default (deliberate, for save
+// forward-compat), so a new field added to GameState WITHOUT a matching schema
+// entry would be silently dropped on every load rather than caught. This
+// type-level check fails `tsc` the moment the TOP-LEVEL keys of GameState and
+// the inferred schema diverge, forcing the schema to be updated in lockstep.
+//
+// Scope: top-level keys only. Nested-interface drift (PlayerState, ShipState,
+// NpcState, …) stays covered at runtime by the `toEqual(raw)` round-trip tests
+// in schema.test.ts, which fail if any exercised nested key is stripped.
+type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const _schemaCoversGameState: AssertEqual<keyof GameState, keyof GameStateSchemaType> = true;
+void _schemaCoversGameState;
 
 /**
  * Parse and validate a raw (already-JSON-parsed) value as a {@link GameState}.

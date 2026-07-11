@@ -9,6 +9,9 @@ jobs:
   ci:
     name: Build, lint, test
     runs-on: ubuntu-latest
+    # Hard backstop: the sim suite runs real multi-hundred-day campaigns, so a
+    # hang (not slowness) should fail fast rather than burn the 6-hour default.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7

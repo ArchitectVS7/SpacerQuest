@@ -92,11 +92,22 @@ export function maxCargoPodsForShip(state: GameState): number {
   return (ship.hull.condition + 1) * hullCapacity;
 }
 
+// Hull-scaled equipment (AUTO_REPAIR, TITANIUM_HULL) prices at
+// `hull.strength * priceMultiplier` (multiplier 1000, per foundation
+// constants.ts:91/116). The `Math.min(..., 20000)` ceiling is an INTENTIONAL
+// engine divergence: foundation defines the multiplier but no cap, which lets
+// the price run away at high hull tiers; the 20,000 cap keeps late-game
+// refits affordable relative to the credit economy. See the boundary test in
+// shipyard.test.ts.
+const HULL_SCALED_EQUIPMENT_PRICE_CAP = 20000;
+
 function specialEquipmentCost(state: GameState, equipment: SpecialEquipmentId): number {
   if (equipment === 'CLOAKER') return 500;
-  if (equipment === 'AUTO_REPAIR') return Math.min(state.player.ship.hull.strength * 1000, 20000);
+  if (equipment === 'AUTO_REPAIR')
+    return Math.min(state.player.ship.hull.strength * 1000, HULL_SCALED_EQUIPMENT_PRICE_CAP);
   if (equipment === 'ASTRAXIAL_HULL') return 100000;
-  if (equipment === 'TITANIUM_HULL') return Math.min(state.player.ship.hull.strength * 1000, 20000);
+  if (equipment === 'TITANIUM_HULL')
+    return Math.min(state.player.ship.hull.strength * 1000, HULL_SCALED_EQUIPMENT_PRICE_CAP);
   return 10000;
 }
 

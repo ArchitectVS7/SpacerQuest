@@ -174,7 +174,7 @@ export type GameEvent =
       npcId: string;
       delta: number;
       disposition: number;
-      reason: 'tribute' | 'defeat' | 'player-fled' | 'decay' | 'storylet';
+      reason: 'tribute' | 'defeat' | 'player-fled' | 'decay' | 'storylet' | 'contract-sniped';
     }
   | {
       /** A bonded NPC intervened at dusk on the player's behalf (T-106 bond hook). */

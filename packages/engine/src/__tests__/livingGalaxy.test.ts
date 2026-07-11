@@ -164,6 +164,37 @@ describe('Contract competition — the shared job pool (T-106)', () => {
     }
     throw new Error('no contract claim observed in 60 seeds');
   });
+
+  it('a snipe registers a rival grudge: the sniping NPC drops one disposition (T-106)', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const state = createInitialState(seed);
+      const rival = state.npcs.find((npc) => npc.id === 'npc-cargo-king')!;
+      rival.currentSystemId = state.player.currentSystemId;
+      // Start neutral so the snipe's -1 is unambiguous (and survives dusk decay,
+      // which is applied BEFORE the snipe grudge in endDay).
+      rival.disposition = 0;
+
+      const dawn = startDay(state);
+      const dusk = endDay(dawn.state);
+      const claim = dusk.events.find((e) => e.type === 'ContractClaimed');
+      if (!claim || claim.type !== 'ContractClaimed') continue;
+
+      // The competitive act emits a typed disposition change tied to the snipe...
+      const dispositionEvent = dusk.events.find(
+        (e) =>
+          e.type === 'DispositionChanged' &&
+          e.reason === 'contract-sniped' &&
+          e.npcId === claim.npcId,
+      );
+      expect(dispositionEvent).toBeDefined();
+      if (dispositionEvent?.type !== 'DispositionChanged') throw new Error('unreachable');
+      expect(dispositionEvent.delta).toBe(-1);
+      // ...and it persists past the same-dusk decay to a real -1 standing.
+      expect(dispositionOf(dusk.state, claim.npcId)).toBe(-1);
+      return;
+    }
+    throw new Error('no contract claim observed in 60 seeds');
+  });
 });
 
 describe('Bond hook — one intervention per dusk (T-106)', () => {
