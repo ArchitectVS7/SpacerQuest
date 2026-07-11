@@ -1,4 +1,11 @@
-import { STAR_SYSTEMS, CARGO_TYPES, distance, Stat } from '@spacerquest/content';
+import {
+  STAR_SYSTEMS,
+  CARGO_TYPES,
+  STORYLETS,
+  distance,
+  Stat,
+  type StoryletTrigger,
+} from '@spacerquest/content';
 import type { CheckResult, GameEvent, GameState } from '@spacerquest/engine';
 
 /** Display label for a stat. The Stat enum values are already the labels we
@@ -36,6 +43,36 @@ export function jumpsBetween(from: number, to: number): number {
   // that distance. Rounded for the manifest read-out (the real fuel math is the
   // engine's job — surfaced honestly in the T-304 starmap pane later).
   return Math.max(1, Math.round(distance(from, to)));
+}
+
+// ---- T-305 manifest flags (display-only) ---------------------------------
+//
+// The URGENT / STORYLET badges the manifest board shows are PRESENTATIONAL
+// reads of existing engine + content state — the UI invents no new rule and
+// adds no field to CargoContract. A contract is URGENT when its destination is
+// repriced by the active era event (the honest derivation of the PRD's
+// "Medicinals to Fomalhaut-2, flagged URGENT — fever outbreak" example); it
+// carries a STORYLET when the cargo it moves has a storylet keyed to it in
+// content data (e.g. Medicinals → cargo.medicinals.quarantine-seal).
+
+/** Cargo types that any content storylet is keyed to via
+ *  `trigger.cargo.activeContractCargoType`. Computed once from content data —
+ *  this reads authored data, never a rule. */
+const CARGO_STORYLET_TYPES: ReadonlySet<number> = new Set(
+  STORYLETS.map((s) => (s.trigger as StoryletTrigger).cargo?.activeContractCargoType).filter(
+    (t): t is number => typeof t === 'number',
+  ),
+);
+
+/** True when carrying this cargo type can surface a storylet (display-only). */
+export function cargoHasStorylet(cargoType: number): boolean {
+  return CARGO_STORYLET_TYPES.has(cargoType);
+}
+
+/** True when a contract's destination is repriced by the active era event, the
+ *  single commented place the URGENT derivation lives (display-only). */
+export function contractIsUrgent(game: GameState, destination: number): boolean {
+  return game.eraEvent?.affectedSystemIds.includes(destination) ?? false;
 }
 
 export interface StarNode {

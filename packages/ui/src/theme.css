@@ -441,6 +441,87 @@ body {
   border: 1px solid var(--amber);
   color: var(--amber);
 }
+.flag.storylet {
+  border: 1px solid var(--ember);
+  color: var(--ember);
+}
+
+/* ---- T-305 trade pane (fuel depot / debt ledger / active contract) ---- */
+.pane.trade {
+  margin-top: 12px;
+}
+/* The honest failure surface: an engine refusal is never silent. Reuses the
+   reverse-video treatment so a failure reads distinctly from ordinary text. */
+.notice {
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  background: var(--ember);
+  color: var(--tube);
+  padding: 7px 10px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.ledger-block {
+  border: 1px solid var(--hair);
+  padding: 9px 11px;
+  margin-bottom: 10px;
+  background: linear-gradient(180deg, #170f07, #0e0a05);
+}
+.ledger-block:last-child {
+  margin-bottom: 0;
+}
+.ledger-block .lb-head {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  color: var(--amber);
+  margin-bottom: 7px;
+}
+.ledger-block .lb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+}
+.ledger-block .lb-empty,
+.ledger-block .lb-note,
+.ledger-block .lb-cleared {
+  font-size: 12px;
+  color: var(--amber);
+}
+.ledger-block .lb-note {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.ledger-block .lb-cleared {
+  color: var(--ember);
+  text-shadow: var(--glow);
+  font-weight: 600;
+}
+.ledger-block .due-soon b {
+  color: var(--tube);
+  background: var(--ember);
+  padding: 0 5px;
+}
+.lb-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 9px;
+}
+.lb-controls input {
+  flex: 1;
+  min-width: 0;
+  background: var(--tube);
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  font-family: var(--font-data);
+  font-size: 13px;
+  padding: 6px 8px;
+}
+.lb-controls .btn {
+  white-space: nowrap;
+}
 
 /* ---- honest check block (signature micro-component) ---- */
 .check {
@@ -520,6 +601,12 @@ body {
   color: var(--amber-dim);
   border-color: var(--amber-dim);
   cursor: not-allowed;
+}
+/* Already haggled: still clickable (a second attempt is an honest, die-free
+   refusal surfaced as a notice), but dimmed so its state reads at a glance. */
+.haggle.done {
+  color: var(--amber-dim);
+  border-color: var(--amber-dim);
 }
 .die[draggable='true'] {
   cursor: grab;

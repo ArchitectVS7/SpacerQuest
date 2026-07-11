@@ -83,6 +83,24 @@ function lastCheckFrom(
   return null;
 }
 
+/**
+ * Pull the first player-facing failure out of an action's event list so it can
+ * be surfaced as a visible notice — the load-bearing guarantee for T-305: every
+ * engine refusal reaches the player, never a silent no-op (UGT Finding 4). A
+ * failed `TradeEvent` (can't sign twice, no renegotiate, not enough credits,
+ * pay-debt-failed) carries an honest `actionDetails`; if the engine ever omits
+ * one we still fall back to an honest generic line rather than saying nothing.
+ * Returns null when no failure occurred (the action succeeded).
+ */
+function failNoticeFrom(events: GameEvent[]): string | null {
+  for (const e of events) {
+    if (e.type === 'TradeEvent' && e.success === false) {
+      return e.actionDetails ?? 'That action was refused.';
+    }
+  }
+  return null;
+}
+
 function emit(): void {
   for (const l of listeners) l();
 }
@@ -164,16 +182,79 @@ export function signContract(contractIndex: number): void {
     // Signing is a die-cost, not a check: it emits no StatCheck, so lastCheck
     // resolves to null here — the readout stays cleared, which is honest.
     const lastCheck = lastCheckFrom(events);
+    // Surface an engine refusal (already carrying a contract) instead of a
+    // silent die-deselect. On success this scan returns null and the notice
+    // clears — the previous behaviour, preserved.
+    const notice = failNoticeFrom(events);
     set({
       game: next,
-      selectedDie: null,
-      bloomDie: die,
-      notice: null,
+      // On refusal the engine spent no die; keep the selection so the player can
+      // retry, and don't bloom a die that was never consumed.
+      selectedDie: notice ? die : null,
+      bloomDie: notice ? null : die,
+      notice,
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
     });
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
+  }
+}
+
+/**
+ * Top up fuel at the local depot. Fueling consumes a die (engine PRD §7: every
+ * meaningful action spends a die), so this requires a selection. A shortfall
+ * (not enough credits) comes back as a failed TradeEvent and is surfaced via
+ * `notice` — never a silent no-op.
+ */
+export function buyFuel(amount: number): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then buy fuel.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Trade',
+      action: 'buy-fuel',
+      fuelAmount: amount,
+      spendDie: die,
+    });
+    autosave(next);
+    const notice = failNoticeFrom(events);
+    set({
+      game: next,
+      selectedDie: notice ? die : null,
+      bloomDie: notice ? null : die,
+      notice,
+    });
+  } catch (err) {
+    set({
+      notice: err instanceof Error ? err.message : 'The fuel purchase could not be resolved.',
+    });
+  }
+}
+
+/**
+ * Pay down the Merchant Guild debt. This is a ledger transfer, NOT a job — it
+ * costs credits, never a die (engine comment / PRD §7.3: remote payments need
+ * no roll), so it leaves the dawn hand and its selection untouched. The engine
+ * clamps the payment to min(amount, credits, debt); paying with zero credits
+ * comes back as a `pay-debt-failed` TradeEvent surfaced through `notice`.
+ */
+export function payDebt(amount: number): void {
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Trade',
+      action: 'pay-debt',
+      amount,
+    });
+    autosave(next);
+    const notice = failNoticeFrom(events);
+    // No die is spent — do not touch selectedDie / bloomDie.
+    set({ game: next, notice });
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'The debt payment could not be resolved.' });
   }
 }
 

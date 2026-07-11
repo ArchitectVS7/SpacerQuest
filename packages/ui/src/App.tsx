@@ -16,6 +16,8 @@ import {
   selectDie,
   signContract,
   haggleContract,
+  buyFuel,
+  payDebt,
   toggleFx,
   clearBloom,
   type CockpitState,
@@ -29,6 +31,8 @@ import {
   statName,
   checkVerdict,
   signedMargin,
+  cargoHasStorylet,
+  contractIsUrgent,
 } from './format';
 
 const DIE_MIME = 'application/x-sq-die';
@@ -85,6 +89,7 @@ export function App() {
           </div>
           <div className="col">
             <Manifest state={s} />
+            <TradePane state={s} />
           </div>
         </div>
         <Wire game={s.game} />
@@ -259,6 +264,12 @@ function Manifest({ state }: { state: CockpitState }) {
         )}
         {board.map((c, i) => {
           const contraband = CARGO_TYPES[c.cargoType]?.isContraband ?? false;
+          // Display-only flags derived from existing engine/content state (see
+          // format.ts): URGENT = destination repriced by the active era event;
+          // STORYLET = this cargo has a content storylet keyed to it. The UI
+          // reads these; it never owns the rule, and CargoContract gains no field.
+          const urgent = contractIsUrgent(state.game, c.destination);
+          const storylet = cargoHasStorylet(c.cargoType);
           return (
             <div
               className={armed ? 'contract pickable' : 'contract'}
@@ -279,6 +290,16 @@ function Manifest({ state }: { state: CockpitState }) {
                 <span className="goods">
                   {cargoName(c.cargoType)}
                   {contraband && <span className="flag shady">CONTRABAND</span>}
+                  {urgent && (
+                    <span className="flag urgent" data-testid="flag-urgent">
+                      URGENT
+                    </span>
+                  )}
+                  {storylet && (
+                    <span className="flag storylet" data-testid="flag-storylet">
+                      STORYLET
+                    </span>
+                  )}
                   {c.haggled && <span className="flag shady">HAGGLED</span>}
                 </span>
                 <span className="pay">{c.payment.toLocaleString()}cr</span>
@@ -297,10 +318,14 @@ function Manifest({ state }: { state: CockpitState }) {
                 </span>
                 <span className="arrow">&rarr;</span>
                 <span className="mono">{armed ? 'commit to sign' : 'assign a die'}</span>
+                {/* Kept ENABLED even once haggled: a second haggle is an engine
+                    refusal that spends no die, and the store surfaces it as a
+                    visible notice. Disabling it here would make that failure a
+                    silent dead click — the exact silence the accept criterion
+                    (UGT Finding 4's lesson) forbids. */}
                 <button
-                  className="haggle"
+                  className={c.haggled ? 'haggle done' : 'haggle'}
                   data-testid="haggle"
-                  disabled={c.haggled}
                   title={
                     c.haggled
                       ? 'The broker will not renegotiate this contract again.'
@@ -321,6 +346,142 @@ function Manifest({ state }: { state: CockpitState }) {
         })}
       </div>
       <CheckBreakdown state={state} />
+    </section>
+  );
+}
+
+// The trade pane (T-305): the port-side controls that sit beside the manifest
+// board — a visible failure notice, the active-contract tracker, the fuel depot
+// and the debt ledger. Every button routes through a store action; the pane
+// never calls the engine directly (the store stays the sole engine caller).
+function TradePane({ state }: { state: CockpitState }) {
+  const game = state.game;
+  const p = game.player;
+  const active = p.activeContract;
+  const armed = state.selectedDie !== null;
+
+  const [fuelAmount, setFuelAmount] = useState(100);
+  const [debtAmount, setDebtAmount] = useState(500);
+
+  const fuelPrice = game.market.localFuelPrice;
+  const debtDue = p.debtDueDay - game.day;
+
+  return (
+    <section className="pane trade" data-testid="trade-pane">
+      <header>
+        <h2>Port Ledger</h2>
+        <span className="tag">{systemName(p.currentSystemId)} SERVICES</span>
+      </header>
+      <div className="body">
+        {/* The single mechanically-checkable surface for "failure is never
+            silent": whenever the store captured an engine refusal, it shows
+            here in reverse-video. It clears on the next successful action. */}
+        {state.notice && (
+          <div className="notice rev" data-testid="notice" role="status">
+            {state.notice}
+          </div>
+        )}
+
+        {/* Active-contract tracker — makes the sign→carrying transition visible
+            and explains why a second sign is refused. */}
+        <div className="ledger-block active-contract" data-testid="active-contract">
+          <div className="lb-head">ACTIVE CONTRACT</div>
+          {active ? (
+            <>
+              <div className="lb-row">
+                <span className="goods">{cargoName(active.cargoType)}</span>
+                <span className="pay">{active.payment.toLocaleString()}cr</span>
+              </div>
+              <div className="dest">
+                &#9656; {systemName(active.destination)} · {active.pods} pods
+              </div>
+            </>
+          ) : (
+            <div className="lb-empty" data-testid="active-contract-empty">
+              Hold is empty — sign a manifest offer to take a job.
+            </div>
+          )}
+        </div>
+
+        {/* Fuel depot — buy-fuel consumes a die (PRD §7), so the control mirrors
+            the manifest's "assign a die" affordance and is never a dead click. */}
+        <div className="ledger-block fuel-depot" data-testid="fuel-depot">
+          <div className="lb-head">FUEL DEPOT</div>
+          <div className="lb-row">
+            <span className="mono">
+              PRICE <b data-testid="fuel-price">{fuelPrice}</b>cr/unit
+            </span>
+            <span className="mono">
+              HOLD{' '}
+              <b data-testid="fuel-hold">
+                {p.ship.fuel.toLocaleString()}/{p.ship.maxFuel.toLocaleString()}
+              </b>
+            </span>
+          </div>
+          <div className="lb-controls">
+            <input
+              aria-label="fuel amount"
+              data-testid="fuel-amount"
+              inputMode="numeric"
+              value={fuelAmount}
+              onChange={(e) => setFuelAmount(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
+            />
+            <button
+              className="btn"
+              data-testid="buy-fuel"
+              disabled={!armed || fuelAmount <= 0}
+              title={armed ? 'Spend the selected die to refuel' : 'Pick a die first, then buy fuel'}
+              onClick={() => buyFuel(fuelAmount)}
+            >
+              {armed
+                ? `Buy · ${(fuelAmount * fuelPrice).toLocaleString()}cr`
+                : 'Pick a die to fuel'}
+            </button>
+          </div>
+        </div>
+
+        {/* Debt ledger — pay-down needs NO die (a ledger transfer, PRD §7.3),
+            with the Guild marker's due-day countdown. */}
+        <div className="ledger-block debt-ledger" data-testid="debt-ledger">
+          <div className="lb-head">GUILD DEBT</div>
+          {p.debt > 0 ? (
+            <>
+              <div className="lb-row">
+                <span className="mono">
+                  OWED <b>{p.debt.toLocaleString()}</b>cr
+                </span>
+                <span className={debtDue <= 5 ? 'mono due-soon' : 'mono'}>
+                  DUE D{p.debtDueDay} · <b data-testid="debt-countdown">{debtDue}d</b>
+                </span>
+              </div>
+              <div className="lb-note">Remote transfer — no die required.</div>
+              <div className="lb-controls">
+                <input
+                  aria-label="debt amount"
+                  data-testid="debt-amount"
+                  inputMode="numeric"
+                  value={debtAmount}
+                  onChange={(e) =>
+                    setDebtAmount(Math.max(0, Number.parseInt(e.target.value, 10) || 0))
+                  }
+                />
+                <button
+                  className="btn"
+                  data-testid="pay-debt"
+                  disabled={debtAmount <= 0}
+                  onClick={() => payDebt(debtAmount)}
+                >
+                  Pay down
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="lb-cleared" data-testid="debt-cleared">
+              DEBT CLEARED — the marker is closed.
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
