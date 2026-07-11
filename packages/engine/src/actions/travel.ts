@@ -18,6 +18,7 @@ import {
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { jumpFuelCost } from '../economy.js';
+import { eraDangerDelta } from '../era.js';
 
 function clampDanger(value: number): RouteDangerLevel {
   return Math.max(1, Math.min(5, value)) as RouteDangerLevel;
@@ -67,7 +68,10 @@ export function calculateRouteDanger(
   );
   const distanceBump = routeDistance >= 8 ? 1 : 0;
   const cargoBump = state.player.activeContract?.destination === destination ? 1 : 0;
-  const routeDangerLevel = clampDanger(baseDanger + distanceBump + cargoBump);
+  // T-107: an active era event (blockade, plague, patrol crackdown) shifts the
+  // lane's danger. eraEvent rides on the passed-in state — no global read.
+  const eraDelta = eraDangerDelta(state.eraEvent, origin, destination);
+  const routeDangerLevel = clampDanger(baseDanger + distanceBump + cargoBump + eraDelta);
   return {
     routeDistance,
     routeDangerLevel,

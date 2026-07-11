@@ -4,8 +4,9 @@ import {
   STAR_SYSTEMS,
   distance as systemDistance,
 } from '@spacerquest/content';
-import { CargoContract, ShipState } from './types.js';
+import { CargoContract, EraEventState, ShipState } from './types.js';
 import { SeededRng } from './rng.js';
+import { eraFuelPriceMultiplier, eraPaymentMultiplier } from './era.js';
 
 /** A drive block, the only part of a ship the jump-cost math cares about. */
 export interface DriveBlock {
@@ -34,12 +35,15 @@ export function jumpFuelCost(
 }
 
 /** Local depot fuel price from canon tables — shared by the player's market
- *  and NPC refueling (no free NPC economics). */
-export function localFuelPrice(systemId: number): number {
+ *  and NPC refueling (no free NPC economics). An active era event (e.g. a fuel
+ *  crisis) can re-price the depot when the system is in scope (T-107). */
+export function localFuelPrice(systemId: number, eraEvent: EraEventState | null = null): number {
   const system = STAR_SYSTEMS[systemId];
-  if (!system) return FUEL_DEFAULT_BUY_PRICE;
-  if (system.isRim) return RIM_FUEL_BUY_PRICE;
-  return system.fuelBuyPrice ?? FUEL_DEFAULT_BUY_PRICE;
+  let price: number;
+  if (!system) price = FUEL_DEFAULT_BUY_PRICE;
+  else if (system.isRim) price = RIM_FUEL_BUY_PRICE;
+  else price = system.fuelBuyPrice ?? FUEL_DEFAULT_BUY_PRICE;
+  return Math.round(price * eraFuelPriceMultiplier(eraEvent, systemId));
 }
 
 /** The parts of a ship the contract-payment math cares about. NPC hulls are
@@ -69,6 +73,7 @@ export function rollContract(
   originSystem: number,
   rng: SeededRng,
   spec: ContractShipSpec,
+  eraEvent: EraEventState | null = null,
 ): CargoContract {
   // Cargo type 1-9
   const cargoType = Math.floor(rng.next() * 9) + 1;
@@ -105,6 +110,14 @@ export function rollContract(
   payment = payment + fuelRequired * 5 + 1000;
   if (payment > 15000) payment = 15000;
 
+  // T-107: an active era event re-prices the run. Applied AFTER the base cap so
+  // "the economy fights back" — a plague can push medicine past the normal
+  // ceiling — then re-normalized to a pod multiple below.
+  const eraMultiplier = eraPaymentMultiplier(eraEvent, destination, cargoType);
+  if (eraMultiplier !== 1) {
+    payment = Math.floor(payment * eraMultiplier);
+  }
+
   // Normalize to pod multiple
   if (cargoPods > 0) {
     const perPod = Math.floor(payment / cargoPods);
@@ -130,12 +143,13 @@ export function generateManifestBoard(
   rng: SeededRng,
   shipState: ShipState,
   count = 4,
+  eraEvent: EraEventState | null = null,
 ): CargoContract[] {
   const board: CargoContract[] = [];
   const spec = contractSpecFromShip(shipState);
 
   for (let i = 0; i < count; i++) {
-    board.push(rollContract(originSystem, rng, spec));
+    board.push(rollContract(originSystem, rng, spec, eraEvent));
   }
 
   return board;

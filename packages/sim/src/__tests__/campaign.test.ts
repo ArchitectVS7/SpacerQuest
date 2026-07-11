@@ -91,6 +91,19 @@ describe('campaign runner', () => {
     expect(credits[credits.length - 1]).toBeLessThanOrEqual(10 * median);
   }, 30000);
 
+  it('churns routes: no destination dominates a 100-day window over 300 days (T-107)', () => {
+    const report = runCampaign(1, 300, 'greedy');
+
+    expect(report.routeDiversity).toHaveLength(3);
+    for (const window of report.routeDiversity) {
+      expect(window.sampleCount).toBeGreaterThan(0);
+      // Era events bias the best-payment offer toward the afflicted system, but
+      // they rotate and expire — so no single destination owns more than 60% of
+      // any window's dawns. The economy keeps churning.
+      expect(window.topShare).toBeLessThanOrEqual(0.6);
+    }
+  }, 30000);
+
   it('plans upcoming-day die actions without inspecting spent dice', () => {
     const spentState = advanceDay(createInitialState(1), [{ type: 'Wait' }]).state;
 

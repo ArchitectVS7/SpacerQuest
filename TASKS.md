@@ -63,7 +63,7 @@ Shipyard actions: component tier purchases, condition repairs, cargo pod expansi
 NPCs move on the real starmap, take contracts from a shared per-system job pool (competing with the player), refuel with real prices, accumulate/lose credits, and hold per-NPC disposition toward the player (grudges and favors with decay). Bonds get one mechanical hook: a bonded NPC in the player's system may intervene (bail, assist) via their existing action types. Stats/Ideal steer intent weights (replace the current 3-branch if/else with weight tables in content).
 **Accept:** 200-day sim shows NPCs distributed over the map, non-degenerate credit spread (no NPC pinned at 0 or infinity), player-visible contract competition (a board offer taken by an NPC emits a wire event); disposition changes on player actions (tribute paid, contract sniped) with tests.
 
-### T-107 · Era events & dynamic economy — `status: TODO` · `coder: opus` · `after: T-106`
+### T-107 · Era events & dynamic economy — `status: DONE` · `coder: opus` · `after: T-106`
 Era events as content data (blockade, plague, dilithium rush, patrol crackdown — 6 at launch): trigger windows, region scope, price/danger modifiers, wire announcements, natural expiry. Manifest generation and fuel prices read active modifiers. One era active at a time, seeded schedule.
 **Accept:** era definitions live in content as data; a plague era measurably raises Medicinals payments to the afflicted system in a test; sim report (T-002) shows no stable optimal route across 300 days (route-profit variance assertion).
 

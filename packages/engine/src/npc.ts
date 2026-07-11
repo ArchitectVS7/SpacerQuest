@@ -11,7 +11,14 @@ import {
   STAR_SYSTEMS,
   distance as systemDistance,
 } from '@spacerquest/content';
-import { CargoContract, GameEvent, GameState, NpcAction, NpcState } from './types.js';
+import {
+  CargoContract,
+  EraEventState,
+  GameEvent,
+  GameState,
+  NpcAction,
+  NpcState,
+} from './types.js';
 import { SeededRng } from './rng.js';
 import { DriveBlock, jumpFuelCost, localFuelPrice, rollContract } from './economy.js';
 
@@ -75,6 +82,10 @@ export interface NpcDayContext {
    *  READ-ONLY here — the caller (day.ts) performs the splice and emits the
    *  claim events. */
   claimableBoard: readonly CargoContract[] | null;
+  /** The active world economic event (T-107). NPCs feel the same re-priced
+   *  economy as the player: synthesized contract income and depot refuel costs
+   *  read the same modifiers. Null when no event is active. */
+  eraEvent: EraEventState | null;
 }
 
 export interface NpcDayResult {
@@ -154,9 +165,9 @@ export function applyDisposition(
 
 /** Refuel at the CURRENT system's real depot price when the tank can't cover
  *  `needed`. Keeps a small credit reserve so refueling never zeroes an NPC. */
-function refuelIfNeeded(npc: NpcState, needed: number): void {
+function refuelIfNeeded(npc: NpcState, needed: number, eraEvent: EraEventState | null): void {
   if (npc.fuel >= needed) return;
-  const price = localFuelPrice(npc.currentSystemId);
+  const price = localFuelPrice(npc.currentSystemId, eraEvent);
   const spendable = Math.max(0, npc.credits - NPC_BROKE_CREDITS);
   const affordable = Math.floor(spendable / price);
   const amount = Math.min(needed - npc.fuel + 100, affordable);
@@ -200,16 +211,21 @@ function executeTrade(
     claimedContractIndex = Math.floor(rng.next() * ctx.claimableBoard.length);
     contract = ctx.claimableBoard[claimedContractIndex]!;
   } else {
-    contract = rollContract(npc.currentSystemId, rng, {
-      cargoPods: npcCargoPods(profile.tier),
-      hullCondition: 9,
-      drives: npcDrives(profile.tier),
-    });
+    contract = rollContract(
+      npc.currentSystemId,
+      rng,
+      {
+        cargoPods: npcCargoPods(profile.tier),
+        hullCondition: 9,
+        drives: npcDrives(profile.tier),
+      },
+      ctx.eraEvent,
+    );
   }
 
   const routeDistance = systemDistance(npc.currentSystemId, contract.destination);
   const fuelCost = jumpFuelCost(npcDrives(profile.tier), routeDistance);
-  refuelIfNeeded(npc, fuelCost);
+  refuelIfNeeded(npc, fuelCost, ctx.eraEvent);
   if (npc.fuel < fuelCost) {
     // Can't fund the haul: the claim never happens (the offer stays on the
     // board) and the day is lost to the docks.
@@ -244,7 +260,7 @@ function executeTravel(
     npcDrives(profile.tier),
     systemDistance(npc.currentSystemId, destination),
   );
-  refuelIfNeeded(npc, fuelCost);
+  refuelIfNeeded(npc, fuelCost, ctx.eraEvent);
   if (npc.fuel < fuelCost) {
     return brokeIdle(npc, rng, ctx.day, events);
   }
@@ -260,7 +276,7 @@ function executeCombat(
   ctx: NpcDayContext,
   events: GameEvent[],
 ): NpcAction {
-  refuelIfNeeded(npc, NPC_COMBAT_FUEL);
+  refuelIfNeeded(npc, NPC_COMBAT_FUEL, ctx.eraEvent);
   if (npc.fuel < NPC_COMBAT_FUEL) {
     return brokeIdle(npc, rng, ctx.day, events);
   }

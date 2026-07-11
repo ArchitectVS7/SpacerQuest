@@ -20,7 +20,7 @@ function npcFor(profileId: string, overrides: Partial<NpcState> = {}): NpcState 
   };
 }
 
-const NO_BOARD = { day: 1, claimableBoard: null };
+const NO_BOARD = { day: 1, claimableBoard: null, eraEvent: null };
 
 describe('NPC Resolution', () => {
   it('resolves an NPC day deterministically and handles Flaw overrides', () => {

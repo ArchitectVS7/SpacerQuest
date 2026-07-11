@@ -9,7 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@spacerquest/content": "*"
+    "@spacerquest/content": "*",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

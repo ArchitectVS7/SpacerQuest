@@ -1,6 +1,7 @@
 export * from './stats.js';
 export * from './systems.js';
 export * from './cargo.js';
+export * from './eraEvents.js';
 export * from './cast.js';
 export * from './flaws.js';
 export * from './ideals.js';

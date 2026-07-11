@@ -109,6 +109,8 @@ export function createInitialState(seed: number): GameState {
     },
     npcs,
     encounter: null,
+    eraEvent: null,
+    lastEraEventEndedDay: 0,
     eventLog: [],
   };
 }
@@ -168,5 +170,9 @@ export function deserializeState(json: string): GameState {
   });
   parsed.market.npcClaims ??= 0;
   parsed.encounter ??= null;
+  // Save-compat: older states predate era events — default to no active event
+  // and a zero cooldown anchor (T-107).
+  parsed.eraEvent ??= null;
+  parsed.lastEraEventEndedDay ??= 0;
   return parsed;
 }

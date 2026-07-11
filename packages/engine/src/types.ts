@@ -32,6 +32,22 @@ export interface PendingTravelState {
   fuelUsed: number;
 }
 
+/**
+ * A live world economic event (T-107). Transient world weather — a blockade, a
+ * plague, a dilithium rush — that re-prices the map. Nothing derivable is stored:
+ * the modifiers are always recomputed from content by `defId` (era.ts). This is
+ * a DIFFERENT concept from the campaign-phase `era` field ('TOUR_ONE'|'VETERAN').
+ */
+export interface EraEventState {
+  defId: string;
+  /** First day the event is active. */
+  startedDay: number;
+  /** First day the event is NO LONGER active (active while day < endsDay). */
+  endsDay: number;
+  /** Systems in scope — the epicentre payments/fuel/danger read against. */
+  affectedSystemIds: number[];
+}
+
 export interface EncounterInterceptorState {
   id: string;
   source: 'named' | 'anonymous';
@@ -168,6 +184,22 @@ export type GameEvent =
       amount?: number;
     }
   | { type: 'WireEntry'; day: number; message: string }
+  | {
+      /** A world economic event began at dusk; active from the next dawn (T-107). */
+      type: 'EraEventStarted';
+      day: number;
+      defId: string;
+      name: string;
+      endsDay: number;
+      affectedSystemIds: number[];
+    }
+  | {
+      /** A world economic event expired at the day boundary (T-107). */
+      type: 'EraEventEnded';
+      day: number;
+      defId: string;
+      name: string;
+    }
   | { type: 'DayAdvanced'; day: number }
   | {
       type: 'DeedEarned';
@@ -530,5 +562,11 @@ export interface GameState {
   market: MarketState;
   npcs: NpcState[];
   encounter: EncounterState | null;
+  /** The single active world economic event, or null (T-107). At most one is
+   *  ever active; the seeded dusk scheduler owns its lifecycle. */
+  eraEvent: EraEventState | null;
+  /** Day the previous era event ended — the scheduler's cooldown anchor. 0 when
+   *  no era event has ever ended. */
+  lastEraEventEndedDay: number;
   eventLog: GameEvent[];
 }

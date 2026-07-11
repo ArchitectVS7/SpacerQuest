@@ -5,6 +5,7 @@ export * from './state.js';
 export * from './day.js';
 export * from './npc.js';
 export * from './economy.js';
+export * from './era.js';
 export * from './deeds.js';
 export * from './storylets.js';
 export * from './legacy.js';

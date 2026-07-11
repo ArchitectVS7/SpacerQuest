@@ -4,6 +4,7 @@ import { SeededRng } from './rng.js';
 import { rollDawnHand } from './dice.js';
 import { applyDisposition, resolveNpcDay } from './npc.js';
 import { generateManifestBoard, localFuelPrice } from './economy.js';
+import { advanceEraSchedule } from './era.js';
 import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
 import {
@@ -45,10 +46,11 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
     dayRng.fork('market'),
     nextState.player.ship,
     boardSize,
+    nextState.eraEvent,
   );
   nextState.market = {
     manifestBoard,
-    localFuelPrice: localFuelPrice(nextState.player.currentSystemId),
+    localFuelPrice: localFuelPrice(nextState.player.currentSystemId, nextState.eraEvent),
     npcClaims: 0,
   };
 
@@ -267,6 +269,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     } = resolveNpcDay(npc, npcRng, {
       day: nextState.day,
       claimableBoard: canClaim ? nextState.market.manifestBoard : null,
+      eraEvent: nextState.eraEvent,
     });
 
     if (claimedContractIndex !== undefined) {
@@ -333,6 +336,22 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   }
 
   events.push(...evaluateDeeds(nextState, events));
+
+  // T-107 era scheduler: the world's economic weather turns at dusk. One event
+  // active at a time; seeded onset after a cooldown; natural expiry at the day
+  // boundary. Runs before the day increment so the next dawn's board and fuel
+  // prices already read the new modifiers.
+  const eraResult = advanceEraSchedule(
+    {
+      eraEvent: nextState.eraEvent,
+      lastEraEventEndedDay: nextState.lastEraEventEndedDay,
+      currentDay: nextState.day,
+    },
+    dayRng.fork('era-schedule'),
+  );
+  nextState.eraEvent = eraResult.eraEvent;
+  nextState.lastEraEventEndedDay = eraResult.lastEraEventEndedDay;
+  events.push(...eraResult.events);
 
   // 4. NEXT DAY PREP
   const nextDay = nextState.day + 1;

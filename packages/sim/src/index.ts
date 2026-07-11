@@ -1,7 +1,9 @@
 import { STAR_SYSTEMS, type RenownRankId } from '@spacerquest/content';
 import {
-  advanceDay,
   createInitialState,
+  endDay,
+  startDay,
+  applyPlayerAction,
   SeededRng,
   type GameEvent,
   type GameState,
@@ -30,6 +32,21 @@ export interface CampaignDayStats {
   deedsEarned: string[];
   deedCount: number;
   renownRank: RenownRankId;
+  /** Destination of the best-payment offer on this dawn's manifest board (T-107
+   *  route-diversity tracking); null on a completely dark board. */
+  bestOfferDestination: number | null;
+}
+
+/** Route-diversity measure over a fixed window of days: how dominant the single
+ *  most-frequent best-offer destination was (T-107 sim assertion). A healthy,
+ *  churning economy keeps topShare well under 1 — no route stays optimal. */
+export interface RouteDiversityWindow {
+  windowIndex: number;
+  startDay: number;
+  endDay: number;
+  topDestination: number | null;
+  topShare: number;
+  sampleCount: number;
 }
 
 export interface CampaignStatsReport {
@@ -44,6 +61,8 @@ export interface CampaignStatsReport {
   deedCount: number;
   deedsEarned: string[];
   renownRank: RenownRankId;
+  /** Per-100-day route-diversity windows (T-107). */
+  routeDiversity: RouteDiversityWindow[];
   finalState: {
     day: number;
     credits: number;
@@ -315,6 +334,56 @@ function validateInteger(name: string, value: number, minimum: number): void {
   }
 }
 
+/** Destination of the highest-paying offer on a freshly generated board. First
+ *  max wins (deterministic board order). Null when the board is empty. */
+function bestOfferDestination(board: GameState['market']['manifestBoard']): number | null {
+  let destination: number | null = null;
+  let bestPayment = -1;
+  for (const offer of board) {
+    if (offer.payment > bestPayment) {
+      bestPayment = offer.payment;
+      destination = offer.destination;
+    }
+  }
+  return destination;
+}
+
+/** Group the per-dawn best-offer destinations into fixed windows and report how
+ *  dominant the single most-frequent destination was in each (T-107). */
+export function computeRouteDiversity(
+  bestOfferDestinations: readonly (number | null)[],
+  windowSize = 100,
+): RouteDiversityWindow[] {
+  const windows: RouteDiversityWindow[] = [];
+  for (let start = 0; start < bestOfferDestinations.length; start += windowSize) {
+    const slice = bestOfferDestinations.slice(start, start + windowSize);
+    const counts = new Map<number, number>();
+    let sampleCount = 0;
+    for (const destination of slice) {
+      if (destination === null) continue;
+      sampleCount += 1;
+      counts.set(destination, (counts.get(destination) ?? 0) + 1);
+    }
+    let topDestination: number | null = null;
+    let topCount = 0;
+    for (const [destination, count] of counts) {
+      if (count > topCount) {
+        topCount = count;
+        topDestination = destination;
+      }
+    }
+    windows.push({
+      windowIndex: windows.length,
+      startDay: start + 1,
+      endDay: start + slice.length,
+      topDestination,
+      topShare: sampleCount === 0 ? 0 : topCount / sampleCount,
+      sampleCount,
+    });
+  }
+  return windows;
+}
+
 export function runCampaign(
   seed: number,
   days: number,
@@ -332,6 +401,7 @@ export function runCampaign(
   let flawChecks = 0;
   let flawOverrides = 0;
   let wireVolume = 0;
+  const bestOfferDestinations: (number | null)[] = [];
 
   for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
     const startingDay = state.day;
@@ -339,11 +409,25 @@ export function runCampaign(
       .fork('policy')
       .fork(`day-${startingDay}`)
       .fork(`index-${dayIndex}`);
+    // Policy sees the DAWN state (board not yet generated), exactly as it did
+    // under advanceDay. We then inline advanceDay's start→act→dusk sequence so
+    // we can observe the freshly generated dawn board for route-diversity
+    // tracking (T-107). This is byte-for-byte equivalent to advanceDay.
     const actions = resolvedPolicy.policy({ state, dayIndex, rng });
-    const result = advanceDay(state, actions);
-    state = result.state;
+    const dawn = startDay(state);
+    let dayState = dawn.state;
+    const dayEvents: GameEvent[] = [...dawn.events];
+    bestOfferDestinations.push(bestOfferDestination(dayState.market.manifestBoard));
+    for (const action of actions) {
+      const stepped = applyPlayerAction(dayState, action);
+      dayState = stepped.state;
+      dayEvents.push(...stepped.events);
+    }
+    const dusk = endDay(dayState);
+    state = dusk.state;
+    dayEvents.push(...dusk.events);
 
-    const counts = countDailyEvents(result.events);
+    const counts = countDailyEvents(dayEvents);
     wireVolume += counts.wireEntries;
     flawChecks += counts.flawChecks;
     flawOverrides += counts.flawOverrides;
@@ -369,6 +453,7 @@ export function runCampaign(
       deedsEarned: counts.deedsEarned,
       deedCount: state.player.registry.earned.length,
       renownRank: state.player.registry.renownRank,
+      bestOfferDestination: bestOfferDestinations[dayIndex] ?? null,
     });
   }
 
@@ -384,6 +469,7 @@ export function runCampaign(
     deedCount: state.player.registry.earned.length,
     deedsEarned: state.player.registry.earned.map((deed) => deed.id),
     renownRank: state.player.registry.renownRank,
+    routeDiversity: computeRouteDiversity(bestOfferDestinations),
     finalState: {
       day: state.day,
       credits: state.player.credits,
