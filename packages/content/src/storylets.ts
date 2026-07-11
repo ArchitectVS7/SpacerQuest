@@ -491,4 +491,75 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // --- Day-30 Tour One resolution (T-113b) ---
+  // The decisive Day-30 beat (PRD §5.1) resolves in the engine (day.ts): at the
+  // dusk of day 30 it inspects the debt, emits TourOneResolved, and sets the
+  // discriminator flag `tour-one.resolved` to 'cleared' or 'unpaid'. These two
+  // storylets are the AUTHORED face of that outcome — forced deterministically
+  // by triggering on that flag (never on their own), so exactly one surfaces at
+  // the next dawn through the standard eligibility refresh. Not era-gated: they
+  // are the transition itself, and stay offered until the captain acknowledges
+  // them. They are pure acknowledgements — no debt/credit effects — so they can
+  // never re-open or clobber the engine's resolution.
+  {
+    id: 'resolution.tour-one.cleared',
+    title: 'The Marker Closes',
+    prose:
+      'The Guild slate blinks from red to clear and stays there. Thirty days ago you were a name attached to a number; now the number is gone and the name is the only thing left on the ledger. The veteran lanes do not send a welcome. They just open.',
+    repeat: 'never',
+    trigger: {
+      flags: [{ name: 'tour-one.resolved', equals: 'cleared' }],
+    },
+    choices: [
+      {
+        id: 'log-it',
+        label: 'Log the discharge and set a heading',
+        prose:
+          'Stamp the closed marker into the ship log, pour something bitter, and start reading the far lanes off the chart.',
+        effects: {
+          flags: [{ name: 'resolution.tour-one.cleared.logged', value: true }],
+        },
+      },
+      {
+        id: 'wire-the-guild',
+        label: 'Wire the Guild a two-word reply',
+        prose:
+          'Send the collector the shortest message the protocol allows. Let them read into it whatever they like.',
+        effects: {
+          flags: [{ name: 'resolution.tour-one.cleared.signed-off', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'resolution.tour-one.unpaid',
+    title: 'The Marker Stands',
+    prose:
+      'Day thirty closes with the slate still red. The Guild does not seize the ship — a grounded spacer pays back nothing — but the shortfall is filed, the interest keeps running, and your name now carries a flag every port clerk can see. You fly on. Indebted, but flying.',
+    repeat: 'never',
+    trigger: {
+      flags: [{ name: 'tour-one.resolved', equals: 'unpaid' }],
+    },
+    choices: [
+      {
+        id: 'keep-flying',
+        label: 'Keep the drives warm and the hold working',
+        prose:
+          'The debt is a number that follows you, not a wall that stops you. Line up the next manifest and burn.',
+        effects: {
+          flags: [{ name: 'resolution.tour-one.unpaid.pressing-on', value: true }],
+        },
+      },
+      {
+        id: 'curse-the-guild',
+        label: 'Log a grievance you will never send',
+        prose:
+          'Write the Guild the message they deserve, save it to the drafts you never transmit, and get back to work.',
+        effects: {
+          flags: [{ name: 'resolution.tour-one.unpaid.defiant', value: true }],
+        },
+      },
+    ],
+  },
 ] as const);

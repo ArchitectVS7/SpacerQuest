@@ -103,7 +103,7 @@ Findings from the audit of T-002/T-101/T-102/T-103/T-105/T-109. (a) `player.scor
 Author the guild pressure storylets (Days 10, 20, 25) and the Day-30 Wise One (Polaris-1) hook storylet that opens the Signal (per PRD §5.1) in content.
 **Accept:** storylets load cleanly; triggered deterministically on specific days in sim; the Wise One hook fires at day 30 and offers the first Signal fragment.
 
-### T-113b · Tour One Resolution — `status: TODO` · `coder: opus` · `after: T-113a`
+### T-113b · Tour One Resolution — `status: DONE` · `coder: opus` · `after: T-113a`
 Implement the Day-30 resolution check: debt cleared → Deed + veteran-unlock flag; not cleared → guild consequence branch, game continues indebted per PRD. Force the storylet trigger on the cleared-vs-unpaid state.
 **Accept:** scripted policy clears debt by day 30 in sim and hits the resolution events (Deed + veteran-unlock flag set); failing policy hits the consequence branch; both paths leave the game playable — no soft-locks (assert dice/actions remain available across 10 post-resolution days).
 

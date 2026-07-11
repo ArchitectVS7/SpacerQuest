@@ -585,6 +585,12 @@ const GameEventSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('DebtDue'), day: z.number(), outstanding: z.number() }),
   z.object({
+    type: z.literal('TourOneResolved'),
+    day: z.number(),
+    outcome: z.enum(['cleared', 'unpaid']),
+    debtOutstanding: z.number(),
+  }),
+  z.object({
     type: z.literal('CombatEvent'),
     characterId: z.string(),
     targetId: z.string(),

@@ -30,6 +30,8 @@ describe('storylet content validation', () => {
       'wise-one.polaris.signal-hook',
       'sage.mizar.decode-first',
       'derelict.sealed-pod',
+      'resolution.tour-one.cleared',
+      'resolution.tour-one.unpaid',
     ]);
   });
 

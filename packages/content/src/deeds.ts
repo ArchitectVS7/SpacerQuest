@@ -195,6 +195,21 @@ export const DEEDS: readonly DeedDefinition[] = [
     },
   },
   {
+    // T-113b: earned at the decisive Day-30 Tour One resolution when the Guild
+    // marker is cleared (PRD §5.1). Distinct from `debt_cleared` (which fires on
+    // the final DebtPayment): this deed marks the ARC's close and the veteran
+    // unlock, and only exists on the `cleared` outcome. Renown/rank-up follow
+    // through the standard deed→registry machinery.
+    id: 'tour_one_cleared',
+    title: 'Tour One Complete',
+    citationTemplate:
+      'On day {day}, the Guild marker closed clean and the veteran lanes opened to this captain.',
+    trigger: {
+      eventType: 'TourOneResolved',
+      match: [{ path: 'outcome', equals: 'cleared' }],
+    },
+  },
+  {
     id: 'broker_shark',
     title: 'Broker Shark',
     citationTemplate: 'On day {day}, a broker learned this captain could count twice.',

@@ -344,6 +344,19 @@ export type GameEvent =
   | { type: 'DebtPayment'; characterId: string; amount: number; remaining: number }
   | { type: 'DebtDue'; day: number; outstanding: number }
   | {
+      /** T-113b: the decisive Day-30 Tour One resolution (PRD §5.1). Emitted
+       *  exactly once, at the dusk of day 30 (after the player's final actions),
+       *  forced regardless of the player's system or normal storylet
+       *  eligibility. `outcome` branches the veteran unlock (cleared) from the
+       *  guild-consequence continuation (unpaid). Debt survives on the unpaid
+       *  path — the game continues indebted, never soft-locked. */
+      type: 'TourOneResolved';
+      day: number;
+      outcome: 'cleared' | 'unpaid';
+      /** Debt still owed at resolution — 0 on the cleared path. */
+      debtOutstanding: number;
+    }
+  | {
       type: 'CombatEvent';
       characterId: string;
       targetId: string;

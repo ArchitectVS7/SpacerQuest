@@ -342,6 +342,69 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     });
   }
 
+  // T-113b — Tour One resolution (PRD §5.1). The Merchant Guild marker is due on
+  // day 30. TIMING: this fires at the DUSK of day 30, after the player has spent
+  // the whole of day 30 (its DAY phase — including any final `pay-debt`), and
+  // BEFORE the day rolls over. That is the correct "by day 30" boundary: the
+  // spacer gets every one of the thirty days to clear the debt, mirroring the
+  // sibling DebtDue check above. Forced regardless of the player's system or
+  // normal storylet eligibility, and guarded to fire exactly once by the
+  // `tour-one.resolved` flag it sets. It COEXISTS with the T-113a Day-30 Wise
+  // One hook (a DAY-phase Polaris-1 storylet that opens the Signal) and the
+  // guild-pressure beats: those are separate storylets keyed on their own days/
+  // flags, so nothing double-fires or clobbers another beat's flags here.
+  if (
+    nextState.era === 'TOUR_ONE' &&
+    nextState.day === 30 &&
+    nextState.flags['tour-one.resolved'] === undefined
+  ) {
+    const cleared = nextState.player.debt <= 0;
+    const outcome: 'cleared' | 'unpaid' = cleared ? 'cleared' : 'unpaid';
+    const debtOutstanding = Math.max(0, nextState.player.debt);
+
+    // The discriminator flag is the deterministic FORCE for the resolution
+    // storylet: `resolution.tour-one.cleared` / `.unpaid` trigger on this flag's
+    // value and surface at the very next dawn via the standard T-110 eligibility
+    // refresh — no parallel offer path.
+    nextState.flags['tour-one.resolved'] = outcome;
+
+    events.push({
+      type: 'TourOneResolved',
+      day: nextState.day,
+      outcome,
+      debtOutstanding,
+    });
+
+    if (cleared) {
+      // Debt cleared → the veteran career opens (PRD §5.2). DECISION: we set a
+      // veteran-unlock FLAG and deliberately DO NOT flip the campaign `era`
+      // TOUR_ONE→VETERAN here. Rationale: (1) the acceptance requires only the
+      // flag; (2) the T-113a Wise One hook also fires today and reads
+      // `era === 'TOUR_ONE'`, and other TOUR_ONE-gated content is day-bounded
+      // ≤30 anyway, so flipping the era mid-day-30 risks silently disabling
+      // beats rather than helping. The flag is the single source of truth other
+      // content/UI branches on; a later explicit "begin the veteran career" beat
+      // can own the era transition.
+      nextState.flags['veteran.unlocked'] = true;
+      events.push({
+        type: 'WireEntry',
+        day: nextState.day,
+        message:
+          'The Merchant Guild marker closes clean. Your name comes off the debt slate and onto the Registry — the veteran lanes are open.',
+      });
+    } else {
+      // Debt NOT cleared: the game continues indebted (PRD §5.1). The debt
+      // SURVIVES untouched — no forgiveness, no soft-lock, no game-over. The
+      // consequence is story-layer (surfaced by the forced unpaid storylet and
+      // the wire); the engine leaves the spacer fully playable.
+      events.push({
+        type: 'WireEntry',
+        day: nextState.day,
+        message: `The marker goes unpaid. The Guild files the shortfall — ${debtOutstanding} credits still owed — and flags your name on every board. You fly on indebted.`,
+      });
+    }
+  }
+
   events.push(...evaluateDeeds(nextState, events));
 
   // T-107 era scheduler: the world's economic weather turns at dusk. One event

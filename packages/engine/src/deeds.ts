@@ -30,6 +30,7 @@ const EVENT_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   EncounterResolved: ['resolution', 'round', 'interceptorId'],
   DebtPayment: ['amount', 'remaining'],
+  TourOneResolved: ['outcome', 'debtOutstanding'],
   StatCheck: ['actor', 'stat', 'dc', 'result.success', 'result.total', 'actionContext'],
   ShipyardEvent: ['action', 'cost', 'component', 'tier', 'repairMode', 'quantity', 'equipment'],
   StoryletDeedProgress: ['storyletId', 'choiceId', 'deedId', 'amount'],
