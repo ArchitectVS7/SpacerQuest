@@ -1,6 +1,32 @@
-import { DayPhase, EarnedDeedState, GameEvent, GameState, NpcState } from './types.js';
+import { DayPhase, EarnedDeedState, GameEvent, GameState, NpcState, ShipState } from './types.js';
 import { NPC_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, rankForDeedCount } from './deeds.js';
+
+/** The exact junker every spacer starts (and re-starts) with. SINGLE SOURCE OF
+ *  TRUTH: createInitialState builds the opening ship from this, and T-108
+ *  succession resets a lost ship back to it — the two must never drift. */
+export function starterShip(): ShipState {
+  return {
+    fuel: 300,
+    maxFuel: 10000,
+    cargoPods: 10,
+    hull: { strength: 1, condition: 9 },
+    drives: { strength: 10, condition: 9 },
+    weapons: { strength: 1, condition: 9 },
+    shields: { strength: 1, condition: 9 },
+    navigation: { strength: 10, condition: 9 },
+    lifeSupport: { strength: 10, condition: 9 },
+    robotics: { strength: 10, condition: 9 },
+    cabin: { strength: 1, condition: 9 },
+    hasTransWarpDrive: false,
+    hasCloaker: false,
+    hasAutoRepair: false,
+    hasStarBuster: false,
+    hasArchAngel: false,
+    isAstraxialHull: false,
+    hasTitaniumHull: false,
+  };
+}
 
 function reconstructEarnedDeeds(eventLog: readonly GameEvent[]): EarnedDeedState[] {
   const seen = new Set<string>();
@@ -65,31 +91,16 @@ export function createInitialState(seed: number): GameState {
       },
       tier: 1,
       currentSystemId: 1, // Sun-3
-      ship: {
-        fuel: 300,
-        maxFuel: 10000,
-        cargoPods: 10,
-        hull: { strength: 1, condition: 9 },
-        drives: { strength: 10, condition: 9 },
-        weapons: { strength: 1, condition: 9 },
-        shields: { strength: 1, condition: 9 },
-        navigation: { strength: 10, condition: 9 },
-        lifeSupport: { strength: 10, condition: 9 },
-        robotics: { strength: 10, condition: 9 },
-        cabin: { strength: 1, condition: 9 },
-        hasTransWarpDrive: false,
-        hasCloaker: false,
-        hasAutoRepair: false,
-        hasStarBuster: false,
-        hasArchAngel: false,
-        isAstraxialHull: false,
-        hasTitaniumHull: false,
-      },
+      ship: starterShip(),
       registry: {
         earned: [],
         renownRank: 'LIEUTENANT',
         matchCounts: {},
       },
+      // Charts seed with the starting system — the spacer knows where they woke
+      // up. Every subsequent arrival appends here (T-108 persistent knowledge).
+      charts: { visitedSystemIds: [1] },
+      legacy: { successionCount: 0 },
     },
     market: {
       manifestBoard: [],
@@ -144,6 +155,13 @@ export function deserializeState(json: string): GameState {
   parsed.player.ship.hasArchAngel ??= false;
   parsed.player.ship.isAstraxialHull ??= false;
   parsed.player.ship.hasTitaniumHull ??= false;
+  // Save-compat: pre-T-108 fixtures have no charts/legacy. Seed charts with the
+  // spacer's current system (they demonstrably know where they are) and start
+  // the succession counter at 0.
+  parsed.player.charts ??= { visitedSystemIds: [parsed.player.currentSystemId] };
+  parsed.player.charts.visitedSystemIds ??= [parsed.player.currentSystemId];
+  parsed.player.legacy ??= { successionCount: 0 };
+  parsed.player.legacy.successionCount ??= 0;
   parsed.npcs ??= [];
   parsed.npcs.forEach((npc) => {
     npc.disposition ??= 0;

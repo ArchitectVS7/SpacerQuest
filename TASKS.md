@@ -67,7 +67,7 @@ NPCs move on the real starmap, take contracts from a shared per-system job pool 
 Era events as content data (blockade, plague, dilithium rush, patrol crackdown — 6 at launch): trigger windows, region scope, price/danger modifiers, wire announcements, natural expiry. Manifest generation and fuel prices read active modifiers. One era active at a time, seeded schedule.
 **Accept:** era definitions live in content as data; a plague era measurably raises Medicinals payments to the afflicted system in a test; sim report (T-002) shows no stable optimal route across 300 days (route-profit variance assertion).
 
-### T-108 · Death & legacy — `status: TODO` · `coder: opus` · `after: T-104`
+### T-108 · Death & legacy — `status: DONE` · `coder: opus` · `after: T-104`
 `ShipLost` resolution per PRD §5.2: successor inherits charts (visited systems + known fragments), half the bank, Deeds, and every NPC disposition; debt survives; ship resets to starter. Emits `LegacySuccession` event with a wire obituary/inheritance line.
 **Accept:** full inheritance test (what carries, what resets); game continues playable post-death in a 10-day sim; serialization round-trip mid-succession.
 

@@ -4,6 +4,7 @@ import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { completePendingTravel } from './travel.js';
 import { applyDisposition } from '../npc.js';
+import { applySuccession } from '../legacy.js';
 
 /** Fuel gates (UGT Finding 2's lesson): NOTHING in combat that burns fuel is
  *  free when the tank is short — no free volleys AND no free getaways. */
@@ -160,6 +161,14 @@ function applyEnemyPressure(
         reason: 'combat-defeat',
         component,
       });
+      // T-108: ShipLost is the trigger — succession resolves immediately while
+      // the encounter still carries its origin (where the wreck is towed).
+      events.push(
+        ...applySuccession(state, {
+          encounter,
+          interceptorId: encounter.interceptor.id,
+        }),
+      );
       state.encounter = null;
       return;
     }

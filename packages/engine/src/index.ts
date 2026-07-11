@@ -7,6 +7,7 @@ export * from './npc.js';
 export * from './economy.js';
 export * from './deeds.js';
 export * from './storylets.js';
+export * from './legacy.js';
 export * from './actions/trade.js';
 export * from './actions/travel.js';
 export * from './actions/combat.js';

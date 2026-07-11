@@ -4,7 +4,7 @@ import { resolveCombat } from '../actions/combat.js';
 import { generateEncounter, resolveTravel, selectEncounterInterceptor } from '../actions/travel.js';
 import { applyPlayerAction } from '../day.js';
 import { SeededRng } from '../rng.js';
-import { createInitialState, deserializeState, serializeState } from '../state.js';
+import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { DayPhase, EncounterState, GameState, PlayerAction } from '../types.js';
 
 function readyState(seed = 123): GameState {
@@ -501,11 +501,16 @@ describe('Encounter system', () => {
     );
 
     expect(nextState.encounter).toBeNull();
-    expect(nextState.player.ship.hull.condition).toBe(0);
+    // The killing blow drove the hull to 0 (ComponentDamaged records it)...
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'ComponentDamaged', component: 'hull', newCondition: 0 }),
     );
     expect(events).toContainEqual(expect.objectContaining({ type: 'ShipLost' }));
+    // ...and ShipLost immediately triggers T-108 succession, which resets the
+    // ship to the junker (hull back to condition 9) and emits LegacySuccession.
+    expect(nextState.player.ship).toEqual(starterShip());
+    expect(nextState.player.legacy.successionCount).toBe(1);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'LegacySuccession' }));
     expect(deserializeState(serializeState(nextState))).toEqual(nextState);
   });
 

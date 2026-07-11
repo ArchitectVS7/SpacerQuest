@@ -23,6 +23,15 @@ function clampDanger(value: number): RouteDangerLevel {
   return Math.max(1, Math.min(5, value)) as RouteDangerLevel;
 }
 
+/** Chart every system the spacer personally arrives at, exactly once. This is
+ *  the persistent knowledge namespace that survives death (T-108) and that
+ *  T-111 will extend with Signal fragments. Idempotent: a revisit is a no-op. */
+function recordVisitedSystem(state: GameState, systemId: number): void {
+  if (!state.player.charts.visitedSystemIds.includes(systemId)) {
+    state.player.charts.visitedSystemIds.push(systemId);
+  }
+}
+
 function routeKind(origin: number, destination: number): 'core' | 'rim' | 'andromeda' | 'special' {
   if (origin >= 27 || destination >= 27) return 'special';
   if ((origin >= 21 && origin <= 26) || (destination >= 21 && destination <= 26)) {
@@ -225,6 +234,7 @@ export function completePendingTravel(
 ): void {
   const { origin, destination } = encounter.pendingTravel;
   state.player.currentSystemId = destination;
+  recordVisitedSystem(state, destination);
   events.push({
     type: 'TravelEvent',
     characterId: 'player',
@@ -313,6 +323,7 @@ export function resolveTravel(
         events.push({ type: 'EncounterStarted', encounter });
       } else {
         nextState.player.currentSystemId = destination;
+        recordVisitedSystem(nextState, destination);
         events.push({
           type: 'TravelEvent',
           characterId: 'player',

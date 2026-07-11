@@ -116,7 +116,8 @@ export interface TradeEvent {
   type: 'TradeEvent';
   characterId: string;
   actionDetails: string;
-  action?: 'buy-fuel' | 'sign-contract' | 'haggle' | 'deliver-cargo' | 'pay-debt-failed';
+  action?:
+    'buy-fuel' | 'sign-contract' | 'haggle' | 'deliver-cargo' | 'forfeit-cargo' | 'pay-debt-failed';
   success?: boolean;
   amount?: number;
   fuelAmount?: number;
@@ -317,6 +318,17 @@ export type GameEvent =
       component?: ShipComponentId;
     }
   | {
+      /** T-108: the successor claims the license. Fired immediately after
+       *  ShipLost. Carries the estate summary — the wire obituary is a separate
+       *  WireEntry emitted alongside. */
+      type: 'LegacySuccession';
+      day: number;
+      successionCount: number;
+      inheritedCredits: number;
+      debtOutstanding: number;
+      previousShipLostTo: string;
+    }
+  | {
       type: 'EncounterResolved';
       encounterId: string;
       /** 'interceptor-fled': a bonded NPC drove the interceptor off at dusk
@@ -453,6 +465,21 @@ export interface ShipState {
   hasTitaniumHull?: boolean;
 }
 
+export interface ChartsState {
+  /** Every system the spacer has personally arrived at — recorded on each
+   *  successful arrival (travel completion) and seeded with the starting
+   *  system. This is the persistent KNOWLEDGE namespace: it survives death and
+   *  passes wholesale to the successor (T-108 legacy).
+   *  // T-111 socket: fragments join the charts inheritance */
+  visitedSystemIds: number[];
+}
+
+export interface LegacyState {
+  /** How many times the license has passed to a successor — 0 for a first-run
+   *  spacer, +1 on every ShipLost succession (T-108). */
+  successionCount: number;
+}
+
 export interface PlayerState {
   credits: number;
   /** Outstanding Merchant Guild debt — a ledger entry, NOT negative credits.
@@ -466,6 +493,10 @@ export interface PlayerState {
   dawnHand?: DawnHand;
   ship: ShipState;
   registry: DeedRegistryState;
+  /** Persistent chart knowledge — survives death (T-108). */
+  charts: ChartsState;
+  /** Legacy/succession bookkeeping — survives death (T-108). */
+  legacy: LegacyState;
   activeContract?: CargoContract | null;
 }
 
