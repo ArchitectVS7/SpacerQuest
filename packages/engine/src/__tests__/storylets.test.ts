@@ -194,6 +194,49 @@ describe('storylet engine', () => {
     expect(resolved.state.player.registry.earned.map((deed) => deed.id)).toContain('beacon_keeper');
   });
 
+  it('reports the ACTUAL clamped disposition delta, not the requested one', () => {
+    let state = readyState();
+    state.player.currentSystemId = 1;
+    state = refreshAvailableStorylets(state).state;
+
+    const initial = applyPlayerAction(state, {
+      type: 'Storylet',
+      storyletId: 'chain.doc-salvage.distress-ping',
+      choiceId: 'answer',
+    });
+    const nextDawn = startDay(endDay(initial.state).state);
+
+    // Doc already adores the player: +9, one step below the clamp ceiling.
+    // The follow-up's +2 effect can only land 1 of it.
+    nextDawn.state.npcs.find((npc) => npc.id === 'npc-doc-salvage')!.disposition = 9;
+
+    const resolved = applyPlayerAction(nextDawn.state, {
+      type: 'Storylet',
+      storyletId: 'chain.doc-salvage.follow-up',
+      choiceId: 'accept-thanks',
+    });
+
+    const doc = resolved.state.npcs.find((npc) => npc.id === 'npc-doc-salvage');
+    expect(doc?.disposition).toBe(10);
+    expect(resolved.events).toContainEqual(
+      expect.objectContaining({
+        type: 'StoryletEffectApplied',
+        effect: 'disposition',
+        npcId: 'npc-doc-salvage',
+        amount: 1,
+      }),
+    );
+    expect(resolved.events).toContainEqual(
+      expect.objectContaining({
+        type: 'DispositionChanged',
+        npcId: 'npc-doc-salvage',
+        delta: 1,
+        disposition: 10,
+        reason: 'storylet',
+      }),
+    );
+  });
+
   it('keeps deterministic eligibility in content order', () => {
     const state = readyState();
     state.player.currentSystemId = 1;

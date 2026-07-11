@@ -59,7 +59,7 @@ Combat becomes a round-based state machine per PRD §7.4: per-round stance (run/
 Shipyard actions: component tier purchases, condition repairs, cargo pod expansion, and the 7 special-equipment items with mutual-exclusion rules — prices from `foundation/rules/upgrades.ts`/`constants.ts` (with the UGT-corrected Roscoe economics; leave Roscoe itself out of v1). Component condition affects the formulas that already read it.
 **Accept:** buying each tier/equipment works and is die+credit priced; mutual exclusions enforced with typed fail events; a test that hull-condition change moves manifest `pods`.
 
-### T-106 · NPC simulation v2 — the living galaxy — `status: TODO` · `coder: fable` · `after: T-101, T-102`
+### T-106 · NPC simulation v2 — the living galaxy — `status: DONE` · `coder: fable` · `after: T-101, T-102`
 NPCs move on the real starmap, take contracts from a shared per-system job pool (competing with the player), refuel with real prices, accumulate/lose credits, and hold per-NPC disposition toward the player (grudges and favors with decay). Bonds get one mechanical hook: a bonded NPC in the player's system may intervene (bail, assist) via their existing action types. Stats/Ideal steer intent weights (replace the current 3-branch if/else with weight tables in content).
 **Accept:** 200-day sim shows NPCs distributed over the map, non-degenerate credit spread (no NPC pinned at 0 or infinity), player-visible contract competition (a board offer taken by an NPC emits a wire event); disposition changes on player actions (tribute paid, contract sniped) with tests.
 

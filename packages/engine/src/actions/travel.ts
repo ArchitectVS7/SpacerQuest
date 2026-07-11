@@ -17,6 +17,7 @@ import {
 } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
+import { jumpFuelCost } from '../economy.js';
 
 function clampDanger(value: number): RouteDangerLevel {
   return Math.max(1, Math.min(5, value)) as RouteDangerLevel;
@@ -273,17 +274,13 @@ export function resolveTravel(
   const destination = action.destinationId;
   const routeDistance = systemDistance(origin, destination);
 
-  // Calculate fuel cost (Legacy math)
-  const drives = nextState.player.ship.drives;
-  const hasTransWarp = nextState.player.ship.hasTransWarpDrive || false;
-  const effectiveStrength = drives.strength + (hasTransWarp ? 10 : 0);
-  const af = Math.min(effectiveStrength, 21);
-  let fuelCost = 21 - af + (10 - drives.condition);
-  if (fuelCost < 1) fuelCost = 1;
-  fuelCost = fuelCost * routeDistance;
-  const ty = fuelCost + 10;
-  const capped = Math.min(ty, 100);
-  const fuelRequired = Math.floor(capped / 2);
+  // Fuel cost through the ONE shared travel-cost function (legacy math) —
+  // the same mathematics prices NPC jumps (T-106).
+  const fuelRequired = jumpFuelCost(
+    nextState.player.ship.drives,
+    routeDistance,
+    nextState.player.ship.hasTransWarpDrive || false,
+  );
 
   // Pilot check
   const travelDc = 8 + Math.floor(routeDistance / 2); // Stub DC based on distance

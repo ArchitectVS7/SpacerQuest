@@ -94,6 +94,7 @@ export function createInitialState(seed: number): GameState {
     market: {
       manifestBoard: [],
       localFuelPrice: 5,
+      npcClaims: 0,
     },
     npcs,
     encounter: null,
@@ -147,6 +148,7 @@ export function deserializeState(json: string): GameState {
   parsed.npcs.forEach((npc) => {
     npc.disposition ??= 0;
   });
+  parsed.market.npcClaims ??= 0;
   parsed.encounter ??= null;
   return parsed;
 }

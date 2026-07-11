@@ -139,6 +139,33 @@ export type GameEvent =
     }
   | { type: 'FlawCheck'; npcId: string; flaw: string; die: number; dc: number; resisted: boolean }
   | { type: 'NpcAction'; npcId: string; actionDetails: string }
+  | {
+      /** A same-system NPC took a job off the player's manifest board at dusk
+       *  (T-106 contract competition). */
+      type: 'ContractClaimed';
+      day: number;
+      npcId: string;
+      cargoType: number;
+      destination: number;
+      payment: number;
+    }
+  | {
+      /** Per-NPC disposition toward the player moved. Clamped to [-10, +10]. */
+      type: 'DispositionChanged';
+      day: number;
+      npcId: string;
+      delta: number;
+      disposition: number;
+      reason: 'tribute' | 'defeat' | 'player-fled' | 'decay' | 'storylet';
+    }
+  | {
+      /** A bonded NPC intervened at dusk on the player's behalf (T-106 bond hook). */
+      type: 'BondIntervention';
+      day: number;
+      npcId: string;
+      kind: 'fuel-gift' | 'drive-off';
+      amount?: number;
+    }
   | { type: 'WireEntry'; day: number; message: string }
   | { type: 'DayAdvanced'; day: number }
   | {
@@ -292,7 +319,9 @@ export type GameEvent =
   | {
       type: 'EncounterResolved';
       encounterId: string;
-      resolution: 'escaped' | 'talked-down' | 'defeated';
+      /** 'interceptor-fled': a bonded NPC drove the interceptor off at dusk
+       *  (T-106 bond hook) — travel completes as if the threat was beaten. */
+      resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled';
       round: number;
       interceptorId: string;
     }
@@ -377,7 +406,8 @@ export type PlayerAction =
   | { type: 'Storylet'; storyletId: string; choiceId: string; spendDie?: number }
   | { type: 'Wait' };
 
-export type NpcActionType = 'Trade' | 'Travel' | 'Combat' | 'Patrol' | 'FlawOverride';
+export type NpcActionType =
+  'Trade' | 'Travel' | 'Combat' | 'Patrol' | 'Socialize' | 'Idle' | 'FlawOverride';
 
 export interface NpcAction {
   type: NpcActionType;
@@ -391,6 +421,8 @@ export interface NpcState {
   currentSystemId: number;
   credits: number;
   fuel: number;
+  /** Per-NPC standing toward the player, clamped to [-10, +10]; decays one
+   *  step toward 0 each dusk. */
   disposition: number;
   lastAction?: NpcAction;
 }
@@ -448,6 +480,11 @@ export interface CargoContract {
 export interface MarketState {
   manifestBoard: CargoContract[];
   localFuelPrice: number;
+  /** T-106 contract competition: jobs claimed off the local board by NPCs at
+   *  dusk. Each claim removes the offer from the live board immediately AND
+   *  shrinks the next dawn's board generation pool by one (the depot's job
+   *  pool was drained). Reset to 0 by startDay after it is consumed. */
+  npcClaims: number;
 }
 
 export interface GameState {

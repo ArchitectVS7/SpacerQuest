@@ -246,32 +246,41 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
     };
   }
 
-  it('Iron Vex (Bloodthirsty, combat-facing) always risks his flaw; the check uses HIS flawDc', () => {
+  it('Iron Vex (Bloodthirsty, combat-facing) risks his flaw most days; the check uses HIS flawDc', () => {
     const profile = NPC_PROFILES.find((p) => p.id === 'npc-iron-vex')!;
+    let flawCheckDays = 0;
     for (let seed = 1; seed <= 200; seed++) {
       const { npc, events } = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), {
         day: 1,
+        claimableBoard: null,
       });
       const flawCheck = events.find((e) => e.type === 'FlawCheck');
-      // His intents (Combat/Patrol) always touch Bloodthirsty
-      expect(flawCheck).toBeDefined();
       if (flawCheck?.type === 'FlawCheck') {
+        flawCheckDays += 1;
         expect(flawCheck.dc).toBe(profile.flawDc);
         if (!flawCheck.resisted) {
           expect(npc.lastAction?.type).toBe('FlawOverride');
         } else {
           expect(npc.lastAction?.type).not.toBe('FlawOverride');
         }
+      } else {
+        // No check means the day's intent never touched Bloodthirsty
+        // (Combat/Patrol) — so the flaw cannot have chosen the day.
+        expect(npc.lastAction?.type).not.toBe('FlawOverride');
       }
     }
+    // Dominance + GUNS 4 keeps him on Combat/Patrol the vast majority of
+    // days — the flaw stays a constant presence, not a rare edge.
+    expect(flawCheckDays / 200).toBeGreaterThan(0.7);
   });
 
   it('Stellar Monk (Pacifist) never faces his flaw while trading and travelling', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const { npc, events } = resolveNpcDay(npcFor('npc-stellar-monk'), new SeededRng(seed), {
         day: 1,
+        claimableBoard: null,
       });
-      // His intents (Trade/Travel) never touch Pacifist (Combat/Patrol)
+      // His intents (Trade/Travel/Socialize) never touch Pacifist (Combat/Patrol)
       expect(events.some((e) => e.type === 'FlawCheck')).toBe(false);
       expect(npc.lastAction?.type).not.toBe('FlawOverride');
     }

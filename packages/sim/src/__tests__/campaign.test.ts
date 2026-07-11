@@ -73,6 +73,24 @@ describe('campaign runner', () => {
     expect(parsed.daily).toHaveLength(5);
   });
 
+  it('keeps the galaxy alive over 200 days: NPCs spread out and stay solvent', () => {
+    let state = createInitialState(1);
+    for (let day = 0; day < 200; day += 1) {
+      state = advanceDay(state, [{ type: 'Wait' }]).state;
+    }
+
+    // Movement is real: the cast has scattered across the starmap.
+    const systems = new Set(state.npcs.map((npc) => npc.currentSystemId));
+    expect(systems.size).toBeGreaterThanOrEqual(8);
+
+    // Economics are real but non-degenerate: nobody pinned at exactly 0,
+    // nobody running away past 10x the median.
+    const credits = state.npcs.map((npc) => npc.credits).sort((a, b) => a - b);
+    const median = credits[Math.floor(credits.length / 2)];
+    expect(credits[0]).toBeGreaterThan(0);
+    expect(credits[credits.length - 1]).toBeLessThanOrEqual(10 * median);
+  }, 30000);
+
   it('plans upcoming-day die actions without inspecting spent dice', () => {
     const spentState = advanceDay(createInitialState(1), [{ type: 'Wait' }]).state;
 

@@ -1,22 +1,19 @@
-import { STAR_SYSTEMS, FUEL_DEFAULT_BUY_PRICE, RIM_FUEL_BUY_PRICE } from '@spacerquest/content';
+import { CARGO_TYPES, NPC_PROFILES, STAR_SYSTEMS, Stat } from '@spacerquest/content';
 import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
 import { SeededRng } from './rng.js';
 import { rollDawnHand } from './dice.js';
-import { resolveNpcDay } from './npc.js';
-import { generateManifestBoard } from './economy.js';
+import { applyDisposition, resolveNpcDay } from './npc.js';
+import { generateManifestBoard, localFuelPrice } from './economy.js';
 import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
-import { applyEncounterDuskPressure, resolveCombat } from './actions/combat.js';
+import {
+  applyEncounterDuskPressure,
+  resolveCombat,
+  resolveInterceptorFled,
+} from './actions/combat.js';
 import { resolveShipyard } from './actions/shipyard.js';
 import { evaluateDeeds } from './deeds.js';
 import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
-
-function localFuelPrice(systemId: number): number {
-  const system = STAR_SYSTEMS[systemId];
-  if (!system) return FUEL_DEFAULT_BUY_PRICE;
-  if (system.isRim) return RIM_FUEL_BUY_PRICE;
-  return system.fuelBuyPrice ?? FUEL_DEFAULT_BUY_PRICE;
-}
 
 function cloneState(state: GameState): GameState {
   return JSON.parse(JSON.stringify(state)) as GameState;
@@ -37,15 +34,22 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
   const dayRng = new SeededRng(nextState.rngState).fork(`day-${nextState.day}`);
   nextState.storylets.offeredToday = [];
 
-  // Generate manifest board and price the local depot from canon tables
+  // Generate manifest board and price the local depot from canon tables.
+  // T-106 contract competition: every job an NPC claimed off the board at the
+  // previous dusk drains today's generation pool by one (floor of 1 — a port
+  // never goes completely dark).
+  const claimedJobs = nextState.market.npcClaims ?? 0;
+  const boardSize = Math.max(1, 4 - claimedJobs);
   const manifestBoard = generateManifestBoard(
     nextState.player.currentSystemId,
     dayRng.fork('market'),
     nextState.player.ship,
+    boardSize,
   );
   nextState.market = {
     manifestBoard,
     localFuelPrice: localFuelPrice(nextState.player.currentSystemId),
+    npcClaims: 0,
   };
 
   // Roll player hand
@@ -157,6 +161,82 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     }
   }
 
+  // T-106 bond hook — ONE mechanical intervention per dusk. Rule: the
+  // bonded-to-player NPC (disposition >= +5) sharing the player's system with
+  // the HIGHEST disposition (id as tiebreak) may act, rolling d20 + their
+  // GRIT (seeded): DC 12 to drive an active interceptor off before the dusk
+  // free attack, DC 8 to answer a dry-tank mayday with a 50-fuel transfer.
+  // An intervention IS the rescuer's dusk action — helping the player costs
+  // them their own day, so they skip the NPC loop below.
+  let intervenedNpcId: string | null = null;
+  const rescuer = nextState.npcs
+    .filter(
+      (npc) => npc.disposition >= 5 && npc.currentSystemId === nextState.player.currentSystemId,
+    )
+    .sort((a, b) => b.disposition - a.disposition || a.id.localeCompare(b.id))[0];
+  if (rescuer) {
+    const rescuerProfile = NPC_PROFILES.find((p) => p.id === rescuer.profileId);
+    const grit = rescuerProfile?.stats[Stat.GRIT] ?? 0;
+    if (nextState.encounter) {
+      const rescueRng = dayRng.fork(`bond-rescue-${rescuer.id}`);
+      if (rescueRng.d20() + grit >= 12) {
+        const interceptorName = nextState.encounter.interceptor.name;
+        events.push({
+          type: 'BondIntervention',
+          day: nextState.day,
+          npcId: rescuer.id,
+          kind: 'drive-off',
+        });
+        resolveInterceptorFled(nextState, events);
+        events.push({
+          type: 'WireEntry',
+          day: nextState.day,
+          message: `${rescuer.name} drove ${interceptorName} off your tail.`,
+        });
+        intervenedNpcId = rescuer.id;
+        rescuer.lastAction = {
+          type: 'Combat',
+          details: `spent the day driving ${interceptorName} off a friend's tail`,
+        };
+        events.push({
+          type: 'NpcAction',
+          npcId: rescuer.id,
+          actionDetails: rescuer.lastAction.details,
+        });
+      }
+    } else if (nextState.player.ship.fuel === 0 && rescuer.fuel >= 100) {
+      const giftRng = dayRng.fork(`bond-gift-${rescuer.id}`);
+      if (giftRng.d20() + grit >= 8) {
+        rescuer.fuel -= 50;
+        nextState.player.ship.fuel = Math.min(nextState.player.ship.maxFuel, 50);
+        events.push({
+          type: 'BondIntervention',
+          day: nextState.day,
+          npcId: rescuer.id,
+          kind: 'fuel-gift',
+          amount: 50,
+        });
+        events.push({
+          type: 'WireEntry',
+          day: nextState.day,
+          message: `${rescuer.name} answered your mayday and transferred 50 fuel.`,
+        });
+        intervenedNpcId = rescuer.id;
+        rescuer.lastAction = {
+          type: 'Trade',
+          details: `spent the day answering a mayday at ${
+            STAR_SYSTEMS[rescuer.currentSystemId]?.name ?? `system ${rescuer.currentSystemId}`
+          }`,
+        };
+        events.push({
+          type: 'NpcAction',
+          npcId: rescuer.id,
+          actionDetails: rescuer.lastAction.details,
+        });
+      }
+    }
+  }
+
   if (nextState.encounter) {
     events.push(
       ...applyEncounterDuskPressure(
@@ -166,20 +246,66 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     );
   }
 
-  // 3. DUSK (NPC Actions)
+  // 3. DUSK (NPC Actions). NPCs sharing the player's system compete for the
+  // player's manifest board — at most one job is claimed per dusk (texture
+  // stays cheap; the loss is legible on the wire and in tomorrow's board).
   const npcOrder = dayRng.shuffle([...nextState.npcs]);
+  let boardClaimSpent = false;
 
   for (const npc of npcOrder) {
+    // The bond-hook rescuer already spent their day intervening.
+    if (npc.id === intervenedNpcId) continue;
     const npcRng = dayRng.fork(`npc-${npc.id}`);
-    const { npc: updatedNpc, events: npcEvents } = resolveNpcDay(npc, npcRng, {
+    const canClaim =
+      !boardClaimSpent &&
+      npc.currentSystemId === nextState.player.currentSystemId &&
+      nextState.market.manifestBoard.length > 0;
+    const {
+      npc: updatedNpc,
+      events: npcEvents,
+      claimedContractIndex,
+    } = resolveNpcDay(npc, npcRng, {
       day: nextState.day,
+      claimableBoard: canClaim ? nextState.market.manifestBoard : null,
     });
+
+    if (claimedContractIndex !== undefined) {
+      boardClaimSpent = true;
+      const [claimed] = nextState.market.manifestBoard.splice(claimedContractIndex, 1);
+      if (claimed) {
+        nextState.market.npcClaims = (nextState.market.npcClaims ?? 0) + 1;
+        const cargoName = CARGO_TYPES[claimed.cargoType]?.name ?? 'cargo';
+        const destinationName =
+          STAR_SYSTEMS[claimed.destination]?.name ?? `system ${claimed.destination}`;
+        events.push({
+          type: 'ContractClaimed',
+          day: nextState.day,
+          npcId: updatedNpc.id,
+          cargoType: claimed.cargoType,
+          destination: claimed.destination,
+          payment: claimed.payment,
+        });
+        events.push({
+          type: 'WireEntry',
+          day: nextState.day,
+          message: `${updatedNpc.name} undercut you on the ${cargoName} run to ${destinationName}.`,
+        });
+      }
+    }
 
     const npcIndex = nextState.npcs.findIndex((n) => n.id === npc.id);
     if (npcIndex !== -1) {
       nextState.npcs[npcIndex] = updatedNpc;
     }
     events.push(...npcEvents);
+  }
+
+  // Grudges and favors fade: each dusk every non-neutral disposition moves
+  // one step toward 0 (T-106).
+  for (const npc of nextState.npcs) {
+    if (npc.disposition !== 0) {
+      applyDisposition(nextState, npc.id, npc.disposition > 0 ? -1 : 1, 'decay', events);
+    }
   }
 
   // Generate daily wire entries from notable events

@@ -3,6 +3,7 @@ import { GameState, GameEvent, PlayerAction, EncounterState, ShipComponentId } f
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { completePendingTravel } from './travel.js';
+import { applyDisposition } from '../npc.js';
 
 /** Fuel gates (UGT Finding 2's lesson): NOTHING in combat that burns fuel is
  *  free when the tank is short — no free volleys AND no free getaways. */
@@ -66,7 +67,7 @@ function resolveEncounter(
   state: GameState,
   encounter: EncounterState,
   events: GameEvent[],
-  resolution: 'escaped' | 'talked-down' | 'defeated',
+  resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled',
 ): void {
   events.push({
     type: 'EncounterResolved',
@@ -77,12 +78,34 @@ function resolveEncounter(
   });
   state.encounter = null;
 
+  // T-106 disposition: named interceptors remember how it ended.
+  // - defeated: a grudge (-3) — you shot their ship out from under them.
+  // - escaped: the player fled and the interceptor keeps the field (+1) —
+  //   relief, no blood spilled, no grudge formed (documented design call).
+  // - interceptor-fled (driven off by a bonded third party): no change; their
+  //   quarrel is with the rescuer, not the player.
+  if (encounter.interceptor.source === 'named') {
+    if (resolution === 'defeated') {
+      applyDisposition(state, encounter.interceptor.id, -3, 'defeat', events);
+    } else if (resolution === 'escaped') {
+      applyDisposition(state, encounter.interceptor.id, 1, 'player-fled', events);
+    }
+  }
+
   if (resolution === 'escaped') {
     state.player.currentSystemId = encounter.pendingTravel.origin;
     return;
   }
 
   completePendingTravel(state, encounter, events);
+}
+
+/** T-106 bond hook: a bonded NPC drives the interceptor off at dusk — the
+ *  encounter resolves before the dusk free attack and pending travel
+ *  completes. Exposed for day.ts (endDay). */
+export function resolveInterceptorFled(state: GameState, events: GameEvent[]): void {
+  if (!state.encounter) return;
+  resolveEncounter(state, state.encounter, events, 'interceptor-fled');
 }
 
 function applyEnemyPressure(
@@ -428,6 +451,11 @@ function resolveTalk(
         amount,
         creditsRemaining: state.player.credits,
       });
+      // T-106 disposition: a named interceptor who got paid remembers the
+      // easy mark fondly (+2).
+      if (encounter.interceptor.source === 'named') {
+        applyDisposition(state, encounter.interceptor.id, 2, 'tribute', events);
+      }
       events.push({
         type: 'EncounterRound',
         encounterId: encounter.id,

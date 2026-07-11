@@ -8,6 +8,7 @@ import type {
   StoryletEffects,
 } from '@spacerquest/content';
 import { check, spendDie } from './dice.js';
+import { applyDisposition } from './npc.js';
 import { SeededRng } from './rng.js';
 import { GameEvent, GameState, PlayerAction, StoryletOffer } from './types.js';
 
@@ -305,7 +306,12 @@ function applyEffects(
   for (const disposition of effects.disposition ?? []) {
     const npc = state.npcs.find((candidate) => candidate.id === disposition.npcId);
     if (!npc) continue;
-    npc.disposition += disposition.delta;
+    // Route through the shared T-106 disposition mover (one clamp, one
+    // DispositionChanged emitter), then — mirroring the fuel-effect pattern —
+    // report the ACTUAL applied delta, not the requested one, so a clamped
+    // change never overstates itself.
+    const before = npc.disposition;
+    applyDisposition(state, disposition.npcId, disposition.delta, 'storylet', events);
     events.push({
       type: 'StoryletEffectApplied',
       day: state.day,
@@ -313,7 +319,7 @@ function applyEffects(
       choiceId,
       effect: 'disposition',
       npcId: disposition.npcId,
-      amount: disposition.delta,
+      amount: npc.disposition - before,
     });
   }
 
