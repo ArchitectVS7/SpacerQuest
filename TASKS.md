@@ -91,7 +91,7 @@ Create loot tables for POIs (salvage, contraband, Signal fragment) per PRD §7.2
 Write Zod schemas for the entire `GameState` to provide load-time validation.
 **Accept:** corrupt JSON fails with typed Zod errors.
 
-### T-112b · Save Envelope & Migrations — `status: TODO` · `coder: opus` · `after: T-112a`
+### T-112b · Save Envelope & Migrations — `status: DONE` · `coder: opus` · `after: T-112a`
 Versioned save envelope `{version, state}` with an explicit migration registry (v1→v2→…). This is the Steam Cloud substrate.
 **Accept:** loading a fixture v1 save through a dummy v2 migration works; wrong-version-no-migration fails with typed errors; round-trip property test over a 50-day sim state.
 
