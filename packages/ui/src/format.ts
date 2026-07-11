@@ -2,6 +2,8 @@ import {
   STAR_SYSTEMS,
   CARGO_TYPES,
   STORYLETS,
+  FLAWS,
+  NPC_PROFILES,
   distance,
   Stat,
   type StoryletTrigger,
@@ -130,4 +132,123 @@ function eventToWire(e: GameEvent): string | null {
     default:
       return null;
   }
+}
+
+// ---- T-306 wire log (display-only) ---------------------------------------
+//
+// The browsable day-by-day log and the NPC mini-dossier are PRESENTATIONAL
+// reads of state that already exists — `state.eventLog` (append-only, JSON
+// round-tripped through the save envelope), `state.npcs`, and the authored
+// content data `FLAWS` / `NPC_PROFILES`. Same charter as T-304/T-305: the UI
+// invents no rule, mutates nothing, and never surfaces raw NPC stats.
+
+export type WireLogKind = 'flaw-override' | 'deed' | 'renown' | 'era' | 'poi' | 'npc' | 'plain';
+
+/** One rendered wire line, tagged with its source day, a cheap display kind and
+ *  the originating `eventLog` index (a stable React key + virtualization id). */
+export interface WireLogEntry {
+  day: number;
+  text: string;
+  kind: WireLogKind;
+  eventIndex: number;
+}
+
+/** A day's worth of wire lines, oldest day first for chronological reading. */
+export interface WireLogDay {
+  day: number;
+  entries: WireLogEntry[];
+}
+
+/** Past-tense flaw fragments the engine files after an NPC's name when a flaw
+ *  overrides their day (see engine day.ts + content FLAWS). Read from authored
+ *  content data so a `WireEntry` can be classified as a flaw override without
+ *  any engine/schema change — the UI owns no rule here. */
+const FLAW_DETAILS: readonly string[] = Object.values(FLAWS).map((f) => f.detail);
+
+function isFlawOverrideMessage(msg: string): boolean {
+  return FLAW_DETAILS.some((detail) => msg.endsWith(detail));
+}
+
+function wireKind(e: GameEvent): WireLogKind {
+  switch (e.type) {
+    case 'DeedEarned':
+      return 'deed';
+    case 'RenownRankUp':
+      return 'renown';
+    case 'EraEventStarted':
+    case 'EraEventEnded':
+      return 'era';
+    case 'PoiDiscovered':
+      return 'poi';
+    case 'WireEntry':
+      return isFlawOverrideMessage(e.message) ? 'flaw-override' : 'npc';
+    default:
+      return 'plain';
+  }
+}
+
+/**
+ * Group the event log into a day-by-day wire log (oldest day first). Reuses the
+ * ticker's `eventToWire` mapping for text — an event that produces no wire line
+ * (returns null) is skipped, as is any event without a `day` (none of the wire
+ * events lack one, but the guard keeps this honest). Pure derivation over the
+ * existing snapshot; the full history rides along in a loaded save.
+ */
+export function wireLog(state: GameState): WireLogDay[] {
+  const byDay = new Map<number, WireLogEntry[]>();
+  for (let i = 0; i < state.eventLog.length; i++) {
+    const e = state.eventLog[i];
+    const text = eventToWire(e);
+    if (text === null) continue;
+    if (!('day' in e)) continue;
+    const day = e.day;
+    const entry: WireLogEntry = { day, text, kind: wireKind(e), eventIndex: i };
+    const arr = byDay.get(day);
+    if (arr) arr.push(entry);
+    else byDay.set(day, [entry]);
+  }
+  return [...byDay.keys()].sort((a, b) => a - b).map((day) => ({ day, entries: byDay.get(day)! }));
+}
+
+/** NPC name → id, longest name first so a multi-word name wins over any name
+ *  that is a substring of it when the renderer scans a wire line for links. */
+export function npcNameIndex(state: GameState): { name: string; id: string }[] {
+  return state.npcs
+    .map((n) => ({ name: n.name, id: n.id }))
+    .sort((a, b) => b.name.length - a.name.length);
+}
+
+/** A mini dossier: name, ship and prose HINTS only — never the raw stat block,
+ *  flawDc or tier (PRD: "disposition hints — not raw stats"). */
+export interface NpcDossier {
+  name: string;
+  shipName: string;
+  location: string;
+  standing: string;
+  temperament: string;
+}
+
+/** Disposition rendered as a standing HINT, never the number. Checked in
+ *  most-extreme-first order so the bands don't overlap. */
+function dispositionHint(disposition: number): string {
+  if (disposition < -2) return 'Wants you dead';
+  if (disposition < 0) return 'Holds a grudge';
+  if (disposition === 0) return 'No standing with you';
+  if (disposition > 2) return 'Owes you goodwill';
+  return 'Warming to you';
+}
+
+export function npcDossier(state: GameState, npcId: string): NpcDossier | null {
+  const npc = state.npcs.find((n) => n.id === npcId);
+  if (!npc) return null;
+  const profile = NPC_PROFILES.find((p) => p.id === npc.profileId);
+  if (!profile) return null;
+  return {
+    name: profile.name,
+    shipName: profile.shipName,
+    location: systemName(npc.currentSystemId),
+    standing: dispositionHint(npc.disposition),
+    // Prose temperament from authored bond + flaw — no numeric stat/flawDc/tier.
+    temperament: `${profile.bond}. Said to be ${profile.flaw.toLowerCase()}.`,
+  };
 }

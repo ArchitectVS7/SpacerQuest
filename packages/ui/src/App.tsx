@@ -1,6 +1,7 @@
 import {
   memo,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -28,11 +29,15 @@ import {
   jumpsBetween,
   starNodes,
   wireLines,
+  wireLog,
+  npcNameIndex,
+  npcDossier,
   statName,
   checkVerdict,
   signedMargin,
   cargoHasStorylet,
   contractIsUrgent,
+  type WireLogEntry,
 } from './format';
 
 const DIE_MIME = 'application/x-sq-die';
@@ -533,7 +538,11 @@ function CheckBreakdown({ state }: { state: CockpitState }) {
   );
 }
 
+// The Galactic Wire (T-306): a scrolling ticker (unchanged) PLUS a browsable
+// day-by-day log opened from the cap. Both are pure reads of the event log via
+// format.ts — the ticker shows the freshest headlines, the log the full history.
 function Wire({ game }: { game: GameState }) {
+  const [logOpen, setLogOpen] = useState(false);
   const lines = wireLines(game);
   const items = lines.length > 0 ? lines : ['The wire is quiet. Roll the day and make some news.'];
   const run = (
@@ -551,11 +560,213 @@ function Wire({ game }: { game: GameState }) {
       <div className="cap">
         <span className="dot" />
         GALACTIC WIRE
+        <button
+          className="wire-log-btn"
+          data-testid="wire-log-toggle"
+          aria-expanded={logOpen}
+          onClick={() => setLogOpen((v) => !v)}
+        >
+          {logOpen ? 'CLOSE' : 'LOG'}
+        </button>
       </div>
       <div className="ticker" data-testid="wire">
         {run}
         {run}
       </div>
+      {logOpen && <WireLog game={game} onClose={() => setLogOpen(false)} />}
+    </div>
+  );
+}
+
+// A hand-rolled virtualized day-by-day log. No windowing library (CSP forbids
+// CDNs and the repo avoids deps): a fixed-height scroll viewport over an inner
+// spacer sized to the full row count, rendering only the visible slice absolutely
+// positioned. This keeps the rendered node count bounded even across 100+ days.
+const WIRE_ROW_H = 24; // px per row (day header or entry)
+const WIRE_VIEW_H = 360; // px visible viewport
+const WIRE_OVERSCAN = 4; // rows rendered beyond the viewport on each edge
+
+type WireRow =
+  { type: 'day'; day: number; key: string } | { type: 'entry'; entry: WireLogEntry; key: string };
+
+function firstNpcMatch(
+  text: string,
+  nameIndex: { name: string; id: string }[],
+): { id: string; name: string; index: number } | null {
+  let best: { id: string; name: string; index: number } | null = null;
+  for (const { name, id } of nameIndex) {
+    const index = text.indexOf(name);
+    if (index === -1) continue;
+    if (best === null || index < best.index) best = { id, name, index };
+  }
+  return best;
+}
+
+// Render a wire line, wrapping the first NPC name it mentions as a dossier link.
+function WireText({
+  text,
+  nameIndex,
+  onOpen,
+}: {
+  text: string;
+  nameIndex: { name: string; id: string }[];
+  onOpen: (id: string) => void;
+}) {
+  const match = firstNpcMatch(text, nameIndex);
+  if (!match) return <>{text}</>;
+  const before = text.slice(0, match.index);
+  const after = text.slice(match.index + match.name.length);
+  return (
+    <>
+      {before}
+      <button
+        className="npc-link"
+        data-testid="npc-link"
+        data-npc-id={match.id}
+        onClick={() => onOpen(match.id)}
+      >
+        {match.name}
+      </button>
+      {after}
+    </>
+  );
+}
+
+function WireLog({ game, onClose }: { game: GameState; onClose: () => void }) {
+  const [openNpcId, setOpenNpcId] = useState<string | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+
+  const nameIndex = useMemo(() => npcNameIndex(game), [game.npcs]);
+  // Flatten the grouped log into a single fixed-height row list. Keyed on the
+  // event-log length (append-only) + roster so it only rebuilds when news lands.
+  const rows = useMemo<WireRow[]>(() => {
+    const out: WireRow[] = [];
+    for (const d of wireLog(game)) {
+      out.push({ type: 'day', day: d.day, key: `day-${d.day}` });
+      for (const e of d.entries) out.push({ type: 'entry', entry: e, key: `e-${e.eventIndex}` });
+    }
+    return out;
+    // Keyed on the append-only log length + roster: rebuilds only when news
+    // lands, not on unrelated snapshot churn.
+  }, [game.eventLog.length, game.npcs]);
+
+  const total = rows.length;
+  const start = Math.max(0, Math.floor(scrollTop / WIRE_ROW_H) - WIRE_OVERSCAN);
+  const end = Math.min(total, Math.ceil((scrollTop + WIRE_VIEW_H) / WIRE_ROW_H) + WIRE_OVERSCAN);
+  const slice = rows.slice(start, end);
+
+  // Escape closes the open dossier first, then the log.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (openNpcId) setOpenNpcId(null);
+      else onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [openNpcId, onClose]);
+
+  return (
+    <div className="wire-log" data-testid="wire-log">
+      <div className="wire-log-head">
+        <span>
+          DAY LOG · <b>{total}</b> ENTRIES
+        </span>
+        <button className="wire-log-close" data-testid="wire-log-close" onClick={onClose}>
+          CLOSE
+        </button>
+      </div>
+      {total === 0 ? (
+        <div className="wire-log-empty" data-testid="wire-log-empty">
+          No news yet. End a day — dusk makes headlines.
+        </div>
+      ) : (
+        <div
+          className="wire-log-view"
+          style={{ height: WIRE_VIEW_H }}
+          onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        >
+          <div className="wire-log-spacer" style={{ height: total * WIRE_ROW_H }}>
+            {slice.map((row, i) => {
+              const top = (start + i) * WIRE_ROW_H;
+              if (row.type === 'day') {
+                return (
+                  <div
+                    className="wire-day"
+                    data-testid="wire-day"
+                    data-day={row.day}
+                    key={row.key}
+                    style={{ top, height: WIRE_ROW_H }}
+                  >
+                    DAY {row.day}
+                  </div>
+                );
+              }
+              const { entry } = row;
+              const npcId = firstNpcMatch(entry.text, nameIndex)?.id;
+              return (
+                <div
+                  className="wire-entry"
+                  data-testid="wire-entry"
+                  data-wire-kind={entry.kind}
+                  data-npc-id={npcId ?? undefined}
+                  key={row.key}
+                  style={{ top, height: WIRE_ROW_H }}
+                >
+                  <WireText text={entry.text} nameIndex={nameIndex} onOpen={setOpenNpcId} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {openNpcId && <NpcDossier game={game} npcId={openNpcId} onClose={() => setOpenNpcId(null)} />}
+    </div>
+  );
+}
+
+// The mini dossier: name, ship, whereabouts and prose HINTS. Deliberately never
+// renders the raw stat block, flawDc or tier (PRD: "disposition hints — not raw
+// stats"). All fields come from format.npcDossier.
+function NpcDossier({
+  game,
+  npcId,
+  onClose,
+}: {
+  game: GameState;
+  npcId: string;
+  onClose: () => void;
+}) {
+  const d = npcDossier(game, npcId);
+  if (!d) return null;
+  return (
+    <div
+      className="npc-dossier"
+      data-testid="npc-dossier"
+      role="dialog"
+      aria-label={`Dossier: ${d.name}`}
+    >
+      <div className="nd-head">
+        <b className="nd-name" data-testid="dossier-name">
+          {d.name}
+        </b>
+        <button
+          className="nd-close"
+          data-testid="dossier-close"
+          aria-label="close"
+          onClick={onClose}
+        >
+          &times;
+        </button>
+      </div>
+      <div className="nd-row" data-testid="dossier-ship">
+        SHIP · {d.shipName}
+      </div>
+      <div className="nd-row nd-loc">Last seen · {d.location}</div>
+      <div className="nd-row nd-standing" data-testid="dossier-standing">
+        {d.standing}
+      </div>
+      <div className="nd-row nd-temper">{d.temperament}</div>
     </div>
   );
 }

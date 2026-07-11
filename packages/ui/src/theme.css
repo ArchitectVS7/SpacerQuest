@@ -777,6 +777,189 @@ body {
   }
 }
 
+/* ---- wire log (T-306) ---- */
+.wire-log-btn {
+  margin-left: 6px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  cursor: pointer;
+}
+.wire-log-btn:hover,
+.wire-log-btn[aria-expanded='true'] {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+/* A fixed overlay drawer: the wire itself clips its ticker with overflow:hidden,
+   so the log is anchored to the viewport (like .fx) to escape that clip and to
+   stack above the starmap/main panes rather than being intercepted by them. */
+.wire-log {
+  position: fixed;
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  width: min(920px, 92vw);
+  z-index: 80;
+  background: #0c0805;
+  border: 1px solid var(--ember);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.72);
+}
+.wire-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: var(--ember);
+}
+.wire-log-head b {
+  color: var(--ember-hi);
+}
+.wire-log-close {
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  cursor: pointer;
+}
+.wire-log-close:hover {
+  border-color: var(--ember);
+  color: var(--ember);
+}
+.wire-log-empty {
+  padding: 20px 12px;
+  color: var(--amber);
+  font-size: 13px;
+}
+.wire-log-view {
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+.wire-log-spacer {
+  position: relative;
+  width: 100%;
+}
+.wire-day,
+.wire-entry {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.wire-day {
+  background: var(--amber-dim);
+  color: var(--ember-hi);
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 10px;
+}
+.wire-entry {
+  color: var(--amber);
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wire-entry > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wire-entry[data-wire-kind='deed'],
+.wire-entry[data-wire-kind='renown'] {
+  color: var(--ember);
+}
+/* Flaw overrides — the load-bearing "always notable" headline — get reverse
+   video (per the T-302 one-hue rule: emphasis via inversion, no second colour). */
+.wire-entry[data-wire-kind='flaw-override'] {
+  background: var(--ember);
+  color: #120c02;
+  font-weight: 600;
+}
+.wire-entry[data-wire-kind='flaw-override'] .npc-link {
+  color: #120c02;
+  border-color: #120c02;
+}
+.npc-link {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dotted var(--ember);
+  color: var(--ember-hi);
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+.npc-link:hover,
+.npc-link:focus-visible {
+  color: #fff;
+  border-bottom-style: solid;
+  outline: none;
+}
+.npc-dossier {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 260px;
+  z-index: 7;
+  background: var(--panel);
+  border: 1px solid var(--ember);
+  box-shadow: var(--glow);
+  padding: 10px 12px;
+}
+.npc-dossier .nd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+.npc-dossier .nd-name {
+  color: var(--ember-hi);
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  font-size: 14px;
+}
+.npc-dossier .nd-close {
+  background: transparent;
+  border: none;
+  color: var(--amber);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.npc-dossier .nd-close:hover {
+  color: var(--ember);
+}
+.npc-dossier .nd-row {
+  font-size: 12px;
+  color: var(--amber);
+  margin: 3px 0;
+}
+.npc-dossier .nd-standing {
+  color: var(--ember);
+}
+.npc-dossier .nd-temper {
+  color: var(--amber);
+  font-style: italic;
+  margin-top: 6px;
+}
+
 /* ---- hand dock ---- */
 .dock {
   border: 1px solid var(--hair);
