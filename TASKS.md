@@ -111,7 +111,7 @@ Implement the Day-30 resolution check: debt cleared → Deed + veteran-unlock fl
 
 ## M2 — Test harnesses
 
-### T-201 · Policy bots that actually play — `status: TODO` · `coder: opus` · `after: T-113b`
+### T-201 · Policy bots that actually play — `status: DONE` · `coder: opus` · `after: T-113b`
 Upgrade sim policies to competent play: trader (route+fuel planning), fighter (upgrade-then-hunt), explorer (fragment chaser). These are the balance instruments.
 **Accept:** trader clears Tour One debt ≥60% of 50 seeds; each policy's 300-day stats report renders; no policy triggers a poverty-trap (assert: never 5 consecutive days with zero legal income-producing action).
 
