@@ -241,6 +241,41 @@ export type GameEvent =
       systemId: number;
       reason: 'nav-check' | 'insufficient-fuel';
     }
+  | {
+      /** A boarded POI's loot roll yielded salvage — real credits (T-111b). */
+      type: 'SalvageRecovered';
+      day: number;
+      poiId: string;
+      systemId: number;
+      amount: number;
+    }
+  | {
+      /** A boarded POI's loot roll yielded a sealed Contraband pod (T-111b). The
+       *  carrying choice is surfaced as the `derelict.sealed-pod` storylet. */
+      type: 'ContrabandFound';
+      day: number;
+      poiId: string;
+      systemId: number;
+    }
+  | {
+      /** A Signal Fragment entered the Nemesis file (T-111b). Fired only when the
+       *  fragment was actually NEW — a duplicate grant emits nothing. */
+      type: 'FragmentAcquired';
+      day: number;
+      fragmentId: string;
+      source: SignalFragmentRecord['source'];
+      /** Running fragment count after the grant (== decoded-lore index length). */
+      fragmentCount: number;
+      /** The POI the fragment was looted from, when applicable. */
+      poiId?: string;
+    }
+  | {
+      /** The Sage decoded a held fragment into lore (T-111b). Fired only when a
+       *  held, still-undecoded fragment was actually decoded. */
+      type: 'FragmentDecoded';
+      day: number;
+      fragmentId: string;
+    }
   | { type: 'StoryletOffered'; day: number; storyletId: string; scheduled: boolean }
   | {
       type: 'StoryletChoiceResolved';
@@ -268,13 +303,16 @@ export type GameEvent =
         | 'flag-cleared'
         | 'active-contract-cleared'
         | 'manifest-contract-added'
-        | 'disposition';
+        | 'disposition'
+        | 'fragment-granted'
+        | 'fragment-decoded';
       amount?: number;
       flag?: string;
       value?: FlagValue;
       npcId?: string;
       cargoType?: number;
       destination?: number;
+      fragmentId?: string;
     }
   | {
       type: 'StoryletScheduled';
@@ -550,6 +588,27 @@ export interface LegacyState {
   successionCount: number;
 }
 
+/** One Signal Fragment held in the Nemesis file (T-111b, PRD §8.1). A knowledge
+ *  item keyed by a content fragment id (nemesis.ts). Dedupe key: fragmentId. */
+export interface SignalFragmentRecord {
+  /** Content fragment id — maps 1:1 to a SIGNAL_FRAGMENTS lore entry. */
+  fragmentId: string;
+  /** How the fragment entered the file. */
+  source: 'derelict' | 'beacon' | 'wise-one' | 'sage' | 'npc';
+  /** Day the fragment was acquired. */
+  day: number;
+  /** Whether the Sage of Mizar-9 has decoded it into lore. */
+  decoded: boolean;
+}
+
+/** The terminal's Nemesis file — the running collection of Signal Fragments
+ *  (PRD §7.2/§8.1). Knowledge is "the one currency death never takes", so this
+ *  persists wholesale through succession (T-108). Fragments are deduped by id
+ *  and never removed: the fragment count grows monotonically. */
+export interface NemesisFileState {
+  fragments: SignalFragmentRecord[];
+}
+
 export interface PlayerState {
   credits: number;
   /** Outstanding Merchant Guild debt — a ledger entry, NOT negative credits.
@@ -565,6 +624,8 @@ export interface PlayerState {
   registry: DeedRegistryState;
   /** Persistent chart knowledge — survives death (T-108). */
   charts: ChartsState;
+  /** The Nemesis file — Signal Fragments (knowledge). Survives death (T-111b). */
+  nemesisFile: NemesisFileState;
   /** Legacy/succession bookkeeping — survives death (T-108). */
   legacy: LegacyState;
   activeContract?: CargoContract | null;

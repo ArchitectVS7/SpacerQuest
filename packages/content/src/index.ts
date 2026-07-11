@@ -3,6 +3,7 @@ export * from './systems.js';
 export * from './cargo.js';
 export * from './eraEvents.js';
 export * from './exploration.js';
+export * from './nemesis.js';
 export * from './cast.js';
 export * from './flaws.js';
 export * from './ideals.js';

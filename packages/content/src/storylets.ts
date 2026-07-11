@@ -47,6 +47,16 @@ export interface StoryletTrigger {
   day?: NumberMatcher;
   flags?: readonly FlagMatcher[];
   scheduledOnly?: boolean;
+  /** T-111b: gate on the player's Nemesis file (Signal Fragments). Lets the
+   *  Sage of Mizar-9 surface only when there is something to decode. */
+  nemesis?: {
+    /** Offered only when the file holds at least this many fragments. */
+    minFragments?: number;
+    /** Offered only when the file holds >=1 undecoded fragment. */
+    hasUndecoded?: boolean;
+    /** Offered only when the file holds THIS fragment id, still undecoded. */
+    hasUndecodedFragmentId?: string;
+  };
 }
 
 export interface StoryletEffects {
@@ -60,6 +70,12 @@ export interface StoryletEffects {
   disposition?: readonly { npcId: string; delta: number }[];
   deedProgress?: readonly { deedId: string; amount: number }[];
   schedule?: readonly { storyletId: string; delayDays: number }[];
+  /** T-111b: grant a Signal Fragment into the nemesisFile (Wise One / a broker
+   *  who does not know what they have). Dedupes by id — monotonic. */
+  grantFragment?: string;
+  /** T-111b: the Sage of Mizar-9 decodes a held fragment into lore. No-op if
+   *  the fragment is absent or already decoded. */
+  decodeFragment?: string;
 }
 
 export interface StoryletChoiceDefinition {
@@ -338,11 +354,11 @@ export const STORYLETS = defineStorylets([
   // opens the veteran game. There is no dedicated Wise One NPC in the cast
   // (only the trader "Penny Wise"), so this gates on day + Polaris-1, not npc.
   //
-  // The fragment is represented here as the flag `signal.fragment.wise-one-01`.
-  // T-111b (nemesisFile) and T-405 will formalize this flag into the decoded-
-  // lore / knowledge-item index; until then the flag IS the fragment grant.
-  // Resolution of the debt (cleared vs unpaid) and the veteran-unlock flag are
-  // T-113b, not authored here.
+  // T-111b: this now grants a REAL fragment (`grantFragment`) into the
+  // nemesisFile — the knowledge item the Sage of Mizar-9 later decodes. The flag
+  // `signal.fragment.wise-one-01` is kept alongside it as the hook-completion
+  // marker other content/UI may branch on. Resolution of the debt (cleared vs
+  // unpaid) and the veteran-unlock flag are T-113b, not authored here.
   {
     id: 'wise-one.polaris.signal-hook',
     title: 'The Wise One of Polaris-1',
@@ -363,6 +379,7 @@ export const STORYLETS = defineStorylets([
         requirements: { credits: { gte: 500 } },
         effects: {
           credits: -500,
+          grantFragment: 'frag-nemesis-01',
           flags: [{ name: 'signal.fragment.wise-one-01', value: true }],
         },
       },
@@ -374,6 +391,7 @@ export const STORYLETS = defineStorylets([
         requirements: { credits: { gte: 250 }, statCheck: { stat: Stat.GUILE, dc: 13 } },
         successEffects: {
           credits: -250,
+          grantFragment: 'frag-nemesis-01',
           flags: [{ name: 'signal.fragment.wise-one-01', value: true }],
         },
         failureEffects: {
@@ -386,6 +404,89 @@ export const STORYLETS = defineStorylets([
         prose: 'Tell the old spacer the debt comes first. The sliver goes back in a pocket. "It will keep," they say. "It has kept this long."',
         effects: {
           flags: [{ name: 'wise-one.polaris.hook_declined', value: true }],
+        },
+      },
+    ],
+  },
+
+  // --- The Sage of Mizar-9 — fragment decode broker (T-111b) ---
+  // PRD §8.1: fragments are "decoded by the Sage." The Sage keeps a workshop at
+  // Mizar-9 (system 18) and, per §7.2, "always talks when you bring something
+  // new" — so this surfaces only when the file holds the Wise One's first
+  // fragment still undecoded. Decoding turns raw signal into lore (the decoded-
+  // lore index). Not era-gated: the crossing arc runs from Tour One onward.
+  {
+    id: 'sage.mizar.decode-first',
+    title: 'The Sage of Mizar-9',
+    prose:
+      'The Sage of Mizar-9 works in a room walled with dead screens, each still faintly lit. When you produce the Wise One\'s sliver, the old cryptographer goes very still. "Where did you—no. Sit. This one I decode for free. I have waited a long time to hear the rest of it."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-01' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'Hand over the sliver and watch the dead screens wake. The carrier wave resolves — and what it is counting down to settles into your Nemesis file, decoded.',
+        effects: {
+          decodeFragment: 'frag-nemesis-01',
+          flags: [{ name: 'sage.mizar.first_decoded', value: true }],
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Pocket the fragment. Some knowledge you want to carry a while before you understand it. The Sage nods, unsurprised. "It will keep. It always has."',
+        effects: {
+          flags: [{ name: 'sage.mizar.first_withheld', value: true }],
+        },
+      },
+    ],
+  },
+
+  // --- Derelict sealed-pod — the Contraband carrying choice (T-111b) ---
+  // PRD §7.2: a boarded derelict can hold a sealed Contraband pod, and "carrying
+  // it is a choice." The Explore loot roll surfaces the pod by setting the flag
+  // `signal.contraband.pending`; this storylet (T-110 engine) is the decision.
+  // repeat 'daily' + a flag-clear on every choice makes it re-armable across
+  // days without ever re-firing on a stale flag.
+  {
+    id: 'derelict.sealed-pod',
+    title: 'The Sealed Pod',
+    prose:
+      'Bolted into the derelict\'s hold is a sealed cargo pod, Guild stamps ground off, mag-locks still live. No manifest. Whatever is inside, someone did not want it logged — and someone else will pay not to ask.',
+    repeat: 'daily',
+    trigger: {
+      flags: [{ name: 'signal.contraband.pending', exists: true }],
+    },
+    choices: [
+      {
+        id: 'take',
+        label: 'Cut it loose and stow it',
+        prose:
+          'Burn the mag-locks and wrestle the pod into your hold. It is worth real coin to the right buyer — and a patrol captain who scans your hold will roll against you for it.',
+        effects: {
+          credits: 300,
+          flags: [
+            { name: 'signal.contraband.pending', clear: true },
+            { name: 'signal.contraband.carrying', value: true },
+          ],
+        },
+      },
+      {
+        id: 'leave',
+        label: 'Leave it bolted down',
+        prose:
+          'Some cargo is not worth the questions. Log the pod, seal the hatch, and burn for open lanes clean.',
+        effects: {
+          flags: [
+            { name: 'signal.contraband.pending', clear: true },
+            { name: 'signal.contraband.left', value: true },
+          ],
         },
       },
     ],

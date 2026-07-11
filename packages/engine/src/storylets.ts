@@ -9,6 +9,13 @@ import type {
 } from '@spacerquest/content';
 import { check, spendDie } from './dice.js';
 import { applyDisposition } from './npc.js';
+import {
+  decodeFragment,
+  fragmentCount,
+  grantFragment,
+  hasAnyUndecoded,
+  hasUndecodedFragment,
+} from './nemesis.js';
 import { SeededRng } from './rng.js';
 import { GameEvent, GameState, PlayerAction, StoryletOffer } from './types.js';
 
@@ -86,6 +93,24 @@ function triggerMatches(state: GameState, storylet: StoryletDefinition): boolean
   }
   for (const matcher of trigger.flags ?? []) {
     if (!matchesFlag(state.flags[matcher.name], matcher)) {
+      return false;
+    }
+  }
+  if (trigger.nemesis) {
+    const file = state.player.nemesisFile;
+    if (
+      trigger.nemesis.minFragments !== undefined &&
+      fragmentCount(file) < trigger.nemesis.minFragments
+    ) {
+      return false;
+    }
+    if (trigger.nemesis.hasUndecoded === true && !hasAnyUndecoded(file)) {
+      return false;
+    }
+    if (
+      trigger.nemesis.hasUndecodedFragmentId !== undefined &&
+      !hasUndecodedFragment(file, trigger.nemesis.hasUndecodedFragmentId)
+    ) {
       return false;
     }
   }
@@ -350,6 +375,55 @@ function applyEffects(
       scheduledStoryletId: schedule.storyletId,
       dueDay,
     });
+  }
+
+  // T-111b: grant a Signal Fragment into the Nemesis file (the Wise One, a
+  // broker). Dedupe keeps the count monotonic — a repeat grant emits nothing.
+  if (effects.grantFragment !== undefined) {
+    const added = grantFragment(
+      state.player.nemesisFile,
+      effects.grantFragment,
+      'wise-one',
+      state.day,
+    );
+    if (added) {
+      events.push({
+        type: 'FragmentAcquired',
+        day: state.day,
+        fragmentId: effects.grantFragment,
+        source: 'wise-one',
+        fragmentCount: fragmentCount(state.player.nemesisFile),
+      });
+      events.push({
+        type: 'StoryletEffectApplied',
+        day: state.day,
+        storyletId,
+        choiceId,
+        effect: 'fragment-granted',
+        fragmentId: effects.grantFragment,
+      });
+    }
+  }
+
+  // T-111b: the Sage decodes a held fragment into lore. No-op (no event) if the
+  // fragment is absent or already decoded.
+  if (effects.decodeFragment !== undefined) {
+    const decoded = decodeFragment(state.player.nemesisFile, effects.decodeFragment);
+    if (decoded) {
+      events.push({
+        type: 'FragmentDecoded',
+        day: state.day,
+        fragmentId: effects.decodeFragment,
+      });
+      events.push({
+        type: 'StoryletEffectApplied',
+        day: state.day,
+        storyletId,
+        choiceId,
+        effect: 'fragment-decoded',
+        fragmentId: effects.decodeFragment,
+      });
+    }
   }
 
   return events;

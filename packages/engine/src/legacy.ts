@@ -14,7 +14,9 @@ export interface ShipLostContext {
  * ShipLost fires. The successor takes the license.
  *
  *   CARRIES (untouched on state): the deed registry (deeds, renownRank,
- *     matchCounts), charts (visited systems + T-111 knowledge), storylet flags
+ *     matchCounts), charts (visited systems + charted POIs), the Nemesis file
+ *     (Signal Fragments — knowledge death never takes, PRD §8.1; carried
+ *     EXPLICITLY below since it lives on PlayerState, not charts), storylet flags
  *     and completed storylets — the world remembers — every NPC disposition
  *     (grudges attach to the NAME, per 'the syndicate remembers your name'),
  *     stats (v1: no reset), and the debt + debtDueDay (the Guild collects from
@@ -43,9 +45,17 @@ export function applySuccession(state: GameState, context: ShipLostContext): Gam
   const inheritedCredits = Math.floor(state.player.credits / 2);
   state.player.credits = inheritedCredits;
 
+  // CARRY (explicit): the Nemesis file is knowledge — the one currency death
+  // never takes (PRD §8.1). It lives on PlayerState (not charts), so snapshot and
+  // reassign it deliberately: the successor keeps every Signal Fragment, decoded
+  // or not. Guards against any future full-player reset silently dropping it.
+  const inheritedNemesisFile = state.player.nemesisFile;
+
   // RESET: ship back to the junker — single source of truth shared with
   // createInitialState.
   state.player.ship = starterShip();
+
+  state.player.nemesisFile = inheritedNemesisFile;
 
   // LOCATION: the license is claimed where the wreck was towed in.
   state.player.currentSystemId = originSystem;

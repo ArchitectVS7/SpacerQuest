@@ -82,7 +82,7 @@ describe('exploration — deterministic discovery per seed', () => {
    *  dispatch and return the discovered POIs. */
   function exploreOnce(seed: number): GameState['player']['charts']['discoveredPois'] {
     const dawn = startDay(createInitialState(seed));
-    let state = dawn.state;
+    const state = dawn.state;
     // Guarantee the nav check clears regardless of the rolled die by boosting
     // PILOT — determinism of WHICH poi is what we're asserting, not success.
     state.player.stats[Stat.PILOT] = 40;
@@ -133,6 +133,88 @@ describe('exploration — seed sweep surfaces both POI types', () => {
     }
     expect(seen.has('beacon')).toBe(true);
     expect(seen.has('derelict')).toBe(true);
+  });
+});
+
+describe('exploration — T-111b loot resolution', () => {
+  it('a seed sweep surfaces salvage, a fragment, and a contraband pod', () => {
+    let sawSalvage = false;
+    let sawFragment = false;
+    let sawContraband = false;
+
+    for (let seed = 0; seed < 300; seed += 1) {
+      const res = resolveExploration(
+        craftExploreState(18, 40), // guaranteed nav success
+        { type: 'Explore', spendDie: 0 },
+        new SeededRng(seed),
+      );
+      for (const e of res.events) {
+        if (e.type === 'SalvageRecovered') sawSalvage = true;
+        if (e.type === 'FragmentAcquired') sawFragment = true;
+        if (e.type === 'ContrabandFound') sawContraband = true;
+      }
+    }
+
+    expect(sawSalvage).toBe(true);
+    expect(sawFragment).toBe(true);
+    expect(sawContraband).toBe(true);
+  });
+
+  it('a granted fragment lands in the nemesisFile and the count matches the event', () => {
+    // Find a seed whose discovery grants a fragment, then assert the file grew.
+    let granted: ReturnType<typeof resolveExploration> | null = null;
+    for (let seed = 0; seed < 300 && !granted; seed += 1) {
+      const res = resolveExploration(
+        craftExploreState(18, 40),
+        { type: 'Explore', spendDie: 0 },
+        new SeededRng(seed),
+      );
+      if (res.events.some((e) => e.type === 'FragmentAcquired')) {
+        granted = res;
+      }
+    }
+    expect(granted).not.toBeNull();
+
+    const acquired = granted!.events.find((e) => e.type === 'FragmentAcquired');
+    expect(acquired && acquired.type === 'FragmentAcquired').toBe(true);
+    if (acquired && acquired.type === 'FragmentAcquired') {
+      const held = granted!.state.player.nemesisFile.fragments.map((f) => f.fragmentId);
+      expect(held).toContain(acquired.fragmentId);
+      // The event's running count equals the file length (decoded-lore index).
+      expect(acquired.fragmentCount).toBe(granted!.state.player.nemesisFile.fragments.length);
+    }
+  });
+
+  it('contraband arms the sealed-pod storylet flag', () => {
+    let armed: ReturnType<typeof resolveExploration> | null = null;
+    for (let seed = 0; seed < 300 && !armed; seed += 1) {
+      const res = resolveExploration(
+        craftExploreState(18, 40),
+        { type: 'Explore', spendDie: 0 },
+        new SeededRng(seed),
+      );
+      if (res.events.some((e) => e.type === 'ContrabandFound')) {
+        armed = res;
+      }
+    }
+    expect(armed).not.toBeNull();
+    expect(armed!.state.flags['signal.contraband.pending']).toBe(true);
+  });
+
+  it('loot is deterministic for a fixed seed (credits, nemesisFile, flags)', () => {
+    function loot(seed: number) {
+      const res = resolveExploration(
+        craftExploreState(18, 40),
+        { type: 'Explore', spendDie: 0 },
+        new SeededRng(seed),
+      );
+      return {
+        credits: res.state.player.credits,
+        fragments: res.state.player.nemesisFile.fragments,
+        pending: res.state.flags['signal.contraband.pending'],
+      };
+    }
+    expect(loot(12345)).toEqual(loot(12345));
   });
 });
 

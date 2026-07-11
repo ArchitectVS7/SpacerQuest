@@ -100,6 +100,9 @@ export function createInitialState(seed: number): GameState {
       // Charts seed with the starting system — the spacer knows where they woke
       // up. Every subsequent arrival appends here (T-108 persistent knowledge).
       charts: { visitedSystemIds: [1], discoveredPois: [] },
+      // The Nemesis file starts empty — the first fragment is the Day-30 Wise One
+      // hook (PRD §5.1). Knowledge that will survive death (T-111b).
+      nemesisFile: { fragments: [] },
       legacy: { successionCount: 0 },
     },
     market: {
@@ -167,6 +170,11 @@ export function deserializeState(json: string): GameState {
   parsed.player.charts.visitedSystemIds ??= [parsed.player.currentSystemId];
   // Save-compat: pre-T-111a states have no charted POIs. Default to empty.
   parsed.player.charts.discoveredPois ??= [];
+  // Save-compat: pre-T-111b states have no Nemesis file. Default to empty — an
+  // un-defaulted field would leave nemesisFile undefined and break fragment
+  // grants/decodes on an old save.
+  parsed.player.nemesisFile ??= { fragments: [] };
+  parsed.player.nemesisFile.fragments ??= [];
   parsed.player.legacy ??= { successionCount: 0 };
   parsed.player.legacy.successionCount ??= 0;
   parsed.npcs ??= [];

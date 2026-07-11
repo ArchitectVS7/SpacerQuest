@@ -83,7 +83,7 @@ Data-driven storylets in content: trigger (system/cargo/NPC/era/day-range/flag c
 Add off-lane `Explore` action to `day.ts` and `types.ts` (consumes die + nav check), surfacing seeded points of interest — beacons and derelicts — per PRD §7.2.
 **Accept:** discovery deterministic per seed; nav checks respect PILOT modifier; both POI types (beacon, derelict) reachable in a seed sweep.
 
-### T-111b · Signal Fragments & Loot Tables — `status: TODO` · `coder: opus` · `after: T-111a`
+### T-111b · Signal Fragments & Loot Tables — `status: DONE` · `coder: opus` · `after: T-111a`
 Create loot tables for POIs (salvage, contraband, Signal fragment) per PRD §7.2. Fragments are knowledge items on a `nemesisFile` on `PlayerState` that persists through legacy (T-108, per the `types.ts:505` charts-inheritance socket) and feeds the decoded-lore index. Wire in the Wise One (Polaris-1) and Sage (Mizar-9) as storylet-driven fragment brokers (sell/decode).
 **Accept:** fragment count monotonically grows a decoded-lore index; fragments survive succession test; at least one derelict storylet uses the T-110 engine; a Wise One or Sage storylet grants/decodes a fragment.
 

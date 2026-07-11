@@ -199,6 +199,17 @@ const ChartsStateSchema = z.object({
   discoveredPois: z.array(DiscoveredPoiSchema),
 });
 
+const SignalFragmentRecordSchema = z.object({
+  fragmentId: z.string(),
+  source: z.enum(['derelict', 'beacon', 'wise-one', 'sage', 'npc']),
+  day: z.number(),
+  decoded: z.boolean(),
+});
+
+const NemesisFileStateSchema = z.object({
+  fragments: z.array(SignalFragmentRecordSchema),
+});
+
 const LegacyStateSchema = z.object({
   successionCount: z.number(),
 });
@@ -342,6 +353,7 @@ const PlayerStateSchema = z.object({
   ship: ShipStateSchema,
   registry: DeedRegistryStateSchema,
   charts: ChartsStateSchema,
+  nemesisFile: NemesisFileStateSchema,
   legacy: LegacyStateSchema,
   // `activeContract?: CargoContract | null` — absent, null, or a contract.
   activeContract: CargoContractSchema.nullable().optional(),
@@ -448,6 +460,32 @@ const GameEventSchema = z.discriminatedUnion('type', [
     reason: z.enum(['nav-check', 'insufficient-fuel']),
   }),
   z.object({
+    type: z.literal('SalvageRecovered'),
+    day: z.number(),
+    poiId: z.string(),
+    systemId: z.number(),
+    amount: z.number(),
+  }),
+  z.object({
+    type: z.literal('ContrabandFound'),
+    day: z.number(),
+    poiId: z.string(),
+    systemId: z.number(),
+  }),
+  z.object({
+    type: z.literal('FragmentAcquired'),
+    day: z.number(),
+    fragmentId: z.string(),
+    source: z.enum(['derelict', 'beacon', 'wise-one', 'sage', 'npc']),
+    fragmentCount: z.number(),
+    poiId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('FragmentDecoded'),
+    day: z.number(),
+    fragmentId: z.string(),
+  }),
+  z.object({
     type: z.literal('StoryletOffered'),
     day: z.number(),
     storyletId: z.string(),
@@ -480,6 +518,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
       'active-contract-cleared',
       'manifest-contract-added',
       'disposition',
+      'fragment-granted',
+      'fragment-decoded',
     ]),
     amount: z.number().optional(),
     flag: z.string().optional(),
@@ -487,6 +527,7 @@ const GameEventSchema = z.discriminatedUnion('type', [
     npcId: z.string().optional(),
     cargoType: z.number().optional(),
     destination: z.number().optional(),
+    fragmentId: z.string().optional(),
   }),
   z.object({
     type: z.literal('StoryletScheduled'),
@@ -742,5 +783,5 @@ export function safeValidateGameState(raw: unknown) {
 
 /** Companion validator for a persisted PlayerAction. Throws a ZodError. */
 export function validatePlayerAction(raw: unknown): PlayerAction {
-  return PlayerActionSchema.parse(raw) as unknown as PlayerAction;
+  return PlayerActionSchema.parse(raw);
 }

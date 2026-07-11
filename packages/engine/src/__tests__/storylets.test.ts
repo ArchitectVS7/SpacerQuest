@@ -28,6 +28,8 @@ describe('storylet content validation', () => {
       'guild.pressure.tour-one.day20',
       'guild.pressure.tour-one.day25',
       'wise-one.polaris.signal-hook',
+      'sage.mizar.decode-first',
+      'derelict.sealed-pod',
     ]);
   });
 
@@ -367,12 +369,111 @@ describe('T-113a Tour One guild pressure and Wise One hook', () => {
 
     expect(resolved.state.flags['signal.fragment.wise-one-01']).toBe(true);
     expect(resolved.state.player.credits).toBe(4500);
+    // T-111b: the hook now grants a REAL fragment into the Nemesis file.
+    expect(resolved.state.player.nemesisFile.fragments.map((f) => f.fragmentId)).toEqual([
+      'frag-nemesis-01',
+    ]);
+    expect(resolved.state.player.nemesisFile.fragments[0].decoded).toBe(false);
+    expect(resolved.events).toContainEqual(
+      expect.objectContaining({
+        type: 'FragmentAcquired',
+        fragmentId: 'frag-nemesis-01',
+        source: 'wise-one',
+        fragmentCount: 1,
+      }),
+    );
     expect(resolved.events).toContainEqual(
       expect.objectContaining({
         type: 'StoryletChoiceResolved',
         storyletId: 'wise-one.polaris.signal-hook',
         choiceId: 'buy-fragment',
       }),
+    );
+  });
+});
+
+describe('T-111b Nemesis Signal — fragment brokers', () => {
+  it('the Sage of Mizar-9 decodes the Wise One fragment into lore', () => {
+    // Hold the Wise One fragment (undecoded); dock at Mizar-9 (system 18).
+    const state = readyState();
+    state.player.currentSystemId = 18;
+    state.player.nemesisFile.fragments.push({
+      fragmentId: 'frag-nemesis-01',
+      source: 'wise-one',
+      day: 1,
+      decoded: false,
+    });
+
+    const refreshed = refreshAvailableStorylets(state);
+    // The Sage surfaces only because there is an undecoded fragment to decode.
+    expect(refreshed.state.storylets.available.map((o) => o.storyletId)).toContain(
+      'sage.mizar.decode-first',
+    );
+
+    const resolved = resolveStoryletChoice(
+      refreshed.state,
+      { type: 'Storylet', storyletId: 'sage.mizar.decode-first', choiceId: 'decode' },
+      new SeededRng(1),
+    );
+
+    const fragment = resolved.state.player.nemesisFile.fragments.find(
+      (f) => f.fragmentId === 'frag-nemesis-01',
+    );
+    expect(fragment?.decoded).toBe(true);
+    expect(resolved.events).toContainEqual(
+      expect.objectContaining({ type: 'FragmentDecoded', fragmentId: 'frag-nemesis-01' }),
+    );
+    expect(resolved.events).toContainEqual(
+      expect.objectContaining({ effect: 'fragment-decoded', fragmentId: 'frag-nemesis-01' }),
+    );
+    // Fragment count is unchanged by decoding — it upgrades, never adds.
+    expect(resolved.state.player.nemesisFile.fragments).toHaveLength(1);
+  });
+
+  it('the Sage does not surface without an undecoded fragment to decode', () => {
+    const away = readyState();
+    away.player.currentSystemId = 18; // at Mizar-9, but nemesisFile is empty
+    expect(eligibleStorylets(away).map((o) => o.storyletId)).not.toContain(
+      'sage.mizar.decode-first',
+    );
+
+    // Already decoded → no longer eligible either.
+    const decoded = readyState();
+    decoded.player.currentSystemId = 18;
+    decoded.player.nemesisFile.fragments.push({
+      fragmentId: 'frag-nemesis-01',
+      source: 'wise-one',
+      day: 1,
+      decoded: true,
+    });
+    expect(eligibleStorylets(decoded).map((o) => o.storyletId)).not.toContain(
+      'sage.mizar.decode-first',
+    );
+  });
+
+  it('the derelict sealed-pod storylet is playable headless and grants loot', () => {
+    // The Explore loot roll arms the storylet by setting the pending flag.
+    const state = readyState();
+    state.flags['signal.contraband.pending'] = true;
+    state.player.credits = 1000;
+
+    const refreshed = refreshAvailableStorylets(state);
+    expect(refreshed.state.storylets.available.map((o) => o.storyletId)).toContain(
+      'derelict.sealed-pod',
+    );
+
+    const resolved = resolveStoryletChoice(
+      refreshed.state,
+      { type: 'Storylet', storyletId: 'derelict.sealed-pod', choiceId: 'take' },
+      new SeededRng(1),
+    );
+
+    // Loot: real credits, the carrying flag, and the pending flag cleared.
+    expect(resolved.state.player.credits).toBe(1300);
+    expect(resolved.state.flags['signal.contraband.carrying']).toBe(true);
+    expect(resolved.state.flags['signal.contraband.pending']).toBeUndefined();
+    expect(resolved.events).toContainEqual(
+      expect.objectContaining({ type: 'StoryletEffectApplied', effect: 'credits', amount: 300 }),
     );
   });
 });

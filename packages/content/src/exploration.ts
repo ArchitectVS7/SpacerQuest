@@ -1,16 +1,22 @@
 /**
- * Off-lane exploration — points of interest (T-111a).
+ * Off-lane exploration — points of interest & loot tables (T-111a + T-111b).
  *
  * The `Explore` action burns a die on a PILOT nav check to leave the trade lane
  * and chart a point of interest: a transmitting BEACON or a boardable DERELICT
- * (PRD §7.2). This file is PURE DATA — the POI *types* and their discovery
- * flavor. The engine owns the seeded roll and the nav-check math.
+ * (PRD §7.2). This file is PURE DATA — the POI *types*, their discovery flavor,
+ * and (T-111b) the LOOT TABLE each type rolls. The engine owns the seeded rolls
+ * and the nav-check math.
  *
- * DELIBERATELY MINIMAL for T-111a: the reward tables — salvage credits, sealed
- * Contraband pods, and the Signal Fragments that feed the Nemesis file — are
- * T-111b. A discovered POI is just a charted coordinate here; T-111b attaches
- * loot to it by `id`/`type`.
+ * T-111b loot (PRD §7.2): a boarded POI yields up to three things, each rolled
+ * INDEPENDENTLY off the seeded action rng in a fixed order —
+ *   1. SALVAGE   — real credits.
+ *   2. FRAGMENT  — a Signal Fragment, drawn from the type's fragment pool
+ *                  (nemesis.ts), added to the player's nemesisFile. The treasure.
+ *   3. CONTRABAND — a sealed pod: carrying it is a choice with patrol risk,
+ *                  surfaced as a derelict storylet (T-110), not taken here.
  */
+
+import { BEACON_FRAGMENT_POOL, DERELICT_FRAGMENT_POOL } from './nemesis.js';
 
 /** The two kinds of point of interest exploration can surface. */
 export type PoiType = 'beacon' | 'derelict';
@@ -60,5 +66,52 @@ export const POI_KINDS: Readonly<Record<PoiType, PoiKindDefinition>> = {
       'a shattered survey vessel',
     ],
     wireDiscovered: 'Player boarded {name} adrift off the lane.',
+  },
+};
+
+// --- Loot tables (T-111b, PRD §7.2) ---
+
+/** One component of a POI's loot, rolled independently. */
+export interface LootComponentChance {
+  /** Probability (0-1) this component is present on a given board. */
+  chance: number;
+}
+
+export interface SalvageLoot extends LootComponentChance {
+  /** Inclusive credit range; the exact amount is a seeded roll in the band. */
+  minCredits: number;
+  maxCredits: number;
+}
+
+export interface FragmentLoot extends LootComponentChance {
+  /** Signal Fragment ids this POI type can yield (nemesis.ts). Seeded pick. */
+  pool: readonly string[];
+}
+
+export interface PoiLootTable {
+  salvage: SalvageLoot;
+  /** A Signal Fragment — the treasure. Empty pool ⇒ this POI never yields one. */
+  fragment: FragmentLoot;
+  /** A sealed Contraband pod (the carrying choice). */
+  contraband: LootComponentChance;
+}
+
+// BALANCE: no canon loot tables exist (foundation had no exploration action).
+// Values authored for T-111b, flagged as deliberate divergence:
+//  - DERELICTS are the richer, riskier board: reliable salvage, a real chance
+//    at a fragment, and the only source of Contraband pods.
+//  - BEACONS are a transmitting signal source: thin salvage, no contraband, but
+//    a live shot at a fragment leaking off the carrier wave.
+// Chances are independent, so a lucky board can yield salvage AND a fragment.
+export const POI_LOOT: Readonly<Record<PoiType, PoiLootTable>> = {
+  beacon: {
+    salvage: { chance: 0.55, minCredits: 40, maxCredits: 180 },
+    fragment: { chance: 0.3, pool: BEACON_FRAGMENT_POOL },
+    contraband: { chance: 0 },
+  },
+  derelict: {
+    salvage: { chance: 0.8, minCredits: 120, maxCredits: 520 },
+    fragment: { chance: 0.35, pool: DERELICT_FRAGMENT_POOL },
+    contraband: { chance: 0.4 },
   },
 };

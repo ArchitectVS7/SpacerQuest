@@ -169,6 +169,35 @@ describe('GameStateSchema — accepts real serialized states', () => {
     expect(allTypes.has('ExplorationFailed') || allTypes.has('PoiDiscovered')).toBe(true);
   });
 
+  it('round-trips a populated nemesisFile (T-111b fragments survive validation)', () => {
+    const state = createInitialState(1);
+    state.player.nemesisFile.fragments = [
+      { fragmentId: 'frag-nemesis-01', source: 'wise-one', day: 3, decoded: true },
+      { fragmentId: 'frag-nemesis-02', source: 'derelict', day: 8, decoded: false },
+    ];
+    const raw = JSON.parse(serializeState(state)) as unknown;
+    const validated = validateGameState(raw);
+    expect(validated).toEqual(raw);
+    expect(validated.player.nemesisFile.fragments).toHaveLength(2);
+  });
+
+  it('rejects a nemesisFile fragment with a bad source enum', () => {
+    const obj = JSON.parse(serializeState(createInitialState(1))) as Record<string, unknown>;
+    const player = obj.player as Record<string, unknown>;
+    (player.nemesisFile as { fragments: unknown[] }).fragments = [
+      { fragmentId: 'x', source: 'not-a-source', day: 1, decoded: false },
+    ];
+    const result = safeValidateGameState(obj);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.some((i) =>
+          i.path.join('.').startsWith('player.nemesisFile.fragments'),
+        ),
+      ).toBe(true);
+    }
+  });
+
   it('accepts states across many seeds without rejecting a legitimate shape', () => {
     for (let seed = 1; seed <= 25; seed += 1) {
       const raw = JSON.parse(serializeState(playedState(seed, 30))) as unknown;

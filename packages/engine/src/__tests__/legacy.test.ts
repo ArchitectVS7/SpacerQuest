@@ -63,6 +63,12 @@ describe('T-108 · Death & legacy — full inheritance', () => {
     state.player.registry.matchCounts = { first_jump: 1 };
     state.player.registry.renownRank = 'CAPTAIN';
     state.flags = { 'signal.fragment.count': 2, 'guild.audited': true };
+    // A Nemesis file with a decoded and an undecoded fragment — knowledge the
+    // successor must inherit (T-111b, PRD §8.1).
+    state.player.nemesisFile.fragments = [
+      { fragmentId: 'frag-nemesis-01', source: 'wise-one', day: 3, decoded: true },
+      { fragmentId: 'frag-nemesis-02', source: 'derelict', day: 8, decoded: false },
+    ];
     state.storylets.completed = { 'port.sun3.guild-auditor': 1 };
     state.storylets.scheduled = [
       {
@@ -81,6 +87,7 @@ describe('T-108 · Death & legacy — full inheritance', () => {
     const matchCountsBefore = { ...state.player.registry.matchCounts };
     const rankBefore = state.player.registry.renownRank;
     const flagsBefore = { ...state.flags };
+    const nemesisBefore = structuredClone(state.player.nemesisFile);
     const completedBefore = { ...state.storylets.completed };
     const statsBefore = { ...state.player.stats };
     const dispositionsBefore = state.npcs.map((n) => ({ id: n.id, d: n.disposition }));
@@ -122,6 +129,8 @@ describe('T-108 · Death & legacy — full inheritance', () => {
     expect(next.player.registry.matchCounts).toEqual(matchCountsBefore);
     expect(next.player.registry.renownRank).toBe(rankBefore);
     expect(next.flags).toEqual(flagsBefore);
+    // Signal Fragments survive death intact — decoded state and all (T-111b).
+    expect(next.player.nemesisFile).toEqual(nemesisBefore);
     expect(next.storylets.completed).toEqual(completedBefore);
     expect(next.player.stats).toEqual(statsBefore);
     expect(next.player.debt).toBe(12000);

@@ -3,12 +3,79 @@ import {
   EXPLORATION_FUEL_COST,
   EXPLORATION_NAV_DC,
   POI_KINDS,
+  POI_LOOT,
   PoiType,
   Stat,
 } from '@spacerquest/content';
 import { DiscoveredPoi, GameEvent, GameState, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
+import { fragmentCount, grantFragment } from '../nemesis.js';
+
+/**
+ * Roll a boarded POI's loot table (T-111b, PRD §7.2). Each of the three loot
+ * components — salvage / fragment / contraband — is rolled INDEPENDENTLY off the
+ * action rng in a fixed order, so a given seed always yields the identical loot.
+ * Mutates `state` (credits, nemesisFile, the contraband flag) and pushes typed
+ * events. The `Contraband` pod is not stowed here: it arms the
+ * `derelict.sealed-pod` storylet (the carrying choice) via a flag.
+ */
+function resolveLoot(
+  state: GameState,
+  poi: DiscoveredPoi,
+  rng: SeededRng,
+  events: GameEvent[],
+): void {
+  const table = POI_LOOT[poi.type];
+
+  // 1. SALVAGE — real credits.
+  if (rng.next() < table.salvage.chance) {
+    const span = table.salvage.maxCredits - table.salvage.minCredits + 1;
+    const amount = table.salvage.minCredits + Math.floor(rng.next() * span);
+    state.player.credits += amount;
+    events.push({
+      type: 'SalvageRecovered',
+      day: state.day,
+      poiId: poi.id,
+      systemId: poi.systemId,
+      amount,
+    });
+  }
+
+  // 2. FRAGMENT — the treasure. Seeded pick from the type's pool; dedupe keeps
+  //    the count monotonic, so a repeat id emits nothing.
+  if (table.fragment.pool.length > 0 && rng.next() < table.fragment.chance) {
+    const pool = table.fragment.pool;
+    const fragmentId = pool[Math.floor(rng.next() * pool.length)];
+    const added = grantFragment(state.player.nemesisFile, fragmentId, poi.type, state.day);
+    if (added) {
+      events.push({
+        type: 'FragmentAcquired',
+        day: state.day,
+        fragmentId,
+        source: poi.type,
+        fragmentCount: fragmentCount(state.player.nemesisFile),
+        poiId: poi.id,
+      });
+      events.push({
+        type: 'WireEntry',
+        day: state.day,
+        message: `Player's Nemesis file logged a new Signal Fragment recovered off ${poi.name}.`,
+      });
+    }
+  }
+
+  // 3. CONTRABAND — a sealed pod. Arms the carry-choice storylet via a flag.
+  if (rng.next() < table.contraband.chance) {
+    state.flags['signal.contraband.pending'] = true;
+    events.push({
+      type: 'ContrabandFound',
+      day: state.day,
+      poiId: poi.id,
+      systemId: poi.systemId,
+    });
+  }
+}
 
 /** Deterministically pick one flavor name off the forked action rng. */
 function chooseName(rng: SeededRng, names: readonly string[]): string {
@@ -112,6 +179,10 @@ export function resolveExploration(
     day: nextState.day,
     message: kind.wireDiscovered.replace('{name}', name),
   });
+
+  // T-111b: attach loot to the fresh discovery. Continues on the SAME action rng
+  // so the loot is deterministic for the seed + action sequence.
+  resolveLoot(nextState, poi, rng, events);
 
   return { state: nextState, events };
 }

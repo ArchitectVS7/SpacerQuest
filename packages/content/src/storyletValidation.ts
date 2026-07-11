@@ -1,6 +1,7 @@
 import { CARGO_TYPES } from './cargo.js';
 import { NPC_PROFILES } from './cast.js';
 import { DEEDS } from './deeds.js';
+import { SIGNAL_FRAGMENTS } from './nemesis.js';
 import { Stat } from './stats.js';
 import { STAR_SYSTEMS } from './systems.js';
 import type {
@@ -125,6 +126,13 @@ function validateEffects(
       errors.push(`${path}.schedule[${index}].delayDays must be non-negative`);
     }
   });
+
+  if (effects.grantFragment !== undefined && !SIGNAL_FRAGMENTS[effects.grantFragment]) {
+    errors.push(`${path}.grantFragment is not a valid Signal Fragment ID`);
+  }
+  if (effects.decodeFragment !== undefined && !SIGNAL_FRAGMENTS[effects.decodeFragment]) {
+    errors.push(`${path}.decodeFragment is not a valid Signal Fragment ID`);
+  }
 }
 
 export function validateStorylets(storylets: readonly StoryletDefinition[]): string[] {
@@ -192,6 +200,29 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
     storylet.trigger.flags?.forEach((matcher, flagIndex) =>
       validateFlagMatcher(errors, `${path}.trigger.flags[${flagIndex}]`, matcher),
     );
+
+    const nemesis = storylet.trigger.nemesis;
+    if (nemesis) {
+      if (
+        nemesis.minFragments === undefined &&
+        nemesis.hasUndecoded === undefined &&
+        nemesis.hasUndecodedFragmentId === undefined
+      ) {
+        errors.push(`${path}.trigger.nemesis must define at least one condition`);
+      }
+      if (nemesis.minFragments !== undefined) {
+        validateInteger(errors, `${path}.trigger.nemesis.minFragments`, nemesis.minFragments);
+        if (nemesis.minFragments < 0) {
+          errors.push(`${path}.trigger.nemesis.minFragments must be non-negative`);
+        }
+      }
+      if (
+        nemesis.hasUndecodedFragmentId !== undefined &&
+        !SIGNAL_FRAGMENTS[nemesis.hasUndecodedFragmentId]
+      ) {
+        errors.push(`${path}.trigger.nemesis.hasUndecodedFragmentId is not a valid Signal Fragment ID`);
+      }
+    }
 
     storylet.choices.forEach((choice, choiceIndex) => {
       const choicePath = `${path}.choices[${choiceIndex}](${choice.id})`;
