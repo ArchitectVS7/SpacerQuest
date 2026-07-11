@@ -79,31 +79,43 @@ Deeds as content data: id, period-voice citation, trigger predicate over events/
 Data-driven storylets in content: trigger (system/cargo/NPC/era/day-range/flag conditions), prose, 2–4 choices with requirements (stat check, credits, die) and effects (credits, fuel, cargo, flags, disposition, deed progress, follow-up storylet scheduling). Engine surfaces eligible storylets as part of day state; choice resolution is a player action. Flags namespace on `GameState`.
 **Accept:** schema documented in content README; 3 demo storylets (one cargo-attached, one port, one chained pair) fully playable headless in tests; deterministic eligibility; malformed storylet data fails validation loudly at load, not silently mid-game.
 
-### T-111 · Exploration & Signal fragments — `status: TODO` · `coder: opus` · `after: T-110`
-Off-lane exploration action: seeded points of interest (beacons, derelicts) discoverable by nav checks, yielding salvage/contraband/Signal fragments per PRD §7.2. Fragments are knowledge items on a `NemesisFile` that persists through legacy (T-108). Wise One (Polaris-1) and Sage (Mizar-9) as storylet-driven fragment brokers.
-**Accept:** discovery deterministic per seed; fragment count monotonically grows a decoded-lore index; fragments survive succession test; at least one derelict storylet uses the T-110 engine.
+### T-111a · Exploration Action — `status: TODO` · `coder: opus` · `after: T-110`
+Add off-lane `Explore` action to `day.ts` and `types.ts` (consumes die + nav check), surfacing seeded points of interest — beacons and derelicts — per PRD §7.2.
+**Accept:** discovery deterministic per seed; nav checks respect PILOT modifier; both POI types (beacon, derelict) reachable in a seed sweep.
 
-### T-112 · Save versioning — `status: TODO` · `coder: opus` · `after: T-108, T-110`
-Versioned save envelope `{version, state}` with an explicit migration registry (v1→v2→…), load-time validation, and a corrupt-save error type. This is the Steam Cloud substrate.
-**Accept:** loading a fixture v1 save through a dummy v2 migration works; corrupt JSON and wrong-version-no-migration both fail with typed errors; round-trip property test over a 50-day sim state.
+### T-111b · Signal Fragments & Loot Tables — `status: TODO` · `coder: opus` · `after: T-111a`
+Create loot tables for POIs (salvage, contraband, Signal fragment) per PRD §7.2. Fragments are knowledge items on a `nemesisFile` on `PlayerState` that persists through legacy (T-108, per the `types.ts:505` charts-inheritance socket) and feeds the decoded-lore index. Wire in the Wise One (Polaris-1) and Sage (Mizar-9) as storylet-driven fragment brokers (sell/decode).
+**Accept:** fragment count monotonically grows a decoded-lore index; fragments survive succession test; at least one derelict storylet uses the T-110 engine; a Wise One or Sage storylet grants/decodes a fragment.
+
+### T-112a · State Validation Schemas — `status: TODO` · `coder: opus` · `after: T-108, T-110`
+Write Zod schemas for the entire `GameState` to provide load-time validation.
+**Accept:** corrupt JSON fails with typed Zod errors.
+
+### T-112b · Save Envelope & Migrations — `status: TODO` · `coder: opus` · `after: T-112a`
+Versioned save envelope `{version, state}` with an explicit migration registry (v1→v2→…). This is the Steam Cloud substrate.
+**Accept:** loading a fixture v1 save through a dummy v2 migration works; wrong-version-no-migration fails with typed errors; round-trip property test over a 50-day sim state.
 
 ### T-114 · Post-audit repairs (2026-07-10 adversarial review) — `status: DONE` · `coder: opus` · `after: —`
 Findings from the audit of T-002/T-101/T-102/T-103/T-105/T-109. (a) `player.score`/`isConqueror` are vestigial — score is never incremented, yet Star-Buster, Arch-Angel, and Astraxial Hull purchases gate on `score >= 150`/Conqueror, making them unreachable in real play (tests mask it by setting score manually); remap those gates to Renown ranks per PRD §8.2 and remove or explicitly deprecate the fields. (b) Convert the throws for trade/travel/shipyard-during-encounter in `day.ts`/`travel.ts` into typed fail events (player-possible acts use the event channel; throws are for malformed actions). (c) Dedupe `rankForDeedCount` (engine/deeds.ts) vs `renownRankForDeedCount` (engine/state.ts). (d) `evaluateDeeds` rescans the full unbounded eventLog three times per day — cache per-deed match counts in the registry before long sims make it quadratic.
 **Accept:** all special equipment reachable via renown progression in a sim run (no test sets `score` directly); no `player.score` reads outside save-compat; encounter-blocked actions emit events, not throws (sim policies updated); one rank function; deed evaluation cost independent of eventLog length (test with a 500-day log).
 
-### T-113 · Tour One frame — `status: TODO` · `coder: opus` · `after: T-107, T-109, T-110`
-The 30-day arc as engine-level structure: guild pressure storylets at days 10/20/25, day-30 resolution (debt cleared → Deed + veteran unlock flag; not cleared → guild consequence branch, game continues indebted per PRD), and the day-30 Wise One hook storylet that opens the Signal.
-**Accept:** scripted policy clears debt by day 30 in sim and hits the resolution events; failing policy hits the consequence branch; both paths leave the game playable (no soft-locks — assert dice/actions remain available in 10 post-resolution days).
+### T-113a · Guild Pressure Storylets — `status: TODO` · `coder: opus` · `after: T-107, T-109, T-110`
+Author the guild pressure storylets (Days 10, 20, 25) and the Day-30 Wise One (Polaris-1) hook storylet that opens the Signal (per PRD §5.1) in content.
+**Accept:** storylets load cleanly; triggered deterministically on specific days in sim; the Wise One hook fires at day 30 and offers the first Signal fragment.
+
+### T-113b · Tour One Resolution — `status: TODO` · `coder: opus` · `after: T-113a`
+Implement the Day-30 resolution check: debt cleared → Deed + veteran-unlock flag; not cleared → guild consequence branch, game continues indebted per PRD. Force the storylet trigger on the cleared-vs-unpaid state.
+**Accept:** scripted policy clears debt by day 30 in sim and hits the resolution events (Deed + veteran-unlock flag set); failing policy hits the consequence branch; both paths leave the game playable — no soft-locks (assert dice/actions remain available across 10 post-resolution days).
 
 ---
 
 ## M2 — Test harnesses
 
-### T-201 · Policy bots that actually play — `status: TODO` · `coder: opus` · `after: T-113`
+### T-201 · Policy bots that actually play — `status: TODO` · `coder: opus` · `after: T-113b`
 Upgrade sim policies to competent play: trader (route+fuel planning), fighter (upgrade-then-hunt), explorer (fragment chaser). These are the balance instruments.
 **Accept:** trader clears Tour One debt ≥60% of 50 seeds; each policy's 300-day stats report renders; no policy triggers a poverty-trap (assert: never 5 consecutive days with zero legal income-producing action).
 
-### T-202 · UGT adapter — `status: TODO` · `coder: opus` · `after: T-113`
+### T-202 · UGT adapter — `status: TODO` · `coder: opus` · `after: T-113b`
 A thin protocol layer in sim exposing state-summary + legal-actions + apply-action over stdio/WebSocket, matching what the UGT harness (sibling repo) drives. Document the message schema.
 **Accept:** protocol doc; an echo test driving a full day through the adapter; deterministic replay from a logged session.
 
@@ -151,11 +163,11 @@ Storylet presentation (prose panel in-cockpit, choices with visible requirements
 WebAudio manager: UI relays/keys, drive hum bed, jump/combat/dice one-shots, wire radio crackle, dawn sting. All synthesized or CC0, credited. Master/SFX/ambient sliders, default tasteful, persisted.
 **Accept:** audio map documented; mute persists across reload; no autoplay-policy console errors on first interaction; sliders work.
 
-### T-311 · Onboarding & Tour One presentation — `status: TODO` · `coder: opus` · `after: T-113, T-303, T-305`
+### T-311 · Onboarding & Tour One presentation — `status: TODO` · `coder: opus` · `after: T-113b, T-303, T-305`
 Tour One's teaching layer: contextual first-time prompts (dawn roll, first sign, first jump, first encounter), guild letters as storylet presentation, day-30 resolution ceremony screen. No modal tutorial walls.
 **Accept:** Playwright: fresh seed → first delivery completed guided only by visible affordances (assert prompts fired once each, dismissed state persists); resolution screen reachable both branches.
 
-### T-312 · Settings, saves & new-game UX — `status: TODO` · `coder: opus` · `after: T-112, T-301`
+### T-312 · Settings, saves & new-game UX — `status: TODO` · `coder: opus` · `after: T-112b, T-301`
 Save slots (3) + autosave-on-dusk, seed entry/display for new game, settings (audio, CRT effects, reduced motion, text size), delete-save confirm.
 **Accept:** Playwright: save, mutate, load restores exactly (assert via displayed state); autosave survives hard reload mid-career; deleting asks first.
 
@@ -179,7 +191,7 @@ Personal arcs for Silk Dagger, Doc Salvage, Wild Card, Rattlesnake, Stellar Monk
 Four-faction reputation on `GameState` (actions move it: patrol tribute, smuggling, port deals), one 3-step questline per alliance expressing its playstyle (League patrol writ, Dragons duel circuit entry, Confed port stake, Rebel smuggling lane), cross-faction consequences.
 **Accept:** rep moves from organic play in sim (assert nonzero after 100 trader days); each questline completable; joining one measurably shifts the other three dispositions; all content as data.
 
-### T-405 · The Nemesis Signal arc — `status: TODO` · `coder: fable` · `after: T-111, T-403`
+### T-405 · The Nemesis Signal arc — `status: TODO` · `coder: fable` · `after: T-111b, T-403`
 The career mystery: 12 fragments authored (derelict logs, Sage decodings, NPC-held pieces), the decoded-lore index text, and the endgame: the Nemesis crossing storylet chain — the everything-on-the-table gamble and the v1 ending screen (Andromeda itself stays sealed for the expansion).
 **Accept:** full arc completable in a scripted long sim; fragments gated across ≥3 acquisition modes; crossing requires the PRD's stake (ship + bank commitment); ending reachable and returns to menu cleanly.
 
