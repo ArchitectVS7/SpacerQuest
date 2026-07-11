@@ -236,4 +236,158 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // --- Tour One guild-pressure beats (T-113a) ---
+  // The 30-day debt arc (PRD §5.1) surfaces as three timed wire messages from
+  // the Merchant Guild of Sun-3: a first reminder (day 10), the marker coming
+  // due (day 20), and a final notice (day 25). These author the PRESSURE only;
+  // the day-30 debt-cleared/unpaid resolution and veteran-unlock branching is
+  // T-113b. Each beat is one decision that records the captain's stance in a
+  // flag. Not system-gated: a Guild wire follows you wherever you dock.
+  {
+    id: 'guild.pressure.tour-one.day10',
+    title: 'The Ledger Reminds You',
+    prose:
+      'A Guild wire blinks onto the bridge feed: a debt slate, your name, and a countdown. Twenty days left on the marker. The clerk who sent it did not sign it.',
+    repeat: 'never',
+    trigger: {
+      eras: ['TOUR_ONE'],
+      day: { equals: 10 },
+    },
+    choices: [
+      {
+        id: 'acknowledge',
+        label: 'Acknowledge the notice',
+        prose: 'Stamp the receipt so the ledger knows a spacer, not a deadbeat, is reading it.',
+        effects: {
+          flags: [{ name: 'guild.pressure.tour-one.day10.acknowledged', value: true }],
+        },
+      },
+      {
+        id: 'dismiss',
+        label: 'Flick it off the feed',
+        prose: 'Clear the wire and keep the drives warm. The countdown runs either way.',
+        effects: {
+          flags: [{ name: 'guild.pressure.tour-one.day10.dismissed', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'guild.pressure.tour-one.day20',
+    title: 'The Marker Comes Due',
+    prose:
+      'The Guild wire is no longer polite. Ten days on the marker, it reads, and the interest line has grown a second digit. A collector name is attached this time.',
+    repeat: 'never',
+    trigger: {
+      eras: ['TOUR_ONE'],
+      day: { equals: 20 },
+    },
+    choices: [
+      {
+        id: 'reassure',
+        label: 'Wire back a promise',
+        prose: 'Tell the collector the coin is coming and mean it enough to be believed.',
+        effects: {
+          flags: [{ name: 'guild.pressure.tour-one.day20.reassured', value: true }],
+        },
+      },
+      {
+        id: 'stonewall',
+        label: 'Say nothing',
+        prose: 'Let the wire sit unanswered. Silence is a kind of answer the Guild files anyway.',
+        effects: {
+          flags: [{ name: 'guild.pressure.tour-one.day20.stonewalled', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'guild.pressure.tour-one.day25',
+    title: 'Final Notice',
+    prose:
+      'Five days. The wire arrives stamped in Guild red, and the language has stopped pretending: pay the marker by day thirty, or the name comes off the manifest board for good.',
+    repeat: 'never',
+    trigger: {
+      eras: ['TOUR_ONE'],
+      day: { equals: 25 },
+    },
+    choices: [
+      {
+        id: 'brace',
+        label: 'Log it and run the numbers',
+        prose: 'Read the figure twice, close the wire, and start counting what the hold can still earn.',
+        effects: {
+          flags: [{ name: 'guild.pressure.tour-one.day25.braced', value: true }],
+        },
+      },
+      {
+        id: 'defy',
+        label: 'Tell them to wait',
+        prose: 'Fire back that the marker gets paid on your schedule. Bravado is cheap; the Guild is not.',
+        effects: {
+          flags: [{ name: 'guild.pressure.tour-one.day25.defied', value: true }],
+        },
+      },
+    ],
+  },
+
+  // --- Day-30 Wise One of Polaris-1 hook (T-113a) ---
+  // The decisive Day-30 beat (PRD §5.1): at Polaris-1 (system 17) the Wise One
+  // sells the captain the first fragment of the Nemesis Signal — the hook that
+  // opens the veteran game. There is no dedicated Wise One NPC in the cast
+  // (only the trader "Penny Wise"), so this gates on day + Polaris-1, not npc.
+  //
+  // The fragment is represented here as the flag `signal.fragment.wise-one-01`.
+  // T-111b (nemesisFile) and T-405 will formalize this flag into the decoded-
+  // lore / knowledge-item index; until then the flag IS the fragment grant.
+  // Resolution of the debt (cleared vs unpaid) and the veteran-unlock flag are
+  // T-113b, not authored here.
+  {
+    id: 'wise-one.polaris.signal-hook',
+    title: 'The Wise One of Polaris-1',
+    prose:
+      'The Wise One keeps a cold cabin at the edge of Polaris-1 and a longer memory than the Guild. When you dock, the old spacer is already waiting with a data sliver held between two fingers. "A signal," they say, "from the wrong side of the black hole. You will want to hear the rest of it. That costs."',
+    repeat: 'never',
+    trigger: {
+      eras: ['TOUR_ONE'],
+      systemIds: [17],
+      day: { equals: 30 },
+    },
+    choices: [
+      {
+        id: 'buy-fragment',
+        label: 'Buy the fragment',
+        prose:
+          'Count out the coin and take the sliver. The first fragment of the Nemesis Signal is yours, and it does not leave your head easily.',
+        requirements: { credits: { gte: 500 } },
+        effects: {
+          credits: -500,
+          flags: [{ name: 'signal.fragment.wise-one-01', value: true }],
+        },
+      },
+      {
+        id: 'haggle',
+        label: 'Talk the price down',
+        prose:
+          'Argue that a nobody with a fresh debt is no mark. The Wise One almost smiles and halves the figure — but only almost.',
+        requirements: { credits: { gte: 250 }, statCheck: { stat: Stat.GUILE, dc: 13 } },
+        successEffects: {
+          credits: -250,
+          flags: [{ name: 'signal.fragment.wise-one-01', value: true }],
+        },
+        failureEffects: {
+          flags: [{ name: 'wise-one.polaris.hook_rebuffed', value: true }],
+        },
+      },
+      {
+        id: 'walk-away',
+        label: 'Walk away',
+        prose: 'Tell the old spacer the debt comes first. The sliver goes back in a pocket. "It will keep," they say. "It has kept this long."',
+        effects: {
+          flags: [{ name: 'wise-one.polaris.hook_declined', value: true }],
+        },
+      },
+    ],
+  },
 ] as const);

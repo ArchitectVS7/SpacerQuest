@@ -24,6 +24,10 @@ describe('storylet content validation', () => {
       'port.sun3.guild-auditor',
       'chain.doc-salvage.distress-ping',
       'chain.doc-salvage.follow-up',
+      'guild.pressure.tour-one.day10',
+      'guild.pressure.tour-one.day20',
+      'guild.pressure.tour-one.day25',
+      'wise-one.polaris.signal-hook',
     ]);
   });
 
@@ -296,5 +300,79 @@ describe('storylet engine', () => {
     expect(restored.flags).toEqual(state.flags);
     expect(restored.storylets).toEqual(state.storylets);
     expect(restored.npcs[0].disposition).toBe(-2);
+  });
+});
+
+describe('T-113a Tour One guild pressure and Wise One hook', () => {
+  it('surfaces each guild beat and the Wise One hook only on its target day', () => {
+    // Guild wires follow the captain anywhere, so location is irrelevant for the
+    // three pressure beats; the Wise One hook is gated to Polaris-1 (system 17).
+    const beats: Array<{ day: number; systemId: number; id: string }> = [
+      { day: 10, systemId: 2, id: 'guild.pressure.tour-one.day10' },
+      { day: 20, systemId: 2, id: 'guild.pressure.tour-one.day20' },
+      { day: 25, systemId: 2, id: 'guild.pressure.tour-one.day25' },
+      { day: 30, systemId: 17, id: 'wise-one.polaris.signal-hook' },
+    ];
+
+    for (const beat of beats) {
+      const state = readyState();
+      state.day = beat.day;
+      state.player.currentSystemId = beat.systemId;
+
+      const eligible = eligibleStorylets(state).map((offer) => offer.storyletId);
+      expect(eligible).toContain(beat.id);
+
+      // Not eligible the day before or the day after — day-triggered, deterministic.
+      const early = readyState();
+      early.day = beat.day - 1;
+      early.player.currentSystemId = beat.systemId;
+      expect(eligibleStorylets(early).map((o) => o.storyletId)).not.toContain(beat.id);
+
+      const late = readyState();
+      late.day = beat.day + 1;
+      late.player.currentSystemId = beat.systemId;
+      expect(eligibleStorylets(late).map((o) => o.storyletId)).not.toContain(beat.id);
+    }
+  });
+
+  it('gates the Wise One hook to Polaris-1', () => {
+    const away = readyState();
+    away.day = 30;
+    away.player.currentSystemId = 1; // Sun-3, not Polaris-1
+    expect(eligibleStorylets(away).map((o) => o.storyletId)).not.toContain(
+      'wise-one.polaris.signal-hook',
+    );
+  });
+
+  it('grants the first Signal fragment flag when the hook is bought at Polaris-1', () => {
+    const state = readyState();
+    state.day = 30;
+    state.player.currentSystemId = 17;
+    state.player.credits = 5000;
+
+    const refreshed = refreshAvailableStorylets(state);
+    expect(refreshed.state.storylets.available.map((o) => o.storyletId)).toContain(
+      'wise-one.polaris.signal-hook',
+    );
+
+    const resolved = resolveStoryletChoice(
+      refreshed.state,
+      {
+        type: 'Storylet',
+        storyletId: 'wise-one.polaris.signal-hook',
+        choiceId: 'buy-fragment',
+      },
+      new SeededRng(1),
+    );
+
+    expect(resolved.state.flags['signal.fragment.wise-one-01']).toBe(true);
+    expect(resolved.state.player.credits).toBe(4500);
+    expect(resolved.events).toContainEqual(
+      expect.objectContaining({
+        type: 'StoryletChoiceResolved',
+        storyletId: 'wise-one.polaris.signal-hook',
+        choiceId: 'buy-fragment',
+      }),
+    );
   });
 });
