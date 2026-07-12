@@ -295,6 +295,53 @@ describe('GameStateSchema — rejects corrupt states with typed ZodErrors', () =
   });
 });
 
+describe('GameStateSchema — nested schema-drift guard (T-1002)', () => {
+  it('rejects an unknown nested field under player.* loudly instead of silently stripping it', () => {
+    // `player.reputation` is the verified drift field (T-1503 faction rep). Before
+    // T-1002 it round-tripped to `undefined` (silently stripped); now `.strict()`
+    // must make it a loud ZodError with a path under `player`.
+    const obj = JSON.parse(serializeState(createInitialState(1))) as Record<string, unknown>;
+    (obj.player as Record<string, unknown>).reputation = 5;
+
+    const result = safeValidateGameState(obj);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(z.ZodError);
+      expect(result.error.issues.some((i) => i.path.join('.').startsWith('player'))).toBe(true);
+    }
+  });
+
+  it('rejects an unknown DEEPLY-nested field (player.ship.*) — the strict guard is recursive', () => {
+    const obj = JSON.parse(serializeState(createInitialState(1))) as Record<string, unknown>;
+    const ship = (obj.player as Record<string, unknown>).ship as Record<string, unknown>;
+    ship.reputation = 7;
+
+    const result = safeValidateGameState(obj);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path.join('.').startsWith('player.ship'))).toBe(
+        true,
+      );
+    }
+  });
+
+  it('rejects an unknown TOP-LEVEL field loudly (root schema is strict too)', () => {
+    const obj = JSON.parse(serializeState(createInitialState(1))) as Record<string, unknown>;
+    obj.somethingNew = true;
+
+    const result = safeValidateGameState(obj);
+    expect(result.success).toBe(false);
+  });
+
+  it('still accepts a valid state — strict did not over-reject a legitimate shape', () => {
+    // Guards against the failure mode where enabling strict rejects real states
+    // because a schema entry was missed. A clean initial state must round-trip.
+    const raw = JSON.parse(serializeState(createInitialState(1))) as unknown;
+    const validated = validateGameState(raw);
+    expect(validated).toEqual(raw);
+  });
+});
+
 describe('PlayerActionSchema — companion validator', () => {
   it('accepts a valid action', () => {
     expect(validatePlayerAction({ type: 'Travel', destinationId: 3 })).toEqual({

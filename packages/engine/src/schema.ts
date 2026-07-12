@@ -1,5 +1,30 @@
 import { z } from 'zod';
-import type { GameState, PlayerAction } from './types.js';
+import type {
+  GameState,
+  PlayerAction,
+  PlayerState,
+  ShipState,
+  ComponentState,
+  NpcState,
+  NpcAction,
+  MarketState,
+  CargoContract,
+  ChartsState,
+  DiscoveredPoi,
+  LegacyState,
+  NemesisFileState,
+  SignalFragmentRecord,
+  DeedRegistryState,
+  EarnedDeedState,
+  StoryletState,
+  StoryletScheduleState,
+  EncounterState,
+  EncounterInterceptorState,
+  EraEventState,
+  DawnHand,
+  PendingTravelState,
+  CheckResult,
+} from './types.js';
 
 /**
  * T-112a — Load-time validation schemas for the entire {@link GameState}.
@@ -17,8 +42,15 @@ import type { GameState, PlayerAction } from './types.js';
  * legitimately produce. Where a nested structure is content-shaped and its exact
  * form is owned by the content package (e.g. storylet choice `requirements`), it
  * is modelled loosely on purpose — see the inline comments — rather than risk
- * rejecting a valid save. Zod objects strip unknown keys by default, so
- * forward-compatible extra fields never cause a rejection either.
+ * rejecting a valid save.
+ *
+ * T-1002 — DRIFT PROTECTION: every ENGINE-owned state container is `.strict()`,
+ * so an unknown nested key fails LOUDLY on load instead of being silently
+ * stripped (the old default, which quietly dropped `player.reputation` on a
+ * round-trip). Save forward-compat is now owned by the versioned envelope +
+ * migration registry (save.ts), not by silent key-dropping. Content-shaped
+ * structures (storylet requirements/offers) remain in Zod's default strip mode —
+ * content owns their shape; see the "STRICT BOUNDARY" comment below.
  */
 
 // ---------------------------------------------------------------------------
@@ -116,112 +148,148 @@ const StanceSchema = z.enum(['run', 'talk', 'fight']);
 // ---------------------------------------------------------------------------
 
 /** StatBlock = Record<Stat, number> — all five keys are always serialized. */
-const StatBlockSchema = z.object({
-  PILOT: z.number(),
-  GUNS: z.number(),
-  TRADE: z.number(),
-  GRIT: z.number(),
-  GUILE: z.number(),
-});
+const StatBlockSchema = z
+  .object({
+    PILOT: z.number(),
+    GUNS: z.number(),
+    TRADE: z.number(),
+    GRIT: z.number(),
+    GUILE: z.number(),
+  })
+  .strict();
 
-const CheckResultSchema = z.object({
-  die: z.number(),
-  modifier: z.number(),
-  total: z.number(),
-  dc: z.number(),
-  success: z.boolean(),
-  margin: z.number(),
-  nat20: z.boolean(),
-  nat1: z.boolean(),
-});
+const CheckResultSchema = z
+  .object({
+    die: z.number(),
+    modifier: z.number(),
+    total: z.number(),
+    dc: z.number(),
+    success: z.boolean(),
+    margin: z.number(),
+    nat20: z.boolean(),
+    nat1: z.boolean(),
+  })
+  .strict();
 
-const DawnHandSchema = z.object({
-  dice: z.array(z.number()),
-  spent: z.array(z.boolean()),
-});
+const DawnHandSchema = z
+  .object({
+    dice: z.array(z.number()),
+    spent: z.array(z.boolean()),
+  })
+  .strict();
 
-const PendingTravelStateSchema = z.object({
-  origin: z.number(),
-  destination: z.number(),
-  fuelUsed: z.number(),
-});
+const PendingTravelStateSchema = z
+  .object({
+    origin: z.number(),
+    destination: z.number(),
+    fuelUsed: z.number(),
+  })
+  .strict();
 
-const ComponentStateSchema = z.object({
-  strength: z.number(),
-  condition: z.number(),
-});
+const ComponentStateSchema = z
+  .object({
+    strength: z.number(),
+    condition: z.number(),
+  })
+  .strict();
 
-const ShipStateSchema = z.object({
-  fuel: z.number(),
-  maxFuel: z.number(),
-  cargoPods: z.number(),
-  hull: ComponentStateSchema,
-  drives: ComponentStateSchema,
-  weapons: ComponentStateSchema,
-  shields: ComponentStateSchema,
-  navigation: ComponentStateSchema,
-  lifeSupport: ComponentStateSchema,
-  robotics: ComponentStateSchema,
-  cabin: ComponentStateSchema,
-  hasTransWarpDrive: z.boolean().optional(),
-  hasCloaker: z.boolean().optional(),
-  hasAutoRepair: z.boolean().optional(),
-  hasStarBuster: z.boolean().optional(),
-  hasArchAngel: z.boolean().optional(),
-  isAstraxialHull: z.boolean().optional(),
-  hasTitaniumHull: z.boolean().optional(),
-});
+const ShipStateSchema = z
+  .object({
+    fuel: z.number(),
+    maxFuel: z.number(),
+    cargoPods: z.number(),
+    hull: ComponentStateSchema,
+    drives: ComponentStateSchema,
+    weapons: ComponentStateSchema,
+    shields: ComponentStateSchema,
+    navigation: ComponentStateSchema,
+    lifeSupport: ComponentStateSchema,
+    robotics: ComponentStateSchema,
+    cabin: ComponentStateSchema,
+    hasTransWarpDrive: z.boolean().optional(),
+    hasCloaker: z.boolean().optional(),
+    hasAutoRepair: z.boolean().optional(),
+    hasStarBuster: z.boolean().optional(),
+    hasArchAngel: z.boolean().optional(),
+    isAstraxialHull: z.boolean().optional(),
+    hasTitaniumHull: z.boolean().optional(),
+  })
+  .strict();
 
-const CargoContractSchema = z.object({
-  destination: z.number(),
-  cargoType: z.number(),
-  payment: z.number(),
-  pods: z.number(),
-  haggled: z.boolean().optional(),
-});
+const CargoContractSchema = z
+  .object({
+    destination: z.number(),
+    cargoType: z.number(),
+    payment: z.number(),
+    pods: z.number(),
+    haggled: z.boolean().optional(),
+  })
+  .strict();
 
-const DiscoveredPoiSchema = z.object({
-  id: z.string(),
-  type: PoiTypeSchema,
-  systemId: z.number(),
-  name: z.string(),
-  day: z.number(),
-});
+const DiscoveredPoiSchema = z
+  .object({
+    id: z.string(),
+    type: PoiTypeSchema,
+    systemId: z.number(),
+    name: z.string(),
+    day: z.number(),
+  })
+  .strict();
 
-const ChartsStateSchema = z.object({
-  visitedSystemIds: z.array(z.number()),
-  discoveredPois: z.array(DiscoveredPoiSchema),
-});
+const ChartsStateSchema = z
+  .object({
+    visitedSystemIds: z.array(z.number()),
+    discoveredPois: z.array(DiscoveredPoiSchema),
+  })
+  .strict();
 
-const SignalFragmentRecordSchema = z.object({
-  fragmentId: z.string(),
-  source: z.enum(['derelict', 'beacon', 'wise-one', 'sage', 'npc']),
-  day: z.number(),
-  decoded: z.boolean(),
-});
+const SignalFragmentRecordSchema = z
+  .object({
+    fragmentId: z.string(),
+    source: z.enum(['derelict', 'beacon', 'wise-one', 'sage', 'npc']),
+    day: z.number(),
+    decoded: z.boolean(),
+  })
+  .strict();
 
-const NemesisFileStateSchema = z.object({
-  fragments: z.array(SignalFragmentRecordSchema),
-});
+const NemesisFileStateSchema = z
+  .object({
+    fragments: z.array(SignalFragmentRecordSchema),
+  })
+  .strict();
 
-const LegacyStateSchema = z.object({
-  successionCount: z.number(),
-});
+const LegacyStateSchema = z
+  .object({
+    successionCount: z.number(),
+  })
+  .strict();
 
-const EarnedDeedStateSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  citation: z.string(),
-  day: z.number(),
-  eventIndex: z.number(),
-});
+const EarnedDeedStateSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    citation: z.string(),
+    day: z.number(),
+    eventIndex: z.number(),
+  })
+  .strict();
 
-const DeedRegistryStateSchema = z.object({
-  earned: z.array(EarnedDeedStateSchema),
-  renownRank: RenownRankIdSchema,
-  matchCounts: z.record(z.string(), z.number()),
-});
+const DeedRegistryStateSchema = z
+  .object({
+    earned: z.array(EarnedDeedStateSchema),
+    renownRank: RenownRankIdSchema,
+    matchCounts: z.record(z.string(), z.number()),
+  })
+  .strict();
 
+// T-1002 STRICT BOUNDARY: the schemas from here through `StoryletOfferSchema`
+// mirror CONTENT-owned shapes (storylet choice requirements / offers), not the
+// engine's own state containers. Content authors the exact form and may add
+// fields the engine schema doesn't model, so these deliberately stay in Zod's
+// default STRIP mode — `.strict()` here would reject legitimate content-shaped
+// saves. Every ENGINE-owned state container (Player/Ship/Npc/… above and below)
+// is `.strict()` so unknown nested keys fail loudly instead of being silently
+// dropped; this content boundary is the deliberate exception.
 // NumberMatcher (content) — used inside storylet choice requirements.
 const NumberMatcherSchema = z.object({
   equals: z.number().optional(),
@@ -258,92 +326,110 @@ const StoryletOfferSchema = z.object({
   scheduled: z.boolean(),
 });
 
-const StoryletScheduleStateSchema = z.object({
-  storyletId: z.string(),
-  dueDay: z.number(),
-  sourceStoryletId: z.string(),
-  sourceChoiceId: z.string(),
-});
+const StoryletScheduleStateSchema = z
+  .object({
+    storyletId: z.string(),
+    dueDay: z.number(),
+    sourceStoryletId: z.string(),
+    sourceChoiceId: z.string(),
+  })
+  .strict();
 
-const StoryletStateSchema = z.object({
-  available: z.array(StoryletOfferSchema),
-  completed: z.record(z.string(), z.number()),
-  scheduled: z.array(StoryletScheduleStateSchema),
-  offeredToday: z.array(z.string()),
-});
+const StoryletStateSchema = z
+  .object({
+    available: z.array(StoryletOfferSchema),
+    completed: z.record(z.string(), z.number()),
+    scheduled: z.array(StoryletScheduleStateSchema),
+    offeredToday: z.array(z.string()),
+  })
+  .strict();
 
-const EraEventStateSchema = z.object({
-  defId: z.string(),
-  startedDay: z.number(),
-  endsDay: z.number(),
-  affectedSystemIds: z.array(z.number()),
-});
+const EraEventStateSchema = z
+  .object({
+    defId: z.string(),
+    startedDay: z.number(),
+    endsDay: z.number(),
+    affectedSystemIds: z.array(z.number()),
+  })
+  .strict();
 
-const EncounterInterceptorStateSchema = z.object({
-  id: z.string(),
-  source: z.enum(['named', 'anonymous']),
-  name: z.string(),
-  shipName: z.string(),
-  shipClass: z.string().optional(),
-  homeSystem: z.string().optional(),
-  kind: AnonymousInterceptorKindSchema.optional(),
-  rosterIndex: z.number().optional(),
-  profileId: z.string().optional(),
-  stats: StatBlockSchema,
-  tier: TierSchema,
-  flaw: z.string().optional(),
-  flawDc: z.number().optional(),
-});
+const EncounterInterceptorStateSchema = z
+  .object({
+    id: z.string(),
+    source: z.enum(['named', 'anonymous']),
+    name: z.string(),
+    shipName: z.string(),
+    shipClass: z.string().optional(),
+    homeSystem: z.string().optional(),
+    kind: AnonymousInterceptorKindSchema.optional(),
+    rosterIndex: z.number().optional(),
+    profileId: z.string().optional(),
+    stats: StatBlockSchema,
+    tier: TierSchema,
+    flaw: z.string().optional(),
+    flawDc: z.number().optional(),
+  })
+  .strict();
 
-const EncounterStateSchema = z.object({
-  id: z.string(),
-  pendingTravel: PendingTravelStateSchema,
-  interceptor: EncounterInterceptorStateSchema,
-  routeDangerLevel: TierSchema,
-  routeDangerChance: z.number(),
-  encounterRoll: z.number(),
-  round: z.number(),
-  enemyHull: z.number(),
-});
+const EncounterStateSchema = z
+  .object({
+    id: z.string(),
+    pendingTravel: PendingTravelStateSchema,
+    interceptor: EncounterInterceptorStateSchema,
+    routeDangerLevel: TierSchema,
+    routeDangerChance: z.number(),
+    encounterRoll: z.number(),
+    round: z.number(),
+    enemyHull: z.number(),
+  })
+  .strict();
 
-const NpcActionSchema = z.object({
-  type: z.enum(['Trade', 'Travel', 'Combat', 'Patrol', 'Socialize', 'Idle', 'FlawOverride']),
-  details: z.string(),
-});
+const NpcActionSchema = z
+  .object({
+    type: z.enum(['Trade', 'Travel', 'Combat', 'Patrol', 'Socialize', 'Idle', 'FlawOverride']),
+    details: z.string(),
+  })
+  .strict();
 
-const NpcStateSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  profileId: z.string(),
-  currentSystemId: z.number(),
-  credits: z.number(),
-  fuel: z.number(),
-  disposition: z.number(),
-  lastAction: NpcActionSchema.optional(),
-});
+const NpcStateSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    profileId: z.string(),
+    currentSystemId: z.number(),
+    credits: z.number(),
+    fuel: z.number(),
+    disposition: z.number(),
+    lastAction: NpcActionSchema.optional(),
+  })
+  .strict();
 
-const MarketStateSchema = z.object({
-  manifestBoard: z.array(CargoContractSchema),
-  localFuelPrice: z.number(),
-  npcClaims: z.number(),
-});
+const MarketStateSchema = z
+  .object({
+    manifestBoard: z.array(CargoContractSchema),
+    localFuelPrice: z.number(),
+    npcClaims: z.number(),
+  })
+  .strict();
 
-const PlayerStateSchema = z.object({
-  credits: z.number(),
-  debt: z.number(),
-  debtDueDay: z.number(),
-  stats: StatBlockSchema,
-  tier: TierSchema,
-  currentSystemId: z.number(),
-  dawnHand: DawnHandSchema.optional(),
-  ship: ShipStateSchema,
-  registry: DeedRegistryStateSchema,
-  charts: ChartsStateSchema,
-  nemesisFile: NemesisFileStateSchema,
-  legacy: LegacyStateSchema,
-  // `activeContract?: CargoContract | null` — absent, null, or a contract.
-  activeContract: CargoContractSchema.nullable().optional(),
-});
+const PlayerStateSchema = z
+  .object({
+    credits: z.number(),
+    debt: z.number(),
+    debtDueDay: z.number(),
+    stats: StatBlockSchema,
+    tier: TierSchema,
+    currentSystemId: z.number(),
+    dawnHand: DawnHandSchema.optional(),
+    ship: ShipStateSchema,
+    registry: DeedRegistryStateSchema,
+    charts: ChartsStateSchema,
+    nemesisFile: NemesisFileStateSchema,
+    legacy: LegacyStateSchema,
+    // `activeContract?: CargoContract | null` — absent, null, or a contract.
+    activeContract: CargoContractSchema.nullable().optional(),
+  })
+  .strict();
 
 // ---------------------------------------------------------------------------
 // GameEvent — discriminated union on `type` (types.ts: GameEvent)
@@ -731,41 +817,131 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
 // GameState — the root schema
 // ---------------------------------------------------------------------------
 
-export const GameStateSchema = z.object({
-  day: z.number(),
-  rngState: z.number(),
-  dayPhase: DayPhaseSchema,
-  dayEventCount: z.number(),
-  era: EraIdSchema,
-  flags: z.record(z.string(), FlagValueSchema),
-  storylets: StoryletStateSchema,
-  player: PlayerStateSchema,
-  market: MarketStateSchema,
-  npcs: z.array(NpcStateSchema),
-  encounter: EncounterStateSchema.nullable(),
-  eraEvent: EraEventStateSchema.nullable(),
-  lastEraEventEndedDay: z.number(),
-  eventLog: z.array(GameEventSchema),
-});
+// T-1002: `.strict()` is the DELIBERATE replacement for Zod's default silent
+// forward-compat stripping. The versioned save envelope + migration registry
+// (save.ts) now own compatibility, so an unknown key is a schema-drift BUG (a new
+// GameState field with no schema entry — verified live: `player.reputation` was
+// silently stripped to `undefined` on round-trip) that must fail loudly on load,
+// not be dropped. This is enforced at every engine-owned state-container level,
+// not just the root, so nested drift surfaces too.
+export const GameStateSchema = z
+  .object({
+    day: z.number(),
+    rngState: z.number(),
+    dayPhase: DayPhaseSchema,
+    dayEventCount: z.number(),
+    era: EraIdSchema,
+    flags: z.record(z.string(), FlagValueSchema),
+    storylets: StoryletStateSchema,
+    player: PlayerStateSchema,
+    market: MarketStateSchema,
+    npcs: z.array(NpcStateSchema),
+    encounter: EncounterStateSchema.nullable(),
+    eraEvent: EraEventStateSchema.nullable(),
+    lastEraEventEndedDay: z.number(),
+    eventLog: z.array(GameEventSchema),
+  })
+  .strict();
 
 /** Zod's inferred type. Structurally equal to {@link GameState}. */
 export type GameStateSchemaType = z.infer<typeof GameStateSchema>;
 
 // ---------------------------------------------------------------------------
-// Compile-time schema-drift guard (T-112a).
+// Compile-time schema-drift guard (T-112a, extended by T-1002).
 //
-// The schema strips unknown keys by default (deliberate, for save
-// forward-compat), so a new field added to GameState WITHOUT a matching schema
-// entry would be silently dropped on every load rather than caught. This
-// type-level check fails `tsc` the moment the TOP-LEVEL keys of GameState and
-// the inferred schema diverge, forcing the schema to be updated in lockstep.
+// The schemas now run in `.strict()` mode, so an unknown key fails LOUDLY at
+// load time (runtime). These type-level checks are the complementary developer
+// guard: they fail `tsc` the moment an interface's keys and its schema's
+// inferred keys diverge, forcing the schema to be updated in lockstep — before a
+// drift ever reaches a save. `keyof` compares key NAMES only, which is robust to
+// the optional/readonly modifier differences between the hand-written interfaces
+// and Zod's inference.
 //
-// Scope: top-level keys only. Nested-interface drift (PlayerState, ShipState,
-// NpcState, …) stays covered at runtime by the `toEqual(raw)` round-trip tests
-// in schema.test.ts, which fail if any exercised nested key is stripped.
+// T-1002 extends the original top-level-only guard to EVERY engine-owned nested
+// state container. This is the named prerequisite for T-1503 (adding
+// `reputation` to PlayerState) and for every M12/M13 task that adds a state
+// field: the new key must appear in the matching schema or `tsc` fails here.
+// Content-shaped structures (StoryletOffer / requirements) are intentionally
+// excluded — content owns their shape and they stay in Zod strip mode.
 type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+
 const _schemaCoversGameState: AssertEqual<keyof GameState, keyof GameStateSchemaType> = true;
+const _covPlayer: AssertEqual<keyof PlayerState, keyof z.infer<typeof PlayerStateSchema>> = true;
+const _covShip: AssertEqual<keyof ShipState, keyof z.infer<typeof ShipStateSchema>> = true;
+const _covComponent: AssertEqual<keyof ComponentState, keyof z.infer<typeof ComponentStateSchema>> =
+  true;
+// NOTE: StatBlock is a content-owned `Record<Stat, number>` whose `keyof` is the
+// `Stat` ENUM type, not the string-literal union Zod infers — a `keyof` guard
+// can't match those, and drift there means adding a stat to the content enum (a
+// deliberate content change). Its `.strict()` schema still guards it at runtime.
+const _covCheckResult: AssertEqual<keyof CheckResult, keyof z.infer<typeof CheckResultSchema>> =
+  true;
+const _covDawnHand: AssertEqual<keyof DawnHand, keyof z.infer<typeof DawnHandSchema>> = true;
+const _covPendingTravel: AssertEqual<
+  keyof PendingTravelState,
+  keyof z.infer<typeof PendingTravelStateSchema>
+> = true;
+const _covNpc: AssertEqual<keyof NpcState, keyof z.infer<typeof NpcStateSchema>> = true;
+const _covNpcAction: AssertEqual<keyof NpcAction, keyof z.infer<typeof NpcActionSchema>> = true;
+const _covMarket: AssertEqual<keyof MarketState, keyof z.infer<typeof MarketStateSchema>> = true;
+const _covCargo: AssertEqual<keyof CargoContract, keyof z.infer<typeof CargoContractSchema>> = true;
+const _covCharts: AssertEqual<keyof ChartsState, keyof z.infer<typeof ChartsStateSchema>> = true;
+const _covPoi: AssertEqual<keyof DiscoveredPoi, keyof z.infer<typeof DiscoveredPoiSchema>> = true;
+const _covLegacy: AssertEqual<keyof LegacyState, keyof z.infer<typeof LegacyStateSchema>> = true;
+const _covNemesis: AssertEqual<
+  keyof NemesisFileState,
+  keyof z.infer<typeof NemesisFileStateSchema>
+> = true;
+const _covFragment: AssertEqual<
+  keyof SignalFragmentRecord,
+  keyof z.infer<typeof SignalFragmentRecordSchema>
+> = true;
+const _covDeedRegistry: AssertEqual<
+  keyof DeedRegistryState,
+  keyof z.infer<typeof DeedRegistryStateSchema>
+> = true;
+const _covEarnedDeed: AssertEqual<
+  keyof EarnedDeedState,
+  keyof z.infer<typeof EarnedDeedStateSchema>
+> = true;
+const _covStorylet: AssertEqual<keyof StoryletState, keyof z.infer<typeof StoryletStateSchema>> =
+  true;
+const _covStoryletSchedule: AssertEqual<
+  keyof StoryletScheduleState,
+  keyof z.infer<typeof StoryletScheduleStateSchema>
+> = true;
+const _covEncounter: AssertEqual<keyof EncounterState, keyof z.infer<typeof EncounterStateSchema>> =
+  true;
+const _covInterceptor: AssertEqual<
+  keyof EncounterInterceptorState,
+  keyof z.infer<typeof EncounterInterceptorStateSchema>
+> = true;
+const _covEraEvent: AssertEqual<keyof EraEventState, keyof z.infer<typeof EraEventStateSchema>> =
+  true;
+
 void _schemaCoversGameState;
+void _covPlayer;
+void _covShip;
+void _covComponent;
+void _covCheckResult;
+void _covDawnHand;
+void _covPendingTravel;
+void _covNpc;
+void _covNpcAction;
+void _covMarket;
+void _covCargo;
+void _covCharts;
+void _covPoi;
+void _covLegacy;
+void _covNemesis;
+void _covFragment;
+void _covDeedRegistry;
+void _covEarnedDeed;
+void _covStorylet;
+void _covStoryletSchedule;
+void _covEncounter;
+void _covInterceptor;
+void _covEraEvent;
 
 /**
  * Parse and validate a raw (already-JSON-parsed) value as a {@link GameState}.

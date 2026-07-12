@@ -6,6 +6,7 @@ import {
   createSave,
   loadSave,
   isDayOver,
+  UNKNOWN_LEGACY_SEED,
   type GameState,
   type GameEvent,
   type CheckResult,
@@ -47,11 +48,15 @@ const DEFAULT_SEED = 424242;
 // ---- T-312 settings & save-slot keys ------------------------------------
 // The autosave (`sq.save.v1`) is the live career; these add three explicit save
 // slots plus the display-only settings. `GameState` deliberately does NOT carry
-// the original seed — `rngState` mutates on every roll, so the seed is CLIENT
-// presentation metadata (exactly how `fx`/`onboardingSeen` are handled), kept
-// out of GameState so the engine stays pure and the JSON round-trip is
-// unaffected. It is persisted alongside the save it belongs to.
-const AUTOSAVE_SEED_KEY = 'sq.save.seed'; // seed of the live autosave career
+// the original seed — `rngState` mutates on every roll, so the seed is NOT part
+// of the engine's pure state. T-1002 moved the seed into the versioned SAVE
+// ENVELOPE (engine `createSave`/`loadSave`) so a `.sav` blob alone reproduces
+// the run (TECH-STACK "reproducible bug reports"). The `sq.save.seed` key below
+// is now a LEGACY fallback only: it recovers the seed for a pre-v2 (seedless)
+// envelope, and disambiguates a seed-0 career from the UNKNOWN_LEGACY_SEED
+// sentinel. New saves carry the seed in the envelope, so this key is redundant
+// for them.
+const AUTOSAVE_SEED_KEY = 'sq.save.seed'; // LEGACY seed fallback (pre-v2 envelopes)
 const SLOT_KEY = (n: number): string => `sq.slot.${n}.v1`; // envelope (createSave output)
 const SLOT_META_KEY = (n: number): string => `sq.slot.${n}.meta`; // display JSON
 const REDUCED_MOTION_KEY = 'sq.reduced-motion'; // 'on' | 'off'
@@ -113,9 +118,12 @@ export interface CockpitState {
    */
   onboardingSeen: Record<string, true>;
   /**
-   * T-312. The current career's seed — CLIENT presentation metadata for the
-   * bezel display, persisted under `sq.save.seed`. Never stored in GameState
-   * (see the key block above for the rationale).
+   * T-312/T-1002. The current career's seed — the reader for the bezel display
+   * AND the reproducibility metadata. Now persisted in the versioned save
+   * envelope (engine `createSave`), recovered on load via `loadSave().seed`, with
+   * the legacy `sq.save.seed` key as a pre-v2 fallback. Never stored in GameState
+   * (see the key block above): `rngState` mutates every roll, so the original
+   * seed rides the envelope, not the pure engine state.
    */
   seed: number;
   /** User reduced-motion override (persisted). Layered ON TOP of the media
@@ -133,7 +141,10 @@ const listeners = new Set<() => void>();
 function init(): CockpitState {
   const fx = readFx();
   const loaded = readSave();
-  const game = loaded ?? startDay(createInitialState(DEFAULT_SEED)).state;
+  const game = loaded?.game ?? startDay(createInitialState(DEFAULT_SEED)).state;
+  // The seed rides the loaded envelope (T-1002); with no save, the game booted
+  // from DEFAULT_SEED, so the displayed seed matches it.
+  const seed = loaded ? loaded.seed : DEFAULT_SEED;
   return {
     game,
     selectedDie: null,
@@ -146,7 +157,7 @@ function init(): CockpitState {
     combatAftermath: null,
     combatMalfunction: false,
     onboardingSeen: readOnboarding(),
-    seed: readAutosaveSeed(),
+    seed,
     reducedMotion: readReducedMotion(),
     textSize: readTextSize(),
     saves: readSlots(),
@@ -230,11 +241,18 @@ export function getSnapshot(): CockpitState {
 
 // ---- persistence (T-112 save envelope) ----------------------------------
 
-function readSave(): GameState | null {
+function readSave(): { game: GameState; seed: number } | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
-    return loadSave(raw);
+    const { state, seed } = loadSave(raw);
+    // T-1002: a pre-v2 autosave has no seed in its envelope (loadSave returns the
+    // engine's UNKNOWN_LEGACY_SEED). Recover the seed the old build stashed in the
+    // legacy `sq.save.seed` key so the bezel display and reproducibility survive
+    // the upgrade; the next `autosave` re-writes the envelope as v2 with the seed
+    // embedded, so this legacy read path self-heals after one write.
+    const recovered = seed === UNKNOWN_LEGACY_SEED ? readAutosaveSeed() : seed;
+    return { game: state, seed: recovered };
   } catch {
     return null; // corrupt / missing → fall back to a fresh career
   }
@@ -244,11 +262,12 @@ function readSave(): GameState | null {
  * and at dusk (`endDay`). Dusk is the canonical checkpoint the task names, but the
  * per-action writes are load-bearing too: they preserve mid-day and mid-encounter
  * reload survival (T-307's combat reload criterion boots from this exact key), so
- * the per-action call must not be removed.
+ * the per-action call must not be removed. The `seed` (T-1002) rides the save
+ * envelope so the blob alone reproduces the run.
  */
-function autosave(game: GameState): void {
+function autosave(game: GameState, seed: number): void {
   try {
-    localStorage.setItem(SAVE_KEY, createSave(game));
+    localStorage.setItem(SAVE_KEY, createSave(game, seed));
   } catch {
     /* storage unavailable — non-fatal for play */
   }
@@ -343,9 +362,12 @@ function reconcileOnboarding(prev: GameState, next: GameState): Record<string, t
 
 export function newGame(seed: number): void {
   const game = startDay(createInitialState(seed)).state;
-  autosave(game);
-  // Persist the seed as client metadata so the bezel display and a reload both
-  // recover the career's seed (GameState never carries it — see the key block).
+  // T-1002: the seed now rides the save envelope (autosave embeds it), so a
+  // reload recovers it from the save itself. The legacy `sq.save.seed` write is
+  // kept as a redundant fallback: it lets `readSave` recover the seed for a
+  // pre-v2 envelope AND disambiguates a career started on seed 0 (which collides
+  // with the engine's UNKNOWN_LEGACY_SEED sentinel).
+  autosave(game, seed);
   try {
     localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
   } catch {
@@ -393,7 +415,7 @@ export function signContract(contractIndex: number): void {
       contractIndex,
       spendDie: die,
     });
-    autosave(next);
+    autosave(next, state.seed);
     // Signing is a die-cost, not a check: it emits no StatCheck, so lastCheck
     // resolves to null here — the readout stays cleared, which is honest.
     const lastCheck = lastCheckFrom(events);
@@ -437,7 +459,7 @@ export function buyFuel(amount: number): void {
       fuelAmount: amount,
       spendDie: die,
     });
-    autosave(next);
+    autosave(next, state.seed);
     const notice = failNoticeFrom(events);
     set({
       game: next,
@@ -468,7 +490,7 @@ export function payDebt(amount: number): void {
       action: 'pay-debt',
       amount,
     });
-    autosave(next);
+    autosave(next, state.seed);
     const notice = failNoticeFrom(events);
     // No die is spent — do not touch selectedDie / bloomDie.
     set({ game: next, notice, onboardingSeen: reconcileOnboarding(state.game, next) });
@@ -498,7 +520,7 @@ export function haggleContract(contractIndex: number): void {
       contractIndex,
       spendDie: die,
     });
-    autosave(next);
+    autosave(next, state.seed);
     const lastCheck = lastCheckFrom(events);
     // Surface an engine refusal (broker won't renegotiate) instead of a silent no-op.
     const refusal = events.find(
@@ -543,7 +565,7 @@ export function travelTo(destinationId: number): void {
       destinationId,
       spendDie: die,
     });
-    autosave(next);
+    autosave(next, state.seed);
     // The travel PILOT check reuses the honest-check readout (CheckBreakdown).
     const lastCheck = lastCheckFrom(events);
     const travel = events.find(
@@ -605,7 +627,7 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
     });
     // Required so mid-encounter progression (round, enemy hull, fuel) survives a
     // reload — the reload-survival acceptance criterion.
-    autosave(next);
+    autosave(next, state.seed);
 
     // Surface the PLAYER's honest roll, NOT the enemy counter-attack. Two
     // StatCheck events can appear in a round: the player's (actor 'Player') and
@@ -700,7 +722,7 @@ export function shipyard(request: ShipyardRequest): void {
       equipment: request.equipment,
       spendDie: die,
     });
-    autosave(next);
+    autosave(next, state.seed);
     const fail = shipyardFailFrom(events);
     const notice = fail ? shipyardFailureExplanation(fail) : null;
     set({
@@ -746,7 +768,7 @@ export function resolveStorylet(storyletId: string, choiceId: string, needsDie: 
       choiceId,
       spendDie: needsDie ? (die ?? undefined) : undefined,
     });
-    autosave(next);
+    autosave(next, state.seed);
     const lastCheck = lastCheckFrom(events);
     const notice = storyletBlockNoticeFrom(events);
     set({
@@ -785,7 +807,7 @@ export function endDay(): void {
   try {
     const dusk = engineEndDay(state.game);
     const dawn = startDay(dusk.state);
-    autosave(dawn.state);
+    autosave(dawn.state, state.seed);
     // If an encounter is still live at the new dawn (dusk pressure did not end
     // it), surface any resolution the dusk free-attack produced (e.g. a ShipLost
     // succession) as the aftermath; otherwise clear it.
@@ -833,7 +855,7 @@ export function toggleFx(): void {
  */
 export function saveToSlot(n: number): void {
   try {
-    localStorage.setItem(SLOT_KEY(n), createSave(state.game));
+    localStorage.setItem(SLOT_KEY(n), createSave(state.game, state.seed));
     const meta: Omit<SlotSummary, 'index' | 'empty'> = {
       savedAt: Date.now(),
       seed: state.seed,
@@ -851,7 +873,8 @@ export function saveToSlot(n: number): void {
 /**
  * Load a save slot into the live career. The loaded GameState becomes the new
  * autosave (so a subsequent reload boots into it), and its seed is recovered from
- * the slot meta. A corrupt slot surfaces as a notice — never a crash. Because
+ * the save envelope (T-1002), falling back to the slot meta for a pre-v2 slot.
+ * A corrupt slot surfaces as a notice — never a crash. Because
  * `createSave`/`loadSave` round-trip exactly (T-112b), the restored state is
  * deep-equal to what was saved, so "load restores exactly" holds by construction.
  */
@@ -867,15 +890,21 @@ export function loadSlot(n: number): void {
     return;
   }
   let game: GameState;
+  let loadedSeed: number;
   try {
-    game = loadSave(raw);
+    const loaded = loadSave(raw);
+    game = loaded.state;
+    loadedSeed = loaded.seed;
   } catch {
     set({ notice: `Slot ${n} is corrupt and could not be loaded.` });
     return;
   }
-  const seed = readSlotMeta(n)?.seed ?? state.seed;
+  // The seed rides the envelope for v2+ slots; for a pre-v2 slot the envelope
+  // has none (UNKNOWN_LEGACY_SEED) so recover it from the slot's display meta.
+  const seed =
+    loadedSeed === UNKNOWN_LEGACY_SEED ? (readSlotMeta(n)?.seed ?? state.seed) : loadedSeed;
   // The loaded career becomes the live autosave.
-  autosave(game);
+  autosave(game, seed);
   try {
     localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
   } catch {

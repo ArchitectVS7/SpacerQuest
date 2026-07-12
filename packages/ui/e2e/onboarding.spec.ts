@@ -119,7 +119,7 @@ async function bootDay30(page: Page, seed: number, credits?: number): Promise<vo
   base.day = 30;
   if (credits !== undefined) base.player.credits = credits;
   const state = startDay(base).state;
-  const save = createSave(state);
+  const save = createSave(state, seed);
   await page.addInitScript(
     ([s, ob]) => {
       window.localStorage.setItem('sq.save.v1', s);

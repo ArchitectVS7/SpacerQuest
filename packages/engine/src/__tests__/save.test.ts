@@ -6,6 +6,7 @@ import {
   migrate,
   SaveError,
   CURRENT_SAVE_VERSION,
+  UNKNOWN_LEGACY_SEED,
   type SaveEnvelope,
   type MigrationFn,
 } from '../save.js';
@@ -88,8 +89,9 @@ describe('save envelope — wrong-version typed errors', () => {
   });
 
   it('throws no-migration when a gap has no registered migration', () => {
-    // A version-0 save needs a 0→1 migration to reach CURRENT_SAVE_VERSION (1),
-    // but production MIGRATIONS is empty.
+    // A version-0 save needs a 0→1 migration to start climbing toward
+    // CURRENT_SAVE_VERSION, but production MIGRATIONS only registers 1→2 — there
+    // is no 0→1 step, so the walk fails loudly.
     const json = createSaveAtVersion(drive50Days(3), 0);
     const error = expectSaveError(() => loadSave(json));
     expect(error.code).toBe('no-migration');
@@ -125,10 +127,56 @@ describe('save envelope — round-trip property test', () => {
   for (const seed of [1, 7, 42, 1337]) {
     it(`createSave → loadSave is exact for a 50-day state (seed ${seed})`, () => {
       const state = drive50Days(seed);
-      const restored = loadSave(createSave(state));
-      expect(restored).toEqual(state);
+      const restored = loadSave(createSave(state, seed));
+      expect(restored.state).toEqual(state);
+      // T-1002: the seed rides the envelope and comes back on load.
+      expect(restored.seed).toBe(seed);
     });
   }
+});
+
+describe('save envelope — seed reproducibility (T-1002)', () => {
+  it('the seed survives save → load → save byte-identically and lives in the envelope', () => {
+    const state = drive50Days(9);
+    // A first load reaches the serialization fixpoint (Zod reorders keys to the
+    // schema order), so compare from an already-loaded state.
+    const s1 = createSave(state, 1337);
+    const l1 = loadSave(s1);
+    const s2 = createSave(l1.state, l1.seed);
+    const l2 = loadSave(s2);
+    const s3 = createSave(l2.state, l2.seed);
+
+    expect(s3).toBe(s2); // byte-identical fixpoint
+    expect(l2.seed).toBe(1337); // the seed is preserved verbatim
+    // And it genuinely rides the envelope, not the game state.
+    const envelope = JSON.parse(s2) as SaveEnvelope;
+    expect(envelope.seed).toBe(1337);
+  });
+
+  it('a v2 envelope preserves an explicit seed of 0 (the sentinel value)', () => {
+    // Seed 0 collides with UNKNOWN_LEGACY_SEED at the engine level; loadSave still
+    // returns 0 because the envelope's `seed` field is present.
+    const restored = loadSave(createSave(drive50Days(4), 0));
+    expect(restored.seed).toBe(0);
+  });
+});
+
+describe('save envelope — v1 → v2 migration (T-1002)', () => {
+  it('loads a seedless v1 envelope green through production MIGRATIONS and backfills the seed', () => {
+    // A REAL pre-v2 envelope: version 1, no `seed` field at all.
+    const v1 = JSON.stringify({ version: 1, state: drive50Days(9) });
+
+    const loaded = loadSave(v1); // walks 1→2 (identity state migration), validates
+    expect(loaded.state.day).toBeGreaterThan(0); // validated, not thrown
+    expect(typeof loaded.seed).toBe('number'); // backfilled
+    expect(loaded.seed).toBe(UNKNOWN_LEGACY_SEED); // pre-v2 saves have no recorded seed
+  });
+
+  it('a v2 envelope with an explicit seed is preserved (no migration needed)', () => {
+    const v2 = createSave(drive50Days(9), 4242);
+    expect((JSON.parse(v2) as SaveEnvelope).version).toBe(2);
+    expect(loadSave(v2).seed).toBe(4242);
+  });
 });
 
 // ---------------------------------------------------------------------------

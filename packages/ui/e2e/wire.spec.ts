@@ -98,7 +98,7 @@ test('log paginates 100+ days without rendering every row (virtualized)', async 
     }).state;
   }
 
-  const save = createSave(state);
+  const save = createSave(state, SEED);
   await page.addInitScript((s) => window.localStorage.setItem('sq.save.v1', s), save);
   await page.goto('/');
 
