@@ -24,6 +24,7 @@ import {
   shipyard,
   resolveStorylet,
   dismissAftermath,
+  dismissOnboarding,
   standDown,
   toggleFx,
   clearBloom,
@@ -58,6 +59,12 @@ import {
   storyletChoiceLock,
   deedRegistry,
   nemesisFile,
+  activeOnboardingPrompt,
+  isGuildLetter,
+  isResolutionStorylet,
+  resolutionCeremony,
+  type OnboardingAnchor,
+  type ResolutionCeremonyView,
   type ShipComponentRow,
   type WireLogEntry,
   type StoryletChoice,
@@ -149,11 +156,23 @@ export function App() {
     document.documentElement.setAttribute('data-fx', s.fx ? 'on' : 'off');
   }, [s.fx]);
 
-  // The storylet launcher only makes sense when a storylet is waiting and the
-  // cockpit is not mid-encounter (combat takes precedence). Its count drives the
-  // launcher badge; when it drops to zero the floating panel unmounts on its own.
-  const storyletCount = s.game.storylets.available.length;
-  const storyletsWaiting = storyletCount > 0 && !s.game.encounter && !s.combatAftermath;
+  // The day-30 Tour One resolution ceremony (T-311): a full-screen certificate
+  // that intercepts the forced `resolution.tour-one.*` storylet, so the decisive
+  // beat is unmissable rather than hiding behind the generic launcher. Null until
+  // a resolution is on offer (dawn of day 31); unmounts when it is acknowledged.
+  const ceremony = resolutionCeremony(s.game);
+
+  // The storylet launcher only makes sense when a NON-resolution storylet is
+  // waiting and the cockpit is not mid-encounter or mid-ceremony (both take
+  // precedence). The resolution storylets are excluded — the ceremony is their
+  // sole presenter, so the generic panel never double-renders them. When the
+  // launchable count drops to zero the floating panel unmounts on its own.
+  const launchableStorylets = s.game.storylets.available.filter(
+    (o) => !isResolutionStorylet(o.storyletId),
+  );
+  const storyletCount = launchableStorylets.length;
+  const storyletsWaiting =
+    storyletCount > 0 && !s.game.encounter && !s.combatAftermath && !ceremony;
 
   return (
     <div className="tube">
@@ -203,8 +222,143 @@ export function App() {
           <StoryletPanel state={s} onClose={() => setStoryletOpen(false)} />
         )}
         <HandDock state={s} />
+        {/* Contextual first-time coach prompt for the cockpit affordances. The
+            combat coach lives inside the combat overlay (below); this instance
+            handles hand / manifest / starmap anchors. Only one prompt shows at a
+            time (the selector guarantees it), so the two mounts never collide. */}
+        <OnboardingCallout state={s} where="screen" />
         <CombatOverlay state={s} />
+        {ceremony && <ResolutionCeremony state={s} view={ceremony} />}
         {recordsOpen && <RecordsOverlay game={s.game} onClose={() => setRecordsOpen(false)} />}
+      </div>
+    </div>
+  );
+}
+
+// The contextual onboarding coach (T-311). A NON-MODAL callout anchored to the
+// real affordance it teaches — no backdrop, no focus trap, nothing disabled, so
+// the player can act on the affordance while it is up (which auto-dismisses it).
+// This is the "no modal tutorial walls" guarantee. It renders at most one prompt
+// (the store's selector picks the highest-priority active, unseen one). `where`
+// splits the two mount points: the combat coach must render INSIDE the combat
+// overlay (which covers the cockpit), the rest at screen level.
+function OnboardingCallout({ state, where }: { state: CockpitState; where: 'screen' | 'combat' }) {
+  const prompt = activeOnboardingPrompt(state.game, state.onboardingSeen);
+  if (!prompt) return null;
+  const inCombat = prompt.anchor === 'combat';
+  if (where === 'combat' ? !inCombat : inCombat) return null;
+  return (
+    <aside
+      className="onboarding"
+      data-testid="onboarding"
+      data-onboarding-id={prompt.id}
+      data-onboarding-anchor={prompt.anchor satisfies OnboardingAnchor}
+      role="status"
+    >
+      <b className="ob-title">{prompt.title}</b>
+      <p className="ob-body">{prompt.body}</p>
+      <button
+        className="ob-dismiss"
+        data-testid="onboarding-dismiss"
+        aria-label="dismiss hint"
+        onClick={() => dismissOnboarding(prompt.id)}
+      >
+        Got it
+      </button>
+    </aside>
+  );
+}
+
+// The day-30 Tour One resolution ceremony (T-311). A full-screen certificate,
+// modelled on the combat overlay, that presents the engine's already-forced
+// resolution (T-113b) — cleared vs unpaid — as a screen the player cannot miss.
+// It is a pure CLIENT: it reads the forced `resolution.tour-one.*` offer and the
+// `veteran.unlocked` flag via format.ts, and every choice resolves through the
+// SAME `resolveStorylet` store action the generic panel uses. Acknowledging a
+// choice removes the offer → `resolutionCeremony` returns null → this unmounts
+// back to a fully playable cockpit (no soft-lock; both branches reachable).
+function ResolutionCeremony({
+  state,
+  view,
+}: {
+  state: CockpitState;
+  view: ResolutionCeremonyView;
+}) {
+  const offer = view.offer;
+  const armed = state.selectedDie !== null;
+  return (
+    <div
+      className="resolution-ceremony"
+      data-testid="resolution-ceremony"
+      data-outcome={view.outcome}
+      role="dialog"
+      aria-label="Tour One resolution"
+    >
+      <div className="rc-frame">
+        <header className="rc-head">
+          <span className="rc-kicker">TOUR ONE · DAY 30</span>
+          <h2 className="rc-title" data-testid="resolution-title">
+            {offer.title}
+          </h2>
+          <span className="rc-rank" data-testid="resolution-rank">
+            {view.rankLabel}
+          </span>
+        </header>
+
+        <p className="rc-prose" data-testid="resolution-prose">
+          {offer.prose}
+        </p>
+
+        {view.outcome === 'cleared' ? (
+          <div className="rc-honors">
+            {view.deedTitle && (
+              <div className="rc-deed" data-testid="resolution-deed">
+                <span className="rc-seal rev">DEED</span>
+                <b>{view.deedTitle}</b>
+              </div>
+            )}
+            {view.veteranUnlocked && (
+              <div className="rc-veteran rev" data-testid="veteran-unlocked">
+                VETERAN LANES OPEN
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rc-consequence" data-testid="resolution-consequence">
+            The marker stands — you fly on, indebted but flying.
+          </div>
+        )}
+
+        <div className="rc-choices">
+          {offer.choices.map((choice: StoryletChoice) => {
+            const lock = storyletChoiceLock(state.game, choice, armed);
+            const needsDie = storyletChoiceNeedsDie(choice);
+            return (
+              <div
+                className={lock ? 'rc-choice locked' : 'rc-choice'}
+                key={choice.id}
+                data-testid="resolution-choice"
+                data-choice-id={choice.id}
+              >
+                <button
+                  className="btn"
+                  data-testid="resolution-choice-btn"
+                  disabled={lock !== null}
+                  title={lock ?? `Choose: ${choice.label}`}
+                  onClick={() => resolveStorylet(offer.storyletId, choice.id, needsDie)}
+                >
+                  {choice.label}
+                </button>
+                <p className="rc-choice-prose">{choice.prose}</p>
+                {lock && (
+                  <span className="rc-lock" data-testid="resolution-choice-lock">
+                    {lock}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -231,6 +385,9 @@ function CombatOverlay({ state }: { state: CockpitState }) {
   return (
     <div className="combat-overlay" data-testid="combat-overlay" role="dialog" aria-label="Combat">
       <div className="co-frame">
+        {/* The combat coach renders INSIDE the overlay so it overlays the
+            full-screen instrument (a screen-level callout would sit behind it). */}
+        <OnboardingCallout state={state} where="combat" />
         {encounter ? (
           <CombatInstrument state={state} />
         ) : (
@@ -466,15 +623,27 @@ function StoryletPanel({ state, onClose }: { state: CockpitState; onClose: () =>
   // than let it point past the end.
   const idx = Math.min(index, offers.length - 1);
   const offer = offers[idx];
+  // T-311: a Merchant-Guild storylet is dressed as an official wire letter — a
+  // reverse-video masthead and teletype rule — rather than a plain menu. This is
+  // a pure MARKUP/CSS treatment switched on the storylet id; the choices, locks
+  // and resolveStorylet path are unchanged.
+  const isLetter = isGuildLetter(offer.storyletId);
 
   return (
     <section
       className="storylet-panel"
       data-testid="storylet-panel"
       data-storylet-id={offer.storyletId}
+      data-variant={isLetter ? 'letter' : undefined}
       role="dialog"
       aria-label={`Storylet: ${offer.title}`}
     >
+      {isLetter && (
+        <div className="storylet-letterhead" data-testid="storylet-letterhead" aria-hidden="true">
+          <span className="sl-seal rev">GUILD WIRE</span>
+          <span className="sl-masthead">MERCHANT GUILD OF SUN-3 · OFFICIAL NOTICE</span>
+        </div>
+      )}
       <header className="sl-head">
         <h2 className="sl-title" data-testid="storylet-title">
           {offer.title}

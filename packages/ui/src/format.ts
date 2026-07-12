@@ -825,3 +825,159 @@ export function nemesisFile(game: GameState): NemesisFileView {
     entries,
   };
 }
+
+// ---- T-311 onboarding & Tour One presentation ----------------------------
+//
+// The teaching layer for Tour One is PURELY PRESENTATIONAL. It reads existing
+// engine state and never mutates a rule. "Which first-time prompts the player
+// has already progressed past" is client meta-state (like `fx`), kept in the UI
+// store and out of GameState — so the engine stays pure and a JSON round-trip of
+// game state is unaffected. This section is the single source of truth for the
+// prompts, shared by the selector (what to render) and the store's auto-dismiss
+// reconcile (what to mark seen when the taught action lands).
+
+/** Anchor a contextual prompt to the real affordance it teaches. */
+export type OnboardingAnchor = 'hand' | 'manifest' | 'starmap' | 'combat';
+
+/** One contextual, first-time coach prompt. `active(game)` is a pure predicate
+ *  over existing engine state — no new rule, no new field. A prompt shows while
+ *  it is active and unseen; it auto-dismisses (is marked seen) the instant the
+ *  player performs the taught action and the predicate flips to false. */
+export interface OnboardingPrompt {
+  id: string;
+  title: string;
+  body: string;
+  anchor: OnboardingAnchor;
+  active(game: GameState): boolean;
+}
+
+/**
+ * The Tour One prompt registry, in PRIORITY order (first match wins in the
+ * selector, so at most one shows at a time — non-modal, never stacked). The
+ * encounter coach outranks everything so a mid-delivery interception surfaces
+ * the combat teaching instead of the jump teaching. Predicates read only
+ * existing engine surface (`encounter`, `day`, `dawnHand`, `activeContract`,
+ * `market.manifestBoard`).
+ */
+export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
+  {
+    id: 'first-encounter',
+    title: 'Intercepted',
+    body: 'A ship has you. Pick a die and a stance — the fuel budget shows if you can afford to fire.',
+    anchor: 'combat',
+    active: (game) => game.encounter != null,
+  },
+  {
+    id: 'dawn-roll',
+    title: 'The Dawn Hand',
+    body: 'Five dice, once a day. Pick one, then assign it to an action.',
+    anchor: 'hand',
+    active: (game) => {
+      const hand = game.player.dawnHand;
+      return game.day === 1 && !!hand && hand.spent.every((s) => !s);
+    },
+  },
+  {
+    id: 'first-sign',
+    title: 'Sign a Job',
+    body: 'Your hold is empty — assign a die to a manifest offer to take a job.',
+    anchor: 'manifest',
+    active: (game) => game.player.activeContract == null && game.market.manifestBoard.length > 0,
+  },
+  {
+    id: 'first-jump',
+    title: 'Plot the Jump',
+    body: 'Cargo aboard. Pick a die, plot the destination on the map, then confirm the jump.',
+    anchor: 'starmap',
+    active: (game) => game.player.activeContract != null,
+  },
+];
+
+/**
+ * The single prompt to show right now: the first registry prompt that is active
+ * for this state AND not yet seen. Returns null when nothing is due — the callout
+ * then renders nothing. At most one at a time (non-modal, no stacking).
+ */
+export function activeOnboardingPrompt(
+  game: GameState,
+  seen: Record<string, true>,
+): OnboardingPrompt | null {
+  for (const prompt of ONBOARDING_PROMPTS) {
+    if (!seen[prompt.id] && prompt.active(game)) return prompt;
+  }
+  return null;
+}
+
+/**
+ * Auto-dismiss reconcile: given the state BEFORE and AFTER an action, mark seen
+ * every not-yet-seen prompt that WAS active and is now inactive — i.e. the player
+ * just performed the taught action. This is what makes a prompt disappear the
+ * moment its affordance is used ("guided only by visible affordances") without
+ * wiring each callsite. Returns the SAME reference when nothing changed so the
+ * store never re-renders needlessly.
+ */
+export function nextOnboardingSeen(
+  prev: GameState,
+  next: GameState,
+  seen: Record<string, true>,
+): Record<string, true> {
+  let out: Record<string, true> | null = null;
+  for (const prompt of ONBOARDING_PROMPTS) {
+    if (seen[prompt.id]) continue;
+    if (prompt.active(prev) && !prompt.active(next)) {
+      out ??= { ...seen };
+      out[prompt.id] = true;
+    }
+  }
+  return out ?? seen;
+}
+
+/** True for a Merchant-Guild storylet — the letterhead presentation switch. The
+ *  day-30 resolution storylets are presented by the ceremony below, so `guild.`
+ *  is the sole letterhead family (their ids start with `resolution.`). */
+export function isGuildLetter(storyletId: string): boolean {
+  return storyletId.startsWith('guild.');
+}
+
+/** True for a day-30 Tour One resolution storylet — the ceremony intercepts
+ *  these so the generic storylet launcher/panel never double-renders them. */
+export function isResolutionStorylet(storyletId: string): boolean {
+  return storyletId.startsWith('resolution.tour-one.');
+}
+
+export interface ResolutionCeremonyView {
+  outcome: 'cleared' | 'unpaid';
+  offer: StoryletOffer;
+  rankLabel: string;
+  /** The earned `tour_one_cleared` deed's title on the cleared path; null on
+   *  unpaid (no deed is earned there). */
+  deedTitle: string | null;
+  /** The veteran lanes are open — read straight off the engine's flag. */
+  veteranUnlocked: boolean;
+}
+
+/**
+ * The day-30 resolution ceremony view, or null when no resolution is on offer.
+ * Pure read of existing engine surface: the forced `resolution.tour-one.*` offer
+ * (T-113b), the `veteran.unlocked` flag, and the earned `tour_one_cleared` deed.
+ * The ceremony is a PRESENTATION of the engine's already-forced resolution — it
+ * owns no rule and resolves through the standard `resolveStorylet` path.
+ */
+export function resolutionCeremony(game: GameState): ResolutionCeremonyView | null {
+  const offer = game.storylets.available.find((o) => isResolutionStorylet(o.storyletId));
+  if (!offer) return null;
+  const outcome: 'cleared' | 'unpaid' =
+    offer.storyletId === 'resolution.tour-one.cleared' ? 'cleared' : 'unpaid';
+  const registry = deedRegistry(game);
+  const deedTitle =
+    outcome === 'cleared'
+      ? (registry.earned.find((d) => d.id === 'tour_one_cleared')?.title ?? 'Tour One Complete')
+      : null;
+  return {
+    outcome,
+    offer,
+    rankLabel: registry.rankLabel,
+    deedTitle,
+    veteranUnlocked: game.flags['veteran.unlocked'] === true,
+  };
+}

@@ -2100,3 +2100,272 @@ body {
     align-items: flex-start;
   }
 }
+
+/* =========================================================================
+   T-311 · Onboarding & Tour One presentation
+   - Contextual coach callouts (non-modal, anchored to the affordance).
+   - Guild-letter letterhead treatment for guild.* storylets.
+   - Day-30 resolution ceremony (full-screen certificate).
+   All in the one-phosphor CRT idiom: emphasis is reverse video, never a second
+   hue; motion respects prefers-reduced-motion.
+   ========================================================================= */
+
+/* ---- contextual onboarding coach ---- */
+.onboarding {
+  position: absolute;
+  z-index: 82; /* above the storylet panel (78); inside co-frame it rides local */
+  width: min(340px, 80vw);
+  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #1c1208, #0e0a05);
+  box-shadow: var(--glow);
+  padding: 12px 14px;
+  display: grid;
+  gap: 5px;
+  /* Truly non-modal: the callout never intercepts a click meant for the
+     affordance beneath it — only its own dismiss button is interactive. This is
+     what lets the player act on the taught control while the coach is up (which
+     auto-dismisses it). */
+  pointer-events: none;
+}
+.onboarding .ob-dismiss {
+  pointer-events: auto;
+}
+@media not (prefers-reduced-motion: reduce) {
+  .onboarding {
+    animation: ob-fade 220ms ease-out both;
+  }
+}
+@keyframes ob-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.ob-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.ob-body {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--amber);
+  line-height: 1.45;
+}
+.ob-dismiss {
+  justify-self: end;
+  margin-top: 2px;
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.ob-dismiss:hover {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+/* Anchor each callout near the affordance it teaches. Only one shows at a time,
+   so absolute-positioning per anchor never collides. */
+.onboarding[data-onboarding-anchor='hand'] {
+  left: 50%;
+  bottom: 132px;
+  transform: translateX(-50%);
+}
+@media not (prefers-reduced-motion: reduce) {
+  .onboarding[data-onboarding-anchor='hand'] {
+    animation: ob-fade-center 220ms ease-out both;
+  }
+}
+@keyframes ob-fade-center {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+.onboarding[data-onboarding-anchor='manifest'] {
+  right: 26px;
+  top: 128px;
+}
+.onboarding[data-onboarding-anchor='starmap'] {
+  left: 26px;
+  top: 128px;
+}
+/* The combat coach rides inside .co-frame (position: relative implied via the
+   overlay grid); pin it to the top of the instrument. */
+.co-frame .onboarding[data-onboarding-anchor='combat'] {
+  position: static;
+  width: auto;
+  margin-bottom: 12px;
+  border-color: var(--ember);
+}
+
+/* ---- guild-letter letterhead treatment ---- */
+.storylet-panel[data-variant='letter'] {
+  border-color: var(--ember);
+}
+.storylet-letterhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--amber-dim);
+  /* a faint teletype rule under the masthead */
+}
+.sl-seal {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  padding: 2px 8px;
+  flex: none;
+}
+.sl-masthead {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+
+/* ---- day-30 resolution ceremony ---- */
+.resolution-ceremony {
+  position: absolute;
+  inset: 0;
+  z-index: 84; /* above combat (80) — the last-day beat is unmissable */
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(120% 120% at 50% 38%, rgba(24, 14, 4, 0.95), rgba(6, 4, 3, 0.985));
+  backdrop-filter: blur(2px);
+}
+.rc-frame {
+  width: min(680px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #1c1308, #0c0805);
+  box-shadow: var(--glow);
+  padding: 24px 26px;
+  display: grid;
+  gap: 16px;
+}
+.resolution-ceremony[data-outcome='cleared'] .rc-frame {
+  border-color: var(--ember);
+  box-shadow: var(--glow-hi);
+}
+.rc-head {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 14px;
+}
+.rc-kicker {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.24em;
+  color: var(--amber);
+}
+.rc-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  letter-spacing: 0.05em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.rc-rank {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 2px 10px;
+}
+.rc-prose {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--amber);
+}
+.rc-honors {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+.rc-deed {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--ember-hi);
+}
+.rc-seal {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  padding: 2px 8px;
+}
+.rc-veteran {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  padding: 5px 16px;
+}
+.rc-consequence {
+  font-size: 12.5px;
+  color: var(--amber);
+  border: 1px dashed var(--amber-dim);
+  padding: 10px 14px;
+  text-align: center;
+}
+.rc-choices {
+  display: grid;
+  gap: 12px;
+}
+.rc-choice {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--hair);
+  padding-top: 12px;
+}
+.rc-choice-prose {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--amber);
+  opacity: 0.9;
+}
+.rc-lock {
+  font-size: 10.5px;
+  color: var(--tube);
+  background: var(--ember);
+  padding: 1px 8px;
+  justify-self: start;
+}
+
+@media (max-width: 720px) {
+  .onboarding[data-onboarding-anchor='manifest'],
+  .onboarding[data-onboarding-anchor='starmap'] {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    top: auto;
+    bottom: 200px;
+  }
+}

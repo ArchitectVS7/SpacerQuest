@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { createInitialState, startDay, endDay, createSave } from '@spacerquest/engine';
+import {
+  createInitialState,
+  startDay,
+  endDay,
+  applyPlayerAction,
+  createSave,
+} from '@spacerquest/engine';
 import { FLAWS } from '@spacerquest/content';
 
 // T-306 acceptance: a flaw-override headline made at dusk appears the next dawn
@@ -75,6 +81,22 @@ test('log paginates 100+ days without rendering every row (virtualized)', async 
   let state = startDay(createInitialState(SEED)).state;
   for (let i = 0; i < 110; i++) state = startDay(endDay(state).state).state;
   expect(state.day).toBeGreaterThanOrEqual(100);
+
+  // A real 110-day career has acknowledged the forced day-30 Tour One resolution
+  // (T-311) — its ceremony is a full-screen beat the player clears before flying
+  // on. Acknowledge it once here (a no-op mutation to the day trajectory: it only
+  // sets an ack flag) so this boots-into-day-110 fixture reflects real play;
+  // otherwise the still-open ceremony would cover the cockpit this test drives.
+  const resolution = state.storylets.available.find((o) =>
+    o.storyletId.startsWith('resolution.tour-one.'),
+  );
+  if (resolution) {
+    state = applyPlayerAction(state, {
+      type: 'Storylet',
+      storyletId: resolution.storyletId,
+      choiceId: resolution.choices[0].id,
+    }).state;
+  }
 
   const save = createSave(state);
   await page.addInitScript((s) => window.localStorage.setItem('sq.save.v1', s), save);

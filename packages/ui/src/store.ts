@@ -12,7 +12,12 @@ import {
 } from '@spacerquest/engine';
 import type { Stat } from '@spacerquest/content';
 import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerquest/engine';
-import { combatAftermathSummary, shipyardFailureExplanation, type CombatAftermath } from './format';
+import {
+  combatAftermathSummary,
+  nextOnboardingSeen,
+  shipyardFailureExplanation,
+  type CombatAftermath,
+} from './format';
 import * as sound from './sound';
 
 /**
@@ -36,6 +41,7 @@ function playCues(events: GameEvent[], committed: boolean): void {
 
 const SAVE_KEY = 'sq.save.v1';
 const FX_KEY = 'sq.fx';
+const ONBOARDING_KEY = 'sq.onboarding.v1';
 const DEFAULT_SEED = 424242;
 
 export interface CockpitState {
@@ -70,6 +76,14 @@ export interface CockpitState {
   /** The last combat round was fuel-gated (weapons malfunction) — surfaced as a
    *  loud notice AND cleared like any transient combat readout. */
   combatMalfunction: boolean;
+  /**
+   * T-311 onboarding. Which first-time coach prompts the player has already
+   * dismissed or progressed past. This is CLIENT presentation meta-state (like
+   * `fx`), deliberately kept out of GameState so the engine stays pure and a
+   * JSON round-trip of game state is unaffected. Persisted under
+   * `sq.onboarding.v1`; reset on New Game so a fresh Tour One re-teaches.
+   */
+  onboardingSeen: Record<string, true>;
 }
 
 let state: CockpitState = init();
@@ -90,6 +104,7 @@ function init(): CockpitState {
     lastCheckKey: 0,
     combatAftermath: null,
     combatMalfunction: false,
+    onboardingSeen: readOnboarding(),
   };
 }
 
@@ -194,11 +209,47 @@ function readFx(): boolean {
   }
 }
 
+// ---- T-311 onboarding-seen persistence ----------------------------------
+
+function readOnboarding(): Record<string, true> {
+  try {
+    const raw = localStorage.getItem(ONBOARDING_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, true>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function writeOnboarding(seen: Record<string, true>): void {
+  try {
+    localStorage.setItem(ONBOARDING_KEY, JSON.stringify(seen));
+  } catch {
+    /* storage unavailable — non-fatal for play */
+  }
+}
+
+/**
+ * Auto-dismiss reconcile for the onboarding prompts. Given the game state before
+ * and after an action, mark seen every prompt whose taught affordance was just
+ * used (the pure rule lives in format.ts). Persists only when the record
+ * actually changed, and returns the record to fold into the action's `set`
+ * patch — so an auto-dismiss lands in the SAME render as the state change.
+ */
+function reconcileOnboarding(prev: GameState, next: GameState): Record<string, true> {
+  const seen = nextOnboardingSeen(prev, next, state.onboardingSeen);
+  if (seen !== state.onboardingSeen) writeOnboarding(seen);
+  return seen;
+}
+
 // ---- actions ------------------------------------------------------------
 
 export function newGame(seed: number): void {
   const game = startDay(createInitialState(seed)).state;
   autosave(game);
+  // A fresh career re-teaches Tour One: wipe the onboarding-seen record so the
+  // contextual prompts fire again from the top.
+  writeOnboarding({});
   set({
     game,
     selectedDie: null,
@@ -208,6 +259,7 @@ export function newGame(seed: number): void {
     lastCheck: null,
     combatAftermath: null,
     combatMalfunction: false,
+    onboardingSeen: {},
   });
   // A fresh career: the dawn sting and the ambient drive-hum bed. The hum defers
   // itself internally until the first user gesture unlocks the AudioContext, so
@@ -253,6 +305,7 @@ export function signContract(contractIndex: number): void {
       notice,
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
+      onboardingSeen: reconcileOnboarding(state.game, next),
     });
     playCues(events, !notice);
   } catch (err) {
@@ -286,6 +339,7 @@ export function buyFuel(amount: number): void {
       selectedDie: notice ? die : null,
       bloomDie: notice ? null : die,
       notice,
+      onboardingSeen: reconcileOnboarding(state.game, next),
     });
     playCues(events, !notice);
   } catch (err) {
@@ -312,7 +366,7 @@ export function payDebt(amount: number): void {
     autosave(next);
     const notice = failNoticeFrom(events);
     // No die is spent — do not touch selectedDie / bloomDie.
-    set({ game: next, notice });
+    set({ game: next, notice, onboardingSeen: reconcileOnboarding(state.game, next) });
     playCues(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'The debt payment could not be resolved.' });
@@ -356,6 +410,7 @@ export function haggleContract(contractIndex: number): void {
       notice,
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
+      onboardingSeen: reconcileOnboarding(state.game, next),
     });
     playCues(events, !notice);
   } catch (err) {
@@ -407,6 +462,7 @@ export function travelTo(destinationId: number): void {
       notice,
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
+      onboardingSeen: reconcileOnboarding(state.game, next),
     });
     // The jump die is always spent (even a failed PILOT roll burns it), so this
     // is always a committed action. `cuesForEvents` adds jump / combatStart.
@@ -482,6 +538,7 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
       lastCheckKey: state.lastCheckKey + 1,
       combatMalfunction: malfunction,
       combatAftermath: aftermath,
+      onboardingSeen: reconcileOnboarding(state.game, next),
     });
     // The stance die is always spent, so combat is always committed. Crit
     // flourishes (nat20 / nat1) and the dice rattle ride the event stream.
@@ -549,6 +606,7 @@ export function shipyard(request: ShipyardRequest): void {
       bloomDie: die,
       notice,
       lastCheck: null,
+      onboardingSeen: reconcileOnboarding(state.game, next),
     });
     // The shipyard spends the die before its business checks (engine convention),
     // so this is always committed; a refusal emits ShipyardFail → the fail cue.
@@ -596,6 +654,7 @@ export function resolveStorylet(storyletId: string, choiceId: string, needsDie: 
       notice,
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
+      onboardingSeen: reconcileOnboarding(state.game, next),
     });
     playCues(events, needsDie && !notice);
   } catch (err) {
@@ -635,6 +694,7 @@ export function endDay(): void {
       lastCheck: null,
       combatAftermath: aftermath,
       combatMalfunction: false,
+      onboardingSeen: reconcileOnboarding(state.game, dawn.state),
     });
     // Dusk cues (wire crackle / combat resolution) off the dusk events, then the
     // new dawn sting; keep the drive-hum bed running across the day boundary.
@@ -658,6 +718,18 @@ export function toggleFx(): void {
 
 export function clearBloom(): void {
   if (state.bloomDie !== null) set({ bloomDie: null });
+}
+
+/**
+ * Manually dismiss a first-time coach prompt (the "Got it" affordance). The
+ * prompt is marked seen and persisted so it never re-fires — the same seen-set
+ * the auto-dismiss reconcile writes. A no-op if already seen.
+ */
+export function dismissOnboarding(id: string): void {
+  if (state.onboardingSeen[id]) return;
+  const seen: Record<string, true> = { ...state.onboardingSeen, [id]: true };
+  writeOnboarding(seen);
+  set({ onboardingSeen: seen });
 }
 
 export function dayIsOver(): boolean {
