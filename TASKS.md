@@ -1,0 +1,266 @@
+# Rimward — Master Task List v1.0
+
+Complete the build-out of *Spacer Quest: Rimward* per `docs/PRD-REIMAGINED.md` and
+`docs/TECH-STACK.md`, sized for the orchestrator loop. This list supersedes
+`TASKS_v0.1.md` (completed history, M0–M3 all DONE) and is shaped by
+`TASKS_v0.1_Audit.md` (findings of record, 2026-07-12): the v0.1 build shipped
+features that were unreachable, state that nothing read, and physics that never
+bound. Every task below carries acceptance criteria that prove reachability and
+consumption, not just existence.
+
+## Orchestrator protocol
+
+1. **Check out** the first task with `status: TODO` whose `after:` tasks are all DONE. Set it `IN-PROGRESS`.
+2. **Plan** — delegate to the Fable planner with: the task block below, plus pointers to `docs/PRD-REIMAGINED.md`, `docs/TECH-STACK.md`, `TASKS_v0.1_Audit.md`, and the files named in the task. Nothing else.
+3. **Code** — delegate to the coder named in `coder:` (Opus by default; Fable where flagged — those tasks have cross-cutting design decisions baked in).
+4. **Review** — delegate to the Sonnet reviewer with the diff and the task's acceptance criteria. Criteria are written to be mechanically checkable AND to prove integration (reachable by a player; consumed by a named reader).
+5. On pass: run the gate, commit as `T-1NNN: <title>`, set `status: DONE`, update this file in the same commit. On fail: one fix round with the coder, then escalate to Fable if still failing.
+
+**App.tsx serialization rule** (lesson of v0.1's T-304/T-307 collision): tasks that touch `packages/ui/src/App.tsx`, `store.ts`, or `format.ts` must never be concurrently IN-PROGRESS — commit each before starting the next. The M14 chain encodes this as a strict `after:` sequence; do not parallelize it.
+
+**Foundation reference:** the `foundation/` directory was removed from the tree in commit `afc0c771`. The 1991 rules of record live at git ref **`f2f95fa9`** — consult them as `git show f2f95fa9:foundation/rules/<file>` (e.g. `travel.ts`, `upgrades.ts`, `combat.ts`, `constants.ts`). The writing voice guide is `git show f2f95fa9:foundation/lore/User-Manual.md`.
+
+**Gate (every task):** `npx tsc -b` clean at root (including `packages/ui/e2e/`) + `npm run lint` (covering e2e specs) + `npm run format:check` + `npm test` all green. UI tasks additionally require `npm run test:e2e -w @spacerquest/ui` green locally. Per global rules: UX-facing verification goes through the real UI, never the engine directly.
+
+**CI-evidence rule:** review and gate run on the uncommitted diff, so acceptance criteria must be locally checkable — the local equivalent of what CI runs satisfies review. Where a criterion names CI or push-dependent evidence, it is confirmed **after** the commit is pushed and recorded in the task's Delivered note; the CI Playwright job (added by T-1001) must be green on the branch's most recent pushed commit before the next task starts.
+
+**Standing constraints** (reviewer enforces on every task):
+1. Engine stays pure: no DOM, no I/O, no `Math.random`/`Date` — all randomness through `SeededRng`.
+2. Every feature reachable headlessly; UI is a client, never the owner, of a rule.
+3. All state changes emit typed `GameEvent`s; state survives JSON round-trip. Any task that adds a `GameState` field ships a save migration and a round-trip test in the same commit.
+4. Content is data in `packages/content`, never logic.
+5. The PRD-REIMAGINED experience wins over foundation numbers. Foundation (`f2f95fa9`) is the reference of record, consulted first; every divergence is commented at the definition site with the PRD rationale. Undocumented divergence is a review failure.
+6. A task is not DONE until the feature is **reachable by a player through the UI**. Engine-only tasks must name, in their block, the task that surfaces them — and that task inherits the reachability obligation.
+7. Every state field, flag, or event a task adds must **name its reader**, and the acceptance must assert the reader consumes it. If nothing reads it, it isn't a feature — it's a receipt.
+
+**Rebalance fallout rule:** a task whose change breaks an existing green test fixes that test **in the same commit** — leaving it for later is a review failure. Balance thresholds are staged deliberately: interim loose bands (e.g. trader clears ≥50% of seeds) hold until T-1603 asserts the canonical targets; earlier tasks must not enshrine numbers T-1603 will move.
+
+Statuses: `TODO` | `IN-PROGRESS` | `DONE` | `BLOCKED(reason)`
+
+---
+
+## M10 — Make the gate real
+
+### T-1001 · CI runs the whole gate — `status: DONE` · `coder: opus` · `after: —`
+The v0.1 gate was fiction: `packages/ui` has a `test:e2e` script but no `test` script, so `npm test --workspaces --if-present` silently skips all 11 Playwright spec files, and `ci.yml` has no Playwright step — every M3 task shipped DONE under an unenforced gate. Add a CI Playwright job (`npx playwright install --with-deps chromium` + build + `test:e2e`); bring `packages/ui/e2e/` under `tsc -b` (tsconfig `include`) and under eslint (widen the `files` glob); fix whatever latent type/lint errors that surfaces.
+**Accept:** all 11 existing spec files pass locally via the exact command the new CI job runs (`npm run test:e2e` in `packages/ui`); a deliberately broken spec fails that command locally (demonstrated and reverted, recorded in the Delivered note); a type error injected into an e2e spec fails `npx tsc -b` locally; post-push, the branch's CI run shows the Playwright e2e job green (recorded in the Delivered note).
+**Delivered (2026-07-12):** A second CI job `e2e` ("Playwright e2e", node 22 matching the build job, 20-min timeout) checks out, builds via `npx tsc -b`, installs chromium with `--with-deps`, and runs `npm run test:e2e` in `packages/ui`. The e2e specs are now inside both static nets: a new composite `packages/ui/e2e/tsconfig.json` (DOM libs, references engine+content, includes `playwright.config.ts`) is referenced from the root tsconfig, and the eslint `files` glob gained `packages/ui/e2e/**/*.ts`; the one latent error that surfaced (`unbound-method` on the native value-setter extraction in `sound.spec.ts`) is fixed with a justified inline suppression rather than ignored. Demonstrations performed and reverted: a deliberately broken smoke spec fails the exact CI command (1 failed / 37 passed), and an injected e2e type error fails `npx tsc -b` with TS2322. All 37 specs pass locally in 8.5s. Post-push CI verification: run 29202483103 on commit 95907736 — both jobs green, "Playwright e2e" executed all 37 specs (37 passed, 22.2s in CI). **Scope note:** the review-vs-CI ordering contradiction this task exposed (CI evidence cannot exist pre-commit) is fixed in the header's new CI-evidence rule, amended in this commit.
+
+### T-1002 · Deep schema-drift guard + seed in the save envelope — `status: TODO` · `coder: opus` · `after: —`
+`loadSave` silently deletes any nested state field the Zod schema doesn't know (verified live: `player.reputation` → `undefined` after round-trip); the T-115 compile-time drift guard covers top-level `GameState` keys only. Extend drift protection to nested objects — recursive compile-time `keyof` guards over `PlayerState`/`ShipState`/`NpcState`/etc., or a property test that injects unknown nested keys into fixtures and asserts a loud failure instead of a silent strip. Also move the RNG seed from localStorage-only (`sq.save.seed`) into the versioned save envelope with a migration — TECH-STACK's "reproducible bug reports" non-negotiable. This task is the named prerequisite for T-1503 (faction rep) and for every M12/M13 task that adds a `GameState` field.
+**Accept:** a regression test proves an unknown nested field under `player.` fails loudly on load rather than silently stripping; the seed survives save→load→save byte-identically and lives in the envelope; the version-bump migration fixture is green.
+
+### T-1003 · Typed fails for Explore + UGT protocol honesty — `status: TODO` · `coder: opus` · `after: —`
+`actions/exploration.ts` throws raw `Error`s on three type-valid player inputs (no die, spent die, bad index), violating the typed-fail-event convention and crashing the UGT adapter. Convert them to typed fail events. In the protocol layer: surface `ActionBlocked` events in the session eventLog instead of discarding them (UI/protocol parity — today the two event streams diverge); add `deserializeSession` coverage (currently zero — the "backbone of deterministic replay" is untested); replace the tautological replay test with a replay against a committed golden fixture covering every action type.
+**Accept:** all three bad Explore inputs driven through the UGT adapter emit typed fail events with no crash; a serialize→deserialize→resume test asserts byte-identical continuation; the replay test asserts against a committed fixture, not the function under test.
+
+### T-1004 · Test & metric honesty pass — `status: TODO` · `coder: opus` · `after: —`
+Fix the vacuous tests the audit flagged before any rebalancing lands, or the rebalance goes unmeasured. The batch-vs-stepped day-equivalence test compares `advanceDay` against its own body — rewrite it against a committed golden fixture (hash of final state + event log for a fixed seed/script). The 500-seed tier-band property asserts a clamp three lines above the selection — rewrite it to test matchmaking (kind bands, non-degeneracy: named NPCs are ever selected, all tiers appear). Redefine `fuelStarvationDays` in the sim report from `fuel === 0` (has fired 0 times in 6,000 simulated days) to "days the player cannot afford the cheapest available jump."
+**Accept:** the Delivered note demonstrates each rewritten test fails under a seeded mutation of the rule it guards (mutation applied, observed red, reverted); a scripted broke-and-dry sim registers `fuelStarvationDays > 0`; the golden fixture is committed.
+
+### T-1005 · PRD & doc corrections — `status: TODO` · `coder: fable` · `after: —`
+Bring the docs and the code's comments back into truth. Amend the PRD upward where the build is better than the spec: legacy/succession detail into §5.2 (cargo forfeiture, scheduled-storylet cancellation, the hand dying with the ship); contract competition as a named mechanic; the anti-poverty-trap principle (debt as ledger, never negative balance) stated as design law; full-screen combat/resolution overlays blessed in §4's "one screen" language. Correct the record: the `shipyard.ts:96` "intentional divergence" comment is false — foundation **does** cap hull-scaled prices at 20,000 (`git show f2f95fa9:foundation/rules/upgrades.ts`, ~line 731); add a v0.1 errata note covering that, the T-101 "payments shifted" claim, the T-106 "shared job pool" description, and the T-201 poverty-criterion scoping. Record the `f2f95fa9` foundation ref and the PRD-over-foundation balance policy in `docs/`.
+**Accept:** PRD sections amended; the false divergence comment corrected at its definition site; errata section committed; zero behavioral diffs (`npm test` untouched-green).
+
+---
+
+## M11 — The physical galaxy
+
+### T-1101 · Real 2D starmap + destination gating — `status: TODO` · `coder: opus` · `after: T-1004`
+All 20 playable systems sit at `y=0, x=id-1` in `content/systems.ts`, so `calculateDistance` degenerates to the `|id difference|` it was chartered to replace — and NEMESIS sits at `(0,0)`, the same point as Sun-3, one jump from home. Author real 2D coordinates for systems 1–20 (core cluster with genuine route choice; rim outlying per PRD §9 geography); move NEMESIS to a remote point. Add engine-side destination gating: travel to NEMESIS/Andromeda/special systems emits a typed fail (unlockable later via the flag T-1505 sets) — today `resolveTravel` accepts any destination and the UGT protocol offers all 28. Re-home the Reptiloid spawn tables off Andromeda-only routes (they currently spawn only where §10 forbids travel).
+**Accept:** no two systems share coordinates (content test); rim systems' mean distance-from-core exceeds core–core mean distance; `Travel` to NEMESIS via `applyPlayerAction` emits a typed fail, not success or throw; Reptiloids reachable in an encounter seed sweep; the starmap Playwright spec re-fixtured and green on the 2D spread.
+
+### T-1102 · Fuel scarcity overhaul — `status: TODO` · `coder: fable` · `after: T-1101`
+"Fuel is the plot" (PRD §4, differentiator 3) is inert: `jumpFuelCost` caps at `min(ty,100)/2` so every jump of distance ≥8 costs exactly 50 fuel, and `maxFuel` is a hardcoded 10,000 never derived from the hull. Remove the cap (per-distance cost that keeps rising); derive `maxFuel` from hull via foundation's `calculateFuelCapacity` (`git show f2f95fa9:foundation/rules/travel.ts`); put the starter tank on the PRD §7.1 scale ("two jumps costs 240 units; you're carrying 300"); reprice depots to match; retune the sim policies' fuel planning in-scope. This sets the game's central scarcity curve — every divergence from foundation commented with PRD rationale per constraint 5. Existing fuel-dependent tests and the starmap fuel-ring spec are this task's fallout to fix.
+**Accept:** a test reproduces the §7.1 scenario (a two-jump route costs ≈240 units against ≈300 starter capacity); a cross-map jump is unaffordable on a starter tank (typed fail); a hull upgrade raises `maxFuel` (A/B test); the trader policy still clears Tour One on ≥50% of 50 seeds after in-task retuning (interim band — final band is T-1603's); the starmap fuel-ring Playwright spec is green against the new engine math.
+
+### T-1103 · Encounter rate & trigger repair — `status: TODO` · `coder: opus` · `after: T-1101`
+Core-route encounters fire at 8% per jump vs foundation's `ENCOUNTER_BASE_CHANCE = 0.30` — an uncommented 4× cut to the game's headline mechanic — and encounters are only generated when the pilot check **succeeds**, so a botched jump is perfectly safe (backwards from fiction). Raise base encounter chance toward foundation's numbers scaled by route danger (any residual divergence commented per constraint 5), and decouple encounter generation from pilot-check success. The combat/onboarding Playwright seed fixtures are this task's fallout to re-derive.
+**Accept:** a 1,000-jump seeded frequency test lands within a stated band per danger tier; a failed pilot check produces an encounter in a seeded test; combat and onboarding Playwright fixtures re-derived and green; divergence comments present at the definition sites.
+
+### T-1104 · Rim & contraband contract economy — `status: TODO` · `coder: opus` · `after: T-1102, T-1103`
+`rollContract` only ever issues destinations 1–14 and cargo types 1–9, so no contract routes to the Rim, the six rim cargo types are never issued, and Contraband (type 10) is unobtainable — the game's namesake region has no payday and the smuggling pillar has no supply. Extend `rollContract` to issue destinations 1–20 and all cargo types including rim cargo 15–20 and Contraband 10 (rare, flagged, port-gated); price the rim premium against 5× fuel prices and 3× danger so "one more run to the rim" (PRD §9) is the high-stakes payday the design names as the soul of the game. Contraband contracts set the carrying state whose reader is T-1305's patrol scans.
+**Accept:** a 200-seed sweep issues ≥1 contract to every rim system and every cargo type incl. Contraband; the sim trader's formerly-dead rim-hunting path executes and completes a rim delivery (asserted); rim EV premium within a stated band; a contraband contract sets the carrying state and the reader is named in code comments (T-1305).
+
+---
+
+## M12 — One d20 society
+
+### T-1201 · NPCs roll real checks — `status: TODO` · `coder: fable` · `after: T-1004`
+PRD §7: "the player and the galaxy run on one system — there is no separate AI." In fact `dice.ts:check()` is never called by `npc.ts`: NPC Trade/Travel/Patrol days involve no roll at all (trades always succeed and always bank the payment), and Combat/Socialize use a raw `d20` against hardcoded `≥12`/`≥14`. Route all five NPC verbs through the shared `check()` with content-defined stats and DCs, emitting `StatCheck` events. This is differentiator #1's load-bearing task; T-1202 builds on its events.
+**Accept:** a test asserts every NPC action resolution emits a `StatCheck`; a 200-day sim shows a non-degenerate NPC trade failure rate (>5%, <60%); no hardcoded DC literals remain in `npc.ts` (constants sourced from content, asserted).
+
+### T-1202 · Nat-20/nat-1 stories + margin scaling — `status: TODO` · `coder: fable` · `after: T-1201`
+PRD §6: "A natural 20 or natural 1 always generates a story, and stories go out on the Galactic News Wire" — today nothing anywhere inspects nats for the wire, and `CheckResult.margin` is computed, displayed, and read by no rule. Make any `check()` nat-20/nat-1 — player or NPC — always generate a wire story (authored templates in content); make margin scale the key outcomes: haggle bonus, combat damage, tribute price. "The margin decides how well it goes" stops being decoration. The UI's `CheckBreakdown` stays a pure client (it already displays margin).
+**Accept:** property test — every nat in a 300-day sim has a same-day wire entry; same-seed haggle A/B shows higher margin → strictly higher bonus; combat damage varies with margin; the PRD §6 sample wire line's template is producible in a seeded run; `CheckBreakdown` renders unchanged.
+
+### T-1203 · player.tier progression — `status: TODO` · `coder: opus` · `after: T-1004`
+`player.tier` is set to 1 at creation and written nowhere else, locking encounter matchmaking to tiers 1–2 forever — 23 of the 30 named NPCs (including Rattlesnake, the PRD §7.4 set-piece) can never intercept the player. Define `tier = f(renown rank, ship class)`, updated on rank-up and succession; matchmaking bands open with it.
+**Accept:** the veteran sim policy reaches tier ≥3 and is intercepted by a tier-3+ named NPC with no test setting tier manually; a roster reachability sweep shows 0 structurally-unreachable named NPCs; tier survives save round-trip with defined succession behavior.
+
+### T-1204 · Disposition with teeth — `status: TODO` · `coder: fable` · `after: T-1201, T-1203`
+PRD §6 "They remember" is plumbed but dead: nothing reads `npc.disposition` except the bond hook and storylet triggers, the tribute/talk DC is flat `10 + tier`, and −1/dusk decay swamps every gain (measured max +1 over 4×300 sim days; the bond hook needs +5 and has fired zero times ever). Make encounter interceptor selection weight disposition (grudges hunt you, friends pass you by); give the tribute/talk DC a disposition term — the unbuilt "this is personal" Rattlesnake beat from v0.1's T-104; rebalance decay (slower decay-toward-zero, larger event deltas); turn the bond intervention into a typed character hook (keyed to the profile's Bond, not a bare threshold) with an organically reachable trigger.
+**Accept:** same-seed A/B — insulting an NPC raises both their tribute DC and their interception probability; a 300-day sim produces ≥1 bond intervention and peak |disposition| ≥5 from organic play; the decay divergence is documented at its definition site.
+
+### T-1205 · Ship components load-bearing — `status: TODO` · `coder: opus` · `after: T-1202`
+Six of eight ship components are mechanically dead: combat reads only player stats and enemy tier, so weapons and shields are cosmetic and `ComponentDamaged` on them is theatre — the project's own playtest rule ("a real player would upgrade their weapons before fighting") is violated by the rules themselves. Wire each component to a named reader: weapons→attack, shields→mitigation, navigation→pilot/explore checks, robotics→repair rate, cabin→crew capacity (the socket T-1306 fills), lifeSupport→a defined survival/succession reader — or document an explicit removal. Replace the deterministic rounds-4/12/20 damage rotation (hull needs 68 never-miss rounds to die) with seeded damage targeting that can hit hull on any round. Scripted combat tests and newly-possible sim deaths are this task's fallout.
+**Accept:** A/B tests — upgraded weapons shorten time-to-kill and upgraded shields reduce damage taken; hull damageable on any round with median rounds-to-kill well under 68 (property test); a reader test exists per component; the fighter policy's win rate improves with upgrades (sim A/B).
+
+### T-1206 · Special equipment load-bearing — `status: TODO` · `coder: opus` · `after: T-1205, T-1103`
+CLOAKER, AUTO_REPAIR, STAR_BUSTER, and ARCH_ANGEL are purchasable, renown-gated, priced, tested — and read by no rule; v0.1 spent two repair rounds making them *reachable* and never checked they *did* anything. Port the rules foundation already has: `attemptCloakDuringTravel` (cloaker lowers realized encounter/escape odds), `applyAutoRepair` (dusk condition regen), and Star-Buster/Arch-Angel combat effects — from `git show f2f95fa9:foundation/rules/upgrades.ts` and `combat.ts`.
+**Accept:** per-item seeded A/B tests (cloaker lowers realized encounter rate; auto-repair recovers condition at dusk; Star-Buster/Arch-Angel each change a combat outcome); the v0.1 veteran earned-play test still green; every purchasable item now has a reader test.
+
+### T-1207 · Tribute modifiers + opposed pursuit — `status: TODO` · `coder: opus` · `after: T-1202, T-1204`
+Restore foundation's tribute modifiers (Brigand ÷2, Reptiloid ×2 — currently dropped, uncommented); resolve run/pursuit and enemy retreat as opposed PILOT rolls per PRD §7.4 ("your [14] +1 vs. his pursuit roll"), margin-fed via T-1202; an enemy nat-20 escape makes the wire — the "miracle burn at Deneb-4". The combat Playwright spec's seed fixtures are this task's fallout.
+**Accept:** tribute price test per interceptor class matches the ×/÷ modifiers; run resolution emits `StatCheck`s for both actors; a seeded enemy nat-20 retreat produces the wire story; the combat Playwright spec re-fixtured and green.
+
+---
+
+## M13 — New systems
+
+### T-1301 · Era transition owner — `status: TODO` · `coder: opus` · `after: T-1004`
+`state.era` is permanently `'TOUR_ONE'` — nobody owns the VETERAN transition, all TOUR_ONE-gated storylets never expire (guild-pressure beats remain eligible in a day-400 career), and any future `eras:['VETERAN']` content is dead on arrival. Make the Day-30 resolution (both branches) flip era→VETERAN: TOUR_ONE content expires; the unpaid branch proceeds as VETERAN-with-debt. Unblocks all VETERAN-gated content in M15.
+**Accept:** sim past day 30 shows `era === 'VETERAN'` on both branches; a TOUR_ONE-gated storylet becomes ineligible and a VETERAN-gated fixture fires; save round-trip mid-transition.
+
+### T-1302 · Storylet triggers: era-event, renown, fragment source — `status: TODO` · `coder: opus` · `after: T-1301`
+The storylet engine cannot express PRD §8.3's authoring principle ("written so the *economy* delivers it — a contract, a price spike, a wire item"): `triggerMatches` never reads `state.eraEvent`, has no renown/deed condition, and `grantFragment` hardcodes `source: 'wise-one'` for every grant. Add era-event, renown-rank, and deed-possession trigger conditions; parameterize fragment source. Rewrite v0.1 T-401's two documented divergences onto their real triggers: plague-relief delivered by an actual plague era event; the ticking-crate attached to a real Contraband contract (T-1104).
+**Accept:** an era-event-triggered fixture fires only during the active event in the afflicted region (same-seed A/B); a renown-gated fixture fires on rank-up; the two rewritten storylets are reachable in a sim sweep via their real triggers; fragments record their true sources.
+
+### T-1303 · Spacers Hangout: the place + Spacer's Dare — `status: TODO` · `coder: fable` · `after: T-1202, T-1204`
+The Hangout is a core PRD verb ("Visit the Hangout", §7), the site of two sample turns (§7.3, §7.5), and the rumor-table host §8.3 names — and the player cannot go there; only NPCs `Socialize`. Add a new die-costed `VisitHangout` player action at hangout-flagged systems (Sun-3 first): **Spacer's Dare** — a wagered, opposed-GUILE game against an NPC actually present in-system (their simulated position, not a random name); a rumor-table storylet host slot; a social venue (meet/befriend/insult → disposition, feeding T-1204's now-real consequences). Surfaced by T-1404 (named surfacing task per constraint 6).
+**Accept:** headless — a Dare win and loss move credits both directions and shift dealer disposition; a table nat makes the wire (via T-1202); table opponents are drawn from NPCs whose simulated position is in-system (asserted); mid-day serialization round-trip; the rumor slot renders ≥1 fact from live NPC state.
+
+### T-1304 · Penny Wise lending — `status: TODO` · `coder: opus` · `after: T-1303, T-1002`
+PRD §7.5 names "a quiet word with Penny Wise, who lends at rates that become their own quest line" as one of the bad day's three outs; Penny Wise exists in the cast as a trader and no lending mechanic exists anywhere. Add borrowing at the Hangout: principal + per-dusk interest accrual, a repay action, and default consequences that are **read** — a disposition hit plus a collection flag consumed by encounter selection (reader named). Loan state is a new `GameState` field: migration + round-trip in this commit per constraint 3. Surfaced by T-1404.
+**Accept:** borrow→10-dusk accrual→repay ledger test; default measurably shifts interception odds (A/B); loan survives save round-trip with defined legacy/succession behavior; an anti-poverty property test proves a loan can never create a stateless dead-end.
+
+### T-1305 · Contraband & smuggling loop — `status: TODO` · `coder: opus` · `after: T-1104, T-1201`
+Smuggling has no downside: the derelict pod pays +300cr and sets `signal.contraband.carrying`, which nothing reads — "take it" is strictly dominant, and PRD §7.2's explicit "patrol captains roll GUILE checks against smugglers" doesn't exist. Add patrol GUILE scans against a carrying player in patrol encounters; caught → confiscation + fine + patrol/faction disposition; Smuggler Ray fences pods and contraband cargo (§7.5's third out); the fence reputation flag is read by later patrol scan DCs (and by T-1503's Rebel rep — readers named). Surfaced by T-1405.
+**Accept:** carrying through a patrol encounter rolls a GUILE scan `StatCheck` (test); the caught path confiscates and fines; a fence sale pays and its flag measurably changes later patrol behavior (A/B); "take the pod" is no longer strictly dominant (100-seed EV test shows nonzero realized risk).
+
+### T-1306 · Dice progression — `status: TODO` · `coder: fable` · `after: T-1205, T-1002`
+PRD §7's only progression axis for the dice pillar — "ship upgrades and crew can add dice, allow one re-roll, or set a floor" — does not exist; `const handSize = 5` is hardcoded and a Day-200 veteran rolls the same hand as a Day-1 nobody. Add crew (hired into cabin capacity, the T-1205 socket) and specific equipment granting +1 die, one re-roll per day, or a roll floor; parameterize `rollDawnHand` off state; hiring/upkeep as actions (Hangout/port). Design decisions on sources and caps are in-task. New state fields: migration + round-trip in this commit. Surfaced by T-1405 (named). Dawn-hand test/spec fallout (5-dice assumptions) is this task's engine-side responsibility; T-1405 owns the UI side.
+**Accept:** a state with a die-granting crew rolls 6 at dawn headlessly; the re-roll consumes its single charge deterministically and serializes mid-day; the floor clamps in a property test; a veteran sim acquires ≥1 progression source by day 150 through legal play; migration + round-trip green.
+
+### T-1307 · Ports as purchasable property — `status: TODO` · `coder: opus` · `after: T-1002, T-1104`
+PRD §9 keeps "ports as purchasable property" from 1991; zero code exists. Add buying a port stake: purchase price, per-dusk income, era events in the region modulate income; ownership is read by the dusk economy, the wire, and T-1503's Warlord Confederation questline (readers named). New state field: migration + round-trip in this commit. Surfaced by T-1405.
+**Accept:** buy→income accrues per dusk (test); a regional era event changes income (A/B); ownership survives save round-trip and succession; the wire announces the purchase; the purchase is reachable within a veteran sim run's earnings.
+
+### T-1308 · Conqueror capstone — `status: TODO` · `coder: opus` · `after: T-1004`
+PRD §5.2/§9 name "Conqueror as the career capstone"; the ladder has 9 ranks, no Conqueror, and saturates (GIGA_HERO needs 15 of 17 deeds — a competent 300-day run gets there). Add the 10th rank above GIGA_HERO with a deed threshold above the current set (headroom filled by T-1504's ≥30 deeds) and one real reader: Conqueror gates the Nemesis-crossing stake term (T-1505) plus a unique citation/wire moment.
+**Accept:** the rank ladder exposes Conqueror with a citation; a test asserts it is defined-but-unreached at current deed counts (reachability proven by T-1504's sweep); rank-up emits wire + Registry entry; its reader is asserted.
+
+### T-1309 · Guild pressure & unpaid-branch teeth — `status: TODO` · `coder: opus` · `after: T-1301`
+The guild-pressure beats emit six flags with zero consumers, and the unpaid Tour One branch is entirely cosmetic — its prose claims "the interest keeps running" (debt never accrues interest) and "your name carries a flag every port clerk can see" (no such flag is read). Make the unpaid branch accrue the interest its prose claims; create the port-clerk flag and read it (worse manifest terms and/or patrol attention); give every existing guild-pressure flag a consumer or remove it.
+**Accept:** the unpaid sim branch shows debt growing per dusk; flagged-vs-clean same-seed A/B shows different port treatment; a named-reader test per surviving guild flag; both branches remain playable 10+ post-resolution days (no soft-lock regression).
+
+### T-1310 · Wise One reachability + fragment decode paths — `status: TODO` · `coder: opus` · `after: T-1302, T-1104`
+The arc-opening Wise One hook triggers on `day === 30` AND being at Polaris-1 — a rim system no contract routes to, a DC-16 jump away, on the exact day the 25,000cr marker falls due — and it is the sole source of `frag-nemesis-01`, on which the game's only decode storylet gates; miss it once and the Nemesis arc closes forever. Replace it with economy-delivered design per PRD §8.3: a wire rumor plus a manifest contract routing to Polaris-1 (T-1104 makes rim contracts real), hook eligible in a window (day ≥25, on visit, never expires). Author Sage decode storylets for fragments 02–05 (today only 01 decodes — everything found by exploring is permanently stuck undecoded).
+**Accept:** the explorer sim opens the arc by day 80 on ≥80% of 50 seeds with no scripted teleport; each fragment 01–05 has a decode path exercised in tests; a late visit (day 60+) still opens the arc; the delivering contract/wire item appears in a seed sweep.
+
+---
+
+## M14 — UI: honest instruments
+
+The App.tsx chain (T-1402 → T-1403 → T-1404 → T-1405 → T-1406 → T-1407) is strictly serialized — each a single commit before the next begins. All panes are pure clients: every displayed number reads an engine export or quote.
+
+### T-1401 · Engine export pack for UI truth — `status: TODO` · `coder: opus` · `after: T-1207, T-1302`
+The audit found 11 UI-owned rules — formulas `format.ts`/`App.tsx` reimplement because the engine keeps them private. Export the truth: `componentTierForStrength` (kills the UI's invented `ceil(strength/10)` inverse that makes tier-1 unbuyable), `tributeForRound` (with T-1207's modifiers), `nextRankFor`, `quoteStoryletChoice` (mirroring the blessed `quoteShipyard` pattern), a typed `WireEntry.kind` at the source (kills string-suffix flaw detection), travel preview in real units (kills the fabricated "jumps" count), and a fuel-affordability quote (the engine charges for fuel it clamps away — warn before commit). No behavior changes; T-1402 is the named consumer.
+**Accept:** unit tests per export; `WireEntry` carries `kind`; the sim stats fixture is byte-identical (no behavior change); T-1402 named as consumer in code comments.
+
+### T-1402 · UI de-rule pass — `status: TODO` · `coder: opus` · `after: T-1401`
+Replace all 11 UI-owned rules in `format.ts`/`App.tsx` with the T-1401 exports. Remove the phantom TRADE-check display on contract signing (the engine spends the die and never reads its value — the instrument currently lies about the dice, the inverse of PRD differentiator 2); render signing as a die cost. Make tier-1 component purchases buyable, and fix the tier-1-hull→0-pods trap at its true owner (engine or content) in-task. Surface the fuel-overspend warning pre-commit. Fix `shipyard.spec.ts:48`, which currently bakes the tier-1 bug in as expected behavior. Wire/log spec fallout from `WireEntry.kind` is this task's to fix.
+**Accept:** Playwright buys a tier-1 component (25cr) through the UI without the pods regression; the manifest sign flow renders no check; storylet locks and rank display asserted against the imported engine exports; a guard test proves `format.ts` imports rather than reimplements the listed formulas.
+
+### T-1403 · Exploration UI — `status: TODO` · `coder: opus` · `after: T-1402, T-1003`
+The audit's single biggest gap: the engine's `Explore` action — nav check, 80 fuel, beacons, derelicts, salvage, contraband pods, Signal Fragments, all built and tested since T-111 — has no UI affordance whatsoever; the Nemesis File pane can only ever render its empty state. Add an "off-lane sweep" control on the starmap pane; an `explore()` verb in the store (the missing action); the POI resolution flow (beacon/derelict); salvage/contraband-pod/fragment outcomes surfaced with the nav `CheckBreakdown`. Typed fail events (T-1003) render as notices, never silence.
+**Accept:** Playwright explores through the real UI on a seeded fixture, takes the sealed-pod choice with its risk visible, gains a fragment, and the Nemesis File renders **non-empty** (the empty-state spec is extended, not left as the sole assertion); typed fails render as visible notices.
+
+### T-1404 · Hangout & lending pane — `status: TODO` · `coder: fable` · `after: T-1403, T-1303, T-1304`
+The Hangout as a visitable place in the cockpit: present-NPC list (from their simulated positions), Spacer's Dare with die commitment and both actors' opposed `CheckBreakdown`s (the honest-dice signature applied to gambling), the rumor table, and Penny Wise's desk — borrow/repay with the interest schedule visible up front, per the "dice are honest" ethos applied to money.
+**Accept:** Playwright — visit, wager a die, read both actors' checks; take and repay a loan entirely through the UI; the pane is offered only where the engine says a Hangout exists; every displayed number traced to an engine export/quote.
+
+### T-1405 · Progression, property & smuggling surfaces — `status: TODO` · `coder: opus` · `after: T-1404, T-1305, T-1306, T-1307`
+Surface M13's remaining mechanics: the dawn dock renders variable hand size, the re-roll affordance, and the floor indicator (T-1306); a contraband hold indicator plus the patrol scan surfaced in the encounter overlay with its GUILE breakdown (T-1305); a port-ownership pane with quote-pattern buy preview and income ledger (T-1307). Dawn-hand spec fallout (5-dice assumptions) is this task's UI-side responsibility.
+**Accept:** Playwright — with a hired crew the dock shows 6 dice and the re-roll works through the UI; a seeded patrol scan renders its GUILE breakdown and consequence; buy a port and watch income tick at dusk.
+
+### T-1406 · Storylet delivery & diegetic shell — `status: TODO` · `coder: fable` · `after: T-1405, T-1302`
+Close the PRD §8.3 drift: storylets should be delivered by the economy — "a contract, a price spike, a wire item — rather than a quest marker" — but the shipped cockpit puts them behind a badge-counted launcher button. Make storylets open from their manifest lines and wire items, replacing the launcher; fold the audio popover into settings (two popovers to reach a volume slider is the "menu ceremony" PRD §2 forbids); make the toolbar diegetic (inside the bezel / in-fiction). A sweep spec must prove no storylet becomes unreachable by the change.
+**Accept:** Playwright — a cargo storylet opens from its manifest line and a wire item opens its storylet; the badge launcher is gone; a sweep spec proves every eligible offer is surfaced somewhere; `sound.spec` updated for settings-hosted sliders.
+
+### T-1407 · Onboarding for the new verbs — `status: TODO` · `coder: opus` · `after: T-1406`
+Extend the T-311 coach-prompt registry to the new verbs: explore, Hangout, loan, contraband choice, port purchase — each anchored to its real affordance, non-modal, once-each, persisted (same client-only seen-state pattern).
+**Accept:** Playwright — a fresh seed fires each new prompt once, anchored correctly; dismissed state persists across reload; no prompt fires for a verb the current state cannot perform.
+
+---
+
+## M15 — Content (writing tasks — planner supplies voice guide from `git show f2f95fa9:foundation/lore/User-Manual.md`)
+
+### T-1501 · Storylet batch: ports & rumors (20) — `status: TODO` · `coder: opus` · `after: T-1302, T-1303, T-1104`
+(Revises old T-402.) 20 storylets keyed to systems (Algol-2's missing repair shop, rim character now that rim systems receive traffic) + Wise One / Sage audience scenes + the Hangout rumor table's authored beats (the host slot T-1303 built).
+**Accept:** all load and validate; every core+rim system has ≥1 storylet reachable in a 500-day sim sweep (rim reachability is now real); the rumor table fills ≥3 dynamic slots from live NPC state; no storylet dead-ends the day.
+
+### T-1502 · NPC personal chains (6 × 3 episodes) — `status: TODO` · `coder: fable` · `after: T-1204, T-1301`
+(Revises old T-403.) Personal arcs for Silk Dagger, Doc Salvage, Wild Card, Rattlesnake, Stellar Monk, The Broker — keyed to Bond/Flaw, gating on disposition/bond state that now has teeth (T-1204), with the ignore-it-and-the-wire-resolves-it path (PRD §8.1: chains can resolve without you).
+**Accept:** each chain completable and abandonable in sim; abandonment produces the wire resolution; episode gates hit organically (no test sets disposition by hand); disposition consequences asserted.
+
+### T-1503 · Alliance arcs: faction rep + first quests — `status: TODO` · `coder: fable` · `after: T-1002, T-1305, T-1307, T-1301`
+(Revises old T-404.) Four-faction reputation on `GameState` moved by organic play (patrol tribute, smuggling via T-1305, port deals via T-1307), one 3-step questline per alliance expressing its playstyle (League patrol writ, Dragons duel circuit, Confed port stake, Rebel smuggling lane), cross-faction consequences. Rep is nested state — the exact bug class T-1002 exists to stop.
+**Accept:** rep nonzero after 100 trader days; an explicit nested-rep save round-trip regression test (the T-1002 bug class, by name); each questline completable in sim; joining one measurably shifts the other three dispositions; all content as data.
+
+### T-1504 · Deed & era content pass + Conqueror headroom — `status: TODO` · `coder: opus` · `after: T-1302, T-1308`
+(Revises old T-406.) Fill to launch quantity: ≥30 Deeds including new-verb deeds (gambling, smuggling, lending, exploration, property), 6 era events fully written **with storylet tie-ins via the now-real era-event trigger** (T-1302 unblocked this), rank citation texts for all 10 ranks.
+**Accept:** counts met, all validate; every era reachable and fires ≥1 tied storylet in a seed sweep; no deed unearnable (200-seed sweep earns every deed at least once); a long veteran sim reaches Conqueror through play.
+
+### T-1505 · The Nemesis Signal arc — `status: TODO` · `coder: fable` · `after: T-1310, T-1403, T-1502`
+(Revises old T-405.) The career mystery: 12 fragments authored across ≥3 acquisition modes (derelict logs, Sage decodings, NPC-held pieces), the decoded-lore index text, and the endgame — the crossing chain and the v1 ending screen (Andromeda itself stays sealed for the expansion). The crossing lifts T-1101's NEMESIS destination gate via its flag and requires the PRD's stake (ship + bank commitment); Conqueror interacts per T-1308's reader.
+**Accept:** full arc completable in a scripted long sim AND the acquisition funnel proven once through the real UI (Playwright: explore→fragment→Sage decode); crossing requires the stake; ending reachable and returns to menu cleanly.
+
+---
+
+## M16 — Hardening & balance
+
+### T-1601 · Policy fleet v3 — `status: TODO` · `coder: opus` · `after: T-1104, T-1303, T-1304, T-1305, T-1306, T-1307`
+Policies learn the new verbs: the explorer explores and decodes, the trader runs the rim and borrows under duress, the fighter uses its now-real equipment; add smuggler/gambler behaviors. The stats report gains loan usage, scan outcomes, Hangout EV, and the T-1004 `fuelStarvationDays`.
+**Accept:** each policy's 300-day report renders with the new metrics nonzero where applicable; trader clears Tour One within the interim band (≥50% of 50 seeds); no shipped policy triggers a poverty-trap (criterion scoped to the competent policies, per the T-1005 errata).
+
+### T-1602 · Tour One E2E — `status: TODO` · `coder: opus` · `after: T-1407`
+(Revises old T-501.) Playwright: complete Tour One start-to-resolution through the real UI (per global test-intent rules — every step a player keystroke/click, zero engine shortcuts), both resolution branches, plus a death-and-legacy run — under a CI gate that now actually executes it (T-1001).
+**Accept:** both branch tests green in CI's Playwright job; run report artifact (screens visited, days elapsed); flake rate <2% over 20 CI runs.
+
+### T-1603 · Balance tuning from sim — `status: TODO` · `coder: fable` · `after: T-1601, T-1504`
+(Revises old T-503.) Run the policy fleet across 500 seeds and tune against PRD targets — now against a game whose numbers bind: fuel scarcity (T-1102), 4× encounters (T-1103), load-bearing components (T-1205), margin scaling (T-1202). Targets: Tour One clearable by competent play in 25–30 days (not 10, not never), no dominant route (era churn working), combat EV negative below tier parity without preparation, deed pacing.
+**Accept:** tuning memo in `docs/balance/` with before/after distributions; median trader debt-clear day in [22, 30]; combat EV negative below tier parity unprepared (testable now that components matter); nonzero death rate across 1,200 sim days (closing the audit's zero-deaths finding); no stable optimal route; all prior tests still green.
+
+### T-1604 · UGT campaign & fix loop — `status: TODO` · `coder: fable` · `after: T-1003, T-1602`
+(Revises old T-502.) Point UGT (sibling repo) at Rimward via the repaired adapter (T-1003). Run the autonomous playtest loop per the established memory protocol (no stopping per failure); triage findings into fixes on this list's pattern.
+**Accept:** ≥1,000 UGT actions logged; every HIGH finding fixed with a regression test; `ActionBlocked` UI/protocol event parity verified during the campaign; findings report committed to `docs/playtests/`.
+
+### T-1605 · Failure & edge hardening — `status: TODO` · `coder: opus` · `after: T-1602`
+(Revises old T-504.) Error boundaries with save-preserving recovery, corrupt-save UX, the anti-poverty-trap invariant extended over the new adversarial states (indebted-to-Penny-Wise, post-confiscation, zero-fuel-rim), performance pass (1,000-day event logs).
+**Accept:** invariant property test in CI covering the named adversarial states; forced crash recovers without save loss; a 1,000-day save loads <2s.
+
+---
+
+## M17 — Ship it
+
+### T-1701 · Electron shell — `status: TODO` · `coder: fable` · `after: T-1602`
+(Old T-601, scope unchanged.) Electron wrapper per TECH-STACK lean: local save dir (migrating localStorage saves in), window management, auto-updater stub, mac+win packaging scripts. Keep the web build working.
+**Accept:** packaged app runs Tour One on macOS; saves in OS app-data; web build unaffected (CI proves both).
+
+### T-1702 · Steamworks integration — `status: TODO` · `coder: fable` · `after: T-1701`
+(Old T-602, revised.) steamworks.js (or equivalent): achievements mirrored from the ≥30-Deed set including Conqueror, Steam Cloud on the seed-carrying T-1002 envelope, rich presence (current system/day). Graceful no-Steam fallback.
+**Accept:** achievements fire from deed events in the Steam dev sandbox; cloud round-trip verified; app runs identically without Steam present.
+
+### T-1703 · Demo build (Tour One) — `status: TODO` · `coder: opus` · `after: T-1702`
+(Old T-603, revised.) Demo configuration: Tour One + 3 post-resolution days, veteran features teased-but-gated — the gate list now includes Hangout progression, ports, and Conqueror content — demo-save carries into full game, distinct build flag and Steam depot config.
+**Accept:** demo build produces the gate correctly (no veteran content reachable — Playwright proves it); save import works full-side; build size sane (<200MB).
+
+### T-1704 · Release checklist — `status: TODO` · `coder: opus` · `after: T-1603, T-1604, T-1605, T-1702, T-1703`
+(Old T-604, unchanged.) Final sweep: store-page asset export list, credits (fonts/audio licenses), version stamping, README/press one-pager, tag `v1.0.0-rc1`.
+**Accept:** checklist doc complete with every item checked or explicitly waived by the user; RC tag builds green from clean clone.
+
+---
+
+## Deliberately deferred (do not scope-creep into v1)
+Async arena PvP (Season 1) · Andromeda region (expansion) · Roscoe upgrade path · gambling games beyond Spacer's Dare · ports-as-property beyond the single-stake mechanic · localization · controller support.

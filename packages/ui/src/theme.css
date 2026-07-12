@@ -1,0 +1,2549 @@
+/* =========================================================================
+   SPACER QUEST · RIMWARD — CRT aesthetic system (T-302)
+   "P3 Amber, an instrument you hold."
+
+   Design commitments (see docs concept / frontend-design pass):
+   - One phosphor colour. Emphasis is REVERSE VIDEO, never a second hue.
+   - Chakra Petch (display chrome) + IBM Plex Mono (tabular instrument data).
+   - Phosphor persistence: state changes bloom bright, then decay to afterglow.
+   - The effect layer (scanline / vignette / flicker / curvature) is pure CSS on
+     a static element — React never re-renders it per frame.
+   ========================================================================= */
+
+:root {
+  --tube: #0b0906;
+  --panel: #140e07;
+  --ember: #ffb000;
+  --ember-hi: #ffe1a6;
+  --amber: #c0781a;
+  --amber-dim: #5e3b0e;
+  --hair: #3a2408;
+
+  --font-display: 'Chakra Petch', system-ui, sans-serif;
+  --font-data: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  --glow: 0 0 2px rgba(255, 176, 0, 0.55), 0 0 10px rgba(255, 176, 0, 0.18);
+  --glow-hi: 0 0 3px rgba(255, 225, 166, 0.9), 0 0 16px rgba(255, 176, 0, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: #050403;
+  color: var(--ember);
+  font-family: var(--font-data);
+  font-size: 15px;
+  line-height: 1.45;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- the tube: fills the viewport ---- */
+.tube {
+  position: relative;
+  height: 100%;
+  padding: 22px 26px;
+  background: radial-gradient(130% 130% at 50% 40%, #150e07 0%, #0b0906 60%, #070502 100%);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* ---- effect layer: static, CSS-only (no per-frame React) ---- */
+.fx {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+}
+.fx::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(130% 120% at 50% 50%, transparent 56%, rgba(0, 0, 0, 0.55) 100%);
+  mix-blend-mode: multiply;
+}
+.fx::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+  opacity: 0.55;
+  animation: flicker 5.5s infinite steps(60);
+}
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  47% {
+    opacity: 0.53;
+  }
+  48% {
+    opacity: 0.64;
+  }
+  49% {
+    opacity: 0.5;
+  }
+}
+/* Effects OFF — keeps a faint vignette for depth, kills scanline + flicker. */
+:root[data-fx='off'] .fx::after {
+  display: none;
+}
+:root[data-fx='off'] .fx::before {
+  background: radial-gradient(130% 120% at 50% 50%, transparent 74%, rgba(0, 0, 0, 0.3) 100%);
+}
+
+/* boot sweep — one orchestrated dawn moment */
+.sweep {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 36%;
+  z-index: 95;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 176, 0, 0.16), transparent);
+  animation: sweep 1100ms ease-out 1 forwards;
+}
+@keyframes sweep {
+  0% {
+    transform: translateY(-40%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(320%);
+    opacity: 0;
+  }
+}
+
+/* ---- grid ---- */
+.screen {
+  position: relative;
+  z-index: 10;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 12px;
+}
+
+/* ---- bezel ---- */
+.bezel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 20px;
+  align-items: center;
+  padding-bottom: 10px;
+  /* reserve the top-right corner for the CRT / New game controls */
+  padding-right: 220px;
+  border-bottom: 1px solid var(--hair);
+}
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.brand h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: 0.32em;
+  margin: 0;
+  text-shadow: var(--glow);
+  text-transform: uppercase;
+}
+.brand .sub {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  font-size: 11px;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+.loc {
+  color: var(--amber);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+.loc b {
+  color: var(--ember);
+}
+.readouts {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-self: end;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+.chip {
+  border: 1px solid var(--hair);
+  padding: 5px 10px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: var(--amber);
+}
+.chip b {
+  color: var(--ember);
+}
+.chip.rev {
+  background: var(--ember);
+  color: var(--tube);
+  border-color: var(--ember);
+  font-weight: 600;
+  text-shadow: none;
+}
+.era {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+}
+/* Rank readout — the current renown standing, always in the bezel (T-309). */
+.chip.rank {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: var(--ember);
+  border-color: var(--amber-dim);
+}
+.fuel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fuel .bar {
+  width: 96px;
+  height: 11px;
+  border: 1px solid var(--amber-dim);
+  position: relative;
+  background: #0a0704;
+}
+.fuel .bar i {
+  position: absolute;
+  inset: 1px;
+  background: repeating-linear-gradient(90deg, var(--ember) 0 5px, transparent 5px 7px);
+  box-shadow: var(--glow);
+}
+.fuel b {
+  color: var(--ember);
+}
+
+/* ---- main columns ---- */
+.main {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 12px;
+  min-height: 0;
+}
+.col {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+}
+.col.left {
+  /* Starmap sizes to its (bounded) content; the taller ship & yard pane takes
+     the flexible remainder and scrolls internally (minmax(0,…) lets it shrink
+     below content height so it never overflows the column and paints over the
+     starmap SVG, which draws with overflow:visible). */
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.pane {
+  border: 1px solid var(--hair);
+  background: linear-gradient(180deg, var(--panel) 0, #0d0905 100%);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.pane > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+}
+.pane > header h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  font-size: 12px;
+  margin: 0;
+  text-transform: uppercase;
+  color: var(--ember);
+  text-shadow: var(--glow);
+}
+.pane > header .tag {
+  font-size: 11px;
+  color: var(--amber);
+  letter-spacing: 0.12em;
+}
+.pane .body {
+  padding: 12px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.pane .body::-webkit-scrollbar {
+  width: 9px;
+}
+.pane .body::-webkit-scrollbar-thumb {
+  background: var(--amber-dim);
+}
+
+/* ---- starmap (T-304 coordinate map, fuel ring, route preview) ---- */
+.starmap .body {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.smsvg {
+  width: 100%;
+  height: auto;
+  max-height: 240px;
+  overflow: visible;
+  display: block;
+}
+
+/* fuel-range ring — a true distance circle centred on the ship */
+.fuel-ring {
+  fill: none;
+  stroke: var(--ember);
+  stroke-width: 0.8;
+  stroke-dasharray: 4 3;
+  opacity: 0.5;
+  pointer-events: none;
+}
+@media not (prefers-reduced-motion: reduce) {
+  .fuel-ring {
+    animation: ring-pulse 3.2s ease-in-out infinite;
+  }
+}
+@keyframes ring-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.route-line {
+  stroke: var(--ember);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+  pointer-events: none;
+}
+.route-line.blocked {
+  stroke: var(--amber-dim);
+}
+
+/* system nodes */
+.smsys {
+  cursor: pointer;
+}
+/* Only the invisible hit-rect is interactive; every visible mark is inert so a
+   neighbour's label can never intercept a node's click (dense lane of 20). */
+.smsys .smhit {
+  fill: transparent;
+}
+.smsys .smdot,
+.smsys .smlabel,
+.era-badge,
+.npc-pip {
+  pointer-events: none;
+}
+.smsys .smdot {
+  fill: #7a4e14;
+  stroke: var(--hair);
+  stroke-width: 0.6;
+}
+.smsys .smlabel {
+  fill: var(--amber);
+  font-size: 8px;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--tube);
+  stroke-width: 1.6;
+}
+.smsys.rim .smdot {
+  fill: var(--amber);
+}
+.smsys.visited .smdot {
+  fill: var(--ember);
+  filter: drop-shadow(0 0 2px rgba(255, 176, 0, 0.6));
+}
+.smsys.visited .smlabel {
+  fill: var(--ember);
+}
+.smsys.here .smdot {
+  fill: var(--ember-hi);
+  stroke: var(--ember);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 3px rgba(255, 176, 0, 0.8));
+}
+.smsys.here .smlabel {
+  fill: var(--ember-hi);
+  font-weight: 600;
+}
+.smsys.sel .smdot {
+  stroke: var(--ember-hi);
+  stroke-width: 1.4;
+}
+.smsys.sel .smlabel {
+  fill: var(--ember-hi);
+}
+/* unreachable systems are visibly gated AND not clickable */
+.smsys.unreachable {
+  pointer-events: none;
+  opacity: 0.32;
+}
+.smsys.unreachable .smdot {
+  fill: transparent;
+  stroke: var(--amber-dim);
+  stroke-dasharray: 1.5 1.5;
+}
+.smsys.unreachable .smlabel {
+  fill: var(--amber-dim);
+}
+
+/* era-event region badge */
+.era-badge rect {
+  fill: none;
+  stroke: var(--ember);
+  stroke-width: 0.8;
+}
+/* known-NPC presence pips */
+.npc-pip {
+  fill: var(--ember-hi);
+}
+
+/* route-preview panel — the plan-before-commit readout */
+.route-preview {
+  border: 1px solid var(--amber-dim);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+.route-preview .rp-head {
+  color: var(--ember);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.route-preview .rp-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 3px 10px;
+  align-items: baseline;
+}
+.route-preview .rp-k {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.route-preview .rp-v {
+  color: var(--ember);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.route-preview .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- ship & shipyard (T-308) ---- */
+.ship .body {
+  padding: 10px 12px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  font-size: 12px;
+}
+
+/* fuel-curve readout — a compact instrument strip, tabular data */
+.ship-fuelcurve {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto 1fr;
+  gap: 2px 8px;
+  align-items: baseline;
+  font-family: var(--font-data);
+  border: 1px solid var(--hair);
+  padding: 6px 8px;
+}
+.ship-fuelcurve .fc-k {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.ship-fuelcurve .fc-v {
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
+  font-weight: 600;
+}
+
+/* component grid */
+.ship-grid {
+  display: grid;
+  gap: 4px;
+}
+.comp-row {
+  border: 1px solid var(--hair);
+  padding: 6px 8px;
+  display: grid;
+  gap: 4px;
+  background: linear-gradient(180deg, #170f07, #0e0a05);
+}
+.comp-row.damaged {
+  border-color: var(--ember);
+  box-shadow: inset 0 0 0 1px rgba(255, 176, 0, 0.25);
+}
+.comp-id {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+}
+.comp-name {
+  color: var(--ember);
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+.comp-str {
+  color: var(--amber);
+  font-family: var(--font-data);
+  font-size: 11px;
+}
+.comp-str b {
+  color: var(--ember-hi);
+}
+.comp-cond {
+  display: flex;
+  gap: 2px;
+}
+.comp-cond i {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--amber-dim);
+}
+.comp-cond i.on {
+  background: var(--ember);
+  border-color: var(--ember);
+  box-shadow: 0 0 4px rgba(255, 176, 0, 0.6);
+}
+.comp-row.damaged .comp-cond i.on {
+  background: var(--ember-hi);
+}
+.comp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.comp-upgrade {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.comp-preview,
+.pods-preview {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--amber);
+}
+.comp-preview b,
+.pods-preview b {
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
+}
+
+/* the honest "why you can't buy this" line — reverse-video, never hidden */
+.ship-reason {
+  display: inline-block;
+  background: var(--ember);
+  color: #140e07;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  font-weight: 600;
+}
+
+/* buttons: a compact yard variant + a ghost (repair) variant */
+.btn.small {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.btn.small.ghost {
+  background: transparent;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ship-repair-all {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* cargo pods */
+.ship-pods-block {
+  border: 1px solid var(--hair);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+.pods-head {
+  color: var(--amber);
+  letter-spacing: 0.05em;
+  font-size: 11px;
+}
+.pods-head b {
+  color: var(--ember-hi);
+}
+.pods-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.pods-controls input {
+  width: 64px;
+  background: #0b0906;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  font-family: var(--font-data);
+  padding: 4px 6px;
+}
+
+/* special equipment — all rows always shown, disabled-not-hidden */
+.ship-equip {
+  border: 1px solid var(--hair);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+.equip-head {
+  color: var(--amber);
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+.equip-row {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--hair);
+}
+.equip-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.equip-main {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+}
+.equip-name {
+  color: var(--ember);
+  font-weight: 500;
+}
+.equip-row.owned .equip-name {
+  color: var(--amber);
+}
+.equip-price {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--ember-hi);
+}
+.equip-tag {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #140e07;
+  background: var(--amber);
+  padding: 1px 6px;
+  font-weight: 600;
+}
+
+/* ---- manifest ---- */
+.contract {
+  border: 1px solid var(--hair);
+  padding: 10px 11px;
+  margin-bottom: 10px;
+  position: relative;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+  background: linear-gradient(180deg, #170f07, #0e0a05);
+}
+.contract:last-child {
+  margin-bottom: 0;
+}
+.contract.pickable:hover {
+  border-color: var(--amber);
+  cursor: pointer;
+}
+.contract .row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.contract .goods {
+  color: var(--ember);
+  letter-spacing: 0.03em;
+  font-weight: 500;
+}
+.contract .dest {
+  color: var(--amber);
+  font-size: 12px;
+}
+.contract .pay {
+  color: var(--ember-hi);
+  font-weight: 600;
+  text-shadow: var(--glow);
+  white-space: nowrap;
+}
+.flag {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  padding: 2px 6px;
+  margin-left: 8px;
+}
+.flag.urgent {
+  background: var(--ember);
+  color: var(--tube);
+  font-weight: 700;
+}
+.flag.shady {
+  border: 1px solid var(--amber);
+  color: var(--amber);
+}
+.flag.storylet {
+  border: 1px solid var(--ember);
+  color: var(--ember);
+}
+
+/* ---- T-305 trade pane (fuel depot / debt ledger / active contract) ---- */
+.pane.trade {
+  margin-top: 12px;
+}
+/* The honest failure surface: an engine refusal is never silent. Reuses the
+   reverse-video treatment so a failure reads distinctly from ordinary text. */
+.notice {
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  background: var(--ember);
+  color: var(--tube);
+  padding: 7px 10px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.ledger-block {
+  border: 1px solid var(--hair);
+  padding: 9px 11px;
+  margin-bottom: 10px;
+  background: linear-gradient(180deg, #170f07, #0e0a05);
+}
+.ledger-block:last-child {
+  margin-bottom: 0;
+}
+.ledger-block .lb-head {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  color: var(--amber);
+  margin-bottom: 7px;
+}
+.ledger-block .lb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+}
+.ledger-block .lb-empty,
+.ledger-block .lb-note,
+.ledger-block .lb-cleared {
+  font-size: 12px;
+  color: var(--amber);
+}
+.ledger-block .lb-note {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.ledger-block .lb-cleared {
+  color: var(--ember);
+  text-shadow: var(--glow);
+  font-weight: 600;
+}
+.ledger-block .due-soon b {
+  color: var(--tube);
+  background: var(--ember);
+  padding: 0 5px;
+}
+.lb-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 9px;
+}
+.lb-controls input {
+  flex: 1;
+  min-width: 0;
+  background: var(--tube);
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  font-family: var(--font-data);
+  font-size: 13px;
+  padding: 6px 8px;
+}
+.lb-controls .btn {
+  white-space: nowrap;
+}
+
+/* ---- honest check block (signature micro-component) ---- */
+.check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  border-top: 1px dashed var(--hair);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.check .lbl {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  color: var(--amber);
+  margin-right: 10px;
+}
+.slot {
+  min-width: 34px;
+  height: 26px;
+  border: 1px dashed var(--amber-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--amber-dim);
+  margin-right: 7px;
+  font-weight: 600;
+}
+.slot.ready {
+  border-style: solid;
+  border-color: var(--ember);
+  color: var(--tube);
+  background: var(--ember);
+  box-shadow: var(--glow);
+}
+.mono {
+  color: var(--amber);
+}
+.mono b {
+  color: var(--ember);
+}
+.arrow {
+  margin: 0 8px;
+  color: var(--amber);
+}
+.result.clear {
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
+  font-weight: 600;
+}
+.result.fail {
+  background: var(--ember);
+  color: var(--tube);
+  padding: 1px 7px;
+  font-weight: 600;
+}
+
+/* ---- haggle affordance + drag/drop assignment ---- */
+.haggle {
+  margin-left: auto;
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 10px;
+  background: transparent;
+  color: var(--ember);
+  border: 1px solid var(--amber);
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.haggle:hover:not(:disabled) {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+.haggle:disabled {
+  color: var(--amber-dim);
+  border-color: var(--amber-dim);
+  cursor: not-allowed;
+}
+/* Already haggled: still clickable (a second attempt is an honest, die-free
+   refusal surfaced as a notice), but dimmed so its state reads at a glance. */
+.haggle.done {
+  color: var(--amber-dim);
+  border-color: var(--amber-dim);
+}
+.die[draggable='true'] {
+  cursor: grab;
+}
+.die[draggable='true']:active {
+  cursor: grabbing;
+}
+.contract.dropready {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+  background: linear-gradient(180deg, #1f1408, #120c06);
+}
+
+/* ---- honest check breakdown (reusable readout) ---- */
+.check-breakdown {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--hair);
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  color: var(--amber);
+}
+.check-breakdown .cb-lbl {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  color: var(--amber);
+}
+.check-breakdown .cb-expr b {
+  color: var(--ember);
+}
+.check-breakdown.crit .cb-expr b,
+.check-breakdown.crit .cb-lbl {
+  color: var(--ember-hi);
+}
+.nat-juice {
+  font-family: var(--font-display);
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  padding: 2px 9px;
+  font-weight: 700;
+}
+.nat-juice.crit {
+  color: var(--tube);
+  background: var(--ember-hi);
+  box-shadow: var(--glow-hi);
+  text-shadow: none;
+}
+.nat-juice.fumble {
+  /* reverse-video fumble — distinct from an ordinary miss */
+  color: var(--tube);
+  background: var(--ember);
+  border: 1px solid var(--ember-hi);
+}
+@media not (prefers-reduced-motion: reduce) {
+  .check-breakdown {
+    animation: cb-reveal 0.32s ease-out 1;
+  }
+  .nat-juice.crit {
+    animation: cb-crit 0.6s ease-out 1;
+  }
+}
+@keyframes cb-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes cb-crit {
+  0% {
+    box-shadow: 0 0 0 rgba(255, 225, 166, 0);
+  }
+  40% {
+    box-shadow: 0 0 24px 5px rgba(255, 225, 166, 0.75);
+  }
+  100% {
+    box-shadow: var(--glow-hi);
+  }
+}
+
+/* ---- hand spent / day-end banner ---- */
+.day-end {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--ember-hi);
+  border: 1px solid var(--ember);
+  padding: 3px 10px;
+  text-shadow: var(--glow);
+  box-shadow: var(--glow);
+}
+
+/* ---- wire ---- */
+.wire {
+  border: 1px solid var(--hair);
+  background: #0c0805;
+  overflow: hidden;
+  position: relative;
+}
+.wire .cap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  z-index: 3;
+  background: linear-gradient(90deg, #12100a 70%, transparent);
+  font-family: var(--font-display);
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  color: var(--ember);
+}
+.wire .cap .dot {
+  width: 7px;
+  height: 7px;
+  background: var(--ember);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--ember);
+  animation: pulse 1.6s infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+.ticker {
+  white-space: nowrap;
+  padding: 9px 0 9px 138px;
+  animation: tick 40s linear infinite;
+  font-size: 13px;
+  color: var(--amber);
+}
+.ticker:hover {
+  animation-play-state: paused;
+}
+.ticker .it {
+  margin-right: 44px;
+}
+.ticker .it b {
+  color: var(--ember);
+}
+.ticker .sep {
+  color: var(--amber-dim);
+  margin: 0 6px;
+}
+@keyframes tick {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- wire log (T-306) ---- */
+.wire-log-btn {
+  margin-left: 6px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  cursor: pointer;
+}
+.wire-log-btn:hover,
+.wire-log-btn[aria-expanded='true'] {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+/* A fixed overlay drawer: the wire itself clips its ticker with overflow:hidden,
+   so the log is anchored to the viewport (like .fx) to escape that clip and to
+   stack above the starmap/main panes rather than being intercepted by them. */
+.wire-log {
+  position: fixed;
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  width: min(920px, 92vw);
+  z-index: 80;
+  background: #0c0805;
+  border: 1px solid var(--ember);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.72);
+}
+.wire-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: var(--ember);
+}
+.wire-log-head b {
+  color: var(--ember-hi);
+}
+.wire-log-close {
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  cursor: pointer;
+}
+.wire-log-close:hover {
+  border-color: var(--ember);
+  color: var(--ember);
+}
+.wire-log-empty {
+  padding: 20px 12px;
+  color: var(--amber);
+  font-size: 13px;
+}
+.wire-log-view {
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+.wire-log-spacer {
+  position: relative;
+  width: 100%;
+}
+.wire-day,
+.wire-entry {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.wire-day {
+  background: var(--amber-dim);
+  color: var(--ember-hi);
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 10px;
+}
+.wire-entry {
+  color: var(--amber);
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wire-entry > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wire-entry[data-wire-kind='deed'],
+.wire-entry[data-wire-kind='renown'] {
+  color: var(--ember);
+}
+/* Flaw overrides — the load-bearing "always notable" headline — get reverse
+   video (per the T-302 one-hue rule: emphasis via inversion, no second colour). */
+.wire-entry[data-wire-kind='flaw-override'] {
+  background: var(--ember);
+  color: #120c02;
+  font-weight: 600;
+}
+.wire-entry[data-wire-kind='flaw-override'] .npc-link {
+  color: #120c02;
+  border-color: #120c02;
+}
+.npc-link {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dotted var(--ember);
+  color: var(--ember-hi);
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+.npc-link:hover,
+.npc-link:focus-visible {
+  color: #fff;
+  border-bottom-style: solid;
+  outline: none;
+}
+.npc-dossier {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 260px;
+  z-index: 7;
+  background: var(--panel);
+  border: 1px solid var(--ember);
+  box-shadow: var(--glow);
+  padding: 10px 12px;
+}
+.npc-dossier .nd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+.npc-dossier .nd-name {
+  color: var(--ember-hi);
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  font-size: 14px;
+}
+.npc-dossier .nd-close {
+  background: transparent;
+  border: none;
+  color: var(--amber);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.npc-dossier .nd-close:hover {
+  color: var(--ember);
+}
+.npc-dossier .nd-row {
+  font-size: 12px;
+  color: var(--amber);
+  margin: 3px 0;
+}
+.npc-dossier .nd-standing {
+  color: var(--ember);
+}
+.npc-dossier .nd-temper {
+  color: var(--amber);
+  font-style: italic;
+  margin-top: 6px;
+}
+
+/* ---- hand dock ---- */
+.dock {
+  border: 1px solid var(--hair);
+  background: linear-gradient(180deg, #17100a, #0b0805);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px;
+}
+.dlabel {
+  font-family: var(--font-display);
+  letter-spacing: 0.2em;
+  font-size: 12px;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+.dlabel b {
+  display: block;
+  color: var(--ember);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  margin-top: 3px;
+}
+.hand {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+.die {
+  width: 56px;
+  height: 56px;
+  position: relative;
+  cursor: pointer;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-data);
+  font-weight: 600;
+  font-size: 21px;
+  color: var(--ember);
+  background: radial-gradient(120% 120% at 50% 35%, #221607, #0e0a05);
+  border: 1px solid var(--amber-dim);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  transition:
+    transform 0.18s,
+    color 0.18s,
+    border-color 0.18s,
+    box-shadow 0.18s;
+  text-shadow: var(--glow);
+}
+.die:hover {
+  transform: translateY(-4px);
+}
+.die.sel {
+  border-color: var(--ember);
+  color: var(--ember-hi);
+  box-shadow: var(--glow-hi);
+  transform: translateY(-8px);
+}
+.die .dl {
+  position: absolute;
+  bottom: 5px;
+  font-family: var(--font-display);
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+  opacity: 0.7;
+}
+.die.spent {
+  color: var(--amber-dim);
+  border-color: #241708;
+  cursor: default;
+  background: radial-gradient(120% 120% at 50% 35%, #120c06, #0a0704);
+}
+.die.spent:hover {
+  transform: none;
+}
+.die.nat {
+  border-color: var(--ember-hi);
+}
+.die.bloom {
+  animation: bloom 0.7s ease-out 1;
+}
+@keyframes bloom {
+  0% {
+    box-shadow: 0 0 0 rgba(255, 225, 166, 0);
+    color: var(--ember-hi);
+  }
+  22% {
+    box-shadow: 0 0 26px 6px rgba(255, 225, 166, 0.7);
+    color: #fff;
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(255, 176, 0, 0);
+  }
+}
+.hint {
+  font-size: 11.5px;
+  color: var(--amber);
+  letter-spacing: 0.05em;
+  justify-self: end;
+  text-align: right;
+  max-width: 260px;
+}
+.hint b {
+  color: var(--ember);
+}
+.btn {
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ember);
+  border: 1px solid var(--amber);
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn:hover {
+  background: var(--ember);
+  color: var(--tube);
+}
+.btn:disabled {
+  color: var(--amber-dim);
+  border-color: var(--hair);
+  cursor: default;
+}
+.btn:disabled:hover {
+  background: transparent;
+  color: var(--amber-dim);
+}
+
+/* ---- top-right controls ---- */
+.ctrls {
+  position: absolute;
+  right: 26px;
+  top: 18px;
+  z-index: 40;
+  display: flex;
+  gap: 8px;
+  font-size: 10.5px;
+}
+.ctrls button {
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  background: transparent;
+  color: var(--amber);
+  border: 1px solid var(--hair);
+  padding: 4px 9px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.ctrls button:hover {
+  color: var(--ember);
+  border-color: var(--amber);
+}
+
+/* new-game seed dialog */
+.seedbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.seedbar input {
+  font-family: var(--font-data);
+  background: #0a0704;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  padding: 6px 8px;
+  width: 90px;
+}
+
+/* ---- audio mixer popover (T-310) ---- */
+.audio-panel {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 60;
+  width: 190px;
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #1a1007, #0c0805);
+  border: 1px solid var(--amber);
+  box-shadow: var(--glow);
+}
+.audio-row {
+  display: grid;
+  gap: 4px;
+}
+.audio-row-label {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.audio-panel input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  background: var(--amber-dim);
+  outline: none;
+  cursor: pointer;
+}
+.audio-panel input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  background: var(--ember);
+  border: none;
+  box-shadow: 0 0 5px var(--ember);
+}
+.audio-panel input[type='range']::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  background: var(--ember);
+  border: none;
+  box-shadow: 0 0 5px var(--ember);
+}
+.audio-mute {
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 10px;
+  background: transparent;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.audio-mute:hover {
+  border-color: var(--amber);
+  color: var(--ember);
+}
+/* Reverse-video emphasis for the engaged (muted) state — single-hue, no 2nd colour. */
+.audio-mute.on {
+  background: var(--ember);
+  color: var(--tube);
+  border-color: var(--ember);
+  font-weight: 600;
+}
+
+/* ---- T-312 settings + saves popover ---- */
+.settings-panel {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 60;
+  width: 320px;
+  max-height: 70vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #1a1007, #0c0805);
+  border: 1px solid var(--amber);
+  box-shadow: var(--glow);
+}
+.set-section,
+.saves-panel {
+  display: grid;
+  gap: 8px;
+}
+.set-head {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ember);
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 5px;
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.set-label {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--amber);
+}
+.set-toggle {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 10px;
+  background: transparent;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 5px 11px;
+  cursor: pointer;
+}
+.set-toggle:hover {
+  border-color: var(--amber);
+  color: var(--ember);
+}
+.set-toggle.on {
+  background: var(--ember);
+  color: var(--tube);
+  border-color: var(--ember);
+  font-weight: 600;
+}
+.set-seg {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--amber-dim);
+}
+.set-seg-btn {
+  font-family: var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  background: transparent;
+  color: var(--amber);
+  border: none;
+  border-right: 1px solid var(--amber-dim);
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.set-seg-btn:last-child {
+  border-right: none;
+}
+.set-seg-btn:hover {
+  color: var(--ember);
+}
+.set-seg-btn.on {
+  background: var(--amber);
+  color: var(--tube);
+  font-weight: 600;
+}
+.save-slot {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--hair);
+  background: rgba(20, 12, 5, 0.5);
+}
+.save-slot.empty {
+  opacity: 0.75;
+}
+.ss-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ss-index {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--ember);
+}
+.ss-summary,
+.ss-empty {
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  color: var(--amber);
+  line-height: 1.35;
+}
+.ss-empty {
+  color: var(--amber-dim);
+  font-style: italic;
+}
+.ss-controls {
+  display: inline-flex;
+  gap: 6px;
+}
+.ss-confirm {
+  display: grid;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid var(--ember);
+  background: rgba(40, 16, 6, 0.6);
+}
+.ss-confirm-q {
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  color: var(--ember);
+}
+.ss-confirm-btns {
+  display: inline-flex;
+  gap: 6px;
+}
+.btn.small.danger {
+  border-color: var(--ember);
+  color: var(--ember);
+}
+.btn.small.danger:hover {
+  background: var(--ember);
+  color: var(--tube);
+}
+
+@media (max-width: 900px) {
+  .settings-panel {
+    width: min(320px, calc(100vw - 24px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx::after {
+    animation: none;
+  }
+  .sweep {
+    display: none;
+  }
+  .ticker {
+    animation: none;
+    padding-left: 138px;
+  }
+  .die.bloom {
+    animation: none;
+  }
+  .wire .cap .dot,
+  .star.here {
+    animation: none;
+  }
+}
+
+/* ---- T-312 user reduced-motion override ---- */
+/* The setting path mirrors the OS media query: a blanket kill-switch so the
+   user toggle suppresses every CSS animation/transition regardless of the OS
+   preference. The JS scramble/sweep are gated on `reduced` in App.tsx. */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ---- T-312 text size (zoom-based) ---- */
+/* Almost every sub-element uses hardcoded px, so a root font-size change does not
+   cascade. Zoom the whole tube instead — Chromium/Playwright support `zoom`. */
+:root[data-text-size='small'] .tube {
+  zoom: 0.9;
+}
+:root[data-text-size='large'] .tube {
+  zoom: 1.15;
+}
+@media (max-width: 900px) {
+  .bezel {
+    grid-template-columns: 1fr;
+    padding-right: 0;
+    padding-top: 34px;
+  }
+  .readouts {
+    justify-self: start;
+  }
+  .main {
+    grid-template-columns: 1fr;
+  }
+  .col.left {
+    grid-template-rows: 200px auto;
+  }
+  .dock {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    text-align: center;
+  }
+  .hint {
+    justify-self: center;
+    text-align: center;
+  }
+}
+
+/* ---- T-307 combat overlay ---------------------------------------------- */
+/* A full-bleed instrument that covers the cockpit the moment an encounter
+   interrupts a jump. Reuses the CRT tokens, the .rev reverse-video band, the
+   .btn / .die / .check-breakdown treatments — no new required animation, so it
+   is quiet under prefers-reduced-motion. No external assets (CSP). */
+.combat-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(120% 120% at 50% 40%, rgba(24, 8, 4, 0.94), rgba(6, 4, 3, 0.98));
+  backdrop-filter: blur(2px);
+}
+.co-frame {
+  width: min(760px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #1a1007, #0c0805);
+  box-shadow: var(--glow);
+  padding: 20px 22px;
+}
+.co-instrument {
+  display: grid;
+  gap: 14px;
+}
+.co-enemy {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 12px;
+}
+.co-enemy-id {
+  display: grid;
+  gap: 4px;
+}
+.co-enemy-name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.co-enemy-ship {
+  font-size: 12px;
+  color: var(--amber);
+  letter-spacing: 0.04em;
+}
+.co-enemy-hist {
+  font-size: 11.5px;
+  color: var(--amber);
+  opacity: 0.85;
+}
+.co-enemy-meta {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  text-align: right;
+}
+.co-tier,
+.co-round {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--ember);
+  border: 1px solid var(--amber-dim);
+  padding: 2px 8px;
+}
+.co-hull {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.co-hull .hp {
+  width: 8px;
+  height: 8px;
+  background: var(--ember);
+  box-shadow: var(--glow);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+.co-hull b {
+  color: var(--ember-hi);
+  margin-left: 3px;
+}
+.co-fuel {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  border: 1px solid var(--amber);
+  padding: 10px 14px;
+  background: #120c06;
+}
+.co-fuel-big {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  color: var(--ember);
+}
+.co-fuel-big b {
+  font-size: 24px;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+  margin-left: 6px;
+}
+.co-fuel-costs {
+  font-size: 12px;
+  color: var(--amber);
+  letter-spacing: 0.05em;
+}
+.co-fuel-costs b {
+  color: var(--ember);
+}
+.co-fuel-costs b.short {
+  color: var(--tube);
+  background: var(--ember);
+  padding: 0 5px;
+}
+.co-offline,
+.co-malfunction {
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--ember);
+  color: var(--tube);
+  padding: 8px 11px;
+  letter-spacing: 0.03em;
+}
+.co-dice {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 4px 0;
+}
+.co-stances {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.co-stances .stance {
+  padding: 12px 0;
+  font-size: 14px;
+  letter-spacing: 0.16em;
+}
+.co-stances .stance.fight {
+  border-color: var(--ember);
+}
+.co-tribute {
+  font-size: 11.5px;
+  color: var(--amber);
+  text-align: center;
+}
+.co-tribute b {
+  color: var(--ember);
+}
+.co-hint {
+  font-size: 11.5px;
+  color: var(--amber);
+  text-align: center;
+  margin: 0;
+}
+.co-standdown {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  border: 1px dashed var(--amber-dim);
+  padding: 14px;
+}
+.co-aftermath {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+.co-aftermath-head {
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.05em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+  margin: 0;
+}
+.co-aftermath-lines {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--amber);
+}
+.co-aftermath[data-testid] .co-aftermath-head[data-resolution='defeated'] {
+  color: var(--ember-hi);
+}
+
+@media (max-width: 720px) {
+  .co-enemy {
+    flex-direction: column;
+  }
+  .co-enemy-meta {
+    justify-items: start;
+    text-align: left;
+  }
+  .co-stances {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================================
+   T-309 · Storylet panel & Records overlay (Registry of Deeds + Nemesis file)
+   Amber-phosphor prose surfaces. Emphasis stays single-hue (reverse video for
+   the decoded tag / locked reason), honoring the T-302 one-colour rule.
+   ========================================================================= */
+
+/* ---- in-cockpit storylet prose panel ---- */
+/* A dismissible floating panel opened from the cockpit launcher (the WireLog /
+   Records pattern) — anchored ABOVE the dock so the dawn hand stays reachable
+   for a die-gated choice. Non-blocking: the player opens it, resolves or closes
+   it, and it never covers a pane the way an always-on band would. Combat still
+   wins: the panel unmounts while an encounter or its aftermath is live. */
+.storylet-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  width: min(720px, 92vw);
+  max-height: 56vh;
+  overflow-y: auto;
+  z-index: 78;
+  background: linear-gradient(180deg, #1a1007, #0c0805);
+  border: 1px solid var(--amber);
+  box-shadow: var(--glow);
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+}
+.sl-close {
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 9px;
+  cursor: pointer;
+  flex: none;
+}
+.sl-close:hover {
+  border-color: var(--ember);
+  color: var(--ember);
+}
+/* The launcher shows a waiting-storylet count; reverse-video to read as a live
+   prompt without a second hue. */
+.ctrls button.storylet-launch {
+  border-color: var(--amber);
+  color: var(--ember);
+}
+.sl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 10px;
+}
+.sl-title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  letter-spacing: 0.05em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+  margin: 0;
+}
+.sl-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.sl-page-btn {
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  font-size: 12px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.sl-page-btn:hover:not(:disabled) {
+  border-color: var(--ember);
+  color: var(--ember);
+}
+.sl-page-btn:disabled {
+  color: var(--hair);
+  border-color: var(--hair);
+  cursor: default;
+}
+.sl-count {
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  color: var(--amber);
+}
+.sl-prose {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--amber);
+}
+.sl-choices {
+  display: grid;
+  gap: 8px;
+}
+.sl-choice {
+  border: 1px solid var(--hair);
+  padding: 9px 11px;
+  display: grid;
+  gap: 5px;
+}
+.sl-choice.locked {
+  border-style: dashed;
+}
+.sl-choice-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sl-cost {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ember);
+  border: 1px solid var(--amber-dim);
+  padding: 1px 7px;
+}
+/* The locked reason must be READ (accept criterion), so full amber, not dim. */
+.sl-lock {
+  font-family: var(--font-display);
+  letter-spacing: 0.1em;
+  font-size: 10px;
+  color: var(--tube);
+  background: var(--amber);
+  padding: 2px 7px;
+}
+.sl-choice-prose {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--amber);
+  opacity: 0.82;
+}
+
+/* ---- Records overlay (Registry + Nemesis) ---- */
+.records-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 85;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(120% 120% at 50% 40%, rgba(20, 10, 4, 0.94), rgba(6, 4, 3, 0.98));
+  backdrop-filter: blur(2px);
+}
+.ro-frame {
+  width: min(760px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #1a1007, #0c0805);
+  box-shadow: var(--glow);
+  padding: 18px 20px;
+  display: grid;
+  gap: 14px;
+}
+.ro-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 10px;
+}
+.ro-tabs {
+  display: inline-flex;
+  gap: 8px;
+}
+.ro-tab {
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+.ro-tab:hover {
+  border-color: var(--amber);
+  color: var(--ember);
+}
+.ro-tab.on {
+  background: var(--amber);
+  color: var(--tube);
+  border-color: var(--amber);
+  font-weight: 600;
+}
+.ro-close {
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+.ro-close:hover {
+  border-color: var(--ember);
+  color: var(--ember);
+}
+
+/* ---- Registry of Deeds ---- */
+.registry-rank {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 1px solid var(--amber);
+  padding: 10px 14px;
+  background: #120c06;
+}
+.rr-label {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: var(--amber);
+}
+.rr-value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.rr-deeds,
+.rr-next {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+}
+.rr-next {
+  color: var(--ember);
+}
+.registry-empty,
+.nemesis-empty {
+  padding: 18px 4px;
+  color: var(--amber);
+  font-size: 13px;
+}
+.registry-list,
+.nemesis-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.registry-deed,
+.nemesis-fragment {
+  border: 1px solid var(--hair);
+  border-left: 2px solid var(--amber);
+  padding: 9px 12px;
+}
+.rd-head,
+.nf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rd-title,
+.nf-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--ember-hi);
+}
+.rd-day {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+}
+.rd-citation,
+.nf-text {
+  margin: 5px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--amber);
+}
+
+/* ---- Nemesis file ---- */
+.nemesis-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--amber-dim);
+  padding: 8px 12px;
+}
+.nh-label {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: var(--ember);
+}
+.nh-count {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+}
+.nf-tag {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  font-size: 9.5px;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 1px 6px;
+  flex: none;
+}
+/* A decoded fragment is the notable state → reverse video (one-hue rule). */
+.nf-tag.decoded {
+  background: var(--ember);
+  color: var(--tube);
+  border-color: var(--ember);
+  font-weight: 600;
+}
+.nemesis-fragment.decoded {
+  border-left-color: var(--ember);
+}
+
+@media (max-width: 720px) {
+  .ro-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* =========================================================================
+   T-311 · Onboarding & Tour One presentation
+   - Contextual coach callouts (non-modal, anchored to the affordance).
+   - Guild-letter letterhead treatment for guild.* storylets.
+   - Day-30 resolution ceremony (full-screen certificate).
+   All in the one-phosphor CRT idiom: emphasis is reverse video, never a second
+   hue; motion respects prefers-reduced-motion.
+   ========================================================================= */
+
+/* ---- contextual onboarding coach ---- */
+.onboarding {
+  position: absolute;
+  z-index: 82; /* above the storylet panel (78); inside co-frame it rides local */
+  width: min(340px, 80vw);
+  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #1c1208, #0e0a05);
+  box-shadow: var(--glow);
+  padding: 12px 14px;
+  display: grid;
+  gap: 5px;
+  /* Truly non-modal: the callout never intercepts a click meant for the
+     affordance beneath it — only its own dismiss button is interactive. This is
+     what lets the player act on the taught control while the coach is up (which
+     auto-dismisses it). */
+  pointer-events: none;
+}
+.onboarding .ob-dismiss {
+  pointer-events: auto;
+}
+@media not (prefers-reduced-motion: reduce) {
+  .onboarding {
+    animation: ob-fade 220ms ease-out both;
+  }
+}
+@keyframes ob-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.ob-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.ob-body {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--amber);
+  line-height: 1.45;
+}
+.ob-dismiss {
+  justify-self: end;
+  margin-top: 2px;
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.ob-dismiss:hover {
+  border-color: var(--ember);
+  box-shadow: var(--glow);
+}
+/* Anchor each callout near the affordance it teaches. Only one shows at a time,
+   so absolute-positioning per anchor never collides. */
+.onboarding[data-onboarding-anchor='hand'] {
+  left: 50%;
+  bottom: 132px;
+  transform: translateX(-50%);
+}
+@media not (prefers-reduced-motion: reduce) {
+  .onboarding[data-onboarding-anchor='hand'] {
+    animation: ob-fade-center 220ms ease-out both;
+  }
+}
+@keyframes ob-fade-center {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+.onboarding[data-onboarding-anchor='manifest'] {
+  right: 26px;
+  top: 128px;
+}
+.onboarding[data-onboarding-anchor='starmap'] {
+  left: 26px;
+  top: 128px;
+}
+/* The combat coach rides inside .co-frame (position: relative implied via the
+   overlay grid); pin it to the top of the instrument. */
+.co-frame .onboarding[data-onboarding-anchor='combat'] {
+  position: static;
+  width: auto;
+  margin-bottom: 12px;
+  border-color: var(--ember);
+}
+
+/* ---- guild-letter letterhead treatment ---- */
+.storylet-panel[data-variant='letter'] {
+  border-color: var(--ember);
+}
+.storylet-letterhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--amber-dim);
+  /* a faint teletype rule under the masthead */
+}
+.sl-seal {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  padding: 2px 8px;
+  flex: none;
+}
+.sl-masthead {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+
+/* ---- day-30 resolution ceremony ---- */
+.resolution-ceremony {
+  position: absolute;
+  inset: 0;
+  z-index: 84; /* above combat (80) — the last-day beat is unmissable */
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(120% 120% at 50% 38%, rgba(24, 14, 4, 0.95), rgba(6, 4, 3, 0.985));
+  backdrop-filter: blur(2px);
+}
+.rc-frame {
+  width: min(680px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #1c1308, #0c0805);
+  box-shadow: var(--glow);
+  padding: 24px 26px;
+  display: grid;
+  gap: 16px;
+}
+.resolution-ceremony[data-outcome='cleared'] .rc-frame {
+  border-color: var(--ember);
+  box-shadow: var(--glow-hi);
+}
+.rc-head {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 14px;
+}
+.rc-kicker {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.24em;
+  color: var(--amber);
+}
+.rc-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  letter-spacing: 0.05em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.rc-rank {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 2px 10px;
+}
+.rc-prose {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--amber);
+}
+.rc-honors {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+.rc-deed {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--ember-hi);
+}
+.rc-seal {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  padding: 2px 8px;
+}
+.rc-veteran {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  padding: 5px 16px;
+}
+.rc-consequence {
+  font-size: 12.5px;
+  color: var(--amber);
+  border: 1px dashed var(--amber-dim);
+  padding: 10px 14px;
+  text-align: center;
+}
+.rc-choices {
+  display: grid;
+  gap: 12px;
+}
+.rc-choice {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--hair);
+  padding-top: 12px;
+}
+.rc-choice-prose {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--amber);
+  opacity: 0.9;
+}
+.rc-lock {
+  font-size: 10.5px;
+  color: var(--tube);
+  background: var(--ember);
+  padding: 1px 8px;
+  justify-self: start;
+}
+
+@media (max-width: 720px) {
+  .onboarding[data-onboarding-anchor='manifest'],
+  .onboarding[data-onboarding-anchor='starmap'] {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    top: auto;
+    bottom: 200px;
+  }
+}

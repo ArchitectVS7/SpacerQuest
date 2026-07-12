@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "declaration": true,
+    "declarationMap": true,
+    "composite": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  // Solution file: builds only the referenced packages. files:[] keeps tsc
+  // away from foundation/ (frozen reference specs, non-compiling by design)
+  // and legacy/.
+  "files": [],
+  "references": [
+    { "path": "./packages/content" },
+    { "path": "./packages/engine" },
+    { "path": "./packages/ui" },
+    { "path": "./packages/sim" },
+    { "path": "./packages/ui/e2e" }
+  ],
+  "exclude": ["node_modules", "dist"]
+}
