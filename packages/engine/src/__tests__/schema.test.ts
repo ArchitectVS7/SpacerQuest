@@ -169,6 +169,47 @@ describe('GameStateSchema — accepts real serialized states', () => {
     expect(allTypes.has('ExplorationFailed') || allTypes.has('PoiDiscovered')).toBe(true);
   });
 
+  // T-1003 · Malformed Explore inputs resolve to typed ExplorationFailed events
+  // carrying the three new reasons. Those events land in state.eventLog and MUST
+  // survive JSON round-trip — otherwise a save taken after a player triggers one
+  // of these paths fails GameStateSchema.parse on load. Drive each through the
+  // real engine (not a hand-built event) so the schema is proven against the
+  // exact shape the resolver emits.
+  const MALFORMED_EXPLORE: Array<{
+    reason: string;
+    actions: PlayerAction[];
+  }> = [
+    // no die assigned to the sweep.
+    { reason: 'no-die', actions: [{ type: 'Explore' }] },
+    // die index outside the dawn hand.
+    { reason: 'invalid-die-index', actions: [{ type: 'Explore', spendDie: 99 }] },
+    // die already burned earlier this dawn (buy-fuel spends die 0 first).
+    {
+      reason: 'die-already-spent',
+      actions: [
+        { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+        { type: 'Explore', spendDie: 0 },
+      ],
+    },
+  ];
+
+  for (const { reason, actions } of MALFORMED_EXPLORE) {
+    it(`round-trips an ExplorationFailed '${reason}' event (T-1003)`, () => {
+      const state = advanceDay(createInitialState(7), actions).state;
+
+      // Sanity: the resolver actually emitted the reason under test, so the
+      // round-trip below is exercising the shape we care about.
+      const failure = state.eventLog.find(
+        (e) => e.type === 'ExplorationFailed' && e.reason === reason,
+      );
+      expect(failure, `expected an ExplorationFailed '${reason}' in the event log`).toBeDefined();
+
+      const raw = JSON.parse(serializeState(state)) as unknown;
+      const validated = validateGameState(raw);
+      expect(validated).toEqual(raw);
+    });
+  }
+
   it('round-trips a populated nemesisFile (T-111b fragments survive validation)', () => {
     const state = createInitialState(1);
     state.player.nemesisFile.fragments = [

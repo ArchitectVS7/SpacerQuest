@@ -529,7 +529,13 @@ const GameEventSchema = z.discriminatedUnion('type', [
     type: z.literal('ExplorationFailed'),
     day: z.number(),
     systemId: z.number(),
-    reason: z.enum(['nav-check', 'insufficient-fuel']),
+    reason: z.enum([
+      'nav-check',
+      'insufficient-fuel',
+      'no-die',
+      'invalid-die-index',
+      'die-already-spent',
+    ]),
   }),
   z.object({
     type: z.literal('SalvageRecovered'),

@@ -79,8 +79,7 @@ export type ProtocolRequest =
   | { type: 'end-day' }
   | { type: 'apply-action'; action: PlayerAction };
 
-export type ProtocolErrorCode =
-  'no-session' | 'wrong-phase' | 'action-blocked' | 'apply-failed' | 'unknown-request';
+export type ProtocolErrorCode = 'no-session' | 'wrong-phase' | 'apply-failed' | 'unknown-request';
 
 export type ProtocolResponse =
   | { type: 'state-summary'; summary: StateSummary }
@@ -646,11 +645,24 @@ export function handleMessage(
         return { session, response: errorResponse('apply-failed', message) };
       }
       if (isActionBlocked(result.events)) {
-        // A legal-shape action the engine refused (active encounter). Do NOT
-        // commit — keep the session clean and report the block as an error.
+        // PARITY (T-1003): the engine appended the ActionBlocked event to
+        // result.state.eventLog (day.ts) and the UI commits that state — so the
+        // protocol MUST commit it too, or the two event streams diverge (the
+        // protocol used to discard the state and return a bare `error`, leaving
+        // its consumer's event log missing the refusal the UI records). The block
+        // is side-effect-free (no die spent, no dayEventCount bump — day.ts
+        // returns early), so this commit is a pure log-append. We surface the
+        // refusal as an action-result whose `events` carry the ActionBlocked; a
+        // harness detects the refusal by scanning events for 'ActionBlocked',
+        // exactly as App.tsx does.
+        const blockedNext: ProtocolSession = { seed: session.seed, state: result.state };
         return {
-          session,
-          response: errorResponse('action-blocked', 'Action blocked by an active encounter'),
+          session: blockedNext,
+          response: {
+            type: 'action-result',
+            summary: buildStateSummary(blockedNext.state),
+            events: result.events,
+          },
         };
       }
       const next: ProtocolSession = { seed: session.seed, state: result.state };

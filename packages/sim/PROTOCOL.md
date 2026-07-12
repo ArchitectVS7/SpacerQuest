@@ -60,10 +60,14 @@ Discriminated on `type`:
 
 `ProtocolErrorCode`: `no-session` (a request other than new-game/reset arrived
 before a game existed), `wrong-phase` (lifecycle/action issued in the wrong day
-phase), `action-blocked` (a legal-shape action the engine refused — an active
-encounter blocks trade/travel/shipyard/explore), `apply-failed` (a malformed
-action a resolver rejected, e.g. a missing required die), `unknown-request` (an
-unrecognized or non-JSON request line).
+phase), `apply-failed` (a malformed action a resolver rejected, e.g. a missing
+required die), `unknown-request` (an unrecognized or non-JSON request line).
+
+A legal-shape action the engine *refuses* (an active encounter blocks
+trade/travel/shipyard/explore) is **not** an error: it comes back as an
+`action-result` whose `events` contain a typed `ActionBlocked`, and the block is
+recorded in the session's `eventLog` (see **Blocked** under `apply-action`). This
+keeps the protocol's event stream identical to the UI's.
 
 **The core never throws for a well-formed request.** Phase violations, blocked
 actions, and malformed actions all come back as typed `error` responses, and on
@@ -145,7 +149,7 @@ interface LegalActions {
   travel, explore, shipyard, and each eligible storylet choice — gated by dice,
   fuel, and board state. `lifecycle` is `['end-day']`.
 - **DAY, active encounter**: **only** `Combat` (trade/travel/shipyard/explore are
-  omitted — the engine would return `action-blocked`). `lifecycle` is
+  omitted — the engine refuses them with a typed `ActionBlocked`). `lifecycle` is
   `['end-day']`.
 - **Dice exhausted** (no unspent dice, nothing die-free to do): `actions` is
   empty; the only move is `end-day`.
@@ -210,7 +214,11 @@ Applies a single `PlayerAction` through the engine's **public** API
   failed pilot check, an unaffordable purchase, a missed haggle) are successful
   applications — their failure is reported inside `events`.
 - **Blocked** (an active encounter refuses trade/travel/shipyard/explore) →
-  `error` `action-blocked`; the session is not mutated.
+  `action-result` whose `events` contain a typed `ActionBlocked`
+  (`{ actionType, reason: 'active-encounter' }`). The refusal is recorded in the
+  session's `eventLog` — matching what the UI commits — but no die is spent and no
+  other state changes (a pure log-append). Detect the refusal by scanning the
+  response `events` for `ActionBlocked`, not by an error code.
 - **Malformed** (a resolver rejects the action, e.g. a required `spendDie` is
   missing) → `error` `apply-failed`; the session is not mutated.
 - **Wrong phase** (not DAY) → `error` `wrong-phase`.

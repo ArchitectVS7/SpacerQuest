@@ -10,6 +10,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   buildStateSummary,
+  deserializeSession,
   handleMessage,
   legalActions,
   serializeSession,
@@ -20,6 +21,14 @@ import {
   type StateSummary,
 } from '../protocol.js';
 import { makeSessionHandler, processLine, runStdioAdapter } from '../protocol-stdio.js';
+import {
+  REPLAY_GOLDEN_COMBAT_RESPONSES,
+  REPLAY_GOLDEN_COMBAT_SESSION,
+  REPLAY_GOLDEN_RESPONSES,
+  REPLAY_GOLDEN_SESSION,
+  REPLAY_LOG,
+  REPLAY_LOG_COMBAT,
+} from './fixtures/replay-golden.js';
 
 // ---------------------------------------------------------------------------
 // Narrowing helpers — keep the tests type-safe over the response union.
@@ -32,11 +41,25 @@ function expectSummary(response: ProtocolResponse): StateSummary {
   return response.summary;
 }
 
-function expectActionResult(response: ProtocolResponse): { summary: StateSummary } {
+function expectActionResult(
+  response: ProtocolResponse,
+): Extract<ProtocolResponse, { type: 'action-result' }> {
   if (response.type !== 'action-result') {
-    throw new Error(`expected action-result, got ${response.type}`);
+    throw new Error(
+      `expected action-result, got ${response.type}` +
+        (response.type === 'error' ? ` (${response.code}: ${response.message})` : ''),
+    );
   }
   return response;
+}
+
+/** The reason on the first ExplorationFailed event in an action-result, or null. */
+function explorationFailReason(response: ProtocolResponse): string | null {
+  const result = expectActionResult(response);
+  for (const event of result.events) {
+    if (event.type === 'ExplorationFailed') return event.reason;
+  }
+  return null;
 }
 
 function expectLegal(response: ProtocolResponse): LegalActions {
@@ -153,20 +176,6 @@ describe('protocol echo — full day', () => {
 // Deterministic replay from a logged session.
 // ---------------------------------------------------------------------------
 
-const REPLAY_LOG: ProtocolRequest[] = [
-  { type: 'new-game', seed: 5 },
-  { type: 'start-day' },
-  {
-    type: 'apply-action',
-    action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 2, spendDie: 0 },
-  },
-  { type: 'apply-action', action: { type: 'Travel', destinationId: 2, spendDie: 1 } },
-  { type: 'end-day' },
-  { type: 'start-day' },
-  { type: 'apply-action', action: { type: 'Wait' } },
-  { type: 'end-day' },
-];
-
 function replay(log: ProtocolRequest[]): {
   session: ProtocolSession | null;
   responses: ProtocolResponse[];
@@ -182,15 +191,55 @@ function replay(log: ProtocolRequest[]): {
 }
 
 describe('protocol deterministic replay', () => {
-  it('replays a logged session byte-identically from a fresh session', () => {
+  // The replay contract is proven against COMMITTED golden fixtures (not a second
+  // live replay of the same code, which would be tautological). REPLAY_LOG +
+  // REPLAY_LOG_COMBAT together exercise every PlayerAction type. A mismatch here
+  // is a real determinism regression or an undeclared rebalance — regenerate the
+  // golden deliberately via fixtures/gen-golden.ts.
+  it('replays REPLAY_LOG to the committed golden session and responses', () => {
+    const { session, responses } = replay(REPLAY_LOG);
+    expect(session).not.toBeNull();
+    expect(serializeSession(session!)).toBe(REPLAY_GOLDEN_SESSION);
+    expect(JSON.stringify(responses)).toBe(REPLAY_GOLDEN_RESPONSES);
+  });
+
+  it('replays REPLAY_LOG_COMBAT (Combat coverage) to its committed golden', () => {
+    const { session, responses } = replay(REPLAY_LOG_COMBAT);
+    expect(session).not.toBeNull();
+    expect(serializeSession(session!)).toBe(REPLAY_GOLDEN_COMBAT_SESSION);
+    expect(JSON.stringify(responses)).toBe(REPLAY_GOLDEN_COMBAT_RESPONSES);
+  });
+
+  it('the two golden logs cover every PlayerAction type', () => {
+    // Guards the fixture against silently losing coverage of an action shape.
+    const shapes = new Set<string>();
+    for (const request of [...REPLAY_LOG, ...REPLAY_LOG_COMBAT]) {
+      if (request.type !== 'apply-action') continue;
+      const action = request.action;
+      shapes.add('action' in action ? `${action.type}/${action.action}` : action.type);
+    }
+    for (const expected of [
+      'Trade/buy-fuel',
+      'Trade/sign-contract',
+      'Trade/haggle',
+      'Trade/pay-debt',
+      'Travel',
+      'Explore',
+      'Shipyard/repair',
+      'Shipyard/buy-cargo-pods',
+      'Combat',
+      'Storylet',
+      'Wait',
+    ]) {
+      expect(shapes).toContain(expected);
+    }
+  });
+
+  it('replay stays deterministic across independent runs', () => {
+    // A lightweight determinism check (separate from the fixture assertion).
     const first = replay(REPLAY_LOG);
     const second = replay(REPLAY_LOG);
-
-    expect(first.session).not.toBeNull();
-    expect(second.session).not.toBeNull();
-    // The whole serialized session is byte-identical across independent replays.
     expect(serializeSession(second.session!)).toBe(serializeSession(first.session!));
-    // Every response — including the final state-summary — is byte-identical.
     expect(JSON.stringify(second.responses)).toBe(JSON.stringify(first.responses));
   });
 
@@ -206,18 +255,32 @@ describe('protocol deterministic replay', () => {
       expect(wrongPhase.response.code).toBe('wrong-phase');
     }
 
-    // Encounter-blocked: a trade during an active encounter is refused, session
-    // is left untouched (no commit).
+    // Encounter-blocked: a trade during an active encounter is REFUSED, but the
+    // refusal is surfaced (T-1003 parity) as an action-result whose events carry
+    // the typed ActionBlocked — and the block is committed to the session's
+    // eventLog so the protocol's event stream matches the UI's.
     const encSession: ProtocolSession = { seed: 9, state: dayStateWithEncounter(300) };
+    const spentBefore = [...(encSession.state.player.dawnHand?.spent ?? [])];
+    const logLenBefore = encSession.state.eventLog.length;
     const blocked = handleMessage(encSession, {
       type: 'apply-action',
       action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
     });
-    expect(blocked.response.type).toBe('error');
-    if (blocked.response.type === 'error') {
-      expect(blocked.response.code).toBe('action-blocked');
-    }
-    expect(blocked.session).toBe(encSession);
+    const blockedResult = expectActionResult(blocked.response);
+    const blockEvent = blockedResult.events.find((e) => e.type === 'ActionBlocked');
+    expect(blockEvent && blockEvent.type === 'ActionBlocked' && blockEvent.actionType).toBe(
+      'Trade',
+    );
+    expect(blockEvent && blockEvent.type === 'ActionBlocked' && blockEvent.reason).toBe(
+      'active-encounter',
+    );
+    // Parity: the committed session now records the block in its eventLog…
+    expect(blocked.session).not.toBeNull();
+    expect(blocked.session!.state.eventLog.length).toBe(logLenBefore + 1);
+    expect(blocked.session!.state.eventLog.some((e) => e.type === 'ActionBlocked')).toBe(true);
+    // …but no die was spent (a pure log-append, no other state change).
+    expect(blocked.session!.state.player.dawnHand?.spent).toEqual(spentBefore);
+    expect(blockedResult.summary.diceRemaining).toEqual([0, 1, 2, 3, 4]);
 
     // A malformed action (missing required die) is a typed error, not a crash.
     const startDayed = handleMessage(opened.session, { type: 'start-day' });
@@ -229,6 +292,105 @@ describe('protocol deterministic replay', () => {
     if (malformed.response.type === 'error') {
       expect(malformed.response.code).toBe('apply-failed');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1003 · Malformed Explore inputs through the UGT adapter.
+//
+// Three type-valid Explore inputs (no die / bad index / already-spent die) used
+// to throw raw Errors and crash the adapter. They must now come back as
+// action-results carrying a typed ExplorationFailed event — never `error`, never
+// a throw.
+// ---------------------------------------------------------------------------
+
+describe('explore malformed inputs through the adapter', () => {
+  /** A fresh session in DAY phase with a full dawn hand (seed 7). */
+  function dayStartedSession(): ProtocolSession {
+    const opened = handleMessage(null, { type: 'new-game', seed: 7 });
+    const started = handleMessage(opened.session, { type: 'start-day' });
+    if (!started.session) throw new Error('start-day produced no session');
+    return started.session;
+  }
+
+  it('no die: emits ExplorationFailed(no-die) with no crash', () => {
+    const session = dayStartedSession();
+    let out: ReturnType<typeof handleMessage> | undefined;
+    expect(() => {
+      out = handleMessage(session, { type: 'apply-action', action: { type: 'Explore' } });
+    }).not.toThrow();
+    expect(out!.response.type).toBe('action-result');
+    expect(explorationFailReason(out!.response)).toBe('no-die');
+  });
+
+  it('bad index: emits ExplorationFailed(invalid-die-index) with no crash', () => {
+    const session = dayStartedSession();
+    let out: ReturnType<typeof handleMessage> | undefined;
+    expect(() => {
+      out = handleMessage(session, {
+        type: 'apply-action',
+        action: { type: 'Explore', spendDie: 99 },
+      });
+    }).not.toThrow();
+    expect(out!.response.type).toBe('action-result');
+    expect(explorationFailReason(out!.response)).toBe('invalid-die-index');
+  });
+
+  it('already-spent die: emits ExplorationFailed(die-already-spent) with no crash', () => {
+    // Spend die 0 first (a successful buy-fuel), then Explore on the same index.
+    const session = dayStartedSession();
+    const spent = handleMessage(session, {
+      type: 'apply-action',
+      action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+    });
+    expectActionResult(spent.response);
+    let out: ReturnType<typeof handleMessage> | undefined;
+    expect(() => {
+      out = handleMessage(spent.session, {
+        type: 'apply-action',
+        action: { type: 'Explore', spendDie: 0 },
+      });
+    }).not.toThrow();
+    expect(out!.response.type).toBe('action-result');
+    expect(explorationFailReason(out!.response)).toBe('die-already-spent');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1003 · Session serialization resume — the deterministic-replay backbone.
+// ---------------------------------------------------------------------------
+
+describe('session serialization resume', () => {
+  it('serialize → deserialize → resume continues byte-identically', () => {
+    // Build a mid-DAY session with unspent dice (seed 11).
+    const original = replay([
+      { type: 'new-game', seed: 11 },
+      { type: 'start-day' },
+      {
+        type: 'apply-action',
+        action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+      },
+    ]).session;
+    expect(original).not.toBeNull();
+
+    const wire = serializeSession(original!);
+    const resumed = deserializeSession(wire);
+    // Immediate round-trip is byte-identical (rngState and all reconstructed).
+    expect(serializeSession(resumed)).toBe(wire);
+
+    // The SAME next request applied to both drives the seeded rng identically.
+    const nextRequest: ProtocolRequest = {
+      type: 'apply-action',
+      action: { type: 'Explore', spendDie: 1 },
+    };
+    const contOriginal = handleMessage(original, nextRequest);
+    const contResumed = handleMessage(resumed, nextRequest);
+
+    expect(contOriginal.session).not.toBeNull();
+    expect(contResumed.session).not.toBeNull();
+    expect(serializeSession(contResumed.session!)).toBe(serializeSession(contOriginal.session!));
+    // The responses (events + summary) are byte-identical too.
+    expect(JSON.stringify(contResumed.response)).toBe(JSON.stringify(contOriginal.response));
   });
 });
 

@@ -234,12 +234,22 @@ export type GameEvent =
       name: string;
     }
   | {
-      /** An Explore attempt produced nothing — a failed nav check or a dry tank
-       *  (T-111a). The die is still spent. */
+      /**
+       * An Explore attempt produced nothing (T-111a). Two distinct classes:
+       *  - RESOLVED fails — `nav-check` / `insufficient-fuel`: a real detour was
+       *    attempted, so the die IS spent (and fuel burned, for nav-check).
+       *  - MALFORMED-input fails (T-1003) — `no-die` / `invalid-die-index` /
+       *    `die-already-spent`: the Explore action named no usable die, so there
+       *    was nothing to spend. NO die is spent and NO fuel is burned; these
+       *    replace the raw `Error`s that used to crash the UGT adapter, keeping
+       *    the typed-fail-event convention (every player-possible input is an
+       *    event, never a throw).
+       */
       type: 'ExplorationFailed';
       day: number;
       systemId: number;
-      reason: 'nav-check' | 'insufficient-fuel';
+      reason:
+        'nav-check' | 'insufficient-fuel' | 'no-die' | 'invalid-die-index' | 'die-already-spent';
     }
   | {
       /** A boarded POI's loot roll yielded salvage — real credits (T-111b). */

@@ -135,6 +135,40 @@ describe('save envelope — round-trip property test', () => {
   }
 });
 
+describe('save envelope — malformed-Explore reasons survive save/load (T-1003)', () => {
+  // Malformed Explore inputs resolve to typed ExplorationFailed events carrying
+  // the three T-1003 reasons, which land in state.eventLog. A save taken after a
+  // player triggers one of these paths must createSave → loadSave cleanly — a
+  // schema.ts that omits the reason throws SaveError('invalid-state') here (the
+  // exact crash T-1003 exists to eliminate, moved to the persistence boundary).
+  const cases: Array<{ reason: string; actions: PlayerAction[] }> = [
+    { reason: 'no-die', actions: [{ type: 'Explore' }] },
+    { reason: 'invalid-die-index', actions: [{ type: 'Explore', spendDie: 99 }] },
+    {
+      reason: 'die-already-spent',
+      actions: [
+        { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+        { type: 'Explore', spendDie: 0 },
+      ],
+    },
+  ];
+
+  for (const { reason, actions } of cases) {
+    it(`createSave → loadSave is exact after an ExplorationFailed '${reason}'`, () => {
+      const state = advanceDay(createInitialState(7), actions).state;
+
+      // Sanity: the resolver actually logged the reason under test.
+      const failure = state.eventLog.find(
+        (e) => e.type === 'ExplorationFailed' && e.reason === reason,
+      );
+      expect(failure, `expected an ExplorationFailed '${reason}' in the event log`).toBeDefined();
+
+      const restored = loadSave(createSave(state, 7));
+      expect(restored.state).toEqual(state);
+    });
+  }
+});
+
 describe('save envelope — seed reproducibility (T-1002)', () => {
   it('the seed survives save → load → save byte-identically and lives in the envelope', () => {
     const state = drive50Days(9);
