@@ -37,3 +37,26 @@ scheduled-only storylets that no other storylet schedules.
 
 Storylet content must remain data, not logic. Runtime eligibility and effect
 application live in the engine.
+
+## Cargo & Passenger batch conventions (T-401)
+
+The cargo/passenger register (PRD §8.3 — short, one decision, delivered by the
+economy) follows a few authoring rules that the engine test suite enforces:
+
+- **Every storylet carries at least one requirement-free choice** (no `credits` /
+  `spendDie` / `statCheck` gate), so a broke, die-spent captain can always resolve
+  the day — no storylet ever dead-ends it.
+- **Held-state flags use the `passenger.*.aboard` and `cargo.*.riding`
+  namespaces**, and every one has a reachable clearer. A passenger fare is a
+  system-gated **board** storylet that sets `passenger.<slug>.aboard` and
+  `schedule`s a `scheduledOnly` **arrival** which pays out and clears the flag a
+  day or two later (regardless of location) — matching PRD §7.2 (the false-name
+  passenger "pays her fare in coordinates" the next day) and guaranteeing the fare
+  always resolves. The ticking-crate cargo chain follows the same head → scheduled
+  aftermath shape.
+- **Reachability divergences** (documented inline in `storylets.ts`): passengers
+  have no engine contract type, so they are modelled purely as flags; the
+  plague-relief exemplar is delivered as a Medicinals→Fomalhaut-2 contract rather
+  than a plague-era event (no era-event trigger exists); and the ticking-crate
+  exemplar rides a board-reachable Dilithium (type 9) run because `rollContract`
+  never issues a Contraband (type 10) contract.

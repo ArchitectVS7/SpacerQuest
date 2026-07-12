@@ -565,4 +565,995 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // ===========================================================================
+  // T-401 · Storylet batch — cargo & passengers (25). PRD §8.3 register: short,
+  // one decision, delivered by the ECONOMY (a signed contract, a berth, a wire),
+  // never a quest marker. Includes the three PRD exemplars: the plague-relief
+  // run, the passenger with the false name, and the crate that ticks.
+  //
+  // AUTHORING CONVENTIONS (enforced by tests in engine/storylets.test.ts):
+  //  - Every storylet carries at least one REQUIREMENT-FREE choice, so a day can
+  //    always be resolved and no storylet ever dead-ends the day.
+  //  - "Held state" flags use the namespaces `passenger.*.aboard` and
+  //    `cargo.*.riding`. Every one has a reachable CLEARER: a scheduled follow-up
+  //    (a passenger arrival, the ticking-crate aftermath) that fires a day or two
+  //    later regardless of location, so a fare you never "deliver" still resolves.
+  //
+  // REACHABILITY DIVERGENCES (the economy delivers the story within the existing
+  // engine — no schema/engine change, per the T-401 plan):
+  //  - PASSENGERS have no engine contract type. A fare is modelled purely as
+  //    flags: a system-gated BOARD storylet sets `passenger.<slug>.aboard` and
+  //    SCHEDULES a scheduledOnly ARRIVAL that pays out and clears the flag. This
+  //    matches PRD §7.2 (the false-name passenger "pays her fare in coordinates"
+  //    the NEXT day), and the scheduled arrival guarantees the fare always
+  //    resolves — reachable by play, never a soft dead-end.
+  //  - The PLAGUE-RELIEF exemplar is framed by the PRD as a plague-ERA event, but
+  //    the storylet schema has no era-event trigger (only TOUR_ONE / VETERAN
+  //    career eras). We deliver it "by the economy" as a Medicinals (type 4)
+  //    contract bound for an afflicted core system (Fomalhaut-2, system 7, per
+  //    PRD §7.1), which the manifest board produces naturally.
+  //  - The TICKING-CRATE exemplar is framed by the PRD as "the crate that ticks"
+  //    in cargo. `rollContract` never issues a Contraband (type 10) contract, so
+  //    rather than gate on an unreachable cargo type we attach it to a normal,
+  //    board-reachable Dilithium (type 9) run: an unlabelled crate slipped in
+  //    among the crystal. The smuggling flavour survives; the reachability does.
+  //
+  // BALANCE: these are new content, not ported from foundation/rules/ (which
+  // carries no storylet constants). Credit/fuel deltas sit in the band the
+  // original 12 use (~50–500cr; the Medicinals verify pays 250).
+  // ===========================================================================
+
+  // --- Cargo-attached (gate on the active contract\'s cargo type) ---
+  {
+    id: 'cargo.dry-goods.short-count',
+    title: 'A Generous Tally',
+    prose:
+      'A dockhand leans on your Dry Goods pallet and offers to adjust the tally on the way in — a few crates skimmed off the top, the manifest none the wiser, the difference split down the middle.',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 1 },
+    },
+    choices: [
+      {
+        id: 'take-the-skim',
+        label: 'Take the skim',
+        prose: 'Nod once, pocket the difference, and let the count come up short.',
+        effects: {
+          credits: 120,
+          flags: [{ name: 'cargo.dry-goods.skimmed', value: true }],
+        },
+      },
+      {
+        id: 'wave-him-off',
+        label: 'Wave him off',
+        prose: 'Every crate goes across as logged. He shrugs and finds another mark.',
+        effects: {
+          flags: [{ name: 'cargo.dry-goods.clean_count', value: true }],
+        },
+      },
+      {
+        id: 'report-him',
+        label: 'Report the offer',
+        prose: "Flag the dockhand to the depot master and see if honesty pays a finder's fee.",
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 11 } },
+        successEffects: {
+          credits: 80,
+          flags: [{ name: 'cargo.dry-goods.reported', value: true }],
+        },
+        failureEffects: {
+          flags: [{ name: 'cargo.dry-goods.report_ignored', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'cargo.nutri-goods.spoilage-scare',
+    title: 'The Chill Fails',
+    prose:
+      'A coolant alarm shrills over the Nutri Goods hold. The load is warming, and the depot repair queue runs hours deep.',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 2 },
+    },
+    choices: [
+      {
+        id: 'patch-the-coil',
+        label: 'Patch the coolant coil',
+        prose:
+          'Get an arm into the coil housing and hold the chill together by hand and stubbornness.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 11 } },
+        successEffects: {
+          credits: 100,
+          flags: [{ name: 'cargo.nutri-goods.saved', value: true }],
+        },
+        failureEffects: {
+          credits: -80,
+          flags: [{ name: 'cargo.nutri-goods.spoiled', value: true }],
+        },
+      },
+      {
+        id: 'eat-the-loss',
+        label: 'Vent the warm crates',
+        prose: 'Dump what has turned before it sours the rest, and log the shrinkage.',
+        effects: {
+          credits: -40,
+          flags: [{ name: 'cargo.nutri-goods.vented', value: true }],
+        },
+      },
+      {
+        id: 'sell-quick',
+        label: 'Sell it warm and quick',
+        prose: 'Offload the softening load to a bargain buyer who does not ask about the gauge.',
+        effects: {
+          credits: 60,
+          flags: [{ name: 'cargo.nutri-goods.dumped', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'cargo.spices.customs-sniff',
+    title: 'The Customs Dog',
+    prose:
+      'A customs hound sits down hard beside your Spices pallet and will not be moved. The inspector strolls over, unhurried, already reaching for a form.',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 3 },
+    },
+    choices: [
+      {
+        id: 'bluff',
+        label: 'Bluff it through',
+        prose: "Meet the inspector's eye and talk about the weather until the dog looks foolish.",
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          flags: [{ name: 'cargo.spices.waved_through', value: true }],
+        },
+        failureEffects: {
+          credits: -100,
+          flags: [{ name: 'cargo.spices.fined', value: true }],
+        },
+      },
+      {
+        id: 'pay-the-fee',
+        label: 'Pay the inspection fee',
+        prose: 'Slide the "expedited handling" fee across before the paperwork multiplies.',
+        requirements: { credits: { gte: 60 } },
+        effects: {
+          credits: -60,
+          flags: [{ name: 'cargo.spices.fee_paid', value: true }],
+        },
+      },
+      {
+        id: 'open-up',
+        label: 'Open the pallet',
+        prose: 'Let them search. The load is clean; it only costs you an hour and your patience.',
+        effects: {
+          flags: [{ name: 'cargo.spices.inspected', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    // PLAGUE-RELIEF EXEMPLAR (PRD §7.1). Delivered as a Medicinals (type 4)
+    // contract bound for Fomalhaut-2 (system 7), the fevered core port. "Run it
+    // in" KEEPS the contract, so the honest delivery earns the runtime
+    // `mercy_runner` Deed naturally on arrival; "sell to the profiteer" CLEARS
+    // the contract (no delivery, no Deed) for raw coin — the two-priced values
+    // choice the PRD describes.
+    id: 'cargo.medicinals.plague-relief',
+    title: 'The Fever Run',
+    prose:
+      'Fomalhaut-2 is running a fever, and the Medicinals in your hold are the relief run. A profiteer wires an offer before you have even cleared the gantry: sell him the lot, here, now, no questions and no shortage of coin.',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 4, activeContractDestination: 7 },
+    },
+    choices: [
+      {
+        id: 'run-it-in',
+        label: 'Run it in fast',
+        prose:
+          'Burn hard for the outbreak and let the profiteer keep his coin. The relief line is waiting, and word of who carried it travels.',
+        effects: {
+          fuel: -20,
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
+          flags: [{ name: 'cargo.medicinals.plague-relief.running', value: true }],
+        },
+      },
+      {
+        id: 'sell-to-profiteer',
+        label: 'Sell to the profiteer',
+        prose:
+          "Take the man's coin and let the fever find its medicine elsewhere. The cargo leaves your hold clean, and a little of your name goes with it.",
+        effects: {
+          credits: 300,
+          cargo: { clearActiveContract: true },
+          flags: [{ name: 'cargo.medicinals.plague-relief.sold', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'cargo.electronics.gray-market-buyer',
+    title: 'The Quiet Buyer',
+    prose:
+      'A fence sidles up at the dock: your Electronics would fetch double off the books, delivered quietly to no one who will ever ask where they came from.',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 5 },
+    },
+    choices: [
+      {
+        id: 'sell-off-book',
+        label: 'Sell off the books',
+        prose: 'Divert the crates to the fence and let the manifest read whatever it needs to.',
+        effects: {
+          credits: 200,
+          cargo: { clearActiveContract: true },
+          flags: [{ name: 'cargo.electronics.gray_market', value: true }],
+        },
+      },
+      {
+        id: 'deliver-clean',
+        label: 'Deliver them clean',
+        prose: 'Wave the fence off. The load goes where the contract says it goes.',
+        effects: {
+          flags: [{ name: 'cargo.electronics.clean', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'cargo.precious-metals.escort-shakedown',
+    title: 'A Security Escort',
+    prose:
+      'A "security escort" latches onto your Precious Metals run halfway out and names their fee for the safe passage you never asked them to provide.',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 6 },
+    },
+    choices: [
+      {
+        id: 'pay-the-toll',
+        label: 'Pay the toll',
+        prose: 'Buy the trouble off before it decides to become the trouble.',
+        requirements: { credits: { gte: 80 } },
+        effects: {
+          credits: -80,
+          flags: [{ name: 'cargo.precious-metals.toll_paid', value: true }],
+        },
+      },
+      {
+        id: 'face-them-down',
+        label: 'Face them down',
+        prose: "Open the gun ports a hand's width and ask, evenly, whether they feel lucky.",
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 12 } },
+        successEffects: {
+          flags: [{ name: 'cargo.precious-metals.stared_down', value: true }],
+        },
+        failureEffects: {
+          credits: -120,
+          flags: [{ name: 'cargo.precious-metals.shaken_down', value: true }],
+        },
+      },
+      {
+        id: 'run-for-it',
+        label: 'Gun it and lose them',
+        prose: 'Burn a little extra and lose the escort in the traffic lanes.',
+        effects: {
+          fuel: -10,
+          flags: [{ name: 'cargo.precious-metals.outran', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'cargo.rare-elements.assay-dispute',
+    title: "The Assayer's Verdict",
+    prose:
+      'The receiving assayer squints at your Rare Elements, declares them under-grade, and offers a "corrected" price so low it is nearly an insult with a number attached.',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 7 },
+    },
+    choices: [
+      {
+        id: 'argue-the-grade',
+        label: 'Argue the grade',
+        prose: 'Quote the assay standard back at them, line and clause, until the number moves.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          credits: 100,
+          flags: [{ name: 'cargo.rare-elements.held_price', value: true }],
+        },
+        failureEffects: {
+          credits: -90,
+          flags: [{ name: 'cargo.rare-elements.marked_down', value: true }],
+        },
+      },
+      {
+        id: 'accept-the-cut',
+        label: 'Accept the cut',
+        prose: 'Take the lowball and log it. Some ports you do not fight twice.',
+        effects: {
+          credits: -60,
+          flags: [{ name: 'cargo.rare-elements.accepted_cut', value: true }],
+        },
+      },
+      {
+        id: 'split-the-difference',
+        label: 'Split the difference',
+        prose: 'Meet the assayer in the middle and shake on a number you both can live with.',
+        effects: {
+          credits: 20,
+          flags: [{ name: 'cargo.rare-elements.split', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'cargo.photonic.calibration-drift',
+    title: 'Out of Calibration',
+    prose:
+      'The Photonic Components read out of true halfway through the run. Deliverable as they are — but worth more to a buyer if you can retune them cold before you dock.',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 8 },
+    },
+    choices: [
+      {
+        id: 'retune',
+        label: 'Retune them cold',
+        prose: 'Spend a steady stretch bringing the array back to spec by hand.',
+        requirements: { spendDie: true },
+        effects: {
+          credits: 150,
+          flags: [{ name: 'cargo.photonic.retuned', value: true }],
+        },
+      },
+      {
+        id: 'deliver-as-is',
+        label: 'Deliver them as they are',
+        prose: 'Hand them over uncalibrated and let the buyer sort the drift.',
+        effects: {
+          flags: [{ name: 'cargo.photonic.as_is', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    // TICKING-CRATE EXEMPLAR head (PRD §8.3). "Ride it out" is the requirement-
+    // free chaining choice: it schedules the aftermath for the next dawn.
+    id: 'cargo.ticking-crate.discovered',
+    title: 'The Crate That Ticks',
+    prose:
+      'Wedged behind the Dilithium Crystal is a crate that is not on your manifest. It is ticking — slow, even, deliberate — and it was not doing that when you loaded.',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 9 },
+    },
+    choices: [
+      {
+        id: 'jettison',
+        label: 'Jettison it now',
+        prose:
+          "Blow the hold clamp and throw the ticking thing out into the black. Whatever it was, it is the black's problem now.",
+        effects: {
+          flags: [{ name: 'cargo.ticking-crate.jettisoned', value: true }],
+        },
+      },
+      {
+        id: 'crack-it-open',
+        label: 'Crack it open',
+        prose: 'Get a bar under the lid and find out what has been counting.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 13 } },
+        successEffects: {
+          credits: 180,
+          flags: [{ name: 'cargo.ticking-crate.cracked', value: true }],
+        },
+        failureEffects: {
+          fuel: -20,
+          flags: [{ name: 'cargo.ticking-crate.misfired', value: true }],
+        },
+      },
+      {
+        id: 'ride-it-out',
+        label: 'Ride it out',
+        prose: 'Seal the hold, set a watch on it, and see what the ticking is counting down to.',
+        effects: {
+          flags: [{ name: 'cargo.ticking-crate.riding', value: true }],
+          schedule: [{ storyletId: 'cargo.ticking-crate.aftermath', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    // TICKING-CRATE follow-up (scheduledOnly; scheduled by "ride it out" above).
+    // Clears the `cargo.ticking-crate.riding` held-state flag on every path.
+    id: 'cargo.ticking-crate.aftermath',
+    title: 'The Ticking Stops',
+    prose:
+      'At dawn the crate goes quiet. Whatever it was counting down to has arrived, and the silence in the hold is somehow louder than the ticking was.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+    },
+    choices: [
+      {
+        id: 'open-it',
+        label: 'Open the silent crate',
+        prose:
+          'Crack the lid on the quiet. Inside: a dead-man courier drop, coin sealed against a rendezvous that never came — and now will not.',
+        effects: {
+          credits: 200,
+          flags: [
+            { name: 'cargo.ticking-crate.riding', clear: true },
+            { name: 'cargo.ticking-crate.claimed', value: true },
+          ],
+        },
+      },
+      {
+        id: 'space-it',
+        label: 'Space it unopened',
+        prose: 'You have had enough of it. Vent the crate to the dark and do not look back.',
+        effects: {
+          flags: [
+            { name: 'cargo.ticking-crate.riding', clear: true },
+            { name: 'cargo.ticking-crate.spaced', value: true },
+          ],
+        },
+      },
+    ],
+  },
+
+  // --- Passenger fares (modelled as flags: a system-gated board, a scheduled
+  //     arrival that pays out and clears the aboard flag) ---
+  {
+    // FALSE-NAME EXEMPLAR head (PRD §7.2, §8.3). Boards at Altair-3 (system 3).
+    id: 'passenger.false-name.board',
+    title: 'The Woman With No Name',
+    prose:
+      'A woman books passage under a name the manifest plainly does not believe — "Jane Smith," paid in old coin, no baggage but a locked case she will not set down.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [3],
+    },
+    choices: [
+      {
+        id: 'take-aboard',
+        label: 'Take her aboard',
+        prose:
+          'Log the false name without comment and clear a berth. Her business is her business.',
+        effects: {
+          flags: [{ name: 'passenger.false-name.aboard', value: true }],
+          schedule: [{ storyletId: 'passenger.false-name.arrival', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'refuse',
+        label: 'Refuse the fare',
+        prose:
+          'Tell her the berth is spoken for. She does not argue; people who lie about their names rarely do.',
+        effects: {
+          flags: [{ name: 'passenger.false-name.refused', value: true }],
+        },
+      },
+      {
+        id: 'probe-her-story',
+        label: 'Probe her story',
+        prose: 'Ask an idle question or two and watch which ones land wrong.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 1 }],
+          flags: [{ name: 'passenger.false-name.probed', value: true }],
+        },
+        failureEffects: {
+          flags: [{ name: 'passenger.false-name.bolted', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    // FALSE-NAME payoff (scheduledOnly; scheduled by "take her aboard"). Per PRD
+    // §7.2 she "pays her fare in coordinates." The lead flag
+    // `passenger.false-name.coordinates` is a narrative hook for future
+    // exploration content (nothing consumes it yet) — set alongside the coin.
+    id: 'passenger.false-name.arrival',
+    title: 'Paid in Coordinates',
+    prose:
+      'A day out, "Jane Smith" settles her fare the way she said she would — not in coin alone, but in a string of numbers off every chart, pressed into your hand with a look that says do not ask.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      flags: [{ name: 'passenger.false-name.aboard', exists: true }],
+    },
+    choices: [
+      {
+        id: 'take-the-coordinates',
+        label: 'Take the coordinates',
+        prose:
+          'Pocket the coin and log the numbers. Whatever waits out there, it is yours to find now.',
+        effects: {
+          credits: 150,
+          flags: [
+            { name: 'passenger.false-name.aboard', clear: true },
+            { name: 'passenger.false-name.coordinates', value: true },
+          ],
+        },
+      },
+      {
+        id: 'coin-only',
+        label: 'Take only the coin',
+        prose: 'Wave the numbers away. Some coordinates are worth more trouble than they pay.',
+        effects: {
+          credits: 100,
+          flags: [
+            { name: 'passenger.false-name.aboard', clear: true },
+            { name: 'passenger.false-name.coin_only', value: true },
+          ],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.pilgrim.board',
+    title: "A Pilgrim's Passage",
+    prose:
+      'A pilgrim in threadbare robes asks passage toward the inner shrine worlds, offering what little coin they carry and a great deal of blessing they carry more freely.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [5],
+    },
+    choices: [
+      {
+        id: 'take-aboard',
+        label: 'Clear a berth',
+        prose: 'Wave the pilgrim aboard and stow their small bundle by the airlock.',
+        effects: {
+          flags: [{ name: 'passenger.pilgrim.aboard', value: true }],
+          schedule: [{ storyletId: 'passenger.pilgrim.arrival', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Decline',
+        prose: 'The route is wrong today. Send them on with a nod and no fare.',
+        effects: {
+          flags: [{ name: 'passenger.pilgrim.declined', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.pilgrim.arrival',
+    title: "The Shrine Road's End",
+    prose:
+      "You set the pilgrim down at journey's end. They press their fare into your hand and, on top of it, a small carved icon for the dash — for luck on the lanes, they say.",
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      flags: [{ name: 'passenger.pilgrim.aboard', exists: true }],
+    },
+    choices: [
+      {
+        id: 'accept-fare',
+        label: 'Accept the fare',
+        prose: 'Take the coin and the icon both, and mean the thanks.',
+        effects: {
+          credits: 90,
+          flags: [
+            { name: 'passenger.pilgrim.aboard', clear: true },
+            { name: 'passenger.pilgrim.carried', value: true },
+          ],
+        },
+      },
+      {
+        id: 'take-only-blessing',
+        label: 'Take only the blessing',
+        prose: 'Fold their coin back into their hand. Keep the icon; leave them the fare.',
+        effects: {
+          flags: [
+            { name: 'passenger.pilgrim.aboard', clear: true },
+            { name: 'passenger.pilgrim.gifted', value: true },
+          ],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.fugitive.board',
+    title: 'No Logbook Entry',
+    prose:
+      'A hard-eyed spacer wants a berth and no logbook entry, and pays up front to guarantee both. Somewhere behind them, someone is asking the docks polite questions.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [9],
+    },
+    choices: [
+      {
+        id: 'take-aboard',
+        label: 'Take the fare, keep the silence',
+        prose: 'Pocket the up-front coin and leave the manifest blank where their name would go.',
+        effects: {
+          credits: 80,
+          flags: [
+            { name: 'passenger.fugitive.aboard', value: true },
+            { name: 'passenger.fugitive.risky', value: true },
+          ],
+          schedule: [{ storyletId: 'passenger.fugitive.arrival', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'refuse',
+        label: 'Refuse the fare',
+        prose: 'Whoever they are running from, you would rather not inherit. Send them on.',
+        effects: {
+          flags: [{ name: 'passenger.fugitive.refused', value: true }],
+        },
+      },
+      {
+        id: 'question-them',
+        label: 'Ask who is hunting them',
+        prose: 'Before you commit the berth, find out exactly what you would be carrying.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          flags: [{ name: 'passenger.fugitive.learned', value: true }],
+        },
+        failureEffects: {
+          flags: [{ name: 'passenger.fugitive.walked', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.fugitive.arrival',
+    title: 'A Clean Slip',
+    prose:
+      'Two jumps on, your passenger slips the berth clean. No patrol ever hailed you. They leave more coin than promised and a name to drop if you are ever cornered in the wrong port.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      flags: [{ name: 'passenger.fugitive.aboard', exists: true }],
+    },
+    choices: [
+      {
+        id: 'take-the-coin',
+        label: 'Take the coin and the name',
+        prose: 'Pocket the extra and file the name away where you keep such things.',
+        effects: {
+          credits: 150,
+          flags: [
+            { name: 'passenger.fugitive.aboard', clear: true },
+            { name: 'passenger.fugitive.delivered', value: true },
+          ],
+        },
+      },
+      {
+        id: 'refuse-extra',
+        label: 'Refuse the extra',
+        prose: 'The fare was the fare. Wave off the bonus and the debt it would imply.',
+        effects: {
+          flags: [
+            { name: 'passenger.fugitive.aboard', clear: true },
+            { name: 'passenger.fugitive.no_debt', value: true },
+          ],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.orphan.board',
+    title: 'A Thin Fare',
+    prose:
+      'A dock matron asks you to carry an orphaned child rimward to the only kin they have left. The fare she offers is thin; the look she gives you is not.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [11],
+    },
+    choices: [
+      {
+        id: 'take-aboard',
+        label: 'Take the child aboard',
+        prose: 'Clear the spare berth, promise the matron plainly, and mean it.',
+        effects: {
+          flags: [{ name: 'passenger.orphan.aboard', value: true }],
+          schedule: [{ storyletId: 'passenger.orphan.arrival', delayDays: 2 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Decline the fare',
+        prose:
+          'The rimward run is wrong for you this week. She nods, unsurprised, and does not push.',
+        effects: {
+          flags: [{ name: 'passenger.orphan.declined', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.orphan.arrival',
+    title: 'Delivered to Kin',
+    prose:
+      "You deliver the child into an aunt's arms at the end of the line. The family has little, but they empty most of it into your hand before you can refuse.",
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      flags: [{ name: 'passenger.orphan.aboard', exists: true }],
+    },
+    choices: [
+      {
+        id: 'accept-fare',
+        label: 'Accept the fare',
+        prose: 'Take what they offer, because refusing would cost them more than the coin.',
+        effects: {
+          credits: 70,
+          flags: [
+            { name: 'passenger.orphan.aboard', clear: true },
+            { name: 'passenger.orphan.delivered', value: true },
+          ],
+        },
+      },
+      {
+        id: 'refuse-fare',
+        label: 'Leave them the coin',
+        prose:
+          "Fold the fare back into the aunt's hand. They will need it more than the drives will.",
+        effects: {
+          flags: [
+            { name: 'passenger.orphan.aboard', clear: true },
+            { name: 'passenger.orphan.gifted', value: true },
+          ],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.medic.board',
+    title: 'A Lift for a Medic',
+    prose:
+      'A field medic needs a fast lift toward a fever station and will pay in kind — a hold scrub, a wound patched, a favour logged with the relief effort.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [6],
+    },
+    choices: [
+      {
+        id: 'take-aboard',
+        label: 'Give them the lift',
+        prose: 'Clear a berth and burn for the fever line. Someone out there is counting hours.',
+        effects: {
+          flags: [{ name: 'passenger.medic.aboard', value: true }],
+          schedule: [{ storyletId: 'passenger.medic.arrival', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Decline',
+        prose: 'Your route bends the other way today. Wish them a fast ship and move on.',
+        effects: {
+          flags: [{ name: 'passenger.medic.declined', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.medic.arrival',
+    title: 'Logged With the Relief',
+    prose:
+      'You drop the medic at the outbreak line. Before they go, they log your name with the relief effort — the kind of note that travels farther than any fare.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      flags: [{ name: 'passenger.medic.aboard', exists: true }],
+    },
+    choices: [
+      {
+        id: 'accept-thanks',
+        label: 'Take the fare',
+        prose: 'Take the coin they scraped together, and the good word that comes with it.',
+        effects: {
+          credits: 80,
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
+          flags: [
+            { name: 'passenger.medic.aboard', clear: true },
+            { name: 'passenger.medic.delivered', value: true },
+          ],
+        },
+      },
+      {
+        id: 'wave-off-fare',
+        label: 'Wave off the fare',
+        prose: 'Tell them to spend it on bandages. The good word is payment enough.',
+        effects: {
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
+          flags: [
+            { name: 'passenger.medic.aboard', clear: true },
+            { name: 'passenger.medic.gifted', value: true },
+          ],
+        },
+      },
+    ],
+  },
+
+  // --- One-shot passenger vignettes (single decision, no chain) ---
+  {
+    id: 'passenger.courier.sealed-orders',
+    title: 'Sealed Orders',
+    prose:
+      'A courier books a berth for a sealed case and a single instruction: deliver it unopened, and do not be curious about the difference between those two words.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [13],
+    },
+    choices: [
+      {
+        id: 'deliver-sealed',
+        label: 'Deliver it sealed',
+        prose: 'Take the fee, stow the case, and keep your curiosity where it belongs.',
+        effects: {
+          credits: 120,
+          flags: [{ name: 'passenger.courier.clean', value: true }],
+        },
+      },
+      {
+        id: 'peek',
+        label: 'Peek inside',
+        prose: 'Work the seal open a hair and see what a stranger is paying you not to see.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 13 } },
+        successEffects: {
+          credits: 60,
+          flags: [{ name: 'passenger.courier.peeked', value: true }],
+        },
+        failureEffects: {
+          credits: -80,
+          flags: [{ name: 'passenger.courier.tripped_seal', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.gambler.debt',
+    title: 'One Jump Ahead',
+    prose:
+      'Lucky Seven wants off Mira-9 before a card debt catches up, and offers a cut of "the next sure thing" for the ride out.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [8],
+    },
+    choices: [
+      {
+        id: 'take-the-bet',
+        label: 'Take the cut of the sure thing',
+        prose:
+          'Shake on the next sure thing and pretend, like Seven does, that there is such a thing.',
+        effects: {
+          credits: 100,
+          disposition: [{ npcId: 'npc-lucky-seven', delta: 2 }],
+          flags: [{ name: 'passenger.gambler.wagered', value: true }],
+        },
+      },
+      {
+        id: 'cash-only',
+        label: 'Cash only, no favours',
+        prose: 'Name a flat fare and take no share of anything Seven calls sure.',
+        effects: {
+          credits: 60,
+          flags: [{ name: 'passenger.gambler.cash', value: true }],
+        },
+      },
+      {
+        id: 'refuse',
+        label: 'Refuse the fare',
+        prose: 'Whatever Seven owes, you would rather not be the ship it follows onto.',
+        effects: {
+          disposition: [{ npcId: 'npc-lucky-seven', delta: -1 }],
+          flags: [{ name: 'passenger.gambler.refused', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.deadhead.empty-berth',
+    title: 'An Empty Berth',
+    prose:
+      'Your cabin is empty and a dockside broker will fill the berth with a quiet deadhead fare — cheap, no questions, gone by morning.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [4],
+    },
+    choices: [
+      {
+        id: 'sell-berth',
+        label: 'Sell the berth',
+        prose: "Take the broker's coin and the anonymous passenger that comes with it.",
+        effects: {
+          credits: 50,
+          flags: [{ name: 'passenger.deadhead.sold', value: true }],
+        },
+      },
+      {
+        id: 'keep-it-empty',
+        label: 'Keep it empty',
+        prose: 'Fly light. Some nights the quiet is worth more than fifty credits.',
+        effects: {
+          flags: [{ name: 'passenger.deadhead.empty', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.stowaway.discovered',
+    title: 'The Stowaway',
+    prose:
+      'Three jumps out you find a stowaway asleep in the cargo netting — a dock kid from Procyon-5 who ran out of planet and climbed aboard the first hull that looked kind.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [10],
+    },
+    choices: [
+      {
+        id: 'put-to-work',
+        label: 'Put them to work',
+        prose: 'Hand the kid a mop and a berth and a chance to be crew instead of cargo.',
+        effects: {
+          flags: [{ name: 'passenger.stowaway.crew', value: true }],
+        },
+      },
+      {
+        id: 'turn-in',
+        label: 'Turn them in at the next port',
+        prose: 'Log the stowaway and collect the small bounty the port pays for the trouble.',
+        effects: {
+          credits: 40,
+          flags: [{ name: 'passenger.stowaway.turned_in', value: true }],
+        },
+      },
+      {
+        id: 'let-them-off',
+        label: 'Let them off quiet',
+        prose: 'Set the kid down at the next dock with a warning and no paperwork.',
+        effects: {
+          flags: [{ name: 'passenger.stowaway.released', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'passenger.envoy.sealed-writ',
+    title: 'A Guild Writ',
+    prose:
+      'A minor Guild envoy needs discreet passage and carries a writ that makes port officials suddenly, remarkably polite. They tip well for a smooth crossing.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [12],
+    },
+    choices: [
+      {
+        id: 'smooth-passage',
+        label: 'Give them a smooth crossing',
+        prose: 'Keep the flight quiet, the dockings clean, and the envoy content.',
+        effects: {
+          credits: 140,
+          flags: [{ name: 'passenger.envoy.smooth', value: true }],
+        },
+      },
+      {
+        id: 'overcharge',
+        label: 'Squeeze a premium',
+        prose: 'A writ that opens doors can afford to open its purse. Name a higher number.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          credits: 220,
+          flags: [{ name: 'passenger.envoy.premium', value: true }],
+        },
+        failureEffects: {
+          credits: -60,
+          flags: [{ name: 'passenger.envoy.reported', value: true }],
+        },
+      },
+    ],
+  },
 ] as const);

@@ -201,9 +201,10 @@ Save slots (3) + autosave-on-dusk, seed entry/display for new game, settings (au
 
 ## M4 — Content (writing tasks — planner supplies voice guide from `foundation/lore/User-Manual.md`)
 
-### T-401 · Storylet batch: cargo & passengers (25) — `status: TODO` · `coder: opus` · `after: T-110`
+### T-401 · Storylet batch: cargo & passengers (25) — `status: DONE` · `coder: opus` · `after: T-110`
 25 storylets attached to cargo types and passenger contracts (PRD §8.3 register: short, one decision, economy-delivered). Include the plague-relief, false-name passenger, and ticking-crate exemplars from the PRD.
 **Accept:** all 25 load and validate; each reachable in a 500-day seed sweep (sim assertion); tone spot-check against PRD sample turns; no storylet dead-ends the day.
+**Delivered (2026-07-12):** 25 new storylets appended to `packages/content/src/storylets.ts` (pure data; total is now 37) — 11 cargo-attached beats (one per cargo type 1–9 plus the ticking-crate discovery/aftermath chain) and 14 passenger-fare storylets modelled as flags (`passenger.<slug>.aboard` set by a system-gated board, cleared by a scheduled arrival that always fires and pays out, so no fare can soft-lock). Includes the three PRD exemplars: `cargo.medicinals.plague-relief` (Fomalhaut-2 aid-vs-profiteer choice), the `cargo.ticking-crate.*` chain, and `passenger.false-name.*`. No engine or schema changes. A new `packages/sim/src/__tests__/storylet-coverage.test.ts` drives an 8-seed × 500-day headless sweep through legal `applyPlayerAction` calls only and asserts all 25 new ids are reachable; engine tests assert no duplicate ids and that every storylet (37 total) offers a requirement-free choice. **Scope boundary:** reachability required two documented divergences from the PRD's literal framing (plague-relief delivered as a Medicinals contract since there's no era-event trigger; ticking-crate attached to Dilithium since `rollContract` never issues Contraband) — both noted inline in `storylets.ts`; no engine/schema change was made to avoid them.
 
 ### T-402 · Storylet batch: ports & rumors (20) — `status: TODO` · `coder: opus` · `after: T-110`
 20 storylets keyed to systems (Algol-2's missing repair shop, Spacers Hangout rumor table, rim character) + Wise One / Sage audience scenes.

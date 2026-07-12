@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STORYLETS, Stat, defineStorylets } from '@spacerquest/content';
+import { STORYLETS, Stat, defineStorylets, type StoryletDefinition } from '@spacerquest/content';
 import { applyPlayerAction, endDay, startDay } from '../day.js';
 import {
   eligibleStorylets,
@@ -17,22 +17,97 @@ function readyState(): GameState {
   return state;
 }
 
+// The 12 storylets that predate the T-401 cargo/passenger batch, in content
+// order. New batches append after these — this stays their canonical prefix.
+const ORIGINAL_STORYLET_IDS = [
+  'cargo.medicinals.quarantine-seal',
+  'port.sun3.guild-auditor',
+  'chain.doc-salvage.distress-ping',
+  'chain.doc-salvage.follow-up',
+  'guild.pressure.tour-one.day10',
+  'guild.pressure.tour-one.day20',
+  'guild.pressure.tour-one.day25',
+  'wise-one.polaris.signal-hook',
+  'sage.mizar.decode-first',
+  'derelict.sealed-pod',
+  'resolution.tour-one.cleared',
+  'resolution.tour-one.unpaid',
+] as const;
+
+// T-401 · the 25 cargo & passenger storylets, in content order.
+const T401_STORYLET_IDS = [
+  'cargo.dry-goods.short-count',
+  'cargo.nutri-goods.spoilage-scare',
+  'cargo.spices.customs-sniff',
+  'cargo.medicinals.plague-relief',
+  'cargo.electronics.gray-market-buyer',
+  'cargo.precious-metals.escort-shakedown',
+  'cargo.rare-elements.assay-dispute',
+  'cargo.photonic.calibration-drift',
+  'cargo.ticking-crate.discovered',
+  'cargo.ticking-crate.aftermath',
+  'passenger.false-name.board',
+  'passenger.false-name.arrival',
+  'passenger.pilgrim.board',
+  'passenger.pilgrim.arrival',
+  'passenger.fugitive.board',
+  'passenger.fugitive.arrival',
+  'passenger.orphan.board',
+  'passenger.orphan.arrival',
+  'passenger.medic.board',
+  'passenger.medic.arrival',
+  'passenger.courier.sealed-orders',
+  'passenger.gambler.debt',
+  'passenger.deadhead.empty-berth',
+  'passenger.stowaway.discovered',
+  'passenger.envoy.sealed-writ',
+] as const;
+
 describe('storylet content validation', () => {
-  it('accepts exported STORYLETS', () => {
-    expect(STORYLETS.map((storylet) => storylet.id)).toEqual([
-      'cargo.medicinals.quarantine-seal',
-      'port.sun3.guild-auditor',
-      'chain.doc-salvage.distress-ping',
-      'chain.doc-salvage.follow-up',
-      'guild.pressure.tour-one.day10',
-      'guild.pressure.tour-one.day20',
-      'guild.pressure.tour-one.day25',
-      'wise-one.polaris.signal-hook',
-      'sage.mizar.decode-first',
-      'derelict.sealed-pod',
-      'resolution.tour-one.cleared',
-      'resolution.tour-one.unpaid',
-    ]);
+  it('accepts exported STORYLETS with the originals as a prefix and the T-401 batch appended', () => {
+    const ids = STORYLETS.map((storylet) => storylet.id);
+    // The 12 originals are still present, in order, as the leading prefix.
+    expect(ids.slice(0, ORIGINAL_STORYLET_IDS.length)).toEqual([...ORIGINAL_STORYLET_IDS]);
+    // All 25 T-401 storylets loaded and validated (defineStorylets throws on any
+    // malformed entry, so reaching here at all proves they validate).
+    for (const id of T401_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
+    expect(ids).toHaveLength(ORIGINAL_STORYLET_IDS.length + T401_STORYLET_IDS.length);
+    // No duplicate ids across the whole set.
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('T-401: every storylet offers at least one requirement-free choice (never dead-ends the day)', () => {
+    // The day must always be resolvable: each storylet carries a choice with no
+    // credits / spendDie / statCheck gate, so a broke, die-spent captain can
+    // always close it out.
+    for (const storylet of STORYLETS as readonly StoryletDefinition[]) {
+      const hasFreeChoice = storylet.choices.some((choice) => !choice.requirements);
+      expect(hasFreeChoice, `${storylet.id} has no requirement-free choice`).toBe(true);
+    }
+  });
+
+  it('T-401: every held-state flag (aboard / riding) has a reachable clearer', () => {
+    // A flag a head sets to mean "carrying / aboard" must be cleared by some
+    // storylet, or the fare/crate strands forever (a soft dead-end).
+    const setHeld = new Set<string>();
+    const cleared = new Set<string>();
+    for (const storylet of STORYLETS as readonly StoryletDefinition[]) {
+      for (const choice of storylet.choices) {
+        for (const effects of [choice.effects, choice.successEffects, choice.failureEffects]) {
+          for (const flag of effects?.flags ?? []) {
+            const isHeld = flag.name.endsWith('.aboard') || flag.name.endsWith('.riding');
+            if (!isHeld) continue;
+            if ('clear' in flag) cleared.add(flag.name);
+            else setHeld.add(flag.name);
+          }
+        }
+      }
+    }
+    for (const name of setHeld) {
+      expect(cleared.has(name), `${name} is set but never cleared`).toBe(true);
+    }
   });
 
   it('throws loudly for malformed data', () => {
@@ -64,7 +139,10 @@ describe('storylet engine', () => {
   it('finds and resolves the cargo demo headlessly', () => {
     const state = readyState();
     state.player.currentSystemId = 2;
-    state.player.activeContract = { destination: 7, cargoType: 4, payment: 3000, pods: 10 };
+    // Destination 8 (not 7): keeps quarantine-seal (any Medicinals contract) as
+    // the sole match without also arming the T-401 plague-relief storylet, which
+    // is gated on the Fomalhaut-2 (system 7) fever destination.
+    state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     const refreshed = refreshAvailableStorylets(state);
 
@@ -248,7 +326,10 @@ describe('storylet engine', () => {
   it('keeps deterministic eligibility in content order', () => {
     const state = readyState();
     state.player.currentSystemId = 1;
-    state.player.activeContract = { destination: 7, cargoType: 4, payment: 3000, pods: 10 };
+    // Destination 8 (not 7): the T-401 plague-relief storylet is gated on the
+    // Fomalhaut-2 (system 7) destination, so a type-4 run elsewhere leaves the
+    // three original eligibility matches exactly as before.
+    state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     expect(eligibleStorylets(state).map((offer) => offer.storyletId)).toEqual([
       'cargo.medicinals.quarantine-seal',
@@ -477,5 +558,136 @@ describe('T-111b Nemesis Signal — fragment brokers', () => {
     expect(resolved.events).toContainEqual(
       expect.objectContaining({ type: 'StoryletEffectApplied', effect: 'credits', amount: 300 }),
     );
+  });
+});
+
+describe('T-401 cargo & passenger storylets — exemplars', () => {
+  it('plague-relief: offered on a Medicinals→Fomalhaut-2 run; "run it in" keeps the contract, "sell" clears it', () => {
+    const state = readyState();
+    state.player.currentSystemId = 2;
+    // A Medicinals (type 4) contract bound for Fomalhaut-2 (system 7).
+    state.player.activeContract = { destination: 7, cargoType: 4, payment: 3000, pods: 10 };
+
+    const refreshed = refreshAvailableStorylets(state);
+    expect(refreshed.state.storylets.available.map((o) => o.storyletId)).toContain(
+      'cargo.medicinals.plague-relief',
+    );
+
+    // "Run it in" burns fuel, notes the medic community, and KEEPS the contract —
+    // so the honest delivery still earns the runtime mercy_runner Deed on arrival.
+    const ran = resolveStoryletChoice(
+      refreshed.state,
+      { type: 'Storylet', storyletId: 'cargo.medicinals.plague-relief', choiceId: 'run-it-in' },
+      new SeededRng(1),
+    );
+    expect(ran.state.player.activeContract).not.toBeNull();
+    expect(ran.state.flags['cargo.medicinals.plague-relief.running']).toBe(true);
+    expect(ran.events).toContainEqual(
+      expect.objectContaining({ type: 'StoryletEffectApplied', effect: 'fuel' }),
+    );
+
+    // "Sell to the profiteer" pays raw coin and CLEARS the contract (no delivery,
+    // no Deed) — the two-priced values choice.
+    const sold = resolveStoryletChoice(
+      refreshed.state,
+      {
+        type: 'Storylet',
+        storyletId: 'cargo.medicinals.plague-relief',
+        choiceId: 'sell-to-profiteer',
+      },
+      new SeededRng(1),
+    );
+    expect(sold.state.player.activeContract).toBeNull();
+    expect(sold.state.player.credits).toBe(refreshed.state.player.credits + 300);
+    expect(sold.state.flags['cargo.medicinals.plague-relief.sold']).toBe(true);
+  });
+
+  it('plague-relief is gated on the Fomalhaut-2 destination, not any Medicinals run', () => {
+    const away = readyState();
+    away.player.currentSystemId = 2;
+    away.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
+    expect(eligibleStorylets(away).map((o) => o.storyletId)).not.toContain(
+      'cargo.medicinals.plague-relief',
+    );
+  });
+
+  it('ticking-crate: "ride it out" schedules the aftermath for the next dawn, which resolves cleanly', () => {
+    let state = readyState();
+    state.player.currentSystemId = 3;
+    // A Dilithium (type 9) run — the crate is wedged in among the crystal.
+    state.player.activeContract = { destination: 5, cargoType: 9, payment: 3000, pods: 10 };
+    state = refreshAvailableStorylets(state).state;
+    expect(state.storylets.available.map((o) => o.storyletId)).toContain(
+      'cargo.ticking-crate.discovered',
+    );
+
+    const ridden = applyPlayerAction(state, {
+      type: 'Storylet',
+      storyletId: 'cargo.ticking-crate.discovered',
+      choiceId: 'ride-it-out',
+    });
+    expect(ridden.state.flags['cargo.ticking-crate.riding']).toBe(true);
+    expect(ridden.events).toContainEqual(
+      expect.objectContaining({
+        type: 'StoryletScheduled',
+        scheduledStoryletId: 'cargo.ticking-crate.aftermath',
+        dueDay: 2,
+      }),
+    );
+
+    const nextDawn = startDay(endDay(ridden.state).state);
+    expect(nextDawn.state.storylets.available.map((o) => o.storyletId)).toContain(
+      'cargo.ticking-crate.aftermath',
+    );
+
+    const resolved = applyPlayerAction(nextDawn.state, {
+      type: 'Storylet',
+      storyletId: 'cargo.ticking-crate.aftermath',
+      choiceId: 'open-it',
+    });
+    // The aftermath clears the held-state flag on resolution — no soft dead-end.
+    expect(resolved.state.flags['cargo.ticking-crate.riding']).toBeUndefined();
+    expect(resolved.state.flags['cargo.ticking-crate.claimed']).toBe(true);
+  });
+
+  it('false-name passenger: board at origin arms the scheduled arrival, which pays and clears the aboard flag', () => {
+    let state = readyState();
+    state.player.currentSystemId = 3; // Altair-3, the boarding port
+    state = refreshAvailableStorylets(state).state;
+    expect(state.storylets.available.map((o) => o.storyletId)).toContain(
+      'passenger.false-name.board',
+    );
+
+    const boarded = applyPlayerAction(state, {
+      type: 'Storylet',
+      storyletId: 'passenger.false-name.board',
+      choiceId: 'take-aboard',
+    });
+    expect(boarded.state.flags['passenger.false-name.aboard']).toBe(true);
+    expect(boarded.events).toContainEqual(
+      expect.objectContaining({
+        type: 'StoryletScheduled',
+        scheduledStoryletId: 'passenger.false-name.arrival',
+        dueDay: 2,
+      }),
+    );
+
+    // The arrival is a scheduledOnly fare that resolves the next day regardless
+    // of where the ship is — she pays her fare in coordinates (PRD §7.2).
+    const creditsBefore = boarded.state.player.credits;
+    const nextDawn = startDay(endDay(boarded.state).state);
+    expect(nextDawn.state.storylets.available.map((o) => o.storyletId)).toContain(
+      'passenger.false-name.arrival',
+    );
+
+    const paid = applyPlayerAction(nextDawn.state, {
+      type: 'Storylet',
+      storyletId: 'passenger.false-name.arrival',
+      choiceId: 'take-the-coordinates',
+    });
+    expect(paid.state.player.credits).toBe(creditsBefore + 150);
+    expect(paid.state.flags['passenger.false-name.coordinates']).toBe(true);
+    // The aboard flag is cleared — the fare is resolved, nothing strands.
+    expect(paid.state.flags['passenger.false-name.aboard']).toBeUndefined();
   });
 });
