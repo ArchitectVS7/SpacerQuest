@@ -21,6 +21,7 @@ import {
   payDebt,
   travelTo,
   combat,
+  shipyard,
   dismissAftermath,
   standDown,
   toggleFx,
@@ -46,6 +47,11 @@ import {
   encounterReadout,
   combatFuelStatus,
   tributeThisRound,
+  shipComponents,
+  specialEquipmentRows,
+  shipyardQuote,
+  shipyardFailureExplanation,
+  type ShipComponentRow,
   type WireLogEntry,
 } from './format';
 
@@ -99,7 +105,7 @@ export function App() {
         <div className="main">
           <div className="col left">
             <Starmap state={s} />
-            <ShipStatus game={s.game} />
+            <ShipPane state={s} />
           </div>
           <div className="col">
             <Manifest state={s} />
@@ -388,7 +394,7 @@ function Bezel({ game }: { game: GameState }) {
           </span>
         )}
         <span className="chip">
-          CR <b>{p.credits.toLocaleString()}</b>
+          CR <b data-testid="credits">{p.credits.toLocaleString()}</b>
         </span>
         {p.debt > 0 && (
           <span className="chip rev" data-testid="debt-chip">
@@ -577,40 +583,300 @@ function Starmap({ state }: { state: CockpitState }) {
   );
 }
 
-function ShipStatus({ game }: { game: GameState }) {
+// The ship & shipyard instrument (T-308). A pure CLIENT of the shipyard rules:
+// every price, every before→after projection, and every "disabled, here's why"
+// reason is read from the engine's `quoteShipyard` (via format.ts), and the only
+// mutations route through the store's single `shipyard()` action. The pane never
+// calls the engine to change state and owns no shipyard rule.
+function ShipPane({ state }: { state: CockpitState }) {
+  const game = state.game;
   const ship = game.player.ship;
-  const rows: { nm: string; cond: number }[] = [
-    { nm: 'HULL', cond: ship.hull.condition },
-    { nm: 'DRIVE', cond: ship.drives.condition },
-    { nm: 'SHIELDS', cond: ship.shields.condition },
-    { nm: 'GUNS', cond: ship.weapons.condition },
-    { nm: 'NAV', cond: ship.navigation.condition },
-    { nm: 'CARGO', cond: ship.cabin.condition },
-  ];
-  // condition is 0-9; show 5 pips
-  const pips = (cond: number) => Math.round((cond / 9) * 5);
+  const armed = state.selectedDie !== null;
+  const components = shipComponents(game);
+  const equipment = specialEquipmentRows(game);
+  const [podQty, setPodQty] = useState(10);
+
+  // Fuel curve + hold instruments read from any quote's `before` (a pure read of
+  // the current ship). Use a cheap no-op-ish repair-all quote just for `before`.
+  const curve = shipyardQuote(game, {
+    type: 'Shipyard',
+    action: 'repair',
+    repairMode: 'all',
+    spendDie: 0,
+  }).before;
+  const podQuote = shipyardQuote(game, {
+    type: 'Shipyard',
+    action: 'buy-cargo-pods',
+    quantity: Math.max(1, podQty),
+    spendDie: 0,
+  });
+  const repairAllQuote = shipyardQuote(game, {
+    type: 'Shipyard',
+    action: 'repair',
+    repairMode: 'all',
+    spendDie: 0,
+  });
+  const anyDamaged = components.some((c) => c.damaged);
+
   return (
-    <section className="pane ship">
+    <section className="pane ship" data-testid="ship-pane">
       <header>
-        <h2>Ship · {ship.isAstraxialHull ? 'Astraxial' : 'Junker'}</h2>
-        <span className="tag">PODS {ship.cargoPods}</span>
+        <h2>Ship &amp; Yard · {ship.isAstraxialHull ? 'Astraxial' : 'Junker'}</h2>
+        <span className="tag">
+          PODS <b data-testid="ship-pods">{ship.cargoPods}</b>/{curve.maxCargoPods}
+        </span>
       </header>
       <div className="body">
-        {rows.map((r) => {
-          const on = pips(r.cond);
-          return (
-            <div className={on <= 2 ? 'comp hurt' : 'comp'} key={r.nm}>
-              <span className="nm">{r.nm}</span>
-              <span className="cond">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <i key={i} className={i < on ? 'on' : ''} />
-                ))}
-              </span>
+        {/* ---- fuel-curve readout (persistent, auto-updates on drive change) ---- */}
+        <div className="ship-fuelcurve" data-testid="fuel-curve">
+          <span className="fc-k">FUEL/JUMP</span>
+          <span className="fc-v" data-testid="fuel-per-jump">
+            {curve.fuelPerJump}
+          </span>
+          <span className="fc-k">RANGE</span>
+          <span className="fc-v" data-testid="jump-range">
+            {curve.maxJumpDistance}
+          </span>
+          <span className="fc-k">FUEL</span>
+          <span className="fc-v">
+            {ship.fuel.toLocaleString()}/{ship.maxFuel.toLocaleString()}
+          </span>
+        </div>
+
+        {/* ---- component grid ---- */}
+        <div className="ship-grid" data-testid="component-grid">
+          {components.map((c) => (
+            <ComponentRow key={c.id} row={c} game={game} armed={armed} />
+          ))}
+        </div>
+        <div className="ship-repair-all">
+          <button
+            className="btn"
+            data-testid="repair-all"
+            disabled={!armed || !anyDamaged || !repairAllQuote.ok}
+            title={
+              !anyDamaged
+                ? 'All systems at full condition'
+                : armed
+                  ? `Repair every system · ${repairAllQuote.cost.toLocaleString()}cr`
+                  : 'Pick a die first'
+            }
+            onClick={() => shipyard({ action: 'repair', repairMode: 'all' })}
+          >
+            {anyDamaged
+              ? `Repair all · ${repairAllQuote.cost.toLocaleString()}cr`
+              : 'All systems nominal'}
+          </button>
+          {anyDamaged && !repairAllQuote.ok && repairAllQuote.failure && (
+            <span className="ship-reason" data-testid="repair-all-reason">
+              {shipyardFailureExplanation(repairAllQuote.failure)}
+            </span>
+          )}
+        </div>
+
+        {/* ---- cargo pods ---- */}
+        <div className="ship-pods-block" data-testid="pods-block">
+          <div className="pods-head">
+            CARGO PODS · <b>{ship.cargoPods}</b>/{curve.maxCargoPods}
+          </div>
+          <div className="pods-controls">
+            <input
+              aria-label="pods amount"
+              data-testid="pods-amount"
+              inputMode="numeric"
+              value={podQty}
+              onChange={(e) => setPodQty(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
+            />
+            <button
+              className="btn"
+              data-testid="buy-pods"
+              disabled={!armed || !podQuote.ok}
+              title={
+                armed
+                  ? `Buy ${podQty} pods · ${podQuote.cost.toLocaleString()}cr`
+                  : 'Pick a die first'
+              }
+              onClick={() => shipyard({ action: 'buy-cargo-pods', quantity: Math.max(1, podQty) })}
+            >
+              {armed ? `Buy pods · ${podQuote.cost.toLocaleString()}cr` : 'Pick a die to buy'}
+            </button>
+          </div>
+          <div className="pods-preview" data-testid="pods-preview">
+            {podQuote.before.cargoPods} &rarr; <b>{podQuote.after.cargoPods}</b> pods
+          </div>
+          {!podQuote.ok && podQuote.failure && (
+            <span className="ship-reason" data-testid="pods-reason">
+              {shipyardFailureExplanation(podQuote.failure)}
+            </span>
+          )}
+        </div>
+
+        {/* ---- special equipment (ALL rows, disabled-not-hidden) ---- */}
+        <div className="ship-equip" data-testid="equipment-list">
+          <div className="equip-head">SPECIAL EQUIPMENT</div>
+          {equipment.map((row) => (
+            <div
+              className={row.owned ? 'equip-row owned' : 'equip-row'}
+              key={row.id}
+              data-testid="equipment-row"
+              data-equipment={row.id}
+              data-owned={row.owned ? '1' : '0'}
+            >
+              <div className="equip-main">
+                <span className="equip-name">{row.name}</span>
+                {row.owned ? (
+                  <span className="equip-tag" data-testid="equipment-installed">
+                    INSTALLED
+                  </span>
+                ) : (
+                  <span className="equip-price">{row.quote.cost.toLocaleString()}cr</span>
+                )}
+                <button
+                  className="btn small"
+                  data-testid="buy-equipment"
+                  disabled={row.owned || !armed || !row.quote.ok}
+                  title={
+                    row.owned
+                      ? 'Already installed'
+                      : !armed
+                        ? 'Pick a die first'
+                        : row.quote.ok
+                          ? `Install · ${row.quote.cost.toLocaleString()}cr`
+                          : row.quote.failure
+                            ? shipyardFailureExplanation(row.quote.failure)
+                            : 'Unavailable'
+                  }
+                  onClick={() => shipyard({ action: 'buy-special-equipment', equipment: row.id })}
+                >
+                  {row.owned ? 'Owned' : 'Install'}
+                </button>
+              </div>
+              {/* The "exclusion conflict shows why" surface — the typed reason,
+                  rendered rather than hidden, whenever the item can't be bought. */}
+              {!row.owned && row.quote.failure && (
+                <span className="ship-reason" data-testid="equipment-reason">
+                  {shipyardFailureExplanation(row.quote.failure)}
+                </span>
+              )}
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
     </section>
+  );
+}
+
+// One component grid row: strength + condition pips (damage-highlighted), an
+// Upgrade button (to the next tier, with a before→after preview) and, when the
+// system is damaged, a single-step Repair. Every number is the engine's quote.
+function ComponentRow({
+  row,
+  game,
+  armed,
+}: {
+  row: ShipComponentRow;
+  game: GameState;
+  armed: boolean;
+}) {
+  const upgradeQuote =
+    row.nextTier !== null
+      ? shipyardQuote(game, {
+          type: 'Shipyard',
+          action: 'buy-component-tier',
+          component: row.id,
+          tier: row.nextTier,
+          spendDie: 0,
+        })
+      : null;
+  const repairQuote = row.damaged
+    ? shipyardQuote(game, {
+        type: 'Shipyard',
+        action: 'repair',
+        component: row.id,
+        repairMode: 'single',
+        spendDie: 0,
+      })
+    : null;
+
+  // condition 0-9 → 5 pips
+  const on = Math.round((row.condition / 9) * 5);
+
+  return (
+    <div
+      className={row.damaged ? 'comp-row damaged' : 'comp-row'}
+      data-testid="ship-component"
+      data-component={row.id}
+      data-damaged={row.damaged ? '1' : '0'}
+    >
+      <div className="comp-id">
+        <span className="comp-name">{row.name}</span>
+        <span className="comp-str">
+          STR <b data-testid="component-strength">{row.strength}</b>
+        </span>
+        <span className="comp-cond" data-testid="component-condition">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <i key={i} className={i < on ? 'on' : ''} />
+          ))}
+        </span>
+      </div>
+      <div className="comp-actions">
+        {upgradeQuote && row.nextTier !== null && (
+          <span className="comp-upgrade">
+            <button
+              className="btn small"
+              data-testid="upgrade-component"
+              disabled={!armed || !upgradeQuote.ok}
+              title={
+                armed
+                  ? `Upgrade to tier ${row.nextTier} · ${upgradeQuote.cost.toLocaleString()}cr`
+                  : 'Pick a die first'
+              }
+              onClick={() =>
+                shipyard({ action: 'buy-component-tier', component: row.id, tier: row.nextTier! })
+              }
+            >
+              Upgrade · {upgradeQuote.cost.toLocaleString()}cr
+            </button>
+            <span className="comp-preview" data-testid="component-preview">
+              STR {upgradeQuote.before.component?.strength} &rarr;{' '}
+              <b>{upgradeQuote.after.component?.strength}</b>
+              {row.id === 'hull' && (
+                <>
+                  {' · PODS '}
+                  {upgradeQuote.before.maxCargoPods} &rarr; {upgradeQuote.after.maxCargoPods}
+                </>
+              )}
+              {row.id === 'drives' && (
+                <>
+                  {' · FUEL/JUMP '}
+                  {upgradeQuote.before.fuelPerJump} &rarr; {upgradeQuote.after.fuelPerJump}
+                </>
+              )}
+            </span>
+            {!upgradeQuote.ok && upgradeQuote.failure && (
+              <span className="ship-reason" data-testid="component-reason">
+                {shipyardFailureExplanation(upgradeQuote.failure)}
+              </span>
+            )}
+          </span>
+        )}
+        {repairQuote && (
+          <button
+            className="btn small ghost"
+            data-testid="repair-component"
+            disabled={!armed || !repairQuote.ok}
+            title={
+              armed
+                ? `Repair one step · ${repairQuote.cost.toLocaleString()}cr`
+                : 'Pick a die first'
+            }
+            onClick={() => shipyard({ action: 'repair', component: row.id, repairMode: 'single' })}
+          >
+            Repair · {repairQuote.cost.toLocaleString()}cr
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

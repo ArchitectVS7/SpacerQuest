@@ -4,6 +4,9 @@ import {
   STORYLETS,
   FLAWS,
   NPC_PROFILES,
+  SHIP_COMPONENTS,
+  SPECIAL_EQUIPMENT,
+  RENOWN_RANKS,
   distance,
   Stat,
   FIGHT_FUEL_COST,
@@ -17,9 +20,15 @@ import {
   travelDc,
   calculateRouteDanger,
   maxJumpDistance,
+  quoteShipyard,
   type CheckResult,
   type GameEvent,
   type GameState,
+  type PlayerAction,
+  type ShipComponentId,
+  type SpecialEquipmentId,
+  type ShipyardFail,
+  type ShipyardQuote,
 } from '@spacerquest/engine';
 
 /** Display label for a stat. The Stat enum values are already the labels we
@@ -540,4 +549,153 @@ export function combatAftermathSummary(events: GameEvent[]): CombatAftermath | n
   }
   lines.push(`Resolved on round ${resolved.round}.`);
   return { resolution: resolved.resolution, lines };
+}
+
+// ---- T-308 ship & shipyard (display-only) --------------------------------
+//
+// Every number and every "you can't buy this because…" reason the ship pane
+// shows is read from the engine's pure `quoteShipyard` (cost, exclusion,
+// prereq, renown, capacity, and the before→after fuel/pod projection). The UI
+// owns NO shipyard rule: `shipyardFailureExplanation` is the single new function
+// here and it is a pure TRANSLATION of the engine's typed `ShipyardFail` into
+// prose — never a re-derivation of the rule. Balance numbers (tier prices, pod
+// capacity, fuel curve) all live in engine/content.
+
+type ShipyardAction = Extract<PlayerAction, { type: 'Shipyard' }>;
+
+/** Thin re-export so panes never import the engine directly (the store stays the
+ *  sole engine caller for MUTATIONS; this is a pure read used for previews). */
+export function shipyardQuote(game: GameState, action: ShipyardAction): ShipyardQuote {
+  return quoteShipyard(game, action);
+}
+
+/** Authored display name for a component (from content SHIP_COMPONENTS). */
+export function componentName(id: ShipComponentId): string {
+  return SHIP_COMPONENTS.find((c) => c.id === id)?.name ?? id;
+}
+
+/** Authored display name for a special-equipment item. */
+export function equipmentName(id: SpecialEquipmentId): string {
+  return SPECIAL_EQUIPMENT.find((e) => e.id === id)?.name ?? id;
+}
+
+/** A component grid row — strength/condition read straight off the ship, with a
+ *  `damaged` flag for the highlight (condition below the 9 maximum). */
+export interface ShipComponentRow {
+  id: ShipComponentId;
+  name: string;
+  strength: number;
+  condition: number;
+  damaged: boolean;
+  /** The tier this component currently sits at (strength/10, rounded up, min 1). */
+  tier: number;
+  /** The next purchasable tier, or null when already at the top tier (9). */
+  nextTier: number | null;
+}
+
+/** The eight ship components as grid rows (order from content). */
+export function shipComponents(game: GameState): ShipComponentRow[] {
+  const ship = game.player.ship;
+  return SHIP_COMPONENTS.map((def) => {
+    const id = def.id;
+    const comp = ship[id];
+    const tier = Math.max(1, Math.ceil(comp.strength / 10));
+    return {
+      id,
+      name: def.name,
+      strength: comp.strength,
+      condition: comp.condition,
+      damaged: comp.condition < 9,
+      tier,
+      nextTier: tier < 9 ? tier + 1 : null,
+    };
+  });
+}
+
+/** Whether the player already owns a special-equipment item (read from the
+ *  ship's install flags — the same booleans the engine sets on purchase). */
+function equipmentOwned(game: GameState, id: SpecialEquipmentId): boolean {
+  const ship = game.player.ship;
+  switch (id) {
+    case 'CLOAKER':
+      return ship.hasCloaker === true;
+    case 'AUTO_REPAIR':
+      return ship.hasAutoRepair === true;
+    case 'STAR_BUSTER':
+      return ship.hasStarBuster === true;
+    case 'ARCH_ANGEL':
+      return ship.hasArchAngel === true;
+    case 'ASTRAXIAL_HULL':
+      return ship.isAstraxialHull === true;
+    case 'TITANIUM_HULL':
+      return ship.hasTitaniumHull === true;
+    case 'TRANS_WARP':
+      return ship.hasTransWarpDrive === true;
+  }
+}
+
+export interface SpecialEquipmentRow {
+  id: SpecialEquipmentId;
+  name: string;
+  owned: boolean;
+  quote: ShipyardQuote;
+}
+
+/** One row per special-equipment item — ALL of them, always rendered (the pane
+ *  disables, never hides, an item you can't buy, and shows the engine's reason).
+ *  `quote` carries whether it's buyable and the typed `failure` when it isn't. */
+export function specialEquipmentRows(game: GameState): SpecialEquipmentRow[] {
+  return SPECIAL_EQUIPMENT.map((def) => {
+    const id = def.id as SpecialEquipmentId;
+    return {
+      id,
+      name: def.name,
+      owned: equipmentOwned(game, id),
+      quote: quoteShipyard(game, {
+        type: 'Shipyard',
+        action: 'buy-special-equipment',
+        equipment: id,
+        spendDie: 0,
+      }),
+    };
+  });
+}
+
+const PREREQUISITE_PROSE: Record<string, string> = {
+  HULL_STRENGTH_1_TO_4: 'Needs a light hull (strength 1–4)',
+  SHIELDS: 'Needs shields installed',
+  DRIVES_STRENGTH_25: 'Needs drives at strength 25+',
+};
+
+/**
+ * Translate the engine's TYPED failure reason into a one-line explanation for
+ * the pane — the "exclusion conflict shows why" surface. This is pure display
+ * translation of `ShipyardFail`; it re-derives no rule. Every branch maps a
+ * `ShipyardFailureReason` the engine emitted to prose.
+ */
+export function shipyardFailureExplanation(fail: ShipyardFail): string {
+  switch (fail.reason) {
+    case 'MUTUALLY_EXCLUSIVE_EQUIPMENT':
+      return fail.conflictingEquipment
+        ? `Conflicts with ${equipmentName(fail.conflictingEquipment)}`
+        : 'Conflicts with installed equipment';
+    case 'INSUFFICIENT_RENOWN':
+      return fail.requiredRank
+        ? `Requires ${RENOWN_RANKS[fail.requiredRank].label} renown`
+        : 'Requires higher renown';
+    case 'PREREQUISITE_NOT_MET':
+      return fail.prerequisite
+        ? (PREREQUISITE_PROSE[fail.prerequisite] ?? `Requires ${fail.prerequisite}`)
+        : 'Prerequisite not met';
+    case 'INSUFFICIENT_CREDITS':
+      return `Need ${(fail.cost ?? 0).toLocaleString()}cr, have ${(fail.credits ?? 0).toLocaleString()}cr`;
+    case 'CAPACITY_EXCEEDED':
+      return `Hold maxes at ${fail.maxPods ?? 0} pods`;
+    case 'ALREADY_INSTALLED':
+      return 'Already installed';
+    case 'AT_MAX_CONDITION':
+      return 'Already at full condition';
+    case 'NO_HULL':
+      return 'No hull to fit this to';
+  }
 }

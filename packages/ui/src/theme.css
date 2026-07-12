@@ -243,7 +243,11 @@ body {
   min-height: 0;
 }
 .col.left {
-  grid-template-rows: 1fr auto;
+  /* Starmap sizes to its (bounded) content; the taller ship & yard pane takes
+     the flexible remainder and scrolls internally (minmax(0,…) lets it shrink
+     below content height so it never overflows the column and paints over the
+     starmap SVG, which draws with overflow:visible). */
+  grid-template-rows: auto minmax(0, 1fr);
 }
 .pane {
   border: 1px solid var(--hair);
@@ -450,41 +454,221 @@ body {
   cursor: not-allowed;
 }
 
-/* ---- ship status ---- */
+/* ---- ship & shipyard (T-308) ---- */
 .ship .body {
   padding: 10px 12px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 18px;
+  gap: 10px;
   align-content: start;
-}
-.comp {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 8px;
   font-size: 12px;
 }
-.comp .nm {
-  color: var(--amber);
-  letter-spacing: 0.05em;
+
+/* fuel-curve readout — a compact instrument strip, tabular data */
+.ship-fuelcurve {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto 1fr;
+  gap: 2px 8px;
+  align-items: baseline;
+  font-family: var(--font-data);
+  border: 1px solid var(--hair);
+  padding: 6px 8px;
 }
-.cond {
+.ship-fuelcurve .fc-k {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.ship-fuelcurve .fc-v {
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
+  font-weight: 600;
+}
+
+/* component grid */
+.ship-grid {
+  display: grid;
+  gap: 4px;
+}
+.comp-row {
+  border: 1px solid var(--hair);
+  padding: 6px 8px;
+  display: grid;
+  gap: 4px;
+  background: linear-gradient(180deg, #170f07, #0e0a05);
+}
+.comp-row.damaged {
+  border-color: var(--ember);
+  box-shadow: inset 0 0 0 1px rgba(255, 176, 0, 0.25);
+}
+.comp-id {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+}
+.comp-name {
+  color: var(--ember);
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+.comp-str {
+  color: var(--amber);
+  font-family: var(--font-data);
+  font-size: 11px;
+}
+.comp-str b {
+  color: var(--ember-hi);
+}
+.comp-cond {
   display: flex;
   gap: 2px;
 }
-.cond i {
+.comp-cond i {
   width: 8px;
   height: 8px;
   border: 1px solid var(--amber-dim);
 }
-.cond i.on {
+.comp-cond i.on {
   background: var(--ember);
   border-color: var(--ember);
   box-shadow: 0 0 4px rgba(255, 176, 0, 0.6);
 }
-.comp.hurt .nm {
+.comp-row.damaged .comp-cond i.on {
+  background: var(--ember-hi);
+}
+.comp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.comp-upgrade {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.comp-preview,
+.pods-preview {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--amber);
+}
+.comp-preview b,
+.pods-preview b {
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
+}
+
+/* the honest "why you can't buy this" line — reverse-video, never hidden */
+.ship-reason {
+  display: inline-block;
+  background: var(--ember);
+  color: #140e07;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  font-weight: 600;
+}
+
+/* buttons: a compact yard variant + a ghost (repair) variant */
+.btn.small {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.btn.small.ghost {
+  background: transparent;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ship-repair-all {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* cargo pods */
+.ship-pods-block {
+  border: 1px solid var(--hair);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+.pods-head {
+  color: var(--amber);
+  letter-spacing: 0.05em;
+  font-size: 11px;
+}
+.pods-head b {
+  color: var(--ember-hi);
+}
+.pods-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.pods-controls input {
+  width: 64px;
+  background: #0b0906;
+  border: 1px solid var(--amber-dim);
   color: var(--ember);
+  font-family: var(--font-data);
+  padding: 4px 6px;
+}
+
+/* special equipment — all rows always shown, disabled-not-hidden */
+.ship-equip {
+  border: 1px solid var(--hair);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+.equip-head {
+  color: var(--amber);
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+.equip-row {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--hair);
+}
+.equip-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.equip-main {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+}
+.equip-name {
+  color: var(--ember);
+  font-weight: 500;
+}
+.equip-row.owned .equip-name {
+  color: var(--amber);
+}
+.equip-price {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--ember-hi);
+}
+.equip-tag {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #140e07;
+  background: var(--amber);
+  padding: 1px 6px;
+  font-weight: 600;
 }
 
 /* ---- manifest ---- */

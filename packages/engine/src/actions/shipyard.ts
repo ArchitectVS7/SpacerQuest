@@ -9,6 +9,7 @@ import {
 } from '../types.js';
 import { spendDie } from '../dice.js';
 import { renownRankIndex } from '../deeds.js';
+import { jumpFuelCost, maxJumpDistance } from '../economy.js';
 
 const COMPONENT_IDS: readonly ShipComponentId[] = [
   'hull',
@@ -318,17 +319,10 @@ function specialEquipmentFailure(
   return null;
 }
 
-export function resolveShipyard(
-  state: GameState,
-  action: Extract<PlayerAction, { type: 'Shipyard' }>,
-): { state: GameState; events: GameEvent[] } {
-  const nextState = cloneState(state);
-  const events: GameEvent[] = [];
-
-  if (action.spendDie === undefined) {
-    throw new Error('Must spend a die for shipyard action');
-  }
-
+/** Validate the ACTION SHAPE (throws on malformed input) without touching state
+ *  or spending a die. Shared by `resolveShipyard` and the pure `quoteShipyard`
+ *  preview so both reject the same malformed actions identically. */
+function validateShipyardShape(action: Extract<PlayerAction, { type: 'Shipyard' }>): void {
   if (action.action === 'buy-component-tier') {
     validateTierPurchase(action);
   } else if (action.action === 'repair') {
@@ -340,107 +334,279 @@ export function resolveShipyard(
   } else {
     throw new Error('Unknown shipyard action');
   }
+}
 
-  const { hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
-  nextState.player.dawnHand = hand;
-
+/**
+ * The credit cost of a shipyard action, read from the ship's CURRENT state — no
+ * mutation, no die. The single source of truth for pricing shared by the
+ * resolver, the failure check (INSUFFICIENT_CREDITS), and the preview quote.
+ */
+export function shipyardCost(
+  state: GameState,
+  action: Extract<PlayerAction, { type: 'Shipyard' }>,
+): number {
   if (action.action === 'buy-component-tier') {
     const { component, tier } = validateTierPurchase(action);
-    const cost = componentTierCost(nextState, component, tier);
-    const creditFailure = ensureCredits(nextState, action, cost);
-    if (creditFailure) {
-      events.push(creditFailure);
-      return { state: nextState, events };
-    }
+    return componentTierCost(state, component, tier);
+  }
+  if (action.action === 'repair') {
+    const { component, repairMode } = validateRepair(action);
+    return component ? repairCost(state, component, repairMode) : repairAllCost(state);
+  }
+  if (action.action === 'buy-cargo-pods') {
+    return validateCargoPods(action) * 10;
+  }
+  return specialEquipmentCost(state, validateSpecialEquipment(action));
+}
 
-    nextState.player.credits -= cost;
-    nextState.player.ship[component].strength = tier * 10;
-    nextState.player.ship[component].condition = 9;
-    if (component === 'hull' && nextState.player.ship.hull.strength > 4) {
-      nextState.player.ship.hasCloaker = false;
-    }
-    events.push({ type: 'ShipyardEvent', action: action.action, component, tier, cost });
-    return { state: nextState, events };
+/**
+ * The FIRST blocking failure for a shipyard action, or null if it would succeed.
+ * Runs exactly the checks `resolveShipyard` runs — the structural gate (at-max,
+ * no-hull, capacity, equipment exclusion/prereq/renown) then the credit check —
+ * in the same order, reading current state without mutation or die spend. This
+ * is the single rule surface: both the resolver and the UI preview call it, so
+ * the "disabled, not hidden — here's why" reasons the pane shows are the exact
+ * typed reasons the engine would emit on a real purchase.
+ */
+export function shipyardFailure(
+  state: GameState,
+  action: Extract<PlayerAction, { type: 'Shipyard' }>,
+): ShipyardFail | null {
+  if (action.action === 'buy-component-tier') {
+    const { component, tier } = validateTierPurchase(action);
+    return ensureCredits(state, action, componentTierCost(state, component, tier));
   }
 
   if (action.action === 'repair') {
     const { component, repairMode } = validateRepair(action);
     if (component) {
-      const current = nextState.player.ship[component];
-      if (current.condition >= 9) {
-        events.push(fail(action, { reason: 'AT_MAX_CONDITION' }));
-        return { state: nextState, events };
+      if (state.player.ship[component].condition >= 9) {
+        return fail(action, { reason: 'AT_MAX_CONDITION' });
       }
-      const cost = repairCost(nextState, component, repairMode);
-      const creditFailure = ensureCredits(nextState, action, cost);
-      if (creditFailure) {
-        events.push(creditFailure);
-        return { state: nextState, events };
-      }
-
-      nextState.player.credits -= cost;
-      current.condition = repairMode === 'single' ? Math.min(9, current.condition + 1) : 9;
-      events.push({ type: 'ShipyardEvent', action: action.action, component, repairMode, cost });
-      return { state: nextState, events };
+      return ensureCredits(state, action, repairCost(state, component, repairMode));
     }
-
-    const cost = repairAllCost(nextState);
-    const creditFailure = ensureCredits(nextState, action, cost);
-    if (creditFailure) {
-      events.push(creditFailure);
-      return { state: nextState, events };
-    }
-
-    nextState.player.credits -= cost;
-    for (const repairComponent of COMPONENT_IDS) {
-      nextState.player.ship[repairComponent].condition = 9;
-    }
-    events.push({ type: 'ShipyardEvent', action: action.action, repairMode, cost });
-    return { state: nextState, events };
+    return ensureCredits(state, action, repairAllCost(state));
   }
 
   if (action.action === 'buy-cargo-pods') {
     const quantity = validateCargoPods(action);
-    if (nextState.player.ship.hull.strength < 1) {
-      events.push(fail(action, { reason: 'NO_HULL' }));
-      return { state: nextState, events };
+    if (state.player.ship.hull.strength < 1) {
+      return fail(action, { reason: 'NO_HULL' });
     }
-
-    const maxPods = maxCargoPodsForShip(nextState);
-    if (nextState.player.ship.cargoPods + quantity > maxPods) {
-      events.push(fail(action, { reason: 'CAPACITY_EXCEEDED', maxPods }));
-      return { state: nextState, events };
+    const maxPods = maxCargoPodsForShip(state);
+    if (state.player.ship.cargoPods + quantity > maxPods) {
+      return fail(action, { reason: 'CAPACITY_EXCEEDED', maxPods });
     }
-
-    const cost = quantity * 10;
-    const creditFailure = ensureCredits(nextState, action, cost);
-    if (creditFailure) {
-      events.push(creditFailure);
-      return { state: nextState, events };
-    }
-
-    nextState.player.credits -= cost;
-    nextState.player.ship.cargoPods += quantity;
-    events.push({ type: 'ShipyardEvent', action: action.action, quantity, cost });
-    return { state: nextState, events };
+    return ensureCredits(state, action, quantity * 10);
   }
 
   const equipment = validateSpecialEquipment(action);
-  const equipmentFailure = specialEquipmentFailure(nextState, action, equipment);
-  if (equipmentFailure) {
-    events.push(equipmentFailure);
+  const equipmentFailure = specialEquipmentFailure(state, action, equipment);
+  if (equipmentFailure) return equipmentFailure;
+  return ensureCredits(state, action, specialEquipmentCost(state, equipment));
+}
+
+/**
+ * Apply the pure state mutation of a shipyard purchase, ASSUMING it has already
+ * passed `shipyardFailure` (caller's responsibility). Mutates `state` in place —
+ * `resolveShipyard` runs it on its clone, and `quoteShipyard` runs it on a
+ * throwaway clone to project the "after". No die, no events, no validation.
+ */
+export function applyShipyardMutation(
+  state: GameState,
+  action: Extract<PlayerAction, { type: 'Shipyard' }>,
+): void {
+  const ship = state.player.ship;
+
+  if (action.action === 'buy-component-tier') {
+    const { component, tier } = validateTierPurchase(action);
+    state.player.credits -= componentTierCost(state, component, tier);
+    ship[component].strength = tier * 10;
+    ship[component].condition = 9;
+    if (component === 'hull' && ship.hull.strength > 4) {
+      ship.hasCloaker = false;
+    }
+    return;
+  }
+
+  if (action.action === 'repair') {
+    const { component, repairMode } = validateRepair(action);
+    if (component) {
+      const current = ship[component];
+      state.player.credits -= repairCost(state, component, repairMode);
+      current.condition = repairMode === 'single' ? Math.min(9, current.condition + 1) : 9;
+      return;
+    }
+    state.player.credits -= repairAllCost(state);
+    for (const repairComponent of COMPONENT_IDS) {
+      ship[repairComponent].condition = 9;
+    }
+    return;
+  }
+
+  if (action.action === 'buy-cargo-pods') {
+    const quantity = validateCargoPods(action);
+    state.player.credits -= quantity * 10;
+    ship.cargoPods += quantity;
+    return;
+  }
+
+  const equipment = validateSpecialEquipment(action);
+  state.player.credits -= specialEquipmentCost(state, equipment);
+  installSpecialEquipment(state, equipment);
+}
+
+/** Build the success event with exactly the fields the action carries — the
+ *  shape the resolver has always emitted (kept branch-specific so no undefined
+ *  keys leak into the event log). */
+function shipyardEvent(
+  action: Extract<PlayerAction, { type: 'Shipyard' }>,
+  cost: number,
+): GameEvent {
+  if (action.action === 'buy-component-tier') {
+    return {
+      type: 'ShipyardEvent',
+      action: action.action,
+      component: action.component,
+      tier: action.tier,
+      cost,
+    };
+  }
+  if (action.action === 'repair') {
+    return action.component
+      ? {
+          type: 'ShipyardEvent',
+          action: action.action,
+          component: action.component,
+          repairMode: action.repairMode,
+          cost,
+        }
+      : { type: 'ShipyardEvent', action: action.action, repairMode: action.repairMode, cost };
+  }
+  if (action.action === 'buy-cargo-pods') {
+    return { type: 'ShipyardEvent', action: action.action, quantity: action.quantity, cost };
+  }
+  return { type: 'ShipyardEvent', action: action.action, equipment: action.equipment, cost };
+}
+
+export function resolveShipyard(
+  state: GameState,
+  action: Extract<PlayerAction, { type: 'Shipyard' }>,
+): { state: GameState; events: GameEvent[] } {
+  const nextState = cloneState(state);
+  const events: GameEvent[] = [];
+
+  if (action.spendDie === undefined) {
+    throw new Error('Must spend a die for shipyard action');
+  }
+  validateShipyardShape(action);
+
+  // Established ShipyardFail convention: the die is spent BEFORE the business
+  // checks, so even a refused purchase consumes it. The UI avoids wasting a die
+  // on a predictable refusal by gating its buttons on `quoteShipyard().ok`.
+  const { hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
+  nextState.player.dawnHand = hand;
+
+  const failure = shipyardFailure(nextState, action);
+  if (failure) {
+    events.push(failure);
     return { state: nextState, events };
   }
 
-  const cost = specialEquipmentCost(nextState, equipment);
-  const creditFailure = ensureCredits(nextState, action, cost);
-  if (creditFailure) {
-    events.push(creditFailure);
-    return { state: nextState, events };
-  }
-
-  nextState.player.credits -= cost;
-  installSpecialEquipment(nextState, equipment);
-  events.push({ type: 'ShipyardEvent', action: action.action, equipment, cost });
+  // Cost is snapshot BEFORE mutation (trade-in / hull-scaled prices read current
+  // strength); the mutation recomputes it against the same pre-mutation state.
+  const cost = shipyardCost(nextState, action);
+  applyShipyardMutation(nextState, action);
+  events.push(shipyardEvent(action, cost));
   return { state: nextState, events };
+}
+
+/**
+ * A DISPLAY sample-point on the fuel curve — the reference jump distance the
+ * shipyard preview prices `fuelPerJump` at so a drives upgrade shows a concrete
+ * before→after fuel number. It is NOT a balance constant (no rule reads it); the
+ * real per-jump cost of any real route always comes from `jumpFuelCost` against
+ * that route's distance. Chosen mid-range so both weak and strong drives differ.
+ */
+export const REF_JUMP_DISTANCE = 5;
+
+/** A projected snapshot of the ship's cargo/fuel instruments (and, when the
+ *  action targets one, the affected component) — everything the pane's
+ *  before→after preview reads. Pure derivation; nothing here is persisted. */
+export interface ShipPreview {
+  cargoPods: number;
+  maxCargoPods: number;
+  fuel: number;
+  maxFuel: number;
+  /** Sample of the fuel curve at REF_JUMP_DISTANCE (display only). */
+  fuelPerJump: number;
+  maxJumpDistance: number;
+  component?: { id: ShipComponentId; strength: number; condition: number };
+}
+
+/** The preview a purchase button needs: whether it is allowed and why not, its
+ *  cost, and the ship instruments before and (if allowed) after the purchase. */
+export interface ShipyardQuote {
+  /** No blocking failure — affordable and all rules satisfied. */
+  ok: boolean;
+  cost: number;
+  /** The typed reason when `!ok`, for the pane to translate to prose. */
+  failure: ShipyardFail | null;
+  before: ShipPreview;
+  /** Projected post-purchase instruments; identical to `before` when `!ok`. */
+  after: ShipPreview;
+}
+
+function shipPreview(
+  state: GameState,
+  action: Extract<PlayerAction, { type: 'Shipyard' }>,
+): ShipPreview {
+  const ship = state.player.ship;
+  const preview: ShipPreview = {
+    cargoPods: ship.cargoPods,
+    maxCargoPods: maxCargoPodsForShip(state),
+    fuel: ship.fuel,
+    maxFuel: ship.maxFuel,
+    fuelPerJump: jumpFuelCost(ship.drives, REF_JUMP_DISTANCE, ship.hasTransWarpDrive ?? false),
+    maxJumpDistance: maxJumpDistance(ship.drives, ship.fuel, ship.hasTransWarpDrive ?? false),
+  };
+  if (
+    (action.action === 'buy-component-tier' || action.action === 'repair') &&
+    action.component &&
+    isComponentId(action.component)
+  ) {
+    const c = ship[action.component];
+    preview.component = {
+      id: action.component,
+      strength: c.strength,
+      condition: c.condition,
+    };
+  }
+  return preview;
+}
+
+/**
+ * PURE preview of a shipyard purchase — the engine function the ship pane reads
+ * for its before→after numbers and its "disabled, here's why" reasons. It spends
+ * no die and MUST NOT mutate the input: the projected `after` is taken from a
+ * throwaway clone. Every rule (cost, exclusion, prereq, renown, capacity) is the
+ * same code `resolveShipyard` runs, so the preview can never disagree with the
+ * real purchase.
+ */
+export function quoteShipyard(
+  state: GameState,
+  action: Extract<PlayerAction, { type: 'Shipyard' }>,
+): ShipyardQuote {
+  validateShipyardShape(action);
+  const cost = shipyardCost(state, action);
+  const failure = shipyardFailure(state, action);
+  const ok = failure === null;
+  const before = shipPreview(state, action);
+  let after = before;
+  if (ok) {
+    const clone = cloneState(state);
+    applyShipyardMutation(clone, action);
+    after = shipPreview(clone, action);
+  }
+  return { ok, cost, failure, before, after };
 }

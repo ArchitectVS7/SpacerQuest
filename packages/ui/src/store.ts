@@ -11,7 +11,8 @@ import {
   type CheckResult,
 } from '@spacerquest/engine';
 import type { Stat } from '@spacerquest/content';
-import { combatAftermathSummary, type CombatAftermath } from './format';
+import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerquest/engine';
+import { combatAftermathSummary, shipyardFailureExplanation, type CombatAftermath } from './format';
 
 /**
  * The cockpit store. A tiny module-level store (no framework dependency) exposed
@@ -437,6 +438,68 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
     set({
       notice: err instanceof Error ? err.message : 'That combat action could not be resolved.',
     });
+  }
+}
+
+/** The partial shipyard action a pane submits — the store fills in `spendDie`. */
+export interface ShipyardRequest {
+  action: 'buy-component-tier' | 'repair' | 'buy-cargo-pods' | 'buy-special-equipment';
+  component?: ShipComponentId;
+  tier?: number;
+  repairMode?: 'all' | 'single';
+  quantity?: number;
+  equipment?: SpecialEquipmentId;
+}
+
+/** Pull a ShipyardFail out of an action's events (the engine's typed refusal). */
+function shipyardFailFrom(events: GameEvent[]): ShipyardFail | null {
+  for (const e of events) {
+    if (e.type === 'ShipyardFail') return e;
+  }
+  return null;
+}
+
+/**
+ * Commit a shipyard purchase / repair (T-308). The pane previews every action
+ * through the engine's pure `quoteShipyard` and only enables a button when the
+ * quote is `ok`, so a die is never wasted on a predictable refusal — important
+ * because the engine (by the established ShipyardFail convention) spends the die
+ * BEFORE the business checks. If a refusal does slip through (e.g. a race with
+ * state change) it is surfaced as a visible notice via the typed reason, never a
+ * silent no-op. On success the spent die blooms and the selection clears; the
+ * shipyard emits no StatCheck, so `lastCheck` stays null.
+ */
+export function shipyard(request: ShipyardRequest): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then buy.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Shipyard',
+      action: request.action,
+      component: request.component,
+      tier: request.tier,
+      repairMode: request.repairMode,
+      quantity: request.quantity,
+      equipment: request.equipment,
+      spendDie: die,
+    });
+    autosave(next);
+    const fail = shipyardFailFrom(events);
+    const notice = fail ? shipyardFailureExplanation(fail) : null;
+    set({
+      game: next,
+      // The die is spent either way (engine convention). Bloom it and clear the
+      // selection; on a refusal the notice explains what happened.
+      selectedDie: null,
+      bloomDie: die,
+      notice,
+      lastCheck: null,
+    });
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That yard order could not be resolved.' });
   }
 }
 

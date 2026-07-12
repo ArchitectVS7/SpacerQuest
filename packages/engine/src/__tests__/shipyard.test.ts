@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
 import { applyPlayerAction, startDay } from '../day.js';
-import { resolveShipyard } from '../actions/shipyard.js';
+import { quoteShipyard, resolveShipyard } from '../actions/shipyard.js';
 import { createInitialState } from '../state.js';
-import { GameState, ShipyardFail } from '../types.js';
+import { GameState, PlayerAction, ShipyardFail } from '../types.js';
+
+type ShipyardAction = Extract<PlayerAction, { type: 'Shipyard' }>;
 
 function shipyardState(credits = 200000): GameState {
   const state = createInitialState(123);
@@ -415,5 +417,128 @@ describe('shipyard', () => {
       result.events.filter((event) => event.type === 'DeedEarned').map((event) => event.deedId),
     ).toEqual(['yard_rat', 'cargo_expansion']);
     expect(result.state.eventLog.slice(-result.events.length)).toEqual(result.events);
+  });
+});
+
+describe('quoteShipyard (T-308 preview)', () => {
+  it('spends no die and does not mutate the input state', () => {
+    const state = shipyardState();
+    state.player.ship.weapons = { strength: 3, condition: 2 };
+    const snapshot = structuredClone(state);
+
+    const quote = quoteShipyard(state, {
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'weapons',
+      tier: 4,
+      spendDie: 0,
+    });
+
+    // Input untouched: no die spent, no credits deducted, no ship change.
+    expect(state).toEqual(snapshot);
+    expect(quote.ok).toBe(true);
+  });
+
+  it('quotes a component-tier cost matching the real purchase and projects the after', () => {
+    const action: ShipyardAction = {
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'weapons',
+      tier: 4,
+      spendDie: 0,
+    };
+    const quote = quoteShipyard(shipyardState(), action);
+    const resolved = resolveShipyard(shipyardState(), action);
+    const spent = 200000 - resolved.state.player.credits;
+
+    expect(quote.cost).toBe(spent);
+    expect(quote.before.component).toEqual({ id: 'weapons', strength: 1, condition: 9 });
+    expect(quote.after.component).toEqual({ id: 'weapons', strength: 40, condition: 9 });
+  });
+
+  it('quotes cargo pods: cost, and before/after pod + capacity numbers', () => {
+    const state = shipyardState();
+    state.player.ship.hull = { strength: 1, condition: 9 };
+    state.player.ship.cargoPods = 5;
+
+    const quote = quoteShipyard(state, {
+      type: 'Shipyard',
+      action: 'buy-cargo-pods',
+      quantity: 3,
+      spendDie: 0,
+    });
+
+    expect(quote.ok).toBe(true);
+    expect(quote.cost).toBe(30);
+    expect(quote.before.cargoPods).toBe(5);
+    expect(quote.after.cargoPods).toBe(8);
+    expect(quote.before.maxCargoPods).toBe(10);
+    expect(quote.after.maxCargoPods).toBe(10);
+  });
+
+  it('reports a mutual-exclusion block with the conflicting equipment', () => {
+    const state = shipyardState();
+    state.player.ship.hasCloaker = true;
+
+    const quote = quoteShipyard(state, {
+      type: 'Shipyard',
+      action: 'buy-special-equipment',
+      equipment: 'AUTO_REPAIR',
+      spendDie: 0,
+    });
+
+    expect(quote.ok).toBe(false);
+    expect(quote.failure?.reason).toBe('MUTUALLY_EXCLUSIVE_EQUIPMENT');
+    expect(quote.failure?.conflictingEquipment).toBe('CLOAKER');
+    // A blocked quote leaves after === before (no projection).
+    expect(quote.after).toEqual(quote.before);
+  });
+
+  it('reports the renown gate for a LIEUTENANT quoting Star Buster', () => {
+    const state = shipyardState();
+    state.player.registry.renownRank = 'LIEUTENANT';
+
+    const quote = quoteShipyard(state, {
+      type: 'Shipyard',
+      action: 'buy-special-equipment',
+      equipment: 'STAR_BUSTER',
+      spendDie: 0,
+    });
+
+    expect(quote.ok).toBe(false);
+    expect(quote.failure?.reason).toBe('INSUFFICIENT_RENOWN');
+    expect(quote.failure?.requiredRank).toBe('CAPTAIN');
+  });
+
+  it('reports the capacity ceiling for a full default hold', () => {
+    const state = startDay(createInitialState(424242)).state;
+    // Default ship: hull str1 cond9 → max pods (9+1)*1 = 10, and it starts full.
+    const quote = quoteShipyard(state, {
+      type: 'Shipyard',
+      action: 'buy-cargo-pods',
+      quantity: 1,
+      spendDie: 0,
+    });
+
+    expect(quote.ok).toBe(false);
+    expect(quote.failure?.reason).toBe('CAPACITY_EXCEEDED');
+    expect(quote.failure?.maxPods).toBe(10);
+  });
+
+  it('shows the fuel curve dropping after a drives-strength upgrade', () => {
+    const state = shipyardState();
+    state.player.ship.drives = { strength: 10, condition: 9 };
+
+    const quote = quoteShipyard(state, {
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'drives',
+      tier: 2, // strength 10 → 20
+      spendDie: 0,
+    });
+
+    expect(quote.after.component?.strength).toBe(20);
+    // Stronger drives burn less fuel per jump — the curve the pane previews.
+    expect(quote.after.fuelPerJump).toBeLessThan(quote.before.fuelPerJump);
   });
 });
