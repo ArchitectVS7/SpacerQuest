@@ -94,12 +94,13 @@ export function maxCargoPodsForShip(state: GameState): number {
 }
 
 // Hull-scaled equipment (AUTO_REPAIR, TITANIUM_HULL) prices at
-// `hull.strength * priceMultiplier` (multiplier 1000, per foundation
-// constants.ts:91/116). The `Math.min(..., 20000)` ceiling is an INTENTIONAL
-// engine divergence: foundation defines the multiplier but no cap, which lets
-// the price run away at high hull tiers; the 20,000 cap keeps late-game
-// refits affordable relative to the credit economy. See the boundary test in
-// shipyard.test.ts.
+// `hull.strength * 1000`, capped at 20,000. This is FAITHFUL to foundation,
+// NOT a divergence: foundation (f2f95fa9:foundation/rules/upgrades.ts ~L731)
+// sets `price = hullStrength > 20 ? 20000 : hullStrength * 1000`. Because the
+// multiplier is 1000, `hull*1000` reaches 20,000 exactly at hull=20 (foundation's
+// threshold), so the `Math.min(hull.strength * 1000, 20000)` form below is
+// mathematically identical to foundation's branch. (Corrects an earlier, false
+// "intentional engine divergence" note — see docs/BALANCE-POLICY.md v0.1 errata.)
 const HULL_SCALED_EQUIPMENT_PRICE_CAP = 20000;
 
 function specialEquipmentCost(state: GameState, equipment: SpecialEquipmentId): number {

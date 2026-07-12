@@ -135,7 +135,9 @@ describe('shipyard', () => {
     'caps %s hull-scaled price at 20,000 for a high-strength hull (T-105 boundary)',
     (equipment) => {
       // Price is min(hull.strength * 1000, 20000). A strength-25 hull would price
-      // at 25,000 without the cap; the intentional 20,000 ceiling holds it there.
+      // at 25,000 without the cap; the 20,000 ceiling holds it there. The cap
+      // matches foundation (f2f95fa9:foundation/rules/upgrades.ts ~L731,
+      // hullStrength > 20 ? 20000 : hullStrength * 1000) — not an engine invention.
       const state = shipyardState();
       state.player.ship.hull = { strength: 25, condition: 4 };
       const startingCredits = state.player.credits;
