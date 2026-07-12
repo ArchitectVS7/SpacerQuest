@@ -36,3 +36,31 @@ jobs:
 
       - name: Test
         run: npm test
+
+  e2e:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build workspaces
+        run: npx tsc -b
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: packages/ui
+
+      - name: Run e2e
+        run: npm run test:e2e
+        working-directory: packages/ui

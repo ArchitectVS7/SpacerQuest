@@ -69,6 +69,7 @@ test('volume sliders work and persist', async ({ page }) => {
     // tracker sees the change and fires onChange — the same path a real drag hits.
     await slider.evaluate((el, v) => {
       const input = el as HTMLInputElement;
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- intentionally extracting the native value setter to invoke via .call below
       const setter = Object.getOwnPropertyDescriptor(
         window.HTMLInputElement.prototype,
         'value',
