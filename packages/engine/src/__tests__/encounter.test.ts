@@ -96,16 +96,80 @@ describe('Encounter system', () => {
     expect(first.events.some((event) => event.type === 'EncounterStarted')).toBe(true);
   });
 
-  it('respects player tier bands across 500 seeded interceptor selections', () => {
-    for (let playerTier = 1; playerTier <= 5; playerTier += 1) {
-      for (let seed = 1; seed <= 500; seed += 1) {
-        const state = readyState(seed);
-        state.player.tier = playerTier as GameState['player']['tier'];
-        const interceptor = selectEncounterInterceptor(state, 1, 27, 5, new SeededRng(seed));
-        expect(interceptor.tier).toBeGreaterThanOrEqual(Math.max(1, playerTier - 1));
-        expect(interceptor.tier).toBeLessThanOrEqual(Math.min(5, playerTier + 1));
+  it('matchmaking is route-correct and non-degenerate across a 500-seed sweep', () => {
+    // Replaces the old 500-seed test, which only asserted interceptor.tier was in
+    // the player-tier ±1 band — a clamp computed three lines above the selection,
+    // so it tested the clamp against itself and exercised none of the real
+    // matchmaking. This sweep drives the behaviors that test never touched: route
+    // -correct anonymous kinds, that BOTH named and anonymous interceptors are
+    // actually selected, and that every tier surfaces.
+    //
+    // Route facts (travel.ts routeKind/allowedAnonymousKinds) hard-coded here so
+    // we test against the intended contract, not module internals:
+    //   core (1->2):      PIRATE, PATROL, BRIGAND
+    //   rim  (1->17):     RIM_PIRATE, PIRATE, BRIGAND
+    //   andromeda (1->22): REPTILOID only
+    const ROUTES = [
+      { name: 'core', dest: 2, allowed: ['PIRATE', 'PATROL', 'BRIGAND'] },
+      { name: 'rim', dest: 17, allowed: ['RIM_PIRATE', 'PIRATE', 'BRIGAND'] },
+      { name: 'andromeda', dest: 22, allowed: ['REPTILOID'] },
+    ] as const;
+
+    let sawNamed = false;
+    let sawAnonymous = false;
+    const tiersSeen = new Set<number>();
+
+    for (const route of ROUTES) {
+      const anonKindsSeen = new Set<string>();
+
+      for (let playerTier = 1; playerTier <= 5; playerTier += 1) {
+        for (let seed = 1; seed <= 500; seed += 1) {
+          const state = readyState(seed);
+          state.player.tier = playerTier as GameState['player']['tier'];
+          const interceptor = selectEncounterInterceptor(
+            state,
+            1,
+            route.dest,
+            3,
+            new SeededRng(seed),
+          );
+
+          tiersSeen.add(interceptor.tier);
+          // Secondary sanity: the tier band contract still holds (kept, but no
+          // longer the ONLY assertion). T-1603 owns canonical balance targets.
+          expect(interceptor.tier).toBeGreaterThanOrEqual(Math.max(1, playerTier - 1));
+          expect(interceptor.tier).toBeLessThanOrEqual(Math.min(5, playerTier + 1));
+
+          if (interceptor.source === 'named') {
+            sawNamed = true;
+          } else {
+            sawAnonymous = true;
+            // Anonymous interceptors carry a route-restricted kind; named ones do
+            // not, so kind-band correctness is asserted only on anonymous picks.
+            expect(interceptor.kind).toBeDefined();
+            anonKindsSeen.add(interceptor.kind as string);
+            expect(route.allowed).toContain(interceptor.kind);
+          }
+        }
+      }
+
+      // Route-specific negative/positive guarantees the old test never made.
+      if (route.name === 'core') {
+        expect(anonKindsSeen.has('REPTILOID')).toBe(false);
+        expect(anonKindsSeen.has('RIM_PIRATE')).toBe(false);
+      }
+      if (route.name === 'andromeda') {
+        // Every anonymous interceptor on an Andromeda lane is a Reptiloid.
+        expect([...anonKindsSeen]).toEqual(['REPTILOID']);
       }
     }
+
+    // Non-degeneracy: matchmaking actually reaches BOTH pools (a bug that only
+    // ever picked named — or only anonymous — would pass the old test).
+    expect(sawNamed).toBe(true);
+    expect(sawAnonymous).toBe(true);
+    // Every tier 1-5 is reachable across the sweep.
+    expect([...tiersSeen].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it('round-trips an encounter through JSON mid-travel', () => {

@@ -80,6 +80,9 @@ export interface CampaignStatsReport {
   policy: SimPolicyName;
   creditsCurve: number[];
   debtClearedDay: number | null;
+  /** Days the player ended stranded: even after spending every credit on fuel
+   *  they could not afford the cheapest available jump (T-1004). Supersedes the
+   *  old `fuel === 0` count, which never fired in 6,000 simulated days. */
   fuelStarvationDays: number;
   flawOverrideRate: number;
   wireVolume: number;
@@ -157,6 +160,26 @@ function affordableFuelAmount(state: GameState): number {
   const remainingCapacity = state.player.ship.maxFuel - state.player.ship.fuel;
   const affordable = Math.floor(state.player.credits / fuelPrice(state));
   return Math.max(0, Math.min(100, remainingCapacity, affordable));
+}
+
+/** A day the player is stranded: even after spending every credit on fuel they
+ *  cannot reach the fuel needed for the CHEAPEST available jump (the nearest
+ *  reachable system). Replaces the old `fuel === 0` metric, which never fired
+ *  in 6,000 simulated days because every policy keeps the tank topped up — it
+ *  measured a state the sim never reaches, not economic hardship (T-1004).
+ *  Uses the same `jumpFuelCost` (via `playerJumpFuel`) the engine prices travel
+ *  with, so "the cheapest jump" is the exact fuel the resolver would demand. */
+export function cannotAffordCheapestJump(state: GameState): boolean {
+  const from = state.player.currentSystemId;
+  const cheapestJumpFuel = Math.min(
+    ...systemIds()
+      .filter((id) => id !== from)
+      .map((id) => playerJumpFuel(state, systemDistance(from, id))),
+  );
+  const ship = state.player.ship;
+  const buyable = Math.floor(state.player.credits / fuelPrice(state));
+  const maxReachableFuel = Math.min(ship.maxFuel, ship.fuel + buyable);
+  return maxReachableFuel < cheapestJumpFuel;
 }
 
 function countDailyEvents(events: GameEvent[]): {
@@ -1165,7 +1188,7 @@ export function runCampaign(
     flawChecks += counts.flawChecks;
     flawOverrides += counts.flawOverrides;
 
-    if (state.player.ship.fuel === 0) {
+    if (cannotAffordCheapestJump(state)) {
       fuelStarvationDays += 1;
     }
 

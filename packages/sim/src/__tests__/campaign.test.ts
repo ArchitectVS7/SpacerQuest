@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { distance as systemDistance } from '@spacerquest/content';
 import {
   advanceDay,
   applyPlayerAction,
@@ -16,11 +17,13 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   availablePlannedActions,
+  cannotAffordCheapestJump,
   explorerPolicy,
   fighterPolicy,
   parseCliArgs,
   reportToJson,
   runCampaign,
+  systemIds,
   traderPolicy,
   veteranPolicy,
   type SimPolicy,
@@ -326,4 +329,83 @@ describe('T-114a special-equipment reachability (earned, not set)', () => {
     // deeds that drive it were genuinely earned.
     expect(state.player.registry.earned.length).toBeGreaterThanOrEqual(15);
   }, 60000);
+});
+
+// ---------------------------------------------------------------------------
+// T-1004 · Fuel-starvation metric honesty. The old report counted days where
+// `fuel === 0`, which fired 0 times in 6,000 simulated days because every policy
+// tops the tank up — it measured a state the sim never reaches. The metric is
+// now "days the player cannot afford the cheapest available jump" (even after
+// spending every credit on fuel). These tests guard the new rule: the unit test
+// pins the discriminating case that the OLD `fuel === 0` rule got wrong, and a
+// scripted broke-and-dry campaign proves the metric actually fires in a run.
+// ---------------------------------------------------------------------------
+describe('T-1004 fuel starvation', () => {
+  it('cannotAffordCheapestJump distinguishes stranded from merely low', () => {
+    // credits 0, fuel 5 (below any jump cost): stranded — cannot buy fuel and
+    // cannot afford even the nearest hop. This is the case the OLD `fuel === 0`
+    // rule scored FALSE (fuel is 5, not 0) yet the player is genuinely stuck; it
+    // is the discriminator that goes red under the reverted mutation.
+    const stranded = createInitialState(1);
+    stranded.player.credits = 0;
+    stranded.player.ship.fuel = 5;
+    expect(cannotAffordCheapestJump(stranded)).toBe(true);
+
+    // A full starter tank can afford the cheapest jump: not stranded.
+    const fuelled = createInitialState(1);
+    fuelled.player.ship.fuel = 300;
+    expect(cannotAffordCheapestJump(fuelled)).toBe(false);
+
+    // Bone-dry tank but flush with credits: can just buy fuel — not stranded.
+    const solvent = createInitialState(1);
+    solvent.player.credits = 100_000;
+    solvent.player.ship.fuel = 0;
+    expect(cannotAffordCheapestJump(solvent)).toBe(false);
+  });
+
+  it('a scripted broke-and-dry campaign registers fuelStarvationDays > 0', () => {
+    // Nearest OTHER system to `from` (special systems >= 27 excluded), so each
+    // jump burns the CHEAPEST fuel and the tank drains all the way below the
+    // cheapest-jump threshold rather than stalling above it.
+    const nearestFrom = (from: number): number => {
+      let best = from;
+      let bestDist = Infinity;
+      for (const id of systemIds()) {
+        if (id === from || id >= 27) continue;
+        const d = systemDistance(from, id);
+        if (d < bestDist) {
+          bestDist = d;
+          best = id;
+        }
+      }
+      return best;
+    };
+
+    // Broke-and-dry policy: on day 1 pour every credit into the debt marker
+    // (credits -> 0), then every day burn fuel by hopping to the nearest system;
+    // if an encounter interrupts, run to shake it. Nothing ever refuels, so the
+    // starter 300 fuel drains to below the cheapest jump and the player strands.
+    const brokeAndDryPolicy: SimPolicy = ({ state, dayIndex }) => {
+      if (state.encounter) {
+        return [
+          { type: 'Combat', stance: 'run', targetId: state.encounter.interceptor.id, spendDie: 0 },
+        ];
+      }
+      const actions: PlayerAction[] = [];
+      if (dayIndex === 0 && state.player.credits > 0) {
+        actions.push({ type: 'Trade', action: 'pay-debt', amount: state.player.credits });
+      }
+      actions.push({
+        type: 'Travel',
+        destinationId: nearestFrom(state.player.currentSystemId),
+        spendDie: 0,
+      });
+      return actions;
+    };
+
+    const report = runCampaign(1, 60, brokeAndDryPolicy);
+
+    expect(report.finalState.credits).toBe(0);
+    expect(report.fuelStarvationDays).toBeGreaterThan(0);
+  }, 30000);
 });
