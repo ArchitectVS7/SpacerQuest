@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
   type DragEvent as ReactDragEvent,
 } from 'react';
-import { CARGO_TYPES, Stat } from '@spacerquest/content';
+import { CARGO_TYPES, RENOWN_RANKS, Stat } from '@spacerquest/content';
 import type { GameState } from '@spacerquest/engine';
 import {
   subscribe,
@@ -22,6 +22,7 @@ import {
   travelTo,
   combat,
   shipyard,
+  resolveStorylet,
   dismissAftermath,
   standDown,
   toggleFx,
@@ -51,8 +52,14 @@ import {
   specialEquipmentRows,
   shipyardQuote,
   shipyardFailureExplanation,
+  storyletChoiceCostLabel,
+  storyletChoiceNeedsDie,
+  storyletChoiceLock,
+  deedRegistry,
+  nemesisFile,
   type ShipComponentRow,
   type WireLogEntry,
+  type StoryletChoice,
 } from './format';
 
 const DIE_MIME = 'application/x-sq-die';
@@ -85,10 +92,18 @@ const EffectsLayer = memo(function EffectsLayer() {
 
 export function App() {
   const s = useCockpit();
+  const [recordsOpen, setRecordsOpen] = useState(false);
+  const [storyletOpen, setStoryletOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-fx', s.fx ? 'on' : 'off');
   }, [s.fx]);
+
+  // The storylet launcher only makes sense when a storylet is waiting and the
+  // cockpit is not mid-encounter (combat takes precedence). Its count drives the
+  // launcher badge; when it drops to zero the floating panel unmounts on its own.
+  const storyletCount = s.game.storylets.available.length;
+  const storyletsWaiting = storyletCount > 0 && !s.game.encounter && !s.combatAftermath;
 
   return (
     <div className="tube">
@@ -97,6 +112,19 @@ export function App() {
 
       <div className="ctrls">
         <button onClick={toggleFx}>{s.fx ? 'CRT: ON' : 'CRT: OFF'}</button>
+        {storyletsWaiting && (
+          <button
+            className="storylet-launch"
+            data-testid="storylet-toggle"
+            aria-expanded={storyletOpen}
+            onClick={() => setStoryletOpen((v) => !v)}
+          >
+            Storylet · {storyletCount}
+          </button>
+        )}
+        <button data-testid="records-toggle" onClick={() => setRecordsOpen((v) => !v)}>
+          Records
+        </button>
         <NewGameButton />
       </div>
 
@@ -113,8 +141,12 @@ export function App() {
           </div>
         </div>
         <Wire game={s.game} />
+        {storyletOpen && storyletsWaiting && (
+          <StoryletPanel state={s} onClose={() => setStoryletOpen(false)} />
+        )}
         <HandDock state={s} />
         <CombatOverlay state={s} />
+        {recordsOpen && <RecordsOverlay game={s.game} onClose={() => setRecordsOpen(false)} />}
       </div>
     </div>
   );
@@ -346,6 +378,274 @@ function CombatAftermathPanel({
   );
 }
 
+// The in-cockpit storylet surface (T-309). A prose panel that presents ONE
+// queued storylet offer at a time (with a pager when several are waiting), each
+// choice showing its authored requirement/cost and, when unmet, a visible lock
+// that also disables the button. It is a pure CLIENT of the storylet rules: the
+// single mutation routes through the store's `resolveStorylet`, a die is spent
+// only for a choice that requires one, and a storylet stat check rides the
+// shared honest-check readout (CheckBreakdown, context 'storylet'). Combat takes
+// visual precedence — the panel is hidden while an encounter/aftermath is live.
+function StoryletPanel({ state, onClose }: { state: CockpitState; onClose: () => void }) {
+  const game = state.game;
+  const offers = game.storylets.available;
+  const [index, setIndex] = useState(0);
+  const armed = state.selectedDie !== null;
+
+  // Escape closes the panel (the WireLog / Records convention).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // App gates mounting on there being at least one offer and no live encounter,
+  // but guard defensively so a mid-render list drain can't index past the end.
+  if (offers.length === 0) return null;
+  // The offer list shrinks as storylets resolve, so clamp the pager index rather
+  // than let it point past the end.
+  const idx = Math.min(index, offers.length - 1);
+  const offer = offers[idx];
+
+  return (
+    <section
+      className="storylet-panel"
+      data-testid="storylet-panel"
+      data-storylet-id={offer.storyletId}
+      role="dialog"
+      aria-label={`Storylet: ${offer.title}`}
+    >
+      <header className="sl-head">
+        <h2 className="sl-title" data-testid="storylet-title">
+          {offer.title}
+        </h2>
+        {offers.length > 1 && (
+          <div className="sl-pager" data-testid="storylet-pager">
+            <button
+              className="sl-page-btn"
+              data-testid="storylet-prev"
+              aria-label="previous storylet"
+              disabled={idx === 0}
+              onClick={() => setIndex(Math.max(0, idx - 1))}
+            >
+              &#9666;
+            </button>
+            <span className="sl-count" data-testid="storylet-count">
+              {idx + 1} / {offers.length}
+            </span>
+            <button
+              className="sl-page-btn"
+              data-testid="storylet-next"
+              aria-label="next storylet"
+              disabled={idx >= offers.length - 1}
+              onClick={() => setIndex(Math.min(offers.length - 1, idx + 1))}
+            >
+              &#9656;
+            </button>
+          </div>
+        )}
+        <button
+          className="sl-close"
+          data-testid="storylet-close"
+          aria-label="close"
+          onClick={onClose}
+        >
+          &times;
+        </button>
+      </header>
+      <p className="sl-prose" data-testid="storylet-prose">
+        {offer.prose}
+      </p>
+      <div className="sl-choices">
+        {offer.choices.map((choice: StoryletChoice) => {
+          const lock = storyletChoiceLock(game, choice, armed);
+          const cost = storyletChoiceCostLabel(choice);
+          const needsDie = storyletChoiceNeedsDie(choice);
+          return (
+            <div
+              className={lock ? 'sl-choice locked' : 'sl-choice'}
+              key={choice.id}
+              data-testid="storylet-choice"
+              data-choice-id={choice.id}
+              data-locked={lock ? '1' : '0'}
+            >
+              <div className="sl-choice-main">
+                <button
+                  className="btn small"
+                  data-testid="storylet-choice-btn"
+                  disabled={lock !== null}
+                  title={lock ?? `Choose: ${choice.label}`}
+                  onClick={() => resolveStorylet(offer.storyletId, choice.id, needsDie)}
+                >
+                  {choice.label}
+                </button>
+                {cost && (
+                  <span className="sl-cost" data-testid="storylet-choice-cost">
+                    {cost}
+                  </span>
+                )}
+                {/* The "locked choices show their requirement" surface — the
+                    disabled reason, rendered inline, never hidden. */}
+                {lock && (
+                  <span className="sl-lock" data-testid="storylet-choice-lock">
+                    {lock}
+                  </span>
+                )}
+              </div>
+              <p className="sl-choice-prose">{choice.prose}</p>
+            </div>
+          );
+        })}
+      </div>
+      {/* A storylet stat check (any stat) rides the shared honest-check readout,
+          gated to the storylet context so it renders only here. */}
+      <CheckBreakdown state={state} context="storylet" />
+    </section>
+  );
+}
+
+// The Records overlay (T-309): the Registry of Deeds and the Nemesis file, in
+// period voice. A dismissible overlay opened from the top controls (Escape to
+// close), both sections pure reads of `game.player` via format.ts. The Registry
+// shows the rank, deed count, next-rank progress and the earned-deed roll with
+// its citation text; the Nemesis file shows the decoded-lore index (or its
+// silent empty state when no fragments have been recovered).
+function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => void }) {
+  const [tab, setTab] = useState<'registry' | 'nemesis'>('registry');
+  const registry = deedRegistry(game);
+  const nemesis = nemesisFile(game);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="records-overlay"
+      data-testid="records-overlay"
+      role="dialog"
+      aria-label="Records"
+    >
+      <div className="ro-frame">
+        <header className="ro-head">
+          <div className="ro-tabs">
+            <button
+              className={tab === 'registry' ? 'ro-tab on' : 'ro-tab'}
+              data-testid="records-tab-registry"
+              aria-pressed={tab === 'registry'}
+              onClick={() => setTab('registry')}
+            >
+              Registry of Deeds
+            </button>
+            <button
+              className={tab === 'nemesis' ? 'ro-tab on' : 'ro-tab'}
+              data-testid="records-tab-nemesis"
+              aria-pressed={tab === 'nemesis'}
+              onClick={() => setTab('nemesis')}
+            >
+              Nemesis File
+            </button>
+          </div>
+          <button
+            className="ro-close"
+            data-testid="records-close"
+            aria-label="close"
+            onClick={onClose}
+          >
+            &times;
+          </button>
+        </header>
+
+        {tab === 'registry' ? (
+          <section className="registry" data-testid="registry">
+            <div className="registry-rank">
+              <span className="rr-label">RANK</span>
+              <b className="rr-value" data-testid="registry-rank">
+                {registry.rankLabel}
+              </b>
+              <span className="rr-deeds" data-testid="registry-deed-count">
+                {registry.deedCount} {registry.deedCount === 1 ? 'DEED' : 'DEEDS'}
+              </span>
+              {registry.nextRankLabel && registry.deedsToNextRank !== null && (
+                <span className="rr-next" data-testid="registry-next-rank">
+                  {registry.deedsToNextRank} to {registry.nextRankLabel}
+                </span>
+              )}
+            </div>
+            {registry.earned.length === 0 ? (
+              <div className="registry-empty" data-testid="registry-empty">
+                No deeds yet — the ledger is blank. Make some news.
+              </div>
+            ) : (
+              <ul className="registry-list">
+                {registry.earned.map((d) => (
+                  <li
+                    className="registry-deed"
+                    key={d.id}
+                    data-testid="registry-deed"
+                    data-deed-id={d.id}
+                  >
+                    <div className="rd-head">
+                      <b className="rd-title" data-testid="registry-deed-title">
+                        {d.title}
+                      </b>
+                      <span className="rd-day">DAY {d.day}</span>
+                    </div>
+                    <p className="rd-citation" data-testid="registry-deed-citation">
+                      {d.citation}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : (
+          <section className="nemesis" data-testid="nemesis">
+            <div className="nemesis-head">
+              <span className="nh-label">NEMESIS SIGNAL</span>
+              <span className="nh-count" data-testid="nemesis-count">
+                {nemesis.count} {nemesis.count === 1 ? 'FRAGMENT' : 'FRAGMENTS'} ·{' '}
+                {nemesis.decodedCount} DECODED
+              </span>
+            </div>
+            {nemesis.entries.length === 0 ? (
+              <div className="nemesis-empty" data-testid="nemesis-empty">
+                The Signal is silent — no fragments recovered.
+              </div>
+            ) : (
+              <ul className="nemesis-list">
+                {nemesis.entries.map((entry) => (
+                  <li
+                    className={entry.decoded ? 'nemesis-fragment decoded' : 'nemesis-fragment'}
+                    key={entry.fragmentId}
+                    data-testid="nemesis-fragment"
+                    data-fragment-id={entry.fragmentId}
+                    data-decoded={entry.decoded ? '1' : '0'}
+                  >
+                    <div className="nf-head">
+                      <b className="nf-title">{entry.title}</b>
+                      <span className={entry.decoded ? 'nf-tag decoded' : 'nf-tag'}>
+                        {entry.decoded ? 'DECODED' : 'SIGNAL'}
+                      </span>
+                    </div>
+                    <p className="nf-text">{entry.text}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NewGameButton() {
   const [open, setOpen] = useState(false);
   const [seed, setSeed] = useState('424242');
@@ -388,6 +688,9 @@ function Bezel({ game }: { game: GameState }) {
         </div>
       </div>
       <div className="readouts">
+        <span className="chip rank" data-testid="rank">
+          {RENOWN_RANKS[p.registry.renownRank].label}
+        </span>
         {game.eraEvent && (
           <span className="chip era" data-testid="era-chip">
             ERA · {game.eraEvent.defId}
@@ -982,7 +1285,9 @@ function Manifest({ state }: { state: CockpitState }) {
           );
         })}
       </div>
-      <CheckBreakdown state={state} exclude={Stat.PILOT} />
+      {/* The manifest owns the haggle check only — filter by context so a
+          storylet check (any stat) surfaces in its own panel, not here. */}
+      <CheckBreakdown state={state} exclude={Stat.PILOT} context="haggle" />
     </section>
   );
 }
@@ -1134,15 +1439,22 @@ function CheckBreakdown({
   state,
   only,
   exclude,
+  context,
 }: {
   state: CockpitState;
   only?: Stat;
   exclude?: Stat;
+  context?: string;
 }) {
   const lc = state.lastCheck;
   if (!lc) return null;
   if (only !== undefined && lc.stat !== only) return null;
   if (exclude !== undefined && lc.stat === exclude) return null;
+  // A storylet check can be ANY stat (GRIT/GUILE/GUNS…), so it can't be selected
+  // by stat like the manifest/starmap panes. Filter by the check's context
+  // instead, so a storylet panel shows only storylet checks and the "one check
+  // per surface" invariant (T-303/T-304) holds.
+  if (context !== undefined && lc.context !== context) return null;
   const r = lc.result;
   const verdict = checkVerdict(r);
   const pass = r.success;

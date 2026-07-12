@@ -7,6 +7,7 @@ import {
   SHIP_COMPONENTS,
   SPECIAL_EQUIPMENT,
   RENOWN_RANKS,
+  RENOWN_DEED_THRESHOLDS,
   distance,
   Stat,
   FIGHT_FUEL_COST,
@@ -21,6 +22,8 @@ import {
   calculateRouteDanger,
   maxJumpDistance,
   quoteShipyard,
+  nemesisLoreIndex,
+  fragmentCount,
   type CheckResult,
   type GameEvent,
   type GameState,
@@ -29,7 +32,10 @@ import {
   type SpecialEquipmentId,
   type ShipyardFail,
   type ShipyardQuote,
+  type StoryletOffer,
+  type NemesisLoreEntry,
 } from '@spacerquest/engine';
+import type { RenownRankId } from '@spacerquest/content';
 
 /** Display label for a stat. The Stat enum values are already the labels we
  * want, so this is a stable pure lookup (no fabricated names). */
@@ -698,4 +704,124 @@ export function shipyardFailureExplanation(fail: ShipyardFail): string {
     case 'NO_HULL':
       return 'No hull to fit this to';
   }
+}
+
+// ---- T-309 storylet & registry UX (display-only) -------------------------
+//
+// Pure reads of existing engine surface: the storylet offer's authored
+// requirements, the player's DeedRegistryState + Nemesis file. The UI invents
+// no rule — the cost labels and lock reasons are honest projections of the same
+// `requirements` the engine (resolveStoryletChoice) enforces, and the registry
+// / nemesis views read straight off `game.player`. Every threshold comes from
+// content (RENOWN_DEED_THRESHOLDS), never a hardcoded balance number.
+
+/** One presented storylet choice (the offer's authored choice shape). */
+export type StoryletChoice = StoryletOffer['choices'][number];
+
+/** Does resolving this choice consume a die? True iff it declares a die spend
+ *  or a stat check (the two paths the engine's `spendRequiredDie` burns a die
+ *  on). The store passes `spendDie` ONLY for these — a no-requirement choice
+ *  (answer / accept-thanks) must never demand or waste a die. */
+export function storyletChoiceNeedsDie(choice: StoryletChoice): boolean {
+  return !!(choice.requirements?.spendDie || choice.requirements?.statCheck);
+}
+
+/**
+ * A compact, always-shown requirement/cost badge for a choice — the PRD's
+ * "choices with visible requirements/costs". Renders the credit floor, the stat
+ * check (STAT DC n), and a `die` token when a die is spent, joined by ` · `. An
+ * unconditional choice returns '' (no badge). This shows the requirement whether
+ * or not it is currently met; the LOCK (below) adds the disabled-state reason.
+ */
+export function storyletChoiceCostLabel(choice: StoryletChoice): string {
+  const req = choice.requirements;
+  if (!req) return '';
+  const parts: string[] = [];
+  if (req.credits?.gte !== undefined) parts.push(`${req.credits.gte.toLocaleString()}cr`);
+  if (req.statCheck) parts.push(`${statName(req.statCheck.stat)} DC ${req.statCheck.dc}`);
+  if (storyletChoiceNeedsDie(choice)) parts.push('die');
+  return parts.join(' · ');
+}
+
+/**
+ * Why this choice is locked right now, or null when it can be taken. Mirrors the
+ * engine's own refusal order (resolveStoryletChoice): a credit shortfall blocks
+ * first, then a missing die. `armed` is whether a die is currently selected —
+ * a die-requiring choice is locked until one is assigned. This drives both the
+ * disabled state and the visible requirement on a locked choice.
+ */
+export function storyletChoiceLock(
+  game: GameState,
+  choice: StoryletChoice,
+  armed: boolean,
+): string | null {
+  const req = choice.requirements;
+  if (req?.credits?.gte !== undefined && game.player.credits < req.credits.gte) {
+    return `Need ${req.credits.gte.toLocaleString()}cr`;
+  }
+  if (storyletChoiceNeedsDie(choice) && !armed) {
+    return 'Assign a die';
+  }
+  return null;
+}
+
+export interface DeedRegistryView {
+  rankId: RenownRankId;
+  rankLabel: string;
+  deedCount: number;
+  /** The next rank up, when one remains (null at the top rank). */
+  nextRankLabel: string | null;
+  /** Deeds still needed to reach that next rank (null at the top rank). */
+  deedsToNextRank: number | null;
+  /** Earned deeds, newest first (by eventIndex — stable within a day). */
+  earned: { id: string; title: string; citation: string; day: number }[];
+}
+
+/**
+ * The Registry of Deeds view — rank, deed count, next-rank progress, and the
+ * earned-deed roll (newest first). All read from `game.player.registry`; the
+ * rank labels come from RENOWN_RANKS and the next-rank threshold from
+ * RENOWN_DEED_THRESHOLDS (content), never recomputed here.
+ */
+export function deedRegistry(game: GameState): DeedRegistryView {
+  const registry = game.player.registry;
+  const deedCount = registry.earned.length;
+  // Ranks in ascending threshold order; the next rank is the first whose
+  // threshold the current deed count has not yet reached.
+  const rankOrder = (Object.keys(RENOWN_DEED_THRESHOLDS) as RenownRankId[]).sort(
+    (a, b) => RENOWN_DEED_THRESHOLDS[a] - RENOWN_DEED_THRESHOLDS[b],
+  );
+  const next = rankOrder.find((id) => RENOWN_DEED_THRESHOLDS[id] > deedCount) ?? null;
+  return {
+    rankId: registry.renownRank,
+    rankLabel: RENOWN_RANKS[registry.renownRank].label,
+    deedCount,
+    nextRankLabel: next ? RENOWN_RANKS[next].label : null,
+    deedsToNextRank: next ? RENOWN_DEED_THRESHOLDS[next] - deedCount : null,
+    earned: [...registry.earned]
+      .sort((a, b) => b.eventIndex - a.eventIndex)
+      .map((d) => ({ id: d.id, title: d.title, citation: d.citation, day: d.day })),
+  };
+}
+
+export interface NemesisFileView {
+  count: number;
+  decodedCount: number;
+  entries: NemesisLoreEntry[];
+}
+
+/**
+ * The Nemesis file view — the decoded-lore index (one entry per held fragment,
+ * arc-ordered) plus the fragment and decoded counts. A pure read via the
+ * engine's own `nemesisLoreIndex` / `fragmentCount`; each entry's `text` is the
+ * decoded lore when decoded, else the raw signal (the engine decides which).
+ */
+export function nemesisFile(game: GameState): NemesisFileView {
+  const file = game.player.nemesisFile;
+  const entries = nemesisLoreIndex(file);
+  return {
+    count: fragmentCount(file),
+    decodedCount: entries.filter((e) => e.decoded).length,
+    entries,
+  };
 }

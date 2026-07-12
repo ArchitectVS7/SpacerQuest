@@ -115,6 +115,30 @@ function failNoticeFrom(events: GameEvent[]): string | null {
   return null;
 }
 
+/**
+ * Translate a `StoryletChoiceBlocked` engine refusal into an honest visible
+ * notice — the same "never a silent no-op" guarantee the trade pane keeps.
+ * Returns null when the action was NOT blocked (it resolved). The panel gates
+ * die-requiring choices itself, so a block is rare (a race with state), but if
+ * one lands the player must see why.
+ */
+function storyletBlockNoticeFrom(events: GameEvent[]): string | null {
+  for (const e of events) {
+    if (e.type !== 'StoryletChoiceBlocked') continue;
+    switch (e.reason) {
+      case 'insufficient-credits':
+        return 'Not enough credits for that choice.';
+      case 'missing-die':
+        return 'That choice needs a die — pick one from the hand first.';
+      case 'not-available':
+        return 'That storylet is no longer on offer.';
+      case 'unknown-choice':
+        return 'That choice could not be resolved.';
+    }
+  }
+  return null;
+}
+
 function emit(): void {
   for (const l of listeners) l();
 }
@@ -500,6 +524,50 @@ export function shipyard(request: ShipyardRequest): void {
     });
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That yard order could not be resolved.' });
+  }
+}
+
+/**
+ * Resolve a storylet choice (T-309). The in-cockpit storylet panel is a pure
+ * CLIENT of the storylet rules exactly as the manifest is of trade: it picks the
+ * offer + choice (and, when the choice requires it, a die) and this is the single
+ * engine call. `needsDie` is passed by the panel from the choice's authored
+ * requirements — a die is spent (and demanded) ONLY for a choice with `spendDie`
+ * or a `statCheck`; a no-requirement choice must never consume one. A storylet
+ * stat check rides the shared honest-check readout (CheckBreakdown, context
+ * 'storylet'); an engine refusal surfaces as a visible notice, never a silent
+ * no-op. On success the engine removes the resolved storylet from
+ * `game.storylets.available`, so the panel advances or unmounts on its own.
+ */
+export function resolveStorylet(storyletId: string, choiceId: string, needsDie: boolean): void {
+  const die = state.selectedDie;
+  if (needsDie && die === null) {
+    set({ notice: 'Pick a die from the hand first, then choose.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Storylet',
+      storyletId,
+      choiceId,
+      spendDie: needsDie ? (die ?? undefined) : undefined,
+    });
+    autosave(next);
+    const lastCheck = lastCheckFrom(events);
+    const notice = storyletBlockNoticeFrom(events);
+    set({
+      game: next,
+      // On a block the engine spent no die (it refuses before the die burn),
+      // so keep the selection and don't bloom. On a resolution the die (if any)
+      // is spent — clear the selection and bloom only a die that was consumed.
+      selectedDie: notice ? die : null,
+      bloomDie: notice ? null : needsDie ? die : null,
+      notice,
+      lastCheck,
+      lastCheckKey: state.lastCheckKey + 1,
+    });
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That choice could not be resolved.' });
   }
 }
 
