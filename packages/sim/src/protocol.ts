@@ -18,6 +18,7 @@ import {
   EXPLORATION_FUEL_COST,
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
+  isGatedDestination,
 } from '@spacerquest/content';
 import {
   DayPhase,
@@ -470,7 +471,19 @@ export function legalActions(state: GameState): LegalActions {
 
   // --- Travel ------------------------------------------------------------
   if (hasDie) {
-    const destinations = ALL_SYSTEM_IDS.filter((id) => id !== player.currentSystemId);
+    // T-1101 · Honor the engine's destination gate here so legalActions never
+    // advertises a Travel the day.ts gate will deterministically refuse with a
+    // 'destination-locked' ActionBlocked. Gated systems (Andromeda 21–26 and the
+    // specials 27–28) stay off the choice list until the 'nemesis.crossing.unlocked'
+    // flag is set (T-1505) — the exact predicate day.ts applyPlayerAction reads.
+    // Without this, a UGT-protocol client (incl. the LLM playtest harness) could
+    // pick a "legal" destination that always fails, burning a die on the block —
+    // the same stall risk that made the sim pickers in index.ts adopt
+    // travelableSystemIds().
+    const nemesisUnlocked = state.flags['nemesis.crossing.unlocked'] === true;
+    const destinations = ALL_SYSTEM_IDS.filter(
+      (id) => id !== player.currentSystemId && (nemesisUnlocked || !isGatedDestination(id)),
+    );
     actions.push({
       type: 'Travel',
       params: {

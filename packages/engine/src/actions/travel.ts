@@ -47,7 +47,12 @@ function routeKind(origin: number, destination: number): 'core' | 'rim' | 'andro
 function allowedAnonymousKinds(origin: number, destination: number): AnonymousInterceptorKind[] {
   const kind = routeKind(origin, destination);
   if (kind === 'core') return ['PIRATE', 'PATROL', 'BRIGAND'];
-  if (kind === 'rim') return ['RIM_PIRATE', 'PIRATE', 'BRIGAND'];
+  // T-1101: Reptiloids re-homed onto the rim frontier — the reachable lane the
+  // player actually flies. They previously spawned ONLY on Andromeda (21–26) and
+  // special (27–28) routes, which §10 seals off, so the destination gate would
+  // have made them unreachable. Andromeda stays REPTILOID-only below (still
+  // exercised headlessly by the matchmaking sweep).
+  if (kind === 'rim') return ['RIM_PIRATE', 'PIRATE', 'BRIGAND', 'REPTILOID'];
   if (kind === 'andromeda') return ['REPTILOID'];
   return ['PIRATE', 'PATROL', 'RIM_PIRATE', 'BRIGAND', 'REPTILOID'];
 }

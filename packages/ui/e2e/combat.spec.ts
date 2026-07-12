@@ -10,26 +10,30 @@ import { FIGHT_FUEL_COST } from '@spacerquest/content';
 // store does (startDay(createInitialState(seed)) → applyPlayerAction). They are
 // engine-derived and must be regenerated if the RNG/danger tables ever change.
 //
-//  Seed 11 (fight + flee + reload): dawn hand [20,15,13,12,11] on Sol.
-//    - jump die INDEX 1 (value 15) to system 15 triggers an anonymous tier-2
-//      encounter, "RP-Long Ben" in the "Marauder" (Moray), enemyHull 2, round 1.
+// Re-fixtured for the T-1101 2D starmap: Antares-5 (system 15) now sits ~21 units
+// from Sol (distance 21, pilot DC 18), so the jump die must clear DC 18 — the old
+// seed-11 value-15 die no longer reaches the rim. New seeds re-derived offline.
+//
+//  Seed 887 (fight + flee + reload): dawn hand [20,18,13,7,6] on Sol.
+//    - jump die INDEX 1 (value 18, clears DC 18) to system 15 triggers an
+//      anonymous tier-2 RIM_PIRATE, "RP-Piet Nym", enemyHull 2, round 1.
 //    - a FIGHT with the value-13 die passes GUNS (13 vs DC 12) → hull 2→1, round→2.
 //    - a RUN with the value-20 die is a natural-20 PILOT auto-success → escaped.
 //
-//  Seed 22 (weapons malfunction): dawn hand [15,11,10,3,2] on Sol.
-//    - jump die INDEX 0 (value 15) to system 15 triggers a tier-2 encounter,
-//      enemyHull 2, fuel 250.
+//  Seed 2 (weapons malfunction): dawn hand [17,15,10,8,1] on Sol.
+//    - jump die INDEX 0 (value 17, clears DC 18) to system 15 triggers a tier-2
+//      encounter, enemyHull 2, fuel 250.
 //    - fighting with the LOWEST die each round always misses (dice < DC 12) so the
-//      enemy never dies; each fight burns 50 fuel. Four fights drain 250→50, a
-//      stand-down rolls dusk, one more fight drains 50→0. With fuel 0 the weapons
-//      -offline band shows and the next FIGHT malfunctions (die burned, no hit).
-const SEED_A = 11;
-const A_JUMP_DIE_INDEX = 1; // value 15
+//      enemy never dies; each fight burns 50 fuel. Draining 250→<50 (standing down
+//      to weather dusk and re-arm when the hand runs dry) brings up the weapons-
+//      offline band, and the next FIGHT malfunctions (die burned, no hit).
+const SEED_A = 887;
+const A_JUMP_DIE_INDEX = 1; // value 18
 const A_DEST = 15;
-const A_ENEMY_NAME = 'RP-Long Ben';
+const A_ENEMY_NAME = 'RP-Piet Nym';
 
-const SEED_B = 22;
-const B_JUMP_DIE_INDEX = 0; // value 15
+const SEED_B = 2;
+const B_JUMP_DIE_INDEX = 0; // value 17
 const B_DEST = 15;
 
 test.beforeEach(async ({ page }) => {

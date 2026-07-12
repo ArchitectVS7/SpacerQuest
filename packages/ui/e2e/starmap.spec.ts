@@ -31,9 +31,10 @@ function sysNode(page: Page, id: number) {
 
 test('plan and execute a jump entirely via the map', async ({ page }) => {
   await page.goto('/');
-  // Seed 1 deals the dawn hand [17,15,15,7,4] on Sol (system 1). Die 0 (value 17)
-  // clears the DC-8 pilot check (+PILOT 1), and the seeded jump to the adjacent
-  // system triggers no encounter — a stable seed, not a retry.
+  // Seed 1 deals the dawn hand [17,15,15,7,4] on Sol (system 1). The Sol->
+  // Aldebaran-1 (1->2) jump spans distance 5, so travelDc(5)=10; Die 0 (value 17)
+  // + PILOT 1 = 18 clears that DC-10 pilot check, and the seeded jump to the
+  // adjacent system triggers no encounter — a stable seed, not a retry.
   await newGameSeed(page, 1);
 
   // 1) Assign a die from the hand.

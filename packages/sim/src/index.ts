@@ -5,6 +5,7 @@ import {
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
   distance as systemDistance,
+  isGatedDestination,
   type RenownRankId,
 } from '@spacerquest/content';
 import {
@@ -141,8 +142,16 @@ export function systemIds(): number[] {
     .sort((a, b) => a - b);
 }
 
+/** The systems a policy is allowed to name as a travel target — every system
+ *  except the T-1101 gated ones (Andromeda / special), which the engine's
+ *  destination gate refuses. A picker that targeted a sealed system would burn a
+ *  die on an ActionBlocked and, cycling, could stall the default policy. */
+export function travelableSystemIds(): number[] {
+  return systemIds().filter((id) => !isGatedDestination(id));
+}
+
 export function nextSystemId(currentSystemId: number): number {
-  const ids = systemIds();
+  const ids = travelableSystemIds();
   const currentIndex = ids.indexOf(currentSystemId);
 
   if (currentIndex === -1) {
@@ -172,7 +181,9 @@ function affordableFuelAmount(state: GameState): number {
 export function cannotAffordCheapestJump(state: GameState): boolean {
   const from = state.player.currentSystemId;
   const cheapestJumpFuel = Math.min(
-    ...systemIds()
+    // Only TRAVELABLE systems (T-1101): a sealed destination is not a jump the
+    // player could actually take, so it never counts as "the cheapest jump".
+    ...travelableSystemIds()
       .filter((id) => id !== from)
       .map((id) => playerJumpFuel(state, systemDistance(from, id))),
   );

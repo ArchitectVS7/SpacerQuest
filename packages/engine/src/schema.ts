@@ -515,7 +515,9 @@ const GameEventSchema = z.discriminatedUnion('type', [
     type: z.literal('ActionBlocked'),
     day: z.number(),
     actionType: z.enum(['Trade', 'Travel', 'Shipyard', 'Storylet', 'Explore']),
-    reason: z.literal('active-encounter'),
+    // 'destination-locked' added by T-1101; serialized in eventLog, so the schema
+    // must accept it or loadSave would reject a save containing the event.
+    reason: z.enum(['active-encounter', 'destination-locked']),
   }),
   z.object({
     type: z.literal('PoiDiscovered'),

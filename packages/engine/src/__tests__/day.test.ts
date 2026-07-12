@@ -195,3 +195,66 @@ describe('Day loop', () => {
     );
   });
 });
+
+describe('Destination gate (T-1101)', () => {
+  /** A DAY-phase state with a fresh dawn hand and a full tank. */
+  function dayState(seed = 42): ReturnType<typeof startDay>['state'] {
+    const state = startDay(createInitialState(seed));
+    const next = state.state;
+    next.player.ship.fuel = next.player.ship.maxFuel;
+    return next;
+  }
+
+  it.each([
+    ['NEMESIS', 28],
+    ['Andromeda', 22],
+  ])('blocks Travel to a gated destination (%s) with a typed fail, not a throw', (_label, dest) => {
+    const state = dayState();
+    const before = structuredClone(state);
+
+    let result: ReturnType<typeof applyPlayerAction> | undefined;
+    expect(() => {
+      result = applyPlayerAction(state, { type: 'Travel', destinationId: dest, spendDie: 0 });
+    }).not.toThrow();
+    if (!result) throw new Error('unreachable');
+
+    const blocked = {
+      type: 'ActionBlocked',
+      day: state.day,
+      actionType: 'Travel',
+      reason: 'destination-locked',
+    };
+    // Typed fail — the only event, appended to the log, and NOTHING else moved:
+    // no die spent, dayEventCount unchanged, system unchanged (mirrors the
+    // encounter-block precedent).
+    expect(result.events).toEqual([blocked]);
+    expect(result.state.eventLog).toEqual([...before.eventLog, blocked]);
+    expect(result.state.dayEventCount).toBe(before.dayEventCount);
+    expect(result.state.player.currentSystemId).toBe(before.player.currentSystemId);
+    expect(result.state.player.dawnHand?.spent).toEqual(before.player.dawnHand?.spent);
+    expect(result.state.player.dawnHand?.spent.some(Boolean)).toBe(false);
+  });
+
+  it('the nemesis.crossing.unlocked flag lifts the gate (the consumed reader)', () => {
+    const state = dayState();
+    state.flags['nemesis.crossing.unlocked'] = true;
+
+    const result = applyPlayerAction(state, { type: 'Travel', destinationId: 28, spendDie: 0 });
+
+    // No refusal: travel proceeds down the normal pilot-check path.
+    expect(
+      result.events.some(
+        (event) => event.type === 'ActionBlocked' && event.reason === 'destination-locked',
+      ),
+    ).toBe(false);
+    expect(result.events.some((event) => event.type === 'StatCheck')).toBe(true);
+  });
+
+  it('core travel is unaffected by the gate', () => {
+    const state = dayState();
+    const result = applyPlayerAction(state, { type: 'Travel', destinationId: 2, spendDie: 0 });
+
+    expect(result.events.some((event) => event.type === 'ActionBlocked')).toBe(false);
+    expect(result.events.some((event) => event.type === 'StatCheck')).toBe(true);
+  });
+});

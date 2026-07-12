@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { distance as systemDistance } from '@spacerquest/content';
+import { distance as systemDistance, isGatedDestination } from '@spacerquest/content';
 import {
   advanceDay,
   applyPlayerAction,
@@ -364,14 +364,15 @@ describe('T-1004 fuel starvation', () => {
   });
 
   it('a scripted broke-and-dry campaign registers fuelStarvationDays > 0', () => {
-    // Nearest OTHER system to `from` (special systems >= 27 excluded), so each
-    // jump burns the CHEAPEST fuel and the tank drains all the way below the
-    // cheapest-jump threshold rather than stalling above it.
+    // Nearest OTHER system to `from` (T-1101 gated systems — Andromeda + special
+    // — excluded, since the engine refuses travel to them), so each jump burns
+    // the CHEAPEST fuel and the tank drains all the way below the cheapest-jump
+    // threshold rather than stalling above it.
     const nearestFrom = (from: number): number => {
       let best = from;
       let bestDist = Infinity;
       for (const id of systemIds()) {
-        if (id === from || id >= 27) continue;
+        if (id === from || isGatedDestination(id)) continue;
         const d = systemDistance(from, id);
         if (d < bestDist) {
           bestDist = d;

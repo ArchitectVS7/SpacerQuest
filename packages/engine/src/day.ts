@@ -1,4 +1,10 @@
-import { CARGO_TYPES, NPC_PROFILES, STAR_SYSTEMS, Stat } from '@spacerquest/content';
+import {
+  CARGO_TYPES,
+  NPC_PROFILES,
+  STAR_SYSTEMS,
+  Stat,
+  isGatedDestination,
+} from '@spacerquest/content';
 import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
 import { SeededRng } from './rng.js';
 import { rollDawnHand } from './dice.js';
@@ -108,6 +114,28 @@ export function applyPlayerAction(
       day: nextState.day,
       actionType: action.type,
       reason: 'active-encounter',
+    };
+    appendEvents(nextState, [blocked]);
+    return { state: nextState, events: [blocked] };
+  }
+
+  // T-1101 · Destination gate. Andromeda (21–26) and the special systems (27–28)
+  // are sealed in v1 (§10); the Nemesis crossing is the endgame, unlocked by the
+  // 'nemesis.crossing.unlocked' flag T-1505 sets. Until then a Travel to a gated
+  // destination is a player-possible act, not malformed input — surface a typed
+  // ActionBlocked (mirrors the encounter block above: the refusal is logged, but
+  // no die is spent, no RNG fork, dayEventCount is not bumped, and no throw).
+  // READER of the flag: this branch (defines-and-consumes it here; T-1505 sets it).
+  if (
+    action.type === 'Travel' &&
+    isGatedDestination(action.destinationId) &&
+    nextState.flags['nemesis.crossing.unlocked'] !== true
+  ) {
+    const blocked: GameEvent = {
+      type: 'ActionBlocked',
+      day: nextState.day,
+      actionType: 'Travel',
+      reason: 'destination-locked',
     };
     appendEvents(nextState, [blocked]);
     return { state: nextState, events: [blocked] };

@@ -7,6 +7,7 @@ import {
   type EncounterState,
   type GameState,
 } from '@spacerquest/engine';
+import { isGatedDestination } from '@spacerquest/content';
 import { describe, expect, it } from 'vitest';
 import {
   buildStateSummary,
@@ -486,6 +487,41 @@ describe('legal-actions enumerator', () => {
       ]);
     }
     expect(buySpecial?.params.spendDie.kind).toBe('die-index');
+  });
+
+  it('T-1101 · never advertises a sealed destination the engine gate would refuse', () => {
+    const state = createInitialState(7);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(7), 5);
+
+    const legal = legalActions(state);
+    const travel = legal.actions.find((action) => action.type === 'Travel');
+    expect(travel).toBeDefined();
+    const destParam = travel?.params.destinationId;
+    expect(destParam?.kind).toBe('system-id');
+    if (destParam?.kind === 'system-id') {
+      // Gated systems (Andromeda 21–26, specials 27–28) must be absent while
+      // 'nemesis.crossing.unlocked' is unset — day.ts would ActionBlock them.
+      expect(destParam.choices.some((id) => isGatedDestination(id))).toBe(false);
+      // The player's own system is never offered either.
+      expect(destParam.choices).not.toContain(state.player.currentSystemId);
+      // Ungated systems are still offered.
+      expect(destParam.choices.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('T-1101 · offers gated destinations once the Nemesis crossing is unlocked', () => {
+    const state = createInitialState(7);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(7), 5);
+    state.flags['nemesis.crossing.unlocked'] = true;
+
+    const legal = legalActions(state);
+    const travel = legal.actions.find((action) => action.type === 'Travel');
+    const destParam = travel?.params.destinationId;
+    if (destParam?.kind === 'system-id') {
+      expect(destParam.choices.some((id) => isGatedDestination(id))).toBe(true);
+    }
   });
 });
 

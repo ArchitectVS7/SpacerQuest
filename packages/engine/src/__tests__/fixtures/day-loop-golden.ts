@@ -108,10 +108,10 @@ export function runDayLoopGolden(
 
 // --- Committed golden hashes (regenerate via gen-day-loop-golden.ts) ---------
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '7c95b94aaa26f590047f5b1a4c6bd17be5d3697be7b55ef92dd76ba748dc98cf';
+  '522f0a282720fd614f83497dd46ea50c49108634151f3bf37c5857eb65b74a8a';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '3b7822ff1d42f2a573632ba689cd530d46900746fa23ba48377492234d2045ff';
+  '45e4b99235edb24aeb5dd0be3df6068e67ce5924100eb3da36dd2af3d94bbecc';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '7acb1a1039aabb6c3037ac56eda1d4d657d61de8c035cccc86ddd797b30b28a8';
+  'd32cf8e7ef02c4305f8ab510a9db5ce3be0d5c5c98150895ab5df46d4a37d344';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '980e1de0f18da474ac220d4a44447e1fadd2fcb9d0d5292e7c35ac4e9b2074f6';
+  '27620cfee7fc9360cabaa958f155172703d2b7b1d579cc376285b99ba499b64f';

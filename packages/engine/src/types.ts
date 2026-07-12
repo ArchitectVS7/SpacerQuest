@@ -221,7 +221,9 @@ export type GameEvent =
       type: 'ActionBlocked';
       day: number;
       actionType: 'Trade' | 'Travel' | 'Shipyard' | 'Storylet' | 'Explore';
-      reason: 'active-encounter';
+      // 'destination-locked' (T-1101): a Travel to a sealed system (Andromeda /
+      // special) before the 'nemesis.crossing.unlocked' flag lifts it.
+      reason: 'active-encounter' | 'destination-locked';
     }
   | {
       /** An Explore nav check succeeded and charted a point of interest

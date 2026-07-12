@@ -299,16 +299,25 @@ describe('Local fuel price comes from canon tables', () => {
 });
 
 describe('Starmap distance', () => {
-  it('matches foundation same-line distance for Sun-3 to Vega-6', () => {
+  it('T-1101: the degenerate same-line layout is replaced by real 2D coordinates', () => {
+    // The shipped layout put every core/rim system on y=0 at x=id-1, so distance
+    // collapsed into |id difference|. T-1101 authors genuine 2D coordinates
+    // (PRD §9 geography): Sun-3 stays at the origin, but Vega-6 no longer sits on
+    // the x-axis, and distance(1,14) now reflects Math.hypot — NOT the |id-1|=13
+    // the old collinear layout produced.
     const sun = STAR_SYSTEMS[1];
     const vega = STAR_SYSTEMS[14];
 
     expect(sun.coordinates).toEqual({ x: 0, y: 0 });
-    expect(vega.coordinates).toEqual({ x: 13, y: 0 });
+    expect(vega.coordinates.y).not.toBe(0);
 
-    const foundationSameLineDistance = Math.abs(vega.coordinates.x - sun.coordinates.x) || 1;
-    expect(distance(1, 14)).toBe(foundationSameLineDistance);
-    expect(foundationSameLineDistance).toBe(13);
+    const idDiff = Math.abs(vega.id - sun.id); // what the degenerate layout gave
+    expect(distance(1, 14)).not.toBe(idDiff);
+    expect(distance(1, 14)).toBe(
+      Math.ceil(
+        Math.hypot(vega.coordinates.x - sun.coordinates.x, vega.coordinates.y - sun.coordinates.y),
+      ),
+    );
   });
 
   it('uses 2D coordinates for non-collinear systems', () => {

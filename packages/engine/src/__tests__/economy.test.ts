@@ -39,12 +39,14 @@ describe('economy', () => {
 
     const board = generateManifestBoard(originSystem, rng, shipState);
 
-    expect(distance(21, 5)).toBe(46);
+    // T-1101: real 2D coordinates — Deneb-4 (5) moved off the y=0 line, so the
+    // NGC-44 -> Deneb-4 distance (and the distance-priced payment) shifted.
+    expect(distance(21, 5)).toBe(51);
     expect(board[0]).toMatchObject({
       destination: 5,
       cargoType: 9,
       pods: 10,
-      payment: 5390,
+      payment: 5840,
     });
   });
 

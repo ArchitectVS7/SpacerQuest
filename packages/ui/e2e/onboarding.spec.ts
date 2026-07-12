@@ -7,12 +7,14 @@ import { createInitialState, startDay, createSave } from '@spacerquest/engine';
 // specs do — never an in-page engine call that bypasses a screen the player uses.
 //
 //   Fresh default seed 424242 (Test A): Day 1 at Sun-3, dawn hand [19,14,14,13,3].
-//     - Contract 0 carries cargo to system 3 (2 jumps, reachable, no encounter).
+//     - Contract 0 carries cargo to system 3 (reachable, no encounter).
 //     - Sign with die index 0, jump with die index 1 → delivery pays out (1,000 →
-//       2,260cr, hold empties). The whole first delivery is reachable guided only
-//       by the contextual prompts + visible affordances.
-//   Seed 11 (Test B): dawn hand [20,15,13,12,11]; jump die INDEX 1 (value 15) to
-//     system 15 triggers a tier-2 encounter (the combat-spec fixture).
+//       2,970cr, hold empties). The whole first delivery is reachable guided only
+//       by the contextual prompts + visible affordances. (T-1101 re-fixture: the
+//       distance-priced payout shifted with the 2D coordinates.)
+//   Seed 887 (Test B): dawn hand [20,18,13,7,6]; jump die INDEX 1 (value 18, which
+//     clears the T-1101 rim DC 18) to system 15 triggers a tier-2 encounter (the
+//     combat-spec fixture).
 //   Day-30 dawn saves (Tests C/D) are built offline and injected via the save
 //     envelope, with all onboarding prompts pre-marked seen so no coach callout
 //     interferes with the ceremony assertions.
@@ -74,7 +76,7 @@ test('fresh seed: first delivery guided by visible affordances; each prompt fire
   await page.locator('[data-testid="starmap-system"][data-system-id="3"]').click();
   await page.getByTestId('confirm-jump').click();
 
-  await expect(page.getByTestId('credits')).toHaveText('2,260');
+  await expect(page.getByTestId('credits')).toHaveText('2,970');
   await expect(page.getByTestId('active-contract-empty')).toBeVisible();
   await expect(coach).toHaveCount(0);
 
@@ -88,7 +90,7 @@ test('first-encounter coach fires once, inside combat, and its dismissed state p
   page,
 }) => {
   await page.goto('/');
-  await newGameSeed(page, 11);
+  await newGameSeed(page, 887);
 
   // Jump into the seeded interception (no contract needed — the coach keys off the
   // live encounter). The combat overlay mounts, and the highest-priority prompt —

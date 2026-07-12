@@ -107,11 +107,13 @@ describe('Encounter system', () => {
     // Route facts (travel.ts routeKind/allowedAnonymousKinds) hard-coded here so
     // we test against the intended contract, not module internals:
     //   core (1->2):      PIRATE, PATROL, BRIGAND
-    //   rim  (1->17):     RIM_PIRATE, PIRATE, BRIGAND
+    //   rim  (1->17):     RIM_PIRATE, PIRATE, BRIGAND, REPTILOID  (T-1101: the
+    //                     Reptiloids re-homed onto the reachable rim frontier,
+    //                     since §10 seals the Andromeda lanes they used to work)
     //   andromeda (1->22): REPTILOID only
     const ROUTES = [
       { name: 'core', dest: 2, allowed: ['PIRATE', 'PATROL', 'BRIGAND'] },
-      { name: 'rim', dest: 17, allowed: ['RIM_PIRATE', 'PIRATE', 'BRIGAND'] },
+      { name: 'rim', dest: 17, allowed: ['RIM_PIRATE', 'PIRATE', 'BRIGAND', 'REPTILOID'] },
       { name: 'andromeda', dest: 22, allowed: ['REPTILOID'] },
     ] as const;
 
@@ -157,6 +159,12 @@ describe('Encounter system', () => {
       if (route.name === 'core') {
         expect(anonKindsSeen.has('REPTILOID')).toBe(false);
         expect(anonKindsSeen.has('RIM_PIRATE')).toBe(false);
+      }
+      if (route.name === 'rim') {
+        // T-1101 acceptance: Reptiloids are reachable in a seed sweep on a route
+        // the player can actually travel (the rim frontier), not the sealed
+        // Andromeda lane. This is the "Reptiloids reachable" criterion.
+        expect(anonKindsSeen.has('REPTILOID')).toBe(true);
       }
       if (route.name === 'andromeda') {
         // Every anonymous interceptor on an Andromeda lane is a Reptiloid.
