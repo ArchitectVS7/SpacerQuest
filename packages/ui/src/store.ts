@@ -44,6 +44,34 @@ const FX_KEY = 'sq.fx';
 const ONBOARDING_KEY = 'sq.onboarding.v1';
 const DEFAULT_SEED = 424242;
 
+// ---- T-312 settings & save-slot keys ------------------------------------
+// The autosave (`sq.save.v1`) is the live career; these add three explicit save
+// slots plus the display-only settings. `GameState` deliberately does NOT carry
+// the original seed — `rngState` mutates on every roll, so the seed is CLIENT
+// presentation metadata (exactly how `fx`/`onboardingSeen` are handled), kept
+// out of GameState so the engine stays pure and the JSON round-trip is
+// unaffected. It is persisted alongside the save it belongs to.
+const AUTOSAVE_SEED_KEY = 'sq.save.seed'; // seed of the live autosave career
+const SLOT_KEY = (n: number): string => `sq.slot.${n}.v1`; // envelope (createSave output)
+const SLOT_META_KEY = (n: number): string => `sq.slot.${n}.meta`; // display JSON
+const REDUCED_MOTION_KEY = 'sq.reduced-motion'; // 'on' | 'off'
+const TEXT_SIZE_KEY = 'sq.text-size'; // 'small' | 'normal' | 'large'
+const SLOTS = [1, 2, 3] as const;
+
+export type TextSize = 'small' | 'normal' | 'large';
+
+/** A slot's display summary — read from the per-slot meta key, never from the
+ *  (heavier) envelope, so the list renders without validating every slot. */
+export interface SlotSummary {
+  index: number; // 1..3
+  empty: boolean;
+  day?: number;
+  credits?: number;
+  systemId?: number;
+  seed?: number;
+  savedAt?: number; // epoch ms
+}
+
 export interface CockpitState {
   game: GameState;
   /** Index into the current dawn hand the player has picked up, or null. */
@@ -84,6 +112,19 @@ export interface CockpitState {
    * `sq.onboarding.v1`; reset on New Game so a fresh Tour One re-teaches.
    */
   onboardingSeen: Record<string, true>;
+  /**
+   * T-312. The current career's seed — CLIENT presentation metadata for the
+   * bezel display, persisted under `sq.save.seed`. Never stored in GameState
+   * (see the key block above for the rationale).
+   */
+  seed: number;
+  /** User reduced-motion override (persisted). Layered ON TOP of the media
+   *  query — either the setting OR the OS preference suppresses motion. */
+  reducedMotion: boolean;
+  /** User text-size preference (persisted). Drives a zoom on `.tube` in CSS. */
+  textSize: TextSize;
+  /** Cached slot summaries so React re-renders when a slot is written/deleted. */
+  saves: SlotSummary[];
 }
 
 let state: CockpitState = init();
@@ -105,6 +146,10 @@ function init(): CockpitState {
     combatAftermath: null,
     combatMalfunction: false,
     onboardingSeen: readOnboarding(),
+    seed: readAutosaveSeed(),
+    reducedMotion: readReducedMotion(),
+    textSize: readTextSize(),
+    saves: readSlots(),
   };
 }
 
@@ -194,6 +239,13 @@ function readSave(): GameState | null {
     return null; // corrupt / missing → fall back to a fresh career
   }
 }
+/**
+ * Write the live career to the autosave slot. Called after EVERY mutating action
+ * and at dusk (`endDay`). Dusk is the canonical checkpoint the task names, but the
+ * per-action writes are load-bearing too: they preserve mid-day and mid-encounter
+ * reload survival (T-307's combat reload criterion boots from this exact key), so
+ * the per-action call must not be removed.
+ */
 function autosave(game: GameState): void {
   try {
     localStorage.setItem(SAVE_KEY, createSave(game));
@@ -207,6 +259,51 @@ function readFx(): boolean {
   } catch {
     return true;
   }
+}
+
+// ---- T-312 settings & save-slot persistence -----------------------------
+
+function readAutosaveSeed(): number {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_SEED_KEY);
+    const n = raw === null ? NaN : Number.parseInt(raw, 10);
+    return Number.isFinite(n) ? n : DEFAULT_SEED;
+  } catch {
+    return DEFAULT_SEED;
+  }
+}
+function readReducedMotion(): boolean {
+  try {
+    return localStorage.getItem(REDUCED_MOTION_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
+function readTextSize(): TextSize {
+  try {
+    const v = localStorage.getItem(TEXT_SIZE_KEY);
+    return v === 'small' || v === 'large' ? v : 'normal';
+  } catch {
+    return 'normal';
+  }
+}
+function readSlotMeta(n: number): Omit<SlotSummary, 'index' | 'empty'> | null {
+  try {
+    const raw = localStorage.getItem(SLOT_META_KEY(n));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Omit<SlotSummary, 'index' | 'empty'>;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+/** Read all slot summaries for the list. Uses the display-only meta key (never
+ *  `loadSave`), so rendering the list does not validate every slot envelope. */
+function readSlots(): SlotSummary[] {
+  return SLOTS.map((n) => {
+    const meta = readSlotMeta(n);
+    return meta ? { index: n, empty: false, ...meta } : { index: n, empty: true };
+  });
 }
 
 // ---- T-311 onboarding-seen persistence ----------------------------------
@@ -247,11 +344,19 @@ function reconcileOnboarding(prev: GameState, next: GameState): Record<string, t
 export function newGame(seed: number): void {
   const game = startDay(createInitialState(seed)).state;
   autosave(game);
+  // Persist the seed as client metadata so the bezel display and a reload both
+  // recover the career's seed (GameState never carries it — see the key block).
+  try {
+    localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
+  } catch {
+    /* storage unavailable — non-fatal for play */
+  }
   // A fresh career re-teaches Tour One: wipe the onboarding-seen record so the
   // contextual prompts fire again from the top.
   writeOnboarding({});
   set({
     game,
+    seed,
     selectedDie: null,
     bloomDie: null,
     notice: null,
@@ -714,6 +819,112 @@ export function toggleFx(): void {
     /* ignore */
   }
   set({ fx });
+}
+
+// ---- T-312 save slots & settings actions --------------------------------
+
+/**
+ * Write the live career into an explicit save slot (overwriting it). The slot
+ * envelope goes through the engine's `createSave` — the SAME function the T-112b
+ * property test proves round-trips exactly — so a later `loadSlot` restores a
+ * GameState deep-equal to what was saved. A lightweight display meta blob is
+ * stored alongside for the slot list (UI may use `Date.now()`; the purity rule
+ * governs the engine, not this client).
+ */
+export function saveToSlot(n: number): void {
+  try {
+    localStorage.setItem(SLOT_KEY(n), createSave(state.game));
+    const meta: Omit<SlotSummary, 'index' | 'empty'> = {
+      savedAt: Date.now(),
+      seed: state.seed,
+      day: state.game.day,
+      credits: state.game.player.credits,
+      systemId: state.game.player.currentSystemId,
+    };
+    localStorage.setItem(SLOT_META_KEY(n), JSON.stringify(meta));
+    set({ saves: readSlots(), notice: `Saved to slot ${n}.` });
+  } catch {
+    set({ notice: 'Could not write to that slot (storage unavailable).' });
+  }
+}
+
+/**
+ * Load a save slot into the live career. The loaded GameState becomes the new
+ * autosave (so a subsequent reload boots into it), and its seed is recovered from
+ * the slot meta. A corrupt slot surfaces as a notice — never a crash. Because
+ * `createSave`/`loadSave` round-trip exactly (T-112b), the restored state is
+ * deep-equal to what was saved, so "load restores exactly" holds by construction.
+ */
+export function loadSlot(n: number): void {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(SLOT_KEY(n));
+  } catch {
+    /* fall through to the empty-slot notice */
+  }
+  if (!raw) {
+    set({ notice: 'That slot is empty.' });
+    return;
+  }
+  let game: GameState;
+  try {
+    game = loadSave(raw);
+  } catch {
+    set({ notice: `Slot ${n} is corrupt and could not be loaded.` });
+    return;
+  }
+  const seed = readSlotMeta(n)?.seed ?? state.seed;
+  // The loaded career becomes the live autosave.
+  autosave(game);
+  try {
+    localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
+  } catch {
+    /* non-fatal */
+  }
+  set({
+    game,
+    seed,
+    selectedDie: null,
+    bloomDie: null,
+    notice: `Loaded slot ${n}.`,
+    bootKey: state.bootKey + 1,
+    lastCheck: null,
+    combatAftermath: null,
+    combatMalfunction: false,
+    // Do NOT reset onboardingSeen — loading a mid-career save shouldn't re-teach.
+  });
+}
+
+/** Delete a save slot (both the envelope and its display meta). The "asks first"
+ *  confirm is UI-local component state — the store just performs the deletion. */
+export function deleteSlot(n: number): void {
+  try {
+    localStorage.removeItem(SLOT_KEY(n));
+    localStorage.removeItem(SLOT_META_KEY(n));
+  } catch {
+    /* non-fatal */
+  }
+  set({ saves: readSlots(), notice: `Slot ${n} deleted.` });
+}
+
+/** User reduced-motion override (persisted). Layered over the OS media query. */
+export function setReducedMotion(v: boolean): void {
+  try {
+    localStorage.setItem(REDUCED_MOTION_KEY, v ? 'on' : 'off');
+  } catch {
+    /* ignore */
+  }
+  set({ reducedMotion: v });
+}
+
+/** User text-size preference (persisted). */
+export function setTextSize(size: TextSize): void {
+  try {
+    localStorage.setItem(TEXT_SIZE_KEY, size);
+  } catch {
+    /* ignore */
+  }
+  set({ textSize: size });
 }
 
 export function clearBloom(): void {

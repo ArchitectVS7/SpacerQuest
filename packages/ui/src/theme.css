@@ -1499,6 +1499,163 @@ body {
   font-weight: 600;
 }
 
+/* ---- T-312 settings + saves popover ---- */
+.settings-panel {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 60;
+  width: 320px;
+  max-height: 70vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #1a1007, #0c0805);
+  border: 1px solid var(--amber);
+  box-shadow: var(--glow);
+}
+.set-section,
+.saves-panel {
+  display: grid;
+  gap: 8px;
+}
+.set-head {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ember);
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 5px;
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.set-label {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--amber);
+}
+.set-toggle {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 10px;
+  background: transparent;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 5px 11px;
+  cursor: pointer;
+}
+.set-toggle:hover {
+  border-color: var(--amber);
+  color: var(--ember);
+}
+.set-toggle.on {
+  background: var(--ember);
+  color: var(--tube);
+  border-color: var(--ember);
+  font-weight: 600;
+}
+.set-seg {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--amber-dim);
+}
+.set-seg-btn {
+  font-family: var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  background: transparent;
+  color: var(--amber);
+  border: none;
+  border-right: 1px solid var(--amber-dim);
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.set-seg-btn:last-child {
+  border-right: none;
+}
+.set-seg-btn:hover {
+  color: var(--ember);
+}
+.set-seg-btn.on {
+  background: var(--amber);
+  color: var(--tube);
+  font-weight: 600;
+}
+.save-slot {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--hair);
+  background: rgba(20, 12, 5, 0.5);
+}
+.save-slot.empty {
+  opacity: 0.75;
+}
+.ss-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ss-index {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--ember);
+}
+.ss-summary,
+.ss-empty {
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  color: var(--amber);
+  line-height: 1.35;
+}
+.ss-empty {
+  color: var(--amber-dim);
+  font-style: italic;
+}
+.ss-controls {
+  display: inline-flex;
+  gap: 6px;
+}
+.ss-confirm {
+  display: grid;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid var(--ember);
+  background: rgba(40, 16, 6, 0.6);
+}
+.ss-confirm-q {
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  color: var(--ember);
+}
+.ss-confirm-btns {
+  display: inline-flex;
+  gap: 6px;
+}
+.btn.small.danger {
+  border-color: var(--ember);
+  color: var(--ember);
+}
+.btn.small.danger:hover {
+  background: var(--ember);
+  color: var(--tube);
+}
+
+@media (max-width: 900px) {
+  .settings-panel {
+    width: min(320px, calc(100vw - 24px));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fx::after {
     animation: none;
@@ -1517,6 +1674,27 @@ body {
   .star.here {
     animation: none;
   }
+}
+
+/* ---- T-312 user reduced-motion override ---- */
+/* The setting path mirrors the OS media query: a blanket kill-switch so the
+   user toggle suppresses every CSS animation/transition regardless of the OS
+   preference. The JS scramble/sweep are gated on `reduced` in App.tsx. */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ---- T-312 text size (zoom-based) ---- */
+/* Almost every sub-element uses hardcoded px, so a root font-size change does not
+   cascade. Zoom the whole tube instead — Chromium/Playwright support `zoom`. */
+:root[data-text-size='small'] .tube {
+  zoom: 0.9;
+}
+:root[data-text-size='large'] .tube {
+  zoom: 1.15;
 }
 @media (max-width: 900px) {
   .bezel {

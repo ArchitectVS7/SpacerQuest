@@ -517,10 +517,7 @@ export function setVolume(bus: MixerBus, v: number): void {
   const value = clamp01(v);
   if (mixer[bus] === value) return;
   mixer = { ...mixer, [bus]: value };
-  writeString(
-    bus === 'master' ? KEY_MASTER : bus === 'sfx' ? KEY_SFX : KEY_AMBIENT,
-    String(value),
-  );
+  writeString(bus === 'master' ? KEY_MASTER : bus === 'sfx' ? KEY_SFX : KEY_AMBIENT, String(value));
   applyMixerToNodes();
   notify();
 }

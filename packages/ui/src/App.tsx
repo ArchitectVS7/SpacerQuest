@@ -28,7 +28,14 @@ import {
   standDown,
   toggleFx,
   clearBloom,
+  saveToSlot,
+  loadSlot,
+  deleteSlot,
+  setReducedMotion,
+  setTextSize,
   type CockpitState,
+  type SlotSummary,
+  type TextSize,
 } from './store';
 import * as sound from './sound';
 import {
@@ -89,7 +96,9 @@ function useCockpit(): CockpitState {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
-const prefersReducedMotion = (): boolean =>
+// The OS-level preference only. The user setting is layered on top of this in
+// App() (`reduced = setting || media`); either one suppresses motion.
+const systemPrefersReducedMotion = (): boolean =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // The effect layer never takes changing props → React never re-renders it per
@@ -146,15 +155,217 @@ function AudioPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+// The settings + saves popover (T-312). A popover anchored in the control bar
+// (the AudioPanel pattern; Escape closes) that owns the display/accessibility
+// settings and the three save slots. It is a pure CLIENT of the store: every
+// toggle drives a store action, and the slot list reads `state.saves`. Audio is
+// NOT duplicated here — those sliders live in the Audio popover (already tested
+// by sound.spec.ts); this panel just links to them so all settings are reachable
+// from one place.
+const TEXT_SIZES: { size: TextSize; label: string }[] = [
+  { size: 'small', label: 'Small' },
+  { size: 'normal', label: 'Normal' },
+  { size: 'large', label: 'Large' },
+];
+
+function SettingsPanel({
+  state,
+  onClose,
+  onOpenAudio,
+}: {
+  state: CockpitState;
+  onClose: () => void;
+  onOpenAudio: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="settings-panel"
+      data-testid="settings-panel"
+      role="dialog"
+      aria-label="Settings"
+    >
+      <div className="set-section">
+        <span className="set-head">Display</span>
+        <div className="set-row">
+          <span className="set-label">CRT effects</span>
+          <button
+            className={state.fx ? 'set-toggle on' : 'set-toggle'}
+            data-testid="set-crt"
+            aria-pressed={state.fx}
+            onClick={toggleFx}
+          >
+            {state.fx ? 'On' : 'Off'}
+          </button>
+        </div>
+        <div className="set-row">
+          <span className="set-label">Reduced motion</span>
+          <button
+            className={state.reducedMotion ? 'set-toggle on' : 'set-toggle'}
+            data-testid="set-reduced-motion"
+            aria-pressed={state.reducedMotion}
+            onClick={() => setReducedMotion(!state.reducedMotion)}
+          >
+            {state.reducedMotion ? 'On' : 'Off'}
+          </button>
+        </div>
+        <div className="set-row">
+          <span className="set-label">Text size</span>
+          <div className="set-seg" data-testid="set-text-size">
+            {TEXT_SIZES.map((t) => (
+              <button
+                key={t.size}
+                className={state.textSize === t.size ? 'set-seg-btn on' : 'set-seg-btn'}
+                data-testid={`set-text-size-${t.size}`}
+                aria-pressed={state.textSize === t.size}
+                onClick={() => setTextSize(t.size)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="set-row">
+          <span className="set-label">Audio</span>
+          <button className="set-toggle" data-testid="set-audio-open" onClick={onOpenAudio}>
+            Open mixer
+          </button>
+        </div>
+      </div>
+
+      <SavesPanel state={state} />
+    </div>
+  );
+}
+
+// The three save slots (T-312). Each row shows a non-empty slot's summary read
+// from `state.saves`, with Save (overwrite), Load and a TWO-STEP Delete that
+// asks first — the "deleting asks first" acceptance criterion. The confirm is
+// component-local: the store performs the deletion only when the confirm button
+// is pressed, so the slot data survives until then.
+function SavesPanel({ state }: { state: CockpitState }) {
+  const [confirming, setConfirming] = useState<number | null>(null);
+
+  const fmtWhen = (savedAt?: number): string => {
+    if (!savedAt) return '';
+    try {
+      return new Date(savedAt).toLocaleString();
+    } catch {
+      return '';
+    }
+  };
+
+  return (
+    <div className="saves-panel" data-testid="saves-panel">
+      <span className="set-head">Save slots</span>
+      {state.saves.map((slot: SlotSummary) => (
+        <div
+          className={slot.empty ? 'save-slot empty' : 'save-slot'}
+          key={slot.index}
+          data-testid="save-slot"
+          data-slot={slot.index}
+          data-empty={slot.empty ? '1' : '0'}
+        >
+          <div className="ss-main">
+            <span className="ss-index">SLOT {slot.index}</span>
+            {slot.empty ? (
+              <span className="ss-empty" data-testid="slot-empty">
+                Empty
+              </span>
+            ) : (
+              <span className="ss-summary" data-testid="slot-summary">
+                DAY {slot.day} · {systemName(slot.systemId ?? 0)} ·{' '}
+                {(slot.credits ?? 0).toLocaleString()}cr · SEED {slot.seed}
+                {slot.savedAt ? ` · ${fmtWhen(slot.savedAt)}` : ''}
+              </span>
+            )}
+          </div>
+          <div className="ss-controls">
+            <button
+              className="btn small"
+              data-testid="slot-save"
+              onClick={() => {
+                setConfirming(null);
+                saveToSlot(slot.index);
+              }}
+            >
+              Save
+            </button>
+            <button
+              className="btn small"
+              data-testid="slot-load"
+              disabled={slot.empty}
+              onClick={() => loadSlot(slot.index)}
+            >
+              Load
+            </button>
+            <button
+              className="btn small ghost"
+              data-testid="slot-delete"
+              disabled={slot.empty}
+              onClick={() => setConfirming(slot.index)}
+            >
+              Delete
+            </button>
+          </div>
+          {confirming === slot.index && (
+            <div className="ss-confirm" data-testid="delete-confirm" role="alertdialog">
+              <span className="ss-confirm-q">Delete slot {slot.index}? This cannot be undone.</span>
+              <div className="ss-confirm-btns">
+                <button
+                  className="btn small danger"
+                  data-testid="slot-delete-confirm"
+                  onClick={() => {
+                    deleteSlot(slot.index);
+                    setConfirming(null);
+                  }}
+                >
+                  Delete
+                </button>
+                <button
+                  className="btn small ghost"
+                  data-testid="slot-delete-cancel"
+                  onClick={() => setConfirming(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function App() {
   const s = useCockpit();
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [storyletOpen, setStoryletOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-fx', s.fx ? 'on' : 'off');
   }, [s.fx]);
+
+  // Reduced motion is the user setting OR the OS preference — either suppresses
+  // motion. The attribute drives the CSS kill-switch; the JS scramble/sweep are
+  // gated on `reduced` directly (below / in useDiceRoll).
+  const reduced = s.reducedMotion || systemPrefersReducedMotion();
+  useEffect(() => {
+    document.documentElement.setAttribute('data-motion', reduced ? 'reduced' : 'full');
+  }, [reduced]);
+  useEffect(() => {
+    document.documentElement.setAttribute('data-text-size', s.textSize);
+  }, [s.textSize]);
 
   // The day-30 Tour One resolution ceremony (T-311): a full-screen certificate
   // that intercepts the forced `resolution.tour-one.*` storylet, so the decisive
@@ -177,7 +388,7 @@ export function App() {
   return (
     <div className="tube">
       <EffectsLayer />
-      {!prefersReducedMotion() && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
+      {!reduced && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
 
       <div className="ctrls">
         <button onClick={toggleFx}>{s.fx ? 'CRT: ON' : 'CRT: OFF'}</button>
@@ -201,12 +412,29 @@ export function App() {
         >
           Audio
         </button>
+        <button
+          data-testid="settings-toggle"
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((v) => !v)}
+        >
+          Settings
+        </button>
         <NewGameButton />
         {audioOpen && <AudioPanel onClose={() => setAudioOpen(false)} />}
+        {settingsOpen && (
+          <SettingsPanel
+            state={s}
+            onClose={() => setSettingsOpen(false)}
+            onOpenAudio={() => {
+              setSettingsOpen(false);
+              setAudioOpen(true);
+            }}
+          />
+        )}
       </div>
 
       <div className="screen">
-        <Bezel game={s.game} />
+        <Bezel game={s.game} seed={s.seed} />
         <div className="main">
           <div className="col left">
             <Starmap state={s} />
@@ -898,7 +1126,7 @@ function NewGameButton() {
   );
 }
 
-function Bezel({ game }: { game: GameState }) {
+function Bezel({ game, seed }: { game: GameState; seed: number }) {
   const p = game.player;
   const debtDue = p.debtDueDay - game.day;
   const fuelPct = Math.max(0, Math.min(100, (p.ship.fuel / p.ship.maxFuel) * 100));
@@ -917,6 +1145,9 @@ function Bezel({ game }: { game: GameState }) {
       <div className="readouts">
         <span className="chip rank" data-testid="rank">
           {RENOWN_RANKS[p.registry.renownRank].label}
+        </span>
+        <span className="chip seed" data-testid="seed">
+          SEED {seed.toLocaleString()}
         </span>
         {game.eraEvent && (
           <span className="chip era" data-testid="era-chip">
@@ -1959,7 +2190,10 @@ function HandDock({ state }: { state: CockpitState }) {
   const dice = hand?.dice ?? [];
   const spent = hand?.spent ?? [];
   const remaining = spent.filter((x) => !x).length;
-  const display = useDiceRoll(dice, state.bootKey);
+  // The dawn scramble is JS-driven, so gate it on the setting OR the OS media
+  // query (the CSS kill-switch only reaches CSS animations).
+  const reduced = state.reducedMotion || systemPrefersReducedMotion();
+  const display = useDiceRoll(dice, state.bootKey, reduced);
 
   useEffect(() => {
     if (state.bloomDie === null) return;
@@ -2043,11 +2277,11 @@ function HandDock({ state }: { state: CockpitState }) {
 }
 
 // Dawn roll: numbers scramble briefly, then settle. Reduced motion → settle now.
-function useDiceRoll(finalDice: number[], bootKey: number): number[] {
+function useDiceRoll(finalDice: number[], bootKey: number, reduced: boolean): number[] {
   const [display, setDisplay] = useState<number[]>(finalDice);
   const seedRef = useRef(0);
   useEffect(() => {
-    if (prefersReducedMotion()) {
+    if (reduced) {
       setDisplay(finalDice);
       return;
     }

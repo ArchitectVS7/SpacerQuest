@@ -76,9 +76,7 @@ test('volume sliders work and persist', async ({ page }) => {
       setter?.call(input, v);
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }, value);
-    await expect
-      .poll(() => page.evaluate((k) => window.localStorage.getItem(k), key))
-      .toBe(value);
+    await expect.poll(() => page.evaluate((k) => window.localStorage.getItem(k), key)).toBe(value);
   };
 
   await set('vol-master', 'sq.vol.master', '0.42');
