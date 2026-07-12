@@ -34,6 +34,28 @@ export function jumpFuelCost(
   return Math.floor(Math.min(ty, 100) / 2);
 }
 
+/**
+ * Largest integer jump distance (>=1) whose fuel cost the ship can currently
+ * afford, or 0 if it cannot afford even a 1-unit jump. The starmap fuel-range
+ * ring (T-304) is drawn at this radius; per-system reachability there also uses
+ * `jumpFuelCost`, and the two agree because core/rim systems sit at integer
+ * distances. `jumpFuelCost` is monotonic non-decreasing in distance, so the
+ * first distance the ship cannot afford ends the reachable range.
+ */
+export function maxJumpDistance(
+  drives: DriveBlock,
+  fuel: number,
+  hasTransWarp = false,
+  maxSpan = 60,
+): number {
+  let best = 0;
+  for (let d = 1; d <= maxSpan; d++) {
+    if (jumpFuelCost(drives, d, hasTransWarp) <= fuel) best = d;
+    else break; // monotonic — first unaffordable distance ends the range
+  }
+  return best;
+}
+
 /** Local depot fuel price from canon tables — shared by the player's market
  *  and NPC refueling (no free NPC economics). An active era event (e.g. a fuel
  *  crisis) can re-price the depot when the system is in scope (T-107). */

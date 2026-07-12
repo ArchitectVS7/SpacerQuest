@@ -11,6 +11,7 @@ import {
   type CheckResult,
 } from '@spacerquest/engine';
 import type { Stat } from '@spacerquest/content';
+import { combatAftermathSummary, type CombatAftermath } from './format';
 
 /**
  * The cockpit store. A tiny module-level store (no framework dependency) exposed
@@ -45,6 +46,16 @@ export interface CockpitState {
   lastCheck: { stat: Stat; result: CheckResult; context?: string } | null;
   /** Bumped on each new check so the readout can replay its reveal animation. */
   lastCheckKey: number;
+  /**
+   * T-307 combat overlay. `combatAftermath` holds the resolution summary of the
+   * encounter that just ended (the engine has already nulled `game.encounter`),
+   * so the overlay keys off `encounter || combatAftermath` and does not unmount
+   * before the aftermath renders. Cleared on dismiss / new day / new game.
+   */
+  combatAftermath: CombatAftermath | null;
+  /** The last combat round was fuel-gated (weapons malfunction) — surfaced as a
+   *  loud notice AND cleared like any transient combat readout. */
+  combatMalfunction: boolean;
 }
 
 let state: CockpitState = init();
@@ -63,6 +74,8 @@ function init(): CockpitState {
     bootKey: 1,
     lastCheck: null,
     lastCheckKey: 0,
+    combatAftermath: null,
+    combatMalfunction: false,
   };
 }
 
@@ -155,6 +168,8 @@ export function newGame(seed: number): void {
     notice: null,
     bootKey: state.bootKey + 1,
     lastCheck: null,
+    combatAftermath: null,
+    combatMalfunction: false,
   });
 }
 
@@ -301,12 +316,153 @@ export function haggleContract(contractIndex: number): void {
   }
 }
 
+/**
+ * Plan-and-commit a jump from the starmap (T-304). The map component selects a
+ * reachable destination and previews the engine's own fuel cost / DC / danger;
+ * this action is the single engine call that commits it. Every outcome is
+ * surfaced through `notice` (never silent): the engine deducts fuel whenever the
+ * ship can afford the jump, EVEN on a failed PILOT roll, so a nav malfunction is
+ * a real cost the player must see.
+ */
+export function travelTo(destinationId: number): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then jump.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Travel',
+      destinationId,
+      spendDie: die,
+    });
+    autosave(next);
+    // The travel PILOT check reuses the honest-check readout (CheckBreakdown).
+    const lastCheck = lastCheckFrom(events);
+    const travel = events.find(
+      (e): e is Extract<GameEvent, { type: 'TravelEvent' }> => e.type === 'TravelEvent',
+    );
+    let notice: string | null = null;
+    if (next.encounter) {
+      // T-307 will build the combat overlay; until then the honest surface is a
+      // notice that the jump was intercepted en route.
+      notice = 'Intercepted en route — combat station.';
+    } else if (travel && travel.success === false) {
+      notice =
+        travel.fuelUsed === 0
+          ? 'Not enough fuel for that jump.'
+          : 'Navigation malfunction — the die is spent and fuel burned; you stayed put.';
+    }
+    set({
+      game: next,
+      selectedDie: null,
+      bloomDie: die,
+      notice,
+      lastCheck,
+      lastCheckKey: state.lastCheckKey + 1,
+    });
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That jump could not be resolved.' });
+  }
+}
+
+/**
+ * Commit a combat stance (T-307). The overlay is a pure client of `resolveCombat`
+ * exactly as the starmap is of `resolveTravel`: it picks a die + stance and this
+ * is the single engine call. Every outcome is surfaced — the honest PLAYER roll
+ * (not the enemy's counter-attack), a fuel-gated weapons malfunction, and, when
+ * the encounter resolves, the aftermath summary. State autosaves so a mid-
+ * encounter reload restores the fight (loadSave already restores `encounter`).
+ */
+export function combat(stance: 'run' | 'talk' | 'fight'): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die, then choose a stance.' });
+    return;
+  }
+  const encounter = state.game.encounter;
+  if (!encounter) {
+    set({ notice: 'No active encounter.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Combat',
+      stance,
+      targetId: encounter.interceptor.id,
+      spendDie: die,
+    });
+    // Required so mid-encounter progression (round, enemy hull, fuel) survives a
+    // reload — the reload-survival acceptance criterion.
+    autosave(next);
+
+    // Surface the PLAYER's honest roll, NOT the enemy counter-attack. Two
+    // StatCheck events can appear in a round: the player's (actor 'Player') and
+    // the interceptor's pressure (actor === interceptor.name). We must select the
+    // player's, so CheckBreakdown shows the roll the player actually committed.
+    const playerCheck = events
+      .filter(
+        (e): e is Extract<GameEvent, { type: 'StatCheck' }> =>
+          e.type === 'StatCheck' && e.actor === 'Player',
+      )
+      .at(-1);
+    const lastCheck = playerCheck
+      ? { stat: playerCheck.stat, result: playerCheck.result, context: playerCheck.actionContext }
+      : null;
+
+    // A fuel-gated fight/run: the die was still burned and the enemy still
+    // pressed — reflect that honestly, do not claim "nothing happened".
+    const malfunction = events.some((e) => e.type === 'CombatEvent' && e.insufficientFuel);
+
+    // The encounter is nulled on the engine side the instant it resolves, so read
+    // the resolution off THIS action's events, not off next.encounter.
+    const aftermath = combatAftermathSummary(events);
+
+    let notice: string | null = null;
+    if (malfunction) {
+      notice = 'Weapons offline — not enough fuel to fire. Die burned, the enemy pressed.';
+    }
+
+    set({
+      game: next,
+      selectedDie: null,
+      bloomDie: die,
+      notice,
+      lastCheck,
+      lastCheckKey: state.lastCheckKey + 1,
+      combatMalfunction: malfunction,
+      combatAftermath: aftermath,
+    });
+  } catch (err) {
+    set({
+      notice: err instanceof Error ? err.message : 'That combat action could not be resolved.',
+    });
+  }
+}
+
+/** Dismiss the aftermath panel once the player has read it. */
+export function dismissAftermath(): void {
+  set({ combatAftermath: null, combatMalfunction: false });
+}
+
+/** No-dice escape hatch: when the hand is empty mid-encounter the three stances
+ *  are unusable, so the overlay offers a stand-down that ends the day. Dusk
+ *  applies the free enemy attack (and a possible bond rescue), then a fresh dawn
+ *  hand is dealt — preventing a soft-lock. This is just `endDay`. */
+export function standDown(): void {
+  endDay();
+}
+
 /** Close out the day — dusk moves the galaxy — and roll into the next dawn. */
 export function endDay(): void {
   try {
     const dusk = engineEndDay(state.game);
     const dawn = startDay(dusk.state);
     autosave(dawn.state);
+    // If an encounter is still live at the new dawn (dusk pressure did not end
+    // it), surface any resolution the dusk free-attack produced (e.g. a ShipLost
+    // succession) as the aftermath; otherwise clear it.
+    const aftermath = combatAftermathSummary(dusk.events);
     set({
       game: dawn.state,
       selectedDie: null,
@@ -314,6 +470,8 @@ export function endDay(): void {
       notice: null,
       bootKey: state.bootKey + 1,
       lastCheck: null,
+      combatAftermath: aftermath,
+      combatMalfunction: false,
     });
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'The day could not be ended.' });

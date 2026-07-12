@@ -6,9 +6,21 @@ import {
   NPC_PROFILES,
   distance,
   Stat,
+  FIGHT_FUEL_COST,
+  RUN_FUEL_COST,
+  TRIBUTE_BASE_MULTIPLIER,
+  TRIBUTE_MAX,
   type StoryletTrigger,
 } from '@spacerquest/content';
-import type { CheckResult, GameEvent, GameState } from '@spacerquest/engine';
+import {
+  jumpFuelCost,
+  travelDc,
+  calculateRouteDanger,
+  maxJumpDistance,
+  type CheckResult,
+  type GameEvent,
+  type GameState,
+} from '@spacerquest/engine';
 
 /** Display label for a stat. The Stat enum values are already the labels we
  * want, so this is a stable pure lookup (no fabricated names). */
@@ -77,32 +89,149 @@ export function contractIsUrgent(game: GameState, destination: number): boolean 
   return game.eraEvent?.affectedSystemIds.includes(destination) ?? false;
 }
 
-export interface StarNode {
-  id: number;
-  name: string;
-  x: number;
-  y: number;
-  isRim: boolean;
+// ---- T-304 starmap -------------------------------------------------------
+//
+// Every rule number the starmap shows flows out of an engine function — never
+// recomputed here. `routePreview` reads jumpFuelCost / travelDc /
+// calculateRouteDanger; the fuel-range ring radius comes from maxJumpDistance;
+// reachability compares the engine's fuel cost against the ship's fuel. The UI
+// only projects coordinates onto the SVG plane.
+
+/** A single previewed jump — fuel cost, pilot DC, danger and reachability, all
+ *  read straight from the engine so the number shown is the number checked. */
+export interface RoutePreview {
+  distance: number;
+  fuelCost: number;
+  dc: number;
+  dangerLevel: number;
+  reachable: boolean;
 }
 
-/** All systems projected into a [0..1] plane for the starmap SVG. */
-export function starNodes(): StarNode[] {
-  const systems = Object.values(STAR_SYSTEMS);
+export function routePreview(game: GameState, dest: number): RoutePreview {
+  const here = game.player.currentSystemId;
+  const d = distance(here, dest);
+  const ship = game.player.ship;
+  const fuelCost = jumpFuelCost(ship.drives, d, ship.hasTransWarpDrive ?? false);
+  return {
+    distance: d,
+    fuelCost,
+    dc: travelDc(d),
+    dangerLevel: calculateRouteDanger(game, here, dest).routeDangerLevel,
+    reachable: fuelCost <= ship.fuel,
+  };
+}
+
+/** A system placed on the SVG plane: raw coordinates plus projected (viewBox)
+ *  screen coordinates. */
+export interface ProjectedNode {
+  id: number;
+  name: string;
+  isRim: boolean;
+  x: number;
+  y: number;
+  sx: number;
+  sy: number;
+}
+
+export interface StarmapProjection {
+  /** SVG viewBox string sized to the displayed band. */
+  viewBox: string;
+  width: number;
+  height: number;
+  /** Distance-units → viewBox-units (uniform, so a distance circle stays round). */
+  scale: number;
+  nodes: ProjectedNode[];
+  here: ProjectedNode | null;
+  /** Fuel-range ring radius in distance units (from maxJumpDistance) … */
+  ringUnits: number;
+  /** … and in projected viewBox units. */
+  ringRadius: number;
+}
+
+/**
+ * Project the relevant band of systems onto an SVG plane. We do NOT fit all 28
+ * systems: the Andromeda cluster sits at x up to 99 and would crush the core
+ * lane into an unreadable sliver. Instead we render the core+rim lane (ids
+ * 1–20) plus the current system and any charted system, then bound the box to
+ * exactly that set. The scale is uniform so the fuel-range ring — a true
+ * distance circle — is drawn round rather than sheared.
+ */
+export function starmapProjection(game: GameState): StarmapProjection {
+  const here = game.player.currentSystemId;
+  const visited = new Set(game.player.charts.visitedSystemIds);
+  const shown = new Map<number, (typeof STAR_SYSTEMS)[number]>();
+  for (const sys of Object.values(STAR_SYSTEMS)) {
+    if ((sys.id >= 1 && sys.id <= 20) || sys.id === here || visited.has(sys.id)) {
+      shown.set(sys.id, sys);
+    }
+  }
+  const systems = [...shown.values()];
   const xs = systems.map((s) => s.coordinates.x);
   const ys = systems.map((s) => s.coordinates.y);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
-  const spanX = maxX - minX || 1;
-  const spanY = maxY - minY || 1;
-  return systems.map((s) => ({
-    id: s.id,
-    name: s.name,
-    isRim: s.isRim,
-    x: (s.coordinates.x - minX) / spanX,
-    y: (s.coordinates.y - minY) / spanY,
-  }));
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+
+  const pad = 8; // viewBox units of margin around the band
+  const targetSpan = 220; // desired long-axis size in viewBox units
+  const scale = targetSpan / Math.max(spanX, spanY, 1);
+
+  const width = spanX * scale + pad * 2;
+  // A pure lane (spanY 0) still needs vertical room for the node + label.
+  const laneHeight = 64;
+  const height = Math.max(spanY * scale, laneHeight) + pad * 2;
+  const yOffset = spanY === 0 ? height / 2 : pad;
+
+  const project = (sys: (typeof STAR_SYSTEMS)[number]): ProjectedNode => ({
+    id: sys.id,
+    name: sys.name,
+    isRim: sys.isRim,
+    x: sys.coordinates.x,
+    y: sys.coordinates.y,
+    sx: pad + (sys.coordinates.x - minX) * scale,
+    sy: spanY === 0 ? yOffset : pad + (sys.coordinates.y - minY) * scale,
+  });
+
+  const nodes = systems.map(project);
+  const hereSys = STAR_SYSTEMS[here];
+  const ship = game.player.ship;
+  const ringUnits = maxJumpDistance(ship.drives, ship.fuel, ship.hasTransWarpDrive ?? false);
+
+  return {
+    viewBox: `0 0 ${round(width)} ${round(height)}`,
+    width,
+    height,
+    scale,
+    nodes,
+    here: hereSys ? project(hereSys) : null,
+    ringUnits,
+    ringRadius: ringUnits * scale,
+  };
+}
+
+function round(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Known-NPC pip counts per system. There is no `known` flag on engine state, so
+ * this is a deliberate T-304-LOCAL definition (a full knownNpcIds set would be
+ * engine scope, out of this task): a ship is "known" if the player has standing
+ * with it (`disposition !== 0`) OR it is co-located in the player's current
+ * system. Returns systemId → count of known ships there.
+ */
+export function knownNpcCounts(game: GameState): Map<number, number> {
+  const here = game.player.currentSystemId;
+  const counts = new Map<number, number>();
+  for (const npc of game.npcs) {
+    const known = npc.disposition !== 0 || npc.currentSystemId === here;
+    if (!known) continue;
+    counts.set(npc.currentSystemId, (counts.get(npc.currentSystemId) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /** Human-readable wire lines, newest first, derived from the event log. */
@@ -251,4 +380,164 @@ export function npcDossier(state: GameState, npcId: string): NpcDossier | null {
     // Prose temperament from authored bond + flaw — no numeric stat/flawDc/tier.
     temperament: `${profile.bond}. Said to be ${profile.flaw.toLowerCase()}.`,
   };
+}
+
+// ---- T-307 combat overlay (display-only) ---------------------------------
+//
+// Read-only projections of the engine's live `EncounterState` and of the events
+// a Combat action returns. The overlay is a CLIENT of the combat rules exactly
+// as the starmap is a client of travel: every balance number here is imported
+// from `@spacerquest/content` (FIGHT/RUN fuel, tribute schedule), never
+// hardcoded, and nothing recomputes a check — the honest roll is read straight
+// off the engine's StatCheck via CheckBreakdown.
+
+/** Human label for an anonymous interceptor's kind (display flavour only). */
+const KIND_LABELS: Record<string, string> = {
+  PIRATE: 'Pirate',
+  PATROL: 'Patrol',
+  RIM_PIRATE: 'Rim pirate',
+  BRIGAND: 'Brigand',
+  REPTILOID: 'Reptiloid',
+};
+
+export interface EncounterReadout {
+  name: string;
+  shipName: string;
+  shipClass?: string;
+  /** Deliberately surfaced here (task spec: "name/ship/tier"); the wire dossier
+   *  never shows tier, but the instrument that decides whether to fire does. */
+  tier: number;
+  kindLabel: string;
+  /** Prose known-history HINT — never a raw stat block. */
+  history: string;
+}
+
+/**
+ * The enemy readout: name, ship, tier and a prose history hint. For a named
+ * interceptor the history reuses the same disposition-hint machinery as the
+ * dossier plus a last-seen system and a count of prior wire mentions; an
+ * anonymous raider has no record. Reads live `game.encounter`; returns null when
+ * there is no active encounter.
+ */
+export function encounterReadout(game: GameState): EncounterReadout | null {
+  const enc = game.encounter;
+  if (!enc) return null;
+  const int = enc.interceptor;
+  let history: string;
+  if (int.source === 'named') {
+    const npc = game.npcs.find((n) => n.id === int.id);
+    const mentions = countWireMentions(game, int.name);
+    const parts = [dispositionHint(npc?.disposition ?? 0)];
+    if (npc) parts.push(`Last known at ${systemName(npc.currentSystemId)}`);
+    if (mentions > 0)
+      parts.push(`${mentions} prior wire ${mentions === 1 ? 'mention' : 'mentions'}`);
+    history = `${parts.join(' · ')}.`;
+  } else {
+    history = 'Unknown raider — no record on file.';
+  }
+  return {
+    name: int.name,
+    shipName: int.shipName,
+    shipClass: int.shipClass,
+    tier: int.tier,
+    kindLabel: int.kind
+      ? (KIND_LABELS[int.kind] ?? 'Raider')
+      : int.source === 'named'
+        ? 'Named'
+        : 'Raider',
+    history,
+  };
+}
+
+/** Count of prior WireEntry lines that name this interceptor (read-only scan of
+ *  the append-only event log — the same source the wire pane renders). */
+function countWireMentions(game: GameState, name: string): number {
+  let n = 0;
+  for (const e of game.eventLog) {
+    if (e.type === 'WireEntry' && e.message.includes(name)) n++;
+  }
+  return n;
+}
+
+export interface CombatFuelStatus {
+  fuel: number;
+  fightCost: number;
+  runCost: number;
+  canFight: boolean;
+  canRun: boolean;
+}
+
+/**
+ * The "can I afford to fire?" readout (the PRD's front-and-centre fuel budget).
+ * Compares the ship's fuel against the imported FIGHT/RUN fuel costs. When
+ * `canFight` is false the overlay raises the weapons-offline band — the fuel-gate
+ * that the engine also enforces (a fight with fuel < FIGHT_FUEL_COST malfunctions).
+ */
+export function combatFuelStatus(game: GameState): CombatFuelStatus {
+  const fuel = game.player.ship.fuel;
+  return {
+    fuel,
+    fightCost: FIGHT_FUEL_COST,
+    runCost: RUN_FUEL_COST,
+    canFight: fuel >= FIGHT_FUEL_COST,
+    canRun: fuel >= RUN_FUEL_COST,
+  };
+}
+
+/**
+ * PREVIEW of what a talk is likely to cost THIS round. This mirrors the engine's
+ * own `tributeForRound` (min(round * base, cap)) using the imported content
+ * constants — it is display-only. The amount actually charged always comes from
+ * the engine's `TributeDemanded`/`TributePaid` events, never from this number.
+ */
+export function tributeThisRound(round: number): number {
+  return Math.min(round * TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX);
+}
+
+export interface CombatAftermath {
+  resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled';
+  lines: string[];
+}
+
+const RESOLUTION_HEADLINE: Record<CombatAftermath['resolution'], string> = {
+  escaped: 'Broke off — you slipped the net.',
+  'talked-down': 'Talked down — tribute bought the lane.',
+  defeated: 'Interceptor destroyed — the wreck drifts.',
+  'interceptor-fled': 'Driven off — a friend cleared your tail.',
+};
+
+/**
+ * Build the in-the-moment aftermath summary from the events a Combat (or dusk)
+ * action returned. Returns null when the encounter did not resolve this action.
+ * The same events also ride the wire (eventLog); this panel is just the cockpit
+ * echo of that news the instant it lands.
+ */
+export function combatAftermathSummary(events: GameEvent[]): CombatAftermath | null {
+  const resolved = events.find(
+    (e): e is Extract<GameEvent, { type: 'EncounterResolved' }> => e.type === 'EncounterResolved',
+  );
+  if (!resolved) return null;
+  const lines: string[] = [RESOLUTION_HEADLINE[resolved.resolution]];
+  for (const e of events) {
+    if (e.type === 'TributePaid') {
+      lines.push(
+        `Paid ${e.amount.toLocaleString()}cr tribute — ${e.creditsRemaining.toLocaleString()}cr left.`,
+      );
+    } else if (
+      e.type === 'CombatEvent' &&
+      e.stance === 'fight' &&
+      e.success &&
+      e.enemyHullRemaining === 0
+    ) {
+      lines.push('Final volley connected — their hull gave way.');
+    } else if (e.type === 'ShipLost') {
+      lines.push('Your ship was lost in the exchange.');
+    } else if (e.type === 'LegacySuccession') {
+      lines.push(
+        `A successor claims the license — ${e.inheritedCredits.toLocaleString()}cr inherited.`,
+      );
+    }
+  }
+  lines.push(`Resolved on round ${resolved.round}.`);
+  return { resolution: resolved.resolution, lines };
 }

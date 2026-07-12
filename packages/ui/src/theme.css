@@ -289,64 +289,165 @@ body {
   background: var(--amber-dim);
 }
 
-/* ---- starmap (scaffold nav grid; coordinate map is T-304) ---- */
-.navgrid {
+/* ---- starmap (T-304 coordinate map, fuel ring, route preview) ---- */
+.starmap .body {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 6px;
+  gap: 10px;
   align-content: start;
 }
-.navcell {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--hair);
-  padding: 6px 8px;
-  font-size: 11px;
-  /* readable amber (5.6:1 on tube) — AA even for unvisited systems */
-  color: var(--amber);
-  position: relative;
-  overflow: hidden;
+.smsvg {
+  width: 100%;
+  height: auto;
+  max-height: 240px;
+  overflow: visible;
+  display: block;
 }
-.navcell .navdot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #7a4e14;
-  flex: none;
+
+/* fuel-range ring — a true distance circle centred on the ship */
+.fuel-ring {
+  fill: none;
+  stroke: var(--ember);
+  stroke-width: 0.8;
+  stroke-dasharray: 4 3;
+  opacity: 0.5;
+  pointer-events: none;
 }
-.navcell .navname {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+@media not (prefers-reduced-motion: reduce) {
+  .fuel-ring {
+    animation: ring-pulse 3.2s ease-in-out infinite;
+  }
 }
-.navcell.rim {
-  color: var(--amber);
+@keyframes ring-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
-.navcell.rim .navdot {
-  background: var(--amber);
+
+.route-line {
+  stroke: var(--ember);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+  pointer-events: none;
 }
-.navcell.visited {
-  color: var(--ember);
-  border-color: var(--amber-dim);
+.route-line.blocked {
+  stroke: var(--amber-dim);
 }
-.navcell.visited .navdot {
-  background: var(--ember);
-  box-shadow: 0 0 5px rgba(255, 176, 0, 0.6);
+
+/* system nodes */
+.smsys {
+  cursor: pointer;
 }
-.navcell.here {
-  color: var(--tube);
-  background: var(--ember);
-  border-color: var(--ember);
+/* Only the invisible hit-rect is interactive; every visible mark is inert so a
+   neighbour's label can never intercept a node's click (dense lane of 20). */
+.smsys .smhit {
+  fill: transparent;
+}
+.smsys .smdot,
+.smsys .smlabel,
+.era-badge,
+.npc-pip {
+  pointer-events: none;
+}
+.smsys .smdot {
+  fill: #7a4e14;
+  stroke: var(--hair);
+  stroke-width: 0.6;
+}
+.smsys .smlabel {
+  fill: var(--amber);
+  font-size: 8px;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--tube);
+  stroke-width: 1.6;
+}
+.smsys.rim .smdot {
+  fill: var(--amber);
+}
+.smsys.visited .smdot {
+  fill: var(--ember);
+  filter: drop-shadow(0 0 2px rgba(255, 176, 0, 0.6));
+}
+.smsys.visited .smlabel {
+  fill: var(--ember);
+}
+.smsys.here .smdot {
+  fill: var(--ember-hi);
+  stroke: var(--ember);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 3px rgba(255, 176, 0, 0.8));
+}
+.smsys.here .smlabel {
+  fill: var(--ember-hi);
   font-weight: 600;
-  box-shadow: var(--glow);
 }
-.navcell.here .navdot {
-  background: var(--tube);
+.smsys.sel .smdot {
+  stroke: var(--ember-hi);
+  stroke-width: 1.4;
 }
-.navcell .navhere {
-  margin-left: auto;
-  color: var(--tube);
+.smsys.sel .smlabel {
+  fill: var(--ember-hi);
+}
+/* unreachable systems are visibly gated AND not clickable */
+.smsys.unreachable {
+  pointer-events: none;
+  opacity: 0.32;
+}
+.smsys.unreachable .smdot {
+  fill: transparent;
+  stroke: var(--amber-dim);
+  stroke-dasharray: 1.5 1.5;
+}
+.smsys.unreachable .smlabel {
+  fill: var(--amber-dim);
+}
+
+/* era-event region badge */
+.era-badge rect {
+  fill: none;
+  stroke: var(--ember);
+  stroke-width: 0.8;
+}
+/* known-NPC presence pips */
+.npc-pip {
+  fill: var(--ember-hi);
+}
+
+/* route-preview panel — the plan-before-commit readout */
+.route-preview {
+  border: 1px solid var(--amber-dim);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+.route-preview .rp-head {
+  color: var(--ember);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.route-preview .rp-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 3px 10px;
+  align-items: baseline;
+}
+.route-preview .rp-k {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.route-preview .rp-v {
+  color: var(--ember);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.route-preview .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---- ship status ---- */
@@ -1175,5 +1276,221 @@ body {
   .hint {
     justify-self: center;
     text-align: center;
+  }
+}
+
+/* ---- T-307 combat overlay ---------------------------------------------- */
+/* A full-bleed instrument that covers the cockpit the moment an encounter
+   interrupts a jump. Reuses the CRT tokens, the .rev reverse-video band, the
+   .btn / .die / .check-breakdown treatments — no new required animation, so it
+   is quiet under prefers-reduced-motion. No external assets (CSP). */
+.combat-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(120% 120% at 50% 40%, rgba(24, 8, 4, 0.94), rgba(6, 4, 3, 0.98));
+  backdrop-filter: blur(2px);
+}
+.co-frame {
+  width: min(760px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #1a1007, #0c0805);
+  box-shadow: var(--glow);
+  padding: 20px 22px;
+}
+.co-instrument {
+  display: grid;
+  gap: 14px;
+}
+.co-enemy {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 12px;
+}
+.co-enemy-id {
+  display: grid;
+  gap: 4px;
+}
+.co-enemy-name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.co-enemy-ship {
+  font-size: 12px;
+  color: var(--amber);
+  letter-spacing: 0.04em;
+}
+.co-enemy-hist {
+  font-size: 11.5px;
+  color: var(--amber);
+  opacity: 0.85;
+}
+.co-enemy-meta {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  text-align: right;
+}
+.co-tier,
+.co-round {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--ember);
+  border: 1px solid var(--amber-dim);
+  padding: 2px 8px;
+}
+.co-hull {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.co-hull .hp {
+  width: 8px;
+  height: 8px;
+  background: var(--ember);
+  box-shadow: var(--glow);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+.co-hull b {
+  color: var(--ember-hi);
+  margin-left: 3px;
+}
+.co-fuel {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  border: 1px solid var(--amber);
+  padding: 10px 14px;
+  background: #120c06;
+}
+.co-fuel-big {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  color: var(--ember);
+}
+.co-fuel-big b {
+  font-size: 24px;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+  margin-left: 6px;
+}
+.co-fuel-costs {
+  font-size: 12px;
+  color: var(--amber);
+  letter-spacing: 0.05em;
+}
+.co-fuel-costs b {
+  color: var(--ember);
+}
+.co-fuel-costs b.short {
+  color: var(--tube);
+  background: var(--ember);
+  padding: 0 5px;
+}
+.co-offline,
+.co-malfunction {
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--ember);
+  color: var(--tube);
+  padding: 8px 11px;
+  letter-spacing: 0.03em;
+}
+.co-dice {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 4px 0;
+}
+.co-stances {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.co-stances .stance {
+  padding: 12px 0;
+  font-size: 14px;
+  letter-spacing: 0.16em;
+}
+.co-stances .stance.fight {
+  border-color: var(--ember);
+}
+.co-tribute {
+  font-size: 11.5px;
+  color: var(--amber);
+  text-align: center;
+}
+.co-tribute b {
+  color: var(--ember);
+}
+.co-hint {
+  font-size: 11.5px;
+  color: var(--amber);
+  text-align: center;
+  margin: 0;
+}
+.co-standdown {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  border: 1px dashed var(--amber-dim);
+  padding: 14px;
+}
+.co-aftermath {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+.co-aftermath-head {
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.05em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+  margin: 0;
+}
+.co-aftermath-lines {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--amber);
+}
+.co-aftermath[data-testid] .co-aftermath-head[data-resolution='defeated'] {
+  color: var(--ember-hi);
+}
+
+@media (max-width: 720px) {
+  .co-enemy {
+    flex-direction: column;
+  }
+  .co-enemy-meta {
+    justify-items: start;
+    text-align: left;
+  }
+  .co-stances {
+    grid-template-columns: 1fr;
   }
 }

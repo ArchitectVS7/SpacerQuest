@@ -52,6 +52,16 @@ function allowedAnonymousKinds(origin: number, destination: number): AnonymousIn
   return ['PIRATE', 'PATROL', 'RIM_PIRATE', 'BRIGAND', 'REPTILOID'];
 }
 
+/**
+ * Pilot-check DC for a jump of the given route distance. The ONE authoritative
+ * source for travel difficulty — the resolver rolls against it and the starmap
+ * (T-304) previews it, so the number a player sees before committing is exactly
+ * the number they are checked against. (Legacy math: DC 8 + floor(distance/2).)
+ */
+export function travelDc(routeDistance: number): number {
+  return 8 + Math.floor(routeDistance / 2);
+}
+
 export function calculateRouteDanger(
   state: GameState,
   origin: number,
@@ -296,15 +306,16 @@ export function resolveTravel(
     nextState.player.ship.hasTransWarpDrive || false,
   );
 
-  // Pilot check
-  const travelDc = 8 + Math.floor(routeDistance / 2); // Stub DC based on distance
+  // Pilot check — DC scales with distance through the authoritative helper so
+  // the starmap (T-304) can preview the exact DC the resolver will roll against.
+  const dc = travelDc(routeDistance);
 
-  const result = check(die, nextState.player.stats[Stat.PILOT], travelDc);
+  const result = check(die, nextState.player.stats[Stat.PILOT], dc);
   events.push({
     type: 'StatCheck',
     actor: 'Player',
     stat: Stat.PILOT,
-    dc: travelDc,
+    dc,
     result,
   });
 

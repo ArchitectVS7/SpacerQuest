@@ -7,7 +7,7 @@ import {
   useSyncExternalStore,
   type DragEvent as ReactDragEvent,
 } from 'react';
-import { CARGO_TYPES } from '@spacerquest/content';
+import { CARGO_TYPES, Stat } from '@spacerquest/content';
 import type { GameState } from '@spacerquest/engine';
 import {
   subscribe,
@@ -19,6 +19,10 @@ import {
   haggleContract,
   buyFuel,
   payDebt,
+  travelTo,
+  combat,
+  dismissAftermath,
+  standDown,
   toggleFx,
   clearBloom,
   type CockpitState,
@@ -27,7 +31,9 @@ import {
   systemName,
   cargoName,
   jumpsBetween,
-  starNodes,
+  starmapProjection,
+  routePreview,
+  knownNpcCounts,
   wireLines,
   wireLog,
   npcNameIndex,
@@ -37,6 +43,9 @@ import {
   signedMargin,
   cargoHasStorylet,
   contractIsUrgent,
+  encounterReadout,
+  combatFuelStatus,
+  tributeThisRound,
   type WireLogEntry,
 } from './format';
 
@@ -89,7 +98,7 @@ export function App() {
         <Bezel game={s.game} />
         <div className="main">
           <div className="col left">
-            <Starmap game={s.game} />
+            <Starmap state={s} />
             <ShipStatus game={s.game} />
           </div>
           <div className="col">
@@ -99,8 +108,235 @@ export function App() {
         </div>
         <Wire game={s.game} />
         <HandDock state={s} />
+        <CombatOverlay state={s} />
       </div>
     </div>
+  );
+}
+
+// The combat instrument (T-307). A full-screen layer that covers the cockpit
+// the instant an encounter interrupts a jump — the starmap/trade/hand behind it
+// are engine-blocked during an encounter anyway (applyPlayerAction returns
+// ActionBlocked), so covering them prevents dead clicks. It is a pure CLIENT of
+// the combat rules: the die strip drives the SAME store selection model, the
+// three stances call the store's `combat()` action, and every number shown —
+// the fuel budget, the tribute preview — is read from format.ts (imported
+// content constants), never recomputed. The honest PLAYER roll rides the shared
+// CheckBreakdown. The whole overlay renders from `game.encounter`, so a reload
+// mid-encounter restores it automatically (loadSave restores `encounter`).
+function CombatOverlay({ state }: { state: CockpitState }) {
+  const game = state.game;
+  const encounter = game.encounter;
+  const aftermath = state.combatAftermath;
+  // Key off encounter OR aftermath: the engine nulls `encounter` the instant it
+  // resolves, so a naive `if (encounter)` would unmount before the summary shows.
+  if (!encounter && !aftermath) return null;
+
+  return (
+    <div className="combat-overlay" data-testid="combat-overlay" role="dialog" aria-label="Combat">
+      <div className="co-frame">
+        {encounter ? (
+          <CombatInstrument state={state} />
+        ) : (
+          <CombatAftermathPanel aftermath={aftermath!} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CombatInstrument({ state }: { state: CockpitState }) {
+  const game = state.game;
+  const encounter = game.encounter!;
+  const readout = encounterReadout(game);
+  const fuel = combatFuelStatus(game);
+  const hand = game.player.dawnHand;
+  const dice = hand?.dice ?? [];
+  const spent = hand?.spent ?? [];
+  const remaining = spent.filter((x) => !x).length;
+  const armed = state.selectedDie !== null;
+  const tributePreview = tributeThisRound(encounter.round);
+
+  return (
+    <section className="co-instrument">
+      {/* ---- enemy readout ---- */}
+      <header className="co-enemy">
+        <div className="co-enemy-id">
+          <b className="co-enemy-name" data-testid="combat-enemy-name">
+            {readout?.name}
+          </b>
+          <span className="co-enemy-ship" data-testid="combat-enemy-ship">
+            {readout?.shipClass ? `${readout.shipClass} · ` : ''}
+            {readout?.shipName}
+          </span>
+          <span className="co-enemy-hist" data-testid="combat-enemy-history">
+            {readout?.history}
+          </span>
+        </div>
+        <div className="co-enemy-meta">
+          <span className="co-tier" data-testid="combat-enemy-tier">
+            TIER {readout?.tier}
+          </span>
+          <span className="co-round" data-testid="combat-round">
+            ROUND {encounter.round}
+          </span>
+          <span className="co-hull" data-testid="combat-enemy-hull" data-hull={encounter.enemyHull}>
+            HULL{' '}
+            {Array.from({ length: Math.max(0, encounter.enemyHull) }).map((_, i) => (
+              <i key={i} className="hp" />
+            ))}
+            <b>{encounter.enemyHull}</b>
+          </span>
+        </div>
+      </header>
+
+      {/* ---- fuel budget: the "can I afford to fire?" instrument ---- */}
+      <div className="co-fuel" data-testid="combat-fuel">
+        <span className="co-fuel-big">
+          FUEL <b>{fuel.fuel.toLocaleString()}</b>
+        </span>
+        <span className="co-fuel-costs">
+          FIGHT <b className={fuel.canFight ? '' : 'short'}>−{fuel.fightCost}</b> · RUN{' '}
+          <b className={fuel.canRun ? '' : 'short'}>−{fuel.runCost}</b> · TALK{' '}
+          <b>{tributePreview.toLocaleString()}cr</b>
+        </span>
+      </div>
+      {!fuel.canFight && (
+        <div className="co-offline rev" data-testid="combat-weapons-offline">
+          WEAPONS OFFLINE — need {fuel.fightCost} fuel to fire, have {fuel.fuel}. Fighting now will
+          misfire.
+        </div>
+      )}
+      {state.combatMalfunction && (
+        <div className="co-malfunction rev" data-testid="combat-malfunction" role="status">
+          Weapons malfunction — the die burned and the enemy pressed, but no shot landed.
+        </div>
+      )}
+
+      {/* ---- per-round die commitment ---- */}
+      <div className="co-dice" data-testid="combat-hand">
+        {dice.map((v, i) => {
+          const isSpent = spent[i];
+          const cls = [
+            'die',
+            isSpent ? 'spent' : '',
+            state.selectedDie === i ? 'sel' : '',
+            state.bloomDie === i ? 'bloom' : '',
+            v === 20 || v === 1 ? 'nat' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <div
+              className={cls}
+              key={i}
+              data-testid="combat-die"
+              data-die-index={i}
+              data-die-value={v}
+              data-spent={isSpent ? '1' : '0'}
+              role="button"
+              tabIndex={isSpent ? -1 : 0}
+              aria-pressed={state.selectedDie === i}
+              aria-label={isSpent ? `die ${i + 1} spent` : `combat die ${i + 1}, value ${v}`}
+              onClick={() => selectDie(i)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  selectDie(i);
+                }
+              }}
+            >
+              <span>{v}</span>
+              <span className="dl">{isSpent ? 'SPENT' : 'd20'}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ---- stance commitment ---- */}
+      {remaining === 0 ? (
+        <div className="co-standdown">
+          <p className="co-hint">Hand spent mid-fight — stand down to weather dusk and re-arm.</p>
+          <button className="btn" data-testid="combat-stand-down" onClick={standDown}>
+            Stand down (end day)
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="co-stances">
+            <button
+              className="btn stance fight"
+              data-testid="combat-fight"
+              disabled={!armed}
+              title={
+                !armed
+                  ? 'Pick a die first'
+                  : fuel.canFight
+                    ? 'Roll GUNS to hole their hull (−50 fuel)'
+                    : 'Not enough fuel — this will misfire (−50 fuel gated)'
+              }
+              onClick={() => combat('fight')}
+            >
+              FIGHT
+            </button>
+            <button
+              className="btn stance talk"
+              data-testid="combat-talk"
+              disabled={!armed}
+              title={armed ? 'Roll TRADE to buy the lane with tribute' : 'Pick a die first'}
+              onClick={() => combat('talk')}
+            >
+              TALK
+            </button>
+            <button
+              className="btn stance run"
+              data-testid="combat-run"
+              disabled={!armed}
+              title={armed ? 'Roll PILOT to break off (−10 fuel)' : 'Pick a die first'}
+              onClick={() => combat('run')}
+            >
+              RUN
+            </button>
+          </div>
+          <div className="co-tribute" data-testid="combat-tribute">
+            Talk this round likely costs <b>{tributePreview.toLocaleString()}cr</b> tribute — the
+            deal is struck on the wire.
+          </div>
+          {!armed && <p className="co-hint">Pick a die, then commit a stance.</p>}
+        </>
+      )}
+
+      {/* The honest PLAYER roll — the store feeds CheckBreakdown the actor:'Player'
+          StatCheck, never the enemy counter-attack. No stat filter here. */}
+      <CheckBreakdown state={state} />
+    </section>
+  );
+}
+
+function CombatAftermathPanel({
+  aftermath,
+}: {
+  aftermath: NonNullable<CockpitState['combatAftermath']>;
+}) {
+  return (
+    <section className="co-aftermath" data-testid="combat-aftermath">
+      <h2
+        className="co-aftermath-head"
+        data-testid="combat-aftermath-resolution"
+        data-resolution={aftermath.resolution}
+      >
+        {aftermath.lines[0]}
+      </h2>
+      <ul className="co-aftermath-lines">
+        {aftermath.lines.slice(1).map((line, i) => (
+          <li key={i}>{line}</li>
+        ))}
+      </ul>
+      <p className="co-hint">Logged to the Galactic Wire.</p>
+      <button className="btn" data-testid="combat-dismiss" onClick={dismissAftermath}>
+        Back to the cockpit
+      </button>
+    </section>
   );
 }
 
@@ -172,40 +408,170 @@ function Bezel({ game }: { game: GameState }) {
   );
 }
 
-function Starmap({ game }: { game: GameState }) {
-  // NOTE: 21 of 28 canon systems share y=0, so a literal coordinate scatter
-  // collapses the core into one overlapping line. This scaffold renders a
-  // readable nav grid instead; the coordinate-accurate map with fuel-range ring
-  // and route preview is T-304's job.
-  const nodes = starNodes();
+// The coordinate-accurate starmap (T-304). Plan a jump entirely here: pick a die
+// from the hand, click a reachable system to preview the engine's own fuel cost /
+// DC / danger, then commit. Every rule number is read from the engine (via
+// format.ts helpers) — the UI only projects coordinates and gates clicks.
+function Starmap({ state }: { state: CockpitState }) {
+  const game = state.game;
+  const [target, setTarget] = useState<number | null>(null);
+
+  const proj = starmapProjection(game);
   const here = game.player.currentSystemId;
   const visited = new Set(game.player.charts.visitedSystemIds);
+  const npcCounts = knownNpcCounts(game);
+  const eraSystems = new Set(game.eraEvent?.affectedSystemIds ?? []);
+  const dieArmed = state.selectedDie !== null;
+
+  const hereNode = proj.here;
+  // A transparent per-node hit target, narrower than the node spacing so
+  // neighbours never intercept, tall enough that the node's centre (used by
+  // click) lands on it. Decorative marks are pointer-events:none in CSS.
+  const hitW = Math.max(proj.scale * 0.85, 10);
+  const targetNode = target !== null ? (proj.nodes.find((n) => n.id === target) ?? null) : null;
+  // The target is only ever set to a reachable node, but recompute honestly.
+  const preview = target !== null ? routePreview(game, target) : null;
+  // A stale target (e.g. after a jump moved us) simply resolves to no preview.
+  const showPreview = preview !== null && targetNode !== null && target !== here;
+
+  const commit = () => {
+    if (target === null) return;
+    travelTo(target);
+    setTarget(null);
+  };
+
   return (
-    <section className="pane">
+    <section className="pane starmap">
       <header>
         <h2>Starmap</h2>
         <span className="tag">{visited.size} CHARTED</span>
       </header>
       <div className="body">
-        <div className="navgrid">
-          {nodes.map((n) => {
-            const cls =
-              n.id === here
-                ? 'navcell here'
-                : visited.has(n.id)
-                  ? 'navcell visited'
-                  : n.isRim
-                    ? 'navcell rim'
-                    : 'navcell';
+        <svg
+          className="smsvg"
+          viewBox={proj.viewBox}
+          role="img"
+          aria-label="Starmap"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {hereNode && proj.ringUnits > 0 && (
+            <circle
+              className="fuel-ring"
+              data-testid="fuel-ring"
+              data-radius-units={proj.ringUnits}
+              cx={hereNode.sx}
+              cy={hereNode.sy}
+              r={proj.ringRadius}
+            />
+          )}
+          {/* Ring collapses to nothing at zero fuel — still expose the radius. */}
+          {hereNode && proj.ringUnits === 0 && (
+            <circle
+              className="fuel-ring empty"
+              data-testid="fuel-ring"
+              data-radius-units={0}
+              cx={hereNode.sx}
+              cy={hereNode.sy}
+              r={0}
+            />
+          )}
+          {hereNode && targetNode && showPreview && (
+            <line
+              className={preview.reachable ? 'route-line' : 'route-line blocked'}
+              x1={hereNode.sx}
+              y1={hereNode.sy}
+              x2={targetNode.sx}
+              y2={targetNode.sy}
+            />
+          )}
+          {proj.nodes.map((n) => {
+            const isHere = n.id === here;
+            const reachable = isHere ? true : routePreview(game, n.id).reachable;
+            const clickable = !isHere && reachable;
+            const cls = [
+              'smsys',
+              isHere ? 'here' : visited.has(n.id) ? 'visited' : 'unvisited',
+              n.isRim ? 'rim' : '',
+              !isHere && !reachable ? 'unreachable' : '',
+              target === n.id ? 'sel' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            const pipCount = npcCounts.get(n.id) ?? 0;
             return (
-              <div className={cls} key={n.id} title={n.name}>
-                <span className="navdot" />
-                <span className="navname">{n.name}</span>
-                {n.id === here && <span className="navhere">&#9656;</span>}
-              </div>
+              <g
+                key={n.id}
+                className={cls}
+                data-testid="starmap-system"
+                data-system-id={n.id}
+                data-reachable={reachable ? '1' : '0'}
+                data-visited={visited.has(n.id) ? '1' : '0'}
+                data-here={isHere ? '1' : '0'}
+                aria-label={n.name}
+                aria-disabled={clickable ? undefined : 'true'}
+                onClick={clickable ? () => setTarget(n.id) : undefined}
+                transform={`translate(${n.sx} ${n.sy})`}
+              >
+                <circle className="smdot" r={5} />
+                {eraSystems.has(n.id) && (
+                  <g className="era-badge" data-testid="era-badge" transform="translate(6 -6)">
+                    <title>{game.eraEvent?.defId ?? 'Era event'}</title>
+                    <rect x={-3} y={-3} width={6} height={6} rx={1} />
+                  </g>
+                )}
+                {Array.from({ length: pipCount }).map((_, i) => (
+                  <circle
+                    key={i}
+                    className="npc-pip"
+                    data-testid="npc-pip"
+                    cx={-6 + i * 4}
+                    cy={-9}
+                    r={1.6}
+                  />
+                ))}
+                <text className="smlabel" x={0} y={16}>
+                  {n.name}
+                </text>
+                <rect className="smhit" x={-hitW / 2} y={-12} width={hitW} height={32} />
+              </g>
             );
           })}
-        </div>
+        </svg>
+
+        {showPreview && (
+          <div className="route-preview" data-testid="route-preview">
+            <div className="rp-head">
+              PLOT &#9656; <b>{systemName(target!)}</b>
+            </div>
+            <div className="rp-grid">
+              <span className="rp-k">DISTANCE</span>
+              <span className="rp-v" data-testid="route-distance">
+                {preview.distance}
+              </span>
+              <span className="rp-k">FUEL</span>
+              <span className="rp-v" data-testid="route-fuel">
+                {preview.fuelCost}
+              </span>
+              <span className="rp-k">PILOT DC</span>
+              <span className="rp-v" data-testid="route-dc">
+                {preview.dc}
+              </span>
+              <span className="rp-k">DANGER</span>
+              <span className="rp-v" data-testid="route-danger">
+                {preview.dangerLevel}
+              </span>
+            </div>
+            <button
+              className="btn"
+              data-testid="confirm-jump"
+              disabled={!dieArmed || !preview.reachable}
+              onClick={commit}
+            >
+              {dieArmed ? 'Confirm jump' : 'Pick a die to jump'}
+            </button>
+          </div>
+        )}
+        <CheckBreakdown state={state} only={Stat.PILOT} />
       </div>
     </section>
   );
@@ -350,7 +716,7 @@ function Manifest({ state }: { state: CockpitState }) {
           );
         })}
       </div>
-      <CheckBreakdown state={state} />
+      <CheckBreakdown state={state} exclude={Stat.PILOT} />
     </section>
   );
 }
@@ -495,10 +861,22 @@ function TradePane({ state }: { state: CockpitState }) {
 // captured — die + stat + modifier + total vs DC + margin + verdict, in reading
 // order (PRD: "the dice are honest and visible"). Nat 1/20 get distinct juice.
 // Every number is read straight off the engine's CheckResult; nothing is
-// recomputed in the UI. Travel/combat checks (T-304/T-307) will reuse this.
-function CheckBreakdown({ state }: { state: CockpitState }) {
+// recomputed in the UI. The pane that owns a check filters by stat so a check
+// renders exactly once: the manifest shows TRADE haggles, the starmap PILOT
+// jumps (`only`/`exclude`), never both at once.
+function CheckBreakdown({
+  state,
+  only,
+  exclude,
+}: {
+  state: CockpitState;
+  only?: Stat;
+  exclude?: Stat;
+}) {
   const lc = state.lastCheck;
   if (!lc) return null;
+  if (only !== undefined && lc.stat !== only) return null;
+  if (exclude !== undefined && lc.stat === exclude) return null;
   const r = lc.result;
   const verdict = checkVerdict(r);
   const pass = r.success;
