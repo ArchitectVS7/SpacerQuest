@@ -5,9 +5,19 @@ on:
     branches: [main, rimward-redesign]
   pull_request:
 
+# One CI run per branch tip: a new push cancels the superseded run for the
+# same branch/PR — a commit that is no longer the tip answers no question.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     name: Build, lint, test
+    # Same-repo PRs are already tested by the push-triggered run of the same
+    # commit; running both is pure duplication. Fork PRs produce no push run
+    # here, so they still get tested.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     # Hard backstop: the sim suite runs real multi-hundred-day campaigns, so a
     # hang (not slowness) should fail fast rather than burn the 6-hour default.
@@ -39,6 +49,7 @@ jobs:
 
   e2e:
     name: Playwright e2e
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
