@@ -29,6 +29,7 @@ import {
   clearBloom,
   type CockpitState,
 } from './store';
+import * as sound from './sound';
 import {
   systemName,
   cargoName,
@@ -90,10 +91,59 @@ const EffectsLayer = memo(function EffectsLayer() {
   return <div className="fx" aria-hidden="true" />;
 });
 
+// The audio mixer (T-310). A small popover of three master/SFX/ambient sliders +
+// a mute toggle, reflecting the persisted mixer state through the sound module's
+// own external store. It is a pure client of `sound.ts`: it never touches the
+// AudioContext — the context unlocks on the first gesture inside the manager.
+function AudioPanel({ onClose }: { onClose: () => void }) {
+  const mixer = useSyncExternalStore(sound.subscribe, sound.getMixer, sound.getMixer);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const slider = (bus: sound.MixerBus, label: string, testid: string) => (
+    <label className="audio-row">
+      <span className="audio-row-label">{label}</span>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={mixer[bus]}
+        data-testid={testid}
+        aria-label={`${label} volume`}
+        onChange={(e) => sound.setVolume(bus, Number.parseFloat(e.target.value))}
+      />
+    </label>
+  );
+
+  return (
+    <div className="audio-panel" data-testid="audio-panel" role="dialog" aria-label="Audio">
+      {slider('master', 'Master', 'vol-master')}
+      {slider('sfx', 'SFX', 'vol-sfx')}
+      {slider('ambient', 'Ambient', 'vol-ambient')}
+      <button
+        className={mixer.muted ? 'audio-mute on' : 'audio-mute'}
+        data-testid="audio-mute"
+        aria-pressed={mixer.muted}
+        onClick={() => sound.setMuted(!mixer.muted)}
+      >
+        {mixer.muted ? 'Muted' : 'Mute'}
+      </button>
+    </div>
+  );
+}
+
 export function App() {
   const s = useCockpit();
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [storyletOpen, setStoryletOpen] = useState(false);
+  const [audioOpen, setAudioOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-fx', s.fx ? 'on' : 'off');
@@ -125,7 +175,15 @@ export function App() {
         <button data-testid="records-toggle" onClick={() => setRecordsOpen((v) => !v)}>
           Records
         </button>
+        <button
+          data-testid="audio-toggle"
+          aria-expanded={audioOpen}
+          onClick={() => setAudioOpen((v) => !v)}
+        >
+          Audio
+        </button>
         <NewGameButton />
+        {audioOpen && <AudioPanel onClose={() => setAudioOpen(false)} />}
       </div>
 
       <div className="screen">

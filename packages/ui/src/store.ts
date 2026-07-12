@@ -13,6 +13,19 @@ import {
 import type { Stat } from '@spacerquest/content';
 import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerquest/engine';
 import { combatAftermathSummary, shipyardFailureExplanation, type CombatAftermath } from './format';
+import * as sound from './sound';
+
+/**
+ * Play the audio cues an action's event stream implies (T-310). The store is the
+ * single choke point that already scans engine events, so the sound layer hooks
+ * here as a pure client — the engine emits nothing new. `committed` is true when
+ * the action actually spent a die (a firm "commit" thunk); the outcome cues
+ * (jump / dice / wire / fail / crit flourishes) come straight from `cuesForEvents`.
+ */
+function playCues(events: GameEvent[], committed: boolean): void {
+  if (committed) sound.play('commit');
+  for (const cue of sound.cuesForEvents(events)) sound.play(cue);
+}
 
 /**
  * The cockpit store. A tiny module-level store (no framework dependency) exposed
@@ -196,6 +209,11 @@ export function newGame(seed: number): void {
     combatAftermath: null,
     combatMalfunction: false,
   });
+  // A fresh career: the dawn sting and the ambient drive-hum bed. The hum defers
+  // itself internally until the first user gesture unlocks the AudioContext, so
+  // this never triggers an autoplay-policy error.
+  sound.play('dawn');
+  sound.setDriveHum(true);
 }
 
 export function selectDie(index: number): void {
@@ -236,6 +254,7 @@ export function signContract(contractIndex: number): void {
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
     });
+    playCues(events, !notice);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
   }
@@ -268,6 +287,7 @@ export function buyFuel(amount: number): void {
       bloomDie: notice ? null : die,
       notice,
     });
+    playCues(events, !notice);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'The fuel purchase could not be resolved.',
@@ -293,6 +313,7 @@ export function payDebt(amount: number): void {
     const notice = failNoticeFrom(events);
     // No die is spent — do not touch selectedDie / bloomDie.
     set({ game: next, notice });
+    playCues(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'The debt payment could not be resolved.' });
   }
@@ -336,6 +357,7 @@ export function haggleContract(contractIndex: number): void {
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
     });
+    playCues(events, !notice);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
   }
@@ -386,6 +408,9 @@ export function travelTo(destinationId: number): void {
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
     });
+    // The jump die is always spent (even a failed PILOT roll burns it), so this
+    // is always a committed action. `cuesForEvents` adds jump / combatStart.
+    playCues(events, true);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That jump could not be resolved.' });
   }
@@ -458,6 +483,9 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
       combatMalfunction: malfunction,
       combatAftermath: aftermath,
     });
+    // The stance die is always spent, so combat is always committed. Crit
+    // flourishes (nat20 / nat1) and the dice rattle ride the event stream.
+    playCues(events, true);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'That combat action could not be resolved.',
@@ -522,6 +550,9 @@ export function shipyard(request: ShipyardRequest): void {
       notice,
       lastCheck: null,
     });
+    // The shipyard spends the die before its business checks (engine convention),
+    // so this is always committed; a refusal emits ShipyardFail → the fail cue.
+    playCues(events, true);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That yard order could not be resolved.' });
   }
@@ -566,6 +597,7 @@ export function resolveStorylet(storyletId: string, choiceId: string, needsDie: 
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
     });
+    playCues(events, needsDie && !notice);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That choice could not be resolved.' });
   }
@@ -604,6 +636,11 @@ export function endDay(): void {
       combatAftermath: aftermath,
       combatMalfunction: false,
     });
+    // Dusk cues (wire crackle / combat resolution) off the dusk events, then the
+    // new dawn sting; keep the drive-hum bed running across the day boundary.
+    playCues(dusk.events, false);
+    sound.play('dawn');
+    sound.setDriveHum(true);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'The day could not be ended.' });
   }
