@@ -114,16 +114,18 @@ export function runDayLoopGolden(
 }
 
 // --- Committed golden hashes (regenerate via gen-day-loop-golden.ts) ---------
-// T-1103 re-derivation: the encounter-rate repair (core 0.08 -> 0.30, Tour One
-// damped 0.5x) makes the seed-1 day-3 jump interdict; the script resolves it
-// with two fight volleys at the top of day 4 (see TEN_DAY_SCRIPT), so these two
-// hashes moved. STORYLET_* below are unchanged — its seed-555 jump stays clean
-// and success-path rng is byte-identical.
+// T-1104 re-derivation: rollContract's RNG draw order and destination/cargo
+// ranges changed (rim & contraband contract economy), so the manifest board in
+// serialized state — and the cargoType/destination fields on the events those
+// contracts drive — differ for BOTH scripts. All four hashes were regenerated
+// deliberately; the day-loop rules themselves are unchanged.
+// (Prior T-1103 re-derivation: the encounter-rate repair moved the two main
+// hashes; the storylet run was byte-identical then but moves now via the board.)
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'e6508833437f90ce2f4a9bcb541bec3836ef95b3775d12e3f168b05b220de6ed';
+  '474d65f60854f1cd0778b0500ab327d2a2c351c434ed66632548de768e837a9e';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '6f9f7958741f76f0d7a95c39fe56ea76089df5cdec8c2095f34a3a40bccd1220';
+  'd300aa1fbc53423c821baef18ae07f45006b5dc3126adab18d22104ae7422375';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '8b90b13efaba771aa8dbe1d2e10261acc4927f4952aa5a59fe681f1e0f2ea912';
+  '35f793f6a0c5601525eb32eec8d7885e3b148b72f78a8f0f23d757e950ec20a7';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '2450847a4b9dcef5b3e5df28a1929d57fd5278b9c5f1dcf971997bf864424353';
+  '5feffac615f2d7fb423f2eb3aff6ae72b7d55ddb4f20fc5006ae6a93bc0019f4';

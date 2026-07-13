@@ -607,11 +607,24 @@ export const traderPolicy: SimPolicy = ({ state }) => {
   // couple of encounters. Keeping runs cheap preserves the fuel/credit headroom
   // to re-fly and to weather tribute demands.
   const signFuelCap = ship.maxFuel * SIGN_FUEL_FRACTION;
-  const reachable = ranked
-    .filter((c) => c.fuel <= signFuelCap)
-    .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
-    .filter((c) => c.net > 0)
-    .sort((a, b) => b.net - a.net || a.index - b.index);
+  const signableWithin = (cap: number) =>
+    ranked
+      .filter((c) => c.fuel <= cap)
+      .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
+      .filter((c) => c.net > 0)
+      .sort((a, b) => b.net - a.net || a.index - b.index);
+  let reachable = signableWithin(signFuelCap);
+  // T-1104 poverty-trap fix: T-1104 lets rollContract route the trader to a Rim
+  // system, and from the Rim EVERY core-bound contract's leg exceeds 0.6 of the
+  // tank — so the re-flight-margin cap leaves `reachable` empty and a rich,
+  // full-tank trader strands for days waiting on a rare short hop (seed 1 stalled
+  // 9 days at system 17). When nothing is signable within the margin cap, relax
+  // to the FULL tank so the trader takes the run it can actually complete (it can
+  // afford the fuel and accepts the thinner re-flight margin) rather than idling.
+  // Reader: campaign.test.ts's 300-day poverty-trap invariant (streak < 5).
+  if (reachable.length === 0) {
+    reachable = signableWithin(ship.maxFuel);
+  }
 
   let primaryDest: number | null = null;
   if (state.player.activeContract) {
@@ -804,7 +817,17 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   const refuel = planRefuel(state, ledger, 0);
   if (refuel) actions.push(refuel.action);
 
+  // T-1104: only sign a contract whose jump fits inside SIGN_FUEL_FRACTION of the
+  // tank — the SAME reachability gate trader/veteran already apply. Before
+  // rollContract issued rim destinations the richest contract was always a
+  // fuelable core run, so picking ranked[0] raw was safe; now the richest is
+  // often a long, high-DC rim run this ship can neither fuel nor fly, and signing
+  // it locked the contract (a failed jump never clears activeContract) and
+  // poverty-trapped the fighter. Filtering to reachable runs keeps "richest run"
+  // intent while refusing the unwinnable rim temptation.
   const ranked = rankedContracts(state);
+  const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
+  const reachable = ranked.filter((c) => c.fuel <= signFuelCap);
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -814,8 +837,8 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
-  } else if (ranked.length > 0) {
-    const best = ranked[0];
+  } else if (reachable.length > 0) {
+    const best = reachable[0];
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
@@ -861,7 +884,11 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // Explorers burn fuel fast — keep the tank fuller than a trader would.
   const refuel = planRefuel(state, ledger, 0, 200, 400);
 
+  // T-1104: reachability gate (see fighterPolicy) — refuse the unfuelable rim
+  // run the richest-first ranking would otherwise sign and get stranded on.
   const ranked = rankedContracts(state);
+  const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
+  const reachable = ranked.filter((c) => c.fuel <= signFuelCap);
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -871,8 +898,8 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
-  } else if (ranked.length > 0) {
-    const best = ranked[0];
+  } else if (reachable.length > 0) {
+    const best = reachable[0];
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {

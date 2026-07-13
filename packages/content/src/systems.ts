@@ -11,6 +11,16 @@ export interface StarSystem {
   coordinates: StarCoordinates;
   fuelBuyPrice?: number; // Base buy price for fuel, if defined
   fuelSellPrice?: number; // Base sell price for fuel, if defined
+  /**
+   * T-1104 · Whether this port supplies Contraband (cargo type 10) contracts.
+   * The smuggling pillar's SUPPLY gate: only ports flagged here can issue a
+   * Contraband run (engine `rollContract`). Set true for the six rim systems —
+   * PRD §10 ("the Rebel Alliance … smuggling lanes, the frontier ungoverned")
+   * makes the ungoverned rim the natural source of illegal cargo, so contraband
+   * is both port-gated AND reachable (the coverage sweep iterates rim origins).
+   * Contraband READER for the carrying consequence is T-1305 patrol scans.
+   */
+  allowsContraband?: boolean;
 }
 
 // T-1101 · Real 2D starmap geography (authority: PRD-REIMAGINED §9 — "the map:
@@ -79,12 +89,50 @@ export const STAR_SYSTEMS: Record<number, StarSystem> = {
   // mean, so genuinely outlying, yet still inside a single starter jump: a strong
   // die clears the pilot DC, keeping "one more run to the rim" reachable in one
   // hop rather than pilot-locked behind the DC ceiling of a fresh spacer).
-  15: { id: 15, name: 'Antares-5', isRim: true, coordinates: { x: 16, y: 13 } },
-  16: { id: 16, name: 'Capella-4', isRim: true, coordinates: { x: -20, y: 6 } },
-  17: { id: 17, name: 'Polaris-1', isRim: true, coordinates: { x: -12, y: -18 } },
-  18: { id: 18, name: 'Mizar-9', isRim: true, coordinates: { x: 6, y: -21 } }, // Sage of Mizar-9 (§9)
-  19: { id: 19, name: 'Achernar-5', isRim: true, coordinates: { x: 21, y: -10 } },
-  20: { id: 20, name: 'Algol-2', isRim: true, coordinates: { x: -22, y: -7 } },
+  // T-1104: allowsContraband on all six — the ungoverned rim supplies the
+  // smuggling pillar (PRD §10). This is the port gate for cargo type 10.
+  15: {
+    id: 15,
+    name: 'Antares-5',
+    isRim: true,
+    coordinates: { x: 16, y: 13 },
+    allowsContraband: true,
+  },
+  16: {
+    id: 16,
+    name: 'Capella-4',
+    isRim: true,
+    coordinates: { x: -20, y: 6 },
+    allowsContraband: true,
+  },
+  17: {
+    id: 17,
+    name: 'Polaris-1',
+    isRim: true,
+    coordinates: { x: -12, y: -18 },
+    allowsContraband: true,
+  },
+  18: {
+    id: 18,
+    name: 'Mizar-9',
+    isRim: true,
+    coordinates: { x: 6, y: -21 },
+    allowsContraband: true,
+  }, // Sage of Mizar-9 (§9)
+  19: {
+    id: 19,
+    name: 'Achernar-5',
+    isRim: true,
+    coordinates: { x: 21, y: -10 },
+    allowsContraband: true,
+  },
+  20: {
+    id: 20,
+    name: 'Algol-2',
+    isRim: true,
+    coordinates: { x: -22, y: -7 },
+    allowsContraband: true,
+  },
 
   // Andromeda Systems (beyond, on the far side of the Nemesis crossing)
   21: { id: 21, name: 'NGC-44', isRim: false, coordinates: { x: 44, y: 22 } },

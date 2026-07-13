@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { distance } from '@spacerquest/content';
+import { CARGO_TYPES, distance, SYSTEM_DANGER_LEVELS } from '@spacerquest/content';
 import {
   calculateFuelCapacity,
   generateManifestBoard,
+  isCarryingContraband,
   jumpFuelCost,
   maxJumpDistance,
 } from '../economy.js';
 import { resolveShipyard } from '../actions/shipyard.js';
 import { travelDc } from '../actions/travel.js';
-import { createInitialState, starterShip } from '../state.js';
+import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { SeededRng } from '../rng.js';
 import { ShipState } from '../types.js';
 
@@ -44,18 +45,24 @@ describe('economy', () => {
 
     const board = generateManifestBoard(originSystem, rng, shipState);
 
-    // T-1101: real 2D coordinates — Deneb-4 (5) moved off the y=0 line, so the
-    // NGC-44 -> Deneb-4 distance (and the distance-priced payment) shifted.
-    expect(distance(21, 5)).toBe(51);
-    // T-1102: fuel-scarcity overhaul removed the 50-fuel jump cap, so the
-    // distance-priced fuelRequired (now 12·51 = 612, was capped at 50) lifts the
-    // fuel component of the payment (612·5 vs 50·5): 459·10 + 612·5 + 1000 = 8650.
+    // T-1104: the rollContract RNG draw order changed (cargo pool → contraband
+    // gate → destination, and destination now rolls 1–20 not 1–14), so the
+    // seeded output for this origin moved. NGC-44 (21) is non-rim/non-contraband,
+    // so the pool is core 1–9 and no contraband draw is taken — the destination
+    // is now Fomalhaut-2 (7), a core (danger-tier-1) system, so the payment keeps
+    // the exact core shape: valueMult·dist·upodX·dangerMult + fuelRequired·5 + 1000
+    // with dangerMult = 1. This recomputes (not deletes) the old assertion.
+    const distTo7 = distance(21, 7); // NGC-44 -> Fomalhaut-2
+    const fuel7 = jumpFuelCost({ strength: 10, condition: 9 }, distTo7);
+    // 9 (valueMult) · distTo7 · 10 (upodX) · 1 (dangerMult) + fuel7·5 + 1000.
+    const expected = 9 * distTo7 * 10 * 1 + fuel7 * 5 + 1000;
     expect(board[0]).toMatchObject({
-      destination: 5,
+      destination: 7,
       cargoType: 9,
       pods: 10,
-      payment: 8650,
+      payment: expected,
     });
+    expect(expected).toBe(9100); // pinned literal (guards the formula from drift)
   });
 
   it('uses repaired hull condition when generating manifest pod counts', () => {
@@ -167,6 +174,101 @@ describe('economy', () => {
     it('returns 0 capacity for a destroyed hull', () => {
       expect(calculateFuelCapacity(0, 9)).toBe(0);
       expect(calculateFuelCapacity(1, 0)).toBe(0);
+    });
+  });
+
+  // T-1104: Rim & contraband contract economy. Before this task rollContract
+  // only issued destinations 1–14 and cargo types 1–9 — no rim payday, no
+  // smuggling supply. These tests are the acceptance harness.
+  describe('rim & contraband contracts (T-1104)', () => {
+    const spec: ShipState = {
+      fuel: 100,
+      cargoPods: 10,
+      hull: { strength: 1, condition: 9 },
+      drives: { strength: 10, condition: 9 },
+    } as ShipState; // full-pod stub
+
+    it('a 200-seed sweep issues every destination 1–20 and every cargo type incl. Contraband', () => {
+      const destSeen = new Set<number>();
+      const cargoSeen = new Set<number>();
+      const contrabandOrigins = new Set<number>();
+      for (let seed = 1; seed <= 200; seed += 1) {
+        for (let origin = 1; origin <= 20; origin += 1) {
+          const board = generateManifestBoard(origin, new SeededRng(seed), spec);
+          for (const c of board) {
+            destSeen.add(c.destination);
+            cargoSeen.add(c.cargoType);
+            if (c.cargoType === 10) contrabandOrigins.add(origin);
+          }
+        }
+      }
+      // Every rim system (15–20) receives at least one contract — the namesake
+      // region finally has a payday.
+      for (let dest = 15; dest <= 20; dest += 1) {
+        expect(destSeen.has(dest)).toBe(true);
+      }
+      // Every cargo type is issued, including the six rim goods AND Contraband
+      // (10) — the smuggling pillar now has supply.
+      for (const type of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 16, 17, 18, 19, 20]) {
+        expect(cargoSeen.has(type)).toBe(true);
+      }
+      // Contraband is PORT-GATED: it only ever originates from the six rim
+      // systems (the allowsContraband ports), never a core port.
+      expect([...contrabandOrigins].sort((a, b) => a - b)).toEqual([15, 16, 17, 18, 19, 20]);
+    });
+
+    it('rim EV premium sits inside a stated band (3× danger + 5× fuel)', () => {
+      let coreSum = 0;
+      let coreN = 0;
+      let rimSum = 0;
+      let rimN = 0;
+      for (let seed = 1; seed <= 200; seed += 1) {
+        for (let origin = 1; origin <= 20; origin += 1) {
+          const board = generateManifestBoard(origin, new SeededRng(seed), spec);
+          for (const c of board) {
+            const danger = SYSTEM_DANGER_LEVELS[c.destination];
+            if (danger === 3) {
+              rimSum += c.payment;
+              rimN += 1;
+            } else if (danger === 1) {
+              coreSum += c.payment;
+              coreN += 1;
+            }
+          }
+        }
+      }
+      const coreMean = coreSum / coreN;
+      const rimMean = rimSum / rimN;
+      const ratio = rimMean / coreMean;
+      // Measured at authoring time: coreMean ≈ 2588, rimMean ≈ 6295, ratio ≈ 2.43.
+      // The premium comes from dangerMult (rim = 3, core = 1) times the value term
+      // plus the far larger fuelRequired·5 term on long rim jumps. The band is a
+      // REAL premium (>1.8×) that is not a runaway (<4.5×). Not tuned to pass —
+      // the measured 2.43 sits comfortably inside.
+      expect(ratio).toBeGreaterThan(1.8);
+      expect(ratio).toBeLessThan(4.5);
+    });
+
+    it('a Contraband active contract sets the carrying state and survives JSON round-trip', () => {
+      // Signing a Contraband contract sets player.activeContract (trade.ts); the
+      // derived isCarryingContraband reader (T-1305 patrol scans) reads it.
+      const state = createInitialState(1);
+      state.player.activeContract = { destination: 15, cargoType: 10, payment: 5000, pods: 10 };
+      expect(CARGO_TYPES[10].isContraband).toBe(true);
+      expect(isCarryingContraband(state)).toBe(true);
+
+      // The carrying state is derived from a serialized field, so it survives the
+      // JSON round-trip with no dedicated GameState boolean / migration.
+      const roundTripped = deserializeState(serializeState(state));
+      expect(isCarryingContraband(roundTripped)).toBe(true);
+
+      // A legal rim-cargo contract (type 20) is NOT contraband.
+      const legal = createInitialState(1);
+      legal.player.activeContract = { destination: 15, cargoType: 20, payment: 5000, pods: 10 };
+      expect(isCarryingContraband(legal)).toBe(false);
+      // No active contract → not carrying.
+      legal.player.activeContract = null;
+      expect(isCarryingContraband(legal)).toBe(false);
     });
   });
 

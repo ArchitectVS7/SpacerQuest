@@ -1,10 +1,12 @@
 import {
+  CARGO_TYPES,
   FUEL_DEFAULT_BUY_PRICE,
   RIM_FUEL_BUY_PRICE,
   STAR_SYSTEMS,
+  SYSTEM_DANGER_LEVELS,
   distance as systemDistance,
 } from '@spacerquest/content';
-import { CargoContract, EraEventState, ShipState } from './types.js';
+import { CargoContract, EraEventState, GameState, ShipState } from './types.js';
 import { SeededRng } from './rng.js';
 import { eraFuelPriceMultiplier, eraPaymentMultiplier } from './era.js';
 
@@ -136,10 +138,60 @@ export function contractSpecFromShip(ship: ShipState): ContractShipSpec {
 }
 
 /**
+ * T-1104 · Chance a contraband-allowing port issues a Contraband (type 10)
+ * contract instead of its pool pick. Rare on purpose — the smuggling pillar is a
+ * high-stakes exception, not the daily trade — but frequent enough that the
+ * 200-seed coverage sweep across the six rim ports reliably surfaces it.
+ * DIVERGENCE from foundation (ref f2f95fa9): foundation never issued type 10 at
+ * all, so there is no prior number to preserve; 0.08 is a Rimward-authored rate.
+ */
+export const CONTRABAND_CONTRACT_CHANCE = 0.08;
+
+/**
+ * T-1104 · Chance a contract's destination is a Rim system (15–20) rather than a
+ * core system (1–14). The Rim is the RARE, high-stakes "one more run" (PRD §9),
+ * NOT a routine third of the board: a uniform 1–20 roll put ~30% of every 4-slot
+ * board on the Rim, and because a rim run pays the most (the 3× danger + 5× fuel
+ * premium) the greedy contract rankers signed it every day — then failed the
+ * long jump's high pilot DC and never delivered, poverty-trapping every
+ * competent policy (verified: a fighter signed 118 unwinnable rim runs in 120
+ * days, 0 delivered). Offering the Rim ~12% of the time keeps it the exceptional
+ * temptation the design names while still giving the 200-seed coverage sweep
+ * every rim system many times over.
+ * DIVERGENCE from foundation (ref f2f95fa9): foundation never issued a rim
+ * destination at all, so there is no prior weighting to preserve.
+ */
+export const RIM_DESTINATION_CHANCE = 0.12;
+
+/**
+ * T-1104 · Base per-danger-tier payment cap. DIVERGENCE from foundation's flat
+ * 15000 ceiling (ref f2f95fa9): a flat cap FLATTENS the rim payday this task
+ * exists to create — a rim run's distance-driven fuel term alone blows past
+ * 15000, so a single ceiling would erase the "3× danger + 5× fuel" premium and
+ * make a rim run pay the same as a core hop. Scaling the cap by the destination
+ * danger tier (core tier 1 → 15000 unchanged; rim tier 3 → 45000) preserves core
+ * numerics exactly while letting the rim premium actually land.
+ */
+export const PAYMENT_CAP_PER_DANGER = 15000;
+
+/**
  * Rolls a single cargo contract offer from a system's job pool.
- * Matches original logic: random cargo type (1-9), random destination (not
- * current system). Payment scales with distance, cargo type value, and
- * serviceable cargo pods.
+ *
+ * T-1104 · Rim & contraband contract economy. Previously this only ever issued
+ * destinations 1–14 and cargo types 1–9, so no contract routed to the Rim, the
+ * six rim cargo types (15–20) were never issued, and Contraband (10) was
+ * unobtainable — the namesake region had no payday and the smuggling pillar no
+ * supply. Now:
+ *   - destination is rolled 1–20 (core + rim), never a gated system (21+);
+ *   - the cargo pool is data-driven: core 1–9 always, plus rim goods 15–20 when
+ *     the origin `isRim` (rim cargo originates at rim ports);
+ *   - Contraband (10) is rare, flagged, and PORT-GATED — only issued from ports
+ *     with `allowsContraband` (the ungoverned rim, PRD §10);
+ *   - the rim premium is priced against 5× fuel (the `fuelRequired * 5` term,
+ *     large on rim distances) and 3× danger (the `dangerMult` from
+ *     SYSTEM_DANGER_LEVELS, which is 3 on the rim, 1 in the core), so "one more
+ *     run to the rim" (PRD §9) is the high-stakes payday the design names as its
+ *     soul. Core payments are numerically UNCHANGED (dangerMult 1, cap 15000).
  */
 export function rollContract(
   originSystem: number,
@@ -147,14 +199,34 @@ export function rollContract(
   spec: ContractShipSpec,
   eraEvent: EraEventState | null = null,
 ): CargoContract {
-  // Cargo type 1-9
-  const cargoType = Math.floor(rng.next() * 9) + 1;
+  const origin = STAR_SYSTEMS[originSystem];
 
-  // Destination 1-14, excluding origin
-  let destination = Math.floor(rng.next() * 14) + 1;
+  // --- Cargo type (T-1104) ---
+  // Pool is built from CONTENT flags, not hardcoded engine branches: core 1–9
+  // always, rim goods 15–20 when the origin is a rim port. Draw order (cargo
+  // pool → contraband gate → destination) is fixed and load-bearing for
+  // determinism — the economy tests pin exact seeded outputs against it.
+  const pool = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  if (origin?.isRim) pool.push(15, 16, 17, 18, 19, 20);
+  let cargoType = pool[Math.floor(rng.next() * pool.length)];
+  // Contraband override: only a contraband-allowing port can supply type 10,
+  // and only on a rare roll. This is the smuggling pillar's SUPPLY.
+  if (origin?.allowsContraband && rng.next() < CONTRABAND_CONTRACT_CHANCE) {
+    cargoType = 10;
+  }
+
+  // Destination: core 1–14 is the everyday board; the Rim 15–20 is offered only
+  // RARELY (RIM_DESTINATION_CHANCE) so "one more run to the rim" stays the
+  // exception, not the rule. Gated systems (21+) are excluded by construction —
+  // never rolled. Draw order is fixed and load-bearing for determinism.
+  let destination: number;
+  if (rng.next() < RIM_DESTINATION_CHANCE) {
+    destination = 15 + Math.floor(rng.next() * 6); // rim 15–20
+  } else {
+    destination = 1 + Math.floor(rng.next() * 14); // core 1–14
+  }
   if (destination === originSystem) {
-    if (originSystem < 14) destination += 1;
-    else destination -= 1;
+    destination = originSystem < 20 ? destination + 1 : destination - 1;
   }
 
   const routeDistance = systemDistance(originSystem, destination);
@@ -173,14 +245,22 @@ export function rollContract(
   // Fuel required for calculation — same math as the actual jump
   const fuelRequired = jumpFuelCost(spec.drives, routeDistance);
 
-  // Payment formula
-  const valuePerPod = cargoType * 3;
-  let payment = valuePerPod * routeDistance;
-  if (payment < 3) payment = 3;
-  payment = Math.floor(payment / 3);
+  // --- Payment (T-1104) ---
+  // valueMult comes from content (CARGO_TYPES), NOT an engine id→value branch.
+  // For CORE cargo valueMult === id, so `valueMult * routeDistance` reproduces
+  // the old `floor(cargoType*3*dist/3)` exactly (core numerics unchanged).
+  const valueMult = CARGO_TYPES[cargoType]?.valueMultiplier ?? cargoType;
+  // dangerMult is the "3× danger" premium: 3 on the rim, 1 in the core (no-op).
+  const dangerMult = SYSTEM_DANGER_LEVELS[destination] ?? 1;
+  let payment = valueMult * routeDistance;
+  if (payment < 1) payment = 1;
   payment = payment * upodX;
-  payment = payment + fuelRequired * 5 + 1000;
-  if (payment > 15000) payment = 15000;
+  payment = payment * dangerMult; // T-1104: 3× danger premium (core dangerMult=1)
+  payment = payment + fuelRequired * 5 + 1000; // T-1104: 5× fuel premium (rim's long jumps make this term large)
+  // T-1104: cap scales with danger so the rim premium isn't flattened (see
+  // PAYMENT_CAP_PER_DANGER). Core (tier 1) keeps the exact 15000 foundation cap.
+  const cap = PAYMENT_CAP_PER_DANGER * dangerMult;
+  if (payment > cap) payment = cap;
 
   // T-107: an active era event re-prices the run. Applied AFTER the base cap so
   // "the economy fights back" — a plague can push medicine past the normal
@@ -225,4 +305,24 @@ export function generateManifestBoard(
   }
 
   return board;
+}
+
+/**
+ * T-1104 · The "carrying contraband" state. DERIVED from the already-serialized
+ * `player.activeContract.cargoType` (no new GameState field, no save migration):
+ * signing a Contraband contract sets `activeContract` (actions/trade.ts) → this
+ * becomes true; delivering it clears `activeContract` (actions/travel.ts) → this
+ * clears. Because it reads a serialized field it survives JSON round-trip for
+ * free (asserted in economy.test.ts) with zero risk of desync against a
+ * redundant boolean.
+ *
+ * READER: T-1305 patrol scans. A patrol boarding calls this to decide whether to
+ * roll a GUILE check against the player for carrying illegal cargo (PRD §7.2:
+ * "patrol captains roll GUILE checks against smugglers"). Until T-1305 wires the
+ * boarding consequence, this is the single predicate that surfacing task will
+ * read — it is the named reader of the carrying state this task sets.
+ */
+export function isCarryingContraband(state: GameState): boolean {
+  const c = state.player.activeContract;
+  return !!c && CARGO_TYPES[c.cargoType]?.isContraband === true;
 }

@@ -7,21 +7,23 @@ import { createInitialState, startDay, createSave } from '@spacerquest/engine';
 // specs do — never an in-page engine call that bypasses a screen the player uses.
 //
 //   Fresh default seed 424242 (Test A): Day 1 at Sun-3, dawn hand [19,14,14,13,3].
-//     - Contract 0 carries cargo to system 3.
+//     - Contract 0 carries cargo to system 9.
 //     - Sign with die index 0, top the tank off (a visible fuel affordance), then
-//       jump with die index 2 → delivery pays out (1,000 → 3,120cr, hold empties).
+//       jump with die index 2 → delivery pays out (1,000 → 3,420cr, hold empties).
 //       The whole first delivery is reachable guided by the contextual prompts +
 //       visible affordances.
-//     - T-1103 re-fixture: the encounter-rate repair (core 0.08 -> 0.30) makes a
-//       LOADED delivery jump land at danger tier 3 (base + distance + cargo bumps
-//       = 0.40 chance); on seed 424242 the bare sign->jump now drops into an
-//       interceptor. Interposing the fuel top-off (one engine action) advances the
-//       RNG stream so the guided jump's encounter roll clears the route chance and
-//       the first delivery is clean again — re-derived offline by replaying
-//       startDay(createInitialState(424242)) -> sign -> buy-fuel -> Travel. The
-//       fuel top-off is itself on-PRD onboarding ("fuel is the plot"). Seed 424242
-//       is the store's shared default and is deliberately UNCHANGED. (T-1102 also
-//       moved the payout when jump cost went per-distance.)
+//     - T-1104 re-fixture: the rim/contraband payment overhaul changed rollContract's
+//       RNG draw order (it now rolls a rim-vs-core coin BEFORE the destination), which
+//       re-rolls the whole board for seed 424242 — contract 0 now routes to system 9
+//       (was 3) and pays 2,500 (final credits 3,420, was 3,120). Re-derived offline by
+//       replaying startDay(createInitialState(424242)) -> sign -> buy-fuel -> Travel:
+//       the guided jump to system 9 lands clean (no interceptor) and the hold empties.
+//     - T-1103 rationale (still holds): the encounter-rate repair (core 0.08 -> 0.30)
+//       makes a LOADED delivery jump risk an interceptor; interposing the fuel top-off
+//       (one engine action) advances the RNG stream so the guided jump's encounter roll
+//       clears — verified clean under the T-1104 stream above. The fuel top-off is
+//       itself on-PRD onboarding ("fuel is the plot"). Seed 424242 is the store's shared
+//       default and is deliberately UNCHANGED.
 //   Seed 887 (Test B): dawn hand [20,18,13,7,6]; jump die INDEX 1 (value 18, which
 //     clears the T-1101 rim DC 18) to system 15 triggers a tier-2 encounter (the
 //     combat-spec fixture). T-1103: still fires (rim rate rose 0.32 -> 0.50).
@@ -93,10 +95,10 @@ test('fresh seed: first delivery guided by visible affordances; each prompt fire
   //    the hold empties. first-jump AUTO-dismisses and, the delivery done, no
   //    further prompt is due.
   await page.getByTestId('die').nth(2).click();
-  await page.locator('[data-testid="starmap-system"][data-system-id="3"]').click();
+  await page.locator('[data-testid="starmap-system"][data-system-id="9"]').click();
   await page.getByTestId('confirm-jump').click();
 
-  await expect(page.getByTestId('credits')).toHaveText('3,120');
+  await expect(page.getByTestId('credits')).toHaveText('3,420');
   await expect(page.getByTestId('active-contract-empty')).toBeVisible();
   await expect(coach).toHaveCount(0);
 
