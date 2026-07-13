@@ -5,6 +5,7 @@ export * from './state.js';
 export * from './schema.js';
 export * from './save.js';
 export * from './day.js';
+export * from './wire.js';
 export * from './npc.js';
 export * from './economy.js';
 export * from './era.js';

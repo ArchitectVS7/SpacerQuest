@@ -123,11 +123,20 @@ export function runDayLoopGolden(
 // rules themselves are unchanged — only the NPCs now roll real checks.
 // (Prior T-1104 re-derivation: rollContract's RNG draw order and destination/
 // cargo ranges changed the manifest board and contract-driven event fields.)
+//
+// T-1202 re-derivation: nat-20/nat-1 checks now always spin a Galactic Wire story
+// (day.ts scans each action + the dusk batch, emitting extra WireEntry events), so
+// both scripts' EVENT streams grow. The scripts also exercise haggle (now
+// margin-scaled, not flat 1.5x) and Combat (interceptor damage now margin-scaled),
+// which move the serialized STATE too. The wire scanner is seeded from the stable
+// pre-action rngState, so it does NOT perturb the persisted rngState — the NPC sim
+// stream is unchanged; only the added stories + rebalanced haggle/combat drift the
+// hashes. All four regenerated deliberately via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '7a7011f26e69e2341548a95f777c33b647b2e02dd2e9dd9f12a327225dd15c0b';
+  'ebcd2516354a1f59179dc12beed626916b7ee8859caf742fec7ae66da48f3e1f';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '89f4edc0665e136ded67e41b5cdda972bd8b20d6982b4c4d05a34b16a2ea40d2';
+  'edae218dc27b64f0f27e7543eb98e0a7d37a568bdbf5b1ff26209b5ea0fbd839';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '242a21b715aacc51b186d4b231fbf0b7bd3aec671a7eb4eae1e2dcc61270300a';
+  '9c10750ea5bd9fb5f3593ae7adfa81425d5f3ad2b7a68f9a82f663f63dc9f876';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '1a92099bfde195465be719a8c8877a7f2ecc03038511463da5c9dfa739e41c37';
+  '5e726f54f9f6fccbb499350a4c52f1c749bc581c8d6c0f1e3296c0e1ccd6ff04';

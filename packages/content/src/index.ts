@@ -12,3 +12,4 @@ export * from './upgrades.js';
 export * from './deeds.js';
 export * from './storylets.js';
 export * from './storyletValidation.js';
+export * from './wireStories.js';

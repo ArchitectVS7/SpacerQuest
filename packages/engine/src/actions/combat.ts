@@ -145,7 +145,16 @@ function applyEnemyPressure(
     const component = damageComponentForRound(round);
     const target = state.player.ship[component];
     const previousCondition = target.condition;
-    target.condition = Math.max(0, target.condition - 1);
+    // T-1202 (PRD §6 "the margin decides how well it goes"): a clean interceptor
+    // hit bites deeper. A natural 20 removes 3 condition, a big-margin (>=10) hit
+    // 2, an ordinary hit the base 1. FOUNDATION DIVERGENCE — foundation (f2f95fa9)
+    // resolved enemy damage as a flat vandalism roll with no d20 margin; the
+    // margin scaling is new. The >=10 threshold is deliberately out of reach for
+    // the low-GUNS rank-and-file (margin = die + interceptorGUNS - (10+playerGRIT)),
+    // so ordinary interceptors still chip 1/round; only strong guns or a nat-20
+    // land the deeper hit.
+    const dmg = result.nat20 ? 3 : result.margin >= 10 ? 2 : 1;
+    target.condition = Math.max(0, target.condition - dmg);
     events.push({
       type: 'ComponentDamaged',
       encounterId: encounter.id,
@@ -445,22 +454,30 @@ function resolveTalk(
 
   // Non-nat-20 success: the interceptor accepts this round's tribute.
   if (result.success) {
+    // T-1202 (PRD §6 "the margin decides how well it goes"): the DEMAND stays the
+    // round schedule `amount`, but a stronger talk-down SHAVES what is actually
+    // handed over — 5% off per point of margin. FOUNDATION DIVERGENCE — foundation
+    // (f2f95fa9) paid the full demanded tribute with no margin discount. The
+    // TributeDemanded.amount still reports the demand; affordability + the actual
+    // deduction + TributePaid.amount all use the discounted `paid`.
+    const paid = Math.max(1, Math.floor(amount * (1 - 0.05 * Math.max(0, result.margin))));
+    const canAfford = state.player.credits >= paid;
     events.push({
       type: 'TributeDemanded',
       encounterId: encounter.id,
       round,
       amount,
       refused: false,
-      affordable,
+      affordable: canAfford,
     });
 
-    if (affordable) {
-      state.player.credits -= amount;
+    if (canAfford) {
+      state.player.credits -= paid;
       events.push({
         type: 'TributePaid',
         encounterId: encounter.id,
         round,
-        amount,
+        amount: paid,
         creditsRemaining: state.player.credits,
       });
       // T-106 disposition: a named interceptor who got paid remembers the

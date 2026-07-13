@@ -22,6 +22,7 @@ import { resolveShipyard } from './actions/shipyard.js';
 import { resolveExploration } from './actions/exploration.js';
 import { evaluateDeeds } from './deeds.js';
 import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
+import { natWireStories } from './wire.js';
 
 function cloneState(state: GameState): GameState {
   return JSON.parse(JSON.stringify(state)) as GameState;
@@ -180,6 +181,17 @@ export function applyPlayerAction(
   const refreshed = refreshAvailableStorylets(resolvedState);
   resolvedState = refreshed.state;
   const events = [...result.events, ...deedEvents, ...refreshed.events];
+  // T-1202 (PRD §6): any player/interceptor check in this action that came up a
+  // natural 20 or natural 1 always spins a Galactic Wire story. Seeded from the
+  // STABLE pre-action rngState (never `dayRng`, whose state is already persisted
+  // above) so scanning cannot perturb determinism or the golden fixtures.
+  const natWire = natWireStories(
+    events,
+    resolvedState.day,
+    new SeededRng(state.rngState).fork(`wire-nat-day-${actionEventIndex}`),
+    resolvedState.npcs,
+  );
+  events.push(...natWire);
   resolvedState.dayEventCount = actionEventIndex + events.length;
   appendEvents(resolvedState, events);
 
@@ -467,6 +479,20 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   nextState.eraEvent = eraResult.eraEvent;
   nextState.lastEraEventEndedDay = eraResult.lastEraEventEndedDay;
   events.push(...eraResult.events);
+
+  // T-1202 (PRD §6): scan the dusk batch — every NPC verb check (T-1201) plus any
+  // interceptor enemy-pressure check — for natural 20s / 1s and file a Wire story
+  // for each. Runs while `nextState.day` still holds the current day (before the
+  // increment below) so the entries carry the correct day, and rides along in the
+  // single appendEvents at the end. Seeded from the STABLE pre-dusk rngState, not
+  // the live `dayRng` (whose state is persisted below), to keep determinism.
+  const natWire = natWireStories(
+    events,
+    nextState.day,
+    new SeededRng(state.rngState).fork('wire-nat-dusk'),
+    nextState.npcs,
+  );
+  events.push(...natWire);
 
   // 4. NEXT DAY PREP
   const nextDay = nextState.day + 1;

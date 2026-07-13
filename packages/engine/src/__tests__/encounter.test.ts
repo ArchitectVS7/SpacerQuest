@@ -442,11 +442,14 @@ describe('Encounter system', () => {
     );
 
     expect(nextState.encounter).toBeNull();
-    expect(nextState.player.credits).toBe(500);
+    // T-1202: the DEMAND is the round-1 schedule (1000), but margin scales what is
+    // actually paid. die 19 + TRADE 1 vs DC 11 → margin 9 → 45% off → paid 550, so
+    // 1500 - 550 = 950 remain.
+    expect(nextState.player.credits).toBe(950);
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'TributeDemanded', amount: 1000, affordable: true }),
     );
-    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 1000 }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 550 }));
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'EncounterResolved', resolution: 'talked-down' }),
     );
@@ -492,11 +495,13 @@ describe('Encounter system', () => {
       new SeededRng(1),
     );
 
-    expect(nextState.player.credits).toBe(10_000);
+    // T-1202: the DEMAND still caps at 10,000 (the point of this test), but the
+    // margin-9 talk-down shaves 45% off the payment → paid 5,500, leaving 14,500.
+    expect(nextState.player.credits).toBe(14_500);
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'TributeDemanded', amount: 10_000 }),
     );
-    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 10_000 }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 5_500 }));
   });
 
   it('enemy flaw check can refuse tribute and keep combat active', () => {
@@ -553,8 +558,9 @@ describe('Encounter system', () => {
     // accepted normally.
     expect(events.some((event) => event.type === 'FlawCheck')).toBe(false);
     expect(nextState.encounter).toBeNull();
-    expect(nextState.player.credits).toBe(4000);
-    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 1000 }));
+    // T-1202: margin-9 talk-down → paid 550 (not the full 1000 demand) → 5000-550.
+    expect(nextState.player.credits).toBe(4450);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 550 }));
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'EncounterResolved', resolution: 'talked-down' }),
     );
@@ -665,7 +671,9 @@ describe('Encounter system', () => {
         expect.objectContaining({
           type: 'ComponentDamaged',
           component: 'shields',
-          newCondition: 8,
+          // T-1202: interceptor GUNS 20 → margin 22 (>=10) → the clean hit takes 2
+          // condition, 9 -> 7 (foundation flat-1 damage → margin-scaled).
+          newCondition: 7,
         }),
       ]),
     );
@@ -673,7 +681,8 @@ describe('Encounter system', () => {
     expect(roundTwo.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: 'CombatEvent', stance: 'fight', enemyHullRemaining: 1 }),
-        expect.objectContaining({ type: 'ComponentDamaged', component: 'drives', newCondition: 8 }),
+        // T-1202: same big-margin interceptor hit takes 2 condition, 9 -> 7.
+        expect.objectContaining({ type: 'ComponentDamaged', component: 'drives', newCondition: 7 }),
       ]),
     );
     expect(roundThree.state.encounter).toBeNull();
