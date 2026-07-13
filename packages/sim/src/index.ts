@@ -453,8 +453,12 @@ interface RankedContract {
   fuel: number;
 }
 
-/** The manifest board ranked by payment, richest first (board order as the
- *  tiebreak so the choice is deterministic). */
+/** The manifest board annotated with distance and jump fuel from the current
+ *  system, pre-sorted by RAW payment, richest first (board order as the
+ *  tiebreak so the choice is deterministic). Note: this is only the raw
+ *  pre-ranking — since T-1102 `traderPolicy` re-ranks the reachable subset by
+ *  NET value (payment minus fuel burn priced at the local depot) before
+ *  signing, so the final choice is made there, not here. */
 function rankedContracts(state: GameState): RankedContract[] {
   const from = state.player.currentSystemId;
   return state.market.manifestBoard

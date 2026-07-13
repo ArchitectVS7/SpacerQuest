@@ -6,6 +6,8 @@ import {
   rollDawnHand,
   type EncounterState,
   type GameState,
+  type PlayerAction,
+  type ShipyardActionKind,
 } from '@spacerquest/engine';
 import { isGatedDestination } from '@spacerquest/content';
 import { describe, expect, it } from 'vitest';
@@ -211,29 +213,55 @@ describe('protocol deterministic replay', () => {
     expect(JSON.stringify(responses)).toBe(REPLAY_GOLDEN_COMBAT_RESPONSES);
   });
 
-  it('the two golden logs cover every PlayerAction type', () => {
+  it('the two golden logs cover every PlayerAction type and sub-action', () => {
     // Guards the fixture against silently losing coverage of an action shape.
-    const shapes = new Set<string>();
+    // Exhaustive BY CONSTRUCTION: each expectation table is a
+    // `Record<Union, true>` validated by `satisfies`, so adding a discriminant
+    // to `PlayerAction` (or a sub-action to its unions) fails `tsc` right here
+    // until this guard — and therefore the fixture — is extended.
+    const expectedTypes = {
+      Trade: true,
+      Travel: true,
+      Combat: true,
+      Shipyard: true,
+      Storylet: true,
+      Explore: true,
+      Wait: true,
+    } satisfies Record<PlayerAction['type'], true>;
+    const expectedTradeSubActions = {
+      'buy-fuel': true,
+      'sign-contract': true,
+      haggle: true,
+      'pay-debt': true,
+    } satisfies Record<Extract<PlayerAction, { type: 'Trade' }>['action'], true>;
+    const expectedShipyardKinds = {
+      'buy-component-tier': true,
+      repair: true,
+      'buy-cargo-pods': true,
+      'buy-special-equipment': true,
+    } satisfies Record<ShipyardActionKind, true>;
+    const expectedCombatStances = {
+      run: true,
+      talk: true,
+      fight: true,
+    } satisfies Record<Extract<PlayerAction, { type: 'Combat' }>['stance'], true>;
+
+    const types = new Set<string>();
+    const tradeSubActions = new Set<string>();
+    const shipyardKinds = new Set<string>();
+    const combatStances = new Set<string>();
     for (const request of [...REPLAY_LOG, ...REPLAY_LOG_COMBAT]) {
       if (request.type !== 'apply-action') continue;
       const action = request.action;
-      shapes.add('action' in action ? `${action.type}/${action.action}` : action.type);
+      types.add(action.type);
+      if (action.type === 'Trade') tradeSubActions.add(action.action);
+      if (action.type === 'Shipyard') shipyardKinds.add(action.action);
+      if (action.type === 'Combat') combatStances.add(action.stance);
     }
-    for (const expected of [
-      'Trade/buy-fuel',
-      'Trade/sign-contract',
-      'Trade/haggle',
-      'Trade/pay-debt',
-      'Travel',
-      'Explore',
-      'Shipyard/repair',
-      'Shipyard/buy-cargo-pods',
-      'Combat',
-      'Storylet',
-      'Wait',
-    ]) {
-      expect(shapes).toContain(expected);
-    }
+    expect([...types].sort()).toEqual(Object.keys(expectedTypes).sort());
+    expect([...tradeSubActions].sort()).toEqual(Object.keys(expectedTradeSubActions).sort());
+    expect([...shipyardKinds].sort()).toEqual(Object.keys(expectedShipyardKinds).sort());
+    expect([...combatStances].sort()).toEqual(Object.keys(expectedCombatStances).sort());
   });
 
   it('replay stays deterministic across independent runs', () => {

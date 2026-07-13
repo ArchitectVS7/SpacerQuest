@@ -233,6 +233,15 @@ describe('shipyard', () => {
     (installed, attempted, conflictingEquipment) => {
       // T-105 intentionally diverges from foundation strip-and-proceed side
       // effects: mutual exclusions are hard failures for clearer headless UX.
+      // VERIFIED against foundation (f2f95fa9:foundation/rules/upgrades.ts,
+      // purchaseSpecialEquipment): foundation strips the OLD part and proceeds
+      // when the new purchase displaces it — AUTO_REPAIR strips Titanium
+      // (~L768-776), TITANIUM_HULL strips Auto-Repair (~L778-783), ARCH_ANGEL /
+      // STAR_BUSTER strip the Cloaker (~L790-793) — and has no gate at all for
+      // buying a CLOAKER while STAR_BUSTER is installed. The reverse direction
+      // (buying CLOAKER over AUTO_REPAIR ~L686-688 / ARCH_ANGEL ~L691-693, or
+      // AUTO_REPAIR over CLOAKER ~L701-703) hard-fails in foundation too, so
+      // only the strip-and-proceed rows below are true divergences.
       const state = shipyardState();
       state.player.ship.hull.strength = 1;
       state.player.ship.shields.strength = 1;

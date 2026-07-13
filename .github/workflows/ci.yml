@@ -68,8 +68,25 @@ jobs:
       - name: Build workspaces
         run: npx tsc -b
 
+      # Cache the downloaded chromium binary (~/.cache/ms-playwright on ubuntu
+      # runners). package-lock.json pins @playwright/test, so its hash changes
+      # exactly when the browser build Playwright wants can change.
+      - name: Cache Playwright browser
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
       - name: Install Playwright browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+        working-directory: packages/ui
+
+      # System deps aren't covered by the cache — install just those on a hit.
+      - name: Install Playwright system deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
         working-directory: packages/ui
 
       - name: Run e2e

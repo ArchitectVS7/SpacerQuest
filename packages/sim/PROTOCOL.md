@@ -219,8 +219,18 @@ Applies a single `PlayerAction` through the engine's **public** API
   session's `eventLog` — matching what the UI commits — but no die is spent and no
   other state changes (a pure log-append). Detect the refusal by scanning the
   response `events` for `ActionBlocked`, not by an error code.
-- **Malformed** (a resolver rejects the action, e.g. a required `spendDie` is
-  missing) → `error` `apply-failed`; the session is not mutated.
+- **Typed exploration fails** (T-1003) — a bad die selection on `Explore` is
+  **not** an error, because `spendDie` is optional/free-form on that action
+  shape: the engine resolves it as an `action-result` whose `events` carry a
+  typed `ExplorationFailed` with `reason` `no-die` (no `spendDie` given),
+  `invalid-die-index` (index outside the dawn hand), or `die-already-spent`.
+  No die is spent and no fuel is burned on these three; each also logs a
+  `WireEntry`. The same event reports Explore's *mechanical* failures —
+  `nav-check` and `insufficient-fuel` — which do spend the die.
+- **Malformed** (a resolver rejects the action's shape, e.g. a Trade, Shipyard,
+  or Combat action missing its **required** `spendDie`) → `error` `apply-failed`;
+  the session is not mutated. Note this does not apply to `Explore`, whose
+  missing/invalid die resolves as a typed `ExplorationFailed` event (above).
 - **Wrong phase** (not DAY) → `error` `wrong-phase`.
 
 ---

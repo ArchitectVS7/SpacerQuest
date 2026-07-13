@@ -242,6 +242,14 @@ function specialEquipmentFailure(
   // T-105 acceptance requires mutual exclusions to emit typed fail events.
   // Foundation strips conflicting equipment and proceeds for some purchases;
   // v1 keeps these installs atomic so headless callers can show a clear choice.
+  // Verified divergence (f2f95fa9:foundation/rules/upgrades.ts,
+  // purchaseSpecialEquipment): foundation strip-and-proceeds when the NEW
+  // purchase displaces the old — AUTO_REPAIR strips Titanium (~L768-776),
+  // TITANIUM_HULL strips Auto-Repair (~L778-783), ARCH_ANGEL/STAR_BUSTER strip
+  // the Cloaker (~L790-793) — and never gates CLOAKER against an installed
+  // STAR_BUSTER. It already hard-fails the reverse direction (CLOAKER over
+  // AUTO_REPAIR ~L686-688 / ARCH_ANGEL ~L691-693; AUTO_REPAIR over CLOAKER
+  // ~L701-703), which v1 matches.
   if (equipment === 'CLOAKER' && ship.hasAutoRepair) {
     return fail(action, {
       reason: 'MUTUALLY_EXCLUSIVE_EQUIPMENT',

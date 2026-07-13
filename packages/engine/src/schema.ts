@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type {
   GameState,
+  GameEvent,
   PlayerAction,
   PlayerState,
   ShipState,
@@ -289,7 +290,13 @@ const DeedRegistryStateSchema = z
 // default STRIP mode — `.strict()` here would reject legitimate content-shaped
 // saves. Every ENGINE-owned state container (Player/Ship/Npc/… above and below)
 // is `.strict()` so unknown nested keys fail loudly instead of being silently
-// dropped; this content boundary is the deliberate exception.
+// dropped; this content boundary is one of exactly TWO runtime-strip
+// exceptions. The other is the GameEventSchema union below: event variants
+// stay in strip mode at RUNTIME for forward-compat (an old engine can load a
+// save whose events carry fields it doesn't know), but unlike this content
+// boundary they are fully covered by COMPILE-TIME keyof guards (see the
+// per-variant assertions at the bottom of this file), so interface/schema
+// drift still fails `tsc` even though it would not fail at load time.
 // NumberMatcher (content) — used inside storylet choice requirements.
 const NumberMatcherSchema = z.object({
   equals: z.number().optional(),
@@ -434,9 +441,19 @@ const PlayerStateSchema = z
 // ---------------------------------------------------------------------------
 // GameEvent — discriminated union on `type` (types.ts: GameEvent)
 // ---------------------------------------------------------------------------
-// Every stored event variant is mirrored precisely. Zod strips unknown keys, so
-// a future task adding a field to an existing event will not reject old/new
-// saves; a genuinely new event `type` would need a new variant here.
+// Every stored event variant is mirrored precisely. These variants deliberately
+// stay in Zod's default STRIP mode at RUNTIME (the second strip exception — see
+// the STRICT BOUNDARY comment above): unknown keys on an event are dropped, not
+// rejected, so an older engine can still load a save whose events carry fields
+// it doesn't know about (forward-compat for the append-only eventLog).
+//
+// DRIFT PROTECTION here is therefore COMPILE-TIME, not runtime: every variant
+// below is paired with its `GameEvent` interface member by a keyof AssertEqual
+// guard at the bottom of this file. Adding a field to a GameEvent variant in
+// types.ts without mirroring it here fails `tsc` — it can never again be
+// silently stripped on load without the build breaking first. A genuinely new
+// event `type` needs a new variant here (the discriminator-set guard catches a
+// missing one).
 
 const GameEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('DawnRoll'), day: z.number(), hand: z.array(z.number()) }),
@@ -929,6 +946,73 @@ const _covInterceptor: AssertEqual<
 const _covEraEvent: AssertEqual<keyof EraEventState, keyof z.infer<typeof EraEventStateSchema>> =
   true;
 
+// ---------------------------------------------------------------------------
+// GameEvent variant guards (T-1002 gap fix).
+//
+// The event union stays in runtime STRIP mode (see the comment above
+// GameEventSchema), so these compile-time guards are the ONLY drift protection
+// for eventLog entries: one keyof assertion per variant, pairing the interface
+// member in types.ts with its schema entry here. `EventVariant`/`SchemaEventVariant`
+// select the matching union member by its `type` discriminator; a variant
+// missing from the schema union extracts to `never`, whose `keyof` cannot equal
+// the interface's keys, so the assertion fails `tsc`.
+// ---------------------------------------------------------------------------
+type GameEventSchemaType = z.infer<typeof GameEventSchema>;
+type EventVariant<T extends GameEvent['type']> = Extract<GameEvent, { type: T }>;
+type SchemaEventVariant<T extends GameEvent['type']> = Extract<GameEventSchemaType, { type: T }>;
+type AssertEventKeys<T extends GameEvent['type']> = AssertEqual<
+  keyof EventVariant<T>,
+  keyof SchemaEventVariant<T>
+>;
+
+// Discriminator-set guard: the schema union has exactly the same `type` literals
+// as the GameEvent union — no missing and no extra variants.
+const _covEventTypes: AssertEqual<GameEvent['type'], GameEventSchemaType['type']> = true;
+
+const _covEvDawnRoll: AssertEventKeys<'DawnRoll'> = true;
+const _covEvStatCheck: AssertEventKeys<'StatCheck'> = true;
+const _covEvFlawCheck: AssertEventKeys<'FlawCheck'> = true;
+const _covEvNpcAction: AssertEventKeys<'NpcAction'> = true;
+const _covEvContractClaimed: AssertEventKeys<'ContractClaimed'> = true;
+const _covEvDispositionChanged: AssertEventKeys<'DispositionChanged'> = true;
+const _covEvBondIntervention: AssertEventKeys<'BondIntervention'> = true;
+const _covEvWireEntry: AssertEventKeys<'WireEntry'> = true;
+const _covEvEraEventStarted: AssertEventKeys<'EraEventStarted'> = true;
+const _covEvEraEventEnded: AssertEventKeys<'EraEventEnded'> = true;
+const _covEvDayAdvanced: AssertEventKeys<'DayAdvanced'> = true;
+const _covEvDeedEarned: AssertEventKeys<'DeedEarned'> = true;
+const _covEvRenownRankUp: AssertEventKeys<'RenownRankUp'> = true;
+const _covEvActionBlocked: AssertEventKeys<'ActionBlocked'> = true;
+const _covEvPoiDiscovered: AssertEventKeys<'PoiDiscovered'> = true;
+const _covEvExplorationFailed: AssertEventKeys<'ExplorationFailed'> = true;
+const _covEvSalvageRecovered: AssertEventKeys<'SalvageRecovered'> = true;
+const _covEvContrabandFound: AssertEventKeys<'ContrabandFound'> = true;
+const _covEvFragmentAcquired: AssertEventKeys<'FragmentAcquired'> = true;
+const _covEvFragmentDecoded: AssertEventKeys<'FragmentDecoded'> = true;
+const _covEvStoryletOffered: AssertEventKeys<'StoryletOffered'> = true;
+const _covEvStoryletChoiceResolved: AssertEventKeys<'StoryletChoiceResolved'> = true;
+const _covEvStoryletChoiceBlocked: AssertEventKeys<'StoryletChoiceBlocked'> = true;
+const _covEvStoryletEffectApplied: AssertEventKeys<'StoryletEffectApplied'> = true;
+const _covEvStoryletScheduled: AssertEventKeys<'StoryletScheduled'> = true;
+const _covEvStoryletDeedProgress: AssertEventKeys<'StoryletDeedProgress'> = true;
+const _covEvTravelEvent: AssertEventKeys<'TravelEvent'> = true;
+const _covEvTradeEvent: AssertEventKeys<'TradeEvent'> = true;
+const _covEvDebtPayment: AssertEventKeys<'DebtPayment'> = true;
+const _covEvDebtDue: AssertEventKeys<'DebtDue'> = true;
+const _covEvTourOneResolved: AssertEventKeys<'TourOneResolved'> = true;
+const _covEvCombatEvent: AssertEventKeys<'CombatEvent'> = true;
+const _covEvEncounterStarted: AssertEventKeys<'EncounterStarted'> = true;
+const _covEvEncounterRound: AssertEventKeys<'EncounterRound'> = true;
+const _covEvTributeDemanded: AssertEventKeys<'TributeDemanded'> = true;
+const _covEvTributePaid: AssertEventKeys<'TributePaid'> = true;
+const _covEvEnemyCounterAction: AssertEventKeys<'EnemyCounterAction'> = true;
+const _covEvComponentDamaged: AssertEventKeys<'ComponentDamaged'> = true;
+const _covEvShipLost: AssertEventKeys<'ShipLost'> = true;
+const _covEvLegacySuccession: AssertEventKeys<'LegacySuccession'> = true;
+const _covEvEncounterResolved: AssertEventKeys<'EncounterResolved'> = true;
+const _covEvShipyardEvent: AssertEventKeys<'ShipyardEvent'> = true;
+const _covEvShipyardFail: AssertEventKeys<'ShipyardFail'> = true;
+
 void _schemaCoversGameState;
 void _covPlayer;
 void _covShip;
@@ -952,6 +1036,50 @@ void _covStoryletSchedule;
 void _covEncounter;
 void _covInterceptor;
 void _covEraEvent;
+void _covEventTypes;
+void _covEvDawnRoll;
+void _covEvStatCheck;
+void _covEvFlawCheck;
+void _covEvNpcAction;
+void _covEvContractClaimed;
+void _covEvDispositionChanged;
+void _covEvBondIntervention;
+void _covEvWireEntry;
+void _covEvEraEventStarted;
+void _covEvEraEventEnded;
+void _covEvDayAdvanced;
+void _covEvDeedEarned;
+void _covEvRenownRankUp;
+void _covEvActionBlocked;
+void _covEvPoiDiscovered;
+void _covEvExplorationFailed;
+void _covEvSalvageRecovered;
+void _covEvContrabandFound;
+void _covEvFragmentAcquired;
+void _covEvFragmentDecoded;
+void _covEvStoryletOffered;
+void _covEvStoryletChoiceResolved;
+void _covEvStoryletChoiceBlocked;
+void _covEvStoryletEffectApplied;
+void _covEvStoryletScheduled;
+void _covEvStoryletDeedProgress;
+void _covEvTravelEvent;
+void _covEvTradeEvent;
+void _covEvDebtPayment;
+void _covEvDebtDue;
+void _covEvTourOneResolved;
+void _covEvCombatEvent;
+void _covEvEncounterStarted;
+void _covEvEncounterRound;
+void _covEvTributeDemanded;
+void _covEvTributePaid;
+void _covEvEnemyCounterAction;
+void _covEvComponentDamaged;
+void _covEvShipLost;
+void _covEvLegacySuccession;
+void _covEvEncounterResolved;
+void _covEvShipyardEvent;
+void _covEvShipyardFail;
 
 /**
  * Parse and validate a raw (already-JSON-parsed) value as a {@link GameState}.

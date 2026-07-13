@@ -6,7 +6,6 @@ import {
   createSave,
   loadSave,
   isDayOver,
-  UNKNOWN_LEGACY_SEED,
   type GameState,
   type GameEvent,
   type CheckResult,
@@ -53,9 +52,8 @@ const DEFAULT_SEED = 424242;
 // ENVELOPE (engine `createSave`/`loadSave`) so a `.sav` blob alone reproduces
 // the run (TECH-STACK "reproducible bug reports"). The `sq.save.seed` key below
 // is now a LEGACY fallback only: it recovers the seed for a pre-v2 (seedless)
-// envelope, and disambiguates a seed-0 career from the UNKNOWN_LEGACY_SEED
-// sentinel. New saves carry the seed in the envelope, so this key is redundant
-// for them.
+// envelope, which `loadSave` reports as `seed: null`. New saves carry the seed
+// in the envelope, so this key is redundant for them.
 const AUTOSAVE_SEED_KEY = 'sq.save.seed'; // LEGACY seed fallback (pre-v2 envelopes)
 const SLOT_KEY = (n: number): string => `sq.slot.${n}.v1`; // envelope (createSave output)
 const SLOT_META_KEY = (n: number): string => `sq.slot.${n}.meta`; // display JSON
@@ -246,12 +244,13 @@ function readSave(): { game: GameState; seed: number } | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const { state, seed } = loadSave(raw);
-    // T-1002: a pre-v2 autosave has no seed in its envelope (loadSave returns the
-    // engine's UNKNOWN_LEGACY_SEED). Recover the seed the old build stashed in the
-    // legacy `sq.save.seed` key so the bezel display and reproducibility survive
-    // the upgrade; the next `autosave` re-writes the envelope as v2 with the seed
-    // embedded, so this legacy read path self-heals after one write.
-    const recovered = seed === UNKNOWN_LEGACY_SEED ? readAutosaveSeed() : seed;
+    // T-1002: a pre-v2 autosave has no seed in its envelope (loadSave returns
+    // seed: null). Recover the seed the old build stashed in the legacy
+    // `sq.save.seed` key so the bezel display and reproducibility survive the
+    // upgrade; the next `autosave` re-writes the envelope as v2 with the seed
+    // embedded, so this legacy read path self-heals after one write. A v2 save
+    // with an explicit seed — including seed 0 — never hits this fallback.
+    const recovered = seed === null ? readAutosaveSeed() : seed;
     return { game: state, seed: recovered };
   } catch {
     return null; // corrupt / missing → fall back to a fresh career
@@ -363,10 +362,9 @@ function reconcileOnboarding(prev: GameState, next: GameState): Record<string, t
 export function newGame(seed: number): void {
   const game = startDay(createInitialState(seed)).state;
   // T-1002: the seed now rides the save envelope (autosave embeds it), so a
-  // reload recovers it from the save itself. The legacy `sq.save.seed` write is
-  // kept as a redundant fallback: it lets `readSave` recover the seed for a
-  // pre-v2 envelope AND disambiguates a career started on seed 0 (which collides
-  // with the engine's UNKNOWN_LEGACY_SEED sentinel).
+  // reload recovers it from the save itself — including an explicit seed of 0.
+  // The legacy `sq.save.seed` write is kept as a redundant fallback: it lets
+  // `readSave` recover the seed for a pre-v2 envelope (loaded as seed: null).
   autosave(game, seed);
   try {
     localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
@@ -893,7 +891,7 @@ export function loadSlot(n: number): void {
     return;
   }
   let game: GameState;
-  let loadedSeed: number;
+  let loadedSeed: number | null;
   try {
     const loaded = loadSave(raw);
     game = loaded.state;
@@ -903,9 +901,8 @@ export function loadSlot(n: number): void {
     return;
   }
   // The seed rides the envelope for v2+ slots; for a pre-v2 slot the envelope
-  // has none (UNKNOWN_LEGACY_SEED) so recover it from the slot's display meta.
-  const seed =
-    loadedSeed === UNKNOWN_LEGACY_SEED ? (readSlotMeta(n)?.seed ?? state.seed) : loadedSeed;
+  // has none (loadSave returns null) so recover it from the slot's display meta.
+  const seed = loadedSeed === null ? (readSlotMeta(n)?.seed ?? state.seed) : loadedSeed;
   // The loaded career becomes the live autosave.
   autosave(game, seed);
   try {

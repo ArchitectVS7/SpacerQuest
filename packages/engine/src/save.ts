@@ -14,20 +14,12 @@ import { validateGameState } from './schema.js';
 export const SaveEnvelopeSchema = z.object({
   version: z.number(),
   state: z.unknown(), // The raw state, validated by version-specific schemas during migration
-  seed: z.number().optional(), // v2+. Absent in v1 envelopes (backfilled on load).
+  seed: z.number().optional(), // v2+. Absent in v1 envelopes (loads as seed: null).
 });
 
 export type SaveEnvelope = z.infer<typeof SaveEnvelopeSchema>;
 
 export type MigrationFn = (oldState: unknown) => unknown;
-
-/**
- * Fallback seed for a pre-v2 (seedless) save whose seed was never recorded in
- * the envelope. Such saves predate seed tracking and cannot be reproduced; the
- * store supplies a better fallback from the legacy `sq.save.seed` localStorage
- * key when one exists (a career started before this migration landed).
- */
-export const UNKNOWN_LEGACY_SEED = 0;
 
 /**
  * Explicit STATE migration registry (v1 -> v2 -> ...). A key `n` upgrades the
@@ -36,9 +28,10 @@ export const UNKNOWN_LEGACY_SEED = 0;
  * T-1002 bumped {@link CURRENT_SAVE_VERSION} to 2. The v1->v2 change is
  * ENVELOPE-level (the new `seed` field), NOT a GameState shape change, so the
  * state migration is the IDENTITY — the state that came out of a v1 envelope is
- * already a valid v2 state. {@link loadSave} backfills the seed for seedless v1
- * envelopes. This entry is honest, not a stub: it records that v1 and v2 states
- * are structurally identical.
+ * already a valid v2 state. {@link loadSave} reports a seedless v1 envelope as
+ * `seed: null` (absence stays absence — no numeric backfill, which would collide
+ * with a legitimate explicit seed). This entry is honest, not a stub: it records
+ * that v1 and v2 states are structurally identical.
  *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
@@ -117,9 +110,11 @@ export function migrate(envelope: SaveEnvelope, options: MigrateOptions = {}): u
 /** A loaded save: the validated GameState plus the seed that reproduces it. */
 export interface LoadedSave {
   state: GameState;
-  /** The RNG seed the run started from. For a pre-v2 (seedless) save this is
-   *  {@link UNKNOWN_LEGACY_SEED}; the store may substitute a legacy fallback. */
-  seed: number;
+  /** The RNG seed the run started from, or `null` for a pre-v2 (seedless) save
+   *  whose seed was never recorded — such saves cannot be reproduced from the
+   *  blob alone; the store may substitute a legacy fallback. `null` (not a
+   *  numeric sentinel) so an explicit seed of 0 stays distinguishable. */
+  seed: number | null;
 }
 
 /**
@@ -164,8 +159,9 @@ export function loadSave(jsonString: string): LoadedSave {
     throw new SaveError('invalid-state', 'Migrated save state failed GameState validation', cause);
   }
 
-  // v1 envelopes have no `seed` — backfill the engine-level unknown fallback.
-  const seed = parsed.data.seed ?? UNKNOWN_LEGACY_SEED;
+  // v1 envelopes have no `seed` — report the absence as null (never a numeric
+  // sentinel, which would collide with a legitimate explicit seed).
+  const seed = parsed.data.seed ?? null;
   return { state, seed };
 }
 

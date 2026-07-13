@@ -6,7 +6,6 @@ import {
   migrate,
   SaveError,
   CURRENT_SAVE_VERSION,
-  UNKNOWN_LEGACY_SEED,
   type SaveEnvelope,
   type MigrationFn,
 } from '../save.js';
@@ -200,9 +199,9 @@ describe('save envelope — seed reproducibility (T-1002)', () => {
     // schema order), so compare from an already-loaded state.
     const s1 = createSave(state, 1337);
     const l1 = loadSave(s1);
-    const s2 = createSave(l1.state, l1.seed);
+    const s2 = createSave(l1.state, requireSeed(l1.seed));
     const l2 = loadSave(s2);
-    const s3 = createSave(l2.state, l2.seed);
+    const s3 = createSave(l2.state, requireSeed(l2.seed));
 
     expect(s3).toBe(s2); // byte-identical fixpoint
     expect(l2.seed).toBe(1337); // the seed is preserved verbatim
@@ -211,23 +210,30 @@ describe('save envelope — seed reproducibility (T-1002)', () => {
     expect(envelope.seed).toBe(1337);
   });
 
-  it('a v2 envelope preserves an explicit seed of 0 (the sentinel value)', () => {
-    // Seed 0 collides with UNKNOWN_LEGACY_SEED at the engine level; loadSave still
-    // returns 0 because the envelope's `seed` field is present.
-    const restored = loadSave(createSave(drive50Days(4), 0));
-    expect(restored.seed).toBe(0);
+  it('an explicit seed of 0 is preserved AND distinct from a seedless legacy load', () => {
+    // Regression: seed 0 used to collide with a numeric UNKNOWN_LEGACY_SEED
+    // sentinel, making a genuine seed-0 career indistinguishable from a pre-v2
+    // (seedless) save. The absence is now `null`, so the two cases differ.
+    const state = drive50Days(4);
+    const explicitZero = loadSave(createSave(state, 0));
+    expect(explicitZero.seed).toBe(0);
+
+    const seedless = loadSave(JSON.stringify({ version: 1, state }));
+    expect(seedless.seed).toBeNull();
+    expect(explicitZero.seed).not.toBe(seedless.seed); // 0 !== null — no collision
   });
 });
 
 describe('save envelope — v1 → v2 migration (T-1002)', () => {
-  it('loads a seedless v1 envelope green through production MIGRATIONS and backfills the seed', () => {
+  it('loads a seedless v1 envelope green through production MIGRATIONS with seed: null', () => {
     // A REAL pre-v2 envelope: version 1, no `seed` field at all.
     const v1 = JSON.stringify({ version: 1, state: drive50Days(9) });
 
     const loaded = loadSave(v1); // walks 1→2 (identity state migration), validates
     expect(loaded.state.day).toBeGreaterThan(0); // validated, not thrown
-    expect(typeof loaded.seed).toBe('number'); // backfilled
-    expect(loaded.seed).toBe(UNKNOWN_LEGACY_SEED); // pre-v2 saves have no recorded seed
+    // Absence stays absence: no numeric backfill (that would collide with a
+    // legitimate explicit seed). Callers key legacy fallbacks off null.
+    expect(loaded.seed).toBeNull();
   });
 
   it('a v2 envelope with an explicit seed is preserved (no migration needed)', () => {
@@ -244,6 +250,12 @@ describe('save envelope — v1 → v2 migration (T-1002)', () => {
 /** Serialize a state into an envelope at an arbitrary version (for error tests). */
 function createSaveAtVersion(state: GameState, version: number): string {
   return JSON.stringify({ version, state });
+}
+
+/** Narrow a LoadedSave seed for re-save: a v2 save always carries one. */
+function requireSeed(seed: number | null): number {
+  if (seed === null) throw new Error('expected the loaded save to carry a seed');
+  return seed;
 }
 
 /** Assert the thunk throws a SaveError and return it (typed). */
