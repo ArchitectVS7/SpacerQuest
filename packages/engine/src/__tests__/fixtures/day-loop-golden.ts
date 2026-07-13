@@ -114,18 +114,20 @@ export function runDayLoopGolden(
 }
 
 // --- Committed golden hashes (regenerate via gen-day-loop-golden.ts) ---------
-// T-1104 re-derivation: rollContract's RNG draw order and destination/cargo
-// ranges changed (rim & contraband contract economy), so the manifest board in
-// serialized state — and the cargoType/destination fields on the events those
-// contracts drive — differ for BOTH scripts. All four hashes were regenerated
-// deliberately; the day-loop rules themselves are unchanged.
-// (Prior T-1103 re-derivation: the encounter-rate repair moved the two main
-// hashes; the storylet run was byte-identical then but moves now via the board.)
+// T-1201 re-derivation: NPC dusk resolution now routes all five verbs through
+// the shared check() and emits a StatCheck event per resolved verb (PRD §7,
+// "one system — no separate AI"). Those new events land in the day's event
+// stream, and their rng.d20() draws shift the NPC sim's RNG stream, so BOTH the
+// serialized state (NPC positions/credits/fuel) and the event hashes move for
+// BOTH scripts. All four hashes were regenerated deliberately; the day-loop
+// rules themselves are unchanged — only the NPCs now roll real checks.
+// (Prior T-1104 re-derivation: rollContract's RNG draw order and destination/
+// cargo ranges changed the manifest board and contract-driven event fields.)
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '474d65f60854f1cd0778b0500ab327d2a2c351c434ed66632548de768e837a9e';
+  '7a7011f26e69e2341548a95f777c33b647b2e02dd2e9dd9f12a327225dd15c0b';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'd300aa1fbc53423c821baef18ae07f45006b5dc3126adab18d22104ae7422375';
+  '89f4edc0665e136ded67e41b5cdda972bd8b20d6982b4c4d05a34b16a2ea40d2';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '35f793f6a0c5601525eb32eec8d7885e3b148b72f78a8f0f23d757e950ec20a7';
+  '242a21b715aacc51b186d4b231fbf0b7bd3aec671a7eb4eae1e2dcc61270300a';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '5feffac615f2d7fb423f2eb3aff6ae72b7d55ddb4f20fc5006ae6a93bc0019f4';
+  '1a92099bfde195465be719a8c8877a7f2ecc03038511463da5c9dfa739e41c37';

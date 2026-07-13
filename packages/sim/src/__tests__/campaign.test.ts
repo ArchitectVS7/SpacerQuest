@@ -115,6 +115,31 @@ describe('campaign runner', () => {
     expect(credits[credits.length - 1]).toBeLessThanOrEqual(10 * median);
   }, 30000);
 
+  it('T-1201: a 200-day sim shows a non-degenerate NPC trade failure rate', () => {
+    // Every NPC verb now resolves through the shared check() and emits a
+    // StatCheck into eventLog (the SAME events the wire renders — this is the
+    // player-reachable surface). Scan the npc-trade checks and confirm the
+    // failure rate is real but non-degenerate: NPCs neither always succeed
+    // (the pre-T-1201 bug) nor always fail.
+    let state = createInitialState(1);
+    for (let day = 0; day < 200; day += 1) {
+      state = advanceDay(state, [{ type: 'Wait' }]).state;
+    }
+
+    const tradeChecks = state.eventLog.filter(
+      (e) => e.type === 'StatCheck' && e.actionContext === 'npc-trade',
+    );
+    const failures = tradeChecks.filter((e) => e.type === 'StatCheck' && !e.result.success).length;
+    const rate = failures / tradeChecks.length;
+
+    // A meaningfully large sample so the rate is real, not a small-n artifact.
+    expect(tradeChecks.length).toBeGreaterThan(50);
+    // Observed at authoring time (seed 1): ~937 trade checks, ~37% failures.
+    // The assertion is the task's >5% / <60% band — NOT widened to force a pass.
+    expect(rate).toBeGreaterThan(0.05);
+    expect(rate).toBeLessThan(0.6);
+  }, 30000);
+
   it('churns routes: the dominant route shifts across windows over 300 days (T-107)', () => {
     // T-1104 re-derivation: the rim/contraband payment overhaul re-priced every
     // contract, moving the greedy campaign's best-offer stream. The temporal-churn

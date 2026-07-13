@@ -153,7 +153,18 @@ export type GameEvent =
       stat: Stat;
       dc: number;
       result: CheckResult;
-      actionContext?: 'haggle' | 'storylet';
+      /** Where the check came from. The `npc-*` contexts (T-1201) tag NPC
+       *  day-resolution rolls so readers (the wire in day.ts / ui format.ts,
+       *  and T-1202's deeper surface) can discriminate per-verb without
+       *  stringly-parsing `actor`. */
+      actionContext?:
+        | 'haggle'
+        | 'storylet'
+        | 'npc-trade'
+        | 'npc-travel'
+        | 'npc-combat'
+        | 'npc-patrol'
+        | 'npc-socialize';
     }
   | { type: 'FlawCheck'; npcId: string; flaw: string; die: number; dc: number; resisted: boolean }
   | { type: 'NpcAction'; npcId: string; actionDetails: string }

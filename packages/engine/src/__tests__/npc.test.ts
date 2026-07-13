@@ -1,10 +1,31 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { IDEAL_WEIGHTS, NPC_PROFILES, distance } from '@spacerquest/content';
+import {
+  IDEAL_WEIGHTS,
+  INTENT_STAT_AFFINITY,
+  NPC_CHECK_DCS,
+  NPC_PROFILES,
+  NpcIntentType,
+  distance,
+} from '@spacerquest/content';
 import { applyDisposition, npcDrives, resolveNpcDay } from '../npc.js';
 import { jumpFuelCost } from '../economy.js';
 import { createInitialState } from '../state.js';
 import { SeededRng } from '../rng.js';
 import { GameEvent, NpcState } from '../types.js';
+
+/** The five verb action-types and their StatCheck actionContext tags — the
+ *  contract T-1201 asserts: a resolved verb ⟺ exactly one StatCheck with the
+ *  matching context. */
+const VERB_CONTEXT: Record<string, string> = {
+  Trade: 'npc-trade',
+  Travel: 'npc-travel',
+  Combat: 'npc-combat',
+  Patrol: 'npc-patrol',
+  Socialize: 'npc-socialize',
+};
 
 function npcFor(profileId: string, overrides: Partial<NpcState> = {}): NpcState {
   const profile = NPC_PROFILES.find((p) => p.id === profileId)!;
@@ -144,6 +165,129 @@ describe('NPC economics are real (T-106)', () => {
       }
     }
     expect(sawBeggingWire).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1201 · NPCs roll real checks. Every NPC verb now resolves through the SAME
+// shared check() the player uses (PRD §7: "one system — there is no separate
+// AI"), emitting a StatCheck event. These tests pin the load-bearing invariant
+// (verb ⟺ StatCheck) that T-1202 builds on, and prove the DCs are sourced from
+// content, not from shadow literals in npc.ts.
+// ---------------------------------------------------------------------------
+describe('T-1201 NPCs roll real checks', () => {
+  it('every resolved verb emits exactly one matching StatCheck; Idle/FlawOverride emit none', () => {
+    const seenContexts = new Set<string>();
+    let sawFlawOverride = false;
+    let sawIdle = false;
+
+    // Sweep the whole cast across two funding states so all five verbs AND the
+    // broke fallbacks (Idle) AND flaw overrides actually fire.
+    const fundings: Partial<NpcState>[] = [
+      { credits: 5000, fuel: 1000 }, // flush: verbs execute
+      { credits: 30, fuel: 5 }, // broke & dry: verb executors fall back to Idle
+    ];
+
+    for (const profile of NPC_PROFILES) {
+      for (const funding of fundings) {
+        for (let seed = 1; seed <= 40; seed += 1) {
+          const { npc, events } = resolveNpcDay(
+            npcFor(profile.id, funding),
+            new SeededRng(seed),
+            NO_BOARD,
+          );
+          const type = npc.lastAction!.type;
+          const statChecks = events.filter((e) => e.type === 'StatCheck');
+
+          if (type in VERB_CONTEXT) {
+            // A resolved verb ⟺ exactly one StatCheck with the matching context.
+            expect(
+              statChecks,
+              `${profile.id} ${type} seed ${seed} should emit exactly one StatCheck`,
+            ).toHaveLength(1);
+            const check = statChecks[0];
+            expect(check.type === 'StatCheck' && check.actionContext).toBe(VERB_CONTEXT[type]);
+            expect(check.type === 'StatCheck' && check.actor).toBe(npc.id);
+            seenContexts.add(VERB_CONTEXT[type]);
+          } else {
+            // Idle / FlawOverride are NOT verb resolutions — they roll nothing
+            // through check(), so no StatCheck may be emitted (keeps the sim's
+            // trade-failure denominator honest).
+            expect(
+              statChecks,
+              `${profile.id} ${type} seed ${seed} must emit no StatCheck`,
+            ).toHaveLength(0);
+            if (type === 'FlawOverride') sawFlawOverride = true;
+            if (type === 'Idle') sawIdle = true;
+          }
+        }
+      }
+    }
+
+    // Coverage: every verb's context was observed at least once (guards against
+    // a verb silently skipping its roll and never entering the ⟺ branch above).
+    expect([...seenContexts].sort()).toEqual([
+      'npc-combat',
+      'npc-patrol',
+      'npc-socialize',
+      'npc-trade',
+      'npc-travel',
+    ]);
+    // ...and the contrapositive was genuinely exercised (not vacuously true).
+    expect(sawFlawOverride).toBe(true);
+    expect(sawIdle).toBe(true);
+  });
+
+  it('binds the emitted StatCheck DC and stat to content NPC_CHECK_DCS (no shadow literals)', () => {
+    // Drive each verb to fire and read back the DC/stat off its StatCheck. If
+    // the engine used a hardcoded DC instead of the content table, these would
+    // diverge. Profiles picked to lean hard into each verb.
+    const drivers: Record<NpcIntentType, string> = {
+      Trade: 'npc-cargo-king', // Wealth / TRADE 5
+      Travel: 'npc-warp-hound', // Discovery / PILOT 5
+      Combat: 'npc-iron-vex', // Dominance / GUNS 4
+      Patrol: 'npc-the-warden', // Justice / GRIT high
+      Socialize: 'npc-silk-dagger', // GUILE-leaning
+    };
+
+    const verified = new Set<string>();
+    for (const [intent, profileId] of Object.entries(drivers) as [NpcIntentType, string][]) {
+      const context = VERB_CONTEXT[intent];
+      for (let seed = 1; seed <= 400 && !verified.has(context); seed += 1) {
+        const { events } = resolveNpcDay(npcFor(profileId), new SeededRng(seed), NO_BOARD);
+        const check = events.find((e) => e.type === 'StatCheck' && e.actionContext === context);
+        if (!check || check.type !== 'StatCheck') continue;
+        expect(check.dc, `${intent} DC must come from content`).toBe(NPC_CHECK_DCS[intent]);
+        expect(check.stat).toBe(INTENT_STAT_AFFINITY[intent]);
+        // The recorded modifier is the profile's affinity stat, proving the roll
+        // read profile.stats[stat] (not NpcState — stats live on the profile).
+        const profile = NPC_PROFILES.find((p) => p.id === profileId)!;
+        expect(check.result.modifier).toBe(profile.stats[INTENT_STAT_AFFINITY[intent]]);
+        verified.add(context);
+      }
+    }
+    expect([...verified].sort()).toEqual([
+      'npc-combat',
+      'npc-patrol',
+      'npc-socialize',
+      'npc-trade',
+      'npc-travel',
+    ]);
+  });
+
+  it('has no hardcoded DC literals in npc.ts source and sources them from content', () => {
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../npc.ts'),
+      'utf8',
+    );
+    // The two removed inline thresholds (Combat >=12, Socialize >=14) must be
+    // gone from the source entirely (code AND comments — the comments were
+    // reworded so this guard cannot pass on prose alone).
+    expect(source).not.toMatch(/>=\s*12/);
+    expect(source).not.toMatch(/>=\s*14/);
+    // ...and the DCs are pulled from the content table.
+    expect(source).toMatch(/NPC_CHECK_DCS/);
+    expect(source).toMatch(/from '@spacerquest\/content'/);
   });
 });
 

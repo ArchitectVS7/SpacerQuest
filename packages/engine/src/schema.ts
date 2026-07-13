@@ -463,7 +463,17 @@ const GameEventSchema = z.discriminatedUnion('type', [
     stat: StatSchema,
     dc: z.number(),
     result: CheckResultSchema,
-    actionContext: z.enum(['haggle', 'storylet']).optional(),
+    actionContext: z
+      .enum([
+        'haggle',
+        'storylet',
+        'npc-trade',
+        'npc-travel',
+        'npc-combat',
+        'npc-patrol',
+        'npc-socialize',
+      ])
+      .optional(),
   }),
   z.object({
     type: z.literal('FlawCheck'),

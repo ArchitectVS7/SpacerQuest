@@ -192,6 +192,39 @@ describe('save envelope — malformed-Explore reasons survive save/load (T-1003)
   }
 });
 
+describe('NPC StatCheck events survive save/load (T-1201)', () => {
+  // T-1201 widened StatCheck.actionContext with five `npc-*` tags and now emits
+  // an NPC StatCheck (nested CheckResult) into eventLog every day. No GameState
+  // FIELD changed, so no migration is required — but the widened event must
+  // JSON round-trip byte-for-byte through the save envelope, including its
+  // actionContext and the nested result.
+  it('createSave → loadSave preserves an npc-* StatCheck in the event log exactly', () => {
+    const state = drive50Days(11);
+
+    // A real drive produces NPC checks in the log (the same events the wire
+    // renders). Grab one to prove the fixture is genuine, not hand-built.
+    const npcCheck = state.eventLog.find(
+      (e) =>
+        e.type === 'StatCheck' &&
+        typeof e.actionContext === 'string' &&
+        e.actionContext.startsWith('npc-'),
+    );
+    expect(npcCheck, 'expected an npc-* StatCheck in the 50-day event log').toBeDefined();
+
+    const restored = loadSave(createSave(state, 11));
+    // Whole-state exactness covers the nested CheckResult + actionContext.
+    expect(restored.state).toEqual(state);
+    // And, explicitly, the same NPC check comes back identical.
+    const restoredCheck = restored.state.eventLog.find(
+      (e) =>
+        e.type === 'StatCheck' &&
+        typeof e.actionContext === 'string' &&
+        e.actionContext.startsWith('npc-'),
+    );
+    expect(restoredCheck).toEqual(npcCheck);
+  });
+});
+
 describe('save envelope — seed reproducibility (T-1002)', () => {
   it('the seed survives save → load → save byte-identically and lives in the envelope', () => {
     const state = drive50Days(9);

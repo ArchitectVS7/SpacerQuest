@@ -32,6 +32,49 @@ export const INTENT_STAT_AFFINITY: Record<NpcIntentType, Stat> = {
   Socialize: Stat.GUILE,
 };
 
+/** Per-intent difficulty class for an NPC's day-resolution check (T-1201).
+ *  The engine rolls d20 + stats[INTENT_STAT_AFFINITY[intent]] vs this DC
+ *  through the SAME shared check() the player uses — PRD §7: "the player and
+ *  the galaxy run on one system — there is no separate AI."
+ *
+ *  DIVERGENCE from foundation f2f95fa9: the original NPC resolver did NOT roll
+ *  through check() at all. Trade/Travel/Patrol days rolled nothing (trades
+ *  always banked full payment); Combat used a raw inline `die + GUNS >= 12`
+ *  and Socialize a raw `die + GUILE >= 14`. Those literals are gone — every
+ *  verb now sources its DC from this table so failure is real and content-tunable.
+ *  (Combat=12 and Socialize=14 preserve the old inline thresholds exactly.) */
+export const NPC_CHECK_DCS: Record<NpcIntentType, number> = {
+  Trade: 12, // land the deal margin
+  Travel: 11, // a clean jump vs a rough one
+  Combat: 12, // was the inline `>= 12`
+  Patrol: 11, // an uneventful sweep
+  Socialize: 14, // was the inline `>= 14`
+};
+
+/** Extra fuel an NPC burns on a FAILED Travel (PILOT) check (T-1201): a rough
+ *  jump costs more than a clean one. Clamped at the tank floor by the engine.
+ *
+ *  (Note: the Trade check deliberately carries NO credit/fuel consequence — see
+ *  the long rationale at executeTrade in engine/npc.ts. Trade is the most
+ *  frequent NPC verb and a skill check, so any per-trade economic penalty makes
+ *  the 200-day wealth distribution degenerate; its soured-run consequence is the
+ *  wire narrative + the recorded StatCheck, not a payout swing.) */
+export const NPC_TRAVEL_FAIL_EXTRA_FUEL = 25;
+
+/** Stipend an NPC collects on a PASSED Patrol (GRIT) check (T-1201): a clean,
+ *  productive sweep. A failed sweep costs the small credit stake below. */
+export const NPC_PATROL_SUCCESS_CREDITS = 40;
+/** Credit stake an NPC loses on a FAILED Patrol check (T-1201): a wasted,
+ *  costly sweep. Never takes an NPC negative (engine clamps at 0). */
+export const NPC_PATROL_FAIL_CREDITS = 20;
+
+/** Winnings an NPC banks on a PASSED Socialize (GUILE) check at the Hangout
+ *  tables (T-1201) — preserves the foundation's inline `+150` payout. */
+export const NPC_SOCIALIZE_WIN_CREDITS = 150;
+/** Ante an NPC loses on a FAILED Socialize check (T-1201) — preserves the
+ *  foundation's inline `-50`. */
+export const NPC_SOCIALIZE_LOSS_CREDITS = 50;
+
 /** Fallback for any Ideal missing from the table (e.g. future cast additions
  *  before their weights are authored): an even-keeled journeyman spacer. */
 export const DEFAULT_IDEAL_WEIGHTS: IdealWeights = {
