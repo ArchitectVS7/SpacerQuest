@@ -22,6 +22,7 @@ import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { jumpFuelCost } from '../economy.js';
 import { eraDangerDelta } from '../era.js';
+import { navBonus } from '../components.js';
 
 function clampDanger(value: number): RouteDangerLevel {
   return Math.max(1, Math.min(5, value)) as RouteDangerLevel;
@@ -366,7 +367,15 @@ export function resolveTravel(
   // the starmap (T-304) can preview the exact DC the resolver will roll against.
   const dc = travelDc(routeDistance);
 
-  const result = check(die, nextState.player.stats[Stat.PILOT], dc);
+  // T-1205 navigation → pilot check: a fresh junker's navigation (score 10) adds
+  // 0, so the starter-ship goldens are unchanged; upgraded nav adds accuracy.
+  // FOUNDATION: "damaged nav causes course errors" → an additive PILOT bonus.
+  // READER OF `navigation`: this line (via components.ts navBonus).
+  const result = check(
+    die,
+    nextState.player.stats[Stat.PILOT] + navBonus(nextState.player.ship),
+    dc,
+  );
   events.push({
     type: 'StatCheck',
     actor: 'Player',

@@ -1402,6 +1402,12 @@ function ShipPane({ state }: { state: CockpitState }) {
           <span className="fc-v">
             {ship.fuel.toLocaleString()}/{ship.maxFuel.toLocaleString()}
           </span>
+          {/* T-1205 cabin → crew capacity: a reader of the cabin component, grows
+              when the cabin is upgraded (T-1306 socket for real crew rules). */}
+          <span className="fc-k">CREW</span>
+          <span className="fc-v" data-testid="crew-capacity">
+            {curve.crewCapacity}
+          </span>
         </div>
 
         {/* ---- component grid ---- */}

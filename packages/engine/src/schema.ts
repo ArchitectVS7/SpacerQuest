@@ -752,14 +752,25 @@ const GameEventSchema = z.discriminatedUnion('type', [
     previousCondition: z.number(),
     newCondition: z.number(),
     amount: z.number(),
+    // T-1205: shield-absorbed points off the raw hit (optional; absent on legacy
+    // saves, 0 on a junker hit).
+    mitigated: z.number().optional(),
   }),
   z.object({
     type: z.literal('ShipLost'),
     day: z.number(),
     encounterId: z.string(),
     interceptorId: z.string(),
-    reason: z.literal('combat-defeat'),
+    // T-1205 adds 'life-support-failure'; serialized in eventLog, so the schema
+    // must accept it or loadSave would reject a save carrying the event.
+    reason: z.enum(['combat-defeat', 'life-support-failure']),
     component: ShipComponentIdSchema.optional(),
+  }),
+  z.object({
+    type: z.literal('LifeSupportCritical'),
+    day: z.number(),
+    component: z.literal('lifeSupport'),
+    survived: z.boolean(),
   }),
   z.object({
     type: z.literal('LegacySuccession'),
@@ -1018,6 +1029,7 @@ const _covEvTributePaid: AssertEventKeys<'TributePaid'> = true;
 const _covEvEnemyCounterAction: AssertEventKeys<'EnemyCounterAction'> = true;
 const _covEvComponentDamaged: AssertEventKeys<'ComponentDamaged'> = true;
 const _covEvShipLost: AssertEventKeys<'ShipLost'> = true;
+const _covEvLifeSupportCritical: AssertEventKeys<'LifeSupportCritical'> = true;
 const _covEvLegacySuccession: AssertEventKeys<'LegacySuccession'> = true;
 const _covEvEncounterResolved: AssertEventKeys<'EncounterResolved'> = true;
 const _covEvShipyardEvent: AssertEventKeys<'ShipyardEvent'> = true;
@@ -1086,6 +1098,7 @@ void _covEvTributePaid;
 void _covEvEnemyCounterAction;
 void _covEvComponentDamaged;
 void _covEvShipLost;
+void _covEvLifeSupportCritical;
 void _covEvLegacySuccession;
 void _covEvEncounterResolved;
 void _covEvShipyardEvent;

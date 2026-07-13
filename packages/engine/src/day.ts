@@ -2,6 +2,7 @@ import {
   CARGO_TYPES,
   DISPOSITION_DECAY_INTERVAL_DAYS,
   DISPOSITION_DELTAS,
+  LIFE_SUPPORT_SURVIVAL_DC,
   NPC_PROFILES,
   STAR_SYSTEMS,
   Stat,
@@ -10,6 +11,8 @@ import {
 import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
 import { SeededRng } from './rng.js';
 import { rollDawnHand } from './dice.js';
+import { lifeSupportCritical } from './components.js';
+import { applySuccession } from './legacy.js';
 import { applyDisposition, resolveNpcDay } from './npc.js';
 import { generateManifestBoard, localFuelPrice, syncMaxFuel } from './economy.js';
 import { advanceEraSchedule } from './era.js';
@@ -334,6 +337,55 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         dayRng.fork(`encounter-dusk-${nextState.encounter.id}-${nextState.encounter.round}`),
       ),
     );
+  }
+
+  // T-1205 lifeSupport → survival reader. Life support driven to condition 0 —
+  // only reachable now that enemy fire seed-targets components — faces a dusk GRIT
+  // survival check (content LIFE_SUPPORT_SURVIVAL_DC). Passing it is a scare (no
+  // state change); failing it loses the ship to a life-support failure, reusing
+  // the tested T-108 succession path (the "newly-possible sim deaths" T-1205
+  // anticipates). Runs after the dusk combat pressure above (which may itself have
+  // driven lifeSupport to 0, or on a hull kill reset the ship to the junker — in
+  // which case lifeSupportCritical is false and this is skipped) and before the
+  // day increment, so the LifeSupportCritical event carries the correct day.
+  // This is the named reader for the `lifeSupport` component (components.ts).
+  if (lifeSupportCritical(nextState.player.ship)) {
+    const survivalRng = dayRng.fork(`life-support-${nextState.day}`);
+    const survived =
+      survivalRng.d20() + nextState.player.stats[Stat.GRIT] >= LIFE_SUPPORT_SURVIVAL_DC;
+    events.push({
+      type: 'LifeSupportCritical',
+      day: nextState.day,
+      component: 'lifeSupport',
+      survived,
+    });
+    if (survived) {
+      events.push({
+        type: 'WireEntry',
+        day: nextState.day,
+        message:
+          'Life support gave out on the edge of the dark — the spacer rode it out on emergency air and lived to refit.',
+      });
+    } else {
+      events.push({
+        type: 'ShipLost',
+        day: nextState.day,
+        encounterId: '',
+        interceptorId: 'life-support-failure',
+        reason: 'life-support-failure',
+        component: 'lifeSupport',
+      });
+      events.push(
+        ...applySuccession(nextState, {
+          originSystem: nextState.player.currentSystemId,
+          interceptorId: 'life-support-failure',
+        }),
+      );
+      // The wreck (and any still-live interdiction) dies with the ship — the
+      // successor starts clear, exactly as the combat-death path nulls the
+      // encounter after applySuccession.
+      nextState.encounter = null;
+    }
   }
 
   // 3. DUSK (NPC Actions). NPCs sharing the player's system compete for the

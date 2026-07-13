@@ -438,14 +438,33 @@ export type GameEvent =
       previousCondition: number;
       newCondition: number;
       amount: number;
+      /** T-1205: how many condition points the player's shields absorbed off the
+       *  raw hit. 0 for a junker (no mitigation); a fully-absorbed hit reports
+       *  amount 0 with `mitigated` === the raw damage. READER: wire.ts prose and
+       *  the ui damage log (format.ts). */
+      mitigated?: number;
     }
   | {
       type: 'ShipLost';
       day: number;
       encounterId: string;
       interceptorId: string;
-      reason: 'combat-defeat';
+      // T-1205: 'life-support-failure' — life support driven to condition 0 (now
+      // reachable via seeded combat damage) failed its dusk survival check in
+      // day.ts. 'combat-defeat' is the hull-to-0 killing blow in combat.ts.
+      reason: 'combat-defeat' | 'life-support-failure';
       component?: ShipComponentId;
+    }
+  | {
+      /** T-1205: life support has been driven to condition 0 and faced its dusk
+       *  survival check. `survived: true` is a scare (no state change);
+       *  `survived: false` precedes a ShipLost{reason:'life-support-failure'} +
+       *  succession. This is the named reader for the `lifeSupport` component.
+       *  READER: wire.ts prose + ui damage/obituary log (format.ts). */
+      type: 'LifeSupportCritical';
+      day: number;
+      component: 'lifeSupport';
+      survived: boolean;
     }
   | {
       /** T-108: the successor claims the license. Fired immediately after

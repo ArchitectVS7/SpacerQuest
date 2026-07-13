@@ -11,6 +11,7 @@ import { DiscoveredPoi, GameEvent, GameState, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { fragmentCount, grantFragment } from '../nemesis.js';
+import { navBonus } from '../components.js';
 
 /**
  * Roll a boarded POI's loot table (T-111b, PRD §7.2). Each of the three loot
@@ -174,8 +175,14 @@ export function resolveExploration(
   }
   nextState.player.ship.fuel -= EXPLORATION_FUEL_COST;
 
-  // PILOT nav check — same die + modifier vs DC idiom as Travel.
-  const result = check(die, nextState.player.stats[Stat.PILOT], EXPLORATION_NAV_DC);
+  // PILOT nav check — same die + modifier vs DC idiom as Travel. T-1205: the ship's
+  // navigation adds its bonus (junker → +0, so the goldens are unchanged; upgraded
+  // nav charts more reliably). READER OF `navigation`: this line (components.ts).
+  const result = check(
+    die,
+    nextState.player.stats[Stat.PILOT] + navBonus(nextState.player.ship),
+    EXPLORATION_NAV_DC,
+  );
   events.push({
     type: 'StatCheck',
     actor: 'Player',

@@ -14,6 +14,7 @@ import { check, spendDie } from '../dice.js';
 import { completePendingTravel } from './travel.js';
 import { applyDisposition } from '../npc.js';
 import { applySuccession } from '../legacy.js';
+import { shieldMitigation, weaponVolleyDamage } from '../components.js';
 
 // Combat balance numbers are data — sourced from @spacerquest/content
 // (see packages/content/src/combat.ts for values, foundation citation, and the
@@ -65,8 +66,22 @@ function enemyRefusesTribute(
   return !resisted;
 }
 
-function damageComponentForRound(round: number): ShipComponentId {
-  return DAMAGE_COMPONENTS[(round - 1) % DAMAGE_COMPONENTS.length] ?? 'hull';
+/**
+ * T-1205 seeded damage targeting. Replaces the old deterministic
+ * `(round - 1) % 8` rotation, under which hull could only ever be struck on rounds
+ * 4, 12, 20, … — so a never-miss interceptor needed 68 rounds to kill a
+ * full-condition hull, and `ComponentDamaged` on the other components was pure
+ * theatre. A uniform seeded pick makes EVERY component (hull included) reachable
+ * on ANY round. FOUNDATION DIVERGENCE — foundation (f2f95fa9) resolved enemy
+ * vandalism against a fixed cascade order (shields→cabin→nav→…→hull); the engine
+ * uses a flat seeded pick so the property "hull is damageable on any round" holds
+ * without threading cascade state through the encounter. The draw is taken ONLY on
+ * a successful hit (after the d20 check) so the miss stream — and every existing
+ * golden that turns on a missed pressure roll — is byte-identical.
+ */
+function damageComponentForHit(rng: SeededRng): ShipComponentId {
+  const index = Math.floor(rng.next() * DAMAGE_COMPONENTS.length);
+  return DAMAGE_COMPONENTS[index] ?? 'hull';
 }
 
 function resolveEncounter(
@@ -159,7 +174,9 @@ function applyEnemyPressure(
   });
 
   if (result.success) {
-    const component = damageComponentForRound(round);
+    // T-1205: the struck component is a seeded pick (hull reachable on any round),
+    // drawn only now that the hit landed so misses don't perturb the rng stream.
+    const component = damageComponentForHit(rng);
     const target = state.player.ship[component];
     const previousCondition = target.condition;
     // T-1202 (PRD §6 "the margin decides how well it goes"): a clean interceptor
@@ -170,7 +187,15 @@ function applyEnemyPressure(
     // the low-GUNS rank-and-file (margin = die + interceptorGUNS - (10+playerGRIT)),
     // so ordinary interceptors still chip 1/round; only strong guns or a nat-20
     // land the deeper hit.
-    const dmg = result.nat20 ? 3 : result.margin >= 10 ? 2 : 1;
+    const raw = result.nat20 ? 3 : result.margin >= 10 ? 2 : 1;
+    // T-1205 shields → mitigation: the player's shields absorb condition off the
+    // incoming hit. A junker (shields score 1) mitigates 0, so the raw damage is
+    // unchanged; upgraded shields subtract more, capped by the raw hit so a nat-20
+    // (raw 3) still penetrates strong shields for at least (3 - mitigation). This
+    // is what makes "upgraded shields reduce damage taken" true, and keeps the hull
+    // killable. READER OF `shields`: this line (via components.ts shieldMitigation).
+    const mitigated = Math.min(raw, shieldMitigation(state.player.ship));
+    const dmg = raw - mitigated;
     target.condition = Math.max(0, target.condition - dmg);
     events.push({
       type: 'ComponentDamaged',
@@ -179,6 +204,10 @@ function applyEnemyPressure(
       previousCondition,
       newCondition: target.condition,
       amount: previousCondition - target.condition,
+      // Shields' visible consumption: how much of the raw hit they soaked. 0 for a
+      // junker; a full absorb (dmg === 0) emits amount 0 with mitigated === raw so
+      // the wire can narrate the shields holding. READER: wire.ts + ui format.ts.
+      mitigated,
     });
 
     if (component === 'hull' && target.condition === 0) {
@@ -317,7 +346,16 @@ export function resolveCombat(
   events.push({ type: 'StatCheck', actor: 'Player', stat, dc, result });
 
   if (action.stance === 'fight' && result.success) {
-    const enemyHull = Math.max(1, encounter.enemyHull) - 1;
+    // T-1205 weapons → attack: a winning volley removes `weaponVolleyDamage` hull
+    // points, not a flat 1. FOUNDATION DIVERGENCE — foundation (f2f95fa9) resolved
+    // damage as weapon-power minus enemy-shield; the engine keeps the PRD hit-check
+    // form and scales the damage a WIN deals by the player's weapons instead. A
+    // junker (weapons score 1) removes 1 (unchanged); an upgraded gun removes more,
+    // shortening time-to-kill. READER OF `weapons`: this line (components.ts).
+    const enemyHull = Math.max(
+      0,
+      Math.max(1, encounter.enemyHull) - weaponVolleyDamage(nextState.player.ship),
+    );
     encounter.enemyHull = enemyHull;
     events.push({
       type: 'CombatEvent',

@@ -3,10 +3,15 @@ import { EncounterState, GameEvent, GameState } from './types.js';
 import { starterShip } from './state.js';
 import { syncPlayerTier } from './tier.js';
 
-/** What the fatal encounter tells succession: who took the ship down and where
- *  the wreck ended up (the origin system it was towed back to). */
+/** What the fatal loss tells succession: who/what took the ship down and where
+ *  the wreck ended up (the origin system it was towed back to). A combat death
+ *  passes the fatal `encounter` (the wreck is towed to its origin); a non-combat
+ *  loss (T-1205 life-support failure) passes an explicit `originSystem` instead —
+ *  the license is claimed where the ship was standing. Exactly one of the two is
+ *  supplied; `originSystem` falls back to the player's current system. */
 export interface ShipLostContext {
-  encounter: EncounterState;
+  encounter?: EncounterState;
+  originSystem?: number;
   interceptorId: string;
 }
 
@@ -38,7 +43,8 @@ export interface ShipLostContext {
  */
 export function applySuccession(state: GameState, context: ShipLostContext): GameEvent[] {
   const events: GameEvent[] = [];
-  const originSystem = context.encounter.pendingTravel.origin;
+  const originSystem =
+    context.encounter?.pendingTravel.origin ?? context.originSystem ?? state.player.currentSystemId;
 
   // HALVED: credits (floor division). CARRIED items (registry, charts, flags,
   // completed storylets, npc dispositions, stats, debt/debtDueDay) are left

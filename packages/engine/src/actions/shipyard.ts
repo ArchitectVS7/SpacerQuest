@@ -10,6 +10,7 @@ import {
 import { spendDie } from '../dice.js';
 import { renownRankIndex } from '../deeds.js';
 import { jumpFuelCost, maxJumpDistance } from '../economy.js';
+import { crewCapacity, repairRate } from '../components.js';
 
 const COMPONENT_IDS: readonly ShipComponentId[] = [
   'hull',
@@ -443,7 +444,12 @@ export function applyShipyardMutation(
     if (component) {
       const current = ship[component];
       state.player.credits -= repairCost(state, component, repairMode);
-      current.condition = repairMode === 'single' ? Math.min(9, current.condition + 1) : 9;
+      // T-1205 robotics → repair rate: a single repair restores `repairRate`
+      // condition, not a flat +1. Junker robotics (score 10) restores 1
+      // (unchanged); upgraded robotics restores more per action. READER OF
+      // `robotics`: this line (via components.ts repairRate).
+      current.condition =
+        repairMode === 'single' ? Math.min(9, current.condition + repairRate(ship)) : 9;
       return;
     }
     state.player.credits -= repairAllCost(state);
@@ -550,6 +556,10 @@ export interface ShipPreview {
   /** Sample of the fuel curve at REF_JUMP_DISTANCE (display only). */
   fuelPerJump: number;
   maxJumpDistance: number;
+  /** T-1205 cabin → crew capacity: berths the cabin provides, shown in the ship
+   *  pane so a cabin upgrade reads as a concrete before→after number. The T-1306
+   *  socket for real crew rules consumes the same `crewCapacity` reader. */
+  crewCapacity: number;
   component?: { id: ShipComponentId; strength: number; condition: number };
 }
 
@@ -578,6 +588,7 @@ function shipPreview(
     maxFuel: ship.maxFuel,
     fuelPerJump: jumpFuelCost(ship.drives, REF_JUMP_DISTANCE, ship.hasTransWarpDrive ?? false),
     maxJumpDistance: maxJumpDistance(ship.drives, ship.fuel, ship.hasTransWarpDrive ?? false),
+    crewCapacity: crewCapacity(ship),
   };
   if (
     (action.action === 'buy-component-tier' || action.action === 'repair') &&

@@ -11,12 +11,15 @@ import {
 import {
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
+  calculateFuelCapacity,
   createInitialState,
   endDay,
   jumpFuelCost,
+  quoteShipyard,
   renownRankIndex,
   startDay,
   applyPlayerAction,
+  weaponVolleyDamage,
   SeededRng,
   type GameEvent,
   type GameState,
@@ -509,6 +512,43 @@ function planRefuel(
   };
 }
 
+// T-1205: a real player repairs a battered ship. Now that enemy fire can chip the
+// HULL on any round (seeded component targeting), a junker's hull condition — and
+// with it the hull-derived fuel ceiling (maxFuel = (condition+1)·strength·30) —
+// can be ground down mid-run, shrinking the tank until no contract is reachable
+// and a solvent trader strands rich-but-short-ranged (observed: hull condition 3 →
+// maxFuel 120, stuck 7 days with 158k credits). The pre-T-1205 damage rotation
+// spared the hull in short encounters, so the policies never needed to repair;
+// they do now. This is the "think like a player" fix, not a loosened invariant.
+const CRIPPLED_FUEL_FRACTION = 0.7;
+
+/** A repair-all when the hull has been chipped enough to cut the fuel ceiling
+ *  below CRIPPLED_FUEL_FRACTION of its pristine (condition-9) capacity AND the
+ *  repair is affordable above `reserve`. Restores the full tank in one action so
+ *  the ship can reach contracts again. Returns null when the ship is healthy,
+ *  unaffordable, or out of dice. */
+function planCrippledRepair(
+  state: GameState,
+  ledger: DieLedger,
+  reserve: number,
+): PlayerAction | null {
+  const ship = state.player.ship;
+  const pristineCapacity = calculateFuelCapacity(ship.hull.strength, 9);
+  if (pristineCapacity <= 0) return null;
+  if (ship.maxFuel >= CRIPPLED_FUEL_FRACTION * pristineCapacity) return null;
+  const quote = quoteShipyard(state, {
+    type: 'Shipyard',
+    action: 'repair',
+    repairMode: 'all',
+    spendDie: 0,
+  });
+  if (!quote.ok) return null;
+  if (state.player.credits - quote.cost < reserve) return null;
+  const die = ledger.takeWorst();
+  if (die === undefined) return null;
+  return { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die };
+}
+
 /**
  * Single combat move for the weak-hulled trader/explorer. Resolving an
  * encounter by talk or fight COMPLETES the interrupted delivery; running only
@@ -645,6 +685,13 @@ export const traderPolicy: SimPolicy = ({ state }) => {
     actions.push(refuel.action);
     refuelCost = refuel.cost;
   }
+
+  // T-1205: if enemy fire has chipped the hull down far enough to collapse the
+  // fuel ceiling (stranding a solvent trader with no reachable contract), repair
+  // the ship — a real player fixes a crippled hull. Restores the full tank for the
+  // next run; fires only when actually crippled and affordable.
+  const repair = planCrippledRepair(state, ledger, TRADER_RESERVE);
+  if (repair) actions.push(repair);
 
   // The tank the trader will actually have when it flies today — current fuel
   // plus whatever the just-queued refuel tops it up by (refuel runs before the
@@ -796,8 +843,15 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
     const encounter = state.encounter;
     const targetId = encounter.interceptor.id;
     const hull = Math.max(1, encounter.enemyHull);
+    // T-1205: a winning volley now removes `weaponVolleyDamage` hull points, not a
+    // flat 1, so the clean kill takes CEIL(hull / volleyDamage) volleys — fewer
+    // with an upgraded gun. Queuing the old raw `hull` count over-fired once
+    // weapons were load-bearing: the enemy died early and the surplus Combat
+    // actions hit no encounter (a throw). Sizing the queue to the real damage is
+    // both the fix and the reason an upgraded fighter wins more (this task's A/B).
+    const volleysNeeded = Math.ceil(hull / weaponVolleyDamage(state.player.ship));
     const fuelVolleys = Math.floor(state.player.ship.fuel / FIGHT_FUEL_COST);
-    const volleys = Math.min(hull, fuelVolleys, ledger.remaining());
+    const volleys = Math.min(volleysNeeded, fuelVolleys, ledger.remaining());
     if (volleys >= 1) {
       // Queue exactly `volleys` fights — never more than the enemy's hull, so a
       // clean sweep resolves on the final volley without a dangling action.
@@ -881,6 +935,10 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   if (state.encounter) return planPacifistCombat(state, ledger);
 
   const actions: PlayerAction[] = [];
+  // T-1205: repair a hull chipped down enough to collapse the fuel ceiling before
+  // the explorer strands (it burns fuel fastest, so it feels a shrunk tank first).
+  const crippledRepair = planCrippledRepair(state, ledger, EXPLORER_RESERVE);
+  if (crippledRepair) actions.push(crippledRepair);
   // Explorers burn fuel fast — keep the tank fuller than a trader would.
   const refuel = planRefuel(state, ledger, 0, 200, 400);
 
@@ -1035,11 +1093,18 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
     const targetId = encounter.interceptor.id;
     const hull = Math.max(1, encounter.enemyHull);
     const fuelVolleys = Math.floor(state.player.ship.fuel / FIGHT_FUEL_COST);
+    // T-1205: a winning volley removes `weaponVolleyDamage` hull points, so the
+    // clean kill needs CEIL(hull / volleyDamage) volleys — fewer with an upgraded
+    // gun. Sizing to real damage (not the raw hull count) is both the correctness
+    // fix (over-queuing orphaned the surplus Combat once weapons went live) and
+    // why an upgraded veteran wins fights it used to be priced out of.
+    const volleysNeeded = Math.ceil(hull / weaponVolleyDamage(state.player.ship));
     const canWin =
-      state.player.ship.weapons.strength > 1 && Math.min(fuelVolleys, ledger.remaining()) >= hull;
+      state.player.ship.weapons.strength > 1 &&
+      Math.min(fuelVolleys, ledger.remaining()) >= volleysNeeded;
     if (need('first_combat_win') && canWin) {
       const fights: PlayerAction[] = [];
-      for (let i = 0; i < hull; i += 1) {
+      for (let i = 0; i < volleysNeeded; i += 1) {
         const die = ledger.takeBest();
         if (die === undefined) break;
         fights.push({ type: 'Combat', stance: 'fight', targetId, spendDie: die });
@@ -1067,6 +1132,11 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   const ship = state.player.ship;
   const from = state.player.currentSystemId;
   const board = state.market.manifestBoard;
+
+  // T-1205: repair a hull the enemy has chipped down enough to collapse the fuel
+  // ceiling, before it strands the grinder and starves its deed income.
+  const repair = planCrippledRepair(state, ledger, VETERAN_RESERVE);
+  if (repair) actions.push(repair);
 
   // T-1102: choose the destination FIRST so the refuel can be sized to reach it —
   // the same scarcity fix the trader needs. Without it the veteran signs the
@@ -1328,6 +1398,14 @@ export function runCampaign(
     });
     const incomeActionCount = actions.filter(isIncomeAction).length;
     for (const action of actions) {
+      // T-1205: a queued Combat can now be orphaned mid-batch — seeded enemy
+      // damage can drive the player's hull to 0 and end the encounter (succession)
+      // BEFORE the rest of a volley queue is applied, and a Combat with no active
+      // encounter is malformed input that throws. A batch driver must therefore
+      // skip a Combat once the encounter is gone (a real UGT client re-reads legal
+      // actions between steps and would never send it). This only fires on the new
+      // mid-batch-death path, so deterministic non-fatal runs are unchanged.
+      if (action.type === 'Combat' && !dayState.encounter) continue;
       const stepped = applyPlayerAction(dayState, action);
       dayState = stepped.state;
       dayEvents.push(...stepped.events);

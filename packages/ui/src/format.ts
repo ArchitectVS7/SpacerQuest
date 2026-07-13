@@ -273,6 +273,19 @@ function eventToWire(e: GameEvent): string | null {
       return `The ${e.defId} event has passed; markets settle.`;
     case 'PoiDiscovered':
       return `Beacon return — ${e.name} logged off the lane.`;
+    case 'ComponentDamaged':
+      // T-1205: the wire is the reader of shields' mitigation. Junker hits (no
+      // shields, `mitigated` 0/absent) stay silent to avoid ticker spam; a hit an
+      // upgraded shield soaked is newsworthy. A full absorb reports amount 0.
+      if ((e.mitigated ?? 0) <= 0) return null;
+      return e.amount === 0
+        ? `Shields held — absorbed a ${e.mitigated}-point hit to ${componentName(e.component).toLowerCase()}.`
+        : `Shields bled off ${e.mitigated} of a hit to ${componentName(e.component).toLowerCase()}.`;
+    case 'LifeSupportCritical':
+      // T-1205: the wire is a reader of the lifeSupport survival check.
+      return e.survived
+        ? 'LIFE SUPPORT — critical failure ridden out on emergency air.'
+        : 'LIFE SUPPORT — catastrophic failure; the ship was lost to the dark.';
     default:
       return null;
   }

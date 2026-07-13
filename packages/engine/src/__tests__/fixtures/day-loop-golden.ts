@@ -164,10 +164,22 @@ export function runDayLoopGolden(
 // serialized STATE and EVENT hashes for the TEN_DAY script. The STORYLET script
 // (seed 555, day 1, no combat, all dispositions 0) is unaffected — its hashes
 // are unchanged. Regenerated via gen-day-loop-golden.ts.
+//
+// T-1205 re-derivation (ship components load-bearing): enemy combat damage now
+// (1) draws ONE extra seeded rng.next() per LANDED hit to pick the struck
+// component — replacing the deterministic round-based rotation — and (2) subtracts
+// the player's shield mitigation (0 for the junker in this script, so amounts are
+// unchanged). The extra per-hit draw shifts the encounter rng stream for the day-3
+// Smuggler Ray combat, moving both the serialized STATE (which components were
+// chipped) and the EVENT hashes (the ComponentDamaged targets + the new
+// `mitigated: 0` field) for the TEN_DAY script. The draw is taken only on a HIT
+// and rides a forked encounter rng, so the persisted day rngState / NPC stream is
+// unperturbed. Weapons/nav/robotics are all at junker baselines here. The STORYLET
+// script (seed 555, no combat) is unchanged. Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'a2f91c7607fa2cef43f21b0e560803a0284ffc74635ee16f94a7931b5b0e42f9';
+  'dcfa9a766f7a7bd8d8be80cd9aafb1d0d2e132c34eb376ba8ca5ff9c0399845b';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'a8d97fbc8c5d31ebaee36656ec42baaa917191b26c5665de5f9e3a4b1f31f7ee';
+  '2770ee2bac26fa88b23dd7bd91f38dbbe576d2b065ea0065569ca77d6f6e1744';
 export const STORYLET_GOLDEN_STATE_HASH =
   '9c10750ea5bd9fb5f3593ae7adfa81425d5f3ad2b7a68f9a82f663f63dc9f876';
 export const STORYLET_GOLDEN_EVENTS_HASH =

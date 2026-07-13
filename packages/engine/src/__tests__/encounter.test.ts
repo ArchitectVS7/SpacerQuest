@@ -670,10 +670,13 @@ describe('Encounter system', () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: 'ComponentDamaged',
+          // T-1205: seeded target — under SeededRng(1) the pick lands on 'shields'
+          // (index 0 of the damage table); junker shields mitigate 0.
           component: 'shields',
           // T-1202: interceptor GUNS 20 → margin 22 (>=10) → the clean hit takes 2
           // condition, 9 -> 7 (foundation flat-1 damage → margin-scaled).
           newCondition: 7,
+          mitigated: 0,
         }),
       ]),
     );
@@ -682,7 +685,15 @@ describe('Encounter system', () => {
       expect.arrayContaining([
         expect.objectContaining({ type: 'CombatEvent', stance: 'fight', enemyHullRemaining: 1 }),
         // T-1202: same big-margin interceptor hit takes 2 condition, 9 -> 7.
-        expect.objectContaining({ type: 'ComponentDamaged', component: 'drives', newCondition: 7 }),
+        // T-1205: the struck component is now a SEEDED pick (was the round-based
+        // rotation's 'drives'); under SeededRng(2) the pick lands on 'weapons'.
+        // Junker shields mitigate 0, so the damage is still the margin-scaled 2.
+        expect.objectContaining({
+          type: 'ComponentDamaged',
+          component: 'weapons',
+          newCondition: 7,
+          mitigated: 0,
+        }),
       ]),
     );
     expect(roundThree.state.encounter).toBeNull();
@@ -757,7 +768,10 @@ describe('Encounter system', () => {
     state.player.dawnHand = { dice: [1], spent: [false] };
     state.player.ship.hull.condition = 1;
     state.encounter = fixtureEncounter({
-      round: 4,
+      // T-1205: the struck component is now a SEEDED pick, not the old round-4
+      // rotation that guaranteed hull. SeededRng(14) is a seed whose single hit
+      // lands on hull, driving the condition-1 hull to 0 and firing ShipLost —
+      // the "hull damageable on any round" behaviour this task installs.
       interceptor: {
         ...fixtureEncounter().interceptor,
         stats: { PILOT: 1, GUNS: 20, TRADE: 0, GRIT: 0, GUILE: 1 },
@@ -767,7 +781,7 @@ describe('Encounter system', () => {
     const { state: nextState, events } = resolveCombat(
       state,
       { type: 'Combat', stance: 'run', targetId: state.encounter.interceptor.id, spendDie: 0 },
-      new SeededRng(1),
+      new SeededRng(14),
     );
 
     expect(nextState.encounter).toBeNull();
