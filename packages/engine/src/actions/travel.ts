@@ -1,6 +1,9 @@
 import {
   ANONYMOUS_INTERCEPTORS,
   AnonymousInterceptorKind,
+  INTERCEPT_FRIEND_WEIGHT,
+  INTERCEPT_GRUDGE_WEIGHT,
+  INTERCEPT_MIN_WEIGHT,
   NPC_PROFILES,
   ROUTE_DANGER_CHANCE,
   RouteDangerLevel,
@@ -172,15 +175,46 @@ function buildAnonymousCandidates(
   }));
 }
 
-function chooseOne<T>(rng: SeededRng, candidates: T[]): T {
+/**
+ * Disposition-weighted pick over a homogeneous (single-tier) candidate pool.
+ *
+ * T-1204 (PRD §6 "grudges hunt you, friends pass you by") — FOUNDATION DIVERGENCE:
+ * foundation (f2f95fa9) has no per-NPC player disposition, so its interceptor
+ * choice carried no grudge term; this weighting is a T-1204 addition. A named
+ * candidate the player has WRONGED (negative disposition) is more likely to be
+ * the interceptor; one the player has WON OVER (positive) less likely. Anonymous
+ * candidates — and any named candidate at neutral 0 — weight exactly 1, so a pool
+ * with no non-neutral dispositions is byte-identical to the old uniform
+ * `Math.floor(rng.next() * n)` pick (same single rng draw, same index). The
+ * weighting only reorders WITHIN the tier pool the caller already chose, so the
+ * tier-band matchmaking invariant (the 500-seed sweep) is untouched.
+ */
+function chooseWeighted(
+  state: GameState,
+  rng: SeededRng,
+  candidates: EncounterInterceptorState[],
+): EncounterInterceptorState {
   if (candidates.length === 0) {
     throw new Error('Cannot choose from an empty encounter candidate list');
   }
-  const candidate = candidates[Math.floor(rng.next() * candidates.length)];
-  if (candidate === undefined) {
-    throw new Error('Encounter candidate selection failed');
+
+  const weights = candidates.map((candidate) => {
+    if (candidate.source !== 'named') return 1;
+    const disposition = state.npcs.find((npc) => npc.id === candidate.id)?.disposition ?? 0;
+    if (disposition < 0) return 1 + INTERCEPT_GRUDGE_WEIGHT * -disposition;
+    if (disposition > 0) {
+      return Math.max(INTERCEPT_MIN_WEIGHT, 1 - INTERCEPT_FRIEND_WEIGHT * disposition);
+    }
+    return 1;
+  });
+
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let roll = rng.next() * total;
+  for (let i = 0; i < candidates.length; i += 1) {
+    roll -= weights[i];
+    if (roll < 0) return candidates[i];
   }
-  return candidate;
+  return candidates[candidates.length - 1];
 }
 
 export function selectEncounterInterceptor(
@@ -201,7 +235,7 @@ export function selectEncounterInterceptor(
     const preferNamed = namedCandidates.length > 0 && rng.next() < 0.25;
     const preferred = preferNamed ? namedCandidates : anonymousCandidates;
     const fallback = preferNamed ? anonymousCandidates : namedCandidates;
-    return chooseOne(rng, preferred.length > 0 ? preferred : fallback);
+    return chooseWeighted(state, rng, preferred.length > 0 ? preferred : fallback);
   }
 
   const bandCandidates: EncounterInterceptorState[] = [];
@@ -216,7 +250,7 @@ export function selectEncounterInterceptor(
     throw new Error('No encounter interceptors available for tier band');
   }
 
-  return chooseOne(rng, bandCandidates);
+  return chooseWeighted(state, rng, bandCandidates);
 }
 
 // T-1103 · Tour One is gentler than the open galaxy. PRD-REIMAGINED §"Tour One"

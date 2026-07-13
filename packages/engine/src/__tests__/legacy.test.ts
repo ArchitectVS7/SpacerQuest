@@ -135,14 +135,15 @@ describe('T-108 · Death & legacy — full inheritance', () => {
     expect(next.player.stats).toEqual(statsBefore);
     expect(next.player.debt).toBe(12000);
     expect(next.player.debtDueDay).toBe(55);
-    // Dispositions attach to the NAME — grudges and favors both survive.
+    // Dispositions attach to the NAME — grudges and favors both survive death.
+    // T-1204: dusk decay is now PERIODIC (every DISPOSITION_DECAY_INTERVAL_DAYS
+    // dusks), and this succession runs on day 1 (1 % 3 != 0), which is NOT a
+    // decay day — so every standing carries through the death untouched. This is
+    // a cleaner test of inheritance than the old per-dusk-decay expectation: the
+    // exact pre-death value survives.
     for (const { id, d } of dispositionsBefore) {
-      // Dusk decay moves non-zero dispositions one step toward 0; the SURVIVAL
-      // of the standing is what matters, not the exact value.
       const after = next.npcs.find((n) => n.id === id)!.disposition;
-      if (d > 0) expect(after).toBe(d - 1);
-      else if (d < 0) expect(after).toBe(d + 1);
-      else expect(after).toBe(0);
+      expect(after).toBe(d);
     }
 
     // RESET — scheduled storylets cancelled (appointments with a dead spacer).

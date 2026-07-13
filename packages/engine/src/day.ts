@@ -1,5 +1,7 @@
 import {
   CARGO_TYPES,
+  DISPOSITION_DECAY_INTERVAL_DAYS,
+  DISPOSITION_DELTAS,
   NPC_PROFILES,
   STAR_SYSTEMS,
   Stat,
@@ -225,25 +227,40 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     }
   }
 
-  // T-106 bond hook — ONE mechanical intervention per dusk. Rule: the
-  // bonded-to-player NPC (disposition >= +5) sharing the player's system with
-  // the HIGHEST disposition (id as tiebreak) may act, rolling d20 + their
-  // GRIT (seeded): DC 12 to drive an active interceptor off before the dusk
-  // free attack, DC 8 to answer a dry-tank mayday with a 50-fuel transfer.
-  // An intervention IS the rescuer's dusk action — helping the player costs
-  // them their own day, so they skip the NPC loop below.
+  // Bond hook — ONE mechanical intervention per dusk (T-106, rebuilt T-1204).
+  // The intervention is now a TYPED per-profile character hook (profile.bondHook)
+  // keyed to the NPC's Bond, not the old bare inline `disposition >= 5` + hard-
+  // coded DCs: an NPC does the beat THEIR bond implies (Doc Salvage answers a
+  // mayday → fuel-gift; Admiral Stern protects → drive-off), activates at the
+  // profile's own threshold, and rolls against the profile's own DC. Candidate
+  // rescuers are same-system NPCs whose hook is live (disposition >= its
+  // activateAt); the HIGHEST disposition acts (id as tiebreak). An intervention
+  // IS the rescuer's dusk action — helping the player costs them their own day,
+  // so they skip the NPC loop below.
+  //
+  // Reachability (the T-1204 acceptance): the old bare 5-threshold + dry-tank-
+  // only (===0) fuel gate never co-occurred in organic play — the hook fired
+  // zero times ever. The data-driven low activateAt + broadened lowFuelThreshold,
+  // together with the rebalanced slower decay, let a storylet-bonded NPC (Doc)
+  // hold their standing long enough for a low-fuel dusk to reach it.
   let intervenedNpcId: string | null = null;
   const rescuer = nextState.npcs
-    .filter(
-      (npc) => npc.disposition >= 5 && npc.currentSystemId === nextState.player.currentSystemId,
-    )
+    .filter((npc) => {
+      const hook = NPC_PROFILES.find((p) => p.id === npc.profileId)?.bondHook;
+      return (
+        hook !== undefined &&
+        npc.disposition >= hook.activateAt &&
+        npc.currentSystemId === nextState.player.currentSystemId
+      );
+    })
     .sort((a, b) => b.disposition - a.disposition || a.id.localeCompare(b.id))[0];
   if (rescuer) {
     const rescuerProfile = NPC_PROFILES.find((p) => p.id === rescuer.profileId);
+    const hook = rescuerProfile?.bondHook;
     const grit = rescuerProfile?.stats[Stat.GRIT] ?? 0;
-    if (nextState.encounter) {
+    if (hook?.beat === 'drive-off' && nextState.encounter) {
       const rescueRng = dayRng.fork(`bond-rescue-${rescuer.id}`);
-      if (rescueRng.d20() + grit >= 12) {
+      if (rescueRng.d20() + grit >= hook.dc) {
         const interceptorName = nextState.encounter.interceptor.name;
         events.push({
           type: 'BondIntervention',
@@ -268,22 +285,31 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
           actionDetails: rescuer.lastAction.details,
         });
       }
-    } else if (nextState.player.ship.fuel === 0 && rescuer.fuel >= 100) {
+    } else if (
+      hook?.beat === 'fuel-gift' &&
+      !nextState.encounter &&
+      nextState.player.ship.fuel <= (hook.lowFuelThreshold ?? 0) &&
+      rescuer.fuel >= (hook.minRescuerFuel ?? 100)
+    ) {
       const giftRng = dayRng.fork(`bond-gift-${rescuer.id}`);
-      if (giftRng.d20() + grit >= 8) {
-        rescuer.fuel -= 50;
-        nextState.player.ship.fuel = Math.min(nextState.player.ship.maxFuel, 50);
+      if (giftRng.d20() + grit >= hook.dc) {
+        const amount = hook.fuelAmount ?? 50;
+        rescuer.fuel -= amount;
+        nextState.player.ship.fuel = Math.min(
+          nextState.player.ship.maxFuel,
+          nextState.player.ship.fuel + amount,
+        );
         events.push({
           type: 'BondIntervention',
           day: nextState.day,
           npcId: rescuer.id,
           kind: 'fuel-gift',
-          amount: 50,
+          amount,
         });
         events.push({
           type: 'WireEntry',
           day: nextState.day,
-          message: `${rescuer.name} answered your mayday and transferred 50 fuel.`,
+          message: `${rescuer.name} answered your mayday and transferred ${amount} fuel.`,
         });
         intervenedNpcId = rescuer.id;
         rescuer.lastAction = {
@@ -369,20 +395,53 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     events.push(...npcEvents);
   }
 
-  // Grudges and favors fade: each dusk every non-neutral disposition moves
-  // one step toward 0 (T-106).
-  for (const npc of nextState.npcs) {
-    if (npc.disposition !== 0) {
-      applyDisposition(nextState, npc.id, npc.disposition > 0 ? -1 : 1, 'decay', events);
+  // Grudges and favors fade — but SLOWLY. T-1204 DECAY REBALANCE (the acceptance's
+  // "decay divergence documented at its definition site"):
+  //
+  //   FOUNDATION (f2f95fa9) has NO per-NPC player-disposition decay to port —
+  //   disposition itself is engine-original (T-106 invented it; T-106 also
+  //   invented this decay). So this is not a foundation divergence but a T-1204
+  //   RE-TUNING of an engine-original rule.
+  //
+  //   WHY the interval moved from every-dusk to every-Nth-dusk: the old
+  //   unconditional −1/dusk erased every organic gain before it could matter —
+  //   the tribute (+2) / defeat (−3) deltas were swamped within 2–3 days, so a
+  //   300-day sim peaked at |disposition| = 1 and the bond hook (which needed +5)
+  //   fired ZERO times ever. Stepping one point toward 0 only every
+  //   DISPOSITION_DECAY_INTERVAL_DAYS dusks — combined with the larger deltas
+  //   above — lets a paid-off / storylet-bonded NPC HOLD their standing across
+  //   several days, so repeated interactions accumulate past the hook threshold
+  //   and past |5|.
+  //
+  //   Keyed to `state.day % N` (a value already in GameState), so this needs NO
+  //   new save field and no migration; it is fully deterministic across a JSON
+  //   round-trip.
+  //
+  //   READER: this loop. CONSUMERS the slower decay unblocks — the bond hook
+  //   above (§ reachability), the interception grudge-weighting (travel.ts
+  //   chooseWeighted), and the talk DC term (combat.ts resolveTalk): all three
+  //   read a disposition that now actually persists.
+  if (nextState.day % DISPOSITION_DECAY_INTERVAL_DAYS === 0) {
+    for (const npc of nextState.npcs) {
+      if (npc.disposition !== 0) {
+        applyDisposition(nextState, npc.id, npc.disposition > 0 ? -1 : 1, 'decay', events);
+      }
     }
   }
 
   // An NPC that undercut the player on a board contract registers as a rival:
-  // the competitive act ticks their disposition toward the player down by one
-  // (T-106). Applied AFTER dusk decay so the fresh grudge actually persists to
-  // the next day instead of being cancelled by the same-dusk fade.
+  // the competitive act ticks their disposition toward the player down (T-106,
+  // delta from content DISPOSITION_DELTAS). Applied AFTER dusk decay so the fresh
+  // grudge actually persists to the next day instead of being cancelled by the
+  // same-dusk fade on a decay day.
   if (snipingNpcId) {
-    applyDisposition(nextState, snipingNpcId, -1, 'contract-sniped', events);
+    applyDisposition(
+      nextState,
+      snipingNpcId,
+      DISPOSITION_DELTAS.contractSniped,
+      'contract-sniped',
+      events,
+    );
   }
 
   // Generate daily wire entries from notable events

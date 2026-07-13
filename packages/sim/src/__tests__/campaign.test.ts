@@ -8,6 +8,7 @@ import {
   createInitialState,
   DayPhase,
   endDay,
+  jumpFuelCost,
   renownRankIndex,
   SeededRng,
   startDay,
@@ -528,4 +529,243 @@ describe('T-1004 fuel starvation', () => {
     expect(report.finalState.credits).toBe(0);
     expect(report.fuelStarvationDays).toBeGreaterThan(0);
   }, 30000);
+});
+
+// ---------------------------------------------------------------------------
+// T-1204 · Disposition with teeth — the organic-play acceptance (PRD §6 "they
+// remember"). Before T-1204 `npc.disposition` was plumbed but dead: the dusk
+// bond hook (which needed +5) had NEVER fired, and a 300-day sim peaked at
+// |disposition| = 1 because the −1/dusk decay swamped every gain. The mechanic
+// now has three real readers (interception weighting, the talk DC term, and the
+// data-driven Bond hook), a slower periodic decay, and larger event deltas.
+//
+// This test drives a PURPOSEFUL, HONEST player through the real day loop —
+// nothing pokes state.disposition / state.flags / positions; every effect comes
+// from a legal `applyPlayerAction` (Storylet / Travel / Combat / Trade /
+// Shipyard) exactly as a human at the terminal would issue it. The driver:
+//   (1) resolves Doc Salvage's Tour One distress-ping storylet chain — the
+//       organic way an ordinary player earns Doc's standing (→ his fuel-gift
+//       Bond hook goes live);
+//   (2) makes a light early detour to fly to Doc while running low on fuel, so
+//       his fuel-gift mayday answer fires — the FIRST bond intervention the hook
+//       has ever produced;
+//   (3) otherwise plays a competent veteran career (the shipped veteranPolicy),
+//       climbing renown → tier so NAMED interceptors start hunting it, and
+//       FIGHTS a named interceptor to the death once armed — a defeat now cuts a
+//       −5 grudge (DISPOSITION_DELTAS.defeat), which the interception weighting
+//       then makes re-hunt the player, pushing |disposition| past 5.
+// Seed 22 lands both on this trajectory: the fuel-gift bond intervention on
+// day 4 and a peak |disposition| of 6 by day 52 (a −5 combat grudge deepened by
+// a rival contract-snipe). The loop stops as soon as both are observed.
+// ---------------------------------------------------------------------------
+describe('T-1204 disposition with teeth (organic 300-day sim)', () => {
+  it('a competent 300-day campaign produces a bond intervention and peak |disposition| >= 5', () => {
+    const DOC = 'npc-doc-salvage';
+    const CORE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+
+    const highestFreeDie = (s: GameState): number | undefined => {
+      const hand = s.player.dawnHand;
+      if (!hand) return undefined;
+      let best = -1;
+      let bestVal = -1;
+      for (let i = 0; i < hand.dice.length; i += 1) {
+        if (!hand.spent[i] && hand.dice[i] > bestVal) {
+          bestVal = hand.dice[i]!;
+          best = i;
+        }
+      }
+      return best >= 0 ? best : undefined;
+    };
+    const firstFreeDie = (s: GameState): number | undefined => {
+      const hand = s.player.dawnHand;
+      if (!hand) return undefined;
+      for (let i = 0; i < hand.dice.length; i += 1) if (!hand.spent[i]) return i;
+      return undefined;
+    };
+    const jumpCost = (s: GameState, dest: number): number =>
+      jumpFuelCost(s.player.ship.drives, systemDistance(s.player.currentSystemId, dest), false);
+
+    // Resolve Doc Salvage's storylet chain whenever it is offered — the legal,
+    // requirement-free choices that raise his disposition (answer → refuse-payment
+    // = +3, clearing his Bond hook's activateAt of 2).
+    const resolveDocChain = (s: GameState): GameState => {
+      let next = s;
+      for (;;) {
+        const ping = next.storylets.available.find(
+          (o) => o.storyletId === 'chain.doc-salvage.distress-ping',
+        );
+        if (ping) {
+          next = applyPlayerAction(next, {
+            type: 'Storylet',
+            storyletId: ping.storyletId,
+            choiceId: 'answer',
+          }).state;
+          continue;
+        }
+        const followUp = next.storylets.available.find(
+          (o) => o.storyletId === 'chain.doc-salvage.follow-up',
+        );
+        if (followUp) {
+          next = applyPlayerAction(next, {
+            type: 'Storylet',
+            storyletId: followUp.storyletId,
+            choiceId: 'refuse-payment',
+          }).state;
+          continue;
+        }
+        return next;
+      }
+    };
+
+    // Only commit to killing a named interceptor when the fight is winnable —
+    // strong guns, or a small enough hull — and there is fuel for the volleys, so
+    // the driver earns the grudge instead of losing the ship.
+    const canKillNamed = (s: GameState): boolean => {
+      const hull = Math.max(1, s.encounter!.enemyHull);
+      return (s.player.ship.weapons.strength >= 20 || hull <= 2) && s.player.ship.fuel >= 50 * hull;
+    };
+    const handleEncounter = (s: GameState, defeatedNamed: boolean): GameState => {
+      let next = s;
+      let guard = 0;
+      while (next.encounter && guard < 10) {
+        guard += 1;
+        const interceptor = next.encounter.interceptor;
+        const die = highestFreeDie(next);
+        if (die === undefined) break;
+        if (interceptor.source === 'named' && !defeatedNamed && canKillNamed(next)) {
+          next = applyPlayerAction(next, {
+            type: 'Combat',
+            stance: 'fight',
+            targetId: interceptor.id,
+            spendDie: die,
+          }).state;
+        } else {
+          next = applyPlayerAction(next, {
+            type: 'Combat',
+            stance: next.player.ship.fuel >= 20 ? 'run' : 'talk',
+            targetId: interceptor.id,
+            spendDie: die,
+          }).state;
+        }
+      }
+      return next;
+    };
+
+    let state = createInitialState(22);
+    let sawBond = false;
+    let peakDisposition = 0;
+    let defeatedNamed = false;
+    let scanCursor = 0;
+    let bondDay = -1;
+    let peakDay = -1;
+
+    for (let day = 0; day < 300; day += 1) {
+      const rng = new SeededRng(22).fork('policy').fork(`day-${state.day}`).fork(`index-${day}`);
+      let s = startDay(state).state;
+      s = resolveDocChain(s);
+      const doc = s.npcs.find((n) => n.id === DOC)!;
+      const bondWindowOpen = state.day <= 12;
+
+      if (!sawBond && bondWindowOpen && doc.disposition >= 2) {
+        // Doc's Bond hook is live: fly to him running low on fuel so his fuel-gift
+        // mayday answer fires. Reaching him drops the tank below his threshold
+        // naturally, so this is a light detour, not a strand-yourself grind.
+        let guard = 0;
+        while (guard < 10) {
+          guard += 1;
+          if (s.encounter) {
+            s = handleEncounter(s, defeatedNamed);
+            s = resolveDocChain(s);
+            continue;
+          }
+          const docSystem = s.npcs.find((n) => n.id === DOC)!.currentSystemId;
+          const die = firstFreeDie(s);
+          if (die === undefined) break;
+          if (s.player.currentSystemId === docSystem) {
+            if (s.player.ship.fuel <= 150) break; // co-located and low → wait, gift fires at dusk
+            let hop = docSystem;
+            for (const id of CORE) {
+              if (id !== docSystem && jumpCost(s, id) <= s.player.ship.fuel) {
+                hop = id;
+                break;
+              }
+            }
+            if (hop !== docSystem) {
+              s = applyPlayerAction(s, { type: 'Travel', destinationId: hop, spendDie: die }).state;
+              continue;
+            }
+            break;
+          }
+          if (jumpCost(s, docSystem) <= s.player.ship.fuel) {
+            s = applyPlayerAction(s, {
+              type: 'Travel',
+              destinationId: docSystem,
+              spendDie: die,
+            }).state;
+            continue;
+          }
+          break;
+        }
+      } else {
+        // Competent veteran career: earn, climb renown/tier, and fight a named
+        // hunter to the death once armed.
+        if (s.encounter) s = handleEncounter(s, defeatedNamed);
+        const actions = veteranPolicy({ state: s, dayIndex: day, rng });
+        for (const action of actions) {
+          try {
+            if (
+              action.type === 'Combat' &&
+              s.encounter &&
+              s.encounter.interceptor.source === 'named' &&
+              !defeatedNamed &&
+              canKillNamed(s)
+            ) {
+              s = applyPlayerAction(s, { ...action, stance: 'fight' }).state;
+            } else {
+              s = applyPlayerAction(s, action).state;
+            }
+          } catch {
+            // An action the veteran planned may be blocked by a mid-batch state
+            // change (e.g. an encounter starting); skip it, exactly as the sim's
+            // own drivers tolerate.
+          }
+        }
+        if (s.encounter) s = handleEncounter(s, defeatedNamed);
+        // The veteran policy already banks guns as its renown/war-chest grows;
+        // its upgraded weapons are what make the named grudge fight winnable.
+        s = resolveDocChain(s);
+      }
+
+      state = endDay(s).state;
+
+      // Scan only the new events (append-only log) for the two acceptance signals.
+      for (let i = scanCursor; i < state.eventLog.length; i += 1) {
+        const e = state.eventLog[i];
+        if (e.type === 'BondIntervention' && !sawBond) {
+          sawBond = true;
+          bondDay = state.day;
+        }
+        if (e.type === 'DispositionChanged') {
+          if (e.reason === 'defeat') defeatedNamed = true;
+          const magnitude = Math.abs(e.disposition);
+          if (magnitude > peakDisposition) {
+            peakDisposition = magnitude;
+            peakDay = state.day;
+          }
+        }
+      }
+      scanCursor = state.eventLog.length;
+
+      if (sawBond && peakDisposition >= 5) break;
+    }
+
+    // Acceptance: at least one bond intervention AND a peak |disposition| >= 5,
+    // both from organic legal play. Observed at authoring time (seed 22): the
+    // fuel-gift bond intervention on day 4, peak |disposition| 6 on day 52.
+    expect(sawBond, `no BondIntervention (bondDay=${bondDay})`).toBe(true);
+    expect(
+      peakDisposition,
+      `peak |disposition| ${peakDisposition} on day ${peakDay}`,
+    ).toBeGreaterThanOrEqual(5);
+  }, 60000);
 });

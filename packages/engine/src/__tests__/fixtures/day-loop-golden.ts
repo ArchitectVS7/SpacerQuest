@@ -151,10 +151,23 @@ export function runDayLoopGolden(
 // move for the TEN_DAY script. The STORYLET script (seed 555) earns no rank-up
 // and stays tier 1, so its hashes are unchanged. All hashes regenerated
 // deliberately via gen-day-loop-golden.ts.
+//
+// T-1204 re-derivation (Disposition with teeth): the day-3 Smuggler Ray
+// encounter ends with a clean RUN (player-fled), whose disposition delta grew
+// from +1 to +2 (DISPOSITION_DELTAS), and dusk decay is now PERIODIC (every 3rd
+// dusk) instead of every dusk — so Smuggler Ray's post-escape standing and its
+// DispositionChanged events differ across the ten days. The interceptor SELECTION
+// weighting added no rng draw for this script (all named candidates are at
+// neutral 0 when the day-3 jump is matched, so chooseWeighted is byte-identical
+// to the old uniform pick), and the talk DC term never fires (no talk stance
+// here), so ONLY the enlarged player-fled delta + the periodic decay move the
+// serialized STATE and EVENT hashes for the TEN_DAY script. The STORYLET script
+// (seed 555, day 1, no combat, all dispositions 0) is unaffected — its hashes
+// are unchanged. Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'f04cd7b8e45528647787c9ceb6fa28325be1d2a68a36ea806c6eb32364c5cb64';
+  'a2f91c7607fa2cef43f21b0e560803a0284ffc74635ee16f94a7931b5b0e42f9';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '0be4ead8fc9389d7948d09fee6223b38b7883bb0d191627cf5cfdd6e5716b0fa';
+  'a8d97fbc8c5d31ebaee36656ec42baaa917191b26c5665de5f9e3a4b1f31f7ee';
 export const STORYLET_GOLDEN_STATE_HASH =
   '9c10750ea5bd9fb5f3593ae7adfa81425d5f3ad2b7a68f9a82f663f63dc9f876';
 export const STORYLET_GOLDEN_EVENTS_HASH =

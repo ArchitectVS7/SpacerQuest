@@ -1,4 +1,5 @@
 import { StatBlock } from './stats.js';
+import { BondHook } from './disposition.js';
 
 export type PowerTier = 1 | 2 | 3 | 4 | 5;
 
@@ -28,6 +29,12 @@ export interface NpcProfile {
   flawDc: number;
   /** Power tier: 1 = mudlark, 5 = legend (PRD §6). */
   tier: PowerTier;
+  /** T-1204: the dusk Bond intervention this NPC performs when the player has
+   *  earned their standing. Present only on the handful of profiles whose Bond
+   *  implies a player-facing obligation; the beat (drive-off / fuel-gift) is the
+   *  one their Bond fictionally supports. Engine reader: the bond hook in
+   *  `day.ts` endDay. */
+  bondHook?: BondHook;
 }
 
 export const NPC_PROFILES: NpcProfile[] = [
@@ -86,6 +93,11 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Overcautious',
     flawDc: 10,
     tier: 5,
+    // T-1204: the Admiral's Bond is protection — he drives an interceptor off a
+    // friend's tail (the drive-off beat), not a fuel handout. A guardian, not a
+    // paramedic. (His standing is harder to earn organically than Doc's, so the
+    // drive-off path is proven in unit coverage rather than the long sim.)
+    bondHook: { beat: 'drive-off', activateAt: 3, dc: 12 },
   },
   {
     id: 'npc-rattlesnake',
@@ -141,6 +153,31 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Savior Complex',
     flawDc: 15,
     tier: 2,
+    // T-1204: Doc's Savior Complex answers a mayday — the fuel-gift beat. His
+    // standing is the one an ORDINARY player can actually earn (the Tour One
+    // distress-ping storylet chain grants him disposition through legal play), so
+    // this is the organically-reachable bond intervention the acceptance
+    // exercises. Every field is tuned for reachability against the rebalanced
+    // decay:
+    //   - activateAt 2: the +3 refuse-payment beat clears it, and it stays
+    //     cleared for several days of decay — a wide enough window for the player
+    //     to reach Doc.
+    //   - lowFuelThreshold 150: a "running low" mayday (half a starter tank),
+    //     broadened far past the old dry-tank-only (=== 0). The old ===0 gate
+    //     never co-occurred with a bonded, co-located Doc in organic play — the
+    //     hook fired ZERO times ever. A bonded Doc (Savior Complex) tops off a
+    //     friend he finds flying the lanes low, not only one already dead in the
+    //     water; this is the single change that makes the beat reachable without
+    //     the player having to strand themselves precisely at 0.
+    //   - dc 8 vs d20 + Doc's GRIT (4): he almost always succeeds once present.
+    bondHook: {
+      beat: 'fuel-gift',
+      activateAt: 2,
+      dc: 8,
+      fuelAmount: 50,
+      lowFuelThreshold: 150,
+      minRescuerFuel: 100,
+    },
   },
   {
     id: 'npc-wild-card',

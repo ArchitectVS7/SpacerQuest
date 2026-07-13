@@ -5,6 +5,8 @@ import {
   FIGHT_FUEL_COST,
   TRIBUTE_BASE_MULTIPLIER,
   TRIBUTE_MAX,
+  DISPOSITION_DELTAS,
+  TALK_DC_PER_DISPOSITION,
 } from '@spacerquest/content';
 import { GameState, GameEvent, PlayerAction, EncounterState, ShipComponentId } from '../types.js';
 import { SeededRng } from '../rng.js';
@@ -82,17 +84,32 @@ function resolveEncounter(
   });
   state.encounter = null;
 
-  // T-106 disposition: named interceptors remember how it ended.
-  // - defeated: a grudge (-3) — you shot their ship out from under them.
-  // - escaped: the player fled and the interceptor keeps the field (+1) —
-  //   relief, no blood spilled, no grudge formed (documented design call).
+  // T-106 disposition: named interceptors remember how it ended. T-1204 moved
+  // the deltas into content (DISPOSITION_DELTAS) and enlarged them so a single
+  // organic event survives the rebalanced decay (day.ts) — a defeat now cuts a
+  // serious grudge (−5) that the T-1204 interception weighting makes hunt you.
+  // - defeated: you shot their ship out from under them.
+  // - escaped: the player fled and the interceptor keeps the field — relief, no
+  //   blood spilled, a small mark in the player's favor (documented design call).
   // - interceptor-fled (driven off by a bonded third party): no change; their
   //   quarrel is with the rescuer, not the player.
   if (encounter.interceptor.source === 'named') {
     if (resolution === 'defeated') {
-      applyDisposition(state, encounter.interceptor.id, -3, 'defeat', events);
+      applyDisposition(
+        state,
+        encounter.interceptor.id,
+        DISPOSITION_DELTAS.defeat,
+        'defeat',
+        events,
+      );
     } else if (resolution === 'escaped') {
-      applyDisposition(state, encounter.interceptor.id, 1, 'player-fled', events);
+      applyDisposition(
+        state,
+        encounter.interceptor.id,
+        DISPOSITION_DELTAS.playerFled,
+        'player-fled',
+        events,
+      );
     }
   }
 
@@ -382,6 +399,21 @@ function resolveTalk(
   const round = encounter.round;
   const amount = tributeForRound(round);
 
+  // T-1204 (PRD §6 "they remember"; the unbuilt v0.1 T-104 "this is personal"
+  // Rattlesnake beat): the tribute/talk DC gains a relationship term. A named
+  // interceptor the player has WRONGED is harder to buy off (grudge → higher DC);
+  // one the player has WON OVER cuts a deal (favor → lower DC). Anonymous
+  // interceptors carry no standing (default 0), so their DC is unchanged.
+  // FOUNDATION DIVERGENCE — foundation (f2f95fa9) tribute/combat DC carried no
+  // relationship term (extends the T-104 note). Scoped to TALK only (the PRD-
+  // literal reading: "buying him off is a TRADE check … his Flaw makes the DC
+  // brutal") so the run/fight DC — and their goldens — are untouched.
+  const interceptorDisposition =
+    encounter.interceptor.source === 'named'
+      ? (state.npcs.find((npc) => npc.id === encounter.interceptor.id)?.disposition ?? 0)
+      : 0;
+  const talkDc = dc - TALK_DC_PER_DISPOSITION * interceptorDisposition;
+
   // 1. Flaw refusal FIRST: some interceptors want blood, not credits. Talking
   //    cannot resolve — the enemy presses on and the tribute escalates.
   if (enemyRefusesTribute(encounter, rng, events)) {
@@ -415,9 +447,9 @@ function resolveTalk(
     return { state, events };
   }
 
-  // 2. Talk stat check.
-  const result = check(die, state.player.stats[Stat.TRADE], dc);
-  events.push({ type: 'StatCheck', actor: 'Player', stat: Stat.TRADE, dc, result });
+  // 2. Talk stat check — against the disposition-adjusted DC.
+  const result = check(die, state.player.stats[Stat.TRADE], talkDc);
+  events.push({ type: 'StatCheck', actor: 'Player', stat: Stat.TRADE, dc: talkDc, result });
   const affordable = state.player.credits >= amount;
   events.push({
     type: 'CombatEvent',
@@ -481,9 +513,15 @@ function resolveTalk(
         creditsRemaining: state.player.credits,
       });
       // T-106 disposition: a named interceptor who got paid remembers the
-      // easy mark fondly (+2).
+      // easy mark fondly. Delta is content data (T-1204 DISPOSITION_DELTAS).
       if (encounter.interceptor.source === 'named') {
-        applyDisposition(state, encounter.interceptor.id, 2, 'tribute', events);
+        applyDisposition(
+          state,
+          encounter.interceptor.id,
+          DISPOSITION_DELTAS.tribute,
+          'tribute',
+          events,
+        );
       }
       events.push({
         type: 'EncounterRound',
