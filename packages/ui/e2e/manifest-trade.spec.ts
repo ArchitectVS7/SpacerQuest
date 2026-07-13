@@ -40,13 +40,30 @@ test('full loop through the UI: sign, haggle, buy fuel, pay debt', async ({ page
   await page.goto('/');
   await expect(page.getByTestId('contract')).toHaveCount(4);
 
+  // --- Pay debt (NO die — a ledger transfer) ---------------------------
+  // T-1103: moved AHEAD of the fuel-burn jump. The encounter-rate repair (core
+  // 0.08 -> 0.30) makes the bare burn-jump interdict on seed 424242; this die-free
+  // ledger payment is one engine action, so it advances the RNG stream just enough
+  // that the following nav-failed jump clears its encounter roll and stays clean
+  // (re-derived offline: pay-debt -> failed Travel = no encounter). The payment's
+  // own assertions are unaffected by the reorder — the marker is untouched at dawn.
+  await expect(page.getByTestId('debt-chip')).toContainText('25,000');
+  const spentBeforePay = await spentCount(page);
+  await page.getByTestId('debt-amount').fill('500');
+  await page.getByTestId('pay-debt').click();
+  // Debt fell by exactly the amount paid, the countdown reads 30 − day = 29d,
+  // and crucially NO die was consumed by the payment.
+  await expect(page.getByTestId('debt-chip')).toContainText('24,500');
+  await expect(page.getByTestId('debt-countdown')).toHaveText('29d');
+  expect(await spentCount(page)).toBe(spentBeforePay);
+
   // --- Make fuel headroom (T-1102) -------------------------------------
   // The fresh junker starts with a FULL tank (300/300), so buying fuel would
   // clamp to the ceiling and move nothing. Burn some first with a jump: the
   // value-3 die (hand index 4) fails the pilot check for Aldebaran-1 (system 2,
   // DC 10), so the ship stays at Sol but the 60-fuel cost is spent — leaving
-  // 240/300 with the day's board and depot price untouched (both are set at dawn
-  // and a nav-failed jump triggers no encounter).
+  // 240/300 with the day's board and depot price untouched (both are set at dawn;
+  // the jump is clean thanks to the RNG-advancing debt payment above — T-1103).
   await page.getByTestId('die').nth(4).click();
   await page.locator('[data-testid="starmap-system"][data-system-id="2"]').click();
   await page.getByTestId('confirm-jump').click();
@@ -83,17 +100,8 @@ test('full loop through the UI: sign, haggle, buy fuel, pay debt', async ({ page
   await expect(page.getByTestId('fuel-hold')).not.toHaveText(fuelBefore);
   await expect(page.getByTestId('fuel-hold')).toContainText('250');
   expect(await spentCount(page)).toBe(4);
-
-  // --- Pay debt (NO die — a ledger transfer) ---------------------------
-  await expect(page.getByTestId('debt-chip')).toContainText('25,000');
-  const spentBeforePay = await spentCount(page);
-  await page.getByTestId('debt-amount').fill('500');
-  await page.getByTestId('pay-debt').click();
-  // Debt fell by exactly the amount paid, the countdown reads 30 − day = 29d,
-  // and crucially NO die was consumed by the payment.
-  await expect(page.getByTestId('debt-chip')).toContainText('24,500');
-  await expect(page.getByTestId('debt-countdown')).toHaveText('29d');
-  expect(await spentCount(page)).toBe(spentBeforePay);
+  // (The die-free debt payment that opens this test — moved ahead of the fuel
+  // burn for T-1103 — already exercised the ledger-transfer path.)
 });
 
 test('signing a second contract is refused, and the refusal is visible', async ({ page }) => {

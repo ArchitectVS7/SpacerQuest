@@ -160,12 +160,27 @@ export const SYSTEM_DANGER_LEVELS: Record<number, RouteDangerLevel> = {
   28: 5,
 };
 
+// T-1103 · Encounter-rate repair. Re-anchored to foundation's headline combat
+// numbers (ref f2f95fa9:foundation/rules/constants.ts:187-188):
+//   ENCOUNTER_BASE_CHANCE = 0.30 (core), ENCOUNTER_RIM_CHANCE = 0.40 (rim).
+// The prior table cut tier 1 to 0.08 — an UNCOMMENTED 4× reduction of the game's
+// headline mechanic (every core system is danger tier 1 via SYSTEM_DANGER_LEVELS,
+// so encounters fired on ~1 jump in 12). Reverting that cut is a repair, not a
+// divergence: tier 1 (0.30) restores ENCOUNTER_BASE_CHANCE and tier 3 (0.40)
+// restores ENCOUNTER_RIM_CHANCE exactly.
+//
+// Tiers 2, 4, and 5 ARE divergences under Standing-constraint 5 — foundation
+// priced only core/rim, never a five-point gradient. They are Rimward-only and
+// INTERIM: tier 2 linearly interpolates the core↔rim anchors (0.30↔0.40); tiers
+// 4 and 5 extrapolate beyond rim for the Andromeda / special (MALIGNA, NEMESIS)
+// lanes, which foundation never reached. T-1603 owns the canonical balance
+// targets that will finalize these three points.
 export const ROUTE_DANGER_CHANCE: Record<RouteDangerLevel, number> = {
-  1: 0.08,
-  2: 0.14,
-  3: 0.22,
-  4: 0.32,
-  5: 0.45,
+  1: 0.3, // core — restores foundation ENCOUNTER_BASE_CHANCE (repair of the 0.08 cut)
+  2: 0.35, // interim divergence — interpolates core↔rim (T-1603 owns final target)
+  3: 0.4, // rim — restores foundation ENCOUNTER_RIM_CHANCE (repair of the 0.08 cut)
+  4: 0.5, // interim divergence — extrapolates beyond rim for Andromeda (T-1603)
+  5: 0.6, // interim divergence — extrapolates for special lanes (T-1603)
 };
 
 export function calculateDistance(origin: StarCoordinates, destination: StarCoordinates): number {

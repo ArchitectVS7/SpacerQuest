@@ -49,8 +49,15 @@ export const TEN_DAY_SCRIPT: PlayerAction[][] = [
     { type: 'Travel', destinationId: 3, spendDie: 2 },
   ],
   [
+    // T-1103: the day-3 jump to system 3 is interdicted under the restored
+    // encounter rates (Doc Salvage, tier 2, hull 2 — seed-1 deterministic).
+    // Two fight volleys defeat him, which completes the pending travel; the
+    // rest of the day proceeds from system 3. This also gives the golden
+    // script the Combat coverage it never had.
+    { type: 'Combat', stance: 'fight', targetId: 'npc-doc-salvage', spendDie: 0 },
+    { type: 'Combat', stance: 'fight', targetId: 'npc-doc-salvage', spendDie: 1 },
     { type: 'Trade', action: 'pay-debt', amount: 25 },
-    { type: 'Travel', destinationId: 4, spendDie: 1 },
+    { type: 'Travel', destinationId: 4, spendDie: 2 },
   ],
   [{ type: 'Wait' }],
   [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 }, { type: 'Wait' }],
@@ -107,10 +114,15 @@ export function runDayLoopGolden(
 }
 
 // --- Committed golden hashes (regenerate via gen-day-loop-golden.ts) ---------
+// T-1103 re-derivation: the encounter-rate repair (core 0.08 -> 0.30, Tour One
+// damped 0.5x) makes the seed-1 day-3 jump interdict; the script resolves it
+// with two fight volleys at the top of day 4 (see TEN_DAY_SCRIPT), so these two
+// hashes moved. STORYLET_* below are unchanged — its seed-555 jump stays clean
+// and success-path rng is byte-identical.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'b0685ff2afba16a1afaabc00549fb403cd5ce31588b1089a85b82a06de21ac22';
+  'e6508833437f90ce2f4a9bcb541bec3836ef95b3775d12e3f168b05b220de6ed';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '68a074b8c6273549d450caefbb23461787ef7d736ca0a34bed59c08cdb9212cb';
+  '6f9f7958741f76f0d7a95c39fe56ea76089df5cdec8c2095f34a3a40bccd1220';
 export const STORYLET_GOLDEN_STATE_HASH =
   '8b90b13efaba771aa8dbe1d2e10261acc4927f4952aa5a59fe681f1e0f2ea912';
 export const STORYLET_GOLDEN_EVENTS_HASH =

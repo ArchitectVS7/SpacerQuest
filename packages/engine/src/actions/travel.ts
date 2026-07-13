@@ -219,6 +219,19 @@ export function selectEncounterInterceptor(
   return chooseOne(rng, bandCandidates);
 }
 
+// T-1103 · Tour One is gentler than the open galaxy. PRD-REIMAGINED §"Tour One"
+// (line 73) authors the onboarding arc around exactly "one full combat", and the
+// standing constraint is that PRD wins over foundation numbers — so foundation's
+// full 0.30/0.40 encounter chance is the VETERAN-game rate, damped during the
+// TOUR_ONE era so a fresh spacer racing the day-30 marker isn't interdicted on
+// every loaded run. This is an era divergence beyond the route-danger scaling
+// (constraint 5): it is INTERIM at 0.5× — enough to keep the authored Tour One
+// combats firing (the combat/onboarding fixtures) while restoring a competent
+// trader's debt-clear rate — and T-1603 owns the canonical Tour One target.
+// READER: the reader is this function; the multiplier rides on state.era, which
+// day.ts flips TOUR_ONE→VETERAN at the day-30 resolution. No new GameState field.
+const TOUR_ONE_ENCOUNTER_MULTIPLIER = 0.5;
+
 export function generateEncounter(
   state: GameState,
   origin: number,
@@ -227,8 +240,12 @@ export function generateEncounter(
   rng: SeededRng,
 ): EncounterState | null {
   const { routeDangerLevel, routeDangerChance } = calculateRouteDanger(state, origin, destination);
+  const effectiveChance =
+    state.era === 'TOUR_ONE'
+      ? routeDangerChance * TOUR_ONE_ENCOUNTER_MULTIPLIER
+      : routeDangerChance;
   const encounterRoll = rng.next();
-  if (encounterRoll >= routeDangerChance) {
+  if (encounterRoll >= effectiveChance) {
     return null;
   }
 
@@ -327,54 +344,75 @@ export function resolveTravel(
   if (nextState.player.ship.fuel >= fuelRequired) {
     nextState.player.ship.fuel -= fuelRequired;
 
-    if (result.success) {
-      const encounter = generateEncounter(nextState, origin, destination, fuelRequired, rng);
-      if (encounter) {
-        nextState.encounter = encounter;
-        events.push({
-          type: 'TravelEvent',
-          characterId: 'player',
-          origin,
-          destination,
-          fuelUsed: fuelRequired,
-          success: false,
-          interrupted: true,
-        });
-        events.push({ type: 'EncounterStarted', encounter });
-      } else {
-        nextState.player.currentSystemId = destination;
-        recordVisitedSystem(nextState, destination);
-        events.push({
-          type: 'TravelEvent',
-          characterId: 'player',
-          origin,
-          destination,
-          fuelUsed: fuelRequired,
-          success: true,
-        });
+    // T-1103 · Encounter trigger repair. The encounter roll is now DECOUPLED
+    // from the pilot check: a jump is dangerous whether the pilot check passed
+    // or was botched. Previously generateEncounter fired only inside the
+    // `result.success` branch, so a failed check was perfectly safe — backwards
+    // from the fiction, where a fumbled jump is exactly when you drop out of the
+    // warp lane into a waiting interceptor. generateEncounter is now called ONCE,
+    // unconditionally, and its outcome decides the branch. On the success path
+    // rng consumption is byte-identical to before (same call site, same order);
+    // only the failure path newly consumes an encounter roll.
+    const encounter = generateEncounter(nextState, origin, destination, fuelRequired, rng);
 
-        // Check if they completed a contract
-        if (
-          nextState.player.activeContract &&
-          nextState.player.activeContract.destination === destination
-        ) {
-          const contract = nextState.player.activeContract;
-          const payment = contract.payment;
-          nextState.player.credits += payment;
-          events.push({
-            type: 'TradeEvent',
-            characterId: 'player',
-            action: 'deliver-cargo',
-            success: true,
-            destination: contract.destination,
-            cargoType: contract.cargoType,
-            payment,
-            actionDetails: `Delivered cargo! Earned ${payment} credits.`,
-          });
-          nextState.player.activeContract = null; // Clear contract
-        }
+    if (encounter) {
+      // The interdiction interrupts the jump regardless of the pilot check.
+      //
+      // DESIGN CALL (deliberate, commented per Standing-constraint 5): on a
+      // BOTCHED-but-intercepted jump, surviving the fight via completePendingTravel
+      // (combat.ts on a fight/talk win) still carries the player to `destination`
+      // — the interdiction resolution semantics are identical for the passed and
+      // failed check, and this adds NO new GameState field. The alternative —
+      // gating arrival on `result.success` via a `pendingTravel.arrives` flag —
+      // would touch PendingTravelState/schema/completePendingTravel plus a
+      // save-migration + round-trip test for a marginal fiction gain, so it is
+      // intentionally out of scope for T-1103. The fictional fix required (a
+      // botched jump is now DANGEROUS) is fully met by the decoupling above.
+      nextState.encounter = encounter;
+      events.push({
+        type: 'TravelEvent',
+        characterId: 'player',
+        origin,
+        destination,
+        fuelUsed: fuelRequired,
+        success: false,
+        interrupted: true,
+      });
+      events.push({ type: 'EncounterStarted', encounter });
+    } else if (result.success) {
+      nextState.player.currentSystemId = destination;
+      recordVisitedSystem(nextState, destination);
+      events.push({
+        type: 'TravelEvent',
+        characterId: 'player',
+        origin,
+        destination,
+        fuelUsed: fuelRequired,
+        success: true,
+      });
+
+      // Check if they completed a contract
+      if (
+        nextState.player.activeContract &&
+        nextState.player.activeContract.destination === destination
+      ) {
+        const contract = nextState.player.activeContract;
+        const payment = contract.payment;
+        nextState.player.credits += payment;
+        events.push({
+          type: 'TradeEvent',
+          characterId: 'player',
+          action: 'deliver-cargo',
+          success: true,
+          destination: contract.destination,
+          cargoType: contract.cargoType,
+          payment,
+          actionDetails: `Delivered cargo! Earned ${payment} credits.`,
+        });
+        nextState.player.activeContract = null; // Clear contract
       }
     } else {
+      // Failed pilot check, no encounter: nav malfunction, ship stays at origin.
       events.push({
         type: 'TravelEvent',
         characterId: 'player',

@@ -10,6 +10,11 @@ import { FIGHT_FUEL_COST } from '@spacerquest/content';
 // store does (startDay(createInitialState(seed)) → applyPlayerAction). They are
 // engine-derived and must be regenerated if the RNG/danger tables ever change.
 //
+// T-1103 (encounter-rate repair, core 0.08 -> 0.30): re-verified offline — both
+// seeds are success-path jumps whose encounters already fired at 0.08 and still
+// fire at the higher rate with byte-identical interceptor selection (Capt.Brutus
+// tier 2 / Chomper tier 1). No fixture drift; the values below are unchanged.
+//
 // Re-fixtured for the T-1102 fuel-scarcity overhaul: jump cost is now strictly
 // per-distance (12·d for the starter drives, no cap), so a rim jump (system 15,
 // distance 21) burns 252 of the 300-fuel tank and leaves only 48 — below the

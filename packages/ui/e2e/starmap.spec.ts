@@ -98,9 +98,11 @@ test('unreachable systems are visibly gated, not clickable-then-error', async ({
   // T-1102: under the per-distance cost the old 1<->14 lane (168 fuel/jump) can no
   // longer bounce — one leg leaves 132 fuel, short of the 168 return. Bounce the
   // cheap adjacent pair Sun-3 (1) <-> Aldebaran-1 (2) instead: distance 5, 60
-  // fuel/jump, so 300 fuel drains to exactly 0 in 5 jumps. Seed 3 clears the lane
-  // with no encounter (verified deterministically per seed).
-  await newGameSeed(page, 3);
+  // fuel/jump, so 300 fuel drains to exactly 0 in 5 jumps. T-1103: the encounter
+  // -rate repair (core 0.08 -> 0.30) means seed 3's drain now hits an interceptor
+  // that would stall the loop; re-derived offline to seed 8, whose full 1<->2
+  // drain to 0 stays encounter-free (verified deterministically per seed).
+  await newGameSeed(page, 8);
 
   for (let i = 0; i < 14; i++) {
     const units = Number(await page.getByTestId('fuel-ring').getAttribute('data-radius-units'));

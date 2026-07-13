@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { Stat } from '@spacerquest/content';
 import { resolveCombat } from '../actions/combat.js';
-import { generateEncounter, resolveTravel, selectEncounterInterceptor } from '../actions/travel.js';
+import {
+  calculateRouteDanger,
+  generateEncounter,
+  resolveTravel,
+  selectEncounterInterceptor,
+} from '../actions/travel.js';
 import { applyPlayerAction } from '../day.js';
 import { SeededRng } from '../rng.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
@@ -32,7 +37,7 @@ function fixtureEncounter(overrides: Partial<EncounterState> = {}): EncounterSta
       tier: 1,
     },
     routeDangerLevel: 1,
-    routeDangerChance: 0.08,
+    routeDangerChance: 0.3, // T-1103: tier-1 core chance (was 0.08); fixture literal, not an assertion
     encounterRoll: 0.01,
     round: 1,
     enemyHull: 1,
@@ -178,6 +183,116 @@ describe('Encounter system', () => {
     expect(sawAnonymous).toBe(true);
     // Every tier 1-5 is reachable across the sweep.
     expect([...tiersSeen].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('fires encounters within a stated frequency band per danger tier (1,000 seeds)', () => {
+    // T-1103 acceptance: a 1,000-jump seeded frequency test lands within a stated
+    // band per danger tier. generateEncounter is called directly (bypassing the
+    // day.ts destination gate), so a sealed Andromeda dest is fine here. Each tier
+    // is ASSERTED via calculateRouteDanger before the loop so the fixture cannot
+    // silently drift off its intended tier. Bands are ±0.05 around the table value
+    // (~3.2σ at n=1000). T-1603 owns canonical balance targets.
+    //
+    // The table rates are the VETERAN-game rates: generateEncounter damps the
+    // chance 0.5x during TOUR_ONE (see TOUR_ONE_ENCOUNTER_MULTIPLIER in
+    // travel.ts), so this test flips the fixture era to measure the undamped
+    // table. The damping itself is asserted separately below.
+    const cases = [
+      { tier: 1, dest: 2, chance: 0.3, band: [0.25, 0.35], contractDest: undefined },
+      { tier: 2, dest: 14, chance: 0.35, band: [0.3, 0.4], contractDest: undefined },
+      { tier: 3, dest: 14, chance: 0.4, band: [0.35, 0.45], contractDest: 14 },
+      { tier: 4, dest: 17, chance: 0.5, band: [0.45, 0.55], contractDest: undefined },
+      { tier: 5, dest: 22, chance: 0.6, band: [0.55, 0.65], contractDest: undefined },
+    ] as const;
+
+    for (const testCase of cases) {
+      const routeState = readyState();
+      routeState.era = 'VETERAN'; // measure the undamped table rates
+      if (testCase.contractDest !== undefined) {
+        routeState.player.activeContract = {
+          destination: testCase.contractDest,
+          cargoType: 1,
+          payment: 100,
+          pods: 1,
+        };
+      }
+
+      const { routeDangerLevel, routeDangerChance } = calculateRouteDanger(
+        routeState,
+        1,
+        testCase.dest,
+      );
+      expect(routeDangerLevel).toBe(testCase.tier);
+      expect(routeDangerChance).toBe(testCase.chance);
+
+      let hits = 0;
+      for (let seed = 1; seed <= 1000; seed += 1) {
+        if (generateEncounter(routeState, 1, testCase.dest, 50, new SeededRng(seed))) {
+          hits += 1;
+        }
+      }
+      const rate = hits / 1000;
+      expect(rate).toBeGreaterThanOrEqual(testCase.band[0]);
+      expect(rate).toBeLessThanOrEqual(testCase.band[1]);
+    }
+  });
+
+  it('Tour One damps the encounter chance 0.5x (era read by generateEncounter)', () => {
+    // T-1103: PRD authors Tour One around "one full combat", so the veteran
+    // table rate is halved while state.era === 'TOUR_ONE'. Same 1,000-seed
+    // sweep as above on the tier-1 core route: veteran ~0.30, Tour One ~0.15.
+    const measure = (era: 'TOUR_ONE' | 'VETERAN'): number => {
+      const routeState = readyState();
+      routeState.era = era;
+      let hits = 0;
+      for (let seed = 1; seed <= 1000; seed += 1) {
+        if (generateEncounter(routeState, 1, 2, 50, new SeededRng(seed))) hits += 1;
+      }
+      return hits / 1000;
+    };
+    const tourOne = measure('TOUR_ONE');
+    const veteran = measure('VETERAN');
+    expect(tourOne).toBeGreaterThanOrEqual(0.1);
+    expect(tourOne).toBeLessThanOrEqual(0.2);
+    // Identical seeds, so the damped set is a strict subset: exactly the rolls
+    // under half the table chance survive.
+    expect(veteran).toBeGreaterThan(tourOne);
+  });
+
+  it('a failed pilot check still produces an encounter (trigger decoupled from success)', () => {
+    // T-1103 acceptance: a botched jump is no longer perfectly safe. Route 1->2
+    // has DC travelDc(dist)=10; a die of 1 with PILOT 0 always fails the check.
+    // Find a seed whose encounter roll < 0.30 (tier-1 core chance) so the jump is
+    // both failed AND intercepted, then assert all three signals of decoupling.
+    const losingRoute = () => {
+      const state = readyState();
+      state.player.dawnHand = { dice: [1], spent: [false] };
+      state.player.stats[Stat.PILOT] = 0;
+      return state;
+    };
+
+    let chosenSeed = -1;
+    for (let seed = 1; seed <= 10_000; seed += 1) {
+      // Probe with a throwaway state: encounter roll < 0.30 means a hit on 1->2.
+      if (generateEncounter(readyState(), 1, 2, 5, new SeededRng(seed))) {
+        chosenSeed = seed;
+        break;
+      }
+    }
+    expect(chosenSeed).toBeGreaterThan(0);
+
+    const { state: nextState, events } = resolveTravel(
+      losingRoute(),
+      { type: 'Travel', destinationId: 2, spendDie: 0 },
+      new SeededRng(chosenSeed),
+    );
+
+    const statCheck = events.find((event) => event.type === 'StatCheck');
+    expect(statCheck).toBeDefined();
+    if (statCheck?.type !== 'StatCheck') throw new Error('unreachable');
+    expect(statCheck.result.success).toBe(false);
+    expect(nextState.encounter).toBeTruthy();
+    expect(events.some((event) => event.type === 'EncounterStarted')).toBe(true);
   });
 
   it('round-trips an encounter through JSON mid-travel', () => {
