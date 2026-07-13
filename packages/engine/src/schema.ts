@@ -634,6 +634,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
     success: z.boolean(),
     interrupted: z.boolean().optional(),
     resumedFromEncounterId: z.string().optional(),
+    // T-1102: dry-tank refusal flag on the travel event.
+    insufficientFuel: z.boolean().optional(),
   }),
   z.object({
     type: z.literal('TradeEvent'),

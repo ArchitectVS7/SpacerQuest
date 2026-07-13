@@ -1,6 +1,7 @@
 import { DayPhase, EarnedDeedState, GameEvent, GameState, NpcState, ShipState } from './types.js';
 import { NPC_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, rankForDeedCount } from './deeds.js';
+import { calculateFuelCapacity, syncMaxFuel } from './economy.js';
 
 /** The exact junker every spacer starts (and re-starts) with. SINGLE SOURCE OF
  *  TRUTH: createInitialState builds the opening ship from this, and T-108
@@ -8,7 +9,10 @@ import { computeMatchCounts, rankForDeedCount } from './deeds.js';
 export function starterShip(): ShipState {
   return {
     fuel: 300,
-    maxFuel: 10000,
+    // T-1102: derived from the junker hull (strength 1, condition 9) via the
+    // hull-capacity formula → 300, not the old hardcoded 10,000. PRD §7.1: the
+    // fresh tank carries ~300, exactly two starter jumps' worth of scarcity.
+    maxFuel: calculateFuelCapacity(1, 9),
     cargoPods: 10,
     hull: { strength: 1, condition: 9 },
     drives: { strength: 10, condition: 9 },
@@ -160,6 +164,11 @@ export function deserializeState(json: string): GameState {
   parsed.player.ship.hasArchAngel ??= false;
   parsed.player.ship.isAstraxialHull ??= false;
   parsed.player.ship.hasTitaniumHull ??= false;
+  // T-1102 fuel-capacity migration: `maxFuel` is now derived from the hull, not
+  // stored. A legacy save carrying the old flat `maxFuel: 10000` recomputes to
+  // its hull-derived ceiling (a fresh junker → 300) and clamps current fuel to
+  // it. READER of `maxFuel`: the App.tsx fuel gauge and the sim's refuel planner.
+  syncMaxFuel(parsed.player.ship);
   // Save-compat: pre-T-108 fixtures have no charts/legacy. Seed charts with the
   // spacer's current system (they demonstrably know where they are) and start
   // the succession counter at 0.

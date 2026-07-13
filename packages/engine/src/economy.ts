@@ -17,8 +17,20 @@ export interface DriveBlock {
 /**
  * Fuel required for a jump — the ONE travel-cost function (T-106 binding
  * constraint 3): the player (actions/travel.ts), the manifest-board payment
- * math, and the NPC simulation all price jumps through here. Legacy math:
- * SP.TRAVEL.S af/f2/ty chain.
+ * math, and the NPC simulation all price jumps through here.
+ *
+ * T-1102 · Fuel scarcity overhaul (PRD-REIMAGINED §4 differentiator 3 — "fuel is
+ * the plot" — and §7.1 "two jumps costs 240 units; you're carrying 300").
+ * DIVERGENCE FROM FOUNDATION (ref f2f95fa9:foundation/rules/travel.ts
+ * `calculateFuelCost`): foundation computed `floor(min(perUnit·dist + 10, 100)/2)`.
+ * The `min(…,100)` cap flattened every jump of distance ≥ 8 to a constant 50 fuel
+ * — which made fuel INERT, the exact defect this task fixes: distance stopped
+ * mattering, so scarcity never bit. We drop the cap entirely (cost rises without
+ * ceiling) AND the `+10`/`÷2` packaging (unnecessary once the cap is gone; it only
+ * existed to keep the pre-cap number in the 0–50 band). Result: a strictly
+ * per-distance cost, `perUnit × distance`. Starter drives (strength 10, condition
+ * 9) → perUnit 12, so a two-jump route of distance 14 + 6 = 240 fuel against a 300
+ * starter tank, exactly the §7.1 scenario.
  */
 export function jumpFuelCost(
   drives: DriveBlock,
@@ -27,11 +39,49 @@ export function jumpFuelCost(
 ): number {
   const effectiveStrength = drives.strength + (hasTransWarp ? 10 : 0);
   const af = Math.min(effectiveStrength, 21);
-  let cost = 21 - af + (10 - drives.condition);
-  if (cost < 1) cost = 1;
-  cost = cost * routeDistance;
-  const ty = cost + 10;
-  return Math.floor(Math.min(ty, 100) / 2);
+  let perUnit = 21 - af + (10 - drives.condition);
+  if (perUnit < 1) perUnit = 1;
+  return perUnit * routeDistance;
+}
+
+/**
+ * Maximum fuel a hull can hold — derived from the hull's strength and condition
+ * so a fresh junker's tank and a fitted freighter's tank both fall out of the
+ * ship, not a hardcoded constant. T-1102: this replaces the old flat
+ * `maxFuel: 10000`.
+ *
+ * PORTED FROM FOUNDATION (ref f2f95fa9:foundation/rules/travel.ts
+ * `calculateFuelCapacity`): `(condition + 1) × strength × MULT`.
+ * DIVERGENCE: foundation used MULT = 10, which puts the fresh junker (strength 1,
+ * condition 9) at only 100 fuel — below even a single starter jump under the new
+ * per-distance cost. PRD §7.1 pins the fresh tank at ~300 ("you're carrying 300"),
+ * so MULT = 30. Chosen over bumping the starter `hull.strength`, because
+ * `hull.strength` is load-bearing elsewhere (cargo-pod serviceable-capacity in
+ * economy `rollContract`, shipyard tier gates and equipment pricing), and moving
+ * it would ripple through the economy and combat. The ×30 scales every hull
+ * uniformly and keeps the hull-upgrade A/B monotonic: a stronger/healthier hull
+ * always holds strictly more fuel.
+ */
+export const FUEL_CAPACITY_HULL_MULTIPLIER = 30;
+
+export function calculateFuelCapacity(hullStrength: number, hullCondition: number): number {
+  if (hullStrength < 1 || hullCondition < 1) return 0;
+  return (hullCondition + 1) * hullStrength * FUEL_CAPACITY_HULL_MULTIPLIER;
+}
+
+/**
+ * Recompute a ship's `maxFuel` from its (possibly just-changed) hull and clamp
+ * the current fuel to the new ceiling. T-1102 single chokepoint: called once at
+ * the end of `applyPlayerAction` (day.ts) so every player action that touched the
+ * hull — shipyard upgrade, astraxial/cloaker fits, repairs, combat damage —
+ * propagates to the tank, and again on load (`deserializeState`) as the
+ * fuel-capacity save migration. Deliberately NOT invoked inside the low-level
+ * resolvers: several unit tests build a ship with a manual `maxFuel` and call
+ * resolvers directly, and that must stay honoured.
+ */
+export function syncMaxFuel(ship: ShipState): void {
+  ship.maxFuel = calculateFuelCapacity(ship.hull.strength, ship.hull.condition);
+  if (ship.fuel > ship.maxFuel) ship.fuel = ship.maxFuel;
 }
 
 /**

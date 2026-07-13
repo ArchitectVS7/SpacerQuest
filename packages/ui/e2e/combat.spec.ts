@@ -10,31 +10,37 @@ import { FIGHT_FUEL_COST } from '@spacerquest/content';
 // store does (startDay(createInitialState(seed)) → applyPlayerAction). They are
 // engine-derived and must be regenerated if the RNG/danger tables ever change.
 //
-// Re-fixtured for the T-1101 2D starmap: Antares-5 (system 15) now sits ~21 units
-// from Sol (distance 21, pilot DC 18), so the jump die must clear DC 18 — the old
-// seed-11 value-15 die no longer reaches the rim. New seeds re-derived offline.
+// Re-fixtured for the T-1102 fuel-scarcity overhaul: jump cost is now strictly
+// per-distance (12·d for the starter drives, no cap), so a rim jump (system 15,
+// distance 21) burns 252 of the 300-fuel tank and leaves only 48 — below the
+// 50-fuel fight cost, i.e. weapons-offline on arrival. Both scenarios now open on
+// a CORE encounter that leaves plenty of fuel to fight. New seeds re-derived
+// offline (replaying startDay(createInitialState(seed)) → applyPlayerAction).
 //
-//  Seed 887 (fight + flee + reload): dawn hand [20,18,13,7,6] on Sol.
-//    - jump die INDEX 1 (value 18, clears DC 18) to system 15 triggers an
-//      anonymous tier-2 RIM_PIRATE, "RP-Piet Nym", enemyHull 2, round 1.
-//    - a FIGHT with the value-13 die passes GUNS (13 vs DC 12) → hull 2→1, round→2.
+//  Seed 43 (fight + flee + reload): dawn hand [20,18,16,14,1] on Sol.
+//    - jump die INDEX 1 (value 18) to Altair-3 (system 3, distance 8, cost 96,
+//      leaving 204 fuel) triggers a named tier-2 encounter, "Capt.Brutus",
+//      enemyHull 2, round 1.
+//    - a FIGHT with the value-14 die passes GUNS (14 vs DC 12) → hull 2→1, round→2.
 //    - a RUN with the value-20 die is a natural-20 PILOT auto-success → escaped.
 //
 //  Seed 2 (weapons malfunction): dawn hand [17,15,10,8,1] on Sol.
-//    - jump die INDEX 0 (value 17, clears DC 18) to system 15 triggers a tier-2
-//      encounter, enemyHull 2, fuel 250.
+//    - jump die INDEX 0 (value 17) to Pollux-7 (system 9, distance 10, cost 120,
+//      leaving 180 fuel) triggers a tier-1 encounter "Chomper", enemyHull 1.
 //    - fighting with the LOWEST die each round always misses (dice < DC 12) so the
-//      enemy never dies; each fight burns 50 fuel. Draining 250→<50 (standing down
-//      to weather dusk and re-arm when the hand runs dry) brings up the weapons-
-//      offline band, and the next FIGHT malfunctions (die burned, no hit).
-const SEED_A = 887;
+//      enemy never dies; each fight burns 50 fuel. Draining 180 → 130 → 80 → 30
+//      (three misses) brings up the weapons-offline band at 30 fuel (below the 50
+//      fight cost), and the next FIGHT malfunctions (die burned, no hit).
+const SEED_A = 43;
 const A_JUMP_DIE_INDEX = 1; // value 18
-const A_DEST = 15;
-const A_ENEMY_NAME = 'RP-Piet Nym';
+const A_DEST = 3;
+const A_ENEMY_NAME = 'Capt.Brutus';
 
 const SEED_B = 2;
 const B_JUMP_DIE_INDEX = 0; // value 17
-const B_DEST = 15;
+const B_DEST = 9;
+// Fuel remaining when the tank first drops below the 50-fuel fight cost (180 - 3×50).
+const B_OFFLINE_FUEL = 30;
 
 test.beforeEach(async ({ page }) => {
   // Each test runs in a fresh, isolated context, so localStorage starts empty —
@@ -113,9 +119,9 @@ test('scripted-seed encounter: fought, survives reload, then fled through the UI
   await expect(page.getByTestId('combat-enemy-name')).toHaveText(A_ENEMY_NAME);
   await expect(page.getByTestId('combat-round')).toHaveText('ROUND 1');
 
-  // 3) Fight one round with the value-13 die. The round advances (enemy pressed)
+  // 3) Fight one round with the value-14 die. The round advances (enemy pressed)
   //    and the honest PLAYER roll — not the enemy counter-attack — is surfaced.
-  await page.locator('[data-testid="combat-die"][data-die-value="13"]').first().click();
+  await page.locator('[data-testid="combat-die"][data-die-value="14"]').first().click();
   await page.getByTestId('combat-fight').click();
   await expect(page.getByTestId('combat-round')).toHaveText('ROUND 2');
   // Scope the check readout to the overlay: the covered Manifest pane also mounts
@@ -123,7 +129,7 @@ test('scripted-seed encounter: fought, survives reload, then fled through the UI
   const overlayCheck = page.getByTestId('combat-overlay').getByTestId('check-breakdown');
   await expect(overlayCheck).toBeVisible();
   await expect(overlayCheck.getByTestId('check-stat')).toHaveText('GUNS');
-  await expect(overlayCheck.getByTestId('check-die')).toHaveText('13');
+  await expect(overlayCheck.getByTestId('check-die')).toHaveText('14');
 
   // 4) Flee with the natural-20 die → PILOT auto-success → escape. The overlay
   //    transitions to the aftermath summary, then dismisses back to the cockpit.
@@ -166,7 +172,9 @@ test('weapons-malfunction is clearly communicated when fuel-gated', async ({ pag
   // 1) The static, always-visible signal: WEAPONS OFFLINE, stating the shortfall.
   await expect(offline).toBeVisible();
   await expect(offline).toContainText(String(FIGHT_FUEL_COST)); // "need 50 fuel"
-  await expect(offline).toContainText('have 0');
+  // T-1102: jump costs are multiples of 12, so a clean drain to exactly 0 is no
+  // longer reachable; the tank first dips below the 50-fuel fight cost at 30.
+  await expect(offline).toContainText(`have ${B_OFFLINE_FUEL}`);
 
   // 2) The post-commit signal: firing anyway burns the die and draws pressure but
   //    lands no shot — the enemy hull is unchanged, proving the malfunction.

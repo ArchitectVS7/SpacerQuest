@@ -454,9 +454,15 @@ describe('legal-actions enumerator', () => {
   it('offers a bounded fuel amount and unbounded params as shapes, not enumerations', () => {
     const opened = handleMessage(null, { type: 'new-game', seed: 3 });
     const dayStarted = handleMessage(opened.session, { type: 'start-day' });
-    const legal = expectLegal(
-      handleMessage(dayStarted.session, { type: 'legal-actions' }).response,
-    );
+    // T-1102: a fresh ship now starts with a FULL hull-derived tank (300/300), so
+    // buy-fuel is not a legal action at game start. Burn some fuel with a clean
+    // jump first (seed 3, Sun-3 → Aldebaran-1 is encounter-free and clears the
+    // pilot DC on die 0), leaving 240/300 so the depot has room to sell.
+    const afterJump = handleMessage(dayStarted.session, {
+      type: 'apply-action',
+      action: { type: 'Travel', destinationId: 2, spendDie: 0 },
+    });
+    const legal = expectLegal(handleMessage(afterJump.session, { type: 'legal-actions' }).response);
 
     const buyFuel = legal.actions.find(
       (action) => action.type === 'Trade' && action.action === 'buy-fuel',

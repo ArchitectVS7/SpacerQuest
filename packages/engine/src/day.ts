@@ -9,7 +9,7 @@ import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
 import { SeededRng } from './rng.js';
 import { rollDawnHand } from './dice.js';
 import { applyDisposition, resolveNpcDay } from './npc.js';
-import { generateManifestBoard, localFuelPrice } from './economy.js';
+import { generateManifestBoard, localFuelPrice, syncMaxFuel } from './economy.js';
 import { advanceEraSchedule } from './era.js';
 import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
@@ -171,6 +171,11 @@ export function applyPlayerAction(
   let resolvedState = result.state;
   resolvedState.rngState = dayRng.getState();
   resolvedState.dayPhase = DayPhase.DAY;
+  // T-1102 single recompute chokepoint: any action that changed the hull
+  // (shipyard upgrade, astraxial/cloaker fit, repair, combat damage) re-derives
+  // the fuel ceiling here rather than at each low-level site. Combat damage
+  // shrinking the tank falls out naturally (on-PRD: a fragile ship holds less).
+  syncMaxFuel(resolvedState.player.ship);
   const deedEvents = evaluateDeeds(resolvedState, result.events);
   const refreshed = refreshAvailableStorylets(resolvedState);
   resolvedState = refreshed.state;

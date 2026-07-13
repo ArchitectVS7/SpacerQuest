@@ -471,8 +471,13 @@ function rankedContracts(state: GameState): RankedContract[] {
     .sort((a, b) => b.payment - a.payment || a.index - b.index);
 }
 
-const FUEL_REFUEL_THRESHOLD = 120;
-const FUEL_REFUEL_TARGET = 260;
+// T-1102: retuned for the fuel-scarcity overhaul. Under the new per-distance
+// cost a single rim run can burn ~250+ fuel, so the trader must top off BEFORE a
+// big jump rather than after stranding. Threshold raised so a partially-drained
+// tank refuels early; target lifted toward the starter ceiling (300) so a rich,
+// distant contract is actually fundable in one day.
+const FUEL_REFUEL_THRESHOLD = 180;
+const FUEL_REFUEL_TARGET = 300;
 
 /** Queue a refuel (dull die) when the tank dips below the working threshold,
  *  buying up to the target, capped by what's affordable above `keepFloor`.
@@ -550,7 +555,17 @@ function planDebtPayment(
   return { type: 'Trade', action: 'pay-debt', amount };
 }
 
-const TRADER_RESERVE = 1500;
+// T-1102: raised from 1500. Fuel now costs multiples of the old flat rate, so the
+// trader must keep a fatter buffer back from debt payments to fund the next day's
+// refuel — otherwise it pays down debt aggressively, then strands with no credits
+// to fill the tank for the following run.
+const TRADER_RESERVE = 3000;
+
+// T-1102: the largest share of the tank a single contract's jump may cost. Below
+// 1.0 so a run leaves fuel/credit margin to re-fly after an encounter-run and to
+// pay tribute — the headroom that keeps the scarcity economy out of deadlock.
+// Shared by the trader and veteran contract pickers.
+const SIGN_FUEL_FRACTION = 0.6;
 
 /**
  * TRADER — route + fuel planner that pays down the Guild marker. Each day it
@@ -563,16 +578,63 @@ export const traderPolicy: SimPolicy = ({ state }) => {
   const ledger = dieLedger(state);
   if (state.encounter) return planPacifistCombat(state, ledger);
 
+  const ship = state.player.ship;
+  const from = state.player.currentSystemId;
   const actions: PlayerAction[] = [];
-  let refuelCost = 0;
 
-  const refuel = planRefuel(state, ledger, 0);
+  // T-1102: under the per-distance fuel cost, a jump can cost more than the idle
+  // refuel threshold would ever top up — so the DESTINATION is chosen first and
+  // the refuel is sized to guarantee the tank can actually make that jump. This
+  // is the fix for the scarcity deadlock: a carried-over contract whose leg costs
+  // (say) 228 fuel while the tank sits at 192 — above the flat threshold, so no
+  // top-up fires — otherwise strands the trader forever (a dry-tank Travel is a
+  // no-op that burns nothing, so the state never changes).
+  // T-1102: under scarcity the richest contract is often a far one whose fuel
+  // bill (and stranding risk) dwarfs a nearer, only-slightly-poorer run. Rank the
+  // reachable board by NET value — payment minus the fuel the jump burns at the
+  // local depot price — so the trader flies efficient runs it can actually fund,
+  // and never signs a loss.
+  const fuelDepotPrice = state.market.localFuelPrice || 5;
+  const ranked = rankedContracts(state); // fuel = cost from the CURRENT system
+  // Cap the fuel a single signed run may cost at a fraction of the tank. The
+  // margin is deliberate: an interrupted delivery the trader RUNS from returns it
+  // to origin and forces a re-flight (re-charging the jump fuel), so a run that
+  // eats most of the tank can loop the ship into an unfundable deadlock after a
+  // couple of encounters. Keeping runs cheap preserves the fuel/credit headroom
+  // to re-fly and to weather tribute demands.
+  const signFuelCap = ship.maxFuel * SIGN_FUEL_FRACTION;
+  const reachable = ranked
+    .filter((c) => c.fuel <= signFuelCap)
+    .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
+    .filter((c) => c.net > 0)
+    .sort((a, b) => b.net - a.net || a.index - b.index);
+
+  let primaryDest: number | null = null;
+  if (state.player.activeContract) {
+    primaryDest = state.player.activeContract.destination;
+  } else if (reachable.length > 0) {
+    primaryDest = reachable[0].destination;
+  }
+  const primaryFuelNeed =
+    primaryDest !== null ? playerJumpFuel(state, systemDistance(from, primaryDest)) : 0;
+
+  // Raise the refuel threshold/target to cover this day's jump (capped at the
+  // tank). Never lower them below the working defaults.
+  const refuelThreshold = Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed));
+  const refuelTarget = Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed));
+  const refuel = planRefuel(state, ledger, 0, refuelThreshold, refuelTarget);
+  let refuelCost = 0;
   if (refuel) {
     actions.push(refuel.action);
     refuelCost = refuel.cost;
   }
 
-  const ranked = rankedContracts(state);
+  // The tank the trader will actually have when it flies today — current fuel
+  // plus whatever the just-queued refuel tops it up by (refuel runs before the
+  // travel action).
+  const fuelPrice = state.market.localFuelPrice || 5;
+  const boughtFuel = refuel ? refuel.cost / fuelPrice : 0;
+  const availableFuel = Math.min(ship.maxFuel, ship.fuel + boughtFuel);
 
   if (state.player.activeContract) {
     // A run carried over (a prior delivery was interrupted or the nav check
@@ -585,8 +647,8 @@ export const traderPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
-  } else if (ranked.length > 0) {
-    const best = ranked[0];
+  } else if (reachable.length > 0 && availableFuel >= primaryFuelNeed) {
+    const best = reachable[0];
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
@@ -600,18 +662,27 @@ export const traderPolicy: SimPolicy = ({ state }) => {
 
       // Second run while the debt still bites: throughput matters more than the
       // marginal encounter risk when 25,000 credits are due by day 30.
-      if (state.player.debt > 5000 && ranked.length > 1 && ledger.remaining() >= 2) {
-        const second = ranked[1];
+      if (state.player.debt > 5000 && reachable.length > 1 && ledger.remaining() >= 2) {
+        const second = reachable[1];
         // The board shifts when the first contract is spliced off; correct the
         // live index for the second sign.
         const liveIndex = second.index > best.index ? second.index - 1 : second.index;
         const secondSignDie = ledger.takeWorst();
         const secondTravelDie = ledger.takeBest();
-        const projectedFuel = state.player.ship.fuel - best.fuel;
+        // T-1102: the second leg is flown FROM the first delivery's system, not
+        // from here — price it on that leg (distance best.destination → second),
+        // and require the fuel left after run 1 to cover it. The old check used
+        // the second contract's cost-from-here, which under scarcity signed a
+        // double the tank could never complete and deadlocked the run.
+        const secondLegFuel = playerJumpFuel(
+          state,
+          systemDistance(best.destination, second.destination),
+        );
+        const projectedFuel = availableFuel - primaryFuelNeed;
         if (
           secondSignDie !== undefined &&
           secondTravelDie !== undefined &&
-          projectedFuel >= second.fuel
+          projectedFuel >= secondLegFuel
         ) {
           actions.push({
             type: 'Trade',
@@ -962,20 +1033,74 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   if (storyletAction) return [storyletAction];
 
   const actions: PlayerAction[] = [];
+  const ship = state.player.ship;
+  const from = state.player.currentSystemId;
+  const board = state.market.manifestBoard;
 
-  // Fuel: normally keep topped. While fuel_fumes_arrival is still unearned, let
-  // the tank run lower (only top up near-empty) so a delivery jump can land us
-  // at <= 25 fuel — without ever hard-stranding.
+  // T-1102: choose the destination FIRST so the refuel can be sized to reach it —
+  // the same scarcity fix the trader needs. Without it the veteran signs the
+  // richest (often far, unfuelable) run, strands, and never earns the credits to
+  // upgrade — pinned at the junker hull for the whole 500-day campaign.
+  const fuelDepotPrice = state.market.localFuelPrice || 5;
+  const ranked = rankedContracts(state);
+  const reachable = ranked
+    .filter((c) => c.fuel <= ship.maxFuel * SIGN_FUEL_FRACTION)
+    .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
+    .filter((c) => c.net > 0)
+    .sort((a, b) => b.net - a.net || a.index - b.index);
+  const reachableByFullTank = (dest: number): boolean =>
+    playerJumpFuel(state, systemDistance(from, dest)) <= ship.maxFuel;
+
+  // Steer toward missing deeds, but only when that steered run is fuelable; else
+  // take the richest reachable, net-positive run.
+  let idx = -1;
+  if (need('mercy_runner')) {
+    const m = board.findIndex((c) => c.cargoType === 4 && c.destination === 7);
+    if (m >= 0 && reachableByFullTank(board[m].destination)) idx = m;
+  }
+  if (idx < 0 && need('rimward_bound')) {
+    const r = board.findIndex(
+      (c) => c.destination >= 15 && c.destination <= 20 && reachableByFullTank(c.destination),
+    );
+    if (r >= 0) idx = r;
+  }
+  if (idx < 0) idx = reachable.length > 0 ? reachable[0].index : -1;
+
+  const primaryDest = state.player.activeContract
+    ? state.player.activeContract.destination
+    : idx >= 0
+      ? board[idx].destination
+      : null;
+  const primaryFuelNeed =
+    primaryDest !== null ? playerJumpFuel(state, systemDistance(from, primaryDest)) : 0;
+
+  // Size the refuel to guarantee the jump. fuel_fumes_arrival still wants a lean
+  // tank (land on fumes), so top only just above the jump cost; otherwise raise
+  // the working threshold/target to cover the jump (never below the defaults).
   let refuelCost = 0;
-  const refuel = need('fuel_fumes_arrival')
-    ? planRefuel(state, ledger, 0, 30, 60)
-    : planRefuel(state, ledger, 0);
+  const wantFumes = need('fuel_fumes_arrival') && primaryFuelNeed > 0;
+  const refuel = wantFumes
+    ? planRefuel(
+        state,
+        ledger,
+        0,
+        Math.min(ship.maxFuel, primaryFuelNeed),
+        Math.min(ship.maxFuel, primaryFuelNeed + 24),
+      )
+    : planRefuel(
+        state,
+        ledger,
+        0,
+        Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed)),
+        Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed)),
+      );
   if (refuel) {
     actions.push(refuel.action);
     refuelCost = refuel.cost;
   }
+  const boughtFuel = refuel ? refuel.cost / fuelDepotPrice : 0;
+  const availableFuel = Math.min(ship.maxFuel, ship.fuel + boughtFuel);
 
-  const board = state.market.manifestBoard;
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -985,48 +1110,34 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
-  } else {
-    // Steer the contract choice toward missing delivery/travel deeds, else richest.
-    let idx = -1;
-    if (need('mercy_runner')) {
-      idx = board.findIndex((c) => c.cargoType === 4 && c.destination === 7);
-    }
-    if (idx < 0 && need('rimward_bound')) {
-      idx = board.findIndex((c) => c.destination >= 15 && c.destination <= 20);
-    }
-    if (idx < 0) {
-      const ranked = rankedContracts(state);
-      idx = ranked.length > 0 ? ranked[0].index : -1;
-    }
-    if (idx >= 0) {
-      // Haggle the chosen board offer before signing → broker_shark. Needs three
-      // dice for haggle + sign + travel, so gate on the remaining budget.
-      if (need('broker_shark') && !board[idx].haggled && ledger.remaining() >= 3) {
-        const haggleDie = ledger.takeWorst();
-        if (haggleDie !== undefined) {
-          actions.push({
-            type: 'Trade',
-            action: 'haggle',
-            contractIndex: idx,
-            spendDie: haggleDie,
-          });
-        }
-      }
-      const signDie = ledger.takeWorst();
-      const travelDie = ledger.takeBest();
-      if (signDie !== undefined && travelDie !== undefined) {
+  } else if (idx >= 0 && availableFuel >= primaryFuelNeed) {
+    // Haggle the chosen board offer before signing → broker_shark. Needs three
+    // dice for haggle + sign + travel, so gate on the remaining budget.
+    if (need('broker_shark') && !board[idx].haggled && ledger.remaining() >= 3) {
+      const haggleDie = ledger.takeWorst();
+      if (haggleDie !== undefined) {
         actions.push({
           type: 'Trade',
-          action: 'sign-contract',
+          action: 'haggle',
           contractIndex: idx,
-          spendDie: signDie,
-        });
-        actions.push({
-          type: 'Travel',
-          destinationId: board[idx].destination,
-          spendDie: travelDie,
+          spendDie: haggleDie,
         });
       }
+    }
+    const signDie = ledger.takeWorst();
+    const travelDie = ledger.takeBest();
+    if (signDie !== undefined && travelDie !== undefined) {
+      actions.push({
+        type: 'Trade',
+        action: 'sign-contract',
+        contractIndex: idx,
+        spendDie: signDie,
+      });
+      actions.push({
+        type: 'Travel',
+        destinationId: board[idx].destination,
+        spendDie: travelDie,
+      });
     }
   }
 

@@ -35,9 +35,17 @@ async function closeSettings(page: Page): Promise<void> {
   await expect(page.getByTestId('settings-panel')).toHaveCount(0);
 }
 
-/** Buy a little fuel through the depot — a mutation that moves credits AND fuel,
- *  and (via the store) rewrites the autosave. */
+/** A mutation that moves credits AND fuel and (via the store) rewrites the
+ *  autosave. T-1102: the fresh junker starts with a FULL tank (300/300), so
+ *  buying fuel alone would clamp to the ceiling and move nothing — first burn
+ *  fuel with a jump. On seed 424242 the value-3 die (hand index 4) fails the
+ *  pilot check for Aldebaran-1 (system 2), so the ship stays at Sol but the
+ *  60-fuel cost is spent (no encounter on a nav-failed jump), leaving 240/300.
+ *  Buying `amount` then lifts fuel and drops credits, both visibly moving. */
 async function buyFuel(page: Page, amount: number): Promise<void> {
+  await page.getByTestId('die').nth(4).click();
+  await page.locator('[data-testid="starmap-system"][data-system-id="2"]').click();
+  await page.getByTestId('confirm-jump').click();
   await selectUnspentDie(page);
   await page.getByTestId('fuel-amount').fill(String(amount));
   await page.getByTestId('buy-fuel').click();

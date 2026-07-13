@@ -69,6 +69,27 @@ describe('shipyard', () => {
     expect(result.state.player.ship.hasCloaker).toBe(false);
   });
 
+  it('raises maxFuel when a hull tier is bought through the day loop (T-1102 A/B)', () => {
+    // The fuel ceiling is derived from the hull and recomputed at the
+    // applyPlayerAction chokepoint. A tier-2 hull (strength 20, condition 9) must
+    // lift the tank from the junker's 300 to (9+1)·20·30 = 6000.
+    const { state } = startDay(shipyardState());
+    const before = state.player.ship.maxFuel;
+    expect(before).toBe(300);
+
+    const { state: after } = applyPlayerAction(state, {
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'hull',
+      tier: 2,
+      spendDie: 0,
+    });
+
+    expect(after.player.ship.hull.strength).toBe(20);
+    expect(after.player.ship.maxFuel).toBeGreaterThan(before);
+    expect(after.player.ship.maxFuel).toBe(6000);
+  });
+
   it.each([
     ['CLOAKER', 500],
     ['AUTO_REPAIR', 1000],

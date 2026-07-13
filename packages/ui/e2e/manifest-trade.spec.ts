@@ -40,17 +40,30 @@ test('full loop through the UI: sign, haggle, buy fuel, pay debt', async ({ page
   await page.goto('/');
   await expect(page.getByTestId('contract')).toHaveCount(4);
 
+  // --- Make fuel headroom (T-1102) -------------------------------------
+  // The fresh junker starts with a FULL tank (300/300), so buying fuel would
+  // clamp to the ceiling and move nothing. Burn some first with a jump: the
+  // value-3 die (hand index 4) fails the pilot check for Aldebaran-1 (system 2,
+  // DC 10), so the ship stays at Sol but the 60-fuel cost is spent — leaving
+  // 240/300 with the day's board and depot price untouched (both are set at dawn
+  // and a nav-failed jump triggers no encounter).
+  await page.getByTestId('die').nth(4).click();
+  await page.locator('[data-testid="starmap-system"][data-system-id="2"]').click();
+  await page.getByTestId('confirm-jump').click();
+  await expect(page.getByTestId('fuel-hold')).toContainText('240');
+  expect(await spentCount(page)).toBe(1);
+
   // --- Sign -------------------------------------------------------------
   await expect(page.getByTestId('active-contract-empty')).toBeVisible();
   await selectUnspentDie(page);
   await page.getByTestId('contract').first().click();
 
-  // The signed job is now tracked, the board shrank by one, one die is spent.
+  // The signed job is now tracked, the board shrank by one, a second die is spent.
   await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
   const signedText = await page.getByTestId('active-contract').innerText();
   expect(signedText).not.toContain('Hold is empty');
   await expect(page.getByTestId('contract')).toHaveCount(3);
-  expect(await spentCount(page)).toBe(1);
+  expect(await spentCount(page)).toBe(2);
 
   // --- Haggle (honest d20 check) ---------------------------------------
   await selectUnspentDie(page);
@@ -58,7 +71,7 @@ test('full loop through the UI: sign, haggle, buy fuel, pay debt', async ({ page
   await expect(page.getByTestId('check-breakdown')).toBeVisible();
   await expect(page.getByTestId('check-stat')).toHaveText('TRADE');
   await expect(page.getByTestId('check-dc')).toHaveText('12');
-  expect(await spentCount(page)).toBe(2);
+  expect(await spentCount(page)).toBe(3);
 
   // --- Buy fuel (consumes a die) ---------------------------------------
   await expect(page.getByTestId('fuel-price')).toHaveText('8');
@@ -66,10 +79,10 @@ test('full loop through the UI: sign, haggle, buy fuel, pay debt', async ({ page
   await selectUnspentDie(page);
   await page.getByTestId('fuel-amount').fill('10');
   await page.getByTestId('buy-fuel').click();
-  // Fuel rose (300 → 310) and exactly one more die was spent.
+  // Fuel rose (240 → 250) and exactly one more die was spent.
   await expect(page.getByTestId('fuel-hold')).not.toHaveText(fuelBefore);
-  await expect(page.getByTestId('fuel-hold')).toContainText('310');
-  expect(await spentCount(page)).toBe(3);
+  await expect(page.getByTestId('fuel-hold')).toContainText('250');
+  expect(await spentCount(page)).toBe(4);
 
   // --- Pay debt (NO die — a ledger transfer) ---------------------------
   await expect(page.getByTestId('debt-chip')).toContainText('25,000');

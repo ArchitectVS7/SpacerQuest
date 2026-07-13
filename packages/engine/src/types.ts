@@ -351,6 +351,11 @@ export type GameEvent =
       success: boolean;
       interrupted?: boolean;
       resumedFromEncounterId?: string;
+      /** T-1102: the jump was refused because the tank could not cover the
+       *  per-distance cost — the "typed fail" of the fuel-scarcity overhaul (a
+       *  cross-map hop is unaffordable on a starter tank). READER: the UI
+       *  jump-command handler in store.ts, which surfaces the dry-tank notice. */
+      insufficientFuel?: boolean;
     }
   | TradeEvent
   | { type: 'DebtPayment'; characterId: string; amount: number; remaining: number }

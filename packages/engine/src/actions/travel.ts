@@ -390,7 +390,10 @@ export function resolveTravel(
       });
     }
   } else {
-    // Not enough fuel
+    // Not enough fuel — T-1102 typed fail. The tank could not cover the
+    // per-distance cost (a cross-map hop on a starter tank), so no fuel is spent
+    // and the ship stays put. `insufficientFuel: true` distinguishes this from a
+    // failed nav check (which DOES burn fuel). READER: store.ts jump handler.
     events.push({
       type: 'TravelEvent',
       characterId: 'player',
@@ -398,6 +401,7 @@ export function resolveTravel(
       destination,
       fuelUsed: 0,
       success: false,
+      insufficientFuel: true,
     });
     events.push({
       type: 'WireEntry',

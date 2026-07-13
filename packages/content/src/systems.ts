@@ -116,7 +116,16 @@ export function isGatedDestination(id: number): boolean {
 
 export const FUEL_DEFAULT_BUY_PRICE = 5;
 export const FUEL_DEFAULT_SELL_PRICE = 2;
-export const RIM_FUEL_BUY_PRICE = 25;
+// T-1102: repriced 25 → 8 to MATCH the fuel-scarcity overhaul. The old flat
+// 50-fuel jump cap meant a rim jump burned ~50 units → ~1250 cr at 25/unit. With
+// the cap removed a rim-exit jump now burns ~240–290 units, so 25/unit would cost
+// ~6–7k cr and strand every NPC (and the player) that drifts to the frontier —
+// broke and unable to afford the one jump home. Dividing the per-unit price by
+// ~3 keeps the CREDITS cost of a rim jump close to its pre-change value, so the
+// rim stays proportionally expensive (still above the 5 core default) without
+// becoming a one-way credit trap. Verified against the 200-day galaxy-solvency
+// campaign test (NPCs stay mobile, wealth spread stays non-degenerate).
+export const RIM_FUEL_BUY_PRICE = 8;
 
 export type RouteDangerLevel = 1 | 2 | 3 | 4 | 5;
 

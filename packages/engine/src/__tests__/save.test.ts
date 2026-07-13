@@ -11,7 +11,7 @@ import {
   type MigrationFn,
 } from '../save.js';
 import { validateGameState } from '../schema.js';
-import { createInitialState } from '../state.js';
+import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { advanceDay } from '../day.js';
 import { GameState, PlayerAction } from '../types.js';
 
@@ -133,6 +133,30 @@ describe('save envelope — round-trip property test', () => {
       expect(restored.seed).toBe(seed);
     });
   }
+});
+
+describe('fuel-capacity migration (T-1102)', () => {
+  it('recomputes a legacy maxFuel: 10000 to the hull-derived ceiling on load', () => {
+    // A pre-T-1102 save carried a flat maxFuel of 10,000. On load, deserialize
+    // re-derives it from the hull (junker: strength 1, condition 9 → 300) and
+    // clamps the current fuel to the new ceiling.
+    const legacy = createInitialState(123);
+    legacy.player.ship.maxFuel = 10000;
+    legacy.player.ship.fuel = 9000; // above the new ceiling — must clamp
+    legacy.player.ship.hull = { strength: 1, condition: 9 };
+
+    const restored = deserializeState(serializeState(legacy));
+
+    expect(restored.player.ship.maxFuel).toBe(300);
+    expect(restored.player.ship.fuel).toBe(300);
+  });
+
+  it('is an exact round-trip for a fresh (already-derived) state', () => {
+    const fresh = createInitialState(7);
+    expect(fresh.player.ship.maxFuel).toBe(starterShip().maxFuel);
+    const restored = deserializeState(serializeState(fresh));
+    expect(restored).toEqual(fresh);
+  });
 });
 
 describe('save envelope — malformed-Explore reasons survive save/load (T-1003)', () => {

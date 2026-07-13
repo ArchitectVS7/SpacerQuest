@@ -183,6 +183,12 @@ describe('Encounter system', () => {
   it('round-trips an encounter through JSON mid-travel', () => {
     const state = readyState();
     state.encounter = fixtureEncounter();
+    // T-1102: maxFuel is now hull-derived and deserialize re-syncs it, clamping
+    // fuel to the ceiling. readyState's generous 1000 fuel exceeds the junker's
+    // 300 cap; use a within-cap value so the state is a consistent (real-game)
+    // round-trip subject. The encounter payload — the actual subject here — is
+    // unaffected.
+    state.player.ship.fuel = 250;
 
     expect(deserializeState(serializeState(state))).toEqual(state);
   });

@@ -87,14 +87,19 @@ test('fuel ring and route preview match engine math', async ({ page }) => {
   const units = await page.getByTestId('fuel-ring').getAttribute('data-radius-units');
   const expected = maxJumpDistance(STARTER_DRIVES, STARTER_FUEL, false);
   expect(Number(units)).toBe(expected);
-  expect(Number(units)).toBe(60);
+  // T-1102: the per-distance fuel cost (12·d for the starter drives) puts the
+  // ring at distance 25 (12·25 = 300), not the old flat-cap 60.
+  expect(Number(units)).toBe(25);
 });
 
 test('unreachable systems are visibly gated, not clickable-then-error', async ({ page }) => {
   await page.goto('/');
   // A full ship reaches everything, so gating is only demonstrable after a drain.
-  // Seed 3 lets us bounce between two core systems (1 <-> 14, 50 fuel/jump, the
-  // fastest lever) down to 0 fuel with no encounter — deterministic per seed.
+  // T-1102: under the per-distance cost the old 1<->14 lane (168 fuel/jump) can no
+  // longer bounce — one leg leaves 132 fuel, short of the 168 return. Bounce the
+  // cheap adjacent pair Sun-3 (1) <-> Aldebaran-1 (2) instead: distance 5, 60
+  // fuel/jump, so 300 fuel drains to exactly 0 in 5 jumps. Seed 3 clears the lane
+  // with no encounter (verified deterministically per seed).
   await newGameSeed(page, 3);
 
   for (let i = 0; i < 14; i++) {
@@ -110,7 +115,7 @@ test('unreachable systems are visibly gated, not clickable-then-error', async ({
         .locator('[data-testid="starmap-system"][data-here="1"]')
         .getAttribute('data-system-id'),
     );
-    const dest = here === 1 ? 14 : 1;
+    const dest = here === 1 ? 2 : 1;
     await unspent.first().click();
     await sysNode(page, dest).click();
     await page.getByTestId('confirm-jump').click();

@@ -1,9 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { distance } from '@spacerquest/content';
-import { generateManifestBoard, jumpFuelCost, maxJumpDistance } from '../economy.js';
+import {
+  calculateFuelCapacity,
+  generateManifestBoard,
+  jumpFuelCost,
+  maxJumpDistance,
+} from '../economy.js';
 import { resolveShipyard } from '../actions/shipyard.js';
 import { travelDc } from '../actions/travel.js';
-import { createInitialState } from '../state.js';
+import { createInitialState, starterShip } from '../state.js';
 import { SeededRng } from '../rng.js';
 import { ShipState } from '../types.js';
 
@@ -42,11 +47,14 @@ describe('economy', () => {
     // T-1101: real 2D coordinates — Deneb-4 (5) moved off the y=0 line, so the
     // NGC-44 -> Deneb-4 distance (and the distance-priced payment) shifted.
     expect(distance(21, 5)).toBe(51);
+    // T-1102: fuel-scarcity overhaul removed the 50-fuel jump cap, so the
+    // distance-priced fuelRequired (now 12·51 = 612, was capped at 50) lifts the
+    // fuel component of the payment (612·5 vs 50·5): 459·10 + 612·5 + 1000 = 8650.
     expect(board[0]).toMatchObject({
       destination: 5,
       cargoType: 9,
       pods: 10,
-      payment: 5840,
+      payment: 8650,
     });
   });
 
@@ -78,20 +86,23 @@ describe('economy', () => {
   describe('maxJumpDistance (starmap fuel ring)', () => {
     const starterDrives = { strength: 10, condition: 9 };
 
-    it('reaches the whole map at full starter fuel (300)', () => {
-      // Every jump is capped at 50 fuel, so 300 covers the full 60-unit span.
-      expect(maxJumpDistance(starterDrives, 300)).toBe(60);
+    it('reaches distance 25 at full starter fuel (300)', () => {
+      // T-1102: cost is now strictly per-distance (12·d for starter drives), so
+      // 300 fuel reaches exactly distance 25 (12·25 = 300, 12·26 = 312 > 300).
+      // The old 50-fuel cap that let 300 cover the full 60-unit span is gone —
+      // this IS the scarcity curve ("fuel is the plot").
+      expect(maxJumpDistance(starterDrives, 300)).toBe(25);
     });
 
     it('returns the exact boundary distance the ship can afford', () => {
-      // fuel 20: cost(2)=17<=20, cost(3)=23>20 → 2.
-      expect(maxJumpDistance(starterDrives, 20)).toBe(2);
-      expect(jumpFuelCost(starterDrives, 2)).toBeLessThanOrEqual(20);
-      expect(jumpFuelCost(starterDrives, 3)).toBeGreaterThan(20);
+      // fuel 20: cost(1)=12<=20, cost(2)=24>20 → 1.
+      expect(maxJumpDistance(starterDrives, 20)).toBe(1);
+      expect(jumpFuelCost(starterDrives, 1)).toBeLessThanOrEqual(20);
+      expect(jumpFuelCost(starterDrives, 2)).toBeGreaterThan(20);
     });
 
     it('returns 0 when even a 1-unit jump is unaffordable', () => {
-      // fuel 10: cost(1)=11>10 → 0.
+      // fuel 10: cost(1)=12>10 → 0.
       expect(maxJumpDistance(starterDrives, 10)).toBe(0);
       expect(jumpFuelCost(starterDrives, 1)).toBeGreaterThan(10);
     });
@@ -103,6 +114,59 @@ describe('economy', () => {
         expect(jumpFuelCost(starterDrives, d)).toBeLessThanOrEqual(fuel);
       }
       expect(jumpFuelCost(starterDrives, reach + 1)).toBeGreaterThan(fuel);
+    });
+  });
+
+  // T-1102: fuel scarcity overhaul — "fuel is the plot" (PRD §4 differentiator 3).
+  describe('fuel scarcity (T-1102)', () => {
+    const starterDrives = { strength: 10, condition: 9 };
+
+    it('reproduces the §7.1 scenario: two jumps cost ~240 against a ~300 tank', () => {
+      // PRD §7.1: "two jumps costs 240 units; you're carrying 300."
+      // Sun-3 (1) -> Vega-6 (14): distance 14 → 168; Vega-6 -> Pollux-7 (9):
+      // distance 6 → 72; total 240 against the starter tank of 300.
+      const legOne = jumpFuelCost(starterDrives, distance(1, 14));
+      const legTwo = jumpFuelCost(starterDrives, distance(14, 9));
+      expect(legOne).toBe(168);
+      expect(legTwo).toBe(72);
+      expect(legOne + legTwo).toBe(240);
+      expect(starterShip().maxFuel).toBe(300);
+    });
+
+    it('derives the starter tank from the hull via calculateFuelCapacity', () => {
+      // (condition 9 + 1) × strength 1 × 30 = 300.
+      expect(calculateFuelCapacity(1, 9)).toBe(300);
+      expect(starterShip().maxFuel).toBe(calculateFuelCapacity(1, 9));
+    });
+
+    it('a hull upgrade raises the fuel ceiling monotonically', () => {
+      // A/B at the capacity math: a tier-3 hull (strength 20) holds far more fuel
+      // than the junker (strength 1) at the same condition.
+      const junker = calculateFuelCapacity(1, 9);
+      const upgraded = calculateFuelCapacity(20, 9);
+      expect(upgraded).toBeGreaterThan(junker);
+      expect(upgraded).toBe(6000); // (9+1) × 20 × 30
+    });
+
+    it('prices a cross-map jump beyond a starter tank (typed fail territory)', () => {
+      // Algol-2 (20, rim corner) -> Antares-5 (15): distance 43 → 516 fuel,
+      // unaffordable on the 300 starter tank.
+      const cost = jumpFuelCost(starterDrives, distance(20, 15));
+      expect(cost).toBe(516);
+      expect(cost).toBeGreaterThan(starterShip().maxFuel);
+    });
+
+    it('cost rises without a ceiling (no flat-50 plateau)', () => {
+      // The defect this task fixes: the old cap flattened every jump of distance
+      // ≥ 8 to a constant 50. Now distance always matters.
+      expect(jumpFuelCost(starterDrives, 8)).toBe(96);
+      expect(jumpFuelCost(starterDrives, 16)).toBe(192);
+      expect(jumpFuelCost(starterDrives, 8)).toBeLessThan(jumpFuelCost(starterDrives, 16));
+    });
+
+    it('returns 0 capacity for a destroyed hull', () => {
+      expect(calculateFuelCapacity(0, 9)).toBe(0);
+      expect(calculateFuelCapacity(1, 0)).toBe(0);
     });
   });
 

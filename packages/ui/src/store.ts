@@ -577,8 +577,11 @@ export function travelTo(destinationId: number): void {
       // notice that the jump was intercepted en route.
       notice = 'Intercepted en route — combat station.';
     } else if (travel && travel.success === false) {
+      // T-1102: the engine flags a dry-tank refusal explicitly with
+      // `insufficientFuel`; `fuelUsed === 0` is the legacy-save fallback for the
+      // same case (a failed nav check burns fuel, so it never reads 0 here).
       notice =
-        travel.fuelUsed === 0
+        travel.insufficientFuel || travel.fuelUsed === 0
           ? 'Not enough fuel for that jump.'
           : 'Navigation malfunction — the die is spent and fuel burned; you stayed put.';
     }
