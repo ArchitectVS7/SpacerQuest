@@ -323,7 +323,18 @@ describe('T-201 competent policies', () => {
     // The explorer funds off-lane sweeps with contract runs and pours the
     // surplus into Explore — a real legal action charting POIs and pulling
     // Signal fragments. Over a real run it charts POIs and stays solvent.
-    const state = driveCompetentCampaign(explorerPolicy, 1, 150);
+    //
+    // T-1203: horizon tightened 150→120 days. The explorer is a spend-to-near-
+    // zero policy (it dumps every surplus credit into Explore), so its
+    // end-of-run credits ride the solvency floor: at the old 150-day mark the
+    // pre-T-1203 run happened to freeze at exactly 1 credit — a one-credit margin
+    // the `> 0` check depended on. Now that player.tier climbs with renown, the
+    // widened encounter band shifts this seed's mid/late trajectory (the explorer
+    // stays ACTIVE longer and charts MORE — 117 POIs vs the old 45), and the tail
+    // lands on 0 instead of 1. 120 days measures the same intent — charts POIs
+    // while solvent — at a point with real margin (seed 1: 93 POIs, 6,477
+    // credits), not on the knife-edge the assertion was silently relying on.
+    const state = driveCompetentCampaign(explorerPolicy, 1, 120);
     expect(state.player.charts.discoveredPois.length).toBeGreaterThan(0);
     expect(state.player.credits).toBeGreaterThan(0);
   }, 30000);
@@ -404,6 +415,39 @@ describe('T-1104 rim-hunting path revival (formerly dead)', () => {
     );
     expect(rimDelivery).toBe(true);
   }, 30000);
+});
+
+// ---------------------------------------------------------------------------
+// T-1203 · player.tier progression through play. Before T-1203, player.tier was
+// hardcoded to 1 and written nowhere, so encounter matchmaking never opened past
+// tiers 1–2 and 23 of the 30 named NPCs (including Rattlesnake, the PRD §7.4
+// set-piece) could never intercept the player. tier is now a pure DERIVED
+// function of renown rank + ship fit, resynced at every day-loop chokepoint. The
+// veteran policy climbs renown by actually playing, which must lift the tier and
+// let a tier-3+ NAMED interceptor find the player — proven here end-to-end with
+// NOTHING setting player.tier by hand.
+// ---------------------------------------------------------------------------
+describe('T-1203 tier climbs through play and admits tier-3+ named hunters', () => {
+  it('the veteran reaches tier >= 3 and is intercepted by a tier-3+ named NPC', () => {
+    // Deterministic drive — seed + policy only, no manual rank/tier assignment.
+    // Seed 3 / 200 days surfaces nine tier-3+ named interceptions.
+    const state = driveCompetentCampaign(veteranPolicy, 3, 200);
+
+    // (1) The derived tier lifted itself above the frozen starting band purely
+    // through earned renown + ship upgrades — no test set it.
+    expect(state.player.tier).toBeGreaterThanOrEqual(3);
+
+    // (2) A NAMED interceptor of tier >= 3 actually intercepted the player. This
+    // was structurally impossible before T-1203 (band frozen at 1–2). Asserted
+    // from the real EncounterStarted events the day loop emitted.
+    const namedTierThreePlus = state.eventLog.some(
+      (e) =>
+        e.type === 'EncounterStarted' &&
+        e.encounter.interceptor.source === 'named' &&
+        e.encounter.interceptor.tier >= 3,
+    );
+    expect(namedTierThreePlus).toBe(true);
+  }, 60000);
 });
 
 // ---------------------------------------------------------------------------

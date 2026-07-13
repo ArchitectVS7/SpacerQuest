@@ -10,6 +10,7 @@ export * from './npc.js';
 export * from './economy.js';
 export * from './era.js';
 export * from './deeds.js';
+export * from './tier.js';
 export * from './storylets.js';
 export * from './legacy.js';
 export * from './nemesis.js';

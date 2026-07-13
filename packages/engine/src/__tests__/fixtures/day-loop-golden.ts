@@ -49,13 +49,19 @@ export const TEN_DAY_SCRIPT: PlayerAction[][] = [
     { type: 'Travel', destinationId: 3, spendDie: 2 },
   ],
   [
-    // T-1103: the day-3 jump to system 3 is interdicted under the restored
-    // encounter rates (Doc Salvage, tier 2, hull 2 — seed-1 deterministic).
-    // Two fight volleys defeat him, which completes the pending travel; the
-    // rest of the day proceeds from system 3. This also gives the golden
-    // script the Combat coverage it never had.
-    { type: 'Combat', stance: 'fight', targetId: 'npc-doc-salvage', spendDie: 0 },
-    { type: 'Combat', stance: 'fight', targetId: 'npc-doc-salvage', spendDie: 1 },
+    // T-1203: the day-3 jump to system 3 is interdicted by a NAMED tier-3
+    // interceptor now that player.tier climbs with earned renown. By day 3 the
+    // seed-1 script has earned 2 deeds → CAPTAIN → tier 2, which opens the
+    // matchmaking band to [1,3] and surfaces Smuggler Ray (named, tier 3,
+    // hull 3, DC 13) instead of the old tier-2 Doc Salvage. The seed-1 day-4
+    // hand ([19,18,5,3,1], GUNS 0) can only clear two DC-13 checks, so a pure
+    // fight cannot down a hull-3 enemy: the fixture instead FIGHTS once (19 →
+    // hull 3→2) then RUNS clean (18+PILOT 1 → escape), exercising both combat
+    // stances and resolving the encounter within the day. The escape abandons
+    // the pending jump (ship stays at origin system 2), and the rest of the day
+    // proceeds from there.
+    { type: 'Combat', stance: 'fight', targetId: 'npc-smuggler-ray', spendDie: 0 },
+    { type: 'Combat', stance: 'run', targetId: 'npc-smuggler-ray', spendDie: 1 },
     { type: 'Trade', action: 'pay-debt', amount: 25 },
     { type: 'Travel', destinationId: 4, spendDie: 2 },
   ],
@@ -132,10 +138,23 @@ export function runDayLoopGolden(
 // pre-action rngState, so it does NOT perturb the persisted rngState — the NPC sim
 // stream is unchanged; only the added stories + rebalanced haggle/combat drift the
 // hashes. All four regenerated deliberately via gen-day-loop-golden.ts.
+//
+// T-1203 re-derivation: player.tier is now a derived function of renown rank +
+// ship fit rather than a hardcoded 1, so it climbs during the seed-1 script as
+// deeds are earned (CAPTAIN by day 3 → tier 2 → ADMIRAL by day 4 → tier 3). The
+// widened matchmaking band changes the day-3 interceptor from Doc Salvage
+// (tier 2) to Smuggler Ray (named, tier 3), and the day-4 combat script was
+// updated to resolve that tougher encounter (fight-then-run escape, see above).
+// syncPlayerTier consumes NO rng (pure), so the persisted rng stream is
+// unperturbed; both the serialized STATE (player.tier + the changed encounter/
+// combat outcomes) and the EVENT stream (different interceptor + combat events)
+// move for the TEN_DAY script. The STORYLET script (seed 555) earns no rank-up
+// and stays tier 1, so its hashes are unchanged. All hashes regenerated
+// deliberately via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'ebcd2516354a1f59179dc12beed626916b7ee8859caf742fec7ae66da48f3e1f';
+  'f04cd7b8e45528647787c9ceb6fa28325be1d2a68a36ea806c6eb32364c5cb64';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'edae218dc27b64f0f27e7543eb98e0a7d37a568bdbf5b1ff26209b5ea0fbd839';
+  '0be4ead8fc9389d7948d09fee6223b38b7883bb0d191627cf5cfdd6e5716b0fa';
 export const STORYLET_GOLDEN_STATE_HASH =
   '9c10750ea5bd9fb5f3593ae7adfa81425d5f3ad2b7a68f9a82f663f63dc9f876';
 export const STORYLET_GOLDEN_EVENTS_HASH =

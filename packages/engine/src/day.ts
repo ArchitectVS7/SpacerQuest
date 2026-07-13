@@ -21,6 +21,7 @@ import {
 import { resolveShipyard } from './actions/shipyard.js';
 import { resolveExploration } from './actions/exploration.js';
 import { evaluateDeeds } from './deeds.js';
+import { syncPlayerTier } from './tier.js';
 import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
 import { natWireStories } from './wire.js';
 
@@ -77,6 +78,9 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
   nextState = refreshed.state;
   events.push(...refreshed.events);
   events.push(...evaluateDeeds(nextState, events));
+  // T-1203: a dawn deed can rank the player up; recompute the matchmaking band
+  // AFTER evaluateDeeds so the day's first jump reads the fresh tier.
+  syncPlayerTier(nextState);
 
   nextState.rngState = dayRng.getState();
   nextState.dayPhase = DayPhase.DAY;
@@ -178,6 +182,12 @@ export function applyPlayerAction(
   // shrinking the tank falls out naturally (on-PRD: a fragile ship holds less).
   syncMaxFuel(resolvedState.player.ship);
   const deedEvents = evaluateDeeds(resolvedState, result.events);
+  // T-1203 tier chokepoint: the resolved action may have upgraded the ship
+  // (resolveShipyard above) or earned a rank-up (evaluateDeeds just now), so
+  // recompute the matchmaking band here — the live field the NEXT jump's
+  // selectEncounterInterceptor reads. Placed after evaluateDeeds so a
+  // same-action rank-up is reflected.
+  syncPlayerTier(resolvedState);
   const refreshed = refreshAvailableStorylets(resolvedState);
   resolvedState = refreshed.state;
   const events = [...result.events, ...deedEvents, ...refreshed.events];
@@ -463,6 +473,9 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   }
 
   events.push(...evaluateDeeds(nextState, events));
+  // T-1203: dusk deeds (deliveries, debt clears) can rank the player up;
+  // recompute the band so tomorrow's jumps read the fresh tier.
+  syncPlayerTier(nextState);
 
   // T-107 era scheduler: the world's economic weather turns at dusk. One event
   // active at a time; seeded onset after a cooldown; natural expiry at the day

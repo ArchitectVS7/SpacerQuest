@@ -2,6 +2,7 @@ import { DayPhase, EarnedDeedState, GameEvent, GameState, NpcState, ShipState } 
 import { NPC_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, rankForDeedCount } from './deeds.js';
 import { calculateFuelCapacity, syncMaxFuel } from './economy.js';
+import { computePlayerTier, syncPlayerTier } from './tier.js';
 
 /** The exact junker every spacer starts (and re-starts) with. SINGLE SOURCE OF
  *  TRUTH: createInitialState builds the opening ship from this, and T-108
@@ -93,7 +94,11 @@ export function createInitialState(seed: number): GameState {
         [Stat.GRIT]: 1,
         [Stat.GUILE]: 0,
       },
-      tier: 1,
+      // T-1203: derived from the opening rank + junker fit rather than a magic
+      // literal — computePlayerTier('LIEUTENANT', junker) resolves to 1, so the
+      // starting band is unchanged, but the field is honest to the formula that
+      // every later write site (day.ts, legacy.ts, deserialize) recomputes.
+      tier: computePlayerTier('LIEUTENANT', starterShip()),
       currentSystemId: 1, // Sun-3
       ship: starterShip(),
       registry: {
@@ -157,6 +162,11 @@ export function deserializeState(json: string): GameState {
     parsed.player.registry.matchCounts ??= computeMatchCounts(parsed.eventLog);
   }
   parsed.player.registry.renownRank = rankForDeedCount(parsed.player.registry.earned.length);
+  // T-1203 save round-trip: `parsed.player.tier` above defaulted stale/legacy
+  // saves to 1, but a carried registry (rank) + ship fit determine the real
+  // band. Resync AFTER the renownRank reconstruction so a loaded save's tier
+  // reflects its earned rank + current ship, not a defaulted or stale value.
+  syncPlayerTier(parsed);
   parsed.player.ship.hasTransWarpDrive ??= false;
   parsed.player.ship.hasCloaker ??= false;
   parsed.player.ship.hasAutoRepair ??= false;

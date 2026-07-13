@@ -1,6 +1,7 @@
 import { STAR_SYSTEMS } from '@spacerquest/content';
 import { EncounterState, GameEvent, GameState } from './types.js';
 import { starterShip } from './state.js';
+import { syncPlayerTier } from './tier.js';
 
 /** What the fatal encounter tells succession: who took the ship down and where
  *  the wreck ended up (the origin system it was towed back to). */
@@ -88,6 +89,16 @@ export function applySuccession(state: GameState, context: ShipLostContext): Gam
   if (state.player.dawnHand) {
     state.player.dawnHand.spent = state.player.dawnHand.spent.map(() => true);
   }
+
+  // T-1203 · DEFINED SUCCESSION BEHAVIOR for the matchmaking band. The ship was
+  // just reset to the junker (shipClassTier → 1) but the registry/renownRank is
+  // CARRIED (grudges attach to the name; the world remembers), so the successor's
+  // tier = max(rankTier(carriedRank), 1) = rankTier(carriedRank). The successor
+  // is NOT reset to tier 1 and does NOT inherit a stale over-fit tier: the
+  // hunters that a renowned name draws still come, matched to the name's renown,
+  // even though the ship under them is fresh. Recomputed here after the ship
+  // reset so the band reflects the junker + carried rank exactly.
+  syncPlayerTier(state);
 
   state.player.legacy.successionCount += 1;
 
