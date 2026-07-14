@@ -346,6 +346,55 @@ describe('save envelope — v2 → v3 loan migration (T-1304)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// T-1306 · v3 → v4 crew migration + crew/reroll round-trip (acceptance #5).
+// ---------------------------------------------------------------------------
+describe('save envelope — v3 → v4 crew migration (T-1306)', () => {
+  it('backfills PlayerState.crew = [] on a v3 envelope with no crew key', () => {
+    // Build a REAL v3-shaped state, then strip the crew key the way a genuinely
+    // pre-T-1306 save would (it never had the field). The v3→v4 migration must
+    // re-add crew: [] before schema validation, else the strict schema (crew is
+    // non-optional) would reject it.
+    const state = drive50Days(21);
+    delete (state.player as unknown as Record<string, unknown>).crew;
+    const v3 = JSON.stringify({ version: 3, state, seed: 88 });
+
+    const loaded = loadSave(v3); // walks 3→4 (crew backfill), then validates
+    expect(loaded.state.player.crew).toEqual([]);
+    expect(loaded.seed).toBe(88);
+  });
+
+  it('round-trips a hired crew + a mid-day reroll charge (deep-equal)', () => {
+    const state = drive50Days(22);
+    state.player.crew = [
+      { roleId: 'crew-second', hiredDay: 3 },
+      { roleId: 'crew-navigator', hiredDay: 5 },
+    ];
+    // A mid-day dawn hand carrying an unspent reroll charge must round-trip.
+    state.player.dawnHand = {
+      dice: [17, 12, 9, 4, 2],
+      spent: [false, false, false, false, false],
+      rerollsRemaining: 1,
+    };
+    const loaded = loadSave(createSave(state, 9));
+    expect(loaded.state.player.crew).toEqual(state.player.crew);
+    expect(loaded.state.player.dawnHand?.rerollsRemaining).toBe(1);
+    expect(loaded.state.player.dawnHand).toEqual(state.player.dawnHand);
+  });
+
+  it('strict schema rejects an unknown key inside a crew member', () => {
+    const state = drive50Days(23);
+    (state.player.crew as unknown) = [
+      { roleId: 'crew-second', hiredDay: 1, morale: 99 }, // not part of CrewMember
+    ];
+    expect(() => loadSave(createSave(state, 10))).toThrow(SaveError);
+  });
+
+  it('CURRENT_SAVE_VERSION is 4', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 

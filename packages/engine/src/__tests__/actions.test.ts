@@ -34,7 +34,7 @@ function fixtureEncounter(): EncounterState {
 describe('Player Actions', () => {
   it('resolves buying fuel', () => {
     const state = createInitialState(123);
-    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
 
     // Set up
     state.player.credits = 1000;
@@ -60,7 +60,7 @@ describe('Player Actions', () => {
 
   it('resolves travel', () => {
     const state = createInitialState(123);
-    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
     state.player.currentSystemId = 1;
     const initialFuel = state.player.ship.fuel;
 
@@ -81,7 +81,7 @@ describe('Player Actions', () => {
 
   it('uses starmap distance for travel fuel', () => {
     const state = createInitialState(123);
-    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
     state.player.currentSystemId = 1;
     state.player.ship.fuel = 1000;
     state.player.ship.drives = { strength: 21, condition: 10 };
@@ -106,7 +106,7 @@ describe('Player Actions', () => {
 
   it('refuses a cross-map jump the starter tank cannot afford (T-1102 typed fail)', () => {
     const state = createInitialState(123);
-    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
     // Rim corner Algol-2 (20) → Antares-5 (15): distance 43 → 516 fuel, beyond
     // the 300 starter tank. (Called via the resolver directly, so the T-1101
     // destination gate — which only applies to ids ≥ 21 — is not in play here.)
@@ -129,7 +129,7 @@ describe('Player Actions', () => {
 
   it('resolves combat run', () => {
     const state = createInitialState(123);
-    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
     state.encounter = fixtureEncounter();
     const initialFuel = state.player.ship.fuel;
 

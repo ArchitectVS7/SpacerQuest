@@ -96,7 +96,7 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
   function combatState(fuel: number) {
     const state = createInitialState(9);
     state.player.ship.fuel = fuel;
-    state.player.dawnHand = rollDawnHand(new SeededRng(9), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(9), { handSize: 5, floor: 0, rerolls: 0 });
     state.encounter = fixtureEncounter();
     return state;
   }
@@ -145,7 +145,7 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
 describe('Contracts', () => {
   function marketState() {
     const state = createInitialState(3);
-    state.player.dawnHand = rollDawnHand(new SeededRng(3), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(3), { handSize: 5, floor: 0, rerolls: 0 });
     state.market.manifestBoard = [
       { destination: 5, cargoType: 4, payment: 3000, pods: 10 },
       { destination: 9, cargoType: 2, payment: 2000, pods: 10 },

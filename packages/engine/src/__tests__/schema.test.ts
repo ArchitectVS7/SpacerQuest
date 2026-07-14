@@ -454,6 +454,61 @@ describe('T-1303 · HangoutEvent + new DispositionChanged reasons round-trip', (
   });
 });
 
+describe('GameStateSchema — T-1306 crew + dice progression', () => {
+  // T-1306 · crew + reroll + the two new event/action variants.
+  it('validates a state with crew, a reroll charge, and DiceRerolled/CrewEvent log entries', () => {
+    const state = createInitialState(1);
+    state.player.crew = [
+      { roleId: 'crew-second', hiredDay: 2 },
+      { roleId: 'crew-quartermaster', hiredDay: 4 },
+    ];
+    state.player.dawnHand = {
+      dice: [18, 12, 6, 5, 5, 3],
+      spent: [false, false, false, false, false, false],
+      rerollsRemaining: 1,
+    };
+    state.eventLog.push(
+      {
+        type: 'CrewEvent',
+        day: 2,
+        kind: 'hired',
+        roleId: 'crew-second',
+        cost: 3000,
+        berths: 1,
+        crewCount: 1,
+      },
+      { type: 'CrewEvent', day: 5, kind: 'wage', amount: 65, crewCount: 2 },
+      {
+        type: 'CrewEvent',
+        day: 6,
+        kind: 'failed',
+        roleId: 'crew-second',
+        failReason: 'already-hired',
+      },
+      { type: 'DiceRerolled', day: 6, dieIndex: 3, previous: 2, result: 14, rerollsRemaining: 0 },
+      { type: 'DiceRerolled', day: 6, failReason: 'no-charge' },
+    );
+    const restored = validateGameState(JSON.parse(serializeState(state)));
+    expect(restored.player.crew).toHaveLength(2);
+    expect(restored.player.dawnHand?.rerollsRemaining).toBe(1);
+    expect(restored.eventLog.filter((e) => e.type === 'CrewEvent')).toHaveLength(3);
+    expect(restored.eventLog.filter((e) => e.type === 'DiceRerolled')).toHaveLength(2);
+  });
+
+  it('rejects an unknown key inside a crew member (.strict())', () => {
+    const state = createInitialState(1);
+    (state.player.crew as unknown) = [{ roleId: 'crew-second', hiredDay: 1, rank: 'chief' }];
+    expect(() => validateGameState(JSON.parse(serializeState(state)))).toThrow(z.ZodError);
+  });
+
+  it('validates the Reroll and Crew PlayerActions', () => {
+    expect(() => validatePlayerAction({ type: 'Reroll', dieIndex: 2 })).not.toThrow();
+    expect(() =>
+      validatePlayerAction({ type: 'Crew', action: 'hire', roleId: 'crew-second', spendDie: 0 }),
+    ).not.toThrow();
+  });
+});
+
 describe('GameStateSchema — export surface', () => {
   it('exposes the schema for T-112b to compose into loadSave', () => {
     expect(GameStateSchema).toBeInstanceOf(z.ZodType);

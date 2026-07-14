@@ -14,6 +14,7 @@ import type {
   DiscoveredPoi,
   LegacyState,
   LoanState,
+  CrewMember,
   NemesisFileState,
   SignalFragmentRecord,
   DeedRegistryState,
@@ -177,6 +178,19 @@ const DawnHandSchema = z
   .object({
     dice: z.array(z.number()),
     spent: z.array(z.boolean()),
+    // T-1306: re-roll charges left today (optional; absent on a legacy save or a
+    // hand rolled before crew existed). Serializes mid-day so an unspent charge
+    // round-trips.
+    rerollsRemaining: z.number().optional(),
+  })
+  .strict();
+
+// T-1306 · Crew member (types.ts CrewMember). `.strict()` — an unknown key inside
+// a crew member fails loudly on load, per the T-1002 drift-protection law.
+const CrewMemberSchema = z
+  .object({
+    roleId: z.string(),
+    hiredDay: z.number(),
   })
   .strict();
 
@@ -442,6 +456,9 @@ const PlayerStateSchema = z
     // T-1304: the Penny Wise loan (or null). Nullable, non-optional — every
     // v3+ save serializes the key (v2 saves backfill it via the migration).
     loan: LoanStateSchema.nullable(),
+    // T-1306: hired crew (the dice-progression source). Non-optional — every v4+
+    // save serializes the key (v3 saves backfill it via the migration).
+    crew: z.array(CrewMemberSchema),
     stats: StatBlockSchema,
     tier: TierSchema,
     currentSystemId: z.number(),
@@ -671,6 +688,43 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'already-has-loan',
         'no-loan',
         'insufficient-credits',
+      ])
+      .optional(),
+  }),
+  z.object({
+    // T-1306 · a dawn-die re-roll (see types.ts DiceRerolled). Serialized in
+    // eventLog; the drift guard below keeps this in lockstep with the interface.
+    type: z.literal('DiceRerolled'),
+    day: z.number(),
+    dieIndex: z.number().optional(),
+    previous: z.number().optional(),
+    result: z.number().optional(),
+    rerollsRemaining: z.number().optional(),
+    failReason: z
+      .enum(['no-hand', 'invalid-die-index', 'die-already-spent', 'no-charge'])
+      .optional(),
+  }),
+  z.object({
+    // T-1306 · a crew hire/dismiss/wage beat (see types.ts CrewEvent). Serialized
+    // in eventLog; the drift guard below keeps this in lockstep with the interface.
+    type: z.literal('CrewEvent'),
+    day: z.number(),
+    kind: z.enum(['hired', 'dismissed', 'wage', 'failed']),
+    roleId: z.string().optional(),
+    cost: z.number().optional(),
+    amount: z.number().optional(),
+    berths: z.number().optional(),
+    crewCount: z.number().optional(),
+    failReason: z
+      .enum([
+        'no-die',
+        'invalid-die-index',
+        'die-already-spent',
+        'no-berth',
+        'insufficient-credits',
+        'already-hired',
+        'unknown-role',
+        'not-hired',
       ])
       .optional(),
   }),
@@ -973,6 +1027,18 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
     amount: z.number().optional(),
     spendDie: z.number().optional(),
   }),
+  z.object({
+    // T-1306 · re-roll one un-spent dawn die (see types.ts PlayerAction).
+    type: z.literal('Reroll'),
+    dieIndex: z.number(),
+  }),
+  z.object({
+    // T-1306 · hire/dismiss a crew role (see types.ts PlayerAction).
+    type: z.literal('Crew'),
+    action: z.enum(['hire', 'dismiss']),
+    roleId: z.string(),
+    spendDie: z.number(),
+  }),
   z.object({ type: z.literal('Wait') }),
 ]);
 
@@ -1052,6 +1118,7 @@ const _covCharts: AssertEqual<keyof ChartsState, keyof z.infer<typeof ChartsStat
 const _covPoi: AssertEqual<keyof DiscoveredPoi, keyof z.infer<typeof DiscoveredPoiSchema>> = true;
 const _covLegacy: AssertEqual<keyof LegacyState, keyof z.infer<typeof LegacyStateSchema>> = true;
 const _covLoan: AssertEqual<keyof LoanState, keyof z.infer<typeof LoanStateSchema>> = true;
+const _covCrew: AssertEqual<keyof CrewMember, keyof z.infer<typeof CrewMemberSchema>> = true;
 const _covNemesis: AssertEqual<
   keyof NemesisFileState,
   keyof z.infer<typeof NemesisFileStateSchema>
@@ -1128,6 +1195,8 @@ const _covEvFragmentAcquired: AssertEventKeys<'FragmentAcquired'> = true;
 const _covEvFragmentDecoded: AssertEventKeys<'FragmentDecoded'> = true;
 const _covEvHangoutEvent: AssertEventKeys<'HangoutEvent'> = true;
 const _covEvLoanEvent: AssertEventKeys<'LoanEvent'> = true;
+const _covEvDiceRerolled: AssertEventKeys<'DiceRerolled'> = true;
+const _covEvCrewEvent: AssertEventKeys<'CrewEvent'> = true;
 const _covEvStoryletOffered: AssertEventKeys<'StoryletOffered'> = true;
 const _covEvStoryletChoiceResolved: AssertEventKeys<'StoryletChoiceResolved'> = true;
 const _covEvStoryletChoiceBlocked: AssertEventKeys<'StoryletChoiceBlocked'> = true;
@@ -1170,6 +1239,7 @@ void _covCharts;
 void _covPoi;
 void _covLegacy;
 void _covLoan;
+void _covCrew;
 void _covNemesis;
 void _covFragment;
 void _covDeedRegistry;
@@ -1202,6 +1272,8 @@ void _covEvFragmentAcquired;
 void _covEvFragmentDecoded;
 void _covEvHangoutEvent;
 void _covEvLoanEvent;
+void _covEvDiceRerolled;
+void _covEvCrewEvent;
 void _covEvStoryletOffered;
 void _covEvStoryletChoiceResolved;
 void _covEvStoryletChoiceBlocked;

@@ -14,6 +14,14 @@ import {
 export interface DawnHand {
   dice: number[];
   spent: boolean[];
+  /** T-1306 · Re-roll charges left today (PRD §7 "allow one re-roll"). Set at
+   *  dawn to the crew-granted count (dice.ts `dawnDiceModifiers`, summed across
+   *  crew — realized max 1), decremented each `Reroll` action (actions/crew.ts
+   *  `resolveReroll`), and read by the sim protocol (legalActions advertises
+   *  Reroll only while > 0). OPTIONAL so the ~20 inline `{ dice, spent }` test
+   *  constructions still typecheck; `rollDawnHand` always sets it. Serializes
+   *  mid-day (an unspent charge survives a JSON round-trip). */
+  rerollsRemaining?: number;
 }
 
 export interface CheckResult {
@@ -399,6 +407,62 @@ export type GameEvent =
         | 'no-loan'
         | 'insufficient-credits';
     }
+  | {
+      /**
+       * T-1306 · A dawn-die re-roll (PRD §7 "allow one re-roll"). On SUCCESS every
+       * field is set: `dieIndex`, the `previous` face, the `result`, and the
+       * `rerollsRemaining` after the charge was spent. On a typed FAIL only
+       * `failReason` is set — no charge consumed, no die mutated (mirrors the
+       * HangoutEvent / LoanEvent typed-fail convention: every player-possible
+       * input is an event, never a throw). Serialized in eventLog; the drift guard
+       * (schema.ts) keeps this in lockstep with the interface. READER: T-1405's UI
+       * (the reroll button + result); the sim protocol reads `rerollsRemaining`
+       * off the hand, not this event.
+       */
+      type: 'DiceRerolled';
+      day: number;
+      dieIndex?: number;
+      previous?: number;
+      result?: number;
+      rerollsRemaining?: number;
+      failReason?: 'no-hand' | 'invalid-die-index' | 'die-already-spent' | 'no-charge';
+    }
+  | {
+      /**
+       * T-1306 · A crew hire/dismiss/wage beat (PRD §7 dice progression). One event
+       * covers the whole crew lifecycle via the `kind` sub-discriminator:
+       *   - 'hired'     — a role was hired. `roleId`, `cost` (hire price), `berths`
+       *     (crewCapacity at hire), `crewCount` (after). Credits went DOWN by cost,
+       *     a die was spent.
+       *   - 'dismissed' — a role left (player dismiss, or the dusk crew-walk on an
+       *     unpaid wage). `roleId`.
+       *   - 'wage'      — a dusk's wage was paid. `amount` (total wage), `crewCount`.
+       *     Emitted by day.ts endDay while crew is aboard and affordable.
+       *   - 'failed'    — a typed no-op (mirrors LoanEvent/HangoutEvent): malformed
+       *     die input, or a crew rule refused it. NO die spent, NO credit change.
+       *     `failReason` names why.
+       * READER: T-1405's UI crew pane (and the wire). This is an eventLog entry, not
+       * a GameState field — the crew STATE lives on PlayerState.crew (v3→v4
+       * migration); this event carries a schema variant + drift guard only.
+       */
+      type: 'CrewEvent';
+      day: number;
+      kind: 'hired' | 'dismissed' | 'wage' | 'failed';
+      roleId?: string;
+      cost?: number;
+      amount?: number;
+      berths?: number;
+      crewCount?: number;
+      failReason?:
+        | 'no-die'
+        | 'invalid-die-index'
+        | 'die-already-spent'
+        | 'no-berth'
+        | 'insufficient-credits'
+        | 'already-hired'
+        | 'unknown-role'
+        | 'not-hired';
+    }
   | { type: 'StoryletOffered'; day: number; storyletId: string; scheduled: boolean }
   | {
       type: 'StoryletChoiceResolved';
@@ -717,6 +781,31 @@ export type PlayerAction =
       amount?: number;
       spendDie?: number;
     }
+  | {
+      /**
+       * T-1306 · Re-roll one un-spent dawn die (PRD §7 "allow one re-roll").
+       * Consumes a single `dawnHand.rerollsRemaining` charge (granted by a reroll
+       * crew role). `dieIndex` names the die to re-roll; the new value is floored
+       * by any crew floor and written IN PLACE (no re-sort — mid-day die indices
+       * are load-bearing). Costs a charge, NOT a whole die. RESOLVER:
+       * actions/crew.ts resolveReroll.
+       */
+      type: 'Reroll';
+      dieIndex: number;
+    }
+  | {
+      /**
+       * T-1306 · Hire or dismiss a crew role at the Hangout/port (PRD §7 dice
+       * progression). `roleId` names a content CREW_ROLES entry; `spendDie` is the
+       * die the action costs (like every other die-costed player scene). Hiring
+       * needs a free cabin berth (`crewCapacity`) and the hire price; dismissing
+       * frees a berth (no refund). RESOLVER: actions/crew.ts resolveCrew.
+       */
+      type: 'Crew';
+      action: 'hire' | 'dismiss';
+      roleId: string;
+      spendDie: number;
+    }
   | { type: 'Wait' };
 
 export type NpcActionType =
@@ -857,6 +946,24 @@ export interface NemesisFileState {
   fragments: SignalFragmentRecord[];
 }
 
+/**
+ * T-1306 · One hired crew member (PRD §7 dice progression). MINIMAL by design:
+ * only the content `roleId` and the day hired are stored — the dice benefit
+ * (extra-die / reroll / floor) is looked up from content (`CREW_BY_ID`) every
+ * time it's needed, never denormalized onto the save, so the tuning stays data.
+ * FOUNDATION-ORIGINAL: foundation (f2f95fa9) has no crew-grants-dice mechanic, so
+ * this whole type is a T-1306 addition (see content crew.ts for the tuning + the
+ * foundation-divergence note). READERS: dice.ts `dawnDiceModifiers` (the dawn
+ * aggregator), day.ts (dawn roll + dusk wage upkeep), actions/crew.ts (hire /
+ * dismiss / reroll), the sim protocol, and T-1405's UI crew pane.
+ */
+export interface CrewMember {
+  /** Content id into CREW_ROLES / CREW_BY_ID — the benefit is resolved from this. */
+  roleId: string;
+  /** Dusk day this crew member was hired (flavor + T-1405 seniority display). */
+  hiredDay: number;
+}
+
 export interface PlayerState {
   credits: number;
   /** Outstanding Merchant Guild debt — a ledger entry, NOT negative credits.
@@ -870,6 +977,13 @@ export interface PlayerState {
    *  (travel.ts) reads `loan.status`; the day loop (day.ts endDay) accrues and
    *  defaults it; T-1404 surfaces it. */
   loan: LoanState | null;
+  /** T-1306 · Hired crew — the dice-progression source (PRD §7). A new persistent
+   *  field (v3→v4 save migration + round-trip test ship with it). Capped by
+   *  `crewCapacity(ship)` (cabin berths, the T-1205 socket). READERS: dice.ts
+   *  `dawnDiceModifiers` reads it to build the dawn hand's size/floor/rerolls;
+   *  day.ts endDay charges the wage upkeep; actions/crew.ts hires/dismisses;
+   *  the sim protocol + veteran policy consume it; T-1405 surfaces it. */
+  crew: CrewMember[];
   stats: StatBlock;
   tier: PowerTier;
   currentSystemId: number;

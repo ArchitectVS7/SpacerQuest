@@ -1,5 +1,6 @@
 import {
   CARGO_TYPES,
+  CREW_BY_ID,
   DISPOSITION_DECAY_INTERVAL_DAYS,
   DISPOSITION_DELTAS,
   LENDER_ID,
@@ -12,7 +13,7 @@ import {
 } from '@spacerquest/content';
 import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
 import { SeededRng } from './rng.js';
-import { rollDawnHand } from './dice.js';
+import { dawnDiceModifiers, rollDawnHand } from './dice.js';
 import { autoRepairRegen, lifeSupportCritical } from './components.js';
 import { applySuccession } from './legacy.js';
 import { applyDisposition, resolveNpcDay } from './npc.js';
@@ -28,6 +29,7 @@ import {
 import { resolveShipyard } from './actions/shipyard.js';
 import { resolveExploration } from './actions/exploration.js';
 import { resolveVisitHangout } from './actions/hangout.js';
+import { resolveCrew, resolveReroll } from './actions/crew.js';
 import { evaluateDeeds } from './deeds.js';
 import { syncPlayerTier } from './tier.js';
 import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
@@ -71,9 +73,15 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
     npcClaims: 0,
   };
 
-  // Roll player hand
-  const handSize = 5;
-  const playerHand = rollDawnHand(dayRng.fork('player-hand'), handSize);
+  // Roll player hand. T-1306: the hand size / floor / re-roll charges are now
+  // PARAMETERIZED off the player's crew (dice.ts dawnDiceModifiers) rather than a
+  // hardcoded 5 — a die-granting crew rolls 6, a floor crew never rolls below its
+  // floor, a reroll crew banks a charge. An empty crew yields
+  // `{ handSize: 5, floor: 0, rerolls: 0 }`, so the `rng.rollHand(5)` draw is
+  // byte-identical to before (only the added `rerollsRemaining: 0` key on the hand
+  // moves the serialized-state golden hashes; the DawnRoll event is unchanged).
+  const modifiers = dawnDiceModifiers(nextState.player.crew);
+  const playerHand = rollDawnHand(dayRng.fork('player-hand'), modifiers);
   nextState.player.dawnHand = playerHand;
 
   events.push({
@@ -116,7 +124,17 @@ export function applyPlayerAction(
     return { state: refreshed.state, events };
   }
 
-  if (nextState.encounter && action.type !== 'Combat') {
+  // T-1306: Reroll and Crew are exempt from the encounter block. Re-rolling a die
+  // or hiring/dismissing crew mid-encounter is harmless (it touches the dawn hand /
+  // crew roster, never the encounter) and is never offered by the sim/UI during a
+  // fight — exempting them here avoids widening the ActionBlocked.actionType enum
+  // for actions that have no reason to be blocked.
+  if (
+    nextState.encounter &&
+    action.type !== 'Combat' &&
+    action.type !== 'Reroll' &&
+    action.type !== 'Crew'
+  ) {
     // Trade/Travel/Shipyard during an active encounter are player-possible acts,
     // not malformed input — surface a typed ActionBlocked event instead of
     // throwing. Refusals are logged (ShipyardFail precedent): the event is
@@ -199,6 +217,13 @@ export function applyPlayerAction(
       action,
       dayRng.fork(`action-hangout-${actionEventIndex}`),
     );
+  } else if (action.type === 'Reroll') {
+    result = resolveReroll(nextState, action, dayRng.fork(`action-reroll-${actionEventIndex}`));
+  } else if (action.type === 'Crew') {
+    // resolveCrew is pure (no rng), but fork+discard to keep the action rng stream
+    // aligned with the other die-costed actions (mirrors the Shipyard branch).
+    dayRng.fork(`action-crew-${actionEventIndex}`);
+    result = resolveCrew(nextState, action);
   } else {
     result = resolveStoryletChoice(
       nextState,
@@ -613,6 +638,45 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         day: nextState.day,
         message: `Penny Wise's marker on your name went unpaid — word is the Thrift Star's collectors are asking after you on the lanes.`,
       });
+    }
+  }
+
+  // T-1306 · Crew wage upkeep (PRD §7 dice progression). The WHOLE block is guarded
+  // on a non-empty crew, so the crew-free path (every existing golden) is
+  // byte-identical: no wage event, no credit change, no crew mutation, and NO rng
+  // draw (this is pure arithmetic). The day's total wage is the sum of each hired
+  // role's dailyWage (content crew.ts). If the spacer can cover it, the credits are
+  // deducted and a single CrewEvent{wage} is logged. If NOT, the crew WALK — every
+  // member is dismissed (one CrewEvent{dismissed} per departure) and no credits are
+  // charged, so credits never go negative and an unpayable crew can't be kept for
+  // free. Deterministic across a JSON round-trip. This is the in-task upkeep
+  // decision (the "hiring/upkeep as actions" the task calls for, resolved at dusk).
+  if (nextState.player.crew.length > 0) {
+    const wage = nextState.player.crew.reduce(
+      (sum, member) => sum + (CREW_BY_ID[member.roleId]?.dailyWage ?? 0),
+      0,
+    );
+    if (nextState.player.credits >= wage) {
+      nextState.player.credits -= wage;
+      events.push({
+        type: 'CrewEvent',
+        day: nextState.day,
+        kind: 'wage',
+        amount: wage,
+        crewCount: nextState.player.crew.length,
+      });
+    } else {
+      // Can't make payroll — the crew walk. Dismiss each (deterministic order) with
+      // its own event; no credits change hands.
+      for (const member of nextState.player.crew) {
+        events.push({
+          type: 'CrewEvent',
+          day: nextState.day,
+          kind: 'dismissed',
+          roleId: member.roleId,
+        });
+      }
+      nextState.player.crew = [];
     }
   }
 

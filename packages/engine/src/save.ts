@@ -40,6 +40,14 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * `loan` key is non-optional). This is the explicit versioned migration the
  * T-1002 registry was built for.
  *
+ * T-1306 bumped {@link CURRENT_SAVE_VERSION} to 4. The v3->v4 change IS a
+ * GameState shape change: `PlayerState.crew` (the hired-crew dice-progression
+ * source, T-1306) is a new persistent field. The v3->v4 migration backfills
+ * `crew: []` on the player so a pre-crew save validates against the v4 schema
+ * (whose `crew` key is non-optional). `DawnHand.rerollsRemaining` is OPTIONAL, so
+ * it needs no migration step (a v3 hand simply banks no charge until it re-rolls
+ * at the next dawn).
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
@@ -57,9 +65,18 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
       player: { ...(s.player ?? {}), loan: (s.player as { loan?: unknown })?.loan ?? null },
     };
   },
+  // v3->v4: T-1306 added PlayerState.crew. A v3 save has no `crew` key, so backfill
+  // it to an empty roster (no crew) before schema validation.
+  3: (v3State) => {
+    const s = v3State as { player?: Record<string, unknown> };
+    return {
+      ...(v3State as object),
+      player: { ...(s.player ?? {}), crew: (s.player as { crew?: unknown })?.crew ?? [] },
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 3;
+export const CURRENT_SAVE_VERSION = 4;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

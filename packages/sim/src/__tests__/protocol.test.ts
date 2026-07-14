@@ -107,7 +107,7 @@ function dayStateWithEncounter(fuel: number): GameState {
   const state = createInitialState(9);
   state.dayPhase = DayPhase.DAY;
   state.player.ship.fuel = fuel;
-  state.player.dawnHand = rollDawnHand(new SeededRng(9), 5);
+  state.player.dawnHand = rollDawnHand(new SeededRng(9), { handSize: 5, floor: 0, rerolls: 0 });
   state.encounter = fixtureEncounter();
   return state;
 }
@@ -227,6 +227,8 @@ describe('protocol deterministic replay', () => {
       Storylet: true,
       Explore: true,
       VisitHangout: true,
+      Reroll: true,
+      Crew: true,
       Wait: true,
     } satisfies Record<PlayerAction['type'], true>;
     const expectedTradeSubActions = {
@@ -527,7 +529,7 @@ describe('legal-actions enumerator', () => {
   it('T-1101 · never advertises a sealed destination the engine gate would refuse', () => {
     const state = createInitialState(7);
     state.dayPhase = DayPhase.DAY;
-    state.player.dawnHand = rollDawnHand(new SeededRng(7), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(7), { handSize: 5, floor: 0, rerolls: 0 });
 
     const legal = legalActions(state);
     const travel = legal.actions.find((action) => action.type === 'Travel');
@@ -548,7 +550,7 @@ describe('legal-actions enumerator', () => {
   it('T-1101 · offers gated destinations once the Nemesis crossing is unlocked', () => {
     const state = createInitialState(7);
     state.dayPhase = DayPhase.DAY;
-    state.player.dawnHand = rollDawnHand(new SeededRng(7), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(7), { handSize: 5, floor: 0, rerolls: 0 });
     state.flags['nemesis.crossing.unlocked'] = true;
 
     const legal = legalActions(state);
@@ -562,7 +564,7 @@ describe('legal-actions enumerator', () => {
   it('T-1303 · advertises VisitHangout at a Hangout system with an in-system NPC', () => {
     const state = createInitialState(1); // player at Sun-3 (hasHangout); Iron Vex co-located
     state.dayPhase = DayPhase.DAY;
-    state.player.dawnHand = rollDawnHand(new SeededRng(1), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
 
     const legal = legalActions(state);
     const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
@@ -585,7 +587,7 @@ describe('legal-actions enumerator', () => {
     const state = createInitialState(1);
     state.dayPhase = DayPhase.DAY;
     state.player.currentSystemId = 2; // Aldebaran-1 — no Hangout
-    state.player.dawnHand = rollDawnHand(new SeededRng(1), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
 
     const legal = legalActions(state);
     expect(legal.actions.some((action) => action.type === 'VisitHangout')).toBe(false);
@@ -594,7 +596,7 @@ describe('legal-actions enumerator', () => {
   it('T-1304 · advertises VisitHangout (lending/rumor) with no in-system NPC, but not the social beats', () => {
     const state = createInitialState(1); // Sun-3
     state.dayPhase = DayPhase.DAY;
-    state.player.dawnHand = rollDawnHand(new SeededRng(1), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
     // Scatter every NPC off Sun-3 — no one to face at the tables.
     for (const npc of state.npcs) npc.currentSystemId = 5;
 
@@ -622,7 +624,7 @@ describe('legal-actions enumerator', () => {
   it('T-1304 · advertises repay (not borrow) while a loan is active', () => {
     const state = createInitialState(1); // Sun-3, has Hangout
     state.dayPhase = DayPhase.DAY;
-    state.player.dawnHand = rollDawnHand(new SeededRng(1), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
     state.player.loan = {
       lender: 'npc-penny-wise',
       principal: 500,

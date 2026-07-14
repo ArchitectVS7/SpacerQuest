@@ -204,11 +204,21 @@ export function runDayLoopGolden(
 // non-null loan, and no run here takes a loan), which is why only the two state
 // hashes below changed and the event hashes did not. Regenerated via
 // gen-day-loop-golden.ts.
+//
+// T-1306 re-derivation (STATE hashes only; both EVENT hashes UNCHANGED): adding
+// the persistent `PlayerState.crew` field (empty `[]` on every crew-free run) plus
+// the `dawnHand.rerollsRemaining` key (0 with no reroll crew) adds two keys to the
+// serialized state, so both day-loop STATE hashes move — exactly as loan/charts/
+// nemesisFile/legacy did. The EVENT streams are byte-identical (the wage-upkeep
+// block is guarded on a non-empty crew, no run here hires, and rollDawnHand's
+// `rng.rollHand(5)` draw is unchanged for an empty crew — only the added
+// serialization keys differ), which is why only the two state hashes changed.
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'e090c74eafed4865818e686e6890f9876d132656cd92403751a08a8acc96ed75';
+  'c11795176a265cb16ff86b3fc9fea27c8b29a67d1e0e500d01a03d18aef68428';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   'e7767526b8241e6a891aa854f76f9deec51f76a80631578320b303a328242667';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '11932de222f34c9cce5143368808ebb98557a0d016a685672fa609ebc546ccb7';
+  '82794cd965abbf661ce975eefd48a45d427ffa15c0addf5957e57d983b279eb6';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '5e726f54f9f6fccbb499350a4c52f1c749bc581c8d6c0f1e3296c0e1ccd6ff04';

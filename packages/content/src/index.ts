@@ -4,6 +4,7 @@ export * from './components.js';
 export * from './disposition.js';
 export * from './hangout.js';
 export * from './lending.js';
+export * from './crew.js';
 export * from './systems.js';
 export * from './cargo.js';
 export * from './contraband.js';

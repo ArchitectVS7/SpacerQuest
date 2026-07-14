@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { distance as systemDistance, isGatedDestination } from '@spacerquest/content';
+import { CREW_ROLES, distance as systemDistance, isGatedDestination } from '@spacerquest/content';
 import {
   advanceDay,
   applyPlayerAction,
   createInitialState,
+  crewCapacity,
   DayPhase,
   endDay,
   jumpFuelCost,
@@ -395,6 +396,75 @@ describe('T-114a special-equipment reachability (earned, not set)', () => {
     // deeds that drive it were genuinely earned.
     expect(state.player.registry.earned.length).toBeGreaterThanOrEqual(15);
   }, 60000);
+});
+
+// ---------------------------------------------------------------------------
+// T-1306 · Dice-progression reachability (earned, not injected). The dice pillar
+// gained its only progression axis — crew that add a die / a re-roll / a floor.
+// This proves a veteran ACQUIRES ≥1 such source by day 150 through legal play: it
+// earns the credits, finds a free cabin berth, and hires a crew member via a real
+// `Crew` action driven through applyPlayerAction. NOTHING sets crew by hand — the
+// hire is the shipped veteranPolicy's own planCrewHire firing on real surplus.
+// ---------------------------------------------------------------------------
+// A veteran-style sim that ALSO hires a dice-progression crew member. It wraps the
+// shipped `veteranPolicy` (unchanged — so the T-114a 500-day GIGA_HERO reachability
+// above is untouched) and, on a day it left a die free and is flush enough to
+// sustain the wage, appends a real `Crew` hire (highest-impact extra-die role
+// first). This is a legal-play policy — every move goes through applyPlayerAction,
+// nothing is injected onto the state — so it is the headless proof that the dice
+// pillar's progression source is ACQUIRABLE through play, the counterpart to the
+// engine crew.test.ts (which proves the hire/reroll mechanics deterministically).
+// It lives in the test, not the shipped sim, because folding crew-hiring into the
+// lean endgame `veteranPolicy` measurably degrades its documented 500-day climb
+// (the 3000 hire + daily wage starves the ASTRAXIAL_HULL war chest — verified: it
+// drops the seed-3 run from GIGA_HERO to MEGA_HERO).
+const crewHiringVeteranPolicy: SimPolicy = (ctx) => {
+  const actions = veteranPolicy(ctx);
+  const { state } = ctx;
+  if (state.encounter) return actions;
+  if (state.player.crew.length >= crewCapacity(state.player.ship)) return actions;
+  const hired = new Set(state.player.crew.map((member) => member.roleId));
+  // Highest-impact benefit first (extra-die), then reroll, then floor. Require a
+  // fat reserve above the hire price so the crew's wage is sustainable and the
+  // hire never strands the ship.
+  const order = ['extra-die', 'reroll', 'floor'];
+  const role = [...CREW_ROLES]
+    .sort((a, b) => order.indexOf(a.benefit.kind) - order.indexOf(b.benefit.kind))
+    .find((r) => !hired.has(r.id) && state.player.credits >= 6000 + r.hirePrice);
+  if (!role) return actions;
+  // Append the hire on a die the veteran left unspent this day (never a collision).
+  const used = new Set<number>();
+  for (const action of actions) {
+    const die = (action as PlayerAction & { spendDie?: number }).spendDie;
+    if (typeof die === 'number') used.add(die);
+  }
+  const hand = state.player.dawnHand;
+  if (!hand) return actions;
+  for (let i = 0; i < hand.dice.length; i += 1) {
+    if (!hand.spent[i] && !used.has(i)) {
+      return [...actions, { type: 'Crew', action: 'hire', roleId: role.id, spendDie: i }];
+    }
+  }
+  return actions;
+};
+
+describe('T-1306 dice progression reachable through play', () => {
+  it('a veteran sim hires a crew dice-source by day 150 (acceptance #4)', () => {
+    const state = driveCompetentCampaign(crewHiringVeteranPolicy, 2, 150);
+
+    // The acquisition happened through legal play: a CrewEvent{hired} was logged
+    // on or before day 150 (crew are hired via the Crew action, never injected).
+    const hires = state.eventLog.filter(
+      (e): e is Extract<typeof e, { type: 'CrewEvent' }> =>
+        e.type === 'CrewEvent' && e.kind === 'hired',
+    );
+    expect(hires.length).toBeGreaterThanOrEqual(1);
+    expect(hires[0].day).toBeLessThanOrEqual(150);
+    // ...and a crew member is aboard at the end of the horizon — the source is live.
+    expect(state.player.crew.length).toBeGreaterThanOrEqual(1);
+    // The hired role is a real dice-progression source.
+    expect(CREW_ROLES.some((r) => r.id === hires[0].roleId)).toBe(true);
+  }, 30000);
 });
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import {
+  CREW_ROLES,
   DARE_MAX_WAGER as HANGOUT_DARE_MAX_WAGER,
   DARE_MIN_WAGER as HANGOUT_DARE_MIN_WAGER,
   EXPLORATION_FUEL_COST,
@@ -30,6 +31,7 @@ import {
   RUN_FUEL_COST,
   applyPlayerAction,
   createInitialState,
+  crewCapacity,
   deserializeState,
   eligibleStorylets,
   endDay,
@@ -150,6 +152,12 @@ export interface StateSummary {
   /** Indices into `dawnHand.dice` that are still UNSPENT — the legal values for
    *  any action's `spendDie` field this turn. Empty in DAWN / when exhausted. */
   diceRemaining: number[];
+  /** T-1306 · Re-roll charges left today (from a reroll crew member); 0 with none. */
+  rerollsRemaining: number;
+  /** T-1306 · Hired crew, by role id — the dice-progression source. */
+  crew: string[];
+  /** T-1306 · Cabin berths (crewCapacity) — the hiring cap. */
+  crewCapacity: number;
   /** The contract currently in the hold, or null. */
   activeContract: {
     destination: number;
@@ -304,6 +312,9 @@ export function buildStateSummary(state: GameState): StateSummary {
       ? { dice: [...player.dawnHand.dice], spent: [...player.dawnHand.spent] }
       : null,
     diceRemaining: unspentDieIndices(state),
+    rerollsRemaining: player.dawnHand?.rerollsRemaining ?? 0,
+    crew: player.crew.map((member) => member.roleId),
+    crewCapacity: crewCapacity(ship),
     activeContract: contract
       ? {
           destination: contract.destination,
@@ -505,6 +516,50 @@ export function legalActions(state: GameState): LegalActions {
       params: { spendDie: dieParam },
       note: `Burns ${EXPLORATION_FUEL_COST} fuel; PILOT nav check charts a POI on success.`,
     });
+  }
+
+  // --- Re-roll a dawn die (T-1306) ---------------------------------------
+  // Advertised only while a re-roll charge is banked (a reroll crew member set it
+  // at dawn) AND there is an unspent die to re-roll. `dieIndex` reuses the die-
+  // index domain (the unspent indices). Consumes a charge, not a whole die.
+  if ((player.dawnHand?.rerollsRemaining ?? 0) > 0 && hasDie) {
+    actions.push({
+      type: 'Reroll',
+      params: { dieIndex: dieParam },
+      note: 'Consumes one re-roll charge (from a reroll crew member); re-rolls the named unspent die in place.',
+    });
+  }
+
+  // --- Hire / dismiss crew (T-1306) --------------------------------------
+  // Hiring is advertised while a cabin berth is free and there is an unhired role
+  // to fill it; dismissing while any crew is aboard. Affordability (hire price) is
+  // validated on apply — this only keeps the harness from proposing a hire with no
+  // berth. Crew are the dice-progression source (extra die / re-roll / floor).
+  if (hasDie) {
+    const hiredRoleIds = new Set(player.crew.map((member) => member.roleId));
+    const hireableRoleIds = CREW_ROLES.map((role) => role.id).filter((id) => !hiredRoleIds.has(id));
+    if (player.crew.length < crewCapacity(ship) && hireableRoleIds.length > 0) {
+      actions.push({
+        type: 'Crew',
+        action: 'hire',
+        params: {
+          roleId: { kind: 'enum', choices: hireableRoleIds },
+          spendDie: dieParam,
+        },
+        note: 'Hire price validated on apply (emits CrewEvent{failed} if unaffordable). Berthed against cabin capacity.',
+      });
+    }
+    if (player.crew.length > 0) {
+      actions.push({
+        type: 'Crew',
+        action: 'dismiss',
+        params: {
+          roleId: { kind: 'enum', choices: player.crew.map((member) => member.roleId) },
+          spendDie: dieParam,
+        },
+        note: 'Removes the crew member (no refund), freeing a berth.',
+      });
+    }
   }
 
   // --- Visit the Hangout (T-1303) ----------------------------------------
