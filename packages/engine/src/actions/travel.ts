@@ -25,6 +25,7 @@ import { check, spendDie } from '../dice.js';
 import { jumpFuelCost } from '../economy.js';
 import { eraDangerDelta } from '../era.js';
 import { navBonus } from '../components.js';
+import { guildEncounterMultiplier } from '../guild.js';
 import { applyPatrolContrabandScan } from './patrol.js';
 
 function clampDanger(value: number): RouteDangerLevel {
@@ -303,6 +304,19 @@ export function generateEncounter(
   // is byte-identical. Clamped to 1 so a stacked multiplier can't exceed certainty.
   if (state.player.loan?.status === 'defaulted') {
     effectiveChance = Math.min(1, effectiveChance * COLLECTION_ENCOUNTER_MULTIPLIER);
+  }
+  // T-1309 · Port-clerk flag reader (patrol/collection attention). This function is
+  // the named reader of `guild.debt-flagged` (set by the day-30 UNPAID branch,
+  // day.ts): a flagged captain — "your name on every board, and the patrols hear
+  // about it" — draws interdictions more often, scaled by the flag's stored
+  // guild-standing severity (guildEncounterMultiplier). This is the dangerous
+  // sibling of the loan-collection multiply above. GUARDED on the flag (> 0) and
+  // the encounter draw below stays exactly one `rng.next()`, so a clean captain
+  // (flag absent — every existing golden) is byte-identical. Clamped to 1 so a
+  // stacked multiplier can't exceed certainty.
+  const guildFlag = Number(state.flags['guild.debt-flagged'] ?? 0);
+  if (guildFlag > 0) {
+    effectiveChance = Math.min(1, effectiveChance * guildEncounterMultiplier(guildFlag));
   }
   const encounterRoll = rng.next();
   if (encounterRoll >= effectiveChance) {

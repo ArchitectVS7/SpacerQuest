@@ -198,6 +198,7 @@ export function rollContract(
   rng: SeededRng,
   spec: ContractShipSpec,
   eraEvent: EraEventState | null = null,
+  guildManifestPenalty = 1,
 ): CargoContract {
   const origin = STAR_SYSTEMS[originSystem];
 
@@ -270,6 +271,19 @@ export function rollContract(
     payment = Math.floor(payment * eraMultiplier);
   }
 
+  // T-1309 · Port-clerk flag → worse manifest terms. A flagged captain (unpaid
+  // Tour One marker) gets the lower-paying runs: the payment is scaled by a <1
+  // guild penalty computed from the flag's stored severity (engine guild.ts
+  // guildManifestPenalty, passed down from day.ts startDay). Applied AFTER the era
+  // multiplier and BEFORE the pod-normalize below — and GUARDED on `!== 1`, so a
+  // clean captain (penalty 1, the default) leaves the number and the rng stream
+  // untouched: every existing economy golden is byte-identical. READER named at the
+  // call site (day.ts startDay → generateManifestBoard).
+  if (guildManifestPenalty !== 1) {
+    payment = Math.floor(payment * guildManifestPenalty);
+    if (payment < 1) payment = 1;
+  }
+
   // Normalize to pod multiple
   if (cargoPods > 0) {
     const perPod = Math.floor(payment / cargoPods);
@@ -296,12 +310,16 @@ export function generateManifestBoard(
   shipState: ShipState,
   count = 4,
   eraEvent: EraEventState | null = null,
+  guildManifestPenalty = 1,
 ): CargoContract[] {
   const board: CargoContract[] = [];
   const spec = contractSpecFromShip(shipState);
 
   for (let i = 0; i < count; i++) {
-    board.push(rollContract(originSystem, rng, spec, eraEvent));
+    // T-1309: `guildManifestPenalty` (< 1 for a flag-carrying captain, 1 otherwise)
+    // is threaded to every contract on the board. Default 1 keeps every existing
+    // caller and golden byte-identical.
+    board.push(rollContract(originSystem, rng, spec, eraEvent, guildManifestPenalty));
   }
 
   return board;

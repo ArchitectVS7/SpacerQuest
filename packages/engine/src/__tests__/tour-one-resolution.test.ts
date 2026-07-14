@@ -157,9 +157,34 @@ describe('T-113b Tour One resolution — debt unpaid', () => {
     const state = atDawnOfDay30(909);
     const { state: resolved } = advanceDay(state, [{ type: 'Wait' }]);
     expect(resolved.flags['tour-one.resolved']).toBe('unpaid');
+    // T-1309: the unpaid branch flags the captain's name and the marker begins
+    // accruing interest from the next dusk. Its VALUE is a guild-standing severity
+    // (> 0), the boolean gate the two port readers use.
+    expect(Number(resolved.flags['guild.debt-flagged'])).toBeGreaterThan(0);
+
     const after = assertPlayableFor(resolved, 10);
-    // Debt still rides along, never cleared behind the player's back.
-    expect(after.player.debt).toBe(state.player.debt);
+    // T-1309: debt now GROWS across the post-resolution days — "the interest keeps
+    // running" has teeth (was `toBe(state.player.debt)` when the branch was
+    // cosmetic). The ship stays fully playable throughout (assertPlayableFor drives
+    // a legal action every day) — debt is a ledger, never a soft-lock. MUTATION
+    // NOTE: revert the day.ts accrual block and this goes back to equality → red.
+    expect(after.player.debt).toBeGreaterThan(state.player.debt);
+  });
+
+  it('the CLEARED branch never flags the captain and never accrues interest', () => {
+    // The mirror of the unpaid test: a cleared marker sets no port-clerk flag, so
+    // the accrual block (guarded on that flag) never fires and debt stays at 0
+    // across the same 10 post-resolution days. This is what keeps every cleared /
+    // clean-veteran golden byte-identical.
+    const state = atDawnOfDay30(4242);
+    state.player.credits = 30000;
+    const { state: resolved } = advanceDay(state, [
+      { type: 'Trade', action: 'pay-debt', amount: 25000 },
+    ]);
+    expect(resolved.flags['tour-one.resolved']).toBe('cleared');
+    expect(resolved.flags['guild.debt-flagged']).toBeUndefined();
+    const after = assertPlayableFor(resolved, 10);
+    expect(after.player.debt).toBe(0);
   });
 });
 

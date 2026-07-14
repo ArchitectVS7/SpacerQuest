@@ -608,6 +608,49 @@ describe('T-1203 tier climbs through play and admits tier-3+ named hunters', () 
 });
 
 // ---------------------------------------------------------------------------
+// T-1309 · Guild pressure & unpaid-branch teeth — the sim-side acceptance ("the
+// unpaid sim branch shows debt growing per dusk"). An idle policy never pays the
+// 25,000 marker, so the day-30 resolution takes the UNPAID branch, flags the
+// captain's name, and the debt begins accruing interest at each subsequent dusk.
+// Before T-1309 the debt was set once and never moved — this asserts, through the
+// public `CampaignDayStats.debt` curve, that it now grows monotonically after the
+// resolution while staying flat through Tour One (no accrual during the 30 days).
+// ---------------------------------------------------------------------------
+describe('T-1309 unpaid marker accrues interest per dusk (sim)', () => {
+  it('idle debt is flat through day 30 then strictly grows each dusk', () => {
+    const report = runCampaign(7, 45, 'idle');
+    const byDay = new Map(report.daily.map((d) => [d.day, d.debt]));
+
+    // Tour One is interest-free: the marker sits at its full 25,000 through the
+    // resolution dusk (the day-30 pass sets the flag but the accrual is gated on
+    // day > 30, so the resolution day itself never grows the debt).
+    for (let day = 2; day <= 31; day += 1) {
+      expect(byDay.get(day), `debt on day ${day}`).toBe(25000);
+    }
+
+    // From the first post-resolution dusk (day 32 stat = the day-31 dusk) the
+    // ledger grows strictly every dusk — "the interest keeps running" with teeth.
+    // MUTATION NOTE: revert the day.ts accrual block and the curve goes flat → red.
+    for (let day = 33; day <= 45; day += 1) {
+      const prev = byDay.get(day - 1)!;
+      const now = byDay.get(day)!;
+      expect(
+        now,
+        `debt grows from day ${day - 1} (${prev}) to day ${day} (${now})`,
+      ).toBeGreaterThan(prev);
+    }
+
+    // The debt is a non-blocking ledger: credits never go negative behind the
+    // player's back (no soft-lock from a growing marker).
+    for (const day of report.daily) {
+      expect(day.credits).toBeGreaterThanOrEqual(0);
+    }
+
+    expect(report.finalState.debt).toBeGreaterThan(25000);
+  }, 30000);
+});
+
+// ---------------------------------------------------------------------------
 // T-1004 · Fuel-starvation metric honesty. The old report counted days where
 // `fuel === 0`, which fired 0 times in 6,000 simulated days because every policy
 // tops the tank up — it measured a state the sim never reaches. The metric is

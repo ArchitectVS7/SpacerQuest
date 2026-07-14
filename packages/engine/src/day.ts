@@ -3,6 +3,7 @@ import {
   CREW_BY_ID,
   DISPOSITION_DECAY_INTERVAL_DAYS,
   DISPOSITION_DELTAS,
+  GUILD_DEBT_DAILY_RATE,
   LENDER_ID,
   LIFE_SUPPORT_SURVIVAL_DC,
   LOAN_DEFAULT_DISPOSITION,
@@ -34,6 +35,7 @@ import { portDuskIncome, resolvePortPurchase } from './actions/port.js';
 import { evaluateDeeds } from './deeds.js';
 import { syncPlayerTier } from './tier.js';
 import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
+import { computeGuildStanding, guildManifestPenalty, guildSeverity } from './guild.js';
 import { natWireStories } from './wire.js';
 
 function cloneState(state: GameState): GameState {
@@ -61,12 +63,22 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
   // never goes completely dark).
   const claimedJobs = nextState.market.npcClaims ?? 0;
   const boardSize = Math.max(1, 4 - claimedJobs);
+  // T-1309 · Port-clerk flag reader (worse manifest terms). A `guild.debt-flagged`
+  // captain (unpaid Tour One marker, day.ts endDay) gets the lower-paying runs: the
+  // stored flag value is a guild-standing severity, and `guildManifestPenalty` maps
+  // it to a <1 payment multiplier threaded into every contract on today's board.
+  // Guarded on the flag → penalty is exactly 1 for a clean captain (every existing
+  // golden), and rollContract applies it AFTER all rng draws, so a clean board is
+  // byte-identical. READER of the flag: this call site (via economy.ts rollContract).
+  const guildFlag = Number(nextState.flags['guild.debt-flagged'] ?? 0);
+  const manifestPenalty = guildFlag > 0 ? guildManifestPenalty(guildFlag) : 1;
   const manifestBoard = generateManifestBoard(
     nextState.player.currentSystemId,
     dayRng.fork('market'),
     nextState.player.ship,
     boardSize,
     nextState.eraEvent,
+    manifestPenalty,
   );
   nextState.market = {
     manifestBoard,
@@ -784,28 +796,80 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     // untouched.
     nextState.era = 'VETERAN';
 
+    // T-1309 · READER of the six guild-pressure beat flags on BOTH branches
+    // (computeGuildStanding). The signed standing (cooperative < 0 < hostile) is
+    // consumed differently per branch below — the cleared branch reads its SIGN
+    // for the sign-off text, the unpaid branch reads its magnitude for the
+    // port-clerk flag severity — so every surviving pressure flag has a consumer
+    // regardless of how day 30 resolves.
+    const guildStanding = computeGuildStanding(nextState.flags);
+
     if (cleared) {
       // Debt cleared → the CLEAN veteran career opens (PRD §5.2). The era flip
       // above is shared with the unpaid branch; this flag is the additional
       // discriminator that says the marker closed without a shortfall.
       nextState.flags['veteran.unlocked'] = true;
+      // T-1309 · the sign-off reads the guild standing: a captain who kept the
+      // Guild informed (cooperative record, standing <= 0) gets the warm close;
+      // one who stonewalled/defied its way to the finish (standing > 0) gets the
+      // terse one. This is the cleared-branch consumer of the pressure flags.
       events.push({
         type: 'WireEntry',
         day: nextState.day,
         message:
-          'The Merchant Guild marker closes clean. Your name comes off the debt slate and onto the Registry — the veteran lanes are open.',
+          guildStanding > 0
+            ? 'The Merchant Guild marker closes — barely. Your name comes off the debt slate onto the Registry, but the clerks logged how you fought them the whole way. The veteran lanes are open, cold welcome and all.'
+            : 'The Merchant Guild marker closes clean. Your name comes off the debt slate and onto the Registry — the veteran lanes are open, and the clerks remember you kept them in the loop.',
       });
     } else {
       // Debt NOT cleared: the game continues indebted (PRD §5.1). The debt
-      // SURVIVES untouched — no forgiveness, no soft-lock, no game-over. The
-      // consequence is story-layer (surfaced by the forced unpaid storylet and
-      // the wire); the engine leaves the spacer fully playable.
+      // SURVIVES untouched — no forgiveness, no soft-lock, no game-over. But the
+      // consequence is no longer purely story-layer: T-1309 sets the port-clerk
+      // flag the unpaid storylet's prose has always claimed ("your name now
+      // carries a flag every port clerk can see"). Its VALUE is the guild-standing
+      // severity (guildSeverity), so a hostile record bites harder. Two readers
+      // consume it: worse manifest terms (day.ts startDay → economy.ts) and
+      // heavier patrol/collection attention (actions/travel.ts generateEncounter).
+      // The debt itself begins accruing interest from the NEXT dusk (the accrual
+      // block below, gated on day > 30 so this day-30 pass leaves it untouched).
+      const severity = guildSeverity(guildStanding);
+      nextState.flags['guild.debt-flagged'] = severity;
       events.push({
         type: 'WireEntry',
         day: nextState.day,
-        message: `The marker goes unpaid. The Guild files the shortfall — ${debtOutstanding} credits still owed — and flags your name on every board. You fly on indebted.`,
+        message: `The marker goes unpaid. The Guild files the shortfall — ${debtOutstanding} credits still owed, and the interest keeps running — and flags your name where every port clerk can read it: leaner manifests, keener patrols. You fly on indebted.`,
       });
     }
+  }
+
+  // T-1309 · Unpaid Tour One marker — per-dusk interest accrual. The unpaid
+  // resolution storylet's prose has always claimed "the interest keeps running",
+  // but the 25,000 marker (state.ts) never actually grew — this block gives that
+  // prose teeth. The WHOLE block is guarded on the `guild.debt-flagged` flag
+  // (set only by the day-30 UNPAID branch above) AND `day > 30`, so:
+  //   - every non-flagged state (a cleared marker, or any pre-day-30 day, or every
+  //     existing golden) is byte-identical: no accrual, no event, and NO rng draw
+  //     (this is pure arithmetic — accrual detection is a flag+day compare);
+  //   - the `day > 30` gate leaves the day-30 resolution pass itself untouched, so
+  //     the marker still reports its exact 25,000 shortfall at resolution.
+  // Interest compounds on the CURRENT balance (content GUILD_DEBT_DAILY_RATE) and
+  // accrues to `player.debt` ONLY — never to player.credits (debt-as-ledger law),
+  // so growing debt can never strand the ship or drive credits negative (the
+  // no-soft-lock invariant). Deterministic across a JSON round-trip (day + a flag
+  // already in GameState; no new field). READERS of the growth: the WireEntry
+  // (UI wire, format.ts wireLines) and the sim's per-day `CampaignDayStats.debt`.
+  if (
+    nextState.player.debt > 0 &&
+    Number(nextState.flags['guild.debt-flagged'] ?? 0) > 0 &&
+    nextState.day > 30
+  ) {
+    const interest = Math.ceil(nextState.player.debt * GUILD_DEBT_DAILY_RATE);
+    nextState.player.debt += interest;
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      message: `The Guild marker keeps running: ${interest} credits in interest added — ${nextState.player.debt} now owed.`,
+    });
   }
 
   events.push(...evaluateDeeds(nextState, events));
