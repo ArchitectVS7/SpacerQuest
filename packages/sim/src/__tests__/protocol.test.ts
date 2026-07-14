@@ -591,7 +591,7 @@ describe('legal-actions enumerator', () => {
     expect(legal.actions.some((action) => action.type === 'VisitHangout')).toBe(false);
   });
 
-  it('T-1303 · does NOT advertise VisitHangout with no in-system NPC', () => {
+  it('T-1304 · advertises VisitHangout (lending/rumor) with no in-system NPC, but not the social beats', () => {
     const state = createInitialState(1); // Sun-3
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), 5);
@@ -599,7 +599,49 @@ describe('legal-actions enumerator', () => {
     for (const npc of state.npcs) npc.currentSystemId = 5;
 
     const legal = legalActions(state);
-    expect(legal.actions.some((action) => action.type === 'VisitHangout')).toBe(false);
+    const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
+    // T-1304: Penny Wise is the lender-of-record (the desk), so the §7.5 loan out
+    // and the rumor host slot ARE reachable with no co-located NPC — but the
+    // opponent-driven beats (dare/meet/befriend/insult) are NOT offered.
+    expect(hangout).toBeDefined();
+    const venue = hangout?.params.venue;
+    expect(venue?.kind).toBe('enum');
+    if (venue?.kind === 'enum') {
+      expect(venue.choices).toContain('borrow'); // no loan yet → borrow offered
+      expect(venue.choices).toContain('rumor');
+      expect(venue.choices).not.toContain('dare');
+      expect(venue.choices).not.toContain('befriend');
+    }
+    // opponentId enumerates to the empty set (no one in-system).
+    const opponentParam = hangout?.params.opponentId;
+    if (opponentParam?.kind === 'enum') {
+      expect(opponentParam.choices).toHaveLength(0);
+    }
+  });
+
+  it('T-1304 · advertises repay (not borrow) while a loan is active', () => {
+    const state = createInitialState(1); // Sun-3, has Hangout
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), 5);
+    state.player.loan = {
+      lender: 'npc-penny-wise',
+      principal: 500,
+      outstanding: 525,
+      dailyRate: 0.05,
+      borrowedDay: 1,
+      dueDay: 16,
+      status: 'active',
+    };
+
+    const legal = legalActions(state);
+    const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    const venue = hangout?.params.venue;
+    expect(venue?.kind).toBe('enum');
+    if (venue?.kind === 'enum') {
+      expect(venue.choices).toContain('repay'); // a loan is active → repay offered
+      expect(venue.choices).not.toContain('borrow');
+    }
   });
 });
 

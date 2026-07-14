@@ -195,11 +195,20 @@ export function runDayLoopGolden(
 // day-loop STATE and EVENT hashes move accordingly. The day-loop RULES are
 // unchanged — only a content storylet trigger moved. Regenerated via
 // gen-day-loop-golden.ts.
+//
+// T-1304 re-derivation (STATE hashes only; both EVENT hashes UNCHANGED): adding
+// the persistent `PlayerState.loan` field (null on every loan-free run) adds one
+// `"loan":null` key to the serialized state, so both day-loop STATE hashes move —
+// exactly as they did when charts/nemesisFile/legacy were added. The EVENT
+// streams are byte-identical (the whole accrual/default block is guarded on a
+// non-null loan, and no run here takes a loan), which is why only the two state
+// hashes below changed and the event hashes did not. Regenerated via
+// gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'e52435fbd5e4e9f45d5d716568f48dfb7f6ae7c98a63d5e342e6dd5d00e7799f';
+  'e090c74eafed4865818e686e6890f9876d132656cd92403751a08a8acc96ed75';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   'e7767526b8241e6a891aa854f76f9deec51f76a80631578320b303a328242667';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '9c10750ea5bd9fb5f3593ae7adfa81425d5f3ad2b7a68f9a82f663f63dc9f876';
+  '11932de222f34c9cce5143368808ebb98557a0d016a685672fa609ebc546ccb7';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '5e726f54f9f6fccbb499350a4c52f1c749bc581c8d6c0f1e3296c0e1ccd6ff04';

@@ -368,3 +368,36 @@ describe('T-108 · Charts recorded on travel', () => {
     expect(back!.player.charts.visitedSystemIds).toEqual([1, 2]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// T-1304 · A Penny Wise loan carries wholesale through succession (like debt).
+// ---------------------------------------------------------------------------
+describe('T-1304 · loan survives succession (carried like the Guild debt)', () => {
+  it('a defaulted loan and the Penny Wise grudge both carry to the successor', async () => {
+    const { applySuccession } = await import('../legacy.js');
+    const state = createInitialState(3);
+    state.player.credits = 4000;
+    state.player.loan = {
+      lender: 'npc-penny-wise',
+      principal: 1000,
+      outstanding: 1750,
+      dailyRate: 0.05,
+      borrowedDay: 2,
+      dueDay: 17,
+      status: 'defaulted',
+    };
+    // A Penny Wise grudge stands on her NPC record.
+    const penny = state.npcs.find((n) => n.id === 'npc-penny-wise')!;
+    penny.disposition = -5;
+
+    const before = structuredClone(state.player.loan);
+    applySuccession(state, { originSystem: 1, interceptorId: 'anon-pirate-1' });
+
+    // The loan is left EXACTLY as it was — carried wholesale like debt/debtDueDay,
+    // its defaulted status (collection heat) included. No reset.
+    expect(state.player.loan).toEqual(before);
+    expect(state.player.loan?.status).toBe('defaulted');
+    // The grudge attaches to the name and rides along with every disposition.
+    expect(state.npcs.find((n) => n.id === 'npc-penny-wise')!.disposition).toBe(-5);
+  });
+});

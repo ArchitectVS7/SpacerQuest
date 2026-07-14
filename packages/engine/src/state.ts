@@ -87,6 +87,8 @@ export function createInitialState(seed: number): GameState {
       credits: 1000,
       debt: 25000,
       debtDueDay: 30,
+      // T-1304: no Penny Wise loan at the start of a run.
+      loan: null,
       stats: {
         [Stat.PILOT]: 1,
         [Stat.GUNS]: 0,
@@ -196,6 +198,11 @@ export function deserializeState(json: string): GameState {
   parsed.player.nemesisFile.fragments ??= [];
   parsed.player.legacy ??= { successionCount: 0 };
   parsed.player.legacy.successionCount ??= 0;
+  // T-1304 save-compat: pre-T-1304 states have no Penny Wise loan field. Default
+  // to null (no active loan) — the same backfill the v2→v3 save migration applies
+  // for the envelope path. Without it a legacy save leaves `loan` undefined and
+  // fails the strict schema's non-optional `loan` key.
+  parsed.player.loan ??= null;
   parsed.npcs ??= [];
   parsed.npcs.forEach((npc) => {
     npc.disposition ??= 0;

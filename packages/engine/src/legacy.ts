@@ -25,8 +25,13 @@ export interface ShipLostContext {
  *     EXPLICITLY below since it lives on PlayerState, not charts), storylet flags
  *     and completed storylets — the world remembers — every NPC disposition
  *     (grudges attach to the NAME, per 'the syndicate remembers your name'),
- *     stats (v1: no reset), and the debt + debtDueDay (the Guild collects from
- *     the estate).
+ *     stats (v1: no reset), the debt + debtDueDay (the Guild collects from
+ *     the estate), and (T-1304) the Penny Wise `loan` — carried WHOLESALE like
+ *     the Guild debt, its `defaulted` status included: "a successor claims the
+ *     license, the charts, and the debts", so the collection heat and the Penny
+ *     Wise grudge attach to the name exactly as the dispositions above do. It is
+ *     intentionally NOT reset — that IS the inheritance (no code needed; it is
+ *     simply left on state, like debt/debtDueDay).
  *   HALVED: credits (floor division).
  *   RESET: ship to the exact starterShip(); the active contract is FORFEITED
  *     here (the cargo went down with the ship — a TradeEvent 'forfeit-cargo'

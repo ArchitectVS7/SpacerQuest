@@ -2,6 +2,7 @@ import {
   ANONYMOUS_INTERCEPTORS,
   AnonymousInterceptorKind,
   CLOAK_ENCOUNTER_MULTIPLIER,
+  COLLECTION_ENCOUNTER_MULTIPLIER,
   INTERCEPT_FRIEND_WEIGHT,
   INTERCEPT_GRUDGE_WEIGHT,
   INTERCEPT_MIN_WEIGHT,
@@ -290,6 +291,17 @@ export function generateEncounter(
   // default) is byte-identical: every existing encounter/travel golden is unmoved.
   if (state.player.ship.hasCloaker) {
     effectiveChance *= CLOAK_ENCOUNTER_MULTIPLIER;
+  }
+  // T-1304 · Penny Wise collection-flag reader. This function is the named reader
+  // of `loan.status`: a DEFAULTED loan raises the realized encounter chance by
+  // COLLECTION_ENCOUNTER_MULTIPLIER (>1) — "the collectors are looking for you",
+  // the dangerous mirror of the CLOAKER damp above. FOUNDATION-ORIGINAL: foundation
+  // has no lending mechanic, so both the flag and this reader are a T-1304 addition.
+  // The multiply is GUARDED behind the defaulted check and the encounter draw below
+  // stays exactly one `rng.next()`, so a non-defaulted state (every existing golden)
+  // is byte-identical. Clamped to 1 so a stacked multiplier can't exceed certainty.
+  if (state.player.loan?.status === 'defaulted') {
+    effectiveChance = Math.min(1, effectiveChance * COLLECTION_ENCOUNTER_MULTIPLIER);
   }
   const encounterRoll = rng.next();
   if (encounterRoll >= effectiveChance) {

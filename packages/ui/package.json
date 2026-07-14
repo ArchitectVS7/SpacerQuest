@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "npm run build -w @spacerquest/engine",
+    "predev": "npm run build -w @spacerquest/engine -- --force",
     "dev": "vite",
-    "prebuild": "npm run build -w @spacerquest/engine",
+    "prebuild": "npm run build -w @spacerquest/engine -- --force",
     "build": "vite build",
     "preview": "vite preview --port 5173",
     "typecheck": "tsc -b",

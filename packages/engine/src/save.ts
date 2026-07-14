@@ -33,6 +33,13 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * with a legitimate explicit seed). This entry is honest, not a stub: it records
  * that v1 and v2 states are structurally identical.
  *
+ * T-1304 bumped {@link CURRENT_SAVE_VERSION} to 3. The v2->v3 change IS a
+ * GameState shape change: `PlayerState.loan` (the Penny Wise loan ledger, or
+ * null) is a new persistent field. The v2->v3 migration backfills `loan: null`
+ * on the player so a pre-lending save validates against the v3 schema (whose
+ * `loan` key is non-optional). This is the explicit versioned migration the
+ * T-1002 registry was built for.
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
@@ -41,9 +48,18 @@ export type MigrationFn = (oldState: unknown) => unknown;
  */
 export const MIGRATIONS: Record<number, MigrationFn> = {
   1: (v1State) => v1State,
+  // v2->v3: T-1304 added PlayerState.loan. A v2 save has no `loan` key, so
+  // backfill it to null (no active loan) before schema validation.
+  2: (v2State) => {
+    const s = v2State as { player?: Record<string, unknown> };
+    return {
+      ...(v2State as object),
+      player: { ...(s.player ?? {}), loan: (s.player as { loan?: unknown })?.loan ?? null },
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 2;
+export const CURRENT_SAVE_VERSION = 3;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

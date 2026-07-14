@@ -208,7 +208,10 @@ export type GameEvent =
         | 'dare'
         | 'befriend'
         | 'insult'
-        | 'meet';
+        | 'meet'
+        // T-1304: defaulting on a Penny Wise loan sours her hard — the grudge is
+        // read by the interceptor selection weighting (travel.ts chooseWeighted).
+        | 'loan-default';
     }
   | {
       /** A bonded NPC intervened at dusk on the player's behalf (T-106 bond hook). */
@@ -351,6 +354,47 @@ export type GameEvent =
       success?: boolean;
       rumors?: string[];
       failReason?: 'no-die' | 'invalid-die-index' | 'die-already-spent' | 'no-opponent';
+    }
+  | {
+      /**
+       * T-1304 · A Penny Wise lending beat (PRD §7.5). One event covers the whole
+       * loan lifecycle via the `kind` sub-discriminator:
+       *   - 'borrowed'  — a loan was taken. `principal`, `outstanding` (= principal
+       *     at issue), `dailyRate`, `dueDay`. Credits went UP by `principal`.
+       *   - 'accrued'   — a dusk's interest was added. `interest`, `outstanding`
+       *     (post-accrual). Emitted by day.ts endDay while a loan is live.
+       *   - 'repaid'    — the player paid down the loan. `amountPaid`, `outstanding`
+       *     (post-payment), `cleared` (true when the loan was fully paid off and
+       *     nulled — the collection status is gone).
+       *   - 'defaulted' — the due day was crossed unpaid; `status` flipped to
+       *     'defaulted'. `outstanding` at default. Paired with a one-time
+       *     DispositionChanged{reason:'loan-default'} and a wire entry.
+       *   - 'failed'    — a typed no-op (mirrors HangoutEvent/ExplorationFailed):
+       *     malformed die input, or a lending rule refused it. NO die spent, NO
+       *     credit change. `failReason` names why.
+       * READER: the T-1404 Penny Wise desk pane (and the wire). This is an
+       * `eventLog` entry, not a GameState field — the loan STATE lives on
+       * PlayerState.loan (which ships the v2→v3 migration); this event carries a
+       * schema variant + compile-time drift guard (schema.ts) only.
+       */
+      type: 'LoanEvent';
+      day: number;
+      kind: 'borrowed' | 'accrued' | 'repaid' | 'defaulted' | 'failed';
+      lender?: string;
+      principal?: number;
+      dailyRate?: number;
+      dueDay?: number;
+      interest?: number;
+      amountPaid?: number;
+      outstanding?: number;
+      cleared?: boolean;
+      failReason?:
+        | 'no-die'
+        | 'invalid-die-index'
+        | 'die-already-spent'
+        | 'already-has-loan'
+        | 'no-loan'
+        | 'insufficient-credits';
     }
   | { type: 'StoryletOffered'; day: number; storyletId: string; scheduled: boolean }
   | {
@@ -634,14 +678,22 @@ export type PlayerAction =
        *   - 'befriend' — a GUILE charm check to warm the NPC (`opponentId`).
        *   - 'insult'   — always lands, souring the NPC hard (`opponentId`).
        *   - 'rumor'    — read the rumor table (host slot; no opponent).
+       *   - 'borrow'   — T-1304: take a loan at Penny Wise's desk (`amount` =
+       *                  requested principal, clamped to the content band). Penny
+       *                  Wise is the lender-of-record, so no opponent required.
+       *   - 'repay'    — T-1304: pay down the active loan (`amount` = credits to
+       *                  pay; default = full outstanding). No opponent required.
        * `opponentId` is required for dare/meet/befriend/insult and must name an
        * NPC whose SIMULATED position is in the player's current system, else a
-       * typed HangoutEvent fail. RESOLVER: actions/hangout.ts resolveVisitHangout.
+       * typed HangoutEvent fail. `borrow`/`repay`/`rumor` need no opponent.
+       * RESOLVER: actions/hangout.ts resolveVisitHangout.
        */
       type: 'VisitHangout';
-      venue: 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor';
+      venue: 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor' | 'borrow' | 'repay';
       opponentId?: string;
       wager?: number;
+      /** T-1304: borrow principal / repay amount (venue 'borrow' / 'repay'). */
+      amount?: number;
       spendDie?: number;
     }
   | { type: 'Wait' };
@@ -726,6 +778,43 @@ export interface LegacyState {
   successionCount: number;
 }
 
+/**
+ * T-1304 · An outstanding loan from Penny Wise's desk at the Hangout (PRD §7.5).
+ * A new persistent `PlayerState` field — one loan at a time; borrow is blocked
+ * while a loan is active. FOUNDATION-ORIGINAL: foundation (f2f95fa9) has no
+ * lending mechanic, so this whole type is a T-1304 addition (see content
+ * lending.ts for the tuning + divergence note).
+ *
+ * DEBT-AS-LEDGER LAW (shared with `PlayerState.debt`): interest accrues to
+ * `outstanding`, NEVER to `player.credits`. Credits only go UP when borrowing;
+ * they only come down on a player-chosen, clamped repay — so a loan can only ever
+ * be an OUT, never a trap that drives credits negative.
+ */
+export interface LoanState {
+  /** The lender of record — always `npc-penny-wise` (content LENDER_ID). The
+   *  default disposition hit / grudge keys to this id. */
+  lender: string;
+  /** Credits advanced up front. Constant for the life of the loan — the interest
+   *  base and the narrative "you borrowed X". */
+  principal: number;
+  /** The live balance owed: principal + accrued interest − repayments. Grows
+   *  `ceil(principal * dailyRate)` each dusk. Cleared to a null loan when repaid
+   *  to <= 0. */
+  outstanding: number;
+  /** Per-dusk simple-interest rate (content LOAN_DAILY_RATE). */
+  dailyRate: number;
+  /** Dusk day the loan was taken. */
+  borrowedDay: number;
+  /** Day the loan comes due (borrowedDay + LOAN_TERM_DAYS). Crossing this unpaid
+   *  flips `status` to 'defaulted'. */
+  dueDay: number;
+  /** The COLLECTION FLAG. 'defaulted' is READ by generateEncounter (travel.ts)
+   *  to raise interdiction odds, and its one-time disposition hit is read by the
+   *  interceptor grudge-weighting (travel.ts chooseWeighted). Repaying clears the
+   *  whole loan (status included). */
+  status: 'active' | 'defaulted';
+}
+
 /** One Signal Fragment held in the Nemesis file (T-111b, PRD §8.1). A knowledge
  *  item keyed by a content fragment id (nemesis.ts). Dedupe key: fragmentId. */
 export interface SignalFragmentRecord {
@@ -754,6 +843,12 @@ export interface PlayerState {
    *  (can't buy fuel, can't earn, can't recover). */
   debt: number;
   debtDueDay: number;
+  /** T-1304 · The outstanding Penny Wise loan, or null. A new persistent field
+   *  (v2→v3 save migration + round-trip test ship with it). Like `debt`, this is
+   *  a ledger entry, never negative credits. READERS: generateEncounter
+   *  (travel.ts) reads `loan.status`; the day loop (day.ts endDay) accrues and
+   *  defaults it; T-1404 surfaces it. */
+  loan: LoanState | null;
   stats: StatBlock;
   tier: PowerTier;
   currentSystemId: number;

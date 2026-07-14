@@ -18,6 +18,8 @@ import {
   DARE_MAX_WAGER as HANGOUT_DARE_MAX_WAGER,
   DARE_MIN_WAGER as HANGOUT_DARE_MIN_WAGER,
   EXPLORATION_FUEL_COST,
+  LOAN_MAX_PRINCIPAL,
+  LOAN_MIN_PRINCIPAL,
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
   isGatedDestination,
@@ -516,16 +518,28 @@ export function legalActions(state: GameState): LegalActions {
   const inSystemNpcIds = state.npcs
     .filter((npc) => npc.currentSystemId === player.currentSystemId)
     .map((npc) => npc.id);
-  if (hasDie && STAR_SYSTEMS[player.currentSystemId]?.hasHangout && inSystemNpcIds.length > 0) {
+  if (hasDie && STAR_SYSTEMS[player.currentSystemId]?.hasHangout) {
+    // T-1304: the venue set depends on live state. 'rumor' is always available at
+    // a Hangout; the social/dare beats need an in-system NPC to face; the Penny
+    // Wise lending beat is `borrow` while there's no loan and `repay` while there
+    // is (the engine typed-fails the wrong one either way — this just keeps the
+    // harness honest). Lending needs NO co-located NPC (Penny Wise is the desk),
+    // so it — and the whole VisitHangout action — is now advertised even at an
+    // empty Hangout, making the §7.5 bad-day loan out reliably reachable.
+    const venueChoices: string[] = ['rumor', state.player.loan ? 'repay' : 'borrow'];
+    if (inSystemNpcIds.length > 0) {
+      venueChoices.unshift('dare', 'meet', 'befriend', 'insult');
+    }
     actions.push({
       type: 'VisitHangout',
       params: {
-        venue: { kind: 'enum', choices: ['dare', 'meet', 'befriend', 'insult', 'rumor'] },
+        venue: { kind: 'enum', choices: venueChoices },
         opponentId: { kind: 'enum', choices: [...inSystemNpcIds] },
         wager: { kind: 'int', min: HANGOUT_DARE_MIN_WAGER, max: HANGOUT_DARE_MAX_WAGER },
+        amount: { kind: 'int', min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL },
         spendDie: dieParam,
       },
-      note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for 'rumor'. wager applies to 'dare' only and is clamped to what both sides can cover.",
+      note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to what both sides can cover). amount applies to borrow (principal, clamped to the loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
     });
   }
 

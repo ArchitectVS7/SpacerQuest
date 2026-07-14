@@ -6,12 +6,21 @@ import {
   DARE_MIN_WAGER,
   DARE_WIN_DISPOSITION,
   INSULT_DISPOSITION,
+  LENDER_ID,
+  LOAN_DAILY_RATE,
+  LOAN_MAX_PRINCIPAL,
+  LOAN_MIN_PRINCIPAL,
+  LOAN_TERM_DAYS,
   MEET_DISPOSITION,
   NPC_PROFILES,
   STAR_SYSTEMS,
   Stat,
 } from '@spacerquest/content';
 import { GameEvent, GameState, NpcState, PlayerAction } from '../types.js';
+
+/** The five social HangoutEvent venues (excludes the T-1304 lending venues
+ *  'borrow'/'repay', which report a LoanEvent instead). */
+type HangoutVenue = 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { applyDisposition } from '../npc.js';
@@ -93,29 +102,29 @@ export function resolveVisitHangout(
   // --- Die validation (malformed input → typed fail, NO die spent) ----------
   // Same three-way split as resolveExploration: a type-valid action can still
   // name no die / an out-of-range die / an already-burned die. None of those
-  // spend anything.
+  // spend anything. T-1304: the two lending venues report the SAME three
+  // malformed-die fails as a LoanEvent (their reader is the Penny Wise pane, not
+  // the Hangout social pane), so `failVenue` picks the right typed event.
+  const isLending = action.venue === 'borrow' || action.venue === 'repay';
+  const failVenue = (
+    failReason: 'no-die' | 'invalid-die-index' | 'die-already-spent',
+  ): GameEvent =>
+    isLending
+      ? { type: 'LoanEvent', day, kind: 'failed', failReason }
+      : { type: 'HangoutEvent', day, venue: action.venue as HangoutVenue, failReason };
+
   if (action.spendDie === undefined) {
-    events.push({ type: 'HangoutEvent', day, venue: action.venue, failReason: 'no-die' });
+    events.push(failVenue('no-die'));
     return { state: nextState, events };
   }
   const hand = nextState.player.dawnHand;
   const index = action.spendDie;
   if (!hand || index < 0 || index >= hand.dice.length) {
-    events.push({
-      type: 'HangoutEvent',
-      day,
-      venue: action.venue,
-      failReason: 'invalid-die-index',
-    });
+    events.push(failVenue('invalid-die-index'));
     return { state: nextState, events };
   }
   if (hand.spent[index]) {
-    events.push({
-      type: 'HangoutEvent',
-      day,
-      venue: action.venue,
-      failReason: 'die-already-spent',
-    });
+    events.push(failVenue('die-already-spent'));
     return { state: nextState, events };
   }
 
@@ -125,8 +134,13 @@ export function resolveVisitHangout(
   // NPC sim each dusk) is the player's current system. A named opponent who has
   // wandered off is a typed fail, NOT a crash and NOT a die burned (malformed
   // targeting, like naming a die that isn't in the hand).
+  // T-1304: 'borrow'/'repay' are opponent-less like 'rumor' — Penny Wise is the
+  // lender-of-record (the desk), not a co-located NPC, so the §7.5 "quiet word
+  // with Penny Wise" bad-day out is reliably available at any Hangout.
+  const opponentlessVenue =
+    action.venue === 'rumor' || action.venue === 'borrow' || action.venue === 'repay';
   let dealer: NpcState | undefined;
-  if (action.venue !== 'rumor') {
+  if (!opponentlessVenue) {
     const inSystem = nextState.npcs.filter(
       (n) => n.currentSystemId === nextState.player.currentSystemId,
     );
@@ -135,10 +149,38 @@ export function resolveVisitHangout(
       events.push({
         type: 'HangoutEvent',
         day,
-        venue: action.venue,
+        // Narrowed by `!opponentlessVenue` to the four social venues.
+        venue: action.venue as HangoutVenue,
         opponentId: action.opponentId,
         failReason: 'no-opponent',
       });
+      return { state: nextState, events };
+    }
+  }
+
+  // --- Lending preconditions (T-1304): typed fail, NO die spent -------------
+  // A lending rule that refuses the action (already borrowing / nothing to
+  // repay / nothing payable) is a typed LoanEvent fail that spends NOTHING —
+  // mirroring the malformed-die fails above and the debt-as-ledger law: a loan
+  // can only ever ADD an out, never burn a resource on a no-op.
+  let repayPaid = 0;
+  if (action.venue === 'borrow' && nextState.player.loan) {
+    events.push({ type: 'LoanEvent', day, kind: 'failed', failReason: 'already-has-loan' });
+    return { state: nextState, events };
+  }
+  if (action.venue === 'repay') {
+    const loan = nextState.player.loan;
+    if (!loan) {
+      events.push({ type: 'LoanEvent', day, kind: 'failed', failReason: 'no-loan' });
+      return { state: nextState, events };
+    }
+    // Pay the requested amount (default = full balance), clamped to what the
+    // player can afford AND to the outstanding balance — credits never go
+    // negative, the balance never over-pays.
+    const requested = action.amount ?? loan.outstanding;
+    repayPaid = Math.min(Math.max(0, requested), nextState.player.credits, loan.outstanding);
+    if (repayPaid <= 0) {
+      events.push({ type: 'LoanEvent', day, kind: 'failed', failReason: 'insufficient-credits' });
       return { state: nextState, events };
     }
   }
@@ -271,6 +313,63 @@ export function resolveVisitHangout(
     case 'rumor': {
       // The host slot: read the room. ≥1 fact synthesized from live NPC state.
       events.push({ type: 'HangoutEvent', day, venue: 'rumor', rumors: hangoutRumors(nextState) });
+      break;
+    }
+
+    case 'borrow': {
+      // T-1304 · Take a loan at Penny Wise's desk. The already-has-loan case was
+      // rejected above (no die spent). Clamp the requested principal into the
+      // content band and advance it: credits go UP by the principal, the loan is
+      // recorded, interest accrues later at dusk (day.ts). Debt-as-ledger: the
+      // advance ONLY adds credits — this is the §7.5 out, never a trap.
+      const requested = action.amount ?? LOAN_MIN_PRINCIPAL;
+      const principal = Math.max(LOAN_MIN_PRINCIPAL, Math.min(LOAN_MAX_PRINCIPAL, requested));
+      const dueDay = day + LOAN_TERM_DAYS;
+      nextState.player.loan = {
+        lender: LENDER_ID,
+        principal,
+        outstanding: principal,
+        dailyRate: LOAN_DAILY_RATE,
+        borrowedDay: day,
+        dueDay,
+        status: 'active',
+      };
+      nextState.player.credits += principal;
+      events.push({
+        type: 'LoanEvent',
+        day,
+        kind: 'borrowed',
+        lender: LENDER_ID,
+        principal,
+        dailyRate: LOAN_DAILY_RATE,
+        dueDay,
+        outstanding: principal,
+      });
+      break;
+    }
+
+    case 'repay': {
+      // T-1304 · Pay down the loan. `repayPaid` was computed and validated above
+      // (> 0, affordable, <= outstanding), before the die was spent. Move the
+      // credits, shrink the balance; a balance driven to <= 0 CLEARS the whole
+      // loan (status included) — repaying is what lifts the collection pressure
+      // and the Penny Wise grudge's cause.
+      const loan = nextState.player.loan!;
+      nextState.player.credits -= repayPaid;
+      loan.outstanding -= repayPaid;
+      const cleared = loan.outstanding <= 0;
+      if (cleared) {
+        nextState.player.loan = null;
+      }
+      events.push({
+        type: 'LoanEvent',
+        day,
+        kind: 'repaid',
+        lender: loan.lender,
+        amountPaid: repayPaid,
+        outstanding: cleared ? 0 : loan.outstanding,
+        cleared,
+      });
       break;
     }
   }

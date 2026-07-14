@@ -2,7 +2,9 @@ import {
   CARGO_TYPES,
   DISPOSITION_DECAY_INTERVAL_DAYS,
   DISPOSITION_DELTAS,
+  LENDER_ID,
   LIFE_SUPPORT_SURVIVAL_DC,
+  LOAN_DEFAULT_DISPOSITION,
   NPC_PROFILES,
   STAR_SYSTEMS,
   Stat,
@@ -568,6 +570,49 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
           message: `${npc.name} ${npc.lastAction.details}`,
         });
       }
+    }
+  }
+
+  // T-1304 · Penny Wise loan — per-dusk interest accrual + default flip. The
+  // WHOLE block is guarded on a non-null loan, so the loan-null path (every
+  // existing golden) is byte-identical: no accrual, no default, no new events,
+  // and NO rng draw (accrual is pure arithmetic, default detection is a pure
+  // `day >= dueDay` compare). Deterministic across a JSON round-trip.
+  if (nextState.player.loan) {
+    const loan = nextState.player.loan;
+    // Simple interest on the ORIGINAL principal (never compounding), accruing to
+    // the loan's `outstanding` — NEVER to player.credits (debt-as-ledger law).
+    const interest = Math.ceil(loan.principal * loan.dailyRate);
+    loan.outstanding += interest;
+    events.push({
+      type: 'LoanEvent',
+      day: nextState.day,
+      kind: 'accrued',
+      lender: loan.lender,
+      interest,
+      outstanding: loan.outstanding,
+    });
+
+    // Default: crossing the due day still owing flips the collection flag ONCE
+    // (active→defaulted guard). The flip applies the one-time Penny Wise
+    // disposition hit (read by the interceptor grudge-weighting, travel.ts
+    // chooseWeighted) and leaves the elevated encounter pressure standing (read
+    // by generateEncounter, travel.ts) until the loan is repaid, which nulls it.
+    if (loan.status === 'active' && nextState.day >= loan.dueDay) {
+      loan.status = 'defaulted';
+      applyDisposition(nextState, LENDER_ID, LOAN_DEFAULT_DISPOSITION, 'loan-default', events);
+      events.push({
+        type: 'LoanEvent',
+        day: nextState.day,
+        kind: 'defaulted',
+        lender: loan.lender,
+        outstanding: loan.outstanding,
+      });
+      events.push({
+        type: 'WireEntry',
+        day: nextState.day,
+        message: `Penny Wise's marker on your name went unpaid — word is the Thrift Star's collectors are asking after you on the lanes.`,
+      });
     }
   }
 

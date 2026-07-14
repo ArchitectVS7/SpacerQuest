@@ -161,7 +161,9 @@ export function applyDisposition(
     | 'dare'
     | 'befriend'
     | 'insult'
-    | 'meet',
+    | 'meet'
+    // T-1304: a Penny Wise loan default sours her standing (one-time).
+    | 'loan-default',
   events: GameEvent[],
 ): void {
   const npc = state.npcs.find((candidate) => candidate.id === npcId);

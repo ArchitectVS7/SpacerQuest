@@ -269,10 +269,79 @@ describe('save envelope — v1 → v2 migration (T-1002)', () => {
     expect(loaded.seed).toBeNull();
   });
 
-  it('a v2 envelope with an explicit seed is preserved (no migration needed)', () => {
-    const v2 = createSave(drive50Days(9), 4242);
-    expect((JSON.parse(v2) as SaveEnvelope).version).toBe(2);
-    expect(loadSave(v2).seed).toBe(4242);
+  it('a current-version envelope with an explicit seed is preserved (no migration needed)', () => {
+    const current = createSave(drive50Days(9), 4242);
+    // createSave always stamps CURRENT_SAVE_VERSION; loading it needs no
+    // migration and preserves the seed exactly.
+    expect((JSON.parse(current) as SaveEnvelope).version).toBe(CURRENT_SAVE_VERSION);
+    expect(loadSave(current).seed).toBe(4242);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1304 · v2 → v3 loan migration + loan round-trip.
+// ---------------------------------------------------------------------------
+describe('save envelope — v2 → v3 loan migration (T-1304)', () => {
+  it('backfills PlayerState.loan = null on a v2 envelope with no loan key', () => {
+    // Build a REAL v2-shaped state: drive a state, then strip the loan key the
+    // way a genuinely pre-T-1304 save would (it never had the field). The v2→v3
+    // migration must re-add loan: null before schema validation, else the strict
+    // schema (loan is non-optional) would reject it.
+    const state = drive50Days(11);
+    // Strip the loan key the way a genuinely pre-T-1304 (v2) save would — it
+    // never had the field. `delete` via an index cast keeps `loan` off the object.
+    delete (state.player as unknown as Record<string, unknown>).loan;
+    const v2 = JSON.stringify({ version: 2, state, seed: 77 });
+
+    const loaded = loadSave(v2); // walks 2→3 (loan backfill), then validates
+    expect(loaded.state.player.loan).toBeNull();
+    expect(loaded.seed).toBe(77);
+  });
+
+  it('round-trips an ACTIVE loan through createSave → loadSave (deep-equal)', () => {
+    const state = drive50Days(12);
+    state.player.loan = {
+      lender: 'npc-penny-wise',
+      principal: 500,
+      outstanding: 575,
+      dailyRate: 0.05,
+      borrowedDay: 3,
+      dueDay: 18,
+      status: 'active',
+    };
+    const loaded = loadSave(createSave(state, 5));
+    expect(loaded.state.player.loan).toEqual(state.player.loan);
+  });
+
+  it('round-trips a DEFAULTED loan through createSave → loadSave (deep-equal)', () => {
+    const state = drive50Days(13);
+    state.player.loan = {
+      lender: 'npc-penny-wise',
+      principal: 1000,
+      outstanding: 1600,
+      dailyRate: 0.05,
+      borrowedDay: 2,
+      dueDay: 17,
+      status: 'defaulted',
+    };
+    const loaded = loadSave(createSave(state, 6));
+    expect(loaded.state.player.loan).toEqual(state.player.loan);
+    expect(loaded.state.player.loan?.status).toBe('defaulted');
+  });
+
+  it('strict schema rejects an unknown key inside a loan', () => {
+    const state = drive50Days(14);
+    (state.player.loan as unknown) = {
+      lender: 'npc-penny-wise',
+      principal: 500,
+      outstanding: 500,
+      dailyRate: 0.05,
+      borrowedDay: 1,
+      dueDay: 16,
+      status: 'active',
+      collectorBribe: 999, // not part of LoanState — must fail .strict()
+    };
+    expect(() => loadSave(createSave(state, 7))).toThrow(SaveError);
   });
 });
 

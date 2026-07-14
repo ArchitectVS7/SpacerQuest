@@ -13,6 +13,7 @@ import type {
   ChartsState,
   DiscoveredPoi,
   LegacyState,
+  LoanState,
   NemesisFileState,
   SignalFragmentRecord,
   DeedRegistryState,
@@ -265,6 +266,20 @@ const LegacyStateSchema = z
   })
   .strict();
 
+// T-1304 · Penny Wise loan state (types.ts LoanState). `.strict()` — an unknown
+// key inside a loan fails loudly on load, per the T-1002 drift-protection law.
+const LoanStateSchema = z
+  .object({
+    lender: z.string(),
+    principal: z.number(),
+    outstanding: z.number(),
+    dailyRate: z.number(),
+    borrowedDay: z.number(),
+    dueDay: z.number(),
+    status: z.enum(['active', 'defaulted']),
+  })
+  .strict();
+
 const EarnedDeedStateSchema = z
   .object({
     id: z.string(),
@@ -424,6 +439,9 @@ const PlayerStateSchema = z
     credits: z.number(),
     debt: z.number(),
     debtDueDay: z.number(),
+    // T-1304: the Penny Wise loan (or null). Nullable, non-optional — every
+    // v3+ save serializes the key (v2 saves backfill it via the migration).
+    loan: LoanStateSchema.nullable(),
     stats: StatBlockSchema,
     tier: TierSchema,
     currentSystemId: z.number(),
@@ -514,6 +532,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
       'befriend',
       'insult',
       'meet',
+      // T-1304 Penny Wise loan default.
+      'loan-default',
     ]),
   }),
   z.object({
@@ -624,6 +644,32 @@ const GameEventSchema = z.discriminatedUnion('type', [
     rumors: z.array(z.string()).optional(),
     failReason: z
       .enum(['no-die', 'invalid-die-index', 'die-already-spent', 'no-opponent'])
+      .optional(),
+  }),
+  z.object({
+    // T-1304 · a Penny Wise lending beat (see types.ts LoanEvent). Serialized in
+    // eventLog, so a mid-day save round-trips it; the drift guard below keeps this
+    // in lockstep with the interface.
+    type: z.literal('LoanEvent'),
+    day: z.number(),
+    kind: z.enum(['borrowed', 'accrued', 'repaid', 'defaulted', 'failed']),
+    lender: z.string().optional(),
+    principal: z.number().optional(),
+    dailyRate: z.number().optional(),
+    dueDay: z.number().optional(),
+    interest: z.number().optional(),
+    amountPaid: z.number().optional(),
+    outstanding: z.number().optional(),
+    cleared: z.boolean().optional(),
+    failReason: z
+      .enum([
+        'no-die',
+        'invalid-die-index',
+        'die-already-spent',
+        'already-has-loan',
+        'no-loan',
+        'insufficient-credits',
+      ])
       .optional(),
   }),
   z.object({
@@ -902,9 +948,11 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
   z.object({
     // T-1303 · Visit the Spacers Hangout (see types.ts PlayerAction).
     type: z.literal('VisitHangout'),
-    venue: z.enum(['dare', 'meet', 'befriend', 'insult', 'rumor']),
+    venue: z.enum(['dare', 'meet', 'befriend', 'insult', 'rumor', 'borrow', 'repay']),
     opponentId: z.string().optional(),
     wager: z.number().optional(),
+    // T-1304: borrow principal / repay amount.
+    amount: z.number().optional(),
     spendDie: z.number().optional(),
   }),
   z.object({ type: z.literal('Wait') }),
@@ -985,6 +1033,7 @@ const _covCargo: AssertEqual<keyof CargoContract, keyof z.infer<typeof CargoCont
 const _covCharts: AssertEqual<keyof ChartsState, keyof z.infer<typeof ChartsStateSchema>> = true;
 const _covPoi: AssertEqual<keyof DiscoveredPoi, keyof z.infer<typeof DiscoveredPoiSchema>> = true;
 const _covLegacy: AssertEqual<keyof LegacyState, keyof z.infer<typeof LegacyStateSchema>> = true;
+const _covLoan: AssertEqual<keyof LoanState, keyof z.infer<typeof LoanStateSchema>> = true;
 const _covNemesis: AssertEqual<
   keyof NemesisFileState,
   keyof z.infer<typeof NemesisFileStateSchema>
@@ -1060,6 +1109,7 @@ const _covEvContrabandFound: AssertEventKeys<'ContrabandFound'> = true;
 const _covEvFragmentAcquired: AssertEventKeys<'FragmentAcquired'> = true;
 const _covEvFragmentDecoded: AssertEventKeys<'FragmentDecoded'> = true;
 const _covEvHangoutEvent: AssertEventKeys<'HangoutEvent'> = true;
+const _covEvLoanEvent: AssertEventKeys<'LoanEvent'> = true;
 const _covEvStoryletOffered: AssertEventKeys<'StoryletOffered'> = true;
 const _covEvStoryletChoiceResolved: AssertEventKeys<'StoryletChoiceResolved'> = true;
 const _covEvStoryletChoiceBlocked: AssertEventKeys<'StoryletChoiceBlocked'> = true;
@@ -1099,6 +1149,7 @@ void _covCargo;
 void _covCharts;
 void _covPoi;
 void _covLegacy;
+void _covLoan;
 void _covNemesis;
 void _covFragment;
 void _covDeedRegistry;
@@ -1130,6 +1181,7 @@ void _covEvContrabandFound;
 void _covEvFragmentAcquired;
 void _covEvFragmentDecoded;
 void _covEvHangoutEvent;
+void _covEvLoanEvent;
 void _covEvStoryletOffered;
 void _covEvStoryletChoiceResolved;
 void _covEvStoryletChoiceBlocked;
