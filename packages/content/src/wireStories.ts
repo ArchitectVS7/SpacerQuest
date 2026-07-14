@@ -22,7 +22,19 @@
  *  maps a StatCheck's actionContext (or, for context-less player/interceptor
  *  checks, its actor+stat) onto one of these. */
 export type WireStoryCategory =
-  'gamble' | 'trade' | 'travel' | 'combat' | 'patrol' | 'haggle' | 'storylet' | 'nav' | 'talk';
+  | 'gamble'
+  | 'trade'
+  | 'travel'
+  | 'combat'
+  | 'patrol'
+  | 'haggle'
+  | 'storylet'
+  | 'nav'
+  | 'talk'
+  // T-1207: an interceptor's post-kill retreat roll — a nat-20 is the "miracle
+  // burn", a nat-1 is a fatal stall. Distinct from `combat` (a clean kill) and
+  // the run-pursuit `combat` bucket so the escape reads as its own wire beat.
+  | 'retreat';
 
 /** Authored nat-20 / nat-1 lines per category. Every category carries at least
  *  one of each so the "always generates a story" guarantee never hits an empty
@@ -77,5 +89,18 @@ export const NAT_WIRE_TEMPLATES: Record<
   talk: {
     nat20: ['{actor} talked clean out of a shakedown without spending a single credit.'],
     nat1: ['{actor} said exactly the wrong thing to exactly the wrong spacer and made it worse.'],
+  },
+  // T-1207 · the "miracle burn". An interceptor with a cracked drive and an open
+  // hull who still slips the killing shot on a natural 20 — the PRD §7.4 beat.
+  // NOTE on {system}: a StatCheck carries no location and the wire scanner is not
+  // passed one, so the "at Deneb-4" flavor cannot be templated faithfully here;
+  // the escape is keyed to {actor} instead, the load-bearing, testable detail.
+  retreat: {
+    nat20: [
+      "{actor} pulled a miracle burn — drive cracked, hull open, and still slipped the kill. The wire won't stop replaying it.",
+    ],
+    nat1: [
+      '{actor} tried to run on a dead drive and folded on the spot — the wire had a field day.',
+    ],
   },
 };

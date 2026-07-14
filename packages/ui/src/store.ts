@@ -630,16 +630,21 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
     // reload — the reload-survival acceptance criterion.
     autosave(next, state.seed);
 
-    // Surface the PLAYER's honest roll, NOT the enemy counter-attack. Two
-    // StatCheck events can appear in a round: the player's (actor 'Player') and
-    // the interceptor's pressure (actor === interceptor.name). We must select the
-    // player's, so CheckBreakdown shows the roll the player actually committed.
-    const playerCheck = events
-      .filter(
-        (e): e is Extract<GameEvent, { type: 'StatCheck' }> =>
-          e.type === 'StatCheck' && e.actor === 'Player',
-      )
-      .at(-1);
+    // Surface the PLAYER's committed roll — the check made with the die the player
+    // actually spent on this stance — NOT the enemy counter-attack and NOT a
+    // derived secondary roll. The interceptor's checks carry actor ===
+    // interceptor.name and are filtered out here. Within a single combat action the
+    // player's committed stance roll (GUNS on a fight, PILOT on a run, TRADE on a
+    // talk) is ALWAYS emitted FIRST; the only case with a SECOND Player StatCheck is
+    // T-1207's post-kill retreat "pin" — a fresh opposed PILOT d20 the player did
+    // NOT commit a die to, pushed AFTER the killing GUNS roll. So we take the FIRST
+    // Player StatCheck: `.at(-1)` would pick the pin and make CheckBreakdown lie on
+    // every killing blow (showing the PILOT pin instead of the GUNS roll the player
+    // spent) — an honest-dice violation at the most dramatic moment.
+    const playerCheck = events.find(
+      (e): e is Extract<GameEvent, { type: 'StatCheck' }> =>
+        e.type === 'StatCheck' && e.actor === 'Player',
+    );
     const lastCheck = playerCheck
       ? { stat: playerCheck.stat, result: playerCheck.result, context: playerCheck.actionContext }
       : null;

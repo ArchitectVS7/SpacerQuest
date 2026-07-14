@@ -5,8 +5,11 @@ import {
   FIGHT_FUEL_COST,
   TRIBUTE_BASE_MULTIPLIER,
   TRIBUTE_MAX,
+  TRIBUTE_CLASS_MULTIPLIER,
+  RETREAT_KILL_EDGE,
   DISPOSITION_DELTAS,
   TALK_DC_PER_DISPOSITION,
+  AnonymousInterceptorKind,
 } from '@spacerquest/content';
 import { GameState, GameEvent, PlayerAction, EncounterState, ShipComponentId } from '../types.js';
 import { SeededRng } from '../rng.js';
@@ -37,8 +40,19 @@ function cloneState(state: GameState): GameState {
   return JSON.parse(JSON.stringify(state)) as GameState;
 }
 
-function tributeForRound(round: number): number {
-  return Math.min(round * TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX);
+/**
+ * T-1207: the demanded tribute for a round, scaled by the interceptor's CLASS.
+ * The base round schedule (min(round·base, max)) is multiplied by the class
+ * modifier (TRIBUTE_CLASS_MULTIPLIER — Brigand ÷2, Reptiloid ×2, everyone else
+ * ×1) and re-capped at TRIBUTE_MAX. Anonymous interceptors carry a `kind`; named
+ * interceptors do not, so they take the unmodified ×1 schedule. Exported for the
+ * acceptance test (per-class demand) — T-1401 will re-export it through the UI
+ * pack.
+ */
+export function tributeForRound(round: number, kind?: AnonymousInterceptorKind): number {
+  const base = Math.min(round * TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX);
+  const mult = kind ? TRIBUTE_CLASS_MULTIPLIER[kind] : 1;
+  return Math.min(TRIBUTE_MAX, Math.floor(base * mult));
 }
 
 function enemyRefusesTribute(
@@ -88,7 +102,7 @@ function resolveEncounter(
   state: GameState,
   encounter: EncounterState,
   events: GameEvent[],
-  resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled',
+  resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled' | 'interceptor-escaped',
 ): void {
   events.push({
     type: 'EncounterResolved',
@@ -108,8 +122,13 @@ function resolveEncounter(
   //   blood spilled, a small mark in the player's favor (documented design call).
   // - interceptor-fled (driven off by a bonded third party): no change; their
   //   quarrel is with the rescuer, not the player.
+  // - interceptor-escaped (T-1207): the interceptor lost the fight but slipped
+  //   the kill under its own power. They were bested — a named one keeps the same
+  //   grudge a `defeated` foe would ("he'll heal, he'll remember"), so we reuse
+  //   DISPOSITION_DELTAS.defeat. (A distinct, milder key was considered but the
+  //   fictional beat is identical: you shot their ship apart; they just lived.)
   if (encounter.interceptor.source === 'named') {
-    if (resolution === 'defeated') {
+    if (resolution === 'defeated' || resolution === 'interceptor-escaped') {
       applyDisposition(
         state,
         encounter.interceptor.id,
@@ -341,11 +360,17 @@ export function resolveCombat(
     return resolveTalk(nextState, encounter, targetId, die, dc, rng, events);
   }
 
-  const stat = action.stance === 'run' ? Stat.PILOT : Stat.GUNS;
-  const result = check(die, nextState.player.stats[stat], dc);
-  events.push({ type: 'StatCheck', actor: 'Player', stat, dc, result });
+  // Run is an OPPOSED PILOT roll (T-1207) — handled in its own resolver so both
+  // the player's break-off and the interceptor's pursuit emit a StatCheck.
+  if (action.stance === 'run') {
+    return resolveRun(nextState, encounter, targetId, die, fuelUsed, rng, events);
+  }
 
-  if (action.stance === 'fight' && result.success) {
+  // Fight: a hit check against the tier DC (unchanged, T-1207 leaves it as-is).
+  const result = check(die, nextState.player.stats[Stat.GUNS], dc);
+  events.push({ type: 'StatCheck', actor: 'Player', stat: Stat.GUNS, dc, result });
+
+  if (result.success) {
     // T-1205 weapons → attack: a winning volley removes `weaponVolleyDamage` hull
     // points, not a flat 1. FOUNDATION DIVERGENCE — foundation (f2f95fa9) resolved
     // damage as weapon-power minus enemy-shield; the engine keeps the PRD hit-check
@@ -377,43 +402,69 @@ export function resolveCombat(
     });
 
     if (enemyHull <= 0) {
-      resolveEncounter(nextState, encounter, events, 'defeated');
+      // T-1207 (PRD §7.4): a cracked-drive interceptor makes an OPPOSED PILOT
+      // retreat check as it dies. The player is pressing the kill, so they carry
+      // a RETREAT_KILL_EDGE — ordinary interceptors almost never slip a lost
+      // fight, but a strong enemy roll (or a nat-20 "miracle burn") escapes them
+      // ALIVE instead of being destroyed. Both actors emit a StatCheck so the
+      // margin is on the wire; the enemy's rides actionContext 'retreat' → a
+      // nat-20 becomes the miracle-burn wire story. FOUNDATION DIVERGENCE
+      // (f2f95fa9): foundation had no post-kill enemy retreat.
+      const enemyDie = rng.d20();
+      const playerDie = rng.d20();
+      const playerRetreatTotal = playerDie + nextState.player.stats[Stat.PILOT] + RETREAT_KILL_EDGE;
+      const enemyRetreat = check(
+        enemyDie,
+        encounter.interceptor.stats[Stat.PILOT],
+        playerRetreatTotal,
+      );
+      const playerPin = check(
+        playerDie,
+        nextState.player.stats[Stat.PILOT] + RETREAT_KILL_EDGE,
+        enemyDie + encounter.interceptor.stats[Stat.PILOT],
+      );
+      events.push({
+        type: 'StatCheck',
+        actor: encounter.interceptor.name,
+        stat: Stat.PILOT,
+        dc: enemyRetreat.dc,
+        result: enemyRetreat,
+        actionContext: 'retreat',
+      });
+      events.push({
+        type: 'StatCheck',
+        actor: 'Player',
+        stat: Stat.PILOT,
+        dc: playerPin.dc,
+        result: playerPin,
+      });
+      resolveEncounter(
+        nextState,
+        encounter,
+        events,
+        enemyRetreat.success ? 'interceptor-escaped' : 'defeated',
+      );
     } else {
       continueEncounter(nextState, encounter, rng, events);
     }
     return { state: nextState, events };
   }
 
+  // A missed volley (talk handled above, run extracted, a fight win returned
+  // earlier): the shot goes wide, the enemy presses, and the round advances.
   events.push({
     type: 'CombatEvent',
     characterId: 'player',
     targetId,
-    stance: action.stance,
+    stance: 'fight',
     fuelUsed,
-    success: result.success,
+    success: false,
   });
-
-  if (result.success) {
-    // Only a successful run reaches here (talk is handled above, a fight win
-    // returned earlier); a clean getaway escapes without completing travel.
-    events.push({
-      type: 'EncounterRound',
-      encounterId: encounter.id,
-      round: encounter.round,
-      stance: action.stance,
-      continues: false,
-      success: true,
-      fuelUsed,
-    });
-    resolveEncounter(nextState, encounter, events, 'escaped');
-    return { state: nextState, events };
-  }
-
   events.push({
     type: 'EncounterRound',
     encounterId: encounter.id,
     round: encounter.round,
-    stance: action.stance,
+    stance: 'fight',
     continues: true,
     success: false,
     fuelUsed,
@@ -421,6 +472,101 @@ export function resolveCombat(
   continueEncounter(nextState, encounter, rng, events);
 
   return { state: nextState, events };
+}
+
+/**
+ * Run resolution (T-1207, PRD §7.4 "your [14] +1 vs. his pursuit roll"). The
+ * player's break-off is an OPPOSED PILOT roll against a fresh interceptor pursuit
+ * d20 + its PILOT. BOTH actors emit a StatCheck — the player's (context-less →
+ * classifies `nav` for the wire) and the interceptor's pursuit (actionContext
+ * 'npc-combat' → the `combat` wire bucket, a hot-pursuit story). Each side's
+ * check is framed against the OTHER's total so both carry a well-formed opposed
+ * `margin` (the T-1202 margin surface), and the enemy's nat-20/nat-1 auto-flows
+ * to the wire.
+ *
+ * Escape iff the player's opposed check succeeds: `check()` gives the player a
+ * nat-20 auto-escape and a nat-1 auto-fail, otherwise player total >= enemy total
+ * (ties break to the player). FOUNDATION DIVERGENCE (f2f95fa9): foundation ran NO
+ * check on player break-off at all — `attemptRetreat` unconditionally returned
+ * success (there was no PILOT stat in foundation; drive power only decided whether
+ * the ENEMY chased afterward). The PRD turns the player's own break-off into an
+ * opposed PILOT roll, so a run can now fail. (The pre-T-1207 engine's flat-DC
+ * PILOT check was itself an engine invention, never a foundation rule.)
+ *
+ * rng NOTE: the enemy pursuit d20 is drawn here, BEFORE any `continueEncounter`
+ * pressure draw, on EVERY run (both StatChecks are always emitted). This shifts
+ * downstream rng streams for scenarios that run — that stream shift is T-1207's
+ * declared fixture fallout.
+ */
+function resolveRun(
+  state: GameState,
+  encounter: EncounterState,
+  targetId: string,
+  die: number,
+  fuelUsed: number,
+  rng: SeededRng,
+  events: GameEvent[],
+): { state: GameState; events: GameEvent[] } {
+  const playerPilot = state.player.stats[Stat.PILOT];
+  const enemyPilot = encounter.interceptor.stats[Stat.PILOT];
+
+  const enemyPursuitDie = rng.d20();
+  const playerTotalBase = die + playerPilot;
+  const enemyTotalBase = enemyPursuitDie + enemyPilot;
+
+  const playerRun = check(die, playerPilot, enemyTotalBase);
+  const enemyPursuit = check(enemyPursuitDie, enemyPilot, playerTotalBase);
+
+  events.push({
+    type: 'StatCheck',
+    actor: 'Player',
+    stat: Stat.PILOT,
+    dc: playerRun.dc,
+    result: playerRun,
+  });
+  events.push({
+    type: 'StatCheck',
+    actor: encounter.interceptor.name,
+    stat: Stat.PILOT,
+    dc: enemyPursuit.dc,
+    result: enemyPursuit,
+    actionContext: 'npc-combat',
+  });
+
+  events.push({
+    type: 'CombatEvent',
+    characterId: 'player',
+    targetId,
+    stance: 'run',
+    fuelUsed,
+    success: playerRun.success,
+  });
+
+  if (playerRun.success) {
+    events.push({
+      type: 'EncounterRound',
+      encounterId: encounter.id,
+      round: encounter.round,
+      stance: 'run',
+      continues: false,
+      success: true,
+      fuelUsed,
+    });
+    resolveEncounter(state, encounter, events, 'escaped');
+    return { state, events };
+  }
+
+  events.push({
+    type: 'EncounterRound',
+    encounterId: encounter.id,
+    round: encounter.round,
+    stance: 'run',
+    continues: true,
+    success: false,
+    fuelUsed,
+  });
+  continueEncounter(state, encounter, rng, events);
+  return { state, events };
 }
 
 /** Talk resolution: tribute always has a price. See Repair A for the full
@@ -435,7 +581,10 @@ function resolveTalk(
   events: GameEvent[],
 ): { state: GameState; events: GameEvent[] } {
   const round = encounter.round;
-  const amount = tributeForRound(round);
+  // T-1207: the demand is class-scaled (Brigand ÷2, Reptiloid ×2). Anonymous
+  // interceptors carry `kind`; named ones do not (→ ×1). The margin discount
+  // (below) still applies on top; TributeDemanded.amount reports this scaled demand.
+  const amount = tributeForRound(round, encounter.interceptor.kind);
 
   // T-1204 (PRD §6 "they remember"; the unbuilt v0.1 T-104 "this is personal"
   // Rattlesnake beat): the tribute/talk DC gains a relationship term. A named

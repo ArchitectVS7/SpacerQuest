@@ -523,7 +523,7 @@ export function tributeThisRound(round: number): number {
 }
 
 export interface CombatAftermath {
-  resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled';
+  resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled' | 'interceptor-escaped';
   lines: string[];
 }
 
@@ -532,6 +532,8 @@ const RESOLUTION_HEADLINE: Record<CombatAftermath['resolution'], string> = {
   'talked-down': 'Talked down — tribute bought the lane.',
   defeated: 'Interceptor destroyed — the wreck drifts.',
   'interceptor-fled': 'Driven off — a friend cleared your tail.',
+  // T-1207: the interceptor won its post-kill retreat roll — a miracle burn.
+  'interceptor-escaped': 'Miracle burn — the interceptor slipped the kill.',
 };
 
 /**

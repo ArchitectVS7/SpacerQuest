@@ -554,9 +554,10 @@ describe('T-1004 fuel starvation', () => {
 //       FIGHTS a named interceptor to the death once armed — a defeat now cuts a
 //       −5 grudge (DISPOSITION_DELTAS.defeat), which the interception weighting
 //       then makes re-hunt the player, pushing |disposition| past 5.
-// Seed 22 lands both on this trajectory: the fuel-gift bond intervention on
-// day 4 and a peak |disposition| of 6 by day 52 (a −5 combat grudge deepened by
-// a rival contract-snipe). The loop stops as soon as both are observed.
+// Seed 11 lands both on this trajectory (re-selected from seed 22 for T-1207 —
+// see CAMPAIGN_SEED below): the fuel-gift bond intervention plus a peak
+// |disposition| >= 5 driven by a −5 combat grudge. The loop stops as soon as both
+// are observed.
 // ---------------------------------------------------------------------------
 describe('T-1204 disposition with teeth (organic 300-day sim)', () => {
   it('a competent 300-day campaign produces a bond intervention and peak |disposition| >= 5', () => {
@@ -651,7 +652,16 @@ describe('T-1204 disposition with teeth (organic 300-day sim)', () => {
       return next;
     };
 
-    let state = createInitialState(22);
+    // T-1207 re-selected the seed (was 22): the opposed-run change (an extra enemy
+    // pursuit d20 per run, plus opposed escape) shifts the whole campaign rng
+    // stream, so seed 22 no longer surfaces a killable named interception on the
+    // armed veteran's path (it stalled at the +3 tribute peak). Seed 11 lands both
+    // acceptance signals under the new mechanics: Doc's fuel-gift bond intervention
+    // AND a −5 combat grudge (a named interceptor fought to the kill) that pushes
+    // peak |disposition| to >= 5. The disposition mechanic (T-1204) is unchanged;
+    // only the seed moved.
+    const CAMPAIGN_SEED = 11;
+    let state = createInitialState(CAMPAIGN_SEED);
     let sawBond = false;
     let peakDisposition = 0;
     let defeatedNamed = false;
@@ -660,7 +670,10 @@ describe('T-1204 disposition with teeth (organic 300-day sim)', () => {
     let peakDay = -1;
 
     for (let day = 0; day < 300; day += 1) {
-      const rng = new SeededRng(22).fork('policy').fork(`day-${state.day}`).fork(`index-${day}`);
+      const rng = new SeededRng(CAMPAIGN_SEED)
+        .fork('policy')
+        .fork(`day-${state.day}`)
+        .fork(`index-${day}`);
       let s = startDay(state).state;
       s = resolveDocChain(s);
       const doc = s.npcs.find((n) => n.id === DOC)!;

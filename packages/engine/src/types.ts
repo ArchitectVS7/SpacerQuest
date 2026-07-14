@@ -164,7 +164,12 @@ export type GameEvent =
         | 'npc-travel'
         | 'npc-combat'
         | 'npc-patrol'
-        | 'npc-socialize';
+        | 'npc-socialize'
+        // T-1207: an interceptor's post-kill retreat PILOT roll. Discriminated
+        // from `npc-combat` (enemy pressure / run-pursuit) so the wire scanner
+        // (wire.ts classifyCheck) routes a nat-20 here to the "miracle burn"
+        // retreat bucket instead of the generic combat bucket.
+        | 'retreat';
     }
   | { type: 'FlawCheck'; npcId: string; flaw: string; die: number; dc: number; resisted: boolean }
   | { type: 'NpcAction'; npcId: string; actionDetails: string }
@@ -481,8 +486,13 @@ export type GameEvent =
       type: 'EncounterResolved';
       encounterId: string;
       /** 'interceptor-fled': a bonded NPC drove the interceptor off at dusk
-       *  (T-106 bond hook) — travel completes as if the threat was beaten. */
-      resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled';
+       *  (T-106 bond hook) — travel completes as if the threat was beaten.
+       *  'interceptor-escaped' (T-1207): a cracked-drive interceptor won its own
+       *  opposed PILOT retreat roll off a LOST fight (PRD §7.4 "miracle burn") —
+       *  it flees alive under its own power. The player still won the field, so
+       *  travel completes (unlike 'escaped', which is the PLAYER fleeing). */
+      resolution:
+        'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled' | 'interceptor-escaped';
       round: number;
       interceptorId: string;
     }

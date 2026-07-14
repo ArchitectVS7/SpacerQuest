@@ -176,10 +176,17 @@ export function runDayLoopGolden(
 // and rides a forked encounter rng, so the persisted day rngState / NPC stream is
 // unperturbed. Weapons/nav/robotics are all at junker baselines here. The STORYLET
 // script (seed 555, no combat) is unchanged. Regenerated via gen-day-loop-golden.ts.
+//
+// T-1207 re-baseline (TEN_DAY only; STORYLET hashes unchanged — no combat): the
+// day-3 Smuggler Ray combat now resolves run as an OPPOSED PILOT roll (a fresh
+// enemy pursuit d20 + a second player StatCheck) and adds a post-kill enemy
+// retreat roll on a defeating volley. Both shift the encounter rng stream and the
+// emitted event set, so the TEN_DAY state + events hashes move. That the STORYLET
+// hashes are byte-identical confirms the change is scoped to combat.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'dcfa9a766f7a7bd8d8be80cd9aafb1d0d2e132c34eb376ba8ca5ff9c0399845b';
+  '20ecc56acc5791607b1ec07b838ce71eb43702ad3f3c583e0e4bcabcd0351d64';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '2770ee2bac26fa88b23dd7bd91f38dbbe576d2b065ea0065569ca77d6f6e1744';
+  'df69a01697241fe7d3199653db0454d8682f6d19c76210cbe1eeb84c69a369e6';
 export const STORYLET_GOLDEN_STATE_HASH =
   '9c10750ea5bd9fb5f3593ae7adfa81425d5f3ad2b7a68f9a82f663f63dc9f876';
 export const STORYLET_GOLDEN_EVENTS_HASH =

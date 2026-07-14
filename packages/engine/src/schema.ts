@@ -472,6 +472,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'npc-combat',
         'npc-patrol',
         'npc-socialize',
+        // T-1207: interceptor post-kill retreat roll (see types.ts StatCheck).
+        'retreat',
       ])
       .optional(),
   }),
@@ -783,7 +785,14 @@ const GameEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('EncounterResolved'),
     encounterId: z.string(),
-    resolution: z.enum(['escaped', 'talked-down', 'defeated', 'interceptor-fled']),
+    resolution: z.enum([
+      'escaped',
+      'talked-down',
+      'defeated',
+      'interceptor-fled',
+      // T-1207: interceptor won its opposed post-kill retreat roll (miracle burn).
+      'interceptor-escaped',
+    ]),
     round: z.number(),
     interceptorId: z.string(),
   }),

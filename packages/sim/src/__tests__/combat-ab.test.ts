@@ -101,9 +101,12 @@ describe('T-1205 · fighter win rate improves with upgrades (sim A/B)', () => {
     const pinnedWinRate = pinnedDefeated / pinnedResolved;
 
     // The core acceptance: upgraded weapons/shields lift the fighter's win rate.
-    // Measured at authoring time (seeds 1-3, 200 days): the upgrade-allowed fighter
-    // defeats 70/80 = 0.875 of its interceptors versus the junker-pinned fighter's
-    // 7/36 = 0.194 — a decisive gap, not a marginal pass.
+    // Measured (seeds 1-3, 200 days): the upgrade-allowed fighter defeats
+    // 68/83 = 0.819 of its interceptors versus the junker-pinned fighter's
+    // 7/50 = 0.140 — a decisive gap, not a marginal pass. (Numbers refreshed for
+    // T-1207: the opposed run + post-kill enemy retreat shift the campaign rng
+    // stream and divert some kills into `interceptor-escaped`, which this test
+    // counts as a non-defeat; the gap stays decisive.)
     expect(upgradedWinRate).toBeGreaterThan(pinnedWinRate);
   }, 60000);
 });

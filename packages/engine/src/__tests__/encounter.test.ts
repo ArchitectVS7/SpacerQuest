@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Stat } from '@spacerquest/content';
-import { resolveCombat } from '../actions/combat.js';
+import { resolveCombat, tributeForRound } from '../actions/combat.js';
+import { natWireStories } from '../wire.js';
 import {
   calculateRouteDanger,
   generateEncounter,
@@ -769,9 +770,12 @@ describe('Encounter system', () => {
     state.player.ship.hull.condition = 1;
     state.encounter = fixtureEncounter({
       // T-1205: the struck component is now a SEEDED pick, not the old round-4
-      // rotation that guaranteed hull. SeededRng(14) is a seed whose single hit
-      // lands on hull, driving the condition-1 hull to 0 and firing ShipLost —
-      // the "hull damageable on any round" behaviour this task installs.
+      // rotation that guaranteed hull. This is a run (die 1 → nat-1 auto-fail),
+      // so the enemy presses and its hit lands on hull, driving the condition-1
+      // hull to 0 and firing ShipLost — the "hull damageable on any round"
+      // behaviour. T-1207 re-picked the seed (14 → 15): the opposed run now draws
+      // an enemy pursuit d20 BEFORE the pressure roll, shifting the stream, so a
+      // fresh hand-picked seed is needed for the pressure hit to land on hull.
       interceptor: {
         ...fixtureEncounter().interceptor,
         stats: { PILOT: 1, GUNS: 20, TRADE: 0, GRIT: 0, GUILE: 1 },
@@ -781,7 +785,7 @@ describe('Encounter system', () => {
     const { state: nextState, events } = resolveCombat(
       state,
       { type: 'Combat', stance: 'run', targetId: state.encounter.interceptor.id, spendDie: 0 },
-      new SeededRng(14),
+      new SeededRng(15),
     );
 
     expect(nextState.encounter).toBeNull();
@@ -816,5 +820,206 @@ describe('Encounter system', () => {
     expect(nextState.player.currentSystemId).toBe(2);
     expect(nextState.player.credits).toBe(350);
     expect(nextState.player.activeContract).toBeNull();
+  });
+});
+
+describe('T-1207 · tribute class modifiers', () => {
+  // Foundation restore: a Brigand HALVES the round demand, a Reptiloid DOUBLES it;
+  // every other class (and named interceptors, which carry no `kind`) is unmodified.
+  it.each([
+    ['BRIGAND', 4, 2000], // base 4000 ÷2
+    ['REPTILOID', 4, 8000], // base 4000 ×2
+    ['REPTILOID', 6, 10_000], // base 6000 ×2 = 12000 → capped at TRIBUTE_MAX
+    ['PIRATE', 4, 4000],
+    ['PATROL', 4, 4000],
+    ['RIM_PIRATE', 4, 4000],
+  ] as const)('tributeForRound(%s, round %d) === %d', (kind, round, expected) => {
+    expect(tributeForRound(round, kind)).toBe(expected);
+  });
+
+  it('a named interceptor (no kind) takes the unmodified schedule', () => {
+    expect(tributeForRound(4)).toBe(4000);
+  });
+
+  it('the resolver threads the class modifier into TributeDemanded (BRIGAND ÷2)', () => {
+    // Integration: proves the resolver reads encounter.interceptor.kind, not just
+    // the pure helper. A Brigand demands HALF the round schedule; die 19 + TRADE 1
+    // is a non-nat success (margin 9 → 45% off the payment) but the DEMAND is the
+    // class-scaled 2,000 (round 4 base 4,000 ÷2).
+    const state = readyState();
+    state.player.dawnHand = { dice: [19], spent: [false] };
+    state.player.credits = 5000;
+    state.encounter = fixtureEncounter({
+      round: 4,
+      interceptor: {
+        ...fixtureEncounter().interceptor,
+        id: 'anon-brigand-1',
+        kind: 'BRIGAND',
+      },
+    });
+
+    const { events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: 'anon-brigand-1', spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'TributeDemanded', amount: 2000 }),
+    );
+  });
+
+  it('a REPTILOID demand is doubled through the resolver', () => {
+    const state = readyState();
+    state.player.dawnHand = { dice: [19], spent: [false] };
+    state.player.credits = 50_000;
+    state.encounter = fixtureEncounter({
+      round: 3,
+      interceptor: {
+        ...fixtureEncounter().interceptor,
+        id: 'anon-reptiloid-1',
+        kind: 'REPTILOID',
+        stats: { PILOT: 5, GUNS: 0, TRADE: 0, GRIT: 1, GUILE: 2 },
+      },
+    });
+
+    const { events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: 'anon-reptiloid-1', spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    // round 3 base 3,000 ×2 = 6,000 demanded.
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'TributeDemanded', amount: 6000 }),
+    );
+  });
+});
+
+describe('T-1207 · opposed run & enemy retreat', () => {
+  it('a run emits StatChecks for BOTH actors (player break-off + enemy pursuit)', () => {
+    // A non-nat run die (10): the player's opposed PILOT break-off and a fresh
+    // enemy pursuit roll BOTH surface a StatCheck.
+    const state = readyState();
+    state.player.dawnHand = { dice: [10], spent: [false] };
+    state.encounter = fixtureEncounter();
+
+    const { state: next, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'run', targetId: state.encounter.interceptor.id, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    const playerRun = events.find(
+      (e) => e.type === 'StatCheck' && e.actor === 'Player' && e.stat === Stat.PILOT,
+    );
+    const enemyPursuit = events.find(
+      (e) =>
+        e.type === 'StatCheck' &&
+        e.actor === state.encounter!.interceptor.name &&
+        e.actionContext === 'npc-combat',
+    );
+    expect(playerRun).toBeDefined();
+    expect(enemyPursuit).toBeDefined();
+    if (playerRun?.type !== 'StatCheck') throw new Error('unreachable');
+
+    // Escape iff the player's opposed check succeeds; otherwise the encounter runs on.
+    if (playerRun.result.success) {
+      expect(next.encounter).toBeNull();
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'EncounterResolved', resolution: 'escaped' }),
+      );
+    } else {
+      expect(next.encounter).not.toBeNull();
+    }
+  });
+
+  it('a seeded enemy nat-20 retreat escapes the kill and rides the wire (miracle burn)', () => {
+    // The player lands the killing volley (die 20 + GUNS 20 vs a hull-1 tier-1
+    // interceptor), but the interceptor's opposed retreat roll comes up a natural
+    // 20 → it slips the kill (interceptor-escaped) rather than being destroyed.
+    // A nat-20 auto-succeeds regardless of the kill-pressure edge, so this is the
+    // guaranteed "miracle burn". Search for the seed whose retreat d20 is 20.
+    const buildKillState = () => {
+      const state = readyState();
+      state.player.dawnHand = { dice: [20], spent: [false] };
+      state.player.stats[Stat.GUNS] = 20;
+      // Within the junker's hull-derived maxFuel (300) so the round-trip assertion
+      // below is a clean subject (deserialize re-syncs maxFuel and would otherwise
+      // clamp readyState's out-of-cap 1000 — same caveat as the mid-travel test).
+      state.player.ship.fuel = 250;
+      state.encounter = fixtureEncounter({ enemyHull: 1 });
+      return state;
+    };
+
+    let seed = -1;
+    for (let s = 1; s <= 5000; s += 1) {
+      const { events } = resolveCombat(
+        buildKillState(),
+        { type: 'Combat', stance: 'fight', targetId: 'anon-pirate-1', spendDie: 0 },
+        new SeededRng(s),
+      );
+      const retreat = events.find((e) => e.type === 'StatCheck' && e.actionContext === 'retreat');
+      if (retreat?.type === 'StatCheck' && retreat.result.nat20) {
+        seed = s;
+        break;
+      }
+    }
+    expect(seed).toBeGreaterThan(0);
+
+    const state = buildKillState();
+    const { state: next, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'fight', targetId: 'anon-pirate-1', spendDie: 0 },
+      new SeededRng(seed),
+    );
+
+    // The interceptor lived: interceptor-escaped, but the player won the field so
+    // the pending travel completes (system 2, unlike a player 'escaped' → origin).
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'EncounterResolved', resolution: 'interceptor-escaped' }),
+    );
+    expect(next.encounter).toBeNull();
+    expect(next.player.currentSystemId).toBe(2);
+    const retreatCheck = events.find(
+      (e) => e.type === 'StatCheck' && e.actionContext === 'retreat',
+    );
+    expect(retreatCheck?.type === 'StatCheck' && retreatCheck.actor).toBe(
+      state.encounter!.interceptor.name,
+    );
+    expect(retreatCheck?.type === 'StatCheck' && retreatCheck.result.nat20).toBe(true);
+
+    // The nat-20 retreat produces the miracle-burn wire story. Scan the returned
+    // events with a STABLE rng (matches the day-loop wire contract).
+    const wire = natWireStories(events, next.day, new SeededRng(seed), next.npcs);
+    expect(wire.some((w) => w.type === 'WireEntry' && /miracle burn/i.test(w.message))).toBe(true);
+
+    // The new resolution + 'retreat' actionContext survive a JSON round-trip (no
+    // GameState field added → no migration; the two additive event-enum values are
+    // backward-compatible and covered here through the schema).
+    expect(deserializeState(serializeState(next))).toEqual(next);
+  });
+
+  it('an ordinary killing volley destroys the interceptor (retreat fails → defeated)', () => {
+    // A low-PILOT interceptor under a seed whose retreat roll is not a nat-20 loses
+    // the opposed roll (the kill-pressure edge keeps escapes rare) → defeated.
+    const state = readyState();
+    state.player.dawnHand = { dice: [20], spent: [false] };
+    state.player.stats[Stat.GUNS] = 20;
+    state.encounter = fixtureEncounter({ enemyHull: 1 });
+
+    const { state: next, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'fight', targetId: 'anon-pirate-1', spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    const retreat = events.find((e) => e.type === 'StatCheck' && e.actionContext === 'retreat');
+    expect(retreat?.type === 'StatCheck' && retreat.result.nat20).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'EncounterResolved', resolution: 'defeated' }),
+    );
+    expect(next.encounter).toBeNull();
+    expect(next.player.currentSystemId).toBe(2);
   });
 });

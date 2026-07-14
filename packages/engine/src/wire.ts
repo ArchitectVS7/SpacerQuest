@@ -96,6 +96,10 @@ function classifyCheck(
         return 'haggle';
       case 'storylet':
         return 'storylet';
+      case 'retreat':
+        // T-1207: an interceptor's post-kill retreat roll — a nat-20 is the
+        // "miracle burn" escape story, its own wire beat.
+        return 'retreat';
     }
   }
   if (actor === 'Player') {

@@ -242,10 +242,11 @@ describe('T-108 · Death & legacy — full inheritance', () => {
     const { state: next, events } = resolveCombat(
       state,
       { type: 'Combat', stance: 'run', targetId: state.encounter.interceptor.id, spendDie: 0 },
-      // T-1205: seeded damage targeting — SeededRng(14) is a seed whose between-
-      // rounds pressure hit lands on the condition-1 hull (was any seed under the
-      // old round-4 rotation).
-      new SeededRng(14),
+      // T-1205: seeded damage targeting — this seed's between-rounds pressure hit
+      // lands on the condition-1 hull. T-1207 re-picked it (14 → 15): the opposed
+      // run draws an enemy pursuit d20 before the pressure roll, so the stream
+      // shifted and a fresh hand-picked seed lands the fatal hull hit.
+      new SeededRng(15),
     );
 
     expect(events).toContainEqual(expect.objectContaining({ type: 'ShipLost' }));
