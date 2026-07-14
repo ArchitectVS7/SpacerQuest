@@ -4,6 +4,7 @@ import {
   RENOWN_RANKS,
   type DeedDefinition,
   type FieldMatcher,
+  type RenownRankDefinition,
   type RenownRankId,
   type StateMatcher,
 } from '@spacerquest/content';
@@ -297,10 +298,19 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
         newRank: nextRank,
         deedCount,
       });
+      // T-1308: READER of a rank definition's optional `citation`. When the
+      // reached rank carries one (only CONQUEROR does today), that period-voice
+      // line IS the rank-up wire — the unique capstone moment. Every other rank
+      // has no citation and falls back to the generic line, so their wires stay
+      // byte-identical (no golden-hash fallout on reachable ranks).
+      const rankDef: RenownRankDefinition = RENOWN_RANKS[nextRank];
+      const rankCitation = rankDef.citation;
       emitted.push({
         type: 'WireEntry',
         day: state.day,
-        message: `Registry confirms Player as ${RENOWN_RANKS[nextRank].label} after ${deed.title}.`,
+        message:
+          rankCitation ??
+          `Registry confirms Player as ${RENOWN_RANKS[nextRank].label} after ${deed.title}.`,
       });
     }
   }

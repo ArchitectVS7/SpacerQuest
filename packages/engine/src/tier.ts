@@ -32,12 +32,12 @@ import { renownRankIndex } from './deeds.js';
 // FORMULA (tunable thresholds; invariants: junker→1, maxed combat fit→5,
 // monotonic non-decreasing under climbing renown and upgrading):
 //   rankTier      = clamp(1,5, floor(renownRankIndex(rank) / 2) + 1)
-//     9 ranks, index 0..8:
+//     10 ranks, index 0..9 (T-1308 added CONQUEROR at index 9):
 //       LIEUTENANT/COMMANDER   → 1
 //       CAPTAIN/COMMODORE      → 2
 //       ADMIRAL/TOP_DOG        → 3
 //       GRAND_MUFTI/MEGA_HERO  → 4
-//       GIGA_HERO              → 5
+//       GIGA_HERO/CONQUEROR    → 5  (index 9: floor(9/2)+1 = 5)
 //   shipRating    = max(weapons.strength, hull.strength, shields.strength)
 //     junker fit = 1; the shipyard's buy-component-tier sets a component's
 //     strength to tier*10 (tier 1..9), so a maxed combat fit reaches 90.

@@ -9,13 +9,34 @@ export type RenownRankId =
   | 'TOP_DOG'
   | 'GRAND_MUFTI'
   | 'MEGA_HERO'
-  | 'GIGA_HERO';
+  | 'GIGA_HERO'
+  // T-1308: 10th rank appended LAST so Object.keys(RENOWN_RANKS) gives it index 9.
+  | 'CONQUEROR';
 
 export interface RenownRankDefinition {
   id: RenownRankId;
   label: string;
+  /** T-1308: optional period-voice rank-up line. When present, the engine's
+   *  rank-up machinery (engine `deeds.ts` `evaluateDeeds`) emits THIS text as the
+   *  WireEntry instead of the generic "Registry confirms Player as …" line — the
+   *  unique capstone moment. Only CONQUEROR carries one today, so every other
+   *  rank's wire stays byte-identical. T-1504 authors citations for all 10 ranks. */
+  citation?: string;
 }
 
+// T-1308 · Conqueror capstone. DIVERGENCE from foundation (git ref f2f95fa9):
+// foundation/lore/User-Manual.md tops the renown ladder at GIGA_HERO — 9 ranks,
+// which saturates because GIGA_HERO needs only 15 of the 17 authored deeds and a
+// competent ~300-day run reaches it. PRD-REIMAGINED §5.2/§9 name "Conqueror" as
+// the CAREER CAPSTONE and win over foundation, so this 10th rank is authored
+// above GIGA_HERO with a deed threshold (30) that sits in the headroom T-1504
+// fills (its ≥30-deed set + long-veteran sim prove Conqueror is reachable
+// THROUGH PLAY). CONQUEROR's two intended readers: (a) the unique capstone
+// wire moment — DELIVERED NOW in engine `deeds.ts` via the `citation` branch;
+// (b) the Nemesis-crossing stake gate — a DOCUMENTED CONTRACT for T-1505, which
+// will make CONQUEROR its prerequisite (T-1101 already seals that crossing
+// behind `nemesis.crossing.unlocked`). It is deliberately NOT stubbed here so
+// no fake reader games the reader-consumption signal.
 export const RENOWN_RANKS = {
   LIEUTENANT: { id: 'LIEUTENANT', label: 'Lieutenant' },
   COMMANDER: { id: 'COMMANDER', label: 'Commander' },
@@ -26,6 +47,12 @@ export const RENOWN_RANKS = {
   GRAND_MUFTI: { id: 'GRAND_MUFTI', label: 'Grand Mufti' },
   MEGA_HERO: { id: 'MEGA_HERO', label: 'Mega Hero' },
   GIGA_HERO: { id: 'GIGA_HERO', label: 'Giga Hero' },
+  CONQUEROR: {
+    id: 'CONQUEROR',
+    label: 'Conqueror',
+    citation:
+      'Registry seals the Conqueror rank: the frontier keeps one name now, and it is Player.',
+  },
 } as const satisfies Record<RenownRankId, RenownRankDefinition>;
 
 export const RENOWN_DEED_THRESHOLDS = {
@@ -38,6 +65,8 @@ export const RENOWN_DEED_THRESHOLDS = {
   GRAND_MUFTI: 9,
   MEGA_HERO: 12,
   GIGA_HERO: 15,
+  // T-1308: above the current 17-deed set, so defined-but-unreached today.
+  CONQUEROR: 30,
 } as const satisfies Record<RenownRankId, number>;
 
 export interface FieldMatcher {

@@ -60,6 +60,9 @@ describe('T-1203 computePlayerTier formula', () => {
     expect(computePlayerTier('GRAND_MUFTI', junker)).toBe(4);
     expect(computePlayerTier('MEGA_HERO', junker)).toBe(4);
     expect(computePlayerTier('GIGA_HERO', junker)).toBe(5);
+    // T-1308: the CONQUEROR capstone (index 9) clamps to the top band, 5.
+    expect(computePlayerTier('CONQUEROR', junker)).toBe(5);
+    expect(computePlayerTier('CONQUEROR', starterShip())).toBe(5);
   });
 
   it('ship combat fit alone lifts the band (Lieutenant rank)', () => {
@@ -89,6 +92,7 @@ describe('T-1203 computePlayerTier formula', () => {
       'GRAND_MUFTI',
       'MEGA_HERO',
       'GIGA_HERO',
+      'CONQUEROR',
     ];
     for (const rank of ranks) {
       for (const strength of [1, 10, 30, 50, 70, 90]) {

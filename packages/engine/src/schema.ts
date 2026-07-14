@@ -84,6 +84,9 @@ const RenownRankIdSchema = z.enum([
   'GRAND_MUFTI',
   'MEGA_HERO',
   'GIGA_HERO',
+  // T-1308: capstone rank. Required so a CONQUEROR renownRank and any
+  // RenownRankUp/DeedEarned event carrying it survive Zod JSON round-trip.
+  'CONQUEROR',
 ]);
 
 /** AnonymousInterceptorKind (content). */
