@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advanceDay, applyPlayerAction, startDay } from '../day.js';
+import { eligibleStorylets } from '../storylets.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { validateGameState } from '../schema.js';
 import { DayPhase, GameEvent, GameState, PlayerAction } from '../types.js';
@@ -65,6 +66,10 @@ describe('T-113b Tour One resolution — debt cleared', () => {
     expect(resolved.flags['veteran.unlocked']).toBe(true);
     expect(resolved.flags['tour-one.resolved']).toBe('cleared');
 
+    // T-1301: the Day-30 resolution owns the campaign-era transition — the
+    // cleared branch is a CLEAN veteran (era flipped past day 30).
+    expect(resolved.era).toBe('VETERAN');
+
     // The Tour-One-resolution Deed is earned, and renown/rank-up followed.
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'DeedEarned', deedId: 'tour_one_cleared' }),
@@ -125,6 +130,11 @@ describe('T-113b Tour One resolution — debt unpaid', () => {
     expect(resolved.flags['veteran.unlocked']).toBeUndefined();
     expect(resolved.player.debt).toBe(debtBefore);
 
+    // T-1301: the unpaid branch proceeds as VETERAN-with-debt — the era flips
+    // for everyone (so TOUR_ONE content expires and veteran content opens), but
+    // the debt survives untouched and the clean-veteran discriminator stays off.
+    expect(resolved.era).toBe('VETERAN');
+
     // No cleared Deed on this path.
     expect(
       events.some((event) => event.type === 'DeedEarned' && event.deedId === 'tour_one_cleared'),
@@ -167,5 +177,107 @@ describe('T-113b Tour One resolution — serialization sync', () => {
     expect(() => validateGameState(JSON.parse(serialized))).not.toThrow();
     expect(deserializeState(serialized).flags['veteran.unlocked']).toBe(true);
     expect(resolved.eventLog.some((event) => event.type === 'TourOneResolved')).toBe(true);
+  });
+
+  it('T-1301: round-trips the mid-transition state with era already flipped to VETERAN', () => {
+    // "Mid-transition" = the day-30-dusk/day-31-dawn resolved state where era has
+    // just flipped and the resolution flag/event are freshly present.
+    const state = atDawnOfDay30(4242);
+    state.player.credits = 30000;
+    const { state: resolved } = advanceDay(state, [
+      { type: 'Trade', action: 'pay-debt', amount: 25000 },
+    ]);
+    expect(resolved.era).toBe('VETERAN');
+
+    const serialized = serializeState(resolved);
+    expect(() => validateGameState(JSON.parse(serialized))).not.toThrow();
+    // The flipped era survives the JSON round-trip exactly.
+    expect(deserializeState(serialized).era).toBe('VETERAN');
+  });
+});
+
+/**
+ * T-1301 — the Day-30 resolution OWNS the campaign-era transition. These tests
+ * prove the flip's two downstream consequences that were previously dead:
+ * TOUR_ONE-gated content expires, and VETERAN-gated content becomes reachable.
+ */
+describe('T-1301 era transition — TOUR_ONE content expires, VETERAN content fires', () => {
+  /** Resolve day 30 on the cleared branch and return the resolved (era=VETERAN)
+   *  state. */
+  function resolveCleared(): GameState {
+    const state = atDawnOfDay30(4242);
+    state.player.credits = 30000;
+    const { state: resolved } = advanceDay(state, [
+      { type: 'Trade', action: 'pay-debt', amount: 25000 },
+    ]);
+    return resolved;
+  }
+
+  /** Resolve day 30 on the unpaid branch and return the resolved (era=VETERAN)
+   *  state. */
+  function resolveUnpaid(): GameState {
+    const state = atDawnOfDay30(909);
+    const { state: resolved } = advanceDay(state, [{ type: 'Wait' }]);
+    return resolved;
+  }
+
+  it('a TOUR_ONE-gated storylet is offered under TOUR_ONE and ineligible under VETERAN (era is the sole cause)', () => {
+    // `port.sun3.guild-auditor` gates on { systemIds:[1], eras:['TOUR_ONE'] }.
+    // The spacer starts at system 1, so the system gate is satisfied; the era
+    // gate is the only variable. Hold everything else constant across the two
+    // states and flip only `era` — the auditor must appear, then vanish.
+    const tourOne = atDawnOfDay30(4242);
+    tourOne.day = 31;
+    tourOne.era = 'TOUR_ONE';
+    expect(eligibleStorylets(tourOne).map((offer) => offer.storyletId)).toContain(
+      'port.sun3.guild-auditor',
+    );
+
+    const veteran: GameState = { ...tourOne, era: 'VETERAN' };
+    expect(eligibleStorylets(veteran).map((offer) => offer.storyletId)).not.toContain(
+      'port.sun3.guild-auditor',
+    );
+
+    // And the REAL post-transition state (era already flipped by the resolution)
+    // does not offer it either.
+    const resolved = resolveCleared();
+    expect(eligibleStorylets(resolved).map((offer) => offer.storyletId)).not.toContain(
+      'port.sun3.guild-auditor',
+    );
+  });
+
+  it('the VETERAN-gated opener fires and is playable at the first veteran dawn — cleared branch', () => {
+    const resolved = resolveCleared();
+    expect(resolved.era).toBe('VETERAN');
+
+    const dawn = startDay(resolved);
+    expect(dawn.state.storylets.available.map((offer) => offer.storyletId)).toContain(
+      'veteran.first-lane',
+    );
+
+    // Drive it through the same code path the UI uses — the player-reachable proof.
+    const played = applyPlayerAction(dawn.state, {
+      type: 'Storylet',
+      storyletId: 'veteran.first-lane',
+      choiceId: 'set-a-heading',
+    });
+    expect(played.state.flags['veteran.first-lane.committed']).toBe(true);
+  });
+
+  it('the VETERAN-gated opener fires and is playable at the first veteran dawn — unpaid branch', () => {
+    const resolved = resolveUnpaid();
+    expect(resolved.era).toBe('VETERAN');
+
+    const dawn = startDay(resolved);
+    expect(dawn.state.storylets.available.map((offer) => offer.storyletId)).toContain(
+      'veteran.first-lane',
+    );
+
+    const played = applyPlayerAction(dawn.state, {
+      type: 'Storylet',
+      storyletId: 'veteran.first-lane',
+      choiceId: 'take-stock',
+    });
+    expect(played.state.flags['veteran.first-lane.took-stock']).toBe(true);
   });
 });

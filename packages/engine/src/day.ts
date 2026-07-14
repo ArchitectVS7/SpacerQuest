@@ -585,16 +585,31 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       debtOutstanding,
     });
 
+    // T-1301 — the Day-30 resolution OWNS the campaign-era transition. On BOTH
+    // branches the era flips TOUR_ONE→VETERAN here, at the dusk of day 30 after
+    // the day phase has fully played out. This is the single owner nobody had
+    // before: without it `state.era` was permanently 'TOUR_ONE', so TOUR_ONE-
+    // gated content never expired (guild-pressure beats stayed eligible into a
+    // day-400 career) and any `eras:['VETERAN']` content was dead on arrival.
+    // TIMING is safe: the flip is at dusk, AFTER the DAY-phase T-113a Wise One
+    // hook (`eras:['TOUR_ONE'] + day:30`) has had its chance to fire, so it is
+    // not clobbered; from the day-31 dawn onward all TOUR_ONE-gated storylets
+    // (guild-pressure, the Sun-3 auditor, etc.) go ineligible via the
+    // `trigger.eras` gate. READERS already written against this flip: the
+    // storylet eligibility gate (`storylets.ts` triggerMatches, `trigger.eras`)
+    // that expires TOUR_ONE content and admits VETERAN content, and
+    // `generateEncounter` (`actions/travel.ts`), which stops applying its 0.5×
+    // TOUR_ONE damp so the veteran game runs at the full foundation encounter
+    // rate. The unpaid branch below proceeds as VETERAN-with-debt: the era is
+    // flipped for everyone, but `veteran.unlocked` (the CLEAN-veteran
+    // discriminator) is set only on the cleared branch, and the debt survives
+    // untouched.
+    nextState.era = 'VETERAN';
+
     if (cleared) {
-      // Debt cleared → the veteran career opens (PRD §5.2). DECISION: we set a
-      // veteran-unlock FLAG and deliberately DO NOT flip the campaign `era`
-      // TOUR_ONE→VETERAN here. Rationale: (1) the acceptance requires only the
-      // flag; (2) the T-113a Wise One hook also fires today and reads
-      // `era === 'TOUR_ONE'`, and other TOUR_ONE-gated content is day-bounded
-      // ≤30 anyway, so flipping the era mid-day-30 risks silently disabling
-      // beats rather than helping. The flag is the single source of truth other
-      // content/UI branches on; a later explicit "begin the veteran career" beat
-      // can own the era transition.
+      // Debt cleared → the CLEAN veteran career opens (PRD §5.2). The era flip
+      // above is shared with the unpaid branch; this flag is the additional
+      // discriminator that says the marker closed without a shortfall.
       nextState.flags['veteran.unlocked'] = true;
       events.push({
         type: 'WireEntry',

@@ -1119,6 +1119,29 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
       const die = ledger.takeBest();
       if (die !== undefined) return [{ type: 'Combat', stance: 'run', targetId, spendDie: die }];
     }
+    // Carrying a delivery, deeds all earned: FIGHT the interceptor down rather
+    // than fall through to the pacifist run. A fight win resolves the encounter
+    // 'defeated', which COMPLETES the interrupted delivery (completePendingTravel)
+    // and lands the ship at its destination — whereas a run forfeits the contract
+    // and dumps the ship back at the origin. On a long, high-danger lane (the
+    // full-rate VETERAN-era encounter band the T-1301 era flip now exposes) the
+    // interceptions are relentless: running the loaded ship home every time bled
+    // the veteran's fuel 10/interdiction and its credits on re-fuel until it was
+    // MAROONED one jump short with no income to recover (observed: pinned at 5
+    // credits / 61 fuel from day ~50 to 500 on the sys-17→9 rim run, the
+    // ASTRAXIAL_HULL forever out of reach). The veteran has the gun for it
+    // (weapons strength climbs past the junker's 1), and fighting through is what
+    // a real veteran does with a hold full of cargo. Only when it can't win the
+    // fight in the fuel/dice it has does it fall back to the pacifist path.
+    if (state.player.activeContract && canWin) {
+      const fights: PlayerAction[] = [];
+      for (let i = 0; i < volleysNeeded; i += 1) {
+        const die = ledger.takeBest();
+        if (die === undefined) break;
+        fights.push({ type: 'Combat', stance: 'fight', targetId, spendDie: die });
+      }
+      if (fights.length > 0) return fights;
+    }
     return planPacifistCombat(state, ledger);
   }
 

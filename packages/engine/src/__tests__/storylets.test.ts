@@ -63,8 +63,13 @@ const T401_STORYLET_IDS = [
   'passenger.envoy.sealed-writ',
 ] as const;
 
+// T-1301 · the veteran-era opener, appended after the T-401 batch. The first
+// `eras:['VETERAN']` content — proof the era gate admits veteran storylets once
+// the Day-30 resolution flips the campaign era.
+const T1301_STORYLET_IDS = ['veteran.first-lane'] as const;
+
 describe('storylet content validation', () => {
-  it('accepts exported STORYLETS with the originals as a prefix and the T-401 batch appended', () => {
+  it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
     // The 12 originals are still present, in order, as the leading prefix.
     expect(ids.slice(0, ORIGINAL_STORYLET_IDS.length)).toEqual([...ORIGINAL_STORYLET_IDS]);
@@ -73,7 +78,13 @@ describe('storylet content validation', () => {
     for (const id of T401_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
-    expect(ids).toHaveLength(ORIGINAL_STORYLET_IDS.length + T401_STORYLET_IDS.length);
+    // T-1301 veteran opener loaded and validated.
+    for (const id of T1301_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
+    expect(ids).toHaveLength(
+      ORIGINAL_STORYLET_IDS.length + T401_STORYLET_IDS.length + T1301_STORYLET_IDS.length,
+    );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);
   });

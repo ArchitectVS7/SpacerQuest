@@ -1556,4 +1556,45 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // --- Veteran career opener (T-1301) ---
+  // The first VETERAN-era beat (PRD §5.2). The Day-30 resolution (day.ts) now
+  // OWNS the era transition and flips TOUR_ONE→VETERAN at the dusk of day 30 on
+  // BOTH branches. This storylet is the authored face of "you are now a veteran"
+  // and the proof that `eras:['VETERAN']` content is alive rather than dead on
+  // arrival. Its trigger carries NO day/system gate, so it surfaces at the first
+  // veteran dawn regardless of which day the transition landed on and whether the
+  // marker closed clean or unpaid. The prose reads correctly for either — a clean
+  // discharge or a spacer flying on indebted. Pure acknowledgement, no
+  // debt/credit effects (mirroring the resolution storylets), and its id prefix
+  // (`veteran.`) is distinct from `guild.` and `resolution.tour-one.` so the UI
+  // renders it in the normal storylet list, not the letterhead/ceremony overlay.
+  {
+    id: 'veteran.first-lane',
+    title: 'The Far Lanes Open',
+    prose:
+      'Tour One is behind you, one way or another, and the charts stop ending at the Guild board. The long veteran lanes read out to the rimward dark — colder, farther, and nobody left to tell you which way to burn.',
+    repeat: 'never',
+    trigger: {
+      eras: ['VETERAN'],
+    },
+    choices: [
+      {
+        id: 'set-a-heading',
+        label: 'Pick a far heading and commit',
+        prose: 'Choose a lane off the far edge of the chart and lay the course in.',
+        effects: {
+          flags: [{ name: 'veteran.first-lane.committed', value: true }],
+        },
+      },
+      {
+        id: 'take-stock',
+        label: 'Take stock before you burn',
+        prose: 'Sit with the quiet a moment, check the hold and the fuel, then decide.',
+        effects: {
+          flags: [{ name: 'veteran.first-lane.took-stock', value: true }],
+        },
+      },
+    ],
+  },
 ] as const);
