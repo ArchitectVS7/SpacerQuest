@@ -49,21 +49,20 @@ export const TEN_DAY_SCRIPT: PlayerAction[][] = [
     { type: 'Travel', destinationId: 3, spendDie: 2 },
   ],
   [
-    // T-1203: the day-3 jump to system 3 is interdicted by a NAMED tier-3
-    // interceptor now that player.tier climbs with earned renown. By day 3 the
-    // seed-1 script has earned 2 deeds → CAPTAIN → tier 2, which opens the
-    // matchmaking band to [1,3] and surfaces Smuggler Ray (named, tier 3,
-    // hull 3, DC 13) instead of the old tier-2 Doc Salvage. The seed-1 day-4
-    // hand ([19,18,5,3,1], GUNS 0) can only clear two DC-13 checks, so a pure
-    // fight cannot down a hull-3 enemy: the fixture instead FIGHTS once (19 →
-    // hull 3→2) then RUNS clean (18+PILOT 1 → escape), exercising both combat
-    // stances and resolving the encounter within the day. The escape abandons
-    // the pending jump (ship stays at origin system 2), and the rest of the day
-    // proceeds from there.
-    { type: 'Combat', stance: 'fight', targetId: 'npc-smuggler-ray', spendDie: 0 },
-    { type: 'Combat', stance: 'run', targetId: 'npc-smuggler-ray', spendDie: 1 },
+    // T-1302: the day-3 jump to system 3 no longer interdicts, so this day is a
+    // plain pay-debt + Travel. The interdiction that T-1203 relied on here was an
+    // EMERGENT side effect of the day-3 event count: the seed-1 day-3 contract is
+    // a Dilithium (type 9) run, and under the pre-T-1302 triggers that armed
+    // `cargo.ticking-crate.discovered`, whose StoryletOffered event bumped
+    // `dayEventCount` — the very index the travel action forks its encounter RNG
+    // from (`action-travel-${actionEventIndex}`, day.ts). T-1302 re-homed the
+    // ticking crate onto a Contraband (type 10) contract, so the type-9 run stops
+    // offering it; the day-3 travel now forks one index earlier and rolls no
+    // encounter. Combat is exercised directly by the dedicated combat suites
+    // (combat-property / encounter / actions / components tests), so this golden
+    // returns to its stated Trade/Travel/Wait/Storylet variety.
     { type: 'Trade', action: 'pay-debt', amount: 25 },
-    { type: 'Travel', destinationId: 4, spendDie: 2 },
+    { type: 'Travel', destinationId: 4, spendDie: 0 },
   ],
   [{ type: 'Wait' }],
   [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 }, { type: 'Wait' }],
@@ -183,10 +182,23 @@ export function runDayLoopGolden(
 // retreat roll on a defeating volley. Both shift the encounter rng stream and the
 // emitted event set, so the TEN_DAY state + events hashes move. That the STORYLET
 // hashes are byte-identical confirms the change is scoped to combat.
+//
+// T-1302 re-derivation (TEN_DAY only; STORYLET hashes unchanged — its seed-555
+// day-1 has no type-9/10 contract or plague event, so nothing it offers moved):
+// re-homing `cargo.ticking-crate.discovered` from a Dilithium (type 9) to a
+// Contraband (type 10) contract removes the day-3 StoryletOffered that the seed-1
+// type-9 run used to emit. That event bumped `dayEventCount`, which is the fork
+// index the following Travel action seeds its encounter roll from
+// (`action-travel-${actionEventIndex}`), so dropping it shifts the day-3 jump to
+// a no-encounter fork. The day-4 combat steps (which resolved that interdiction)
+// are therefore removed and the day becomes a plain pay-debt + Travel; both the
+// day-loop STATE and EVENT hashes move accordingly. The day-loop RULES are
+// unchanged — only a content storylet trigger moved. Regenerated via
+// gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '20ecc56acc5791607b1ec07b838ce71eb43702ad3f3c583e0e4bcabcd0351d64';
+  'e52435fbd5e4e9f45d5d716568f48dfb7f6ae7c98a63d5e342e6dd5d00e7799f';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'df69a01697241fe7d3199653db0454d8682f6d19c76210cbe1eeb84c69a369e6';
+  'e7767526b8241e6a891aa854f76f9deec51f76a80631578320b303a328242667';
 export const STORYLET_GOLDEN_STATE_HASH =
   '9c10750ea5bd9fb5f3593ae7adfa81425d5f3ad2b7a68f9a82f663f63dc9f876';
 export const STORYLET_GOLDEN_EVENTS_HASH =

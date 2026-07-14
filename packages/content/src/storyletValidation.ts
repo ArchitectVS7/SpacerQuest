@@ -1,7 +1,8 @@
 import { CARGO_TYPES } from './cargo.js';
 import { NPC_PROFILES } from './cast.js';
-import { DEEDS } from './deeds.js';
-import { SIGNAL_FRAGMENTS } from './nemesis.js';
+import { DEEDS, RENOWN_RANKS } from './deeds.js';
+import { ERA_EVENTS_BY_ID } from './eraEvents.js';
+import { FRAGMENT_SOURCES, SIGNAL_FRAGMENTS } from './nemesis.js';
 import { Stat } from './stats.js';
 import { STAR_SYSTEMS } from './systems.js';
 import type {
@@ -133,6 +134,17 @@ function validateEffects(
   if (effects.decodeFragment !== undefined && !SIGNAL_FRAGMENTS[effects.decodeFragment]) {
     errors.push(`${path}.decodeFragment is not a valid Signal Fragment ID`);
   }
+  if (effects.fragmentSource !== undefined) {
+    // T-1302: a source only means something alongside an actual grant, and must
+    // be one of the known source literals (mirrored from the engine's serialized
+    // SignalFragmentRecord['source']).
+    if (effects.grantFragment === undefined) {
+      errors.push(`${path}.fragmentSource is set but there is no grantFragment to source`);
+    }
+    if (!FRAGMENT_SOURCES.includes(effects.fragmentSource)) {
+      errors.push(`${path}.fragmentSource is not a valid fragment source`);
+    }
+  }
 }
 
 export function validateStorylets(storylets: readonly StoryletDefinition[]): string[] {
@@ -224,6 +236,30 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
           `${path}.trigger.nemesis.hasUndecodedFragmentId is not a valid Signal Fragment ID`,
         );
       }
+    }
+
+    // T-1302: era-event trigger — must define at least one condition and, when
+    // pinned, a real ERA_EVENTS defId.
+    const eraEvent = storylet.trigger.eraEvent;
+    if (eraEvent) {
+      if (eraEvent.defId === undefined && eraEvent.inAffectedSystem === undefined) {
+        errors.push(`${path}.trigger.eraEvent must define at least one condition`);
+      }
+      if (eraEvent.defId !== undefined && !ERA_EVENTS_BY_ID[eraEvent.defId]) {
+        errors.push(`${path}.trigger.eraEvent.defId is not a valid era-event ID`);
+      }
+    }
+
+    // T-1302: renown trigger — minRank must be a known renown rank.
+    const renown = storylet.trigger.renown;
+    if (renown && !(renown.minRank in RENOWN_RANKS)) {
+      errors.push(`${path}.trigger.renown.minRank is not a valid renown rank`);
+    }
+
+    // T-1302: deed trigger — id must be a known deed.
+    const deed = storylet.trigger.deed;
+    if (deed && !DEEDS.some((d) => d.id === deed.id)) {
+      errors.push(`${path}.trigger.deed.id is not a valid deed ID`);
     }
 
     storylet.choices.forEach((choice, choiceIndex) => {

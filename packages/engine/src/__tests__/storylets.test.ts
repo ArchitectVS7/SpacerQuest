@@ -5,7 +5,9 @@ import {
   eligibleStorylets,
   refreshAvailableStorylets,
   resolveStoryletChoice,
+  triggerMatches,
 } from '../storylets.js';
+import { evaluateDeeds } from '../deeds.js';
 import { SeededRng } from '../rng.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { DayPhase, GameState } from '../types.js';
@@ -68,6 +70,10 @@ const T401_STORYLET_IDS = [
 // the Day-30 resolution flips the campaign era.
 const T1301_STORYLET_IDS = ['veteran.first-lane'] as const;
 
+// T-1302 · the renown-gated veteran beat, appended after the T-1301 opener. The
+// first storylet delivered by renown rank rather than day/system/cargo.
+const T1302_STORYLET_IDS = ['veteran.guild-recognition'] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -82,8 +88,15 @@ describe('storylet content validation', () => {
     for (const id of T1301_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1302 renown-gated veteran beat loaded and validated.
+    for (const id of T1302_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
-      ORIGINAL_STORYLET_IDS.length + T401_STORYLET_IDS.length + T1301_STORYLET_IDS.length,
+      ORIGINAL_STORYLET_IDS.length +
+        T401_STORYLET_IDS.length +
+        T1301_STORYLET_IDS.length +
+        T1302_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);
@@ -150,9 +163,9 @@ describe('storylet engine', () => {
   it('finds and resolves the cargo demo headlessly', () => {
     const state = readyState();
     state.player.currentSystemId = 2;
-    // Destination 8 (not 7): keeps quarantine-seal (any Medicinals contract) as
-    // the sole match without also arming the T-401 plague-relief storylet, which
-    // is gated on the Fomalhaut-2 (system 7) fever destination.
+    // A Medicinals (type 4) contract. quarantine-seal is the sole match: the
+    // T-1302 plague-relief storylet needs a live `plague` era event (state.eraEvent
+    // is null here), so a plain Medicinals run no longer arms it.
     state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     const refreshed = refreshAvailableStorylets(state);
@@ -337,9 +350,9 @@ describe('storylet engine', () => {
   it('keeps deterministic eligibility in content order', () => {
     const state = readyState();
     state.player.currentSystemId = 1;
-    // Destination 8 (not 7): the T-401 plague-relief storylet is gated on the
-    // Fomalhaut-2 (system 7) destination, so a type-4 run elsewhere leaves the
-    // three original eligibility matches exactly as before.
+    // A Medicinals (type 4) run with no live era event: the T-1302 plague-relief
+    // storylet stays dormant (no state.eraEvent), so the three original
+    // eligibility matches remain exactly as before.
     state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     expect(eligibleStorylets(state).map((offer) => offer.storyletId)).toEqual([
@@ -573,11 +586,14 @@ describe('T-111b Nemesis Signal — fragment brokers', () => {
 });
 
 describe('T-401 cargo & passenger storylets — exemplars', () => {
-  it('plague-relief: offered on a Medicinals→Fomalhaut-2 run; "run it in" keeps the contract, "sell" clears it', () => {
+  it('plague-relief: offered when a live plague event afflicts the port you carry Medicinals into; "run it in" keeps the contract, "sell" clears it', () => {
     const state = readyState();
     state.player.currentSystemId = 2;
-    // A Medicinals (type 4) contract bound for Fomalhaut-2 (system 7).
-    state.player.activeContract = { destination: 7, cargoType: 4, payment: 3000, pods: 10 };
+    // T-1302: a live `plague` era event whose epicentre is the player's system,
+    // carried into on a Medicinals (type 4) contract — the storylet's REAL
+    // trigger. The contract destination no longer matters.
+    state.eraEvent = { defId: 'plague', startedDay: 1, endsDay: 10, affectedSystemIds: [2] };
+    state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     const refreshed = refreshAvailableStorylets(state);
     expect(refreshed.state.storylets.available.map((o) => o.storyletId)).toContain(
@@ -613,11 +629,21 @@ describe('T-401 cargo & passenger storylets — exemplars', () => {
     expect(sold.state.flags['cargo.medicinals.plague-relief.sold']).toBe(true);
   });
 
-  it('plague-relief is gated on the Fomalhaut-2 destination, not any Medicinals run', () => {
-    const away = readyState();
-    away.player.currentSystemId = 2;
-    away.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
-    expect(eligibleStorylets(away).map((o) => o.storyletId)).not.toContain(
+  it('plague-relief is gated on a live plague event in the afflicted system, not any Medicinals run', () => {
+    // Same Medicinals run, but no live era event → dormant.
+    const noEvent = readyState();
+    noEvent.player.currentSystemId = 2;
+    noEvent.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
+    expect(eligibleStorylets(noEvent).map((o) => o.storyletId)).not.toContain(
+      'cargo.medicinals.plague-relief',
+    );
+
+    // Plague live, but the ship is OUTSIDE its afflicted region → still dormant.
+    const outOfRegion = readyState();
+    outOfRegion.player.currentSystemId = 2;
+    outOfRegion.eraEvent = { defId: 'plague', startedDay: 1, endsDay: 10, affectedSystemIds: [5] };
+    outOfRegion.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
+    expect(eligibleStorylets(outOfRegion).map((o) => o.storyletId)).not.toContain(
       'cargo.medicinals.plague-relief',
     );
   });
@@ -625,8 +651,10 @@ describe('T-401 cargo & passenger storylets — exemplars', () => {
   it('ticking-crate: "ride it out" schedules the aftermath for the next dawn, which resolves cleanly', () => {
     let state = readyState();
     state.player.currentSystemId = 3;
-    // A Dilithium (type 9) run — the crate is wedged in among the crystal.
-    state.player.activeContract = { destination: 5, cargoType: 9, payment: 3000, pods: 10 };
+    // T-1302: a Contraband (type 10) run — the crate is wedged among the sealed
+    // contraband. (The type-10 contract itself is signed at a rim allowsContraband
+    // port; here we set it directly to exercise the storylet head.)
+    state.player.activeContract = { destination: 5, cargoType: 10, payment: 3000, pods: 10 };
     state = refreshAvailableStorylets(state).state;
     expect(state.storylets.available.map((o) => o.storyletId)).toContain(
       'cargo.ticking-crate.discovered',
@@ -700,5 +728,212 @@ describe('T-401 cargo & passenger storylets — exemplars', () => {
     expect(paid.state.flags['passenger.false-name.coordinates']).toBe(true);
     // The aboard flag is cleared — the fare is resolved, nothing strands.
     expect(paid.state.flags['passenger.false-name.aboard']).toBeUndefined();
+  });
+});
+
+describe('T-1302 storylet triggers — era-event, renown, deed, fragment source', () => {
+  // --- era-event trigger: A/B on the SAME seed, varying only state.eraEvent /
+  //     position (the acceptance's "fires only during the active event in the
+  //     afflicted region"). Exercised through the real plague-relief storylet. ---
+  it('era-event: plague-relief fires only while the plague is live AND the ship is in the afflicted system (same-seed A/B)', () => {
+    const base = readyState();
+    base.player.currentSystemId = 2;
+    // Carrying Medicinals (type 4) — necessary but NOT sufficient on its own.
+    base.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
+
+    // A: plague live, epicentre = the ship's system → eligible.
+    const live = deserializeState(serializeState(base));
+    live.eraEvent = { defId: 'plague', startedDay: 1, endsDay: 10, affectedSystemIds: [2] };
+    expect(eligibleStorylets(live).map((o) => o.storyletId)).toContain(
+      'cargo.medicinals.plague-relief',
+    );
+
+    // B (same seed, only eraEvent nulled): no live event → NOT eligible.
+    const noEvent = deserializeState(serializeState(base));
+    noEvent.eraEvent = null;
+    expect(eligibleStorylets(noEvent).map((o) => o.storyletId)).not.toContain(
+      'cargo.medicinals.plague-relief',
+    );
+
+    // B' (same seed, event live but ship OUTSIDE the afflicted region) → NOT eligible.
+    const outOfRegion = deserializeState(serializeState(base));
+    outOfRegion.eraEvent = { defId: 'plague', startedDay: 1, endsDay: 10, affectedSystemIds: [7] };
+    expect(eligibleStorylets(outOfRegion).map((o) => o.storyletId)).not.toContain(
+      'cargo.medicinals.plague-relief',
+    );
+
+    // Wrong event kind (blockade, not plague) over the same system → NOT eligible.
+    const wrongEvent = deserializeState(serializeState(base));
+    wrongEvent.eraEvent = { defId: 'blockade', startedDay: 1, endsDay: 10, affectedSystemIds: [2] };
+    expect(eligibleStorylets(wrongEvent).map((o) => o.storyletId)).not.toContain(
+      'cargo.medicinals.plague-relief',
+    );
+  });
+
+  // --- renown trigger: the fixture fires on a real rank-up driven through the
+  //     deed registry (LIEUTENANT → COMMANDER on the first earned deed). ---
+  it('renown: the veteran Guild-recognition beat surfaces only once the registry ranks up to Commander', () => {
+    const state = readyState();
+    state.era = 'VETERAN';
+    // Fresh veteran: still a Lieutenant → the Commander-gated beat is dormant.
+    expect(state.player.registry.renownRank).toBe('LIEUTENANT');
+    expect(eligibleStorylets(state).map((o) => o.storyletId)).not.toContain(
+      'veteran.guild-recognition',
+    );
+
+    // Drive a REAL rank-up: earn one deed (first_jump) through the registry
+    // machinery; deedCount 1 promotes LIEUTENANT → COMMANDER.
+    const rankUpEvents = evaluateDeeds(state, [
+      {
+        type: 'TravelEvent',
+        characterId: 'player',
+        origin: 1,
+        destination: 2,
+        fuelUsed: 10,
+        success: true,
+      },
+    ]);
+    expect(rankUpEvents).toContainEqual(
+      expect.objectContaining({ type: 'RenownRankUp', newRank: 'COMMANDER' }),
+    );
+    expect(state.player.registry.renownRank).toBe('COMMANDER');
+
+    // Now the renown-gated beat is eligible.
+    expect(eligibleStorylets(state).map((o) => o.storyletId)).toContain(
+      'veteran.guild-recognition',
+    );
+  });
+
+  // --- pure-mechanism coverage via the exported triggerMatches against synthetic
+  //     fixtures (fast, content-independent). ---
+  it('triggerMatches: renown gate is an inclusive >= on the rank order', () => {
+    const [fixture] = defineStorylets([
+      {
+        id: 'test.renown-gate',
+        title: 'Renown Gate',
+        prose: 'x',
+        trigger: { renown: { minRank: 'CAPTAIN' } },
+        choices: [
+          { id: 'a', label: 'A', prose: 'a' },
+          { id: 'b', label: 'B', prose: 'b' },
+        ],
+      },
+    ]);
+    const state = readyState();
+
+    state.player.registry.renownRank = 'COMMANDER'; // below CAPTAIN
+    expect(triggerMatches(state, fixture)).toBe(false);
+    state.player.registry.renownRank = 'CAPTAIN'; // exactly at the gate
+    expect(triggerMatches(state, fixture)).toBe(true);
+    state.player.registry.renownRank = 'ADMIRAL'; // above the gate
+    expect(triggerMatches(state, fixture)).toBe(true);
+  });
+
+  it('triggerMatches: eraEvent.defId must match the live event; deed gate reads registry.earned', () => {
+    const [eraFixture, deedFixture] = defineStorylets([
+      {
+        id: 'test.era-gate',
+        title: 'Era Gate',
+        prose: 'x',
+        trigger: { eraEvent: { defId: 'plague' } },
+        choices: [
+          { id: 'a', label: 'A', prose: 'a' },
+          { id: 'b', label: 'B', prose: 'b' },
+        ],
+      },
+      {
+        id: 'test.deed-gate',
+        title: 'Deed Gate',
+        prose: 'x',
+        trigger: { deed: { id: 'first_jump' } },
+        choices: [
+          { id: 'a', label: 'A', prose: 'a' },
+          { id: 'b', label: 'B', prose: 'b' },
+        ],
+      },
+    ]);
+    const state = readyState();
+
+    // eraEvent.defId: a different live event does NOT match; the pinned one does.
+    state.eraEvent = { defId: 'famine', startedDay: 1, endsDay: 5, affectedSystemIds: [1] };
+    expect(triggerMatches(state, eraFixture)).toBe(false);
+    state.eraEvent = { defId: 'plague', startedDay: 1, endsDay: 5, affectedSystemIds: [1] };
+    expect(triggerMatches(state, eraFixture)).toBe(true);
+    state.eraEvent = null;
+    expect(triggerMatches(state, eraFixture)).toBe(false);
+
+    // deed gate: false until the deed is in registry.earned.
+    expect(triggerMatches(state, deedFixture)).toBe(false);
+    state.player.registry.earned.push({
+      id: 'first_jump',
+      title: 'First Jump',
+      citation: 'x',
+      day: 1,
+      eventIndex: 0,
+    });
+    expect(triggerMatches(state, deedFixture)).toBe(true);
+  });
+
+  // --- fragment source: a grant records its TRUE source (acceptance). ---
+  it('fragment source: the ticking-crate courier drop records source "derelict", not the Wise One default', () => {
+    let state = readyState();
+    state.player.currentSystemId = 3;
+    // A Contraband (type 10) run arms the ticking-crate head; ride it out to the
+    // aftermath, whose "open it" recovers a real fragment from the courier drop.
+    state.player.activeContract = { destination: 5, cargoType: 10, payment: 3000, pods: 10 };
+    state = refreshAvailableStorylets(state).state;
+
+    const ridden = applyPlayerAction(state, {
+      type: 'Storylet',
+      storyletId: 'cargo.ticking-crate.discovered',
+      choiceId: 'ride-it-out',
+    });
+    const nextDawn = startDay(endDay(ridden.state).state);
+    const opened = applyPlayerAction(nextDawn.state, {
+      type: 'Storylet',
+      storyletId: 'cargo.ticking-crate.aftermath',
+      choiceId: 'open-it',
+    });
+
+    // The FragmentAcquired event carries the storylet-parameterized source.
+    expect(opened.events).toContainEqual(
+      expect.objectContaining({
+        type: 'FragmentAcquired',
+        fragmentId: 'frag-nemesis-02',
+        source: 'derelict',
+      }),
+    );
+    // And the persisted nemesisFile record records the same true source.
+    const record = opened.state.player.nemesisFile.fragments.find(
+      (f) => f.fragmentId === 'frag-nemesis-02',
+    );
+    expect(record?.source).toBe('derelict');
+  });
+
+  it('fragment source: an omitted fragmentSource still records the Wise One default', () => {
+    // The Day-30 Wise One hook grants without a fragmentSource → 'wise-one'.
+    const state = readyState();
+    state.day = 30;
+    state.player.currentSystemId = 17;
+    state.player.credits = 5000;
+    const refreshed = refreshAvailableStorylets(state);
+
+    const resolved = resolveStoryletChoice(
+      refreshed.state,
+      { type: 'Storylet', storyletId: 'wise-one.polaris.signal-hook', choiceId: 'buy-fragment' },
+      new SeededRng(1),
+    );
+
+    expect(resolved.events).toContainEqual(
+      expect.objectContaining({
+        type: 'FragmentAcquired',
+        fragmentId: 'frag-nemesis-01',
+        source: 'wise-one',
+      }),
+    );
+    expect(
+      resolved.state.player.nemesisFile.fragments.find((f) => f.fragmentId === 'frag-nemesis-01')
+        ?.source,
+    ).toBe('wise-one');
   });
 });

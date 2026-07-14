@@ -1,3 +1,5 @@
+import type { RenownRankId } from './deeds.js';
+import type { FragmentSource } from './nemesis.js';
 import { Stat } from './stats.js';
 import { defineStorylets } from './storyletValidation.js';
 
@@ -57,6 +59,23 @@ export interface StoryletTrigger {
     /** Offered only when the file holds THIS fragment id, still undecoded. */
     hasUndecodedFragmentId?: string;
   };
+  /** T-1302: gate on the LIVE world era EVENT (`state.eraEvent`), NOT the
+   *  campaign `EraId`. This is what lets a storylet be "delivered by the
+   *  economy" (PRD §8.3) — a plague, a blockade, a price spike — rather than
+   *  faked onto an ordinary contract. Reader: engine `triggerMatches`. */
+  eraEvent?: {
+    /** Active era event must have this defId (one of ERA_EVENTS). */
+    defId?: string;
+    /** Player's current system must be inside the event's affectedSystemIds. */
+    inAffectedSystem?: boolean;
+  };
+  /** T-1302: gate on renown rank — offered only when the player's rank is at or
+   *  above `minRank` in the RENOWN_RANK_ORDER. Reader: engine `triggerMatches`. */
+  renown?: { minRank: RenownRankId };
+  /** T-1302: gate on possessing an EARNED deed (registry.earned). Lets a
+   *  storylet fire off a specific accomplishment. Reader: engine
+   *  `triggerMatches`. */
+  deed?: { id: string };
 }
 
 export interface StoryletEffects {
@@ -73,6 +92,12 @@ export interface StoryletEffects {
   /** T-111b: grant a Signal Fragment into the nemesisFile (Wise One / a broker
    *  who does not know what they have). Dedupes by id — monotonic. */
   grantFragment?: string;
+  /** T-1302: source recorded for the granted fragment (the `grantFragment`
+   *  above). Defaults to 'wise-one' (the broker) when omitted, preserving the
+   *  T-111b Day-30 hook's behavior. Reader: engine `applyEffects` grantFragment,
+   *  which stamps it onto the SignalFragmentRecord and the FragmentAcquired
+   *  event's `source`. */
+  fragmentSource?: FragmentSource;
   /** T-111b: the Sage of Mizar-9 decodes a held fragment into lore. No-op if
    *  the fragment is absent or already decoded. */
   decodeFragment?: string;
@@ -588,16 +613,21 @@ export const STORYLETS = defineStorylets([
   //    matches PRD §7.2 (the false-name passenger "pays her fare in coordinates"
   //    the NEXT day), and the scheduled arrival guarantees the fare always
   //    resolves — reachable by play, never a soft dead-end.
-  //  - The PLAGUE-RELIEF exemplar is framed by the PRD as a plague-ERA event, but
-  //    the storylet schema has no era-event trigger (only TOUR_ONE / VETERAN
-  //    career eras). We deliver it "by the economy" as a Medicinals (type 4)
-  //    contract bound for an afflicted core system (Fomalhaut-2, system 7, per
-  //    PRD §7.1), which the manifest board produces naturally.
-  //  - The TICKING-CRATE exemplar is framed by the PRD as "the crate that ticks"
-  //    in cargo. `rollContract` never issues a Contraband (type 10) contract, so
-  //    rather than gate on an unreachable cargo type we attach it to a normal,
-  //    board-reachable Dilithium (type 9) run: an unlabelled crate slipped in
-  //    among the crystal. The smuggling flavour survives; the reachability does.
+  //  - PASSENGER arrivals resolve a day later via a scheduledOnly follow-up.
+  //
+  // (T-1302 update — the two exemplars below are NO LONGER divergences: the
+  //  storylet schema now carries real era-event / cargo-contract triggers, so
+  //  both fire on their genuine PRD hooks rather than a faked stand-in.)
+  //  - The PLAGUE-RELIEF exemplar (PRD §7.1, §8.3) is now delivered by the REAL
+  //    `plague` era event: a Medicinals (type 4) contract carried while an
+  //    Orbital Fever is live AND the ship is IN the afflicted system
+  //    (`trigger.eraEvent = { defId: 'plague', inAffectedSystem: true }`). The
+  //    plague epicentre is the scheduler's seeded core system, not a fixed port,
+  //    so the destination gate is gone.
+  //  - The TICKING-CRATE exemplar (PRD §8.3) now rides a REAL Contraband
+  //    (type 10) contract — the smuggling cargo T-1104 issues from the
+  //    ungoverned rim (`allowsContraband` ports). The unlabelled crate is wedged
+  //    among sealed contraband, exactly the "crate that ticks" the PRD names.
   //
   // BALANCE: these are new content, not ported from foundation/rules/ (which
   // carries no storylet constants). Credit/fuel deltas sit in the band the
@@ -736,19 +766,23 @@ export const STORYLETS = defineStorylets([
     ],
   },
   {
-    // PLAGUE-RELIEF EXEMPLAR (PRD §7.1). Delivered as a Medicinals (type 4)
-    // contract bound for Fomalhaut-2 (system 7), the fevered core port. "Run it
-    // in" KEEPS the contract, so the honest delivery earns the runtime
-    // `mercy_runner` Deed naturally on arrival; "sell to the profiteer" CLEARS
-    // the contract (no delivery, no Deed) for raw coin — the two-priced values
+    // PLAGUE-RELIEF EXEMPLAR (PRD §7.1, §8.3). T-1302: delivered by the REAL
+    // `plague` era event (Orbital Fever) — surfaces when a Medicinals (type 4)
+    // contract is carried INTO the afflicted system while the fever is live
+    // (`eraEvent: { defId: 'plague', inAffectedSystem: true }`). The economy
+    // itself delivers the story: the plague spikes medicine rates ×2.5 (era.ts),
+    // and a profiteer circles the desperate. "Run it in" KEEPS the contract, so
+    // the honest delivery earns its Deed naturally on arrival; "sell to the
+    // profiteer" CLEARS it (no delivery) for raw coin — the two-priced values
     // choice the PRD describes.
     id: 'cargo.medicinals.plague-relief',
     title: 'The Fever Run',
     prose:
-      'Fomalhaut-2 is running a fever, and the Medicinals in your hold are the relief run. A profiteer wires an offer before you have even cleared the gantry: sell him the lot, here, now, no questions and no shortage of coin.',
+      'The port you have made is running a fever, and the Medicinals in your hold are the relief run. A profiteer wires an offer before you have even cleared the gantry: sell him the lot, here, now, no questions and no shortage of coin.',
     repeat: 'never',
     trigger: {
-      cargo: { activeContractCargoType: 4, activeContractDestination: 7 },
+      cargo: { activeContractCargoType: 4 },
+      eraEvent: { defId: 'plague', inAffectedSystem: true },
     },
     choices: [
       {
@@ -924,15 +958,17 @@ export const STORYLETS = defineStorylets([
     ],
   },
   {
-    // TICKING-CRATE EXEMPLAR head (PRD §8.3). "Ride it out" is the requirement-
-    // free chaining choice: it schedules the aftermath for the next dawn.
+    // TICKING-CRATE EXEMPLAR head (PRD §8.3). T-1302: now rides a REAL Contraband
+    // (type 10) contract — the smuggling cargo T-1104 issues from the ungoverned
+    // rim (`allowsContraband` ports). "Ride it out" is the requirement-free
+    // chaining choice: it schedules the aftermath for the next dawn.
     id: 'cargo.ticking-crate.discovered',
     title: 'The Crate That Ticks',
     prose:
-      'Wedged behind the Dilithium Crystal is a crate that is not on your manifest. It is ticking — slow, even, deliberate — and it was not doing that when you loaded.',
+      'Wedged among the sealed contraband is a crate that is not on your manifest — no manifest lists any of this. It is ticking, slow and even and deliberate, and it was not doing that when you took the run.',
     repeat: 'never',
     trigger: {
-      cargo: { activeContractCargoType: 9 },
+      cargo: { activeContractCargoType: 10 },
     },
     choices: [
       {
@@ -985,9 +1021,15 @@ export const STORYLETS = defineStorylets([
         id: 'open-it',
         label: 'Open the silent crate',
         prose:
-          'Crack the lid on the quiet. Inside: a dead-man courier drop, coin sealed against a rendezvous that never came — and now will not.',
+          'Crack the lid on the quiet. Inside: a dead-man courier drop, coin sealed against a rendezvous that never came — and, folded beneath it, a data sliver still faintly transmitting on a carrier that predates the Confederation.',
+        // T-1302: the recovered courier sliver is a REAL Signal Fragment. Its
+        // source is 'derelict' — a signal recovered from dead cargo, NOT the
+        // Wise One broker — so this doubles as the "fragments record their true
+        // source" proof (contrast the Day-30 Wise One hook's 'wise-one').
         effects: {
           credits: 200,
+          grantFragment: 'frag-nemesis-02',
+          fragmentSource: 'derelict',
           flags: [
             { name: 'cargo.ticking-crate.riding', clear: true },
             { name: 'cargo.ticking-crate.claimed', value: true },
@@ -1594,6 +1636,43 @@ export const STORYLETS = defineStorylets([
         effects: {
           flags: [{ name: 'veteran.first-lane.took-stock', value: true }],
         },
+      },
+    ],
+  },
+
+  // --- Renown-gated veteran beat (T-1302) ---
+  // The first storylet delivered by RENOWN rather than day/system/cargo: it
+  // surfaces once a veteran captain's registry has ranked them to Commander or
+  // above (`renown: { minRank: 'COMMANDER' }`, read by engine triggerMatches
+  // against player.registry.renownRank). This is the acceptance fixture for
+  // "a renown-gated storylet fires on rank-up" — a Guild-recognition beat that
+  // could not exist before this task's renown trigger. Pure acknowledgement: the
+  // choices carry NO effects at all, because a flag no rule reads is a receipt,
+  // not a feature (Standing Constraint 7). The beat's whole job is to prove the
+  // renown gate fires; both replies are flavour-only outs (effect-free choices
+  // are a valid authoring form, see the requirement-free replies elsewhere).
+  {
+    id: 'veteran.guild-recognition',
+    title: 'The Guild Takes Note',
+    prose:
+      'A wire arrives on Guild letterhead, and for once it is not a demand. Your registry has climbed past Lieutenant; a clerk you will never meet has stamped your name into the Commander rolls. The lanes do not change. The way the ports read your transponder does.',
+    repeat: 'never',
+    trigger: {
+      eras: ['VETERAN'],
+      renown: { minRank: 'COMMANDER' },
+    },
+    choices: [
+      {
+        id: 'log-the-rank',
+        label: 'Log the recognition',
+        prose:
+          'Stamp the notice into the ship log and get back to the burn. Rank is a tool, not a rest.',
+      },
+      {
+        id: 'shrug-it-off',
+        label: 'Shrug it off',
+        prose:
+          'A title the Guild grants is a title the Guild can call in. Note it, and trust it less than the fuel gauge.',
       },
     ],
   },

@@ -96,3 +96,26 @@ export const BEACON_FRAGMENT_POOL: readonly string[] = ['frag-nemesis-02', 'frag
 
 /** Every fragment id the content defines — the validation whitelist. */
 export const ALL_FRAGMENT_IDS: readonly string[] = Object.keys(SIGNAL_FRAGMENTS);
+
+/**
+ * T-1302: how a granted fragment entered the Nemesis file. Authored on a
+ * storylet's `grantFragment` effect (see `StoryletEffects.fragmentSource`) so a
+ * grant records its TRUE source — a courier drop is 'derelict', the Wise One's
+ * sale is 'wise-one', and so on.
+ *
+ * NOTE: this MUST stay in lockstep with the engine's serialized authority,
+ * `SignalFragmentRecord['source']` (@spacerquest/engine types.ts). That record
+ * is what round-trips through the save; this literal set is the content-side
+ * validation whitelist. If one changes, change both.
+ */
+export type FragmentSource = 'derelict' | 'beacon' | 'wise-one' | 'sage' | 'npc';
+
+/** The valid fragment-source literals — the validation whitelist for
+ *  `StoryletEffects.fragmentSource`. */
+export const FRAGMENT_SOURCES: readonly FragmentSource[] = [
+  'derelict',
+  'beacon',
+  'wise-one',
+  'sage',
+  'npc',
+];

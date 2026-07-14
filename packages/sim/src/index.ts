@@ -522,11 +522,22 @@ function planRefuel(
 // they do now. This is the "think like a player" fix, not a loosened invariant.
 const CRIPPLED_FUEL_FRACTION = 0.7;
 
-/** A repair-all when the hull has been chipped enough to cut the fuel ceiling
- *  below CRIPPLED_FUEL_FRACTION of its pristine (condition-9) capacity AND the
- *  repair is affordable above `reserve`. Restores the full tank in one action so
- *  the ship can reach contracts again. Returns null when the ship is healthy,
- *  unaffordable, or out of dice. */
+/** A repair-all when a chipped hull's fuel ceiling has dropped enough to hamper
+ *  the ship AND the repair is affordable above `reserve`. Restores the full tank
+ *  in one action so the ship can reach contracts again. Two triggers:
+ *   1. the ceiling fell below CRIPPLED_FUEL_FRACTION of pristine (the coarse
+ *      "clearly crippled" heuristic), OR
+ *   2. T-1302 stranding trigger — the degraded tank can no longer reach the
+ *      CHEAPEST contract on the board, but a pristine (condition-9) tank could.
+ *      The 0.7 fraction alone misses the boundary case that motivated T-1205:
+ *      combat drops the starter hull to condition 6 → maxFuel = 7·1·30 = 210,
+ *      exactly 0.7·300, so trigger 1's `>=` lets it slip through — yet 210 is
+ *      below the ~286 nearest-contract jump at a Rim system, stranding a solvent
+ *      trader for days (seed 2: 5 idle dawns at system 16 with ~33k credits and
+ *      a full 210 tank, every board contract 221–494 fuel away). Repairing the
+ *      hull restores the 300 tank and reopens the near runs. Reader:
+ *      campaign.test.ts poverty-trap invariant (streak < 5).
+ *  Returns null when the ship is healthy, unaffordable, or out of dice. */
 function planCrippledRepair(
   state: GameState,
   ledger: DieLedger,
@@ -535,7 +546,22 @@ function planCrippledRepair(
   const ship = state.player.ship;
   const pristineCapacity = calculateFuelCapacity(ship.hull.strength, 9);
   if (pristineCapacity <= 0) return null;
-  if (ship.maxFuel >= CRIPPLED_FUEL_FRACTION * pristineCapacity) return null;
+  const crippled = ship.maxFuel < CRIPPLED_FUEL_FRACTION * pristineCapacity;
+  // Cheapest jump-fuel among the contracts currently on the board — the least
+  // the tank must hold to fly ANY run from here.
+  const from = state.player.currentSystemId;
+  const contractFuels = state.market.manifestBoard.map((contract) =>
+    playerJumpFuel(state, systemDistance(from, contract.destination)),
+  );
+  const cheapestContractFuel = contractFuels.length > 0 ? Math.min(...contractFuels) : Infinity;
+  // Stranded by a combat-shrunk tank: it can't fly the cheapest contract, the hull
+  // is worn (so a repair actually lifts the ceiling), and a pristine tank WOULD
+  // reach it (else repairing is futile and we leave the decision to other logic).
+  const strandedByTank =
+    ship.hull.condition < 9 &&
+    ship.maxFuel < cheapestContractFuel &&
+    pristineCapacity >= cheapestContractFuel;
+  if (!crippled && !strandedByTank) return null;
   const quote = quoteShipyard(state, {
     type: 'Shipyard',
     action: 'repair',

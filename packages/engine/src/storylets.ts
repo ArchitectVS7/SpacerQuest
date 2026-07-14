@@ -7,6 +7,7 @@ import type {
   StoryletDefinition,
   StoryletEffects,
 } from '@spacerquest/content';
+import { renownRankIndex } from './deeds.js';
 import { check, spendDie } from './dice.js';
 import { applyDisposition } from './npc.js';
 import {
@@ -56,7 +57,10 @@ function isCompletedForNow(state: GameState, storylet: StoryletDefinition): bool
   return true;
 }
 
-function triggerMatches(state: GameState, storylet: StoryletDefinition): boolean {
+// Exported so engine tests can exercise the trigger MECHANISM directly against
+// synthetic StoryletDefinition fixtures (T-1302), without adding fixture-only
+// content to the shipped STORYLETS table.
+export function triggerMatches(state: GameState, storylet: StoryletDefinition): boolean {
   const trigger = storylet.trigger;
 
   if (trigger.scheduledOnly && !hasDueSchedule(state, storylet.id)) {
@@ -113,6 +117,37 @@ function triggerMatches(state: GameState, storylet: StoryletDefinition): boolean
     ) {
       return false;
     }
+  }
+
+  // T-1302: gate on the LIVE world era event (state.eraEvent) — the "economy
+  // delivers the story" hook (PRD §8.3). A defId pins the event kind; an
+  // inAffectedSystem flag requires the ship to be inside the epicentre.
+  if (trigger.eraEvent) {
+    const event = state.eraEvent;
+    if (!event) return false;
+    if (trigger.eraEvent.defId !== undefined && event.defId !== trigger.eraEvent.defId) {
+      return false;
+    }
+    if (
+      trigger.eraEvent.inAffectedSystem &&
+      !event.affectedSystemIds.includes(state.player.currentSystemId)
+    ) {
+      return false;
+    }
+  }
+
+  // T-1302: gate on renown rank — the player's registry rank must sit at or
+  // above the required minimum in the canonical rank order.
+  if (
+    trigger.renown &&
+    renownRankIndex(state.player.registry.renownRank) < renownRankIndex(trigger.renown.minRank)
+  ) {
+    return false;
+  }
+
+  // T-1302: gate on possessing an EARNED deed.
+  if (trigger.deed && !state.player.registry.earned.some((d) => d.id === trigger.deed?.id)) {
+    return false;
   }
 
   return true;
@@ -377,21 +412,21 @@ function applyEffects(
     });
   }
 
-  // T-111b: grant a Signal Fragment into the Nemesis file (the Wise One, a
-  // broker). Dedupe keeps the count monotonic — a repeat grant emits nothing.
+  // T-111b: grant a Signal Fragment into the Nemesis file. Dedupe keeps the
+  // count monotonic — a repeat grant emits nothing.
+  // T-1302: the source is now storylet-parameterized (`effects.fragmentSource`),
+  // so a grant records its TRUE origin — a derelict courier drop, a beacon, the
+  // Wise One broker — instead of always reading 'wise-one'. Defaults to
+  // 'wise-one' when omitted, preserving the Day-30 hook.
   if (effects.grantFragment !== undefined) {
-    const added = grantFragment(
-      state.player.nemesisFile,
-      effects.grantFragment,
-      'wise-one',
-      state.day,
-    );
+    const source = effects.fragmentSource ?? 'wise-one';
+    const added = grantFragment(state.player.nemesisFile, effects.grantFragment, source, state.day);
     if (added) {
       events.push({
         type: 'FragmentAcquired',
         day: state.day,
         fragmentId: effects.grantFragment,
-        source: 'wise-one',
+        source,
         fragmentCount: fragmentCount(state.player.nemesisFile),
       });
       events.push({
