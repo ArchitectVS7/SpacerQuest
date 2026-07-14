@@ -229,6 +229,7 @@ describe('protocol deterministic replay', () => {
       VisitHangout: true,
       Reroll: true,
       Crew: true,
+      Port: true,
       Wait: true,
     } satisfies Record<PlayerAction['type'], true>;
     const expectedTradeSubActions = {

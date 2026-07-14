@@ -31,7 +31,11 @@ export interface ShipLostContext {
  *     license, the charts, and the debts", so the collection heat and the Penny
  *     Wise grudge attach to the name exactly as the dispositions above do. It is
  *     intentionally NOT reset — that IS the inheritance (no code needed; it is
- *     simply left on state, like debt/debtDueDay).
+ *     simply left on state, like debt/debtDueDay). (T-1307) the owned `ports` are
+ *     carried WHOLESALE for the same reason: a successor claims the license, the
+ *     charts, the debts, AND the property — the port stakes keep paying their
+ *     launch-fee income into the new spacer's account. Like debt/loan it is simply
+ *     left on state, never reset; the succession test asserts survival.
  *   HALVED: credits (floor division).
  *   RESET: ship to the exact starterShip(); the active contract is FORFEITED
  *     here (the cargo went down with the ship — a TradeEvent 'forfeit-cargo'

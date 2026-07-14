@@ -48,6 +48,12 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * it needs no migration step (a v3 hand simply banks no charge until it re-rolls
  * at the next dawn).
  *
+ * T-1307 bumped {@link CURRENT_SAVE_VERSION} to 5. The v4->v5 change IS a
+ * GameState shape change: `PlayerState.ports` (owned port stakes — purchasable
+ * property, PRD §9) is a new persistent field. The v4->v5 migration backfills
+ * `ports: []` on the player so a pre-ports save validates against the v5 schema
+ * (whose `ports` key is non-optional).
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
@@ -74,9 +80,18 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
       player: { ...(s.player ?? {}), crew: (s.player as { crew?: unknown })?.crew ?? [] },
     };
   },
+  // v4->v5: T-1307 added PlayerState.ports. A v4 save has no `ports` key, so
+  // backfill it to an empty roster (no owned ports) before schema validation.
+  4: (v4State) => {
+    const s = v4State as { player?: Record<string, unknown> };
+    return {
+      ...(v4State as object),
+      player: { ...(s.player ?? {}), ports: (s.player as { ports?: unknown })?.ports ?? [] },
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 4;
+export const CURRENT_SAVE_VERSION = 5;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

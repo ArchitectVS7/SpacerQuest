@@ -30,6 +30,7 @@ import { resolveShipyard } from './actions/shipyard.js';
 import { resolveExploration } from './actions/exploration.js';
 import { resolveVisitHangout } from './actions/hangout.js';
 import { resolveCrew, resolveReroll } from './actions/crew.js';
+import { portDuskIncome, resolvePortPurchase } from './actions/port.js';
 import { evaluateDeeds } from './deeds.js';
 import { syncPlayerTier } from './tier.js';
 import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
@@ -129,11 +130,16 @@ export function applyPlayerAction(
   // crew roster, never the encounter) and is never offered by the sim/UI during a
   // fight — exempting them here avoids widening the ActionBlocked.actionType enum
   // for actions that have no reason to be blocked.
+  // T-1307: Port is exempt for the SAME reason — a port purchase touches only
+  // `player.ports` and credits, never the encounter, and the sim/UI never offer it
+  // mid-fight. Exempting it avoids widening the ActionBlocked.actionType enum for
+  // an action that has no reason to be blocked.
   if (
     nextState.encounter &&
     action.type !== 'Combat' &&
     action.type !== 'Reroll' &&
-    action.type !== 'Crew'
+    action.type !== 'Crew' &&
+    action.type !== 'Port'
   ) {
     // Trade/Travel/Shipyard during an active encounter are player-possible acts,
     // not malformed input — surface a typed ActionBlocked event instead of
@@ -224,6 +230,12 @@ export function applyPlayerAction(
     // aligned with the other die-costed actions (mirrors the Shipyard branch).
     dayRng.fork(`action-crew-${actionEventIndex}`);
     result = resolveCrew(nextState, action);
+  } else if (action.type === 'Port') {
+    // resolvePortPurchase is pure (no rng), but fork+discard to keep the action rng
+    // stream aligned with the other die-costed actions (mirrors the Crew/Shipyard
+    // branches).
+    dayRng.fork(`action-port-${actionEventIndex}`);
+    result = resolvePortPurchase(nextState, action);
   } else {
     result = resolveStoryletChoice(
       nextState,
@@ -678,6 +690,34 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       }
       nextState.player.crew = [];
     }
+  }
+
+  // T-1307 · Port launch-fee income (PRD §9 "ports as purchasable property"). The
+  // WHOLE block is guarded on a non-empty port roster, so the port-free path (every
+  // existing golden) is byte-identical: no income event, no credit change, and NO
+  // rng draw (this is pure arithmetic — the sum of each owned port's era-modulated
+  // base income, actions/port.ts `portDuskIncome`). While ≥1 stake is owned the
+  // income is credited and a single PortEvent{income} + a WireEntry are logged
+  // (the WireEntry is the wire reader for accrual). Deterministic across a JSON
+  // round-trip. This is the named DUSK-ECONOMY reader the acceptance asserts.
+  if (nextState.player.ports.length > 0) {
+    const income = portDuskIncome(nextState);
+    nextState.player.credits += income;
+    const portCount = nextState.player.ports.length;
+    events.push({
+      type: 'PortEvent',
+      day: nextState.day,
+      kind: 'income',
+      income,
+      portCount,
+    });
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      message: `Launch fees from ${portCount} port stake${
+        portCount === 1 ? '' : 's'
+      } clear to your account: ${income} credits.`,
+    });
   }
 
   // The Guild calls its marker (enforcement/consequences are story-layer work;

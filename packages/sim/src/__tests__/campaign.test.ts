@@ -1,7 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CREW_ROLES, distance as systemDistance, isGatedDestination } from '@spacerquest/content';
+import {
+  CREW_ROLES,
+  PURCHASABLE_PORTS_BY_SYSTEM,
+  distance as systemDistance,
+  isGatedDestination,
+  isPurchasablePort,
+} from '@spacerquest/content';
 import {
   advanceDay,
   applyPlayerAction,
@@ -447,6 +453,67 @@ const crewHiringVeteranPolicy: SimPolicy = (ctx) => {
   }
   return actions;
 };
+
+// ---------------------------------------------------------------------------
+// T-1307 · Ports-as-property reachability (earned, not injected). A veteran
+// ACQUIRES a purchasable core-port stake through legal play — it earns the credits,
+// lands at a core port it does not own, and buys the stake via a real `Port` action
+// driven through applyPlayerAction; the stake then accrues income through the real
+// dusk loop. NOTHING sets ports by hand. As with crewHiringVeteranPolicy this lives
+// in the TEST, not the shipped sim, because the 25k spend would starve the
+// documented endgame war chest (the shipped veteranPolicy stays unchanged).
+const portBuyingVeteranPolicy: SimPolicy = (ctx) => {
+  const actions = veteranPolicy(ctx);
+  const { state } = ctx;
+  if (state.encounter) return actions;
+  const here = state.player.currentSystemId;
+  // Only at a purchasable core port we don't already own.
+  if (!isPurchasablePort(here)) return actions;
+  if (state.player.ports.some((port) => port.systemId === here)) return actions;
+  // Flush above a reserve so the buy never strands the ship (price + ~5k headroom).
+  const price = PURCHASABLE_PORTS_BY_SYSTEM[here].purchasePrice;
+  if (state.player.credits < price + 5000) return actions;
+  // Append the buy on a die the veteran left unspent (never a collision).
+  const used = new Set<number>();
+  for (const action of actions) {
+    const die = (action as PlayerAction & { spendDie?: number }).spendDie;
+    if (typeof die === 'number') used.add(die);
+  }
+  const hand = state.player.dawnHand;
+  if (!hand) return actions;
+  for (let i = 0; i < hand.dice.length; i += 1) {
+    if (!hand.spent[i] && !used.has(i)) {
+      return [...actions, { type: 'Port', action: 'buy', systemId: here, spendDie: i }];
+    }
+  }
+  return actions;
+};
+
+describe('T-1307 ports reachable through play', () => {
+  it('a veteran sim buys a port and accrues its income within 150 days (acceptance #4)', () => {
+    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 3, 150);
+
+    // The purchase happened through legal play: a PortEvent{purchased} was logged
+    // (ports are bought via the Port action, never injected).
+    const purchases = state.eventLog.filter(
+      (e): e is Extract<typeof e, { type: 'PortEvent' }> =>
+        e.type === 'PortEvent' && e.kind === 'purchased',
+    );
+    expect(purchases.length).toBeGreaterThanOrEqual(1);
+    expect(purchases[0].day).toBeLessThanOrEqual(150);
+
+    // ...and income accrued afterwards through the real dusk loop.
+    const income = state.eventLog.filter(
+      (e): e is Extract<typeof e, { type: 'PortEvent' }> =>
+        e.type === 'PortEvent' && e.kind === 'income',
+    );
+    expect(income.length).toBeGreaterThanOrEqual(1);
+    expect(income.some((e) => e.day > purchases[0].day)).toBe(true);
+
+    // A stake is owned at the end of the horizon — the property is live.
+    expect(state.player.ports.length).toBeGreaterThanOrEqual(1);
+  }, 30000);
+});
 
 describe('T-1306 dice progression reachable through play', () => {
   it('a veteran sim hires a crew dice-source by day 150 (acceptance #4)', () => {

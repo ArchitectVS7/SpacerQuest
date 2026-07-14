@@ -15,6 +15,7 @@ import type {
   LegacyState,
   LoanState,
   CrewMember,
+  PortStake,
   NemesisFileState,
   SignalFragmentRecord,
   DeedRegistryState,
@@ -191,6 +192,15 @@ const CrewMemberSchema = z
   .object({
     roleId: z.string(),
     hiredDay: z.number(),
+  })
+  .strict();
+
+// T-1307 · Port stake (types.ts PortStake). `.strict()` — an unknown key inside a
+// port stake fails loudly on load, per the T-1002 drift-protection law.
+const PortStakeSchema = z
+  .object({
+    systemId: z.number(),
+    purchaseDay: z.number(),
   })
   .strict();
 
@@ -459,6 +469,9 @@ const PlayerStateSchema = z
     // T-1306: hired crew (the dice-progression source). Non-optional — every v4+
     // save serializes the key (v3 saves backfill it via the migration).
     crew: z.array(CrewMemberSchema),
+    // T-1307: owned port stakes (purchasable property). Non-optional — every v5+
+    // save serializes the key (v4 saves backfill it via the migration).
+    ports: z.array(PortStakeSchema),
     stats: StatBlockSchema,
     tier: TierSchema,
     currentSystemId: z.number(),
@@ -725,6 +738,28 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'already-hired',
         'unknown-role',
         'not-hired',
+      ])
+      .optional(),
+  }),
+  z.object({
+    // T-1307 · a port-stake beat (see types.ts PortEvent). Serialized in eventLog;
+    // the drift guard below keeps this in lockstep with the interface.
+    type: z.literal('PortEvent'),
+    day: z.number(),
+    kind: z.enum(['purchased', 'income', 'failed']),
+    systemId: z.number().optional(),
+    cost: z.number().optional(),
+    income: z.number().optional(),
+    portCount: z.number().optional(),
+    failReason: z
+      .enum([
+        'no-die',
+        'invalid-die-index',
+        'die-already-spent',
+        'not-at-port',
+        'not-purchasable',
+        'already-owned',
+        'insufficient-credits',
       ])
       .optional(),
   }),
@@ -1039,6 +1074,13 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
     roleId: z.string(),
     spendDie: z.number(),
   }),
+  z.object({
+    // T-1307 · buy a stake in the local port authority (see types.ts PlayerAction).
+    type: z.literal('Port'),
+    action: z.literal('buy'),
+    systemId: z.number(),
+    spendDie: z.number(),
+  }),
   z.object({ type: z.literal('Wait') }),
 ]);
 
@@ -1119,6 +1161,7 @@ const _covPoi: AssertEqual<keyof DiscoveredPoi, keyof z.infer<typeof DiscoveredP
 const _covLegacy: AssertEqual<keyof LegacyState, keyof z.infer<typeof LegacyStateSchema>> = true;
 const _covLoan: AssertEqual<keyof LoanState, keyof z.infer<typeof LoanStateSchema>> = true;
 const _covCrew: AssertEqual<keyof CrewMember, keyof z.infer<typeof CrewMemberSchema>> = true;
+const _covPortStake: AssertEqual<keyof PortStake, keyof z.infer<typeof PortStakeSchema>> = true;
 const _covNemesis: AssertEqual<
   keyof NemesisFileState,
   keyof z.infer<typeof NemesisFileStateSchema>
@@ -1197,6 +1240,7 @@ const _covEvHangoutEvent: AssertEventKeys<'HangoutEvent'> = true;
 const _covEvLoanEvent: AssertEventKeys<'LoanEvent'> = true;
 const _covEvDiceRerolled: AssertEventKeys<'DiceRerolled'> = true;
 const _covEvCrewEvent: AssertEventKeys<'CrewEvent'> = true;
+const _covEvPortEvent: AssertEventKeys<'PortEvent'> = true;
 const _covEvStoryletOffered: AssertEventKeys<'StoryletOffered'> = true;
 const _covEvStoryletChoiceResolved: AssertEventKeys<'StoryletChoiceResolved'> = true;
 const _covEvStoryletChoiceBlocked: AssertEventKeys<'StoryletChoiceBlocked'> = true;
@@ -1240,6 +1284,7 @@ void _covPoi;
 void _covLegacy;
 void _covLoan;
 void _covCrew;
+void _covPortStake;
 void _covNemesis;
 void _covFragment;
 void _covDeedRegistry;
@@ -1274,6 +1319,7 @@ void _covEvHangoutEvent;
 void _covEvLoanEvent;
 void _covEvDiceRerolled;
 void _covEvCrewEvent;
+void _covEvPortEvent;
 void _covEvStoryletOffered;
 void _covEvStoryletChoiceResolved;
 void _covEvStoryletChoiceBlocked;

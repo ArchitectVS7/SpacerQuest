@@ -24,6 +24,7 @@ import {
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
   isGatedDestination,
+  isPurchasablePort,
 } from '@spacerquest/content';
 import {
   DayPhase,
@@ -158,6 +159,9 @@ export interface StateSummary {
   crew: string[];
   /** T-1306 · Cabin berths (crewCapacity) — the hiring cap. */
   crewCapacity: number;
+  /** T-1307 · Owned port stakes, by system id — the purchasable-property income
+   *  ledger (each accrues per-dusk launch-fee income). Read by the harness/T-1405. */
+  ports: number[];
   /** The contract currently in the hold, or null. */
   activeContract: {
     destination: number;
@@ -315,6 +319,7 @@ export function buildStateSummary(state: GameState): StateSummary {
     rerollsRemaining: player.dawnHand?.rerollsRemaining ?? 0,
     crew: player.crew.map((member) => member.roleId),
     crewCapacity: crewCapacity(ship),
+    ports: player.ports.map((port) => port.systemId),
     activeContract: contract
       ? {
           destination: contract.destination,
@@ -560,6 +565,29 @@ export function legalActions(state: GameState): LegalActions {
         note: 'Removes the crew member (no refund), freeing a berth.',
       });
     }
+  }
+
+  // --- Buy a port stake (T-1307) -----------------------------------------
+  // Advertised only at a purchasable core port (isPurchasablePort) the player does
+  // not already own, with an unspent die. `systemId` is FIXED to the current system
+  // (you buy the port you stand in — resolvePortPurchase typed-fails otherwise). The
+  // purchase price is validated on apply (emits PortEvent{failed} if unaffordable),
+  // exactly like the crew/shipyard advertise-gates. Ports are purchasable property:
+  // each owned stake accrues per-dusk launch-fee income (PRD §9).
+  if (
+    hasDie &&
+    isPurchasablePort(player.currentSystemId) &&
+    !player.ports.some((port) => port.systemId === player.currentSystemId)
+  ) {
+    actions.push({
+      type: 'Port',
+      action: 'buy',
+      params: {
+        systemId: { kind: 'fixed', value: player.currentSystemId },
+        spendDie: dieParam,
+      },
+      note: 'Purchase price validated on apply (emits PortEvent{failed} if unaffordable). Accrues per-dusk launch-fee income.',
+    });
   }
 
   // --- Visit the Hangout (T-1303) ----------------------------------------

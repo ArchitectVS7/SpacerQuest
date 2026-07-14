@@ -92,6 +92,9 @@ export function createInitialState(seed: number): GameState {
       // T-1306: no crew at the start of a run — a Day-1 spacer rolls the base
       // 5-die dawn hand (dice.ts dawnDiceModifiers of an empty crew).
       crew: [],
+      // T-1307: a fresh spacer owns no port — the first stake is bought later once
+      // the veteran clears the price (PRD §9).
+      ports: [],
       stats: {
         [Stat.PILOT]: 1,
         [Stat.GUNS]: 0,
@@ -212,6 +215,11 @@ export function deserializeState(json: string): GameState {
   // non-optional `crew` key. (`dawnHand.rerollsRemaining` needs no backfill — it is
   // optional; a loaded hand without it simply banks no charge until the next dawn.)
   parsed.player.crew ??= [];
+  // T-1307 save-compat: pre-T-1307 states have no ports field. Default to empty —
+  // the same backfill the v4→v5 save migration applies for the envelope path.
+  // Without it a legacy save leaves `ports` undefined and fails the strict schema's
+  // non-optional `ports` key.
+  parsed.player.ports ??= [];
   parsed.npcs ??= [];
   parsed.npcs.forEach((npc) => {
     npc.disposition ??= 0;

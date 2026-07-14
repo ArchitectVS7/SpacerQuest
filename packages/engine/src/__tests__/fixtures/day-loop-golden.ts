@@ -214,11 +214,20 @@ export function runDayLoopGolden(
 // `rng.rollHand(5)` draw is unchanged for an empty crew — only the added
 // serialization keys differ), which is why only the two state hashes changed.
 // Regenerated via gen-day-loop-golden.ts.
+//
+// T-1307 re-derivation (STATE hashes only; both EVENT hashes UNCHANGED): adding
+// the persistent `PlayerState.ports` field (empty `[]` on every port-free run)
+// adds one `"ports":[]` key to the serialized state, so both day-loop STATE hashes
+// move — exactly as loan/crew/charts/nemesisFile/legacy did. The EVENT streams are
+// byte-identical (the dusk launch-fee income block is guarded on a non-empty port
+// roster, and no run here buys a port, so no PortEvent fires and no rng is drawn),
+// which is why only the two state hashes below changed and the event hashes did
+// not. Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'c11795176a265cb16ff86b3fc9fea27c8b29a67d1e0e500d01a03d18aef68428';
+  'bb8d64aae0d5924768a3696e7b3df7254aa66224d5060c128e6c5de01a808e2c';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   'e7767526b8241e6a891aa854f76f9deec51f76a80631578320b303a328242667';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '82794cd965abbf661ce975eefd48a45d427ffa15c0addf5957e57d983b279eb6';
+  '3e4f7f185ad843929e65b42a9bcc5456af290b126e22e3f2e3e3b643144d4f83';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '5e726f54f9f6fccbb499350a4c52f1c749bc581c8d6c0f1e3296c0e1ccd6ff04';

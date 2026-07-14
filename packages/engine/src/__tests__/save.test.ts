@@ -388,9 +388,46 @@ describe('save envelope — v3 → v4 crew migration (T-1306)', () => {
     ];
     expect(() => loadSave(createSave(state, 10))).toThrow(SaveError);
   });
+});
 
-  it('CURRENT_SAVE_VERSION is 4', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(4);
+// ---------------------------------------------------------------------------
+// T-1307 · v4 → v5 ports migration + owned-ports round-trip (acceptance #3a).
+// ---------------------------------------------------------------------------
+describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
+  it('backfills PlayerState.ports = [] on a v4 envelope with no ports key', () => {
+    // Build a REAL v4-shaped state, then strip the ports key the way a genuinely
+    // pre-T-1307 save would (it never had the field). The v4→v5 migration must
+    // re-add ports: [] before schema validation, else the strict schema (ports is
+    // non-optional) would reject it.
+    const state = drive50Days(31);
+    delete (state.player as unknown as Record<string, unknown>).ports;
+    const v4 = JSON.stringify({ version: 4, state, seed: 99 });
+
+    const loaded = loadSave(v4); // walks 4→5 (ports backfill), then validates
+    expect(loaded.state.player.ports).toEqual([]);
+    expect(loaded.seed).toBe(99);
+  });
+
+  it('round-trips owned port stakes through createSave → loadSave (deep-equal)', () => {
+    const state = drive50Days(32);
+    state.player.ports = [
+      { systemId: 1, purchaseDay: 3 },
+      { systemId: 7, purchaseDay: 12 },
+    ];
+    const loaded = loadSave(createSave(state, 13));
+    expect(loaded.state.player.ports).toEqual(state.player.ports);
+  });
+
+  it('strict schema rejects an unknown key inside a port stake', () => {
+    const state = drive50Days(33);
+    (state.player.ports as unknown) = [
+      { systemId: 1, purchaseDay: 1, alliance: 'league' }, // not part of PortStake
+    ];
+    expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
+  });
+
+  it('CURRENT_SAVE_VERSION is 5', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(5);
   });
 });
 

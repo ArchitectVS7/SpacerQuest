@@ -463,6 +463,33 @@ export type GameEvent =
         | 'unknown-role'
         | 'not-hired';
     }
+  | {
+      /**
+       * T-1307 · A port-stake beat (PRD §9 "ports as purchasable property"). One
+       * event covers the whole lifecycle via the `kind` sub-discriminator:
+       *   - 'purchased' — a stake was bought. `systemId`, `cost` (purchase price),
+       *     `portCount` (owned after). Credits went DOWN by cost, a die was spent.
+       *     Paired with a WireEntry (the purchase's wire reader).
+       *   - 'income'    — a dusk's launch-fee income accrued across all owned
+       *     stakes. `income` (total, era-modulated), `portCount`. Credits went UP by
+       *     income. Emitted by day.ts endDay while ≥1 port is owned. Paired with a
+       *     WireEntry.
+       *   - 'failed'    — a typed no-op (mirrors CrewEvent/LoanEvent): malformed die
+       *     input, or a port rule refused it. NO die spent, NO credit change.
+       *     `failReason` names why.
+       * READER: T-1405's UI port/ledger pane (and the wire). This is an eventLog
+       * entry, not a GameState field — the port STATE lives on PlayerState.ports
+       * (v4→v5 migration); this event carries a schema variant + drift guard only.
+       */
+      type: 'PortEvent';
+      day: number;
+      kind: 'purchased' | 'income' | 'failed';
+      systemId?: number;
+      cost?: number;
+      income?: number;
+      portCount?: number;
+      failReason?: PortEventFailReason;
+    }
   | { type: 'StoryletOffered'; day: number; storyletId: string; scheduled: boolean }
   | {
       type: 'StoryletChoiceResolved';
@@ -806,6 +833,20 @@ export type PlayerAction =
       roleId: string;
       spendDie: number;
     }
+  | {
+      /**
+       * T-1307 · Buy a controlling stake in the local port authority (PRD §9
+       * "ports as purchasable property"). `systemId` names the port and MUST equal
+       * `currentSystemId` (you buy the port you are standing in); it must be a
+       * purchasable core port (content `isPurchasablePort`). `spendDie` is the die
+       * the action costs (die-costed like Shipyard). Needs the purchase price and
+       * a stake not already owned. RESOLVER: actions/port.ts `resolvePortPurchase`.
+       */
+      type: 'Port';
+      action: 'buy';
+      systemId: number;
+      spendDie: number;
+    }
   | { type: 'Wait' };
 
 export type NpcActionType =
@@ -964,6 +1005,40 @@ export interface CrewMember {
   hiredDay: number;
 }
 
+/**
+ * T-1307 · One owned port stake (PRD §9 "ports as purchasable property", canon
+ * from 1991). MINIMAL by design: only the content `systemId` and the day bought
+ * are stored — the purchase price, per-dusk income and alliance are looked up from
+ * content (`PURCHASABLE_PORTS_BY_SYSTEM`) every time they're needed, never
+ * denormalized onto the save, so the tuning stays data. FOUNDATION-ORIGINAL: the
+ * foundation RULES of record (f2f95fa9) have no port-buying code, so this whole
+ * type is a T-1307 addition (see content ports.ts for the tuning + the
+ * foundation-divergence note). READERS: actions/port.ts `portDuskIncome` (the
+ * dusk-economy accrual day.ts endDay calls), actions/port.ts `resolvePortPurchase`
+ * / `quotePort` (buy + preview), the wire (the purchase + income WireEntries), and
+ * — via the port's content `alliance` tag — T-1503's Warlord Confederation
+ * questline (the named FUTURE reader). Surfaced to the player by T-1405 (named).
+ */
+export interface PortStake {
+  /** Content core-system id (1–14) into PURCHASABLE_PORTS_BY_SYSTEM. The income /
+   *  price / alliance are resolved from this. */
+  systemId: number;
+  /** Dusk day the stake was bought (flavor + T-1405 ledger display). */
+  purchaseDay: number;
+}
+
+/** T-1307 · The typed refusal reasons a `Port` buy can resolve to (the
+ *  `PortEvent{failed}.failReason` set; also the `quotePort` failure set). Kept as
+ *  a named alias so the resolver/preview reference one source of truth. */
+export type PortEventFailReason =
+  | 'no-die'
+  | 'invalid-die-index'
+  | 'die-already-spent'
+  | 'not-at-port'
+  | 'not-purchasable'
+  | 'already-owned'
+  | 'insufficient-credits';
+
 export interface PlayerState {
   credits: number;
   /** Outstanding Merchant Guild debt — a ledger entry, NOT negative credits.
@@ -984,6 +1059,16 @@ export interface PlayerState {
    *  day.ts endDay charges the wage upkeep; actions/crew.ts hires/dismisses;
    *  the sim protocol + veteran policy consume it; T-1405 surfaces it. */
   crew: CrewMember[];
+  /** T-1307 · Owned port stakes — purchasable property (PRD §9). A new persistent
+   *  field (v4→v5 save migration + round-trip test ship with it). Each stake
+   *  accrues per-dusk launch-fee income, modulated by a live regional era event.
+   *  READERS: actions/port.ts `portDuskIncome` (dusk-economy accrual, called by
+   *  day.ts endDay); actions/port.ts `resolvePortPurchase` / `quotePort` (buy +
+   *  preview); the wire (purchase + income WireEntries); carried through succession
+   *  (legacy.ts) like the debt/loan; T-1503's Warlord Confederation questline reads
+   *  it via each port's content `alliance` tag (named future reader); T-1405
+   *  surfaces it. */
+  ports: PortStake[];
   stats: StatBlock;
   tier: PowerTier;
   currentSystemId: number;

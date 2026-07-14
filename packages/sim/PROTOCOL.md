@@ -119,6 +119,7 @@ A compact, agent-facing view — deliberately **not** the raw `GameState`. Field
 | `rerollsRemaining`   | Re-roll charges left today (from a re-roll crew member); `0` with none. Spend via a `Reroll` action. |
 | `crew`               | Hired crew, by role id — the dice-progression source (T-1306: `extra-die` / `reroll` / `floor`). |
 | `crewCapacity`       | Cabin berths (the hiring cap; grows with cabin strength).           |
+| `ports`              | Owned port stakes, by system id — purchasable property (T-1307: each accrues per-dusk launch-fee income). |
 | `activeContract`     | The contract in the hold (`{ destination, destinationName, cargoType, payment, pods }`) or `null`. |
 | `encounter`          | Active interceptor (`{ id, interceptorId, interceptorName, tier, round, enemyHull, routeDangerLevel }`) or `null`. Blocks trade/travel/shipyard/explore. |
 | `manifestBoard`      | Signable contracts: `{ index, destination, destinationName, cargoType, payment, pods, haggled }[]`. |
@@ -150,8 +151,9 @@ interface LegalActions {
   `['start-day']`. No `PlayerAction` is legal until the day starts.
 - **DAY, no encounter**: trade (buy-fuel / sign-contract / haggle / pay-debt),
   travel, explore, shipyard, visit-hangout, crew (hire while a berth is free /
-  dismiss while crew aboard), reroll (while a charge is banked), and each eligible
-  storylet choice — gated by dice, fuel, berths, and board state. `lifecycle` is
+  dismiss while crew aboard), reroll (while a charge is banked), port (buy a stake
+  at a purchasable core port you don't already own), and each eligible storylet
+  choice — gated by dice, fuel, berths, and board state. `lifecycle` is
   `['end-day']`.
 - **DAY, active encounter**: **only** `Combat` (trade/travel/shipyard/explore are
   omitted — the engine refuses them with a typed `ActionBlocked`). `lifecycle` is
