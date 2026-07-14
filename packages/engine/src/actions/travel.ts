@@ -25,6 +25,7 @@ import { check, spendDie } from '../dice.js';
 import { jumpFuelCost } from '../economy.js';
 import { eraDangerDelta } from '../era.js';
 import { navBonus } from '../components.js';
+import { applyPatrolContrabandScan } from './patrol.js';
 
 function clampDanger(value: number): RouteDangerLevel {
   return Math.max(1, Math.min(5, value)) as RouteDangerLevel;
@@ -446,6 +447,13 @@ export function resolveTravel(
         interrupted: true,
       });
       events.push({ type: 'EncounterStarted', encounter });
+      // T-1305 · fiction order (interdiction → scan): a PATROL that interdicts a
+      // player carrying illicit cargo rolls a GUILE scan (PRD §7.2). The added
+      // rng.d20() fires ONLY for PATROL + carrying — a scenario no pre-T-1305
+      // replay golden exercises (contraband contracts are T-1104 and the
+      // pod-through-patrol path is new), so no existing golden shifts. If a
+      // future golden trips on it, regenerate it (never suppress).
+      applyPatrolContrabandScan(nextState, encounter, rng, events);
     } else if (result.success) {
       nextState.player.currentSystemId = destination;
       recordVisitedSystem(nextState, destination);

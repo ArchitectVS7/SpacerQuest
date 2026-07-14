@@ -74,6 +74,10 @@ const T1301_STORYLET_IDS = ['veteran.first-lane'] as const;
 // first storylet delivered by renown rank rather than day/system/cargo.
 const T1302_STORYLET_IDS = ['veteran.guild-recognition'] as const;
 
+// T-1305 · the Smuggler Ray fence storylets — PRD §7.5's "third out" for a
+// sealed pod / Contraband contract, appended after the T-1302 beat.
+const T1305_STORYLET_IDS = ['fence.ray.sealed-pod', 'fence.ray.contraband-cargo'] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -92,11 +96,16 @@ describe('storylet content validation', () => {
     for (const id of T1302_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1305 Smuggler Ray fence storylets loaded and validated.
+    for (const id of T1305_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
         T1301_STORYLET_IDS.length +
-        T1302_STORYLET_IDS.length,
+        T1302_STORYLET_IDS.length +
+        T1305_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);

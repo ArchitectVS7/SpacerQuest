@@ -316,13 +316,34 @@ export function generateManifestBoard(
  * free (asserted in economy.test.ts) with zero risk of desync against a
  * redundant boolean.
  *
- * READER: T-1305 patrol scans. A patrol boarding calls this to decide whether to
- * roll a GUILE check against the player for carrying illegal cargo (PRD §7.2:
- * "patrol captains roll GUILE checks against smugglers"). Until T-1305 wires the
- * boarding consequence, this is the single predicate that surfacing task will
- * read — it is the named reader of the carrying state this task sets.
+ * READER: T-1305 patrol scans, via `isCarryingIllicit` below. A patrol boarding
+ * calls that predicate (which unions this with the derelict-pod flag) to decide
+ * whether to roll a GUILE scan against the player for carrying illegal cargo
+ * (PRD §7.2: "patrol captains roll GUILE checks against smugglers"). As of
+ * T-1305 the boarding consequence exists (engine actions/patrol.ts), so this
+ * carrying state is now CONSUMED, not merely declared.
  */
 export function isCarryingContraband(state: GameState): boolean {
   const c = state.player.activeContract;
   return !!c && CARGO_TYPES[c.cargoType]?.isContraband === true;
+}
+
+/**
+ * T-1305 · The unified "is the player holding illicit goods a patrol would
+ * scan for" predicate. Unions the TWO contraband sources the game can put in
+ * your hold:
+ *   1. a type-10 Contraband CONTRACT (T-1104) — `isCarryingContraband` above; and
+ *   2. the derelict SEALED POD — the `signal.contraband.carrying` flag set by the
+ *      `derelict.sealed-pod` storylet's "take it" choice. That flag had NO reader
+ *      before T-1305 (the task's core gap: "take it" was strictly dominant); this
+ *      predicate is finally it.
+ *
+ * READER: `applyPatrolContrabandScan` (engine actions/patrol.ts) — the patrol
+ * GUILE scan fires only when this is true. Every branch that mutates hold state
+ * on a caught scan (null the contract / clear the pod flag) checks the two
+ * sources INDEPENDENTLY, so this union predicate is a gate, not a source of
+ * truth about which cargo to confiscate.
+ */
+export function isCarryingIllicit(state: GameState): boolean {
+  return isCarryingContraband(state) || state.flags['signal.contraband.carrying'] === true;
 }

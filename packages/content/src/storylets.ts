@@ -1676,4 +1676,104 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // --- Smuggler Ray fences the sealed pod (T-1305) ---
+  // PRD §7.5's "third out": rather than run a sealed derelict pod past the
+  // patrols (and risk a GUILE scan, engine actions/patrol.ts), sell it to
+  // Smuggler Ray off the Ghost Runner. "No roll needed" (§7.5) — a plain choice,
+  // no requirements. Triggers on the pod-carrying flag the `derelict.sealed-pod`
+  // "take it" choice set. The sell choice CLEARS `signal.contraband.carrying`
+  // (removes the scan liability) and sets `fence.ray.dealt`.
+  //
+  // Flag `fence.ray.dealt` READERS: (1) the patrol scan DC — a known fence draws
+  // harder scans (engine actions/patrol.ts, this task), and (2) T-1503's Rebel
+  // reputation (PRD §117 "Sell out Smuggler Ray…"). The DATA literal below uses
+  // the string 'fence.ray.dealt' directly (a data literal can't reference the
+  // FENCE_REP_FLAG const in contraband.ts, which the engine imports); the const
+  // and this literal must stay identical.
+  {
+    id: 'fence.ray.sealed-pod',
+    title: "Ray's Standing Offer",
+    prose:
+      "Smuggler Ray leans out of the Ghost Runner's airlock before you've even cut your engines. \"That pod in your hold — I don't need to see inside to know what it is. Name's good, price is fair, and no captain of mine ever answered a patrol's question about cargo I bought.\" His grin does not reach his eyes.",
+    repeat: 'never',
+    trigger: {
+      flags: [{ name: 'signal.contraband.carrying', exists: true }],
+    },
+    choices: [
+      {
+        id: 'sell-the-pod',
+        label: 'Sell the pod to Ray',
+        prose:
+          "Cut the mag-locks and float the pod across to the Ghost Runner. Ray's credits are clean by the time they hit your account, and the pod is somebody else's problem now.",
+        effects: {
+          // CONTRABAND_POD_FENCE_PRICE (contraband.ts) = 350 — set above the
+          // pod's +300cr "take it" value so fencing is a real out, not a worse one.
+          credits: 350,
+          flags: [
+            { name: 'signal.contraband.carrying', clear: true },
+            // 'fence.ray.dealt' === FENCE_REP_FLAG (contraband.ts); read by the
+            // patrol scan DC (T-1305) and T-1503 Rebel rep.
+            { name: 'fence.ray.dealt', value: true },
+          ],
+          disposition: [{ npcId: 'npc-smuggler-ray', delta: 1 }],
+        },
+      },
+      {
+        id: 'keep-it-bolted',
+        label: 'Keep it bolted down',
+        prose:
+          "Wave Ray off. The pod stays in your hold, and so does the risk — but you owe the Ghost Runner nothing, and your name stays off Ray's ledger.",
+        // No effects: declining changes nothing but the prose. The storylet is
+        // `repeat: 'never'`, so resolving ANY choice marks it completed
+        // (engine storylets.ts isCompletedForNow) and it never re-offers — a
+        // "declined" flag would gate nothing and nothing would read it.
+      },
+    ],
+  },
+
+  // --- Smuggler Ray fences a Contraband cargo run (T-1305) ---
+  // The other face of §7.5's fence out: a live type-10 Contraband CONTRACT
+  // (T-1104) can be dumped to Ray instead of run to its destination past the
+  // patrols. "No roll needed" — plain choice. Selling clears the active contract
+  // (no delivery payment) and sets the shared `fence.ray.dealt` rep flag (same
+  // readers as above: patrol scan DC + T-1503).
+  {
+    id: 'fence.ray.contraband-cargo',
+    title: 'The Ghost Runner Wants Your Load',
+    prose:
+      'Word travels: you\'re carrying the kind of cargo the manifest lies about. Smuggler Ray finds you at the dock. "Running it clean to the buyer?" he asks, amused. "Long way past a lot of patrol scanners. Or you sell it to me right here, and the only log entry is one I burn myself."',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 10 },
+    },
+    choices: [
+      {
+        id: 'fence-the-load',
+        label: 'Fence the load to Ray',
+        prose:
+          "Sign the crates over to Ray at a fence's discount. Less than the buyer would pay — but the buyer would want you to survive the trip, and Ray does not care either way.",
+        effects: {
+          // A fence discount off a delivery payment, in the existing storylet
+          // credit band (~250-400). Book value, no roll (PRD §7.5).
+          credits: 300,
+          cargo: { clearActiveContract: true },
+          // 'fence.ray.dealt' === FENCE_REP_FLAG (contraband.ts); read by the
+          // patrol scan DC (T-1305) and T-1503 Rebel rep.
+          flags: [{ name: 'fence.ray.dealt', value: true }],
+          disposition: [{ npcId: 'npc-smuggler-ray', delta: 1 }],
+        },
+      },
+      {
+        id: 'run-it-clean',
+        label: 'Run it clean',
+        prose:
+          "Wave Ray off and keep the contract. The buyer pays full freight — if you make it there — and your name stays off the Ghost Runner's books.",
+        // No effects: declining keeps the contract as-is. The storylet is
+        // `repeat: 'never'`, so resolving ANY choice marks it completed
+        // (engine storylets.ts isCompletedForNow) and it never re-offers — a
+        // "declined" flag would gate nothing and nothing would read it.
+      },
+    ],
+  },
 ] as const);

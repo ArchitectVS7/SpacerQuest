@@ -6,6 +6,7 @@ export * from './hangout.js';
 export * from './lending.js';
 export * from './systems.js';
 export * from './cargo.js';
+export * from './contraband.js';
 export * from './eraEvents.js';
 export * from './exploration.js';
 export * from './nemesis.js';

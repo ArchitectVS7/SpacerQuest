@@ -211,7 +211,10 @@ export type GameEvent =
         | 'meet'
         // T-1304: defaulting on a Penny Wise loan sours her hard — the grudge is
         // read by the interceptor selection weighting (travel.ts chooseWeighted).
-        | 'loan-default';
+        | 'loan-default'
+        // T-1305: a NAMED patrol captain who catches you smuggling holds a grudge
+        // (engine actions/patrol.ts); read by the same interceptor weighting/talk-DC.
+        | 'contraband-caught';
     }
   | {
       /** A bonded NPC intervened at dusk on the player's behalf (T-106 bond hook). */
@@ -589,7 +592,25 @@ export type GameEvent =
       interceptorId: string;
     }
   | ShipyardEvent
-  | ShipyardFail;
+  | ShipyardFail
+  // T-1305 · patrol contraband scan beats (engine actions/patrol.ts). Serialized
+  // in eventLog (round-trips via the discriminated-union schema below); read by
+  // the patrol wire bucket and T-1405's UI surface.
+  | {
+      type: 'ContrabandScan';
+      encounterId: string;
+      interceptorId: string;
+      caught: boolean;
+      check: CheckResult;
+    }
+  | {
+      type: 'ContrabandConfiscated';
+      encounterId: string;
+      fine: number;
+      creditsRemaining: number;
+      confiscatedContract: boolean;
+      confiscatedPod: boolean;
+    };
 
 export type ShipComponentId =
   'hull' | 'drives' | 'cabin' | 'lifeSupport' | 'weapons' | 'navigation' | 'robotics' | 'shields';

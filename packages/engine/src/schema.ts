@@ -534,6 +534,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
       'meet',
       // T-1304 Penny Wise loan default.
       'loan-default',
+      // T-1305 named-patrol grudge on a caught contraband scan.
+      'contraband-caught',
     ]),
   }),
   z.object({
@@ -900,6 +902,22 @@ const GameEventSchema = z.discriminatedUnion('type', [
     credits: z.number().optional(),
     maxPods: z.number().optional(),
   }),
+  // T-1305 · patrol contraband scan beats (see types.ts GameEvent).
+  z.object({
+    type: z.literal('ContrabandScan'),
+    encounterId: z.string(),
+    interceptorId: z.string(),
+    caught: z.boolean(),
+    check: CheckResultSchema,
+  }),
+  z.object({
+    type: z.literal('ContrabandConfiscated'),
+    encounterId: z.string(),
+    fine: z.number(),
+    creditsRemaining: z.number(),
+    confiscatedContract: z.boolean(),
+    confiscatedPod: z.boolean(),
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -1134,6 +1152,8 @@ const _covEvLegacySuccession: AssertEventKeys<'LegacySuccession'> = true;
 const _covEvEncounterResolved: AssertEventKeys<'EncounterResolved'> = true;
 const _covEvShipyardEvent: AssertEventKeys<'ShipyardEvent'> = true;
 const _covEvShipyardFail: AssertEventKeys<'ShipyardFail'> = true;
+const _covEvContrabandScan: AssertEventKeys<'ContrabandScan'> = true;
+const _covEvContrabandConfiscated: AssertEventKeys<'ContrabandConfiscated'> = true;
 
 void _schemaCoversGameState;
 void _covPlayer;

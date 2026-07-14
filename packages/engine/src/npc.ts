@@ -163,7 +163,9 @@ export function applyDisposition(
     | 'insult'
     | 'meet'
     // T-1304: a Penny Wise loan default sours her standing (one-time).
-    | 'loan-default',
+    | 'loan-default'
+    // T-1305: a NAMED patrol captain who catches you smuggling holds a grudge.
+    | 'contraband-caught',
   events: GameEvent[],
 ): void {
   const npc = state.npcs.find((candidate) => candidate.id === npcId);
