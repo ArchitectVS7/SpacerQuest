@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
 import { applyPlayerAction, startDay } from '../day.js';
-import { quoteShipyard, resolveShipyard } from '../actions/shipyard.js';
+import { maxCargoPodsForShip, quoteShipyard, resolveShipyard } from '../actions/shipyard.js';
 import { createInitialState } from '../state.js';
 import { GameState, PlayerAction, ShipyardFail } from '../types.js';
 
@@ -572,5 +572,17 @@ describe('quoteShipyard (T-308 preview)', () => {
     expect(quote.after.component?.strength).toBe(20);
     // Stronger drives burn less fuel per jump — the curve the pane previews.
     expect(quote.after.fuelPerJump).toBeLessThan(quote.before.fuelPerJump);
+  });
+
+  // T-1206 completeness gate — the Titanium Hull was reader-tested only at the
+  // purchase (cargoPods bumped on install). This asserts the standing reader,
+  // maxCargoPodsForShip (consumed by the buy-cargo-pods cap and ShipPreview),
+  // reads hasTitaniumHull: a fitted Titanium hull raises the serviceable capacity.
+  it('TITANIUM_HULL raises serviceable cargo capacity (maxCargoPodsForShip reader)', () => {
+    const state = shipyardState();
+    const before = maxCargoPodsForShip(state);
+    state.player.ship.hasTitaniumHull = true;
+    const after = maxCargoPodsForShip(state);
+    expect(after).toBeGreaterThan(before);
   });
 });

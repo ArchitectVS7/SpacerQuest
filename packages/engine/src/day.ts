@@ -11,7 +11,7 @@ import {
 import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
 import { SeededRng } from './rng.js';
 import { rollDawnHand } from './dice.js';
-import { lifeSupportCritical } from './components.js';
+import { autoRepairRegen, lifeSupportCritical } from './components.js';
 import { applySuccession } from './legacy.js';
 import { applyDisposition, resolveNpcDay } from './npc.js';
 import { generateManifestBoard, localFuelPrice, syncMaxFuel } from './economy.js';
@@ -337,6 +337,38 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         dayRng.fork(`encounter-dusk-${nextState.encounter.id}-${nextState.encounter.round}`),
       ),
     );
+  }
+
+  // T-1206 AUTO_REPAIR → dusk condition regen (the named reader for
+  // `hasAutoRepair`, components.ts `autoRepairRegen`). PORTED FROM foundation
+  // `applyAutoRepair`: the module patches each fitted system (hull excluded) up by
+  // AUTO_REPAIR_REGEN overnight. Pure, no rng — so it consumes NO fork and cannot
+  // perturb the dusk rng stream; every existing golden (all built on ships without
+  // the module) is byte-identical.
+  //
+  // ORDERING: deliberately runs AFTER the encounter dusk pressure above (which may
+  // have driven a component to 0 this very dusk — the module then heals that fresh
+  // damage) and BEFORE the life-support survival gate below. Healing lifeSupport
+  // 0→1 here lets the module rescue the ship from the dusk GRIT survival roll —
+  // faithful to foundation, where Auto-Repair repairs life support, and a legible
+  // module benefit. The deliberate consequence: when the module lifts lifeSupport
+  // off 0, the `life-support-${day}` rng fork below is NOT taken (a fork advances
+  // the parent rng), which only ever happens when `hasAutoRepair` is true — so no
+  // existing golden (module absent) is affected.
+  if (nextState.player.ship.hasAutoRepair) {
+    const { updates, repaired } = autoRepairRegen(nextState.player.ship);
+    for (const id of repaired) {
+      nextState.player.ship[id].condition = updates[id]!;
+    }
+    if (repaired.length > 0) {
+      events.push({
+        type: 'WireEntry',
+        day: nextState.day,
+        message: `Auto-Repair module restored condition to ${repaired.length} system${
+          repaired.length === 1 ? '' : 's'
+        } overnight.`,
+      });
+    }
   }
 
   // T-1205 lifeSupport → survival reader. Life support driven to condition 0 —

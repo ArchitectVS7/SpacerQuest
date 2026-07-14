@@ -63,3 +63,45 @@ export const CREW_PER_CABIN_STRENGTH = 10;
  *  not a death sentence, matching foundation's "damaged life support is
  *  dangerous." Reader: components.ts `lifeSupportCritical` gate + day.ts. */
 export const LIFE_SUPPORT_SURVIVAL_DC = 10;
+
+/**
+ * T-1206 · Special-equipment reader tuning — DATA for the four purchasable,
+ * renown-gated modules (CLOAKER / AUTO_REPAIR / STAR_BUSTER / ARCH_ANGEL) that
+ * v0.1 made *reachable* but wired to no rule. Each constant below is read by the
+ * named engine reader that finally makes its module load-bearing. Same
+ * baseline-subtraction discipline as the component block above: a ship WITHOUT
+ * the module reproduces the pre-T-1206 numbers exactly (the flags default false),
+ * so no existing golden moves.
+ */
+
+/** STAR_BUSTER → extra hull points a WINNING fight volley removes when the
+ *  Star-Buster siege weapon is fitted, on top of `weaponVolleyDamage`. FOUNDATION
+ *  (f2f95fa9:foundation/lore/User-Manual.md §"Star-Buster") makes STAR-BUSTER++
+ *  the top-tier weapon; foundation had no d20 combat resolver, so the magnitude is
+ *  engine-original tuning (PRD-REIMAGINED wins on numbers; T-1603 owns canonical
+ *  targets). Reader: components.ts `weaponVolleyDamage`, consumed by combat.ts
+ *  `resolveCombat` fight branch. */
+export const STAR_BUSTER_VOLLEY_BONUS = 2;
+
+/** ARCH_ANGEL → the shield-mitigation FLOOR the Arch-Angel guarantees regardless
+ *  of the fitted shield tier. Must be <= MAX_SHIELD_MITIGATION (2, in engine
+ *  components.ts) so a nat-20 (raw 3) still penetrates for >= 1 and the T-1205
+ *  "hull damageable on any round" invariant survives. FOUNDATION makes ARCH-ANGEL++
+ *  the top shield; magnitude is engine-original tuning. Reader: components.ts
+ *  `shieldMitigation`, consumed by combat.ts `applyEnemyPressure`. */
+export const ARCH_ANGEL_MITIGATION_FLOOR = 2;
+
+/** AUTO_REPAIR → condition points restored to each damaged component at dusk.
+ *  PORTED FROM f2f95fa9:foundation/rules/combat.ts `applyAutoRepair` (the
+ *  `condition + 1` regen path). Reader: components.ts `autoRepairRegen`, consumed
+ *  by day.ts `endDay`. */
+export const AUTO_REPAIR_REGEN = 1;
+
+/** CLOAKER → multiplier applied to the realized encounter chance when Morton's
+ *  Cloaking Device is fitted. PORTED-IN-SPIRIT from f2f95fa9:foundation/rules/
+ *  combat.ts `attemptCloakDuringTravel`. DIVERGENCE: foundation fully SKIPPED the
+ *  fight for cargo/smuggling runs when cloaked; the engine expresses "the ship
+ *  slips past" as a probabilistic reduction of the realized encounter rate so some
+ *  encounters still fire (PRD wins on numbers). Value is engine-original tuning;
+ *  T-1603 owns canonical targets. Reader: travel.ts `generateEncounter`. */
+export const CLOAK_ENCOUNTER_MULTIPLIER = 0.4;

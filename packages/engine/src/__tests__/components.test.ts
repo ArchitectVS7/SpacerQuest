@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Stat } from '@spacerquest/content';
+import { STAR_BUSTER_VOLLEY_BONUS } from '@spacerquest/content';
 import {
+  autoRepairRegen,
   crewCapacity,
   effectiveScore,
   lifeSupportCritical,
@@ -11,7 +13,7 @@ import {
 } from '../components.js';
 import { resolveCombat } from '../actions/combat.js';
 import { resolveShipyard, quoteShipyard } from '../actions/shipyard.js';
-import { resolveTravel } from '../actions/travel.js';
+import { generateEncounter, resolveTravel } from '../actions/travel.js';
 import { resolveExploration } from '../actions/exploration.js';
 import { endDay } from '../day.js';
 import { SeededRng } from '../rng.js';
@@ -409,6 +411,189 @@ describe('T-1205 · lifeSupport reader', () => {
       }
     }
     expect(found).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1206 · special equipment readers — CLOAKER / AUTO_REPAIR / STAR_BUSTER /
+// ARCH_ANGEL were purchasable + renown-gated + priced since v0.1 but read by no
+// rule. Each block below proves the module is now load-bearing through the real
+// resolver/dusk hook, plus a unit assert on the pure reader.
+// ---------------------------------------------------------------------------
+describe('T-1206 · STAR_BUSTER reader', () => {
+  it('weaponVolleyDamage adds the siege bonus when the Star-Buster is fitted', () => {
+    expect(weaponVolleyDamage(junker())).toBe(1);
+    expect(weaponVolleyDamage({ ...junker(), hasStarBuster: true })).toBe(
+      1 + STAR_BUSTER_VOLLEY_BONUS,
+    );
+  });
+
+  it('A/B: the Star-Buster kills a fixed-hull interceptor in strictly fewer volleys', () => {
+    // Player always hits (GUNS 20 vs tier-1 DC 11); interceptor never lands a hit
+    // (GUNS 0 vs raised GRIT). Junker weapons both runs — the ONLY variable is the
+    // Star-Buster flag.
+    const volleysToKill = (hasStarBuster: boolean): number => {
+      let state = readyState();
+      state.player.stats[Stat.GUNS] = 20;
+      state.player.stats[Stat.GRIT] = 20;
+      state.player.ship.hasStarBuster = hasStarBuster;
+      state.encounter = fixtureEncounter({ enemyHull: 6 });
+      let volleys = 0;
+      while (state.encounter && volleys < 20) {
+        state.player.dawnHand = {
+          dice: [20, 20, 20, 20, 20],
+          spent: [false, false, false, false, false],
+        };
+        const result = resolveCombat(
+          state,
+          { type: 'Combat', stance: 'fight', targetId: 'anon-pirate-1', spendDie: volleys % 5 },
+          new SeededRng(volleys + 1),
+        );
+        state = result.state;
+        volleys += 1;
+      }
+      return volleys;
+    };
+    const withoutBuster = volleysToKill(false); // damage 1 → 6 volleys
+    const withBuster = volleysToKill(true); // damage 1 + bonus → fewer
+    expect(withoutBuster).toBe(6);
+    expect(withBuster).toBeLessThan(withoutBuster);
+  });
+});
+
+describe('T-1206 · ARCH_ANGEL reader', () => {
+  it('shieldMitigation floors at the Arch-Angel value yet stays under the nat-20 raw', () => {
+    // Junker shields (score 1) mitigate 0 raw, but the Arch-Angel guarantees a
+    // floor. The floor is still capped at 2 so a nat-20 (raw 3) penetrates for >=1.
+    expect(shieldMitigation(junker())).toBe(0);
+    expect(shieldMitigation({ ...junker(), hasArchAngel: true })).toBeGreaterThan(0);
+    expect(
+      shieldMitigation({ ...junker(), shields: tier(9), hasArchAngel: true }),
+    ).toBeLessThanOrEqual(2);
+  });
+
+  it('A/B: the Arch-Angel takes strictly less total condition damage over a hit sweep', () => {
+    // A strong interceptor (GUNS 20) lands nearly every round; the player fails a
+    // talk each round so enemy pressure lands. Junker shields both runs — the ONLY
+    // variable is the Arch-Angel flag.
+    const totalConditionLost = (hasArchAngel: boolean): number => {
+      let state = readyState();
+      state.player.stats[Stat.TRADE] = 0; // talk always fails vs DC 11
+      state.player.ship.hasArchAngel = hasArchAngel;
+      state.encounter = fixtureEncounter({
+        enemyHull: 9999,
+        interceptor: {
+          ...fixtureEncounter().interceptor,
+          stats: { PILOT: 1, GUNS: 20, TRADE: 0, GRIT: 0, GUILE: 1 },
+        },
+      });
+      const before = JSON.parse(JSON.stringify(state.player.ship)) as ShipState;
+      for (let round = 0; round < 40 && state.encounter; round += 1) {
+        state.player.dawnHand = { dice: [2], spent: [false] }; // die 2 → talk fails
+        const result = resolveCombat(
+          state,
+          { type: 'Combat', stance: 'talk', targetId: 'anon-pirate-1', spendDie: 0 },
+          new SeededRng(round + 1),
+        );
+        state = result.state;
+      }
+      const COMPONENTS = [
+        'hull',
+        'drives',
+        'weapons',
+        'shields',
+        'navigation',
+        'lifeSupport',
+        'robotics',
+        'cabin',
+      ] as const;
+      let lost = 0;
+      for (const id of COMPONENTS) lost += before[id].condition - state.player.ship[id].condition;
+      return lost;
+    };
+    const withoutAngel = totalConditionLost(false);
+    const withAngel = totalConditionLost(true);
+    expect(withoutAngel).toBeGreaterThan(0);
+    expect(withAngel).toBeLessThan(withoutAngel);
+  });
+});
+
+describe('T-1206 · AUTO_REPAIR reader', () => {
+  it('autoRepairRegen restores +1 to damaged fitted components and excludes the hull', () => {
+    const ship = junker();
+    ship.drives = { strength: 10, condition: 5 };
+    ship.hull = { strength: 1, condition: 3 }; // damaged hull — must be untouched
+    ship.weapons = { strength: 10, condition: 9 }; // full condition — no regen
+    const { updates, repaired } = autoRepairRegen(ship);
+    expect(updates.drives).toBe(6);
+    expect(repaired).toContain('drives');
+    expect(repaired).not.toContain('hull'); // hull excluded (foundation comp list)
+    expect(repaired).not.toContain('weapons'); // condition 9 untouched
+    expect(updates.hull).toBeUndefined();
+  });
+
+  it('A/B: a fitted Auto-Repair regenerates a damaged system at dusk', () => {
+    const runDusk = (hasAutoRepair: boolean): number => {
+      const state = createInitialState(11);
+      state.dayPhase = DayPhase.DAY;
+      state.player.dawnHand = { dice: [20], spent: [true] };
+      state.player.ship.hasAutoRepair = hasAutoRepair;
+      state.player.ship.drives = { strength: 10, condition: 5 };
+      const { state: next } = endDay(state);
+      return next.player.ship.drives.condition;
+    };
+    expect(runDusk(true)).toBe(6); // +AUTO_REPAIR_REGEN
+    expect(runDusk(false)).toBe(5); // untouched
+  });
+
+  it('a fitted Auto-Repair rescues critical life support from the dusk survival gate', () => {
+    // lifeSupport at 0 would face the GRIT survival roll; the module heals it 0→1
+    // first, so no LifeSupportCritical/ShipLost fires. Without the module the same
+    // setup rolls the gate and can emit LifeSupportCritical.
+    const withModule = createInitialState(3);
+    withModule.dayPhase = DayPhase.DAY;
+    withModule.player.dawnHand = { dice: [20], spent: [true] };
+    withModule.player.ship.hasAutoRepair = true;
+    withModule.player.ship.lifeSupport.condition = 0;
+    const rescued = endDay(withModule);
+    expect(rescued.state.player.ship.lifeSupport.condition).toBe(1);
+    expect(rescued.events.some((e) => e.type === 'LifeSupportCritical')).toBe(false);
+    expect(rescued.events.some((e) => e.type === 'ShipLost')).toBe(false);
+
+    // Same setup, no module: the survival gate is reached (LifeSupportCritical
+    // fires) across a seed sweep.
+    let sawGate = false;
+    for (let seed = 1; seed <= 50 && !sawGate; seed += 1) {
+      const state = createInitialState(seed);
+      state.dayPhase = DayPhase.DAY;
+      state.player.dawnHand = { dice: [20], spent: [true] };
+      state.player.ship.lifeSupport.condition = 0;
+      const { events } = endDay(state);
+      if (events.some((e) => e.type === 'LifeSupportCritical')) sawGate = true;
+    }
+    expect(sawGate).toBe(true);
+  });
+});
+
+describe('T-1206 · CLOAKER reader', () => {
+  it('A/B: a fitted cloaker lowers the realized encounter rate over a seed sweep', () => {
+    const measure = (hasCloaker: boolean): number => {
+      const state = readyState();
+      state.era = 'VETERAN'; // measure against the undamped table rate
+      state.player.currentSystemId = 1;
+      state.player.ship.hasCloaker = hasCloaker;
+      let hits = 0;
+      for (let seed = 1; seed <= 1000; seed += 1) {
+        if (generateEncounter(state, 1, 2, 50, new SeededRng(seed))) hits += 1;
+      }
+      return hits / 1000;
+    };
+    const baseRate = measure(false);
+    const cloakedRate = measure(true);
+    expect(baseRate).toBeGreaterThan(0);
+    // Same single rng draw per seed with a lower threshold → the cloaked hit-set is
+    // a strict subset, so the realized rate is strictly lower.
+    expect(cloakedRate).toBeLessThan(baseRate);
   });
 });
 

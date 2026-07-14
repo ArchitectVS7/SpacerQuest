@@ -175,6 +175,18 @@ describe('economy', () => {
       expect(calculateFuelCapacity(0, 9)).toBe(0);
       expect(calculateFuelCapacity(1, 0)).toBe(0);
     });
+
+    // T-1206 completeness gate — every purchasable module has a reader test. The
+    // Trans-Warp drive was purchasable + priced but only ever checked here at the
+    // fuel-cost reader; this asserts its consumption. A +10 effective drive
+    // strength cuts per-unit fuel, so a jump costs strictly less with the drive.
+    it('TRANS_WARP drive reduces jump fuel cost (jumpFuelCost reads hasTransWarp)', () => {
+      const drives = { strength: 5, condition: 9 }; // low strength → the +10 moves perUnit
+      const dist = 10;
+      const withoutWarp = jumpFuelCost(drives, dist, false);
+      const withWarp = jumpFuelCost(drives, dist, true);
+      expect(withWarp).toBeLessThan(withoutWarp);
+    });
   });
 
   // T-1104: Rim & contraband contract economy. Before this task rollContract

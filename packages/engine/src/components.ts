@@ -1,11 +1,14 @@
 import {
+  ARCH_ANGEL_MITIGATION_FLOOR,
+  AUTO_REPAIR_REGEN,
   CREW_PER_CABIN_STRENGTH,
   NAV_BONUS_DIVISOR,
   ROBOTICS_REPAIR_DIVISOR,
   SHIELD_MITIGATION_DIVISOR,
+  STAR_BUSTER_VOLLEY_BONUS,
   WEAPON_DAMAGE_DIVISOR,
 } from '@spacerquest/content';
-import { ComponentState, ShipState } from './types.js';
+import { ComponentState, ShipComponentId, ShipState } from './types.js';
 
 /**
  * T-1205 · Ship-component READERS. Before this module six of the eight ship
@@ -45,10 +48,19 @@ export function effectiveScore(component: ComponentState): number {
  * so upgraded guns shorten time-to-kill. Clamped to ≥ 1 so even a battered gun
  * still chips the enemy on a win (preserving the "a hit always lands 1" floor).
  *
- * READER OF `weapons`. CONSUMED BY: combat.ts `resolveCombat` (the fight branch).
+ * T-1206: a fitted STAR_BUSTER adds a flat siege bonus ON TOP of the weapon fit,
+ * so the top-tier siege weapon shortens time-to-kill further — the module was
+ * purchasable since v0.1 but read by nothing until this reader. A ship WITHOUT the
+ * Star-Buster (the default, `hasStarBuster` false) is byte-identical to before.
+ *
+ * READER OF `weapons` AND `hasStarBuster`. CONSUMED BY: combat.ts `resolveCombat`
+ * (the fight branch).
  */
 export function weaponVolleyDamage(ship: ShipState): number {
-  return Math.max(1, 1 + Math.floor((effectiveScore(ship.weapons) - 1) / WEAPON_DAMAGE_DIVISOR));
+  return (
+    Math.max(1, 1 + Math.floor((effectiveScore(ship.weapons) - 1) / WEAPON_DAMAGE_DIVISOR)) +
+    (ship.hasStarBuster ? STAR_BUSTER_VOLLEY_BONUS : 0)
+  );
 }
 
 /**
@@ -63,12 +75,22 @@ export function weaponVolleyDamage(ship: ShipState): number {
  * shields" and guaranteeing the hull can still be killed no matter how strong the
  * shields (the T-1205 "hull damageable on any round" invariant survives upgrades).
  *
- * READER OF `shields`. CONSUMED BY: combat.ts `applyEnemyPressure`.
+ * T-1206: a fitted ARCH_ANGEL raises the mitigation to at least
+ * ARCH_ANGEL_MITIGATION_FLOOR — the top-tier shield guarantees a floor of absorb
+ * regardless of the shield tier's raw value, making the previously-inert module
+ * load-bearing. The floor is still passed through the same MAX_SHIELD_MITIGATION
+ * cap (the content constant is <= the cap), so a nat-20 (raw 3) still penetrates
+ * for >= 1 and the hull-killable invariant holds. A ship WITHOUT the Arch-Angel
+ * (default `hasArchAngel` false) is byte-identical to before.
+ *
+ * READER OF `shields` AND `hasArchAngel`. CONSUMED BY: combat.ts
+ * `applyEnemyPressure`.
  */
 const MAX_SHIELD_MITIGATION = 2;
 export function shieldMitigation(ship: ShipState): number {
   const raw = Math.floor((effectiveScore(ship.shields) - 1) / SHIELD_MITIGATION_DIVISOR);
-  return Math.max(0, Math.min(MAX_SHIELD_MITIGATION, raw));
+  const floored = ship.hasArchAngel ? Math.max(raw, ARCH_ANGEL_MITIGATION_FLOOR) : raw;
+  return Math.max(0, Math.min(MAX_SHIELD_MITIGATION, floored));
 }
 
 /**
@@ -128,4 +150,44 @@ export function crewCapacity(ship: ShipState): number {
  */
 export function lifeSupportCritical(ship: ShipState): boolean {
   return ship.lifeSupport.condition === 0;
+}
+
+/**
+ * AUTO_REPAIR → dusk condition regeneration. PORTED FROM
+ * f2f95fa9:foundation/rules/combat.ts `applyAutoRepair`: each fitted component
+ * (strength > 0) below full condition regenerates AUTO_REPAIR_REGEN condition
+ * overnight, clamped to the 9 ceiling. Foundation's component list is the seven
+ * FITTED systems with the HULL EXCLUDED — the Auto-Repair module patches systems,
+ * not the hull itself — and this reader mirrors that list exactly.
+ *
+ * Pure: no rng, no I/O; returns the condition deltas and the list of repaired
+ * components so the caller can apply them and narrate. A ship WITHOUT the module
+ * never calls this (day.ts guards on `hasAutoRepair`).
+ *
+ * READER OF `hasAutoRepair`. CONSUMED BY: day.ts `endDay`.
+ */
+const AUTO_REPAIR_COMPONENTS: readonly ShipComponentId[] = [
+  'drives',
+  'cabin',
+  'lifeSupport',
+  'weapons',
+  'navigation',
+  'robotics',
+  'shields',
+];
+
+export function autoRepairRegen(ship: ShipState): {
+  updates: Partial<Record<ShipComponentId, number>>;
+  repaired: ShipComponentId[];
+} {
+  const updates: Partial<Record<ShipComponentId, number>> = {};
+  const repaired: ShipComponentId[] = [];
+  for (const id of AUTO_REPAIR_COMPONENTS) {
+    const component = ship[id];
+    if (component.strength > 0 && component.condition < 9) {
+      updates[id] = Math.min(9, component.condition + AUTO_REPAIR_REGEN);
+      repaired.push(id);
+    }
+  }
+  return { updates, repaired };
 }

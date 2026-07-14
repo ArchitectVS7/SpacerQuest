@@ -1,6 +1,7 @@
 import {
   ANONYMOUS_INTERCEPTORS,
   AnonymousInterceptorKind,
+  CLOAK_ENCOUNTER_MULTIPLIER,
   INTERCEPT_FRIEND_WEIGHT,
   INTERCEPT_GRUDGE_WEIGHT,
   INTERCEPT_MIN_WEIGHT,
@@ -275,10 +276,21 @@ export function generateEncounter(
   rng: SeededRng,
 ): EncounterState | null {
   const { routeDangerLevel, routeDangerChance } = calculateRouteDanger(state, origin, destination);
-  const effectiveChance =
+  let effectiveChance =
     state.era === 'TOUR_ONE'
       ? routeDangerChance * TOUR_ONE_ENCOUNTER_MULTIPLIER
       : routeDangerChance;
+  // T-1206 CLOAKER → realized-encounter-rate reader. This function is the named
+  // reader of `hasCloaker`; a fitted Morton's Cloaking Device damps the realized
+  // encounter chance by CLOAK_ENCOUNTER_MULTIPLIER (content). FOUNDATION DIVERGENCE
+  // — `attemptCloakDuringTravel` SKIPPED the fight outright for cargo/smuggling
+  // runs; the engine instead damps the rate so a cloaked ship slips past MORE jumps
+  // while some interdictions still fire (PRD wins on numbers). The encounter draw
+  // below stays exactly one `rng.next()`, so a ship WITHOUT the cloaker (the
+  // default) is byte-identical: every existing encounter/travel golden is unmoved.
+  if (state.player.ship.hasCloaker) {
+    effectiveChance *= CLOAK_ENCOUNTER_MULTIPLIER;
+  }
   const encounterRoll = rng.next();
   if (encounterRoll >= effectiveChance) {
     return null;
