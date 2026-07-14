@@ -21,6 +21,20 @@ export interface StarSystem {
    * Contraband READER for the carrying consequence is T-1305 patrol scans.
    */
   allowsContraband?: boolean;
+  /**
+   * T-1303 · Whether this port hosts a Spacers Hangout the player can visit.
+   * The Hangout is a core PRD verb ("Visit the Hangout", §7) and the site of the
+   * §7.3 / §7.5 sample turns ("The Spacers Hangout, Sun-3"). This flag is the
+   * extensible GATE: only systems flagged here surface the die-costed
+   * `VisitHangout` player action (Spacer's Dare + social beats + rumor slot).
+   * Set true on Sun-3 first (the sample-turn hub, and the player's start system,
+   * so the venue is reachable on day 1); more hubs join later. READER: the
+   * hangout gate in engine `day.ts` applyPlayerAction, which emits an
+   * ActionBlocked{reason:'no-hangout'} at un-flagged systems, and the UGT
+   * protocol legalActions (`packages/sim/src/protocol.ts`), which only advertises
+   * VisitHangout at a flagged system. Surfaced to the player by T-1404.
+   */
+  hasHangout?: boolean;
 }
 
 // T-1101 · Real 2D starmap geography (authority: PRD-REIMAGINED §9 — "the map:
@@ -50,6 +64,9 @@ export const STAR_SYSTEMS: Record<number, StarSystem> = {
     coordinates: { x: 0, y: 0 },
     fuelBuyPrice: 8,
     fuelSellPrice: 1,
+    // T-1303: the Spacers Hangout of the §7.3 / §7.5 sample turns. Sun-3 is the
+    // player's home port, so the Hangout verb is reachable from day 1.
+    hasHangout: true,
   },
   2: { id: 2, name: 'Aldebaran-1', isRim: false, coordinates: { x: 4, y: 2 } },
   3: { id: 3, name: 'Altair-3', isRim: false, coordinates: { x: 7, y: -1 } },

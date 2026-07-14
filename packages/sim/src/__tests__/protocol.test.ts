@@ -226,6 +226,7 @@ describe('protocol deterministic replay', () => {
       Shipyard: true,
       Storylet: true,
       Explore: true,
+      VisitHangout: true,
       Wait: true,
     } satisfies Record<PlayerAction['type'], true>;
     const expectedTradeSubActions = {
@@ -556,6 +557,49 @@ describe('legal-actions enumerator', () => {
     if (destParam?.kind === 'system-id') {
       expect(destParam.choices.some((id) => isGatedDestination(id))).toBe(true);
     }
+  });
+
+  it('T-1303 · advertises VisitHangout at a Hangout system with an in-system NPC', () => {
+    const state = createInitialState(1); // player at Sun-3 (hasHangout); Iron Vex co-located
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), 5);
+
+    const legal = legalActions(state);
+    const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    // opponentId is enumerated to the ids of NPCs actually in-system.
+    const opponentParam = hangout?.params.opponentId;
+    expect(opponentParam?.kind).toBe('enum');
+    if (opponentParam?.kind === 'enum') {
+      const inSystemIds = state.npcs
+        .filter((npc) => npc.currentSystemId === state.player.currentSystemId)
+        .map((npc) => npc.id);
+      expect(opponentParam.choices).toEqual(inSystemIds);
+      expect(opponentParam.choices).toContain('npc-iron-vex');
+    }
+    expect(hangout?.params.venue.kind).toBe('enum');
+    expect(hangout?.params.spendDie.kind).toBe('die-index');
+  });
+
+  it('T-1303 · does NOT advertise VisitHangout at a non-Hangout system', () => {
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = 2; // Aldebaran-1 — no Hangout
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), 5);
+
+    const legal = legalActions(state);
+    expect(legal.actions.some((action) => action.type === 'VisitHangout')).toBe(false);
+  });
+
+  it('T-1303 · does NOT advertise VisitHangout with no in-system NPC', () => {
+    const state = createInitialState(1); // Sun-3
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), 5);
+    // Scatter every NPC off Sun-3 — no one to face at the tables.
+    for (const npc of state.npcs) npc.currentSystemId = 5;
+
+    const legal = legalActions(state);
+    expect(legal.actions.some((action) => action.type === 'VisitHangout')).toBe(false);
   });
 });
 

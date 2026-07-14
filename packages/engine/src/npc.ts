@@ -150,7 +150,18 @@ export function applyDisposition(
   state: GameState,
   npcId: string,
   delta: number,
-  reason: 'tribute' | 'defeat' | 'player-fled' | 'decay' | 'storylet' | 'contract-sniped',
+  reason:
+    | 'tribute'
+    | 'defeat'
+    | 'player-fled'
+    | 'decay'
+    | 'storylet'
+    | 'contract-sniped'
+    // T-1303 Hangout beats (Dare / befriend / insult / meet) move dealer standing.
+    | 'dare'
+    | 'befriend'
+    | 'insult'
+    | 'meet',
   events: GameEvent[],
 ): void {
   const npc = state.npcs.find((candidate) => candidate.id === npcId);

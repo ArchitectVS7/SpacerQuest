@@ -25,6 +25,7 @@ import {
 } from './actions/combat.js';
 import { resolveShipyard } from './actions/shipyard.js';
 import { resolveExploration } from './actions/exploration.js';
+import { resolveVisitHangout } from './actions/hangout.js';
 import { evaluateDeeds } from './deeds.js';
 import { syncPlayerTier } from './tier.js';
 import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
@@ -151,6 +152,26 @@ export function applyPlayerAction(
     return { state: nextState, events: [blocked] };
   }
 
+  // T-1303 · Hangout gate. A VisitHangout is only legal at a system flagged
+  // `hasHangout` (Sun-3 first, systems.ts). Elsewhere it is a player-possible act,
+  // not malformed input — surface a typed ActionBlocked (mirrors the destination
+  // gate above: refusal logged, no die spent, no RNG fork, dayEventCount not
+  // bumped, no throw). READER of `hasHangout`: this branch (and the sim protocol's
+  // legalActions, which won't advertise VisitHangout at an un-flagged system).
+  if (
+    action.type === 'VisitHangout' &&
+    STAR_SYSTEMS[nextState.player.currentSystemId]?.hasHangout !== true
+  ) {
+    const blocked: GameEvent = {
+      type: 'ActionBlocked',
+      day: nextState.day,
+      actionType: 'VisitHangout',
+      reason: 'no-hangout',
+    };
+    appendEvents(nextState, [blocked]);
+    return { state: nextState, events: [blocked] };
+  }
+
   const dayRng = new SeededRng(nextState.rngState);
   const actionEventIndex = nextState.dayEventCount;
 
@@ -169,6 +190,12 @@ export function applyPlayerAction(
       nextState,
       action,
       dayRng.fork(`action-explore-${actionEventIndex}`),
+    );
+  } else if (action.type === 'VisitHangout') {
+    result = resolveVisitHangout(
+      nextState,
+      action,
+      dayRng.fork(`action-hangout-${actionEventIndex}`),
     );
   } else {
     result = resolveStoryletChoice(
@@ -205,6 +232,8 @@ export function applyPlayerAction(
     resolvedState.day,
     new SeededRng(state.rngState).fork(`wire-nat-day-${actionEventIndex}`),
     resolvedState.npcs,
+    // T-1303: a player Spacer's Dare nat names a co-located NPC as the loser.
+    resolvedState.player.currentSystemId,
   );
   events.push(...natWire);
   resolvedState.dayEventCount = actionEventIndex + events.length;
@@ -662,6 +691,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     nextState.day,
     new SeededRng(state.rngState).fork('wire-nat-dusk'),
     nextState.npcs,
+    nextState.player.currentSystemId,
   );
   events.push(...natWire);
 

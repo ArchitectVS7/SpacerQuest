@@ -28,6 +28,11 @@ export function natWireStories(
   day: number,
   rng: SeededRng,
   npcs: readonly NpcState[],
+  // T-1303: the player's current system. Optional so every existing NPC-actor
+  // call site (day.ts dusk batch) is byte-identical — it is consulted ONLY on a
+  // PLAYER-actor gamble nat (the new Spacer's Dare path), where the winner isn't
+  // in `npcs` and so has no `currentSystemId` of their own to co-locate against.
+  playerSystemId?: number,
 ): GameEvent[] {
   const out: GameEvent[] = [];
 
@@ -42,7 +47,7 @@ export function natWireStories(
     let loserName = '';
     let loserShip = '';
     if (category === 'gamble') {
-      const loser = pickGambleLoser(event.actor, npcs, rng);
+      const loser = pickGambleLoser(event.actor, npcs, rng, playerSystemId);
       if (loser) {
         loserName = loser.name;
         loserShip = NPC_PROFILES.find((p) => p.id === loser.profileId)?.shipName ?? 'ship';
@@ -84,6 +89,10 @@ function classifyCheck(
     switch (actionContext) {
       case 'npc-socialize':
         return 'gamble';
+      // T-1303: the player's Spacer's Dare GUILE roll — same gamble bucket as the
+      // NPC socialize context, so a natted Dare "makes the wire" (PRD §6 sample).
+      case 'gamble':
+        return 'gamble';
       case 'npc-trade':
         return 'trade';
       case 'npc-travel':
@@ -121,18 +130,27 @@ function resolveActorName(actor: string, npcs: readonly NpcState[]): string {
 /** Deterministically choose the rival who loses/wins the ship in a gamble story.
  *  Prefers an NPC in the winner's current system (fiction: they were at the same
  *  Hangout table); falls back to any other NPC. Returns null only when there is
- *  no other NPC at all. */
+ *  no other NPC at all.
+ *
+ *  T-1303: when the winner is the PLAYER (a Spacer's Dare nat, actor === 'Player'),
+ *  the winner isn't in `npcs`, so `winner` is undefined and there is no
+ *  currentSystemId to co-locate against. `playerSystemId` supplies it, so the
+ *  named loser is an NPC actually at the player's Hangout table — honoring "an NPC
+ *  actually present in-system". Without it the Player case falls back to any NPC
+ *  (the pre-T-1303 behavior). The NPC-actor path is untouched (winner found → its
+ *  own currentSystemId used), keeping every existing gamble wire pick byte-identical. */
 function pickGambleLoser(
   winnerId: string,
   npcs: readonly NpcState[],
   rng: SeededRng,
+  playerSystemId?: number,
 ): NpcState | null {
   const winner = npcs.find((n) => n.id === winnerId);
   const others = npcs.filter((n) => n.id !== winnerId);
   if (others.length === 0) return null;
-  const coLocated = winner
-    ? others.filter((n) => n.currentSystemId === winner.currentSystemId)
-    : [];
+  const homeSystemId = winner ? winner.currentSystemId : playerSystemId;
+  const coLocated =
+    homeSystemId !== undefined ? others.filter((n) => n.currentSystemId === homeSystemId) : [];
   const pool = coLocated.length > 0 ? coLocated : others;
   return pool[Math.floor(rng.next() * pool.length)] ?? null;
 }

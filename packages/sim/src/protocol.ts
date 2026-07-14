@@ -15,6 +15,8 @@
 // ---------------------------------------------------------------------------
 
 import {
+  DARE_MAX_WAGER as HANGOUT_DARE_MAX_WAGER,
+  DARE_MIN_WAGER as HANGOUT_DARE_MIN_WAGER,
   EXPLORATION_FUEL_COST,
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
@@ -500,6 +502,30 @@ export function legalActions(state: GameState): LegalActions {
       type: 'Explore',
       params: { spendDie: dieParam },
       note: `Burns ${EXPLORATION_FUEL_COST} fuel; PILOT nav check charts a POI on success.`,
+    });
+  }
+
+  // --- Visit the Hangout (T-1303) ----------------------------------------
+  // Advertised only where the engine's hangout gate (day.ts) will admit it: a
+  // `hasHangout` system with at least one in-system NPC to face and an unspent
+  // die. `opponentId` is enumerated to the ids of NPCs whose SIMULATED position
+  // is the player's system — the exact set resolveVisitHangout accepts (a Dare /
+  // social beat against anyone else is a typed HangoutEvent fail), honoring "an
+  // NPC actually present in-system". `venue` picks the beat; `wager` is the Dare
+  // stake domain. The engine validates the rest on apply.
+  const inSystemNpcIds = state.npcs
+    .filter((npc) => npc.currentSystemId === player.currentSystemId)
+    .map((npc) => npc.id);
+  if (hasDie && STAR_SYSTEMS[player.currentSystemId]?.hasHangout && inSystemNpcIds.length > 0) {
+    actions.push({
+      type: 'VisitHangout',
+      params: {
+        venue: { kind: 'enum', choices: ['dare', 'meet', 'befriend', 'insult', 'rumor'] },
+        opponentId: { kind: 'enum', choices: [...inSystemNpcIds] },
+        wager: { kind: 'int', min: HANGOUT_DARE_MIN_WAGER, max: HANGOUT_DARE_MAX_WAGER },
+        spendDie: dieParam,
+      },
+      note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for 'rumor'. wager applies to 'dare' only and is clamped to what both sides can cover.",
     });
   }
 

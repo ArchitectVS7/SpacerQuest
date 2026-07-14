@@ -169,7 +169,12 @@ export type GameEvent =
         // from `npc-combat` (enemy pressure / run-pursuit) so the wire scanner
         // (wire.ts classifyCheck) routes a nat-20 here to the "miracle burn"
         // retreat bucket instead of the generic combat bucket.
-        | 'retreat';
+        | 'retreat'
+        // T-1303: the PLAYER's Spacer's Dare GUILE roll at the Hangout. Routes a
+        // nat here to the `gamble` wire bucket (wire.ts classifyCheck) — the
+        // player-side twin of the NPC `npc-socialize` context, so a natted Dare
+        // "makes the wire" as a Spacer's Dare story (PRD §6 sample line).
+        | 'gamble';
     }
   | { type: 'FlawCheck'; npcId: string; flaw: string; die: number; dc: number; resisted: boolean }
   | { type: 'NpcAction'; npcId: string; actionDetails: string }
@@ -190,7 +195,20 @@ export type GameEvent =
       npcId: string;
       delta: number;
       disposition: number;
-      reason: 'tribute' | 'defeat' | 'player-fled' | 'decay' | 'storylet' | 'contract-sniped';
+      // T-1303 adds the four Hangout beats ('dare' / 'befriend' / 'insult' /
+      // 'meet') as distinct reasons so a reader (T-1404's pane, the wire, tests)
+      // can attribute a shift to the venue that caused it.
+      reason:
+        | 'tribute'
+        | 'defeat'
+        | 'player-fled'
+        | 'decay'
+        | 'storylet'
+        | 'contract-sniped'
+        | 'dare'
+        | 'befriend'
+        | 'insult'
+        | 'meet';
     }
   | {
       /** A bonded NPC intervened at dusk on the player's behalf (T-106 bond hook). */
@@ -236,10 +254,12 @@ export type GameEvent =
   | {
       type: 'ActionBlocked';
       day: number;
-      actionType: 'Trade' | 'Travel' | 'Shipyard' | 'Storylet' | 'Explore';
+      actionType: 'Trade' | 'Travel' | 'Shipyard' | 'Storylet' | 'Explore' | 'VisitHangout';
       // 'destination-locked' (T-1101): a Travel to a sealed system (Andromeda /
       // special) before the 'nemesis.crossing.unlocked' flag lifts it.
-      reason: 'active-encounter' | 'destination-locked';
+      // 'no-hangout' (T-1303): a VisitHangout at a system without a Spacers
+      // Hangout (hasHangout !== true) — refused with no die spent, no throw.
+      reason: 'active-encounter' | 'destination-locked' | 'no-hangout';
     }
   | {
       /** An Explore nav check succeeded and charted a point of interest
@@ -303,6 +323,34 @@ export type GameEvent =
       type: 'FragmentDecoded';
       day: number;
       fragmentId: string;
+    }
+  | {
+      /**
+       * T-1303 · A player Hangout visit resolved (PRD §7). One event per
+       * `VisitHangout` action, covering every venue:
+       *   - dare: `opponentId` + `wager` + `playerWon` + `creditsDelta` (signed
+       *     from the player's view: +wager on a win, −wager on a loss). The Dare's
+       *     nat-20/nat-1 wire story is produced downstream by T-1202's scanner
+       *     (natWireStories), not here.
+       *   - befriend / insult / meet: `opponentId`, and `success` for the
+       *     befriend GUILE check (insult always lands; meet is unconditional).
+       *   - meet / rumor: `rumors` — facts synthesized from LIVE NPC state.
+       *   - a typed FAIL carries `failReason` and resolves nothing (mirrors
+       *     ExplorationFailed: malformed die input or an opponent not in-system).
+       * READER: the T-1404 Hangout pane (and the wire, for the Dare nat case).
+       * This is an `eventLog` entry, not a GameState field — no save migration,
+       * but it carries a schema variant + drift guard (schema.ts).
+       */
+      type: 'HangoutEvent';
+      day: number;
+      venue: 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor';
+      opponentId?: string;
+      wager?: number;
+      playerWon?: boolean;
+      creditsDelta?: number;
+      success?: boolean;
+      rumors?: string[];
+      failReason?: 'no-die' | 'invalid-die-index' | 'die-already-spent' | 'no-opponent';
     }
   | { type: 'StoryletOffered'; day: number; storyletId: string; scheduled: boolean }
   | {
@@ -576,6 +624,26 @@ export type PlayerAction =
     }
   | { type: 'Storylet'; storyletId: string; choiceId: string; spendDie?: number }
   | { type: 'Explore'; spendDie?: number }
+  | {
+      /**
+       * T-1303 · Visit the Spacers Hangout (PRD §7). A die-costed player scene at
+       * a `hasHangout` system. `venue` picks the beat:
+       *   - 'dare'     — a wagered, opposed-GUILE Spacer's Dare against an NPC
+       *                  actually present in-system (`opponentId`, `wager`).
+       *   - 'meet'     — an introduction: a small disposition nudge + gossip.
+       *   - 'befriend' — a GUILE charm check to warm the NPC (`opponentId`).
+       *   - 'insult'   — always lands, souring the NPC hard (`opponentId`).
+       *   - 'rumor'    — read the rumor table (host slot; no opponent).
+       * `opponentId` is required for dare/meet/befriend/insult and must name an
+       * NPC whose SIMULATED position is in the player's current system, else a
+       * typed HangoutEvent fail. RESOLVER: actions/hangout.ts resolveVisitHangout.
+       */
+      type: 'VisitHangout';
+      venue: 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor';
+      opponentId?: string;
+      wager?: number;
+      spendDie?: number;
+    }
   | { type: 'Wait' };
 
 export type NpcActionType =

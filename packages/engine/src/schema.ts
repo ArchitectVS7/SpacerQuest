@@ -474,6 +474,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'npc-socialize',
         // T-1207: interceptor post-kill retreat roll (see types.ts StatCheck).
         'retreat',
+        // T-1303: the player's Spacer's Dare GUILE roll (see types.ts StatCheck).
+        'gamble',
       ])
       .optional(),
   }),
@@ -500,7 +502,19 @@ const GameEventSchema = z.discriminatedUnion('type', [
     npcId: z.string(),
     delta: z.number(),
     disposition: z.number(),
-    reason: z.enum(['tribute', 'defeat', 'player-fled', 'decay', 'storylet', 'contract-sniped']),
+    reason: z.enum([
+      'tribute',
+      'defeat',
+      'player-fled',
+      'decay',
+      'storylet',
+      'contract-sniped',
+      // T-1303 Hangout beats.
+      'dare',
+      'befriend',
+      'insult',
+      'meet',
+    ]),
   }),
   z.object({
     type: z.literal('BondIntervention'),
@@ -543,10 +557,11 @@ const GameEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ActionBlocked'),
     day: z.number(),
-    actionType: z.enum(['Trade', 'Travel', 'Shipyard', 'Storylet', 'Explore']),
-    // 'destination-locked' added by T-1101; serialized in eventLog, so the schema
-    // must accept it or loadSave would reject a save containing the event.
-    reason: z.enum(['active-encounter', 'destination-locked']),
+    actionType: z.enum(['Trade', 'Travel', 'Shipyard', 'Storylet', 'Explore', 'VisitHangout']),
+    // 'destination-locked' added by T-1101; 'no-hangout' by T-1303 (a VisitHangout
+    // at an un-flagged system). Serialized in eventLog, so the schema must accept
+    // them or loadSave would reject a save containing the event.
+    reason: z.enum(['active-encounter', 'destination-locked', 'no-hangout']),
   }),
   z.object({
     type: z.literal('PoiDiscovered'),
@@ -593,6 +608,23 @@ const GameEventSchema = z.discriminatedUnion('type', [
     type: z.literal('FragmentDecoded'),
     day: z.number(),
     fragmentId: z.string(),
+  }),
+  z.object({
+    // T-1303 · a player Hangout visit (see types.ts HangoutEvent). Serialized in
+    // eventLog, so a mid-day save round-trips it; the drift guard below keeps this
+    // in lockstep with the interface.
+    type: z.literal('HangoutEvent'),
+    day: z.number(),
+    venue: z.enum(['dare', 'meet', 'befriend', 'insult', 'rumor']),
+    opponentId: z.string().optional(),
+    wager: z.number().optional(),
+    playerWon: z.boolean().optional(),
+    creditsDelta: z.number().optional(),
+    success: z.boolean().optional(),
+    rumors: z.array(z.string()).optional(),
+    failReason: z
+      .enum(['no-die', 'invalid-die-index', 'die-already-spent', 'no-opponent'])
+      .optional(),
   }),
   z.object({
     type: z.literal('StoryletOffered'),
@@ -867,6 +899,14 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
     spendDie: z.number().optional(),
   }),
   z.object({ type: z.literal('Explore'), spendDie: z.number().optional() }),
+  z.object({
+    // T-1303 · Visit the Spacers Hangout (see types.ts PlayerAction).
+    type: z.literal('VisitHangout'),
+    venue: z.enum(['dare', 'meet', 'befriend', 'insult', 'rumor']),
+    opponentId: z.string().optional(),
+    wager: z.number().optional(),
+    spendDie: z.number().optional(),
+  }),
   z.object({ type: z.literal('Wait') }),
 ]);
 
@@ -1019,6 +1059,7 @@ const _covEvSalvageRecovered: AssertEventKeys<'SalvageRecovered'> = true;
 const _covEvContrabandFound: AssertEventKeys<'ContrabandFound'> = true;
 const _covEvFragmentAcquired: AssertEventKeys<'FragmentAcquired'> = true;
 const _covEvFragmentDecoded: AssertEventKeys<'FragmentDecoded'> = true;
+const _covEvHangoutEvent: AssertEventKeys<'HangoutEvent'> = true;
 const _covEvStoryletOffered: AssertEventKeys<'StoryletOffered'> = true;
 const _covEvStoryletChoiceResolved: AssertEventKeys<'StoryletChoiceResolved'> = true;
 const _covEvStoryletChoiceBlocked: AssertEventKeys<'StoryletChoiceBlocked'> = true;
@@ -1088,6 +1129,7 @@ void _covEvSalvageRecovered;
 void _covEvContrabandFound;
 void _covEvFragmentAcquired;
 void _covEvFragmentDecoded;
+void _covEvHangoutEvent;
 void _covEvStoryletOffered;
 void _covEvStoryletChoiceResolved;
 void _covEvStoryletChoiceBlocked;

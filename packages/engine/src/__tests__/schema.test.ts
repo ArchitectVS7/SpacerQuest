@@ -394,6 +394,64 @@ describe('PlayerActionSchema — companion validator', () => {
   it('rejects an unknown action type with a ZodError', () => {
     expect(() => validatePlayerAction({ type: 'Teleport' })).toThrow(z.ZodError);
   });
+
+  it('T-1303 · accepts a VisitHangout action', () => {
+    expect(
+      validatePlayerAction({
+        type: 'VisitHangout',
+        venue: 'dare',
+        opponentId: 'npc-iron-vex',
+        wager: 100,
+        spendDie: 0,
+      }),
+    ).toMatchObject({ type: 'VisitHangout', venue: 'dare' });
+  });
+});
+
+describe('T-1303 · HangoutEvent + new DispositionChanged reasons round-trip', () => {
+  it('validates a state whose eventLog carries a HangoutEvent and a dare disposition shift', () => {
+    const state = createInitialState(1);
+    state.eventLog.push(
+      {
+        type: 'HangoutEvent',
+        day: 1,
+        venue: 'dare',
+        opponentId: 'npc-iron-vex',
+        wager: 100,
+        playerWon: true,
+        creditsDelta: 100,
+      },
+      {
+        type: 'HangoutEvent',
+        day: 1,
+        venue: 'rumor',
+        rumors: ['Word is Iron Vex is keeping quiet around Sun-3.'],
+      },
+      {
+        type: 'DispositionChanged',
+        day: 1,
+        npcId: 'npc-iron-vex',
+        delta: -2,
+        disposition: -2,
+        reason: 'dare',
+      },
+      {
+        type: 'DispositionChanged',
+        day: 1,
+        npcId: 'npc-iron-vex',
+        delta: -4,
+        disposition: -6,
+        reason: 'insult',
+      },
+    );
+    const restored = validateGameState(JSON.parse(serializeState(state)));
+    expect(restored.eventLog.filter((e) => e.type === 'HangoutEvent')).toHaveLength(2);
+    // The dare + insult reasons validate (they are new to the reason enum).
+    const reasons = restored.eventLog
+      .filter((e) => e.type === 'DispositionChanged')
+      .map((e) => (e as { reason: string }).reason);
+    expect(reasons).toEqual(expect.arrayContaining(['dare', 'insult']));
+  });
 });
 
 describe('GameStateSchema — export surface', () => {
