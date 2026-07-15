@@ -260,6 +260,36 @@ describe('Encounter system', () => {
     expect(veteran).toBeGreaterThan(tourOne);
   });
 
+  it('the post-flip (VETERAN) era runs the encounter chance UNDAMPED (era gate drops the damp)', () => {
+    // T-1802: T-1301 flips state.era TOUR_ONE -> VETERAN, and generateEncounter
+    // (travel.ts) applies TOUR_ONE_ENCOUNTER_MULTIPLIER (0.5x) ONLY while
+    // era === 'TOUR_ONE'. This is the mirror of the Tour One damping test above:
+    // it pins the *undamped* post-flip side so a regression that dropped the era
+    // condition (damping every era) goes red. Same 1,000-seed tier-1 core sweep,
+    // each seed forking its own rng so no golden fixture is perturbed.
+    const measure = (era: 'TOUR_ONE' | 'VETERAN'): number => {
+      const routeState = readyState();
+      routeState.era = era;
+      let hits = 0;
+      for (let seed = 1; seed <= 1000; seed += 1) {
+        if (generateEncounter(routeState, 1, 2, 50, new SeededRng(seed))) hits += 1;
+      }
+      return hits / 1000;
+    };
+
+    const veteran = measure('VETERAN');
+    const tourOne = measure('TOUR_ONE');
+
+    // Undamped tier-1 core table rate is ~0.30 (routeDangerChance). If the era
+    // condition regressed and the 0.5x damp applied post-flip too, veteran would
+    // collapse to ~0.15 — outside this band. This bound is the mutation trip-wire.
+    expect(veteran).toBeGreaterThanOrEqual(0.25);
+    expect(veteran).toBeLessThanOrEqual(0.35);
+    // Same seeds → the damped Tour One set is a strict subset, so the post-flip
+    // rate must be materially higher, not merely non-decreasing.
+    expect(veteran).toBeGreaterThan(tourOne);
+  });
+
   it('a failed pilot check still produces an encounter (trigger decoupled from success)', () => {
     // T-1103 acceptance: a botched jump is no longer perfectly safe. Route 1->2
     // has DC travelDc(dist)=10; a die of 1 with PILOT 0 always fails the check.
