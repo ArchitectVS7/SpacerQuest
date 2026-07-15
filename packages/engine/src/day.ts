@@ -435,6 +435,17 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // off 0, the `life-support-${day}` rng fork below is NOT taken (a fork advances
   // the parent rng), which only ever happens when `hasAutoRepair` is true — so no
   // existing golden (module absent) is affected.
+  //
+  // RATIFIED DESIGN CALL (T-1804): because this heals lifeSupport 0→1 BEFORE the
+  // `lifeSupportCritical` dusk gate below, the life-support survival/succession
+  // death path (the `LifeSupportCritical` → `ShipLost` succession) is UNREACHABLE
+  // whenever Auto-Repair is fitted — the module always rescues a critical life
+  // support at dusk. Kept faithful to foundation (Auto-Repair repairs life
+  // support), but flagged as a balance lever for T-1603's tuning pass: an
+  // always-rescue module may be too strong. Covered by `components.test.ts` (~549),
+  // "a fitted Auto-Repair rescues critical life support from the dusk survival
+  // gate", which asserts `lifeSupport.condition === 1` and that neither
+  // `LifeSupportCritical` nor `ShipLost` fires when the module is fitted.
   if (nextState.player.ship.hasAutoRepair) {
     const { updates, repaired } = autoRepairRegen(nextState.player.ship);
     for (const id of repaired) {

@@ -58,3 +58,27 @@ Corrections to claims made in the codebase and the task log during v0.1 that wer
 **Claim (overstated):** T-201's anti-poverty-trap acceptance criterion is phrased as "no policy" gets trapped at zero.
 
 **Correction:** The phrasing overstates the guarantee. The test suite scopes the anti-poverty-trap check to the **three competent NPC policies**, not to every possible policy (a deliberately self-destructive or degenerate policy is not in scope). The design law — debt as a ledger, income floors so competent actors are never stranded at zero (now stated in PRD §2, "Scarcity of choices, never a poverty trap") — holds for the policies the game actually ships; the criterion's universal wording is the inaccuracy, not the mechanic.
+
+### E5 — T-1003 "all 7 action types" undercounts
+
+_Source: T-1804 audit (Rimward)._
+
+**Claim (inaccurate):** T-1003's Delivered note describes the UGT adapter as covering "all 7 action types."
+
+**Correction:** The count is **11, not 7**. `PlayerAction` (`packages/engine/src/types.ts:760`) is an 11-member discriminated union: **Trade, Travel, Combat, Shipyard, Storylet, Explore, VisitHangout, Reroll, Crew, Port, Wait**. The exhaustiveness guard `} satisfies Record<PlayerAction['type'], true>` at **`packages/sim/src/__tests__/protocol.test.ts:234`** lists and enforces all 11 — adding a discriminant to the union fails `tsc` there until the table (and therefore the coverage) is extended. The adapter covers all members; the "7" was a stale count.
+
+### E6 — T-1101 "engine exports isGatedDestination / GATED_DESTINATION_MIN_ID" misattributes the owner
+
+_Source: T-1804 audit (Rimward)._
+
+**Claim (inaccurate):** T-1101 states that the engine exports `isGatedDestination` / `GATED_DESTINATION_MIN_ID`.
+
+**Correction:** Both are **`@spacerquest/content`** exports, defined in `packages/content/src/systems.ts:176` (`GATED_DESTINATION_MIN_ID = 21`) and `:178` (`isGatedDestination`). The engine *consumes* them — imported in `packages/engine/src/day.ts:13` from `@spacerquest/content` and read at `day.ts:180`. Content owns them; the engine reads them and neither exports nor re-exports them.
+
+### E7 — T-1307 era-income "A/B test" is a lever test, not a statistical experiment
+
+_Source: T-1804 audit (Rimward)._
+
+**Claim (imprecise):** T-1307 describes an era-income "A/B test."
+
+**Correction:** It is an **in-scope-vs-base lever comparison** — the same seeded run evaluated with the era-income lever engaged versus the base configuration — not a statistical A/B experiment. There are no cohorts, no randomized assignment, and no significance testing; the "A/B" label denotes only the two-arm deterministic comparison of one lever against baseline.
