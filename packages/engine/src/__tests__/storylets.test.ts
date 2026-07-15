@@ -78,6 +78,17 @@ const T1302_STORYLET_IDS = ['veteran.guild-recognition'] as const;
 // sealed pod / Contraband contract, appended after the T-1302 beat.
 const T1305_STORYLET_IDS = ['fence.ray.sealed-pod', 'fence.ray.contraband-cargo'] as const;
 
+// T-1310 · Nemesis-arc reachability batch (appended last): the rimward wire rumor
+// that leads a player to the Wise One, and the four Sage decode storylets for
+// fragments 02–05 (the missing decode paths).
+const T1310_STORYLET_IDS = [
+  'wire.rimward.polaris-signal',
+  'sage.mizar.decode-02',
+  'sage.mizar.decode-03',
+  'sage.mizar.decode-04',
+  'sage.mizar.decode-05',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -100,12 +111,17 @@ describe('storylet content validation', () => {
     for (const id of T1305_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1310 Nemesis-arc reachability batch loaded and validated.
+    for (const id of T1310_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
         T1301_STORYLET_IDS.length +
         T1302_STORYLET_IDS.length +
-        T1305_STORYLET_IDS.length,
+        T1305_STORYLET_IDS.length +
+        T1310_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);
@@ -422,14 +438,14 @@ describe('storylet engine', () => {
 });
 
 describe('T-113a Tour One guild pressure and Wise One hook', () => {
-  it('surfaces each guild beat and the Wise One hook only on its target day', () => {
+  it('surfaces each guild beat only on its exact target day', () => {
     // Guild wires follow the captain anywhere, so location is irrelevant for the
-    // three pressure beats; the Wise One hook is gated to Polaris-1 (system 17).
+    // three pressure beats. (The Wise One hook is NOT day-exact since T-1310 — it
+    // is a window; see the dedicated windowed test below.)
     const beats: Array<{ day: number; systemId: number; id: string }> = [
       { day: 10, systemId: 2, id: 'guild.pressure.tour-one.day10' },
       { day: 20, systemId: 2, id: 'guild.pressure.tour-one.day20' },
       { day: 25, systemId: 2, id: 'guild.pressure.tour-one.day25' },
-      { day: 30, systemId: 17, id: 'wise-one.polaris.signal-hook' },
     ];
 
     for (const beat of beats) {
@@ -460,6 +476,27 @@ describe('T-113a Tour One guild pressure and Wise One hook', () => {
     expect(eligibleStorylets(away).map((o) => o.storyletId)).not.toContain(
       'wise-one.polaris.signal-hook',
     );
+  });
+
+  it('T-1310: the Wise One hook is a window (day >= 25), not a day-30 knife-edge', () => {
+    // Before day 25 it is dormant even at Polaris-1; from day 25 on it stays
+    // eligible on ANY visit (it never expires), so a captain who arrives late is
+    // not locked out of the arc's only source of frag-nemesis-01.
+    const before = readyState();
+    before.day = 24;
+    before.player.currentSystemId = 17;
+    expect(eligibleStorylets(before).map((o) => o.storyletId)).not.toContain(
+      'wise-one.polaris.signal-hook',
+    );
+
+    for (const day of [25, 30, 31, 60, 200]) {
+      const at = readyState();
+      at.day = day;
+      at.player.currentSystemId = 17;
+      expect(eligibleStorylets(at).map((o) => o.storyletId)).toContain(
+        'wise-one.polaris.signal-hook',
+      );
+    }
   });
 
   it('grants the first Signal fragment flag when the hook is bought at Polaris-1', () => {

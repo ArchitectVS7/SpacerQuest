@@ -14,6 +14,7 @@ import {
   calculateFuelCapacity,
   createInitialState,
   endDay,
+  hasFragment,
   jumpFuelCost,
   quoteShipyard,
   renownRankIndex,
@@ -948,6 +949,11 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
 };
 
 const EXPLORER_RESERVE = 2000;
+// T-1310: a small hard credit floor the explorer keeps back for fuel. Low on
+// purpose — a HIGH floor becomes its own strand (it blocks the very refuel needed to
+// escape a low-fuel corner), and with the early drives upgrade below fuel is cheap
+// enough that a thin reserve always buys enough range to reach the next contract.
+const EXPLORER_FUEL_RESERVE = 50;
 
 /**
  * EXPLORER — fragment chaser. Off-lane sweeps are a credit SINK (a detour burns
@@ -961,18 +967,95 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   if (state.encounter) return planPacifistCombat(state, ledger);
 
   const actions: PlayerAction[] = [];
+
+  // T-1310: Nemesis-arc reachability. The Wise One of Polaris-1 (system 17) is the
+  // ONLY source of frag-nemesis-01 and the sole key into the decode arc (PRD §8.3).
+  // Polaris-1 is a rim system no core contract routes to under starter drives (its
+  // nearest core neighbour is a ~22-unit hop = 264 fuel, over the 180 sign-cap), so
+  // the explorer reaches it through LEGAL actions only (below): it resolves the
+  // offered wire rumor / Wise One hook, upgrades its drives (making the rim hop cost
+  // a fraction of the tank), banks enough to afford the 500cr fragment, then flies
+  // STRAIGHT to Polaris-1. No state poke, no teleport. Pursuit runs from the hook's
+  // day-25 window open until the fragment is in hand.
+  const pursuingArc = state.day >= 25 && !hasFragment(state.player.nemesisFile, 'frag-nemesis-01');
+
+  // Resolve any offered storylet — the wire rumor, the Wise One buy-fragment hook
+  // (grants frag-nemesis-01), and (at Mizar-9) the Sage decodes all surface here. A
+  // no-die choice is resolved INLINE: it costs no die, so the day still does its
+  // income work and the arc never burns a zero-income day (the poverty-trap
+  // invariant the explorer is held to). A die-consuming choice is taken as a
+  // standalone day (matches veteranPolicy) so it never collides with the ledger.
+  const storyletAction = chooseStoryletAction(state);
+  if (storyletAction) {
+    // chooseStoryletAction always returns a Storylet action; a no-die choice omits
+    // spendDie (resolve inline), a die choice sets it (resolve as a standalone day).
+    if (storyletAction.type === 'Storylet' && storyletAction.spendDie === undefined) {
+      actions.push(storyletAction);
+    } else {
+      return [storyletAction];
+    }
+  }
+
   // T-1205: repair a hull chipped down enough to collapse the fuel ceiling before
   // the explorer strands (it burns fuel fastest, so it feels a shrunk tank first).
   const crippledRepair = planCrippledRepair(state, ledger, EXPLORER_RESERVE);
   if (crippledRepair) actions.push(crippledRepair);
-  // Explorers burn fuel fast — keep the tank fuller than a trader would.
-  const refuel = planRefuel(state, ledger, 0, 200, 400);
+
+  // T-1310: the explorer invests in DRIVES early — its defining upgrade, the way the
+  // fighter buys guns. A tier-3 drive (strength 30) costs ~0 net (the strength-10
+  // trade-in dwarfs the 200cr sticker) and drops per-unit jump fuel from 12 to ~1, so
+  // the same tank reaches six times as far. This is both what a real explorer does
+  // and the structural fix for the strands above: with near-free fuel the ship almost
+  // never burns itself into an unrefuelable corner, and — once bought — the rim hop to
+  // the Wise One of Polaris-1 (system 17) fuels for a fraction of the tank, so arc
+  // pursuit can fly straight there. Component tiers are NOT renown-gated (engine
+  // shipyard.ts), so a low-renown explorer can buy them. Gated above a working reserve
+  // so it never spends its last credits on the yard.
+  if (state.player.ship.drives.strength < 30 && state.player.credits >= EXPLORER_RESERVE / 2) {
+    const die = ledger.takeWorst();
+    if (die !== undefined) {
+      actions.push({
+        type: 'Shipyard',
+        action: 'buy-component-tier',
+        component: 'drives',
+        tier: 3,
+        spendDie: die,
+      });
+    }
+  }
+
+  const from = state.player.currentSystemId;
+  const fuelPriceNow = state.market.localFuelPrice || 5;
+  const drivesReady = state.player.ship.drives.strength >= 20;
+
+  // T-1310: hold back a small credit reserve so a refuel is always possible next
+  // turn — the explorer used to pour its last credits into fuel (floor 0), then the
+  // fuel burned down until it was too broke to refuel and too empty to reach even
+  // the nearest system, freezing there for the rest of the campaign (a silent strand
+  // the poverty-trap check misses, since a failed Travel still counts as income). The
+  // Wise One's 500cr fragment is NOT protected by the floor (a high floor re-strands);
+  // instead the flight to Polaris-1 below only launches once the ship can afford it.
+  const refuelFloor = EXPLORER_FUEL_RESERVE;
+  const refuel = planRefuel(state, ledger, refuelFloor, 200, 400);
+  // T-1310: refuel BEFORE the jump. The old order pushed the refuel AFTER the travel
+  // action, so the ship jumped on its current (possibly near-empty) tank, failed the
+  // jump, and then got stuck on an active contract it could neither reach nor abandon
+  // — refuelling a ship that had already frozen at the wrong system. Topping the tank
+  // first makes sign+refuel+travel a single completable delivery.
+  if (refuel) actions.push(refuel.action);
+  const postRefuelFuel = state.player.ship.fuel + (refuel ? refuel.cost / fuelPriceNow : 0);
 
   // T-1104: reachability gate (see fighterPolicy) — refuse the unfuelable rim
   // run the richest-first ranking would otherwise sign and get stranded on.
+  // T-1310: ALSO bound by the fuel the ship will actually have AFTER this turn's
+  // refuel (postRefuelFuel), capped by the tank-fraction sign-cap. Signing a contract
+  // the ship can neither fly nor fund was the other half of the freeze. Bounding by
+  // the funded, topped tank makes a low-fuel explorer take a SHORT reachable run
+  // instead, earn, and fly on — which is also what lets arc pursuit reach Polaris-1.
   const ranked = rankedContracts(state);
   const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
-  const reachable = ranked.filter((c) => c.fuel <= signFuelCap);
+  const flyCap = Math.min(signFuelCap, postRefuelFuel);
+  const reachable = ranked.filter((c) => c.fuel <= flyCap);
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -982,8 +1065,32 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
+  } else if (pursuingArc && drivesReady && from !== 17 && state.player.credits >= 550) {
+    // T-1310: drives upgraded and the 500cr fragment is affordable — fly STRAIGHT to
+    // Polaris-1 (system 17) to reach the Wise One, the sole grantor of frag-nemesis-01.
+    // Direct travel needs no contract and system 17 is not a gated destination (engine
+    // day.ts / isGatedDestination); the upgraded drive makes the hop cost a fraction of
+    // the tank, so a plain Travel gets there instead of waiting on a rare dest-17
+    // contract to happen onto a board. The >=550 gate means the ship arrives able to
+    // buy the fragment (chooseStoryletAction takes buy-fragment only when credits>=500);
+    // until then it banks net-positive runs below.
+    const die = ledger.takeBest();
+    if (die !== undefined) {
+      actions.push({ type: 'Travel', destinationId: 17, spendDie: die });
+    }
   } else if (reachable.length > 0) {
-    const best = reachable[0];
+    // T-1310: during pursuit, bank on NET-POSITIVE runs only (payment beats the fuel
+    // bill at the local depot), so credits actually climb toward the drives tier and
+    // the fragment — the raw richest-first pick can be a fuel loss that keeps the
+    // spend-to-zero explorer broke. Outside pursuit, keep the richest reachable run.
+    let best = reachable[0];
+    if (pursuingArc) {
+      const netPositive = reachable
+        .map((c) => ({ ...c, net: c.payment - c.fuel * fuelPriceNow }))
+        .filter((c) => c.net > 0)
+        .sort((a, b) => b.net - a.net || a.index - b.index);
+      if (netPositive.length > 0) best = netPositive[0];
+    }
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
@@ -997,28 +1104,31 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
     }
   }
 
-  // Refuel AFTER planning trade dice so the sharp dice go to the nav checks that
-  // matter; the refuel itself rolls nothing.
-  if (refuel) actions.push(refuel.action);
-
   // Off-lane sweeps with whatever sharp dice remain, while solvent and fuelled.
-  // Project the tank forward: current fuel, plus the units the refuel adds, less
-  // one jump's worth already committed to the delivery, then spend the rest on
-  // Explore detours (each burns EXPLORATION_FUEL_COST).
-  const fuelPrice = state.market.localFuelPrice || 5;
-  let projectedFuel = state.player.ship.fuel + (refuel ? refuel.cost / fuelPrice : 0);
-  if (actions.some((action) => action.type === 'Travel')) {
-    projectedFuel -= playerJumpFuel(state, 5);
-  }
-  while (
-    state.player.credits > EXPLORER_RESERVE &&
-    projectedFuel >= EXPLORATION_FUEL_COST &&
-    ledger.remaining() > 0
-  ) {
-    const die = ledger.takeBest();
-    if (die === undefined) break;
-    actions.push({ type: 'Explore', spendDie: die });
-    projectedFuel -= EXPLORATION_FUEL_COST;
+  // Project the tank forward: post-refuel fuel, less one jump's worth already
+  // committed to the delivery, then spend the rest on Explore detours (each burns
+  // EXPLORATION_FUEL_COST).
+  // T-1310: SUPPRESSED during arc pursuit. Exploring is the explorer's credit sink
+  // (it refuels to explore, draining credits to the solvency floor), which left it
+  // too broke to ever afford the drives tier or the 500cr Wise One fragment. While
+  // pursuing the arc the explorer banks its contract income instead, so the tier and
+  // the fragment become affordable; normal off-lane charting resumes the moment the
+  // fragment is in hand (pursuit ends) or before day 25.
+  if (!pursuingArc) {
+    let projectedFuel = postRefuelFuel;
+    if (actions.some((action) => action.type === 'Travel')) {
+      projectedFuel -= playerJumpFuel(state, 5);
+    }
+    while (
+      state.player.credits > EXPLORER_RESERVE &&
+      projectedFuel >= EXPLORATION_FUEL_COST &&
+      ledger.remaining() > 0
+    ) {
+      const die = ledger.takeBest();
+      if (die === undefined) break;
+      actions.push({ type: 'Explore', spendDie: die });
+      projectedFuel -= EXPLORATION_FUEL_COST;
+    }
   }
 
   return actions.length > 0 ? actions : [{ type: 'Wait' }];

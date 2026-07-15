@@ -31,8 +31,11 @@ export interface SignalFragmentLore {
 // BALANCE: foundation/rules/ carries no Nemesis-arc data (the 1991 game had the
 // black hole as a location, not a fragment questline — grep 'nemesis' over
 // foundation confirms). The five fragments below are authored for T-111b and
-// flagged as a deliberate divergence: fragment 01 is the Wise One's Day-30 hook
-// (PRD §5.1); 02-05 seed the derelict/beacon loot pools.
+// flagged as a deliberate divergence: fragment 01 is the Wise One's Polaris-1 hook
+// — WINDOWED since T-1310 (day >= 25, on visit, never expiring; storylets.ts
+// `wise-one.polaris.signal-hook`), no longer the old day-30 knife-edge; 02-05 seed
+// the derelict/beacon loot pools and each gets a Sage decode storylet (T-1310
+// `sage.mizar.decode-02..05`).
 export const SIGNAL_FRAGMENTS: Record<string, SignalFragmentLore> = {
   'frag-nemesis-01': {
     id: 'frag-nemesis-01',

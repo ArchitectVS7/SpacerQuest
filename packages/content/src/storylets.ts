@@ -375,17 +375,31 @@ export const STORYLETS = defineStorylets([
     ],
   },
 
-  // --- Day-30 Wise One of Polaris-1 hook (T-113a) ---
-  // The decisive Day-30 beat (PRD §5.1): at Polaris-1 (system 17) the Wise One
-  // sells the captain the first fragment of the Nemesis Signal — the hook that
-  // opens the veteran game. There is no dedicated Wise One NPC in the cast
-  // (only the trader "Penny Wise"), so this gates on day + Polaris-1, not npc.
+  // T-1310: the economy-delivered vector that LEADS a player here — the Galactic-
+  // Wire rumor `wire.rimward.polaris-signal` — is appended with the rest of the
+  // T-1310 batch at the end of this table (batches append; see the storylet-content
+  // validation test's ORIGINAL-prefix invariant).
+
+  // --- Wise One of Polaris-1 hook (T-113a; windowed by T-1310) ---
+  // At Polaris-1 (system 17) the Wise One sells the captain the first fragment of
+  // the Nemesis Signal (frag-nemesis-01) — the SOLE grantor of that fragment and
+  // the only key into the decode arc (PRD §8.1/§8.3). There is no dedicated Wise
+  // One NPC in the cast (only the trader "Penny Wise"), so this gates on system +
+  // day, not npc.
   //
-  // T-111b: this now grants a REAL fragment (`grantFragment`) into the
-  // nemesisFile — the knowledge item the Sage of Mizar-9 later decodes. The flag
-  // `signal.fragment.wise-one-01` is kept alongside it as the hook-completion
-  // marker other content/UI may branch on. Resolution of the debt (cleared vs
-  // unpaid) and the veteran-unlock flag are T-113b, not authored here.
+  // T-1310 · DIVERGENCE from the T-113a day-30 design (and from foundation
+  // f2f95fa9, which has no arc at all): the trigger was `eras:['TOUR_ONE'] +
+  // day:{equals:30}`, a one-dawn knife-edge at a rim system no contract routed to.
+  // Miss that single dawn and frag-nemesis-01 was gone for good. It is now a WINDOW
+  // — `day:{gte:25}`, `repeat:'never'` — so it fires on the FIRST visit after day
+  // 25, whenever that lands. The `eras` gate is DELIBERATELY REMOVED: the era flips
+  // TOUR_ONE→VETERAN at dusk of day 30 (engine day.ts), so a late arrival (day 60+,
+  // VETERAN era) must still open the arc — an eras gate would silently close it.
+  //
+  // T-111b: grants a REAL fragment (`grantFragment`) into the nemesisFile — the
+  // knowledge item the Sage of Mizar-9 later decodes. Source defaults to 'wise-one'
+  // (see engine applyEffects). The flag `signal.fragment.wise-one-01` is the
+  // hook-completion marker other content/UI may branch on.
   {
     id: 'wise-one.polaris.signal-hook',
     title: 'The Wise One of Polaris-1',
@@ -393,9 +407,8 @@ export const STORYLETS = defineStorylets([
       'The Wise One keeps a cold cabin at the edge of Polaris-1 and a longer memory than the Guild. When you dock, the old spacer is already waiting with a data sliver held between two fingers. "A signal," they say, "from the wrong side of the black hole. You will want to hear the rest of it. That costs."',
     repeat: 'never',
     trigger: {
-      eras: ['TOUR_ONE'],
       systemIds: [17],
-      day: { equals: 30 },
+      day: { gte: 25 },
     },
     choices: [
       {
@@ -475,6 +488,10 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // T-1310: the Sage decode storylets for fragments 02–05 (the missing decode
+  // paths that leave everything found by exploring stuck raw) are appended with the
+  // rest of the T-1310 batch at the end of this table.
 
   // --- Derelict sealed-pod — the Contraband carrying choice (T-111b) ---
   // PRD §7.2: a boarded derelict can hold a sealed Contraband pod, and "carrying
@@ -1773,6 +1790,195 @@ export const STORYLETS = defineStorylets([
         // `repeat: 'never'`, so resolving ANY choice marks it completed
         // (engine storylets.ts isCompletedForNow) and it never re-offers — a
         // "declined" flag would gate nothing and nothing would read it.
+      },
+    ],
+  },
+
+  // ==========================================================================
+  // T-1310 · Nemesis-arc reachability batch (appended per the batch convention).
+  //   Two vectors that make the arc's opening reachable through the ECONOMY (PRD
+  //   §8.3) rather than a knife-edge day-30 teleport, plus the missing Sage decode
+  //   paths for fragments 02–05. Foundation (ref f2f95fa9) carries NO Nemesis arc,
+  //   so this whole batch is authored content, a deliberate divergence.
+  //   (The windowed Wise One hook itself is edited in place above at its T-113a
+  //   definition site, where its divergence comment lives.)
+  // ==========================================================================
+
+  // Rimward wire rumor — the economy-delivered LEAD to the Wise One of Polaris-1.
+  // A Galactic-Wire rumor reaches the captain anywhere (no system/era gate — the
+  // same "a wire follows you" pattern as guild.pressure.*, eligible from day 25,
+  // never expiring). "Chase the rumor" drops a Polaris-1 manifest contract onto
+  // TODAY's board (addManifestContract → market.manifestBoard, wiped next dawn by
+  // generateManifestBoard, so it is a SAME-DAY offer a human player can sign);
+  // cargoType 17 (Raw Dilithium) and destination 17 are both valid (storyletValidation
+  // checks both). The genuinely CONSUMED state this choice produces is that Polaris-1
+  // manifest CONTRACT it drops on the board (read by the trade/sign flow → Travel →
+  // arrival at system 17); the storylet's own repeat:'never' completion record is what
+  // stops it re-offering, so NO parallel "heard" flag is set — per constraint 7 a
+  // set-only receipt nothing reads is not a feature. "Note it and fly on" is the
+  // required second choice (storylets need 2–4 choices) and is a pure-narrative
+  // decline that changes no state. The T-1310 acceptance asserts the storylet is
+  // OFFERED in a seed sweep; the sim does NOT depend on the ephemeral same-day
+  // contract — its explorer upgrades drives and flies straight to Polaris-1 — so a
+  // missed same-day sign never closes the arc.
+  {
+    id: 'wire.rimward.polaris-signal',
+    title: 'A Rumor Off the Rim',
+    prose:
+      'A rimward rumor rides in on the Galactic Wire, passed hand to hand until it reached your feed: an old spacer at Polaris-1 — the Wise One — is selling pieces of a signal that came from the wrong side of the Nemesis black hole. Most captains file it under ghost stories. The ones who went looking did not come back to say so.',
+    repeat: 'never',
+    trigger: {
+      day: { gte: 25 },
+    },
+    choices: [
+      {
+        id: 'chase',
+        label: 'Chase the rumor',
+        prose:
+          'Log a Polaris-1 run against the rumor and warm the drives. A rim haul rides the same heading — dilithium for the yards out past the frontier — so the detour pays for itself if the black-hole talk is nothing.',
+        effects: {
+          cargo: {
+            addManifestContract: { destination: 17, cargoType: 17, payment: 4000, pods: 1 },
+          },
+        },
+      },
+      {
+        id: 'note',
+        label: 'Note it and fly on',
+        prose:
+          'File the coordinates and the name, and keep the current run. Polaris-1 is not going anywhere, and neither, apparently, is whatever is broadcasting from it.',
+      },
+    ],
+  },
+
+  // Sage of Mizar-9 decode storylets for fragments 02–05. The Sage (Mizar-9,
+  // system 18) is the game's ONLY decoder. Before T-1310 only `sage.mizar.decode-
+  // first` existed (frag-nemesis-01), so every fragment pulled off a derelict /
+  // beacon / courier-drop while exploring (frags 02–05 — see the loot pools in
+  // nemesis.ts) was permanently stuck undecoded. These four author the missing
+  // decode paths, one per fragment, modelled on decode-first: system-18-gated,
+  // `nemesis.hasUndecodedFragmentId` so each surfaces only when its fragment is
+  // held and still raw, `repeat:'never'`, NOT era-gated (the crossing arc runs from
+  // Tour One into the veteran game). The lore each reveals is the fragment's
+  // `decoded` text in nemesis.ts. The CONSUMED state is the fragment DECODE itself:
+  // decodeFragment flips fragment.decoded, which hasUndecodedFragment reads (to stop
+  // re-offering) and nemesisLoreIndex reads (swapping raw signal for decoded lore,
+  // rendered by the terminal's Nemesis file panel via ui/format.ts) — so the decode
+  // needs NO parallel "decoded" flag. Per constraint 7 a set-only receipt nothing
+  // reads is not a feature; the grandfathered `sage.mizar.first_decoded` is exactly
+  // such a receipt and is deliberately NOT copied here. "Keep the sliver for now" is
+  // the required second choice (storylets need 2–4 choices) and is a pure-narrative
+  // decline that changes no state — the fragment simply stays raw, which
+  // hasUndecodedFragment already tracks. T-1310 D1 exercises each decode path end-to-end.
+  {
+    id: 'sage.mizar.decode-02',
+    title: 'The Sage Reads the Drowned Manifest',
+    prose:
+      'You set the second sliver on the Sage\'s bench. The old cryptographer feeds it to the dead screens and frowns. "A manifest," they murmur, "for a ship that filed no route, bound for a port with no coordinates. Let me follow the names."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-02' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The names resolve one by one — a crossing list. Spacers who went through the black hole and were never logged returning. It settles into your Nemesis file, decoded.',
+        effects: {
+          decodeFragment: 'frag-nemesis-02',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Pocket the manifest before the last name resolves. Some crossings you would rather not read the end of yet. The Sage lets it go without argument.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-03',
+    title: 'The Sage Unfolds the Reptiloid Hymn',
+    prose:
+      'The third fragment sings — a choral pattern in a Reptiloid dialect, folded into the same pre-Confederation carrier. The Sage goes very still. "I have heard the Reptiloids sing this," they say. "They heard the signal before any of us."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-03' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The hymn resolves to a single repeated phrase, a warning older than the alliances: "the door answers when it is knocked upon." Decoded, it joins your file.',
+        effects: {
+          decodeFragment: 'frag-nemesis-03',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Silence the playback and take the sliver back. A warning keeps whether or not you understand it. The Sage nods, unsurprised.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-04',
+    title: 'The Sage Balances the Event-Horizon Ledger',
+    prose:
+      'The fourth sliver is only numbers — fuel figures, mass ratios, a burn schedule. The Sage runs it against a century of star charts and their hands slow. "This is a solution," they whisper. "A way across. It is only missing its last line."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-04' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The burn schedule resolves: exactly how much a ship must carry, and spend, to reach the far side of Nemesis intact. The decoded ledger settles into your file — final line still blank.',
+        effects: {
+          decodeFragment: 'frag-nemesis-04',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Close the ledger before the Sage finishes. A crossing solution is the kind of knowledge that changes what a captain does with a full tank. Not yet. The Sage lets it keep.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-05',
+    title: 'The Sage Matches the Returning Voice',
+    prose:
+      'The last sliver carries a human voice, badly degraded, transmitting on the pre-Confederation carrier. It says a name the Wire has no record of. The Sage plays it three times, then reaches for a founding-era crew roster with a shaking hand.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-05' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The voice matches a founding-era spacer lost at Nemesis a century ago — still broadcasting, from the wrong side, and getting closer. The decoded truth settles into your file, and the room feels colder.',
+        effects: {
+          decodeFragment: 'frag-nemesis-05',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Stop the playback before the name resolves. Some voices you are not ready to put a face to. The Sage sets the roster down, and does not push.',
       },
     ],
   },
