@@ -8,6 +8,7 @@ import {
   maxJumpDistance,
 } from '../economy.js';
 import { resolveShipyard } from '../actions/shipyard.js';
+import { applyPlayerAction, startDay } from '../day.js';
 import { travelDc } from '../actions/travel.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { SeededRng } from '../rng.js';
@@ -153,6 +154,34 @@ describe('economy', () => {
       const upgraded = calculateFuelCapacity(20, 9);
       expect(upgraded).toBeGreaterThan(junker);
       expect(upgraded).toBe(6000); // (9+1) × 20 × 30
+    });
+
+    it('a real Shipyard hull upgrade raises maxFuel via the applyPlayerAction chokepoint (T-1803)', () => {
+      // Action-path partner to the formula-only A/B directly above. That test
+      // proves the calculateFuelCapacity math; this one proves the action→capacity
+      // WIRING by driving a genuine Shipyard hull buy through applyPlayerAction and
+      // asserting maxFuel rose — without ever calling calculateFuelCapacity. The
+      // only maxFuel recompute in this path is the syncMaxFuel chokepoint at
+      // day.ts:266 (resolveShipyard/applyShipyardMutation set hull.strength but
+      // never touch maxFuel), so removing that line makes this test go red.
+      // Twin at shipyard.test.ts:72 kept deliberately as its own chokepoint reader.
+      const state = createInitialState(123);
+      state.player.credits = 200000; // a tier-2 hull is easily affordable
+      const { state: dayState } = startDay(state); // rolls a real dawn hand, → DAY
+      const before = dayState.player.ship.maxFuel;
+      expect(before).toBe(300);
+
+      const { state: after } = applyPlayerAction(dayState, {
+        type: 'Shipyard',
+        action: 'buy-component-tier',
+        component: 'hull',
+        tier: 2,
+        spendDie: 0,
+      });
+
+      expect(after.player.ship.hull.strength).toBe(20); // the action mutated the hull
+      expect(after.player.ship.maxFuel).toBeGreaterThan(before); // capacity rose via the action
+      expect(after.player.ship.maxFuel).toBe(6000); // (9+1)·20·30, literal not a formula call
     });
 
     it('prices a cross-map jump beyond a starter tank (typed fail territory)', () => {
