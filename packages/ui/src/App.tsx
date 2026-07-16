@@ -24,6 +24,10 @@ import {
   visitDare,
   borrowLoan,
   repayLoan,
+  hireCrew,
+  dismissCrew,
+  reroll,
+  buyPort,
   combat,
   shipyard,
   resolveStorylet,
@@ -54,6 +58,12 @@ import {
   dareWagerBounds,
   lendingTerms,
   fuelPurchaseQuote,
+  dawnHandModifiers,
+  crewRoster,
+  crewBenefitLabel,
+  portLedger,
+  portFailureExplanation,
+  contrabandHold,
   knownNpcCounts,
   wireLines,
   wireLog,
@@ -708,6 +718,9 @@ function CombatInstrument({ state }: { state: CockpitState }) {
         </div>
       </header>
 
+      {/* ---- T-1405 patrol contraband scan ---- */}
+      {state.patrolScan && <PatrolScanReadout scan={state.patrolScan} />}
+
       {/* ---- fuel budget: the "can I afford to fire?" instrument ---- */}
       <div className="co-fuel" data-testid="combat-fuel">
         <span className="co-fuel-big">
@@ -827,6 +840,38 @@ function CombatInstrument({ state }: { state: CockpitState }) {
       {/* The honest PLAYER roll — the store feeds CheckBreakdown the actor:'Player'
           StatCheck, never the enemy counter-attack. No stat filter here. */}
       <CheckBreakdown state={state} />
+    </section>
+  );
+}
+
+// The patrol contraband scan (T-1405). Surfaces the GUILE check a PATROL rolled
+// against a smuggler's hold DURING the jump (engine actions/patrol.ts) — the honest
+// breakdown via the shared CheckReadout, plus the consequence (caught → hold seized
+// + fine + which cargo; clean → passed). A pure read of the store's `patrolScan`;
+// every number is the engine's, never recomputed.
+function PatrolScanReadout({ scan }: { scan: NonNullable<CockpitState['patrolScan']> }) {
+  const seized: string[] = [];
+  if (scan.confiscatedContract) seized.push('contract cargo');
+  if (scan.confiscatedPod) seized.push('the sealed pod');
+  const seizedText = seized.length > 0 ? ` — ${seized.join(' and ')} confiscated` : '';
+  return (
+    <section className="patrol-scan" data-testid="patrol-scan">
+      <CheckReadout
+        stat={Stat.GUILE}
+        result={scan.check}
+        label="PATROL SCAN"
+        testid="patrol-scan-check"
+      />
+      <div
+        className={scan.caught ? 'ps-result rev' : 'ps-result clear'}
+        data-testid="patrol-scan-result"
+        data-caught={scan.caught ? '1' : '0'}
+        role="status"
+      >
+        {scan.caught
+          ? `Hold seized — fine ${scan.fine.toLocaleString()}cr${seizedText}.`
+          : 'Scan passed — hold clean.'}
+      </div>
     </section>
   );
 }
@@ -1832,8 +1877,90 @@ function ShipPane({ state }: { state: CockpitState }) {
             </div>
           ))}
         </div>
+
+        {/* ---- crew roster (T-1405 · the dice-progression source) ---- */}
+        <CrewSection game={game} armed={armed} />
       </div>
     </section>
+  );
+}
+
+// The crew roster (T-1405). A pure CLIENT of the T-1306 crew rules: every hire
+// price / berth budget / benefit reads content (`crewRoster` / `crewBenefitLabel`),
+// and the only mutations route through the store's `hireCrew` / `dismissCrew`. Like
+// the equipment list it disables-not-hides an unaffordable hire and shows the
+// engine-derived reason. A hire's dice benefit lands at the NEXT dawn (the store
+// verb documents why), so this pane surfaces the roster, not a live-hand change.
+function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
+  const roster = crewRoster(game);
+  return (
+    <div className="ship-crew" data-testid="crew-list">
+      <div className="crew-head">
+        CREW · <b>{roster.berthsUsed}</b>/{roster.berths} berths
+      </div>
+      {roster.hired.map((row) => (
+        <div
+          className="crew-row hired"
+          key={row.role.id}
+          data-testid="crew-member"
+          data-role-id={row.role.id}
+        >
+          <div className="crew-main">
+            <span className="crew-name">{row.role.name}</span>
+            <span className="crew-benefit">{crewBenefitLabel(row.role)}</span>
+            <button
+              className="btn small ghost"
+              data-testid="dismiss-crew"
+              data-role-id={row.role.id}
+              disabled={!armed}
+              title={
+                armed ? 'Dismiss this crew member (spends a die, no refund)' : 'Pick a die first'
+              }
+              onClick={() => dismissCrew(row.role.id)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ))}
+      {roster.hireable.map((row) => (
+        <div
+          className="crew-row hireable"
+          key={row.role.id}
+          data-testid="crew-hireable"
+          data-role-id={row.role.id}
+        >
+          <div className="crew-main">
+            <span className="crew-name">{row.role.name}</span>
+            <span className="crew-benefit">{crewBenefitLabel(row.role)}</span>
+            <span className="crew-price">{row.role.hirePrice.toLocaleString()}cr</span>
+            <button
+              className="btn small"
+              data-testid="hire-crew"
+              data-role-id={row.role.id}
+              disabled={!armed || !row.canHire}
+              title={
+                !armed
+                  ? 'Pick a die first'
+                  : row.canHire
+                    ? `Hire · ${row.role.hirePrice.toLocaleString()}cr`
+                    : (row.reason ?? 'Cannot hire')
+              }
+              onClick={() => hireCrew(row.role.id)}
+            >
+              Hire
+            </button>
+          </div>
+          {/* Disabled-not-hidden: the engine-derived reason, rendered whenever the
+              role can't be hired right now (no berth / unaffordable). */}
+          {row.reason && (
+            <span className="ship-reason" data-testid="crew-reason">
+              {row.reason}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -2080,6 +2207,12 @@ function TradePane({ state }: { state: CockpitState }) {
   const fuelPrice = game.market.localFuelPrice;
   const debtDue = p.debtDueDay - game.day;
 
+  // T-1405 · The contraband-hold badge + the port-authority ledger, both pure reads
+  // (contrabandHold / portLedger read the SAME engine state the patrol scan and the
+  // dusk economy gate on — never recomputed here).
+  const hold = contrabandHold(game);
+  const ledger = portLedger(game);
+
   // T-1402 · Pre-commit advisory: the engine charges for the full request but
   // clamps the tank, so buying past the tank's headroom silently wastes credits.
   // Surface the clamp BEFORE the buy so the overspend is never a silent charge.
@@ -2104,7 +2237,18 @@ function TradePane({ state }: { state: CockpitState }) {
         {/* Active-contract tracker — makes the sign→carrying transition visible
             and explains why a second sign is refused. */}
         <div className="ledger-block active-contract" data-testid="active-contract">
-          <div className="lb-head">ACTIVE CONTRACT</div>
+          <div className="lb-head">
+            ACTIVE CONTRACT
+            {/* T-1405 · Contraband-HOLD indicator (distinct from the manifest's
+                contraband OFFER flag). Shows whenever the ship is carrying illicit
+                cargo — a contraband contract OR a sealed pod — i.e. exactly when a
+                patrol would scan the hold. */}
+            {hold.carrying && (
+              <span className="flag shady contraband-hold" data-testid="contraband-hold">
+                CONTRABAND HOLD
+              </span>
+            )}
+          </div>
           {active ? (
             <>
               <div className="lb-row">
@@ -2209,6 +2353,93 @@ function TradePane({ state }: { state: CockpitState }) {
           ) : (
             <div className="lb-cleared" data-testid="debt-cleared">
               DEBT CLEARED — the marker is closed.
+            </div>
+          )}
+        </div>
+
+        {/* Port authority (T-1405) — buy the stake you stand in, then watch its
+            launch-fee income tick at dusk. Buy costs a die (die-costed like the
+            shipyard); the income ledger below is the "watch income tick" surface. */}
+        <div className="ledger-block port-authority" data-testid="port-authority">
+          <div className="lb-head">PORT AUTHORITY</div>
+          {ledger.current ? (
+            <div className="port-current" data-testid="port-current">
+              <div className="lb-row">
+                <span className="goods">{ledger.current.name}</span>
+                {ledger.current.quote.alreadyOwned ? (
+                  <span className="flag" data-testid="port-owned">
+                    OWNED
+                  </span>
+                ) : (
+                  <span className="pay">{ledger.current.quote.cost.toLocaleString()}cr</span>
+                )}
+              </div>
+              <div className="lb-row">
+                <span className="mono">
+                  INCOME <b data-testid="port-current-income">{ledger.current.quote.income}</b>
+                  cr/dusk
+                </span>
+                {!ledger.current.quote.alreadyOwned && (
+                  <button
+                    className="btn"
+                    data-testid="buy-port"
+                    disabled={!armed || !ledger.current.quote.ok}
+                    title={
+                      !armed
+                        ? 'Pick a die first'
+                        : ledger.current.quote.ok
+                          ? `Buy the stake · ${ledger.current.quote.cost.toLocaleString()}cr`
+                          : ledger.current.quote.failure
+                            ? portFailureExplanation(ledger.current.quote.failure)
+                            : 'Unavailable'
+                    }
+                    onClick={() => buyPort()}
+                  >
+                    {armed
+                      ? `Buy · ${ledger.current.quote.cost.toLocaleString()}cr`
+                      : 'Pick a die to buy'}
+                  </button>
+                )}
+              </div>
+              {/* Disabled-not-hidden: the typed reason, whenever the buy is refused
+                  (already-owned is surfaced above as OWNED, not as an error). */}
+              {!ledger.current.quote.ok &&
+                ledger.current.quote.failure &&
+                !ledger.current.quote.alreadyOwned && (
+                  <span className="ship-reason" data-testid="port-reason">
+                    {portFailureExplanation(ledger.current.quote.failure)}
+                  </span>
+                )}
+            </div>
+          ) : (
+            <div className="lb-empty" data-testid="port-none">
+              No port authority here — the rim is ungoverned.
+            </div>
+          )}
+
+          {/* Income ledger — every owned stake with its per-dusk income and the
+              total the dusk economy accrues. The "watch income tick at dusk" read. */}
+          {ledger.owned.length > 0 && (
+            <div className="port-ledger" data-testid="port-ledger">
+              {ledger.owned.map((o) => (
+                <div
+                  className="lb-row"
+                  key={o.systemId}
+                  data-testid="port-owned-row"
+                  data-system-id={o.systemId}
+                >
+                  <span className="mono">{o.name}</span>
+                  <span className="mono">
+                    <b>{o.income}</b>cr/dusk
+                  </span>
+                </div>
+              ))}
+              <div className="lb-row port-total">
+                <span className="mono">TOTAL / DUSK</span>
+                <span className="mono">
+                  <b data-testid="port-income-total">{ledger.totalDuskIncome}</b>cr
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -2544,6 +2775,12 @@ function HandDock({ state }: { state: CockpitState }) {
   const dice = hand?.dice ?? [];
   const spent = hand?.spent ?? [];
   const remaining = spent.filter((x) => !x).length;
+  // T-1405 · Crew-granted dawn-hand progression — the floor and remaining re-roll
+  // charges, read straight off the engine aggregator (never recomputed). The hand
+  // size itself is already variable: `dice.map` below renders however many dice the
+  // engine dealt (5 base, up to 7 with a First Officer aboard).
+  const mods = dawnHandModifiers(state.game);
+  const canReroll = mods.rerollsRemaining > 0;
   // The dawn scramble is JS-driven, so gate it on the setting OR the OS media
   // query (the CSS kill-switch only reaches CSS animations).
   const reduced = state.reducedMotion || systemPrefersReducedMotion();
@@ -2569,6 +2806,16 @@ function HandDock({ state }: { state: CockpitState }) {
     <div className="dock" data-hand-spent={handSpent ? '1' : '0'}>
       <div className="dlabel">
         Dawn Hand
+        {mods.floor > 0 && (
+          <span className="dawn-badge floor" data-testid="dawn-floor">
+            FLOOR {mods.floor}
+          </span>
+        )}
+        {mods.rerollsRemaining > 0 && (
+          <span className="dawn-badge reroll" data-testid="dawn-rerolls">
+            RE-ROLL &times;{mods.rerollsRemaining}
+          </span>
+        )}
         <b>DAY {state.game.day}</b>
       </div>
       <div className="hand" data-testid="hand" data-hand-spent={handSpent ? '1' : '0'}>
@@ -2584,31 +2831,51 @@ function HandDock({ state }: { state: CockpitState }) {
             .filter(Boolean)
             .join(' ');
           return (
-            <div
-              className={cls}
-              key={i}
-              data-testid="die"
-              data-spent={isSpent ? '1' : '0'}
-              role="button"
-              tabIndex={isSpent ? -1 : 0}
-              aria-pressed={state.selectedDie === i}
-              aria-label={isSpent ? `die ${i + 1} spent` : `die ${i + 1}, value ${v}`}
-              draggable={!isSpent}
-              onDragStart={(e) => {
-                e.dataTransfer.setData(DIE_MIME, String(i));
-                e.dataTransfer.effectAllowed = 'move';
-                if (state.selectedDie !== i) selectDie(i);
-              }}
-              onClick={() => selectDie(i)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  selectDie(i);
-                }
-              }}
-            >
-              <span>{isSpent ? v : display[i]}</span>
-              <span className="dl">{isSpent ? 'SPENT' : 'd20'}</span>
+            // The die slot is UNCLIPPED (the die itself has a hexagon clip-path,
+            // which would clip an in-die reroll button and swallow its clicks), so
+            // the per-die reroll affordance sits on the slot, over the die's corner.
+            <div className="die-slot" key={i}>
+              <div
+                className={cls}
+                data-testid="die"
+                data-spent={isSpent ? '1' : '0'}
+                role="button"
+                tabIndex={isSpent ? -1 : 0}
+                aria-pressed={state.selectedDie === i}
+                aria-label={isSpent ? `die ${i + 1} spent` : `die ${i + 1}, value ${v}`}
+                draggable={!isSpent}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(DIE_MIME, String(i));
+                  e.dataTransfer.effectAllowed = 'move';
+                  if (state.selectedDie !== i) selectDie(i);
+                }}
+                onClick={() => selectDie(i)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    selectDie(i);
+                  }
+                }}
+              >
+                <span>{isSpent ? v : display[i]}</span>
+                <span className="dl">{isSpent ? 'SPENT' : 'd20'}</span>
+              </div>
+              {/* T-1405 · Per-die re-roll affordance (PRD §7 "allow one re-roll").
+                  Shown on each UNSPENT die whenever a crew re-roll charge remains.
+                  It consumes a charge, NOT a selected die — so it does not depend on
+                  `selectedDie`. */}
+              {canReroll && !isSpent && (
+                <button
+                  className="die-reroll"
+                  data-testid="die-reroll"
+                  data-die-index={i}
+                  aria-label={`re-roll die ${i + 1}`}
+                  title="Re-roll this die (spends one charge)"
+                  onClick={() => reroll(i)}
+                >
+                  &#8635;
+                </button>
+              )}
             </div>
           );
         })}

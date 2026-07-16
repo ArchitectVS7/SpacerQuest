@@ -2725,3 +2725,166 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* =========================================================================
+   T-1405 · Progression, property & smuggling surfaces
+   Crew roster, dawn-hand floor/reroll badges + per-die reroll, port authority
+   ledger, contraband-hold badge, and the patrol contraband scan. Single-hue
+   amber phosphor, reverse-video for the "seized/reason" emphasis (T-302).
+   ========================================================================= */
+
+/* ---- dawn-hand badges (floor + remaining re-roll charges) ---- */
+.dawn-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  vertical-align: middle;
+}
+.dawn-badge.reroll {
+  color: #140e07;
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+/* ---- per-die re-roll affordance ---- */
+/* The slot is unclipped so the reroll button (over the die's corner) isn't cut off
+   by the die's hexagon clip-path — a clipped button swallows its own clicks. */
+.die-slot {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.die-reroll {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: #140e07;
+  background: var(--amber);
+  border: 1px solid var(--ember);
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 2;
+}
+.die-reroll:hover {
+  background: var(--ember-hi);
+}
+
+/* ---- crew roster ---- */
+.ship-crew {
+  border: 1px solid var(--hair);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+.crew-head {
+  color: var(--amber);
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+.crew-head b {
+  color: var(--ember-hi);
+}
+.crew-row {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--hair);
+}
+.crew-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.crew-main {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+}
+.crew-name {
+  color: var(--ember);
+  font-weight: 500;
+}
+.crew-row.hired .crew-name {
+  color: var(--amber);
+}
+.crew-benefit {
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  color: var(--amber);
+  letter-spacing: 0.03em;
+}
+.crew-price {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--ember-hi);
+}
+
+/* ---- port authority ledger ---- */
+.port-authority .port-current {
+  display: grid;
+  gap: 5px;
+}
+.port-authority .flag {
+  align-self: center;
+}
+.port-ledger {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--hair);
+  display: grid;
+  gap: 3px;
+}
+.port-ledger .lb-row.port-total {
+  border-top: 1px solid var(--amber-dim);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+.port-ledger .lb-row.port-total b {
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
+}
+.port-current-income {
+  color: var(--ember-hi);
+}
+
+/* ---- contraband-hold badge ---- */
+.contraband-hold {
+  margin-left: 8px;
+}
+
+/* ---- patrol contraband scan (in the combat overlay) ---- */
+.patrol-scan {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--amber-dim);
+  padding: 8px;
+  margin-bottom: 4px;
+}
+.ps-result {
+  font-family: var(--font-data);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  padding: 3px 8px;
+}
+.ps-result.clear {
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+}
+.ps-result.rev {
+  color: #140e07;
+  background: var(--amber);
+  font-weight: 600;
+}

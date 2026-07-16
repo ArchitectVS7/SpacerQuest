@@ -136,6 +136,26 @@ export interface CockpitState {
     creditsDelta: number;
   } | null;
   /**
+   * T-1405 patrol contraband scan. The honest GUILE check the patrol rolled
+   * against a smuggler's hold during the LAST jump, plus its consequence (caught +
+   * fine + which cargo was seized) — built straight from the Travel action's typed
+   * `ContrabandScan` / `ContrabandConfiscated` events, never recomputed. Like
+   * `combatAftermath` / `dareOutcome` this is CLIENT presentation meta-state (NOT
+   * GameState), so a JSON round-trip of game state is unaffected and no save
+   * migration is needed. The patrol's `StatCheck` carries `actor === interceptor.name`
+   * (not 'Player'), so it never pollutes `lastCheck`; the scan renders its own
+   * breakdown from `patrolScan.check`. READER: the combat overlay's `patrol-scan`
+   * readout. Null until a scan fires; cleared on selection / new day / new game /
+   * aftermath dismiss / slot load.
+   */
+  patrolScan: {
+    check: CheckResult;
+    caught: boolean;
+    fine: number;
+    confiscatedContract: boolean;
+    confiscatedPod: boolean;
+  } | null;
+  /**
    * T-311 onboarding. Which first-time coach prompts the player has already
    * dismissed or progressed past. This is CLIENT presentation meta-state (like
    * `fx`), deliberately kept out of GameState so the engine stays pure and a
@@ -184,6 +204,7 @@ function init(): CockpitState {
     combatMalfunction: false,
     explorationOutcome: null,
     dareOutcome: null,
+    patrolScan: null,
     onboardingSeen: readOnboarding(),
     seed,
     reducedMotion: readReducedMotion(),
@@ -322,6 +343,91 @@ function loanFailNoticeFrom(events: GameEvent[]): string | null {
         return "Penny Wise's desk needs a fresh die from the hand.";
       default:
         return 'Penny Wise turned that request down.';
+    }
+  }
+  return null;
+}
+
+/**
+ * T-1405 · Translate a `CrewEvent{kind:'failed'}` refusal into an honest visible
+ * notice — the "typed fails render, never silence" guarantee. Returns null when the
+ * hire/dismiss committed (a 'hired'/'dismissed' event carries no `failReason`).
+ * Covers the crew preconditions (unknown-role / already-hired / no-berth /
+ * insufficient-credits / not-hired) plus the UI-prevented malformed-die reasons.
+ */
+function crewFailNoticeFrom(events: GameEvent[]): string | null {
+  for (const e of events) {
+    if (e.type !== 'CrewEvent' || e.kind !== 'failed') continue;
+    switch (e.failReason) {
+      case 'unknown-role':
+        return 'No such crew role to hire.';
+      case 'already-hired':
+        return 'That role is already aboard.';
+      case 'no-berth':
+        return 'No free cabin berth — upgrade the cabin to make room for crew.';
+      case 'insufficient-credits':
+        return 'Not enough credits to cover that hire.';
+      case 'not-hired':
+        return 'That role is not aboard to dismiss.';
+      case 'no-die':
+      case 'invalid-die-index':
+      case 'die-already-spent':
+        return 'That crew order needs a fresh die from the hand.';
+      default:
+        return 'That crew order was refused.';
+    }
+  }
+  return null;
+}
+
+/**
+ * T-1405 · Translate a `PortEvent{kind:'failed'}` refusal into an honest visible
+ * notice. Returns null when the buy committed (a 'purchased' event carries no
+ * `failReason`). Covers the port preconditions (not-at-port / not-purchasable /
+ * already-owned / insufficient-credits) plus the UI-prevented malformed-die reasons.
+ */
+function portFailNoticeFrom(events: GameEvent[]): string | null {
+  for (const e of events) {
+    if (e.type !== 'PortEvent' || e.kind !== 'failed') continue;
+    switch (e.failReason) {
+      case 'not-at-port':
+        return 'You must be docked at the port to buy its authority.';
+      case 'not-purchasable':
+        return 'No purchasable port authority in this system.';
+      case 'already-owned':
+        return 'You already hold this port stake.';
+      case 'insufficient-credits':
+        return 'Not enough credits to buy this port stake.';
+      case 'no-die':
+      case 'invalid-die-index':
+      case 'die-already-spent':
+        return 'The port office needs a fresh die from the hand.';
+      default:
+        return 'That port purchase was refused.';
+    }
+  }
+  return null;
+}
+
+/**
+ * T-1405 · Translate a `DiceRerolled{failReason}` refusal into an honest visible
+ * notice. Returns null when the re-roll committed (a successful `DiceRerolled`
+ * carries a `dieIndex`/`result`, no `failReason`). The die-index / already-spent
+ * reasons are UI-prevented but still get a line so a race with state is never a
+ * silent no-op; `no-charge` fires when the day's re-roll charges are exhausted.
+ */
+function rerollFailNoticeFrom(events: GameEvent[]): string | null {
+  for (const e of events) {
+    if (e.type !== 'DiceRerolled' || !e.failReason) continue;
+    switch (e.failReason) {
+      case 'no-hand':
+        return 'No dawn hand to re-roll.';
+      case 'invalid-die-index':
+        return 'That die is not in the hand.';
+      case 'die-already-spent':
+        return 'That die is already spent — it cannot be re-rolled.';
+      case 'no-charge':
+        return 'No re-roll charges left today.';
     }
   }
   return null;
@@ -492,6 +598,7 @@ export function newGame(seed: number): void {
     combatMalfunction: false,
     explorationOutcome: null,
     dareOutcome: null,
+    patrolScan: null,
     onboardingSeen: {},
   });
   // A fresh career: the dawn sting and the ambient drive-hum bed. The hum defers
@@ -512,6 +619,7 @@ export function selectDie(index: number): void {
     lastCheck: null,
     explorationOutcome: null,
     dareOutcome: null,
+    patrolScan: null,
   });
 }
 
@@ -684,6 +792,29 @@ export function travelTo(destinationId: number): void {
     const travel = events.find(
       (e): e is Extract<GameEvent, { type: 'TravelEvent' }> => e.type === 'TravelEvent',
     );
+    // T-1405 · A PATROL interception of a smuggler runs a GUILE contraband scan
+    // INSIDE this jump (engine actions/patrol.ts), emitting a `ContrabandScan` and,
+    // on a catch, a `ContrabandConfiscated` into these events. Capture both into the
+    // client `patrolScan` so the combat overlay can render the scan's GUILE
+    // breakdown + consequence. The scan's own StatCheck carries actor ===
+    // interceptor.name (not 'Player'), so it never lands in `lastCheck`.
+    const scan = events.find(
+      (e): e is Extract<GameEvent, { type: 'ContrabandScan' }> => e.type === 'ContrabandScan',
+    );
+    const confiscated = events.find(
+      (e): e is Extract<GameEvent, { type: 'ContrabandConfiscated' }> =>
+        e.type === 'ContrabandConfiscated',
+    );
+    const patrolScan: CockpitState['patrolScan'] = scan
+      ? {
+          check: scan.check,
+          caught: scan.caught,
+          fine: confiscated?.fine ?? 0,
+          confiscatedContract: confiscated?.confiscatedContract ?? false,
+          confiscatedPod: confiscated?.confiscatedPod ?? false,
+        }
+      : null;
+
     let notice: string | null = null;
     if (next.encounter) {
       // T-307 will build the combat overlay; until then the honest surface is a
@@ -710,6 +841,7 @@ export function travelTo(destinationId: number): void {
       // readout (a jump can carry the player away from the Hangout).
       explorationOutcome: null,
       dareOutcome: null,
+      patrolScan,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
     // The jump die is always spent (even a failed PILOT roll burns it), so this
@@ -922,6 +1054,147 @@ export function repayLoan(amount: number): void {
 }
 
 /**
+ * T-1405 · Hire a crew role at the Hangout/port (PRD §7 dice progression). A pure
+ * CLIENT of the T-1306 `Crew` action: the ship pane arms a die and names a content
+ * role, and this is the single engine call. Crew grant the dawn-hand progression
+ * (extra die / re-roll charge / roll floor) at the NEXT dawn — `dawnDiceModifiers`
+ * is read in `startDay`, so a mid-day hire does not re-roll the live hand. A typed
+ * `CrewEvent{failed}` (no berth / unaffordable / already aboard) spends NO die (read
+ * the authoritative spent flag), keeps the selection, and surfaces a visible notice.
+ */
+export function hireCrew(roleId: string): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then hire.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Crew',
+      action: 'hire',
+      roleId,
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const notice = crewFailNoticeFrom(events);
+    const committed = next.player.dawnHand?.spent[die] === true;
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    playCues(events, committed);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That hire could not be resolved.' });
+  }
+}
+
+/**
+ * T-1405 · Dismiss a crew role (PRD §7). A pure CLIENT of the T-1306 `Crew` action's
+ * dismiss path — costs a die (like a hire), frees a cabin berth, no refund. A typed
+ * `CrewEvent{failed:'not-hired'}` spends NO die and surfaces a visible notice.
+ */
+export function dismissCrew(roleId: string): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then dismiss.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Crew',
+      action: 'dismiss',
+      roleId,
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const notice = crewFailNoticeFrom(events);
+    const committed = next.player.dawnHand?.spent[die] === true;
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    playCues(events, committed);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That dismissal could not be resolved.' });
+  }
+}
+
+/**
+ * T-1405 · Re-roll one un-spent dawn die (PRD §7 "allow one re-roll"). A pure CLIENT
+ * of the T-1306 `Reroll` action. UNLIKE every other verb this does NOT consume a
+ * selected die — it consumes a `rerollsRemaining` charge and targets `dieIndex`
+ * directly (the die stays in hand; only its face changes, floored by any crew
+ * floor). So `selectedDie` / `bloomDie` are deliberately left untouched. A typed
+ * `DiceRerolled{failReason}` (no charge / already spent) surfaces a visible notice.
+ */
+export function reroll(dieIndex: number): void {
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Reroll',
+      dieIndex,
+    });
+    autosave(next, state.seed);
+    const notice = rerollFailNoticeFrom(events);
+    // A re-roll consumes a CHARGE, not a die — do not touch selectedDie / bloomDie.
+    set({
+      game: next,
+      notice,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    // No die was committed (only a charge), so this is not a die-commit for the cue.
+    playCues(events, false);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That re-roll could not be resolved.' });
+  }
+}
+
+/**
+ * T-1405 · Buy a controlling stake in the local port authority (PRD §9). A pure
+ * CLIENT of the T-1307 `Port` action: the trade pane arms a die and this is the
+ * single engine call. `systemId` is always the current system — the engine requires
+ * you buy the port you stand in. The stake accrues per-dusk launch-fee income
+ * (surfaced in the ledger, accrued by day.ts endDay). A typed `PortEvent{failed}`
+ * (not-at-port / not-purchasable / already-owned / unaffordable) spends NO die and
+ * surfaces a visible notice; on commit the die blooms.
+ */
+export function buyPort(): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then buy the port.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Port',
+      action: 'buy',
+      systemId: state.game.player.currentSystemId,
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const notice = portFailNoticeFrom(events);
+    const committed = next.player.dawnHand?.spent[die] === true;
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    playCues(events, committed);
+  } catch (err) {
+    set({
+      notice: err instanceof Error ? err.message : 'That port purchase could not be resolved.',
+    });
+  }
+}
+
+/**
  * Commit a combat stance (T-307). The overlay is a pure client of `resolveCombat`
  * exactly as the starmap is of `resolveTravel`: it picks a die + stance and this
  * is the single engine call. Every outcome is surfaced — the honest PLAYER roll
@@ -1116,9 +1389,10 @@ export function resolveStorylet(storyletId: string, choiceId: string, needsDie: 
   }
 }
 
-/** Dismiss the aftermath panel once the player has read it. */
+/** Dismiss the aftermath panel once the player has read it. Clears the patrol
+ *  scan readout too — it rode the same overlay the aftermath closes. */
 export function dismissAftermath(): void {
-  set({ combatAftermath: null, combatMalfunction: false });
+  set({ combatAftermath: null, combatMalfunction: false, patrolScan: null });
 }
 
 /** No-dice escape hatch: when the hand is empty mid-encounter the three stances
@@ -1150,6 +1424,7 @@ export function endDay(): void {
       combatMalfunction: false,
       explorationOutcome: null,
       dareOutcome: null,
+      patrolScan: null,
       onboardingSeen: reconcileOnboarding(state.game, dawn.state),
     });
     // Dusk cues (wire crackle / combat resolution) off the dusk events, then the
@@ -1249,6 +1524,7 @@ export function loadSlot(n: number): void {
     combatAftermath: null,
     combatMalfunction: false,
     dareOutcome: null,
+    patrolScan: null,
     // Do NOT reset onboardingSeen — loading a mid-career save shouldn't re-teach.
   });
 }

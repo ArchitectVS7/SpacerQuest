@@ -19,7 +19,12 @@ import {
   LOAN_DAILY_RATE,
   LOAN_TERM_DAYS,
   LENDER_ID,
+  CREW_ROLES,
+  CREW_BY_ID,
+  PURCHASABLE_PORTS_BY_SYSTEM,
+  isPurchasablePort,
   type StoryletTrigger,
+  type CrewRole,
 } from '@spacerquest/content';
 import {
   maxJumpDistance,
@@ -34,6 +39,11 @@ import {
   travelPreview,
   quoteFuelPurchase,
   hangoutRumors,
+  dawnDiceModifiers,
+  quotePort,
+  crewCapacity,
+  isCarryingContraband,
+  isCarryingIllicit,
   type CheckResult,
   type GameEvent,
   type GameState,
@@ -46,6 +56,8 @@ import {
   type NemesisLoreEntry,
   type TravelPreview,
   type FuelPurchaseQuote,
+  type PortQuote,
+  type PortEventFailReason,
 } from '@spacerquest/engine';
 import type { RenownRankId, AnonymousInterceptorKind } from '@spacerquest/content';
 
@@ -268,6 +280,200 @@ export function lendingTerms(): LendingTerms {
     ratePercent: LOAN_DAILY_RATE * 100,
     termDays: LOAN_TERM_DAYS,
   };
+}
+
+// ---- T-1405 progression, property & smuggling surfaces (display-only) -----
+//
+// The dawn-hand modifiers, crew roster, port ledger and contraband-hold badge are
+// pure CLIENTS of the T-1305 patrol / T-1306 dice-progression / T-1307 port
+// mechanics. Every number reads a content constant or an engine export
+// (`dawnDiceModifiers`, `quotePort`, `crewCapacity`, `isCarryingContraband` /
+// `isCarryingIllicit`) — the same source the resolvers gate on. Nothing here
+// re-derives a rule (income, floor, hire price, capacity all come from
+// engine/content); the UI only projects them onto the pane.
+
+/** The resolved dawn-hand parameters — crew-granted hand size / floor / per-day
+ *  reroll grant (from the SAME `dawnDiceModifiers` aggregator `startDay` uses to
+ *  deal the hand) merged with the LIVE remaining reroll charges off the dealt
+ *  hand. A pure read. READER: the HandDock floor badge + reroll count + per-die
+ *  reroll affordance. */
+export interface DawnHandModifiers {
+  handSize: number;
+  floor: number;
+  rerolls: number;
+  rerollsRemaining: number;
+}
+
+export function dawnHandModifiers(game: GameState): DawnHandModifiers {
+  const mods = dawnDiceModifiers(game.player.crew);
+  return {
+    handSize: mods.handSize,
+    floor: mods.floor,
+    rerolls: mods.rerolls,
+    rerollsRemaining: game.player.dawnHand?.rerollsRemaining ?? 0,
+  };
+}
+
+/** The one-word benefit label for a crew role, read straight off its content
+ *  `benefit` discriminant — never a UI-invented effect. */
+export function crewBenefitLabel(role: CrewRole): string {
+  const b = role.benefit;
+  switch (b.kind) {
+    case 'extra-die':
+      return '+1 die';
+    case 'reroll':
+      return 'one re-roll/day';
+    case 'floor':
+      return `floor ${b.floor}`;
+  }
+}
+
+/** One hired crew member — its content role definition + the day it came aboard. */
+export interface HiredCrewRow {
+  role: CrewRole;
+  hiredDay: number;
+}
+
+/** One hireable crew role — its definition plus affordability / berth state and a
+ *  plain "here's why you can't hire" reason (mirrors quoteShipyard's reason style
+ *  so the pane disables-not-hides). `canHire` folds every precondition (free berth
+ *  AND the hire price) so the button gate is a single read. */
+export interface HireableCrewRow {
+  role: CrewRole;
+  affordable: boolean;
+  canHire: boolean;
+  reason: string | null;
+}
+
+export interface CrewRoster {
+  hired: HiredCrewRow[];
+  hireable: HireableCrewRow[];
+  /** Cabin berths (engine `crewCapacity`, the T-1205 cabin-strength socket). */
+  berths: number;
+  berthsUsed: number;
+}
+
+/**
+ * The crew roster for the ship pane: which roles are aboard, which are hireable
+ * (each with a disabled-reason), and the berth budget. `berths` is the engine's
+ * `crewCapacity` (cabin strength → berths); a hire is gated on a free berth AND
+ * the hire price — the SAME order `resolveCrew` checks — so the pane never enables
+ * a hire the engine would refuse. READER: ShipPane crew section.
+ */
+export function crewRoster(game: GameState): CrewRoster {
+  const crew = game.player.crew;
+  const berths = crewCapacity(game.player.ship);
+  const berthsUsed = crew.length;
+  const hiredIds = new Set(crew.map((m) => m.roleId));
+  const hired: HiredCrewRow[] = crew
+    .map((m) => ({ role: CREW_BY_ID[m.roleId], hiredDay: m.hiredDay }))
+    .filter((r): r is HiredCrewRow => r.role != null);
+  const hireable: HireableCrewRow[] = CREW_ROLES.filter((role) => !hiredIds.has(role.id)).map(
+    (role) => {
+      const affordable = game.player.credits >= role.hirePrice;
+      const hasBerth = berthsUsed < berths;
+      let reason: string | null = null;
+      if (!hasBerth) reason = 'No free cabin berth — upgrade the cabin';
+      else if (!affordable)
+        reason = `Need ${role.hirePrice.toLocaleString()}cr, have ${game.player.credits.toLocaleString()}cr`;
+      return { role, affordable, canHire: hasBerth && affordable, reason };
+    },
+  );
+  return { hired, hireable, berths, berthsUsed };
+}
+
+/** The current-system port stake (name + live `quotePort` buy preview), or null
+ *  when the player stands in a non-purchasable (rim) system. */
+export interface PortLedgerCurrent {
+  systemId: number;
+  name: string;
+  quote: PortQuote;
+}
+
+/** One owned port stake — its per-dusk income (era-modulated, straight off
+ *  `quotePort`) and the day it was bought. */
+export interface OwnedPortRow {
+  systemId: number;
+  name: string;
+  income: number;
+  purchaseDay: number;
+}
+
+export interface PortLedger {
+  current: PortLedgerCurrent | null;
+  owned: OwnedPortRow[];
+  /** Sum of the owned stakes' per-dusk incomes — the "watch income tick at dusk"
+   *  figure the ledger surfaces. */
+  totalDuskIncome: number;
+}
+
+/**
+ * The port-authority ledger for the trade pane: the buy preview for the port the
+ * player stands in (via `quotePort`, so the price / income / disabled-reason can
+ * never disagree with the real purchase), plus every owned stake with its
+ * era-modulated per-dusk income. Every number reads content (`baseDuskIncome`,
+ * `purchasePrice`) through the engine — never recomputed here. READER: the
+ * TradePane PORT AUTHORITY block + its income ledger.
+ */
+export function portLedger(game: GameState): PortLedger {
+  const here = game.player.currentSystemId;
+  const current: PortLedgerCurrent | null = isPurchasablePort(here)
+    ? {
+        systemId: here,
+        name: PURCHASABLE_PORTS_BY_SYSTEM[here].name,
+        quote: quotePort(game, here),
+      }
+    : null;
+  const owned: OwnedPortRow[] = game.player.ports.map((port) => {
+    const def = PURCHASABLE_PORTS_BY_SYSTEM[port.systemId];
+    return {
+      systemId: port.systemId,
+      name: def?.name ?? `System-${port.systemId} Port Authority`,
+      income: quotePort(game, port.systemId).income,
+      purchaseDay: port.purchaseDay,
+    };
+  });
+  const totalDuskIncome = owned.reduce((sum, o) => sum + o.income, 0);
+  return { current, owned, totalDuskIncome };
+}
+
+/** Translate the engine's typed `PortEventFailReason` (also the `quotePort`
+ *  failure set) into a one-line "disabled, here's why" reason for the buy button.
+ *  Pure display translation — re-derives no rule. Every reason maps. */
+export function portFailureExplanation(failure: PortEventFailReason): string {
+  switch (failure) {
+    case 'not-at-port':
+      return 'Dock here to buy this authority';
+    case 'not-purchasable':
+      return 'No port authority for sale here';
+    case 'already-owned':
+      return 'You already hold this stake';
+    case 'insufficient-credits':
+      return 'Not enough credits';
+    case 'no-die':
+    case 'invalid-die-index':
+    case 'die-already-spent':
+      return 'Assign a die';
+  }
+}
+
+/** The contraband-hold badge state — whether the ship is carrying illicit cargo
+ *  and from which source(s). Reads the SAME `isCarryingContraband` / illicit-pod
+ *  flag the T-1305 patrol scan gates on, so the badge shows exactly when a patrol
+ *  would scan. READER: the TradePane hold badge. */
+export interface ContrabandHold {
+  carrying: boolean;
+  source: 'contract' | 'pod' | 'both' | null;
+}
+
+export function contrabandHold(game: GameState): ContrabandHold {
+  const contract = isCarryingContraband(game);
+  const pod = game.flags['signal.contraband.carrying'] === true;
+  let source: ContrabandHold['source'] = null;
+  if (contract && pod) source = 'both';
+  else if (contract) source = 'contract';
+  else if (pod) source = 'pod';
+  return { carrying: isCarryingIllicit(game), source };
 }
 
 /** A system placed on the SVG plane: raw coordinates plus projected (viewBox)
@@ -1038,7 +1244,9 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
     id: 'dawn-roll',
     title: 'The Dawn Hand',
-    body: 'Five dice, once a day. Pick one, then assign it to an action.',
+    // T-1405 · Hand-size-neutral copy: crew (a First Officer) can grow the dawn
+    // hand to 6–7 dice, so the count is no longer a fixed "five".
+    body: 'Your dawn hand — one roll each day. Pick a die, then assign it to an action.',
     anchor: 'hand',
     active: (game) => {
       const hand = game.player.dawnHand;
