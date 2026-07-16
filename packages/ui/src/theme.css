@@ -2468,6 +2468,27 @@ body {
   margin-bottom: 12px;
   border-color: var(--ember);
 }
+/* T-1407 · new-verb anchors. The Hangout launch nudge sits near the control
+   cluster on the bezel (top-right); the Port nudge shares the manifest's right
+   rail (the Trade pane's PORT AUTHORITY block lives there). explore reuses the
+   starmap anchor and contraband the manifest anchor, so both are already placed. */
+.onboarding[data-onboarding-anchor='hangout'] {
+  right: 26px;
+  top: 70px;
+}
+.onboarding[data-onboarding-anchor='port'] {
+  right: 26px;
+  top: 128px;
+}
+/* The loan coach rides INSIDE the open Hangout panel (which scrolls); render it
+   static in the flow at the top of the panel so it is never clipped or hidden
+   behind the panel, mirroring the combat coach inside .co-frame. */
+.hangout-panel .onboarding[data-onboarding-anchor='loan'] {
+  position: static;
+  width: auto;
+  margin-bottom: 12px;
+  border-color: var(--ember);
+}
 
 /* ---- guild-letter letterhead treatment ---- */
 .storylet-panel[data-variant='letter'] {
@@ -2615,7 +2636,9 @@ body {
 
 @media (max-width: 720px) {
   .onboarding[data-onboarding-anchor='manifest'],
-  .onboarding[data-onboarding-anchor='starmap'] {
+  .onboarding[data-onboarding-anchor='starmap'],
+  .onboarding[data-onboarding-anchor='hangout'],
+  .onboarding[data-onboarding-anchor='port'] {
     left: 50%;
     right: auto;
     transform: translateX(-50%);

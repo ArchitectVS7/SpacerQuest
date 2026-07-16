@@ -1210,8 +1210,14 @@ export function nemesisFile(game: GameState): NemesisFileView {
 // prompts, shared by the selector (what to render) and the store's auto-dismiss
 // reconcile (what to mark seen when the taught action lands).
 
-/** Anchor a contextual prompt to the real affordance it teaches. */
-export type OnboardingAnchor = 'hand' | 'manifest' | 'starmap' | 'combat';
+/** Anchor a contextual prompt to the real affordance it teaches. T-1407 adds the
+ *  new-verb anchors: `hangout` (the cockpit launch switch) and `port` (the Trade
+ *  pane's PORT AUTHORITY block) are new screen-level anchors; `loan` renders
+ *  INSIDE the open Hangout panel (a distinct mount — see `onboardingMount`).
+ *  explore reuses `starmap` and the contraband nudge reuses `manifest`, since each
+ *  teaches an affordance already living in those panes. */
+export type OnboardingAnchor =
+  'hand' | 'manifest' | 'starmap' | 'combat' | 'hangout' | 'loan' | 'port';
 
 /** One contextual, first-time coach prompt. `active(game)` is a pure predicate
  *  over existing engine state — no new rule, no new field. A prompt shows while
@@ -1223,6 +1229,16 @@ export interface OnboardingPrompt {
   body: string;
   anchor: OnboardingAnchor;
   active(game: GameState): boolean;
+  /** T-1407 · When false, the prompt is marked seen ONLY via explicit dismissal
+   *  (the "Got it" button → `dismissOnboarding`), never by the auto-dismiss
+   *  reconcile. The new-verb prompts gate on affordance/location/resource state
+   *  (a hangout system, an affordable tank, a contraband board, a purchasable
+   *  port) rather than on the taught action landing, so a mere context change —
+   *  jumping away from a hangout, a board reroll — would otherwise spuriously
+   *  consume them before the player ever acts. Reader: `nextOnboardingSeen`.
+   *  Omitted/true for the T-311 delivery-flow prompts, whose predicate flips
+   *  false precisely when the taught action completes (so auto-dismiss is right). */
+  autoDismiss?: boolean;
 }
 
 /**
@@ -1267,6 +1283,75 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
     anchor: 'starmap',
     active: (game) => game.player.activeContract != null,
   },
+  // ---- T-1407 · the new-verb coach prompts -------------------------------
+  // Appended BELOW the four delivery-flow prompts so the guided first delivery
+  // (dawn → sign → jump) is unchanged: these only ever win once that chain is
+  // exhausted (or its prompts pre-seen). All five are `autoDismiss: false` — they
+  // gate on affordance state, not on the taught action, so only the "Got it"
+  // button marks them seen (see the interface note above). Each predicate is a
+  // pure read of existing engine/content surface; the reader is `OnboardingCallout`
+  // (the screen mount, plus the in-panel `hangout` mount for `first-loan`).
+  {
+    id: 'first-hangout',
+    title: 'The Spacers Hangout',
+    body: 'This port keeps a Hangout — open it to wager at the tables or borrow from Penny Wise.',
+    // Ranked ABOVE first-loan: at a hangout system both are active, but the
+    // player must be told to OPEN the panel before the in-panel loan nudge (which
+    // renders inside that panel) can be reached.
+    anchor: 'hangout',
+    // Same predicate the cockpit's Hangout launcher gates on (STAR_SYSTEMS
+    // hasHangout), so the nudge shows exactly where the button does.
+    active: (game) => hangoutOpen(game),
+    autoDismiss: false,
+  },
+  {
+    id: 'first-loan',
+    title: 'Penny Wise Lends',
+    body: 'Short on coin? Borrow against your future runs — mind the interest before you sign.',
+    anchor: 'loan',
+    // Only while the Hangout is open (the mount lives inside the panel) AND no
+    // loan is already outstanding — the exact state the `loan-borrow` button is
+    // live in.
+    active: (game) => hangoutOpen(game) && game.player.loan == null,
+    autoDismiss: false,
+  },
+  {
+    id: 'first-contraband',
+    title: 'Running Contraband',
+    body: 'A CONTRABAND offer pays well but rides dirty — signing it courts inspections. Your call.',
+    anchor: 'manifest',
+    // A contraband offer is on the board and the hold is free to take it — the
+    // decision the player faces at the manifest. Reads CARGO_TYPES.isContraband,
+    // the same flag the manifest row badges.
+    active: (game) =>
+      game.player.activeContract == null &&
+      game.market.manifestBoard.some((c) => CARGO_TYPES[c.cargoType]?.isContraband === true),
+    autoDismiss: false,
+  },
+  {
+    id: 'first-port',
+    title: 'Buy the Port',
+    body: 'You can buy a stake in this Port Authority — it pays a launch-fee income every dusk.',
+    anchor: 'port',
+    // Standing in a purchasable core port you do not already own — the exact
+    // state the Trade pane's `buy-port` button is live in (isPurchasablePort +
+    // not-owned).
+    active: (game) => {
+      const here = game.player.currentSystemId;
+      return isPurchasablePort(here) && !game.player.ports.some((p) => p.systemId === here);
+    },
+    autoDismiss: false,
+  },
+  {
+    id: 'first-explore',
+    title: 'Off-Lane Sweep',
+    body: 'Burn fuel to sweep off-lane for a discovery — salvage, a Signal Fragment, a sealed pod.',
+    anchor: 'starmap',
+    // The tank can afford the sweep — the same fuel gate `explorationPreview`
+    // reports and the sweep button disables on.
+    active: (game) => explorationPreview(game).canAfford,
+    autoDismiss: false,
+  },
 ];
 
 /**
@@ -1282,6 +1367,21 @@ export function activeOnboardingPrompt(
     if (!seen[prompt.id] && prompt.active(game)) return prompt;
   }
   return null;
+}
+
+/** T-1407 · Where a prompt's callout renders. The single global selector still
+ *  picks at-most-one prompt anywhere; this routes the winner to the right mount so
+ *  a prompt anchored to an overlaid surface is not hidden behind that overlay. */
+export type OnboardingMount = 'screen' | 'combat' | 'hangout';
+
+/** Derive the mount a prompt's anchor renders in: the combat coach rides inside
+ *  the combat overlay, the loan nudge inside the open Hangout panel, everything
+ *  else at cockpit screen level. Reader: `OnboardingCallout` (each of the three
+ *  mounts asks whether the current winner belongs to it). */
+export function onboardingMount(anchor: OnboardingAnchor): OnboardingMount {
+  if (anchor === 'combat') return 'combat';
+  if (anchor === 'loan') return 'hangout';
+  return 'screen';
 }
 
 /**
@@ -1300,6 +1400,10 @@ export function nextOnboardingSeen(
   let out: Record<string, true> | null = null;
   for (const prompt of ONBOARDING_PROMPTS) {
     if (seen[prompt.id]) continue;
+    // T-1407 · Affordance-gated prompts opt out of auto-dismiss: a context change
+    // that is NOT the taught action (jumping away from a hangout, a board reroll)
+    // must not consume them. They are seen only via explicit dismissal.
+    if (prompt.autoDismiss === false) continue;
     if (prompt.active(prev) && !prompt.active(next)) {
       out ??= { ...seen };
       out[prompt.id] = true;

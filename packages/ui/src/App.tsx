@@ -88,11 +88,13 @@ import {
   deedRegistry,
   nemesisFile,
   activeOnboardingPrompt,
+  onboardingMount,
   isGuildLetter,
   availableStorylets,
   offersForSurface,
   resolutionCeremony,
   type OnboardingAnchor,
+  type OnboardingMount,
   type ResolutionCeremonyView,
   type ShipComponentRow,
   type WireLogEntry,
@@ -492,13 +494,18 @@ export function App() {
 // the player can act on the affordance while it is up (which auto-dismisses it).
 // This is the "no modal tutorial walls" guarantee. It renders at most one prompt
 // (the store's selector picks the highest-priority active, unseen one). `where`
-// splits the two mount points: the combat coach must render INSIDE the combat
-// overlay (which covers the cockpit), the rest at screen level.
-function OnboardingCallout({ state, where }: { state: CockpitState; where: 'screen' | 'combat' }) {
+// selects which of THREE mount points this instance is: the combat coach renders
+// INSIDE the combat overlay, the loan coach INSIDE the open Hangout panel (both
+// overlays cover the cockpit), and everything else at screen level. The single
+// global selector still guarantees at most one prompt anywhere; `onboardingMount`
+// (T-1407) just routes the winner to its correct mount.
+function OnboardingCallout({ state, where }: { state: CockpitState; where: OnboardingMount }) {
+  // The screen mount is suppressed while the combat overlay covers the cockpit,
+  // so a lower-priority screen prompt can never render behind the overlay.
+  if (where === 'screen' && state.game.encounter != null) return null;
   const prompt = activeOnboardingPrompt(state.game, state.onboardingSeen);
   if (!prompt) return null;
-  const inCombat = prompt.anchor === 'combat';
-  if (where === 'combat' ? !inCombat : inCombat) return null;
+  if (onboardingMount(prompt.anchor) !== where) return null;
   return (
     <aside
       className="onboarding"
@@ -1089,6 +1096,12 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
           &times;
         </button>
       </header>
+
+      {/* T-1407 · The loan coach mounts INSIDE the panel (the `loan` anchor →
+          `hangout` mount), so it overlays the open panel rather than sitting
+          behind it. It exists only while the panel is open, which naturally gates
+          `first-loan` to "the Hangout is open." */}
+      <OnboardingCallout state={state} where="hangout" />
 
       {/* Pane-local failure surface: a Dare / lending typed fail must be visible
           above the cockpit (the global TradePane notice sits behind this panel). */}
