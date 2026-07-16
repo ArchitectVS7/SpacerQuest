@@ -235,17 +235,22 @@ export function runDayLoopGolden(
 //
 // T-1501 re-derivation (ALL FOUR hashes): the ports & rumors batch added the
 // systemIds-only `port.aldebaran.grain-exchange` beat at Aldebaran-1 (system 2).
-// Both scripts Travel to system 2, so the next dawn now surfaces one extra
-// StoryletOffered event + the resulting available-list entry, moving both the
-// STATE and EVENT hashes on both scripts. This is a deliberate CONTENT ADDITION,
-// not a behavior/rng change: no rule, value, or dice draw moved — only a new
-// eligible storylet appears at the docked system. Regenerated via
+// Both scripts Travel to system 2 (and TEN_DAY_SCRIPT on to system 3), so the
+// next dawn now surfaces extra StoryletOffered events + the resulting
+// available-list entries, moving both the STATE and EVENT hashes on both scripts.
+// This is a deliberate CONTENT ADDITION, not a behavior/rng change: no rule,
+// value, or dice draw moved — only new eligible storylets appear at the docked
+// systems. T-1502 re-pin: the NPC personal-chain batch added a chain opener at
+// systems 2 (Rattlesnake) and 3 (Silk Dagger) — both systemIds-gated openers the
+// scripts dock at — so one more offer surfaces at each. Neither script plays a
+// Storylet, so the new dusk abandonment sweep (resolveAbandonedChains) never fires
+// here; the drift is purely the new eligible offers. Regenerated via
 // gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '3340daa457d2f9fe4f44075533368057140a93b574cab2273b44e269ae361c3a';
+  '3b1859967333005efddbc309fbab4cce258d50348dd92da1c8d16e73f919d389';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'a5f88ec1bee9862de6c03dcc327fc60fa21deab21c01d04f12bbb3495450025e';
+  '539812ac31adcaa6c9355d850345479f5fa30849876a892aa835aa7156f4649d';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '9f4dae2514f3cda0848e70eec7732915d0406f8ad7e2801fbe19be4e3476b01b';
+  'b926621c82f77585a26dda3d43806ad5932fb6ae0cbbcba9528253b2fc303158';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  'a1b5f73b5a71f9af2e217314d7dc59123afb191b6b5362ec4da32be66754d5c7';
+  '8934d5c842eceb93c6e4ce3b3e1954deb9105d288df536e9332a6b52eebe9a90';

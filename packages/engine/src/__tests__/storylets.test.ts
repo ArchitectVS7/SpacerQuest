@@ -5,6 +5,7 @@ import {
   eligibleStorylets,
   quoteStoryletChoice,
   refreshAvailableStorylets,
+  resolveAbandonedChains,
   resolveStoryletChoice,
   triggerMatches,
 } from '../storylets.js';
@@ -117,6 +118,28 @@ const T1501_STORYLET_IDS = [
   'port.fomalhaut.deep-dark',
 ] as const;
 
+// T-1502 · NPC personal chains (appended last): Doc Salvage's episode 3, plus
+// five new 3-episode arcs (Silk Dagger, Wild Card, Rattlesnake, Stellar Monk,
+// The Broker). Doc's ep1/ep2 remain in the ORIGINAL prefix — only ep3 is new.
+const T1502_STORYLET_IDS = [
+  'chain.doc-salvage.impound',
+  'chain.silk-dagger.marker',
+  'chain.silk-dagger.collector',
+  'chain.silk-dagger.reckoning',
+  'chain.wild-card.pitch',
+  'chain.wild-card.co-sign',
+  'chain.wild-card.fallout',
+  'chain.rattlesnake.insult',
+  'chain.rattlesnake.escalation',
+  'chain.rattlesnake.duel',
+  'chain.stellar-monk.empty-hold',
+  'chain.stellar-monk.confession',
+  'chain.stellar-monk.ballast',
+  'chain.the-broker.ledger',
+  'chain.the-broker.favor',
+  'chain.the-broker.leverage',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -147,6 +170,10 @@ describe('storylet content validation', () => {
     for (const id of T1501_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1502 NPC personal chains batch loaded and validated.
+    for (const id of T1502_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
@@ -154,7 +181,8 @@ describe('storylet content validation', () => {
         T1302_STORYLET_IDS.length +
         T1305_STORYLET_IDS.length +
         T1310_STORYLET_IDS.length +
-        T1501_STORYLET_IDS.length,
+        T1501_STORYLET_IDS.length +
+        T1502_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);
@@ -215,6 +243,146 @@ describe('storylet content validation', () => {
       ]),
     ).toThrow(/Invalid storylet content:\n - .*duplicated/s);
   });
+
+  it('T-1502: rejects a wireResolution with a bad graceDays', () => {
+    expect(() =>
+      defineStorylets([
+        {
+          id: 'wr.head',
+          title: 'Head',
+          prose: 'p',
+          trigger: { systemIds: [1] },
+          choices: [
+            {
+              id: 'go',
+              label: 'Go',
+              prose: 'p',
+              effects: { schedule: [{ storyletId: 'wr.tail', delayDays: 1 }] },
+            },
+            { id: 'no', label: 'No', prose: 'p' },
+          ],
+        },
+        {
+          id: 'wr.tail',
+          title: 'Tail',
+          prose: 'p',
+          trigger: { scheduledOnly: true },
+          wireResolution: { graceDays: -1, wireMessage: 'the wire resolves it' },
+          choices: [
+            { id: 'x', label: 'X', prose: 'p' },
+            { id: 'y', label: 'Y', prose: 'p' },
+          ],
+        },
+      ]),
+    ).toThrow(/graceDays must be non-negative/);
+  });
+
+  it('T-1502: rejects a wireResolution on a storylet nothing schedules', () => {
+    expect(() =>
+      defineStorylets([
+        {
+          id: 'wr.orphan',
+          title: 'Orphan',
+          prose: 'p',
+          trigger: { systemIds: [1] },
+          wireResolution: { graceDays: 3, wireMessage: 'the wire resolves it' },
+          choices: [
+            { id: 'a', label: 'A', prose: 'p' },
+            { id: 'b', label: 'B', prose: 'p' },
+          ],
+        },
+      ]),
+    ).toThrow(/has a wireResolution but no storylet schedules it/);
+  });
+});
+
+describe('resolveAbandonedChains (T-1502 wire-resolution sweep)', () => {
+  // Arm a real chain the honest way: play Silk Dagger's ep1 at Altair-3, which
+  // grants +3 and schedules ep2 (`chain.silk-dagger.collector`, graceDays 4) for
+  // the next day. No hand-poking of scheduled/disposition — the chain arms itself.
+  function armSilkChain(): GameState {
+    let state = readyState();
+    state.player.currentSystemId = 3;
+    state = refreshAvailableStorylets(state).state;
+    const played = applyPlayerAction(state, {
+      type: 'Storylet',
+      storyletId: 'chain.silk-dagger.marker',
+      choiceId: 'carry-the-marker',
+    });
+    return played.state;
+  }
+
+  const EP2 = 'chain.silk-dagger.collector';
+  const NPC = 'npc-silk-dagger';
+
+  it('resolves an abandoned episode past dueDay + graceDays: wire line, disposition penalty, completed + cleared', () => {
+    const armed = armSilkChain();
+    const entry = armed.storylets.scheduled.find((s) => s.storyletId === EP2);
+    expect(entry).toBeDefined();
+    const dispoBefore = armed.npcs.find((n) => n.id === NPC)!.disposition;
+    expect(dispoBefore).toBe(3); // ep1 granted +3, nothing has decayed it
+
+    // Past the grace window: graceDays is 4, so the sweep fires when day > dueDay+4.
+    armed.day = entry!.dueDay + 5;
+    const { state: after, events } = resolveAbandonedChains(armed);
+
+    // The authored Galactic-Wire line is filed (kind 'npc' → UI wire ticker).
+    const wireMsg = STORYLETS.find((s) => s.id === EP2)!.wireResolution.wireMessage;
+    expect(wireMsg).toContain('Silk Dagger');
+    expect(events).toContainEqual({
+      type: 'WireEntry',
+      day: armed.day,
+      kind: 'npc',
+      message: wireMsg,
+    });
+    // The abandonment disposition penalty (−3) lands through the shared mover.
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'DispositionChanged',
+        npcId: NPC,
+        delta: -3,
+        reason: 'storylet',
+      }),
+    );
+    expect(after.npcs.find((n) => n.id === NPC)!.disposition).toBe(dispoBefore - 3);
+    // The chain is stamped resolved, completed, and unscheduled — it can't re-offer.
+    expect(after.flags['chain.silk-dagger.resolved']).toBe('wire');
+    expect(after.storylets.completed[EP2]).toBe(armed.day);
+    expect(after.storylets.scheduled.some((s) => s.storyletId === EP2)).toBe(false);
+  });
+
+  it('does not fire before the deadline', () => {
+    const armed = armSilkChain();
+    const entry = armed.storylets.scheduled.find((s) => s.storyletId === EP2)!;
+    // Exactly at dueDay + graceDays (4) — NOT strictly past it, so it holds.
+    armed.day = entry.dueDay + 4;
+    const { events } = resolveAbandonedChains(armed);
+    expect(events).toEqual([]);
+  });
+
+  it('does not fire once the episode is already completed (played)', () => {
+    const armed = armSilkChain();
+    const entry = armed.storylets.scheduled.find((s) => s.storyletId === EP2)!;
+    armed.day = entry.dueDay + 5;
+    armed.storylets.completed[EP2] = entry.dueDay; // player already played it
+    const { events } = resolveAbandonedChains(armed);
+    expect(events).toEqual([]);
+  });
+
+  it('is pure and deterministic across a JSON round-trip', () => {
+    const armed = armSilkChain();
+    const entry = armed.storylets.scheduled.find((s) => s.storyletId === EP2)!;
+    armed.day = entry.dueDay + 5;
+
+    const before = JSON.stringify(armed);
+    const a = resolveAbandonedChains(armed);
+    // Input untouched (the sweep clones internally).
+    expect(JSON.stringify(armed)).toBe(before);
+
+    const clone = deserializeState(serializeState(armed));
+    const b = resolveAbandonedChains(clone);
+    expect(b.events).toEqual(a.events);
+  });
 });
 
 describe('storylet engine', () => {
@@ -224,8 +392,10 @@ describe('storylet engine', () => {
     // A Medicinals (type 4) contract. The plague-relief storylet needs a live
     // `plague` era event (state.eraEvent is null here), so a plain Medicinals run
     // no longer arms it. quarantine-seal is the sole CARGO match; T-1501 added the
-    // Aldebaran-1 (system 2) port beat, which — being systemIds-only — is also
-    // eligible here (in content order, after the cargo match), so both surface.
+    // Aldebaran-1 (system 2) port beat and T-1502 added Rattlesnake's chain opener
+    // there — both systemIds-only (Rattlesnake's ep1 also gates on its
+    // `chain.rattlesnake.resolved exists:false`, which is unset here) — so all
+    // three surface, in content order after the cargo match.
     state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     const refreshed = refreshAvailableStorylets(state);
@@ -233,6 +403,7 @@ describe('storylet engine', () => {
     expect(refreshed.state.storylets.available.map((offer) => offer.storyletId)).toEqual([
       'cargo.medicinals.quarantine-seal',
       'port.aldebaran.grain-exchange',
+      'chain.rattlesnake.insult',
     ]);
     const offer = refreshed.state.storylets.available[0];
     expect(offer?.title).toBe('Quarantine Seal');
@@ -256,6 +427,12 @@ describe('storylet engine', () => {
         type: 'StoryletOffered',
         day: 1,
         storyletId: 'port.aldebaran.grain-exchange',
+        scheduled: false,
+      },
+      {
+        type: 'StoryletOffered',
+        day: 1,
+        storyletId: 'chain.rattlesnake.insult',
         scheduled: false,
       },
     ]);

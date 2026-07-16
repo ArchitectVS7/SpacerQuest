@@ -643,3 +643,62 @@ export function resolveStoryletChoice(
 
   return { state: nextState, events };
 }
+
+/**
+ * T-1502 · The "wire resolves it without you" abandonment sweep (PRD §8.1: an NPC
+ * personal chain "can resolve without you"). A scheduled chain episode carrying a
+ * content `wireResolution` (storylets.ts) that has sat unplayed past its
+ * `dueDay + graceDays` is resolved FOR the player: the authored Galactic-Wire
+ * line is filed as a WireEntry (kind 'npc' → the UI wire ticker) and the
+ * abandonment consequence (a disposition drop + the terminal `chain.*.resolved`
+ * flag) is applied through the SAME `applyEffects` path a played choice uses — so
+ * it emits the identical DispositionChanged / StoryletEffectApplied events. The
+ * resolved episode is then stamped `completed` and dropped from the scheduled and
+ * available lists so it can never re-offer.
+ *
+ * PURE: reads only `state.day`, the scheduled entries' `dueDay`, and `completed`;
+ * `wireResolution.effects` never draws rng (disposition/flags only), so the sweep
+ * takes NO rng fork and is deterministic across a JSON round-trip. No new
+ * GameState field: the deadline is `dueDay` (already persisted) + the content
+ * `graceDays`. Reader/caller: engine `day.ts` endDay (the dusk "world moves"
+ * section). CONSUMERS of what it emits: the UI wire ticker (WireEntry) and the
+ * ep2/ep3 disposition gates + interceptor grudge-weighting (DispositionChanged).
+ */
+export function resolveAbandonedChains(state: GameState): {
+  state: GameState;
+  events: GameEvent[];
+} {
+  const nextState = cloneState(state);
+  const events: GameEvent[] = [];
+  const storylets: readonly StoryletDefinition[] = STORYLETS;
+
+  // Snapshot the scheduled list up front — we mutate scheduled/available/completed
+  // as we resolve, and the `completed` guard below stops a duplicate entry for the
+  // same storylet from re-resolving.
+  for (const entry of [...nextState.storylets.scheduled]) {
+    const def = storylets.find((candidate) => candidate.id === entry.storyletId);
+    const wire = def?.wireResolution;
+    if (!def || !wire) continue;
+    if (nextState.storylets.completed[def.id] !== undefined) continue;
+    if (nextState.day <= entry.dueDay + wire.graceDays) continue;
+
+    // Past the grace window, still unplayed → the wire resolves it. Reason stays
+    // 'storylet' inside applyEffects (disposition), matching a played choice.
+    events.push(...applyEffects(nextState, def.id, 'wire-resolution', wire.effects));
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      kind: 'npc',
+      message: wire.wireMessage,
+    });
+    nextState.storylets.completed[def.id] = nextState.day;
+    nextState.storylets.scheduled = nextState.storylets.scheduled.filter(
+      (schedule) => schedule.storyletId !== def.id,
+    );
+    nextState.storylets.available = nextState.storylets.available.filter(
+      (offer) => offer.storyletId !== def.id,
+    );
+  }
+
+  return { state: nextState, events };
+}

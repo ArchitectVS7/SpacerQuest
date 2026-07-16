@@ -117,6 +117,34 @@ export interface StoryletChoiceDefinition {
   failureEffects?: StoryletEffects;
 }
 
+/**
+ * T-1502 · The "wire resolves it without you" abandonment path (PRD §8.1: an NPC
+ * personal chain "can resolve without you"). Present ONLY on a scheduled chain
+ * episode (a `scheduledOnly` target): if that episode sits unplayed past its
+ * `dueDay + graceDays`, the engine's dusk sweep (engine `resolveAbandonedChains`,
+ * called in `day.ts` endDay) resolves the chain FOR the player — files the wire
+ * line and applies the disposition consequence.
+ *
+ * This field lives on the DEFINITION only. It is never serialized into GameState
+ * (only the `StoryletOffer` projection is stored), so it needs NO schema/save
+ * change: the deadline is computed from the already-persisted scheduled entry's
+ * `dueDay` plus this content `graceDays`.
+ */
+export interface StoryletWireResolution {
+  /** Days the scheduled episode may sit past its `dueDay`, unplayed, before the
+   *  wire resolves the chain without the player. Reader: engine
+   *  `resolveAbandonedChains` (the day.ts dusk sweep). */
+  graceDays: number;
+  /** The Galactic News Wire line reporting how the chain ended without you.
+   *  Reader: the WireEntry it becomes → the UI wire ticker (format.ts wireLines). */
+  wireMessage: string;
+  /** State consequence of abandonment (a disposition drop + the terminal
+   *  `chain.*.resolved` flag). Applied through the SAME `applyEffects` path a
+   *  played choice uses, so it emits the identical DispositionChanged /
+   *  StoryletEffectApplied events. */
+  effects?: StoryletEffects;
+}
+
 export interface StoryletDefinition {
   id: string;
   title: string;
@@ -124,6 +152,9 @@ export interface StoryletDefinition {
   repeat?: 'never' | 'daily';
   trigger: StoryletTrigger;
   choices: readonly StoryletChoiceDefinition[];
+  /** T-1502 · abandonment path (PRD §8.1). Only meaningful on a `scheduledOnly`
+   *  target — validated in storyletValidation. */
+  wireResolution?: StoryletWireResolution;
 }
 
 export const STORYLETS = defineStorylets([
@@ -243,6 +274,13 @@ export const STORYLETS = defineStorylets([
     ],
   },
   {
+    // T-1502 · Doc Salvage EPISODE 2 (of 3). Both choices now SCHEDULE episode 3
+    // (`chain.doc-salvage.impound`) — the +2/+3 disposition they grant is what
+    // clears that episode's `npc.disposition >= 2` gate organically. Carries a
+    // `wireResolution` (PRD §8.1): answer the ping but never play this beat, and
+    // after the grace window the wire reports Doc handled the rescue alone
+    // (disposition −2). graceDays is set generously (7) so no short golden replay
+    // ever lapses it.
     id: 'chain.doc-salvage.follow-up',
     title: 'Doc Salvage Reports Back',
     prose:
@@ -252,6 +290,15 @@ export const STORYLETS = defineStorylets([
       scheduledOnly: true,
       npc: { id: 'npc-doc-salvage' },
       eras: ['TOUR_ONE'],
+    },
+    wireResolution: {
+      graceDays: 7,
+      wireMessage:
+        'Doc Salvage worked the beacon net alone while your channel stayed dark — the skiff got its patient, no thanks to you.',
+      effects: {
+        disposition: [{ npcId: 'npc-doc-salvage', delta: -2 }],
+        flags: [{ name: 'chain.doc-salvage.resolved', value: 'wire' }],
+      },
     },
     choices: [
       {
@@ -263,6 +310,7 @@ export const STORYLETS = defineStorylets([
           disposition: [{ npcId: 'npc-doc-salvage', delta: 2 }],
           deedProgress: [{ deedId: 'beacon_keeper', amount: 1 }],
           flags: [{ name: 'chain.doc-salvage.rescue_logged', value: true }],
+          schedule: [{ storyletId: 'chain.doc-salvage.impound', delayDays: 1 }],
         },
       },
       {
@@ -273,6 +321,7 @@ export const STORYLETS = defineStorylets([
           disposition: [{ npcId: 'npc-doc-salvage', delta: 3 }],
           deedProgress: [{ deedId: 'beacon_keeper', amount: 1 }],
           flags: [{ name: 'chain.doc-salvage.payment_refused', value: true }],
+          schedule: [{ storyletId: 'chain.doc-salvage.impound', delayDays: 1 }],
         },
       },
     ],
@@ -2579,6 +2628,805 @@ export const STORYLETS = defineStorylets([
         label: 'Wave the story off',
         prose:
           'Every port has its madwoman and her empty channel. Nod, excuse yourself, and get back to the manifest.',
+      },
+    ],
+  },
+
+  // ==========================================================================
+  // T-1502 · NPC personal chains — six 3-episode arcs (appended per the batch
+  //   convention: batches append after every prior batch, so the originals stay
+  //   the leading content-order prefix the engine test asserts). Doc Salvage's
+  //   episode 3 lives here too (its ep1/ep2 stay in the ORIGINAL prefix above,
+  //   edited in place); the arc is LINKED by schedule ids, not content order.
+  //
+  //   PURPOSE (PRD §8.1): each NPC gets a personal arc keyed to their Bond/Flaw,
+  //   gating on disposition that now has teeth (T-1204) — and every chain carries
+  //   the "ignore-it-and-the-wire-resolves-it" path (`wireResolution`), so a chain
+  //   can resolve WITHOUT the player.
+  //
+  //   SHARED SHAPE:
+  //     - ep1 (the meeting): systemIds-gated at a CORE port (id 1–14, never the
+  //       NPC's migrating spawn — the shipped Doc chain's [1] precedent, so the
+  //       episode reaches the player at a fixed dock). `npc:{id}` + a
+  //       `chain.X.resolved exists:false` gate. The "engage" choice grants an
+  //       opening +3 disposition and SCHEDULES ep2 (delayDays 1); the "decline"
+  //       out is requirement-free and sets `chain.X.resolved='declined'` — a clean
+  //       opt-out (the chain never arms), distinct from abandonment.
+  //     - ep2 (the ask/turn): `scheduledOnly`, `npc.disposition:{ gte:2 }` — the
+  //       "getting close" gate the acceptance requires be hit ORGANICALLY (ep1's
+  //       +3 crosses it; the driver never sets disposition). Grants more standing
+  //       and schedules ep3. Carries a `wireResolution`.
+  //     - ep3 (the payoff): `scheduledOnly`, `npc.disposition:{ gte:3 }`. Terminal
+  //       — sets `chain.X.resolved='<outcome>'`, grants final standing/credits.
+  //       Carries a `wireResolution`.
+  //
+  //   READERS / consumed state (Standing-constraint 7):
+  //     - `chain.X.resolved`: READ by every episode's `exists:false` trigger gate
+  //       (a resolved chain — completed, declined, or wire-abandoned — never
+  //       re-offers), exactly as `tour-one.resolved` gates the resolution beats.
+  //     - `npc.disposition`: READ by the ep2/ep3 `disposition` gates (the organic
+  //       progression gate), plus the T-1204 interceptor grudge-weighting and bond
+  //       hooks — so the grants and the abandonment penalties are all consumed.
+  //     - `wireResolution`: READ by the engine dusk sweep (`resolveAbandonedChains`)
+  //       → a WireEntry (UI wire ticker) + the disposition penalty.
+  //
+  //   DIVERGENCE: foundation (ref f2f95fa9) carries NO NPC-chain system and no
+  //   storylet/disposition constants, so these arcs and their disposition budget
+  //   (+3 / gte2 / +2 / gte3 / +2; abandonment −2..−3; clamp [-10,10], decay one
+  //   step / 3 days) are engine-original content, tuned against the T-1204 decay.
+  //   Credit/fuel deltas sit in the existing storylet band (~40–350cr). Voice per
+  //   the User-Manual register the shipped storylets use.
+  // ==========================================================================
+
+  // --- Doc Salvage · EPISODE 3 of 3 (Savior Complex; "I was left once"). Doc's
+  //     rescue skiff is impounded at a port over a salvage-rights dispute. His
+  //     Bond (never leaves a mayday) makes him fight it whether you help or not —
+  //     which is exactly why abandoning it stings. Scheduled by follow-up (ep2)
+  //     above; gated on the +2/+3 that beat granted. ---
+  {
+    id: 'chain.doc-salvage.impound',
+    title: "Doc Salvage's Skiff Is Impounded",
+    prose:
+      'Doc Salvage wires from a port lockup: his rescue skiff — the one he answers maydays in — is impounded over a salvage-rights dispute, and the bond to spring it is more coin than a man who gives medicine away for free has ever held.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-doc-salvage', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.doc-salvage.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 5,
+      wireMessage:
+        "Doc Salvage's skiff cleared impound on its own docket while your channel stayed dark — he fought the port alone and won, and he logged who wasn't there.",
+      effects: {
+        disposition: [{ npcId: 'npc-doc-salvage', delta: -2 }],
+        flags: [{ name: 'chain.doc-salvage.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'post-the-bond',
+        label: 'Post the bond',
+        prose: 'Count out the coin and spring the skiff. A mayday answered is a mayday answered.',
+        requirements: { credits: { gte: 100 } },
+        effects: {
+          credits: -100,
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 3 }],
+          flags: [{ name: 'chain.doc-salvage.resolved', value: 'bonded' }],
+        },
+      },
+      {
+        id: 'stand-with-him',
+        label: 'Fight the dispute at the counter',
+        prose:
+          'Skip the bond and take the salvage-rights fight to the port master, clause by clause, until the skiff comes free.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 11 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 3 }],
+          flags: [{ name: 'chain.doc-salvage.resolved', value: 'freed' }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
+          flags: [{ name: 'chain.doc-salvage.resolved', value: 'freed-hard' }],
+        },
+      },
+      {
+        id: 'let-him-fight',
+        label: 'Let Doc fight it alone',
+        prose:
+          'Tell Doc he has the grit for it. He does — but a friend who watches from orbit is still a friend who watched.',
+        effects: {
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
+          flags: [{ name: 'chain.doc-salvage.resolved', value: 'alone' }],
+        },
+      },
+    ],
+  },
+
+  // --- Silk Dagger · "settle the debt behind her name" (Bond: Space Dragons;
+  //     Flaw: Vengeful). Core port: Altair-3 (system 3). ---
+  {
+    id: 'chain.silk-dagger.marker',
+    title: 'The Debt Behind Her Name',
+    prose:
+      'Silk Dagger finds you at Altair-3 with a debt-marker she cannot carry herself: a Space Dragon collector holds her true name against an old marker, and she needs a hull with no history to walk it in. "You," she says. "You are nobody yet. That is useful."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [3],
+      npc: { id: 'npc-silk-dagger' },
+      flags: [{ name: 'chain.silk-dagger.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'carry-the-marker',
+        label: 'Carry the marker',
+        prose:
+          'Take the marker and the name written under it. Whatever Silk owes the Dragons, you are the one walking it to the door now.',
+        effects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 3 }],
+          flags: [{ name: 'chain.silk-dagger.marker_carried', value: true }],
+          schedule: [{ storyletId: 'chain.silk-dagger.collector', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline-the-marker',
+        label: "Stay out of Silk's debts",
+        prose:
+          'Hand the marker back. A name you cannot read is a debt you cannot price. Silk takes it without a word — vengeful people rarely argue; they remember.',
+        effects: {
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.silk-dagger.collector',
+    title: 'The Collector Wants More',
+    prose:
+      "The Space Dragon collector reads the marker, then reads you, and names a figure twice what the marker says. Somewhere behind your ear, Silk's voice — vengeful and very calm — suggests the collector has made a mistake he can only make once.",
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-silk-dagger', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.silk-dagger.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Word off the Dragon lanes: Silk Dagger stopped waiting on your relay and settled the collector her own way. A body, a burned ledger, and a marker nobody will call in again.',
+      effects: {
+        disposition: [{ npcId: 'npc-silk-dagger', delta: -3 }],
+        flags: [{ name: 'chain.silk-dagger.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'hold-the-line',
+        label: 'Hold to the marker',
+        prose:
+          'Tell the collector the marker reads what it reads and you will not pay a credit over it. Silk likes that you did not fold.',
+        effects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 2 }],
+          schedule: [{ storyletId: 'chain.silk-dagger.reckoning', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'lean-on-him',
+        label: 'Lean on him for Silk',
+        prose:
+          'Let the collector understand, quietly, whose name he is leaning on and how short the Dragons keep their patience. Do it well and he remembers his manners.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 3 }],
+          schedule: [{ storyletId: 'chain.silk-dagger.reckoning', delayDays: 1 }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 1 }],
+          schedule: [{ storyletId: 'chain.silk-dagger.reckoning', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.silk-dagger.reckoning',
+    title: "Silk's Reckoning",
+    prose:
+      'The marker comes due, and Silk Dagger meets you at the reckoning with a choice already burning behind her eyes: pay the name clean and be done, or help her make sure no collector ever writes it down again.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-silk-dagger', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.silk-dagger.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        "The debt behind Silk Dagger's name closed itself while you drifted — settled in the Dragon way, permanent and unwitnessed. She will remember you were elsewhere for it.",
+      effects: {
+        disposition: [{ npcId: 'npc-silk-dagger', delta: -3 }],
+        flags: [{ name: 'chain.silk-dagger.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'pay-it-clean',
+        label: 'Pay the name clean',
+        prose:
+          'Count out the marker in full and burn the record after. Silk watches her name come off the Dragon ledger and, for once, does not reach for the vengeful answer.',
+        requirements: { credits: { gte: 150 } },
+        effects: {
+          credits: -150,
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 2 }],
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'paid' }],
+        },
+      },
+      {
+        id: 'burn-the-collector',
+        label: 'Burn the collector with her',
+        prose:
+          "Stand at Silk's shoulder while she closes the debt her way. It is ugly, and it is final, and the Dragons will know whose hull was parked outside.",
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 13 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 3 }],
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'burned' }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 1 }],
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'burned-hard' }],
+        },
+      },
+      {
+        id: 'walk-away',
+        label: 'Walk before the reckoning',
+        prose:
+          "Tell Silk this is hers to close, not yours. She lets you go. Whether that costs you later is a Dragon's arithmetic, and Dragons keep long books.",
+        effects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: -1 }],
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'walked' }],
+        },
+      },
+    ],
+  },
+
+  // --- Wild Card · "is his big score worth co-signing" (Bond: Hates the Astro
+  //     League; Flaw: Chaotic). Core port: Denebola-5 (system 6). ---
+  {
+    id: 'chain.wild-card.pitch',
+    title: "Wild Card's Big Score",
+    prose:
+      'Wild Card corners you at Denebola-5 grinning like a man holding a lit fuse. "An arbitrage," he says, "against an Astro League clearing house. Beautiful. Illegal in four systems. All I need is a co-signer with a clean name — and here you are, clean as a whistle."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [6],
+      npc: { id: 'npc-wild-card' },
+      flags: [{ name: 'chain.wild-card.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'hear-the-pitch',
+        label: 'Co-sign the pitch',
+        prose:
+          "Put your clean name next to Wild Card's dirty plan. The League has it coming, and the split — if it holds — is real money.",
+        effects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 3 }],
+          flags: [{ name: 'chain.wild-card.co_signed', value: true }],
+          schedule: [{ storyletId: 'chain.wild-card.co-sign', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'wave-him-off',
+        label: 'Want no part of it',
+        prose:
+          'Tell Wild Card to find another name. He shrugs, delighted, already three plans down the road. "Suit yourself. More for me."',
+        effects: {
+          flags: [{ name: 'chain.wild-card.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.wild-card.co-sign',
+    title: 'The Plan Has Changed',
+    prose:
+      'A day in, Wild Card\'s beautiful arbitrage has mutated into something with three more moving parts and a Warlord fence attached. "Improved it," he says. Chaotic to the bone, he cannot help himself — and your name is still on it.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-wild-card', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.wild-card.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Wild Card ran his Astro League score without waiting on you — the wire cannot agree whether it was genius or a fireball, only that your name was nowhere near it.',
+      effects: {
+        disposition: [{ npcId: 'npc-wild-card', delta: -2 }],
+        flags: [{ name: 'chain.wild-card.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'ride-the-chaos',
+        label: 'Ride the chaos',
+        prose:
+          'Tell Wild Card the new parts are fine because arguing with him is like arguing with weather. He whoops. The plan gets worse and better at once.',
+        effects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 2 }],
+          schedule: [{ storyletId: 'chain.wild-card.fallout', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'rein-him-in',
+        label: 'Rein the plan back in',
+        prose:
+          'Cut the three worst moving parts out before they cut you. Wild Card sulks for exactly one second, then admits the leaner plan might actually clear.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 3 }],
+          schedule: [{ storyletId: 'chain.wild-card.fallout', delayDays: 1 }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 1 }],
+          schedule: [{ storyletId: 'chain.wild-card.fallout', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.wild-card.fallout',
+    title: 'The Score Comes Down',
+    prose:
+      'The arbitrage lands, one way or another, and Wild Card turns to you with the split slip in his hand and that fuse-grin still lit. Co-sign the take and walk away rich and wanted, or bail now and let him carry the whole beautiful mess himself.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-wild-card', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.wild-card.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Wild Card score resolved without your signature on the take — he split it with the fence and kept your name off the paper, which is either mercy or a marker for later.',
+      effects: {
+        disposition: [{ npcId: 'npc-wild-card', delta: -2 }],
+        flags: [{ name: 'chain.wild-card.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'take-the-split',
+        label: 'Take the split',
+        prose:
+          'Sign the take and pocket your share of a fortune the Astro League will spend years failing to trace. Wild Card toasts you with something that should not be drinkable.',
+        effects: {
+          credits: 300,
+          disposition: [{ npcId: 'npc-wild-card', delta: 2 }],
+          flags: [{ name: 'chain.wild-card.resolved', value: 'cashed' }],
+        },
+      },
+      {
+        id: 'bail-out',
+        label: 'Bail before the paper lands',
+        prose:
+          'Wave the split away and get your name off everything before the clearing house notices. Wild Card grins wider — a man who bails clean is a man he can pitch again.',
+        effects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 1 }],
+          flags: [{ name: 'chain.wild-card.resolved', value: 'bailed' }],
+        },
+      },
+    ],
+  },
+
+  // --- Rattlesnake · "never lets an insult go" (Bond: Warlord Confed; Flaw:
+  //     Vengeful). Core port: Aldebaran-1 (system 2). This chain's disposition
+  //     consequence pairs with the T-1204 grudge-weighted interceptor selection —
+  //     a soured Rattlesnake hunts you. ---
+  {
+    id: 'chain.rattlesnake.insult',
+    title: 'A Matter of Respect',
+    prose:
+      'Rattlesnake is nursing a grudge at the Aldebaran-1 bar and a Warlord rival\'s insult still hanging in the air. He wants a second — a witness with steady nerves — for the satisfaction he intends to collect. "You don\'t let a thing like that stand," he tells you. It is not really a question.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [2],
+      npc: { id: 'npc-rattlesnake' },
+      flags: [{ name: 'chain.rattlesnake.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'stand-second',
+        label: 'Stand his second',
+        prose:
+          'Agree to witness. A Warlord takes his second seriously, and Rattlesnake will remember who stood at his shoulder when the insult had to be answered.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 3 }],
+          flags: [{ name: 'chain.rattlesnake.seconding', value: true }],
+          schedule: [{ storyletId: 'chain.rattlesnake.escalation', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'stay-out',
+        label: 'Stay out of it',
+        prose:
+          'Tell Rattlesnake his quarrels are his own. He hisses something about fair-weather friends and turns back to the insult. A vengeful man files that too.',
+        effects: {
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.rattlesnake.escalation',
+    title: 'Past the Point of Reason',
+    prose:
+      "By the next dock Rattlesnake has stopped talking about satisfaction and started talking about the rival's whole crew. The insult has grown teeth in his head, the way they always do with him — vengeful past reason, and building toward something a bar cannot hold.",
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-rattlesnake', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.rattlesnake.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Rattlesnake stopped waiting for his second and answered the insult alone — the wire has the whole ugly duel, and your name is not in the witness column.',
+      effects: {
+        disposition: [{ npcId: 'npc-rattlesnake', delta: -3 }],
+        flags: [{ name: 'chain.rattlesnake.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'keep-him-focused',
+        label: 'Keep it to the one man',
+        prose:
+          'Talk Rattlesnake down from the crew to the man who actually spoke — a duel he can win, not a war he cannot. He grudgingly narrows the target.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 2 }],
+          schedule: [{ storyletId: 'chain.rattlesnake.duel', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'let-him-rage',
+        label: 'Let him work up to it',
+        prose:
+          'Stand back and let Rattlesnake build the grudge as tall as he wants. It is his insult; he will carry it however he carries it, and he likes that you did not flinch.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 2 }],
+          schedule: [{ storyletId: 'chain.rattlesnake.duel', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.rattlesnake.duel',
+    title: "Rattlesnake's Duel",
+    prose:
+      'It comes to a duel, the way it was always going to. Rattlesnake stands ready at the line with the insult finally in reach, and turns to you: back his gun, talk him off it one last time, or leave him to answer for himself.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-rattlesnake', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.rattlesnake.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Rattlesnake took his duel with no one at his back and made the wire headlines doing it — he lived, he collected, and he noted the empty space where a friend should have stood.',
+      effects: {
+        disposition: [{ npcId: 'npc-rattlesnake', delta: -3 }],
+        flags: [{ name: 'chain.rattlesnake.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'back-his-gun',
+        label: 'Back his gun',
+        prose:
+          'Stand at the line with Rattlesnake and see the insult answered. It is Warlord justice, blunt and final, and he will not forget you were there for it.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 3 }],
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'backed' }],
+        },
+      },
+      {
+        id: 'talk-him-down',
+        label: 'Talk him off the line',
+        prose:
+          'One last try: put the whole cost of the grudge in front of Rattlesnake and let him choose to walk. A vengeful man almost never does — but almost is not never.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 13 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 2 }],
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'talked-down' }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 1 }],
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'dueled' }],
+        },
+      },
+      {
+        id: 'leave-him-to-it',
+        label: 'Leave him to answer alone',
+        prose:
+          'Step off the line. Rattlesnake meets the insult without you, and whatever he decides that costs, he decides it with your back turned.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: -1 }],
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'left' }],
+        },
+      },
+    ],
+  },
+
+  // --- Stellar Monk · "why he flies empty" (Bond: Space Dragons; Flaw: Pacifist,
+  //     flawDc 8). Core port: Deneb-4 (system 5). ---
+  {
+    id: 'chain.stellar-monk.empty-hold',
+    title: 'The Empty Hold',
+    prose:
+      'You notice it at Deneb-4: the Stellar Monk\'s Zen Drifter runs its holds empty, jump after jump, a trader carrying nothing to trade. When you ask, he only says, "Wealth is ballast," and offers you tea, and does not explain the rest.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [5],
+      npc: { id: 'npc-stellar-monk' },
+      flags: [{ name: 'chain.stellar-monk.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'sit-with-him',
+        label: 'Sit and take the tea',
+        prose:
+          'Accept the cup and the quiet with it. The Monk measures a captain by whether they can sit in silence, and you pass.',
+        effects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 3 }],
+          flags: [{ name: 'chain.stellar-monk.sat', value: true }],
+          schedule: [{ storyletId: 'chain.stellar-monk.confession', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'let-it-lie',
+        label: 'Let the man keep his silence',
+        prose:
+          "Some holds are empty for reasons that are nobody's cargo. Thank the Monk for the tea and go. He inclines his head, and the question stays unasked.",
+        effects: {
+          flags: [{ name: 'chain.stellar-monk.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.stellar-monk.confession',
+    title: 'Wealth Is Ballast',
+    prose:
+      'The next quiet dock, the Monk finishes the sentence he started. There was a full hold once, and a debt of cargo he ran too hard to deliver, and a loss at the end of it that no manifest could carry. He has flown light ever since — a pacifist even against his own greed.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-stellar-monk', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.stellar-monk.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Stellar Monk kept his own counsel while your channel stayed empty — he flew on light and silent, the confession unfinished, and did not offer it twice.',
+      effects: {
+        disposition: [{ npcId: 'npc-stellar-monk', delta: -2 }],
+        flags: [{ name: 'chain.stellar-monk.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'hear-him-out',
+        label: 'Hear the whole of it',
+        prose:
+          'Let the Monk lay the loss down entire, without filling his pauses. When he finishes he looks lighter by exactly the weight he set down.',
+        effects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 2 }],
+          schedule: [{ storyletId: 'chain.stellar-monk.ballast', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'offer-the-lanes',
+        label: "Offer a spacer's comfort",
+        prose:
+          'Tell the Monk the lanes take something from everyone who flies them long enough, and that flying light is its own kind of prayer. He almost smiles at the theology.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 11 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 3 }],
+          schedule: [{ storyletId: 'chain.stellar-monk.ballast', delayDays: 1 }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 1 }],
+          schedule: [{ storyletId: 'chain.stellar-monk.ballast', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.stellar-monk.ballast',
+    title: 'The Last Delivery',
+    prose:
+      'The Monk has one delivery he never made — a small thing, owed to the one he lost, that he has carried in his head instead of his hold for years. He asks, at last, whether you will fly the empty run with him and set it down, or leave him the silence he has learned to live in.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-stellar-monk', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.stellar-monk.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Stellar Monk made his last delivery alone on an empty hold while you were elsewhere — the debt of cargo set down at last, the ballast finally shed, with no witness but the dark.',
+      effects: {
+        disposition: [{ npcId: 'npc-stellar-monk', delta: -2 }],
+        flags: [{ name: 'chain.stellar-monk.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'fly-the-run',
+        label: 'Fly the empty run with him',
+        prose:
+          "Burn the quiet lane at the Monk's wing and watch him set the last delivery down. He carries nothing home afterward, and for the first time the empty hold looks like a choice instead of a wound.",
+        effects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 2 }],
+          flags: [{ name: 'chain.stellar-monk.resolved', value: 'delivered' }],
+        },
+      },
+      {
+        id: 'respect-the-silence',
+        label: 'Leave him the silence',
+        prose:
+          'Tell the Monk some cargo is his alone to set down. He accepts it the way he accepts everything — a small bow, no argument — and flies the run without you.',
+        effects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 1 }],
+          flags: [{ name: 'chain.stellar-monk.resolved', value: 'silence' }],
+        },
+      },
+    ],
+  },
+
+  // --- The Broker · "owns everyone's secrets" (Bond: owns everyone's secrets;
+  //     Flaw: Manipulative). Core port: Arcturus-6 (system 4). ---
+  {
+    id: 'chain.the-broker.ledger',
+    title: "The Broker's Ledger",
+    prose:
+      'The Broker keeps no cargo aboard the Information Age, only a ledger of what everyone would rather you did not know. At Arcturus-6 he slides a single decrypted secret across the table — genuinely useful, genuinely damaging to a rival of yours — and asks nothing for it. "A gift," he says. "We can settle the favor later."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [4],
+      npc: { id: 'npc-the-broker' },
+      flags: [{ name: 'chain.the-broker.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'take-the-secret',
+        label: 'Take the secret',
+        prose:
+          'Pocket the intel and the open-ended favor that comes bolted to it. The Broker smiles the way a man smiles when the ledger just gained a line in his favor.',
+        effects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 3 }],
+          flags: [{ name: 'chain.the-broker.indebted', value: true }],
+          schedule: [{ storyletId: 'chain.the-broker.favor', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'refuse-the-gift',
+        label: 'Refuse the gift',
+        prose:
+          'Slide the secret back unread. A gift from a man who trades in leverage is a debt with better manners. The Broker withdraws it, unoffended, and notes that too.',
+        effects: {
+          flags: [{ name: 'chain.the-broker.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.the-broker.favor',
+    title: 'The Favor Comes Due',
+    prose:
+      "It does not take long. The Broker calls the favor in and it is exactly what you feared: carry a second secret to a third party, one that ruins someone who never crossed you, so the Broker's ledger balances a debt of his own. Manipulative to the last decimal, he frames it as your idea.",
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-the-broker', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.the-broker.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Broker sold your unpaid favor onward while you sat on it — the wire carries the fallout of a secret you never chose to move, filed now under a debt that was always his.',
+      effects: {
+        disposition: [{ npcId: 'npc-the-broker', delta: -2 }],
+        flags: [{ name: 'chain.the-broker.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'carry-the-secret',
+        label: 'Carry the second secret',
+        prose:
+          "Run the Broker's errand and let the ledger balance. It buys his regard and a little of his ledger tilts your way — which is exactly what he wanted you to want.",
+        effects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 2 }],
+          schedule: [{ storyletId: 'chain.the-broker.leverage', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'read-the-play',
+        label: 'Read the play first',
+        prose:
+          'Before you move anything, take the whole board apart and find where the Broker hid his own exposure inside your favor. He respects a captain who counts the cards.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 3 }],
+          schedule: [{ storyletId: 'chain.the-broker.leverage', delayDays: 1 }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 1 }],
+          schedule: [{ storyletId: 'chain.the-broker.leverage', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.the-broker.leverage',
+    title: 'Whose Leverage',
+    prose:
+      'The favor delivered, the Broker lays the last card down: the secret you moved for him cuts both ways, and now you hold a line of his ledger too. Pay the debt off clean, refuse him outright, or turn the whole arrangement back on the man who built it.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-the-broker', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.the-broker.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Broker closed his own ledger while your line sat open — the leverage you might have held went back into his file, and the wire notes he never forgets an account left unsettled.',
+      effects: {
+        disposition: [{ npcId: 'npc-the-broker', delta: -2 }],
+        flags: [{ name: 'chain.the-broker.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'settle-clean',
+        label: 'Settle the debt clean',
+        prose:
+          'Pay the Broker off in coin and cut the leverage both ways. He prefers it messy, but he takes a clean settlement from a captain who insists on one.',
+        requirements: { credits: { gte: 150 } },
+        effects: {
+          credits: -150,
+          disposition: [{ npcId: 'npc-the-broker', delta: 2 }],
+          flags: [{ name: 'chain.the-broker.resolved', value: 'settled' }],
+        },
+      },
+      {
+        id: 'turn-it-back',
+        label: 'Turn the leverage back on him',
+        prose:
+          "Use the line you hold to pin the Broker to his own ledger. Do it right and, for once, the man who owns everyone's secrets owes one to you.",
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 13 } },
+        successEffects: {
+          credits: 200,
+          disposition: [{ npcId: 'npc-the-broker', delta: 3 }],
+          flags: [{ name: 'chain.the-broker.resolved', value: 'leveraged' }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 1 }],
+          flags: [{ name: 'chain.the-broker.resolved', value: 'outplayed' }],
+        },
+      },
+      {
+        id: 'refuse-outright',
+        label: 'Refuse him outright',
+        prose:
+          'Tell the Broker his ledger is his problem and walk. A manipulative man dislikes a flat no more than a knife — but he files it, and files you, and the account stays open.',
+        effects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: -1 }],
+          flags: [{ name: 'chain.the-broker.resolved', value: 'refused' }],
+        },
       },
     ],
   },

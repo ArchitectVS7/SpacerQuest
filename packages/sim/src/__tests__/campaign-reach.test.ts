@@ -149,16 +149,17 @@ const portBuyingVeteranPolicy: SimPolicy = (ctx) => {
 
 describe('T-1307 ports reachable through play', () => {
   it('a veteran sim buys a port and accrues its income within 150 days (acceptance #4)', () => {
-    // T-1501 re-pin (seed 3 → 6): the ports & rumors batch added a systemIds-only
-    // storylet at every core+rim system, and veteranPolicy takes any offered
-    // storylet as a standalone day (chooseStoryletAction), so the campaign spends a
-    // handful of extra days resolving the new beats — shifting exactly WHICH seed
-    // lands a port purchase + accrued income inside the 150-day horizon. The port
-    // feature is unchanged and still broadly reachable (a seeds 1..40 sweep of this
-    // very driver hits the acceptance on 16 seeds); seed 6 is the first that still
-    // qualifies. The seed is pinned, not steered — swap in any other qualifying seed
-    // and the test passes without touching the assertions below.
-    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 6, 150);
+    // T-1502 re-pin (seed 6 → 2): the NPC personal-chains batch added more
+    // systemIds-gated storylet openers (chain episode 1s at core systems), and
+    // veteranPolicy takes any offered storylet as a standalone day
+    // (chooseStoryletAction), so the campaign again spends a handful of extra days
+    // resolving the new beats — shifting exactly WHICH seed lands a port purchase +
+    // accrued income inside the 150-day horizon. The port feature is unchanged and
+    // still broadly reachable (a seeds 1..40 sweep of this very driver hits the
+    // acceptance on 11 seeds: 2, 3, 11, 18, 23, 27, 28, 29, 34, 37, 39); seed 2 is
+    // the first that qualifies. The seed is pinned, not steered — swap in any other
+    // qualifying seed and the test passes without touching the assertions below.
+    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 2, 150);
 
     // The purchase happened through legal play: a PortEvent{purchased} was logged
     // (ports are bought via the Port action, never injected).
@@ -517,20 +518,20 @@ describe('T-1204 disposition with teeth (unguided 300-day sim)', () => {
     // over seeds 1..45 at a 300-day horizon and printed, per seed, whether a
     // BondIntervention fired and the peak |disposition|.
     //
-    // T-1501 re-pin (seed 33 → 8): the ports & rumors batch added a systemIds-only
-    // storylet at every system, and `resolveOffered` plays every offered card, so
-    // the unguided trajectory shifted — moving WHICH seed lands the bond
-    // conjunction (the arc itself is untouched). Re-running the sweep over the new
-    // content, seed 8 is the first that lands BOTH acceptance signals purely from
-    // unguided play: the fuel-gift bond intervention on day 7 and a peak
-    // |disposition| of 5 (a −5 combat grudge from a named interceptor fought to the
-    // kill) on day 13. The seed is pinned, not steered — swap in any other
-    // qualifying seed from the sweep and the test still passes without touching the
-    // loop body. (Most seeds fire the >= 5 grudge but never the bond, which is
-    // exactly why the earlier hand-steered version overstated "organic" play —
-    // T-1801 replaced that steering with the unguided driver above rather than
-    // relabelling it; see the header comment.)
-    const CAMPAIGN_SEED = 8;
+    // T-1502 re-pin (seed 8 → 3): the NPC personal-chains batch added more
+    // systemIds-gated storylet openers, and `resolveOffered` plays every offered
+    // card (including the new chain episodes), so the unguided trajectory shifted
+    // again — moving WHICH seed lands the bond conjunction (the arc itself is
+    // untouched). Re-running the sweep over the new content, seed 3 is the first
+    // that lands BOTH acceptance signals purely from unguided play: the fuel-gift
+    // bond intervention on day 7 and a peak |disposition| of 5 (a −5 combat grudge
+    // from a named interceptor fought to the kill) on day 4. The seed is pinned, not
+    // steered — swap in any other qualifying seed from the sweep (e.g. 12) and the
+    // test still passes without touching the loop body. (Most seeds fire the >= 5
+    // grudge but never the bond, which is exactly why the earlier hand-steered
+    // version overstated "organic" play — T-1801 replaced that steering with the
+    // unguided driver above rather than relabelling it; see the header comment.)
+    const CAMPAIGN_SEED = 3;
     let state = createInitialState(CAMPAIGN_SEED);
     let sawBond = false;
     let peakDisposition = 0;
@@ -602,8 +603,8 @@ describe('T-1204 disposition with teeth (unguided 300-day sim)', () => {
 
     // Acceptance: at least one bond intervention AND a peak |disposition| >= 5,
     // both from unguided legal play (no line above steers toward Doc). Observed
-    // at authoring time (seed 8, re-pinned at T-1501): the fuel-gift bond
-    // intervention on day 7, peak |disposition| 5 on day 13.
+    // at authoring time (seed 3, re-pinned at T-1502): the fuel-gift bond
+    // intervention on day 7, peak |disposition| 5 on day 4.
     expect(sawBond, `no BondIntervention (bondDay=${bondDay})`).toBe(true);
     expect(
       peakDisposition,

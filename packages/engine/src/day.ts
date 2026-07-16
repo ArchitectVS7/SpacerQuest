@@ -34,7 +34,11 @@ import { resolveCrew, resolveReroll } from './actions/crew.js';
 import { portDuskIncome, resolvePortPurchase } from './actions/port.js';
 import { evaluateDeeds } from './deeds.js';
 import { syncPlayerTier } from './tier.js';
-import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
+import {
+  refreshAvailableStorylets,
+  resolveAbandonedChains,
+  resolveStoryletChoice,
+} from './storylets.js';
 import { computeGuildStanding, guildManifestPenalty, guildSeverity } from './guild.js';
 import { natWireStories } from './wire.js';
 
@@ -295,7 +299,7 @@ export function applyPlayerAction(
 
 export function endDay(state: GameState): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = cloneState(state);
+  let nextState = cloneState(state);
 
   if (nextState.dayPhase !== DayPhase.DAY) {
     throw new Error('endDay requires DAY phase');
@@ -905,6 +909,21 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // T-1203: dusk deeds (deliveries, debt clears) can rank the player up;
   // recompute the band so tomorrow's jumps read the fresh tier.
   syncPlayerTier(nextState);
+
+  // T-1502 · NPC personal-chain abandonment (PRD §8.1: a chain "can resolve
+  // without you"). Any scheduled chain episode carrying a `wireResolution` that
+  // has sat unplayed past its `dueDay + graceDays` is resolved by the Galactic
+  // News Wire here: the authored line is filed and the disposition consequence
+  // lands through the same applyEffects path a played choice uses (identical
+  // DispositionChanged / StoryletEffectApplied events). Runs while nextState.day
+  // still holds the current day (before the increment below) so the WireEntry
+  // carries the correct day and rides the final appendEvents. Pure (no rng/Date),
+  // no new GameState field — deterministic across a JSON round-trip. A clean
+  // (no-abandonment) dusk returns zero events and an unchanged state, so every
+  // existing golden is byte-identical.
+  const abandoned = resolveAbandonedChains(nextState);
+  nextState = abandoned.state;
+  events.push(...abandoned.events);
 
   // T-107 era scheduler: the world's economic weather turns at dusk. One event
   // active at a time; seeded onset after a cooldown; natural expiry at the day
