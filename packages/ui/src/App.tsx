@@ -8,7 +8,7 @@ import {
   type DragEvent as ReactDragEvent,
 } from 'react';
 import { CARGO_TYPES, RENOWN_RANKS, Stat } from '@spacerquest/content';
-import type { GameState } from '@spacerquest/engine';
+import type { GameState, CheckResult } from '@spacerquest/engine';
 import {
   subscribe,
   getSnapshot,
@@ -21,6 +21,9 @@ import {
   payDebt,
   travelTo,
   explore,
+  visitDare,
+  borrowLoan,
+  repayLoan,
   combat,
   shipyard,
   resolveStorylet,
@@ -45,6 +48,11 @@ import {
   starmapProjection,
   routePreview,
   explorationPreview,
+  hangoutOpen,
+  hangoutNpcs,
+  hangoutRumorLines,
+  dareWagerBounds,
+  lendingTerms,
   fuelPurchaseQuote,
   knownNpcCounts,
   wireLines,
@@ -351,6 +359,7 @@ export function App() {
   const s = useCockpit();
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [storyletOpen, setStoryletOpen] = useState(false);
+  const [hangoutPanelOpen, setHangoutPanelOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -387,6 +396,12 @@ export function App() {
   const storyletsWaiting =
     storyletCount > 0 && !s.game.encounter && !s.combatAftermath && !ceremony;
 
+  // T-1404 · The Hangout is a visitable place, offered ONLY where the engine says
+  // a Hangout exists (`hangoutOpen` reads the SAME `hasHangout` flag day.ts gates
+  // on) and never over a live encounter / aftermath / day-30 ceremony.
+  const hangoutAvailable =
+    hangoutOpen(s.game) && !s.game.encounter && !s.combatAftermath && !ceremony;
+
   return (
     <div className="tube">
       <EffectsLayer />
@@ -402,6 +417,16 @@ export function App() {
             onClick={() => setStoryletOpen((v) => !v)}
           >
             Storylet · {storyletCount}
+          </button>
+        )}
+        {hangoutAvailable && (
+          <button
+            className="hangout-launch"
+            data-testid="hangout-toggle"
+            aria-expanded={hangoutPanelOpen}
+            onClick={() => setHangoutPanelOpen((v) => !v)}
+          >
+            Hangout
           </button>
         )}
         <button data-testid="records-toggle" onClick={() => setRecordsOpen((v) => !v)}>
@@ -450,6 +475,9 @@ export function App() {
         <Wire game={s.game} />
         {storyletOpen && storyletsWaiting && (
           <StoryletPanel state={s} onClose={() => setStoryletOpen(false)} />
+        )}
+        {hangoutPanelOpen && hangoutAvailable && (
+          <HangoutPanel state={s} onClose={() => setHangoutPanelOpen(false)} />
         )}
         <HandDock state={s} />
         {/* Contextual first-time coach prompt for the cockpit affordances. The
@@ -970,6 +998,231 @@ function StoryletPanel({ state, onClose }: { state: CockpitState; onClose: () =>
       {/* A storylet stat check (any stat) rides the shared honest-check readout,
           gated to the storylet context so it renders only here. */}
       <CheckBreakdown state={state} context="storylet" />
+    </section>
+  );
+}
+
+// The Hangout & lending pane (T-1404). The Spacers Hangout as a visitable place:
+// the present-NPC list (from their simulated positions), the Spacer's Dare with a
+// die commitment and BOTH actors' opposed honest checks, the rumor table, and
+// Penny Wise's desk (borrow/repay with the interest schedule visible up front). It
+// is a pure CLIENT of the engine's T-1303 venues + T-1304 lending: every mutation
+// routes through the store (visitDare / borrowLoan / repayLoan), and every number
+// shown is read from an engine export, a content constant, or live engine-written
+// loan state — never recomputed. The HandDock stays reachable behind it, so a die
+// is armed exactly as in the storylet flow.
+function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => void }) {
+  const game = state.game;
+  const npcs = hangoutNpcs(game);
+  const rumors = hangoutRumorLines(game);
+  const bounds = dareWagerBounds();
+  const terms = lendingTerms();
+  const loan = game.player.loan;
+  const armed = state.selectedDie !== null;
+  const dareOutcome = state.dareOutcome;
+
+  const [opponentId, setOpponentId] = useState<string | null>(npcs[0]?.id ?? null);
+  const [wager, setWager] = useState(bounds.min);
+  const [principal, setPrincipal] = useState(terms.minPrincipal);
+  const [repayAmount, setRepayAmount] = useState(loan?.outstanding ?? terms.minPrincipal);
+
+  // Escape closes the panel (the StoryletPanel / Records convention).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // A previously-chosen opponent may have wandered off between renders — only a
+  // still-present NPC is a valid dealer (mirrors the engine's in-system guard).
+  const chosen = opponentId && npcs.some((n) => n.id === opponentId) ? opponentId : null;
+  const dareDisabledReason = !armed
+    ? 'Pick a die to wager'
+    : !chosen
+      ? 'Choose an opponent from the tables'
+      : null;
+  const loanDisabledReason = armed ? null : 'Pick a die first';
+
+  return (
+    <section
+      className="hangout-panel"
+      data-testid="hangout-panel"
+      role="dialog"
+      aria-label="Spacers Hangout"
+    >
+      <header className="hp-head">
+        <h2 className="hp-title">Spacers Hangout · {systemName(game.player.currentSystemId)}</h2>
+        <button
+          className="sl-close"
+          data-testid="hangout-close"
+          aria-label="close"
+          onClick={onClose}
+        >
+          &times;
+        </button>
+      </header>
+
+      {/* Pane-local failure surface: a Dare / lending typed fail must be visible
+          above the cockpit (the global TradePane notice sits behind this panel). */}
+      {state.notice && (
+        <div className="notice rev" data-testid="hangout-notice" role="status">
+          {state.notice}
+        </div>
+      )}
+
+      {/* ---- present NPCs (Dare opponent picker) ---- */}
+      <div className="hp-section">
+        <div className="hp-shead">AT THE TABLES</div>
+        {npcs.length === 0 ? (
+          <div className="hp-empty" data-testid="hangout-npc-empty">
+            The tables are empty tonight — no one to wager against.
+          </div>
+        ) : (
+          <ul className="hp-npcs">
+            {npcs.map((n) => (
+              <li key={n.id}>
+                <button
+                  className={chosen === n.id ? 'hp-npc on' : 'hp-npc'}
+                  data-testid="hangout-npc"
+                  data-npc-id={n.id}
+                  aria-pressed={chosen === n.id}
+                  onClick={() => setOpponentId(n.id)}
+                >
+                  <span className="hp-npc-name">{n.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* ---- Spacer's Dare ---- */}
+      <div className="hp-section hp-dare">
+        <div className="hp-shead">SPACER&apos;S DARE</div>
+        <div className="hp-dare-controls">
+          <label className="hp-wager">
+            <span className="hp-k" data-testid="dare-wager-bounds">
+              WAGER {bounds.min}–{bounds.max} cr
+            </span>
+            <input
+              aria-label="wager amount"
+              data-testid="dare-wager"
+              inputMode="numeric"
+              value={wager}
+              onChange={(e) => setWager(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
+            />
+          </label>
+          <button
+            className="btn"
+            data-testid="dare-commit"
+            disabled={dareDisabledReason !== null}
+            title={dareDisabledReason ?? 'Roll opposed GUILE against the dealer'}
+            onClick={() => chosen && visitDare(chosen, wager)}
+          >
+            {dareDisabledReason ?? 'Wager a die'}
+          </button>
+        </div>
+        {dareOutcome && (
+          <div className="hp-dare-result" data-testid="dare-outcome">
+            {/* The honest-dice signature applied to gambling: BOTH opposed checks,
+                each read straight off the engine's StatCheck via CheckReadout. */}
+            <CheckReadout
+              key={`dp-${state.lastCheckKey}`}
+              stat={dareOutcome.player.stat}
+              result={dareOutcome.player.result}
+              label="YOU"
+              testid="dare-check-player"
+            />
+            <CheckReadout
+              key={`do-${state.lastCheckKey}`}
+              stat={dareOutcome.opponent.stat}
+              result={dareOutcome.opponent.result}
+              label={dareOutcome.opponent.npcName.toUpperCase()}
+              testid="dare-check-opponent"
+            />
+            <div
+              className={dareOutcome.playerWon ? 'hp-dare-verdict won' : 'hp-dare-verdict lost'}
+              data-testid="dare-result"
+              data-won={dareOutcome.playerWon ? '1' : '0'}
+            >
+              {dareOutcome.playerWon ? 'You took the hand' : 'The dealer took the hand'} ·{' '}
+              <b>{signedMargin(dareOutcome.creditsDelta)}cr</b>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ---- rumor table (engine's own hangoutRumors) ---- */}
+      <div className="hp-section">
+        <div className="hp-shead">RUMOR TABLE</div>
+        <ul className="hp-rumors" data-testid="hangout-rumors">
+          {rumors.map((line, i) => (
+            <li key={i} className="hp-rumor" data-testid="hangout-rumor">
+              {line}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* ---- Penny Wise's desk ---- */}
+      <div className="hp-section hp-lending">
+        <div className="hp-shead">PENNY WISE&apos;S DESK</div>
+        {/* The schedule, visible UP FRONT — all raw content constants, no projected
+            total (the engine still computes the realized dusk accrual). */}
+        <div className="hp-terms" data-testid="loan-terms">
+          Penny Wise · {terms.minPrincipal}–{terms.maxPrincipal} cr · {terms.ratePercent}%/dusk ·{' '}
+          {terms.termDays}-dusk term
+        </div>
+        {loan ? (
+          <>
+            <div className="hp-loan-status" data-testid="loan-status" data-status={loan.status}>
+              OUTSTANDING <b>{loan.outstanding.toLocaleString()}cr</b> · borrowed{' '}
+              {loan.principal.toLocaleString()}cr · DUE D{loan.dueDay} · {loan.status.toUpperCase()}
+            </div>
+            <div className="hp-lend-controls">
+              <input
+                aria-label="repay amount"
+                data-testid="loan-repay-amount"
+                inputMode="numeric"
+                value={repayAmount}
+                onChange={(e) =>
+                  setRepayAmount(Math.max(0, Number.parseInt(e.target.value, 10) || 0))
+                }
+              />
+              <button
+                className="btn"
+                data-testid="loan-repay"
+                disabled={loanDisabledReason !== null || repayAmount <= 0}
+                title={loanDisabledReason ?? 'Pay down the loan (spends a die)'}
+                onClick={() => repayLoan(repayAmount)}
+              >
+                {loanDisabledReason ?? 'Repay'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="hp-lend-controls">
+            <input
+              aria-label="loan principal"
+              data-testid="loan-principal"
+              inputMode="numeric"
+              value={principal}
+              onChange={(e) => setPrincipal(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
+            />
+            <button
+              className="btn"
+              data-testid="loan-borrow"
+              disabled={loanDisabledReason !== null}
+              title={loanDisabledReason ?? 'Take a loan at Penny Wise’s desk (spends a die)'}
+              onClick={() => borrowLoan(principal)}
+            >
+              {loanDisabledReason ?? 'Borrow'}
+            </button>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -1991,21 +2244,44 @@ function CheckBreakdown({
   // instead, so a storylet panel shows only storylet checks and the "one check
   // per surface" invariant (T-303/T-304) holds.
   if (context !== undefined && lc.context !== context) return null;
-  const r = lc.result;
+  return (
+    <CheckReadout
+      key={state.lastCheckKey}
+      stat={lc.stat}
+      result={lc.result}
+      label={`CHECK${lc.context ? ` · ${lc.context.toUpperCase()}` : ''}`}
+      testid="check-breakdown"
+    />
+  );
+}
+
+// The presentational honest-check readout — one resolved `CheckResult` rendered as
+// die + stat + modifier + total vs DC + margin + verdict, in reading order. Split
+// out of CheckBreakdown (T-1404) so the Spacer's Dare can render BOTH opposed
+// actors' checks (the "honest-dice signature applied to gambling") with the SAME
+// inner markup the rest of the cockpit uses. `testid` names the OUTER row (each
+// Dare actor gets its own); the inner `check-*` testids are shared. Every number is
+// read straight off the engine's CheckResult — nothing is recomputed here.
+function CheckReadout({
+  stat,
+  result: r,
+  label,
+  testid,
+}: {
+  stat: Stat;
+  result: CheckResult;
+  label: string;
+  testid: string;
+}) {
   const verdict = checkVerdict(r);
   const pass = r.success;
   return (
-    <div
-      className={`check-breakdown ${verdict}`}
-      data-testid="check-breakdown"
-      data-verdict={verdict}
-      key={state.lastCheckKey}
-    >
-      <span className="cb-lbl">CHECK{lc.context ? ` · ${lc.context.toUpperCase()}` : ''}</span>
+    <div className={`check-breakdown ${verdict}`} data-testid={testid} data-verdict={verdict}>
+      <span className="cb-lbl">{label}</span>
       <span className="cb-expr">
         d20 <b data-testid="check-die">{r.die}</b>
         {' + '}
-        <span data-testid="check-stat">{statName(lc.stat)}</span> <b>{r.modifier}</b>
+        <span data-testid="check-stat">{statName(stat)}</span> <b>{r.modifier}</b>
         {' = '}
         <b data-testid="check-total">{r.total}</b>
         {' vs DC '}

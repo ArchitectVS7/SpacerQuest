@@ -2582,3 +2582,146 @@ body {
     bottom: 200px;
   }
 }
+
+/* ---- Hangout & lending pane (T-1404) ---- */
+.ctrls button.hangout-launch {
+  border-color: var(--amber);
+  color: var(--ember);
+}
+.hangout-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  width: min(720px, 92vw);
+  max-height: 62vh;
+  overflow-y: auto;
+  z-index: 78;
+  background: linear-gradient(180deg, #1a1007, #0c0805);
+  border: 1px solid var(--amber);
+  box-shadow: var(--glow);
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+}
+.hp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 10px;
+}
+.hp-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  color: var(--ember);
+}
+.hp-section {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--amber-dim);
+  padding: 9px 11px;
+}
+.hp-shead {
+  color: var(--ember);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.hp-empty {
+  color: var(--amber);
+  font-size: 11px;
+  opacity: 0.85;
+}
+.hp-npcs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hp-npc {
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+}
+.hp-npc.on {
+  border-color: var(--ember);
+  color: var(--tube);
+  background: var(--ember);
+}
+.hp-dare-controls,
+.hp-lend-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hp-wager {
+  display: grid;
+  gap: 3px;
+}
+.hp-k {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+.hangout-panel input {
+  width: 96px;
+  background: #0c0805;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  padding: 5px 7px;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+.hp-dare-result {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+.hp-dare-verdict {
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--amber);
+}
+.hp-dare-verdict.won b {
+  color: var(--ember);
+}
+.hp-rumors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.hp-rumor {
+  color: var(--amber);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.hp-terms {
+  color: var(--ember);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.hp-loan-status {
+  color: var(--amber);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.hp-loan-status[data-status='defaulted'] {
+  color: var(--ember);
+}
+.hangout-panel .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

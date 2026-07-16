@@ -119,6 +119,23 @@ export interface CockpitState {
    */
   explorationOutcome: string | null;
   /**
+   * T-1404 Spacer's Dare. The two opposed honest checks (the player's GUILE gamble
+   * and the dealer's counter) plus the wager / winner / signed credits delta of the
+   * LAST Dare — built straight from the engine's two `StatCheck` events and the
+   * `HangoutEvent{dare}`, never recomputed. Like `explorationOutcome`/`combatAftermath`
+   * this is CLIENT presentation meta-state (NOT GameState), so a JSON round-trip of
+   * game state is unaffected and no save migration is needed. READER: the Hangout
+   * pane's `dare-check-player` / `dare-check-opponent` readouts and `dare-result`
+   * line. Null until a Dare resolves; cleared on selection / travel / new day.
+   */
+  dareOutcome: {
+    player: { stat: Stat; result: CheckResult };
+    opponent: { npcId: string; npcName: string; stat: Stat; result: CheckResult };
+    wager: number;
+    playerWon: boolean;
+    creditsDelta: number;
+  } | null;
+  /**
    * T-311 onboarding. Which first-time coach prompts the player has already
    * dismissed or progressed past. This is CLIENT presentation meta-state (like
    * `fx`), deliberately kept out of GameState so the engine stays pure and a
@@ -166,6 +183,7 @@ function init(): CockpitState {
     combatAftermath: null,
     combatMalfunction: false,
     explorationOutcome: null,
+    dareOutcome: null,
     onboardingSeen: readOnboarding(),
     seed,
     reducedMotion: readReducedMotion(),
@@ -253,6 +271,57 @@ function explorationFailNoticeFrom(events: GameEvent[]): string | null {
       case 'invalid-die-index':
       case 'die-already-spent':
         return 'That sweep needs a fresh die from the hand.';
+    }
+  }
+  return null;
+}
+
+/**
+ * T-1404 · Translate the engine's typed `HangoutEvent` fail (a social/Dare venue)
+ * into an honest visible notice — the same "typed fails render, never silence"
+ * guarantee. Returns null when no Hangout fail occurred (a successful venue carries
+ * no `failReason`). `no-opponent` fires when the named dealer has wandered off; the
+ * three malformed-die reasons are UI-prevented but still get a line so a race with
+ * state is never a silent no-op.
+ */
+function hangoutFailNoticeFrom(events: GameEvent[]): string | null {
+  for (const e of events) {
+    if (e.type !== 'HangoutEvent' || !e.failReason) continue;
+    switch (e.failReason) {
+      case 'no-opponent':
+        return 'That spacer has left the tables — no one here to wager against.';
+      case 'no-die':
+      case 'invalid-die-index':
+      case 'die-already-spent':
+        return 'That table needs a fresh die from the hand.';
+    }
+  }
+  return null;
+}
+
+/**
+ * T-1404 · Translate a Penny Wise `LoanEvent{kind:'failed'}` refusal into an honest
+ * visible notice. Returns null when the borrow/repay committed (a 'borrowed' /
+ * 'repaid' event carries no `failReason`). Covers the lending preconditions
+ * (already-has-loan / no-loan / insufficient-credits) that spend NO die, plus the
+ * UI-prevented malformed-die reasons.
+ */
+function loanFailNoticeFrom(events: GameEvent[]): string | null {
+  for (const e of events) {
+    if (e.type !== 'LoanEvent' || e.kind !== 'failed') continue;
+    switch (e.failReason) {
+      case 'already-has-loan':
+        return 'You already carry a loan with Penny Wise — clear it before borrowing again.';
+      case 'no-loan':
+        return 'No loan to repay.';
+      case 'insufficient-credits':
+        return 'Not enough credits to make that payment.';
+      case 'no-die':
+      case 'invalid-die-index':
+      case 'die-already-spent':
+        return "Penny Wise's desk needs a fresh die from the hand.";
+      default:
+        return 'Penny Wise turned that request down.';
     }
   }
   return null;
@@ -422,6 +491,7 @@ export function newGame(seed: number): void {
     combatAftermath: null,
     combatMalfunction: false,
     explorationOutcome: null,
+    dareOutcome: null,
     onboardingSeen: {},
   });
   // A fresh career: the dawn sting and the ambient drive-hum bed. The hum defers
@@ -441,6 +511,7 @@ export function selectDie(index: number): void {
     notice: null,
     lastCheck: null,
     explorationOutcome: null,
+    dareOutcome: null,
   });
 }
 
@@ -635,8 +706,10 @@ export function travelTo(destinationId: number): void {
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
       // Clear any prior off-lane sweep summary — a fresh jump on the same pane
-      // must not read alongside a stale exploration outcome.
+      // must not read alongside a stale exploration outcome — and any prior Dare
+      // readout (a jump can carry the player away from the Hangout).
       explorationOutcome: null,
+      dareOutcome: null,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
     // The jump die is always spent (even a failed PILOT roll burns it), so this
@@ -696,6 +769,155 @@ export function explore(): void {
     playCues(events, committed);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That sweep could not be resolved.' });
+  }
+}
+
+/**
+ * T-1404 · Wager a die on a Spacer's Dare against a co-located NPC (PRD §7). The
+ * Hangout pane is a pure CLIENT of the T-1303 `VisitHangout{dare}` venue: it arms a
+ * die and names an opponent, and this is the single engine call. The engine rolls
+ * the opposed GUILE and emits TWO `StatCheck`s (the player's `gamble` roll framed
+ * against the dealer's total, and the dealer's counter) plus a `HangoutEvent{dare}`
+ * carrying the wager / winner / signed credits delta. Both honest checks + the delta
+ * are captured into `dareOutcome` for the pane's two `CheckReadout`s — never
+ * recomputed. A `no-opponent` / malformed-die fail spends NO die (read the
+ * authoritative spent flag), keeps the selection, and surfaces a visible notice.
+ */
+export function visitDare(opponentId: string, wager: number): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then wager.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'VisitHangout',
+      venue: 'dare',
+      opponentId,
+      wager,
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    // The die is spent the instant the Dare commits (past the no-opponent /
+    // malformed-die guards). Read the authoritative spent flag rather than infer.
+    const committed = next.player.dawnHand?.spent[die] === true;
+    const failNotice = hangoutFailNoticeFrom(events);
+    let dareOutcome: CockpitState['dareOutcome'] = null;
+    if (committed && !failNotice) {
+      const playerCheck = events.find(
+        (e): e is Extract<GameEvent, { type: 'StatCheck' }> =>
+          e.type === 'StatCheck' && e.actor === 'Player',
+      );
+      const oppCheck = events.find(
+        (e): e is Extract<GameEvent, { type: 'StatCheck' }> =>
+          e.type === 'StatCheck' && e.actor === opponentId,
+      );
+      const hangout = events.find(
+        (e): e is Extract<GameEvent, { type: 'HangoutEvent' }> =>
+          e.type === 'HangoutEvent' && e.venue === 'dare',
+      );
+      if (playerCheck && oppCheck && hangout) {
+        const npc = next.npcs.find((n) => n.id === opponentId);
+        dareOutcome = {
+          player: { stat: playerCheck.stat, result: playerCheck.result },
+          opponent: {
+            npcId: opponentId,
+            npcName: npc?.name ?? opponentId,
+            stat: oppCheck.stat,
+            result: oppCheck.result,
+          },
+          wager: hangout.wager ?? 0,
+          playerWon: hangout.playerWon ?? false,
+          creditsDelta: hangout.creditsDelta ?? 0,
+        };
+      }
+    }
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice: failNotice,
+      // The Dare's opposed checks ride their own dual readout (dareOutcome), not
+      // the shared single-check readout — clear lastCheck so no stale check lingers.
+      lastCheck: null,
+      dareOutcome,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    playCues(events, committed);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That wager could not be resolved.' });
+  }
+}
+
+/**
+ * T-1404 · Borrow from Penny Wise's desk (PRD §7.5). A pure CLIENT of the T-1304
+ * `VisitHangout{borrow}` venue. The engine clamps the requested principal into the
+ * content band, advances it to credits and records the loan (interest accrues later
+ * at dusk — never here). A lending precondition refusal (`already-has-loan`) spends
+ * NO die and surfaces as a visible notice; on commit the die blooms.
+ */
+export function borrowLoan(amount: number): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then borrow.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'VisitHangout',
+      venue: 'borrow',
+      amount,
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const notice = loanFailNoticeFrom(events);
+    const committed = next.player.dawnHand?.spent[die] === true;
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    playCues(events, committed);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That loan could not be resolved.' });
+  }
+}
+
+/**
+ * T-1404 · Repay the Penny Wise loan (PRD §7.5). A pure CLIENT of the T-1304
+ * `VisitHangout{repay}` venue. The engine clamps the payment to
+ * `min(requested, credits, outstanding)` and clears the whole loan when the balance
+ * hits zero. A `no-loan` / `insufficient-credits` refusal spends NO die and surfaces
+ * as a visible notice; on commit the die blooms.
+ */
+export function repayLoan(amount: number): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then repay.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'VisitHangout',
+      venue: 'repay',
+      amount,
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const notice = loanFailNoticeFrom(events);
+    const committed = next.player.dawnHand?.spent[die] === true;
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    playCues(events, committed);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That payment could not be resolved.' });
   }
 }
 
@@ -927,6 +1149,7 @@ export function endDay(): void {
       combatAftermath: aftermath,
       combatMalfunction: false,
       explorationOutcome: null,
+      dareOutcome: null,
       onboardingSeen: reconcileOnboarding(state.game, dawn.state),
     });
     // Dusk cues (wire crackle / combat resolution) off the dusk events, then the
@@ -1025,6 +1248,7 @@ export function loadSlot(n: number): void {
     lastCheck: null,
     combatAftermath: null,
     combatMalfunction: false,
+    dareOutcome: null,
     // Do NOT reset onboardingSeen — loading a mid-career save shouldn't re-teach.
   });
 }

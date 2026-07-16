@@ -12,6 +12,13 @@ import {
   RUN_FUEL_COST,
   EXPLORATION_NAV_DC,
   EXPLORATION_FUEL_COST,
+  DARE_MIN_WAGER,
+  DARE_MAX_WAGER,
+  LOAN_MIN_PRINCIPAL,
+  LOAN_MAX_PRINCIPAL,
+  LOAN_DAILY_RATE,
+  LOAN_TERM_DAYS,
+  LENDER_ID,
   type StoryletTrigger,
 } from '@spacerquest/content';
 import {
@@ -26,6 +33,7 @@ import {
   quoteStoryletChoice,
   travelPreview,
   quoteFuelPurchase,
+  hangoutRumors,
   type CheckResult,
   type GameEvent,
   type GameState,
@@ -180,6 +188,86 @@ export function explorationOutcome(events: GameEvent[]): string | null {
   if (events.some((e) => e.type === 'ContrabandFound'))
     parts.push('a sealed pod bolted in the hold');
   return `${parts.join(' · ')}.`;
+}
+
+// ---- T-1404 Hangout & lending pane (display-only) ------------------------
+//
+// The Hangout pane is a pure CLIENT of the engine's T-1303 `VisitHangout` venues
+// and the T-1304 Penny Wise lending state. Every number it shows is read from the
+// SAME source the engine gates on: the `hasHangout` flag `day.ts` blocks on, the
+// wager/loan CONTENT constants the resolver clamps to, the live `player.loan`
+// fields the engine writes, and the rumor lines the engine's own pure
+// `hangoutRumors` synthesizes. Nothing here re-derives a rule — in particular the
+// loan accrual (`ceil(principal * rate)`) is NEVER recomputed in the UI; the
+// schedule is shown from raw constants and the realized interest reads off state.
+
+/** True when the current system hosts a Hangout — the EXACT predicate `day.ts`
+ *  gates `VisitHangout` on (`STAR_SYSTEMS[id].hasHangout === true`). Reader: the
+ *  cockpit's Hangout launcher button + the pane mount, so the pane is offered
+ *  only where the engine says a Hangout exists. */
+export function hangoutOpen(game: GameState): boolean {
+  return STAR_SYSTEMS[game.player.currentSystemId]?.hasHangout === true;
+}
+
+/** One present-NPC row for the Hangout — an NPC whose SIMULATED position is the
+ *  player's current system (the same "actually in-system" set the Dare resolver
+ *  requires an opponent to be in). Disposition rides along as a hint. Reader: the
+ *  pane's present-NPC list / Dare opponent picker. */
+export interface HangoutNpc {
+  id: string;
+  name: string;
+  disposition: number;
+}
+
+export function hangoutNpcs(game: GameState): HangoutNpc[] {
+  const here = game.player.currentSystemId;
+  return game.npcs
+    .filter((n) => n.currentSystemId === here)
+    .map((n) => ({ id: n.id, name: n.name, disposition: n.disposition }));
+}
+
+/** The rumor-table lines — a pure pass-through to the engine's own exported
+ *  `hangoutRumors` (synthesized from live NPC state). The UI never re-synthesizes
+ *  gossip; it renders exactly what the engine produces. Reader: the pane's rumor
+ *  table. */
+export function hangoutRumorLines(game: GameState): string[] {
+  return hangoutRumors(game);
+}
+
+/** The Dare wager band (content DARE_MIN/MAX_WAGER) — the same bounds the engine
+ *  clamps a requested wager into. Reader: the pane's wager input + its label. */
+export interface DareWagerBounds {
+  min: number;
+  max: number;
+}
+
+export function dareWagerBounds(): DareWagerBounds {
+  return { min: DARE_MIN_WAGER, max: DARE_MAX_WAGER };
+}
+
+/** Penny Wise's up-front lending terms — the raw content constants the engine
+ *  advances against: the principal band, the per-dusk rate and the term. Shown
+ *  BEFORE a loan is taken so the schedule is visible up front ("dice are honest"
+ *  applied to money). `ratePercent` is `LOAN_DAILY_RATE * 100` — a pure format of
+ *  the rate constant, NOT an accrual computation (the engine still computes the
+ *  realized `ceil(principal * rate)` interest each dusk). Reader: the pane's
+ *  Penny Wise desk terms line. */
+export interface LendingTerms {
+  lenderId: string;
+  minPrincipal: number;
+  maxPrincipal: number;
+  ratePercent: number;
+  termDays: number;
+}
+
+export function lendingTerms(): LendingTerms {
+  return {
+    lenderId: LENDER_ID,
+    minPrincipal: LOAN_MIN_PRINCIPAL,
+    maxPrincipal: LOAN_MAX_PRINCIPAL,
+    ratePercent: LOAN_DAILY_RATE * 100,
+    termDays: LOAN_TERM_DAYS,
+  };
 }
 
 /** A system placed on the SVG plane: raw coordinates plus projected (viewBox)
