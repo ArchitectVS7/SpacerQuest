@@ -578,7 +578,16 @@ const GameEventSchema = z.discriminatedUnion('type', [
     kind: z.enum(['fuel-gift', 'drive-off']),
     amount: z.number().optional(),
   }),
-  z.object({ type: z.literal('WireEntry'), day: z.number(), message: z.string() }),
+  z.object({
+    type: z.literal('WireEntry'),
+    day: z.number(),
+    message: z.string(),
+    // T-1401: the typed wire-line provenance (types.ts WireEntryKind). REQUIRED so
+    // the compile-time keyof guard (_covEvWireEntry) keeps schema↔interface in
+    // lockstep; a v5 save's kind-less WireEntry is backfilled by the v5→v6 save
+    // migration (save.ts) before it reaches this validator.
+    kind: z.enum(['flaw-override', 'npc', 'plain']),
+  }),
   z.object({
     type: z.literal('EraEventStarted'),
     day: z.number(),

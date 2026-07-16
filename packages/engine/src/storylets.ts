@@ -3,6 +3,7 @@ import type {
   FlagEffect,
   FlagMatcher,
   NumberMatcher,
+  Stat,
   StoryletChoiceDefinition,
   StoryletDefinition,
   StoryletEffects,
@@ -481,6 +482,96 @@ function blocked(
       },
     ],
   };
+}
+
+/** T-1401 · A PURE, non-mutating preview of a storylet choice — the engine truth
+ *  behind the UI's `storyletChoiceLock` (format.ts, ~L768, the T-1402 consumer).
+ *  It reports whether the choice can be taken right now and, if not, the SAME typed
+ *  `StoryletChoiceBlocked` reason `resolveStoryletChoice` would emit — plus the
+ *  requirement facts the pane surfaces (credit gate, die/stat-check lock). */
+export interface StoryletChoiceQuote {
+  /** No blocking refusal — the choice would resolve if taken now. */
+  ok: boolean;
+  /** The first typed refusal reason, in `resolveStoryletChoice`'s exact order
+   *  (not-available → unknown-choice → insufficient-credits → missing-die), or
+   *  null when `ok`. */
+  reason: Extract<GameEvent, { type: 'StoryletChoiceBlocked' }>['reason'] | null;
+  /** The choice arms a die (a `spendDie` requirement or a `statCheck`). */
+  needsDie: boolean;
+  /** The `credits.gte` gate this choice requires, or null when it has none. */
+  requiredCredits: number | null;
+  /** The stat check this choice rolls, for the UI's check-breakdown lock, or null. */
+  statCheck: { stat: Stat; dc: number } | null;
+}
+
+/**
+ * T-1401 · Pure storylet-choice preview, mirroring the blessed `quoteShipyard`
+ * pattern: it runs the EXACT read-only refusal ladder `resolveStoryletChoice`
+ * runs, in the same order, WITHOUT mutating state or spending a die (so the pane
+ * can never disagree with the real resolve). It deliberately does NOT call
+ * `resolveStoryletChoice`, which clones-and-mutates and spends the die — it
+ * replicates only the gate predicates (`matchesNumber` for credits; the dawn-hand
+ * die-validity check), exactly as `shipyardFailure` mirrors `resolveShipyard`.
+ *
+ * `armedDie` is the die index the UI has tentatively assigned (undefined = none
+ * yet): a die-requiring choice previews `missing-die` until a valid, unspent die
+ * is armed — the truth behind format.ts `storyletChoiceLock`'s "Assign a die".
+ * CONSUMER: T-1402's `storyletChoiceLock`, which replaces its hand-rolled credit/
+ * die gate with this quote.
+ */
+export function quoteStoryletChoice(
+  state: GameState,
+  storyletId: string,
+  choiceId: string,
+  armedDie?: number,
+): StoryletChoiceQuote {
+  const empty: StoryletChoiceQuote = {
+    ok: false,
+    reason: null,
+    needsDie: false,
+    requiredCredits: null,
+    statCheck: null,
+  };
+
+  // 1. not-available — no live offer for this storylet (mirrors the
+  //    `storylets.available` lookup in resolveStoryletChoice).
+  const offer = state.storylets.available.find((candidate) => candidate.storyletId === storyletId);
+  if (!offer) {
+    return { ...empty, reason: 'not-available' };
+  }
+
+  // 2. unknown-choice — the storylet/choice is not in content.
+  const storylets: readonly StoryletDefinition[] = STORYLETS;
+  const storylet = storylets.find((candidate) => candidate.id === storyletId);
+  const choice = storylet?.choices.find((candidate) => candidate.id === choiceId);
+  if (!storylet || !choice) {
+    return { ...empty, reason: 'unknown-choice' };
+  }
+
+  const requiredCredits = choice.requirements?.credits?.gte ?? null;
+  const statCheck = choice.requirements?.statCheck ?? null;
+  const needsDie = Boolean(choice.requirements?.spendDie || statCheck);
+  const facts = { needsDie, requiredCredits, statCheck };
+
+  // 3. insufficient-credits — the SAME matcher resolveStoryletChoice checks.
+  if (!matchesNumber(state.player.credits, choice.requirements?.credits)) {
+    return { ...empty, ...facts, reason: 'insufficient-credits' };
+  }
+
+  // 4. missing-die — a die-requiring choice with no valid, unspent die armed
+  //    (mirrors the dawn-hand validity gate in resolveStoryletChoice).
+  const hand = state.player.dawnHand;
+  const dieInvalid =
+    armedDie === undefined ||
+    !hand ||
+    armedDie < 0 ||
+    armedDie >= hand.dice.length ||
+    hand.spent[armedDie];
+  if (needsDie && dieInvalid) {
+    return { ...empty, ...facts, reason: 'missing-die' };
+  }
+
+  return { ok: true, reason: null, ...facts };
 }
 
 export function resolveStoryletChoice(

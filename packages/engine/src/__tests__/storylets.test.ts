@@ -3,6 +3,7 @@ import { STORYLETS, Stat, defineStorylets, type StoryletDefinition } from '@spac
 import { applyPlayerAction, endDay, startDay } from '../day.js';
 import {
   eligibleStorylets,
+  quoteStoryletChoice,
   refreshAvailableStorylets,
   resolveStoryletChoice,
   triggerMatches,
@@ -981,5 +982,77 @@ describe('T-1302 storylet triggers — era-event, renown, deed, fragment source'
       resolved.state.player.nemesisFile.fragments.find((f) => f.fragmentId === 'frag-nemesis-01')
         ?.source,
     ).toBe('wise-one');
+  });
+});
+
+describe('quoteStoryletChoice (T-1401 export pack)', () => {
+  const STORYLET_ID = 'port.sun3.guild-auditor';
+
+  /** A state at Sun-3 in Tour One with the guild-auditor storylet made available
+   *  (its trigger is systemIds:[1] + eras:['TOUR_ONE'], live at the start). */
+  function auditorState(credits = 1000): GameState {
+    const base = readyState();
+    base.player.credits = credits;
+    const { state } = refreshAvailableStorylets(base);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = { dice: [20, 12, 6, 3, 1], spent: [false, false, false, false, false] };
+    expect(state.storylets.available.some((o) => o.storyletId === STORYLET_ID)).toBe(true);
+    return state;
+  }
+
+  it('reports ok with a valid armed die for a stat-check choice', () => {
+    const state = auditorState();
+    const quote = quoteStoryletChoice(state, STORYLET_ID, 'argue', 0);
+    expect(quote.ok).toBe(true);
+    expect(quote.reason).toBeNull();
+    expect(quote.needsDie).toBe(true);
+    expect(quote.statCheck).toEqual({ stat: Stat.GUILE, dc: 12 });
+    expect(quote.requiredCredits).toBeNull();
+  });
+
+  it('surfaces the credit gate on the pay choice', () => {
+    const quote = quoteStoryletChoice(auditorState(1000), STORYLET_ID, 'pay', 0);
+    expect(quote.ok).toBe(true);
+    expect(quote.requiredCredits).toBe(75);
+    expect(quote.needsDie).toBe(true);
+  });
+
+  it('blocks insufficient-credits before missing-die (refusal order)', () => {
+    // Credits below the 75 gate AND no die armed: the credit refusal wins, exactly
+    // as resolveStoryletChoice checks credits before the die.
+    const quote = quoteStoryletChoice(auditorState(10), STORYLET_ID, 'pay', undefined);
+    expect(quote.ok).toBe(false);
+    expect(quote.reason).toBe('insufficient-credits');
+  });
+
+  it('blocks missing-die when a die-requiring choice has no valid die armed', () => {
+    const state = auditorState(1000);
+    expect(quoteStoryletChoice(state, STORYLET_ID, 'pay', undefined).reason).toBe('missing-die');
+    // an out-of-range index is also invalid
+    expect(quoteStoryletChoice(state, STORYLET_ID, 'pay', 99).reason).toBe('missing-die');
+    // an already-spent die is invalid
+    state.player.dawnHand!.spent[0] = true;
+    expect(quoteStoryletChoice(state, STORYLET_ID, 'pay', 0).reason).toBe('missing-die');
+  });
+
+  it('reports unknown-choice for a bad choice id on a real storylet', () => {
+    const quote = quoteStoryletChoice(auditorState(), STORYLET_ID, 'no-such-choice', 0);
+    expect(quote.ok).toBe(false);
+    expect(quote.reason).toBe('unknown-choice');
+  });
+
+  it('reports not-available for a storylet with no live offer', () => {
+    const quote = quoteStoryletChoice(auditorState(), 'no-such-storylet', 'pay', 0);
+    expect(quote.ok).toBe(false);
+    expect(quote.reason).toBe('not-available');
+  });
+
+  it('does not mutate the input state', () => {
+    const state = auditorState(1000);
+    const before = JSON.stringify(state);
+    quoteStoryletChoice(state, STORYLET_ID, 'pay', 0);
+    quoteStoryletChoice(state, STORYLET_ID, 'argue', 0);
+    quoteStoryletChoice(state, 'no-such-storylet', 'pay', 0);
+    expect(JSON.stringify(state)).toBe(before);
   });
 });

@@ -45,9 +45,14 @@ function cloneState(state: GameState): GameState {
  * The base round schedule (min(round·base, max)) is multiplied by the class
  * modifier (TRIBUTE_CLASS_MULTIPLIER — Brigand ÷2, Reptiloid ×2, everyone else
  * ×1) and re-capped at TRIBUTE_MAX. Anonymous interceptors carry a `kind`; named
- * interceptors do not, so they take the unmodified ×1 schedule. Exported for the
- * acceptance test (per-class demand) — T-1401 will re-export it through the UI
- * pack.
+ * interceptors do not, so they take the unmodified ×1 schedule.
+ *
+ * T-1401 · This is already surfaced through the engine barrel (index.ts
+ * `export *`), so the "UI export pack" is just this existing symbol. CONSUMER:
+ * T-1402 replaces the UI's own `tributeThisRound` reimplementation (format.ts,
+ * ~L521 — which ignores the class modifier and can therefore preview a Brigand /
+ * Reptiloid tribute the engine never charges) with a call to THIS function, so the
+ * previewed demand matches the `TributeDemanded`/`TributePaid` the engine emits.
  */
 export function tributeForRound(round: number, kind?: AnonymousInterceptorKind): number {
   const base = Math.min(round * TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX);

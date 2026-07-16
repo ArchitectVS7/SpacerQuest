@@ -82,6 +82,25 @@ function repairAllCost(state: GameState): number {
   return cost;
 }
 
+/**
+ * T-1401 · Inverse of the shipyard's tier→strength mapping. `applyShipyardMutation`
+ * (buy-component-tier) sets `strength = tier * 10`, so a bought component sits at an
+ * exact multiple of 10 and `floor(strength / 10)` recovers its CURRENT owned tier:
+ * 0 for a junker (starting strength 1–9), 1 at strength 10, … 9 at strength 90.
+ * `Math.max(0, …)` guards a stripped hull (strength 0).
+ *
+ * WHY floor and 0-based (the bug this fixes): the UI (format.ts `shipComponents`,
+ * ~L623, the T-1402 consumer) invented `Math.max(1, Math.ceil(strength / 10))` as
+ * the inverse — which maps a junker (strength 1) to tier 1, so its computed
+ * `nextTier` was 2 and TIER 1 WAS UNBUYABLE. floor maps a junker to tier 0, so
+ * `nextTier = tier + 1 = 1` is buyable, and every bought multiple-of-10 strength
+ * still round-trips exactly (10→1, 90→9). READER: T-1402's `shipComponents` /
+ * buy-tier affordance, which replaces the `ceil` inverse with this function.
+ */
+export function componentTierForStrength(strength: number): number {
+  return Math.max(0, Math.floor(strength / 10));
+}
+
 export function maxCargoPodsForShip(state: GameState): number {
   const ship = state.player.ship;
   let hullCapacity = ship.hull.strength;

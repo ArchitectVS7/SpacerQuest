@@ -355,6 +355,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         events.push({
           type: 'WireEntry',
           day: nextState.day,
+          kind: 'npc',
           message: `${rescuer.name} drove ${interceptorName} off your tail.`,
         });
         intervenedNpcId = rescuer.id;
@@ -392,6 +393,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         events.push({
           type: 'WireEntry',
           day: nextState.day,
+          kind: 'npc',
           message: `${rescuer.name} answered your mayday and transferred ${amount} fuel.`,
         });
         intervenedNpcId = rescuer.id;
@@ -455,6 +457,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message: `Auto-Repair module restored condition to ${repaired.length} system${
           repaired.length === 1 ? '' : 's'
         } overnight.`,
@@ -486,6 +489,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message:
           'Life support gave out on the edge of the dark — the spacer rode it out on emergency air and lived to refit.',
       });
@@ -557,6 +561,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         events.push({
           type: 'WireEntry',
           day: nextState.day,
+          kind: 'npc',
           message: `${updatedNpc.name} undercut you on the ${cargoName} run to ${destinationName}.`,
         });
       }
@@ -623,10 +628,18 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   for (const npc of nextState.npcs) {
     if (npc.lastAction) {
       // Flaw overrides are ALWAYS notable. Other actions are semi-randomly notable.
-      if (npc.lastAction.type === 'FlawOverride' || dayRng.next() > 0.7) {
+      const isFlawOverride = npc.lastAction.type === 'FlawOverride';
+      if (isFlawOverride || dayRng.next() > 0.7) {
         events.push({
           type: 'WireEntry',
           day: nextState.day,
+          // T-1401 · THE load-bearing kind stamp. A flaw-override line is tagged
+          // 'flaw-override' at exactly this one site — the else-branch (a semi-
+          // random notable NPC action) is a plain 'npc' line. This kills the UI's
+          // `msg.endsWith(FLAWS[*].detail)` reverse-derivation (format.ts, T-1402
+          // consumer): a plain 'npc' line that merely happened to end with a flaw
+          // detail no longer false-positives as a flaw override.
+          kind: isFlawOverride ? 'flaw-override' : 'npc',
           message: `${npc.name} ${npc.lastAction.details}`,
         });
       }
@@ -671,6 +684,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message: `Penny Wise's marker on your name went unpaid — word is the Thrift Star's collectors are asking after you on the lanes.`,
       });
     }
@@ -737,6 +751,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `Launch fees from ${portCount} port stake${
         portCount === 1 ? '' : 's'
       } clear to your account: ${income} credits.`,
@@ -827,6 +842,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message:
           guildStanding > 0
             ? 'The Merchant Guild marker closes — barely. Your name comes off the debt slate onto the Registry, but the clerks logged how you fought them the whole way. The veteran lanes are open, cold welcome and all.'
@@ -848,6 +864,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message: `The marker goes unpaid. The Guild files the shortfall — ${debtOutstanding} credits still owed, and the interest keeps running — and flags your name where every port clerk can read it: leaner manifests, keener patrols. You fly on indebted.`,
       });
     }
@@ -879,6 +896,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `The Guild marker keeps running: ${interest} credits in interest added — ${nextState.player.debt} now owed.`,
     });
   }

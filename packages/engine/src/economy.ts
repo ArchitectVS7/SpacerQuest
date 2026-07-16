@@ -120,6 +120,49 @@ export function localFuelPrice(systemId: number, eraEvent: EraEventState | null 
   return Math.round(price * eraFuelPriceMultiplier(eraEvent, systemId));
 }
 
+/** T-1401 · A pure advisory preview of a fuel purchase — what the engine WILL
+ *  charge vs. what actually lands in the tank. Nothing here mutates state or
+ *  changes `resolveTrade`; it only exposes the clamp the resolver already applies
+ *  so the UI can warn before committing. */
+export interface FuelPurchaseQuote {
+  /** `fuelAmount * localFuelPrice` — the full cost the engine deducts (trade.ts). */
+  cost: number;
+  /** What actually reaches the tank: `min(fuelAmount, maxFuel - fuel)`. */
+  fuelDelivered: number;
+  /** The overflow you pay for but never receive: `fuelAmount - fuelDelivered`. */
+  fuelWasted: number;
+  /** True when the request overfills the tank — the pre-commit warning trigger. */
+  overspends: boolean;
+  /** Whether credits cover the full cost. */
+  canAfford: boolean;
+}
+
+/**
+ * T-1401 · Preview a `buy-fuel` before committing. `resolveTrade` (actions/trade.ts
+ * ~L25-32) charges `fuelAmount * localFuelPrice` in full, then CLAMPS the tank to
+ * `maxFuel` — so a spacer who buys more than the tank can hold pays for fuel that
+ * is discarded. This quote mirrors that exact cost + clamp (reading the stored
+ * `market.localFuelPrice`, the same number the resolver charges) so `overspends`
+ * can never disagree with the real charge. It is a READ-ONLY advisory: it does NOT
+ * change the resolver's charge/clamp (that would be a behavior change). CONSUMER:
+ * T-1402 surfaces `overspends` as a "you're paying for X fuel you can't hold"
+ * warning before the buy is confirmed.
+ */
+export function quoteFuelPurchase(state: GameState, fuelAmount: number): FuelPurchaseQuote {
+  const ship = state.player.ship;
+  const cost = fuelAmount * state.market.localFuelPrice;
+  const room = Math.max(0, ship.maxFuel - ship.fuel);
+  const fuelDelivered = Math.min(fuelAmount, room);
+  const fuelWasted = fuelAmount - fuelDelivered;
+  return {
+    cost,
+    fuelDelivered,
+    fuelWasted,
+    overspends: fuelWasted > 0,
+    canAfford: state.player.credits >= cost,
+  };
+}
+
 /** The parts of a ship the contract-payment math cares about. NPC hulls are
  *  abstracted to the same shape so their contract income scales exactly like
  *  the player's manifest payments. */

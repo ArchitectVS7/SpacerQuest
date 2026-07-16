@@ -74,6 +74,7 @@ export function resolvePortPurchase(
   events.push({
     type: 'WireEntry',
     day,
+    kind: 'plain',
     message: `A spacer buys a controlling stake in the ${systemLabel} port authority.`,
   });
   return { state: nextState, events };

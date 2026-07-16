@@ -152,6 +152,26 @@ export interface TradeEvent {
   payment?: number;
 }
 
+/**
+ * T-1401 · The typed provenance of a wire line, stamped at the engine emission
+ * site so a reader never has to reverse-engineer it from prose. Replaces the UI's
+ * fragile `msg.endsWith(flawDetail)` heuristic (format.ts `isFlawOverrideMessage`,
+ * ~L326):
+ *   - 'flaw-override' — set ONLY at the one site where an NPC's flaw overrode
+ *     their day (day.ts, the `lastAction.type === 'FlawOverride'` branch). This is
+ *     the load-bearing discriminator: the UI can now colour a flaw-override line
+ *     without string-matching content `FLAWS[*].detail` suffixes (which false-
+ *     positives whenever a plain wire line happens to end with the same words).
+ *   - 'npc'          — an actor/NPC-driven line (bond interventions, contract
+ *     snipes, the semi-random notable-NPC action, nat-wire stories, NPC odd-jobs).
+ *   - 'plain'        — a world/system/economy line (era weather, deeds registry,
+ *     succession, travel notices, exploration sweeps, port income).
+ * READER: T-1402's `wireKind` (ui format.ts), which consumes this field directly
+ * instead of the suffix scan. The sim's `countDailyEvents` (packages/sim) counts
+ * WireEntry BY TYPE and does not read `kind`, so the STATS report is unaffected.
+ */
+export type WireEntryKind = 'flaw-override' | 'npc' | 'plain';
+
 // Discriminator for game events
 export type GameEvent =
   | { type: 'DawnRoll'; day: number; hand: number[] }
@@ -232,7 +252,7 @@ export type GameEvent =
       kind: 'fuel-gift' | 'drive-off';
       amount?: number;
     }
-  | { type: 'WireEntry'; day: number; message: string }
+  | { type: 'WireEntry'; day: number; message: string; kind: WireEntryKind }
   | {
       /** A world economic event began at dusk; active from the next dawn (T-107). */
       type: 'EraEventStarted';

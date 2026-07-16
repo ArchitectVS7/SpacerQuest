@@ -1,6 +1,21 @@
 import { z } from 'zod';
+import { FLAWS } from '@spacerquest/content';
 import { GameState } from './types.js';
 import { validateGameState } from './schema.js';
+
+// T-1401 · The v5→v6 WireEntry.kind migration's ONE legitimate, retro-only use of
+// the flaw-detail suffix heuristic. A v5 save's WireEntry events predate the typed
+// `kind` field, so their provenance can only be RE-DERIVED — and the only signal a
+// historical line carries is exactly what the old UI read: a line ending with a
+// content `FLAWS[*].detail` is a flaw override. This reproduces the pre-change UI
+// classification (format.ts `isFlawOverrideMessage`) so a loaded v5 save renders
+// identically; every fresh v6 emission is stamped at its engine site instead
+// (day.ts et al.). Never use this heuristic anywhere but this migration.
+const FLAW_DETAIL_SUFFIXES: readonly string[] = Object.values(FLAWS).map((f) => f.detail);
+
+function reDeriveWireKind(message: string): 'flaw-override' | 'npc' {
+  return FLAW_DETAIL_SUFFIXES.some((detail) => message.endsWith(detail)) ? 'flaw-override' : 'npc';
+}
 
 // Base envelope that Steam Cloud and localStorage will read.
 //
@@ -54,6 +69,15 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * `ports: []` on the player so a pre-ports save validates against the v5 schema
  * (whose `ports` key is non-optional).
  *
+ * T-1401 bumped {@link CURRENT_SAVE_VERSION} to 6. The v5->v6 change IS a
+ * GameState shape change: every `WireEntry` event in `eventLog` now carries a
+ * required `kind` discriminator (types.ts WireEntryKind). A v5 save's WireEntry
+ * events have no `kind`, so the v5->v6 migration walks `eventLog` and backfills it
+ * by re-deriving the pre-change UI classification (flaw-detail suffix ⇒
+ * 'flaw-override', else 'npc') — see {@link reDeriveWireKind} — so a loaded v5
+ * save validates against the v6 schema (whose WireEntry `kind` is required) AND
+ * renders exactly as it did before. Non-WireEntry events are untouched.
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
@@ -89,9 +113,25 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
       player: { ...(s.player ?? {}), ports: (s.player as { ports?: unknown })?.ports ?? [] },
     };
   },
+  // v5->v6: T-1401 made WireEntry.kind required. A v5 save's WireEntry events have
+  // no `kind`, so backfill each by re-deriving the pre-change UI classification
+  // (flaw-detail suffix ⇒ 'flaw-override', else 'npc') — the ONE retro-only use of
+  // that heuristic (reDeriveWireKind). A WireEntry that somehow already carries a
+  // `kind` is left as-is; non-WireEntry events pass through untouched.
+  5: (v5State) => {
+    const s = v5State as { eventLog?: unknown };
+    if (!Array.isArray(s.eventLog)) return v5State;
+    const log = s.eventLog as unknown[];
+    const eventLog: unknown[] = log.map((event) => {
+      const e = event as { type?: unknown; message?: unknown; kind?: unknown };
+      if (e.type !== 'WireEntry' || e.kind !== undefined) return event;
+      return { ...e, kind: reDeriveWireKind(typeof e.message === 'string' ? e.message : '') };
+    });
+    return { ...(v5State as object), eventLog };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 5;
+export const CURRENT_SAVE_VERSION = 6;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

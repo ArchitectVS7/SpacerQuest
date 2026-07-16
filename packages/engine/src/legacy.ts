@@ -130,6 +130,7 @@ export function applySuccession(state: GameState, context: ShipLostContext): Gam
   events.push({
     type: 'WireEntry',
     day: state.day,
+    kind: 'plain',
     message: `The Registry records the loss of a spacer at ${systemName}. A successor claims the license, the charts, and the debts.`,
   });
 

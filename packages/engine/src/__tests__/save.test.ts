@@ -9,6 +9,7 @@ import {
   type SaveEnvelope,
   type MigrationFn,
 } from '../save.js';
+import { FLAWS } from '@spacerquest/content';
 import { validateGameState } from '../schema.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { advanceDay } from '../day.js';
@@ -426,8 +427,9 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 5', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(5);
+  it('CURRENT_SAVE_VERSION is 6', () => {
+    // T-1401 bumped 5 → 6 for the required WireEntry.kind field.
+    expect(CURRENT_SAVE_VERSION).toBe(6);
   });
 });
 
@@ -457,3 +459,72 @@ function expectSaveError(fn: () => unknown): SaveError {
   expect(caught).toBeInstanceOf(SaveError);
   return caught as SaveError;
 }
+
+// T-1401 · v5 → v6 WireEntry.kind migration + kinded-eventLog round-trip.
+describe('save envelope — v5 → v6 WireEntry.kind migration (T-1401)', () => {
+  const flawSuffixes = Object.values(FLAWS).map((f) => f.detail);
+  const endsWithFlaw = (msg: string): boolean => flawSuffixes.some((s) => msg.endsWith(s));
+
+  /** Strip the `kind` off every WireEntry, the way a genuinely pre-T-1401 (v5)
+   *  save would look — it never had the field. */
+  function stripWireKind(state: GameState): GameState {
+    const clone = JSON.parse(JSON.stringify(state)) as GameState;
+    for (const e of clone.eventLog) {
+      if (e.type === 'WireEntry') {
+        delete (e as unknown as Record<string, unknown>).kind;
+      }
+    }
+    return clone;
+  }
+
+  it('backfills kind on a v5 envelope by re-deriving the pre-change classification', () => {
+    // Seed 1 deterministically files both flaw-override lines and plain npc lines.
+    const state = drive50Days(1);
+    const wireEntries = state.eventLog.filter((e) => e.type === 'WireEntry');
+    expect(wireEntries.length).toBeGreaterThan(0);
+    // The driven log must contain BOTH classes so the migration is exercised on each.
+    const hasFlawLine = wireEntries.some((e) => e.type === 'WireEntry' && endsWithFlaw(e.message));
+    const hasPlainLine = wireEntries.some(
+      (e) => e.type === 'WireEntry' && !endsWithFlaw(e.message),
+    );
+    expect(hasFlawLine).toBe(true);
+    expect(hasPlainLine).toBe(true);
+
+    const v5 = createSaveAtVersion(stripWireKind(state), 5);
+    const loaded = loadSave(v5); // walks 5→6 (kind backfill), then validates
+
+    const migratedWire = loaded.state.eventLog.filter((e) => e.type === 'WireEntry');
+    expect(migratedWire.length).toBe(wireEntries.length);
+    for (const e of migratedWire) {
+      if (e.type !== 'WireEntry') continue;
+      // Re-derivation: a flaw-detail suffix ⇒ 'flaw-override', everything else ⇒ 'npc'.
+      expect(e.kind).toBe(endsWithFlaw(e.message) ? 'flaw-override' : 'npc');
+    }
+    // At least one of each landed (proves both branches ran, not just a default).
+    expect(migratedWire.some((e) => e.type === 'WireEntry' && e.kind === 'flaw-override')).toBe(
+      true,
+    );
+    expect(migratedWire.some((e) => e.type === 'WireEntry' && e.kind === 'npc')).toBe(true);
+  });
+
+  it('leaves an already-kinded WireEntry untouched during migration', () => {
+    // A v5 save whose WireEntry somehow already carries a kind must not be re-derived.
+    const state = createInitialState(3);
+    state.eventLog.push({ type: 'WireEntry', day: 1, kind: 'plain', message: 'A world line.' });
+    const v5 = createSaveAtVersion(state, 5);
+    const loaded = loadSave(v5);
+    const wire = loaded.state.eventLog.find((e) => e.type === 'WireEntry');
+    expect(wire?.type === 'WireEntry' && wire.kind).toBe('plain');
+  });
+
+  it('round-trips a state whose eventLog carries kinded WireEntry events (deep-equal)', () => {
+    const state = drive50Days(2);
+    expect(state.eventLog.some((e) => e.type === 'WireEntry')).toBe(true);
+    const restored = loadSave(createSave(state, 2));
+    expect(restored.state).toEqual(state);
+    // The kinds survive the round-trip byte-for-byte.
+    const before = state.eventLog.filter((e) => e.type === 'WireEntry');
+    const after = restored.state.eventLog.filter((e) => e.type === 'WireEntry');
+    expect(after).toEqual(before);
+  });
+});

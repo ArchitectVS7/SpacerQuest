@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Stat } from '@spacerquest/content';
+import { FLAWS } from '@spacerquest/content';
 import { natWireStories } from '../wire.js';
 import { advanceDay } from '../day.js';
 import { resolveTrade } from '../actions/trade.js';
@@ -118,6 +119,8 @@ describe('Galactic Wire nat-20/nat-1 stories (T-1202, PRD §6)', () => {
     expect(stories[0]).toEqual({
       type: 'WireEntry',
       day: 5,
+      // T-1401: a nat-wire story is an actor-driven line — it carries kind 'npc'.
+      kind: 'npc',
       message:
         "Lucky Seven wins the Fat Profit off Cargo King in a Spacer's Dare at the Hangout. Cargo King unavailable for comment.",
     });
@@ -268,5 +271,41 @@ describe('Margin scaling (T-1202, PRD §6 "the margin decides how well it goes")
     // Natural 20: the cleanest possible hit bites deepest → 3.
     const natSeed = seedForEnemyDie(20, 20);
     expect(duskDamageAmount(0, natSeed)).toBe(3);
+  });
+});
+
+describe('WireEntry.kind stamping (T-1401)', () => {
+  it('stamps kind "flaw-override" only on a flaw-override wire line, at emission', () => {
+    // Seed 1's day-1 dusk deterministically drives at least one NPC's flaw to
+    // override their day (Silk Dagger, "abandoned the job to hunt an old enemy").
+    // The engine now TAGS that line at the source — the UI never has to string-
+    // match FLAWS[*].detail suffixes to find it.
+    const { events } = advanceDay(createInitialState(1), []);
+    const flawSuffixes = Object.values(FLAWS).map((f) => f.detail);
+
+    const flawWires = events.filter((e) => e.type === 'WireEntry' && e.kind === 'flaw-override');
+    expect(flawWires.length).toBeGreaterThan(0);
+    for (const wire of flawWires) {
+      // Every flaw-override line does end with a content flaw detail — proving the
+      // stamp agrees with the old heuristic where the heuristic was correct...
+      expect(wire.type === 'WireEntry' && flawSuffixes.some((s) => wire.message.endsWith(s))).toBe(
+        true,
+      );
+    }
+
+    // ...and every kinded WireEntry carries exactly one of the three kinds.
+    for (const e of events) {
+      if (e.type === 'WireEntry') {
+        expect(['flaw-override', 'npc', 'plain']).toContain(e.kind);
+      }
+    }
+  });
+
+  it('stamps kind "npc" on a nat-wire actor line, not "flaw-override"', () => {
+    // The natWireStories assertion above already pins kind 'npc' on a nat-wire
+    // line; this guards the discriminator is present on the full day's npc lines.
+    const { events } = advanceDay(createInitialState(1), []);
+    const npcWires = events.filter((e) => e.type === 'WireEntry' && e.kind === 'npc');
+    expect(npcWires.length).toBeGreaterThan(0);
   });
 });

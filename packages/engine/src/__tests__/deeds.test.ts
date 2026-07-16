@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEEDS, RENOWN_DEED_THRESHOLDS, RENOWN_RANKS } from '@spacerquest/content';
-import { evaluateDeeds, rankForDeedCount } from '../deeds.js';
+import { RENOWN_RANK_ORDER, evaluateDeeds, nextRankFor, rankForDeedCount } from '../deeds.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { EarnedDeedState, GameEvent } from '../types.js';
 
@@ -98,7 +98,12 @@ describe('deed registry', () => {
         citation: 'On day 1, the Guild ledger opened.',
         renownRank: 'COMMANDER',
       },
-      { type: 'WireEntry', day: 1, message: 'Registry confirms Player as Commander.' },
+      {
+        type: 'WireEntry',
+        day: 1,
+        kind: 'plain',
+        message: 'Registry confirms Player as Commander.',
+      },
       {
         type: 'DeedEarned',
         day: 2,
@@ -390,5 +395,23 @@ describe('deed registry', () => {
     expect(restored.player.registry.renownRank).toBe('CONQUEROR');
     expect(restored.eventLog).toContainEqual(rankUp);
     expect(restored.eventLog).toContainEqual(deedEarned);
+  });
+});
+
+describe('nextRankFor (T-1401 export pack)', () => {
+  it('returns the immediately higher rank', () => {
+    expect(nextRankFor('LIEUTENANT')).toBe('COMMANDER');
+    expect(nextRankFor('COMMANDER')).toBe('CAPTAIN');
+  });
+
+  it('returns null at the top rank (CONQUEROR)', () => {
+    expect(nextRankFor('CONQUEROR')).toBeNull();
+  });
+
+  it('walks the full canonical order exactly once, ending in null', () => {
+    for (let i = 0; i < RENOWN_RANK_ORDER.length - 1; i++) {
+      expect(nextRankFor(RENOWN_RANK_ORDER[i])).toBe(RENOWN_RANK_ORDER[i + 1]);
+    }
+    expect(nextRankFor(RENOWN_RANK_ORDER[RENOWN_RANK_ORDER.length - 1])).toBeNull();
   });
 });

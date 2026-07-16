@@ -102,6 +102,48 @@ export function calculateRouteDanger(
   };
 }
 
+/** T-1401 · A previewed jump in REAL engine units — every number the starmap
+ *  route read-out shows, read straight from the engine so the value shown is the
+ *  value the resolver will use. Pure derivation; nothing here is persisted. */
+export interface TravelPreview {
+  /** The raw float route distance in the seed's x/y plane — NOT a rounded "jumps"
+   *  integer. This is the honest unit; the UI's `jumpsBetween` fabricated a
+   *  `Math.round(distance)` "jumps" count (format.ts ~L70) that no engine rule
+   *  reads. */
+  distance: number;
+  /** Fuel this jump costs — `jumpFuelCost` against this route. */
+  fuelCost: number;
+  /** The exact pilot-check DC `resolveTravel` will roll against (`travelDc`). */
+  dc: number;
+  /** The route's danger level (`calculateRouteDanger().routeDangerLevel`). */
+  dangerLevel: number;
+  /** Whether the tank can cover the jump (`fuelCost <= ship.fuel`). */
+  reachable: boolean;
+}
+
+/**
+ * T-1401 · Engine-owned travel preview — the truth behind the UI's `routePreview`
+ * (format.ts ~L125). Reads only existing engine functions (`distance`,
+ * `jumpFuelCost`, `travelDc`, `calculateRouteDanger`), so it invents no rule and
+ * can never disagree with `resolveTravel`. CONSUMER: T-1402, which makes
+ * `routePreview` a thin pass-through and DELETES `jumpsBetween` (the fabricated
+ * "jumps" count) — the preview now speaks in real distance, the unit the engine
+ * actually uses.
+ */
+export function travelPreview(state: GameState, destination: number): TravelPreview {
+  const origin = state.player.currentSystemId;
+  const ship = state.player.ship;
+  const routeDistance = systemDistance(origin, destination);
+  const fuelCost = jumpFuelCost(ship.drives, routeDistance, ship.hasTransWarpDrive ?? false);
+  return {
+    distance: routeDistance,
+    fuelCost,
+    dc: travelDc(routeDistance),
+    dangerLevel: calculateRouteDanger(state, origin, destination).routeDangerLevel,
+    reachable: fuelCost <= ship.fuel,
+  };
+}
+
 function chooseTargetTier(
   rng: SeededRng,
   playerTier: number,
@@ -513,6 +555,7 @@ export function resolveTravel(
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message: `Player experienced a navigation malfunction en route to system ${destination}.`,
       });
     }
@@ -533,6 +576,7 @@ export function resolveTravel(
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `Player attempted jump to system ${destination} without enough fuel.`,
     });
   }
