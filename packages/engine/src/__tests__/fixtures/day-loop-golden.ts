@@ -232,11 +232,20 @@ export function runDayLoopGolden(
 // reproduces the previous four hashes byte-for-byte (verified), and the sim STATS
 // report is byte-identical. No rule, value, or rng draw moved — only the new
 // field appears. Regenerated via gen-day-loop-golden.ts.
+//
+// T-1501 re-derivation (ALL FOUR hashes): the ports & rumors batch added the
+// systemIds-only `port.aldebaran.grain-exchange` beat at Aldebaran-1 (system 2).
+// Both scripts Travel to system 2, so the next dawn now surfaces one extra
+// StoryletOffered event + the resulting available-list entry, moving both the
+// STATE and EVENT hashes on both scripts. This is a deliberate CONTENT ADDITION,
+// not a behavior/rng change: no rule, value, or dice draw moved — only a new
+// eligible storylet appears at the docked system. Regenerated via
+// gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '5519e486a2a0d0cc9c01989dc2e344837582eae507a7c80cc8e82432778dfe70';
+  '3340daa457d2f9fe4f44075533368057140a93b574cab2273b44e269ae361c3a';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'a09524c2c7023e1abb067c1d9b0da74977d6ec012f756d9549fceb4537882059';
+  'a5f88ec1bee9862de6c03dcc327fc60fa21deab21c01d04f12bbb3495450025e';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '20fd40b333a8bcf24ce8e02872dc9e7679a78369938a9b242ab9807895f3e968';
+  '9f4dae2514f3cda0848e70eec7732915d0406f8ad7e2801fbe19be4e3476b01b';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '87e0948b1535a1af96ea4dca365014cab3b33872853c1637f11a9cb3b8e8e049';
+  'a1b5f73b5a71f9af2e217314d7dc59123afb191b6b5362ec4da32be66754d5c7';

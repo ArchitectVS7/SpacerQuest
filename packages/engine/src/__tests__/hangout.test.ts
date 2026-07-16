@@ -200,6 +200,49 @@ describe('rumor slot renders ≥1 fact from live NPC state', () => {
     const hangout = events.find((e) => e.type === 'HangoutEvent') as { rumors?: string[] };
     expect(hangout.rumors?.length ?? 0).toBeGreaterThan(0);
   });
+
+  // T-1501 · The rumor table fills its slots from AUTHORED templates (content
+  // RUMOR_TEMPLATES) interpolated with LIVE NPC fields. This is the batch's
+  // acceptance #3: ≥3 dynamic slots, each varying with live NPC state (action
+  // type, details, position, disposition).
+  it('fills ≥3 dynamic slots from live NPC state (distinct co-located NPCs)', () => {
+    const state = hangoutState([10, 3, 3, 3, 3]);
+    // Seat three distinct NPCs at the player's table (Sun-3), each with a
+    // different live action-type + details, and a distinct disposition sign.
+    const seated = state.npcs.slice(0, 3);
+    expect(seated).toHaveLength(3);
+    seated[0].currentSystemId = 1;
+    seated[0].disposition = 4; // warm
+    seated[0].lastAction = { type: 'Trade', details: 'hauled Spices to Aldebaran-1' };
+    seated[1].currentSystemId = 1;
+    seated[1].disposition = -6; // grudge → cold phrasing
+    seated[1].lastAction = { type: 'Combat', details: 'traded fire near Sun-3' };
+    seated[2].currentSystemId = 1;
+    seated[2].disposition = 0; // neutral → warm phrasing
+    seated[2].lastAction = { type: 'Patrol', details: 'ran a clean sweep of the Sun-3 lanes' };
+    // Push every other NPC out of system so the three seated ones lead the roster.
+    for (const npc of state.npcs.slice(3)) npc.currentSystemId = 5;
+
+    const rumors = hangoutRumors(state);
+    expect(rumors.length).toBeGreaterThanOrEqual(3);
+    // Each seated NPC's live details clause appears in a slot.
+    expect(rumors.some((r) => r.includes('hauled Spices to Aldebaran-1'))).toBe(true);
+    expect(rumors.some((r) => r.includes('traded fire near Sun-3'))).toBe(true);
+    expect(rumors.some((r) => r.includes('ran a clean sweep of the Sun-3 lanes'))).toBe(true);
+
+    // The slots are genuinely dynamic: distinct action types + dispositions
+    // produce three DISTINCT authored phrasings (not one repeated template).
+    const seatedLines = rumors.slice(0, 3);
+    expect(new Set(seatedLines).size).toBe(3);
+
+    // And disposition is live: the grudge-holder's line uses the cold variant,
+    // which is NOT the warm phrasing for the same action + fields.
+    const combatLine = rumors.find((r) => r.includes('traded fire near Sun-3'))!;
+    seated[1].disposition = 5; // flip to warm and re-log
+    const warmRumors = hangoutRumors(state);
+    const warmCombatLine = warmRumors.find((r) => r.includes('traded fire near Sun-3'))!;
+    expect(warmCombatLine).not.toBe(combatLine);
+  });
 });
 
 describe('malformed die input is a typed fail, never a throw', () => {

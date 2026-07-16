@@ -90,6 +90,33 @@ const T1310_STORYLET_IDS = [
   'sage.mizar.decode-05',
 ] as const;
 
+// T-1501 · Ports & rumors batch (20), appended after the T-1310 batch: the nine
+// mandatory per-system port beats (systemIds-only, giving every core+rim system
+// a reachable storylet), six richer rim-character beats, four Wise One / Sage
+// audience scenes, and one extra core Fomalhaut vignette — in content order.
+const T1501_STORYLET_IDS = [
+  'port.aldebaran.grain-exchange',
+  'port.fomalhaut.dust-market',
+  'port.vega6.homecoming-gantry',
+  'port.antares.gateway-watch',
+  'port.capella.drive-yard',
+  'port.polaris.frontier-berth',
+  'port.mizar.robotics-row',
+  'port.achernar.nav-beacon',
+  'port.algol.no-repair',
+  'port.antares.andromeda-operations',
+  'port.capella.herbal-run',
+  'port.achernar.gem-cutters',
+  'port.algol.frontier-justice',
+  'port.mizar.liquor-hall',
+  'port.polaris.ice-harvest',
+  'wise-one.polaris.counsel',
+  'wise-one.polaris.parable',
+  'sage.mizar.constellation-quiz',
+  'sage.mizar.star-lore',
+  'port.fomalhaut.deep-dark',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -116,13 +143,18 @@ describe('storylet content validation', () => {
     for (const id of T1310_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1501 ports & rumors batch loaded and validated.
+    for (const id of T1501_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
         T1301_STORYLET_IDS.length +
         T1302_STORYLET_IDS.length +
         T1305_STORYLET_IDS.length +
-        T1310_STORYLET_IDS.length,
+        T1310_STORYLET_IDS.length +
+        T1501_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);
@@ -189,15 +221,18 @@ describe('storylet engine', () => {
   it('finds and resolves the cargo demo headlessly', () => {
     const state = readyState();
     state.player.currentSystemId = 2;
-    // A Medicinals (type 4) contract. quarantine-seal is the sole match: the
-    // T-1302 plague-relief storylet needs a live `plague` era event (state.eraEvent
-    // is null here), so a plain Medicinals run no longer arms it.
+    // A Medicinals (type 4) contract. The plague-relief storylet needs a live
+    // `plague` era event (state.eraEvent is null here), so a plain Medicinals run
+    // no longer arms it. quarantine-seal is the sole CARGO match; T-1501 added the
+    // Aldebaran-1 (system 2) port beat, which — being systemIds-only — is also
+    // eligible here (in content order, after the cargo match), so both surface.
     state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     const refreshed = refreshAvailableStorylets(state);
 
     expect(refreshed.state.storylets.available.map((offer) => offer.storyletId)).toEqual([
       'cargo.medicinals.quarantine-seal',
+      'port.aldebaran.grain-exchange',
     ]);
     const offer = refreshed.state.storylets.available[0];
     expect(offer?.title).toBe('Quarantine Seal');
@@ -215,6 +250,12 @@ describe('storylet engine', () => {
         type: 'StoryletOffered',
         day: 1,
         storyletId: 'cargo.medicinals.quarantine-seal',
+        scheduled: false,
+      },
+      {
+        type: 'StoryletOffered',
+        day: 1,
+        storyletId: 'port.aldebaran.grain-exchange',
         scheduled: false,
       },
     ]);

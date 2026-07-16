@@ -1982,4 +1982,604 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // ==========================================================================
+  // T-1501 · Storylet batch — ports & rumors (20) (appended per the batch
+  //   convention: batches append after every prior batch, so the originals stay
+  //   the leading content-order prefix the engine test asserts).
+  //
+  //   PURPOSE: give the map its per-system character now that RIM systems receive
+  //   real traffic (T-1101/T-1102 made rim jumps reachable, T-1104 routes cargo
+  //   there). The audit found only ~3 system-keyed port/rumor storylets existed;
+  //   the mandatory 9 below give every core+rim system that lacked one a plain,
+  //   reliably-reachable port beat (systemIds-only, no era/day/cargo/flag gate,
+  //   repeat:'never'), which is the "every core+rim system has ≥1 storylet
+  //   reachable in a 500-day sweep" acceptance (sim/system-storylet-coverage.test).
+  //   Six richer rim beats + four Wise One / Sage audience scenes give the rim its
+  //   authored voice.
+  //
+  //   VOICE / DIVERGENCE: rim flavor is drawn from foundation
+  //   (f2f95fa9:foundation/lore/User-Manual.md §"Rim Star Worlds") — Antares-5's
+  //   sealed Andromeda Operations Room, Capella-4 drive repair, Polaris-1's cold
+  //   cabin + the Wise One, Mizar-9's robotics row + the Sage's constellation
+  //   quiz, Achernar-5 navigation, and Algol-2's "no repair facilities — the
+  //   frontier". Foundation carries no storylet constants, so the credit/fuel
+  //   deltas are authored in the existing storylet band (~40–350cr), not lifted.
+  //
+  //   AUTHORING (enforced by engine/storylets.test.ts): 2–4 choices, ≥1
+  //   requirement-free choice per storylet (so a broke, die-spent captain never
+  //   dead-ends the day), and NO held-state (.aboard/.riding) flags in this batch
+  //   (nothing to strand). Per Standing-constraint 7 — and matching the T-1310
+  //   precedent (bb030913) — this batch sets NO receipt/"outcome" flags at all:
+  //   a set-only flag nothing reads is not a feature. Choice outcomes are carried
+  //   entirely by prose + real credit/fuel deltas; a choice whose only distinction
+  //   was its receipt flag is written effect-free, and each storylet's own
+  //   repeat:'never' completion record (not a parallel flag) is what stops a
+  //   re-offer. If a later gate ever needs to read one of these outcomes, add the
+  //   flag back TOGETHER with its named reader and a consumption assertion.
+  // ==========================================================================
+
+  // --- Mandatory 9: the plain per-system port beats (reachability-critical) ---
+  {
+    id: 'port.aldebaran.grain-exchange',
+    title: 'The Grain Exchange',
+    prose:
+      'Aldebaran-1 runs on grain futures, and the exchange floor is mid-argument when you dock: two brokers, one disputed lot, and a docked hull that neither of them owns looking like a convenient tiebreaker.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [2],
+    },
+    choices: [
+      {
+        id: 'broker-it',
+        label: 'Broker the dispute',
+        prose: 'Read the lot slips, find the honest split, and name it before either broker can.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 11 } },
+        successEffects: {
+          credits: 90,
+        },
+        failureEffects: {
+          credits: -40,
+        },
+      },
+      {
+        id: 'stay-out',
+        label: 'Stay out of it',
+        prose: 'Their grain, their fight. Sign your gantry slip and leave the exchange to itself.',
+      },
+    ],
+  },
+  {
+    id: 'port.fomalhaut.dust-market',
+    title: 'The Dust Market',
+    prose:
+      "Fomalhaut-2's dust market never quite closes — a low sprawl of stalls under the gantry lights where a trader waves you over with a haggle already half-formed on her lips.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [7],
+    },
+    choices: [
+      {
+        id: 'haggle',
+        label: 'Haggle her down',
+        prose: 'Meet the opening price with a flat refusal and see where the number lands.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          credits: 110,
+        },
+        failureEffects: {
+          credits: -50,
+        },
+      },
+      {
+        id: 'browse',
+        label: 'Browse and move on',
+        prose: 'Nod at the stalls, buy nothing, and keep the coin for a market you know better.',
+      },
+    ],
+  },
+  {
+    id: 'port.vega6.homecoming-gantry',
+    title: 'The Homecoming Gantry',
+    prose:
+      'Vega-6 keeps one gantry lit for the ships that come back from the deep runs — the Maligna returners, the long-hauls, the ones the wire had stopped counting on. Tonight the gantry crew mistake you for one of them and stand a round anyway.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [14],
+    },
+    choices: [
+      {
+        id: 'take-the-round',
+        label: 'Take the round, tell a story',
+        prose:
+          'Let them believe the deep-run story a while, and trade a tall tale for a warm dock.',
+      },
+      {
+        id: 'set-them-straight',
+        label: 'Set them straight',
+        prose:
+          'Wave the credit off — you have not earned that gantry yet. Buy your own round instead.',
+        effects: {
+          credits: -30,
+        },
+      },
+    ],
+  },
+  {
+    id: 'port.antares.gateway-watch',
+    title: 'The Gateway Watch',
+    prose:
+      "Antares-5 sits at the black hole's edge — the gateway to Andromeda, if the stories are true. A watch officer eyes your transponder as you dock, and past her shoulder a sealed blast door reads OPERATIONS in letters older than the Confederation.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [15],
+    },
+    choices: [
+      {
+        id: 'ask-the-door',
+        label: 'Ask about the sealed door',
+        prose:
+          'Nod at the OPERATIONS door and ask, idly, what it takes to get it opened. The officer almost answers.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+      },
+      {
+        id: 'keep-moving',
+        label: 'Keep your eyes down and dock',
+        prose: 'Some doors it is safer not to be seen looking at. Clear the gantry and move on.',
+      },
+    ],
+  },
+  {
+    id: 'port.capella.drive-yard',
+    title: 'The Drive Yard',
+    prose:
+      'Capella-4 is a drive port — the yards out here rebuild burners half the core would scrap. A yard tout jogs alongside your hull before the clamps are cold, quoting a tune-up price and a story about the last captain who skipped one.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [16],
+    },
+    choices: [
+      {
+        id: 'take-the-tuneup',
+        label: 'Pay for the tune-up',
+        prose:
+          'Let the yard crew balance the burner. It costs, but a clean drive out here is life.',
+        requirements: { credits: { gte: 60 } },
+        effects: {
+          credits: -60,
+          fuel: 15,
+        },
+      },
+      {
+        id: 'wave-off',
+        label: 'Wave the tout off',
+        prose:
+          'The burner will hold. Wave the tout back to the next hull and see to your own drives.',
+      },
+    ],
+  },
+  {
+    id: 'port.polaris.frontier-berth',
+    title: 'A Cold Berth',
+    prose:
+      "Polaris-1 keeps its berths cold and its welcome colder — a cabin-repair port at the frontier's edge where the dockmaster charges by the hour for heat and does not haggle. Still, a warm bunk is a warm bunk this far out.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [17],
+    },
+    choices: [
+      {
+        id: 'pay-for-heat',
+        label: 'Pay for a warm berth',
+        prose:
+          'Buy the heat and a night out of the pilot chair. The frontier will still be there at dawn.',
+        requirements: { credits: { gte: 40 } },
+        effects: {
+          credits: -40,
+        },
+      },
+      {
+        id: 'rough-it',
+        label: 'Rough it in the cockpit',
+        prose:
+          'Keep the coin, pull a blanket over the console, and sleep the way spacers always have.',
+      },
+    ],
+  },
+  {
+    id: 'port.mizar.robotics-row',
+    title: 'Robotics Row',
+    prose:
+      "Mizar-9's robotics row is a canyon of parts stalls and half-built drones, the best repair for a fried battle computer anywhere on the rim. A fixer with oil to the elbows offers to look your systems over — cheap, he says, because business is slow.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+    },
+    choices: [
+      {
+        id: 'let-him-look',
+        label: 'Let the fixer look',
+        prose:
+          'Pop the panels and let him run a diagnostic. A rim fixer sees things a core yard misses.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 11 } },
+        successEffects: {
+          credits: 70,
+        },
+        failureEffects: {
+          credits: -40,
+        },
+      },
+      {
+        id: 'browse-the-row',
+        label: 'Just browse the row',
+        prose: 'Walk the stalls, price a few parts, and buy nothing you did not come for.',
+      },
+    ],
+  },
+  {
+    id: 'port.achernar.nav-beacon',
+    title: 'A Beacon Off True',
+    prose:
+      'Achernar-5 lives and dies by its navigation beacons, and one of them is reading a hair off true. The port navigator is short-handed and asks — half-order, half-favor — whether a docked captain would ride out and recalibrate it.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [19],
+    },
+    choices: [
+      {
+        id: 'ride-out',
+        label: 'Ride out and calibrate it',
+        prose: 'Take the calibration rig out to the drifting beacon and bring it back onto true.',
+        requirements: { spendDie: true },
+        effects: {
+          credits: 100,
+        },
+      },
+      {
+        id: 'beg-off',
+        label: 'Beg off the favor',
+        prose: 'Tell the navigator your heading is set. She frowns, but finds another hull to ask.',
+      },
+    ],
+  },
+  {
+    id: 'port.algol.no-repair',
+    title: 'No Repair Facilities',
+    prose:
+      'Algol-2 is the end of the charts — no repair facilities, no yard, no guarantee anyone here is who they say. A spacer with a dead drive flags you down at the gantry, cap in hand: he needs one part, and Algol-2 is the wrong place to be stranded with a cold burner.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [20],
+    },
+    choices: [
+      {
+        id: 'give-the-part',
+        label: 'Give him the part',
+        prose:
+          'Pull a spare coupling from your own stores and hand it over. Out here, that is the whole law.',
+        effects: {
+          credits: -30,
+        },
+      },
+      {
+        id: 'sell-the-part',
+        label: 'Sell him the part',
+        prose:
+          'The frontier prices its mercy. Name a fair number for the coupling and take his coin.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 11 } },
+        successEffects: {
+          credits: 80,
+        },
+      },
+      {
+        id: 'walk-past',
+        label: 'Walk past him',
+        prose: 'You have troubles of your own out here. Keep your stores and keep walking.',
+      },
+    ],
+  },
+
+  // --- Rim-character richness (6): flavored beats. The mandatory 9 above already
+  //     guarantee per-system reachability, so these may carry gates. ---
+  {
+    id: 'port.antares.andromeda-operations',
+    title: 'The Operations Room',
+    prose:
+      'Word of your veteran registry reaches the Antares-5 watch before you clear the gantry, and this time the OPERATIONS door is not sealed. Inside, a briefing officer stands before a chart of the black hole and the long dark past it. "You are cleared to hear this much," she says. "No further. Not yet."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [15],
+      eras: ['VETERAN'],
+    },
+    choices: [
+      {
+        id: 'hear-the-briefing',
+        label: 'Hear the briefing',
+        prose:
+          'Stand at the chart and let her walk you to the edge of what the Confederation admits about the crossing — and no further.',
+      },
+      {
+        id: 'not-ready',
+        label: 'Tell her you are not ready',
+        prose:
+          'Some doors you would rather close yourself than be shown through. Thank the officer and step back out to the gantry.',
+      },
+    ],
+  },
+  {
+    id: 'port.capella.herbal-run',
+    title: 'The Capellan Herbals',
+    prose:
+      'A Capella-4 grower has a pallet of Capellan Herbals cut and cured and no hull to carry them coreward before they lose their potency. She offers the run cheap to any captain heading back in, and a taste of the cure to close the deal.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [16],
+    },
+    choices: [
+      {
+        id: 'take-the-run',
+        label: 'Take the herbal run',
+        prose:
+          'Log the pallet against a coreward berth and warm the drives. Fresh Capellan Herbals pay well if you make the core before they turn.',
+        effects: {
+          cargo: {
+            addManifestContract: { destination: 7, cargoType: 16, payment: 900, pods: 1 },
+          },
+        },
+      },
+      {
+        id: 'pass',
+        label: 'Pass on it',
+        prose:
+          'Your hold has other plans. Wish the grower a fast hull and keep your manifest as it is.',
+      },
+    ],
+  },
+  {
+    id: 'port.achernar.gem-cutters',
+    title: "The Gem Cutters' Row",
+    prose:
+      'Achernar-5 cuts the finest gems on the rim, and a cutter at the row leans close over a cloth of Achernarian stones. "Appraised low at the core, I would wager," he murmurs. "They never know what they are holding. Sell them here, to someone who does."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [19],
+    },
+    choices: [
+      {
+        id: 'sell-to-cutter',
+        label: 'Deal with the cutter',
+        prose:
+          'Talk stones and value with a man who cuts them for a living, and hold out for his real price.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          credits: 160,
+        },
+        failureEffects: {
+          credits: -40,
+        },
+      },
+      {
+        id: 'window-shop',
+        label: 'Admire and leave',
+        prose: 'Watch the wheel throw its light a while, buy nothing, sell nothing, and go.',
+      },
+    ],
+  },
+  {
+    id: 'port.algol.frontier-justice',
+    title: 'Frontier Justice',
+    prose:
+      'Algol-2 has no law but what the docked captains agree to, and tonight they are agreeing loudly. A runner caught skimming fuel from moored hulls is roped to a gantry post, and the gathered spacers want a vote from every ship at berth — yours included.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [20],
+    },
+    choices: [
+      {
+        id: 'argue-mercy',
+        label: 'Argue for mercy',
+        prose:
+          'Stand up and talk the crowd down from the harder options. Out here a reputation for fairness is worth more than one for iron.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+      },
+      {
+        id: 'stay-silent',
+        label: 'Cast no vote',
+        prose:
+          'Keep to your hull and let the frontier settle its own accounts. It is not your dock and not your call.',
+      },
+    ],
+  },
+  {
+    id: 'port.mizar.liquor-hall',
+    title: 'The Liquor Hall',
+    prose:
+      "Mizar-9's liquor hall pours the rim's strongest, and the strongest talk with it. A table of long-haul captains waves you into a bench, a bottle of Mizarian Liquor already open and a rumor already halfway told.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+    },
+    choices: [
+      {
+        id: 'drink-and-listen',
+        label: 'Drink and listen',
+        prose:
+          'Take the offered cup and let the rim gossip wash over you. Some of it is even true, and the true parts are worth the hangover.',
+      },
+      {
+        id: 'buy-the-round',
+        label: 'Buy the next round',
+        prose:
+          'Stand the table a bottle and buy your way into the better rumors — the ones they do not tell for free.',
+        requirements: { credits: { gte: 50 } },
+        effects: {
+          credits: -50,
+        },
+      },
+    ],
+  },
+  {
+    id: 'port.polaris.ice-harvest',
+    title: 'The Ice Harvest',
+    prose:
+      'Polaris-1 harvests its fuel from cometary ice, and the harvest crew is a hand short on the line. The foreman offers a cut of the melt to any captain willing to work a shift on the frozen frontier — cold, hard, and honest.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [17],
+    },
+    choices: [
+      {
+        id: 'work-a-shift',
+        label: 'Work a shift on the line',
+        prose:
+          'Suit up and haul ice with the harvest crew. The pay is a tank topped off and a foreman who remembers a working captain.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 11 } },
+        successEffects: {
+          fuel: 25,
+        },
+      },
+      {
+        id: 'not-this-run',
+        label: 'Not this run',
+        prose:
+          'The line is brutal and your heading is set. Wave the foreman off and see to your own tanks.',
+      },
+    ],
+  },
+
+  // --- Wise One / Sage audience scenes (4): the "guidance to advanced spacers"
+  //     and the constellation quiz the foundation names, distinct from the
+  //     T-113a/T-1310 fragment-broker hooks (which grant/decode the Nemesis
+  //     Signal). These are pure counsel — no fragment mechanics — so they can
+  //     surface without a fragment held. Renown/era gates give them their
+  //     "advanced spacers" character; the mandatory 9 carry system reachability. ---
+  {
+    id: 'wise-one.polaris.counsel',
+    title: 'Counsel of the Wise One',
+    prose:
+      'The Wise One of Polaris-1 receives you differently now — no data sliver, no price, only a long look and a gesture at the cold cabin\'s single chair. "You have made a name," the old spacer says. "Names are the heaviest cargo a hull carries. Sit. I will tell you how to fly with the weight."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [17],
+      renown: { minRank: 'CAPTAIN' },
+    },
+    choices: [
+      {
+        id: 'hear-counsel',
+        label: 'Hear the counsel',
+        prose:
+          'Take the chair and listen. What the Wise One gives an advanced spacer is not coin and not cargo, but the shape of the road ahead.',
+      },
+      {
+        id: 'decline-counsel',
+        label: 'Decline, respectfully',
+        prose:
+          'Tell the Wise One you fly better without a map of the weight. The old spacer nods, unoffended. "Then you already understand the first part."',
+      },
+    ],
+  },
+  {
+    id: 'wise-one.polaris.parable',
+    title: "The Wise One's Parable",
+    prose:
+      'On a later visit the Wise One is in a telling mood. "A spacer once tried to outrun their own wake," the old one begins, unprompted, watching the frost creep the cabin window. "They burned every drop of fuel they had. Do you know where they ended up?" The pause is the point.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [17],
+      eras: ['VETERAN'],
+    },
+    choices: [
+      {
+        id: 'answer-the-parable',
+        label: 'Guess the ending',
+        prose:
+          'Offer your own ending to the parable. The Wise One listens to it more closely than you expected, and does not tell you whether you were right.',
+      },
+      {
+        id: 'sit-with-it',
+        label: 'Sit with the silence',
+        prose:
+          'Say nothing and let the pause be the answer. The Wise One almost smiles. "Good," they say. "The ones who answer too fast never make the crossing."',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.constellation-quiz',
+    title: "The Sage's Constellation Quiz",
+    prose:
+      'The Sage of Mizar-9 sets aside the dead screens and produces, of all things, a battered star-wheel. "Before I read any more signals for you," they say, eyes bright, "a small test. Sixteen constellations, coded A through P. Tell me — which one guides a lost hull home?" It is, you realize, both a game and a measure.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+    },
+    choices: [
+      {
+        id: 'take-the-quiz',
+        label: 'Take the quiz',
+        prose:
+          'Study the wheel and name your constellation. The Sage weighs the answer, then the answerer, and seems satisfied with both.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 11 } },
+      },
+      {
+        id: 'decline-the-quiz',
+        label: 'Decline the game',
+        prose:
+          'Tell the Sage you did not come to be tested. They pocket the wheel without complaint. "Another visit, then. The sky keeps."',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.star-lore',
+    title: 'The Sage Tells the Sky',
+    prose:
+      'The Sage is between decodings and, rare for them, unhurried. "You keep bringing me the wrong side of the black hole," they say. "Let me give you the right side for once." They dim the workshop and throw a century of star-lore across the dead screens — the old names, the old roads, the sky as it was charted before anyone thought to cross it.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+    },
+    choices: [
+      {
+        id: 'listen-to-lore',
+        label: 'Listen to the star-lore',
+        prose:
+          'Sit in the dark and let the old sky roll past. None of it pays a docking fee, and all of it is worth knowing before the crossing.',
+      },
+      {
+        id: 'cut-it-short',
+        label: 'Cut it short',
+        prose:
+          'Tell the Sage the drives are warm and the lore will keep. They dim the screens back up. "It has kept this long," they agree.',
+      },
+    ],
+  },
+
+  // --- One more core beat (20 total): a second Fomalhaut-2 vignette, so a
+  //     core trading hub carries more than one face across a long campaign. ---
+  {
+    id: 'port.fomalhaut.deep-dark',
+    title: 'Talk of the Deep Dark',
+    prose:
+      'Late at the Fomalhaut-2 docks an old freighter hand corners you with the shakes and a story: something out past the rim, she swears, that pings back on an empty channel. Half the port calls her mad. The other half stopped flying the far lanes after they heard her.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [7],
+    },
+    choices: [
+      {
+        id: 'hear-her-out',
+        label: 'Hear her out',
+        prose:
+          'Buy the old hand a drink and let her tell it. Rim ghost stories are mostly nerves — but the ones that spread are worth a captain knowing.',
+        effects: {
+          credits: -20,
+        },
+      },
+      {
+        id: 'wave-it-off',
+        label: 'Wave the story off',
+        prose:
+          'Every port has its madwoman and her empty channel. Nod, excuse yourself, and get back to the manifest.',
+      },
+    ],
+  },
 ] as const);
