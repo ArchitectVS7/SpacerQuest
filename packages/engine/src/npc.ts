@@ -4,8 +4,14 @@ import {
   FLAWS,
   IDEAL_WEIGHTS,
   INTENT_STAT_AFFINITY,
+  NPC_CHECK_DCS,
   NPC_INTENT_TYPES,
+  NPC_PATROL_FAIL_CREDITS,
+  NPC_PATROL_SUCCESS_CREDITS,
   NPC_PROFILES,
+  NPC_SOCIALIZE_LOSS_CREDITS,
+  NPC_SOCIALIZE_WIN_CREDITS,
+  NPC_TRAVEL_FAIL_EXTRA_FUEL,
   NpcIntentType,
   NpcProfile,
   STAR_SYSTEMS,
@@ -13,6 +19,7 @@ import {
 } from '@spacerquest/content';
 import {
   CargoContract,
+  CheckResult,
   EraEventState,
   GameEvent,
   GameState,
@@ -20,6 +27,7 @@ import {
   NpcState,
 } from './types.js';
 import { SeededRng } from './rng.js';
+import { check } from './dice.js';
 import { DriveBlock, jumpFuelCost, localFuelPrice, rollContract } from './economy.js';
 
 /**
@@ -142,7 +150,22 @@ export function applyDisposition(
   state: GameState,
   npcId: string,
   delta: number,
-  reason: 'tribute' | 'defeat' | 'player-fled' | 'decay' | 'storylet' | 'contract-sniped',
+  reason:
+    | 'tribute'
+    | 'defeat'
+    | 'player-fled'
+    | 'decay'
+    | 'storylet'
+    | 'contract-sniped'
+    // T-1303 Hangout beats (Dare / befriend / insult / meet) move dealer standing.
+    | 'dare'
+    | 'befriend'
+    | 'insult'
+    | 'meet'
+    // T-1304: a Penny Wise loan default sours her standing (one-time).
+    | 'loan-default'
+    // T-1305: a NAMED patrol captain who catches you smuggling holds a grudge.
+    | 'contraband-caught',
   events: GameEvent[],
 ): void {
   const npc = state.npcs.find((candidate) => candidate.id === npcId);
@@ -193,6 +216,51 @@ function brokeIdle(npc: NpcState, rng: SeededRng, day: number, events: GameEvent
   };
 }
 
+/** Per-intent StatCheck.actionContext tag (T-1201). Lets the wire (day.ts /
+ *  ui format.ts) and T-1202 discriminate NPC checks per verb without parsing
+ *  the `actor` string. */
+const NPC_CHECK_CONTEXT: Record<
+  NpcIntentType,
+  'npc-trade' | 'npc-travel' | 'npc-combat' | 'npc-patrol' | 'npc-socialize'
+> = {
+  Trade: 'npc-trade',
+  Travel: 'npc-travel',
+  Combat: 'npc-combat',
+  Patrol: 'npc-patrol',
+  Socialize: 'npc-socialize',
+};
+
+/**
+ * Route an NPC verb through the SAME shared check() the player uses (T-1201,
+ * PRD §7: "one system — there is no separate AI"). Rolls d20 + the intent's
+ * affinity stat vs its content-defined DC and emits a StatCheck event.
+ *
+ * Invariant (asserted by tests): a resolved NPC day whose lastAction.type is
+ * one of the five verbs ⟺ exactly one StatCheck was emitted. Every broke /
+ * underfunded fallback returns Idle/FlawOverride and rolls NOTHING, so the
+ * wire's trade-failure rate and the acceptance test's denominator stay honest.
+ */
+function rollNpcCheck(
+  npc: NpcState,
+  profile: NpcProfile,
+  intent: NpcIntentType,
+  rng: SeededRng,
+  events: GameEvent[],
+): CheckResult {
+  const stat = INTENT_STAT_AFFINITY[intent];
+  const dc = NPC_CHECK_DCS[intent];
+  const result = check(rng.d20(), profile.stats[stat], dc);
+  events.push({
+    type: 'StatCheck',
+    actor: npc.id,
+    stat,
+    dc,
+    result,
+    actionContext: NPC_CHECK_CONTEXT[intent],
+  });
+  return result;
+}
+
 function executeTrade(
   npc: NpcState,
   profile: NpcProfile,
@@ -232,16 +300,42 @@ function executeTrade(
     return { action: brokeIdle(npc, rng, ctx.day, events) };
   }
 
-  // Coarse NPC day: sign, jump, deliver in one dusk tick. Real fuel out,
-  // real payment in — the same formulas that price the player's day.
+  // Coarse NPC day: sign, jump, deliver in one dusk tick. Real fuel out —
+  // the same formula that prices the player's day. The contract is fulfilled
+  // and paid either way (payment is contractual); the Trade check (T-1201)
+  // decides how CLEANLY the run went and is recorded as a StatCheck for the
+  // wire (day.ts / ui format.ts) and T-1202.
+  //
+  // WHY the Trade check carries no CREDIT/FUEL swing (unlike the other four
+  // verbs): Trade is by far the most FREQUENT NPC verb, and a Trade check is a
+  // SKILL check — high-TRADE (rich) NPCs almost never fail while low-TRADE ones
+  // fail often. Any per-trade economic penalty therefore (a) drains the poor
+  // toward the fuel-cost floor while the rich dodge it, and (b) — because it
+  // fires ~1000×/200 days — perturbs the shared poverty/refuel/intent RNG
+  // stream cast-wide, both of which make the 200-day wealth distribution
+  // degenerate (max > 10x median), which the sim's solvency invariant rejects.
+  // So the soured-run consequence is the visible wire narrative + the recorded
+  // failure, not a payout change. (Verified: a payout/fuel penalty here pushes
+  // the seed-1 solvency ratio out of band; this design holds it at baseline.)
   npc.fuel -= fuelCost;
   npc.currentSystemId = contract.destination;
   npc.credits += contract.payment;
   const cargoName = CARGO_TYPES[contract.cargoType]?.name ?? `type-${contract.cargoType} cargo`;
+
+  const result = rollNpcCheck(npc, profile, 'Trade', rng, events);
+  if (result.success) {
+    return {
+      action: {
+        type: 'Trade',
+        details: `hauled ${cargoName} to ${systemName(contract.destination)} for ${contract.payment} credits`,
+      },
+      claimedContractIndex,
+    };
+  }
   return {
     action: {
       type: 'Trade',
-      details: `hauled ${cargoName} to ${systemName(contract.destination)} for ${contract.payment} credits`,
+      details: `delivered ${cargoName} to ${systemName(contract.destination)} for ${contract.payment} credits, but the run soured — a rough, costly haul`,
     },
     claimedContractIndex,
   };
@@ -266,7 +360,16 @@ function executeTravel(
   }
   npc.fuel -= fuelCost;
   npc.currentSystemId = destination;
-  return { type: 'Travel', details: `jumped to ${systemName(destination)}` };
+  // A Travel (PILOT) check decides a clean jump vs a rough one (T-1201).
+  const result = rollNpcCheck(npc, profile, 'Travel', rng, events);
+  if (result.success) {
+    return { type: 'Travel', details: `jumped to ${systemName(destination)}` };
+  }
+  npc.fuel = Math.max(0, npc.fuel - NPC_TRAVEL_FAIL_EXTRA_FUEL);
+  return {
+    type: 'Travel',
+    details: `made a rough jump to ${systemName(destination)}, burning extra fuel`,
+  };
 }
 
 function executeCombat(
@@ -281,15 +384,17 @@ function executeCombat(
     return brokeIdle(npc, rng, ctx.day, events);
   }
   npc.fuel -= NPC_COMBAT_FUEL;
-  // One d20 + GUNS roll decides the engagement; a win pays a tier-scaled
-  // bounty (the anonymous rank-and-file don't fly empty).
+  // A Combat (GUNS) check through the shared check() decides the engagement
+  // (T-1201, replacing a raw inline d20+GUNS threshold of 12 — the DC now lives
+  // in content NPC_CHECK_DCS); a win pays a tier-scaled bounty (the anonymous
+  // rank-and-file don't fly empty).
   //
   // T-106 synthesized number: foundation combat pays fixed per-roster prize
   // values sized for player encounters — fed into a 30-NPC daily sim they
   // would swamp trade income. 150×tier keeps fighting a living, not a
   // money printer, next to the shared contract-payment formula.
-  const die = rng.d20();
-  if (die + profile.stats.GUNS >= 12) {
+  const result = rollNpcCheck(npc, profile, 'Combat', rng, events);
+  if (result.success) {
     const bounty = 150 * profile.tier;
     npc.credits += bounty;
     return {
@@ -305,6 +410,7 @@ function executeCombat(
 
 function executePatrol(
   npc: NpcState,
+  profile: NpcProfile,
   rng: SeededRng,
   ctx: NpcDayContext,
   events: GameEvent[],
@@ -313,26 +419,48 @@ function executePatrol(
     return brokeIdle(npc, rng, ctx.day, events);
   }
   npc.fuel = Math.max(0, npc.fuel - NPC_PATROL_FUEL);
-  return { type: 'Patrol', details: `patrolled the ${systemName(npc.currentSystemId)} lanes` };
-}
-
-function executeSocialize(npc: NpcState, profile: NpcProfile, rng: SeededRng): NpcAction {
-  if (npc.credits < NPC_BROKE_CREDITS + 50) {
+  // A Patrol (GRIT) check decides a productive sweep vs a costly quiet day
+  // (T-1201).
+  const result = rollNpcCheck(npc, profile, 'Patrol', rng, events);
+  if (result.success) {
+    npc.credits += NPC_PATROL_SUCCESS_CREDITS;
     return {
-      type: 'Socialize',
-      details: `nursed a single drink at the ${systemName(npc.currentSystemId)} Hangout`,
+      type: 'Patrol',
+      details: `ran a clean sweep of the ${systemName(npc.currentSystemId)} lanes`,
     };
   }
-  // A night at the Hangout: d20 + GUILE vs 14 to come out ahead at the tables.
-  const die = rng.d20();
-  if (die + profile.stats.GUILE >= 14) {
-    npc.credits += 150;
+  npc.credits = Math.max(0, npc.credits - NPC_PATROL_FAIL_CREDITS);
+  return {
+    type: 'Patrol',
+    details: `patrolled the ${systemName(npc.currentSystemId)} lanes, a quiet day that cost more than it paid`,
+  };
+}
+
+function executeSocialize(
+  npc: NpcState,
+  profile: NpcProfile,
+  rng: SeededRng,
+  ctx: NpcDayContext,
+  events: GameEvent[],
+): NpcAction {
+  if (npc.credits < NPC_BROKE_CREDITS + 50) {
+    // Can't cover the ante — no roll, no verb. Falls back to odd jobs (Idle),
+    // so a returned Socialize action ALWAYS means a check was rolled (T-1201
+    // verb⟺StatCheck invariant).
+    return brokeIdle(npc, rng, ctx.day, events);
+  }
+  // A night at the Hangout: a Socialize (GUILE) check through the shared
+  // check() to come out ahead at the tables (T-1201, replacing a raw inline
+  // d20+GUILE threshold of 14 — the DC now lives in content NPC_CHECK_DCS).
+  const result = rollNpcCheck(npc, profile, 'Socialize', rng, events);
+  if (result.success) {
+    npc.credits += NPC_SOCIALIZE_WIN_CREDITS;
     return {
       type: 'Socialize',
       details: `cleaned up at the ${systemName(npc.currentSystemId)} Hangout tables`,
     };
   }
-  npc.credits -= 50;
+  npc.credits -= NPC_SOCIALIZE_LOSS_CREDITS;
   return {
     type: 'Socialize',
     details: `bought a round at the ${systemName(npc.currentSystemId)} Hangout`,
@@ -409,9 +537,9 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
   } else if (intent === 'Combat') {
     action = executeCombat(updatedNpc, profile, rng, ctx, events);
   } else if (intent === 'Patrol') {
-    action = executePatrol(updatedNpc, rng, ctx, events);
+    action = executePatrol(updatedNpc, profile, rng, ctx, events);
   } else if (intent === 'Socialize') {
-    action = executeSocialize(updatedNpc, profile, rng);
+    action = executeSocialize(updatedNpc, profile, rng, ctx, events);
   } else {
     // 'Idle' — the all-weights-zero corner of pickIntent: a true no-op day.
     action = {

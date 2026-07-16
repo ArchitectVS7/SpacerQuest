@@ -1,6 +1,8 @@
 import { DayPhase, EarnedDeedState, GameEvent, GameState, NpcState, ShipState } from './types.js';
 import { NPC_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, rankForDeedCount } from './deeds.js';
+import { calculateFuelCapacity, syncMaxFuel } from './economy.js';
+import { computePlayerTier, syncPlayerTier } from './tier.js';
 
 /** The exact junker every spacer starts (and re-starts) with. SINGLE SOURCE OF
  *  TRUTH: createInitialState builds the opening ship from this, and T-108
@@ -8,7 +10,10 @@ import { computeMatchCounts, rankForDeedCount } from './deeds.js';
 export function starterShip(): ShipState {
   return {
     fuel: 300,
-    maxFuel: 10000,
+    // T-1102: derived from the junker hull (strength 1, condition 9) via the
+    // hull-capacity formula → 300, not the old hardcoded 10,000. PRD §7.1: the
+    // fresh tank carries ~300, exactly two starter jumps' worth of scarcity.
+    maxFuel: calculateFuelCapacity(1, 9),
     cargoPods: 10,
     hull: { strength: 1, condition: 9 },
     drives: { strength: 10, condition: 9 },
@@ -82,6 +87,14 @@ export function createInitialState(seed: number): GameState {
       credits: 1000,
       debt: 25000,
       debtDueDay: 30,
+      // T-1304: no Penny Wise loan at the start of a run.
+      loan: null,
+      // T-1306: no crew at the start of a run — a Day-1 spacer rolls the base
+      // 5-die dawn hand (dice.ts dawnDiceModifiers of an empty crew).
+      crew: [],
+      // T-1307: a fresh spacer owns no port — the first stake is bought later once
+      // the veteran clears the price (PRD §9).
+      ports: [],
       stats: {
         [Stat.PILOT]: 1,
         [Stat.GUNS]: 0,
@@ -89,7 +102,11 @@ export function createInitialState(seed: number): GameState {
         [Stat.GRIT]: 1,
         [Stat.GUILE]: 0,
       },
-      tier: 1,
+      // T-1203: derived from the opening rank + junker fit rather than a magic
+      // literal — computePlayerTier('LIEUTENANT', junker) resolves to 1, so the
+      // starting band is unchanged, but the field is honest to the formula that
+      // every later write site (day.ts, legacy.ts, deserialize) recomputes.
+      tier: computePlayerTier('LIEUTENANT', starterShip()),
       currentSystemId: 1, // Sun-3
       ship: starterShip(),
       registry: {
@@ -153,6 +170,11 @@ export function deserializeState(json: string): GameState {
     parsed.player.registry.matchCounts ??= computeMatchCounts(parsed.eventLog);
   }
   parsed.player.registry.renownRank = rankForDeedCount(parsed.player.registry.earned.length);
+  // T-1203 save round-trip: `parsed.player.tier` above defaulted stale/legacy
+  // saves to 1, but a carried registry (rank) + ship fit determine the real
+  // band. Resync AFTER the renownRank reconstruction so a loaded save's tier
+  // reflects its earned rank + current ship, not a defaulted or stale value.
+  syncPlayerTier(parsed);
   parsed.player.ship.hasTransWarpDrive ??= false;
   parsed.player.ship.hasCloaker ??= false;
   parsed.player.ship.hasAutoRepair ??= false;
@@ -160,6 +182,11 @@ export function deserializeState(json: string): GameState {
   parsed.player.ship.hasArchAngel ??= false;
   parsed.player.ship.isAstraxialHull ??= false;
   parsed.player.ship.hasTitaniumHull ??= false;
+  // T-1102 fuel-capacity migration: `maxFuel` is now derived from the hull, not
+  // stored. A legacy save carrying the old flat `maxFuel: 10000` recomputes to
+  // its hull-derived ceiling (a fresh junker → 300) and clamps current fuel to
+  // it. READER of `maxFuel`: the App.tsx fuel gauge and the sim's refuel planner.
+  syncMaxFuel(parsed.player.ship);
   // Save-compat: pre-T-108 fixtures have no charts/legacy. Seed charts with the
   // spacer's current system (they demonstrably know where they are) and start
   // the succession counter at 0.
@@ -177,6 +204,22 @@ export function deserializeState(json: string): GameState {
   parsed.player.nemesisFile.fragments ??= [];
   parsed.player.legacy ??= { successionCount: 0 };
   parsed.player.legacy.successionCount ??= 0;
+  // T-1304 save-compat: pre-T-1304 states have no Penny Wise loan field. Default
+  // to null (no active loan) — the same backfill the v2→v3 save migration applies
+  // for the envelope path. Without it a legacy save leaves `loan` undefined and
+  // fails the strict schema's non-optional `loan` key.
+  parsed.player.loan ??= null;
+  // T-1306 save-compat: pre-T-1306 states have no crew field. Default to empty —
+  // the same backfill the v3→v4 save migration applies for the envelope path.
+  // Without it a legacy save leaves `crew` undefined and fails the strict schema's
+  // non-optional `crew` key. (`dawnHand.rerollsRemaining` needs no backfill — it is
+  // optional; a loaded hand without it simply banks no charge until the next dawn.)
+  parsed.player.crew ??= [];
+  // T-1307 save-compat: pre-T-1307 states have no ports field. Default to empty —
+  // the same backfill the v4→v5 save migration applies for the envelope path.
+  // Without it a legacy save leaves `ports` undefined and fails the strict schema's
+  // non-optional `ports` key.
+  parsed.player.ports ??= [];
   parsed.npcs ??= [];
   parsed.npcs.forEach((npc) => {
     npc.disposition ??= 0;

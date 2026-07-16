@@ -2,10 +2,19 @@ import { z } from 'zod';
 import { GameState } from './types.js';
 import { validateGameState } from './schema.js';
 
-// Base envelope that Steam Cloud and localStorage will read
+// Base envelope that Steam Cloud and localStorage will read.
+//
+// T-1002: the RNG `seed` now rides the envelope (v2+). TECH-STACK's "reproducible
+// bug reports" non-negotiable requires a `.sav` blob ALONE to reproduce a run;
+// the seed used to be UI-only (localStorage `sq.save.seed`), so a save handed to
+// a developer could not be replayed. It lives on the ENVELOPE, not in GameState:
+// `GameState.rngState` mutates on every roll, so the original seed is
+// reproducibility metadata the versioned+migrated envelope is the right home for
+// — this keeps the engine's GameState pure and its JSON round-trip unaffected.
 export const SaveEnvelopeSchema = z.object({
   version: z.number(),
   state: z.unknown(), // The raw state, validated by version-specific schemas during migration
+  seed: z.number().optional(), // v2+. Absent in v1 envelopes (loads as seed: null).
 });
 
 export type SaveEnvelope = z.infer<typeof SaveEnvelopeSchema>;
@@ -13,24 +22,76 @@ export type SaveEnvelope = z.infer<typeof SaveEnvelopeSchema>;
 export type MigrationFn = (oldState: unknown) => unknown;
 
 /**
- * Explicit migration registry (v1 -> v2 -> ...). A key `n` upgrades a state
- * FROM version `n` to version `n + 1`. Production is at v1 today, so there is
- * nothing to migrate yet — this stays honestly empty until a real schema break
- * lands, at which point the author adds `1: (v1) => v2` and bumps
- * {@link CURRENT_SAVE_VERSION} to 2.
+ * Explicit STATE migration registry (v1 -> v2 -> ...). A key `n` upgrades the
+ * migrated STATE from version `n` to version `n + 1`.
  *
- * SEAM: the migration machinery itself is exercised WITHOUT faking a production
- * migration. {@link migrate} takes an injectable `registry` + `targetVersion`,
- * so a test can drive a dummy `{ 1: (s) => ({ ...s, migrated: true }) }` at
- * targetVersion 2 to prove the sequential upgrade loop works, while production
- * MIGRATIONS remains empty and CURRENT_SAVE_VERSION stays at what the code
- * actually needs.
+ * T-1002 bumped {@link CURRENT_SAVE_VERSION} to 2. The v1->v2 change is
+ * ENVELOPE-level (the new `seed` field), NOT a GameState shape change, so the
+ * state migration is the IDENTITY — the state that came out of a v1 envelope is
+ * already a valid v2 state. {@link loadSave} reports a seedless v1 envelope as
+ * `seed: null` (absence stays absence — no numeric backfill, which would collide
+ * with a legitimate explicit seed). This entry is honest, not a stub: it records
+ * that v1 and v2 states are structurally identical.
+ *
+ * T-1304 bumped {@link CURRENT_SAVE_VERSION} to 3. The v2->v3 change IS a
+ * GameState shape change: `PlayerState.loan` (the Penny Wise loan ledger, or
+ * null) is a new persistent field. The v2->v3 migration backfills `loan: null`
+ * on the player so a pre-lending save validates against the v3 schema (whose
+ * `loan` key is non-optional). This is the explicit versioned migration the
+ * T-1002 registry was built for.
+ *
+ * T-1306 bumped {@link CURRENT_SAVE_VERSION} to 4. The v3->v4 change IS a
+ * GameState shape change: `PlayerState.crew` (the hired-crew dice-progression
+ * source, T-1306) is a new persistent field. The v3->v4 migration backfills
+ * `crew: []` on the player so a pre-crew save validates against the v4 schema
+ * (whose `crew` key is non-optional). `DawnHand.rerollsRemaining` is OPTIONAL, so
+ * it needs no migration step (a v3 hand simply banks no charge until it re-rolls
+ * at the next dawn).
+ *
+ * T-1307 bumped {@link CURRENT_SAVE_VERSION} to 5. The v4->v5 change IS a
+ * GameState shape change: `PlayerState.ports` (owned port stakes — purchasable
+ * property, PRD §9) is a new persistent field. The v4->v5 migration backfills
+ * `ports: []` on the player so a pre-ports save validates against the v5 schema
+ * (whose `ports` key is non-optional).
+ *
+ * SEAM: the migration machinery is also exercised WITHOUT relying on this
+ * production entry. {@link migrate} takes an injectable `registry` +
+ * `targetVersion`, so a test can drive a dummy
+ * `{ 1: (s) => ({ ...s, migrated: true }) }` at targetVersion 2 to prove the
+ * sequential upgrade loop works independently of production MIGRATIONS.
  */
 export const MIGRATIONS: Record<number, MigrationFn> = {
-  // 1: (v1State) => v2State
+  1: (v1State) => v1State,
+  // v2->v3: T-1304 added PlayerState.loan. A v2 save has no `loan` key, so
+  // backfill it to null (no active loan) before schema validation.
+  2: (v2State) => {
+    const s = v2State as { player?: Record<string, unknown> };
+    return {
+      ...(v2State as object),
+      player: { ...(s.player ?? {}), loan: (s.player as { loan?: unknown })?.loan ?? null },
+    };
+  },
+  // v3->v4: T-1306 added PlayerState.crew. A v3 save has no `crew` key, so backfill
+  // it to an empty roster (no crew) before schema validation.
+  3: (v3State) => {
+    const s = v3State as { player?: Record<string, unknown> };
+    return {
+      ...(v3State as object),
+      player: { ...(s.player ?? {}), crew: (s.player as { crew?: unknown })?.crew ?? [] },
+    };
+  },
+  // v4->v5: T-1307 added PlayerState.ports. A v4 save has no `ports` key, so
+  // backfill it to an empty roster (no owned ports) before schema validation.
+  4: (v4State) => {
+    const s = v4State as { player?: Record<string, unknown> };
+    return {
+      ...(v4State as object),
+      player: { ...(s.player ?? {}), ports: (s.player as { ports?: unknown })?.ports ?? [] },
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 1;
+export const CURRENT_SAVE_VERSION = 5;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';
@@ -94,9 +155,19 @@ export function migrate(envelope: SaveEnvelope, options: MigrateOptions = {}): u
   return state;
 }
 
+/** A loaded save: the validated GameState plus the seed that reproduces it. */
+export interface LoadedSave {
+  state: GameState;
+  /** The RNG seed the run started from, or `null` for a pre-v2 (seedless) save
+   *  whose seed was never recorded — such saves cannot be reproduced from the
+   *  blob alone; the store may substitute a legacy fallback. `null` (not a
+   *  numeric sentinel) so an explicit seed of 0 stays distinguishable. */
+  seed: number | null;
+}
+
 /**
- * Validates and migrates a raw JSON save string into a validated
- * {@link GameState}.
+ * Validates and migrates a raw JSON save string into a {@link LoadedSave} —
+ * the validated {@link GameState} plus the reproduction `seed`.
  *
  * Pipeline: JSON.parse (→ `corrupt-json`) → envelope safeParse
  * (→ `bad-envelope`) → {@link migrate} (→ `future-version` / `no-migration`) →
@@ -107,9 +178,10 @@ export function migrate(envelope: SaveEnvelope, options: MigrateOptions = {}): u
  * envelope, so `JSON.stringify` serializes it identically to `serializeState`.
  * On load, `JSON.parse` therefore yields exactly the serialized shape
  * `validateGameState` expects, and the returned GameState is deep-equal to the
- * one passed to `createSave` — the round-trip is exact.
+ * one passed to `createSave` — the round-trip is exact. The `seed` rides
+ * alongside (v2+) and round-trips byte-identically.
  */
-export function loadSave(jsonString: string): GameState {
+export function loadSave(jsonString: string): LoadedSave {
   let raw: unknown;
   try {
     raw = JSON.parse(jsonString);
@@ -128,17 +200,24 @@ export function loadSave(jsonString: string): GameState {
 
   const migratedState = migrate(parsed.data);
 
+  let state: GameState;
   try {
-    return validateGameState(migratedState);
+    state = validateGameState(migratedState);
   } catch (cause) {
     throw new SaveError('invalid-state', 'Migrated save state failed GameState validation', cause);
   }
+
+  // v1 envelopes have no `seed` — report the absence as null (never a numeric
+  // sentinel, which would collide with a legitimate explicit seed).
+  const seed = parsed.data.seed ?? null;
+  return { state, seed };
 }
 
-export function createSave(state: GameState): string {
+export function createSave(state: GameState, seed: number): string {
   const envelope: SaveEnvelope = {
     version: CURRENT_SAVE_VERSION,
     state,
+    seed,
   };
   return JSON.stringify(envelope);
 }

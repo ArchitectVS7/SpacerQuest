@@ -10,6 +10,7 @@ import {
 import { spendDie } from '../dice.js';
 import { renownRankIndex } from '../deeds.js';
 import { jumpFuelCost, maxJumpDistance } from '../economy.js';
+import { crewCapacity, repairRate } from '../components.js';
 
 const COMPONENT_IDS: readonly ShipComponentId[] = [
   'hull',
@@ -94,12 +95,13 @@ export function maxCargoPodsForShip(state: GameState): number {
 }
 
 // Hull-scaled equipment (AUTO_REPAIR, TITANIUM_HULL) prices at
-// `hull.strength * priceMultiplier` (multiplier 1000, per foundation
-// constants.ts:91/116). The `Math.min(..., 20000)` ceiling is an INTENTIONAL
-// engine divergence: foundation defines the multiplier but no cap, which lets
-// the price run away at high hull tiers; the 20,000 cap keeps late-game
-// refits affordable relative to the credit economy. See the boundary test in
-// shipyard.test.ts.
+// `hull.strength * 1000`, capped at 20,000. This is FAITHFUL to foundation,
+// NOT a divergence: foundation (f2f95fa9:foundation/rules/upgrades.ts ~L731)
+// sets `price = hullStrength > 20 ? 20000 : hullStrength * 1000`. Because the
+// multiplier is 1000, `hull*1000` reaches 20,000 exactly at hull=20 (foundation's
+// threshold), so the `Math.min(hull.strength * 1000, 20000)` form below is
+// mathematically identical to foundation's branch. (Corrects an earlier, false
+// "intentional engine divergence" note — see docs/BALANCE-POLICY.md v0.1 errata.)
 const HULL_SCALED_EQUIPMENT_PRICE_CAP = 20000;
 
 function specialEquipmentCost(state: GameState, equipment: SpecialEquipmentId): number {
@@ -241,6 +243,14 @@ function specialEquipmentFailure(
   // T-105 acceptance requires mutual exclusions to emit typed fail events.
   // Foundation strips conflicting equipment and proceeds for some purchases;
   // v1 keeps these installs atomic so headless callers can show a clear choice.
+  // Verified divergence (f2f95fa9:foundation/rules/upgrades.ts,
+  // purchaseSpecialEquipment): foundation strip-and-proceeds when the NEW
+  // purchase displaces the old — AUTO_REPAIR strips Titanium (~L768-776),
+  // TITANIUM_HULL strips Auto-Repair (~L778-783), ARCH_ANGEL/STAR_BUSTER strip
+  // the Cloaker (~L790-793) — and never gates CLOAKER against an installed
+  // STAR_BUSTER. It already hard-fails the reverse direction (CLOAKER over
+  // AUTO_REPAIR ~L686-688 / ARCH_ANGEL ~L691-693; AUTO_REPAIR over CLOAKER
+  // ~L701-703), which v1 matches.
   if (equipment === 'CLOAKER' && ship.hasAutoRepair) {
     return fail(action, {
       reason: 'MUTUALLY_EXCLUSIVE_EQUIPMENT',
@@ -434,7 +444,12 @@ export function applyShipyardMutation(
     if (component) {
       const current = ship[component];
       state.player.credits -= repairCost(state, component, repairMode);
-      current.condition = repairMode === 'single' ? Math.min(9, current.condition + 1) : 9;
+      // T-1205 robotics → repair rate: a single repair restores `repairRate`
+      // condition, not a flat +1. Junker robotics (score 10) restores 1
+      // (unchanged); upgraded robotics restores more per action. READER OF
+      // `robotics`: this line (via components.ts repairRate).
+      current.condition =
+        repairMode === 'single' ? Math.min(9, current.condition + repairRate(ship)) : 9;
       return;
     }
     state.player.credits -= repairAllCost(state);
@@ -541,6 +556,10 @@ export interface ShipPreview {
   /** Sample of the fuel curve at REF_JUMP_DISTANCE (display only). */
   fuelPerJump: number;
   maxJumpDistance: number;
+  /** T-1205 cabin → crew capacity: berths the cabin provides, shown in the ship
+   *  pane so a cabin upgrade reads as a concrete before→after number. The T-1306
+   *  socket for real crew rules consumes the same `crewCapacity` reader. */
+  crewCapacity: number;
   component?: { id: ShipComponentId; strength: number; condition: number };
 }
 
@@ -569,6 +588,7 @@ function shipPreview(
     maxFuel: ship.maxFuel,
     fuelPerJump: jumpFuelCost(ship.drives, REF_JUMP_DISTANCE, ship.hasTransWarpDrive ?? false),
     maxJumpDistance: maxJumpDistance(ship.drives, ship.fuel, ship.hasTransWarpDrive ?? false),
+    crewCapacity: crewCapacity(ship),
   };
   if (
     (action.action === 'buy-component-tier' || action.action === 'repair') &&

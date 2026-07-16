@@ -77,6 +77,58 @@ describe('exploration — nav check reads PILOT', () => {
   });
 });
 
+describe('exploration — malformed die selection (T-1003)', () => {
+  // A type-valid Explore action that names no usable die must resolve to a typed
+  // ExplorationFailed event with NO die spent and NO fuel burned — never a throw.
+
+  it('no die: emits ExplorationFailed(no-die), spends nothing', () => {
+    const state = craftExploreState(18, 3);
+    const fuelBefore = state.player.ship.fuel;
+    const spentBefore = [...state.player.dawnHand!.spent];
+    const res = resolveExploration(state, { type: 'Explore' }, new SeededRng(1));
+    const fail = res.events.find((e) => e.type === 'ExplorationFailed');
+    expect(fail && fail.type === 'ExplorationFailed' && fail.reason).toBe('no-die');
+    expect(res.state.player.dawnHand?.spent).toEqual(spentBefore);
+    expect(res.state.player.ship.fuel).toBe(fuelBefore);
+    expect(res.events.some((e) => e.type === 'PoiDiscovered')).toBe(false);
+    expect(res.events.some((e) => e.type === 'StatCheck')).toBe(false);
+  });
+
+  it('invalid index: emits ExplorationFailed(invalid-die-index), spends nothing', () => {
+    const state = craftExploreState(18, 3);
+    const fuelBefore = state.player.ship.fuel;
+    const spentBefore = [...state.player.dawnHand!.spent];
+    const res = resolveExploration(state, { type: 'Explore', spendDie: 99 }, new SeededRng(1));
+    const fail = res.events.find((e) => e.type === 'ExplorationFailed');
+    expect(fail && fail.type === 'ExplorationFailed' && fail.reason).toBe('invalid-die-index');
+    expect(res.state.player.dawnHand?.spent).toEqual(spentBefore);
+    expect(res.state.player.ship.fuel).toBe(fuelBefore);
+    expect(res.events.some((e) => e.type === 'StatCheck')).toBe(false);
+  });
+
+  it('already-spent die: emits ExplorationFailed(die-already-spent), spends nothing', () => {
+    const state = craftExploreState(18, 3);
+    state.player.dawnHand = { dice: [18], spent: [true] };
+    const fuelBefore = state.player.ship.fuel;
+    const res = resolveExploration(state, { type: 'Explore', spendDie: 0 }, new SeededRng(1));
+    const fail = res.events.find((e) => e.type === 'ExplorationFailed');
+    expect(fail && fail.type === 'ExplorationFailed' && fail.reason).toBe('die-already-spent');
+    expect(res.state.player.dawnHand?.spent).toEqual([true]);
+    expect(res.state.player.ship.fuel).toBe(fuelBefore);
+    expect(res.events.some((e) => e.type === 'StatCheck')).toBe(false);
+  });
+
+  it('each malformed fail carries a player-facing WireEntry reader', () => {
+    for (const action of [
+      { type: 'Explore' as const },
+      { type: 'Explore' as const, spendDie: 99 },
+    ]) {
+      const res = resolveExploration(craftExploreState(18, 3), action, new SeededRng(1));
+      expect(res.events.some((e) => e.type === 'WireEntry')).toBe(true);
+    }
+  });
+});
+
 describe('exploration — deterministic discovery per seed', () => {
   /** Play the same explore turn (same seed, same die index) via the real
    *  dispatch and return the discovered POIs. */

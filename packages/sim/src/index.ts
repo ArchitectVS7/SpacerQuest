@@ -5,17 +5,22 @@ import {
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
   distance as systemDistance,
+  isGatedDestination,
   type RenownRankId,
 } from '@spacerquest/content';
 import {
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
+  calculateFuelCapacity,
   createInitialState,
   endDay,
+  hasFragment,
   jumpFuelCost,
+  quoteShipyard,
   renownRankIndex,
   startDay,
   applyPlayerAction,
+  weaponVolleyDamage,
   SeededRng,
   type GameEvent,
   type GameState,
@@ -80,6 +85,9 @@ export interface CampaignStatsReport {
   policy: SimPolicyName;
   creditsCurve: number[];
   debtClearedDay: number | null;
+  /** Days the player ended stranded: even after spending every credit on fuel
+   *  they could not afford the cheapest available jump (T-1004). Supersedes the
+   *  old `fuel === 0` count, which never fired in 6,000 simulated days. */
   fuelStarvationDays: number;
   flawOverrideRate: number;
   wireVolume: number;
@@ -138,8 +146,16 @@ export function systemIds(): number[] {
     .sort((a, b) => a - b);
 }
 
+/** The systems a policy is allowed to name as a travel target — every system
+ *  except the T-1101 gated ones (Andromeda / special), which the engine's
+ *  destination gate refuses. A picker that targeted a sealed system would burn a
+ *  die on an ActionBlocked and, cycling, could stall the default policy. */
+export function travelableSystemIds(): number[] {
+  return systemIds().filter((id) => !isGatedDestination(id));
+}
+
 export function nextSystemId(currentSystemId: number): number {
-  const ids = systemIds();
+  const ids = travelableSystemIds();
   const currentIndex = ids.indexOf(currentSystemId);
 
   if (currentIndex === -1) {
@@ -157,6 +173,28 @@ function affordableFuelAmount(state: GameState): number {
   const remainingCapacity = state.player.ship.maxFuel - state.player.ship.fuel;
   const affordable = Math.floor(state.player.credits / fuelPrice(state));
   return Math.max(0, Math.min(100, remainingCapacity, affordable));
+}
+
+/** A day the player is stranded: even after spending every credit on fuel they
+ *  cannot reach the fuel needed for the CHEAPEST available jump (the nearest
+ *  reachable system). Replaces the old `fuel === 0` metric, which never fired
+ *  in 6,000 simulated days because every policy keeps the tank topped up — it
+ *  measured a state the sim never reaches, not economic hardship (T-1004).
+ *  Uses the same `jumpFuelCost` (via `playerJumpFuel`) the engine prices travel
+ *  with, so "the cheapest jump" is the exact fuel the resolver would demand. */
+export function cannotAffordCheapestJump(state: GameState): boolean {
+  const from = state.player.currentSystemId;
+  const cheapestJumpFuel = Math.min(
+    // Only TRAVELABLE systems (T-1101): a sealed destination is not a jump the
+    // player could actually take, so it never counts as "the cheapest jump".
+    ...travelableSystemIds()
+      .filter((id) => id !== from)
+      .map((id) => playerJumpFuel(state, systemDistance(from, id))),
+  );
+  const ship = state.player.ship;
+  const buyable = Math.floor(state.player.credits / fuelPrice(state));
+  const maxReachableFuel = Math.min(ship.maxFuel, ship.fuel + buyable);
+  return maxReachableFuel < cheapestJumpFuel;
 }
 
 function countDailyEvents(events: GameEvent[]): {
@@ -419,8 +457,12 @@ interface RankedContract {
   fuel: number;
 }
 
-/** The manifest board ranked by payment, richest first (board order as the
- *  tiebreak so the choice is deterministic). */
+/** The manifest board annotated with distance and jump fuel from the current
+ *  system, pre-sorted by RAW payment, richest first (board order as the
+ *  tiebreak so the choice is deterministic). Note: this is only the raw
+ *  pre-ranking — since T-1102 `traderPolicy` re-ranks the reachable subset by
+ *  NET value (payment minus fuel burn priced at the local depot) before
+ *  signing, so the final choice is made there, not here. */
 function rankedContracts(state: GameState): RankedContract[] {
   const from = state.player.currentSystemId;
   return state.market.manifestBoard
@@ -437,8 +479,13 @@ function rankedContracts(state: GameState): RankedContract[] {
     .sort((a, b) => b.payment - a.payment || a.index - b.index);
 }
 
-const FUEL_REFUEL_THRESHOLD = 120;
-const FUEL_REFUEL_TARGET = 260;
+// T-1102: retuned for the fuel-scarcity overhaul. Under the new per-distance
+// cost a single rim run can burn ~250+ fuel, so the trader must top off BEFORE a
+// big jump rather than after stranding. Threshold raised so a partially-drained
+// tank refuels early; target lifted toward the starter ceiling (300) so a rich,
+// distant contract is actually fundable in one day.
+const FUEL_REFUEL_THRESHOLD = 180;
+const FUEL_REFUEL_TARGET = 300;
 
 /** Queue a refuel (dull die) when the tank dips below the working threshold,
  *  buying up to the target, capped by what's affordable above `keepFloor`.
@@ -464,6 +511,69 @@ function planRefuel(
     action: { type: 'Trade', action: 'buy-fuel', fuelAmount: units, spendDie: die },
     cost: units * price,
   };
+}
+
+// T-1205: a real player repairs a battered ship. Now that enemy fire can chip the
+// HULL on any round (seeded component targeting), a junker's hull condition — and
+// with it the hull-derived fuel ceiling (maxFuel = (condition+1)·strength·30) —
+// can be ground down mid-run, shrinking the tank until no contract is reachable
+// and a solvent trader strands rich-but-short-ranged (observed: hull condition 3 →
+// maxFuel 120, stuck 7 days with 158k credits). The pre-T-1205 damage rotation
+// spared the hull in short encounters, so the policies never needed to repair;
+// they do now. This is the "think like a player" fix, not a loosened invariant.
+const CRIPPLED_FUEL_FRACTION = 0.7;
+
+/** A repair-all when a chipped hull's fuel ceiling has dropped enough to hamper
+ *  the ship AND the repair is affordable above `reserve`. Restores the full tank
+ *  in one action so the ship can reach contracts again. Two triggers:
+ *   1. the ceiling fell below CRIPPLED_FUEL_FRACTION of pristine (the coarse
+ *      "clearly crippled" heuristic), OR
+ *   2. T-1302 stranding trigger — the degraded tank can no longer reach the
+ *      CHEAPEST contract on the board, but a pristine (condition-9) tank could.
+ *      The 0.7 fraction alone misses the boundary case that motivated T-1205:
+ *      combat drops the starter hull to condition 6 → maxFuel = 7·1·30 = 210,
+ *      exactly 0.7·300, so trigger 1's `>=` lets it slip through — yet 210 is
+ *      below the ~286 nearest-contract jump at a Rim system, stranding a solvent
+ *      trader for days (seed 2: 5 idle dawns at system 16 with ~33k credits and
+ *      a full 210 tank, every board contract 221–494 fuel away). Repairing the
+ *      hull restores the 300 tank and reopens the near runs. Reader:
+ *      campaign.test.ts poverty-trap invariant (streak < 5).
+ *  Returns null when the ship is healthy, unaffordable, or out of dice. */
+function planCrippledRepair(
+  state: GameState,
+  ledger: DieLedger,
+  reserve: number,
+): PlayerAction | null {
+  const ship = state.player.ship;
+  const pristineCapacity = calculateFuelCapacity(ship.hull.strength, 9);
+  if (pristineCapacity <= 0) return null;
+  const crippled = ship.maxFuel < CRIPPLED_FUEL_FRACTION * pristineCapacity;
+  // Cheapest jump-fuel among the contracts currently on the board — the least
+  // the tank must hold to fly ANY run from here.
+  const from = state.player.currentSystemId;
+  const contractFuels = state.market.manifestBoard.map((contract) =>
+    playerJumpFuel(state, systemDistance(from, contract.destination)),
+  );
+  const cheapestContractFuel = contractFuels.length > 0 ? Math.min(...contractFuels) : Infinity;
+  // Stranded by a combat-shrunk tank: it can't fly the cheapest contract, the hull
+  // is worn (so a repair actually lifts the ceiling), and a pristine tank WOULD
+  // reach it (else repairing is futile and we leave the decision to other logic).
+  const strandedByTank =
+    ship.hull.condition < 9 &&
+    ship.maxFuel < cheapestContractFuel &&
+    pristineCapacity >= cheapestContractFuel;
+  if (!crippled && !strandedByTank) return null;
+  const quote = quoteShipyard(state, {
+    type: 'Shipyard',
+    action: 'repair',
+    repairMode: 'all',
+    spendDie: 0,
+  });
+  if (!quote.ok) return null;
+  if (state.player.credits - quote.cost < reserve) return null;
+  const die = ledger.takeWorst();
+  if (die === undefined) return null;
+  return { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die };
 }
 
 /**
@@ -516,7 +626,17 @@ function planDebtPayment(
   return { type: 'Trade', action: 'pay-debt', amount };
 }
 
-const TRADER_RESERVE = 1500;
+// T-1102: raised from 1500. Fuel now costs multiples of the old flat rate, so the
+// trader must keep a fatter buffer back from debt payments to fund the next day's
+// refuel — otherwise it pays down debt aggressively, then strands with no credits
+// to fill the tank for the following run.
+const TRADER_RESERVE = 3000;
+
+// T-1102: the largest share of the tank a single contract's jump may cost. Below
+// 1.0 so a run leaves fuel/credit margin to re-fly after an encounter-run and to
+// pay tribute — the headroom that keeps the scarcity economy out of deadlock.
+// Shared by the trader and veteran contract pickers.
+const SIGN_FUEL_FRACTION = 0.6;
 
 /**
  * TRADER — route + fuel planner that pays down the Guild marker. Each day it
@@ -529,16 +649,83 @@ export const traderPolicy: SimPolicy = ({ state }) => {
   const ledger = dieLedger(state);
   if (state.encounter) return planPacifistCombat(state, ledger);
 
+  const ship = state.player.ship;
+  const from = state.player.currentSystemId;
   const actions: PlayerAction[] = [];
-  let refuelCost = 0;
 
-  const refuel = planRefuel(state, ledger, 0);
+  // T-1102: under the per-distance fuel cost, a jump can cost more than the idle
+  // refuel threshold would ever top up — so the DESTINATION is chosen first and
+  // the refuel is sized to guarantee the tank can actually make that jump. This
+  // is the fix for the scarcity deadlock: a carried-over contract whose leg costs
+  // (say) 228 fuel while the tank sits at 192 — above the flat threshold, so no
+  // top-up fires — otherwise strands the trader forever (a dry-tank Travel is a
+  // no-op that burns nothing, so the state never changes).
+  // T-1102: under scarcity the richest contract is often a far one whose fuel
+  // bill (and stranding risk) dwarfs a nearer, only-slightly-poorer run. Rank the
+  // reachable board by NET value — payment minus the fuel the jump burns at the
+  // local depot price — so the trader flies efficient runs it can actually fund,
+  // and never signs a loss.
+  const fuelDepotPrice = state.market.localFuelPrice || 5;
+  const ranked = rankedContracts(state); // fuel = cost from the CURRENT system
+  // Cap the fuel a single signed run may cost at a fraction of the tank. The
+  // margin is deliberate: an interrupted delivery the trader RUNS from returns it
+  // to origin and forces a re-flight (re-charging the jump fuel), so a run that
+  // eats most of the tank can loop the ship into an unfundable deadlock after a
+  // couple of encounters. Keeping runs cheap preserves the fuel/credit headroom
+  // to re-fly and to weather tribute demands.
+  const signFuelCap = ship.maxFuel * SIGN_FUEL_FRACTION;
+  const signableWithin = (cap: number) =>
+    ranked
+      .filter((c) => c.fuel <= cap)
+      .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
+      .filter((c) => c.net > 0)
+      .sort((a, b) => b.net - a.net || a.index - b.index);
+  let reachable = signableWithin(signFuelCap);
+  // T-1104 poverty-trap fix: T-1104 lets rollContract route the trader to a Rim
+  // system, and from the Rim EVERY core-bound contract's leg exceeds 0.6 of the
+  // tank — so the re-flight-margin cap leaves `reachable` empty and a rich,
+  // full-tank trader strands for days waiting on a rare short hop (seed 1 stalled
+  // 9 days at system 17). When nothing is signable within the margin cap, relax
+  // to the FULL tank so the trader takes the run it can actually complete (it can
+  // afford the fuel and accepts the thinner re-flight margin) rather than idling.
+  // Reader: campaign.test.ts's 300-day poverty-trap invariant (streak < 5).
+  if (reachable.length === 0) {
+    reachable = signableWithin(ship.maxFuel);
+  }
+
+  let primaryDest: number | null = null;
+  if (state.player.activeContract) {
+    primaryDest = state.player.activeContract.destination;
+  } else if (reachable.length > 0) {
+    primaryDest = reachable[0].destination;
+  }
+  const primaryFuelNeed =
+    primaryDest !== null ? playerJumpFuel(state, systemDistance(from, primaryDest)) : 0;
+
+  // Raise the refuel threshold/target to cover this day's jump (capped at the
+  // tank). Never lower them below the working defaults.
+  const refuelThreshold = Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed));
+  const refuelTarget = Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed));
+  const refuel = planRefuel(state, ledger, 0, refuelThreshold, refuelTarget);
+  let refuelCost = 0;
   if (refuel) {
     actions.push(refuel.action);
     refuelCost = refuel.cost;
   }
 
-  const ranked = rankedContracts(state);
+  // T-1205: if enemy fire has chipped the hull down far enough to collapse the
+  // fuel ceiling (stranding a solvent trader with no reachable contract), repair
+  // the ship — a real player fixes a crippled hull. Restores the full tank for the
+  // next run; fires only when actually crippled and affordable.
+  const repair = planCrippledRepair(state, ledger, TRADER_RESERVE);
+  if (repair) actions.push(repair);
+
+  // The tank the trader will actually have when it flies today — current fuel
+  // plus whatever the just-queued refuel tops it up by (refuel runs before the
+  // travel action).
+  const fuelPrice = state.market.localFuelPrice || 5;
+  const boughtFuel = refuel ? refuel.cost / fuelPrice : 0;
+  const availableFuel = Math.min(ship.maxFuel, ship.fuel + boughtFuel);
 
   if (state.player.activeContract) {
     // A run carried over (a prior delivery was interrupted or the nav check
@@ -551,8 +738,8 @@ export const traderPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
-  } else if (ranked.length > 0) {
-    const best = ranked[0];
+  } else if (reachable.length > 0 && availableFuel >= primaryFuelNeed) {
+    const best = reachable[0];
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
@@ -566,18 +753,27 @@ export const traderPolicy: SimPolicy = ({ state }) => {
 
       // Second run while the debt still bites: throughput matters more than the
       // marginal encounter risk when 25,000 credits are due by day 30.
-      if (state.player.debt > 5000 && ranked.length > 1 && ledger.remaining() >= 2) {
-        const second = ranked[1];
+      if (state.player.debt > 5000 && reachable.length > 1 && ledger.remaining() >= 2) {
+        const second = reachable[1];
         // The board shifts when the first contract is spliced off; correct the
         // live index for the second sign.
         const liveIndex = second.index > best.index ? second.index - 1 : second.index;
         const secondSignDie = ledger.takeWorst();
         const secondTravelDie = ledger.takeBest();
-        const projectedFuel = state.player.ship.fuel - best.fuel;
+        // T-1102: the second leg is flown FROM the first delivery's system, not
+        // from here — price it on that leg (distance best.destination → second),
+        // and require the fuel left after run 1 to cover it. The old check used
+        // the second contract's cost-from-here, which under scarcity signed a
+        // double the tank could never complete and deadlocked the run.
+        const secondLegFuel = playerJumpFuel(
+          state,
+          systemDistance(best.destination, second.destination),
+        );
+        const projectedFuel = availableFuel - primaryFuelNeed;
         if (
           secondSignDie !== undefined &&
           secondTravelDie !== undefined &&
-          projectedFuel >= second.fuel
+          projectedFuel >= secondLegFuel
         ) {
           actions.push({
             type: 'Trade',
@@ -674,8 +870,15 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
     const encounter = state.encounter;
     const targetId = encounter.interceptor.id;
     const hull = Math.max(1, encounter.enemyHull);
+    // T-1205: a winning volley now removes `weaponVolleyDamage` hull points, not a
+    // flat 1, so the clean kill takes CEIL(hull / volleyDamage) volleys — fewer
+    // with an upgraded gun. Queuing the old raw `hull` count over-fired once
+    // weapons were load-bearing: the enemy died early and the surplus Combat
+    // actions hit no encounter (a throw). Sizing the queue to the real damage is
+    // both the fix and the reason an upgraded fighter wins more (this task's A/B).
+    const volleysNeeded = Math.ceil(hull / weaponVolleyDamage(state.player.ship));
     const fuelVolleys = Math.floor(state.player.ship.fuel / FIGHT_FUEL_COST);
-    const volleys = Math.min(hull, fuelVolleys, ledger.remaining());
+    const volleys = Math.min(volleysNeeded, fuelVolleys, ledger.remaining());
     if (volleys >= 1) {
       // Queue exactly `volleys` fights — never more than the enemy's hull, so a
       // clean sweep resolves on the final volley without a dangling action.
@@ -695,7 +898,17 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   const refuel = planRefuel(state, ledger, 0);
   if (refuel) actions.push(refuel.action);
 
+  // T-1104: only sign a contract whose jump fits inside SIGN_FUEL_FRACTION of the
+  // tank — the SAME reachability gate trader/veteran already apply. Before
+  // rollContract issued rim destinations the richest contract was always a
+  // fuelable core run, so picking ranked[0] raw was safe; now the richest is
+  // often a long, high-DC rim run this ship can neither fuel nor fly, and signing
+  // it locked the contract (a failed jump never clears activeContract) and
+  // poverty-trapped the fighter. Filtering to reachable runs keeps "richest run"
+  // intent while refusing the unwinnable rim temptation.
   const ranked = rankedContracts(state);
+  const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
+  const reachable = ranked.filter((c) => c.fuel <= signFuelCap);
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -705,8 +918,8 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
-  } else if (ranked.length > 0) {
-    const best = ranked[0];
+  } else if (reachable.length > 0) {
+    const best = reachable[0];
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
@@ -736,6 +949,11 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
 };
 
 const EXPLORER_RESERVE = 2000;
+// T-1310: a small hard credit floor the explorer keeps back for fuel. Low on
+// purpose — a HIGH floor becomes its own strand (it blocks the very refuel needed to
+// escape a low-fuel corner), and with the early drives upgrade below fuel is cheap
+// enough that a thin reserve always buys enough range to reach the next contract.
+const EXPLORER_FUEL_RESERVE = 50;
 
 /**
  * EXPLORER — fragment chaser. Off-lane sweeps are a credit SINK (a detour burns
@@ -749,10 +967,95 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   if (state.encounter) return planPacifistCombat(state, ledger);
 
   const actions: PlayerAction[] = [];
-  // Explorers burn fuel fast — keep the tank fuller than a trader would.
-  const refuel = planRefuel(state, ledger, 0, 200, 400);
 
+  // T-1310: Nemesis-arc reachability. The Wise One of Polaris-1 (system 17) is the
+  // ONLY source of frag-nemesis-01 and the sole key into the decode arc (PRD §8.3).
+  // Polaris-1 is a rim system no core contract routes to under starter drives (its
+  // nearest core neighbour is a ~22-unit hop = 264 fuel, over the 180 sign-cap), so
+  // the explorer reaches it through LEGAL actions only (below): it resolves the
+  // offered wire rumor / Wise One hook, upgrades its drives (making the rim hop cost
+  // a fraction of the tank), banks enough to afford the 500cr fragment, then flies
+  // STRAIGHT to Polaris-1. No state poke, no teleport. Pursuit runs from the hook's
+  // day-25 window open until the fragment is in hand.
+  const pursuingArc = state.day >= 25 && !hasFragment(state.player.nemesisFile, 'frag-nemesis-01');
+
+  // Resolve any offered storylet — the wire rumor, the Wise One buy-fragment hook
+  // (grants frag-nemesis-01), and (at Mizar-9) the Sage decodes all surface here. A
+  // no-die choice is resolved INLINE: it costs no die, so the day still does its
+  // income work and the arc never burns a zero-income day (the poverty-trap
+  // invariant the explorer is held to). A die-consuming choice is taken as a
+  // standalone day (matches veteranPolicy) so it never collides with the ledger.
+  const storyletAction = chooseStoryletAction(state);
+  if (storyletAction) {
+    // chooseStoryletAction always returns a Storylet action; a no-die choice omits
+    // spendDie (resolve inline), a die choice sets it (resolve as a standalone day).
+    if (storyletAction.type === 'Storylet' && storyletAction.spendDie === undefined) {
+      actions.push(storyletAction);
+    } else {
+      return [storyletAction];
+    }
+  }
+
+  // T-1205: repair a hull chipped down enough to collapse the fuel ceiling before
+  // the explorer strands (it burns fuel fastest, so it feels a shrunk tank first).
+  const crippledRepair = planCrippledRepair(state, ledger, EXPLORER_RESERVE);
+  if (crippledRepair) actions.push(crippledRepair);
+
+  // T-1310: the explorer invests in DRIVES early — its defining upgrade, the way the
+  // fighter buys guns. A tier-3 drive (strength 30) costs ~0 net (the strength-10
+  // trade-in dwarfs the 200cr sticker) and drops per-unit jump fuel from 12 to ~1, so
+  // the same tank reaches six times as far. This is both what a real explorer does
+  // and the structural fix for the strands above: with near-free fuel the ship almost
+  // never burns itself into an unrefuelable corner, and — once bought — the rim hop to
+  // the Wise One of Polaris-1 (system 17) fuels for a fraction of the tank, so arc
+  // pursuit can fly straight there. Component tiers are NOT renown-gated (engine
+  // shipyard.ts), so a low-renown explorer can buy them. Gated above a working reserve
+  // so it never spends its last credits on the yard.
+  if (state.player.ship.drives.strength < 30 && state.player.credits >= EXPLORER_RESERVE / 2) {
+    const die = ledger.takeWorst();
+    if (die !== undefined) {
+      actions.push({
+        type: 'Shipyard',
+        action: 'buy-component-tier',
+        component: 'drives',
+        tier: 3,
+        spendDie: die,
+      });
+    }
+  }
+
+  const from = state.player.currentSystemId;
+  const fuelPriceNow = state.market.localFuelPrice || 5;
+  const drivesReady = state.player.ship.drives.strength >= 20;
+
+  // T-1310: hold back a small credit reserve so a refuel is always possible next
+  // turn — the explorer used to pour its last credits into fuel (floor 0), then the
+  // fuel burned down until it was too broke to refuel and too empty to reach even
+  // the nearest system, freezing there for the rest of the campaign (a silent strand
+  // the poverty-trap check misses, since a failed Travel still counts as income). The
+  // Wise One's 500cr fragment is NOT protected by the floor (a high floor re-strands);
+  // instead the flight to Polaris-1 below only launches once the ship can afford it.
+  const refuelFloor = EXPLORER_FUEL_RESERVE;
+  const refuel = planRefuel(state, ledger, refuelFloor, 200, 400);
+  // T-1310: refuel BEFORE the jump. The old order pushed the refuel AFTER the travel
+  // action, so the ship jumped on its current (possibly near-empty) tank, failed the
+  // jump, and then got stuck on an active contract it could neither reach nor abandon
+  // — refuelling a ship that had already frozen at the wrong system. Topping the tank
+  // first makes sign+refuel+travel a single completable delivery.
+  if (refuel) actions.push(refuel.action);
+  const postRefuelFuel = state.player.ship.fuel + (refuel ? refuel.cost / fuelPriceNow : 0);
+
+  // T-1104: reachability gate (see fighterPolicy) — refuse the unfuelable rim
+  // run the richest-first ranking would otherwise sign and get stranded on.
+  // T-1310: ALSO bound by the fuel the ship will actually have AFTER this turn's
+  // refuel (postRefuelFuel), capped by the tank-fraction sign-cap. Signing a contract
+  // the ship can neither fly nor fund was the other half of the freeze. Bounding by
+  // the funded, topped tank makes a low-fuel explorer take a SHORT reachable run
+  // instead, earn, and fly on — which is also what lets arc pursuit reach Polaris-1.
   const ranked = rankedContracts(state);
+  const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
+  const flyCap = Math.min(signFuelCap, postRefuelFuel);
+  const reachable = ranked.filter((c) => c.fuel <= flyCap);
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -762,8 +1065,32 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
-  } else if (ranked.length > 0) {
-    const best = ranked[0];
+  } else if (pursuingArc && drivesReady && from !== 17 && state.player.credits >= 550) {
+    // T-1310: drives upgraded and the 500cr fragment is affordable — fly STRAIGHT to
+    // Polaris-1 (system 17) to reach the Wise One, the sole grantor of frag-nemesis-01.
+    // Direct travel needs no contract and system 17 is not a gated destination (engine
+    // day.ts / isGatedDestination); the upgraded drive makes the hop cost a fraction of
+    // the tank, so a plain Travel gets there instead of waiting on a rare dest-17
+    // contract to happen onto a board. The >=550 gate means the ship arrives able to
+    // buy the fragment (chooseStoryletAction takes buy-fragment only when credits>=500);
+    // until then it banks net-positive runs below.
+    const die = ledger.takeBest();
+    if (die !== undefined) {
+      actions.push({ type: 'Travel', destinationId: 17, spendDie: die });
+    }
+  } else if (reachable.length > 0) {
+    // T-1310: during pursuit, bank on NET-POSITIVE runs only (payment beats the fuel
+    // bill at the local depot), so credits actually climb toward the drives tier and
+    // the fragment — the raw richest-first pick can be a fuel loss that keeps the
+    // spend-to-zero explorer broke. Outside pursuit, keep the richest reachable run.
+    let best = reachable[0];
+    if (pursuingArc) {
+      const netPositive = reachable
+        .map((c) => ({ ...c, net: c.payment - c.fuel * fuelPriceNow }))
+        .filter((c) => c.net > 0)
+        .sort((a, b) => b.net - a.net || a.index - b.index);
+      if (netPositive.length > 0) best = netPositive[0];
+    }
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
@@ -777,28 +1104,31 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
     }
   }
 
-  // Refuel AFTER planning trade dice so the sharp dice go to the nav checks that
-  // matter; the refuel itself rolls nothing.
-  if (refuel) actions.push(refuel.action);
-
   // Off-lane sweeps with whatever sharp dice remain, while solvent and fuelled.
-  // Project the tank forward: current fuel, plus the units the refuel adds, less
-  // one jump's worth already committed to the delivery, then spend the rest on
-  // Explore detours (each burns EXPLORATION_FUEL_COST).
-  const fuelPrice = state.market.localFuelPrice || 5;
-  let projectedFuel = state.player.ship.fuel + (refuel ? refuel.cost / fuelPrice : 0);
-  if (actions.some((action) => action.type === 'Travel')) {
-    projectedFuel -= playerJumpFuel(state, 5);
-  }
-  while (
-    state.player.credits > EXPLORER_RESERVE &&
-    projectedFuel >= EXPLORATION_FUEL_COST &&
-    ledger.remaining() > 0
-  ) {
-    const die = ledger.takeBest();
-    if (die === undefined) break;
-    actions.push({ type: 'Explore', spendDie: die });
-    projectedFuel -= EXPLORATION_FUEL_COST;
+  // Project the tank forward: post-refuel fuel, less one jump's worth already
+  // committed to the delivery, then spend the rest on Explore detours (each burns
+  // EXPLORATION_FUEL_COST).
+  // T-1310: SUPPRESSED during arc pursuit. Exploring is the explorer's credit sink
+  // (it refuels to explore, draining credits to the solvency floor), which left it
+  // too broke to ever afford the drives tier or the 500cr Wise One fragment. While
+  // pursuing the arc the explorer banks its contract income instead, so the tier and
+  // the fragment become affordable; normal off-lane charting resumes the moment the
+  // fragment is in hand (pursuit ends) or before day 25.
+  if (!pursuingArc) {
+    let projectedFuel = postRefuelFuel;
+    if (actions.some((action) => action.type === 'Travel')) {
+      projectedFuel -= playerJumpFuel(state, 5);
+    }
+    while (
+      state.player.credits > EXPLORER_RESERVE &&
+      projectedFuel >= EXPLORATION_FUEL_COST &&
+      ledger.remaining() > 0
+    ) {
+      const die = ledger.takeBest();
+      if (die === undefined) break;
+      actions.push({ type: 'Explore', spendDie: die });
+      projectedFuel -= EXPLORATION_FUEL_COST;
+    }
   }
 
   return actions.length > 0 ? actions : [{ type: 'Wait' }];
@@ -899,11 +1229,18 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
     const targetId = encounter.interceptor.id;
     const hull = Math.max(1, encounter.enemyHull);
     const fuelVolleys = Math.floor(state.player.ship.fuel / FIGHT_FUEL_COST);
+    // T-1205: a winning volley removes `weaponVolleyDamage` hull points, so the
+    // clean kill needs CEIL(hull / volleyDamage) volleys — fewer with an upgraded
+    // gun. Sizing to real damage (not the raw hull count) is both the correctness
+    // fix (over-queuing orphaned the surplus Combat once weapons went live) and
+    // why an upgraded veteran wins fights it used to be priced out of.
+    const volleysNeeded = Math.ceil(hull / weaponVolleyDamage(state.player.ship));
     const canWin =
-      state.player.ship.weapons.strength > 1 && Math.min(fuelVolleys, ledger.remaining()) >= hull;
+      state.player.ship.weapons.strength > 1 &&
+      Math.min(fuelVolleys, ledger.remaining()) >= volleysNeeded;
     if (need('first_combat_win') && canWin) {
       const fights: PlayerAction[] = [];
-      for (let i = 0; i < hull; i += 1) {
+      for (let i = 0; i < volleysNeeded; i += 1) {
         const die = ledger.takeBest();
         if (die === undefined) break;
         fights.push({ type: 'Combat', stance: 'fight', targetId, spendDie: die });
@@ -918,6 +1255,29 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
       const die = ledger.takeBest();
       if (die !== undefined) return [{ type: 'Combat', stance: 'run', targetId, spendDie: die }];
     }
+    // Carrying a delivery, deeds all earned: FIGHT the interceptor down rather
+    // than fall through to the pacifist run. A fight win resolves the encounter
+    // 'defeated', which COMPLETES the interrupted delivery (completePendingTravel)
+    // and lands the ship at its destination — whereas a run forfeits the contract
+    // and dumps the ship back at the origin. On a long, high-danger lane (the
+    // full-rate VETERAN-era encounter band the T-1301 era flip now exposes) the
+    // interceptions are relentless: running the loaded ship home every time bled
+    // the veteran's fuel 10/interdiction and its credits on re-fuel until it was
+    // MAROONED one jump short with no income to recover (observed: pinned at 5
+    // credits / 61 fuel from day ~50 to 500 on the sys-17→9 rim run, the
+    // ASTRAXIAL_HULL forever out of reach). The veteran has the gun for it
+    // (weapons strength climbs past the junker's 1), and fighting through is what
+    // a real veteran does with a hold full of cargo. Only when it can't win the
+    // fight in the fuel/dice it has does it fall back to the pacifist path.
+    if (state.player.activeContract && canWin) {
+      const fights: PlayerAction[] = [];
+      for (let i = 0; i < volleysNeeded; i += 1) {
+        const die = ledger.takeBest();
+        if (die === undefined) break;
+        fights.push({ type: 'Combat', stance: 'fight', targetId, spendDie: die });
+      }
+      if (fights.length > 0) return fights;
+    }
     return planPacifistCombat(state, ledger);
   }
 
@@ -928,20 +1288,79 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   if (storyletAction) return [storyletAction];
 
   const actions: PlayerAction[] = [];
+  const ship = state.player.ship;
+  const from = state.player.currentSystemId;
+  const board = state.market.manifestBoard;
 
-  // Fuel: normally keep topped. While fuel_fumes_arrival is still unearned, let
-  // the tank run lower (only top up near-empty) so a delivery jump can land us
-  // at <= 25 fuel — without ever hard-stranding.
+  // T-1205: repair a hull the enemy has chipped down enough to collapse the fuel
+  // ceiling, before it strands the grinder and starves its deed income.
+  const repair = planCrippledRepair(state, ledger, VETERAN_RESERVE);
+  if (repair) actions.push(repair);
+
+  // T-1102: choose the destination FIRST so the refuel can be sized to reach it —
+  // the same scarcity fix the trader needs. Without it the veteran signs the
+  // richest (often far, unfuelable) run, strands, and never earns the credits to
+  // upgrade — pinned at the junker hull for the whole 500-day campaign.
+  const fuelDepotPrice = state.market.localFuelPrice || 5;
+  const ranked = rankedContracts(state);
+  const reachable = ranked
+    .filter((c) => c.fuel <= ship.maxFuel * SIGN_FUEL_FRACTION)
+    .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
+    .filter((c) => c.net > 0)
+    .sort((a, b) => b.net - a.net || a.index - b.index);
+  const reachableByFullTank = (dest: number): boolean =>
+    playerJumpFuel(state, systemDistance(from, dest)) <= ship.maxFuel;
+
+  // Steer toward missing deeds, but only when that steered run is fuelable; else
+  // take the richest reachable, net-positive run.
+  let idx = -1;
+  if (need('mercy_runner')) {
+    const m = board.findIndex((c) => c.cargoType === 4 && c.destination === 7);
+    if (m >= 0 && reachableByFullTank(board[m].destination)) idx = m;
+  }
+  if (idx < 0 && need('rimward_bound')) {
+    const r = board.findIndex(
+      (c) => c.destination >= 15 && c.destination <= 20 && reachableByFullTank(c.destination),
+    );
+    if (r >= 0) idx = r;
+  }
+  if (idx < 0) idx = reachable.length > 0 ? reachable[0].index : -1;
+
+  const primaryDest = state.player.activeContract
+    ? state.player.activeContract.destination
+    : idx >= 0
+      ? board[idx].destination
+      : null;
+  const primaryFuelNeed =
+    primaryDest !== null ? playerJumpFuel(state, systemDistance(from, primaryDest)) : 0;
+
+  // Size the refuel to guarantee the jump. fuel_fumes_arrival still wants a lean
+  // tank (land on fumes), so top only just above the jump cost; otherwise raise
+  // the working threshold/target to cover the jump (never below the defaults).
   let refuelCost = 0;
-  const refuel = need('fuel_fumes_arrival')
-    ? planRefuel(state, ledger, 0, 30, 60)
-    : planRefuel(state, ledger, 0);
+  const wantFumes = need('fuel_fumes_arrival') && primaryFuelNeed > 0;
+  const refuel = wantFumes
+    ? planRefuel(
+        state,
+        ledger,
+        0,
+        Math.min(ship.maxFuel, primaryFuelNeed),
+        Math.min(ship.maxFuel, primaryFuelNeed + 24),
+      )
+    : planRefuel(
+        state,
+        ledger,
+        0,
+        Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed)),
+        Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed)),
+      );
   if (refuel) {
     actions.push(refuel.action);
     refuelCost = refuel.cost;
   }
+  const boughtFuel = refuel ? refuel.cost / fuelDepotPrice : 0;
+  const availableFuel = Math.min(ship.maxFuel, ship.fuel + boughtFuel);
 
-  const board = state.market.manifestBoard;
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -951,48 +1370,34 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
-  } else {
-    // Steer the contract choice toward missing delivery/travel deeds, else richest.
-    let idx = -1;
-    if (need('mercy_runner')) {
-      idx = board.findIndex((c) => c.cargoType === 4 && c.destination === 7);
-    }
-    if (idx < 0 && need('rimward_bound')) {
-      idx = board.findIndex((c) => c.destination >= 15 && c.destination <= 20);
-    }
-    if (idx < 0) {
-      const ranked = rankedContracts(state);
-      idx = ranked.length > 0 ? ranked[0].index : -1;
-    }
-    if (idx >= 0) {
-      // Haggle the chosen board offer before signing → broker_shark. Needs three
-      // dice for haggle + sign + travel, so gate on the remaining budget.
-      if (need('broker_shark') && !board[idx].haggled && ledger.remaining() >= 3) {
-        const haggleDie = ledger.takeWorst();
-        if (haggleDie !== undefined) {
-          actions.push({
-            type: 'Trade',
-            action: 'haggle',
-            contractIndex: idx,
-            spendDie: haggleDie,
-          });
-        }
-      }
-      const signDie = ledger.takeWorst();
-      const travelDie = ledger.takeBest();
-      if (signDie !== undefined && travelDie !== undefined) {
+  } else if (idx >= 0 && availableFuel >= primaryFuelNeed) {
+    // Haggle the chosen board offer before signing → broker_shark. Needs three
+    // dice for haggle + sign + travel, so gate on the remaining budget.
+    if (need('broker_shark') && !board[idx].haggled && ledger.remaining() >= 3) {
+      const haggleDie = ledger.takeWorst();
+      if (haggleDie !== undefined) {
         actions.push({
           type: 'Trade',
-          action: 'sign-contract',
+          action: 'haggle',
           contractIndex: idx,
-          spendDie: signDie,
-        });
-        actions.push({
-          type: 'Travel',
-          destinationId: board[idx].destination,
-          spendDie: travelDie,
+          spendDie: haggleDie,
         });
       }
+    }
+    const signDie = ledger.takeWorst();
+    const travelDie = ledger.takeBest();
+    if (signDie !== undefined && travelDie !== undefined) {
+      actions.push({
+        type: 'Trade',
+        action: 'sign-contract',
+        contractIndex: idx,
+        spendDie: signDie,
+      });
+      actions.push({
+        type: 'Travel',
+        destinationId: board[idx].destination,
+        spendDie: travelDie,
+      });
     }
   }
 
@@ -1152,6 +1557,14 @@ export function runCampaign(
     });
     const incomeActionCount = actions.filter(isIncomeAction).length;
     for (const action of actions) {
+      // T-1205: a queued Combat can now be orphaned mid-batch — seeded enemy
+      // damage can drive the player's hull to 0 and end the encounter (succession)
+      // BEFORE the rest of a volley queue is applied, and a Combat with no active
+      // encounter is malformed input that throws. A batch driver must therefore
+      // skip a Combat once the encounter is gone (a real UGT client re-reads legal
+      // actions between steps and would never send it). This only fires on the new
+      // mid-batch-death path, so deterministic non-fatal runs are unchanged.
+      if (action.type === 'Combat' && !dayState.encounter) continue;
       const stepped = applyPlayerAction(dayState, action);
       dayState = stepped.state;
       dayEvents.push(...stepped.events);
@@ -1165,7 +1578,7 @@ export function runCampaign(
     flawChecks += counts.flawChecks;
     flawOverrides += counts.flawOverrides;
 
-    if (state.player.ship.fuel === 0) {
+    if (cannotAffordCheapestJump(state)) {
       fuelStarvationDays += 1;
     }
 

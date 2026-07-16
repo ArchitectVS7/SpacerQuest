@@ -10,27 +10,71 @@ import { FIGHT_FUEL_COST } from '@spacerquest/content';
 // store does (startDay(createInitialState(seed)) → applyPlayerAction). They are
 // engine-derived and must be regenerated if the RNG/danger tables ever change.
 //
-//  Seed 11 (fight + flee + reload): dawn hand [20,15,13,12,11] on Sol.
-//    - jump die INDEX 1 (value 15) to system 15 triggers an anonymous tier-2
-//      encounter, "RP-Long Ben" in the "Marauder" (Moray), enemyHull 2, round 1.
-//    - a FIGHT with the value-13 die passes GUNS (13 vs DC 12) → hull 2→1, round→2.
+// T-1103 (encounter-rate repair, core 0.08 -> 0.30): re-verified offline — both
+// seeds are success-path jumps whose encounters already fired at 0.08 and still
+// fire at the higher rate with byte-identical interceptor selection (Capt.Brutus
+// tier 2 / Chomper tier 1). No fixture drift; the values below are unchanged.
+//
+// T-1207 (opposed run + post-kill enemy retreat): RE-VERIFIED offline by
+// replaying startDay(createInitialState(seed)) → applyPlayerAction, both fixtures
+// hold with NO literal changes.
+//   - Seed 43: the run stance is now an OPPOSED PILOT roll, but the step-4 flee
+//     spends the natural-20 die, and a nat-20 is an unconditional auto-escape
+//     (edge-independent), so the "escaped" aftermath still lands. The value-14
+//     fight (hull 2 -> 1) never reaches enemyHull 0, so no post-kill retreat roll
+//     fires. Confirmed: Capt.Brutus tier 2, hull 2 -> 1 at round 2, then escaped.
+//   - Seed 2: the drain loop only ever FIGHTS with the lowest die (always a miss)
+//     and never RUNS and never KILLS, so neither the opposed-run pursuit draw nor
+//     the retreat roll is taken — the fuel drain to B_OFFLINE_FUEL is byte-identical.
+//
+// Re-fixtured for the T-1102 fuel-scarcity overhaul: jump cost is now strictly
+// per-distance (12·d for the starter drives, no cap), so a rim jump (system 15,
+// distance 21) burns 252 of the 300-fuel tank and leaves only 48 — below the
+// 50-fuel fight cost, i.e. weapons-offline on arrival. Both scenarios now open on
+// a CORE encounter that leaves plenty of fuel to fight. New seeds re-derived
+// offline (replaying startDay(createInitialState(seed)) → applyPlayerAction).
+//
+//  Seed 43 (fight + flee + reload): dawn hand [20,18,16,14,1] on Sol.
+//    - jump die INDEX 1 (value 18) to Altair-3 (system 3, distance 8, cost 96,
+//      leaving 204 fuel) triggers a named tier-2 encounter, "Capt.Brutus",
+//      enemyHull 2, round 1.
+//    - a FIGHT with the value-14 die passes GUNS (14 vs DC 12) → hull 2→1, round→2.
 //    - a RUN with the value-20 die is a natural-20 PILOT auto-success → escaped.
 //
-//  Seed 22 (weapons malfunction): dawn hand [15,11,10,3,2] on Sol.
-//    - jump die INDEX 0 (value 15) to system 15 triggers a tier-2 encounter,
-//      enemyHull 2, fuel 250.
+//  Seed 2 (weapons malfunction): dawn hand [17,15,10,8,1] on Sol.
+//    - jump die INDEX 0 (value 17) to Pollux-7 (system 9, distance 10, cost 120,
+//      leaving 180 fuel) triggers a tier-1 encounter "Chomper", enemyHull 1.
 //    - fighting with the LOWEST die each round always misses (dice < DC 12) so the
-//      enemy never dies; each fight burns 50 fuel. Four fights drain 250→50, a
-//      stand-down rolls dusk, one more fight drains 50→0. With fuel 0 the weapons
-//      -offline band shows and the next FIGHT malfunctions (die burned, no hit).
-const SEED_A = 11;
-const A_JUMP_DIE_INDEX = 1; // value 15
-const A_DEST = 15;
-const A_ENEMY_NAME = 'RP-Long Ben';
+//      enemy never dies; each fight burns 50 fuel. Draining 180 → 130 → 80 → 30
+//      (three misses) brings up the weapons-offline band at 30 fuel (below the 50
+//      fight cost), and the next FIGHT malfunctions (die burned, no hit).
+const SEED_A = 43;
+const A_JUMP_DIE_INDEX = 1; // value 18
+const A_DEST = 3;
+const A_ENEMY_NAME = 'Capt.Brutus';
 
-const SEED_B = 22;
-const B_JUMP_DIE_INDEX = 0; // value 15
-const B_DEST = 15;
+const SEED_B = 2;
+const B_JUMP_DIE_INDEX = 0; // value 17
+const B_DEST = 9;
+// Fuel remaining when the tank first drops below the 50-fuel fight cost (180 - 3×50).
+const B_OFFLINE_FUEL = 30;
+
+// T-1207 kill path (fix round 2): seed 2 again, but instead of draining with the
+// LOWEST die we land a KILLING volley with the value-15 die, so the post-kill
+// enemy-retreat mechanic (opposed PILOT roll) actually fires through the UI. Derived
+// OFFLINE by replaying startDay(createInitialState(2)) → applyPlayerAction exactly as
+// the store does: dawn hand [17,15,10,8,1] on Sol; the value-17 die jumps to Pollux-7
+// (system 9, 120 fuel, leaving 180); the value-15 die FIGHTS the tier-1 Chomper
+// (enemyHull 1) — GUNS 15+0 clears DC 11, weapons-1 removes the last hull point, and
+// the interceptor's opposed retreat roll wins under this seed → 'interceptor-escaped'
+// (the "miracle burn"). This is the ONE path that exercises the second Player
+// StatCheck (the retreat PILOT pin) the killing GUNS roll pushes — the exact fixture
+// that proves the CheckBreakdown keeps showing the committed GUNS roll, not the pin.
+const SEED_C = 2;
+const C_JUMP_DIE_INDEX = 0; // value 17
+const C_DEST = 9;
+const C_ENEMY_NAME = 'Chomper';
+const C_KILL_DIE_VALUE = 15;
 
 test.beforeEach(async ({ page }) => {
   // Each test runs in a fresh, isolated context, so localStorage starts empty —
@@ -109,9 +153,9 @@ test('scripted-seed encounter: fought, survives reload, then fled through the UI
   await expect(page.getByTestId('combat-enemy-name')).toHaveText(A_ENEMY_NAME);
   await expect(page.getByTestId('combat-round')).toHaveText('ROUND 1');
 
-  // 3) Fight one round with the value-13 die. The round advances (enemy pressed)
+  // 3) Fight one round with the value-14 die. The round advances (enemy pressed)
   //    and the honest PLAYER roll — not the enemy counter-attack — is surfaced.
-  await page.locator('[data-testid="combat-die"][data-die-value="13"]').first().click();
+  await page.locator('[data-testid="combat-die"][data-die-value="14"]').first().click();
   await page.getByTestId('combat-fight').click();
   await expect(page.getByTestId('combat-round')).toHaveText('ROUND 2');
   // Scope the check readout to the overlay: the covered Manifest pane also mounts
@@ -119,7 +163,7 @@ test('scripted-seed encounter: fought, survives reload, then fled through the UI
   const overlayCheck = page.getByTestId('combat-overlay').getByTestId('check-breakdown');
   await expect(overlayCheck).toBeVisible();
   await expect(overlayCheck.getByTestId('check-stat')).toHaveText('GUNS');
-  await expect(overlayCheck.getByTestId('check-die')).toHaveText('13');
+  await expect(overlayCheck.getByTestId('check-die')).toHaveText('14');
 
   // 4) Flee with the natural-20 die → PILOT auto-success → escape. The overlay
   //    transitions to the aftermath summary, then dismisses back to the cockpit.
@@ -162,7 +206,9 @@ test('weapons-malfunction is clearly communicated when fuel-gated', async ({ pag
   // 1) The static, always-visible signal: WEAPONS OFFLINE, stating the shortfall.
   await expect(offline).toBeVisible();
   await expect(offline).toContainText(String(FIGHT_FUEL_COST)); // "need 50 fuel"
-  await expect(offline).toContainText('have 0');
+  // T-1102: jump costs are multiples of 12, so a clean drain to exactly 0 is no
+  // longer reachable; the tank first dips below the 50-fuel fight cost at 30.
+  await expect(offline).toContainText(`have ${B_OFFLINE_FUEL}`);
 
   // 2) The post-commit signal: firing anyway burns the die and draws pressure but
   //    lands no shot — the enemy hull is unchanged, proving the malfunction.
@@ -172,4 +218,49 @@ test('weapons-malfunction is clearly communicated when fuel-gated', async ({ pag
   await page.getByTestId('combat-fight').click();
   await expect(page.getByTestId('combat-malfunction')).toBeVisible();
   await expect(page.getByTestId('combat-enemy-hull')).toHaveAttribute('data-hull', hullBefore!);
+});
+
+test('a killing volley fires the post-kill retreat and keeps CheckBreakdown honest', async ({
+  page,
+}) => {
+  // T-1207 (fix round 2) acceptance: driving a KILL through the combat overlay
+  // exercises the post-kill enemy-retreat roll — the branch that pushes a SECOND
+  // Player StatCheck (the opposed PILOT "pin", a die the player never committed)
+  // AFTER the killing GUNS roll. This is the ONLY player-facing path to that pin,
+  // and it must not corrupt the honest-dice readout.
+  await page.goto('/');
+  await newGameSeed(page, SEED_C);
+
+  // 1) Jump into the seeded tier-1 encounter.
+  await jumpInto(page, C_JUMP_DIE_INDEX, C_DEST);
+  await expect(page.getByTestId('combat-overlay')).toBeVisible();
+  await expect(page.getByTestId('combat-enemy-name')).toHaveText(C_ENEMY_NAME);
+  await expect(page.getByTestId('combat-enemy-tier')).toHaveText('TIER 1');
+
+  // 2) Land the killing volley with the value-15 die (GUNS clears DC 11; weapons-1
+  //    removes the enemy's last hull point). The encounter resolves the instant the
+  //    kill lands, so the overlay hands off to the aftermath summary.
+  await page
+    .locator(`[data-testid="combat-die"][data-die-value="${C_KILL_DIE_VALUE}"]`)
+    .first()
+    .click();
+  await page.getByTestId('combat-fight').click();
+
+  // 3) The interceptor slipped the kill under its own power — the "miracle burn"
+  //    (interceptor-escaped) resolution surfaces its headline through the real UI.
+  //    This is the ONLY test that renders RESOLUTION_HEADLINE['interceptor-escaped'].
+  const aftermath = page.getByTestId('combat-aftermath-resolution');
+  await expect(aftermath).toBeVisible();
+  await expect(aftermath).toHaveAttribute('data-resolution', 'interceptor-escaped');
+  await expect(aftermath).toContainText(/miracle burn/i);
+
+  // 4) Dismiss to the cockpit. The killing GUNS roll is the player's LAST committed
+  //    check — NOT the post-kill PILOT retreat pin the engine also emitted. The
+  //    starmap mounts a PILOT-only CheckBreakdown: were the store still selecting the
+  //    last Player StatCheck (the pin, stat PILOT), that panel would render a phantom
+  //    navigation roll the player never made. With the committed-roll fix the last
+  //    check is GUNS, which the PILOT-only panel filters out — so it shows nothing.
+  await page.getByTestId('combat-dismiss').click();
+  await expect(page.locator('.starmap')).toBeVisible();
+  await expect(page.locator('.starmap').getByTestId('check-breakdown')).toHaveCount(0);
 });

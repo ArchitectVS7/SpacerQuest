@@ -39,6 +39,12 @@ export interface EraEventScopeRule {
  *   - routeDangerDelta: route danger += value when the route touches an affected
  *     system (origin or destination).
  *   - routeDangerDeltaAll: route danger += value for EVERY route, galaxy-wide.
+ *   - portIncomeMultiplier: T-1307 — a player's owned-port launch-fee income ×=
+ *     value when the OWNED port's system is an affected system (engine era.ts
+ *     `eraPortIncomeMultiplier`, summed in actions/port.ts `portDuskIncome`). Only
+ *     region-scoped events set this (region scope guarantees `affectedSystemIds`
+ *     covers a whole core band, so it reliably includes core ports); a single-
+ *     system event would only ever hit the one port it strikes.
  */
 export interface EraEventModifiers {
   paymentMultiplierByCargoType?: Readonly<Record<number, number>>;
@@ -47,6 +53,8 @@ export interface EraEventModifiers {
   fuelPriceMultiplier?: number;
   routeDangerDelta?: number;
   routeDangerDeltaAll?: number;
+  /** T-1307 · owned-port income multiplier — see the application-rules block. */
+  portIncomeMultiplier?: number;
 }
 
 export interface EraEventDefinition {
@@ -77,6 +85,11 @@ export const ERA_EVENTS: readonly EraEventDefinition[] = [
     modifiers: {
       paymentMultiplierIntoScope: 1.8,
       routeDangerDelta: 2,
+      // T-1307: a Confederation cordon lets the ports INSIDE the band levy premium
+      // launch/berth fees — an owned port's income rises while the blockade holds.
+      // Region scope guarantees this covers whole core/rim bands (so an owned core
+      // port is caught), which is why the A/B port-income lever lives on THIS event.
+      portIncomeMultiplier: 1.5,
     },
   },
   {
@@ -115,6 +128,10 @@ export const ERA_EVENTS: readonly EraEventDefinition[] = [
     modifiers: {
       paymentMultiplierAll: 0.9,
       routeDangerDeltaAll: -1,
+      // T-1307: a League crackdown flattens the lanes and depresses the premium
+      // traffic a port lives on — an owned core port's launch-fee income dips while
+      // the patrols saturate the band. The depressive twin of the blockade lever.
+      portIncomeMultiplier: 0.8,
     },
   },
   {

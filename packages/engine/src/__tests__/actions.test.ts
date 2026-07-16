@@ -34,7 +34,7 @@ function fixtureEncounter(): EncounterState {
 describe('Player Actions', () => {
   it('resolves buying fuel', () => {
     const state = createInitialState(123);
-    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
 
     // Set up
     state.player.credits = 1000;
@@ -60,7 +60,7 @@ describe('Player Actions', () => {
 
   it('resolves travel', () => {
     const state = createInitialState(123);
-    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
     state.player.currentSystemId = 1;
     const initialFuel = state.player.ship.fuel;
 
@@ -81,7 +81,7 @@ describe('Player Actions', () => {
 
   it('uses starmap distance for travel fuel', () => {
     const state = createInitialState(123);
-    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
     state.player.currentSystemId = 1;
     state.player.ship.fuel = 1000;
     state.player.ship.drives = { strength: 21, condition: 10 };
@@ -96,14 +96,40 @@ describe('Player Actions', () => {
       new SeededRng(123),
     );
 
+    // T-1102: strictly per-distance cost, no cap/packaging. Maxed drives
+    // (strength 21, condition 10) → perUnit floored to 1; distance(1,21) = 50, so
+    // fuelUsed = 1 × 50 = 50 (was 30 under the old +10/÷2 packaging).
     const travel = events.find((e) => e.type === 'TravelEvent');
-    expect(travel).toMatchObject({ fuelUsed: Math.floor((50 + 10) / 2) });
-    expect(nextState.player.ship.fuel).toBe(970);
+    expect(travel).toMatchObject({ fuelUsed: 50 });
+    expect(nextState.player.ship.fuel).toBe(950);
+  });
+
+  it('refuses a cross-map jump the starter tank cannot afford (T-1102 typed fail)', () => {
+    const state = createInitialState(123);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
+    // Rim corner Algol-2 (20) → Antares-5 (15): distance 43 → 516 fuel, beyond
+    // the 300 starter tank. (Called via the resolver directly, so the T-1101
+    // destination gate — which only applies to ids ≥ 21 — is not in play here.)
+    state.player.currentSystemId = 20;
+    state.player.ship.fuel = 300;
+    const fuelBefore = state.player.ship.fuel;
+
+    const { state: nextState, events } = resolveTravel(
+      state,
+      { type: 'Travel', destinationId: 15, spendDie: 0 },
+      new SeededRng(123),
+    );
+
+    const travel = events.find((e) => e.type === 'TravelEvent');
+    expect(travel).toMatchObject({ success: false, fuelUsed: 0, insufficientFuel: true });
+    // No fuel spent and the ship stays put.
+    expect(nextState.player.ship.fuel).toBe(fuelBefore);
+    expect(nextState.player.currentSystemId).toBe(20);
   });
 
   it('resolves combat run', () => {
     const state = createInitialState(123);
-    state.player.dawnHand = rollDawnHand(new SeededRng(123), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
     state.encounter = fixtureEncounter();
     const initialFuel = state.player.ship.fuel;
 

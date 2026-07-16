@@ -14,6 +14,14 @@ import {
 export interface DawnHand {
   dice: number[];
   spent: boolean[];
+  /** T-1306 · Re-roll charges left today (PRD §7 "allow one re-roll"). Set at
+   *  dawn to the crew-granted count (dice.ts `dawnDiceModifiers`, summed across
+   *  crew — realized max 1), decremented each `Reroll` action (actions/crew.ts
+   *  `resolveReroll`), and read by the sim protocol (legalActions advertises
+   *  Reroll only while > 0). OPTIONAL so the ~20 inline `{ dice, spent }` test
+   *  constructions still typecheck; `rollDawnHand` always sets it. Serializes
+   *  mid-day (an unspent charge survives a JSON round-trip). */
+  rerollsRemaining?: number;
 }
 
 export interface CheckResult {
@@ -153,7 +161,28 @@ export type GameEvent =
       stat: Stat;
       dc: number;
       result: CheckResult;
-      actionContext?: 'haggle' | 'storylet';
+      /** Where the check came from. The `npc-*` contexts (T-1201) tag NPC
+       *  day-resolution rolls so readers (the wire in day.ts / ui format.ts,
+       *  and T-1202's deeper surface) can discriminate per-verb without
+       *  stringly-parsing `actor`. */
+      actionContext?:
+        | 'haggle'
+        | 'storylet'
+        | 'npc-trade'
+        | 'npc-travel'
+        | 'npc-combat'
+        | 'npc-patrol'
+        | 'npc-socialize'
+        // T-1207: an interceptor's post-kill retreat PILOT roll. Discriminated
+        // from `npc-combat` (enemy pressure / run-pursuit) so the wire scanner
+        // (wire.ts classifyCheck) routes a nat-20 here to the "miracle burn"
+        // retreat bucket instead of the generic combat bucket.
+        | 'retreat'
+        // T-1303: the PLAYER's Spacer's Dare GUILE roll at the Hangout. Routes a
+        // nat here to the `gamble` wire bucket (wire.ts classifyCheck) — the
+        // player-side twin of the NPC `npc-socialize` context, so a natted Dare
+        // "makes the wire" as a Spacer's Dare story (PRD §6 sample line).
+        | 'gamble';
     }
   | { type: 'FlawCheck'; npcId: string; flaw: string; die: number; dc: number; resisted: boolean }
   | { type: 'NpcAction'; npcId: string; actionDetails: string }
@@ -174,7 +203,26 @@ export type GameEvent =
       npcId: string;
       delta: number;
       disposition: number;
-      reason: 'tribute' | 'defeat' | 'player-fled' | 'decay' | 'storylet' | 'contract-sniped';
+      // T-1303 adds the four Hangout beats ('dare' / 'befriend' / 'insult' /
+      // 'meet') as distinct reasons so a reader (T-1404's pane, the wire, tests)
+      // can attribute a shift to the venue that caused it.
+      reason:
+        | 'tribute'
+        | 'defeat'
+        | 'player-fled'
+        | 'decay'
+        | 'storylet'
+        | 'contract-sniped'
+        | 'dare'
+        | 'befriend'
+        | 'insult'
+        | 'meet'
+        // T-1304: defaulting on a Penny Wise loan sours her hard — the grudge is
+        // read by the interceptor selection weighting (travel.ts chooseWeighted).
+        | 'loan-default'
+        // T-1305: a NAMED patrol captain who catches you smuggling holds a grudge
+        // (engine actions/patrol.ts); read by the same interceptor weighting/talk-DC.
+        | 'contraband-caught';
     }
   | {
       /** A bonded NPC intervened at dusk on the player's behalf (T-106 bond hook). */
@@ -220,8 +268,12 @@ export type GameEvent =
   | {
       type: 'ActionBlocked';
       day: number;
-      actionType: 'Trade' | 'Travel' | 'Shipyard' | 'Storylet' | 'Explore';
-      reason: 'active-encounter';
+      actionType: 'Trade' | 'Travel' | 'Shipyard' | 'Storylet' | 'Explore' | 'VisitHangout';
+      // 'destination-locked' (T-1101): a Travel to a sealed system (Andromeda /
+      // special) before the 'nemesis.crossing.unlocked' flag lifts it.
+      // 'no-hangout' (T-1303): a VisitHangout at a system without a Spacers
+      // Hangout (hasHangout !== true) — refused with no die spent, no throw.
+      reason: 'active-encounter' | 'destination-locked' | 'no-hangout';
     }
   | {
       /** An Explore nav check succeeded and charted a point of interest
@@ -234,12 +286,22 @@ export type GameEvent =
       name: string;
     }
   | {
-      /** An Explore attempt produced nothing — a failed nav check or a dry tank
-       *  (T-111a). The die is still spent. */
+      /**
+       * An Explore attempt produced nothing (T-111a). Two distinct classes:
+       *  - RESOLVED fails — `nav-check` / `insufficient-fuel`: a real detour was
+       *    attempted, so the die IS spent (and fuel burned, for nav-check).
+       *  - MALFORMED-input fails (T-1003) — `no-die` / `invalid-die-index` /
+       *    `die-already-spent`: the Explore action named no usable die, so there
+       *    was nothing to spend. NO die is spent and NO fuel is burned; these
+       *    replace the raw `Error`s that used to crash the UGT adapter, keeping
+       *    the typed-fail-event convention (every player-possible input is an
+       *    event, never a throw).
+       */
       type: 'ExplorationFailed';
       day: number;
       systemId: number;
-      reason: 'nav-check' | 'insufficient-fuel';
+      reason:
+        'nav-check' | 'insufficient-fuel' | 'no-die' | 'invalid-die-index' | 'die-already-spent';
     }
   | {
       /** A boarded POI's loot roll yielded salvage — real credits (T-111b). */
@@ -275,6 +337,158 @@ export type GameEvent =
       type: 'FragmentDecoded';
       day: number;
       fragmentId: string;
+    }
+  | {
+      /**
+       * T-1303 · A player Hangout visit resolved (PRD §7). One event per
+       * `VisitHangout` action, covering every venue:
+       *   - dare: `opponentId` + `wager` + `playerWon` + `creditsDelta` (signed
+       *     from the player's view: +wager on a win, −wager on a loss). The Dare's
+       *     nat-20/nat-1 wire story is produced downstream by T-1202's scanner
+       *     (natWireStories), not here.
+       *   - befriend / insult / meet: `opponentId`, and `success` for the
+       *     befriend GUILE check (insult always lands; meet is unconditional).
+       *   - meet / rumor: `rumors` — facts synthesized from LIVE NPC state.
+       *   - a typed FAIL carries `failReason` and resolves nothing (mirrors
+       *     ExplorationFailed: malformed die input or an opponent not in-system).
+       * READER: the T-1404 Hangout pane (and the wire, for the Dare nat case).
+       * This is an `eventLog` entry, not a GameState field — no save migration,
+       * but it carries a schema variant + drift guard (schema.ts).
+       */
+      type: 'HangoutEvent';
+      day: number;
+      venue: 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor';
+      opponentId?: string;
+      wager?: number;
+      playerWon?: boolean;
+      creditsDelta?: number;
+      success?: boolean;
+      rumors?: string[];
+      failReason?: 'no-die' | 'invalid-die-index' | 'die-already-spent' | 'no-opponent';
+    }
+  | {
+      /**
+       * T-1304 · A Penny Wise lending beat (PRD §7.5). One event covers the whole
+       * loan lifecycle via the `kind` sub-discriminator:
+       *   - 'borrowed'  — a loan was taken. `principal`, `outstanding` (= principal
+       *     at issue), `dailyRate`, `dueDay`. Credits went UP by `principal`.
+       *   - 'accrued'   — a dusk's interest was added. `interest`, `outstanding`
+       *     (post-accrual). Emitted by day.ts endDay while a loan is live.
+       *   - 'repaid'    — the player paid down the loan. `amountPaid`, `outstanding`
+       *     (post-payment), `cleared` (true when the loan was fully paid off and
+       *     nulled — the collection status is gone).
+       *   - 'defaulted' — the due day was crossed unpaid; `status` flipped to
+       *     'defaulted'. `outstanding` at default. Paired with a one-time
+       *     DispositionChanged{reason:'loan-default'} and a wire entry.
+       *   - 'failed'    — a typed no-op (mirrors HangoutEvent/ExplorationFailed):
+       *     malformed die input, or a lending rule refused it. NO die spent, NO
+       *     credit change. `failReason` names why.
+       * READER: the T-1404 Penny Wise desk pane (and the wire). This is an
+       * `eventLog` entry, not a GameState field — the loan STATE lives on
+       * PlayerState.loan (which ships the v2→v3 migration); this event carries a
+       * schema variant + compile-time drift guard (schema.ts) only.
+       */
+      type: 'LoanEvent';
+      day: number;
+      kind: 'borrowed' | 'accrued' | 'repaid' | 'defaulted' | 'failed';
+      lender?: string;
+      principal?: number;
+      dailyRate?: number;
+      dueDay?: number;
+      interest?: number;
+      amountPaid?: number;
+      outstanding?: number;
+      cleared?: boolean;
+      failReason?:
+        | 'no-die'
+        | 'invalid-die-index'
+        | 'die-already-spent'
+        | 'already-has-loan'
+        | 'no-loan'
+        | 'insufficient-credits';
+    }
+  | {
+      /**
+       * T-1306 · A dawn-die re-roll (PRD §7 "allow one re-roll"). On SUCCESS every
+       * field is set: `dieIndex`, the `previous` face, the `result`, and the
+       * `rerollsRemaining` after the charge was spent. On a typed FAIL only
+       * `failReason` is set — no charge consumed, no die mutated (mirrors the
+       * HangoutEvent / LoanEvent typed-fail convention: every player-possible
+       * input is an event, never a throw). Serialized in eventLog; the drift guard
+       * (schema.ts) keeps this in lockstep with the interface. READER: T-1405's UI
+       * (the reroll button + result); the sim protocol reads `rerollsRemaining`
+       * off the hand, not this event.
+       */
+      type: 'DiceRerolled';
+      day: number;
+      dieIndex?: number;
+      previous?: number;
+      result?: number;
+      rerollsRemaining?: number;
+      failReason?: 'no-hand' | 'invalid-die-index' | 'die-already-spent' | 'no-charge';
+    }
+  | {
+      /**
+       * T-1306 · A crew hire/dismiss/wage beat (PRD §7 dice progression). One event
+       * covers the whole crew lifecycle via the `kind` sub-discriminator:
+       *   - 'hired'     — a role was hired. `roleId`, `cost` (hire price), `berths`
+       *     (crewCapacity at hire), `crewCount` (after). Credits went DOWN by cost,
+       *     a die was spent.
+       *   - 'dismissed' — a role left (player dismiss, or the dusk crew-walk on an
+       *     unpaid wage). `roleId`.
+       *   - 'wage'      — a dusk's wage was paid. `amount` (total wage), `crewCount`.
+       *     Emitted by day.ts endDay while crew is aboard and affordable.
+       *   - 'failed'    — a typed no-op (mirrors LoanEvent/HangoutEvent): malformed
+       *     die input, or a crew rule refused it. NO die spent, NO credit change.
+       *     `failReason` names why.
+       * READER: T-1405's UI crew pane (and the wire). This is an eventLog entry, not
+       * a GameState field — the crew STATE lives on PlayerState.crew (v3→v4
+       * migration); this event carries a schema variant + drift guard only.
+       */
+      type: 'CrewEvent';
+      day: number;
+      kind: 'hired' | 'dismissed' | 'wage' | 'failed';
+      roleId?: string;
+      cost?: number;
+      amount?: number;
+      berths?: number;
+      crewCount?: number;
+      failReason?:
+        | 'no-die'
+        | 'invalid-die-index'
+        | 'die-already-spent'
+        | 'no-berth'
+        | 'insufficient-credits'
+        | 'already-hired'
+        | 'unknown-role'
+        | 'not-hired';
+    }
+  | {
+      /**
+       * T-1307 · A port-stake beat (PRD §9 "ports as purchasable property"). One
+       * event covers the whole lifecycle via the `kind` sub-discriminator:
+       *   - 'purchased' — a stake was bought. `systemId`, `cost` (purchase price),
+       *     `portCount` (owned after). Credits went DOWN by cost, a die was spent.
+       *     Paired with a WireEntry (the purchase's wire reader).
+       *   - 'income'    — a dusk's launch-fee income accrued across all owned
+       *     stakes. `income` (total, era-modulated), `portCount`. Credits went UP by
+       *     income. Emitted by day.ts endDay while ≥1 port is owned. Paired with a
+       *     WireEntry.
+       *   - 'failed'    — a typed no-op (mirrors CrewEvent/LoanEvent): malformed die
+       *     input, or a port rule refused it. NO die spent, NO credit change.
+       *     `failReason` names why.
+       * READER: T-1405's UI port/ledger pane (and the wire). This is an eventLog
+       * entry, not a GameState field — the port STATE lives on PlayerState.ports
+       * (v4→v5 migration); this event carries a schema variant + drift guard only.
+       */
+      type: 'PortEvent';
+      day: number;
+      kind: 'purchased' | 'income' | 'failed';
+      systemId?: number;
+      cost?: number;
+      income?: number;
+      portCount?: number;
+      failReason?: PortEventFailReason;
     }
   | { type: 'StoryletOffered'; day: number; storyletId: string; scheduled: boolean }
   | {
@@ -339,6 +553,11 @@ export type GameEvent =
       success: boolean;
       interrupted?: boolean;
       resumedFromEncounterId?: string;
+      /** T-1102: the jump was refused because the tank could not cover the
+       *  per-distance cost — the "typed fail" of the fuel-scarcity overhaul (a
+       *  cross-map hop is unaffordable on a starter tank). READER: the UI
+       *  jump-command handler in store.ts, which surfaces the dry-tank notice. */
+      insufficientFuel?: boolean;
     }
   | TradeEvent
   | { type: 'DebtPayment'; characterId: string; amount: number; remaining: number }
@@ -410,14 +629,33 @@ export type GameEvent =
       previousCondition: number;
       newCondition: number;
       amount: number;
+      /** T-1205: how many condition points the player's shields absorbed off the
+       *  raw hit. 0 for a junker (no mitigation); a fully-absorbed hit reports
+       *  amount 0 with `mitigated` === the raw damage. READER: wire.ts prose and
+       *  the ui damage log (format.ts). */
+      mitigated?: number;
     }
   | {
       type: 'ShipLost';
       day: number;
       encounterId: string;
       interceptorId: string;
-      reason: 'combat-defeat';
+      // T-1205: 'life-support-failure' — life support driven to condition 0 (now
+      // reachable via seeded combat damage) failed its dusk survival check in
+      // day.ts. 'combat-defeat' is the hull-to-0 killing blow in combat.ts.
+      reason: 'combat-defeat' | 'life-support-failure';
       component?: ShipComponentId;
+    }
+  | {
+      /** T-1205: life support has been driven to condition 0 and faced its dusk
+       *  survival check. `survived: true` is a scare (no state change);
+       *  `survived: false` precedes a ShipLost{reason:'life-support-failure'} +
+       *  succession. This is the named reader for the `lifeSupport` component.
+       *  READER: wire.ts prose + ui damage/obituary log (format.ts). */
+      type: 'LifeSupportCritical';
+      day: number;
+      component: 'lifeSupport';
+      survived: boolean;
     }
   | {
       /** T-108: the successor claims the license. Fired immediately after
@@ -434,13 +672,36 @@ export type GameEvent =
       type: 'EncounterResolved';
       encounterId: string;
       /** 'interceptor-fled': a bonded NPC drove the interceptor off at dusk
-       *  (T-106 bond hook) — travel completes as if the threat was beaten. */
-      resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled';
+       *  (T-106 bond hook) — travel completes as if the threat was beaten.
+       *  'interceptor-escaped' (T-1207): a cracked-drive interceptor won its own
+       *  opposed PILOT retreat roll off a LOST fight (PRD §7.4 "miracle burn") —
+       *  it flees alive under its own power. The player still won the field, so
+       *  travel completes (unlike 'escaped', which is the PLAYER fleeing). */
+      resolution:
+        'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled' | 'interceptor-escaped';
       round: number;
       interceptorId: string;
     }
   | ShipyardEvent
-  | ShipyardFail;
+  | ShipyardFail
+  // T-1305 · patrol contraband scan beats (engine actions/patrol.ts). Serialized
+  // in eventLog (round-trips via the discriminated-union schema below); read by
+  // the patrol wire bucket and T-1405's UI surface.
+  | {
+      type: 'ContrabandScan';
+      encounterId: string;
+      interceptorId: string;
+      caught: boolean;
+      check: CheckResult;
+    }
+  | {
+      type: 'ContrabandConfiscated';
+      encounterId: string;
+      fine: number;
+      creditsRemaining: number;
+      confiscatedContract: boolean;
+      confiscatedPod: boolean;
+    };
 
 export type ShipComponentId =
   'hull' | 'drives' | 'cabin' | 'lifeSupport' | 'weapons' | 'navigation' | 'robotics' | 'shields';
@@ -519,6 +780,73 @@ export type PlayerAction =
     }
   | { type: 'Storylet'; storyletId: string; choiceId: string; spendDie?: number }
   | { type: 'Explore'; spendDie?: number }
+  | {
+      /**
+       * T-1303 · Visit the Spacers Hangout (PRD §7). A die-costed player scene at
+       * a `hasHangout` system. `venue` picks the beat:
+       *   - 'dare'     — a wagered, opposed-GUILE Spacer's Dare against an NPC
+       *                  actually present in-system (`opponentId`, `wager`).
+       *   - 'meet'     — an introduction: a small disposition nudge + gossip.
+       *   - 'befriend' — a GUILE charm check to warm the NPC (`opponentId`).
+       *   - 'insult'   — always lands, souring the NPC hard (`opponentId`).
+       *   - 'rumor'    — read the rumor table (host slot; no opponent).
+       *   - 'borrow'   — T-1304: take a loan at Penny Wise's desk (`amount` =
+       *                  requested principal, clamped to the content band). Penny
+       *                  Wise is the lender-of-record, so no opponent required.
+       *   - 'repay'    — T-1304: pay down the active loan (`amount` = credits to
+       *                  pay; default = full outstanding). No opponent required.
+       * `opponentId` is required for dare/meet/befriend/insult and must name an
+       * NPC whose SIMULATED position is in the player's current system, else a
+       * typed HangoutEvent fail. `borrow`/`repay`/`rumor` need no opponent.
+       * RESOLVER: actions/hangout.ts resolveVisitHangout.
+       */
+      type: 'VisitHangout';
+      venue: 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor' | 'borrow' | 'repay';
+      opponentId?: string;
+      wager?: number;
+      /** T-1304: borrow principal / repay amount (venue 'borrow' / 'repay'). */
+      amount?: number;
+      spendDie?: number;
+    }
+  | {
+      /**
+       * T-1306 · Re-roll one un-spent dawn die (PRD §7 "allow one re-roll").
+       * Consumes a single `dawnHand.rerollsRemaining` charge (granted by a reroll
+       * crew role). `dieIndex` names the die to re-roll; the new value is floored
+       * by any crew floor and written IN PLACE (no re-sort — mid-day die indices
+       * are load-bearing). Costs a charge, NOT a whole die. RESOLVER:
+       * actions/crew.ts resolveReroll.
+       */
+      type: 'Reroll';
+      dieIndex: number;
+    }
+  | {
+      /**
+       * T-1306 · Hire or dismiss a crew role at the Hangout/port (PRD §7 dice
+       * progression). `roleId` names a content CREW_ROLES entry; `spendDie` is the
+       * die the action costs (like every other die-costed player scene). Hiring
+       * needs a free cabin berth (`crewCapacity`) and the hire price; dismissing
+       * frees a berth (no refund). RESOLVER: actions/crew.ts resolveCrew.
+       */
+      type: 'Crew';
+      action: 'hire' | 'dismiss';
+      roleId: string;
+      spendDie: number;
+    }
+  | {
+      /**
+       * T-1307 · Buy a controlling stake in the local port authority (PRD §9
+       * "ports as purchasable property"). `systemId` names the port and MUST equal
+       * `currentSystemId` (you buy the port you are standing in); it must be a
+       * purchasable core port (content `isPurchasablePort`). `spendDie` is the die
+       * the action costs (die-costed like Shipyard). Needs the purchase price and
+       * a stake not already owned. RESOLVER: actions/port.ts `resolvePortPurchase`.
+       */
+      type: 'Port';
+      action: 'buy';
+      systemId: number;
+      spendDie: number;
+    }
   | { type: 'Wait' };
 
 export type NpcActionType =
@@ -601,6 +929,43 @@ export interface LegacyState {
   successionCount: number;
 }
 
+/**
+ * T-1304 · An outstanding loan from Penny Wise's desk at the Hangout (PRD §7.5).
+ * A new persistent `PlayerState` field — one loan at a time; borrow is blocked
+ * while a loan is active. FOUNDATION-ORIGINAL: foundation (f2f95fa9) has no
+ * lending mechanic, so this whole type is a T-1304 addition (see content
+ * lending.ts for the tuning + divergence note).
+ *
+ * DEBT-AS-LEDGER LAW (shared with `PlayerState.debt`): interest accrues to
+ * `outstanding`, NEVER to `player.credits`. Credits only go UP when borrowing;
+ * they only come down on a player-chosen, clamped repay — so a loan can only ever
+ * be an OUT, never a trap that drives credits negative.
+ */
+export interface LoanState {
+  /** The lender of record — always `npc-penny-wise` (content LENDER_ID). The
+   *  default disposition hit / grudge keys to this id. */
+  lender: string;
+  /** Credits advanced up front. Constant for the life of the loan — the interest
+   *  base and the narrative "you borrowed X". */
+  principal: number;
+  /** The live balance owed: principal + accrued interest − repayments. Grows
+   *  `ceil(principal * dailyRate)` each dusk. Cleared to a null loan when repaid
+   *  to <= 0. */
+  outstanding: number;
+  /** Per-dusk simple-interest rate (content LOAN_DAILY_RATE). */
+  dailyRate: number;
+  /** Dusk day the loan was taken. */
+  borrowedDay: number;
+  /** Day the loan comes due (borrowedDay + LOAN_TERM_DAYS). Crossing this unpaid
+   *  flips `status` to 'defaulted'. */
+  dueDay: number;
+  /** The COLLECTION FLAG. 'defaulted' is READ by generateEncounter (travel.ts)
+   *  to raise interdiction odds, and its one-time disposition hit is read by the
+   *  interceptor grudge-weighting (travel.ts chooseWeighted). Repaying clears the
+   *  whole loan (status included). */
+  status: 'active' | 'defaulted';
+}
+
 /** One Signal Fragment held in the Nemesis file (T-111b, PRD §8.1). A knowledge
  *  item keyed by a content fragment id (nemesis.ts). Dedupe key: fragmentId. */
 export interface SignalFragmentRecord {
@@ -622,6 +987,58 @@ export interface NemesisFileState {
   fragments: SignalFragmentRecord[];
 }
 
+/**
+ * T-1306 · One hired crew member (PRD §7 dice progression). MINIMAL by design:
+ * only the content `roleId` and the day hired are stored — the dice benefit
+ * (extra-die / reroll / floor) is looked up from content (`CREW_BY_ID`) every
+ * time it's needed, never denormalized onto the save, so the tuning stays data.
+ * FOUNDATION-ORIGINAL: foundation (f2f95fa9) has no crew-grants-dice mechanic, so
+ * this whole type is a T-1306 addition (see content crew.ts for the tuning + the
+ * foundation-divergence note). READERS: dice.ts `dawnDiceModifiers` (the dawn
+ * aggregator), day.ts (dawn roll + dusk wage upkeep), actions/crew.ts (hire /
+ * dismiss / reroll), the sim protocol, and T-1405's UI crew pane.
+ */
+export interface CrewMember {
+  /** Content id into CREW_ROLES / CREW_BY_ID — the benefit is resolved from this. */
+  roleId: string;
+  /** Dusk day this crew member was hired (flavor + T-1405 seniority display). */
+  hiredDay: number;
+}
+
+/**
+ * T-1307 · One owned port stake (PRD §9 "ports as purchasable property", canon
+ * from 1991). MINIMAL by design: only the content `systemId` and the day bought
+ * are stored — the purchase price, per-dusk income and alliance are looked up from
+ * content (`PURCHASABLE_PORTS_BY_SYSTEM`) every time they're needed, never
+ * denormalized onto the save, so the tuning stays data. FOUNDATION-ORIGINAL: the
+ * foundation RULES of record (f2f95fa9) have no port-buying code, so this whole
+ * type is a T-1307 addition (see content ports.ts for the tuning + the
+ * foundation-divergence note). READERS: actions/port.ts `portDuskIncome` (the
+ * dusk-economy accrual day.ts endDay calls), actions/port.ts `resolvePortPurchase`
+ * / `quotePort` (buy + preview), the wire (the purchase + income WireEntries), and
+ * — via the port's content `alliance` tag — T-1503's Warlord Confederation
+ * questline (the named FUTURE reader). Surfaced to the player by T-1405 (named).
+ */
+export interface PortStake {
+  /** Content core-system id (1–14) into PURCHASABLE_PORTS_BY_SYSTEM. The income /
+   *  price / alliance are resolved from this. */
+  systemId: number;
+  /** Dusk day the stake was bought (flavor + T-1405 ledger display). */
+  purchaseDay: number;
+}
+
+/** T-1307 · The typed refusal reasons a `Port` buy can resolve to (the
+ *  `PortEvent{failed}.failReason` set; also the `quotePort` failure set). Kept as
+ *  a named alias so the resolver/preview reference one source of truth. */
+export type PortEventFailReason =
+  | 'no-die'
+  | 'invalid-die-index'
+  | 'die-already-spent'
+  | 'not-at-port'
+  | 'not-purchasable'
+  | 'already-owned'
+  | 'insufficient-credits';
+
 export interface PlayerState {
   credits: number;
   /** Outstanding Merchant Guild debt — a ledger entry, NOT negative credits.
@@ -629,6 +1046,29 @@ export interface PlayerState {
    *  (can't buy fuel, can't earn, can't recover). */
   debt: number;
   debtDueDay: number;
+  /** T-1304 · The outstanding Penny Wise loan, or null. A new persistent field
+   *  (v2→v3 save migration + round-trip test ship with it). Like `debt`, this is
+   *  a ledger entry, never negative credits. READERS: generateEncounter
+   *  (travel.ts) reads `loan.status`; the day loop (day.ts endDay) accrues and
+   *  defaults it; T-1404 surfaces it. */
+  loan: LoanState | null;
+  /** T-1306 · Hired crew — the dice-progression source (PRD §7). A new persistent
+   *  field (v3→v4 save migration + round-trip test ship with it). Capped by
+   *  `crewCapacity(ship)` (cabin berths, the T-1205 socket). READERS: dice.ts
+   *  `dawnDiceModifiers` reads it to build the dawn hand's size/floor/rerolls;
+   *  day.ts endDay charges the wage upkeep; actions/crew.ts hires/dismisses;
+   *  the sim protocol + veteran policy consume it; T-1405 surfaces it. */
+  crew: CrewMember[];
+  /** T-1307 · Owned port stakes — purchasable property (PRD §9). A new persistent
+   *  field (v4→v5 save migration + round-trip test ship with it). Each stake
+   *  accrues per-dusk launch-fee income, modulated by a live regional era event.
+   *  READERS: actions/port.ts `portDuskIncome` (dusk-economy accrual, called by
+   *  day.ts endDay); actions/port.ts `resolvePortPurchase` / `quotePort` (buy +
+   *  preview); the wire (purchase + income WireEntries); carried through succession
+   *  (legacy.ts) like the debt/loan; T-1503's Warlord Confederation questline reads
+   *  it via each port's content `alliance` tag (named future reader); T-1405
+   *  surfaces it. */
+  ports: PortStake[];
   stats: StatBlock;
   tier: PowerTier;
   currentSystemId: number;

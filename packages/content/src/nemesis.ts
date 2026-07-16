@@ -31,8 +31,11 @@ export interface SignalFragmentLore {
 // BALANCE: foundation/rules/ carries no Nemesis-arc data (the 1991 game had the
 // black hole as a location, not a fragment questline — grep 'nemesis' over
 // foundation confirms). The five fragments below are authored for T-111b and
-// flagged as a deliberate divergence: fragment 01 is the Wise One's Day-30 hook
-// (PRD §5.1); 02-05 seed the derelict/beacon loot pools.
+// flagged as a deliberate divergence: fragment 01 is the Wise One's Polaris-1 hook
+// — WINDOWED since T-1310 (day >= 25, on visit, never expiring; storylets.ts
+// `wise-one.polaris.signal-hook`), no longer the old day-30 knife-edge; 02-05 seed
+// the derelict/beacon loot pools and each gets a Sage decode storylet (T-1310
+// `sage.mizar.decode-02..05`).
 export const SIGNAL_FRAGMENTS: Record<string, SignalFragmentLore> = {
   'frag-nemesis-01': {
     id: 'frag-nemesis-01',
@@ -96,3 +99,26 @@ export const BEACON_FRAGMENT_POOL: readonly string[] = ['frag-nemesis-02', 'frag
 
 /** Every fragment id the content defines — the validation whitelist. */
 export const ALL_FRAGMENT_IDS: readonly string[] = Object.keys(SIGNAL_FRAGMENTS);
+
+/**
+ * T-1302: how a granted fragment entered the Nemesis file. Authored on a
+ * storylet's `grantFragment` effect (see `StoryletEffects.fragmentSource`) so a
+ * grant records its TRUE source — a courier drop is 'derelict', the Wise One's
+ * sale is 'wise-one', and so on.
+ *
+ * NOTE: this MUST stay in lockstep with the engine's serialized authority,
+ * `SignalFragmentRecord['source']` (@spacerquest/engine types.ts). That record
+ * is what round-trips through the save; this literal set is the content-side
+ * validation whitelist. If one changes, change both.
+ */
+export type FragmentSource = 'derelict' | 'beacon' | 'wise-one' | 'sage' | 'npc';
+
+/** The valid fragment-source literals — the validation whitelist for
+ *  `StoryletEffects.fragmentSource`. */
+export const FRAGMENT_SOURCES: readonly FragmentSource[] = [
+  'derelict',
+  'beacon',
+  'wise-one',
+  'sage',
+  'npc',
+];

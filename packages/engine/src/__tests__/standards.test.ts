@@ -96,7 +96,7 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
   function combatState(fuel: number) {
     const state = createInitialState(9);
     state.player.ship.fuel = fuel;
-    state.player.dawnHand = rollDawnHand(new SeededRng(9), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(9), { handSize: 5, floor: 0, rerolls: 0 });
     state.encounter = fixtureEncounter();
     return state;
   }
@@ -145,7 +145,7 @@ describe('Combat fuel gates (no free volleys, no free getaways)', () => {
 describe('Contracts', () => {
   function marketState() {
     const state = createInitialState(3);
-    state.player.dawnHand = rollDawnHand(new SeededRng(3), 5);
+    state.player.dawnHand = rollDawnHand(new SeededRng(3), { handSize: 5, floor: 0, rerolls: 0 });
     state.market.manifestBoard = [
       { destination: 5, cargoType: 4, payment: 3000, pods: 10 },
       { destination: 9, cargoType: 2, payment: 2000, pods: 10 },
@@ -299,16 +299,25 @@ describe('Local fuel price comes from canon tables', () => {
 });
 
 describe('Starmap distance', () => {
-  it('matches foundation same-line distance for Sun-3 to Vega-6', () => {
+  it('T-1101: the degenerate same-line layout is replaced by real 2D coordinates', () => {
+    // The shipped layout put every core/rim system on y=0 at x=id-1, so distance
+    // collapsed into |id difference|. T-1101 authors genuine 2D coordinates
+    // (PRD §9 geography): Sun-3 stays at the origin, but Vega-6 no longer sits on
+    // the x-axis, and distance(1,14) now reflects Math.hypot — NOT the |id-1|=13
+    // the old collinear layout produced.
     const sun = STAR_SYSTEMS[1];
     const vega = STAR_SYSTEMS[14];
 
     expect(sun.coordinates).toEqual({ x: 0, y: 0 });
-    expect(vega.coordinates).toEqual({ x: 13, y: 0 });
+    expect(vega.coordinates.y).not.toBe(0);
 
-    const foundationSameLineDistance = Math.abs(vega.coordinates.x - sun.coordinates.x) || 1;
-    expect(distance(1, 14)).toBe(foundationSameLineDistance);
-    expect(foundationSameLineDistance).toBe(13);
+    const idDiff = Math.abs(vega.id - sun.id); // what the degenerate layout gave
+    expect(distance(1, 14)).not.toBe(idDiff);
+    expect(distance(1, 14)).toBe(
+      Math.ceil(
+        Math.hypot(vega.coordinates.x - sun.coordinates.x, vega.coordinates.y - sun.coordinates.y),
+      ),
+    );
   });
 
   it('uses 2D coordinates for non-collinear systems', () => {

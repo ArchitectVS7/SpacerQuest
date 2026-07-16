@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
 import { applyPlayerAction, startDay } from '../day.js';
-import { quoteShipyard, resolveShipyard } from '../actions/shipyard.js';
+import { maxCargoPodsForShip, quoteShipyard, resolveShipyard } from '../actions/shipyard.js';
 import { createInitialState } from '../state.js';
 import { GameState, PlayerAction, ShipyardFail } from '../types.js';
 
@@ -67,6 +67,27 @@ describe('shipyard', () => {
 
     expect(result.state.player.ship.hull).toEqual({ strength: 10, condition: 9 });
     expect(result.state.player.ship.hasCloaker).toBe(false);
+  });
+
+  it('raises maxFuel when a hull tier is bought through the day loop (T-1102 A/B)', () => {
+    // The fuel ceiling is derived from the hull and recomputed at the
+    // applyPlayerAction chokepoint. A tier-2 hull (strength 20, condition 9) must
+    // lift the tank from the junker's 300 to (9+1)·20·30 = 6000.
+    const { state } = startDay(shipyardState());
+    const before = state.player.ship.maxFuel;
+    expect(before).toBe(300);
+
+    const { state: after } = applyPlayerAction(state, {
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'hull',
+      tier: 2,
+      spendDie: 0,
+    });
+
+    expect(after.player.ship.hull.strength).toBe(20);
+    expect(after.player.ship.maxFuel).toBeGreaterThan(before);
+    expect(after.player.ship.maxFuel).toBe(6000);
   });
 
   it.each([
@@ -135,7 +156,9 @@ describe('shipyard', () => {
     'caps %s hull-scaled price at 20,000 for a high-strength hull (T-105 boundary)',
     (equipment) => {
       // Price is min(hull.strength * 1000, 20000). A strength-25 hull would price
-      // at 25,000 without the cap; the intentional 20,000 ceiling holds it there.
+      // at 25,000 without the cap; the 20,000 ceiling holds it there. The cap
+      // matches foundation (f2f95fa9:foundation/rules/upgrades.ts ~L731,
+      // hullStrength > 20 ? 20000 : hullStrength * 1000) — not an engine invention.
       const state = shipyardState();
       state.player.ship.hull = { strength: 25, condition: 4 };
       const startingCredits = state.player.credits;
@@ -210,6 +233,15 @@ describe('shipyard', () => {
     (installed, attempted, conflictingEquipment) => {
       // T-105 intentionally diverges from foundation strip-and-proceed side
       // effects: mutual exclusions are hard failures for clearer headless UX.
+      // VERIFIED against foundation (f2f95fa9:foundation/rules/upgrades.ts,
+      // purchaseSpecialEquipment): foundation strips the OLD part and proceeds
+      // when the new purchase displaces it — AUTO_REPAIR strips Titanium
+      // (~L768-776), TITANIUM_HULL strips Auto-Repair (~L778-783), ARCH_ANGEL /
+      // STAR_BUSTER strip the Cloaker (~L790-793) — and has no gate at all for
+      // buying a CLOAKER while STAR_BUSTER is installed. The reverse direction
+      // (buying CLOAKER over AUTO_REPAIR ~L686-688 / ARCH_ANGEL ~L691-693, or
+      // AUTO_REPAIR over CLOAKER ~L701-703) hard-fails in foundation too, so
+      // only the strip-and-proceed rows below are true divergences.
       const state = shipyardState();
       state.player.ship.hull.strength = 1;
       state.player.ship.shields.strength = 1;
@@ -540,5 +572,17 @@ describe('quoteShipyard (T-308 preview)', () => {
     expect(quote.after.component?.strength).toBe(20);
     // Stronger drives burn less fuel per jump — the curve the pane previews.
     expect(quote.after.fuelPerJump).toBeLessThan(quote.before.fuelPerJump);
+  });
+
+  // T-1206 completeness gate — the Titanium Hull was reader-tested only at the
+  // purchase (cargoPods bumped on install). This asserts the standing reader,
+  // maxCargoPodsForShip (consumed by the buy-cargo-pods cap and ShipPreview),
+  // reads hasTitaniumHull: a fitted Titanium hull raises the serviceable capacity.
+  it('TITANIUM_HULL raises serviceable cargo capacity (maxCargoPodsForShip reader)', () => {
+    const state = shipyardState();
+    const before = maxCargoPodsForShip(state);
+    state.player.ship.hasTitaniumHull = true;
+    const after = maxCargoPodsForShip(state);
+    expect(after).toBeGreaterThan(before);
   });
 });

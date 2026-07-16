@@ -1,8 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { DEEDS } from '@spacerquest/content';
+import { DEEDS, RENOWN_DEED_THRESHOLDS, RENOWN_RANKS } from '@spacerquest/content';
 import { evaluateDeeds, rankForDeedCount } from '../deeds.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
-import { GameEvent } from '../types.js';
+import { EarnedDeedState, GameEvent } from '../types.js';
+
+/** Fabricate `count` earned-deed records with ids that cannot collide with any
+ *  real DEED id, so a genuine deed (e.g. first_manifest) can still be earned on
+ *  top of them. Rank is a pure function of earned.length, so this is the same
+ *  machinery deserialize uses to reconstruct a high-rank registry. */
+function syntheticEarned(count: number): EarnedDeedState[] {
+  return Array.from({ length: count }, (_unused, i) => ({
+    id: `synthetic-${i}`,
+    title: 'x',
+    citation: 'x',
+    day: 1,
+    eventIndex: i,
+  }));
+}
 
 function signContractEvent(): GameEvent {
   return {
@@ -292,5 +306,89 @@ describe('deed registry', () => {
       type: 'WireEntry',
       message: 'Registry confirms Player as Commander after First Manifest.',
     });
+  });
+
+  // T-1308 · Conqueror capstone.
+  it('exposes Conqueror as a defined-but-unreached capstone at current deed counts', () => {
+    // The rank ladder exposes Conqueror with a citation...
+    expect(RENOWN_RANKS.CONQUEROR).toMatchObject({ id: 'CONQUEROR', label: 'Conqueror' });
+    expect(RENOWN_RANKS.CONQUEROR.citation).toBeTruthy();
+    expect(RENOWN_RANKS.CONQUEROR.citation?.length ?? 0).toBeGreaterThan(0);
+
+    // ...at a threshold above the current authored deed set, so it is out of
+    // reach today. Reachability THROUGH PLAY (a ≥30-deed set + long veteran sim)
+    // is proven by T-1504's sweep, not here.
+    expect(RENOWN_DEED_THRESHOLDS.CONQUEROR).toBe(30);
+    expect(RENOWN_DEED_THRESHOLDS.CONQUEROR).toBeGreaterThan(DEEDS.length);
+
+    // Earning every current deed saturates at GIGA_HERO — never Conqueror.
+    expect(rankForDeedCount(DEEDS.length)).toBe('GIGA_HERO');
+    expect(rankForDeedCount(DEEDS.length)).not.toBe('CONQUEROR');
+
+    // But the ladder IS wired to select Conqueror once the headroom exists.
+    expect(rankForDeedCount(RENOWN_DEED_THRESHOLDS.CONQUEROR)).toBe('CONQUEROR');
+  });
+
+  it('reaching Conqueror fires the unique capstone wire plus a Registry entry', () => {
+    const state = createInitialState(1308);
+    // Stand the captain one deed short of the Conqueror threshold with a rank of
+    // GIGA_HERO, then earn a real deed to cross to 30.
+    state.player.registry.earned = syntheticEarned(29);
+    state.player.registry.renownRank = 'GIGA_HERO';
+
+    const events = evaluateDeeds(state, [signContractEvent()]);
+
+    // rank-up emits both the RenownRankUp and the Registry entry (DeedEarned +
+    // the pushed earned record).
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'RenownRankUp',
+        previousRank: 'GIGA_HERO',
+        newRank: 'CONQUEROR',
+        deedCount: 30,
+      }),
+    );
+    expect(state.player.registry.renownRank).toBe('CONQUEROR');
+    expect(state.player.registry.earned).toHaveLength(30);
+    expect(events.some((e) => e.type === 'DeedEarned' && e.deedId === 'first_manifest')).toBe(true);
+
+    // The reader assertion: the rank-up wire is the CONQUEROR citation verbatim,
+    // NOT the generic "Registry confirms Player as …" line. This proves the
+    // engine consumes RENOWN_RANKS.CONQUEROR.citation.
+    const wire = events.find((e) => e.type === 'WireEntry');
+    expect(wire).toBeDefined();
+    expect(wire?.type === 'WireEntry' && wire.message).toBe(RENOWN_RANKS.CONQUEROR.citation);
+    expect(wire?.type === 'WireEntry' && wire.message).not.toContain('Registry confirms Player as');
+  });
+
+  it('a Conqueror registry and rank-up event survive JSON round-trip', () => {
+    const state = createInitialState(1309);
+    // 30 earned deeds keep rankForDeedCount === CONQUEROR stable through the
+    // deserialize-time rank reconstruction, so the value must clear the schema
+    // enum end-to-end.
+    state.player.registry.earned = syntheticEarned(30);
+    state.player.registry.renownRank = 'CONQUEROR';
+    const rankUp: GameEvent = {
+      type: 'RenownRankUp',
+      day: 5,
+      previousRank: 'GIGA_HERO',
+      newRank: 'CONQUEROR',
+      deedCount: 30,
+    };
+    const deedEarned: GameEvent = {
+      type: 'DeedEarned',
+      day: 5,
+      deedId: 'first_manifest',
+      title: 'First Manifest',
+      citation: 'On day 5, the ledger closed the ladder.',
+      renownRank: 'CONQUEROR',
+    };
+    state.eventLog.push(rankUp, deedEarned);
+
+    const restored = deserializeState(serializeState(state));
+
+    expect(restored.player.registry.renownRank).toBe('CONQUEROR');
+    expect(restored.eventLog).toContainEqual(rankUp);
+    expect(restored.eventLog).toContainEqual(deedEarned);
   });
 });

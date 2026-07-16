@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Stat } from '@spacerquest/content';
-import { resolveCombat } from '../actions/combat.js';
-import { generateEncounter, resolveTravel, selectEncounterInterceptor } from '../actions/travel.js';
+import { resolveCombat, tributeForRound } from '../actions/combat.js';
+import { natWireStories } from '../wire.js';
+import {
+  calculateRouteDanger,
+  generateEncounter,
+  resolveTravel,
+  selectEncounterInterceptor,
+} from '../actions/travel.js';
 import { applyPlayerAction } from '../day.js';
 import { SeededRng } from '../rng.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
@@ -32,7 +38,7 @@ function fixtureEncounter(overrides: Partial<EncounterState> = {}): EncounterSta
       tier: 1,
     },
     routeDangerLevel: 1,
-    routeDangerChance: 0.08,
+    routeDangerChance: 0.3, // T-1103: tier-1 core chance (was 0.08); fixture literal, not an assertion
     encounterRoll: 0.01,
     round: 1,
     enemyHull: 1,
@@ -96,21 +102,239 @@ describe('Encounter system', () => {
     expect(first.events.some((event) => event.type === 'EncounterStarted')).toBe(true);
   });
 
-  it('respects player tier bands across 500 seeded interceptor selections', () => {
-    for (let playerTier = 1; playerTier <= 5; playerTier += 1) {
-      for (let seed = 1; seed <= 500; seed += 1) {
-        const state = readyState(seed);
-        state.player.tier = playerTier as GameState['player']['tier'];
-        const interceptor = selectEncounterInterceptor(state, 1, 27, 5, new SeededRng(seed));
-        expect(interceptor.tier).toBeGreaterThanOrEqual(Math.max(1, playerTier - 1));
-        expect(interceptor.tier).toBeLessThanOrEqual(Math.min(5, playerTier + 1));
+  it('matchmaking is route-correct and non-degenerate across a 500-seed sweep', () => {
+    // Replaces the old 500-seed test, which only asserted interceptor.tier was in
+    // the player-tier ±1 band — a clamp computed three lines above the selection,
+    // so it tested the clamp against itself and exercised none of the real
+    // matchmaking. This sweep drives the behaviors that test never touched: route
+    // -correct anonymous kinds, that BOTH named and anonymous interceptors are
+    // actually selected, and that every tier surfaces.
+    //
+    // Route facts (travel.ts routeKind/allowedAnonymousKinds) hard-coded here so
+    // we test against the intended contract, not module internals:
+    //   core (1->2):      PIRATE, PATROL, BRIGAND
+    //   rim  (1->17):     RIM_PIRATE, PIRATE, BRIGAND, REPTILOID  (T-1101: the
+    //                     Reptiloids re-homed onto the reachable rim frontier,
+    //                     since §10 seals the Andromeda lanes they used to work)
+    //   andromeda (1->22): REPTILOID only
+    const ROUTES = [
+      { name: 'core', dest: 2, allowed: ['PIRATE', 'PATROL', 'BRIGAND'] },
+      { name: 'rim', dest: 17, allowed: ['RIM_PIRATE', 'PIRATE', 'BRIGAND', 'REPTILOID'] },
+      { name: 'andromeda', dest: 22, allowed: ['REPTILOID'] },
+    ] as const;
+
+    let sawNamed = false;
+    let sawAnonymous = false;
+    const tiersSeen = new Set<number>();
+
+    for (const route of ROUTES) {
+      const anonKindsSeen = new Set<string>();
+
+      for (let playerTier = 1; playerTier <= 5; playerTier += 1) {
+        for (let seed = 1; seed <= 500; seed += 1) {
+          const state = readyState(seed);
+          state.player.tier = playerTier as GameState['player']['tier'];
+          const interceptor = selectEncounterInterceptor(
+            state,
+            1,
+            route.dest,
+            3,
+            new SeededRng(seed),
+          );
+
+          tiersSeen.add(interceptor.tier);
+          // Secondary sanity: the tier band contract still holds (kept, but no
+          // longer the ONLY assertion). T-1603 owns canonical balance targets.
+          expect(interceptor.tier).toBeGreaterThanOrEqual(Math.max(1, playerTier - 1));
+          expect(interceptor.tier).toBeLessThanOrEqual(Math.min(5, playerTier + 1));
+
+          if (interceptor.source === 'named') {
+            sawNamed = true;
+          } else {
+            sawAnonymous = true;
+            // Anonymous interceptors carry a route-restricted kind; named ones do
+            // not, so kind-band correctness is asserted only on anonymous picks.
+            expect(interceptor.kind).toBeDefined();
+            anonKindsSeen.add(interceptor.kind as string);
+            expect(route.allowed).toContain(interceptor.kind);
+          }
+        }
+      }
+
+      // Route-specific negative/positive guarantees the old test never made.
+      if (route.name === 'core') {
+        expect(anonKindsSeen.has('REPTILOID')).toBe(false);
+        expect(anonKindsSeen.has('RIM_PIRATE')).toBe(false);
+      }
+      if (route.name === 'rim') {
+        // T-1101 acceptance: Reptiloids are reachable in a seed sweep on a route
+        // the player can actually travel (the rim frontier), not the sealed
+        // Andromeda lane. This is the "Reptiloids reachable" criterion.
+        expect(anonKindsSeen.has('REPTILOID')).toBe(true);
+      }
+      if (route.name === 'andromeda') {
+        // Every anonymous interceptor on an Andromeda lane is a Reptiloid.
+        expect([...anonKindsSeen]).toEqual(['REPTILOID']);
       }
     }
+
+    // Non-degeneracy: matchmaking actually reaches BOTH pools (a bug that only
+    // ever picked named — or only anonymous — would pass the old test).
+    expect(sawNamed).toBe(true);
+    expect(sawAnonymous).toBe(true);
+    // Every tier 1-5 is reachable across the sweep.
+    expect([...tiersSeen].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('fires encounters within a stated frequency band per danger tier (1,000 seeds)', () => {
+    // T-1103 acceptance: a 1,000-jump seeded frequency test lands within a stated
+    // band per danger tier. generateEncounter is called directly (bypassing the
+    // day.ts destination gate), so a sealed Andromeda dest is fine here. Each tier
+    // is ASSERTED via calculateRouteDanger before the loop so the fixture cannot
+    // silently drift off its intended tier. Bands are ±0.05 around the table value
+    // (~3.2σ at n=1000). T-1603 owns canonical balance targets.
+    //
+    // The table rates are the VETERAN-game rates: generateEncounter damps the
+    // chance 0.5x during TOUR_ONE (see TOUR_ONE_ENCOUNTER_MULTIPLIER in
+    // travel.ts), so this test flips the fixture era to measure the undamped
+    // table. The damping itself is asserted separately below.
+    const cases = [
+      { tier: 1, dest: 2, chance: 0.3, band: [0.25, 0.35], contractDest: undefined },
+      { tier: 2, dest: 14, chance: 0.35, band: [0.3, 0.4], contractDest: undefined },
+      { tier: 3, dest: 14, chance: 0.4, band: [0.35, 0.45], contractDest: 14 },
+      { tier: 4, dest: 17, chance: 0.5, band: [0.45, 0.55], contractDest: undefined },
+      { tier: 5, dest: 22, chance: 0.6, band: [0.55, 0.65], contractDest: undefined },
+    ] as const;
+
+    for (const testCase of cases) {
+      const routeState = readyState();
+      routeState.era = 'VETERAN'; // measure the undamped table rates
+      if (testCase.contractDest !== undefined) {
+        routeState.player.activeContract = {
+          destination: testCase.contractDest,
+          cargoType: 1,
+          payment: 100,
+          pods: 1,
+        };
+      }
+
+      const { routeDangerLevel, routeDangerChance } = calculateRouteDanger(
+        routeState,
+        1,
+        testCase.dest,
+      );
+      expect(routeDangerLevel).toBe(testCase.tier);
+      expect(routeDangerChance).toBe(testCase.chance);
+
+      let hits = 0;
+      for (let seed = 1; seed <= 1000; seed += 1) {
+        if (generateEncounter(routeState, 1, testCase.dest, 50, new SeededRng(seed))) {
+          hits += 1;
+        }
+      }
+      const rate = hits / 1000;
+      expect(rate).toBeGreaterThanOrEqual(testCase.band[0]);
+      expect(rate).toBeLessThanOrEqual(testCase.band[1]);
+    }
+  });
+
+  it('Tour One damps the encounter chance 0.5x (era read by generateEncounter)', () => {
+    // T-1103: PRD authors Tour One around "one full combat", so the veteran
+    // table rate is halved while state.era === 'TOUR_ONE'. Same 1,000-seed
+    // sweep as above on the tier-1 core route: veteran ~0.30, Tour One ~0.15.
+    const measure = (era: 'TOUR_ONE' | 'VETERAN'): number => {
+      const routeState = readyState();
+      routeState.era = era;
+      let hits = 0;
+      for (let seed = 1; seed <= 1000; seed += 1) {
+        if (generateEncounter(routeState, 1, 2, 50, new SeededRng(seed))) hits += 1;
+      }
+      return hits / 1000;
+    };
+    const tourOne = measure('TOUR_ONE');
+    const veteran = measure('VETERAN');
+    expect(tourOne).toBeGreaterThanOrEqual(0.1);
+    expect(tourOne).toBeLessThanOrEqual(0.2);
+    // Identical seeds, so the damped set is a strict subset: exactly the rolls
+    // under half the table chance survive.
+    expect(veteran).toBeGreaterThan(tourOne);
+  });
+
+  it('the post-flip (VETERAN) era runs the encounter chance UNDAMPED (era gate drops the damp)', () => {
+    // T-1802: T-1301 flips state.era TOUR_ONE -> VETERAN, and generateEncounter
+    // (travel.ts) applies TOUR_ONE_ENCOUNTER_MULTIPLIER (0.5x) ONLY while
+    // era === 'TOUR_ONE'. This is the mirror of the Tour One damping test above:
+    // it pins the *undamped* post-flip side so a regression that dropped the era
+    // condition (damping every era) goes red. Same 1,000-seed tier-1 core sweep,
+    // each seed forking its own rng so no golden fixture is perturbed.
+    const measure = (era: 'TOUR_ONE' | 'VETERAN'): number => {
+      const routeState = readyState();
+      routeState.era = era;
+      let hits = 0;
+      for (let seed = 1; seed <= 1000; seed += 1) {
+        if (generateEncounter(routeState, 1, 2, 50, new SeededRng(seed))) hits += 1;
+      }
+      return hits / 1000;
+    };
+
+    const veteran = measure('VETERAN');
+    const tourOne = measure('TOUR_ONE');
+
+    // Undamped tier-1 core table rate is ~0.30 (routeDangerChance). If the era
+    // condition regressed and the 0.5x damp applied post-flip too, veteran would
+    // collapse to ~0.15 — outside this band. This bound is the mutation trip-wire.
+    expect(veteran).toBeGreaterThanOrEqual(0.25);
+    expect(veteran).toBeLessThanOrEqual(0.35);
+    // Same seeds → the damped Tour One set is a strict subset, so the post-flip
+    // rate must be materially higher, not merely non-decreasing.
+    expect(veteran).toBeGreaterThan(tourOne);
+  });
+
+  it('a failed pilot check still produces an encounter (trigger decoupled from success)', () => {
+    // T-1103 acceptance: a botched jump is no longer perfectly safe. Route 1->2
+    // has DC travelDc(dist)=10; a die of 1 with PILOT 0 always fails the check.
+    // Find a seed whose encounter roll < 0.30 (tier-1 core chance) so the jump is
+    // both failed AND intercepted, then assert all three signals of decoupling.
+    const losingRoute = () => {
+      const state = readyState();
+      state.player.dawnHand = { dice: [1], spent: [false] };
+      state.player.stats[Stat.PILOT] = 0;
+      return state;
+    };
+
+    let chosenSeed = -1;
+    for (let seed = 1; seed <= 10_000; seed += 1) {
+      // Probe with a throwaway state: encounter roll < 0.30 means a hit on 1->2.
+      if (generateEncounter(readyState(), 1, 2, 5, new SeededRng(seed))) {
+        chosenSeed = seed;
+        break;
+      }
+    }
+    expect(chosenSeed).toBeGreaterThan(0);
+
+    const { state: nextState, events } = resolveTravel(
+      losingRoute(),
+      { type: 'Travel', destinationId: 2, spendDie: 0 },
+      new SeededRng(chosenSeed),
+    );
+
+    const statCheck = events.find((event) => event.type === 'StatCheck');
+    expect(statCheck).toBeDefined();
+    if (statCheck?.type !== 'StatCheck') throw new Error('unreachable');
+    expect(statCheck.result.success).toBe(false);
+    expect(nextState.encounter).toBeTruthy();
+    expect(events.some((event) => event.type === 'EncounterStarted')).toBe(true);
   });
 
   it('round-trips an encounter through JSON mid-travel', () => {
     const state = readyState();
     state.encounter = fixtureEncounter();
+    // T-1102: maxFuel is now hull-derived and deserialize re-syncs it, clamping
+    // fuel to the ceiling. readyState's generous 1000 fuel exceeds the junker's
+    // 300 cap; use a within-cap value so the state is a consistent (real-game)
+    // round-trip subject. The encounter payload — the actual subject here — is
+    // unaffected.
+    state.player.ship.fuel = 250;
 
     expect(deserializeState(serializeState(state))).toEqual(state);
   });
@@ -249,11 +473,14 @@ describe('Encounter system', () => {
     );
 
     expect(nextState.encounter).toBeNull();
-    expect(nextState.player.credits).toBe(500);
+    // T-1202: the DEMAND is the round-1 schedule (1000), but margin scales what is
+    // actually paid. die 19 + TRADE 1 vs DC 11 → margin 9 → 45% off → paid 550, so
+    // 1500 - 550 = 950 remain.
+    expect(nextState.player.credits).toBe(950);
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'TributeDemanded', amount: 1000, affordable: true }),
     );
-    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 1000 }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 550 }));
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'EncounterResolved', resolution: 'talked-down' }),
     );
@@ -299,11 +526,13 @@ describe('Encounter system', () => {
       new SeededRng(1),
     );
 
-    expect(nextState.player.credits).toBe(10_000);
+    // T-1202: the DEMAND still caps at 10,000 (the point of this test), but the
+    // margin-9 talk-down shaves 45% off the payment → paid 5,500, leaving 14,500.
+    expect(nextState.player.credits).toBe(14_500);
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'TributeDemanded', amount: 10_000 }),
     );
-    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 10_000 }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 5_500 }));
   });
 
   it('enemy flaw check can refuse tribute and keep combat active', () => {
@@ -360,8 +589,9 @@ describe('Encounter system', () => {
     // accepted normally.
     expect(events.some((event) => event.type === 'FlawCheck')).toBe(false);
     expect(nextState.encounter).toBeNull();
-    expect(nextState.player.credits).toBe(4000);
-    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 1000 }));
+    // T-1202: margin-9 talk-down → paid 550 (not the full 1000 demand) → 5000-550.
+    expect(nextState.player.credits).toBe(4450);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'TributePaid', amount: 550 }));
     expect(events).toContainEqual(
       expect.objectContaining({ type: 'EncounterResolved', resolution: 'talked-down' }),
     );
@@ -471,8 +701,13 @@ describe('Encounter system', () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: 'ComponentDamaged',
+          // T-1205: seeded target — under SeededRng(1) the pick lands on 'shields'
+          // (index 0 of the damage table); junker shields mitigate 0.
           component: 'shields',
-          newCondition: 8,
+          // T-1202: interceptor GUNS 20 → margin 22 (>=10) → the clean hit takes 2
+          // condition, 9 -> 7 (foundation flat-1 damage → margin-scaled).
+          newCondition: 7,
+          mitigated: 0,
         }),
       ]),
     );
@@ -480,7 +715,16 @@ describe('Encounter system', () => {
     expect(roundTwo.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: 'CombatEvent', stance: 'fight', enemyHullRemaining: 1 }),
-        expect.objectContaining({ type: 'ComponentDamaged', component: 'drives', newCondition: 8 }),
+        // T-1202: same big-margin interceptor hit takes 2 condition, 9 -> 7.
+        // T-1205: the struck component is now a SEEDED pick (was the round-based
+        // rotation's 'drives'); under SeededRng(2) the pick lands on 'weapons'.
+        // Junker shields mitigate 0, so the damage is still the margin-scaled 2.
+        expect.objectContaining({
+          type: 'ComponentDamaged',
+          component: 'weapons',
+          newCondition: 7,
+          mitigated: 0,
+        }),
       ]),
     );
     expect(roundThree.state.encounter).toBeNull();
@@ -555,7 +799,13 @@ describe('Encounter system', () => {
     state.player.dawnHand = { dice: [1], spent: [false] };
     state.player.ship.hull.condition = 1;
     state.encounter = fixtureEncounter({
-      round: 4,
+      // T-1205: the struck component is now a SEEDED pick, not the old round-4
+      // rotation that guaranteed hull. This is a run (die 1 → nat-1 auto-fail),
+      // so the enemy presses and its hit lands on hull, driving the condition-1
+      // hull to 0 and firing ShipLost — the "hull damageable on any round"
+      // behaviour. T-1207 re-picked the seed (14 → 15): the opposed run now draws
+      // an enemy pursuit d20 BEFORE the pressure roll, shifting the stream, so a
+      // fresh hand-picked seed is needed for the pressure hit to land on hull.
       interceptor: {
         ...fixtureEncounter().interceptor,
         stats: { PILOT: 1, GUNS: 20, TRADE: 0, GRIT: 0, GUILE: 1 },
@@ -565,7 +815,7 @@ describe('Encounter system', () => {
     const { state: nextState, events } = resolveCombat(
       state,
       { type: 'Combat', stance: 'run', targetId: state.encounter.interceptor.id, spendDie: 0 },
-      new SeededRng(1),
+      new SeededRng(15),
     );
 
     expect(nextState.encounter).toBeNull();
@@ -600,5 +850,206 @@ describe('Encounter system', () => {
     expect(nextState.player.currentSystemId).toBe(2);
     expect(nextState.player.credits).toBe(350);
     expect(nextState.player.activeContract).toBeNull();
+  });
+});
+
+describe('T-1207 · tribute class modifiers', () => {
+  // Foundation restore: a Brigand HALVES the round demand, a Reptiloid DOUBLES it;
+  // every other class (and named interceptors, which carry no `kind`) is unmodified.
+  it.each([
+    ['BRIGAND', 4, 2000], // base 4000 ÷2
+    ['REPTILOID', 4, 8000], // base 4000 ×2
+    ['REPTILOID', 6, 10_000], // base 6000 ×2 = 12000 → capped at TRIBUTE_MAX
+    ['PIRATE', 4, 4000],
+    ['PATROL', 4, 4000],
+    ['RIM_PIRATE', 4, 4000],
+  ] as const)('tributeForRound(%s, round %d) === %d', (kind, round, expected) => {
+    expect(tributeForRound(round, kind)).toBe(expected);
+  });
+
+  it('a named interceptor (no kind) takes the unmodified schedule', () => {
+    expect(tributeForRound(4)).toBe(4000);
+  });
+
+  it('the resolver threads the class modifier into TributeDemanded (BRIGAND ÷2)', () => {
+    // Integration: proves the resolver reads encounter.interceptor.kind, not just
+    // the pure helper. A Brigand demands HALF the round schedule; die 19 + TRADE 1
+    // is a non-nat success (margin 9 → 45% off the payment) but the DEMAND is the
+    // class-scaled 2,000 (round 4 base 4,000 ÷2).
+    const state = readyState();
+    state.player.dawnHand = { dice: [19], spent: [false] };
+    state.player.credits = 5000;
+    state.encounter = fixtureEncounter({
+      round: 4,
+      interceptor: {
+        ...fixtureEncounter().interceptor,
+        id: 'anon-brigand-1',
+        kind: 'BRIGAND',
+      },
+    });
+
+    const { events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: 'anon-brigand-1', spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'TributeDemanded', amount: 2000 }),
+    );
+  });
+
+  it('a REPTILOID demand is doubled through the resolver', () => {
+    const state = readyState();
+    state.player.dawnHand = { dice: [19], spent: [false] };
+    state.player.credits = 50_000;
+    state.encounter = fixtureEncounter({
+      round: 3,
+      interceptor: {
+        ...fixtureEncounter().interceptor,
+        id: 'anon-reptiloid-1',
+        kind: 'REPTILOID',
+        stats: { PILOT: 5, GUNS: 0, TRADE: 0, GRIT: 1, GUILE: 2 },
+      },
+    });
+
+    const { events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'talk', targetId: 'anon-reptiloid-1', spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    // round 3 base 3,000 ×2 = 6,000 demanded.
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'TributeDemanded', amount: 6000 }),
+    );
+  });
+});
+
+describe('T-1207 · opposed run & enemy retreat', () => {
+  it('a run emits StatChecks for BOTH actors (player break-off + enemy pursuit)', () => {
+    // A non-nat run die (10): the player's opposed PILOT break-off and a fresh
+    // enemy pursuit roll BOTH surface a StatCheck.
+    const state = readyState();
+    state.player.dawnHand = { dice: [10], spent: [false] };
+    state.encounter = fixtureEncounter();
+
+    const { state: next, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'run', targetId: state.encounter.interceptor.id, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    const playerRun = events.find(
+      (e) => e.type === 'StatCheck' && e.actor === 'Player' && e.stat === Stat.PILOT,
+    );
+    const enemyPursuit = events.find(
+      (e) =>
+        e.type === 'StatCheck' &&
+        e.actor === state.encounter!.interceptor.name &&
+        e.actionContext === 'npc-combat',
+    );
+    expect(playerRun).toBeDefined();
+    expect(enemyPursuit).toBeDefined();
+    if (playerRun?.type !== 'StatCheck') throw new Error('unreachable');
+
+    // Escape iff the player's opposed check succeeds; otherwise the encounter runs on.
+    if (playerRun.result.success) {
+      expect(next.encounter).toBeNull();
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'EncounterResolved', resolution: 'escaped' }),
+      );
+    } else {
+      expect(next.encounter).not.toBeNull();
+    }
+  });
+
+  it('a seeded enemy nat-20 retreat escapes the kill and rides the wire (miracle burn)', () => {
+    // The player lands the killing volley (die 20 + GUNS 20 vs a hull-1 tier-1
+    // interceptor), but the interceptor's opposed retreat roll comes up a natural
+    // 20 → it slips the kill (interceptor-escaped) rather than being destroyed.
+    // A nat-20 auto-succeeds regardless of the kill-pressure edge, so this is the
+    // guaranteed "miracle burn". Search for the seed whose retreat d20 is 20.
+    const buildKillState = () => {
+      const state = readyState();
+      state.player.dawnHand = { dice: [20], spent: [false] };
+      state.player.stats[Stat.GUNS] = 20;
+      // Within the junker's hull-derived maxFuel (300) so the round-trip assertion
+      // below is a clean subject (deserialize re-syncs maxFuel and would otherwise
+      // clamp readyState's out-of-cap 1000 — same caveat as the mid-travel test).
+      state.player.ship.fuel = 250;
+      state.encounter = fixtureEncounter({ enemyHull: 1 });
+      return state;
+    };
+
+    let seed = -1;
+    for (let s = 1; s <= 5000; s += 1) {
+      const { events } = resolveCombat(
+        buildKillState(),
+        { type: 'Combat', stance: 'fight', targetId: 'anon-pirate-1', spendDie: 0 },
+        new SeededRng(s),
+      );
+      const retreat = events.find((e) => e.type === 'StatCheck' && e.actionContext === 'retreat');
+      if (retreat?.type === 'StatCheck' && retreat.result.nat20) {
+        seed = s;
+        break;
+      }
+    }
+    expect(seed).toBeGreaterThan(0);
+
+    const state = buildKillState();
+    const { state: next, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'fight', targetId: 'anon-pirate-1', spendDie: 0 },
+      new SeededRng(seed),
+    );
+
+    // The interceptor lived: interceptor-escaped, but the player won the field so
+    // the pending travel completes (system 2, unlike a player 'escaped' → origin).
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'EncounterResolved', resolution: 'interceptor-escaped' }),
+    );
+    expect(next.encounter).toBeNull();
+    expect(next.player.currentSystemId).toBe(2);
+    const retreatCheck = events.find(
+      (e) => e.type === 'StatCheck' && e.actionContext === 'retreat',
+    );
+    expect(retreatCheck?.type === 'StatCheck' && retreatCheck.actor).toBe(
+      state.encounter!.interceptor.name,
+    );
+    expect(retreatCheck?.type === 'StatCheck' && retreatCheck.result.nat20).toBe(true);
+
+    // The nat-20 retreat produces the miracle-burn wire story. Scan the returned
+    // events with a STABLE rng (matches the day-loop wire contract).
+    const wire = natWireStories(events, next.day, new SeededRng(seed), next.npcs);
+    expect(wire.some((w) => w.type === 'WireEntry' && /miracle burn/i.test(w.message))).toBe(true);
+
+    // The new resolution + 'retreat' actionContext survive a JSON round-trip (no
+    // GameState field added → no migration; the two additive event-enum values are
+    // backward-compatible and covered here through the schema).
+    expect(deserializeState(serializeState(next))).toEqual(next);
+  });
+
+  it('an ordinary killing volley destroys the interceptor (retreat fails → defeated)', () => {
+    // A low-PILOT interceptor under a seed whose retreat roll is not a nat-20 loses
+    // the opposed roll (the kill-pressure edge keeps escapes rare) → defeated.
+    const state = readyState();
+    state.player.dawnHand = { dice: [20], spent: [false] };
+    state.player.stats[Stat.GUNS] = 20;
+    state.encounter = fixtureEncounter({ enemyHull: 1 });
+
+    const { state: next, events } = resolveCombat(
+      state,
+      { type: 'Combat', stance: 'fight', targetId: 'anon-pirate-1', spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    const retreat = events.find((e) => e.type === 'StatCheck' && e.actionContext === 'retreat');
+    expect(retreat?.type === 'StatCheck' && retreat.result.nat20).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'EncounterResolved', resolution: 'defeated' }),
+    );
+    expect(next.encounter).toBeNull();
+    expect(next.player.currentSystemId).toBe(2);
   });
 });

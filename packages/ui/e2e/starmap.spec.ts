@@ -31,9 +31,10 @@ function sysNode(page: Page, id: number) {
 
 test('plan and execute a jump entirely via the map', async ({ page }) => {
   await page.goto('/');
-  // Seed 1 deals the dawn hand [17,15,15,7,4] on Sol (system 1). Die 0 (value 17)
-  // clears the DC-8 pilot check (+PILOT 1), and the seeded jump to the adjacent
-  // system triggers no encounter — a stable seed, not a retry.
+  // Seed 1 deals the dawn hand [17,15,15,7,4] on Sol (system 1). The Sol->
+  // Aldebaran-1 (1->2) jump spans distance 5, so travelDc(5)=10; Die 0 (value 17)
+  // + PILOT 1 = 18 clears that DC-10 pilot check, and the seeded jump to the
+  // adjacent system triggers no encounter — a stable seed, not a retry.
   await newGameSeed(page, 1);
 
   // 1) Assign a die from the hand.
@@ -86,15 +87,22 @@ test('fuel ring and route preview match engine math', async ({ page }) => {
   const units = await page.getByTestId('fuel-ring').getAttribute('data-radius-units');
   const expected = maxJumpDistance(STARTER_DRIVES, STARTER_FUEL, false);
   expect(Number(units)).toBe(expected);
-  expect(Number(units)).toBe(60);
+  // T-1102: the per-distance fuel cost (12·d for the starter drives) puts the
+  // ring at distance 25 (12·25 = 300), not the old flat-cap 60.
+  expect(Number(units)).toBe(25);
 });
 
 test('unreachable systems are visibly gated, not clickable-then-error', async ({ page }) => {
   await page.goto('/');
   // A full ship reaches everything, so gating is only demonstrable after a drain.
-  // Seed 3 lets us bounce between two core systems (1 <-> 14, 50 fuel/jump, the
-  // fastest lever) down to 0 fuel with no encounter — deterministic per seed.
-  await newGameSeed(page, 3);
+  // T-1102: under the per-distance cost the old 1<->14 lane (168 fuel/jump) can no
+  // longer bounce — one leg leaves 132 fuel, short of the 168 return. Bounce the
+  // cheap adjacent pair Sun-3 (1) <-> Aldebaran-1 (2) instead: distance 5, 60
+  // fuel/jump, so 300 fuel drains to exactly 0 in 5 jumps. T-1103: the encounter
+  // -rate repair (core 0.08 -> 0.30) means seed 3's drain now hits an interceptor
+  // that would stall the loop; re-derived offline to seed 8, whose full 1<->2
+  // drain to 0 stays encounter-free (verified deterministically per seed).
+  await newGameSeed(page, 8);
 
   for (let i = 0; i < 14; i++) {
     const units = Number(await page.getByTestId('fuel-ring').getAttribute('data-radius-units'));
@@ -109,7 +117,7 @@ test('unreachable systems are visibly gated, not clickable-then-error', async ({
         .locator('[data-testid="starmap-system"][data-here="1"]')
         .getAttribute('data-system-id'),
     );
-    const dest = here === 1 ? 14 : 1;
+    const dest = here === 1 ? 2 : 1;
     await unspent.first().click();
     await sysNode(page, dest).click();
     await page.getByTestId('confirm-jump').click();

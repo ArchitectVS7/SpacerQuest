@@ -2,40 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { advanceDay, applyPlayerAction, endDay, startDay } from '../day.js';
 import { createInitialState, serializeState, deserializeState } from '../state.js';
 import { DayPhase, PlayerAction } from '../types.js';
-
-const TEN_DAY_SCRIPT: PlayerAction[][] = [
-  [
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 20, spendDie: 0 },
-    { type: 'Travel', destinationId: 2, spendDie: 1 },
-    { type: 'Trade', action: 'pay-debt', amount: 50 },
-  ],
-  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 5, spendDie: 1 }],
-  [
-    { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
-    { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 1 },
-    { type: 'Travel', destinationId: 3, spendDie: 2 },
-  ],
-  [
-    { type: 'Trade', action: 'pay-debt', amount: 25 },
-    { type: 'Travel', destinationId: 4, spendDie: 1 },
-  ],
-  [{ type: 'Wait' }],
-  [{ type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 }, { type: 'Wait' }],
-  [
-    { type: 'Travel', destinationId: 5, spendDie: 0 },
-    { type: 'Trade', action: 'pay-debt', amount: 100 },
-  ],
-  [
-    { type: 'Trade', action: 'haggle', contractIndex: 0, spendDie: 0 },
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 1 },
-  ],
-  [{ type: 'Travel', destinationId: 6, spendDie: 1 }],
-  [
-    { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
-    { type: 'Wait' },
-    { type: 'Trade', action: 'pay-debt', amount: 10 },
-  ],
-];
+import {
+  DAY_LOOP_GOLDEN_EVENTS_HASH,
+  DAY_LOOP_GOLDEN_STATE_HASH,
+  SEED,
+  STORYLET_GOLDEN_EVENTS_HASH,
+  STORYLET_GOLDEN_STATE_HASH,
+  STORYLET_SCRIPT,
+  STORYLET_SEED,
+  TEN_DAY_SCRIPT,
+  runDayLoopGolden,
+} from './fixtures/day-loop-golden.js';
 
 describe('Day loop', () => {
   it('advances day deterministically', () => {
@@ -101,33 +78,32 @@ describe('Day loop', () => {
     expect(loggedDayAdvancedIndex).toBeGreaterThan(loggedDebtDueIndex);
   });
 
-  it('produces the same results when advanced in phases for 10 scripted days', () => {
-    let batchState = createInitialState(1);
-    let steppedState = createInitialState(1);
+  it('matches the committed golden for a 10-day scripted batch advance', () => {
+    // Replaces the old batch-vs-stepped equivalence test, which compared
+    // advanceDay against a hand-inlined copy of its own body (startDay ->
+    // applyPlayerAction* -> endDay) — a tautology that can never go red because a
+    // rule change moves both sides identically. Here the final state and the
+    // day-event stream are pinned to COMMITTED hashes (fixtures/day-loop-golden),
+    // so any drift in the real day loop is caught. Regenerate the golden via
+    // gen-day-loop-golden.ts when a rule deliberately changes.
+    const golden = runDayLoopGolden(SEED, TEN_DAY_SCRIPT);
+    expect(golden.stateHash).toBe(DAY_LOOP_GOLDEN_STATE_HASH);
+    expect(golden.eventsHash).toBe(DAY_LOOP_GOLDEN_EVENTS_HASH);
+  });
 
-    for (const actions of TEN_DAY_SCRIPT) {
-      const batchResult = advanceDay(batchState, actions);
+  it('matches the committed golden across a Storylet action', () => {
+    // Anchors the Storylet action path (Sun-3 guild-auditor is deterministically
+    // available on day 1 at seed 555) against committed golden hashes — the
+    // coverage the deleted batch-vs-stepped storylet test provided, now guarded
+    // by a golden instead of a tautological self-comparison.
+    const availability = startDay(createInitialState(STORYLET_SEED));
+    expect(availability.state.storylets.available.map((offer) => offer.storyletId)).toContain(
+      'port.sun3.guild-auditor',
+    );
 
-      const dawn = startDay(steppedState);
-      let nextSteppedState = dawn.state;
-      const steppedEvents = [...dawn.events];
-
-      for (const action of actions) {
-        const result = applyPlayerAction(nextSteppedState, action);
-        nextSteppedState = result.state;
-        steppedEvents.push(...result.events);
-      }
-
-      const dusk = endDay(nextSteppedState);
-      steppedEvents.push(...dusk.events);
-
-      expect(steppedEvents).toEqual(batchResult.events);
-
-      batchState = batchResult.state;
-      steppedState = dusk.state;
-    }
-
-    expect(steppedState).toEqual(batchState);
+    const golden = runDayLoopGolden(STORYLET_SEED, STORYLET_SCRIPT);
+    expect(golden.stateHash).toBe(STORYLET_GOLDEN_STATE_HASH);
+    expect(golden.eventsHash).toBe(STORYLET_GOLDEN_EVENTS_HASH);
   });
 
   it('can serialize and resume mid-day with the same final state as batch advance', () => {
@@ -157,36 +133,6 @@ describe('Day loop', () => {
     const resumed = endDay(resumedState);
 
     expect(resumed.state).toEqual(batch.state);
-  });
-
-  it('produces identical batch vs stepped results across a Storylet action', () => {
-    // The Sun-3 auditor storylet is deterministically available on day 1 (start
-    // system 1, TOUR_ONE), so it can anchor the batch/stepped equivalence.
-    const actions: PlayerAction[] = [
-      { type: 'Storylet', storyletId: 'port.sun3.guild-auditor', choiceId: 'argue', spendDie: 0 },
-      { type: 'Travel', destinationId: 2, spendDie: 1 },
-    ];
-
-    const availability = startDay(createInitialState(555));
-    expect(availability.state.storylets.available.map((offer) => offer.storyletId)).toContain(
-      'port.sun3.guild-auditor',
-    );
-
-    const batch = advanceDay(createInitialState(555), actions);
-
-    const dawn = startDay(createInitialState(555));
-    let steppedState = dawn.state;
-    const steppedEvents = [...dawn.events];
-    for (const action of actions) {
-      const result = applyPlayerAction(steppedState, action);
-      steppedState = result.state;
-      steppedEvents.push(...result.events);
-    }
-    const dusk = endDay(steppedState);
-    steppedEvents.push(...dusk.events);
-
-    expect(steppedEvents).toEqual(batch.events);
-    expect(dusk.state).toEqual(batch.state);
   });
 
   it('serializes and resumes mid-day across a Storylet action', () => {
@@ -247,5 +193,68 @@ describe('Day loop', () => {
     expect(dusk.events).toContainEqual(
       expect.objectContaining({ type: 'EnemyCounterAction', pressure: 'day-end' }),
     );
+  });
+});
+
+describe('Destination gate (T-1101)', () => {
+  /** A DAY-phase state with a fresh dawn hand and a full tank. */
+  function dayState(seed = 42): ReturnType<typeof startDay>['state'] {
+    const state = startDay(createInitialState(seed));
+    const next = state.state;
+    next.player.ship.fuel = next.player.ship.maxFuel;
+    return next;
+  }
+
+  it.each([
+    ['NEMESIS', 28],
+    ['Andromeda', 22],
+  ])('blocks Travel to a gated destination (%s) with a typed fail, not a throw', (_label, dest) => {
+    const state = dayState();
+    const before = structuredClone(state);
+
+    let result: ReturnType<typeof applyPlayerAction> | undefined;
+    expect(() => {
+      result = applyPlayerAction(state, { type: 'Travel', destinationId: dest, spendDie: 0 });
+    }).not.toThrow();
+    if (!result) throw new Error('unreachable');
+
+    const blocked = {
+      type: 'ActionBlocked',
+      day: state.day,
+      actionType: 'Travel',
+      reason: 'destination-locked',
+    };
+    // Typed fail — the only event, appended to the log, and NOTHING else moved:
+    // no die spent, dayEventCount unchanged, system unchanged (mirrors the
+    // encounter-block precedent).
+    expect(result.events).toEqual([blocked]);
+    expect(result.state.eventLog).toEqual([...before.eventLog, blocked]);
+    expect(result.state.dayEventCount).toBe(before.dayEventCount);
+    expect(result.state.player.currentSystemId).toBe(before.player.currentSystemId);
+    expect(result.state.player.dawnHand?.spent).toEqual(before.player.dawnHand?.spent);
+    expect(result.state.player.dawnHand?.spent.some(Boolean)).toBe(false);
+  });
+
+  it('the nemesis.crossing.unlocked flag lifts the gate (the consumed reader)', () => {
+    const state = dayState();
+    state.flags['nemesis.crossing.unlocked'] = true;
+
+    const result = applyPlayerAction(state, { type: 'Travel', destinationId: 28, spendDie: 0 });
+
+    // No refusal: travel proceeds down the normal pilot-check path.
+    expect(
+      result.events.some(
+        (event) => event.type === 'ActionBlocked' && event.reason === 'destination-locked',
+      ),
+    ).toBe(false);
+    expect(result.events.some((event) => event.type === 'StatCheck')).toBe(true);
+  });
+
+  it('core travel is unaffected by the gate', () => {
+    const state = dayState();
+    const result = applyPlayerAction(state, { type: 'Travel', destinationId: 2, spendDie: 0 });
+
+    expect(result.events.some((event) => event.type === 'ActionBlocked')).toBe(false);
+    expect(result.events.some((event) => event.type === 'StatCheck')).toBe(true);
   });
 });

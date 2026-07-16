@@ -60,10 +60,14 @@ Discriminated on `type`:
 
 `ProtocolErrorCode`: `no-session` (a request other than new-game/reset arrived
 before a game existed), `wrong-phase` (lifecycle/action issued in the wrong day
-phase), `action-blocked` (a legal-shape action the engine refused — an active
-encounter blocks trade/travel/shipyard/explore), `apply-failed` (a malformed
-action a resolver rejected, e.g. a missing required die), `unknown-request` (an
-unrecognized or non-JSON request line).
+phase), `apply-failed` (a malformed action a resolver rejected, e.g. a missing
+required die), `unknown-request` (an unrecognized or non-JSON request line).
+
+A legal-shape action the engine *refuses* (an active encounter blocks
+trade/travel/shipyard/explore) is **not** an error: it comes back as an
+`action-result` whose `events` contain a typed `ActionBlocked`, and the block is
+recorded in the session's `eventLog` (see **Blocked** under `apply-action`). This
+keeps the protocol's event stream identical to the UI's.
 
 **The core never throws for a well-formed request.** Phase violations, blocked
 actions, and malformed actions all come back as typed `error` responses, and on
@@ -112,6 +116,10 @@ A compact, agent-facing view — deliberately **not** the raw `GameState`. Field
 | `systemId`, `systemName` | Current location.                                               |
 | `dawnHand`           | `{ dice: number[], spent: boolean[] }` — the day's rolled hand, or `null` before the first `start-day`. |
 | `diceRemaining`      | **Indices** into `dawnHand.dice` that are still unspent — the legal values for any action's `spendDie`. |
+| `rerollsRemaining`   | Re-roll charges left today (from a re-roll crew member); `0` with none. Spend via a `Reroll` action. |
+| `crew`               | Hired crew, by role id — the dice-progression source (T-1306: `extra-die` / `reroll` / `floor`). |
+| `crewCapacity`       | Cabin berths (the hiring cap; grows with cabin strength).           |
+| `ports`              | Owned port stakes, by system id — purchasable property (T-1307: each accrues per-dusk launch-fee income). |
 | `activeContract`     | The contract in the hold (`{ destination, destinationName, cargoType, payment, pods }`) or `null`. |
 | `encounter`          | Active interceptor (`{ id, interceptorId, interceptorName, tier, round, enemyHull, routeDangerLevel }`) or `null`. Blocks trade/travel/shipyard/explore. |
 | `manifestBoard`      | Signable contracts: `{ index, destination, destinationName, cargoType, payment, pods, haggled }[]`. |
@@ -142,10 +150,13 @@ interface LegalActions {
 - **DAWN** (or any non-DAY phase): `actions` is empty; `lifecycle` is
   `['start-day']`. No `PlayerAction` is legal until the day starts.
 - **DAY, no encounter**: trade (buy-fuel / sign-contract / haggle / pay-debt),
-  travel, explore, shipyard, and each eligible storylet choice — gated by dice,
-  fuel, and board state. `lifecycle` is `['end-day']`.
+  travel, explore, shipyard, visit-hangout, crew (hire while a berth is free /
+  dismiss while crew aboard), reroll (while a charge is banked), port (buy a stake
+  at a purchasable core port you don't already own), and each eligible storylet
+  choice — gated by dice, fuel, berths, and board state. `lifecycle` is
+  `['end-day']`.
 - **DAY, active encounter**: **only** `Combat` (trade/travel/shipyard/explore are
-  omitted — the engine would return `action-blocked`). `lifecycle` is
+  omitted — the engine refuses them with a typed `ActionBlocked`). `lifecycle` is
   `['end-day']`.
 - **Dice exhausted** (no unspent dice, nothing die-free to do): `actions` is
   empty; the only move is `end-day`.
@@ -210,9 +221,23 @@ Applies a single `PlayerAction` through the engine's **public** API
   failed pilot check, an unaffordable purchase, a missed haggle) are successful
   applications — their failure is reported inside `events`.
 - **Blocked** (an active encounter refuses trade/travel/shipyard/explore) →
-  `error` `action-blocked`; the session is not mutated.
-- **Malformed** (a resolver rejects the action, e.g. a required `spendDie` is
-  missing) → `error` `apply-failed`; the session is not mutated.
+  `action-result` whose `events` contain a typed `ActionBlocked`
+  (`{ actionType, reason: 'active-encounter' }`). The refusal is recorded in the
+  session's `eventLog` — matching what the UI commits — but no die is spent and no
+  other state changes (a pure log-append). Detect the refusal by scanning the
+  response `events` for `ActionBlocked`, not by an error code.
+- **Typed exploration fails** (T-1003) — a bad die selection on `Explore` is
+  **not** an error, because `spendDie` is optional/free-form on that action
+  shape: the engine resolves it as an `action-result` whose `events` carry a
+  typed `ExplorationFailed` with `reason` `no-die` (no `spendDie` given),
+  `invalid-die-index` (index outside the dawn hand), or `die-already-spent`.
+  No die is spent and no fuel is burned on these three; each also logs a
+  `WireEntry`. The same event reports Explore's *mechanical* failures —
+  `nav-check` and `insufficient-fuel` — which do spend the die.
+- **Malformed** (a resolver rejects the action's shape, e.g. a Trade, Shipyard,
+  or Combat action missing its **required** `spendDie`) → `error` `apply-failed`;
+  the session is not mutated. Note this does not apply to `Explore`, whose
+  missing/invalid die resolves as a typed `ExplorationFailed` event (above).
 - **Wrong phase** (not DAY) → `error` `wrong-phase`.
 
 ---

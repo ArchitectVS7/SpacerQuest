@@ -42,10 +42,11 @@ function dispositionOf(state: GameState, npcId: string): number {
   return state.npcs.find((npc) => npc.id === npcId)!.disposition;
 }
 
-describe('Disposition — grudges and favors (T-106)', () => {
-  it('paying tribute to a named interceptor raises their disposition (+2)', () => {
-    // Talk DC = 10 + tier 3 = 13; die 15 + TRADE 1 succeeds without a nat 20,
-    // so round-1 tribute (1,000 cr) is demanded and paid.
+describe('Disposition — grudges and favors (T-106 / T-1204)', () => {
+  it('paying tribute to a named interceptor raises their disposition (+3)', () => {
+    // Talk DC = 10 + tier 3 = 13 (Cargo King is neutral, no disposition term);
+    // die 15 + TRADE 1 succeeds without a nat 20, so round-1 tribute (1,000 cr)
+    // is demanded and paid. T-1204: the tribute delta is now +3 (content data).
     const state = combatReadyState([15, 5, 5, 5, 5]);
     const { state: next, events } = resolveCombat(
       state,
@@ -54,19 +55,20 @@ describe('Disposition — grudges and favors (T-106)', () => {
     );
 
     expect(events.some((e) => e.type === 'TributePaid')).toBe(true);
-    expect(dispositionOf(next, 'npc-cargo-king')).toBe(2);
+    expect(dispositionOf(next, 'npc-cargo-king')).toBe(3);
     expect(events).toContainEqual(
       expect.objectContaining({
         type: 'DispositionChanged',
         npcId: 'npc-cargo-king',
-        delta: 2,
+        delta: 3,
         reason: 'tribute',
       }),
     );
   });
 
-  it('defeating a named interceptor leaves a grudge (-3)', () => {
-    // Fight DC 13; die 18 + GUNS 0 wins, enemyHull 1 -> 0 -> defeated.
+  it('defeating a named interceptor leaves a serious grudge (-5)', () => {
+    // Fight DC 13; die 18 + GUNS 0 wins, enemyHull 1 -> 0 -> defeated. T-1204: a
+    // defeat now cuts a −5 grudge — a single organic defeat reaches |disposition| 5.
     const state = combatReadyState([18, 5, 5, 5, 5]);
     const { state: next, events } = resolveCombat(
       state,
@@ -75,19 +77,20 @@ describe('Disposition — grudges and favors (T-106)', () => {
     );
 
     expect(events).toContainEqual(expect.objectContaining({ resolution: 'defeated' }));
-    expect(dispositionOf(next, 'npc-cargo-king')).toBe(-3);
+    expect(dispositionOf(next, 'npc-cargo-king')).toBe(-5);
     expect(events).toContainEqual(
       expect.objectContaining({
         type: 'DispositionChanged',
         npcId: 'npc-cargo-king',
-        delta: -3,
+        delta: -5,
         reason: 'defeat',
       }),
     );
   });
 
-  it('fleeing a named interceptor is a small mark in your favor (+1)', () => {
-    // Run DC 13; die 19 + PILOT 1 escapes cleanly.
+  it('fleeing a named interceptor is a small mark in your favor (+2)', () => {
+    // Run DC 13; die 19 + PILOT 1 escapes cleanly. T-1204: the player-fled delta
+    // is now +2 (content data).
     const state = combatReadyState([19, 5, 5, 5, 5]);
     const { state: next, events } = resolveCombat(
       state,
@@ -96,28 +99,46 @@ describe('Disposition — grudges and favors (T-106)', () => {
     );
 
     expect(events).toContainEqual(expect.objectContaining({ resolution: 'escaped' }));
-    expect(dispositionOf(next, 'npc-cargo-king')).toBe(1);
+    expect(dispositionOf(next, 'npc-cargo-king')).toBe(2);
     expect(events).toContainEqual(
       expect.objectContaining({
         type: 'DispositionChanged',
         npcId: 'npc-cargo-king',
-        delta: 1,
+        delta: 2,
         reason: 'player-fled',
       }),
     );
   });
 
-  it('disposition decays one step toward 0 each dusk, from both directions', () => {
-    const state = createInitialState(7);
+  it('disposition decays one step toward 0 every DISPOSITION_DECAY_INTERVAL_DAYS dusks', () => {
+    // T-1204 decay rebalance: decay no longer fires EVERY dusk — it steps one
+    // point toward 0 only on a day divisible by DISPOSITION_DECAY_INTERVAL_DAYS
+    // (3). createInitialState starts at day 1, so advancing day 1 (1 % 3 != 0)
+    // must NOT decay; the next decay lands at the day-3 dusk. This is the slower
+    // fade that lets organic gains survive to the bond hook.
+    let state = createInitialState(7);
     state.npcs[0].disposition = 3;
     state.npcs[1].disposition = -3;
 
-    const { state: next, events } = advanceDay(state, []);
-
-    expect(next.npcs[0].disposition).toBe(2);
-    expect(next.npcs[1].disposition).toBe(-2);
+    // Day 1 dusk: no decay (1 % 3 != 0) — the gains hold.
+    let result = advanceDay(state, []);
+    expect(result.state.npcs[0].disposition).toBe(3);
+    expect(result.state.npcs[1].disposition).toBe(-3);
     expect(
-      events.filter((e) => e.type === 'DispositionChanged' && e.reason === 'decay'),
+      result.events.filter((e) => e.type === 'DispositionChanged' && e.reason === 'decay'),
+    ).toHaveLength(0);
+    state = result.state;
+
+    // Day 2 dusk: still no decay.
+    state = advanceDay(state, []).state;
+    expect(state.npcs[0].disposition).toBe(3);
+
+    // Day 3 dusk: decay fires (3 % 3 == 0) — one step toward 0 from both sides.
+    result = advanceDay(state, []);
+    expect(result.state.npcs[0].disposition).toBe(2);
+    expect(result.state.npcs[1].disposition).toBe(-2);
+    expect(
+      result.events.filter((e) => e.type === 'DispositionChanged' && e.reason === 'decay'),
     ).toHaveLength(2);
   });
 });
@@ -197,12 +218,13 @@ describe('Contract competition — the shared job pool (T-106)', () => {
   });
 });
 
-describe('Bond hook — one intervention per dusk (T-106)', () => {
-  it('a bonded NPC (disposition >= +5) answers a dry-tank mayday with fuel', () => {
+describe('Bond hook — one intervention per dusk (T-106 / T-1204)', () => {
+  it("Doc Salvage's fuel-gift bond hook answers a low-fuel mayday", () => {
     for (let seed = 1; seed <= 20; seed++) {
       const state = createInitialState(seed);
       const doc = state.npcs.find((npc) => npc.id === 'npc-doc-salvage')!;
       doc.currentSystemId = state.player.currentSystemId;
+      // Above Doc's data-driven activateAt (2); the beat comes from his profile.
       doc.disposition = 6;
 
       const dawn = startDay(state);
@@ -233,11 +255,13 @@ describe('Bond hook — one intervention per dusk (T-106)', () => {
     throw new Error('no fuel-gift intervention observed in 20 seeds');
   });
 
-  it('does not intervene below the bond threshold (disposition < +5)', () => {
+  it('does not intervene below the profile bond threshold (disposition < activateAt)', () => {
     const state = createInitialState(3);
     const doc = state.npcs.find((npc) => npc.id === 'npc-doc-salvage')!;
     doc.currentSystemId = state.player.currentSystemId;
-    doc.disposition = 4;
+    // Below Doc's activateAt (2): the hook is not live, so a dead tank goes
+    // unanswered.
+    doc.disposition = 1;
 
     const dawn = startDay(state);
     dawn.state.player.ship.fuel = 0;
@@ -247,12 +271,14 @@ describe('Bond hook — one intervention per dusk (T-106)', () => {
     expect(dusk.state.player.ship.fuel).toBe(0);
   });
 
-  it('a bonded NPC can drive an interceptor off before the dusk free attack', () => {
+  it("Admiral Stern's drive-off bond hook clears an interceptor before the dusk free attack", () => {
     for (let seed = 1; seed <= 20; seed++) {
       const state = createInitialState(seed);
-      const doc = state.npcs.find((npc) => npc.id === 'npc-doc-salvage')!;
-      doc.currentSystemId = state.player.currentSystemId;
-      doc.disposition = 7;
+      // Admiral Stern's Bond is protection → the drive-off beat (Doc's beat is
+      // fuel-gift, keyed to his own Bond). Standing above Stern's activateAt (3).
+      const stern = state.npcs.find((npc) => npc.id === 'npc-admiral-stern')!;
+      stern.currentSystemId = state.player.currentSystemId;
+      stern.disposition = 7;
 
       const dawn = startDay(state);
       dawn.state.encounter = {
@@ -293,11 +319,11 @@ describe('Bond hook — one intervention per dusk (T-106)', () => {
       expect(dusk.state.encounter).toBeNull();
       // Pending travel completes — the convoy limps in under escort.
       expect(dusk.state.player.currentSystemId).toBe(2);
-      // The rescue IS Doc's dusk action — he skips his own NPC day.
-      const docAfter = dusk.state.npcs.find((npc) => npc.id === 'npc-doc-salvage')!;
-      expect(docAfter.lastAction).toMatchObject({ type: 'Combat' });
-      expect(docAfter.lastAction?.details).toContain('driving');
-      expect(docAfter.currentSystemId).toBe(1);
+      // The rescue IS Stern's dusk action — he skips his own NPC day.
+      const sternAfter = dusk.state.npcs.find((npc) => npc.id === 'npc-admiral-stern')!;
+      expect(sternAfter.lastAction).toMatchObject({ type: 'Combat' });
+      expect(sternAfter.lastAction?.details).toContain('driving');
+      expect(sternAfter.currentSystemId).toBe(1);
       return;
     }
     throw new Error('no drive-off intervention observed in 20 seeds');

@@ -1,3 +1,5 @@
+import type { RenownRankId } from './deeds.js';
+import type { FragmentSource } from './nemesis.js';
 import { Stat } from './stats.js';
 import { defineStorylets } from './storyletValidation.js';
 
@@ -57,6 +59,23 @@ export interface StoryletTrigger {
     /** Offered only when the file holds THIS fragment id, still undecoded. */
     hasUndecodedFragmentId?: string;
   };
+  /** T-1302: gate on the LIVE world era EVENT (`state.eraEvent`), NOT the
+   *  campaign `EraId`. This is what lets a storylet be "delivered by the
+   *  economy" (PRD §8.3) — a plague, a blockade, a price spike — rather than
+   *  faked onto an ordinary contract. Reader: engine `triggerMatches`. */
+  eraEvent?: {
+    /** Active era event must have this defId (one of ERA_EVENTS). */
+    defId?: string;
+    /** Player's current system must be inside the event's affectedSystemIds. */
+    inAffectedSystem?: boolean;
+  };
+  /** T-1302: gate on renown rank — offered only when the player's rank is at or
+   *  above `minRank` in the RENOWN_RANK_ORDER. Reader: engine `triggerMatches`. */
+  renown?: { minRank: RenownRankId };
+  /** T-1302: gate on possessing an EARNED deed (registry.earned). Lets a
+   *  storylet fire off a specific accomplishment. Reader: engine
+   *  `triggerMatches`. */
+  deed?: { id: string };
 }
 
 export interface StoryletEffects {
@@ -73,6 +92,12 @@ export interface StoryletEffects {
   /** T-111b: grant a Signal Fragment into the nemesisFile (Wise One / a broker
    *  who does not know what they have). Dedupes by id — monotonic. */
   grantFragment?: string;
+  /** T-1302: source recorded for the granted fragment (the `grantFragment`
+   *  above). Defaults to 'wise-one' (the broker) when omitted, preserving the
+   *  T-111b Day-30 hook's behavior. Reader: engine `applyEffects` grantFragment,
+   *  which stamps it onto the SignalFragmentRecord and the FragmentAcquired
+   *  event's `source`. */
+  fragmentSource?: FragmentSource;
   /** T-111b: the Sage of Mizar-9 decodes a held fragment into lore. No-op if
    *  the fragment is absent or already decoded. */
   decodeFragment?: string;
@@ -350,17 +375,31 @@ export const STORYLETS = defineStorylets([
     ],
   },
 
-  // --- Day-30 Wise One of Polaris-1 hook (T-113a) ---
-  // The decisive Day-30 beat (PRD §5.1): at Polaris-1 (system 17) the Wise One
-  // sells the captain the first fragment of the Nemesis Signal — the hook that
-  // opens the veteran game. There is no dedicated Wise One NPC in the cast
-  // (only the trader "Penny Wise"), so this gates on day + Polaris-1, not npc.
+  // T-1310: the economy-delivered vector that LEADS a player here — the Galactic-
+  // Wire rumor `wire.rimward.polaris-signal` — is appended with the rest of the
+  // T-1310 batch at the end of this table (batches append; see the storylet-content
+  // validation test's ORIGINAL-prefix invariant).
+
+  // --- Wise One of Polaris-1 hook (T-113a; windowed by T-1310) ---
+  // At Polaris-1 (system 17) the Wise One sells the captain the first fragment of
+  // the Nemesis Signal (frag-nemesis-01) — the SOLE grantor of that fragment and
+  // the only key into the decode arc (PRD §8.1/§8.3). There is no dedicated Wise
+  // One NPC in the cast (only the trader "Penny Wise"), so this gates on system +
+  // day, not npc.
   //
-  // T-111b: this now grants a REAL fragment (`grantFragment`) into the
-  // nemesisFile — the knowledge item the Sage of Mizar-9 later decodes. The flag
-  // `signal.fragment.wise-one-01` is kept alongside it as the hook-completion
-  // marker other content/UI may branch on. Resolution of the debt (cleared vs
-  // unpaid) and the veteran-unlock flag are T-113b, not authored here.
+  // T-1310 · DIVERGENCE from the T-113a day-30 design (and from foundation
+  // f2f95fa9, which has no arc at all): the trigger was `eras:['TOUR_ONE'] +
+  // day:{equals:30}`, a one-dawn knife-edge at a rim system no contract routed to.
+  // Miss that single dawn and frag-nemesis-01 was gone for good. It is now a WINDOW
+  // — `day:{gte:25}`, `repeat:'never'` — so it fires on the FIRST visit after day
+  // 25, whenever that lands. The `eras` gate is DELIBERATELY REMOVED: the era flips
+  // TOUR_ONE→VETERAN at dusk of day 30 (engine day.ts), so a late arrival (day 60+,
+  // VETERAN era) must still open the arc — an eras gate would silently close it.
+  //
+  // T-111b: grants a REAL fragment (`grantFragment`) into the nemesisFile — the
+  // knowledge item the Sage of Mizar-9 later decodes. Source defaults to 'wise-one'
+  // (see engine applyEffects). The flag `signal.fragment.wise-one-01` is the
+  // hook-completion marker other content/UI may branch on.
   {
     id: 'wise-one.polaris.signal-hook',
     title: 'The Wise One of Polaris-1',
@@ -368,9 +407,8 @@ export const STORYLETS = defineStorylets([
       'The Wise One keeps a cold cabin at the edge of Polaris-1 and a longer memory than the Guild. When you dock, the old spacer is already waiting with a data sliver held between two fingers. "A signal," they say, "from the wrong side of the black hole. You will want to hear the rest of it. That costs."',
     repeat: 'never',
     trigger: {
-      eras: ['TOUR_ONE'],
       systemIds: [17],
-      day: { equals: 30 },
+      day: { gte: 25 },
     },
     choices: [
       {
@@ -450,6 +488,10 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // T-1310: the Sage decode storylets for fragments 02–05 (the missing decode
+  // paths that leave everything found by exploring stuck raw) are appended with the
+  // rest of the T-1310 batch at the end of this table.
 
   // --- Derelict sealed-pod — the Contraband carrying choice (T-111b) ---
   // PRD §7.2: a boarded derelict can hold a sealed Contraband pod, and "carrying
@@ -588,16 +630,21 @@ export const STORYLETS = defineStorylets([
   //    matches PRD §7.2 (the false-name passenger "pays her fare in coordinates"
   //    the NEXT day), and the scheduled arrival guarantees the fare always
   //    resolves — reachable by play, never a soft dead-end.
-  //  - The PLAGUE-RELIEF exemplar is framed by the PRD as a plague-ERA event, but
-  //    the storylet schema has no era-event trigger (only TOUR_ONE / VETERAN
-  //    career eras). We deliver it "by the economy" as a Medicinals (type 4)
-  //    contract bound for an afflicted core system (Fomalhaut-2, system 7, per
-  //    PRD §7.1), which the manifest board produces naturally.
-  //  - The TICKING-CRATE exemplar is framed by the PRD as "the crate that ticks"
-  //    in cargo. `rollContract` never issues a Contraband (type 10) contract, so
-  //    rather than gate on an unreachable cargo type we attach it to a normal,
-  //    board-reachable Dilithium (type 9) run: an unlabelled crate slipped in
-  //    among the crystal. The smuggling flavour survives; the reachability does.
+  //  - PASSENGER arrivals resolve a day later via a scheduledOnly follow-up.
+  //
+  // (T-1302 update — the two exemplars below are NO LONGER divergences: the
+  //  storylet schema now carries real era-event / cargo-contract triggers, so
+  //  both fire on their genuine PRD hooks rather than a faked stand-in.)
+  //  - The PLAGUE-RELIEF exemplar (PRD §7.1, §8.3) is now delivered by the REAL
+  //    `plague` era event: a Medicinals (type 4) contract carried while an
+  //    Orbital Fever is live AND the ship is IN the afflicted system
+  //    (`trigger.eraEvent = { defId: 'plague', inAffectedSystem: true }`). The
+  //    plague epicentre is the scheduler's seeded core system, not a fixed port,
+  //    so the destination gate is gone.
+  //  - The TICKING-CRATE exemplar (PRD §8.3) now rides a REAL Contraband
+  //    (type 10) contract — the smuggling cargo T-1104 issues from the
+  //    ungoverned rim (`allowsContraband` ports). The unlabelled crate is wedged
+  //    among sealed contraband, exactly the "crate that ticks" the PRD names.
   //
   // BALANCE: these are new content, not ported from foundation/rules/ (which
   // carries no storylet constants). Credit/fuel deltas sit in the band the
@@ -736,19 +783,23 @@ export const STORYLETS = defineStorylets([
     ],
   },
   {
-    // PLAGUE-RELIEF EXEMPLAR (PRD §7.1). Delivered as a Medicinals (type 4)
-    // contract bound for Fomalhaut-2 (system 7), the fevered core port. "Run it
-    // in" KEEPS the contract, so the honest delivery earns the runtime
-    // `mercy_runner` Deed naturally on arrival; "sell to the profiteer" CLEARS
-    // the contract (no delivery, no Deed) for raw coin — the two-priced values
+    // PLAGUE-RELIEF EXEMPLAR (PRD §7.1, §8.3). T-1302: delivered by the REAL
+    // `plague` era event (Orbital Fever) — surfaces when a Medicinals (type 4)
+    // contract is carried INTO the afflicted system while the fever is live
+    // (`eraEvent: { defId: 'plague', inAffectedSystem: true }`). The economy
+    // itself delivers the story: the plague spikes medicine rates ×2.5 (era.ts),
+    // and a profiteer circles the desperate. "Run it in" KEEPS the contract, so
+    // the honest delivery earns its Deed naturally on arrival; "sell to the
+    // profiteer" CLEARS it (no delivery) for raw coin — the two-priced values
     // choice the PRD describes.
     id: 'cargo.medicinals.plague-relief',
     title: 'The Fever Run',
     prose:
-      'Fomalhaut-2 is running a fever, and the Medicinals in your hold are the relief run. A profiteer wires an offer before you have even cleared the gantry: sell him the lot, here, now, no questions and no shortage of coin.',
+      'The port you have made is running a fever, and the Medicinals in your hold are the relief run. A profiteer wires an offer before you have even cleared the gantry: sell him the lot, here, now, no questions and no shortage of coin.',
     repeat: 'never',
     trigger: {
-      cargo: { activeContractCargoType: 4, activeContractDestination: 7 },
+      cargo: { activeContractCargoType: 4 },
+      eraEvent: { defId: 'plague', inAffectedSystem: true },
     },
     choices: [
       {
@@ -924,15 +975,17 @@ export const STORYLETS = defineStorylets([
     ],
   },
   {
-    // TICKING-CRATE EXEMPLAR head (PRD §8.3). "Ride it out" is the requirement-
-    // free chaining choice: it schedules the aftermath for the next dawn.
+    // TICKING-CRATE EXEMPLAR head (PRD §8.3). T-1302: now rides a REAL Contraband
+    // (type 10) contract — the smuggling cargo T-1104 issues from the ungoverned
+    // rim (`allowsContraband` ports). "Ride it out" is the requirement-free
+    // chaining choice: it schedules the aftermath for the next dawn.
     id: 'cargo.ticking-crate.discovered',
     title: 'The Crate That Ticks',
     prose:
-      'Wedged behind the Dilithium Crystal is a crate that is not on your manifest. It is ticking — slow, even, deliberate — and it was not doing that when you loaded.',
+      'Wedged among the sealed contraband is a crate that is not on your manifest — no manifest lists any of this. It is ticking, slow and even and deliberate, and it was not doing that when you took the run.',
     repeat: 'never',
     trigger: {
-      cargo: { activeContractCargoType: 9 },
+      cargo: { activeContractCargoType: 10 },
     },
     choices: [
       {
@@ -985,9 +1038,15 @@ export const STORYLETS = defineStorylets([
         id: 'open-it',
         label: 'Open the silent crate',
         prose:
-          'Crack the lid on the quiet. Inside: a dead-man courier drop, coin sealed against a rendezvous that never came — and now will not.',
+          'Crack the lid on the quiet. Inside: a dead-man courier drop, coin sealed against a rendezvous that never came — and, folded beneath it, a data sliver still faintly transmitting on a carrier that predates the Confederation.',
+        // T-1302: the recovered courier sliver is a REAL Signal Fragment. Its
+        // source is 'derelict' — a signal recovered from dead cargo, NOT the
+        // Wise One broker — so this doubles as the "fragments record their true
+        // source" proof (contrast the Day-30 Wise One hook's 'wise-one').
         effects: {
           credits: 200,
+          grantFragment: 'frag-nemesis-02',
+          fragmentSource: 'derelict',
           flags: [
             { name: 'cargo.ticking-crate.riding', clear: true },
             { name: 'cargo.ticking-crate.claimed', value: true },
@@ -1553,6 +1612,373 @@ export const STORYLETS = defineStorylets([
           credits: -60,
           flags: [{ name: 'passenger.envoy.reported', value: true }],
         },
+      },
+    ],
+  },
+
+  // --- Veteran career opener (T-1301) ---
+  // The first VETERAN-era beat (PRD §5.2). The Day-30 resolution (day.ts) now
+  // OWNS the era transition and flips TOUR_ONE→VETERAN at the dusk of day 30 on
+  // BOTH branches. This storylet is the authored face of "you are now a veteran"
+  // and the proof that `eras:['VETERAN']` content is alive rather than dead on
+  // arrival. Its trigger carries NO day/system gate, so it surfaces at the first
+  // veteran dawn regardless of which day the transition landed on and whether the
+  // marker closed clean or unpaid. The prose reads correctly for either — a clean
+  // discharge or a spacer flying on indebted. Pure acknowledgement, no
+  // debt/credit effects (mirroring the resolution storylets), and its id prefix
+  // (`veteran.`) is distinct from `guild.` and `resolution.tour-one.` so the UI
+  // renders it in the normal storylet list, not the letterhead/ceremony overlay.
+  {
+    id: 'veteran.first-lane',
+    title: 'The Far Lanes Open',
+    prose:
+      'Tour One is behind you, one way or another, and the charts stop ending at the Guild board. The long veteran lanes read out to the rimward dark — colder, farther, and nobody left to tell you which way to burn.',
+    repeat: 'never',
+    trigger: {
+      eras: ['VETERAN'],
+    },
+    choices: [
+      {
+        id: 'set-a-heading',
+        label: 'Pick a far heading and commit',
+        prose: 'Choose a lane off the far edge of the chart and lay the course in.',
+        effects: {
+          flags: [{ name: 'veteran.first-lane.committed', value: true }],
+        },
+      },
+      {
+        id: 'take-stock',
+        label: 'Take stock before you burn',
+        prose: 'Sit with the quiet a moment, check the hold and the fuel, then decide.',
+        effects: {
+          flags: [{ name: 'veteran.first-lane.took-stock', value: true }],
+        },
+      },
+    ],
+  },
+
+  // --- Renown-gated veteran beat (T-1302) ---
+  // The first storylet delivered by RENOWN rather than day/system/cargo: it
+  // surfaces once a veteran captain's registry has ranked them to Commander or
+  // above (`renown: { minRank: 'COMMANDER' }`, read by engine triggerMatches
+  // against player.registry.renownRank). This is the acceptance fixture for
+  // "a renown-gated storylet fires on rank-up" — a Guild-recognition beat that
+  // could not exist before this task's renown trigger. Pure acknowledgement: the
+  // choices carry NO effects at all, because a flag no rule reads is a receipt,
+  // not a feature (Standing Constraint 7). The beat's whole job is to prove the
+  // renown gate fires; both replies are flavour-only outs (effect-free choices
+  // are a valid authoring form, see the requirement-free replies elsewhere).
+  {
+    id: 'veteran.guild-recognition',
+    title: 'The Guild Takes Note',
+    prose:
+      'A wire arrives on Guild letterhead, and for once it is not a demand. Your registry has climbed past Lieutenant; a clerk you will never meet has stamped your name into the Commander rolls. The lanes do not change. The way the ports read your transponder does.',
+    repeat: 'never',
+    trigger: {
+      eras: ['VETERAN'],
+      renown: { minRank: 'COMMANDER' },
+    },
+    choices: [
+      {
+        id: 'log-the-rank',
+        label: 'Log the recognition',
+        prose:
+          'Stamp the notice into the ship log and get back to the burn. Rank is a tool, not a rest.',
+      },
+      {
+        id: 'shrug-it-off',
+        label: 'Shrug it off',
+        prose:
+          'A title the Guild grants is a title the Guild can call in. Note it, and trust it less than the fuel gauge.',
+      },
+    ],
+  },
+
+  // --- Smuggler Ray fences the sealed pod (T-1305) ---
+  // PRD §7.5's "third out": rather than run a sealed derelict pod past the
+  // patrols (and risk a GUILE scan, engine actions/patrol.ts), sell it to
+  // Smuggler Ray off the Ghost Runner. "No roll needed" (§7.5) — a plain choice,
+  // no requirements. Triggers on the pod-carrying flag the `derelict.sealed-pod`
+  // "take it" choice set. The sell choice CLEARS `signal.contraband.carrying`
+  // (removes the scan liability) and sets `fence.ray.dealt`.
+  //
+  // Flag `fence.ray.dealt` READERS: (1) the patrol scan DC — a known fence draws
+  // harder scans (engine actions/patrol.ts, this task), and (2) T-1503's Rebel
+  // reputation (PRD §117 "Sell out Smuggler Ray…"). The DATA literal below uses
+  // the string 'fence.ray.dealt' directly (a data literal can't reference the
+  // FENCE_REP_FLAG const in contraband.ts, which the engine imports); the const
+  // and this literal must stay identical.
+  {
+    id: 'fence.ray.sealed-pod',
+    title: "Ray's Standing Offer",
+    prose:
+      "Smuggler Ray leans out of the Ghost Runner's airlock before you've even cut your engines. \"That pod in your hold — I don't need to see inside to know what it is. Name's good, price is fair, and no captain of mine ever answered a patrol's question about cargo I bought.\" His grin does not reach his eyes.",
+    repeat: 'never',
+    trigger: {
+      flags: [{ name: 'signal.contraband.carrying', exists: true }],
+    },
+    choices: [
+      {
+        id: 'sell-the-pod',
+        label: 'Sell the pod to Ray',
+        prose:
+          "Cut the mag-locks and float the pod across to the Ghost Runner. Ray's credits are clean by the time they hit your account, and the pod is somebody else's problem now.",
+        effects: {
+          // CONTRABAND_POD_FENCE_PRICE (contraband.ts) = 350 — set above the
+          // pod's +300cr "take it" value so fencing is a real out, not a worse one.
+          credits: 350,
+          flags: [
+            { name: 'signal.contraband.carrying', clear: true },
+            // 'fence.ray.dealt' === FENCE_REP_FLAG (contraband.ts); read by the
+            // patrol scan DC (T-1305) and T-1503 Rebel rep.
+            { name: 'fence.ray.dealt', value: true },
+          ],
+          disposition: [{ npcId: 'npc-smuggler-ray', delta: 1 }],
+        },
+      },
+      {
+        id: 'keep-it-bolted',
+        label: 'Keep it bolted down',
+        prose:
+          "Wave Ray off. The pod stays in your hold, and so does the risk — but you owe the Ghost Runner nothing, and your name stays off Ray's ledger.",
+        // No effects: declining changes nothing but the prose. The storylet is
+        // `repeat: 'never'`, so resolving ANY choice marks it completed
+        // (engine storylets.ts isCompletedForNow) and it never re-offers — a
+        // "declined" flag would gate nothing and nothing would read it.
+      },
+    ],
+  },
+
+  // --- Smuggler Ray fences a Contraband cargo run (T-1305) ---
+  // The other face of §7.5's fence out: a live type-10 Contraband CONTRACT
+  // (T-1104) can be dumped to Ray instead of run to its destination past the
+  // patrols. "No roll needed" — plain choice. Selling clears the active contract
+  // (no delivery payment) and sets the shared `fence.ray.dealt` rep flag (same
+  // readers as above: patrol scan DC + T-1503).
+  {
+    id: 'fence.ray.contraband-cargo',
+    title: 'The Ghost Runner Wants Your Load',
+    prose:
+      'Word travels: you\'re carrying the kind of cargo the manifest lies about. Smuggler Ray finds you at the dock. "Running it clean to the buyer?" he asks, amused. "Long way past a lot of patrol scanners. Or you sell it to me right here, and the only log entry is one I burn myself."',
+    repeat: 'never',
+    trigger: {
+      cargo: { activeContractCargoType: 10 },
+    },
+    choices: [
+      {
+        id: 'fence-the-load',
+        label: 'Fence the load to Ray',
+        prose:
+          "Sign the crates over to Ray at a fence's discount. Less than the buyer would pay — but the buyer would want you to survive the trip, and Ray does not care either way.",
+        effects: {
+          // A fence discount off a delivery payment, in the existing storylet
+          // credit band (~250-400). Book value, no roll (PRD §7.5).
+          credits: 300,
+          cargo: { clearActiveContract: true },
+          // 'fence.ray.dealt' === FENCE_REP_FLAG (contraband.ts); read by the
+          // patrol scan DC (T-1305) and T-1503 Rebel rep.
+          flags: [{ name: 'fence.ray.dealt', value: true }],
+          disposition: [{ npcId: 'npc-smuggler-ray', delta: 1 }],
+        },
+      },
+      {
+        id: 'run-it-clean',
+        label: 'Run it clean',
+        prose:
+          "Wave Ray off and keep the contract. The buyer pays full freight — if you make it there — and your name stays off the Ghost Runner's books.",
+        // No effects: declining keeps the contract as-is. The storylet is
+        // `repeat: 'never'`, so resolving ANY choice marks it completed
+        // (engine storylets.ts isCompletedForNow) and it never re-offers — a
+        // "declined" flag would gate nothing and nothing would read it.
+      },
+    ],
+  },
+
+  // ==========================================================================
+  // T-1310 · Nemesis-arc reachability batch (appended per the batch convention).
+  //   Two vectors that make the arc's opening reachable through the ECONOMY (PRD
+  //   §8.3) rather than a knife-edge day-30 teleport, plus the missing Sage decode
+  //   paths for fragments 02–05. Foundation (ref f2f95fa9) carries NO Nemesis arc,
+  //   so this whole batch is authored content, a deliberate divergence.
+  //   (The windowed Wise One hook itself is edited in place above at its T-113a
+  //   definition site, where its divergence comment lives.)
+  // ==========================================================================
+
+  // Rimward wire rumor — the economy-delivered LEAD to the Wise One of Polaris-1.
+  // A Galactic-Wire rumor reaches the captain anywhere (no system/era gate — the
+  // same "a wire follows you" pattern as guild.pressure.*, eligible from day 25,
+  // never expiring). "Chase the rumor" drops a Polaris-1 manifest contract onto
+  // TODAY's board (addManifestContract → market.manifestBoard, wiped next dawn by
+  // generateManifestBoard, so it is a SAME-DAY offer a human player can sign);
+  // cargoType 17 (Raw Dilithium) and destination 17 are both valid (storyletValidation
+  // checks both). The genuinely CONSUMED state this choice produces is that Polaris-1
+  // manifest CONTRACT it drops on the board (read by the trade/sign flow → Travel →
+  // arrival at system 17); the storylet's own repeat:'never' completion record is what
+  // stops it re-offering, so NO parallel "heard" flag is set — per constraint 7 a
+  // set-only receipt nothing reads is not a feature. "Note it and fly on" is the
+  // required second choice (storylets need 2–4 choices) and is a pure-narrative
+  // decline that changes no state. The T-1310 acceptance asserts the storylet is
+  // OFFERED in a seed sweep; the sim does NOT depend on the ephemeral same-day
+  // contract — its explorer upgrades drives and flies straight to Polaris-1 — so a
+  // missed same-day sign never closes the arc.
+  {
+    id: 'wire.rimward.polaris-signal',
+    title: 'A Rumor Off the Rim',
+    prose:
+      'A rimward rumor rides in on the Galactic Wire, passed hand to hand until it reached your feed: an old spacer at Polaris-1 — the Wise One — is selling pieces of a signal that came from the wrong side of the Nemesis black hole. Most captains file it under ghost stories. The ones who went looking did not come back to say so.',
+    repeat: 'never',
+    trigger: {
+      day: { gte: 25 },
+    },
+    choices: [
+      {
+        id: 'chase',
+        label: 'Chase the rumor',
+        prose:
+          'Log a Polaris-1 run against the rumor and warm the drives. A rim haul rides the same heading — dilithium for the yards out past the frontier — so the detour pays for itself if the black-hole talk is nothing.',
+        effects: {
+          cargo: {
+            addManifestContract: { destination: 17, cargoType: 17, payment: 4000, pods: 1 },
+          },
+        },
+      },
+      {
+        id: 'note',
+        label: 'Note it and fly on',
+        prose:
+          'File the coordinates and the name, and keep the current run. Polaris-1 is not going anywhere, and neither, apparently, is whatever is broadcasting from it.',
+      },
+    ],
+  },
+
+  // Sage of Mizar-9 decode storylets for fragments 02–05. The Sage (Mizar-9,
+  // system 18) is the game's ONLY decoder. Before T-1310 only `sage.mizar.decode-
+  // first` existed (frag-nemesis-01), so every fragment pulled off a derelict /
+  // beacon / courier-drop while exploring (frags 02–05 — see the loot pools in
+  // nemesis.ts) was permanently stuck undecoded. These four author the missing
+  // decode paths, one per fragment, modelled on decode-first: system-18-gated,
+  // `nemesis.hasUndecodedFragmentId` so each surfaces only when its fragment is
+  // held and still raw, `repeat:'never'`, NOT era-gated (the crossing arc runs from
+  // Tour One into the veteran game). The lore each reveals is the fragment's
+  // `decoded` text in nemesis.ts. The CONSUMED state is the fragment DECODE itself:
+  // decodeFragment flips fragment.decoded, which hasUndecodedFragment reads (to stop
+  // re-offering) and nemesisLoreIndex reads (swapping raw signal for decoded lore,
+  // rendered by the terminal's Nemesis file panel via ui/format.ts) — so the decode
+  // needs NO parallel "decoded" flag. Per constraint 7 a set-only receipt nothing
+  // reads is not a feature; the grandfathered `sage.mizar.first_decoded` is exactly
+  // such a receipt and is deliberately NOT copied here. "Keep the sliver for now" is
+  // the required second choice (storylets need 2–4 choices) and is a pure-narrative
+  // decline that changes no state — the fragment simply stays raw, which
+  // hasUndecodedFragment already tracks. T-1310 D1 exercises each decode path end-to-end.
+  {
+    id: 'sage.mizar.decode-02',
+    title: 'The Sage Reads the Drowned Manifest',
+    prose:
+      'You set the second sliver on the Sage\'s bench. The old cryptographer feeds it to the dead screens and frowns. "A manifest," they murmur, "for a ship that filed no route, bound for a port with no coordinates. Let me follow the names."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-02' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The names resolve one by one — a crossing list. Spacers who went through the black hole and were never logged returning. It settles into your Nemesis file, decoded.',
+        effects: {
+          decodeFragment: 'frag-nemesis-02',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Pocket the manifest before the last name resolves. Some crossings you would rather not read the end of yet. The Sage lets it go without argument.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-03',
+    title: 'The Sage Unfolds the Reptiloid Hymn',
+    prose:
+      'The third fragment sings — a choral pattern in a Reptiloid dialect, folded into the same pre-Confederation carrier. The Sage goes very still. "I have heard the Reptiloids sing this," they say. "They heard the signal before any of us."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-03' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The hymn resolves to a single repeated phrase, a warning older than the alliances: "the door answers when it is knocked upon." Decoded, it joins your file.',
+        effects: {
+          decodeFragment: 'frag-nemesis-03',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Silence the playback and take the sliver back. A warning keeps whether or not you understand it. The Sage nods, unsurprised.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-04',
+    title: 'The Sage Balances the Event-Horizon Ledger',
+    prose:
+      'The fourth sliver is only numbers — fuel figures, mass ratios, a burn schedule. The Sage runs it against a century of star charts and their hands slow. "This is a solution," they whisper. "A way across. It is only missing its last line."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-04' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The burn schedule resolves: exactly how much a ship must carry, and spend, to reach the far side of Nemesis intact. The decoded ledger settles into your file — final line still blank.',
+        effects: {
+          decodeFragment: 'frag-nemesis-04',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Close the ledger before the Sage finishes. A crossing solution is the kind of knowledge that changes what a captain does with a full tank. Not yet. The Sage lets it keep.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-05',
+    title: 'The Sage Matches the Returning Voice',
+    prose:
+      'The last sliver carries a human voice, badly degraded, transmitting on the pre-Confederation carrier. It says a name the Wire has no record of. The Sage plays it three times, then reaches for a founding-era crew roster with a shaking hand.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-05' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The voice matches a founding-era spacer lost at Nemesis a century ago — still broadcasting, from the wrong side, and getting closer. The decoded truth settles into your file, and the room feels colder.',
+        effects: {
+          decodeFragment: 'frag-nemesis-05',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Stop the playback before the name resolves. Some voices you are not ready to put a face to. The Sage sets the roster down, and does not push.',
       },
     ],
   },

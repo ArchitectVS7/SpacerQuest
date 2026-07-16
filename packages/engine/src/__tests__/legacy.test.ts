@@ -45,43 +45,65 @@ function primedForDuskDeath(seed = 42): GameState {
   return state;
 }
 
+/** Build the rich pre-death DAY-phase state for `seed` (all inheritance fields
+ *  set), primed with the fatal dusk encounter. T-1205: the dusk killing blow now
+ *  targets a SEEDED component, so hull is hit only ~1/8 of dusks — the caller
+ *  scans seeds until endDay actually lands the blow on the (condition-1) hull. */
+function buildRichPreDeathState(seed: number): GameState {
+  const dawn = startDay(createInitialState(seed));
+  const state = dawn.state;
+  state.player.credits = 9001;
+  state.player.debt = 12000;
+  state.player.debtDueDay = 55;
+  state.player.stats[Stat.GUNS] = 4;
+  state.player.tier = 3;
+  state.player.charts.visitedSystemIds = [1, 2, 5, 14];
+  state.player.registry.earned = [
+    { id: 'first_jump', title: 'First Jump', citation: 'c', day: 2, eventIndex: 0 },
+  ];
+  state.player.registry.matchCounts = { first_jump: 1 };
+  state.player.registry.renownRank = 'CAPTAIN';
+  state.flags = { 'signal.fragment.count': 2, 'guild.audited': true };
+  state.player.nemesisFile.fragments = [
+    { fragmentId: 'frag-nemesis-01', source: 'wise-one', day: 3, decoded: true },
+    { fragmentId: 'frag-nemesis-02', source: 'derelict', day: 8, decoded: false },
+  ];
+  state.storylets.completed = { 'port.sun3.guild-auditor': 1 };
+  state.storylets.scheduled = [
+    { storyletId: 'some.followup', dueDay: 20, sourceStoryletId: 'x', sourceChoiceId: 'y' },
+  ];
+  state.npcs.find((n) => n.id === 'npc-rattlesnake')!.disposition = -7;
+  state.npcs.find((n) => n.id === 'npc-doc-salvage')!.disposition = 5;
+  state.player.ship.hull.condition = 1;
+  state.encounter = fatalEncounter();
+  return state;
+}
+
+/** Run endDay against `build(seed)` across seeds until the dusk blow lands on the
+ *  condition-1 hull and fires ShipLost. Returns the fatal seed's endDay result. */
+function findDuskDeath(build: (seed: number) => GameState): {
+  state: GameState;
+  events: ReturnType<typeof endDay>['events'];
+  seed: number;
+} {
+  for (let seed = 1; seed <= 2000; seed += 1) {
+    const result = endDay(build(seed));
+    if (result.events.some((e) => e.type === 'ShipLost')) {
+      return { ...result, seed };
+    }
+  }
+  throw new Error('No seed produced a fatal dusk hull hit');
+}
+
 describe('T-108 · Death & legacy — full inheritance', () => {
   it('carries charts/deeds/flags/dispositions/debt, halves credits, resets ship', () => {
-    const dawn = startDay(createInitialState(42));
-    const state = dawn.state;
+    // T-1205: seeded dusk targeting means hull is not hit every dusk — scan to a
+    // seed whose dusk blow actually kills, then assert the inheritance (all of
+    // which is seed-independent).
+    const { state: next, events, seed } = findDuskDeath(buildRichPreDeathState);
+    // The pre-death state at the SAME fatal seed — snapshot its CARRIES items.
+    const state = buildRichPreDeathState(seed);
 
-    // A rich pre-death spacer.
-    state.player.credits = 9001;
-    state.player.debt = 12000;
-    state.player.debtDueDay = 55;
-    state.player.stats[Stat.GUNS] = 4;
-    state.player.tier = 3;
-    state.player.charts.visitedSystemIds = [1, 2, 5, 14];
-    state.player.registry.earned = [
-      { id: 'first_jump', title: 'First Jump', citation: 'c', day: 2, eventIndex: 0 },
-    ];
-    state.player.registry.matchCounts = { first_jump: 1 };
-    state.player.registry.renownRank = 'CAPTAIN';
-    state.flags = { 'signal.fragment.count': 2, 'guild.audited': true };
-    // A Nemesis file with a decoded and an undecoded fragment — knowledge the
-    // successor must inherit (T-111b, PRD §8.1).
-    state.player.nemesisFile.fragments = [
-      { fragmentId: 'frag-nemesis-01', source: 'wise-one', day: 3, decoded: true },
-      { fragmentId: 'frag-nemesis-02', source: 'derelict', day: 8, decoded: false },
-    ];
-    state.storylets.completed = { 'port.sun3.guild-auditor': 1 };
-    state.storylets.scheduled = [
-      {
-        storyletId: 'some.followup',
-        dueDay: 20,
-        sourceStoryletId: 'x',
-        sourceChoiceId: 'y',
-      },
-    ];
-    state.npcs.find((n) => n.id === 'npc-rattlesnake')!.disposition = -7;
-    state.npcs.find((n) => n.id === 'npc-doc-salvage')!.disposition = 5;
-
-    // Snapshot the CARRIES items.
     const chartsBefore = [...state.player.charts.visitedSystemIds];
     const earnedBefore = structuredClone(state.player.registry.earned);
     const matchCountsBefore = { ...state.player.registry.matchCounts };
@@ -91,11 +113,6 @@ describe('T-108 · Death & legacy — full inheritance', () => {
     const completedBefore = { ...state.storylets.completed };
     const statsBefore = { ...state.player.stats };
     const dispositionsBefore = state.npcs.map((n) => ({ id: n.id, d: n.disposition }));
-
-    // Force the fatal dusk attack.
-    state.player.ship.hull.condition = 1;
-    state.encounter = fatalEncounter();
-    const { state: next, events } = endDay(state);
 
     // Trigger + succession fired.
     expect(events).toContainEqual(expect.objectContaining({ type: 'ShipLost' }));
@@ -135,14 +152,15 @@ describe('T-108 · Death & legacy — full inheritance', () => {
     expect(next.player.stats).toEqual(statsBefore);
     expect(next.player.debt).toBe(12000);
     expect(next.player.debtDueDay).toBe(55);
-    // Dispositions attach to the NAME — grudges and favors both survive.
+    // Dispositions attach to the NAME — grudges and favors both survive death.
+    // T-1204: dusk decay is now PERIODIC (every DISPOSITION_DECAY_INTERVAL_DAYS
+    // dusks), and this succession runs on day 1 (1 % 3 != 0), which is NOT a
+    // decay day — so every standing carries through the death untouched. This is
+    // a cleaner test of inheritance than the old per-dusk-decay expectation: the
+    // exact pre-death value survives.
     for (const { id, d } of dispositionsBefore) {
-      // Dusk decay moves non-zero dispositions one step toward 0; the SURVIVAL
-      // of the standing is what matters, not the exact value.
       const after = next.npcs.find((n) => n.id === id)!.disposition;
-      if (d > 0) expect(after).toBe(d - 1);
-      else if (d < 0) expect(after).toBe(d + 1);
-      else expect(after).toBe(0);
+      expect(after).toBe(d);
     }
 
     // RESET — scheduled storylets cancelled (appointments with a dead spacer).
@@ -154,13 +172,15 @@ describe('T-108 · Death & legacy — full inheritance', () => {
 
   it('forfeits the active contract — the successor cannot deliver cargo that burned', () => {
     // Sign a contract for system 2, then die in a fatal dusk attack elsewhere.
-    const dawn = startDay(createInitialState(42));
-    const state = dawn.state;
-    state.player.activeContract = { destination: 2, cargoType: 3, payment: 5000, pods: 4 };
-    state.player.ship.hull.condition = 1;
-    state.encounter = fatalEncounter();
-
-    const { state: afterDeath, events } = endDay(state);
+    // T-1205: dusk targeting is seeded, so scan to a killing seed.
+    const buildWithContract = (seed: number): GameState => {
+      const state = startDay(createInitialState(seed)).state;
+      state.player.activeContract = { destination: 2, cargoType: 3, payment: 5000, pods: 4 };
+      state.player.ship.hull.condition = 1;
+      state.encounter = fatalEncounter();
+      return state;
+    };
+    const { state: afterDeath, events } = findDuskDeath(buildWithContract);
 
     // The contract is forfeited with the ship, and the estate records it.
     expect(afterDeath.player.activeContract).toBeNull();
@@ -222,7 +242,11 @@ describe('T-108 · Death & legacy — full inheritance', () => {
     const { state: next, events } = resolveCombat(
       state,
       { type: 'Combat', stance: 'run', targetId: state.encounter.interceptor.id, spendDie: 0 },
-      new SeededRng(1),
+      // T-1205: seeded damage targeting — this seed's between-rounds pressure hit
+      // lands on the condition-1 hull. T-1207 re-picked it (14 → 15): the opposed
+      // run draws an enemy pursuit d20 before the pressure roll, so the stream
+      // shifted and a fresh hand-picked seed lands the fatal hull hit.
+      new SeededRng(15),
     );
 
     expect(events).toContainEqual(expect.objectContaining({ type: 'ShipLost' }));
@@ -234,8 +258,8 @@ describe('T-108 · Death & legacy — full inheritance', () => {
 
 describe('T-108 · Post-death playability (anti-poverty-trap)', () => {
   it('the successor has a legal income action next dawn and survives 10 days', () => {
-    const state = primedForDuskDeath(42);
-    const afterDeath = endDay(state).state;
+    // T-1205: dusk targeting is seeded, so scan to a seed whose dusk blow kills.
+    const afterDeath = findDuskDeath(primedForDuskDeath).state;
     expect(afterDeath.player.legacy.successionCount).toBe(1);
     expect(afterDeath.dayPhase).toBe(DayPhase.DAWN);
 
@@ -342,5 +366,38 @@ describe('T-108 · Charts recorded on travel', () => {
     }
     expect(back).not.toBeNull();
     expect(back!.player.charts.visitedSystemIds).toEqual([1, 2]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1304 · A Penny Wise loan carries wholesale through succession (like debt).
+// ---------------------------------------------------------------------------
+describe('T-1304 · loan survives succession (carried like the Guild debt)', () => {
+  it('a defaulted loan and the Penny Wise grudge both carry to the successor', async () => {
+    const { applySuccession } = await import('../legacy.js');
+    const state = createInitialState(3);
+    state.player.credits = 4000;
+    state.player.loan = {
+      lender: 'npc-penny-wise',
+      principal: 1000,
+      outstanding: 1750,
+      dailyRate: 0.05,
+      borrowedDay: 2,
+      dueDay: 17,
+      status: 'defaulted',
+    };
+    // A Penny Wise grudge stands on her NPC record.
+    const penny = state.npcs.find((n) => n.id === 'npc-penny-wise')!;
+    penny.disposition = -5;
+
+    const before = structuredClone(state.player.loan);
+    applySuccession(state, { originSystem: 1, interceptorId: 'anon-pirate-1' });
+
+    // The loan is left EXACTLY as it was — carried wholesale like debt/debtDueDay,
+    // its defaulted status (collection heat) included. No reset.
+    expect(state.player.loan).toEqual(before);
+    expect(state.player.loan?.status).toBe('defaulted');
+    // The grudge attaches to the name and rides along with every disposition.
+    expect(state.npcs.find((n) => n.id === 'npc-penny-wise')!.disposition).toBe(-5);
   });
 });

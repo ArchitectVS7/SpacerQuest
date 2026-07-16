@@ -11,6 +11,7 @@ import { DiscoveredPoi, GameEvent, GameState, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { fragmentCount, grantFragment } from '../nemesis.js';
+import { navBonus } from '../components.js';
 
 /**
  * Roll a boarded POI's loot table (T-111b, PRD §7.2). Each of the three loot
@@ -107,14 +108,54 @@ export function resolveExploration(
 
   // Encounter gating lives in day.ts applyPlayerAction (the only runtime caller),
   // which emits a typed ActionBlocked event before this resolver is reached.
+  const systemId = nextState.player.currentSystemId;
+
+  // T-1003 · Malformed die selection is a type-valid player input (the Explore
+  // action shape carries an optional/free-form spendDie), so it must resolve to a
+  // typed fail event — NOT a raw throw that crashes the UGT adapter. No die is
+  // spent and no fuel is burned: there was no usable die to spend on a detour.
   if (action.spendDie === undefined) {
-    throw new Error('Must spend a die to explore');
+    events.push({ type: 'ExplorationFailed', day: nextState.day, systemId, reason: 'no-die' });
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      message: `Player queued an off-lane sweep near system ${systemId} but assigned no die to fly it.`,
+    });
+    return { state: nextState, events };
+  }
+  const currentHand = nextState.player.dawnHand;
+  const index = action.spendDie;
+  if (!currentHand || index < 0 || index >= currentHand.dice.length) {
+    events.push({
+      type: 'ExplorationFailed',
+      day: nextState.day,
+      systemId,
+      reason: 'invalid-die-index',
+    });
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      message: `Player's off-lane sweep near system ${systemId} named a die that isn't in the dawn hand.`,
+    });
+    return { state: nextState, events };
+  }
+  if (currentHand.spent[index]) {
+    events.push({
+      type: 'ExplorationFailed',
+      day: nextState.day,
+      systemId,
+      reason: 'die-already-spent',
+    });
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      message: `Player's off-lane sweep near system ${systemId} named a die already burned this dawn.`,
+    });
+    return { state: nextState, events };
   }
 
-  const { die, hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
+  const { die, hand } = spendDie(currentHand, index);
   nextState.player.dawnHand = hand;
-
-  const systemId = nextState.player.currentSystemId;
 
   // Fuel gate (PRD §7.2: reaching an off-lane POI burns fuel). The die is spent
   // regardless — the detour was attempted — mirroring Travel's dry-tank path.
@@ -134,8 +175,14 @@ export function resolveExploration(
   }
   nextState.player.ship.fuel -= EXPLORATION_FUEL_COST;
 
-  // PILOT nav check — same die + modifier vs DC idiom as Travel.
-  const result = check(die, nextState.player.stats[Stat.PILOT], EXPLORATION_NAV_DC);
+  // PILOT nav check — same die + modifier vs DC idiom as Travel. T-1205: the ship's
+  // navigation adds its bonus (junker → +0, so the goldens are unchanged; upgraded
+  // nav charts more reliably). READER OF `navigation`: this line (components.ts).
+  const result = check(
+    die,
+    nextState.player.stats[Stat.PILOT] + navBonus(nextState.player.ship),
+    EXPLORATION_NAV_DC,
+  );
   events.push({
     type: 'StatCheck',
     actor: 'Player',

@@ -124,7 +124,16 @@ export function resolveTrade(
       });
 
       if (result.success) {
-        contract.payment = Math.floor(contract.payment * 1.5); // 50% bump
+        // T-1202 (PRD §6 "the margin decides how well it goes"): the haggle bonus
+        // now SCALES with the check margin instead of a flat +50%. FOUNDATION
+        // DIVERGENCE — foundation (f2f95fa9) had no margin-scaled haggle; its
+        // successful haggle was a fixed 1.5x. `perMarginCredit >= 1` guarantees a
+        // STRICTLY higher payout for a higher margin even after flooring, at any
+        // contract size (acceptance: same-seed A/B, higher margin → higher bonus).
+        const base = contract.payment;
+        const perMarginCredit = Math.max(1, Math.round(base * 0.05));
+        const bonus = Math.floor(base * 0.5) + Math.max(0, result.margin) * perMarginCredit;
+        contract.payment = base + bonus;
         events.push({
           type: 'TradeEvent',
           characterId: 'player',

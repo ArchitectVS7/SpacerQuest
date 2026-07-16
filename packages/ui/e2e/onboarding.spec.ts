@@ -7,12 +7,26 @@ import { createInitialState, startDay, createSave } from '@spacerquest/engine';
 // specs do — never an in-page engine call that bypasses a screen the player uses.
 //
 //   Fresh default seed 424242 (Test A): Day 1 at Sun-3, dawn hand [19,14,14,13,3].
-//     - Contract 0 carries cargo to system 3 (2 jumps, reachable, no encounter).
-//     - Sign with die index 0, jump with die index 1 → delivery pays out (1,000 →
-//       2,260cr, hold empties). The whole first delivery is reachable guided only
-//       by the contextual prompts + visible affordances.
-//   Seed 11 (Test B): dawn hand [20,15,13,12,11]; jump die INDEX 1 (value 15) to
-//     system 15 triggers a tier-2 encounter (the combat-spec fixture).
+//     - Contract 0 carries cargo to system 9.
+//     - Sign with die index 0, top the tank off (a visible fuel affordance), then
+//       jump with die index 2 → delivery pays out (1,000 → 3,420cr, hold empties).
+//       The whole first delivery is reachable guided by the contextual prompts +
+//       visible affordances.
+//     - T-1104 re-fixture: the rim/contraband payment overhaul changed rollContract's
+//       RNG draw order (it now rolls a rim-vs-core coin BEFORE the destination), which
+//       re-rolls the whole board for seed 424242 — contract 0 now routes to system 9
+//       (was 3) and pays 2,500 (final credits 3,420, was 3,120). Re-derived offline by
+//       replaying startDay(createInitialState(424242)) -> sign -> buy-fuel -> Travel:
+//       the guided jump to system 9 lands clean (no interceptor) and the hold empties.
+//     - T-1103 rationale (still holds): the encounter-rate repair (core 0.08 -> 0.30)
+//       makes a LOADED delivery jump risk an interceptor; interposing the fuel top-off
+//       (one engine action) advances the RNG stream so the guided jump's encounter roll
+//       clears — verified clean under the T-1104 stream above. The fuel top-off is
+//       itself on-PRD onboarding ("fuel is the plot"). Seed 424242 is the store's shared
+//       default and is deliberately UNCHANGED.
+//   Seed 887 (Test B): dawn hand [20,18,13,7,6]; jump die INDEX 1 (value 18, which
+//     clears the T-1101 rim DC 18) to system 15 triggers a tier-2 encounter (the
+//     combat-spec fixture). T-1103: still fires (rim rate rose 0.32 -> 0.50).
 //   Day-30 dawn saves (Tests C/D) are built offline and injected via the save
 //     envelope, with all onboarding prompts pre-marked seen so no coach callout
 //     interferes with the ceremony assertions.
@@ -66,15 +80,25 @@ test('fresh seed: first delivery guided by visible affordances; each prompt fire
   await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
   await expect(coach).toHaveAttribute('data-onboarding-id', 'first-jump');
 
+  // 2b) Top the tank off before the run (a visible fuel affordance — "fuel is the
+  //     plot"). This is also the T-1103 re-fixture hinge: the extra engine action
+  //     advances the RNG so the loaded guided jump clears its (now 0.40) encounter
+  //     roll on seed 424242. first-jump is the taught prompt and stays up (buying
+  //     fuel is not the jump it teaches).
+  await page.getByTestId('die').nth(1).click();
+  await page.getByTestId('fuel-amount').fill('10');
+  await page.getByTestId('buy-fuel').click();
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-jump');
+
   // 3) Plot and confirm the jump through the starmap (die → destination → commit),
   //    exactly as a player would. Delivery pays out on arrival: credits climb and
   //    the hold empties. first-jump AUTO-dismisses and, the delivery done, no
   //    further prompt is due.
-  await page.getByTestId('die').nth(1).click();
-  await page.locator('[data-testid="starmap-system"][data-system-id="3"]').click();
+  await page.getByTestId('die').nth(2).click();
+  await page.locator('[data-testid="starmap-system"][data-system-id="9"]').click();
   await page.getByTestId('confirm-jump').click();
 
-  await expect(page.getByTestId('credits')).toHaveText('2,260');
+  await expect(page.getByTestId('credits')).toHaveText('3,420');
   await expect(page.getByTestId('active-contract-empty')).toBeVisible();
   await expect(coach).toHaveCount(0);
 
@@ -88,7 +112,7 @@ test('first-encounter coach fires once, inside combat, and its dismissed state p
   page,
 }) => {
   await page.goto('/');
-  await newGameSeed(page, 11);
+  await newGameSeed(page, 887);
 
   // Jump into the seeded interception (no contract needed — the coach keys off the
   // live encounter). The combat overlay mounts, and the highest-priority prompt —
@@ -119,7 +143,7 @@ async function bootDay30(page: Page, seed: number, credits?: number): Promise<vo
   base.day = 30;
   if (credits !== undefined) base.player.credits = credits;
   const state = startDay(base).state;
-  const save = createSave(state);
+  const save = createSave(state, seed);
   await page.addInitScript(
     ([s, ob]) => {
       window.localStorage.setItem('sq.save.v1', s);

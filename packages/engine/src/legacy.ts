@@ -1,11 +1,17 @@
 import { STAR_SYSTEMS } from '@spacerquest/content';
 import { EncounterState, GameEvent, GameState } from './types.js';
 import { starterShip } from './state.js';
+import { syncPlayerTier } from './tier.js';
 
-/** What the fatal encounter tells succession: who took the ship down and where
- *  the wreck ended up (the origin system it was towed back to). */
+/** What the fatal loss tells succession: who/what took the ship down and where
+ *  the wreck ended up (the origin system it was towed back to). A combat death
+ *  passes the fatal `encounter` (the wreck is towed to its origin); a non-combat
+ *  loss (T-1205 life-support failure) passes an explicit `originSystem` instead —
+ *  the license is claimed where the ship was standing. Exactly one of the two is
+ *  supplied; `originSystem` falls back to the player's current system. */
 export interface ShipLostContext {
-  encounter: EncounterState;
+  encounter?: EncounterState;
+  originSystem?: number;
   interceptorId: string;
 }
 
@@ -19,8 +25,17 @@ export interface ShipLostContext {
  *     EXPLICITLY below since it lives on PlayerState, not charts), storylet flags
  *     and completed storylets — the world remembers — every NPC disposition
  *     (grudges attach to the NAME, per 'the syndicate remembers your name'),
- *     stats (v1: no reset), and the debt + debtDueDay (the Guild collects from
- *     the estate).
+ *     stats (v1: no reset), the debt + debtDueDay (the Guild collects from
+ *     the estate), and (T-1304) the Penny Wise `loan` — carried WHOLESALE like
+ *     the Guild debt, its `defaulted` status included: "a successor claims the
+ *     license, the charts, and the debts", so the collection heat and the Penny
+ *     Wise grudge attach to the name exactly as the dispositions above do. It is
+ *     intentionally NOT reset — that IS the inheritance (no code needed; it is
+ *     simply left on state, like debt/debtDueDay). (T-1307) the owned `ports` are
+ *     carried WHOLESALE for the same reason: a successor claims the license, the
+ *     charts, the debts, AND the property — the port stakes keep paying their
+ *     launch-fee income into the new spacer's account. Like debt/loan it is simply
+ *     left on state, never reset; the succession test asserts survival.
  *   HALVED: credits (floor division).
  *   RESET: ship to the exact starterShip(); the active contract is FORFEITED
  *     here (the cargo went down with the ship — a TradeEvent 'forfeit-cargo'
@@ -37,7 +52,8 @@ export interface ShipLostContext {
  */
 export function applySuccession(state: GameState, context: ShipLostContext): GameEvent[] {
   const events: GameEvent[] = [];
-  const originSystem = context.encounter.pendingTravel.origin;
+  const originSystem =
+    context.encounter?.pendingTravel.origin ?? context.originSystem ?? state.player.currentSystemId;
 
   // HALVED: credits (floor division). CARRIED items (registry, charts, flags,
   // completed storylets, npc dispositions, stats, debt/debtDueDay) are left
@@ -88,6 +104,16 @@ export function applySuccession(state: GameState, context: ShipLostContext): Gam
   if (state.player.dawnHand) {
     state.player.dawnHand.spent = state.player.dawnHand.spent.map(() => true);
   }
+
+  // T-1203 · DEFINED SUCCESSION BEHAVIOR for the matchmaking band. The ship was
+  // just reset to the junker (shipClassTier → 1) but the registry/renownRank is
+  // CARRIED (grudges attach to the name; the world remembers), so the successor's
+  // tier = max(rankTier(carriedRank), 1) = rankTier(carriedRank). The successor
+  // is NOT reset to tier 1 and does NOT inherit a stale over-fit tier: the
+  // hunters that a renowned name draws still come, matched to the name's renown,
+  // even though the ship under them is fresh. Recomputed here after the ship
+  // reset so the band reflects the junker + carried rank exactly.
+  syncPlayerTier(state);
 
   state.player.legacy.successionCount += 1;
 

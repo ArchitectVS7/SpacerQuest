@@ -15,9 +15,16 @@
 // ---------------------------------------------------------------------------
 
 import {
+  CREW_ROLES,
+  DARE_MAX_WAGER as HANGOUT_DARE_MAX_WAGER,
+  DARE_MIN_WAGER as HANGOUT_DARE_MIN_WAGER,
   EXPLORATION_FUEL_COST,
+  LOAN_MAX_PRINCIPAL,
+  LOAN_MIN_PRINCIPAL,
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
+  isGatedDestination,
+  isPurchasablePort,
 } from '@spacerquest/content';
 import {
   DayPhase,
@@ -25,6 +32,7 @@ import {
   RUN_FUEL_COST,
   applyPlayerAction,
   createInitialState,
+  crewCapacity,
   deserializeState,
   eligibleStorylets,
   endDay,
@@ -79,8 +87,7 @@ export type ProtocolRequest =
   | { type: 'end-day' }
   | { type: 'apply-action'; action: PlayerAction };
 
-export type ProtocolErrorCode =
-  'no-session' | 'wrong-phase' | 'action-blocked' | 'apply-failed' | 'unknown-request';
+export type ProtocolErrorCode = 'no-session' | 'wrong-phase' | 'apply-failed' | 'unknown-request';
 
 export type ProtocolResponse =
   | { type: 'state-summary'; summary: StateSummary }
@@ -146,6 +153,15 @@ export interface StateSummary {
   /** Indices into `dawnHand.dice` that are still UNSPENT — the legal values for
    *  any action's `spendDie` field this turn. Empty in DAWN / when exhausted. */
   diceRemaining: number[];
+  /** T-1306 · Re-roll charges left today (from a reroll crew member); 0 with none. */
+  rerollsRemaining: number;
+  /** T-1306 · Hired crew, by role id — the dice-progression source. */
+  crew: string[];
+  /** T-1306 · Cabin berths (crewCapacity) — the hiring cap. */
+  crewCapacity: number;
+  /** T-1307 · Owned port stakes, by system id — the purchasable-property income
+   *  ledger (each accrues per-dusk launch-fee income). Read by the harness/T-1405. */
+  ports: number[];
   /** The contract currently in the hold, or null. */
   activeContract: {
     destination: number;
@@ -300,6 +316,10 @@ export function buildStateSummary(state: GameState): StateSummary {
       ? { dice: [...player.dawnHand.dice], spent: [...player.dawnHand.spent] }
       : null,
     diceRemaining: unspentDieIndices(state),
+    rerollsRemaining: player.dawnHand?.rerollsRemaining ?? 0,
+    crew: player.crew.map((member) => member.roleId),
+    crewCapacity: crewCapacity(ship),
+    ports: player.ports.map((port) => port.systemId),
     activeContract: contract
       ? {
           destination: contract.destination,
@@ -471,7 +491,19 @@ export function legalActions(state: GameState): LegalActions {
 
   // --- Travel ------------------------------------------------------------
   if (hasDie) {
-    const destinations = ALL_SYSTEM_IDS.filter((id) => id !== player.currentSystemId);
+    // T-1101 · Honor the engine's destination gate here so legalActions never
+    // advertises a Travel the day.ts gate will deterministically refuse with a
+    // 'destination-locked' ActionBlocked. Gated systems (Andromeda 21–26 and the
+    // specials 27–28) stay off the choice list until the 'nemesis.crossing.unlocked'
+    // flag is set (T-1505) — the exact predicate day.ts applyPlayerAction reads.
+    // Without this, a UGT-protocol client (incl. the LLM playtest harness) could
+    // pick a "legal" destination that always fails, burning a die on the block —
+    // the same stall risk that made the sim pickers in index.ts adopt
+    // travelableSystemIds().
+    const nemesisUnlocked = state.flags['nemesis.crossing.unlocked'] === true;
+    const destinations = ALL_SYSTEM_IDS.filter(
+      (id) => id !== player.currentSystemId && (nemesisUnlocked || !isGatedDestination(id)),
+    );
     actions.push({
       type: 'Travel',
       params: {
@@ -488,6 +520,109 @@ export function legalActions(state: GameState): LegalActions {
       type: 'Explore',
       params: { spendDie: dieParam },
       note: `Burns ${EXPLORATION_FUEL_COST} fuel; PILOT nav check charts a POI on success.`,
+    });
+  }
+
+  // --- Re-roll a dawn die (T-1306) ---------------------------------------
+  // Advertised only while a re-roll charge is banked (a reroll crew member set it
+  // at dawn) AND there is an unspent die to re-roll. `dieIndex` reuses the die-
+  // index domain (the unspent indices). Consumes a charge, not a whole die.
+  if ((player.dawnHand?.rerollsRemaining ?? 0) > 0 && hasDie) {
+    actions.push({
+      type: 'Reroll',
+      params: { dieIndex: dieParam },
+      note: 'Consumes one re-roll charge (from a reroll crew member); re-rolls the named unspent die in place.',
+    });
+  }
+
+  // --- Hire / dismiss crew (T-1306) --------------------------------------
+  // Hiring is advertised while a cabin berth is free and there is an unhired role
+  // to fill it; dismissing while any crew is aboard. Affordability (hire price) is
+  // validated on apply — this only keeps the harness from proposing a hire with no
+  // berth. Crew are the dice-progression source (extra die / re-roll / floor).
+  if (hasDie) {
+    const hiredRoleIds = new Set(player.crew.map((member) => member.roleId));
+    const hireableRoleIds = CREW_ROLES.map((role) => role.id).filter((id) => !hiredRoleIds.has(id));
+    if (player.crew.length < crewCapacity(ship) && hireableRoleIds.length > 0) {
+      actions.push({
+        type: 'Crew',
+        action: 'hire',
+        params: {
+          roleId: { kind: 'enum', choices: hireableRoleIds },
+          spendDie: dieParam,
+        },
+        note: 'Hire price validated on apply (emits CrewEvent{failed} if unaffordable). Berthed against cabin capacity.',
+      });
+    }
+    if (player.crew.length > 0) {
+      actions.push({
+        type: 'Crew',
+        action: 'dismiss',
+        params: {
+          roleId: { kind: 'enum', choices: player.crew.map((member) => member.roleId) },
+          spendDie: dieParam,
+        },
+        note: 'Removes the crew member (no refund), freeing a berth.',
+      });
+    }
+  }
+
+  // --- Buy a port stake (T-1307) -----------------------------------------
+  // Advertised only at a purchasable core port (isPurchasablePort) the player does
+  // not already own, with an unspent die. `systemId` is FIXED to the current system
+  // (you buy the port you stand in — resolvePortPurchase typed-fails otherwise). The
+  // purchase price is validated on apply (emits PortEvent{failed} if unaffordable),
+  // exactly like the crew/shipyard advertise-gates. Ports are purchasable property:
+  // each owned stake accrues per-dusk launch-fee income (PRD §9).
+  if (
+    hasDie &&
+    isPurchasablePort(player.currentSystemId) &&
+    !player.ports.some((port) => port.systemId === player.currentSystemId)
+  ) {
+    actions.push({
+      type: 'Port',
+      action: 'buy',
+      params: {
+        systemId: { kind: 'fixed', value: player.currentSystemId },
+        spendDie: dieParam,
+      },
+      note: 'Purchase price validated on apply (emits PortEvent{failed} if unaffordable). Accrues per-dusk launch-fee income.',
+    });
+  }
+
+  // --- Visit the Hangout (T-1303) ----------------------------------------
+  // Advertised only where the engine's hangout gate (day.ts) will admit it: a
+  // `hasHangout` system with at least one in-system NPC to face and an unspent
+  // die. `opponentId` is enumerated to the ids of NPCs whose SIMULATED position
+  // is the player's system — the exact set resolveVisitHangout accepts (a Dare /
+  // social beat against anyone else is a typed HangoutEvent fail), honoring "an
+  // NPC actually present in-system". `venue` picks the beat; `wager` is the Dare
+  // stake domain. The engine validates the rest on apply.
+  const inSystemNpcIds = state.npcs
+    .filter((npc) => npc.currentSystemId === player.currentSystemId)
+    .map((npc) => npc.id);
+  if (hasDie && STAR_SYSTEMS[player.currentSystemId]?.hasHangout) {
+    // T-1304: the venue set depends on live state. 'rumor' is always available at
+    // a Hangout; the social/dare beats need an in-system NPC to face; the Penny
+    // Wise lending beat is `borrow` while there's no loan and `repay` while there
+    // is (the engine typed-fails the wrong one either way — this just keeps the
+    // harness honest). Lending needs NO co-located NPC (Penny Wise is the desk),
+    // so it — and the whole VisitHangout action — is now advertised even at an
+    // empty Hangout, making the §7.5 bad-day loan out reliably reachable.
+    const venueChoices: string[] = ['rumor', state.player.loan ? 'repay' : 'borrow'];
+    if (inSystemNpcIds.length > 0) {
+      venueChoices.unshift('dare', 'meet', 'befriend', 'insult');
+    }
+    actions.push({
+      type: 'VisitHangout',
+      params: {
+        venue: { kind: 'enum', choices: venueChoices },
+        opponentId: { kind: 'enum', choices: [...inSystemNpcIds] },
+        wager: { kind: 'int', min: HANGOUT_DARE_MIN_WAGER, max: HANGOUT_DARE_MAX_WAGER },
+        amount: { kind: 'int', min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL },
+        spendDie: dieParam,
+      },
+      note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to what both sides can cover). amount applies to borrow (principal, clamped to the loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
     });
   }
 
@@ -646,11 +781,24 @@ export function handleMessage(
         return { session, response: errorResponse('apply-failed', message) };
       }
       if (isActionBlocked(result.events)) {
-        // A legal-shape action the engine refused (active encounter). Do NOT
-        // commit — keep the session clean and report the block as an error.
+        // PARITY (T-1003): the engine appended the ActionBlocked event to
+        // result.state.eventLog (day.ts) and the UI commits that state — so the
+        // protocol MUST commit it too, or the two event streams diverge (the
+        // protocol used to discard the state and return a bare `error`, leaving
+        // its consumer's event log missing the refusal the UI records). The block
+        // is side-effect-free (no die spent, no dayEventCount bump — day.ts
+        // returns early), so this commit is a pure log-append. We surface the
+        // refusal as an action-result whose `events` carry the ActionBlocked; a
+        // harness detects the refusal by scanning events for 'ActionBlocked',
+        // exactly as App.tsx does.
+        const blockedNext: ProtocolSession = { seed: session.seed, state: result.state };
         return {
-          session,
-          response: errorResponse('action-blocked', 'Action blocked by an active encounter'),
+          session: blockedNext,
+          response: {
+            type: 'action-result',
+            summary: buildStateSummary(blockedNext.state),
+            events: result.events,
+          },
         };
       }
       const next: ProtocolSession = { seed: session.seed, state: result.state };

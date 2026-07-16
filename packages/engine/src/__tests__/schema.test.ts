@@ -169,6 +169,47 @@ describe('GameStateSchema — accepts real serialized states', () => {
     expect(allTypes.has('ExplorationFailed') || allTypes.has('PoiDiscovered')).toBe(true);
   });
 
+  // T-1003 · Malformed Explore inputs resolve to typed ExplorationFailed events
+  // carrying the three new reasons. Those events land in state.eventLog and MUST
+  // survive JSON round-trip — otherwise a save taken after a player triggers one
+  // of these paths fails GameStateSchema.parse on load. Drive each through the
+  // real engine (not a hand-built event) so the schema is proven against the
+  // exact shape the resolver emits.
+  const MALFORMED_EXPLORE: Array<{
+    reason: string;
+    actions: PlayerAction[];
+  }> = [
+    // no die assigned to the sweep.
+    { reason: 'no-die', actions: [{ type: 'Explore' }] },
+    // die index outside the dawn hand.
+    { reason: 'invalid-die-index', actions: [{ type: 'Explore', spendDie: 99 }] },
+    // die already burned earlier this dawn (buy-fuel spends die 0 first).
+    {
+      reason: 'die-already-spent',
+      actions: [
+        { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+        { type: 'Explore', spendDie: 0 },
+      ],
+    },
+  ];
+
+  for (const { reason, actions } of MALFORMED_EXPLORE) {
+    it(`round-trips an ExplorationFailed '${reason}' event (T-1003)`, () => {
+      const state = advanceDay(createInitialState(7), actions).state;
+
+      // Sanity: the resolver actually emitted the reason under test, so the
+      // round-trip below is exercising the shape we care about.
+      const failure = state.eventLog.find(
+        (e) => e.type === 'ExplorationFailed' && e.reason === reason,
+      );
+      expect(failure, `expected an ExplorationFailed '${reason}' in the event log`).toBeDefined();
+
+      const raw = JSON.parse(serializeState(state)) as unknown;
+      const validated = validateGameState(raw);
+      expect(validated).toEqual(raw);
+    });
+  }
+
   it('round-trips a populated nemesisFile (T-111b fragments survive validation)', () => {
     const state = createInitialState(1);
     state.player.nemesisFile.fragments = [
@@ -295,6 +336,53 @@ describe('GameStateSchema — rejects corrupt states with typed ZodErrors', () =
   });
 });
 
+describe('GameStateSchema — nested schema-drift guard (T-1002)', () => {
+  it('rejects an unknown nested field under player.* loudly instead of silently stripping it', () => {
+    // `player.reputation` is the verified drift field (T-1503 faction rep). Before
+    // T-1002 it round-tripped to `undefined` (silently stripped); now `.strict()`
+    // must make it a loud ZodError with a path under `player`.
+    const obj = JSON.parse(serializeState(createInitialState(1))) as Record<string, unknown>;
+    (obj.player as Record<string, unknown>).reputation = 5;
+
+    const result = safeValidateGameState(obj);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBeInstanceOf(z.ZodError);
+      expect(result.error.issues.some((i) => i.path.join('.').startsWith('player'))).toBe(true);
+    }
+  });
+
+  it('rejects an unknown DEEPLY-nested field (player.ship.*) — the strict guard is recursive', () => {
+    const obj = JSON.parse(serializeState(createInitialState(1))) as Record<string, unknown>;
+    const ship = (obj.player as Record<string, unknown>).ship as Record<string, unknown>;
+    ship.reputation = 7;
+
+    const result = safeValidateGameState(obj);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path.join('.').startsWith('player.ship'))).toBe(
+        true,
+      );
+    }
+  });
+
+  it('rejects an unknown TOP-LEVEL field loudly (root schema is strict too)', () => {
+    const obj = JSON.parse(serializeState(createInitialState(1))) as Record<string, unknown>;
+    obj.somethingNew = true;
+
+    const result = safeValidateGameState(obj);
+    expect(result.success).toBe(false);
+  });
+
+  it('still accepts a valid state — strict did not over-reject a legitimate shape', () => {
+    // Guards against the failure mode where enabling strict rejects real states
+    // because a schema entry was missed. A clean initial state must round-trip.
+    const raw = JSON.parse(serializeState(createInitialState(1))) as unknown;
+    const validated = validateGameState(raw);
+    expect(validated).toEqual(raw);
+  });
+});
+
 describe('PlayerActionSchema — companion validator', () => {
   it('accepts a valid action', () => {
     expect(validatePlayerAction({ type: 'Travel', destinationId: 3 })).toEqual({
@@ -305,6 +393,119 @@ describe('PlayerActionSchema — companion validator', () => {
 
   it('rejects an unknown action type with a ZodError', () => {
     expect(() => validatePlayerAction({ type: 'Teleport' })).toThrow(z.ZodError);
+  });
+
+  it('T-1303 · accepts a VisitHangout action', () => {
+    expect(
+      validatePlayerAction({
+        type: 'VisitHangout',
+        venue: 'dare',
+        opponentId: 'npc-iron-vex',
+        wager: 100,
+        spendDie: 0,
+      }),
+    ).toMatchObject({ type: 'VisitHangout', venue: 'dare' });
+  });
+});
+
+describe('T-1303 · HangoutEvent + new DispositionChanged reasons round-trip', () => {
+  it('validates a state whose eventLog carries a HangoutEvent and a dare disposition shift', () => {
+    const state = createInitialState(1);
+    state.eventLog.push(
+      {
+        type: 'HangoutEvent',
+        day: 1,
+        venue: 'dare',
+        opponentId: 'npc-iron-vex',
+        wager: 100,
+        playerWon: true,
+        creditsDelta: 100,
+      },
+      {
+        type: 'HangoutEvent',
+        day: 1,
+        venue: 'rumor',
+        rumors: ['Word is Iron Vex is keeping quiet around Sun-3.'],
+      },
+      {
+        type: 'DispositionChanged',
+        day: 1,
+        npcId: 'npc-iron-vex',
+        delta: -2,
+        disposition: -2,
+        reason: 'dare',
+      },
+      {
+        type: 'DispositionChanged',
+        day: 1,
+        npcId: 'npc-iron-vex',
+        delta: -4,
+        disposition: -6,
+        reason: 'insult',
+      },
+    );
+    const restored = validateGameState(JSON.parse(serializeState(state)));
+    expect(restored.eventLog.filter((e) => e.type === 'HangoutEvent')).toHaveLength(2);
+    // The dare + insult reasons validate (they are new to the reason enum).
+    const reasons = restored.eventLog
+      .filter((e) => e.type === 'DispositionChanged')
+      .map((e) => (e as { reason: string }).reason);
+    expect(reasons).toEqual(expect.arrayContaining(['dare', 'insult']));
+  });
+});
+
+describe('GameStateSchema — T-1306 crew + dice progression', () => {
+  // T-1306 · crew + reroll + the two new event/action variants.
+  it('validates a state with crew, a reroll charge, and DiceRerolled/CrewEvent log entries', () => {
+    const state = createInitialState(1);
+    state.player.crew = [
+      { roleId: 'crew-second', hiredDay: 2 },
+      { roleId: 'crew-quartermaster', hiredDay: 4 },
+    ];
+    state.player.dawnHand = {
+      dice: [18, 12, 6, 5, 5, 3],
+      spent: [false, false, false, false, false, false],
+      rerollsRemaining: 1,
+    };
+    state.eventLog.push(
+      {
+        type: 'CrewEvent',
+        day: 2,
+        kind: 'hired',
+        roleId: 'crew-second',
+        cost: 3000,
+        berths: 1,
+        crewCount: 1,
+      },
+      { type: 'CrewEvent', day: 5, kind: 'wage', amount: 65, crewCount: 2 },
+      {
+        type: 'CrewEvent',
+        day: 6,
+        kind: 'failed',
+        roleId: 'crew-second',
+        failReason: 'already-hired',
+      },
+      { type: 'DiceRerolled', day: 6, dieIndex: 3, previous: 2, result: 14, rerollsRemaining: 0 },
+      { type: 'DiceRerolled', day: 6, failReason: 'no-charge' },
+    );
+    const restored = validateGameState(JSON.parse(serializeState(state)));
+    expect(restored.player.crew).toHaveLength(2);
+    expect(restored.player.dawnHand?.rerollsRemaining).toBe(1);
+    expect(restored.eventLog.filter((e) => e.type === 'CrewEvent')).toHaveLength(3);
+    expect(restored.eventLog.filter((e) => e.type === 'DiceRerolled')).toHaveLength(2);
+  });
+
+  it('rejects an unknown key inside a crew member (.strict())', () => {
+    const state = createInitialState(1);
+    (state.player.crew as unknown) = [{ roleId: 'crew-second', hiredDay: 1, rank: 'chief' }];
+    expect(() => validateGameState(JSON.parse(serializeState(state)))).toThrow(z.ZodError);
+  });
+
+  it('validates the Reroll and Crew PlayerActions', () => {
+    expect(() => validatePlayerAction({ type: 'Reroll', dieIndex: 2 })).not.toThrow();
+    expect(() =>
+      validatePlayerAction({ type: 'Crew', action: 'hire', roleId: 'crew-second', spendDie: 0 }),
+    ).not.toThrow();
   });
 });
 

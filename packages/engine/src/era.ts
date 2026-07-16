@@ -59,6 +59,21 @@ export function eraFuelPriceMultiplier(eraEvent: EraEventState | null, systemId:
   return affected(eraEvent, systemId) ? def.modifiers.fuelPriceMultiplier : 1;
 }
 
+/**
+ * T-1307 · Owned-port launch-fee income multiplier under the active era event.
+ * Mirrors {@link eraFuelPriceMultiplier}: returns `portIncomeMultiplier` when the
+ * owned port's system is in scope, else 1 (and 1 with no event / no modifier). The
+ * per-port A/B lever the dusk income accrual (actions/port.ts `portDuskIncome`)
+ * reads — a regional blockade lifts an owned core port's income, a crackdown dips
+ * it; an event whose scope doesn't cover the port leaves it at base.
+ */
+export function eraPortIncomeMultiplier(eraEvent: EraEventState | null, systemId: number): number {
+  if (!eraEvent) return 1;
+  const def = ERA_EVENTS_BY_ID[eraEvent.defId];
+  if (!def?.modifiers.portIncomeMultiplier) return 1;
+  return affected(eraEvent, systemId) ? def.modifiers.portIncomeMultiplier : 1;
+}
+
 /** Additive route-danger delta under the active era event (galaxy-wide plus a
  *  scope-touch bonus/malus). */
 export function eraDangerDelta(

@@ -10,7 +10,7 @@ import {
   type MigrationFn,
 } from '../save.js';
 import { validateGameState } from '../schema.js';
-import { createInitialState } from '../state.js';
+import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { advanceDay } from '../day.js';
 import { GameState, PlayerAction } from '../types.js';
 
@@ -88,8 +88,9 @@ describe('save envelope — wrong-version typed errors', () => {
   });
 
   it('throws no-migration when a gap has no registered migration', () => {
-    // A version-0 save needs a 0→1 migration to reach CURRENT_SAVE_VERSION (1),
-    // but production MIGRATIONS is empty.
+    // A version-0 save needs a 0→1 migration to start climbing toward
+    // CURRENT_SAVE_VERSION, but production MIGRATIONS only registers 1→2 — there
+    // is no 0→1 step, so the walk fails loudly.
     const json = createSaveAtVersion(drive50Days(3), 0);
     const error = expectSaveError(() => loadSave(json));
     expect(error.code).toBe('no-migration');
@@ -125,10 +126,309 @@ describe('save envelope — round-trip property test', () => {
   for (const seed of [1, 7, 42, 1337]) {
     it(`createSave → loadSave is exact for a 50-day state (seed ${seed})`, () => {
       const state = drive50Days(seed);
-      const restored = loadSave(createSave(state));
-      expect(restored).toEqual(state);
+      const restored = loadSave(createSave(state, seed));
+      expect(restored.state).toEqual(state);
+      // T-1002: the seed rides the envelope and comes back on load.
+      expect(restored.seed).toBe(seed);
     });
   }
+});
+
+describe('fuel-capacity migration (T-1102)', () => {
+  it('recomputes a legacy maxFuel: 10000 to the hull-derived ceiling on load', () => {
+    // A pre-T-1102 save carried a flat maxFuel of 10,000. On load, deserialize
+    // re-derives it from the hull (junker: strength 1, condition 9 → 300) and
+    // clamps the current fuel to the new ceiling.
+    const legacy = createInitialState(123);
+    legacy.player.ship.maxFuel = 10000;
+    legacy.player.ship.fuel = 9000; // above the new ceiling — must clamp
+    legacy.player.ship.hull = { strength: 1, condition: 9 };
+
+    const restored = deserializeState(serializeState(legacy));
+
+    expect(restored.player.ship.maxFuel).toBe(300);
+    expect(restored.player.ship.fuel).toBe(300);
+  });
+
+  it('is an exact round-trip for a fresh (already-derived) state', () => {
+    const fresh = createInitialState(7);
+    expect(fresh.player.ship.maxFuel).toBe(starterShip().maxFuel);
+    const restored = deserializeState(serializeState(fresh));
+    expect(restored).toEqual(fresh);
+  });
+});
+
+describe('save envelope — malformed-Explore reasons survive save/load (T-1003)', () => {
+  // Malformed Explore inputs resolve to typed ExplorationFailed events carrying
+  // the three T-1003 reasons, which land in state.eventLog. A save taken after a
+  // player triggers one of these paths must createSave → loadSave cleanly — a
+  // schema.ts that omits the reason throws SaveError('invalid-state') here (the
+  // exact crash T-1003 exists to eliminate, moved to the persistence boundary).
+  const cases: Array<{ reason: string; actions: PlayerAction[] }> = [
+    { reason: 'no-die', actions: [{ type: 'Explore' }] },
+    { reason: 'invalid-die-index', actions: [{ type: 'Explore', spendDie: 99 }] },
+    {
+      reason: 'die-already-spent',
+      actions: [
+        { type: 'Trade', action: 'buy-fuel', fuelAmount: 10, spendDie: 0 },
+        { type: 'Explore', spendDie: 0 },
+      ],
+    },
+  ];
+
+  for (const { reason, actions } of cases) {
+    it(`createSave → loadSave is exact after an ExplorationFailed '${reason}'`, () => {
+      const state = advanceDay(createInitialState(7), actions).state;
+
+      // Sanity: the resolver actually logged the reason under test.
+      const failure = state.eventLog.find(
+        (e) => e.type === 'ExplorationFailed' && e.reason === reason,
+      );
+      expect(failure, `expected an ExplorationFailed '${reason}' in the event log`).toBeDefined();
+
+      const restored = loadSave(createSave(state, 7));
+      expect(restored.state).toEqual(state);
+    });
+  }
+});
+
+describe('NPC StatCheck events survive save/load (T-1201)', () => {
+  // T-1201 widened StatCheck.actionContext with five `npc-*` tags and now emits
+  // an NPC StatCheck (nested CheckResult) into eventLog every day. No GameState
+  // FIELD changed, so no migration is required — but the widened event must
+  // JSON round-trip byte-for-byte through the save envelope, including its
+  // actionContext and the nested result.
+  it('createSave → loadSave preserves an npc-* StatCheck in the event log exactly', () => {
+    const state = drive50Days(11);
+
+    // A real drive produces NPC checks in the log (the same events the wire
+    // renders). Grab one to prove the fixture is genuine, not hand-built.
+    const npcCheck = state.eventLog.find(
+      (e) =>
+        e.type === 'StatCheck' &&
+        typeof e.actionContext === 'string' &&
+        e.actionContext.startsWith('npc-'),
+    );
+    expect(npcCheck, 'expected an npc-* StatCheck in the 50-day event log').toBeDefined();
+
+    const restored = loadSave(createSave(state, 11));
+    // Whole-state exactness covers the nested CheckResult + actionContext.
+    expect(restored.state).toEqual(state);
+    // And, explicitly, the same NPC check comes back identical.
+    const restoredCheck = restored.state.eventLog.find(
+      (e) =>
+        e.type === 'StatCheck' &&
+        typeof e.actionContext === 'string' &&
+        e.actionContext.startsWith('npc-'),
+    );
+    expect(restoredCheck).toEqual(npcCheck);
+  });
+});
+
+describe('save envelope — seed reproducibility (T-1002)', () => {
+  it('the seed survives save → load → save byte-identically and lives in the envelope', () => {
+    const state = drive50Days(9);
+    // A first load reaches the serialization fixpoint (Zod reorders keys to the
+    // schema order), so compare from an already-loaded state.
+    const s1 = createSave(state, 1337);
+    const l1 = loadSave(s1);
+    const s2 = createSave(l1.state, requireSeed(l1.seed));
+    const l2 = loadSave(s2);
+    const s3 = createSave(l2.state, requireSeed(l2.seed));
+
+    expect(s3).toBe(s2); // byte-identical fixpoint
+    expect(l2.seed).toBe(1337); // the seed is preserved verbatim
+    // And it genuinely rides the envelope, not the game state.
+    const envelope = JSON.parse(s2) as SaveEnvelope;
+    expect(envelope.seed).toBe(1337);
+  });
+
+  it('an explicit seed of 0 is preserved AND distinct from a seedless legacy load', () => {
+    // Regression: seed 0 used to collide with a numeric UNKNOWN_LEGACY_SEED
+    // sentinel, making a genuine seed-0 career indistinguishable from a pre-v2
+    // (seedless) save. The absence is now `null`, so the two cases differ.
+    const state = drive50Days(4);
+    const explicitZero = loadSave(createSave(state, 0));
+    expect(explicitZero.seed).toBe(0);
+
+    const seedless = loadSave(JSON.stringify({ version: 1, state }));
+    expect(seedless.seed).toBeNull();
+    expect(explicitZero.seed).not.toBe(seedless.seed); // 0 !== null — no collision
+  });
+});
+
+describe('save envelope — v1 → v2 migration (T-1002)', () => {
+  it('loads a seedless v1 envelope green through production MIGRATIONS with seed: null', () => {
+    // A REAL pre-v2 envelope: version 1, no `seed` field at all.
+    const v1 = JSON.stringify({ version: 1, state: drive50Days(9) });
+
+    const loaded = loadSave(v1); // walks 1→2 (identity state migration), validates
+    expect(loaded.state.day).toBeGreaterThan(0); // validated, not thrown
+    // Absence stays absence: no numeric backfill (that would collide with a
+    // legitimate explicit seed). Callers key legacy fallbacks off null.
+    expect(loaded.seed).toBeNull();
+  });
+
+  it('a current-version envelope with an explicit seed is preserved (no migration needed)', () => {
+    const current = createSave(drive50Days(9), 4242);
+    // createSave always stamps CURRENT_SAVE_VERSION; loading it needs no
+    // migration and preserves the seed exactly.
+    expect((JSON.parse(current) as SaveEnvelope).version).toBe(CURRENT_SAVE_VERSION);
+    expect(loadSave(current).seed).toBe(4242);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1304 · v2 → v3 loan migration + loan round-trip.
+// ---------------------------------------------------------------------------
+describe('save envelope — v2 → v3 loan migration (T-1304)', () => {
+  it('backfills PlayerState.loan = null on a v2 envelope with no loan key', () => {
+    // Build a REAL v2-shaped state: drive a state, then strip the loan key the
+    // way a genuinely pre-T-1304 save would (it never had the field). The v2→v3
+    // migration must re-add loan: null before schema validation, else the strict
+    // schema (loan is non-optional) would reject it.
+    const state = drive50Days(11);
+    // Strip the loan key the way a genuinely pre-T-1304 (v2) save would — it
+    // never had the field. `delete` via an index cast keeps `loan` off the object.
+    delete (state.player as unknown as Record<string, unknown>).loan;
+    const v2 = JSON.stringify({ version: 2, state, seed: 77 });
+
+    const loaded = loadSave(v2); // walks 2→3 (loan backfill), then validates
+    expect(loaded.state.player.loan).toBeNull();
+    expect(loaded.seed).toBe(77);
+  });
+
+  it('round-trips an ACTIVE loan through createSave → loadSave (deep-equal)', () => {
+    const state = drive50Days(12);
+    state.player.loan = {
+      lender: 'npc-penny-wise',
+      principal: 500,
+      outstanding: 575,
+      dailyRate: 0.05,
+      borrowedDay: 3,
+      dueDay: 18,
+      status: 'active',
+    };
+    const loaded = loadSave(createSave(state, 5));
+    expect(loaded.state.player.loan).toEqual(state.player.loan);
+  });
+
+  it('round-trips a DEFAULTED loan through createSave → loadSave (deep-equal)', () => {
+    const state = drive50Days(13);
+    state.player.loan = {
+      lender: 'npc-penny-wise',
+      principal: 1000,
+      outstanding: 1600,
+      dailyRate: 0.05,
+      borrowedDay: 2,
+      dueDay: 17,
+      status: 'defaulted',
+    };
+    const loaded = loadSave(createSave(state, 6));
+    expect(loaded.state.player.loan).toEqual(state.player.loan);
+    expect(loaded.state.player.loan?.status).toBe('defaulted');
+  });
+
+  it('strict schema rejects an unknown key inside a loan', () => {
+    const state = drive50Days(14);
+    (state.player.loan as unknown) = {
+      lender: 'npc-penny-wise',
+      principal: 500,
+      outstanding: 500,
+      dailyRate: 0.05,
+      borrowedDay: 1,
+      dueDay: 16,
+      status: 'active',
+      collectorBribe: 999, // not part of LoanState — must fail .strict()
+    };
+    expect(() => loadSave(createSave(state, 7))).toThrow(SaveError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1306 · v3 → v4 crew migration + crew/reroll round-trip (acceptance #5).
+// ---------------------------------------------------------------------------
+describe('save envelope — v3 → v4 crew migration (T-1306)', () => {
+  it('backfills PlayerState.crew = [] on a v3 envelope with no crew key', () => {
+    // Build a REAL v3-shaped state, then strip the crew key the way a genuinely
+    // pre-T-1306 save would (it never had the field). The v3→v4 migration must
+    // re-add crew: [] before schema validation, else the strict schema (crew is
+    // non-optional) would reject it.
+    const state = drive50Days(21);
+    delete (state.player as unknown as Record<string, unknown>).crew;
+    const v3 = JSON.stringify({ version: 3, state, seed: 88 });
+
+    const loaded = loadSave(v3); // walks 3→4 (crew backfill), then validates
+    expect(loaded.state.player.crew).toEqual([]);
+    expect(loaded.seed).toBe(88);
+  });
+
+  it('round-trips a hired crew + a mid-day reroll charge (deep-equal)', () => {
+    const state = drive50Days(22);
+    state.player.crew = [
+      { roleId: 'crew-second', hiredDay: 3 },
+      { roleId: 'crew-navigator', hiredDay: 5 },
+    ];
+    // A mid-day dawn hand carrying an unspent reroll charge must round-trip.
+    state.player.dawnHand = {
+      dice: [17, 12, 9, 4, 2],
+      spent: [false, false, false, false, false],
+      rerollsRemaining: 1,
+    };
+    const loaded = loadSave(createSave(state, 9));
+    expect(loaded.state.player.crew).toEqual(state.player.crew);
+    expect(loaded.state.player.dawnHand?.rerollsRemaining).toBe(1);
+    expect(loaded.state.player.dawnHand).toEqual(state.player.dawnHand);
+  });
+
+  it('strict schema rejects an unknown key inside a crew member', () => {
+    const state = drive50Days(23);
+    (state.player.crew as unknown) = [
+      { roleId: 'crew-second', hiredDay: 1, morale: 99 }, // not part of CrewMember
+    ];
+    expect(() => loadSave(createSave(state, 10))).toThrow(SaveError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1307 · v4 → v5 ports migration + owned-ports round-trip (acceptance #3a).
+// ---------------------------------------------------------------------------
+describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
+  it('backfills PlayerState.ports = [] on a v4 envelope with no ports key', () => {
+    // Build a REAL v4-shaped state, then strip the ports key the way a genuinely
+    // pre-T-1307 save would (it never had the field). The v4→v5 migration must
+    // re-add ports: [] before schema validation, else the strict schema (ports is
+    // non-optional) would reject it.
+    const state = drive50Days(31);
+    delete (state.player as unknown as Record<string, unknown>).ports;
+    const v4 = JSON.stringify({ version: 4, state, seed: 99 });
+
+    const loaded = loadSave(v4); // walks 4→5 (ports backfill), then validates
+    expect(loaded.state.player.ports).toEqual([]);
+    expect(loaded.seed).toBe(99);
+  });
+
+  it('round-trips owned port stakes through createSave → loadSave (deep-equal)', () => {
+    const state = drive50Days(32);
+    state.player.ports = [
+      { systemId: 1, purchaseDay: 3 },
+      { systemId: 7, purchaseDay: 12 },
+    ];
+    const loaded = loadSave(createSave(state, 13));
+    expect(loaded.state.player.ports).toEqual(state.player.ports);
+  });
+
+  it('strict schema rejects an unknown key inside a port stake', () => {
+    const state = drive50Days(33);
+    (state.player.ports as unknown) = [
+      { systemId: 1, purchaseDay: 1, alliance: 'league' }, // not part of PortStake
+    ];
+    expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
+  });
+
+  it('CURRENT_SAVE_VERSION is 5', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(5);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -138,6 +438,12 @@ describe('save envelope — round-trip property test', () => {
 /** Serialize a state into an envelope at an arbitrary version (for error tests). */
 function createSaveAtVersion(state: GameState, version: number): string {
   return JSON.stringify({ version, state });
+}
+
+/** Narrow a LoadedSave seed for re-save: a v2 save always carries one. */
+function requireSeed(seed: number | null): number {
+  if (seed === null) throw new Error('expected the loaded save to carry a seed');
+  return seed;
 }
 
 /** Assert the thunk throws a SaveError and return it (typed). */
