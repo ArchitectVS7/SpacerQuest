@@ -105,6 +105,9 @@ test('playing the doc-salvage chain earns a deed that appears in the Registry wi
   await expect(page.getByTestId('registry-rank')).toHaveText('Commander');
 });
 
+// The complementary NON-EMPTY assertion (a fragment reached through the Explore
+// UI so the Nemesis File renders populated) lives in exploration.spec.ts (T-1403);
+// this empty-state spec is retained, not replaced.
 test('the Nemesis file renders its silent empty state at zero fragments', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('records-toggle').click();

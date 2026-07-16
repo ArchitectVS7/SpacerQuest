@@ -20,6 +20,7 @@ import {
   buyFuel,
   payDebt,
   travelTo,
+  explore,
   combat,
   shipyard,
   resolveStorylet,
@@ -43,6 +44,7 @@ import {
   cargoName,
   starmapProjection,
   routePreview,
+  explorationPreview,
   fuelPurchaseQuote,
   knownNpcCounts,
   wireLines,
@@ -1201,6 +1203,17 @@ function Starmap({ state }: { state: CockpitState }) {
   const eraSystems = new Set(game.eraEvent?.affectedSystemIds ?? []);
   const dieArmed = state.selectedDie !== null;
 
+  // T-1403 · off-lane sweep affordances. The button gates on an armed die AND the
+  // engine's own fuel affordability; the label mirrors the confirm-jump pattern,
+  // naming the reason it is disabled (read from the engine preview, never invented).
+  const sweep = explorationPreview(game);
+  const canSweep = dieArmed && sweep.canAfford;
+  const sweepLabel = !dieArmed
+    ? 'Pick a die to sweep'
+    : !sweep.canAfford
+      ? `Need ${sweep.fuelCost} fuel`
+      : 'Off-lane sweep';
+
   const hereNode = proj.here;
   // A transparent per-node hit target, narrower than the node spacing so
   // neighbours never intercept, tall enough that the node's centre (used by
@@ -1349,6 +1362,33 @@ function Starmap({ state }: { state: CockpitState }) {
             </button>
           </div>
         )}
+
+        {/* T-1403 · Off-lane sweep. The starmap is a pure client of the engine's
+            Explore action: the DC / fuel cost / effective modifier are read from
+            the engine+content (explorationPreview), the sweep routes through the
+            store's single `explore()` verb, and the loot / nav-check outcome reads
+            below via `explorationOutcome` + the shared PILOT CheckBreakdown. */}
+        <div className="explore-sweep" data-testid="explore-panel">
+          <div className="es-head">OFF-LANE SWEEP</div>
+          <div className="es-cost" data-testid="explore-cost">
+            PILOT DC {sweep.dc} · FUEL {sweep.fuelCost} · NAV{' '}
+            {signedMargin(sweep.effectiveModifier)}
+          </div>
+          <button
+            className="btn"
+            data-testid="explore-sweep"
+            disabled={!canSweep}
+            onClick={() => explore()}
+          >
+            {sweepLabel}
+          </button>
+          {state.explorationOutcome && (
+            <div className="es-outcome" data-testid="exploration-outcome">
+              {state.explorationOutcome}
+            </div>
+          )}
+        </div>
+
         <CheckBreakdown state={state} only={Stat.PILOT} />
       </div>
     </section>

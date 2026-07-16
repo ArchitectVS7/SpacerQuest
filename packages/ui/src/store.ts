@@ -14,6 +14,7 @@ import type { Stat } from '@spacerquest/content';
 import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerquest/engine';
 import {
   combatAftermathSummary,
+  explorationOutcome,
   nextOnboardingSeen,
   shipyardFailureExplanation,
   type CombatAftermath,
@@ -108,6 +109,16 @@ export interface CockpitState {
    *  loud notice AND cleared like any transient combat readout. */
   combatMalfunction: boolean;
   /**
+   * T-1403 off-lane sweep. The one-line honest summary of the LAST successful
+   * exploration — the charted POI plus its salvage / fragment / contraband loot,
+   * composed from the action's typed events (format.ts `explorationOutcome`). This
+   * is CLIENT presentation meta-state (like `combatAftermath`), NOT GameState, so
+   * a JSON round-trip of game state is unaffected and no save migration is needed.
+   * READER: the Starmap pane's `exploration-outcome` readout. Null when the last
+   * sweep failed or nothing has been swept since the last selection / new day.
+   */
+  explorationOutcome: string | null;
+  /**
    * T-311 onboarding. Which first-time coach prompts the player has already
    * dismissed or progressed past. This is CLIENT presentation meta-state (like
    * `fx`), deliberately kept out of GameState so the engine stays pure and a
@@ -154,6 +165,7 @@ function init(): CockpitState {
     lastCheckKey: 0,
     combatAftermath: null,
     combatMalfunction: false,
+    explorationOutcome: null,
     onboardingSeen: readOnboarding(),
     seed,
     reducedMotion: readReducedMotion(),
@@ -216,6 +228,31 @@ function storyletBlockNoticeFrom(events: GameEvent[]): string | null {
         return 'That storylet is no longer on offer.';
       case 'unknown-choice':
         return 'That choice could not be resolved.';
+    }
+  }
+  return null;
+}
+
+/**
+ * T-1403 · Translate the engine's typed `ExplorationFailed` refusal into an honest
+ * visible notice — the "typed fails render as notices, never silence" guarantee.
+ * Returns null when no sweep failure occurred (the detour discovered a POI). Every
+ * `ExplorationFailed.reason` the resolver emits (exploration.ts) maps here. The
+ * three UI-prevented reasons (no-die / invalid-die-index / die-already-spent) still
+ * get a line so a race with state is never a silent no-op.
+ */
+function explorationFailNoticeFrom(events: GameEvent[]): string | null {
+  for (const e of events) {
+    if (e.type !== 'ExplorationFailed') continue;
+    switch (e.reason) {
+      case 'insufficient-fuel':
+        return 'Not enough fuel to reach an off-lane target.';
+      case 'nav-check':
+        return 'The sweep turned up nothing but static.';
+      case 'no-die':
+      case 'invalid-die-index':
+      case 'die-already-spent':
+        return 'That sweep needs a fresh die from the hand.';
     }
   }
   return null;
@@ -384,6 +421,7 @@ export function newGame(seed: number): void {
     lastCheck: null,
     combatAftermath: null,
     combatMalfunction: false,
+    explorationOutcome: null,
     onboardingSeen: {},
   });
   // A fresh career: the dawn sting and the ambient drive-hum bed. The hum defers
@@ -396,8 +434,14 @@ export function newGame(seed: number): void {
 export function selectDie(index: number): void {
   const hand = state.game.player.dawnHand;
   if (!hand || hand.spent[index]) return;
-  // A fresh selection resets the resolved-check readout.
-  set({ selectedDie: state.selectedDie === index ? null : index, notice: null, lastCheck: null });
+  // A fresh selection resets the resolved-check readout AND any prior sweep
+  // outcome, so a stale off-lane summary never lingers next to a new action.
+  set({
+    selectedDie: state.selectedDie === index ? null : index,
+    notice: null,
+    lastCheck: null,
+    explorationOutcome: null,
+  });
 }
 
 export function signContract(contractIndex: number): void {
@@ -590,6 +634,9 @@ export function travelTo(destinationId: number): void {
       notice,
       lastCheck,
       lastCheckKey: state.lastCheckKey + 1,
+      // Clear any prior off-lane sweep summary — a fresh jump on the same pane
+      // must not read alongside a stale exploration outcome.
+      explorationOutcome: null,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
     // The jump die is always spent (even a failed PILOT roll burns it), so this
@@ -597,6 +644,58 @@ export function travelTo(destinationId: number): void {
     playCues(events, true);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That jump could not be resolved.' });
+  }
+}
+
+/**
+ * T-1403 · Off-lane sweep (PRD §7.2) — the missing `Explore` verb. The starmap
+ * pane is a pure CLIENT of the exploration rules exactly as it is of travel: it
+ * arms a die and this is the single engine call. The engine burns the die on a
+ * PILOT nav check (DC/fuel from content), and every outcome is surfaced — the nav
+ * check rides the shared PILOT `CheckBreakdown` (via `lastCheck`), the loot
+ * (salvage / Signal Fragment / sealed contraband pod) reads through the
+ * `explorationOutcome` summary, and every typed `ExplorationFailed` reason renders
+ * as a visible notice, never a silent no-op. A discovered contraband pod arms the
+ * `derelict.sealed-pod` storylet the same day (engine `refreshAvailableStorylets`),
+ * so the carrying choice surfaces behind the existing storylet launcher.
+ */
+export function explore(): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then sweep.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Explore',
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    // The nav PILOT check reuses the honest-check readout (CheckBreakdown, PILOT).
+    const lastCheck = lastCheckFrom(events);
+    const failNotice = explorationFailNoticeFrom(events);
+    // On a discovery, summarise the loot; a failed sweep clears the outcome and
+    // speaks through the notice instead.
+    const outcome = failNotice ? null : explorationOutcome(events);
+    // The engine spends the die BEFORE the fuel gate (exploration.ts), so an
+    // insufficient-fuel refusal still burns it — a StatCheck-based signal would
+    // wrongly read that as uncommitted. Read the authoritative spent flag off the
+    // returned hand instead: true whenever the die was actually consumed (success,
+    // nav-check, insufficient-fuel), false for the UI-prevented no-spend refusals.
+    const committed = next.player.dawnHand?.spent[die] === true;
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice: failNotice,
+      lastCheck,
+      lastCheckKey: state.lastCheckKey + 1,
+      explorationOutcome: outcome,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    playCues(events, committed);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That sweep could not be resolved.' });
   }
 }
 
@@ -827,6 +926,7 @@ export function endDay(): void {
       lastCheck: null,
       combatAftermath: aftermath,
       combatMalfunction: false,
+      explorationOutcome: null,
       onboardingSeen: reconcileOnboarding(state.game, dawn.state),
     });
     // Dusk cues (wire crackle / combat resolution) off the dusk events, then the

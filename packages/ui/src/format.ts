@@ -10,10 +10,13 @@ import {
   Stat,
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
+  EXPLORATION_NAV_DC,
+  EXPLORATION_FUEL_COST,
   type StoryletTrigger,
 } from '@spacerquest/content';
 import {
   maxJumpDistance,
+  navBonus,
   quoteShipyard,
   nemesisLoreIndex,
   fragmentCount,
@@ -125,6 +128,58 @@ export type RoutePreview = TravelPreview;
  *  fabricated `jumpsBetween` round) it used to; it consumes the engine truth. */
 export function routePreview(game: GameState, dest: number): RoutePreview {
   return travelPreview(game, dest);
+}
+
+// ---- T-1403 off-lane exploration (display-only) --------------------------
+//
+// The off-lane sweep control is a pure CLIENT of the engine's `Explore` action.
+// Every rule number it shows — the nav DC, the fuel cost, the effective PILOT
+// modifier — reads from the SAME content constants and engine function the
+// resolver (actions/exploration.ts) checks against, never a value invented in
+// JSX. The loot summary is composed only from the action's typed events.
+
+/** The advisory nav-check preview for the sweep button: the DC and fuel cost the
+ *  engine will charge, the ship's effective PILOT modifier (stat + navBonus — the
+ *  exact term `resolveExploration` adds), and whether the tank can afford the
+ *  detour. A pure read; the engine still gates fuel on resolve. */
+export interface ExplorationPreview {
+  dc: number;
+  fuelCost: number;
+  effectiveModifier: number;
+  canAfford: boolean;
+}
+
+export function explorationPreview(game: GameState): ExplorationPreview {
+  const ship = game.player.ship;
+  return {
+    dc: EXPLORATION_NAV_DC,
+    fuelCost: EXPLORATION_FUEL_COST,
+    // The same modifier the resolver adds: PILOT stat + the ship's nav bonus.
+    effectiveModifier: game.player.stats[Stat.PILOT] + navBonus(ship),
+    canAfford: ship.fuel >= EXPLORATION_FUEL_COST,
+  };
+}
+
+/**
+ * One honest line summarising a SUCCESSFUL sweep, composed straight from the
+ * action's typed events — the charted POI plus whatever loot the roll surfaced
+ * (salvage credits, a Signal Fragment, a sealed contraband pod). Returns null when
+ * no POI was discovered (a failed sweep speaks through its notice instead). The UI
+ * invents nothing here: every clause reads an emitted event.
+ */
+export function explorationOutcome(events: GameEvent[]): string | null {
+  const poi = events.find(
+    (e): e is Extract<GameEvent, { type: 'PoiDiscovered' }> => e.type === 'PoiDiscovered',
+  );
+  if (!poi) return null;
+  const parts: string[] = [`Charted ${poi.name}`];
+  let salvage = 0;
+  for (const e of events) if (e.type === 'SalvageRecovered') salvage += e.amount;
+  if (salvage > 0) parts.push(`${salvage.toLocaleString()}cr in salvage`);
+  if (events.some((e) => e.type === 'FragmentAcquired')) parts.push('a Signal Fragment recovered');
+  if (events.some((e) => e.type === 'ContrabandFound'))
+    parts.push('a sealed pod bolted in the hold');
+  return `${parts.join(' · ')}.`;
 }
 
 /** A system placed on the SVG plane: raw coordinates plus projected (viewBox)

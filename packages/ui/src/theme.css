@@ -251,11 +251,17 @@ body {
   min-height: 0;
 }
 .col.left {
-  /* Starmap sizes to its (bounded) content; the taller ship & yard pane takes
-     the flexible remainder and scrolls internally (minmax(0,…) lets it shrink
-     below content height so it never overflows the column and paints over the
-     starmap SVG, which draws with overflow:visible). */
-  grid-template-rows: auto minmax(0, 1fr);
+  /* Starmap sizes to its content when the column has room; the taller ship & yard
+     pane takes the flexible remainder and scrolls internally (minmax(0,…) lets it
+     shrink below content height so it never overflows the column and paints over the
+     starmap SVG, which draws with overflow:visible). T-1403: the starmap row is
+     minmax(0,auto) — NOT bare `auto` — so on a short viewport (the persistent
+     off-lane sweep control added height to the pane) the starmap can itself shrink
+     and scroll internally rather than overflow the column into the wire ticker and
+     occlude the ship pane's controls. The ship row keeps a usable floor
+     (minmax(220px,…)) so the taller ship & yard list can never collapse to its
+     header — the starmap yields and scrolls first. */
+  grid-template-rows: minmax(0, auto) minmax(220px, 1fr);
 }
 .pane {
   border: 1px solid var(--hair);
@@ -460,6 +466,35 @@ body {
 .route-preview .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* T-1403 · off-lane sweep control — a functional affordance sharing the
+   route-preview look, not a redesign. */
+.explore-sweep {
+  border: 1px solid var(--amber-dim);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+.explore-sweep .es-head {
+  color: var(--ember);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.explore-sweep .es-cost {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+.explore-sweep .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.explore-sweep .es-outcome {
+  color: var(--ember);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 /* ---- ship & shipyard (T-308) ---- */
