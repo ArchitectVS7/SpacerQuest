@@ -101,10 +101,27 @@ export function componentTierForStrength(strength: number): number {
   return Math.max(0, Math.floor(strength / 10));
 }
 
+/**
+ * T-1402 · PRD-over-foundation divergence (commented at the definition site).
+ * Foundation `SP.YARD.S:213` computes hold capacity as `hx = h1; if (h1 > 9) hx =
+ * h1 - 10`, which parks a strength-10 hull at `hx = 0` → `(cond+1)*0 = 0` pods.
+ * The original game reached strength 10 only TRANSIENTLY (hulls grew +1 at a time,
+ * so strength 10 was a fleeting waypoint on the climb past it). The Rimward
+ * tier-jump model (`applyShipyardMutation` sets `strength = tier * 10`) instead
+ * PARKS a tier-1 hull exactly on strength 10 — the foundation zero point — making
+ * a bought tier-1 hull yield 0 pods, strictly worse than the junker's 10. That is
+ * the tier-1-hull→0-pods trap. Shifting the boundary from `> 9` to `> 10` gives a
+ * tier-1 hull (strength 10) a real capacity of 10 (`(0+1... )` → `hx = 10`,
+ * `(cond+1)*10`) while leaving every pinned balance value untouched: junker str1
+ * → hx1 (10 pods), tier-2 str20 → hx10, tier-3 str30 → hx20, ASTRAXIAL str29 →
+ * hx19, TITANIUM str1 → hx1+5. Only strength 10 (the fix) and the unreachable
+ * 11–19 band move. READERS: the `buy-cargo-pods` capacity cap (below),
+ * `ShipPreview.maxCargoPods`, and UI `format.ts` `shipComponents`.
+ */
 export function maxCargoPodsForShip(state: GameState): number {
   const ship = state.player.ship;
   let hullCapacity = ship.hull.strength;
-  if (hullCapacity > 9) {
+  if (hullCapacity > 10) {
     hullCapacity -= 10;
   }
   if (ship.hasTitaniumHull) {

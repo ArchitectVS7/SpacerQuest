@@ -45,15 +45,20 @@ test('buying an upgrade changes the ship instruments (manifest pods + fuel curve
   await expect(page.getByTestId('ship-pods')).toHaveText('10');
   await expect(page.getByTestId('credits')).toHaveText('1,000');
 
-  // --- Upgrade the hull (tier 2 → strength 20) --------------------------
+  // --- Buy the tier-1 hull (str1 junker → strength 10) ------------------
+  // T-1402: the junker sits at tier 0 (engine `componentTierForStrength`), so its
+  // offered upgrade is TIER 1 (strength 10) — buyable now that the UI reads the
+  // floor-based tier. Before the de-rule pass the UI's `ceil` inverse called the
+  // junker "tier 1" and offered tier 2, skipping tier 1 entirely.
   await selectUnspentDie(page);
   await component(page, 'hull').getByTestId('upgrade-component').click();
 
-  await expect(component(page, 'hull').getByTestId('component-strength')).toHaveText('20');
-  // Cost 75 = tier-2 price 100 − trade-in 25 on the str-1 hull.
-  await expect(page.getByTestId('credits')).toHaveText('925');
+  await expect(component(page, 'hull').getByTestId('component-strength')).toHaveText('10');
+  // Cost 25 = tier-1 price 50 − trade-in 25 on the str-1 hull.
+  await expect(page.getByTestId('credits')).toHaveText('975');
   expect(await spentCount(page)).toBe(1);
-  // A stronger hull lifts the hold capacity (10 → 100), a manifest number moving.
+  // The pod-trap fix: a str-10 hull holds max 100 pods (was 0 before the engine's
+  // `> 10` boundary fix), so cargoPods still reads 10/100 — the regression is gone.
   await expect(page.getByTestId('pods-block')).toContainText('10/100');
 
   // --- Buy 10 cargo pods (a manifest/cargo number visibly changing) -----

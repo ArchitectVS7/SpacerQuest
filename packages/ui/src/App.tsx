@@ -41,9 +41,9 @@ import * as sound from './sound';
 import {
   systemName,
   cargoName,
-  jumpsBetween,
   starmapProjection,
   routePreview,
+  fuelPurchaseQuote,
   knownNpcCounts,
   wireLines,
   wireLog,
@@ -513,7 +513,6 @@ function ResolutionCeremony({
   view: ResolutionCeremonyView;
 }) {
   const offer = view.offer;
-  const armed = state.selectedDie !== null;
   return (
     <div
       className="resolution-ceremony"
@@ -559,8 +558,13 @@ function ResolutionCeremony({
 
         <div className="rc-choices">
           {offer.choices.map((choice: StoryletChoice) => {
-            const lock = storyletChoiceLock(state.game, choice, armed);
-            const needsDie = storyletChoiceNeedsDie(choice);
+            const lock = storyletChoiceLock(
+              state.game,
+              offer.storyletId,
+              choice,
+              state.selectedDie ?? undefined,
+            );
+            const needsDie = storyletChoiceNeedsDie(state.game, offer.storyletId, choice);
             return (
               <div
                 className={lock ? 'rc-choice locked' : 'rc-choice'}
@@ -636,7 +640,10 @@ function CombatInstrument({ state }: { state: CockpitState }) {
   const spent = hand?.spent ?? [];
   const remaining = spent.filter((x) => !x).length;
   const armed = state.selectedDie !== null;
-  const tributePreview = tributeThisRound(encounter.round);
+  // T-1402 · Forward the interceptor's CLASS so an anonymous Brigand (÷2) /
+  // Reptiloid (×2) previews the exact demand the engine charges; named
+  // interceptors carry no kind → the unmodified schedule.
+  const tributePreview = tributeThisRound(encounter.round, encounter.interceptor.kind);
 
   return (
     <section className="co-instrument">
@@ -833,7 +840,6 @@ function StoryletPanel({ state, onClose }: { state: CockpitState; onClose: () =>
   const game = state.game;
   const offers = game.storylets.available;
   const [index, setIndex] = useState(0);
-  const armed = state.selectedDie !== null;
 
   // Escape closes the panel (the WireLog / Records convention).
   useEffect(() => {
@@ -915,9 +921,14 @@ function StoryletPanel({ state, onClose }: { state: CockpitState; onClose: () =>
       </p>
       <div className="sl-choices">
         {offer.choices.map((choice: StoryletChoice) => {
-          const lock = storyletChoiceLock(game, choice, armed);
-          const cost = storyletChoiceCostLabel(choice);
-          const needsDie = storyletChoiceNeedsDie(choice);
+          const lock = storyletChoiceLock(
+            game,
+            offer.storyletId,
+            choice,
+            state.selectedDie ?? undefined,
+          );
+          const cost = storyletChoiceCostLabel(game, offer.storyletId, choice);
+          const needsDie = storyletChoiceNeedsDie(game, offer.storyletId, choice);
           return (
             <div
               className={lock ? 'sl-choice locked' : 'sl-choice'}
@@ -1650,7 +1661,6 @@ function ComponentRow({
 function Manifest({ state }: { state: CockpitState }) {
   const board = state.game.market.manifestBoard;
   const here = state.game.player.currentSystemId;
-  const tradeStat = state.game.player.stats.TRADE ?? 0;
   const armed = state.selectedDie !== null;
   const dieVal =
     state.selectedDie !== null ? state.game.player.dawnHand?.dice[state.selectedDie] : undefined;
@@ -1674,6 +1684,10 @@ function Manifest({ state }: { state: CockpitState }) {
           // reads these; it never owns the rule, and CargoContract gains no field.
           const urgent = contractIsUrgent(state.game, c.destination);
           const storylet = cargoHasStorylet(c.cargoType);
+          // T-1402 · A REAL engine number for the destination line — the previewed
+          // jump fuel cost — replaces the fabricated `jumpsBetween` "jumps" count no
+          // engine rule ever read.
+          const preview = routePreview(state.game, c.destination);
           return (
             <div
               className={armed ? 'contract pickable' : 'contract'}
@@ -1709,17 +1723,18 @@ function Manifest({ state }: { state: CockpitState }) {
                 <span className="pay">{c.payment.toLocaleString()}cr</span>
               </div>
               <div className="dest">
-                &#9656; {systemName(c.destination)} · {jumpsBetween(here, c.destination)} jump
-                {jumpsBetween(here, c.destination) === 1 ? '' : 's'} · {c.pods} pods
+                &#9656; {systemName(c.destination)} · {preview.fuelCost} fuel · {c.pods} pods
               </div>
-              <div className="check">
+              {/* T-1402 · Signing SPENDS a die — it is not a TRADE check. The engine
+                  (resolveTrade) burns the die and never rolls or reads its value, so
+                  the manifest must render signing as a die COST, not a "+ TRADE" check.
+                  (HAGGLE below is the real TRADE DC-12 roll.) */}
+              <div className="check" data-testid="sign-row">
                 <span className="lbl">SIGN</span>
                 <span className={dieVal !== undefined ? 'slot ready' : 'slot'}>
                   {dieVal ?? '—'}
                 </span>
-                <span className="mono">
-                  + TRADE <b>{tradeStat}</b>
-                </span>
+                <span className="mono">costs 1 die</span>
                 <span className="arrow">&rarr;</span>
                 <span className="mono">{armed ? 'commit to sign' : 'assign a die'}</span>
                 {/* Kept ENABLED even once haggled: a second haggle is an engine
@@ -1771,6 +1786,11 @@ function TradePane({ state }: { state: CockpitState }) {
 
   const fuelPrice = game.market.localFuelPrice;
   const debtDue = p.debtDueDay - game.day;
+
+  // T-1402 · Pre-commit advisory: the engine charges for the full request but
+  // clamps the tank, so buying past the tank's headroom silently wastes credits.
+  // Surface the clamp BEFORE the buy so the overspend is never a silent charge.
+  const fuelQuote = fuelPurchaseQuote(game, fuelAmount);
 
   return (
     <section className="pane trade" data-testid="trade-pane">
@@ -1844,6 +1864,18 @@ function TradePane({ state }: { state: CockpitState }) {
                 : 'Pick a die to fuel'}
             </button>
           </div>
+          {/* T-1402 · The overspend warning fires pre-commit whenever the request
+              overfills the tank — you'd pay for fuel the clamp discards. */}
+          {fuelQuote.overspends && (
+            <div className="lb-note warn" data-testid="fuel-overspend-warning" role="status">
+              Paying for {fuelQuote.fuelWasted.toLocaleString()} fuel the tank can&apos;t hold.
+            </div>
+          )}
+          {!fuelQuote.canAfford && fuelAmount > 0 && (
+            <div className="lb-note warn" data-testid="fuel-unaffordable" role="status">
+              Short {(fuelQuote.cost - p.credits).toLocaleString()}cr for this fill.
+            </div>
+          )}
         </div>
 
         {/* Debt ledger — pay-down needs NO die (a ledger transfer, PRD §7.3),

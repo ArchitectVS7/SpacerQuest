@@ -590,6 +590,25 @@ describe('quoteShipyard (T-308 preview)', () => {
     const after = maxCargoPodsForShip(state);
     expect(after).toBeGreaterThan(before);
   });
+
+  // T-1402 REGRESSION — the tier-1-hull→0-pods trap. Foundation's `> 9` boundary
+  // parked a strength-10 (tier-1) hull at hx=0, so buying a tier-1 hull yielded 0
+  // pods — strictly worse than the junker's 10. The `> 10` boundary gives it a
+  // real, monotonic capacity while leaving every pinned value untouched.
+  it('a tier-1 hull (strength 10) has non-zero cargo capacity (pod-trap fixed)', () => {
+    const cases: [number, number][] = [
+      [1, 10], // junker str1 cond9 → (9+1)*1
+      [10, 100], // tier-1 str10 → (9+1)*10 — was 0 before the fix
+      [20, 100], // tier-2 str20 → (9+1)*10
+      [30, 200], // tier-3 str30 → (9+1)*20
+    ];
+    for (const [strength, expectedPods] of cases) {
+      const state = shipyardState();
+      state.player.ship.hull = { strength, condition: 9 };
+      state.player.ship.hasTitaniumHull = false;
+      expect(maxCargoPodsForShip(state)).toBe(expectedPods);
+    }
+  });
 });
 
 describe('componentTierForStrength (T-1401 export pack)', () => {
