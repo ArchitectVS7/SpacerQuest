@@ -19,9 +19,13 @@ jobs:
     # here, so they still get tested.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
-    # Hard backstop: the sim suite runs real multi-hundred-day campaigns, so a
-    # hang (not slowness) should fail fast rather than burn the 6-hour default.
-    timeout-minutes: 15
+    # Hard backstop against a true hang (not slowness) burning the 6-hour
+    # default. The legitimate suite runs real multi-hundred-day Monte-Carlo sim
+    # campaigns and clocks ~14 min today, so 15 gave almost no headroom and any
+    # added test tipped it into a false cancel. 30 keeps ~2x room while still
+    # tripping fast on an actual hang. If this climbs again, split the heavy sim
+    # tests into their own parallel job rather than raising this further.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
