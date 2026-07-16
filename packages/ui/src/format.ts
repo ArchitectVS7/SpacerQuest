@@ -1321,6 +1321,58 @@ export function isResolutionStorylet(storyletId: string): boolean {
   return storyletId.startsWith('resolution.tour-one.');
 }
 
+// ---- T-1406 diegetic storylet delivery (display-only) --------------------
+//
+// PRD §8.3: a storylet is "delivered by the economy — a contract, a price spike,
+// a wire item — rather than a quest marker." The old cockpit put every offer
+// behind a single badge-counted launcher button; this classifier instead routes
+// each live offer to the DIEGETIC surface that opens it (a hold/manifest line, a
+// Galactic-Wire bulletin, a Port-Ledger dispatch). It owns NO rule — the routing
+// is a pure function of the authored storylet id prefix, and every mutation still
+// flows through the store's `resolveStorylet`.
+
+/** The in-fiction surface a storylet opens from. `ceremony` is the day-30 Tour
+ *  One resolution, owned by the full-screen ResolutionCeremony (never an opener). */
+export type StoryletSurface = 'hold' | 'wire' | 'port' | 'ceremony';
+
+/**
+ * Route a storylet id to the diegetic surface that opens it. Pure, id-prefix
+ * based, and TOTAL: the `port` default is the reachability guarantee — a newly
+ * authored storylet whose prefix isn't listed here still lands on the Port-Ledger
+ * dispatches rather than becoming unreachable (the invariant the sweep spec
+ * asserts). READERS: the cockpit surface openers (App.tsx TradePane / Wire) and
+ * the storylet-delivery sweep spec's audit.
+ */
+export function storyletSurface(storyletId: string): StoryletSurface {
+  if (isResolutionStorylet(storyletId)) return 'ceremony';
+  // Hold: cargo riding in the hold, a boarded derelict's pod, a fence at the dock.
+  if (
+    storyletId.startsWith('cargo.') ||
+    storyletId.startsWith('derelict.') ||
+    storyletId.startsWith('fence.')
+  ) {
+    return 'hold';
+  }
+  // Wire: a Galactic-Wire bulletin — Guild pressure notices and wire rumors.
+  if (storyletId.startsWith('wire.') || storyletId.startsWith('guild.')) return 'wire';
+  // Port dispatches: port auditors, passengers, the Wise One / Sage, chains,
+  // veteran beats — and, by the total default, anything not classified above.
+  return 'port';
+}
+
+/** The non-resolution offers currently live — the ground truth the openers and
+ *  the sweep audit both project. The day-30 resolution offers are excluded (the
+ *  ceremony presents those). READERS: the cockpit surface openers + the audit. */
+export function availableStorylets(game: GameState): StoryletOffer[] {
+  return game.storylets.available.filter((o) => !isResolutionStorylet(o.storyletId));
+}
+
+/** The live offers whose diegetic surface is `surface`. READER: each cockpit
+ *  surface opener (hold / wire / port). */
+export function offersForSurface(game: GameState, surface: StoryletSurface): StoryletOffer[] {
+  return availableStorylets(game).filter((o) => storyletSurface(o.storyletId) === surface);
+}
+
 export interface ResolutionCeremonyView {
   outcome: 'cleared' | 'unpaid';
   offer: StoryletOffer;

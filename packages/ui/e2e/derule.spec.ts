@@ -74,24 +74,14 @@ test('format.ts imports the engine rules rather than reimplementing them', () =>
 
 // ---- 2. The manifest sign flow renders a die cost, never a check -----------
 
-/** Open the storylet panel and page it to `storyletId` (rewind then advance). */
+/** T-1406 · Open a storylet from its diegetic opener (per-offer; no launcher, no
+ *  pager) and confirm the focused panel shows it. */
 async function showStorylet(page: Page, storyletId: string): Promise<void> {
+  const opener = page.locator(`[data-storylet-open="${storyletId}"]`);
+  await expect(opener).toBeVisible();
+  await opener.click();
   const panel = page.getByTestId('storylet-panel');
-  if ((await panel.count()) === 0) {
-    await page.getByTestId('storylet-toggle').click();
-  }
   await expect(panel).toBeVisible();
-  for (let i = 0; i < 8; i++) {
-    const prev = page.getByTestId('storylet-prev');
-    if ((await prev.count()) === 0 || (await prev.isDisabled())) break;
-    await prev.click();
-  }
-  for (let i = 0; i < 8; i++) {
-    if ((await panel.getAttribute('data-storylet-id')) === storyletId) break;
-    const next = page.getByTestId('storylet-next');
-    if ((await next.count()) === 0 || (await next.isDisabled())) break;
-    await next.click();
-  }
   await expect(panel).toHaveAttribute('data-storylet-id', storyletId);
 }
 

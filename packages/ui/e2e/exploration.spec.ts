@@ -29,16 +29,16 @@ async function newGameSeed(page: Page, seed: number): Promise<void> {
   await page.getByRole('button', { name: 'Roll' }).click();
 }
 
-/** Page the storylet launcher across its offers until the sealed-pod is shown. */
+/** T-1406 · Open the sealed-pod storylet from its HOLD dispatch — the diegetic
+ *  surface a boarded derelict's pod opens from, inside the TradePane hold block. */
 async function openSealedPod(page: Page): Promise<void> {
-  await page.getByTestId('storylet-toggle').click();
+  const holdBlock = page.getByTestId('hold-dispatches');
+  const opener = holdBlock.locator('[data-storylet-open="derelict.sealed-pod"]');
+  await expect(opener).toBeVisible();
+  await opener.click();
   const panel = page.getByTestId('storylet-panel');
   await expect(panel).toBeVisible();
-  for (let i = 0; i < 8; i++) {
-    if ((await panel.getAttribute('data-storylet-id')) === 'derelict.sealed-pod') return;
-    await page.getByTestId('storylet-next').click();
-  }
-  throw new Error('derelict.sealed-pod storylet was not reachable via the launcher');
+  await expect(panel).toHaveAttribute('data-storylet-id', 'derelict.sealed-pod');
 }
 
 test('sweep off-lane through the UI: fragment gained, sealed pod taken, Nemesis File non-empty', async ({

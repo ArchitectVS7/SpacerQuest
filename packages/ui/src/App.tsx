@@ -6,9 +6,10 @@ import {
   useState,
   useSyncExternalStore,
   type DragEvent as ReactDragEvent,
+  type ReactNode,
 } from 'react';
 import { CARGO_TYPES, RENOWN_RANKS, Stat } from '@spacerquest/content';
-import type { GameState, CheckResult } from '@spacerquest/engine';
+import type { GameState, CheckResult, StoryletOffer } from '@spacerquest/engine';
 import {
   subscribe,
   getSnapshot,
@@ -88,7 +89,8 @@ import {
   nemesisFile,
   activeOnboardingPrompt,
   isGuildLetter,
-  isResolutionStorylet,
+  availableStorylets,
+  offersForSurface,
   resolutionCeremony,
   type OnboardingAnchor,
   type ResolutionCeremonyView,
@@ -127,20 +129,16 @@ const EffectsLayer = memo(function EffectsLayer() {
   return <div className="fx" aria-hidden="true" />;
 });
 
-// The audio mixer (T-310). A small popover of three master/SFX/ambient sliders +
-// a mute toggle, reflecting the persisted mixer state through the sound module's
-// own external store. It is a pure client of `sound.ts`: it never touches the
-// AudioContext — the context unlocks on the first gesture inside the manager.
-function AudioPanel({ onClose }: { onClose: () => void }) {
+// The audio mixer (T-310, folded into Settings by T-1406). Three master/SFX/
+// ambient sliders + a mute toggle, reflecting the persisted mixer state through
+// the sound module's own external store. It is a pure client of `sound.ts`: it
+// never touches the AudioContext — the context unlocks on the first gesture
+// inside the manager (a global capture-phase listener, not this component's
+// mount), so hosting it inside Settings changes only the door, not the autoplay
+// policy. T-1406 · This lives INSIDE the Settings popover now: reaching a volume
+// slider is one popover, not two (the "menu ceremony" PRD §2 forbids).
+function AudioMixer() {
   const mixer = useSyncExternalStore(sound.subscribe, sound.getMixer, sound.getMixer);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   const slider = (bus: sound.MixerBus, label: string, testid: string) => (
     <label className="audio-row">
@@ -159,7 +157,7 @@ function AudioPanel({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <div className="audio-panel" data-testid="audio-panel" role="dialog" aria-label="Audio">
+    <div className="audio-mixer" data-testid="audio-mixer">
       {slider('master', 'Master', 'vol-master')}
       {slider('sfx', 'SFX', 'vol-sfx')}
       {slider('ambient', 'Ambient', 'vol-ambient')}
@@ -176,27 +174,18 @@ function AudioPanel({ onClose }: { onClose: () => void }) {
 }
 
 // The settings + saves popover (T-312). A popover anchored in the control bar
-// (the AudioPanel pattern; Escape closes) that owns the display/accessibility
-// settings and the three save slots. It is a pure CLIENT of the store: every
-// toggle drives a store action, and the slot list reads `state.saves`. Audio is
-// NOT duplicated here — those sliders live in the Audio popover (already tested
-// by sound.spec.ts); this panel just links to them so all settings are reachable
-// from one place.
+// (Escape closes) that owns the display/accessibility settings, the audio mixer
+// and the three save slots. It is a pure CLIENT of the store: every toggle drives
+// a store action, and the slot list reads `state.saves`. T-1406 · The audio
+// mixer is now hosted HERE (was a second popover) so every setting — including a
+// volume slider — is reachable from one popover, not two.
 const TEXT_SIZES: { size: TextSize; label: string }[] = [
   { size: 'small', label: 'Small' },
   { size: 'normal', label: 'Normal' },
   { size: 'large', label: 'Large' },
 ];
 
-function SettingsPanel({
-  state,
-  onClose,
-  onOpenAudio,
-}: {
-  state: CockpitState;
-  onClose: () => void;
-  onOpenAudio: () => void;
-}) {
+function SettingsPanel({ state, onClose }: { state: CockpitState; onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -252,12 +241,11 @@ function SettingsPanel({
             ))}
           </div>
         </div>
-        <div className="set-row">
-          <span className="set-label">Audio</span>
-          <button className="set-toggle" data-testid="set-audio-open" onClick={onOpenAudio}>
-            Open mixer
-          </button>
-        </div>
+      </div>
+
+      <div className="set-section">
+        <span className="set-head">Audio</span>
+        <AudioMixer />
       </div>
 
       <SavesPanel state={state} />
@@ -368,9 +356,11 @@ function SavesPanel({ state }: { state: CockpitState }) {
 export function App() {
   const s = useCockpit();
   const [recordsOpen, setRecordsOpen] = useState(false);
-  const [storyletOpen, setStoryletOpen] = useState(false);
+  // T-1406 · The storylet panel opens FOCUSED on one id, from a diegetic surface
+  // (a hold/manifest line, a wire bulletin, a port dispatch) — there is no badge
+  // launcher any more. Null when no storylet is open.
+  const [openStoryletId, setOpenStoryletId] = useState<string | null>(null);
   const [hangoutPanelOpen, setHangoutPanelOpen] = useState(false);
-  const [audioOpen, setAudioOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
@@ -390,21 +380,19 @@ export function App() {
 
   // The day-30 Tour One resolution ceremony (T-311): a full-screen certificate
   // that intercepts the forced `resolution.tour-one.*` storylet, so the decisive
-  // beat is unmissable rather than hiding behind the generic launcher. Null until
-  // a resolution is on offer (dawn of day 31); unmounts when it is acknowledged.
+  // beat is unmissable. Null until a resolution is on offer (dawn of day 31);
+  // unmounts when it is acknowledged.
   const ceremony = resolutionCeremony(s.game);
 
-  // The storylet launcher only makes sense when a NON-resolution storylet is
-  // waiting and the cockpit is not mid-encounter or mid-ceremony (both take
-  // precedence). The resolution storylets are excluded — the ceremony is their
-  // sole presenter, so the generic panel never double-renders them. When the
-  // launchable count drops to zero the floating panel unmounts on its own.
-  const launchableStorylets = s.game.storylets.available.filter(
-    (o) => !isResolutionStorylet(o.storyletId),
-  );
-  const storyletCount = launchableStorylets.length;
-  const storyletsWaiting =
-    storyletCount > 0 && !s.game.encounter && !s.combatAftermath && !ceremony;
+  // T-1406 · When the focused offer resolves or otherwise drains from the live
+  // set, clear the open id so a stale id can never re-mount the panel. The panel
+  // returns null on a missing offer too, but this keeps the state honest.
+  const storyletStillLive =
+    openStoryletId !== null &&
+    s.game.storylets.available.some((o) => o.storyletId === openStoryletId);
+  useEffect(() => {
+    if (openStoryletId !== null && !storyletStillLive) setOpenStoryletId(null);
+  }, [openStoryletId, storyletStillLive]);
 
   // T-1404 · The Hangout is a visitable place, offered ONLY where the engine says
   // a Hangout exists (`hangoutOpen` reads the SAME `hasHangout` flag day.ts gates
@@ -417,61 +405,39 @@ export function App() {
       <EffectsLayer />
       {!reduced && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
 
-      <div className="ctrls">
-        <button onClick={toggleFx}>{s.fx ? 'CRT: ON' : 'CRT: OFF'}</button>
-        {storyletsWaiting && (
-          <button
-            className="storylet-launch"
-            data-testid="storylet-toggle"
-            aria-expanded={storyletOpen}
-            onClick={() => setStoryletOpen((v) => !v)}
-          >
-            Storylet · {storyletCount}
-          </button>
-        )}
-        {hangoutAvailable && (
-          <button
-            className="hangout-launch"
-            data-testid="hangout-toggle"
-            aria-expanded={hangoutPanelOpen}
-            onClick={() => setHangoutPanelOpen((v) => !v)}
-          >
-            Hangout
-          </button>
-        )}
-        <button data-testid="records-toggle" onClick={() => setRecordsOpen((v) => !v)}>
-          Records
-        </button>
-        <button
-          data-testid="audio-toggle"
-          aria-expanded={audioOpen}
-          onClick={() => setAudioOpen((v) => !v)}
-        >
-          Audio
-        </button>
-        <button
-          data-testid="settings-toggle"
-          aria-expanded={settingsOpen}
-          onClick={() => setSettingsOpen((v) => !v)}
-        >
-          Settings
-        </button>
-        <NewGameButton />
-        {audioOpen && <AudioPanel onClose={() => setAudioOpen(false)} />}
-        {settingsOpen && (
-          <SettingsPanel
-            state={s}
-            onClose={() => setSettingsOpen(false)}
-            onOpenAudio={() => {
-              setSettingsOpen(false);
-              setAudioOpen(true);
-            }}
-          />
-        )}
-      </div>
-
       <div className="screen">
-        <Bezel game={s.game} seed={s.seed} />
+        {/* T-1406 · The control cluster is DIEGETIC now — a row of console
+            switches on the terminal bezel, in-fiction, rather than a floating
+            top-right toolbar. Same buttons, same testids; the audio popover is
+            gone (folded into Settings) and the storylet launcher is gone
+            (storylets open from their diegetic surfaces below). */}
+        <Bezel game={s.game} seed={s.seed}>
+          <div className="ctrls">
+            <button onClick={toggleFx}>{s.fx ? 'CRT: ON' : 'CRT: OFF'}</button>
+            {hangoutAvailable && (
+              <button
+                className="hangout-launch"
+                data-testid="hangout-toggle"
+                aria-expanded={hangoutPanelOpen}
+                onClick={() => setHangoutPanelOpen((v) => !v)}
+              >
+                Hangout
+              </button>
+            )}
+            <button data-testid="records-toggle" onClick={() => setRecordsOpen((v) => !v)}>
+              Records
+            </button>
+            <button
+              data-testid="settings-toggle"
+              aria-expanded={settingsOpen}
+              onClick={() => setSettingsOpen((v) => !v)}
+            >
+              Settings
+            </button>
+            <NewGameButton />
+            {settingsOpen && <SettingsPanel state={s} onClose={() => setSettingsOpen(false)} />}
+          </div>
+        </Bezel>
         <div className="main">
           <div className="col left">
             <Starmap state={s} />
@@ -479,13 +445,31 @@ export function App() {
           </div>
           <div className="col">
             <Manifest state={s} />
-            <TradePane state={s} />
+            <TradePane state={s} onOpenStorylet={setOpenStoryletId} />
           </div>
         </div>
-        <Wire game={s.game} />
-        {storyletOpen && storyletsWaiting && (
-          <StoryletPanel state={s} onClose={() => setStoryletOpen(false)} />
-        )}
+        <Wire game={s.game} onOpenStorylet={setOpenStoryletId} />
+        {/* T-1406 · Reachability audit node — a visually-hidden reflection of the
+            engine's own live non-resolution offer set. NOT a metric stub: it is
+            the same list the old launcher counted, rendered off-screen so the
+            storylet-delivery sweep spec can prove the diegetic openers cover
+            every live offer with no gaps. READER: storylet-delivery.spec.ts. */}
+        <ul data-testid="storylet-offer-audit" aria-hidden="true" className="sr-only">
+          {availableStorylets(s.game).map((o) => (
+            <li key={o.storyletId} data-offer-id={o.storyletId} />
+          ))}
+        </ul>
+        {openStoryletId &&
+          storyletStillLive &&
+          !s.game.encounter &&
+          !s.combatAftermath &&
+          !ceremony && (
+            <StoryletPanel
+              state={s}
+              storyletId={openStoryletId}
+              onClose={() => setOpenStoryletId(null)}
+            />
+          )}
         {hangoutPanelOpen && hangoutAvailable && (
           <HangoutPanel state={s} onClose={() => setHangoutPanelOpen(false)} />
         )}
@@ -903,18 +887,42 @@ function CombatAftermathPanel({
   );
 }
 
-// The in-cockpit storylet surface (T-309). A prose panel that presents ONE
-// queued storylet offer at a time (with a pager when several are waiting), each
-// choice showing its authored requirement/cost and, when unmet, a visible lock
-// that also disables the button. It is a pure CLIENT of the storylet rules: the
-// single mutation routes through the store's `resolveStorylet`, a die is spent
-// only for a choice that requires one, and a storylet stat check rides the
+// The in-cockpit storylet surface (T-309; T-1406 diegetic delivery). A prose
+// panel FOCUSED on the one offer the player opened from its diegetic surface —
+// each choice showing its authored requirement/cost and, when unmet, a visible
+// lock that also disables the button. It is a pure CLIENT of the storylet rules:
+// the single mutation routes through the store's `resolveStorylet`, a die is
+// spent only for a choice that requires one, and a storylet stat check rides the
 // shared honest-check readout (CheckBreakdown, context 'storylet'). Combat takes
 // visual precedence — the panel is hidden while an encounter/aftermath is live.
-function StoryletPanel({ state, onClose }: { state: CockpitState; onClose: () => void }) {
+// T-1406 · The diegetic opener that surfaces a single storylet from its
+// in-fiction anchor (a hold/manifest line, a wire bulletin, a port dispatch).
+// Every surface renders the SAME element for one selector; the classifier
+// (storyletSurface) decides which anchor an offer appears at, and clicking opens
+// the focused panel on that id. It owns no rule — it just names the offer.
+function StoryletOpener({ offer, onOpen }: { offer: StoryletOffer; onOpen: (id: string) => void }) {
+  return (
+    <button
+      className="storylet-open"
+      data-testid="storylet-open"
+      data-storylet-open={offer.storyletId}
+      onClick={() => onOpen(offer.storyletId)}
+    >
+      {offer.title}
+    </button>
+  );
+}
+
+function StoryletPanel({
+  state,
+  storyletId,
+  onClose,
+}: {
+  state: CockpitState;
+  storyletId: string;
+  onClose: () => void;
+}) {
   const game = state.game;
-  const offers = game.storylets.available;
-  const [index, setIndex] = useState(0);
 
   // Escape closes the panel (the WireLog / Records convention).
   useEffect(() => {
@@ -925,13 +933,11 @@ function StoryletPanel({ state, onClose }: { state: CockpitState; onClose: () =>
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // App gates mounting on there being at least one offer and no live encounter,
-  // but guard defensively so a mid-render list drain can't index past the end.
-  if (offers.length === 0) return null;
-  // The offer list shrinks as storylets resolve, so clamp the pager index rather
-  // than let it point past the end.
-  const idx = Math.min(index, offers.length - 1);
-  const offer = offers[idx];
+  // T-1406 · The panel is FOCUSED on one id (opened from its diegetic surface).
+  // If that offer has drained from the live set (resolved, or gone stale), render
+  // nothing — App also clears the open id, so the panel simply unmounts.
+  const offer = game.storylets.available.find((o) => o.storyletId === storyletId);
+  if (!offer) return null;
   // T-311: a Merchant-Guild storylet is dressed as an official wire letter — a
   // reverse-video masthead and teletype rule — rather than a plain menu. This is
   // a pure MARKUP/CSS treatment switched on the storylet id; the choices, locks
@@ -957,31 +963,6 @@ function StoryletPanel({ state, onClose }: { state: CockpitState; onClose: () =>
         <h2 className="sl-title" data-testid="storylet-title">
           {offer.title}
         </h2>
-        {offers.length > 1 && (
-          <div className="sl-pager" data-testid="storylet-pager">
-            <button
-              className="sl-page-btn"
-              data-testid="storylet-prev"
-              aria-label="previous storylet"
-              disabled={idx === 0}
-              onClick={() => setIndex(Math.max(0, idx - 1))}
-            >
-              &#9666;
-            </button>
-            <span className="sl-count" data-testid="storylet-count">
-              {idx + 1} / {offers.length}
-            </span>
-            <button
-              className="sl-page-btn"
-              data-testid="storylet-next"
-              aria-label="next storylet"
-              disabled={idx >= offers.length - 1}
-              onClick={() => setIndex(Math.min(offers.length - 1, idx + 1))}
-            >
-              &#9656;
-            </button>
-          </div>
-        )}
         <button
           className="sl-close"
           data-testid="storylet-close"
@@ -1437,7 +1418,7 @@ function NewGameButton() {
   );
 }
 
-function Bezel({ game, seed }: { game: GameState; seed: number }) {
+function Bezel({ game, seed, children }: { game: GameState; seed: number; children?: ReactNode }) {
   const p = game.player;
   const debtDue = p.debtDueDay - game.day;
   const fuelPct = Math.max(0, Math.min(100, (p.ship.fuel / p.ship.maxFuel) * 100));
@@ -1453,34 +1434,40 @@ function Bezel({ game, seed }: { game: GameState; seed: number }) {
           · {game.era === 'TOUR_ONE' ? 'Frontier Era' : 'Veteran'}
         </div>
       </div>
-      <div className="readouts">
-        <span className="chip rank" data-testid="rank">
-          {RENOWN_RANKS[p.registry.renownRank].label}
-        </span>
-        <span className="chip seed" data-testid="seed">
-          SEED {seed.toLocaleString()}
-        </span>
-        {game.eraEvent && (
-          <span className="chip era" data-testid="era-chip">
-            ERA · {game.eraEvent.defId}
+      {/* T-1406 · the diegetic control switches + the readouts share the bezel's
+          right column: the console switches ride the top of the frame, the status
+          chips below them. */}
+      <div className="bezel-right">
+        {children}
+        <div className="readouts">
+          <span className="chip rank" data-testid="rank">
+            {RENOWN_RANKS[p.registry.renownRank].label}
           </span>
-        )}
-        <span className="chip">
-          CR <b data-testid="credits">{p.credits.toLocaleString()}</b>
-        </span>
-        {p.debt > 0 && (
-          <span className="chip rev" data-testid="debt-chip">
-            DEBT {p.debt.toLocaleString()} · DUE D{p.debtDueDay}
-            {debtDue <= 5 ? ` (${debtDue}d)` : ''}
+          <span className="chip seed" data-testid="seed">
+            SEED {seed.toLocaleString()}
           </span>
-        )}
-        <span className="fuel">
-          <span>FUEL</span>
-          <span className="bar">
-            <i style={{ width: `calc(${fuelPct}% - 2px)` }} />
+          {game.eraEvent && (
+            <span className="chip era" data-testid="era-chip">
+              ERA · {game.eraEvent.defId}
+            </span>
+          )}
+          <span className="chip">
+            CR <b data-testid="credits">{p.credits.toLocaleString()}</b>
           </span>
-          <b>{p.ship.fuel.toLocaleString()}</b>
-        </span>
+          {p.debt > 0 && (
+            <span className="chip rev" data-testid="debt-chip">
+              DEBT {p.debt.toLocaleString()} · DUE D{p.debtDueDay}
+              {debtDue <= 5 ? ` (${debtDue}d)` : ''}
+            </span>
+          )}
+          <span className="fuel">
+            <span>FUEL</span>
+            <span className="bar">
+              <i style={{ width: `calc(${fuelPct}% - 2px)` }} />
+            </span>
+            <b>{p.ship.fuel.toLocaleString()}</b>
+          </span>
+        </div>
       </div>
     </header>
   );
@@ -2195,7 +2182,13 @@ function Manifest({ state }: { state: CockpitState }) {
 // board — a visible failure notice, the active-contract tracker, the fuel depot
 // and the debt ledger. Every button routes through a store action; the pane
 // never calls the engine directly (the store stays the sole engine caller).
-function TradePane({ state }: { state: CockpitState }) {
+function TradePane({
+  state,
+  onOpenStorylet,
+}: {
+  state: CockpitState;
+  onOpenStorylet: (id: string) => void;
+}) {
   const game = state.game;
   const p = game.player;
   const active = p.activeContract;
@@ -2212,6 +2205,14 @@ function TradePane({ state }: { state: CockpitState }) {
   // dusk economy gate on — never recomputed here).
   const hold = contrabandHold(game);
   const ledger = portLedger(game);
+
+  // T-1406 · The diegetic storylet surfaces the port owns: HOLD dispatches (cargo
+  // riding in the hold, a boarded derelict's pod, a fence) open from the manifest
+  // line inside the active-contract block; PORT dispatches (auditors, passengers,
+  // the Wise One / Sage, chains, veteran) open from the Port Ledger. Both read the
+  // engine's live offer set via the pure classifier — no rule lives here.
+  const holdOffers = offersForSurface(game, 'hold');
+  const portOffers = offersForSurface(game, 'port');
 
   // T-1402 · Pre-commit advisory: the engine charges for the full request but
   // clamps the tank, so buying past the tank's headroom silently wastes credits.
@@ -2231,6 +2232,20 @@ function TradePane({ state }: { state: CockpitState }) {
         {state.notice && (
           <div className="notice rev" data-testid="notice" role="status">
             {state.notice}
+          </div>
+        )}
+
+        {/* T-1406 · PORT DISPATCHES — the diegetic surface for storylets the port
+            delivers (a Guild auditor at the gantry, a passenger booking a berth,
+            the Wise One / Sage, a chain follow-up, veteran beats). Each opens its
+            focused panel. The TOTAL classifier's default lands here, so a newly
+            authored storylet always has a door — the reachability guarantee. */}
+        {portOffers.length > 0 && (
+          <div className="ledger-block port-dispatches" data-testid="port-dispatches">
+            <div className="lb-head">PORT DISPATCHES</div>
+            {portOffers.map((o) => (
+              <StoryletOpener key={o.storyletId} offer={o} onOpen={onOpenStorylet} />
+            ))}
           </div>
         )}
 
@@ -2262,6 +2277,18 @@ function TradePane({ state }: { state: CockpitState }) {
           ) : (
             <div className="lb-empty" data-testid="active-contract-empty">
               Hold is empty — sign a manifest offer to take a job.
+            </div>
+          )}
+          {/* T-1406 · HOLD dispatches — a storylet the hold itself delivers (a
+              seal on the crates, a derelict's sealed pod, a fence at the dock)
+              opens from its manifest line here, whether or not a contract rides.
+              This is the "storylet opens from its manifest line" surface. */}
+          {holdOffers.length > 0 && (
+            <div className="hold-dispatches" data-testid="hold-dispatches">
+              <div className="dispatch-head">HOLD · something wants attention</div>
+              {holdOffers.map((o) => (
+                <StoryletOpener key={o.storyletId} offer={o} onOpen={onOpenStorylet} />
+              ))}
             </div>
           )}
         </div>
@@ -2540,10 +2567,15 @@ function CheckReadout({
 // The Galactic Wire (T-306): a scrolling ticker (unchanged) PLUS a browsable
 // day-by-day log opened from the cap. Both are pure reads of the event log via
 // format.ts — the ticker shows the freshest headlines, the log the full history.
-function Wire({ game }: { game: GameState }) {
+function Wire({ game, onOpenStorylet }: { game: GameState; onOpenStorylet: (id: string) => void }) {
   const [logOpen, setLogOpen] = useState(false);
   const lines = wireLines(game);
   const items = lines.length > 0 ? lines : ['The wire is quiet. Roll the day and make some news.'];
+  // T-1406 · Storylets the WIRE delivers (Guild-pressure notices, rimward rumors)
+  // surface as clickable BULLETINS in the cap bar — not inside the scrolling
+  // ticker, where a moving target is hostile to click. This is the "a wire item
+  // opens its storylet" surface.
+  const bulletins = offersForSurface(game, 'wire');
   const run = (
     <>
       {items.map((t, i) => (
@@ -2559,6 +2591,14 @@ function Wire({ game }: { game: GameState }) {
       <div className="cap">
         <span className="dot" />
         GALACTIC WIRE
+        {bulletins.length > 0 && (
+          <span className="wire-bulletins" data-testid="wire-bulletins">
+            <span className="wire-bulletin-label">BULLETIN</span>
+            {bulletins.map((o) => (
+              <StoryletOpener key={o.storyletId} offer={o} onOpen={onOpenStorylet} />
+            ))}
+          </span>
+        )}
         <button
           className="wire-log-btn"
           data-testid="wire-log-toggle"
