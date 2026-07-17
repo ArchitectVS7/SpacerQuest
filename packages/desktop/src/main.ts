@@ -113,22 +113,30 @@ function flushStore(): void {
   syncEnvelopeToCloud(store, steamService.cloudBackend);
 }
 
-/** T-1702 · Resolve the Steam appid: env override first (dev sandbox / CI), then the
- *  `steam_appid.txt` beside the app (Spacewar `480` in the dev sandbox; the real depot
+/** T-1702 · Resolve the Steam appid: env override first (dev sandbox / CI), then a
+ *  `steam_appid.*.txt` beside the app (Spacewar `480` in the dev sandbox; the real depot
  *  appid in the shipping build — a T-1704 release-checklist item, mirroring T-1701's
- *  deferral of code signing). Returns undefined when neither is present, letting
- *  steamworks.js search for the file itself. */
+ *  deferral of code signing). Returns undefined when none is present, letting
+ *  steamworks.js search for the file itself.
+ *
+ *  T-1703 · The DEMO build ships its own DISTINCT Steam depot (separate appid — see
+ *  docs/steam/depot-demo.md), so `steam_appid.demo.txt` is probed FIRST: a demo package
+ *  that ships it (a T-1704 wiring step) reports the demo appid, while the full build,
+ *  which ships only `steam_appid.txt`, is unaffected. Both files carry `480` in the dev
+ *  sandbox, so local behavior is unchanged until the real depot appids are provisioned. */
 function resolveSteamAppId(): number | undefined {
   const fromEnv = process.env.SQ_STEAM_APPID;
   if (fromEnv && Number.isFinite(Number(fromEnv))) return Number(fromEnv);
   for (const dir of [process.resourcesPath, app.getAppPath(), process.cwd()]) {
     if (!dir) continue;
-    try {
-      const raw = fs.readFileSync(path.join(dir, 'steam_appid.txt'), 'utf8').trim();
-      const n = Number.parseInt(raw, 10);
-      if (Number.isFinite(n)) return n;
-    } catch {
-      /* not here — try the next location */
+    for (const file of ['steam_appid.demo.txt', 'steam_appid.txt']) {
+      try {
+        const raw = fs.readFileSync(path.join(dir, file), 'utf8').trim();
+        const n = Number.parseInt(raw, 10);
+        if (Number.isFinite(n)) return n;
+      } catch {
+        /* not here — try the next file / location */
+      }
     }
   }
   return undefined;

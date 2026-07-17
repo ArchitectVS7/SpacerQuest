@@ -7,7 +7,9 @@
   "scripts": {
     "build:main": "tsc -b && node esbuild.mjs",
     "build:renderer": "npm run build -w @spacerquest/ui",
+    "build:renderer:demo": "npm run build:demo -w @spacerquest/ui",
     "build": "npm run build:renderer && npm run build:main",
+    "build:demo": "npm run build:renderer:demo && npm run build:main",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "start": "npm run build && electron .",
@@ -15,7 +17,9 @@
     "package": "npm run build && electron-builder -mw",
     "package:mac": "npm run build && electron-builder --mac dmg",
     "package:win": "npm run build && electron-builder --win nsis",
-    "package:dir": "npm run build && electron-builder --dir"
+    "package:dir": "npm run build && electron-builder --dir",
+    "package:demo": "npm run build:demo && electron-builder -mw --config electron-builder.demo.yml",
+    "package:demo:dir": "npm run build:demo && electron-builder --dir --config electron-builder.demo.yml"
   },
   "devDependencies": {
     "@spacerquest/content": "*",

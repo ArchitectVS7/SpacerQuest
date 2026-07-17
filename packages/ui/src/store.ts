@@ -22,6 +22,11 @@ import {
   type CombatAftermath,
 } from './format';
 import * as sound from './sound';
+// T-1703 · The demo gate is a build-layer concern the store consumes as a thin CLIENT
+// (the engine stays unaware of demo-vs-full — see demo.ts). `endDay` reads the wall
+// predicate to refuse advancing past the demo budget; the gated verbs early-return as
+// defense-in-depth. No-op in the full build (`DEMO_BUILD === false`).
+import { demoWallReached, demoFeatureLocked } from './demo';
 // T-1701 · All persistence flows through the storage adapter: a localStorage
 // passthrough on the web (unchanged behaviour) and an OS app-data file store inside
 // the Electron shell. The swap below is mechanical and behavior-preserving — the
@@ -222,6 +227,18 @@ export interface CockpitState {
   textSize: TextSize;
   /** Cached slot summaries so React re-renders when a slot is written/deleted. */
   saves: SlotSummary[];
+  /**
+   * T-1703 · Raised (demo build only) when the player ends the final playable demo day
+   * (`DEMO_FINAL_DAY`), so `endDay` refuses to advance the engine past the demo budget
+   * and the App raises the un-dismissable DemoWall ceremony instead. This is CLIENT
+   * presentation meta-state (like `bootNotice` / `combatAftermath`), deliberately NOT
+   * part of GameState: the engine never advances past day 33 in the demo, so the saved
+   * career stays a clean, full-game-loadable day-33 `GameState` — no engine field, no
+   * migration, no JSON round-trip impact. Always `false` in the full build (the wall
+   * predicate no-ops when `DEMO_BUILD` is false). READER: the `demo-wall` ceremony in
+   * App.tsx.
+   */
+  demoWall: boolean;
 }
 
 /**
@@ -292,6 +309,8 @@ function init(): CockpitState {
     reducedMotion: readReducedMotion(),
     textSize: readTextSize(),
     saves: readSlots(),
+    // T-1703 · No wall at boot; only ending the final demo day raises it.
+    demoWall: false,
   };
 }
 
@@ -704,6 +723,8 @@ export function newGame(seed: number): void {
     dareOutcome: null,
     patrolScan: null,
     onboardingSeen: {},
+    // T-1703 · A fresh career clears any raised demo wall.
+    demoWall: false,
   });
   // A fresh career: the dawn sting and the ambient drive-hum bed. The hum defers
   // itself internally until the first user gesture unlocks the AudioContext, so
@@ -1143,6 +1164,12 @@ export function visitDare(opponentId: string, wager: number): void {
  * NO die and surfaces as a visible notice; on commit the die blooms.
  */
 export function borrowLoan(amount: number): void {
+  // T-1703 · Defense-in-depth demo gate (Penny Wise borrowing is Hangout progression).
+  // The demo renders a teaser in place of the borrow button; refuse here too. Full no-op.
+  if (demoFeatureLocked('hangout-progression')) {
+    set({ notice: 'Borrowing unlocks in the full game.' });
+    return;
+  }
   const die = state.selectedDie;
   if (die === null) {
     set({ notice: 'Pick a die from the hand first, then borrow.' });
@@ -1217,6 +1244,12 @@ export function repayLoan(amount: number): void {
  * the authoritative spent flag), keeps the selection, and surfaces a visible notice.
  */
 export function hireCrew(roleId: string): void {
+  // T-1703 · Defense-in-depth demo gate (crew is the Hangout dice progression). The
+  // demo renders a teaser in place of the hire button; refuse here too. Full build no-op.
+  if (demoFeatureLocked('hangout-progression')) {
+    set({ notice: 'Crew hiring unlocks in the full game.' });
+    return;
+  }
   const die = state.selectedDie;
   if (die === null) {
     set({ notice: 'Pick a die from the hand first, then hire.' });
@@ -1318,6 +1351,14 @@ export function reroll(dieIndex: number): void {
  * surfaces a visible notice; on commit the die blooms.
  */
 export function buyPort(): void {
+  // T-1703 · Defense-in-depth: the demo build renders a teaser in place of the buy
+  // button (App.tsx), so this is normally unreachable there — but if a stale binding
+  // ever calls it, refuse with an honest notice rather than spend a die on a gated
+  // veteran feature. No-op in the full build.
+  if (demoFeatureLocked('ports')) {
+    set({ notice: 'Port authority unlocks in the full game.' });
+    return;
+  }
   const die = state.selectedDie;
   if (die === null) {
     set({ notice: 'Pick a die from the hand first, then buy the port.' });
@@ -1559,6 +1600,14 @@ export function standDown(): void {
 
 /** Close out the day — dusk moves the galaxy — and roll into the next dawn. */
 export function endDay(): void {
+  // T-1703 · Demo day-wall. Ask the pure predicate whether the PROSPECTIVE next day is
+  // past the demo budget BEFORE touching the engine. If so, do NOT advance: raise the
+  // DemoWall instead. The engine is never called, so the autosave stays a clean day-33
+  // career that continues verbatim in the full build. No-op in the full build.
+  if (demoWallReached(state.game.day + 1)) {
+    set({ demoWall: true });
+    return;
+  }
   try {
     const dusk = engineEndDay(state.game);
     const dawn = startDay(dusk.state);
@@ -1679,6 +1728,8 @@ export function loadSlot(n: number): void {
     combatMalfunction: false,
     dareOutcome: null,
     patrolScan: null,
+    // T-1703 · Loading a save clears any raised demo wall.
+    demoWall: false,
     // Do NOT reset onboardingSeen — loading a mid-career save shouldn't re-teach.
   });
 }

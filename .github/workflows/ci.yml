@@ -174,3 +174,66 @@ jobs:
             packages/ui/playwright-report
             packages/ui/test-results
           retention-days: 14
+
+  # T-1703 · Demo build proof. Runs on macOS (needs the electron binary to package and
+  # `ditto` for the compressed-size check). It (1) runs the SQ_DEMO Playwright project,
+  # whose webServer serves the REAL VITE_SQ_DEMO=1 build, proving the gate + day wall via
+  # `demo-gate.spec.ts`; then (2) packages the demo app unsigned (--dir) and (3) asserts
+  # the compressed distributable is < 200MB. The demo-save-carry spec runs in the DEFAULT
+  # chromium project (the `e2e` job above), so full-side save import is proven there.
+  demo:
+    name: Demo build (macOS)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck & build (incl. Electron main/preload)
+        run: npx tsc -b
+
+      - name: Cache Playwright browser
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: packages/ui
+
+      # Prove the gate through the REAL demo build (the webServer builds VITE_SQ_DEMO=1).
+      - name: Run demo gate e2e
+        run: SQ_DEMO=1 npx playwright test --project=demo
+        working-directory: packages/ui
+
+      # Package the demo app unsigned (--dir), then assert the compressed size is sane.
+      - name: Package demo app (unsigned --dir)
+        run: npm run package:demo:dir -w @spacerquest/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Check demo build size (< 200MB compressed)
+        run: node scripts/check-build-size.mjs
+
+      - name: Upload demo report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-report
+          path: |
+            packages/ui/playwright-report
+            packages/ui/test-results
+          retention-days: 14

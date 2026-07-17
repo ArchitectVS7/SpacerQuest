@@ -50,6 +50,11 @@ import {
   type TextSize,
 } from './store';
 import * as sound from './sound';
+// T-1703 · Demo gate — a build-layer concern the cockpit consumes as a thin CLIENT
+// (the engine is unaware of demo-vs-full; see demo.ts). These drive the three
+// teased-but-gated veteran surfaces and the end-of-demo wall ceremony. Every branch is
+// dead code in the full/web build (`DEMO_BUILD === false`), so that build is unaffected.
+import { demoFeatureLocked, DEMO_LOCK_COPY, DEMO_WALL_COPY, type DemoGatedFeature } from './demo';
 import {
   systemName,
   cargoName,
@@ -519,6 +524,78 @@ export function App() {
             overlay — the terminal act is unmissable and un-dismissable except by
             returning to a fresh career. */}
         {ending && <CrossingEnding view={ending} />}
+        {/* T-1703 · The end-of-demo wall renders ABSOLUTELY LAST so it stacks above
+            every other overlay — the demo terminus is unmissable and un-dismissable
+            (it offers only external wishlist/buy CTAs, never a path to veteran content).
+            Raised only in the demo build, by ending the final playable day. */}
+        {s.demoWall && <DemoWall />}
+      </div>
+    </div>
+  );
+}
+
+// T-1703 · A shared teaser rendered IN PLACE OF a gated veteran control in the demo
+// build (never merely disabling it — the control is ABSENT so a reachability spec can
+// assert zero matching elements). Pure presentation: the copy is DATA from demo.ts.
+// READERS of `demoFeatureLocked`: the three call sites (Port Authority, crew hiring +
+// borrowing, the Registry's Conqueror rung) each mount this with their feature key.
+function DemoLock({ feature, testid }: { feature: DemoGatedFeature; testid: string }) {
+  const copy = DEMO_LOCK_COPY[feature];
+  return (
+    <div className="demo-lock" data-testid={testid} data-demo-feature={feature}>
+      <span className="demo-lock-badge">{copy.badge}</span>
+      <span className="demo-lock-body">{copy.body}</span>
+    </div>
+  );
+}
+
+// T-1703 · The end-of-demo ceremony. A full-screen, un-dismissable certificate raised
+// when the player ends the final demo day (store `demoWall`), modeled on CrossingEnding.
+// It names the gated veteran arcs and offers ONLY an external wishlist CTA — there is no
+// control here that reaches veteran content or advances the day, so the demo terminates
+// cleanly. The saved career remains a clean day-33 GameState that carries into the full
+// game (proven by the demo-save-carry spec on the full build).
+function DemoWall() {
+  return (
+    <div
+      className="demo-wall"
+      data-testid="demo-wall"
+      role="dialog"
+      aria-label="Demo complete"
+      aria-modal="true"
+    >
+      <div className="dw-frame">
+        <header className="dw-head">
+          <span className="dw-kicker">{DEMO_WALL_COPY.kicker}</span>
+          <h2 className="dw-title" data-testid="demo-wall-title">
+            {DEMO_WALL_COPY.title}
+          </h2>
+        </header>
+        <p className="dw-lede">{DEMO_WALL_COPY.lede}</p>
+        <div className="dw-unlocks">
+          <div className="dw-unlocks-head">{DEMO_WALL_COPY.unlocksHead}</div>
+          <ul className="dw-unlocks-list" data-testid="demo-wall-unlocks">
+            {DEMO_WALL_COPY.unlocks.map((line) => (
+              <li className="dw-unlock" key={line}>
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p className="dw-carry">{DEMO_WALL_COPY.carry}</p>
+        <div className="dw-actions">
+          {/* The ONLY affordance: an external wishlist link. No in-app control that
+              could reach veteran content or advance past the demo budget. */}
+          <a
+            className="btn"
+            data-testid="demo-wall-cta"
+            href="https://store.steampowered.com/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {DEMO_WALL_COPY.cta}
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -1329,6 +1406,11 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
               </button>
             </div>
           </>
+        ) : demoFeatureLocked('hangout-progression') ? (
+          /* T-1703 · Borrowing at Penny Wise's desk is Hangout progression, so the demo
+             teases-but-gates it: the `loan-borrow` control is ABSENT (a teaser stands
+             in), never merely disabled. Full build: the real borrow control. */
+          <DemoLock feature="hangout-progression" testid="demo-lock-lending" />
         ) : (
           <div className="hp-lend-controls">
             <input
@@ -1427,6 +1509,14 @@ function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => voi
                 </span>
               )}
             </div>
+            {/* T-1703 · The Conqueror capstone rank (thirty deeds, then the Nemesis
+                crossing) is veteran content the demo cannot organically reach; the demo
+                makes the gate EXPLICIT with a teaser rung in place of an achievable one,
+                so a demo spec asserts `demo-lock-conqueror` is present. Full build: no
+                teaser — the rank is earned through play. */}
+            {demoFeatureLocked('conqueror') && (
+              <DemoLock feature="conqueror" testid="demo-lock-conqueror" />
+            )}
             {/* T-1503 · Alliance standing — a pure read of player.reputation via
                 format.ts `factionStanding`. The reader that makes the four-faction
                 rep visible to the player. */}
@@ -2033,43 +2123,52 @@ function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
           </div>
         </div>
       ))}
-      {roster.hireable.map((row) => (
-        <div
-          className="crew-row hireable"
-          key={row.role.id}
-          data-testid="crew-hireable"
-          data-role-id={row.role.id}
-        >
-          <div className="crew-main">
-            <span className="crew-name">{row.role.name}</span>
-            <span className="crew-benefit">{crewBenefitLabel(row.role)}</span>
-            <span className="crew-price">{row.role.hirePrice.toLocaleString()}cr</span>
-            <button
-              className="btn small"
-              data-testid="hire-crew"
-              data-role-id={row.role.id}
-              disabled={!armed || !row.canHire}
-              title={
-                !armed
-                  ? 'Pick a die first'
-                  : row.canHire
-                    ? `Hire · ${row.role.hirePrice.toLocaleString()}cr`
-                    : (row.reason ?? 'Cannot hire')
-              }
-              onClick={() => hireCrew(row.role.id)}
-            >
-              Hire
-            </button>
-          </div>
-          {/* Disabled-not-hidden: the engine-derived reason, rendered whenever the
+      {/* T-1703 · Crew hiring IS the Hangout dice progression (crew grant the extra
+          die / re-roll / floor at the next dawn), so the demo teases-but-gates it: the
+          hireable rows and their `hire-crew` buttons are ABSENT (a teaser stands in),
+          never merely disabled, so a demo spec asserts zero `hire-crew` elements. Full
+          build: the real roster. */}
+      {demoFeatureLocked('hangout-progression') && roster.hired.length === 0 && (
+        <DemoLock feature="hangout-progression" testid="demo-lock-hangout" />
+      )}
+      {!demoFeatureLocked('hangout-progression') &&
+        roster.hireable.map((row) => (
+          <div
+            className="crew-row hireable"
+            key={row.role.id}
+            data-testid="crew-hireable"
+            data-role-id={row.role.id}
+          >
+            <div className="crew-main">
+              <span className="crew-name">{row.role.name}</span>
+              <span className="crew-benefit">{crewBenefitLabel(row.role)}</span>
+              <span className="crew-price">{row.role.hirePrice.toLocaleString()}cr</span>
+              <button
+                className="btn small"
+                data-testid="hire-crew"
+                data-role-id={row.role.id}
+                disabled={!armed || !row.canHire}
+                title={
+                  !armed
+                    ? 'Pick a die first'
+                    : row.canHire
+                      ? `Hire · ${row.role.hirePrice.toLocaleString()}cr`
+                      : (row.reason ?? 'Cannot hire')
+                }
+                onClick={() => hireCrew(row.role.id)}
+              >
+                Hire
+              </button>
+            </div>
+            {/* Disabled-not-hidden: the engine-derived reason, rendered whenever the
               role can't be hired right now (no berth / unaffordable). */}
-          {row.reason && (
-            <span className="ship-reason" data-testid="crew-reason">
-              {row.reason}
-            </span>
-          )}
-        </div>
-      ))}
+            {row.reason && (
+              <span className="ship-reason" data-testid="crew-reason">
+                {row.reason}
+              </span>
+            )}
+          </div>
+        ))}
     </div>
   );
 }
@@ -2553,7 +2652,12 @@ function TradePane({
                   INCOME <b data-testid="port-current-income">{ledger.current.quote.income}</b>
                   cr/dusk
                 </span>
-                {!ledger.current.quote.alreadyOwned && (
+                {/* T-1703 · In the demo, buying port authority is a teased-but-gated
+                    veteran feature: the buy button is ABSENT (a teaser stands in its
+                    place, rendered below the row), never merely disabled, so a demo
+                    reachability spec asserts zero `buy-port` elements. Full build: the
+                    real buy affordance. */}
+                {!ledger.current.quote.alreadyOwned && !demoFeatureLocked('ports') && (
                   <button
                     className="btn"
                     data-testid="buy-port"
@@ -2575,9 +2679,15 @@ function TradePane({
                   </button>
                 )}
               </div>
+              {/* T-1703 · Demo teaser standing in for the buy affordance. */}
+              {!ledger.current.quote.alreadyOwned && demoFeatureLocked('ports') && (
+                <DemoLock feature="ports" testid="demo-lock-ports" />
+              )}
               {/* Disabled-not-hidden: the typed reason, whenever the buy is refused
-                  (already-owned is surfaced above as OWNED, not as an error). */}
-              {!ledger.current.quote.ok &&
+                  (already-owned is surfaced above as OWNED, not as an error). Suppressed
+                  in the demo — the teaser above explains why there is no buy control. */}
+              {!demoFeatureLocked('ports') &&
+                !ledger.current.quote.ok &&
                 ledger.current.quote.failure &&
                 !ledger.current.quote.alreadyOwned && (
                   <span className="ship-reason" data-testid="port-reason">

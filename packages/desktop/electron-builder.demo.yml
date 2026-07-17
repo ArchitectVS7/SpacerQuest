@@ -1,0 +1,43 @@
+# T-1703 · electron-builder packaging config for the DEMO build.
+#
+# Identical to `electron-builder.yml` EXCEPT for a distinct `appId` / `productName` and
+# a separate `directories.output` (release-demo) so a demo and full package never
+# collide on disk. The renderer it packages is the SAME `packages/ui/dist-web` dir —
+# but built with `VITE_SQ_DEMO=1` (see the desktop `build:demo` script), so the bundle
+# carries the baked-in demo flag that gates veteran content and walls the final day.
+#
+# The distinct `appId` gives the demo its own macOS bundle id + userData dir, so a demo
+# and full install on the same machine never share saves (carry-over is via an explicit
+# save import / Steam Cloud, not a shared local store). This appId also backs the
+# DISTINCT Steam demo depot — see docs/steam/depot-demo.md. The live demo depot appid is
+# a T-1704 release-checklist item (mirroring T-1702's deferral of the real appid); the
+# dev sandbox ships Spacewar `480` via steam_appid.demo.txt.
+#
+# Every other field mirrors the base config verbatim; the same rationale comments there
+# (npmRebuild-must-stay-false in this hoisted workspace, the steamworks.js native-addon
+# mapping + asarUnpack, the single-source prod-dependency collection) apply unchanged.
+appId: com.spacerquest.rimward.demo
+productName: Spacer Quest — Rimward (Demo)
+copyright: © Spacer Quest project
+npmRebuild: false
+directories:
+  output: release-demo
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+asarUnpack:
+  - node_modules/steamworks.js/**
+extraResources:
+  - from: ../ui/dist-web
+    to: dist-web
+mac:
+  target:
+    - dmg
+  category: public.app-category.games
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

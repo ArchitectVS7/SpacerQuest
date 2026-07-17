@@ -40,19 +40,30 @@ export default defineConfig({
   // `SQ_ELECTRON`. The default web run (chromium) IGNORES it — so `npm run test:e2e`
   // stays a pure web run that never spawns Electron — and when SQ_ELECTRON is set the
   // web server is skipped entirely (the Electron app loads dist-web over file://).
+  // T-1703 · A third, opt-in `demo` project (gated behind `SQ_DEMO`, mirroring the
+  // `SQ_ELECTRON` pattern) whose webServer serves the REAL `VITE_SQ_DEMO=1` build, so
+  // `demo-gate.spec.ts` proves the actual demo BUILD gates veteran content — a second
+  // full `vite build`, so it stays off the default run. The default chromium run
+  // IGNORES `demo-gate.spec.ts` (it needs the demo build) but KEEPS
+  // `demo-save-carry.spec.ts` — that spec proves a day-33 demo save carries into the
+  // FULL build, so it must run against the ordinary (non-demo) server.
   projects: process.env.SQ_ELECTRON
     ? [{ name: 'electron', testMatch: /electron-.*\.spec\.ts/ }]
-    : [
-        {
-          name: 'chromium',
-          use: { ...devices['Desktop Chrome'] },
-          testIgnore: /electron-.*\.spec\.ts/,
-        },
-      ],
+    : process.env.SQ_DEMO
+      ? [{ name: 'demo', use: { ...devices['Desktop Chrome'] }, testMatch: /demo-gate\.spec\.ts/ }]
+      : [
+          {
+            name: 'chromium',
+            use: { ...devices['Desktop Chrome'] },
+            testIgnore: [/electron-.*\.spec\.ts/, /demo-gate\.spec\.ts/],
+          },
+        ],
   webServer: process.env.SQ_ELECTRON
     ? undefined
     : {
-        command: 'npm run build && npm run preview',
+        command: process.env.SQ_DEMO
+          ? 'npm run build:demo && npm run preview'
+          : 'npm run build && npm run preview',
         url: 'http://localhost:5173',
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

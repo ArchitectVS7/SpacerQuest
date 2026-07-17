@@ -10,3 +10,5 @@ dist-web/
 # T-1701 · Electron shell build + packaging artifacts
 packages/desktop/dist/
 packages/desktop/release/
+# T-1703 · Demo packaging output
+packages/desktop/release-demo/
