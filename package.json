@@ -7,6 +7,9 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "sim": "npm run sim -w @spacerquest/sim --",
+    "desktop": "npm run start -w @spacerquest/desktop",
+    "desktop:package:mac": "npm run package:mac -w @spacerquest/desktop",
+    "desktop:package:win": "npm run package:win -w @spacerquest/desktop",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "tsc -b",
     "lint": "eslint .",

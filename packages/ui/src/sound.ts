@@ -1,4 +1,8 @@
 import type { GameEvent } from '@spacerquest/engine';
+// T-1701 · Mixer settings persist through the shared storage adapter (localStorage
+// on the web, OS app-data file store in the Electron shell) — same keys, same
+// synchronous reads; the hasWindow() guards below are preserved.
+import * as storage from './storage';
 
 /**
  * ============================================================================
@@ -105,7 +109,7 @@ function audioCtor(): typeof AudioContext | null {
 function readNumber(key: string, fallback: number): number {
   if (!hasWindow()) return fallback;
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = storage.getItem(key);
     if (raw === null) return fallback;
     const n = Number.parseFloat(raw);
     return Number.isFinite(n) ? clamp01(n) : fallback;
@@ -117,7 +121,7 @@ function readNumber(key: string, fallback: number): number {
 function readBool(key: string, fallback: boolean): boolean {
   if (!hasWindow()) return fallback;
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = storage.getItem(key);
     if (raw === null) return fallback;
     return raw === 'true' || raw === '1';
   } catch {
@@ -128,7 +132,7 @@ function readBool(key: string, fallback: boolean): boolean {
 function writeString(key: string, value: string): void {
   if (!hasWindow()) return;
   try {
-    window.localStorage.setItem(key, value);
+    storage.setItem(key, value);
   } catch {
     /* storage unavailable — non-fatal for play */
   }

@@ -7,3 +7,6 @@ dist/
 dist-web/
 .vite/
 *.tsbuildinfo
+# T-1701 · Electron shell build + packaging artifacts
+packages/desktop/dist/
+packages/desktop/release/

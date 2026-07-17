@@ -1,0 +1,17 @@
+{
+  // T-1701 · Electron main + preload compile to CommonJS. The Electron main
+  // process is a CJS runtime, and `packages/desktop` deliberately does NOT set
+  // `"type": "module"` in its package.json, so the emitted `.js` files are CJS —
+  // loadable by Electron without an ESM interop shim. This overrides the root
+  // solution's NodeNext module setting for this package only.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "types": ["node"],
+    "lib": ["ESNext"]
+  },
+  "include": ["src/**/*"]
+}

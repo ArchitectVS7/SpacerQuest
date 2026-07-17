@@ -1,0 +1,27 @@
+{
+  "name": "@spacerquest/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Electron shell for Spacer Quest — Rimward (T-1701).",
+  "main": "dist/main.js",
+  "scripts": {
+    "build:main": "tsc -b && node esbuild.mjs",
+    "build:renderer": "npm run build -w @spacerquest/ui",
+    "build": "npm run build:renderer && npm run build:main",
+    "typecheck": "tsc -b",
+    "start": "npm run build && electron .",
+    "dev": "ELECTRON_RENDERER_URL=http://localhost:5173 electron .",
+    "package": "npm run build && electron-builder -mw",
+    "package:mac": "npm run build && electron-builder --mac dmg",
+    "package:win": "npm run build && electron-builder --win nsis",
+    "package:dir": "npm run build && electron-builder --dir"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "electron": "33.4.11",
+    "electron-builder": "^25.1.8",
+    "electron-updater": "^6.3.9",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.9.3"
+  }
+}

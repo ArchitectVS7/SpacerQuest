@@ -1,0 +1,42 @@
+# T-1701 · electron-builder packaging config (mac dmg + win nsis).
+#
+# The renderer is the SAME bundle the web build ships (packages/ui/dist-web). It is
+# copied into the packaged app's resources via `extraResources`, and main.ts loads
+# it from `process.resourcesPath/dist-web/index.html` when `app.isPackaged`.
+#
+# NOTE: real app icons (build/icon.icns / build/icon.ico) are a follow-up; without
+# them electron-builder falls back to its default icon — packaging still succeeds.
+appId: com.spacerquest.rimward
+productName: Spacer Quest — Rimward
+copyright: © Spacer Quest project
+# npmRebuild MUST stay false in this npm-workspaces monorepo. With it true,
+# electron-builder sees no local `packages/desktop/node_modules` (deps are hoisted to
+# the repo root) and runs `npm install --production` here, which npm resolves as a
+# workspace-wide prune that strips every devDependency from the shared root
+# node_modules — deleting app-builder-bin (and electron-builder itself) mid-run and
+# killing packaging with `spawn app-builder_<arch> ENOENT`. The main+preload are
+# bundled by esbuild (see esbuild.mjs) into self-contained CJS with electron-updater
+# inlined, so there are NO native deps to rebuild and nothing to install: the packaged
+# app is entirely `dist/**` + the extraResources renderer.
+npmRebuild: false
+directories:
+  output: release
+  buildResources: build
+# The app bundle itself: compiled main+preload + this package's manifest. The
+# renderer ships as an extraResource (below), not inside the asar app tree.
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: ../ui/dist-web
+    to: dist-web
+mac:
+  target:
+    - dmg
+  category: public.app-category.games
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

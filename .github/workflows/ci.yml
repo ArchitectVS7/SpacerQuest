@@ -26,6 +26,12 @@ jobs:
     # tripping fast on an actual hang. If this climbs again, split the heavy sim
     # tests into their own parallel job rather than raising this further.
     timeout-minutes: 30
+    # T-1701 · This web job only TYPECHECKS the Electron main/preload (via `tsc -b`),
+    # so it needs electron's types but NOT its ~150MB platform binary — skip the
+    # binary download to keep the web jobs fast. The desktop job (which launches the
+    # real app) omits this and downloads the binary.
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -105,6 +111,65 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
+          path: |
+            packages/ui/playwright-report
+            packages/ui/test-results
+          retention-days: 14
+
+  # T-1701 · Electron shell proof. Runs on macOS (the acceptance names "runs on
+  # macOS") in its own job so the heavy `electron` binary never slows the web jobs.
+  # It builds the renderer + the Electron main, then launches the REAL Electron app
+  # (`_electron`) and plays Tour One through the cockpit DOM, asserting saves land in
+  # the OS app-data dir and that a localStorage career migrates in. Electron ships its
+  # own Chromium, so no `playwright install` is needed for the `_electron` path.
+  desktop:
+    name: Electron shell (macOS)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck & build (incl. Electron main/preload)
+        run: npx tsc -b
+
+      - name: Build renderer bundle
+        run: npm run build -w @spacerquest/ui
+
+      # Produce a REAL packaged app (unsigned --dir, no dmg/signing cost). This MUST
+      # pass — no continue-on-error — so a broken electron-builder config or a
+      # packaging regression fails the job HERE. Its output (release/<arch>/…app) is
+      # what the packaged-build e2e below launches, so this step is what proves a
+      # packaged Spacer Quest build is actually produced, and the e2e then proves it
+      # boots and runs Tour One.
+      - name: Package desktop app (unsigned --dir)
+        run: npm run package:dir -w @spacerquest/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # Runs BOTH the unpackaged-shell specs (electron-shell.spec.ts: app-data save
+      # location + localStorage migration) AND the packaged-build spec
+      # (electron-packaged.spec.ts), which launches the .app from the step above with
+      # app.isPackaged === true and plays Tour One through the packaged renderer.
+      - name: Run Electron shell e2e
+        run: SQ_ELECTRON=1 npx playwright test --project=electron
+        working-directory: packages/ui
+
+      - name: Upload Electron report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-report
           path: |
             packages/ui/playwright-report
             packages/ui/test-results

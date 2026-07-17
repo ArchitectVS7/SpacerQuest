@@ -22,6 +22,11 @@ import {
   type CombatAftermath,
 } from './format';
 import * as sound from './sound';
+// T-1701 · All persistence flows through the storage adapter: a localStorage
+// passthrough on the web (unchanged behaviour) and an OS app-data file store inside
+// the Electron shell. The swap below is mechanical and behavior-preserving — the
+// surrounding try/catch guards stay because the web path still touches localStorage.
+import * as storage from './storage';
 
 /**
  * Play the audio cues an action's event stream implies (T-310). The store is the
@@ -511,7 +516,7 @@ function readSave(): { game: GameState; seed: number } | null {
   // below: only the latter records a `bootLoadFailure`.
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(SAVE_KEY);
+    raw = storage.getItem(SAVE_KEY);
   } catch {
     return null; // storage unavailable — treat as a fresh career, no banner
   }
@@ -546,14 +551,14 @@ function readSave(): { game: GameState; seed: number } | null {
  */
 function autosave(game: GameState, seed: number): void {
   try {
-    localStorage.setItem(SAVE_KEY, createSave(game, seed));
+    storage.setItem(SAVE_KEY, createSave(game, seed));
   } catch {
     /* storage unavailable — non-fatal for play */
   }
 }
 function readFx(): boolean {
   try {
-    return localStorage.getItem(FX_KEY) !== 'off';
+    return storage.getItem(FX_KEY) !== 'off';
   } catch {
     return true;
   }
@@ -563,7 +568,7 @@ function readFx(): boolean {
 
 function readAutosaveSeed(): number {
   try {
-    const raw = localStorage.getItem(AUTOSAVE_SEED_KEY);
+    const raw = storage.getItem(AUTOSAVE_SEED_KEY);
     const n = raw === null ? NaN : Number.parseInt(raw, 10);
     return Number.isFinite(n) ? n : DEFAULT_SEED;
   } catch {
@@ -572,14 +577,14 @@ function readAutosaveSeed(): number {
 }
 function readReducedMotion(): boolean {
   try {
-    return localStorage.getItem(REDUCED_MOTION_KEY) === 'on';
+    return storage.getItem(REDUCED_MOTION_KEY) === 'on';
   } catch {
     return false;
   }
 }
 function readTextSize(): TextSize {
   try {
-    const v = localStorage.getItem(TEXT_SIZE_KEY);
+    const v = storage.getItem(TEXT_SIZE_KEY);
     return v === 'small' || v === 'large' ? v : 'normal';
   } catch {
     return 'normal';
@@ -587,7 +592,7 @@ function readTextSize(): TextSize {
 }
 function readSlotMeta(n: number): Omit<SlotSummary, 'index' | 'empty'> | null {
   try {
-    const raw = localStorage.getItem(SLOT_META_KEY(n));
+    const raw = storage.getItem(SLOT_META_KEY(n));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Omit<SlotSummary, 'index' | 'empty'>;
     return parsed && typeof parsed === 'object' ? parsed : null;
@@ -608,7 +613,7 @@ function readSlots(): SlotSummary[] {
 
 function readOnboarding(): Record<string, true> {
   try {
-    const raw = localStorage.getItem(ONBOARDING_KEY);
+    const raw = storage.getItem(ONBOARDING_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, true>;
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -618,7 +623,7 @@ function readOnboarding(): Record<string, true> {
 }
 function writeOnboarding(seen: Record<string, true>): void {
   try {
-    localStorage.setItem(ONBOARDING_KEY, JSON.stringify(seen));
+    storage.setItem(ONBOARDING_KEY, JSON.stringify(seen));
   } catch {
     /* storage unavailable — non-fatal for play */
   }
@@ -647,7 +652,7 @@ export function newGame(seed: number): void {
   // `readSave` recover the seed for a pre-v2 envelope (loaded as seed: null).
   autosave(game, seed);
   try {
-    localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
+    storage.setItem(AUTOSAVE_SEED_KEY, String(seed));
   } catch {
     /* storage unavailable — non-fatal for play */
   }
@@ -1561,7 +1566,7 @@ export function endDay(): void {
 export function toggleFx(): void {
   const fx = !state.fx;
   try {
-    localStorage.setItem(FX_KEY, fx ? 'on' : 'off');
+    storage.setItem(FX_KEY, fx ? 'on' : 'off');
   } catch {
     /* ignore */
   }
@@ -1580,7 +1585,7 @@ export function toggleFx(): void {
  */
 export function saveToSlot(n: number): void {
   try {
-    localStorage.setItem(SLOT_KEY(n), createSave(state.game, state.seed));
+    storage.setItem(SLOT_KEY(n), createSave(state.game, state.seed));
     const meta: Omit<SlotSummary, 'index' | 'empty'> = {
       savedAt: Date.now(),
       seed: state.seed,
@@ -1588,7 +1593,7 @@ export function saveToSlot(n: number): void {
       credits: state.game.player.credits,
       systemId: state.game.player.currentSystemId,
     };
-    localStorage.setItem(SLOT_META_KEY(n), JSON.stringify(meta));
+    storage.setItem(SLOT_META_KEY(n), JSON.stringify(meta));
     set({ saves: readSlots(), notice: `Saved to slot ${n}.` });
   } catch {
     set({ notice: 'Could not write to that slot (storage unavailable).' });
@@ -1606,7 +1611,7 @@ export function saveToSlot(n: number): void {
 export function loadSlot(n: number): void {
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(SLOT_KEY(n));
+    raw = storage.getItem(SLOT_KEY(n));
   } catch {
     /* fall through to the empty-slot notice */
   }
@@ -1630,7 +1635,7 @@ export function loadSlot(n: number): void {
   // The loaded career becomes the live autosave.
   autosave(game, seed);
   try {
-    localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
+    storage.setItem(AUTOSAVE_SEED_KEY, String(seed));
   } catch {
     /* non-fatal */
   }
@@ -1654,8 +1659,8 @@ export function loadSlot(n: number): void {
  *  confirm is UI-local component state — the store just performs the deletion. */
 export function deleteSlot(n: number): void {
   try {
-    localStorage.removeItem(SLOT_KEY(n));
-    localStorage.removeItem(SLOT_META_KEY(n));
+    storage.removeItem(SLOT_KEY(n));
+    storage.removeItem(SLOT_META_KEY(n));
   } catch {
     /* non-fatal */
   }
@@ -1665,7 +1670,7 @@ export function deleteSlot(n: number): void {
 /** User reduced-motion override (persisted). Layered over the OS media query. */
 export function setReducedMotion(v: boolean): void {
   try {
-    localStorage.setItem(REDUCED_MOTION_KEY, v ? 'on' : 'off');
+    storage.setItem(REDUCED_MOTION_KEY, v ? 'on' : 'off');
   } catch {
     /* ignore */
   }
@@ -1675,7 +1680,7 @@ export function setReducedMotion(v: boolean): void {
 /** User text-size preference (persisted). */
 export function setTextSize(size: TextSize): void {
   try {
-    localStorage.setItem(TEXT_SIZE_KEY, size);
+    storage.setItem(TEXT_SIZE_KEY, size);
   } catch {
     /* ignore */
   }

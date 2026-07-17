@@ -20,7 +20,8 @@
     { "path": "./packages/engine" },
     { "path": "./packages/ui" },
     { "path": "./packages/sim" },
-    { "path": "./packages/ui/e2e" }
+    { "path": "./packages/ui/e2e" },
+    { "path": "./packages/desktop" }
   ],
   "exclude": ["node_modules", "dist"]
 }

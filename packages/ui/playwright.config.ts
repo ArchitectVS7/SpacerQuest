@@ -35,11 +35,26 @@ export default defineConfig({
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
-    command: 'npm run build && npm run preview',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  // T-1701 · The Electron shell spec launches a real Electron process (`_electron`)
+  // and never touches the Vite server, so it lives in its own project, gated behind
+  // `SQ_ELECTRON`. The default web run (chromium) IGNORES it — so `npm run test:e2e`
+  // stays a pure web run that never spawns Electron — and when SQ_ELECTRON is set the
+  // web server is skipped entirely (the Electron app loads dist-web over file://).
+  projects: process.env.SQ_ELECTRON
+    ? [{ name: 'electron', testMatch: /electron-.*\.spec\.ts/ }]
+    : [
+        {
+          name: 'chromium',
+          use: { ...devices['Desktop Chrome'] },
+          testIgnore: /electron-.*\.spec\.ts/,
+        },
+      ],
+  webServer: process.env.SQ_ELECTRON
+    ? undefined
+    : {
+        command: 'npm run build && npm run preview',
+        url: 'http://localhost:5173',
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
 });
