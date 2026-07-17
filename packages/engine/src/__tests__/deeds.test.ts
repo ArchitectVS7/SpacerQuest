@@ -307,31 +307,41 @@ describe('deed registry', () => {
       newRank: 'COMMANDER',
       deedCount: 1,
     });
+    // T-1504: every rank carries a citation now, so the rank-up wire IS that
+    // citation (not the generic "Registry confirms …" line) for every rank —
+    // proven here for COMMANDER.
     expect(events[2]).toMatchObject({
       type: 'WireEntry',
-      message: 'Registry confirms Player as Commander after First Manifest.',
+      message: RENOWN_RANKS.COMMANDER.citation,
     });
+    expect(
+      events[2].type === 'WireEntry' && events[2].message.startsWith('Registry confirms Player as'),
+    ).toBe(false);
   });
 
-  // T-1308 · Conqueror capstone.
-  it('exposes Conqueror as a defined-but-unreached capstone at current deed counts', () => {
+  // T-1504 · Conqueror is now REACHABLE (was T-1308's defined-but-unreached
+  // capstone). Filling the deed headroom to >= 30 is exactly what opens it.
+  it('exposes Conqueror as a reachable capstone once the deed headroom is filled', () => {
     // The rank ladder exposes Conqueror with a citation...
     expect(RENOWN_RANKS.CONQUEROR).toMatchObject({ id: 'CONQUEROR', label: 'Conqueror' });
     expect(RENOWN_RANKS.CONQUEROR.citation).toBeTruthy();
     expect(RENOWN_RANKS.CONQUEROR.citation?.length ?? 0).toBeGreaterThan(0);
 
-    // ...at a threshold above the current authored deed set, so it is out of
-    // reach today. Reachability THROUGH PLAY (a ≥30-deed set + long veteran sim)
-    // is proven by T-1504's sweep, not here.
+    // ...at a threshold the authored deed set now MEETS — the T-1504 content pass
+    // took DEEDS past 30, so Conqueror sits inside reach rather than above it.
     expect(RENOWN_DEED_THRESHOLDS.CONQUEROR).toBe(30);
-    expect(RENOWN_DEED_THRESHOLDS.CONQUEROR).toBeGreaterThan(DEEDS.length);
+    expect(DEEDS.length).toBeGreaterThanOrEqual(RENOWN_DEED_THRESHOLDS.CONQUEROR);
 
-    // Earning every current deed saturates at GIGA_HERO — never Conqueror.
-    expect(rankForDeedCount(DEEDS.length)).toBe('GIGA_HERO');
-    expect(rankForDeedCount(DEEDS.length)).not.toBe('CONQUEROR');
-
-    // But the ladder IS wired to select Conqueror once the headroom exists.
+    // Earning to the threshold selects Conqueror — the top rank, reached, not set.
     expect(rankForDeedCount(RENOWN_DEED_THRESHOLDS.CONQUEROR)).toBe('CONQUEROR');
+    expect(rankForDeedCount(DEEDS.length)).toBe('CONQUEROR');
+  });
+
+  // T-1504 · content-count guard: the launch-quantity floor + unique ids.
+  it('authors at least 30 deeds with unique ids (T-1504 launch quantity)', () => {
+    expect(DEEDS.length).toBeGreaterThanOrEqual(30);
+    const ids = DEEDS.map((deed) => deed.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('reaching Conqueror fires the unique capstone wire plus a Registry entry', () => {
@@ -395,6 +405,109 @@ describe('deed registry', () => {
     expect(restored.player.registry.renownRank).toBe('CONQUEROR');
     expect(restored.eventLog).toContainEqual(rankUp);
     expect(restored.eventLog).toContainEqual(deedEarned);
+  });
+});
+
+// T-1504 · new-verb deed wiring. Proves each new EVENT_PATHS entry (engine
+// deeds.ts) lets its deed field-match, and that a type-only deed fires with no
+// whitelist entry. A synthetic event of each type earns the deed and renders its
+// citationTemplate — the reader-consumption proof for the whitelist additions.
+describe('T-1504 new-verb deeds', () => {
+  const earn = (event: GameEvent, seed: number): string[] => {
+    const state = createInitialState(seed);
+    const events = evaluateDeeds(state, [event]);
+    return events
+      .filter((e): e is Extract<GameEvent, { type: 'DeedEarned' }> => e.type === 'DeedEarned')
+      .map((e) => e.deedId);
+  };
+
+  it('a won Dare (HangoutEvent) earns first_wager and dare_winner', () => {
+    const earned = earn(
+      { type: 'HangoutEvent', day: 3, venue: 'dare', opponentId: 'x', wager: 50, playerWon: true },
+      101,
+    );
+    expect(earned).toContain('first_wager');
+    expect(earned).toContain('dare_winner');
+  });
+
+  it('a typed-fail Dare (no wager) earns nothing — the wager>=1 guard bites', () => {
+    const earned = earn({ type: 'HangoutEvent', day: 3, venue: 'dare', failReason: 'no-die' }, 102);
+    expect(earned).not.toContain('first_wager');
+    expect(earned).not.toContain('dare_winner');
+  });
+
+  it('a borrowed loan earns first_loan and a cleared loan earns loan_cleared', () => {
+    expect(earn({ type: 'LoanEvent', day: 3, kind: 'borrowed', principal: 500 }, 103)).toContain(
+      'first_loan',
+    );
+    expect(
+      earn(
+        {
+          type: 'LoanEvent',
+          day: 3,
+          kind: 'repaid',
+          amountPaid: 500,
+          outstanding: 0,
+          cleared: true,
+        },
+        104,
+      ),
+    ).toContain('loan_cleared');
+  });
+
+  it('a purchased port (PortEvent) earns landlord; income earns rentier', () => {
+    expect(
+      earn({ type: 'PortEvent', day: 3, kind: 'purchased', systemId: 1, cost: 25000 }, 105),
+    ).toContain('landlord');
+    expect(earn({ type: 'PortEvent', day: 3, kind: 'income', income: 400 }, 106)).toContain(
+      'rentier',
+    );
+  });
+
+  it('an evaded ContrabandScan (caught:false) earns smuggler_clean', () => {
+    const scan: GameEvent = {
+      type: 'ContrabandScan',
+      encounterId: 'e1',
+      interceptorId: 'i1',
+      caught: false,
+      check: {
+        die: 10,
+        modifier: 2,
+        total: 12,
+        dc: 15,
+        success: false,
+        margin: -3,
+        nat20: false,
+        nat1: false,
+      },
+    };
+    expect(earn(scan, 107)).toContain('smuggler_clean');
+  });
+
+  it('a type-only exploration deed (first_poi) fires with no whitelist entry', () => {
+    const poi: GameEvent = {
+      type: 'PoiDiscovered',
+      day: 3,
+      poiId: 'p1',
+      poiType: 'derelict',
+      systemId: 5,
+      name: 'Hulk',
+    };
+    expect(earn(poi, 108)).toContain('first_poi');
+  });
+
+  it('renders a new deed citationTemplate with the day substituted', () => {
+    const state = createInitialState(109);
+    state.day = 42;
+    const events = evaluateDeeds(state, [
+      { type: 'PortEvent', day: 42, kind: 'purchased', systemId: 1, cost: 25000 },
+    ]);
+    const earned = events.find(
+      (e): e is Extract<GameEvent, { type: 'DeedEarned' }> =>
+        e.type === 'DeedEarned' && e.deedId === 'landlord',
+    );
+    expect(earned?.citation).toContain('day 42');
+    expect(earned?.citation).not.toContain('{day}');
   });
 });
 

@@ -35,6 +35,14 @@ const EVENT_PATHS: Readonly<Record<string, readonly string[]>> = {
   StatCheck: ['actor', 'stat', 'dc', 'result.success', 'result.total', 'actionContext'],
   ShipyardEvent: ['action', 'cost', 'component', 'tier', 'repairMode', 'quantity', 'equipment'],
   StoryletDeedProgress: ['storyletId', 'choiceId', 'deedId', 'amount'],
+  // T-1504 · new-verb deed readers. Each path is one a T-1504 deed field-matches
+  // on (content deeds.ts); the whitelist is a tight safety guard, so it lists ONLY
+  // the paths in use. Deeds that field-match nothing (first_poi, salvager on their
+  // event type alone) need no entry here.
+  HangoutEvent: ['venue', 'wager', 'playerWon'],
+  LoanEvent: ['kind', 'cleared'],
+  PortEvent: ['kind'],
+  ContrabandScan: ['caught'],
 };
 
 const STATE_PATHS = ['player.ship.fuel'] as const;
@@ -310,11 +318,13 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
         newRank: nextRank,
         deedCount,
       });
-      // T-1308: READER of a rank definition's optional `citation`. When the
-      // reached rank carries one (only CONQUEROR does today), that period-voice
-      // line IS the rank-up wire — the unique capstone moment. Every other rank
-      // has no citation and falls back to the generic line, so their wires stay
-      // byte-identical (no golden-hash fallout on reachable ranks).
+      // T-1308/T-1504: READER of a rank definition's optional `citation`. The
+      // reached rank's period-voice line IS the rank-up wire. T-1504 authored a
+      // citation for ALL 10 ranks (content deeds.ts), so this branch now fires the
+      // citation for EVERY rank-up and the generic `Registry confirms …` fallback
+      // below is defensive-only (unreachable in normal play). This changed the
+      // rank-up wires for COMMANDER..GIGA_HERO vs T-1308 — the golden fixtures were
+      // regenerated and the deeds.test Commander-line assertion updated to suit.
       const rankDef: RenownRankDefinition = RENOWN_RANKS[nextRank];
       const rankCitation = rankDef.citation;
       emitted.push({

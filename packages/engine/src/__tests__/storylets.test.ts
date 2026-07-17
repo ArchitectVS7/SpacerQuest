@@ -157,6 +157,19 @@ const T1503_STORYLET_IDS = [
   'alliance.rebels.compact',
 ] as const;
 
+// T-1504 · Era-event storylet tie-ins (appended last): one wire-surface storylet
+// per era id, each gated on `eraEvent.defId`, delivering the era->storylet hook
+// the T-1302 trigger was built for (and, for blockade/famine/fuel-crisis, the
+// era->Deed progress for war_profiteer / crisis_courier).
+const T1504_STORYLET_IDS = [
+  'wire.blockade.premium-run',
+  'wire.dilithium-rush.stake-claim',
+  'wire.patrol-crackdown.checkpoint',
+  'wire.famine.relief-run',
+  'wire.fuel-crisis.rationing',
+  'wire.plague.contagion-cordon',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -195,6 +208,10 @@ describe('storylet content validation', () => {
     for (const id of T1503_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1504 era-event storylet tie-ins loaded and validated.
+    for (const id of T1504_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
@@ -204,7 +221,8 @@ describe('storylet content validation', () => {
         T1310_STORYLET_IDS.length +
         T1501_STORYLET_IDS.length +
         T1502_STORYLET_IDS.length +
-        T1503_STORYLET_IDS.length,
+        T1503_STORYLET_IDS.length +
+        T1504_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);

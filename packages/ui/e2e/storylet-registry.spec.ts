@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
+import { createInitialState, createSave } from '@spacerquest/engine';
+import { DEEDS, RENOWN_RANKS } from '@spacerquest/content';
 
 // T-309: the storylet & registry UX. Storylets present as a prose panel in the
 // cockpit, each choice showing its authored requirement/cost; a choice whose
@@ -92,6 +94,58 @@ test('playing the doc-salvage chain earns a deed that appears in the Registry wi
   // One deed bumps renown to Commander — the bezel rank readout updates.
   await expect(page.getByTestId('rank')).toHaveText('Commander');
   await expect(page.getByTestId('registry-rank')).toHaveText('Commander');
+});
+
+// T-1504 · The Conqueror capstone + a new-verb deed render in the cockpit's
+// Registry pane. Reaching 30 deeds through play takes hundreds of days (proven
+// headlessly by the sim conqueror sweep — the same precedent T-114a set for the
+// renown gates), so this UI-reachability proof loads a Conqueror career as the
+// boot autosave (the store's own `sq.save.v1` = engine `createSave`) and asserts
+// the GENERIC registry pane surfaces the top rank and a T-1504 new-verb deed's
+// title + citation — no new component, the same path every deed/rank flows through.
+test('the Conqueror rank and a new-verb deed render in the Registry pane', async ({ page }) => {
+  const SEED = 424242;
+  const landlord = DEEDS.find((d) => d.id === 'landlord')!;
+  const landlordCitation = landlord.citationTemplate.replaceAll('{day}', '120');
+
+  // Build a 30-deed CONQUEROR career headlessly: 29 filler deeds + the real
+  // `landlord` new-verb deed. Rank is a pure function of earned.length, so this
+  // is exactly the registry a long veteran run produces on its 30th deed.
+  const state = createInitialState(SEED);
+  const earned = Array.from({ length: 29 }, (_v, i) => ({
+    id: `deed-${i}`,
+    title: `Deed ${i}`,
+    citation: `Filler ${i}.`,
+    day: 1,
+    eventIndex: i,
+  }));
+  earned.push({
+    id: landlord.id,
+    title: landlord.title,
+    citation: landlordCitation,
+    day: 120,
+    eventIndex: 100,
+  });
+  state.player.registry.earned = earned;
+  state.player.registry.renownRank = 'CONQUEROR';
+  const save = createSave(state, SEED);
+
+  // Clear, then seed the autosave the store boots from (initScripts run in order:
+  // the beforeEach clear first, this write second) — the app loads straight into
+  // the Conqueror career.
+  await page.addInitScript((blob) => window.localStorage.setItem('sq.save.v1', blob), save);
+  await page.goto('/');
+
+  // The bezel + registry rank readouts show the top rank (RENOWN_RANKS label).
+  await expect(page.getByTestId('rank')).toHaveText(RENOWN_RANKS.CONQUEROR.label);
+  await page.getByTestId('records-toggle').click();
+  await expect(page.getByTestId('registry-rank')).toHaveText(RENOWN_RANKS.CONQUEROR.label);
+
+  // The new-verb deed is player-visible with its authored period-voice citation.
+  const deed = page.locator('[data-testid="registry-deed"][data-deed-id="landlord"]');
+  await expect(deed).toBeVisible();
+  await expect(deed.getByTestId('registry-deed-title')).toHaveText(landlord.title);
+  await expect(deed.getByTestId('registry-deed-citation')).toContainText('bought a berth');
 });
 
 // The complementary NON-EMPTY assertion (a fragment reached through the Explore

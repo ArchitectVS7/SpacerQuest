@@ -4033,4 +4033,190 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // ==========================================================================
+  // T-1504 · Era-event storylet tie-ins. The 6 era EVENTS were already authored
+  // (eraEvents.ts); this task supplies the STORYLET tie-ins the now-real era-event
+  // trigger (T-1302, `trigger.eraEvent.defId`) was built for — one per era id, so
+  // "every era fires >= 1 tied storylet" is reachable in a seed sweep. Each gates
+  // on `eraEvent.defId` ONLY (never `inAffectedSystem`), so it is eligible wherever
+  // the ship is the moment the era goes live — the wire bulletin reaches you
+  // galaxy-wide (the reachability-robust choice the era-coverage sweep relies on).
+  // The `wire.` id prefix routes them to the Galactic-Wire surface (ui format.ts
+  // `storyletSurface`). Two blockade/famine/fuel-crisis storylets carry a
+  // `deedProgress` first choice — the era->Deed reader that earns war_profiteer /
+  // crisis_courier (content deeds.ts), mirroring beacon_keeper. No held
+  // `.aboard`/`.riding` flags (keeps them clear of the held-flag-clearer sweep).
+  //
+  // READERS / consumed state (Standing-constraint 7): the ONLY state these
+  // tie-ins write is `credits`, `fuel` (never, here) and `deedProgress` — all
+  // genuinely consumed downstream (deedProgress is read by the deed-earning /
+  // rank-up path in engine/deeds.ts and asserted in deed-coverage.test.ts /
+  // conqueror.test.ts). These storylets deliberately set NO `flags`: a set-only
+  // flag no requirement/UI/engine reads is a receipt, not a feature, so the
+  // "engage vs sit out" fork is expressed purely through the consumed effects
+  // (the engage choice pays credits and/or advances a deed; the sit-out choice
+  // is a genuine no-op decline). The `repeat: 'never'` re-offer guard is driven
+  // by `state.storylets.completed[id]` in engine/storylets.ts, not by any flag.
+  {
+    id: 'wire.blockade.premium-run',
+    title: 'The Cordon Premium',
+    prose:
+      'A Confederation cordon has drawn tight, and the wire is thick with brokers begging for anything bound inside. Freight that clears the line fetches a warlord’s ransom — and the lanes have grown teeth to match.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'blockade' },
+    },
+    choices: [
+      {
+        id: 'run-the-cordon',
+        label: 'Run the cordon for the premium',
+        prose:
+          'Burn for the line while the price is high. A hold that clears a blockade is worth three that don’t, and everyone on the wire knows your vector now.',
+        effects: {
+          credits: 200,
+          deedProgress: [{ deedId: 'war_profiteer', amount: 1 }],
+        },
+      },
+      {
+        id: 'sit-it-out',
+        label: 'Wait for the cordon to lift',
+        prose: 'Let the desperate run the teeth. Keep the drives cold and the hold whole.',
+      },
+    ],
+  },
+  {
+    id: 'wire.dilithium-rush.stake-claim',
+    title: 'Strike Fever',
+    prose:
+      'The wire crackles with a strike: a dilithium seam has cracked wide, and the boomtown will pay named prices for crystal and rare elements hauled in before it plays out.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'dilithium_rush' },
+    },
+    choices: [
+      {
+        id: 'haul-crystal',
+        label: 'Chase the rush',
+        prose: 'Point the nose at the boom and name your rate while the seam still runs hot.',
+        effects: {
+          credits: 150,
+        },
+      },
+      {
+        id: 'let-it-pass',
+        label: 'Let the rush pass',
+        prose: 'Boomtowns empty as fast as they fill. Keep to the lanes you already know.',
+      },
+    ],
+  },
+  {
+    id: 'wire.patrol-crackdown.checkpoint',
+    title: 'League Checkpoint',
+    prose:
+      'Astro League patrols have flooded the lanes, and a checkpoint drone hails you for papers. Safer skies, tighter brokers — the crackdown cuts both ways, and the drone is waiting.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'patrol_crackdown' },
+    },
+    choices: [
+      {
+        id: 'show-papers',
+        label: 'Show clean papers',
+        prose: 'Hand the drone a manifest that reads exactly as it should and wave it on.',
+      },
+      {
+        id: 'grease-the-checkpoint',
+        label: 'Grease the checkpoint',
+        prose: 'Slide a consideration across so the drone loses interest in your hold entirely.',
+        requirements: { credits: { gte: 60 } },
+        effects: {
+          credits: -60,
+        },
+      },
+    ],
+  },
+  {
+    id: 'wire.famine.relief-run',
+    title: 'A World Gone Hungry',
+    prose:
+      'Crop failure has a whole system by the throat, and the wire is one long plea for foodstuffs. Dry goods and nutri-cargo fetch double at the docks — and hungry eyes watch every approach.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'famine' },
+    },
+    choices: [
+      {
+        id: 'run-relief',
+        label: 'Run the relief lane',
+        prose:
+          'Load what feeds people and push through the watching lanes. A courier the famine remembers is a courier every dock will.',
+        effects: {
+          credits: 150,
+          deedProgress: [{ deedId: 'crisis_courier', amount: 1 }],
+        },
+      },
+      {
+        id: 'hold-cargo',
+        label: 'Hold your cargo back',
+        prose: 'Let someone else run the hungry lanes today. Keep the hold and the hull whole.',
+      },
+    ],
+  },
+  {
+    id: 'wire.fuel-crisis.rationing',
+    title: 'Every Jump Bleeds',
+    prose:
+      'Refinery sabotage has doubled fuel across the band, and the wire is full of ships stranded on empty tanks. Every jump bleeds credits now — but every haul that lands is worth the burn twice over.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'fuel_crisis' },
+    },
+    choices: [
+      {
+        id: 'ration-and-push',
+        label: 'Ration hard and push through',
+        prose:
+          'Trim every wasted burn and run the lanes the crisis emptied. The cargo that gets through in a fuel drought is the cargo they never forget.',
+        effects: {
+          deedProgress: [{ deedId: 'crisis_courier', amount: 1 }],
+        },
+      },
+      {
+        id: 'wait-out-the-crisis',
+        label: 'Wait the refineries back online',
+        prose: 'Park the ship and let the price fall out of the sky before you burn another drop.',
+      },
+    ],
+  },
+  {
+    // Plague already has the richer, cargo-gated `cargo.medicinals.plague-relief`
+    // exemplar (kept as-is). This era-only tie-in gives the plague era a storylet
+    // reachable on the era ALONE (no Medicinals contract required), so the
+    // era-coverage sweep can confirm the plague era fires a tied storylet the same
+    // way it confirms the other five.
+    id: 'wire.plague.contagion-cordon',
+    title: 'The Fever Wire',
+    prose:
+      'A fever outbreak has a port under cordon, and the wire is thick with a Governor’s appeal: medicine at any price, and the desperate circling the ships that carry it.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'plague' },
+    },
+    choices: [
+      {
+        id: 'answer-the-appeal',
+        label: 'Answer the appeal',
+        prose: 'Log the cordon and keep a lane open for anything the fever port needs run in.',
+        effects: {
+          credits: 100,
+        },
+      },
+      {
+        id: 'keep-clear',
+        label: 'Keep clear of the cordon',
+        prose: 'A fever port is a fever port. Note it on the wire and give it a wide berth.',
+      },
+    ],
+  },
 ] as const);

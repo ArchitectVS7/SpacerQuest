@@ -256,11 +256,15 @@ export function runDayLoopGolden(
 // container ({0,0,0,0} throughout — no rep mover fired, and no rep mover draws rng
 // anyway), which moves the serialized-state hashes only. Regenerated via
 // gen-day-loop-golden.ts.
+// T-1504 regen: rank citations now cover all 10 ranks, so the rank-up WireEntry
+// is the reached rank's citation (not the generic "Registry confirms …" line) —
+// the ONLY diff in these scripted runs (verified: same DeedEarned stream, no era
+// storylet, no era event). Regenerate with gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '203124ab78e4cbb6fdcd1fee2d1c755fedf752ba83cdb85c7898d208a7e266d1';
+  '4d9ddb1abe52a2f686d13f3b8765f7b9b0273a191a83de929153519c46244f03';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '539812ac31adcaa6c9355d850345479f5fa30849876a892aa835aa7156f4649d';
+  '1f95762aafca3a7fe8790387eb0e1efae2080e851ccbe9356c15cbd59ef29f03';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '54c950991dd1ec0ea2f1c7ce18d693bf75c442def5c7ca33476d26389951c205';
+  '4318c8211f1cc2122470109b1b1de47fb048198324bf45c4231d4b1f087073d4';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '8934d5c842eceb93c6e4ce3b3e1954deb9105d288df536e9332a6b52eebe9a90';
+  '21028580f288a264621bd21475876121744533dc00e56066f3b87a6cec6ec37e';
