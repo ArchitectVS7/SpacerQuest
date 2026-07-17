@@ -30,4 +30,18 @@ contextBridge.exposeInMainWorld('sqNative', {
   remove: (key: string): void => {
     ipcRenderer.send('sq:remove', key);
   },
+  // T-1702 · Steam bridge. Fire-and-forget forwarders only — no game logic, no engine
+  // import. The renderer forwards the typed engine events it already scans plus a
+  // (system, day) presence snapshot; ALL Steam logic lives in the main process. The
+  // payloads are JSON-serializable (engine events survive JSON round-trip by law). On
+  // the web build there is no preload, so `window.sqNative` is undefined and the
+  // renderer's optional chaining no-ops — the web build is byte-for-byte unchanged.
+  steam: {
+    sendEvents: (events: unknown[]): void => {
+      ipcRenderer.send('sq:steam-events', events);
+    },
+    setPresence: (systemId: number, day: number): void => {
+      ipcRenderer.send('sq:steam-presence', systemId, day);
+    },
+  },
 });

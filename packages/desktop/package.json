@@ -9,6 +9,7 @@
     "build:renderer": "npm run build -w @spacerquest/ui",
     "build": "npm run build:renderer && npm run build:main",
     "typecheck": "tsc -b",
+    "test": "vitest run",
     "start": "npm run build && electron .",
     "dev": "ELECTRON_RENDERER_URL=http://localhost:5173 electron .",
     "package": "npm run build && electron-builder -mw",
@@ -17,11 +18,17 @@
     "package:dir": "npm run build && electron-builder --dir"
   },
   "devDependencies": {
+    "@spacerquest/content": "*",
+    "@spacerquest/engine": "*",
     "@types/node": "^22.10.5",
     "electron": "33.4.11",
     "electron-builder": "^25.1.8",
     "electron-updater": "^6.3.9",
     "esbuild": "^0.21.5",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^1.5.0"
+  },
+  "dependencies": {
+    "steamworks.js": "^0.4.0"
   }
 }

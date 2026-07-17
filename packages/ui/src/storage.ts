@@ -28,6 +28,16 @@ interface SqNative {
   fileExisted: boolean;
   write(key: string, value: string): void;
   remove(key: string): void;
+  /**
+   * T-1702 · Steam bridge (desktop only; undefined on the web build). A dumb
+   * fire-and-forget forwarder — the renderer passes the typed engine events it already
+   * scans plus a (system, day) presence snapshot, and ALL Steam logic lives in the
+   * main process. No game logic here; the engine stays pure and the UI stays a client.
+   */
+  steam?: {
+    sendEvents(events: unknown[]): void;
+    setPresence(systemId: number, day: number): void;
+  };
 }
 
 const native: SqNative | undefined =
@@ -37,6 +47,15 @@ const native: SqNative | undefined =
 
 /** True when running inside the Electron shell (file-backed persistence). */
 export const isNative = !!native;
+
+/**
+ * T-1702 · The desktop Steam forwarder, or undefined on the web build (no preload, so
+ * `window.sqNative` is undefined) and on an older desktop build without the bridge.
+ * `store.ts` reaches Steam through THIS accessor with optional chaining, so the web
+ * build is byte-for-byte unchanged. Deliberately a dumb bridge — no engine import
+ * beyond the event payload, no rule ownership.
+ */
+export const nativeSteam = native?.steam;
 
 // In native mode, an in-memory mirror of the file store. Reads hit this Map (so they
 // stay synchronous); writes update it AND forward to the main process for the disk

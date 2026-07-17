@@ -22,11 +22,30 @@ npmRebuild: false
 directories:
   output: release
   buildResources: build
-# The app bundle itself: compiled main+preload + this package's manifest. The
-# renderer ships as an extraResource (below), not inside the asar app tree.
+# The app bundle itself: compiled main+preload + this package's manifest, PLUS the one
+# native runtime dependency. The renderer ships as an extraResource (below), not inside
+# the asar app tree.
+#
+# T-1702 · steamworks.js is a NATIVE prebuilt addon (`.node` binaries) that cannot be
+# bundled into JS (see esbuild.mjs — it stays `external` and is `require`d at runtime).
+# Because deps are HOISTED to the repo-root node_modules in this workspace, the app dir
+# (packages/desktop) has no local node_modules for electron-builder to auto-collect from
+# — so we map it EXPLICITLY from the hoisted root into the app's `node_modules/` inside
+# the asar (`to: node_modules/steamworks.js`), which is exactly where the runtime
+# `require('steamworks.js')` from `dist/main.js` resolves it. `asarUnpack` then extracts
+# the whole module (its `.node` binary in particular) out of the asar onto the real
+# filesystem, since a native addon cannot be `dlopen`ed from inside an asar. `npmRebuild`
+# stays false — steamworks.js ships prebuilds, so there is nothing to rebuild (and the
+# hoisted-workspace prune bug never fires).
 files:
   - dist/**/*
   - package.json
+  - from: ../../node_modules/steamworks.js
+    to: node_modules/steamworks.js
+    filter:
+      - '**/*'
+asarUnpack:
+  - node_modules/steamworks.js/**
 extraResources:
   - from: ../ui/dist-web
     to: dist-web

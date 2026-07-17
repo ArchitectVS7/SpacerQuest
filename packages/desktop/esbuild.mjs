@@ -36,7 +36,13 @@ await build({
   target: 'node20',
   // Electron injects `electron` at runtime; everything else (electron-updater and
   // its transitive deps) is inlined so no node_modules ship in the app.
-  external: ['electron'],
+  //
+  // T-1702 · `steamworks.js` is the ONE exception: it is a NATIVE prebuilt addon
+  // (`.node` binaries) that cannot be bundled into JS, so it stays external and is
+  // `require`d at runtime from node_modules. electron-builder ships it unpacked out of
+  // the asar (see electron-builder.yml `files` + `asarUnpack`). `steam-achievements.ts`
+  // (pure content-derived logic) IS bundled; only the native surface is external.
+  external: ['electron', 'steamworks.js'],
   outdir: 'dist',
   logLevel: 'info',
 });

@@ -27,6 +27,13 @@ import { app, BrowserWindow, ipcMain, protocol } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { GameEvent } from '@spacerquest/engine';
+// T-1702 · Steam integration lives entirely in the main process (the native addon
+// cannot load in the sandboxed renderer). SteamService owns achievement/presence
+// dispatch; the cloud-sync helpers mirror the T-1002 save envelope to Steam Cloud.
+// Everything degrades to a total no-op when Steam is absent (see steam.ts).
+import { SteamService, createSteamBackend } from './steam';
+import { importEnvelopeFromCloud, syncEnvelopeToCloud } from './cloud-sync';
 
 // ---- custom renderer protocol ---------------------------------------------
 // The renderer is Vite's ES-module bundle. Chromium refuses to load `<script
@@ -84,8 +91,14 @@ function loadStore(): void {
 
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** T-1702 · The Steam façade, constructed once at `whenReady` (null backend when Steam
+ *  is absent — every method then no-ops). Reader of the achievement/presence IPC below
+ *  and the cloud sink for `flushStore`. */
+let steamService: SteamService = new SteamService(null);
+
 /** Atomically write the store to disk (temp file + rename) so a crash mid-write
- *  never leaves a truncated JSON blob. */
+ *  never leaves a truncated JSON blob. Then mirror the autosave envelope to Steam
+ *  Cloud (a no-op when Steam is absent). */
 function flushStore(): void {
   try {
     fs.mkdirSync(saveDir(), { recursive: true });
@@ -95,6 +108,30 @@ function flushStore(): void {
   } catch (err) {
     console.error('sq: store flush failed', err);
   }
+  // T-1702 · Every autosave mirrors to Steam Cloud so the seed-carrying envelope
+  // round-trips across machines. Guarded inside the helper: null backend → no-op.
+  syncEnvelopeToCloud(store, steamService.cloudBackend);
+}
+
+/** T-1702 · Resolve the Steam appid: env override first (dev sandbox / CI), then the
+ *  `steam_appid.txt` beside the app (Spacewar `480` in the dev sandbox; the real depot
+ *  appid in the shipping build — a T-1704 release-checklist item, mirroring T-1701's
+ *  deferral of code signing). Returns undefined when neither is present, letting
+ *  steamworks.js search for the file itself. */
+function resolveSteamAppId(): number | undefined {
+  const fromEnv = process.env.SQ_STEAM_APPID;
+  if (fromEnv && Number.isFinite(Number(fromEnv))) return Number(fromEnv);
+  for (const dir of [process.resourcesPath, app.getAppPath(), process.cwd()]) {
+    if (!dir) continue;
+    try {
+      const raw = fs.readFileSync(path.join(dir, 'steam_appid.txt'), 'utf8').trim();
+      const n = Number.parseInt(raw, 10);
+      if (Number.isFinite(n)) return n;
+    } catch {
+      /* not here — try the next location */
+    }
+  }
+  return undefined;
 }
 
 /** Debounce writes (~150ms) so a burst of setItem calls in one action coalesces
@@ -120,6 +157,16 @@ function registerIpc(): void {
   ipcMain.on('sq:remove', (_event, key: string) => {
     delete store[key];
     scheduleFlush();
+  });
+  // T-1702 · Steam bridges. Fire-and-forget (`on`, not `sendSync`) so they never block
+  // the renderer. The renderer forwards the SAME typed engine events it already scans
+  // at its `playCues` choke point — it computes nothing Steam-specific; all id
+  // derivation lives in SteamService. Both are total no-ops when Steam is absent.
+  ipcMain.on('sq:steam-events', (_event, events: GameEvent[]) => {
+    steamService.handleEvents(events);
+  });
+  ipcMain.on('sq:steam-presence', (_event, systemId: number, day: number) => {
+    steamService.updatePresence(systemId, day);
   });
 }
 
@@ -238,6 +285,19 @@ if (!gotLock) {
 
   void app.whenReady().then(() => {
     loadStore();
+    // T-1702 · Construct the Steam façade before the window opens. A null backend
+    // (Steam not running / module absent / init throw) makes every Steam call a no-op,
+    // so this line — and the whole feature — is invisible when Steam is unavailable.
+    steamService = new SteamService(createSteamBackend(resolveSteamAppId()));
+    // Fresh machine (no local career): adopt the Steam Cloud copy of the seed-carrying
+    // envelope BEFORE createWindow, so the preload's synchronous `sq:load-all`
+    // handshake serves the cloud-seeded store. A no-op when Steam is absent, when a
+    // local career already exists (local wins), or when the cloud has no copy — in
+    // which case `storeFileExisted` is untouched and the fresh-career path is normal.
+    if (importEnvelopeFromCloud(store, steamService.cloudBackend)) {
+      storeFileExisted = true;
+      flushStore();
+    }
     registerIpc();
     // Serve the renderer bundle over app:// (unless running against the Vite dev URL).
     if (!process.env.ELECTRON_RENDERER_URL) {

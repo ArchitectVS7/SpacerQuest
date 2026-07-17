@@ -38,6 +38,27 @@ import * as storage from './storage';
 function playCues(events: GameEvent[], committed: boolean): void {
   if (committed) sound.play('commit');
   for (const cue of sound.cuesForEvents(events)) sound.play(cue);
+  // T-1702 · Forward this action's event stream to the desktop Steam bridge at the
+  // SAME single per-action choke point sound uses. Steam achievements fire straight
+  // off the existing `DeedEarned` / `RenownRankUp` events — the renderer computes
+  // nothing Steam-specific and the engine emits nothing new. `?.` no-ops on the web
+  // build (no bridge), so the browser build is byte-for-byte unchanged.
+  storage.nativeSteam?.sendEvents(events);
+}
+
+/**
+ * T-1702 · Push the current system + day to Steam rich presence, de-duped so an
+ * unchanged snapshot never re-forwards. Called at boot and after every state change
+ * (a single central site — see `set` below), so presence is correct at rest and after
+ * travel / dusk transitions. A no-op on the web build (no bridge). The main process
+ * throttles further; this guard just avoids needless IPC on every keypress.
+ */
+let lastPresenceKey: string | null = null;
+function pushPresence(game: GameState): void {
+  const key = `${game.player.currentSystemId}:${game.day}`;
+  if (key === lastPresenceKey) return;
+  lastPresenceKey = key;
+  storage.nativeSteam?.setPresence(game.player.currentSystemId, game.day);
 }
 
 /**
@@ -235,6 +256,9 @@ function bootNoticeForFailure(code: SaveErrorCode | 'unknown'): string {
 }
 
 let state: CockpitState = init();
+// T-1702 · Seed Steam rich presence once at boot so the friends-list line is correct
+// at rest (before any action). No-op on the web build (no Steam bridge).
+pushPresence(state.game);
 const listeners = new Set<() => void>();
 
 function init(): CockpitState {
@@ -496,6 +520,10 @@ function emit(): void {
 }
 function set(patch: Partial<CockpitState>): void {
   state = { ...state, ...patch };
+  // T-1702 · The single central site that keeps Steam rich presence current. Reads the
+  // (possibly new) game state and forwards system/day — de-duped inside `pushPresence`
+  // so only an actual system/day change hits the bridge. No-op on the web build.
+  pushPresence(state.game);
   emit();
 }
 

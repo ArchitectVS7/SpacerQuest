@@ -13,5 +13,9 @@
     "types": ["node"],
     "lib": ["ESNext"]
   },
+  // T-1702 · The Steam achievement/presence derivation and cloud-sync helpers read
+  // `DEEDS`/`STAR_SYSTEMS` (content) and the `GameEvent` type (engine), so this project
+  // now references both — `tsc -b` builds them first and resolves their declarations.
+  "references": [{ "path": "../content" }, { "path": "../engine" }],
   "include": ["src/**/*"]
 }
