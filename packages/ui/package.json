@@ -8,7 +8,7 @@
     "dev": "vite",
     "prebuild": "npm run build -w @spacerquest/engine -- --force",
     "build": "vite build",
-    "build:demo": "VITE_SQ_DEMO=1 vite build",
+    "build:demo": "vite build --mode demo",
     "preview": "vite preview --port 5173",
     "typecheck": "tsc -b",
     "test": "vitest run",

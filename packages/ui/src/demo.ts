@@ -22,7 +22,9 @@
  * The build flag. Vite statically replaces `import.meta.env.VITE_SQ_DEMO` at build
  * time, so in the FULL/web build this is a compile-time `false` and every demo branch
  * downstream is dead code (the web bundle is unaffected — the T-1702 "web build
- * byte-for-byte unchanged" ethos). Set to `'1'` only by `VITE_SQ_DEMO=1 vite build`.
+ * byte-for-byte unchanged" ethos). Set to `'1'` only by `vite build --mode demo`,
+ * which loads `.env.demo` (T-1705: a mode file, not inline `VAR=1` script syntax,
+ * because npm runs scripts through cmd.exe on Windows where that does not parse).
  * READERS: `store.endDay` (the day-33 wall), `App.tsx` (the three feature teasers +
  * the DemoWall ceremony), and the defense-in-depth store guards on the gated verbs.
  */
