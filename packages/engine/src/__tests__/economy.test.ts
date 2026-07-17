@@ -2,11 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { CARGO_TYPES, distance, SYSTEM_DANGER_LEVELS } from '@spacerquest/content';
 import {
   calculateFuelCapacity,
+  cheapestJumpFuelCost,
   generateManifestBoard,
   isCarryingContraband,
+  isStranded,
   jumpFuelCost,
   maxJumpDistance,
   quoteFuelPurchase,
+  syncMaxFuel,
 } from '../economy.js';
 import { resolveShipyard } from '../actions/shipyard.js';
 import { applyPlayerAction, startDay } from '../day.js';
@@ -319,6 +322,53 @@ describe('economy', () => {
       expect(travelDc(1)).toBe(8);
       expect(travelDc(2)).toBe(9);
       expect(travelDc(8)).toBe(12);
+    });
+  });
+
+  // T-1604 · The poverty-trap dead-end detector: a ship that can neither jump now
+  // nor fund the fuel to make even the cheapest jump out. Drives the subsistence
+  // floor (day.ts) and the sim strand-repair.
+  describe('isStranded (subsistence-floor predicate)', () => {
+    it('a fresh, solvent ship at home is not stranded', () => {
+      const state = createInitialState(1);
+      expect(isStranded(state)).toBe(false);
+    });
+
+    it('is stranded when worn drives + hull put every jump beyond a full tank', () => {
+      // Reproduce the seed-77 wedge: rim corner Algol-2 (20), broke, and combat has
+      // degraded BOTH the hull (tank shrinks) and the drives (per-jump fuel rises)
+      // until even a full tank cannot cover the cheapest hop out.
+      const state = createInitialState(1);
+      state.player.currentSystemId = 20;
+      state.player.credits = 0;
+      state.player.ship.hull = { strength: 1, condition: 6 };
+      state.player.ship.drives = { strength: 10, condition: 4 };
+      syncMaxFuel(state.player.ship);
+      state.player.ship.fuel = state.player.ship.maxFuel; // full tank, still stuck
+
+      expect(cheapestJumpFuelCost(state)).toBeGreaterThan(state.player.ship.maxFuel);
+      expect(isStranded(state)).toBe(true);
+    });
+
+    it('is NOT stranded once the ship is repaired back to a mobile condition', () => {
+      const state = createInitialState(1);
+      state.player.currentSystemId = 20;
+      state.player.credits = 0;
+      // Pristine hull + drives — the cheapest hop fits a full tank again.
+      state.player.ship.hull = { strength: 1, condition: 9 };
+      state.player.ship.drives = { strength: 10, condition: 9 };
+      syncMaxFuel(state.player.ship);
+      state.player.ship.fuel = state.player.ship.maxFuel;
+      expect(cheapestJumpFuelCost(state)).toBeLessThanOrEqual(state.player.ship.maxFuel);
+      expect(isStranded(state)).toBe(false);
+    });
+
+    it('a low tank is NOT stranded while credits can buy the fuel to jump', () => {
+      const state = createInitialState(1);
+      state.player.currentSystemId = 1;
+      state.player.ship.fuel = 0;
+      state.player.credits = 100000; // can refuel to cover the cheapest jump
+      expect(isStranded(state)).toBe(false);
     });
   });
 });

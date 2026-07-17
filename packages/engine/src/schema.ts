@@ -1086,7 +1086,7 @@ const GameEventSchema = z.discriminatedUnion('type', [
 export const PlayerActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('Trade'),
-    action: z.enum(['buy-fuel', 'sign-contract', 'haggle', 'pay-debt']),
+    action: z.enum(['buy-fuel', 'sign-contract', 'haggle', 'pay-debt', 'forfeit-cargo']),
     contractIndex: z.number().optional(),
     fuelAmount: z.number().optional(),
     amount: z.number().optional(),

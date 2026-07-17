@@ -17,6 +17,7 @@ import {
   endDay,
   selectDie,
   signContract,
+  abandonContract,
   haggleContract,
   buyFuel,
   payDebt,
@@ -2375,6 +2376,30 @@ function TradePane({
               </div>
               <div className="dest">
                 &#9656; {systemName(active.destination)} · {active.pods} pods
+              </div>
+              {/* T-1604 · Abandon-contract escape hatch. Dumping the cargo costs a
+                  die and voids the payment, but it is the ONLY in-game way to clear
+                  a run the ship can no longer deliver (a destination beyond a full
+                  tank's single jump) — without it a stranded contract soft-locks
+                  the player, since the sign gate refuses a new job while one rides.
+                  Mirrors the manifest's die-arm affordance so it is never a dead
+                  click. Reader: store.ts abandonContract → engine forfeit-cargo. */}
+              <div className="lb-controls">
+                <button
+                  className="btn subtle"
+                  data-testid="abandon-contract"
+                  disabled={!armed}
+                  title={
+                    armed
+                      ? 'Spend the selected die to dump the cargo and void the contract'
+                      : 'Pick a die first, then abandon the contract'
+                  }
+                  onClick={() => abandonContract()}
+                >
+                  {/* Label is STABLE (armed state shows in `disabled`/title only) so
+                      it never perturbs the active-contract block's text snapshot. */}
+                  Abandon contract
+                </button>
               </div>
             </>
           ) : (

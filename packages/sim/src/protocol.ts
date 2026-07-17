@@ -478,6 +478,22 @@ export function legalActions(state: GameState): LegalActions {
     }
   }
 
+  // T-1604 · Contract abandonment. Advertised whenever a die is in hand and a
+  // contract rides — the player's escape hatch when a carried run's destination
+  // has drifted beyond a full tank's single jump (hull damage shrinking the tank,
+  // or an interdiction dumping the ship at a far system). Without this the UGT
+  // surface (incl. the LLM playtest harness) had NO legal action to clear an
+  // undeliverable contract and would soft-lock exactly as the seed-77 sweep did.
+  // READER: the engine `forfeit-cargo` resolver (actions/trade.ts).
+  if (hasDie && player.activeContract) {
+    actions.push({
+      type: 'Trade',
+      action: 'forfeit-cargo',
+      params: { spendDie: dieParam },
+      note: 'Dumps the carried cargo and voids the contract — the escape hatch for an undeliverable run. Forfeits the payment.',
+    });
+  }
+
   if (player.debt > 0 && player.credits > 0) {
     actions.push({
       type: 'Trade',

@@ -1,6 +1,7 @@
 import {
   CREW_ROLES,
   PURCHASABLE_PORTS_BY_SYSTEM,
+  SUBSISTENCE_STIPEND,
   distance as systemDistance,
   isGatedDestination,
   isPurchasablePort,
@@ -365,7 +366,7 @@ describe('T-1004 fuel starvation', () => {
     expect(cannotAffordCheapestJump(solvent)).toBe(false);
   });
 
-  it('a scripted broke-and-dry campaign registers fuelStarvationDays > 0', () => {
+  it('the subsistence floor lifts a broke-and-dry campaign off a dead zero (T-1604)', () => {
     // Nearest OTHER system to `from` (T-1101 gated systems — Andromeda + special
     // — excluded, since the engine refuses travel to them), so each jump burns
     // the CHEAPEST fuel and the tank drains all the way below the cheapest-jump
@@ -408,8 +409,21 @@ describe('T-1004 fuel starvation', () => {
 
     const report = runCampaign(1, 60, brokeAndDryPolicy);
 
-    expect(report.finalState.credits).toBe(0);
-    expect(report.fuelStarvationDays).toBeGreaterThan(0);
+    // T-1604 · PRD poverty-trap law: "no actor gets permanently trapped at zero
+    // with no move left." This policy pours every credit into the debt marker on
+    // day 1 (credits → 0) and never refuels — the exact dead-zero the old world
+    // stranded on. The subsistence floor now pays a small odd-job wage each dusk
+    // the ship is stranded, so credits climb from 0 in clean multiples of the
+    // stipend instead of sitting at nothing: the captain always has a way up. The
+    // floor self-limits (it stops paying the moment the accrued credits could buy
+    // the ship out of the strand), so the total is a bounded trickle — "scarcity
+    // bites but never strands." (The aggregate fuelStarvationDays probe still FIRES
+    // on a genuinely hard rim-corner strand — see the seed-77 recovery test in
+    // protocol-campaign.test.ts, which asserts it lands in (0, 150).)
+    expect(report.finalState.credits).toBeGreaterThan(0);
+    expect(report.finalState.credits % SUBSISTENCE_STIPEND).toBe(0);
+    // Debt-as-ledger held: no state invariant broke while the floor ran.
+    expect(report.finalState.credits).toBeGreaterThanOrEqual(0);
   }, 30000);
 });
 

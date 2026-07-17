@@ -1,0 +1,8 @@
+  [PASS] new-game returns state-summary at DAWN  — day=1 credits=1000
+  [PASS] start-day rolls the day (DAY + 5 dice)  — diceRemaining=[0, 1, 2, 3, 4]
+  [PASS] legal-actions advertises choices  — 17 action specs
+  [PASS] apply-action drives ≥10 legal actions  — 20 applied
+  [PASS] ZERO ActionBlocked from legal picks (protocol parity)  — 0 blocked
+  [PASS] end-day / day loop lands on a fresh DAWN  — day=2
+
+  6/6 checks passed

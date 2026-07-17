@@ -834,7 +834,7 @@ export interface ShipyardFail {
 export type PlayerAction =
   | {
       type: 'Trade';
-      action: 'buy-fuel' | 'sign-contract' | 'haggle' | 'pay-debt';
+      action: 'buy-fuel' | 'sign-contract' | 'haggle' | 'pay-debt' | 'forfeit-cargo';
       contractIndex?: number;
       fuelAmount?: number;
       amount?: number;

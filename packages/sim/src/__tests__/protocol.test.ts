@@ -237,6 +237,7 @@ describe('protocol deterministic replay', () => {
       'sign-contract': true,
       haggle: true,
       'pay-debt': true,
+      'forfeit-cargo': true,
     } satisfies Record<Extract<PlayerAction, { type: 'Trade' }>['action'], true>;
     const expectedShipyardKinds = {
       'buy-component-tier': true,
@@ -424,6 +425,87 @@ describe('session serialization resume', () => {
     expect(serializeSession(contResumed.session!)).toBe(serializeSession(contOriginal.session!));
     // The responses (events + summary) are byte-identical too.
     expect(JSON.stringify(contResumed.response)).toBe(JSON.stringify(contOriginal.response));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1604 · ActionBlocked protocol parity — all THREE reasons.
+//
+// The encounter-block reason ('active-encounter') is proven above. This closes
+// parity for the other two the engine can emit ('destination-locked',
+// 'no-hangout'): each is a player-possible act legalActions never advertises, so
+// applying it must come back as an action-result whose `events` carry the typed
+// ActionBlocked (never a bare `error`), the block must be COMMITTED to the
+// session eventLog (one entry) exactly as App.tsx records it, and NO die may be
+// spent. This is the protocol side of the UI/protocol parity acceptance.
+// ---------------------------------------------------------------------------
+
+describe('T-1604 · ActionBlocked parity for destination-locked and no-hangout', () => {
+  function dayHandState(seed: number): GameState {
+    const state = createInitialState(seed);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(seed), {
+      handSize: 5,
+      floor: 0,
+      rerolls: 0,
+    });
+    return state;
+  }
+
+  it('Travel to a sealed system → action-result carrying ActionBlocked(destination-locked), no die spent', () => {
+    const state = dayHandState(5); // player at Sun-3; nemesis crossing NOT unlocked
+    const gated = 27; // a special system (isGatedDestination) sealed in v1
+    expect(isGatedDestination(gated)).toBe(true);
+
+    // legalActions must NOT advertise the sealed destination.
+    const travel = legalActions(state).actions.find((a) => a.type === 'Travel');
+    if (travel?.params.destinationId.kind === 'system-id') {
+      expect(travel.params.destinationId.choices).not.toContain(gated);
+    }
+
+    const session: ProtocolSession = { seed: 5, state };
+    const spentBefore = [...(state.player.dawnHand?.spent ?? [])];
+    const logLenBefore = state.eventLog.length;
+    const res = handleMessage(session, {
+      type: 'apply-action',
+      action: { type: 'Travel', destinationId: gated, spendDie: 0 },
+    });
+
+    const result = expectActionResult(res.response);
+    const block = result.events.find((e) => e.type === 'ActionBlocked');
+    expect(block && block.type === 'ActionBlocked' && block.actionType).toBe('Travel');
+    expect(block && block.type === 'ActionBlocked' && block.reason).toBe('destination-locked');
+    // Committed to the eventLog (UI/protocol parity)…
+    expect(res.session).not.toBeNull();
+    expect(res.session!.state.eventLog.length).toBe(logLenBefore + 1);
+    // …and no die spent (pure log-append refusal).
+    expect(res.session!.state.player.dawnHand?.spent).toEqual(spentBefore);
+    expect(result.summary.diceRemaining).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('VisitHangout at a non-Hangout system → action-result carrying ActionBlocked(no-hangout), no die spent', () => {
+    const state = dayHandState(5);
+    state.player.currentSystemId = 2; // Aldebaran-1 — no Spacers Hangout
+
+    // legalActions must NOT advertise VisitHangout at an un-flagged system.
+    expect(legalActions(state).actions.some((a) => a.type === 'VisitHangout')).toBe(false);
+
+    const session: ProtocolSession = { seed: 5, state };
+    const spentBefore = [...(state.player.dawnHand?.spent ?? [])];
+    const logLenBefore = state.eventLog.length;
+    const res = handleMessage(session, {
+      type: 'apply-action',
+      action: { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
+    });
+
+    const result = expectActionResult(res.response);
+    const block = result.events.find((e) => e.type === 'ActionBlocked');
+    expect(block && block.type === 'ActionBlocked' && block.actionType).toBe('VisitHangout');
+    expect(block && block.type === 'ActionBlocked' && block.reason).toBe('no-hangout');
+    expect(res.session).not.toBeNull();
+    expect(res.session!.state.eventLog.length).toBe(logLenBefore + 1);
+    expect(res.session!.state.player.dawnHand?.spent).toEqual(spentBefore);
+    expect(result.summary.diceRemaining).toEqual([0, 1, 2, 3, 4]);
   });
 });
 

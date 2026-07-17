@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { SUBSISTENCE_STIPEND } from '@spacerquest/content';
 import { advanceDay, applyPlayerAction, endDay, startDay } from '../day.js';
+import { syncMaxFuel } from '../economy.js';
 import { createInitialState, serializeState, deserializeState } from '../state.js';
 import { DayPhase, PlayerAction } from '../types.js';
 import {
@@ -193,6 +195,54 @@ describe('Day loop', () => {
     expect(dusk.events).toContainEqual(
       expect.objectContaining({ type: 'EnemyCounterAction', pressure: 'day-end' }),
     );
+  });
+});
+
+// T-1604 · The PRD poverty-trap floor: "no actor gets permanently trapped at zero
+// with no move left … the world provides floors: NPCs work odd jobs and small
+// income." A ship stranded at a rim corner (worn drives/hull → no affordable jump
+// even on a full tank) earns a subsistence wage each dusk so it can climb back to
+// a jump; a mobile ship never sees a credit of it.
+describe('subsistence floor (T-1604)', () => {
+  function strandAtRimCorner() {
+    const dawn = startDay(createInitialState(1));
+    const state = dawn.state; // DAY phase
+    state.player.currentSystemId = 20;
+    state.player.credits = 0;
+    state.player.ship.hull = { strength: 1, condition: 6 };
+    state.player.ship.drives = { strength: 10, condition: 4 };
+    syncMaxFuel(state.player.ship);
+    state.player.ship.fuel = state.player.ship.maxFuel;
+    return state;
+  }
+
+  it('pays a stranded captain the odd-job wage at dusk (never trapped at zero)', () => {
+    const state = strandAtRimCorner();
+    const before = state.player.credits;
+    const dusk = endDay(state);
+    expect(dusk.state.player.credits).toBe(before + SUBSISTENCE_STIPEND);
+    expect(
+      dusk.events.some((e) => e.type === 'WireEntry' && e.message.includes('work the docks')),
+    ).toBe(true);
+  });
+
+  it('accrues across dusks so the strand is always eventually escapable', () => {
+    let state = strandAtRimCorner();
+    for (let i = 0; i < 3; i += 1) {
+      const dusk = endDay(state);
+      state = startDay(dusk.state).state;
+    }
+    expect(state.player.credits).toBe(3 * SUBSISTENCE_STIPEND);
+  });
+
+  it('pays a solvent, mobile ship nothing (a floor, not an income)', () => {
+    const dawn = startDay(createInitialState(1)); // Sun-3, full tank, solvent
+    const before = dawn.state.player.credits;
+    const dusk = endDay(dawn.state);
+    expect(dusk.state.player.credits).toBe(before);
+    expect(
+      dusk.events.some((e) => e.type === 'WireEntry' && e.message.includes('work the docks')),
+    ).toBe(false);
   });
 });
 

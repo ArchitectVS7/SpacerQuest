@@ -15,6 +15,7 @@ import {
   createInitialState,
   endDay,
   hasFragment,
+  isStranded,
   jumpFuelCost,
   quoteShipyard,
   renownRankIndex,
@@ -572,6 +573,61 @@ function playerJumpFuel(state: GameState, dist: number): number {
   return jumpFuelCost(ship.drives, dist, ship.hasTransWarpDrive ?? false);
 }
 
+/**
+ * T-1604 · An active delivery is a DEAD END when the ship can neither make the
+ * single jump to the contract destination now NOR fund the fuel to make it. The
+ * sim pickers fly straight to the destination, so a ship stuck this way re-queues
+ * the same insufficient-fuel Travel every day forever — a no-op that burns nothing
+ * and changes no state — while GUILD_DEBT compounds and credits sit pinned at 0.
+ * That is the exact seed-77 `trader` soft-lock the committed campaign JSON carried
+ * (sys 20 → Denebola-5 leg costs 234 fuel; hull damage had shrunk the tank to
+ * fuel 213/240 with 0 credits, so the ship is 21 fuel short and cannot buy the
+ * top-up — a full tank (240) WOULD reach, but the ship can never fund one). The
+ * `need > maxFuel` clause catches the harder wall (even a full tank can't cover
+ * it); the fundability clause catches this broke-and-short strand. When either
+ * holds a picker abandons the cargo (see planCarriedContract) via the engine's new
+ * player-initiated `forfeit-cargo` action, freeing the sign gate to take a
+ * reachable run next turn instead of re-flying the wall. Guard: only fires when
+ * the ship is BOTH short of the jump AND unable to afford the shortfall, so a
+ * merely-underfueled ship that can refuel (or already can jump) is never abandoned.
+ */
+function contractUndeliverable(state: GameState): boolean {
+  const contract = state.player.activeContract;
+  if (!contract) return false;
+  const ship = state.player.ship;
+  const need = playerJumpFuel(
+    state,
+    systemDistance(state.player.currentSystemId, contract.destination),
+  );
+  if (need > ship.maxFuel) return true; // beyond even a full tank — never deliverable
+  if (ship.fuel >= need) return false; // can jump right now
+  // Short of the jump: deliverable only if the shortfall can be refueled. The
+  // tank caps how much fuel a top-up can add; the price caps what credits can buy.
+  const fuelPrice = state.market.localFuelPrice || 5;
+  const affordableFuel = Math.floor(state.player.credits / fuelPrice);
+  const reachableFuel = Math.min(ship.maxFuel, ship.fuel + affordableFuel);
+  return reachableFuel < need;
+}
+
+/**
+ * T-1604 · Shared carried-contract step for every contract-flying picker: fly the
+ * active contract to its destination, UNLESS it is undeliverable-by-full-tank, in
+ * which case abandon the cargo so the picker can sign a reachable run next turn
+ * rather than strand on an impossible jump. Consumes the best remaining die;
+ * returns null only when the ledger is empty. Reader: the four `activeContract`
+ * branches in traderPolicy / fighterPolicy / explorerPolicy / veteranPolicy.
+ */
+function planCarriedContract(state: GameState, ledger: DieLedger): PlayerAction | null {
+  const contract = state.player.activeContract;
+  if (!contract) return null;
+  const die = ledger.takeBest();
+  if (die === undefined) return null;
+  if (contractUndeliverable(state)) {
+    return { type: 'Trade', action: 'forfeit-cargo', spendDie: die };
+  }
+  return { type: 'Travel', destinationId: contract.destination, spendDie: die };
+}
+
 interface RankedContract {
   index: number;
   destination: number;
@@ -700,6 +756,47 @@ function planCrippledRepair(
 }
 
 /**
+ * T-1604 · The decisive stranded-ship escape: a repair-all that RESTORES MOBILITY.
+ * The seed-77 soft-lock's true mechanism is subtler than a shrunk tank — combat had
+ * degraded BOTH the hull (tank → 210) AND the drives (per-jump fuel cost up), so
+ * from rim-corner system 20 EVERY jump cost more fuel than a full tank could hold:
+ * `cheapestJumpFuelCost > maxFuel`. No amount of fuel or credits frees such a ship
+ * — only a repair (which lifts the drives' condition, cutting per-jump cost, AND
+ * the hull's, restoring the tank). `planCrippledRepair` above missed it twice: its
+ * 0.7-fraction trigger sits exactly on the boundary (210 = 0.7·300, not `<`), and
+ * its `reserve` gate refused to spend the trader's held-back 3,000cr — so the ship
+ * sat full-tanked and solvent yet immobile, dumping every subsistence credit into
+ * the compounding debt. This helper fires whenever the ship is genuinely stranded
+ * (`isStranded`) AND a pristine-condition repair WOULD reopen a jump (so it never
+ * fires uselessly on an already-pristine hull) AND the repair is affordable with NO
+ * reserve — because a ship that cannot move has nothing to reserve credits FOR.
+ * Regaining a legal jump is paramount over any debt payment. The subsistence floor
+ * (engine day.ts) guarantees a broke stranded ship eventually accrues the repair
+ * cost, so the two together make the strand always recoverable (PRD no-poverty-trap
+ * law). Reader: the top-of-day `isStranded` branch in every contract-flying policy.
+ */
+function planStrandRepair(state: GameState, ledger: DieLedger): PlayerAction | null {
+  if (!isStranded(state)) return null;
+  const ship = state.player.ship;
+  // A repair only helps if worn condition is what pins the ship. A pristine hull
+  // AND drives that still can't jump is a tank/map ceiling no repair lifts (never
+  // happens for a normal ship) — guard so we never queue a no-op repair.
+  if (ship.hull.condition >= 9 && ship.drives.condition >= 9) return null;
+  const quote = quoteShipyard(state, {
+    type: 'Shipyard',
+    action: 'repair',
+    repairMode: 'all',
+    spendDie: 0,
+  });
+  // NO reserve: a ship that cannot make a single legal jump has nothing to hold
+  // credits FOR — regaining mobility outranks every debt payment.
+  if (!quote.ok || state.player.credits < quote.cost) return null;
+  const die = ledger.takeWorst();
+  if (die === undefined) return null;
+  return { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die };
+}
+
+/**
  * Single combat move for the weak-hulled trader/explorer. Resolving an
  * encounter by talk or fight COMPLETES the interrupted delivery; running only
  * escapes back to the origin (delivery lost). So prefer to talk it down when the
@@ -782,6 +879,13 @@ export const traderPolicy: SimPolicy = ({ state }) => {
   const ship = state.player.ship;
   const from = state.player.currentSystemId;
   const actions: PlayerAction[] = [];
+
+  // T-1604 · Highest priority: if the ship is stranded (no affordable jump even on
+  // a full tank — worn drives/hull), repair it back to mobility before anything
+  // else. Restores the tank AND cuts per-jump fuel this same day (day.ts syncs
+  // maxFuel after the shipyard action), so the rest of the day can refuel and fly.
+  const strandRepair = planStrandRepair(state, ledger);
+  if (strandRepair) actions.push(strandRepair);
 
   // T-1601 · "runs the rim and BORROWS under duress" (PRD §7.5, the bad day's
   // Penny Wise out). Guarded so a solvent, credit-flush day never touches the
@@ -919,15 +1023,11 @@ export const traderPolicy: SimPolicy = ({ state }) => {
 
   if (state.player.activeContract) {
     // A run carried over (a prior delivery was interrupted or the nav check
-    // slipped) — finish it before signing anything new.
-    const die = ledger.takeBest();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Travel',
-        destinationId: state.player.activeContract.destination,
-        spendDie: die,
-      });
-    }
+    // slipped) — finish it before signing anything new. T-1604: unless the
+    // destination is now beyond a full tank's single jump, in which case abandon
+    // the cargo instead of re-flying the dry-tank wall forever (the seed-77 lock).
+    const carried = planCarriedContract(state, ledger);
+    if (carried) actions.push(carried);
   } else if (reachable.length > 0 && availableFuel >= primaryFuelNeed) {
     const best = preferred;
     const signDie = ledger.takeWorst();
@@ -1088,6 +1188,9 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   }
 
   const actions: PlayerAction[] = [];
+  // T-1604 · Stranded (no affordable jump even on a full tank)? Repair first.
+  const strandRepair = planStrandRepair(state, ledger);
+  if (strandRepair) actions.push(strandRepair);
   const refuel = planRefuel(state, ledger, 0);
   if (refuel) actions.push(refuel.action);
 
@@ -1103,14 +1206,10 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
   const reachable = ranked.filter((c) => c.fuel <= signFuelCap);
   if (state.player.activeContract) {
-    const die = ledger.takeBest();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Travel',
-        destinationId: state.player.activeContract.destination,
-        spendDie: die,
-      });
-    }
+    // T-1604: fly the carried run, or abandon it if the destination is now beyond
+    // a full tank's single jump (see planCarriedContract).
+    const carried = planCarriedContract(state, ledger);
+    if (carried) actions.push(carried);
   } else if (reachable.length > 0) {
     const best = reachable[0];
     const signDie = ledger.takeWorst();
@@ -1160,6 +1259,11 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   if (state.encounter) return planPacifistCombat(state, ledger);
 
   const actions: PlayerAction[] = [];
+
+  // T-1604 · Stranded (no affordable jump even on a full tank)? Repair to mobility
+  // first — the poverty-trap escape, ahead of arc pursuit and everything else.
+  const strandRepair = planStrandRepair(state, ledger);
+  if (strandRepair) actions.push(strandRepair);
 
   // T-1310: Nemesis-arc reachability. The Wise One of Polaris-1 (system 17) is the
   // ONLY source of frag-nemesis-01 and the sole key into the decode arc (PRD §8.3).
@@ -1250,14 +1354,10 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   const flyCap = Math.min(signFuelCap, postRefuelFuel);
   const reachable = ranked.filter((c) => c.fuel <= flyCap);
   if (state.player.activeContract) {
-    const die = ledger.takeBest();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Travel',
-        destinationId: state.player.activeContract.destination,
-        spendDie: die,
-      });
-    }
+    // T-1604: fly the carried run, or abandon it if the destination is now beyond
+    // a full tank's single jump (see planCarriedContract).
+    const carried = planCarriedContract(state, ledger);
+    if (carried) actions.push(carried);
   } else if (pursuingArc && drivesReady && from !== 17 && state.player.credits >= 550) {
     // T-1310: drives upgraded and the 500cr fragment is affordable — fly STRAIGHT to
     // Polaris-1 (system 17) to reach the Wise One, the sole grantor of frag-nemesis-01.
@@ -1485,6 +1585,11 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   const from = state.player.currentSystemId;
   const board = state.market.manifestBoard;
 
+  // T-1604 · Stranded (no affordable jump even on a full tank)? Repair to mobility
+  // first, over any reserve — the poverty-trap escape.
+  const strandRepair = planStrandRepair(state, ledger);
+  if (strandRepair) actions.push(strandRepair);
+
   // T-1205: repair a hull the enemy has chipped down enough to collapse the fuel
   // ceiling, before it strands the grinder and starves its deed income.
   const repair = planCrippledRepair(state, ledger, VETERAN_RESERVE);
@@ -1555,14 +1660,10 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   const availableFuel = Math.min(ship.maxFuel, ship.fuel + boughtFuel);
 
   if (state.player.activeContract) {
-    const die = ledger.takeBest();
-    if (die !== undefined) {
-      actions.push({
-        type: 'Travel',
-        destinationId: state.player.activeContract.destination,
-        spendDie: die,
-      });
-    }
+    // T-1604: fly the carried run, or abandon it if the destination is now beyond
+    // a full tank's single jump (see planCarriedContract).
+    const carried = planCarriedContract(state, ledger);
+    if (carried) actions.push(carried);
   } else if (idx >= 0 && availableFuel >= primaryFuelNeed) {
     // Haggle the chosen board offer before signing → broker_shark. Needs three
     // dice for haggle + sign + travel, so gate on the remaining budget.
@@ -1662,6 +1763,11 @@ function planSolventTradeTurn(
 ): PlayerAction[] {
   const actions: PlayerAction[] = [];
   const fuelPriceNow = state.market.localFuelPrice || 5;
+
+  // T-1604 · Stranded (no affordable jump even on a full tank — worn drives/hull)?
+  // Repair to mobility first, over any reserve — the poverty-trap escape.
+  const strandRepair = planStrandRepair(state, ledger);
+  if (strandRepair) actions.push(strandRepair);
 
   const crippledRepair = planCrippledRepair(state, ledger, reserve);
   if (crippledRepair) actions.push(crippledRepair);

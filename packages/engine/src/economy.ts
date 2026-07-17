@@ -5,6 +5,7 @@ import {
   STAR_SYSTEMS,
   SYSTEM_DANGER_LEVELS,
   distance as systemDistance,
+  isGatedDestination,
 } from '@spacerquest/content';
 import { CargoContract, EraEventState, GameState, ShipState } from './types.js';
 import { SeededRng } from './rng.js';
@@ -106,6 +107,45 @@ export function maxJumpDistance(
     else break; // monotonic — first unaffordable distance ends the range
   }
   return best;
+}
+
+/**
+ * T-1604 · The fuel cost of the CHEAPEST single jump the ship could make out of
+ * its current system — the least fuel the tank must hold to have ANY legal move.
+ * Iterates the same non-gated destinations the player may actually travel to
+ * (isGatedDestination mirrors the day.ts travel gate) and prices each with the one
+ * shared `jumpFuelCost`. Returns Infinity when no destination exists (never in
+ * practice). Reader: `isStranded` below (the subsistence-floor predicate).
+ */
+export function cheapestJumpFuelCost(state: GameState): number {
+  const from = state.player.currentSystemId;
+  const ship = state.player.ship;
+  const hasTransWarp = ship.hasTransWarpDrive ?? false;
+  let cheapest = Infinity;
+  for (const key of Object.keys(STAR_SYSTEMS)) {
+    const id = Number(key);
+    if (id === from || isGatedDestination(id)) continue;
+    const cost = jumpFuelCost(ship.drives, systemDistance(from, id), hasTransWarp);
+    if (cost < cheapest) cheapest = cost;
+  }
+  return cheapest;
+}
+
+/**
+ * T-1604 · A captain is STRANDED when it can neither jump now nor fund the fuel to
+ * make even the cheapest jump out — i.e. `min(maxFuel, fuel + buyableFuel)` cannot
+ * cover `cheapestJumpFuelCost`. This is the "trapped at zero with no move left"
+ * dead end the PRD poverty-trap law forbids (a broke ship at a dry tank on a
+ * rim corner, where every hop costs more fuel than it can hold OR buy). Pure — a
+ * read of fuel, credits, the local depot price, and the map. Reader: the dusk
+ * subsistence floor in day.ts endDay (grants SUBSISTENCE_STIPEND while it holds).
+ */
+export function isStranded(state: GameState): boolean {
+  const ship = state.player.ship;
+  const price = localFuelPrice(state.player.currentSystemId, state.eraEvent);
+  const buyableFuel = price > 0 ? Math.floor(state.player.credits / price) : 0;
+  const maxReachableFuel = Math.min(ship.maxFuel, ship.fuel + buyableFuel);
+  return maxReachableFuel < cheapestJumpFuelCost(state);
 }
 
 /** Local depot fuel price from canon tables — shared by the player's market

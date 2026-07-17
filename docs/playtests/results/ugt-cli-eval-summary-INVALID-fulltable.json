@@ -1,0 +1,126 @@
+{
+  "project": "SpacerQuest (Rimward)",
+  "profile": "rimward",
+  "model": "integrations/spacerquest/models/ppo_rimward_final",
+  "algorithm": "PPO",
+  "total_episodes": 5,
+  "evaluation_seed": 42,
+  "collapse_detected": true,
+  "collapse_reasons": [
+    "zero_variance: reward std=0.0000 < 0.01 (5 episodes produced identical rewards)",
+    "not_above_random: trained_mean=-15.30 <= threshold=-6.89 (random_mean=-7.25, margin=5% of |rand|)",
+    "low_entropy: normalized_entropy=0.0000 < 0.2 (agent used only 1/20 actions)"
+  ],
+  "outcomes": {
+    "wins": 0,
+    "losses": 5,
+    "win_rate": "0.00%"
+  },
+  "confidence_intervals": {
+    "win_rate_95ci": {
+      "low": 0.0,
+      "high": 0.4345
+    },
+    "reward_mean_95ci": {
+      "low": -15.3,
+      "high": -15.3
+    }
+  },
+  "reward_stats": {
+    "mean": -15.3,
+    "median": -15.3,
+    "std": 0.0,
+    "min": -15.3,
+    "max": -15.3
+  },
+  "action_entropy": 0.0,
+  "step_stats": {
+    "mean": 930.0,
+    "median": 930.0,
+    "min": 930,
+    "max": 930
+  },
+  "action_distribution": {
+    "wait": 4650
+  },
+  "random_baseline": {
+    "mean_reward": -7.25,
+    "win_rate": "0.00%",
+    "wins": 0,
+    "action_distribution": {
+      "combat_run": 70,
+      "wait": 69,
+      "crew_hire": 82,
+      "first_legal": 82,
+      "haggle": 71,
+      "shipyard_buy": 77,
+      "forfeit_cargo": 75,
+      "pay_debt": 72,
+      "travel_random": 61,
+      "random_legal": 75,
+      "sign_contract": 59,
+      "end_day": 77,
+      "shipyard_repair": 76,
+      "combat_fight": 61,
+      "buy_fuel_max": 67,
+      "explore": 71,
+      "visit_hangout": 72,
+      "storylet_first": 57,
+      "travel_contract": 56,
+      "combat_talk": 55
+    }
+  },
+  "evaluation_duration_seconds": 2.4,
+  "episodes": [
+    {
+      "episode": 1,
+      "outcome": "Loss",
+      "reward": -15.3,
+      "steps": 930,
+      "action_distribution": {
+        "wait": 930
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 2,
+      "outcome": "Loss",
+      "reward": -15.3,
+      "steps": 930,
+      "action_distribution": {
+        "wait": 930
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 3,
+      "outcome": "Loss",
+      "reward": -15.3,
+      "steps": 930,
+      "action_distribution": {
+        "wait": 930
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 4,
+      "outcome": "Loss",
+      "reward": -15.3,
+      "steps": 930,
+      "action_distribution": {
+        "wait": 930
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 5,
+      "outcome": "Loss",
+      "reward": -15.3,
+      "steps": 930,
+      "action_distribution": {
+        "wait": 930
+      },
+      "game_telemetry": {}
+    }
+  ]
+}

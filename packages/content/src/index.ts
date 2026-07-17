@@ -6,6 +6,7 @@ export * from './factions.js';
 export * from './hangout.js';
 export * from './lending.js';
 export * from './guild.js';
+export * from './subsistence.js';
 export * from './crew.js';
 export * from './ports.js';
 export * from './systems.js';

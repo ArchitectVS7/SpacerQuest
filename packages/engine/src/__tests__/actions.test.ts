@@ -148,3 +148,94 @@ describe('Player Actions', () => {
     expect(events.some((e) => e.type === 'CombatEvent' && e.stance === 'run')).toBe(true);
   });
 });
+
+// T-1604 · Player-initiated contract abandonment — the escape hatch out of a
+// carried-contract soft-lock (a run whose destination the ship can no longer
+// reach in a single jump). Before this action, `activeContract` could only be
+// cleared by delivery, a storylet, patrol confiscation, or a succession reset,
+// so a ship stranded holding an undeliverable contract was permanently wedged.
+describe('forfeit-cargo (contract abandonment)', () => {
+  function withContract(destination: number) {
+    const state = createInitialState(123);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
+    state.player.activeContract = {
+      destination,
+      cargoType: 8,
+      payment: 3230,
+      pods: 10,
+    };
+    return state;
+  }
+
+  it('clears the active contract and spends the die on success', () => {
+    const state = withContract(5);
+    const { state: next, events } = resolveTrade(
+      state,
+      { type: 'Trade', action: 'forfeit-cargo', spendDie: 0 },
+      new SeededRng(123),
+    );
+
+    expect(next.player.activeContract).toBeNull();
+    // The die was consumed (abandonment is a meaningful action, PRD §7).
+    expect(next.player.dawnHand!.spent[0]).toBe(true);
+    const ev = events.find((e) => e.type === 'TradeEvent');
+    expect(ev).toMatchObject({
+      type: 'TradeEvent',
+      action: 'forfeit-cargo',
+      success: true,
+      destination: 5,
+      payment: 3230,
+    });
+    // No credits are paid for a forfeited run.
+    expect(next.player.credits).toBe(state.player.credits);
+  });
+
+  it('frees a ship soft-locked on an undeliverable contract to sign a reachable run', () => {
+    // Rim corner Algol-2 (20) carrying a run to Denebola-5 (6): the single jump
+    // costs more than even a full (hull-damage-shrunk) tank can hold, so every
+    // Travel is a dry-tank no-op — the seed-77 wedge. Forfeiting voids the run so
+    // a new contract can be signed next.
+    const state = withContract(6);
+    state.player.currentSystemId = 20;
+    state.player.ship.maxFuel = 240;
+    state.player.ship.fuel = 240;
+
+    const { state: next } = resolveTrade(
+      state,
+      { type: 'Trade', action: 'forfeit-cargo', spendDie: 0 },
+      new SeededRng(123),
+    );
+    expect(next.player.activeContract).toBeNull();
+
+    // With the hold clear, the sign gate no longer refuses a new contract.
+    next.market.manifestBoard = [{ destination: 13, cargoType: 3, payment: 900, pods: 2 }];
+    const { state: signed, events } = resolveTrade(
+      next,
+      { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 1 },
+      new SeededRng(123),
+    );
+    expect(signed.player.activeContract).toMatchObject({ destination: 13 });
+    expect(
+      events.some((e) => e.type === 'TradeEvent' && e.action === 'sign-contract' && e.success),
+    ).toBe(true);
+  });
+
+  it('refuses with no die spent when the hold carries no contract', () => {
+    const state = createInitialState(123);
+    state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });
+    state.player.activeContract = null;
+
+    const { state: next, events } = resolveTrade(
+      state,
+      { type: 'Trade', action: 'forfeit-cargo', spendDie: 0 },
+      new SeededRng(123),
+    );
+
+    // Typed refusal — NO die spent (mirrors the sign-contract already-carrying
+    // refusal), so the player never burns a die on an empty hold.
+    expect(next.player.dawnHand!.spent[0]).toBe(false);
+    expect(
+      events.some((e) => e.type === 'TradeEvent' && e.action === 'forfeit-cargo' && !e.success),
+    ).toBe(true);
+  });
+});

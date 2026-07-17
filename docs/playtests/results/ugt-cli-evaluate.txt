@@ -1,0 +1,23 @@
+[*] Loading PPO model from: integrations/spacerquest/models/ppo_rimward_final
+[*] Loaded VecNormalize obs stats from: integrations/spacerquest/models/ppo_rimward_vecnormalize.pkl
+[*] Initializing environment for 5 evaluation episodes (seed=42)...
+[Episode 1/5] Loss | Steps: 142 | Reward: 28.74
+[Episode 2/5] Loss | Steps: 273 | Reward: 75.19
+[Episode 3/5] Loss | Steps: 260 | Reward: 198.26
+[Episode 4/5] Loss | Steps: 95 | Reward: 170.12
+[Episode 5/5] Loss | Steps: 89 | Reward: 147.71
+
+[*] Running 5-episode random baseline for collapse detection...
+  [Baseline 1/5] Reward: -17.10
+  [Baseline 2/5] Reward: -12.45
+  [Baseline 3/5] Reward: -10.39
+  [Baseline 4/5] Reward: -5.21
+  [Baseline 5/5] Reward: 2.99
+
+[+] Evaluation complete!
+[+] Win Rate: 0.00% (0/5)  CI: [0.0000, 0.4345]
+[+] Reward: mean=124.00  std=62.70  CI: [71.12, 176.89]
+[+] Action entropy (normalized): 0.7624
+[+] Random baseline: mean=-8.43  win_rate=0.00%
+[+] Action Distribution: {'sign_contract': 52, 'travel_contract': 167, 'end_day': 135, 'buy_fuel_max': 31, 'pay_debt': 474}
+[+] Detailed report saved to: /Users/vs7/Dev/Games/_UGT Universal Game Tester/integrations/spacerquest/results/rimward_eval_summary.json

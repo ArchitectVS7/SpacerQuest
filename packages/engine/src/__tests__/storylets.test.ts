@@ -1344,3 +1344,81 @@ describe('quoteStoryletChoice (T-1401 export pack)', () => {
     expect(JSON.stringify(state)).toBe(before);
   });
 });
+
+// ---------------------------------------------------------------------------
+// T-1604 · UGT campaign regression — a storylet credits penalty must FLOOR at 0.
+//
+// The random-legal protocol fuzzer (packages/sim protocol-campaign) drove credits
+// to -82 by failing the `cargo.spices.customs-sniff` bluff (failureEffects.credits
+// = -100) with less than 100 cr on hand. `applyStoryletEffects` added the fine
+// with no floor, unlike the `fuel` effect (and unlike every other penalty site:
+// patrol fine clamp, combat tribute `canAfford`, day wage `credits >= wage`,
+// hangout dare wager cap). credits is cash-on-hand this game keeps non-negative
+// (debt is a separate ledger), so the fine now floors at 0 and the emitted event
+// reports the ACTUAL applied delta. RED before the storylets.ts fix (credits=-70),
+// GREEN after (credits=0).
+// ---------------------------------------------------------------------------
+
+describe('T-1604 · storylet credits penalty floors at zero', () => {
+  function spicesState(credits: number): GameState {
+    const state = createInitialState(110);
+    state.dayPhase = DayPhase.DAY;
+    // die index 4 is a NATURAL 1 → the GUILE bluff auto-FAILS deterministically,
+    // firing failureEffects.credits = -100.
+    state.player.dawnHand = { dice: [20, 12, 6, 3, 1], spent: [false, false, false, false, false] };
+    state.player.credits = credits;
+    state.player.stats[Stat.GUILE] = 0;
+    // The customs-sniff trigger: an active Spices (cargoType 3) contract in hold.
+    state.player.activeContract = { destination: 8, cargoType: 3, payment: 1480, pods: 10 };
+    return refreshAvailableStorylets(state).state;
+  }
+
+  it('a failed bluff fine larger than cash floors credits at 0 (never negative)', () => {
+    const state = spicesState(30);
+    expect(state.storylets.available.map((o) => o.storyletId)).toContain(
+      'cargo.spices.customs-sniff',
+    );
+    const resolved = resolveStoryletChoice(
+      state,
+      {
+        type: 'Storylet',
+        storyletId: 'cargo.spices.customs-sniff',
+        choiceId: 'bluff',
+        spendDie: 4,
+      },
+      new SeededRng(1),
+    );
+    // The bluff failed (fine armed) but credits never went below zero.
+    expect(resolved.state.flags['cargo.spices.fined']).toBe(true);
+    expect(resolved.state.player.credits).toBe(0);
+    // The emitted effect reports the ACTUAL applied delta (−30), not the nominal
+    // −100 — so a reader summing credit deltas matches the balance.
+    const creditsEffect = resolved.events.find(
+      (e) => e.type === 'StoryletEffectApplied' && e.effect === 'credits',
+    );
+    expect(
+      creditsEffect && creditsEffect.type === 'StoryletEffectApplied' && creditsEffect.amount,
+    ).toBe(-30);
+  });
+
+  it('a fine within cash still deducts the full nominal amount', () => {
+    const state = spicesState(500);
+    const resolved = resolveStoryletChoice(
+      state,
+      {
+        type: 'Storylet',
+        storyletId: 'cargo.spices.customs-sniff',
+        choiceId: 'bluff',
+        spendDie: 4,
+      },
+      new SeededRng(1),
+    );
+    expect(resolved.state.player.credits).toBe(400);
+    const creditsEffect = resolved.events.find(
+      (e) => e.type === 'StoryletEffectApplied' && e.effect === 'credits',
+    );
+    expect(
+      creditsEffect && creditsEffect.type === 'StoryletEffectApplied' && creditsEffect.amount,
+    ).toBe(-100);
+  });
+});

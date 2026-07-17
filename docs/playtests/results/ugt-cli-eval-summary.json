@@ -1,0 +1,131 @@
+{
+  "project": "SpacerQuest (Rimward)",
+  "profile": "rimward",
+  "model": "integrations/spacerquest/models/ppo_rimward_final",
+  "algorithm": "PPO",
+  "total_episodes": 5,
+  "evaluation_seed": 42,
+  "collapse_detected": false,
+  "collapse_reasons": [],
+  "outcomes": {
+    "wins": 0,
+    "losses": 5,
+    "win_rate": "0.00%"
+  },
+  "confidence_intervals": {
+    "win_rate_95ci": {
+      "low": 0.0,
+      "high": 0.4345
+    },
+    "reward_mean_95ci": {
+      "low": 71.12,
+      "high": 176.89
+    }
+  },
+  "reward_stats": {
+    "mean": 124.0,
+    "median": 147.71,
+    "std": 62.7,
+    "min": 28.74,
+    "max": 198.26
+  },
+  "action_entropy": 0.7624,
+  "step_stats": {
+    "mean": 171.8,
+    "median": 142.0,
+    "min": 89,
+    "max": 273
+  },
+  "action_distribution": {
+    "sign_contract": 52,
+    "travel_contract": 167,
+    "end_day": 135,
+    "buy_fuel_max": 31,
+    "pay_debt": 474
+  },
+  "random_baseline": {
+    "mean_reward": -8.43,
+    "win_rate": "0.00%",
+    "wins": 0,
+    "action_distribution": {
+      "sign_contract": 133,
+      "pay_debt": 138,
+      "end_day": 141,
+      "travel_contract": 135,
+      "buy_fuel_max": 121
+    }
+  },
+  "evaluation_duration_seconds": 1.7,
+  "episodes": [
+    {
+      "episode": 1,
+      "outcome": "Loss",
+      "reward": 28.74,
+      "steps": 142,
+      "action_distribution": {
+        "sign_contract": 4,
+        "travel_contract": 51,
+        "end_day": 28,
+        "buy_fuel_max": 1,
+        "pay_debt": 58
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 2,
+      "outcome": "Loss",
+      "reward": 75.19,
+      "steps": 273,
+      "action_distribution": {
+        "sign_contract": 6,
+        "travel_contract": 32,
+        "end_day": 23,
+        "buy_fuel_max": 2,
+        "pay_debt": 210
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 3,
+      "outcome": "Loss",
+      "reward": 198.26,
+      "steps": 260,
+      "action_distribution": {
+        "sign_contract": 18,
+        "travel_contract": 18,
+        "end_day": 24,
+        "pay_debt": 188,
+        "buy_fuel_max": 12
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 4,
+      "outcome": "Loss",
+      "reward": 170.12,
+      "steps": 95,
+      "action_distribution": {
+        "sign_contract": 15,
+        "travel_contract": 26,
+        "end_day": 30,
+        "pay_debt": 14,
+        "buy_fuel_max": 10
+      },
+      "game_telemetry": {}
+    },
+    {
+      "episode": 5,
+      "outcome": "Loss",
+      "reward": 147.71,
+      "steps": 89,
+      "action_distribution": {
+        "sign_contract": 9,
+        "travel_contract": 40,
+        "end_day": 30,
+        "pay_debt": 4,
+        "buy_fuel_max": 6
+      },
+      "game_telemetry": {}
+    }
+  ]
+}

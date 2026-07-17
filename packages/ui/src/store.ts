@@ -675,6 +675,43 @@ export function signContract(contractIndex: number): void {
 }
 
 /**
+ * T-1604 · Abandon the active contract — the player's escape hatch out of a
+ * carried-contract soft-lock (a run whose destination the ship can no longer
+ * reach in a single jump, e.g. after hull damage shrank the tank). Dumping the
+ * cargo costs a die and forfeits the payment; the engine emits a `forfeit-cargo`
+ * TradeEvent and clears `activeContract`. Mirrors signContract's refusal handling
+ * (a refusal — no contract to dump — spends no die and surfaces via `notice`).
+ */
+export function abandonContract(): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then abandon the contract.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Trade',
+      action: 'forfeit-cargo',
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const notice = failNoticeFrom(events);
+    set({
+      game: next,
+      selectedDie: notice ? die : null,
+      bloomDie: notice ? null : die,
+      notice,
+      lastCheck: null,
+      lastCheckKey: state.lastCheckKey + 1,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    playCues(events, !notice);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
+  }
+}
+
+/**
  * Top up fuel at the local depot. Fueling consumes a die (engine PRD §7: every
  * meaningful action spends a die), so this requires a selection. A shortfall
  * (not enough credits) comes back as a failed TradeEvent and is surfaced via

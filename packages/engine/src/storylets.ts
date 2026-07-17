@@ -339,14 +339,23 @@ function applyEffects(
   const events: GameEvent[] = [];
 
   if (effects.credits !== undefined) {
-    state.player.credits += effects.credits;
+    // Floor at 0, mirroring the `fuel` effect below and the deliberate clamps at
+    // every other penalty site (patrol.ts fine, combat.ts tribute `canAfford`,
+    // day.ts wage `credits >= wage`, hangout.ts dare wager cap): `credits` is
+    // cash-on-hand this game keeps non-negative, with debt modelled as a separate
+    // ledger. Without this floor, a failure-effect fine larger than cash (e.g. the
+    // `cargo.spices.customs-sniff` bluff's `credits: -100`) drove credits negative
+    // — a T-1604 UGT-campaign invariant break. Emit the ACTUAL applied delta (as
+    // the fuel effect does), so a reader summing credit deltas matches the balance.
+    const before = state.player.credits;
+    state.player.credits = Math.max(0, state.player.credits + effects.credits);
     events.push({
       type: 'StoryletEffectApplied',
       day: state.day,
       storyletId,
       choiceId,
       effect: 'credits',
-      amount: effects.credits,
+      amount: state.player.credits - before,
     });
   }
 

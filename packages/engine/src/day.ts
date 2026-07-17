@@ -11,6 +11,7 @@ import {
   NPC_PROFILES,
   STAR_SYSTEMS,
   Stat,
+  SUBSISTENCE_STIPEND,
   isGatedDestination,
 } from '@spacerquest/content';
 import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
@@ -19,7 +20,7 @@ import { dawnDiceModifiers, rollDawnHand } from './dice.js';
 import { autoRepairRegen, lifeSupportCritical } from './components.js';
 import { applySuccession } from './legacy.js';
 import { applyDisposition, resolveNpcDay } from './npc.js';
-import { generateManifestBoard, localFuelPrice, syncMaxFuel } from './economy.js';
+import { generateManifestBoard, isStranded, localFuelPrice, syncMaxFuel } from './economy.js';
 import { advanceEraSchedule } from './era.js';
 import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
@@ -942,6 +943,32 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       day: nextState.day,
       kind: 'plain',
       message: `The Guild marker keeps running: ${interest} credits in interest added — ${nextState.player.debt} now owed.`,
+    });
+  }
+
+  // T-1604 · Subsistence floor (PRD design law: "no actor gets permanently trapped
+  // at zero with no move left … the world provides floors: NPCs work odd jobs and
+  // small income"). When — and ONLY when — the captain is genuinely stranded (broke
+  // AND unable to fund even the cheapest jump out, engine `isStranded`), the
+  // dockside pays an odd-job wage so the captain can, over a bounded run of dusks,
+  // buy the fuel to fly on. This closes the seed-77 poverty-trap soft-lock: a ship
+  // marooned at a rim corner with 0 credits and a tank below the ~180-fuel cheapest
+  // hop used to Wait forever while the Guild marker compounded (above); it now
+  // climbs back to a jump. The stranded predicate is the gate, so a solvent OR
+  // mobile captain never sees a credit of it — every non-stranded dusk (i.e. every
+  // existing golden) is byte-identical: no credit change, no event, NO rng draw
+  // (pure arithmetic over fuel/credits/price/map). Deterministic across a JSON
+  // round-trip (reads existing state only; no new GameState field). READER of the
+  // grant: the WireEntry below (UI wire, format.ts wireLines) + the player's own
+  // next-dawn actions; regression: economy.test.ts (isStranded) + a day.ts dusk
+  // test + the protocol-campaign seed-77 recovery assertion.
+  if (isStranded(nextState)) {
+    nextState.player.credits += SUBSISTENCE_STIPEND;
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      kind: 'plain',
+      message: `Stranded and short, you work the docks for a berth-hand's wage: ${SUBSISTENCE_STIPEND} credits toward the next tank of fuel.`,
     });
   }
 

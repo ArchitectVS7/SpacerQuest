@@ -1,0 +1,17 @@
+[*] Phase 1 — Verify: 9 features to test
+[*] Connecting to game (simulation)...
+[*] Connected. Starting verification run (max_turns=60)...
+  [PASS] sign_contract_fills_hold
+  [PASS] travel_spends_die_never_mints_fuel
+  [PASS] pay_debt_reduces_marker
+  [PASS] buy_fuel_refuels
+  [PASS] end_day_advances_calendar
+  [PASS] parity_no_blocked_from_legal
+  [PASS] forfeit_cargo_clears_hold
+  [PASS] explore_spends_die
+  [PASS] wait_is_inert
+[+] All features resolved after turn 3.
+
+[+] Verification complete in 0.0s
+[+] Coverage: 9/9 PASSED (100.0%)  |  0 FAILED  |  0 NOT REACHED
+[+] Report: integrations/spacerquest/results/coverage-report.json

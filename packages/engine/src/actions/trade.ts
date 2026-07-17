@@ -152,6 +152,52 @@ export function resolveTrade(
         });
       }
     }
+  } else if (action.action === 'forfeit-cargo') {
+    // T-1604 · Player-initiated contract abandonment — the escape hatch out of a
+    // carried-contract soft-lock. Before this, `activeContract` was only ever
+    // cleared by a successful delivery, a specific storylet, patrol confiscation,
+    // or a succession reset (legacy.ts) — never by the player's own choice. So a
+    // ship stranded with a contract whose destination its (possibly
+    // hull-damage-shrunk) tank can no longer reach in a single jump was
+    // permanently wedged: the `sign-contract` gate above refuses a new job while
+    // one is active, and every day re-queued the same dry-tank Travel while the
+    // Guild debt compounded (the seed-77 campaign soft-lock, finalDebt ~9.5e11).
+    // Dumping the cargo costs a die and forfeits the payment — the sunk sign die
+    // plus the lost fee are the whole cost; a manifest contract carries no
+    // reputation tie, so no disposition hit is modeled here. READERS: protocol
+    // `legalActions` (advertises it while a contract rides), the UI Trade pane's
+    // Abandon button (store.ts `abandonContract`), and the sim pickers'
+    // undeliverable-contract escape (index.ts `planCarriedContract`). Regression:
+    // trade.test.ts + protocol-campaign seed-77.
+    if (action.spendDie === undefined) {
+      throw new Error('Must spend a die to forfeit cargo');
+    }
+    if (!nextState.player.activeContract) {
+      // Typed refusal, NO die spent (mirrors the sign-contract already-carrying
+      // refusal) — there is nothing in the hold to dump.
+      events.push({
+        type: 'TradeEvent',
+        characterId: 'player',
+        action: 'forfeit-cargo',
+        success: false,
+        actionDetails: 'Nothing to forfeit — the hold carries no active contract.',
+      });
+    } else {
+      const { hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
+      nextState.player.dawnHand = hand;
+      const forfeited = nextState.player.activeContract;
+      nextState.player.activeContract = null;
+      events.push({
+        type: 'TradeEvent',
+        characterId: 'player',
+        action: 'forfeit-cargo',
+        success: true,
+        destination: forfeited.destination,
+        cargoType: forfeited.cargoType,
+        payment: forfeited.payment,
+        actionDetails: `Dumped the cargo bound for system ${forfeited.destination}. The contract is void.`,
+      });
+    }
   } else if (action.action === 'pay-debt') {
     if (!action.amount || action.amount <= 0) {
       throw new Error('Must specify a positive amount to pay toward debt');

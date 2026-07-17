@@ -126,6 +126,36 @@ test('signing a second contract is refused, and the refusal is visible', async (
   expect(await page.getByTestId('active-contract').innerText()).toBe(active);
 });
 
+// T-1604 · The Abandon-contract escape hatch (the poverty-trap-fix's player-facing
+// half). A carried run whose destination the ship can no longer reach has NO other
+// in-game exit — the sign gate refuses a new job while one rides — so the player
+// must be able to dump the cargo and void the contract, through the UI.
+test('abandon a carried contract through the UI, and the hold clears', async ({ page }) => {
+  await page.goto('/');
+
+  // Sign the first offer, then confirm it is tracked.
+  await selectUnspentDie(page);
+  await page.getByTestId('contract').first().click();
+  await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
+  expect(await spentCount(page)).toBe(1);
+
+  // Abandon it: arm a die, click the Abandon button in the active-contract block.
+  await selectUnspentDie(page);
+  await page.getByTestId('abandon-contract').click();
+
+  // The hold is empty again (the tracker shows the empty state), a second die was
+  // spent, and no failure notice fired — a clean, visible forfeit.
+  await expect(page.getByTestId('active-contract-empty')).toBeVisible();
+  expect(await spentCount(page)).toBe(2);
+  await expect(page.getByTestId('notice')).toHaveCount(0);
+
+  // With the hold clear, the sign gate no longer refuses a new job.
+  await selectUnspentDie(page);
+  await page.getByTestId('contract').first().click();
+  await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
+  expect(await spentCount(page)).toBe(3);
+});
+
 test('a second haggle is refused, and the refusal is visible', async ({ page }) => {
   await page.goto('/');
 

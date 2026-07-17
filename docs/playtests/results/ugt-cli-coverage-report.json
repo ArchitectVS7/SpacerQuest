@@ -1,0 +1,38 @@
+{
+  "game": "SpacerQuest (Rimward)",
+  "total_features": 9,
+  "passed": 9,
+  "failed": 0,
+  "not_reached": 0,
+  "coverage_pct": 100.0,
+  "duration_seconds": 0.0,
+  "results": {
+    "sign_contract_fills_hold": {
+      "status": "PASSED"
+    },
+    "buy_fuel_refuels": {
+      "status": "PASSED"
+    },
+    "travel_spends_die_never_mints_fuel": {
+      "status": "PASSED"
+    },
+    "pay_debt_reduces_marker": {
+      "status": "PASSED"
+    },
+    "end_day_advances_calendar": {
+      "status": "PASSED"
+    },
+    "parity_no_blocked_from_legal": {
+      "status": "PASSED"
+    },
+    "forfeit_cargo_clears_hold": {
+      "status": "PASSED"
+    },
+    "explore_spends_die": {
+      "status": "PASSED"
+    },
+    "wait_is_inert": {
+      "status": "PASSED"
+    }
+  }
+}

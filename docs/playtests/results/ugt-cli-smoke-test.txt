@@ -1,0 +1,20 @@
+[*] Starting connection smoke test for project: SpacerQuest (Rimward)
+[+] Connection established! Initial observation vector: [1.0e+00 1.0e+00 1.0e+03 2.5e+04 3.0e+02 3.0e+02 1.0e+00 5.0e+00 0.0e+00
+ 0.0e+00 0.0e+00 0.0e+00 4.0e+00 8.0e+00]
+[*] Running 5 steps with random action commands to verify action space and state mapping...
+  [Step 1] Action ID: 3 | Obs: [1.0000e+00 1.0000e+00 9.9900e+02 2.4999e+04 3.0000e+02 3.0000e+02
+ 1.0000e+00 5.0000e+00 0.0000e+00 0.0000e+00 0.0000e+00 0.0000e+00
+ 4.0000e+00 8.0000e+00] | Reward: -0.01 | Terminated: False
+  [Step 2] Action ID: 0 | Obs: [1.0000e+00 1.0000e+00 9.9900e+02 2.4999e+04 2.4000e+02 3.0000e+02
+ 2.0000e+00 4.0000e+00 0.0000e+00 0.0000e+00 0.0000e+00 0.0000e+00
+ 4.0000e+00 8.0000e+00] | Reward: -0.01 | Terminated: False
+  [Step 3] Action ID: 1 | Obs: [1.0000e+00 1.0000e+00 5.1900e+02 2.4999e+04 3.0000e+02 3.0000e+02
+ 2.0000e+00 3.0000e+00 0.0000e+00 0.0000e+00 0.0000e+00 0.0000e+00
+ 4.0000e+00 8.0000e+00] | Reward: -4.81 | Terminated: False
+  [Step 4] Action ID: 3 | Obs: [1.0000e+00 1.0000e+00 5.1800e+02 2.4998e+04 3.0000e+02 3.0000e+02
+ 2.0000e+00 3.0000e+00 0.0000e+00 0.0000e+00 0.0000e+00 0.0000e+00
+ 4.0000e+00 8.0000e+00] | Reward: -0.01 | Terminated: False
+  [Step 5] Action ID: 2 | Obs: [1.0000e+00 1.0000e+00 5.1800e+02 2.4998e+04 3.0000e+02 3.0000e+02
+ 2.0000e+00 2.0000e+00 1.0000e+00 1.4500e+03 0.0000e+00 0.0000e+00
+ 3.0000e+00 8.0000e+00] | Reward: -0.01 | Terminated: False
+[+] Smoke test passed successfully! Adapter communication and state mappings are fully operational.

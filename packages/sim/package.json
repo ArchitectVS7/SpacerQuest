@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc -b",
     "sim": "tsx src/index.ts",
+    "campaign": "tsx src/protocol-campaign-cli.ts",
     "test": "vitest run"
   },
   "dependencies": {
