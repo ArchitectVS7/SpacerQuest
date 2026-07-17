@@ -1,4 +1,6 @@
 import type { RenownRankId } from './deeds.js';
+import type { FactionId } from './factions.js';
+import { FACTION_JOIN_CROSS_PENALTY, FACTION_JOIN_OWN_BONUS } from './factions.js';
 import type { FragmentSource } from './nemesis.js';
 import { Stat } from './stats.js';
 import { defineStorylets } from './storyletValidation.js';
@@ -45,6 +47,12 @@ export interface StoryletTrigger {
     inCurrentSystem?: boolean;
     disposition?: NumberMatcher;
   };
+  /** T-1503: gate on the player's standing with one of the four galactic powers
+   *  (`player.reputation[faction]`). This is the NAMED READER of the reputation
+   *  state — the `alliance.*` questlines gate their ep2/ep3 on the rep their
+   *  earlier episodes granted (the organic progression gate, mirroring how the
+   *  T-1502 chains gate on `npc.disposition`). Reader: engine `triggerMatches`. */
+  reputation?: { faction: FactionId } & NumberMatcher;
   eras?: readonly EraId[];
   day?: NumberMatcher;
   flags?: readonly FlagMatcher[];
@@ -87,6 +95,13 @@ export interface StoryletEffects {
   };
   flags?: readonly FlagEffect[];
   disposition?: readonly { npcId: string; delta: number }[];
+  /** T-1503: move the player's standing with one or more galactic powers. The
+   *  `alliance.*` questlines grant own-faction rep per episode (which crosses the
+   *  next episode's `reputation` gate) and, on the terminal "join" choice, apply
+   *  the cross-faction shift (own +large, the other three −FACTION_JOIN_CROSS_PENALTY).
+   *  Applied through engine `applyEffects` → `reputation.ts` `applyReputation`,
+   *  emitting a ReputationChanged event + a StoryletEffectApplied{effect:'reputation'}. */
+  reputation?: readonly { faction: FactionId; delta: number }[];
   deedProgress?: readonly { deedId: string; amount: number }[];
   schedule?: readonly { storyletId: string; delayDays: number }[];
   /** T-111b: grant a Signal Fragment into the nemesisFile (Wise One / a broker
@@ -117,6 +132,34 @@ export interface StoryletChoiceDefinition {
   failureEffects?: StoryletEffects;
 }
 
+/**
+ * T-1502 · The "wire resolves it without you" abandonment path (PRD §8.1: an NPC
+ * personal chain "can resolve without you"). Present ONLY on a scheduled chain
+ * episode (a `scheduledOnly` target): if that episode sits unplayed past its
+ * `dueDay + graceDays`, the engine's dusk sweep (engine `resolveAbandonedChains`,
+ * called in `day.ts` endDay) resolves the chain FOR the player — files the wire
+ * line and applies the disposition consequence.
+ *
+ * This field lives on the DEFINITION only. It is never serialized into GameState
+ * (only the `StoryletOffer` projection is stored), so it needs NO schema/save
+ * change: the deadline is computed from the already-persisted scheduled entry's
+ * `dueDay` plus this content `graceDays`.
+ */
+export interface StoryletWireResolution {
+  /** Days the scheduled episode may sit past its `dueDay`, unplayed, before the
+   *  wire resolves the chain without the player. Reader: engine
+   *  `resolveAbandonedChains` (the day.ts dusk sweep). */
+  graceDays: number;
+  /** The Galactic News Wire line reporting how the chain ended without you.
+   *  Reader: the WireEntry it becomes → the UI wire ticker (format.ts wireLines). */
+  wireMessage: string;
+  /** State consequence of abandonment (a disposition drop + the terminal
+   *  `chain.*.resolved` flag). Applied through the SAME `applyEffects` path a
+   *  played choice uses, so it emits the identical DispositionChanged /
+   *  StoryletEffectApplied events. */
+  effects?: StoryletEffects;
+}
+
 export interface StoryletDefinition {
   id: string;
   title: string;
@@ -124,6 +167,9 @@ export interface StoryletDefinition {
   repeat?: 'never' | 'daily';
   trigger: StoryletTrigger;
   choices: readonly StoryletChoiceDefinition[];
+  /** T-1502 · abandonment path (PRD §8.1). Only meaningful on a `scheduledOnly`
+   *  target — validated in storyletValidation. */
+  wireResolution?: StoryletWireResolution;
 }
 
 export const STORYLETS = defineStorylets([
@@ -243,6 +289,13 @@ export const STORYLETS = defineStorylets([
     ],
   },
   {
+    // T-1502 · Doc Salvage EPISODE 2 (of 3). Both choices now SCHEDULE episode 3
+    // (`chain.doc-salvage.impound`) — the +2/+3 disposition they grant is what
+    // clears that episode's `npc.disposition >= 2` gate organically. Carries a
+    // `wireResolution` (PRD §8.1): answer the ping but never play this beat, and
+    // after the grace window the wire reports Doc handled the rescue alone
+    // (disposition −2). graceDays is set generously (7) so no short golden replay
+    // ever lapses it.
     id: 'chain.doc-salvage.follow-up',
     title: 'Doc Salvage Reports Back',
     prose:
@@ -252,6 +305,15 @@ export const STORYLETS = defineStorylets([
       scheduledOnly: true,
       npc: { id: 'npc-doc-salvage' },
       eras: ['TOUR_ONE'],
+    },
+    wireResolution: {
+      graceDays: 7,
+      wireMessage:
+        'Doc Salvage worked the beacon net alone while your channel stayed dark — the skiff got its patient, no thanks to you.',
+      effects: {
+        disposition: [{ npcId: 'npc-doc-salvage', delta: -2 }],
+        flags: [{ name: 'chain.doc-salvage.resolved', value: 'wire' }],
+      },
     },
     choices: [
       {
@@ -263,6 +325,7 @@ export const STORYLETS = defineStorylets([
           disposition: [{ npcId: 'npc-doc-salvage', delta: 2 }],
           deedProgress: [{ deedId: 'beacon_keeper', amount: 1 }],
           flags: [{ name: 'chain.doc-salvage.rescue_logged', value: true }],
+          schedule: [{ storyletId: 'chain.doc-salvage.impound', delayDays: 1 }],
         },
       },
       {
@@ -273,6 +336,7 @@ export const STORYLETS = defineStorylets([
           disposition: [{ npcId: 'npc-doc-salvage', delta: 3 }],
           deedProgress: [{ deedId: 'beacon_keeper', amount: 1 }],
           flags: [{ name: 'chain.doc-salvage.payment_refused', value: true }],
+          schedule: [{ storyletId: 'chain.doc-salvage.impound', delayDays: 1 }],
         },
       },
     ],
@@ -1979,6 +2043,1993 @@ export const STORYLETS = defineStorylets([
         label: 'Keep the sliver for now',
         prose:
           'Stop the playback before the name resolves. Some voices you are not ready to put a face to. The Sage sets the roster down, and does not push.',
+      },
+    ],
+  },
+
+  // ==========================================================================
+  // T-1501 · Storylet batch — ports & rumors (20) (appended per the batch
+  //   convention: batches append after every prior batch, so the originals stay
+  //   the leading content-order prefix the engine test asserts).
+  //
+  //   PURPOSE: give the map its per-system character now that RIM systems receive
+  //   real traffic (T-1101/T-1102 made rim jumps reachable, T-1104 routes cargo
+  //   there). The audit found only ~3 system-keyed port/rumor storylets existed;
+  //   the mandatory 9 below give every core+rim system that lacked one a plain,
+  //   reliably-reachable port beat (systemIds-only, no era/day/cargo/flag gate,
+  //   repeat:'never'), which is the "every core+rim system has ≥1 storylet
+  //   reachable in a 500-day sweep" acceptance (sim/system-storylet-coverage.test).
+  //   Six richer rim beats + four Wise One / Sage audience scenes give the rim its
+  //   authored voice.
+  //
+  //   VOICE / DIVERGENCE: rim flavor is drawn from foundation
+  //   (f2f95fa9:foundation/lore/User-Manual.md §"Rim Star Worlds") — Antares-5's
+  //   sealed Andromeda Operations Room, Capella-4 drive repair, Polaris-1's cold
+  //   cabin + the Wise One, Mizar-9's robotics row + the Sage's constellation
+  //   quiz, Achernar-5 navigation, and Algol-2's "no repair facilities — the
+  //   frontier". Foundation carries no storylet constants, so the credit/fuel
+  //   deltas are authored in the existing storylet band (~40–350cr), not lifted.
+  //
+  //   AUTHORING (enforced by engine/storylets.test.ts): 2–4 choices, ≥1
+  //   requirement-free choice per storylet (so a broke, die-spent captain never
+  //   dead-ends the day), and NO held-state (.aboard/.riding) flags in this batch
+  //   (nothing to strand). Per Standing-constraint 7 — and matching the T-1310
+  //   precedent (bb030913) — this batch sets NO receipt/"outcome" flags at all:
+  //   a set-only flag nothing reads is not a feature. Choice outcomes are carried
+  //   entirely by prose + real credit/fuel deltas; a choice whose only distinction
+  //   was its receipt flag is written effect-free, and each storylet's own
+  //   repeat:'never' completion record (not a parallel flag) is what stops a
+  //   re-offer. If a later gate ever needs to read one of these outcomes, add the
+  //   flag back TOGETHER with its named reader and a consumption assertion.
+  // ==========================================================================
+
+  // --- Mandatory 9: the plain per-system port beats (reachability-critical) ---
+  {
+    id: 'port.aldebaran.grain-exchange',
+    title: 'The Grain Exchange',
+    prose:
+      'Aldebaran-1 runs on grain futures, and the exchange floor is mid-argument when you dock: two brokers, one disputed lot, and a docked hull that neither of them owns looking like a convenient tiebreaker.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [2],
+    },
+    choices: [
+      {
+        id: 'broker-it',
+        label: 'Broker the dispute',
+        prose: 'Read the lot slips, find the honest split, and name it before either broker can.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 11 } },
+        successEffects: {
+          credits: 90,
+        },
+        failureEffects: {
+          credits: -40,
+        },
+      },
+      {
+        id: 'stay-out',
+        label: 'Stay out of it',
+        prose: 'Their grain, their fight. Sign your gantry slip and leave the exchange to itself.',
+      },
+    ],
+  },
+  {
+    id: 'port.fomalhaut.dust-market',
+    title: 'The Dust Market',
+    prose:
+      "Fomalhaut-2's dust market never quite closes — a low sprawl of stalls under the gantry lights where a trader waves you over with a haggle already half-formed on her lips.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [7],
+    },
+    choices: [
+      {
+        id: 'haggle',
+        label: 'Haggle her down',
+        prose: 'Meet the opening price with a flat refusal and see where the number lands.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          credits: 110,
+        },
+        failureEffects: {
+          credits: -50,
+        },
+      },
+      {
+        id: 'browse',
+        label: 'Browse and move on',
+        prose: 'Nod at the stalls, buy nothing, and keep the coin for a market you know better.',
+      },
+    ],
+  },
+  {
+    id: 'port.vega6.homecoming-gantry',
+    title: 'The Homecoming Gantry',
+    prose:
+      'Vega-6 keeps one gantry lit for the ships that come back from the deep runs — the Maligna returners, the long-hauls, the ones the wire had stopped counting on. Tonight the gantry crew mistake you for one of them and stand a round anyway.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [14],
+    },
+    choices: [
+      {
+        id: 'take-the-round',
+        label: 'Take the round, tell a story',
+        prose:
+          'Let them believe the deep-run story a while, and trade a tall tale for a warm dock.',
+      },
+      {
+        id: 'set-them-straight',
+        label: 'Set them straight',
+        prose:
+          'Wave the credit off — you have not earned that gantry yet. Buy your own round instead.',
+        effects: {
+          credits: -30,
+        },
+      },
+    ],
+  },
+  {
+    id: 'port.antares.gateway-watch',
+    title: 'The Gateway Watch',
+    prose:
+      "Antares-5 sits at the black hole's edge — the gateway to Andromeda, if the stories are true. A watch officer eyes your transponder as you dock, and past her shoulder a sealed blast door reads OPERATIONS in letters older than the Confederation.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [15],
+    },
+    choices: [
+      {
+        id: 'ask-the-door',
+        label: 'Ask about the sealed door',
+        prose:
+          'Nod at the OPERATIONS door and ask, idly, what it takes to get it opened. The officer almost answers.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+      },
+      {
+        id: 'keep-moving',
+        label: 'Keep your eyes down and dock',
+        prose: 'Some doors it is safer not to be seen looking at. Clear the gantry and move on.',
+      },
+    ],
+  },
+  {
+    id: 'port.capella.drive-yard',
+    title: 'The Drive Yard',
+    prose:
+      'Capella-4 is a drive port — the yards out here rebuild burners half the core would scrap. A yard tout jogs alongside your hull before the clamps are cold, quoting a tune-up price and a story about the last captain who skipped one.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [16],
+    },
+    choices: [
+      {
+        id: 'take-the-tuneup',
+        label: 'Pay for the tune-up',
+        prose:
+          'Let the yard crew balance the burner. It costs, but a clean drive out here is life.',
+        requirements: { credits: { gte: 60 } },
+        effects: {
+          credits: -60,
+          fuel: 15,
+        },
+      },
+      {
+        id: 'wave-off',
+        label: 'Wave the tout off',
+        prose:
+          'The burner will hold. Wave the tout back to the next hull and see to your own drives.',
+      },
+    ],
+  },
+  {
+    id: 'port.polaris.frontier-berth',
+    title: 'A Cold Berth',
+    prose:
+      "Polaris-1 keeps its berths cold and its welcome colder — a cabin-repair port at the frontier's edge where the dockmaster charges by the hour for heat and does not haggle. Still, a warm bunk is a warm bunk this far out.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [17],
+    },
+    choices: [
+      {
+        id: 'pay-for-heat',
+        label: 'Pay for a warm berth',
+        prose:
+          'Buy the heat and a night out of the pilot chair. The frontier will still be there at dawn.',
+        requirements: { credits: { gte: 40 } },
+        effects: {
+          credits: -40,
+        },
+      },
+      {
+        id: 'rough-it',
+        label: 'Rough it in the cockpit',
+        prose:
+          'Keep the coin, pull a blanket over the console, and sleep the way spacers always have.',
+      },
+    ],
+  },
+  {
+    id: 'port.mizar.robotics-row',
+    title: 'Robotics Row',
+    prose:
+      "Mizar-9's robotics row is a canyon of parts stalls and half-built drones, the best repair for a fried battle computer anywhere on the rim. A fixer with oil to the elbows offers to look your systems over — cheap, he says, because business is slow.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+    },
+    choices: [
+      {
+        id: 'let-him-look',
+        label: 'Let the fixer look',
+        prose:
+          'Pop the panels and let him run a diagnostic. A rim fixer sees things a core yard misses.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 11 } },
+        successEffects: {
+          credits: 70,
+        },
+        failureEffects: {
+          credits: -40,
+        },
+      },
+      {
+        id: 'browse-the-row',
+        label: 'Just browse the row',
+        prose: 'Walk the stalls, price a few parts, and buy nothing you did not come for.',
+      },
+    ],
+  },
+  {
+    id: 'port.achernar.nav-beacon',
+    title: 'A Beacon Off True',
+    prose:
+      'Achernar-5 lives and dies by its navigation beacons, and one of them is reading a hair off true. The port navigator is short-handed and asks — half-order, half-favor — whether a docked captain would ride out and recalibrate it.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [19],
+    },
+    choices: [
+      {
+        id: 'ride-out',
+        label: 'Ride out and calibrate it',
+        prose: 'Take the calibration rig out to the drifting beacon and bring it back onto true.',
+        requirements: { spendDie: true },
+        effects: {
+          credits: 100,
+        },
+      },
+      {
+        id: 'beg-off',
+        label: 'Beg off the favor',
+        prose: 'Tell the navigator your heading is set. She frowns, but finds another hull to ask.',
+      },
+    ],
+  },
+  {
+    id: 'port.algol.no-repair',
+    title: 'No Repair Facilities',
+    prose:
+      'Algol-2 is the end of the charts — no repair facilities, no yard, no guarantee anyone here is who they say. A spacer with a dead drive flags you down at the gantry, cap in hand: he needs one part, and Algol-2 is the wrong place to be stranded with a cold burner.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [20],
+    },
+    choices: [
+      {
+        id: 'give-the-part',
+        label: 'Give him the part',
+        prose:
+          'Pull a spare coupling from your own stores and hand it over. Out here, that is the whole law.',
+        effects: {
+          credits: -30,
+        },
+      },
+      {
+        id: 'sell-the-part',
+        label: 'Sell him the part',
+        prose:
+          'The frontier prices its mercy. Name a fair number for the coupling and take his coin.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 11 } },
+        successEffects: {
+          credits: 80,
+        },
+      },
+      {
+        id: 'walk-past',
+        label: 'Walk past him',
+        prose: 'You have troubles of your own out here. Keep your stores and keep walking.',
+      },
+    ],
+  },
+
+  // --- Rim-character richness (6): flavored beats. The mandatory 9 above already
+  //     guarantee per-system reachability, so these may carry gates. ---
+  {
+    id: 'port.antares.andromeda-operations',
+    title: 'The Operations Room',
+    prose:
+      'Word of your veteran registry reaches the Antares-5 watch before you clear the gantry, and this time the OPERATIONS door is not sealed. Inside, a briefing officer stands before a chart of the black hole and the long dark past it. "You are cleared to hear this much," she says. "No further. Not yet."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [15],
+      eras: ['VETERAN'],
+    },
+    choices: [
+      {
+        id: 'hear-the-briefing',
+        label: 'Hear the briefing',
+        prose:
+          'Stand at the chart and let her walk you to the edge of what the Confederation admits about the crossing — and no further.',
+      },
+      {
+        id: 'not-ready',
+        label: 'Tell her you are not ready',
+        prose:
+          'Some doors you would rather close yourself than be shown through. Thank the officer and step back out to the gantry.',
+      },
+    ],
+  },
+  {
+    id: 'port.capella.herbal-run',
+    title: 'The Capellan Herbals',
+    prose:
+      'A Capella-4 grower has a pallet of Capellan Herbals cut and cured and no hull to carry them coreward before they lose their potency. She offers the run cheap to any captain heading back in, and a taste of the cure to close the deal.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [16],
+    },
+    choices: [
+      {
+        id: 'take-the-run',
+        label: 'Take the herbal run',
+        prose:
+          'Log the pallet against a coreward berth and warm the drives. Fresh Capellan Herbals pay well if you make the core before they turn.',
+        effects: {
+          cargo: {
+            addManifestContract: { destination: 7, cargoType: 16, payment: 900, pods: 1 },
+          },
+        },
+      },
+      {
+        id: 'pass',
+        label: 'Pass on it',
+        prose:
+          'Your hold has other plans. Wish the grower a fast hull and keep your manifest as it is.',
+      },
+    ],
+  },
+  {
+    id: 'port.achernar.gem-cutters',
+    title: "The Gem Cutters' Row",
+    prose:
+      'Achernar-5 cuts the finest gems on the rim, and a cutter at the row leans close over a cloth of Achernarian stones. "Appraised low at the core, I would wager," he murmurs. "They never know what they are holding. Sell them here, to someone who does."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [19],
+    },
+    choices: [
+      {
+        id: 'sell-to-cutter',
+        label: 'Deal with the cutter',
+        prose:
+          'Talk stones and value with a man who cuts them for a living, and hold out for his real price.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          credits: 160,
+        },
+        failureEffects: {
+          credits: -40,
+        },
+      },
+      {
+        id: 'window-shop',
+        label: 'Admire and leave',
+        prose: 'Watch the wheel throw its light a while, buy nothing, sell nothing, and go.',
+      },
+    ],
+  },
+  {
+    id: 'port.algol.frontier-justice',
+    title: 'Frontier Justice',
+    prose:
+      'Algol-2 has no law but what the docked captains agree to, and tonight they are agreeing loudly. A runner caught skimming fuel from moored hulls is roped to a gantry post, and the gathered spacers want a vote from every ship at berth — yours included.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [20],
+    },
+    choices: [
+      {
+        id: 'argue-mercy',
+        label: 'Argue for mercy',
+        prose:
+          'Stand up and talk the crowd down from the harder options. Out here a reputation for fairness is worth more than one for iron.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+      },
+      {
+        id: 'stay-silent',
+        label: 'Cast no vote',
+        prose:
+          'Keep to your hull and let the frontier settle its own accounts. It is not your dock and not your call.',
+      },
+    ],
+  },
+  {
+    id: 'port.mizar.liquor-hall',
+    title: 'The Liquor Hall',
+    prose:
+      "Mizar-9's liquor hall pours the rim's strongest, and the strongest talk with it. A table of long-haul captains waves you into a bench, a bottle of Mizarian Liquor already open and a rumor already halfway told.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+    },
+    choices: [
+      {
+        id: 'drink-and-listen',
+        label: 'Drink and listen',
+        prose:
+          'Take the offered cup and let the rim gossip wash over you. Some of it is even true, and the true parts are worth the hangover.',
+      },
+      {
+        id: 'buy-the-round',
+        label: 'Buy the next round',
+        prose:
+          'Stand the table a bottle and buy your way into the better rumors — the ones they do not tell for free.',
+        requirements: { credits: { gte: 50 } },
+        effects: {
+          credits: -50,
+        },
+      },
+    ],
+  },
+  {
+    id: 'port.polaris.ice-harvest',
+    title: 'The Ice Harvest',
+    prose:
+      'Polaris-1 harvests its fuel from cometary ice, and the harvest crew is a hand short on the line. The foreman offers a cut of the melt to any captain willing to work a shift on the frozen frontier — cold, hard, and honest.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [17],
+    },
+    choices: [
+      {
+        id: 'work-a-shift',
+        label: 'Work a shift on the line',
+        prose:
+          'Suit up and haul ice with the harvest crew. The pay is a tank topped off and a foreman who remembers a working captain.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 11 } },
+        successEffects: {
+          fuel: 25,
+        },
+      },
+      {
+        id: 'not-this-run',
+        label: 'Not this run',
+        prose:
+          'The line is brutal and your heading is set. Wave the foreman off and see to your own tanks.',
+      },
+    ],
+  },
+
+  // --- Wise One / Sage audience scenes (4): the "guidance to advanced spacers"
+  //     and the constellation quiz the foundation names, distinct from the
+  //     T-113a/T-1310 fragment-broker hooks (which grant/decode the Nemesis
+  //     Signal). These are pure counsel — no fragment mechanics — so they can
+  //     surface without a fragment held. Renown/era gates give them their
+  //     "advanced spacers" character; the mandatory 9 carry system reachability. ---
+  {
+    id: 'wise-one.polaris.counsel',
+    title: 'Counsel of the Wise One',
+    prose:
+      'The Wise One of Polaris-1 receives you differently now — no data sliver, no price, only a long look and a gesture at the cold cabin\'s single chair. "You have made a name," the old spacer says. "Names are the heaviest cargo a hull carries. Sit. I will tell you how to fly with the weight."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [17],
+      renown: { minRank: 'CAPTAIN' },
+    },
+    choices: [
+      {
+        id: 'hear-counsel',
+        label: 'Hear the counsel',
+        prose:
+          'Take the chair and listen. What the Wise One gives an advanced spacer is not coin and not cargo, but the shape of the road ahead.',
+      },
+      {
+        id: 'decline-counsel',
+        label: 'Decline, respectfully',
+        prose:
+          'Tell the Wise One you fly better without a map of the weight. The old spacer nods, unoffended. "Then you already understand the first part."',
+      },
+    ],
+  },
+  {
+    id: 'wise-one.polaris.parable',
+    title: "The Wise One's Parable",
+    prose:
+      'On a later visit the Wise One is in a telling mood. "A spacer once tried to outrun their own wake," the old one begins, unprompted, watching the frost creep the cabin window. "They burned every drop of fuel they had. Do you know where they ended up?" The pause is the point.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [17],
+      eras: ['VETERAN'],
+    },
+    choices: [
+      {
+        id: 'answer-the-parable',
+        label: 'Guess the ending',
+        prose:
+          'Offer your own ending to the parable. The Wise One listens to it more closely than you expected, and does not tell you whether you were right.',
+      },
+      {
+        id: 'sit-with-it',
+        label: 'Sit with the silence',
+        prose:
+          'Say nothing and let the pause be the answer. The Wise One almost smiles. "Good," they say. "The ones who answer too fast never make the crossing."',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.constellation-quiz',
+    title: "The Sage's Constellation Quiz",
+    prose:
+      'The Sage of Mizar-9 sets aside the dead screens and produces, of all things, a battered star-wheel. "Before I read any more signals for you," they say, eyes bright, "a small test. Sixteen constellations, coded A through P. Tell me — which one guides a lost hull home?" It is, you realize, both a game and a measure.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+    },
+    choices: [
+      {
+        id: 'take-the-quiz',
+        label: 'Take the quiz',
+        prose:
+          'Study the wheel and name your constellation. The Sage weighs the answer, then the answerer, and seems satisfied with both.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 11 } },
+      },
+      {
+        id: 'decline-the-quiz',
+        label: 'Decline the game',
+        prose:
+          'Tell the Sage you did not come to be tested. They pocket the wheel without complaint. "Another visit, then. The sky keeps."',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.star-lore',
+    title: 'The Sage Tells the Sky',
+    prose:
+      'The Sage is between decodings and, rare for them, unhurried. "You keep bringing me the wrong side of the black hole," they say. "Let me give you the right side for once." They dim the workshop and throw a century of star-lore across the dead screens — the old names, the old roads, the sky as it was charted before anyone thought to cross it.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+    },
+    choices: [
+      {
+        id: 'listen-to-lore',
+        label: 'Listen to the star-lore',
+        prose:
+          'Sit in the dark and let the old sky roll past. None of it pays a docking fee, and all of it is worth knowing before the crossing.',
+      },
+      {
+        id: 'cut-it-short',
+        label: 'Cut it short',
+        prose:
+          'Tell the Sage the drives are warm and the lore will keep. They dim the screens back up. "It has kept this long," they agree.',
+      },
+    ],
+  },
+
+  // --- One more core beat (20 total): a second Fomalhaut-2 vignette, so a
+  //     core trading hub carries more than one face across a long campaign. ---
+  {
+    id: 'port.fomalhaut.deep-dark',
+    title: 'Talk of the Deep Dark',
+    prose:
+      'Late at the Fomalhaut-2 docks an old freighter hand corners you with the shakes and a story: something out past the rim, she swears, that pings back on an empty channel. Half the port calls her mad. The other half stopped flying the far lanes after they heard her.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [7],
+    },
+    choices: [
+      {
+        id: 'hear-her-out',
+        label: 'Hear her out',
+        prose:
+          'Buy the old hand a drink and let her tell it. Rim ghost stories are mostly nerves — but the ones that spread are worth a captain knowing.',
+        effects: {
+          credits: -20,
+        },
+      },
+      {
+        id: 'wave-it-off',
+        label: 'Wave the story off',
+        prose:
+          'Every port has its madwoman and her empty channel. Nod, excuse yourself, and get back to the manifest.',
+      },
+    ],
+  },
+
+  // ==========================================================================
+  // T-1502 · NPC personal chains — six 3-episode arcs (appended per the batch
+  //   convention: batches append after every prior batch, so the originals stay
+  //   the leading content-order prefix the engine test asserts). Doc Salvage's
+  //   episode 3 lives here too (its ep1/ep2 stay in the ORIGINAL prefix above,
+  //   edited in place); the arc is LINKED by schedule ids, not content order.
+  //
+  //   PURPOSE (PRD §8.1): each NPC gets a personal arc keyed to their Bond/Flaw,
+  //   gating on disposition that now has teeth (T-1204) — and every chain carries
+  //   the "ignore-it-and-the-wire-resolves-it" path (`wireResolution`), so a chain
+  //   can resolve WITHOUT the player.
+  //
+  //   SHARED SHAPE:
+  //     - ep1 (the meeting): systemIds-gated at a CORE port (id 1–14, never the
+  //       NPC's migrating spawn — the shipped Doc chain's [1] precedent, so the
+  //       episode reaches the player at a fixed dock). `npc:{id}` + a
+  //       `chain.X.resolved exists:false` gate. The "engage" choice grants an
+  //       opening +3 disposition and SCHEDULES ep2 (delayDays 1); the "decline"
+  //       out is requirement-free and sets `chain.X.resolved='declined'` — a clean
+  //       opt-out (the chain never arms), distinct from abandonment.
+  //     - ep2 (the ask/turn): `scheduledOnly`, `npc.disposition:{ gte:2 }` — the
+  //       "getting close" gate the acceptance requires be hit ORGANICALLY (ep1's
+  //       +3 crosses it; the driver never sets disposition). Grants more standing
+  //       and schedules ep3. Carries a `wireResolution`.
+  //     - ep3 (the payoff): `scheduledOnly`, `npc.disposition:{ gte:3 }`. Terminal
+  //       — sets `chain.X.resolved='<outcome>'`, grants final standing/credits.
+  //       Carries a `wireResolution`.
+  //
+  //   READERS / consumed state (Standing-constraint 7):
+  //     - `chain.X.resolved`: READ by every episode's `exists:false` trigger gate
+  //       (a resolved chain — completed, declined, or wire-abandoned — never
+  //       re-offers), exactly as `tour-one.resolved` gates the resolution beats.
+  //     - `npc.disposition`: READ by the ep2/ep3 `disposition` gates (the organic
+  //       progression gate), plus the T-1204 interceptor grudge-weighting and bond
+  //       hooks — so the grants and the abandonment penalties are all consumed.
+  //     - `wireResolution`: READ by the engine dusk sweep (`resolveAbandonedChains`)
+  //       → a WireEntry (UI wire ticker) + the disposition penalty.
+  //
+  //   DIVERGENCE: foundation (ref f2f95fa9) carries NO NPC-chain system and no
+  //   storylet/disposition constants, so these arcs and their disposition budget
+  //   (+3 / gte2 / +2 / gte3 / +2; abandonment −2..−3; clamp [-10,10], decay one
+  //   step / 3 days) are engine-original content, tuned against the T-1204 decay.
+  //   Credit/fuel deltas sit in the existing storylet band (~40–350cr). Voice per
+  //   the User-Manual register the shipped storylets use.
+  // ==========================================================================
+
+  // --- Doc Salvage · EPISODE 3 of 3 (Savior Complex; "I was left once"). Doc's
+  //     rescue skiff is impounded at a port over a salvage-rights dispute. His
+  //     Bond (never leaves a mayday) makes him fight it whether you help or not —
+  //     which is exactly why abandoning it stings. Scheduled by follow-up (ep2)
+  //     above; gated on the +2/+3 that beat granted. ---
+  {
+    id: 'chain.doc-salvage.impound',
+    title: "Doc Salvage's Skiff Is Impounded",
+    prose:
+      'Doc Salvage wires from a port lockup: his rescue skiff — the one he answers maydays in — is impounded over a salvage-rights dispute, and the bond to spring it is more coin than a man who gives medicine away for free has ever held.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-doc-salvage', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.doc-salvage.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 5,
+      wireMessage:
+        "Doc Salvage's skiff cleared impound on its own docket while your channel stayed dark — he fought the port alone and won, and he logged who wasn't there.",
+      effects: {
+        disposition: [{ npcId: 'npc-doc-salvage', delta: -2 }],
+        flags: [{ name: 'chain.doc-salvage.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'post-the-bond',
+        label: 'Post the bond',
+        prose: 'Count out the coin and spring the skiff. A mayday answered is a mayday answered.',
+        requirements: { credits: { gte: 100 } },
+        effects: {
+          credits: -100,
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 3 }],
+          flags: [{ name: 'chain.doc-salvage.resolved', value: 'bonded' }],
+        },
+      },
+      {
+        id: 'stand-with-him',
+        label: 'Fight the dispute at the counter',
+        prose:
+          'Skip the bond and take the salvage-rights fight to the port master, clause by clause, until the skiff comes free.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 11 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 3 }],
+          flags: [{ name: 'chain.doc-salvage.resolved', value: 'freed' }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
+          flags: [{ name: 'chain.doc-salvage.resolved', value: 'freed-hard' }],
+        },
+      },
+      {
+        id: 'let-him-fight',
+        label: 'Let Doc fight it alone',
+        prose:
+          'Tell Doc he has the grit for it. He does — but a friend who watches from orbit is still a friend who watched.',
+        effects: {
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
+          flags: [{ name: 'chain.doc-salvage.resolved', value: 'alone' }],
+        },
+      },
+    ],
+  },
+
+  // --- Silk Dagger · "settle the debt behind her name" (Bond: Space Dragons;
+  //     Flaw: Vengeful). Core port: Altair-3 (system 3). ---
+  {
+    id: 'chain.silk-dagger.marker',
+    title: 'The Debt Behind Her Name',
+    prose:
+      'Silk Dagger finds you at Altair-3 with a debt-marker she cannot carry herself: a Space Dragon collector holds her true name against an old marker, and she needs a hull with no history to walk it in. "You," she says. "You are nobody yet. That is useful."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [3],
+      npc: { id: 'npc-silk-dagger' },
+      flags: [{ name: 'chain.silk-dagger.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'carry-the-marker',
+        label: 'Carry the marker',
+        prose:
+          'Take the marker and the name written under it. Whatever Silk owes the Dragons, you are the one walking it to the door now.',
+        effects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 3 }],
+          flags: [{ name: 'chain.silk-dagger.marker_carried', value: true }],
+          schedule: [{ storyletId: 'chain.silk-dagger.collector', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline-the-marker',
+        label: "Stay out of Silk's debts",
+        prose:
+          'Hand the marker back. A name you cannot read is a debt you cannot price. Silk takes it without a word — vengeful people rarely argue; they remember.',
+        effects: {
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.silk-dagger.collector',
+    title: 'The Collector Wants More',
+    prose:
+      "The Space Dragon collector reads the marker, then reads you, and names a figure twice what the marker says. Somewhere behind your ear, Silk's voice — vengeful and very calm — suggests the collector has made a mistake he can only make once.",
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-silk-dagger', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.silk-dagger.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Word off the Dragon lanes: Silk Dagger stopped waiting on your relay and settled the collector her own way. A body, a burned ledger, and a marker nobody will call in again.',
+      effects: {
+        disposition: [{ npcId: 'npc-silk-dagger', delta: -3 }],
+        flags: [{ name: 'chain.silk-dagger.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'hold-the-line',
+        label: 'Hold to the marker',
+        prose:
+          'Tell the collector the marker reads what it reads and you will not pay a credit over it. Silk likes that you did not fold.',
+        effects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 2 }],
+          schedule: [{ storyletId: 'chain.silk-dagger.reckoning', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'lean-on-him',
+        label: 'Lean on him for Silk',
+        prose:
+          'Let the collector understand, quietly, whose name he is leaning on and how short the Dragons keep their patience. Do it well and he remembers his manners.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 3 }],
+          schedule: [{ storyletId: 'chain.silk-dagger.reckoning', delayDays: 1 }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 1 }],
+          schedule: [{ storyletId: 'chain.silk-dagger.reckoning', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.silk-dagger.reckoning',
+    title: "Silk's Reckoning",
+    prose:
+      'The marker comes due, and Silk Dagger meets you at the reckoning with a choice already burning behind her eyes: pay the name clean and be done, or help her make sure no collector ever writes it down again.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-silk-dagger', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.silk-dagger.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        "The debt behind Silk Dagger's name closed itself while you drifted — settled in the Dragon way, permanent and unwitnessed. She will remember you were elsewhere for it.",
+      effects: {
+        disposition: [{ npcId: 'npc-silk-dagger', delta: -3 }],
+        flags: [{ name: 'chain.silk-dagger.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'pay-it-clean',
+        label: 'Pay the name clean',
+        prose:
+          'Count out the marker in full and burn the record after. Silk watches her name come off the Dragon ledger and, for once, does not reach for the vengeful answer.',
+        requirements: { credits: { gte: 150 } },
+        effects: {
+          credits: -150,
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 2 }],
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'paid' }],
+        },
+      },
+      {
+        id: 'burn-the-collector',
+        label: 'Burn the collector with her',
+        prose:
+          "Stand at Silk's shoulder while she closes the debt her way. It is ugly, and it is final, and the Dragons will know whose hull was parked outside.",
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 13 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 3 }],
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'burned' }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: 1 }],
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'burned-hard' }],
+        },
+      },
+      {
+        id: 'walk-away',
+        label: 'Walk before the reckoning',
+        prose:
+          "Tell Silk this is hers to close, not yours. She lets you go. Whether that costs you later is a Dragon's arithmetic, and Dragons keep long books.",
+        effects: {
+          disposition: [{ npcId: 'npc-silk-dagger', delta: -1 }],
+          flags: [{ name: 'chain.silk-dagger.resolved', value: 'walked' }],
+        },
+      },
+    ],
+  },
+
+  // --- Wild Card · "is his big score worth co-signing" (Bond: Hates the Astro
+  //     League; Flaw: Chaotic). Core port: Denebola-5 (system 6). ---
+  {
+    id: 'chain.wild-card.pitch',
+    title: "Wild Card's Big Score",
+    prose:
+      'Wild Card corners you at Denebola-5 grinning like a man holding a lit fuse. "An arbitrage," he says, "against an Astro League clearing house. Beautiful. Illegal in four systems. All I need is a co-signer with a clean name — and here you are, clean as a whistle."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [6],
+      npc: { id: 'npc-wild-card' },
+      flags: [{ name: 'chain.wild-card.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'hear-the-pitch',
+        label: 'Co-sign the pitch',
+        prose:
+          "Put your clean name next to Wild Card's dirty plan. The League has it coming, and the split — if it holds — is real money.",
+        effects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 3 }],
+          flags: [{ name: 'chain.wild-card.co_signed', value: true }],
+          schedule: [{ storyletId: 'chain.wild-card.co-sign', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'wave-him-off',
+        label: 'Want no part of it',
+        prose:
+          'Tell Wild Card to find another name. He shrugs, delighted, already three plans down the road. "Suit yourself. More for me."',
+        effects: {
+          flags: [{ name: 'chain.wild-card.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.wild-card.co-sign',
+    title: 'The Plan Has Changed',
+    prose:
+      'A day in, Wild Card\'s beautiful arbitrage has mutated into something with three more moving parts and a Warlord fence attached. "Improved it," he says. Chaotic to the bone, he cannot help himself — and your name is still on it.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-wild-card', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.wild-card.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Wild Card ran his Astro League score without waiting on you — the wire cannot agree whether it was genius or a fireball, only that your name was nowhere near it.',
+      effects: {
+        disposition: [{ npcId: 'npc-wild-card', delta: -2 }],
+        flags: [{ name: 'chain.wild-card.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'ride-the-chaos',
+        label: 'Ride the chaos',
+        prose:
+          'Tell Wild Card the new parts are fine because arguing with him is like arguing with weather. He whoops. The plan gets worse and better at once.',
+        effects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 2 }],
+          schedule: [{ storyletId: 'chain.wild-card.fallout', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'rein-him-in',
+        label: 'Rein the plan back in',
+        prose:
+          'Cut the three worst moving parts out before they cut you. Wild Card sulks for exactly one second, then admits the leaner plan might actually clear.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 3 }],
+          schedule: [{ storyletId: 'chain.wild-card.fallout', delayDays: 1 }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 1 }],
+          schedule: [{ storyletId: 'chain.wild-card.fallout', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.wild-card.fallout',
+    title: 'The Score Comes Down',
+    prose:
+      'The arbitrage lands, one way or another, and Wild Card turns to you with the split slip in his hand and that fuse-grin still lit. Co-sign the take and walk away rich and wanted, or bail now and let him carry the whole beautiful mess himself.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-wild-card', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.wild-card.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Wild Card score resolved without your signature on the take — he split it with the fence and kept your name off the paper, which is either mercy or a marker for later.',
+      effects: {
+        disposition: [{ npcId: 'npc-wild-card', delta: -2 }],
+        flags: [{ name: 'chain.wild-card.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'take-the-split',
+        label: 'Take the split',
+        prose:
+          'Sign the take and pocket your share of a fortune the Astro League will spend years failing to trace. Wild Card toasts you with something that should not be drinkable.',
+        effects: {
+          credits: 300,
+          disposition: [{ npcId: 'npc-wild-card', delta: 2 }],
+          flags: [{ name: 'chain.wild-card.resolved', value: 'cashed' }],
+        },
+      },
+      {
+        id: 'bail-out',
+        label: 'Bail before the paper lands',
+        prose:
+          'Wave the split away and get your name off everything before the clearing house notices. Wild Card grins wider — a man who bails clean is a man he can pitch again.',
+        effects: {
+          disposition: [{ npcId: 'npc-wild-card', delta: 1 }],
+          flags: [{ name: 'chain.wild-card.resolved', value: 'bailed' }],
+        },
+      },
+    ],
+  },
+
+  // --- Rattlesnake · "never lets an insult go" (Bond: Warlord Confed; Flaw:
+  //     Vengeful). Core port: Aldebaran-1 (system 2). This chain's disposition
+  //     consequence pairs with the T-1204 grudge-weighted interceptor selection —
+  //     a soured Rattlesnake hunts you. ---
+  {
+    id: 'chain.rattlesnake.insult',
+    title: 'A Matter of Respect',
+    prose:
+      'Rattlesnake is nursing a grudge at the Aldebaran-1 bar and a Warlord rival\'s insult still hanging in the air. He wants a second — a witness with steady nerves — for the satisfaction he intends to collect. "You don\'t let a thing like that stand," he tells you. It is not really a question.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [2],
+      npc: { id: 'npc-rattlesnake' },
+      flags: [{ name: 'chain.rattlesnake.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'stand-second',
+        label: 'Stand his second',
+        prose:
+          'Agree to witness. A Warlord takes his second seriously, and Rattlesnake will remember who stood at his shoulder when the insult had to be answered.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 3 }],
+          flags: [{ name: 'chain.rattlesnake.seconding', value: true }],
+          schedule: [{ storyletId: 'chain.rattlesnake.escalation', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'stay-out',
+        label: 'Stay out of it',
+        prose:
+          'Tell Rattlesnake his quarrels are his own. He hisses something about fair-weather friends and turns back to the insult. A vengeful man files that too.',
+        effects: {
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.rattlesnake.escalation',
+    title: 'Past the Point of Reason',
+    prose:
+      "By the next dock Rattlesnake has stopped talking about satisfaction and started talking about the rival's whole crew. The insult has grown teeth in his head, the way they always do with him — vengeful past reason, and building toward something a bar cannot hold.",
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-rattlesnake', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.rattlesnake.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Rattlesnake stopped waiting for his second and answered the insult alone — the wire has the whole ugly duel, and your name is not in the witness column.',
+      effects: {
+        disposition: [{ npcId: 'npc-rattlesnake', delta: -3 }],
+        flags: [{ name: 'chain.rattlesnake.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'keep-him-focused',
+        label: 'Keep it to the one man',
+        prose:
+          'Talk Rattlesnake down from the crew to the man who actually spoke — a duel he can win, not a war he cannot. He grudgingly narrows the target.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 2 }],
+          schedule: [{ storyletId: 'chain.rattlesnake.duel', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'let-him-rage',
+        label: 'Let him work up to it',
+        prose:
+          'Stand back and let Rattlesnake build the grudge as tall as he wants. It is his insult; he will carry it however he carries it, and he likes that you did not flinch.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 2 }],
+          schedule: [{ storyletId: 'chain.rattlesnake.duel', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.rattlesnake.duel',
+    title: "Rattlesnake's Duel",
+    prose:
+      'It comes to a duel, the way it was always going to. Rattlesnake stands ready at the line with the insult finally in reach, and turns to you: back his gun, talk him off it one last time, or leave him to answer for himself.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-rattlesnake', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.rattlesnake.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Rattlesnake took his duel with no one at his back and made the wire headlines doing it — he lived, he collected, and he noted the empty space where a friend should have stood.',
+      effects: {
+        disposition: [{ npcId: 'npc-rattlesnake', delta: -3 }],
+        flags: [{ name: 'chain.rattlesnake.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'back-his-gun',
+        label: 'Back his gun',
+        prose:
+          'Stand at the line with Rattlesnake and see the insult answered. It is Warlord justice, blunt and final, and he will not forget you were there for it.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 3 }],
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'backed' }],
+        },
+      },
+      {
+        id: 'talk-him-down',
+        label: 'Talk him off the line',
+        prose:
+          'One last try: put the whole cost of the grudge in front of Rattlesnake and let him choose to walk. A vengeful man almost never does — but almost is not never.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 13 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 2 }],
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'talked-down' }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: 1 }],
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'dueled' }],
+        },
+      },
+      {
+        id: 'leave-him-to-it',
+        label: 'Leave him to answer alone',
+        prose:
+          'Step off the line. Rattlesnake meets the insult without you, and whatever he decides that costs, he decides it with your back turned.',
+        effects: {
+          disposition: [{ npcId: 'npc-rattlesnake', delta: -1 }],
+          flags: [{ name: 'chain.rattlesnake.resolved', value: 'left' }],
+        },
+      },
+    ],
+  },
+
+  // --- Stellar Monk · "why he flies empty" (Bond: Space Dragons; Flaw: Pacifist,
+  //     flawDc 8). Core port: Deneb-4 (system 5). ---
+  {
+    id: 'chain.stellar-monk.empty-hold',
+    title: 'The Empty Hold',
+    prose:
+      'You notice it at Deneb-4: the Stellar Monk\'s Zen Drifter runs its holds empty, jump after jump, a trader carrying nothing to trade. When you ask, he only says, "Wealth is ballast," and offers you tea, and does not explain the rest.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [5],
+      npc: { id: 'npc-stellar-monk' },
+      flags: [{ name: 'chain.stellar-monk.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'sit-with-him',
+        label: 'Sit and take the tea',
+        prose:
+          'Accept the cup and the quiet with it. The Monk measures a captain by whether they can sit in silence, and you pass.',
+        effects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 3 }],
+          flags: [{ name: 'chain.stellar-monk.sat', value: true }],
+          schedule: [{ storyletId: 'chain.stellar-monk.confession', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'let-it-lie',
+        label: 'Let the man keep his silence',
+        prose:
+          "Some holds are empty for reasons that are nobody's cargo. Thank the Monk for the tea and go. He inclines his head, and the question stays unasked.",
+        effects: {
+          flags: [{ name: 'chain.stellar-monk.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.stellar-monk.confession',
+    title: 'Wealth Is Ballast',
+    prose:
+      'The next quiet dock, the Monk finishes the sentence he started. There was a full hold once, and a debt of cargo he ran too hard to deliver, and a loss at the end of it that no manifest could carry. He has flown light ever since — a pacifist even against his own greed.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-stellar-monk', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.stellar-monk.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Stellar Monk kept his own counsel while your channel stayed empty — he flew on light and silent, the confession unfinished, and did not offer it twice.',
+      effects: {
+        disposition: [{ npcId: 'npc-stellar-monk', delta: -2 }],
+        flags: [{ name: 'chain.stellar-monk.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'hear-him-out',
+        label: 'Hear the whole of it',
+        prose:
+          'Let the Monk lay the loss down entire, without filling his pauses. When he finishes he looks lighter by exactly the weight he set down.',
+        effects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 2 }],
+          schedule: [{ storyletId: 'chain.stellar-monk.ballast', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'offer-the-lanes',
+        label: "Offer a spacer's comfort",
+        prose:
+          'Tell the Monk the lanes take something from everyone who flies them long enough, and that flying light is its own kind of prayer. He almost smiles at the theology.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 11 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 3 }],
+          schedule: [{ storyletId: 'chain.stellar-monk.ballast', delayDays: 1 }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 1 }],
+          schedule: [{ storyletId: 'chain.stellar-monk.ballast', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.stellar-monk.ballast',
+    title: 'The Last Delivery',
+    prose:
+      'The Monk has one delivery he never made — a small thing, owed to the one he lost, that he has carried in his head instead of his hold for years. He asks, at last, whether you will fly the empty run with him and set it down, or leave him the silence he has learned to live in.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-stellar-monk', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.stellar-monk.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Stellar Monk made his last delivery alone on an empty hold while you were elsewhere — the debt of cargo set down at last, the ballast finally shed, with no witness but the dark.',
+      effects: {
+        disposition: [{ npcId: 'npc-stellar-monk', delta: -2 }],
+        flags: [{ name: 'chain.stellar-monk.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'fly-the-run',
+        label: 'Fly the empty run with him',
+        prose:
+          "Burn the quiet lane at the Monk's wing and watch him set the last delivery down. He carries nothing home afterward, and for the first time the empty hold looks like a choice instead of a wound.",
+        effects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 2 }],
+          flags: [{ name: 'chain.stellar-monk.resolved', value: 'delivered' }],
+        },
+      },
+      {
+        id: 'respect-the-silence',
+        label: 'Leave him the silence',
+        prose:
+          'Tell the Monk some cargo is his alone to set down. He accepts it the way he accepts everything — a small bow, no argument — and flies the run without you.',
+        effects: {
+          disposition: [{ npcId: 'npc-stellar-monk', delta: 1 }],
+          flags: [{ name: 'chain.stellar-monk.resolved', value: 'silence' }],
+        },
+      },
+    ],
+  },
+
+  // --- The Broker · "owns everyone's secrets" (Bond: owns everyone's secrets;
+  //     Flaw: Manipulative). Core port: Arcturus-6 (system 4). ---
+  {
+    id: 'chain.the-broker.ledger',
+    title: "The Broker's Ledger",
+    prose:
+      'The Broker keeps no cargo aboard the Information Age, only a ledger of what everyone would rather you did not know. At Arcturus-6 he slides a single decrypted secret across the table — genuinely useful, genuinely damaging to a rival of yours — and asks nothing for it. "A gift," he says. "We can settle the favor later."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [4],
+      npc: { id: 'npc-the-broker' },
+      flags: [{ name: 'chain.the-broker.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'take-the-secret',
+        label: 'Take the secret',
+        prose:
+          'Pocket the intel and the open-ended favor that comes bolted to it. The Broker smiles the way a man smiles when the ledger just gained a line in his favor.',
+        effects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 3 }],
+          flags: [{ name: 'chain.the-broker.indebted', value: true }],
+          schedule: [{ storyletId: 'chain.the-broker.favor', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'refuse-the-gift',
+        label: 'Refuse the gift',
+        prose:
+          'Slide the secret back unread. A gift from a man who trades in leverage is a debt with better manners. The Broker withdraws it, unoffended, and notes that too.',
+        effects: {
+          flags: [{ name: 'chain.the-broker.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.the-broker.favor',
+    title: 'The Favor Comes Due',
+    prose:
+      "It does not take long. The Broker calls the favor in and it is exactly what you feared: carry a second secret to a third party, one that ruins someone who never crossed you, so the Broker's ledger balances a debt of his own. Manipulative to the last decimal, he frames it as your idea.",
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-the-broker', disposition: { gte: 2 } },
+      flags: [{ name: 'chain.the-broker.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Broker sold your unpaid favor onward while you sat on it — the wire carries the fallout of a secret you never chose to move, filed now under a debt that was always his.',
+      effects: {
+        disposition: [{ npcId: 'npc-the-broker', delta: -2 }],
+        flags: [{ name: 'chain.the-broker.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'carry-the-secret',
+        label: 'Carry the second secret',
+        prose:
+          "Run the Broker's errand and let the ledger balance. It buys his regard and a little of his ledger tilts your way — which is exactly what he wanted you to want.",
+        effects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 2 }],
+          schedule: [{ storyletId: 'chain.the-broker.leverage', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'read-the-play',
+        label: 'Read the play first',
+        prose:
+          'Before you move anything, take the whole board apart and find where the Broker hid his own exposure inside your favor. He respects a captain who counts the cards.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 3 }],
+          schedule: [{ storyletId: 'chain.the-broker.leverage', delayDays: 1 }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 1 }],
+          schedule: [{ storyletId: 'chain.the-broker.leverage', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'chain.the-broker.leverage',
+    title: 'Whose Leverage',
+    prose:
+      'The favor delivered, the Broker lays the last card down: the secret you moved for him cuts both ways, and now you hold a line of his ledger too. Pay the debt off clean, refuse him outright, or turn the whole arrangement back on the man who built it.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      npc: { id: 'npc-the-broker', disposition: { gte: 3 } },
+      flags: [{ name: 'chain.the-broker.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Broker closed his own ledger while your line sat open — the leverage you might have held went back into his file, and the wire notes he never forgets an account left unsettled.',
+      effects: {
+        disposition: [{ npcId: 'npc-the-broker', delta: -2 }],
+        flags: [{ name: 'chain.the-broker.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'settle-clean',
+        label: 'Settle the debt clean',
+        prose:
+          'Pay the Broker off in coin and cut the leverage both ways. He prefers it messy, but he takes a clean settlement from a captain who insists on one.',
+        requirements: { credits: { gte: 150 } },
+        effects: {
+          credits: -150,
+          disposition: [{ npcId: 'npc-the-broker', delta: 2 }],
+          flags: [{ name: 'chain.the-broker.resolved', value: 'settled' }],
+        },
+      },
+      {
+        id: 'turn-it-back',
+        label: 'Turn the leverage back on him',
+        prose:
+          "Use the line you hold to pin the Broker to his own ledger. Do it right and, for once, the man who owns everyone's secrets owes one to you.",
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 13 } },
+        successEffects: {
+          credits: 200,
+          disposition: [{ npcId: 'npc-the-broker', delta: 3 }],
+          flags: [{ name: 'chain.the-broker.resolved', value: 'leveraged' }],
+        },
+        failureEffects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: 1 }],
+          flags: [{ name: 'chain.the-broker.resolved', value: 'outplayed' }],
+        },
+      },
+      {
+        id: 'refuse-outright',
+        label: 'Refuse him outright',
+        prose:
+          'Tell the Broker his ledger is his problem and walk. A manipulative man dislikes a flat no more than a knife — but he files it, and files you, and the account stays open.',
+        effects: {
+          disposition: [{ npcId: 'npc-the-broker', delta: -1 }],
+          flags: [{ name: 'chain.the-broker.resolved', value: 'refused' }],
+        },
+      },
+    ],
+  },
+
+  // ==========================================================================
+  // T-1503 · ALLIANCE ARCS — one 3-step questline per galactic power (PRD §8.1 /
+  //   §2). Each expresses its faction's playstyle and gates its later episodes on
+  //   the REPUTATION its earlier episodes granted — the same organic-progression
+  //   shape the T-1502 NPC chains use with `npc.disposition`, but on the new
+  //   `player.reputation[faction]` state (the named reader of the reputation field).
+  //
+  //   ERA: every ep1 is gated `eras: ['VETERAN']` — alliance arcs are VETERAN-phase
+  //   content (PRD §5.1 Tour One → veteran loop: you SWEAR to a galactic power as a
+  //   proven veteran, not a day-1 rookie still under the Guild's opening loan). This
+  //   is also what keeps the arcs from perturbing the Tour One early-game: a new
+  //   dawn storylet offer at the player's system shifts that day's travel-encounter
+  //   RNG fork (dayEventCount → the fork index), so anchoring these openers in the
+  //   VETERAN phase leaves every Tour One seeded fixture's board + encounter timing
+  //   untouched (see the T-1503 golden note in day-loop-golden.ts).
+  //
+  //   SHARED SHAPE (mirrors the NPC-chain template above):
+  //     - ep1 (the offer): `eras:['VETERAN']` + systemIds-gated at that faction's
+  //       CORE anchor (League → Deneb-4/5, Dragons → Aldebaran-1/2, Confederation →
+  //       Altair-3/3, Rebels → a rim system/15) + an `alliance.X.resolved
+  //       exists:false` gate. NO rep gate (a spacer reaching the veteran phase may
+  //       still sit at 0 with a faction). The "engage" choice grants an opening +5
+  //       own-faction rep and SCHEDULES ep2; the "decline" out is requirement-free
+  //       and sets resolved='declined'.
+  //     - ep2 (the proof): `scheduledOnly`, `reputation:{faction, gte:3}` — the
+  //       gate ep1's +5 crosses organically. A playstyle stat check (League GRIT,
+  //       Dragons GUNS, Confederation TRADE, Rebels GUILE) grants +3, plus a
+  //       requirement-free +2 fallback so the chain always advances; both schedule
+  //       ep3. Carries a `wireResolution`.
+  //     - ep3 (the commitment): `scheduledOnly`, `reputation:{faction, gte:6}` (ep1
+  //       +5 and ep2 +2/+3 both clear it). Terminal — the "join/commit" choice
+  //       applies the CROSS-FACTION shift (own +FACTION_JOIN_OWN_BONUS, the other
+  //       three −FACTION_JOIN_CROSS_PENALTY), sets resolved='joined', pays standing;
+  //       a requirement-free "walk" alternative sets resolved='walked'. Carries a
+  //       `wireResolution`.
+  //
+  //   READERS / consumed state (Standing-constraint 7):
+  //     - `player.reputation[faction]`: READ by the ep2/ep3 `reputation` gates (the
+  //       organic progression gate), the cross-faction shift, and the UI standing
+  //       readout — so every grant and the join penalty is consumed.
+  //     - `alliance.X.resolved`: READ by every episode's `exists:false` trigger gate
+  //       (a resolved arc — joined, declined, or wire-abandoned — never re-offers).
+  //     - `wireResolution`: READ by the engine dusk sweep (`resolveAbandonedChains`)
+  //       → a WireEntry + the rep penalty.
+  //
+  //   DIVERGENCE: foundation (f2f95fa9) carries the four powers as SETTING but no
+  //   reputation MECHANIC, so these arcs and their rep budget are engine-original
+  //   content, tuned as data (factions.ts). Voice per the User-Manual register.
+  // ==========================================================================
+
+  // --- Astro League · the patrol writ (law / patrol contracts; GRIT). Anchor:
+  //     Deneb-4 (system 5, a League port the veteran ranges to). The VETERAN era
+  //     gate (see the SHARED SHAPE header) is what keeps this off the Tour One
+  //     early-game seeds; the anchor is simply a League port, not Sun-3. ---
+  {
+    id: 'alliance.league.writ',
+    title: 'A League Patrol Writ',
+    prose:
+      'A League patrol officer catches you at the Deneb-4 gantry with a deputation writ already half-signed. "We are short hulls and long on lanes," she says. "Ride with the patrol, keep the lanes clean, and the League remembers who stood a watch."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [5],
+      eras: ['VETERAN'],
+      flags: [{ name: 'alliance.league.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'engage',
+        label: 'Take the writ',
+        prose:
+          'Sign the deputation and clip the League chit to your board. The lanes are the League’s, and now, for a while, so are you.',
+        effects: {
+          reputation: [{ faction: 'league', delta: 5 }],
+          flags: [{ name: 'alliance.league.opened', value: true }],
+          schedule: [{ storyletId: 'alliance.league.sweep', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Hand the writ back',
+        prose:
+          'Tell the officer your hull flies for itself. She shrugs — the League has long memories and short deputation lists, and you have just left yourself off one.',
+        effects: {
+          flags: [{ name: 'alliance.league.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.league.sweep',
+    title: 'Stand the Watch',
+    prose:
+      'The writ comes due: a smuggler corridor needs a hull that will hold the line while the patrol closes it. Standing a League watch is grit, not glory — long hours, hard boardings, and a lane that stays clean only as long as you do.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'league', gte: 3 },
+      flags: [{ name: 'alliance.league.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The League notes a deputized hull that never made its watch — the corridor was closed without you, and the patrol logs who did not stand the line.',
+      effects: {
+        reputation: [{ faction: 'league', delta: -3 }],
+        flags: [{ name: 'alliance.league.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'hold-the-line',
+        label: 'Hold the corridor (GRIT)',
+        prose:
+          'Anchor the lane and outlast the runners. Boarding after boarding, you hold until the corridor is the League’s again.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 12 } },
+        successEffects: {
+          reputation: [{ faction: 'league', delta: 3 }],
+          schedule: [{ storyletId: 'alliance.league.commission', delayDays: 1 }],
+        },
+        failureEffects: {
+          reputation: [{ faction: 'league', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.league.commission', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'work-the-desk',
+        label: 'Run the writ by the book',
+        prose:
+          'Skip the heroics and work the deputation the quiet way — manifests, checkpoints, paperwork. It closes the corridor slower, but it closes.',
+        effects: {
+          reputation: [{ faction: 'league', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.league.commission', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.league.commission',
+    title: 'A League Commission',
+    prose:
+      'You have stood enough watches that the League offers the writ made permanent: a standing commission, a lane of your own to keep — and an oath that the League’s enemies become yours. Swear it, and the Dragons, the Confederation, and the frontier all read the name that just went blue.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'league', gte: 6 },
+      flags: [{ name: 'alliance.league.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The League withdrew a commission left unclaimed — the lane went to a hull that answered, and yours went back to flying for itself.',
+      effects: {
+        reputation: [{ faction: 'league', delta: -3 }],
+        flags: [{ name: 'alliance.league.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Swear the commission',
+        prose:
+          'Take the oath and the lane both. You are League now, in the record and on the wire — and everyone the League counts an enemy just counted you one.',
+        effects: {
+          credits: 250,
+          reputation: [
+            { faction: 'league', delta: FACTION_JOIN_OWN_BONUS },
+            { faction: 'dragons', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'confederation', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'rebels', delta: -FACTION_JOIN_CROSS_PENALTY },
+          ],
+          flags: [{ name: 'alliance.league.resolved', value: 'joined' }],
+        },
+      },
+      {
+        id: 'walk',
+        label: 'Keep your hull your own',
+        prose:
+          'Thank the League and hand the lane back. A watch stood is a watch stood, but an oath sworn is a leash — and you were not built for one.',
+        effects: {
+          reputation: [{ faction: 'league', delta: -1 }],
+          flags: [{ name: 'alliance.league.resolved', value: 'walked' }],
+        },
+      },
+    ],
+  },
+
+  // --- Space Dragons · the duel circuit (honor / strength; GUNS). Anchor:
+  //     Aldebaran-1 (system 2, a Dragons port). ---
+  {
+    id: 'alliance.dragons.challenge',
+    title: 'The Dragons’ Challenge',
+    prose:
+      'A Space Dragon blocks your berth at Aldebaran-1, unhurried, reading your hull like a ledger of fights you have not had yet. "The circuit is open," she says. "Guns and honor, no ambushes, no debts. Fly it, and the Dragons learn your name the only way that matters."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [2],
+      eras: ['VETERAN'],
+      flags: [{ name: 'alliance.dragons.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'engage',
+        label: 'Enter the circuit',
+        prose:
+          'Take the challenge chit. The Dragons keep score in duels won, and you have just put your name on the board.',
+        effects: {
+          reputation: [{ faction: 'dragons', delta: 5 }],
+          flags: [{ name: 'alliance.dragons.opened', value: true }],
+          schedule: [{ storyletId: 'alliance.dragons.circuit', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Refuse the challenge',
+        prose:
+          'Tell the Dragon you fly to arrive, not to duel. She smiles without warmth — a refused challenge is not a grudge to the Dragons, only a name they stop bothering to learn.',
+        effects: {
+          flags: [{ name: 'alliance.dragons.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.dragons.circuit',
+    title: 'Fly the Circuit',
+    prose:
+      'The circuit names your first opponent — a Dragon who has never lost cleanly and does not intend to start. This is honor the Dragon way: guns up, no tricks, and the winner is the one still flying when the other calls it.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'dragons', gte: 3 },
+      flags: [{ name: 'alliance.dragons.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Dragons struck a no-show from the circuit board — a name that entered and never flew. Among Dragons, that is worse than a loss.',
+      effects: {
+        reputation: [{ faction: 'dragons', delta: -3 }],
+        flags: [{ name: 'alliance.dragons.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'duel',
+        label: 'Fly the duel (GUNS)',
+        prose:
+          'Meet the Dragon gun to gun and hold nothing back. Honor is measured in the fight, not the outcome — but the Dragons measure a clean win highest.',
+        requirements: { statCheck: { stat: Stat.GUNS, dc: 12 } },
+        successEffects: {
+          reputation: [{ faction: 'dragons', delta: 3 }],
+          schedule: [{ storyletId: 'alliance.dragons.crown', delayDays: 1 }],
+        },
+        failureEffects: {
+          reputation: [{ faction: 'dragons', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.dragons.crown', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'fly-honest',
+        label: 'Fly it honest and take the marks',
+        prose:
+          'Fly the circuit straight, win or lose, and let the Dragons see a hull that never once reached for a trick. They respect the honesty even when the guns come up short.',
+        effects: {
+          reputation: [{ faction: 'dragons', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.dragons.crown', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.dragons.crown',
+    title: 'The Circuit’s Crown',
+    prose:
+      'You have flown enough of the circuit that the Dragons offer the crown of it: a place among them, wings that answer when you call and a name spoken in the honor-tongue. Take it, and the League, the Confederation, and the frontier all mark the hull that just went Dragon.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'dragons', gte: 6 },
+      flags: [{ name: 'alliance.dragons.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Dragons closed the circuit’s crown to a hull that stopped flying it — the wings went to a name that answered, and yours flew on alone.',
+      effects: {
+        reputation: [{ faction: 'dragons', delta: -3 }],
+        flags: [{ name: 'alliance.dragons.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Take the crown',
+        prose:
+          'Take the wings and the honor-name both. You are Dragon now — and every hull the Dragons have ever crossed guns with just learned yours.',
+        effects: {
+          credits: 250,
+          reputation: [
+            { faction: 'dragons', delta: FACTION_JOIN_OWN_BONUS },
+            { faction: 'league', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'confederation', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'rebels', delta: -FACTION_JOIN_CROSS_PENALTY },
+          ],
+          flags: [{ name: 'alliance.dragons.resolved', value: 'joined' }],
+        },
+      },
+      {
+        id: 'walk',
+        label: 'Fly out of the circuit',
+        prose:
+          'Salute the Dragons and fly on. The circuit was a good fight and a fair one, but wings that answer another’s call were never the wings you wanted.',
+        effects: {
+          reputation: [{ faction: 'dragons', delta: -1 }],
+          flags: [{ name: 'alliance.dragons.resolved', value: 'walked' }],
+        },
+      },
+    ],
+  },
+
+  // --- Warlord Confederation · the port stake (conquest / ports; TRADE). Anchor:
+  //     Altair-3 (system 3, a Confederation port). ---
+  {
+    id: 'alliance.confederation.stake',
+    title: 'A Confederation Stake',
+    prose:
+      'A Confederation factor finds you at Altair-3 with a proposition and no pretense. "The warlords hold their space by holding its ports," he says. "Buy in — a stake, a lane, a cut of the launch fees — and the Confederation counts you an owner, not a guest."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [3],
+      eras: ['VETERAN'],
+      flags: [{ name: 'alliance.confederation.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'engage',
+        label: 'Buy into the stake',
+        prose:
+          'Put your name on the Confederation’s ledger. In warlord space, property is loyalty, and you have just declared a little of both.',
+        effects: {
+          reputation: [{ faction: 'confederation', delta: 5 }],
+          flags: [{ name: 'alliance.confederation.opened', value: true }],
+          schedule: [{ storyletId: 'alliance.confederation.holdings', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Keep out of warlord ledgers',
+        prose:
+          'Tell the factor your credits stay your own. He closes the slate without a flicker — the Confederation does not argue with a no, it simply stops offering.',
+        effects: {
+          flags: [{ name: 'alliance.confederation.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.confederation.holdings',
+    title: 'Work the Holdings',
+    prose:
+      'The stake needs working: a contested launch-fee schedule, a rival owner, and a negotiation that decides whether your cut grows or gets quietly eaten. This is Confederation power the honest way — leverage, ledgers, and a harder bargain than any blockade.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'confederation', gte: 3 },
+      flags: [{ name: 'alliance.confederation.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Confederation reassigned a stake its owner never worked — your cut of the launch fees went to a warlord who showed up to claim it.',
+      effects: {
+        reputation: [{ faction: 'confederation', delta: -3 }],
+        flags: [{ name: 'alliance.confederation.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'drive-the-bargain',
+        label: 'Drive the bargain (TRADE)',
+        prose:
+          'Sit the table and grind the schedule your way, clause by clause, until the rival owner signs the smaller cut and calls it generous.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          reputation: [{ faction: 'confederation', delta: 3 }],
+          schedule: [{ storyletId: 'alliance.confederation.charter', delayDays: 1 }],
+        },
+        failureEffects: {
+          reputation: [{ faction: 'confederation', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.confederation.charter', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'hold-the-stake',
+        label: 'Just hold the stake and collect',
+        prose:
+          'Skip the fight for a bigger cut and simply hold what you bought, collecting the fees as they come. The Confederation respects an owner who keeps what is theirs.',
+        effects: {
+          reputation: [{ faction: 'confederation', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.confederation.charter', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.confederation.charter',
+    title: 'A Warlord’s Charter',
+    prose:
+      'Your holdings have grown enough that the Confederation offers a charter: a warlord’s seat, a share of the whole schedule, and a banner your ports fly under. Take it, and the League, the Dragons, and the frontier all read the flag your hulls just raised.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'confederation', gte: 6 },
+      flags: [{ name: 'alliance.confederation.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Confederation let a charter lapse unclaimed — the seat went to a warlord who wanted it, and your holdings stayed just holdings.',
+      effects: {
+        reputation: [{ faction: 'confederation', delta: -3 }],
+        flags: [{ name: 'alliance.confederation.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Sign the charter',
+        prose:
+          'Raise the banner and take the seat. You are Confederation now — a warlord in your own small right — and the powers that are not just felt the map shift.',
+        effects: {
+          credits: 250,
+          reputation: [
+            { faction: 'confederation', delta: FACTION_JOIN_OWN_BONUS },
+            { faction: 'league', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'dragons', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'rebels', delta: -FACTION_JOIN_CROSS_PENALTY },
+          ],
+          flags: [{ name: 'alliance.confederation.resolved', value: 'joined' }],
+        },
+      },
+      {
+        id: 'walk',
+        label: 'Stay an owner, not a warlord',
+        prose:
+          'Keep the stake and hand back the banner. Property is one thing; a warlord’s seat is a debt paid in loyalty you would rather not owe.',
+        effects: {
+          reputation: [{ faction: 'confederation', delta: -1 }],
+          flags: [{ name: 'alliance.confederation.resolved', value: 'walked' }],
+        },
+      },
+    ],
+  },
+
+  // --- Rebel Alliance · the smuggling lane (free trade / frontier; GUILE).
+  //     Anchor: a rim system (15, ungoverned frontier). ---
+  {
+    id: 'alliance.rebels.run',
+    title: 'A Frontier Run',
+    prose:
+      'Out past the last League beacon, a rim runner flags you down with a cargo the core would call contraband and the frontier calls trade. "We move it ourselves out here," she says, "and we remember who runs a lane clean. Care to run one?"',
+    repeat: 'never',
+    trigger: {
+      systemIds: [15],
+      eras: ['VETERAN'],
+      flags: [{ name: 'alliance.rebels.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'engage',
+        label: 'Run the lane',
+        prose:
+          'Take the coordinates and the cargo. The frontier keeps no ledgers but the ones in its head, and you have just been written into one.',
+        effects: {
+          reputation: [{ faction: 'rebels', delta: 5 }],
+          flags: [{ name: 'alliance.rebels.opened', value: true }],
+          schedule: [{ storyletId: 'alliance.rebels.lane', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Stay off the frontier lanes',
+        prose:
+          'Tell the runner your holds fly legal. She grins and lets you pass — the frontier holds no grudge, but it does not open its lanes to a hull that flies for the core.',
+        effects: {
+          flags: [{ name: 'alliance.rebels.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.rebels.lane',
+    title: 'Run It Quiet',
+    prose:
+      'The lane runs straight through a League checkpoint that has no business this far out. Running frontier cargo is guile, not guns — a quiet hold, a clean manifest, and a story the patrol believes just long enough to wave you through.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'rebels', gte: 3 },
+      flags: [{ name: 'alliance.rebels.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Word off the rim: a lane went unrun and a runner waited on a hull that never came. The frontier moved the cargo itself, and marked the name that left it holding.',
+      effects: {
+        reputation: [{ faction: 'rebels', delta: -3 }],
+        flags: [{ name: 'alliance.rebels.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'run-it-quiet',
+        label: 'Run it past the checkpoint (GUILE)',
+        prose:
+          'Dress the hold, cool the manifest, and talk the patrol into a lane they should have closed. The frontier loves a runner who makes the core look the other way.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          reputation: [{ faction: 'rebels', delta: 3 }],
+          schedule: [{ storyletId: 'alliance.rebels.compact', delayDays: 1 }],
+        },
+        failureEffects: {
+          reputation: [{ faction: 'rebels', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.rebels.compact', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'go-the-long-way',
+        label: 'Take the long dark way around',
+        prose:
+          'Skip the checkpoint entirely and burn the extra fuel around it. Slower, colder, and every credit yours — the frontier respects a runner who never gets seen at all.',
+        effects: {
+          reputation: [{ faction: 'rebels', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.rebels.compact', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.rebels.compact',
+    title: 'The Frontier Compact',
+    prose:
+      'You have run enough lanes that the frontier offers the only thing it has to give: the compact — a name spoken as one of theirs, lanes opened on trust, and a stake in the free trade the core keeps trying to close. Take it, and the League, the Dragons, and the Confederation all read the hull that just went rebel.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'rebels', gte: 6 },
+      flags: [{ name: 'alliance.rebels.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The frontier let a compact go unsworn — the lanes opened for a runner who kept coming, and your name stayed a stranger’s on the rim.',
+      effects: {
+        reputation: [{ faction: 'rebels', delta: -3 }],
+        flags: [{ name: 'alliance.rebels.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Swear the compact',
+        prose:
+          'Take the name and the open lanes both. You are frontier now — free trade and no ledgers — and every power that keeps one just crossed you off it.',
+        effects: {
+          credits: 250,
+          reputation: [
+            { faction: 'rebels', delta: FACTION_JOIN_OWN_BONUS },
+            { faction: 'league', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'dragons', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'confederation', delta: -FACTION_JOIN_CROSS_PENALTY },
+          ],
+          flags: [{ name: 'alliance.rebels.resolved', value: 'joined' }],
+        },
+      },
+      {
+        id: 'walk',
+        label: 'Run free of every flag',
+        prose:
+          'Thank the frontier and keep flying no one’s lanes but your own. Even a compact of free traders is a compact — and you came out here to owe nobody.',
+        effects: {
+          reputation: [{ faction: 'rebels', delta: -1 }],
+          flags: [{ name: 'alliance.rebels.resolved', value: 'walked' }],
+        },
       },
     ],
   },

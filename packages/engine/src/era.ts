@@ -153,6 +153,7 @@ export function advanceEraSchedule(
         events.push({
           type: 'WireEntry',
           day: currentDay,
+          kind: 'plain',
           message: resolveWireCopy(def.wireEnd, eraEvent),
         });
       }
@@ -177,6 +178,7 @@ export function advanceEraSchedule(
     events.push({
       type: 'WireEntry',
       day: currentDay,
+      kind: 'plain',
       message: resolveWireCopy(def.wireStart, started),
     });
   }

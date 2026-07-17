@@ -65,3 +65,79 @@ export const INSULT_DISPOSITION = -4;
 /** A `meet` (introduction) nudges the NPC a single friendly step — a first
  *  handshake, not yet a bond. */
 export const MEET_DISPOSITION = 1;
+
+// ===========================================================================
+// T-1501 · The rumor-table's authored beats (PRD §8.3 rumor table; the host slot
+// T-1303 built). Before this task the two rumor phrasings lived INLINE in the
+// engine (`packages/engine/src/actions/hangout.ts` `hangoutRumors`) — authored
+// prose as engine logic, which Standing-constraint 4 keeps out of the engine.
+// They move here as DATA: one authored template per live NPC action-type, each
+// with a warm phrasing and a grudge (cold) phrasing so a rumor carries the
+// gossip's tone off the NPC's LIVE disposition sign. The engine stays the pure
+// interpolator (it fills the placeholders from live NPC fields and picks the
+// warm/cold variant by disposition); it owns no prose.
+//
+// FOUNDATION (f2f95fa9): foundation has no rumor table (see the Hangout note
+// above — the Hangout-as-place is engine-original), so these strings carry no
+// foundation citation; they are authored Rimward content in the same period
+// voice as the storylets.
+//
+// PLACEHOLDERS (filled by the engine): `{name}` the NPC's name, `{details}` the
+// NPC's live `lastAction.details` clause (already a full verb phrase, e.g.
+// "hauled Medicinals to Fomalhaut-2"), `{system}` the NPC's current system name.
+// The details clause is embedded verbatim so a rumor names the real, simulated
+// thing the NPC just did — the "renders a fact from LIVE NPC state" acceptance.
+//
+// READER: `hangoutRumors` (engine `actions/hangout.ts`), which the `rumor` and
+// `meet` venues attach to their HangoutEvent, surfaced by the T-1404 Hangout
+// pane (`ui/format.ts hangoutRumorLines`). Keys are the engine `NpcActionType`
+// string literals; a `Record<string, …>` (not the engine enum) keeps content
+// upstream of the engine, matching every action type the NPC sim can log.
+// ===========================================================================
+
+export interface RumorTemplate {
+  /** Phrasing when the gossiped NPC bears the captain no grudge (disposition >= 0). */
+  warm: string;
+  /** Phrasing when the NPC holds a grudge (disposition < 0) — the room gossips colder. */
+  cold: string;
+}
+
+export const RUMOR_TEMPLATES: Record<string, RumorTemplate> = {
+  Trade: {
+    warm: 'Word at the tables is {name} {details} — good hauling, they say, last heard out of {system}.',
+    cold: 'They say {name} {details}, and half of {system} reckons the tally was crooked.',
+  },
+  Travel: {
+    warm: 'Somebody swears {name} {details} — burning hard, last plotted out of {system}.',
+    cold: "Nobody's glad {name} {details}; {system} was quieter before that transponder pinged.",
+  },
+  Combat: {
+    warm: 'The wire has it {name} {details} — a name to stand behind, out around {system}.',
+    cold: 'Watch yourself: {name} {details}, and the mood out of {system} is not a friendly one.',
+  },
+  Patrol: {
+    warm: '{name} {details}, they say — a steady hand keeping the {system} lanes honest.',
+    cold: "{name} {details}, and every runner out of {system} curses the badge while they're at it.",
+  },
+  Socialize: {
+    warm: 'Everyone at {system} is still laughing about how {name} {details}.',
+    cold: '{name} {details}, and left a sour taste on the whole {system} table.',
+  },
+  Idle: {
+    warm: 'Quiet word is {name} {details} — laying low around {system} for now.',
+    cold: '{name} {details}, brooding somewhere around {system}, and nobody wants to be the one to ask why.',
+  },
+  FlawOverride: {
+    warm: 'The tables cannot stop retelling it: {name} {details}, right there off {system}.',
+    cold: '{name} {details} — the kind of story {system} tells to warn the new hands.',
+  },
+};
+
+/** Line for an NPC with no logged action yet (no `lastAction`). Uses `{name}`
+ *  and `{system}` only — there is no details clause to embed. */
+export const RUMOR_QUIET_TEMPLATE =
+  '{name} is keeping quiet around {system} these days — nobody at the tables has a word on them.';
+
+/** The degenerate empty-roster line, preserving the host slot's "always >= 1
+ *  fact" guarantee when there is no one to gossip about. */
+export const RUMOR_EMPTY_LINE = 'The tables are quiet tonight — no one worth gossiping about.';

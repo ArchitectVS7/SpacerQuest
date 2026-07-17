@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
 import { applyPlayerAction, startDay } from '../day.js';
-import { maxCargoPodsForShip, quoteShipyard, resolveShipyard } from '../actions/shipyard.js';
+import {
+  componentTierForStrength,
+  maxCargoPodsForShip,
+  quoteShipyard,
+  resolveShipyard,
+} from '../actions/shipyard.js';
 import { createInitialState } from '../state.js';
 import { GameState, PlayerAction, ShipyardFail } from '../types.js';
 
@@ -584,5 +589,58 @@ describe('quoteShipyard (T-308 preview)', () => {
     state.player.ship.hasTitaniumHull = true;
     const after = maxCargoPodsForShip(state);
     expect(after).toBeGreaterThan(before);
+  });
+
+  // T-1402 REGRESSION — the tier-1-hull→0-pods trap. Foundation's `> 9` boundary
+  // parked a strength-10 (tier-1) hull at hx=0, so buying a tier-1 hull yielded 0
+  // pods — strictly worse than the junker's 10. The `> 10` boundary gives it a
+  // real, monotonic capacity while leaving every pinned value untouched.
+  it('a tier-1 hull (strength 10) has non-zero cargo capacity (pod-trap fixed)', () => {
+    const cases: [number, number][] = [
+      [1, 10], // junker str1 cond9 → (9+1)*1
+      [10, 100], // tier-1 str10 → (9+1)*10 — was 0 before the fix
+      [20, 100], // tier-2 str20 → (9+1)*10
+      [30, 200], // tier-3 str30 → (9+1)*20
+    ];
+    for (const [strength, expectedPods] of cases) {
+      const state = shipyardState();
+      state.player.ship.hull = { strength, condition: 9 };
+      state.player.ship.hasTitaniumHull = false;
+      expect(maxCargoPodsForShip(state)).toBe(expectedPods);
+    }
+  });
+});
+
+describe('componentTierForStrength (T-1401 export pack)', () => {
+  it('maps bought multiples of 10 to their exact tier', () => {
+    const cases: [number, number][] = [
+      [10, 1],
+      [20, 2],
+      [29, 2],
+      [90, 9],
+    ];
+    for (const [strength, tier] of cases) {
+      expect(componentTierForStrength(strength)).toBe(tier);
+    }
+  });
+
+  it('resolves a junker (strength 1-9) to tier 0, not tier 1', () => {
+    // REGRESSION: the UI invented `max(1, ceil(strength/10))`, which mapped a
+    // junker hull (strength 1) to tier 1 → nextTier 2, making TIER 1 UNBUYABLE.
+    // floor maps it to 0 → nextTier 1 is buyable.
+    expect(componentTierForStrength(1)).toBe(0);
+    expect(componentTierForStrength(9)).toBe(0);
+    // Contrast with the old broken inverse:
+    expect(Math.max(1, Math.ceil(1 / 10))).toBe(1);
+  });
+
+  it('is the exact inverse of the buy mutation (strength = tier * 10) for tiers 1-9', () => {
+    for (let tier = 1; tier <= 9; tier++) {
+      expect(componentTierForStrength(tier * 10)).toBe(tier);
+    }
+  });
+
+  it('clamps a stripped component (strength 0) to tier 0', () => {
+    expect(componentTierForStrength(0)).toBe(0);
   });
 });

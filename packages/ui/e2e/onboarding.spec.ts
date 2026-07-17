@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { createInitialState, startDay, createSave } from '@spacerquest/engine';
+import { createInitialState, startDay, createSave, type GameState } from '@spacerquest/engine';
 
 // T-311 acceptance: Tour One's teaching layer, driven end to end through the real
 // cockpit UI (per the global "validate the UX, never the API" rule). The only
@@ -36,7 +36,47 @@ const ALL_ONBOARDING_SEEN = JSON.stringify({
   'first-sign': true,
   'first-jump': true,
   'first-encounter': true,
+  // T-1407 · the new-verb prompts, pre-marked so the day-30 ceremony fixtures
+  // (which boot at a hangout/purchasable system) never surface a coach callout.
+  'first-hangout': true,
+  'first-loan': true,
+  'first-contraband': true,
+  'first-port': true,
+  'first-explore': true,
 });
+
+/**
+ * T-1407 · Boot the store into an offline save fixture with a chosen onboarding
+ * seen-set, isolating the target new-verb prompt as the winner (the guided
+ * delivery chain is pre-seen away, and higher-priority new prompts too). Offline
+ * fixture construction only — the same allowance the wire/combat specs use; every
+ * prompt is then driven and dismissed through the real DOM, never an engine call.
+ *
+ * The init script GUARDS on an existing save so it does NOT clobber the app's own
+ * persisted onboarding record on page.reload() — that record (with the dismissal
+ * the persistence assertions depend on) must survive the reboot, exactly as the
+ * un-scripted Test A relies on.
+ */
+async function bootOnboardingFixture(
+  page: Page,
+  seed: number,
+  seen: Record<string, true>,
+  mutate?: (s: GameState) => void,
+): Promise<void> {
+  const base = startDay(createInitialState(seed)).state;
+  mutate?.(base);
+  const save = createSave(base, seed);
+  await page.addInitScript(
+    ([s, ob]) => {
+      if (!window.localStorage.getItem('sq.save.v1')) {
+        window.localStorage.setItem('sq.save.v1', s);
+        window.localStorage.setItem('sq.onboarding.v1', ob);
+      }
+    },
+    [save, JSON.stringify(seen)] as const,
+  );
+  await page.goto('/');
+}
 
 test.beforeEach(async ({ page }) => {
   // Settle the dawn-roll scramble so a die's displayed face equals its dealt
@@ -100,12 +140,196 @@ test('fresh seed: first delivery guided by visible affordances; each prompt fire
 
   await expect(page.getByTestId('credits')).toHaveText('3,420');
   await expect(page.getByTestId('active-contract-empty')).toBeVisible();
+
+  // 4) The delivery lands at Pollux-7 (system 9), a purchasable core port with a
+  //    full-enough tank — so the T-1407 contextual prompts now take over: first the
+  //    port nudge (higher priority), then the off-lane sweep nudge. Each fires once
+  //    and is dismissed via its own affordance (these are manual-dismiss-only). No
+  //    contraband rides the sys-9 board here, so the contraband nudge stays silent.
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-port');
+  await expect(coach).toHaveAttribute('data-onboarding-anchor', 'port');
+  await page.getByTestId('onboarding-dismiss').click();
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-explore');
+  await expect(coach).toHaveAttribute('data-onboarding-anchor', 'starmap');
+  await page.getByTestId('onboarding-dismiss').click();
   await expect(coach).toHaveCount(0);
 
-  // 4) Fired once + persistence: reload WITHOUT clearing storage. The seen record
+  // 5) Fired once + persistence: reload WITHOUT clearing storage. The seen record
   //    rode along in sq.onboarding.v1, so no prompt re-fires on the fresh boot.
   await page.reload();
   await expect(page.getByTestId('onboarding')).toHaveCount(0);
+});
+
+// ---- T-1407 · one test per new verb, driven through the real cockpit --------
+// Each proves: the prompt fires once, anchored to its real affordance; the
+// dismissed state persists across reload; and it never fires for a state that
+// cannot perform the verb (the negative sub-check). Fixtures pre-seen the guided
+// delivery chain (and any higher-priority new prompt) so the target is the winner.
+
+const SEEN_DELIVERY = { 'dawn-roll': true, 'first-sign': true } as const;
+
+test('first-hangout coach fires once at a Hangout system, anchored, and persists', async ({
+  page,
+}) => {
+  // Sun-3 (system 1) hosts the only Tour One Hangout. With the delivery chain
+  // pre-seen, the highest-priority new prompt at a hangout system is first-hangout.
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY });
+
+  const coach = page.getByTestId('onboarding');
+  await expect(coach).toBeVisible();
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-hangout');
+  await expect(coach).toHaveAttribute('data-onboarding-anchor', 'hangout');
+
+  await page.getByTestId('onboarding-dismiss').click();
+  // Persistence: reload; the hangout nudge does not re-fire (the loan nudge is
+  // next in priority but mounts inside the closed panel, so nothing shows here).
+  await page.reload();
+  await expect(page.locator('[data-onboarding-id="first-hangout"]')).toHaveCount(0);
+});
+
+test('first-hangout never fires where no Hangout exists', async ({ page }) => {
+  // A rim system (Antares-5, id 15) has no Hangout — the nudge must stay silent.
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY }, (s) => {
+    s.player.currentSystemId = 15;
+  });
+  await expect(page.getByTestId('day')).toBeVisible();
+  await expect(page.locator('[data-onboarding-id="first-hangout"]')).toHaveCount(0);
+});
+
+test('first-loan coach fires once inside the open Hangout panel, anchored, and persists', async ({
+  page,
+}) => {
+  // Delivery chain + the hangout nudge pre-seen, so first-loan is the winner. It
+  // mounts INSIDE the panel, so it only surfaces once the player opens the Hangout.
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY, 'first-hangout': true });
+
+  // Nothing at cockpit screen level (the loan nudge routes to the hangout mount).
+  await expect(page.getByTestId('onboarding')).toHaveCount(0);
+
+  await page.getByTestId('hangout-toggle').click();
+  const panel = page.getByTestId('hangout-panel');
+  const coach = panel.getByTestId('onboarding');
+  await expect(coach).toBeVisible();
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-loan');
+  await expect(coach).toHaveAttribute('data-onboarding-anchor', 'loan');
+
+  await panel.getByTestId('onboarding-dismiss').click();
+  // Persistence: reload, re-open the panel — the loan nudge does not re-fire.
+  await page.reload();
+  await page.getByTestId('hangout-toggle').click();
+  await expect(page.getByTestId('hangout-panel')).toBeVisible();
+  await expect(page.locator('[data-onboarding-id="first-loan"]')).toHaveCount(0);
+});
+
+test('first-loan never fires when a loan is already outstanding', async ({ page }) => {
+  // A player already carrying a Penny Wise loan cannot borrow again — the in-panel
+  // nudge must stay silent even at the Hangout.
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY, 'first-hangout': true }, (s) => {
+    s.player.loan = {
+      lender: 'npc-penny-wise',
+      principal: 5000,
+      outstanding: 5000,
+      dailyRate: 0.05,
+      borrowedDay: 1,
+      dueDay: 15,
+      status: 'active',
+    };
+  });
+  await page.getByTestId('hangout-toggle').click();
+  await expect(page.getByTestId('hangout-panel')).toBeVisible();
+  await expect(page.locator('[data-onboarding-id="first-loan"]')).toHaveCount(0);
+});
+
+test('first-contraband coach fires once at a contraband offer, anchored, and persists', async ({
+  page,
+}) => {
+  // A non-Hangout core system (Aldebaran-1, id 2) with a contraband offer on the
+  // board and the delivery chain pre-seen: first-contraband is the winner.
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY }, (s) => {
+    s.player.currentSystemId = 2;
+    s.market.manifestBoard[0].cargoType = 10; // the lone contraband cargo id
+  });
+
+  const coach = page.getByTestId('onboarding');
+  await expect(coach).toBeVisible();
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-contraband');
+  await expect(coach).toHaveAttribute('data-onboarding-anchor', 'manifest');
+
+  await page.getByTestId('onboarding-dismiss').click();
+  await page.reload();
+  await expect(page.locator('[data-onboarding-id="first-contraband"]')).toHaveCount(0);
+});
+
+test('first-contraband never fires when the board carries no contraband', async ({ page }) => {
+  // Scrub the board of contraband — the nudge must stay silent (a purchasable port
+  // nudge may show instead; we only assert the contraband nudge never appears).
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY }, (s) => {
+    s.player.currentSystemId = 2;
+    for (const c of s.market.manifestBoard) c.cargoType = 1; // Dry Goods, clean
+  });
+  await expect(page.getByTestId('day')).toBeVisible();
+  await expect(page.locator('[data-onboarding-id="first-contraband"]')).toHaveCount(0);
+});
+
+test('first-port coach fires once at a purchasable port, anchored, and persists', async ({
+  page,
+}) => {
+  // A purchasable core port (Aldebaran-1, id 2) with the delivery chain + the
+  // contraband nudge pre-seen, so first-port is the winner (over first-explore).
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY, 'first-contraband': true }, (s) => {
+    s.player.currentSystemId = 2;
+  });
+
+  const coach = page.getByTestId('onboarding');
+  await expect(coach).toBeVisible();
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-port');
+  await expect(coach).toHaveAttribute('data-onboarding-anchor', 'port');
+
+  await page.getByTestId('onboarding-dismiss').click();
+  // The off-lane sweep nudge takes its place (still affordable); the port nudge
+  // does not re-fire after reload.
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-explore');
+  await page.reload();
+  await expect(page.locator('[data-onboarding-id="first-port"]')).toHaveCount(0);
+});
+
+test('first-port never fires at a system with no purchasable port', async ({ page }) => {
+  // A rim system (id 15) is not a purchasable port — the nudge must stay silent.
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY, 'first-contraband': true }, (s) => {
+    s.player.currentSystemId = 15;
+  });
+  await expect(page.getByTestId('day')).toBeVisible();
+  await expect(page.locator('[data-onboarding-id="first-port"]')).toHaveCount(0);
+});
+
+test('first-explore coach fires once when the tank can afford a sweep, anchored, and persists', async ({
+  page,
+}) => {
+  // A rim system (id 15, no Hangout, not a purchasable port) with a full tank and
+  // the higher-priority new prompts pre-seen: first-explore is the sole winner.
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY, 'first-contraband': true }, (s) => {
+    s.player.currentSystemId = 15;
+  });
+
+  const coach = page.getByTestId('onboarding');
+  await expect(coach).toBeVisible();
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-explore');
+  await expect(coach).toHaveAttribute('data-onboarding-anchor', 'starmap');
+
+  await page.getByTestId('onboarding-dismiss').click();
+  await expect(coach).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('[data-onboarding-id="first-explore"]')).toHaveCount(0);
+});
+
+test('first-explore never fires when the tank cannot afford a sweep', async ({ page }) => {
+  // Drain the tank below the sweep's fuel cost (80) — the nudge must stay silent.
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY, 'first-contraband': true }, (s) => {
+    s.player.currentSystemId = 15;
+    s.player.ship.fuel = 40;
+  });
+  await expect(page.getByTestId('day')).toBeVisible();
+  await expect(page.locator('[data-onboarding-id="first-explore"]')).toHaveCount(0);
 });
 
 test('first-encounter coach fires once, inside combat, and its dismissed state persists', async ({

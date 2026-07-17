@@ -68,7 +68,8 @@ export function natWireStories(
       .split('{loser}')
       .join(loserName);
 
-    out.push({ type: 'WireEntry', day, message });
+    // T-1401: nat-wire stories are actor-driven lines → 'npc'.
+    out.push({ type: 'WireEntry', day, kind: 'npc', message });
   }
 
   return out;

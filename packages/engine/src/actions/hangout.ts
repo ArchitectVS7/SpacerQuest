@@ -13,6 +13,9 @@ import {
   LOAN_TERM_DAYS,
   MEET_DISPOSITION,
   NPC_PROFILES,
+  RUMOR_EMPTY_LINE,
+  RUMOR_QUIET_TEMPLATE,
+  RUMOR_TEMPLATES,
   STAR_SYSTEMS,
   Stat,
 } from '@spacerquest/content';
@@ -29,19 +32,38 @@ function systemName(systemId: number): string {
   return STAR_SYSTEMS[systemId]?.name ?? `system ${systemId}`;
 }
 
+/** Interpolate a `{placeholder}` template with live NPC fields. An unknown
+ *  placeholder is left as-is (a defensive no-op — the authored templates only use
+ *  the three keys this ever supplies). */
+function fillRumor(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (whole, key: string) => vars[key] ?? whole);
+}
+
 /**
- * T-1303 · The rumor-table host slot (PRD §8.3). PURE: synthesizes one fact per
- * NPC from LIVE state — the NPC's most recent simulated action (`lastAction`) and
- * its current simulated position (`currentSystemId`) — with the NPCs sharing the
- * player's system listed first (they're at the same tables). Returns at least one
- * line so the slot is never empty. READERS: the T-1404 Hangout pane renders these
- * (and T-1501 later authors storylet beats into this same slot); the `meet` and
- * `rumor` venues attach the output to their HangoutEvent.
+ * T-1303 · The rumor-table host slot (PRD §8.3), now filled from AUTHORED content
+ * (T-1501). PURE: synthesizes one fact per NPC from LIVE state — the NPC's most
+ * recent simulated action (`lastAction`) and its current simulated position
+ * (`currentSystemId`) — with the NPCs sharing the player's system listed first
+ * (they're at the same tables). Returns at least one line so the slot is never
+ * empty.
  *
- * Because every line is derived from a live NPC field, the wire changes the moment
- * the simulation moves an NPC or logs a new action — which is the acceptance's
- * "renders ≥1 fact from live NPC state" (asserted by mutating a field and seeing
- * the output follow it).
+ * T-1501: the prose no longer lives here. Each line is an authored
+ * `RUMOR_TEMPLATES` entry (content) selected by the NPC's live `lastAction.type`,
+ * with the warm/cold variant chosen off the NPC's live `disposition` sign, then
+ * interpolated with the NPC's live `name`, `lastAction.details`, and system name.
+ * The engine owns only the selection + interpolation; the strings are data. An
+ * NPC with no logged action yet uses the quiet template; an empty roster uses the
+ * empty line — the "always ≥1 fact" guarantee is preserved.
+ *
+ * Because every line is derived from live NPC fields (type, details, position,
+ * disposition), the wire changes the moment the simulation moves an NPC, logs a
+ * new action, or its standing shifts — the acceptance's "fills ≥3 dynamic slots
+ * from live NPC state" (asserted by seeding ≥3 distinct co-located NPCs and by
+ * mutating a field and seeing the output follow it).
+ *
+ * READERS: the T-1404 Hangout pane renders these (`ui/format.ts
+ * hangoutRumorLines`); the `meet` and `rumor` venues attach the output to their
+ * HangoutEvent.
  */
 export function hangoutRumors(state: GameState): string[] {
   const here = state.player.currentSystemId;
@@ -53,17 +75,21 @@ export function hangoutRumors(state: GameState): string[] {
   for (const npc of ordered) {
     const where = systemName(npc.currentSystemId);
     if (npc.lastAction) {
-      // Live `lastAction.details` (written by the NPC sim each dusk) + live
-      // position — a genuine piece of gossip off the simulation.
-      facts.push(`Word is ${npc.name} ${npc.lastAction.details} — last heard out of ${where}.`);
+      // Live `lastAction` (written by the NPC sim each dusk) selects the authored
+      // template by action type; live `disposition` sign picks warm vs. grudge.
+      const template = RUMOR_TEMPLATES[npc.lastAction.type] ?? RUMOR_TEMPLATES.Idle;
+      const phrasing = npc.disposition < 0 ? template.cold : template.warm;
+      facts.push(
+        fillRumor(phrasing, { name: npc.name, details: npc.lastAction.details, system: where }),
+      );
     } else {
-      facts.push(`${npc.name} is keeping quiet around ${where} these days.`);
+      facts.push(fillRumor(RUMOR_QUIET_TEMPLATE, { name: npc.name, system: where }));
     }
   }
 
   if (facts.length === 0) {
     // Degenerate empty-roster corner: keep the "always ≥1 fact" guarantee.
-    facts.push('The tables are quiet tonight — no one worth gossiping about.');
+    facts.push(RUMOR_EMPTY_LINE);
   }
   return facts;
 }

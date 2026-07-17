@@ -10,12 +10,15 @@ import {
   DISPOSITION_DELTAS,
   TALK_DC_PER_DISPOSITION,
   AnonymousInterceptorKind,
+  PATROL_TRIBUTE_LEAGUE_DELTA,
+  PATROL_EVADED_LEAGUE_DELTA,
 } from '@spacerquest/content';
 import { GameState, GameEvent, PlayerAction, EncounterState, ShipComponentId } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { completePendingTravel } from './travel.js';
 import { applyDisposition } from '../npc.js';
+import { applyReputation } from '../reputation.js';
 import { applySuccession } from '../legacy.js';
 import { shieldMitigation, weaponVolleyDamage } from '../components.js';
 
@@ -45,9 +48,14 @@ function cloneState(state: GameState): GameState {
  * The base round schedule (min(round·base, max)) is multiplied by the class
  * modifier (TRIBUTE_CLASS_MULTIPLIER — Brigand ÷2, Reptiloid ×2, everyone else
  * ×1) and re-capped at TRIBUTE_MAX. Anonymous interceptors carry a `kind`; named
- * interceptors do not, so they take the unmodified ×1 schedule. Exported for the
- * acceptance test (per-class demand) — T-1401 will re-export it through the UI
- * pack.
+ * interceptors do not, so they take the unmodified ×1 schedule.
+ *
+ * T-1401 · This is already surfaced through the engine barrel (index.ts
+ * `export *`), so the "UI export pack" is just this existing symbol. CONSUMER:
+ * T-1402 replaces the UI's own `tributeThisRound` reimplementation (format.ts,
+ * ~L521 — which ignores the class modifier and can therefore preview a Brigand /
+ * Reptiloid tribute the engine never charges) with a call to THIS function, so the
+ * previewed demand matches the `TributeDemanded`/`TributePaid` the engine emits.
  */
 export function tributeForRound(round: number, kind?: AnonymousInterceptorKind): number {
   const base = Math.min(round * TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX);
@@ -144,6 +152,27 @@ function resolveEncounter(
         'player-fled',
         events,
       );
+    }
+  }
+
+  // T-1503 · Astro-League reputation (the "patrol tribute" organic mover, PRD §8.1).
+  // The League IS the law/patrol power, so a resolved PATROL encounter moves League
+  // standing: complying with the checkpoint (talked-down — the tribute path, or a
+  // nat-20 wave-through) WARMS the League; fighting or fleeing it (defeated /
+  // escaped / interceptor-escaped) COOLS it. Gated on the anonymous interceptor's
+  // `kind === 'PATROL'` (named interceptors carry no kind → no move), and takes NO
+  // rng, so it can never perturb a replay's stream. This is what makes League rep
+  // near-unavoidably nonzero for a travelling trader (patrols resolve one way or the
+  // other). The contraband-scan consequence lives in patrol.ts.
+  if (encounter.interceptor.kind === 'PATROL') {
+    if (resolution === 'talked-down') {
+      applyReputation(state, 'league', PATROL_TRIBUTE_LEAGUE_DELTA, 'patrol-tribute', events);
+    } else if (
+      resolution === 'escaped' ||
+      resolution === 'defeated' ||
+      resolution === 'interceptor-escaped'
+    ) {
+      applyReputation(state, 'league', PATROL_EVADED_LEAGUE_DELTA, 'patrol-evaded', events);
     }
   }
 

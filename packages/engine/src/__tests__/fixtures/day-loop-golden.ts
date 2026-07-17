@@ -223,11 +223,44 @@ export function runDayLoopGolden(
 // roster, and no run here buys a port, so no PortEvent fires and no rng is drawn),
 // which is why only the two state hashes below changed and the event hashes did
 // not. Regenerated via gen-day-loop-golden.ts.
+//
+// T-1401 re-derivation (ALL FOUR hashes): the required `WireEntry.kind`
+// discriminator now rides every wire line, so each WireEntry in both the
+// serialized state's eventLog (STATE hashes) and the returned day-event stream
+// (EVENT hashes) gains a `"kind":"…"` key. This is a SERIALIZATION-SHAPE change,
+// NOT a behavior change: stripping the added `kind` off every WireEntry
+// reproduces the previous four hashes byte-for-byte (verified), and the sim STATS
+// report is byte-identical. No rule, value, or rng draw moved — only the new
+// field appears. Regenerated via gen-day-loop-golden.ts.
+//
+// T-1501 re-derivation (ALL FOUR hashes): the ports & rumors batch added the
+// systemIds-only `port.aldebaran.grain-exchange` beat at Aldebaran-1 (system 2).
+// Both scripts Travel to system 2 (and TEN_DAY_SCRIPT on to system 3), so the
+// next dawn now surfaces extra StoryletOffered events + the resulting
+// available-list entries, moving both the STATE and EVENT hashes on both scripts.
+// This is a deliberate CONTENT ADDITION, not a behavior/rng change: no rule,
+// value, or dice draw moved — only new eligible storylets appear at the docked
+// systems. T-1502 re-pin: the NPC personal-chain batch added a chain opener at
+// systems 2 (Rattlesnake) and 3 (Silk Dagger) — both systemIds-gated openers the
+// scripts dock at — so one more offer surfaces at each. Neither script plays a
+// Storylet, so the new dusk abandonment sweep (resolveAbandonedChains) never fires
+// here; the drift is purely the new eligible offers. Regenerated via
+// gen-day-loop-golden.ts.
+//
+// T-1503 re-pin: STATE hashes ONLY — both EVENT hashes are BYTE-IDENTICAL to their
+// pre-T-1503 values (539812…/8934d5…), which is the proof this task added no
+// behavioral/event change to the day loop. The four alliance-arc openers are
+// `eras:['VETERAN']`-gated and both golden scripts run in TOUR_ONE, so they never
+// offer here — no new StoryletOffered events. The sole drift is that
+// `createInitialState` now serializes the additive `PlayerState.reputation`
+// container ({0,0,0,0} throughout — no rep mover fired, and no rep mover draws rng
+// anyway), which moves the serialized-state hashes only. Regenerated via
+// gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'bb8d64aae0d5924768a3696e7b3df7254aa66224d5060c128e6c5de01a808e2c';
+  '203124ab78e4cbb6fdcd1fee2d1c755fedf752ba83cdb85c7898d208a7e266d1';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'e7767526b8241e6a891aa854f76f9deec51f76a80631578320b303a328242667';
+  '539812ac31adcaa6c9355d850345479f5fa30849876a892aa835aa7156f4649d';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '3e4f7f185ad843929e65b42a9bcc5456af290b126e22e3f2e3e3b643144d4f83';
+  '54c950991dd1ec0ea2f1c7ce18d693bf75c442def5c7ca33476d26389951c205';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '5e726f54f9f6fccbb499350a4c52f1c749bc581c8d6c0f1e3296c0e1ccd6ff04';
+  '8934d5c842eceb93c6e4ce3b3e1954deb9105d288df536e9332a6b52eebe9a90';

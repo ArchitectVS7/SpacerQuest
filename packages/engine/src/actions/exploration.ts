@@ -61,6 +61,7 @@ function resolveLoot(
       events.push({
         type: 'WireEntry',
         day: state.day,
+        kind: 'plain',
         message: `Player's Nemesis file logged a new Signal Fragment recovered off ${poi.name}.`,
       });
     }
@@ -119,6 +120,7 @@ export function resolveExploration(
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `Player queued an off-lane sweep near system ${systemId} but assigned no die to fly it.`,
     });
     return { state: nextState, events };
@@ -135,6 +137,7 @@ export function resolveExploration(
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `Player's off-lane sweep near system ${systemId} named a die that isn't in the dawn hand.`,
     });
     return { state: nextState, events };
@@ -149,6 +152,7 @@ export function resolveExploration(
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `Player's off-lane sweep near system ${systemId} named a die already burned this dawn.`,
     });
     return { state: nextState, events };
@@ -169,6 +173,7 @@ export function resolveExploration(
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `Player broke off an off-lane sweep near system ${systemId} — not enough fuel to reach it.`,
     });
     return { state: nextState, events };
@@ -196,6 +201,7 @@ export function resolveExploration(
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `Player's nav sweep off system ${systemId} turned up nothing but static.`,
     });
     return { state: nextState, events };
@@ -229,6 +235,9 @@ export function resolveExploration(
   events.push({
     type: 'WireEntry',
     day: nextState.day,
+    // T-1401 wire-line kind: a world/system discovery line (`kind` here is the
+    // local POI_KINDS entry, unrelated to this event field). → 'plain'.
+    kind: 'plain',
     message: kind.wireDiscovered.replace('{name}', name),
   });
 

@@ -34,7 +34,11 @@ import { resolveCrew, resolveReroll } from './actions/crew.js';
 import { portDuskIncome, resolvePortPurchase } from './actions/port.js';
 import { evaluateDeeds } from './deeds.js';
 import { syncPlayerTier } from './tier.js';
-import { refreshAvailableStorylets, resolveStoryletChoice } from './storylets.js';
+import {
+  refreshAvailableStorylets,
+  resolveAbandonedChains,
+  resolveStoryletChoice,
+} from './storylets.js';
 import { computeGuildStanding, guildManifestPenalty, guildSeverity } from './guild.js';
 import { natWireStories } from './wire.js';
 
@@ -295,7 +299,7 @@ export function applyPlayerAction(
 
 export function endDay(state: GameState): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = cloneState(state);
+  let nextState = cloneState(state);
 
   if (nextState.dayPhase !== DayPhase.DAY) {
     throw new Error('endDay requires DAY phase');
@@ -355,6 +359,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         events.push({
           type: 'WireEntry',
           day: nextState.day,
+          kind: 'npc',
           message: `${rescuer.name} drove ${interceptorName} off your tail.`,
         });
         intervenedNpcId = rescuer.id;
@@ -392,6 +397,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         events.push({
           type: 'WireEntry',
           day: nextState.day,
+          kind: 'npc',
           message: `${rescuer.name} answered your mayday and transferred ${amount} fuel.`,
         });
         intervenedNpcId = rescuer.id;
@@ -455,6 +461,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message: `Auto-Repair module restored condition to ${repaired.length} system${
           repaired.length === 1 ? '' : 's'
         } overnight.`,
@@ -486,6 +493,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message:
           'Life support gave out on the edge of the dark — the spacer rode it out on emergency air and lived to refit.',
       });
@@ -557,6 +565,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         events.push({
           type: 'WireEntry',
           day: nextState.day,
+          kind: 'npc',
           message: `${updatedNpc.name} undercut you on the ${cargoName} run to ${destinationName}.`,
         });
       }
@@ -623,10 +632,18 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   for (const npc of nextState.npcs) {
     if (npc.lastAction) {
       // Flaw overrides are ALWAYS notable. Other actions are semi-randomly notable.
-      if (npc.lastAction.type === 'FlawOverride' || dayRng.next() > 0.7) {
+      const isFlawOverride = npc.lastAction.type === 'FlawOverride';
+      if (isFlawOverride || dayRng.next() > 0.7) {
         events.push({
           type: 'WireEntry',
           day: nextState.day,
+          // T-1401 · THE load-bearing kind stamp. A flaw-override line is tagged
+          // 'flaw-override' at exactly this one site — the else-branch (a semi-
+          // random notable NPC action) is a plain 'npc' line. This kills the UI's
+          // `msg.endsWith(FLAWS[*].detail)` reverse-derivation (format.ts, T-1402
+          // consumer): a plain 'npc' line that merely happened to end with a flaw
+          // detail no longer false-positives as a flaw override.
+          kind: isFlawOverride ? 'flaw-override' : 'npc',
           message: `${npc.name} ${npc.lastAction.details}`,
         });
       }
@@ -671,6 +688,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message: `Penny Wise's marker on your name went unpaid — word is the Thrift Star's collectors are asking after you on the lanes.`,
       });
     }
@@ -737,6 +755,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `Launch fees from ${portCount} port stake${
         portCount === 1 ? '' : 's'
       } clear to your account: ${income} credits.`,
@@ -827,6 +846,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message:
           guildStanding > 0
             ? 'The Merchant Guild marker closes — barely. Your name comes off the debt slate onto the Registry, but the clerks logged how you fought them the whole way. The veteran lanes are open, cold welcome and all.'
@@ -848,6 +868,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       events.push({
         type: 'WireEntry',
         day: nextState.day,
+        kind: 'plain',
         message: `The marker goes unpaid. The Guild files the shortfall — ${debtOutstanding} credits still owed, and the interest keeps running — and flags your name where every port clerk can read it: leaner manifests, keener patrols. You fly on indebted.`,
       });
     }
@@ -879,6 +900,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     events.push({
       type: 'WireEntry',
       day: nextState.day,
+      kind: 'plain',
       message: `The Guild marker keeps running: ${interest} credits in interest added — ${nextState.player.debt} now owed.`,
     });
   }
@@ -887,6 +909,21 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // T-1203: dusk deeds (deliveries, debt clears) can rank the player up;
   // recompute the band so tomorrow's jumps read the fresh tier.
   syncPlayerTier(nextState);
+
+  // T-1502 · NPC personal-chain abandonment (PRD §8.1: a chain "can resolve
+  // without you"). Any scheduled chain episode carrying a `wireResolution` that
+  // has sat unplayed past its `dueDay + graceDays` is resolved by the Galactic
+  // News Wire here: the authored line is filed and the disposition consequence
+  // lands through the same applyEffects path a played choice uses (identical
+  // DispositionChanged / StoryletEffectApplied events). Runs while nextState.day
+  // still holds the current day (before the increment below) so the WireEntry
+  // carries the correct day and rides the final appendEvents. Pure (no rng/Date),
+  // no new GameState field — deterministic across a JSON round-trip. A clean
+  // (no-abandonment) dusk returns zero events and an unchanged state, so every
+  // existing golden is byte-identical.
+  const abandoned = resolveAbandonedChains(nextState);
+  nextState = abandoned.state;
+  events.push(...abandoned.events);
 
   // T-107 era scheduler: the world's economic weather turns at dusk. One event
   // active at a time; seeded onset after a cooldown; natural expiry at the day

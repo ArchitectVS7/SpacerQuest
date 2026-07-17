@@ -9,6 +9,7 @@ import {
   type SaveEnvelope,
   type MigrationFn,
 } from '../save.js';
+import { FLAWS } from '@spacerquest/content';
 import { validateGameState } from '../schema.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { advanceDay } from '../day.js';
@@ -426,8 +427,10 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 5', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(5);
+  it('CURRENT_SAVE_VERSION is 7', () => {
+    // T-1401 bumped 5 → 6 (WireEntry.kind); T-1503 bumped 6 → 7 for the required
+    // nested PlayerState.reputation container.
+    expect(CURRENT_SAVE_VERSION).toBe(7);
   });
 });
 
@@ -457,3 +460,141 @@ function expectSaveError(fn: () => unknown): SaveError {
   expect(caught).toBeInstanceOf(SaveError);
   return caught as SaveError;
 }
+
+// T-1401 · v5 → v6 WireEntry.kind migration + kinded-eventLog round-trip.
+describe('save envelope — v5 → v6 WireEntry.kind migration (T-1401)', () => {
+  const flawSuffixes = Object.values(FLAWS).map((f) => f.detail);
+  const endsWithFlaw = (msg: string): boolean => flawSuffixes.some((s) => msg.endsWith(s));
+
+  /** Strip the `kind` off every WireEntry, the way a genuinely pre-T-1401 (v5)
+   *  save would look — it never had the field. */
+  function stripWireKind(state: GameState): GameState {
+    const clone = JSON.parse(JSON.stringify(state)) as GameState;
+    for (const e of clone.eventLog) {
+      if (e.type === 'WireEntry') {
+        delete (e as unknown as Record<string, unknown>).kind;
+      }
+    }
+    return clone;
+  }
+
+  it('backfills kind on a v5 envelope by re-deriving the pre-change classification', () => {
+    // Seed 1 deterministically files both flaw-override lines and plain npc lines.
+    const state = drive50Days(1);
+    const wireEntries = state.eventLog.filter((e) => e.type === 'WireEntry');
+    expect(wireEntries.length).toBeGreaterThan(0);
+    // The driven log must contain BOTH classes so the migration is exercised on each.
+    const hasFlawLine = wireEntries.some((e) => e.type === 'WireEntry' && endsWithFlaw(e.message));
+    const hasPlainLine = wireEntries.some(
+      (e) => e.type === 'WireEntry' && !endsWithFlaw(e.message),
+    );
+    expect(hasFlawLine).toBe(true);
+    expect(hasPlainLine).toBe(true);
+
+    const v5 = createSaveAtVersion(stripWireKind(state), 5);
+    const loaded = loadSave(v5); // walks 5→6 (kind backfill), then validates
+
+    const migratedWire = loaded.state.eventLog.filter((e) => e.type === 'WireEntry');
+    expect(migratedWire.length).toBe(wireEntries.length);
+    for (const e of migratedWire) {
+      if (e.type !== 'WireEntry') continue;
+      // Re-derivation: a flaw-detail suffix ⇒ 'flaw-override', everything else ⇒ 'npc'.
+      expect(e.kind).toBe(endsWithFlaw(e.message) ? 'flaw-override' : 'npc');
+    }
+    // At least one of each landed (proves both branches ran, not just a default).
+    expect(migratedWire.some((e) => e.type === 'WireEntry' && e.kind === 'flaw-override')).toBe(
+      true,
+    );
+    expect(migratedWire.some((e) => e.type === 'WireEntry' && e.kind === 'npc')).toBe(true);
+  });
+
+  it('leaves an already-kinded WireEntry untouched during migration', () => {
+    // A v5 save whose WireEntry somehow already carries a kind must not be re-derived.
+    const state = createInitialState(3);
+    state.eventLog.push({ type: 'WireEntry', day: 1, kind: 'plain', message: 'A world line.' });
+    const v5 = createSaveAtVersion(state, 5);
+    const loaded = loadSave(v5);
+    const wire = loaded.state.eventLog.find((e) => e.type === 'WireEntry');
+    expect(wire?.type === 'WireEntry' && wire.kind).toBe('plain');
+  });
+
+  it('round-trips a state whose eventLog carries kinded WireEntry events (deep-equal)', () => {
+    const state = drive50Days(2);
+    expect(state.eventLog.some((e) => e.type === 'WireEntry')).toBe(true);
+    const restored = loadSave(createSave(state, 2));
+    expect(restored.state).toEqual(state);
+    // The kinds survive the round-trip byte-for-byte.
+    const before = state.eventLog.filter((e) => e.type === 'WireEntry');
+    const after = restored.state.eventLog.filter((e) => e.type === 'WireEntry');
+    expect(after).toEqual(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1503 · v6 → v7 nested-reputation migration + NESTED round-trip regression.
+//
+// This is the exact bug class the T-1002 drift-protection was built to stop, BY
+// NAME: `player.reputation` is the nested container the schema comment cites as the
+// field Zod's default STRIP mode used to silently drop. These tests prove (a) a
+// pre-reputation v6 save gets the neutral nested container back through the v6→v7
+// migration, (b) non-zero nested rep values survive createSave → loadSave
+// DEEP-EQUAL (the silent-nested-key-strip regression), and (c) an unknown nested
+// key under `reputation` fails the `.strict()` load — drift protection covers it.
+// ---------------------------------------------------------------------------
+describe('save envelope — v6 → v7 reputation migration (T-1503, the T-1002 nested-key bug class)', () => {
+  const NEUTRAL = { league: 0, dragons: 0, confederation: 0, rebels: 0 };
+
+  it('backfills the neutral PlayerState.reputation container on a v6 envelope with no reputation key', () => {
+    // Build a REAL v6-shaped state, then strip the reputation key the way a
+    // genuinely pre-T-1503 save would (it never had the nested field). The v6→v7
+    // migration must re-add the strict four-key container before validation, else
+    // the strict schema (reputation is non-optional) rejects it.
+    const state = drive50Days(41);
+    delete (state.player as unknown as Record<string, unknown>).reputation;
+    const v6 = JSON.stringify({ version: 6, state, seed: 71 });
+
+    const loaded = loadSave(v6); // walks 6→7 (reputation backfill), then validates
+    expect(loaded.state.player.reputation).toEqual(NEUTRAL);
+    expect(loaded.seed).toBe(71);
+  });
+
+  it('merges a PARTIAL reputation container faction-key by faction-key on migration', () => {
+    // A v6 save that carries only some faction keys (a hand-tampered or partially
+    // written blob) must have the missing keys backfilled to 0, not the whole
+    // container replaced — the T-1002 strict schema needs all four present.
+    const state = drive50Days(42);
+    (state.player as unknown as Record<string, unknown>).reputation = { league: 4 };
+    const v6 = JSON.stringify({ version: 6, state, seed: 72 });
+
+    const loaded = loadSave(v6);
+    expect(loaded.state.player.reputation).toEqual({
+      league: 4,
+      dragons: 0,
+      confederation: 0,
+      rebels: 0,
+    });
+  });
+
+  it('round-trips NON-ZERO nested reputation through createSave → loadSave (deep-equal — the silent-strip regression)', () => {
+    // THE regression: set every faction key to a distinct non-zero value and prove
+    // the nested `player.reputation` object survives serialize → migrate → validate
+    // byte-for-byte. Under Zod's old default STRIP mode (pre-T-1002) an unknown or
+    // unmodelled nested key here was silently dropped; the strict schema + this
+    // deep-equal assertion is what makes that impossible for `player.reputation`.
+    const state = drive50Days(43);
+    state.player.reputation = { league: 7, dragons: -4, confederation: 12, rebels: -1 };
+    const loaded = loadSave(createSave(state, 73));
+    expect(loaded.state.player.reputation).toEqual(state.player.reputation);
+    // The WHOLE state is deep-equal — the nested container did not perturb anything.
+    expect(loaded.state).toEqual(state);
+  });
+
+  it('strict schema rejects an unknown nested key inside reputation (drift protection covers it)', () => {
+    // Adding a fifth, unmodelled key under `reputation` must FAIL the load — the
+    // `.strict()` FactionReputationSchema is what guarantees a nested drift is loud,
+    // not silently stripped. This is the negative twin of the deep-equal test.
+    const state = drive50Days(44);
+    (state.player.reputation as unknown as Record<string, unknown>).syndicate = 5;
+    expect(() => loadSave(createSave(state, 74))).toThrow(SaveError);
+  });
+});

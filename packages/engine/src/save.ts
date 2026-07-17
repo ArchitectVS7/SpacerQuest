@@ -1,6 +1,21 @@
 import { z } from 'zod';
+import { FLAWS } from '@spacerquest/content';
 import { GameState } from './types.js';
 import { validateGameState } from './schema.js';
+
+// T-1401 · The v5→v6 WireEntry.kind migration's ONE legitimate, retro-only use of
+// the flaw-detail suffix heuristic. A v5 save's WireEntry events predate the typed
+// `kind` field, so their provenance can only be RE-DERIVED — and the only signal a
+// historical line carries is exactly what the old UI read: a line ending with a
+// content `FLAWS[*].detail` is a flaw override. This reproduces the pre-change UI
+// classification (format.ts `isFlawOverrideMessage`) so a loaded v5 save renders
+// identically; every fresh v6 emission is stamped at its engine site instead
+// (day.ts et al.). Never use this heuristic anywhere but this migration.
+const FLAW_DETAIL_SUFFIXES: readonly string[] = Object.values(FLAWS).map((f) => f.detail);
+
+function reDeriveWireKind(message: string): 'flaw-override' | 'npc' {
+  return FLAW_DETAIL_SUFFIXES.some((detail) => message.endsWith(detail)) ? 'flaw-override' : 'npc';
+}
 
 // Base envelope that Steam Cloud and localStorage will read.
 //
@@ -54,12 +69,32 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * `ports: []` on the player so a pre-ports save validates against the v5 schema
  * (whose `ports` key is non-optional).
  *
+ * T-1401 bumped {@link CURRENT_SAVE_VERSION} to 6. The v5->v6 change IS a
+ * GameState shape change: every `WireEntry` event in `eventLog` now carries a
+ * required `kind` discriminator (types.ts WireEntryKind). A v5 save's WireEntry
+ * events have no `kind`, so the v5->v6 migration walks `eventLog` and backfills it
+ * by re-deriving the pre-change UI classification (flaw-detail suffix ⇒
+ * 'flaw-override', else 'npc') — see {@link reDeriveWireKind} — so a loaded v5
+ * save validates against the v6 schema (whose WireEntry `kind` is required) AND
+ * renders exactly as it did before. Non-WireEntry events are untouched.
+ *
+ * T-1503 bumped {@link CURRENT_SAVE_VERSION} to 7. The v6->v7 change IS a
+ * GameState shape change: `PlayerState.reputation` (the four-faction standing —
+ * a NESTED container, `{ league, dragons, confederation, rebels }`) is a new
+ * persistent field. The v6->v7 migration backfills the whole neutral container
+ * (and each faction key) on the player so a pre-reputation save validates against
+ * the v7 schema (whose `reputation` key is a non-optional, strict four-key shape).
+ * This is exactly the nested-field migration the T-1002 drift-protection (which
+ * named `player.reputation` by name) was built to make safe.
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
  * `{ 1: (s) => ({ ...s, migrated: true }) }` at targetVersion 2 to prove the
  * sequential upgrade loop works independently of production MIGRATIONS.
  */
+const NEUTRAL_REPUTATION = { league: 0, dragons: 0, confederation: 0, rebels: 0 } as const;
+
 export const MIGRATIONS: Record<number, MigrationFn> = {
   1: (v1State) => v1State,
   // v2->v3: T-1304 added PlayerState.loan. A v2 save has no `loan` key, so
@@ -89,9 +124,40 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
       player: { ...(s.player ?? {}), ports: (s.player as { ports?: unknown })?.ports ?? [] },
     };
   },
+  // v5->v6: T-1401 made WireEntry.kind required. A v5 save's WireEntry events have
+  // no `kind`, so backfill each by re-deriving the pre-change UI classification
+  // (flaw-detail suffix ⇒ 'flaw-override', else 'npc') — the ONE retro-only use of
+  // that heuristic (reDeriveWireKind). A WireEntry that somehow already carries a
+  // `kind` is left as-is; non-WireEntry events pass through untouched.
+  5: (v5State) => {
+    const s = v5State as { eventLog?: unknown };
+    if (!Array.isArray(s.eventLog)) return v5State;
+    const log = s.eventLog as unknown[];
+    const eventLog: unknown[] = log.map((event) => {
+      const e = event as { type?: unknown; message?: unknown; kind?: unknown };
+      if (e.type !== 'WireEntry' || e.kind !== undefined) return event;
+      return { ...e, kind: reDeriveWireKind(typeof e.message === 'string' ? e.message : '') };
+    });
+    return { ...(v5State as object), eventLog };
+  },
+  // v6->v7: T-1503 added PlayerState.reputation (a nested four-faction container).
+  // A v6 save has no `reputation` key, so backfill the whole neutral container
+  // (merging any partial one already present, faction-key by faction-key) before
+  // schema validation. This is the T-1002 nested-field migration by name.
+  6: (v6State) => {
+    const s = v6State as { player?: Record<string, unknown> };
+    const existing = (s.player as { reputation?: Record<string, unknown> })?.reputation ?? {};
+    return {
+      ...(v6State as object),
+      player: {
+        ...(s.player ?? {}),
+        reputation: { ...NEUTRAL_REPUTATION, ...existing },
+      },
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 5;
+export const CURRENT_SAVE_VERSION = 7;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

@@ -871,6 +871,14 @@ describe('T-1207 · tribute class modifiers', () => {
     expect(tributeForRound(4)).toBe(4000);
   });
 
+  // T-1401 · The "export pack" re-export guard: `tributeForRound` must be surfaced
+  // through the engine barrel (index.ts `export *`) so the UI (T-1402 consumer) can
+  // replace its own `tributeThisRound` reimplementation with the engine truth.
+  it('is surfaced through the engine barrel (index.ts)', async () => {
+    const barrel = await import('../index.js');
+    expect(barrel.tributeForRound).toBe(tributeForRound);
+  });
+
   it('the resolver threads the class modifier into TributeDemanded (BRIGAND ÷2)', () => {
     // Integration: proves the resolver reads encounter.interceptor.kind, not just
     // the pure helper. A Brigand demands HALF the round schedule; die 19 + TRADE 1

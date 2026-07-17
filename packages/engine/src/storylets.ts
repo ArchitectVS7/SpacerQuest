@@ -3,6 +3,7 @@ import type {
   FlagEffect,
   FlagMatcher,
   NumberMatcher,
+  Stat,
   StoryletChoiceDefinition,
   StoryletDefinition,
   StoryletEffects,
@@ -10,6 +11,7 @@ import type {
 import { renownRankIndex } from './deeds.js';
 import { check, spendDie } from './dice.js';
 import { applyDisposition } from './npc.js';
+import { applyReputation } from './reputation.js';
 import {
   decodeFragment,
   fragmentCount,
@@ -94,6 +96,16 @@ export function triggerMatches(state: GameState, storylet: StoryletDefinition): 
     if (!matchesNumber(npc.disposition, trigger.npc.disposition)) {
       return false;
     }
+  }
+  // T-1503: gate on the player's standing with a galactic power. The named reader
+  // of `player.reputation` — the `alliance.*` questlines gate ep2/ep3 on the rep
+  // their earlier episodes granted (the organic progression gate). The extra
+  // `faction` key is ignored by matchesNumber (it reads equals/gte/lte).
+  if (
+    trigger.reputation &&
+    !matchesNumber(state.player.reputation[trigger.reputation.faction], trigger.reputation)
+  ) {
+    return false;
   }
   for (const matcher of trigger.flags ?? []) {
     if (!matchesFlag(state.flags[matcher.name], matcher)) {
@@ -383,6 +395,25 @@ function applyEffects(
     });
   }
 
+  // T-1503: move faction reputation (the questline grants + the terminal
+  // cross-faction join shift). Route through the shared mover (one clamp, one
+  // ReputationChanged emitter), then — mirroring the disposition/fuel pattern —
+  // report the ACTUAL applied delta, so a clamped change never overstates itself.
+  for (const rep of effects.reputation ?? []) {
+    const before = state.player.reputation[rep.faction];
+    applyReputation(state, rep.faction, rep.delta, 'questline', events);
+    const applied = state.player.reputation[rep.faction] - before;
+    events.push({
+      type: 'StoryletEffectApplied',
+      day: state.day,
+      storyletId,
+      choiceId,
+      effect: 'reputation',
+      faction: rep.faction,
+      amount: applied,
+    });
+  }
+
   for (const progress of effects.deedProgress ?? []) {
     events.push({
       type: 'StoryletDeedProgress',
@@ -483,6 +514,96 @@ function blocked(
   };
 }
 
+/** T-1401 · A PURE, non-mutating preview of a storylet choice — the engine truth
+ *  behind the UI's `storyletChoiceLock` (format.ts, ~L768, the T-1402 consumer).
+ *  It reports whether the choice can be taken right now and, if not, the SAME typed
+ *  `StoryletChoiceBlocked` reason `resolveStoryletChoice` would emit — plus the
+ *  requirement facts the pane surfaces (credit gate, die/stat-check lock). */
+export interface StoryletChoiceQuote {
+  /** No blocking refusal — the choice would resolve if taken now. */
+  ok: boolean;
+  /** The first typed refusal reason, in `resolveStoryletChoice`'s exact order
+   *  (not-available → unknown-choice → insufficient-credits → missing-die), or
+   *  null when `ok`. */
+  reason: Extract<GameEvent, { type: 'StoryletChoiceBlocked' }>['reason'] | null;
+  /** The choice arms a die (a `spendDie` requirement or a `statCheck`). */
+  needsDie: boolean;
+  /** The `credits.gte` gate this choice requires, or null when it has none. */
+  requiredCredits: number | null;
+  /** The stat check this choice rolls, for the UI's check-breakdown lock, or null. */
+  statCheck: { stat: Stat; dc: number } | null;
+}
+
+/**
+ * T-1401 · Pure storylet-choice preview, mirroring the blessed `quoteShipyard`
+ * pattern: it runs the EXACT read-only refusal ladder `resolveStoryletChoice`
+ * runs, in the same order, WITHOUT mutating state or spending a die (so the pane
+ * can never disagree with the real resolve). It deliberately does NOT call
+ * `resolveStoryletChoice`, which clones-and-mutates and spends the die — it
+ * replicates only the gate predicates (`matchesNumber` for credits; the dawn-hand
+ * die-validity check), exactly as `shipyardFailure` mirrors `resolveShipyard`.
+ *
+ * `armedDie` is the die index the UI has tentatively assigned (undefined = none
+ * yet): a die-requiring choice previews `missing-die` until a valid, unspent die
+ * is armed — the truth behind format.ts `storyletChoiceLock`'s "Assign a die".
+ * CONSUMER: T-1402's `storyletChoiceLock`, which replaces its hand-rolled credit/
+ * die gate with this quote.
+ */
+export function quoteStoryletChoice(
+  state: GameState,
+  storyletId: string,
+  choiceId: string,
+  armedDie?: number,
+): StoryletChoiceQuote {
+  const empty: StoryletChoiceQuote = {
+    ok: false,
+    reason: null,
+    needsDie: false,
+    requiredCredits: null,
+    statCheck: null,
+  };
+
+  // 1. not-available — no live offer for this storylet (mirrors the
+  //    `storylets.available` lookup in resolveStoryletChoice).
+  const offer = state.storylets.available.find((candidate) => candidate.storyletId === storyletId);
+  if (!offer) {
+    return { ...empty, reason: 'not-available' };
+  }
+
+  // 2. unknown-choice — the storylet/choice is not in content.
+  const storylets: readonly StoryletDefinition[] = STORYLETS;
+  const storylet = storylets.find((candidate) => candidate.id === storyletId);
+  const choice = storylet?.choices.find((candidate) => candidate.id === choiceId);
+  if (!storylet || !choice) {
+    return { ...empty, reason: 'unknown-choice' };
+  }
+
+  const requiredCredits = choice.requirements?.credits?.gte ?? null;
+  const statCheck = choice.requirements?.statCheck ?? null;
+  const needsDie = Boolean(choice.requirements?.spendDie || statCheck);
+  const facts = { needsDie, requiredCredits, statCheck };
+
+  // 3. insufficient-credits — the SAME matcher resolveStoryletChoice checks.
+  if (!matchesNumber(state.player.credits, choice.requirements?.credits)) {
+    return { ...empty, ...facts, reason: 'insufficient-credits' };
+  }
+
+  // 4. missing-die — a die-requiring choice with no valid, unspent die armed
+  //    (mirrors the dawn-hand validity gate in resolveStoryletChoice).
+  const hand = state.player.dawnHand;
+  const dieInvalid =
+    armedDie === undefined ||
+    !hand ||
+    armedDie < 0 ||
+    armedDie >= hand.dice.length ||
+    hand.spent[armedDie];
+  if (needsDie && dieInvalid) {
+    return { ...empty, ...facts, reason: 'missing-die' };
+  }
+
+  return { ok: true, reason: null, ...facts };
+}
+
 export function resolveStoryletChoice(
   state: GameState,
   action: Extract<PlayerAction, { type: 'Storylet' }>,
@@ -549,6 +670,65 @@ export function resolveStoryletChoice(
     ...(success === undefined ? {} : { success }),
   };
   events.push(resolvedEvent);
+
+  return { state: nextState, events };
+}
+
+/**
+ * T-1502 · The "wire resolves it without you" abandonment sweep (PRD §8.1: an NPC
+ * personal chain "can resolve without you"). A scheduled chain episode carrying a
+ * content `wireResolution` (storylets.ts) that has sat unplayed past its
+ * `dueDay + graceDays` is resolved FOR the player: the authored Galactic-Wire
+ * line is filed as a WireEntry (kind 'npc' → the UI wire ticker) and the
+ * abandonment consequence (a disposition drop + the terminal `chain.*.resolved`
+ * flag) is applied through the SAME `applyEffects` path a played choice uses — so
+ * it emits the identical DispositionChanged / StoryletEffectApplied events. The
+ * resolved episode is then stamped `completed` and dropped from the scheduled and
+ * available lists so it can never re-offer.
+ *
+ * PURE: reads only `state.day`, the scheduled entries' `dueDay`, and `completed`;
+ * `wireResolution.effects` never draws rng (disposition/flags only), so the sweep
+ * takes NO rng fork and is deterministic across a JSON round-trip. No new
+ * GameState field: the deadline is `dueDay` (already persisted) + the content
+ * `graceDays`. Reader/caller: engine `day.ts` endDay (the dusk "world moves"
+ * section). CONSUMERS of what it emits: the UI wire ticker (WireEntry) and the
+ * ep2/ep3 disposition gates + interceptor grudge-weighting (DispositionChanged).
+ */
+export function resolveAbandonedChains(state: GameState): {
+  state: GameState;
+  events: GameEvent[];
+} {
+  const nextState = cloneState(state);
+  const events: GameEvent[] = [];
+  const storylets: readonly StoryletDefinition[] = STORYLETS;
+
+  // Snapshot the scheduled list up front — we mutate scheduled/available/completed
+  // as we resolve, and the `completed` guard below stops a duplicate entry for the
+  // same storylet from re-resolving.
+  for (const entry of [...nextState.storylets.scheduled]) {
+    const def = storylets.find((candidate) => candidate.id === entry.storyletId);
+    const wire = def?.wireResolution;
+    if (!def || !wire) continue;
+    if (nextState.storylets.completed[def.id] !== undefined) continue;
+    if (nextState.day <= entry.dueDay + wire.graceDays) continue;
+
+    // Past the grace window, still unplayed → the wire resolves it. Reason stays
+    // 'storylet' inside applyEffects (disposition), matching a played choice.
+    events.push(...applyEffects(nextState, def.id, 'wire-resolution', wire.effects));
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      kind: 'npc',
+      message: wire.wireMessage,
+    });
+    nextState.storylets.completed[def.id] = nextState.day;
+    nextState.storylets.scheduled = nextState.storylets.scheduled.filter(
+      (schedule) => schedule.storyletId !== def.id,
+    );
+    nextState.storylets.available = nextState.storylets.available.filter(
+      (offer) => offer.storyletId !== def.id,
+    );
+  }
 
   return { state: nextState, events };
 }

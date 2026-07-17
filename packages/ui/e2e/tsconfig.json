@@ -9,5 +9,5 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
   "include": ["**/*.ts", "../playwright.config.ts"],
-  "references": [{ "path": "../../engine" }, { "path": "../../content" }]
+  "references": [{ "path": ".." }, { "path": "../../engine" }, { "path": "../../content" }]
 }

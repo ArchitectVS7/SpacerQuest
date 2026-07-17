@@ -34,9 +34,11 @@ export const CONTRABAND_FENCE_REP_SCAN_PENALTY = 4;
 
 /**
  * Grudge (disposition delta) applied to a NAMED patrol interceptor that catches
- * the player. Anonymous patrols have no persistent NPC to attach to — faction /
- * patrol-standing rep is explicitly deferred to T-1503, so no unread faction
- * flag is invented here.
+ * the player. Anonymous patrols have no persistent NPC to attach to — the
+ * faction/patrol-standing consequence (T-1503's deferral, now CONSUMED):
+ * a caught scan moves League/Rebel reputation in `actions/patrol.ts` via
+ * `applyReputation` (factions.ts `SMUGGLING_CAUGHT_*`), independent of this
+ * per-NPC grudge.
  * Reader: existing per-NPC disposition readers (encounter weighting + talk DC)
  * via `applyDisposition` in engine actions/patrol.ts.
  */
@@ -45,10 +47,12 @@ export const CONTRABAND_CAUGHT_DISPOSITION = -3;
 /**
  * The shared fence-rep flag string. Set by the Smuggler Ray fence storylets
  * (storylets.ts) and READ by the patrol scan DC (engine actions/patrol.ts,
- * T-1305) AND by T-1503's Rebel reputation (PRD §117 "Sell out Smuggler Ray…").
- * Imported by the engine scan so the two sides can't drift; the storylet DATA
- * literals reference the literal 'fence.ray.dealt' (data can't reference a
- * const) with a comment pointing here.
+ * T-1305) AND — now CONSUMED, no longer deferred — by T-1503's Rebel reputation:
+ * a caught smuggler who already carries this flag draws EXTRA Rebel warmth
+ * (factions.ts `FENCE_REP_REBEL_DELTA`, applied in actions/patrol.ts). Imported
+ * by the engine scan so the two sides can't drift; the storylet DATA literals
+ * reference the literal 'fence.ray.dealt' (data can't reference a const) with a
+ * comment pointing here.
  */
 export const FENCE_REP_FLAG = 'fence.ray.dealt';
 

@@ -29,9 +29,11 @@ test('no autoplay-policy console errors on first interaction', async ({ page }) 
   // The first genuine gesture: pick a die. The AudioContext is constructed +
   // resumed inside THIS gesture, so the browser must not log the autoplay block.
   await page.getByTestId('die').first().click();
-  // A second gesture (opening the mixer) fires a relay cue on an unlocked context.
-  await page.getByTestId('audio-toggle').click();
-  await expect(page.getByTestId('audio-panel')).toBeVisible();
+  // A second gesture (opening Settings, which now hosts the mixer) fires a relay
+  // cue on an unlocked context — the sliders + mute live inside the Settings panel.
+  await page.getByTestId('settings-toggle').click();
+  await expect(page.getByTestId('audio-mute')).toBeVisible();
+  await expect(page.getByTestId('vol-master')).toBeVisible();
 
   const offenders = noise.filter((m) =>
     /AudioContext|autoplay|was not allowed to start|user gesture/i.test(m),
@@ -42,7 +44,7 @@ test('no autoplay-policy console errors on first interaction', async ({ page }) 
 test('mute persists across reload', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByTestId('audio-toggle').click();
+  await page.getByTestId('settings-toggle').click();
   const mute = page.getByTestId('audio-mute');
   await expect(mute).toHaveAttribute('aria-pressed', 'false');
 
@@ -52,14 +54,14 @@ test('mute persists across reload', async ({ page }) => {
   expect(await page.evaluate(() => window.localStorage.getItem('sq.audio.muted'))).toBe('true');
 
   await page.reload();
-  await page.getByTestId('audio-toggle').click();
+  await page.getByTestId('settings-toggle').click();
   // Still muted after a full reload.
   await expect(page.getByTestId('audio-mute')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('volume sliders work and persist', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('audio-toggle').click();
+  await page.getByTestId('settings-toggle').click();
 
   // Set each slider to a known value through its native input event (what a real
   // drag produces), then assert the persisted key matches.
@@ -84,9 +86,9 @@ test('volume sliders work and persist', async ({ page }) => {
   await set('vol-sfx', 'sq.vol.sfx', '0.9');
   await set('vol-ambient', 'sq.vol.ambient', '0.1');
 
-  // Reopen the panel and confirm the sliders reflect the persisted values.
-  await page.getByTestId('audio-toggle').click(); // close
-  await page.getByTestId('audio-toggle').click(); // reopen
+  // Reopen the Settings panel and confirm the sliders reflect the persisted values.
+  await page.getByTestId('settings-toggle').click(); // close
+  await page.getByTestId('settings-toggle').click(); // reopen
   await expect(page.getByTestId('vol-master')).toHaveValue('0.42');
   await expect(page.getByTestId('vol-sfx')).toHaveValue('0.9');
   await expect(page.getByTestId('vol-ambient')).toHaveValue('0.1');

@@ -143,9 +143,28 @@ body {
   gap: 6px 20px;
   align-items: center;
   padding-bottom: 10px;
-  /* reserve the top-right corner for the CRT / New game controls */
-  padding-right: 220px;
   border-bottom: 1px solid var(--hair);
+}
+/* T-1406 · The bezel's right column: diegetic console switches ride the top of
+   the frame, the status-chip readouts sit beneath them. */
+.bezel-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+/* Off-screen (not display:none) so Playwright locators still resolve — used for
+   the T-1406 storylet reachability audit list. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .brand {
   display: flex;
@@ -251,11 +270,17 @@ body {
   min-height: 0;
 }
 .col.left {
-  /* Starmap sizes to its (bounded) content; the taller ship & yard pane takes
-     the flexible remainder and scrolls internally (minmax(0,…) lets it shrink
-     below content height so it never overflows the column and paints over the
-     starmap SVG, which draws with overflow:visible). */
-  grid-template-rows: auto minmax(0, 1fr);
+  /* Starmap sizes to its content when the column has room; the taller ship & yard
+     pane takes the flexible remainder and scrolls internally (minmax(0,…) lets it
+     shrink below content height so it never overflows the column and paints over the
+     starmap SVG, which draws with overflow:visible). T-1403: the starmap row is
+     minmax(0,auto) — NOT bare `auto` — so on a short viewport (the persistent
+     off-lane sweep control added height to the pane) the starmap can itself shrink
+     and scroll internally rather than overflow the column into the wire ticker and
+     occlude the ship pane's controls. The ship row keeps a usable floor
+     (minmax(220px,…)) so the taller ship & yard list can never collapse to its
+     header — the starmap yields and scrolls first. */
+  grid-template-rows: minmax(0, auto) minmax(220px, 1fr);
 }
 .pane {
   border: 1px solid var(--hair);
@@ -460,6 +485,35 @@ body {
 .route-preview .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* T-1403 · off-lane sweep control — a functional affordance sharing the
+   route-preview look, not a redesign. */
+.explore-sweep {
+  border: 1px solid var(--amber-dim);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+.explore-sweep .es-head {
+  color: var(--ember);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.explore-sweep .es-cost {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+.explore-sweep .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.explore-sweep .es-outcome {
+  color: var(--ember);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 /* ---- ship & shipyard (T-308) ---- */
@@ -1386,14 +1440,17 @@ body {
   color: var(--amber-dim);
 }
 
-/* ---- top-right controls ---- */
+/* ---- diegetic console switches (T-1406: relocated into the bezel frame) ---- */
 .ctrls {
-  position: absolute;
-  right: 26px;
-  top: 18px;
+  /* Positioned relative so the Settings popover anchors to this cluster, now that
+     it rides inside the bezel header rather than floating top-right. */
+  position: relative;
   z-index: 40;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
   font-size: 10.5px;
 }
 .ctrls button {
@@ -1426,19 +1483,10 @@ body {
   width: 90px;
 }
 
-/* ---- audio mixer popover (T-310) ---- */
-.audio-panel {
-  position: absolute;
-  top: 34px;
-  right: 0;
-  z-index: 60;
-  width: 190px;
+/* ---- audio mixer (T-310; folded into the Settings popover by T-1406) ---- */
+.audio-mixer {
   display: grid;
   gap: 10px;
-  padding: 12px 14px;
-  background: linear-gradient(180deg, #1a1007, #0c0805);
-  border: 1px solid var(--amber);
-  box-shadow: var(--glow);
 }
 .audio-row {
   display: grid;
@@ -1451,7 +1499,7 @@ body {
   text-transform: uppercase;
   color: var(--amber);
 }
-.audio-panel input[type='range'] {
+.audio-mixer input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
@@ -1460,7 +1508,7 @@ body {
   outline: none;
   cursor: pointer;
 }
-.audio-panel input[type='range']::-webkit-slider-thumb {
+.audio-mixer input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 11px;
@@ -1469,7 +1517,7 @@ body {
   border: none;
   box-shadow: 0 0 5px var(--ember);
 }
-.audio-panel input[type='range']::-moz-range-thumb {
+.audio-mixer input[type='range']::-moz-range-thumb {
   width: 11px;
   height: 11px;
   background: var(--ember);
@@ -1980,11 +2028,68 @@ body {
   border-color: var(--ember);
   color: var(--ember);
 }
-/* The launcher shows a waiting-storylet count; reverse-video to read as a live
-   prompt without a second hue. */
-.ctrls button.storylet-launch {
-  border-color: var(--amber);
+/* ---- T-1406 diegetic storylet openers ---- */
+/* A storylet "dispatch" link — an in-fiction line the player clicks to open the
+   focused panel. Rendered inside the hold block, the port ledger and the wire
+   cap; styled as a live prompt (ember, underlined-on-hover) rather than a button
+   chrome, so it reads as part of the fiction, not a menu affordance. */
+.storylet-open {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-data);
+  font-size: 12px;
+  letter-spacing: 0.02em;
   color: var(--ember);
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--ember);
+  padding: 3px 0 3px 9px;
+  cursor: pointer;
+}
+.storylet-open:hover {
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+  background: rgba(40, 20, 6, 0.35);
+}
+.dispatch-head {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber-dim);
+  margin-top: 8px;
+}
+.hold-dispatches {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+  border-top: 1px solid var(--hair);
+  padding-top: 6px;
+}
+.port-dispatches {
+  display: grid;
+  gap: 3px;
+}
+/* Wire cap bulletins — a small cluster beside the LOG button. */
+.wire-bulletins {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 14px;
+}
+.wire-bulletin-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--ember);
+}
+.wire-bulletins .storylet-open {
+  display: inline-block;
+  width: auto;
+  border-left: none;
+  padding: 2px 6px;
+  border: 1px solid var(--ember);
 }
 .sl-head {
   display: flex;
@@ -2001,35 +2106,6 @@ body {
   color: var(--ember-hi);
   text-shadow: var(--glow-hi);
   margin: 0;
-}
-.sl-pager {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-}
-.sl-page-btn {
-  background: transparent;
-  border: 1px solid var(--amber-dim);
-  color: var(--amber);
-  font-size: 12px;
-  padding: 1px 8px;
-  cursor: pointer;
-}
-.sl-page-btn:hover:not(:disabled) {
-  border-color: var(--ember);
-  color: var(--ember);
-}
-.sl-page-btn:disabled {
-  color: var(--hair);
-  border-color: var(--hair);
-  cursor: default;
-}
-.sl-count {
-  font-family: var(--font-display);
-  letter-spacing: 0.14em;
-  font-size: 10px;
-  color: var(--amber);
 }
 .sl-prose {
   margin: 0;
@@ -2183,6 +2259,61 @@ body {
 .rr-next {
   color: var(--ember);
 }
+/* T-1503 · Alliance standing readout (Records → Registry tab). */
+.alliance-standing {
+  margin-top: 10px;
+  border: 1px solid var(--amber);
+  padding: 8px 12px 10px;
+  background: #120c06;
+}
+.as-label {
+  display: block;
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: var(--amber);
+  margin-bottom: 6px;
+}
+.as-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+}
+.as-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.as-name {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.as-value {
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+.as-friendly .as-value {
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.as-neutral .as-value {
+  color: var(--amber);
+}
+.as-hostile .as-value {
+  color: #e0562a;
+}
+
 .registry-empty,
 .nemesis-empty {
   padding: 18px 4px;
@@ -2392,6 +2523,27 @@ body {
   margin-bottom: 12px;
   border-color: var(--ember);
 }
+/* T-1407 · new-verb anchors. The Hangout launch nudge sits near the control
+   cluster on the bezel (top-right); the Port nudge shares the manifest's right
+   rail (the Trade pane's PORT AUTHORITY block lives there). explore reuses the
+   starmap anchor and contraband the manifest anchor, so both are already placed. */
+.onboarding[data-onboarding-anchor='hangout'] {
+  right: 26px;
+  top: 70px;
+}
+.onboarding[data-onboarding-anchor='port'] {
+  right: 26px;
+  top: 128px;
+}
+/* The loan coach rides INSIDE the open Hangout panel (which scrolls); render it
+   static in the flow at the top of the panel so it is never clipped or hidden
+   behind the panel, mirroring the combat coach inside .co-frame. */
+.hangout-panel .onboarding[data-onboarding-anchor='loan'] {
+  position: static;
+  width: auto;
+  margin-bottom: 12px;
+  border-color: var(--ember);
+}
 
 /* ---- guild-letter letterhead treatment ---- */
 .storylet-panel[data-variant='letter'] {
@@ -2539,11 +2691,319 @@ body {
 
 @media (max-width: 720px) {
   .onboarding[data-onboarding-anchor='manifest'],
-  .onboarding[data-onboarding-anchor='starmap'] {
+  .onboarding[data-onboarding-anchor='starmap'],
+  .onboarding[data-onboarding-anchor='hangout'],
+  .onboarding[data-onboarding-anchor='port'] {
     left: 50%;
     right: auto;
     transform: translateX(-50%);
     top: auto;
     bottom: 200px;
   }
+}
+
+/* ---- Hangout & lending pane (T-1404) ---- */
+.ctrls button.hangout-launch {
+  border-color: var(--amber);
+  color: var(--ember);
+}
+.hangout-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  width: min(720px, 92vw);
+  max-height: 62vh;
+  overflow-y: auto;
+  z-index: 78;
+  background: linear-gradient(180deg, #1a1007, #0c0805);
+  border: 1px solid var(--amber);
+  box-shadow: var(--glow);
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+}
+.hp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 10px;
+}
+.hp-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  color: var(--ember);
+}
+.hp-section {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--amber-dim);
+  padding: 9px 11px;
+}
+.hp-shead {
+  color: var(--ember);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.hp-empty {
+  color: var(--amber);
+  font-size: 11px;
+  opacity: 0.85;
+}
+.hp-npcs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hp-npc {
+  background: transparent;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+}
+.hp-npc.on {
+  border-color: var(--ember);
+  color: var(--tube);
+  background: var(--ember);
+}
+.hp-dare-controls,
+.hp-lend-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hp-wager {
+  display: grid;
+  gap: 3px;
+}
+.hp-k {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+.hangout-panel input {
+  width: 96px;
+  background: #0c0805;
+  border: 1px solid var(--amber-dim);
+  color: var(--ember);
+  padding: 5px 7px;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+.hp-dare-result {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+.hp-dare-verdict {
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--amber);
+}
+.hp-dare-verdict.won b {
+  color: var(--ember);
+}
+.hp-rumors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.hp-rumor {
+  color: var(--amber);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.hp-terms {
+  color: var(--ember);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.hp-loan-status {
+  color: var(--amber);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.hp-loan-status[data-status='defaulted'] {
+  color: var(--ember);
+}
+.hangout-panel .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* =========================================================================
+   T-1405 · Progression, property & smuggling surfaces
+   Crew roster, dawn-hand floor/reroll badges + per-die reroll, port authority
+   ledger, contraband-hold badge, and the patrol contraband scan. Single-hue
+   amber phosphor, reverse-video for the "seized/reason" emphasis (T-302).
+   ========================================================================= */
+
+/* ---- dawn-hand badges (floor + remaining re-roll charges) ---- */
+.dawn-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  vertical-align: middle;
+}
+.dawn-badge.reroll {
+  color: #140e07;
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+/* ---- per-die re-roll affordance ---- */
+/* The slot is unclipped so the reroll button (over the die's corner) isn't cut off
+   by the die's hexagon clip-path — a clipped button swallows its own clicks. */
+.die-slot {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.die-reroll {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: #140e07;
+  background: var(--amber);
+  border: 1px solid var(--ember);
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 2;
+}
+.die-reroll:hover {
+  background: var(--ember-hi);
+}
+
+/* ---- crew roster ---- */
+.ship-crew {
+  border: 1px solid var(--hair);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+.crew-head {
+  color: var(--amber);
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+.crew-head b {
+  color: var(--ember-hi);
+}
+.crew-row {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--hair);
+}
+.crew-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.crew-main {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+}
+.crew-name {
+  color: var(--ember);
+  font-weight: 500;
+}
+.crew-row.hired .crew-name {
+  color: var(--amber);
+}
+.crew-benefit {
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  color: var(--amber);
+  letter-spacing: 0.03em;
+}
+.crew-price {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--ember-hi);
+}
+
+/* ---- port authority ledger ---- */
+.port-authority .port-current {
+  display: grid;
+  gap: 5px;
+}
+.port-authority .flag {
+  align-self: center;
+}
+.port-ledger {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--hair);
+  display: grid;
+  gap: 3px;
+}
+.port-ledger .lb-row.port-total {
+  border-top: 1px solid var(--amber-dim);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+.port-ledger .lb-row.port-total b {
+  color: var(--ember-hi);
+  text-shadow: var(--glow);
+}
+.port-current-income {
+  color: var(--ember-hi);
+}
+
+/* ---- contraband-hold badge ---- */
+.contraband-hold {
+  margin-left: 8px;
+}
+
+/* ---- patrol contraband scan (in the combat overlay) ---- */
+.patrol-scan {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--amber-dim);
+  padding: 8px;
+  margin-bottom: 4px;
+}
+.ps-result {
+  font-family: var(--font-data);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  padding: 3px 8px;
+}
+.ps-result.clear {
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+}
+.ps-result.rev {
+  color: #140e07;
+  background: var(--amber);
+  font-weight: 600;
 }

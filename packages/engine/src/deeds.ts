@@ -162,6 +162,18 @@ export function renownRankIndex(rank: RenownRankId): number {
   return RENOWN_RANK_ORDER.indexOf(rank);
 }
 
+/**
+ * T-1401 · The next renown rank above `rank` in the canonical RENOWN_RANK_ORDER,
+ * or null at the top (CONQUEROR). The single engine-owned source for "what rank
+ * comes next", reading the same ordered rank list the whole engine ranks against.
+ * CONSUMER: T-1402's `deedRegistry` (ui format.ts, ~L801), which today re-sorts
+ * RENOWN_DEED_THRESHOLDS by threshold to find the next rank — a parallel ordering
+ * the UI shouldn't own; it consumes this instead.
+ */
+export function nextRankFor(rank: RenownRankId): RenownRankId | null {
+  return RENOWN_RANK_ORDER[renownRankIndex(rank) + 1] ?? null;
+}
+
 export function rankForDeedCount(deedCount: number): RenownRankId {
   let rank: RenownRankId = 'LIEUTENANT';
   for (const candidate of RENOWN_RANK_ORDER) {
@@ -308,6 +320,7 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
       emitted.push({
         type: 'WireEntry',
         day: state.day,
+        kind: 'plain',
         message:
           rankCitation ??
           `Registry confirms Player as ${RENOWN_RANKS[nextRank].label} after ${deed.title}.`,

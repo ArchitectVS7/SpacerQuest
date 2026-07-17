@@ -4,12 +4,16 @@ import {
   CONTRABAND_FENCE_REP_SCAN_PENALTY,
   CONTRABAND_CAUGHT_DISPOSITION,
   FENCE_REP_FLAG,
+  SMUGGLING_CAUGHT_LEAGUE_DELTA,
+  SMUGGLING_CAUGHT_REBEL_DELTA,
+  FENCE_REP_REBEL_DELTA,
 } from '@spacerquest/content';
 import { EncounterState, GameEvent, GameState } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check } from '../dice.js';
 import { isCarryingContraband, isCarryingIllicit } from '../economy.js';
 import { applyDisposition } from '../npc.js';
+import { applyReputation } from '../reputation.js';
 
 /**
  * T-1305 · Patrol contraband GUILE scan (pure).
@@ -101,9 +105,8 @@ export function applyPatrolContrabandScan(
   const fine = Math.min(state.player.credits, CONTRABAND_FINE);
   state.player.credits -= fine;
 
-  // A NAMED patrol captain remembers you. Anonymous patrols (the common case)
-  // have no persistent NPC to attach to; faction/patrol-standing rep is
-  // explicitly deferred to T-1503, so no unread faction flag is invented here.
+  // A NAMED patrol captain remembers you (the per-NPC grudge). Anonymous patrols
+  // (the common case) have no persistent NPC to attach to.
   if (encounter.interceptor.source === 'named') {
     applyDisposition(
       state,
@@ -112,6 +115,20 @@ export function applyPatrolContrabandScan(
       'contraband-caught',
       events,
     );
+  }
+
+  // T-1503 · Faction/patrol-standing consequence — CONSUMED here (the deferral this
+  // block once named). A caught scan brands you with the law and the frontier both:
+  // the Astro League cools (SMUGGLING_CAUGHT_LEAGUE_DELTA) and the Rebels warm
+  // (SMUGGLING_CAUGHT_REBEL_DELTA). A player who already carries Smuggler Ray's
+  // fence reputation (the FENCE_REP_FLAG — the contraband.ts:37 deferral) draws
+  // EXTRA Rebel warmth (FENCE_REP_REBEL_DELTA): a known fence-dealer the law caught
+  // is frontier folk hero. Reputation is faction-wide, so it applies to EVERY caught
+  // scan (named or anonymous patrol), unlike the per-NPC grudge above. No rng.
+  applyReputation(state, 'league', SMUGGLING_CAUGHT_LEAGUE_DELTA, 'smuggling-caught', events);
+  applyReputation(state, 'rebels', SMUGGLING_CAUGHT_REBEL_DELTA, 'smuggling-caught', events);
+  if (fenceRep) {
+    applyReputation(state, 'rebels', FENCE_REP_REBEL_DELTA, 'fence-dealt', events);
   }
 
   events.push({

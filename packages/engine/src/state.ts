@@ -95,6 +95,9 @@ export function createInitialState(seed: number): GameState {
       // T-1307: a fresh spacer owns no port — the first stake is bought later once
       // the veteran clears the price (PRD §9).
       ports: [],
+      // T-1503: a fresh spacer holds neutral standing with all four galactic
+      // powers — reputation is earned/spent through organic play + questlines.
+      reputation: { league: 0, dragons: 0, confederation: 0, rebels: 0 },
       stats: {
         [Stat.PILOT]: 1,
         [Stat.GUNS]: 0,
@@ -220,6 +223,16 @@ export function deserializeState(json: string): GameState {
   // Without it a legacy save leaves `ports` undefined and fails the strict schema's
   // non-optional `ports` key.
   parsed.player.ports ??= [];
+  // T-1503 save-compat: pre-T-1503 states have no reputation field. Default the
+  // whole nested container to neutral and backfill each faction key — the same
+  // backfill the v6→v7 save migration applies for the envelope path. Without it a
+  // legacy save leaves `reputation` (or a faction key) undefined and fails the
+  // strict schema's non-optional, four-key `reputation` shape.
+  parsed.player.reputation ??= { league: 0, dragons: 0, confederation: 0, rebels: 0 };
+  parsed.player.reputation.league ??= 0;
+  parsed.player.reputation.dragons ??= 0;
+  parsed.player.reputation.confederation ??= 0;
+  parsed.player.reputation.rebels ??= 0;
   parsed.npcs ??= [];
   parsed.npcs.forEach((npc) => {
     npc.disposition ??= 0;

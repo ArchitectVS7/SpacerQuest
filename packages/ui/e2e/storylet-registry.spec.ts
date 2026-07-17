@@ -12,26 +12,15 @@ test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
 });
 
-/** Open the storylet panel (if closed) and page it until it shows `storyletId`
- *  (rewind first, then advance). All navigation is through the cockpit launcher
- *  and the panel's own pager — no engine calls. */
+/** T-1406 · Open a storylet from its diegetic opener (a hold/manifest line, a
+ *  wire bulletin or a port dispatch) and confirm the focused panel shows it. The
+ *  badge launcher and pager are gone — opening is per-offer. No engine calls. */
 async function showStorylet(page: Page, storyletId: string): Promise<void> {
+  const opener = page.locator(`[data-storylet-open="${storyletId}"]`);
+  await expect(opener).toBeVisible();
+  await opener.click();
   const panel = page.getByTestId('storylet-panel');
-  if ((await panel.count()) === 0) {
-    await page.getByTestId('storylet-toggle').click();
-  }
   await expect(panel).toBeVisible();
-  for (let i = 0; i < 8; i++) {
-    const prev = page.getByTestId('storylet-prev');
-    if ((await prev.count()) === 0 || (await prev.isDisabled())) break;
-    await prev.click();
-  }
-  for (let i = 0; i < 8; i++) {
-    if ((await panel.getAttribute('data-storylet-id')) === storyletId) break;
-    const next = page.getByTestId('storylet-next');
-    if ((await next.count()) === 0 || (await next.isDisabled())) break;
-    await next.click();
-  }
   await expect(panel).toHaveAttribute('data-storylet-id', storyletId);
 }
 
@@ -105,6 +94,9 @@ test('playing the doc-salvage chain earns a deed that appears in the Registry wi
   await expect(page.getByTestId('registry-rank')).toHaveText('Commander');
 });
 
+// The complementary NON-EMPTY assertion (a fragment reached through the Explore
+// UI so the Nemesis File renders populated) lives in exploration.spec.ts (T-1403);
+// this empty-state spec is retained, not replaced.
 test('the Nemesis file renders its silent empty state at zero fragments', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('records-toggle').click();

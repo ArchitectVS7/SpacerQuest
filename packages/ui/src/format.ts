@@ -2,28 +2,51 @@ import {
   STAR_SYSTEMS,
   CARGO_TYPES,
   STORYLETS,
-  FLAWS,
   NPC_PROFILES,
   SHIP_COMPONENTS,
   SPECIAL_EQUIPMENT,
   RENOWN_RANKS,
   RENOWN_DEED_THRESHOLDS,
-  distance,
   Stat,
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
-  TRIBUTE_BASE_MULTIPLIER,
-  TRIBUTE_MAX,
+  EXPLORATION_NAV_DC,
+  EXPLORATION_FUEL_COST,
+  DARE_MIN_WAGER,
+  DARE_MAX_WAGER,
+  LOAN_MIN_PRINCIPAL,
+  LOAN_MAX_PRINCIPAL,
+  LOAN_DAILY_RATE,
+  LOAN_TERM_DAYS,
+  LENDER_ID,
+  CREW_ROLES,
+  CREW_BY_ID,
+  PURCHASABLE_PORTS_BY_SYSTEM,
+  isPurchasablePort,
+  FACTION_IDS,
+  FACTION_LABELS,
+  type FactionId,
   type StoryletTrigger,
+  type CrewRole,
 } from '@spacerquest/content';
 import {
-  jumpFuelCost,
-  travelDc,
-  calculateRouteDanger,
   maxJumpDistance,
+  navBonus,
   quoteShipyard,
   nemesisLoreIndex,
   fragmentCount,
+  componentTierForStrength,
+  tributeForRound,
+  nextRankFor,
+  quoteStoryletChoice,
+  travelPreview,
+  quoteFuelPurchase,
+  hangoutRumors,
+  dawnDiceModifiers,
+  quotePort,
+  crewCapacity,
+  isCarryingContraband,
+  isCarryingIllicit,
   type CheckResult,
   type GameEvent,
   type GameState,
@@ -34,8 +57,12 @@ import {
   type ShipyardQuote,
   type StoryletOffer,
   type NemesisLoreEntry,
+  type TravelPreview,
+  type FuelPurchaseQuote,
+  type PortQuote,
+  type PortEventFailReason,
 } from '@spacerquest/engine';
-import type { RenownRankId } from '@spacerquest/content';
+import type { RenownRankId, AnonymousInterceptorKind } from '@spacerquest/content';
 
 /** Display label for a stat. The Stat enum values are already the labels we
  * want, so this is a stable pure lookup (no fabricated names). */
@@ -65,13 +92,6 @@ export function systemName(id: number): string {
 
 export function cargoName(id: number): string {
   return CARGO_TYPES[id]?.name ?? `Cargo-${id}`;
-}
-
-export function jumpsBetween(from: number, to: number): number {
-  // Content distance is a float in the seed's x/y plane; one "jump" is a unit of
-  // that distance. Rounded for the manifest read-out (the real fuel math is the
-  // engine's job — surfaced honestly in the T-304 starmap pane later).
-  return Math.max(1, Math.round(distance(from, to)));
 }
 
 // ---- T-305 manifest flags (display-only) ---------------------------------
@@ -104,36 +124,359 @@ export function contractIsUrgent(game: GameState, destination: number): boolean 
   return game.eraEvent?.affectedSystemIds.includes(destination) ?? false;
 }
 
+/** T-1402 · The engine's advisory fuel-purchase preview (cost, delivered, wasted,
+ *  overspend, affordability), re-exported so the fuel depot can warn BEFORE the buy
+ *  commits. A pure read — the engine still clamps the tank on resolve; this only
+ *  surfaces the clamp so the spacer isn't silently charged for fuel they can't hold. */
+export function fuelPurchaseQuote(game: GameState, fuelAmount: number): FuelPurchaseQuote {
+  return quoteFuelPurchase(game, fuelAmount);
+}
+
 // ---- T-304 starmap -------------------------------------------------------
 //
 // Every rule number the starmap shows flows out of an engine function — never
-// recomputed here. `routePreview` reads jumpFuelCost / travelDc /
-// calculateRouteDanger; the fuel-range ring radius comes from maxJumpDistance;
-// reachability compares the engine's fuel cost against the ship's fuel. The UI
-// only projects coordinates onto the SVG plane.
+// recomputed here. `routePreview` is a thin pass-through to the engine's
+// `travelPreview` (fuel cost / pilot DC / danger / reachability); the fuel-range
+// ring radius comes from maxJumpDistance. The UI only projects coordinates onto
+// the SVG plane.
 
 /** A single previewed jump — fuel cost, pilot DC, danger and reachability, all
- *  read straight from the engine so the number shown is the number checked. */
-export interface RoutePreview {
-  distance: number;
-  fuelCost: number;
-  dc: number;
-  dangerLevel: number;
-  reachable: boolean;
+ *  read straight from the engine so the number shown is the number checked. The
+ *  UI owns no route rule: this is the engine's own `TravelPreview`, re-exported
+ *  under the name the starmap already calls. */
+export type RoutePreview = TravelPreview;
+
+/** T-1402 · A thin pass-through to the engine's `travelPreview` — the UI no longer
+ *  reimplements the jumpFuelCost / travelDc / calculateRouteDanger stack (nor the
+ *  fabricated `jumpsBetween` round) it used to; it consumes the engine truth. */
+export function routePreview(game: GameState, dest: number): RoutePreview {
+  return travelPreview(game, dest);
 }
 
-export function routePreview(game: GameState, dest: number): RoutePreview {
-  const here = game.player.currentSystemId;
-  const d = distance(here, dest);
+// ---- T-1403 off-lane exploration (display-only) --------------------------
+//
+// The off-lane sweep control is a pure CLIENT of the engine's `Explore` action.
+// Every rule number it shows — the nav DC, the fuel cost, the effective PILOT
+// modifier — reads from the SAME content constants and engine function the
+// resolver (actions/exploration.ts) checks against, never a value invented in
+// JSX. The loot summary is composed only from the action's typed events.
+
+/** The advisory nav-check preview for the sweep button: the DC and fuel cost the
+ *  engine will charge, the ship's effective PILOT modifier (stat + navBonus — the
+ *  exact term `resolveExploration` adds), and whether the tank can afford the
+ *  detour. A pure read; the engine still gates fuel on resolve. */
+export interface ExplorationPreview {
+  dc: number;
+  fuelCost: number;
+  effectiveModifier: number;
+  canAfford: boolean;
+}
+
+export function explorationPreview(game: GameState): ExplorationPreview {
   const ship = game.player.ship;
-  const fuelCost = jumpFuelCost(ship.drives, d, ship.hasTransWarpDrive ?? false);
   return {
-    distance: d,
-    fuelCost,
-    dc: travelDc(d),
-    dangerLevel: calculateRouteDanger(game, here, dest).routeDangerLevel,
-    reachable: fuelCost <= ship.fuel,
+    dc: EXPLORATION_NAV_DC,
+    fuelCost: EXPLORATION_FUEL_COST,
+    // The same modifier the resolver adds: PILOT stat + the ship's nav bonus.
+    effectiveModifier: game.player.stats[Stat.PILOT] + navBonus(ship),
+    canAfford: ship.fuel >= EXPLORATION_FUEL_COST,
   };
+}
+
+/**
+ * One honest line summarising a SUCCESSFUL sweep, composed straight from the
+ * action's typed events — the charted POI plus whatever loot the roll surfaced
+ * (salvage credits, a Signal Fragment, a sealed contraband pod). Returns null when
+ * no POI was discovered (a failed sweep speaks through its notice instead). The UI
+ * invents nothing here: every clause reads an emitted event.
+ */
+export function explorationOutcome(events: GameEvent[]): string | null {
+  const poi = events.find(
+    (e): e is Extract<GameEvent, { type: 'PoiDiscovered' }> => e.type === 'PoiDiscovered',
+  );
+  if (!poi) return null;
+  const parts: string[] = [`Charted ${poi.name}`];
+  let salvage = 0;
+  for (const e of events) if (e.type === 'SalvageRecovered') salvage += e.amount;
+  if (salvage > 0) parts.push(`${salvage.toLocaleString()}cr in salvage`);
+  if (events.some((e) => e.type === 'FragmentAcquired')) parts.push('a Signal Fragment recovered');
+  if (events.some((e) => e.type === 'ContrabandFound'))
+    parts.push('a sealed pod bolted in the hold');
+  return `${parts.join(' · ')}.`;
+}
+
+// ---- T-1404 Hangout & lending pane (display-only) ------------------------
+//
+// The Hangout pane is a pure CLIENT of the engine's T-1303 `VisitHangout` venues
+// and the T-1304 Penny Wise lending state. Every number it shows is read from the
+// SAME source the engine gates on: the `hasHangout` flag `day.ts` blocks on, the
+// wager/loan CONTENT constants the resolver clamps to, the live `player.loan`
+// fields the engine writes, and the rumor lines the engine's own pure
+// `hangoutRumors` synthesizes. Nothing here re-derives a rule — in particular the
+// loan accrual (`ceil(principal * rate)`) is NEVER recomputed in the UI; the
+// schedule is shown from raw constants and the realized interest reads off state.
+
+/** True when the current system hosts a Hangout — the EXACT predicate `day.ts`
+ *  gates `VisitHangout` on (`STAR_SYSTEMS[id].hasHangout === true`). Reader: the
+ *  cockpit's Hangout launcher button + the pane mount, so the pane is offered
+ *  only where the engine says a Hangout exists. */
+export function hangoutOpen(game: GameState): boolean {
+  return STAR_SYSTEMS[game.player.currentSystemId]?.hasHangout === true;
+}
+
+/** One present-NPC row for the Hangout — an NPC whose SIMULATED position is the
+ *  player's current system (the same "actually in-system" set the Dare resolver
+ *  requires an opponent to be in). Disposition rides along as a hint. Reader: the
+ *  pane's present-NPC list / Dare opponent picker. */
+export interface HangoutNpc {
+  id: string;
+  name: string;
+  disposition: number;
+}
+
+export function hangoutNpcs(game: GameState): HangoutNpc[] {
+  const here = game.player.currentSystemId;
+  return game.npcs
+    .filter((n) => n.currentSystemId === here)
+    .map((n) => ({ id: n.id, name: n.name, disposition: n.disposition }));
+}
+
+/** The rumor-table lines — a pure pass-through to the engine's own exported
+ *  `hangoutRumors` (synthesized from live NPC state). The UI never re-synthesizes
+ *  gossip; it renders exactly what the engine produces. Reader: the pane's rumor
+ *  table. */
+export function hangoutRumorLines(game: GameState): string[] {
+  return hangoutRumors(game);
+}
+
+/** The Dare wager band (content DARE_MIN/MAX_WAGER) — the same bounds the engine
+ *  clamps a requested wager into. Reader: the pane's wager input + its label. */
+export interface DareWagerBounds {
+  min: number;
+  max: number;
+}
+
+export function dareWagerBounds(): DareWagerBounds {
+  return { min: DARE_MIN_WAGER, max: DARE_MAX_WAGER };
+}
+
+/** Penny Wise's up-front lending terms — the raw content constants the engine
+ *  advances against: the principal band, the per-dusk rate and the term. Shown
+ *  BEFORE a loan is taken so the schedule is visible up front ("dice are honest"
+ *  applied to money). `ratePercent` is `LOAN_DAILY_RATE * 100` — a pure format of
+ *  the rate constant, NOT an accrual computation (the engine still computes the
+ *  realized `ceil(principal * rate)` interest each dusk). Reader: the pane's
+ *  Penny Wise desk terms line. */
+export interface LendingTerms {
+  lenderId: string;
+  minPrincipal: number;
+  maxPrincipal: number;
+  ratePercent: number;
+  termDays: number;
+}
+
+export function lendingTerms(): LendingTerms {
+  return {
+    lenderId: LENDER_ID,
+    minPrincipal: LOAN_MIN_PRINCIPAL,
+    maxPrincipal: LOAN_MAX_PRINCIPAL,
+    ratePercent: LOAN_DAILY_RATE * 100,
+    termDays: LOAN_TERM_DAYS,
+  };
+}
+
+// ---- T-1405 progression, property & smuggling surfaces (display-only) -----
+//
+// The dawn-hand modifiers, crew roster, port ledger and contraband-hold badge are
+// pure CLIENTS of the T-1305 patrol / T-1306 dice-progression / T-1307 port
+// mechanics. Every number reads a content constant or an engine export
+// (`dawnDiceModifiers`, `quotePort`, `crewCapacity`, `isCarryingContraband` /
+// `isCarryingIllicit`) — the same source the resolvers gate on. Nothing here
+// re-derives a rule (income, floor, hire price, capacity all come from
+// engine/content); the UI only projects them onto the pane.
+
+/** The resolved dawn-hand parameters — crew-granted hand size / floor / per-day
+ *  reroll grant (from the SAME `dawnDiceModifiers` aggregator `startDay` uses to
+ *  deal the hand) merged with the LIVE remaining reroll charges off the dealt
+ *  hand. A pure read. READER: the HandDock floor badge + reroll count + per-die
+ *  reroll affordance. */
+export interface DawnHandModifiers {
+  handSize: number;
+  floor: number;
+  rerolls: number;
+  rerollsRemaining: number;
+}
+
+export function dawnHandModifiers(game: GameState): DawnHandModifiers {
+  const mods = dawnDiceModifiers(game.player.crew);
+  return {
+    handSize: mods.handSize,
+    floor: mods.floor,
+    rerolls: mods.rerolls,
+    rerollsRemaining: game.player.dawnHand?.rerollsRemaining ?? 0,
+  };
+}
+
+/** The one-word benefit label for a crew role, read straight off its content
+ *  `benefit` discriminant — never a UI-invented effect. */
+export function crewBenefitLabel(role: CrewRole): string {
+  const b = role.benefit;
+  switch (b.kind) {
+    case 'extra-die':
+      return '+1 die';
+    case 'reroll':
+      return 'one re-roll/day';
+    case 'floor':
+      return `floor ${b.floor}`;
+  }
+}
+
+/** One hired crew member — its content role definition + the day it came aboard. */
+export interface HiredCrewRow {
+  role: CrewRole;
+  hiredDay: number;
+}
+
+/** One hireable crew role — its definition plus affordability / berth state and a
+ *  plain "here's why you can't hire" reason (mirrors quoteShipyard's reason style
+ *  so the pane disables-not-hides). `canHire` folds every precondition (free berth
+ *  AND the hire price) so the button gate is a single read. */
+export interface HireableCrewRow {
+  role: CrewRole;
+  affordable: boolean;
+  canHire: boolean;
+  reason: string | null;
+}
+
+export interface CrewRoster {
+  hired: HiredCrewRow[];
+  hireable: HireableCrewRow[];
+  /** Cabin berths (engine `crewCapacity`, the T-1205 cabin-strength socket). */
+  berths: number;
+  berthsUsed: number;
+}
+
+/**
+ * The crew roster for the ship pane: which roles are aboard, which are hireable
+ * (each with a disabled-reason), and the berth budget. `berths` is the engine's
+ * `crewCapacity` (cabin strength → berths); a hire is gated on a free berth AND
+ * the hire price — the SAME order `resolveCrew` checks — so the pane never enables
+ * a hire the engine would refuse. READER: ShipPane crew section.
+ */
+export function crewRoster(game: GameState): CrewRoster {
+  const crew = game.player.crew;
+  const berths = crewCapacity(game.player.ship);
+  const berthsUsed = crew.length;
+  const hiredIds = new Set(crew.map((m) => m.roleId));
+  const hired: HiredCrewRow[] = crew
+    .map((m) => ({ role: CREW_BY_ID[m.roleId], hiredDay: m.hiredDay }))
+    .filter((r): r is HiredCrewRow => r.role != null);
+  const hireable: HireableCrewRow[] = CREW_ROLES.filter((role) => !hiredIds.has(role.id)).map(
+    (role) => {
+      const affordable = game.player.credits >= role.hirePrice;
+      const hasBerth = berthsUsed < berths;
+      let reason: string | null = null;
+      if (!hasBerth) reason = 'No free cabin berth — upgrade the cabin';
+      else if (!affordable)
+        reason = `Need ${role.hirePrice.toLocaleString()}cr, have ${game.player.credits.toLocaleString()}cr`;
+      return { role, affordable, canHire: hasBerth && affordable, reason };
+    },
+  );
+  return { hired, hireable, berths, berthsUsed };
+}
+
+/** The current-system port stake (name + live `quotePort` buy preview), or null
+ *  when the player stands in a non-purchasable (rim) system. */
+export interface PortLedgerCurrent {
+  systemId: number;
+  name: string;
+  quote: PortQuote;
+}
+
+/** One owned port stake — its per-dusk income (era-modulated, straight off
+ *  `quotePort`) and the day it was bought. */
+export interface OwnedPortRow {
+  systemId: number;
+  name: string;
+  income: number;
+  purchaseDay: number;
+}
+
+export interface PortLedger {
+  current: PortLedgerCurrent | null;
+  owned: OwnedPortRow[];
+  /** Sum of the owned stakes' per-dusk incomes — the "watch income tick at dusk"
+   *  figure the ledger surfaces. */
+  totalDuskIncome: number;
+}
+
+/**
+ * The port-authority ledger for the trade pane: the buy preview for the port the
+ * player stands in (via `quotePort`, so the price / income / disabled-reason can
+ * never disagree with the real purchase), plus every owned stake with its
+ * era-modulated per-dusk income. Every number reads content (`baseDuskIncome`,
+ * `purchasePrice`) through the engine — never recomputed here. READER: the
+ * TradePane PORT AUTHORITY block + its income ledger.
+ */
+export function portLedger(game: GameState): PortLedger {
+  const here = game.player.currentSystemId;
+  const current: PortLedgerCurrent | null = isPurchasablePort(here)
+    ? {
+        systemId: here,
+        name: PURCHASABLE_PORTS_BY_SYSTEM[here].name,
+        quote: quotePort(game, here),
+      }
+    : null;
+  const owned: OwnedPortRow[] = game.player.ports.map((port) => {
+    const def = PURCHASABLE_PORTS_BY_SYSTEM[port.systemId];
+    return {
+      systemId: port.systemId,
+      name: def?.name ?? `System-${port.systemId} Port Authority`,
+      income: quotePort(game, port.systemId).income,
+      purchaseDay: port.purchaseDay,
+    };
+  });
+  const totalDuskIncome = owned.reduce((sum, o) => sum + o.income, 0);
+  return { current, owned, totalDuskIncome };
+}
+
+/** Translate the engine's typed `PortEventFailReason` (also the `quotePort`
+ *  failure set) into a one-line "disabled, here's why" reason for the buy button.
+ *  Pure display translation — re-derives no rule. Every reason maps. */
+export function portFailureExplanation(failure: PortEventFailReason): string {
+  switch (failure) {
+    case 'not-at-port':
+      return 'Dock here to buy this authority';
+    case 'not-purchasable':
+      return 'No port authority for sale here';
+    case 'already-owned':
+      return 'You already hold this stake';
+    case 'insufficient-credits':
+      return 'Not enough credits';
+    case 'no-die':
+    case 'invalid-die-index':
+    case 'die-already-spent':
+      return 'Assign a die';
+  }
+}
+
+/** The contraband-hold badge state — whether the ship is carrying illicit cargo
+ *  and from which source(s). Reads the SAME `isCarryingContraband` / illicit-pod
+ *  flag the T-1305 patrol scan gates on, so the badge shows exactly when a patrol
+ *  would scan. READER: the TradePane hold badge. */
+export interface ContrabandHold {
+  carrying: boolean;
+  source: 'contract' | 'pod' | 'both' | null;
+}
+
+export function contrabandHold(game: GameState): ContrabandHold {
+  const contract = isCarryingContraband(game);
+  const pod = game.flags['signal.contraband.carrying'] === true;
+  let source: ContrabandHold['source'] = null;
+  if (contract && pod) source = 'both';
+  else if (contract) source = 'contract';
+  else if (pod) source = 'pod';
+  return { carrying: isCarryingIllicit(game), source };
 }
 
 /** A system placed on the SVG plane: raw coordinates plus projected (viewBox)
@@ -316,16 +659,6 @@ export interface WireLogDay {
   entries: WireLogEntry[];
 }
 
-/** Past-tense flaw fragments the engine files after an NPC's name when a flaw
- *  overrides their day (see engine day.ts + content FLAWS). Read from authored
- *  content data so a `WireEntry` can be classified as a flaw override without
- *  any engine/schema change — the UI owns no rule here. */
-const FLAW_DETAILS: readonly string[] = Object.values(FLAWS).map((f) => f.detail);
-
-function isFlawOverrideMessage(msg: string): boolean {
-  return FLAW_DETAILS.some((detail) => msg.endsWith(detail));
-}
-
 function wireKind(e: GameEvent): WireLogKind {
   switch (e.type) {
     case 'DeedEarned':
@@ -338,7 +671,11 @@ function wireKind(e: GameEvent): WireLogKind {
     case 'PoiDiscovered':
       return 'poi';
     case 'WireEntry':
-      return isFlawOverrideMessage(e.message) ? 'flaw-override' : 'npc';
+      // T-1402 · Read the engine-stamped `WireEntry.kind` (T-1401) instead of the
+      // UI re-classifying the message by suffix-matching content FLAWS. The kind
+      // ('flaw-override' | 'npc' | 'plain') is decided at emission; the UI owns no
+      // rule here. Every WireEntryKind member is a valid WireLogKind.
+      return e.kind;
     default:
       return 'plain';
   }
@@ -513,13 +850,16 @@ export function combatFuelStatus(game: GameState): CombatFuelStatus {
 }
 
 /**
- * PREVIEW of what a talk is likely to cost THIS round. This mirrors the engine's
- * own `tributeForRound` (min(round * base, cap)) using the imported content
- * constants — it is display-only. The amount actually charged always comes from
- * the engine's `TributeDemanded`/`TributePaid` events, never from this number.
+ * PREVIEW of what a talk is likely to cost THIS round. T-1402 · Delegates to the
+ * engine's own `tributeForRound`, forwarding the interceptor's CLASS so an
+ * anonymous Brigand (÷2) / Reptiloid (×2) previews the exact demand the engine
+ * charges — the old UI reimplementation ignored the class modifier and could
+ * preview a tribute the engine never charges. Named interceptors pass `undefined`
+ * (the unmodified ×1 schedule). The amount actually charged always comes from the
+ * engine's `TributeDemanded`/`TributePaid` events, never from this number.
  */
-export function tributeThisRound(round: number): number {
-  return Math.min(round * TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX);
+export function tributeThisRound(round: number, kind?: AnonymousInterceptorKind): number {
+  return tributeForRound(round, kind);
 }
 
 export interface CombatAftermath {
@@ -608,7 +948,8 @@ export interface ShipComponentRow {
   strength: number;
   condition: number;
   damaged: boolean;
-  /** The tier this component currently sits at (strength/10, rounded up, min 1). */
+  /** The tier this component currently sits at, from the engine's
+   *  `componentTierForStrength` (floor(strength/10); a junker sits at tier 0). */
   tier: number;
   /** The next purchasable tier, or null when already at the top tier (9). */
   nextTier: number | null;
@@ -620,7 +961,11 @@ export function shipComponents(game: GameState): ShipComponentRow[] {
   return SHIP_COMPONENTS.map((def) => {
     const id = def.id;
     const comp = ship[id];
-    const tier = Math.max(1, Math.ceil(comp.strength / 10));
+    // T-1402 · Consume the engine's floor-based tier inverse instead of the UI's
+    // old `Math.max(1, Math.ceil(strength/10))`, which mapped a junker (strength 1)
+    // to tier 1 → nextTier 2, making TIER 1 UNBUYABLE. floor maps it to tier 0 →
+    // nextTier 1 is buyable.
+    const tier = componentTierForStrength(comp.strength);
     return {
       id,
       name: def.name,
@@ -733,51 +1078,70 @@ export function shipyardFailureExplanation(fail: ShipyardFail): string {
 /** One presented storylet choice (the offer's authored choice shape). */
 export type StoryletChoice = StoryletOffer['choices'][number];
 
-/** Does resolving this choice consume a die? True iff it declares a die spend
- *  or a stat check (the two paths the engine's `spendRequiredDie` burns a die
- *  on). The store passes `spendDie` ONLY for these — a no-requirement choice
+/** Does resolving this choice consume a die? T-1402 · Reads the engine's own
+ *  `quoteStoryletChoice(...).needsDie` (a `spendDie` requirement or a stat check —
+ *  the two paths the engine burns a die on) rather than reimplementing the gate.
+ *  The store passes `spendDie` ONLY for these — a no-requirement choice
  *  (answer / accept-thanks) must never demand or waste a die. */
-export function storyletChoiceNeedsDie(choice: StoryletChoice): boolean {
-  return !!(choice.requirements?.spendDie || choice.requirements?.statCheck);
+export function storyletChoiceNeedsDie(
+  game: GameState,
+  storyletId: string,
+  choice: StoryletChoice,
+): boolean {
+  return quoteStoryletChoice(game, storyletId, choice.id).needsDie;
 }
 
 /**
  * A compact, always-shown requirement/cost badge for a choice — the PRD's
- * "choices with visible requirements/costs". Renders the credit floor, the stat
- * check (STAT DC n), and a `die` token when a die is spent, joined by ` · `. An
- * unconditional choice returns '' (no badge). This shows the requirement whether
+ * "choices with visible requirements/costs". T-1402 · Assembled from the engine's
+ * `quoteStoryletChoice` FACTS (credit floor, stat check, die spend), never from a
+ * UI-reimplemented read of `choice.requirements`. Renders the credit floor, the
+ * stat check (STAT DC n), and a `die` token when a die is spent, joined by ` · `.
+ * An unconditional choice returns '' (no badge). This shows the requirement whether
  * or not it is currently met; the LOCK (below) adds the disabled-state reason.
  */
-export function storyletChoiceCostLabel(choice: StoryletChoice): string {
-  const req = choice.requirements;
-  if (!req) return '';
+export function storyletChoiceCostLabel(
+  game: GameState,
+  storyletId: string,
+  choice: StoryletChoice,
+): string {
+  const quote = quoteStoryletChoice(game, storyletId, choice.id);
   const parts: string[] = [];
-  if (req.credits?.gte !== undefined) parts.push(`${req.credits.gte.toLocaleString()}cr`);
-  if (req.statCheck) parts.push(`${statName(req.statCheck.stat)} DC ${req.statCheck.dc}`);
-  if (storyletChoiceNeedsDie(choice)) parts.push('die');
+  if (quote.requiredCredits !== null) parts.push(`${quote.requiredCredits.toLocaleString()}cr`);
+  if (quote.statCheck) parts.push(`${statName(quote.statCheck.stat)} DC ${quote.statCheck.dc}`);
+  if (quote.needsDie) parts.push('die');
   return parts.join(' · ');
 }
 
 /**
- * Why this choice is locked right now, or null when it can be taken. Mirrors the
- * engine's own refusal order (resolveStoryletChoice): a credit shortfall blocks
- * first, then a missing die. `armed` is whether a die is currently selected —
- * a die-requiring choice is locked until one is assigned. This drives both the
- * disabled state and the visible requirement on a locked choice.
+ * Why this choice is locked right now, or null when it can be taken. T-1402 ·
+ * Delegates to the engine's `quoteStoryletChoice`, which runs the EXACT read-only
+ * refusal ladder `resolveStoryletChoice` runs (insufficient-credits before
+ * missing-die), and translates its typed reason into prose. `armedDie` is the die
+ * index the UI has tentatively assigned (undefined = none) — a die-requiring
+ * choice previews `missing-die` until a valid, unspent die is armed. This drives
+ * both the disabled state and the visible requirement on a locked choice.
  */
 export function storyletChoiceLock(
   game: GameState,
+  storyletId: string,
   choice: StoryletChoice,
-  armed: boolean,
+  armedDie?: number,
 ): string | null {
-  const req = choice.requirements;
-  if (req?.credits?.gte !== undefined && game.player.credits < req.credits.gte) {
-    return `Need ${req.credits.gte.toLocaleString()}cr`;
+  const quote = quoteStoryletChoice(game, storyletId, choice.id, armedDie);
+  switch (quote.reason) {
+    case 'insufficient-credits':
+      return `Need ${(quote.requiredCredits ?? 0).toLocaleString()}cr`;
+    case 'missing-die':
+      return 'Assign a die';
+    case 'not-available':
+    case 'unknown-choice':
+      // A live offer's own choice never hits these; map defensively so a stale
+      // render is disabled rather than mis-enabled.
+      return 'Unavailable';
+    case null:
+      return null;
   }
-  if (storyletChoiceNeedsDie(choice) && !armed) {
-    return 'Assign a die';
-  }
-  return null;
 }
 
 export interface DeedRegistryView {
@@ -801,22 +1165,50 @@ export interface DeedRegistryView {
 export function deedRegistry(game: GameState): DeedRegistryView {
   const registry = game.player.registry;
   const deedCount = registry.earned.length;
-  // Ranks in ascending threshold order; the next rank is the first whose
-  // threshold the current deed count has not yet reached.
-  const rankOrder = (Object.keys(RENOWN_DEED_THRESHOLDS) as RenownRankId[]).sort(
-    (a, b) => RENOWN_DEED_THRESHOLDS[a] - RENOWN_DEED_THRESHOLDS[b],
-  );
-  const next = rankOrder.find((id) => RENOWN_DEED_THRESHOLDS[id] > deedCount) ?? null;
+  // T-1402 · The next rank up comes from the engine's `nextRankFor` (the canonical
+  // RENOWN_RANK_ORDER), not a UI re-sort of RENOWN_DEED_THRESHOLDS. The threshold
+  // itself is still a content lookup for the remaining-deeds countdown.
+  const next = nextRankFor(registry.renownRank);
   return {
     rankId: registry.renownRank,
     rankLabel: RENOWN_RANKS[registry.renownRank].label,
     deedCount,
     nextRankLabel: next ? RENOWN_RANKS[next].label : null,
-    deedsToNextRank: next ? RENOWN_DEED_THRESHOLDS[next] - deedCount : null,
+    deedsToNextRank: next ? Math.max(0, RENOWN_DEED_THRESHOLDS[next] - deedCount) : null,
     earned: [...registry.earned]
       .sort((a, b) => b.eventIndex - a.eventIndex)
       .map((d) => ({ id: d.id, title: d.title, citation: d.citation, day: d.day })),
   };
+}
+
+/** One faction's standing row for the ALLIANCE STANDING readout. */
+export interface FactionStandingView {
+  faction: FactionId;
+  /** Display name (content FACTION_LABELS). */
+  label: string;
+  /** The raw standing value (engine `player.reputation[faction]`). */
+  value: number;
+  /** A coarse tone for styling — friendly / hostile / neutral. */
+  tone: 'friendly' | 'hostile' | 'neutral';
+}
+
+/**
+ * T-1503 · The four-faction ALLIANCE STANDING view — a pure read of
+ * `game.player.reputation`, one row per galactic power in the canonical
+ * FACTION_IDS order, labelled from content FACTION_LABELS. The UI owns NO rule: the
+ * value is the engine's stored standing verbatim; `tone` is a display-only sign
+ * bucket. READER of the reputation state the T-1503 movers/questlines write.
+ */
+export function factionStanding(game: GameState): FactionStandingView[] {
+  return FACTION_IDS.map((faction) => {
+    const value = game.player.reputation[faction];
+    return {
+      faction,
+      label: FACTION_LABELS[faction],
+      value,
+      tone: value > 0 ? 'friendly' : value < 0 ? 'hostile' : 'neutral',
+    };
+  });
 }
 
 export interface NemesisFileView {
@@ -851,8 +1243,14 @@ export function nemesisFile(game: GameState): NemesisFileView {
 // prompts, shared by the selector (what to render) and the store's auto-dismiss
 // reconcile (what to mark seen when the taught action lands).
 
-/** Anchor a contextual prompt to the real affordance it teaches. */
-export type OnboardingAnchor = 'hand' | 'manifest' | 'starmap' | 'combat';
+/** Anchor a contextual prompt to the real affordance it teaches. T-1407 adds the
+ *  new-verb anchors: `hangout` (the cockpit launch switch) and `port` (the Trade
+ *  pane's PORT AUTHORITY block) are new screen-level anchors; `loan` renders
+ *  INSIDE the open Hangout panel (a distinct mount — see `onboardingMount`).
+ *  explore reuses `starmap` and the contraband nudge reuses `manifest`, since each
+ *  teaches an affordance already living in those panes. */
+export type OnboardingAnchor =
+  'hand' | 'manifest' | 'starmap' | 'combat' | 'hangout' | 'loan' | 'port';
 
 /** One contextual, first-time coach prompt. `active(game)` is a pure predicate
  *  over existing engine state — no new rule, no new field. A prompt shows while
@@ -864,6 +1262,16 @@ export interface OnboardingPrompt {
   body: string;
   anchor: OnboardingAnchor;
   active(game: GameState): boolean;
+  /** T-1407 · When false, the prompt is marked seen ONLY via explicit dismissal
+   *  (the "Got it" button → `dismissOnboarding`), never by the auto-dismiss
+   *  reconcile. The new-verb prompts gate on affordance/location/resource state
+   *  (a hangout system, an affordable tank, a contraband board, a purchasable
+   *  port) rather than on the taught action landing, so a mere context change —
+   *  jumping away from a hangout, a board reroll — would otherwise spuriously
+   *  consume them before the player ever acts. Reader: `nextOnboardingSeen`.
+   *  Omitted/true for the T-311 delivery-flow prompts, whose predicate flips
+   *  false precisely when the taught action completes (so auto-dismiss is right). */
+  autoDismiss?: boolean;
 }
 
 /**
@@ -885,7 +1293,9 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
   {
     id: 'dawn-roll',
     title: 'The Dawn Hand',
-    body: 'Five dice, once a day. Pick one, then assign it to an action.',
+    // T-1405 · Hand-size-neutral copy: crew (a First Officer) can grow the dawn
+    // hand to 6–7 dice, so the count is no longer a fixed "five".
+    body: 'Your dawn hand — one roll each day. Pick a die, then assign it to an action.',
     anchor: 'hand',
     active: (game) => {
       const hand = game.player.dawnHand;
@@ -906,6 +1316,75 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
     anchor: 'starmap',
     active: (game) => game.player.activeContract != null,
   },
+  // ---- T-1407 · the new-verb coach prompts -------------------------------
+  // Appended BELOW the four delivery-flow prompts so the guided first delivery
+  // (dawn → sign → jump) is unchanged: these only ever win once that chain is
+  // exhausted (or its prompts pre-seen). All five are `autoDismiss: false` — they
+  // gate on affordance state, not on the taught action, so only the "Got it"
+  // button marks them seen (see the interface note above). Each predicate is a
+  // pure read of existing engine/content surface; the reader is `OnboardingCallout`
+  // (the screen mount, plus the in-panel `hangout` mount for `first-loan`).
+  {
+    id: 'first-hangout',
+    title: 'The Spacers Hangout',
+    body: 'This port keeps a Hangout — open it to wager at the tables or borrow from Penny Wise.',
+    // Ranked ABOVE first-loan: at a hangout system both are active, but the
+    // player must be told to OPEN the panel before the in-panel loan nudge (which
+    // renders inside that panel) can be reached.
+    anchor: 'hangout',
+    // Same predicate the cockpit's Hangout launcher gates on (STAR_SYSTEMS
+    // hasHangout), so the nudge shows exactly where the button does.
+    active: (game) => hangoutOpen(game),
+    autoDismiss: false,
+  },
+  {
+    id: 'first-loan',
+    title: 'Penny Wise Lends',
+    body: 'Short on coin? Borrow against your future runs — mind the interest before you sign.',
+    anchor: 'loan',
+    // Only while the Hangout is open (the mount lives inside the panel) AND no
+    // loan is already outstanding — the exact state the `loan-borrow` button is
+    // live in.
+    active: (game) => hangoutOpen(game) && game.player.loan == null,
+    autoDismiss: false,
+  },
+  {
+    id: 'first-contraband',
+    title: 'Running Contraband',
+    body: 'A CONTRABAND offer pays well but rides dirty — signing it courts inspections. Your call.',
+    anchor: 'manifest',
+    // A contraband offer is on the board and the hold is free to take it — the
+    // decision the player faces at the manifest. Reads CARGO_TYPES.isContraband,
+    // the same flag the manifest row badges.
+    active: (game) =>
+      game.player.activeContract == null &&
+      game.market.manifestBoard.some((c) => CARGO_TYPES[c.cargoType]?.isContraband === true),
+    autoDismiss: false,
+  },
+  {
+    id: 'first-port',
+    title: 'Buy the Port',
+    body: 'You can buy a stake in this Port Authority — it pays a launch-fee income every dusk.',
+    anchor: 'port',
+    // Standing in a purchasable core port you do not already own — the exact
+    // state the Trade pane's `buy-port` button is live in (isPurchasablePort +
+    // not-owned).
+    active: (game) => {
+      const here = game.player.currentSystemId;
+      return isPurchasablePort(here) && !game.player.ports.some((p) => p.systemId === here);
+    },
+    autoDismiss: false,
+  },
+  {
+    id: 'first-explore',
+    title: 'Off-Lane Sweep',
+    body: 'Burn fuel to sweep off-lane for a discovery — salvage, a Signal Fragment, a sealed pod.',
+    anchor: 'starmap',
+    // The tank can afford the sweep — the same fuel gate `explorationPreview`
+    // reports and the sweep button disables on.
+    active: (game) => explorationPreview(game).canAfford,
+    autoDismiss: false,
+  },
 ];
 
 /**
@@ -921,6 +1400,21 @@ export function activeOnboardingPrompt(
     if (!seen[prompt.id] && prompt.active(game)) return prompt;
   }
   return null;
+}
+
+/** T-1407 · Where a prompt's callout renders. The single global selector still
+ *  picks at-most-one prompt anywhere; this routes the winner to the right mount so
+ *  a prompt anchored to an overlaid surface is not hidden behind that overlay. */
+export type OnboardingMount = 'screen' | 'combat' | 'hangout';
+
+/** Derive the mount a prompt's anchor renders in: the combat coach rides inside
+ *  the combat overlay, the loan nudge inside the open Hangout panel, everything
+ *  else at cockpit screen level. Reader: `OnboardingCallout` (each of the three
+ *  mounts asks whether the current winner belongs to it). */
+export function onboardingMount(anchor: OnboardingAnchor): OnboardingMount {
+  if (anchor === 'combat') return 'combat';
+  if (anchor === 'loan') return 'hangout';
+  return 'screen';
 }
 
 /**
@@ -939,6 +1433,10 @@ export function nextOnboardingSeen(
   let out: Record<string, true> | null = null;
   for (const prompt of ONBOARDING_PROMPTS) {
     if (seen[prompt.id]) continue;
+    // T-1407 · Affordance-gated prompts opt out of auto-dismiss: a context change
+    // that is NOT the taught action (jumping away from a hangout, a board reroll)
+    // must not consume them. They are seen only via explicit dismissal.
+    if (prompt.autoDismiss === false) continue;
     if (prompt.active(prev) && !prompt.active(next)) {
       out ??= { ...seen };
       out[prompt.id] = true;
@@ -958,6 +1456,58 @@ export function isGuildLetter(storyletId: string): boolean {
  *  these so the generic storylet launcher/panel never double-renders them. */
 export function isResolutionStorylet(storyletId: string): boolean {
   return storyletId.startsWith('resolution.tour-one.');
+}
+
+// ---- T-1406 diegetic storylet delivery (display-only) --------------------
+//
+// PRD §8.3: a storylet is "delivered by the economy — a contract, a price spike,
+// a wire item — rather than a quest marker." The old cockpit put every offer
+// behind a single badge-counted launcher button; this classifier instead routes
+// each live offer to the DIEGETIC surface that opens it (a hold/manifest line, a
+// Galactic-Wire bulletin, a Port-Ledger dispatch). It owns NO rule — the routing
+// is a pure function of the authored storylet id prefix, and every mutation still
+// flows through the store's `resolveStorylet`.
+
+/** The in-fiction surface a storylet opens from. `ceremony` is the day-30 Tour
+ *  One resolution, owned by the full-screen ResolutionCeremony (never an opener). */
+export type StoryletSurface = 'hold' | 'wire' | 'port' | 'ceremony';
+
+/**
+ * Route a storylet id to the diegetic surface that opens it. Pure, id-prefix
+ * based, and TOTAL: the `port` default is the reachability guarantee — a newly
+ * authored storylet whose prefix isn't listed here still lands on the Port-Ledger
+ * dispatches rather than becoming unreachable (the invariant the sweep spec
+ * asserts). READERS: the cockpit surface openers (App.tsx TradePane / Wire) and
+ * the storylet-delivery sweep spec's audit.
+ */
+export function storyletSurface(storyletId: string): StoryletSurface {
+  if (isResolutionStorylet(storyletId)) return 'ceremony';
+  // Hold: cargo riding in the hold, a boarded derelict's pod, a fence at the dock.
+  if (
+    storyletId.startsWith('cargo.') ||
+    storyletId.startsWith('derelict.') ||
+    storyletId.startsWith('fence.')
+  ) {
+    return 'hold';
+  }
+  // Wire: a Galactic-Wire bulletin — Guild pressure notices and wire rumors.
+  if (storyletId.startsWith('wire.') || storyletId.startsWith('guild.')) return 'wire';
+  // Port dispatches: port auditors, passengers, the Wise One / Sage, chains,
+  // veteran beats — and, by the total default, anything not classified above.
+  return 'port';
+}
+
+/** The non-resolution offers currently live — the ground truth the openers and
+ *  the sweep audit both project. The day-30 resolution offers are excluded (the
+ *  ceremony presents those). READERS: the cockpit surface openers + the audit. */
+export function availableStorylets(game: GameState): StoryletOffer[] {
+  return game.storylets.available.filter((o) => !isResolutionStorylet(o.storyletId));
+}
+
+/** The live offers whose diegetic surface is `surface`. READER: each cockpit
+ *  surface opener (hold / wire / port). */
+export function offersForSurface(game: GameState, surface: StoryletSurface): StoryletOffer[] {
+  return availableStorylets(game).filter((o) => storyletSurface(o.storyletId) === surface);
 }
 
 export interface ResolutionCeremonyView {

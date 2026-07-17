@@ -207,6 +207,7 @@ function brokeIdle(npc: NpcState, rng: SeededRng, day: number, events: GameEvent
     events.push({
       type: 'WireEntry',
       day,
+      kind: 'npc',
       message: `${npc.name} seen begging for fuel money at ${systemName(npc.currentSystemId)}.`,
     });
   }

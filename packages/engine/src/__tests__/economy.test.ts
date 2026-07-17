@@ -6,13 +6,14 @@ import {
   isCarryingContraband,
   jumpFuelCost,
   maxJumpDistance,
+  quoteFuelPurchase,
 } from '../economy.js';
 import { resolveShipyard } from '../actions/shipyard.js';
 import { applyPlayerAction, startDay } from '../day.js';
-import { travelDc } from '../actions/travel.js';
+import { calculateRouteDanger, travelDc, travelPreview } from '../actions/travel.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { SeededRng } from '../rng.js';
-import { ShipState } from '../types.js';
+import { GameState, ShipState } from '../types.js';
 
 describe('economy', () => {
   it('generates a deterministic manifest board', () => {
@@ -319,5 +320,81 @@ describe('economy', () => {
       expect(travelDc(2)).toBe(9);
       expect(travelDc(8)).toBe(12);
     });
+  });
+});
+
+describe('travelPreview (T-1401 export pack)', () => {
+  it('reports every field straight from the underlying engine functions', () => {
+    const state = createInitialState(7);
+    const here = state.player.currentSystemId;
+    const dest = 2;
+    const ship = state.player.ship;
+    const preview = travelPreview(state, dest);
+
+    const dist = distance(here, dest);
+    expect(preview.distance).toBe(dist);
+    expect(preview.fuelCost).toBe(jumpFuelCost(ship.drives, dist, ship.hasTransWarpDrive ?? false));
+    expect(preview.dc).toBe(travelDc(dist));
+    expect(preview.dangerLevel).toBe(calculateRouteDanger(state, here, dest).routeDangerLevel);
+  });
+
+  it('reports the raw engine distance, not a rounded/floored "jumps" count', () => {
+    // The UI's jumpsBetween fabricated `Math.max(1, Math.round(distance))`. The
+    // preview must carry the exact engine float — identical to `distance()`.
+    const state = createInitialState(7);
+    const dest = 3;
+    expect(travelPreview(state, dest).distance).toBe(distance(state.player.currentSystemId, dest));
+  });
+
+  it('flips reachable at the fuel boundary', () => {
+    const state = createInitialState(7);
+    const dest = 2;
+    const cost = travelPreview(state, dest).fuelCost;
+
+    state.player.ship.fuel = cost;
+    expect(travelPreview(state, dest).reachable).toBe(true);
+
+    state.player.ship.fuel = cost - 1;
+    expect(travelPreview(state, dest).reachable).toBe(false);
+  });
+});
+
+describe('quoteFuelPurchase (T-1401 export pack)', () => {
+  function fuelState(): GameState {
+    const state = createInitialState(9);
+    state.player.ship.fuel = 100;
+    state.player.ship.maxFuel = 300; // room for 200
+    state.market.localFuelPrice = 5;
+    state.player.credits = 100000;
+    return state;
+  }
+
+  it('a within-tank request wastes nothing and overspends false', () => {
+    const quote = quoteFuelPurchase(fuelState(), 50);
+    expect(quote).toEqual({
+      cost: 250,
+      fuelDelivered: 50,
+      fuelWasted: 0,
+      overspends: false,
+      canAfford: true,
+    });
+  });
+
+  it('an over-tank request still charges full cost and flags the wasted overflow', () => {
+    // Room is 200; buying 250 delivers 200, wastes 50, but the engine charges for
+    // all 250 (trade.ts clamps the tank AFTER charging).
+    const quote = quoteFuelPurchase(fuelState(), 250);
+    expect(quote.cost).toBe(1250);
+    expect(quote.fuelDelivered).toBe(200);
+    expect(quote.fuelWasted).toBe(50);
+    expect(quote.overspends).toBe(true);
+  });
+
+  it('canAfford is false when credits cannot cover the full cost', () => {
+    const state = fuelState();
+    state.player.credits = 100;
+    const quote = quoteFuelPurchase(state, 50); // cost 250 > 100
+    expect(quote.canAfford).toBe(false);
+    expect(quote.overspends).toBe(false);
   });
 });

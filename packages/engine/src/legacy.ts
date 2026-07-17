@@ -36,6 +36,11 @@ export interface ShipLostContext {
  *     charts, the debts, AND the property — the port stakes keep paying their
  *     launch-fee income into the new spacer's account. Like debt/loan it is simply
  *     left on state, never reset; the succession test asserts survival.
+ *     (T-1503) the four-faction `reputation` is carried WHOLESALE for the same
+ *     reason: standing — good and bad — attaches to the NAME, exactly as the NPC
+ *     dispositions above do (PRD §8.1 "your reputation … good and bad"). Like
+ *     debt/loan/ports it is simply left on state, never reset; the succession test
+ *     asserts survival.
  *   HALVED: credits (floor division).
  *   RESET: ship to the exact starterShip(); the active contract is FORFEITED
  *     here (the cargo went down with the ship — a TradeEvent 'forfeit-cargo'
@@ -130,6 +135,7 @@ export function applySuccession(state: GameState, context: ShipLostContext): Gam
   events.push({
     type: 'WireEntry',
     day: state.day,
+    kind: 'plain',
     message: `The Registry records the loss of a spacer at ${systemName}. A successor claims the license, the charts, and the debts.`,
   });
 
