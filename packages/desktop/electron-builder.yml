@@ -40,10 +40,15 @@ directories:
 files:
   - dist/**/*
   - package.json
-  - from: ../../node_modules/steamworks.js
-    to: node_modules/steamworks.js
-    filter:
-      - '**/*'
+  # steamworks.js is a PRODUCTION dependency of this package, so electron-builder's
+  # dependency collector includes it automatically at `node_modules/steamworks.js`
+  # (hoist-aware in v25 — it resolves the module wherever npm placed it in the
+  # workspace). We deliberately do NOT also add an explicit `from: ../../node_modules`
+  # mapping: that external file-set is copied independently of the auto-collected
+  # node_modules and, when npm's layout puts steamworks.js somewhere the collector
+  # also sees it (as in CI's clean `npm ci`), both target the same asar.unpacked path
+  # and electron-builder dies with `EEXIST: file already exists, link ...`. One source
+  # of truth = the prod dependency.
 asarUnpack:
   - node_modules/steamworks.js/**
 extraResources:
