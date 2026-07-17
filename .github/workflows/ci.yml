@@ -237,3 +237,72 @@ jobs:
             packages/ui/playwright-report
             packages/ui/test-results
           retention-days: 14
+
+  # T-1705 · Windows packaging proof. T-1701 shipped package:win and the mac desktop
+  # job proves the packaged .app on macOS, but no CI had ever exercised the Windows
+  # target — where the large majority of Steam players are. This job packages BOTH the
+  # full and demo configs unsigned (--dir) on windows-latest and launches the packaged
+  # win-unpacked EXE via Playwright _electron for a cockpit smoke (boot, dawn roll,
+  # sign, end day), asserting saves land in the Windows userData dir and that the
+  # steamworks.js win-x64 prebuild survived packaging (the T-1702 file-map + asarUnpack
+  # path, whose EEXIST class regressed once). The ditto-based compressed-size gate stays
+  # macOS-only by design (see the demo job); a Windows demo-size assertion is WAIVED here
+  # — the mac demo job already proves the <200MB compressed bar. This job packages the
+  # demo config on Windows purely to prove it BUILDS (the EEXIST class again), not its size.
+  desktop-win:
+    name: Windows packaging (windows-latest)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck & build (incl. Electron main/preload)
+        run: npx tsc -b
+
+      - name: Build renderer bundle
+        run: npm run build -w @spacerquest/ui
+
+      # Package the FULL build unsigned (--dir) → release/win-unpacked/*.exe. Must pass —
+      # no continue-on-error — so a packaging regression fails the job HERE.
+      - name: Package desktop app (unsigned --dir)
+        run: npm run package:dir -w @spacerquest/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # Package the DEMO build unsigned (--dir) → release-demo/win-unpacked/*.exe. Proves
+      # the T-1703 demo config packages cleanly on Windows (the EEXIST class again).
+      - name: Package demo app (unsigned --dir)
+        run: npm run package:demo:dir -w @spacerquest/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # Launch ONLY the Windows packaged-exe spec (`--grep "@win"`) — the other electron
+      # specs use unix-only pgrep teardown and either self-skip or are out of scope on
+      # Windows. `shell: bash` is REQUIRED: windows-latest defaults to PowerShell, where
+      # the bash-style inline env `SQ_ELECTRON=1 npx ...` does not parse; GitHub's Windows
+      # runners ship Git-bash, keeping this command byte-identical to the mac desktop job.
+      - name: Run Windows packaged-exe smoke
+        run: SQ_ELECTRON=1 npx playwright test --project=electron --grep "@win"
+        working-directory: packages/ui
+        shell: bash
+
+      - name: Upload Windows desktop report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-win-report
+          path: |
+            packages/ui/playwright-report
+            packages/ui/test-results
+          retention-days: 14
