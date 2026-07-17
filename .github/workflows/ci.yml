@@ -96,3 +96,16 @@ jobs:
       - name: Run e2e
         run: npm run test:e2e
         working-directory: packages/ui
+
+      # T-1602 run-report artifact (screens visited, days elapsed, per-test run
+      # reports bundled in the HTML report). `if: always()` uploads it on failure
+      # too — it is the primary diagnostic for a flaky e2e run.
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            packages/ui/playwright-report
+            packages/ui/test-results
+          retention-days: 14

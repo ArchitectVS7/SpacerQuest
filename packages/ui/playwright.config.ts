@@ -8,7 +8,18 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? [['github'], ['list']] : 'list',
+  // In CI, emit an HTML report (bundles the tour-one run-report attachments) plus a
+  // JSON result file, both into `test-results` so the workflow can upload them as
+  // the T-1602 run-report artifact. `list`/`github` keep the inline log readable.
+  reporter: process.env.CI
+    ? [
+        ['github'],
+        ['list'],
+        ['html', { open: 'never', outputFolder: 'playwright-report' }],
+        ['json', { outputFile: 'test-results/results.json' }],
+      ]
+    : 'list',
+  outputDir: 'test-results',
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
