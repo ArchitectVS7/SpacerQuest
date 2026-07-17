@@ -28,7 +28,11 @@
 /** Minimum / maximum credits a player may put on a single Dare hand. The engine
  *  clamps the requested wager into this band AND down to what both the player and
  *  the dealer can actually cover, so a wager a broke dealer can't match is capped,
- *  never a crash. */
+ *  never a crash. T-1603 CANONICAL: the balance sweep ratified the 25–500 band — a
+ *  Dare is texture and a specialty variance instrument (the gambler policy), not a
+ *  debt-clear route: the sweep's gambler arm's per-Dare EV is near-zero (an opposed
+ *  GUILE roll on symmetric wagers), so the tables never became a dominant strategy.
+ *  See docs/balance/tuning-memo.md. */
 export const DARE_MIN_WAGER = 25;
 export const DARE_MAX_WAGER = 500;
 

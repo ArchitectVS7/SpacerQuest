@@ -20,10 +20,13 @@
  * rule to preserve, and the design is taken from the User-Manual cited above.
  *
  * Therefore the price/income constants are Rimward-authored, ENGINE-ORIGINAL
- * tuning — no foundation citation, and they carry the same INTERIM header as
- * crew.ts / lending.ts: OWNED BY the T-1601 rebalance, do NOT enshrine as
- * canonical. Sanctioned to live here per the TECH-STACK "balance numbers are
- * data" constraint.
+ * tuning — no foundation citation. T-1603 CANONICAL: the balance pass ratified the
+ * flat 25,000cr / 300cr-per-dusk values (see PURCHASABLE_PORTS below and
+ * docs/balance/tuning-memo.md) after the 500-seed sweep confirmed they sit correctly
+ * mid-veteran-run — affordable to a productive veteran, a slow ~83-dusk payback
+ * annuity rather than a money printer, and not a route the sweep flagged as
+ * dominant. Sanctioned to live here per the TECH-STACK "balance numbers are data"
+ * constraint.
  *
  * READERS:
  *   - the dusk economy (`packages/engine/src/actions/port.ts` `portDuskIncome`,
@@ -70,11 +73,13 @@ export interface PortStakeDefinition {
  * purchasable). The four alliances are spread across the fourteen so a
  * Confederation-only reader (T-1503) has real Confederation ports to work with.
  *
- * INTERIM (T-1601): a flat 25,000cr price and 300cr/dusk base income keep this
- * simple and affordable mid-veteran-run (a productive veteran clears 25k easily,
- * and 300/dusk pays the stake back over ~83 quiet dusks — a slow, ownable annuity,
- * not a money printer). A small per-system spread would be fine here; kept flat on
- * purpose until the T-1601 rebalance sets the real curve.
+ * T-1603 CANONICAL: a flat 25,000cr price and 300cr/dusk base income, ratified by
+ * the balance sweep. Simple and affordable mid-veteran-run (a productive veteran
+ * clears 25k easily, and 300/dusk pays the stake back over ~83 quiet dusks — a slow,
+ * ownable annuity, not a money printer). Kept flat across all fourteen deliberately:
+ * a per-system spread would create a single "best port to buy", and T-1603's no-
+ * dominant-route goal prefers a uniform annuity that competes with, rather than
+ * dominates, the trading loop. See docs/balance/tuning-memo.md.
  */
 export const PURCHASABLE_PORTS: readonly PortStakeDefinition[] = [
   {

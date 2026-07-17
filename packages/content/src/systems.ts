@@ -235,17 +235,31 @@ export const SYSTEM_DANGER_LEVELS: Record<number, RouteDangerLevel> = {
 // restores ENCOUNTER_RIM_CHANCE exactly.
 //
 // Tiers 2, 4, and 5 ARE divergences under Standing-constraint 5 — foundation
-// priced only core/rim, never a five-point gradient. They are Rimward-only and
-// INTERIM: tier 2 linearly interpolates the core↔rim anchors (0.30↔0.40); tiers
-// 4 and 5 extrapolate beyond rim for the Andromeda / special (MALIGNA, NEMESIS)
-// lanes, which foundation never reached. T-1603 owns the canonical balance
-// targets that will finalize these three points.
+// priced only core/rim, never a five-point gradient. They are Rimward-only: tier 2
+// linearly interpolates the core↔rim anchors (0.30↔0.40); tiers 4 and 5 extrapolate
+// beyond rim, escalating monotonically for the most dangerous lanes foundation
+// never reached.
+//
+// T-1603 CANONICAL (finalizes these three interim points). They are NOT confined
+// to the sealed Andromeda/special systems: `computeRouteDanger` (actions/travel.ts)
+// derives the tier as `clampDanger(baseDanger + distanceBump + cargoBump + eraDelta)`,
+// so a core lane flown with an active contract or over ≥8 units reaches tier 2, and
+// a rim lane with a cargo/distance bump (or a live era event) reaches tier 4 — even
+// tier 5 with both bumps. The gradient therefore bites in live play: "below tier
+// parity, unprepared" combat is punishing because a loaded rim run climbs into the
+// 4/5 band where the encounter chance is highest. The 500-seed T-1603 sweep
+// validated this table against every PRD balance target (debt-clear pacing, negative
+// unprepared combat EV, route churn, nonzero death rate) with all sim/replay goldens
+// byte-identical, so the interim values are RATIFIED unchanged rather than moved —
+// see docs/balance/tuning-memo.md. READER: `computeRouteDanger` (actions/travel.ts),
+// surfaced to the player as the route read-out's danger chance (T-1401 preview) and
+// the realized interdiction rate.
 export const ROUTE_DANGER_CHANCE: Record<RouteDangerLevel, number> = {
-  1: 0.3, // core — restores foundation ENCOUNTER_BASE_CHANCE (repair of the 0.08 cut)
-  2: 0.35, // interim divergence — interpolates core↔rim (T-1603 owns final target)
-  3: 0.4, // rim — restores foundation ENCOUNTER_RIM_CHANCE (repair of the 0.08 cut)
-  4: 0.5, // interim divergence — extrapolates beyond rim for Andromeda (T-1603)
-  5: 0.6, // interim divergence — extrapolates for special lanes (T-1603)
+  1: 0.3, // core — foundation ENCOUNTER_BASE_CHANCE (repair of the 0.08 cut)
+  2: 0.35, // canonical — interpolates the core↔rim anchors (loaded/long core lanes)
+  3: 0.4, // rim — foundation ENCOUNTER_RIM_CHANCE (repair of the 0.08 cut)
+  4: 0.5, // canonical — beyond rim: loaded/long rim lanes and Andromeda
+  5: 0.6, // canonical — the most dangerous lanes: special systems, doubly-bumped rim
 };
 
 export function calculateDistance(origin: StarCoordinates, destination: StarCoordinates): number {

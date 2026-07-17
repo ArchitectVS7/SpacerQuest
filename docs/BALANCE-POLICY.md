@@ -27,7 +27,7 @@ Mirrors `TASKS.md` standing constraint 5. The precedence is:
 2. **Foundation is consulted first.** Before diverging, read the foundation rule at `f2f95fa9`. A "divergence" you introduce because you never checked foundation is a bug, not a design decision — and half the time (see the hull-price cap errata below) there is no divergence at all, only a misremembered foundation rule.
 3. **Every divergence is commented at its definition site.** If the engine's number differs from foundation, the difference must be documented *where the value is defined*, with the PRD rationale for the change and the foundation figure it departs from. An undocumented balance divergence is a review failure.
 4. **A comment must not assert a divergence that does not exist.** The inverse of rule 3, and just as binding: if the code matches foundation, no comment may claim it diverges. A false divergence note sends future readers hunting for a design decision that was never made (this exact failure is errata #1).
-5. **Interim thresholds hold until T-1603.** Balance thresholds and probabilities in place before T-1603 are interim. T-1603 sets the canonical targets; until then, the current values stand and are not to be "corrected" toward foundation or toward intuition without a task.
+5. **Interim thresholds were finalized by T-1603.** Balance thresholds and probabilities in place before T-1603 were interim. **T-1603 has now run** (500-seed sweep against the PRD targets, `docs/balance/tuning-memo.md`) and set the canonical targets: every constant it owned — danger tiers 2/4/5 (`content/systems.ts`), port price/income (`content/ports.ts`), the lending and guild bands (`content/lending.ts`, `content/guild.ts`), the hangout wagers (`content/hangout.ts`), and `TOUR_ONE_ENCOUNTER_MULTIPLIER` (`engine/actions/travel.ts`) — was measured and **ratified at its interim value** (the sim already met every target, so nothing moved), with its definition-site comment rewritten from "INTERIM" to a finalized T-1603-canonical rationale. These values are now canonical, not interim; changing one requires a new task and a re-measure against the tuning memo's distributions.
 
 ---
 
@@ -82,3 +82,11 @@ _Source: T-1804 audit (Rimward)._
 **Claim (imprecise):** T-1307 describes an era-income "A/B test."
 
 **Correction:** It is an **in-scope-vs-base lever comparison** — the same seeded run evaluated with the era-income lever engaged versus the base configuration — not a statistical A/B experiment. There are no cohorts, no randomized assignment, and no significance testing; the "A/B" label denotes only the two-arm deterministic comparison of one lever against baseline.
+
+### E8 — The T-1804 Auto-Repair "ratified design call" was reversed by T-1603
+
+_Source: T-1603 balance pass (`docs/balance/tuning-memo.md` §6)._
+
+**Prior state (superseded):** T-1804 ratified, as a design call in `packages/engine/src/day.ts`, that `autoRepairRegen` runs BEFORE the `lifeSupportCritical` dusk gate — healing life support 0→1 first — which made the life-support succession death path **unreachable whenever the Auto-Repair module is fitted**, and flagged it for T-1603 as a possible "always-rescue module is too strong."
+
+**Resolution:** T-1603 **reversed the ordering**. The life-support survival gate now runs BEFORE the Auto-Repair regen, so a fitted ship at lifeSupport 0 rolls the GRIT survival check that night (it can die and trigger succession); the module then heals lifeSupport 0→1 afterward for the next day. The module stays valuable (overnight recovery of every fitted system, life support included — faithful to foundation) but is no longer an immortality switch, closing the audit's structural zero-deaths concern. The reversal is golden-neutral for every module-absent ship (it swaps a block that is a no-op unless `hasAutoRepair`), verified by the full engine + sim suites staying green. Covered by `components.test.ts` "the dusk survival gate fires even with Auto-Repair fitted (T-1603 nerf)".

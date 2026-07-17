@@ -16,8 +16,11 @@
  * anywhere. So these constants carry no foundation citation: they are
  * engine-original tuning, sanctioned to live here per the TECH-STACK "balance
  * numbers are data" constraint — the same justification `hangout.ts` and
- * `disposition.ts` use. They are INTERIM and OWNED BY the T-1601 rebalance (which
- * lists T-1304 in its `after`); do not enshrine them as canonical.
+ * `disposition.ts` use. T-1603 CANONICAL: the balance sweep ratified these values
+ * unchanged — the trader's borrow-under-duress / repay-when-flush loop clears every
+ * advance well inside the term (lending-property.test.ts proves a loan never
+ * strands), so the rate/term/band bite without soft-locking. See
+ * docs/balance/tuning-memo.md.
  *
  * READERS: the borrow/repay resolver (`packages/engine/src/actions/hangout.ts`),
  * the per-dusk accrual + default flip in the day loop (`day.ts` endDay), the
@@ -34,16 +37,16 @@ export const LENDER_ID = 'npc-penny-wise';
 /** Per-dusk interest, applied to the ORIGINAL principal (simple interest, not
  *  compounding): each dusk adds `ceil(principal * LOAN_DAILY_RATE)` to the
  *  outstanding balance. 0.05 ≈ 5%/dusk — steep enough to bite over a term,
- *  gentle enough that a productive trader can clear it. Interim (T-1601). */
+ *  gentle enough that a productive trader can clear it. T-1603 canonical. */
 export const LOAN_DAILY_RATE = 0.05;
 
 /** Term in dusks. The loan comes DUE `LOAN_TERM_DAYS` dusks after it is taken;
- *  crossing the due day unpaid flips it to `defaulted`. Interim (T-1601). */
+ *  crossing the due day unpaid flips it to `defaulted`. T-1603 canonical. */
 export const LOAN_TERM_DAYS = 15;
 
 /** Principal band. The floor comfortably covers the §7.5 ~500-credit bad-day gap
  *  and the cheapest starter jump's fuel bill; the ceiling caps a single advance.
- *  A borrow request is clamped into [MIN, MAX]. Interim (T-1601). */
+ *  A borrow request is clamped into [MIN, MAX]. T-1603 canonical. */
 export const LOAN_MIN_PRINCIPAL = 250;
 export const LOAN_MAX_PRINCIPAL = 5000;
 
@@ -52,11 +55,11 @@ export const LOAN_MAX_PRINCIPAL = 5000;
  *  Wise is as memorable a grudge as shooting someone's ship out from under them,
  *  so the interceptor grudge-weighting (travel.ts chooseWeighted) makes her far
  *  likelier to BE your interceptor. Applied exactly once at the default flip.
- *  Interim (T-1601). */
+ *  T-1603 canonical. */
 export const LOAN_DEFAULT_DISPOSITION = -5;
 
 /** Collection pressure: while a loan is `defaulted`, the realized encounter
  *  chance is multiplied by this (>1) — the "collectors are looking for you"
  *  reader in generateEncounter (the dangerous mirror of the CLOAKER damp). The
- *  multiplier stands until the loan is repaid (which nulls it). Interim (T-1601). */
+ *  multiplier stands until the loan is repaid (which nulls it). T-1603 canonical. */
 export const COLLECTION_ENCOUNTER_MULTIPLIER = 1.5;

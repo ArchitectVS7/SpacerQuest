@@ -546,32 +546,44 @@ describe('T-1206 · AUTO_REPAIR reader', () => {
     expect(runDusk(false)).toBe(5); // untouched
   });
 
-  it('a fitted Auto-Repair rescues critical life support from the dusk survival gate', () => {
-    // lifeSupport at 0 would face the GRIT survival roll; the module heals it 0→1
-    // first, so no LifeSupportCritical/ShipLost fires. Without the module the same
-    // setup rolls the gate and can emit LifeSupportCritical.
-    const withModule = createInitialState(3);
-    withModule.dayPhase = DayPhase.DAY;
-    withModule.player.dawnHand = { dice: [20], spent: [true] };
-    withModule.player.ship.hasAutoRepair = true;
-    withModule.player.ship.lifeSupport.condition = 0;
-    const rescued = endDay(withModule);
-    expect(rescued.state.player.ship.lifeSupport.condition).toBe(1);
-    expect(rescued.events.some((e) => e.type === 'LifeSupportCritical')).toBe(false);
-    expect(rescued.events.some((e) => e.type === 'ShipLost')).toBe(false);
-
-    // Same setup, no module: the survival gate is reached (LifeSupportCritical
-    // fires) across a seed sweep.
+  it('the dusk survival gate fires even with Auto-Repair fitted (T-1603 nerf)', () => {
+    // T-1603 reordered day.ts so the life-support survival gate runs BEFORE the
+    // Auto-Repair regen (closing the T-1804 "always-rescue module is too strong"
+    // finding). Consequences a fitted ship at lifeSupport 0 now faces:
+    //   1. the GRIT survival gate ALWAYS fires (LifeSupportCritical emitted) — the
+    //      module can no longer pre-empt it;
+    //   2. a FAILED roll still loses the ship (ShipLost / succession) — the death
+    //      path is reachable with the module fitted;
+    //   3. a PASSED roll leaves the ship alive and Auto-Repair still heals
+    //      lifeSupport 0→1 afterward for the next day (the module stays valuable).
     let sawGate = false;
-    for (let seed = 1; seed <= 50 && !sawGate; seed += 1) {
+    let sawDeath = false;
+    let sawSurvivalHeal = false;
+    for (let seed = 1; seed <= 80; seed += 1) {
       const state = createInitialState(seed);
       state.dayPhase = DayPhase.DAY;
       state.player.dawnHand = { dice: [20], spent: [true] };
+      state.player.ship.hasAutoRepair = true;
       state.player.ship.lifeSupport.condition = 0;
-      const { events } = endDay(state);
-      if (events.some((e) => e.type === 'LifeSupportCritical')) sawGate = true;
+      const { state: next, events } = endDay(state);
+      const critical = events.find((e) => e.type === 'LifeSupportCritical');
+      if (critical) {
+        sawGate = true;
+        if (critical.type === 'LifeSupportCritical' && critical.survived) {
+          // Survived the roll → Auto-Repair still patched life support 0→1.
+          if (next.player.ship.lifeSupport.condition === 1) sawSurvivalHeal = true;
+        }
+      }
+      if (events.some((e) => e.type === 'ShipLost')) sawDeath = true;
     }
+    // The module no longer rescues before the gate: every fitted ship at lifeSupport
+    // 0 rolls the gate, so it fires across the sweep.
     expect(sawGate).toBe(true);
+    // The death path is reachable WITH the module fitted (the audit's zero-deaths
+    // structural finding, closed).
+    expect(sawDeath).toBe(true);
+    // Yet the module remains useful: on a survived roll it still heals 0→1.
+    expect(sawSurvivalHeal).toBe(true);
   });
 });
 

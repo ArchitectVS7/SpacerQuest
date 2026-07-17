@@ -142,6 +142,17 @@ export interface CampaignStatsReport {
   renownRank: RenownRankId;
   /** Per-100-day route-diversity windows (T-107). */
   routeDiversity: RouteDiversityWindow[];
+  /**
+   * T-1603 · Ships lost over the run — read straight off
+   * `state.player.legacy.successionCount` (the succession/death counter,
+   * `packages/engine/src/legacy.ts`), which both the combat hull-kill path and the
+   * life-support dusk gate increment via `applySuccession`. NOT a new GameState
+   * field: `legacy.successionCount` already exists and round-trips, so this metric
+   * needs no save migration. READER: the T-1603 balance suite
+   * (`balance-tuning.test.ts`), which asserts a nonzero fleet/reckless death rate to
+   * close the T-1804 zero-deaths finding, and the CLI JSON surface (reportToJson).
+   */
+  deaths: number;
   finalState: {
     day: number;
     credits: number;
@@ -2105,6 +2116,7 @@ export function runCampaign(
     deedsEarned: state.player.registry.earned.map((deed) => deed.id),
     renownRank: state.player.registry.renownRank,
     routeDiversity: computeRouteDiversity(bestOfferDestinations),
+    deaths: state.player.legacy.successionCount,
     finalState: {
       day: state.day,
       credits: state.player.credits,

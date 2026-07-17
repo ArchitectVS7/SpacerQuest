@@ -307,9 +307,13 @@ export function selectEncounterInterceptor(
 // full 0.30/0.40 encounter chance is the VETERAN-game rate, damped during the
 // TOUR_ONE era so a fresh spacer racing the day-30 marker isn't interdicted on
 // every loaded run. This is an era divergence beyond the route-danger scaling
-// (constraint 5): it is INTERIM at 0.5× — enough to keep the authored Tour One
-// combats firing (the combat/onboarding fixtures) while restoring a competent
-// trader's debt-clear rate — and T-1603 owns the canonical Tour One target.
+// (constraint 5). T-1603 CANONICAL at 0.5×: the 500-seed sweep confirmed this
+// damping keeps the authored Tour One combats firing (the combat/onboarding
+// fixtures) while holding the competent trader's median debt-clear day at ~23 —
+// inside the PRD [22,30] band ("not 10, not never"). The sweep also confirmed this
+// is a WEAK lever on the median (a 0.5→0.7 bump barely moved it — a talk/run trader
+// passes interceptors cheaply), so 0.5× is ratified unchanged rather than moved.
+// See docs/balance/tuning-memo.md.
 // READER: the reader is this function; the multiplier rides on state.era, which
 // day.ts flips TOUR_ONE→VETERAN at the day-30 resolution. No new GameState field.
 const TOUR_ONE_ENCOUNTER_MULTIPLIER = 0.5;

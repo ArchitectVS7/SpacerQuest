@@ -458,50 +458,6 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     );
   }
 
-  // T-1206 AUTO_REPAIR → dusk condition regen (the named reader for
-  // `hasAutoRepair`, components.ts `autoRepairRegen`). PORTED FROM foundation
-  // `applyAutoRepair`: the module patches each fitted system (hull excluded) up by
-  // AUTO_REPAIR_REGEN overnight. Pure, no rng — so it consumes NO fork and cannot
-  // perturb the dusk rng stream; every existing golden (all built on ships without
-  // the module) is byte-identical.
-  //
-  // ORDERING: deliberately runs AFTER the encounter dusk pressure above (which may
-  // have driven a component to 0 this very dusk — the module then heals that fresh
-  // damage) and BEFORE the life-support survival gate below. Healing lifeSupport
-  // 0→1 here lets the module rescue the ship from the dusk GRIT survival roll —
-  // faithful to foundation, where Auto-Repair repairs life support, and a legible
-  // module benefit. The deliberate consequence: when the module lifts lifeSupport
-  // off 0, the `life-support-${day}` rng fork below is NOT taken (a fork advances
-  // the parent rng), which only ever happens when `hasAutoRepair` is true — so no
-  // existing golden (module absent) is affected.
-  //
-  // RATIFIED DESIGN CALL (T-1804): because this heals lifeSupport 0→1 BEFORE the
-  // `lifeSupportCritical` dusk gate below, the life-support survival/succession
-  // death path (the `LifeSupportCritical` → `ShipLost` succession) is UNREACHABLE
-  // whenever Auto-Repair is fitted — the module always rescues a critical life
-  // support at dusk. Kept faithful to foundation (Auto-Repair repairs life
-  // support), but flagged as a balance lever for T-1603's tuning pass: an
-  // always-rescue module may be too strong. Covered by `components.test.ts` (~549),
-  // "a fitted Auto-Repair rescues critical life support from the dusk survival
-  // gate", which asserts `lifeSupport.condition === 1` and that neither
-  // `LifeSupportCritical` nor `ShipLost` fires when the module is fitted.
-  if (nextState.player.ship.hasAutoRepair) {
-    const { updates, repaired } = autoRepairRegen(nextState.player.ship);
-    for (const id of repaired) {
-      nextState.player.ship[id].condition = updates[id]!;
-    }
-    if (repaired.length > 0) {
-      events.push({
-        type: 'WireEntry',
-        day: nextState.day,
-        kind: 'plain',
-        message: `Auto-Repair module restored condition to ${repaired.length} system${
-          repaired.length === 1 ? '' : 's'
-        } overnight.`,
-      });
-    }
-  }
-
   // T-1205 lifeSupport → survival reader. Life support driven to condition 0 —
   // only reachable now that enemy fire seed-targets components — faces a dusk GRIT
   // survival check (content LIFE_SUPPORT_SURVIVAL_DC). Passing it is a scare (no
@@ -512,6 +468,25 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // which case lifeSupportCritical is false and this is skipped) and before the
   // day increment, so the LifeSupportCritical event carries the correct day.
   // This is the named reader for the `lifeSupport` component (components.ts).
+  //
+  // T-1603 ORDERING REVERSAL (was T-1804 "RATIFIED DESIGN CALL"): this survival
+  // gate now runs BEFORE the Auto-Repair regen below, not after. The prior order
+  // healed lifeSupport 0→1 first, which made the life-support succession death path
+  // UNREACHABLE for any ship fitting Auto-Repair — the T-1804 audit flagged this as
+  // an "always-rescue module is too strong" balance concern, and T-1603 owns the
+  // call. The reversal: a ship whose life support was driven to 0 this dusk rolls
+  // the GRIT survival check THIS night whether or not Auto-Repair is fitted (it can
+  // die), and the module heals lifeSupport 0→1 AFTERWARD (below) for the next day.
+  // The module stays valuable (overnight recovery of every fitted system, life
+  // support included — still faithful to foundation, where Auto-Repair repairs life
+  // support) but is no longer an immortality switch, so the death path is reachable
+  // even for a kitted end-game ship. Purity/goldens: for a ship WITHOUT the module
+  // (every existing golden) the Auto-Repair block below is skipped, so swapping the
+  // two blocks is byte-identical — the survival gate consumes the same
+  // `life-support-${day}` fork in the same stream position. Only an Auto-Repair-
+  // fitted ship (no golden fits one) now takes that fork; that perturbation is the
+  // intended nerf. Covered by `components.test.ts`, "the dusk survival gate fires
+  // even with Auto-Repair fitted (T-1603 nerf)".
   if (lifeSupportCritical(nextState.player.ship)) {
     const survivalRng = dayRng.fork(`life-support-${nextState.day}`);
     const survived =
@@ -549,6 +524,38 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       // successor starts clear, exactly as the combat-death path nulls the
       // encounter after applySuccession.
       nextState.encounter = null;
+    }
+  }
+
+  // T-1206 AUTO_REPAIR → dusk condition regen (the named reader for
+  // `hasAutoRepair`, components.ts `autoRepairRegen`). PORTED FROM foundation
+  // `applyAutoRepair`: the module patches each fitted system (hull excluded) up by
+  // AUTO_REPAIR_REGEN overnight. Pure, no rng — so it consumes NO fork and cannot
+  // perturb the dusk rng stream; every existing golden (all built on ships without
+  // the module) is byte-identical.
+  //
+  // ORDERING (T-1603): runs AFTER both the encounter dusk pressure and the
+  // life-support survival gate above. It still heals life support — a ship that
+  // SURVIVES the gate with lifeSupport at 0 gets patched 0→1 here for the next day,
+  // faithful to foundation (Auto-Repair repairs life support) and a legible module
+  // benefit. What changed at T-1603: it no longer runs BEFORE the gate, so it can
+  // no longer pre-empt the survival roll — see the gate's ordering note above. If
+  // the ship DIED at the gate, applySuccession already reset it to the junker fit
+  // (hasAutoRepair cleared), so this block is skipped for the successor.
+  if (nextState.player.ship.hasAutoRepair) {
+    const { updates, repaired } = autoRepairRegen(nextState.player.ship);
+    for (const id of repaired) {
+      nextState.player.ship[id].condition = updates[id]!;
+    }
+    if (repaired.length > 0) {
+      events.push({
+        type: 'WireEntry',
+        day: nextState.day,
+        kind: 'plain',
+        message: `Auto-Repair module restored condition to ${repaired.length} system${
+          repaired.length === 1 ? '' : 's'
+        } overnight.`,
+      });
     }
   }
 
