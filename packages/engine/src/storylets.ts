@@ -15,8 +15,10 @@ import { applyReputation } from './reputation.js';
 import {
   decodeFragment,
   fragmentCount,
+  fragmentsDecodedCount,
   grantFragment,
   hasAnyUndecoded,
+  hasDecodedFragment,
   hasUndecodedFragment,
 } from './nemesis.js';
 import { SeededRng } from './rng.js';
@@ -126,6 +128,20 @@ export function triggerMatches(state: GameState, storylet: StoryletDefinition): 
     if (
       trigger.nemesis.hasUndecodedFragmentId !== undefined &&
       !hasUndecodedFragment(file, trigger.nemesis.hasUndecodedFragmentId)
+    ) {
+      return false;
+    }
+    // T-1505: the crossing endgame's "whole signal decoded" gate, and the Sage's
+    // final-line reconstruction gate (a specific fragment already decoded).
+    if (
+      trigger.nemesis.minDecoded !== undefined &&
+      fragmentsDecodedCount(file) < trigger.nemesis.minDecoded
+    ) {
+      return false;
+    }
+    if (
+      trigger.nemesis.hasDecodedFragmentId !== undefined &&
+      !hasDecodedFragment(file, trigger.nemesis.hasDecodedFragmentId)
     ) {
       return false;
     }
@@ -523,13 +539,17 @@ export interface StoryletChoiceQuote {
   /** No blocking refusal — the choice would resolve if taken now. */
   ok: boolean;
   /** The first typed refusal reason, in `resolveStoryletChoice`'s exact order
-   *  (not-available → unknown-choice → insufficient-credits → missing-die), or
-   *  null when `ok`. */
+   *  (not-available → unknown-choice → insufficient-credits → insufficient-fuel →
+   *  missing-die), or null when `ok`. */
   reason: Extract<GameEvent, { type: 'StoryletChoiceBlocked' }>['reason'] | null;
   /** The choice arms a die (a `spendDie` requirement or a `statCheck`). */
   needsDie: boolean;
   /** The `credits.gte` gate this choice requires, or null when it has none. */
   requiredCredits: number | null;
+  /** T-1505: the `minFuel` gate this choice requires (the crossing ship stake), or
+   *  null when it has none. Surfaced so the UI lock can name the fuel the ship must
+   *  carry. */
+  requiredFuel: number | null;
   /** The stat check this choice rolls, for the UI's check-breakdown lock, or null. */
   statCheck: { stat: Stat; dc: number } | null;
 }
@@ -560,6 +580,7 @@ export function quoteStoryletChoice(
     reason: null,
     needsDie: false,
     requiredCredits: null,
+    requiredFuel: null,
     statCheck: null,
   };
 
@@ -579,16 +600,23 @@ export function quoteStoryletChoice(
   }
 
   const requiredCredits = choice.requirements?.credits?.gte ?? null;
+  const requiredFuel = choice.requirements?.minFuel ?? null;
   const statCheck = choice.requirements?.statCheck ?? null;
   const needsDie = Boolean(choice.requirements?.spendDie || statCheck);
-  const facts = { needsDie, requiredCredits, statCheck };
+  const facts = { needsDie, requiredCredits, requiredFuel, statCheck };
 
   // 3. insufficient-credits — the SAME matcher resolveStoryletChoice checks.
   if (!matchesNumber(state.player.credits, choice.requirements?.credits)) {
     return { ...empty, ...facts, reason: 'insufficient-credits' };
   }
 
-  // 4. missing-die — a die-requiring choice with no valid, unspent die armed
+  // 4. insufficient-fuel (T-1505) — the ship must currently CARRY at least
+  //    `minFuel` (the crossing ship stake), mirroring the resolve check below.
+  if (requiredFuel !== null && state.player.ship.fuel < requiredFuel) {
+    return { ...empty, ...facts, reason: 'insufficient-fuel' };
+  }
+
+  // 5. missing-die — a die-requiring choice with no valid, unspent die armed
   //    (mirrors the dawn-hand validity gate in resolveStoryletChoice).
   const hand = state.player.dawnHand;
   const dieInvalid =
@@ -626,6 +654,14 @@ export function resolveStoryletChoice(
 
   if (!matchesNumber(nextState.player.credits, choice.requirements?.credits)) {
     return blocked(nextState, action, 'insufficient-credits');
+  }
+
+  // T-1505: the crossing ship stake — the ship must currently carry at least
+  // `minFuel`. Checked here (after credits, before the die) so the quote's preview
+  // ladder and this authoritative resolve agree exactly.
+  const requiredFuel = choice.requirements?.minFuel;
+  if (requiredFuel !== undefined && nextState.player.ship.fuel < requiredFuel) {
+    return blocked(nextState, action, 'insufficient-fuel');
   }
 
   const requiresDie = choice.requirements?.spendDie || choice.requirements?.statCheck;

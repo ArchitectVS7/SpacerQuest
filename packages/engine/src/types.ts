@@ -386,6 +386,23 @@ export type GameEvent =
     }
   | {
       /**
+       * T-1505 · The Nemesis crossing completed — the career's terminal act. Emitted
+       * by engine `day.ts` when a Travel ARRIVES at NEMESIS (system 28) with
+       * `flags['nemesis.crossing.unlocked']` set (the crossing committed at
+       * Polaris-1). The v1 endgame: Andromeda beyond stays sealed for the expansion.
+       * READERS: the sim's crossing-completable assertion (campaign-crossing.test)
+       * and the UI ending ceremony (format.ts `crossingEnding` → App.tsx). Derived,
+       * not stored — no new GameState field: the ending is a pure function of
+       * `currentSystemId === 28 && flags['nemesis.crossing.unlocked']`, and this
+       * event is the wire-line receipt of the arrival day.
+       */
+      type: 'CrossingCompleted';
+      day: number;
+      /** Decoded fragments the captain crossed with (the assembled signal). */
+      fragmentsDecoded: number;
+    }
+  | {
+      /**
        * T-1303 · A player Hangout visit resolved (PRD §7). One event per
        * `VisitHangout` action, covering every venue:
        *   - dare: `opponentId` + `wager` + `playerWon` + `creditsDelta` (signed
@@ -549,7 +566,14 @@ export type GameEvent =
       day: number;
       storyletId: string;
       choiceId: string;
-      reason: 'not-available' | 'unknown-choice' | 'insufficient-credits' | 'missing-die';
+      // T-1505: `insufficient-fuel` — a `minFuel` choice requirement (the Nemesis
+      // crossing ship stake) the ship's tank cannot currently meet.
+      reason:
+        | 'not-available'
+        | 'unknown-choice'
+        | 'insufficient-credits'
+        | 'insufficient-fuel'
+        | 'missing-die';
     }
   | {
       type: 'StoryletEffectApplied';

@@ -7,6 +7,7 @@ import {
   LENDER_ID,
   LIFE_SUPPORT_SURVIVAL_DC,
   LOAN_DEFAULT_DISPOSITION,
+  NEMESIS_SYSTEM_ID,
   NPC_PROFILES,
   STAR_SYSTEMS,
   Stat,
@@ -40,6 +41,7 @@ import {
   resolveStoryletChoice,
 } from './storylets.js';
 import { computeGuildStanding, guildManifestPenalty, guildSeverity } from './guild.js';
+import { fragmentsDecodedCount } from './nemesis.js';
 import { natWireStories } from './wire.js';
 
 function cloneState(state: GameState): GameState {
@@ -222,6 +224,25 @@ export function applyPlayerAction(
     result = resolveTrade(nextState, action, dayRng.fork(`action-trade-${actionEventIndex}`));
   } else if (action.type === 'Travel') {
     result = resolveTravel(nextState, action, dayRng.fork(`action-travel-${actionEventIndex}`));
+    // T-1505 · The Nemesis crossing endgame hook. When a Travel ARRIVES at NEMESIS
+    // (system 28) with the crossing committed (`nemesis.crossing.unlocked`, set by
+    // the `nemesis.crossing.commit` storylet and read by the destination gate
+    // above), file a CrossingCompleted — the terminal wire-line receipt of the
+    // arrival. Guarded so it fires exactly once (the crossing is one-way; the flag
+    // and system-28 arrival persist, so re-deriving would double-file without the
+    // log check). Derived from existing state — no new GameState field.
+    // READERS: UI ending ceremony (format.ts crossingEnding) + the sim assertion.
+    if (
+      result.state.player.currentSystemId === NEMESIS_SYSTEM_ID &&
+      result.state.flags['nemesis.crossing.unlocked'] === true &&
+      !result.state.eventLog.some((e) => e.type === 'CrossingCompleted')
+    ) {
+      result.events.push({
+        type: 'CrossingCompleted',
+        day: result.state.day,
+        fragmentsDecoded: fragmentsDecodedCount(result.state.player.nemesisFile),
+      });
+    }
   } else if (action.type === 'Shipyard') {
     dayRng.fork(`action-shipyard-${actionEventIndex}`);
     result = resolveShipyard(nextState, action);

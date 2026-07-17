@@ -711,6 +711,14 @@ const GameEventSchema = z.discriminatedUnion('type', [
     fragmentId: z.string(),
   }),
   z.object({
+    // T-1505 · the Nemesis crossing completed (see types.ts CrossingCompleted).
+    // Serialized in eventLog so a save round-trips the terminal receipt; the drift
+    // guard below keeps this in lockstep with the interface.
+    type: z.literal('CrossingCompleted'),
+    day: z.number(),
+    fragmentsDecoded: z.number(),
+  }),
+  z.object({
     // T-1303 · a player Hangout visit (see types.ts HangoutEvent). Serialized in
     // eventLog, so a mid-day save round-trips it; the drift guard below keeps this
     // in lockstep with the interface.
@@ -830,7 +838,14 @@ const GameEventSchema = z.discriminatedUnion('type', [
     day: z.number(),
     storyletId: z.string(),
     choiceId: z.string(),
-    reason: z.enum(['not-available', 'unknown-choice', 'insufficient-credits', 'missing-die']),
+    reason: z.enum([
+      'not-available',
+      'unknown-choice',
+      'insufficient-credits',
+      // T-1505: the crossing ship stake (`minFuel`) refusal.
+      'insufficient-fuel',
+      'missing-die',
+    ]),
   }),
   z.object({
     type: z.literal('StoryletEffectApplied'),
@@ -1296,6 +1311,7 @@ const _covEvSalvageRecovered: AssertEventKeys<'SalvageRecovered'> = true;
 const _covEvContrabandFound: AssertEventKeys<'ContrabandFound'> = true;
 const _covEvFragmentAcquired: AssertEventKeys<'FragmentAcquired'> = true;
 const _covEvFragmentDecoded: AssertEventKeys<'FragmentDecoded'> = true;
+const _covEvCrossingCompleted: AssertEventKeys<'CrossingCompleted'> = true;
 const _covEvHangoutEvent: AssertEventKeys<'HangoutEvent'> = true;
 const _covEvLoanEvent: AssertEventKeys<'LoanEvent'> = true;
 const _covEvDiceRerolled: AssertEventKeys<'DiceRerolled'> = true;
@@ -1377,6 +1393,7 @@ void _covEvSalvageRecovered;
 void _covEvContrabandFound;
 void _covEvFragmentAcquired;
 void _covEvFragmentDecoded;
+void _covEvCrossingCompleted;
 void _covEvHangoutEvent;
 void _covEvLoanEvent;
 void _covEvDiceRerolled;

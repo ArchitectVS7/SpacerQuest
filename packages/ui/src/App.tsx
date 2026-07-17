@@ -42,6 +42,7 @@ import {
   deleteSlot,
   setReducedMotion,
   setTextSize,
+  returnToMenu,
   type CockpitState,
   type SlotSummary,
   type TextSize,
@@ -94,9 +95,11 @@ import {
   availableStorylets,
   offersForSurface,
   resolutionCeremony,
+  crossingEnding,
   type OnboardingAnchor,
   type OnboardingMount,
   type ResolutionCeremonyView,
+  type CrossingEndingView,
   type ShipComponentRow,
   type WireLogEntry,
   type StoryletChoice,
@@ -387,6 +390,12 @@ export function App() {
   // unmounts when it is acknowledged.
   const ceremony = resolutionCeremony(s.game);
 
+  // T-1505 · The Nemesis crossing ending — the career's terminal ceremony. Non-null
+  // once the ship has crossed into NEMESIS with the crossing committed (derived, no
+  // stored flag). When up it covers the cockpit and offers only "Return to menu" →
+  // a fresh career, so the crossing is genuinely one-way and cannot be played past.
+  const ending = crossingEnding(s.game);
+
   // T-1406 · When the focused offer resolves or otherwise drains from the live
   // set, clear the open id so a stale id can never re-mount the panel. The panel
   // returns null on a missing offer too, but this keeps the state honest.
@@ -466,14 +475,15 @@ export function App() {
           storyletStillLive &&
           !s.game.encounter &&
           !s.combatAftermath &&
-          !ceremony && (
+          !ceremony &&
+          !ending && (
             <StoryletPanel
               state={s}
               storyletId={openStoryletId}
               onClose={() => setOpenStoryletId(null)}
             />
           )}
-        {hangoutPanelOpen && hangoutAvailable && (
+        {hangoutPanelOpen && hangoutAvailable && !ending && (
           <HangoutPanel state={s} onClose={() => setHangoutPanelOpen(false)} />
         )}
         <HandDock state={s} />
@@ -485,6 +495,10 @@ export function App() {
         <CombatOverlay state={s} />
         {ceremony && <ResolutionCeremony state={s} view={ceremony} />}
         {recordsOpen && <RecordsOverlay game={s.game} onClose={() => setRecordsOpen(false)} />}
+        {/* T-1505 · The crossing ending renders LAST so it stacks above every other
+            overlay — the terminal act is unmissable and un-dismissable except by
+            returning to a fresh career. */}
+        {ending && <CrossingEnding view={ending} />}
       </div>
     </div>
   );
@@ -622,6 +636,59 @@ function ResolutionCeremony({
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// T-1505 · The Nemesis crossing ending — the career's terminal ceremony. A
+// full-screen certificate modelled on ResolutionCeremony, rendered when the ship
+// has crossed into NEMESIS (format.ts `crossingEnding` non-null). It presents the
+// decoded epilogue — the culmination the whole twelve-fragment arc built to — and
+// offers ONLY "Return to menu", which resets to a fresh day-1 career (store
+// `returnToMenu` → `newGame`). Andromeda beyond stays sealed for the expansion; in
+// v1 the crossing itself is the ending. A pure CLIENT: it reads the derived view
+// and owns no rule.
+function CrossingEnding({ view }: { view: CrossingEndingView }) {
+  return (
+    <div
+      className="crossing-ending"
+      data-testid="crossing-ending"
+      role="dialog"
+      aria-label="The Nemesis crossing"
+    >
+      <div className="ce-frame">
+        <header className="ce-head">
+          <span className="ce-kicker">THE CROSSING · DAY {view.day}</span>
+          <h2 className="ce-title" data-testid="crossing-title">
+            Beyond the Black Hole
+          </h2>
+          <span className="ce-signal" data-testid="crossing-signal-count">
+            {view.fragmentsDecoded} of 12 · SIGNAL ASSEMBLED
+          </span>
+        </header>
+
+        <p className="ce-lede">
+          The hull crosses the event horizon and does not come apart. The far side is listening.
+          Whatever answers, the captain you were does not fly home — the name, the fortune, the
+          ship, all spent to reach this heading. What the Signal spent a career telling you settles
+          at last:
+        </p>
+
+        <ul className="ce-epilogue" data-testid="crossing-epilogue">
+          {view.epilogue.map((line) => (
+            <li className="ce-line" key={line.fragmentId} data-fragment-id={line.fragmentId}>
+              <b className="ce-line-title">{line.title}</b>
+              <p className="ce-line-text">{line.text}</p>
+            </li>
+          ))}
+        </ul>
+
+        <div className="ce-actions">
+          <button className="btn" data-testid="crossing-return-menu" onClick={() => returnToMenu()}>
+            Return to menu
+          </button>
         </div>
       </div>
     </div>

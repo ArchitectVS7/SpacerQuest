@@ -66,6 +66,15 @@ export interface StoryletTrigger {
     hasUndecoded?: boolean;
     /** Offered only when the file holds THIS fragment id, still undecoded. */
     hasUndecodedFragmentId?: string;
+    /** T-1505: offered only when the file holds at least this many DECODED
+     *  fragments — the crossing endgame's "assemble and decode the whole signal"
+     *  gate. Reader: engine `triggerMatches` (via `fragmentsDecodedCount`). */
+    minDecoded?: number;
+    /** T-1505: offered only when the file holds THIS fragment id, already
+     *  DECODED — lets the Sage's final-line reconstruction gate on the crossing
+     *  ledger (frag-04) being decoded first. Reader: engine `triggerMatches`
+     *  (via `hasDecodedFragment`). */
+    hasDecodedFragmentId?: string;
   };
   /** T-1302: gate on the LIVE world era EVENT (`state.eraEvent`), NOT the
    *  campaign `EraId`. This is what lets a storylet be "delivered by the
@@ -126,6 +135,11 @@ export interface StoryletChoiceDefinition {
     credits?: NumberMatcher;
     spendDie?: true;
     statCheck?: { stat: Stat; dc: number };
+    /** T-1505: the ship must currently CARRY at least this much fuel — the
+     *  Nemesis crossing's "ship" stake (only an upgraded hull's tank can hold it;
+     *  a junker caps at 300). Blocks with `insufficient-fuel`. Reader: engine
+     *  `quoteStoryletChoice` + `resolveStoryletChoice`; UI `storyletChoiceLock`. */
+    minFuel?: number;
   };
   effects?: StoryletEffects;
   successEffects?: StoryletEffects;
@@ -4216,6 +4230,503 @@ export const STORYLETS = defineStorylets([
         id: 'keep-clear',
         label: 'Keep clear of the cordon',
         prose: 'A fever port is a fever port. Note it on the wire and give it a wide berth.',
+      },
+    ],
+  },
+
+  // ==========================================================================
+  // T-1505 · The Nemesis Signal arc — the seven net-new fragments, their
+  //   acquisition/decode paths, and the endgame crossing (appended per the batch
+  //   convention: batches append after every prior batch, so the originals stay
+  //   the leading content-order prefix the engine storylet-order test asserts).
+  //
+  //   PURPOSE (PRD §8.1): complete the twelve-fragment career mystery. The five
+  //   original fragments (01-05, decoded by sage.mizar.decode-first/02..05) grew
+  //   to twelve (nemesis.ts). This batch adds:
+  //     - three ACQUISITION storylets for 06/07/08 — two derelict-log recoveries
+  //       and one beacon echo (the 'derelict'/'beacon' modes for the new fragments,
+  //       authored as storylets so the Explore LOOT POOLS stay byte-identical and
+  //       never perturb the seeded exploration trajectory of the veteran/port sims);
+  //     - the Sage decode paths for 06-11 (six, cloning the decode-02..05 pattern);
+  //     - three NPC-held grants (09/10/11) — an NPC "who does not know what they
+  //       have" (PRD §8.1), realizing the 'npc' FragmentSource;
+  //     - the Sage's final-line reconstruction that grants+decodes frag-12 (the
+  //       crossing key);
+  //     - the crossing endgame `nemesis.crossing.commit` (rank + bank + ship stake,
+  //       one-way), which SETS `nemesis.crossing.unlocked` — the flag T-1101's
+  //       destination gate (engine day.ts) reads to admit a Travel to NEMESIS (28).
+  //
+  //   THE `minDecoded:5` CHOKEPOINT. Everything past the opening pentad (the 06/07/08
+  //   acquisitions and the 09/10/11 NPC grants) gates on `nemesis:{minDecoded:5}`, and
+  //   the final-line reconstruction gates on frag-11 (itself behind that chokepoint)
+  //   being decoded. A player only crosses the chokepoint by DECODING all of 01-05 —
+  //   a deliberate arc pursuit. The seed-pinned grind sims (campaign-reach's
+  //   veteran/port policies, which "play any offered storylet") collect and decode at
+  //   most a few of 01-05 and never the whole pentad, so this content is never offered
+  //   to them and their trajectories are unmoved — the honest alternative to re-pinning
+  //   those seeds for a pure content addition. A real pursuer, at 5 decoded, unlocks
+  //   06-11, decodes them (reaching frag-11), reconstructs 12, and (at CONQUEROR, with
+  //   the bank+ship stake) commits the crossing.
+  //   Decode paths NOT era-gated (the arc runs Tour One into the veteran game);
+  //   the CONSUMED state per decode is the fragment DECODE itself (constraint 7),
+  //   exactly as decode-02..05 documents.
+  // ==========================================================================
+
+  {
+    id: 'sage.mizar.decode-06',
+    title: 'The Sage Counts the Silent Fleet',
+    prose:
+      'The sixth sliver came off a derelict that was one of a dozen, all cold on the same heading. The Sage plays the carrier and their face closes. "I have wondered about those hulls for forty years," they say. "Let me hear what they are still saying."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-06' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The Signal resolves: not wrecks, but the ships that ran the crossing burn and lost their nerve at the horizon — still deciding, forever. Decoded, it joins your file, and the cabin feels smaller.',
+        effects: {
+          decodeFragment: 'frag-nemesis-06',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Take the sliver back before the last of the fleet resolves. A drifting ship keeps its silence whether or not you understand it. The Sage lets it go.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-07',
+    title: "The Sage Reads the Cartographer's Confession",
+    prose:
+      "The seventh sliver is a navigator's personal log — coherent, then not. The last pages abandon the charts and draw something the coordinates cannot hold. The Sage turns the sliver over in the light for a long time before feeding it to the screens.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-07' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The confession resolves: the far side is not Andromeda as charted. The coordinate inside the black hole is a door, and no map survives being carried through it. Decoded, it settles into your file.',
+        effects: {
+          decodeFragment: 'frag-nemesis-07',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Close the log before the drawings resolve. Some confessions you would rather not finish reading. The Sage sets the star-wheel down without a word.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-08',
+    title: 'The Sage Hears the Beacon Answer',
+    prose:
+      'The eighth sliver is off a rim beacon, and the Sage notices at once what you did not: the tones return in a different order than they left. "This is not a relay," they murmur. "Something is sorting them. Let me find out into what."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-08' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The beacons are not relays. They are replies — the far side answering the Signal fragment for fragment. The moment you began collecting, you became the half of the conversation it was waiting for. Decoded, and the room is very quiet.',
+        effects: {
+          decodeFragment: 'frag-nemesis-08',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Silence the playback before the reply resolves. A conversation you have not agreed to join can keep. The Sage does not argue, but watches you go.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-09',
+    title: 'The Sage Reckons the Debt',
+    prose:
+      'You set down a data-sliver an old spacer took as payment a lifetime ago and never read. The Sage recognizes the pre-Confederation carrier under it before you finish speaking. "A debt paid in old coin," they say. "Let me read what the coin was worth."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-09' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'It names the price of the crossing, and the price is not fuel. The far side takes only what death would take anyway — the hull, the fortune, everything a captain cannot carry through the door. Decoded, it joins the file.',
+        effects: {
+          decodeFragment: 'frag-nemesis-09',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Take the coin back before its worth resolves. A price you have not read is a price you have not agreed to pay. The Sage inclines their head.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-10',
+    title: 'The Sage Cross-Checks the Manifest',
+    prose:
+      'The tenth sliver is half a passenger list from a ship no registry admits sailed — a family heirloom, kept for the names. The Sage lays it beside the drowned manifest and their finger stops on a single line.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-10' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The names cross-check against the crossing list. One is marked apart: a passenger who came back. What the Sage will not say aloud is what they carried back with them. Decoded, it settles into your file.',
+        effects: {
+          decodeFragment: 'frag-nemesis-10',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Draw the heirloom back before the marked name resolves. Some returns you are not ready to read the shape of. The Sage lets the list go.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-11',
+    title: 'The Sage Closes the Window',
+    prose:
+      'The eleventh sliver is a timing device, salvaged and traded down the rim until its origin was lost. It counts, and the count is nearly finished. The Sage sets it against the first fragment\'s carrier wave and goes still. "The countdown has an end," they say. "Let me read it."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-11' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          "It is the end of the first fragment's countdown, read plainly: the crossing is survivable only inside the window the Signal has been counting toward — and the window is not a door that stays open. Decoded, it joins the file.",
+        effects: {
+          decodeFragment: 'frag-nemesis-11',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Stop the count before its end resolves. A window you have not measured is a window you need not yet run. The Sage sets the timing device down, and it keeps counting.',
+      },
+    ],
+  },
+
+  // The Sage reconstructs the ledger's MISSING FINAL LINE — frag-12, the crossing
+  // key. Unlike the decode paths above (which flip a HELD fragment), this GRANTS
+  // frag-12 and DECODES it in one beat (applyEffects runs grantFragment before
+  // decodeFragment on the same effects object), source 'sage' (the fifth, formerly
+  // defined-but-unused FragmentSource). Gated on the transmission-window frag-11
+  // being DECODED (nemesis.hasDecodedFragmentId) — the last piece before the key,
+  // so the reconstruction is the penultimate arc beat. Deliberately gated on 11
+  // (not the ledger 04) because 11 is NPC-held behind the `minDecoded:5` chokepoint
+  // below, so this beat is unreachable by the fragment-grind of the seed-pinned
+  // veteran/port sims (which never climb past decoding 01-05) — keeping their
+  // trajectories byte-identical — while a real arc-pursuer reaches it naturally.
+  {
+    id: 'sage.mizar.reconstruct-final-line',
+    title: 'The Sage Writes the Final Line',
+    prose:
+      'The Sage has not slept. Around them the dead screens hold every fragment you brought — the ledger, the manifest, the hymn, the returning voice, the timing window — and the old cryptographer is writing the one line the Event-Horizon Ledger was always missing, reconstructing it from everything the rest of the Signal implies. "I can finish it," they say, not looking up. "But once it is written, you will know the whole of what the crossing costs. Do you want to know?"',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasDecodedFragmentId: 'frag-nemesis-11' },
+    },
+    choices: [
+      {
+        id: 'reconstruct',
+        label: 'Let the Sage finish it',
+        prose:
+          'You tell them to write it. The final line resolves under their hand — a ship stripped to its hull and a fortune spent to the last credit, committed all at once, inside the window. You cross carrying nothing but yourself, or you do not cross. The complete solution settles into your file, decoded. The Signal is whole.',
+        effects: {
+          grantFragment: 'frag-nemesis-12',
+          fragmentSource: 'sage',
+          decodeFragment: 'frag-nemesis-12',
+        },
+      },
+      {
+        id: 'not-yet',
+        label: 'Tell them to stop',
+        prose:
+          'You tell the Sage to set the stylus down. Some prices you would rather not read until you have to. They nod, unsurprised, and leave the last line blank. "It will keep," they say. "It has kept this long."',
+      },
+    ],
+  },
+
+  // --- Derelict-log & beacon acquisitions (06/07/08): the new 'derelict'/'beacon'
+  //     mode fragments, acquired through dedicated recovered-log / beacon storylets
+  //     rather than the Explore loot pool (the pools are LEFT byte-identical — see
+  //     nemesis.ts — so the seeded exploration rng trajectory of the veteran/port
+  //     sims never moves). Each is systemIds-gated at a rim system and behind the
+  //     `nemesis:{minDecoded:5}` chokepoint, so only a deep-arc pursuer (who has
+  //     decoded 01-05) is offered them — the grind sims never are. Each grants with
+  //     the true `fragmentSource` ('derelict'/'derelict'/'beacon') and, once held,
+  //     is decoded by the matching Sage decode-06/07/08 storylet above. ---
+  {
+    id: 'nemesis.derelict-log.silent-fleet',
+    title: 'The Silent Fleet',
+    prose:
+      'A dozen cold hulls drift the same dead heading off Achernar-5, drives dark, none of them shot. You match velocity with the nearest and board. Its log core still holds a charge — and under the wreck-rot is the pre-Confederation carrier you have chased across the rim.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [19],
+      nemesis: { minDecoded: 5 },
+    },
+    choices: [
+      {
+        id: 'pull-the-log',
+        label: 'Pull the log core',
+        prose:
+          'Cut the core free before the drift carries the hull out of reach. Whatever the silent fleet is still saying, it is a fragment of the Signal now, and it is yours.',
+        effects: {
+          grantFragment: 'frag-nemesis-06',
+          fragmentSource: 'derelict',
+        },
+      },
+      {
+        id: 'let-them-drift',
+        label: 'Let them drift',
+        prose:
+          'Leave the fleet to its heading. Some wrecks are graves, and some graves keep counting whether or not you read them. Ease off and fly on.',
+      },
+    ],
+  },
+  {
+    id: 'nemesis.derelict-log.cartographer',
+    title: "The Cartographer's Confession",
+    prose:
+      "A gutted hulk off Algol-2 yields a navigator's personal log, coherent at first and then not — the last pages abandon the charts entirely and begin drawing something the coordinates cannot hold. The carrier under it matches the rest of the Signal.",
+    repeat: 'never',
+    trigger: {
+      systemIds: [20],
+      nemesis: { minDecoded: 5 },
+    },
+    choices: [
+      {
+        id: 'take-the-log',
+        label: 'Recover the log',
+        prose:
+          "Take the confession before the hull's failing power erases it. A navigator went somewhere the charts could not follow and left a record — a fragment of the Signal, and a warning about the door.",
+        effects: {
+          grantFragment: 'frag-nemesis-07',
+          fragmentSource: 'derelict',
+        },
+      },
+      {
+        id: 'leave-the-log',
+        label: 'Leave it to the dark',
+        prose:
+          "Some confessions are not meant to be carried off a wreck. Power down the salvage arm and let the hulk keep its navigator's last drawings.",
+      },
+    ],
+  },
+  {
+    id: 'nemesis.beacon-echo.answer',
+    title: 'The Beacon That Answers',
+    prose:
+      'A beacon on an empty Capella-4 channel is leaking the carrier wave — but you notice, holding station beside it, what a passing ship never would: the tones return in a different order than they left. Something is sorting them. Something is answering.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [16],
+      nemesis: { minDecoded: 5 },
+    },
+    choices: [
+      {
+        id: 'record-the-echo',
+        label: 'Record the echo',
+        prose:
+          'Lock the receiver and capture the reply in full. Whatever is on the far side of Nemesis is talking back, fragment for fragment — and now you hold its answer as a piece of the Signal.',
+        effects: {
+          grantFragment: 'frag-nemesis-08',
+          fragmentSource: 'beacon',
+        },
+      },
+      {
+        id: 'break-the-channel',
+        label: 'Break off the channel',
+        prose:
+          'A conversation you have not agreed to join can go unanswered. Kill the receiver and pull away from the beacon before the reply finishes resolving.',
+      },
+    ],
+  },
+
+  // --- NPC-held fragments (09/10/11): an NPC "who does not know what they have"
+  //     (PRD §8.1). Standalone `nemesis.npc-held.*` storylets, NOT grafted onto the
+  //     T-1502 personal chains (avoids golden churn), each triggered on a co-located
+  //     cast member (`npc:{id, inCurrentSystem:true}`). Chosen for fiction: Rust
+  //     Bucket the hoarder took a sliver as old payment; Star Gazer keeps a manifest
+  //     heirloom for the names; Void Whisper (bond: "Loyal to the Nemesis Signal")
+  //     reveres a timing sliver. Each grants its fragment with `fragmentSource:'npc'`
+  //     (the 'npc' source, realized here). Two choices (take / decline). Each also
+  //     gates on `nemesis:{minDecoded:5}` — offered only to a captain who has decoded
+  //     the whole opening pentad (01-05), the mid-arc chokepoint (see the batch
+  //     header). This keeps a co-located cast member from polluting an unrelated
+  //     board AND keeps the seed-pinned grind sims (which never decode all five)
+  //     from ever being offered — and thus playing — these beats. ---
+  {
+    id: 'nemesis.npc-held.rust-bucket',
+    title: "Rust Bucket's Old Coin",
+    prose:
+      'Rust Bucket is elbow-deep in the Junk Heap\'s hold when you dock alongside, sorting a lifetime of salvage nobody else wanted. "Payment," the scavenger grunts, flicking a corroded data-sliver at you. "Took it off a spacer who couldn\'t make a fuel bill, must be forty years back. Never could read the thing. You want it? It rattles when I shake it and I don\'t like that."',
+    repeat: 'never',
+    trigger: {
+      npc: { id: 'npc-rust-bucket', inCurrentSystem: true },
+      nemesis: { minDecoded: 5 },
+    },
+    choices: [
+      {
+        id: 'take-the-sliver',
+        label: 'Take the sliver',
+        prose:
+          'Pocket the corroded sliver. Under the rust is the same carrier wave you have been chasing across the rim — a debt paid in old coin, and the coin is a fragment of the Signal.',
+        effects: {
+          grantFragment: 'frag-nemesis-09',
+          fragmentSource: 'npc',
+        },
+      },
+      {
+        id: 'leave-it',
+        label: 'Leave it in the hoard',
+        prose:
+          'Tell Rust Bucket to keep their rattling coin. The scavenger shrugs and buries it back in the pile. "Suit yourself. It\'ll be here."',
+      },
+    ],
+  },
+  {
+    id: 'nemesis.npc-held.star-gazer',
+    title: "Star Gazer's Heirloom",
+    prose:
+      'Star Gazer barely looks up from the Observatory\'s long window. "My grandmother kept a list," the stargazer says, distracted, turning an old sliver in one hand. "Half a passenger manifest, from a ship the registry swears never sailed. She kept it for the names — said they were owed remembering. I never knew what to do with it. You keep bringing me questions about the black hole. Maybe you should have it."',
+    repeat: 'never',
+    trigger: {
+      npc: { id: 'npc-star-gazer', inCurrentSystem: true },
+      nemesis: { minDecoded: 5 },
+    },
+    choices: [
+      {
+        id: 'take-the-heirloom',
+        label: 'Accept the heirloom',
+        prose:
+          'Take the sliver with both hands, the way it was given. Half a passenger list, kept for the names — and the names, you already suspect, are a crossing list. A fragment of the Signal, passed down for a century without anyone knowing.',
+        effects: {
+          grantFragment: 'frag-nemesis-10',
+          fragmentSource: 'npc',
+        },
+      },
+      {
+        id: 'decline-the-heirloom',
+        label: 'Decline it',
+        prose:
+          'Tell Star Gazer an heirloom belongs with the family that kept it. The stargazer nods slowly and returns it to a pocket. "Perhaps. The names will keep a while longer."',
+      },
+    ],
+  },
+  {
+    id: 'nemesis.npc-held.void-whisper',
+    title: "Void Whisper's Reliquary",
+    prose:
+      'Void Whisper receives you like a pilgrim at a shrine. "You carry the Signal," the zealot says, eyes bright, and produces a timing device wrapped in cloth like a relic. "This came to me down the rim, traded hand to hand until no one remembered its origin. It counts. I have listened to it count for years. I believe it counts toward the crossing — and I believe it was meant to reach you, not me. Take it. Complete the Signal."',
+    repeat: 'never',
+    trigger: {
+      npc: { id: 'npc-void-whisper', inCurrentSystem: true },
+      nemesis: { minDecoded: 5 },
+    },
+    choices: [
+      {
+        id: 'take-the-reliquary',
+        label: 'Take the timing device',
+        prose:
+          "Accept the relic from the zealot's hands. It is warm, and it is counting, and the count is nearly finished. A fragment of the Signal — the transmission window itself — given freely by the one who understood least what they held and revered it most.",
+        effects: {
+          grantFragment: 'frag-nemesis-11',
+          fragmentSource: 'npc',
+        },
+      },
+      {
+        id: 'refuse-the-reliquary',
+        label: 'Refuse the relic',
+        prose:
+          'Tell Void Whisper the relic is theirs to keep. The zealot bows their head, unoffended. "Then it will wait. It has waited this long. So have I."',
+      },
+    ],
+  },
+
+  // --- The crossing endgame: `nemesis.crossing.commit` (PRD §8.1). The terminal
+  //     act, committed at Polaris-1 (17) — the Wise One who opened the arc, and who
+  //     foreshadowed it above ("the ones who answer too fast never make the
+  //     crossing"). GATED THREE WAYS (the PRD's stake, nemesis.ts constants):
+  //       - renown CONQUEROR (the T-1308 reader — deeds.ts documents the crossing
+  //         as CONQUEROR's second reader);
+  //       - the WHOLE signal decoded (nemesis.minDecoded = CROSSING_MIN_DECODED);
+  //       - and, on the Commit choice, the BANK stake (credits >= CROSSING_BANK_STAKE,
+  //         spent) + the SHIP stake (minFuel >= CROSSING_BURN_FUEL — a junker's
+  //         300-fuel tank cannot hold it; only an upgraded hull can).
+  //     The flag guard `nemesis.crossing.unlocked exists:false` stops it re-offering
+  //     after commit (one-way). Committing SETS that flag — the point of no return —
+  //     which engine day.ts's destination gate reads to admit the Travel to NEMESIS,
+  //     where the ending fires (engine day.ts CrossingCompleted; UI crossingEnding).
+  {
+    id: 'nemesis.crossing.commit',
+    title: 'The Crossing',
+    prose:
+      'The Wise One of Polaris-1 is waiting, as they were the day they sold you the first fragment. No sliver now — only the cold cabin and a long look at the captain you have become. "You have the whole of it," the old spacer says. "The ledger, the window, the final line. You know the price. A ship stripped to its hull, a fortune spent to the last credit, and no coming back. The door is open, and it will not stay open. So. Do you make the crossing?"',
+    repeat: 'never',
+    trigger: {
+      systemIds: [17],
+      renown: { minRank: 'CONQUEROR' },
+      nemesis: { minDecoded: 12 },
+      flags: [{ name: 'nemesis.crossing.unlocked', exists: false }],
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Make the crossing',
+        prose:
+          'You commit everything — the fortune to the burn, the ship to the door, the name you spent a career building to a heading no registry will ever log a return from. The Wise One does not smile. "Then fly," they say. "The far side is listening." The crossing is unlocked; point the hull at NEMESIS.',
+        requirements: {
+          credits: { gte: 50000 },
+          minFuel: 1600,
+        },
+        effects: {
+          credits: -50000,
+          flags: [{ name: 'nemesis.crossing.unlocked', value: true }],
+        },
+      },
+      {
+        id: 'not-yet',
+        label: 'Not yet',
+        prose:
+          'You tell the Wise One the crossing can wait one more run. The old spacer nods, and neither of you believes it. "It will keep," they say. "It has kept this long. But the window does not."',
       },
     ],
   },

@@ -25,6 +25,7 @@ import {
   isPurchasablePort,
   FACTION_IDS,
   FACTION_LABELS,
+  NEMESIS_SYSTEM_ID,
   type FactionId,
   type StoryletTrigger,
   type CrewRole,
@@ -517,9 +518,19 @@ export interface StarmapProjection {
 export function starmapProjection(game: GameState): StarmapProjection {
   const here = game.player.currentSystemId;
   const visited = new Set(game.player.charts.visitedSystemIds);
+  // T-1505 · NEMESIS (28) is normally off the chart (a sealed destination), but once
+  // the crossing is committed (`nemesis.crossing.unlocked`) it must appear so the
+  // player can point the hull at it — the UI affordance for the crossing jump the
+  // destination gate (engine day.ts) now admits. READER of the flag alongside that gate.
+  const crossingOpen = game.flags['nemesis.crossing.unlocked'] === true;
   const shown = new Map<number, (typeof STAR_SYSTEMS)[number]>();
   for (const sys of Object.values(STAR_SYSTEMS)) {
-    if ((sys.id >= 1 && sys.id <= 20) || sys.id === here || visited.has(sys.id)) {
+    if (
+      (sys.id >= 1 && sys.id <= 20) ||
+      sys.id === here ||
+      visited.has(sys.id) ||
+      (crossingOpen && sys.id === NEMESIS_SYSTEM_ID)
+    ) {
       shown.set(sys.id, sys);
     }
   }
@@ -1108,6 +1119,8 @@ export function storyletChoiceCostLabel(
   const quote = quoteStoryletChoice(game, storyletId, choice.id);
   const parts: string[] = [];
   if (quote.requiredCredits !== null) parts.push(`${quote.requiredCredits.toLocaleString()}cr`);
+  // T-1505 · the crossing ship stake shows as a visible fuel cost badge.
+  if (quote.requiredFuel !== null) parts.push(`${quote.requiredFuel.toLocaleString()} fuel`);
   if (quote.statCheck) parts.push(`${statName(quote.statCheck.stat)} DC ${quote.statCheck.dc}`);
   if (quote.needsDie) parts.push('die');
   return parts.join(' · ');
@@ -1132,6 +1145,9 @@ export function storyletChoiceLock(
   switch (quote.reason) {
     case 'insufficient-credits':
       return `Need ${(quote.requiredCredits ?? 0).toLocaleString()}cr`;
+    case 'insufficient-fuel':
+      // T-1505 · the Nemesis crossing ship stake — the hull must carry the burn.
+      return `Ship must carry ${(quote.requiredFuel ?? 0).toLocaleString()} fuel for the burn`;
     case 'missing-die':
       return 'Assign a die';
     case 'not-available':
@@ -1230,6 +1246,43 @@ export function nemesisFile(game: GameState): NemesisFileView {
     count: fragmentCount(file),
     decodedCount: entries.filter((e) => e.decoded).length,
     entries,
+  };
+}
+
+/** T-1505 · The Nemesis crossing ending view — the career's terminal ceremony. */
+export interface CrossingEndingView {
+  /** The decoded culmination: the arc-ordered lore lines the captain crossed with
+   *  (the decoded-lore index, DECODED entries only), for the epilogue scroll. */
+  epilogue: { fragmentId: string; title: string; text: string }[];
+  /** Total decoded fragments carried across — the assembled signal. */
+  fragmentsDecoded: number;
+  /** The day the crossing completed (from the CrossingCompleted receipt). */
+  day: number;
+}
+
+/**
+ * T-1505 · The crossing ending, or null when the player has not crossed. DERIVED
+ * (no new GameState field, per the design): non-null exactly when the ship sits at
+ * NEMESIS (system 28) with the crossing committed (`nemesis.crossing.unlocked`) —
+ * the same pair the engine's CrossingCompleted hook fires on. The epilogue is
+ * composed from the engine's own decoded-lore index (the culmination the whole arc
+ * built to); the day is read off the CrossingCompleted receipt in the event log.
+ * READER: App.tsx's full-screen CrossingEnding ceremony + the e2e ending spec.
+ */
+export function crossingEnding(game: GameState): CrossingEndingView | null {
+  if (
+    game.player.currentSystemId !== NEMESIS_SYSTEM_ID ||
+    game.flags['nemesis.crossing.unlocked'] !== true
+  ) {
+    return null;
+  }
+  const receipt = [...game.eventLog].reverse().find((e) => e.type === 'CrossingCompleted');
+  const entries = nemesisLoreIndex(game.player.nemesisFile).filter((e) => e.decoded);
+  return {
+    epilogue: entries.map((e) => ({ fragmentId: e.fragmentId, title: e.title, text: e.text })),
+    fragmentsDecoded:
+      receipt?.type === 'CrossingCompleted' ? receipt.fragmentsDecoded : entries.length,
+    day: receipt?.type === 'CrossingCompleted' ? receipt.day : game.day,
   };
 }
 

@@ -6,6 +6,7 @@ import {
   INTERCEPT_FRIEND_WEIGHT,
   INTERCEPT_GRUDGE_WEIGHT,
   INTERCEPT_MIN_WEIGHT,
+  NEMESIS_SYSTEM_ID,
   NPC_PROFILES,
   ROUTE_DANGER_CHANCE,
   RouteDangerLevel,
@@ -320,6 +321,16 @@ export function generateEncounter(
   fuelUsed: number,
   rng: SeededRng,
 ): EncounterState | null {
+  // T-1505 · The Nemesis crossing is the ENDING, not a combat lane. Suppress
+  // interdiction on the jump into NEMESIS (system 28) so the terminal act cannot be
+  // hijacked by an interceptor. DELIBERATE design call (Standing-constraint 5):
+  // system 28 is `isGatedDestination` and reachable only after the crossing is
+  // committed, so NO existing travel/encounter golden jumps here — this early
+  // return, placed before the encounter roll consumes any rng, leaves every other
+  // route byte-identical.
+  if (destination === NEMESIS_SYSTEM_ID) {
+    return null;
+  }
   const { routeDangerLevel, routeDangerChance } = calculateRouteDanger(state, origin, destination);
   let effectiveChance =
     state.era === 'TOUR_ONE'

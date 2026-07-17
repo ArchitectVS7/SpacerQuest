@@ -258,3 +258,60 @@ describe('Destination gate (T-1101)', () => {
     expect(result.events.some((event) => event.type === 'StatCheck')).toBe(true);
   });
 });
+
+describe('T-1505 · the crossing arrival (CrossingCompleted)', () => {
+  /** A DAY-phase state poised at Polaris-1 with the crossing committed and a ship
+   *  that can actually make the (very long) jump to NEMESIS. */
+  function crossingReadyState(): ReturnType<typeof startDay>['state'] {
+    const next = startDay(createInitialState(42)).state;
+    next.flags['nemesis.crossing.unlocked'] = true;
+    next.player.currentSystemId = 17; // Polaris-1
+    // A maxed drive (cheap per-unit) + a full, generous tank so the distance-131
+    // jump to NEMESIS is affordable; a high PILOT + die 20 guarantees the check.
+    next.player.ship.drives = { strength: 21, condition: 9 };
+    next.player.ship.fuel = 4000;
+    next.player.ship.maxFuel = 4000;
+    next.player.stats.PILOT = 40;
+    next.player.dawnHand = { dice: [20, 12, 6, 3, 1], spent: [false, false, false, false, false] };
+    // A decoded signal to report on arrival.
+    for (let i = 1; i <= 12; i += 1) {
+      const id = `frag-nemesis-${String(i).padStart(2, '0')}`;
+      next.player.nemesisFile.fragments.push({
+        fragmentId: id,
+        source: 'sage',
+        day: 1,
+        decoded: true,
+      });
+    }
+    return next;
+  }
+
+  it('emits CrossingCompleted on arrival at NEMESIS with the flag set', () => {
+    const state = crossingReadyState();
+    const result = applyPlayerAction(state, { type: 'Travel', destinationId: 28, spendDie: 0 });
+
+    // The ship actually arrived at NEMESIS (no interdiction — suppressed on the
+    // crossing lane — and the pilot check passed).
+    expect(result.state.player.currentSystemId).toBe(28);
+    expect(
+      result.events.some(
+        (event) => event.type === 'ActionBlocked' && event.reason === 'destination-locked',
+      ),
+    ).toBe(false);
+    // The terminal receipt fired, carrying the assembled decoded count.
+    const crossing = result.events.find((e) => e.type === 'CrossingCompleted');
+    expect(crossing).toBeDefined();
+    if (crossing?.type === 'CrossingCompleted') {
+      expect(crossing.fragmentsDecoded).toBe(12);
+    }
+    // It is a single, once-only receipt in the log.
+    expect(result.state.eventLog.filter((e) => e.type === 'CrossingCompleted')).toHaveLength(1);
+  });
+
+  it('does NOT emit CrossingCompleted when arriving at a non-NEMESIS system', () => {
+    const state = crossingReadyState();
+    state.player.currentSystemId = 1; // Sun-3
+    const result = applyPlayerAction(state, { type: 'Travel', destinationId: 2, spendDie: 0 });
+    expect(result.events.some((e) => e.type === 'CrossingCompleted')).toBe(false);
+  });
+});

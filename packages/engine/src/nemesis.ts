@@ -38,6 +38,20 @@ export function hasAnyUndecoded(file: NemesisFileState): boolean {
   return file.fragments.some((fragment) => !fragment.decoded);
 }
 
+/** T-1505: how many held fragments have been DECODED. The named reader behind the
+ *  crossing's `nemesis.minDecoded` trigger (engine `triggerMatches`) — the endgame
+ *  demands the whole signal assembled AND decoded, not merely collected. */
+export function fragmentsDecodedCount(file: NemesisFileState): number {
+  return file.fragments.filter((fragment) => fragment.decoded).length;
+}
+
+/** T-1505: true if the file holds this fragment id AND it is already decoded. The
+ *  reader behind the `nemesis.hasDecodedFragmentId` trigger — lets the Sage's
+ *  final-line reconstruction gate on the crossing ledger (frag-04) being decoded. */
+export function hasDecodedFragment(file: NemesisFileState, fragmentId: string): boolean {
+  return file.fragments.some((fragment) => fragment.fragmentId === fragmentId && fragment.decoded);
+}
+
 /**
  * Grant a fragment into the file. Dedupes by id (monotonic): returns `true` iff
  * the fragment was NEW and appended, `false` if it was already held. Mutates the

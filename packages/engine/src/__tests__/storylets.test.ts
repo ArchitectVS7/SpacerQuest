@@ -170,6 +170,27 @@ const T1504_STORYLET_IDS = [
   'wire.plague.contagion-cordon',
 ] as const;
 
+// T-1505 · The Nemesis Signal arc completion batch (appended last): the Sage
+// decode paths for fragments 06-11, the final-line reconstruction that grants +
+// decodes frag-12, three NPC-held fragment grants (09/10/11), and the crossing
+// endgame that sets `nemesis.crossing.unlocked`.
+const T1505_STORYLET_IDS = [
+  'sage.mizar.decode-06',
+  'sage.mizar.decode-07',
+  'sage.mizar.decode-08',
+  'sage.mizar.decode-09',
+  'sage.mizar.decode-10',
+  'sage.mizar.decode-11',
+  'sage.mizar.reconstruct-final-line',
+  'nemesis.derelict-log.silent-fleet',
+  'nemesis.derelict-log.cartographer',
+  'nemesis.beacon-echo.answer',
+  'nemesis.npc-held.rust-bucket',
+  'nemesis.npc-held.star-gazer',
+  'nemesis.npc-held.void-whisper',
+  'nemesis.crossing.commit',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -212,6 +233,10 @@ describe('storylet content validation', () => {
     for (const id of T1504_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1505 Nemesis Signal arc completion batch loaded and validated.
+    for (const id of T1505_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
@@ -222,7 +247,8 @@ describe('storylet content validation', () => {
         T1501_STORYLET_IDS.length +
         T1502_STORYLET_IDS.length +
         T1503_STORYLET_IDS.length +
-        T1504_STORYLET_IDS.length,
+        T1504_STORYLET_IDS.length +
+        T1505_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);

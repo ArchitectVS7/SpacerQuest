@@ -3007,3 +3007,96 @@ body {
   background: var(--amber);
   font-weight: 600;
 }
+
+/* T-1505 · The Nemesis crossing ending — the career's terminal ceremony. Modelled
+   on .resolution-ceremony but z-index 90 so it stacks above every other overlay
+   (combat 80, resolution 84): the crossing is unmissable and un-dismissable except
+   by returning to a fresh career. */
+.crossing-ending {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(120% 120% at 50% 34%, rgba(4, 6, 18, 0.96), rgba(2, 3, 8, 0.99));
+  backdrop-filter: blur(3px);
+}
+.ce-frame {
+  width: min(720px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #0a0c1c, #05060c);
+  box-shadow: var(--glow-hi);
+  padding: 26px 28px;
+  display: grid;
+  gap: 16px;
+}
+.ce-head {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 16px;
+}
+.ce-kicker {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.26em;
+  color: var(--amber);
+}
+.ce-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 26px;
+  letter-spacing: 0.05em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.ce-signal {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 2px 10px;
+}
+.ce-lede {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ember);
+}
+.ce-epilogue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.ce-line {
+  border-left: 2px solid var(--amber-dim);
+  padding-left: 12px;
+}
+.ce-line-title {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  letter-spacing: 0.08em;
+  color: var(--ember-hi);
+}
+.ce-line-text {
+  margin: 4px 0 0;
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ember);
+}
+.ce-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}

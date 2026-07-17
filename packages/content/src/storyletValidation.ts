@@ -238,7 +238,10 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
       if (
         nemesis.minFragments === undefined &&
         nemesis.hasUndecoded === undefined &&
-        nemesis.hasUndecodedFragmentId === undefined
+        nemesis.hasUndecodedFragmentId === undefined &&
+        // T-1505: the two new conditions also satisfy the "at least one" guard.
+        nemesis.minDecoded === undefined &&
+        nemesis.hasDecodedFragmentId === undefined
       ) {
         errors.push(`${path}.trigger.nemesis must define at least one condition`);
       }
@@ -254,6 +257,22 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
       ) {
         errors.push(
           `${path}.trigger.nemesis.hasUndecodedFragmentId is not a valid Signal Fragment ID`,
+        );
+      }
+      // T-1505: minDecoded (non-negative integer) and hasDecodedFragmentId (a real
+      // fragment id) — the crossing/reconstruction gates.
+      if (nemesis.minDecoded !== undefined) {
+        validateInteger(errors, `${path}.trigger.nemesis.minDecoded`, nemesis.minDecoded);
+        if (nemesis.minDecoded < 0) {
+          errors.push(`${path}.trigger.nemesis.minDecoded must be non-negative`);
+        }
+      }
+      if (
+        nemesis.hasDecodedFragmentId !== undefined &&
+        !SIGNAL_FRAGMENTS[nemesis.hasDecodedFragmentId]
+      ) {
+        errors.push(
+          `${path}.trigger.nemesis.hasDecodedFragmentId is not a valid Signal Fragment ID`,
         );
       }
     }
@@ -300,6 +319,14 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
           errors.push(`${choicePath}.requirements.statCheck.stat is not a valid stat`);
         }
         validateInteger(errors, `${choicePath}.requirements.statCheck.dc`, check.dc);
+      }
+      // T-1505: minFuel — a non-negative integer (the Nemesis crossing's ship stake).
+      const minFuel = choice.requirements?.minFuel;
+      if (minFuel !== undefined) {
+        validateInteger(errors, `${choicePath}.requirements.minFuel`, minFuel);
+        if (minFuel < 0) {
+          errors.push(`${choicePath}.requirements.minFuel must be non-negative`);
+        }
       }
 
       for (const effects of [choice.effects, choice.successEffects, choice.failureEffects]) {

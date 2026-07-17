@@ -608,6 +608,19 @@ export function newGame(seed: number): void {
   sound.setDriveHum(true);
 }
 
+/**
+ * T-1505 · Return to a fresh career from the Nemesis crossing ending. There is no
+ * separate title screen — `newGame` fully resets to a playable day-1 cockpit — so
+ * the ending's "Return to menu" reuses it with a fresh seed. A thin wrapper (not a
+ * new reset path) so the crossing ending shares the exact clean-slate `newGame`
+ * does; proven by the e2e ending spec (after click: the ceremony unmounts and
+ * `day` reads 1). The fresh seed derives from the outgoing one so a new career is
+ * a genuinely different world, not a replay of the crossed one.
+ */
+export function returnToMenu(): void {
+  newGame(state.seed + 1);
+}
+
 export function selectDie(index: number): void {
   const hand = state.game.player.dawnHand;
   if (!hand || hand.spent[index]) return;

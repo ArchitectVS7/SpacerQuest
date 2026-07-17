@@ -454,6 +454,34 @@ describe('T-1303 · HangoutEvent + new DispositionChanged reasons round-trip', (
   });
 });
 
+describe('T-1505 · CrossingCompleted + StoryletChoiceBlocked insufficient-fuel round-trip', () => {
+  it('a state whose eventLog carries the crossing receipt survives JSON round-trip', () => {
+    // The crossing ending is DERIVED (no new GameState field), but its terminal
+    // receipt rides the eventLog and MUST survive a save taken after crossing — the
+    // UI ending reads the day off it. Also cover the new StoryletChoiceBlocked
+    // reason so a save taken after a blocked commit validates.
+    const state = createInitialState(1);
+    state.eventLog.push(
+      { type: 'CrossingCompleted', day: 512, fragmentsDecoded: 12 },
+      {
+        type: 'StoryletChoiceBlocked',
+        day: 40,
+        storyletId: 'nemesis.crossing.commit',
+        choiceId: 'commit',
+        reason: 'insufficient-fuel',
+      },
+    );
+    const restored = validateGameState(JSON.parse(serializeState(state)));
+    const crossing = restored.eventLog.find((e) => e.type === 'CrossingCompleted');
+    expect(crossing).toEqual({ type: 'CrossingCompleted', day: 512, fragmentsDecoded: 12 });
+    expect(
+      restored.eventLog.some(
+        (e) => e.type === 'StoryletChoiceBlocked' && e.reason === 'insufficient-fuel',
+      ),
+    ).toBe(true);
+  });
+});
+
 describe('GameStateSchema — T-1306 crew + dice progression', () => {
   // T-1306 · crew + reroll + the two new event/action variants.
   it('validates a state with crew, a reroll charge, and DiceRerolled/CrewEvent log entries', () => {
