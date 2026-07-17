@@ -36,7 +36,17 @@ import { fileURLToPath } from 'node:url';
 export * from './protocol.js';
 
 export type SimPolicyName =
-  'idle' | 'greedy' | 'random' | 'trader' | 'fighter' | 'explorer' | 'veteran';
+  | 'idle'
+  | 'greedy'
+  | 'random'
+  | 'trader'
+  | 'fighter'
+  | 'explorer'
+  | 'veteran'
+  // T-1601 · specialty/variance instruments: the smuggler runs illicit cargo past
+  // patrol scans, the gambler works the Spacer's Dare tables at the Hangout.
+  | 'smuggler'
+  | 'gambler';
 
 export interface RunCampaignOptions {
   seed: number;
@@ -91,6 +101,42 @@ export interface CampaignStatsReport {
   fuelStarvationDays: number;
   flawOverrideRate: number;
   wireVolume: number;
+  /**
+   * T-1601 · Penny Wise loan usage over the run (PRD §7.5 lending, the trader's
+   * "borrow under duress" out). Aggregated from the run's `LoanEvent`s:
+   *   - borrows          — count of `kind:'borrowed'` beats;
+   *   - borrowedCredits  — total principal advanced;
+   *   - repaidCredits    — total `amountPaid` across `kind:'repaid'` beats;
+   *   - defaults         — count of `kind:'defaulted'` beats.
+   * READERS: campaign-policies.test.ts's loan-usage assertion (asserts the trader
+   * borrows+repays nonzero over a seed sweep) and the CLI JSON surface
+   * (reportToJson → main). Nonzero "where applicable": a policy that never sits at
+   * a Hangout in duress legitimately reports 0 here.
+   */
+  loanUsage: { borrows: number; borrowedCredits: number; repaidCredits: number; defaults: number };
+  /**
+   * T-1601 · Patrol contraband-scan outcomes (PRD §7.2 "patrol captains roll
+   * GUILE checks against smugglers"). Aggregated from `ContrabandScan` /
+   * `ContrabandConfiscated`:
+   *   - scans      — patrol GUILE scans rolled against a carrying player;
+   *   - caught     — of those, how many the patrol won (illicit cargo seized);
+   *   - finesPaid  — total credits levied on caught scans.
+   * READERS: campaign-policies.test.ts's smuggler scan assertion and the CLI JSON
+   * surface. Nonzero only where applicable — a policy that never carries illicit
+   * cargo (trader/fighter/explorer/gambler) reports 0.
+   */
+  scanOutcomes: { scans: number; caught: number; finesPaid: number };
+  /**
+   * T-1601 · Spacer's Dare expected-value tally (PRD §7 Hangout). Aggregated from
+   * resolved `HangoutEvent`s with `venue:'dare'`:
+   *   - dares       — Dares actually played (a resolved hand, not a typed fail);
+   *   - wins        — of those, hands the player won;
+   *   - netCredits  — signed sum of `creditsDelta` (the run's Dare P&L).
+   * READERS: campaign-policies.test.ts's gambler Dare assertion and the CLI JSON
+   * surface. Nonzero only where applicable — a policy that never visits the
+   * Hangout tables reports 0.
+   */
+  hangoutEv: { dares: number; wins: number; netCredits: number };
   deedCount: number;
   deedsEarned: string[];
   renownRank: RenownRankId;
@@ -133,6 +179,8 @@ const POLICY_NAMES: readonly SimPolicyName[] = [
   'fighter',
   'explorer',
   'veteran',
+  'smuggler',
+  'gambler',
 ];
 
 function isSimPolicyName(value: string): value is SimPolicyName {
@@ -202,11 +250,35 @@ function countDailyEvents(events: GameEvent[]): {
   flawChecks: number;
   flawOverrides: number;
   deedsEarned: string[];
+  // T-1601 · new-verb metrics, aggregated from the same dayEvents array the run
+  // loop already collects (LoanEvent / ContrabandScan+Confiscated / HangoutEvent
+  // dare). Readers: the CampaignStatsReport loanUsage/scanOutcomes/hangoutEv
+  // fields and the campaign-policies.test.ts nonzero assertions.
+  loanBorrows: number;
+  loanBorrowedCredits: number;
+  loanRepaidCredits: number;
+  loanDefaults: number;
+  scans: number;
+  scansCaught: number;
+  finesPaid: number;
+  dares: number;
+  daresWon: number;
+  dareNetCredits: number;
 } {
   let wireEntries = 0;
   let flawChecks = 0;
   let flawOverrides = 0;
   const deedsEarned: string[] = [];
+  let loanBorrows = 0;
+  let loanBorrowedCredits = 0;
+  let loanRepaidCredits = 0;
+  let loanDefaults = 0;
+  let scans = 0;
+  let scansCaught = 0;
+  let finesPaid = 0;
+  let dares = 0;
+  let daresWon = 0;
+  let dareNetCredits = 0;
 
   for (const event of events) {
     if (event.type === 'WireEntry') {
@@ -218,10 +290,50 @@ function countDailyEvents(events: GameEvent[]): {
       }
     } else if (event.type === 'DeedEarned') {
       deedsEarned.push(event.deedId);
+    } else if (event.type === 'LoanEvent') {
+      // T-1601: the trader's borrow-under-duress out. A typed 'failed'/'accrued'
+      // beat is not usage — only the player-driven borrow/repay and the default.
+      if (event.kind === 'borrowed') {
+        loanBorrows += 1;
+        loanBorrowedCredits += event.principal ?? 0;
+      } else if (event.kind === 'repaid') {
+        loanRepaidCredits += event.amountPaid ?? 0;
+      } else if (event.kind === 'defaulted') {
+        loanDefaults += 1;
+      }
+    } else if (event.type === 'ContrabandScan') {
+      // T-1601: a patrol rolled a GUILE scan against a carrying (smuggling) player.
+      scans += 1;
+      if (event.caught) scansCaught += 1;
+    } else if (event.type === 'ContrabandConfiscated') {
+      finesPaid += event.fine;
+    } else if (event.type === 'HangoutEvent' && event.venue === 'dare') {
+      // T-1601: count only RESOLVED Dares (playerWon set) — a typed die-fail beat
+      // carries no outcome and is not a played hand.
+      if (event.playerWon !== undefined) {
+        dares += 1;
+        if (event.playerWon) daresWon += 1;
+        dareNetCredits += event.creditsDelta ?? 0;
+      }
     }
   }
 
-  return { wireEntries, flawChecks, flawOverrides, deedsEarned };
+  return {
+    wireEntries,
+    flawChecks,
+    flawOverrides,
+    deedsEarned,
+    loanBorrows,
+    loanBorrowedCredits,
+    loanRepaidCredits,
+    loanDefaults,
+    scans,
+    scansCaught,
+    finesPaid,
+    dares,
+    daresWon,
+    dareNetCredits,
+  };
 }
 
 function appendDieAction(
@@ -632,6 +744,13 @@ function planDebtPayment(
 // to fill the tank for the following run.
 const TRADER_RESERVE = 3000;
 
+// T-1601 · a small buffer kept back on top of the loan balance when deciding the
+// trader is flush enough to clear a Penny Wise loan. Deliberately well BELOW
+// TRADER_RESERVE so a repay fires from the trader's normal post-marker-payment
+// credit level (~TRADER_RESERVE) — a higher bar would never be met while the
+// marker paydown holds credits near the reserve, and the loan would default.
+const LOAN_REPAY_BUFFER = 500;
+
 // T-1102: the largest share of the tank a single contract's jump may cost. Below
 // 1.0 so a run leaves fuel/credit margin to re-fly after an encounter-run and to
 // pay tribute — the headroom that keeps the scarcity economy out of deadlock.
@@ -652,6 +771,56 @@ export const traderPolicy: SimPolicy = ({ state }) => {
   const ship = state.player.ship;
   const from = state.player.currentSystemId;
   const actions: PlayerAction[] = [];
+
+  // T-1601 · "runs the rim and BORROWS under duress" (PRD §7.5, the bad day's
+  // Penny Wise out). Guarded so a solvent, credit-flush day never touches the
+  // lending desk: a loan/repay is only ever queued AT a Hangout system (else
+  // day.ts would waste a die on a typed ActionBlocked{no-hangout} — content flags
+  // only Sun-3), and a borrow only fires with the marker still open AND working
+  // capital below the operating reserve — the genuine duress of a thin-credit
+  // trader staring down the 25,000 marker (day 1 at Sun-3 with 1,000 credits IS
+  // that state). The loan is a real §7.5 out — credits only ever go UP on a borrow
+  // (debt-as-ledger), it funds more early runs (throughput on the marker), and the
+  // trader repays it the moment it is flush (below), so the collection multiplier /
+  // Penny Wise grudge never engages. lending-property.test.ts proves a loan never
+  // strands. Reader of `loanUsage`: campaign-policies.test.ts + the CLI JSON. The
+  // full-tank reachability relaxation below (T-1104) already satisfies "runs the
+  // rim" — a rim run is taken whenever nothing nearer is signable.
+  if (atHangout(state)) {
+    if (
+      state.player.loan == null &&
+      state.player.debt >= 24000 &&
+      state.player.credits < TRADER_RESERVE
+    ) {
+      // T-1601 · the §7.5 bad-day out under the opening duress: the trader stares
+      // down a still-near-full 25,000 marker with only ~1,000 credits in pocket
+      // (its literal day-1 state at Sun-3). It takes a mid-band Penny Wise advance
+      // (the engine clamps into the lending band) on the dullest die to fund early
+      // throughput, then clears it the moment it is flush (repay / home-to-repay
+      // below). Gated `debt >= 24000` so it can only fire BEFORE the first marker
+      // paydown drops the balance — i.e. once, at the very start — which (with the
+      // `loan == null` guard) rules out any borrow/repay churn loop over the run.
+      const die = ledger.takeWorst();
+      if (die !== undefined) {
+        actions.push({ type: 'VisitHangout', venue: 'borrow', amount: 2000, spendDie: die });
+      }
+    } else if (
+      state.player.loan != null &&
+      state.player.credits > state.player.loan.outstanding + LOAN_REPAY_BUFFER
+    ) {
+      // Flush enough to clear the whole balance — repay before the term lapses so
+      // the collection multiplier / Penny Wise grudge never engages.
+      const die = ledger.takeWorst();
+      if (die !== undefined) {
+        actions.push({
+          type: 'VisitHangout',
+          venue: 'repay',
+          amount: state.player.loan.outstanding,
+          spendDie: die,
+        });
+      }
+    }
+  }
 
   // T-1102: under the per-distance fuel cost, a jump can cost more than the idle
   // refuel threshold would ever top up — so the DESTINATION is chosen first and
@@ -693,11 +862,21 @@ export const traderPolicy: SimPolicy = ({ state }) => {
     reachable = signableWithin(ship.maxFuel);
   }
 
+  // T-1601: with an active Penny Wise loan, bias the run HOME (Sun-3 / system 1)
+  // so the trader gets back to the lending desk to repay before the term lapses —
+  // repay is Hangout-only, so a wandering trader would otherwise default. Falls
+  // through to the richest net run when no homeward contract is on the board.
+  const homeward =
+    state.player.loan != null && from !== 1
+      ? reachable.find((c) => c.destination === 1)
+      : undefined;
+  const preferred = homeward ?? reachable[0];
+
   let primaryDest: number | null = null;
   if (state.player.activeContract) {
     primaryDest = state.player.activeContract.destination;
   } else if (reachable.length > 0) {
-    primaryDest = reachable[0].destination;
+    primaryDest = preferred.destination;
   }
   const primaryFuelNeed =
     primaryDest !== null ? playerJumpFuel(state, systemDistance(from, primaryDest)) : 0;
@@ -739,7 +918,7 @@ export const traderPolicy: SimPolicy = ({ state }) => {
       });
     }
   } else if (reachable.length > 0 && availableFuel >= primaryFuelNeed) {
-    const best = reachable[0];
+    const best = preferred;
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
@@ -754,7 +933,10 @@ export const traderPolicy: SimPolicy = ({ state }) => {
       // Second run while the debt still bites: throughput matters more than the
       // marginal encounter risk when 25,000 credits are due by day 30.
       if (state.player.debt > 5000 && reachable.length > 1 && ledger.remaining() >= 2) {
-        const second = reachable[1];
+        // T-1601: the first run is `best` (which loan-homing may have moved off
+        // reachable[0]), so the second run is the richest reachable run that ISN'T
+        // the one just signed — never re-picking `best`.
+        const second = reachable.find((c) => c.index !== best.index) ?? reachable[1];
         // The board shifts when the first contract is spliced off; correct the
         // live index for the second sign.
         const liveIndex = second.index > best.index ? second.index - 1 : second.index;
@@ -1425,6 +1607,287 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   return actions.length > 0 ? actions : [{ type: 'Wait' }];
 };
 
+// ===========================================================================
+// T-1601 · Specialty / variance policies.
+//
+// The smuggler and gambler are NOT in COMPETENT_POLICIES (per BALANCE-POLICY.md
+// errata E4 — the strict poverty-trap sweep is scoped to trader/fighter/explorer;
+// veteran and these two are exempt endgame/variance instruments). But both are
+// built on the same self-funding trade skeleton the competent policies use, so
+// they stay solvent in practice — a specialty policy is not a deliberately
+// self-destructive one. They exercise the three "new verbs" this task reports:
+// the smuggler carries illicit cargo through patrol scans, the gambler works the
+// Spacer's Dare tables. Both are pure: state + the passed SeededRng only.
+// ===========================================================================
+
+/** True when the player's current system hosts a Spacers Hangout — the ONLY
+ *  place a VisitHangout (dare/borrow/repay) is legal (day.ts emits a typed
+ *  ActionBlocked{no-hangout} elsewhere). Content flags Sun-3 (system 1) as the
+ *  sole `hasHangout` system, so in practice this is "at system 1"; reading the
+ *  content flag keeps the sim honest if more Hangouts are ever added. */
+function atHangout(state: GameState): boolean {
+  return STAR_SYSTEMS[state.player.currentSystemId]?.hasHangout === true;
+}
+
+/**
+ * The shared self-funding trade turn for the specialty policies: repair a crippled
+ * hull, buy the cheap early drives tier (near-free fuel keeps the ship out of an
+ * unrefuelable corner — the explorer's structural anti-strand fix), top the tank
+ * for THIS jump, then sign the richest NET-POSITIVE reachable run and fly it (or
+ * finish a carried run). Mirrors the solvent skeleton the trader/explorer share,
+ * factored out so the smuggler and gambler can layer their specialty on top
+ * without re-deadlocking the scarcity economy. Mutates `ledger`. Returns the
+ * queued actions (possibly empty). `opts.preferDest` biases the pick toward a
+ * reachable run ENDING at that system (the gambler's loop back to the Hangout);
+ * `opts.preferContraband` biases toward a type-10 Contraband contract when one is
+ * on the board (the smuggler's illicit haul).
+ */
+function planSolventTradeTurn(
+  state: GameState,
+  ledger: DieLedger,
+  reserve: number,
+  fuelReserve: number,
+  opts: { preferDest?: number; preferContraband?: boolean } = {},
+): PlayerAction[] {
+  const actions: PlayerAction[] = [];
+  const fuelPriceNow = state.market.localFuelPrice || 5;
+
+  const crippledRepair = planCrippledRepair(state, ledger, reserve);
+  if (crippledRepair) actions.push(crippledRepair);
+
+  // Early cheap drives tier (strength 30) — the trade-in dwarfs the sticker, and
+  // cheap fuel is what keeps a spend-to-the-floor policy from stranding.
+  if (state.player.ship.drives.strength < 30 && state.player.credits >= reserve / 2) {
+    const die = ledger.takeWorst();
+    if (die !== undefined) {
+      actions.push({
+        type: 'Shipyard',
+        action: 'buy-component-tier',
+        component: 'drives',
+        tier: 3,
+        spendDie: die,
+      });
+    }
+  }
+
+  const refuel = planRefuel(state, ledger, fuelReserve, 200, 400);
+  if (refuel) actions.push(refuel.action);
+  const postRefuelFuel = state.player.ship.fuel + (refuel ? refuel.cost / fuelPriceNow : 0);
+
+  const ranked = rankedContracts(state);
+  const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
+  const flyCap = Math.min(signFuelCap, postRefuelFuel);
+  const reachable = ranked
+    .filter((c) => c.fuel <= flyCap)
+    .map((c) => ({ ...c, net: c.payment - c.fuel * fuelPriceNow }))
+    .filter((c) => c.net > 0)
+    .sort((a, b) => b.net - a.net || a.index - b.index);
+
+  if (state.player.activeContract) {
+    const die = ledger.takeBest();
+    if (die !== undefined) {
+      actions.push({
+        type: 'Travel',
+        destinationId: state.player.activeContract.destination,
+        spendDie: die,
+      });
+    }
+  } else if (reachable.length > 0) {
+    let best = reachable[0];
+    if (opts.preferContraband) {
+      const illicit = reachable.filter(
+        (c) => state.market.manifestBoard[c.index]?.cargoType === 10,
+      );
+      if (illicit.length > 0) best = illicit[0];
+    } else if (opts.preferDest !== undefined) {
+      const pref = reachable.find((c) => c.destination === opts.preferDest);
+      if (pref) best = pref;
+    }
+    const signDie = ledger.takeWorst();
+    const travelDie = ledger.takeBest();
+    if (signDie !== undefined && travelDie !== undefined) {
+      actions.push({
+        type: 'Trade',
+        action: 'sign-contract',
+        contractIndex: best.index,
+        spendDie: signDie,
+      });
+      actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
+    }
+  }
+
+  return actions;
+}
+
+const SMUGGLER_RESERVE = 2000;
+const SMUGGLER_FUEL_RESERVE = 50;
+
+/** The smuggler KEEPS its illicit cargo (the whole point — running it past patrol
+ *  scanners is what fires the ContrabandScan the report tracks), so it overrides
+ *  the greedy storylet picker on the three contraband beats: TAKE the derelict
+ *  sealed pod, and DECLINE both of Smuggler Ray's fence offers (selling would
+ *  clear the carry flag / the type-10 contract and kill the scan). Every other
+ *  storylet falls through to the shared greedy chooser. */
+const SMUGGLER_KEEP_CHOICES: Record<string, string> = {
+  'derelict.sealed-pod': 'take',
+  'fence.ray.sealed-pod': 'keep-it-bolted',
+  'fence.ray.contraband-cargo': 'run-it-clean',
+};
+
+function chooseSmugglerStorylet(state: GameState): PlayerAction | null {
+  for (const offer of state.storylets.available) {
+    const forcedId = SMUGGLER_KEEP_CHOICES[offer.storyletId];
+    if (!forcedId) continue;
+    const choice = offer.choices.find((c) => c.id === forcedId);
+    if (choice && canAffordChoice(state, choice)) {
+      return {
+        type: 'Storylet',
+        storyletId: offer.storyletId,
+        choiceId: choice.id,
+        ...(choiceRequiresDie(choice) ? { spendDie: 0 } : {}),
+      };
+    }
+  }
+  return chooseStoryletAction(state);
+}
+
+/**
+ * SMUGGLER — runs illicit cargo past the law (PRD §7.2 / §10 smuggling pillar).
+ * It funds itself with net-positive contract runs (which routinely route it to a
+ * rim port, where it prefers a rare type-10 Contraband contract), and it EXPLORES
+ * to turn up derelict sealed pods — then KEEPS whatever illicit cargo it acquires
+ * (declining Ray's fences) so that every jump through a PATROL interdiction rolls
+ * the GUILE scan the run reports (scanOutcomes). Weak hull, so it talks/runs past
+ * interceptors it can't outfight; the die spent carrying contraband is what the
+ * `scanOutcomes.scans` metric reads.
+ */
+export const smugglerPolicy: SimPolicy = ({ state }) => {
+  const ledger = dieLedger(state);
+  if (state.encounter) return planPacifistCombat(state, ledger);
+
+  const actions: PlayerAction[] = [];
+
+  // Resolve the contraband beats (take the pod, decline the fences) and any other
+  // offered storylet. A no-die choice resolves inline (keeps the day's income
+  // work); a die choice is taken as a standalone day (matches the explorer).
+  const storyletAction = chooseSmugglerStorylet(state);
+  if (storyletAction) {
+    if (storyletAction.type === 'Storylet' && storyletAction.spendDie === undefined) {
+      actions.push(storyletAction);
+    } else {
+      return [storyletAction];
+    }
+  }
+
+  // Self-fund; prefer a type-10 Contraband contract when one is on the local board
+  // (only rim ports issue them) so the smuggler actively picks up illicit hauls.
+  actions.push(
+    ...planSolventTradeTurn(state, ledger, SMUGGLER_RESERVE, SMUGGLER_FUEL_RESERVE, {
+      preferContraband: true,
+    }),
+  );
+
+  // Off-lane sweeps with any sharp dice left, while solvent and fuelled — the
+  // derelict sealed pods that arm the smuggling carry-choice surface off Explore
+  // loot rolls. Project the tank forward (post-refuel, less one committed jump),
+  // then spend the rest on Explore (each burns EXPLORATION_FUEL_COST).
+  const refuelBought = actions.find((a) => a.type === 'Trade' && a.action === 'buy-fuel') as
+    Extract<PlayerAction, { type: 'Trade' }> | undefined;
+  let projectedFuel = state.player.ship.fuel;
+  if (refuelBought?.fuelAmount) projectedFuel += refuelBought.fuelAmount;
+  if (actions.some((a) => a.type === 'Travel')) projectedFuel -= playerJumpFuel(state, 5);
+  while (
+    state.player.credits > SMUGGLER_RESERVE &&
+    projectedFuel >= EXPLORATION_FUEL_COST &&
+    ledger.remaining() > 0
+  ) {
+    const die = ledger.takeBest();
+    if (die === undefined) break;
+    actions.push({ type: 'Explore', spendDie: die });
+    projectedFuel -= EXPLORATION_FUEL_COST;
+  }
+
+  const debtPayment = planDebtPayment(state, SMUGGLER_RESERVE, 0);
+  if (debtPayment) actions.push(debtPayment);
+
+  return actions.length > 0 ? actions : [{ type: 'Wait' }];
+};
+
+const GAMBLER_RESERVE = 2000;
+const GAMBLER_FUEL_RESERVE = 50;
+// A modest Dare stake — the engine re-clamps into [DARE_MIN_WAGER, DARE_MAX_WAGER]
+// and down to what both the player and the dealer can cover, so this is a cap, not
+// a demand. Kept small so the opposed-GUILE variance stays bounded.
+const GAMBLER_WAGER = 150;
+
+/** An NPC the gambler can play a Dare against right now — one whose SIMULATED
+ *  position is the player's current system (the engine rejects an opponent who has
+ *  wandered off with a typed fail). Deterministic: first co-located NPC by roster
+ *  order. Null when the room is empty. */
+function coLocatedOpponentId(state: GameState): string | null {
+  const here = state.player.currentSystemId;
+  const opponent = state.npcs.find((n) => n.currentSystemId === here);
+  return opponent ? opponent.id : null;
+}
+
+/**
+ * GAMBLER — works the Spacer's Dare tables (PRD §7 Hangout). When it is at the
+ * Hangout (only Sun-3 / system 1 has one) with an NPC actually in-system and a die
+ * to spare, it plays a wagered, opposed-GUILE Dare (spending a DULL die — the Dare
+ * EV is ~0 either way, so the sharp dice are saved for travel checks). Between
+ * hands it funds itself with net-positive runs like every other solvent policy,
+ * and when it is away from the Hangout with no active contract it biases one leg
+ * back toward system 1 so the tables keep coming (the report's hangoutEv). Weak
+ * hull: it talks/runs past interceptors.
+ */
+export const gamblerPolicy: SimPolicy = ({ state }) => {
+  const ledger = dieLedger(state);
+  if (state.encounter) return planPacifistCombat(state, ledger);
+
+  const actions: PlayerAction[] = [];
+
+  // Resolve any offered storylet exactly as the other solvent policies do — a
+  // no-die choice inline, a die choice as a standalone day.
+  const storyletAction = chooseStoryletAction(state);
+  if (storyletAction) {
+    if (storyletAction.type === 'Storylet' && storyletAction.spendDie === undefined) {
+      actions.push(storyletAction);
+    } else {
+      return [storyletAction];
+    }
+  }
+
+  // Play a Dare when the Hangout, an opponent, and a die are all present. Spend a
+  // DULL die (takeWorst) so the travel check below keeps the sharp one.
+  if (atHangout(state)) {
+    const opponentId = coLocatedOpponentId(state);
+    if (opponentId && ledger.remaining() > 0 && state.player.credits >= 25) {
+      const die = ledger.takeWorst();
+      if (die !== undefined) {
+        actions.push({
+          type: 'VisitHangout',
+          venue: 'dare',
+          opponentId,
+          wager: GAMBLER_WAGER,
+          spendDie: die,
+        });
+      }
+    }
+  }
+
+  // Self-fund; away from the Hangout with a free hold, bias one leg back toward
+  // system 1 so the gambler periodically returns to the tables.
+  const preferDest = atHangout(state) || state.player.activeContract ? undefined : 1;
+  actions.push(
+    ...planSolventTradeTurn(state, ledger, GAMBLER_RESERVE, GAMBLER_FUEL_RESERVE, { preferDest }),
+  );
+
+  const debtPayment = planDebtPayment(state, GAMBLER_RESERVE, 0);
+  if (debtPayment) actions.push(debtPayment);
+
+  return actions.length > 0 ? actions : [{ type: 'Wait' }];
+};
+
 export function resolvePolicy(policy: SimPolicyName | SimPolicy): ResolvedPolicy {
   if (typeof policy === 'function') {
     return { name: 'random', policy, dawnBlind: true };
@@ -1452,6 +1915,14 @@ export function resolvePolicy(policy: SimPolicyName | SimPolicy): ResolvedPolicy
 
   if (policy === 'veteran') {
     return { name: policy, policy: veteranPolicy, dawnBlind: false };
+  }
+
+  if (policy === 'smuggler') {
+    return { name: policy, policy: smugglerPolicy, dawnBlind: false };
+  }
+
+  if (policy === 'gambler') {
+    return { name: policy, policy: gamblerPolicy, dawnBlind: false };
   }
 
   return { name: policy, policy: randomLegalActionPolicy, dawnBlind: true };
@@ -1530,6 +2001,10 @@ export function runCampaign(
   let flawChecks = 0;
   let flawOverrides = 0;
   let wireVolume = 0;
+  // T-1601 · new-verb run totals (accumulated from countDailyEvents).
+  const loanUsage = { borrows: 0, borrowedCredits: 0, repaidCredits: 0, defaults: 0 };
+  const scanOutcomes = { scans: 0, caught: 0, finesPaid: 0 };
+  const hangoutEv = { dares: 0, wins: 0, netCredits: 0 };
   const bestOfferDestinations: (number | null)[] = [];
 
   for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
@@ -1577,6 +2052,16 @@ export function runCampaign(
     wireVolume += counts.wireEntries;
     flawChecks += counts.flawChecks;
     flawOverrides += counts.flawOverrides;
+    loanUsage.borrows += counts.loanBorrows;
+    loanUsage.borrowedCredits += counts.loanBorrowedCredits;
+    loanUsage.repaidCredits += counts.loanRepaidCredits;
+    loanUsage.defaults += counts.loanDefaults;
+    scanOutcomes.scans += counts.scans;
+    scanOutcomes.caught += counts.scansCaught;
+    scanOutcomes.finesPaid += counts.finesPaid;
+    hangoutEv.dares += counts.dares;
+    hangoutEv.wins += counts.daresWon;
+    hangoutEv.netCredits += counts.dareNetCredits;
 
     if (cannotAffordCheapestJump(state)) {
       fuelStarvationDays += 1;
@@ -1613,6 +2098,9 @@ export function runCampaign(
     fuelStarvationDays,
     flawOverrideRate: flawChecks === 0 ? 0 : flawOverrides / flawChecks,
     wireVolume,
+    loanUsage,
+    scanOutcomes,
+    hangoutEv,
     deedCount: state.player.registry.earned.length,
     deedsEarned: state.player.registry.earned.map((deed) => deed.id),
     renownRank: state.player.registry.renownRank,
@@ -1634,7 +2122,7 @@ export function reportToJson(report: CampaignStatsReport): string {
 
 function usage(): string {
   return [
-    'Usage: npm run sim -- --seed <integer> --days <integer> --policy <idle|greedy|random|trader|fighter|explorer|veteran>',
+    'Usage: npm run sim -- --seed <integer> --days <integer> --policy <idle|greedy|random|trader|fighter|explorer|veteran|smuggler|gambler>',
     'Defaults: --seed 1 --days 100 --policy idle',
     'Alias: --policy random-legal-action',
   ].join('\n');

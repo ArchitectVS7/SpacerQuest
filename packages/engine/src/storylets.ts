@@ -25,7 +25,14 @@ import { SeededRng } from './rng.js';
 import { GameEvent, GameState, PlayerAction, StoryletOffer } from './types.js';
 
 function cloneState(state: GameState): GameState {
-  return JSON.parse(JSON.stringify(state)) as GameState;
+  // See day.ts cloneState: the append-only `eventLog` holds immutable value objects,
+  // so it is excluded from the deep JSON clone and reattached as a shallow array copy.
+  // Deep-cloning the ever-growing log on every clone made the day loop O(days^2); the
+  // shallow reference copy keeps the source untouched while collapsing that cost.
+  const { eventLog, ...rest } = state;
+  const cloned = JSON.parse(JSON.stringify(rest)) as GameState;
+  cloned.eventLog = [...eventLog];
+  return cloned;
 }
 
 function matchesNumber(value: number, matcher: NumberMatcher | undefined): boolean {

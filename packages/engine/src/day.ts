@@ -45,7 +45,19 @@ import { fragmentsDecodedCount } from './nemesis.js';
 import { natWireStories } from './wire.js';
 
 function cloneState(state: GameState): GameState {
-  return JSON.parse(JSON.stringify(state)) as GameState;
+  // The append-only `eventLog` is excluded from the deep JSON clone and reattached
+  // as a shallow array copy. Its entries are immutable value objects — runtime code
+  // only ever `.push`es new events, never mutates or reorders an existing one — so
+  // sharing the entry references between the source and the clone is safe, while a
+  // fresh array keeps the clone's appends from leaking back into the source (the
+  // functional-purity contract this whole module relies on). Deep-cloning the log
+  // made every per-action clone O(eventLog length); over a long campaign the log
+  // grows unbounded and the clone cost turned the day loop O(days^2). Shallow-copying
+  // the reference array collapses that back to a near-flat per-day cost.
+  const { eventLog, ...rest } = state;
+  const cloned = JSON.parse(JSON.stringify(rest)) as GameState;
+  cloned.eventLog = [...eventLog];
+  return cloned;
 }
 
 function appendEvents(state: GameState, events: GameEvent[]): void {

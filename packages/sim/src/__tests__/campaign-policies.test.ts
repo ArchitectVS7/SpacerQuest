@@ -8,6 +8,14 @@ import {
 } from '../index.js';
 import { driveCompetentCampaign, longestZeroIncomeStreak } from './support/campaign-drivers.js';
 
+// T-1601 · the specialty / variance policies. NOT in COMPETENT_POLICIES (per
+// BALANCE-POLICY.md errata E4 — the strict poverty-trap sweep is scoped to
+// trader/fighter/explorer), but built on the same self-funding trade skeleton, so
+// they render a full report and stay solvent. They exercise the new verbs the
+// report now tracks: the smuggler runs illicit cargo past patrol scans, the
+// gambler works the Spacer's Dare tables.
+const SPECIALTY_POLICIES = ['smuggler', 'gambler'] as const;
+
 // ---------------------------------------------------------------------------
 // T-201 · Competent policies. The balance instruments: a genuinely capable
 // trader (route + fuel planning, pays down the marker), fighter (upgrade then
@@ -32,8 +40,12 @@ describe('T-201 competent policies', () => {
       if (report.finalState.debt <= 0) cleared += 1;
     }
     const clearRate = cleared / SEEDS;
-    // Reported measured rate at authoring time: 50/50 = 100%. The assertion is
-    // the task's 60% acceptance target — NOT lowered to force a pass.
+    // Measured rate (T-1601 re-measure): 45/50 = 90%. The trader now takes a
+    // day-1 Penny Wise advance against the near-full marker (T-1601 "borrows under
+    // duress"), which adds early throughput — clearance sits ABOVE the T-201
+    // baseline (84/100 on the current engine), comfortably inside the task's
+    // interim band (>= 50%). The assertion holds the original 60% acceptance
+    // target — NOT lowered to force a pass.
     expect(clearRate).toBeGreaterThanOrEqual(0.6);
   }, 30000);
 
@@ -58,6 +70,15 @@ describe('T-201 competent policies', () => {
       expect(typeof report.flawOverrideRate).toBe('number');
       expect(Number.isFinite(report.flawOverrideRate)).toBe(true);
       expect(typeof report.fuelStarvationDays).toBe('number');
+      // T-1601 · the new-verb metrics render on EVERY policy's report (nonzero
+      // "where applicable" is asserted per-specialty below — a competent policy may
+      // legitimately report 0 for a verb its behavior never exercises).
+      expect(typeof report.loanUsage.borrows).toBe('number');
+      expect(typeof report.loanUsage.repaidCredits).toBe('number');
+      expect(typeof report.scanOutcomes.scans).toBe('number');
+      expect(typeof report.scanOutcomes.finesPaid).toBe('number');
+      expect(typeof report.hangoutEv.dares).toBe('number');
+      expect(Number.isFinite(report.hangoutEv.netCredits)).toBe(true);
       expect(typeof report.deedCount).toBe('number');
       expect(Array.isArray(report.deedsEarned)).toBe(true);
       expect(typeof report.renownRank).toBe('string');
@@ -141,5 +162,93 @@ describe('T-201 competent policies', () => {
     const state = driveCompetentCampaign(traderPolicy, 1, 60);
     expect(state.player.debt).toBe(0);
     expect(state.player.credits).toBeGreaterThan(0);
+  }, 30000);
+
+  it('the trader borrows under duress and repays (loan usage is nonzero)', () => {
+    // T-1601 · "borrows under duress" (PRD §7.5). Staring down the near-full
+    // 25,000 marker with ~1,000 credits at Sun-3, the trader takes a Penny Wise
+    // advance to fund early throughput, then clears it once flush — real LoanEvents
+    // the report aggregates into `loanUsage`. Asserted over a seed sweep so the
+    // metric is robust: every seed opens in the same duress, so every seed borrows,
+    // and a flush trader repays. Reader of `loanUsage`: this assertion + the CLI.
+    let borrows = 0;
+    let repaid = 0;
+    for (let seed = 1; seed <= 5; seed += 1) {
+      const report = runCampaign(seed, 60, 'trader');
+      borrows += report.loanUsage.borrows;
+      repaid += report.loanUsage.repaidCredits;
+    }
+    expect(borrows).toBeGreaterThan(0);
+    expect(repaid).toBeGreaterThan(0);
+  }, 30000);
+});
+
+describe('T-1601 specialty policies', () => {
+  it.each(SPECIALTY_POLICIES)(
+    '%s renders a fully-populated 300-day stats report without crashing',
+    (policy) => {
+      const report = runCampaign(1, 300, policy);
+      expect(report.policy).toBe(policy);
+      expect(report.creditsCurve).toHaveLength(300);
+      expect(report.daily).toHaveLength(300);
+      // The new-verb metric objects are present and finite on the specialty report.
+      expect(typeof report.loanUsage.borrows).toBe('number');
+      expect(typeof report.scanOutcomes.scans).toBe('number');
+      expect(typeof report.scanOutcomes.caught).toBe('number');
+      expect(Number.isFinite(report.scanOutcomes.finesPaid)).toBe(true);
+      expect(typeof report.hangoutEv.dares).toBe('number');
+      expect(Number.isFinite(report.hangoutEv.netCredits)).toBe(true);
+      expect(typeof report.fuelStarvationDays).toBe('number');
+      // A specialty policy stays solvent (E4: it is not a self-destructive policy),
+      // and it keeps taking income-producing actions over the run.
+      expect(report.finalState.credits).toBeGreaterThanOrEqual(0);
+      const incomeDays = report.daily.filter((d) => d.incomeActionCount > 0).length;
+      expect(incomeDays).toBeGreaterThan(0);
+    },
+    30000,
+  );
+
+  it('each specialty policy is deterministic given a seed (byte-identical reruns)', () => {
+    for (const policy of SPECIALTY_POLICIES) {
+      const first = reportToJson(runCampaign(3, 120, policy));
+      const second = reportToJson(runCampaign(3, 120, policy));
+      expect(second).toBe(first);
+    }
+  }, 30000);
+
+  it('the smuggler runs illicit cargo past patrol scans (scan outcomes nonzero)', () => {
+    // T-1601 · the smuggling pillar (PRD §7.2 / §10). The smuggler carries illicit
+    // cargo (derelict sealed pods it explores up + type-10 Contraband contracts it
+    // signs at rim ports) and KEEPS it — so a jump through a PATROL interdiction
+    // rolls the GUILE scan the report tracks. Asserted over a seed sweep because a
+    // single seed's patrol/exploration luck can legitimately yield zero scans; the
+    // sweep reliably surfaces both a scan and a caught scan. Reader of
+    // `scanOutcomes`: this assertion + the CLI JSON.
+    let scans = 0;
+    let caught = 0;
+    for (let seed = 1; seed <= 6; seed += 1) {
+      const report = runCampaign(seed, 200, 'smuggler');
+      scans += report.scanOutcomes.scans;
+      caught += report.scanOutcomes.caught;
+    }
+    expect(scans).toBeGreaterThan(0);
+    expect(caught).toBeGreaterThan(0);
+  }, 40000);
+
+  it('the gambler plays the Spacer’s Dare and wins some hands (hangout EV nonzero)', () => {
+    // T-1601 · the Spacer's Dare (PRD §7 Hangout). At Sun-3 (the only Hangout) with
+    // an NPC in-system, the gambler plays wagered, opposed-GUILE Dares — resolved
+    // hands the report tallies into `hangoutEv`. Asserted over a seed sweep: dares
+    // fire from day 1 (the run opens at Sun-3) and the ~even opposed roll wins some
+    // hands across the sweep. Reader of `hangoutEv`: this assertion + the CLI JSON.
+    let dares = 0;
+    let wins = 0;
+    for (let seed = 1; seed <= 5; seed += 1) {
+      const report = runCampaign(seed, 60, 'gambler');
+      dares += report.hangoutEv.dares;
+      wins += report.hangoutEv.wins;
+    }
+    expect(dares).toBeGreaterThan(0);
+    expect(wins).toBeGreaterThan(0);
   }, 30000);
 });
