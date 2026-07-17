@@ -35,6 +35,7 @@ import {
   resolveStorylet,
   dismissAftermath,
   dismissOnboarding,
+  dismissBootNotice,
   standDown,
   toggleFx,
   clearBloom,
@@ -451,6 +452,24 @@ export function App() {
             {settingsOpen && <SettingsPanel state={s} onClose={() => setSettingsOpen(false)} />}
           </div>
         </Bezel>
+        {/* T-1605 · Corrupt-save boot banner. Set by the store when a PRESENT autosave
+            could not be loaded and the app fell back to a fresh career — so that reset
+            is VISIBLE, never silent. `role="alert"` (louder than the transient
+            `role="status"` notice) and persistent: it survives the first action (it is
+            a separate field from `notice`) until the player dismisses it. */}
+        {s.bootNotice && (
+          <div className="notice warn rev" data-testid="boot-notice" role="alert">
+            <span>{s.bootNotice}</span>
+            <button
+              type="button"
+              data-testid="boot-notice-dismiss"
+              aria-label="Dismiss"
+              onClick={dismissBootNotice}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         <div className="main">
           <div className="col left">
             <Starmap state={s} />

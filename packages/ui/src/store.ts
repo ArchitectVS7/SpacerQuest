@@ -6,9 +6,11 @@ import {
   createSave,
   loadSave,
   isDayOver,
+  SaveError,
   type GameState,
   type GameEvent,
   type CheckResult,
+  type SaveErrorCode,
 } from '@spacerquest/engine';
 import type { Stat } from '@spacerquest/content';
 import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerquest/engine';
@@ -86,6 +88,21 @@ export interface CockpitState {
   fx: boolean;
   /** Last engine refusal / error, surfaced to the player — never swallowed. */
   notice: string | null;
+  /**
+   * T-1605 · A persistent, dismissible boot-time banner set when the autosave was
+   * present but could NOT be loaded (corrupt / bad-envelope / future-version) and
+   * the app therefore fell back to a fresh career. Before T-1605 that fallback was
+   * SILENT (`readSave` swallowed the SaveError at `store.ts` and `init` booted a
+   * new game with no word to the player — the exact "silently resetting" defect the
+   * task names). This is CLIENT presentation meta-state (like `fx` / `onboardingSeen`),
+   * deliberately NOT part of GameState: it is a one-shot boot signal, so the engine
+   * stays pure and a JSON round-trip of game state is unaffected — no save migration.
+   * UNLIKE the transient `notice` (cleared by the first action, `role="status"`) this
+   * survives until the player dismisses it, so the news of a lost career is never
+   * wiped by an incidental keypress. READER: the `boot-notice` banner in App.tsx.
+   * Null on a clean boot (empty save or a save that loaded fine).
+   */
+  bootNotice: string | null;
   /** Bumped on every new day so the boot sweep + dice roll replay. */
   bootKey: number;
   /**
@@ -181,22 +198,58 @@ export interface CockpitState {
   saves: SlotSummary[];
 }
 
+/**
+ * T-1605 · Set by `readSave` when a PRESENT autosave failed to load (as opposed to
+ * simply being absent) so `init` can raise a visible boot banner instead of resetting
+ * in silence. A module-level hand-off (not a return value) because `readSave` already
+ * returns `null` for BOTH the benign "no save" and the "unloadable save" cases and the
+ * caller needs to tell them apart. Reset to null after `init` consumes it so a later
+ * `readSave` (slot loads never call it, but be safe) cannot resurrect stale news.
+ */
+let bootLoadFailure: SaveErrorCode | 'unknown' | null = null;
+
+/**
+ * T-1605 · The honest player-facing line for each way a present save can fail to
+ * load. Every branch tells the player two true things: their old career could not be
+ * loaded, and a fresh one was started — so the reset is never a silent surprise. The
+ * damaged blob is left on disk untouched by `init` (only an autosave-after-action or
+ * an explicit New Game overwrites it), so this copy does not over-promise recovery.
+ */
+function bootNoticeForFailure(code: SaveErrorCode | 'unknown'): string {
+  switch (code) {
+    case 'future-version':
+      return 'Your saved career was created by a newer version of the game and could not be loaded, so a new game was started. The old save was left untouched.';
+    case 'corrupt-json':
+    case 'bad-envelope':
+    case 'invalid-state':
+    case 'no-migration':
+    case 'unknown':
+    default:
+      return 'Your saved career could not be loaded (the save file is damaged) and a new game was started. The damaged save was left untouched.';
+  }
+}
+
 let state: CockpitState = init();
 const listeners = new Set<() => void>();
 
 function init(): CockpitState {
   const fx = readFx();
+  bootLoadFailure = null;
   const loaded = readSave();
   const game = loaded?.game ?? startDay(createInitialState(DEFAULT_SEED)).state;
   // The seed rides the loaded envelope (T-1002); with no save, the game booted
   // from DEFAULT_SEED, so the displayed seed matches it.
   const seed = loaded ? loaded.seed : DEFAULT_SEED;
+  // T-1605 · If a PRESENT save failed to load, `readSave` recorded WHY — raise the
+  // honest banner so the fresh-career fallback is visible, never silent.
+  const bootNotice = bootLoadFailure ? bootNoticeForFailure(bootLoadFailure) : null;
   return {
     game,
     selectedDie: null,
     bloomDie: null,
     fx,
     notice: null,
+    bootNotice,
     bootKey: 1,
     lastCheck: null,
     lastCheckKey: 0,
@@ -452,9 +505,18 @@ export function getSnapshot(): CockpitState {
 // ---- persistence (T-112 save envelope) ----------------------------------
 
 function readSave(): { game: GameState; seed: number } | null {
+  // Read the raw blob first. An ABSENT save (getItem → null) or an unreadable
+  // localStorage is BENIGN — a first run — and must never raise the corrupt-save
+  // banner. T-1605 splits this cleanly from the "save present but unloadable" case
+  // below: only the latter records a `bootLoadFailure`.
+  let raw: string | null = null;
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
+    raw = localStorage.getItem(SAVE_KEY);
+  } catch {
+    return null; // storage unavailable — treat as a fresh career, no banner
+  }
+  if (!raw) return null; // no save present — benign, no banner
+  try {
     const { state, seed } = loadSave(raw);
     // T-1002: a pre-v2 autosave has no seed in its envelope (loadSave returns
     // seed: null). Recover the seed the old build stashed in the legacy
@@ -464,8 +526,14 @@ function readSave(): { game: GameState; seed: number } | null {
     // with an explicit seed — including seed 0 — never hits this fallback.
     const recovered = seed === null ? readAutosaveSeed() : seed;
     return { game: state, seed: recovered };
-  } catch {
-    return null; // corrupt / missing → fall back to a fresh career
+  } catch (err) {
+    // T-1605 · A PRESENT save that would not load. Record WHY (the typed
+    // SaveError.code lets `init` pick honest copy — e.g. a future-version save vs a
+    // corrupt one) so the fresh-career fallback surfaces a visible banner instead of
+    // silently resetting. Do NOT overwrite/remove the blob here: the player is told,
+    // and the damaged save is left on disk untouched until an action autosaves over it.
+    bootLoadFailure = err instanceof SaveError ? err.code : 'unknown';
+    return null;
   }
 }
 /**
@@ -592,6 +660,9 @@ export function newGame(seed: number): void {
     selectedDie: null,
     bloomDie: null,
     notice: null,
+    // T-1605 · A fresh career clears any lingering corrupt-save boot banner — the
+    // player has explicitly started anew, so the news of the lost save is moot.
+    bootNotice: null,
     bootKey: state.bootKey + 1,
     lastCheck: null,
     combatAftermath: null,
@@ -1625,6 +1696,15 @@ export function dismissOnboarding(id: string): void {
   const seen: Record<string, true> = { ...state.onboardingSeen, [id]: true };
   writeOnboarding(seen);
   set({ onboardingSeen: seen });
+}
+
+/**
+ * T-1605 · Dismiss the corrupt-save boot banner once the player has read it. A pure
+ * client action — clears the presentation-only `bootNotice`, touching no GameState
+ * and writing nothing to disk. READER: the `boot-notice` banner's close button.
+ */
+export function dismissBootNotice(): void {
+  if (state.bootNotice !== null) set({ bootNotice: null });
 }
 
 export function dayIsOver(): boolean {
