@@ -86,6 +86,7 @@ import {
   storyletChoiceNeedsDie,
   storyletChoiceLock,
   deedRegistry,
+  factionStanding,
   nemesisFile,
   activeOnboardingPrompt,
   onboardingMount,
@@ -1275,6 +1276,7 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
 function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => void }) {
   const [tab, setTab] = useState<'registry' | 'nemesis'>('registry');
   const registry = deedRegistry(game);
+  const standing = factionStanding(game);
   const nemesis = nemesisFile(game);
 
   useEffect(() => {
@@ -1337,6 +1339,27 @@ function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => voi
                   {registry.deedsToNextRank} to {registry.nextRankLabel}
                 </span>
               )}
+            </div>
+            {/* T-1503 · Alliance standing — a pure read of player.reputation via
+                format.ts `factionStanding`. The reader that makes the four-faction
+                rep visible to the player. */}
+            <div className="alliance-standing" data-testid="alliance-standing">
+              <span className="as-label">ALLIANCE STANDING</span>
+              <ul className="as-list">
+                {standing.map((s) => (
+                  <li
+                    className={`as-row as-${s.tone}`}
+                    key={s.faction}
+                    data-testid="alliance-standing-row"
+                    data-faction={s.faction}
+                  >
+                    <span className="as-name">{s.label}</span>
+                    <b className="as-value" data-testid={`alliance-standing-${s.faction}`}>
+                      {s.value > 0 ? `+${s.value}` : s.value}
+                    </b>
+                  </li>
+                ))}
+              </ul>
             </div>
             {registry.earned.length === 0 ? (
               <div className="registry-empty" data-testid="registry-empty">

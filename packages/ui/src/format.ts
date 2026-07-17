@@ -23,6 +23,9 @@ import {
   CREW_BY_ID,
   PURCHASABLE_PORTS_BY_SYSTEM,
   isPurchasablePort,
+  FACTION_IDS,
+  FACTION_LABELS,
+  type FactionId,
   type StoryletTrigger,
   type CrewRole,
 } from '@spacerquest/content';
@@ -1176,6 +1179,36 @@ export function deedRegistry(game: GameState): DeedRegistryView {
       .sort((a, b) => b.eventIndex - a.eventIndex)
       .map((d) => ({ id: d.id, title: d.title, citation: d.citation, day: d.day })),
   };
+}
+
+/** One faction's standing row for the ALLIANCE STANDING readout. */
+export interface FactionStandingView {
+  faction: FactionId;
+  /** Display name (content FACTION_LABELS). */
+  label: string;
+  /** The raw standing value (engine `player.reputation[faction]`). */
+  value: number;
+  /** A coarse tone for styling — friendly / hostile / neutral. */
+  tone: 'friendly' | 'hostile' | 'neutral';
+}
+
+/**
+ * T-1503 · The four-faction ALLIANCE STANDING view — a pure read of
+ * `game.player.reputation`, one row per galactic power in the canonical
+ * FACTION_IDS order, labelled from content FACTION_LABELS. The UI owns NO rule: the
+ * value is the engine's stored standing verbatim; `tone` is a display-only sign
+ * bucket. READER of the reputation state the T-1503 movers/questlines write.
+ */
+export function factionStanding(game: GameState): FactionStandingView[] {
+  return FACTION_IDS.map((faction) => {
+    const value = game.player.reputation[faction];
+    return {
+      faction,
+      label: FACTION_LABELS[faction],
+      value,
+      tone: value > 0 ? 'friendly' : value < 0 ? 'hostile' : 'neutral',
+    };
+  });
 }
 
 export interface NemesisFileView {

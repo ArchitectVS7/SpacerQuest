@@ -16,6 +16,7 @@ import type {
   LoanState,
   CrewMember,
   PortStake,
+  FactionReputation,
   NemesisFileState,
   SignalFragmentRecord,
   DeedRegistryState,
@@ -72,6 +73,10 @@ const EraIdSchema = z.enum(['TOUR_ONE', 'VETERAN']);
 
 /** PoiType (content). */
 const PoiTypeSchema = z.enum(['beacon', 'derelict']);
+
+/** T-1503 · FactionId (content: FactionId / FACTION_IDS). The four galactic
+ *  powers a spacer holds standing with. */
+const FactionIdSchema = z.enum(['league', 'dragons', 'confederation', 'rebels']);
 
 /** RenownRankId (content). */
 const RenownRankIdSchema = z.enum([
@@ -162,6 +167,19 @@ const StatBlockSchema = z
     TRADE: z.number(),
     GRIT: z.number(),
     GUILE: z.number(),
+  })
+  .strict();
+
+// T-1503 · FactionReputation (types.ts) — the nested four-faction standing.
+// `.strict()` — an unknown nested key under `reputation` fails loudly on load, per
+// the T-1002 drift-protection law. This IS the `player.reputation` container that
+// law was written to protect: it can never again be silently stripped or drift.
+const FactionReputationSchema = z
+  .object({
+    league: z.number(),
+    dragons: z.number(),
+    confederation: z.number(),
+    rebels: z.number(),
   })
   .strict();
 
@@ -475,6 +493,9 @@ const PlayerStateSchema = z
     // T-1307: owned port stakes (purchasable property). Non-optional — every v5+
     // save serializes the key (v4 saves backfill it via the migration).
     ports: z.array(PortStakeSchema),
+    // T-1503: four-faction standing (a nested strict container). Non-optional —
+    // every v7+ save serializes the key (v6 saves backfill it via the migration).
+    reputation: FactionReputationSchema,
     stats: StatBlockSchema,
     tier: TierSchema,
     currentSystemId: z.number(),
@@ -569,6 +590,22 @@ const GameEventSchema = z.discriminatedUnion('type', [
       'loan-default',
       // T-1305 named-patrol grudge on a caught contraband scan.
       'contraband-caught',
+    ]),
+  }),
+  z.object({
+    // T-1503 · a four-faction reputation move (types.ts ReputationChanged).
+    type: z.literal('ReputationChanged'),
+    day: z.number(),
+    faction: FactionIdSchema,
+    delta: z.number(),
+    reputation: z.number(),
+    reason: z.enum([
+      'patrol-tribute',
+      'patrol-evaded',
+      'smuggling-caught',
+      'fence-dealt',
+      'port-deal',
+      'questline',
     ]),
   }),
   z.object({
@@ -808,6 +845,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
       'active-contract-cleared',
       'manifest-contract-added',
       'disposition',
+      // T-1503: a reputation effect.
+      'reputation',
       'fragment-granted',
       'fragment-decoded',
     ]),
@@ -815,6 +854,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
     flag: z.string().optional(),
     value: FlagValueSchema.optional(),
     npcId: z.string().optional(),
+    // T-1503: the galactic power moved by a `reputation` effect.
+    faction: FactionIdSchema.optional(),
     cargoType: z.number().optional(),
     destination: z.number().optional(),
     fragmentId: z.string().optional(),
@@ -1174,6 +1215,12 @@ const _covLegacy: AssertEqual<keyof LegacyState, keyof z.infer<typeof LegacyStat
 const _covLoan: AssertEqual<keyof LoanState, keyof z.infer<typeof LoanStateSchema>> = true;
 const _covCrew: AssertEqual<keyof CrewMember, keyof z.infer<typeof CrewMemberSchema>> = true;
 const _covPortStake: AssertEqual<keyof PortStake, keyof z.infer<typeof PortStakeSchema>> = true;
+// T-1503: the nested reputation container — its four fixed keys are an engine shape,
+// so an explicit keyof guard (not just `.strict()`) keeps schema↔interface in lockstep.
+const _covReputation: AssertEqual<
+  keyof FactionReputation,
+  keyof z.infer<typeof FactionReputationSchema>
+> = true;
 const _covNemesis: AssertEqual<
   keyof NemesisFileState,
   keyof z.infer<typeof NemesisFileStateSchema>
@@ -1234,6 +1281,7 @@ const _covEvFlawCheck: AssertEventKeys<'FlawCheck'> = true;
 const _covEvNpcAction: AssertEventKeys<'NpcAction'> = true;
 const _covEvContractClaimed: AssertEventKeys<'ContractClaimed'> = true;
 const _covEvDispositionChanged: AssertEventKeys<'DispositionChanged'> = true;
+const _covEvReputationChanged: AssertEventKeys<'ReputationChanged'> = true;
 const _covEvBondIntervention: AssertEventKeys<'BondIntervention'> = true;
 const _covEvWireEntry: AssertEventKeys<'WireEntry'> = true;
 const _covEvEraEventStarted: AssertEventKeys<'EraEventStarted'> = true;
@@ -1297,6 +1345,7 @@ void _covLegacy;
 void _covLoan;
 void _covCrew;
 void _covPortStake;
+void _covReputation;
 void _covNemesis;
 void _covFragment;
 void _covDeedRegistry;
@@ -1313,6 +1362,7 @@ void _covEvFlawCheck;
 void _covEvNpcAction;
 void _covEvContractClaimed;
 void _covEvDispositionChanged;
+void _covEvReputationChanged;
 void _covEvBondIntervention;
 void _covEvWireEntry;
 void _covEvEraEventStarted;

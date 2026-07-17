@@ -2,6 +2,7 @@ export * from './stats.js';
 export * from './combat.js';
 export * from './components.js';
 export * from './disposition.js';
+export * from './factions.js';
 export * from './hangout.js';
 export * from './lending.js';
 export * from './guild.js';

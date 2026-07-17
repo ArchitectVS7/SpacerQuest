@@ -78,12 +78,23 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * save validates against the v6 schema (whose WireEntry `kind` is required) AND
  * renders exactly as it did before. Non-WireEntry events are untouched.
  *
+ * T-1503 bumped {@link CURRENT_SAVE_VERSION} to 7. The v6->v7 change IS a
+ * GameState shape change: `PlayerState.reputation` (the four-faction standing —
+ * a NESTED container, `{ league, dragons, confederation, rebels }`) is a new
+ * persistent field. The v6->v7 migration backfills the whole neutral container
+ * (and each faction key) on the player so a pre-reputation save validates against
+ * the v7 schema (whose `reputation` key is a non-optional, strict four-key shape).
+ * This is exactly the nested-field migration the T-1002 drift-protection (which
+ * named `player.reputation` by name) was built to make safe.
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
  * `{ 1: (s) => ({ ...s, migrated: true }) }` at targetVersion 2 to prove the
  * sequential upgrade loop works independently of production MIGRATIONS.
  */
+const NEUTRAL_REPUTATION = { league: 0, dragons: 0, confederation: 0, rebels: 0 } as const;
+
 export const MIGRATIONS: Record<number, MigrationFn> = {
   1: (v1State) => v1State,
   // v2->v3: T-1304 added PlayerState.loan. A v2 save has no `loan` key, so
@@ -129,9 +140,24 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
     });
     return { ...(v5State as object), eventLog };
   },
+  // v6->v7: T-1503 added PlayerState.reputation (a nested four-faction container).
+  // A v6 save has no `reputation` key, so backfill the whole neutral container
+  // (merging any partial one already present, faction-key by faction-key) before
+  // schema validation. This is the T-1002 nested-field migration by name.
+  6: (v6State) => {
+    const s = v6State as { player?: Record<string, unknown> };
+    const existing = (s.player as { reputation?: Record<string, unknown> })?.reputation ?? {};
+    return {
+      ...(v6State as object),
+      player: {
+        ...(s.player ?? {}),
+        reputation: { ...NEUTRAL_REPUTATION, ...existing },
+      },
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 6;
+export const CURRENT_SAVE_VERSION = 7;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

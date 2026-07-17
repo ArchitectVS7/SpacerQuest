@@ -2259,6 +2259,61 @@ body {
 .rr-next {
   color: var(--ember);
 }
+/* T-1503 · Alliance standing readout (Records → Registry tab). */
+.alliance-standing {
+  margin-top: 10px;
+  border: 1px solid var(--amber);
+  padding: 8px 12px 10px;
+  background: #120c06;
+}
+.as-label {
+  display: block;
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: var(--amber);
+  margin-bottom: 6px;
+}
+.as-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+}
+.as-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.as-name {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.as-value {
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+.as-friendly .as-value {
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.as-neutral .as-value {
+  color: var(--amber);
+}
+.as-hostile .as-value {
+  color: #e0562a;
+}
+
 .registry-empty,
 .nemesis-empty {
   padding: 18px 4px;

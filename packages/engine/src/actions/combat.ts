@@ -10,12 +10,15 @@ import {
   DISPOSITION_DELTAS,
   TALK_DC_PER_DISPOSITION,
   AnonymousInterceptorKind,
+  PATROL_TRIBUTE_LEAGUE_DELTA,
+  PATROL_EVADED_LEAGUE_DELTA,
 } from '@spacerquest/content';
 import { GameState, GameEvent, PlayerAction, EncounterState, ShipComponentId } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { completePendingTravel } from './travel.js';
 import { applyDisposition } from '../npc.js';
+import { applyReputation } from '../reputation.js';
 import { applySuccession } from '../legacy.js';
 import { shieldMitigation, weaponVolleyDamage } from '../components.js';
 
@@ -149,6 +152,27 @@ function resolveEncounter(
         'player-fled',
         events,
       );
+    }
+  }
+
+  // T-1503 · Astro-League reputation (the "patrol tribute" organic mover, PRD §8.1).
+  // The League IS the law/patrol power, so a resolved PATROL encounter moves League
+  // standing: complying with the checkpoint (talked-down — the tribute path, or a
+  // nat-20 wave-through) WARMS the League; fighting or fleeing it (defeated /
+  // escaped / interceptor-escaped) COOLS it. Gated on the anonymous interceptor's
+  // `kind === 'PATROL'` (named interceptors carry no kind → no move), and takes NO
+  // rng, so it can never perturb a replay's stream. This is what makes League rep
+  // near-unavoidably nonzero for a travelling trader (patrols resolve one way or the
+  // other). The contraband-scan consequence lives in patrol.ts.
+  if (encounter.interceptor.kind === 'PATROL') {
+    if (resolution === 'talked-down') {
+      applyReputation(state, 'league', PATROL_TRIBUTE_LEAGUE_DELTA, 'patrol-tribute', events);
+    } else if (
+      resolution === 'escaped' ||
+      resolution === 'defeated' ||
+      resolution === 'interceptor-escaped'
+    ) {
+      applyReputation(state, 'league', PATROL_EVADED_LEAGUE_DELTA, 'patrol-evaded', events);
     }
   }
 

@@ -1,4 +1,6 @@
 import type { RenownRankId } from './deeds.js';
+import type { FactionId } from './factions.js';
+import { FACTION_JOIN_CROSS_PENALTY, FACTION_JOIN_OWN_BONUS } from './factions.js';
 import type { FragmentSource } from './nemesis.js';
 import { Stat } from './stats.js';
 import { defineStorylets } from './storyletValidation.js';
@@ -45,6 +47,12 @@ export interface StoryletTrigger {
     inCurrentSystem?: boolean;
     disposition?: NumberMatcher;
   };
+  /** T-1503: gate on the player's standing with one of the four galactic powers
+   *  (`player.reputation[faction]`). This is the NAMED READER of the reputation
+   *  state — the `alliance.*` questlines gate their ep2/ep3 on the rep their
+   *  earlier episodes granted (the organic progression gate, mirroring how the
+   *  T-1502 chains gate on `npc.disposition`). Reader: engine `triggerMatches`. */
+  reputation?: { faction: FactionId } & NumberMatcher;
   eras?: readonly EraId[];
   day?: NumberMatcher;
   flags?: readonly FlagMatcher[];
@@ -87,6 +95,13 @@ export interface StoryletEffects {
   };
   flags?: readonly FlagEffect[];
   disposition?: readonly { npcId: string; delta: number }[];
+  /** T-1503: move the player's standing with one or more galactic powers. The
+   *  `alliance.*` questlines grant own-faction rep per episode (which crosses the
+   *  next episode's `reputation` gate) and, on the terminal "join" choice, apply
+   *  the cross-faction shift (own +large, the other three −FACTION_JOIN_CROSS_PENALTY).
+   *  Applied through engine `applyEffects` → `reputation.ts` `applyReputation`,
+   *  emitting a ReputationChanged event + a StoryletEffectApplied{effect:'reputation'}. */
+  reputation?: readonly { faction: FactionId; delta: number }[];
   deedProgress?: readonly { deedId: string; amount: number }[];
   schedule?: readonly { storyletId: string; delayDays: number }[];
   /** T-111b: grant a Signal Fragment into the nemesisFile (Wise One / a broker
@@ -3426,6 +3441,594 @@ export const STORYLETS = defineStorylets([
         effects: {
           disposition: [{ npcId: 'npc-the-broker', delta: -1 }],
           flags: [{ name: 'chain.the-broker.resolved', value: 'refused' }],
+        },
+      },
+    ],
+  },
+
+  // ==========================================================================
+  // T-1503 · ALLIANCE ARCS — one 3-step questline per galactic power (PRD §8.1 /
+  //   §2). Each expresses its faction's playstyle and gates its later episodes on
+  //   the REPUTATION its earlier episodes granted — the same organic-progression
+  //   shape the T-1502 NPC chains use with `npc.disposition`, but on the new
+  //   `player.reputation[faction]` state (the named reader of the reputation field).
+  //
+  //   ERA: every ep1 is gated `eras: ['VETERAN']` — alliance arcs are VETERAN-phase
+  //   content (PRD §5.1 Tour One → veteran loop: you SWEAR to a galactic power as a
+  //   proven veteran, not a day-1 rookie still under the Guild's opening loan). This
+  //   is also what keeps the arcs from perturbing the Tour One early-game: a new
+  //   dawn storylet offer at the player's system shifts that day's travel-encounter
+  //   RNG fork (dayEventCount → the fork index), so anchoring these openers in the
+  //   VETERAN phase leaves every Tour One seeded fixture's board + encounter timing
+  //   untouched (see the T-1503 golden note in day-loop-golden.ts).
+  //
+  //   SHARED SHAPE (mirrors the NPC-chain template above):
+  //     - ep1 (the offer): `eras:['VETERAN']` + systemIds-gated at that faction's
+  //       CORE anchor (League → Deneb-4/5, Dragons → Aldebaran-1/2, Confederation →
+  //       Altair-3/3, Rebels → a rim system/15) + an `alliance.X.resolved
+  //       exists:false` gate. NO rep gate (a spacer reaching the veteran phase may
+  //       still sit at 0 with a faction). The "engage" choice grants an opening +5
+  //       own-faction rep and SCHEDULES ep2; the "decline" out is requirement-free
+  //       and sets resolved='declined'.
+  //     - ep2 (the proof): `scheduledOnly`, `reputation:{faction, gte:3}` — the
+  //       gate ep1's +5 crosses organically. A playstyle stat check (League GRIT,
+  //       Dragons GUNS, Confederation TRADE, Rebels GUILE) grants +3, plus a
+  //       requirement-free +2 fallback so the chain always advances; both schedule
+  //       ep3. Carries a `wireResolution`.
+  //     - ep3 (the commitment): `scheduledOnly`, `reputation:{faction, gte:6}` (ep1
+  //       +5 and ep2 +2/+3 both clear it). Terminal — the "join/commit" choice
+  //       applies the CROSS-FACTION shift (own +FACTION_JOIN_OWN_BONUS, the other
+  //       three −FACTION_JOIN_CROSS_PENALTY), sets resolved='joined', pays standing;
+  //       a requirement-free "walk" alternative sets resolved='walked'. Carries a
+  //       `wireResolution`.
+  //
+  //   READERS / consumed state (Standing-constraint 7):
+  //     - `player.reputation[faction]`: READ by the ep2/ep3 `reputation` gates (the
+  //       organic progression gate), the cross-faction shift, and the UI standing
+  //       readout — so every grant and the join penalty is consumed.
+  //     - `alliance.X.resolved`: READ by every episode's `exists:false` trigger gate
+  //       (a resolved arc — joined, declined, or wire-abandoned — never re-offers).
+  //     - `wireResolution`: READ by the engine dusk sweep (`resolveAbandonedChains`)
+  //       → a WireEntry + the rep penalty.
+  //
+  //   DIVERGENCE: foundation (f2f95fa9) carries the four powers as SETTING but no
+  //   reputation MECHANIC, so these arcs and their rep budget are engine-original
+  //   content, tuned as data (factions.ts). Voice per the User-Manual register.
+  // ==========================================================================
+
+  // --- Astro League · the patrol writ (law / patrol contracts; GRIT). Anchor:
+  //     Deneb-4 (system 5, a League port the veteran ranges to). The VETERAN era
+  //     gate (see the SHARED SHAPE header) is what keeps this off the Tour One
+  //     early-game seeds; the anchor is simply a League port, not Sun-3. ---
+  {
+    id: 'alliance.league.writ',
+    title: 'A League Patrol Writ',
+    prose:
+      'A League patrol officer catches you at the Deneb-4 gantry with a deputation writ already half-signed. "We are short hulls and long on lanes," she says. "Ride with the patrol, keep the lanes clean, and the League remembers who stood a watch."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [5],
+      eras: ['VETERAN'],
+      flags: [{ name: 'alliance.league.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'engage',
+        label: 'Take the writ',
+        prose:
+          'Sign the deputation and clip the League chit to your board. The lanes are the League’s, and now, for a while, so are you.',
+        effects: {
+          reputation: [{ faction: 'league', delta: 5 }],
+          flags: [{ name: 'alliance.league.opened', value: true }],
+          schedule: [{ storyletId: 'alliance.league.sweep', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Hand the writ back',
+        prose:
+          'Tell the officer your hull flies for itself. She shrugs — the League has long memories and short deputation lists, and you have just left yourself off one.',
+        effects: {
+          flags: [{ name: 'alliance.league.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.league.sweep',
+    title: 'Stand the Watch',
+    prose:
+      'The writ comes due: a smuggler corridor needs a hull that will hold the line while the patrol closes it. Standing a League watch is grit, not glory — long hours, hard boardings, and a lane that stays clean only as long as you do.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'league', gte: 3 },
+      flags: [{ name: 'alliance.league.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The League notes a deputized hull that never made its watch — the corridor was closed without you, and the patrol logs who did not stand the line.',
+      effects: {
+        reputation: [{ faction: 'league', delta: -3 }],
+        flags: [{ name: 'alliance.league.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'hold-the-line',
+        label: 'Hold the corridor (GRIT)',
+        prose:
+          'Anchor the lane and outlast the runners. Boarding after boarding, you hold until the corridor is the League’s again.',
+        requirements: { statCheck: { stat: Stat.GRIT, dc: 12 } },
+        successEffects: {
+          reputation: [{ faction: 'league', delta: 3 }],
+          schedule: [{ storyletId: 'alliance.league.commission', delayDays: 1 }],
+        },
+        failureEffects: {
+          reputation: [{ faction: 'league', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.league.commission', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'work-the-desk',
+        label: 'Run the writ by the book',
+        prose:
+          'Skip the heroics and work the deputation the quiet way — manifests, checkpoints, paperwork. It closes the corridor slower, but it closes.',
+        effects: {
+          reputation: [{ faction: 'league', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.league.commission', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.league.commission',
+    title: 'A League Commission',
+    prose:
+      'You have stood enough watches that the League offers the writ made permanent: a standing commission, a lane of your own to keep — and an oath that the League’s enemies become yours. Swear it, and the Dragons, the Confederation, and the frontier all read the name that just went blue.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'league', gte: 6 },
+      flags: [{ name: 'alliance.league.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The League withdrew a commission left unclaimed — the lane went to a hull that answered, and yours went back to flying for itself.',
+      effects: {
+        reputation: [{ faction: 'league', delta: -3 }],
+        flags: [{ name: 'alliance.league.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Swear the commission',
+        prose:
+          'Take the oath and the lane both. You are League now, in the record and on the wire — and everyone the League counts an enemy just counted you one.',
+        effects: {
+          credits: 250,
+          reputation: [
+            { faction: 'league', delta: FACTION_JOIN_OWN_BONUS },
+            { faction: 'dragons', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'confederation', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'rebels', delta: -FACTION_JOIN_CROSS_PENALTY },
+          ],
+          flags: [{ name: 'alliance.league.resolved', value: 'joined' }],
+        },
+      },
+      {
+        id: 'walk',
+        label: 'Keep your hull your own',
+        prose:
+          'Thank the League and hand the lane back. A watch stood is a watch stood, but an oath sworn is a leash — and you were not built for one.',
+        effects: {
+          reputation: [{ faction: 'league', delta: -1 }],
+          flags: [{ name: 'alliance.league.resolved', value: 'walked' }],
+        },
+      },
+    ],
+  },
+
+  // --- Space Dragons · the duel circuit (honor / strength; GUNS). Anchor:
+  //     Aldebaran-1 (system 2, a Dragons port). ---
+  {
+    id: 'alliance.dragons.challenge',
+    title: 'The Dragons’ Challenge',
+    prose:
+      'A Space Dragon blocks your berth at Aldebaran-1, unhurried, reading your hull like a ledger of fights you have not had yet. "The circuit is open," she says. "Guns and honor, no ambushes, no debts. Fly it, and the Dragons learn your name the only way that matters."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [2],
+      eras: ['VETERAN'],
+      flags: [{ name: 'alliance.dragons.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'engage',
+        label: 'Enter the circuit',
+        prose:
+          'Take the challenge chit. The Dragons keep score in duels won, and you have just put your name on the board.',
+        effects: {
+          reputation: [{ faction: 'dragons', delta: 5 }],
+          flags: [{ name: 'alliance.dragons.opened', value: true }],
+          schedule: [{ storyletId: 'alliance.dragons.circuit', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Refuse the challenge',
+        prose:
+          'Tell the Dragon you fly to arrive, not to duel. She smiles without warmth — a refused challenge is not a grudge to the Dragons, only a name they stop bothering to learn.',
+        effects: {
+          flags: [{ name: 'alliance.dragons.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.dragons.circuit',
+    title: 'Fly the Circuit',
+    prose:
+      'The circuit names your first opponent — a Dragon who has never lost cleanly and does not intend to start. This is honor the Dragon way: guns up, no tricks, and the winner is the one still flying when the other calls it.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'dragons', gte: 3 },
+      flags: [{ name: 'alliance.dragons.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Dragons struck a no-show from the circuit board — a name that entered and never flew. Among Dragons, that is worse than a loss.',
+      effects: {
+        reputation: [{ faction: 'dragons', delta: -3 }],
+        flags: [{ name: 'alliance.dragons.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'duel',
+        label: 'Fly the duel (GUNS)',
+        prose:
+          'Meet the Dragon gun to gun and hold nothing back. Honor is measured in the fight, not the outcome — but the Dragons measure a clean win highest.',
+        requirements: { statCheck: { stat: Stat.GUNS, dc: 12 } },
+        successEffects: {
+          reputation: [{ faction: 'dragons', delta: 3 }],
+          schedule: [{ storyletId: 'alliance.dragons.crown', delayDays: 1 }],
+        },
+        failureEffects: {
+          reputation: [{ faction: 'dragons', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.dragons.crown', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'fly-honest',
+        label: 'Fly it honest and take the marks',
+        prose:
+          'Fly the circuit straight, win or lose, and let the Dragons see a hull that never once reached for a trick. They respect the honesty even when the guns come up short.',
+        effects: {
+          reputation: [{ faction: 'dragons', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.dragons.crown', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.dragons.crown',
+    title: 'The Circuit’s Crown',
+    prose:
+      'You have flown enough of the circuit that the Dragons offer the crown of it: a place among them, wings that answer when you call and a name spoken in the honor-tongue. Take it, and the League, the Confederation, and the frontier all mark the hull that just went Dragon.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'dragons', gte: 6 },
+      flags: [{ name: 'alliance.dragons.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Dragons closed the circuit’s crown to a hull that stopped flying it — the wings went to a name that answered, and yours flew on alone.',
+      effects: {
+        reputation: [{ faction: 'dragons', delta: -3 }],
+        flags: [{ name: 'alliance.dragons.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Take the crown',
+        prose:
+          'Take the wings and the honor-name both. You are Dragon now — and every hull the Dragons have ever crossed guns with just learned yours.',
+        effects: {
+          credits: 250,
+          reputation: [
+            { faction: 'dragons', delta: FACTION_JOIN_OWN_BONUS },
+            { faction: 'league', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'confederation', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'rebels', delta: -FACTION_JOIN_CROSS_PENALTY },
+          ],
+          flags: [{ name: 'alliance.dragons.resolved', value: 'joined' }],
+        },
+      },
+      {
+        id: 'walk',
+        label: 'Fly out of the circuit',
+        prose:
+          'Salute the Dragons and fly on. The circuit was a good fight and a fair one, but wings that answer another’s call were never the wings you wanted.',
+        effects: {
+          reputation: [{ faction: 'dragons', delta: -1 }],
+          flags: [{ name: 'alliance.dragons.resolved', value: 'walked' }],
+        },
+      },
+    ],
+  },
+
+  // --- Warlord Confederation · the port stake (conquest / ports; TRADE). Anchor:
+  //     Altair-3 (system 3, a Confederation port). ---
+  {
+    id: 'alliance.confederation.stake',
+    title: 'A Confederation Stake',
+    prose:
+      'A Confederation factor finds you at Altair-3 with a proposition and no pretense. "The warlords hold their space by holding its ports," he says. "Buy in — a stake, a lane, a cut of the launch fees — and the Confederation counts you an owner, not a guest."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [3],
+      eras: ['VETERAN'],
+      flags: [{ name: 'alliance.confederation.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'engage',
+        label: 'Buy into the stake',
+        prose:
+          'Put your name on the Confederation’s ledger. In warlord space, property is loyalty, and you have just declared a little of both.',
+        effects: {
+          reputation: [{ faction: 'confederation', delta: 5 }],
+          flags: [{ name: 'alliance.confederation.opened', value: true }],
+          schedule: [{ storyletId: 'alliance.confederation.holdings', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Keep out of warlord ledgers',
+        prose:
+          'Tell the factor your credits stay your own. He closes the slate without a flicker — the Confederation does not argue with a no, it simply stops offering.',
+        effects: {
+          flags: [{ name: 'alliance.confederation.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.confederation.holdings',
+    title: 'Work the Holdings',
+    prose:
+      'The stake needs working: a contested launch-fee schedule, a rival owner, and a negotiation that decides whether your cut grows or gets quietly eaten. This is Confederation power the honest way — leverage, ledgers, and a harder bargain than any blockade.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'confederation', gte: 3 },
+      flags: [{ name: 'alliance.confederation.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Confederation reassigned a stake its owner never worked — your cut of the launch fees went to a warlord who showed up to claim it.',
+      effects: {
+        reputation: [{ faction: 'confederation', delta: -3 }],
+        flags: [{ name: 'alliance.confederation.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'drive-the-bargain',
+        label: 'Drive the bargain (TRADE)',
+        prose:
+          'Sit the table and grind the schedule your way, clause by clause, until the rival owner signs the smaller cut and calls it generous.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          reputation: [{ faction: 'confederation', delta: 3 }],
+          schedule: [{ storyletId: 'alliance.confederation.charter', delayDays: 1 }],
+        },
+        failureEffects: {
+          reputation: [{ faction: 'confederation', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.confederation.charter', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'hold-the-stake',
+        label: 'Just hold the stake and collect',
+        prose:
+          'Skip the fight for a bigger cut and simply hold what you bought, collecting the fees as they come. The Confederation respects an owner who keeps what is theirs.',
+        effects: {
+          reputation: [{ faction: 'confederation', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.confederation.charter', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.confederation.charter',
+    title: 'A Warlord’s Charter',
+    prose:
+      'Your holdings have grown enough that the Confederation offers a charter: a warlord’s seat, a share of the whole schedule, and a banner your ports fly under. Take it, and the League, the Dragons, and the frontier all read the flag your hulls just raised.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'confederation', gte: 6 },
+      flags: [{ name: 'alliance.confederation.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The Confederation let a charter lapse unclaimed — the seat went to a warlord who wanted it, and your holdings stayed just holdings.',
+      effects: {
+        reputation: [{ faction: 'confederation', delta: -3 }],
+        flags: [{ name: 'alliance.confederation.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Sign the charter',
+        prose:
+          'Raise the banner and take the seat. You are Confederation now — a warlord in your own small right — and the powers that are not just felt the map shift.',
+        effects: {
+          credits: 250,
+          reputation: [
+            { faction: 'confederation', delta: FACTION_JOIN_OWN_BONUS },
+            { faction: 'league', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'dragons', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'rebels', delta: -FACTION_JOIN_CROSS_PENALTY },
+          ],
+          flags: [{ name: 'alliance.confederation.resolved', value: 'joined' }],
+        },
+      },
+      {
+        id: 'walk',
+        label: 'Stay an owner, not a warlord',
+        prose:
+          'Keep the stake and hand back the banner. Property is one thing; a warlord’s seat is a debt paid in loyalty you would rather not owe.',
+        effects: {
+          reputation: [{ faction: 'confederation', delta: -1 }],
+          flags: [{ name: 'alliance.confederation.resolved', value: 'walked' }],
+        },
+      },
+    ],
+  },
+
+  // --- Rebel Alliance · the smuggling lane (free trade / frontier; GUILE).
+  //     Anchor: a rim system (15, ungoverned frontier). ---
+  {
+    id: 'alliance.rebels.run',
+    title: 'A Frontier Run',
+    prose:
+      'Out past the last League beacon, a rim runner flags you down with a cargo the core would call contraband and the frontier calls trade. "We move it ourselves out here," she says, "and we remember who runs a lane clean. Care to run one?"',
+    repeat: 'never',
+    trigger: {
+      systemIds: [15],
+      eras: ['VETERAN'],
+      flags: [{ name: 'alliance.rebels.resolved', exists: false }],
+    },
+    choices: [
+      {
+        id: 'engage',
+        label: 'Run the lane',
+        prose:
+          'Take the coordinates and the cargo. The frontier keeps no ledgers but the ones in its head, and you have just been written into one.',
+        effects: {
+          reputation: [{ faction: 'rebels', delta: 5 }],
+          flags: [{ name: 'alliance.rebels.opened', value: true }],
+          schedule: [{ storyletId: 'alliance.rebels.lane', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'decline',
+        label: 'Stay off the frontier lanes',
+        prose:
+          'Tell the runner your holds fly legal. She grins and lets you pass — the frontier holds no grudge, but it does not open its lanes to a hull that flies for the core.',
+        effects: {
+          flags: [{ name: 'alliance.rebels.resolved', value: 'declined' }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.rebels.lane',
+    title: 'Run It Quiet',
+    prose:
+      'The lane runs straight through a League checkpoint that has no business this far out. Running frontier cargo is guile, not guns — a quiet hold, a clean manifest, and a story the patrol believes just long enough to wave you through.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'rebels', gte: 3 },
+      flags: [{ name: 'alliance.rebels.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'Word off the rim: a lane went unrun and a runner waited on a hull that never came. The frontier moved the cargo itself, and marked the name that left it holding.',
+      effects: {
+        reputation: [{ faction: 'rebels', delta: -3 }],
+        flags: [{ name: 'alliance.rebels.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'run-it-quiet',
+        label: 'Run it past the checkpoint (GUILE)',
+        prose:
+          'Dress the hold, cool the manifest, and talk the patrol into a lane they should have closed. The frontier loves a runner who makes the core look the other way.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          reputation: [{ faction: 'rebels', delta: 3 }],
+          schedule: [{ storyletId: 'alliance.rebels.compact', delayDays: 1 }],
+        },
+        failureEffects: {
+          reputation: [{ faction: 'rebels', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.rebels.compact', delayDays: 1 }],
+        },
+      },
+      {
+        id: 'go-the-long-way',
+        label: 'Take the long dark way around',
+        prose:
+          'Skip the checkpoint entirely and burn the extra fuel around it. Slower, colder, and every credit yours — the frontier respects a runner who never gets seen at all.',
+        effects: {
+          reputation: [{ faction: 'rebels', delta: 2 }],
+          schedule: [{ storyletId: 'alliance.rebels.compact', delayDays: 1 }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'alliance.rebels.compact',
+    title: 'The Frontier Compact',
+    prose:
+      'You have run enough lanes that the frontier offers the only thing it has to give: the compact — a name spoken as one of theirs, lanes opened on trust, and a stake in the free trade the core keeps trying to close. Take it, and the League, the Dragons, and the Confederation all read the hull that just went rebel.',
+    repeat: 'never',
+    trigger: {
+      scheduledOnly: true,
+      reputation: { faction: 'rebels', gte: 6 },
+      flags: [{ name: 'alliance.rebels.resolved', exists: false }],
+    },
+    wireResolution: {
+      graceDays: 4,
+      wireMessage:
+        'The frontier let a compact go unsworn — the lanes opened for a runner who kept coming, and your name stayed a stranger’s on the rim.',
+      effects: {
+        reputation: [{ faction: 'rebels', delta: -3 }],
+        flags: [{ name: 'alliance.rebels.resolved', value: 'wire' }],
+      },
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Swear the compact',
+        prose:
+          'Take the name and the open lanes both. You are frontier now — free trade and no ledgers — and every power that keeps one just crossed you off it.',
+        effects: {
+          credits: 250,
+          reputation: [
+            { faction: 'rebels', delta: FACTION_JOIN_OWN_BONUS },
+            { faction: 'league', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'dragons', delta: -FACTION_JOIN_CROSS_PENALTY },
+            { faction: 'confederation', delta: -FACTION_JOIN_CROSS_PENALTY },
+          ],
+          flags: [{ name: 'alliance.rebels.resolved', value: 'joined' }],
+        },
+      },
+      {
+        id: 'walk',
+        label: 'Run free of every flag',
+        prose:
+          'Thank the frontier and keep flying no one’s lanes but your own. Even a compact of free traders is a compact — and you came out here to owe nobody.',
+        effects: {
+          reputation: [{ faction: 'rebels', delta: -1 }],
+          flags: [{ name: 'alliance.rebels.resolved', value: 'walked' }],
         },
       },
     ],

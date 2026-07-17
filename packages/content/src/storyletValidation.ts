@@ -2,6 +2,7 @@ import { CARGO_TYPES } from './cargo.js';
 import { NPC_PROFILES } from './cast.js';
 import { DEEDS, RENOWN_RANKS } from './deeds.js';
 import { ERA_EVENTS_BY_ID } from './eraEvents.js';
+import { FACTION_IDS } from './factions.js';
 import { FRAGMENT_SOURCES, SIGNAL_FRAGMENTS } from './nemesis.js';
 import { Stat } from './stats.js';
 import { STAR_SYSTEMS } from './systems.js';
@@ -111,6 +112,15 @@ function validateEffects(
     validateInteger(errors, `${path}.disposition[${index}].delta`, effect.delta);
   });
 
+  // T-1503: reputation effect — each entry's faction must be a known galactic
+  // power and its delta a finite integer (mirrors the disposition check).
+  effects.reputation?.forEach((effect, index) => {
+    if (!FACTION_IDS.includes(effect.faction)) {
+      errors.push(`${path}.reputation[${index}].faction is not a valid faction ID`);
+    }
+    validateInteger(errors, `${path}.reputation[${index}].delta`, effect.delta);
+  });
+
   effects.deedProgress?.forEach((effect, index) => {
     if (!DEEDS.some((deed) => deed.id === effect.deedId)) {
       errors.push(`${path}.deedProgress[${index}].deedId is not a valid deed ID`);
@@ -206,6 +216,16 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
         `${path}.trigger.npc.disposition`,
         storylet.trigger.npc.disposition,
       );
+    }
+
+    // T-1503: reputation trigger — faction must be a known power, and it must
+    // carry at least one numeric condition (equals/gte/lte, via NumberMatcher).
+    const rep = storylet.trigger.reputation;
+    if (rep) {
+      if (!FACTION_IDS.includes(rep.faction)) {
+        errors.push(`${path}.trigger.reputation.faction is not a valid faction ID`);
+      }
+      validateNumberMatcher(errors, `${path}.trigger.reputation`, rep);
     }
 
     validateNumberMatcher(errors, `${path}.trigger.day`, storylet.trigger.day);

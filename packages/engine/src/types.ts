@@ -1,5 +1,6 @@
 import {
   AnonymousInterceptorKind,
+  FactionId,
   PoiType,
   PowerTier,
   RenownRankId,
@@ -243,6 +244,31 @@ export type GameEvent =
         // T-1305: a NAMED patrol captain who catches you smuggling holds a grudge
         // (engine actions/patrol.ts); read by the same interceptor weighting/talk-DC.
         | 'contraband-caught';
+    }
+  | {
+      /**
+       * T-1503 · The player's standing with one of the four galactic powers moved.
+       * Clamped to [REPUTATION_MIN, REPUTATION_MAX] (content factions.ts). Emitted
+       * only when the value actually changed (a clamped no-op emits nothing), by
+       * `reputation.ts` `applyReputation`. `reputation` is the value AFTER the move.
+       * READERS: the UI standing readout (format.ts `factionStanding` reads
+       * player.reputation directly; this event is the wire/log trail of the move),
+       * and the alliance-arc sim tests (which assert the cross-faction shift by
+       * faction+delta). The nested state it reports lives on `PlayerState.reputation`
+       * (v6→v7 save migration + round-trip regression test).
+       */
+      type: 'ReputationChanged';
+      day: number;
+      faction: FactionId;
+      delta: number;
+      reputation: number;
+      reason:
+        | 'patrol-tribute'
+        | 'patrol-evaded'
+        | 'smuggling-caught'
+        | 'fence-dealt'
+        | 'port-deal'
+        | 'questline';
     }
   | {
       /** A bonded NPC intervened at dusk on the player's behalf (T-106 bond hook). */
@@ -538,12 +564,16 @@ export type GameEvent =
         | 'active-contract-cleared'
         | 'manifest-contract-added'
         | 'disposition'
+        // T-1503: a reputation effect moved standing with `faction` by `amount`.
+        | 'reputation'
         | 'fragment-granted'
         | 'fragment-decoded';
       amount?: number;
       flag?: string;
       value?: FlagValue;
       npcId?: string;
+      /** T-1503: the galactic power moved by a `reputation` effect. */
+      faction?: FactionId;
       cargoType?: number;
       destination?: number;
       fragmentId?: string;
@@ -1036,8 +1066,9 @@ export interface CrewMember {
  * foundation-divergence note). READERS: actions/port.ts `portDuskIncome` (the
  * dusk-economy accrual day.ts endDay calls), actions/port.ts `resolvePortPurchase`
  * / `quotePort` (buy + preview), the wire (the purchase + income WireEntries), and
- * — via the port's content `alliance` tag — T-1503's Warlord Confederation
- * questline (the named FUTURE reader). Surfaced to the player by T-1405 (named).
+ * — via the port's content `alliance` tag — T-1503's alliance-reputation mover
+ * (`resolvePortPurchase` applies `PORT_PURCHASE_ALLIANCE_DELTA` to the port's
+ * aligned faction). Surfaced to the player by T-1405 (named).
  */
 export interface PortStake {
   /** Content core-system id (1–14) into PURCHASABLE_PORTS_BY_SYSTEM. The income /
@@ -1058,6 +1089,24 @@ export type PortEventFailReason =
   | 'not-purchasable'
   | 'already-owned'
   | 'insufficient-credits';
+
+/**
+ * T-1503 · The player's standing with each of the four galactic powers (PRD §8.1
+ * "your reputation … good and bad"; §2 the four powers). ALWAYS four keys (like
+ * StatBlock's always-present shape) so it round-trips deterministically. Values are
+ * clamped to [REPUTATION_MIN, REPUTATION_MAX] (content factions.ts). This is the
+ * NESTED state the T-1002 drift-protection was built to protect — the `.strict()`
+ * PlayerStateSchema + the `_covReputation` keyof guard keep an unknown/dropped key
+ * failing loudly instead of being silently stripped (the exact `player.reputation`
+ * bug named in schema.ts). FOUNDATION-ORIGINAL: the foundation carries the powers as
+ * setting but no rep mechanic (see content factions.ts divergence note).
+ */
+export interface FactionReputation {
+  league: number;
+  dragons: number;
+  confederation: number;
+  rebels: number;
+}
 
 export interface PlayerState {
   credits: number;
@@ -1085,10 +1134,21 @@ export interface PlayerState {
    *  READERS: actions/port.ts `portDuskIncome` (dusk-economy accrual, called by
    *  day.ts endDay); actions/port.ts `resolvePortPurchase` / `quotePort` (buy +
    *  preview); the wire (purchase + income WireEntries); carried through succession
-   *  (legacy.ts) like the debt/loan; T-1503's Warlord Confederation questline reads
-   *  it via each port's content `alliance` tag (named future reader); T-1405
-   *  surfaces it. */
+   *  (legacy.ts) like the debt/loan; T-1503's port-deal reputation mover reads
+   *  it via each port's content `alliance` tag (`resolvePortPurchase` applies
+   *  `PORT_PURCHASE_ALLIANCE_DELTA`); T-1405 surfaces it. */
   ports: PortStake[];
+  /** T-1503 · Four-faction standing — purchasable/earnable reputation (PRD §8.1).
+   *  A new persistent NESTED field (v6→v7 save migration + a nested round-trip
+   *  regression test — the T-1002 `player.reputation` bug class — ship with it).
+   *  Moved by ORGANIC play: patrol tribute/evasion + smuggling scans (combat.ts /
+   *  patrol.ts), port deals (port.ts), and the alliance-questline grants — all via
+   *  `reputation.ts` `applyReputation`. READERS: the questline `reputation` trigger
+   *  gates (storylets.ts `triggerMatches`); the questline `reputation` effects
+   *  (storylets.ts `applyEffects`); the cross-faction join shift; carried WHOLESALE
+   *  through succession (legacy.ts) like debt/ports; the UI standing readout
+   *  (format.ts `factionStanding`). */
+  reputation: FactionReputation;
   stats: StatBlock;
   tier: PowerTier;
   currentSystemId: number;

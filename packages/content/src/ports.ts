@@ -32,23 +32,28 @@
  *     modulates that income when a live regional era event covers the port;
  *   - the purchase resolver + preview (`actions/port.ts` `resolvePortPurchase` /
  *     `quotePort`) read `purchasePrice`;
- *   - the `alliance` tag names T-1503's Warlord Confederation questline as its
- *     FUTURE reader (Confederation-tagged ports are the ones that questline reads);
+ *   - the `alliance` tag is CONSUMED by T-1503's reputation movers: buying a stake
+ *     warms that port's aligned faction (engine `actions/port.ts` resolvePortPurchase
+ *     → `reputation.ts` `applyReputation`), and the Warlord-Confederation ports feed
+ *     the Confederation questline's rep the same way;
  *   - `name` is surfaced by T-1405's UI buy-preview / ledger pane.
  */
 
-/** The four galactic powers a core port can be aligned to. The `confederation`
- *  tag is the named hook T-1503's Warlord Confederation questline reads (which
- *  ports the Confederation cares about); the others are texture for T-1405's
- *  ledger display and future faction content. */
-export type PortAlliance = 'league' | 'dragons' | 'confederation' | 'rebels';
+import type { FactionId } from './factions.js';
+
+/** The four galactic powers a core port can be aligned to. ALIASED to the single
+ *  faction-id source (`factions.ts` `FactionId`) so a port's `alliance` tag and a
+ *  reputation faction id can never drift — T-1503's port-purchase rep mover reads
+ *  this exact `alliance` to pick which faction warms. */
+export type PortAlliance = FactionId;
 
 export interface PortStakeDefinition {
   /** Core system id (1–14) the port authority sits in. Matches STAR_SYSTEMS. */
   systemId: number;
   /** Display name for T-1405's buy-preview / ledger pane. */
   name: string;
-  /** Which galactic power the port is aligned to (T-1503 reads `confederation`). */
+  /** Which galactic power the port is aligned to. CONSUMED by T-1503: buying this
+   *  stake warms `alliance`'s reputation (engine port.ts → reputation.ts). */
   alliance: PortAlliance;
   /** Credits to buy the controlling stake, spent up front (a die-costed port
    *  action, resolver actions/port.ts `resolvePortPurchase` / preview `quotePort`). */

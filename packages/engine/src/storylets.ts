@@ -11,6 +11,7 @@ import type {
 import { renownRankIndex } from './deeds.js';
 import { check, spendDie } from './dice.js';
 import { applyDisposition } from './npc.js';
+import { applyReputation } from './reputation.js';
 import {
   decodeFragment,
   fragmentCount,
@@ -95,6 +96,16 @@ export function triggerMatches(state: GameState, storylet: StoryletDefinition): 
     if (!matchesNumber(npc.disposition, trigger.npc.disposition)) {
       return false;
     }
+  }
+  // T-1503: gate on the player's standing with a galactic power. The named reader
+  // of `player.reputation` — the `alliance.*` questlines gate ep2/ep3 on the rep
+  // their earlier episodes granted (the organic progression gate). The extra
+  // `faction` key is ignored by matchesNumber (it reads equals/gte/lte).
+  if (
+    trigger.reputation &&
+    !matchesNumber(state.player.reputation[trigger.reputation.faction], trigger.reputation)
+  ) {
+    return false;
   }
   for (const matcher of trigger.flags ?? []) {
     if (!matchesFlag(state.flags[matcher.name], matcher)) {
@@ -381,6 +392,25 @@ function applyEffects(
       effect: 'disposition',
       npcId: disposition.npcId,
       amount: npc.disposition - before,
+    });
+  }
+
+  // T-1503: move faction reputation (the questline grants + the terminal
+  // cross-faction join shift). Route through the shared mover (one clamp, one
+  // ReputationChanged emitter), then — mirroring the disposition/fuel pattern —
+  // report the ACTUAL applied delta, so a clamped change never overstates itself.
+  for (const rep of effects.reputation ?? []) {
+    const before = state.player.reputation[rep.faction];
+    applyReputation(state, rep.faction, rep.delta, 'questline', events);
+    const applied = state.player.reputation[rep.faction] - before;
+    events.push({
+      type: 'StoryletEffectApplied',
+      day: state.day,
+      storyletId,
+      choiceId,
+      effect: 'reputation',
+      faction: rep.faction,
+      amount: applied,
     });
   }
 

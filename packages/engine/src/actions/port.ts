@@ -1,7 +1,13 @@
-import { PURCHASABLE_PORTS_BY_SYSTEM, STAR_SYSTEMS, isPurchasablePort } from '@spacerquest/content';
+import {
+  PORT_PURCHASE_ALLIANCE_DELTA,
+  PURCHASABLE_PORTS_BY_SYSTEM,
+  STAR_SYSTEMS,
+  isPurchasablePort,
+} from '@spacerquest/content';
 import { GameEvent, GameState, PlayerAction, PortEventFailReason } from '../types.js';
 import { eraPortIncomeMultiplier } from '../era.js';
 import { spendDie } from '../dice.js';
+import { applyReputation } from '../reputation.js';
 
 /**
  * T-1307 · Ports as purchasable property (PRD §9). The purchase resolver, the
@@ -61,6 +67,12 @@ export function resolvePortPurchase(
   hand.spent[index] = true;
   nextState.player.credits -= def.purchasePrice;
   nextState.player.ports.push({ systemId, purchaseDay: day });
+
+  // T-1503 · A port deal warms the port's aligned faction (the content `alliance`
+  // tag — the ports.ts deferral, now consumed). This is the "port deals via T-1307"
+  // organic rep mover; the Warlord-Confederation ports feed Confederation standing
+  // exactly this way. No rng — behind the existing commit guard.
+  applyReputation(nextState, def.alliance, PORT_PURCHASE_ALLIANCE_DELTA, 'port-deal', events);
 
   events.push({
     type: 'PortEvent',

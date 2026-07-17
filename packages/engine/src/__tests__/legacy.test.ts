@@ -401,3 +401,24 @@ describe('T-1304 · loan survives succession (carried like the Guild debt)', () 
     expect(state.npcs.find((n) => n.id === 'npc-penny-wise')!.disposition).toBe(-5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// T-1503 · Four-faction reputation carries WHOLESALE through succession (PRD §8.1
+// "your reputation … good and bad" — standing, good and bad, attaches to the NAME
+// exactly like the NPC dispositions and the Guild debt). No reset.
+// ---------------------------------------------------------------------------
+describe('T-1503 · reputation survives succession (carried like dispositions/debt)', () => {
+  it('the four-faction standing carries EXACTLY to the successor', async () => {
+    const { applySuccession } = await import('../legacy.js');
+    const state = createInitialState(3);
+    state.player.credits = 4000;
+    // A mix of good and bad standing — a League friend, a Dragon enemy, etc.
+    state.player.reputation = { league: 9, dragons: -6, confederation: 3, rebels: -2 };
+    const before = structuredClone(state.player.reputation);
+
+    applySuccession(state, { originSystem: 1, interceptorId: 'anon-pirate-1' });
+
+    // Left EXACTLY as it was — no reset, no halving, no clamp toward neutral.
+    expect(state.player.reputation).toEqual(before);
+  });
+});

@@ -246,11 +246,21 @@ export function runDayLoopGolden(
 // Storylet, so the new dusk abandonment sweep (resolveAbandonedChains) never fires
 // here; the drift is purely the new eligible offers. Regenerated via
 // gen-day-loop-golden.ts.
+//
+// T-1503 re-pin: STATE hashes ONLY — both EVENT hashes are BYTE-IDENTICAL to their
+// pre-T-1503 values (539812…/8934d5…), which is the proof this task added no
+// behavioral/event change to the day loop. The four alliance-arc openers are
+// `eras:['VETERAN']`-gated and both golden scripts run in TOUR_ONE, so they never
+// offer here — no new StoryletOffered events. The sole drift is that
+// `createInitialState` now serializes the additive `PlayerState.reputation`
+// container ({0,0,0,0} throughout — no rep mover fired, and no rep mover draws rng
+// anyway), which moves the serialized-state hashes only. Regenerated via
+// gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '3b1859967333005efddbc309fbab4cce258d50348dd92da1c8d16e73f919d389';
+  '203124ab78e4cbb6fdcd1fee2d1c755fedf752ba83cdb85c7898d208a7e266d1';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   '539812ac31adcaa6c9355d850345479f5fa30849876a892aa835aa7156f4649d';
 export const STORYLET_GOLDEN_STATE_HASH =
-  'b926621c82f77585a26dda3d43806ad5932fb6ae0cbbcba9528253b2fc303158';
+  '54c950991dd1ec0ea2f1c7ce18d693bf75c442def5c7ca33476d26389951c205';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '8934d5c842eceb93c6e4ce3b3e1954deb9105d288df536e9332a6b52eebe9a90';

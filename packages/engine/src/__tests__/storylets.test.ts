@@ -140,6 +140,23 @@ const T1502_STORYLET_IDS = [
   'chain.the-broker.leverage',
 ] as const;
 
+// T-1503 · Alliance arcs (appended last): four 3-step questlines, one per galactic
+// power, gating their later episodes on faction reputation.
+const T1503_STORYLET_IDS = [
+  'alliance.league.writ',
+  'alliance.league.sweep',
+  'alliance.league.commission',
+  'alliance.dragons.challenge',
+  'alliance.dragons.circuit',
+  'alliance.dragons.crown',
+  'alliance.confederation.stake',
+  'alliance.confederation.holdings',
+  'alliance.confederation.charter',
+  'alliance.rebels.run',
+  'alliance.rebels.lane',
+  'alliance.rebels.compact',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -174,6 +191,10 @@ describe('storylet content validation', () => {
     for (const id of T1502_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1503 alliance arcs batch loaded and validated.
+    for (const id of T1503_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
@@ -182,7 +203,8 @@ describe('storylet content validation', () => {
         T1305_STORYLET_IDS.length +
         T1310_STORYLET_IDS.length +
         T1501_STORYLET_IDS.length +
-        T1502_STORYLET_IDS.length,
+        T1502_STORYLET_IDS.length +
+        T1503_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);
@@ -395,7 +417,9 @@ describe('storylet engine', () => {
     // Aldebaran-1 (system 2) port beat and T-1502 added Rattlesnake's chain opener
     // there — both systemIds-only (Rattlesnake's ep1 also gates on its
     // `chain.rattlesnake.resolved exists:false`, which is unset here) — so all
-    // three surface, in content order after the cargo match.
+    // three surface, in content order after the cargo match. (T-1503's Space Dragons
+    // alliance opener is also at Aldebaran-1, but it is `eras:['VETERAN']`-gated and
+    // readyState is TOUR_ONE, so it stays dormant here.)
     state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     const refreshed = refreshAvailableStorylets(state);
@@ -595,8 +619,10 @@ describe('storylet engine', () => {
     const state = readyState();
     state.player.currentSystemId = 1;
     // A Medicinals (type 4) run with no live era event: the T-1302 plague-relief
-    // storylet stays dormant (no state.eraEvent), so the three original
-    // eligibility matches remain exactly as before.
+    // storylet stays dormant (no state.eraEvent), so the three original eligibility
+    // matches remain exactly as before. (T-1503's Astro League opener anchors at
+    // Deneb-4/system 5 — a League port off the start — deliberately NOT Sun-3, so
+    // it never perturbs the day-1 Sun-3 board or the early-game encounter timing.)
     state.player.activeContract = { destination: 8, cargoType: 4, payment: 3000, pods: 10 };
 
     expect(eligibleStorylets(state).map((offer) => offer.storyletId)).toEqual([
