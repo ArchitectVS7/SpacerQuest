@@ -1,5 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+
+// T-1704 · Single source of truth for the in-app version stamp: read this package's
+// own `version` at config load and bake it into the `vite build` renderer via `define`.
+// Read with `readFileSync` (not a JSON `import ... with { type: 'json' }`) so `tsc -b`
+// typechecks this config without needing import-assertion support. Vitest resolves the
+// SEPARATE vitest.config.ts, so `__APP_VERSION__` is re-declared there from the same
+// source — see src/__tests__/version.test.ts, the named reader that asserts the stamp
+// never drifts from package.json.
+const pkgVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+  .version as string;
 
 // The engine and content packages are consumed as compiled workspace packages
 // (their package `main` points at dist/index.js). `predev`/`prebuild` build them
@@ -7,6 +18,7 @@ import react from '@vitejs/plugin-react';
 // `@spacerquest/*` specifiers through the npm-workspace symlinks.
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify(pkgVersion) },
   // T-1701 · Relative asset base so the SAME bundle loads under BOTH `file://` (the
   // packaged Electron shell loads index.html off disk, where absolute `/assets/...`
   // URLs 404) and the root-served web preview (`/` — relative URLs still resolve, so

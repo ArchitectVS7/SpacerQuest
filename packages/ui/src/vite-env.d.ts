@@ -11,3 +11,9 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// T-1704 · The build-time version stamp, baked by Vite `define` (vite.config.ts) from
+// this package's `version`. Declared here so `tsc -b` and the renderer both see the
+// global. Rendered in the always-visible bezel (App.tsx, `data-testid="app-version"`)
+// and asserted by src/__tests__/version.test.ts (the named reader).
+declare const __APP_VERSION__: string;

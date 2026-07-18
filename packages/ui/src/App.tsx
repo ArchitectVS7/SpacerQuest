@@ -1641,6 +1641,11 @@ function Bezel({ game, seed, children }: { game: GameState; seed: number; childr
         <div className="brand">
           <h1>Spacer Quest</h1>
           <span className="sub">Rimward</span>
+          {/* T-1704 · build-time version stamp, baked by Vite `define` from the ui
+              package version; visible on every screen incl. boot. */}
+          <span className="brand-version" data-testid="app-version">
+            v{__APP_VERSION__}
+          </span>
         </div>
         <div className="loc">
           DAY <b data-testid="day">{game.day}</b> · DOCKED AT <b>{systemName(p.currentSystemId)}</b>{' '}

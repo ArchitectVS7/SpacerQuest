@@ -1,6 +1,6 @@
 {
   "name": "@spacerquest/desktop",
-  "version": "1.0.0",
+  "version": "1.0.0-rc1",
   "private": true,
   "description": "Electron shell for Spacer Quest — Rimward (T-1701).",
   "main": "dist/main.js",

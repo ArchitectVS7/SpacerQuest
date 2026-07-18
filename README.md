@@ -26,3 +26,14 @@ ground-up redesign described in [`docs/PRD-REIMAGINED.md`](docs/PRD-REIMAGINED.m
    grind) is not fun in 2026, but its *systems* (scarce turns, fuel logistics,
    a living cast of rival spacers) are worth building a real game on. The
    Museum Edition is quarantined; *Rimward* begins.
+
+## Release
+
+*Rimward* is at **release candidate `v1.0.0-rc1`** (Steam, Windows + macOS). The release
+records live in [`docs/release/`](docs/release/):
+
+- [`checklist.md`](docs/release/checklist.md) — the master release checklist (agent-completed
+  items plus the user-gated Steam and signing decisions).
+- [`CREDITS.md`](docs/release/CREDITS.md) — font, audio, and library licenses.
+- [`press-one-pager.md`](docs/release/press-one-pager.md) — the press one-pager.
+- [`store-assets.md`](docs/release/store-assets.md) — the Steam store-page asset export list.

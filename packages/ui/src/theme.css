@@ -189,6 +189,15 @@ body {
   color: var(--amber);
   text-transform: uppercase;
 }
+/* T-1704 · build version stamp — small, muted, sits beside the sub-brand without
+   disturbing the masthead layout. */
+.brand-version {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  opacity: 0.4;
+  text-transform: lowercase;
+}
 .loc {
   color: var(--amber);
   font-size: 13px;

@@ -14,6 +14,9 @@ test('cockpit boots to a playable day', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Spacer Quest' })).toBeVisible();
   await expect(page.getByTestId('wire')).toBeVisible();
 
+  // T-1704 · the build-time version stamp is rendered in the always-visible bezel.
+  await expect(page.getByTestId('app-version')).toHaveText(/^v\d+\.\d+\.\d+/);
+
   // Dawn roll: five d20 dice in the hand.
   await expect(page.getByTestId('die')).toHaveCount(5);
 

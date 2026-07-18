@@ -31,6 +31,13 @@ asarUnpack:
 extraResources:
   - from: ../ui/dist-web
     to: dist-web
+  # T-1704 · The DEMO package ships its OWN appid file under the demo filename, which
+  # resolveSteamAppId() (main.ts) probes FIRST — so a demo build reports the demo depot
+  # appid while the full build (which ships only steam_appid.txt) is unaffected. Shipped
+  # value is the Spacewar dev sandbox `480`; writing the real demo depot appid into this
+  # file is the remaining user-gated step (checklist §2.2). The wiring is value-agnostic.
+  - from: steam_appid.demo.txt
+    to: steam_appid.demo.txt
 mac:
   target:
     - dmg

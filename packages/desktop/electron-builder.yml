@@ -54,6 +54,14 @@ asarUnpack:
 extraResources:
   - from: ../ui/dist-web
     to: dist-web
+  # T-1704 · Ship the Steam appid file INTO the package so resolveSteamAppId() (main.ts)
+  # finds it via `process.resourcesPath` — the first location it probes — instead of
+  # falling back to `process.cwd()`, which is unreliable for an installed app. The value
+  # currently shipped is the Spacewar dev sandbox `480`; provisioning the real full-game
+  # depot appid and writing it into this file is the remaining user-gated step (checklist
+  # §2.2). The wiring here is value-agnostic and works once the real appid is written in.
+  - from: steam_appid.txt
+    to: steam_appid.txt
 mac:
   target:
     - dmg
