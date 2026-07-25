@@ -256,11 +256,26 @@ export function runDayLoopGolden(
 // container ({0,0,0,0} throughout — no rep mover fired, and no rep mover draws rng
 // anyway), which moves the serialized-state hashes only. Regenerated via
 // gen-day-loop-golden.ts.
+// T-1504 re-derivation (ALL FOUR hashes): rank-up wire PROSE only. Every renown
+// rank now carries an authored `citation` (content deeds.ts) and the engine emits
+// it verbatim; before this task only CONQUEROR had one and the other nine fell
+// back to an engine-authored generic "Registry confirms Player as … after …"
+// line. Both scripts rank up (seed 1: COMMANDER/CAPTAIN/COMMODORE; seed 555:
+// COMMANDER), so every one of those WireEntry messages changes — moving the EVENT
+// hashes and, because the eventLog is serialized, the STATE hashes too.
+//
+// This is a CONTENT/PROSE change, not a behavioral one, and it was verified as
+// such rather than asserted: replaying both scripts after the change shows the
+// SAME earned deeds, the SAME `registry.matchCounts` keys (no key from the 26
+// newly-authored deeds appears — none of them match anything these scripts do),
+// the SAME storylets offered (the 8 new era tie-ins are all `eraEvent`-gated and
+// neither script has a live era event), and the same rank-up sequence. No rng
+// draw, count, or value moved. Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '203124ab78e4cbb6fdcd1fee2d1c755fedf752ba83cdb85c7898d208a7e266d1';
+  '5337bd4c706fc60c8cde23a266ed4ed4a000a252b5936c51ea7d0ff86fb8b8ce';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '539812ac31adcaa6c9355d850345479f5fa30849876a892aa835aa7156f4649d';
+  '6066dddd8ba313a9c1af4b012674823ab3fe779fdef3ef0fc3472f9cd0eba09c';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '54c950991dd1ec0ea2f1c7ce18d693bf75c442def5c7ca33476d26389951c205';
+  '3a169effd0a4f486429e49325ca4d92ac7c1ed41538383be50a5856b24b6a470';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '8934d5c842eceb93c6e4ce3b3e1954deb9105d288df536e9332a6b52eebe9a90';
+  '731da3fdc1ecb08b14cef59f209fa15a3b916f85467b6c4f2c0896a17c1b858f';

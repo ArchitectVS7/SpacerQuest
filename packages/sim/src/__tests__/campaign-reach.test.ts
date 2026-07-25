@@ -1,6 +1,8 @@
 import {
   CREW_ROLES,
   PURCHASABLE_PORTS_BY_SYSTEM,
+  RENOWN_DEED_THRESHOLDS,
+  RENOWN_RANKS,
   distance as systemDistance,
   isGatedDestination,
   isPurchasablePort,
@@ -25,6 +27,7 @@ import {
   type SimPolicy,
 } from '../index.js';
 import { driveCompetentCampaign } from './support/campaign-drivers.js';
+import { deedHunterPolicy } from './support/deed-hunter.js';
 
 // ---------------------------------------------------------------------------
 // The reachability + teeth acceptance sweeps. Split out of campaign.test.ts so
@@ -207,6 +210,73 @@ describe('T-1306 dice progression reachable through play', () => {
     // The hired role is a real dice-progression source.
     expect(CREW_ROLES.some((r) => r.id === hires[0].roleId)).toBe(true);
   }, 30000);
+});
+
+// ---------------------------------------------------------------------------
+// T-1504 · CONQUEROR reachability THROUGH PLAY. T-1308 authored the capstone
+// rank at a 30-deed threshold that sat ABOVE the then-17-deed slate — defined but
+// structurally unreachable — and explicitly deferred the reachability sweep to
+// T-1504, the task that fills the headroom. This is that sweep.
+//
+// Same shape and the same honesty bar as the T-1306 / T-1307 blocks above: the
+// driver is a POLICY (`deedHunterPolicy`, support/deed-hunter.ts) wrapping the
+// SHIPPED `traderPolicy` / `veteranPolicy` with the verbs they never use, run
+// through the real day loop. Nothing here sets `renownRank`, pushes an
+// `earned` record, or touches `matchCounts` — the rank is a pure function of the
+// deeds the engine's own `evaluateDeeds` credited.
+// ---------------------------------------------------------------------------
+describe('T-1504 Conqueror reachable through play', () => {
+  it('a long career earns 30+ deeds, tops the ladder, and files the capstone citation', () => {
+    // Seed pinned, not steered: a seeds 1..8 sweep of this exact driver reaches
+    // CONQUEROR on every seed (seed 1 crosses the threshold on day 49, seed 2 on
+    // day 101); seed 1 is simply the first. Swap in any other and the assertions
+    // below are untouched. 200 days is comfortably past the crossing on both.
+    const state = driveCompetentCampaign(deedHunterPolicy, 1, 200);
+
+    // (1) The top of the ladder, reached by earning deeds — not by fiat.
+    expect(renownRankIndex(state.player.registry.renownRank)).toBeGreaterThanOrEqual(
+      renownRankIndex('CONQUEROR'),
+    );
+    // (2) ...and the deed count that selects it was genuinely accumulated. The
+    // rank is `rankForDeedCount(earned.length)`, so this cannot be satisfied by a
+    // set rank.
+    expect(state.player.registry.earned.length).toBeGreaterThanOrEqual(
+      RENOWN_DEED_THRESHOLDS.CONQUEROR,
+    );
+
+    // (3) The crossing happened during the run: a real RenownRankUp was emitted.
+    const crossing = state.eventLog.find(
+      (event): event is Extract<typeof event, { type: 'RenownRankUp' }> =>
+        event.type === 'RenownRankUp' && event.newRank === 'CONQUEROR',
+    );
+    expect(crossing).toBeDefined();
+    expect(crossing?.deedCount).toBeGreaterThanOrEqual(RENOWN_DEED_THRESHOLDS.CONQUEROR);
+
+    // (4) READER ASSERTION — the capstone's authored `citation` reached the
+    // Galactic News Wire verbatim. This is what makes the content field
+    // load-bearing rather than decorative: the rank-up WireEntry IS the citation.
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === 'WireEntry' && event.message === RENOWN_RANKS.CONQUEROR.citation,
+      ),
+      'the CONQUEROR citation never reached the wire',
+    ).toBe(true);
+
+    // (5) The new verbs really were played (not merely available): the capstone
+    // is reached BECAUSE gambling / lending / exploration / property / crew now
+    // have deeds, which is the whole point of the T-1504 slate.
+    const earnedIds = new Set(state.player.registry.earned.map((deed) => deed.id));
+    for (const id of [
+      'dare_first',
+      'first_marker',
+      'first_chart',
+      'signed_the_crew',
+      'tour_one_cleared',
+    ]) {
+      expect(earnedIds.has(id), `${id} was never earned`).toBe(true);
+    }
+  }, 180000);
 });
 
 // ---------------------------------------------------------------------------

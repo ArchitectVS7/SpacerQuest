@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { DEEDS, RENOWN_DEED_THRESHOLDS, RENOWN_RANKS } from '@spacerquest/content';
-import { RENOWN_RANK_ORDER, evaluateDeeds, nextRankFor, rankForDeedCount } from '../deeds.js';
+import {
+  EVENT_PATHS,
+  RENOWN_RANK_ORDER,
+  STATE_PATHS,
+  evaluateDeeds,
+  nextRankFor,
+  rankForDeedCount,
+} from '../deeds.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { EarnedDeedState, GameEvent } from '../types.js';
 
@@ -307,31 +314,40 @@ describe('deed registry', () => {
       newRank: 'COMMANDER',
       deedCount: 1,
     });
+    // T-1504 READER ASSERTION (non-capstone rank): the rank-up wire is the
+    // reached rank's authored `citation` verbatim. Before T-1504 only CONQUEROR
+    // carried one and every other rank fell back to an engine-authored generic
+    // line; content now owns all ten and the fallback is gone.
     expect(events[2]).toMatchObject({
       type: 'WireEntry',
-      message: 'Registry confirms Player as Commander after First Manifest.',
+      message: RENOWN_RANKS.COMMANDER.citation,
     });
+    expect(events[2].type === 'WireEntry' && events[2].message).not.toContain(
+      'Registry confirms Player as Commander after',
+    );
   });
 
-  // T-1308 · Conqueror capstone.
-  it('exposes Conqueror as a defined-but-unreached capstone at current deed counts', () => {
+  // T-1308 · Conqueror capstone — UPDATED BY T-1504, which filled the headroom.
+  it('exposes Conqueror as a capstone the authored deed set can now reach', () => {
     // The rank ladder exposes Conqueror with a citation...
     expect(RENOWN_RANKS.CONQUEROR).toMatchObject({ id: 'CONQUEROR', label: 'Conqueror' });
-    expect(RENOWN_RANKS.CONQUEROR.citation).toBeTruthy();
-    expect(RENOWN_RANKS.CONQUEROR.citation?.length ?? 0).toBeGreaterThan(0);
+    expect(RENOWN_RANKS.CONQUEROR.citation.length).toBeGreaterThan(0);
 
-    // ...at a threshold above the current authored deed set, so it is out of
-    // reach today. Reachability THROUGH PLAY (a ≥30-deed set + long veteran sim)
-    // is proven by T-1504's sweep, not here.
+    // ...at the threshold T-1308 pinned. T-1308 authored it ABOVE the then-17
+    // deed set, so it was defined-but-unreachable and this test asserted the gap.
+    // T-1504 is the task that closes it: the authored slate now clears 30, so
+    // earning the set is enough to select CONQUEROR. Reachability THROUGH PLAY
+    // (a long veteran sim that actually climbs there) is proven in
+    // `packages/sim/src/__tests__/campaign-reach.test.ts`, not here.
     expect(RENOWN_DEED_THRESHOLDS.CONQUEROR).toBe(30);
-    expect(RENOWN_DEED_THRESHOLDS.CONQUEROR).toBeGreaterThan(DEEDS.length);
+    expect(DEEDS.length).toBeGreaterThanOrEqual(RENOWN_DEED_THRESHOLDS.CONQUEROR);
 
-    // Earning every current deed saturates at GIGA_HERO — never Conqueror.
-    expect(rankForDeedCount(DEEDS.length)).toBe('GIGA_HERO');
-    expect(rankForDeedCount(DEEDS.length)).not.toBe('CONQUEROR');
-
-    // But the ladder IS wired to select Conqueror once the headroom exists.
+    // Earning every authored deed now tops the ladder out at Conqueror.
+    expect(rankForDeedCount(DEEDS.length)).toBe('CONQUEROR');
+    // ...and the threshold itself is the exact crossing point: one deed short is
+    // still GIGA_HERO, so the capstone is earned, never rounded up to.
     expect(rankForDeedCount(RENOWN_DEED_THRESHOLDS.CONQUEROR)).toBe('CONQUEROR');
+    expect(rankForDeedCount(RENOWN_DEED_THRESHOLDS.CONQUEROR - 1)).toBe('GIGA_HERO');
   });
 
   it('reaching Conqueror fires the unique capstone wire plus a Registry entry', () => {
@@ -395,6 +411,161 @@ describe('deed registry', () => {
     expect(restored.player.registry.renownRank).toBe('CONQUEROR');
     expect(restored.eventLog).toContainEqual(rankUp);
     expect(restored.eventLog).toContainEqual(deedEarned);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1504 · The launch-quantity deed pass. These are the CONTENT-shape guards:
+// the count, the "no deed is silently unearnable" allowlist proof, the new-verb
+// spread (so the count can't be padded with more trade deeds), and the ten rank
+// citations. The play-level proofs — every deed earned in a 200-seed sweep, and
+// a long veteran sim reaching Conqueror — live in the sim package.
+// ---------------------------------------------------------------------------
+describe('T-1504 deed slate', () => {
+  it('ships at least 30 deeds with unique ids', () => {
+    expect(DEEDS.length).toBeGreaterThanOrEqual(30);
+    const ids = DEEDS.map((deed) => deed.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('every deed names an allowlisted event type and only allowlisted paths', () => {
+    // THE anti-dead-deed guard. A deed whose eventType is absent from EVENT_PATHS,
+    // or whose matcher names a path outside that type's list, makes `matchesEvent`
+    // return FALSE — the deed compiles, validates, renders in the Registry preview
+    // and can never be earned. Asserting the whole slate against the engine's own
+    // allowlist is the mechanical proof that no shipped deed is unearnable BY
+    // CONSTRUCTION (the 200-seed sim sweep proves it in play).
+    for (const deed of DEEDS) {
+      const allowed = EVENT_PATHS[deed.trigger.eventType];
+      expect(allowed, `${deed.id}: eventType '${deed.trigger.eventType}' is not allowlisted`).toBeDefined();
+      for (const matcher of deed.trigger.match ?? []) {
+        expect(
+          allowed,
+          `${deed.id}: match path '${matcher.path}' is not allowlisted for ${deed.trigger.eventType}`,
+        ).toContain(matcher.path);
+      }
+      for (const matcher of deed.trigger.state ?? []) {
+        expect(
+          STATE_PATHS as readonly string[],
+          `${deed.id}: state path '${matcher.path}' is not allowlisted`,
+        ).toContain(matcher.path);
+      }
+    }
+  });
+
+  it('covers each new verb — gambling, smuggling, lending, exploration, property, crew', () => {
+    // The count alone could be met with thirteen more trade deeds. This asserts
+    // the slate actually spans the verbs T-1303..T-1307 added, which is what the
+    // task asked for.
+    const has = (predicate: (deed: (typeof DEEDS)[number]) => boolean): boolean => DEEDS.some(predicate);
+    const ofType = (eventType: string) => (deed: (typeof DEEDS)[number]) =>
+      deed.trigger.eventType === eventType;
+
+    expect(has(ofType('HangoutEvent')), 'no gambling deed').toBe(true);
+    expect(has(ofType('LoanEvent')), 'no lending deed').toBe(true);
+    expect(has(ofType('PortEvent')), 'no property deed').toBe(true);
+    expect(has(ofType('CrewEvent')), 'no crew deed').toBe(true);
+    expect(
+      has(ofType('PoiDiscovered')) && has(ofType('SalvageRecovered')),
+      'no exploration deed',
+    ).toBe(true);
+    expect(
+      has(ofType('ContrabandScan')) ||
+        has(
+          (deed) =>
+            deed.trigger.eventType === 'TradeEvent' &&
+            (deed.trigger.match ?? []).some((m) => m.path === 'cargoType' && m.equals === 10),
+        ),
+      'no smuggling deed',
+    ).toBe(true);
+  });
+
+  it('every renown rank carries a distinct, non-empty citation', () => {
+    const citations = RENOWN_RANK_ORDER.map((rank) => RENOWN_RANKS[rank].citation);
+    for (const [index, rank] of RENOWN_RANK_ORDER.entries()) {
+      expect(citations[index], `${rank} has no citation`).toBeTruthy();
+      expect(citations[index].length).toBeGreaterThan(0);
+    }
+    expect(new Set(citations).size).toBe(RENOWN_RANK_ORDER.length);
+    // The capstone line is pinned by T-1308 and must not drift.
+    expect(RENOWN_RANKS.CONQUEROR.citation).toBe(
+      'Registry seals the Conqueror rank: the frontier keeps one name now, and it is Player.',
+    );
+  });
+
+  it('fires representative new-verb deeds from real engine event shapes', () => {
+    // Deterministic proof that the allowlist additions are LIVE: each fabricated
+    // event is the exact shape the corresponding resolver emits.
+    const fires = (event: GameEvent, deedId: string): boolean => {
+      const state = createInitialState(1504);
+      const events = evaluateDeeds(state, [event]);
+      return events.some((e) => e.type === 'DeedEarned' && e.deedId === deedId);
+    };
+
+    expect(
+      fires(
+        {
+          type: 'HangoutEvent',
+          day: 1,
+          venue: 'dare',
+          opponentId: 'npc-iron-vex',
+          wager: 300,
+          playerWon: true,
+          creditsDelta: 300,
+        },
+        'high_roller',
+      ),
+    ).toBe(true);
+    expect(
+      fires(
+        { type: 'LoanEvent', day: 1, kind: 'repaid', amountPaid: 250, outstanding: 0, cleared: true },
+        'paid_in_full',
+      ),
+    ).toBe(true);
+    expect(
+      fires({ type: 'PortEvent', day: 1, kind: 'purchased', systemId: 1, cost: 25000 }, 'port_authority'),
+    ).toBe(true);
+    expect(
+      fires(
+        { type: 'PoiDiscovered', day: 1, poiId: 'poi-1', poiType: 'derelict', systemId: 3, name: 'a hulk' },
+        'derelict_boarder',
+      ),
+    ).toBe(true);
+    expect(fires({ type: 'CrewEvent', day: 1, kind: 'hired', roleId: 'extra-die' }, 'signed_the_crew')).toBe(
+      true,
+    );
+    expect(
+      fires(
+        {
+          type: 'ContrabandScan',
+          encounterId: 'enc-1',
+          interceptorId: 'npc-1',
+          caught: false,
+          check: {
+            die: 10,
+            modifier: 2,
+            total: 12,
+            dc: 11,
+            success: true,
+            margin: 1,
+            nat20: false,
+            nat1: false,
+          },
+        },
+        'slipped_the_scan',
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses a Dare deed for a FAILED hangout action (no wager was ever laid)', () => {
+    // The gambling deeds guard on `wager`/`playerWon` precisely because a
+    // malformed or opponent-less VisitHangout still emits venue:'dare'. This is
+    // the discriminating case: a fail event must earn nothing.
+    const state = createInitialState(1505);
+    const events = evaluateDeeds(state, [
+      { type: 'HangoutEvent', day: 1, venue: 'dare', failReason: 'no-opponent' },
+    ]);
+    expect(events.filter((e) => e.type === 'DeedEarned')).toHaveLength(0);
   });
 });
 

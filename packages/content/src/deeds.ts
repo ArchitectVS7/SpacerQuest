@@ -1,3 +1,5 @@
+import { defineDeeds } from './deedValidation.js';
+
 export type DeedId = string;
 
 export type RenownRankId =
@@ -16,12 +18,17 @@ export type RenownRankId =
 export interface RenownRankDefinition {
   id: RenownRankId;
   label: string;
-  /** T-1308: optional period-voice rank-up line. When present, the engine's
-   *  rank-up machinery (engine `deeds.ts` `evaluateDeeds`) emits THIS text as the
-   *  WireEntry instead of the generic "Registry confirms Player as …" line — the
-   *  unique capstone moment. Only CONQUEROR carries one today, so every other
-   *  rank's wire stays byte-identical. T-1504 authors citations for all 10 ranks. */
-  citation?: string;
+  /** The period-voice rank-up line. The engine's rank-up machinery (engine
+   *  `deeds.ts` `evaluateDeeds`) emits THIS text verbatim as the rank-up
+   *  WireEntry — it IS the rank-up moment on the Galactic News Wire, read by the
+   *  UI wire ticker (`ui/format.ts` wireLines).
+   *
+   *  T-1308 introduced it as OPTIONAL, carried only by CONQUEROR, with the engine
+   *  falling back to a generic "Registry confirms Player as …" line for the other
+   *  nine. T-1504 authors all ten, so the field is now REQUIRED and the engine's
+   *  fallback branch is gone: content — not the engine — owns every rank's prose,
+   *  and the type makes a citation-less rank unrepresentable. */
+  citation: string;
 }
 
 // T-1308 · Conqueror capstone. DIVERGENCE from foundation (git ref f2f95fa9):
@@ -37,16 +44,69 @@ export interface RenownRankDefinition {
 // will make CONQUEROR its prerequisite (T-1101 already seals that crossing
 // behind `nemesis.crossing.unlocked`). It is deliberately NOT stubbed here so
 // no fake reader games the reader-consumption signal.
+// T-1504 · Rank citations for ALL TEN ranks. DIVERGENCE from foundation (git ref
+// f2f95fa9): foundation has no rank-up prose at all — it prints a bare rank name
+// off a point total — so these lines are authored Rimward content in the same
+// period voice as the storylets, not a port of any foundation string. They
+// complete the divergence recorded at the CONQUEROR block below: the ladder is
+// now ten named moments on the wire rather than one capstone plus nine copies of
+// a generic clerk's line. CONQUEROR's text is unchanged (byte-identical to
+// T-1308's) so the capstone assertion that pins it stays green.
 export const RENOWN_RANKS = {
-  LIEUTENANT: { id: 'LIEUTENANT', label: 'Lieutenant' },
-  COMMANDER: { id: 'COMMANDER', label: 'Commander' },
-  CAPTAIN: { id: 'CAPTAIN', label: 'Captain' },
-  COMMODORE: { id: 'COMMODORE', label: 'Commodore' },
-  ADMIRAL: { id: 'ADMIRAL', label: 'Admiral' },
-  TOP_DOG: { id: 'TOP_DOG', label: 'Top Dog' },
-  GRAND_MUFTI: { id: 'GRAND_MUFTI', label: 'Grand Mufti' },
-  MEGA_HERO: { id: 'MEGA_HERO', label: 'Mega Hero' },
-  GIGA_HERO: { id: 'GIGA_HERO', label: 'Giga Hero' },
+  LIEUTENANT: {
+    id: 'LIEUTENANT',
+    label: 'Lieutenant',
+    citation:
+      'Registry opens a file on Player, Lieutenant: licensed to haul, cleared to leave, and nothing yet written under the name.',
+  },
+  COMMANDER: {
+    id: 'COMMANDER',
+    label: 'Commander',
+    citation:
+      'Registry confirms Player as Commander — one deed on the board, and the port clerks have stopped asking how the name is spelled.',
+  },
+  CAPTAIN: {
+    id: 'CAPTAIN',
+    label: 'Captain',
+    citation:
+      'Registry raises Player to Captain. The file is thick enough now that the dock master reads the name before the manifest.',
+  },
+  COMMODORE: {
+    id: 'COMMODORE',
+    label: 'Commodore',
+    citation:
+      'Registry enters Player as Commodore — a record other captains ask after when they want to know who flew it.',
+  },
+  ADMIRAL: {
+    id: 'ADMIRAL',
+    label: 'Admiral',
+    citation:
+      'Registry seats Player at Admiral. The lanes between the fourteen know that transponder before it announces itself.',
+  },
+  TOP_DOG: {
+    id: 'TOP_DOG',
+    label: 'Top Dog',
+    citation:
+      'Registry stamps Player as Top Dog: no hand at these tables plays a longer game, and every dock from core to rim knows it.',
+  },
+  GRAND_MUFTI: {
+    id: 'GRAND_MUFTI',
+    label: 'Grand Mufti',
+    citation:
+      'Registry elevates Player to Grand Mufti — a name carrying the weight the old charters kept for whole fleets.',
+  },
+  MEGA_HERO: {
+    id: 'MEGA_HERO',
+    label: 'Mega Hero',
+    citation:
+      'Registry files Player as Mega Hero. The wire runs the name with no station tag attached; there is only the one.',
+  },
+  GIGA_HERO: {
+    id: 'GIGA_HERO',
+    label: 'Giga Hero',
+    citation:
+      'Registry writes Player as Giga Hero — a ledger the archivists copy out by hand before the originals wear through.',
+  },
   CONQUEROR: {
     id: 'CONQUEROR',
     label: 'Conqueror',
@@ -65,7 +125,11 @@ export const RENOWN_DEED_THRESHOLDS = {
   GRAND_MUFTI: 9,
   MEGA_HERO: 12,
   GIGA_HERO: 15,
-  // T-1308: above the current 17-deed set, so defined-but-unreached today.
+  // T-1308 authored this above the then-17-deed set, so it was defined-but-
+  // unreached. T-1504 fills the headroom (the deed slate below is > 30), so the
+  // capstone is now REACHABLE THROUGH PLAY — proven by the long-veteran sim in
+  // `packages/sim/src/__tests__/campaign-reach.test.ts`, which climbs to
+  // CONQUEROR without any test setting a rank or pushing an earned record.
   CONQUEROR: 30,
 } as const satisfies Record<RenownRankId, number>;
 
@@ -97,7 +161,7 @@ export interface DeedDefinition {
   trigger: DeedTrigger;
 }
 
-export const DEEDS: readonly DeedDefinition[] = [
+export const DEEDS: readonly DeedDefinition[] = defineDeeds([
   {
     id: 'first_manifest',
     title: 'First Manifest',
@@ -282,4 +346,342 @@ export const DEEDS: readonly DeedDefinition[] = [
       count: { gte: 1 },
     },
   },
-];
+
+  // =========================================================================
+  // T-1504 · The launch-quantity deed pass. APPENDED (never re-ordered): the
+  // engine sorts same-batch candidates by source-event index and then by
+  // DEFINITION INDEX, so inserting among the original 17 would churn the
+  // ordering of already-shipped deeds for no gain.
+  //
+  // DIVERGENCE from foundation (git ref f2f95fa9): there is no foundation
+  // number to diverge FROM — foundation has no Deeds/Registry system at all
+  // (it scores a point grind, the very thing PRD-REIMAGINED §8.2 replaces with
+  // "a Registry of Deeds, each with a citation"). Every deed below is therefore
+  // T-1504-original Rimward content in the storylets' period voice.
+  //
+  // THE ONE HARD RULE for anything added here: a deed matches ONLY against the
+  // engine's per-event-type path ALLOWLIST (`EVENT_PATHS` / `STATE_PATHS` in
+  // engine `deeds.ts`). A matcher naming a path outside that list makes the
+  // deed silently unearnable. `deeds.test.ts` asserts every deed's eventType
+  // and every matcher path against the allowlist, so a dead deed fails the
+  // build rather than shipping quietly.
+  //
+  // The slate deliberately spans the NEW VERBS (gambling, smuggling, lending,
+  // exploration, property) that had no registry presence, plus career headroom
+  // so CONQUEROR (30) is reachable through play with room to spare rather than
+  // demanding a near-perfect checklist.
+  // =========================================================================
+
+  // --- Gambling: the Spacer's Dare at the Hangout (T-1303, PRD §7) ----------
+  {
+    // The `wager` matcher is an EXISTENCE guard, not a size gate: a Dare that
+    // never happened (a malformed-die / no-opponent HangoutEvent) carries a
+    // `failReason` and NO wager, so `gte: 0` refuses it. Every other gambling
+    // deed below inherits the same guard through `playerWon` / `wager`.
+    id: 'dare_first',
+    title: 'First Dare',
+    citationTemplate: 'On day {day}, this captain sat down to a Spacer’s Dare and stayed.',
+    trigger: {
+      eventType: 'HangoutEvent',
+      match: [
+        { path: 'venue', equals: 'dare' },
+        { path: 'wager', gte: 0 },
+      ],
+    },
+  },
+  {
+    id: 'dare_won',
+    title: 'Took the Pot',
+    citationTemplate: 'On day {day}, the table paid out and the dealer counted it twice.',
+    trigger: {
+      eventType: 'HangoutEvent',
+      match: [
+        { path: 'venue', equals: 'dare' },
+        { path: 'playerWon', equals: true },
+      ],
+    },
+  },
+  {
+    // 250 sits mid-band between DARE_MIN_WAGER (25) and DARE_MAX_WAGER (500):
+    // a deliberate stake, not the house minimum, and not only the ceiling.
+    id: 'high_roller',
+    title: 'High Roller',
+    citationTemplate:
+      'On day {day}, a stake worth a hold of cargo rode one hand — and came back doubled.',
+    trigger: {
+      eventType: 'HangoutEvent',
+      match: [
+        { path: 'venue', equals: 'dare' },
+        { path: 'playerWon', equals: true },
+        { path: 'wager', gte: 250 },
+      ],
+    },
+  },
+  {
+    id: 'table_regular',
+    title: 'Table Regular',
+    citationTemplate:
+      'By day {day}, the Hangout dealers had stopped explaining the rules to this captain.',
+    trigger: {
+      eventType: 'HangoutEvent',
+      match: [
+        { path: 'venue', equals: 'dare' },
+        { path: 'wager', gte: 0 },
+      ],
+      count: { gte: 5 },
+    },
+  },
+
+  // --- Smuggling: Contraband cargo, patrol scans, and Ray's ledger ---------
+  {
+    id: 'contraband_run',
+    title: 'Contraband Run',
+    citationTemplate:
+      'On day {day}, a load no manifest describes reached its buyer and no one asked a question.',
+    trigger: {
+      eventType: 'TradeEvent',
+      match: [
+        { path: 'action', equals: 'deliver-cargo' },
+        { path: 'success', equals: true },
+        { path: 'cargoType', equals: 10 },
+      ],
+    },
+  },
+  {
+    id: 'slipped_the_scan',
+    title: 'Slipped the Scan',
+    citationTemplate:
+      'On day {day}, a patrol swept the hold, found paperwork, and waved this ship through.',
+    trigger: {
+      eventType: 'ContrabandScan',
+      match: [{ path: 'caught', equals: false }],
+    },
+  },
+  {
+    id: 'known_to_the_league',
+    title: 'Known to the League',
+    citationTemplate:
+      'On day {day}, a League scan found what the manifest denied, and the name went on a list.',
+    trigger: {
+      eventType: 'ContrabandScan',
+      match: [{ path: 'caught', equals: true }],
+    },
+  },
+  {
+    // Storylet-fed (the `beacon_keeper` pattern): advanced only by
+    // StoryletDeedProgress effects on Smuggler Ray's two fence choices
+    // (`fence.ray.sealed-pod` / `fence.ray.contraband-cargo`), never by a raw
+    // runtime event. Two authored routes in, so it is not hostage to one.
+    id: 'ray_s_ledger',
+    title: "Ray's Ledger",
+    citationTemplate:
+      'On day {day}, the Ghost Runner opened a page for this captain and wrote the name in pencil.',
+    trigger: {
+      eventType: 'StoryletDeedProgress',
+      count: { gte: 1 },
+    },
+  },
+
+  // --- Lending: the Penny Wise desk (T-1304, PRD §7.5) ---------------------
+  {
+    id: 'first_marker',
+    title: 'First Marker',
+    citationTemplate:
+      'On day {day}, Penny Wise advanced the credits and named the day they came due.',
+    trigger: {
+      eventType: 'LoanEvent',
+      match: [{ path: 'kind', equals: 'borrowed' }],
+    },
+  },
+  {
+    id: 'paid_in_full',
+    title: 'Paid in Full',
+    citationTemplate: 'On day {day}, the marker cleared and Penny Wise tore the page out herself.',
+    trigger: {
+      eventType: 'LoanEvent',
+      match: [
+        { path: 'kind', equals: 'repaid' },
+        { path: 'cleared', equals: true },
+      ],
+    },
+  },
+  {
+    id: 'bad_paper',
+    title: 'Bad Paper',
+    citationTemplate:
+      'On day {day}, the term ran out unpaid, and the collectors started asking after this hull.',
+    trigger: {
+      eventType: 'LoanEvent',
+      match: [{ path: 'kind', equals: 'defaulted' }],
+    },
+  },
+  {
+    // LOAN_MAX_PRINCIPAL (lending.ts) is 5000 and the resolver clamps to it, so
+    // this is the whole-ceiling advance: the deepest water the desk sells.
+    id: 'deep_water',
+    title: 'Deep Water',
+    citationTemplate:
+      'On day {day}, this captain borrowed to the ceiling and flew out owing every credit of it.',
+    trigger: {
+      eventType: 'LoanEvent',
+      match: [
+        { path: 'kind', equals: 'borrowed' },
+        { path: 'principal', gte: 5000 },
+      ],
+    },
+  },
+
+  // --- Exploration: off-lane charting and salvage (T-111a/b, PRD §7.2) -----
+  {
+    id: 'first_chart',
+    title: 'First Chart',
+    citationTemplate: 'On day {day}, this captain left the lane and put something new on a chart.',
+    trigger: {
+      eventType: 'PoiDiscovered',
+    },
+  },
+  {
+    id: 'derelict_boarder',
+    title: 'Boarder',
+    citationTemplate:
+      'On day {day}, a dead hull was boarded and stripped of everything worth carrying.',
+    trigger: {
+      eventType: 'PoiDiscovered',
+      match: [{ path: 'poiType', equals: 'derelict' }],
+    },
+  },
+  {
+    id: 'beacon_chaser',
+    title: 'Beacon Chaser',
+    citationTemplate: 'On day {day}, a beacon still calling into the dark finally got an answer.',
+    trigger: {
+      eventType: 'PoiDiscovered',
+      match: [{ path: 'poiType', equals: 'beacon' }],
+    },
+  },
+  {
+    id: 'cartographer',
+    title: 'Cartographer',
+    citationTemplate:
+      'By day {day}, five charted marks off the lanes bore this captain’s survey stamp.',
+    trigger: {
+      eventType: 'PoiDiscovered',
+      count: { gte: 5 },
+    },
+  },
+  {
+    // The derelict salvage band is 120-520 credits (exploration.ts POI_LOOT), so
+    // 400 is a rich board — reachable, never automatic.
+    id: 'rich_hulk',
+    title: 'Rich Hulk',
+    citationTemplate: 'On day {day}, one dead ship paid better than a season of honest freight.',
+    trigger: {
+      eventType: 'SalvageRecovered',
+      match: [{ path: 'amount', gte: 400 }],
+    },
+  },
+
+  // --- Property: port stakes (T-1307, PRD §9) -----------------------------
+  {
+    id: 'port_authority',
+    title: 'Port Authority',
+    citationTemplate:
+      'On day {day}, a controlling stake in a port authority changed hands, and this captain held it.',
+    trigger: {
+      eventType: 'PortEvent',
+      match: [{ path: 'kind', equals: 'purchased' }],
+    },
+  },
+  {
+    id: 'landlord',
+    title: 'Landlord',
+    citationTemplate:
+      'On day {day}, two ports levied their launch fees in this captain’s name.',
+    trigger: {
+      eventType: 'PortEvent',
+      match: [{ path: 'kind', equals: 'purchased' }],
+      count: { gte: 2 },
+    },
+  },
+  {
+    id: 'rentier',
+    title: 'Rentier',
+    citationTemplate:
+      'By day {day}, twenty dusks of other spacers’ launch fees had arrived without this captain lifting a finger.',
+    trigger: {
+      eventType: 'PortEvent',
+      match: [{ path: 'kind', equals: 'income' }],
+      count: { gte: 20 },
+    },
+  },
+
+  // --- Career headroom: crew, fat manifests, rim runs, tribute, signals ----
+  {
+    id: 'signed_the_crew',
+    title: 'Signed the Crew',
+    citationTemplate: 'On day {day}, a berth was filled and this ship stopped being a one-hander.',
+    trigger: {
+      eventType: 'CrewEvent',
+      match: [{ path: 'kind', equals: 'hired' }],
+    },
+  },
+  {
+    id: 'fat_manifest',
+    title: 'Fat Manifest',
+    citationTemplate:
+      'On day {day}, a single delivery paid out five thousand credits and the broker paid it smiling.',
+    trigger: {
+      eventType: 'TradeEvent',
+      match: [
+        { path: 'action', equals: 'deliver-cargo' },
+        { path: 'success', equals: true },
+        { path: 'payment', gte: 5000 },
+      ],
+    },
+  },
+  {
+    // Systems 15-20 are the Rim band (systems.ts). `rimward_bound` marks the
+    // first rim JUMP; this marks a delivery actually completed out there.
+    id: 'rim_runner',
+    title: 'Rim Runner',
+    citationTemplate:
+      'On day {day}, cargo was set down past the last patrol buoy and the buyer paid in hard credits.',
+    trigger: {
+      eventType: 'TradeEvent',
+      match: [
+        { path: 'action', equals: 'deliver-cargo' },
+        { path: 'success', equals: true },
+        { path: 'destination', gte: 15 },
+      ],
+    },
+  },
+  {
+    id: 'toll_paid',
+    title: 'Toll Paid',
+    citationTemplate:
+      'On day {day}, a demand was met in credits rather than fire, and both ships flew on.',
+    trigger: {
+      eventType: 'TributePaid',
+      match: [{ path: 'amount', gte: 1 }],
+    },
+  },
+  {
+    id: 'signal_hunter',
+    title: 'Signal Hunter',
+    citationTemplate:
+      'On day {day}, a fragment of something older than the Confederation entered this captain’s file.',
+    trigger: {
+      eventType: 'FragmentAcquired',
+    },
+  },
+  {
+    id: 'cold_case',
+    title: 'Cold Case',
+    citationTemplate:
+      'By day {day}, three separate signals said the same impossible thing, and the file stopped being a curiosity.',
+    trigger: {
+      eventType: 'FragmentAcquired',
+      count: { gte: 3 },
+    },
+  },
+]);

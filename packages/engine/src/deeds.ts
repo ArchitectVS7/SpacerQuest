@@ -10,7 +10,22 @@ import {
 } from '@spacerquest/content';
 import { GameEvent, GameState } from './types.js';
 
-const EVENT_PATHS: Readonly<Record<string, readonly string[]>> = {
+/**
+ * The per-event-type field ALLOWLIST a deed's matchers may name. A matcher whose
+ * path is not listed here makes `matchesEvent` return false, so the deed can
+ * never fire — which is why this list, and not content, is the single source of
+ * truth for "which deeds are earnable at all".
+ *
+ * EXPORTED (T-1504) so the engine deed test can assert every shipped deed's
+ * eventType and matcher paths against it — the mechanical proof that no deed is
+ * silently unearnable. Not re-exported from the package barrel: it is an internal
+ * mechanism, not a UI/sim surface.
+ *
+ * T-1504 added the new-verb event types (gambling / smuggling / lending /
+ * exploration / property / crew / tribute / signal fragments). Adding a type here
+ * grants nothing on its own — a deed must still name it.
+ */
+export const EVENT_PATHS: Readonly<Record<string, readonly string[]>> = {
   TradeEvent: [
     'action',
     'success',
@@ -35,9 +50,50 @@ const EVENT_PATHS: Readonly<Record<string, readonly string[]>> = {
   StatCheck: ['actor', 'stat', 'dc', 'result.success', 'result.total', 'actionContext'],
   ShipyardEvent: ['action', 'cost', 'component', 'tier', 'repairMode', 'quantity', 'equipment'],
   StoryletDeedProgress: ['storyletId', 'choiceId', 'deedId', 'amount'],
+  // --- T-1504 · new-verb event types ---------------------------------------
+  // T-1303 Spacers Hangout. NOTE for content authors: a FAILED hangout action
+  // (malformed die / absent opponent) emits the same `venue` with a `failReason`
+  // and no `wager`, so a gambling deed guards on `wager` (or `playerWon`) to
+  // require a Dare that actually happened.
+  HangoutEvent: ['venue', 'opponentId', 'wager', 'playerWon', 'creditsDelta', 'success'],
+  // T-1304 Penny Wise lending — one event type covering the whole loan
+  // lifecycle via `kind` ('borrowed' | 'accrued' | 'repaid' | 'defaulted').
+  LoanEvent: [
+    'kind',
+    'lender',
+    'principal',
+    'dailyRate',
+    'interest',
+    'amountPaid',
+    'outstanding',
+    'cleared',
+  ],
+  // T-1307 port stakes — `kind` splits the purchase from the dusk launch-fee
+  // income accrual.
+  PortEvent: ['kind', 'systemId', 'cost', 'income', 'portCount'],
+  // T-1306 crew.
+  CrewEvent: ['kind', 'roleId', 'cost', 'amount', 'berths', 'crewCount'],
+  // T-111a/b off-lane exploration.
+  PoiDiscovered: ['poiId', 'poiType', 'systemId', 'name'],
+  SalvageRecovered: ['poiId', 'systemId', 'amount'],
+  FragmentAcquired: ['fragmentId', 'source', 'fragmentCount', 'poiId'],
+  // T-1305 patrol contraband scans (emitted inside a Travel action's event
+  // batch, so they reach evaluateDeeds through the normal action path).
+  ContrabandScan: ['caught', 'interceptorId', 'encounterId'],
+  ContrabandConfiscated: [
+    'fine',
+    'creditsRemaining',
+    'confiscatedContract',
+    'confiscatedPod',
+    'encounterId',
+  ],
+  // T-1207 combat tribute.
+  TributePaid: ['amount', 'round', 'creditsRemaining', 'encounterId'],
 };
 
-const STATE_PATHS = ['player.ship.fuel'] as const;
+/** The allowlist for `trigger.state` matchers (read off GameState, not the
+ *  event). Exported alongside EVENT_PATHS for the same T-1504 test guard. */
+export const STATE_PATHS = ['player.ship.fuel'] as const;
 
 export const RENOWN_RANK_ORDER = Object.keys(RENOWN_RANKS) as RenownRankId[];
 
@@ -310,20 +366,21 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
         newRank: nextRank,
         deedCount,
       });
-      // T-1308: READER of a rank definition's optional `citation`. When the
-      // reached rank carries one (only CONQUEROR does today), that period-voice
-      // line IS the rank-up wire — the unique capstone moment. Every other rank
-      // has no citation and falls back to the generic line, so their wires stay
-      // byte-identical (no golden-hash fallout on reachable ranks).
+      // READER of a rank definition's `citation`: the reached rank's authored
+      // period-voice line IS the rank-up wire.
+      //
+      // T-1308 introduced this as an OPTIONAL field carried only by CONQUEROR,
+      // with a generic "Registry confirms Player as …" fallback for the other
+      // nine, and DEFERRED authoring the rest to T-1504. T-1504 consumed that
+      // deferral: content now guarantees a citation for every rank (the field is
+      // required, so a citation-less rank cannot be represented), and the
+      // fallback branch is GONE — no engine-authored prose remains here.
       const rankDef: RenownRankDefinition = RENOWN_RANKS[nextRank];
-      const rankCitation = rankDef.citation;
       emitted.push({
         type: 'WireEntry',
         day: state.day,
         kind: 'plain',
-        message:
-          rankCitation ??
-          `Registry confirms Player as ${RENOWN_RANKS[nextRank].label} after ${deed.title}.`,
+        message: rankDef.citation,
       });
     }
   }

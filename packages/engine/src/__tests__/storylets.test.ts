@@ -157,6 +157,22 @@ const T1503_STORYLET_IDS = [
   'alliance.rebels.compact',
 ] as const;
 
+// T-1504 · Era-event tie-in batch (appended last): at least one storylet per
+// authored era event, so every economic upheaval now delivers a beat to play.
+// The per-defId coverage (every ERA_EVENTS id has a tie-in) and the seeded
+// "it actually fires" sweep live in
+// `packages/sim/src/__tests__/era-storylet-coverage.test.ts`.
+const T1504_STORYLET_IDS = [
+  'era.blockade.tariff-clerk',
+  'era.blockade.cordon-run',
+  'era.plague.quarantine-line',
+  'era.dilithium.boomtown-berth',
+  'era.dilithium.claim-jumper',
+  'era.crackdown.checkpoint',
+  'era.famine.ration-queue',
+  'era.fuel-crisis.dry-depot',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -195,6 +211,10 @@ describe('storylet content validation', () => {
     for (const id of T1503_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1504 era-event tie-in batch loaded and validated.
+    for (const id of T1504_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
@@ -204,7 +224,8 @@ describe('storylet content validation', () => {
         T1310_STORYLET_IDS.length +
         T1501_STORYLET_IDS.length +
         T1502_STORYLET_IDS.length +
-        T1503_STORYLET_IDS.length,
+        T1503_STORYLET_IDS.length +
+        T1504_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);

@@ -1797,6 +1797,9 @@ export const STORYLETS = defineStorylets([
             // patrol scan DC (T-1305) and T-1503 Rebel rep.
             { name: 'fence.ray.dealt', value: true },
           ],
+          // T-1504: dealing with Ray is what writes you into his ledger — the
+          // storylet-fed `ray_s_ledger` smuggling deed (content deeds.ts).
+          deedProgress: [{ deedId: 'ray_s_ledger', amount: 1 }],
           disposition: [{ npcId: 'npc-smuggler-ray', delta: 1 }],
         },
       },
@@ -1842,6 +1845,9 @@ export const STORYLETS = defineStorylets([
           // 'fence.ray.dealt' === FENCE_REP_FLAG (contraband.ts); read by the
           // patrol scan DC (T-1305) and T-1503 Rebel rep.
           flags: [{ name: 'fence.ray.dealt', value: true }],
+          // T-1504: dealing with Ray is what writes you into his ledger — the
+          // storylet-fed `ray_s_ledger` smuggling deed (content deeds.ts).
+          deedProgress: [{ deedId: 'ray_s_ledger', amount: 1 }],
           disposition: [{ npcId: 'npc-smuggler-ray', delta: 1 }],
         },
       },
@@ -4029,6 +4035,375 @@ export const STORYLETS = defineStorylets([
         effects: {
           reputation: [{ faction: 'rebels', delta: -1 }],
           flags: [{ name: 'alliance.rebels.resolved', value: 'walked' }],
+        },
+      },
+    ],
+  },
+  // ==========================================================================
+  // T-1504 · ERA-EVENT TIE-IN BATCH (appended per the batch convention).
+  //
+  // T-1302 made `trigger.eraEvent` real; the six era events (content
+  // `eraEvents.ts`) were fully authored back at T-107. What was missing was
+  // STORY on top of the weather: exactly ONE storylet
+  // (`cargo.medicinals.plague-relief`) tied into exactly ONE of the six, so five
+  // economic upheavals passed by with nothing to play. This batch gives every
+  // era event at least one tie-in.
+  //
+  // GATING RULE (learned from the plague exemplar, which is the storylet sweep's
+  // long pole): each event's GUARANTEED tie-in gates on `defId` ONLY. For a
+  // SINGLE-SYSTEM event (plague / dilithium_rush / famine) `inAffectedSystem`
+  // demands the ship be standing on the one seeded epicentre, which is a knife
+  // edge; it is used only for the richer OPTIONAL tie-ins, and preferentially
+  // where the event is region-scoped (blockade / fuel_crisis cover a whole 14- or
+  // 6-system band).
+  //
+  // FOUNDATION (ref f2f95fa9): foundation has no storylets and no era events, so
+  // this whole batch is authored Rimward content — a deliberate divergence with
+  // nothing upstream to preserve. Credit/fuel deltas stay inside the band the
+  // existing storylets use (~50-500cr).
+  // ==========================================================================
+  {
+    id: 'era.blockade.tariff-clerk',
+    title: 'The Tariff Clerk',
+    prose:
+      'The Confederation cordon has made paperwork a growth industry. A tariff clerk works the dock queue with a slate and the patient look of a man who has all day, offering to certify your hull as cordon-cleared freight — for a consideration, and without ever asking what is in the hold.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'blockade' },
+    },
+    choices: [
+      {
+        id: 'buy-the-stamp',
+        label: 'Buy the stamp',
+        prose:
+          'Pay the consideration and take the certification. Inside a cordon a stamp is worth more than a gun, and it costs less to reload.',
+        requirements: { credits: { gte: 120 } },
+        effects: {
+          credits: -120,
+          reputation: [{ faction: 'confederation', delta: 1 }],
+          flags: [{ name: 'era.blockade.stamped', value: true }],
+        },
+      },
+      {
+        id: 'read-the-charter',
+        label: 'Read the charter back at him',
+        prose:
+          'Quote the freight articles the cordon was declared under until the clerk decides your hull is somebody else’s afternoon.',
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
+          flags: [{ name: 'era.blockade.outargued', value: true }],
+        },
+        failureEffects: {
+          credits: -60,
+          flags: [{ name: 'era.blockade.fined', value: true }],
+        },
+      },
+      {
+        id: 'queue-like-everyone',
+        label: 'Wait in the queue',
+        prose:
+          'Stand in line with every other hull and lose the hours honestly. The cordon does not care who you are, which is its one mercy.',
+        effects: {
+          flags: [{ name: 'era.blockade.queued', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'era.blockade.cordon-run',
+    title: 'Inside the Cordon',
+    prose:
+      'You are inside the cordon when it closes. Freight bound in here is fetching a premium nobody sane turns down, and a Confederation picket sits on the only clean vector out with its guns tracking whatever moves. A dock runner offers you the quiet lane instead — longer, colder, and unwatched.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'blockade', inAffectedSystem: true },
+    },
+    choices: [
+      {
+        id: 'take-the-quiet-lane',
+        label: 'Take the quiet lane',
+        prose:
+          'Burn the long way around the picket. Fuel is cheaper than an inspection, and nobody logs a hull they never see.',
+        effects: {
+          fuel: -25,
+          reputation: [{ faction: 'rebels', delta: 1 }],
+          flags: [{ name: 'era.blockade.ran_the_cordon', value: true }],
+        },
+      },
+      {
+        id: 'hail-the-picket',
+        label: 'Hail the picket and file honestly',
+        prose:
+          'Announce yourself, submit the manifest, and let the Confederation write you down as one of the compliant. It costs an hour and a little pride.',
+        effects: {
+          credits: 90,
+          reputation: [{ faction: 'confederation', delta: 1 }],
+          flags: [{ name: 'era.blockade.filed', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'era.plague.quarantine-line',
+    title: 'The Quarantine Line',
+    prose:
+      'Every port on the wire is running fever protocols now. A quarantine line stretches across the concourse — med-techs in sealed suits waving scanners over anyone who came in off an affected lane — and the queue moves at the speed of fear.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'plague' },
+    },
+    choices: [
+      {
+        id: 'work-the-line',
+        label: 'Work the line',
+        prose:
+          'Roll your sleeves up and help the med-techs move the queue. It is unpaid, it is hours you will not get back, and a tired woman in a sealed suit remembers your face.',
+        effects: {
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 2 }],
+          flags: [{ name: 'era.plague.helped_the_line', value: true }],
+        },
+      },
+      {
+        id: 'sell-the-filters',
+        label: 'Sell filters out of the hold',
+        prose:
+          'You have breathing filters aboard and the concourse has frightened people in it. The arithmetic completes itself.',
+        effects: {
+          credits: 220,
+          disposition: [{ npcId: 'npc-doc-salvage', delta: -2 }],
+          flags: [{ name: 'era.plague.profiteered', value: true }],
+        },
+      },
+      {
+        id: 'clear-the-scan',
+        label: 'Submit to the scan and move on',
+        prose:
+          'Take the scan, take the stamp, and take your ship out before the protocols tighten again.',
+        effects: {
+          flags: [{ name: 'era.plague.scanned', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'era.dilithium.boomtown-berth',
+    title: 'Boomtown Berth',
+    prose:
+      'The strike has emptied every hull for six systems in one direction. Berth fees have tripled, crews have quit mid-contract to go dig, and a berth master with a queue out the door will sell you a slot at a price he invented this morning.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'dilithium_rush' },
+    },
+    choices: [
+      {
+        id: 'pay-the-berth',
+        label: 'Pay the boomtown rate',
+        prose:
+          'Hand over the invented price. A berth in a rush is worth what the rush says it is worth, and arguing costs more.',
+        requirements: { credits: { gte: 150 } },
+        effects: {
+          credits: -150,
+          flags: [{ name: 'era.dilithium.berthed', value: true }],
+        },
+      },
+      {
+        id: 'sell-the-rumor',
+        label: 'Sell the berth master a rumor',
+        prose:
+          'Trade him what the wire says about the seam’s depth for the slot. Information moves faster than crystal, and he knows it.',
+        requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
+        successEffects: {
+          credits: 120,
+          flags: [{ name: 'era.dilithium.traded_rumor', value: true }],
+        },
+        failureEffects: {
+          flags: [{ name: 'era.dilithium.rumor_ignored', value: true }],
+        },
+      },
+      {
+        id: 'sleep-in-the-hold',
+        label: 'Sleep in the hold',
+        prose:
+          'Hold your slot in the outer ring and sleep aboard like every other hand who came late. It costs nothing but comfort.',
+        effects: {
+          flags: [{ name: 'era.dilithium.slept_aboard', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'era.dilithium.claim-jumper',
+    title: 'The Claim Jumper',
+    prose:
+      'A prospector corners you at the strike itself, three days unshaven and holding a survey slate like a weapon. Somebody has jumped his claim, he cannot get a hearing until the rush ends, and he will cut you in on the seam if you carry his filing out to a port that still has a functioning registrar.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'dilithium_rush', inAffectedSystem: true },
+    },
+    choices: [
+      {
+        id: 'carry-the-filing',
+        label: 'Carry the filing out',
+        prose:
+          'Take the slate. A man with a legitimate claim and no way to file it is the cheapest partner in the galaxy.',
+        effects: {
+          credits: 260,
+          reputation: [{ faction: 'rebels', delta: 1 }],
+          flags: [{ name: 'era.dilithium.carried_filing', value: true }],
+        },
+      },
+      {
+        id: 'sell-him-out',
+        label: 'Sell the filing to the jumper',
+        prose:
+          'The man who took the claim will pay more for the slate than the man who owns it. Nothing about a rush was ever fair.',
+        effects: {
+          credits: 400,
+          reputation: [{ faction: 'rebels', delta: -2 }],
+          flags: [{ name: 'era.dilithium.sold_out_prospector', value: true }],
+        },
+      },
+      {
+        id: 'wish-him-luck',
+        label: 'Wish him luck',
+        prose:
+          'Hand the slate back. You have a hold to fill and no wish to be named in a claims hearing that will outlive the seam.',
+        effects: {
+          flags: [{ name: 'era.dilithium.declined_filing', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'era.crackdown.checkpoint',
+    title: 'The Checkpoint',
+    prose:
+      'The League has put a checkpoint on the departure lane and is running every hull through it. The queue is quiet in the way queues get when everyone aboard is thinking about what is in their hold. A dock hand mentions, to nobody in particular, that the Ghost Runner keeps a name that gets ships waved through.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'patrol_crackdown' },
+    },
+    choices: [
+      {
+        id: 'use-rays-name',
+        label: 'Use the Ghost Runner’s name',
+        prose:
+          'Give the inspector the name the dock hand did not say out loud. The scanner powers down, the queue moves, and somewhere Smuggler Ray writes a line in a ledger you have now joined.',
+        effects: {
+          // SECOND acquisition route for the `ray_s_ledger` deed (the primary two
+          // are Ray's own fence storylets) — a smuggling deed with more than one
+          // way in, so the deed sweep is not hostage to a single trigger.
+          deedProgress: [{ deedId: 'ray_s_ledger', amount: 1 }],
+          reputation: [{ faction: 'league', delta: -1 }],
+          // 'fence.ray.dealt' === FENCE_REP_FLAG (contraband.ts); read by the
+          // patrol scan DC (T-1305) and T-1503's Rebel reputation.
+          flags: [{ name: 'fence.ray.dealt', value: true }],
+          disposition: [{ npcId: 'npc-smuggler-ray', delta: 1 }],
+        },
+      },
+      {
+        id: 'run-clean',
+        label: 'Run the checkpoint clean',
+        prose:
+          'Open every hatch and let them look. A crackdown is a bad week for the crooked and a slow afternoon for everyone else.',
+        effects: {
+          reputation: [{ faction: 'league', delta: 1 }],
+          flags: [{ name: 'era.crackdown.cleared', value: true }],
+        },
+      },
+      {
+        id: 'wait-it-out',
+        label: 'Wait the patrol out',
+        prose:
+          'Stay docked and let the inspectors work their way down the line to somebody else. It costs a day of nothing.',
+        effects: {
+          flags: [{ name: 'era.crackdown.waited', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'era.famine.ration-queue',
+    title: 'The Ration Queue',
+    prose:
+      'The crop failure has reached the concourse. A ration queue winds past the berths, thin and orderly and far too long, and the port authority is buying edible cargo at whatever the seller names — while a quartermaster quietly asks whether you would rather be paid in goodwill.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'famine' },
+    },
+    choices: [
+      {
+        id: 'name-your-price',
+        label: 'Name your price',
+        prose:
+          'The port is buying and hunger does not haggle. Take what the shortage is worth and do not look down the queue on your way out.',
+        effects: {
+          credits: 280,
+          reputation: [{ faction: 'league', delta: -1 }],
+          flags: [{ name: 'era.famine.profited', value: true }],
+        },
+      },
+      {
+        id: 'take-goodwill',
+        label: 'Take the goodwill instead',
+        prose:
+          'Let the quartermaster keep the credits and put your name on the manifest of people who helped. Goodwill spends slowly, but it spends everywhere.',
+        effects: {
+          reputation: [{ faction: 'league', delta: 2 }],
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
+          flags: [{ name: 'era.famine.gave_freely', value: true }],
+        },
+      },
+      {
+        id: 'walk-past',
+        label: 'Walk past the queue',
+        prose: 'You have a hold to fill and no food in it. The queue is not yours to fix.',
+        effects: {
+          flags: [{ name: 'era.famine.walked_past', value: true }],
+        },
+      },
+    ],
+  },
+  {
+    id: 'era.fuel-crisis.dry-depot',
+    title: 'The Dry Depot',
+    prose:
+      'The sabotage has emptied the region’s refineries and the depot is rationing what is left. The pumps run at double rate for anyone with credits and not at all for anyone without — and a stranded hauler two berths down is offering to sell her reserve tanks rather than sit here another week.',
+    repeat: 'never',
+    trigger: {
+      eraEvent: { defId: 'fuel_crisis' },
+    },
+    choices: [
+      {
+        id: 'buy-her-reserve',
+        label: 'Buy her reserve tanks',
+        prose:
+          'Pay the hauler what the depot would have charged and take the fuel straight off her hull. She gets a berth fee and a way home; you get range nobody rationed.',
+        requirements: { credits: { gte: 200 } },
+        effects: {
+          credits: -200,
+          fuel: 60,
+          flags: [{ name: 'era.fuel-crisis.bought_reserve', value: true }],
+        },
+      },
+      {
+        id: 'split-the-tanks',
+        label: 'Split the difference with her',
+        prose:
+          'Take half her reserve and leave her the other half. Neither of you gets far, but neither of you sits here a week.',
+        effects: {
+          fuel: 25,
+          disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
+          flags: [{ name: 'era.fuel-crisis.split_tanks', value: true }],
+        },
+      },
+      {
+        id: 'ration-with-everyone',
+        label: 'Take the rationed pour',
+        prose:
+          'Queue at the depot like the rest of the region and take what the ration allows. It is thin, it is slow, and it costs you nothing but the wait.',
+        effects: {
+          flags: [{ name: 'era.fuel-crisis.rationed', value: true }],
         },
       },
     ],
