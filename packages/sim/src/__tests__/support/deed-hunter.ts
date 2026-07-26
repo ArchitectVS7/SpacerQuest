@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------------------
-// T-1504 · The deed-hunter policy — shared by the two play-level acceptances:
-//   - `deed-coverage.test.ts`   — every authored deed is earned at least once
-//                                 across a seed sweep ("no deed unearnable");
-//   - `campaign-reach.test.ts`  — a long veteran sim reaches CONQUEROR (30 deeds)
-//                                 through play.
+// T-1504 · The deed-hunter policy. Its ONLY consumer is `deed-coverage.test.ts`
+// (T-1504d), which carries both play-level acceptances off a single drive:
+//   - `it('every authored deed is earned through play …')`  — no deed unearnable;
+//   - `it('a long veteran career reaches CONQUEROR …')`      — the capstone rank
+//                                                              climbed by playing.
 // Both need the same thing: a competent career that ALSO exercises the verbs the
 // shipped `veteranPolicy` never touches (gambling, lending, exploration, ports,
 // crew, smuggling). It lives here rather than being copy-pasted into both specs.
@@ -22,6 +22,15 @@
 // `crewHiringVeteranPolicy` in campaign-reach.test.ts, which established this
 // wrap-don't-edit precedent). So the extra verbs ride ONLY on dice the veteran
 // left unspent, and the shipped policy is untouched.
+//
+// !! THE PINNED SEEDS DEPEND ON THIS FILE, BYTE FOR BYTE !!
+// `deed-coverage.test.ts` pins seeds 2 and 3 and quotes measured day numbers
+// (CONQUEROR on day 102, the last deed on day 286). Those are a function of the
+// exact action stream this policy emits. ANY change that alters which actions
+// are returned, in which order, or on which dice invalidates every pin and every
+// day number in that file's comments — re-run the `.scratch/` 200-seed hunt and
+// re-pin, and say so in the Delivered note. Comment edits and additive exports
+// that do not touch the returned actions are safe.
 // ---------------------------------------------------------------------------
 import {
   CREW_ROLES,
@@ -36,6 +45,48 @@ import {
 import { crewCapacity, type GameState, type PlayerAction } from '@spacerquest/engine';
 import type { StoryletDefinition } from '@spacerquest/content';
 import { traderPolicy, veteranPolicy, type SimPolicy } from '../../index.js';
+
+/**
+ * Every deed id this policy STEERS FOR — i.e. every id it passes to `need(…)`.
+ *
+ * WHY IT EXISTS: content's `DeedId` is `export type DeedId = string`, so a deed
+ * id written inline here is an unchecked literal. Rename a deed in
+ * `content/deeds.ts` and this policy would silently stop steering for it — the
+ * errand it gates just never fires again — while `deed-coverage.test.ts` either
+ * still passes for unrelated reasons or fails somewhere opaque. Listing the ids
+ * once, and typing `need` to this union (below), turns a rename into a COMPILE
+ * error here; `deed-coverage.test.ts` additionally asserts every entry is a real
+ * authored deed, which catches a rename that changes only the content side.
+ *
+ * The values are exactly the literals that were inline before — this list adds a
+ * check, it does not change which ids the policy tests.
+ */
+export const HUNTER_TARGET_DEED_IDS = [
+  // Smuggling (T-1305): the fence ledger, and the patrol scan survived dirty.
+  'ray_s_ledger',
+  'slipped_the_scan',
+  // Gambling (T-1303).
+  'dare_first',
+  'dare_won',
+  'high_roller',
+  'table_regular',
+  // Lending (T-1304).
+  'first_marker',
+  'deep_water',
+  'bad_paper',
+  'paid_in_full',
+  // Exploration (T-111a/b).
+  'first_chart',
+  'derelict_boarder',
+  'beacon_chaser',
+  'cartographer',
+  'rich_hulk',
+  'signal_hunter',
+  'cold_case',
+] as const;
+
+/** The ids `need(…)` accepts. A typo or a stale rename fails the build. */
+type HunterDeedId = (typeof HUNTER_TARGET_DEED_IDS)[number];
 
 /** Dare stake that clears the `high_roller` deed's 250 floor while staying inside
  *  the content wager band (the resolver clamps to DARE_MAX_WAGER anyway). */
@@ -152,7 +203,10 @@ function advancesAChain(choice: StoryletDefinition['choices'][number]): boolean 
  * credit and fuel costs, and enough shifted action indices, that the marker is
  * never banked. One beat a day walks the chains without derailing the trade run.
  */
-function pickOffer(state: GameState, need: (deedId: string) => boolean): PlayerAction | undefined {
+function pickOffer(
+  state: GameState,
+  need: (deedId: HunterDeedId) => boolean,
+): PlayerAction | undefined {
   let fallback: PlayerAction | undefined;
   for (const offer of state.storylets.available) {
     // STAY DIRTY: once Ray's ledger is written, fencing the next sealed pod (or
@@ -217,7 +271,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
   const actions = [...base];
   const used = usedDice(actions);
   const earned = new Set(state.player.registry.earned.map((deed) => deed.id));
-  const need = (id: string): boolean => !earned.has(id);
+  const need = (id: HunterDeedId): boolean => !earned.has(id);
 
   const take = (): number | undefined => {
     const die = freeDie(state, used);

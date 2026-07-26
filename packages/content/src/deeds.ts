@@ -48,9 +48,12 @@ export interface RenownRankDefinition {
 // competent ~300-day run reaches it. PRD-REIMAGINED §5.2/§9 name "Conqueror" as
 // the CAREER CAPSTONE and win over foundation, so this 10th rank is authored
 // above GIGA_HERO with a deed threshold (30) that sits in the headroom T-1504a
-// fills (see the threshold's own comment below for how far that proof reaches
-// today, and which task owns the rest). CONQUEROR's two intended readers: (a) the unique capstone
-// wire moment — DELIVERED NOW in engine `deeds.ts` via the `citation` branch;
+// fills (see the threshold's own comment below for the measured day a real
+// career crosses it). CONQUEROR's two intended readers: (a) the unique capstone
+// wire moment — DELIVERED in engine `deeds.ts` via the `citation` branch, and as
+// of T-1504d proven to fire FROM PLAY rather than only from a hand-constructed
+// state (`packages/sim/src/__tests__/deed-coverage.test.ts` asserts this rank's
+// citation reaches the wire on the same day the pinned career's rank-up lands);
 // (b) the Nemesis-crossing stake gate — a DOCUMENTED CONTRACT for T-1505, which
 // will make CONQUEROR its prerequisite (T-1101 already seals that crossing
 // behind `nemesis.crossing.unlocked`). It is deliberately NOT stubbed here so
@@ -164,12 +167,18 @@ export const RENOWN_DEED_THRESHOLDS = {
   GIGA_HERO: 15,
   // T-1308 authored this above the then-17-deed set, so it was defined-but-
   // unreached. T-1504a fills the headroom (the deed slate below is > 30), so the
-  // capstone is now STRUCTURALLY reachable: earning the authored slate selects
+  // capstone is STRUCTURALLY reachable: earning the authored slate selects
   // CONQUEROR, asserted in `packages/engine/src/__tests__/deeds.test.ts` (which
-  // also proves the crossing emits this rank's citation verbatim). Reachability
-  // THROUGH PLAY — a long veteran campaign that actually climbs here without any
-  // test setting a rank or pushing an earned record — is the seed-sweep proof
-  // T-1504d owns; T-1504a's scope is authoring, validation and unit tests.
+  // also proves the crossing emits this rank's citation verbatim).
+  //
+  // T-1504d DELIVERED the remaining half — reachability THROUGH PLAY, with no
+  // test setting a rank or pushing an earned record. `packages/sim/src/__tests__/
+  // deed-coverage.test.ts` drives `deedHunterPolicy` for 300 days on pinned seed
+  // 2: the career crosses this threshold on DAY 102 (a real `RenownRankUp` in the
+  // event log, carrying this rank's citation on the wire), and goes on to earn
+  // all 44 authored deeds, the last on day 286. A recorded 200-seed sweep behind
+  // that pin earns every deed at least once; see the file's SWEEP PROVENANCE
+  // block. So this number is not merely representable — it is arrived at.
   CONQUEROR: 30,
 } as const satisfies Record<RenownRankId, number>;
 

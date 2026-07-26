@@ -258,14 +258,15 @@ describe('T-1306 dice progression reachable through play', () => {
   }, 30000);
 });
 
-// T-1504a NOTE — the CONQUEROR reachability sweep that an earlier ungated draft
-// appended here has been REMOVED, deferred to T-1504d (which owns every deed
-// coverage proof, and whose own acceptance caps committed suite growth). Its
-// driver, `support/deed-hunter.ts`, is deliberately left in the tree for T-1504d
-// to finish; T-1504a's scope is authoring + validation + per-deed unit tests only.
-// The unit-level capstone proof (the slate clears the 30-deed threshold, and the
-// crossing emits the CONQUEROR citation verbatim) lives in
-// `packages/engine/src/__tests__/deeds.test.ts`.
+// T-1504d NOTE — T-1504a's deferral is DISCHARGED. The CONQUEROR reachability
+// proof now lives in `deed-coverage.test.ts`, which drives `support/deed-hunter.ts`
+// on pinned seed 2 for 300 days: the career crosses the 30-deed threshold on day
+// 102 (a real `RenownRankUp` in the log, plus the capstone citation on the wire)
+// and earns all 44 authored deeds by day 286. It is deliberately NOT re-run here —
+// that would cost a second ~9s campaign for a fact already asserted, against
+// T-1504d's own committed-runtime cap. The unit-level capstone proof (the slate
+// clears the threshold, and the crossing emits the CONQUEROR citation verbatim
+// from a constructed state) remains in `packages/engine/src/__tests__/deeds.test.ts`.
 
 // ---------------------------------------------------------------------------
 // T-1104 · Rim & contraband contract economy — the sim-side acceptance. Before
