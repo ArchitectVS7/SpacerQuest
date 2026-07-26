@@ -12,6 +12,7 @@ import {
   YARD_COMPONENT_TIER_PRICES,
   distance as systemDistance,
   isGatedDestination,
+  type PowerTier,
   type RenownRankId,
 } from '@spacerquest/content';
 import {
@@ -244,6 +245,222 @@ export interface HangoutPlayStats {
   failedVisits: number;
 }
 
+// ---------------------------------------------------------------------------
+// T-1603a (four blocks) · Balance-baseline instrumentation. Same construction as
+// the T-1601a/T-1601b blocks above and for the same reason: these are DERIVED,
+// UNPERSISTED report fields, folded out of the typed `GameEvent` stream (plus,
+// where events cannot say it, pre-action state samples). **No `GameState` field
+// is added**, so standing constraint 3's save-migration + round-trip obligation
+// does not apply; the report's JSON survival rides the existing byte-identical
+// `reportToJson` determinism tests and is additionally asserted directly in
+// `packages/sim/src/__tests__/balance-sweep.test.ts`.
+//
+// Design choice that matters for T-1603b/T-1603c: the two big blocks emit RAW
+// RECORDS, not pre-bucketed aggregates. Bucketing (tier parity, prepared/unprepared,
+// per-route EV) lives in the pure `./balance/aggregate.js` module, so the tuning
+// passes can re-cut the same sweep output without paying for another sweep.
+//
+// READERS (constraint 7) for all four: `packages/sim/src/balance/sweep.ts` (the
+// committed re-runnable sweep) via `summarizeReport`/`aggregate` in
+// `packages/sim/src/balance/aggregate.ts`, the assertions in
+// `packages/sim/src/__tests__/balance-sweep.test.ts`, and the CLI JSON that
+// `reportToJson` emits for `npm run sim`.
+// ---------------------------------------------------------------------------
+
+/** T-113b's day-30 Tour One resolution, as the run actually landed it — folded
+ *  from the single `TourOneResolved` event (engine `day.ts`, dusk of day 30).
+ *
+ *  NOTE the distinction from the report's existing `debtClearedDay`: that is the
+ *  FIRST day the debt hit zero (which may be day 12, or day 47), while
+ *  `outcome` is the day-30 BRANCH the guild actually took. The baseline memo
+ *  reports both — they answer different questions ("how fast can a competent
+ *  spacer clear it?" vs "did the marker get paid on time?"). */
+export interface TourOneOutcomeStats {
+  /** `TourOneResolved.day` — 30 by construction, recorded rather than assumed. */
+  resolvedDay: number;
+  outcome: 'cleared' | 'unpaid';
+  /** Debt still owed at resolution — 0 on the cleared path. */
+  debtOutstanding: number;
+}
+
+/** How a tracked encounter ended. The first five are the engine's own
+ *  `EncounterResolved.resolution` union, passed through verbatim. The two extras
+ *  are the terminations that emit no `EncounterResolved` at all:
+ *   - 'ship-lost'   — a `ShipLost{reason:'combat-defeat'}` killing blow (combat.ts
+ *                     returns before emitting a resolution).
+ *   - 'unresolved'  — the encounter was still live when the run's horizon ran out,
+ *                     or it died with the ship on the life-support dusk path
+ *                     (`day.ts` nulls `state.encounter` after succession without a
+ *                     resolution event). Never silently dropped: an unresolved
+ *                     record is still pushed, so encounter counts stay honest. */
+export type CombatEncounterResolution =
+  | 'escaped'
+  | 'talked-down'
+  | 'defeated'
+  | 'interceptor-fled'
+  | 'interceptor-escaped'
+  | 'ship-lost'
+  | 'unresolved';
+
+/**
+ * T-1603a · One record per encounter the run entered — the raw material for the
+ * memo's "combat EV by tier parity" target and for T-1603c's acceptance ("combat
+ * EV negative below tier parity without preparation").
+ *
+ * MEASUREMENT DESIGN — why the cost side is itemised instead of taken as a purse
+ * delta. The obvious construction, `credits(close) - credits(open)`, is
+ * CONTAMINATED: an encounter opens mid-jump and stays open for one or more whole
+ * days, during which a delivery pays out, a port earns, a storylet grants and a
+ * dare wins — none of which the fight caused. (Measured on seed 1 / fighter /
+ * day 1: a purse delta of +1,700 that is, to the credit, the delivery payment on
+ * a contract signed before the interception.) So the EV `./balance/aggregate.js`
+ * exports is built from the credit movements the engine attributes to the
+ * encounter BY EVENT — tribute, contraband fine, combat fuel, repair, and the
+ * succession haircut — and the raw `creditsDelta` is kept only as a labelled
+ * diagnostic beside it.
+ *
+ * The second consequence, and a headline finding for T-1603c: the engine pays
+ * NOTHING for winning a fight. There is no bounty, no salvage, no wreck loot
+ * (`resolveEncounter` moves disposition and reputation and nothing else; the only
+ * salvage table in the game is exploration's). An encounter is therefore pure
+ * cost, and `combatEv` is ≤ 0 by construction — so "combat EV negative below tier
+ * parity" is not a discriminating test on its own. What discriminates is the
+ * MAGNITUDE by parity bucket and by preparation, plus `travelCompleted` (an
+ * encounter that ends in a flight also costs the trip).
+ */
+export interface CombatEncounterRecord {
+  /** `EncounterState.id`, so a record can be traced back to its event run. */
+  encounterId: string;
+  /** Day the encounter opened. */
+  day: number;
+  /** `EncounterStarted.encounter.interceptor.tier` (1..5). */
+  interceptorTier: PowerTier;
+  /** `state.player.tier` sampled at the encounter's open. Tier is STATE, not an
+   *  event payload (`tier.ts` `syncPlayerTier` keeps it live at every chokepoint),
+   *  so it can only be measured here — the same justification the T-1601a
+   *  `upgradedVolleys` sample carries. */
+  playerTier: PowerTier;
+  /** The fit was better than a junker's when the encounter opened:
+   *  `weaponVolleyDamage(pre-action ship) > 1`. By the T-1205 baseline-subtraction
+   *  invariant the junker's volley damage is exactly 1, so `> 1` means a bought
+   *  weapon tier / STAR_BUSTER was actually in play. This is the memo's
+   *  "prepared" axis. */
+  prepared: boolean;
+  /** Highest `EncounterRound.round` observed (0 if the encounter opened and ended
+   *  without a single resolved round). */
+  rounds: number;
+  /** DIAGNOSTIC ONLY — not an EV input. Credits at close minus credits at open
+   *  (open sampled AFTER the batch that triggered the encounter, so the jump's own
+   *  fuel bill belongs to the route). Contaminated by whatever else paid out while
+   *  the encounter was open; see the block comment above. The memo reports it
+   *  beside the attributed cost precisely to show that gap. */
+  creditsDelta: number;
+  /** Σ `TributePaid.amount` — the talk-down price actually handed over (T-1202
+   *  margin-shaved, so this is the paid figure, not `TributeDemanded.amount`). */
+  tributeCredits: number;
+  /** Σ `ContrabandConfiscated.fine` — a patrol scan only ever fires inside an
+   *  encounter (`patrol.ts`), so the fine is an encounter cost. */
+  fineCredits: number;
+  /** Credits burned by the succession haircut when the fight took the ship:
+   *  `legacy.ts` halves the purse, so this is read off
+   *  `LegacySuccession.inheritedCredits` (the surviving half). Exact for an even
+   *  purse and low by 1 for an odd one — the floor's remainder is unrecoverable
+   *  from the event, and a 1-credit bias on a five-figure loss is noise. */
+  successionCredits: number;
+  /** The interrupted jump completed. False only for 'escaped' (the PLAYER fled —
+   *  `resolveEncounter` puts the ship back at the origin) and for the unresolved
+   *  terminations. The opportunity cost of a fight the player ran from is a
+   *  delivery that did not happen, which no credit figure captures. */
+  travelCompleted: boolean;
+  /** Σ `EncounterRound.fuelUsed` while the encounter was open — the
+   *  RUN_FUEL_COST/FIGHT_FUEL_COST burn the fight itself charged.
+   *  DOUBLE-COUNT TRAP, checked in `actions/combat.ts`: every `CombatEvent` is
+   *  emitted alongside an `EncounterRound` for the SAME round carrying the SAME
+   *  `fuelUsed`, so summing both would double the burn. `EncounterRound` is the
+   *  one counted because it is also emitted on the paths that have no
+   *  `CombatEvent` (the talk-tribute branches). */
+  fuelUnits: number;
+  /** `fuelUnits` × the local fuel price at the encounter's open — the burn priced
+   *  in credits so it can be subtracted from the payout. */
+  fuelCredits: number;
+  /** Σ `ComponentDamaged.amount` × the damaged component's `strength` on the
+   *  PRE-action ship. ENGINE-ANCHORED, not invented: `actions/shipyard.ts`
+   *  `repairCost` in 'all' mode charges `(9 - condition) * strength`, i.e. exactly
+   *  `strength` credits per condition point restored. This is therefore the price
+   *  of undoing the damage the fight did, which is what makes the EV honest rather
+   *  than a payout-only number. (Mitigated points are excluded automatically:
+   *  `ComponentDamaged.amount` is already net of shields.) */
+  repairCredits: number;
+  resolution: CombatEncounterResolution;
+  /** True iff `resolution === 'ship-lost'` — the career-ending branch, kept as its
+   *  own boolean so the death-rate fold does not have to string-match. */
+  shipLost: boolean;
+}
+
+/** How a signed contract left the hold. 'lost' covers both the succession
+ *  forfeit (`TradeEvent{action:'forfeit-cargo'}`, engine `legacy.ts` — PRD §5.2's
+ *  "the cargo goes down with the ship") and the rarer storylet
+ *  `active-contract-cleared` path, which is detected structurally: a new
+ *  sign-contract while a leg is still open means the previous cargo left the hold
+ *  without either a delivery or a forfeit. */
+export type RouteLegOutcome = 'delivered' | 'lost' | 'open-at-end';
+
+/**
+ * T-1603a · One record per signed cargo contract — the raw material for the
+ * memo's "route EVs" target and for T-1603b's "no dominant route" acceptance.
+ */
+export interface RouteLegRecord {
+  signedDay: number;
+  /** `player.currentSystemId` sampled BEFORE the signing action — the port the
+   *  contract was taken at, which is not on the `TradeEvent`. */
+  originSystem: number;
+  /** `TradeEvent.destination` on the signing. */
+  destination: number;
+  /** `TradeEvent.cargoType` on the signing (10 === contraband). */
+  cargoType: number;
+  /** `TradeEvent.payment` on the SIGNING — the quoted price. */
+  quotedPayment: number;
+  /** `TradeEvent.payment` on the DELIVERY, or null if never delivered. This can
+   *  differ from `quotedPayment` under T-1202 margin scaling; that delta is a
+   *  MEASUREMENT (the memo reports its distribution), not a defect. */
+  paidPayment: number | null;
+  deliveredDay: number | null;
+  /** Σ `TravelEvent.fuelUsed` between sign and close — the leg's fuel burn,
+   *  including any legs flown while the contract sat in the hold. */
+  fuelUnitsWhileOpen: number;
+  /** `market.localFuelPrice` at the signing port. Carried on the record so
+   *  `routeEv` can price the burn WITHOUT a hard-coded credits-per-unit constant;
+   *  it is an approximation (the tank may be topped up elsewhere at a different
+   *  price mid-leg) and the memo says so where the number is used. */
+  fuelPriceAtSigning: number;
+  outcome: RouteLegOutcome;
+}
+
+/**
+ * T-1603a · The death side of the ledger — a pure per-day event fold, which is
+ * why (unlike the two record blocks above) it lives in `accumulateMetricEvents`.
+ * Deliberately COUNTS ONLY: the memo's death RATE is computed by the sweep from
+ * these counts against the sim-day denominator, so no rate is baked into a
+ * per-run report where the denominator would be invisible.
+ */
+export interface SurvivalStats {
+  /** `ShipLost` events, any reason. `combatDefeats + lifeSupportFailures` by
+   *  construction — the invariant the test asserts, which is what proves the fold
+   *  is exhaustive over `ShipLost.reason`. */
+  shipsLost: number;
+  /** `ShipLost.reason === 'combat-defeat'` — the hull-to-0 killing blow. */
+  combatDefeats: number;
+  /** `ShipLost.reason === 'life-support-failure'` — the dusk GRIT survival roll. */
+  lifeSupportFailures: number;
+  /** `LifeSupportCritical{survived:true}` — the ship rode it out. A run with
+   *  scares but zero failures is the fingerprint of the T-1804 Auto-Repair
+   *  interaction (the module heals lifeSupport 0→1 before the dusk gate), which
+   *  T-1603c owns; the memo reports both numbers so the call has evidence. */
+  lifeSupportScares: number;
+  /** `LegacySuccession` events — successors who claimed the license. */
+  successions: number;
+}
+
 /** Route-diversity measure over a fixed window of days: how dominant the single
  *  most-frequent best-offer destination was (T-107 sim assertion). A healthy,
  *  churning economy keeps topShare well under 1 — no route stays optimal. */
@@ -280,6 +497,12 @@ export interface CampaignStatsReport {
   /** T-1601b policy-behavior metrics — see the interfaces above for readers. */
   smuggling: SmugglingStats;
   hangoutPlay: HangoutPlayStats;
+  /** T-1603a balance-baseline instrumentation — see the interfaces above for
+   *  readers. `tourOne` is null when the horizon never reached day 30. */
+  tourOne: TourOneOutcomeStats | null;
+  combatEncounters: CombatEncounterRecord[];
+  routeLegs: RouteLegRecord[];
+  survival: SurvivalStats;
   finalState: {
     day: number;
     credits: number;
@@ -471,6 +694,16 @@ interface CampaignMetricAccumulator {
   equipmentUse: EquipmentUseStats;
   smuggling: SmugglingStats;
   hangoutPlay: HangoutPlayStats;
+  /** T-1603a. `survival` is a plain counter fold like the blocks above.
+   *  `tourOne` is a single-shot assignment (the event fires exactly once, at the
+   *  dusk of day 30) rather than a counter, so it is a mutable member on the
+   *  accumulator itself. The other two T-1603a blocks (`combatEncounters`,
+   *  `routeLegs`) deliberately do NOT live here: they need PRE-ACTION state
+   *  samples (player tier, weapon fit, local fuel price, origin system) that no
+   *  event carries, so they are folded in `runCampaign`'s action loop — the same
+   *  reason `upgradedVolleys` is measured there. */
+  survival: SurvivalStats;
+  tourOne: TourOneOutcomeStats | null;
 }
 
 /** T-1601a · Fold one day's events into the run-level behavior metrics. Kept as
@@ -481,9 +714,28 @@ function accumulateMetricEvents(
   events: readonly GameEvent[],
   metrics: CampaignMetricAccumulator,
 ): void {
-  const { loanUsage, fragments, equipmentUse, smuggling, hangoutPlay } = metrics;
+  const { loanUsage, fragments, equipmentUse, smuggling, hangoutPlay, survival } = metrics;
   for (const event of events) {
-    if (event.type === 'LoanEvent') {
+    if (event.type === 'ShipLost') {
+      // T-1603a. Exhaustive over `ShipLost.reason` — the test pins
+      // `shipsLost === combatDefeats + lifeSupportFailures`, so a third reason
+      // added to the engine union fails loudly here instead of vanishing.
+      survival.shipsLost += 1;
+      if (event.reason === 'combat-defeat') survival.combatDefeats += 1;
+      else if (event.reason === 'life-support-failure') survival.lifeSupportFailures += 1;
+    } else if (event.type === 'LifeSupportCritical') {
+      if (event.survived) survival.lifeSupportScares += 1;
+    } else if (event.type === 'LegacySuccession') {
+      survival.successions += 1;
+    } else if (event.type === 'TourOneResolved') {
+      // Fires exactly once per career (dusk of day 30). Last write wins, which
+      // for a once-only event is the only write.
+      metrics.tourOne = {
+        resolvedDay: event.day,
+        outcome: event.outcome,
+        debtOutstanding: event.debtOutstanding,
+      };
+    } else if (event.type === 'LoanEvent') {
       if (event.kind === 'borrowed') {
         loanUsage.loansTaken += 1;
         loanUsage.principalBorrowed += event.principal ?? 0;
@@ -557,6 +809,232 @@ function accumulateMetricEvents(
         }
       }
     }
+  }
+}
+
+/**
+ * T-1603a · The pre-batch state sample the two record blocks need. Events alone
+ * cannot say any of these: `player.tier` is state (tier.ts), the weapon fit is
+ * state, the local fuel price is market state, and the origin port of a signing
+ * is gone from the state by the time the `TradeEvent` lands. `creditsAfter` is
+ * read AFTER the batch — an encounter's credit ledger must open on the far side
+ * of the travel action that triggered it, so the jump's own fuel bill is charged
+ * to the ROUTE and not to the fight.
+ */
+interface BalanceSample {
+  day: number;
+  ship: GameState['player']['ship'];
+  tier: PowerTier;
+  fuelPrice: number;
+  systemId: number;
+  creditsAfter: number;
+}
+
+/** T-1603a · Mutable state for the encounter/route-leg folds. Both trackers span
+ *  DAYS, not batches: an encounter survives the dusk (`applyEncounterDuskPressure`)
+ *  and a contract sits in the hold for as long as the run takes, so neither may be
+ *  flushed at end-of-day. `runCampaign` flushes what is still open once, after the
+ *  horizon, as 'unresolved'/'open-at-end'. */
+interface BalanceRecordTracker {
+  encounters: CombatEncounterRecord[];
+  legs: RouteLegRecord[];
+  openEncounter: CombatEncounterRecord | null;
+  /** Fuel price at the open encounter's start — `fuelUnits` is priced at it. */
+  openEncounterFuelPrice: number;
+  /** Credits immediately after the batch that opened the encounter. */
+  openEncounterCredits: number;
+  /** A `ShipLost` seen this batch whose close is deferred to the end of the batch
+   *  so the succession haircut (the very next event) lands on the record. */
+  pendingEncounterClose: CombatEncounterResolution | null;
+  openLeg: RouteLegRecord | null;
+}
+
+/** Take a `BalanceSample` off a state. `creditsAfter` defaults to the same
+ *  state's purse; callers folding an ACTION batch pass the post-action purse
+ *  while everything else is read off the PRE-action state. */
+function balanceSample(state: GameState, creditsAfter = state.player.credits): BalanceSample {
+  return {
+    day: state.day,
+    ship: state.player.ship,
+    tier: state.player.tier,
+    fuelPrice: fuelPrice(state),
+    systemId: state.player.currentSystemId,
+    creditsAfter,
+  };
+}
+
+function newBalanceRecordTracker(): BalanceRecordTracker {
+  return {
+    encounters: [],
+    legs: [],
+    openEncounter: null,
+    openEncounterFuelPrice: 0,
+    openEncounterCredits: 0,
+    pendingEncounterClose: null,
+    openLeg: null,
+  };
+}
+
+/** Close whatever encounter is open, stamping its resolution and credit ledger.
+ *  A no-op when nothing is open. An encounter is NEVER dropped silently — every
+ *  open record reaches `tracker.encounters` through this one door. */
+function closeBalanceEncounter(
+  tracker: BalanceRecordTracker,
+  resolution: CombatEncounterResolution,
+  creditsAtClose: number,
+): void {
+  const open = tracker.openEncounter;
+  if (!open) return;
+  open.resolution = resolution;
+  open.shipLost = resolution === 'ship-lost';
+  open.creditsDelta = creditsAtClose - tracker.openEncounterCredits;
+  open.fuelCredits = open.fuelUnits * tracker.openEncounterFuelPrice;
+  tracker.encounters.push(open);
+  tracker.openEncounter = null;
+}
+
+/** Close whatever route leg is open. Same single-door rule as encounters. */
+function closeBalanceLeg(
+  tracker: BalanceRecordTracker,
+  outcome: RouteLegOutcome,
+  deliveredDay: number | null,
+  paidPayment: number | null,
+): void {
+  const open = tracker.openLeg;
+  if (!open) return;
+  open.outcome = outcome;
+  open.deliveredDay = deliveredDay;
+  open.paidPayment = paidPayment;
+  tracker.legs.push(open);
+  tracker.openLeg = null;
+}
+
+/**
+ * T-1603a · Fold one batch of events into the encounter/route-leg record streams.
+ * Called for the dawn batch, for each action's batch, and for the dusk batch —
+ * dusk matters because a bond drive-off resolves an encounter there
+ * (`day.ts` → `resolveInterceptorFled`) and the life-support succession forfeits
+ * cargo there (`legacy.ts`). Pure: reads events plus an already-taken state
+ * sample, draws no rng.
+ */
+function ingestBalanceRecords(
+  events: readonly GameEvent[],
+  sample: BalanceSample,
+  tracker: BalanceRecordTracker,
+): void {
+  for (const event of events) {
+    if (event.type === 'EncounterStarted') {
+      // Defensive: an encounter open when a new one starts cannot be resolved by
+      // any event we will ever see, so it is closed as 'unresolved' rather than
+      // overwritten (which would lose the record entirely).
+      closeBalanceEncounter(tracker, 'unresolved', sample.creditsAfter);
+      tracker.openEncounter = {
+        encounterId: event.encounter.id,
+        day: sample.day,
+        interceptorTier: event.encounter.interceptor.tier,
+        playerTier: sample.tier,
+        prepared: weaponVolleyDamage(sample.ship) > 1,
+        rounds: 0,
+        creditsDelta: 0,
+        tributeCredits: 0,
+        fineCredits: 0,
+        successionCredits: 0,
+        travelCompleted: false,
+        fuelUnits: 0,
+        fuelCredits: 0,
+        repairCredits: 0,
+        resolution: 'unresolved',
+        shipLost: false,
+      };
+      tracker.openEncounterFuelPrice = sample.fuelPrice;
+      tracker.openEncounterCredits = sample.creditsAfter;
+    } else if (event.type === 'EncounterRound') {
+      const open = tracker.openEncounter;
+      if (open && open.encounterId === event.encounterId) {
+        open.rounds = Math.max(open.rounds, event.round);
+        open.fuelUnits += event.fuelUsed;
+      }
+    } else if (event.type === 'ComponentDamaged') {
+      const open = tracker.openEncounter;
+      if (open && open.encounterId === event.encounterId) {
+        // `strength` read off the ship as it stood before this batch — the same
+        // number the shipyard would multiply the missing condition by.
+        open.repairCredits += event.amount * sample.ship[event.component].strength;
+      }
+    } else if (event.type === 'TributePaid') {
+      const open = tracker.openEncounter;
+      if (open && open.encounterId === event.encounterId) {
+        open.tributeCredits += event.amount;
+      }
+    } else if (event.type === 'ContrabandConfiscated') {
+      const open = tracker.openEncounter;
+      if (open && open.encounterId === event.encounterId) {
+        open.fineCredits += event.fine;
+      }
+    } else if (event.type === 'LegacySuccession') {
+      const open = tracker.openEncounter;
+      if (open) {
+        open.successionCredits += event.inheritedCredits;
+      }
+    } else if (event.type === 'EncounterResolved') {
+      if (tracker.openEncounter?.encounterId === event.encounterId) {
+        // Everything but a player flight resumes the interrupted jump
+        // (`resolveEncounter` returns early to the origin on 'escaped').
+        tracker.openEncounter.travelCompleted = event.resolution !== 'escaped';
+        closeBalanceEncounter(tracker, event.resolution, sample.creditsAfter);
+      }
+    } else if (event.type === 'ShipLost') {
+      // 'combat-defeat' is the encounter's own terminus. A 'life-support-failure'
+      // at dusk can also kill a ship with a live interdiction — `day.ts` nulls the
+      // encounter after succession without ever emitting a resolution — so that
+      // record closes as 'unresolved' (and `shipLost` stays false, which is
+      // correct: the FIGHT did not take the ship, the air did; the death is
+      // counted once, in `SurvivalStats`).
+      //
+      // DEFERRED CLOSE: the succession haircut arrives on the NEXT event
+      // (`applySuccession` is called immediately after this push), so closing here
+      // would file the record before its largest cost line existed. The pending
+      // resolution is flushed at the end of this batch instead.
+      tracker.pendingEncounterClose = event.reason === 'combat-defeat' ? 'ship-lost' : 'unresolved';
+    } else if (event.type === 'TravelEvent') {
+      if (tracker.openLeg) {
+        tracker.openLeg.fuelUnitsWhileOpen += event.fuelUsed;
+      }
+    } else if (event.type === 'TradeEvent') {
+      // NOTE the asymmetry, which is the engine's and not a slip: sign/deliver
+      // are `success: true` beats, but the succession forfeit is emitted with
+      // `success: false` (`legacy.ts` — losing the cargo is not a success), so it
+      // must be matched on the ACTION alone.
+      if (event.action === 'forfeit-cargo') {
+        closeBalanceLeg(tracker, 'lost', null, null);
+      } else if (event.success !== true) {
+        continue;
+      } else if (event.action === 'sign-contract') {
+        // A leg still open at a new signing means the cargo left the hold without
+        // a delivery or a forfeit (the storylet `active-contract-cleared` effect).
+        // Recorded as 'lost' rather than dropped.
+        closeBalanceLeg(tracker, 'lost', null, null);
+        tracker.openLeg = {
+          signedDay: sample.day,
+          originSystem: sample.systemId,
+          destination: event.destination ?? -1,
+          cargoType: event.cargoType ?? -1,
+          quotedPayment: event.payment ?? 0,
+          paidPayment: null,
+          deliveredDay: null,
+          fuelUnitsWhileOpen: 0,
+          fuelPriceAtSigning: sample.fuelPrice,
+          outcome: 'open-at-end',
+        };
+      } else if (event.action === 'deliver-cargo') {
+        closeBalanceLeg(tracker, 'delivered', sample.day, event.payment ?? 0);
+      }
+    }
+  }
+
+  if (tracker.pendingEncounterClose !== null) {
+    closeBalanceEncounter(tracker, tracker.pendingEncounterClose, sample.creditsAfter);
+    tracker.pendingEncounterClose = null;
   }
 }
 
@@ -3073,13 +3551,24 @@ export function runCampaign(
     socialBeats: 0,
     failedVisits: 0,
   };
+  // T-1603a balance-baseline instrumentation (see the interface doc comments).
+  const survival: SurvivalStats = {
+    shipsLost: 0,
+    combatDefeats: 0,
+    lifeSupportFailures: 0,
+    lifeSupportScares: 0,
+    successions: 0,
+  };
   const metrics: CampaignMetricAccumulator = {
     loanUsage,
     fragments,
     equipmentUse,
     smuggling,
     hangoutPlay,
+    survival,
+    tourOne: null,
   };
+  const balance = newBalanceRecordTracker();
 
   for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
     const startingDay = state.day;
@@ -3098,6 +3587,10 @@ export function runCampaign(
     const dawn = startDay(state);
     let dayState = dawn.state;
     const dayEvents: GameEvent[] = [...dawn.events];
+    // T-1603a: the dawn batch is folded too. It normally carries no encounter or
+    // trade beat, but a scheduled storylet firing at dawn can, and a fold that
+    // skipped it would silently lose those.
+    ingestBalanceRecords(dawn.events, balanceSample(dayState), balance);
     bestOfferDestinations.push(bestOfferDestination(dayState.market.manifestBoard));
     const actions = resolvedPolicy.policy({
       state: resolvedPolicy.dawnBlind ? dawnState : dayState,
@@ -3120,9 +3613,18 @@ export function runCampaign(
       // 1 by the T-1205 baseline-subtraction invariant, so `> 1` means a bought
       // weapon tier / STAR_BUSTER was in play) and pair it with the outcome.
       const volleyDamageBefore = weaponVolleyDamage(dayState.player.ship);
+      // T-1603a: the pre-action sample the encounter/route folds need. Taken
+      // AFTER the mid-batch-death `continue` above on purpose — a Combat action
+      // whose encounter is already gone must not produce a phantom record.
+      const preActionState = dayState;
       const stepped = applyPlayerAction(dayState, action);
       dayState = stepped.state;
       dayEvents.push(...stepped.events);
+      ingestBalanceRecords(
+        stepped.events,
+        balanceSample(preActionState, dayState.player.credits),
+        balance,
+      );
       if (
         volleyDamageBefore > 1 &&
         stepped.events.some(
@@ -3139,6 +3641,9 @@ export function runCampaign(
     const dusk = endDay(dayState);
     state = dusk.state;
     dayEvents.push(...dusk.events);
+    // T-1603a: dusk closes encounters (a bond drive-off's `resolveInterceptorFled`)
+    // and forfeits cargo (the life-support succession), so the fold must see it.
+    ingestBalanceRecords(dusk.events, balanceSample(dayState, state.player.credits), balance);
     if (
       preDuskShip.hasAutoRepair === true &&
       AUTO_REPAIR_SIM_COMPONENTS.some(
@@ -3204,6 +3709,14 @@ export function runCampaign(
   // end-state fields above are. Zero (not NaN) on a career that never dared.
   hangoutPlay.expectedValuePerDare =
     hangoutPlay.dares > 0 ? hangoutPlay.netCredits / hangoutPlay.dares : 0;
+  // T-1603a: the horizon ended mid-fight / mid-delivery. Both are flushed rather
+  // than dropped so counts stay honest, and both are labelled so an aggregate can
+  // exclude them (an unfinished leg has no payout to price).
+  closeBalanceEncounter(balance, 'unresolved', state.player.credits);
+  if (balance.openLeg) {
+    balance.legs.push({ ...balance.openLeg, outcome: 'open-at-end' });
+    balance.openLeg = null;
+  }
 
   return {
     seed,
@@ -3223,6 +3736,10 @@ export function runCampaign(
     equipmentUse,
     smuggling,
     hangoutPlay,
+    tourOne: metrics.tourOne,
+    combatEncounters: balance.encounters,
+    routeLegs: balance.legs,
+    survival,
     finalState: {
       day: state.day,
       credits: state.player.credits,

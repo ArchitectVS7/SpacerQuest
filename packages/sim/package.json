@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc -b",
     "sim": "tsx src/index.ts",
+    "balance:sweep": "tsx src/balance/sweep.ts",
     "test": "vitest run"
   },
   "dependencies": {
