@@ -1,6 +1,8 @@
 import {
   EXPLORATION_FUEL_COST,
   FLAWS,
+  LOAN_MAX_PRINCIPAL,
+  LOAN_MIN_PRINCIPAL,
   SPECIAL_EQUIPMENT,
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
@@ -13,7 +15,10 @@ import {
   RUN_FUEL_COST,
   calculateFuelCapacity,
   createInitialState,
+  decodedFragmentCount,
   endDay,
+  fragmentCount,
+  hasAnyUndecoded,
   hasFragment,
   jumpFuelCost,
   quoteShipyard,
@@ -25,6 +30,7 @@ import {
   type GameEvent,
   type GameState,
   type PlayerAction,
+  type ShipComponentId,
   type SpecialEquipmentId,
 } from '@spacerquest/engine';
 import { resolve } from 'node:path';
@@ -65,6 +71,82 @@ export interface CampaignDayStats {
    *  poverty-trap invariant asserts this is never zero for 5 consecutive days —
    *  a competent policy is never stuck with no legal way to make progress. */
   incomeActionCount: number;
+  /** T-1601a: the per-day series behind the report-level `fuelStarvationDays`
+   *  (T-1004) — true when this dusk ended stranded (`cannotAffordCheapestJump`).
+   *  Set from the SAME single call that increments the counter, so the two can
+   *  never disagree. READER: `campaign-policies.test.ts` cross-checks
+   *  `daily.filter(d => d.fuelStarved).length === report.fuelStarvationDays`,
+   *  which is what turns the scalar into an auditable trajectory (a run can now
+   *  be asked WHEN it starved, not just how often). */
+  fuelStarved: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// T-1601a · Policy-behavior metrics. These three blocks are DERIVED sim report
+// fields, not `GameState` — they are folded out of the typed `GameEvent` stream
+// (and, where events cannot say it, out of before/after state comparisons) at
+// report time. Nothing is persisted, so standing constraint 3's save-migration +
+// round-trip obligation does not apply here; the report's JSON survival is
+// covered by the existing byte-identical `reportToJson` determinism test.
+//
+// READERS (constraint 7) for all three: the per-policy assertions in
+// `packages/sim/src/__tests__/campaign-policies.test.ts`, and the CLI JSON that
+// `reportToJson` emits for `npm run sim`.
+// ---------------------------------------------------------------------------
+
+/** T-1304 Penny Wise lending, as the trader actually used it over a run. */
+export interface LoanUsageStats {
+  /** `LoanEvent` kind 'borrowed' — advances actually taken at the desk. */
+  loansTaken: number;
+  /** Sum of `LoanEvent.principal` over the 'borrowed' events. */
+  principalBorrowed: number;
+  /** Sum of `LoanEvent.interest` over the per-dusk 'accrued' events — what the
+   *  interim `LOAN_DAILY_RATE` × `LOAN_TERM_DAYS` band actually costs in play. */
+  interestAccrued: number;
+  /** Sum of `LoanEvent.amountPaid` over the 'repaid' events. */
+  amountRepaid: number;
+  /** 'repaid' events that drove the balance to zero (`cleared === true`). */
+  loansCleared: number;
+  /** 'defaulted' events — the term ran out unpaid (collection pressure follows). */
+  defaults: number;
+  /** Days whose DUSK state still carried a live loan. */
+  daysWithLoan: number;
+}
+
+/** T-111b Signal-fragment flow: what the explorer pulled in and got decoded. */
+export interface FragmentStats {
+  /** `FragmentAcquired` events over the run (new fragments only — the engine
+   *  suppresses duplicate grants). */
+  acquired: number;
+  /** `FragmentDecoded` events over the run (the Sage of Mizar-9's only output). */
+  decoded: number;
+  /** `fragmentCount` of the final Nemesis file. */
+  heldAtEnd: number;
+  /** `decodedFragmentCount` of the final Nemesis file. */
+  decodedAtEnd: number;
+}
+
+/** T-1205/T-1206 ship fit, as BEHAVIOR rather than as a purchase receipt: what
+ *  the policy bought AND what the fit then did in the fights it took. */
+export interface EquipmentUseStats {
+  /** `ShipyardEvent` action 'buy-special-equipment', in purchase order. */
+  specialEquipmentBought: SpecialEquipmentId[];
+  /** `ShipyardEvent` action 'buy-component-tier' count. */
+  componentTiersBought: number;
+  /** Winning fight rounds landed while the gun was BETTER than the junker's
+   *  (`weaponVolleyDamage > 1` measured on the pre-action ship). Proves the
+   *  T-1205/T-1206 weapon fit was load-bearing on a real volley, not merely
+   *  purchased — events alone cannot say it, so this is measured per action. */
+  upgradedVolleys: number;
+  /** Sum of `ComponentDamaged.mitigated` — condition points the shields (or a
+   *  fitted ARCH_ANGEL floor) absorbed off incoming fire. */
+  shieldAbsorbedPoints: number;
+  /** Dusks on which a fitted AUTO_REPAIR module actually restored condition.
+   *  The module emits only prose, so this is a state comparison across `endDay`
+   *  over the SAME seven non-hull components the engine reader repairs (mirrors
+   *  `AUTO_REPAIR_COMPONENTS` in engine/src/components.ts — hull excluded there,
+   *  hull excluded here; see AUTO_REPAIR_SIM_COMPONENTS below). */
+  autoRepairDusks: number;
 }
 
 /** Route-diversity measure over a fixed window of days: how dominant the single
@@ -96,6 +178,10 @@ export interface CampaignStatsReport {
   renownRank: RenownRankId;
   /** Per-100-day route-diversity windows (T-107). */
   routeDiversity: RouteDiversityWindow[];
+  /** T-1601a policy-behavior metrics — see the interfaces above for readers. */
+  loanUsage: LoanUsageStats;
+  fragments: FragmentStats;
+  equipmentUse: EquipmentUseStats;
   finalState: {
     day: number;
     credits: number;
@@ -152,6 +238,22 @@ export function systemIds(): number[] {
  *  die on an ActionBlocked and, cycling, could stall the default policy. */
 export function travelableSystemIds(): number[] {
   return systemIds().filter((id) => !isGatedDestination(id));
+}
+
+/** T-1601a: the systems that actually host a Spacers Hangout — the only places
+ *  the Penny Wise desk (borrow/repay) is legal, per the engine's `hasHangout`
+ *  gate in day.ts. DERIVED from content (`STAR_SYSTEMS[...].hasHangout`), never a
+ *  hard-coded id: today Sun-3 is the only one, and a policy that hard-coded `1`
+ *  would silently stop finding the desk the moment content flags a second. */
+export function hangoutSystemIds(): number[] {
+  return systemIds().filter((id) => STAR_SYSTEMS[id]?.hasHangout === true);
+}
+
+/** Membership test over `hangoutSystemIds()` — the single derivation both the
+ *  policies (borrow/repay preconditions, head-home routing) and any external
+ *  caller share, so there is one definition of "where the desk is". */
+function isHangoutSystem(systemId: number): boolean {
+  return hangoutSystemIds().includes(systemId);
 }
 
 export function nextSystemId(currentSystemId: number): number {
@@ -222,6 +324,60 @@ function countDailyEvents(events: GameEvent[]): {
   }
 
   return { wireEntries, flawChecks, flawOverrides, deedsEarned };
+}
+
+/** The seven components a fitted AUTO_REPAIR module regenerates overnight.
+ *  MIRROR of engine/src/components.ts `AUTO_REPAIR_COMPONENTS` (which is module-
+ *  private): the HULL is deliberately absent in both — the module patches
+ *  systems, not the hull. Kept as an explicit mirror so a future divergence in
+ *  the engine's list is visible here rather than silently mis-measured. */
+const AUTO_REPAIR_SIM_COMPONENTS: readonly ShipComponentId[] = [
+  'drives',
+  'cabin',
+  'lifeSupport',
+  'weapons',
+  'navigation',
+  'robotics',
+  'shields',
+];
+
+/** T-1601a · Fold one day's events into the run-level behavior metrics. Kept as
+ *  a SIBLING of `countDailyEvents` (rather than widening it) so that function's
+ *  signature and its existing callers stay untouched. Pure: a fold over the
+ *  event stream, no rng, so determinism is unaffected. */
+function accumulateMetricEvents(
+  events: readonly GameEvent[],
+  loanUsage: LoanUsageStats,
+  fragments: FragmentStats,
+  equipmentUse: EquipmentUseStats,
+): void {
+  for (const event of events) {
+    if (event.type === 'LoanEvent') {
+      if (event.kind === 'borrowed') {
+        loanUsage.loansTaken += 1;
+        loanUsage.principalBorrowed += event.principal ?? 0;
+      } else if (event.kind === 'accrued') {
+        loanUsage.interestAccrued += event.interest ?? 0;
+      } else if (event.kind === 'repaid') {
+        loanUsage.amountRepaid += event.amountPaid ?? 0;
+        if (event.cleared) loanUsage.loansCleared += 1;
+      } else if (event.kind === 'defaulted') {
+        loanUsage.defaults += 1;
+      }
+    } else if (event.type === 'FragmentAcquired') {
+      fragments.acquired += 1;
+    } else if (event.type === 'FragmentDecoded') {
+      fragments.decoded += 1;
+    } else if (event.type === 'ShipyardEvent') {
+      if (event.action === 'buy-special-equipment' && event.equipment) {
+        equipmentUse.specialEquipmentBought.push(event.equipment);
+      } else if (event.action === 'buy-component-tier') {
+        equipmentUse.componentTiersBought += 1;
+      }
+    } else if (event.type === 'ComponentDamaged') {
+      equipmentUse.shieldAbsorbedPoints += event.mitigated ?? 0;
+    }
+  }
 }
 
 function appendDieAction(
@@ -310,6 +466,36 @@ function canAffordChoice(state: GameState, choice: StoryletOfferChoice): boolean
  *  policy's single die action of the day). Deterministic — content order only. */
 function chooseStoryletAction(state: GameState): PlayerAction | null {
   for (const offer of state.storylets.available) {
+    const affordable = offer.choices.filter((choice) => canAffordChoice(state, choice));
+    const chosen = affordable.find((choice) => !choiceRequiresDie(choice)) ?? affordable[0];
+    if (chosen) {
+      return {
+        type: 'Storylet',
+        storyletId: offer.storyletId,
+        choiceId: chosen.id,
+        ...(choiceRequiresDie(chosen) ? { spendDie: 0 } : {}),
+      };
+    }
+  }
+  return null;
+}
+
+/** T-1601a · The Sage of Mizar-9's decode storylets (`sage.mizar.decode-first`
+ *  and `decode-02..12`, content/storylets.ts) — the game's ONLY decoder. */
+const SAGE_DECODE_STORYLET_PREFIX = 'sage.mizar.decode';
+/** Mizar-9. Where the Sage keeps the workshop; not a gated destination, so a
+ *  plain `Travel` reaches it. */
+const SAGE_SYSTEM_ID = 18;
+
+/** T-1601a · `chooseStoryletAction` takes the FIRST offer in board order, which
+ *  at Mizar-9 may not be the decode (the Sage also hosts the constellation quiz
+ *  and star-lore beats). While the explorer is chasing a decode, prefer a Sage
+ *  decode offer; the caller falls back to the ordinary greedy pick. Every decode
+ *  storylet's first choice is the die-free `decode`, so this resolves INLINE on a
+ *  normal income day — the standalone/inline split is untouched. */
+function chooseDecodeStoryletAction(state: GameState): PlayerAction | null {
+  for (const offer of state.storylets.available) {
+    if (!offer.storyletId.startsWith(SAGE_DECODE_STORYLET_PREFIX)) continue;
     const affordable = offer.choices.filter((choice) => canAffordChoice(state, choice));
     const chosen = affordable.find((choice) => !choiceRequiresDie(choice)) ?? affordable[0];
     if (chosen) {
@@ -489,19 +675,27 @@ const FUEL_REFUEL_TARGET = 300;
 
 /** Queue a refuel (dull die) when the tank dips below the working threshold,
  *  buying up to the target, capped by what's affordable above `keepFloor`.
- *  Returns the action and its credit cost (so debt planning can reserve it). */
+ *  Returns the action and its credit cost (so debt planning can reserve it).
+ *  T-1601a `extraCredits`: credits the day's plan has ALREADY arranged to have on
+ *  hand before this action runs (today only: a Penny Wise advance queued earlier
+ *  in the same day). The planners are pure and read the DAWN state, so a borrow
+ *  the policy has queued but not yet applied has to be passed in explicitly —
+ *  otherwise the trader borrows to cover a fuel bill and then refuses to spend
+ *  the money it just borrowed. Defaults to 0, so every existing caller is
+ *  byte-identical. */
 function planRefuel(
   state: GameState,
   ledger: DieLedger,
   keepFloor: number,
   threshold = FUEL_REFUEL_THRESHOLD,
   target = FUEL_REFUEL_TARGET,
+  extraCredits = 0,
 ): { action: PlayerAction; cost: number } | null {
   const ship = state.player.ship;
   if (ship.fuel >= threshold) return null;
   const price = state.market.localFuelPrice || 5;
   const want = Math.min(ship.maxFuel - ship.fuel, target - ship.fuel);
-  const spendable = Math.max(0, state.player.credits - keepFloor);
+  const spendable = Math.max(0, state.player.credits + extraCredits - keepFloor);
   const affordable = Math.floor(spendable / price);
   const units = Math.min(want, affordable);
   if (units < 1) return null;
@@ -543,10 +737,36 @@ function planCrippledRepair(
   state: GameState,
   ledger: DieLedger,
   reserve: number,
+  extraCredits = 0,
 ): PlayerAction | null {
+  const need = crippledRepairNeed(state);
+  if (!need.needed || !need.repairable) return null;
+  if (state.player.credits + extraCredits - need.cost < reserve) return null;
+  const die = ledger.takeWorst();
+  if (die === undefined) return null;
+  return { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die };
+}
+
+/**
+ * T-1601a · The AFFORDABILITY-FREE half of `planCrippledRepair`: do the two
+ * crippled triggers hold, is a repair-all otherwise legal, and what does the yard
+ * quote? Split out so the trader can ask "the ship needs a repair it cannot pay
+ * for" — the §7.5 repair-duress case behind a Penny Wise advance — without
+ * burning a die on a plan it is about to reject. `repairable` deliberately treats
+ * INSUFFICIENT_CREDITS as repairable (that is precisely the case the loan fixes)
+ * while any other yard refusal is not; with `extraCredits === 0` the composition
+ * above is byte-identical to the pre-split behavior, because a quote that failed
+ * only on credits also fails the `credits - cost < reserve` test.
+ */
+function crippledRepairNeed(state: GameState): {
+  needed: boolean;
+  repairable: boolean;
+  cost: number;
+} {
+  const none = { needed: false, repairable: false, cost: 0 };
   const ship = state.player.ship;
   const pristineCapacity = calculateFuelCapacity(ship.hull.strength, 9);
-  if (pristineCapacity <= 0) return null;
+  if (pristineCapacity <= 0) return none;
   const crippled = ship.maxFuel < CRIPPLED_FUEL_FRACTION * pristineCapacity;
   // Cheapest jump-fuel among the contracts currently on the board — the least
   // the tank must hold to fly ANY run from here.
@@ -562,18 +782,15 @@ function planCrippledRepair(
     ship.hull.condition < 9 &&
     ship.maxFuel < cheapestContractFuel &&
     pristineCapacity >= cheapestContractFuel;
-  if (!crippled && !strandedByTank) return null;
+  if (!crippled && !strandedByTank) return none;
   const quote = quoteShipyard(state, {
     type: 'Shipyard',
     action: 'repair',
     repairMode: 'all',
     spendDie: 0,
   });
-  if (!quote.ok) return null;
-  if (state.player.credits - quote.cost < reserve) return null;
-  const die = ledger.takeWorst();
-  if (die === undefined) return null;
-  return { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: die };
+  const repairable = quote.ok || quote.failure?.reason === 'INSUFFICIENT_CREDITS';
+  return { needed: true, repairable, cost: quote.cost };
 }
 
 /**
@@ -613,14 +830,20 @@ function planPacifistCombat(state: GameState, ledger: DieLedger): PlayerAction[]
 /** Amount to pay toward the Guild marker this dusk. Computed from PLAN-TIME
  *  credits minus the operating reserve and the fuel we're about to burn on
  *  refuelling — so even if a delivery is interrupted (no income arrives) the
- *  ledger clamp can never drain the tank below the reserve. */
+ *  ledger clamp can never drain the tank below the reserve.
+ *  T-1601a `refuelCost` is really "everything already committed this day" (the
+ *  refuel, plus any Penny Wise repayment queued ahead of this action), and
+ *  `extraCredits` is a Penny Wise advance queued ahead of it — a marker-duress
+ *  advance exists precisely so it can reach the Guild. Both default to their
+ *  pre-T-1601a values, so existing callers are unchanged. */
 function planDebtPayment(
   state: GameState,
   reserve: number,
   refuelCost: number,
+  extraCredits = 0,
 ): PlayerAction | null {
   if (state.player.debt <= 0) return null;
-  const spendable = state.player.credits - reserve - refuelCost;
+  const spendable = state.player.credits + extraCredits - reserve - refuelCost;
   const amount = Math.min(state.player.debt, spendable);
   if (amount < 1) return null;
   return { type: 'Trade', action: 'pay-debt', amount };
@@ -631,6 +854,88 @@ function planDebtPayment(
 // refuel — otherwise it pays down debt aggressively, then strands with no credits
 // to fill the tank for the following run.
 const TRADER_RESERVE = 3000;
+
+// ---------------------------------------------------------------------------
+// T-1601a · The trader's Penny Wise verbs (PRD §7.5: "a quiet word with Penny
+// Wise, who lends at rates that become their own quest line" — one of the bad
+// day's three outs). These two numbers are POLICY tuning, not game balance data:
+// they say when THIS sim instrument decides a day is bad enough to borrow and
+// when it heads home to settle up. Nothing in the engine or content reads them,
+// so they deliberately do NOT live in packages/content (constraint 4 cuts both
+// ways — content holds the rules' data, not a policy's heuristics). The lending
+// RATE/TERM/PRINCIPAL band those loans are priced at is content
+// (`content/lending.ts`), and this policy is its first sim exerciser.
+// ---------------------------------------------------------------------------
+
+/** How many days before the Guild marker falls due the trader will treat "the
+ *  marker is bigger than the purse" as duress worth borrowing against. */
+const TRADER_LOAN_MARKER_WINDOW = 6;
+/** How many days before a loan falls due the trader starts PREFERRING a run that
+ *  ends at a Hangout, so it is standing at the desk with the money in hand. */
+const TRADER_LOAN_HOME_WINDOW = 5;
+
+/**
+ * A Penny Wise advance sized to the day's shortfall. Preconditions mirror
+ * `resolveVisitHangout` + day.ts's hangout/encounter gates exactly, so the policy
+ * can never burn a die on a typed refusal: a Hangout system, no live loan, no
+ * encounter, a real shortfall, and a die left in the hand. The principal is
+ * clamped with the CONTENT band constants (never restated numerically here).
+ *
+ * The die is the DULLEST remaining: borrowing rolls no check.
+ *
+ * CRITICAL: the caller must queue this as an EXTRA action on an otherwise normal
+ * working day, never as a standalone day. A borrow-only day has
+ * `incomeActionCount === 0` and would walk the poverty-trap invariant
+ * (`longestZeroIncomeStreak < 5`) — the bad-day out must not itself become the
+ * bad day.
+ */
+function planLoanBorrow(
+  state: GameState,
+  ledger: DieLedger,
+  shortfall: number,
+): { action: PlayerAction; principal: number } | null {
+  if (state.encounter) return null;
+  if (state.player.loan) return null;
+  if (!isHangoutSystem(state.player.currentSystemId)) return null;
+  if (!(shortfall >= 1)) return null;
+  const principal = Math.max(
+    LOAN_MIN_PRINCIPAL,
+    Math.min(LOAN_MAX_PRINCIPAL, Math.ceil(shortfall)),
+  );
+  const die = ledger.takeWorst();
+  if (die === undefined) return null;
+  return {
+    action: { type: 'VisitHangout', venue: 'borrow', amount: principal, spendDie: die },
+    principal,
+  };
+}
+
+/**
+ * Clear the Penny Wise marker in full while standing at the desk. Two triggers:
+ * comfortably (the balance AND the operating reserve are both covered), or
+ * urgently — inside two days of the due day, pay it with whatever is on hand
+ * rather than let it flip. A default is not a slap on the wrist: it applies
+ * LOAN_DEFAULT_DISPOSITION to Penny Wise (grudge-weighting her into the
+ * interceptor draw) and multiplies the realized encounter chance by
+ * COLLECTION_ENCOUNTER_MULTIPLIER until the balance is cleared. Dull die — a
+ * repayment rolls no check.
+ */
+function planLoanRepay(state: GameState, ledger: DieLedger): PlayerAction | null {
+  const loan = state.player.loan;
+  if (!loan) return null;
+  if (state.encounter) return null;
+  if (!isHangoutSystem(state.player.currentSystemId)) return null;
+  const outstanding = loan.outstanding;
+  if (outstanding < 1) return null;
+  const urgent = loan.dueDay - state.day <= 2;
+  const affordable = urgent
+    ? state.player.credits >= outstanding
+    : state.player.credits >= outstanding + TRADER_RESERVE;
+  if (!affordable) return null;
+  const die = ledger.takeWorst();
+  if (die === undefined) return null;
+  return { type: 'VisitHangout', venue: 'repay', amount: outstanding, spendDie: die };
+}
 
 // T-1102: the largest share of the tank a single contract's jump may cost. Below
 // 1.0 so a run leaves fuel/credit margin to re-fly after an encounter-run and to
@@ -644,6 +949,13 @@ const SIGN_FUEL_FRACTION = 0.6;
  * delivery the SAME day (a second run too while the debt is still heavy and the
  * hand/tank allow), then remits everything above a fuel reserve toward the debt.
  * Weak hull, so it talks its way past interceptors rather than fighting.
+ *
+ * T-1601a adds the two verbs a working rim trader actually uses: once the Guild
+ * marker is cleared it PREFERS a rim run over a core one inside the same fundable
+ * set ("one more run to the rim", PRD §1/§9), and on a bad day at a Hangout it
+ * takes a Penny Wise advance (PRD §7.5) sized to the day's shortfall, protects
+ * the repayment from the marker, and clears the balance at the desk before the
+ * term runs out.
  */
 export const traderPolicy: SimPolicy = ({ state }) => {
   const ledger = dieLedger(state);
@@ -680,7 +992,7 @@ export const traderPolicy: SimPolicy = ({ state }) => {
       .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }))
       .filter((c) => c.net > 0)
       .sort((a, b) => b.net - a.net || a.index - b.index);
-  let reachable = signableWithin(signFuelCap);
+  let reachable: (RankedContract & { net: number })[] = signableWithin(signFuelCap);
   // T-1104 poverty-trap fix: T-1104 lets rollContract route the trader to a Rim
   // system, and from the Rim EVERY core-bound contract's leg exceeds 0.6 of the
   // tank — so the re-flight-margin cap leaves `reachable` empty and a rich,
@@ -693,20 +1005,119 @@ export const traderPolicy: SimPolicy = ({ state }) => {
     reachable = signableWithin(ship.maxFuel);
   }
 
+  // T-1601a · Which reachable run to take. The default is unchanged (the richest
+  // NET run), with two preferences layered on top, both of which only ever pick a
+  // DIFFERENT member of the already-fundable set — never a run the tank or the
+  // purse cannot carry, which is the T-1104 strand this policy exists to avoid.
+  let preferred = reachable.length > 0 ? reachable[0] : null;
+  const loan = state.player.loan;
+  if (preferred && state.player.debt === 0) {
+    // "One more run to the rim" (PRD §1/§9). Gated on the Guild marker being
+    // CLEARED, deliberately: the marker is the Tour One failure condition and the
+    // acceptance's clear-rate band, so the trader finishes paying the Guild before
+    // it starts flying the long, expensive, lucrative rim legs. Rim-ness is read
+    // from content (`isRim`), never from a hard-coded 15..20 id range — the rim
+    // set is data and has moved before. Those legs are also where the fuel bills
+    // get big enough to produce genuine borrowing duress.
+    const rimRun = reachable.find((c) => STAR_SYSTEMS[c.destination]?.isRim === true);
+    if (rimRun) preferred = rimRun;
+  }
+  if (preferred && loan && loan.dueDay - state.day <= TRADER_LOAN_HOME_WINDOW) {
+    // Head home to settle up: with the balance covered and the term nearly up,
+    // prefer a fundable run that ENDS at the Penny Wise desk. Preference only —
+    // if no such contract is on the board the trader flies its normal best run.
+    if (state.player.credits >= loan.outstanding) {
+      const homeRun = reachable.find((c) => isHangoutSystem(c.destination));
+      if (homeRun) preferred = homeRun;
+    }
+  }
+
   let primaryDest: number | null = null;
   if (state.player.activeContract) {
     primaryDest = state.player.activeContract.destination;
-  } else if (reachable.length > 0) {
-    primaryDest = reachable[0].destination;
+  } else if (preferred) {
+    primaryDest = preferred.destination;
   }
   const primaryFuelNeed =
     primaryDest !== null ? playerJumpFuel(state, systemDistance(from, primaryDest)) : 0;
+
+  // ---- T-1601a · Penny Wise, under duress -------------------------------
+  // Three genuinely bad-day shapes (PRD §7.5), each measured against the plan the
+  // trader has already made for today. The advance is sized to the LARGEST of
+  // them and queued FIRST, so the principal is on hand before the refuel /
+  // repair / marker payment below try to spend it.
+  const repairNeed = crippledRepairNeed(state);
+  // 1. FUEL DURESS — the tank cannot make today's leg and the purse cannot buy
+  //    the difference. The classic §7.5 bad day: a run in hand, no way to fly it.
+  const fuelShortfall =
+    primaryFuelNeed > ship.fuel
+      ? (primaryFuelNeed - ship.fuel) * fuelDepotPrice - state.player.credits
+      : 0;
+  // 2. REPAIR DURESS — the ship is crippled enough that `planCrippledRepair`
+  //    wants to fire, but the yard quote is out of reach above the reserve.
+  const repairShortfall =
+    repairNeed.needed && repairNeed.repairable
+      ? repairNeed.cost + TRADER_RESERVE - state.player.credits
+      : 0;
+  // 3. MARKER DURESS — the Guild marker is closing and the purse cannot cover it.
+  const markerShortfall =
+    state.player.debt > 0 &&
+    state.day >= state.player.debtDueDay - TRADER_LOAN_MARKER_WINDOW &&
+    state.player.credits < state.player.debt
+      ? state.player.debt - state.player.credits
+      : 0;
+  // 4. WORKING CAPITAL — not duress, and labelled honestly as such: a Tour One
+  //    trader standing at the desk on the morning of day 1 with 1,000 credits, a
+  //    25,000 marker and a month to clear it BORROWS. Every real spacer does; the
+  //    advance buys the fuel for the runs that pay the Guild, and the strict
+  //    duress cases above almost never coincide with being AT the desk (measured
+  //    over seeds 1..50: the trader passes through Sun-3 about five dawns per 60
+  //    days, and is rarely there on the one day the tank runs dry). Without this
+  //    case the lending band ships unexercised by any policy, which is precisely
+  //    what this task exists to prevent.
+  const workingCapitalShortfall =
+    state.player.debt > 0 && state.player.credits < TRADER_RESERVE
+      ? TRADER_RESERVE - state.player.credits
+      : 0;
+  const shortfall = Math.max(
+    fuelShortfall,
+    repairShortfall,
+    markerShortfall,
+    workingCapitalShortfall,
+  );
+  const borrow = planLoanBorrow(state, ledger, shortfall);
+  let borrowed = 0;
+  if (borrow) {
+    // FIRST in the day's plan — and an EXTRA action on a normal working day, so
+    // the sign/travel below still runs and the day keeps its income action.
+    actions.push(borrow.action);
+    borrowed = borrow.principal;
+  }
+
+  // Settle the Penny Wise balance before the day's spending starts, so the
+  // repayment is never lost to a refuel that drained the purse first.
+  const repay = planLoanRepay(state, ledger);
+  let repaid = 0;
+  if (repay) {
+    actions.push(repay);
+    repaid = loan?.outstanding ?? 0;
+  }
 
   // Raise the refuel threshold/target to cover this day's jump (capped at the
   // tank). Never lower them below the working defaults.
   const refuelThreshold = Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed));
   const refuelTarget = Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed));
-  const refuel = planRefuel(state, ledger, 0, refuelThreshold, refuelTarget);
+  const refuel = planRefuel(
+    state,
+    ledger,
+    // T-1601a: hold back exactly the repayment queued above (it runs first, but
+    // these planners all read the DAWN state), so the tank is never filled with
+    // the money that was going to clear the marker.
+    repaid,
+    refuelThreshold,
+    refuelTarget,
+    borrowed,
+  );
   let refuelCost = 0;
   if (refuel) {
     actions.push(refuel.action);
@@ -717,7 +1128,11 @@ export const traderPolicy: SimPolicy = ({ state }) => {
   // fuel ceiling (stranding a solvent trader with no reachable contract), repair
   // the ship — a real player fixes a crippled hull. Restores the full tank for the
   // next run; fires only when actually crippled and affordable.
-  const repair = planCrippledRepair(state, ledger, TRADER_RESERVE);
+  // T-1601a: the day's Penny Wise traffic nets into the affordability check (an
+  // advance funds the repair, a repayment is money already spent). The refuel is
+  // deliberately NOT subtracted — that was never modelled here, and changing it
+  // would move the T-1302 stranding fix this planner exists for.
+  const repair = planCrippledRepair(state, ledger, TRADER_RESERVE, borrowed - repaid);
   if (repair) actions.push(repair);
 
   // The tank the trader will actually have when it flies today — current fuel
@@ -738,8 +1153,10 @@ export const traderPolicy: SimPolicy = ({ state }) => {
         spendDie: die,
       });
     }
-  } else if (reachable.length > 0 && availableFuel >= primaryFuelNeed) {
-    const best = reachable[0];
+  } else if (preferred && availableFuel >= primaryFuelNeed) {
+    // T-1601a: `preferred` is `reachable[0]` unless the rim or head-home
+    // preference above swapped in another member of the SAME fundable set.
+    const best = preferred;
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
     if (signDie !== undefined && travelDie !== undefined) {
@@ -754,7 +1171,9 @@ export const traderPolicy: SimPolicy = ({ state }) => {
       // Second run while the debt still bites: throughput matters more than the
       // marginal encounter risk when 25,000 credits are due by day 30.
       if (state.player.debt > 5000 && reachable.length > 1 && ledger.remaining() >= 2) {
-        const second = reachable[1];
+        // T-1601a: the richest OTHER fundable run — `reachable[1]` unless a
+        // preference above made `best` something other than `reachable[0]`.
+        const second = reachable.find((c) => c.index !== best.index)!;
         // The board shifts when the first contract is spliced off; correct the
         // live index for the second sign.
         const liveIndex = second.index > best.index ? second.index - 1 : second.index;
@@ -791,7 +1210,22 @@ export const traderPolicy: SimPolicy = ({ state }) => {
     }
   }
 
-  const debtPayment = planDebtPayment(state, TRADER_RESERVE, refuelCost);
+  // T-1601a: PROTECT THE PENNY WISE REPAYMENT FROM THE GUILD MARKER. While a loan
+  // is live and unpaid this day, hold its whole balance back on top of the
+  // operating reserve. Sending it to the Guild instead is a false economy: the
+  // marker is a plain ledger, but a defaulted loan applies LOAN_DEFAULT_DISPOSITION
+  // to Penny Wise (grudge-weighting her into the interceptor draw, travel.ts
+  // chooseWeighted) AND multiplies the realized encounter chance by
+  // COLLECTION_ENCOUNTER_MULTIPLIER until it is cleared — a compounding penalty
+  // that costs far more than the days of marker payment it defers. A repayment
+  // queued TODAY needs no such hold; it is already committed spending instead.
+  const loanHold = state.player.loan && !repay ? state.player.loan.outstanding : 0;
+  const debtPayment = planDebtPayment(
+    state,
+    TRADER_RESERVE + loanHold,
+    refuelCost + repaid,
+    borrowed,
+  );
   if (debtPayment) actions.push(debtPayment);
 
   return actions.length > 0 ? actions : [{ type: 'Wait' }];
@@ -825,6 +1259,28 @@ function componentTierNetCost(
 }
 
 const FIGHTER_RESERVE = 3000;
+
+/**
+ * T-1601a · The fighter's special-equipment shopping list, and the ONE ordering
+ * fact that makes it work: AUTO_REPAIR is priced `min(hull.strength * 1000,
+ * 20000)` (engine shipyard.ts `specialEquipmentCost`, mirrored in
+ * `simSpecialEquipmentCost`), so it costs **1,000 credits while the ship is still
+ * on the junker's strength-1 hull and 20,000 the moment the tier-3 hull refit
+ * lands**. A player who wants it buys it FIRST — which is why `fighterPolicy`
+ * now runs `planSpecialEquipment` BEFORE `planFighterUpgrade`, instead of after.
+ * It carries no renown gate either, so it is the only special equipment a
+ * low-renown fighter can reach at all, and it is what makes the T-1206 module
+ * genuinely load-bearing in this policy's play (`equipmentUse.autoRepairDusks`).
+ *
+ * CLOAKER and TITANIUM_HULL are deliberately absent: both conflict with this list
+ * under the engine's exclusion ladder (see `planSpecialEquipment`).
+ */
+const FIGHTER_EQUIPMENT_PRIORITY: readonly SpecialEquipmentId[] = [
+  'AUTO_REPAIR',
+  'STAR_BUSTER',
+  'ARCH_ANGEL',
+  'ASTRAXIAL_HULL',
+];
 
 /** The fighter's shopping list, cheapest meaningful refit first: a real gun,
  *  then a bigger gun, then a tougher hull/shields/drives — each bought only when
@@ -876,6 +1332,15 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
     // weapons were load-bearing: the enemy died early and the surplus Combat
     // actions hit no encounter (a throw). Sizing the queue to the real damage is
     // both the fix and the reason an upgraded fighter wins more (this task's A/B).
+    // T-1601a: this window is already the WIDE one, and deliberately stays so —
+    // `volleys` is the min of what the enemy needs, what the tank can burn and
+    // what the hand holds, and any value >= 1 commits, so a PARTIAL volley is
+    // taken rather than bailing to the pacifist path. That is the right trade
+    // once the fit is load-bearing (T-1205/T-1206): enemy hull carries between
+    // rounds and upgraded shields absorb the counter-fire. It is also where the
+    // report's `equipmentUse.upgradedVolleys` and `shieldAbsorbedPoints` come
+    // from. The pacifist fallback below is reached only on a dry tank or an
+    // exhausted hand — i.e. when there is genuinely no volley to throw.
     const volleysNeeded = Math.ceil(hull / weaponVolleyDamage(state.player.ship));
     const fuelVolleys = Math.floor(state.player.ship.fuel / FIGHT_FUEL_COST);
     const volleys = Math.min(volleysNeeded, fuelVolleys, ledger.remaining());
@@ -933,13 +1398,17 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
     }
   }
 
+  // T-1601a: special equipment goes FIRST for the fighter. AUTO_REPAIR is priced
+  // off the CURRENT hull strength, so buying it before `planFighterUpgrade` lands
+  // the tier-3 hull is the difference between 1,000 and 20,000 credits — see
+  // FIGHTER_EQUIPMENT_PRIORITY. The offensive items behind it (STAR_BUSTER /
+  // ARCH_ANGEL at CAPTAIN, ASTRAXIAL_HULL at GIGA_HERO) still open only through
+  // EARNED rank (T-114a); only the ORDER relative to the component tiers moved.
+  const special = planSpecialEquipment(state, ledger, FIGHTER_RESERVE, FIGHTER_EQUIPMENT_PRIORITY);
+  if (special) actions.push(special);
+
   const upgrade = planFighterUpgrade(state, ledger);
   if (upgrade) actions.push(upgrade);
-
-  // Once renown opens the gate (CAPTAIN, from combat/trade deeds), spend the
-  // war chest on the offensive special equipment through EARNED rank (T-114a).
-  const special = planSpecialEquipment(state, ledger, FIGHTER_RESERVE);
-  if (special) actions.push(special);
 
   // Keep the marker from festering, but never at the cost of the war chest.
   const debtPayment = planDebtPayment(state, FIGHTER_RESERVE, refuel?.cost ?? 0);
@@ -954,6 +1423,24 @@ const EXPLORER_RESERVE = 2000;
 // escape a low-fuel corner), and with the early drives upgrade below fuel is cheap
 // enough that a thin reserve always buys enough range to reach the next contract.
 const EXPLORER_FUEL_RESERVE = 50;
+// T-1601a: what it costs to be allowed to DEADHEAD to the Sage of Mizar-9. A
+// decode trip earns nothing on the way out — it is a rim round-trip paid for in
+// fuel — so it is only a good move from a genuinely flush position. Measured
+// WITHOUT these two gates (seeds 1..12 × 300 days): the explorer started decode
+// trips inside the first month, arrived at rim ports broke, and three of twelve
+// seeds finished on ~50 credits with 20-250 fuel-starved days, against zero
+// starved days and six-figure balances before the leg existed. WITH them (seeds
+// 1..20 × 300 days): 18 of 20 careers decode every fragment they pull and finish
+// on six figures, worst zero-income streak 3 (the pre-T-1601a baseline's worst
+// was 4). The deadhead is NOT dead code at this value — disabling it entirely
+// over the same sweep drops the total decode count from 203 to 161. Sweep also
+// showed values from 2,000 to 10,000 producing near-identical outcomes; the
+// conservative end is kept because the failure it guards against is a strand.
+const EXPLORER_DECODE_TRIP_RESERVE = 10000;
+/** Not before the Tour One marker has resolved (PRD §5.1 / engine day-30
+ *  resolution): the first month is where this policy is poorest, and a deadhead
+ *  flown out of it is what turned into the strands above. */
+const EXPLORER_DECODE_TRIP_FIRST_DAY = 30;
 
 /**
  * EXPLORER — fragment chaser. Off-lane sweeps are a credit SINK (a detour burns
@@ -979,13 +1466,28 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // day-25 window open until the fragment is in hand.
   const pursuingArc = state.day >= 25 && !hasFragment(state.player.nemesisFile, 'frag-nemesis-01');
 
+  // T-1601a · The DECODE leg. Acquiring fragments was already real (Explore →
+  // POI loot pool → FragmentAcquired), but nothing ever routed the explorer to
+  // the Sage of Mizar-9 (system 18), the game's only decoder — so everything it
+  // pulled sat raw forever. This is the second pursuit phase, and it is
+  // deliberately SEQUENCED AFTER the Polaris pursuit (`!pursuingArc`):
+  // campaign-nemesis.test.ts requires the arc to open by day 80 on >= 80% of 50
+  // seeds, and that sweep ends the instant frag-nemesis-01 lands — so a decode
+  // leg that can only run once the Polaris pursuit is satisfied cannot regress
+  // it. Unlike arc pursuit, Explore is NOT suppressed here: decoding costs
+  // nothing but the jump, so the explore↔decode loop should keep charting.
+  const decodePursuit = !pursuingArc && hasAnyUndecoded(state.player.nemesisFile);
+
   // Resolve any offered storylet — the wire rumor, the Wise One buy-fragment hook
   // (grants frag-nemesis-01), and (at Mizar-9) the Sage decodes all surface here. A
   // no-die choice is resolved INLINE: it costs no die, so the day still does its
   // income work and the arc never burns a zero-income day (the poverty-trap
   // invariant the explorer is held to). A die-consuming choice is taken as a
   // standalone day (matches veteranPolicy) so it never collides with the ledger.
-  const storyletAction = chooseStoryletAction(state);
+  // T-1601a: while chasing a decode, a Sage decode offer outranks whatever sorts
+  // first on the board (see chooseDecodeStoryletAction).
+  const storyletAction =
+    (decodePursuit ? chooseDecodeStoryletAction(state) : null) ?? chooseStoryletAction(state);
   if (storyletAction) {
     // chooseStoryletAction always returns a Storylet action; a no-die choice omits
     // spendDie (resolve inline), a die choice sets it (resolve as a standalone day).
@@ -1055,7 +1557,21 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   const ranked = rankedContracts(state);
   const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
   const flyCap = Math.min(signFuelCap, postRefuelFuel);
-  const reachable = ranked.filter((c) => c.fuel <= flyCap);
+  let reachable = ranked.filter((c) => c.fuel <= flyCap);
+  // T-1601a: the T-1104 relaxation the trader has always had, ported to the
+  // explorer. From a RIM port every core-bound leg exceeds SIGN_FUEL_FRACTION of
+  // the tank, so `reachable` comes back empty and the explorer — which cannot
+  // Explore below EXPLORER_RESERVE either — has NO legal move and Waits forever
+  // (measured before this line: seed 16 sat at Mizar-9 for 48 straight days after
+  // a ship loss left it at the rim on a junker drive with 340 credits). The
+  // decode leg above makes ending a day at a rim port routine, so the corner has
+  // to be closed here. When nothing fits the margin cap, relax to the FULL funded
+  // tank: take the run the ship can actually complete, accepting the thinner
+  // re-flight margin, exactly as `traderPolicy` does. Reader: the poverty-trap
+  // invariant in campaign-policies.test.ts (streak < 5).
+  if (reachable.length === 0) {
+    reachable = ranked.filter((c) => c.fuel <= postRefuelFuel);
+  }
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -1078,6 +1594,35 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
     if (die !== undefined) {
       actions.push({ type: 'Travel', destinationId: 17, spendDie: die });
     }
+  } else if (
+    decodePursuit &&
+    drivesReady &&
+    from !== SAGE_SYSTEM_ID &&
+    // FUELLED, FUNDED and out of Tour One — all three required. Mizar-9 is a RIM
+    // system: an explorer that deadheads for it on a thin tank burns days on
+    // failed jumps and lands broke at a rim port where no contract is within the
+    // sign-cap and no Explore is affordable — a silent strand (measured before
+    // these gates: seed 16 sat at Mizar-9 for 48 straight days). So the detour
+    // only launches when the tank can already make the hop after this turn's
+    // refuel and the career is genuinely flush. Same shape as the Polaris leg's
+    // `>= 550` affordability gate above: never start a pursuit leg you cannot
+    // finish. See EXPLORER_DECODE_TRIP_RESERVE for the sweep behind the numbers.
+    postRefuelFuel >= playerJumpFuel(state, systemDistance(from, SAGE_SYSTEM_ID)) &&
+    state.player.credits >= EXPLORER_DECODE_TRIP_RESERVE &&
+    state.day > EXPLORER_DECODE_TRIP_FIRST_DAY
+  ) {
+    // T-1601a: fly STRAIGHT to the Sage of Mizar-9 (system 18) with a held, raw
+    // fragment — exactly the argument the Polaris leg above already documents:
+    // system 18 is not gated (isGatedDestination), and the upgraded drive makes
+    // the hop a fraction of the tank, so a plain legal Travel gets there instead
+    // of waiting on a rare dest-18 contract to happen onto a board. No state
+    // poke, no teleport. The Sage's decode is die-free and resolves inline on the
+    // following dawn, so the round trip costs fuel and a jump, never an income
+    // day (Travel is itself an income action for the poverty-trap invariant).
+    const die = ledger.takeBest();
+    if (die !== undefined) {
+      actions.push({ type: 'Travel', destinationId: SAGE_SYSTEM_ID, spendDie: die });
+    }
   } else if (reachable.length > 0) {
     // T-1310: during pursuit, bank on NET-POSITIVE runs only (payment beats the fuel
     // bill at the local depot), so credits actually climb toward the drives tier and
@@ -1090,6 +1635,14 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
         .filter((c) => c.net > 0)
         .sort((a, b) => b.net - a.net || a.index - b.index);
       if (netPositive.length > 0) best = netPositive[0];
+    } else if (decodePursuit) {
+      // T-1601a: the PAID decode trip. A fundable run that already ends at
+      // Mizar-9 carries the explorer to the Sage AND gets paid for it, so it is
+      // always preferred over the deadhead above and carries none of its gates —
+      // it costs nothing the day would not have spent anyway. Preference only,
+      // inside the already-fundable set.
+      const sageRun = reachable.find((c) => c.destination === SAGE_SYSTEM_ID);
+      if (sageRun) best = sageRun;
     }
     const signDie = ledger.takeWorst();
     const travelDie = ledger.takeBest();
@@ -1178,14 +1731,24 @@ function planSpecialEquipment(
   state: GameState,
   ledger: DieLedger,
   reserve: number,
+  // T-1601a: the priority list is now a PARAMETER, defaulting to the veteran's
+  // original three so `veteranPolicy` (the T-114a pinned-seed ASTRAXIAL_HULL
+  // reachability proof) is byte-for-byte unchanged. The fighter passes its own
+  // list, which leads with AUTO_REPAIR — see `FIGHTER_EQUIPMENT_PRIORITY`.
+  priority: readonly SpecialEquipmentId[] = ['STAR_BUSTER', 'ARCH_ANGEL', 'ASTRAXIAL_HULL'],
 ): PlayerAction | null {
   const ship = state.player.ship;
-  const priority: SpecialEquipmentId[] = ['STAR_BUSTER', 'ARCH_ANGEL', 'ASTRAXIAL_HULL'];
   for (const equipment of priority) {
     if (simEquipmentInstalled(state, equipment)) continue;
-    // STAR_BUSTER conflicts with a cloaker; the veteran never buys one, but keep
-    // the guard honest so we never queue an install the yard will reject.
+    // Mirror of the engine's `specialEquipmentFailure` exclusion/prereq ladder
+    // (actions/shipyard.ts), so a policy never burns a die on a refusal. The
+    // CLOAKER conflicts with STAR_BUSTER / ARCH_ANGEL / AUTO_REPAIR and demands
+    // hull strength 1–4 (which every upgrading policy refits past), and
+    // TITANIUM_HULL conflicts with AUTO_REPAIR — so neither is ever on a priority
+    // list here; only the reverse-direction guards are needed.
     if (equipment === 'STAR_BUSTER' && ship.hasCloaker) continue;
+    if (equipment === 'ARCH_ANGEL' && ship.hasCloaker) continue;
+    if (equipment === 'AUTO_REPAIR' && (ship.hasCloaker || ship.hasTitaniumHull)) continue;
     if (equipment === 'ASTRAXIAL_HULL' && ship.drives.strength < 25) continue;
 
     const requiredRank = SPECIAL_EQUIPMENT.find((e) => e.id === equipment)?.requiredRenownRank;
@@ -1531,6 +2094,24 @@ export function runCampaign(
   let flawOverrides = 0;
   let wireVolume = 0;
   const bestOfferDestinations: (number | null)[] = [];
+  // T-1601a behavior metrics (see the interface doc comments for readers).
+  const loanUsage: LoanUsageStats = {
+    loansTaken: 0,
+    principalBorrowed: 0,
+    interestAccrued: 0,
+    amountRepaid: 0,
+    loansCleared: 0,
+    defaults: 0,
+    daysWithLoan: 0,
+  };
+  const fragments: FragmentStats = { acquired: 0, decoded: 0, heldAtEnd: 0, decodedAtEnd: 0 };
+  const equipmentUse: EquipmentUseStats = {
+    specialEquipmentBought: [],
+    componentTiersBought: 0,
+    upgradedVolleys: 0,
+    shieldAbsorbedPoints: 0,
+    autoRepairDusks: 0,
+  };
 
   for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
     const startingDay = state.day;
@@ -1565,20 +2146,53 @@ export function runCampaign(
       // actions between steps and would never send it). This only fires on the new
       // mid-batch-death path, so deterministic non-fatal runs are unchanged.
       if (action.type === 'Combat' && !dayState.encounter) continue;
+      // T-1601a: `upgradedVolleys` cannot be read off the event stream — a
+      // CombatEvent says a fight round landed, not what gun landed it. Sample the
+      // fit on the PRE-action ship (the junker's `weaponVolleyDamage` is exactly
+      // 1 by the T-1205 baseline-subtraction invariant, so `> 1` means a bought
+      // weapon tier / STAR_BUSTER was in play) and pair it with the outcome.
+      const volleyDamageBefore = weaponVolleyDamage(dayState.player.ship);
       const stepped = applyPlayerAction(dayState, action);
       dayState = stepped.state;
       dayEvents.push(...stepped.events);
+      if (
+        volleyDamageBefore > 1 &&
+        stepped.events.some(
+          (event) => event.type === 'CombatEvent' && event.stance === 'fight' && event.success,
+        )
+      ) {
+        equipmentUse.upgradedVolleys += 1;
+      }
     }
+    // T-1601a: the AUTO_REPAIR module narrates only a WireEntry, so measure it by
+    // comparing condition across the dusk on the seven components the engine's
+    // reader actually touches (hull excluded, exactly as engine-side).
+    const preDuskShip = dayState.player.ship;
     const dusk = endDay(dayState);
     state = dusk.state;
     dayEvents.push(...dusk.events);
+    if (
+      preDuskShip.hasAutoRepair === true &&
+      AUTO_REPAIR_SIM_COMPONENTS.some(
+        (id) => state.player.ship[id].condition > preDuskShip[id].condition,
+      )
+    ) {
+      equipmentUse.autoRepairDusks += 1;
+    }
+    if (state.player.loan) {
+      loanUsage.daysWithLoan += 1;
+    }
 
     const counts = countDailyEvents(dayEvents);
+    accumulateMetricEvents(dayEvents, loanUsage, fragments, equipmentUse);
     wireVolume += counts.wireEntries;
     flawChecks += counts.flawChecks;
     flawOverrides += counts.flawOverrides;
 
-    if (cannotAffordCheapestJump(state)) {
+    // T-1004 stranding measure. Evaluated ONCE and consumed twice: the report
+    // counter and the per-day `fuelStarved` series below (T-1601a).
+    const fuelStarved = cannotAffordCheapestJump(state);
+    if (fuelStarved) {
       fuelStarvationDays += 1;
     }
 
@@ -1601,8 +2215,12 @@ export function runCampaign(
       renownRank: state.player.registry.renownRank,
       bestOfferDestination: bestOfferDestinations[dayIndex] ?? null,
       incomeActionCount,
+      fuelStarved,
     });
   }
+
+  fragments.heldAtEnd = fragmentCount(state.player.nemesisFile);
+  fragments.decodedAtEnd = decodedFragmentCount(state.player.nemesisFile);
 
   return {
     seed,
@@ -1617,6 +2235,9 @@ export function runCampaign(
     deedsEarned: state.player.registry.earned.map((deed) => deed.id),
     renownRank: state.player.registry.renownRank,
     routeDiversity: computeRouteDiversity(bestOfferDestinations),
+    loanUsage,
+    fragments,
+    equipmentUse,
     finalState: {
       day: state.day,
       credits: state.player.credits,

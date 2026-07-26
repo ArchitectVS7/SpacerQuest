@@ -16,8 +16,22 @@
  * anywhere. So these constants carry no foundation citation: they are
  * engine-original tuning, sanctioned to live here per the TECH-STACK "balance
  * numbers are data" constraint — the same justification `hangout.ts` and
- * `disposition.ts` use. They are INTERIM and OWNED BY the T-1601 rebalance (which
- * lists T-1304 in its `after`); do not enshrine them as canonical.
+ * `disposition.ts` use. They are INTERIM (T-1603): the canonical-values owner is
+ * T-1603b, the lending/economy tuning pass — the same `INTERIM (T-1603)` idiom
+ * `factions.ts` and `nemesis.ts` use. (The marker previously named "the T-1601
+ * rebalance"; T-1601 has since been split, and T-1601a — which SET and RATIFIED
+ * this interim band, and is the first task to exercise it in sim — is not the
+ * canonical owner.) Do not enshrine them as canonical.
+ *
+ * T-1601a EVIDENCE (2026-07-26): the band ships UNCHANGED. `traderPolicy` now
+ * borrows under duress and repays at the desk, so these numbers are exercised by
+ * real play for the first time. Measured over seeds 1..8 × 300 days: every seed
+ * took an advance, accrued interest against it, and CLEARED it in full at Penny
+ * Wise's desk — 0.05/dusk × a 15-dusk term is steep (~75% simple interest over a
+ * full term) but demonstrably clearable by a working trader, so no constant was
+ * moved. Three of the eight seeds crossed a due day before settling (default,
+ * then repaid), which is the consequence branch doing its job rather than a
+ * structurally unclearable band.
  *
  * READERS: the borrow/repay resolver (`packages/engine/src/actions/hangout.ts`),
  * the per-dusk accrual + default flip in the day loop (`day.ts` endDay), the
@@ -34,16 +48,16 @@ export const LENDER_ID = 'npc-penny-wise';
 /** Per-dusk interest, applied to the ORIGINAL principal (simple interest, not
  *  compounding): each dusk adds `ceil(principal * LOAN_DAILY_RATE)` to the
  *  outstanding balance. 0.05 ≈ 5%/dusk — steep enough to bite over a term,
- *  gentle enough that a productive trader can clear it. Interim (T-1601). */
+ *  gentle enough that a productive trader can clear it. Interim (T-1603). */
 export const LOAN_DAILY_RATE = 0.05;
 
 /** Term in dusks. The loan comes DUE `LOAN_TERM_DAYS` dusks after it is taken;
- *  crossing the due day unpaid flips it to `defaulted`. Interim (T-1601). */
+ *  crossing the due day unpaid flips it to `defaulted`. Interim (T-1603). */
 export const LOAN_TERM_DAYS = 15;
 
 /** Principal band. The floor comfortably covers the §7.5 ~500-credit bad-day gap
  *  and the cheapest starter jump's fuel bill; the ceiling caps a single advance.
- *  A borrow request is clamped into [MIN, MAX]. Interim (T-1601). */
+ *  A borrow request is clamped into [MIN, MAX]. Interim (T-1603). */
 export const LOAN_MIN_PRINCIPAL = 250;
 export const LOAN_MAX_PRINCIPAL = 5000;
 
@@ -52,11 +66,11 @@ export const LOAN_MAX_PRINCIPAL = 5000;
  *  Wise is as memorable a grudge as shooting someone's ship out from under them,
  *  so the interceptor grudge-weighting (travel.ts chooseWeighted) makes her far
  *  likelier to BE your interceptor. Applied exactly once at the default flip.
- *  Interim (T-1601). */
+ *  Interim (T-1603). */
 export const LOAN_DEFAULT_DISPOSITION = -5;
 
 /** Collection pressure: while a loan is `defaulted`, the realized encounter
  *  chance is multiplied by this (>1) — the "collectors are looking for you"
  *  reader in generateEncounter (the dangerous mirror of the CLOAKER damp). The
- *  multiplier stands until the loan is repaid (which nulls it). Interim (T-1601). */
+ *  multiplier stands until the loan is repaid (which nulls it). Interim (T-1603). */
 export const COLLECTION_ENCOUNTER_MULTIPLIER = 1.5;
