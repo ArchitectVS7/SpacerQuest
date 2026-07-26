@@ -1,0 +1,204 @@
+# T-1602b · Tour One E2E flake-rate measurement.
+#
+# Runs the FULL Playwright suite N times (default 20) as a parallel matrix, then
+# aggregates the per-run JSON reports into one flake-rate table.
+#
+# ---------------------------------------------------------------------------
+# TRIGGER — the fix-round-2 correction, and why it is not a cost decision
+# ---------------------------------------------------------------------------
+# Round 1 shipped this workflow `workflow_dispatch`-ONLY, reasoning that 20x the
+# e2e suite is too expensive to run on every push. The reasoning was fine; the
+# consequence was that the measurement could never be taken:
+#   * GitHub only dispatches a workflow that already exists on the DEFAULT
+#     BRANCH. A matrix added by the very commit whose acceptance needs it cannot
+#     be started — `gh workflow run e2e-flake.yml` answers HTTP 404, "workflow
+#     not found on the default branch" — so there was no CI evidence to cite at
+#     review time and none after, either;
+#   * dispatch-only means a HUMAN has to remember. A stability gate that only
+#     runs when somebody thinks to run it is not a gate.
+# So it now fires automatically — but scoped by `paths`, which keeps the original
+# cost argument intact while making the measurement real: the stability question
+# is re-opened exactly when the thing being measured changes (the specs and their
+# drivers, the config they run under, the UI package manifest that pins
+# Playwright, or this workflow itself). A push that touches none of those
+# inherits the last measurement and burns nothing.
+#
+# The LOCAL equivalent is `npm run flake:measure -w @spacerquest/ui` (see
+# packages/ui/e2e/support/flake-measure.ts): the same N runs with the same
+# FLAKE_RUN/FLAKE_REPORT env, ending in the same aggregation and the same gate.
+# That is what satisfies the CI-evidence rule's "locally checkable" clause before
+# the push; this workflow is what confirms it after.
+#
+#   gh workflow run e2e-flake.yml                 # 20 runs, on demand
+#   gh workflow run e2e-flake.yml -f runs=5       # a quick smoke of the pipeline
+#
+# The whole suite is measured, not just the tagged specs: flakes are born of
+# parallel load, so the Tour One specs must run under the same contention CI
+# actually gives them. The GATE is still the `@tour-one` subset, exactly as the
+# acceptance line words it; the whole-suite number is reported for information.
+name: E2E flake rate
+
+on:
+  push:
+    branches: [main, rimward-redesign]
+    paths:
+      - 'packages/ui/e2e/**'
+      - 'packages/ui/playwright.config.ts'
+      - 'packages/ui/package.json'
+      - '.github/workflows/e2e-flake.yml'
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Number of full-suite runs to measure (1-20)
+        required: false
+        default: '20'
+
+# NO `concurrency` block, deliberately: a cancel-in-progress group would let a
+# second push or dispatch kill a matrix half-way through and leave a measurement
+# built on a partial sample. Two overlapping measurements are cheap; a silently
+# truncated one is not.
+
+permissions:
+  contents: read
+
+# `inputs` is null on a `push` event, so `inputs.runs` renders as the EMPTY
+# STRING there — and `[ 1 -le "" ]` is a shell error ("integer expression
+# expected"), not a comparison, which would fail every shard of every pushed
+# measurement. Resolve the count once, here, for both trigger paths.
+env:
+  RUNS: ${{ inputs.runs || '20' }}
+
+jobs:
+  run:
+    name: e2e run ${{ matrix.run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # A failing shard is the DATUM, not a reason to abandon the measurement.
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    steps:
+      # Validate BEFORE comparing: a junk `runs` input would otherwise make every
+      # shard's `[ -le ]` a shell error, and the matrix would look "failed" for a
+      # reason nobody could read. Fail loudly with the offending value instead.
+      - name: Skip runs above the requested count
+        id: gate
+        run: |
+          case "$RUNS" in
+            ''|*[!0-9]*)
+              echo "runs must be a whole number 1-20, got '$RUNS'" >&2
+              exit 1
+              ;;
+          esac
+          if [ "$RUNS" -lt 1 ] || [ "$RUNS" -gt 20 ]; then
+            echo "runs must be between 1 and 20 (the matrix width), got '$RUNS'" >&2
+            exit 1
+          fi
+          if [ "${{ matrix.run }}" -le "$RUNS" ]; then
+            echo "measure=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "measure=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.measure == 'true'
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        if: steps.gate.outputs.measure == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.gate.outputs.measure == 'true'
+        run: npm ci
+
+      - name: Build workspaces
+        if: steps.gate.outputs.measure == 'true'
+        run: npx tsc -b
+
+      # Same browser cache block as ci.yml's e2e job — package-lock.json pins
+      # @playwright/test, so its hash changes exactly when the browser build
+      # Playwright wants can change.
+      - name: Cache Playwright browser
+        if: steps.gate.outputs.measure == 'true'
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browser
+        if: steps.gate.outputs.measure == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: packages/ui
+
+      - name: Install Playwright system deps
+        if: steps.gate.outputs.measure == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+        working-directory: packages/ui
+
+      # `continue-on-error`: a failing shard must not abort the measurement — the
+      # failure IS the thing being measured, and it is already recorded in the
+      # JSON report the next step uploads.
+      #
+      # `FLAKE_REPORT` points at `flake-results/`, NOT `test-results/`: Playwright
+      # erases its `outputDir` (default `test-results/`) at the start of every
+      # run, so a per-run report written there does not survive a second run in
+      # the same tree. Harmless here — one run per shard — but fatal to the local
+      # 20-run equivalent, and both sides must write to the same place or they
+      # are not the same measurement. See packages/ui/e2e/support/flake-io.ts.
+      - name: Run e2e (flake mode)
+        if: steps.gate.outputs.measure == 'true'
+        continue-on-error: true
+        env:
+          FLAKE_RUN: '1'
+          FLAKE_REPORT: flake-results/run-${{ matrix.run }}.json
+        run: npm run test:e2e
+        working-directory: packages/ui
+
+      - name: Upload run report
+        if: always() && steps.gate.outputs.measure == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-run-${{ matrix.run }}
+          path: packages/ui/flake-results/
+          if-no-files-found: error
+
+  aggregate:
+    name: Aggregate flake rate
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download run reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: flake-run-*
+          merge-multiple: true
+          path: flake-reports
+
+      # Tee the table into the job step summary — that rendering is the CI
+      # evidence the Delivered note quotes. The non-zero exit on a failed gate
+      # propagates through the pipe via PIPESTATUS.
+      - name: Report and gate
+        run: |
+          set -o pipefail
+          npm run flake:report -w @spacerquest/ui -- "$GITHUB_WORKSPACE/flake-reports" \
+            | tee -a "$GITHUB_STEP_SUMMARY"

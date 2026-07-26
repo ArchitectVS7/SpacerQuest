@@ -33,6 +33,7 @@ import {
   shipyard,
   resolveStorylet,
   dismissAftermath,
+  dismissSuccession,
   dismissOnboarding,
   standDown,
   toggleFx,
@@ -101,6 +102,7 @@ import {
   type OnboardingMount,
   type ResolutionCeremonyView,
   type ShipComponentRow,
+  type SuccessionSummary,
   type WireLogEntry,
   type StoryletChoice,
 } from './format';
@@ -507,6 +509,12 @@ export function App() {
         <OnboardingCallout state={s} where="screen" />
         <CombatOverlay state={s} />
         {ceremony && <ResolutionCeremony state={s} view={ceremony} />}
+        {/* T-1602b · The death beat. Mounted OUTSIDE the combat overlay on
+            purpose: a dusk life-support failure kills the ship with no encounter
+            on screen at all, and the combat killing blow nulls the encounter
+            before this renders — so hanging it off the overlay would make half
+            the deaths in the game invisible. */}
+        {s.succession && <SuccessionNotice succession={s.succession} />}
         {recordsOpen && <RecordsOverlay game={s.game} onClose={() => setRecordsOpen(false)} />}
       </div>
     </div>
@@ -646,6 +654,79 @@ function ResolutionCeremony({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// T-1602b · THE SUCCESSION NOTICE — the death beat, made visible.
+//
+// Until this existed a player who lost their ship watched the combat overlay
+// silently unmount, their credits halve, their ship turn into a junker and their
+// position teleport, with no in-the-moment explanation at all: the only trace was
+// the obituary buried in the Wire log. This is that explanation.
+//
+// It is a pure CLIENT of `successionSummary` (format.ts), which is itself pure
+// translation of the engine's typed `ShipLost` / `LegacySuccession` /
+// `TradeEvent{forfeit-cargo}` / obituary `WireEntry` batch. Every number below is
+// the engine's own; the obituary prose is the ENGINE's sentence, verbatim — the
+// UI does not author the death.
+//
+// Acknowledging clears the client-side `succession` state → this unmounts back to
+// a fully playable cockpit (the successor's hand is spent, so the legal move is
+// `end-day`; no soft-lock).
+function SuccessionNotice({ succession }: { succession: SuccessionSummary }) {
+  return (
+    <div
+      className="succession-notice"
+      data-testid="succession-notice"
+      data-reason={succession.reason}
+      role="dialog"
+      aria-label="Ship lost"
+    >
+      <div className="sn-frame">
+        <header className="sn-head">
+          <span className="sn-kicker">REGISTRY OF LOSSES · DAY {succession.day}</span>
+          <h2 className="sn-title">SHIP LOST</h2>
+          <span
+            className="sn-lost-to"
+            data-testid="succession-lost-to"
+            data-lost-to={succession.lostTo}
+          >
+            {succession.lostToLabel}
+          </span>
+        </header>
+
+        <p className="sn-obituary" data-testid="succession-obituary">
+          {succession.obituary}
+        </p>
+
+        <dl className="sn-estate">
+          <div className="sn-row">
+            <dt>INHERITED</dt>
+            <dd data-testid="succession-inherited-credits">
+              {succession.inheritedCredits.toLocaleString()} CR
+            </dd>
+          </div>
+          <div className="sn-row">
+            <dt>DEBTS CARRIED</dt>
+            <dd data-testid="succession-debt">{succession.debtOutstanding.toLocaleString()} CR</dd>
+          </div>
+          <div className="sn-row">
+            <dt>LICENCES PASSED ON</dt>
+            <dd data-testid="succession-count">{succession.successionCount}</dd>
+          </div>
+          {succession.cargoForfeited !== null && (
+            <div className="sn-row">
+              <dt>CARGO LOST</dt>
+              <dd data-testid="succession-cargo">{succession.cargoForfeited}</dd>
+            </div>
+          )}
+        </dl>
+
+        <button className="btn" data-testid="succession-ack" onClick={dismissSuccession}>
+          Claim the licence
+        </button>
       </div>
     </div>
   );
@@ -1457,6 +1538,18 @@ function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => voi
               <p className="rr-citation" data-testid="registry-rank-citation">
                 {registry.rankCitation}
               </p>
+              {/* T-1602b · The DURABLE reader of the persisted
+                  `player.legacy.successionCount` (format.ts `deedRegistry`). The
+                  succession notice is a moment; this is the record, and it is
+                  still here after a reload. Rendered only above zero, matching
+                  the ending screen's rule that a first-run spacer is not told
+                  about a counter that reads zero. */}
+              {registry.successionCount > 0 && (
+                <span className="rr-successions" data-testid="registry-successions">
+                  {registry.successionCount}{' '}
+                  {registry.successionCount === 1 ? 'LICENCE PASSED ON' : 'LICENCES PASSED ON'}
+                </span>
+              )}
             </div>
             {/* T-1503 · Alliance standing — a pure read of player.reputation via
                 format.ts `factionStanding`. The reader that makes the four-faction
@@ -2194,12 +2287,20 @@ function ComponentRow({
   // condition 0-9 → 5 pips
   const on = Math.round((row.condition / 9) * 5);
 
+  // T-1602b · `data-strength` / `data-condition` below are structural
+  // pass-throughs of the two numbers this row ALREADY renders — strength as
+  // text, condition as five pips (which cannot be read structurally at all). No
+  // new derived rule; same justification as T-1602a's four data-* additions.
+  // READER: `tour-one-death.spec.ts`, proving the successor inherits an exact
+  // junker (hull str 1 / cond 9, drives str 10, …).
   return (
     <div
       className={row.damaged ? 'comp-row damaged' : 'comp-row'}
       data-testid="ship-component"
       data-component={row.id}
       data-damaged={row.damaged ? '1' : '0'}
+      data-strength={row.strength}
+      data-condition={row.condition}
     >
       <div className="comp-id">
         <span className="comp-name">{row.name}</span>

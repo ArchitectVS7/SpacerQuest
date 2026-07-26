@@ -3,6 +3,7 @@ import {
   CARGO_TYPES,
   STORYLETS,
   NPC_PROFILES,
+  ANONYMOUS_INTERCEPTORS,
   SHIP_COMPONENTS,
   SPECIAL_EQUIPMENT,
   RENOWN_RANKS,
@@ -925,6 +926,12 @@ export function combatAftermathSummary(events: GameEvent[]): CombatAftermath | n
   );
   if (!resolved) return null;
   const lines: string[] = [RESOLUTION_HEADLINE[resolved.resolution]];
+  // T-1602b: the loop below deliberately has NO ShipLost / LegacySuccession
+  // branch. The killing blow in `combat.ts` nulls the encounter and returns
+  // WITHOUT emitting `EncounterResolved`, so this function has already returned
+  // null by the time a death's events reach it — the two branches that used to
+  // sit here were provably unreachable copy. A ship loss routes to
+  // `successionSummary` below and renders in its own notice, not in this panel.
   for (const e of events) {
     if (e.type === 'TributePaid') {
       lines.push(
@@ -937,16 +944,100 @@ export function combatAftermathSummary(events: GameEvent[]): CombatAftermath | n
       e.enemyHullRemaining === 0
     ) {
       lines.push('Final volley connected — their hull gave way.');
-    } else if (e.type === 'ShipLost') {
-      lines.push('Your ship was lost in the exchange.');
-    } else if (e.type === 'LegacySuccession') {
-      lines.push(
-        `A successor claims the license — ${e.inheritedCredits.toLocaleString()}cr inherited.`,
-      );
     }
   }
   lines.push(`Resolved on round ${resolved.round}.`);
   return { resolution: resolved.resolution, lines };
+}
+
+// ---- T-1602b · death & succession (display-only) -------------------------
+
+/**
+ * The estate summary of a ship loss, for the succession notice.
+ *
+ * PURE TRANSLATION, exactly like `shipyardFailureExplanation`: every field below
+ * is COPIED off a typed engine event (`ShipLost`, `LegacySuccession`, the
+ * `TradeEvent{action:'forfeit-cargo'}` and the obituary `WireEntry` that
+ * `applySuccession` emits together in one batch). Nothing here is re-derived —
+ * in particular the halved bank is the engine's own `inheritedCredits` and the
+ * obituary is the engine's own sentence, never prose authored in the UI.
+ *
+ * READERS: `store.ts` (`succession`, set from BOTH death paths — the combat
+ * killing blow and the dusk life-support failure) and `App.tsx`'s
+ * `SuccessionNotice`. The DURABLE reader of the persisted counter is the
+ * Registry pane's `registry-successions` row, which survives a reload; this
+ * summary is the in-the-moment beat only.
+ */
+export interface SuccessionSummary {
+  /** The day the ship went down (`ShipLost.day`). */
+  day: number;
+  /** What took the ship down: the interceptor's id, or the literal
+   *  'life-support-failure' on the dusk path (`ShipLost.interceptorId`). */
+  lostTo: string;
+  /** `lostTo` rendered for a human — the interceptor's authored NAME (the same
+   *  string the combat overlay's `combat-enemy-name` showed), looked up in
+   *  content exactly as `componentName` looks up a component. A pure name
+   *  translation, never a rule; unknown ids fall back to the id itself. */
+  lostToLabel: string;
+  /** The typed cause (`ShipLost.reason`) — rendered as the notice's data-reason. */
+  reason: 'combat-defeat' | 'life-support-failure';
+  /** Half the bank, floored, straight off `LegacySuccession.inheritedCredits`. */
+  inheritedCredits: number;
+  /** The Guild marker the estate still owes (`LegacySuccession.debtOutstanding`). */
+  debtOutstanding: number;
+  /** How many licences this career has passed on (`LegacySuccession.successionCount`). */
+  successionCount: number;
+  /** The cargo that went down with the ship, or null when the hold was empty. */
+  cargoForfeited: string | null;
+  /** The engine's own wire obituary, verbatim. */
+  obituary: string;
+}
+
+/** The authored display name behind a `ShipLost.interceptorId` — anonymous
+ *  roster first, then the named cast, then the non-combat causes. Same shape as
+ *  `componentName` / `equipmentName`: a content lookup, not a rule. */
+function shipLostToLabel(interceptorId: string): string {
+  if (interceptorId === 'life-support-failure') return 'Life support failure';
+  const anon = ANONYMOUS_INTERCEPTORS.find((i) => i.id === interceptorId);
+  if (anon) return anon.name;
+  return NPC_PROFILES.find((p) => p.id === interceptorId)?.name ?? interceptorId;
+}
+
+/**
+ * Build the succession summary from the events an action (or a dusk) returned.
+ * Returns null when no ship was lost — which is every action but two in a career.
+ */
+export function successionSummary(events: GameEvent[]): SuccessionSummary | null {
+  const lost = events.find(
+    (e): e is Extract<GameEvent, { type: 'ShipLost' }> => e.type === 'ShipLost',
+  );
+  const succession = events.find(
+    (e): e is Extract<GameEvent, { type: 'LegacySuccession' }> => e.type === 'LegacySuccession',
+  );
+  // Both always ride together (`applySuccession` is called at the ShipLost site),
+  // but the UI refuses to render half an estate rather than invent the other half.
+  if (!lost || !succession) return null;
+
+  const forfeit = events.find(
+    (e): e is Extract<GameEvent, { type: 'TradeEvent' }> =>
+      e.type === 'TradeEvent' && e.action === 'forfeit-cargo',
+  );
+  const obituary = events.find(
+    (e): e is Extract<GameEvent, { type: 'WireEntry' }> =>
+      e.type === 'WireEntry' && e.message.includes('A successor claims the license'),
+  );
+
+  return {
+    day: lost.day,
+    lostTo: lost.interceptorId,
+    lostToLabel: shipLostToLabel(lost.interceptorId),
+    reason: lost.reason,
+    inheritedCredits: succession.inheritedCredits,
+    debtOutstanding: succession.debtOutstanding,
+    successionCount: succession.successionCount,
+    cargoForfeited: forfeit?.cargoType === undefined ? null : cargoName(forfeit.cargoType),
+    obituary: obituary?.message ?? '',
+  };
 }
 
 // ---- T-308 ship & shipyard (display-only) --------------------------------
@@ -1196,6 +1287,14 @@ export interface DeedRegistryView {
    *  RecordsOverlay (App.tsx), asserted at two ranks in `e2e/derule.spec.ts`.
    *  Emitted verbatim: content owns the prose, the UI owns no rule here. */
   rankCitation: string;
+  /** T-1602b · How many times this career has passed the licence on — a verbatim
+   *  read of the PERSISTED `player.legacy.successionCount` (T-108). This is the
+   *  DURABLE reader of that field: unlike the transient succession notice it
+   *  survives a reload, which is what proves the counter is state and not a
+   *  modal. READER: the `registry-successions` row in RecordsOverlay (App.tsx),
+   *  rendered only when the count is non-zero — the same "a first-run spacer is
+   *  not told about a counter that reads zero" rule `endingScreen` follows. */
+  successionCount: number;
   /** Earned deeds, newest first (by eventIndex — stable within a day). */
   earned: { id: string; title: string; citation: string; day: number }[];
 }
@@ -1221,6 +1320,7 @@ export function deedRegistry(game: GameState): DeedRegistryView {
     nextRankLabel: next ? RENOWN_RANKS[next].label : null,
     deedsToNextRank: next ? Math.max(0, RENOWN_DEED_THRESHOLDS[next] - deedCount) : null,
     rankCitation: RENOWN_RANKS[registry.renownRank].citation,
+    successionCount: game.player.legacy.successionCount,
     earned: [...registry.earned]
       .sort((a, b) => b.eventIndex - a.eventIndex)
       .map((d) => ({ id: d.id, title: d.title, citation: d.citation, day: d.day })),

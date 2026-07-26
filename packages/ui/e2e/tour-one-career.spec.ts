@@ -91,94 +91,102 @@ async function flyTourOne(page: Page, branch: 'cleared' | 'unpaid'): Promise<Run
   return report;
 }
 
-test('a full Tour One career clears the Guild marker and opens the veteran lanes', async ({
-  page,
-}, testInfo) => {
-  const report = await flyTourOne(page, 'cleared');
+// T-1602b · Both tests carry the `@tour-one` tag so the flake gate can measure
+// exactly the suite its acceptance names (see e2e/support/flake.ts). A title/tag
+// change is RNG-FREE — it adds no click and moves no engine action — so it
+// cannot disturb the seed-21 pin above.
+test(
+  'a full Tour One career clears the Guild marker and opens the veteran lanes',
+  { tag: '@tour-one' },
+  async ({ page }, testInfo) => {
+    const report = await flyTourOne(page, 'cleared');
 
-  // Dusk of day 30 FORCES the resolution; the ceremony surfaces at dawn of 31.
-  await expect(page.getByTestId('day')).toHaveText('31');
+    // Dusk of day 30 FORCES the resolution; the ceremony surfaces at dawn of 31.
+    await expect(page.getByTestId('day')).toHaveText('31');
 
-  const ceremony = page.getByTestId('resolution-ceremony');
-  await expect(ceremony).toBeVisible();
-  await expect(ceremony).toHaveAttribute('data-outcome', 'cleared');
-  await expect(page.getByTestId('resolution-rank')).toBeVisible();
-  await expect(page.getByTestId('resolution-deed')).toContainText('Tour One Complete');
-  await expect(page.getByTestId('veteran-unlocked')).toBeVisible();
-  await expect(page.getByTestId('resolution-consequence')).toHaveCount(0);
-  // The marker is gone from the bezel because the player discharged it on day 30
-  // through the Port Ledger — not because the ceremony wrote it off.
-  await expect(page.getByTestId('debt-chip')).toHaveCount(0);
-  // T-1301's dusk-of-day-30 era flip, asserted for the first time on the only
-  // surface a player can see it on.
-  await expect(page.getByTestId('campaign-era')).toHaveText('Veteran');
+    const ceremony = page.getByTestId('resolution-ceremony');
+    await expect(ceremony).toBeVisible();
+    await expect(ceremony).toHaveAttribute('data-outcome', 'cleared');
+    await expect(page.getByTestId('resolution-rank')).toBeVisible();
+    await expect(page.getByTestId('resolution-deed')).toContainText('Tour One Complete');
+    await expect(page.getByTestId('veteran-unlocked')).toBeVisible();
+    await expect(page.getByTestId('resolution-consequence')).toHaveCount(0);
+    // The marker is gone from the bezel because the player discharged it on day 30
+    // through the Port Ledger — not because the ceremony wrote it off.
+    await expect(page.getByTestId('debt-chip')).toHaveCount(0);
+    // T-1301's dusk-of-day-30 era flip, asserted for the first time on the only
+    // surface a player can see it on.
+    await expect(page.getByTestId('campaign-era')).toHaveText('Veteran');
 
-  await acknowledgeResolution(page, report);
-  await expectPlayableCockpit(page);
-  await expect(page.getByTestId('debt-chip')).toHaveCount(0);
+    await acknowledgeResolution(page, report);
+    await expectPlayableCockpit(page);
+    await expect(page.getByTestId('debt-chip')).toHaveCount(0);
 
-  expect(report.resolution?.outcome).toBe('cleared');
-  expect(report.resolution?.veteranUnlocked).toBe(true);
-  expect(report.resolution?.deedTitle).toBe('Tour One Complete');
-  expect(report.resolution?.eraAfter).toBe('Veteran');
-  expect(report.totals.debtFinal).toBe(0);
-  expect(report.totals.deliveries).toBeGreaterThan(0);
-  expect(report.totals.encounters).toBeGreaterThan(0);
-  expect(report.totals.day30Bankroll).toBeGreaterThanOrEqual(GUILD_MARKER);
-  // The career really did walk the cockpit, and really did fight and finish.
-  expect(report.screensVisited).toEqual(
-    expect.arrayContaining([
-      'starmap',
-      'manifest-board',
-      'port-ledger',
-      'records-registry',
-      'hangout',
-      'settings',
-      'wire-log',
-      'route-preview',
-      'combat',
-      'resolution-ceremony',
-    ]),
-  );
+    expect(report.resolution?.outcome).toBe('cleared');
+    expect(report.resolution?.veteranUnlocked).toBe(true);
+    expect(report.resolution?.deedTitle).toBe('Tour One Complete');
+    expect(report.resolution?.eraAfter).toBe('Veteran');
+    expect(report.totals.debtFinal).toBe(0);
+    expect(report.totals.deliveries).toBeGreaterThan(0);
+    expect(report.totals.encounters).toBeGreaterThan(0);
+    expect(report.totals.day30Bankroll).toBeGreaterThanOrEqual(GUILD_MARKER);
+    // The career really did walk the cockpit, and really did fight and finish.
+    expect(report.screensVisited).toEqual(
+      expect.arrayContaining([
+        'starmap',
+        'manifest-board',
+        'port-ledger',
+        'records-registry',
+        'hangout',
+        'settings',
+        'wire-log',
+        'route-preview',
+        'combat',
+        'resolution-ceremony',
+      ]),
+    );
 
-  await emitReport(testInfo, report);
-});
+    await emitReport(testInfo, report);
+  },
+);
 
-test('the same career, marker unpaid: the resolution files it and the debt rides on', async ({
-  page,
-}, testInfo) => {
-  const report = await flyTourOne(page, 'unpaid');
+test(
+  'the same career, marker unpaid: the resolution files it and the debt rides on',
+  { tag: '@tour-one' },
+  async ({ page }, testInfo) => {
+    const report = await flyTourOne(page, 'unpaid');
 
-  await expect(page.getByTestId('day')).toHaveText('31');
+    await expect(page.getByTestId('day')).toHaveText('31');
 
-  const ceremony = page.getByTestId('resolution-ceremony');
-  await expect(ceremony).toBeVisible();
-  await expect(ceremony).toHaveAttribute('data-outcome', 'unpaid');
-  await expect(page.getByTestId('resolution-rank')).toBeVisible();
-  await expect(page.getByTestId('resolution-consequence')).toBeVisible();
-  await expect(page.getByTestId('veteran-unlocked')).toHaveCount(0);
-  await expect(page.getByTestId('resolution-deed')).toHaveCount(0);
-  // The era flips on BOTH branches (day.ts:866-885) — `veteran.unlocked` is the
-  // thing the unpaid run forfeits, not the campaign era.
-  await expect(page.getByTestId('campaign-era')).toHaveText('Veteran');
+    const ceremony = page.getByTestId('resolution-ceremony');
+    await expect(ceremony).toBeVisible();
+    await expect(ceremony).toHaveAttribute('data-outcome', 'unpaid');
+    await expect(page.getByTestId('resolution-rank')).toBeVisible();
+    await expect(page.getByTestId('resolution-consequence')).toBeVisible();
+    await expect(page.getByTestId('veteran-unlocked')).toHaveCount(0);
+    await expect(page.getByTestId('resolution-deed')).toHaveCount(0);
+    // The era flips on BOTH branches (day.ts:866-885) — `veteran.unlocked` is the
+    // thing the unpaid run forfeits, not the campaign era.
+    await expect(page.getByTestId('campaign-era')).toHaveText('Veteran');
 
-  await acknowledgeResolution(page, report);
-  await expectPlayableCockpit(page);
-  // The marker was never cleared behind the player's back.
-  await expect(page.getByTestId('debt-chip')).toBeVisible();
-  expect(await debtOutstanding(page)).toBe(GUILD_MARKER);
+    await acknowledgeResolution(page, report);
+    await expectPlayableCockpit(page);
+    // The marker was never cleared behind the player's back.
+    await expect(page.getByTestId('debt-chip')).toBeVisible();
+    expect(await debtOutstanding(page)).toBe(GUILD_MARKER);
 
-  expect(report.resolution?.outcome).toBe('unpaid');
-  expect(report.resolution?.veteranUnlocked).toBe(false);
-  expect(report.resolution?.deedTitle).toBeNull();
-  expect(report.resolution?.eraAfter).toBe('Veteran');
-  expect(report.totals.debtFinal).toBe(GUILD_MARKER);
-  // The decisive claim: this pilot could have paid, on the same seed, off the
-  // same 30 days of work — and did not.
-  expect(
-    report.totals.day30Bankroll,
-    'the unpaid branch must be a CHOICE: the same career banked enough to clear the marker',
-  ).toBeGreaterThanOrEqual(GUILD_MARKER);
+    expect(report.resolution?.outcome).toBe('unpaid');
+    expect(report.resolution?.veteranUnlocked).toBe(false);
+    expect(report.resolution?.deedTitle).toBeNull();
+    expect(report.resolution?.eraAfter).toBe('Veteran');
+    expect(report.totals.debtFinal).toBe(GUILD_MARKER);
+    // The decisive claim: this pilot could have paid, on the same seed, off the
+    // same 30 days of work — and did not.
+    expect(
+      report.totals.day30Bankroll,
+      'the unpaid branch must be a CHOICE: the same career banked enough to clear the marker',
+    ).toBeGreaterThanOrEqual(GUILD_MARKER);
 
-  await emitReport(testInfo, report);
-});
+    await emitReport(testInfo, report);
+  },
+);

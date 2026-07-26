@@ -1,5 +1,9 @@
 .env
 test-results/
+# T-1602b · Per-run flake reports (packages/ui/flake-results/run-<i>.json). A
+# sibling of test-results/ rather than a child, because Playwright erases its
+# outputDir at the start of every run — see packages/ui/e2e/support/flake-io.ts.
+flake-results/
 playwright-report/
 .DS_Store
 node_modules/

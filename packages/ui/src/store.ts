@@ -17,7 +17,9 @@ import {
   explorationOutcome,
   nextOnboardingSeen,
   shipyardFailureExplanation,
+  successionSummary,
   type CombatAftermath,
+  type SuccessionSummary,
 } from './format';
 import * as sound from './sound';
 
@@ -105,6 +107,27 @@ export interface CockpitState {
    * before the aftermath renders. Cleared on dismiss / new day / new game.
    */
   combatAftermath: CombatAftermath | null;
+  /**
+   * T-1602b death & legacy. The estate summary of a ship loss that JUST happened
+   * — set from BOTH death paths (the combat killing blow in `combat()` and the
+   * dusk life-support failure / day-end free attack in `endDay()`), composed
+   * purely from the action's typed `ShipLost` + `LegacySuccession` events
+   * (format.ts `successionSummary`), never recomputed. Like `combatAftermath` /
+   * `explorationOutcome` / `patrolScan` this is CLIENT presentation meta-state
+   * (NOT GameState), so a JSON round-trip of game state is unaffected and NO save
+   * migration is needed; the persisted half of the feature —
+   * `player.legacy.successionCount` — already exists and is already covered by
+   * the engine's round-trip tests.
+   *
+   * READER: `App.tsx`'s `SuccessionNotice`, which renders full-screen independent
+   * of the combat overlay (a dusk death has no overlay to hang off).
+   *
+   * DELIBERATE: because it is derived rather than persisted, a reload BEFORE the
+   * notice is acknowledged loses the modal — the successor simply wakes up in
+   * their junker. The durable reader that survives that reload is the Registry
+   * pane's `registry-successions` row, which reads the persisted counter.
+   */
+  succession: SuccessionSummary | null;
   /** The last combat round was fuel-gated (weapons malfunction) — surfaced as a
    *  loud notice AND cleared like any transient combat readout. */
   combatMalfunction: boolean;
@@ -201,6 +224,7 @@ function init(): CockpitState {
     lastCheck: null,
     lastCheckKey: 0,
     combatAftermath: null,
+    succession: null,
     combatMalfunction: false,
     explorationOutcome: null,
     dareOutcome: null,
@@ -595,6 +619,7 @@ export function newGame(seed: number): void {
     bootKey: state.bootKey + 1,
     lastCheck: null,
     combatAftermath: null,
+    succession: null,
     combatMalfunction: false,
     explorationOutcome: null,
     dareOutcome: null,
@@ -1250,6 +1275,10 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
     // The encounter is nulled on the engine side the instant it resolves, so read
     // the resolution off THIS action's events, not off next.encounter.
     const aftermath = combatAftermathSummary(events);
+    // T-1602b: the killing blow is NOT an `EncounterResolved` — combat.ts nulls
+    // the encounter and returns straight after ShipLost — so `aftermath` is null
+    // on a death and the estate reads off its own typed events instead.
+    const succession = successionSummary(events);
 
     let notice: string | null = null;
     if (malfunction) {
@@ -1265,6 +1294,7 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
       lastCheckKey: state.lastCheckKey + 1,
       combatMalfunction: malfunction,
       combatAftermath: aftermath,
+      succession,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
     // The stance die is always spent, so combat is always committed. Crit
@@ -1395,6 +1425,14 @@ export function dismissAftermath(): void {
   set({ combatAftermath: null, combatMalfunction: false, patrolScan: null });
 }
 
+/** T-1602b · Dismiss the succession notice once the player has read the estate.
+ *  Mirrors `dismissAftermath`: purely client-side, and the cockpit behind it is
+ *  already fully playable (the successor holds the day's spent hand and can end
+ *  the day). RNG-free, so it costs a pinned seed nothing. */
+export function dismissSuccession(): void {
+  set({ succession: null });
+}
+
 /** No-dice escape hatch: when the hand is empty mid-encounter the three stances
  *  are unusable, so the overlay offers a stand-down that ends the day. Dusk
  *  applies the free enemy attack (and a possible bond rescue), then a fresh dawn
@@ -1409,10 +1447,14 @@ export function endDay(): void {
     const dusk = engineEndDay(state.game);
     const dawn = startDay(dusk.state);
     autosave(dawn.state, state.seed);
-    // If an encounter is still live at the new dawn (dusk pressure did not end
-    // it), surface any resolution the dusk free-attack produced (e.g. a ShipLost
-    // succession) as the aftermath; otherwise clear it.
+    // Surface whatever dusk produced. `combatAftermathSummary` covers a dusk
+    // free-attack that RESOLVED the encounter (T-1602b corrects the old comment
+    // here: a ShipLost never reaches it — the kill path emits no
+    // `EncounterResolved`). The two death paths dusk can take — the free
+    // attack's killing blow (`applyEncounterDuskPressure`) and the life-support
+    // survival failure (`day.ts`) — both land in `successionSummary` instead.
     const aftermath = combatAftermathSummary(dusk.events);
+    const succession = successionSummary(dusk.events);
     set({
       game: dawn.state,
       selectedDie: null,
@@ -1421,6 +1463,7 @@ export function endDay(): void {
       bootKey: state.bootKey + 1,
       lastCheck: null,
       combatAftermath: aftermath,
+      succession,
       combatMalfunction: false,
       explorationOutcome: null,
       dareOutcome: null,
@@ -1522,6 +1565,7 @@ export function loadSlot(n: number): void {
     bootKey: state.bootKey + 1,
     lastCheck: null,
     combatAftermath: null,
+    succession: null,
     combatMalfunction: false,
     dareOutcome: null,
     patrolScan: null,

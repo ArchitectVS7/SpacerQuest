@@ -2753,6 +2753,93 @@ body {
   justify-self: start;
 }
 
+/* ---- T-1602b · the succession notice (a ship lost) ----
+   Modelled on the resolution ceremony, one z-index above the combat overlay (80)
+   because the ship it belonged to no longer exists — nothing behind it is
+   actionable. Below the ceremony (84): the day-30 beat outranks everything. */
+.succession-notice {
+  position: absolute;
+  inset: 0;
+  z-index: 82;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(120% 120% at 50% 38%, rgba(28, 6, 4, 0.95), rgba(5, 3, 3, 0.985));
+  backdrop-filter: blur(2px);
+}
+.sn-frame {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  border: 1px solid var(--ember);
+  background: linear-gradient(180deg, #1d0d08, #0b0605);
+  box-shadow: var(--glow-hi);
+  padding: 24px 26px;
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+}
+.sn-head {
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 14px;
+  width: 100%;
+}
+.sn-kicker {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.24em;
+  color: var(--amber);
+}
+.sn-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  letter-spacing: 0.14em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.sn-lost-to {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 2px 10px;
+}
+.sn-obituary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--amber);
+}
+.sn-estate {
+  margin: 0;
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  font-family: var(--font-data);
+  font-size: 11.5px;
+}
+.sn-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--hair);
+  padding-top: 6px;
+}
+.sn-row dt {
+  letter-spacing: 0.12em;
+  color: var(--amber-dim);
+}
+.sn-row dd {
+  margin: 0;
+  color: var(--ember-hi);
+}
+
 /* ---- T-1505c · the career ending (the far side) ---- */
 .ending-screen {
   position: fixed;
