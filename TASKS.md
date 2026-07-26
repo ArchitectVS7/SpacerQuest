@@ -1,4 +1,4 @@
-# Rimward — Master Task List v1.1
+# Rimward — Master Task List v1.2
 
 Finish the build-out of *Spacer Quest: Rimward* per `docs/PRD-REIMAGINED.md` and
 `docs/TECH-STACK.md`. This list supersedes `TASKS_v0.2.md` (M10–M13, T-1001–T-1310,
@@ -8,6 +8,17 @@ stripped) and adds M18, a small cleanup milestone closing the audit's four
 precision findings before the UI build begins. The engine layer is complete; what
 remains is making it visible to a player (M14), filling content to launch quantity
 (M15), hardening (M16), and shipping (M17).
+
+**v1.2 split pass (2026-07-25):** the original T-1504 exceeded 87 minutes in a single
+coding session (stopped by the user; unreviewed draft committed as `77ee7c04`) because
+one task bundled content authoring, engine wiring, AND exhaustive seed-sweep proofs.
+Every remaining TODO task has been split into subtasks sized for one plan→code→review→
+gate→commit loop each (lettered IDs, e.g. T-1504a; commit as `T-1504a: <title>`). Two
+sizing rules now apply list-wide: (1) **authoring content and proving coverage via seed
+sweeps are separate tasks** — sweep-proof tasks hunt seeds with throwaway `.scratch/`
+scripts and commit pinned-seed tests with sweep-provenance comments (the T-1501/T-1502
+pattern), never a full re-sweep in CI; (2) a task ships **one deliverable** — if the
+Accept line needs "and" between unrelated artifacts, it is two tasks.
 
 ## Orchestrator protocol
 
@@ -140,55 +151,118 @@ Four-faction reputation on `GameState` moved by organic play (patrol tribute, sm
 
 **Delivered (2026-07-16):** Added `PlayerState.reputation`, a nested `{ league, dragons, confederation, rebels }` container (`content/factions.ts` for the `FactionId`/`FACTION_IDS`/tuning constants, `engine/reputation.ts`'s single `applyReputation` clamp-and-emit mover mirroring `applyDisposition`'s shape) moved by three organic sources: patrol tribute paid/evaded (`actions/combat.ts` resolveEncounter), a caught contraband scan (`actions/patrol.ts`, now consuming both the `patrol.ts:106` deferral and the `contraband.ts:37` fence-flag Rebel-rep consequence), and buying an aligned port stake (`actions/port.ts` resolvePortPurchase, reading the `alliance` tag now type-aliased directly to `FactionId` so it can't drift from `ports.ts`'s Warlord Confederation reader). Authored one 3-step questline per faction in `content/storylets.ts` (League patrol writ, Dragons duel circuit, Confederation port stake, Rebel smuggling lane), each with a wire-abandonment path (episode 2) and a terminal join choice that grants a large own-faction bonus while cooling the other three (`FACTION_JOIN_OWN_BONUS`/`FACTION_JOIN_CROSS_PENALTY`). Persistence: `CURRENT_SAVE_VERSION` bumped to 7 with a v6→v7 migration backfilling the neutral container faction-key by faction-key, `.strict()`-schema'd per the T-1002 drift-protection law, and covered by an explicit nested round-trip regression test asserting deep-equal survival through create→migrate→load plus a strict-schema unknown-key rejection test (`engine/__tests__/save.test.ts`). Test coverage: unit tests for the mover and all three organic sources including the source-scan guard proving the named deferral comments are gone (`engine/__tests__/reputation.test.ts`), a 100-day organic-play sim proving nonzero standing without hand-injected rep plus one sim test per questline for organic completion and abandonment (`sim/__tests__/alliance-arcs.test.ts`), and one real-UI Playwright spec driving the League patrol writ through the actual storylet panel and asserting the cross-faction shift on join (`ui/e2e/alliance-arcs.spec.ts`), per the test-intent rule against API-shortcut UX tests. Scope boundary: T-1504's era-event storylet tie-ins and T-1505's Nemesis arc are untouched by this task; the reputation numbers themselves are marked INTERIM, owned by T-1601/T-1603's balance pass, not canonical tuning.
 
-### T-1504 · Deed & era content pass + Conqueror headroom — `status: TODO` · `coder: opus` · `after: —`
-Fill to launch quantity: ≥30 Deeds including new-verb deeds (gambling, smuggling, lending, exploration, property), era-event storylet tie-ins via the now-real era-event trigger (T-1302), rank citation texts for all 10 ranks. Audit note: 17 deeds exist today (need ≥13 more); the 6 era events are already fully written — the era work here is the storylet tie-ins, not the events themselves. Conqueror (threshold 30) becomes reachable exactly when this task lands — its reachability sweep is this task's obligation, per T-1308's deferral.
-**Accept:** counts met, all validate; every era reachable and fires ≥1 tied storylet in a seed sweep; no deed unearnable (200-seed sweep earns every deed at least once); a long veteran sim reaches Conqueror through play.
+### T-1504a · Deed batch to launch quantity — `status: TODO` · `coder: opus` · `after: —`
+Author the ≥13 net-new Deeds (17 exist; target ≥30 total) including new-verb deeds (gambling, smuggling, lending, exploration, property), plus their validation and engine trigger wiring. **WIP triage:** the unreviewed draft at `77ee7c04` already contains candidate work (`content/deeds.ts` +438, `deedValidation.ts`, `engine/deeds.ts` extensions, `deeds.test.ts` additions) — start by triaging that diff: keep what survives review, rewrite what doesn't; it never passed the gate, so it is a draft, not a baseline. Scope is authoring + validation + per-deed unit tests only — **no seed sweeps** (T-1504d owns all coverage proofs).
+**Accept:** ≥30 deeds load and validate; every net-new deed has a unit test proving its trigger fires from a constructed qualifying state; ≥1 deed each for gambling, smuggling, lending, exploration, and property; full gate green.
 
-### T-1505 · The Nemesis Signal arc — `status: TODO` · `coder: fable` · `after: T-1403, T-1502`
-The career mystery: 12 fragments authored across ≥3 acquisition modes (derelict logs, Sage decodings, NPC-held pieces), the decoded-lore index text, and the endgame — the crossing chain and the v1 ending screen (Andromeda itself stays sealed for the expansion). The crossing lifts T-1101's NEMESIS destination gate via its `nemesis.crossing.unlocked` flag and requires the PRD's stake (ship + bank commitment); Conqueror interacts per T-1308's reader. Audit note: 5 fragments (`frag-nemesis-01..05`) with decode paths exist today — 7 more fragments plus their acquisition/decode paths are net-new.
-**Accept:** full arc completable in a scripted long sim AND the acquisition funnel proven once through the real UI (Playwright: explore→fragment→Sage decode); crossing requires the stake; ending reachable and returns to menu cleanly.
+### T-1504b · Era-event storylet tie-ins — `status: TODO` · `coder: opus` · `after: T-1504a`
+Storylet tie-ins for the 6 already-written era events, via the now-real era-event trigger (T-1302). Sequenced after T-1504a only because both triage the same `77ee7c04` WIP diff (`content/storylets.ts` +375, `era-storylet-coverage.test.ts` scaffolding) — same triage rule: draft, not baseline. Unit/integration-level proof only; sweep-level reachability is T-1504d's.
+**Accept:** each of the 6 era events has ≥1 tied storylet that validates and is offered in a test that fires the event directly; no tie-in dead-ends the day; every tie-in reaches a surface via the total `storyletSurface` classifier (sweep spec still green); full gate green.
+
+### T-1504c · Rank citation texts — `status: TODO` · `coder: opus` · `after: —`
+Rank citation texts for all 10 ranks, in the `f2f95fa9` User-Manual voice. Pure writing task; the reader is the existing rank display (`nextRankFor` readout, T-1401/T-1402).
+**Accept:** all 10 ranks carry citation text as content data; texts load and validate; the rank display renders the citation for the current rank (asserted in an existing or extended spec); full gate green.
+
+### T-1504d · Deed/era/Conqueror coverage sweeps — `status: TODO` · `coder: opus` · `after: T-1504a, T-1504b, T-1504c`
+The proof pass split out of old T-1504 — the exhaustive sweeps are what made the single-session version blow up. Reuse/finish the `deed-hunter.ts` harness from `77ee7c04` (`packages/sim/src/__tests__/support/`). Hunt qualifying seeds with throwaway `.scratch/` scripts (not committed); committed tests pin found seeds with sweep-provenance comments — CI never re-runs the 200-seed hunt. Conqueror (threshold 30) becomes reachable exactly when the deed count lands — its reachability sweep is this task's obligation, per T-1308's deferral.
+**Accept:** a recorded 200-seed sweep earns every deed at least once (sweep evidence in the Delivered note; committed test asserts pinned representative seeds); every era reachable and fires ≥1 tied storylet in the sweep (same evidence pattern); a long veteran sim reaches Conqueror through play; committed suite runtime grows <60s; full gate green.
+
+### T-1505a · Nemesis fragments & decode paths — `status: TODO` · `coder: fable` · `after: T-1403, T-1502`
+The career mystery's collectible layer: 7 net-new fragments (`frag-nemesis-06..12`, joining the existing 01..05) authored across ≥3 acquisition modes (derelict logs, Sage decodings, NPC-held pieces), each with its decode path, plus the decoded-lore index text. No endgame content in this task — the crossing is T-1505b, the ending T-1505c.
+**Accept:** 12 fragments total load and validate; each of the ≥3 acquisition modes yields ≥1 fragment in a sim test; all 12 have working decode paths; the decoded-lore index renders in the Nemesis File pane for decoded fragments; full gate green.
+
+### T-1505b · The crossing & the stake — `status: TODO` · `coder: fable` · `after: T-1505a`
+The endgame chain: the crossing lifts T-1101's NEMESIS destination gate via its `nemesis.crossing.unlocked` flag and requires the PRD's stake (ship + bank commitment); Conqueror interacts per T-1308's reader. Andromeda itself stays sealed for the expansion. Ending screen is T-1505c.
+**Accept:** crossing completable in a scripted sim only with the full decoded set and the stake paid; the NEMESIS destination is travelable only after the flag (gate lift asserted both ways); declining or failing the stake leaves state consistent and re-attemptable; the Conqueror interaction asserted per T-1308's reader; full gate green.
+
+### T-1505c · Nemesis ending & funnel proof — `status: TODO` · `coder: fable` · `after: T-1505b`
+The v1 ending screen and the arc's integration proof: full arc in a scripted long sim, and the acquisition funnel proven once through the real UI.
+**Accept:** full arc (12 fragments → decode → crossing → ending) completable in a scripted long sim; the acquisition funnel proven through the real UI (Playwright: explore→fragment→Sage decode); ending reachable and returns to menu cleanly; full gate green.
 
 ---
 
 ## M16 — Hardening & balance
 
-### T-1601 · Policy fleet v3 — `status: TODO` · `coder: opus` · `after: —`
-Policies learn the new verbs: the explorer explores and decodes, the trader runs the rim and borrows under duress, the fighter uses its now-real equipment; add smuggler/gambler behaviors. The stats report gains loan usage, scan outcomes, Hangout EV, and the T-1004 `fuelStarvationDays`. This task also owns the interim tuning constants deferred to it by name: the lending rate/term band (`content/lending.ts`), the dice-progression extensibility hook (a future die-granting equipment module, per T-1306's deferral), and the guild constants (`content/guild.ts`).
-**Accept:** each policy's 300-day report renders with the new metrics nonzero where applicable; trader clears Tour One within the interim band (≥50% of 50 seeds); no shipped policy triggers a poverty-trap (criterion scoped to the competent policies, per the T-1005 errata).
+### T-1601a · Policy fleet v3: veterans learn the new verbs — `status: TODO` · `coder: opus` · `after: —`
+Upgrade the three existing policies: the explorer explores and decodes, the trader runs the rim and borrows under duress, the fighter uses its now-real equipment. The stats report gains the metrics these behaviors produce: loan usage and the T-1004 `fuelStarvationDays`. This task also owns the lending rate/term band interim constants (`content/lending.ts`) — the trader's borrowing exercises them.
+**Accept:** each upgraded policy's 300-day report renders with its new metrics nonzero where applicable (loan usage for the trader, fragments for the explorer, equipment use for the fighter); trader clears Tour One within the interim band (≥50% of 50 seeds); no upgraded policy triggers a poverty-trap (criterion scoped to the competent policies, per the T-1005 errata); full gate green.
 
-### T-1602 · Tour One E2E — `status: TODO` · `coder: opus` · `after: T-1407`
-Playwright: complete Tour One start-to-resolution through the real UI (per global test-intent rules — every step a player keystroke/click, zero engine shortcuts), both resolution branches, plus a death-and-legacy run — under a CI gate that actually executes it (T-1001). Audit note: Tour One is exercised piecemeal today (`onboarding.spec.ts` reaches the day-31 resolution) but no single start-to-resolution career spec exists.
-**Accept:** both branch tests green in CI's Playwright job; run report artifact (screens visited, days elapsed); flake rate <2% over 20 CI runs.
+### T-1601b · Policy fleet v3: smuggler & gambler — `status: TODO` · `coder: opus` · `after: T-1601a`
+Add the two net-new policies: smuggler (contraband runs, patrol scans, fence flow) and gambler (Hangout visits, Spacer's Dare wagers). The stats report gains their signature metrics: scan outcomes and Hangout EV.
+**Accept:** both new policies' 300-day reports render with scan outcomes (smuggler) and Hangout EV (gambler) nonzero; neither triggers a poverty-trap; full gate green.
 
-### T-1603 · Balance tuning from sim — `status: TODO` · `coder: fable` · `after: T-1601, T-1504`
-Run the policy fleet across 500 seeds and tune against PRD targets — now against a game whose numbers bind: fuel scarcity (T-1102), foundation-anchored encounters (T-1103), load-bearing components (T-1205), margin scaling (T-1202). Targets: Tour One clearable by competent play in 25–30 days (not 10, not never), no dominant route (era churn working), combat EV negative below tier parity without preparation, deed pacing. This task owns the canonical values for every constant marked INTERIM: danger tiers 2/4/5 (`content/systems.ts`), port pricing/income (`content/ports.ts`), lending and guild bands, hangout wagers. Balance consideration flagged by the audit (T-1804): Auto-Repair regenerating before the life-support dusk gate makes the life-support death path unreachable whenever the module is fitted — evaluate whether an always-rescue module is too strong.
-**Accept:** tuning memo in `docs/balance/` with before/after distributions; median trader debt-clear day in [22, 30]; combat EV negative below tier parity unprepared (testable now that components matter); nonzero death rate across 1,200 sim days (closing the audit's zero-deaths finding); no stable optimal route; all prior tests still green.
+### T-1601c · Deferred interim constants: guild & dice hook — `status: TODO` · `coder: opus` · `after: T-1601b`
+The remaining constants deferred to old T-1601 by name: the guild constants (`content/guild.ts`) get their interim band, and the dice-progression extensibility hook lands (a future die-granting equipment module can add dice without touching the dawn-roll core, per T-1306's deferral). Small engine/content task — no new policy behavior.
+**Accept:** guild constants carry INTERIM markers naming T-1603 as owner; the dice hook is exercised by a unit test granting a die through the extensibility point (no gameplay module shipped); deferral comments at the named sites updated; full gate green.
 
-### T-1604 · UGT campaign & fix loop — `status: TODO` · `coder: fable` · `after: T-1602`
-Point UGT (sibling repo) at Rimward via the repaired adapter (T-1003). Run the autonomous playtest loop per the established memory protocol (no stopping per failure); triage findings into fixes on this list's pattern.
-**Accept:** ≥1,000 UGT actions logged; every HIGH finding fixed with a regression test; `ActionBlocked` UI/protocol event parity verified during the campaign; findings report committed to `docs/playtests/`.
+### T-1602a · Tour One career spec — `status: TODO` · `coder: opus` · `after: T-1407`
+Playwright: complete Tour One start-to-resolution through the real UI (per global test-intent rules — every step a player keystroke/click, zero engine shortcuts), both resolution branches, under the CI gate that actually executes it (T-1001). Audit note: Tour One is exercised piecemeal today (`onboarding.spec.ts` reaches the day-31 resolution) but no single start-to-resolution career spec exists. Death-and-legacy and the flake gate are T-1602b.
+**Accept:** both branch tests green locally and in CI's Playwright job (post-push, per the CI-evidence rule); run report artifact (screens visited, days elapsed); full gate green.
 
-### T-1605 · Failure & edge hardening — `status: TODO` · `coder: opus` · `after: T-1602`
-Error boundaries with save-preserving recovery, corrupt-save UX (today a corrupt save silently falls back to a fresh career at `store.ts:256` — the player must be told), the anti-poverty-trap invariant extended over the new adversarial states (indebted-to-Penny-Wise, post-confiscation, zero-fuel-rim), performance pass (1,000-day event logs).
-**Accept:** invariant property test in CI covering the named adversarial states; forced crash recovers without save loss; corrupt-save path shows a visible notice instead of silently resetting (Playwright); a 1,000-day save loads <2s.
+### T-1602b · Death, legacy & flake gate — `status: TODO` · `coder: opus` · `after: T-1602a`
+The death-and-legacy career run through the real UI, plus the stability proof for the whole Tour One E2E suite: flake rate measured over repeated CI runs.
+**Accept:** death-and-legacy spec green in CI; flake rate <2% over 20 CI runs of the full Tour One E2E suite (push-dependent — recorded in the Delivered note per the CI-evidence rule); full gate green.
+
+**Note:** T-1603a–c below are collectively the "T-1603" that earlier tasks, INTERIM
+markers, and the rebalance-fallout rule refer to as the canonical-values owner.
+
+### T-1603a · Balance baseline: 500-seed fleet sweep — `status: TODO` · `coder: fable` · `after: T-1601c, T-1504d`
+Measurement only, no tuning. Run the policy fleet across 500 seeds against the game whose numbers now bind — fuel scarcity (T-1102), foundation-anchored encounters (T-1103), load-bearing components (T-1205), margin scaling (T-1202) — and record baseline distributions for every PRD target: Tour One clear day, route EVs, combat EV by tier parity, death rate, deed pacing. The sweep runs as a committed, re-runnable script (not a CI test).
+**Accept:** baseline memo in `docs/balance/` with a distribution per PRD target; the sweep script committed and documented; zero game-behavior diff (`npm test` untouched-green); full gate green.
+
+### T-1603b · Economy & pacing tuning — `status: TODO` · `coder: fable` · `after: T-1603a`
+Tune the economic constants against the baseline: canonical values for danger tiers 2/4/5 (`content/systems.ts`), port pricing/income (`content/ports.ts`), lending and guild bands, hangout wagers. Targets: Tour One clearable by competent play in 25–30 days (not 10, not never); no dominant route (era churn working); deed pacing.
+**Accept:** median trader debt-clear day in [22, 30]; no stable optimal route across the fleet; every touched INTERIM marker replaced with a canonical-value comment; broken tests fixed in the same commit (rebalance fallout rule); memo updated with before/after distributions; full gate green.
+
+### T-1603c · Combat & survival tuning — `status: TODO` · `coder: fable` · `after: T-1603b`
+Tune the combat/survival side: combat EV negative below tier parity without preparation (testable now that components matter), nonzero death rate (closing the audit's zero-deaths finding). Balance consideration flagged by the audit (T-1804): Auto-Repair regenerating before the life-support dusk gate makes the life-support death path unreachable whenever the module is fitted — evaluate whether an always-rescue module is too strong, and either retune or ratify with rationale.
+**Accept:** combat EV negative below tier parity unprepared; nonzero death rate across 1,200 sim days; the Auto-Repair call recorded in the memo (retuned or explicitly ratified); memo finalized with before/after distributions; all prior tests still green; full gate green.
+
+### T-1604a · UGT campaign run — `status: TODO` · `coder: fable` · `after: T-1602b`
+Point UGT (sibling repo) at Rimward via the repaired adapter (T-1003). Run the autonomous playtest loop per the established memory protocol (no stopping per failure) and produce the triaged findings report. Fixes are T-1604b — this task changes no game code beyond what the adapter hookup itself requires.
+**Accept:** ≥1,000 UGT actions logged; `ActionBlocked` UI/protocol event parity verified during the campaign; findings report with severity triage (HIGH/MED/LOW) committed to `docs/playtests/`; full gate green.
+
+### T-1604b · UGT HIGH-finding fixes — `status: TODO` · `coder: fable` · `after: T-1604a`
+Work the T-1604a report: every HIGH finding fixed on this list's pattern. If the HIGH list turns out large (>~5 findings), split further before starting — one fix-batch task per subsystem — rather than absorbing them all here.
+**Accept:** every HIGH finding fixed with a regression test, or explicitly waived by the user with the waiver recorded in the report; report updated with resolutions; full gate green.
+
+### T-1605a · Crash & corrupt-save recovery — `status: TODO` · `coder: opus` · `after: T-1602b`
+Error boundaries with save-preserving recovery, and the corrupt-save UX (today a corrupt save silently falls back to a fresh career at `store.ts:256` — the player must be told).
+**Accept:** forced crash recovers without save loss; corrupt-save path shows a visible notice instead of silently resetting (Playwright); full gate green.
+
+### T-1605b · Poverty-trap invariant over adversarial states — `status: TODO` · `coder: opus` · `after: T-1602b`
+Extend the anti-poverty-trap invariant over the new adversarial states: indebted-to-Penny-Wise, post-confiscation, zero-fuel-rim.
+**Accept:** invariant property test in CI covering the three named adversarial states; full gate green.
+
+### T-1605c · Performance pass — `status: TODO` · `coder: opus` · `after: T-1602b`
+Long-career performance: 1,000-day event logs must stay loadable and responsive.
+**Accept:** a 1,000-day save loads <2s (asserted in a committed test with the measurement method documented); no load-time regression for normal-size saves; full gate green.
 
 ---
 
 ## M17 — Ship it
 
-### T-1701 · Electron shell — `status: TODO` · `coder: fable` · `after: T-1602`
-Electron wrapper per TECH-STACK lean: local save dir (migrating localStorage saves in), window management, auto-updater stub, mac+win packaging scripts. Keep the web build working.
-**Accept:** packaged app runs Tour One on macOS; saves in OS app-data; web build unaffected (CI proves both).
+### T-1701a · Electron shell & local saves — `status: TODO` · `coder: fable` · `after: T-1602b`
+Electron wrapper per TECH-STACK lean: dev-mode shell, local save dir (migrating localStorage saves in), window management. Keep the web build working. Packaging and the updater stub are T-1701b.
+**Accept:** dev-mode Electron runs Tour One start-of-career; saves land in OS app-data with the localStorage migration verified; web build unaffected (CI proves both); full gate green.
 
-### T-1702 · Steamworks integration — `status: TODO` · `coder: fable` · `after: T-1701`
-steamworks.js (or equivalent): achievements mirrored from the ≥30-Deed set including Conqueror, Steam Cloud on the seed-carrying T-1002 envelope, rich presence (current system/day). Graceful no-Steam fallback.
-**Accept:** achievements fire from deed events in the Steam dev sandbox; cloud round-trip verified; app runs identically without Steam present.
+### T-1701b · Packaging & updater stub — `status: TODO` · `coder: fable` · `after: T-1701a`
+Auto-updater stub plus mac+win packaging scripts for the T-1701a shell.
+**Accept:** packaged app runs Tour One on macOS; win package builds; updater stub present and inert without a feed; CI proves web + both platform builds; full gate green.
 
-### T-1703 · Demo build (Tour One) — `status: TODO` · `coder: opus` · `after: T-1702`
+### T-1702a · Steamworks core & achievements — `status: TODO` · `coder: fable` · `after: T-1701b`
+steamworks.js (or equivalent) initialization with the graceful no-Steam fallback designed in from the start, plus achievements mirrored from the ≥30-Deed set including Conqueror. Cloud and rich presence are T-1702b.
+**Accept:** achievements fire from deed events in the Steam dev sandbox; app runs identically without Steam present; full gate green.
+
+### T-1702b · Steam Cloud & rich presence — `status: TODO` · `coder: fable` · `after: T-1702a`
+Steam Cloud on the seed-carrying T-1002 envelope; rich presence (current system/day).
+**Accept:** cloud round-trip verified in the dev sandbox; rich presence shows current system/day; the no-Steam fallback still clean for both features; full gate green.
+
+### T-1703 · Demo build (Tour One) — `status: TODO` · `coder: opus` · `after: T-1702b`
 Demo configuration: Tour One + 3 post-resolution days, veteran features teased-but-gated — the gate list includes Hangout progression, ports, and Conqueror content — demo-save carries into full game, distinct build flag and Steam depot config.
 **Accept:** demo build produces the gate correctly (no veteran content reachable — Playwright proves it); save import works full-side; build size sane (<200MB).
 
-### T-1704 · Release checklist — `status: TODO` · `coder: opus` · `after: T-1603, T-1604, T-1605, T-1702, T-1703`
+### T-1704 · Release checklist — `status: TODO` · `coder: opus` · `after: T-1603c, T-1604b, T-1605a, T-1605b, T-1605c, T-1702b, T-1703`
 Final sweep: store-page asset export list, credits (fonts/audio licenses), version stamping, README/press one-pager, tag `v1.0.0-rc1`.
 **Accept:** checklist doc complete with every item checked or explicitly waived by the user; RC tag builds green from clean clone.
 
