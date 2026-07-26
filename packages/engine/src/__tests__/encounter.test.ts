@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Stat } from '@spacerquest/content';
+import { ROUTE_DANGER_CHANCE, Stat } from '@spacerquest/content';
 import { resolveCombat, tributeForRound } from '../actions/combat.js';
 import { natWireStories } from '../wire.js';
 import {
@@ -198,13 +198,26 @@ describe('Encounter system', () => {
     // chance 0.5x during TOUR_ONE (see TOUR_ONE_ENCOUNTER_MULTIPLIER in
     // travel.ts), so this test flips the fixture era to measure the undamped
     // table. The damping itself is asserted separately below.
-    const cases = [
-      { tier: 1, dest: 2, chance: 0.3, band: [0.25, 0.35], contractDest: undefined },
-      { tier: 2, dest: 14, chance: 0.35, band: [0.3, 0.4], contractDest: undefined },
-      { tier: 3, dest: 14, chance: 0.4, band: [0.35, 0.45], contractDest: 14 },
-      { tier: 4, dest: 17, chance: 0.5, band: [0.45, 0.55], contractDest: undefined },
-      { tier: 5, dest: 22, chance: 0.6, band: [0.55, 0.65], contractDest: undefined },
-    ] as const;
+    //
+    // T-1603b: the `chance:` column used to restate 0.3/0.35/0.4/0.5/0.6 as
+    // literals — a second, silently-drifting copy of ROUTE_DANGER_CHANCE. It is
+    // now READ from content and the band DERIVED as chance +/- BAND, so the
+    // canonical tier values live in exactly one place and a retune moves this test
+    // with them instead of reddening it. Only the FIXTURE (which destination
+    // reaches which tier) is stated here; the rates are content's.
+    const BAND = 0.05;
+    const cases = (
+      [
+        { tier: 1, dest: 2, contractDest: undefined },
+        { tier: 2, dest: 14, contractDest: undefined },
+        { tier: 3, dest: 14, contractDest: 14 },
+        { tier: 4, dest: 17, contractDest: undefined },
+        { tier: 5, dest: 22, contractDest: undefined },
+      ] as const
+    ).map((fixture) => {
+      const chance = ROUTE_DANGER_CHANCE[fixture.tier];
+      return { ...fixture, chance, band: [chance - BAND, chance + BAND] as const };
+    });
 
     for (const testCase of cases) {
       const routeState = readyState();

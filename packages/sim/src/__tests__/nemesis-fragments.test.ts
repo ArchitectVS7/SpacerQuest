@@ -41,9 +41,20 @@ import {
 const DERELICT_SEED = 17;
 /** The id the FIRST derelict-sourced grant of that day yields — a NET-NEW pool
  *  entry, so this asserts the T-1505a pool growth is reachable, not merely that
- *  derelicts drop fragments. (Seed 17's day-1 hand boards more than one wreck; a
- *  later sweep the same day draws frag-nemesis-07.) */
-const DERELICT_EXPECT_ID = 'frag-nemesis-06';
+ *  derelicts drop fragments. Seed 17's day-1 hand boards more than one wreck, so
+ *  which of the two net-new ids lands FIRST is a fact about the rng path, not
+ *  about the pool.
+ *
+ *  T-1603b re-pin ('frag-nemesis-06' → 'frag-nemesis-07'). MECHANISM: the
+ *  canonical RENOWN_DEED_THRESHOLDS rescale (content `deeds.ts`) changes which
+ *  rank an early deed count selects → `player.tier` (engine `tier.ts`) → the
+ *  encounter matchmaker's draws, which consumes the rng differently from the first
+ *  rank-up onward. Seed 17 still boards a wreck on day 1 and still draws a
+ *  T-1505a pool addition; the two sweeps that day simply swapped order. The SEED
+ *  is unmoved and no assertion changed shape — this is a re-measured value, and
+ *  the surrounding `toContain(['frag-nemesis-06','frag-nemesis-07'])` guard (which
+ *  passed throughout) is what proves the acceptance never depended on which. */
+const DERELICT_EXPECT_ID = 'frag-nemesis-07';
 
 /** Mode 2 · Sweep provenance: seeds 1..40, 25-day horizon, flying Sol → Fomalhaut-2
  *  (system 7) and taking the requirement-free grant. Seed 1 lands it on day 2 (the

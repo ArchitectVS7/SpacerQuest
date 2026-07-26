@@ -26,6 +26,32 @@ import { deedHunterPolicy, HUNTER_TARGET_DEED_IDS } from './support/deed-hunter.
 // re-runs the hunt. The hunt was run once, out of tree, in throwaway `.scratch/`
 // scripts; the seeds it found are pinned below with their provenance.
 //
+// ================= SWEEP PROVENANCE (re-pinned 2026-07-26, T-1603b) ========
+// RE-PIN (seeds [1,7] -> [1,6]; the CONQUEROR `it` keeps seed 1).
+// MECHANISM: T-1603b sets the canonical RENOWN_DEED_THRESHOLDS (content
+//        `deeds.ts`), which slows the renown ladder. Rank feeds `player.tier`
+//        (engine `tier.ts` `rankTier`), and `player.tier` is the only input to
+//        `chooseTargetTier` / `selectEncounterInterceptor` (actions/travel.ts), so
+//        the hunter meets a DIFFERENT sequence of interceptors from roughly the
+//        first rank-up onward and every 300-day trajectory diverges. Seed 7 still
+//        reaches CONQUEROR but no longer lands the long-pole `slipped_the_scan`
+//        (it needs to survive a patrol scan WITH illicit cargo aboard, which is a
+//        function of which patrols intercept it).
+// RE-SWEEP: seeds 1..16 of this exact driver, 300-day horizon, run in .scratch/
+//        against a freshly built dist/. Seeds 1, 6, 10 and 12 are each
+//        INDIVIDUALLY total (44/44). Of the twelve that are not, nine miss only
+//        `slipped_the_scan` — the same long pole as every previous sweep, so the
+//        slate's difficulty profile is unchanged in character. Seeds 1 and 6 are
+//        the cheapest total pair.
+// MEASURED (re-pin): seed 1 - CONQUEROR on day 87, last deed on day 209.
+//                    seed 6 - CONQUEROR on day 88, last deed on day 170.
+//        Note both CONQUEROR days are LATER than the previous pin's (53 / 47)
+//        even though the threshold rose 30 -> 38: the capstone costs eight more
+//        deeds and arrives roughly a month later, which is the rescale working.
+//        The 300-day horizon still leaves >90 days of headroom past the binding
+//        last deed, so it is unchanged.
+// ONLY THE SEEDS MOVED. No assertion was widened, banded, or dropped.
+//
 // ================= SWEEP PROVENANCE (re-pinned 2026-07-26, T-1505a) ========
 // RE-PIN (seeds [2,3] → [1,7]; the CONQUEROR `it` moves 2 → 1). MECHANISM:
 //        T-1505a authors two systemIds-only NPC fragment scenes at CORE ports
@@ -82,7 +108,7 @@ import { deedHunterPolicy, HUNTER_TARGET_DEED_IDS } from './support/deed-hunter.
 // ---------------------------------------------------------------------------
 
 /** See SWEEP PROVENANCE above. Explicit and fixed — never a hunt range. */
-const PINNED_SEEDS = [1, 7] as const;
+const PINNED_SEEDS = [1, 6] as const;
 /** See SWEEP PROVENANCE above. */
 const HORIZON = 300;
 
@@ -153,7 +179,7 @@ describe('T-1504d deed coverage + Conqueror reachability (pinned seeds)', () => 
     // T-1308 deferred this proof: the capstone rank was reachable only from a
     // hand-constructed state (`engine/__tests__/deeds.test.ts`). This is the
     // first time it is shown to arrive out of a real career.
-    const seed = 1; // T-1505a re-pin (was 2) — see SWEEP PROVENANCE above.
+    const seed = 1; // T-1505a re-pin (was 2); held by T-1603b — see SWEEP PROVENANCE.
     const state = RUNS.get(seed)!;
 
     expect(state.player.registry.renownRank).toBe('CONQUEROR');
@@ -176,7 +202,7 @@ describe('T-1504d deed coverage + Conqueror reachability (pinned seeds)', () => 
     ).toBeGreaterThanOrEqual(1);
     expect(
       rankUps[0].day,
-      `CONQUEROR crossed on day ${rankUps[0]?.day} (sweep measured day 53)`,
+      `CONQUEROR crossed on day ${rankUps[0]?.day} (sweep measured day 87)`,
     ).toBeLessThanOrEqual(HORIZON);
     // The crossing was an ASCENT — the previous rank sits below the capstone.
     expect(rankUps[0].previousRank).not.toBe('CONQUEROR');

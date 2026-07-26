@@ -271,10 +271,35 @@ export function runDayLoopGolden(
 // the SAME storylets offered (the 8 new era tie-ins are all `eraEvent`-gated and
 // neither script has a live era event), and the same rank-up sequence. No rng
 // draw, count, or value moved. Regenerated via gen-day-loop-golden.ts.
+// T-1603b re-derivation (the TWO DAY-LOOP hashes only; both STORYLET hashes are
+// BYTE-IDENTICAL and were not touched). CAUSE: the canonical
+// RENOWN_DEED_THRESHOLDS rescale in content `deeds.ts` (CAPTAIN 2 -> 5,
+// COMMODORE 3 -> 9, and so on up the ladder).
+//
+// WHAT ACTUALLY MOVED, verified by replaying both scripts before and after the
+// rescale and diffing the event streams rather than trusting the hash:
+//   1. The seed-1 ten-day script earns FOUR deeds. Under the old table that was
+//      three rank-ups (COMMANDER at 1, CAPTAIN at 2, COMMODORE at 3); under the
+//      canonical table it is ONE (COMMANDER at 1). Two `RenownRankUp` events and
+//      their two rank-up `WireEntry` citations are gone from the stream, and the
+//      `DeedEarned.renownRank` stamps on the later deeds read COMMANDER instead
+//      of CAPTAIN/COMMODORE.
+//   2. Because rank feeds `player.tier` (engine `tier.ts` `rankTier`), the
+//      captain stays at tier 1 through the script instead of climbing to tier 2.
+//      `player.tier` is the only input to `chooseTargetTier` /
+//      `selectEncounterInterceptor`, so the day-3 jump that used to be
+//      intercepted by the named tier-2 "The Chef" now fails as a navigation
+//      malfunction instead. That is a REAL behavioural consequence of the rescale
+//      (documented at the threshold table's definition site), not a golden drift.
+//   3. The seed-555 storylet script earns ONE deed, so it ranks up to COMMANDER
+//      under both tables and its two hashes are unchanged. That is the control:
+//      the only scripts that moved are the ones whose rank actually changed.
+// No day-loop rule, rng draw order or ordering guarantee was altered. Regenerated
+// via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '5337bd4c706fc60c8cde23a266ed4ed4a000a252b5936c51ea7d0ff86fb8b8ce';
+  '38033104e65476525e5b7b0bbc638ad0dd08ee82b76f276fa300a0b22ba315cf';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '6066dddd8ba313a9c1af4b012674823ab3fe779fdef3ef0fc3472f9cd0eba09c';
+  'b1673649238b3ba9f502720cb93ffa1f22e95a6e53659f04317e7c76eae84bf1';
 export const STORYLET_GOLDEN_STATE_HASH =
   '3a169effd0a4f486429e49325ca4d92ac7c1ed41538383be50a5856b24b6a470';
 export const STORYLET_GOLDEN_EVENTS_HASH =

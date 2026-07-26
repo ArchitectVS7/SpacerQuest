@@ -262,17 +262,45 @@ export const SYSTEM_DANGER_LEVELS: Record<number, RouteDangerLevel> = {
 // restores ENCOUNTER_RIM_CHANCE exactly.
 //
 // Tiers 2, 4, and 5 ARE divergences under Standing-constraint 5 — foundation
-// priced only core/rim, never a five-point gradient. They are Rimward-only and
-// INTERIM: tier 2 linearly interpolates the core↔rim anchors (0.30↔0.40); tiers
-// 4 and 5 extrapolate beyond rim for the Andromeda / special (MALIGNA, NEMESIS)
-// lanes, which foundation never reached. T-1603 owns the canonical balance
-// targets that will finalize these three points.
+// priced only core/rim, never a five-point gradient. They are Rimward-only: tier
+// 2 linearly interpolates the core↔rim anchors (0.30↔0.40); tiers 4 and 5
+// extrapolate beyond rim for the Andromeda / special (MALIGNA, NEMESIS) lanes,
+// which foundation never reached.
+//
+// CANONICAL (T-1603b, 2026-07-26) — RATIFIED UNCHANGED at 0.35 / 0.50 / 0.60.
+// The interpolation/extrapolation is KEPT DELIBERATELY, and is still the
+// divergence rationale of record; what T-1603b adds is the measurement behind it,
+// so these three points are now set values rather than placeholders. Evidence
+// (`docs/balance/BASELINE-T-1603a.md`, 3,500 careers / 122,500 sim days, plus the
+// after-arms in `docs/balance/TUNING-T-1603.md` §3):
+//   - these tiers are NOT dead lanes. `calculateRouteDanger` is
+//     `max(origin, destination) + distanceBump + cargoBump + eraDelta`, clamped
+//     1..5, so a core→core delivery lands on tier 2 (the most-flown lane class in
+//     the game) and a rim run under an active contract lands on tier 4 or 5;
+//   - the resulting encounter load is 5.2 per 35-day Tour One run (0.15/day under
+//     the 0.5x TOUR_ONE_ENCOUNTER_MULTIPLIER damp) and 0.20/day post-flip —
+//     frequent enough to matter, rare enough that `travelCompleted` holds at
+//     82–87% in every parity cell;
+//   - fleet route diversity is healthy at these rates (397 distinct routes, top
+//     route 1.3% of 58,726 legs) and IMPROVES after the era flip (1.0%), so
+//     nothing about the danger gradient is funnelling traffic onto a safe lane.
+// Nothing in either arm asked for a move, so nothing moved.
+//
+// IF THIS EVER NEEDS A COUNTER-LEVER: tier 2 is the dial. It is the lane class
+// Tour One deliveries actually fly and it is damped 0.5x inside Tour One, so it
+// is the gentlest way to push the trader's median debt-clear day back up if a
+// future change drops it toward the [22, 30] floor. T-1603b did not need it — the
+// renown rescale left that median at 23 — but it is the intended first move.
+//
+// READERS: `calculateRouteDanger` → `generateEncounter` (engine
+// `actions/travel.ts`), which is the only consumer; surfaced to the player as the
+// route's danger readout on the travel plot and as the interceptions themselves.
 export const ROUTE_DANGER_CHANCE: Record<RouteDangerLevel, number> = {
   1: 0.3, // core — restores foundation ENCOUNTER_BASE_CHANCE (repair of the 0.08 cut)
-  2: 0.35, // interim divergence — interpolates core↔rim (T-1603 owns final target)
+  2: 0.35, // canonical (T-1603b) — interpolates core↔rim; the core-delivery lane class
   3: 0.4, // rim — restores foundation ENCOUNTER_RIM_CHANCE (repair of the 0.08 cut)
-  4: 0.5, // interim divergence — extrapolates beyond rim for Andromeda (T-1603)
-  5: 0.6, // interim divergence — extrapolates for special lanes (T-1603)
+  4: 0.5, // canonical (T-1603b) — extrapolates beyond rim for Andromeda / rim contracts
+  5: 0.6, // canonical (T-1603b) — extrapolates for special (MALIGNA, NEMESIS) lanes
 };
 
 export function calculateDistance(origin: StarCoordinates, destination: StarCoordinates): number {

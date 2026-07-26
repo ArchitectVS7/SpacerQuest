@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   NPC_PROFILES,
+  RENOWN_DEED_THRESHOLDS,
   type PowerTier,
   type RenownRankId,
   type RouteDangerLevel,
@@ -23,7 +24,13 @@ function maxedCombatShip(): ShipState {
 /** Elevate a fresh state's registry to the given rank by populating `earned`
  *  with that rank's worth of deed records — the SAME machinery deserialize uses
  *  (rank is a pure function of earned.length). Nothing here touches player.tier. */
-function stateAtRank(rank: RenownRankId, earnedCount: number): GameState {
+/** Build a state standing at `rank` with a deed count that ACTUALLY SELECTS it.
+ *  T-1603b: the count defaults to the rank's own content threshold rather than
+ *  being passed as a literal, because `deserializeState` recomputes
+ *  `renownRank = rankForDeedCount(earned.length)` on load — a hand-picked count
+ *  that no longer matches the table gets silently demoted on the round trip, which
+ *  is what the canonical rescale exposed in the two tests below. */
+function stateAtRank(rank: RenownRankId, earnedCount = RENOWN_DEED_THRESHOLDS[rank]): GameState {
   const state = createInitialState(7);
   const earned: EarnedDeedState[] = [];
   for (let i = 0; i < earnedCount; i += 1) {
@@ -108,7 +115,7 @@ describe('T-1203 computePlayerTier formula', () => {
 
 describe('T-1203 tier survives save round-trip', () => {
   it('deserialize resyncs tier from the carried rank + ship (never a stale/default 1)', () => {
-    const state = stateAtRank('ADMIRAL', 5);
+    const state = stateAtRank('ADMIRAL');
     // Sanity: the derived tier is above the starting band and set through the
     // formula, not by hand.
     expect(state.player.tier).toBe(computePlayerTier('ADMIRAL', state.player.ship));
@@ -120,7 +127,7 @@ describe('T-1203 tier survives save round-trip', () => {
   });
 
   it('a legacy save with a stale tier: 1 is corrected to the derived band on load', () => {
-    const state = stateAtRank('GIGA_HERO', 15);
+    const state = stateAtRank('GIGA_HERO');
     const raw = JSON.parse(serializeState(state)) as GameState;
     raw.player.tier = 1; // simulate a pre-T-1203 save's frozen tier
     const restored = deserializeState(JSON.stringify(raw));
@@ -130,7 +137,7 @@ describe('T-1203 tier survives save round-trip', () => {
 
 describe('T-1203 defined succession behavior', () => {
   it('succession resets the ship to the junker but keeps the tier matched to carried rank', () => {
-    const state = stateAtRank('GIGA_HERO', 15);
+    const state = stateAtRank('GIGA_HERO');
     // Give the fallen spacer an upgraded combat ship so we can prove the reset.
     state.player.ship.weapons.strength = 90;
     expect(computePlayerTier('GIGA_HERO', state.player.ship)).toBe(5);

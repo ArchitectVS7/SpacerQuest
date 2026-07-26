@@ -20,13 +20,14 @@
  * rule to preserve, and the design is taken from the User-Manual cited above.
  *
  * Therefore the price/income constants are Rimward-authored, ENGINE-ORIGINAL
- * tuning — no foundation citation, and they carry the same INTERIM header as
- * crew.ts / lending.ts: INTERIM (T-1603), the canonical-values owner being T-1603b
- * (the economy/pacing tuning pass, which names "port pricing/income" explicitly).
- * Do NOT enshrine as canonical. (The marker previously named "the T-1601
- * rebalance"; T-1601 has since been split into T-1601a/b/c, none of which is a
- * tuning task — retargeted by T-1601c.) Sanctioned to live here per the TECH-STACK
+ * tuning — no foundation citation. Sanctioned to live here per the TECH-STACK
  * "balance numbers are data" constraint.
+ *
+ * CANONICAL (T-1603b, 2026-07-26). The former INTERIM header — flat 25,000cr /
+ * 300cr per dusk, kept flat on purpose "until T-1603b sets the real curve" — is
+ * discharged: the curve below is set from measured traffic and is graded by the
+ * invariants stated at `PURCHASABLE_PORTS`. See `docs/balance/TUNING-T-1603.md`
+ * §5 for the derivation and for the one thing this change CANNOT be graded by.
  *
  * READERS:
  *   - the dusk economy (`packages/engine/src/actions/port.ts` `portDuskIncome`,
@@ -73,110 +74,170 @@ export interface PortStakeDefinition {
  * purchasable). The four alliances are spread across the fourteen so a
  * Confederation-only reader (T-1503) has real Confederation ports to work with.
  *
- * INTERIM (T-1603b): a flat 25,000cr price and 300cr/dusk base income keep this
- * simple and affordable mid-veteran-run (a productive veteran clears 25k easily,
- * and 300/dusk pays the stake back over ~83 quiet dusks — a slow, ownable annuity,
- * not a money printer). A small per-system spread would be fine here; kept flat on
- * purpose until T-1603b (economy & pacing tuning) sets the real curve.
+ * CANONICAL (T-1603b, 2026-07-26) — the real curve, replacing the flat
+ * 25,000cr / 300cr-per-dusk placeholder. Two independent reasons the flat table
+ * had to go:
+ *   1. fourteen identical purchases are not a decision. The buy screen offered no
+ *      reason to prefer one port to another beyond the `alliance` tag;
+ *   2. AGGREGATE RUNAWAY. 14 x 300 = 4,200cr/dusk against a measured fleet median
+ *      route EV of 1,630cr/day (`docs/balance/BASELINE-T-1603a.md` §2). A rich
+ *      veteran who bought the board out-earned FLYING by ~2.6x, forever, for zero
+ *      further decisions — and §6 already reports the veteran game's wealth brake
+ *      missing (median day-120 credits 90,620 for fighter; max 597,807).
+ *
+ * HOW THE CURVE IS DERIVED. Canon defines the launch fee as income levied "as
+ * other spacers depart that system" (User-Manual §3.11, cited in the header), so
+ * the income ORDERING is taken from measured traffic, not invented: T-1603a's raw
+ * sweep rows (`.scratch/balance/rows-*.json`, 92,483 contract legs across both
+ * arms) were folded by `originSystem` to give each core port's share of all core
+ * departures. Measured, and stable across both arms:
+ *
+ *     sys  1  14.3% | 11  7.2% | 8  6.8% | 9  6.8% | 12  6.8% | 7  6.7% | 4  6.7%
+ *     sys 10   6.6% | 13  6.6% |  5 6.6% | 2  6.6% | 14  6.4% | 3  6.1% | 6  5.9%
+ *
+ * HONEST CAVEAT, stated because it shapes the answer: outside the home port that
+ * spread is under +/-10%, which cannot by itself carry a purchase decision. So the
+ * fourteen are BANDED by measured share (Sun-3 alone; then 11; then 8/9/12; then
+ * 7/4/10; then 13/5/2; then 14; 3; 6) and the bands are spaced wider than the raw
+ * traffic to make the choice real. The ordering is measured; the spacing is a
+ * design call, and this sentence is the place it is admitted.
+ *
+ * THE THREE INVARIANTS THIS TABLE IS GRADED BY. All derived from content, never
+ * restated as literals, and pinned in `packages/engine/src/__tests__/port.test.ts`:
+ *   - AGGREGATE CEILING: `sum(baseDuskIncome)` over all 14 = 1,595cr/dusk, below
+ *     the 1,630cr/day fleet median route EV. Owning the ENTIRE board — 211,750cr
+ *     of capital, a reach only the wealthiest tail of the veteran arm gets to
+ *     (median day-120 credits 90,620, max 597,807) — still earns less than simply
+ *     flying contracts. This is the invariant that answers reason (2), and it is
+ *     what forces the per-port income down.
+ *   - PAYBACK WINDOW: `purchasePrice / baseDuskIncome` sits in [110, 150] dusks
+ *     for every port (it was a flat 83). A stake is a slow, ownable annuity that
+ *     outlives Tour One, never a printer.
+ *   - THE HUB PAYS A PREMIUM: payback rises with traffic (Denebola-5 110 dusks →
+ *     Sun-3 150), so the quiet ports are the value play and the busy ones are the
+ *     absolute-income play. That, not the flat table, is where the decision lives.
+ *
+ * WHY PRICES FELL. The ceiling fixes total income near 1,600cr/dusk, i.e. ~114 per
+ * port; a sane payback window then forces prices into roughly 7k–44k. There is no
+ * table that keeps a 25,000cr price, a >=110-dusk payback, AND a sub-1,630 board
+ * total at fourteen ports — the arithmetic does not permit it, and the ceiling is
+ * the invariant that addresses the measured defect, so it wins. Sun-3 at 43,500cr
+ * remains a genuine long-term goal; Denebola-5 at 7,150cr is reachable by a
+ * competent captain shortly after Tour One (and is a deliberate trap DURING it —
+ * 65cr/dusk against a 25,000cr marker on a 30-day clock never pays).
  */
 export const PURCHASABLE_PORTS: readonly PortStakeDefinition[] = [
   {
     systemId: 1,
     name: 'Sun-3 Port Authority',
     alliance: 'league',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 14.3% of measured core departures — the hub: start port, only Hangout, 2.0x the next busiest.
+    purchasePrice: 43500,
+    baseDuskIncome: 290, // payback 150.0 dusks
   },
   {
     systemId: 2,
     name: 'Aldebaran-1 Port Authority',
     alliance: 'dragons',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.6% of measured core departures — mid band.
+    purchasePrice: 12000,
+    baseDuskIncome: 95, // payback 126.3 dusks
   },
   {
     systemId: 3,
     name: 'Altair-3 Port Authority',
     alliance: 'confederation',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.1% of measured core departures — quiet.
+    purchasePrice: 8600,
+    baseDuskIncome: 75, // payback 114.7 dusks
   },
   {
     systemId: 4,
     name: 'Arcturus-6 Port Authority',
     alliance: 'rebels',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.7% of measured core departures — upper-mid band.
+    purchasePrice: 13600,
+    baseDuskIncome: 105, // payback 129.5 dusks
   },
   {
     systemId: 5,
     name: 'Deneb-4 Port Authority',
     alliance: 'league',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.6% of measured core departures — mid band.
+    purchasePrice: 12000,
+    baseDuskIncome: 95, // payback 126.3 dusks
   },
   {
     systemId: 6,
     name: 'Denebola-5 Port Authority',
     alliance: 'dragons',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 5.9% of measured core departures — quietest core port — the cheapest way in.
+    purchasePrice: 7150,
+    baseDuskIncome: 65, // payback 110.0 dusks
   },
   {
     systemId: 7,
     name: 'Fomalhaut-2 Port Authority',
     alliance: 'confederation',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.7% of measured core departures — upper-mid band.
+    purchasePrice: 13600,
+    baseDuskIncome: 105, // payback 129.5 dusks
   },
   {
     systemId: 8,
     name: 'Mira-9 Port Authority',
     alliance: 'rebels',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.8% of measured core departures — busy band.
+    purchasePrice: 15500,
+    baseDuskIncome: 115, // payback 134.8 dusks
   },
   {
     systemId: 9,
     name: 'Pollux-7 Port Authority',
     alliance: 'league',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.8% of measured core departures — busy band.
+    purchasePrice: 15500,
+    baseDuskIncome: 115, // payback 134.8 dusks
   },
   {
     systemId: 10,
     name: 'Procyon-5 Port Authority',
     alliance: 'dragons',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.6% of measured core departures — upper-mid band.
+    purchasePrice: 13600,
+    baseDuskIncome: 105, // payback 129.5 dusks
   },
   {
     systemId: 11,
     name: 'Regulus-6 Port Authority',
     alliance: 'confederation',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 7.2% of measured core departures — busiest non-home port.
+    purchasePrice: 19000,
+    baseDuskIncome: 135, // payback 140.7 dusks
   },
   {
     systemId: 12,
     name: 'Rigel-8 Port Authority',
     alliance: 'rebels',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.8% of measured core departures — busy band.
+    purchasePrice: 15500,
+    baseDuskIncome: 115, // payback 134.8 dusks
   },
   {
     systemId: 13,
     name: 'Spica-3 Port Authority',
     alliance: 'league',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.6% of measured core departures — mid band.
+    purchasePrice: 12000,
+    baseDuskIncome: 95, // payback 126.3 dusks
   },
   {
     systemId: 14,
     name: 'Vega-6 Port Authority',
     alliance: 'confederation',
-    purchasePrice: 25000,
-    baseDuskIncome: 300,
+    // 6.4% of measured core departures — lower-mid band.
+    purchasePrice: 10200,
+    baseDuskIncome: 85, // payback 120.0 dusks
   },
 ];
 

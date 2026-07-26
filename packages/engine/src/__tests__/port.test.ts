@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { PURCHASABLE_PORTS_BY_SYSTEM } from '@spacerquest/content';
+import {
+  PURCHASABLE_PORTS,
+  PURCHASABLE_PORTS_BY_SYSTEM,
+  isPurchasablePort,
+} from '@spacerquest/content';
 import { createInitialState, serializeState, deserializeState } from '../state.js';
 import { startDay, applyPlayerAction, endDay } from '../day.js';
 import { createSave, loadSave } from '../save.js';
@@ -292,5 +296,93 @@ describe('T-1307 · quotePort preview', () => {
       s.player.credits = PRICE - 1;
     });
     expect(quotePort(state, SUN3)).toMatchObject({ ok: false, failure: 'insufficient-credits' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1603b · The port CURVE's invariants. `PURCHASABLE_PORTS` stopped being a flat
+// 25,000 / 300 table and became a traffic-derived curve; this block pins the three
+// properties that curve exists to have, so a future edit that quietly reflattens
+// it — or that turns the board back into a money printer — fails here rather than
+// in a player's save. See the block comment on `PURCHASABLE_PORTS`
+// (content/ports.ts) for the derivation and `docs/balance/TUNING-T-1603.md` §5
+// for the measurement.
+//
+// EVERYTHING IS DERIVED FROM CONTENT. No price, income or payback is restated as a
+// literal below; only the BANDS are, and each band is the design target stated at
+// the definition site, not the measured value pinned to the digit.
+//
+// NOTE ON WHY THIS LIVES IN A UNIT TEST AT ALL. No shipped sim policy buys a port,
+// so the balance sweep cannot grade the curve (recorded as a coverage hole in the
+// memo's §6). These arithmetic invariants plus the reachability tests above are
+// the whole of its evidence, which is exactly why they are asserted rather than
+// left to the memo.
+// ---------------------------------------------------------------------------
+describe('T-1603b · the port price/income curve', () => {
+  /** The measured fleet median route EV, credits per elapsed day, from
+   *  `docs/balance/BASELINE-T-1603a.md` §2 and confirmed at 1,650 in the T-1603b
+   *  after-arm. This is the ONLY number here that comes from outside the codebase,
+   *  and it is the anchor the aggregate ceiling is defined against: owning every
+   *  port must earn less than simply flying contracts. */
+  const FLEET_MEDIAN_ROUTE_EV_PER_DAY = 1630;
+  /** Payback window in dusks, from the definition site's stated design target. */
+  const PAYBACK_MIN = 110;
+  const PAYBACK_MAX = 150;
+
+  it('the whole board earns less per dusk than flying earns per day', () => {
+    const total = PURCHASABLE_PORTS.reduce((sum, port) => sum + port.baseDuskIncome, 0);
+    expect(
+      total,
+      `owning all ${PURCHASABLE_PORTS.length} ports yields ${total}cr/dusk against a ${FLEET_MEDIAN_ROUTE_EV_PER_DAY}cr/day fleet median route EV`,
+    ).toBeLessThan(FLEET_MEDIAN_ROUTE_EV_PER_DAY);
+  });
+
+  it('every stake pays itself back inside the design window', () => {
+    for (const port of PURCHASABLE_PORTS) {
+      const payback = port.purchasePrice / port.baseDuskIncome;
+      expect(
+        payback,
+        `${port.name} pays back in ${payback.toFixed(1)} dusks`,
+      ).toBeGreaterThanOrEqual(PAYBACK_MIN);
+      expect(payback, `${port.name} pays back in ${payback.toFixed(1)} dusks`).toBeLessThanOrEqual(
+        PAYBACK_MAX,
+      );
+    }
+  });
+
+  it('the curve is a curve: the busy ports cost more AND pay back slower', () => {
+    // A flat table would pass both bands above, so this is what actually guards
+    // "fourteen identical purchases are not a decision".
+    const byIncome = [...PURCHASABLE_PORTS].sort((a, b) => a.baseDuskIncome - b.baseDuskIncome);
+    const quietest = byIncome[0];
+    const busiest = byIncome[byIncome.length - 1];
+    expect(busiest.baseDuskIncome / quietest.baseDuskIncome).toBeGreaterThanOrEqual(3);
+    expect(busiest.purchasePrice).toBeGreaterThan(quietest.purchasePrice);
+    // The premium: the high-yield asset is the SLOWER payback, so the quiet ports
+    // are a real value play rather than strictly dominated.
+    expect(busiest.purchasePrice / busiest.baseDuskIncome).toBeGreaterThan(
+      quietest.purchasePrice / quietest.baseDuskIncome,
+    );
+    // ...and income is monotone in price across the whole board, so no port is
+    // strictly dominated by a cheaper one.
+    const byPrice = [...PURCHASABLE_PORTS].sort((a, b) => a.purchasePrice - b.purchasePrice);
+    for (let i = 1; i < byPrice.length; i += 1) {
+      expect(
+        byPrice[i].baseDuskIncome,
+        `${byPrice[i].name} costs more than ${byPrice[i - 1].name} but earns no more`,
+      ).toBeGreaterThanOrEqual(byPrice[i - 1].baseDuskIncome);
+    }
+  });
+
+  it('every core system 1-14 has exactly one purchasable port and the rim has none', () => {
+    // Canon: "one of the 14 core system ports". A curve edit that dropped a row
+    // would otherwise pass every band above.
+    expect(PURCHASABLE_PORTS).toHaveLength(14);
+    for (let systemId = 1; systemId <= 14; systemId += 1) {
+      expect(isPurchasablePort(systemId), `system ${systemId} is not purchasable`).toBe(true);
+    }
+    for (let systemId = 15; systemId <= 20; systemId += 1) {
+      expect(isPurchasablePort(systemId), `rim system ${systemId} is purchasable`).toBe(false);
+    }
   });
 });

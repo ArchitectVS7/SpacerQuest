@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createInitialState, startDay, createSave, type GameState } from '@spacerquest/engine';
-import { FENCE_REP_FLAG } from '@spacerquest/content';
+import { FENCE_REP_FLAG, PURCHASABLE_PORTS_BY_SYSTEM } from '@spacerquest/content';
 
 // T-1405 acceptance — the three previously-buried M13 mechanics, each driven
 // ENTIRELY through the real cockpit UI (the store is the only engine caller):
@@ -39,11 +39,24 @@ const PATROL_CHECK_DIE = 9;
 const PATROL_CHECK_DC = 6;
 
 // ---- Test C: buy a port, income ticks at dusk -------------------------------
-// Seed 1 starts on Sun-3 (system 1, a purchasable core port). With 40000cr the
-// buy commits (25000cr), leaving 15000; the stake accrues 300cr/dusk (no era
-// event modulates system 1 at day 1), so the day-1 dusk lifts credits to 15300.
+// Seed 1 starts on Sun-3 (system 1, a purchasable core port). The purse is staked
+// to the price plus headroom, the buy commits, and the stake accrues its base
+// income at dusk (no era event modulates system 1 at day 1).
+//
+// T-1603b: the price and the income used to be narrated and asserted as literals
+// (25000 / 300, with the arithmetic spelled out in this comment). They are now
+// DERIVED from `PURCHASABLE_PORTS_BY_SYSTEM`, the same source the engine's
+// resolver and dusk reader use, so the canonical port curve moved without
+// reddening this spec — and the spec keeps proving the UI renders whatever content
+// says rather than a number someone typed twice. Same idiom `derule.spec.ts`
+// enforces on the rest of the cockpit.
 const PORT_SEED = 1;
-const PORT_DUSK_INCOME = 300;
+const PORT_SYSTEM = 1; // Sun-3 — where seed 1 starts.
+const PORT_PRICE = PURCHASABLE_PORTS_BY_SYSTEM[PORT_SYSTEM].purchasePrice;
+const PORT_DUSK_INCOME = PURCHASABLE_PORTS_BY_SYSTEM[PORT_SYSTEM].baseDuskIncome;
+/** Enough to buy outright and still fly afterwards — never a bare-minimum purse,
+ *  so a price change cannot silently turn this into an unaffordable-buy test. */
+const PORT_PURSE = PORT_PRICE + 15000;
 
 test.beforeEach(async ({ page }) => {
   // Settle the dawn-roll scramble so a die's displayed face equals its dealt value
@@ -156,7 +169,7 @@ test('a seeded patrol scan renders its GUILE breakdown and consequence', async (
 
 test('buy a port and watch income tick at dusk', async ({ page }) => {
   const state = dawnState(PORT_SEED);
-  state.player.credits = 40000;
+  state.player.credits = PORT_PURSE;
   await inject(page, createSave(state, PORT_SEED));
 
   // The trade pane offers the local port authority for sale — buy it with a die.
@@ -166,6 +179,10 @@ test('buy a port and watch income tick at dusk', async ({ page }) => {
   // The stake is now OWNED and its per-dusk income shows in the ledger total.
   await expect(page.getByTestId('port-owned')).toBeVisible();
   await expect(page.getByTestId('port-income-total')).toHaveText(String(PORT_DUSK_INCOME));
+
+  // ...and the purse actually paid the content price through the real buy action.
+  const purse = Number((await page.getByTestId('credits').innerText()).replace(/[^0-9]/g, ''));
+  expect(purse).toBe(PORT_PURSE - PORT_PRICE);
 
   // Watch the income tick at dusk: read credits, roll the day, read them again.
   const readCredits = async () =>

@@ -101,13 +101,14 @@ export const RENOWN_RANKS = defineRenownRanks({
       // T-1504c voice pass, KEPT AS AUTHORED — and the one line here with a known
       // coupling, flagged rather than silently edited. "one deed on the board"
       // states RENOWN_DEED_THRESHOLDS.COMMANDER (1) in PROSE, and prose cannot be
-      // re-derived at runtime. T-1603 owns the threshold rescale: if COMMANDER
-      // stops being the one-deed rank, THIS LINE GOES STALE and must be reworded
-      // (e.g. "the file has its first entry") in the same change. It is not
-      // reworded pre-emptively because this exact string is embedded in the
-      // `packages/sim/src/__tests__/fixtures/replay-golden.ts` protocol golden as a
-      // rank-up WireEntry, and T-1504c is forbidden from moving a golden for a
-      // cosmetic edit. No other rank citation names a number.
+      // re-derived at runtime. If COMMANDER stops being the one-deed rank, THIS
+      // LINE GOES STALE and must be reworded (e.g. "the file has its first
+      // entry") in the same change. No other rank citation names a number.
+      //
+      // T-1603b RESOLVED THE FLAG WITHOUT MOVING THE LINE: the canonical rescale
+      // held COMMANDER at 1 precisely so this prose stays true (see the threshold
+      // table's own comment). The coupling is still live for any future rescale,
+      // which is why the warning stays.
       'Registry confirms Player as Commander — one deed on the board, and the port clerks have stopped asking how the name is spelled.',
   },
   CAPTAIN: {
@@ -160,31 +161,132 @@ export const RENOWN_RANKS = defineRenownRanks({
   },
 } as const satisfies Record<RenownRankId, RenownRankDefinition>);
 
+/**
+ * The renown ladder's deed thresholds. `rankForDeedCount` (engine `deeds.ts`)
+ * walks `RENOWN_RANK_ORDER` and takes the LAST rank whose threshold the earned
+ * count meets, so the values below MUST be non-decreasing in declaration order —
+ * a non-monotone table selects the wrong rank silently. `deeds.test.ts` asserts
+ * the monotonicity from content, with no literals, so any future rescale is
+ * caught by the build rather than by a player.
+ *
+ * CANONICAL (T-1603b, 2026-07-26) — the rescale T-1504a recommended and T-1603a
+ * measured, now set. See `docs/balance/TUNING-T-1603.md` §4 (deed pacing) for the
+ * before/after `renownRanks` histograms these numbers are graded against.
+ *
+ * WHY THEY MOVED. The previous table (0,1,2,3,5,7,9,12,15,30) was calibrated for
+ * the ORIGINAL 17-deed slate; T-1504a grew the slate to 44 without rescaling it,
+ * and T-1603a measured the consequence over 3,500 careers
+ * (`docs/balance/BASELINE-T-1603a.md` §5, Flag 1):
+ *   - the fleet's 5th deed landed on day 4 (median) — an opening cutscene, not a
+ *     progression;
+ *   - 1,798 of 3,500 THIRTY-FIVE-DAY careers ended at GIGA_HERO, the 9th of ten
+ *     ranks, and two smugglers reached the CONQUEROR capstone before day 35;
+ *   - by day 120, 475 of 700 careers sat at GIGA_HERO and 8 at CONQUEROR.
+ * PRD-REIMAGINED §5.1 ends Tour One on "your FIRST rank earned" and §5.2 makes
+ * the Registry a career-long climb; a ladder finished during the tutorial serves
+ * neither.
+ *
+ * WHAT THEY TARGET, and what was measured after (100 seeds x 35 days x
+ * trader/smuggler/gambler/fighter, the cheap cut in memo §3):
+ *   - day-35 renown spans CAPTAIN..MEGA_HERO with the mode at ADMIRAL (rank 5 of
+ *     10) instead of GIGA_HERO (rank 9). Measured: CAPTAIN 21 · COMMODORE 60 ·
+ *     ADMIRAL 139 · TOP_DOG 72 · GRAND_MUFTI 79 · MEGA_HERO 27 · COMMANDER 2;
+ *   - ZERO of 400 35-day careers reach GIGA_HERO or CONQUEROR (target: <10% and
+ *     0 respectively). GIGA_HERO (31) now sits above the ~28 deeds the best
+ *     Tour One career banks, so the top of the ladder is a veteran's rank;
+ *   - CONQUEROR stays reachable THROUGH PLAY: `deed-coverage.test.ts`'s pinned
+ *     seeds 1 and 6 each earn all 44 authored deeds inside 300 days, so the
+ *     capstone keeps 6 deeds of headroom below the binding measured total.
+ *
+ * KNOWN SECOND-ORDER EFFECT, deliberately accepted and recorded here rather than
+ * discovered later. `engine/tier.ts` derives `player.tier` from
+ * `floor(renownRankIndex(rank)/2)+1`, and `player.tier` is the ONLY input to
+ * encounter matchmaking (`chooseTargetTier` / `selectEncounterInterceptor`,
+ * `actions/travel.ts`). Slowing the ladder therefore delays the player's power
+ * band: a median day-30 career now matches at tier 3 rather than tier 5. That is
+ * the intended direction (a tutorial graduate should not be dragging tier-5
+ * hunters), and it makes Tour One materially kinder — measured on the same cut,
+ * smuggler's debt-cleared rate rose 55% → 76% and fighter's 45% → 48%. The
+ * TRADER median debt-clear day, which is T-1603b's binding acceptance, was
+ * UNCHANGED at day 23 (target band [22, 30]). Every combat/parity distribution in
+ * BASELINE-T-1603a §3 moved with the tier band, so T-1603c's baseline is
+ * TUNING-T-1603's after-tables, not T-1603a's.
+ *
+ * SAVE COMPAT — A MIGRATION IS OWED, AND WAS WRITTEN (v7 → v8, `engine/save.ts`).
+ * No `GameState` field is added or removed, so the first instinct is that no
+ * migration is needed. That is WRONG here, and the reasoning is worth keeping:
+ * `registry.renownRank` is a DERIVED value that happens to be persisted, and this
+ * rescale changed the rule that derives it — so every existing save carries a rank
+ * its deed count no longer buys (a stored GIGA_HERO with 15 deeds should now read
+ * ADMIRAL). `deserializeState` (state.ts) does recompute the rank, but `loadSave`
+ * does NOT go through it — it runs `migrate` → `validateGameState`, and that is
+ * the path the shipped UI store takes. Left unmigrated, the next deed a returning
+ * player earned would drive `evaluateDeeds` from GIGA_HERO down to ADMIRAL and emit
+ * that DEMOTION as a `RenownRankUp` carrying a promotion citation on the wire.
+ * The v7 → v8 migration recomputes the rank and resyncs the `player.tier` band
+ * derived from it; both directions are asserted in
+ * `packages/engine/src/__tests__/save.test.ts`. The demotion itself is deliberate:
+ * the rank is a FUNCTION of the deed count, never an independently stored fact.
+ *
+ * READERS (unchanged by the rescale, restated because this comment replaces the
+ * INTERIM note that carried them): `rankForDeedCount` → `registry.renownRank` →
+ * (a) the rank-up wire + Registry rank-citation readout (`RENOWN_RANKS.citation`,
+ * `ui/format.ts` → RecordsOverlay), (b) `renownRankIndex` → `engine/tier.ts`
+ * `rankTier` → `player.tier` → encounter matchmaking, (c) `CROSSING_REQUIRED_RANK`
+ * (content `nemesis.ts`) → `quoteCrossingStake`'s CONQUEROR gate.
+ */
 export const RENOWN_DEED_THRESHOLDS = {
   LIEUTENANT: 0,
+  // HELD AT 1 ON PURPOSE. `RENOWN_RANKS.COMMANDER.citation` states this number in
+  // PROSE ("one deed on the board") and prose cannot be re-derived at runtime —
+  // see the flag on that citation. Keeping the first-deed promotion also keeps
+  // the opening reward intact, so the rescale costs no string edit and no golden.
   COMMANDER: 1,
-  CAPTAIN: 2,
-  COMMODORE: 3,
-  ADMIRAL: 5,
-  TOP_DOG: 7,
-  GRAND_MUFTI: 9,
-  MEGA_HERO: 12,
-  GIGA_HERO: 15,
+  // The Tour One band. T-1603a §5 measures the fleet at a median 14 deeds by day
+  // 30 (p25 10, p75 19), so 5/9/13/17 spreads a competent tutorial career across
+  // CAPTAIN..TOP_DOG with the mode at ADMIRAL instead of collapsing it onto one
+  // rank. Spacing is a flat 4 here because the deed supply is dense early.
+  CAPTAIN: 5,
+  COMMODORE: 9,
+  ADMIRAL: 13,
+  TOP_DOG: 17,
+  // The veteran band. T-1603a §6 measures a 120-day career at a median 19 deeds
+  // and a MAXIMUM of 28 — the authored slate saturates long before a career does
+  // (four fifths of it is earned in the first quarter). So the spacing widens to
+  // 4/5/5 here: past TOP_DOG each rank costs more than the last, and GIGA_HERO
+  // (31) deliberately sits ABOVE the 28 a saturating career banks, making the top
+  // two ranks the property of a captain who goes hunting for the rarer deeds.
+  //
+  // HANDED FORWARD, not tuned away: no threshold rescale can make the ladder both
+  // slow at day 30 and still climbing at day 120, because only ~5 deeds separate
+  // the two medians. The remaining half of Flag 1 is a DEED SUPPLY problem (the
+  // slate has no late-career earnables), which is content authoring and outside
+  // T-1603b's scope line. Recorded in TUNING-T-1603 §6 (handed to T-1603c).
+  GRAND_MUFTI: 21,
+  MEGA_HERO: 26,
+  GIGA_HERO: 31,
   // T-1308 authored this above the then-17-deed set, so it was defined-but-
-  // unreached. T-1504a fills the headroom (the deed slate below is > 30), so the
+  // unreached. T-1504a fills the headroom (the deed slate below is 44), so the
   // capstone is STRUCTURALLY reachable: earning the authored slate selects
   // CONQUEROR, asserted in `packages/engine/src/__tests__/deeds.test.ts` (which
   // also proves the crossing emits this rank's citation verbatim).
   //
   // T-1504d DELIVERED the remaining half — reachability THROUGH PLAY, with no
   // test setting a rank or pushing an earned record. `packages/sim/src/__tests__/
-  // deed-coverage.test.ts` drives `deedHunterPolicy` for 300 days on pinned seed
-  // 2: the career crosses this threshold on DAY 102 (a real `RenownRankUp` in the
-  // event log, carrying this rank's citation on the wire), and goes on to earn
-  // all 44 authored deeds, the last on day 286. A recorded 200-seed sweep behind
-  // that pin earns every deed at least once; see the file's SWEEP PROVENANCE
-  // block. So this number is not merely representable — it is arrived at.
-  CONQUEROR: 30,
+  // deed-coverage.test.ts` drives `deedHunterPolicy` for 300 days on pinned seeds
+  // 1 and 6 (T-1603b re-pinned these from 1 and 7 — this rescale moves the tier
+  // band, so every 300-day trajectory diverges; see that file's SWEEP PROVENANCE):
+  // each career earns ALL 44 authored deeds inside the horizon (the last on days
+  // 209 and 170), crossing this threshold on the way (days 87 and 88), with a real
+  // `RenownRankUp` in the event log carrying this rank's citation on the wire.
+  //
+  // CANONICAL (T-1603b): 30 → 38. Sized off that measurement, not off a feel —
+  // 38 keeps SIX deeds of headroom below the 44 each pinned seed actually banks,
+  // so the capstone is earned with room to spare rather than demanding a
+  // near-perfect checklist, while sitting 7 above GIGA_HERO so the last rung is
+  // the longest. It remains ≤ `DEEDS.length`, which `deeds.test.ts` asserts from
+  // content so growing or shrinking the slate cannot strand the capstone.
+  CONQUEROR: 38,
 } as const satisfies Record<RenownRankId, number>;
 
 export interface FieldMatcher {
@@ -436,19 +538,21 @@ export const DEEDS: readonly DeedDefinition[] = defineDeeds([
   // encounter band EARLIER in a career, which moves every long campaign's economy.
   //
   // THIS IS NOT A FREE CHANGE, and the size of it is measured. Rank is a function
-  // of the ABSOLUTE deed count against RENOWN_DEED_THRESHOLDS above, and those
-  // thresholds are still the ones calibrated for the old 17-deed slate — so 27 new
+  // of the ABSOLUTE deed count against RENOWN_DEED_THRESHOLDS above, so 27 new
   // deeds (many of them early-career: a first Dare, a first marker, a first chart,
-  // a first berth) inflate rank for the same amount of play. GIGA_HERO now lands
-  // around day 100 instead of day 200, which pins `player.tier` at 5 while the
-  // veteran still flies a hull-30 / weapons-50 ship. Measured on the T-114a sim
-  // driver, seed 3: old slate → solvent at day 500 (~21.6k credits, 16 deeds); new
-  // slate → bankrupt from ~day 200 (credits pinned at -40, 20 deeds).
+  // a first berth) inflated rank for the same amount of play against thresholds
+  // calibrated for the old 17-deed slate. Measured on the T-114a sim driver,
+  // seed 3: old slate → solvent at day 500 (~21.6k credits, 16 deeds); new slate
+  // → bankrupt from ~day 200 (credits pinned at -40, 20 deeds).
   //
-  // RECOMMENDED FOLLOW-UP, owned by T-1603 (balance), deliberately NOT done here
-  // because this task authors content and does not set tuning numbers: rescale
-  // RENOWN_DEED_THRESHOLDS to the larger slate so the ladder measures the same
-  // FRACTION of a career it used to. Until then the mid-game is genuinely harder.
+  // DISCHARGED by T-1603b (2026-07-26): RENOWN_DEED_THRESHOLDS above is rescaled
+  // to this 44-deed slate, so the ladder measures the same FRACTION of a career it
+  // used to and `player.tier` no longer pins at 5 inside the tutorial. The
+  // rescale's own comment carries the measurement; `docs/balance/TUNING-T-1603.md`
+  // §4 carries the before/after distributions. The BALANCE CONSEQUENCE chain above
+  // is still exactly as described — it is the reason a slate change and a
+  // threshold change must be considered together, and it stays here as the warning
+  // for the next person who adds a deed.
   //
   // Consequences already absorbed by T-1504a: the `replay-golden.ts` protocol
   // goldens were regenerated (two extra DeedEarned entries; rngState UNCHANGED,
@@ -490,8 +594,13 @@ export const DEEDS: readonly DeedDefinition[] = defineDeeds([
     },
   },
   {
-    // 250 sits mid-band between DARE_MIN_WAGER (25) and DARE_MAX_WAGER (500):
-    // a deliberate stake, not the house minimum, and not only the ceiling.
+    // 250 sits inside the band DARE_MIN_WAGER (25) … DARE_MAX_WAGER (1,000):
+    // a deliberate stake, not the house minimum, and not only the ceiling. It is
+    // deliberately NOT re-derived from the ceiling — T-1603b raised the cap 500 →
+    // 1,000 and left this at 250, because "a stake worth a hold of cargo" is a
+    // fixed narrative weight, not a fraction of whatever the house will take. The
+    // measured gambler mean stake at the new cap is ~697 credits over 120-day
+    // careers, so the deed sits comfortably below the typical serious hand.
     id: 'high_roller',
     title: 'High Roller',
     citationTemplate:

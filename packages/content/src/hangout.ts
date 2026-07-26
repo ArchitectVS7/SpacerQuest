@@ -25,12 +25,45 @@
  * (the Hangout pane / the named surfacing task per Standing-constraint 6).
  */
 
-/** Minimum / maximum credits a player may put on a single Dare hand. The engine
- *  clamps the requested wager into this band AND down to what both the player and
- *  the dealer can actually cover, so a wager a broke dealer can't match is capped,
- *  never a crash. */
+/**
+ * Minimum / maximum credits a player may put on a single Dare hand. The engine
+ * clamps the requested wager into this band AND down to what both the player and
+ * the dealer can actually cover, so a wager a broke dealer can't match is capped,
+ * never a crash.
+ *
+ * CANONICAL (T-1603b, 2026-07-26). MIN ratified at 25 — it is the "sit down and
+ * see" stake, and `ui/e2e/hangout.spec.ts` reads it from content to drive the
+ * pane. MAX RAISED 500 → 1,000, the one hangout number this task moved.
+ *
+ * WHY IT MOVED. 500 against the 25,000cr Guild marker meant a mid-career captain
+ * could not put a meaningful stake down: the tables stayed a Tour One curiosity
+ * for the whole of a career. PRD §7.5 makes the Hangout a social venue and one of
+ * the bad day's three outs, NOT a casino, so the cap has to let a veteran feel a
+ * hand without turning the tables into an income engine — 1,000 is 4% of the
+ * marker and ~0.6 of a median day's route EV (1,630cr/day), i.e. a real evening
+ * and never a living.
+ *
+ * GRADED, not asserted. Measured on the T-1603b cut (100 seeds × 35 days,
+ * trader/smuggler/gambler/fighter — `docs/balance/TUNING-T-1603.md` §5):
+ *   - `gambler` did NOT become the fastest debt-clear policy. Its median
+ *     debt-clear day stayed at 25, above the trader's 23, and its clear rate moved
+ *     79% → 80% — inside sampling. The Tour One tables are cap-bound by the
+ *     DEALER's purse, not by this ceiling, which is why the raise barely touches
+ *     the tutorial;
+ *   - the VETERAN game is where it lands. Over seeds 1..10 × 120 days the gambler
+ *     plays the same 184 hands either way, but the mean stake rises 405 → 697cr —
+ *     so the cap was genuinely binding late — while the expected value per hand
+ *     moves +12.2 → −5.6cr. Both are ~1% of the stake in opposite directions:
+ *     the Dare is a fair coin flip with a house edge of essentially nothing, and
+ *     raising the ceiling changes the SIZE of the swing, not its sign.
+ *
+ * READER of the band: `planDare` (`packages/sim/src/index.ts`) sizes the
+ * gambler's stake with these exact constants, and the engine's Dare resolver
+ * (`packages/engine/src/actions/hangout.ts`) does the final clamp. Surfaced to the
+ * player as the wager control in the Hangout pane (T-1404).
+ */
 export const DARE_MIN_WAGER = 25;
-export const DARE_MAX_WAGER = 500;
+export const DARE_MAX_WAGER = 1000;
 
 /**
  * Disposition the DEALER moves by after a Dare (T-1303). Both outcomes shift it —

@@ -30,12 +30,28 @@ import {
 //
 // SEED PROVENANCE (found via the exact UI dispatch path — `startDay(fixture)`
 // then `applyPlayerAction`, the same fork stream the store calls; swept seeds
-// 1..200): seed 5 deals the day-1 hand [19,16,14,12,11] at Achernar-5. Die 0
-// (19 + PILOT/nav) clears the sweep's nav DC and its seeded loot roll yields a
-// Signal Fragment; die 1 then clears the Achernar-5 → Mizar-9 jump (distance 19,
-// DC 17) with NO interdiction on the route. The spec asserts each step, so a
-// regression here is loud rather than flaky.
-const FUNNEL_SEED = 5;
+// 1..200): die 0 (a high face + PILOT/nav) clears the sweep's nav DC and its
+// seeded loot roll yields a Signal Fragment; die 1 then clears the
+// Achernar-5 → Mizar-9 jump (distance 19, DC 17) with NO interdiction on the
+// route, and the Sage's matching decode opener is on the board on arrival. The
+// spec asserts each step, so a regression here is loud rather than flaky.
+//
+// T-1603b re-pin (seed 5 → 15). MECHANISM, and it is the same one that moved the
+// two protocol goldens: the canonical RENOWN_DEED_THRESHOLDS rescale (content
+// `deeds.ts`) means the sweep's earned deeds no longer push the captain through
+// three rank-ups (COMMANDER/CAPTAIN/COMMODORE) but through one. Three fewer
+// `RenownRankUp` + `WireEntry` pairs land in the day's event stream, which shifts
+// the JUMP's action event index — and the travel rng is
+// `dayRng.fork('action-travel-<index>')` (engine `day.ts`). Seed 5's jump now
+// draws a different fork and is interdicted before it reaches Mizar-9.
+// RE-SWEEP (seeds 1..200, this exact fixture and dispatch path, in .scratch/):
+// dozens of seeds still land the full funnel — 15, 20, 26, 27, 31, 32, 41, 44,
+// 45, 51, 52, 54, 61, 65, 67, 71, 72, 73, 80, 81, ... — so the funnel is as
+// broadly reachable as it was; only WHICH seed walks it cleanly moved. Seed 15 is
+// the first qualifier: it draws `frag-nemesis-05` and arrives at Mizar-9 with
+// `sage.mizar.decode-05` on the board.
+// PINNED, NOT STEERED: only the seed changed. Every assertion below is untouched.
+const FUNNEL_SEED = 15;
 const ACHERNAR = 19;
 const MIZAR = 18;
 const SWEEP_DIE = 0;

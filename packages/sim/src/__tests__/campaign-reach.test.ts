@@ -1,6 +1,7 @@
 import {
   CREW_ROLES,
   PURCHASABLE_PORTS_BY_SYSTEM,
+  SPECIAL_EQUIPMENT,
   distance as systemDistance,
   isGatedDestination,
   isPurchasablePort,
@@ -79,9 +80,26 @@ describe('T-114a special-equipment reachability (earned, not set)', () => {
     // untouched — no threshold widened, no clause dropped.
     const state = driveCompetentCampaign(veteranPolicy, 2, 500);
 
-    // The top rank was reached by earning Deeds, not by fiat.
+    // The gate's rank was reached by earning Deeds, not by fiat.
+    //
+    // T-1603b: this used to name 'GIGA_HERO' as a literal on both sides. It is now
+    // DERIVED from the equipment table, because the rank that gates the hull is
+    // content's call and the fact under test is "the career climbed far enough to
+    // open the DEEPEST renown gate" — not the spelling of that rank. See the
+    // RENOWN GATES RE-ANCHORED block in content `upgrades.ts` for why the gate
+    // moved GIGA_HERO → TOP_DOG when the thresholds were rescaled.
+    const gate = SPECIAL_EQUIPMENT.find((item) => item.id === 'ASTRAXIAL_HULL');
+    expect(gate?.requiredRenownRank, 'ASTRAXIAL_HULL lost its renown gate').toBeDefined();
+    // ...and it really is the deepest gate in the table — the property that makes
+    // this test the special-equipment reachability proof rather than one of seven.
+    const deepest = Math.max(
+      ...SPECIAL_EQUIPMENT.map((item) =>
+        item.requiredRenownRank ? renownRankIndex(item.requiredRenownRank) : -1,
+      ),
+    );
+    expect(renownRankIndex(gate!.requiredRenownRank!)).toBe(deepest);
     expect(renownRankIndex(state.player.registry.renownRank)).toBeGreaterThanOrEqual(
-      renownRankIndex('GIGA_HERO'),
+      renownRankIndex(gate!.requiredRenownRank!),
     );
     // ...and the GIGA_HERO-gated hull was actually bought and installed. This is
     // the piece that was unreachable before: the deepest renown gate, cleared by
@@ -241,7 +259,20 @@ describe('T-1306 dice progression reachable through play', () => {
     // still fires, but the roster is empty at the horizon). Seed 3 hires on day 10
     // and keeps the crew member aboard through day 150. Pinned, not steered — a
     // seeds 1..16 sweep keeps crew aboard on 3/7/10/11/12; seed 3 is the first.
-    const state = driveCompetentCampaign(crewHiringVeteranPolicy, 3, 150);
+    //
+    // T-1603b re-pin (seed 3 → 2). MECHANISM: the canonical RENOWN_DEED_THRESHOLDS
+    // rescale (content `deeds.ts`) slows the renown ladder, which lowers
+    // `player.tier` (engine `tier.ts`) for the same amount of play, which changes
+    // which interceptors the encounter matchmaker draws — so every long unguided
+    // trajectory shifts, this one included. Under seed 3 the veteran still HIRES
+    // (day 10) but the crew member walks on an unpaid-wage dusk before day 150, so
+    // the `crew.length >= 1` assertion fails on a wage outcome, not a hire failure.
+    // RE-SWEEP (seeds 1..20 of this exact driver, 150-day horizon, in .scratch/):
+    // hires land on 15 of 20 seeds and crew is still ABOARD at the horizon on
+    // 2, 5, 6, 7, 9, 11, 12, 13, 14 and 15. Seed 2 is the first qualifier —
+    // 3 hires, first on day 68, one aboard at the horizon.
+    // PINNED, NOT STEERED: only the seed changed; every assertion is untouched.
+    const state = driveCompetentCampaign(crewHiringVeteranPolicy, 2, 150);
 
     // The acquisition happened through legal play: a CrewEvent{hired} was logged
     // on or before day 150 (crew are hired via the Crew action, never injected).
@@ -283,7 +314,16 @@ describe('T-1104 rim-hunting path revival (formerly dead)', () => {
     // Deterministic modest horizon (seed 1, 120 days) — far shorter than the
     // 500-day GIGA_HERO run, chosen for speed; the rim steer fires early once
     // rim contracts exist.
-    const state = driveCompetentCampaign(veteranPolicy, 1, 120);
+    //
+    // T-1603b re-pin (seed 1 → 2), same mechanism as the crew re-pin above: the
+    // canonical threshold rescale lowers `player.tier`, the matchmaker draws
+    // different interceptors, and the unguided 120-day trajectory moves. Seed 1
+    // now never signs a rim contract inside the horizon. RE-SWEEP (seeds 1..20 of
+    // this exact driver and horizon, in .scratch/): 18 of 20 seeds earn
+    // `rimward_bound` AND land a rim delivery — only seeds 1 and 8 do not — so the
+    // rim path is broadly alive and this is a pin move, not a coverage loss.
+    // Seed 2 is the first qualifier. Only the seed changed.
+    const state = driveCompetentCampaign(veteranPolicy, 2, 120);
 
     // (1) The rim TRAVEL completed — the `rimward_bound` deed fires only on a
     // successful TravelEvent with destination 15–20 (the deed that the sim steer
@@ -609,7 +649,23 @@ describe('T-1204 disposition with teeth (unguided 300-day sim)', () => {
     // — bond intervention on day 64, peak |disposition| 6 on day 6. Pinned, not
     // steered: only the seed changed; the loop body and both assertions are
     // untouched.
-    const CAMPAIGN_SEED = 14;
+    //
+    // T-1603b re-pin (seed 14 → 11), same mechanism one more time — and this is
+    // the seed-sensitivity this test's own header warns about, firing exactly as
+    // documented. The canonical RENOWN_DEED_THRESHOLDS rescale (content
+    // `deeds.ts`) slows the renown ladder → `player.tier` (engine `tier.ts`) sits
+    // lower for the same play → `chooseTargetTier` / `selectEncounterInterceptor`
+    // draw different hunters → the unguided trajectory diverges, moving WHICH seed
+    // lands the bond conjunction. Nothing about the bond arc changed.
+    // RE-SWEEP (seeds 1..45, 300-day horizon, this exact unguided driver, run in
+    // .scratch/): seeds 11, 23, 33, 35, 36, 37 and 38 land BOTH signals. Every
+    // other seed fires the >= 5 grudge but never the bond — unchanged in character
+    // from every previous re-pin, which is the evidence that the conjunction is
+    // still as rare-but-reachable as it was. Seed 11 is the first qualifier: bond
+    // intervention on day 8, peak |disposition| 7 on day 5.
+    // PINNED, NOT STEERED: only the seed changed; the loop body and both
+    // assertions are untouched.
+    const CAMPAIGN_SEED = 11;
     let state = createInitialState(CAMPAIGN_SEED);
     let sawBond = false;
     let peakDisposition = 0;

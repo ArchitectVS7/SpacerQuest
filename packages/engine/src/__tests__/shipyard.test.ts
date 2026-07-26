@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
+import { SPECIAL_EQUIPMENT, YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
 import { applyPlayerAction, startDay } from '../day.js';
 import {
   componentTierForStrength,
@@ -7,8 +7,9 @@ import {
   quoteShipyard,
   resolveShipyard,
 } from '../actions/shipyard.js';
+import { RENOWN_RANK_ORDER, renownRankIndex } from '../deeds.js';
 import { createInitialState } from '../state.js';
-import { GameState, PlayerAction, ShipyardFail } from '../types.js';
+import { GameState, PlayerAction, ShipyardFail, SpecialEquipmentId } from '../types.js';
 
 type ShipyardAction = Extract<PlayerAction, { type: 'Shipyard' }>;
 
@@ -187,11 +188,37 @@ describe('shipyard', () => {
     },
   );
 
-  it.each([
-    ['STAR_BUSTER', 'LIEUTENANT', 'CAPTAIN'],
-    ['ARCH_ANGEL', 'LIEUTENANT', 'CAPTAIN'],
-    ['ASTRAXIAL_HULL', 'CAPTAIN', 'GIGA_HERO'],
-  ] as const)(
+  // T-1603b: the required rank (and the rank to stand one step below it) used to
+  // be hand-written per row — a second copy of the content gate that reddened this
+  // test when the canonical threshold rescale re-anchored ASTRAXIAL_HULL from
+  // GIGA_HERO to TOP_DOG (see the RENOWN GATES RE-ANCHORED block in content
+  // `upgrades.ts`). Both are now DERIVED: the row names only the equipment, the
+  // gate is read from `SPECIAL_EQUIPMENT`, and `currentRank` is the rank exactly
+  // ONE step below it in `RENOWN_RANK_ORDER` — the tightest possible refusal, and
+  // one that follows any future re-gating for free.
+  const gatedEquipment = SPECIAL_EQUIPMENT.filter(
+    (item) => item.requiredRenownRank !== undefined,
+  ).map((item) => {
+    const required = item.requiredRenownRank!;
+    const below = RENOWN_RANK_ORDER[renownRankIndex(required) - 1];
+    // `SPECIAL_EQUIPMENT` is widened to the declared interface (so `id` is
+    // `string`); the engine's own `SpecialEquipmentId` union is the narrower type
+    // the action takes. The narrowing is asserted, not assumed — `quoteShipyard`
+    // and the resolver would reject an unknown id, and the ShipyardFail assertion
+    // below is what proves this id reached the real gate.
+    return [item.id as SpecialEquipmentId, below, required] as const;
+  });
+  // Guard the derivation itself: an empty table would make this whole block a
+  // silent no-op, and a gate at the very bottom rank has no rank below it to
+  // stand on.
+  it('every renown-gated equipment has a rank below it to be refused from', () => {
+    expect(gatedEquipment.length).toBeGreaterThan(0);
+    for (const [id, below] of gatedEquipment) {
+      expect(below, `${id} is gated at the lowest rank — nothing can be refused`).toBeDefined();
+    }
+  });
+
+  it.each(gatedEquipment)(
     'refuses %s below the required renown rank with a typed failure',
     (equipment, currentRank, requiredRank) => {
       const state = shipyardState();

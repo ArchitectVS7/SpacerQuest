@@ -1,5 +1,13 @@
 # Balance Baseline — T-1603a
 
+> **The tuning that followed is in [`TUNING-T-1603.md`](./TUNING-T-1603.md).** This
+> document is the *before*; every figure here still describes the game as it stood at
+> the commit in Provenance, and it is deliberately not updated in place. T-1603b (economy
+> and pacing) is written up there, with the after-arms committed alongside as
+> `baseline-tour-one-1603b.json` / `baseline-veteran-1603b.json`. **If you are tuning
+> combat or survival, read that memo's §6 first** — the renown rescale moved the tier
+> band, so §3 and §4 below are no longer the current parity and death numbers.
+
 **Measurement only. No balance number was moved by this task.** Not a constant, not a
 DC, not a price. Every figure below describes the game exactly as it stands at the
 commit named in Provenance; the tuning is T-1603b's (economy and pacing) and

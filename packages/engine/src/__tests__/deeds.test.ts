@@ -20,6 +20,7 @@ import {
   evaluateDeeds,
   nextRankFor,
   rankForDeedCount,
+  renownRankIndex,
 } from '../deeds.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { EarnedDeedState, GameEvent } from '../types.js';
@@ -104,7 +105,11 @@ describe('deed registry', () => {
     const restored = deserializeState(JSON.stringify(raw));
 
     expect(restored.player.registry.earned).toEqual(state.player.registry.earned);
-    expect(restored.player.registry.renownRank).toBe('COMMODORE');
+    // DERIVED (T-1603b): the reconstructed rank is whatever the CONTENT table
+    // selects for three earned deeds. Naming a rank here would pin a balance
+    // number in a serialization test — the fact under test is "the rank is
+    // recomputed from the earned count", not which rank three deeds buys.
+    expect(restored.player.registry.renownRank).toBe(rankForDeedCount(3));
   });
 
   it('reconstructs missing registry from unique DeedEarned event-log entries', () => {
@@ -171,7 +176,9 @@ describe('deed registry', () => {
         eventIndex: 2,
       },
     ]);
-    expect(restored.player.registry.renownRank).toBe('CAPTAIN');
+    // DERIVED (T-1603b) from the two reconstructed deeds — see the sibling
+    // deserialize test above for why this is not a rank name.
+    expect(restored.player.registry.renownRank).toBe(rankForDeedCount(2));
     // matchCounts is rebuilt from the raw log: the successful TravelEvent matches
     // first_jump, road_regular (count deed), and fuel_fumes_arrival (its state
     // matcher is not part of event matching); DeedEarned/WireEntry match nothing.
@@ -282,9 +289,28 @@ describe('deed registry', () => {
     // Rank tracks the number of earned deeds and nothing else.
     expect(state.player.registry.earned).toHaveLength(1);
     expect(state.player.registry.renownRank).toBe('COMMANDER');
-    expect(rankForDeedCount(2)).toBe('CAPTAIN');
-    expect(rankForDeedCount(3)).toBe('COMMODORE');
-    expect(rankForDeedCount(4)).toBe('COMMODORE');
+
+    // T-1603b: this used to continue `rankForDeedCount(2) === 'CAPTAIN'` etc. —
+    // three literals that were really a copy of the threshold table, and that the
+    // canonical rescale reddened without any defect. The BEHAVIOUR under test is
+    // "rank is a pure function of the count", so it is now asserted as such,
+    // derived from content across the whole ladder:
+    //   - every threshold selects exactly its own rank;
+    //   - one deed short of a threshold still selects the rank BELOW it, so a
+    //     rank is earned and never rounded up to;
+    //   - the mapping is monotone in the count (more deeds never demotes).
+    for (const rank of RENOWN_RANK_ORDER) {
+      const threshold = RENOWN_DEED_THRESHOLDS[rank];
+      expect(rankForDeedCount(threshold)).toBe(rank);
+      if (threshold > 0) expect(rankForDeedCount(threshold - 1)).not.toBe(rank);
+    }
+    const ceiling = RENOWN_DEED_THRESHOLDS.CONQUEROR + 5;
+    for (let count = 1; count <= ceiling; count += 1) {
+      expect(
+        renownRankIndex(rankForDeedCount(count)),
+        `rank went DOWN between ${count - 1} and ${count} deeds`,
+      ).toBeGreaterThanOrEqual(renownRankIndex(rankForDeedCount(count - 1)));
+    }
   });
 
   it('evaluates deeds from the source events only, never re-scanning the event log', () => {
@@ -346,14 +372,21 @@ describe('deed registry', () => {
     expect(RENOWN_RANKS.CONQUEROR).toMatchObject({ id: 'CONQUEROR', label: 'Conqueror' });
     expect(RENOWN_RANKS.CONQUEROR.citation.length).toBeGreaterThan(0);
 
-    // ...at the threshold T-1308 pinned. T-1308 authored it ABOVE the then-17
-    // deed set, so it was defined-but-unreachable and this test asserted the gap.
-    // T-1504a is the task that closes it STRUCTURALLY: the authored slate now
-    // clears 30, so earning the set is enough to select CONQUEROR. Reachability
-    // THROUGH PLAY (a long veteran sim that actually climbs there) is a seed
-    // sweep, and is T-1504d's — deliberately not asserted here.
-    expect(RENOWN_DEED_THRESHOLDS.CONQUEROR).toBe(30);
-    expect(DEEDS.length).toBeGreaterThanOrEqual(RENOWN_DEED_THRESHOLDS.CONQUEROR);
+    // ...at a threshold the authored slate can actually clear. T-1308 authored it
+    // ABOVE the then-17 deed set, so it was defined-but-unreachable and this test
+    // asserted the gap. T-1504a closed it STRUCTURALLY: earning the slate selects
+    // CONQUEROR. Reachability THROUGH PLAY (a long veteran sim that actually
+    // climbs there) is `packages/sim/src/__tests__/deed-coverage.test.ts`'s.
+    //
+    // T-1603b: the literal `toBe(30)` that used to sit here is GONE. It pinned a
+    // balance number as a fixture, so the canonical rescale (30 → 38) reddened it
+    // for no defect. What is asserted instead is the set of INVARIANTS that make
+    // any threshold table correct — all derived from content, so the next rescale
+    // moves them for free and a genuinely broken one still fails:
+    //   - the capstone is inside the authored slate (never strandable);
+    //   - earning everything tops the ladder out;
+    //   - the threshold is the exact crossing point, in both directions.
+    expect(RENOWN_DEED_THRESHOLDS.CONQUEROR).toBeLessThanOrEqual(DEEDS.length);
 
     // Earning every authored deed now tops the ladder out at Conqueror.
     expect(rankForDeedCount(DEEDS.length)).toBe('CONQUEROR');
@@ -363,11 +396,39 @@ describe('deed registry', () => {
     expect(rankForDeedCount(RENOWN_DEED_THRESHOLDS.CONQUEROR - 1)).toBe('GIGA_HERO');
   });
 
+  // T-1603b · MONOTONICITY GUARD. `rankForDeedCount` walks RENOWN_RANK_ORDER and
+  // takes the LAST rank whose threshold the count meets, so a table that dips —
+  // say a GRAND_MUFTI below its TOP_DOG — selects the wrong rank with no error and
+  // no red test anywhere. Cheap to assert, and it protects every future rescale
+  // (T-1603b's own included). Derived entirely from content: no literal thresholds.
+  it('renown thresholds are non-decreasing across the declared rank order', () => {
+    for (let i = 1; i < RENOWN_RANK_ORDER.length; i += 1) {
+      const previous = RENOWN_RANK_ORDER[i - 1];
+      const current = RENOWN_RANK_ORDER[i];
+      expect(
+        RENOWN_DEED_THRESHOLDS[current],
+        `${current} (${RENOWN_DEED_THRESHOLDS[current]}) must not sit below ${previous} (${RENOWN_DEED_THRESHOLDS[previous]})`,
+      ).toBeGreaterThanOrEqual(RENOWN_DEED_THRESHOLDS[previous]);
+    }
+    // ...and the ladder actually climbs: the capstone is strictly above the floor,
+    // so a table flattened to all-zeros (which is monotone) still fails.
+    expect(RENOWN_DEED_THRESHOLDS[RENOWN_RANK_ORDER[RENOWN_RANK_ORDER.length - 1]]).toBeGreaterThan(
+      RENOWN_DEED_THRESHOLDS[RENOWN_RANK_ORDER[0]],
+    );
+    // Every rank is SELECTABLE — no two ranks share a threshold, which would make
+    // the lower one unreachable (rankForDeedCount takes the last match).
+    for (const rank of RENOWN_RANK_ORDER) {
+      expect(rankForDeedCount(RENOWN_DEED_THRESHOLDS[rank]), `${rank} is unreachable`).toBe(rank);
+    }
+  });
+
   it('reaching Conqueror fires the unique capstone wire plus a Registry entry', () => {
     const state = createInitialState(1308);
     // Stand the captain one deed short of the Conqueror threshold with a rank of
-    // GIGA_HERO, then earn a real deed to cross to 30.
-    state.player.registry.earned = syntheticEarned(29);
+    // GIGA_HERO, then earn a real deed to cross it. The counts are DERIVED from
+    // the content threshold (T-1603b) so a rescale moves the fixture with it.
+    const capstone = RENOWN_DEED_THRESHOLDS.CONQUEROR;
+    state.player.registry.earned = syntheticEarned(capstone - 1);
     state.player.registry.renownRank = 'GIGA_HERO';
 
     const events = evaluateDeeds(state, [signContractEvent()]);
@@ -379,11 +440,11 @@ describe('deed registry', () => {
         type: 'RenownRankUp',
         previousRank: 'GIGA_HERO',
         newRank: 'CONQUEROR',
-        deedCount: 30,
+        deedCount: capstone,
       }),
     );
     expect(state.player.registry.renownRank).toBe('CONQUEROR');
-    expect(state.player.registry.earned).toHaveLength(30);
+    expect(state.player.registry.earned).toHaveLength(capstone);
     expect(events.some((e) => e.type === 'DeedEarned' && e.deedId === 'first_manifest')).toBe(true);
 
     // The reader assertion: the rank-up wire is the CONQUEROR citation verbatim,
@@ -397,17 +458,19 @@ describe('deed registry', () => {
 
   it('a Conqueror registry and rank-up event survive JSON round-trip', () => {
     const state = createInitialState(1309);
-    // 30 earned deeds keep rankForDeedCount === CONQUEROR stable through the
-    // deserialize-time rank reconstruction, so the value must clear the schema
-    // enum end-to-end.
-    state.player.registry.earned = syntheticEarned(30);
+    // A capstone-worth of earned deeds keeps rankForDeedCount === CONQUEROR stable
+    // through the deserialize-time rank reconstruction, so the value must clear the
+    // schema enum end-to-end. DERIVED from content (T-1603b) — the recompute at
+    // deserialize is exactly what makes a threshold rescale save-compatible without
+    // a migration, so this fixture must follow the table rather than pin a number.
+    state.player.registry.earned = syntheticEarned(RENOWN_DEED_THRESHOLDS.CONQUEROR);
     state.player.registry.renownRank = 'CONQUEROR';
     const rankUp: GameEvent = {
       type: 'RenownRankUp',
       day: 5,
       previousRank: 'GIGA_HERO',
       newRank: 'CONQUEROR',
-      deedCount: 30,
+      deedCount: RENOWN_DEED_THRESHOLDS.CONQUEROR,
     };
     const deedEarned: GameEvent = {
       type: 'DeedEarned',

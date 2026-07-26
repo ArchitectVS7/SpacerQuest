@@ -9,11 +9,19 @@ import {
   type SaveEnvelope,
   type MigrationFn,
 } from '../save.js';
-import { FLAWS, NEMESIS_SYSTEM_ID, SIGNAL_FRAGMENTS } from '@spacerquest/content';
+import {
+  FLAWS,
+  NEMESIS_SYSTEM_ID,
+  RENOWN_DEED_THRESHOLDS,
+  SIGNAL_FRAGMENTS,
+  type RenownRankId,
+} from '@spacerquest/content';
 import { validateGameState } from '../schema.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { advanceDay } from '../day.js';
 import { careerEnded } from '../nemesis.js';
+import { RENOWN_RANK_ORDER, rankForDeedCount } from '../deeds.js';
+import { computePlayerTier } from '../tier.js';
 import { GameState, PlayerAction } from '../types.js';
 
 /**
@@ -428,10 +436,13 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 7', () => {
+  it('CURRENT_SAVE_VERSION is 8', () => {
     // T-1401 bumped 5 → 6 (WireEntry.kind); T-1503 bumped 6 → 7 for the required
-    // nested PlayerState.reputation container.
-    expect(CURRENT_SAVE_VERSION).toBe(7);
+    // nested PlayerState.reputation container; T-1603b bumped 7 → 8 to re-derive
+    // `registry.renownRank` + `player.tier` after the canonical
+    // RENOWN_DEED_THRESHOLDS rescale — the first migration that adds no field and
+    // instead repairs the MEANING of two it finds. See save.ts.
+    expect(CURRENT_SAVE_VERSION).toBe(8);
   });
 });
 
@@ -635,8 +646,10 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     expect(loaded.state.player.nemesisFile).toEqual(state.player.nemesisFile);
     // The WHOLE state is deep-equal — nothing about the fuller file perturbed it.
     expect(loaded.state).toEqual(state);
-    // No version bump was needed for any of it.
-    expect(CURRENT_SAVE_VERSION).toBe(7);
+    // No version bump was needed for any of it. (T-1603b later bumped 7 → 8 for
+    // an unrelated reason — the renown re-derivation — so this pins the CURRENT
+    // version rather than claiming the fragment file caused it.)
+    expect(CURRENT_SAVE_VERSION).toBe(8);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -679,8 +692,9 @@ describe('save envelope — an ended career round-trips with no migration (T-150
       actionType: 'Explore',
       reason: 'career-ended',
     });
-    // Nothing needed a bump for any of it.
-    expect(CURRENT_SAVE_VERSION).toBe(7);
+    // Nothing needed a bump for any of it. (T-1603b later bumped 7 → 8 for the
+    // unrelated renown re-derivation; this pins the CURRENT version.)
+    expect(CURRENT_SAVE_VERSION).toBe(8);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {
@@ -695,5 +709,109 @@ describe('save envelope — an ended career round-trips with no migration (T-150
       reason: 'career-abandoned',
     });
     expect(() => loadSave(createSave(state, 78))).toThrow(SaveError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1603b · A THRESHOLD RESCALE NEEDS NO MIGRATION, and this is why.
+//
+// The canonical `RENOWN_DEED_THRESHOLDS` rescale (content deeds.ts) added and
+// removed no `GameState` field, so `CURRENT_SAVE_VERSION` did not move and no
+// migration was written. That is only safe because the rank is a DERIVED value:
+// `deserializeState` (state.ts) recomputes
+// `registry.renownRank = rankForDeedCount(earned.length)` on every load, so a
+// save written under any earlier table self-heals to whatever the current table
+// selects for the deeds it actually holds.
+//
+// This block asserts that behaviour end-to-end through the real save envelope
+// (createSave -> loadSave), not just through deserializeState, because the
+// envelope is what a player's browser actually holds. It is the standing proof
+// that the next rescale is likewise migration-free — and the alarm if someone
+// ever makes `renownRank` an independently stored fact.
+// ---------------------------------------------------------------------------
+describe('T-1603b renown rescale save compatibility (v7 -> v8)', () => {
+  /** A state standing at `storedRank` with `deeds` earned deeds. When the two
+   *  disagree it is exactly the shape a pre-rescale save has. */
+  function stateAt(storedRank: RenownRankId, deeds: number, tier?: 1 | 2 | 3 | 4 | 5): GameState {
+    const state = createInitialState(1603);
+    state.player.registry.earned = Array.from({ length: deeds }, (_, i) => ({
+      id: `synthetic-deed-${i}`,
+      title: `Synthetic Deed ${i}`,
+      citation: 'test',
+      day: 1,
+      eventIndex: i,
+    }));
+    state.player.registry.renownRank = storedRank;
+    if (tier !== undefined) state.player.tier = tier;
+    return state;
+  }
+
+  it('a v7 envelope is healed by the production migration, not only by the loader', () => {
+    // THE FAILURE THIS GUARDS. `deserializeState` (state.ts) recomputes the rank,
+    // but `loadSave` does NOT go through it — it runs `migrate` ->
+    // `validateGameState`, and that is the path the shipped UI store takes
+    // (`packages/ui/src/store.ts`). So the healing has to live in the v7->v8
+    // MIGRATION, and this asserts it there. Without it, a real player's save would
+    // keep a rank its deeds no longer buy, and the next deed earned would drive
+    // `evaluateDeeds` from GIGA_HERO down to ADMIRAL and emit that DEMOTION as a
+    // `RenownRankUp` carrying a promotion citation on the wire.
+    //
+    // 15 deeds bought GIGA_HERO under the pre-T-1603b table. The healed rank is
+    // asserted DERIVED (`rankForDeedCount`), so this states the RULE — "rank
+    // follows the count" — rather than pinning a rank that the next rescale moves.
+    const v7Envelope = JSON.stringify({
+      version: 7,
+      state: stateAt('GIGA_HERO', 15, 5),
+      seed: 1603,
+    });
+
+    const loaded = loadSave(v7Envelope);
+    expect(loaded.state.player.registry.earned).toHaveLength(15);
+    expect(loaded.state.player.registry.renownRank).toBe(rankForDeedCount(15));
+    // The demotion is real, not a no-op: this is the deliberate consequence
+    // recorded at the threshold table's definition site.
+    expect(loaded.state.player.registry.renownRank).not.toBe('GIGA_HERO');
+
+    // ...and `player.tier` — derived from rank, and the ONLY input to encounter
+    // matchmaking — is resynced with it. A load that healed the rank but not the
+    // band would send the matchmaker after hunters the captain no longer ranks
+    // with, which is the quiet half of this bug.
+    expect(loaded.state.player.tier).toBe(
+      computePlayerTier(rankForDeedCount(15), loaded.state.player.ship),
+    );
+    expect(loaded.state.player.tier).not.toBe(5);
+
+    // IDEMPOTENT: re-saving the healed state and loading it again changes nothing,
+    // so a player who loads twice does not drift.
+    const again = loadSave(createSave(loaded.state, 1603));
+    expect(again.state.player.registry.renownRank).toBe(loaded.state.player.registry.renownRank);
+    expect(again.state.player.tier).toBe(loaded.state.player.tier);
+  });
+
+  it('the migration passes an unreadable registry through instead of throwing', () => {
+    // A migration must never be the thing that throws — the schema is what
+    // rejects a malformed save, with a typed SaveError. Driven through `migrate`
+    // directly so the assertion is about the migration step, not the loader.
+    const noRegistry = { player: { credits: 1 } };
+    expect(() => migrate({ version: 7, state: noRegistry })).not.toThrow();
+    expect(() => migrate({ version: 7, state: { player: 'nonsense' } })).not.toThrow();
+    expect(() => migrate({ version: 7, state: {} })).not.toThrow();
+    // ...and the loader still refuses the malformed state, with the typed error.
+    expect(() => loadSave(JSON.stringify({ version: 7, state: noRegistry, seed: 1 }))).toThrow(
+      SaveError,
+    );
+  });
+
+  it('every rank round-trips at its own threshold (no rank is lost in the envelope)', () => {
+    // The schema carries a rank ENUM, so a rescale must not strand one. Each rank
+    // is saved with the deed count that legitimately selects it, so the migration
+    // is a no-op and what is under test is the envelope + schema. Driven from
+    // content — never a hand-listed rank list.
+    for (const rank of RENOWN_RANK_ORDER) {
+      const loaded = loadSave(createSave(stateAt(rank, RENOWN_DEED_THRESHOLDS[rank]), 1603));
+      expect(loaded.state.player.registry.renownRank, `${rank} did not survive the save`).toBe(
+        rank,
+      );
+    }
   });
 });

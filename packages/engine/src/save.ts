@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { FLAWS } from '@spacerquest/content';
-import { GameState } from './types.js';
+import { GameState, ShipState } from './types.js';
 import { validateGameState } from './schema.js';
+import { rankForDeedCount } from './deeds.js';
+import { computePlayerTier } from './tier.js';
 
 // T-1401 · The v5→v6 WireEntry.kind migration's ONE legitimate, retro-only use of
 // the flaw-detail suffix heuristic. A v5 save's WireEntry events predate the typed
@@ -87,6 +89,17 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * This is exactly the nested-field migration the T-1002 drift-protection (which
  * named `player.reputation` by name) was built to make safe.
  *
+ * T-1603b bumped {@link CURRENT_SAVE_VERSION} to 8, and the v7->v8 change is a
+ * DIFFERENT KIND from all six above: it adds NO field. It repairs the MEANING of
+ * two fields already present, because the canonical `RENOWN_DEED_THRESHOLDS`
+ * rescale (content deeds.ts) changed what a stored `registry.renownRank` — a
+ * DERIVED value that happens to be persisted — is supposed to say for a given
+ * deed count, and `player.tier` is derived from that rank in turn. Recorded here
+ * as precedent: a save migration is owed whenever the RULE behind a persisted
+ * derived value moves, not only when a key appears or disappears. The migration's
+ * own comment carries the reasoning and why the `deserializeState` recompute was
+ * not sufficient.
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
@@ -155,9 +168,55 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
       },
     };
   },
+  // v7->v8: T-1603b RE-DERIVES `player.registry.renownRank` (and the
+  // `player.tier` band that hangs off it). THE FIRST MIGRATION HERE THAT ADDS NO
+  // FIELD — it repairs the MEANING of two it finds, which is why it exists at all.
+  //
+  // WHY IT IS NEEDED. T-1603b set the canonical `RENOWN_DEED_THRESHOLDS`
+  // (content deeds.ts): CAPTAIN 2 -> 5, GIGA_HERO 15 -> 31, CONQUEROR 30 -> 38,
+  // and so on. `renownRank` is a DERIVED value stored on the save, so every
+  // existing save now carries a rank its deed count no longer buys — a v7 save
+  // holding 15 deeds says GIGA_HERO where the canonical table says ADMIRAL.
+  //
+  // WHY IT COULD NOT BE LEFT TO THE LOADER. `deserializeState` (state.ts) already
+  // recomputes the rank, but `loadSave` does NOT go through it — it runs
+  // `migrate` -> `validateGameState`, and that is the path the shipped UI store
+  // takes. Without this entry a real player's save would keep the stale rank, and
+  // the next deed earned would drive `evaluateDeeds` from GIGA_HERO to ADMIRAL and
+  // emit that DEMOTION as a `RenownRankUp` with a promotion citation on the wire.
+  //
+  // WHAT IT DOES. Recomputes the rank from `registry.earned.length` — the same
+  // one-line rule `deserializeState` and `evaluateDeeds` use, imported from
+  // `deeds.ts` so there is no second copy of the ladder — and then recomputes
+  // `player.tier` from the healed rank + the carried ship through the engine's own
+  // `computePlayerTier`, because the schema requires `tier` to be a present 1-5
+  // literal and a stale band would send the encounter matchmaker after hunters the
+  // captain no longer ranks with. A save with no readable registry or ship is
+  // passed through untouched for the schema to reject or default: a migration must
+  // never be the thing that throws.
+  //
+  // IT IS IDEMPOTENT AND FORWARD-SAFE: recomputing an already-correct rank and
+  // tier is a no-op, so re-running it costs nothing and any FUTURE threshold
+  // rescale needs no new migration entry — only a version bump routed through this
+  // same step.
+  7: (v7State) => {
+    const s = v7State as { player?: Record<string, unknown> };
+    const player = s.player;
+    if (!player || typeof player !== 'object') return v7State;
+    const registry = (player as { registry?: { earned?: unknown } }).registry;
+    if (!registry || !Array.isArray(registry.earned)) return v7State;
+    const renownRank = rankForDeedCount(registry.earned.length);
+    const ship = (player as { ship?: ShipState }).ship;
+    const healed: Record<string, unknown> = {
+      ...player,
+      registry: { ...registry, renownRank },
+    };
+    if (ship && typeof ship === 'object') healed.tier = computePlayerTier(renownRank, ship);
+    return { ...(v7State as object), player: healed };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 7;
+export const CURRENT_SAVE_VERSION = 8;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';
