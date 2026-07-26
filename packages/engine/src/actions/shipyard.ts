@@ -10,7 +10,7 @@ import {
 import { spendDie } from '../dice.js';
 import { renownRankIndex } from '../deeds.js';
 import { jumpFuelCost, maxJumpDistance } from '../economy.js';
-import { crewCapacity, repairRate } from '../components.js';
+import { crewCapacity, hasSpecialEquipment, repairRate } from '../components.js';
 import { cloneState } from '../clone.js';
 
 const COMPONENT_IDS: readonly ShipComponentId[] = [
@@ -251,17 +251,6 @@ function installSpecialEquipment(state: GameState, equipment: SpecialEquipmentId
   }
 }
 
-function alreadyInstalled(state: GameState, equipment: SpecialEquipmentId): boolean {
-  const ship = state.player.ship;
-  if (equipment === 'CLOAKER') return ship.hasCloaker === true;
-  if (equipment === 'AUTO_REPAIR') return ship.hasAutoRepair === true;
-  if (equipment === 'STAR_BUSTER') return ship.hasStarBuster === true;
-  if (equipment === 'ARCH_ANGEL') return ship.hasArchAngel === true;
-  if (equipment === 'ASTRAXIAL_HULL') return ship.isAstraxialHull === true;
-  if (equipment === 'TITANIUM_HULL') return ship.hasTitaniumHull === true;
-  return ship.hasTransWarpDrive === true;
-}
-
 function specialEquipmentFailure(
   state: GameState,
   action: Extract<PlayerAction, { type: 'Shipyard' }>,
@@ -269,7 +258,11 @@ function specialEquipmentFailure(
 ): ShipyardFail | null {
   const ship = state.player.ship;
 
-  if (alreadyInstalled(state, equipment)) {
+  // T-1601c: the fitted-equipment mapping this guard used to keep private now
+  // lives in components.ts `hasSpecialEquipment`, shared with the dice
+  // extensibility point so the purchase guard and the dawn-hand equipment leg can
+  // never disagree about what "fitted" means.
+  if (hasSpecialEquipment(ship, equipment)) {
     return fail(action, { reason: 'ALREADY_INSTALLED' });
   }
 

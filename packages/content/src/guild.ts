@@ -21,7 +21,27 @@
  * day-30 marker is a bare number. So these constants carry no foundation citation:
  * they are engine-original tuning, sanctioned to live here per the TECH-STACK
  * "balance numbers are data" constraint — the same justification `lending.ts`
- * uses. They are INTERIM and OWNED BY the T-1601 rebalance; do not enshrine them.
+ * uses. They are INTERIM (T-1603): the canonical-values owner is T-1603b, the
+ * economy/pacing tuning pass, which names "lending and guild bands" explicitly —
+ * the same `INTERIM (T-1603)` idiom `factions.ts` / `nemesis.ts` / `lending.ts`
+ * use. (The marker previously named "the T-1601 rebalance"; T-1601 has since been
+ * split into T-1601a/b/c, none of which is a tuning task.) Do not enshrine them as
+ * canonical.
+ *
+ * T-1601c RATIFICATION (2026-07-26): the band ships UNCHANGED — this task moved no
+ * number, only the ownership marker. Each value is a safe interim on existing
+ * evidence rather than a fresh sweep (fleet-wide measurement is T-1603a's job by
+ * name): GUILD_DEBT_DAILY_RATE 0.02/dusk compounds on a NON-BLOCKING ledger that
+ * never touches credits and never soft-locks, so it is legible pressure and cannot
+ * strand a captain; GUILD_FLAG_ENCOUNTER_MULTIPLIER 1.4 and
+ * GUILD_FLAG_MANIFEST_PENALTY 0.85 are both quoted at severity 1 and scaled by the
+ * severity below, so the worst case is bounded by the clamp band; and that band
+ * ([GUILD_SEVERITY_MIN 0.5, GUILD_SEVERITY_MAX 2] around GUILD_STANDING_NEUTRAL 1
+ * at GUILD_SEVERITY_STEP 0.2/point) means the six pressure flags span score −3…+3
+ * → 0.4 (clamped up to 0.5) … 1.6, i.e. the reachable severity never touches MAX.
+ * Evidence: `packages/engine/src/__tests__/guild-pressure.test.ts` (6 tests) pins
+ * all three readers plus the standing→magnitude monotonicity, and
+ * `tour-one-resolution.test.ts` covers the day-30 paid/unpaid branches.
  *
  * READERS: the per-dusk accrual + port-clerk flag set (`packages/engine/src/day.ts`
  * endDay), the standing helper (`packages/engine/src/guild.ts` computeGuildStanding
@@ -39,7 +59,7 @@
  * touches player.credits and never soft-locks — so a gentle rate is flavor
  * pressure, and compounding on the balance avoids a new "original principal"
  * GameState field + migration (the 25,000 marker in state.ts is the only anchor).
- * 0.02 ≈ 2%/dusk: legible on the wire, never punishing. Interim (T-1601).
+ * 0.02 ≈ 2%/dusk: legible on the wire, never punishing. Interim (T-1603b).
  */
 export const GUILD_DEBT_DAILY_RATE = 0.02;
 
@@ -48,14 +68,14 @@ export const GUILD_DEBT_DAILY_RATE = 0.02;
  * encounter chance is multiplied by `1 + (this − 1) × severity` (>1) — the "every
  * port clerk can see your flag, and the patrols hear about it" reader in
  * generateEncounter, the dangerous mirror of the CLOAKER damp and a sibling of the
- * loan-default COLLECTION_ENCOUNTER_MULTIPLIER. Interim (T-1601). */
+ * loan-default COLLECTION_ENCOUNTER_MULTIPLIER. Interim (T-1603b). */
 export const GUILD_FLAG_ENCOUNTER_MULTIPLIER = 1.4;
 
 /**
  * Worse manifest terms for a flagged captain: each contract's payment is scaled by
  * `1 − (1 − this) × severity` (<1) — a flagged name gets the leftover, lower-paying
  * runs. Applied in rollContract AFTER every rng draw (guarded so a clean captain's
- * board is byte-identical). Interim (T-1601). */
+ * board is byte-identical). Interim (T-1603b). */
 export const GUILD_FLAG_MANIFEST_PENALTY = 0.85;
 
 /**
@@ -65,7 +85,7 @@ export const GUILD_FLAG_MANIFEST_PENALTY = 0.85;
  * stonewall / defy) RAISE it. `computeGuildStanding` (engine) sums the weights of
  * the set flags into a signed score (0 neutral, <0 cooperative, >0 hostile) that
  * `guildSeverity` maps to the consequence magnitude. A player who skipped a beat
- * leaves that flag unset → neutral contribution. Interim (T-1601). */
+ * leaves that flag unset → neutral contribution. Interim (T-1603b). */
 export const GUILD_PRESSURE_FLAG_WEIGHTS: Readonly<Record<string, number>> = {
   'guild.pressure.tour-one.day10.acknowledged': -1,
   'guild.pressure.tour-one.day10.dismissed': 1,
@@ -77,15 +97,15 @@ export const GUILD_PRESSURE_FLAG_WEIGHTS: Readonly<Record<string, number>> = {
 
 /** Neutral severity (a captain who left every beat unset, or balanced cooperative
  *  vs hostile). The flag stores a severity, and `> 0` is its boolean gate, so the
- *  band is kept strictly positive. Interim (T-1601). */
+ *  band is kept strictly positive. Interim (T-1603b). */
 export const GUILD_STANDING_NEUTRAL = 1;
 
 /** How far one standing point moves severity from neutral. score −3 → 0.4 (clamped
- *  to MIN), score +3 → 1.6. Interim (T-1601). */
+ *  to MIN), score +3 → 1.6. Interim (T-1603b). */
 export const GUILD_SEVERITY_STEP = 0.2;
 
 /** Severity clamp band. MIN stays > 0 so a maximally-cooperative captain is still
  *  flagged (the marker went unpaid — the flag exists), just treated gentlest.
- *  Interim (T-1601). */
+ *  Interim (T-1603b). */
 export const GUILD_SEVERITY_MIN = 0.5;
 export const GUILD_SEVERITY_MAX = 2;

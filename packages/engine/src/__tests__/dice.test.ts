@@ -1,9 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { CrewMember } from '../types.js';
+import {
+  EQUIPMENT_DICE_BENEFITS,
+  MAX_DAWN_HAND_SIZE,
+  MAX_EXTRA_DICE,
+  DAWN_BASE_HAND_SIZE,
+  type DiceBenefit,
+} from '@spacerquest/content';
+import { CrewMember, ShipState, SpecialEquipmentId } from '../types.js';
 import { SeededRng } from '../rng.js';
+import { createInitialState } from '../state.js';
 import {
   rollDawnHand,
   dawnDiceModifiers,
+  equipmentDiceBenefits,
   check,
   spendDie,
   remainingDice,
@@ -141,5 +150,109 @@ describe('Dice', () => {
 
     expect(isDayOver(hand)).toBe(true);
     expect(remainingDice(hand)).toHaveLength(0);
+  });
+});
+
+// --- T-1601c · the dice-progression extensibility hook ----------------------
+// The hook closes T-1306's deferral: a future die-granting equipment module joins
+// the content table `EQUIPMENT_DICE_BENEFITS` and becomes live at every existing
+// call site, with no change to the dawn-roll core. NO gameplay module ships, so
+// the table is empty and the live path is provably unchanged (last test).
+describe('T-1601c · the dice-progression extensibility hook', () => {
+  /** A starter ship with every special-equipment flag explicitly cleared. */
+  function bareShip(): ShipState {
+    const ship = createInitialState(1).player.ship;
+    ship.hasCloaker = false;
+    ship.hasAutoRepair = false;
+    ship.hasStarBuster = false;
+    ship.hasArchAngel = false;
+    ship.isAstraxialHull = false;
+    ship.hasTitaniumHull = false;
+    ship.hasTransWarpDrive = false;
+    return ship;
+  }
+
+  it('grants a die through the extensibility point (accept criterion)', () => {
+    expect(dawnDiceModifiers([], [{ kind: 'extra-die' }])).toEqual({
+      handSize: DAWN_BASE_HAND_SIZE + 1,
+      floor: 0,
+      rerolls: 0,
+    });
+  });
+
+  it('grants a die through the whole ship → table → dealt-hand chain', () => {
+    const ship = bareShip();
+    ship.hasCloaker = true;
+    const table: Partial<Record<SpecialEquipmentId, DiceBenefit>> = {
+      CLOAKER: { kind: 'extra-die' },
+    };
+
+    const granted = equipmentDiceBenefits(ship, table);
+    expect(granted).toEqual([{ kind: 'extra-die' }]);
+
+    const mods = dawnDiceModifiers([], granted);
+    expect(mods.handSize).toBe(6);
+
+    // The granted die reaches the DEALT hand, not just the modifier struct.
+    const hand = rollDawnHand(new SeededRng(1), mods);
+    expect(hand.dice).toHaveLength(6);
+    expect(hand.spent).toHaveLength(6);
+  });
+
+  it('a module that is NOT fitted grants nothing', () => {
+    const table: Partial<Record<SpecialEquipmentId, DiceBenefit>> = {
+      CLOAKER: { kind: 'extra-die' },
+    };
+    const granted = equipmentDiceBenefits(bareShip(), table);
+    expect(granted).toEqual([]);
+    expect(dawnDiceModifiers([], granted).handSize).toBe(DAWN_BASE_HAND_SIZE);
+  });
+
+  it('equipment and crew fold into the SAME accumulators, and the clamps hold', () => {
+    const crew: CrewMember[] = [{ roleId: 'crew-second', hiredDay: 1 }]; // +1 die
+
+    // Crew die + equipment die = 7 (base 5 + 2).
+    expect(dawnDiceModifiers(crew, [{ kind: 'extra-die' }]).handSize).toBe(
+      DAWN_BASE_HAND_SIZE + MAX_EXTRA_DICE,
+    );
+    // A third extra-die grant is absorbed by MAX_EXTRA_DICE / MAX_DAWN_HAND_SIZE.
+    expect(dawnDiceModifiers(crew, [{ kind: 'extra-die' }, { kind: 'extra-die' }]).handSize).toBe(
+      MAX_DAWN_HAND_SIZE,
+    );
+  });
+
+  it('equipment floors take the MAX with crew floors; rerolls SUM', () => {
+    const quartermaster: CrewMember[] = [{ roleId: 'crew-quartermaster', hiredDay: 1 }]; // floor 5
+    // A stronger equipment floor wins (floors never stack).
+    expect(dawnDiceModifiers(quartermaster, [{ kind: 'floor', floor: 7 }]).floor).toBe(7);
+    // A weaker one loses.
+    expect(dawnDiceModifiers(quartermaster, [{ kind: 'floor', floor: 3 }]).floor).toBe(5);
+
+    const navigator: CrewMember[] = [{ roleId: 'crew-navigator', hiredDay: 1 }]; // 1 reroll
+    expect(dawnDiceModifiers(navigator, [{ kind: 'reroll' }]).rerolls).toBe(2);
+  });
+
+  it('ships EMPTY: no gameplay module grants dice, so the live path is unchanged', () => {
+    expect(Object.keys(EQUIPMENT_DICE_BENEFITS)).toHaveLength(0);
+
+    // A ship with EVERY module fitted still grants nothing off the shipped table.
+    const ship = bareShip();
+    ship.hasCloaker = true;
+    ship.hasAutoRepair = true;
+    ship.hasStarBuster = true;
+    ship.hasArchAngel = true;
+    ship.isAstraxialHull = true;
+    ship.hasTitaniumHull = true;
+    ship.hasTransWarpDrive = true;
+    expect(equipmentDiceBenefits(ship)).toEqual([]);
+
+    const fullCrew: CrewMember[] = [
+      { roleId: 'crew-second', hiredDay: 1 },
+      { roleId: 'crew-navigator', hiredDay: 1 },
+      { roleId: 'crew-quartermaster', hiredDay: 1 },
+    ];
+    for (const crew of [[] as CrewMember[], fullCrew]) {
+      expect(dawnDiceModifiers(crew, equipmentDiceBenefits(ship))).toEqual(dawnDiceModifiers(crew));
+    }
   });
 });

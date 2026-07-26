@@ -8,7 +8,7 @@ import {
   STAR_BUSTER_VOLLEY_BONUS,
   WEAPON_DAMAGE_DIVISOR,
 } from '@spacerquest/content';
-import { ComponentState, ShipComponentId, ShipState } from './types.js';
+import { ComponentState, ShipComponentId, ShipState, SpecialEquipmentId } from './types.js';
 
 /**
  * T-1205 · Ship-component READERS. Before this module six of the eight ship
@@ -29,6 +29,44 @@ import { ComponentState, ShipComponentId, ShipState } from './types.js';
  * involved. See packages/content/src/components.ts for the foundation-role
  * citation behind each divisor.
  */
+
+/**
+ * T-1601c · Is `equipment` FITTED to this ship? The single honest mapping from the
+ * `SpecialEquipmentId` union to the boolean flag that records it on `ShipState`.
+ *
+ * Extracted from shipyard.ts's private `alreadyInstalled`, which the dice
+ * extensibility point needed too — one mapping, so a purchase guard and a
+ * dice-benefit lookup can never disagree about what "fitted" means. Deliberately
+ * an exhaustive switch with `default: return false` rather than shipyard's old
+ * "everything else is TRANS_WARP" fallthrough, which would have misreported an
+ * unknown id as a fitted Trans-Warp.
+ *
+ * PURE — a total function of ship state (no rng, no I/O).
+ *
+ * READERS: `actions/shipyard.ts` `specialEquipmentFailure` (the ALREADY_INSTALLED
+ * guard) and `dice.ts` `equipmentDiceBenefits` (the equipment leg of the dawn-hand
+ * aggregation).
+ */
+export function hasSpecialEquipment(ship: ShipState, equipment: SpecialEquipmentId): boolean {
+  switch (equipment) {
+    case 'CLOAKER':
+      return ship.hasCloaker === true;
+    case 'AUTO_REPAIR':
+      return ship.hasAutoRepair === true;
+    case 'STAR_BUSTER':
+      return ship.hasStarBuster === true;
+    case 'ARCH_ANGEL':
+      return ship.hasArchAngel === true;
+    case 'ASTRAXIAL_HULL':
+      return ship.isAstraxialHull === true;
+    case 'TITANIUM_HULL':
+      return ship.hasTitaniumHull === true;
+    case 'TRANS_WARP':
+      return ship.hasTransWarpDrive === true;
+    default:
+      return false;
+  }
+}
 
 /**
  * Foundation's `component_score` = strength × (condition + 1) / 10. A fresh

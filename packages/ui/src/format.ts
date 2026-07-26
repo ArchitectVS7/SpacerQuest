@@ -51,6 +51,7 @@ import {
   quoteFuelPurchase,
   hangoutRumors,
   dawnDiceModifiers,
+  equipmentDiceBenefits,
   quotePort,
   crewCapacity,
   isCarryingContraband,
@@ -307,8 +308,11 @@ export function lendingTerms(): LendingTerms {
 /** The resolved dawn-hand parameters — crew-granted hand size / floor / per-day
  *  reroll grant (from the SAME `dawnDiceModifiers` aggregator `startDay` uses to
  *  deal the hand) merged with the LIVE remaining reroll charges off the dealt
- *  hand. A pure read. READER: the HandDock floor badge + reroll count + per-die
- *  reroll affordance. */
+ *  hand. T-1601c: it also passes the SAME equipment leg (`equipmentDiceBenefits`
+ *  off the ship's fitted modules) that `startDay` does, so the badges a player
+ *  reads can never disagree with the hand the engine dealt. That content table
+ *  ships empty, so today's badges are unchanged. A pure read. READER: the HandDock
+ *  floor badge + reroll count + per-die reroll affordance. */
 export interface DawnHandModifiers {
   handSize: number;
   floor: number;
@@ -317,7 +321,7 @@ export interface DawnHandModifiers {
 }
 
 export function dawnHandModifiers(game: GameState): DawnHandModifiers {
-  const mods = dawnDiceModifiers(game.player.crew);
+  const mods = dawnDiceModifiers(game.player.crew, equipmentDiceBenefits(game.player.ship));
   return {
     handSize: mods.handSize,
     floor: mods.floor,

@@ -15,7 +15,7 @@ import {
 } from '@spacerquest/content';
 import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
 import { SeededRng } from './rng.js';
-import { dawnDiceModifiers, rollDawnHand } from './dice.js';
+import { dawnDiceModifiers, equipmentDiceBenefits, rollDawnHand } from './dice.js';
 import { autoRepairRegen, lifeSupportCritical } from './components.js';
 import { applySuccession } from './legacy.js';
 import { applyDisposition, resolveNpcDay } from './npc.js';
@@ -96,7 +96,15 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
   // `{ handSize: 5, floor: 0, rerolls: 0 }`, so the `rng.rollHand(5)` draw is
   // byte-identical to before (only the added `rerollsRemaining: 0` key on the hand
   // moves the serialized-state golden hashes; the DawnRoll event is unchanged).
-  const modifiers = dawnDiceModifiers(nextState.player.crew);
+  // T-1601c: the aggregation also takes the EQUIPMENT leg — the dice benefits of
+  // the modules fitted to this ship (`equipmentDiceBenefits`, off the content table
+  // `EQUIPMENT_DICE_BENEFITS`). That table ships EMPTY (no die-granting module
+  // exists yet), so the leg contributes `[]` on every ship and the draw here stays
+  // byte-identical; a future module becomes live at this call site with no change.
+  const modifiers = dawnDiceModifiers(
+    nextState.player.crew,
+    equipmentDiceBenefits(nextState.player.ship),
+  );
   const playerHand = rollDawnHand(dayRng.fork('player-hand'), modifiers);
   nextState.player.dawnHand = playerHand;
 

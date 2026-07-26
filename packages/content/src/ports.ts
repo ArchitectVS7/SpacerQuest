@@ -21,9 +21,12 @@
  *
  * Therefore the price/income constants are Rimward-authored, ENGINE-ORIGINAL
  * tuning — no foundation citation, and they carry the same INTERIM header as
- * crew.ts / lending.ts: OWNED BY the T-1601 rebalance, do NOT enshrine as
- * canonical. Sanctioned to live here per the TECH-STACK "balance numbers are
- * data" constraint.
+ * crew.ts / lending.ts: INTERIM (T-1603), the canonical-values owner being T-1603b
+ * (the economy/pacing tuning pass, which names "port pricing/income" explicitly).
+ * Do NOT enshrine as canonical. (The marker previously named "the T-1601
+ * rebalance"; T-1601 has since been split into T-1601a/b/c, none of which is a
+ * tuning task — retargeted by T-1601c.) Sanctioned to live here per the TECH-STACK
+ * "balance numbers are data" constraint.
  *
  * READERS:
  *   - the dusk economy (`packages/engine/src/actions/port.ts` `portDuskIncome`,
@@ -70,11 +73,11 @@ export interface PortStakeDefinition {
  * purchasable). The four alliances are spread across the fourteen so a
  * Confederation-only reader (T-1503) has real Confederation ports to work with.
  *
- * INTERIM (T-1601): a flat 25,000cr price and 300cr/dusk base income keep this
+ * INTERIM (T-1603b): a flat 25,000cr price and 300cr/dusk base income keep this
  * simple and affordable mid-veteran-run (a productive veteran clears 25k easily,
  * and 300/dusk pays the stake back over ~83 quiet dusks — a slow, ownable annuity,
  * not a money printer). A small per-system spread would be fine here; kept flat on
- * purpose until the T-1601 rebalance sets the real curve.
+ * purpose until T-1603b (economy & pacing tuning) sets the real curve.
  */
 export const PURCHASABLE_PORTS: readonly PortStakeDefinition[] = [
   {

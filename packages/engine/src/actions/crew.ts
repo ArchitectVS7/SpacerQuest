@@ -2,7 +2,7 @@ import { CREW_BY_ID } from '@spacerquest/content';
 import { GameEvent, GameState, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { crewCapacity } from '../components.js';
-import { dawnDiceModifiers, spendDie } from '../dice.js';
+import { dawnDiceModifiers, equipmentDiceBenefits, spendDie } from '../dice.js';
 
 /**
  * T-1306 · The crew + re-roll resolvers (PRD §7 dice progression). Both are PURE
@@ -51,7 +51,14 @@ export function resolveReroll(
   }
 
   const previous = hand.dice[index];
-  const floor = dawnDiceModifiers(nextState.player.crew).floor;
+  // T-1601c: the floor re-applied to a re-rolled die reads the SAME aggregation
+  // startDay used — crew plus the fitted-equipment leg (`equipmentDiceBenefits`) —
+  // so a future floor-granting module floors re-rolls too, not just the dawn deal.
+  // The content table ships empty, so this is byte-identical today.
+  const floor = dawnDiceModifiers(
+    nextState.player.crew,
+    equipmentDiceBenefits(nextState.player.ship),
+  ).floor;
   const result = Math.max(rng.d20(), floor);
   hand.dice[index] = result;
   hand.rerollsRemaining = (hand.rerollsRemaining ?? 0) - 1;

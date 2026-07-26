@@ -1115,8 +1115,10 @@ export interface NemesisFileState {
  * FOUNDATION-ORIGINAL: foundation (f2f95fa9) has no crew-grants-dice mechanic, so
  * this whole type is a T-1306 addition (see content crew.ts for the tuning + the
  * foundation-divergence note). READERS: dice.ts `dawnDiceModifiers` (the dawn
- * aggregator), day.ts (dawn roll + dusk wage upkeep), actions/crew.ts (hire /
- * dismiss / reroll), the sim protocol, and T-1405's UI crew pane.
+ * aggregator — which since T-1601c also folds in the fitted-equipment leg,
+ * `equipmentDiceBenefits`, through the same accumulators), day.ts (dawn roll +
+ * dusk wage upkeep), actions/crew.ts (hire / dismiss / reroll), the sim protocol,
+ * and T-1405's UI crew pane.
  */
 export interface CrewMember {
   /** Content id into CREW_ROLES / CREW_BY_ID — the benefit is resolved from this. */
@@ -1194,7 +1196,9 @@ export interface PlayerState {
   /** T-1306 · Hired crew — the dice-progression source (PRD §7). A new persistent
    *  field (v3→v4 save migration + round-trip test ship with it). Capped by
    *  `crewCapacity(ship)` (cabin berths, the T-1205 socket). READERS: dice.ts
-   *  `dawnDiceModifiers` reads it to build the dawn hand's size/floor/rerolls;
+   *  `dawnDiceModifiers` reads it to build the dawn hand's size/floor/rerolls
+   *  (alongside the T-1601c fitted-equipment leg, which is derived from the ship's
+   *  flags and adds no save field);
    *  day.ts endDay charges the wage upkeep; actions/crew.ts hires/dismisses;
    *  the sim protocol + veteran policy consume it; T-1405 surfaces it. */
   crew: CrewMember[];
