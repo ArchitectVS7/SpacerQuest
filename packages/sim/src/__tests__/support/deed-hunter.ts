@@ -97,7 +97,9 @@ const STORYLETS_BY_ID = new Map<string, StoryletDefinition>(
  *  contract guard is load-bearing: several cargo heads offer a free "sell it off
  *  the books" choice that clears the active contract, and answering those blindly
  *  cost the Tour One clear on every seed measured. */
-function safeChoice(definition: StoryletDefinition): StoryletDefinition['choices'][number] | undefined {
+function safeChoice(
+  definition: StoryletDefinition,
+): StoryletDefinition['choices'][number] | undefined {
   return definition.choices.find(
     (candidate) =>
       !candidate.requirements &&
@@ -150,10 +152,7 @@ function advancesAChain(choice: StoryletDefinition['choices'][number]): boolean 
  * credit and fuel costs, and enough shifted action indices, that the marker is
  * never banked. One beat a day walks the chains without derailing the trade run.
  */
-function pickOffer(
-  state: GameState,
-  need: (deedId: string) => boolean,
-): PlayerAction | undefined {
+function pickOffer(state: GameState, need: (deedId: string) => boolean): PlayerAction | undefined {
   let fallback: PlayerAction | undefined;
   for (const offer of state.storylets.available) {
     // STAY DIRTY: once Ray's ledger is written, fencing the next sealed pod (or
@@ -316,8 +315,7 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
   // balance just burned days.
   const loanErrand =
     wantsLoan &&
-    (!state.player.loan ||
-      state.player.credits >= state.player.loan.outstanding + REPAY_HEADROOM);
+    (!state.player.loan || state.player.credits >= state.player.loan.outstanding + REPAY_HEADROOM);
   if ((wantsDare || loanErrand) && flush) {
     const hand = state.player.dawnHand;
     const spare: number[] = [];

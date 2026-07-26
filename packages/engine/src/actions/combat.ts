@@ -21,6 +21,7 @@ import { applyDisposition } from '../npc.js';
 import { applyReputation } from '../reputation.js';
 import { applySuccession } from '../legacy.js';
 import { shieldMitigation, weaponVolleyDamage } from '../components.js';
+import { cloneState } from '../clone.js';
 
 // Combat balance numbers are data — sourced from @spacerquest/content
 // (see packages/content/src/combat.ts for values, foundation citation, and the
@@ -38,10 +39,6 @@ const DAMAGE_COMPONENTS: readonly ShipComponentId[] = [
   'robotics',
   'cabin',
 ];
-
-function cloneState(state: GameState): GameState {
-  return JSON.parse(JSON.stringify(state)) as GameState;
-}
 
 /**
  * T-1207: the demanded tribute for a round, scaled by the interceptor's CLASS.

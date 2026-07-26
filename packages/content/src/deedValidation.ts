@@ -88,6 +88,29 @@ export function validateDeeds(deeds: readonly DeedDefinition[]): string[] {
         errors.push(`${path}.trigger.count.gte must be at least 1`);
       }
     }
+
+    // T-1504a · The storylet-fed deed shape rule. A `StoryletDeedProgress` deed is
+    // NOT advanced like a normal deed: engine `deeds.ts` `matchesEvent` hard-returns
+    // false for that event type, and `evaluateDeeds` only looks up storylet progress
+    // through the `deed.trigger.count ? storyletProgress.get(deed.id) : []` branch.
+    // READER of both rules below: that exact branch.
+    //  - Without a `count`, the branch never fires and the deed is SILENTLY
+    //    UNEARNABLE — it validates, renders in the Registry preview, and can never
+    //    be filed.
+    //  - A `match` is meaningless for the same reason (matchesEvent never runs), so
+    //    allowing one would let an author encode a condition the engine ignores.
+    if (trigger.eventType === 'StoryletDeedProgress') {
+      if (trigger.count === undefined) {
+        errors.push(
+          `${path}.trigger.count is required for a StoryletDeedProgress deed (without it the deed can never be earned)`,
+        );
+      }
+      if (trigger.match !== undefined && trigger.match.length > 0) {
+        errors.push(
+          `${path}.trigger.match is not supported for a StoryletDeedProgress deed (the engine never event-matches it)`,
+        );
+      }
+    }
   });
 
   return errors;

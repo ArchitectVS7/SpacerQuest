@@ -21,10 +21,7 @@ import {
 } from './nemesis.js';
 import { SeededRng } from './rng.js';
 import { GameEvent, GameState, PlayerAction, StoryletOffer } from './types.js';
-
-function cloneState(state: GameState): GameState {
-  return JSON.parse(JSON.stringify(state)) as GameState;
-}
+import { cloneState } from './clone.js';
 
 function matchesNumber(value: number, matcher: NumberMatcher | undefined): boolean {
   if (!matcher) return true;

@@ -122,8 +122,22 @@ function validateEffects(
   });
 
   effects.deedProgress?.forEach((effect, index) => {
-    if (!DEEDS.some((deed) => deed.id === effect.deedId)) {
+    const deed = DEEDS.find((candidate) => candidate.id === effect.deedId);
+    if (!deed) {
       errors.push(`${path}.deedProgress[${index}].deedId is not a valid deed ID`);
+    } else if (
+      deed.trigger.eventType !== 'StoryletDeedProgress' ||
+      deed.trigger.count === undefined
+    ) {
+      // T-1504a · The other half of the storylet-fed deed wire (see the matching
+      // rule in deedValidation.ts). Naming a real deed is not enough: engine
+      // `evaluateDeeds` credits storylet progress ONLY through the
+      // `deed.trigger.count ? storyletProgress.get(deed.id) : []` branch — its
+      // named reader — so a `deedProgress` pointed at, say, `first_manifest`
+      // emits a StoryletDeedProgress event that advances nothing at all.
+      errors.push(
+        `${path}.deedProgress[${index}].deedId ('${effect.deedId}') must name a counted StoryletDeedProgress deed; the engine cannot credit progress to any other kind`,
+      );
     }
     validateInteger(errors, `${path}.deedProgress[${index}].amount`, effect.amount);
   });

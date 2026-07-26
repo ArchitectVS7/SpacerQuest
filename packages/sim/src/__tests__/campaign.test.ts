@@ -17,6 +17,15 @@ import { availablePlannedActions, parseCliArgs, reportToJson, runCampaign } from
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
+// npm ships as a shell script on POSIX and as `npm.cmd` on Windows. `execFile`
+// does no PATHEXT lookup, and since CVE-2024-27980 Node refuses to launch a
+// `.cmd` without a shell at all — so a bare `execFileSync('npm', ...)` is a
+// guaranteed ENOENT on Windows. Resolve the launcher per platform (and hand
+// Windows the shell it needs) so the acceptance command shape below stays
+// byte-identical on every OS.
+const IS_WINDOWS = process.platform === 'win32';
+const NPM_BIN = IS_WINDOWS ? 'npm.cmd' : 'npm';
+
 describe('campaign runner', () => {
   it('returns greedy campaign stats', () => {
     const report = runCampaign(1, 100, 'greedy');
@@ -60,11 +69,12 @@ describe('campaign runner', () => {
 
   it('prints JSON-only stdout for the acceptance npm command shape', () => {
     const stdout = execFileSync(
-      'npm',
+      NPM_BIN,
       ['run', 'sim', '--', '--seed', '1', '--days', '5', '--policy', 'greedy'],
       {
         cwd: repoRoot,
         encoding: 'utf8',
+        shell: IS_WINDOWS,
       },
     );
     const parsed = JSON.parse(stdout) as {

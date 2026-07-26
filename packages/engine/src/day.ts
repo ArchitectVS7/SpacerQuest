@@ -41,10 +41,7 @@ import {
 } from './storylets.js';
 import { computeGuildStanding, guildManifestPenalty, guildSeverity } from './guild.js';
 import { natWireStories } from './wire.js';
-
-function cloneState(state: GameState): GameState {
-  return JSON.parse(JSON.stringify(state)) as GameState;
-}
+import { cloneState } from './clone.js';
 
 function appendEvents(state: GameState, events: GameEvent[]): void {
   state.eventLog.push(...events);

@@ -9,3 +9,4 @@ package-lock.json
 *.d.ts.map
 *.md
 packages/*/src/**/*.js
+.scratch/

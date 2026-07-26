@@ -11,6 +11,7 @@ import { spendDie } from '../dice.js';
 import { renownRankIndex } from '../deeds.js';
 import { jumpFuelCost, maxJumpDistance } from '../economy.js';
 import { crewCapacity, repairRate } from '../components.js';
+import { cloneState } from '../clone.js';
 
 const COMPONENT_IDS: readonly ShipComponentId[] = [
   'hull',
@@ -25,10 +26,6 @@ const COMPONENT_IDS: readonly ShipComponentId[] = [
 
 function isComponentId(value: unknown): value is ShipComponentId {
   return typeof value === 'string' && COMPONENT_IDS.includes(value as ShipComponentId);
-}
-
-function cloneState(state: GameState): GameState {
-  return JSON.parse(JSON.stringify(state)) as GameState;
 }
 
 function tradeInValue(strength: number): number {

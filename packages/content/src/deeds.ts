@@ -36,9 +36,9 @@ export interface RenownRankDefinition {
 // which saturates because GIGA_HERO needs only 15 of the 17 authored deeds and a
 // competent ~300-day run reaches it. PRD-REIMAGINED §5.2/§9 name "Conqueror" as
 // the CAREER CAPSTONE and win over foundation, so this 10th rank is authored
-// above GIGA_HERO with a deed threshold (30) that sits in the headroom T-1504
-// fills (its ≥30-deed set + long-veteran sim prove Conqueror is reachable
-// THROUGH PLAY). CONQUEROR's two intended readers: (a) the unique capstone
+// above GIGA_HERO with a deed threshold (30) that sits in the headroom T-1504a
+// fills (see the threshold's own comment below for how far that proof reaches
+// today, and which task owns the rest). CONQUEROR's two intended readers: (a) the unique capstone
 // wire moment — DELIVERED NOW in engine `deeds.ts` via the `citation` branch;
 // (b) the Nemesis-crossing stake gate — a DOCUMENTED CONTRACT for T-1505, which
 // will make CONQUEROR its prerequisite (T-1101 already seals that crossing
@@ -126,10 +126,13 @@ export const RENOWN_DEED_THRESHOLDS = {
   MEGA_HERO: 12,
   GIGA_HERO: 15,
   // T-1308 authored this above the then-17-deed set, so it was defined-but-
-  // unreached. T-1504 fills the headroom (the deed slate below is > 30), so the
-  // capstone is now REACHABLE THROUGH PLAY — proven by the long-veteran sim in
-  // `packages/sim/src/__tests__/campaign-reach.test.ts`, which climbs to
-  // CONQUEROR without any test setting a rank or pushing an earned record.
+  // unreached. T-1504a fills the headroom (the deed slate below is > 30), so the
+  // capstone is now STRUCTURALLY reachable: earning the authored slate selects
+  // CONQUEROR, asserted in `packages/engine/src/__tests__/deeds.test.ts` (which
+  // also proves the crossing emits this rank's citation verbatim). Reachability
+  // THROUGH PLAY — a long veteran campaign that actually climbs here without any
+  // test setting a rank or pushing an earned record — is the seed-sweep proof
+  // T-1504d owns; T-1504a's scope is authoring, validation and unit tests.
   CONQUEROR: 30,
 } as const satisfies Record<RenownRankId, number>;
 
@@ -370,6 +373,40 @@ export const DEEDS: readonly DeedDefinition[] = defineDeeds([
   // exploration, property) that had no registry presence, plus career headroom
   // so CONQUEROR (30) is reachable through play with room to spare rather than
   // demanding a near-perfect checklist.
+  //
+  // BALANCE CONSEQUENCE — read this before adding or removing a deed. The slate
+  // size is not cosmetic; it is an input to combat matchmaking:
+  //     deeds earned → registry.earned.length → rankForDeedCount (engine deeds.ts)
+  //       → registry.renownRank → renownRankIndex → `rankTier` (engine tier.ts,
+  //         clamp(1, 5, floor(index / 2) + 1)) → player.tier
+  //       → chooseTargetTier / selectEncounterInterceptor (actions/travel.ts)
+  // `day.ts` calls `syncPlayerTier` immediately after every `evaluateDeeds`, so
+  // enlarging the slate makes the renown ladder climb FASTER, which raises the
+  // encounter band EARLIER in a career, which moves every long campaign's economy.
+  //
+  // THIS IS NOT A FREE CHANGE, and the size of it is measured. Rank is a function
+  // of the ABSOLUTE deed count against RENOWN_DEED_THRESHOLDS above, and those
+  // thresholds are still the ones calibrated for the old 17-deed slate — so 27 new
+  // deeds (many of them early-career: a first Dare, a first marker, a first chart,
+  // a first berth) inflate rank for the same amount of play. GIGA_HERO now lands
+  // around day 100 instead of day 200, which pins `player.tier` at 5 while the
+  // veteran still flies a hull-30 / weapons-50 ship. Measured on the T-114a sim
+  // driver, seed 3: old slate → solvent at day 500 (~21.6k credits, 16 deeds); new
+  // slate → bankrupt from ~day 200 (credits pinned at -40, 20 deeds).
+  //
+  // RECOMMENDED FOLLOW-UP, owned by T-1603 (balance), deliberately NOT done here
+  // because this task authors content and does not set tuning numbers: rescale
+  // RENOWN_DEED_THRESHOLDS to the larger slate so the ladder measures the same
+  // FRACTION of a career it used to. Until then the mid-game is genuinely harder.
+  //
+  // Consequences already absorbed by T-1504a: the `replay-golden.ts` protocol
+  // goldens were regenerated (two extra DeedEarned entries; rngState UNCHANGED,
+  // verified), and the seeds of three long-horizon sim tests were re-pinned —
+  // `campaign-reach.test.ts` (T-114a, T-1307 port income) and
+  // `alliance-arcs.test.ts` (T-1503 organic mover). Each carries its own re-pin
+  // comment pointing back here. NOTE: T-114a's old seed-3 pin was already RED at
+  // the pre-T-1504 commit `a5dabd76`, so that one repairs a pre-existing failure
+  // rather than covering a new one. No assertion was weakened at any of the sites.
   // =========================================================================
 
   // --- Gambling: the Spacer's Dare at the Hangout (T-1303, PRD §7) ----------
@@ -465,6 +502,26 @@ export const DEEDS: readonly DeedDefinition[] = defineDeeds([
     trigger: {
       eventType: 'ContrabandScan',
       match: [{ path: 'caught', equals: true }],
+    },
+  },
+  {
+    // The LOSS side of smuggling, and the consumer that makes the
+    // `ContrabandConfiscated` allowlist entry load-bearing rather than a receipt
+    // (`deeds.test.ts` asserts every EVENT_PATHS key is named by ≥1 deed, so an
+    // unconsumed entry now fails the build). Emitted in the same Travel event
+    // batch as `slipped_the_scan`/`known_to_the_league` (actions/patrol.ts), so it
+    // reaches evaluateDeeds by the normal action path.
+    //
+    // `fine` is clamped to `Math.min(credits, CONTRABAND_FINE)`, so a broke
+    // captain's seizure levies 0 — `gte: 1` therefore reads "a fine was actually
+    // collected", not merely "a scan went badly".
+    id: 'run_seized',
+    title: 'Run Seized',
+    citationTemplate:
+      'On day {day}, the hold was opened, the cargo was carried off, and the fine was paid on the spot.',
+    trigger: {
+      eventType: 'ContrabandConfiscated',
+      match: [{ path: 'fine', gte: 1 }],
     },
   },
   {
@@ -595,8 +652,7 @@ export const DEEDS: readonly DeedDefinition[] = defineDeeds([
   {
     id: 'landlord',
     title: 'Landlord',
-    citationTemplate:
-      'On day {day}, two ports levied their launch fees in this captain’s name.',
+    citationTemplate: 'On day {day}, two ports levied their launch fees in this captain’s name.',
     trigger: {
       eventType: 'PortEvent',
       match: [{ path: 'kind', equals: 'purchased' }],
