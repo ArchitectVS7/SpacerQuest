@@ -7,6 +7,7 @@ import {
   LENDER_ID,
   LIFE_SUPPORT_SURVIVAL_DC,
   LOAN_DEFAULT_DISPOSITION,
+  NEMESIS_SYSTEM_ID,
   NPC_PROFILES,
   STAR_SYSTEMS,
   Stat,
@@ -171,16 +172,25 @@ export function applyPlayerAction(
 
   // T-1101 · Destination gate. Andromeda (21–26) and the special systems (27–28)
   // are sealed in v1 (§10); the Nemesis crossing is the endgame, unlocked by the
-  // 'nemesis.crossing.unlocked' flag T-1505 sets. Until then a Travel to a gated
-  // destination is a player-possible act, not malformed input — surface a typed
-  // ActionBlocked (mirrors the encounter block above: the refusal is logged, but
-  // no die is spent, no RNG fork, dayEventCount is not bumped, and no throw).
-  // READER of the flag: this branch (defines-and-consumes it here; T-1505 sets it).
-  if (
+  // 'nemesis.crossing.unlocked' flag. A Travel to a still-sealed destination is a
+  // player-possible act, not malformed input — surface a typed ActionBlocked
+  // (mirrors the encounter block above: the refusal is logged, but no die is
+  // spent, no RNG fork, dayEventCount is not bumped, and no throw).
+  //
+  // T-1505b · THE LIFT IS NEMESIS-ONLY (design call D1, stated in full at
+  // `GATED_DESTINATION_MIN_ID` in content systems.ts). The flag now has a setter —
+  // engine `commitCrossingStake`, driven by the `nemesis.crossing.the-stake`
+  // storylet — and paying the stake opens EXACTLY ONE id: NEMESIS_SYSTEM_ID.
+  // Andromeda (21–26) and MALIGNA (27) stay sealed for the expansion, so a
+  // post-stake Travel to any of them is STILL 'destination-locked'. This is
+  // asserted both ways in day.test.ts (unset blocks 28; set lifts 28 and leaves
+  // 21–27 blocked).
+  // READER of the flag: this branch (T-1505b is its writer).
+  const crossingOpen =
     action.type === 'Travel' &&
-    isGatedDestination(action.destinationId) &&
-    nextState.flags['nemesis.crossing.unlocked'] !== true
-  ) {
+    action.destinationId === NEMESIS_SYSTEM_ID &&
+    nextState.flags['nemesis.crossing.unlocked'] === true;
+  if (action.type === 'Travel' && isGatedDestination(action.destinationId) && !crossingOpen) {
     const blocked: GameEvent = {
       type: 'ActionBlocked',
       day: nextState.day,

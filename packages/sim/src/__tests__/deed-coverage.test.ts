@@ -188,8 +188,12 @@ describe('T-1504d deed coverage + Conqueror reachability (pinned seeds)', () => 
     // content string, never a literal — and until now that branch had only ever
     // been proven from a constructed state.
     //
-    // T-1308's OTHER reader — (b), the Nemesis-crossing stake gate — is
-    // deliberately NOT asserted here. It belongs to T-1505b and stays unstubbed.
+    // T-1308's OTHER reader — (b), the Nemesis-crossing stake gate — is still not
+    // asserted here, but it is no longer a deferral: T-1505b DELIVERED it
+    // (`CROSSING_REQUIRED_RANK` → engine `quoteCrossingStake`), and it is asserted
+    // both ways in `packages/engine/src/__tests__/crossing.test.ts`. This test
+    // remains the proof of reader (a) — the capstone citation reaching the wire
+    // from unguided play — and deliberately does not duplicate (b)'s ladder.
     const citations = state.eventLog.filter(
       (event): event is Extract<typeof event, { type: 'WireEntry' }> =>
         event.type === 'WireEntry' && event.message === RENOWN_RANKS.CONQUEROR.citation,

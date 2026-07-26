@@ -3,7 +3,7 @@ import { NPC_PROFILES } from './cast.js';
 import { DEEDS, RENOWN_RANKS } from './deeds.js';
 import { ERA_EVENTS_BY_ID } from './eraEvents.js';
 import { FACTION_IDS } from './factions.js';
-import { FRAGMENT_SOURCES, SIGNAL_FRAGMENTS } from './nemesis.js';
+import { ALL_FRAGMENT_IDS, FRAGMENT_SOURCES, SIGNAL_FRAGMENTS } from './nemesis.js';
 import { Stat } from './stats.js';
 import { STAR_SYSTEMS } from './systems.js';
 import type {
@@ -252,7 +252,8 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
       if (
         nemesis.minFragments === undefined &&
         nemesis.hasUndecoded === undefined &&
-        nemesis.hasUndecodedFragmentId === undefined
+        nemesis.hasUndecodedFragmentId === undefined &&
+        nemesis.minDecoded === undefined
       ) {
         errors.push(`${path}.trigger.nemesis must define at least one condition`);
       }
@@ -260,6 +261,22 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
         validateInteger(errors, `${path}.trigger.nemesis.minFragments`, nemesis.minFragments);
         if (nemesis.minFragments < 0) {
           errors.push(`${path}.trigger.nemesis.minFragments must be non-negative`);
+        }
+      }
+      // T-1505b: `minDecoded` gates on how many held fragments are DECODED. An
+      // impossible gate is a LOAD-TIME throw, not a storylet that silently never
+      // fires — a demand for more decoded fragments than the content defines can
+      // never be satisfied, and the crossing is the one beat where a silently
+      // dead trigger would strand a whole career.
+      if (nemesis.minDecoded !== undefined) {
+        validateInteger(errors, `${path}.trigger.nemesis.minDecoded`, nemesis.minDecoded);
+        if (nemesis.minDecoded < 0) {
+          errors.push(`${path}.trigger.nemesis.minDecoded must be non-negative`);
+        }
+        if (nemesis.minDecoded > ALL_FRAGMENT_IDS.length) {
+          errors.push(
+            `${path}.trigger.nemesis.minDecoded (${nemesis.minDecoded}) exceeds the ${ALL_FRAGMENT_IDS.length} authored Signal Fragments and can never be satisfied`,
+          );
         }
       }
       if (

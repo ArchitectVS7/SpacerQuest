@@ -4,6 +4,7 @@ import {
   calculateDistance,
   distance,
   isGatedDestination,
+  NEMESIS_SYSTEM_ID,
   type StarCoordinates,
 } from '@spacerquest/content';
 
@@ -74,5 +75,16 @@ describe('Starmap geography (T-1101)', () => {
   it('gates Andromeda (21–26) and the special systems (27–28)', () => {
     for (let id = 1; id <= 20; id += 1) expect(isGatedDestination(id)).toBe(false);
     for (let id = 21; id <= 28; id += 1) expect(isGatedDestination(id)).toBe(true);
+  });
+
+  it('T-1505b · NEMESIS_SYSTEM_ID names the black hole and is still a GATED id', () => {
+    // The exported id every crossing reader keys off (the day.ts gate, the sim
+    // protocol, the UI starmap band) — so none of them spells the literal 28.
+    expect(NEMESIS_SYSTEM_ID).toBe(28);
+    expect(STAR_SYSTEMS[NEMESIS_SYSTEM_ID].name).toBe('NEMESIS');
+    // The GATE predicate is unchanged by T-1505b: 28 is still gated. Only the
+    // LIFT is narrowed (the flag opens this id and no other), which is asserted
+    // in day.test.ts rather than here — this is the predicate, not the lift.
+    expect(isGatedDestination(NEMESIS_SYSTEM_ID)).toBe(true);
   });
 });

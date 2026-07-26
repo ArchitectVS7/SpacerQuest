@@ -173,6 +173,32 @@ export interface TradeEvent {
  */
 export type WireEntryKind = 'flaw-override' | 'npc' | 'plain';
 
+/**
+ * T-1505b · Why the Nemesis-crossing stake was refused. The order of the union is
+ * the AUTHORITATIVE refusal order `quoteCrossingStake` walks (nemesis.ts) — the
+ * first failing clause is the one reported, so a captain is told the single next
+ * thing to fix rather than a wall of unmet conditions:
+ *   1. 'already-committed' — the stake is already signed; the gate is open.
+ *   2. 'not-conqueror'     — rank below CROSSING_REQUIRED_RANK (T-1308 reader b).
+ *   3. 'fragments-undecoded' — fewer than the full decoded set.
+ *   4. 'debt-outstanding'  — a live Guild debt or Penny Wise loan. You cannot
+ *      bet what you owe: the stake is "everything you OWN".
+ *   5. 'insufficient-stake' — balance below CROSSING_STAKE_MIN_CREDITS.
+ *   6. 'ship-cannot-carry-the-burn' — the tank does not already hold the jump's
+ *      fuel. There is no port on the far side; the ledger is explicit that the
+ *      ship must CARRY the burn, not buy it en route.
+ *
+ * READERS: the `NemesisCrossing{kind:'stake-refused'}` event's `reason`, rendered
+ * by the UI's `crossingStatus` lock line and the wire ticker's refusal line.
+ */
+export type CrossingRefusal =
+  | 'already-committed'
+  | 'not-conqueror'
+  | 'fragments-undecoded'
+  | 'debt-outstanding'
+  | 'insufficient-stake'
+  | 'ship-cannot-carry-the-burn';
+
 // Discriminator for game events
 export type GameEvent =
   | { type: 'DawnRoll'; day: number; hand: number[] }
@@ -383,6 +409,45 @@ export type GameEvent =
       type: 'FragmentDecoded';
       day: number;
       fragmentId: string;
+    }
+  | {
+      /**
+       * T-1505b · The Nemesis crossing (PRD §8.1: "the arc ends at the event
+       * horizon, with everything you own on the table"). One event covers the whole
+       * terminus via the `kind` sub-discriminator:
+       *   - 'stake-committed' — the stake was signed over. `stakeCredits` is the
+       *     balance surrendered (credits are zeroed). This is the ONLY thing that
+       *     sets `nemesis.crossing.unlocked`.
+       *   - 'stake-refused'   — the refusal ladder rejected the attempt.
+       *     `reason` carries WHICH clause failed; NOTHING was mutated, and the
+       *     attempt is re-attemptable at the next dawn.
+       *   - 'crossed'         — the ship arrived at NEMESIS_SYSTEM_ID.
+       *
+       * This is an `eventLog` entry, NOT a GameState field: the crossing's own
+       * state rides on the already-persisted `flags` map (see below), so there is
+       * no save migration. It still carries a schema variant + drift guard
+       * (schema.ts) so a mid-run save round-trips it.
+       *
+       * FLAGS this arc writes (all on the existing `GameState.flags`):
+       *   - `nemesis.crossing.unlocked`      (true) — lifts the NEMESIS gate.
+       *     READERS: day.ts's destination gate, the sim protocol's legalActions,
+       *     the UI starmap band (format.ts `starmapProjection`), and the crossing
+       *     storylet's own retire-trigger.
+       *   - `nemesis.crossing.stake.credits` (number) — what was surrendered.
+       *   - `nemesis.crossing.stake.day`     (number) — when.
+       *     READER of both: the UI's `crossingStatus` → the `crossing-status` pane.
+       *
+       * READERS of this event: the UI wire ticker (`eventToWire` renders the
+       * refusal line — the one crossing beat the galaxy does not report, so the
+       * captain's own terminal logs it), plus the engine/sim/e2e assertions.
+       */
+      type: 'NemesisCrossing';
+      day: number;
+      kind: 'stake-committed' | 'stake-refused' | 'crossed';
+      /** Credits surrendered — present on 'stake-committed' only. */
+      stakeCredits?: number;
+      /** Which clause of the stake ladder refused — 'stake-refused' only. */
+      reason?: CrossingRefusal;
     }
   | {
       /**

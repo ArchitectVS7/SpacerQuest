@@ -54,10 +54,15 @@ export interface RenownRankDefinition {
 // of T-1504d proven to fire FROM PLAY rather than only from a hand-constructed
 // state (`packages/sim/src/__tests__/deed-coverage.test.ts` asserts this rank's
 // citation reaches the wire on the same day the pinned career's rank-up lands);
-// (b) the Nemesis-crossing stake gate — a DOCUMENTED CONTRACT for T-1505, which
-// will make CONQUEROR its prerequisite (T-1101 already seals that crossing
-// behind `nemesis.crossing.unlocked`). It is deliberately NOT stubbed here so
-// no fake reader games the reader-consumption signal.
+// (b) the Nemesis-crossing stake gate — DELIVERED by T-1505b, which discharges
+// the contract this block deliberately left unstubbed (so no fake reader could
+// game the reader-consumption signal). The rank is exported as
+// `CROSSING_REQUIRED_RANK` (content nemesis.ts) and consumed by engine
+// `quoteCrossingStake`, whose ladder refuses a sub-capstone captain with
+// `NemesisCrossing{kind:'stake-refused', reason:'not-conqueror'}` — the only
+// thing that can set `nemesis.crossing.unlocked` and lift T-1101's NEMESIS gate.
+// Asserted BOTH WAYS (GIGA_HERO refuses, CONQUEROR passes, everything else held
+// equal) in `packages/engine/src/__tests__/crossing.test.ts`.
 // T-1504a (authored) / T-1504c (validated + surfaced) · Rank citations for ALL
 // TEN ranks. DIVERGENCE from foundation (git ref f2f95fa9):
 // foundation/lore/User-Manual.md §Appendix A is a bare nine-row point-threshold

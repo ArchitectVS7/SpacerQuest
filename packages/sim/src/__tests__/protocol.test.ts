@@ -9,7 +9,7 @@ import {
   type PlayerAction,
   type ShipyardActionKind,
 } from '@spacerquest/engine';
-import { isGatedDestination } from '@spacerquest/content';
+import { NEMESIS_SYSTEM_ID, isGatedDestination } from '@spacerquest/content';
 import { describe, expect, it } from 'vitest';
 import {
   buildStateSummary,
@@ -548,7 +548,7 @@ describe('legal-actions enumerator', () => {
     }
   });
 
-  it('T-1101 · offers gated destinations once the Nemesis crossing is unlocked', () => {
+  it('T-1101/T-1505b · offers NEMESIS — and ONLY NEMESIS — once the crossing is unlocked', () => {
     const state = createInitialState(7);
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(7), { handSize: 5, floor: 0, rerolls: 0 });
@@ -557,8 +557,17 @@ describe('legal-actions enumerator', () => {
     const legal = legalActions(state);
     const travel = legal.actions.find((action) => action.type === 'Travel');
     const destParam = travel?.params.destinationId;
+    expect(destParam?.kind).toBe('system-id');
     if (destParam?.kind === 'system-id') {
       expect(destParam.choices.some((id) => isGatedDestination(id))).toBe(true);
+      // T-1505b · The lift is NEMESIS-only, mirroring the day.ts gate exactly: the
+      // black hole is advertised, and Andromeda (21–26) / MALIGNA (27) are NOT —
+      // they stay sealed for the expansion, and the engine would ActionBlock them,
+      // so advertising one would hand a UGT client a die-burning dead end.
+      expect(destParam.choices).toContain(NEMESIS_SYSTEM_ID);
+      for (let id = 21; id <= 27; id += 1) {
+        expect(destParam.choices, `system ${id} was advertised post-unlock`).not.toContain(id);
+      }
     }
   });
 

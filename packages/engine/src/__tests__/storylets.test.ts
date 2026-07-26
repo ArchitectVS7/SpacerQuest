@@ -205,6 +205,13 @@ const T1505_STORYLET_IDS = [
   'sage.mizar.decode-12',
 ] as const;
 
+// T-1505b · The crossing & the stake (appended after the T-1505a batch): the one
+// beat that signs the stake and lifts the NEMESIS destination gate. It is its own
+// batch line rather than an addition to T1505_STORYLET_IDS because it belongs to a
+// different task, and because it is the only `repeat:'daily'` entry in the Nemesis
+// arc (re-attemptability after a decline or a refused stake).
+const T1505B_STORYLET_IDS = ['nemesis.crossing.the-stake'] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -251,6 +258,10 @@ describe('storylet content validation', () => {
     for (const id of T1505_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1505b crossing beat loaded and validated.
+    for (const id of T1505B_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
@@ -262,7 +273,8 @@ describe('storylet content validation', () => {
         T1502_STORYLET_IDS.length +
         T1503_STORYLET_IDS.length +
         T1504_STORYLET_IDS.length +
-        T1505_STORYLET_IDS.length,
+        T1505_STORYLET_IDS.length +
+        T1505B_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);

@@ -13,7 +13,9 @@ import { check, spendDie } from './dice.js';
 import { applyDisposition } from './npc.js';
 import { applyReputation } from './reputation.js';
 import {
+  commitCrossingStake,
   decodeFragment,
+  decodedFragmentCount,
   fragmentCount,
   grantFragment,
   hasAnyUndecoded,
@@ -123,6 +125,15 @@ export function triggerMatches(state: GameState, storylet: StoryletDefinition): 
     if (
       trigger.nemesis.hasUndecodedFragmentId !== undefined &&
       !hasUndecodedFragment(file, trigger.nemesis.hasUndecodedFragmentId)
+    ) {
+      return false;
+    }
+    // T-1505b: the "full decoded set" gate. READER of the fragments' `decoded`
+    // bit in aggregate — `minFragments` counts slivers held, this counts slivers
+    // UNDERSTOOD, and only the crossing beat cares about the difference.
+    if (
+      trigger.nemesis.minDecoded !== undefined &&
+      decodedFragmentCount(file) < trigger.nemesis.minDecoded
     ) {
       return false;
     }
@@ -487,6 +498,21 @@ function applyEffects(
         fragmentId: effects.decodeFragment,
       });
     }
+  }
+
+  // T-1505b: commit the Nemesis-crossing stake. The whole refusal ladder lives in
+  // `commitCrossingStake` (nemesis.ts) — including the credit floor, deliberately
+  // NOT authored as a `requirements.credits` gate, so a shortfall reports the
+  // crossing's own typed refusal instead of a generic insufficient-credits block.
+  // A refusal mutates nothing and emits only NemesisCrossing{stake-refused}; the
+  // storylet is `repeat:'daily'`, so the beat returns at the next dawn.
+  //
+  // NO parallel StoryletEffectApplied is emitted here, unlike every effect above.
+  // Deliberate, per standing constraint 7: `NemesisCrossing{kind:'stake-committed'}`
+  // already carries the surrendered balance and is the event the UI/sim/e2e all
+  // read, so a second record would be a receipt nothing consumes.
+  if (effects.commitCrossingStake === true) {
+    commitCrossingStake(state, events);
   }
 
   return events;

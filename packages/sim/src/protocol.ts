@@ -21,6 +21,7 @@ import {
   EXPLORATION_FUEL_COST,
   LOAN_MAX_PRINCIPAL,
   LOAN_MIN_PRINCIPAL,
+  NEMESIS_SYSTEM_ID,
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
   isGatedDestination,
@@ -495,14 +496,20 @@ export function legalActions(state: GameState): LegalActions {
     // advertises a Travel the day.ts gate will deterministically refuse with a
     // 'destination-locked' ActionBlocked. Gated systems (Andromeda 21–26 and the
     // specials 27–28) stay off the choice list until the 'nemesis.crossing.unlocked'
-    // flag is set (T-1505) — the exact predicate day.ts applyPlayerAction reads.
-    // Without this, a UGT-protocol client (incl. the LLM playtest harness) could
-    // pick a "legal" destination that always fails, burning a die on the block —
-    // the same stall risk that made the sim pickers in index.ts adopt
-    // travelableSystemIds().
+    // flag is set — the exact predicate day.ts applyPlayerAction reads. Without
+    // this, a UGT-protocol client (incl. the LLM playtest harness) could pick a
+    // "legal" destination that always fails, burning a die on the block — the same
+    // stall risk that made the sim pickers in index.ts adopt travelableSystemIds().
+    //
+    // T-1505b · The lift is NEMESIS-ONLY, mirroring day.ts exactly: paying the
+    // crossing stake opens NEMESIS_SYSTEM_ID and nothing else, so Andromeda
+    // (21–26) and MALIGNA (27) are never advertised — they stay sealed for the
+    // expansion (PRD §10) and the engine would still ActionBlock them.
     const nemesisUnlocked = state.flags['nemesis.crossing.unlocked'] === true;
     const destinations = ALL_SYSTEM_IDS.filter(
-      (id) => id !== player.currentSystemId && (nemesisUnlocked || !isGatedDestination(id)),
+      (id) =>
+        id !== player.currentSystemId &&
+        (!isGatedDestination(id) || (nemesisUnlocked && id === NEMESIS_SYSTEM_ID)),
     );
     actions.push({
       type: 'Travel',

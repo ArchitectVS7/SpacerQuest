@@ -250,6 +250,39 @@ describe('Destination gate (T-1101)', () => {
     expect(result.events.some((event) => event.type === 'StatCheck')).toBe(true);
   });
 
+  // T-1505b · The other half of "the gate lift asserted both ways": the flag lifts
+  // NEMESIS (28) and NOTHING ELSE. Andromeda (21–26) and MALIGNA (27) stay sealed
+  // for the expansion (PRD §10) even with the crossing paid, so a post-stake Travel
+  // to any of them is still a typed 'destination-locked' refusal. Design call D1,
+  // stated at `GATED_DESTINATION_MIN_ID` (content systems.ts) and in the day.ts gate.
+  it.each([21, 22, 23, 24, 25, 26, 27])(
+    'the lift is NEMESIS-only — system %i stays sealed even with the crossing paid',
+    (dest) => {
+      const state = dayState();
+      state.flags['nemesis.crossing.unlocked'] = true;
+      const before = structuredClone(state);
+
+      const result = applyPlayerAction(state, {
+        type: 'Travel',
+        destinationId: dest,
+        spendDie: 0,
+      });
+
+      expect(result.events).toEqual([
+        {
+          type: 'ActionBlocked',
+          day: state.day,
+          actionType: 'Travel',
+          reason: 'destination-locked',
+        },
+      ]);
+      // Nothing moved: no die spent, no fuel burned, still at the origin.
+      expect(result.state.player.currentSystemId).toBe(before.player.currentSystemId);
+      expect(result.state.player.ship.fuel).toBe(before.player.ship.fuel);
+      expect(result.state.player.dawnHand?.spent.some(Boolean)).toBe(false);
+    },
+  );
+
   it('core travel is unaffected by the gate', () => {
     const state = dayState();
     const result = applyPlayerAction(state, { type: 'Travel', destinationId: 2, spendDie: 0 });

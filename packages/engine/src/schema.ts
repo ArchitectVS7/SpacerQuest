@@ -711,6 +711,27 @@ const GameEventSchema = z.discriminatedUnion('type', [
     fragmentId: z.string(),
   }),
   z.object({
+    // T-1505b · the Nemesis crossing (see types.ts NemesisCrossing). Serialized in
+    // eventLog, so a mid-day save round-trips it; the drift guard below keeps this
+    // in lockstep with the interface. NO GameState field and therefore NO save
+    // migration — the crossing's persistent state is the `flags` map, which the
+    // envelope already carries.
+    type: z.literal('NemesisCrossing'),
+    day: z.number(),
+    kind: z.enum(['stake-committed', 'stake-refused', 'crossed']),
+    stakeCredits: z.number().optional(),
+    reason: z
+      .enum([
+        'already-committed',
+        'not-conqueror',
+        'fragments-undecoded',
+        'debt-outstanding',
+        'insufficient-stake',
+        'ship-cannot-carry-the-burn',
+      ])
+      .optional(),
+  }),
+  z.object({
     // T-1303 · a player Hangout visit (see types.ts HangoutEvent). Serialized in
     // eventLog, so a mid-day save round-trips it; the drift guard below keeps this
     // in lockstep with the interface.
@@ -1296,6 +1317,7 @@ const _covEvSalvageRecovered: AssertEventKeys<'SalvageRecovered'> = true;
 const _covEvContrabandFound: AssertEventKeys<'ContrabandFound'> = true;
 const _covEvFragmentAcquired: AssertEventKeys<'FragmentAcquired'> = true;
 const _covEvFragmentDecoded: AssertEventKeys<'FragmentDecoded'> = true;
+const _covEvNemesisCrossing: AssertEventKeys<'NemesisCrossing'> = true;
 const _covEvHangoutEvent: AssertEventKeys<'HangoutEvent'> = true;
 const _covEvLoanEvent: AssertEventKeys<'LoanEvent'> = true;
 const _covEvDiceRerolled: AssertEventKeys<'DiceRerolled'> = true;
@@ -1377,6 +1399,7 @@ void _covEvSalvageRecovered;
 void _covEvContrabandFound;
 void _covEvFragmentAcquired;
 void _covEvFragmentDecoded;
+void _covEvNemesisCrossing;
 void _covEvHangoutEvent;
 void _covEvLoanEvent;
 void _covEvDiceRerolled;

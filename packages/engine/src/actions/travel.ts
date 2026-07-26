@@ -3,9 +3,12 @@ import {
   AnonymousInterceptorKind,
   CLOAK_ENCOUNTER_MULTIPLIER,
   COLLECTION_ENCOUNTER_MULTIPLIER,
+  CROSSING_WIRE,
   INTERCEPT_FRIEND_WEIGHT,
   INTERCEPT_GRUDGE_WEIGHT,
   INTERCEPT_MIN_WEIGHT,
+  NEMESIS_CROSSING_DC,
+  NEMESIS_SYSTEM_ID,
   NPC_PROFILES,
   ROUTE_DANGER_CHANCE,
   RouteDangerLevel,
@@ -70,8 +73,29 @@ function allowedAnonymousKinds(origin: number, destination: number): AnonymousIn
  * source for travel difficulty — the resolver rolls against it and the starmap
  * (T-304) previews it, so the number a player sees before committing is exactly
  * the number they are checked against. (Legacy math: DC 8 + floor(distance/2).)
+ *
+ * T-1505b · THE CROSSING IS THE ONE EXCEPTION (design call D3). Passing
+ * `destinationId === NEMESIS_SYSTEM_ID` returns the content-owned
+ * `NEMESIS_CROSSING_DC` instead of the distance DC. Rationale, at the definition
+ * site per standing constraint 5: NEMESIS sits ~109–126 units from the charted
+ * lane, which the distance rule prices at DC ~62–70 — unreachable by any die plus
+ * any modifier, so the lifted gate would be a gate to nowhere. The decoded
+ * fragments ARE the fix in fiction (04/12: "a crossing solution: exactly how much
+ * a ship must carry, and spend, to reach the far side intact"; 09: "the one line
+ * through the Nemesis gravity shear a hull can hold"), and the stake gate already
+ * requires the whole decoded set — so the solved corridor, not the raw distance,
+ * sets the difficulty. FOUNDATION: f2f95fa9 has no Nemesis-arc travel rule at all
+ * (the black hole is a map location), so there is no foundation number to diverge
+ * from; this is authored Rimward content and the number lives in content.
+ *
+ * The parameter is OPTIONAL so every existing single-argument caller is unchanged
+ * and byte-identical. Both `travelPreview` (the starmap read-out) and
+ * `resolveTravel` (the roll) pass it, so preview and resolver cannot disagree.
  */
-export function travelDc(routeDistance: number): number {
+export function travelDc(routeDistance: number, destinationId?: number): number {
+  if (destinationId === NEMESIS_SYSTEM_ID) {
+    return NEMESIS_CROSSING_DC;
+  }
   return 8 + Math.floor(routeDistance / 2);
 }
 
@@ -138,7 +162,9 @@ export function travelPreview(state: GameState, destination: number): TravelPrev
   return {
     distance: routeDistance,
     fuelCost,
-    dc: travelDc(routeDistance),
+    // T-1505b: pass the destination so the crossing previews its OWN DC — the
+    // starmap must show the number `resolveTravel` will actually roll against.
+    dc: travelDc(routeDistance, destination),
     dangerLevel: calculateRouteDanger(state, origin, destination).routeDangerLevel,
     reachable: fuelCost <= ship.fuel,
   };
@@ -446,7 +472,9 @@ export function resolveTravel(
 
   // Pilot check — DC scales with distance through the authoritative helper so
   // the starmap (T-304) can preview the exact DC the resolver will roll against.
-  const dc = travelDc(routeDistance);
+  // T-1505b: the crossing overrides that with its own content DC (see travelDc);
+  // the destination is passed here and in `travelPreview` so both agree.
+  const dc = travelDc(routeDistance, destination);
 
   // T-1205 navigation → pilot check: a fresh junker's navigation (score 10) adds
   // 0, so the starter-ship goldens are unchanged; upgraded nav adds accuracy.
@@ -477,7 +505,18 @@ export function resolveTravel(
     // unconditionally, and its outcome decides the branch. On the success path
     // rng consumption is byte-identical to before (same call site, same order);
     // only the failure path newly consumes an encounter roll.
-    const encounter = generateEncounter(nextState, origin, destination, fuelRequired, rng);
+    // T-1505b · NOTHING PATROLS THE EVENT HORIZON (design call D4). The crossing
+    // route takes no encounter roll: there is no lane out here to interdict, no
+    // port to run from, and the fiction of the arc is a ship alone against the
+    // shear. It also keeps the endgame deterministic, so the acceptance can
+    // assert arrival without seed-hunting past a random interception. The SKIP
+    // omits an rng draw, which would move a golden — but no existing replay
+    // golden ever reaches system 28 (the gate has never been lifted before this
+    // task), so nothing moves. If a future golden crosses, regenerate it.
+    const encounter =
+      destination === NEMESIS_SYSTEM_ID
+        ? null
+        : generateEncounter(nextState, origin, destination, fuelRequired, rng);
 
     if (encounter) {
       // The interdiction interrupts the jump regardless of the pilot check.
@@ -541,6 +580,21 @@ export function resolveTravel(
           actionDetails: `Delivered cargo! Earned ${payment} credits.`,
         });
         nextState.player.activeContract = null; // Clear contract
+      }
+
+      // T-1505b · The crossing itself. Arrival at NEMESIS is the arc's terminus
+      // (PRD §8.1: "the arc ends at the event horizon"). The typed event is the
+      // machine-readable record; the wire line is authored content, filed
+      // verbatim. NOTHING here ends a career or opens Andromeda — the ending
+      // screen and the career terminus are T-1505c.
+      if (destination === NEMESIS_SYSTEM_ID) {
+        events.push({ type: 'NemesisCrossing', day: nextState.day, kind: 'crossed' });
+        events.push({
+          type: 'WireEntry',
+          day: nextState.day,
+          kind: 'plain',
+          message: CROSSING_WIRE.crossed,
+        });
       }
     } else {
       // Failed pilot check, no encounter: nav malfunction, ship stays at origin.

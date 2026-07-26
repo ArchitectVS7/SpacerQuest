@@ -15,6 +15,7 @@
  * of these entries for the fragments a spacer actually holds.
  */
 
+import type { RenownRankId } from './deeds.js';
 import { defineSignalFragments } from './nemesisValidation.js';
 
 export interface SignalFragmentLore {
@@ -240,3 +241,103 @@ export const FRAGMENT_SOURCES: readonly FragmentSource[] = [
   'sage',
   'npc',
 ];
+
+// ===========================================================================
+// T-1505b · THE CROSSING — the arc's terminus (PRD-REIMAGINED §8.1: "the arc
+// ends at the event horizon, with everything you own on the table"; §5 "the
+// game's ultimate gamble — a one-way crossing to Andromeda, attempted only when
+// you're willing to bet everything you've built").
+//
+// Everything below is DATA. The engine owns the rules: `quoteCrossingStake` runs
+// the refusal ladder over these numbers, `commitCrossingStake` signs the stake
+// over and sets `nemesis.crossing.unlocked`, and `resolveTravel` flies the jump.
+//
+// DIVERGENCE: foundation (git ref f2f95fa9) has no Nemesis arc, no crossing, and
+// no stake — grep 'nemesis' over foundation returns a map location and nothing
+// else. There is no foundation number to diverge FROM, so every constant here is
+// authored Rimward content, and each carries its own INTERIM note where T-1603
+// owns the eventual tuning.
+// ===========================================================================
+
+/**
+ * The renown rank the crossing demands (PRD §5.2/§9 name Conqueror the CAREER
+ * CAPSTONE). This is T-1308's intended reader (b) — the "Nemesis-crossing stake
+ * gate" that block documents as a contract and deliberately left unstubbed so no
+ * fake reader could game the reader-consumption signal. It is DISCHARGED here.
+ *
+ * READER: engine `quoteCrossingStake` (nemesis.ts), whose refusal ladder emits
+ * `NemesisCrossing{kind:'stake-refused', reason:'not-conqueror'}` below this rank.
+ * Asserted BOTH WAYS (GIGA_HERO refuses / CONQUEROR passes, everything else held
+ * equal) in `packages/engine/src/__tests__/crossing.test.ts`.
+ */
+export const CROSSING_REQUIRED_RANK: RenownRankId = 'CONQUEROR';
+
+/**
+ * How many fragments must be held AND DECODED before the crossing is offered —
+ * the arc's "full decoded set" clause. DERIVED from the authored fragment table,
+ * never a literal 12: authoring a thirteenth fragment moves this gate with it.
+ *
+ * READERS: the `nemesis.crossing.the-stake` storylet's `trigger.nemesis.minDecoded`
+ * (so the beat does not even appear early) and engine `quoteCrossingStake`
+ * (`reason:'fragments-undecoded'`, so a hand-built state cannot skip the arc).
+ */
+export const CROSSING_DECODED_REQUIREMENT = ALL_FRAGMENT_IDS.length;
+
+/**
+ * The credit floor the stake demands before the whole balance is signed over.
+ *
+ * INTERIM — T-1603 owns the canonical number (standing constraint: earlier tasks
+ * must not enshrine values the balance pass will move). Set to the Guild debt a
+ * career OPENS under (`state.ts` seeds `debt: 25000`) so the stake is legible as
+ * a mirror of the run's first obligation: you start owing 25,000 and you finish
+ * by putting at least that much back on the table. It is a FLOOR, not a price —
+ * `commitCrossingStake` signs over the entire balance, whatever it is.
+ *
+ * READER: engine `quoteCrossingStake` (`reason:'insufficient-stake'`), surfaced
+ * to the player by the UI's `crossingStatus` lock line.
+ */
+export const CROSSING_STAKE_MIN_CREDITS = 25000;
+
+/**
+ * The PILOT DC of the crossing jump itself.
+ *
+ * DESIGN CALL (T-1505b D3): the crossing does NOT use the distance DC. The
+ * general travel rule is `travelDc(d) = 8 + floor(d/2)`, and Mizar-9 (the Sage's
+ * bench, where the stake is signed) sits ~125.7 units from NEMESIS — a DC of ~70,
+ * which no die plus modifier can ever reach. A lifted gate onto an unrollable
+ * check is a gate to nowhere. The fiction already supplies the fix: fragments 04
+ * and 12 decode to "a crossing solution: exactly how much a ship must carry, and
+ * spend, to reach the far side intact", and fragment 09 to "the one line through
+ * the Nemesis gravity shear a hull can hold". The DECODED SOLUTION *is* the nav
+ * solution — so a captain who has the whole set flies a hard but real check
+ * instead of an impossible one.
+ *
+ * INTERIM at 20 — T-1603 owns the number. 20 sits inside the band ordinary travel
+ * already reaches (core hops run DC 8–15; the longest charted core/rim traverse,
+ * Capella-4 ↔ Achernar-5 at ~44 units, is DC 30), so the crossing is a hard jump
+ * rather than a new kind of wall: a fully fitted navigation suite adds +8
+ * (`navBonus`), which puts it inside one good die. The crossing's real price is
+ * the stake and the burn, not the roll.
+ *
+ * READER: engine `travelDc(distance, destinationId)` — consumed by BOTH
+ * `travelPreview` (the starmap's previewed DC) and `resolveTravel` (the rolled
+ * DC), so the number shown is the number checked.
+ */
+export const NEMESIS_CROSSING_DC = 20;
+
+/**
+ * The two Galactic-Wire lines the crossing files. Content owns the prose; the
+ * engine only files it as a `WireEntry{kind:'plain'}`.
+ *
+ * READER: the UI wire ticker / wire log (`format.ts` `wireLines` / `wireLog`),
+ * asserted verbatim (imported, never re-typed) by the engine crossing tests and
+ * the e2e spec.
+ */
+export const CROSSING_WIRE = {
+  /** Filed the moment the stake is signed over and the gate lifts. */
+  stakeCommitted:
+    'THE WIRE — a captain has signed the whole of their account over to a Mizar-9 escrow and filed a flight plan with no return leg. The clerks logged it without comment. There is no form for this.',
+  /** Filed on arrival at the far side of the event horizon. */
+  crossed:
+    'THE WIRE — last contact: a hull crossing the Nemesis shear on the etched corridor, under its own power, exactly as the ledger said it could be done. The carrier wave has stopped counting.',
+} as const;

@@ -8,7 +8,7 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
-import { CARGO_TYPES, RENOWN_RANKS, Stat } from '@spacerquest/content';
+import { CARGO_TYPES, NEMESIS_SYSTEM_ID, RENOWN_RANKS, Stat } from '@spacerquest/content';
 import type { GameState, CheckResult, StoryletOffer } from '@spacerquest/engine';
 import {
   subscribe,
@@ -88,6 +88,7 @@ import {
   deedRegistry,
   factionStanding,
   nemesisFile,
+  crossingStatus,
   activeOnboardingPrompt,
   onboardingMount,
   isGuildLetter,
@@ -1279,6 +1280,7 @@ function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => voi
   const registry = deedRegistry(game);
   const standing = factionStanding(game);
   const nemesis = nemesisFile(game);
+  const crossing = crossingStatus(game);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1407,6 +1409,44 @@ function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => voi
                 {nemesis.decodedCount} DECODED
               </span>
             </div>
+            {/* T-1505b · THE CROSSING. The reader of the three crossing flags and
+                of the engine's `quoteCrossingStake` ladder: while locked it names
+                the single next unmet clause (never a wall of conditions); once the
+                stake is signed it prints the receipt; after arrival it says so.
+                Hidden entirely until at least one fragment is decoded, so the
+                endgame is not spoiled on day one. Every number is engine/content —
+                the pane owns no rule. */}
+            {crossing.state !== 'hidden' && (
+              <div
+                className={`crossing crossing-${crossing.state}`}
+                data-testid="crossing-status"
+                data-crossing-state={crossing.state}
+                data-crossing-reason={crossing.reason ?? undefined}
+              >
+                <div className="cr-head">
+                  <span className="cr-label">THE CROSSING</span>
+                  <span className="cr-dc" data-testid="crossing-dc">
+                    PILOT DC {crossing.dc}
+                  </span>
+                </div>
+                {crossing.state === 'locked' && (
+                  <p className="cr-lock" data-testid="crossing-lock">
+                    {crossing.lockText ?? 'The stake is ready to sign at Mizar-9.'}
+                  </p>
+                )}
+                {crossing.state === 'committed' && (
+                  <p className="cr-stake" data-testid="crossing-stake">
+                    STAKE SIGNED · {(crossing.stakeCredits ?? 0).toLocaleString()} CR · DAY{' '}
+                    {crossing.stakeDay ?? 0}
+                  </p>
+                )}
+                {crossing.state === 'crossed' && (
+                  <p className="cr-stake" data-testid="crossing-crossed">
+                    CROSSED — the carrier wave has stopped counting.
+                  </p>
+                )}
+              </div>
+            )}
             {nemesis.entries.length === 0 ? (
               <div className="nemesis-empty" data-testid="nemesis-empty">
                 The Signal is silent — no fragments recovered.
@@ -1610,10 +1650,17 @@ function Starmap({ state }: { state: CockpitState }) {
             const isHere = n.id === here;
             const reachable = isHere ? true : routePreview(game, n.id).reachable;
             const clickable = !isHere && reachable;
+            // T-1505b · The event horizon reads differently from a port. The node
+            // is only ever in `proj.nodes` at all once the crossing stake is paid
+            // (format.ts `starmapProjection`), so the tag doubles as the visible
+            // proof the gate lifted; everything else about it (reachability, the
+            // route preview, Confirm jump) is the ordinary travel path, reused.
+            const isCrossing = n.id === NEMESIS_SYSTEM_ID;
             const cls = [
               'smsys',
               isHere ? 'here' : visited.has(n.id) ? 'visited' : 'unvisited',
               n.isRim ? 'rim' : '',
+              isCrossing ? 'crossing' : '',
               !isHere && !reachable ? 'unreachable' : '',
               target === n.id ? 'sel' : '',
             ]
@@ -1626,6 +1673,7 @@ function Starmap({ state }: { state: CockpitState }) {
                 className={cls}
                 data-testid="starmap-system"
                 data-system-id={n.id}
+                data-crossing={isCrossing ? '1' : undefined}
                 data-reachable={reachable ? '1' : '0'}
                 data-visited={visited.has(n.id) ? '1' : '0'}
                 data-here={isHere ? '1' : '0'}

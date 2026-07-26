@@ -429,6 +429,18 @@ body {
 .smsys.sel .smlabel {
   fill: var(--ember-hi);
 }
+/* T-1505b · the event horizon. Only ever drawn once the crossing stake is paid
+   (format.ts starmapProjection), so it reads as a door that just opened rather
+   than a port on the lane: hollow dot, ember rim, ember label. */
+.smsys.crossing .smdot {
+  fill: none;
+  stroke: var(--ember-hi);
+  stroke-width: 1.2;
+}
+.smsys.crossing .smlabel {
+  fill: var(--ember-hi);
+  letter-spacing: 0.14em;
+}
 /* unreachable systems are visibly gated AND not clickable */
 .smsys.unreachable {
   pointer-events: none;
@@ -2412,6 +2424,47 @@ body {
 }
 .nemesis-fragment.decoded {
   border-left-color: var(--ember);
+}
+
+/* ---- T-1505b · The crossing block (Records → Nemesis) ---- */
+.crossing {
+  border: 1px solid var(--amber-dim);
+  border-left-width: 3px;
+  padding: 8px 12px;
+}
+.crossing.crossing-committed,
+.crossing.crossing-crossed {
+  border-left-color: var(--ember);
+}
+.cr-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cr-label {
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: var(--ember);
+}
+.cr-dc {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+}
+.cr-lock {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--amber-dim);
+}
+.cr-stake {
+  margin: 5px 0 0;
+  font-family: var(--font-data);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: var(--ember);
 }
 
 @media (max-width: 720px) {

@@ -2,6 +2,7 @@ import type { RenownRankId } from './deeds.js';
 import type { FactionId } from './factions.js';
 import { FACTION_JOIN_CROSS_PENALTY, FACTION_JOIN_OWN_BONUS } from './factions.js';
 import type { FragmentSource } from './nemesis.js';
+import { CROSSING_DECODED_REQUIREMENT, CROSSING_REQUIRED_RANK } from './nemesis.js';
 import { Stat } from './stats.js';
 import { defineStorylets } from './storyletValidation.js';
 
@@ -66,6 +67,13 @@ export interface StoryletTrigger {
     hasUndecoded?: boolean;
     /** Offered only when the file holds THIS fragment id, still undecoded. */
     hasUndecodedFragmentId?: string;
+    /** T-1505b: offered only when at least this many held fragments are DECODED.
+     *  The arc's "full decoded set" gate — holding twelve raw slivers is not the
+     *  same as understanding them, and only the crossing cares about the
+     *  difference. READER: engine `triggerMatches` (storylets.ts), via
+     *  `decodedFragmentCount`. Validated `<= ALL_FRAGMENT_IDS.length` in
+     *  storyletValidation, so an unsatisfiable gate is a load-time throw. */
+    minDecoded?: number;
   };
   /** T-1302: gate on the LIVE world era EVENT (`state.eraEvent`), NOT the
    *  campaign `EraId`. This is what lets a storylet be "delivered by the
@@ -116,6 +124,21 @@ export interface StoryletEffects {
   /** T-111b: the Sage of Mizar-9 decodes a held fragment into lore. No-op if
    *  the fragment is absent or already decoded. */
   decodeFragment?: string;
+  /**
+   * T-1505b: commit the Nemesis-crossing stake (PRD §8.1's "everything you own
+   * on the table"). The whole ladder — rank, decoded set, ledger, credit floor,
+   * fuel for the burn — lives in the ENGINE, not in `requirements` here, so one
+   * authoritative refusal order applies and a credit shortfall surfaces as the
+   * crossing's own `NemesisCrossing{kind:'stake-refused'}` rather than the
+   * generic `StoryletChoiceBlocked{insufficient-credits}`.
+   *
+   * READER: engine `applyEffects` (storylets.ts), which delegates to
+   * `commitCrossingStake` (nemesis.ts). On success it zeroes credits, records the
+   * stake, and sets `nemesis.crossing.unlocked` — the flag that lifts the NEMESIS
+   * destination gate. On refusal it mutates NOTHING and the choice is
+   * re-attemptable at the next dawn (the storylet is `repeat: 'daily'`).
+   */
+  commitCrossingStake?: true;
 }
 
 export interface StoryletChoiceDefinition {
@@ -4642,8 +4665,11 @@ export const STORYLETS = defineStorylets([
   //     `minFragments: 6` threshold is INTERIM (T-1603 owns the number): it is set
   //     to roughly half the twelve, so the last line arrives to a captain who has
   //     genuinely worked the arc rather than stumbled into Mizar-9 once. CONSUMER
-  //     of fragment 12: T-1505b, the crossing — which is why NO crossing flag,
-  //     stake, destination unlock, or ending is authored here. ---
+  //     of fragment 12 — DELIVERED by T-1505b as `nemesis.crossing.the-stake` at
+  //     the foot of this table: its `minDecoded: CROSSING_DECODED_REQUIREMENT`
+  //     gate cannot be satisfied without this fragment granted AND decoded, which
+  //     is why NO crossing flag, stake, destination unlock, or ending is authored
+  //     here. ---
   {
     id: 'sage.mizar.final-line',
     title: 'The Sage Finds the Last Line',
@@ -4875,6 +4901,81 @@ export const STORYLETS = defineStorylets([
         label: 'Keep the sliver for now',
         prose:
           'Take the strip back out of the gap. A complete solution is a thing a captain acts on, and the acting is not today. The Sage does not stop you, and does not look away from the wall either.',
+      },
+    ],
+  },
+
+  // ==========================================================================
+  // T-1505b · THE CROSSING & THE STAKE — the arc's terminus (PRD-REIMAGINED
+  //   §8.1: "the arc ends at the event horizon, with everything you own on the
+  //   table"). ONE storylet, at the Sage's bench (Mizar-9, system 18), because
+  //   the Sage's wall is where the solution became whole.
+  //
+  //   THE ENGINE OWNS THE LADDER. The only `effects` this beat carries is
+  //   `commitCrossingStake: true`; there is deliberately NO `requirements.credits`
+  //   gate on the commit choice, so a shortfall surfaces as the crossing's own
+  //   typed refusal (`NemesisCrossing{kind:'stake-refused'}`) in ONE authoritative
+  //   order — rank, decoded set, ledger, credit floor, fuel — instead of being
+  //   short-circuited into a generic `insufficient-credits` block. See
+  //   `quoteCrossingStake` (engine nemesis.ts) for the ladder itself.
+  //
+  //   RE-ATTEMPTABILITY (`repeat: 'daily'`): engine `resolveStoryletChoice` stamps
+  //   `completed[id] = day` on EVERY resolve, so a `repeat:'never'` beat would be
+  //   spent by a decline or a refused commit. Daily is what makes the acceptance's
+  //   "declining or failing the stake leaves state consistent and re-attemptable"
+  //   true through the real storylet path: the offer returns at the next dawn.
+  //   Once the stake IS paid, the `flags` matcher below (`exists: false`) retires
+  //   the beat permanently — the gate is lifted and there is nothing left to sign.
+  //
+  //   TRIGGER GATES, and why each is here rather than in the engine ladder: the
+  //   system gate and `minDecoded` keep the beat OFF the board entirely until it
+  //   is fictionally possible (a captain who has not finished the arc never sees
+  //   the door), while the renown gate is duplicated in the engine ladder so a
+  //   headless caller cannot resolve it out from under the rank check. The credit
+  //   and fuel clauses are engine-only ON PURPOSE: a captain who can see the door
+  //   but cannot pay should be TOLD the number, not left staring at an empty board.
+  //
+  //   ARC BOUNDARY: the crossing ends at arrival. NOTHING here ends a career,
+  //   scores a run, or opens Andromeda (21–26 stay sealed — see the D1 note at
+  //   `GATED_DESTINATION_MIN_ID` in systems.ts). The ending screen is T-1505c.
+  // ==========================================================================
+  {
+    id: 'nemesis.crossing.the-stake',
+    title: 'Everything On The Table',
+    prose:
+      'The wall is finished. The Sage has not spoken in some minutes, and when they do it is not to you: "It was never a question of whether it could be done." Then, to you: "It is a question of what a ship carries across, and what it leaves behind. The ledger is very exact about the second part. Every account you hold, signed into escrow at this bench, and a tank already full — because there is no port on the far side to fill it. You do not spend it out there. You spend it HERE, to be allowed to go."',
+    // See the block comment above: daily is the re-attemptability mechanism, and
+    // the `nemesis.crossing.unlocked` matcher is what retires the beat for good.
+    repeat: 'daily',
+    trigger: {
+      systemIds: [18], // Mizar-9 — the Sage's bench, where the solution completed
+      // READER of the DECODE state (not merely the fragment count): the full set,
+      // understood. Derived from the authored fragment table, never a literal.
+      nemesis: { minDecoded: CROSSING_DECODED_REQUIREMENT },
+      // T-1308 reader (b), duplicated in the engine ladder so it is enforced for
+      // headless callers too. Imported from content, never spelled 'CONQUEROR'.
+      renown: { minRank: CROSSING_REQUIRED_RANK },
+      // Retires the beat the instant the stake is paid: the gate is already lifted.
+      flags: [{ name: 'nemesis.crossing.unlocked', exists: false }],
+    },
+    choices: [
+      {
+        id: 'commit',
+        label: 'Sign it all over',
+        prose:
+          'Put your name at the bottom of a page that lists everything you have and assigns none of it anywhere. The Sage countersigns as witness, and the escrow clerk stamps it without looking up. Your balance reads zero. The gate reads open.',
+        effects: {
+          commitCrossingStake: true,
+        },
+      },
+      {
+        id: 'stand-down',
+        label: 'Not today',
+        prose:
+          'Fold the page and hand it back unsigned. The Sage takes it without disappointment and sets it beside the wall, face up, where it will be tomorrow. "It keeps," they say. "It has kept this long."',
+        // Deliberately NO effects: the decline is a pure narrative beat, and the
+        // storylet's `repeat:'daily'` is what re-offers it. Per constraint 7 a
+        // set-only receipt flag nothing reads is not a feature.
       },
     ],
   },

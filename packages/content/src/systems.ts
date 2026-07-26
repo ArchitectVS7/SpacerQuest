@@ -37,6 +37,16 @@ export interface StarSystem {
   hasHangout?: boolean;
 }
 
+/**
+ * T-1505b · The black hole at the end of the arc — the ONE gated destination the
+ * `nemesis.crossing.unlocked` flag opens (see the destination-gating note below,
+ * at `GATED_DESTINATION_MIN_ID`). Exported so no reader has to spell the literal
+ * `28`: the engine gate, the sim protocol, the UI starmap band and the crossing's
+ * own travel rules all key off this constant. Declared above STAR_SYSTEMS because
+ * the table's own row uses it.
+ */
+export const NEMESIS_SYSTEM_ID = 28;
+
 // T-1101 · Real 2D starmap geography (authority: PRD-REIMAGINED §9 — "the map:
 // 14 core systems, 6 Rim, Andromeda beyond … the black hole at Nemesis").
 //
@@ -161,18 +171,35 @@ export const STAR_SYSTEMS: Record<number, StarSystem> = {
 
   // Special Systems (remote; both >60 from Sol, beyond the ring even ungated)
   27: { id: 27, name: 'MALIGNA', isRim: false, coordinates: { x: -50, y: 42 } },
-  28: { id: 28, name: 'NEMESIS', isRim: false, coordinates: { x: 52, y: 96 } }, // moved off (0,0): the far-side black hole
+  28: { id: NEMESIS_SYSTEM_ID, name: 'NEMESIS', isRim: false, coordinates: { x: 52, y: 96 } }, // moved off (0,0): the far-side black hole
 };
 
 // T-1101 · Destination gating. Andromeda (21–26) and the special systems
 // MALIGNA / NEMESIS (27–28) are sealed in v1: PRD §10 puts Andromeda out of
 // scope, and the Nemesis crossing is the endgame (T-1505), lifted via the
-// 'nemesis.crossing.unlocked' flag. READER: the engine gate in day.ts
-// applyPlayerAction (emits a typed ActionBlocked with reason 'destination-locked'
-// unless the flag is set); the sim travel-destination pickers in
-// packages/sim/src/index.ts (which must never target a sealed system); and the
-// UGT protocol's legalActions in packages/sim/src/protocol.ts (which must not
-// advertise a sealed system as a legal Travel destination).
+// 'nemesis.crossing.unlocked' flag.
+//
+// T-1505b · THE LIFT IS NEMESIS-ONLY (design call D1). The flag now has a setter
+// (the crossing stake, engine `commitCrossingStake`), and paying the stake opens
+// EXACTLY ONE id: {@link NEMESIS_SYSTEM_ID}. Andromeda (21–26) and MALIGNA (27)
+// stay sealed forever in v1 — PRD-REIMAGINED §10 puts "Andromeda as playable
+// space" out of scope ("the crossing is v1's ending; the far side is an
+// expansion"), so a flag that lifted all eight would advertise six systems with
+// no content behind them. `isGatedDestination` is therefore unchanged (28 is
+// still a gated id); only the LIFT is narrowed, and every reader below encodes
+// the same NEMESIS-only predicate.
+//
+// READERS of the flag (all three must agree, and are asserted to):
+//  1. the engine gate in day.ts applyPlayerAction (emits a typed ActionBlocked
+//     with reason 'destination-locked' unless the flag is set AND the destination
+//     is NEMESIS_SYSTEM_ID) — `packages/engine/src/__tests__/day.test.ts`;
+//  2. the UGT protocol's legalActions in packages/sim/src/protocol.ts (must not
+//     advertise a sealed system as a legal Travel destination, and must not
+//     advertise Andromeda even post-unlock) — `protocol.test.ts`;
+//  3. the UI starmap band in packages/ui/src/format.ts `starmapProjection`
+//     (renders id 28 only once the stake is paid) — `e2e/nemesis-crossing.spec.ts`.
+// The sim travel-destination pickers in packages/sim/src/index.ts also consult
+// `isGatedDestination` and must never target a sealed system.
 export const GATED_DESTINATION_MIN_ID = 21;
 
 export function isGatedDestination(id: number): boolean {

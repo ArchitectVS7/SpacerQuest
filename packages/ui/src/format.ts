@@ -25,6 +25,10 @@ import {
   isPurchasablePort,
   FACTION_IDS,
   FACTION_LABELS,
+  NEMESIS_SYSTEM_ID,
+  NEMESIS_CROSSING_DC,
+  CROSSING_STAKE_MIN_CREDITS,
+  CROSSING_REQUIRED_RANK,
   type FactionId,
   type StoryletTrigger,
   type CrewRole,
@@ -35,6 +39,7 @@ import {
   quoteShipyard,
   nemesisLoreIndex,
   fragmentCount,
+  quoteCrossingStake,
   componentTierForStrength,
   tributeForRound,
   nextRankFor,
@@ -57,6 +62,7 @@ import {
   type ShipyardQuote,
   type StoryletOffer,
   type NemesisLoreEntry,
+  type CrossingRefusal,
   type TravelPreview,
   type FuelPurchaseQuote,
   type PortQuote,
@@ -513,13 +519,29 @@ export interface StarmapProjection {
  * 1–20) plus the current system and any charted system, then bound the box to
  * exactly that set. The scale is uniform so the fuel-range ring — a true
  * distance circle — is drawn round rather than sheared.
+ *
+ * T-1505b · ONE DELIBERATE EXCEPTION: NEMESIS (id 28) joins the band once
+ * `nemesis.crossing.unlocked` is set. The band stretches only for the endgame,
+ * and only after the stake is paid — before that the black hole is not on the
+ * chart at all, so the map never advertises a door the player cannot open, and
+ * the arc's terminus is never spoiled on day one. Andromeda (21–26) and MALIGNA
+ * (27) are still never shown: the gate lift is NEMESIS-only (design call D1), so
+ * showing them would offer six systems the engine would refuse. This is the UI
+ * READER of the crossing flag; the other two are the engine gate (day.ts) and the
+ * sim protocol's legalActions.
  */
 export function starmapProjection(game: GameState): StarmapProjection {
   const here = game.player.currentSystemId;
   const visited = new Set(game.player.charts.visitedSystemIds);
+  const crossingOpen = game.flags['nemesis.crossing.unlocked'] === true;
   const shown = new Map<number, (typeof STAR_SYSTEMS)[number]>();
   for (const sys of Object.values(STAR_SYSTEMS)) {
-    if ((sys.id >= 1 && sys.id <= 20) || sys.id === here || visited.has(sys.id)) {
+    if (
+      (sys.id >= 1 && sys.id <= 20) ||
+      sys.id === here ||
+      visited.has(sys.id) ||
+      (crossingOpen && sys.id === NEMESIS_SYSTEM_ID)
+    ) {
       shown.set(sys.id, sys);
     }
   }
@@ -629,6 +651,14 @@ function eventToWire(e: GameEvent): string | null {
       return e.survived
         ? 'LIFE SUPPORT — critical failure ridden out on emergency air.'
         : 'LIFE SUPPORT — catastrophic failure; the ship was lost to the dark.';
+    case 'NemesisCrossing':
+      // T-1505b · The wire renders the REFUSAL only. The committed and crossed
+      // beats already arrive as authored `WireEntry`s (content CROSSING_WIRE),
+      // filed by the engine at the same moment — rendering them here too would
+      // double every line. A refusal, though, is the one crossing beat the galaxy
+      // never hears about: no escrow was opened and no flight plan was filed, so
+      // the captain's own terminal is the only thing that logs it.
+      return e.kind === 'stake-refused' ? `CROSSING — ${crossingRefusalText(e.reason)}` : null;
     default:
       return null;
   }
@@ -1240,6 +1270,121 @@ export function nemesisFile(game: GameState): NemesisFileView {
     decodedCount: entries.filter((e) => e.decoded).length,
     entries,
   };
+}
+
+/**
+ * T-1505b · Number-free prose for a crossing refusal, used by the WIRE ticker
+ * (which only has the event, never the quote). The pane's own lock line —
+ * {@link crossingStatus} — reuses the same switch shape but folds in the live
+ * numbers off the engine quote. Both translate the SAME typed reason, so they can
+ * never describe different failures.
+ */
+function crossingRefusalText(reason: CrossingRefusal | undefined): string {
+  switch (reason) {
+    case 'not-conqueror':
+      return 'the escrow clerk would not open a file for a captain of your rank.';
+    case 'fragments-undecoded':
+      return 'the solution is not whole — the ledger has gaps you cannot fly through.';
+    case 'debt-outstanding':
+      return 'you cannot stake what you owe. The ledger comes first.';
+    case 'insufficient-stake':
+      return 'the account on the table did not amount to a stake.';
+    case 'ship-cannot-carry-the-burn':
+      return 'the tank cannot carry the burn, and there is no port on the far side.';
+    case 'already-committed':
+      return 'the stake is already signed; there is nothing left to put on the table.';
+    case undefined:
+      return 'the attempt was refused.';
+  }
+}
+
+/** T-1505b · The THE CROSSING block's state, for the Records → Nemesis pane. */
+export interface CrossingStatusView {
+  /**
+   * `hidden`    — the spacer has decoded nothing, so the pane says nothing (the
+   *               endgame is not spoiled on day one);
+   * `locked`    — visible, with the next unmet clause named;
+   * `committed` — the stake is signed and the gate is lifted;
+   * `crossed`   — the ship has been to the far side.
+   */
+  state: 'hidden' | 'locked' | 'committed' | 'crossed';
+  /** The engine's first failing clause while `locked`, else null. */
+  reason: CrossingRefusal | null;
+  /** Player-facing lock line with live numbers, or null when not `locked`. */
+  lockText: string | null;
+  /** What was signed over (flag `nemesis.crossing.stake.credits`), once paid. */
+  stakeCredits: number | null;
+  /** The day it was signed (flag `nemesis.crossing.stake.day`). */
+  stakeDay: number | null;
+  /** Decoded-set progress, straight off the engine quote. */
+  decoded: number;
+  decodedRequired: number;
+  /** The crossing jump's PILOT DC (content) — shown so the door names its price. */
+  dc: number;
+}
+
+/**
+ * T-1505b · The crossing pane's read. A pure client of the engine's
+ * `quoteCrossingStake` (the same ladder `commitCrossingStake` runs) plus the two
+ * stake-receipt flags — so the pane can never disagree with the resolver about
+ * WHY the door is shut, and the flags this task writes have a named reader.
+ *
+ * The `hidden` state is deliberate: a captain who has decoded nothing has no
+ * business being told about a black hole they have not heard of yet.
+ */
+export function crossingStatus(game: GameState): CrossingStatusView {
+  const quote = quoteCrossingStake(game);
+  const committed = game.flags['nemesis.crossing.unlocked'] === true;
+  const stakeCredits = game.flags['nemesis.crossing.stake.credits'];
+  const stakeDay = game.flags['nemesis.crossing.stake.day'];
+  const crossed =
+    game.player.currentSystemId === NEMESIS_SYSTEM_ID ||
+    game.player.charts.visitedSystemIds.includes(NEMESIS_SYSTEM_ID);
+
+  const base = {
+    reason: null as CrossingRefusal | null,
+    lockText: null as string | null,
+    stakeCredits: typeof stakeCredits === 'number' ? stakeCredits : null,
+    stakeDay: typeof stakeDay === 'number' ? stakeDay : null,
+    decoded: quote.decoded,
+    decodedRequired: quote.decodedRequired,
+    dc: NEMESIS_CROSSING_DC,
+  };
+
+  if (crossed) return { ...base, state: 'crossed' };
+  if (committed) return { ...base, state: 'committed' };
+  if (quote.decoded === 0) return { ...base, state: 'hidden' };
+  if (quote.ok) return { ...base, state: 'locked', lockText: null };
+
+  return {
+    ...base,
+    state: 'locked',
+    reason: quote.reason,
+    lockText: crossingLockText(quote.reason, quote),
+  };
+}
+
+/** The lock line with live numbers — same typed reasons as
+ *  {@link crossingRefusalText}, in the style of `storyletChoiceLock`'s switch. */
+function crossingLockText(
+  reason: CrossingRefusal | null,
+  quote: ReturnType<typeof quoteCrossingStake>,
+): string {
+  switch (reason) {
+    case 'not-conqueror':
+      return `Requires the rank of ${RENOWN_RANKS[CROSSING_REQUIRED_RANK].label}`;
+    case 'fragments-undecoded':
+      return `Decode the Signal — ${quote.decoded} of ${quote.decodedRequired}`;
+    case 'debt-outstanding':
+      return 'Clear every debt before you stake anything';
+    case 'insufficient-stake':
+      return `Need ${CROSSING_STAKE_MIN_CREDITS.toLocaleString()}cr on the table`;
+    case 'ship-cannot-carry-the-burn':
+      return `Carry the burn — ${quote.burnRequired.toLocaleString()} fuel`;
+    case 'already-committed':
+    case null:
+      return 'Ready';
+  }
 }
 
 // ---- T-311 onboarding & Tour One presentation ----------------------------
