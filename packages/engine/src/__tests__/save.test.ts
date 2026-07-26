@@ -9,7 +9,7 @@ import {
   type SaveEnvelope,
   type MigrationFn,
 } from '../save.js';
-import { FLAWS } from '@spacerquest/content';
+import { FLAWS, SIGNAL_FRAGMENTS } from '@spacerquest/content';
 import { validateGameState } from '../schema.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { advanceDay } from '../day.js';
@@ -596,5 +596,53 @@ describe('save envelope — v6 → v7 reputation migration (T-1503, the T-1002 n
     const state = drive50Days(44);
     (state.player.reputation as unknown as Record<string, unknown>).syndicate = 5;
     expect(() => loadSave(createSave(state, 74))).toThrow(SaveError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1505a · The twelve-fragment Nemesis file round-trips, including the two
+// source literals the arc only started producing in this task.
+//
+// NO MIGRATION AND NO VERSION BUMP is required, and that is the point of these
+// tests: T-1505a adds no GameState FIELD. `SignalFragmentRecordSchema` already
+// types `fragmentId: z.string()` (any authored id passes) and its source enum
+// already carries all five literals — 'sage' and 'npc' were simply never emitted
+// by content before. These assert the shipped schema really does carry the whole
+// arc through createSave → loadSave, so the "no migration needed" claim is
+// proven rather than asserted in prose (the T-1504c/d precedent).
+// ---------------------------------------------------------------------------
+describe('save envelope — the full Nemesis file round-trips with no migration (T-1505a)', () => {
+  it('all 12 fragments and all 5 source literals survive createSave → loadSave (deep-equal)', () => {
+    const state = drive50Days(51);
+    const ids = Object.keys(SIGNAL_FRAGMENTS);
+    expect(ids).toHaveLength(12);
+
+    // Every source literal appears at least once, 'sage' and 'npc' included.
+    const sources = ['derelict', 'beacon', 'wise-one', 'sage', 'npc'] as const;
+    state.player.nemesisFile = {
+      fragments: ids.map((fragmentId, i) => ({
+        fragmentId,
+        source: sources[i % sources.length],
+        day: i + 1,
+        decoded: i % 3 === 0,
+      })),
+    };
+    const usedSources = new Set(state.player.nemesisFile.fragments.map((f) => f.source));
+    for (const source of sources) expect(usedSources.has(source)).toBe(true);
+
+    const loaded = loadSave(createSave(state, 75));
+    expect(loaded.state.player.nemesisFile).toEqual(state.player.nemesisFile);
+    // The WHOLE state is deep-equal — nothing about the fuller file perturbed it.
+    expect(loaded.state).toEqual(state);
+    // No version bump was needed for any of it.
+    expect(CURRENT_SAVE_VERSION).toBe(7);
+  });
+
+  it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
+    const state = drive50Days(52);
+    (state.player.nemesisFile.fragments as unknown[]) = [
+      { fragmentId: 'frag-nemesis-09', source: 'courier', day: 4, decoded: false },
+    ];
+    expect(() => loadSave(createSave(state, 76))).toThrow(SaveError);
   });
 });

@@ -4468,4 +4468,414 @@ export const STORYLETS = defineStorylets([
       },
     ],
   },
+
+  // ==========================================================================
+  // T-1505a · Nemesis fragments & decode paths (appended last, per the batch
+  //   convention — the ORIGINAL 12 stay the leading content-order prefix the
+  //   engine test asserts).
+  //
+  //   PURPOSE: the career mystery's collectible layer. Fragments 06–12 join
+  //   01–05 (nemesis.ts), authored across THREE acquisition modes so the arc is
+  //   not a single funnel: derelict/beacon loot (06/07/08 — content-only, the
+  //   pools in nemesis.ts, no storylet needed), NPC-HELD pieces (09/10 — the two
+  //   storylets below), and the SAGE'S OWN ARCHIVE (11/12). Each of the seven new
+  //   fragments then gets its Sage decode path (`sage.mizar.decode-06..12`),
+  //   modelled byte-for-byte on the T-1310 `decode-02..05` block above.
+  //
+  //   FRAGMENT SOURCE: every granting choice here sets `fragmentSource`
+  //   EXPLICITLY. Engine `applyEffects` defaults it to 'wise-one', so an omission
+  //   would silently mislabel an NPC/Sage grant as a Polaris-1 purchase — and the
+  //   'sage' / 'npc' literals were dead until this task (see nemesis.ts).
+  //
+  //   CONSUMED STATE (Standing constraint 7): NO `signal.*` / `sage.*` / `npc.*`
+  //   receipt flags are authored here. The consumed state IS the fragment record:
+  //   `hasFragment` / `hasUndecodedFragment` (engine nemesis.ts) stop the grant
+  //   and decode storylets re-offering, and `nemesisLoreIndex` swaps raw signal
+  //   for decoded lore in the Nemesis File pane. The T-1310 block above documents
+  //   this reasoning in full; it is reused rather than restated.
+  //
+  //   ARC BOUNDARY: nothing here unlocks the crossing (T-1505b) or ends a career
+  //   (T-1505c) — no destination gate lift, no stake, no `nemesis.crossing.*`
+  //   flag. Fragment 12 is authored as the LAST THING BEFORE that door.
+  //
+  //   DIVERGENCE: foundation (f2f95fa9) has no Nemesis arc at all, so all of this
+  //   is authored divergence; the per-fragment acquisition-mode table lives at its
+  //   definition site in nemesis.ts.
+  // ==========================================================================
+
+  // --- MODE: NPC-HELD (1 of 2). Rust Bucket (Hoarder; "protects their stash") is
+  //     sitting on a piece of the arc and does not know what it is — PRD §8.1's
+  //     "found in derelicts" by way of the man who boards them. Fomalhaut-2
+  //     (system 7), a core port off the starting ring. The granting choice is
+  //     deliberately REQUIREMENT-FREE (he is glad to be rid of a plate that will
+  //     not sell): T-1505b/c need all twelve fragments obtainable by a possibly
+  //     broke captain in a scripted sim, so no credit/stat toll gates the grant. ---
+  {
+    id: 'npc.rust-bucket.scrap-sliver',
+    title: 'Rust Bucket Cannot Sell the Plate',
+    prose:
+      'Rust Bucket has a pile at Fomalhaut-2 and a grievance about one item in it: a sliver of hull plate, etched by hand, that three assayers have refused to price. "Etched," he keeps saying. "Not stamped. Etched. Who etches?" He would rather have the berth space than the argument.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [7],
+      npc: { id: 'npc-rust-bucket' },
+    },
+    choices: [
+      {
+        id: 'take-the-plate',
+        label: 'Take the plate off his hands',
+        prose:
+          'Tell him you will take it and let him keep the berth space. He hands it over glad, and never once asks why a captain wants a numbered scrap nobody will buy.',
+        effects: {
+          grantFragment: 'frag-nemesis-09',
+          fragmentSource: 'npc',
+          disposition: [{ npcId: 'npc-rust-bucket', delta: 1 }],
+        },
+      },
+      {
+        id: 'price-the-pile',
+        label: 'Price the rest of his pile instead',
+        prose:
+          'Walk the pile with him and put honest numbers on the parts that will actually move. He gets a day of sales; you get a hoarder who thinks of you kindly, and a plate you did not look at twice.',
+        effects: {
+          // A real body, not an inert one: the hoarder's standing is READ by the
+          // T-1204 disposition machinery (grudge weighting, bond hooks).
+          disposition: [{ npcId: 'npc-rust-bucket', delta: 2 }],
+        },
+      },
+      {
+        id: 'walk-the-pile-by',
+        label: 'Leave him to his pile',
+        prose:
+          'A man arguing with three assayers about one scrap is a man who will be here tomorrow. Walk on and let the plate stay where the void put it.',
+      },
+    ],
+  },
+
+  // --- MODE: NPC-HELD (2 of 2). Void Whisper (Bond: "Loyal to the Nemesis
+  //     Signal"; Flaw: Zealous) is the one member of the cast who knows exactly
+  //     what the Signal is — the fragment is not a shard she found but a psalm she
+  //     recites. Mira-9 (system 8), a DIFFERENT core port so the two NPC-held
+  //     pieces cannot both be swept in one docking. NO disposition or renown gate:
+  //     a zealot's whole complaint is that nobody will listen, so making her demand
+  //     standing first would be characterisation backwards — and low friction is
+  //     what keeps all twelve fragments obtainable for T-1505b/c. ---
+  {
+    id: 'npc.void-whisper.psalm-shard',
+    title: 'Void Whisper Will Recite It For Anyone',
+    prose:
+      'The Dark Psalm is berthed at Mira-9 with its ramp down and its pilot mid-recitation, and the concourse has learned to walk around her. Void Whisper has been singing the same eleven lines for years. Nobody has ever asked her what they mean, which is, she says, the whole trouble.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [8],
+      npc: { id: 'npc-void-whisper' },
+    },
+    choices: [
+      {
+        id: 'take-the-transcription',
+        label: 'Ask her what the words mean',
+        prose:
+          'Stop, and ask. She goes quiet for the first time in a long while, then recites it slowly enough for you to write down — the eleven lines, and the pauses, which she insists are part of it.',
+        effects: {
+          grantFragment: 'frag-nemesis-10',
+          fragmentSource: 'npc',
+          disposition: [{ npcId: 'npc-void-whisper', delta: 2 }],
+        },
+      },
+      {
+        id: 'argue-the-doctrine',
+        label: 'Tell her the Signal is only noise',
+        prose:
+          'Say the thing the concourse says, to her face: a carrier wave with a counter under it is a machine, not a voice. She does not raise her own — she just looks at you as though you have volunteered for something.',
+        effects: {
+          disposition: [{ npcId: 'npc-void-whisper', delta: -1 }],
+        },
+      },
+      {
+        id: 'walk-around-her',
+        label: 'Walk around her like everyone else',
+        prose:
+          'Take the long way to your berth. Whatever she is singing, it has waited years; it can wait for a captain with a hold to fill.',
+      },
+    ],
+  },
+
+  // --- MODE: SAGE ARCHIVE (1 of 2). PRD §7.2: "the Sage always talks when you
+  //     bring something NEW." `minFragments: 1` is that rule as a trigger — the
+  //     Sage trades their own withheld sliver for the simple fact that you are
+  //     carrying arc material at all. Mizar-9 (system 18), the arc's only decoder,
+  //     same gate the decode storylets use. ---
+  {
+    id: 'sage.mizar.archive',
+    title: "The Sage's Own Drawer",
+    prose:
+      'You put a piece of the Signal on the Sage\'s bench and, for the first time, they do not reach for it. They reach past it, to a drawer that has not been opened in your lifetime. "You brought me something new," they say, as though completing a sentence started forty years ago. "So I will do the same."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      // READER of the fragment count: this gate. Carrying ANY fragment is the
+      // whole price of admission — the Sage is paid in novelty, not credits.
+      nemesis: { minFragments: 1 },
+    },
+    choices: [
+      {
+        id: 'take-the-drawer-piece',
+        label: 'Take what the Sage has kept back',
+        prose:
+          'They set a sliver in your palm, uncatalogued, worn smooth at one edge from forty years of being turned over by the same thumb. "I never filed it," they say. "Filing it would have meant admitting what it is."',
+        effects: {
+          grantFragment: 'frag-nemesis-11',
+          fragmentSource: 'sage',
+        },
+      },
+      {
+        id: 'ask-why-now',
+        label: 'Ask why they kept it forty years',
+        prose:
+          'The drawer stays open and the sliver stays in it. The Sage tells you about a young cryptographer who sent a transmission into Nemesis on a dare and spent the rest of a career not thinking about it — and then closes the drawer, because that is as much as they can say today.',
+      },
+    ],
+  },
+
+  // --- MODE: SAGE ARCHIVE (2 of 2) — the terminal fragment. Closes the loop
+  //     fragment 04's decoded text opens ("it is missing its final line"). The
+  //     `minFragments: 6` threshold is INTERIM (T-1603 owns the number): it is set
+  //     to roughly half the twelve, so the last line arrives to a captain who has
+  //     genuinely worked the arc rather than stumbled into Mizar-9 once. CONSUMER
+  //     of fragment 12: T-1505b, the crossing — which is why NO crossing flag,
+  //     stake, destination unlock, or ending is authored here. ---
+  {
+    id: 'sage.mizar.final-line',
+    title: 'The Sage Finds the Last Line',
+    prose:
+      'The Sage has stopped treating your visits as visits. They have a wall now, and your fragments are on it, and there is one gap in the middle they keep touching. Today they are holding a strip cut from a larger sheet — one line of the Event-Horizon Ledger — and they have not put it down since you came through the door.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      // READER of the fragment count: this gate. INTERIM threshold (T-1603).
+      nemesis: { minFragments: 6 },
+    },
+    choices: [
+      {
+        id: 'take-the-final-line',
+        label: 'Take the last line of the ledger',
+        prose:
+          'They hand it over without ceremony, which is how you know what it costs them. The gap in the wall has a shape now, and the shape is a solution — whole, and no longer theoretical.',
+        effects: {
+          grantFragment: 'frag-nemesis-12',
+          fragmentSource: 'sage',
+        },
+      },
+      {
+        id: 'leave-the-gap',
+        label: 'Leave the gap in the wall',
+        prose:
+          'Tell the Sage to keep it a while longer. A ledger you cannot complete is a crossing you cannot be tempted by, and there is a run on the board with your name on it.',
+      },
+    ],
+  },
+
+  // --- DECODE PATHS for 06–12. Same shape as `sage.mizar.decode-02..05` above:
+  //     system-18-gated, `nemesis.hasUndecodedFragmentId` so each surfaces only
+  //     while its fragment is held and still raw, `repeat:'never'`, NOT era-gated
+  //     (the arc runs from Tour One into the veteran game). The lore each reveals
+  //     is that fragment's `decoded` text in nemesis.ts. "Keep the sliver for now"
+  //     is the required requirement-free decline and changes no state — the
+  //     fragment simply stays raw, which `hasUndecodedFragment` already tracks. ---
+  {
+    id: 'sage.mizar.decode-06',
+    title: 'The Sage Reads the Turnaround Log',
+    prose:
+      'A wreck\'s flight log, still cycling on a dead bus. The Sage runs the burn column twice and then a third time, mouth tightening. "Forty entries out," they say, "and one entry back. Look at what the one cost them."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-06' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'A crew that began the crossing and turned back, at three times the fuel it took to go. The log ends mid-word, in a hand that had stopped finishing sentences. It settles into your file, decoded.',
+        effects: {
+          decodeFragment: 'frag-nemesis-06',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Stop the playback before the last entry. A crew that turned back is a story with a moral in it, and you are not ready to be told one. The Sage lets it go.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-07',
+    title: 'The Sage Reopens Survey 11',
+    prose:
+      'A Confederation survey file, index page torn out, every page after it stamped WITHDRAWN in ink older than the paper. The Sage handles it the way you handle something that was meant to be burned.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-07' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'Survey 11 charted the approach and filed a recommendation. The Confederation withdrew the FILE, not the recommendation — someone read this, understood it, and buried it rather than warn the lanes. Decoded, it joins your file.',
+        effects: {
+          decodeFragment: 'frag-nemesis-07',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Close the folder. Knowing which office buried a warning is the kind of knowledge that gets a hull inspected at every core port. Later. The Sage does not argue.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-08',
+    title: 'The Sage Reads the Header Block',
+    prose:
+      'Beacon spill — the pre-Confederation carrier, cleaner than anyone has heard it, with a header block at the front that no one has ever bothered to read because no one expected the Signal to have one.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-08' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'An addressee, and a response code. The Signal is not a broadcast going out — it is a REPLY coming back. Something was answered, and the answer is still arriving. The Sage sits down before they finish saying it.',
+        effects: {
+          decodeFragment: 'frag-nemesis-08',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Kill the playback at the header. A reply implies a sender, and a sender implies a question, and you would rather not know today whose question it was.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-09',
+    title: 'The Sage Plots the Etched Corridor',
+    prose:
+      'The hull plate goes on the bench and the Sage reaches, unusually, for charts rather than screens. "Six-figure triplets," they murmur, ruling lines. "And one word. APPROACH. Someone wanted this to survive them."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-09' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'The triplets fix a corridor — the one line through the Nemesis gravity shear a hull can hold without coming apart. Etched by hand, in the dark, so it would outlive whatever happened to the ship. Decoded, it joins your file.',
+        effects: {
+          decodeFragment: 'frag-nemesis-09',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Take the plate back before the last line is ruled. A corridor is an invitation, and you have cargo to move. The Sage sets down the straightedge without comment.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-10',
+    title: 'The Sage Translates the Dark Psalm',
+    prose:
+      'Not a sliver this time but a transcription — eleven lines and their pauses, copied off a zealot nobody ever questioned. The Sage reads it once and asks you, quietly, whether she sang it or said it.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-10' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'It is a toll, phrased as a liturgy. The crossing does not ask for fuel or nerve — it asks the crosser to give up whatever would make them turn back. The psalm is very clear that everyone who reached the threshold found they had one.',
+        effects: {
+          decodeFragment: 'frag-nemesis-10',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Fold the transcription and put it away. A liturgy you have not translated is a liturgy that has not asked you for anything yet. The Sage nods, and does not press.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-11',
+    title: 'The Sage Reads Their Own Sliver',
+    prose:
+      'The drawer piece goes on the bench last, and the Sage will not put a hand near it. "You read it," they say. "I have known what it says for forty years. I have never once been able to hear it said."',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-11' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Read it out to the Sage',
+        prose:
+          'The returning voice is not calling the Confederation, or the lanes, or anyone living. It is ANSWERING the Sage — a transmission a young cryptographer sent into Nemesis on a dare, decades before the voice could have received it.',
+        effects: {
+          decodeFragment: 'frag-nemesis-11',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Put it back in their hand instead. Forty years of not hearing it said is a decision somebody made, and it is not yours to overturn on a docking day.',
+      },
+    ],
+  },
+  {
+    id: 'sage.mizar.decode-12',
+    title: 'The Sage Completes the Ledger',
+    prose:
+      'The strip goes into the gap in the wall and the Event-Horizon Ledger is a whole document for the first time since it was cut apart. The Sage reads the last line, and then reads it again, and then does not read it aloud.',
+    repeat: 'never',
+    trigger: {
+      systemIds: [18],
+      nemesis: { hasUndecodedFragmentId: 'frag-nemesis-12' },
+    },
+    choices: [
+      {
+        id: 'decode',
+        label: 'Let the Sage decode it',
+        prose:
+          'What a ship must CARRY across was already known. What it must SPEND at the threshold is the line the Sage will not say the unit of. The solution is complete. Nothing about it is theoretical any more.',
+        effects: {
+          decodeFragment: 'frag-nemesis-12',
+        },
+      },
+      {
+        id: 'withhold',
+        label: 'Keep the sliver for now',
+        prose:
+          'Take the strip back out of the gap. A complete solution is a thing a captain acts on, and the acting is not today. The Sage does not stop you, and does not look away from the wall either.',
+      },
+    ],
+  },
 ] as const);

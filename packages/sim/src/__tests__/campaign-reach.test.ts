@@ -597,7 +597,19 @@ describe('T-1204 disposition with teeth (unguided 300-day sim)', () => {
     // grudge but never the bond, which is exactly why the earlier hand-steered
     // version overstated "organic" play — T-1801 replaced that steering with the
     // unguided driver above rather than relabelling it; see the header comment.)
-    const CAMPAIGN_SEED = 3;
+    //
+    // T-1505a re-pin (seed 3 → 14), same mechanism one more time: the Nemesis
+    // fragment batch adds two systemIds-only NPC scenes at CORE ports
+    // (`npc.rust-bucket.scrap-sliver` at Fomalhaut-2/7, `npc.void-whisper.psalm-
+    // shard` at Mira-9/8), and `resolveOffered` plays EVERY offered card, so the
+    // unguided trajectory shifted again. Re-running the same sweep (seeds 1..45,
+    // 300-day horizon, this exact driver, in .scratch/): seeds 14, 23, 31, 33, 35,
+    // 37 and 42 land BOTH signals; every other seed fires the >= 5 grudge but never
+    // the bond, unchanged in character from before. Seed 14 is the first qualifier
+    // — bond intervention on day 64, peak |disposition| 6 on day 6. Pinned, not
+    // steered: only the seed changed; the loop body and both assertions are
+    // untouched.
+    const CAMPAIGN_SEED = 14;
     let state = createInitialState(CAMPAIGN_SEED);
     let sawBond = false;
     let peakDisposition = 0;

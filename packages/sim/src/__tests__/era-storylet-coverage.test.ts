@@ -63,11 +63,27 @@ import { emptySighting, runSeed, TIE_INS } from './support/era-sweep.js';
 // ONLY THE SEED SET AND HORIZON ARE PINNED. Both assertions below are unchanged
 //        from the pre-T-1504d version, and `TIE_INS` is still derived from
 //        `STORYLETS` rather than hand-listed.
+//
+// T-1505a RE-PIN (seeds [1,11] → [19,21]). MECHANISM: T-1505a authors two
+//        systemIds-only NPC fragment scenes at CORE ports
+//        (`npc.rust-bucket.scrap-sliver` at Fomalhaut-2/7,
+//        `npc.void-whisper.psalm-shard` at Mira-9/8). `runSeed`'s driver answers
+//        offered storylets and spends dawn dice, so a career docking at 7 or 8
+//        now plays an extra card and its whole trajectory — including WHICH era
+//        events the dusk scheduler rolls — shifts. Seeds 1 and 11 now each miss
+//        `patrol_crackdown` inside 200 days.
+// RE-SWEEP: seeds 1..40, horizon 200, this exact `runSeed` module, in .scratch/.
+//        Individually-total seeds are 19, 21, 28, 29 and 32 — the SAME set as the
+//        original sweep minus 1 and 11, so the era table's reachability profile is
+//        unchanged in character. Seeds 19 and 21 are pinned (the two cheapest),
+//        and each is individually total, so the union assertion has redundancy.
+// ONLY THE SEEDS MOVED. Neither assertion was widened, banded, or dropped, and
+//        the 200-day horizon is unchanged.
 // ==========================================================================
 // ---------------------------------------------------------------------------
 
 /** See SWEEP PROVENANCE above. Explicit and fixed — never a hunt range. */
-const PINNED_SEEDS = [1, 11] as const;
+const PINNED_SEEDS = [19, 21] as const;
 /** See SWEEP PROVENANCE above. Each pinned seed is individually total here. */
 const HORIZON = 200;
 

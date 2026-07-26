@@ -186,6 +186,25 @@ const T1504_STORYLET_IDS = [
   'era.fuel-crisis.dry-depot',
 ] as const;
 
+// T-1505a · Nemesis fragments & decode paths (appended last): the two NPC-held
+// fragment grants, the two Sage-archive grants, and a decode path for each of the
+// seven net-new fragments (06–12). The "every fragment has a decode path" guard is
+// derived from content in `nemesis.test.ts`; this list is the batch-membership
+// proof (the ids loaded and validated — defineStorylets throws otherwise).
+const T1505_STORYLET_IDS = [
+  'npc.rust-bucket.scrap-sliver',
+  'npc.void-whisper.psalm-shard',
+  'sage.mizar.archive',
+  'sage.mizar.final-line',
+  'sage.mizar.decode-06',
+  'sage.mizar.decode-07',
+  'sage.mizar.decode-08',
+  'sage.mizar.decode-09',
+  'sage.mizar.decode-10',
+  'sage.mizar.decode-11',
+  'sage.mizar.decode-12',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -228,6 +247,10 @@ describe('storylet content validation', () => {
     for (const id of T1504_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-1505a Nemesis fragment / decode-path batch loaded and validated.
+    for (const id of T1505_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
@@ -238,7 +261,8 @@ describe('storylet content validation', () => {
         T1501_STORYLET_IDS.length +
         T1502_STORYLET_IDS.length +
         T1503_STORYLET_IDS.length +
-        T1504_STORYLET_IDS.length,
+        T1504_STORYLET_IDS.length +
+        T1505_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);
