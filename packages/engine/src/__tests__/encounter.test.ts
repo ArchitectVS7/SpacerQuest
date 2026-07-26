@@ -729,12 +729,17 @@ describe('Encounter system', () => {
       expect.arrayContaining([
         expect.objectContaining({ type: 'CombatEvent', stance: 'fight', enemyHullRemaining: 1 }),
         // T-1202: same big-margin interceptor hit takes 2 condition, 9 -> 7.
-        // T-1205: the struck component is now a SEEDED pick (was the round-based
-        // rotation's 'drives'); under SeededRng(2) the pick lands on 'weapons'.
-        // Junker shields mitigate 0, so the damage is still the margin-scaled 2.
+        // T-1205: the struck component is a SEEDED pick (was the round-based
+        // rotation's 'drives'). T-1603c RE-PIN (rebalance fallout): the pick is now
+        // WEIGHTED (content HULL_DAMAGE_WEIGHT 4 : SYSTEM_DAMAGE_WEIGHT 1), so the
+        // SAME single `rng.next()` draw under SeededRng(2) — the stream is
+        // unchanged, only the interval it lands in — now maps to 'hull' instead of
+        // 'weapons'. Junker shields mitigate 0, so the damage is still the
+        // margin-scaled 2; the player and interceptor are both tier 1 here, so the
+        // T-1603c tier-gap bonus contributes 0 and this stays a clean 2.
         expect.objectContaining({
           type: 'ComponentDamaged',
-          component: 'weapons',
+          component: 'hull',
           newCondition: 7,
           mitigated: 0,
         }),

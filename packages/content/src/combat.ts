@@ -14,9 +14,113 @@ import { AnonymousInterceptorKind } from './cast.js';
  * free when the tank is short — no free volleys AND no free getaways. These are
  * engine-original tuning values; `foundation/rules/` has no run/fight fuel
  * constant to port (only `RESCUE_FUEL_COST`).
+ *
+ * CANONICAL (T-1603c, 2026-07-26, memo §10/§11): RATIFIED at 10 / 50. The
+ * line-item split of `combatCost` across the full 3,500-career Tour One arm shows
+ * exactly what these buy: FIGHT_FUEL_COST is the dominant cost of a PREPARED
+ * encounter (599 of 778 credits in the below/prepared cell) while tribute is the
+ * dominant cost of an UNPREPARED one. That is the shape the game wants — the two
+ * ways out of an interdiction cost different currencies — so the pair was
+ * ratified and the parity SHAPE of the bill was moved instead (see
+ * TRIBUTE_TIER_GAP_STEP below). Raising these would have widened every cell
+ * roughly equally and graded nothing. The 5:1 ratio is the load-bearing part:
+ * running is cheap and fighting is a commitment, which is what makes the stance a
+ * decision. Reader: engine combat.ts `resolveCombat`.
  */
 export const RUN_FUEL_COST = 10;
 export const FIGHT_FUEL_COST = 50;
+
+/**
+ * Enemy hit severity — the margin band that upgrades an ordinary hit, and the
+ * per-tier bonus an interceptor that OUTRANKS the player adds on top.
+ *
+ * T-1603c, memo §11/§12. Before this pass every rank-and-file interceptor bit
+ * exactly 1 condition a hit regardless of who it was hunting, so the parity axis
+ * of the balance table barely separated: below-parity encounters cost only 1.19x
+ * (Tour One) / 1.29x (veteran) what above-parity ones did, and preparation saved
+ * only 32% when outgunned against 62% when outranking — the gun helped you punish
+ * the weak more than it helped you survive the strong
+ * (`docs/balance/TUNING-T-1603.md` §6, Flag 3).
+ *
+ * WHAT THIS LEVER DOES, stated honestly after the fact. It is added to `raw`
+ * BEFORE `shieldMitigation` is subtracted, so:
+ *   - hull time-to-kill in below-parity fights roughly halves → combat can KILL
+ *     again, which is this constant's real job and the finding it closes;
+ *   - shields subtract from exactly that raw, so a refitted ship eats the extra
+ *     and an unprepared junker (mitigation 0) does not → the refit is felt where
+ *     it should be felt.
+ * What it does NOT do, and the plan for this task assumed it would: it does not
+ * meaningfully move combat's CREDIT cost. Repairs are ~1% of an encounter's bill
+ * across the measured fleet (see TRIBUTE_BASE_MULTIPLIER below), because sim
+ * policies almost never buy repairs — so doubling the damage doubles ~10 credits.
+ * The parity axis of the EV table is moved by TRIBUTE_TIER_GAP_STEP instead. Both
+ * levers are kept: this one makes combat dangerous, that one makes it expensive.
+ *
+ * MAGNITUDE — measured, not guessed. `chooseTargetTier` (engine travel.ts) bands
+ * the interceptor to [playerTier−1, playerTier+1], so in the `below` bucket the
+ * gap is ALWAYS exactly 1. This is therefore a x2 lever on the base hit, not an
+ * open-ended one. Both candidate values went through the same 105-run /
+ * 6,300-sim-day tuning cut (seeds 1..15 x the seven sweep policies x 60 days):
+ *   1 → below/above cost spread 1.47x, preparation saving when outgunned 53%;
+ *   2 → below/above cost spread 1.31x, preparation saving when outgunned 47%.
+ * 2 is WORSE on both counts, which is counter-intuitive enough to be worth
+ * recording: at raw 3 an ordinary below-parity hit already carries nat-20
+ * severity, so it saturates the MAX_SHIELD_MITIGATION cap of 2 and a refit can no
+ * longer buy back a proportional share of the hit — the lever stops discriminating
+ * exactly where it is supposed to discriminate hardest. 1 keeps a rank-and-file
+ * below-parity hit inside the band a tier-3 refit can meaningfully soften
+ * (mitigation 1 of raw 2).
+ *
+ * `BIG_HIT_MARGIN` was hard-coded in the engine (combat.ts) before this pass and
+ * is lifted here under standing constraint 4 (balance numbers are data). Held at
+ * 10: `margin = die + interceptorGUNS − (10 + playerGRIT)`, so it stays out of
+ * reach for the low-GUNS rank-and-file and only strong guns or a nat-20 land the
+ * deeper hit. Ratified rather than moved because the gap bonus now supplies the
+ * below-parity severity that a lower threshold would otherwise have had to.
+ *
+ * Reader: engine combat.ts `applyEnemyPressure`. Covered by
+ * `engine/__tests__/combat-property.test.ts`, `engine/__tests__/encounter.test.ts`
+ * and `sim/__tests__/balance-combat-survival.test.ts`.
+ */
+export const TIER_GAP_DAMAGE_BONUS = 1;
+export const BIG_HIT_MARGIN = 10;
+
+/**
+ * Tour One encounter damping — the realized encounter chance during the TOUR_ONE
+ * era is `routeDangerChance * TOUR_ONE_ENCOUNTER_MULTIPLIER`.
+ *
+ * T-1103 introduced it as INTERIM and named T-1603 as the owner of the canonical
+ * value; T-1603b handed it to T-1603c as combat pacing (`TUNING-T-1603.md` §7).
+ *
+ * CANONICAL (T-1603c, 2026-07-26, memo §12d): RATIFIED at 0.5, and moved from
+ * engine `travel.ts` into content because a balance number is data.
+ *
+ * The evidence for RATIFYING rather than moving it is indirect, and is stated that
+ * way rather than dressed up: the T-1603c levers already made a Tour One
+ * interdiction materially more dangerous AND more expensive at the SAME rate of
+ * interdictions, and that alone took the trader's Tour One debt-clear rate from
+ * 86.2% to 79.0% across the 3,500-career arm (median clear day 23 -> 24, still
+ * inside the T-1603b-guarded [22, 30]). This multiplier is the term that decides
+ * how MANY of those encounters a Tour One career sees, so raising it would
+ * compound a cost that has just gone up; no alternative value was swept, because
+ * the direction is not in doubt and a tuning pass tunes inside the previous pass's
+ * guard rails. It is the counterweight that keeps the guarded band intact.
+ *
+ * HONEST TENSION, recorded rather than fixed here: PRD-REIMAGINED §"Tour One"
+ * (line 73) authors the onboarding arc around exactly ONE full combat, while the
+ * measured Tour One arm sees ~5.2 encounters per 35-day career. 0.5 is already a
+ * compromise between the authored beat and foundation's 0.30/0.40 table; closing
+ * that gap properly is an encounter-authoring question (which jumps are supposed
+ * to be dangerous), not a multiplier.
+ *
+ * PRD-REIMAGINED wins over foundation numbers (standing constraint 5): foundation
+ * has no era-scaled encounter rate at all.
+ *
+ * Reader: engine travel.ts `generateEncounter`; the multiplier rides on
+ * `state.era`, which day.ts flips TOUR_ONE→VETERAN at the day-30 resolution. No
+ * new GameState field. Covered by `engine/__tests__/encounter.test.ts`.
+ */
+export const TOUR_ONE_ENCOUNTER_MULTIPLIER = 0.5;
 
 /**
  * Tribute escalates `TRIBUTE_BASE_MULTIPLIER` cr per round and caps at
@@ -30,6 +134,19 @@ export const FIGHT_FUEL_COST = 50;
  * values that exceed its own stated 10,000 maximum (foundation's own comment at
  * `foundation/rules/combat.ts` flags 12,000 > 10,000 as an inconsistency). The
  * engine keeps the cleaner monotonic-capped schedule.
+ *
+ * CANONICAL (T-1603c, 2026-07-26, memo §10/§11): both RATIFIED — and the
+ * measurement that ratified them is the one that reshaped this whole task.
+ * `tributeCredits` turns out to be ~95% of what an UNPREPARED encounter costs
+ * (1,011 of 1,061 credits in the below/unprepared cell of the 3,500-career Tour
+ * One arm, against 25 of fuel and 10 of repairs), because the sim fleet's
+ * unprepared spacers talk and pay rather than fight. So the base and the cap are
+ * not a minor line — they ARE the price of combat for most careers, and moving
+ * either would have moved every cell at once. What T-1603c moved instead is the
+ * PARITY SHAPE of that same demand (TRIBUTE_TIER_GAP_STEP below), which is the
+ * quantity the acceptance actually grades. Encounters still resolve in 2-4 rounds,
+ * so the round-10 ceiling is untouched. Reader: `tributeForRound` (engine
+ * combat.ts) → the UI's tribute preview (T-1402).
  */
 export const TRIBUTE_BASE_MULTIPLIER = 1000;
 export const TRIBUTE_MAX = 10_000;
@@ -51,6 +168,10 @@ export const TRIBUTE_MAX = 10_000;
  * (PIRATE / PATROL / RIM_PIRATE) and every named interceptor (which carries no
  * `kind`) take the unmodified schedule (×1).
  */
+/* CANONICAL (T-1603c, 2026-07-26, memo §10): RATIFIED unchanged. These are a
+ * FOUNDATION RESTORE keyed to interceptor CLASS, i.e. flavour with teeth, and the
+ * tuning pass moved the parity axis instead — class and parity are independent
+ * dials and moving both at once would have made neither gradeable. */
 export const TRIBUTE_CLASS_MULTIPLIER: Record<AnonymousInterceptorKind, number> = {
   BRIGAND: 0.5,
   REPTILOID: 2,
@@ -58,6 +179,66 @@ export const TRIBUTE_CLASS_MULTIPLIER: Record<AnonymousInterceptorKind, number> 
   PATROL: 1,
   RIM_PIRATE: 1,
 };
+
+/**
+ * Tribute tier-gap escalation — the extra fraction of the demand an interceptor
+ * adds for each TIER it outranks the player. T-1603c, memo §12.
+ *
+ * WHY THIS EXISTS, and why the T-1603c damage levers were not enough on their
+ * own. T-1603c's graded criterion is that combat is worst when the player is
+ * outgunned and unprepared. Splitting `combatCost` by line item across the whole
+ * 3,500-career Tour One arm showed where the money actually goes, and it is not
+ * where the plan assumed (memo §11):
+ *
+ *   cell        fuel   repair  tribute  → total
+ *   below/no      25       10     1011     1061
+ *   below/yes    599       44      118      778
+ *   above/no       3        4      883      902
+ *
+ * TRIBUTE IS ~95% OF AN UNPREPARED ENCOUNTER'S BILL AND REPAIRS ARE ~1%. The
+ * hull-weighting and tier-gap DAMAGE levers make combat lethal — which is what
+ * they were for, and they moved the death rate from zero — but they move the
+ * credit cost by about 1%, because sim policies almost never buy repairs. So the
+ * parity axis of the EV table is, in practice, a TRIBUTE axis, and moving it
+ * requires a tribute lever.
+ *
+ * WHY IT IS ALSO THE RIGHT RULE, not merely the effective one. An interceptor
+ * that outranks its mark knows it, and prices accordingly; the game already
+ * expresses exactly this idea through `TRIBUTE_CLASS_MULTIPLIER` (a Reptiloid
+ * doubles, a Brigand halves — a FOUNDATION RESTORE). This is that same idea keyed
+ * to the matchup instead of the species. It is deliberately ONE-SIDED — an
+ * interceptor the player OUTRANKS does not discount — because a discount would
+ * pay the player for being strong, and the fleet's wealth curve is already
+ * unbraked (`TUNING-T-1603.md` §6).
+ *
+ * MAGNITUDE — measured, not guessed. `chooseTargetTier` (engine travel.ts) bands
+ * the interceptor to [playerTier-1, playerTier+1], so the gap in the `below`
+ * bucket is always exactly 1 and this is a x1.75 lever, not an open-ended one.
+ * Three candidates were driven through the SAME 420-run / 14,700-sim-day tuning
+ * cut (seeds 1..60 x the seven sweep policies x 35 days), with the T-1603c damage
+ * levers already in place:
+ *
+ *   step   below/above unprepared cost ratio   preparation saving at `below`   trader clear rate
+ *   0.50   1.76x                               48.9%                           83%
+ *   0.75   2.03x                               54.7%                           75%
+ *   1.00   2.24x                               58.2%                           73%
+ *
+ * (The T-1603b before-column on the same measure: 1.19x and 32.0%; the graded
+ * targets are >= 1.4x and >= 50%.)
+ *
+ * 0.75 is the interior value: the SMALLEST step that clears BOTH graded targets.
+ * 0.50 leaves the preparation criterion a point and a half short, and 1.00 buys
+ * three more points of it for another eight points of the trader's Tour One clear
+ * rate — a bad trade, because a tuning pass tunes INSIDE the previous pass's guard
+ * rails. At 0.75 the T-1603b-guarded trader median debt-clear day is unmoved at 24,
+ * inside its [22, 30] band with room on both sides.
+ *
+ * Reader: engine combat.ts `tributeForRound` (via `resolveTalk`), and — as a
+ * CLIENT of that same function, never a reimplementation — the UI's
+ * `tributeThisRound` preview (format.ts), which forwards the same tier gap so the
+ * previewed demand is the demand the engine charges.
+ */
+export const TRIBUTE_TIER_GAP_STEP = 0.75;
 
 /**
  * The player's kill-pressure advantage on an enemy's post-kill retreat roll
@@ -80,5 +261,12 @@ export const TRIBUTE_CLASS_MULTIPLIER: Record<AnonymousInterceptorKind, number> 
  * kills read `defeated`; a strong-PILOT interceptor (e.g. a Reptiloid at PILOT 5)
  * still slips a lost fight on a genuinely strong roll, matching PRD §7.4's "a
  * strong roll or a nat-20 does".
+ *
+ * CANONICAL (T-1603c, 2026-07-26, memo §10): RATIFIED at 15. It governs how a WON
+ * fight ends, and every T-1603c criterion is about what a fight COSTS and whether
+ * it can kill the player — the two do not interact. Measured across both
+ * after-arms the win rate in the three PREPARED cells sits at 75-86% (Tour One)
+ * and 86-93% (veteran), so the edge is not quietly denying prepared players their
+ * wins.
  */
 export const RETREAT_KILL_EDGE = 15;

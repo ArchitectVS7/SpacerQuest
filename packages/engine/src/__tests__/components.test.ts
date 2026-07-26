@@ -141,6 +141,17 @@ describe('T-1205 · shields reader', () => {
     // A strong interceptor (GUNS 20) hits nearly every round; the player fails a
     // talk each round so enemy pressure lands. Total condition lost across the
     // ship is the measured quantity.
+    //
+    // T-1603c RE-PIN (rebalance fallout, mechanism named). This used to diff the
+    // ship's END STATE against a snapshot taken before the sweep. Under the
+    // T-1603c hull-damage weighting (content HULL_DAMAGE_WEIGHT) the junker's hull
+    // now reaches 0 INSIDE a 40-round sweep, `applySuccession` resets the ship to a
+    // fresh junker, and the end-state diff collapses to ~0 — the assertion was
+    // measuring the successor's ship, not the damage taken. It now folds the
+    // `ComponentDamaged.amount` the resolver actually emitted, which is a strictly
+    // MORE direct measurement of "total condition damage taken" and is immune to
+    // the succession reset. Nothing is widened: both bounds are unchanged and the
+    // A/B is still strict.
     const totalConditionLost = (shields: ComponentState): number => {
       let state = readyState();
       state.player.stats[Stat.TRADE] = 0; // talk always fails vs DC 11
@@ -152,7 +163,7 @@ describe('T-1205 · shields reader', () => {
           stats: { PILOT: 1, GUNS: 20, TRADE: 0, GRIT: 0, GUILE: 1 },
         },
       });
-      const before = JSON.parse(JSON.stringify(state.player.ship)) as ShipState;
+      let lost = 0;
       for (let round = 0; round < 40 && state.encounter; round += 1) {
         state.player.dawnHand = { dice: [2], spent: [false] }; // die 2 → talk fails
         const result = resolveCombat(
@@ -161,20 +172,9 @@ describe('T-1205 · shields reader', () => {
           new SeededRng(round + 1),
         );
         state = result.state;
-      }
-      const COMPONENTS = [
-        'hull',
-        'drives',
-        'weapons',
-        'shields',
-        'navigation',
-        'lifeSupport',
-        'robotics',
-        'cabin',
-      ] as const;
-      let lost = 0;
-      for (const id of COMPONENTS) {
-        lost += before[id].condition - state.player.ship[id].condition;
+        for (const event of result.events) {
+          if (event.type === 'ComponentDamaged') lost += event.amount;
+        }
       }
       return lost;
     };
@@ -476,6 +476,11 @@ describe('T-1206 · ARCH_ANGEL reader', () => {
     // A strong interceptor (GUNS 20) lands nearly every round; the player fails a
     // talk each round so enemy pressure lands. Junker shields both runs — the ONLY
     // variable is the Arch-Angel flag.
+    //
+    // T-1603c RE-PIN, same mechanism and same fix as the T-1205 shields A/B above:
+    // the hull-damage weighting makes the junker lose the ship inside the 40-round
+    // sweep, so the end-state diff measured the successor. Folds emitted
+    // `ComponentDamaged.amount` instead. Bounds unchanged.
     const totalConditionLost = (hasArchAngel: boolean): number => {
       let state = readyState();
       state.player.stats[Stat.TRADE] = 0; // talk always fails vs DC 11
@@ -487,7 +492,7 @@ describe('T-1206 · ARCH_ANGEL reader', () => {
           stats: { PILOT: 1, GUNS: 20, TRADE: 0, GRIT: 0, GUILE: 1 },
         },
       });
-      const before = JSON.parse(JSON.stringify(state.player.ship)) as ShipState;
+      let lost = 0;
       for (let round = 0; round < 40 && state.encounter; round += 1) {
         state.player.dawnHand = { dice: [2], spent: [false] }; // die 2 → talk fails
         const result = resolveCombat(
@@ -496,19 +501,10 @@ describe('T-1206 · ARCH_ANGEL reader', () => {
           new SeededRng(round + 1),
         );
         state = result.state;
+        for (const event of result.events) {
+          if (event.type === 'ComponentDamaged') lost += event.amount;
+        }
       }
-      const COMPONENTS = [
-        'hull',
-        'drives',
-        'weapons',
-        'shields',
-        'navigation',
-        'lifeSupport',
-        'robotics',
-        'cabin',
-      ] as const;
-      let lost = 0;
-      for (const id of COMPONENTS) lost += before[id].condition - state.player.ship[id].condition;
       return lost;
     };
     const withoutAngel = totalConditionLost(false);
@@ -546,30 +542,72 @@ describe('T-1206 · AUTO_REPAIR reader', () => {
     expect(runDusk(false)).toBe(5); // untouched
   });
 
-  it('a fitted Auto-Repair rescues critical life support from the dusk survival gate', () => {
-    // lifeSupport at 0 would face the GRIT survival roll; the module heals it 0→1
-    // first, so no LifeSupportCritical/ShipLost fires. Without the module the same
-    // setup rolls the gate and can emit LifeSupportCritical.
-    const withModule = createInitialState(3);
-    withModule.dayPhase = DayPhase.DAY;
-    withModule.player.dawnHand = { dice: [20], spent: [true] };
-    withModule.player.ship.hasAutoRepair = true;
-    withModule.player.ship.lifeSupport.condition = 0;
-    const rescued = endDay(withModule);
-    expect(rescued.state.player.ship.lifeSupport.condition).toBe(1);
-    expect(rescued.events.some((e) => e.type === 'LifeSupportCritical')).toBe(false);
-    expect(rescued.events.some((e) => e.type === 'ShipLost')).toBe(false);
-
-    // Same setup, no module: the survival gate is reached (LifeSupportCritical
-    // fires) across a seed sweep.
-    let sawGate = false;
-    for (let seed = 1; seed <= 50 && !sawGate; seed += 1) {
+  it('a fitted Auto-Repair no longer switches the life-support death path off', () => {
+    // T-1603c DESIGN CALL, RETUNED (day.ts `endDay`, and `docs/balance/
+    // TUNING-T-1603.md` §12). This test previously asserted the OPPOSITE contract
+    // — "a fitted Auto-Repair rescues critical life support from the dusk survival
+    // gate", `lifeSupport.condition === 1` with neither LifeSupportCritical nor
+    // ShipLost firing. That behaviour made the life-support succession path
+    // structurally UNREACHABLE for any ship carrying the module, which is 9 of 10
+    // deaths in the sweep's veteran arm. The regen block now runs AFTER the gate,
+    // so the module costs the spacer one GRIT save instead of nothing at all.
+    //
+    // THIS TEST IS THE READER-CONSUMES-IT PROOF for that call, over a deterministic
+    // seed scan (never a hunted single seed): with the module fitted and lifeSupport
+    // at 0 the gate MUST fire, and both of its branches must be reachable.
+    const runDusk = (seed: number, hasAutoRepair: boolean) => {
       const state = createInitialState(seed);
       state.dayPhase = DayPhase.DAY;
       state.player.dawnHand = { dice: [20], spent: [true] };
+      state.player.ship.hasAutoRepair = hasAutoRepair;
       state.player.ship.lifeSupport.condition = 0;
-      const { events } = endDay(state);
-      if (events.some((e) => e.type === 'LifeSupportCritical')) sawGate = true;
+      return endDay(state);
+    };
+
+    let survivedSeed = -1;
+    let failedSeed = -1;
+    for (let seed = 1; seed <= 50; seed += 1) {
+      const { events } = runDusk(seed, true);
+      const gate = events.find((e) => e.type === 'LifeSupportCritical');
+      // (a) THE GATE IS REACHED for every module-fitted ship, on every seed.
+      expect(gate, `seed ${seed}: the life-support gate was skipped`).toBeDefined();
+      if (gate?.type !== 'LifeSupportCritical') continue;
+      if (gate.survived && survivedSeed < 0) survivedSeed = seed;
+      if (!gate.survived && failedSeed < 0) failedSeed = seed;
+    }
+    // (b) BOTH branches are reachable with the module fitted — the module no longer
+    //     removes the failing branch from the game.
+    expect(survivedSeed, 'no seed survived the gate with the module fitted').toBeGreaterThan(0);
+    expect(failedSeed, 'no seed failed the gate with the module fitted').toBeGreaterThan(0);
+
+    // (c) On a SURVIVED roll the module still does its job — it repairs life
+    //     support 0→1 after the roll, so the spacer is not re-rolled at the next
+    //     dusk. That is the module's remaining, real benefit.
+    const survived = runDusk(survivedSeed, true);
+    expect(survived.state.player.ship.lifeSupport.condition).toBe(1);
+    expect(survived.events.some((e) => e.type === 'ShipLost')).toBe(false);
+    // The same seed without the module survives too and stays at 0 — isolating the
+    // repair as the ONLY difference the module makes on a survived roll.
+    const survivedBare = runDusk(survivedSeed, false);
+    expect(survivedBare.state.player.ship.lifeSupport.condition).toBe(0);
+
+    // (d) On a FAILED roll the ship is lost and succession runs. `applySuccession`
+    //     has already reset the ship to a fresh junker by the time the regen block
+    //     is reached, so the block no-ops on the successor rather than handing them
+    //     a free repair — asserted here instead of defended with a guard in day.ts.
+    const failed = runDusk(failedSeed, true);
+    const lost = failed.events.find((e) => e.type === 'ShipLost');
+    expect(lost?.type === 'ShipLost' && lost.reason).toBe('life-support-failure');
+    expect(failed.events.some((e) => e.type === 'LegacySuccession')).toBe(true);
+    expect(failed.state.player.ship.hasAutoRepair).toBe(false);
+    expect(failed.state.player.ship.lifeSupport.condition).toBe(9);
+
+    // (e) THE CONTROL, kept from the original test: without the module the gate is
+    //     reached too. It was the only half of the old assertion that survives the
+    //     retune, and it still proves the gate is not gated on the module.
+    let sawGate = false;
+    for (let seed = 1; seed <= 50 && !sawGate; seed += 1) {
+      if (runDusk(seed, false).events.some((e) => e.type === 'LifeSupportCritical')) sawGate = true;
     }
     expect(sawGate).toBe(true);
   });

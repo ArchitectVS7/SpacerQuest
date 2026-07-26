@@ -2,6 +2,7 @@ import {
   ANONYMOUS_INTERCEPTORS,
   AnonymousInterceptorKind,
   CLOAK_ENCOUNTER_MULTIPLIER,
+  TOUR_ONE_ENCOUNTER_MULTIPLIER,
   COLLECTION_ENCOUNTER_MULTIPLIER,
   CROSSING_WIRE,
   INTERCEPT_FRIEND_WEIGHT,
@@ -331,13 +332,15 @@ export function selectEncounterInterceptor(
 // standing constraint is that PRD wins over foundation numbers — so foundation's
 // full 0.30/0.40 encounter chance is the VETERAN-game rate, damped during the
 // TOUR_ONE era so a fresh spacer racing the day-30 marker isn't interdicted on
-// every loaded run. This is an era divergence beyond the route-danger scaling
-// (constraint 5): it is INTERIM at 0.5× — enough to keep the authored Tour One
-// combats firing (the combat/onboarding fixtures) while restoring a competent
-// trader's debt-clear rate — and T-1603 owns the canonical Tour One target.
-// READER: the reader is this function; the multiplier rides on state.era, which
-// day.ts flips TOUR_ONE→VETERAN at the day-30 resolution. No new GameState field.
-const TOUR_ONE_ENCOUNTER_MULTIPLIER = 0.5;
+// every loaded run.
+//
+// T-1603c discharged the T-1103 INTERIM marker: the constant MOVED to
+// `@spacerquest/content` (`content/src/combat.ts` TOUR_ONE_ENCOUNTER_MULTIPLIER)
+// because balance numbers are data, and was RATIFIED at 0.5 with its evidence,
+// its date and its honest tension recorded at that definition site and in
+// `docs/balance/TUNING-T-1603.md` §12. THIS FUNCTION remains the named reader;
+// the multiplier rides on state.era, which day.ts flips TOUR_ONE→VETERAN at the
+// day-30 resolution. No new GameState field.
 
 export function generateEncounter(
   state: GameState,

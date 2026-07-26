@@ -2317,6 +2317,55 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     }
   }
 
+  // ---- T-1603c · STRANDED RECOVERY: refit the drives when nothing else is legal
+  // The drives block at the top of this policy gates the tier-3 refit on
+  // SMUGGLER_RESERVE / 2 so it never spends the last credits at the yard. That
+  // gate is right on a working day and WRONG on a stranded one, for the reason the
+  // block's own comment already states: the tier-3 drive costs ~0 net because the
+  // strength-10 trade-in covers the sticker. Measured at the rim port the strand
+  // happens at (seed 2, day 56): `quoteShipyard` returns cost **0** and the policy
+  // refuses it over a 1,500-credit floor it will never reach again.
+  //
+  // WHY THIS ONLY SURFACED NOW. The corner is entered by SUCCESSION — the
+  // successor's license is claimed where the wreck was towed in (engine legacy.ts
+  // `applySuccession`), which for this policy is a rim port, and the successor
+  // flies a fresh junker. On junker drives every leg off that rim port costs
+  // `21 - 10 + 1 = 12` fuel per unit of distance, so `net = payment - fuel*price`
+  // is negative on the whole board, `reachable` comes back empty, and the day
+  // plans nothing. Before T-1603c a combat death was arithmetically unreachable
+  // (one defeat in 34,000+ encounters, `docs/balance/BASELINE-T-1603a.md` §4), so
+  // no seed in this sweep ever entered it; the T-1603c targeting levers make hull
+  // kills real, and seed 2 idled 66 consecutive days against the invariant's bar
+  // of 5.
+  //
+  // Deliberately narrow, so no working day changes: it fires ONLY when the day has
+  // produced no income action at all, and ONLY when the yard quote is actually
+  // covered by the purse. At strength 30 the same leg costs 1 fuel per unit, which
+  // is what puts the board back inside `net > 0` and ends the strand. This is a
+  // POLICY fix, not a game-data change — the instrument was refusing a free
+  // upgrade, not the game withholding one.
+  if (!actions.some(isIncomeAction) && ship.drives.strength < 30) {
+    const refitQuote = quoteShipyard(state, {
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'drives',
+      tier: 3,
+      spendDie: 0,
+    });
+    if (refitQuote.ok && refitQuote.cost <= state.player.credits + borrowed - repaid - refuelCost) {
+      const die = ledger.takeWorst();
+      if (die !== undefined) {
+        actions.push({
+          type: 'Shipyard',
+          action: 'buy-component-tier',
+          component: 'drives',
+          tier: 3,
+          spendDie: die,
+        });
+      }
+    }
+  }
+
   // Off-lane sweeps with whatever sharp dice remain, while solvent and fuelled:
   // this is the POD supply line (Explore loot arms `signal.contraband.pending`,
   // which is what offers `derelict.sealed-pod` at the next dawn). Explore is an

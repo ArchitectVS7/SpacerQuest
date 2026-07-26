@@ -25,15 +25,22 @@ import {
 // (`bootDay30`) use.
 //
 // WHY NOT PLAY IT FROM DAY 1 (as `tour-one-career.spec.ts` does)? Because a
-// from-scratch death is not reachable inside any sane Playwright budget:
-//   * enemy fire removes 1 condition per landed hit (2 at margin >= 10, 3 on a
-//     nat-20) from a UNIFORM seeded pick over 8 components (`combat.ts`
-//     `damageComponentForHit`), so only ~1 hit in 8 touches the hull at all;
-//   * a fresh hull sits at condition 9, i.e. ~9 hull-targeted hits ~= ~72 landed
-//     enemy hits ~= well over a hundred combat rounds, against a day that yields
-//     at most ~6 (five dawn dice plus the dusk free attack);
-//   * the sim fleet's measured death rate across the whole campaign suite is
-//     currently ZERO — the very finding T-1603c exists to move.
+// from-scratch death is still not reachable inside any sane Playwright budget,
+// though it is now MUCH closer than when this spec was written. Updated after
+// T-1603c (combat & survival tuning), which this spec named as its fallout owner:
+//   * enemy fire removes `(nat20 ? 3 : bigMargin ? 2 : 1) + 1 per tier the
+//     interceptor OUTRANKS the player` (content `TIER_GAP_DAMAGE_BONUS`), against
+//     a WEIGHTED seeded pick that now aims at the hull 4 times out of 11 rather
+//     than the old uniform 1 in 8 (content `HULL_DAMAGE_WEIGHT`, engine
+//     `combat.ts` `damageComponentForHit`);
+//   * a fresh hull still sits at condition 9, so a kill is roughly 7 hull-targeted
+//     hits ~= ~19 landed enemy hits — down from the ~72 this comment used to
+//     record, but still several days of fighting against a day that yields at most
+//     ~6 rounds (five dawn dice plus the dusk free attack);
+//   * the sim fleet's measured death rate is no longer zero — T-1603c closed that
+//     finding (`docs/balance/TUNING-T-1603.md` §11) — but at ~1.7 deaths per 1,000
+//     sim days a from-scratch career is nowhere near a deterministic death inside
+//     a browser test.
 // The scenario therefore hands the player a hull already on its last point. The
 // dice that take it, and every decision that walks into them, are real.
 //
@@ -76,15 +83,30 @@ import {
 //           survival roll on the same fixture; 3 is simply the first that also
 //           keeps the day-12 wire short enough to read without scrolling.
 //
+// T-1603c RE-HUNT (2026-07-26): the hunt above was RE-RUN, not assumed, because
+// this task moved enemy damage and the component spread and this spec names
+// T-1603c as its fallout owner. Same 200 seeds, same decision rules, same
+// harness (`.scratch/hunt-t1602b.ts`):
+//   interceptions on the pinned jump: 52 of 200 — UNCHANGED (matchmaking did not
+//           move; `player.tier` is untouched by this task).
+//   hull-kill deaths within 6 FIGHT rounds: 13 -> 21 of 200. The spec got EASIER
+//           to pin, which is exactly what the hull weighting is for.
+//   BOTH PINS SURVIVE UNMOVED. Seed 192 still dies on the SECOND fight round, to
+//           the same Lucky Seven, on the same Arcturus-6 run, with the same 108
+//           fuel after the jump. Seed 3 still fails the dusk GRIT save. No
+//           assertion below was touched, and no seed was re-anchored — a re-pin
+//           was prepared for and turned out not to be needed.
+//
 // THE PIN DEPENDS ON THE ACTION ORDER BYTE FOR BYTE. Adding, removing or
 // reordering any rng-perturbing click (sign · buy fuel · confirm jump · a combat
 // stance · end day) invalidates it. Re-hunt the seed; do NOT patch an assertion
 // down to meet a moved outcome.
 //
-// FALLOUT OWNER: T-1603c (combat & survival tuning) owns the re-pin if it moves
+// FALLOUT OWNER: T-1603c (combat & survival tuning) owned the re-pin if it moved
 // enemy damage, the component spread, hull condition, the life-support survival
 // DC, or the Auto-Repair interaction — under the rebalance-fallout rule, in the
-// same commit that moves them.
+// same commit that moved them. It moved the first two and the last; see the
+// re-hunt above. Ownership now passes to whatever task next moves those rules.
 // ---------------------------------------------------------------------------
 
 const DEATH_SEED = 192;

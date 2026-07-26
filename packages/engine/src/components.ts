@@ -107,11 +107,19 @@ export function weaponVolleyDamage(ship: ShipState): number {
  *
  * Junker shields (score 1) mitigate 0 — the old enemy-damage math is unchanged.
  * Upgraded shields absorb more (tier-3 → 1, tier-5 → 2), so upgraded shields
- * reduce damage taken. HARD-CAPPED at 2, one below the nat-20 raw damage (3) that
- * `applyEnemyPressure` deals: a lucky nat-20 therefore ALWAYS penetrates the
- * strongest shields for at least 1, preserving foundation's "lucky shots bypass
- * shields" and guaranteeing the hull can still be killed no matter how strong the
- * shields (the T-1205 "hull damageable on any round" invariant survives upgrades).
+ * reduce damage taken. HARD-CAPPED at 2.
+ *
+ * THE HULL-KILLABLE INVARIANT, re-derived for T-1603c. `applyEnemyPressure` now
+ * deals `raw = (nat20 ? 3 : margin >= BIG_HIT_MARGIN ? 2 : 1) +
+ * TIER_GAP_DAMAGE_BONUS * tierGap`, so the MINIMUM raw a nat-20 can carry is 3
+ * (gap 0) and it rises with the gap. MAX_SHIELD_MITIGATION = 2 must stay STRICTLY
+ * below that minimum: at 2 a nat-20 always penetrates the strongest shields for at
+ * least 1, preserving foundation's "lucky shots bypass shields" and guaranteeing
+ * the hull can still be killed no matter how strong the shields (the T-1205 "hull
+ * damageable on any round" invariant survives upgrades). The tier-gap bonus only
+ * ever ADDS to raw, so it widens the headroom rather than eroding it — but the
+ * invariant is derived from the nat-20 floor of 3, not from "raw 3", because raw
+ * is no longer a single value. Pinned by `components.test.ts`.
  *
  * T-1206: a fitted ARCH_ANGEL raises the mitigation to at least
  * ARCH_ANGEL_MITIGATION_FLOOR — the top-tier shield guarantees a floor of absorb

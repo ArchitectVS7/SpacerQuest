@@ -6,7 +6,12 @@ import {
   TRIBUTE_BASE_MULTIPLIER,
   TRIBUTE_MAX,
   TRIBUTE_CLASS_MULTIPLIER,
+  TRIBUTE_TIER_GAP_STEP,
   RETREAT_KILL_EDGE,
+  TIER_GAP_DAMAGE_BONUS,
+  BIG_HIT_MARGIN,
+  HULL_DAMAGE_WEIGHT,
+  SYSTEM_DAMAGE_WEIGHT,
   DISPOSITION_DELTAS,
   TALK_DC_PER_DISPOSITION,
   AnonymousInterceptorKind,
@@ -53,11 +58,26 @@ const DAMAGE_COMPONENTS: readonly ShipComponentId[] = [
  * ~L521 — which ignores the class modifier and can therefore preview a Brigand /
  * Reptiloid tribute the engine never charges) with a call to THIS function, so the
  * previewed demand matches the `TributeDemanded`/`TributePaid` the engine emits.
+ *
+ * T-1603c adds `tierGap` — how many TIERS the interceptor outranks the player by
+ * (negative or zero when the player outranks, which costs nothing extra). An
+ * interceptor holding the stronger hand prices accordingly:
+ * `TRIBUTE_TIER_GAP_STEP` (content) per tier of gap, applied alongside the class
+ * modifier and re-capped at TRIBUTE_MAX. See the constant's own comment for the
+ * measurement that motivated it — tribute is ~95% of an unprepared encounter's
+ * credit cost, so this is the lever that actually moves the parity axis of the
+ * balance table. Defaults to 0 so every existing caller keeps its exact schedule.
+ * Consumes no rng.
  */
-export function tributeForRound(round: number, kind?: AnonymousInterceptorKind): number {
+export function tributeForRound(
+  round: number,
+  kind?: AnonymousInterceptorKind,
+  tierGap = 0,
+): number {
   const base = Math.min(round * TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX);
   const mult = kind ? TRIBUTE_CLASS_MULTIPLIER[kind] : 1;
-  return Math.min(TRIBUTE_MAX, Math.floor(base * mult));
+  const gapMult = 1 + TRIBUTE_TIER_GAP_STEP * Math.max(0, tierGap);
+  return Math.min(TRIBUTE_MAX, Math.floor(base * mult * gapMult));
 }
 
 function enemyRefusesTribute(
@@ -97,10 +117,36 @@ function enemyRefusesTribute(
  * without threading cascade state through the encounter. The draw is taken ONLY on
  * a successful hit (after the d20 check) so the miss stream — and every existing
  * golden that turns on a missed pressure roll — is byte-identical.
+ *
+ * T-1603c: the pick is now WEIGHTED, not uniform (content `HULL_DAMAGE_WEIGHT` /
+ * `SYSTEM_DAMAGE_WEIGHT`). FOUNDATION DIVERGENCE, third revision, stated in full:
+ * foundation (f2f95fa9) resolved enemy vandalism against a fixed cascade
+ * (shields→cabin→nav→…→hull); T-1205 flattened that to a uniform 1-in-8; T-1603c
+ * re-weights the hull because the uniform pick made the killing blow
+ * arithmetically unreachable — 9 hull condition at 1 per ordinary hit is ~72
+ * landed hits against 2–4-round encounters, and the sweep measured ONE combat
+ * defeat in 34,000+ encounters (`docs/balance/BASELINE-T-1603a.md` §4). The
+ * weighting is a middle position between foundation's cascade and T-1205's flat
+ * pick: every component including life support stays reachable on any round, but
+ * the hull is struck 30% of the time rather than 12.5%.
+ *
+ * RNG-STREAM-PRESERVING: exactly ONE `rng.next()` is consumed, as before, in the
+ * same position in the stream. Only the VALUE the draw maps to moves — which is
+ * what confines this task's golden fallout to damaged-component payloads and
+ * leaves every session `rngState` untouched.
+ *
+ * READER: `applyEnemyPressure` (below). Covered by `combat-property.test.ts`
+ * (weight distribution + rounds-to-kill) and `encounter.test.ts`.
  */
 function damageComponentForHit(rng: SeededRng): ShipComponentId {
-  const index = Math.floor(rng.next() * DAMAGE_COMPONENTS.length);
-  return DAMAGE_COMPONENTS[index] ?? 'hull';
+  const total =
+    HULL_DAMAGE_WEIGHT + SYSTEM_DAMAGE_WEIGHT * Math.max(0, DAMAGE_COMPONENTS.length - 1);
+  let roll = rng.next() * total;
+  for (const id of DAMAGE_COMPONENTS) {
+    roll -= id === 'hull' ? HULL_DAMAGE_WEIGHT : SYSTEM_DAMAGE_WEIGHT;
+    if (roll < 0) return id;
+  }
+  return 'hull';
 }
 
 function resolveEncounter(
@@ -228,11 +274,23 @@ function applyEnemyPressure(
     // hit bites deeper. A natural 20 removes 3 condition, a big-margin (>=10) hit
     // 2, an ordinary hit the base 1. FOUNDATION DIVERGENCE — foundation (f2f95fa9)
     // resolved enemy damage as a flat vandalism roll with no d20 margin; the
-    // margin scaling is new. The >=10 threshold is deliberately out of reach for
-    // the low-GUNS rank-and-file (margin = die + interceptorGUNS - (10+playerGRIT)),
-    // so ordinary interceptors still chip 1/round; only strong guns or a nat-20
-    // land the deeper hit.
-    const raw = result.nat20 ? 3 : result.margin >= 10 ? 2 : 1;
+    // margin scaling is new. The BIG_HIT_MARGIN threshold (content, lifted out of
+    // this file by T-1603c) is deliberately out of reach for the low-GUNS
+    // rank-and-file (margin = die + interceptorGUNS - (10+playerGRIT)), so
+    // ordinary interceptors still chip the base amount; only strong guns or a
+    // nat-20 land the deeper hit.
+    //
+    // T-1603c TIER-GAP SEVERITY: an interceptor that OUTRANKS the player adds
+    // TIER_GAP_DAMAGE_BONUS per tier of gap. `chooseTargetTier` (travel.ts) bands
+    // the interceptor to [playerTier-1, playerTier+1], so this is +1 in the
+    // `below`-parity bucket and 0 otherwise — a x2 lever on the base hit, not an
+    // open-ended one. It is added BEFORE mitigation is subtracted on purpose: the
+    // extra is exactly what upgraded shields eat, so preparation pays off most
+    // when the player is outgunned (memo §11, Flag 3). Consumes NO rng.
+    const tierGap = Math.max(0, encounter.interceptor.tier - state.player.tier);
+    const raw =
+      (result.nat20 ? 3 : result.margin >= BIG_HIT_MARGIN ? 2 : 1) +
+      TIER_GAP_DAMAGE_BONUS * tierGap;
     // T-1205 shields → mitigation: the player's shields absorb condition off the
     // incoming hit. A junker (shields score 1) mitigates 0, so the raw damage is
     // unchanged; upgraded shields subtract more, capped by the raw hit so a nat-20
@@ -608,9 +666,16 @@ function resolveTalk(
 ): { state: GameState; events: GameEvent[] } {
   const round = encounter.round;
   // T-1207: the demand is class-scaled (Brigand ÷2, Reptiloid ×2). Anonymous
-  // interceptors carry `kind`; named ones do not (→ ×1). The margin discount
-  // (below) still applies on top; TributeDemanded.amount reports this scaled demand.
-  const amount = tributeForRound(round, encounter.interceptor.kind);
+  // interceptors carry `kind`; named ones do not (→ ×1). T-1603c: it is ALSO
+  // scaled by how many tiers the interceptor outranks the player
+  // (TRIBUTE_TIER_GAP_STEP, content) — an interceptor holding the stronger hand
+  // prices accordingly. The margin discount (below) still applies on top;
+  // TributeDemanded.amount reports this fully scaled demand.
+  const amount = tributeForRound(
+    round,
+    encounter.interceptor.kind,
+    encounter.interceptor.tier - state.player.tier,
+  );
 
   // T-1204 (PRD §6 "they remember"; the unbuilt v0.1 T-104 "this is personal"
   // Rattlesnake beat): the tribute/talk DC gains a relationship term. A named

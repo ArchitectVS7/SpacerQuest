@@ -296,10 +296,39 @@ export function runDayLoopGolden(
 //      the only scripts that moved are the ones whose rank actually changed.
 // No day-loop rule, rng draw order or ordering guarantee was altered. Regenerated
 // via gen-day-loop-golden.ts.
+//
+// T-1603c re-derivation (again the TWO DAY-LOOP hashes only; both STORYLET hashes
+// are BYTE-IDENTICAL and were not touched — the seed-555 script fights nobody).
+// CAUSE: the two combat-tuning levers in `docs/balance/TUNING-T-1603.md` §10 —
+// the WEIGHTED enemy-fire target pick (content HULL_DAMAGE_WEIGHT 4 :
+// SYSTEM_DAMAGE_WEIGHT 1) and the TIER_GAP_DAMAGE_BONUS.
+//
+// WHAT ACTUALLY MOVED, verified by dumping and diffing the two event streams
+// rather than trusting the hash. The seed-1 script's stream is 945 events BEFORE
+// and 945 events AFTER — same length, same order, same types — and the entire
+// diff is FIVE lines in FOUR places, all inside the day-4 brigand interdiction
+// `enc-4-4-2-4-anon-brigand-4`:
+//   1-3. Three `ComponentDamaged` events move `amount` 1 -> 2 (condition 9 -> 7
+//        instead of 9 -> 8). The brigand outranks the captain by one tier, so
+//        TIER_GAP_DAMAGE_BONUS adds 1 to the raw hit; junker shields mitigate 0,
+//        so all of it lands. This is the lever doing precisely what it is for.
+//   4.   One `ComponentDamaged.component` moves 'drives' -> 'weapons': the SAME
+//        single `rng.next()` draw, in the SAME position in the stream, now lands
+//        in a different interval of the weighted table.
+//   5.   One NPC `ContractClaimed.payment` (and its echoing NpcAction prose) moves
+//        1370 -> 1350. This is a genuine DOWNSTREAM consequence, not drift:
+//        `contractSpecFromShip` (engine economy.ts) feeds the player's DRIVES
+//        condition into `jumpFuelCost`, and the manifest payment carries a
+//        `fuelRequired * 5` term. With the hit landing on weapons instead of
+//        drives the captain's drives stay at 9, the run needs less fuel, and the
+//        board prices it 20 credits lower.
+// NO rng draw was added, removed or reordered: `damageComponentForHit` still takes
+// exactly one `rng.next()` and the tier-gap bonus takes none. Regenerated via
+// gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '38033104e65476525e5b7b0bbc638ad0dd08ee82b76f276fa300a0b22ba315cf';
+  'a21bc70cf9ea020e64542c9eb8e1a4c6edae590e90f19843a2925e8fbb4c41e7';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'b1673649238b3ba9f502720cb93ffa1f22e95a6e53659f04317e7c76eae84bf1';
+  '727581969356397d6cfbfc435c85fa67b8b2664453f77b212673e20b40b31daa';
 export const STORYLET_GOLDEN_STATE_HASH =
   '3a169effd0a4f486429e49325ca4d92ac7c1ed41538383be50a5856b24b6a470';
 export const STORYLET_GOLDEN_EVENTS_HASH =

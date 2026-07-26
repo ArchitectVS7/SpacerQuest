@@ -895,9 +895,19 @@ export function combatFuelStatus(game: GameState): CombatFuelStatus {
  * preview a tribute the engine never charges. Named interceptors pass `undefined`
  * (the unmodified ×1 schedule). The amount actually charged always comes from the
  * engine's `TributeDemanded`/`TributePaid` events, never from this number.
+ *
+ * T-1603c adds `tierGap` for exactly the same reason the class modifier was
+ * forwarded in T-1402: the engine now scales the demand by how many tiers the
+ * interceptor outranks the player (content `TRIBUTE_TIER_GAP_STEP`), so a preview
+ * that ignored it would quote a number the engine never charges. The UI stays a
+ * CLIENT of the engine rule — this function still owns no arithmetic of its own.
  */
-export function tributeThisRound(round: number, kind?: AnonymousInterceptorKind): number {
-  return tributeForRound(round, kind);
+export function tributeThisRound(
+  round: number,
+  kind?: AnonymousInterceptorKind,
+  tierGap = 0,
+): number {
+  return tributeForRound(round, kind, tierGap);
 }
 
 export interface CombatAftermath {

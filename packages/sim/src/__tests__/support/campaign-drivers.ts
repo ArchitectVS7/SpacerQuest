@@ -52,6 +52,18 @@ export function driveCompetentCampaign(policy: SimPolicy, seed: number, days: nu
     let dayState = dawn.state;
     const actions = policy({ state: dayState, dayIndex, rng });
     for (const action of actions) {
+      // T-1603c: mirror the mid-batch-death guard `runCampaign` has carried since
+      // T-1205 (`packages/sim/src/index.ts`, "a queued Combat can now be orphaned
+      // mid-batch"). Enemy damage can drive the player's hull to 0 and end the
+      // encounter by succession BEFORE the rest of a queued volley is applied, and
+      // `resolveCombat` throws on a Combat with no active encounter — a real UGT
+      // client re-reads legal actions between steps and would never send it. This
+      // driver was written when a hull kill was arithmetically unreachable (one
+      // combat defeat in 34,000+ encounters, `docs/balance/BASELINE-T-1603a.md`
+      // §4), so the omission never surfaced; the T-1603c targeting levers make hull
+      // kills real and it does. Bringing the two drivers back into agreement is the
+      // fix — nothing about any spec's seeds, horizons or assertions moves.
+      if (action.type === 'Combat' && !dayState.encounter) continue;
       dayState = applyPlayerAction(dayState, action).state;
     }
     state = endDay(dayState).state;

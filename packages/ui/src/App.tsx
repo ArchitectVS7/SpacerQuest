@@ -849,7 +849,16 @@ function CombatInstrument({ state }: { state: CockpitState }) {
   // T-1402 · Forward the interceptor's CLASS so an anonymous Brigand (÷2) /
   // Reptiloid (×2) previews the exact demand the engine charges; named
   // interceptors carry no kind → the unmodified schedule.
-  const tributePreview = tributeThisRound(encounter.round, encounter.interceptor.kind);
+  // T-1603c · Forward the TIER GAP for the same reason: the engine now scales the
+  // demand by how far the interceptor outranks the player (content
+  // TRIBUTE_TIER_GAP_STEP), so a preview that dropped it would quote a number the
+  // engine never charges. The cockpit is a client of the engine rule, not a
+  // second implementation of it.
+  const tributePreview = tributeThisRound(
+    encounter.round,
+    encounter.interceptor.kind,
+    encounter.interceptor.tier - game.player.tier,
+  );
 
   return (
     <section className="co-instrument">
