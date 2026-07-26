@@ -96,3 +96,16 @@ jobs:
       - name: Run e2e
         run: npm run test:e2e
         working-directory: packages/ui
+
+      # T-1602a acceptance artifact: the Tour One career run report (screens
+      # visited, days elapsed, the full day log + encounter log). `always()` so a
+      # FAILING career still yields its day log — which is exactly when it is
+      # worth reading. `if-no-files-found: error` so the artifact criterion
+      # cannot silently rot into an empty upload.
+      - name: Upload Tour One run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tour-one-run-report
+          path: packages/ui/test-results/tour-one/
+          if-no-files-found: error

@@ -807,7 +807,21 @@ function CombatInstrument({ state }: { state: CockpitState }) {
       {state.patrolScan && <PatrolScanReadout scan={state.patrolScan} />}
 
       {/* ---- fuel budget: the "can I afford to fire?" instrument ---- */}
-      <div className="co-fuel" data-testid="combat-fuel">
+      <div
+        className="co-fuel"
+        data-testid="combat-fuel"
+        // T-1602a · The fuel budget, structured. Straight off the SAME
+        // `combatFuelStatus` read the band below renders as prose — no new rule,
+        // no recomputation. `canRun` is the engine's own gate (a RUN below
+        // RUN_FUEL_COST burns the die, misses, and lets the enemy press —
+        // actions/combat.ts), so it is the one number a stance decision must not
+        // guess at from parsed text.
+        // READER: e2e/tour-one-career.spec.ts via e2e/support/career.ts — its
+        // encounter policy picks RUN when `data-can-run` is '1' and TALK when it
+        // is not, and `data-fuel` rides the run report's encounter rows.
+        data-fuel={fuel.fuel}
+        data-can-run={fuel.canRun ? '1' : '0'}
+      >
         <span className="co-fuel-big">
           FUEL <b>{fuel.fuel.toLocaleString()}</b>
         </span>
@@ -1608,8 +1622,16 @@ function Bezel({ game, seed, children }: { game: GameState; seed: number; childr
           <span className="sub">Rimward</span>
         </div>
         <div className="loc">
-          DAY <b data-testid="day">{game.day}</b> · DOCKED AT <b>{systemName(p.currentSystemId)}</b>{' '}
-          · {game.era === 'TOUR_ONE' ? 'Frontier Era' : 'Veteran'}
+          DAY <b data-testid="day">{game.day}</b> · DOCKED AT{' '}
+          <b data-testid="docked-at">{systemName(p.currentSystemId)}</b> ·{' '}
+          {/* T-1602a · The campaign era gets a handle. This line is the ONLY
+              player-visible surface of T-1301's dusk-of-day-30 TOUR_ONE→VETERAN
+              flip, and nothing asserted it — the flip was a receipt, not a read.
+              READER: e2e/tour-one-career.spec.ts, which asserts 'Frontier Era' on
+              day 30 and 'Veteran' after the ceremony on BOTH resolution branches
+              (day.ts:866-885 flips the era whether or not the marker cleared).
+              `docked-at` is read by the same spec's per-day run-report row. */}
+          <b data-testid="campaign-era">{game.era === 'TOUR_ONE' ? 'Frontier Era' : 'Veteran'}</b>
         </div>
       </div>
       {/* T-1406 · the diegetic control switches + the readouts share the bezel's
@@ -2286,6 +2308,23 @@ function Manifest({ state }: { state: CockpitState }) {
               className={armed ? 'contract pickable' : 'contract'}
               key={i}
               data-testid="contract"
+              // T-1602a · STRUCTURED reads of the numbers this row already renders
+              // as prose, so a caller can decide from the DOM instead of parsing
+              // "▸ Pollux-7 · 72 fuel · 10 pods". Every value is the SAME engine
+              // number rendered below (`preview` / the contract itself) — nothing
+              // new is derived here, so the UI still owns no route or pricing rule.
+              // READER: e2e/tour-one-career.spec.ts via e2e/support/career.ts —
+              // its contract picker filters on `data-contraband` / `data-dc` /
+              // `data-fuel-cost` and ranks on `data-payment`; `data-destination-id`
+              // is the starmap node it then clicks, and `data-pods` rides the run
+              // report's day log. (Same precedent as `data-system-id` /
+              // `data-reachable` on the starmap nodes.)
+              data-destination-id={c.destination}
+              data-payment={c.payment}
+              data-fuel-cost={preview.fuelCost}
+              data-dc={preview.dc}
+              data-pods={c.pods}
+              data-contraband={contraband ? '1' : '0'}
               onClick={() => signContract(i)}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -2437,7 +2476,20 @@ function TradePane({
 
         {/* Active-contract tracker — makes the sign→carrying transition visible
             and explains why a second sign is refused. */}
-        <div className="ledger-block active-contract" data-testid="active-contract">
+        <div
+          className="ledger-block active-contract"
+          data-testid="active-contract"
+          // T-1602a · The hold's own destination + jump bill, structured. Same
+          // engine export the manifest row and the starmap use (`routePreview`),
+          // so the number here is the number `resolveTravel` will charge — the UI
+          // still owns no route rule. Both are undefined with an empty hold (React
+          // omits the attribute), which is itself the "nothing to fly" read.
+          // READER: e2e/tour-one-career.spec.ts via e2e/support/career.ts — the
+          // driver fuels to `data-fuel-cost` and jumps to `data-destination-id`
+          // without having to re-derive either from the board it already left.
+          data-destination-id={active?.destination}
+          data-fuel-cost={active ? routePreview(game, active.destination).fuelCost : undefined}
+        >
           <div className="lb-head">
             ACTIVE CONTRACT
             {/* T-1405 · Contraband-HOLD indicator (distinct from the manifest's
@@ -2457,7 +2509,8 @@ function TradePane({
                 <span className="pay">{active.payment.toLocaleString()}cr</span>
               </div>
               <div className="dest">
-                &#9656; {systemName(active.destination)} · {active.pods} pods
+                &#9656; {systemName(active.destination)} ·{' '}
+                {routePreview(game, active.destination).fuelCost} fuel · {active.pods} pods
               </div>
             </>
           ) : (
