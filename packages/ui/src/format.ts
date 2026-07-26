@@ -1492,6 +1492,15 @@ export function storyletSurface(storyletId: string): StoryletSurface {
   }
   // Wire: a Galactic-Wire bulletin — Guild pressure notices and wire rumors.
   if (storyletId.startsWith('wire.') || storyletId.startsWith('guild.')) return 'wire';
+  // T-1504b · Era-event tie-ins. An era event ANNOUNCES itself on the wire (engine
+  // era.ts `resolveWireCopy` files the def's wireStart/wireEnd as a WireEntry), so
+  // the storylet that plays the story behind that bulletin belongs on the same
+  // surface — PRD §8.3's "delivered by the economy ... a wire item." READER: the
+  // Wire cap-bar bulletin opener (App.tsx `Wire`, `offersForSurface(game,'wire')`),
+  // which renders every wire offer generically, so this needs no App change.
+  // NOTE: era-tied storylets that are NOT `era.*` keep their own surface —
+  // `cargo.medicinals.plague-relief` is a hold/manifest beat and stays 'hold'.
+  if (storyletId.startsWith('era.')) return 'wire';
   // Port dispatches: port auditors, passengers, the Wise One / Sage, chains,
   // veteran beats — and, by the total default, anything not classified above.
   return 'port';

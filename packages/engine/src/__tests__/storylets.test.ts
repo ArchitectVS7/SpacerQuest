@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { STORYLETS, Stat, defineStorylets, type StoryletDefinition } from '@spacerquest/content';
+import {
+  CONTRABAND_FENCE_REP_SCAN_PENALTY,
+  ERA_EVENTS,
+  FENCE_REP_FLAG,
+  STORYLETS,
+  Stat,
+  defineStorylets,
+  type StoryletDefinition,
+} from '@spacerquest/content';
+import { applyPatrolContrabandScan } from '../actions/patrol.js';
 import { applyPlayerAction, endDay, startDay } from '../day.js';
+import { CORE_SYSTEM_IDS, RIM_SYSTEM_IDS } from '../era.js';
+import { CURRENT_SAVE_VERSION, SaveEnvelopeSchema, createSave, loadSave } from '../save.js';
 import {
   eligibleStorylets,
   quoteStoryletChoice,
@@ -12,7 +23,7 @@ import {
 import { evaluateDeeds } from '../deeds.js';
 import { SeededRng } from '../rng.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
-import { DayPhase, GameState } from '../types.js';
+import { DayPhase, EncounterState, GameEvent, GameState } from '../types.js';
 
 function readyState(): GameState {
   const state = createInitialState(110);
@@ -157,11 +168,13 @@ const T1503_STORYLET_IDS = [
   'alliance.rebels.compact',
 ] as const;
 
-// T-1504 · Era-event tie-in batch (appended last): at least one storylet per
+// T-1504b · Era-event tie-in batch (appended last): at least one storylet per
 // authored era event, so every economic upheaval now delivers a beat to play.
 // The per-defId coverage (every ERA_EVENTS id has a tie-in) and the seeded
 // "it actually fires" sweep live in
-// `packages/sim/src/__tests__/era-storylet-coverage.test.ts`.
+// `packages/sim/src/__tests__/era-storylet-coverage.test.ts` (owned by T-1504d).
+// The unit-level proofs — offering, dead-end freedom, flag readers, round-trip —
+// are the `T-1504b era-event storylet tie-ins` block below.
 const T1504_STORYLET_IDS = [
   'era.blockade.tariff-clerk',
   'era.blockade.cordon-run',
@@ -1247,6 +1260,409 @@ describe('T-1302 storylet triggers — era-event, renown, deed, fragment source'
       resolved.state.player.nemesisFile.fragments.find((f) => f.fragmentId === 'frag-nemesis-01')
         ?.source,
     ).toBe('wise-one');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1504b · Era-event storylet tie-ins.
+//
+// T-1302 made `trigger.eraEvent` real; this batch hangs STORY on it. These are
+// the unit/integration proofs — each era event offers a tie-in when the event is
+// fired DIRECTLY onto the state, no tie-in can wedge the day, and every flag the
+// batch writes is consumed by a named reader. Sweep-level reachability (the
+// engine's own scheduler rolling each event during honest play) is T-1504d's, in
+// `packages/sim/src/__tests__/era-storylet-coverage.test.ts`.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fire an era event DIRECTLY onto the state, scoping `affectedSystemIds` the way
+ * engine `era.ts` would at onset: a single-system event strikes where the ship
+ * stands, a region event covers a whole starmap band (honouring a def's pinned
+ * `scope.region`, else the band the ship is actually in — both are legal rolls).
+ * This keeps the `inAffectedSystem` tie-ins testable without poking the scheduler.
+ */
+function fireEraEvent(state: GameState, defId: string): void {
+  const def = ERA_EVENTS.find((candidate) => candidate.id === defId);
+  if (!def) throw new Error(`unknown era event: ${defId}`);
+  const inCore = CORE_SYSTEM_IDS.includes(state.player.currentSystemId);
+  const band =
+    def.scope.region === 'rim'
+      ? RIM_SYSTEM_IDS
+      : def.scope.region === 'core'
+        ? CORE_SYSTEM_IDS
+        : inCore
+          ? CORE_SYSTEM_IDS
+          : RIM_SYSTEM_IDS;
+  state.eraEvent = {
+    defId: def.id,
+    startedDay: state.day,
+    endsDay: state.day + 10,
+    affectedSystemIds:
+      def.scope.kind === 'single-system' ? [state.player.currentSystemId] : [...band],
+  };
+}
+
+/**
+ * The GUARANTEED tie-in for an era event, DERIVED from `STORYLETS` — a storylet
+ * whose entire trigger is `eraEvent: { defId }`, with no position, flag, cargo,
+ * system, renown, deed or schedule gate on top. This is the per-event promise the
+ * batch makes; deriving it (rather than hand-listing ids) means a future era event
+ * added with no tie-in, or an existing tie-in that someone over-gates, fails here
+ * automatically.
+ */
+function guaranteedTieIn(defId: string): StoryletDefinition | undefined {
+  const storylets: readonly StoryletDefinition[] = STORYLETS;
+  return storylets.find((storylet) => {
+    const triggerKeys = Object.keys(storylet.trigger);
+    if (triggerKeys.length !== 1 || triggerKeys[0] !== 'eraEvent') return false;
+    const era = storylet.trigger.eraEvent;
+    if (!era) return false;
+    const eraKeys = Object.keys(era);
+    return eraKeys.length === 1 && eraKeys[0] === 'defId' && era.defId === defId;
+  });
+}
+
+function byId(storyletId: string): StoryletDefinition {
+  const storylets: readonly StoryletDefinition[] = STORYLETS;
+  const found = storylets.find((storylet) => storylet.id === storyletId);
+  if (!found) throw new Error(`unknown storylet: ${storyletId}`);
+  return found;
+}
+
+/** A PATROL interceptor fixture — the second reader of `fence.ray.dealt`. */
+function patrolFixture(): EncounterState {
+  return {
+    id: 'enc-patrol',
+    pendingTravel: { origin: 1, destination: 2, fuelUsed: 5 },
+    interceptor: {
+      id: 'anon-patrol-1',
+      source: 'anonymous',
+      name: 'Lt.Savage',
+      shipName: 'SP1.Thor',
+      shipClass: 'SLOOP',
+      homeSystem: 'Procyon-5',
+      kind: 'PATROL',
+      rosterIndex: 1,
+      stats: { PILOT: 1, GUNS: 0, TRADE: 1, GRIT: 0, GUILE: 2 },
+      tier: 1,
+    },
+    routeDangerLevel: 1,
+    routeDangerChance: 0.3,
+    encounterRoll: 0.01,
+    round: 1,
+    enemyHull: 1,
+  };
+}
+
+describe('T-1504b era-event storylet tie-ins', () => {
+  it('every authored era event has an UNGATED guaranteed tie-in (derived from STORYLETS)', () => {
+    const untied = ERA_EVENTS.filter((def) => guaranteedTieIn(def.id) === undefined).map(
+      (def) => def.id,
+    );
+    expect(
+      untied,
+      `era events with no defId-only tie-in (over-gated or missing): ${untied.join(', ')}`,
+    ).toEqual([]);
+    // ...and the tie-ins actually VALIDATE: `defineStorylets` throws on load, so
+    // reaching this line at all proves the batch passed content validation.
+    expect(ERA_EVENTS.length).toBe(6);
+  });
+
+  it('firing each era event directly offers its tie-in (with null / wrong-defId A/B negatives)', () => {
+    for (const def of ERA_EVENTS) {
+      const tieIn = guaranteedTieIn(def.id);
+      if (!tieIn) throw new Error(`no guaranteed tie-in for ${def.id}`);
+      const other = ERA_EVENTS.find((candidate) => candidate.id !== def.id);
+      if (!other) throw new Error('need a second era event for the A/B');
+      const base = readyState();
+
+      // A: the event is LIVE (fired directly onto state.eraEvent) → offered.
+      const live = deserializeState(serializeState(base));
+      fireEraEvent(live, def.id);
+      expect(
+        eligibleStorylets(live).map((offer) => offer.storyletId),
+        `${def.id} did not offer ${tieIn.id}`,
+      ).toContain(tieIn.id);
+
+      // B (same base, only eraEvent nulled): no live event → not offered.
+      const noEvent = deserializeState(serializeState(base));
+      noEvent.eraEvent = null;
+      expect(eligibleStorylets(noEvent).map((offer) => offer.storyletId)).not.toContain(tieIn.id);
+
+      // B' (same base, a DIFFERENT era event live) → not offered.
+      const wrongEvent = deserializeState(serializeState(base));
+      fireEraEvent(wrongEvent, other.id);
+      expect(
+        eligibleStorylets(wrongEvent).map((offer) => offer.storyletId),
+        `${tieIn.id} leaked into the ${other.id} event`,
+      ).not.toContain(tieIn.id);
+    }
+  });
+
+  it('no era tie-in dead-ends the day: a broke, die-less captain can always close it and roll on', () => {
+    for (const id of T1504_STORYLET_IDS) {
+      const def = byId(id);
+      const eraDefId = def.trigger.eraEvent?.defId;
+      if (!eraDefId) throw new Error(`${id} is not era-triggered`);
+
+      // Hostile day: zero credits and every dawn die already spent, so NOTHING
+      // that needs a die or a purse is playable.
+      const state = readyState();
+      state.player.credits = 0;
+      state.player.dawnHand = {
+        dice: [20, 12, 6, 3, 1],
+        spent: [true, true, true, true, true],
+      };
+      fireEraEvent(state, eraDefId);
+      // Arm any flag prerequisite the trigger carries. Poked directly HERE only —
+      // the honest played-through proof that the antecedent storylet sets these is
+      // the flag-reader A/B tests below.
+      for (const matcher of def.trigger.flags ?? []) {
+        state.flags[matcher.name] = matcher.equals ?? 'armed';
+      }
+
+      const refreshed = refreshAvailableStorylets(state).state;
+      expect(
+        refreshed.storylets.available.map((offer) => offer.storyletId),
+        `${id} was not offered on its own era event`,
+      ).toContain(id);
+
+      // The T-401 invariant, restated for this batch: a requirement-free exit.
+      const free = def.choices.find((choice) => choice.requirements === undefined);
+      expect(free, `${id} has no requirement-free choice — it can dead-end the day`).toBeDefined();
+      if (!free) continue;
+
+      const heldBefore = Object.keys(refreshed.flags).filter(
+        (flag) => flag.endsWith('.aboard') || flag.endsWith('.riding'),
+      );
+      const resolved = applyPlayerAction(refreshed, {
+        type: 'Storylet',
+        storyletId: id,
+        choiceId: free.id,
+      });
+
+      expect(resolved.events).toContainEqual(
+        expect.objectContaining({
+          type: 'StoryletChoiceResolved',
+          storyletId: id,
+          choiceId: free.id,
+        }),
+      );
+      expect(resolved.state.storylets.completed[id]).toBe(resolved.state.day);
+      expect(resolved.state.storylets.available.map((offer) => offer.storyletId)).not.toContain(id);
+      // The engine clamps fuel; a tie-in can never strand the ship at negative range.
+      expect(resolved.state.player.ship.fuel).toBeGreaterThanOrEqual(0);
+      // And no tie-in silently loads the hold with something the player must carry.
+      expect(
+        Object.keys(resolved.state.flags).filter(
+          (flag) => flag.endsWith('.aboard') || flag.endsWith('.riding'),
+        ),
+      ).toEqual(heldBefore);
+
+      // The loop still turns: dusk resolves and a fresh dawn hand arrives.
+      const dawn = startDay(endDay(resolved.state).state);
+      expect(dawn.state.day, `${id} wedged the day loop`).toBe(resolved.state.day + 1);
+      expect(dawn.state.player.dawnHand?.dice.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('era.blockade.papers: the picket beat opens ONLY after the tariff clerk is actually played', () => {
+    const base = readyState();
+    base.player.credits = 500;
+    fireEraEvent(base, 'blockade');
+
+    // A: no papers yet → the clerk is offered, the cordon-run picket is not.
+    const before = refreshAvailableStorylets(base).state;
+    expect(before.storylets.available.map((offer) => offer.storyletId)).toContain(
+      'era.blockade.tariff-clerk',
+    );
+    expect(before.storylets.available.map((offer) => offer.storyletId)).not.toContain(
+      'era.blockade.cordon-run',
+    );
+
+    // PLAY the clerk through the real action path (no flag poking).
+    const played = applyPlayerAction(before, {
+      type: 'Storylet',
+      storyletId: 'era.blockade.tariff-clerk',
+      choiceId: 'buy-the-stamp',
+    });
+    expect(played.state.flags['era.blockade.papers']).toBe('stamped');
+
+    // B: same day, same live blockade — the flag alone opens the picket beat.
+    const after = refreshAvailableStorylets(played.state).state;
+    expect(after.storylets.available.map((offer) => offer.storyletId)).toContain(
+      'era.blockade.cordon-run',
+    );
+  });
+
+  it('era.dilithium.berth: the claim jumper finds you ONLY once the boomtown berth is played', () => {
+    const base = readyState();
+    base.player.credits = 500;
+    fireEraEvent(base, 'dilithium_rush');
+
+    const before = refreshAvailableStorylets(base).state;
+    expect(before.storylets.available.map((offer) => offer.storyletId)).toContain(
+      'era.dilithium.boomtown-berth',
+    );
+    expect(before.storylets.available.map((offer) => offer.storyletId)).not.toContain(
+      'era.dilithium.claim-jumper',
+    );
+
+    // The BROKE path (sleep in the hold) still arms it — `exists`, not `equals`.
+    const played = applyPlayerAction(before, {
+      type: 'Storylet',
+      storyletId: 'era.dilithium.boomtown-berth',
+      choiceId: 'sleep-in-the-hold',
+    });
+    expect(played.state.flags['era.dilithium.berth']).toBe('slept_aboard');
+
+    const after = refreshAvailableStorylets(played.state).state;
+    expect(after.storylets.available.map((offer) => offer.storyletId)).toContain(
+      'era.dilithium.claim-jumper',
+    );
+  });
+
+  it('fence.ray.dealt: the checkpoint gates Ray’s name behind GUILE 12, and BOTH readers consume it', () => {
+    const state = readyState();
+    fireEraEvent(state, 'patrol_crackdown');
+    const refreshed = refreshAvailableStorylets(state).state;
+    expect(refreshed.storylets.available.map((offer) => offer.storyletId)).toContain(
+      'era.crackdown.checkpoint',
+    );
+
+    // Die index 0 is the 20 — a natural 20 always clears the check.
+    const played = applyPlayerAction(refreshed, {
+      type: 'Storylet',
+      storyletId: 'era.crackdown.checkpoint',
+      choiceId: 'use-rays-name',
+      spendDie: 0,
+    });
+    expect(played.events).toContainEqual(
+      expect.objectContaining({
+        type: 'StatCheck',
+        actionContext: 'storylet',
+        stat: Stat.GUILE,
+        dc: 12,
+      }),
+    );
+    expect(played.state.flags[FENCE_REP_FLAG]).toBe(true);
+
+    const progress = played.events.find((event) => event.type === 'StoryletDeedProgress');
+    expect(progress).toMatchObject({ deedId: 'ray_s_ledger', amount: 1 });
+    if (!progress) throw new Error('no StoryletDeedProgress emitted');
+
+    // READER (a) — engine `evaluateDeeds` credits the counted deed off that event.
+    const deedState = played.state;
+    evaluateDeeds(deedState, [progress]);
+    expect(deedState.player.registry.earned.map((deed) => deed.id)).toContain('ray_s_ledger');
+
+    // READER (b) — engine `actions/patrol.ts` subtracts the fence-rep penalty from
+    // the player's concealment, so the scan DC drops by exactly that much. (The
+    // behavioural 300-seed A/B on the same flag is T-1305's, in patrol.test.ts.)
+    const scanDc = (flagged: boolean): number => {
+      const scanState = createInitialState(7);
+      scanState.dayPhase = DayPhase.DAY;
+      scanState.flags['signal.contraband.carrying'] = true;
+      if (flagged) scanState.flags[FENCE_REP_FLAG] = true;
+      const events: GameEvent[] = [];
+      applyPatrolContrabandScan(scanState, patrolFixture(), new SeededRng(11), events);
+      const statCheck = events.find((event) => event.type === 'StatCheck');
+      if (!statCheck || statCheck.type !== 'StatCheck') throw new Error('no scan StatCheck');
+      return statCheck.dc;
+    };
+    expect(scanDc(false) - scanDc(true)).toBe(CONTRABAND_FENCE_REP_SCAN_PENALTY);
+
+    // The gate is real: a failing die pays the League penalty and grants nothing.
+    const failed = applyPlayerAction(refreshed, {
+      type: 'Storylet',
+      storyletId: 'era.crackdown.checkpoint',
+      choiceId: 'use-rays-name',
+      spendDie: 4, // the 1 — a natural 1 always fails
+    });
+    expect(failed.state.flags[FENCE_REP_FLAG]).toBeUndefined();
+    expect(failed.events.some((event) => event.type === 'StoryletDeedProgress')).toBe(false);
+    expect(failed.state.player.credits).toBeLessThan(refreshed.player.credits);
+  });
+
+  it('era choices move the SHARED reputation/disposition movers and report the actual clamped delta', () => {
+    // ReputationChanged — the mover the `alliance.*` questline triggers read.
+    const famine = readyState();
+    fireEraEvent(famine, 'famine');
+    const famineReady = refreshAvailableStorylets(famine).state;
+    const beforeRep = famineReady.player.reputation.league;
+    const goodwill = applyPlayerAction(famineReady, {
+      type: 'Storylet',
+      storyletId: 'era.famine.ration-queue',
+      choiceId: 'take-goodwill',
+    });
+    const appliedRep = goodwill.state.player.reputation.league - beforeRep;
+    expect(appliedRep).toBeGreaterThan(0);
+    expect(goodwill.events).toContainEqual(
+      expect.objectContaining({
+        type: 'ReputationChanged',
+        faction: 'league',
+        delta: appliedRep,
+        reputation: goodwill.state.player.reputation.league,
+        reason: 'questline',
+      }),
+    );
+
+    // DispositionChanged — clamped. Doc already adores the player at 9, so the
+    // quarantine line's +2 can only land 1 of it, and the event must say 1.
+    const plague = readyState();
+    fireEraEvent(plague, 'plague');
+    const plagueReady = refreshAvailableStorylets(plague).state;
+    const doc = plagueReady.npcs.find((npc) => npc.id === 'npc-doc-salvage');
+    expect(doc).toBeDefined();
+    if (doc) doc.disposition = 9;
+
+    const line = applyPlayerAction(plagueReady, {
+      type: 'Storylet',
+      storyletId: 'era.plague.quarantine-line',
+      choiceId: 'work-the-line',
+    });
+    expect(line.state.npcs.find((npc) => npc.id === 'npc-doc-salvage')?.disposition).toBe(10);
+    expect(line.events).toContainEqual(
+      expect.objectContaining({
+        type: 'DispositionChanged',
+        npcId: 'npc-doc-salvage',
+        delta: 1,
+        disposition: 10,
+        reason: 'storylet',
+      }),
+    );
+  });
+
+  it('JSON round-trip: the papers flag and the offer it unlocks survive, with NO save-version bump', () => {
+    const base = readyState();
+    base.player.credits = 500;
+    fireEraEvent(base, 'blockade');
+    const played = applyPlayerAction(refreshAvailableStorylets(base).state, {
+      type: 'Storylet',
+      storyletId: 'era.blockade.tariff-clerk',
+      choiceId: 'buy-the-stamp',
+    }).state;
+
+    const restored = deserializeState(serializeState(played));
+    // (a) the string-valued flag survives as a string, not a coerced boolean.
+    expect(restored.flags['era.blockade.papers']).toBe('stamped');
+    // (b) the completion stamp survives.
+    expect(restored.storylets.completed['era.blockade.tariff-clerk']).toBe(played.day);
+    // (c) the round-tripped state yields the SAME offer set, and specifically the
+    //     same verdict on the flag-gated picket beat.
+    const cordon = byId('era.blockade.cordon-run');
+    expect(triggerMatches(restored, cordon)).toBe(true);
+    expect(triggerMatches(restored, cordon)).toBe(triggerMatches(played, cordon));
+    expect(eligibleStorylets(restored).map((offer) => offer.storyletId)).toEqual(
+      eligibleStorylets(played).map((offer) => offer.storyletId),
+    );
+
+    // T-1504b adds NO GameState field — `flags` and `eraEvent` are both T-107
+    // state that already persists — so there is no migration and no version bump:
+    // the blob loads clean at the CURRENT save version.
+    const blob = createSave(played, 110);
+    expect(SaveEnvelopeSchema.parse(JSON.parse(blob)).version).toBe(CURRENT_SAVE_VERSION);
+    expect(loadSave(blob).state.flags['era.blockade.papers']).toBe('stamped');
   });
 });
 

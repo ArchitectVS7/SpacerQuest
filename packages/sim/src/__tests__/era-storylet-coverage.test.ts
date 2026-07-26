@@ -11,6 +11,13 @@ import { describe, expect, it } from 'vitest';
 // ---------------------------------------------------------------------------
 // T-1504 · Era-event storylet tie-in reachability.
 //
+// PROVENANCE: this sweep arrived early, inside the interrupted 77ee7c04 WIP
+// commit, ahead of the task that owns it. T-1504b (the tie-in content pass) only
+// RE-RAN it, to prove the flag-gate rework of the two optional tie-ins did not
+// break the per-defId union — it deliberately did not extend it, re-tune its
+// seeds, or touch its horizon. Finishing and pinning this sweep (seed budget,
+// horizon, the wider reachability bar) is T-1504d's deliverable.
+//
 // Acceptance: "every era reachable and fires >= 1 tied storylet in a seed sweep."
 //
 // Two halves, both honest:

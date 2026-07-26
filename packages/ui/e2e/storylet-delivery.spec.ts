@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { STORYLETS } from '@spacerquest/content';
+import { STORYLETS, type StoryletDefinition } from '@spacerquest/content';
 import { storyletSurface } from '../src/format';
 
 // T-1406 · Storylet delivery & diegetic shell. PRD §8.3: storylets are delivered
@@ -29,6 +29,29 @@ test('every shipped storylet classifies to a real diegetic surface', () => {
   expect(STORYLETS.length).toBeGreaterThan(0);
   for (const s of STORYLETS) {
     expect(['hold', 'wire', 'port', 'ceremony']).toContain(storyletSurface(s.id));
+  }
+
+  // T-1504b · Era-event tie-ins route to the WIRE. An era event announces itself
+  // as a wire bulletin (engine era.ts wireStart/wireEnd), so the beat that plays
+  // the story behind it opens from the same Galactic-Wire cap-bar bulletin
+  // (App.tsx `Wire` → offersForSurface(game,'wire') → StoryletOpener).
+  const eraTieIns = STORYLETS.filter((s) => s.id.startsWith('era.'));
+  expect(eraTieIns.length).toBeGreaterThan(0);
+  for (const s of eraTieIns) {
+    expect(storyletSurface(s.id), `era tie-in ${s.id} must open from the wire`).toBe('wire');
+  }
+
+  // ...and EVERY era-event-triggered storylet — whatever its id prefix — reaches a
+  // real opener, i.e. never the ceremony (which has no opener; the full-screen
+  // day-30 ResolutionCeremony presents those). This is the clause that keeps
+  // `cargo.medicinals.plague-relief` honest on 'hold' without forcing it to 'wire'.
+  const allStorylets: readonly StoryletDefinition[] = STORYLETS;
+  const eraTriggered = allStorylets.filter((s) => s.trigger.eraEvent !== undefined);
+  expect(eraTriggered.length).toBeGreaterThan(eraTieIns.length);
+  for (const s of eraTriggered) {
+    expect(storyletSurface(s.id), `era-triggered ${s.id} has no diegetic opener`).not.toBe(
+      'ceremony',
+    );
   }
 });
 

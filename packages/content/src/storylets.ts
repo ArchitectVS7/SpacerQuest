@@ -4040,7 +4040,7 @@ export const STORYLETS = defineStorylets([
     ],
   },
   // ==========================================================================
-  // T-1504 · ERA-EVENT TIE-IN BATCH (appended per the batch convention).
+  // T-1504b · ERA-EVENT TIE-IN BATCH (appended per the batch convention).
   //
   // T-1302 made `trigger.eraEvent` real; the six era events (content
   // `eraEvents.ts`) were fully authored back at T-107. What was missing was
@@ -4057,10 +4057,31 @@ export const STORYLETS = defineStorylets([
   // where the event is region-scoped (blockade / fuel_crisis cover a whole 14- or
   // 6-system band).
   //
+  // FLAGS — STANDING CONSTRAINT #7 ("if nothing reads it, it isn't a feature,
+  // it's a receipt"). The interrupted 77ee7c04 draft of this batch wrote 20
+  // `era.*` choice-memory flags, NONE of which anything read. They are deleted.
+  // Exactly THREE flags survive here, each naming its reader at the definition
+  // site:
+  //   * `era.blockade.papers` — one flag, one string value per tariff-clerk
+  //     choice. READER: `era.blockade.cordon-run`'s trigger (below).
+  //   * `era.dilithium.berth`  — same shape for the boomtown berth.
+  //     READER: `era.dilithium.claim-jumper`'s trigger (below).
+  //   * `fence.ray.dealt` (=== FENCE_REP_FLAG, contraband.ts). READER: engine
+  //     `actions/patrol.ts` contraband-scan concealment (T-1305).
+  // Every other choice keeps its credits / fuel / `reputation` / `disposition` /
+  // `deedProgress` payload — the memory that IS consumed (applyReputation gates
+  // the `alliance.*` questlines; applyDisposition gates the T-1502 chains;
+  // evaluateDeeds counts the ledger).
+  //
   // FOUNDATION (ref f2f95fa9): foundation has no storylets and no era events, so
   // this whole batch is authored Rimward content — a deliberate divergence with
   // nothing upstream to preserve. Credit/fuel deltas stay inside the band the
   // existing storylets use (~50-500cr).
+  //
+  // INTERIM NUMBERS — every credit and fuel delta in this batch is a placeholder
+  // sized to the existing storylet band. T-1603 (economy rebalance) OWNS these;
+  // do not treat them as tuned. Only the trigger shapes and the three flags above
+  // are load-bearing here.
   // ==========================================================================
   {
     id: 'era.blockade.tariff-clerk',
@@ -4081,7 +4102,11 @@ export const STORYLETS = defineStorylets([
         effects: {
           credits: -120,
           reputation: [{ faction: 'confederation', delta: 1 }],
-          flags: [{ name: 'era.blockade.stamped', value: true }],
+          // 'era.blockade.papers' — ONE flag, one string value per choice (what
+          // the clerk's desk left you holding). READER: the trigger of
+          // `era.blockade.cordon-run` below, which will not offer at all until
+          // this storylet has been played.
+          flags: [{ name: 'era.blockade.papers', value: 'stamped' }],
         },
       },
       {
@@ -4091,20 +4116,20 @@ export const STORYLETS = defineStorylets([
           'Quote the freight articles the cordon was declared under until the clerk decides your hull is somebody else’s afternoon.',
         requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
         successEffects: {
-          flags: [{ name: 'era.blockade.outargued', value: true }],
+          flags: [{ name: 'era.blockade.papers', value: 'outargued' }],
         },
         failureEffects: {
           credits: -60,
-          flags: [{ name: 'era.blockade.fined', value: true }],
+          flags: [{ name: 'era.blockade.papers', value: 'fined' }],
         },
       },
       {
         id: 'queue-like-everyone',
         label: 'Wait in the queue',
         prose:
-          'Stand in line with every other hull and lose the hours honestly. The cordon does not care who you are, which is its one mercy.',
+          'Stand in line with every other hull and lose the hours honestly. The cordon does not care who you are, which is its one mercy — and the clerk stamps you through at the end of it like everybody else.',
         effects: {
-          flags: [{ name: 'era.blockade.queued', value: true }],
+          flags: [{ name: 'era.blockade.papers', value: 'queued' }],
         },
       },
     ],
@@ -4117,6 +4142,13 @@ export const STORYLETS = defineStorylets([
     repeat: 'never',
     trigger: {
       eraEvent: { defId: 'blockade', inAffectedSystem: true },
+      // READER of `era.blockade.papers`: the picket asks for the paperwork the
+      // tariff clerk gave you — stamped, argued, fined or merely queued, any of
+      // the four is a story the picket can test, so this is `exists`, not
+      // `equals`. No path through the clerk locks a captain out of this beat.
+      // Blockade is region-scoped over a whole 14- or 6-system band, so pairing
+      // this with `inAffectedSystem` is not a knife edge.
+      flags: [{ name: 'era.blockade.papers', exists: true }],
     },
     choices: [
       {
@@ -4127,18 +4159,16 @@ export const STORYLETS = defineStorylets([
         effects: {
           fuel: -25,
           reputation: [{ faction: 'rebels', delta: 1 }],
-          flags: [{ name: 'era.blockade.ran_the_cordon', value: true }],
         },
       },
       {
         id: 'hail-the-picket',
         label: 'Hail the picket and file honestly',
         prose:
-          'Announce yourself, submit the manifest, and let the Confederation write you down as one of the compliant. It costs an hour and a little pride.',
+          'Announce yourself, submit the manifest, and hand up the clerk’s paperwork. The Confederation writes you down as one of the compliant. It costs an hour and a little pride.',
         effects: {
           credits: 90,
           reputation: [{ faction: 'confederation', delta: 1 }],
-          flags: [{ name: 'era.blockade.filed', value: true }],
         },
       },
     ],
@@ -4159,8 +4189,9 @@ export const STORYLETS = defineStorylets([
         prose:
           'Roll your sleeves up and help the med-techs move the queue. It is unpaid, it is hours you will not get back, and a tired woman in a sealed suit remembers your face.',
         effects: {
+          // The memory here is DISPOSITION, not a flag: Doc Salvage's disposition
+          // is read by the T-1502 chain triggers and the encounter weighting.
           disposition: [{ npcId: 'npc-doc-salvage', delta: 2 }],
-          flags: [{ name: 'era.plague.helped_the_line', value: true }],
         },
       },
       {
@@ -4171,16 +4202,17 @@ export const STORYLETS = defineStorylets([
         effects: {
           credits: 220,
           disposition: [{ npcId: 'npc-doc-salvage', delta: -2 }],
-          flags: [{ name: 'era.plague.profiteered', value: true }],
         },
       },
       {
         id: 'clear-the-scan',
         label: 'Submit to the scan and move on',
         prose:
-          'Take the scan, take the stamp, and take your ship out before the protocols tighten again.',
+          'Take the scan, pay the decontamination levy, and take your ship out before the protocols tighten again.',
         effects: {
-          flags: [{ name: 'era.plague.scanned', value: true }],
+          // A real cost, not an inert body: the free path still charges the port's
+          // levy. INTERIM number (T-1603).
+          credits: -25,
         },
       },
     ],
@@ -4203,7 +4235,10 @@ export const STORYLETS = defineStorylets([
         requirements: { credits: { gte: 150 } },
         effects: {
           credits: -150,
-          flags: [{ name: 'era.dilithium.berthed', value: true }],
+          // 'era.dilithium.berth' — ONE flag, one string value per choice (how you
+          // ended up parked in the boomtown). READER: the trigger of
+          // `era.dilithium.claim-jumper` below.
+          flags: [{ name: 'era.dilithium.berth', value: 'berthed' }],
         },
       },
       {
@@ -4214,10 +4249,13 @@ export const STORYLETS = defineStorylets([
         requirements: { statCheck: { stat: Stat.TRADE, dc: 12 } },
         successEffects: {
           credits: 120,
-          flags: [{ name: 'era.dilithium.traded_rumor', value: true }],
+          flags: [{ name: 'era.dilithium.berth', value: 'traded_rumor' }],
         },
         failureEffects: {
-          flags: [{ name: 'era.dilithium.rumor_ignored', value: true }],
+          // He has heard it, from three hulls before yours. You pay part rate for
+          // the slot like everybody else. INTERIM number (T-1603).
+          credits: -60,
+          flags: [{ name: 'era.dilithium.berth', value: 'rumor_ignored' }],
         },
       },
       {
@@ -4226,7 +4264,7 @@ export const STORYLETS = defineStorylets([
         prose:
           'Hold your slot in the outer ring and sleep aboard like every other hand who came late. It costs nothing but comfort.',
         effects: {
-          flags: [{ name: 'era.dilithium.slept_aboard', value: true }],
+          flags: [{ name: 'era.dilithium.berth', value: 'slept_aboard' }],
         },
       },
     ],
@@ -4239,6 +4277,12 @@ export const STORYLETS = defineStorylets([
     repeat: 'never',
     trigger: {
       eraEvent: { defId: 'dilithium_rush', inAffectedSystem: true },
+      // READER of `era.dilithium.berth`: the prospector corners you because you
+      // are PARKED here — he found you at whatever slot the berth master sold
+      // (or didn't). `exists`, not `equals`: every path through the berth
+      // storylet arms this, so a broke captain who slept in the hold is not
+      // locked out of the richer beat.
+      flags: [{ name: 'era.dilithium.berth', exists: true }],
     },
     choices: [
       {
@@ -4249,7 +4293,6 @@ export const STORYLETS = defineStorylets([
         effects: {
           credits: 260,
           reputation: [{ faction: 'rebels', delta: 1 }],
-          flags: [{ name: 'era.dilithium.carried_filing', value: true }],
         },
       },
       {
@@ -4260,16 +4303,17 @@ export const STORYLETS = defineStorylets([
         effects: {
           credits: 400,
           reputation: [{ faction: 'rebels', delta: -2 }],
-          flags: [{ name: 'era.dilithium.sold_out_prospector', value: true }],
         },
       },
       {
         id: 'wish-him-luck',
         label: 'Wish him luck',
         prose:
-          'Hand the slate back. You have a hold to fill and no wish to be named in a claims hearing that will outlive the seam.',
+          'Hand the slate back and burn clear of the boom-choked approach. You have a hold to fill and no wish to be named in a claims hearing that will outlive the seam.',
         effects: {
-          flags: [{ name: 'era.dilithium.declined_filing', value: true }],
+          // A real cost, not an inert body: getting out of a rush-jammed approach
+          // burns reaction mass. INTERIM number (T-1603).
+          fuel: -8,
         },
       },
     ],
@@ -4288,17 +4332,31 @@ export const STORYLETS = defineStorylets([
         id: 'use-rays-name',
         label: 'Use the Ghost Runner’s name',
         prose:
-          'Give the inspector the name the dock hand did not say out loud. The scanner powers down, the queue moves, and somewhere Smuggler Ray writes a line in a ledger you have now joined.',
-        effects: {
+          'Give the inspector the name the dock hand did not say out loud, and hold your nerve while he decides whether you have the right to use it. Land it and the scanner powers down, the queue moves, and somewhere Smuggler Ray writes a line in a ledger you have now joined.',
+        // T-1504b: the draft handed this out for FREE — a deed, a fence
+        // reputation and Ray's goodwill for clicking a button. Dropping a name
+        // you have not earned is a GUILE play, so it is checked, and failing it
+        // costs. `run-clean` and `wait-it-out` stay requirement-free, so the
+        // T-401 "a storylet never dead-ends the day" invariant holds.
+        requirements: { statCheck: { stat: Stat.GUILE, dc: 12 } },
+        successEffects: {
           // SECOND acquisition route for the `ray_s_ledger` deed (the primary two
           // are Ray's own fence storylets) — a smuggling deed with more than one
           // way in, so the deed sweep is not hostage to a single trigger.
+          // READER: engine `evaluateDeeds`, counted-StoryletDeedProgress branch.
           deedProgress: [{ deedId: 'ray_s_ledger', amount: 1 }],
           reputation: [{ faction: 'league', delta: -1 }],
-          // 'fence.ray.dealt' === FENCE_REP_FLAG (contraband.ts); read by the
-          // patrol scan DC (T-1305) and T-1503's Rebel reputation.
+          // 'fence.ray.dealt' === FENCE_REP_FLAG (contraband.ts). READER: engine
+          // `actions/patrol.ts`, which subtracts CONTRABAND_FENCE_REP_SCAN_PENALTY
+          // from the player's concealment on a contraband scan (T-1305).
           flags: [{ name: 'fence.ray.dealt', value: true }],
           disposition: [{ npcId: 'npc-smuggler-ray', delta: 1 }],
+        },
+        failureEffects: {
+          // The inspector knows the name and knows you are not on it. INTERIM
+          // number (T-1603).
+          credits: -80,
+          reputation: [{ faction: 'league', delta: -2 }],
         },
       },
       {
@@ -4308,16 +4366,17 @@ export const STORYLETS = defineStorylets([
           'Open every hatch and let them look. A crackdown is a bad week for the crooked and a slow afternoon for everyone else.',
         effects: {
           reputation: [{ faction: 'league', delta: 1 }],
-          flags: [{ name: 'era.crackdown.cleared', value: true }],
         },
       },
       {
         id: 'wait-it-out',
         label: 'Wait the patrol out',
         prose:
-          'Stay docked and let the inspectors work their way down the line to somebody else. It costs a day of nothing.',
+          'Stay docked and let the inspectors work their way down the line to somebody else. It costs another day’s berth fee and nothing else.',
         effects: {
-          flags: [{ name: 'era.crackdown.waited', value: true }],
+          // A real cost, not an inert body: an extra docked day is billed.
+          // INTERIM number (T-1603).
+          credits: -30,
         },
       },
     ],
@@ -4340,7 +4399,6 @@ export const STORYLETS = defineStorylets([
         effects: {
           credits: 280,
           reputation: [{ faction: 'league', delta: -1 }],
-          flags: [{ name: 'era.famine.profited', value: true }],
         },
       },
       {
@@ -4351,15 +4409,17 @@ export const STORYLETS = defineStorylets([
         effects: {
           reputation: [{ faction: 'league', delta: 2 }],
           disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
-          flags: [{ name: 'era.famine.gave_freely', value: true }],
         },
       },
       {
         id: 'walk-past',
         label: 'Walk past the queue',
-        prose: 'You have a hold to fill and no food in it. The queue is not yours to fix.',
+        prose:
+          'You have a hold to fill and no food in it. The queue is not yours to fix — and the medic working its far end watches you decide that.',
         effects: {
-          flags: [{ name: 'era.famine.walked_past', value: true }],
+          // A real consequence, not an inert body, and one with a live reader:
+          // Doc Salvage's disposition gates the T-1502 chain triggers.
+          disposition: [{ npcId: 'npc-doc-salvage', delta: -1 }],
         },
       },
     ],
@@ -4383,7 +4443,6 @@ export const STORYLETS = defineStorylets([
         effects: {
           credits: -200,
           fuel: 60,
-          flags: [{ name: 'era.fuel-crisis.bought_reserve', value: true }],
         },
       },
       {
@@ -4394,7 +4453,6 @@ export const STORYLETS = defineStorylets([
         effects: {
           fuel: 25,
           disposition: [{ npcId: 'npc-doc-salvage', delta: 1 }],
-          flags: [{ name: 'era.fuel-crisis.split_tanks', value: true }],
         },
       },
       {
@@ -4403,7 +4461,9 @@ export const STORYLETS = defineStorylets([
         prose:
           'Queue at the depot like the rest of the region and take what the ration allows. It is thin, it is slow, and it costs you nothing but the wait.',
         effects: {
-          flags: [{ name: 'era.fuel-crisis.rationed', value: true }],
+          // A real effect, not an inert body: the ration is small, but it is fuel.
+          // INTERIM number (T-1603).
+          fuel: 10,
         },
       },
     ],
