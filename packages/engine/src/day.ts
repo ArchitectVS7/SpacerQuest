@@ -41,6 +41,7 @@ import {
   resolveStoryletChoice,
 } from './storylets.js';
 import { computeGuildStanding, guildManifestPenalty, guildSeverity } from './guild.js';
+import { careerEnded } from './nemesis.js';
 import { natWireStories } from './wire.js';
 import { cloneState } from './clone.js';
 
@@ -165,6 +166,48 @@ export function applyPlayerAction(
       day: nextState.day,
       actionType: action.type,
       reason: 'active-encounter',
+    };
+    appendEvents(nextState, [blocked]);
+    return { state: nextState, events: [blocked] };
+  }
+
+  // T-1505c · THE TERMINAL GUARD (design call D7/D8). Arrival at NEMESIS ends the
+  // career: there is no port, no board, no fuel and no return leg on the far side
+  // of the shear, so every player verb from there is inert. The ENGINE owns that
+  // rule — the UI's ending screen only renders it — and a refusal here is a
+  // player-possible act, not malformed input, so it takes the same shape as the
+  // two gates around it: one typed ActionBlocked appended to the log, NO die
+  // spent, NO rng fork, `dayEventCount` untouched, no throw.
+  //
+  // ORDER: deliberately ABOVE the destination gate, so a jump attempted from the
+  // far side reads 'career-ended' (the true reason — the career is over) rather
+  // than 'destination-locked' (which would imply a door that could still open).
+  // Asserted in day.test.ts.
+  //
+  // WHAT IS GUARDED, and why the rest is exempt: the six members of
+  // `ActionBlocked.actionType`. `Reroll`/`Crew`/`Port`/`Combat` are NOT in that
+  // enum and fall through — exactly the T-1306/T-1307 precedent, which declined to
+  // widen the enum for actions that have no reason to be blocked. None of them can
+  // do anything at system 28: there is no encounter to fight (the crossing route
+  // takes no encounter roll), no port to buy, no hangout to hire from, and no
+  // reroll charge worth spending on a hand that can no longer be played. `Wait`
+  // likewise falls through above (it only refreshes an offer set that is empty on
+  // the far side). READER of the event: the sim's `legalActions`, which advertises
+  // nothing on an ended career so a headless driver never earns this refusal.
+  if (
+    careerEnded(nextState) &&
+    (action.type === 'Trade' ||
+      action.type === 'Travel' ||
+      action.type === 'Shipyard' ||
+      action.type === 'Storylet' ||
+      action.type === 'Explore' ||
+      action.type === 'VisitHangout')
+  ) {
+    const blocked: GameEvent = {
+      type: 'ActionBlocked',
+      day: nextState.day,
+      actionType: action.type,
+      reason: 'career-ended',
     };
     appendEvents(nextState, [blocked]);
     return { state: nextState, events: [blocked] };

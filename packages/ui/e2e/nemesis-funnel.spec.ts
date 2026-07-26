@@ -1,0 +1,139 @@
+import { test, expect, type Page } from '@playwright/test';
+import {
+  EXPLORATION_NAV_DC,
+  SIGNAL_FRAGMENTS,
+  STAR_SYSTEMS,
+  WISE_ONE_FRAGMENT_ID,
+} from '@spacerquest/content';
+import {
+  createInitialState,
+  createSave,
+  startDay,
+  syncMaxFuel,
+  type GameState,
+} from '@spacerquest/engine';
+
+// T-1505c · THE ACQUISITION FUNNEL, THROUGH THE REAL COCKPIT — explore → find a
+// Signal Fragment → carry it to the Sage → decode it. This discharges the
+// deferral `nemesis-file.spec.ts` states in its header ("the full acquisition
+// funnel … through the UI … belongs to T-1505c").
+//
+// HONEST SPLIT, stated up front (the `nemesis-file.spec.ts` convention): the
+// injected save sets the SCENARIO only — a fitted mid-career ship parked at
+// Achernar-5 (system 19, one jump from the Sage's bench) with a full tank and an
+// EMPTY Nemesis file. Nothing about the Signal is injected: the fragment is
+// found, carried and decoded entirely by clicking.
+//
+// Deliberately NOT duplicated here: the twelve-fragment career (that is the
+// scripted long sim, `packages/sim/src/__tests__/nemesis-arc.test.ts`) and the
+// crossing itself (`nemesis-crossing.spec.ts`).
+//
+// SEED PROVENANCE (found via the exact UI dispatch path — `startDay(fixture)`
+// then `applyPlayerAction`, the same fork stream the store calls; swept seeds
+// 1..200): seed 5 deals the day-1 hand [19,16,14,12,11] at Achernar-5. Die 0
+// (19 + PILOT/nav) clears the sweep's nav DC and its seeded loot roll yields a
+// Signal Fragment; die 1 then clears the Achernar-5 → Mizar-9 jump (distance 19,
+// DC 17) with NO interdiction on the route. The spec asserts each step, so a
+// regression here is loud rather than flaky.
+const FUNNEL_SEED = 5;
+const ACHERNAR = 19;
+const MIZAR = 18;
+const SWEEP_DIE = 0;
+const JUMP_DIE = 1;
+
+/** The scenario fixture — see the HONEST SPLIT above for input vs played. */
+function fittedAtAchernar(seed: number): GameState {
+  const base = createInitialState(seed);
+  base.player.currentSystemId = ACHERNAR;
+  base.player.credits = 20000;
+  base.player.ship.drives = { strength: 60, condition: 9 };
+  base.player.ship.hull = { strength: 30, condition: 9 };
+  base.player.ship.navigation = { strength: 90, condition: 9 };
+  syncMaxFuel(base.player.ship);
+  base.player.ship.fuel = base.player.ship.maxFuel;
+  // The Nemesis file is UNTOUCHED — empty, exactly as a fresh career's.
+  return startDay(base).state;
+}
+
+/** The SHIPPED decode-storylet id for a fragment (fragment 01's path predates the
+ *  numbered batch and is named differently) — the same door a player opens. */
+function decodeStoryletFor(fragmentId: string): string {
+  return fragmentId === WISE_ONE_FRAGMENT_ID
+    ? 'sage.mizar.decode-first'
+    : `sage.mizar.decode-${fragmentId.slice(-2)}`;
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+});
+
+async function inject(page: Page, save: string): Promise<void> {
+  await page.addInitScript((s) => window.localStorage.setItem('sq.save.v1', s), save);
+  await page.goto('/');
+}
+
+/** Open Records → Nemesis and run `read` against the live pane, then close it. */
+async function inNemesisPane(page: Page, read: () => Promise<void>): Promise<void> {
+  await page.getByTestId('records-toggle').click();
+  await page.getByTestId('records-tab-nemesis').click();
+  await expect(page.getByTestId('nemesis')).toBeVisible();
+  await read();
+  await page.getByTestId('records-close').click();
+}
+
+test('the funnel: sweep off-lane, find a fragment, carry it to the Sage, decode it', async ({
+  page,
+}) => {
+  await inject(page, createSave(fittedAtAchernar(FUNNEL_SEED), FUNNEL_SEED));
+
+  // ---- 1) THE SWEEP, CLICKED ----------------------------------------------
+  await page.getByTestId('die').nth(SWEEP_DIE).click();
+  await expect(page.getByTestId('explore-cost')).toContainText(`PILOT DC ${EXPLORATION_NAV_DC}`);
+  await page.getByTestId('explore-sweep').click();
+
+  await expect(page.getByTestId('check-stat')).toHaveText('PILOT');
+  await expect(page.getByTestId('check-result')).toHaveText('SUCCESS');
+  await expect(page.getByTestId('exploration-outcome')).toContainText('Signal Fragment');
+
+  // ---- 2) THE FILE HAS A RAW FRAGMENT IN IT --------------------------------
+  // The id is READ OFF THE DOM rather than pinned, so the assertions below track
+  // whatever the seeded loot roll drew; only its TEXT is pinned, and that comes
+  // from the shipped content, never a string literal here.
+  let fragmentId = '';
+  await inNemesisPane(page, async () => {
+    await expect(page.getByTestId('nemesis-count')).toHaveText('1 FRAGMENT · 0 DECODED');
+    const row = page.getByTestId('nemesis-fragment');
+    await expect(row).toHaveCount(1);
+    fragmentId = (await row.getAttribute('data-fragment-id')) ?? '';
+    expect(SIGNAL_FRAGMENTS[fragmentId], `unknown fragment id ${fragmentId}`).toBeDefined();
+    await expect(row).toHaveAttribute('data-decoded', '0');
+    await expect(row.locator('.nf-text')).toHaveText(SIGNAL_FRAGMENTS[fragmentId].signal);
+  });
+
+  // ---- 3) CARRY IT TO THE SAGE, ON THE REAL STARMAP ------------------------
+  await page.getByTestId('die').nth(JUMP_DIE).click();
+  await page.locator(`[data-testid="starmap-system"][data-system-id="${MIZAR}"]`).click();
+  await expect(page.getByTestId('route-preview')).toBeVisible();
+  await page.getByTestId('confirm-jump').click();
+  await expect(page.locator('.loc')).toContainText(STAR_SYSTEMS[MIZAR].name);
+
+  // ---- 4) THE SAGE DECODES IT, FROM ITS DIEGETIC OPENER --------------------
+  const storyletId = decodeStoryletFor(fragmentId);
+  const opener = page.locator(`[data-storylet-open="${storyletId}"]`);
+  await expect(opener).toBeVisible();
+  await opener.click();
+  const panel = page.getByTestId('storylet-panel');
+  await expect(panel).toHaveAttribute('data-storylet-id', storyletId);
+  await page
+    .locator('[data-testid="storylet-choice"][data-choice-id="decode"]')
+    .getByTestId('storylet-choice-btn')
+    .click();
+
+  // ---- 5) THE FILE NOW READS THE DECODED LORE ------------------------------
+  await inNemesisPane(page, async () => {
+    await expect(page.getByTestId('nemesis-count')).toHaveText('1 FRAGMENT · 1 DECODED');
+    const row = page.locator(`[data-testid="nemesis-fragment"][data-fragment-id="${fragmentId}"]`);
+    await expect(row).toHaveAttribute('data-decoded', '1');
+    await expect(row.locator('.nf-text')).toHaveText(SIGNAL_FRAGMENTS[fragmentId].decoded);
+  });
+});

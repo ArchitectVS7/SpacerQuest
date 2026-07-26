@@ -95,6 +95,8 @@ import {
   availableStorylets,
   offersForSurface,
   resolutionCeremony,
+  endingScreen,
+  type EndingView,
   type OnboardingAnchor,
   type OnboardingMount,
   type ResolutionCeremonyView,
@@ -404,6 +406,26 @@ export function App() {
   const hangoutAvailable =
     hangoutOpen(s.game) && !s.game.encounter && !s.combatAftermath && !ceremony;
 
+  // T-1505c · THE CAREER'S TERMINUS. Null until the engine says the career ended
+  // (`careerEnded` → the ship is on the far side of the Nemesis shear); the UI
+  // never decides this itself. Read AFTER every hook above, and rendered as an
+  // EARLY RETURN that replaces the cockpit — the engine refuses every verb from
+  // here, so leaving the terminal mounted behind it would be a screen of dead
+  // controls over a system with no port, board or hangout. The only way out is
+  // the screen's own `newGame` control, which lands on a fresh day-1 cockpit.
+  const ending = endingScreen(s.game);
+  if (ending) {
+    return (
+      <div className="tube">
+        <EffectsLayer />
+        {!reduced && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
+        <div className="screen">
+          <EndingScreen view={ending} seed={s.seed} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="tube">
       <EffectsLayer />
@@ -624,6 +646,76 @@ function ResolutionCeremony({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// T-1505c · THE ENDING. The career's terminus, rendered.
+//
+// This screen REPLACES the cockpit rather than covering it (see the early return
+// in `App`), for two reasons. (1) Truthfulness: on the far side of the shear the
+// engine refuses every verb with `ActionBlocked{'career-ended'}`, so a cockpit
+// behind this screen would be a wall of dead controls. (2) Safety: the panes
+// would be rendering `STAR_SYSTEMS[NEMESIS_SYSTEM_ID]` — a system with no port,
+// no depot and no hangout content.
+//
+// It is a pure CLIENT: every string and number comes from `endingScreen`
+// (format.ts) → engine `careerEpilogue` + content `CROSSING_ENDING`. It owns no
+// rule. Its ONE control starts a fresh career through the same `newGame(seed)`
+// store action the masthead's New game button uses, which lands the player back
+// on a clean day-1 cockpit — the app's entry surface, since there is no separate
+// menu screen. There is deliberately NO close button: the far side is not a room
+// you back out of.
+function EndingScreen({ view, seed }: { view: EndingView; seed: number }) {
+  return (
+    <div
+      className="ending-screen"
+      data-testid="ending-screen"
+      role="dialog"
+      aria-label="Career ending"
+    >
+      <div className="es-frame">
+        <header className="es-head">
+          <span className="es-kicker" data-testid="ending-kicker">
+            {view.kicker}
+          </span>
+          <h2 className="es-title" data-testid="ending-title">
+            {view.title}
+          </h2>
+        </header>
+
+        {/* The last thing the Galactic Wire ever files about this captain. The
+            cockpit ticker that used to carry it is gone with the cockpit, so this
+            line is `CROSSING_WIRE.crossed`'s player-facing reader now. */}
+        <p className="es-wire" data-testid="ending-wire">
+          {view.lastWire}
+        </p>
+
+        <div className="es-prose">
+          {view.prose.map((paragraph, index) => (
+            <p key={index} data-testid="ending-prose">
+              {paragraph}
+            </p>
+          ))}
+        </div>
+
+        <dl className="es-stats">
+          {view.stats.map((row) => (
+            <div className="es-stat" key={row.key} data-testid="ending-stat" data-stat={row.key}>
+              <dt>{row.label}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <p className="es-signoff" data-testid="ending-signoff">
+          {view.signOff}
+        </p>
+
+        <button className="btn es-return" data-testid="ending-return" onClick={() => newGame(seed)}>
+          {view.returnLabel}
+        </button>
       </div>
     </div>
   );

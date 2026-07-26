@@ -252,7 +252,33 @@ describe('T-1505b · the crossing is completable only with the full decoded set 
       'the crossing re-offered after the stake was already signed',
     ).toBe(false);
 
-    // (f) POST-COMMIT the jump lands. The crossing takes no encounter roll and
+    // (f) ANDROMEDA STAYS SEALED. The lift is NEMESIS-only: with the stake PAID
+    //     and the gate open, every other gated id is still refused.
+    //
+    //     T-1505c FALLOUT (rebalance-fallout rule): this loop used to run AFTER
+    //     the jump. It cannot any more — from the far side the engine's terminal
+    //     guard refuses every verb with `career-ended` BEFORE the destination gate
+    //     is reached (that ordering is deliberate and asserted in day.test.ts), so
+    //     a post-arrival Travel no longer reports 'destination-locked'. Moving the
+    //     loop here does not weaken it: post-commit / pre-crossing is exactly where
+    //     "the lift opened one door and only one" is load-bearing, because it is
+    //     the only window in which the flag is set and the ship can still fly.
+    for (let id = 21; id <= 27; id += 1) {
+      expect(isGatedDestination(id)).toBe(true);
+      const blocked = applyPlayerAction(state, {
+        type: 'Travel',
+        destinationId: id,
+        spendDie: bestDie(state),
+      });
+      expect(
+        blocked.events.some(
+          (event) => event.type === 'ActionBlocked' && event.reason === 'destination-locked',
+        ),
+        `system ${id} was travelable with the stake paid`,
+      ).toBe(true);
+    }
+
+    // (g) POST-COMMIT the jump lands. The crossing takes no encounter roll and
     //     rolls the content DC, so this is deterministic on the fitted nav suite.
     const jump = applyPlayerAction(state, {
       type: 'Travel',
@@ -277,21 +303,22 @@ describe('T-1505b · the crossing is completable only with the full decoded set 
     });
     state = jump.state;
 
-    // (g) ANDROMEDA STAYS SEALED. The lift is NEMESIS-only: every other gated id
-    //     is still refused with the stake paid AND the crossing behind us.
-    for (let id = 21; id <= 27; id += 1) {
-      expect(isGatedDestination(id)).toBe(true);
-      const blocked = applyPlayerAction(state, {
-        type: 'Travel',
-        destinationId: id,
-        spendDie: bestDie(state),
-      });
-      expect(
-        blocked.events.some(
-          (event) => event.type === 'ActionBlocked' && event.reason === 'destination-locked',
-        ),
-        `system ${id} was travelable after the crossing`,
-      ).toBe(true);
-    }
+    // (h) THE FAR SIDE IS TERMINAL (T-1505c). Andromeda is not "still sealed" from
+    //     here — nothing is reachable at all, because the career is over. Every
+    //     blockable verb, including a Travel to a gated id, now reads 'career-ended'
+    //     ahead of any other refusal. The ending itself (the epilogue, the empty
+    //     legal-action set) is proven in `nemesis-arc.test.ts`.
+    const afterCrossing = applyPlayerAction(state, {
+      type: 'Travel',
+      destinationId: 21,
+      spendDie: bestDie(state),
+    });
+    expect(afterCrossing.events).toContainEqual({
+      type: 'ActionBlocked',
+      day: state.day,
+      actionType: 'Travel',
+      reason: 'career-ended',
+    });
+    expect(isGatedDestination(21)).toBe(true);
   });
 });

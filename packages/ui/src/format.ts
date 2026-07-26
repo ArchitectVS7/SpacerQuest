@@ -29,6 +29,7 @@ import {
   NEMESIS_CROSSING_DC,
   CROSSING_STAKE_MIN_CREDITS,
   CROSSING_REQUIRED_RANK,
+  CROSSING_ENDING,
   type FactionId,
   type StoryletTrigger,
   type CrewRole,
@@ -40,6 +41,8 @@ import {
   nemesisLoreIndex,
   fragmentCount,
   quoteCrossingStake,
+  careerEnded,
+  careerEpilogue,
   componentTierForStrength,
   tributeForRound,
   nextRankFor,
@@ -1351,6 +1354,13 @@ export function crossingStatus(game: GameState): CrossingStatusView {
     dc: NEMESIS_CROSSING_DC,
   };
 
+  // T-1505c NOTE: in v1 this branch is HEADLESS-ONLY. Arrival at NEMESIS ends the
+  // career (engine `careerEnded`), the ending screen replaces the cockpit, and a
+  // new career starts with empty charts — so no player can open Records while
+  // `crossed` holds. It is kept, rather than deleted, because the read is correct
+  // and it becomes player-visible the moment the far side is playable (the
+  // Andromeda expansion, PRD §10). Its live readers today are the engine/sim
+  // tests; the arrival's player-facing surface is `endingScreen` below.
   if (crossed) return { ...base, state: 'crossed' };
   if (committed) return { ...base, state: 'committed' };
   if (quote.decoded === 0) return { ...base, state: 'hidden' };
@@ -1385,6 +1395,83 @@ function crossingLockText(
     case null:
       return 'Ready';
   }
+}
+
+/** T-1505c · One label/value row of the ending screen's career summary. `key`
+ *  rides the DOM as `data-stat`, so the e2e spec addresses rows by meaning
+ *  rather than by position. */
+export interface EndingStatRow {
+  key: string;
+  label: string;
+  value: string;
+}
+
+/** T-1505c · Everything the ending screen renders. */
+export interface EndingView {
+  kicker: string;
+  title: string;
+  prose: readonly string[];
+  signOff: string;
+  /** The arrival wire line (content `CROSSING_WIRE.crossed`), shown as the
+   *  screen's epigraph — this screen is the line's only player-facing reader,
+   *  because it replaces the cockpit ticker that used to carry it. */
+  lastWire: string;
+  /** Copy on the screen's single control (content `CROSSING_ENDING`). */
+  returnLabel: string;
+  /** The career summary, in display order. */
+  stats: EndingStatRow[];
+}
+
+/**
+ * T-1505c · The ending screen's view-model — NULL unless the ENGINE says the
+ * career is over (`careerEnded`). A pure client in the strictest sense: every
+ * number comes from the engine's `careerEpilogue` and every string from content's
+ * `CROSSING_ENDING`; this function owns no rule, invents no figure, and decides
+ * nothing except formatting and row order.
+ *
+ * READER: `EndingScreen` (App.tsx), which App mounts INSTEAD of the cockpit —
+ * see the design note there for why the far side replaces the terminal rather
+ * than covering it.
+ */
+export function endingScreen(game: GameState): EndingView | null {
+  if (!careerEnded(game)) return null;
+  const epilogue = careerEpilogue(game);
+
+  const stats: EndingStatRow[] = [
+    { key: 'day', label: 'DAYS FLOWN', value: String(epilogue.day) },
+    { key: 'rank', label: 'FINAL RANK', value: epilogue.rankLabel },
+    { key: 'deeds', label: 'DEEDS ON THE BOARD', value: String(epilogue.deedCount) },
+    {
+      key: 'fragments',
+      label: 'THE SIGNAL',
+      value: `${epilogue.fragmentsDecoded} of ${epilogue.fragmentsHeld} decoded`,
+    },
+    {
+      key: 'stake',
+      label: 'STAKE SIGNED OVER',
+      value: `${epilogue.stakeCredits.toLocaleString()} CR`,
+    },
+    { key: 'charted', label: 'SYSTEMS CHARTED', value: String(epilogue.systemsCharted) },
+  ];
+  // Only a career that actually lost a ship gets the succession line — a
+  // first-run spacer is not told about a counter that reads zero.
+  if (epilogue.successionCount > 0) {
+    stats.push({
+      key: 'successions',
+      label: 'LICENCES PASSED ON',
+      value: String(epilogue.successionCount),
+    });
+  }
+
+  return {
+    kicker: epilogue.kicker,
+    title: epilogue.title,
+    prose: epilogue.prose,
+    signOff: epilogue.signOff,
+    lastWire: epilogue.lastWire,
+    returnLabel: CROSSING_ENDING.returnLabel,
+    stats,
+  };
 }
 
 // ---- T-311 onboarding & Tour One presentation ----------------------------

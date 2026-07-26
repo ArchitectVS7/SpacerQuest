@@ -660,9 +660,11 @@ const GameEventSchema = z.discriminatedUnion('type', [
     day: z.number(),
     actionType: z.enum(['Trade', 'Travel', 'Shipyard', 'Storylet', 'Explore', 'VisitHangout']),
     // 'destination-locked' added by T-1101; 'no-hangout' by T-1303 (a VisitHangout
-    // at an un-flagged system). Serialized in eventLog, so the schema must accept
-    // them or loadSave would reject a save containing the event.
-    reason: z.enum(['active-encounter', 'destination-locked', 'no-hangout']),
+    // at an un-flagged system); 'career-ended' by T-1505c (any blockable verb
+    // attempted from the far side of the Nemesis shear). Serialized in eventLog,
+    // so the schema must accept them or loadSave would reject a save containing
+    // the event — including the autosave an ENDED career writes.
+    reason: z.enum(['active-encounter', 'destination-locked', 'no-hangout', 'career-ended']),
   }),
   z.object({
     type: z.literal('PoiDiscovered'),

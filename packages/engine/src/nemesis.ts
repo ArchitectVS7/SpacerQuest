@@ -17,10 +17,13 @@
 
 import {
   CROSSING_DECODED_REQUIREMENT,
+  CROSSING_ENDING,
   CROSSING_REQUIRED_RANK,
   CROSSING_STAKE_MIN_CREDITS,
   CROSSING_WIRE,
   NEMESIS_SYSTEM_ID,
+  RENOWN_RANKS,
+  type RenownRankId,
   SIGNAL_FRAGMENTS,
   distance as systemDistance,
 } from '@spacerquest/content';
@@ -297,4 +300,118 @@ export function commitCrossingStake(state: GameState, events: GameEvent[]): bool
     message: CROSSING_WIRE.stakeCommitted,
   });
   return true;
+}
+
+// ===========================================================================
+// T-1505c · THE TERMINUS.
+//
+// DESIGN CALL D7 — the crossing is terminal, and the terminus is DERIVED, not
+// stored. Arrival at NEMESIS *is* the end of the career: there is no port, no
+// manifest board, no fuel and no return leg on the far side, so the fact "this
+// career is over" needs no new bit — the ship's own position already says it.
+//
+// NO NEW GameState FIELD, and therefore NO save migration — the same precedent
+// D5 set for the crossing itself (which rides `flags`); this rides
+// `player.currentSystemId`, a field the save schema has round-tripped since v1.
+// A round-trip test still ships (standing constraint 3): an ended career must
+// survive createSave → loadSave with {@link careerEnded} still true.
+//
+// DESIGN CALL D8 — the ENGINE owns "the career is over"; the UI only renders it.
+// `applyPlayerAction` (day.ts) refuses every blockable verb with a typed
+// `ActionBlocked{reason:'career-ended'}` and the sim's `legalActions` advertises
+// nothing, so a headless driver stops for the same reason a player does.
+// ===========================================================================
+
+/**
+ * T-1505c · D7 · Is this career over? True exactly while the ship stands on the
+ * far side of the Nemesis shear.
+ *
+ * POSITIONAL, deliberately — and deliberately different from the UI's
+ * `crossingStatus` `'crossed'` state (format.ts), which is HISTORICAL (it also
+ * reads `charts.visitedSystemIds`, so the Records pane keeps saying "crossed"
+ * for the rest of the file's life). In practice the two agree, because arrival
+ * is terminal: nothing can move the ship off system 28 once it is there. The
+ * split is kept because the two answer different questions — "is the career
+ * over right now" versus "did this spacer ever cross".
+ *
+ * READERS: the terminal guard in `applyPlayerAction` (day.ts), the sim's
+ * `legalActions` stop signal (sim protocol.ts), and the UI's `endingScreen`
+ * view-model (ui format.ts) which mounts the ending screen off it.
+ */
+export function careerEnded(state: GameState): boolean {
+  return state.player.currentSystemId === NEMESIS_SYSTEM_ID;
+}
+
+/** T-1505c · The ending screen's whole payload: the authored epilogue (content)
+ *  plus the career's closing numbers, derived from the ended state. */
+export interface CareerEpilogue {
+  /** The day the crossing was flown — the career's last. */
+  day: number;
+  rankId: RenownRankId;
+  rankLabel: string;
+  /** Deeds standing in the Registry ledger. */
+  deedCount: number;
+  fragmentsHeld: number;
+  fragmentsDecoded: number;
+  /** What the stake took, off flag `nemesis.crossing.stake.credits`. */
+  stakeCredits: number;
+  /** The day it was signed, off flag `nemesis.crossing.stake.day`. */
+  stakeDay: number;
+  /** How many ships this career burned through (player.legacy). */
+  successionCount: number;
+  /** Systems the charts remember visiting. */
+  systemsCharted: number;
+  // --- the authored epilogue, verbatim from content CROSSING_ENDING ---
+  kicker: string;
+  title: string;
+  prose: readonly string[];
+  signOff: string;
+  /**
+   * The arrival wire line (content `CROSSING_WIRE.crossed`), carried onto the
+   * ending screen as its epigraph.
+   *
+   * WHY IT IS HERE: the engine files this line as a `WireEntry` on arrival, and
+   * before T-1505c the cockpit's wire ticker was its UI reader. The ending screen
+   * REPLACES the cockpit (design call D10), so that ticker never renders the
+   * line — the last thing the wire ever filed about this captain would otherwise
+   * be unreadable. Surfacing it here keeps `CROSSING_WIRE.crossed`'s player-facing
+   * reader alive, on the one screen that is actually up when it is filed.
+   */
+  lastWire: string;
+}
+
+/**
+ * T-1505c · The career epilogue — a PURE derivation over an ended state (no rng,
+ * no Date, no clone, no mutation). Every number is read off the state the
+ * crossing left behind; every string is content's, passed through untouched.
+ *
+ * Callable on ANY state (it does not assert {@link careerEnded}); the caller
+ * decides when the career is over. The UI's `endingScreen` gates on
+ * `careerEnded` and is the only production caller.
+ *
+ * READERS: ui `endingScreen` (format.ts) → `EndingScreen` (App.tsx), and the
+ * scripted long sim `packages/sim/src/__tests__/nemesis-arc.test.ts`.
+ */
+export function careerEpilogue(state: GameState): CareerEpilogue {
+  const player = state.player;
+  const stakeCredits = state.flags['nemesis.crossing.stake.credits'];
+  const stakeDay = state.flags['nemesis.crossing.stake.day'];
+  const rankId = player.registry.renownRank;
+  return {
+    day: state.day,
+    rankId,
+    rankLabel: RENOWN_RANKS[rankId].label,
+    deedCount: player.registry.earned.length,
+    fragmentsHeld: fragmentCount(player.nemesisFile),
+    fragmentsDecoded: decodedFragmentCount(player.nemesisFile),
+    stakeCredits: typeof stakeCredits === 'number' ? stakeCredits : 0,
+    stakeDay: typeof stakeDay === 'number' ? stakeDay : 0,
+    successionCount: player.legacy.successionCount,
+    systemsCharted: player.charts.visitedSystemIds.length,
+    kicker: CROSSING_ENDING.kicker,
+    title: CROSSING_ENDING.title,
+    prose: CROSSING_ENDING.prose,
+    signOff: CROSSING_ENDING.signOff,
+    lastWire: CROSSING_WIRE.crossed,
+  };
 }

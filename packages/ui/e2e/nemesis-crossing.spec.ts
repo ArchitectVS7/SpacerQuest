@@ -1,12 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
   ALL_FRAGMENT_IDS,
+  CROSSING_ENDING,
   CROSSING_WIRE,
   DEEDS,
   NEMESIS_CROSSING_DC,
   NEMESIS_SYSTEM_ID,
   RENOWN_DEED_THRESHOLDS,
-  STAR_SYSTEMS,
 } from '@spacerquest/content';
 import {
   createInitialState,
@@ -175,15 +175,21 @@ test('the crossing: locked, staked, and flown through the real cockpit', async (
   await expect(page.getByTestId('route-preview')).toBeVisible();
   await expect(page.getByTestId('route-dc')).toHaveText(String(NEMESIS_CROSSING_DC));
 
-  // 6) Commit. The bezel names the far side.
+  // 6) Commit. The ship crosses — and the career ends there.
+  //
+  //    T-1505c FALLOUT (rebalance-fallout rule): this step used to read the far
+  //    side off the COCKPIT — the bezel's `.loc`, the wire ticker, and the Records
+  //    crossing pane. None of those survive arrival any more: `careerEnded` is true
+  //    the instant the ship is on the far side, and the ending screen REPLACES the
+  //    cockpit (design call D10 — the engine refuses every verb from there, so live
+  //    controls behind it would be dead clicks). The two things this step actually
+  //    proved — that the jump ARRIVES, and that the authored `CROSSING_WIRE.crossed`
+  //    line reaches the player — are asserted here against the surface that is
+  //    genuinely up: the ending screen and its wire epigraph. The ending's own
+  //    contents, its return control and the reload behaviour belong to
+  //    `nemesis-ending.spec.ts`.
   await page.getByTestId('confirm-jump').click();
-  await expect(page.locator('.loc')).toContainText(STAR_SYSTEMS[NEMESIS_SYSTEM_ID].name);
-  await expect(page.getByTestId('wire')).toContainText(CROSSING_WIRE.crossed);
-
-  await inNemesisPane(page, async () => {
-    await expect(page.getByTestId('crossing-status')).toHaveAttribute(
-      'data-crossing-state',
-      'crossed',
-    );
-  });
+  await expect(page.getByTestId('ending-screen')).toBeVisible();
+  await expect(page.getByTestId('ending-wire')).toHaveText(CROSSING_WIRE.crossed);
+  await expect(page.getByTestId('ending-title')).toHaveText(CROSSING_ENDING.title);
 });

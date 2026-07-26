@@ -474,6 +474,31 @@ describe('legal-actions enumerator', () => {
     expect(legal.lifecycle).toEqual(['end-day']);
   });
 
+  // T-1505c · D8 · The headless STOP SIGNAL. On the far side of the Nemesis shear
+  // the engine refuses every blockable verb with `ActionBlocked{'career-ended'}`,
+  // so the protocol must advertise nothing at all — otherwise a UGT driver would
+  // spin forever picking "legal" actions that are guaranteed refusals. This is the
+  // named reader of engine `careerEnded`.
+  it('an ended career (the far side of NEMESIS) offers nothing at all', () => {
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = NEMESIS_SYSTEM_ID;
+    state.player.debt = 0;
+    state.player.dawnHand = {
+      dice: [20, 18, 12, 9, 2],
+      spent: [false, false, false, false, false],
+    };
+
+    const legal = legalActions(state);
+
+    expect(legal.phase).toBe(DayPhase.DAY);
+    expect(legal.actions).toEqual([]);
+    expect(legal.canWait).toBe(false);
+    expect(legal.lifecycle).toEqual([]);
+    // The dice are still in the hand — the career is over, not the day.
+    expect(legal.diceRemaining).toEqual([0, 1, 2, 3, 4]);
+  });
+
   it('DAWN offers no player actions, only the start-day transition', () => {
     const state = createInitialState(1);
     const legal = legalActions(state);

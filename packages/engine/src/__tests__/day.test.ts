@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { NEMESIS_SYSTEM_ID, isGatedDestination } from '@spacerquest/content';
 import { advanceDay, applyPlayerAction, endDay, startDay } from '../day.js';
 import { createInitialState, serializeState, deserializeState } from '../state.js';
 import { DayPhase, PlayerAction } from '../types.js';
@@ -289,5 +290,30 @@ describe('Destination gate (T-1101)', () => {
 
     expect(result.events.some((event) => event.type === 'ActionBlocked')).toBe(false);
     expect(result.events.some((event) => event.type === 'StatCheck')).toBe(true);
+  });
+
+  // T-1505c · GUARD ORDER. The terminal guard sits ABOVE the destination gate, so
+  // a jump attempted from the far side reports the true reason (the career is
+  // over) rather than a sealed door that could still notionally open. Both refusals
+  // would otherwise fire on this exact action, which is what makes the ordering
+  // observable — and worth pinning.
+  it('from the far side a gated jump reads career-ended, not destination-locked', () => {
+    const state = dayState();
+    state.player.currentSystemId = NEMESIS_SYSTEM_ID;
+    state.flags['nemesis.crossing.unlocked'] = true;
+
+    const result = applyPlayerAction(state, { type: 'Travel', destinationId: 21, spendDie: 0 });
+
+    expect(result.events).toEqual([
+      {
+        type: 'ActionBlocked',
+        day: state.day,
+        actionType: 'Travel',
+        reason: 'career-ended',
+      },
+    ]);
+    // The destination genuinely IS gated — the ordering, not the target, is what
+    // decides which refusal the player sees.
+    expect(isGatedDestination(21)).toBe(true);
   });
 });

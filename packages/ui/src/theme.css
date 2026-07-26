@@ -2753,6 +2753,107 @@ body {
   justify-self: start;
 }
 
+/* ---- T-1505c · the career ending (the far side) ---- */
+.ending-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 90; /* above everything — it REPLACES the cockpit, nothing outranks it */
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(120% 120% at 50% 42%, rgba(10, 6, 14, 0.96), rgba(3, 2, 4, 0.99));
+}
+.es-frame {
+  width: min(720px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  border: 1px solid var(--amber);
+  background: linear-gradient(180deg, #150e07, #070505);
+  box-shadow: var(--glow);
+  padding: 26px 28px;
+  display: grid;
+  gap: 18px;
+}
+.es-head {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 16px;
+}
+.es-kicker {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.26em;
+  color: var(--amber);
+}
+.es-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 26px;
+  letter-spacing: 0.04em;
+  color: var(--ember-hi);
+  text-shadow: var(--glow-hi);
+}
+.es-wire {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: 11px;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  color: var(--amber-dim);
+  border-left: 2px solid var(--amber-dim);
+  padding-left: 12px;
+}
+.es-prose {
+  display: grid;
+  gap: 12px;
+}
+.es-prose p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--amber);
+}
+.es-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 18px;
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+  padding: 14px 0;
+}
+.es-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.es-stat dt {
+  color: var(--amber-dim);
+}
+.es-stat dd {
+  margin: 0;
+  color: var(--ember-hi);
+}
+.es-signoff {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--amber);
+  opacity: 0.9;
+  text-align: center;
+}
+.es-return {
+  justify-self: center;
+  padding: 8px 22px;
+  letter-spacing: 0.14em;
+}
+
 @media (max-width: 720px) {
   .onboarding[data-onboarding-anchor='manifest'],
   .onboarding[data-onboarding-anchor='starmap'],

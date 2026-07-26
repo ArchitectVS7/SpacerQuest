@@ -341,3 +341,44 @@ export const CROSSING_WIRE = {
   crossed:
     'THE WIRE — last contact: a hull crossing the Nemesis shear on the etched corridor, under its own power, exactly as the ledger said it could be done. The carrier wave has stopped counting.',
 } as const;
+
+// ===========================================================================
+// T-1505c · THE ENDING — the career's terminus, as prose.
+//
+// DIVERGENCE: foundation (git ref f2f95fa9) has no ending of any kind. The 1991
+// game ran until the operator reset the board; the Nemesis black hole was a map
+// location and Andromeda a place you could dock. There is therefore no
+// foundation text to diverge FROM — every line below is authored Rimward
+// content, written to PRD-REIMAGINED §8.1 ("the arc ends at the event horizon,
+// with everything you own on the table") in the register of `CROSSING_WIRE` and
+// the fragments' `decoded` texts.
+//
+// ARC BOUNDARY, deliberately held: the epilogue narrates the THRESHOLD and
+// nothing past it. Andromeda (systems 21–26) and MALIGNA (27) stay sealed for
+// the expansion (PRD §10), so the prose closes the Signal's own loops — the
+// carrier wave that stopped counting (fragment 01), the returning voice
+// (05/11), the toll fragment 10 named — and promises nothing about the far
+// side. `signOff` is the tease; it is a door, not a trailer.
+//
+// READERS: engine `careerEpilogue` (nemesis.ts) folds these strings into the
+// terminal view-model, and the UI's `EndingScreen` (App.tsx, via format.ts
+// `endingScreen`) renders them. Both the engine tests and
+// `ui/e2e/nemesis-ending.spec.ts` assert against these constants IMPORTED, never
+// re-typed.
+// ===========================================================================
+export const CROSSING_ENDING = {
+  /** The masthead above the title — where and what this screen is. */
+  kicker: 'THE FAR SIDE · END OF CAREER',
+  title: 'The Carrier Wave Stops Counting',
+  /** The epilogue, one paragraph per entry, in reading order. */
+  prose: [
+    'The shear takes the ship the way the ledger said it would: not as violence but as arithmetic, every figure spent exactly where the etched corridor said to spend it. The last of the burn goes, and the hull holds, and the instruments — which have been counting down since the first sliver of carrier wave came off a gutted hulk — stop counting, all at once, the way a held breath stops.',
+    'The toll comes due at the threshold, as the psalm promised. It is not fuel and it is not nerve. It is the lanes: the manifest board at Sun-3, the Guild clerk who filed your marker, the bench at Mizar-9 with your fragments pinned to the wall above it. You give them up because there is no version of the crossing where you keep them, and the giving is the only part of the solution nobody wrote down.',
+    'Behind you the Confederation logs a hull that did not come back and files it, without comment, under a heading it has used a hundred times. Ahead, on a carrier older than any code the lanes can read, a voice that has been arriving for a century finishes what it was saying — and this time somebody is close enough to hear the end of the sentence.',
+  ] as const,
+  /** The line under the career summary. It promises nothing; it opens a door. */
+  signOff:
+    'What the voice says on the far side is not in this ledger. That crossing belongs to another career.',
+  /** Copy on the ending screen's single control. */
+  returnLabel: 'Begin a new career',
+} as const;

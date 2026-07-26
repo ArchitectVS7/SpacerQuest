@@ -345,7 +345,12 @@ export type GameEvent =
       // special) before the 'nemesis.crossing.unlocked' flag lifts it.
       // 'no-hangout' (T-1303): a VisitHangout at a system without a Spacers
       // Hangout (hasHangout !== true) — refused with no die spent, no throw.
-      reason: 'active-encounter' | 'destination-locked' | 'no-hangout';
+      // 'career-ended' (T-1505c): the ship stands on the far side of the Nemesis
+      // shear (engine `careerEnded`), where the career is over and every verb is
+      // inert — refused with no die spent, no throw. READERS: the terminal guard
+      // in `applyPlayerAction` (day.ts) emits it; the sim's `legalActions`
+      // (protocol.ts) refuses to advertise anything that would earn it.
+      reason: 'active-encounter' | 'destination-locked' | 'no-hangout' | 'career-ended';
     }
   | {
       /** An Explore nav check succeeded and charted a point of interest

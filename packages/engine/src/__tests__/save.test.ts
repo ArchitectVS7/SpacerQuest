@@ -9,10 +9,11 @@ import {
   type SaveEnvelope,
   type MigrationFn,
 } from '../save.js';
-import { FLAWS, SIGNAL_FRAGMENTS } from '@spacerquest/content';
+import { FLAWS, NEMESIS_SYSTEM_ID, SIGNAL_FRAGMENTS } from '@spacerquest/content';
 import { validateGameState } from '../schema.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { advanceDay } from '../day.js';
+import { careerEnded } from '../nemesis.js';
 import { GameState, PlayerAction } from '../types.js';
 
 /**
@@ -644,5 +645,55 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
       { fragmentId: 'frag-nemesis-09', source: 'courier', day: 4, decoded: false },
     ];
     expect(() => loadSave(createSave(state, 76))).toThrow(SaveError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1505c · The ENDED career round-trips, with no migration.
+//
+// Again NO GameState FIELD ships (design call D7): the terminus is DERIVED from
+// `player.currentSystemId`, which the save schema has round-tripped since v1, so
+// there is nothing to migrate and no version bump. What IS new is a serialized
+// literal — `ActionBlocked.reason: 'career-ended'` — and an ended career's
+// autosave will contain it the first time the player pokes a dead control, so
+// the schema has to accept it or a reload would be rejected outright.
+// ---------------------------------------------------------------------------
+describe('save envelope — an ended career round-trips with no migration (T-1505c)', () => {
+  it("the far-side position and a logged 'career-ended' refusal survive the round trip", () => {
+    const state = drive50Days(53);
+    state.player.currentSystemId = NEMESIS_SYSTEM_ID;
+    state.eventLog.push({
+      type: 'ActionBlocked',
+      day: state.day,
+      actionType: 'Explore',
+      reason: 'career-ended',
+    });
+
+    const loaded = loadSave(createSave(state, 77));
+
+    expect(loaded.state).toEqual(state);
+    expect(careerEnded(loaded.state)).toBe(true);
+    expect(loaded.state.eventLog).toContainEqual({
+      type: 'ActionBlocked',
+      day: state.day,
+      actionType: 'Explore',
+      reason: 'career-ended',
+    });
+    // Nothing needed a bump for any of it.
+    expect(CURRENT_SAVE_VERSION).toBe(7);
+  });
+
+  it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {
+    const state = drive50Days(54);
+    // A reason literal the union does not carry — cast through `unknown` (the
+    // pattern the loan/fragment drift tests above use) so the strict schema, not
+    // the type checker, is what rejects it.
+    (state.eventLog as unknown[]).push({
+      type: 'ActionBlocked',
+      day: state.day,
+      actionType: 'Explore',
+      reason: 'career-abandoned',
+    });
+    expect(() => loadSave(createSave(state, 78))).toThrow(SaveError);
   });
 });

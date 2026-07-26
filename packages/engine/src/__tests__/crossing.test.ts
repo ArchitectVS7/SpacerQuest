@@ -2,25 +2,32 @@ import { describe, expect, it } from 'vitest';
 import {
   ALL_FRAGMENT_IDS,
   CROSSING_DECODED_REQUIREMENT,
+  DEEDS,
+  RENOWN_DEED_THRESHOLDS,
+  CROSSING_ENDING,
   CROSSING_REQUIRED_RANK,
   CROSSING_STAKE_MIN_CREDITS,
   CROSSING_WIRE,
   NEMESIS_CROSSING_DC,
   NEMESIS_SYSTEM_ID,
+  RENOWN_RANKS,
   distance as systemDistance,
 } from '@spacerquest/content';
 import { applyPlayerAction, startDay } from '../day.js';
+import { rankForDeedCount } from '../deeds.js';
 import { createInitialState } from '../state.js';
 import { createSave, loadSave } from '../save.js';
 import { jumpFuelCost, syncMaxFuel } from '../economy.js';
 import {
+  careerEnded,
+  careerEpilogue,
   commitCrossingStake,
   decodeFragment,
   grantFragment,
   quoteCrossingStake,
 } from '../nemesis.js';
 import { travelDc } from '../actions/travel.js';
-import type { CrossingRefusal, GameEvent, GameState } from '../types.js';
+import type { CrossingRefusal, GameEvent, GameState, PlayerAction } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // T-1505b · The crossing & the stake.
@@ -361,5 +368,160 @@ describe('The crossing jump (T-1505b)', () => {
       spendDie: 0,
     });
     expect(result.state.player.ship.fuel).toBe(before - burn);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1505c · THE FAR SIDE IS TERMINAL.
+//
+// Design call D7: the terminus is DERIVED (`careerEnded` reads the ship's own
+// position), so no GameState field ships and no migration is needed. Design call
+// D8: the ENGINE owns "the career is over" — every blockable verb is refused with
+// a typed `ActionBlocked{'career-ended'}` that spends nothing, and the epilogue is
+// a pure read the UI merely renders.
+// ---------------------------------------------------------------------------
+
+/** An ARRIVED career: the stake signed, the jump flown, the ship on the far side.
+ *
+ *  The registry is stood up by its DEED LEDGER here (not by `readyToCross`'s bare
+ *  rank write), because the jump below runs `evaluateDeeds`, which RE-DERIVES
+ *  `renownRank` from `earned.length` — a hand-set rank would be silently demoted
+ *  in flight and the epilogue would report the wrong rank. Both the count and the
+ *  rank are derived from content, so T-1603's threshold rescale moves this with
+ *  the game. (Same fixture shape as `sim/__tests__/nemesis-crossing.test.ts`.) */
+function crossed(seed = 77): GameState {
+  const state = readyToCross(seed);
+  state.player.registry.earned = DEEDS.slice(0, RENOWN_DEED_THRESHOLDS.CONQUEROR).map(
+    (deed, index) => ({
+      id: deed.id,
+      title: deed.title,
+      citation: deed.citationTemplate,
+      day: 1,
+      eventIndex: index,
+    }),
+  );
+  state.player.registry.renownRank = rankForDeedCount(state.player.registry.earned.length);
+  expect(commitCrossingStake(state, [])).toBe(true);
+  state.player.ship.navigation = { strength: 90, condition: 9 };
+  const jump = applyPlayerAction(state, {
+    type: 'Travel',
+    destinationId: NEMESIS_SYSTEM_ID,
+    spendDie: 0,
+  });
+  const check = jump.events.find((event) => event.type === 'StatCheck');
+  if (check?.type !== 'StatCheck' || !check.result.success) {
+    throw new Error('fixture regression: the pinned hand no longer clears the crossing DC');
+  }
+  expect(jump.state.player.currentSystemId).toBe(NEMESIS_SYSTEM_ID);
+  return jump.state;
+}
+
+/** The six blockable verbs — exactly the members of `ActionBlocked.actionType`. */
+const BLOCKABLE: PlayerAction[] = [
+  { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+  { type: 'Travel', destinationId: 1, spendDie: 0 },
+  { type: 'Shipyard', action: 'repair', component: 'hull', spendDie: 0 },
+  { type: 'Storylet', storyletId: 'sage.mizar.decode-first', choiceId: 'decode' },
+  { type: 'Explore', spendDie: 0 },
+  { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
+];
+
+describe('T-1505c · the far side is terminal', () => {
+  it('careerEnded is false everywhere but the far side', () => {
+    const beforeCrossing = readyToCross();
+    expect(careerEnded(beforeCrossing)).toBe(false);
+    // Even with the stake signed and the gate open, the career runs until arrival.
+    expect(commitCrossingStake(beforeCrossing, [])).toBe(true);
+    expect(careerEnded(beforeCrossing)).toBe(false);
+
+    expect(careerEnded(crossed())).toBe(true);
+  });
+
+  it.each(BLOCKABLE.map((action) => [action.type, action] as const))(
+    'refuses %s with a typed career-ended block that spends nothing',
+    (_label, action) => {
+      const state = crossed();
+      const before = JSON.parse(JSON.stringify(state)) as GameState;
+
+      const result = applyPlayerAction(state, action);
+
+      const blocked = {
+        type: 'ActionBlocked',
+        day: state.day,
+        actionType: action.type,
+        reason: 'career-ended',
+      };
+      expect(result.events).toEqual([blocked]);
+      // The log gained exactly the refusal, and NOTHING else moved: no die spent,
+      // no fuel burned, no credits, no rng fork, dayEventCount untouched.
+      expect(result.state.eventLog).toEqual([...before.eventLog, blocked]);
+      expect(result.state.dayEventCount).toBe(before.dayEventCount);
+      expect(result.state.rngState).toEqual(before.rngState);
+      expect(result.state.player.credits).toBe(before.player.credits);
+      expect(result.state.player.ship.fuel).toBe(before.player.ship.fuel);
+      expect(result.state.player.currentSystemId).toBe(before.player.currentSystemId);
+      // The hand is byte-identical: the crossing jump spent die 0 and the refusal
+      // spent nothing further.
+      expect(result.state.player.dawnHand).toEqual(before.player.dawnHand);
+    },
+  );
+
+  it('reports the epilogue: content prose verbatim, and the career’s own numbers', () => {
+    const state = crossed();
+    const epilogue = careerEpilogue(state);
+
+    // The prose is CONTENT's, compared against the import — never re-typed here.
+    expect(epilogue.kicker).toBe(CROSSING_ENDING.kicker);
+    expect(epilogue.title).toBe(CROSSING_ENDING.title);
+    expect(epilogue.prose).toEqual(CROSSING_ENDING.prose);
+    expect(epilogue.signOff).toBe(CROSSING_ENDING.signOff);
+    // The arrival wire line rides the epilogue: the cockpit ticker that used to
+    // read it is replaced by the ending screen, so this is now its only
+    // player-facing reader.
+    expect(epilogue.lastWire).toBe(CROSSING_WIRE.crossed);
+
+    // …and every number is derived from the state the crossing left behind.
+    expect(epilogue.day).toBe(state.day);
+    expect(epilogue.rankId).toBe(CROSSING_REQUIRED_RANK);
+    expect(epilogue.rankLabel).toBe(RENOWN_RANKS[CROSSING_REQUIRED_RANK].label);
+    expect(epilogue.deedCount).toBe(state.player.registry.earned.length);
+    expect(epilogue.fragmentsHeld).toBe(ALL_FRAGMENT_IDS.length);
+    expect(epilogue.fragmentsDecoded).toBe(CROSSING_DECODED_REQUIREMENT);
+    // The stake receipt is read off the flags `commitCrossingStake` wrote.
+    expect(epilogue.stakeCredits).toBe(state.flags['nemesis.crossing.stake.credits']);
+    expect(epilogue.stakeDay).toBe(state.flags['nemesis.crossing.stake.day']);
+    expect(epilogue.successionCount).toBe(state.player.legacy.successionCount);
+    expect(epilogue.systemsCharted).toBe(state.player.charts.visitedSystemIds.length);
+    // The arrival is in the charts, so the far side is counted.
+    expect(state.player.charts.visitedSystemIds).toContain(NEMESIS_SYSTEM_ID);
+  });
+
+  it('careerEpilogue is a pure read — it mutates nothing', () => {
+    const state = crossed();
+    const before = JSON.stringify(state);
+    careerEpilogue(state);
+    expect(JSON.stringify(state)).toBe(before);
+  });
+
+  // Standing constraint 3. NO migration ships with this task because NO GameState
+  // field was added (design call D7): the terminus is derived from
+  // `player.currentSystemId`, which the save schema has always round-tripped.
+  it('an ended career survives createSave → loadSave, still ended', () => {
+    const state = crossed();
+    // The refusal event must survive too — the autosave an ended career writes
+    // contains it, and `loadSave` would reject an unknown reason literal.
+    const refused = applyPlayerAction(state, { type: 'Explore', spendDie: 0 }).state;
+
+    const reloaded = loadSave(createSave(refused, 77)).state;
+
+    expect(JSON.parse(JSON.stringify(reloaded))).toEqual(JSON.parse(JSON.stringify(refused)));
+    expect(careerEnded(reloaded)).toBe(true);
+    expect(careerEpilogue(reloaded)).toEqual(careerEpilogue(refused));
+    expect(reloaded.eventLog).toContainEqual({
+      type: 'ActionBlocked',
+      day: refused.day,
+      actionType: 'Explore',
+      reason: 'career-ended',
+    });
   });
 });

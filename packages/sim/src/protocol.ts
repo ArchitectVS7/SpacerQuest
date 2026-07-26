@@ -32,6 +32,7 @@ import {
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
   applyPlayerAction,
+  careerEnded,
   createInitialState,
   crewCapacity,
   deserializeState,
@@ -403,6 +404,24 @@ export function legalActions(state: GameState): LegalActions {
       actions: [],
       canWait: false,
       lifecycle: phase === DayPhase.DAWN ? ['start-day'] : [],
+    };
+  }
+
+  // T-1505c · D8 · THE CAREER IS OVER. The ship stands on the far side of the
+  // Nemesis shear (engine `careerEnded`), where `applyPlayerAction` refuses every
+  // blockable verb with `ActionBlocked{'career-ended'}` — so advertising anything
+  // here would stall a headless driver on a guaranteed refusal, the same failure
+  // mode the T-1101 destination gate below exists to prevent. An empty
+  // `actions` + `canWait: false` + no `lifecycle` IS the protocol's stop signal:
+  // there is nothing left to do, and no dusk worth rolling.
+  if (careerEnded(state)) {
+    return {
+      phase,
+      inEncounter: false,
+      diceRemaining,
+      actions: [],
+      canWait: false,
+      lifecycle: [],
     };
   }
 
