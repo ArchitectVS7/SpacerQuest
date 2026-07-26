@@ -326,6 +326,107 @@ describe('protocol deterministic replay', () => {
       expect(malformed.response.code).toBe('apply-failed');
     }
   });
+
+  // -------------------------------------------------------------------------
+  // T-1604a · ActionBlocked PROTOCOL parity, all four reasons.
+  //
+  // `active-encounter` is proven through `handleMessage` directly above. The
+  // other three were only ever proven as NON-ADVERTISEMENT (the enumerator
+  // refuses to offer them — see the `legal-actions enumerator` describe) and as
+  // engine-level emission (day.test.ts / crossing.test.ts). Nothing asserted
+  // that a driver which BYPASSES the legal list — a mis-written client, a stale
+  // cached action list — gets the T-1003 commit contract back rather than a bare
+  // `error`. These three deliberately bypass it and assert that contract:
+  //   1. the response is `action-result`, NOT `error`;
+  //   2. `events` carry ActionBlocked with the exact actionType + reason;
+  //   3. the block is committed to `session.state.eventLog` (exactly one entry);
+  //   4. no die is spent and `dayEventCount` is unchanged (a pure log-append).
+  // -------------------------------------------------------------------------
+
+  /** A DAY-phase session with a full unspent dawn hand, ready to be refused. */
+  function blockableSession(seed: number, mutate: (state: GameState) => void): ProtocolSession {
+    const state = createInitialState(seed);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(seed), {
+      handSize: 5,
+      floor: 0,
+      rerolls: 0,
+    });
+    mutate(state);
+    return { seed, state };
+  }
+
+  /** Apply `action` off the legal list and assert the whole T-1003 block contract. */
+  function expectBlocked(
+    session: ProtocolSession,
+    action: PlayerAction,
+    actionType: string,
+    reason: string,
+  ): void {
+    const spentBefore = [...(session.state.player.dawnHand?.spent ?? [])];
+    const logLenBefore = session.state.eventLog.length;
+    const dayEventsBefore = session.state.dayEventCount;
+
+    const blocked = handleMessage(session, { type: 'apply-action', action });
+
+    // 1 · an action-result, never a bare `error`.
+    const result = expectActionResult(blocked.response);
+    // 2 · the typed event, with the exact actionType + reason.
+    const event = result.events.find((e) => e.type === 'ActionBlocked');
+    expect(event).toBeDefined();
+    expect(event && event.type === 'ActionBlocked' && event.actionType).toBe(actionType);
+    expect(event && event.type === 'ActionBlocked' && event.reason).toBe(reason);
+    // 3 · committed to the session's own event log — exactly one entry.
+    expect(blocked.session).not.toBeNull();
+    expect(blocked.session!.state.eventLog.length).toBe(logLenBefore + 1);
+    const committed = blocked.session!.state.eventLog[logLenBefore];
+    expect(committed?.type).toBe('ActionBlocked');
+    // 4 · pure log-append: no die spent, no day-event bump.
+    expect(blocked.session!.state.player.dawnHand?.spent).toEqual(spentBefore);
+    expect(result.summary.diceRemaining).toEqual([0, 1, 2, 3, 4]);
+    expect(blocked.session!.state.dayEventCount).toBe(dayEventsBefore);
+  }
+
+  it('T-1604a · ActionBlocked parity — destination-locked commits, spends no die', () => {
+    const session = blockableSession(11, (state) => {
+      state.player.ship.fuel = state.player.ship.maxFuel;
+      expect(state.flags['nemesis.crossing.unlocked']).toBeUndefined();
+    });
+    // A sealed Andromeda system: `legalActions` never advertises it (T-1101), and
+    // a driver that sends it anyway is refused with no die spent.
+    const sealed = 21;
+    expect(isGatedDestination(sealed)).toBe(true);
+    expectBlocked(
+      session,
+      { type: 'Travel', destinationId: sealed, spendDie: 0 },
+      'Travel',
+      'destination-locked',
+    );
+  });
+
+  it('T-1604a · ActionBlocked parity — no-hangout commits, spends no die', () => {
+    const session = blockableSession(12, (state) => {
+      state.player.currentSystemId = 2; // Aldebaran-1 — no Spacers Hangout.
+    });
+    expectBlocked(
+      session,
+      { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
+      'VisitHangout',
+      'no-hangout',
+    );
+  });
+
+  it('T-1604a · ActionBlocked parity — career-ended commits, spends no die', () => {
+    const session = blockableSession(13, (state) => {
+      // The far side of the Nemesis shear — engine `careerEnded` (nemesis.ts),
+      // built exactly the way the enumerator's stop-signal test builds it.
+      state.player.currentSystemId = NEMESIS_SYSTEM_ID;
+      state.player.debt = 0;
+    });
+    // The enumerator advertises NOTHING here — this is the bypass case.
+    expect(legalActions(session.state).actions).toEqual([]);
+    expectBlocked(session, { type: 'Explore', spendDie: 0 }, 'Explore', 'career-ended');
+  });
 });
 
 // ---------------------------------------------------------------------------

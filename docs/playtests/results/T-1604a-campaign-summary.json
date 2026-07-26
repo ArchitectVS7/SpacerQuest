@@ -1,0 +1,906 @@
+{
+  "task": "T-1604a",
+  "date": "2026-07-26 17:38:55",
+  "bin": "C:\\dev\\Games\\SpacerQuest\\packages\\sim\\dist\\protocol-stdio.js",
+  "binMtime": "2026-07-26 17:12:05",
+  "actionTableSize": 22,
+  "legs": [
+    {
+      "label": "spike",
+      "exitCode": 0,
+      "stdout": "  [PASS] new-game returns state-summary at DAWN  \u2014 day=1 credits=1000\n  [PASS] start-day rolls the day (DAY + 5 dice)  \u2014 diceRemaining=[0, 1, 2, 3, 4]\n  [PASS] legal-actions advertises choices  \u2014 17 action specs\n  [PASS] apply-action drives \u226510 legal actions  \u2014 20 applied\n  [PASS] ZERO ActionBlocked from legal picks (protocol parity)  \u2014 0 blocked\n  [PASS] end-day / day loop lands on a fresh DAWN  \u2014 day=2\n\n  6/6 checks passed\n"
+    },
+    {
+      "label": "verify",
+      "passed": 8,
+      "failed": 0,
+      "notReached": 3,
+      "coveragePct": 72.7,
+      "statuses": {
+        "sign_contract_fills_hold": "PASSED",
+        "buy_fuel_refuels": "PASSED",
+        "travel_spends_die_never_mints_fuel": "PASSED",
+        "pay_debt_reduces_marker": "PASSED",
+        "end_day_advances_calendar": "PASSED",
+        "parity_no_blocked_from_legal": "PASSED",
+        "port_buy_takes_a_stake": "NOT_REACHED",
+        "crew_hire_then_dismiss_frees_the_berth": "NOT_REACHED",
+        "reroll_consumes_a_charge_not_a_die": "NOT_REACHED",
+        "explore_spends_die": "PASSED",
+        "wait_is_inert": "PASSED"
+      }
+    },
+    {
+      "label": "leg 3 tour-one",
+      "terminateOn": "era",
+      "episodes": 8,
+      "hunterSteps": 2225,
+      "actionsApplied": 1990,
+      "fellBackSteps": 1216,
+      "maxDay": 31,
+      "maxCredits": 2786,
+      "minCredits": -40,
+      "maxDebt": 25000,
+      "fullTankStalledSteps": 4,
+      "eraFlipReached": true,
+      "encountersSeen": 5,
+      "successions": 0,
+      "blockedFromLegal": 0,
+      "protocolErrors": 0,
+      "findings": [
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 73,
+          "actionName": "sign_contract"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 74,
+          "actionName": "shipyard_repair"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 75,
+          "actionName": "pay_debt"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 76,
+          "actionName": "storylet_first"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 77,
+          "actionName": "port_buy"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 80,
+          "actionName": "combat_run"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 81,
+          "actionName": "wait"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 82,
+          "actionName": "travel_contract"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 84,
+          "actionName": "end_day"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 85,
+          "actionName": "reroll"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 86,
+          "actionName": "travel_random"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 88,
+          "actionName": "random_legal"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 89,
+          "actionName": "combat_fight"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 92,
+          "actionName": "crew_dismiss"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 93,
+          "actionName": "shipyard_buy"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 96,
+          "actionName": "visit_hangout"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 107,
+          "actionName": "explore"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 108,
+          "actionName": "combat_talk"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 114,
+          "actionName": "first_legal"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 116,
+          "actionName": "buy_fuel_max"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 117,
+          "actionName": "haggle"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 6,
+          "step": 136,
+          "actionName": "crew_hire"
+        }
+      ],
+      "actionCounts": {
+        "travel_random": 98,
+        "visit_hangout": 112,
+        "shipyard_repair": 99,
+        "reroll": 106,
+        "haggle": 100,
+        "buy_fuel_max": 89,
+        "crew_dismiss": 104,
+        "pay_debt": 99,
+        "random_legal": 106,
+        "storylet_first": 97,
+        "combat_talk": 104,
+        "travel_contract": 123,
+        "shipyard_buy": 102,
+        "combat_fight": 94,
+        "first_legal": 96,
+        "sign_contract": 104,
+        "end_day": 98,
+        "port_buy": 102,
+        "wait": 93,
+        "combat_run": 97,
+        "explore": 94,
+        "crew_hire": 108
+      },
+      "seconds": 5.1
+    },
+    {
+      "label": "leg 4 veteran",
+      "terminateOn": "career-end",
+      "episodes": 6,
+      "hunterSteps": 5400,
+      "actionsApplied": 4695,
+      "fellBackSteps": 2773,
+      "maxDay": 131,
+      "maxCredits": 2881,
+      "minCredits": -40,
+      "maxDebt": 172181,
+      "fullTankStalledSteps": 8,
+      "eraFlipReached": true,
+      "encountersSeen": 11,
+      "successions": 1,
+      "blockedFromLegal": 0,
+      "protocolErrors": 0,
+      "findings": [
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 312,
+          "actionName": "random_legal"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 313,
+          "actionName": "visit_hangout"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 314,
+          "actionName": "wait"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 317,
+          "actionName": "pay_debt"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 318,
+          "actionName": "port_buy"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 320,
+          "actionName": "travel_random"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 321,
+          "actionName": "storylet_first"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 322,
+          "actionName": "first_legal"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 324,
+          "actionName": "shipyard_buy"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 326,
+          "actionName": "end_day"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 327,
+          "actionName": "shipyard_repair"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 328,
+          "actionName": "reroll"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 330,
+          "actionName": "travel_contract"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 331,
+          "actionName": "crew_hire"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 334,
+          "actionName": "crew_dismiss"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 337,
+          "actionName": "haggle"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 342,
+          "actionName": "combat_fight"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 343,
+          "actionName": "sign_contract"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 355,
+          "actionName": "explore"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 361,
+          "actionName": "combat_run"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 365,
+          "actionName": "buy_fuel_max"
+        },
+        {
+          "kind": "invariant",
+          "name": "inv_no_negative_resources",
+          "message": "negative resource(s) credits=-40 after step",
+          "episode": 0,
+          "step": 369,
+          "actionName": "combat_talk"
+        }
+      ],
+      "actionCounts": {
+        "explore": 256,
+        "travel_random": 242,
+        "wait": 258,
+        "visit_hangout": 229,
+        "end_day": 255,
+        "pay_debt": 253,
+        "reroll": 248,
+        "combat_run": 259,
+        "random_legal": 236,
+        "haggle": 258,
+        "first_legal": 240,
+        "shipyard_repair": 239,
+        "sign_contract": 229,
+        "buy_fuel_max": 241,
+        "storylet_first": 268,
+        "travel_contract": 245,
+        "combat_fight": 227,
+        "crew_hire": 232,
+        "combat_talk": 261,
+        "crew_dismiss": 226,
+        "shipyard_buy": 259,
+        "port_buy": 239
+      },
+      "seconds": 34.9
+    },
+    {
+      "label": "leg 5 competence",
+      "terminateOn": "career-end",
+      "episodes": 6,
+      "hunterSteps": 5400,
+      "actionsApplied": 4503,
+      "fellBackSteps": 4,
+      "maxDay": 151,
+      "maxCredits": 9806,
+      "minCredits": 1,
+      "maxDebt": 269362,
+      "fullTankStalledSteps": 579,
+      "eraFlipReached": true,
+      "encountersSeen": 17,
+      "successions": 1,
+      "blockedFromLegal": 0,
+      "protocolErrors": 0,
+      "findings": [],
+      "actionCounts": {
+        "sign_contract": 49,
+        "travel_contract": 4209,
+        "buy_fuel_max": 58,
+        "end_day": 881,
+        "combat_talk": 59,
+        "shipyard_repair": 128,
+        "combat_run": 16
+      },
+      "seconds": 58.8
+    },
+    {
+      "label": "determinism",
+      "streamLen": 201,
+      "firstDivergence": null,
+      "idSequenceLen": 200
+    }
+  ],
+  "ledger": {
+    "jsonlPath": "C:\\dev\\Games\\ugt-universal-game-tester\\integrations\\spacerquest\\results\\t1604a-actions.jsonl",
+    "jsonlLines": 11646,
+    "appliedFromBridgeCountersHuntLegsOnly": 11188,
+    "distinctActionNames": 21,
+    "distinctActionContextPairs": 233,
+    "mostRepeatedActionContext": [
+      [
+        [
+          "travel_contract",
+          8
+        ],
+        794
+      ],
+      [
+        [
+          "travel_contract",
+          11
+        ],
+        707
+      ],
+      [
+        [
+          "travel_contract",
+          5
+        ],
+        699
+      ],
+      [
+        [
+          "travel_contract",
+          14
+        ],
+        693
+      ],
+      [
+        [
+          "travel_contract",
+          18
+        ],
+        686
+      ]
+    ],
+    "mostRepeatedActionDay": [
+      [
+        [
+          "wait",
+          3
+        ],
+        45
+      ],
+      [
+        [
+          "wait",
+          2
+        ],
+        36
+      ],
+      [
+        [
+          "travel_contract",
+          28
+        ],
+        36
+      ],
+      [
+        [
+          "travel_contract",
+          24
+        ],
+        35
+      ],
+      [
+        [
+          "travel_contract",
+          13
+        ],
+        35
+      ]
+    ],
+    "perIdTotals": {
+      "sign_contract": 368,
+      "travel_random": 335,
+      "pay_debt": 339,
+      "buy_fuel_max": 381,
+      "wait": 444,
+      "explore": 335,
+      "visit_hangout": 333,
+      "shipyard_repair": 451,
+      "reroll": 341,
+      "haggle": 354,
+      "crew_dismiss": 321,
+      "random_legal": 329,
+      "storylet_first": 350,
+      "combat_talk": 398,
+      "travel_contract": 4570,
+      "shipyard_buy": 348,
+      "combat_fight": 306,
+      "first_legal": 328,
+      "port_buy": 331,
+      "combat_run": 358,
+      "crew_hire": 326
+    },
+    "perIdFallbacks": {
+      "visit_hangout": 279,
+      "reroll": 341,
+      "buy_fuel_max": 282,
+      "crew_dismiss": 321,
+      "shipyard_repair": 89,
+      "combat_talk": 345,
+      "travel_contract": 110,
+      "shipyard_buy": 114,
+      "combat_fight": 297,
+      "sign_contract": 308,
+      "travel_random": 90,
+      "combat_run": 340,
+      "haggle": 345,
+      "crew_hire": 105,
+      "explore": 298,
+      "storylet_first": 223,
+      "port_buy": 111,
+      "pay_debt": 219
+    },
+    "perIdFallbackRate": {
+      "sign_contract": 0.837,
+      "travel_random": 0.269,
+      "pay_debt": 0.646,
+      "buy_fuel_max": 0.74,
+      "wait": 0.0,
+      "explore": 0.89,
+      "visit_hangout": 0.838,
+      "shipyard_repair": 0.197,
+      "reroll": 1.0,
+      "haggle": 0.975,
+      "crew_dismiss": 1.0,
+      "random_legal": 0.0,
+      "storylet_first": 0.637,
+      "combat_talk": 0.867,
+      "travel_contract": 0.024,
+      "shipyard_buy": 0.328,
+      "combat_fight": 0.971,
+      "first_legal": 0.0,
+      "port_buy": 0.335,
+      "combat_run": 0.95,
+      "crew_hire": 0.322
+    },
+    "specTypesSent": {
+      "Trade/sign-contract": 81,
+      "Travel": 6979,
+      "Trade/pay-debt": 1554,
+      "Trade/buy-fuel": 469,
+      "Wait": 444,
+      "Explore": 38,
+      "Shipyard/repair": 390,
+      "Trade/haggle": 11,
+      "Storylet:passenger.pilgrim.board": 4,
+      "Storylet:chain.stellar-monk.empty-hold": 4,
+      "Shipyard/buy-cargo-pods": 26,
+      "Port/buy": 240,
+      "Storylet:cargo.electronics.gray-market-buyer": 4,
+      "Storylet:cargo.photonic.calibration-drift": 3,
+      "Shipyard/buy-component-tier": 260,
+      "Crew/hire": 247,
+      "Storylet:guild.pressure.tour-one.day25": 10,
+      "Storylet:wire.rimward.polaris-signal": 14,
+      "Shipyard/buy-special-equipment": 31,
+      "Storylet:chain.wild-card.pitch": 3,
+      "Storylet:passenger.medic.board": 3,
+      "Storylet:passenger.medic.arrival": 3,
+      "Storylet:port.sun3.guild-auditor": 12,
+      "Storylet:chain.doc-salvage.distress-ping": 10,
+      "Storylet:chain.doc-salvage.follow-up": 9,
+      "VisitHangout": 57,
+      "Storylet:guild.pressure.tour-one.day10": 11,
+      "Storylet:chain.doc-salvage.impound": 62,
+      "Storylet:port.aldebaran.grain-exchange": 11,
+      "Storylet:chain.rattlesnake.insult": 9,
+      "Storylet:chain.rattlesnake.escalation": 8,
+      "Storylet:chain.rattlesnake.duel": 7,
+      "Storylet:era.famine.ration-queue": 9,
+      "Combat": 223,
+      "Storylet:era.fuel-crisis.dry-depot": 58,
+      "Storylet:passenger.gambler.debt": 3,
+      "Storylet:npc.void-whisper.psalm-shard": 3,
+      "Storylet:era.dilithium.boomtown-berth": 48,
+      "Storylet:guild.pressure.tour-one.day20": 7,
+      "Storylet:era.plague.quarantine-line": 3,
+      "Storylet:passenger.deadhead.empty-berth": 4,
+      "Storylet:chain.the-broker.ledger": 3,
+      "Storylet:chain.the-broker.favor": 2,
+      "Storylet:chain.the-broker.leverage": 38,
+      "Storylet:cargo.medicinals.quarantine-seal": 1,
+      "Storylet:cargo.rare-elements.assay-dispute": 2,
+      "Storylet:cargo.nutri-goods.spoilage-scare": 2,
+      "Storylet:derelict.sealed-pod": 2,
+      "Storylet:fence.ray.sealed-pod": 2,
+      "Storylet:era.blockade.tariff-clerk": 172,
+      "Storylet:passenger.pilgrim.arrival": 3,
+      "Storylet:cargo.dry-goods.short-count": 1,
+      "Storylet:chain.wild-card.co-sign": 2,
+      "Storylet:chain.wild-card.fallout": 1,
+      "Storylet:resolution.tour-one.unpaid": 6,
+      "Storylet:passenger.courier.sealed-orders": 1,
+      "Storylet:veteran.first-lane": 6,
+      "Storylet:veteran.guild-recognition": 6,
+      "Storylet:era.blockade.cordon-run": 3,
+      "Storylet:era.crackdown.checkpoint": 4,
+      "Storylet:alliance.dragons.challenge": 3,
+      "Storylet:alliance.dragons.circuit": 3,
+      "Storylet:alliance.dragons.crown": 3,
+      "Storylet:cargo.spices.customs-sniff": 1,
+      "Storylet:cargo.precious-metals.escort-shakedown": 2,
+      "Storylet:port.achernar.nav-beacon": 1,
+      "Storylet:port.achernar.gem-cutters": 1,
+      "Storylet:port.fomalhaut.deep-dark": 1,
+      "Storylet:passenger.fugitive.board": 1,
+      "Storylet:passenger.fugitive.arrival": 1
+    },
+    "eventTypes": {
+      "TradeEvent": 613,
+      "DeedEarned": 217,
+      "RenownRankUp": 64,
+      "WireEntry": 7785,
+      "StoryletOffered": 232,
+      "StatCheck": 7552,
+      "TravelEvent": 6999,
+      "DebtPayment": 1554,
+      "PoiDiscovered": 23,
+      "ShipyardFail": 482,
+      "StoryletEffectApplied": 369,
+      "StoryletChoiceResolved": 240,
+      "DispositionChanged": 112,
+      "StoryletScheduled": 57,
+      "PortEvent": 240,
+      "ShipyardEvent": 225,
+      "ExplorationFailed": 15,
+      "CrewEvent": 247,
+      "StoryletDeedProgress": 12,
+      "HangoutEvent": 56,
+      "StoryletChoiceBlocked": 356,
+      "ReputationChanged": 39,
+      "EncounterStarted": 37,
+      "CombatEvent": 223,
+      "EncounterRound": 223,
+      "EnemyCounterAction": 193,
+      "TributeDemanded": 94,
+      "ComponentDamaged": 107,
+      "EncounterResolved": 30,
+      "FragmentAcquired": 6,
+      "SalvageRecovered": 17,
+      "ContrabandFound": 2,
+      "TributePaid": 4,
+      "LoanEvent": 1,
+      "ShipLost": 3,
+      "LegacySuccession": 3,
+      "FlawCheck": 2
+    },
+    "blockedEntries": []
+  },
+  "checks": [
+    {
+      "name": "leg 1 spike: raw Rimward wire passes",
+      "ok": true,
+      "detail": "  6/6 checks passed"
+    },
+    {
+      "name": "leg 2 verify: no feature FAILED",
+      "ok": true,
+      "detail": "8/11 passed, 3 not reached"
+    },
+    {
+      "name": "leg 3 tour-one: zero HuntReport findings",
+      "ok": false,
+      "detail": "22 finding(s), 2225 steps"
+    },
+    {
+      "name": "leg 3 tour-one: zero ActionBlocked from a legal pick",
+      "ok": true,
+      "detail": "blockedFromLegal=0"
+    },
+    {
+      "name": "leg 3 tour-one: zero protocol errors",
+      "ok": true,
+      "detail": "protocolErrors=0"
+    },
+    {
+      "name": "leg 4 veteran: zero HuntReport findings",
+      "ok": false,
+      "detail": "22 finding(s), 5400 steps"
+    },
+    {
+      "name": "leg 4 veteran: zero ActionBlocked from a legal pick",
+      "ok": true,
+      "detail": "blockedFromLegal=0"
+    },
+    {
+      "name": "leg 4 veteran: zero protocol errors",
+      "ok": true,
+      "detail": "protocolErrors=0"
+    },
+    {
+      "name": "leg 5 competence: zero HuntReport findings",
+      "ok": true,
+      "detail": "0 finding(s), 5400 steps"
+    },
+    {
+      "name": "leg 5 competence: zero ActionBlocked from a legal pick",
+      "ok": true,
+      "detail": "blockedFromLegal=0"
+    },
+    {
+      "name": "leg 5 competence: zero protocol errors",
+      "ok": true,
+      "detail": "protocolErrors=0"
+    },
+    {
+      "name": "leg 6 determinism: same seed -> identical state stream",
+      "ok": true,
+      "detail": "len=201/201 first_divergence=None"
+    },
+    {
+      "name": "volume: >= 1,000 UGT actions logged (JSONL lines)",
+      "ok": true,
+      "detail": "11646 JSONL lines / 11188 from the hunt-leg bridge counters"
+    },
+    {
+      "name": "volume accounting: JSONL >= summed hunt-leg actionsApplied",
+      "ok": true,
+      "detail": "jsonl=11646 huntLegs=11188 (delta 458 = verify + determinism legs)"
+    },
+    {
+      "name": "parity: campaign-wide blockedFromLegal == 0",
+      "ok": true,
+      "detail": "[0, 0, 0]"
+    },
+    {
+      "name": "coverage: every applied action id fired at least once (end_day excluded \u2014 it is a lifecycle rollover, never an apply-action)",
+      "ok": true,
+      "detail": "21/21 ids seen; missing=[]"
+    }
+  ],
+  "findings": [
+    "[verify] port_buy_takes_a_stake: NOT_REACHED within the turn budget (named gap, not a silent skip)",
+    "[verify] crew_hire_then_dismiss_frees_the_berth: NOT_REACHED within the turn budget (named gap, not a silent skip)",
+    "[verify] reroll_consumes_a_charge_not_a_die: NOT_REACHED within the turn budget (named gap, not a silent skip)",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on sign_contract (ep 6 step 73): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on shipyard_repair (ep 6 step 74): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on pay_debt (ep 6 step 75): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on storylet_first (ep 6 step 76): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on port_buy (ep 6 step 77): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on combat_run (ep 6 step 80): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on wait (ep 6 step 81): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on travel_contract (ep 6 step 82): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on end_day (ep 6 step 84): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on reroll (ep 6 step 85): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on travel_random (ep 6 step 86): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on random_legal (ep 6 step 88): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on combat_fight (ep 6 step 89): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on crew_dismiss (ep 6 step 92): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on shipyard_buy (ep 6 step 93): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on visit_hangout (ep 6 step 96): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on explore (ep 6 step 107): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on combat_talk (ep 6 step 108): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on first_legal (ep 6 step 114): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on buy_fuel_max (ep 6 step 116): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on haggle (ep 6 step 117): negative resource(s) credits=-40 after step",
+    "[leg 3 tour-one] invariant/inv_no_negative_resources on crew_hire (ep 6 step 136): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on random_legal (ep 0 step 312): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on visit_hangout (ep 0 step 313): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on wait (ep 0 step 314): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on pay_debt (ep 0 step 317): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on port_buy (ep 0 step 318): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on travel_random (ep 0 step 320): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on storylet_first (ep 0 step 321): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on first_legal (ep 0 step 322): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on shipyard_buy (ep 0 step 324): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on end_day (ep 0 step 326): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on shipyard_repair (ep 0 step 327): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on reroll (ep 0 step 328): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on travel_contract (ep 0 step 330): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on crew_hire (ep 0 step 331): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on crew_dismiss (ep 0 step 334): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on haggle (ep 0 step 337): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on combat_fight (ep 0 step 342): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on sign_contract (ep 0 step 343): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on explore (ep 0 step 355): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on combat_run (ep 0 step 361): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on buy_fuel_max (ep 0 step 365): negative resource(s) credits=-40 after step",
+    "[leg 4 veteran] invariant/inv_no_negative_resources on combat_talk (ep 0 step 369): negative resource(s) credits=-40 after step",
+    "id 'reroll' fell back on 100% of 341 fires - that verb was barely tested",
+    "id 'crew_dismiss' fell back on 100% of 321 fires - that verb was barely tested",
+    "id 'haggle' fell back on 98% of 354 fires - that verb was barely tested",
+    "id 'combat_run' fell back on 95% of 358 fires - that verb was barely tested",
+    "id 'combat_fight' fell back on 97% of 306 fires - that verb was barely tested"
+  ]
+}

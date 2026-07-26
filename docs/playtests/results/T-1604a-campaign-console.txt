@@ -1,0 +1,147 @@
+======================================================================
+T-1604a UGT campaign  |  bin=C:\dev\Games\SpacerQuest\packages\sim\dist\protocol-stdio.js  mtime=2026-07-26 17:12:05
+action table: 22 ids -> ['buy_fuel_max', 'combat_fight', 'combat_run', 'combat_talk', 'crew_dismiss', 'crew_hire', 'end_day', 'explore', 'first_legal', 'haggle', 'pay_debt', 'port_buy', 'random_legal', 'reroll', 'shipyard_buy', 'shipyard_repair', 'sign_contract', 'storylet_first', 'travel_contract', 'travel_random', 'visit_hangout', 'wait']
+======================================================================
+  [PASS] leg 1 spike: raw Rimward wire passes  —   6/6 checks passed
+[*] Phase 1 — Verify: 11 features to test
+[*] Connecting to game (simulation)...
+[*] Connected. Starting verification run (max_turns=80)...
+  [PASS] sign_contract_fills_hold
+  [PASS] travel_spends_die_never_mints_fuel
+  [PASS] pay_debt_reduces_marker
+  [PASS] buy_fuel_refuels
+  [PASS] end_day_advances_calendar
+  [PASS] parity_no_blocked_from_legal
+  [PASS] explore_spends_die
+  [PASS] wait_is_inert
+
+[+] Verification complete in 0.1s
+[+] Coverage: 8/11 PASSED (72.7%)  |  0 FAILED  |  3 NOT REACHED
+[+] Report: C:\dev\Games\ugt-universal-game-tester\integrations\spacerquest\results\t1604a-coverage-report.json
+  [PASS] leg 2 verify: no feature FAILED  — 8/11 passed, 3 not reached
+  [FINDING] [verify] port_buy_takes_a_stake: NOT_REACHED within the turn budget (named gap, not a silent skip)
+  [FINDING] [verify] crew_hire_then_dismiss_frees_the_berth: NOT_REACHED within the turn budget (named gap, not a silent skip)
+  [FINDING] [verify] reroll_consumes_a_charge_not_a_die: NOT_REACHED within the turn budget (named gap, not a silent skip)
+  [FAIL] leg 3 tour-one: zero HuntReport findings  — 22 finding(s), 2225 steps
+  [PASS] leg 3 tour-one: zero ActionBlocked from a legal pick  — blockedFromLegal=0
+  [PASS] leg 3 tour-one: zero protocol errors  — protocolErrors=0
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on sign_contract (ep 6 step 73): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on shipyard_repair (ep 6 step 74): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on pay_debt (ep 6 step 75): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on storylet_first (ep 6 step 76): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on port_buy (ep 6 step 77): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on combat_run (ep 6 step 80): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on wait (ep 6 step 81): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on travel_contract (ep 6 step 82): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on end_day (ep 6 step 84): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on reroll (ep 6 step 85): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on travel_random (ep 6 step 86): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on random_legal (ep 6 step 88): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on combat_fight (ep 6 step 89): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on crew_dismiss (ep 6 step 92): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on shipyard_buy (ep 6 step 93): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on visit_hangout (ep 6 step 96): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on explore (ep 6 step 107): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on combat_talk (ep 6 step 108): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on first_legal (ep 6 step 114): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on buy_fuel_max (ep 6 step 116): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on haggle (ep 6 step 117): negative resource(s) credits=-40 after step
+  [FINDING] [leg 3 tour-one] invariant/inv_no_negative_resources on crew_hire (ep 6 step 136): negative resource(s) credits=-40 after step
+  [FAIL] leg 4 veteran: zero HuntReport findings  — 22 finding(s), 5400 steps
+  [PASS] leg 4 veteran: zero ActionBlocked from a legal pick  — blockedFromLegal=0
+  [PASS] leg 4 veteran: zero protocol errors  — protocolErrors=0
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on random_legal (ep 0 step 312): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on visit_hangout (ep 0 step 313): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on wait (ep 0 step 314): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on pay_debt (ep 0 step 317): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on port_buy (ep 0 step 318): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on travel_random (ep 0 step 320): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on storylet_first (ep 0 step 321): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on first_legal (ep 0 step 322): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on shipyard_buy (ep 0 step 324): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on end_day (ep 0 step 326): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on shipyard_repair (ep 0 step 327): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on reroll (ep 0 step 328): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on travel_contract (ep 0 step 330): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on crew_hire (ep 0 step 331): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on crew_dismiss (ep 0 step 334): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on haggle (ep 0 step 337): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on combat_fight (ep 0 step 342): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on sign_contract (ep 0 step 343): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on explore (ep 0 step 355): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on combat_run (ep 0 step 361): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on buy_fuel_max (ep 0 step 365): negative resource(s) credits=-40 after step
+  [FINDING] [leg 4 veteran] invariant/inv_no_negative_resources on combat_talk (ep 0 step 369): negative resource(s) credits=-40 after step
+  [PASS] leg 5 competence: zero HuntReport findings  — 0 finding(s), 5400 steps
+  [PASS] leg 5 competence: zero ActionBlocked from a legal pick  — blockedFromLegal=0
+  [PASS] leg 5 competence: zero protocol errors  — protocolErrors=0
+  [PASS] leg 6 determinism: same seed -> identical state stream  — len=201/201 first_divergence=None
+  [PASS] volume: >= 1,000 UGT actions logged (JSONL lines)  — 11646 JSONL lines / 11188 from the hunt-leg bridge counters
+  [PASS] volume accounting: JSONL >= summed hunt-leg actionsApplied  — jsonl=11646 huntLegs=11188 (delta 458 = verify + determinism legs)
+  [PASS] parity: campaign-wide blockedFromLegal == 0  — [0, 0, 0]
+  [PASS] coverage: every applied action id fired at least once (end_day excluded — it is a lifecycle rollover, never an apply-action)  — 21/21 ids seen; missing=[]
+  [FINDING] id 'reroll' fell back on 100% of 341 fires - that verb was barely tested
+  [FINDING] id 'crew_dismiss' fell back on 100% of 321 fires - that verb was barely tested
+  [FINDING] id 'haggle' fell back on 98% of 354 fires - that verb was barely tested
+  [FINDING] id 'combat_run' fell back on 95% of 358 fires - that verb was barely tested
+  [FINDING] id 'combat_fight' fell back on 97% of 306 fires - that verb was barely tested
+
+[+] Summary: C:\dev\Games\ugt-universal-game-tester\integrations\spacerquest\results\t1604a-campaign.json
+[+] Action trail: C:\dev\Games\ugt-universal-game-tester\integrations\spacerquest\results\t1604a-actions.jsonl (11646 lines)
+
+======================================================================
+FINDINGS (bugs/anomalies in the game, to fix upstream):
+  1. [verify] port_buy_takes_a_stake: NOT_REACHED within the turn budget (named gap, not a silent skip)
+  2. [verify] crew_hire_then_dismiss_frees_the_berth: NOT_REACHED within the turn budget (named gap, not a silent skip)
+  3. [verify] reroll_consumes_a_charge_not_a_die: NOT_REACHED within the turn budget (named gap, not a silent skip)
+  4. [leg 3 tour-one] invariant/inv_no_negative_resources on sign_contract (ep 6 step 73): negative resource(s) credits=-40 after step
+  5. [leg 3 tour-one] invariant/inv_no_negative_resources on shipyard_repair (ep 6 step 74): negative resource(s) credits=-40 after step
+  6. [leg 3 tour-one] invariant/inv_no_negative_resources on pay_debt (ep 6 step 75): negative resource(s) credits=-40 after step
+  7. [leg 3 tour-one] invariant/inv_no_negative_resources on storylet_first (ep 6 step 76): negative resource(s) credits=-40 after step
+  8. [leg 3 tour-one] invariant/inv_no_negative_resources on port_buy (ep 6 step 77): negative resource(s) credits=-40 after step
+  9. [leg 3 tour-one] invariant/inv_no_negative_resources on combat_run (ep 6 step 80): negative resource(s) credits=-40 after step
+  10. [leg 3 tour-one] invariant/inv_no_negative_resources on wait (ep 6 step 81): negative resource(s) credits=-40 after step
+  11. [leg 3 tour-one] invariant/inv_no_negative_resources on travel_contract (ep 6 step 82): negative resource(s) credits=-40 after step
+  12. [leg 3 tour-one] invariant/inv_no_negative_resources on end_day (ep 6 step 84): negative resource(s) credits=-40 after step
+  13. [leg 3 tour-one] invariant/inv_no_negative_resources on reroll (ep 6 step 85): negative resource(s) credits=-40 after step
+  14. [leg 3 tour-one] invariant/inv_no_negative_resources on travel_random (ep 6 step 86): negative resource(s) credits=-40 after step
+  15. [leg 3 tour-one] invariant/inv_no_negative_resources on random_legal (ep 6 step 88): negative resource(s) credits=-40 after step
+  16. [leg 3 tour-one] invariant/inv_no_negative_resources on combat_fight (ep 6 step 89): negative resource(s) credits=-40 after step
+  17. [leg 3 tour-one] invariant/inv_no_negative_resources on crew_dismiss (ep 6 step 92): negative resource(s) credits=-40 after step
+  18. [leg 3 tour-one] invariant/inv_no_negative_resources on shipyard_buy (ep 6 step 93): negative resource(s) credits=-40 after step
+  19. [leg 3 tour-one] invariant/inv_no_negative_resources on visit_hangout (ep 6 step 96): negative resource(s) credits=-40 after step
+  20. [leg 3 tour-one] invariant/inv_no_negative_resources on explore (ep 6 step 107): negative resource(s) credits=-40 after step
+  21. [leg 3 tour-one] invariant/inv_no_negative_resources on combat_talk (ep 6 step 108): negative resource(s) credits=-40 after step
+  22. [leg 3 tour-one] invariant/inv_no_negative_resources on first_legal (ep 6 step 114): negative resource(s) credits=-40 after step
+  23. [leg 3 tour-one] invariant/inv_no_negative_resources on buy_fuel_max (ep 6 step 116): negative resource(s) credits=-40 after step
+  24. [leg 3 tour-one] invariant/inv_no_negative_resources on haggle (ep 6 step 117): negative resource(s) credits=-40 after step
+  25. [leg 3 tour-one] invariant/inv_no_negative_resources on crew_hire (ep 6 step 136): negative resource(s) credits=-40 after step
+  26. [leg 4 veteran] invariant/inv_no_negative_resources on random_legal (ep 0 step 312): negative resource(s) credits=-40 after step
+  27. [leg 4 veteran] invariant/inv_no_negative_resources on visit_hangout (ep 0 step 313): negative resource(s) credits=-40 after step
+  28. [leg 4 veteran] invariant/inv_no_negative_resources on wait (ep 0 step 314): negative resource(s) credits=-40 after step
+  29. [leg 4 veteran] invariant/inv_no_negative_resources on pay_debt (ep 0 step 317): negative resource(s) credits=-40 after step
+  30. [leg 4 veteran] invariant/inv_no_negative_resources on port_buy (ep 0 step 318): negative resource(s) credits=-40 after step
+  31. [leg 4 veteran] invariant/inv_no_negative_resources on travel_random (ep 0 step 320): negative resource(s) credits=-40 after step
+  32. [leg 4 veteran] invariant/inv_no_negative_resources on storylet_first (ep 0 step 321): negative resource(s) credits=-40 after step
+  33. [leg 4 veteran] invariant/inv_no_negative_resources on first_legal (ep 0 step 322): negative resource(s) credits=-40 after step
+  34. [leg 4 veteran] invariant/inv_no_negative_resources on shipyard_buy (ep 0 step 324): negative resource(s) credits=-40 after step
+  35. [leg 4 veteran] invariant/inv_no_negative_resources on end_day (ep 0 step 326): negative resource(s) credits=-40 after step
+  36. [leg 4 veteran] invariant/inv_no_negative_resources on shipyard_repair (ep 0 step 327): negative resource(s) credits=-40 after step
+  37. [leg 4 veteran] invariant/inv_no_negative_resources on reroll (ep 0 step 328): negative resource(s) credits=-40 after step
+  38. [leg 4 veteran] invariant/inv_no_negative_resources on travel_contract (ep 0 step 330): negative resource(s) credits=-40 after step
+  39. [leg 4 veteran] invariant/inv_no_negative_resources on crew_hire (ep 0 step 331): negative resource(s) credits=-40 after step
+  40. [leg 4 veteran] invariant/inv_no_negative_resources on crew_dismiss (ep 0 step 334): negative resource(s) credits=-40 after step
+  41. [leg 4 veteran] invariant/inv_no_negative_resources on haggle (ep 0 step 337): negative resource(s) credits=-40 after step
+  42. [leg 4 veteran] invariant/inv_no_negative_resources on combat_fight (ep 0 step 342): negative resource(s) credits=-40 after step
+  43. [leg 4 veteran] invariant/inv_no_negative_resources on sign_contract (ep 0 step 343): negative resource(s) credits=-40 after step
+  44. [leg 4 veteran] invariant/inv_no_negative_resources on explore (ep 0 step 355): negative resource(s) credits=-40 after step
+  45. [leg 4 veteran] invariant/inv_no_negative_resources on combat_run (ep 0 step 361): negative resource(s) credits=-40 after step
+  46. [leg 4 veteran] invariant/inv_no_negative_resources on buy_fuel_max (ep 0 step 365): negative resource(s) credits=-40 after step
+  47. [leg 4 veteran] invariant/inv_no_negative_resources on combat_talk (ep 0 step 369): negative resource(s) credits=-40 after step
+  48. id 'reroll' fell back on 100% of 341 fires - that verb was barely tested
+  49. id 'crew_dismiss' fell back on 100% of 321 fires - that verb was barely tested
+  50. id 'haggle' fell back on 98% of 354 fires - that verb was barely tested
+  51. id 'combat_run' fell back on 95% of 358 fires - that verb was barely tested
+  52. id 'combat_fight' fell back on 97% of 306 fires - that verb was barely tested
+
+T-1604a CAMPAIGN NOT MET — 14/16 checks passed. Fix the failures above and re-run.
