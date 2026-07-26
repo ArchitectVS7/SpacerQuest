@@ -1270,9 +1270,10 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
 // The Records overlay (T-309): the Registry of Deeds and the Nemesis file, in
 // period voice. A dismissible overlay opened from the top controls (Escape to
 // close), both sections pure reads of `game.player` via format.ts. The Registry
-// shows the rank, deed count, next-rank progress and the earned-deed roll with
-// its citation text; the Nemesis file shows the decoded-lore index (or its
-// silent empty state when no fragments have been recovered).
+// shows the rank, the CURRENT RANK'S CITATION (T-1504c), deed count, next-rank
+// progress and the earned-deed roll with its citation text; the Nemesis file shows
+// the decoded-lore index (or its silent empty state when no fragments have been
+// recovered).
 function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => void }) {
   const [tab, setTab] = useState<'registry' | 'nemesis'>('registry');
   const registry = deedRegistry(game);
@@ -1339,6 +1340,15 @@ function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => voi
                   {registry.deedsToNextRank} to {registry.nextRankLabel}
                 </span>
               )}
+              {/* T-1504c · The current rank's authored citation (content
+                  RENOWN_RANKS via format.ts `rankCitation`). The engine already
+                  emitted this line as the one-frame rank-up wire moment; this is
+                  the standing reader, so the text is legible after the ticker has
+                  moved on. Prose, so it takes its own row — the bezel `rank` chip
+                  stays a chip. */}
+              <p className="rr-citation" data-testid="registry-rank-citation">
+                {registry.rankCitation}
+              </p>
             </div>
             {/* T-1503 · Alliance standing — a pure read of player.reputation via
                 format.ts `factionStanding`. The reader that makes the four-faction

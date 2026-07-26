@@ -2259,6 +2259,17 @@ body {
 .rr-next {
   color: var(--ember);
 }
+/* T-1504c · The current rank's citation. `.registry-rank` is a baseline-aligned
+   flex row, so the prose claims a full row of its own rather than sitting inline
+   with the RANK / DEEDS / next-rank chips. Styled to match `.rd-citation`, the
+   earned-deed citation below, so both citation kinds read as one voice. */
+.rr-citation {
+  flex: 1 0 100%;
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--amber);
+}
 /* T-1503 · Alliance standing readout (Records → Registry tab). */
 .alliance-standing {
   margin-top: 10px;

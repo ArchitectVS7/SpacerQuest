@@ -153,6 +153,19 @@ test('the registry rank readout equals the engine-derived next rank after a deed
 
   await page.goto('/');
 
+  // T-1504c · The rank CITATION readout, checked at two different ranks in one
+  // run. A single check could pass against a constant string; the day-1
+  // LIEUTENANT line and the post-deed line below are different content entries,
+  // so together they prove the Registry renders the CURRENT rank's citation.
+  // Both sides come from the imported RENOWN_RANKS table, never a literal.
+  await page.getByTestId('records-toggle').click();
+  await expect(page.getByTestId('registry-rank')).toHaveText(RENOWN_RANKS.LIEUTENANT.label);
+  await expect(page.getByTestId('registry-rank-citation')).toHaveText(
+    RENOWN_RANKS.LIEUTENANT.citation,
+  );
+  await page.getByTestId('records-close').click();
+  await expect(page.getByTestId('records-overlay')).toHaveCount(0);
+
   // Play the doc-salvage chain (a no-die answer today, an accept-thanks tomorrow)
   // to earn the Beacon Keeper deed — the same reachable path the registry spec uses.
   await showStorylet(page, 'chain.doc-salvage.distress-ping');
@@ -166,4 +179,9 @@ test('the registry rank readout equals the engine-derived next rank after a deed
   await page.getByTestId('records-toggle').click();
   await expect(page.getByTestId('registry-rank')).toHaveText(expectedLabel);
   await expect(page.getByTestId('rank')).toHaveText(expectedLabel);
+  // …and the citation moved with it: the promoted rank's own line, not the
+  // LIEUTENANT one asserted before the deed.
+  await expect(page.getByTestId('registry-rank-citation')).toHaveText(
+    RENOWN_RANKS[nextRank!].citation,
+  );
 });

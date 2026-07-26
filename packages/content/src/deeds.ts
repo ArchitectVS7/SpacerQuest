@@ -1,4 +1,4 @@
-import { defineDeeds } from './deedValidation.js';
+import { defineDeeds, defineRenownRanks } from './deedValidation.js';
 
 export type DeedId = string;
 
@@ -18,14 +18,25 @@ export type RenownRankId =
 export interface RenownRankDefinition {
   id: RenownRankId;
   label: string;
-  /** The period-voice rank-up line. The engine's rank-up machinery (engine
-   *  `deeds.ts` `evaluateDeeds`) emits THIS text verbatim as the rank-up
-   *  WireEntry — it IS the rank-up moment on the Galactic News Wire, read by the
-   *  UI wire ticker (`ui/format.ts` wireLines).
+  /** The period-voice rank-up line. TWO readers, both printing it VERBATIM (no
+   *  substitution of any kind happens on this string — unlike
+   *  `DeedDefinition.citationTemplate`, it must never carry a `{…}` placeholder,
+   *  a rule `validateRenownRanks` enforces at import time):
+   *
+   *  1. The engine's rank-up machinery (engine `deeds.ts` `evaluateDeeds`) emits
+   *     it as the rank-up WireEntry — it IS the rank-up moment on the Galactic
+   *     News Wire, read by the UI wire ticker (`ui/format.ts` wireLines).
+   *  2. T-1504c · The Registry's standing rank readout —
+   *     `deedRegistry().rankCitation` (`ui/format.ts`) → the
+   *     `registry-rank-citation` line in RecordsOverlay (`ui/App.tsx`). Reader (1)
+   *     is a one-frame ticker moment, so before this a player who blinked never
+   *     saw their own citation; now the current rank's line is always on the
+   *     Records → Registry tab. Asserted at two different ranks through the real
+   *     cockpit in `ui/e2e/derule.spec.ts`.
    *
    *  T-1308 introduced it as OPTIONAL, carried only by CONQUEROR, with the engine
    *  falling back to a generic "Registry confirms Player as …" line for the other
-   *  nine. T-1504 authors all ten, so the field is now REQUIRED and the engine's
+   *  nine. T-1504a authors all ten, so the field is now REQUIRED and the engine's
    *  fallback branch is gone: content — not the engine — owns every rank's prose,
    *  and the type makes a citation-less rank unrepresentable. */
   citation: string;
@@ -44,15 +55,31 @@ export interface RenownRankDefinition {
 // will make CONQUEROR its prerequisite (T-1101 already seals that crossing
 // behind `nemesis.crossing.unlocked`). It is deliberately NOT stubbed here so
 // no fake reader games the reader-consumption signal.
-// T-1504 · Rank citations for ALL TEN ranks. DIVERGENCE from foundation (git ref
-// f2f95fa9): foundation has no rank-up prose at all — it prints a bare rank name
-// off a point total — so these lines are authored Rimward content in the same
-// period voice as the storylets, not a port of any foundation string. They
-// complete the divergence recorded at the CONQUEROR block below: the ladder is
-// now ten named moments on the wire rather than one capstone plus nine copies of
-// a generic clerk's line. CONQUEROR's text is unchanged (byte-identical to
-// T-1308's) so the capstone assertion that pins it stays green.
-export const RENOWN_RANKS = {
+// T-1504a (authored) / T-1504c (validated + surfaced) · Rank citations for ALL
+// TEN ranks. DIVERGENCE from foundation (git ref f2f95fa9):
+// foundation/lore/User-Manual.md §Appendix A is a bare nine-row point-threshold
+// table (Lieutenant 0-149 … Giga Hero 2,700+) with no rank-up prose at all — it
+// prints a rank name off a point total — so these lines are authored Rimward
+// content in the same period voice as the storylets, not a port of any
+// foundation string. They complete the divergence recorded at the CONQUEROR
+// block above: the ladder is now ten named moments rather than one capstone plus
+// nine copies of a generic clerk's line. CONQUEROR's text is unchanged
+// (byte-identical to T-1308's) so the capstone assertion that pins it stays green.
+//
+// T-1504c added the `defineRenownRanks` wrapper (content stays DATA — the wrapper
+// is a load-time shape guard, the same precedent as `defineDeeds` /
+// `defineStorylets`) and the second reader: the Registry's standing rank-citation
+// line, so the text is no longer only a one-frame wire moment. See the `citation`
+// doc comment above for both readers.
+//
+// VOICE LADDER — keep it if you edit. Each line opens with a Registry verb that
+// escalates with the rank (opens / confirms / raises / enters / seats / stamps /
+// elevates / files / writes / seals), carrying the name from a dock clerk's note
+// to a galaxy-wide seal. `Player` is the wire convention, not a bug: GameState
+// holds no captain name and engine `wire.ts` reports the player actor as the
+// literal 'Player'. NEVER introduce a `{…}` placeholder — these are emitted
+// verbatim by both readers, and `validateRenownRanks` rejects braces outright.
+export const RENOWN_RANKS = defineRenownRanks({
   LIEUTENANT: {
     id: 'LIEUTENANT',
     label: 'Lieutenant',
@@ -63,6 +90,16 @@ export const RENOWN_RANKS = {
     id: 'COMMANDER',
     label: 'Commander',
     citation:
+      // T-1504c voice pass, KEPT AS AUTHORED — and the one line here with a known
+      // coupling, flagged rather than silently edited. "one deed on the board"
+      // states RENOWN_DEED_THRESHOLDS.COMMANDER (1) in PROSE, and prose cannot be
+      // re-derived at runtime. T-1603 owns the threshold rescale: if COMMANDER
+      // stops being the one-deed rank, THIS LINE GOES STALE and must be reworded
+      // (e.g. "the file has its first entry") in the same change. It is not
+      // reworded pre-emptively because this exact string is embedded in the
+      // `packages/sim/src/__tests__/fixtures/replay-golden.ts` protocol golden as a
+      // rank-up WireEntry, and T-1504c is forbidden from moving a golden for a
+      // cosmetic edit. No other rank citation names a number.
       'Registry confirms Player as Commander — one deed on the board, and the port clerks have stopped asking how the name is spelled.',
   },
   CAPTAIN: {
@@ -113,7 +150,7 @@ export const RENOWN_RANKS = {
     citation:
       'Registry seals the Conqueror rank: the frontier keeps one name now, and it is Player.',
   },
-} as const satisfies Record<RenownRankId, RenownRankDefinition>;
+} as const satisfies Record<RenownRankId, RenownRankDefinition>);
 
 export const RENOWN_DEED_THRESHOLDS = {
   LIEUTENANT: 0,

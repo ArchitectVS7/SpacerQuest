@@ -1152,15 +1152,23 @@ export interface DeedRegistryView {
   nextRankLabel: string | null;
   /** Deeds still needed to reach that next rank (null at the top rank). */
   deedsToNextRank: number | null;
+  /** T-1504c · The CURRENT rank's authored citation (content RENOWN_RANKS).
+   *  Until now this text existed only as the rank-up wire moment (engine
+   *  `deeds.ts`), a single ticker frame — so a player who missed it never saw
+   *  their own citation. READER: the `registry-rank-citation` line in
+   *  RecordsOverlay (App.tsx), asserted at two ranks in `e2e/derule.spec.ts`.
+   *  Emitted verbatim: content owns the prose, the UI owns no rule here. */
+  rankCitation: string;
   /** Earned deeds, newest first (by eventIndex — stable within a day). */
   earned: { id: string; title: string; citation: string; day: number }[];
 }
 
 /**
- * The Registry of Deeds view — rank, deed count, next-rank progress, and the
- * earned-deed roll (newest first). All read from `game.player.registry`; the
- * rank labels come from RENOWN_RANKS and the next-rank threshold from
- * RENOWN_DEED_THRESHOLDS (content), never recomputed here.
+ * The Registry of Deeds view — rank, the current rank's citation, deed count,
+ * next-rank progress, and the earned-deed roll (newest first). All read from
+ * `game.player.registry`; the rank labels and citations come from RENOWN_RANKS and
+ * the next-rank threshold from RENOWN_DEED_THRESHOLDS (content), never recomputed
+ * here.
  */
 export function deedRegistry(game: GameState): DeedRegistryView {
   const registry = game.player.registry;
@@ -1175,6 +1183,7 @@ export function deedRegistry(game: GameState): DeedRegistryView {
     deedCount,
     nextRankLabel: next ? RENOWN_RANKS[next].label : null,
     deedsToNextRank: next ? Math.max(0, RENOWN_DEED_THRESHOLDS[next] - deedCount) : null,
+    rankCitation: RENOWN_RANKS[registry.renownRank].citation,
     earned: [...registry.earned]
       .sort((a, b) => b.eventIndex - a.eventIndex)
       .map((d) => ({ id: d.id, title: d.title, citation: d.citation, day: d.day })),
