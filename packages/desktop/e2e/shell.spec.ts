@@ -7,6 +7,7 @@ import {
   closeSettings,
   cloudFiles,
   endDay,
+  expectQuitsCleanly,
   launch as launchShell,
   openSettings,
   payDebt,
@@ -14,6 +15,7 @@ import {
   startCareer,
   steamLog,
   tempDir,
+  windowShown,
   type LaunchOpts,
 } from './support/cockpit';
 
@@ -59,6 +61,9 @@ test.describe('T-1701a · the Electron shell', () => {
     const { app, page } = await launch({ saveDir, userDataDir });
 
     // --- window management -------------------------------------------------
+    // BEFORE the snapshot: `show()` happens on `ready-to-show`, which can land
+    // after the `domcontentloaded` that `launch()` awaits. See `windowShown`.
+    const shown = await windowShown(app);
     const shell = await app.evaluate(({ app: electronApp, BrowserWindow }) => {
       const all = BrowserWindow.getAllWindows();
       return {
@@ -76,9 +81,11 @@ test.describe('T-1701a · the Electron shell', () => {
     });
     expect(shell.name).toBe('Rimward');
     expect(shell.windows).toHaveLength(1);
-    // `isVisible()` proves the paint-then-show path ran: the window is created
-    // with `show: false` and only shown on `ready-to-show`, so a window that is
-    // visible here is one that has painted.
+    // Visibility proves the paint-then-show path ran: the window is created with
+    // `show: false` and only shown on `ready-to-show`, so a window that is
+    // visible is one that has painted. Asserted on the WAITED answer — a window
+    // that never shows makes this `false` and fails, same as before.
+    expect(shown).toBe(true);
     expect(shell.windows[0].visible).toBe(true);
     // The RENDERER's `<title>` wins once the cockpit loads (that is ordinary
     // web behaviour, and the cockpit's own title is the one the player should
@@ -163,14 +170,10 @@ test.describe('T-1701a · the Electron shell', () => {
     // destroyed. The throw aborted the rest of that emit, `window-all-closed`
     // never ran, `app.quit()` was never called, and the process stayed resident
     // after the player closed the game. It was invisible on screen and only
-    // showed up here.
-    const exited = new Promise<number | null>((resolve) =>
-      second.app.process().once('exit', (code) => resolve(code)),
-    );
-    await second.app.evaluate(({ BrowserWindow }) => {
-      for (const w of BrowserWindow.getAllWindows()) w.close();
-    });
-    expect(await exited).toBe(0);
+    // showed up here. `expectQuitsCleanly` asserts exactly that, per platform —
+    // see its header for why "closing the last window exits" is not the mac
+    // gesture.
+    await expectQuitsCleanly(second.app);
   });
 
   test('imports a localStorage career into the app-data save dir on first desktop boot', async () => {
@@ -433,16 +436,10 @@ test.describe('T-1702a · Steam achievements', () => {
     );
     await closeSettings(page);
 
-    // …and closing the window still exits 0 with no Steam session to tear down —
+    // …and quitting still exits 0 with no Steam session to tear down —
     // T-1702b: and with a cloud session to flush and a presence session to clear
     // in `before-quit`, both of which are on the quit path this asserts.
-    const exited = new Promise<number | null>((resolve) =>
-      app.process().once('exit', (code) => resolve(code)),
-    );
-    await app.evaluate(({ BrowserWindow }) => {
-      for (const w of BrowserWindow.getAllWindows()) w.close();
-    });
-    expect(await exited).toBe(0);
+    await expectQuitsCleanly(app);
   });
 });
 

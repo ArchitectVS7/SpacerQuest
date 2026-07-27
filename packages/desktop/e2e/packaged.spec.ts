@@ -5,11 +5,13 @@ import {
   bezel,
   cleanupTempDirs,
   closeSettings,
+  expectQuitsCleanly,
   launch,
   openSettings,
   payDebt,
   startCareer,
   tempDir,
+  windowShown,
 } from './support/cockpit';
 
 // ---------------------------------------------------------------------------
@@ -71,6 +73,9 @@ test.describe('T-1701b · the packaged app', () => {
     const { app, page } = await launch({ saveDir, userDataDir, executablePath });
 
     // --- it really is a package -------------------------------------------
+    // Waited, not sampled — `show()` rides `ready-to-show`, which can land after
+    // `launch()`'s `domcontentloaded`. See `windowShown`.
+    const shown = await windowShown(app);
     const shell = await app.evaluate(({ app: electronApp, BrowserWindow }) => {
       const all = BrowserWindow.getAllWindows();
       return {
@@ -89,6 +94,7 @@ test.describe('T-1701b · the packaged app', () => {
     // naming must NOT have moved it (`main.ts` calls `setName` pre-ready).
     expect(shell.name).toBe('Rimward');
     expect(shell.windows).toHaveLength(1);
+    expect(shown).toBe(true);
     expect(shell.windows[0].visible).toBe(true);
     expect(shell.windows[0].min).toEqual([1024, 640]);
 
@@ -223,17 +229,12 @@ test.describe('T-1701b · the packaged app', () => {
     );
     expect(missing).toBe(404);
 
-    // --- closing every window QUITS the packaged process -------------------
+    // --- quitting QUITS the packaged process -------------------------------
     // T-1701a's regression guard, carried forward into a DIFFERENT binary: the
     // `closed`-handler bug it caught was invisible on screen and only showed up
-    // as a lingering process.
-    const exited = new Promise<number | null>((resolve) =>
-      app.process().once('exit', (code) => resolve(code)),
-    );
-    await app.evaluate(({ BrowserWindow }) => {
-      for (const w of BrowserWindow.getAllWindows()) w.close();
-    });
-    expect(await exited).toBe(0);
+    // as a lingering process. Per-platform, for the reason in the helper's
+    // header — this is the assertion that made the mac packaging job time out.
+    await expectQuitsCleanly(app);
 
     // --- THE CRITERION'S TEETH: the career came off disk -------------------
     // Same save dir, WIPED user-data dir (so the renderer's localStorage is

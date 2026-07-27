@@ -168,6 +168,117 @@ export async function launch(opts: LaunchOpts): Promise<{ app: ElectronApplicati
   return { app, page };
 }
 
+/**
+ * Wait until the shell's window has actually been SHOWN, and answer whether it
+ * was.
+ *
+ * `src/main.ts` creates the window with `show: false` and calls `win.show()` from
+ * `ready-to-show` — which fires after the first frame is COMPOSITED. `launch()`
+ * awaits `domcontentloaded`, and that is an earlier milestone: the DOM exists,
+ * the compositor may not have produced a frame yet. Sampling `isVisible()` at
+ * that moment is therefore a RACE, not an observation — one this suite lost on
+ * the headless ubuntu runner (`window-all-closed` xvfb job, 3/3 attempts) while
+ * winning it on every developer's mac.
+ *
+ * POLLING rather than sampling keeps the assertion's teeth exactly where they
+ * were. The claim under test is "the paint-then-show path ran"; a window that
+ * never shows still fails, because this returns `false` and the caller asserts
+ * on it. All that changes is that a slow compositor stops reading as a broken
+ * one.
+ */
+export async function windowShown(app: ElectronApplication, timeout = 20_000): Promise<boolean> {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const visible = await app.evaluate(({ BrowserWindow }) => {
+      const [win] = BrowserWindow.getAllWindows();
+      return win ? win.isVisible() : false;
+    });
+    if (visible || Date.now() >= deadline) return visible;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
+ * Close every window, then assert the process exited 0 — on the platform's own
+ * terms.
+ *
+ * THE GUARANTEE BEING GUARDED is unchanged and is a shipped one: closing the
+ * game must run `before-quit` (which flushes the Steam cloud session and clears
+ * presence) and must leave NO resident process. It is the guard that caught
+ * T-1701a's `closed`-handler bug, where a throw inside an Electron listener
+ * aborted the rest of the emit, `window-all-closed` never ran, and the process
+ * lingered after the player closed the game.
+ *
+ * WHAT WAS WRONG: the guard asserted that path on EVERY platform, and on macOS
+ * it cannot hold by design. `src/main.ts` deliberately implements the mac
+ * convention — `window-all-closed` quits only when `process.platform !==
+ * 'darwin'`, and an `activate` handler reopens the window from the dock. So on a
+ * mac the closed-windows app is SUPPOSED to stay resident, the `exit` event
+ * never came, and the test sat there until Playwright's 180s timeout. Three
+ * tests encoded that assumption (both here and in `packaged.spec.ts`), which is
+ * why a mac was the only place the desktop suite could not go green.
+ *
+ * WHAT THIS DOES INSTEAD: asserts the same guarantee through each platform's
+ * real quit gesture. Everywhere, `window-all-closed` must FIRE (that is the
+ * regression guard's actual content, and it is now asserted on mac explicitly
+ * rather than inferred from an exit that never comes). On mac the app must then
+ * still be alive — the shipped convention, worth asserting rather than merely
+ * tolerating — and Cmd-Q (`app.quit()`) must take it down through `before-quit`.
+ * Everywhere else, closing the last window must do that by itself. Both paths
+ * end on the same `expect(exit).toBe(0)`.
+ */
+export async function expectQuitsCleanly(app: ElectronApplication): Promise<void> {
+  const isMac = process.platform === 'darwin';
+  const exited = new Promise<number | null>((resolve) =>
+    app.process().once('exit', (code) => resolve(code)),
+  );
+
+  // Armed BEFORE the close, and additive: `main.ts` keeps its own listener and
+  // runs first (this one is appended). On the platforms that quit from it, the
+  // emit is synchronous and `app.quit()` is not, so the flag is still set.
+  await app.evaluate(({ app: electronApp }) => {
+    const flags = globalThis as { __sqWindowAllClosed?: boolean };
+    flags.__sqWindowAllClosed = false;
+    electronApp.once('window-all-closed', () => {
+      flags.__sqWindowAllClosed = true;
+    });
+  });
+
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows()) w.close();
+  });
+
+  if (isMac) {
+    // The app is still alive here, so it can still be asked — which is the whole
+    // reason this branch can assert the event directly.
+    await expect
+      .poll(
+        () =>
+          app.evaluate(
+            () => (globalThis as { __sqWindowAllClosed?: boolean }).__sqWindowAllClosed ?? false,
+          ),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    // No window, and STILL RUNNING: the mac convention, asserted.
+    expect(app.process().exitCode).toBeNull();
+    // Cmd-Q. Routes through `before-quit` exactly as the window-close path does
+    // on the other platforms, so the flush/clear guarantee is proved here too.
+    //
+    // DEFERRED A TICK, deliberately: quitting inside the call can tear the
+    // inspector connection down underneath this evaluate's own reply, which
+    // surfaces as a "Target closed" rejection instead of the clean exit the next
+    // line is waiting for. Scheduling it lets the call return first. The
+    // window-close path on the other platforms has the same shape and has always
+    // relied on `close()` being the last thing in its callback.
+    await app.evaluate(({ app: electronApp }) => {
+      setTimeout(() => electronApp.quit(), 0);
+    });
+  }
+
+  expect(await exited).toBe(0);
+}
+
 // ---- player-level driving (no store, no engine, no save file) ---------------
 
 /**
