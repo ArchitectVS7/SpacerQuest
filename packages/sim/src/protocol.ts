@@ -46,6 +46,7 @@ import {
   shipyardFailure,
   serializeState,
   startDay,
+  type Edition,
   type GameEvent,
   type GameState,
   type PlayerAction,
@@ -87,8 +88,17 @@ export function deserializeSession(json: string): ProtocolSession {
 export type DayLifecycle = 'start-day' | 'end-day';
 
 export type ProtocolRequest =
-  | { type: 'new-game'; seed: number }
-  | { type: 'reset'; seed: number }
+  // T-1703 · `edition` is OPTIONAL and defaults to 'full', so every existing
+  // caller and every recorded replay log is unchanged. It exists because
+  // `createInitialState` has always taken an edition while this message passed
+  // only the seed — which left the entire demo licence (both `demo-locked` verbs,
+  // the `demo-ended` refusal, the demo branch of the stop signal, and the
+  // `edition` / `demoDaysRemaining` summary fields) unreachable from ANY protocol
+  // client, including the harness that would regression-test the shipped demo
+  // build. Standing constraint 2: if a feature cannot be reached headlessly, it is
+  // not done.
+  | { type: 'new-game'; seed: number; edition?: Edition }
+  | { type: 'reset'; seed: number; edition?: Edition }
   | { type: 'state-summary' }
   | { type: 'legal-actions' }
   | { type: 'start-day' }
@@ -398,6 +408,10 @@ const SPECIAL_EQUIPMENT: SpecialEquipmentId[] = [
  *  upper end of the range being searched, kept at the value the unbounded spec used
  *  to advertise so nothing that was reachable before becomes unreachable. */
 const MAX_ADVERTISED_CARGO_PODS = 100;
+
+/** The licences `new-game`/`reset` accept. Kept beside the handler that validates
+ *  against it so an added edition cannot reach `createInitialState` unchecked. */
+const EDITIONS: Edition[] = ['full', 'demo'];
 
 const ALL_SYSTEM_IDS: number[] = Object.keys(STAR_SYSTEMS)
   .map((id) => Number.parseInt(id, 10))
@@ -979,7 +993,22 @@ export function handleMessage(
   switch (request.type) {
     case 'new-game':
     case 'reset': {
-      const next: ProtocolSession = { seed: request.seed, state: createInitialState(request.seed) };
+      // T-1703 · An unrecognised edition is a typed error, not a silent fall back
+      // to 'full': a harness that asked for a demo and got a full career would
+      // report demo coverage it never had, which is worse than a refusal.
+      if (request.edition !== undefined && !EDITIONS.includes(request.edition)) {
+        return {
+          session,
+          response: errorResponse(
+            'unknown-request',
+            `Unknown edition: ${String(request.edition)}. Expected one of ${EDITIONS.join(' | ')}.`,
+          ),
+        };
+      }
+      const next: ProtocolSession = {
+        seed: request.seed,
+        state: createInitialState(request.seed, request.edition ?? 'full'),
+      };
       return { session: next, response: summaryResponse(next.state) };
     }
     case 'state-summary': {

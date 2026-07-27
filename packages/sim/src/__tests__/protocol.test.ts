@@ -9,12 +9,18 @@ import {
   shipyardFailure,
   startDay,
   travelPreview,
+  type Edition,
   type EncounterState,
   type GameState,
   type PlayerAction,
   type ShipyardActionKind,
 } from '@spacerquest/engine';
-import { NEMESIS_SYSTEM_ID, STAR_SYSTEMS, isGatedDestination } from '@spacerquest/content';
+import {
+  DEMO_FINAL_DAY,
+  NEMESIS_SYSTEM_ID,
+  STAR_SYSTEMS,
+  isGatedDestination,
+} from '@spacerquest/content';
 import { describe, expect, it } from 'vitest';
 import {
   buildStateSummary,
@@ -1316,5 +1322,70 @@ describe('T-1703 · demo gate — legal-actions and the summary', () => {
       reason: 'demo-locked',
     });
     expect(result.summary.edition).toBe('demo');
+  });
+});
+
+describe('T-1703 · starting a demo career over the wire', () => {
+  // Every fixture in the describe above reaches for `createInitialState(seed,
+  // edition)` directly, because until now that was the ONLY way in: `new-game`
+  // passed the seed and nothing else, so a protocol client — the harness that
+  // would regression-test the shipped demo build — could not open a demo session
+  // at all. These drive `handleMessage` and nothing else.
+
+  it('new-game accepts an edition and stamps it on the career', () => {
+    const { session, response } = handleMessage(null, {
+      type: 'new-game',
+      seed: 1711,
+      edition: 'demo',
+    });
+    const summary = expectSummary(response);
+    expect(summary.edition).toBe('demo');
+    expect(summary.demoDaysRemaining).toBe(DEMO_FINAL_DAY);
+    expect(session?.state.edition).toBe('demo');
+    expect(wireRoundTrip(response)).toEqual(response);
+  });
+
+  it('an omitted edition is still a full career — every existing caller unchanged', () => {
+    const summary = expectSummary(handleMessage(null, { type: 'new-game', seed: 1711 }).response);
+    expect(summary.edition).toBe('full');
+    expect(summary.demoDaysRemaining).toBeNull();
+  });
+
+  it('reset carries the edition too, so an episode loop can re-open a demo', () => {
+    const opened = handleMessage(null, { type: 'new-game', seed: 1712, edition: 'demo' });
+    const reset = handleMessage(opened.session, { type: 'reset', seed: 1713, edition: 'demo' });
+    expect(expectSummary(reset.response).edition).toBe('demo');
+    // …and a reset without one goes back to full rather than inheriting silently:
+    // the request says what it wants, and nothing is carried over from the session
+    // it replaced.
+    const full = handleMessage(reset.session, { type: 'reset', seed: 1714 });
+    expect(expectSummary(full.response).edition).toBe('full');
+  });
+
+  it('an unknown edition is refused, not quietly downgraded to full', () => {
+    const { response } = handleMessage(null, {
+      type: 'new-game',
+      seed: 1715,
+      edition: 'deluxe' as Edition,
+    });
+    expect(response.type).toBe('error');
+    if (response.type === 'error') {
+      expect(response.message).toContain('deluxe');
+    }
+  });
+
+  it('the whole demo licence is now reachable from the wire alone', () => {
+    // The point of the change, end to end: open a demo, and the gated verbs are
+    // absent and the countdown is live — all of it observed through protocol
+    // responses, with no direct engine call anywhere in the test.
+    let session = handleMessage(null, { type: 'new-game', seed: 1703, edition: 'demo' }).session;
+    session = handleMessage(session, { type: 'start-day' }).session;
+    const legal = expectLegal(handleMessage(session, { type: 'legal-actions' }).response);
+    expect(legal.actions.some((s) => s.type === 'Port')).toBe(false);
+    expect(legal.actions.some((s) => s.type === 'Crew' && s.action === 'hire')).toBe(false);
+    expect(legal.actions.length).toBeGreaterThan(0);
+
+    const summary = expectSummary(handleMessage(session, { type: 'state-summary' }).response);
+    expect(summary.demoDaysRemaining).toBeGreaterThan(0);
   });
 });

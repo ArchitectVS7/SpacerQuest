@@ -39,13 +39,23 @@ Discriminated on `type`:
 
 | `type`          | Fields            | Effect                                                             |
 | --------------- | ----------------- | ----------------------------------------------------------------- |
-| `new-game`      | `seed: number`    | Create a fresh session at day 1 (DAWN). Returns `state-summary`.   |
-| `reset`         | `seed: number`    | Alias of `new-game` — discards the current session and re-seeds.  |
+| `new-game`      | `seed: number`, `edition?: 'full' \| 'demo'` | Create a fresh session at day 1 (DAWN). Returns `state-summary`. |
+| `reset`         | `seed: number`, `edition?: 'full' \| 'demo'` | Alias of `new-game` — discards the current session and re-seeds. |
 | `state-summary` | —                 | Return the current `state-summary`. Read-only.                    |
 | `legal-actions` | —                 | Return the `legal-actions` available right now. Read-only.        |
 | `start-day`     | —                 | DAWN → DAY: roll the manifest board + dawn hand. `state-summary`. |
 | `apply-action`  | `action: PlayerAction` | Apply one player action (DAY only). `action-result` or `error`. |
 | `end-day`       | —                 | DAY → next DAWN: run dusk + advance the day. `state-summary`.     |
+
+**`edition`** (T-1703) is optional and defaults to `'full'`, so every existing
+caller and every recorded replay log is unchanged. Passing `'demo'` opens the
+session on a demo licence — the only way a protocol client can reach the demo
+rules at all (both `demo-locked` verbs, the `demo-ended` refusal, the demo branch
+of the stop signal, and the `edition` / `demoDaysRemaining` summary fields). It is
+NOT inherited across a `reset`: each request says what it wants, and a `reset`
+without one opens a full career. An unrecognised value is an `error`, never a
+silent downgrade to `'full'` — a harness that asked for a demo and got a full
+career would report coverage it never had.
 
 ## Responses
 
