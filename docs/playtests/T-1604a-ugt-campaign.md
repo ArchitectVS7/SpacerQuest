@@ -513,9 +513,8 @@ so T-1604b can absorb both without splitting.
 Worth carrying into the same batch if cheap, since F3/F5 share one root shape (*the enumerator
 advertises what the engine will refuse or charge a die for, and only the UI knows better*):
 
-- [ ] **F3** — narrow the `Travel` `destinationId` domain to reachable destinations, per T-1101's
-      own stated law.
-- [ ] **F5** — put the UI's `quoteShipyard().ok` predicate on the wire.
+- [x] **F3** — FIXED 2026-07-27. See §11.
+- [x] **F5** — FIXED 2026-07-27. See §11.
 
 F4 is a balance/reachability question for the crew price curve; F6/F7 belong to the UGT repo.
 
@@ -644,3 +643,93 @@ T-1603's successor, and F6/F7 remain UGT-repo defects.
   a closing balance) and `campaign-reach.test.ts`'s scripted broke-and-dry career (seed re-pinned
   1 → 3, with the seeds-1..10 sweep recorded at the site: 8 of 10 still register fuel starvation,
   so the T-1004 metric stays reachable).
+
+---
+
+## 11 · The MED follow-ups and one new finding (2026-07-27)
+
+Written by the UGT-side re-baseline audit that re-ran the trial ladder against `28c2de3c` and found
+it red. §7's findings text is again deliberately **not** edited — a report's findings are the record
+of what was measured. F4 remains open and is still a balance question, not a defect.
+
+### F3 · MED · FIXED
+
+`legalActions` filtered `destinationId` by the T-1101 destination lock and by nothing else, so a
+tank that could not cover a jump was still offered every system on the map. `resolveTravel` spends
+the die and rolls the pilot check *before* it reaches its fuel branch, so the refusal costs a die and
+returns nothing.
+
+The cockpit never had the problem — it gates on `travelPreview().reachable` — so the fix gives the
+wire that predicate rather than a second copy of it. **`canReachSystem`** (`actions/travel.ts`) is
+now the single definition of `ship.fuel >= fuelRequired`, read by `travelPreview.reachable` and by
+`legalActions`. A tank that can reach nothing is offered **no `Travel` spec at all** rather than one
+with an empty `choices` list; fuel, the dusk subsistence floor and `abandon-contract` stay
+advertised, so the withholding strands nobody.
+
+Worth recording for whoever reads the finding later: at a **full** starter tank every ungated system
+is reachable, so the filter is a no-op on day 1 and engages only once fuel is spent — which is
+exactly the state F2 measured (29 fuel of 300).
+
+Regressions in `protocol.test.ts`: the split-the-map witness at a part-full tank (both halves
+asserted non-empty, since a one-sided check would pass vacuously at a full tank), the property over
+four tank levels — which closes the finding *class* rather than two witnesses — and the dry-tank
+case. All three verified RED against the unfiltered enumerator. One existing fixture moved with them
+per the rebalance-fallout rule: the T-1505b crossing test flew a starter tank on the longest jump on
+the map and now fuels to the engine's own quote, so its assertion is about the lock and only the
+lock.
+
+### F5 · MED · FIXED (and extended to the two verbs sharing its shape)
+
+The fix is not a new "affordable?" field for the caller to interpret. It is to narrow what is
+advertised until **filling a spec from its own declared domains always succeeds** — the contract the
+rest of the enumerator already keeps.
+
+Two of the four Shipyard shapes have a single discriminating parameter, so their domains narrow
+exactly: `buy-cargo-pods` bisects the engine's own check for the largest quantity that fits hull and
+purse, and `buy-special-equipment` filters its enum through the predicate that owns affordability,
+renown **and** mutual exclusion. The other two are **joint** — cost depends on component *and* tier,
+on repairMode *and* component — and a `ParamSpec` cannot express a joint domain, so they split into
+one spec per component with an exact domain each (tier prices rise monotonically, so the affordable
+tiers are a prefix and an int range says so precisely).
+
+Two things fell out of the split. `repairMode: 'all'` now carries **no `component` key at all**,
+which makes the F-R2-2 defect unrepresentable rather than merely documented — `execute` branches on
+the mere presence of that key. And a broke captain is still offered the free work (a pristine
+repair-all, a tier-1 swap the trade-in covers); withholding that would be wrong in the other
+direction, and it is why the regression asserts "everything advertised quotes at 0" rather than "no
+yard specs at all".
+
+`Port/buy` (gated on `quotePort().ok`) and `Crew/hire` (role list filtered by `hirePrice`) were
+carried in the same change: the finding named them as sharing the shape, and `resolveCrew` likewise
+spends the die before it checks the price — the campaign sent 247 hires and berthed nobody. **This
+does not fix F4**: the roles are still unaffordable on a Tour One budget, and now they are honestly
+absent instead of eating a die to say so.
+
+Every gate calls the engine's own predicate rather than recomputing a price in the enumerator.
+
+### G1 · MED · NEW · FIXED · a protocol client could not open a demo career
+
+Found while auditing what the T-1703 demo work left reachable. `createInitialState(seed, edition)`
+has accepted an edition since T-1703, but `handleMessage`'s `new-game`/`reset` passed only the seed
+— so the whole demo licence (both `demo-locked` verbs, the `demo-ended` refusal, the demo branch of
+the stop signal, and the `edition` / `demoDaysRemaining` summary fields) was unreachable from **any**
+protocol client, including the harness that would regression-test the shipped demo build. Every
+existing demo test reaches past the protocol and builds a `GameState` by hand, which is what hid it.
+
+`edition` is now an optional field on both messages, defaulting to `'full'` so every existing caller
+and every recorded replay log is byte-identical. It is deliberately **not** inherited across a
+`reset`, and an unrecognised value is a typed `error` rather than a silent downgrade to `'full'` — a
+harness that asked for a demo and got a full career would report coverage it never had.
+
+### The UGT-repo half
+
+F6 (`verify_game` discarding every feature's before/after/delta) is **fixed** in the UGT repo; the
+guard now reads `fid not in details`, and a re-run report carries before/after/delta again. F7's
+specific `state["ship"]["fuel"]` lookup was already gone, but the defect it caused survived the
+refactor as a hardcoded idle action of 0 — which for this game is the `wait` a feature assertion
+separately pins as inert. UGT now takes an `engine.idle_action` config key.
+
+### Gate
+
+`tsc -b`, `lint`, `format:check` and `test` (1,089) green on each of the three commits. The cockpit
+is untouched throughout — it does not consume `legalActions`.
