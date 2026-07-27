@@ -77,6 +77,7 @@ import {
   shell,
   type IpcMainEvent,
 } from 'electron';
+import { existsSync } from 'node:fs';
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createSaveStore, type SaveStore } from './saveStore';
@@ -111,10 +112,25 @@ const APP_SCHEME = 'app';
  *  makes the `will-navigate` check below mean something. */
 const APP_ORIGIN = `${APP_SCHEME}://rimward`;
 const PACKAGED_RENDERER_URL = `${APP_ORIGIN}/index.html`;
-/** The bundled cockpit, relative to the compiled main. `scripts/copy-renderer.mjs`
- *  puts `packages/ui/dist-web` here; inside an asar archive this resolves to
- *  `resources/app.asar/renderer`, which `net.fetch` reads through transparently. */
-const RENDERER_DIR = join(__dirname, '..', 'renderer');
+/**
+ * The bundled cockpit, relative to the compiled main. `scripts/copy-renderer.mjs`
+ * puts `packages/ui/dist-web` here; inside an asar archive this resolves to
+ * `resources/app.asar/renderer`, which `net.fetch` reads through transparently.
+ *
+ * T-1703 · A DEMO PACKAGE STAGES ITS BUNDLE AT `renderer-demo` INSTEAD, and this
+ * is a PATH RESOLUTION, NOT AN EDITION CONCEPT — the distinction is deliberate
+ * and is the whole reason the shell stays rule-free. THE SHELL MUST NOT LEARN
+ * WHAT AN EDITION IS: the cockpit's compiled `BUILD_EDITION` (`packages/ui/src/
+ * edition.ts`) is the single source of truth for which edition is running, and
+ * `ShellInfo`/`ShellAbout` are deliberately NOT widened with an `edition` field —
+ * a second answer to "which edition is this?" is a second answer that can
+ * disagree. All this does is serve whichever bundle the packager staged, and only
+ * one of the two directories ever exists in a given package (`electron-builder`'s
+ * `files` list includes exactly one).
+ */
+const RENDERER_DIR = existsSync(join(__dirname, '..', 'renderer-demo'))
+  ? join(__dirname, '..', 'renderer-demo')
+  : join(__dirname, '..', 'renderer');
 /** Served when the request path is the origin root. */
 const INDEX_FILE = '/index.html';
 

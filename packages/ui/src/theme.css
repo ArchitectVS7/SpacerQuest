@@ -3303,6 +3303,53 @@ body {
   color: var(--ember);
 }
 
+/* T-1703 · THE DEMO BANNER. Reuses the `.notice` reverse-video band for the same
+   reason the recovery notice does — a standing condition is not a second hue —
+   but has no control, so it is a plain centred line rather than a flex row with a
+   button. It sits in the same slot above the bezel, so it needs the same
+   grid-track shift `.notice.recovery` needs (the `.screen` grid has an EXPLICIT
+   row list; an extra first child would otherwise push the bezel into the
+   cockpit's 1fr track). The compound selector covers a demo build that ALSO boots
+   with a recovery/write-failure banner: two extra children, two extra tracks. */
+.screen:has(> .notice.demo-banner) {
+  grid-template-rows: auto auto 1fr auto auto;
+}
+.screen:has(> .notice.recovery):has(> .notice.demo-banner) {
+  grid-template-rows: auto auto auto 1fr auto auto;
+}
+.notice.demo-banner {
+  margin: 0;
+  text-align: center;
+  letter-spacing: 0.14em;
+  font-family: var(--font-display);
+  line-height: 1.5;
+}
+
+/* T-1703 · The demo end card. A `.ending-screen` in every respect (same frame,
+   same stat grid, same single control) — only the CAPSTONE-style header colour
+   differs, so it reads as "your licence ran out" rather than "your captain
+   died". */
+.ending-screen.demo-end .es-kicker {
+  color: var(--amber);
+}
+
+/* T-1703 · The Registry's capstone row — the CONQUEROR rung, rendered on both
+   builds. Styled as a quieter sibling of `.registry-rank` (dashed rather than
+   solid, so it reads as a rung not yet stood on), and dimmed further when the
+   demo build gates it. */
+.registry-capstone {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  border: 1px dashed var(--amber);
+  padding: 8px 14px;
+}
+.registry-capstone[data-demo-locked] {
+  opacity: 0.75;
+}
+
 /* The fault screen. Deliberately plain: no formatted numbers, no game state, no
    effect layer — it must render even when the code that draws the cockpit is the
    thing that just threw (see ErrorBoundary.tsx). */

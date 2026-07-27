@@ -1,5 +1,5 @@
 import { DEEDS, RENOWN_RANKS } from '@spacerquest/content';
-import type { GameEvent, GameState } from '@spacerquest/engine';
+import type { Edition, GameEvent, GameState } from '@spacerquest/engine';
 import { setRichPresence, unlockAchievement } from './storage';
 // T-1702b · NOT A CYCLE, and it was checked rather than assumed: `format.ts`
 // imports only a TYPE from `./storage` and never imports `./steam` at all
@@ -140,6 +140,30 @@ export const ACHIEVEMENT_MANIFEST: readonly AchievementDefinition[] = [
 ];
 
 /**
+ * T-1703 · THE MANIFEST FOR A GIVEN EDITION.
+ *
+ * The demo set is the full set MINUS the Conqueror capstone, because "Conqueror
+ * content" is the third name on the demo's gate list and a Steam achievement is
+ * content a demo can reach at any day count — unlike the veteran game, which the
+ * demo's 33-day ceiling holds out on its own.
+ *
+ * THE 44 DEED ACHIEVEMENTS ARE DELIBERATELY NOT TRIMMED. Deeds are earned by
+ * playing Tour One and most of them are reachable inside it; removing them would
+ * make a demo player's Registry lie about what they did, and the Registry IS the
+ * achievement set (T-1702a's whole design). The lock is on the capstone alone.
+ *
+ * READERS: {@link achievementsForEvents} / {@link achievementsForState} (which
+ * filter through it), `App.tsx`'s `SteamRow` (whose denominator is this length,
+ * so a demo build shows 44 and a full build 45 — the player-visible difference
+ * `e2e/demo-gate.spec.ts` asserts on both builds), and
+ * `__tests__/steam.test.ts`.
+ */
+export function achievementManifest(edition: Edition): readonly AchievementDefinition[] {
+  if (edition !== 'demo') return ACHIEVEMENT_MANIFEST;
+  return ACHIEVEMENT_MANIFEST.filter((a) => a.apiName !== CONQUEROR_API_NAME);
+}
+
+/**
  * PURE mapping from an action's emitted `GameEvent`s to the achievements it
  * implies. No DOM, no I/O, no side effects — the twin of `sound.ts`'s
  * `cuesForEvents`, and exported so the event → achievement mapping stays
@@ -147,8 +171,15 @@ export const ACHIEVEMENT_MANIFEST: readonly AchievementDefinition[] = [
  *
  * `RenownRankUp` for any rank other than CONQUEROR maps to nothing, by the
  * decision recorded in the header.
+ *
+ * T-1703 · `edition` is REQUIRED rather than defaulted, so a new call site cannot
+ * quietly forget it and mirror a locked capstone. The demo filter here is a
+ * BELT-AND-BRACES second line: `evaluateDeeds` already refuses to rank a demo
+ * career to CONQUEROR (engine deeds.ts), so this event cannot arise in a demo
+ * session at all — but the mirror should not depend on that being true forever.
  */
-export function achievementsForEvents(events: readonly GameEvent[]): string[] {
+export function achievementsForEvents(events: readonly GameEvent[], edition: Edition): string[] {
+  const allowed = new Set(achievementManifest(edition).map((a) => a.apiName));
   const names: string[] = [];
   for (const e of events) {
     if (e.type === 'DeedEarned') names.push(deedApiName(e.deedId));
@@ -156,7 +187,7 @@ export function achievementsForEvents(events: readonly GameEvent[]): string[] {
       names.push(CONQUEROR_API_NAME);
     }
   }
-  return names;
+  return names.filter((name) => allowed.has(name));
 }
 
 /**
@@ -175,11 +206,16 @@ export function achievementsForEvents(events: readonly GameEvent[]): string[] {
  * a 44-deed backfill cheap lives in {@link unlock} (per session) and in
  * `packages/desktop/src/steam.ts`'s `isActivated` check (per Steam account).
  */
-export function achievementsForState(game: GameState): string[] {
+export function achievementsForState(game: GameState, edition: Edition): string[] {
+  const allowed = new Set(achievementManifest(edition).map((a) => a.apiName));
   const registry = game.player.registry;
   const names = registry.earned.map((deed) => deedApiName(deed.id));
   if (registry.renownRank === 'CONQUEROR') names.push(CONQUEROR_API_NAME);
-  return names;
+  // T-1703 · The backfill runs on a career the CURRENT BUILD has adopted, so the
+  // edition is the build's, not the save's — a demo save promoted into the full
+  // game backfills its capstone; a full save cannot be opened by the demo build at
+  // all (engine `promoteEdition` refuses it).
+  return names.filter((name) => allowed.has(name));
 }
 
 /**

@@ -14,4 +14,7 @@ packages/*/src/**/*.js
 # and `format:check` would go red the moment anyone packages locally.
 packages/desktop/renderer/
 packages/desktop/release/
+# T-1703 · The demo package's staged bundle and release tree, for the same reason.
+packages/desktop/renderer-demo/
+packages/desktop/release-demo/
 .scratch/

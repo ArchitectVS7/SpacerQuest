@@ -12,6 +12,7 @@ import {
   STAR_SYSTEMS,
   SUBSISTENCE_FLOOR_CREDITS,
   Stat,
+  DEMO_FINAL_DAY,
   isGatedDestination,
 } from '@spacerquest/content';
 import { DayPhase, GameState, GameEvent, PlayerAction } from './types.js';
@@ -43,11 +44,42 @@ import {
 } from './storylets.js';
 import { computeGuildStanding, guildManifestPenalty, guildSeverity } from './guild.js';
 import { careerEnded } from './nemesis.js';
+import { demoConcluded, demoLocked, isDemo } from './demo.js';
 import { natWireStories } from './wire.js';
 import { cloneState } from './clone.js';
 
 function appendEvents(state: GameState, events: GameEvent[]): void {
   state.eventLog.push(...events);
+}
+
+/**
+ * T-1703 · The verbs a refusal can name — exactly the members of
+ * `ActionBlocked.actionType`, so this predicate and the event type cannot drift.
+ *
+ * `Reroll`, `Combat` and `Wait` are NOT members and therefore cannot be refused
+ * without widening the enum again, which the demo gate has no reason to do:
+ * `Wait` only refreshes an offer set, a `Reroll` charge spends on a hand that
+ * buys nothing once every verb is inert, and `Combat` needs a live encounter —
+ * which a career that has ALREADY rolled past its last dusk cannot acquire (a
+ * jump is what generates one, and jumping is blocked).
+ */
+function isBlockableAction(action: PlayerAction): action is Extract<
+  PlayerAction,
+  {
+    type:
+      'Trade' | 'Travel' | 'Shipyard' | 'Storylet' | 'Explore' | 'VisitHangout' | 'Port' | 'Crew';
+  }
+> {
+  return (
+    action.type === 'Trade' ||
+    action.type === 'Travel' ||
+    action.type === 'Shipyard' ||
+    action.type === 'Storylet' ||
+    action.type === 'Explore' ||
+    action.type === 'VisitHangout' ||
+    action.type === 'Port' ||
+    action.type === 'Crew'
+  );
 }
 
 export function startDay(state: GameState): { state: GameState; events: GameEvent[] } {
@@ -217,6 +249,54 @@ export function applyPlayerAction(
       day: nextState.day,
       actionType: action.type,
       reason: 'career-ended',
+    };
+    appendEvents(nextState, [blocked]);
+    return { state: nextState, events: [blocked] };
+  }
+
+  // T-1703 · THE DEMO GATE, in two halves, placed immediately after the T-1505c
+  // terminal guard and before the T-1101 destination gate. Both halves take the
+  // exact shape of the three gates around them: one typed ActionBlocked appended
+  // to the log, NO die spent, NO rng fork, `dayEventCount` untouched, no throw.
+  //
+  // HALF ONE — THE CEILING. A demo career past `DEMO_FINAL_DAY` is over, exactly
+  // as a career on the far side of the shear is: the licence has expired and
+  // every blockable verb is inert. The same six verbs as the terminal guard, for
+  // the same reason (they are `ActionBlocked.actionType`'s original members), plus
+  // the two the demo gate added — `Port` and `Crew` — because unlike the shear
+  // (no port, no hangout, no berth to fill out there) a concluded demo career is
+  // standing in a perfectly ordinary port where those two verbs would otherwise
+  // still resolve.
+  if (demoConcluded(nextState) && isBlockableAction(action)) {
+    const blocked: GameEvent = {
+      type: 'ActionBlocked',
+      day: nextState.day,
+      actionType: action.type,
+      reason: 'demo-ended',
+    };
+    appendEvents(nextState, [blocked]);
+    return { state: nextState, events: [blocked] };
+  }
+
+  // HALF TWO — THE TWO REACHABLE LOCKS. A port stake (cheapest 7,150cr) and a
+  // crew hire (cheapest 2,000cr) are both affordable inside Tour One, so they are
+  // the veteran content a demo could actually reach; the rest of the veteran game
+  // is held out by the ceiling above, not by a flag (see content demo.ts).
+  //
+  // `Crew{dismiss}` is deliberately NOT gated: a promoted-then-demoted save can
+  // carry crew in, and refusing to let a captain let someone go would be a lock
+  // that takes something away rather than one that withholds a purchase.
+  if (
+    (action.type === 'Port' && demoLocked(nextState, 'port-ownership')) ||
+    (action.type === 'Crew' &&
+      action.action === 'hire' &&
+      demoLocked(nextState, 'crew-progression'))
+  ) {
+    const blocked: GameEvent = {
+      type: 'ActionBlocked',
+      day: nextState.day,
+      actionType: action.type,
+      reason: 'demo-locked',
     };
     appendEvents(nextState, [blocked]);
     return { state: nextState, events: [blocked] };
@@ -997,6 +1077,35 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
         message: `The marker goes unpaid. The Guild files the shortfall — ${debtOutstanding} credits still owed, and the interest keeps running — and flags your name where every port clerk can read it: leaner manifests, keener patrols. You fly on indebted.`,
       });
     }
+  }
+
+  // T-1703 · THE DEMO'S LAST DUSK. Placed immediately after the Tour One
+  // resolution block above, because that is the beat it counts from: the demo
+  // plays Tour One and then `DEMO_POST_RESOLUTION_DAYS` more (content demo.ts),
+  // so day 30's dusk still fires `TourOneResolved`, still flips the era to
+  // VETERAN and still sets `veteran.unlocked` — the three teaser days ARE the
+  // point, and the player sees the veteran lanes light up before the licence
+  // expires.
+  //
+  // NO SPECIAL-CASED ROLLOVER: the day rolls to 34 exactly as it always does, and
+  // `demoConcluded` (a DERIVED predicate, not a flag) goes true at that dawn.
+  // This event is the RECORD of the last dusk; the predicate is the rule.
+  // Byte-identical for every full career — the whole block is `edition` guarded,
+  // and no existing save is a demo.
+  if (isDemo(nextState) && nextState.day === DEMO_FINAL_DAY) {
+    events.push({
+      type: 'DemoConcluded',
+      day: nextState.day,
+      edition: nextState.edition,
+      daysPlayed: nextState.day,
+    });
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      kind: 'plain',
+      message:
+        'Port control files the last entry your demo licence will carry. The lanes stay lit, the Signal keeps repeating, and your papers are still good — somewhere other than here.',
+    });
   }
 
   // T-1309 · Unpaid Tour One marker — per-dusk interest accrual. The unpaid

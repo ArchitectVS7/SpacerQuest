@@ -27,6 +27,7 @@ vi.mock('../storage', () => ({
 import {
   ACHIEVEMENT_MANIFEST,
   CONQUEROR_API_NAME,
+  achievementManifest,
   achievementsForEvents,
   achievementsForState,
   deedApiName,
@@ -150,31 +151,34 @@ describe('T-1702a · the manifest mirrors the WHOLE Deed set', () => {
 
 describe('T-1702a · achievementsForEvents — the live mapping', () => {
   it('maps a DeedEarned to that deed’s API name', () => {
-    expect(achievementsForEvents([deedEarned('debt_first_payment')])).toEqual([
+    expect(achievementsForEvents([deedEarned('debt_first_payment')], 'full')).toEqual([
       'DEED_DEBT_FIRST_PAYMENT',
     ]);
   });
 
   it('maps the CONQUEROR rank-up, and only that rank', () => {
-    expect(achievementsForEvents([rankUp('CONQUEROR')])).toEqual([CONQUEROR_API_NAME]);
+    expect(achievementsForEvents([rankUp('CONQUEROR')], 'full')).toEqual([CONQUEROR_API_NAME]);
     // The other nine ranks are pure functions of deed count, so mirroring them
     // would be achievements that unlock as a side effect of achievements the
     // player already holds. A deliberate call — see `steam.ts`'s header.
     for (const rank of ['LIEUTENANT', 'CAPTAIN', 'ADMIRAL', 'GIGA_HERO'] as const) {
-      expect(achievementsForEvents([rankUp(rank)])).toEqual([]);
+      expect(achievementsForEvents([rankUp(rank)], 'full')).toEqual([]);
     }
   });
 
   it('ignores everything else, and keeps event order across a mixed batch', () => {
-    expect(achievementsForEvents([{ type: 'DayAdvanced', day: 3 }])).toEqual([]);
-    expect(achievementsForEvents([])).toEqual([]);
+    expect(achievementsForEvents([{ type: 'DayAdvanced', day: 3 }], 'full')).toEqual([]);
+    expect(achievementsForEvents([], 'full')).toEqual([]);
     expect(
-      achievementsForEvents([
-        { type: 'DayAdvanced', day: 3 },
-        deedEarned('first_manifest'),
-        rankUp('CONQUEROR'),
-        deedEarned('cold_case'),
-      ]),
+      achievementsForEvents(
+        [
+          { type: 'DayAdvanced', day: 3 },
+          deedEarned('first_manifest'),
+          rankUp('CONQUEROR'),
+          deedEarned('cold_case'),
+        ],
+        'full',
+      ),
     ).toEqual(['DEED_FIRST_MANIFEST', CONQUEROR_API_NAME, 'DEED_COLD_CASE']);
   });
 });
@@ -185,20 +189,24 @@ describe('T-1702a · achievementsForState — the backfill', () => {
     // Steam closed, or before this feature existed, has its `DeedEarned` events
     // in the past. Without this it would never mirror at all.
     expect(
-      achievementsForState(stateWith(['first_manifest', 'first_delivery', 'cold_case'], 'CAPTAIN')),
+      achievementsForState(
+        stateWith(['first_manifest', 'first_delivery', 'cold_case'], 'CAPTAIN'),
+        'full',
+      ),
     ).toEqual(['DEED_FIRST_MANIFEST', 'DEED_FIRST_DELIVERY', 'DEED_COLD_CASE']);
   });
 
   it('adds the capstone when the loaded career already holds the rank', () => {
     const names = achievementsForState(
       stateWith(['first_manifest', 'first_delivery', 'cold_case'], 'CONQUEROR'),
+      'full',
     );
     expect(names).toHaveLength(4);
     expect(names.at(-1)).toBe(CONQUEROR_API_NAME);
   });
 
   it('a fresh career mirrors nothing', () => {
-    expect(achievementsForState(stateWith([], 'LIEUTENANT'))).toEqual([]);
+    expect(achievementsForState(stateWith([], 'LIEUTENANT'), 'full')).toEqual([]);
   });
 });
 
@@ -340,5 +348,90 @@ describe('T-1702a · docs/STEAM-ACHIEVEMENTS.md is the manifest, row for row', (
     // would double-write the same files.
     expect(doc).toMatch(/Auto-Cloud/);
     expect(doc).toMatch(/sq\.save\.v1/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1703 · The demo's achievement set.
+// ---------------------------------------------------------------------------
+
+describe('T-1703 · achievementManifest — the edition-scoped set', () => {
+  it('the full build keeps the whole manifest, capstone included', () => {
+    expect(achievementManifest('full')).toEqual(ACHIEVEMENT_MANIFEST);
+    expect(achievementManifest('full').map((a) => a.apiName)).toContain(CONQUEROR_API_NAME);
+  });
+
+  it('the demo set is the full set minus EXACTLY the Conqueror capstone', () => {
+    // "Conqueror content" is the third name on the task's gate list. A rank is
+    // CONTENT, reachable at any day count, so the 33-day ceiling could not hold it
+    // out on its own — which is why it needs a lock and the other veteran material
+    // does not.
+    const demo = achievementManifest('demo');
+    expect(demo).toHaveLength(ACHIEVEMENT_MANIFEST.length - 1);
+    expect(demo.map((a) => a.apiName)).not.toContain(CONQUEROR_API_NAME);
+    // …and NOT a deed less. Deeds are earned by playing Tour One and the Registry
+    // IS the achievement set; trimming them would make a demo player's Registry
+    // lie about what they did.
+    expect(demo.map((a) => a.apiName)).toEqual(
+      ACHIEVEMENT_MANIFEST.filter((a) => a.apiName !== CONQUEROR_API_NAME).map((a) => a.apiName),
+    );
+    expect(demo).toHaveLength(DEEDS.length);
+  });
+
+  it('the two sets differ by exactly one row', () => {
+    expect(achievementManifest('full').length - achievementManifest('demo').length).toBe(1);
+  });
+});
+
+describe('T-1703 · the capstone cannot be mirrored from a demo career', () => {
+  it('achievementsForEvents drops a CONQUEROR rank-up in the demo edition', () => {
+    // Belt and braces: `evaluateDeeds` already refuses to rank a demo career to
+    // CONQUEROR (engine deeds.ts), so this event cannot arise in a demo session at
+    // all — but the mirror must not depend on that staying true forever.
+    expect(achievementsForEvents([rankUp('CONQUEROR')], 'demo')).toEqual([]);
+    expect(achievementsForEvents([rankUp('CONQUEROR')], 'full')).toEqual([CONQUEROR_API_NAME]);
+  });
+
+  it('deeds still mirror normally in the demo edition', () => {
+    // The lock is the capstone, not the game.
+    expect(achievementsForEvents([deedEarned('first_manifest')], 'demo')).toEqual([
+      'DEED_FIRST_MANIFEST',
+    ]);
+  });
+
+  it('achievementsForState drops the capstone on a demo backfill', () => {
+    const held = stateWith(['first_manifest', 'first_delivery'], 'CONQUEROR');
+    expect(achievementsForState(held, 'demo')).toEqual([
+      'DEED_FIRST_MANIFEST',
+      'DEED_FIRST_DELIVERY',
+    ]);
+    expect(achievementsForState(held, 'full')).toEqual([
+      'DEED_FIRST_MANIFEST',
+      'DEED_FIRST_DELIVERY',
+      CONQUEROR_API_NAME,
+    ]);
+  });
+});
+
+describe('T-1703 · docs/STEAM-ACHIEVEMENTS.md still describes the FULL set', () => {
+  it('the doc table is the full manifest, not the demo one', () => {
+    // The partner-site table a human types in is the FULL game's. The demo app's
+    // table is a subset of it, so documenting the full set keeps the doc the
+    // superset it needs to be — asserted here so a future edition-scoped doc edit
+    // is a deliberate act.
+    const doc = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        '..',
+        '..',
+        'docs',
+        'STEAM-ACHIEVEMENTS.md',
+      ),
+      'utf8',
+    );
+    expect(doc).toContain(CONQUEROR_API_NAME);
+    expect(achievementManifest('full')).toEqual(ACHIEVEMENT_MANIFEST);
   });
 });

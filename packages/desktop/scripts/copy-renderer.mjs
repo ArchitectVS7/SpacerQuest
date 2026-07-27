@@ -19,14 +19,27 @@ import { cpSync, existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// T-1703 · `--edition demo` stages the DEMO bundle instead. Two source
+// directories, two destinations, one script — because the staging step is
+// identical and a second copy of it is a second place to forget the loud failure
+// below. The shell itself never learns what an edition is (see `main.ts`'s
+// RENDERER_DIR): only one of the two destinations exists in any given package,
+// and `electron-builder.demo.json`'s `files` list picks which.
 const here = dirname(fileURLToPath(import.meta.url));
-const SRC = join(here, '..', '..', 'ui', 'dist-web');
-const DEST = join(here, '..', 'renderer');
+const editionIndex = process.argv.indexOf('--edition');
+const edition = editionIndex >= 0 ? process.argv[editionIndex + 1] : 'full';
+if (edition !== 'full' && edition !== 'demo') {
+  console.error(`[copy-renderer] Unknown --edition "${edition}" (expected "full" or "demo").`);
+  process.exit(1);
+}
+const demo = edition === 'demo';
+const SRC = join(here, '..', '..', 'ui', demo ? 'dist-demo' : 'dist-web');
+const DEST = join(here, '..', demo ? 'renderer-demo' : 'renderer');
 
 if (!existsSync(join(SRC, 'index.html'))) {
   console.error(
     `[copy-renderer] No cockpit bundle at ${SRC}.\n` +
-      `                Build it first: npm run build -w @spacerquest/ui`,
+      `                Build it first: npm run build${demo ? ':demo' : ''} -w @spacerquest/ui`,
   );
   process.exit(1);
 }
@@ -45,4 +58,4 @@ function countFiles(dir) {
   return n;
 }
 
-console.log(`[copy-renderer] ${countFiles(DEST)} files -> ${DEST}`);
+console.log(`[copy-renderer] ${edition}: ${countFiles(DEST)} files -> ${DEST}`);

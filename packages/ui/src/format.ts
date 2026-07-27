@@ -31,6 +31,10 @@ import {
   CROSSING_STAKE_MIN_CREDITS,
   CROSSING_REQUIRED_RANK,
   CROSSING_ENDING,
+  DEMO_END_CARD,
+  DEMO_FINAL_DAY,
+  DEMO_TEASE,
+  type DemoLockedFeature,
   type FactionId,
   type StoryletTrigger,
   type CrewRole,
@@ -44,6 +48,11 @@ import {
   quoteCrossingStake,
   careerEnded,
   careerEpilogue,
+  demoConcluded,
+  demoDaysRemaining,
+  demoLocked,
+  isDemo,
+  type Edition,
   componentTierForStrength,
   tributeForRound,
   nextRankFor,
@@ -1597,6 +1606,130 @@ export function endingScreen(game: GameState): EndingView | null {
   };
 }
 
+// ---- T-1703 demo prose ---------------------------------------------------
+//
+// Every function below is a PURE CLIENT of the engine's demo predicates
+// (`packages/engine/src/demo.ts`) and content's authored copy
+// (`packages/content/src/demo.ts`). No rule lives here: the cockpit does not
+// decide what is locked, when the demo ends, or how many days are left — it asks.
+
+/** The player-facing name of an edition. READER: the Settings → Build → Edition
+ *  row (App.tsx), which also carries the raw id as `data-edition` on the
+ *  `data-update-status` precedent — prose may be re-voiced, the id is what a spec
+ *  asserts on. */
+export function editionLabel(edition: Edition): string {
+  return edition === 'demo' ? 'Demo — Tour One' : 'Full game';
+}
+
+/** The demo banner's view-model — the sentence a player reads plus the number a
+ *  spec asserts on, from ONE call so the two cannot disagree. */
+export interface DemoBannerView {
+  line: string;
+  /** Days left on the licence, counting today (engine `demoDaysRemaining`). */
+  daysRemaining: number;
+}
+
+/**
+ * The standing demo banner, or `null` for a full career (and for a demo that has
+ * already concluded — the end card speaks for that state, and two notices saying
+ * the same thing is one too many).
+ *
+ * READER: `DemoBanner` (App.tsx), mounted above the bezel.
+ */
+export function demoBannerLine(game: GameState): DemoBannerView | null {
+  if (!isDemo(game) || demoConcluded(game)) return null;
+  const daysRemaining = demoDaysRemaining(game) ?? 0;
+  const days = daysRemaining === 1 ? 'day' : 'days';
+  return {
+    line: `DEMO LICENCE · ${daysRemaining} ${days} left of ${DEMO_FINAL_DAY}`,
+    daysRemaining,
+  };
+}
+
+/** The tease beside a demo-locked control — content's authored line, verbatim.
+ *  Returns `null` when the feature is not locked in this state, so the caller
+ *  renders nothing on a full build without a second condition of its own.
+ *  READER: the Port Ledger buy row, the crew hireable rows and the Registry
+ *  capstone row (App.tsx). */
+export function demoLockNotice(game: GameState, feature: DemoLockedFeature): string | null {
+  return demoLocked(game, feature) ? DEMO_TEASE[feature] : null;
+}
+
+/**
+ * The one-line notice for a save-file transfer, in the four outcomes the store
+ * can produce. Prose only — the store owns the branching, this owns the words.
+ *
+ * READER: `store.ts`'s `exportCareer` / `importCareer`, surfaced through the
+ * cockpit's standing `notice`.
+ */
+export function careerTransferMessage(
+  outcome: 'exported' | 'imported' | 'promoted' | 'edition-refused' | 'unreadable',
+): string {
+  switch (outcome) {
+    case 'exported':
+      return 'Career exported. Open it in the full game to fly on from here.';
+    case 'imported':
+      return 'Career imported. The licence picks up exactly where it left off.';
+    case 'promoted':
+      return 'Career imported and upgraded — the demo endorsement is off your papers and every lane is open.';
+    case 'edition-refused':
+      return 'That career belongs to the full game. The demo cannot open it — nothing was changed.';
+    case 'unreadable':
+      return 'That file could not be read as a Rimward career.';
+  }
+}
+
+/** The demo end card's view-model. Deliberately shaped like {@link EndingView}'s
+ *  header so `DemoEndCard` reads as a sibling of `EndingScreen` rather than a new
+ *  kind of screen. */
+export interface DemoEndView {
+  kicker: string;
+  title: string;
+  body: readonly string[];
+  cta: string;
+  /** The career summary, reusing the ending screen's row type so the two screens
+   *  share one presentation vocabulary. */
+  stats: EndingStatRow[];
+}
+
+/**
+ * T-1703 · The demo's closing screen — NULL unless the ENGINE says the licence
+ * has expired (`demoConcluded`). Same contract as {@link endingScreen}: the UI
+ * never decides this itself, every string comes from content and every number
+ * from engine state.
+ *
+ * READER: `DemoEndCard` (App.tsx), mounted INSTEAD of the cockpit — the engine
+ * refuses every verb from here, so leaving the terminal up would be a screen of
+ * dead controls.
+ */
+export function demoEndCard(game: GameState): DemoEndView | null {
+  if (!demoConcluded(game)) return null;
+  const registry = game.player.registry;
+  const stats: EndingStatRow[] = [
+    { key: 'day', label: 'DAYS FLOWN', value: String(DEMO_FINAL_DAY) },
+    { key: 'rank', label: 'RANK REACHED', value: RENOWN_RANKS[registry.renownRank].label },
+    { key: 'deeds', label: 'DEEDS ON THE BOARD', value: String(registry.earned.length) },
+    { key: 'credits', label: 'CREDITS IN HAND', value: game.player.credits.toLocaleString() },
+    {
+      key: 'debt',
+      label: 'GUILD MARKER',
+      value: `${Math.max(0, game.player.debt).toLocaleString()} CR`,
+    },
+    {
+      key: 'charted',
+      label: 'SYSTEMS CHARTED',
+      value: String(game.player.charts.visitedSystemIds.length),
+    },
+  ];
+  return {
+    kicker: DEMO_END_CARD.kicker,
+    title: DEMO_END_CARD.title,
+    body: DEMO_END_CARD.body,
+    cta: DEMO_END_CARD.cta,
+    stats,
+  };
+}
+
 // ---- T-311 onboarding & Tour One presentation ----------------------------
 //
 // The teaching layer for Tour One is PURELY PRESENTATIONAL. It reads existing
@@ -1948,9 +2081,19 @@ export function resolutionCeremony(game: GameState): ResolutionCeremonyView | nu
  *  - `unknown` — something other than a `SaveError` escaped `loadSave`. Honest
  *    catch-all: never claim a cause we do not have.
  *
+ * T-1703 adds a THIRD UI-side code, and it is likewise not damage:
+ *  - `edition-refused` — the save loaded and validated perfectly, but it is a
+ *    FULL-game career and this is the DEMO build (engine `promoteEdition`
+ *    refuses that direction). Closing that hole is the whole reason the refusal
+ *    exists: without it a player could fly veteran content on a demo licence
+ *    simply by dropping a save file in. The bytes are untouched and are
+ *    quarantined like any other unopenable save, so the career is not lost —
+ *    the full build opens it.
+ *
  * READER: `App.tsx`'s `RecoveryNotice`, via {@link saveRecoveryMessage}.
  */
-export type SaveRecoveryCode = SaveErrorCode | 'storage-unavailable' | 'unknown';
+export type SaveRecoveryCode =
+  SaveErrorCode | 'storage-unavailable' | 'unknown' | 'edition-refused';
 
 export interface SaveRecoveryNotice {
   code: SaveRecoveryCode;
@@ -1981,6 +2124,9 @@ const SAVE_RECOVERY_CAUSE = {
   // are identical on both backends. See `STORAGE_UNAVAILABLE_CAUSE` below.
   'storage-unavailable': 'save storage could not be reached',
   unknown: 'the save could not be loaded',
+  // T-1703: NOT damage, and the wording is careful about that — the save is fine,
+  // it is this BUILD that cannot open it.
+  'edition-refused': 'that career belongs to the full game and the demo cannot open it',
 } satisfies Record<SaveRecoveryCode, string>;
 
 /**

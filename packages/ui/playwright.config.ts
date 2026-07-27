@@ -49,6 +49,13 @@ const EXPECT_TIMEOUT_MS = 10_000;
 
 export default defineConfig({
   testDir: './e2e',
+  // T-1703 · `demo-gate.spec.ts` belongs to `playwright.demo.config.ts`, which
+  // boots a SECOND web server (the `--mode demo` bundle on :5174) this config
+  // knows nothing about. Ignoring it here is load-bearing twice over: those tests
+  // cannot pass without that server, and leaving them in would change the shape
+  // of the 92-test functional run AND the `@tour-one` flake denominator — a suite
+  // whose gate is a RATE cannot have its denominator moved by an unrelated task.
+  testIgnore: /demo-gate\.spec\.ts/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   timeout: TEST_TIMEOUT_MS,

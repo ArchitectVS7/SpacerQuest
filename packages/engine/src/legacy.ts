@@ -41,6 +41,12 @@ export interface ShipLostContext {
  *     dispositions above do (PRD §8.1 "your reputation … good and bad"). Like
  *     debt/loan/ports it is simply left on state, never reset; the succession test
  *     asserts survival.
+ *     (T-1703) the `edition` is carried too — and this one is a SAFETY property,
+ *     not an inheritance: a demo death must not launder a demo career into a full
+ *     one by way of a successor. It lives at the ROOT of GameState (not on
+ *     `player`), so it is outside everything this function touches and survives by
+ *     construction — which is exactly why the succession test asserts it rather
+ *     than trusting the absence of a line of code.
  *   HALVED: credits (floor division).
  *   RESET: ship to the exact starterShip(); the active contract is FORFEITED
  *     here (the cargo went down with the ship — a TradeEvent 'forfeit-cargo'

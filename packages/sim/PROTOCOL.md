@@ -110,6 +110,8 @@ A compact, agent-facing view — deliberately **not** the raw `GameState`. Field
 | `day`                | Current day number.                                                 |
 | `phase`              | `DAWN` \| `DAY` (WIRE/DUSK are transient, never observed here).      |
 | `era`                | Campaign phase — `TOUR_ONE` \| `VETERAN`.                            |
+| `edition`            | **T-1703** · Which licence the career is flown on — `full` \| `demo` (engine `GameState.edition`). A demo session is never offered `Port{buy}` or `Crew{hire}`. |
+| `demoDaysRemaining`  | **T-1703** · Days of demo left, counting today, or `null` on a full career. Reaches `0` when the licence expires, at which point `legal-actions` returns the stop signal. |
 | `credits`            | Spendable credits.                                                  |
 | `debt`, `debtDueDay` | Outstanding Merchant Guild marker (a ledger, never negative credits) and the day it is called. |
 | `fuel`, `maxFuel`    | Tank state.                                                         |
@@ -217,6 +219,14 @@ or large, so the enumerator exposes the action *shape* and each parameter's
 Concrete, cheap enumerations **are** listed exhaustively: die indices, contract
 indices, and every eligible storylet choice.
 
+**The stop signal.** `{ actions: [], canWait: false, lifecycle: [] }` means *there
+is nothing left to do and no dusk worth rolling* — the driver should stop. Two
+states produce it: a career that crossed the Nemesis shear (T-1505c) and, since
+**T-1703**, a `demo` session past its day ceiling. The demo case is checked
+**above** the phase branch on purpose: a crossing ends mid-DAY, but a demo ends at
+a day boundary, so the state a driver holds is `DAWN` — and the phase branch would
+otherwise keep advertising `start-day` into a career whose every verb is refused.
+
 ---
 
 ## `apply-action`
@@ -234,6 +244,12 @@ Applies a single `PlayerAction` through the engine's **public** API
   session's `eventLog` — matching what the UI commits — but no die is spent and no
   other state changes (a pure log-append). Detect the refusal by scanning the
   response `events` for `ActionBlocked`, not by an error code.
+- **Demo-gated** (T-1703) — in a `demo` session, `Port{buy}` and `Crew{hire}` are
+  refused with `ActionBlocked` `reason: 'demo-locked'`, and every blockable verb
+  past the demo's day ceiling with `reason: 'demo-ended'`. Same shape as the
+  encounter block: logged, no die spent, no rng draw, no throw. `legal-actions`
+  never advertises either gated verb, so a harness driving it should not see one
+  — `Crew{dismiss}` stays legal throughout.
 - **Typed exploration fails** (T-1003) — a bad die selection on `Explore` is
   **not** an error, because `spendDie` is optional/free-form on that action
   shape: the engine resolves it as an `action-result` whose `events` carry a

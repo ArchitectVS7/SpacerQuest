@@ -43,6 +43,8 @@ import {
   saveToSlot,
   loadSlot,
   deleteSlot,
+  exportCareer,
+  importCareer,
   setReducedMotion,
   setTextSize,
   type CockpitState,
@@ -99,6 +101,10 @@ import {
   offersForSurface,
   resolutionCeremony,
   endingScreen,
+  demoBannerLine,
+  demoEndCard,
+  demoLockNotice,
+  editionLabel,
   saveRecoveryMessage,
   saveWriteFailedMessage,
   updateStatusMessage,
@@ -108,6 +114,8 @@ import {
   richPresenceLine,
   presenceMessage,
   type SaveRecoveryNotice,
+  type DemoBannerView,
+  type DemoEndView,
   type EndingView,
   type OnboardingAnchor,
   type OnboardingMount,
@@ -143,7 +151,11 @@ import {
   cloudStatus,
   cloudRestored,
 } from './storage';
-import { ACHIEVEMENT_MANIFEST, presenceLine } from './steam';
+import { achievementManifest, presenceLine } from './steam';
+// T-1703 · Which edition this bundle IS (Vite `define`, compiled in). Read here
+// by the Settings → Build → Edition row and by `SteamRow`'s achievement
+// denominator, which differs by exactly one between the two builds.
+import { BUILD_EDITION } from './edition';
 
 const DIE_MIME = 'application/x-sq-die';
 
@@ -373,6 +385,19 @@ function BuildRow() {
           {updateStatusMessage(updateStatus)}
         </span>
       </div>
+      {/* T-1703 · WHICH EDITION THIS BUILD IS. The player-facing reader of the
+          compiled `BUILD_EDITION` (edition.ts) — the answer to "am I playing the
+          demo?" without dev tools, and the row a bug report screenshots. It sits
+          in Build beside Version/Updates because that is where facts about the
+          BINARY live; what the edition COSTS you in play is said at each gated
+          control instead. `data-edition` is the structural handle, on the
+          `data-update-status` / `data-storage-backend` precedent. */}
+      <div className="set-row">
+        <span className="set-label">Edition</span>
+        <span className="set-value" data-testid="build-edition" data-edition={BUILD_EDITION}>
+          {editionLabel(BUILD_EDITION)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -435,7 +460,12 @@ function SteamRow({ state }: { state: CockpitState }) {
       <div className="set-row">
         <span className="set-label">Achievements</span>
         <span className="set-value" data-testid="steam-achievements">
-          {steamAchievementsMessage(steamStatus, earned, ACHIEVEMENT_MANIFEST.length)}
+          {/* T-1703 · The denominator is EDITION-SCOPED (`achievementManifest`):
+              45 in the full build, 44 in the demo, because the Conqueror capstone
+              is on the demo's gate list. This row is the player-visible reader of
+              that difference and is asserted on BOTH builds by
+              `e2e/demo-gate.spec.ts`. */}
+          {steamAchievementsMessage(steamStatus, earned, achievementManifest(BUILD_EDITION).length)}
         </span>
       </div>
       {/* T-1702b · The two halves of Cloud & rich presence, made reachable by a
@@ -472,6 +502,10 @@ function SteamRow({ state }: { state: CockpitState }) {
 // is pressed, so the slot data survives until then.
 function SavesPanel({ state }: { state: CockpitState }) {
   const [confirming, setConfirming] = useState<number | null>(null);
+  // T-1703 · The import file picker. A hidden native `<input type="file">` driven
+  // by a visible button, because a bare file input cannot be styled into the
+  // console aesthetic and Playwright drives it with `setInputFiles` either way.
+  const importRef = useRef<HTMLInputElement | null>(null);
 
   const fmtWhen = (savedAt?: number): string => {
     if (!savedAt) return '';
@@ -484,6 +518,44 @@ function SavesPanel({ state }: { state: CockpitState }) {
 
   return (
     <div className="saves-panel" data-testid="saves-panel">
+      {/* T-1703 · THE CARRY, made reachable by a player (standing constraint 6).
+          Export writes the same `createSave(state, seed)` envelope every other
+          persistence path writes; import runs it back through the engine's
+          `loadSave` → `promoteEdition`, which is what turns a demo career into a
+          full one. Placed above the slots because it is the same idea one level
+          out: a slot moves a career between saves, this moves it between INSTALLS.
+          Both live on every build — the full game needs the import side for the
+          demo's carry, and the demo needs the export side to hand it over. */}
+      <span className="set-head">Career file</span>
+      <div className="set-row">
+        <span className="set-label">Transfer</span>
+        <span className="ss-controls">
+          <button className="btn small" data-testid="export-career" onClick={() => exportCareer()}>
+            Export career
+          </button>
+          <button
+            className="btn small"
+            data-testid="import-career"
+            onClick={() => importRef.current?.click()}
+          >
+            Import career
+          </button>
+          <input
+            ref={importRef}
+            type="file"
+            accept=".sav,application/json"
+            data-testid="import-career-input"
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // Clear the input BEFORE awaiting, so re-picking the same file
+              // fires `change` again (a browser suppresses it otherwise).
+              e.target.value = '';
+              if (file) void importCareer(file);
+            }}
+          />
+        </span>
+      </div>
       <span className="set-head">Save slots</span>
       {state.saves.map((slot: SlotSummary) => (
         <div
@@ -619,6 +691,26 @@ export function App() {
   // here, so leaving the terminal mounted behind it would be a screen of dead
   // controls over a system with no port, board or hangout. The only way out is
   // the screen's own `newGame` control, which lands on a fresh day-1 cockpit.
+  // T-1703 · THE DEMO'S TERMINUS. Null until the ENGINE says the licence expired
+  // (`demoConcluded` → the career rolled past `DEMO_FINAL_DAY`); the UI never
+  // decides this either. Checked BEFORE the crossing ending because the two are
+  // mutually exclusive in practice (33 days cannot reach the shear) and this is
+  // the one a demo player will actually see. Same early-return shape: the engine
+  // refuses every verb from here, so leaving the cockpit mounted behind it would
+  // be a screen of dead controls.
+  const demoEnd = demoEndCard(s.game);
+  if (demoEnd) {
+    return (
+      <div className="tube">
+        <EffectsLayer />
+        {!reduced && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
+        <div className="screen">
+          <DemoEndCard view={demoEnd} seed={s.seed} notice={s.notice} />
+        </div>
+      </div>
+    );
+  }
+
   const ending = endingScreen(s.game);
   if (ending) {
     // T-1605a · The recovery notice is deliberately NOT mounted here: a recovery
@@ -659,6 +751,10 @@ export function App() {
             top-right toolbar. Same buttons, same testids; the audio popover is
             gone (folded into Settings) and the storylet launcher is gone
             (storylets open from their diegetic surfaces below). */}
+        {/* T-1703 · The standing demo banner — days left on the licence, in the
+            bezel where the day/era already are. Null (renders nothing) on a full
+            build, so the full cockpit is byte-identical. */}
+        <DemoBanner game={s.game} />
         <Bezel game={s.game} seed={s.seed}>
           <div className="ctrls">
             <button onClick={toggleFx}>{s.fx ? 'CRT: ON' : 'CRT: OFF'}</button>
@@ -1007,6 +1103,101 @@ function SuccessionNotice({ succession }: { succession: SuccessionSummary }) {
 // on a clean day-1 cockpit — the app's entry surface, since there is no separate
 // menu screen. There is deliberately NO close button: the far side is not a room
 // you back out of.
+// T-1703 · THE DEMO BANNER. A standing line, not a dismissable notice: the day
+// ceiling is a condition that stays true for every action the player takes, which
+// is the same argument `SaveWriteFailedNotice` makes for not being dismissable.
+// The days-remaining figure comes from the engine (`demoDaysRemaining` via
+// `demoBannerLine`) and is never recomputed here.
+//
+// `data-demo-days-remaining` is the structural handle — prose may be re-voiced,
+// the number is what a spec asserts on (the `data-update-status` precedent).
+// READER of `format.ts`'s `demoBannerLine`: this component.
+function DemoBanner({ game }: { game: GameState }) {
+  const view: DemoBannerView | null = demoBannerLine(game);
+  if (!view) return null;
+  return (
+    <div
+      className="notice demo-banner"
+      data-testid="demo-banner"
+      data-demo-days-remaining={String(view.daysRemaining)}
+      role="status"
+    >
+      <span>{view.line}</span>
+    </div>
+  );
+}
+
+// T-1703 · THE DEMO END CARD — the screen that replaces the cockpit once the
+// licence expires. A sibling of `EndingScreen` below (same frame, same stat rows,
+// same single control), because it is the same kind of moment: a career that can
+// no longer be played, summarised, with one way forward.
+//
+// THE ONE CONTROL IS **EXPORT**, not "new game", and that is the point of the
+// whole task: the demo's job is to hand the career to the full game. A New career
+// button is deliberately absent — replaying the same 33 days is not what a player
+// who just finished them wants, and the export is what "demo-save carries into
+// full game" looks like from the player's side.
+function DemoEndCard({
+  view,
+  seed,
+  notice,
+}: {
+  view: DemoEndView;
+  seed: number;
+  notice: string | null;
+}) {
+  return (
+    <div
+      className="ending-screen demo-end"
+      data-testid="demo-end-card"
+      data-seed={seed}
+      role="dialog"
+      aria-label="Demo complete"
+    >
+      <div className="es-frame">
+        <header className="es-head">
+          <span className="es-kicker" data-testid="demo-end-kicker">
+            {view.kicker}
+          </span>
+          <h2 className="es-title" data-testid="demo-end-title">
+            {view.title}
+          </h2>
+        </header>
+
+        <div className="es-prose">
+          {view.body.map((paragraph, index) => (
+            <p key={index} data-testid="demo-end-prose">
+              {paragraph}
+            </p>
+          ))}
+        </div>
+
+        <dl className="es-stats">
+          {view.stats.map((row) => (
+            <div className="es-stat" key={row.key} data-testid="demo-end-stat" data-stat={row.key}>
+              <dt>{row.label}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <button
+          className="btn es-return"
+          data-testid="demo-end-export"
+          onClick={() => exportCareer()}
+        >
+          {view.cta}
+        </button>
+        {notice && (
+          <p className="es-signoff" data-testid="demo-end-notice">
+            {notice}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function EndingScreen({ view, seed }: { view: EndingView; seed: number }) {
   return (
     <div
@@ -1733,6 +1924,8 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
 function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => void }) {
   const [tab, setTab] = useState<'registry' | 'nemesis'>('registry');
   const registry = deedRegistry(game);
+  // T-1703 · The demo's 'conqueror' lock. Null on a full build.
+  const conquerorLock = demoLockNotice(game, 'conqueror');
   const standing = factionStanding(game);
   const nemesis = nemesisFile(game);
   const crossing = crossingStatus(game);
@@ -1818,6 +2011,28 @@ function RecordsOverlay({ game, onClose }: { game: GameState; onClose: () => voi
                   {registry.successionCount === 1 ? 'LICENCE PASSED ON' : 'LICENCES PASSED ON'}
                 </span>
               )}
+            </div>
+            {/* T-1703 · THE CAPSTONE ROW. Always rendered, on both builds — the
+                Registry ladder's top rung is part of the record whether or not you
+                have reached it. On the DEMO build it additionally carries
+                `data-demo-locked="conqueror"` and the authored tease, which is the
+                third name on the task's gate list and the one thing the 33-day
+                ceiling could NOT hold out on its own (a rank is content, not a
+                depth). On the full build the row carries no lock attribute at all
+                — the mirror assertion `e2e/demo-gate.spec.ts` makes, and what turns
+                the demo half from a screenshot into a gate proof. */}
+            <div
+              className="registry-capstone"
+              data-testid="registry-capstone"
+              {...(conquerorLock !== null ? { 'data-demo-locked': 'conqueror' } : {})}
+            >
+              <span className="rr-label">CAPSTONE</span>
+              <b className="rr-value" data-testid="registry-capstone-rank">
+                {RENOWN_RANKS.CONQUEROR.label}
+              </b>
+              <p className="rr-citation" data-testid="registry-capstone-line">
+                {conquerorLock ?? RENOWN_RANKS.CONQUEROR.citation}
+              </p>
             </div>
             {/* T-1503 · Alliance standing — a pure read of player.reputation via
                 format.ts `factionStanding`. The reader that makes the four-faction
@@ -2449,6 +2664,12 @@ function ShipPane({ state }: { state: CockpitState }) {
 // verb documents why), so this pane surfaces the roster, not a live-hand change.
 function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
   const roster = crewRoster(game);
+  // T-1703 · The demo's 'crew-progression' lock — "Hangout progression" on the
+  // task's gate list, read as the crew/dice progression bought at the Hangout
+  // (the reading and its evidence are recorded in content demo.ts). Null on a
+  // full build, so nothing below changes there. DISMISS IS UNTOUCHED: a promoted
+  // save can carry crew in, and you may always let someone go.
+  const demoLock = demoLockNotice(game, 'crew-progression');
   return (
     <div className="ship-crew" data-testid="crew-list">
       <div className="crew-head">
@@ -2494,24 +2715,34 @@ function CrewSection({ game, armed }: { game: GameState; armed: boolean }) {
               className="btn small"
               data-testid="hire-crew"
               data-role-id={row.role.id}
-              disabled={!armed || !row.canHire}
+              // T-1703 · TEASED, NOT REMOVED — the task's own word. The row keeps
+              // its name, benefit and price so a demo player can see exactly what
+              // the full game buys; only the button goes dead. `disabled` is what
+              // makes Playwright's `click({ trial: true })` REJECT, which is a
+              // stronger proof than absence: a hidden control proves nothing about
+              // a control that is merely off-screen.
+              disabled={!armed || !row.canHire || demoLock !== null}
               title={
-                !armed
+                demoLock ??
+                (!armed
                   ? 'Pick a die first'
                   : row.canHire
                     ? `Hire · ${row.role.hirePrice.toLocaleString()}cr`
-                    : (row.reason ?? 'Cannot hire')
+                    : (row.reason ?? 'Cannot hire'))
               }
+              {...(demoLock !== null ? { 'data-demo-locked': 'crew-progression' } : {})}
               onClick={() => hireCrew(row.role.id)}
             >
               Hire
             </button>
           </div>
           {/* Disabled-not-hidden: the engine-derived reason, rendered whenever the
-              role can't be hired right now (no berth / unaffordable). */}
-          {row.reason && (
+              role can't be hired right now (no berth / unaffordable). T-1703's
+              demo tease takes precedence — a demo player who cannot hire at all is
+              not helped by being told the berth is full. */}
+          {(demoLock ?? row.reason) && (
             <span className="ship-reason" data-testid="crew-reason">
-              {row.reason}
+              {demoLock ?? row.reason}
             </span>
           )}
         </div>
@@ -2799,6 +3030,9 @@ function TradePane({
   // dusk economy gate on — never recomputed here).
   const hold = contrabandHold(game);
   const ledger = portLedger(game);
+  // T-1703 · The demo's 'port-ownership' lock ("ports" on the task's gate list).
+  // Null on a full build, so the Port Authority block below is unchanged there.
+  const portDemoLock = demoLockNotice(game, 'port-ownership');
 
   // T-1406 · The diegetic storylet surfaces the port owns: HOLD dispatches (cargo
   // riding in the hold, a boarded derelict's pod, a fence) open from the manifest
@@ -3045,16 +3279,22 @@ function TradePane({
                   <button
                     className="btn"
                     data-testid="buy-port"
-                    disabled={!armed || !ledger.current.quote.ok}
+                    // T-1703 · The demo's 'port-ownership' lock ("ports" on the
+                    // task's gate list). Disabled-not-hidden, so the price and the
+                    // income figure stay legible — the tease is the dock you can
+                    // see and cannot buy.
+                    disabled={!armed || !ledger.current.quote.ok || portDemoLock !== null}
                     title={
-                      !armed
+                      portDemoLock ??
+                      (!armed
                         ? 'Pick a die first'
                         : ledger.current.quote.ok
                           ? `Buy the stake · ${ledger.current.quote.cost.toLocaleString()}cr`
                           : ledger.current.quote.failure
                             ? portFailureExplanation(ledger.current.quote.failure)
-                            : 'Unavailable'
+                            : 'Unavailable')
                     }
+                    {...(portDemoLock !== null ? { 'data-demo-locked': 'port-ownership' } : {})}
                     onClick={() => buyPort()}
                   >
                     {armed
@@ -3064,14 +3304,22 @@ function TradePane({
                 )}
               </div>
               {/* Disabled-not-hidden: the typed reason, whenever the buy is refused
-                  (already-owned is surfaced above as OWNED, not as an error). */}
-              {!ledger.current.quote.ok &&
+                  (already-owned is surfaced above as OWNED, not as an error).
+                  T-1703's demo tease takes precedence over an affordability
+                  reason — a demo player cannot buy at any price. */}
+              {portDemoLock !== null && !ledger.current.quote.alreadyOwned ? (
+                <span className="ship-reason" data-testid="port-reason">
+                  {portDemoLock}
+                </span>
+              ) : (
+                !ledger.current.quote.ok &&
                 ledger.current.quote.failure &&
                 !ledger.current.quote.alreadyOwned && (
                   <span className="ship-reason" data-testid="port-reason">
                     {portFailureExplanation(ledger.current.quote.failure)}
                   </span>
-                )}
+                )
+              )}
             </div>
           ) : (
             <div className="lb-empty" data-testid="port-none">

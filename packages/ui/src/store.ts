@@ -5,6 +5,7 @@ import {
   applyPlayerAction,
   createSave,
   loadSave,
+  promoteEdition,
   SaveError,
   isDayOver,
   type GameState,
@@ -14,6 +15,7 @@ import {
 import type { Stat } from '@spacerquest/content';
 import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerquest/engine';
 import {
+  careerTransferMessage,
   combatAftermathSummary,
   explorationOutcome,
   nextOnboardingSeen,
@@ -34,6 +36,12 @@ import * as steam from './steam';
 // the store must never reach around it (structurally asserted in
 // `__tests__/storage.test.ts`).
 import { storage } from './storage';
+// T-1703 · THIS BUNDLE'S EDITION, compiled in by Vite. The store is the only
+// place that stamps it: `newGame` births a career in it, and every load path
+// (`init` / `loadSlot` / `importCareer`) runs the loaded career through the
+// engine's `promoteEdition` so the BUILD — never the save — decides which rules
+// apply. See `edition.ts`.
+import { BUILD_EDITION } from './edition';
 
 /**
  * React to an action's emitted event stream — the store's ONE presentation-side
@@ -57,7 +65,7 @@ import { storage } from './storage';
 function reactToEvents(events: GameEvent[], committed: boolean): void {
   if (committed) sound.play('commit');
   for (const cue of sound.cuesForEvents(events)) sound.play(cue);
-  steam.unlock(steam.achievementsForEvents(events));
+  steam.unlock(steam.achievementsForEvents(events, BUILD_EDITION));
 }
 
 /**
@@ -73,7 +81,7 @@ function reactToEvents(events: GameEvent[], committed: boolean): void {
  * `achievementsForState` for why it is not optional.
  */
 function mirrorEarned(game: GameState): void {
-  steam.unlock(steam.achievementsForState(game));
+  steam.unlock(steam.achievementsForState(game, BUILD_EDITION));
 }
 
 /**
@@ -659,7 +667,19 @@ function readSaveResult(): SaveReadResult {
   }
   if (!raw) return { loaded: null, recovery: null }; // first run — no save, no failure
   try {
-    const { state, seed } = loadSave(raw);
+    const { state: loadedState, seed } = loadSave(raw);
+    // T-1703 · THE BUILD DECIDES, NOT THE SAVE. A demo autosave opened by the
+    // full build is promoted in place (locks lift, rank re-derives); a full
+    // autosave opened by the DEMO build is REFUSED — which is the hole that would
+    // otherwise let a player fly veteran content on a demo licence just by having
+    // played the full game first. A refusal is quarantined exactly like a corrupt
+    // save, so the full career survives untouched for the full build to open.
+    const promoted = promoteEdition(loadedState, BUILD_EDITION);
+    if ('refused' in promoted) {
+      const preserved = quarantineAutosave(raw);
+      return { loaded: null, recovery: { code: 'edition-refused', preserved } };
+    }
+    const state = promoted.state;
     // T-1002: a pre-v2 autosave has no seed in its envelope (loadSave returns
     // seed: null). Recover the seed the old build stashed in the legacy
     // `sq.save.seed` key so the bezel display and reproducibility survive the
@@ -845,7 +865,10 @@ function reconcileOnboarding(prev: GameState, next: GameState): Record<string, t
 // ---- actions ------------------------------------------------------------
 
 export function newGame(seed: number): void {
-  const game = startDay(createInitialState(seed)).state;
+  // T-1703 · A fresh career is BORN in the running build's edition. This is the
+  // one place a demo career comes into existence; everything downstream (the
+  // gate, the banner, the ceiling, the end card) follows from this scalar.
+  const game = startDay(createInitialState(seed, BUILD_EDITION)).state;
   // T-1002: the seed now rides the save envelope (autosave embeds it), so a
   // reload recovers it from the save itself — including an explicit seed of 0.
   // The legacy `sq.save.seed` write is kept as a redundant fallback: it lets
@@ -1834,7 +1857,16 @@ export function loadSlot(n: number): void {
   let loadedSeed: number | null;
   try {
     const loaded = loadSave(raw);
-    game = loaded.state;
+    // T-1703 · Same promotion the boot path runs, for the same reason: the BUILD
+    // decides the edition, not the slot. A demo slot loaded by the full game is
+    // upgraded; a full slot loaded by the demo build is refused, and the slot is
+    // left exactly as it was.
+    const promoted = promoteEdition(loaded.state, BUILD_EDITION);
+    if ('refused' in promoted) {
+      set({ notice: careerTransferMessage('edition-refused') });
+      return;
+    }
+    game = promoted.state;
     loadedSeed = loaded.seed;
   } catch {
     set({ notice: `Slot ${n} is corrupt and could not be loaded.` });
@@ -1871,6 +1903,126 @@ export function loadSlot(n: number): void {
   });
   // T-1702a · A slot can hold a career earned long before this build (or on the
   // web build), so its Registry is reconciled the same way the autosave's is.
+  mirrorEarned(game);
+}
+
+// ---- T-1703 career transfer (the demo→full carry) ------------------------
+//
+// "demo-save carries into full game" is the task's own phrasing, and this is the
+// pair of actions that makes it a thing a PLAYER can do rather than a property of
+// a data format. Export writes the SAME `createSave(state, seed)` envelope every
+// other persistence path writes — the one T-112b's property test proves round-
+// trips exactly — so nothing new is serialized and no new format exists.
+//
+// A FILE, not the clipboard and not a cloud handoff: the demo and the full game
+// are two different installs (different app id, different save directory), so the
+// carry has to cross a filesystem, and a file is the one thing both builds can
+// read on web AND desktop with no new IPC.
+
+/** The download filename. Seed + day so a player with three exports can tell them
+ *  apart, and so a bug report names the run it reproduces. */
+function careerFileName(game: GameState, seed: number): string {
+  return `rimward-career-seed${seed}-day${game.day}.sav`;
+}
+
+/**
+ * Write the live career out as a `.sav` file the player keeps.
+ *
+ * Browser APIs (Blob / object URL / a synthetic anchor click) live HERE rather
+ * than in `storage.ts`, deliberately: `storage.ts` is the key-value seam and this
+ * is not a key-value operation — it is a one-shot download, and it works
+ * identically on the web build and inside the Electron shell (which is a Chromium
+ * renderer with a real download manager).
+ *
+ * Never throws into the caller: a failed export is a notice, not a lost turn.
+ */
+export function exportCareer(): void {
+  try {
+    const blob = new Blob([createSave(state.game, state.seed)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = careerFileName(state.game, state.seed);
+    anchor.click();
+    // Revoke on the next tick: revoking synchronously can race the download in
+    // some Chromium versions, and an object URL that outlives the tab costs
+    // nothing anyway.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    set({ notice: careerTransferMessage('exported') });
+  } catch {
+    set({ notice: 'That career could not be exported.' });
+  }
+}
+
+/**
+ * Adopt a career from a `.sav` file the player picked.
+ *
+ * THE FULL SIDE OF THE CARRY. Everything the boot path does, in the same order
+ * and through the same engine functions — `loadSave` → `promoteEdition` → adopt
+ * → autosave — so an imported career is indistinguishable from a career that had
+ * been sitting in this install all along. In particular a DEMO save imported by
+ * the FULL build is promoted here: the locks lift, the Registry rank re-derives,
+ * and the day ceiling stops applying, so the career simply continues past day 33.
+ *
+ * The demo build importing a FULL save is refused with a notice and nothing is
+ * adopted — the gate's closed hole, asserted in `e2e/demo-gate.spec.ts`.
+ *
+ * `async` because `File.text()` is; every failure is caught and reported.
+ */
+export async function importCareer(file: File): Promise<void> {
+  let raw: string;
+  try {
+    raw = await file.text();
+  } catch {
+    set({ notice: careerTransferMessage('unreadable') });
+    return;
+  }
+  let game: GameState;
+  let seed: number;
+  let promotedEdition: boolean;
+  try {
+    const loaded = loadSave(raw);
+    const promoted = promoteEdition(loaded.state, BUILD_EDITION);
+    if ('refused' in promoted) {
+      set({ notice: careerTransferMessage('edition-refused') });
+      return;
+    }
+    game = promoted.state;
+    promotedEdition = promoted.events.length > 0;
+    // A pre-v2 envelope carries no seed; fall back to the live one rather than
+    // inventing a number, exactly as `loadSlot` does.
+    seed = loaded.seed ?? state.seed;
+  } catch {
+    set({ notice: careerTransferMessage('unreadable') });
+    return;
+  }
+  // The imported career becomes the live autosave — the same adoption `loadSlot`
+  // performs, so a reload boots into it.
+  autosave(game, seed);
+  try {
+    storage.setItem(AUTOSAVE_SEED_KEY, String(seed));
+  } catch {
+    /* non-fatal */
+  }
+  set({
+    game,
+    seed,
+    selectedDie: null,
+    bloomDie: null,
+    notice: careerTransferMessage(promotedEdition ? 'promoted' : 'imported'),
+    bootKey: state.bootKey + 1,
+    lastCheck: null,
+    combatAftermath: null,
+    succession: null,
+    combatMalfunction: false,
+    explorationOutcome: null,
+    dareOutcome: null,
+    patrolScan: null,
+    // The boot recovery notice (if any) described the career this one replaces.
+    recovery: null,
+    // Do NOT reset onboardingSeen — importing a mid-career save shouldn't re-teach.
+  });
+  // The imported Registry may have been earned on another install entirely.
   mirrorEarned(game);
 }
 

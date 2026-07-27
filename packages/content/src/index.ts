@@ -21,6 +21,7 @@ export * from './flaws.js';
 export * from './ideals.js';
 export * from './upgrades.js';
 export * from './deeds.js';
+export * from './demo.js';
 export * from './deedValidation.js';
 export * from './storylets.js';
 export * from './storyletValidation.js';

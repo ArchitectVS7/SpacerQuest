@@ -1,4 +1,12 @@
-import { DayPhase, EarnedDeedState, GameEvent, GameState, NpcState, ShipState } from './types.js';
+import {
+  DayPhase,
+  EarnedDeedState,
+  Edition,
+  GameEvent,
+  GameState,
+  NpcState,
+  ShipState,
+} from './types.js';
 import { NPC_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, rankForDeedCount } from './deeds.js';
 import { calculateFuelCapacity, syncMaxFuel } from './economy.js';
@@ -55,7 +63,17 @@ function reconstructEarnedDeeds(eventLog: readonly GameEvent[]): EarnedDeedState
   return earned;
 }
 
-export function createInitialState(seed: number): GameState {
+/**
+ * Open a fresh career.
+ *
+ * T-1703 · `edition` defaults to 'full' so every existing call site — ~hundreds
+ * across the engine, sim and test suites — keeps meaning exactly what it meant,
+ * and so the DEMO is the thing that must be asked for explicitly. The cockpit
+ * passes its compiled `BUILD_EDITION`; the sim protocol's `new-game` stays full,
+ * because a headless harness driving the demo would be driving a distribution
+ * artifact rather than the game.
+ */
+export function createInitialState(seed: number, edition: Edition = 'full'): GameState {
   // Initialize the cast
   const npcs: NpcState[] = NPC_PROFILES.map((p, index) => ({
     id: p.id,
@@ -73,6 +91,9 @@ export function createInitialState(seed: number): GameState {
     dayPhase: DayPhase.DAWN,
     dayEventCount: 0,
     era: 'TOUR_ONE',
+    // T-1703 · The edition the BUILD is running as, stamped at birth and carried
+    // by the save from here on. See types.ts `Edition` for the build/engine split.
+    edition,
     flags: {},
     storylets: {
       available: [],
@@ -147,6 +168,11 @@ export function deserializeState(json: string): GameState {
   parsed.dayPhase ??= DayPhase.DAWN;
   parsed.dayEventCount ??= 0;
   parsed.era ??= 'TOUR_ONE';
+  // T-1703 save-compat: pre-T-1703 states have no `edition` key. Default to
+  // 'full' — the same backfill the v8→v9 save migration applies for the envelope
+  // path. This is a STATEMENT OF FACT, not a convenience default: every save that
+  // exists predates the demo build, so every one of them is a full-game career.
+  parsed.edition ??= 'full';
   parsed.flags ??= {};
   parsed.storylets ??= {
     available: [],

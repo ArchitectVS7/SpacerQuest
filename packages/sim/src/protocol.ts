@@ -35,6 +35,9 @@ import {
   careerEnded,
   createInitialState,
   crewCapacity,
+  demoConcluded,
+  demoDaysRemaining,
+  demoLocked,
   deserializeState,
   eligibleStorylets,
   endDay,
@@ -142,6 +145,14 @@ export interface StateSummary {
   phase: DayPhase;
   /** Campaign phase — 'TOUR_ONE' | 'VETERAN'. */
   era: string;
+  /** T-1703 · Which licence this career is flown on — 'full' | 'demo' (engine
+   *  `GameState.edition`). A harness needs it to interpret the two gated verbs it
+   *  will never be offered in a demo session. */
+  edition: string;
+  /** T-1703 · Days of demo left, counting today, or `null` for a full career —
+   *  the harness's warning that this session has a hard end. 0 once the licence
+   *  has expired (at which point `legalActions` returns the stop signal). */
+  demoDaysRemaining: number | null;
   credits: number;
   /** Outstanding Merchant Guild debt (a ledger, never negative credits). */
   debt: number;
@@ -307,6 +318,8 @@ export function buildStateSummary(state: GameState): StateSummary {
     day: state.day,
     phase: state.dayPhase,
     era: state.era,
+    edition: state.edition,
+    demoDaysRemaining: demoDaysRemaining(state),
     credits: player.credits,
     debt: player.debt,
     debtDueDay: player.debtDueDay,
@@ -394,6 +407,29 @@ export function legalActions(state: GameState): LegalActions {
   const diceRemaining = unspentDieIndices(state);
   const hasDie = diceRemaining.length > 0;
   const dieParam: ParamSpec = { kind: 'die-index', choices: diceRemaining };
+
+  // T-1703 · THE DEMO LICENCE HAS EXPIRED — the protocol's stop signal, and it
+  // MUST SIT ABOVE THE PHASE BRANCH. That placement is the one interesting thing
+  // here, and it is a real difference from the T-1505c terminus below rather than
+  // a style choice: a career ends at the Nemesis shear MID-DAY (the ship arrives
+  // in the DAY phase), so the phase branch below never sees it; a demo ends at a
+  // DAY BOUNDARY, so the state a driver is holding when `demoConcluded` first goes
+  // true is DAWN — and the phase branch would cheerfully advertise `start-day`
+  // forever, spinning a headless driver through day 34, 35, 36 … of a career whose
+  // every verb is refused with `ActionBlocked{'demo-ended'}`.
+  //
+  // Empty `actions` + `canWait: false` + no `lifecycle` is the same stop signal
+  // the terminus uses: there is nothing left to do, and no dawn worth starting.
+  if (demoConcluded(state)) {
+    return {
+      phase,
+      inEncounter: state.encounter !== null,
+      diceRemaining,
+      actions: [],
+      canWait: false,
+      lifecycle: [],
+    };
+  }
 
   // DAWN (or any non-DAY phase): no PlayerActions are legal until start-day.
   if (phase !== DayPhase.DAY) {
@@ -584,7 +620,18 @@ export function legalActions(state: GameState): LegalActions {
   if (hasDie) {
     const hiredRoleIds = new Set(player.crew.map((member) => member.roleId));
     const hireableRoleIds = CREW_ROLES.map((role) => role.id).filter((id) => !hiredRoleIds.has(id));
-    if (player.crew.length < crewCapacity(ship) && hireableRoleIds.length > 0) {
+    // T-1703 · A demo licence does not sign hands (content demo.ts's
+    // 'crew-progression' lock — the "Hangout progression" on the task's gate
+    // list). Never advertise a GUARANTEED refusal (the T-1101 law): the engine
+    // answers a demo hire with `ActionBlocked{'demo-locked'}`, so offering it
+    // would stall a headless driver on a wall. DISMISS stays advertised below —
+    // a promoted-then-demoted career can carry crew in, and letting someone go is
+    // not progression.
+    if (
+      !demoLocked(state, 'crew-progression') &&
+      player.crew.length < crewCapacity(ship) &&
+      hireableRoleIds.length > 0
+    ) {
       actions.push({
         type: 'Crew',
         action: 'hire',
@@ -615,8 +662,13 @@ export function legalActions(state: GameState): LegalActions {
   // purchase price is validated on apply (emits PortEvent{failed} if unaffordable),
   // exactly like the crew/shipyard advertise-gates. Ports are purchasable property:
   // each owned stake accrues per-dusk launch-fee income (PRD §9).
+  // T-1703 · `!demoLocked(state, 'port-ownership')` — a demo licence does not buy
+  // the dock ("ports" on the task's gate list). Same reasoning as the crew hire
+  // above: the engine refuses it with `ActionBlocked{'demo-locked'}`, so
+  // advertising it would be advertising a guaranteed refusal.
   if (
     hasDie &&
+    !demoLocked(state, 'port-ownership') &&
     isPurchasablePort(player.currentSystemId) &&
     !player.ports.some((port) => port.systemId === player.currentSystemId)
   ) {

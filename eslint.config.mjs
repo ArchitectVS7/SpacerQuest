@@ -15,6 +15,10 @@ export default tseslint.config(
       // electron-builder's release tree. Neither is a source this repo owns.
       'packages/desktop/renderer/**',
       'packages/desktop/release/**',
+      // T-1703 · The demo package's staged bundle and release tree — the same
+      // two artifacts, for the demo build.
+      'packages/desktop/renderer-demo/**',
+      'packages/desktop/release-demo/**',
       '**/*.d.ts',
       '**/*.js',
       '**/*.cjs',

@@ -9,6 +9,11 @@ playwright-report/
 node_modules/
 dist/
 dist-web/
+# T-1703 · The demo cockpit bundle (`vite build --mode demo`). A second build
+# artifact of the same committed sources, kept in its own directory so a demo
+# build can never overwrite the bundle the web e2e suite and the full package are
+# staged from.
+dist-demo/
 .vite/
 # T-1701b · Packaging output. `renderer/` is a staged COPY of packages/ui/dist-web
 # (scripts/copy-renderer.mjs) and `release/` is electron-builder's output — both
@@ -16,5 +21,9 @@ dist-web/
 # create a second, staler copy of the cockpit.
 packages/desktop/renderer/
 packages/desktop/release/
+# T-1703 · The same two, for the demo package (`package:win:demo` /
+# `package:mac:demo`).
+packages/desktop/renderer-demo/
+packages/desktop/release-demo/
 *.tsbuildinfo
 .scratch/

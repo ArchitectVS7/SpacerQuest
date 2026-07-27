@@ -325,11 +325,26 @@ export function runDayLoopGolden(
 // NO rng draw was added, removed or reordered: `damageComponentForHit` still takes
 // exactly one `rng.next()` and the tier-gap bonus takes none. Regenerated via
 // gen-day-loop-golden.ts.
+// T-1703 re-derivation (BOTH STATE hashes; BOTH EVENTS hashes are BYTE-IDENTICAL
+// and were not touched — and that asymmetry is the whole proof).
+// CAUSE: `GameState.edition` is a new ROOT-LEVEL field (types.ts `Edition`, the
+// demo gate's one persisted scalar). The state hash is taken over
+// `serializeState(finalState)`, so one added key — `"edition":"full"` — moves it
+// by definition. Nothing about the day loop changed for a full career.
+//
+// WHY THE UNMOVED EVENTS HASHES ARE THE EVIDENCE. Both scripts run at edition
+// 'full', where `isDemo` is false, so the demo gate in `applyPlayerAction` and
+// the demo dusk in `endDay` are both dead branches: no event is added, removed
+// or reordered, and — load-bearing — NO rng draw is taken or skipped (the gate is
+// a scalar compare above the fork, exactly like the T-1505c terminal guard). If
+// the demo work had leaked into the full game's day loop at all, the events
+// hashes would have moved too. They did not. Regenerated via
+// gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'a21bc70cf9ea020e64542c9eb8e1a4c6edae590e90f19843a2925e8fbb4c41e7';
+  'b926031f0131d77bc9287bc80b7ea037e586f2d252f4a58eca28270785715b49';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   '727581969356397d6cfbfc435c85fa67b8b2664453f77b212673e20b40b31daa';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '3a169effd0a4f486429e49325ca4d92ac7c1ed41538383be50a5856b24b6a470';
+  '975ee08317f6f71fb8a0e028bb19de994335ceb4aab17c1da1a48995d2768dbc';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '731da3fdc1ecb08b14cef59f209fa15a3b916f85467b6c4f2c0896a17c1b858f';

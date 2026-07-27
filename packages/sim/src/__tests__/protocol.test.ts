@@ -965,3 +965,123 @@ describe('T-1604b · F2 poverty/immobility trap', () => {
     expect(buyFuelDay! - 16).toBeLessThanOrEqual(5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// T-1703 · The demo gate, as the HEADLESS side sees it.
+//
+// Two claims, and they are different claims: (1) `legalActions` never advertises
+// a verb the engine will refuse — the T-1101 law, which is what keeps a UGT
+// driver from stalling on a guaranteed wall; and (2) a concluded demo returns the
+// protocol's stop signal FROM DAWN, which is the thing the placement of the check
+// above the phase branch exists to guarantee.
+// ---------------------------------------------------------------------------
+
+describe('T-1703 · demo gate — legal-actions and the summary', () => {
+  /** A DAY-phase state at Sun-3 (a purchasable port with a Hangout) with money in
+   *  hand, so both gated verbs WOULD be advertised on a full career. */
+  function richDayState(edition: 'full' | 'demo', seed = 1703): GameState {
+    const state = startDay(createInitialState(seed, edition)).state;
+    state.player.credits = 200_000;
+    return state;
+  }
+
+  function hasPortBuy(legal: LegalActions): boolean {
+    return legal.actions.some((s) => s.type === 'Port' && s.action === 'buy');
+  }
+  function hasCrew(legal: LegalActions, action: string): boolean {
+    return legal.actions.some((s) => s.type === 'Crew' && s.action === action);
+  }
+
+  it('a FULL career IS offered both gated verbs (the control)', () => {
+    // Without this the demo assertions below prove nothing — an enumerator that
+    // offered neither verb to anyone would pass them.
+    const legal = legalActions(richDayState('full'));
+    expect(hasPortBuy(legal)).toBe(true);
+    expect(hasCrew(legal, 'hire')).toBe(true);
+  });
+
+  it('a DEMO career is offered neither, but keeps everything else', () => {
+    const legal = legalActions(richDayState('demo'));
+    expect(hasPortBuy(legal)).toBe(false);
+    expect(hasCrew(legal, 'hire')).toBe(false);
+    // The demo is a full Tour One, not a crippled one: trade, travel, explore and
+    // the Hangout are all still on the table.
+    const types = legal.actions.map((s) => s.type);
+    expect(types).toContain('Trade');
+    expect(types).toContain('Travel');
+    expect(types).toContain('VisitHangout');
+    expect(legal.canWait).toBe(true);
+    expect(legal.lifecycle).toEqual(['end-day']);
+  });
+
+  it('a DEMO career carrying crew is still offered the DISMISS', () => {
+    const state = richDayState('demo', 1704);
+    state.player.crew = [{ roleId: 'crew-quartermaster', hiredDay: 1 }];
+    const legal = legalActions(state);
+    expect(hasCrew(legal, 'hire')).toBe(false);
+    expect(hasCrew(legal, 'dismiss')).toBe(true);
+  });
+
+  it('a CONCLUDED demo returns the stop signal FROM DAWN', () => {
+    // THE PLACEMENT TEST. A demo ends at a DAY BOUNDARY, so the state a driver
+    // holds is DAWN — and the phase branch (which sits BELOW the demo check) would
+    // otherwise advertise `start-day` forever, spinning a headless driver through
+    // day 34, 35, 36… of a career whose every verb is refused. Unlike the T-1505c
+    // terminus, which is only ever observed mid-DAY.
+    const state = createInitialState(1705, 'demo');
+    state.day = 34;
+    expect(state.dayPhase).toBe(DayPhase.DAWN);
+
+    const legal = legalActions(state);
+    expect(legal.actions).toEqual([]);
+    expect(legal.canWait).toBe(false);
+    expect(legal.lifecycle).toEqual([]);
+  });
+
+  it('a concluded demo is silent in the DAY phase too', () => {
+    const state = startDay(createInitialState(1706, 'demo')).state;
+    state.day = 34;
+    const legal = legalActions(state);
+    expect(legal.actions).toEqual([]);
+    expect(legal.canWait).toBe(false);
+    expect(legal.lifecycle).toEqual([]);
+  });
+
+  it('a FULL career at day 34 keeps playing (the control)', () => {
+    const state = createInitialState(1707);
+    state.day = 34;
+    expect(legalActions(state).lifecycle).toEqual(['start-day']);
+  });
+
+  it('the summary reports the edition and the countdown, and stays wire-safe', () => {
+    const full = buildStateSummary(createInitialState(1708));
+    expect(full.edition).toBe('full');
+    expect(full.demoDaysRemaining).toBeNull();
+
+    const demoState = createInitialState(1709, 'demo');
+    demoState.day = 31;
+    const demo = buildStateSummary(demoState);
+    expect(demo.edition).toBe('demo');
+    expect(demo.demoDaysRemaining).toBe(3);
+    expect(wireRoundTrip(demo)).toEqual(demo);
+  });
+
+  it('an apply-action a demo driver forces anyway comes back as a typed refusal', () => {
+    // The harness should never reach here (nothing above advertises it), but the
+    // protocol's contract is that a refusal is an `action-result` carrying a typed
+    // `ActionBlocked` — never an error code, and never a throw.
+    const state = richDayState('demo', 1710);
+    const { response } = handleMessage(
+      { seed: 1710, state },
+      { type: 'apply-action', action: { type: 'Port', action: 'buy', systemId: 1, spendDie: 0 } },
+    );
+    const result = expectActionResult(response);
+    expect(result.events).toContainEqual({
+      type: 'ActionBlocked',
+      day: state.day,
+      actionType: 'Port',
+      reason: 'demo-locked',
+    });
+    expect(result.summary.edition).toBe('demo');
+  });
+});

@@ -71,6 +71,11 @@ const DayPhaseSchema = z.enum(['DAWN', 'WIRE', 'DAY', 'DUSK']);
 /** EraId (content). NOTE: campaign phase, distinct from EraEventState. */
 const EraIdSchema = z.enum(['TOUR_ONE', 'VETERAN']);
 
+/** T-1703 · Edition (types.ts). Which licence the career is flown on — the demo
+ *  gate's one persisted scalar. Strict, so a hand-edited save cannot invent a
+ *  third edition the engine has no rules for. */
+const EditionSchema = z.enum(['full', 'demo']);
+
 /** PoiType (content). */
 const PoiTypeSchema = z.enum(['beacon', 'derelict']);
 
@@ -658,13 +663,33 @@ const GameEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ActionBlocked'),
     day: z.number(),
-    actionType: z.enum(['Trade', 'Travel', 'Shipyard', 'Storylet', 'Explore', 'VisitHangout']),
+    // 'Port'/'Crew' added by T-1703 — the demo gate is the first rule that gives
+    // either a reason to be refused.
+    actionType: z.enum([
+      'Trade',
+      'Travel',
+      'Shipyard',
+      'Storylet',
+      'Explore',
+      'VisitHangout',
+      'Port',
+      'Crew',
+    ]),
     // 'destination-locked' added by T-1101; 'no-hangout' by T-1303 (a VisitHangout
     // at an un-flagged system); 'career-ended' by T-1505c (any blockable verb
-    // attempted from the far side of the Nemesis shear). Serialized in eventLog,
-    // so the schema must accept them or loadSave would reject a save containing
-    // the event — including the autosave an ENDED career writes.
-    reason: z.enum(['active-encounter', 'destination-locked', 'no-hangout', 'career-ended']),
+    // attempted from the far side of the Nemesis shear); 'demo-locked' and
+    // 'demo-ended' by T-1703 (a gated verb / a career past the demo's day
+    // ceiling). Serialized in eventLog, so the schema must accept them or loadSave
+    // would reject a save containing the event — including the autosave an ENDED
+    // career or an EXPIRED demo licence writes.
+    reason: z.enum([
+      'active-encounter',
+      'destination-locked',
+      'no-hangout',
+      'career-ended',
+      'demo-locked',
+      'demo-ended',
+    ]),
   }),
   z.object({
     type: z.literal('PoiDiscovered'),
@@ -957,6 +982,21 @@ const GameEventSchema = z.discriminatedUnion('type', [
     outcome: z.enum(['cleared', 'unpaid']),
     debtOutstanding: z.number(),
   }),
+  // T-1703 · The demo's last dusk, and the licence upgrade on import. Both ride
+  // the eventLog, so both must validate or a demo autosave (and a promoted save)
+  // would fail to load.
+  z.object({
+    type: z.literal('DemoConcluded'),
+    day: z.number(),
+    edition: EditionSchema,
+    daysPlayed: z.number(),
+  }),
+  z.object({
+    type: z.literal('EditionPromoted'),
+    day: z.number(),
+    from: EditionSchema,
+    to: EditionSchema,
+  }),
   z.object({
     type: z.literal('CombatEvent'),
     characterId: z.string(),
@@ -1189,6 +1229,7 @@ export const GameStateSchema = z
     dayPhase: DayPhaseSchema,
     dayEventCount: z.number(),
     era: EraIdSchema,
+    edition: EditionSchema,
     flags: z.record(z.string(), FlagValueSchema),
     storylets: StoryletStateSchema,
     player: PlayerStateSchema,
@@ -1348,6 +1389,8 @@ const _covEvTradeEvent: AssertEventKeys<'TradeEvent'> = true;
 const _covEvDebtPayment: AssertEventKeys<'DebtPayment'> = true;
 const _covEvDebtDue: AssertEventKeys<'DebtDue'> = true;
 const _covEvTourOneResolved: AssertEventKeys<'TourOneResolved'> = true;
+const _covEvDemoConcluded: AssertEventKeys<'DemoConcluded'> = true;
+const _covEvEditionPromoted: AssertEventKeys<'EditionPromoted'> = true;
 const _covEvCombatEvent: AssertEventKeys<'CombatEvent'> = true;
 const _covEvEncounterStarted: AssertEventKeys<'EncounterStarted'> = true;
 const _covEvEncounterRound: AssertEventKeys<'EncounterRound'> = true;
@@ -1431,6 +1474,8 @@ void _covEvTradeEvent;
 void _covEvDebtPayment;
 void _covEvDebtDue;
 void _covEvTourOneResolved;
+void _covEvDemoConcluded;
+void _covEvEditionPromoted;
 void _covEvCombatEvent;
 void _covEvEncounterStarted;
 void _covEvEncounterRound;

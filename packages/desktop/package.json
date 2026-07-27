@@ -13,7 +13,9 @@
     "test:e2e:packaged": "playwright test --config playwright.packaged.config.ts",
     "package:renderer": "node scripts/copy-renderer.mjs",
     "package:mac": "node scripts/copy-renderer.mjs && electron-builder --mac --publish never",
-    "package:win": "node scripts/copy-renderer.mjs && electron-builder --win --publish never"
+    "package:win": "node scripts/copy-renderer.mjs && electron-builder --win --publish never",
+    "package:mac:demo": "node scripts/copy-renderer.mjs --edition demo && electron-builder --mac --config electron-builder.demo.cjs --publish never && node scripts/check-size.mjs",
+    "package:win:demo": "node scripts/copy-renderer.mjs --edition demo && electron-builder --win --config electron-builder.demo.cjs --publish never && node scripts/check-size.mjs"
   },
   "build": {
     "appId": "com.spacerquest.rimward",

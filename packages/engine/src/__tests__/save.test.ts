@@ -436,13 +436,14 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 8', () => {
+  it('CURRENT_SAVE_VERSION is 9', () => {
     // T-1401 bumped 5 → 6 (WireEntry.kind); T-1503 bumped 6 → 7 for the required
     // nested PlayerState.reputation container; T-1603b bumped 7 → 8 to re-derive
     // `registry.renownRank` + `player.tier` after the canonical
     // RENOWN_DEED_THRESHOLDS rescale — the first migration that adds no field and
-    // instead repairs the MEANING of two it finds. See save.ts.
-    expect(CURRENT_SAVE_VERSION).toBe(8);
+    // instead repairs the MEANING of two it finds; T-1703 bumped 8 → 9 for the new
+    // ROOT-level `GameState.edition` (the demo gate's persisted scalar). See save.ts.
+    expect(CURRENT_SAVE_VERSION).toBe(9);
   });
 });
 
@@ -611,6 +612,51 @@ describe('save envelope — v6 → v7 reputation migration (T-1503, the T-1002 n
   });
 });
 
+describe('save envelope — v8 → v9 edition migration (T-1703)', () => {
+  it('backfills edition: "full" on a v8 envelope with no edition key', () => {
+    // Build a REAL v8-shaped state, then strip the root `edition` key the way a
+    // genuinely pre-T-1703 save would (it never had the field). The v8→v9
+    // migration must re-add it before validation, else the strict schema (edition
+    // is non-optional) rejects it.
+    //
+    // THE DIRECTION MATTERS AND IS THE POINT: every save that exists was written
+    // before a demo build existed, so 'full' is a statement of fact. Backfilling
+    // 'demo' would silently take a real player's ports, crew and capstone rank.
+    const state = drive50Days(81);
+    delete (state as unknown as Record<string, unknown>).edition;
+    const v8 = JSON.stringify({ version: 8, state, seed: 91 });
+
+    const loaded = loadSave(v8);
+    expect(loaded.state.edition).toBe('full');
+    expect(loaded.seed).toBe(91);
+  });
+
+  it('leaves an edition already present alone (idempotent, forward-safe)', () => {
+    const state = drive50Days(82);
+    (state as unknown as Record<string, unknown>).edition = 'demo';
+    const loaded = loadSave(JSON.stringify({ version: 8, state, seed: 92 }));
+    expect(loaded.state.edition).toBe('demo');
+  });
+
+  it('round-trips a DEMO career exactly through createSave → loadSave', () => {
+    // Constraint 3, in the same commit as the field: a demo autosave must come
+    // back deep-equal, or a demo player loses their career on reload.
+    const state = drive50Days(83);
+    state.edition = 'demo';
+    const loaded = loadSave(createSave(state, 93));
+    expect(loaded.state.edition).toBe('demo');
+    expect(loaded.state).toEqual(state);
+  });
+
+  it('strict schema rejects an edition the engine has no rules for', () => {
+    // The negative twin: a hand-edited save cannot invent a third edition and get
+    // whatever the gate does with an unknown value — it fails loudly on load.
+    const state = drive50Days(84);
+    (state as unknown as Record<string, unknown>).edition = 'deluxe';
+    expect(() => loadSave(createSave(state, 94))).toThrow(SaveError);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // T-1505a · The twelve-fragment Nemesis file round-trips, including the two
 // source literals the arc only started producing in this task.
@@ -647,9 +693,10 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     // The WHOLE state is deep-equal — nothing about the fuller file perturbed it.
     expect(loaded.state).toEqual(state);
     // No version bump was needed for any of it. (T-1603b later bumped 7 → 8 for
-    // an unrelated reason — the renown re-derivation — so this pins the CURRENT
-    // version rather than claiming the fragment file caused it.)
-    expect(CURRENT_SAVE_VERSION).toBe(8);
+    // an unrelated reason — the renown re-derivation — and T-1703 8 → 9 for the
+    // new `edition` field, so this pins the CURRENT version rather than claiming
+    // the fragment file caused it.)
+    expect(CURRENT_SAVE_VERSION).toBe(9);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -693,8 +740,9 @@ describe('save envelope — an ended career round-trips with no migration (T-150
       reason: 'career-ended',
     });
     // Nothing needed a bump for any of it. (T-1603b later bumped 7 → 8 for the
-    // unrelated renown re-derivation; this pins the CURRENT version.)
-    expect(CURRENT_SAVE_VERSION).toBe(8);
+    // unrelated renown re-derivation and T-1703 8 → 9 for the new `edition`
+    // field; this pins the CURRENT version.)
+    expect(CURRENT_SAVE_VERSION).toBe(9);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {

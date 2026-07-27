@@ -1,0 +1,26 @@
+// ---------------------------------------------------------------------------
+// T-1703 · Steam content-builder DEPOT script for the RIMWARD DEMO.
+//
+// Referenced by app_build_demo.vdf. The ids are PLACEHOLDERS ("0") for the reason
+// recorded in that file's header — this repo holds no partner ids, and obtaining
+// them is T-1704.
+//
+// The whole unpacked package ships: the file map is a single recursive rule, so a
+// file added to the package later cannot be silently left out of the depot.
+// .pdb is excluded because a debug symbol file is not something a player
+// downloads.
+// ---------------------------------------------------------------------------
+"DepotBuild"
+{
+	"DepotID"	"0"
+	"contentroot"	"../release-demo/win-unpacked"
+
+	"FileMapping"
+	{
+		"LocalPath"	"*"
+		"DepotPath"	"."
+		"recursive"	"1"
+	}
+
+	"FileExclusion"	"*.pdb"
+}

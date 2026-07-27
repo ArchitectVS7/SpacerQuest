@@ -9,6 +9,14 @@ import {
   type StateMatcher,
 } from '@spacerquest/content';
 import { GameEvent, GameState } from './types.js';
+// T-1703 · The demo gate's ONE predicate set. This import and `demo.ts`'s import
+// of `rankForDeedCount` form a two-module ESM cycle, deliberately and safely:
+// both files export nothing but FUNCTION DECLARATIONS, which are hoisted, and
+// neither calls into the other at module scope — so whichever loads first
+// completes its evaluation before either function is ever invoked. The
+// alternative was a second copy of the demo predicate inside `deeds.ts`, and a
+// gate that exists in two places is a gate that drifts.
+import { demoLocked } from './demo.js';
 
 /**
  * The per-event-type field ALLOWLIST a deed's matchers may name. A matcher whose
@@ -336,7 +344,25 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
   for (const { deed, anchorIndex } of candidates) {
     const deedCount = state.player.registry.earned.length + 1;
     const previousRank = state.player.registry.renownRank;
-    const nextRank = rankForDeedCount(deedCount);
+    // T-1703 · THE CONQUEROR CEILING, applied at this ONE write site and nowhere
+    // else. A demo licence does not carry the career capstone — "Conqueror
+    // content" is the third name on the task's gate list, and CONQUEROR is a
+    // Registry row AND a Steam achievement, so it is reachable as CONTENT no
+    // matter how few days are played (which is why it needs a lock of its own
+    // rather than being held out by the day ceiling like the rest of the veteran
+    // game).
+    //
+    // DELIBERATELY NOT applied in `rankForDeedCount`, `deserializeState` or the
+    // v7→v8 migration: those three are edition-BLIND by design (they answer "what
+    // does this deed count buy?", which has one true answer), and capping them
+    // would bake the demo's ceiling into a save that a full build then reads back
+    // as gospel. Keeping the cap here means `promoteEdition` heals the rank on
+    // import with a single re-derive — proved non-vacuously in `demo.test.ts`,
+    // which drives one state to 38 deeds, asserts it tops out BELOW Conqueror,
+    // then promotes it and asserts it lands ON Conqueror.
+    const uncappedRank = rankForDeedCount(deedCount);
+    const nextRank =
+      uncappedRank === 'CONQUEROR' && demoLocked(state, 'conqueror') ? previousRank : uncappedRank;
     const citation = citationFor(deed, state.day);
 
     state.player.registry.earned.push({

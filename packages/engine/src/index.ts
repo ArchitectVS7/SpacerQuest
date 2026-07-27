@@ -11,6 +11,7 @@ export * from './npc.js';
 export * from './economy.js';
 export * from './era.js';
 export * from './deeds.js';
+export * from './demo.js';
 export * from './tier.js';
 export * from './storylets.js';
 export * from './guild.js';

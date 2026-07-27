@@ -84,6 +84,79 @@ is, structurally rather than by three copies of the same try/catch — and both,
 like `initSteam`, never throw. Both partner-site configurations live in
 `docs/STEAM-ACHIEVEMENTS.md` for T-1704.
 
+**T-1703 shipped the demo configuration** — "a first-class build configuration,
+not an afterthought", as the paragraph above always promised. Four decisions,
+recorded here because each one closed off an easier alternative.
+
+**(D1) The gate is an ENGINE rule keyed off a new persisted scalar,
+`GameState.edition` (`'full' | 'demo'`), not a UI hide.** Three requirements
+forced it: the gate must survive a save, it must be provable headlessly, and it
+must be *promotable* on import ("demo-save carries into full game"). One scalar
+makes that carry a one-line promotion (`engine/src/demo.ts`'s `promoteEdition`)
+instead of a save converter. The split is the same seam `storage.ts` already
+draws: the **build** decides which edition a career is born in or promoted to;
+the **engine** decides what a demo career may do. `CURRENT_SAVE_VERSION` moves
+8 → 9 with a v8→v9 migration backfilling `edition: 'full'` — a statement of fact,
+since every save that exists predates the demo build.
+
+**(D2) "Hangout progression" on the task's gate list means the CREW/dice
+progression bought at the Hangout, not the Hangout.** The reading and its
+evidence live at the definition site (`content/src/demo.ts`): it is the repo's
+own vocabulary (`PlayerAction.Crew` is documented as "PRD §7 dice progression …
+at the Hangout/port"), and gating the venue would cut two authored Tour One beats
+— PRD §7.3's Day-23 Spacer's Dare and §7.5's bad-day Penny Wise loan — out of the
+demo's own Tour One. So dare/meet/befriend/insult/rumor/borrow/repay stay open;
+crew **hire** is locked and **dismiss** is not.
+
+**(D3) A hard day ceiling does most of the work, and only three features are
+named locks.** The demo runs Tour One plus three post-resolution days (days 1–33;
+day 30's dusk still fires `TourOneResolved`, still flips the era to VETERAN and
+still sets `veteran.unlocked` — the teaser days are the point). Everything gated
+behind career *depth* — the Nemesis crossing, the alliance arcs, the Registry
+ladder — is unreachable because 33 days is not enough, which is honest by
+construction and cannot rot as content is added. The three named locks exist
+because those three ARE reachable inside 33 days: the cheapest crew role is
+2,000cr, the cheapest port stake 7,150cr, and CONQUEROR is a Registry row and a
+Steam achievement regardless of days played (so the demo's achievement manifest
+is the full 45 minus that one capstone).
+
+**(D4) Gated controls render DISABLED with authored tease copy, never removed** —
+"teased-but-gated" is the task's own phrasing, it is this repo's existing idiom
+(the crew hire already "disables-not-hides an unaffordable hire"), and it gives
+Playwright a *stronger* proof than absence: `click({ trial: true })` runs the full
+actionability chain, so a gated control fails it.
+
+**Rejected, and recorded as such: a runtime edition switch.** A gate that lifts
+at runtime is not a gate. The edition is compiled into the bundle by Vite
+`define` (`vite build --mode demo` → `__SQ_EDITION__` → `dist-demo`), so the demo
+artifact physically cannot become the full game; `ui/src/edition.ts`'s
+`resolveEdition` fails safe to `'full'`, which errs toward *more* gating being
+required, never less. The demo build additionally **refuses to open a full-game
+save** — the obvious hole in the gate, closed in `promoteEdition`.
+
+**Packaging and the depot.** `packages/desktop/electron-builder.demo.cjs` is a
+separate config (appId `com.spacerquest.rimward.demo`, productName "Rimward
+Demo", output `release-demo/`, `electronLanguages: ['en-US']`), so the demo and
+the full game coexist on one machine — which they must, since the demo's job is
+to hand a career to a full game that is still installed. The shell serves
+whichever bundle was staged (`renderer-demo/` if present, else `renderer/`) as a
+**path** question: `ShellInfo` is deliberately NOT widened with an `edition`
+field, because a second answer to "which edition is this?" is a second answer
+that can disagree with the cockpit's compiled `BUILD_EDITION`. Steam content-
+builder scripts live at `packages/desktop/steam/{app,depot}_build_demo.vdf` with
+**placeholder ids (`0`)**, on the same rule `COMPILED_STEAM_APP_ID` follows — this
+repo holds no partner ids; obtaining them is T-1704 — and a unit test pins the
+pair against the builder config so the ContentRoot cannot drift.
+
+**The size budget measures the DISTRIBUTABLE artifact**, not the unpacked tree,
+and that is stated at `desktop/src/size.ts`'s `DEMO_MAX_DISTRIBUTABLE_BYTES`
+rather than left to inference: the installer is what a player downloads and what
+compresses into a depot, while `win-unpacked/` is ~216 MB of Chromium that is
+never transferred in that form and would fail a 200 MB budget for reasons no work
+on this game could change. Measured on win32: the demo installer is
+**93,444,570 B (93.4 MB)** against the 200 MB ceiling, and `scripts/check-size.mjs`
+fails `package:*:demo` over budget.
+
 The Steam overlay is still deliberately not enabled (it needs
 `--in-process-gpu --disable-direct-composition`, which changes how the tube
 composites, and the CRT aesthetic is the stated reason Electron was chosen at

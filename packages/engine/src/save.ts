@@ -100,6 +100,16 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * own comment carries the reasoning and why the `deserializeState` recompute was
  * not sufficient.
  *
+ * T-1703 bumped {@link CURRENT_SAVE_VERSION} to 9. The v8->v9 change IS a
+ * GameState shape change, and a ROOT-level one — the first since the original
+ * schema: `GameState.edition` (types.ts `Edition`, the demo gate's one persisted
+ * scalar) is a new required field. The v8->v9 migration backfills `edition:
+ * 'full'`, which is a STATEMENT OF FACT rather than a default: every save that
+ * exists was written before a demo build existed, so every one of them is a
+ * full-game career. Getting this wrong in the other direction would be the
+ * serious failure — a save wrongly marked 'demo' would lose a real player their
+ * ports, their crew and their capstone rank.
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
@@ -214,9 +224,17 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
     if (ship && typeof ship === 'object') healed.tier = computePlayerTier(renownRank, ship);
     return { ...(v7State as object), player: healed };
   },
+  // v8->v9: T-1703 added the root-level `GameState.edition`. A v8 save has no
+  // `edition` key, so backfill 'full'. See the registry header for why that is a
+  // fact and not a default. An `edition` that is somehow already present is left
+  // alone (idempotent, and forward-safe for a future promoted save re-migrating).
+  8: (v8State) => {
+    const s = v8State as { edition?: unknown };
+    return { ...(v8State as object), edition: s.edition ?? 'full' };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 8;
+export const CURRENT_SAVE_VERSION = 9;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

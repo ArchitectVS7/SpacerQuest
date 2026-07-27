@@ -1,0 +1,40 @@
+// ---------------------------------------------------------------------------
+// T-1703 · Steam content-builder APP script for the RIMWARD DEMO.
+//
+// Driven by:  steamcmd +login <user> +run_app_build <abs path>/app_build_demo.vdf +quit
+//
+// THE IDS ARE PLACEHOLDERS ("0"), AND THAT IS DELIBERATE, NOT UNFINISHED.
+// This repository holds no partner app id — packages/desktop/src/steam.ts's
+// COMPILED_STEAM_APP_ID is null for exactly the same reason, and a unit test pins
+// it so an id cannot be committed by accident. A committed real id would make
+// every dev build talk to a live Steam product. Obtaining the demo app id and its
+// depot id is part of setting up the store page (T-1704); filling them in is a
+// two-line edit, here and in the depot script.
+//
+// A DEMO IS ITS OWN STEAM APP with its own depot — not a branch or a beta of the
+// full app — which is why this is a second pair of scripts rather than a flag on
+// a first pair. It matches the packaging split exactly: distinct appId, distinct
+// productName, distinct output tree (electron-builder.demo.json).
+//
+// FORWARD SLASHES, deliberately: steamcmd accepts them on every platform, while a
+// Windows-style path in a committed script breaks the moment the build runs on
+// the macOS runner. Same rule scripts/copy-renderer.mjs follows.
+//
+// ContentRoot points at the UNPACKED tree, because that is what a Steam depot
+// stores — Steam is the installer, so the NSIS .exe is for direct distribution
+// only. The <200MB budget in src/size.ts measures that DISTRIBUTABLE artifact,
+// for the reason given at its definition site.
+// ---------------------------------------------------------------------------
+"appbuild"
+{
+	"appid"		"0"
+	"desc"		"Rimward Demo - Tour One"
+	"buildoutput"	"../release-demo/steam-build"
+	"contentroot"	"../release-demo/win-unpacked"
+	"setlive"	""
+
+	"depots"
+	{
+		"0"	"depot_build_demo.vdf"
+	}
+}

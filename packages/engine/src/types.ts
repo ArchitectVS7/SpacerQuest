@@ -12,6 +12,22 @@ import {
   StatBlock,
 } from '@spacerquest/content';
 
+/**
+ * T-1703 · WHICH EDITION A CAREER IS BEING FLOWN AS.
+ *
+ * The demo gate is an ENGINE rule keyed off this one persisted scalar, not a UI
+ * hide. Three requirements forced that: the gate must survive a save, it must be
+ * provable headlessly, and it must be PROMOTABLE on import ("demo-save carries
+ * into full game") — which one scalar makes a one-line promotion instead of a
+ * save converter.
+ *
+ * THE SPLIT: the BUILD decides which edition a career is born in (cockpit
+ * `BUILD_EDITION`, compiled into the bundle by Vite `define`) or promoted to;
+ * the ENGINE decides what a demo career may do. That is the same seam
+ * `storage.ts` already draws between platform identity and rules.
+ */
+export type Edition = 'full' | 'demo';
+
 export interface DawnHand {
   dice: number[];
   spent: boolean[];
@@ -354,7 +370,13 @@ export type GameEvent =
   | {
       type: 'ActionBlocked';
       day: number;
-      actionType: 'Trade' | 'Travel' | 'Shipyard' | 'Storylet' | 'Explore' | 'VisitHangout';
+      // T-1703 WIDENED this enum with 'Port' and 'Crew'. T-1306/T-1307 deliberately
+      // kept them out ("actions that have no reason to be blocked") and that was
+      // right at the time; the demo gate is the FIRST rule that gives them a
+      // reason, so the enum grows with it rather than the gate inventing a
+      // parallel refusal shape.
+      actionType:
+        'Trade' | 'Travel' | 'Shipyard' | 'Storylet' | 'Explore' | 'VisitHangout' | 'Port' | 'Crew';
       // 'destination-locked' (T-1101): a Travel to a sealed system (Andromeda /
       // special) before the 'nemesis.crossing.unlocked' flag lifts it.
       // 'no-hangout' (T-1303): a VisitHangout at a system without a Spacers
@@ -364,7 +386,21 @@ export type GameEvent =
       // inert — refused with no die spent, no throw. READERS: the terminal guard
       // in `applyPlayerAction` (day.ts) emits it; the sim's `legalActions`
       // (protocol.ts) refuses to advertise anything that would earn it.
-      reason: 'active-encounter' | 'destination-locked' | 'no-hangout' | 'career-ended';
+      // 'demo-locked' (T-1703): a demo career attempted a gated verb — a `Port`
+      // buy or a `Crew` hire (engine `demoLocks`). Refused with no die spent, no
+      // throw. READERS: the demo gate in `applyPlayerAction` (day.ts) emits it;
+      // `legalActions` refuses to advertise either verb in a demo state, and the
+      // cockpit renders both controls DISABLED with the content tease.
+      // 'demo-ended' (T-1703): a demo career kept playing past DEMO_FINAL_DAY
+      // (engine `demoConcluded`). Every blockable verb is inert, exactly as on the
+      // far side of the shear. READER: the same pair, plus the cockpit's end card.
+      reason:
+        | 'active-encounter'
+        | 'destination-locked'
+        | 'no-hangout'
+        | 'career-ended'
+        | 'demo-locked'
+        | 'demo-ended';
     }
   | {
       /** An Explore nav check succeeded and charted a point of interest
@@ -734,6 +770,39 @@ export type GameEvent =
       outcome: 'cleared' | 'unpaid';
       /** Debt still owed at resolution — 0 on the cleared path. */
       debtOutstanding: number;
+    }
+  | {
+      /**
+       * T-1703 · A DEMO career reached the dusk of `DEMO_FINAL_DAY` (content
+       * demo.ts) — Tour One plus its three post-resolution days are played out.
+       * Emitted exactly once, at that dusk, and ONLY when `state.edition` is
+       * 'demo'; a full career never sees it. The day still rolls over normally
+       * afterwards, which is what makes engine `demoConcluded` true at the next
+       * dawn — the event is the RECORD, the derived predicate is the RULE.
+       * READERS: the wire (a `WireEntry` rides alongside) and, through
+       * `demoConcluded`, the cockpit's `DemoEndCard` and the sim's `legalActions`
+       * stop signal.
+       */
+      type: 'DemoConcluded';
+      day: number;
+      edition: Edition;
+      /** Days actually played — `day`, carried explicitly so the end card and any
+       *  replay reader need not re-derive the ceiling. */
+      daysPlayed: number;
+    }
+  | {
+      /**
+       * T-1703 · A demo save was opened by a FULL build and promoted in place
+       * (engine `promoteEdition`). The locks lift, the Registry rank is
+       * re-derived, and the career continues past the demo's day ceiling. Emitted
+       * only on a real transition — a same-edition load emits nothing.
+       * READERS: the wire (a `WireEntry` rides alongside) and the cockpit's
+       * import notice.
+       */
+      type: 'EditionPromoted';
+      day: number;
+      from: Edition;
+      to: Edition;
     }
   | {
       type: 'CombatEvent';
@@ -1305,6 +1374,21 @@ export interface GameState {
   dayPhase: DayPhase;
   dayEventCount: number;
   era: EraId;
+  /**
+   * T-1703 · The edition this career is being flown as. WRITTEN by
+   * `createInitialState(seed, edition)` (the build supplies it) and by
+   * `promoteEdition` (a full build adopting a demo save). Backfilled to 'full'
+   * by the v8→v9 save migration and by `deserializeState`, because every save
+   * that predates T-1703 is a full-game career.
+   *
+   * READERS, all of them named because a state field with no consumer is a
+   * receipt: `demo.ts`'s predicates (`isDemo` / `demoConcluded` /
+   * `demoDaysRemaining` / `demoLocks`), through which `day.ts`'s demo gate and
+   * `deeds.ts`'s CONQUEROR ceiling enforce it; the sim's `legalActions` +
+   * `StateSummary.edition`; and the cockpit's demo banner, disabled controls,
+   * end card and Settings → Build → Edition row.
+   */
+  edition: Edition;
   flags: Record<string, FlagValue>;
   storylets: StoryletState;
   player: PlayerState;

@@ -8,6 +8,6 @@
     "types": ["node"],
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
-  "include": ["**/*.ts", "../playwright.config.ts"],
+  "include": ["**/*.ts", "../playwright.config.ts", "../playwright.demo.config.ts"],
   "references": [{ "path": ".." }, { "path": "../../engine" }, { "path": "../../content" }]
 }
