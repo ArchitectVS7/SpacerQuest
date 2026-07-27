@@ -41,6 +41,15 @@ import {
  *  build step for this package. */
 const MAIN = join(__dirname, '..', 'dist', 'main.js');
 
+/** The version this package claims to be, read from the manifest rather than
+ *  restated — a hard-coded copy here would be a third place to update and the
+ *  one nobody remembers. `packages/ui/src/__tests__/version.test.ts` pins this
+ *  to the root manifest and the cockpit's compiled stamp, so asserting the shell
+ *  against it asserts all three agree. */
+const MANIFEST_VERSION = (
+  JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')) as { version: string }
+).version;
+
 /** The renderer the shell points at — the SAME `vite preview` artifact the web
  *  e2e suite tests, started by `playwright.config.ts`'s `webServer`. */
 const RENDERER_URL = 'http://localhost:5173';
@@ -124,7 +133,19 @@ test.describe('T-1701a · the Electron shell', () => {
     await expect(row).toHaveText(saveDir);
 
     // --- T-1701b · the READER of `shellVersion` / `updateStatus` ------------
-    await expect(page.getByTestId('app-version')).toHaveText(/^\d+\.\d+\.\d+$/);
+    // THE GAME's version, asserted against the manifest rather than a shape.
+    // `/^\d+\.\d+\.\d+$/` was the old assertion and it was not one: a dev shell
+    // has no package.json at its app path, so `app.getVersion()` returned the
+    // ELECTRON BINARY's version, and `33.4.11` satisfies that pattern happily.
+    // The row named Electron's release as the game's on every developer's
+    // machine, and only the CI runner's Electron — which reports a bare `0.0` —
+    // ever made it look wrong. An exact value is the only version assertion with
+    // teeth. (`src/main.ts`'s `resolveAppVersion` is the fix.)
+    await expect(page.getByTestId('app-version')).toHaveText(MANIFEST_VERSION);
+    // And it is the SHELL answering, not the cockpit's compiled stamp falling
+    // through — the two agree in this repository, and that agreement is exactly
+    // what would hide a shell that stopped answering at all.
+    await expect(page.getByTestId('app-version')).toHaveAttribute('data-version-source', 'shell');
     // A DEV shell is not packaged, so it can never self-update — worth
     // ASSERTING rather than assuming: an updater that armed itself against a
     // developer's working tree would overwrite it with a release.

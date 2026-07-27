@@ -77,7 +77,7 @@ import {
   shell,
   type IpcMainEvent,
 } from 'electron';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createSaveStore, type SaveStore } from './saveStore';
@@ -440,7 +440,7 @@ function registerStorageIpc(): void {
   // to tell the player what build it is.
   ipcMain.on(CHANNELS.about, (event) =>
     replyRaw(event, (): ShellAbout => ({
-      version: app.getVersion(),
+      version: APP_VERSION,
       updates: updaterStatus.state,
       steam: steamSession.status.state,
       cloud: cloudSession.status.state,
@@ -606,6 +606,49 @@ function createWindow(): BrowserWindow {
 }
 
 // ---- boot ------------------------------------------------------------------
+
+/**
+ * WHAT BUILD THIS IS — the game's version, never Electron's.
+ *
+ * `app.getVersion()` reads the `version` of the package.json at the APP PATH.
+ * Packaged, that is the manifest electron-builder writes beside the bundle, so
+ * it is exactly right: the version of the installer the player ran.
+ *
+ * UNPACKAGED IT IS WRONG, and wrong in a shape that reads as right. The app path
+ * of a dev shell is `dist/` — compiled JS and nothing else, no package.json — so
+ * Electron falls back to the version of the ELECTRON BINARY. A developer on
+ * Electron 33 saw `33.4.11` in the Settings version row; CI on the pinned
+ * Electron 43 saw the bare `0.0` that build reports. Both are Electron's answer
+ * to a question about Rimward, and the first one satisfies every
+ * `/^\d+\.\d+\.\d+$/` a test might check it against — which is how a Settings row
+ * naming Electron's release as the game's survived a green suite.
+ *
+ * So resolve it the way `app.setName` fixes the app NAME just below: state it,
+ * from the one manifest that is guaranteed to agree with the cockpit's own
+ * compiled stamp (`packages/ui/src/version.ts`'s `__SQ_VERSION__`). That
+ * guarantee is not aspirational — `packages/ui/src/__tests__/version.test.ts`
+ * pins the root manifest and all five workspace manifests to a single string.
+ *
+ * Falls back to `getVersion()` if the manifest cannot be read: a shell that
+ * cannot name its build must still boot, which is the same rule the `about`
+ * channel's `replyRaw` follows.
+ */
+function resolveAppVersion(): string {
+  if (app.isPackaged) return app.getVersion();
+  try {
+    const manifest = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')) as {
+      version?: unknown;
+    };
+    if (typeof manifest.version === 'string' && manifest.version.length > 0) {
+      return manifest.version;
+    }
+  } catch {
+    /* see above */
+  }
+  return app.getVersion();
+}
+
+const APP_VERSION = resolveAppVersion();
 
 // Both of these MUST run before `app.whenReady()`: `getPath('userData')` is
 // resolved from the app name, and `setPath` is only honoured pre-ready.

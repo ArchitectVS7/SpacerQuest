@@ -33,6 +33,14 @@ import {
 
 const RELEASE = join(__dirname, '..', 'release');
 
+/** The version this package claims to be — read, not restated. Same source and
+ *  same reasoning as `shell.spec.ts`'s copy; electron-builder derives the
+ *  packaged binary's version from this very manifest, so a package reporting
+ *  anything else did not come from this tree. */
+const MANIFEST_VERSION = (
+  JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')) as { version: string }
+).version;
+
 /** Where electron-builder's `dir` target puts the launchable binary, per
  *  platform. Probed in order; `SQ_PACKAGED_APP` overrides everything. */
 const CANDIDATES = [
@@ -112,7 +120,11 @@ test.describe('T-1701b · the packaged app', () => {
     await expect(location).toHaveText(saveDir);
 
     await expect(page.getByTestId('app-version')).toHaveText(shell.version);
-    await expect(page.getByTestId('app-version')).toHaveText(/^\d+\.\d+\.\d+$/);
+    // Against the MANIFEST, not a shape. `shell.version` above is the same
+    // number the row came from, so on its own it only proves the row is
+    // self-consistent — a shell reporting the wrong version would satisfy it.
+    // The dev-shell half of this (`shell.spec.ts`) is where that actually bit.
+    await expect(page.getByTestId('app-version')).toHaveText(MANIFEST_VERSION);
     // T-1704 · WHICH of the two version sources answered. The cockpit now also
     // carries a COMPILED stamp (`ui/src/version.ts`), so "the row shows a
     // version" stopped being proof that the shell was asked at all — the two
