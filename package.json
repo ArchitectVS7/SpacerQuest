@@ -1,5 +1,6 @@
 {
   "name": "spacerquest-rimward",
+  "version": "1.0.0",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -16,7 +17,10 @@
     "package:mac": "npm run build -w @spacerquest/ui && npx tsc -b && npm run package:mac -w @spacerquest/desktop",
     "package:win": "npm run build -w @spacerquest/ui && npx tsc -b && npm run package:win -w @spacerquest/desktop",
     "package:mac:demo": "npm run build:demo -w @spacerquest/ui && npx tsc -b && npm run package:mac:demo -w @spacerquest/desktop",
-    "package:win:demo": "npm run build:demo -w @spacerquest/ui && npx tsc -b && npm run package:win:demo -w @spacerquest/desktop"
+    "package:win:demo": "npm run build:demo -w @spacerquest/ui && npx tsc -b && npm run package:win:demo -w @spacerquest/desktop",
+    "release:verify": "node scripts/verify-clean-clone.mjs",
+    "release:signoff": "node scripts/check-signoff.mjs",
+    "release:rc": "node scripts/tag-rc.mjs"
   },
   "devDependencies": {
     "eslint": "^9.39.4",

@@ -156,6 +156,14 @@ import { achievementManifest, presenceLine } from './steam';
 // by the Settings → Build → Edition row and by `SteamRow`'s achievement
 // denominator, which differs by exactly one between the two builds.
 import { BUILD_EDITION } from './edition';
+// T-1704 · What VERSION this bundle is (Vite `define`, compiled in — the same
+// mechanism as the edition). Read here by `BuildRow`, which is the only place a
+// player can see it, and the only reader `version.ts` has.
+import { BUILD_VERSION } from './version';
+// T-1704 · The licences this artifact ships under. Read here by `CreditsPanel`,
+// which is the only place a player can read them — and a licence notice that
+// never reaches the player is not an attribution that shipped.
+import { CREDITS, creditDetail, creditLine } from './credits';
 
 const DIE_MIME = 'application/x-sq-die';
 
@@ -309,6 +317,7 @@ function SettingsPanel({ state, onClose }: { state: CockpitState; onClose: () =>
       <StorageRow />
       <BuildRow />
       <SteamRow state={state} />
+      <CreditsPanel />
       <SavesPanel state={state} />
     </div>
   );
@@ -352,10 +361,19 @@ function StorageRow() {
 //
 // The player-facing surface of the packaging + updater task, and the READER of
 // both new exports from `storage.ts` (standing constraint 7). On the web build
-// there is no shell, so Version reads "Web build" and Updates says the browser
-// handles it — honest in both cases, and neither line ever claims an update is
-// coming when the packaged build's updater is inert (which it is in every build
-// this repo produces; see `packages/desktop/src/updater.ts`).
+// there is no shell, so Updates says the browser handles it — honest, and neither
+// line ever claims an update is coming when the packaged build's updater is inert
+// (which it is in every build this repo produces; see
+// `packages/desktop/src/updater.ts`).
+//
+// T-1704 · VERSION NOW HAS TWO SOURCES, AND THE SHELL WINS WHEN IT IS PRESENT.
+// The row used to read "Web build" off the web, because nothing stamped the
+// bundle; `version.ts` now does, so the rule is: the SHELL is the authority when
+// there is one (a packaged binary knows the version of the installer the player
+// actually ran, which can be older than any bundle in this repo), and the
+// COMPILED STAMP otherwise. `data-version-source` names which of the two answered
+// — without it a spec could not tell a shell that happened to agree with the
+// bundle from a shell that was never asked.
 //
 // Deliberately NOT a "Check now" button: nothing to check against without a
 // feed, and a button that does nothing is worse than a sentence that is true.
@@ -371,8 +389,12 @@ function BuildRow() {
       <span className="set-head">Build</span>
       <div className="set-row">
         <span className="set-label">Version</span>
-        <span className="set-value" data-testid="app-version">
-          {shellVersion ?? 'Web build'}
+        <span
+          className="set-value"
+          data-testid="app-version"
+          data-version-source={shellVersion ? 'shell' : 'bundle'}
+        >
+          {shellVersion ?? BUILD_VERSION}
         </span>
       </div>
       <div className="set-row">
@@ -491,6 +513,49 @@ function SteamRow({ state }: { state: CockpitState }) {
           {presenceMessage(steamStatus, richPresenceLine(line.system, line.day))}
         </span>
       </div>
+    </div>
+  );
+}
+
+// T-1704 · WHOSE WORK IS IN THIS BUILD.
+//
+// The player-facing surface of the release sweep, and the READER of `credits.ts`
+// (standing constraints 6 and 7). It exists because the OFL and the MIT licence
+// both require their notice to travel with the distributed work: a credits file
+// that lives only in the repository is an attribution the person holding the
+// binary never receives. Settings is where every other fact about the artifact
+// already lives (Storage, Build, Steam), so this is the fourth section rather
+// than a fifth popover — the "menu ceremony" PRD §2 forbids.
+//
+// Placed AFTER Steam and BEFORE the save slots deliberately: Storage → Build →
+// Steam → Credits is one run of FACTS ABOUT THE ARTIFACT, and the save slots stay
+// the panel's last block because they are the only thing here a player operates.
+// Splitting the facts around the controls would be the worse trade — the cost is
+// that the slots sit further down a scrolling popover, which is a scroll, not a
+// click. `data-credit-id` is the structural handle, on the `data-update-status` /
+// `data-storage-backend` precedent.
+//
+// Every string is composed by `credits.ts` (`creditLine` / `creditDetail`), so
+// this component owns no prose at all — the same rule `SteamRow` follows with
+// `presenceLine`. Asserted consumed by `packages/ui/e2e/settings-saves.spec.ts`
+// (the web build) and `packages/desktop/e2e/packaged.spec.ts` (a real packaged
+// binary, which is the artifact the licences actually attach to).
+function CreditsPanel() {
+  return (
+    <div className="set-section" data-testid="credits-panel">
+      <span className="set-head">Credits</span>
+      {CREDITS.map((credit) => {
+        const detail = creditDetail(credit);
+        return (
+          <div className="credit-row" key={credit.id} data-credit-id={credit.id}>
+            <div className="set-row">
+              <span className="set-label">{credit.name}</span>
+              <span className="set-value">{creditLine(credit)}</span>
+            </div>
+            {detail ? <span className="credit-detail">{detail}</span> : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

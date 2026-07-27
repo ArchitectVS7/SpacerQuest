@@ -32,9 +32,10 @@ field, no `GameEvent` and no save migration exist for any of it.
   day to substitute.
 - **Hidden** — set every row to *not* hidden. The Registry is a public record
   in-fiction; hiding the list would contradict the thing it is a mirror of.
-- **Icons** — not shipped by this task. Steam requires a 64×64 achieved and
-  unachieved icon per row; producing 90 pieces of art is a T-1704 (store page)
-  deliverable, not a code task.
+- **Icons** — not shipped, and not a code task. Steam requires a 64×64 achieved
+  and unachieved icon per row; the art order (90 files, derived from this table's
+  length and pinned by a test) is item **C2** of
+  `docs/RELEASE-CHECKLIST.md` §C, where it is an open decision awaiting the user.
 
 `RANK_CONQUEROR` is the one **renown rank** in the table. It is not a Deed — it
 is the career capstone (`RENOWN_RANKS.CONQUEROR`, PRD §5.2/§9), and it rides
@@ -47,8 +48,10 @@ header for that decision in full.
 
 These are the parts of Steamworks that **no code can create**. The shell drives
 both features through the API at runtime, but each needs a one-time setup in App
-Admin that a human has to perform — so they live here, in the one file T-1704
-pastes from, alongside the achievement table.
+Admin that a human has to perform — so they live here, in the one file the
+partner-site setup pastes from, alongside the achievement table. Each of them is
+tracked as an open item in `docs/RELEASE-CHECKLIST.md` §D (rows **D1**–**D5**),
+which is where the user's confirmation is recorded.
 
 ### 1. Rich presence (App Admin → Community → Rich Presence)
 

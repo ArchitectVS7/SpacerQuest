@@ -3,7 +3,7 @@
 //
 // Referenced by app_build_demo.vdf. The ids are PLACEHOLDERS ("0") for the reason
 // recorded in that file's header — this repo holds no partner ids, and obtaining
-// them is T-1704.
+// them is docs/RELEASE-CHECKLIST.md item D5, still open.
 //
 // The whole unpacked package ships: the file map is a single recursive rule, so a
 // file added to the package later cannot be silently left out of the depot.

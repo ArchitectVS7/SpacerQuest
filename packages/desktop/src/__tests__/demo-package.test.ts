@@ -96,7 +96,9 @@ describe('T-1703 · the Steam depot scripts', () => {
     // test pins: this repo holds no partner ids, and a real one committed by
     // accident would point dev builds at a live Steam product. Asserted so the
     // placeholders cannot be quietly replaced without this test being updated
-    // deliberately (T-1704 does exactly that).
+    // deliberately — which is what will happen when `docs/RELEASE-CHECKLIST.md`
+    // item D5 (the demo app id and its depot id) is answered. T-1704 tracked the
+    // question and did not invent an id, so these still read "0".
     expect(app).toMatch(/"appid"\s+"0"/);
     expect(depot).toMatch(/"DepotID"\s+"0"/);
   });

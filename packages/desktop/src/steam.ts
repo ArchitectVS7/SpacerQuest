@@ -186,8 +186,9 @@ export interface SteamSession {
  * `null` in every build this repository produces today — which is why the
  * shipped state is `unavailable`, and is asserted by a unit test so an app id
  * cannot be committed by accident. This repo holds no partner app id: obtaining
- * one is part of setting up the store page (T-1704), and a committed id would
- * make every dev build try to talk to a real Steam product.
+ * one is part of setting up the store page — `docs/RELEASE-CHECKLIST.md` item
+ * **D4**, still open — and a committed id would make every dev build try to talk
+ * to a real Steam product.
  *
  * A build (or a developer) supplies one with `SQ_STEAM_APP_ID`. `480` is
  * Spacewar, Valve's public dev sandbox, and is how this task's Steam evidence is

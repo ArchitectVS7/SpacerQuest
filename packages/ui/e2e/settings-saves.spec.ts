@@ -1,4 +1,20 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+// T-1704 · The credits the cockpit must show a player. Imported from the SOURCE
+// constant (the `storylet-delivery.spec.ts` precedent for reaching into
+// `../src`), never re-typed here: a spec that duplicated the list would go on
+// passing after a row was removed, which is the one failure this assertion
+// exists to catch.
+import { CREDITS, creditLine } from '../src/credits';
+
+/** The single source of truth for what this build calls itself. Read off disk
+ *  rather than pinned to a literal — see the assertion for the reasoning. */
+const ROOT_VERSION: string = (
+  JSON.parse(
+    readFileSync(fileURLToPath(new URL('../../../package.json', import.meta.url)), 'utf8'),
+  ) as { version: string }
+).version;
 
 // T-312 acceptance: save slots + autosave, seed entry/display, settings
 // (audio/CRT/reduced-motion/text-size) and a delete-confirm. Everything is driven
@@ -239,7 +255,25 @@ test.describe('T-312 settings, saves & new-game UX', () => {
     //
     // READER asserted here: `storage.ts`'s `shellVersion` and `updateStatus` →
     // `App.tsx`'s `BuildRow` (standing constraint 7).
-    await expect(page.getByTestId('app-version')).toHaveText('Web build');
+    // T-1704 · The web build is no longer versionless. `shellVersion` is still
+    // null here, so the row falls through to the COMPILED `BUILD_VERSION` — and
+    // this suite is run against a real `vite build` (see `playwright.config.ts`'s
+    // `webServer`: `npm run build && npm run preview`), so what is asserted is the
+    // substitution that actually landed in the bundle, not a dev-server value.
+    // Read from the root `package.json` rather than pinned to a literal: the
+    // version moves every release and a hard-coded number would make that a
+    // two-file edit for no gain. `version.test.ts` pins all six manifests to this
+    // same string.
+    //
+    // READER asserted here: `version.ts`'s `BUILD_VERSION` → `App.tsx`'s
+    // `BuildRow` (standing constraint 7).
+    const version = page.getByTestId('app-version');
+    await expect(version).toHaveText(/^\d+\.\d+\.\d+$/);
+    await expect(version).toHaveText(ROOT_VERSION);
+    // Which of the two sources answered. Without this a shell that happened to
+    // agree with the bundle would be indistinguishable from a shell never asked.
+    await expect(version).toHaveAttribute('data-version-source', 'bundle');
+
     const updates = page.getByTestId('update-status');
     await expect(updates).toHaveAttribute('data-update-status', 'web');
     await expect(updates).toHaveText('Updates are handled by your browser.');
@@ -286,8 +320,34 @@ test.describe('T-312 settings, saves & new-game UX', () => {
       'Rich presence is available in the desktop version.',
     );
 
-    // The save slots still render below it — the four Steam rows must not
-    // displace them.
+    // T-1704 · THE CREDITS REACH THE PLAYER. The OFL and the MIT licence both
+    // require their notice to travel with the distributed work, so a credits list
+    // that exists only in the repository discharges nothing — this is the
+    // assertion that it is in the artifact. Every row is checked by its
+    // structural id (prose may be re-voiced, `data-credit-id` may not), and the
+    // three rows whose text is a legal statement are checked by their words.
+    //
+    // READER asserted here: `credits.ts`'s `CREDITS` → `App.tsx`'s `CreditsPanel`
+    // (standing constraints 6 and 7). The PACKAGED half — the artifact a player
+    // actually receives — is `packages/desktop/e2e/packaged.spec.ts`.
+    await expect(page.getByTestId('credits-panel')).toBeVisible();
+    for (const credit of CREDITS) {
+      const row = page.locator(`[data-credit-id="${credit.id}"]`);
+      await expect(row).toHaveCount(1);
+      await expect(row).toContainText(creditLine(credit));
+    }
+    await expect(page.locator('[data-credit-id="font-chakra-petch"]')).toContainText(
+      'Cadson Demak · SIL Open Font License 1.1',
+    );
+    await expect(page.locator('[data-credit-id="font-ibm-plex-mono"]')).toContainText(
+      'IBM Corp. · SIL Open Font License 1.1',
+    );
+    await expect(page.locator('[data-credit-id="audio"]')).toContainText(
+      'The Spacer Quest project · CC0 1.0 Universal',
+    );
+
+    // The save slots still render below it — the four Steam rows and the credits
+    // must not displace them.
     await expect(page.getByTestId('save-slot')).toHaveCount(3);
   });
 });

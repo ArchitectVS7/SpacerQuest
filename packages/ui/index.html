@@ -9,9 +9,18 @@
       offline launch cannot reach Google Fonts, so Chakra Petch and IBM Plex
       Mono do not load and the cockpit falls back to `system-ui` / `ui-monospace`
       — the stacks in `theme.css` already carry those fallbacks, so it degrades
-      legibly rather than breaking. Self-hosting the two families is a named
-      FOLLOW-UP, not this task: font binaries are their own deliverable with
-      their own licensing question. No spec asserts anything about fonts.
+      legibly rather than breaking. No spec asserts anything about fonts.
+
+      T-1704 · Both families are credited in `packages/ui/src/credits.ts` and
+      shown to the player in Settings → Credits (SIL Open Font License 1.1,
+      Cadson Demak and IBM), so the attribution ships with the artifact even
+      though the binaries do not. SELF-HOSTING IS STILL NOT DONE HERE — it is a
+      deliverable of its own (font binaries, the OFL's redistribution
+      requirements, an asset pipeline) and is open decision **F1** in
+      `docs/RELEASE-CHECKLIST.md`, awaiting the user. `credits.test.ts` asserts
+      that no font binary exists anywhere under `packages/ui`, so the "not
+      bundled" note above cannot quietly stop being true; that assertion is the
+      one that moves the day F1 is granted.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

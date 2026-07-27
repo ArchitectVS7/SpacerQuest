@@ -506,12 +506,22 @@ export const storageBackend: StorageBackend = selected.backend;
  *  consumed by `packages/desktop/e2e/shell.spec.ts`. */
 export const saveLocation: string | null = selected.saveLocation;
 
-/** T-1701b · The shell's version, or `null` on the web build (where "the build"
- *  is whatever the browser last fetched, and a version string would be a
- *  fiction). READER: `App.tsx`'s Settings "Build → Version" row
- *  (`data-testid="app-version"`), asserted consumed by
- *  `packages/desktop/e2e/shell.spec.ts` and `e2e/packaged.spec.ts` (desktop) and
- *  `packages/ui/e2e/settings-saves.spec.ts` (web). */
+/** T-1701b · The shell's version, or `null` on the web build (no shell, nothing
+ *  to ask).
+ *
+ *  T-1704 · The web build is NO LONGER VERSIONLESS: `version.ts`'s
+ *  `BUILD_VERSION` is compiled into the bundle from the root `package.json`, so
+ *  the earlier reasoning here — that a version string on the web would be a
+ *  fiction — no longer holds and has been removed rather than left to mislead.
+ *  THIS ONE STILL WINS WHENEVER IT IS NON-NULL: a packaged binary reports the
+ *  version of the installer the player actually ran, which can be older than any
+ *  bundle in this repository, and that older number is the true answer to "what
+ *  am I running?".
+ *
+ *  READER: `App.tsx`'s Settings "Build → Version" row
+ *  (`data-testid="app-version"`, `data-version-source`), asserted consumed by
+ *  `packages/desktop/e2e/shell.spec.ts` and `e2e/packaged.spec.ts` (desktop,
+ *  `shell`) and `packages/ui/e2e/settings-saves.spec.ts` (web, `bundle`). */
 export const shellVersion: string | null = selected.shell?.version ?? null;
 
 /** T-1701b · Whether this build updates itself, or `null` on web (the browser

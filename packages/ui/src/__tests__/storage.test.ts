@@ -283,8 +283,11 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
 
     expect(selected.backend).toBe('browser');
     expect(selected.saveLocation).toBeNull();
-    // T-1701b · No shell means no version and no updater — the Build row says
-    // "Web build" and hands updates to the browser.
+    // T-1701b · No shell means no shell version and no updater, so the Build row
+    // hands updates to the browser. T-1704 · It no longer says "Web build" for
+    // the version either: with `shellVersion` null the row falls through to the
+    // COMPILED `BUILD_VERSION` (`version.ts`) and marks itself
+    // `data-version-source="bundle"`.
     expect(selected.shell).toBeNull();
     expect(selected.migrated).toEqual([]);
     expect(selected.storage.getItem('sq.save.v1')).toBe(CAREER['sq.save.v1']);

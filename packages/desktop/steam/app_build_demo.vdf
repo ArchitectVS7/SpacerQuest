@@ -8,8 +8,9 @@
 // COMPILED_STEAM_APP_ID is null for exactly the same reason, and a unit test pins
 // it so an id cannot be committed by accident. A committed real id would make
 // every dev build talk to a live Steam product. Obtaining the demo app id and its
-// depot id is part of setting up the store page (T-1704); filling them in is a
-// two-line edit, here and in the depot script.
+// depot id is part of setting up the store page — docs/RELEASE-CHECKLIST.md item
+// D5, still open; filling them in is a two-line edit, here and in the depot
+// script.
 //
 // A DEMO IS ITS OWN STEAM APP with its own depot — not a branch or a beta of the
 // full app — which is why this is a second pair of scripts rather than a flag on

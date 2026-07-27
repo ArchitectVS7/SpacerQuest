@@ -1612,6 +1612,23 @@ body {
   overflow-wrap: anywhere;
   user-select: text;
 }
+/* T-1704 · The Settings "Credits" rows. A row is a name/attribution pair plus an
+   optional caveat line (the licence URL and the one thing a reader would have to
+   go and check). The detail line is deliberately selectable, like the save path
+   above it: a URL a player can copy beats a link the renderer cannot open. */
+.credit-row {
+  display: grid;
+  gap: 2px;
+}
+.credit-detail {
+  font-family: var(--font-data);
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--amber);
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
 .set-toggle {
   font-family: var(--font-display);
   letter-spacing: 0.12em;

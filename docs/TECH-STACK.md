@@ -82,7 +82,8 @@ test). **One client load, three consumers:** `SteamSession.client` is handed to
 both new modules, so cloud and presence are `unavailable` *exactly* when Steam
 is, structurally rather than by three copies of the same try/catch — and both,
 like `initSteam`, never throw. Both partner-site configurations live in
-`docs/STEAM-ACHIEVEMENTS.md` for T-1704.
+`docs/STEAM-ACHIEVEMENTS.md`, and T-1704 carried each of them into
+`docs/RELEASE-CHECKLIST.md` §D as an item awaiting the user.
 
 **T-1703 shipped the demo configuration** — "a first-class build configuration,
 not an afterthought", as the paragraph above always promised. Four decisions,
@@ -145,8 +146,9 @@ field, because a second answer to "which edition is this?" is a second answer
 that can disagree with the cockpit's compiled `BUILD_EDITION`. Steam content-
 builder scripts live at `packages/desktop/steam/{app,depot}_build_demo.vdf` with
 **placeholder ids (`0`)**, on the same rule `COMPILED_STEAM_APP_ID` follows — this
-repo holds no partner ids; obtaining them is T-1704 — and a unit test pins the
-pair against the builder config so the ContentRoot cannot drift.
+repo holds no partner ids; obtaining them is `docs/RELEASE-CHECKLIST.md` items
+**D4**/**D5**, still open — and a unit test pins the pair against the builder
+config so the ContentRoot cannot drift.
 
 **The size budget measures the DISTRIBUTABLE artifact**, not the unpacked tree,
 and that is stated at `desktop/src/size.ts`'s `DEMO_MAX_DISTRIBUTABLE_BYTES`
@@ -171,7 +173,14 @@ packages/
   sim/        headless harnesses: balance runs, UGT adapter
   desktop/    Electron shell — window management, the OS app-data save dir,
               packaging/updater, and the Steamworks achievement pipe
+scripts/      repo-level tooling — not a workspace, not shipped
 ```
+`scripts/` was added by **T-1704** on the same rule that put `desktop/` on this
+list: it is a directory a reader will meet. It holds tooling that operates on the
+REPOSITORY rather than on the game — today just `verify-clean-clone.mjs`, which
+clones the repo into a temp dir and runs the gate there, so "builds green from a
+clean clone" is a command anyone can run rather than a claim in a release note.
+Nothing in `packages/` imports it and nothing in it is distributed.
 `desktop/` was added by **T-1701a** (the §3 desktop shell target, on the
 Electron lean below). It has **zero workspace dependencies and zero game rules**:
 it is a window, a synchronous file-backed key/value store and (T-1702a) a pipe

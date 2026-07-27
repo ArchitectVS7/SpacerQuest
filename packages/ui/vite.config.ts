@@ -1,5 +1,23 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'node:fs';
+
+// ---------------------------------------------------------------------------
+// T-1704 · THE VERSION STAMP — `__SQ_VERSION__`
+// ---------------------------------------------------------------------------
+// Read from the ROOT `package.json`, which is the single source of truth for
+// what this build calls itself (a unit test pins the root manifest and all five
+// workspace manifests to the same string). Substituted at BUILD TIME, on exactly
+// the `__SQ_EDITION__` precedent below and for the same reason: the packaged
+// cockpit is served over `app://` out of an asar archive with no `package.json`
+// beside it, so a bundle that had to look its own version up at runtime could not
+// show one at all. `src/version.ts` is the reading side and fails safe to
+// `0.0.0-dev` when nothing substituted it.
+const ROOT_VERSION: string = (
+  JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    version?: string;
+  }
+).version!;
 
 // The engine and content packages are consumed as compiled workspace packages
 // (their package `main` points at dist/index.js). `predev`/`prebuild` build them
@@ -36,6 +54,10 @@ export default defineConfig(({ mode }) => {
       // cannot prove it is the demo is not the demo — which errs toward MORE
       // gating being required, never less.
       __SQ_EDITION__: JSON.stringify(demo ? 'demo' : 'full'),
+      // T-1704 · Both builds carry the SAME version: the demo and the full game
+      // are cut from one commit, and a player reporting a bug from either one is
+      // reporting it against that commit.
+      __SQ_VERSION__: JSON.stringify(ROOT_VERSION),
     },
     server: { port: demo ? 5174 : 5173, strictPort: true },
     preview: { port: demo ? 5174 : 5173, strictPort: true },

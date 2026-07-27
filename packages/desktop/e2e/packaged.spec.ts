@@ -107,6 +107,14 @@ test.describe('T-1701b · the packaged app', () => {
 
     await expect(page.getByTestId('app-version')).toHaveText(shell.version);
     await expect(page.getByTestId('app-version')).toHaveText(/^\d+\.\d+\.\d+$/);
+    // T-1704 · WHICH of the two version sources answered. The cockpit now also
+    // carries a COMPILED stamp (`ui/src/version.ts`), so "the row shows a
+    // version" stopped being proof that the shell was asked at all — the two
+    // numbers agree in this repository, and agreement is exactly what would hide
+    // a regression. Under a package the SHELL wins, because a packaged binary
+    // knows the version of the installer the player actually ran. The web half
+    // (`bundle`) is `packages/ui/e2e/settings-saves.spec.ts`.
+    await expect(page.getByTestId('app-version')).toHaveAttribute('data-version-source', 'shell');
 
     // "UPDATER STUB PRESENT AND INERT WITHOUT A FEED", as a player sees it.
     const updates = page.getByTestId('update-status');
@@ -134,6 +142,35 @@ test.describe('T-1701b · the packaged app', () => {
     await expect(page.getByTestId('steam-presence')).toHaveText(
       'Not connected — nothing is shown to friends.',
     );
+
+    // T-1704 · THE LICENCES SHIP WITH THE ARTIFACT. This is the legally
+    // meaningful case: the OFL and the MIT licence require their notice to
+    // travel with the DISTRIBUTED work, and the packaged binary is the thing a
+    // player receives — a credits list that only rendered under `vite preview`
+    // would satisfy nobody. Asserted inside the real package, off the `app://`
+    // scheme, with no dev server behind it.
+    //
+    // The ids are written out rather than imported from `packages/ui`: this
+    // package has ZERO workspace dependencies by design (`tsconfig.json` has no
+    // `references`), and a credits import would be the first crack in that. If a
+    // row is renamed, the web suite — which does import the constant — fails
+    // first and loudly, so the duplication cannot silently rot.
+    await expect(page.getByTestId('credits-panel')).toBeVisible();
+    for (const id of [
+      'font-chakra-petch',
+      'font-ibm-plex-mono',
+      'audio',
+      'react',
+      'electron',
+      'steamworks-js',
+      'spacer-quest-1991',
+    ]) {
+      await expect(page.locator(`[data-credit-id="${id}"]`)).toHaveCount(1);
+    }
+    await expect(page.locator('[data-credit-id="font-chakra-petch"]')).toContainText(
+      'SIL Open Font License 1.1',
+    );
+    await expect(page.locator('[data-credit-id="electron"]')).toContainText('MIT');
     await closeSettings(page);
 
     // …and as the renderer can read it back through the same bridge the main
