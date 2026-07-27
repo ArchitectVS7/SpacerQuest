@@ -32,6 +32,14 @@
 // thrown Error for exactly this reason. Every existing `try/catch` in `store.ts`
 // and `sound.ts` is therefore preserved verbatim.
 //
+// T-1702a ADDS THE ONE EXCEPTION, and states it rather than smuggling it:
+// {@link unlockAchievement} SWALLOWS. It is not storage — nothing is persisted,
+// nothing is read back, and no cockpit behaviour keys off it. The rule above
+// exists because a lost SAVE must be visible; a lost achievement is cosmetic,
+// and letting one throw would let a Steam hiccup cost a player their action. The
+// asymmetry is the point: everything that can lose a career throws, and the one
+// thing that cannot, does not.
+//
 // WEB IS UNAFFECTED BY CONSTRUCTION. When `window.sqDesktop` is absent the seam
 // IS `window.localStorage`, same calls, same order, same throws. No behavioural
 // change on the web build is possible from this file, which is the acceptance
@@ -90,10 +98,27 @@ export type StorageBackend = 'browser' | 'desktop';
  */
 export type UpdateStatus = 'unsupported' | 'inert' | 'armed';
 
-/** T-1701b · The shell's self-description, as `about()` reports it. */
+/**
+ * T-1702a · Whether Steam is recording this launch's achievements.
+ *
+ * TWIN of `packages/desktop/src/steam.ts`'s `SteamState`, duplicated for the
+ * same reason {@link UpdateStatus} is: `packages/ui` must never import from
+ * `@spacerquest/desktop`.
+ *
+ * Two states, not five: the player-facing question is binary. The five
+ * distinguishable CAUSES (`no-app-id` / `not-loaded` / `load-failed` / `init`)
+ * stay on the shell side, where a developer reads them in the log.
+ *
+ * READER: `App.tsx`'s Settings "Steam → Status" row (`data-steam-status`) via
+ * `format.ts`'s `steamStatusMessage`.
+ */
+export type SteamStatus = 'ready' | 'unavailable';
+
+/** T-1701b/T-1702a · The shell's self-description, as `about()` reports it. */
 export interface ShellInfo {
   version: string;
   updates: UpdateStatus;
+  steam: SteamStatus;
 }
 
 /**
@@ -113,9 +138,23 @@ export interface DesktopStorageBridge {
   keys(): string[];
   /** Absolute path of the OS app-data save directory (for the Settings row). */
   dir(): string;
-  /** T-1701b · The shell's version and updater state (for the Settings "Build"
-   *  section). Read-only; touches no store. */
+  /** T-1701b/T-1702a · The shell's version, updater state and Steam state (for
+   *  the Settings "Build" and "Steam" sections). Read-only; touches no store. */
   about(): ShellInfo;
+  /**
+   * T-1702a · Mirror one earned Deed onto Steam, by its API name.
+   *
+   * FIRE AND FORGET — no return value, and it must never throw. This is the ONE
+   * deliberate exception to this file's "throwing is the contract" rule (see the
+   * header): three shipped behaviours depend on STORAGE throwing, but nothing
+   * depends on an achievement, and a failed achievement must never be able to
+   * cost a player their action. Backed by `ipcRenderer.send` (asynchronous), not
+   * `sendSync`, so a native Steam call cannot block the renderer mid-action.
+   *
+   * READER of the values sent here: `packages/desktop/src/main.ts`'s
+   * `sq-steam:unlock` handler → `steam.ts`'s `SteamSession.unlock`.
+   */
+  unlockAchievement(apiName: string): void;
 }
 
 /** The window shape this module reads. Kept minimal so the unit test can hand in
@@ -278,6 +317,20 @@ export interface SelectedStorage {
    *  whose `about()` call failed) — there is no version a browser tab could
    *  honestly report. */
   shell: ShellInfo | null;
+  /**
+   * T-1702a · The achievement sink for this process: the shell bridge under
+   * Electron, a no-op in a browser tab (where there is no Steam to talk to).
+   *
+   * Resolved as a VALUE here, like every other field, so the unit test can drive
+   * it with a fake window rather than a real bridge.
+   */
+  unlockAchievement: (apiName: string) => void;
+}
+
+/** The web build's achievement sink. Not a stub awaiting an implementation — a
+ *  browser tab has no Steam client, and the Settings row says so in words. */
+function noUnlock(): void {
+  /* no Steam in a browser tab — see `format.ts`'s `steamStatusMessage(null)` */
 }
 
 /**
@@ -332,7 +385,25 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
       // still a usable shell. The Build row falls back to the web wording.
       shell = null;
     }
-    return { storage: target, backend: 'desktop', saveLocation, migrated, shell };
+    return {
+      storage: target,
+      backend: 'desktop',
+      saveLocation,
+      migrated,
+      shell,
+      // T-1702a · The one swallowing call in this file, and the reason is in the
+      // header: an achievement is cosmetic, and a bridge hiccup must not be able
+      // to throw out of a player's action. The `try` also covers a preload older
+      // than this method (`bridge.unlockAchievement` undefined), which is the
+      // shape a version-skewed shell would take.
+      unlockAchievement: (apiName) => {
+        try {
+          bridge.unlockAchievement(apiName);
+        } catch {
+          /* no achievement is worth an action — see the header */
+        }
+      },
+    };
   }
   if (win && safeLocalStorage(win)) {
     return {
@@ -341,6 +412,7 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
       saveLocation: null,
       migrated: [],
       shell: null,
+      unlockAchievement: noUnlock,
     };
   }
   return {
@@ -349,6 +421,7 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
     saveLocation: null,
     migrated: [],
     shell: null,
+    unlockAchievement: noUnlock,
   };
 }
 
@@ -381,3 +454,22 @@ export const shellVersion: string | null = selected.shell?.version ?? null;
  *  (`data-update-status`) through `format.ts`'s `updateStatusMessage`, asserted
  *  consumed on BOTH backends by the same three specs as {@link shellVersion}. */
 export const updateStatus: UpdateStatus | null = selected.shell?.updates ?? null;
+
+/** T-1702a · Whether Steam is recording achievements on this launch, or `null`
+ *  on web (a browser tab has no Steam client, and claiming otherwise would be a
+ *  fiction). READER: `App.tsx`'s Settings "Steam → Status" row
+ *  (`data-steam-status`) through `format.ts`'s `steamStatusMessage`, asserted
+ *  consumed on ALL THREE backends: `packages/desktop/e2e/shell.spec.ts` (dev
+ *  shell, both `ready` and `unavailable`), `packages/desktop/e2e/packaged.spec.ts`
+ *  (a real package → `unavailable`) and `packages/ui/e2e/settings-saves.spec.ts`
+ *  (web → `web`). */
+export const steamStatus: SteamStatus | null = selected.shell?.steam ?? null;
+
+/**
+ * T-1702a · Mirror one earned Deed onto Steam by its API name.
+ *
+ * A NO-OP ON WEB and a swallowing send under the shell — it never throws, by
+ * contract (see the header's stated exception). READER: `steam.ts`'s `unlock`,
+ * which is the only caller and dedupes before it gets here.
+ */
+export const unlockAchievement: (apiName: string) => void = selected.unlockAchievement;

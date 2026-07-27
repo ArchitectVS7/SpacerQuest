@@ -2,7 +2,7 @@
   "name": "@spacerquest/desktop",
   "version": "1.0.0",
   "private": true,
-  "description": "T-1701a/b · Electron shell: window management, OS app-data saves, packaging and an inert updater stub. Zero game rules.",
+  "description": "T-1701a/b/T-1702a · Electron shell: window management, OS app-data saves, packaging, an inert updater stub and the Steamworks achievement mirror. Zero game rules.",
   "author": "Rimward",
   "main": "dist/main.js",
   "scripts": {
@@ -27,7 +27,11 @@
     "files": [
       "dist/**/*",
       "renderer/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/steamworks.js/**"
+    ],
+    "asarUnpack": [
+      "**/node_modules/steamworks.js/**"
     ],
     "electronVersion": "43.2.0",
     "npmRebuild": false,
@@ -45,6 +49,9 @@
         "nsis"
       ]
     }
+  },
+  "optionalDependencies": {
+    "steamworks.js": "^0.4.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

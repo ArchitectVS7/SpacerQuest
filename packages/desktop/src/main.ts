@@ -15,12 +15,20 @@
 // desktop shells, Electron or save files — the PRD is about the experience, and
 // the experience here is unchanged.
 //
-// THIS PACKAGE CONTAINS ZERO GAME RULES. It is a window and a file store. It has
-// no workspace dependencies — it cannot import the engine, the content tables or
-// the cockpit, and `tsconfig.json` has no `references` to make that structural.
-// Every rule still lives in `packages/engine`, still pure, still headless; the
-// shell is a client of the cockpit in exactly the way the cockpit is a client of
-// the engine.
+// THIS PACKAGE CONTAINS ZERO GAME RULES. It is a window, a file store and (as of
+// T-1702a) a Steam achievement pipe. It has no workspace dependencies — it
+// cannot import the engine, the content tables or the cockpit, and
+// `tsconfig.json` has no `references` to make that structural. Every rule still
+// lives in `packages/engine`, still pure, still headless; the shell is a client
+// of the cockpit in exactly the way the cockpit is a client of the engine. In
+// particular the shell has never heard of a Deed: `sq-steam:unlock` carries a
+// STRING, and the deed → achievement mapping lives in `packages/ui/src/steam.ts`.
+//
+// T-1702a AMENDS ONE STANDING CLAIM. T-1701a/b said "zero runtime dependencies";
+// that is no longer true and is corrected rather than left to rot. The package
+// now has ZERO WORKSPACE DEPENDENCIES and exactly ONE OPTIONAL NATIVE DEPENDENCY
+// (`steamworks.js`, under `optionalDependencies`) whose ABSENCE IS A SUPPORTED,
+// TESTED STATE. See `steam.ts`'s header.
 //
 // T-1701b · WHAT A PACKAGED BUILD NOW DOES. The scope boundary T-1701a held
 // (`resolveRendererUrl` refused to guess when `app.isPackaged`, and the window
@@ -67,6 +75,14 @@ import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createSaveStore, type SaveStore } from './saveStore';
 import { initUpdater, type UpdaterStatus } from './updater';
+import {
+  createRecordingClient,
+  initSteam,
+  resolveFakeLogPath,
+  type SteamClientLike,
+  type SteamHost,
+  type SteamSession,
+} from './steam';
 
 /**
  * The product name. Set BEFORE `whenReady`, because `app.getPath('userData')`
@@ -112,8 +128,13 @@ const CHANNELS = {
   keys: 'sq-store:keys',
   dir: 'sq-store:dir',
   // T-1701b · Not a store channel: the shell's own version and updater state,
-  // for Settings → Build. Registered on `replyRaw` because it needs no store.
+  // for Settings → Build. T-1702a added the Steam state to the same reply.
+  // Registered on `replyRaw` because it needs no store.
   about: 'sq-shell:about',
+  // T-1702a · Mirror one Deed onto Steam. THE ONLY ASYNCHRONOUS CHANNEL —
+  // registered with `ipcMain.on` and NO `event.returnValue`, unlike every
+  // storage channel. See `registerSteamIpc` for why.
+  unlockAchievement: 'sq-steam:unlock',
 } as const;
 
 /** What the `about` channel answers with. TWIN: `preload.ts`'s `ShellAbout` and
@@ -121,7 +142,21 @@ const CHANNELS = {
 interface ShellAbout {
   version: string;
   updates: UpdaterStatus['state'];
+  /** T-1702a · Whether achievements are being recorded on this launch. */
+  steam: 'ready' | 'unavailable';
 }
+
+/**
+ * T-1702a · A Steam achievement API name, as the renderer is allowed to send it.
+ *
+ * VALIDATED BEFORE IT REACHES THE NATIVE LAYER, the same discipline as
+ * `saveStore.ts`'s `SAFE_KEY` and the `app://` traversal guard, and for the same
+ * reason: this string arrives FROM THE RENDERER, which is the surface an
+ * attacker reaches first in an Electron app. The shape is exactly what
+ * `packages/ui/src/steam.ts` derives (`DEED_…` / `RANK_CONQUEROR`), and Steam's
+ * own API names are ASCII identifiers, so nothing legitimate is excluded.
+ */
+const SAFE_ACHIEVEMENT = /^[A-Z][A-Z0-9_]{0,63}$/;
 
 /**
  * The reply shape for every channel. The bridge turns `{ ok: false }` back into
@@ -153,6 +188,28 @@ let mainWindow: BrowserWindow | null = null;
  * rather than optimistic.
  */
 let updaterStatus: UpdaterStatus = { state: 'unsupported', reason: 'not-started', feed: null };
+
+/**
+ * T-1702a · What Steam resolved to on this launch, and the sink every mirrored
+ * achievement goes through.
+ *
+ * READER CHAIN (standing constraint 7), end to end: `steamSession.status.state`
+ * → the {@link CHANNELS.about} IPC channel → `preload.ts`'s `about()` →
+ * `packages/ui/src/storage.ts`'s `steamStatus` → `App.tsx`'s `SteamRow`, which
+ * is a line the player reads in Settings. Asserted by `e2e/shell.spec.ts` (both
+ * `ready` under the recording client and `unavailable` with no app id),
+ * `e2e/packaged.spec.ts` (`unavailable` in a real package) and
+ * `packages/ui/e2e/settings-saves.spec.ts` (`web` on the browser build).
+ *
+ * Seeded with an `unavailable` session rather than `null` so a `sq-steam:unlock`
+ * that somehow beats `whenReady` is a harmless no-op instead of a crash — the
+ * session contract is total on every path (see `steam.ts`).
+ */
+let steamSession: SteamSession = initSteam({
+  isPackaged: true,
+  env: {},
+  load: () => null,
+});
 
 /**
  * Where saves live.
@@ -282,8 +339,74 @@ function registerStorageIpc(): void {
     replyRaw(event, (): ShellAbout => ({
       version: app.getVersion(),
       updates: updaterStatus.state,
+      steam: steamSession.status.state,
     })),
   );
+}
+
+/**
+ * T-1702a · THE ACHIEVEMENT CHANNEL.
+ *
+ * ASYNCHRONOUS, deliberately, and the only channel in this file that is. Every
+ * storage channel is `sendSync` because `store.ts` runs `init()` at module scope
+ * and has ~25 synchronous call sites (see `packages/ui/src/storage.ts`'s
+ * header). An achievement has no such constraint — nothing in the cockpit reads
+ * a result — and a synchronous native Steam call on every `DeedEarned` would
+ * block the renderer mid-action for a cosmetic side effect. So: `ipcMain.on`
+ * with NO `event.returnValue`.
+ *
+ * STILL SENDER-VALIDATED, and still payload-validated. "Fire and forget" is a
+ * statement about the REPLY, not about trust: an unvalidated `ipcMain` handler
+ * is a privileged primitive for anything that gets a frame into this process,
+ * and the string it carries goes on to a native library. Both guards are silent
+ * drops rather than throws, because there is no reply channel to fail on and a
+ * throw here would surface as an unhandled main-process error.
+ */
+function registerSteamIpc(): void {
+  ipcMain.on(CHANNELS.unlockAchievement, (event, apiName: unknown) => {
+    if (!trustedContents.has(event.sender.id)) return;
+    if (typeof apiName !== 'string' || !SAFE_ACHIEVEMENT.test(apiName)) return;
+    steamSession.unlock(apiName);
+  });
+}
+
+/**
+ * T-1702a · THE ONE PLACE THAT MAY `require('steamworks.js')`.
+ *
+ * Kept out of `steam.ts` on purpose: that module is pure Node with no
+ * dependencies so its whole contract is unit-testable with no native binary (the
+ * `updater.ts` / `saveStore.ts` discipline). Here the `require` is
+ *
+ *   * LAZY — inside a function called from `whenReady`, never at module scope,
+ *     so a build with the optional dependency skipped still boots normally;
+ *   * GUARDED by `initSteam`'s try/catch, which is where "no steamworks.js", "no
+ *     native binding for this OS/arch" and "Steam is not running" all land as
+ *     the same `unavailable`;
+ *   * `require`, not `import` — the module must not be resolved unless it is
+ *     actually reached, and this package emits CommonJS anyway (see
+ *     `tsconfig.json`).
+ *
+ * NO CALLBACK PUMP IS INSTALLED HERE, and that is verified rather than assumed:
+ * steamworks.js's own `init()` starts a `setInterval(runCallbacks, 1000/30)`
+ * internally (see its `index.js`), so adding a second pump would double-drive
+ * the callback queue. If a future version stops doing that, the pump belongs on
+ * the `ready` path only, with a `will-quit` teardown — a dangling handle is
+ * exactly the class of bug T-1701a's `closed`-handler fix caught.
+ */
+function loadSteamClient(
+  isPackaged: boolean,
+  env: NodeJS.ProcessEnv,
+  appId: number,
+): SteamClientLike | null {
+  // TEST-ONLY, and refused outright when packaged (see `resolveFakeLogPath`).
+  const fakeLog = resolveFakeLogPath({ isPackaged, env, load: () => null });
+  if (fakeLog) return createRecordingClient(fakeLog);
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const steamworks = require('steamworks.js') as {
+    init(appId: number): SteamClientLike;
+  };
+  return steamworks.init(appId);
 }
 
 function createWindow(): BrowserWindow {
@@ -403,9 +526,25 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   registerStorageIpc();
+  registerSteamIpc();
 
   void app.whenReady().then(() => {
     saveStore = createSaveStore(resolveSaveDir());
+
+    // T-1702a · Resolve Steam BEFORE the window, because the cockpit reads
+    // `about()` at MODULE SCOPE (`storage.ts`'s `selectStorage`) — a window
+    // created first could ask before the answer existed and would then show
+    // "unavailable" for a session that was in fact ready. `initSteam` never
+    // throws by contract, so this can never take the boot down; with no app id
+    // it does not so much as touch the native binding.
+    const steamHost: SteamHost = {
+      isPackaged: app.isPackaged,
+      env: process.env,
+      load: (appId) => loadSteamClient(app.isPackaged, process.env, appId),
+      log: (message) => console.log(`[steam] ${message}`),
+    };
+    steamSession = initSteam(steamHost);
+
     // Before the window: the first request the window makes is for the renderer
     // itself, and it goes through this handler.
     if (app.isPackaged) registerAppProtocol();

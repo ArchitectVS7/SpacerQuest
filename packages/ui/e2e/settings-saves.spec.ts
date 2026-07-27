@@ -244,6 +244,28 @@ test.describe('T-312 settings, saves & new-game UX', () => {
     await expect(updates).toHaveAttribute('data-update-status', 'web');
     await expect(updates).toHaveText('Updates are handled by your browser.');
 
+    // T-1702a · The WEB half of the Steam section. A browser tab has no Steam
+    // client, so `steamStatus` is `null`, the row says so in words, and
+    // `unlockAchievement` is a no-op — the web build is completely unaffected by
+    // the Steamworks task, which is the criterion this asserts. The DESKTOP
+    // halves are `packages/desktop/e2e/shell.spec.ts` (`ready` under the
+    // recording client, `unavailable` with no app id) and
+    // `packages/desktop/e2e/packaged.spec.ts` (a real package → `unavailable`).
+    //
+    // READER asserted here: `storage.ts`'s `steamStatus` and `steam.ts`'s
+    // `ACHIEVEMENT_MANIFEST` → `App.tsx`'s `SteamRow` (standing constraint 7).
+    const steam = page.getByTestId('steam-status');
+    await expect(steam).toHaveAttribute('data-steam-status', 'web');
+    await expect(steam).toHaveText('Steam achievements are available in the desktop version.');
+    // The tally is still true in a browser — Deeds are earned either way — and
+    // the count is over the WHOLE manifest (every Deed plus the Conqueror
+    // capstone), which is what makes the mirror visible rather than just a
+    // connection. Not pinned to a literal, so adding a Deed does not red-light
+    // this spec.
+    await expect(page.getByTestId('steam-achievements')).toHaveText(
+      /^0 of \d+ earned — they will mirror when you play on Steam\.$/,
+    );
+
     // The save slots still render below it — the new rows must not displace them.
     await expect(page.getByTestId('save-slot')).toHaveCount(3);
   });

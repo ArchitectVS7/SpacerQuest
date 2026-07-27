@@ -9,6 +9,7 @@ import {
   openSettings,
   payDebt,
   startCareer,
+  steamLog,
   tempDir,
   type LaunchOpts,
 } from './support/cockpit';
@@ -88,9 +89,18 @@ test.describe('T-1701a · the Electron shell', () => {
     const bridgeMethods = await page.evaluate(() =>
       Object.keys((window as unknown as { sqDesktop: object }).sqDesktop).sort(),
     );
-    // T-1701b added `about`; the list is asserted EXACTLY so the three twins
-    // (`preload.ts`, `storage.ts`'s `DesktopStorageBridge`, this) cannot drift.
-    expect(bridgeMethods).toEqual(['about', 'dir', 'getItem', 'keys', 'removeItem', 'setItem']);
+    // T-1701b added `about`; T-1702a added `unlockAchievement`. The list is
+    // asserted EXACTLY so the three twins (`preload.ts`, `storage.ts`'s
+    // `DesktopStorageBridge`, this) cannot drift.
+    expect(bridgeMethods).toEqual([
+      'about',
+      'dir',
+      'getItem',
+      'keys',
+      'removeItem',
+      'setItem',
+      'unlockAchievement',
+    ]);
 
     // --- Tour One, start of career ----------------------------------------
     await startCareer(page, 1701);
@@ -261,5 +271,159 @@ test.describe('T-1701a · the Electron shell', () => {
     expect(await bezel(again.page)).toEqual(played);
     expect(readFileSync(join(saveDir, 'sq.migrated.from-localstorage.v1'), 'utf8')).toBe(marker);
     await again.app.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1702a ACCEPTANCE — Steam achievements, and the no-Steam build.
+//
+// "Achievements fire from deed events in the Steam dev sandbox" and "the app
+// runs identically without Steam present" (the Accept). Both are proved THROUGH
+// THE REAL WINDOW, driven by clicks: `startCareer` + `payDebt` earn a real Deed
+// (`debt_first_payment`, whose trigger is `DebtPayment{amount ≥ 1}` — die-free
+// and RNG-insensitive, which is why `payDebt` is the driver), the store maps it
+// to an API name, the preload sends it over the real IPC bridge, and the real
+// main process hands it to `SteamSession.unlock`. Nothing here reaches into the
+// store, the engine or a save file to SET state.
+//
+// THE SANDBOX. `SQ_STEAM_APP_ID=480` is Spacewar, Valve's public dev app.
+// Achievement delivery to a LIVE Steam client cannot be evidence CI holds — no
+// runner has Steam installed — so the far end here is the shell's recording
+// client (`src/steam.ts`'s `createRecordingClient`), which answers `isActivated`
+// from its own log so the dedupe path is exercised for real. A live-client run
+// is recorded in the Delivered note under the same CI-evidence rule T-1701b set
+// for macOS packaging.
+// ---------------------------------------------------------------------------
+
+test.describe('T-1702a · Steam achievements', () => {
+  test('a deed earned in play fires its Steam achievement, and a relaunch backfills it', async () => {
+    const saveDir = join(tempDir('saves'), 'saves');
+    const userDataDir = tempDir('userdata');
+    const steamFakeLog = join(tempDir('steam'), 'steam.jsonl');
+
+    const first = await launch({ saveDir, userDataDir, steamAppId: 480, steamFakeLog });
+
+    // --- the READER of `steamStatus`, before anything is earned -------------
+    await startCareer(first.page, 1702);
+    await openSettings(first.page);
+    const status = first.page.getByTestId('steam-status');
+    await expect(status).toHaveAttribute('data-steam-status', 'ready');
+    // The count is what makes the MIRROR visible rather than just the connection.
+    await expect(first.page.getByTestId('steam-achievements')).toHaveText(
+      /^0 of \d+ mirrored to Steam\.$/,
+    );
+    await closeSettings(first.page);
+    // Nothing was earned yet, so nothing was sent — the mirror is driven by
+    // events, not by boot.
+    expect(steamLog(steamFakeLog)).toEqual([]);
+
+    // --- ONE CLICK EARNS ONE DEED ------------------------------------------
+    await payDebt(first.page, 500);
+
+    // The engine earned it (the count is read straight from
+    // `player.registry.earned`)…
+    await openSettings(first.page);
+    await expect(first.page.getByTestId('steam-achievements')).toHaveText(
+      /^1 of \d+ mirrored to Steam\.$/,
+    );
+    await closeSettings(first.page);
+
+    // …and it crossed the bridge into the main process. THIS is the Accept.
+    await expect
+      .poll(() => steamLog(steamFakeLog), { timeout: 10_000 })
+      .toEqual(['DEED_DEBT_FIRST_PAYMENT']);
+
+    // A second payment earns no second deed, and sends nothing more — the
+    // per-session dedupe and the engine's own once-only registry agree.
+    await payDebt(first.page, 500);
+    await expect(first.page.getByTestId('credits')).toBeVisible();
+    expect(steamLog(steamFakeLog)).toEqual(['DEED_DEBT_FIRST_PAYMENT']);
+    await first.app.close();
+
+    // --- THE BACKFILL, proved from a REAL career ---------------------------
+    // Same save dir, a FRESH fake log (i.e. a Steam account that has never seen
+    // this achievement). The `DeedEarned` event is in the loaded save's past and
+    // will never be re-emitted, so if the name shows up here it can only have
+    // come from `achievementsForState` reconciling the loaded Registry. Without
+    // that path a veteran's first Steam launch would mirror nothing, ever.
+    const freshLog = join(tempDir('steam2'), 'steam.jsonl');
+    const second = await launch({ saveDir, userDataDir, steamAppId: 480, steamFakeLog: freshLog });
+    await expect(second.page.getByTestId('day')).toBeVisible();
+    await expect
+      .poll(() => steamLog(freshLog), { timeout: 10_000 })
+      .toEqual(['DEED_DEBT_FIRST_PAYMENT']);
+
+    await openSettings(second.page);
+    await expect(second.page.getByTestId('steam-status')).toHaveAttribute(
+      'data-steam-status',
+      'ready',
+    );
+    await expect(second.page.getByTestId('steam-achievements')).toHaveText(
+      /^1 of \d+ mirrored to Steam\.$/,
+    );
+    await closeSettings(second.page);
+    await second.app.close();
+  });
+
+  test('the app runs identically without Steam present', async () => {
+    // No app id and no fake: the shell takes the same path a player's copy takes
+    // with Steam uninstalled, Steam closed, or the optional native dependency
+    // never installed. All of those are one state, and it is not a degraded one.
+    const saveDir = join(tempDir('saves'), 'saves');
+    const userDataDir = tempDir('userdata');
+
+    const { app, page } = await launch({ saveDir, userDataDir });
+
+    // --- the whole game still works, start to autosave ---------------------
+    // Deliberately the SAME start-of-career markers and the SAME autosave
+    // assertion the T-1701a test makes, re-run on the no-Steam path: "runs
+    // identically" is a claim about the game, not about the Steam row.
+    await startCareer(page, 1703);
+    const autosave = join(saveDir, 'sq.save.v1');
+    expect(existsSync(autosave)).toBe(true);
+    const firstBytes = readFileSync(autosave, 'utf8');
+
+    await openSettings(page);
+    const status = page.getByTestId('steam-status');
+    await expect(status).toHaveAttribute('data-steam-status', 'unavailable');
+    // The exact sentence, because the wording is the deliverable here: it must
+    // not read as a fault (this is a supported way to play) and it must not
+    // imply the Registry stopped working.
+    await expect(status).toHaveText('Not connected — Deeds are still kept in your Registry.');
+    // The tally is still honest off Steam — the Deeds are earned either way.
+    await expect(page.getByTestId('steam-achievements')).toHaveText(
+      /^0 of \d+ earned — they will mirror when you play on Steam\.$/,
+    );
+    // The rest of Settings is untouched by the new section.
+    await expect(page.getByTestId('save-location')).toHaveAttribute(
+      'data-storage-backend',
+      'desktop',
+    );
+    await expect(page.getByTestId('save-slot')).toHaveCount(3);
+    await closeSettings(page);
+
+    const before = await bezel(page);
+    await payDebt(page, 500);
+    await expect(page.getByTestId('credits')).not.toHaveText(before.credits);
+    await expect
+      .poll(() => readFileSync(autosave, 'utf8'), { timeout: 10_000 })
+      .not.toBe(firstBytes);
+
+    // A deed WAS earned — the Registry is unaffected by Steam's absence. This is
+    // the half that makes "identically" mean something.
+    await openSettings(page);
+    await expect(page.getByTestId('steam-achievements')).toHaveText(
+      /^1 of \d+ earned — they will mirror when you play on Steam\.$/,
+    );
+    await closeSettings(page);
+
+    // …and closing the window still exits 0 with no Steam session to tear down.
+    const exited = new Promise<number | null>((resolve) =>
+      app.process().once('exit', (code) => resolve(code)),
+    );
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const w of BrowserWindow.getAllWindows()) w.close();
+    });
+    expect(await exited).toBe(0);
   });
 });

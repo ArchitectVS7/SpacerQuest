@@ -24,6 +24,10 @@ import {
   type SuccessionSummary,
 } from './format';
 import * as sound from './sound';
+// T-1702a · The Steam achievement mirror. Like `sound.ts`, a pure CLIENT of the
+// event stream the store already scans — the engine emits nothing new for it,
+// and no `GameState` field or `GameEvent` was added. See `steam.ts`'s header.
+import * as steam from './steam';
 // T-1701a · The cockpit's ONE storage surface. `localStorage` on the web build,
 // an OS app-data file store on the Electron shell — same synchronous API, same
 // throwing contract, so every `try/catch` below is unchanged. See `storage.ts`;
@@ -32,15 +36,44 @@ import * as sound from './sound';
 import { storage } from './storage';
 
 /**
- * Play the audio cues an action's event stream implies (T-310). The store is the
- * single choke point that already scans engine events, so the sound layer hooks
- * here as a pure client — the engine emits nothing new. `committed` is true when
- * the action actually spent a die (a firm "commit" thunk); the outcome cues
- * (jump / dice / wire / fail / crit flourishes) come straight from `cuesForEvents`.
+ * React to an action's emitted event stream — the store's ONE presentation-side
+ * choke point.
+ *
+ * T-310 introduced this as `playCues` for audio. T-1702a RENAMED it and folded
+ * the Steam achievement mirror into the same body, deliberately: there are ~20
+ * call sites, and two parallel one-line hooks would mean the next action added
+ * can remember one and forget the other. One call, one name, both clients.
+ *
+ * Both clients are PURE CLIENTS of the rules: the engine emits nothing new for
+ * either, and neither owns a rule. `committed` is true when the action actually
+ * spent a die (a firm "commit" thunk); the outcome cues (jump / dice / wire /
+ * fail / crit flourishes) come straight from `cuesForEvents`, and the
+ * achievements from `achievementsForEvents`.
+ *
+ * NEITHER CALL MAY THROW into the action. `sound.play` is inert without an
+ * unlocked AudioContext and `steam.unlock` swallows by contract, so neither is
+ * wrapped here — wrapping would hide a real regression in either module.
  */
-function playCues(events: GameEvent[], committed: boolean): void {
+function reactToEvents(events: GameEvent[], committed: boolean): void {
   if (committed) sound.play('commit');
   for (const cue of sound.cuesForEvents(events)) sound.play(cue);
+  steam.unlock(steam.achievementsForEvents(events));
+}
+
+/**
+ * T-1702a · Mirror everything a career has ALREADY earned.
+ *
+ * Called at the three points a career ENTERS the cockpit — boot from the
+ * autosave, a fresh career, and a slot load — because the `DeedEarned` events
+ * that earned them are in the loaded save's past and will never be re-emitted.
+ * A veteran who has only ever played the web build, or has played with Steam
+ * closed, gets their whole Registry mirrored on the first Steam launch instead
+ * of nothing. `steam.unlock` dedupes per session and the shell dedupes per Steam
+ * account, so calling this on every entry is cheap. See `steam.ts`'s
+ * `achievementsForState` for why it is not optional.
+ */
+function mirrorEarned(game: GameState): void {
+  steam.unlock(steam.achievementsForState(game));
 }
 
 /**
@@ -301,6 +334,12 @@ function init(): CockpitState {
   // The seed rides the loaded envelope (T-1002); with no save, the game booted
   // from DEFAULT_SEED, so the displayed seed matches it.
   const seed = loaded ? loaded.seed : DEFAULT_SEED;
+  // T-1702a · Reconcile the loaded career's Registry with Steam. Safe at MODULE
+  // SCOPE for the same reason every other read here is: `steam.unlock` swallows
+  // by contract and is a no-op with no shell, so it cannot throw out of `init()`
+  // where no error boundary could catch it. On a fresh career this is an empty
+  // list.
+  mirrorEarned(game);
   return {
     game,
     selectedDie: null,
@@ -829,6 +868,10 @@ export function newGame(seed: number): void {
   // this never triggers an autoplay-policy error.
   sound.play('dawn');
   sound.setDriveHum(true);
+  // T-1702a · Usually a no-op (a fresh career has an empty Registry), and
+  // deliberately NOT special-cased: succession carries a legacy forward, so
+  // "new game" is not a guarantee of zero deeds.
+  mirrorEarned(game);
 }
 
 export function selectDie(index: number): void {
@@ -878,7 +921,7 @@ export function signContract(contractIndex: number): void {
       lastCheckKey: state.lastCheckKey + 1,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, !notice);
+    reactToEvents(events, !notice);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
   }
@@ -915,7 +958,7 @@ export function abandonContract(): void {
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, !notice);
+    reactToEvents(events, !notice);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
   }
@@ -949,7 +992,7 @@ export function buyFuel(amount: number): void {
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, !notice);
+    reactToEvents(events, !notice);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'The fuel purchase could not be resolved.',
@@ -975,7 +1018,7 @@ export function payDebt(amount: number): void {
     const notice = failNoticeFrom(events);
     // No die is spent — do not touch selectedDie / bloomDie.
     set({ game: next, notice, onboardingSeen: reconcileOnboarding(state.game, next) });
-    playCues(events, false);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'The debt payment could not be resolved.' });
   }
@@ -1020,7 +1063,7 @@ export function haggleContract(contractIndex: number): void {
       lastCheckKey: state.lastCheckKey + 1,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, !notice);
+    reactToEvents(events, !notice);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
   }
@@ -1106,7 +1149,7 @@ export function travelTo(destinationId: number): void {
     });
     // The jump die is always spent (even a failed PILOT roll burns it), so this
     // is always a committed action. `cuesForEvents` adds jump / combatStart.
-    playCues(events, true);
+    reactToEvents(events, true);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That jump could not be resolved.' });
   }
@@ -1158,7 +1201,7 @@ export function explore(): void {
       explorationOutcome: outcome,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, committed);
+    reactToEvents(events, committed);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That sweep could not be resolved.' });
   }
@@ -1235,7 +1278,7 @@ export function visitDare(opponentId: string, wager: number): void {
       dareOutcome,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, committed);
+    reactToEvents(events, committed);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That wager could not be resolved.' });
   }
@@ -1271,7 +1314,7 @@ export function borrowLoan(amount: number): void {
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, committed);
+    reactToEvents(events, committed);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That loan could not be resolved.' });
   }
@@ -1307,7 +1350,7 @@ export function repayLoan(amount: number): void {
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, committed);
+    reactToEvents(events, committed);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That payment could not be resolved.' });
   }
@@ -1345,7 +1388,7 @@ export function hireCrew(roleId: string): void {
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, committed);
+    reactToEvents(events, committed);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That hire could not be resolved.' });
   }
@@ -1379,7 +1422,7 @@ export function dismissCrew(roleId: string): void {
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, committed);
+    reactToEvents(events, committed);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That dismissal could not be resolved.' });
   }
@@ -1408,7 +1451,7 @@ export function reroll(dieIndex: number): void {
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
     // No die was committed (only a charge), so this is not a die-commit for the cue.
-    playCues(events, false);
+    reactToEvents(events, false);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That re-roll could not be resolved.' });
   }
@@ -1446,7 +1489,7 @@ export function buyPort(): void {
       notice,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, committed);
+    reactToEvents(events, committed);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'That port purchase could not be resolved.',
@@ -1534,7 +1577,7 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
     });
     // The stance die is always spent, so combat is always committed. Crit
     // flourishes (nat20 / nat1) and the dice rattle ride the event stream.
-    playCues(events, true);
+    reactToEvents(events, true);
   } catch (err) {
     set({
       notice: err instanceof Error ? err.message : 'That combat action could not be resolved.',
@@ -1602,7 +1645,7 @@ export function shipyard(request: ShipyardRequest): void {
     });
     // The shipyard spends the die before its business checks (engine convention),
     // so this is always committed; a refusal emits ShipyardFail → the fail cue.
-    playCues(events, true);
+    reactToEvents(events, true);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That yard order could not be resolved.' });
   }
@@ -1648,7 +1691,7 @@ export function resolveStorylet(storyletId: string, choiceId: string, needsDie: 
       lastCheckKey: state.lastCheckKey + 1,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
-    playCues(events, needsDie && !notice);
+    reactToEvents(events, needsDie && !notice);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That choice could not be resolved.' });
   }
@@ -1707,7 +1750,7 @@ export function endDay(): void {
     });
     // Dusk cues (wire crackle / combat resolution) off the dusk events, then the
     // new dawn sting; keep the drive-hum bed running across the day boundary.
-    playCues(dusk.events, false);
+    reactToEvents(dusk.events, false);
     sound.play('dawn');
     sound.setDriveHum(true);
   } catch (err) {
@@ -1810,6 +1853,9 @@ export function loadSlot(n: number): void {
     recovery: null,
     // Do NOT reset onboardingSeen — loading a mid-career save shouldn't re-teach.
   });
+  // T-1702a · A slot can hold a career earned long before this build (or on the
+  // web build), so its Registry is reconciled the same way the autosave's is.
+  mirrorEarned(game);
 }
 
 /** Delete a save slot (both the envelope and its display meta). The "asks first"

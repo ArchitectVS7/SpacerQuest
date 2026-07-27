@@ -26,8 +26,14 @@
 // independently of the process model.
 //
 // WHY THE BUILT-IN `autoUpdater` SHAPE AND NOT `electron-updater`. Two reasons.
-// (1) `packages/desktop` has zero runtime dependencies — a property T-1701a
-// stated and this task keeps; `electron-updater` is a runtime dependency.
+// (1) `packages/desktop` carries no JS runtime dependency it can avoid;
+// `electron-updater` is one, and a large one. (T-1702a amended the original
+// wording here — "zero runtime dependencies" — because the package now carries
+// exactly ONE OPTIONAL NATIVE dependency, `steamworks.js`, whose absence is a
+// supported and tested state. Zero WORKSPACE dependencies is unchanged, and the
+// argument against `electron-updater` is unaffected: an optional dependency the
+// app is proven to run without is not the same commitment as a mandatory one in
+// the update path.)
 // (2) The backend is genuinely undecided: TECH-STACK §3 is Steam-first and
 // Steam ships its OWN patcher, so a game distributed there may never want a
 // second update channel at all. Squirrel vs. electron-updater vs. Steam is a

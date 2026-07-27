@@ -80,8 +80,9 @@ import type { RenownRankId, AnonymousInterceptorKind } from '@spacerquest/conten
 // side effects — it performs the one-time localStorage import). Only the two
 // storage-failure sentences below are backend-dependent, and they take the
 // backend as a parameter rather than reading it. T-1701b adds `UpdateStatus` on
-// the same terms — `updateStatusMessage` takes it as a parameter too.
-import type { StorageBackend, UpdateStatus } from './storage';
+// the same terms — `updateStatusMessage` takes it as a parameter too, and
+// T-1702a adds `SteamStatus` on the same terms again.
+import type { StorageBackend, UpdateStatus, SteamStatus } from './storage';
 
 /** Display label for a stat. The Stat enum values are already the labels we
  * want, so this is a stable pure lookup (no fabricated names). */
@@ -2121,4 +2122,52 @@ export function updateStatusMessage(status: UpdateStatus | null): string {
     default:
       return 'Updates are handled by your browser.';
   }
+}
+
+// ---------------------------------------------------------------------------
+// T-1702a · WHETHER STEAM IS RECORDING YOUR DEEDS.
+//
+// The same honesty rule `updateStatusMessage` is held to, and for the same
+// reason: `unavailable` is the state EVERY build this repo produces resolves to
+// today (no app id is compiled in), so the sentence must not imply a connection
+// that is not there — and it must not read as a fault either, because running
+// without Steam is a fully supported way to play. The web sentence must never
+// claim Steam; neither desktop sentence may mention a browser there is none of.
+//
+// READER of `storage.ts`'s `steamStatus`: `App.tsx`'s `SteamRow`. `null` means
+// the web build.
+// ---------------------------------------------------------------------------
+export function steamStatusMessage(status: SteamStatus | null): string {
+  switch (status) {
+    case 'ready':
+      return 'Connected — Deeds are recorded as achievements.';
+    case 'unavailable':
+      // Deliberately not "failed" or "error": the game is working exactly as
+      // designed, and the Registry itself is unaffected.
+      return 'Not connected — Deeds are still kept in your Registry.';
+    default:
+      return 'Steam achievements are available in the desktop version.';
+  }
+}
+
+/**
+ * T-1702a · The mirror's own progress line, so a player can see that the mirror
+ * EXISTS and not merely that a connection does.
+ *
+ * `earned` counts Deeds only; `total` is the full manifest (every Deed plus the
+ * Conqueror capstone), which is why a captain who has earned every Deed still
+ * reads N-of-N+1 until they take the rank. That is honest rather than tidy —
+ * the capstone is a real thing left to do.
+ *
+ * READER of `steam.ts`'s `ACHIEVEMENT_MANIFEST` (its length) and of
+ * `state.game.player.registry.earned`: `App.tsx`'s `SteamRow`.
+ */
+export function steamAchievementsMessage(
+  status: SteamStatus | null,
+  earned: number,
+  total: number,
+): string {
+  const tally = `${earned} of ${total}`;
+  if (status === 'ready') return `${tally} mirrored to Steam.`;
+  return `${tally} earned — they will mirror when you play on Steam.`;
 }

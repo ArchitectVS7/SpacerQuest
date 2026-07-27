@@ -4,7 +4,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -72,6 +72,31 @@ export interface LaunchOpts {
    *  through to `localStorage` exactly as the web build does. Test-only; see
    *  `src/main.ts`'s `webPreferences.preload`. */
   storage?: 'web';
+  /**
+   * T-1702a · The Steam dev sandbox. `480` is Spacewar, Valve's public test app.
+   * Omitted, there is NO app id at all and the shell resolves `unavailable` —
+   * which is the state every build this repo produces ships in, and the state
+   * the two T-1701a tests exercise unchanged.
+   */
+  steamAppId?: number;
+  /**
+   * T-1702a · Path to a JSONL file the shell's RECORDING Steam client appends
+   * every `activate` to. Test-only, refused outright when the build is packaged
+   * (`src/steam.ts`'s `resolveFakeLogPath`), and the reason it lives in
+   * `packages/desktop`: the cockpit carries no test flag anywhere.
+   */
+  steamFakeLog?: string;
+}
+
+/** T-1702a · Every achievement the shell's recording client was asked to
+ *  activate, in order. Reads the far side of the REAL IPC bridge in the REAL
+ *  Electron main process — nothing here reaches into the store or the engine. */
+export function steamLog(path: string): string[] {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line) => (JSON.parse(line) as { achievement: string }).achievement);
 }
 
 export async function launch(opts: LaunchOpts): Promise<{ app: ElectronApplication; page: Page }> {
@@ -88,6 +113,11 @@ export async function launch(opts: LaunchOpts): Promise<{ app: ElectronApplicati
       SQ_USER_DATA_DIR: opts.userDataDir,
       ...(opts.rendererUrl ? { SQ_RENDERER_URL: opts.rendererUrl } : {}),
       ...(opts.storage ? { SQ_STORAGE: opts.storage } : {}),
+      // T-1702a · Both absent by default, so every pre-existing launch in this
+      // suite still runs with NO Steam — which is what keeps the two T-1701a
+      // tests honest evidence for "the app runs identically without Steam".
+      ...(opts.steamAppId ? { SQ_STEAM_APP_ID: String(opts.steamAppId) } : {}),
+      ...(opts.steamFakeLog ? { SQ_STEAM_FAKE: opts.steamFakeLog } : {}),
     },
   });
   const page = await app.firstWindow();

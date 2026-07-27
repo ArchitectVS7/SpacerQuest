@@ -38,6 +38,23 @@ from the start: a desktop shell build target, Steamworks integration
 demo (Tour One) as a first-class build configuration, not an afterthought.
 Browser builds remain the dev/playtest loop.
 
+**T-1702a shipped the achievement half.** The mirror is exactly what §8.2 of the
+PRD already says it is — *the achievements are the Deeds* — so no new rule
+exists: the engine emits `DeedEarned` / `RenownRankUp` as it always did,
+`ui/src/steam.ts` maps that stream to Steam API names (derived from the deed id,
+never hand-authored, so a new Deed cannot be silently unmirrored), and
+`desktop/src/steam.ts` hands a **string** to Steamworks — the shell still knows
+nothing about Deeds. 44 Deeds plus the Conqueror capstone are mirrored; the
+partner-site table is `docs/STEAM-ACHIEVEMENTS.md`, kept in step with the code by
+a unit test. **No Steam is a first-class state, not an error path:** no app id is
+compiled in (`COMPILED_STEAM_APP_ID` is `null`), `initSteam` and every unlock
+never throw, the app is otherwise identical, and `steamworks.js` is an
+`optionalDependency` whose absence is tested. **Steam Cloud and rich presence are
+T-1702b**; the Steam overlay is deliberately not enabled (it needs
+`--in-process-gpu --disable-direct-composition`, which changes how the tube
+composites, and the CRT aesthetic is the stated reason Electron was chosen at
+all).
+
 ### 4. Repository shape: monorepo packages
 ```
 packages/
@@ -45,14 +62,19 @@ packages/
   ui/         the cockpit (web) — renders engine state, submits actions
   content/    NPC sheets, storylets, systems, balance tables (data, not code)
   sim/        headless harnesses: balance runs, UGT adapter
-  desktop/    Electron shell — window management + the OS app-data save dir
+  desktop/    Electron shell — window management, the OS app-data save dir,
+              packaging/updater, and the Steamworks achievement pipe
 ```
 `desktop/` was added by **T-1701a** (the §3 desktop shell target, on the
 Electron lean below). It has **zero workspace dependencies and zero game rules**:
-it is a window and a synchronous file-backed key/value store, and the cockpit
-reaches it through one seam (`ui/src/storage.ts`) that falls through to
-`localStorage` when no shell is present — so the browser build stays the
-dev/playtest loop, untouched.
+it is a window, a synchronous file-backed key/value store and (T-1702a) a pipe
+that forwards achievement API-name *strings* to Steamworks, and the cockpit
+reaches all of it through one seam (`ui/src/storage.ts`) that falls through to
+`localStorage` and a no-op achievement sink when no shell is present — so the
+browser build stays the dev/playtest loop, untouched. T-1702a gave it its first
+runtime dependency: **one optional native package** (`steamworks.js`), whose
+absence is a supported and tested state, so "zero *runtime* dependencies" from
+T-1701a/b no longer holds while "zero *workspace* dependencies" still does.
 
 **T-1701b** added packaging and the updater. electron-builder produces mac
 (`dir` + `zip`) and win (`dir` + `nsis`) targets from `desktop/package.json`'s

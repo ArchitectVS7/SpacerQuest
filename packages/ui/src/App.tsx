@@ -102,6 +102,8 @@ import {
   saveRecoveryMessage,
   saveWriteFailedMessage,
   updateStatusMessage,
+  steamStatusMessage,
+  steamAchievementsMessage,
   type SaveRecoveryNotice,
   type EndingView,
   type OnboardingAnchor,
@@ -121,7 +123,12 @@ import {
 // T-1701b · `shellVersion` and `updateStatus` are the shell's answer to "what
 // build am I running, and will it update itself?" — READ HERE by `BuildRow`,
 // which is the whole player-facing surface of the packaging/updater task.
-import { storageBackend, saveLocation, shellVersion, updateStatus } from './storage';
+// T-1702a · `steamStatus` is the shell's answer to "are my Deeds being recorded
+// as Steam achievements?" — READ HERE by `SteamRow`, together with
+// `steam.ts`'s `ACHIEVEMENT_MANIFEST`, which is the player-facing surface of the
+// Steamworks task.
+import { storageBackend, saveLocation, shellVersion, updateStatus, steamStatus } from './storage';
+import { ACHIEVEMENT_MANIFEST } from './steam';
 
 const DIE_MIME = 'application/x-sq-die';
 
@@ -274,6 +281,7 @@ function SettingsPanel({ state, onClose }: { state: CockpitState; onClose: () =>
 
       <StorageRow />
       <BuildRow />
+      <SteamRow state={state} />
       <SavesPanel state={state} />
     </div>
   );
@@ -348,6 +356,57 @@ function BuildRow() {
           data-update-status={updateStatus ?? 'web'}
         >
           {updateStatusMessage(updateStatus)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// T-1702a · WHETHER YOUR DEEDS ARE REACHING STEAM.
+//
+// The player-facing surface of the Steamworks task, and the READER of
+// `storage.ts`'s `steamStatus` and of `steam.ts`'s `ACHIEVEMENT_MANIFEST`
+// (standing constraint 6/7). Two lines, because "connected" and "mirrored" are
+// different questions: the first says whether Steam answered at all, the second
+// shows the MIRROR ITSELF — how much of the Registry has a Steam counterpart —
+// which is the thing this task actually built. Without the second line a player
+// could see "Connected" and still have no idea achievements are Deeds.
+//
+// The count comes from `state.game.player.registry.earned`, the same engine
+// state the Records → Registry tab reads. It is never recomputed here; the UI is
+// a client of the rules, never their owner.
+//
+// Deliberately NOT a button: there is nothing to click. Steam either answered at
+// boot or it did not, and a "reconnect" control would promise a capability the
+// Steamworks API does not offer mid-process. The mirror re-reconciles on its own
+// at every career entry point (see `store.ts`'s backfill calls).
+//
+// `data-steam-status` is the structural handle — prose may be re-voiced, the
+// state id is what a spec should assert on (the `data-storage-backend` /
+// `data-update-status` / `data-recovery-code` precedent). Asserted in
+// `packages/desktop/e2e/shell.spec.ts` (dev shell → `ready` under the recording
+// client, and `unavailable` with no app id), `packages/desktop/e2e/packaged.spec.ts`
+// (a real package → `unavailable`) and `packages/ui/e2e/settings-saves.spec.ts`
+// (web → `web`).
+function SteamRow({ state }: { state: CockpitState }) {
+  const earned = state.game.player.registry.earned.length;
+  return (
+    <div className="set-section">
+      <span className="set-head">Steam</span>
+      <div className="set-row">
+        <span className="set-label">Status</span>
+        <span
+          className="set-value"
+          data-testid="steam-status"
+          data-steam-status={steamStatus ?? 'web'}
+        >
+          {steamStatusMessage(steamStatus)}
+        </span>
+      </div>
+      <div className="set-row">
+        <span className="set-label">Achievements</span>
+        <span className="set-value" data-testid="steam-achievements">
+          {steamAchievementsMessage(steamStatus, earned, ACHIEVEMENT_MANIFEST.length)}
         </span>
       </div>
     </div>

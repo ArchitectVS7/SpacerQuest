@@ -10,8 +10,14 @@ import {
   type KeyValueStore,
   type StorageWindow,
 } from '../storage';
-import { saveRecoveryMessage, saveWriteFailedMessage, updateStatusMessage } from '../format';
-import type { UpdateStatus } from '../storage';
+import {
+  saveRecoveryMessage,
+  saveWriteFailedMessage,
+  steamAchievementsMessage,
+  steamStatusMessage,
+  updateStatusMessage,
+} from '../format';
+import type { SteamStatus, UpdateStatus } from '../storage';
 
 // ---------------------------------------------------------------------------
 // T-1701a · The storage seam.
@@ -189,6 +195,9 @@ describe('T-1701a · migrateInto — the localStorage → app-data import', () =
 });
 
 describe('T-1701a · selectStorage — which backend the cockpit got', () => {
+  /** T-1702a · Every API name a fake bridge was asked to unlock. */
+  const unlocked: string[] = [];
+
   function bridgeFor(map: Map<string, string>, dir: string): DesktopStorageBridge {
     return {
       getItem: (k) => map.get(k) ?? null,
@@ -200,8 +209,12 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
       },
       keys: () => [...map.keys()],
       dir: () => dir,
-      // T-1701b · The shell's self-description. Same shape `preload.ts` returns.
-      about: () => ({ version: '1.0.0', updates: 'inert' }),
+      // T-1701b/T-1702a · The shell's self-description. Same shape `preload.ts`
+      // returns.
+      about: () => ({ version: '1.0.0', updates: 'inert', steam: 'unavailable' }),
+      unlockAchievement: (apiName) => {
+        unlocked.push(apiName);
+      },
     };
   }
 
@@ -236,7 +249,7 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
 
     expect(selected.backend).toBe('desktop');
     expect(selected.saveLocation).toBe('/home/pilot/.config/Rimward/saves');
-    expect(selected.shell).toEqual({ version: '1.0.0', updates: 'inert' });
+    expect(selected.shell).toEqual({ version: '1.0.0', updates: 'inert', steam: 'unavailable' });
     expect(selected.migrated).toHaveLength(10);
     // The handed-out store IS the desktop one.
     expect(selected.storage.getItem('sq.save.v1')).toBe(CAREER['sq.save.v1']);
@@ -357,7 +370,66 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
     const selected = selectStorage(win);
     expect(selected.backend).toBe('desktop');
     expect(selected.migrated).toEqual([]);
-    expect(selected.shell).toEqual({ version: '1.0.0', updates: 'inert' });
+    expect(selected.shell).toEqual({ version: '1.0.0', updates: 'inert', steam: 'unavailable' });
+  });
+
+  // T-1702a ------------------------------------------------------------------
+
+  it('reports the shell’s Steam state, and routes achievements to the bridge', () => {
+    const files = new Map<string, string>();
+    const bridge = bridgeFor(files, '/home/pilot/.config/Rimward/saves');
+    const win: StorageWindow = {
+      localStorage: fakeLocalStorage({}),
+      sqDesktop: {
+        ...bridge,
+        about: () => ({ version: '1.0.0', updates: 'inert', steam: 'ready' }),
+      },
+    };
+
+    const selected = selectStorage(win);
+
+    expect(selected.shell?.steam).toBe('ready');
+    unlocked.length = 0;
+    selected.unlockAchievement('DEED_FIRST_MANIFEST');
+    expect(unlocked).toEqual(['DEED_FIRST_MANIFEST']);
+  });
+
+  it('has NO Steam and a no-op achievement sink on the web build', () => {
+    // A browser tab has no Steam client. The sink must exist (the cockpit calls
+    // it unconditionally) and must do nothing, silently.
+    const web = selectStorage({ localStorage: fakeLocalStorage({}) });
+    expect(web.shell?.steam).toBeUndefined();
+    unlocked.length = 0;
+    expect(() => web.unlockAchievement('DEED_FIRST_MANIFEST')).not.toThrow();
+    expect(unlocked).toEqual([]);
+
+    // …and with no window at all (node/SSR), same answer, still no throw.
+    expect(() => selectStorage(null).unlockAchievement('DEED_FIRST_MANIFEST')).not.toThrow();
+  });
+
+  it('a bridge whose unlockAchievement THROWS cannot cost the player an action', () => {
+    // The ONE deliberate exception to this module's "throwing is the contract"
+    // rule, and the reason it is stated in the header rather than smuggled: the
+    // call sites are inside `store.ts` actions, and nothing in the cockpit reads
+    // an achievement back. Also covers a preload OLDER than this method, whose
+    // `bridge.unlockAchievement` would be `undefined`.
+    const files = new Map<string, string>();
+    const bridge = bridgeFor(files, '/home/pilot/.config/Rimward/saves');
+    const win: StorageWindow = {
+      localStorage: fakeLocalStorage({}),
+      sqDesktop: {
+        ...bridge,
+        unlockAchievement: () => {
+          throw new Error('IPC failed');
+        },
+      },
+    };
+
+    const selected = selectStorage(win);
+    expect(() => selected.unlockAchievement('DEED_FIRST_MANIFEST')).not.toThrow();
+    // …and the store still works, which is the point.
+    selected.storage.setItem('sq.fx', 'off');
+    expect(files.get('sq.fx')).toBe('off');
   });
 });
 
@@ -456,6 +528,58 @@ describe('T-1701b · the updates prose is honest per state', () => {
 });
 
 // ---------------------------------------------------------------------------
+// T-1702a · The READER of `steamStatus`: one honest sentence per state.
+// ---------------------------------------------------------------------------
+
+describe('T-1702a · the Steam prose is honest per state', () => {
+  const STATES: (SteamStatus | null)[] = [null, 'unavailable', 'ready'];
+
+  it('says something distinct for every state', () => {
+    const said = STATES.map((s) => steamStatusMessage(s));
+    expect(new Set(said).size).toBe(STATES.length);
+    for (const sentence of said) expect(sentence.length).toBeGreaterThan(0);
+  });
+
+  it('never claims a connection that is not there', () => {
+    // `unavailable` is what EVERY build this repo produces resolves to today (no
+    // app id is compiled in), so this is the sentence that actually ships.
+    expect(steamStatusMessage('unavailable')).not.toMatch(/^Connected/);
+    expect(steamStatusMessage('unavailable')).toMatch(/^Not connected/);
+    expect(steamStatusMessage('ready')).toMatch(/^Connected/);
+  });
+
+  it('does not read as a fault — playing without Steam is supported, not broken', () => {
+    // A player who is told their game has "failed" or "errored" files a bug
+    // about a state that is working exactly as designed. It also reassures them
+    // the Registry itself is unaffected, which is true.
+    const off = steamStatusMessage('unavailable');
+    expect(off).not.toMatch(/fail|error|problem|unable/i);
+    expect(off).toContain('Registry');
+  });
+
+  it('the web sentence never claims Steam, and neither desktop sentence names a browser', () => {
+    expect(steamStatusMessage(null)).toContain('desktop version');
+    expect(steamStatusMessage(null)).not.toMatch(/^Connected|^Not connected/);
+    for (const state of ['ready', 'unavailable'] as const) {
+      expect(steamStatusMessage(state)).not.toMatch(/browser/i);
+    }
+  });
+
+  it('the achievements line always states the honest tally', () => {
+    // The count is what makes the MIRROR visible, not just the connection.
+    expect(steamAchievementsMessage('ready', 12, 45)).toContain('12 of 45');
+    expect(steamAchievementsMessage('ready', 12, 45)).toContain('mirrored');
+    // Off Steam the tally is still true — the Deeds are earned either way — and
+    // the sentence must not imply they have already been sent.
+    for (const state of [null, 'unavailable'] as const) {
+      const line = steamAchievementsMessage(state, 0, 45);
+      expect(line).toContain('0 of 45');
+      expect(line).not.toMatch(/mirrored to Steam/);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The "web build unaffected" proof, in the small.
 // ---------------------------------------------------------------------------
 
@@ -489,5 +613,23 @@ describe('T-1701a · structural guards over packages/ui/src', () => {
       (f) => f !== 'storage.ts' && api.test(readFileSync(join(srcDir, f), 'utf8')),
     );
     expect(offenders).toEqual([]);
+  });
+
+  it('T-1702a · only storage.ts reaches the shell bridge', () => {
+    // The direct analogue of the localStorage guard above, and it exists for the
+    // same reason: `storage.ts` is the ONE seam, and a later task that reached
+    // `window.sqDesktop` from `store.ts` or `steam.ts` would build a second,
+    // untested path to the shell that the web build has no fallback for. T-1702a
+    // added the first new bridge method since T-1701b, which is exactly when this
+    // guard is worth having.
+    const offenders = sources.filter(
+      (f) => f !== 'storage.ts' && /sqDesktop/.test(readFileSync(join(srcDir, f), 'utf8')),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it('T-1702a · finds the new cockpit sources it claims to scan (non-vacuity)', () => {
+    expect(sources).toContain('steam.ts');
+    expect(sources).toContain('format.ts');
   });
 });

@@ -112,17 +112,30 @@ test.describe('T-1701b · the packaged app', () => {
     const updates = page.getByTestId('update-status');
     await expect(updates).toHaveAttribute('data-update-status', 'inert');
     await expect(updates).toHaveText('Automatic updates are off in this build.');
+
+    // T-1702a · "NO APP ID IS COMPILED IN", as a player sees it. `COMPILED_STEAM_APP_ID`
+    // is `null`, so a real package resolves `unavailable` — and the recording
+    // client cannot rescue it either, because `resolveFakeLogPath` refuses the
+    // `SQ_STEAM_FAKE` flag outright when `app.isPackaged`. This launch passes no
+    // Steam environment at all, so it is also the packaged half of "the app runs
+    // identically without Steam present".
+    const steam = page.getByTestId('steam-status');
+    await expect(steam).toHaveAttribute('data-steam-status', 'unavailable');
+    await expect(steam).toHaveText('Not connected — Deeds are still kept in your Registry.');
     await closeSettings(page);
 
     // …and as the renderer can read it back through the same bridge the main
     // process answers on — `inert` here can only come from `initUpdater`
-    // resolving `no-feed` in the packaged main process.
+    // resolving `no-feed`, and `unavailable` from `initSteam` resolving
+    // `no-app-id`, in the packaged main process.
     const about = await page.evaluate(() =>
       (
-        window as unknown as { sqDesktop: { about(): { version: string; updates: string } } }
+        window as unknown as {
+          sqDesktop: { about(): { version: string; updates: string; steam: string } };
+        }
       ).sqDesktop.about(),
     );
-    expect(about).toEqual({ version: shell.version, updates: 'inert' });
+    expect(about).toEqual({ version: shell.version, updates: 'inert', steam: 'unavailable' });
 
     // --- packaging did not break the save path -----------------------------
     const autosave = join(saveDir, 'sq.save.v1');

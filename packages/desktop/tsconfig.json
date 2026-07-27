@@ -7,10 +7,18 @@
   // preference. The root tsconfig's `module: NodeNext` therefore emits CJS here,
   // which is exactly what `main.js`/`preload.js` need.
   //
-  // NO `references`: this package has ZERO workspace dependencies. It knows
-  // nothing about the engine, the content tables or the cockpit — it is a window
-  // and a file store (see src/main.ts's header). That is the property that keeps
-  // "content is data, engine is pure" from leaking into a shell.
+  // NO `references`: this package has ZERO WORKSPACE DEPENDENCIES. It knows
+  // nothing about the engine, the content tables or the cockpit — it is a window,
+  // a file store and (T-1702a) a Steam achievement pipe that carries strings (see
+  // src/main.ts's header). That is the property that keeps "content is data,
+  // engine is pure" from leaking into a shell.
+  //
+  // T-1702a: the package does now carry ONE OPTIONAL NATIVE dependency,
+  // `steamworks.js`, whose absence is a supported and tested state — and which is
+  // deliberately NOT imported (not even `import type`) by any file here, because
+  // an `import type` from an optional dependency is a compile error the moment
+  // that optional install is skipped. `src/steam.ts` duplicates the two-method
+  // slice it needs and the single guarded `require` lives in `src/main.ts`.
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": true,
