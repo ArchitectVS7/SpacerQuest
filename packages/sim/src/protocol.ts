@@ -32,6 +32,7 @@ import {
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
   applyPlayerAction,
+  canReachSystem,
   careerEnded,
   createInitialState,
   crewCapacity,
@@ -575,20 +576,39 @@ export function legalActions(state: GameState): LegalActions {
     // crossing stake opens NEMESIS_SYSTEM_ID and nothing else, so Andromeda
     // (21–26) and MALIGNA (27) are never advertised — they stay sealed for the
     // expansion (PRD §10) and the engine would still ActionBlock them.
+    //
+    // T-1604a F3 · …and honor the FUEL gate for the same reason. The lock filter
+    // above was the only one here, so a tank that could not cover a jump still saw
+    // every system on the map advertised; `resolveTravel` spends the die and rolls
+    // the pilot check BEFORE it reaches its fuel branch, so the refusal
+    // (`TravelEvent{insufficientFuel}`) costs a die and returns nothing. That is not
+    // an `ActionBlocked`, so it never touched the parity counter and went unnoticed
+    // until a campaign measured a captain burning all five dice a day on it for a
+    // fortnight. `canReachSystem` is the resolver's own predicate, exported from
+    // `actions/travel.ts` and shared with the cockpit's route preview — the same
+    // "never advertise a guaranteed refusal" law as the lock filter, applied to the
+    // other thing that guarantees one.
     const nemesisUnlocked = state.flags['nemesis.crossing.unlocked'] === true;
     const destinations = ALL_SYSTEM_IDS.filter(
       (id) =>
         id !== player.currentSystemId &&
-        (!isGatedDestination(id) || (nemesisUnlocked && id === NEMESIS_SYSTEM_ID)),
+        (!isGatedDestination(id) || (nemesisUnlocked && id === NEMESIS_SYSTEM_ID)) &&
+        canReachSystem(state, id),
     );
-    actions.push({
-      type: 'Travel',
-      params: {
-        destinationId: { kind: 'system-id', choices: destinations },
-        spendDie: dieParam,
-      },
-      note: 'Fuel burned scales with distance; a jump may be interrupted by an encounter.',
-    });
+    // A dry tank reaches nothing, and an empty `choices` list would be a spec no
+    // caller can fill — so the verb is withheld entirely rather than advertised
+    // unfillable. The way out of that state is fuel, the dusk subsistence floor, or
+    // `abandon-contract`, all of which stay advertised.
+    if (destinations.length > 0) {
+      actions.push({
+        type: 'Travel',
+        params: {
+          destinationId: { kind: 'system-id', choices: destinations },
+          spendDie: dieParam,
+        },
+        note: 'Only destinations the current tank can reach are listed; fuel burned scales with distance, and a jump may be interrupted by an encounter.',
+      });
+    }
   }
 
   // --- Explore -----------------------------------------------------------

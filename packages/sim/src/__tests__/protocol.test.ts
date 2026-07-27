@@ -6,12 +6,13 @@ import {
   endDay,
   rollDawnHand,
   startDay,
+  travelPreview,
   type EncounterState,
   type GameState,
   type PlayerAction,
   type ShipyardActionKind,
 } from '@spacerquest/engine';
-import { NEMESIS_SYSTEM_ID, isGatedDestination } from '@spacerquest/content';
+import { NEMESIS_SYSTEM_ID, STAR_SYSTEMS, isGatedDestination } from '@spacerquest/content';
 import { describe, expect, it } from 'vitest';
 import {
   buildStateSummary,
@@ -693,6 +694,14 @@ describe('legal-actions enumerator', () => {
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(7), { handSize: 5, floor: 0, rerolls: 0 });
     state.flags['nemesis.crossing.unlocked'] = true;
+    // T-1604a F3 · The enumerator now filters by reachability as well as by the
+    // lock, and the crossing is the longest jump on the map — a starter tank
+    // cannot cover it, so this fixture would fail for a reason that has nothing
+    // to do with what it asserts. Fuelled to exactly the engine's own quote for
+    // the jump, so the assertion below is about the LOCK and only the lock.
+    const crossingQuote = travelPreview(state, NEMESIS_SYSTEM_ID);
+    state.player.ship.maxFuel = Math.max(state.player.ship.maxFuel, crossingQuote.fuelCost);
+    state.player.ship.fuel = crossingQuote.fuelCost;
 
     const legal = legalActions(state);
     const travel = legal.actions.find((action) => action.type === 'Travel');
@@ -709,6 +718,81 @@ describe('legal-actions enumerator', () => {
         expect(destParam.choices, `system ${id} was advertised post-unlock`).not.toContain(id);
       }
     }
+  });
+
+  it('T-1604a F3 · never advertises a jump the tank cannot cover', () => {
+    const state = createInitialState(7);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(7), { handSize: 5, floor: 0, rerolls: 0 });
+    // A part-full tank, which is where the finding actually lives: a FULL starter
+    // tank reaches every ungated system on the map, so the filter is a no-op at
+    // dawn on day 1 and only engages once the fuel is spent — the measured trap
+    // state was 29 fuel of 300 (T-1604a §7 F2/F3).
+    state.player.ship.fuel = 80;
+
+    // Split the map at the current tank: what the quote says is affordable, and
+    // what it says is not. Both halves must be non-empty or the assertion below
+    // proves nothing — a filter that removed everything, or nothing, would pass a
+    // one-sided check.
+    const candidates = Object.keys(STAR_SYSTEMS)
+      .map((id) => Number.parseInt(id, 10))
+      .filter((id) => id !== state.player.currentSystemId && !isGatedDestination(id));
+    const affordable = candidates.filter((id) => travelPreview(state, id).reachable);
+    const unaffordable = candidates.filter((id) => !travelPreview(state, id).reachable);
+    expect(affordable.length, 'fixture: nothing was affordable').toBeGreaterThan(0);
+    expect(unaffordable.length, 'fixture: everything was affordable').toBeGreaterThan(0);
+
+    const destParam = legalActions(state).actions.find((a) => a.type === 'Travel')?.params
+      .destinationId;
+    expect(destParam?.kind).toBe('system-id');
+    if (destParam?.kind === 'system-id') {
+      for (const id of unaffordable) {
+        expect(destParam.choices, `system ${id} is unaffordable but was advertised`).not.toContain(
+          id,
+        );
+      }
+      for (const id of affordable) {
+        expect(destParam.choices, `system ${id} is affordable but was withheld`).toContain(id);
+      }
+    }
+  });
+
+  it('T-1604a F3 · every advertised destination passes the resolver’s own fuel predicate', () => {
+    // The property rather than two witnesses: whatever the tank, the advertised set
+    // is exactly the reachable set. This is what closes the finding class — a future
+    // destination filter that forgets fuel fails here even if it picks systems this
+    // fixture happens not to name.
+    for (const fuel of [300, 120, 60, 20]) {
+      const state = createInitialState(3);
+      state.dayPhase = DayPhase.DAY;
+      state.player.dawnHand = rollDawnHand(new SeededRng(3), { handSize: 5, floor: 0, rerolls: 0 });
+      state.player.ship.fuel = fuel;
+
+      const destParam = legalActions(state).actions.find((a) => a.type === 'Travel')?.params
+        .destinationId;
+      if (destParam?.kind === 'system-id') {
+        for (const id of destParam.choices) {
+          expect(
+            travelPreview(state, id).reachable,
+            `fuel ${fuel}: system ${id} advertised but unreachable`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('T-1604a F3 · a dry tank is offered no Travel at all, not an unfillable one', () => {
+    const state = createInitialState(7);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(7), { handSize: 5, floor: 0, rerolls: 0 });
+    state.player.ship.fuel = 0;
+
+    const legal = legalActions(state);
+    expect(legal.actions.find((a) => a.type === 'Travel')).toBeUndefined();
+    // …and the captain is not stranded by the withholding: the verbs that get a
+    // dry tank moving again are still on the list.
+    expect(legal.canWait).toBe(true);
+    expect(legal.lifecycle).toContain('end-day');
   });
 
   it('T-1303 · advertises VisitHangout at a Hangout system with an in-system NPC', () => {

@@ -168,8 +168,33 @@ export function travelPreview(state: GameState, destination: number): TravelPrev
     // starmap must show the number `resolveTravel` will actually roll against.
     dc: travelDc(routeDistance, destination),
     dangerLevel: calculateRouteDanger(state, origin, destination).routeDangerLevel,
-    reachable: fuelCost <= ship.fuel,
+    reachable: canReachSystem(state, destination),
   };
+}
+
+/**
+ * T-1604a F3 · Can the tank cover this jump? The single definition of the
+ * predicate `resolveTravel` branches on (`ship.fuel >= fuelRequired`, ~L500), so
+ * the starmap preview, the protocol enumerator and the resolver cannot disagree
+ * about which jumps are affordable.
+ *
+ * It exists because the two surfaces HAD disagreed. The cockpit gates on
+ * `travelPreview().reachable` and quotes the cost, so a human never spends a die
+ * on a jump they cannot make; `legalActions` filtered `destinationId` by the
+ * T-1101 destination LOCK but by nothing else, so a headless client was offered
+ * every system on the map and got a `TravelEvent{insufficientFuel}` back — after
+ * `resolveTravel` had already spent the die and rolled the pilot check, because
+ * the fuel branch sits below both. The UGT campaign measured all five dice burned
+ * that way, every day, for fourteen consecutive days
+ * (`docs/playtests/T-1604a-ugt-campaign.md` §7 F3).
+ *
+ * READERS: `travelPreview` (above, and through it the starmap route read-out) and
+ * `legalActions` in `packages/sim/src/protocol.ts`.
+ */
+export function canReachSystem(state: GameState, destination: number): boolean {
+  const ship = state.player.ship;
+  const routeDistance = systemDistance(state.player.currentSystemId, destination);
+  return jumpFuelCost(ship.drives, routeDistance, ship.hasTransWarpDrive ?? false) <= ship.fuel;
 }
 
 function chooseTargetTier(

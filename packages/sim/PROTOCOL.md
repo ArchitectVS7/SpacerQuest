@@ -204,8 +204,17 @@ or large, so the enumerator exposes the action *shape* and each parameter's
   contract does **not** return to `market.manifestBoard`. This is the escape
   hatch for a hold carrying an undeliverable run — sign-contract stays
   unadvertised while the hold is full.
-- **Travel** — `destinationId` is the `system-id` domain (every system but the
-  current one); one spec, not one-per-destination.
+- **Travel** — `destinationId` is the `system-id` domain; one spec, not
+  one-per-destination. The domain is every system that is **not** the current one,
+  **not** sealed by the destination gate, **and reachable on the fuel in the tank
+  right now** (T-1604a F3 — `canReachSystem`, the same predicate `resolveTravel`
+  branches on and the cockpit's route preview gates on). A jump the tank cannot
+  cover is refused only *after* `resolveTravel` has spent the die and rolled the
+  pilot check, so advertising one costs a die and returns nothing — the same
+  "never advertise a guaranteed refusal" law as the destination gate. A tank that
+  can reach nothing gets **no `Travel` spec at all** rather than one with an empty
+  `choices` list; fuel, the dusk subsistence floor and `abandon-contract` remain
+  advertised, so this narrows the offer without stranding anyone.
 - **Shipyard** — `component`/`tier`/`quantity` shapes (buy-component-tier, repair,
   buy-cargo-pods), plus **buy-special-equipment** whose `equipment` is an `enum`
   over the 7 special items (`CLOAKER`, `AUTO_REPAIR`, `STAR_BUSTER`, `ARCH_ANGEL`,
