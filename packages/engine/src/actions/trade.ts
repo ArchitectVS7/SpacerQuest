@@ -2,6 +2,7 @@ import { Stat } from '@spacerquest/content';
 import { GameState, GameEvent, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
+import { cloneState } from '../clone.js';
 
 export function resolveTrade(
   state: GameState,
@@ -9,7 +10,7 @@ export function resolveTrade(
   _rng: SeededRng,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = JSON.parse(JSON.stringify(state)) as GameState;
+  const nextState = cloneState(state);
 
   if (action.action === 'buy-fuel') {
     if (!action.fuelAmount) {

@@ -1,8 +1,11 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { cloneState } from '../clone.js';
-import { advanceDay } from '../day.js';
+import { advanceDay, applyPlayerAction, startDay } from '../day.js';
 import { createInitialState } from '../state.js';
-import { GameEvent, GameState } from '../types.js';
+import { EncounterState, GameEvent, GameState, PlayerAction } from '../types.js';
 
 /** A state with a non-trivial event log and mutated nested containers. */
 function playedState(days: number): GameState {
@@ -84,5 +87,229 @@ describe('cloneState (copy-on-write snapshot)', () => {
     advanceDay(state, [{ type: 'Wait' }]);
 
     expect(JSON.stringify(state)).toBe(snapshot);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1605c · THE RESOLVER-SIDE HALF OF THE SAME CONTRACT.
+//
+// The suite above proves `cloneState` is O(1)-per-event. It does NOT prove the
+// resolvers actually call it — and that is exactly how six of them silently
+// drifted back to a full `JSON.parse(JSON.stringify(state))` after `clone.ts`
+// landed: `resolveTrade`, `resolveTravel`, `resolveCrew`, `resolveReroll`,
+// `resolveExploration`, `resolveVisitHangout` and `resolvePortPurchase` each
+// deep-copied the whole event log on every player action. Measured BOTH WAYS on
+// a 1,000-day `veteran` career (Windows 10 / Node 22.16): 206.7 ms per day at
+// day 1,000 and 107.2 s for the career, against 8.6 ms/day and 4.7 s once every
+// site went through `cloneState` — a 23x career-level regression. Both runs
+// produced the identical 94,054-event log, so this is pure cost, not behaviour.
+//
+// Two guards, both DETERMINISTIC (no wall clock, so neither can flake):
+//   A. An identity table through the real `applyPlayerAction` entry point: after
+//      any verb, every pre-existing log entry must still be the SAME OBJECT.
+//      That is only possible if the whole clone chain pointer-copies the log, so
+//      it proves per-action cost is O(1) in log length without timing anything.
+//   B. A source scan, so a NEWLY ADDED resolver the table does not know about
+//      still cannot reintroduce the deep copy. Precedent for reading engine
+//      sources from a test: npc.test.ts and reputation.test.ts both do it.
+//
+// The wall-clock statement of the same claim lives in
+// packages/sim/src/__tests__/long-career-perf.test.ts; this pair is its
+// deterministic backstop, so a flake there is never the only thing protecting
+// the fix.
+// ---------------------------------------------------------------------------
+
+/** A DAY-phase state with a non-trivial log and a live dawn hand — the shape
+ *  `applyPlayerAction` actually runs against. */
+function dayState(days: number): GameState {
+  return startDay(playedState(days)).state;
+}
+
+function fixtureEncounter(): EncounterState {
+  return {
+    id: 'enc-clone-perf',
+    pendingTravel: { origin: 1, destination: 2, fuelUsed: 5 },
+    interceptor: {
+      id: 'anon-pirate-clone',
+      source: 'anonymous',
+      name: 'K)(akj',
+      shipName: 'K1++++',
+      shipClass: 'Maligna Bat',
+      homeSystem: 'Pollux-7',
+      kind: 'PIRATE',
+      rosterIndex: 1,
+      stats: { PILOT: 1, GUNS: 0, TRADE: 0, GRIT: 0, GUILE: 1 },
+      tier: 1,
+    },
+    routeDangerLevel: 1,
+    routeDangerChance: 0.08,
+    encounterRoll: 0.01,
+    round: 1,
+    enemyHull: 1,
+  };
+}
+
+interface ResolverRow {
+  /** Row label — one per member of the PlayerAction union, plus refusal paths. */
+  readonly name: string;
+  /** Minimal in-place setup on an already-built DAY-phase state. */
+  readonly setup?: (state: GameState) => void;
+  readonly action: PlayerAction;
+}
+
+/**
+ * One row per `PlayerAction` member. Refusal paths are covered deliberately: a
+ * typed fail (an unknown crew role, a Reroll with no charges, an unavailable
+ * storylet) still returns a CLONED state, so it owes exactly the same contract
+ * as a commit — and a refusal is the cheapest thing a player can do, so it is
+ * the last place that should cost O(log length).
+ */
+const RESOLVER_ROWS: readonly ResolverRow[] = [
+  {
+    name: 'Trade (buy-fuel, commits)',
+    setup: (state) => {
+      state.player.credits = 50_000;
+      state.market.localFuelPrice = 5;
+    },
+    action: { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 0 },
+  },
+  {
+    name: 'Travel (jump to an adjacent system)',
+    setup: (state) => {
+      state.player.ship.fuel = state.player.ship.maxFuel;
+    },
+    action: { type: 'Travel', destinationId: 2, spendDie: 0 },
+  },
+  {
+    name: 'Crew (hire)',
+    setup: (state) => {
+      state.player.credits = 50_000;
+    },
+    action: { type: 'Crew', action: 'hire', roleId: 'crew-navigator', spendDie: 0 },
+  },
+  {
+    name: 'Crew (REFUSAL — unknown role, nothing spent)',
+    action: { type: 'Crew', action: 'hire', roleId: 'crew-does-not-exist', spendDie: 0 },
+  },
+  {
+    name: 'Reroll (REFUSAL — no charges left)',
+    action: { type: 'Reroll', dieIndex: 0 },
+  },
+  {
+    name: 'Explore',
+    setup: (state) => {
+      state.player.ship.fuel = state.player.ship.maxFuel;
+    },
+    action: { type: 'Explore', spendDie: 0 },
+  },
+  {
+    name: 'VisitHangout (rumor at Sun-3)',
+    setup: (state) => {
+      state.player.currentSystemId = 1;
+    },
+    action: { type: 'VisitHangout', venue: 'rumor', spendDie: 0 },
+  },
+  {
+    name: 'Port (buy the local stake)',
+    setup: (state) => {
+      state.player.currentSystemId = 1;
+      state.player.credits = 500_000;
+    },
+    action: { type: 'Port', action: 'buy', systemId: 1, spendDie: 0 },
+  },
+  {
+    name: 'Combat (talk down an active interceptor)',
+    setup: (state) => {
+      state.encounter = fixtureEncounter();
+    },
+    action: { type: 'Combat', stance: 'talk', targetId: 'anon-pirate-clone', spendDie: 0 },
+  },
+  {
+    name: 'Shipyard (repair)',
+    setup: (state) => {
+      state.player.credits = 50_000;
+      state.player.ship.hull.condition = 4;
+    },
+    action: { type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: 0 },
+  },
+  {
+    name: 'Storylet (REFUSAL — not on offer)',
+    action: { type: 'Storylet', storyletId: 'no-such-storylet', choiceId: 'no-such-choice' },
+  },
+  { name: 'Wait', action: { type: 'Wait' } },
+];
+
+describe('T-1605c · every copy-on-write resolver shares the event log', () => {
+  it.each(RESOLVER_ROWS.map((row) => [row.name, row] as const))(
+    '%s preserves every pre-existing log entry by identity',
+    (_name, row) => {
+      const state = dayState(12);
+      row.setup?.(state);
+
+      const before = state.eventLog.slice();
+      expect(before.length).toBeGreaterThan(50);
+
+      const result = applyPlayerAction(state, row.action);
+
+      // The log is append-only, so the action may only ADD entries...
+      expect(result.state.eventLog.length).toBeGreaterThanOrEqual(before.length);
+      // ...and every entry that was already there must be the SAME OBJECT. A
+      // deep copy anywhere in the clone chain fails here, which is the whole
+      // point: this asserts per-action cost is O(1) in log length with no timer.
+      for (let i = 0; i < before.length; i += 1) {
+        expect(result.state.eventLog[i]).toBe(before[i]);
+      }
+      // The input state is still untouched (purity, unchanged by the perf work).
+      expect(state.eventLog.length).toBe(before.length);
+    },
+  );
+
+  it('names every PlayerAction member, so a new verb cannot slip past the table', () => {
+    const covered = [...new Set(RESOLVER_ROWS.map((row) => row.action.type))].sort();
+    // Kept in lockstep with the PlayerAction union in types.ts by hand — the
+    // union is a type, not a value, so there is nothing to enumerate at runtime.
+    expect(covered).toEqual(
+      [
+        'Combat',
+        'Crew',
+        'Explore',
+        'Port',
+        'Reroll',
+        'Shipyard',
+        'Storylet',
+        'Trade',
+        'Travel',
+        'VisitHangout',
+        'Wait',
+      ].sort(),
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // GUARD B — the source scan. The identity table above only covers resolvers
+  // it already knows about; this catches a brand-new one on the day it is
+  // written, which is the failure mode that produced this task.
+  // -------------------------------------------------------------------------
+  it('no copy-on-write resolver deep-copies the whole state (source scan)', () => {
+    const srcDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const actionFiles = readdirSync(join(srcDir, 'actions'))
+      .filter((name) => name.endsWith('.ts'))
+      .map((name) => join('actions', name));
+    // day.ts and storylets.ts host resolvers too (the day loop's own snapshot
+    // and resolveStoryletChoice). npc.ts is DELIBERATELY outside the scanned
+    // set: its `JSON.parse(JSON.stringify(npc))` clones a single ~100-byte
+    // NpcState, which carries no event log and is not a GameState snapshot.
+    const files = [...actionFiles, 'day.ts', 'storylets.ts'];
+    expect(actionFiles.length).toBeGreaterThan(5);
+
+    const offenders = files.filter((relative) =>
+      readFileSync(join(srcDir, relative), 'utf8').includes('JSON.parse(JSON.stringify(state))'),
+    );
+
+    expect(
+      offenders,
+      'these files deep-copy the whole GameState (and with it the unbounded ' +
+        'eventLog) — use cloneState from clone.ts instead',
+    ).toEqual([]);
   });
 });

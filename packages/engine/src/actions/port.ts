@@ -8,6 +8,7 @@ import { GameEvent, GameState, PlayerAction, PortEventFailReason } from '../type
 import { eraPortIncomeMultiplier } from '../era.js';
 import { spendDie } from '../dice.js';
 import { applyReputation } from '../reputation.js';
+import { cloneState } from '../clone.js';
 
 /**
  * T-1307 · Ports as purchasable property (PRD §9). The purchase resolver, the
@@ -34,7 +35,7 @@ export function resolvePortPurchase(
   action: Extract<PlayerAction, { type: 'Port' }>,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = JSON.parse(JSON.stringify(state)) as GameState;
+  const nextState = cloneState(state);
   const day = nextState.day;
 
   const fail = (failReason: PortEventFailReason, systemId?: number) => {

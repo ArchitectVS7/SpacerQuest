@@ -27,6 +27,7 @@ type HangoutVenue = 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { applyDisposition } from '../npc.js';
+import { cloneState } from '../clone.js';
 
 function systemName(systemId: number): string {
   return STAR_SYSTEMS[systemId]?.name ?? `system ${systemId}`;
@@ -122,7 +123,7 @@ export function resolveVisitHangout(
   rng: SeededRng,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = JSON.parse(JSON.stringify(state)) as GameState;
+  const nextState = cloneState(state);
   const day = nextState.day;
 
   // --- Die validation (malformed input → typed fail, NO die spent) ----------

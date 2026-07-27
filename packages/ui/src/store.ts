@@ -234,6 +234,43 @@ export interface CockpitState {
    * and repeating the warning would be a lie.
    */
   recovery: SaveRecoveryNotice | null;
+  /**
+   * T-1605c · TRUE once an autosave WRITE has failed, false once one succeeds
+   * again.
+   *
+   * WHY IT EXISTS. `autosave()` below has always swallowed its write failure in a
+   * bare catch, which is correct for "storage blocked, keep playing" but silent
+   * for the failure this task's own measurements surfaced: a 1,000-day career
+   * serializes to ~10.9 MiB (engine `__tests__/save-perf.test.ts`), Chromium's
+   * localStorage quota is ~5 MB per origin, so a
+   * long career crosses the quota around day ~420 and the cockpit then keeps
+   * *playing* while writing nothing. Every subsequent action is lost on reload,
+   * and nothing on screen says so. That is the same class of silent omission
+   * T-1605a fixed on the READ side (`recovery`); this is the WRITE side.
+   *
+   * Like `recovery` / `succession` / `patrolScan` / `onboardingSeen`, this is
+   * CLIENT presentation meta-state, NOT GameState — so a JSON round-trip of game
+   * state is unaffected, `CURRENT_SAVE_VERSION` does not move and NO save
+   * migration is owed.
+   *
+   * NOT `recovery`: that field's own contract pins it as boot-scoped and set only
+   * by `init()`, and this condition arises mid-play and can clear. NOT `notice`:
+   * that is a one-shot line the next action overwrites, and a career that cannot
+   * be saved must keep saying so until it can.
+   *
+   * READER: `App.tsx`'s `SaveWriteFailedNotice`, a persistent `role="alert"`
+   * banner beside `RecoveryNotice`, whose prose is `format.ts
+   * saveWriteFailedMessage()`. Asserted consumed by
+   * `e2e/save-write-failure.spec.ts`.
+   *
+   * OUT OF SCOPE, deliberately: moving saves off localStorage entirely (the real
+   * cure for an 11 MB career) is T-1701a, the Electron shell & local saves.
+   * Truncating or capping the event log is NOT an option here — the wire IS the
+   * event log (TECH-STACK §2), so capping it is a rule change this task does not
+   * own. `saveToSlot` needs nothing: it has surfaced its own failure notice since
+   * T-312.
+   */
+  saveWriteFailed: boolean;
 }
 
 let state: CockpitState = init();
@@ -273,6 +310,10 @@ function init(): CockpitState {
     textSize: readTextSize(),
     saves: readSlots(),
     recovery,
+    // T-1605c: boot has not attempted a write yet, so there is nothing to warn
+    // about. A blocked/full store raises it on the first autosave instead — and a
+    // blocked READ is already `recovery: 'storage-unavailable'`.
+    saveWriteFailed: false,
   };
 }
 
@@ -633,8 +674,19 @@ export function dismissRecovery(): void {
 function autosave(game: GameState, seed: number): void {
   try {
     localStorage.setItem(SAVE_KEY, createSave(game, seed));
+    // T-1605c: a write that lands clears any standing alarm. Doing it HERE
+    // (rather than in `newGame` / `loadSlot`) is what makes the flag honest in
+    // both directions: those two paths clear it because they autosave and the
+    // write succeeded — not merely because the player pressed a button. If the
+    // store is still full, a fresh career keeps the banner, which is the truth.
+    if (state.saveWriteFailed) set({ saveWriteFailed: false });
   } catch {
-    /* storage unavailable — non-fatal for play */
+    // Still non-fatal for PLAY — the career in memory is unharmed and every verb
+    // keeps working. But it is fatal for the career's PERSISTENCE, so it stops
+    // being silent: T-1605c raises the flag `App.tsx` renders as a standing
+    // banner. Guarded on the current value because autosave runs after EVERY
+    // action, and an unguarded `set` would emit to every subscriber on each one.
+    if (!state.saveWriteFailed) set({ saveWriteFailed: true });
   }
 }
 function readFx(): boolean {

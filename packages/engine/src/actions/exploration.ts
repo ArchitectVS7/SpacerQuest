@@ -12,6 +12,7 @@ import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { fragmentCount, grantFragment } from '../nemesis.js';
 import { navBonus } from '../components.js';
+import { cloneState } from '../clone.js';
 
 /**
  * Roll a boarded POI's loot table (T-111b, PRD §7.2). Each of the three loot
@@ -105,7 +106,7 @@ export function resolveExploration(
   rng: SeededRng,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = JSON.parse(JSON.stringify(state)) as GameState;
+  const nextState = cloneState(state);
 
   // Encounter gating lives in day.ts applyPlayerAction (the only runtime caller),
   // which emits a typed ActionBlocked event before this resolver is reached.

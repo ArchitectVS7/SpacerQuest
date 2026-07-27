@@ -31,6 +31,7 @@ import { eraDangerDelta } from '../era.js';
 import { navBonus } from '../components.js';
 import { guildEncounterMultiplier } from '../guild.js';
 import { applyPatrolContrabandScan } from './patrol.js';
+import { cloneState } from '../clone.js';
 
 function clampDanger(value: number): RouteDangerLevel {
   return Math.max(1, Math.min(5, value)) as RouteDangerLevel;
@@ -450,7 +451,7 @@ export function resolveTravel(
   rng: SeededRng,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = JSON.parse(JSON.stringify(state)) as GameState;
+  const nextState = cloneState(state);
 
   // Encounter gating lives in day.ts applyPlayerAction (the only runtime caller),
   // which emits a typed ActionBlocked event before this resolver is reached.

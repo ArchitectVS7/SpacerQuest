@@ -3,6 +3,7 @@ import { GameEvent, GameState, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { crewCapacity } from '../components.js';
 import { dawnDiceModifiers, equipmentDiceBenefits, spendDie } from '../dice.js';
+import { cloneState } from '../clone.js';
 
 /**
  * T-1306 · The crew + re-roll resolvers (PRD §7 dice progression). Both are PURE
@@ -28,7 +29,7 @@ export function resolveReroll(
   rng: SeededRng,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = JSON.parse(JSON.stringify(state)) as GameState;
+  const nextState = cloneState(state);
   const day = nextState.day;
 
   const hand = nextState.player.dawnHand;
@@ -86,7 +87,7 @@ export function resolveCrew(
   action: Extract<PlayerAction, { type: 'Crew' }>,
 ): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
-  const nextState = JSON.parse(JSON.stringify(state)) as GameState;
+  const nextState = cloneState(state);
   const day = nextState.day;
 
   // --- Die validation (malformed input → typed fail, NO die spent) ----------

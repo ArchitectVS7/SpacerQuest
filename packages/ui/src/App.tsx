@@ -100,6 +100,7 @@ import {
   resolutionCeremony,
   endingScreen,
   saveRecoveryMessage,
+  saveWriteFailedMessage,
   type SaveRecoveryNotice,
   type EndingView,
   type OnboardingAnchor,
@@ -446,6 +447,12 @@ export function App() {
             load was swallowed by the store and the player was silently handed a
             fresh career (store.ts `readSave`'s bare catch). */}
         {s.recovery && <RecoveryNotice recovery={s.recovery} />}
+        {/* T-1605c · The autosave-write-failed banner, beside the corrupt-save
+            notice: same slot, same styling, the other half of the same honesty.
+            The read side was T-1605a; this is the write side, and it is the
+            failure a 1,000-day career actually hits (~10.9 MiB of save against a
+            ~5 MB localStorage quota). */}
+        {s.saveWriteFailed && <SaveWriteFailedNotice />}
         {/* T-1406 · The control cluster is DIEGETIC now — a row of console
             switches on the terminal bezel, in-fiction, rather than a floating
             top-right toolbar. Same buttons, same testids; the audio popover is
@@ -552,6 +559,22 @@ function RecoveryNotice({ recovery }: { recovery: SaveRecoveryNotice }) {
       <button className="btn small" data-testid="recovery-dismiss" onClick={dismissRecovery}>
         Dismiss
       </button>
+    </div>
+  );
+}
+
+// T-1605c · The autosave-write-failed banner. Same slot, styling and `role="alert"`
+// as `RecoveryNotice` above — no new CSS system — but deliberately NOT dismissable:
+// `recovery` describes something that already happened once at boot, while this
+// describes a condition that is STILL TRUE and stays true for every action the
+// player takes until a write lands. A dismiss button would let the cockpit go
+// quiet again while continuing to lose the career, which is the exact failure this
+// fixes. It clears itself the moment `store.ts autosave()` succeeds.
+// READER of `CockpitState.saveWriteFailed`: this component.
+function SaveWriteFailedNotice() {
+  return (
+    <div className="notice recovery" data-testid="save-write-failed-notice" role="alert">
+      <span>{saveWriteFailedMessage()}</span>
     </div>
   );
 }

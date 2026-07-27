@@ -1993,3 +1993,47 @@ export function saveRecoveryMessage(notice: SaveRecoveryNotice): string {
     : 'Nothing could be kept.';
   return `Your last career could not be loaded — ${cause}. A fresh career has been started. ${custody}`;
 }
+
+// ---------------------------------------------------------------------------
+// T-1605c · THE WRITE SIDE OF THE SAME HONESTY.
+//
+// T-1605a made a save that would not LOAD say so (`saveRecoveryMessage` above).
+// This says so when a save will not WRITE. The trigger is not hypothetical: this
+// task measured a 1,000-day career at ~11 MB of JSON, against a ~5 MB
+// localStorage quota per origin in Chromium — a long career crosses it around
+// day ~420, and until now `store.ts autosave()` swallowed the resulting
+// QuotaExceededError in a bare catch. The cockpit kept playing and kept writing
+// nothing.
+//
+// Player-facing copy lives HERE, in format.ts, not in packages/content: content
+// is game DATA (systems, storylets, balance tables), and this is UI chrome about
+// the browser's storage, which the engine knows nothing about.
+//
+// PURE, like every other function in this file: no state, no I/O. The store owns
+// the flag (`CockpitState.saveWriteFailed`), App.tsx owns the banner, this owns
+// only the sentence.
+// ---------------------------------------------------------------------------
+
+/**
+ * The autosave-failed notice, as one sentence in three clauses — cause,
+ * consequence, and what the player can actually DO about it.
+ *
+ * The remedy clause names saving to a slot because that is the one write path
+ * still worth trying: it is a different key, so it can succeed where the
+ * autosave's ~11 MB blob does not, and `store.ts saveToSlot` reports its OWN
+ * failure honestly if it also fails (T-312). The cause clause does not guess
+ * between "quota full" and "storage blocked" — the browser does not reliably
+ * distinguish them across engines, and claiming the wrong one would be worse
+ * than naming both.
+ *
+ * READER: `App.tsx`'s `SaveWriteFailedNotice`, rendered while
+ * `CockpitState.saveWriteFailed` is true. Asserted in
+ * `e2e/save-write-failure.spec.ts`.
+ */
+export function saveWriteFailedMessage(): string {
+  return (
+    'This career is no longer being saved automatically — the browser refused the write, ' +
+    'usually because save storage is full or blocked. Everything you do from here will be ' +
+    'lost when you close or reload the page. Save to a slot from Settings to keep it.'
+  );
+}
