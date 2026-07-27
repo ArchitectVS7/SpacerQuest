@@ -1,6 +1,6 @@
 # Balance Policy & Foundation Reference of Record
 
-**Status:** Standing policy for the Rimward redesign. Companion to `docs/PRD-REIMAGINED.md` and the standing constraints in `TASKS.md`.
+**Status:** Standing policy for the Rimward redesign. Companion to `docs/PRD-REIMAGINED.md` and the standing constraints in `docs/ENGINEERING-POLICY.md`.
 
 This document records where the game's balance numbers come from, how the PRD and the 1991 foundation rules rank against each other when they disagree, and a running errata of claims in the code and task log that turned out to be false.
 
@@ -21,7 +21,7 @@ git show f2f95fa9:foundation/rules/<rule>.ts
 
 ## Part B — PRD-over-Foundation Balance Policy
 
-Mirrors `TASKS.md` standing constraint 5. The precedence is:
+States `docs/ENGINEERING-POLICY.md` standing constraint 5 in full. The precedence is:
 
 1. **PRD-REIMAGINED wins over foundation numbers.** Where the redesign's design intent (`docs/PRD-REIMAGINED.md`) calls for a different number than the 1991 rule, the PRD number is correct. Foundation is the starting point and the fallback, not a straitjacket.
 2. **Foundation is consulted first.** Before diverging, read the foundation rule at `f2f95fa9`. A "divergence" you introduce because you never checked foundation is a bug, not a design decision — and half the time (see the hull-price cap errata below) there is no divergence at all, only a misremembered foundation rule.
@@ -33,17 +33,19 @@ Mirrors `TASKS.md` standing constraint 5. The precedence is:
 
 ## Part C — v0.1 Errata
 
-Corrections to claims made in the codebase and the task log during v0.1 that were found to be false or inaccurate. Source: `TASKS_v0.1_Audit.md` (2026-07-12 audit). The errata is the correction vehicle; the original `TASKS_v0.1.md` task-description lines are left as the historical record and are cited here by line number.
+Corrections to claims made in the codebase and the task log during v0.1 that were found to be false or inaccurate. Source: the v0.1 truth audit of 2026-07-12. The errata is the correction vehicle; the task log it corrects is the retired v0.1 list, quoted here rather than linked, because that list is no longer a document this repository carries.
+
+**Citations here name SYMBOLS, not line numbers.** They used to name line numbers, and by 2026-07-27 every one of them was stale — E5 pointed at `types.ts:760` for a union that had moved to `:989`, E6 at `systems.ts:176` for a constant at `:203`. The corrections themselves were all still true, which is the trap: a precise-looking pointer that lands on the wrong line reads as a refuted claim rather than a moved one. A symbol name is greppable and survives every edit above it.
 
 ### E1 — The hull-scaled equipment price cap is NOT a divergence
 
-**Claim (false):** `packages/engine/src/actions/shipyard.ts:96` and `TASKS_v0.1.md:129` (and the T-115 finding) documented the `min(hull.strength * 1000, 20000)` price on `AUTO_REPAIR` / `TITANIUM_HULL` as an *intentional engine divergence* from a foundation rule that "has no cap."
+**Claim (false):** `packages/engine/src/actions/shipyard.ts` (at `HULL_SCALED_EQUIPMENT_PRICE_CAP`) and the v0.1 task log's T-115 finding documented the `min(hull.strength * 1000, 20000)` price on `AUTO_REPAIR` / `TITANIUM_HULL` as an *intentional engine divergence* from a foundation rule that "has no cap."
 
 **Correction:** Foundation **does** cap these prices at 20,000. `f2f95fa9:foundation/rules/upgrades.ts` (~L731) computes `price = ship.hullStrength > 20 ? 20000 : ship.hullStrength * 1000`. Because the multiplier is 1000, `hull * 1000` reaches 20,000 exactly at `hull = 20` — foundation's threshold — so the engine's `Math.min(hull.strength * 1000, 20000)` form is *mathematically identical* to foundation's branch. The code is **faithful**; the comment and the T-115 finding were the errors. The false comment has been corrected at its definition site in `shipyard.ts` (and the companion note in `shipyard.test.ts`). No behavior changed.
 
 ### E2 — T-101 "payments shifted" is false
 
-**Claim (false):** `TASKS_v0.1.md:43` (T-101) states that "manifest payments and fuel costs shift accordingly."
+**Claim (false):** the v0.1 task log's T-101 states that "manifest payments and fuel costs shift accordingly."
 
 **Correction:** Nothing shifted. No payment or fuel-cost values were changed by T-101. The claim describes an effect that did not occur.
 
@@ -51,7 +53,7 @@ Corrections to claims made in the codebase and the task log during v0.1 that wer
 
 **Claim (inaccurate):** T-106 describes a "shared per-system job pool" that NPCs draw from.
 
-**Correction:** There is no pool. NPCs claim contracts **from the player's own manifest board**, and only when co-located in the player's system, at **most one claim per dusk** (`packages/engine/src/day.ts:258-303`). This is the Contract Competition mechanic now named in PRD §2 — a rival taking a job off *your* board, not a shared regional pool being drained.
+**Correction:** There is no pool. NPCs claim contracts **from the player's own manifest board**, and only when co-located in the player's system, at **most one claim per dusk** — the dusk block in `packages/engine/src/day.ts` that increments `market.npcClaims`, fed by the `T-106 contract competition` branch in `packages/engine/src/npc.ts`. This is the Contract Competition mechanic now named in PRD §2 — a rival taking a job off *your* board, not a shared regional pool being drained.
 
 ### E4 — T-201 poverty-trap criterion scoping
 
@@ -65,7 +67,7 @@ _Source: T-1804 audit (Rimward)._
 
 **Claim (inaccurate):** T-1003's Delivered note describes the UGT adapter as covering "all 7 action types."
 
-**Correction:** The count is **11, not 7**. `PlayerAction` (`packages/engine/src/types.ts:760`) is an 11-member discriminated union: **Trade, Travel, Combat, Shipyard, Storylet, Explore, VisitHangout, Reroll, Crew, Port, Wait**. The exhaustiveness guard `} satisfies Record<PlayerAction['type'], true>` at **`packages/sim/src/__tests__/protocol.test.ts:234`** lists and enforces all 11 — adding a discriminant to the union fails `tsc` there until the table (and therefore the coverage) is extended. The adapter covers all members; the "7" was a stale count.
+**Correction:** The count is **11, not 7**. `PlayerAction` (`packages/engine/src/types.ts`) is an 11-member discriminated union: **Trade, Travel, Combat, Shipyard, Storylet, Explore, VisitHangout, Reroll, Crew, Port, Wait**. The exhaustiveness guard `} satisfies Record<PlayerAction['type'], true>` in **`packages/sim/src/__tests__/protocol.test.ts`** lists and enforces all 11 — adding a discriminant to the union fails `tsc` there until the table (and therefore the coverage) is extended. The adapter covers all members; the "7" was a stale count.
 
 ### E6 — T-1101 "engine exports isGatedDestination / GATED_DESTINATION_MIN_ID" misattributes the owner
 
@@ -73,7 +75,7 @@ _Source: T-1804 audit (Rimward)._
 
 **Claim (inaccurate):** T-1101 states that the engine exports `isGatedDestination` / `GATED_DESTINATION_MIN_ID`.
 
-**Correction:** Both are **`@spacerquest/content`** exports, defined in `packages/content/src/systems.ts:176` (`GATED_DESTINATION_MIN_ID = 21`) and `:178` (`isGatedDestination`). The engine *consumes* them — imported in `packages/engine/src/day.ts:13` from `@spacerquest/content` and read at `day.ts:180`. Content owns them; the engine reads them and neither exports nor re-exports them.
+**Correction:** Both are **`@spacerquest/content`** exports, defined in `packages/content/src/systems.ts` (`GATED_DESTINATION_MIN_ID = 21`, and `isGatedDestination` just below it). The engine *consumes* the predicate — `packages/engine/src/day.ts` imports `isGatedDestination` from `@spacerquest/content` and calls it in its `Travel` guard; it never imports the constant at all, naming it only in a comment. Content owns them; the engine reads them and neither exports nor re-exports them.
 
 ### E7 — T-1307 era-income "A/B test" is a lever test, not a statistical experiment
 

@@ -9,9 +9,8 @@ configuration, the build gate, the README and the press one-pager.
 > authority and this document is only its input. Every open item is a question
 > addressed to **you**: a decision, an account, an artist, a certificate or a
 > push. Nothing in this repository can answer one — see "The coder does not
-> self-waive" below — which is why `TASKS.md` carries T-1704 as
-> `BLOCKED(awaiting user sign-off)` rather than as work still in progress. Two
-> steps close it, in this order:
+> self-waive" below — which is why T-1704 is **blocked awaiting sign-off**
+> rather than work still in progress. Two steps close it, in this order:
 >
 > 1. **Answer every row of §G.** Any non-empty text counts, including a refusal
 >    or a deferral ("not for rc1", "ship unsigned").
@@ -252,7 +251,7 @@ git push origin v1.0.0-rc1  # the user's act; the script prints this and stops
 | E3 | `npm run package:mac` produces a launchable build | ✅ DONE | CI's `Package (mac)` job — same matrix, same packaged e2e. No macOS machine is available locally, and the matrix is the evidence by the CI-evidence rule |
 | E4 | The demo installer is inside its size budget | ✅ DONE | 93,444,570 B (93.4 MB) against the 200 MB ceiling in `packages/desktop/src/size.ts`; `scripts/check-size.mjs` fails `package:*:demo` over budget |
 | E5 | Code signing (Windows) and notarization (macOS) | ⏸ WAIVER REQUESTED | **Q:** do you hold a Windows code-signing certificate and an Apple Developer ID, and where should the secrets live? CI packages with `CSC_IDENTITY_AUTO_DISCOVERY: false` — every build this repo produces today is **unsigned**, and macOS will gatekeeper-block it |
-| E6 | CI green on the tagged commit | ⏸ WAIVER REQUESTED | **Q:** confirm all four CI jobs (`ci`, `e2e`, `desktop`, `package` × 2) are green on the commit `v1.0.0-rc1` points at. Purely push-dependent — nothing can observe a CI run on a commit that has not been pushed — so it is confirmed after the push and recorded in the Delivered note under `TASKS.md`'s CI-evidence rule. The clean-clone half that used to be bundled into this row is now E8, which is open for the same reason this row is |
+| E6 | CI green on the tagged commit | ⏸ WAIVER REQUESTED | **Q:** confirm all four CI jobs (`ci`, `e2e`, `desktop`, `package` × 2) are green on the commit `v1.0.0-rc1` points at. Purely push-dependent — nothing can observe a CI run on a commit that has not been pushed — so it is confirmed after the push, under the CI-evidence rule in `docs/ENGINEERING-POLICY.md` §3. The clean-clone half that used to be bundled into this row is now E8, which is open for the same reason this row is |
 | E7 | Steam overlay enabled | ⏸ WAIVER REQUESTED | **Q:** do you want the Steam overlay on? It needs `--in-process-gpu --disable-direct-composition`, which changes how the CRT tube composites — the aesthetic is the stated reason Electron was chosen at all, so this needs a visual pass before it is switched on. Deferred here by T-1702a and again by T-1702b |
 | E8 | The RC tag itself exists and builds green from a clean clone | ⏸ WAIVER REQUESTED | **Q:** may `npm run release:rc` be run on the T-1704 commit, and its transcript — including the annotated tag object sha — recorded here? Answer it like A7, *before* the run: the ceremony reads §G first, so a blank in this very row is one of the things that stops it. **This is the Accept's second half, and no script here can close it** — the tag is the artifact the sign-off is about, and `git tag -l` in this repository is empty today. The machinery is closed and proven (E1, A6); only the act is open |
 

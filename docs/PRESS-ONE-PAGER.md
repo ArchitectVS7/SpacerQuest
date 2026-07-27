@@ -1,9 +1,12 @@
 # SPACER QUEST: RIMWARD — press one-pager
 
-> **T-1704.** Every factual claim on this page is quoted from
-> `docs/PRD-REIMAGINED.md`, which wins over any other source in this repository
-> (standing constraint 5). Where a number appears — price, session length, cast
-> size — it is the PRD's number, unchanged. **Fields marked `[TO BE SUPPLIED]`
+> **T-1704.** Every factual claim on this page is quoted from a document in this
+> repository — almost all of it from `docs/PRD-REIMAGINED.md`, which wins over
+> any other source (standing constraint 5, `docs/ENGINEERING-POLICY.md`). Where a
+> number appears — price, session length, cast size — it is the PRD's number,
+> unchanged. **The one section sourced elsewhere is "The 1991 hook", whose
+> provenance details come from `README.md`; it is marked as such at the heading
+> rather than left to look like a PRD quotation.** **Fields marked `[TO BE SUPPLIED]`
 > are blanks a human has to fill in; they are open items §F of
 > `docs/RELEASE-CHECKLIST.md` and are deliberately not guessed.** There is no
 > invented studio name, no invented contact address and no fabricated press
@@ -87,13 +90,14 @@ imported into the full game.
 
 ## Beyond it — the veteran loop (PRD §5.2)
 
-Climb the Registry of Deeds through nine ranks to **Conqueror**; commit to one of
+Climb the Registry of Deeds through nine ranks — Lieutenant to Giga Hero — and
+past them to the career capstone, **Conqueror**; commit to one of
 four alliance arcs and change how the other three treat you; chase the Signal
 across a whole career toward a one-way crossing to Andromeda. **Death is legacy,
 not game over:** your successor inherits your charts, half your bank, your Deeds
 and every grudge your name earned.
 
-## The 1991 hook (PRD §4.5)
+## The 1991 hook (PRD §4.5; provenance details from `README.md`)
 
 *Spacer Quest* v3.4 by Firefox ran on Apple II GBBS boards in 1991. Its source
 was located, decompiled and faithfully reimplemented in 2026, then validated by
