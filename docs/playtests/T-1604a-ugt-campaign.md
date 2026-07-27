@@ -733,3 +733,29 @@ separately pins as inert. UGT now takes an `engine.idle_action` config key.
 
 `tsc -b`, `lint`, `format:check` and `test` (1,089) green on each of the three commits. The cockpit
 is untouched throughout — it does not consume `legalActions`.
+
+### F10 · MED · NEW · a port stake is unreachable inside a Tour One career
+
+Surfaced by the rebuilt UGT ladder on 2026-07-27, which now has an action id for `Port/buy`
+at all — the old 20-id vocabulary predated T-1307 and had never sent one.
+
+The cheapest stake on the board is **7,150 cr** (`packages/content/src/ports.ts`). A deliberate
+income policy — sign, deliver, refuel, repeat — peaked at **6,456 cr** across three 120-day
+episodes. Doubling the horizon to 3 × 200 in-game days changed **nothing**: identical captures,
+identical 6,456 peak. The reason is visible in the end state of every long run: the captain sits
+at exactly **100 credits** (the T-1604b subsistence floor) with the Guild marker compounded past
+**725,000**. The floor is doing its job and the marker is doing its job, but between them a
+veteran career is spent destitute and the whole purchasable-property tier (PRD §9) is out of
+reach of anyone who reaches it.
+
+Reported as a measurement, not a verdict, and **not fixed here** — the number belongs with
+`docs/BALANCE-POLICY.md` and the T-1603 sweep, not with a harness. Two things to weigh with it:
+
+- It is the same shape as **F4**, with one correction to that finding: **the crew hire is no
+  longer unreachable.** The same income policy affords the 2,000–3,000 cr hire, and the ladder now
+  captures `Crew/hire`, `Crew/dismiss` and `Reroll` for real. F4 was measured with a uniform-random
+  policy; the verb is not unreachable, it is unreachable *to a random walk*. The reroll charge in
+  particular needs one SPECIFIC role (`crew-navigator`), which a harness taking `choices[0]` could
+  never hire — that half was a harness defect and is fixed.
+- The port income is a compounding source (`portDuskIncome`), so the tier being unreachable is
+  also the reason the late-career economy has no second leg.
