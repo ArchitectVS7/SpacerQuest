@@ -27,7 +27,9 @@ Non-negotiable engine properties:
   d20 roll flows from the seed — this is what makes 10,000-day overnight
   balance simulation and reproducible bug reports possible.)
 - **Serializable:** full game state round-trips through JSON (saves, UGT
-  snapshots, and eventually Steam Cloud come free).
+  snapshots and Steam Cloud all come free — T-1702b synced the *existing*
+  T-1002 envelope byte for byte, adding no `GameState` field, no event and no
+  save migration).
 - **Event-sourced output:** the engine emits typed events (the news wire is
   literally the event log, rendered in-fiction).
 
@@ -49,8 +51,40 @@ partner-site table is `docs/STEAM-ACHIEVEMENTS.md`, kept in step with the code b
 a unit test. **No Steam is a first-class state, not an error path:** no app id is
 compiled in (`COMPILED_STEAM_APP_ID` is `null`), `initSteam` and every unlock
 never throw, the app is otherwise identical, and `steamworks.js` is an
-`optionalDependency` whose absence is tested. **Steam Cloud and rich presence are
-T-1702b**; the Steam overlay is deliberately not enabled (it needs
+`optionalDependency` whose absence is tested.
+
+**T-1702b shipped Steam Cloud and rich presence.** Two calls of substance, both
+recorded here rather than left implicit. (1) Cloud is the **ISteamRemoteStorage
+API, not Auto-Cloud** — Auto-Cloud is a partner-site path glob with zero code,
+and a feature with no code has no test, no named reader and no failure mode
+anyone can prove is graceful, which the Accept's "verified in the dev sandbox"
+demands. Auto-Cloud must therefore stay *off* on the partner site, or both
+mechanisms would write the same files. (2) The conflict policy is
+**restore-only-when-absent**: cloud → local happens only when the local file is
+missing, local → cloud on every write, coalesced. `listFiles()` returns name and
+size only — there is no modification time in the binding — so "newest wins"
+cannot be implemented honestly; and overwriting a live local career with a stale
+cloud copy is the data-loss class this repo already refused in `storage.ts`'s
+`migrateInto` **semantic 3** ("a desktop career already in progress beats a stale
+browser one"). So the shipped promise is precise: Steam Cloud *seeds* a machine
+with no career and *backs up* the one you have; a two-way merge is deliberately
+out of scope. Seven keys ride the cloud — the autosave, the three slot envelopes
+and their three display-meta files — and the exclusions are the interesting part:
+the quarantine blob would sync damage everywhere, and
+`sq.migrated.from-localstorage.v1` is **machine-local** (syncing it down would
+make a fresh machine skip its own localStorage import, i.e. lose a career).
+Uploads are coalesced on a 3-second timer because `store.ts` autosaves after
+every action and a save can be ~10.9 MiB. **Rich presence** publishes `system`,
+`day` and `steam_display: '#Status_InSystem'`; the sentence a friend reads is a
+partner-site localization token, so the shell owns no prose (the cockpit's
+`richPresenceLine` renders the same sentence for Settings, pinned to the doc by a
+test). **One client load, three consumers:** `SteamSession.client` is handed to
+both new modules, so cloud and presence are `unavailable` *exactly* when Steam
+is, structurally rather than by three copies of the same try/catch — and both,
+like `initSteam`, never throw. Both partner-site configurations live in
+`docs/STEAM-ACHIEVEMENTS.md` for T-1704.
+
+The Steam overlay is still deliberately not enabled (it needs
 `--in-process-gpu --disable-direct-composition`, which changes how the tube
 composites, and the CRT aesthetic is the stated reason Electron was chosen at
 all).

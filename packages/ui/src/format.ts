@@ -81,8 +81,8 @@ import type { RenownRankId, AnonymousInterceptorKind } from '@spacerquest/conten
 // storage-failure sentences below are backend-dependent, and they take the
 // backend as a parameter rather than reading it. T-1701b adds `UpdateStatus` on
 // the same terms — `updateStatusMessage` takes it as a parameter too, and
-// T-1702a adds `SteamStatus` on the same terms again.
-import type { StorageBackend, UpdateStatus, SteamStatus } from './storage';
+// T-1702a adds `SteamStatus` on the same terms again, and T-1702b `CloudStatus`.
+import type { StorageBackend, UpdateStatus, SteamStatus, CloudStatus } from './storage';
 
 /** Display label for a stat. The Stat enum values are already the labels we
  * want, so this is a stable pure lookup (no fabricated names). */
@@ -2170,4 +2170,74 @@ export function steamAchievementsMessage(
   const tally = `${earned} of ${total}`;
   if (status === 'ready') return `${tally} mirrored to Steam.`;
   return `${tally} earned — they will mirror when you play on Steam.`;
+}
+
+// ---------------------------------------------------------------------------
+// T-1702b · WHETHER YOUR CAREERS ARE BACKED UP, AND WHAT FRIENDS SEE.
+//
+// Held to exactly the honesty rule `steamStatusMessage` and `updateStatusMessage`
+// are held to, and for the same reason: `unavailable` is the state EVERY build
+// this repo produces resolves to today (no app id is compiled in), so neither
+// sentence may imply a connection that is not there, and neither may read as a
+// FAULT — playing without Steam is a fully supported way to play. The web
+// sentences must never claim Steam; the desktop sentences must never mention a
+// browser there is none of.
+//
+// THE CLOUD SENTENCE IS ALSO A PROMISE, so it is worded to the policy the code
+// actually implements (`packages/desktop/src/cloud.ts`, Decision B): Steam Cloud
+// SEEDS a machine with no career and BACKS UP the one you have. It is not a
+// two-way merge, and the row does not hint at one.
+//
+// READERS of `storage.ts`'s `cloudStatus` / `cloudRestored`: `App.tsx`'s
+// `SteamRow`. `null` means the web build.
+// ---------------------------------------------------------------------------
+export function cloudStatusMessage(status: CloudStatus | null, restored: number): string {
+  if (status === 'ready') {
+    if (restored > 0) {
+      const saves = restored === 1 ? 'save' : 'saves';
+      // The RESTORE, made visible. Without this line a player whose career came
+      // down from the cloud has no way to know it did.
+      return `Synced — ${restored} ${saves} restored from Steam Cloud this launch.`;
+    }
+    return 'Synced — your careers are backed up to Steam Cloud.';
+  }
+  if (status === 'unavailable') {
+    // Deliberately not "failed" or "off": nothing is broken, and the careers are
+    // exactly as safe as they were before this feature existed.
+    return 'Not synced — your saves are kept on this machine.';
+  }
+  return 'Steam Cloud is available in the desktop version.';
+}
+
+/**
+ * T-1702b · The rich-presence sentence — THE PROSE THE SHELL DELIBERATELY DOES
+ * NOT OWN.
+ *
+ * `packages/desktop` publishes the two custom Steamworks keys plus the
+ * `steam_display` token `#Status_InSystem`; the token's TEXT is authored on the
+ * partner site as `Day {#day} — {#system}`, and this function emits that same
+ * sentence for the Settings row so a player can read exactly what their friends
+ * see. `docs/STEAM-ACHIEVEMENTS.md` carries the token line and a unit test
+ * asserts the doc and this function cannot drift apart.
+ *
+ * Composing this string inside the window manager would have been a rule in the
+ * shell; composing it twice, differently, would have been a lie on one of the
+ * two surfaces.
+ */
+export function richPresenceLine(system: string, day: number): string {
+  return `Day ${day} — ${system}`;
+}
+
+/**
+ * T-1702b · What the Settings "Shown to friends" row says.
+ *
+ * Keyed off `SteamStatus`, not `CloudStatus`: presence rides the same client
+ * Steam itself resolved (`packages/desktop/src/steam.ts`'s Decision B), so
+ * "connected to Steam" is precisely the condition under which a friend sees
+ * anything.
+ */
+export function presenceMessage(steam: SteamStatus | null, line: string): string {
+  if (steam === 'ready') return line;
+  if (steam === 'unavailable') return 'Not connected — nothing is shown to friends.';
+  return 'Rich presence is available in the desktop version.';
 }

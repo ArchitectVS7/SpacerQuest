@@ -9,14 +9,15 @@
 // can say whether this build updates itself and whether achievements are being
 // recorded. It is READ-ONLY and touches no store.
 //
-// THE SEVENTH, `unlockAchievement`, IS THE ONE ASYNCHRONOUS METHOD (T-1702a),
-// and the asymmetry is deliberate. Storage is `sendSync` because `store.ts` runs
-// `init()` at MODULE SCOPE and has ~25 synchronous call sites (see
-// `packages/ui/src/storage.ts`'s header); an achievement has no such constraint,
-// and a synchronous native Steam call on every `DeedEarned` would block the
-// renderer mid-action for a cosmetic side effect. It is FIRE-AND-FORGET: it
-// returns nothing, and it cannot throw into the cockpit — which is the second
-// deliberate break from the rule below, for the reason stated there.
+// THE SEVENTH AND EIGHTH — `unlockAchievement` (T-1702a) and `setPresence`
+// (T-1702b) — ARE THE TWO ASYNCHRONOUS METHODS, and the asymmetry is deliberate.
+// Storage is `sendSync` because `store.ts` runs `init()` at MODULE SCOPE and has
+// ~25 synchronous call sites (see `packages/ui/src/storage.ts`'s header); neither
+// of these has any such constraint, and a synchronous native Steam call on every
+// `DeedEarned` (or on every state patch) would block the renderer for a cosmetic
+// side effect. Both are FIRE-AND-FORGET: they return nothing, and they cannot
+// throw into the cockpit — which is the deliberate break from the rule below,
+// for the reason stated there.
 //
 // TWIN: `packages/ui/src/storage.ts`'s `DesktopStorageBridge`. The two interfaces
 // are duplicated ON PURPOSE — `packages/ui` must not depend on
@@ -34,10 +35,11 @@
 // swallowed would make the desktop build silently lose careers, which is the
 // exact class of bug T-1605a/c existed to end.
 //
-// `unlockAchievement` IS THE ONE EXCEPTION, stated rather than smuggled: no
-// cockpit behaviour keys off it, nothing is lost when it fails, and a failed
-// achievement must never be able to cost a player their action. It uses
-// `ipcRenderer.send`, which has no reply to fail.
+// `unlockAchievement` AND `setPresence` ARE THE EXCEPTIONS, stated rather than
+// smuggled, and they are exceptions for the SAME reason: no cockpit behaviour
+// keys off either, nothing is lost when either fails, and a failed achievement
+// (or a friends-list line that did not update) must never be able to cost a
+// player their action. Both use `ipcRenderer.send`, which has no reply to fail.
 //
 // CommonJS, not ESM: an Electron preload must be CJS unless `sandbox: false`,
 // and trading the sandbox for import syntax is not a trade worth making.
@@ -54,6 +56,8 @@ const CHANNELS = {
   about: 'sq-shell:about',
   // T-1702a · Fire-and-forget, `send` not `sendSync`. See the header.
   unlockAchievement: 'sq-steam:unlock',
+  // T-1702b · The second of the two. Same terms.
+  presence: 'sq-steam:presence',
 } as const;
 
 type StoreReply<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -66,6 +70,10 @@ interface ShellAbout {
   version: string;
   updates: 'unsupported' | 'inert' | 'armed';
   steam: 'ready' | 'unavailable';
+  /** T-1702b · `cloud` mirrors `cloud.ts`'s `CloudState`. */
+  cloud: 'ready' | 'unavailable';
+  /** T-1702b · How many saves this launch pulled down from Steam Cloud. */
+  cloudRestored: number;
 }
 
 function call<T>(channel: string, ...args: unknown[]): T {
@@ -93,6 +101,13 @@ const bridge = {
   // harmless the payload looks.
   unlockAchievement: (apiName: string): void => {
     ipcRenderer.send(CHANNELS.unlockAchievement, apiName);
+  },
+  // T-1702b · Publish the player's current system and day as Steam rich
+  // presence. Same asymmetries and the same reasoning as `unlockAchievement`
+  // above: no reply, no throw, no return value, and `main.ts` still validates the
+  // SENDER and both payload fields on the far side.
+  setPresence: (system: string, day: number): void => {
+    ipcRenderer.send(CHANNELS.presence, system, day);
   },
 };
 

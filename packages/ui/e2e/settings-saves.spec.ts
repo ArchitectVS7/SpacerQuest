@@ -266,7 +266,28 @@ test.describe('T-312 settings, saves & new-game UX', () => {
       /^0 of \d+ earned — they will mirror when you play on Steam\.$/,
     );
 
-    // The save slots still render below it — the new rows must not displace them.
+    // T-1702b · The WEB halves of Cloud & rich presence. A browser tab has no
+    // Steam client, so `cloudStatus` is `null`, `cloudRestored` is 0 and
+    // `setRichPresence` is a no-op — the web build is completely unaffected by
+    // this task too, which is the criterion this asserts. The DESKTOP halves are
+    // `packages/desktop/e2e/shell.spec.ts` (the cloud round trip and the
+    // presence log under the recording client, plus both `unavailable` with no
+    // app id) and `packages/desktop/e2e/packaged.spec.ts` (a real package →
+    // `unavailable`).
+    //
+    // READERS asserted here: `storage.ts`'s `cloudStatus` / `cloudRestored` →
+    // `App.tsx`'s `SteamRow` Cloud row, and `steam.ts`'s `presenceLine` →
+    // `format.ts`'s `presenceMessage` → the "Shown to friends" row (standing
+    // constraint 7).
+    const cloud = page.getByTestId('steam-cloud');
+    await expect(cloud).toHaveAttribute('data-cloud-status', 'web');
+    await expect(cloud).toHaveText('Steam Cloud is available in the desktop version.');
+    await expect(page.getByTestId('steam-presence')).toHaveText(
+      'Rich presence is available in the desktop version.',
+    );
+
+    // The save slots still render below it — the four Steam rows must not
+    // displace them.
     await expect(page.getByTestId('save-slot')).toHaveCount(3);
   });
 });

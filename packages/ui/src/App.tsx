@@ -104,6 +104,9 @@ import {
   updateStatusMessage,
   steamStatusMessage,
   steamAchievementsMessage,
+  cloudStatusMessage,
+  richPresenceLine,
+  presenceMessage,
   type SaveRecoveryNotice,
   type EndingView,
   type OnboardingAnchor,
@@ -127,8 +130,20 @@ import {
 // as Steam achievements?" — READ HERE by `SteamRow`, together with
 // `steam.ts`'s `ACHIEVEMENT_MANIFEST`, which is the player-facing surface of the
 // Steamworks task.
-import { storageBackend, saveLocation, shellVersion, updateStatus, steamStatus } from './storage';
-import { ACHIEVEMENT_MANIFEST } from './steam';
+// T-1702b · `cloudStatus` and `cloudRestored` are the shell's answer to "are my
+// careers backed up, and did anything come down from the cloud on this launch?"
+// — READ HERE by `SteamRow`, which is where both halves of the Cloud & presence
+// task become reachable by a player with no dev tools.
+import {
+  storageBackend,
+  saveLocation,
+  shellVersion,
+  updateStatus,
+  steamStatus,
+  cloudStatus,
+  cloudRestored,
+} from './storage';
+import { ACHIEVEMENT_MANIFEST, presenceLine } from './steam';
 
 const DIE_MIME = 'application/x-sq-die';
 
@@ -388,8 +403,22 @@ function BuildRow() {
 // client, and `unavailable` with no app id), `packages/desktop/e2e/packaged.spec.ts`
 // (a real package → `unavailable`) and `packages/ui/e2e/settings-saves.spec.ts`
 // (web → `web`).
+//
+// T-1702b ADDS TWO MORE ROWS to the same section, and they are the entire
+// player-facing surface of Cloud & rich presence:
+//
+//   * "Cloud saves" — the READER of `storage.ts`'s `cloudStatus` AND
+//     `cloudRestored`. The restore COUNT is there for the same reason the
+//     achievements tally is: it makes the sync itself visible, not merely the
+//     connection. Deliberately not a "sync now" button — the upload is coalesced
+//     and the restore only ever runs at boot (see `desktop/src/cloud.ts`), so a
+//     button would promise a capability the design does not have.
+//   * "Shown to friends" — the exact sentence Steam publishes, composed from the
+//     same pure `presenceLine(game)` the sender uses, so the row and the friends
+//     list cannot disagree.
 function SteamRow({ state }: { state: CockpitState }) {
   const earned = state.game.player.registry.earned.length;
+  const line = presenceLine(state.game);
   return (
     <div className="set-section">
       <span className="set-head">Steam</span>
@@ -407,6 +436,29 @@ function SteamRow({ state }: { state: CockpitState }) {
         <span className="set-label">Achievements</span>
         <span className="set-value" data-testid="steam-achievements">
           {steamAchievementsMessage(steamStatus, earned, ACHIEVEMENT_MANIFEST.length)}
+        </span>
+      </div>
+      {/* T-1702b · The two halves of Cloud & rich presence, made reachable by a
+          player through Settings with no dev tools (standing constraint 6). Both
+          carry the state id as a data attribute on the same precedent as
+          `data-steam-status` — prose may be re-voiced, the id is what a spec
+          asserts on. */}
+      <div className="set-row">
+        <span className="set-label">Cloud saves</span>
+        <span
+          className="set-value"
+          data-testid="steam-cloud"
+          data-cloud-status={cloudStatus ?? 'web'}
+        >
+          {cloudStatusMessage(cloudStatus, cloudRestored)}
+        </span>
+      </div>
+      <div className="set-row">
+        <span className="set-label">Shown to friends</span>
+        {/* Composed from the SAME pure `presenceLine` the sender uses, so what
+            this row shows and what Steam actually receives cannot drift. */}
+        <span className="set-value" data-testid="steam-presence">
+          {presenceMessage(steamStatus, richPresenceLine(line.system, line.day))}
         </span>
       </div>
     </div>

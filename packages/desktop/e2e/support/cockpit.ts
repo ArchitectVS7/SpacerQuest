@@ -4,7 +4,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -86,17 +86,58 @@ export interface LaunchOpts {
    * `packages/desktop`: the cockpit carries no test flag anywhere.
    */
   steamFakeLog?: string;
+  /**
+   * T-1702b · Directory the shell's recording Steam client uses as a FAKE STEAM
+   * CLOUD — one file per name, so `writeFile`/`readFile` are a genuine round
+   * trip through the filesystem and survive a relaunch (which an in-memory stub
+   * could not). Test-only, refused outright when packaged (`src/steam.ts`'s
+   * `resolveFakeCloudDir`), and ABSENT BY DEFAULT so every pre-existing launch
+   * in this suite still runs with no cloud at all — which is what keeps the
+   * T-1701a/T-1702a tests honest evidence for "runs identically without Steam".
+   */
+  steamFakeCloud?: string;
 }
 
-/** T-1702a · Every achievement the shell's recording client was asked to
- *  activate, in order. Reads the far side of the REAL IPC bridge in the REAL
- *  Electron main process — nothing here reaches into the store or the engine. */
-export function steamLog(path: string): string[] {
+/** One line of the shell's recording client log. Achievements and presence share
+ *  the file, so one read is the whole record of what crossed into the main
+ *  process. */
+interface SteamLogLine {
+  achievement?: string;
+  presence?: { key: string; value: string | null };
+}
+
+function logLines(path: string): SteamLogLine[] {
   if (!existsSync(path)) return [];
   return readFileSync(path, 'utf8')
     .split('\n')
     .filter((line) => line.trim().length > 0)
-    .map((line) => (JSON.parse(line) as { achievement: string }).achievement);
+    .map((line) => JSON.parse(line) as SteamLogLine);
+}
+
+/** T-1702a · Every achievement the shell's recording client was asked to
+ *  activate, in order. Reads the far side of the REAL IPC bridge in the REAL
+ *  Electron main process — nothing here reaches into the store or the engine.
+ *  T-1702b: filtered to the achievement lines, because presence now shares the
+ *  same log. */
+export function steamLog(path: string): string[] {
+  return logLines(path)
+    .filter((line): line is { achievement: string } => typeof line.achievement === 'string')
+    .map((line) => line.achievement);
+}
+
+/** T-1702b · Every rich-presence key the shell published, in order. The far side
+ *  of the real IPC bridge again — this is what makes the Settings row and the
+ *  friends list two independent observations of the same value. */
+export function presenceLog(path: string): { key: string; value: string | null }[] {
+  return logLines(path)
+    .filter((line): line is { presence: { key: string; value: string | null } } => !!line.presence)
+    .map((line) => line.presence);
+}
+
+/** T-1702b · What the fake Steam Cloud holds, sorted. */
+export function cloudFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).sort();
 }
 
 export async function launch(opts: LaunchOpts): Promise<{ app: ElectronApplication; page: Page }> {
@@ -118,6 +159,8 @@ export async function launch(opts: LaunchOpts): Promise<{ app: ElectronApplicati
       // tests honest evidence for "the app runs identically without Steam".
       ...(opts.steamAppId ? { SQ_STEAM_APP_ID: String(opts.steamAppId) } : {}),
       ...(opts.steamFakeLog ? { SQ_STEAM_FAKE: opts.steamFakeLog } : {}),
+      // T-1702b · Absent by default too, for the same reason.
+      ...(opts.steamFakeCloud ? { SQ_STEAM_FAKE_CLOUD: opts.steamFakeCloud } : {}),
     },
   });
   const page = await app.firstWindow();
@@ -149,6 +192,21 @@ export async function startCareer(page: Page, seed: number): Promise<void> {
 export async function payDebt(page: Page, amount: number): Promise<void> {
   await page.getByTestId('debt-amount').fill(String(amount));
   await page.getByTestId('pay-debt').click();
+}
+
+/**
+ * T-1702b · Close the day, through the same control a player uses — the driving
+ * idiom `packages/ui/e2e/settings-saves.spec.ts` already uses. Lives here rather
+ * than inline so the packaged spec could reuse it unchanged.
+ *
+ * Waits for the day counter to actually move: the dusk resolution can raise a
+ * notice, and a helper that returned before the day advanced would make its
+ * caller's assertion a race.
+ */
+export async function endDay(page: Page): Promise<void> {
+  const before = await page.getByTestId('day').innerText();
+  await page.getByTestId('end-day').click();
+  await expect(page.getByTestId('day')).not.toHaveText(before);
 }
 
 export async function openSettings(page: Page): Promise<void> {

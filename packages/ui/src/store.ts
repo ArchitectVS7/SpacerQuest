@@ -319,6 +319,13 @@ export interface CockpitState {
 }
 
 let state: CockpitState = init();
+// T-1702b · Publish the booted career's system/day BEFORE the player touches
+// anything — a career restored from the autosave (or from Steam Cloud) should
+// show on the friends list at once, not only after the first action. Safe at
+// MODULE SCOPE for the same reason `mirrorEarned` is: `syncPresence` swallows by
+// contract and is a no-op with no shell, so it cannot throw out of module init
+// where no error boundary could catch it.
+steam.syncPresence(state.game);
 const listeners = new Set<() => void>();
 
 // T-1605a · `init()` runs at MODULE SCOPE, outside React, so an error boundary
@@ -593,6 +600,15 @@ function emit(): void {
 }
 function set(patch: Partial<CockpitState>): void {
   state = { ...state, ...patch };
+  // T-1702b · Rich presence, at the store's ONE state-update choke point rather
+  // than at ~20 action call sites — the same argument that folded the achievement
+  // mirror into `reactToEvents`: an action added later cannot forget it.
+  // `syncPresence` dedupes on the system|day pair, so the ordinary UI-only patch
+  // costs one string compare and never touches the bridge. It never throws by
+  // contract (see `steam.ts`), so it is deliberately UNWRAPPED here, for the same
+  // reason `reactToEvents` is unwrapped: a wrapper would hide a real regression.
+  // No `CockpitState` field is added for it.
+  steam.syncPresence(state.game);
   emit();
 }
 

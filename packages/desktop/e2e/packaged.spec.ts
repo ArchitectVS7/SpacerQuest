@@ -122,6 +122,18 @@ test.describe('T-1701b · the packaged app', () => {
     const steam = page.getByTestId('steam-status');
     await expect(steam).toHaveAttribute('data-steam-status', 'unavailable');
     await expect(steam).toHaveText('Not connected — Deeds are still kept in your Registry.');
+
+    // T-1702b · The same, for both halves of Cloud & rich presence. `SQ_STEAM_FAKE`
+    // AND `SQ_STEAM_FAKE_CLOUD` are refused outright when `app.isPackaged` — a
+    // packaged build whose cloud store an env var could redirect would have an
+    // attacker-chosen save directory — so a real package cannot be talked into
+    // either fake, and one client load means both features degrade with Steam.
+    const cloud = page.getByTestId('steam-cloud');
+    await expect(cloud).toHaveAttribute('data-cloud-status', 'unavailable');
+    await expect(cloud).toHaveText('Not synced — your saves are kept on this machine.');
+    await expect(page.getByTestId('steam-presence')).toHaveText(
+      'Not connected — nothing is shown to friends.',
+    );
     await closeSettings(page);
 
     // …and as the renderer can read it back through the same bridge the main
@@ -131,11 +143,27 @@ test.describe('T-1701b · the packaged app', () => {
     const about = await page.evaluate(() =>
       (
         window as unknown as {
-          sqDesktop: { about(): { version: string; updates: string; steam: string } };
+          sqDesktop: {
+            about(): {
+              version: string;
+              updates: string;
+              steam: string;
+              cloud: string;
+              cloudRestored: number;
+            };
+          };
         }
       ).sqDesktop.about(),
     );
-    expect(about).toEqual({ version: shell.version, updates: 'inert', steam: 'unavailable' });
+    expect(about).toEqual({
+      version: shell.version,
+      updates: 'inert',
+      steam: 'unavailable',
+      // T-1702b · `unavailable` here can only come from `initCloud` resolving
+      // `no-steam` off a null client, and `0` from a restore that never ran.
+      cloud: 'unavailable',
+      cloudRestored: 0,
+    });
 
     // --- packaging did not break the save path -----------------------------
     const autosave = join(saveDir, 'sq.save.v1');

@@ -1,6 +1,11 @@
 import { DEEDS, RENOWN_RANKS } from '@spacerquest/content';
 import type { GameEvent, GameState } from '@spacerquest/engine';
-import { unlockAchievement } from './storage';
+import { setRichPresence, unlockAchievement } from './storage';
+// T-1702b · NOT A CYCLE, and it was checked rather than assumed: `format.ts`
+// imports only a TYPE from `./storage` and never imports `./steam` at all
+// (`App.tsx` imports both). `systemName` is the same content lookup the starmap
+// and the wire use, so the name Steam publishes is the name the player reads.
+import { systemName } from './format';
 
 /**
  * ============================================================================
@@ -218,9 +223,71 @@ export function unlock(apiNames: readonly string[]): void {
   }
 }
 
-/** TEST-ONLY · Forget this session's sent set. The dedupe is module state, so
- *  without this the unit suite's second test would see the first one's sends.
- *  Not called from the cockpit. */
+/** TEST-ONLY · Forget this session's sent set AND the last published presence
+ *  pair. Both are module state, so without this the unit suite's second test
+ *  would see the first one's sends. Not called from the cockpit. */
 export function resetSentForTests(): void {
   sent.clear();
+  lastPresence = null;
+}
+
+// ===========================================================================
+//  T-1702b · RICH PRESENCE — the second thing this module mirrors
+// ===========================================================================
+//
+// The module now mirrors TWO things, and NEITHER adds a rule. The achievements
+// are the Deeds (see the header above); the presence values are `game.day` and
+// `game.player.currentSystemId`, engine state that has round-tripped through the
+// T-1002 save envelope since T-112b. So no `GameState` field is added, no
+// `GameEvent` is added, `CURRENT_SAVE_VERSION` does not move and no save
+// migration is owed — standing constraint 3 stays N/A, with the reason.
+//
+// The SHELL owns none of this either: what crosses the bridge is a STRING and a
+// NUMBER, exactly as an achievement crosses as a string, so
+// `packages/desktop`'s zero-workspace-dependency property survives.
+
+/**
+ * PURE · What Steam should be told about right now.
+ *
+ * A pure function of `GameState` and nothing else, so the Settings row and the
+ * IPC sender can be composed from THE SAME call and cannot drift into showing
+ * the player one thing while sending Steam another. Total over any state: an
+ * unknown `currentSystemId` yields `systemName`'s `System-N` fallback rather
+ * than throwing.
+ */
+export function presenceLine(game: GameState): { system: string; day: number } {
+  return { system: systemName(game.player.currentSystemId), day: game.day };
+}
+
+/**
+ * The last `system|day` pair actually sent. Sibling of {@link sent}, and
+ * session-scoped for the same reason: it is a cache, not a record.
+ */
+let lastPresence: string | null = null;
+
+/**
+ * Publish the current system/day to Steam.
+ *
+ * CALLED FROM `store.ts`'s ONE state-update choke point, so it fires on every
+ * patch — including the UI-only ones (a die selected, a pane opened). The dedupe
+ * here is what makes that free: an unchanged pair costs one string compare and
+ * never touches the bridge. The shell dedupes again on its own side
+ * (`presence.ts` returns `'unchanged'`), for the same reason the achievement
+ * pipe dedupes twice.
+ *
+ * NEVER THROWS: the sink is a no-op in a browser tab and a swallowing
+ * `ipcRenderer.send` under the shell, and this adds its own guard on top so a
+ * future sink cannot break the rule. That matters because the call site is
+ * inside `set()`, on the path of every action a player takes.
+ */
+export function syncPresence(game: GameState): void {
+  const { system, day } = presenceLine(game);
+  const key = `${system}|${day}`;
+  if (key === lastPresence) return;
+  lastPresence = key;
+  try {
+    setRichPresence(system, day);
+  } catch {
+    /* cosmetic — never worth an action. See the doc comment. */
+  }
 }

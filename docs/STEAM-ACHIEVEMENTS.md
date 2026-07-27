@@ -43,6 +43,69 @@ mirrored: they are pure functions of deed count, so they would unlock as a side
 effect of achievements the player already holds. See `packages/ui/src/steam.ts`'s
 header for that decision in full.
 
+## T-1702b · The other two partner-site configurations
+
+These are the parts of Steamworks that **no code can create**. The shell drives
+both features through the API at runtime, but each needs a one-time setup in App
+Admin that a human has to perform — so they live here, in the one file T-1704
+pastes from, alongside the achievement table.
+
+### 1. Rich presence (App Admin → Community → Rich Presence)
+
+`packages/desktop/src/presence.ts` sets exactly three keys on every publish:
+
+| Key | Value | Notes |
+| --- | --- | --- |
+| `system` | the current star system's authored name | e.g. `Aldebaran-1` |
+| `day` | the current career day, as a string | e.g. `12` |
+| `steam_display` | `#Status_InSystem` | Steam's reserved key; the value is a **token**, never prose |
+
+Add one localization token, for English (`english`):
+
+```
+#Status_InSystem = Day {#day} — {#system}
+```
+
+`{#day}` and `{#system}` interpolate the two custom keys above. Pointing
+`steam_display` at a token is the only supported way to show a rich-presence
+string — there is no "just send a sentence" API — which is why the shell owns no
+prose. `packages/ui/src/format.ts`'s `richPresenceLine` emits that same sentence
+for the Settings row so a player can read exactly what their friends see, and
+`packages/ui/src/__tests__/steam.test.ts` asserts this file and that function
+cannot drift apart.
+
+Under the Spacewar dev sandbox (app 480) no such token exists, so a live friends
+list would show a blank status while the three custom keys are still delivered —
+which is a **pass**, exactly as an achievement `rejected` by the 480 backend is:
+it proves the call reached Steamworks.
+
+### 2. Steam Cloud (App Admin → Cloud)
+
+**Auto-Cloud must stay OFF.** The game drives the ISteamRemoteStorage API
+directly (`packages/desktop/src/cloud.ts`); enabling Auto-Cloud as well would
+have both mechanisms writing the same files.
+
+Enable Steam Cloud with quota for the seven files the shell syncs — the autosave
+`sq.save.v1`, the three slot envelopes `sq.slot.{1,2,3}.v1` and their three
+display-meta files `sq.slot.{1,2,3}.meta`. T-1605c measured a 1,000-day career at
+about **10.9 MiB**, so size the quota for four envelopes at that ceiling plus the
+tiny meta files:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Byte quota | **128 MiB** per user | 4 × ~10.9 MiB with generous headroom for a longer career than any measured |
+| File count quota | **32** | 7 today; headroom for more slots without a partner-site change |
+
+Nothing else is synced, and the exclusions are deliberate — see `cloud.ts`'s
+`CLOUD_CARRIED`. In particular `sq.migrated.from-localstorage.v1` is
+**machine-local** and must never ride the cloud: syncing it down would make a
+fresh machine skip its own localStorage import.
+
+The conflict policy is **restore-only-when-absent**: the cloud seeds a machine
+with no career and backs up the one you have. It is not a two-way merge, because
+`listFiles()` carries no modification time and "newest wins" cannot be
+implemented honestly against this API.
+
 ## The table
 
 | API name | Display name | Description |

@@ -15,8 +15,14 @@
 // desktop shells, Electron or save files — the PRD is about the experience, and
 // the experience here is unchanged.
 //
-// THIS PACKAGE CONTAINS ZERO GAME RULES. It is a window, a file store and (as of
-// T-1702a) a Steam achievement pipe. It has no workspace dependencies — it
+// THIS PACKAGE CONTAINS ZERO GAME RULES. It is a window, a file store, (as of
+// T-1702a) a Steam achievement pipe and (as of T-1702b) a Steam Cloud sync and a
+// rich-presence pipe. Neither T-1702b half is a rule either: `cloud.ts` moves
+// OPAQUE BYTES under key names this package already owns (`saveStore.ts`'s
+// `SAFE_KEY`), and `presence.ts` publishes a STRING and a NUMBER the engine
+// already round-trips — the shell has still never heard of a system, a day or a
+// Deed, and the prose a player reads is composed in the cockpit. It has no
+// workspace dependencies — it
 // cannot import the engine, the content tables or the cockpit, and
 // `tsconfig.json` has no `references` to make that structural. Every rule still
 // lives in `packages/engine`, still pure, still headless; the shell is a client
@@ -78,11 +84,14 @@ import { initUpdater, type UpdaterStatus } from './updater';
 import {
   createRecordingClient,
   initSteam,
+  resolveFakeCloudDir,
   resolveFakeLogPath,
   type SteamClientLike,
   type SteamHost,
   type SteamSession,
 } from './steam';
+import { initCloud, type CloudSession } from './cloud';
+import { initPresence, type PresenceSession } from './presence';
 
 /**
  * The product name. Set BEFORE `whenReady`, because `app.getPath('userData')`
@@ -135,6 +144,13 @@ const CHANNELS = {
   // registered with `ipcMain.on` and NO `event.returnValue`, unlike every
   // storage channel. See `registerSteamIpc` for why.
   unlockAchievement: 'sq-steam:unlock',
+  // T-1702b · Publish the player's current system/day as Steam rich presence.
+  // THE SECOND ASYNCHRONOUS CHANNEL, on exactly the same terms as the first:
+  // nothing in the cockpit reads a result, and a synchronous native call on
+  // every state patch would block the renderer for a cosmetic side effect. Still
+  // sender-validated and payload-validated — "fire and forget" is a statement
+  // about the REPLY, not about trust.
+  presence: 'sq-steam:presence',
 } as const;
 
 /** What the `about` channel answers with. TWIN: `preload.ts`'s `ShellAbout` and
@@ -144,6 +160,17 @@ interface ShellAbout {
   updates: UpdaterStatus['state'];
   /** T-1702a · Whether achievements are being recorded on this launch. */
   steam: 'ready' | 'unavailable';
+  /** T-1702b · Whether saves are syncing to Steam Cloud on this launch. */
+  cloud: 'ready' | 'unavailable';
+  /**
+   * T-1702b · How many saves were pulled DOWN from the cloud on this launch.
+   *
+   * A COUNT, not the names: a filename list on a Settings row is developer
+   * output, and the log already carries the names. It is what makes the RESTORE
+   * visible to the player rather than just the connection — the same reason the
+   * achievements row shows a tally rather than only "Connected".
+   */
+  cloudRestored: number;
 }
 
 /**
@@ -157,6 +184,18 @@ interface ShellAbout {
  * own API names are ASCII identifiers, so nothing legitimate is excluded.
  */
 const SAFE_ACHIEVEMENT = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/**
+ * T-1702b · The longest system name the presence channel will accept.
+ *
+ * Same discipline and same reason as {@link SAFE_ACHIEVEMENT}: this string
+ * arrives FROM THE RENDERER and is going to a native library. Steamworks caps a
+ * presence value at 256 bytes; the authored system names in `packages/content`
+ * are far shorter, so this excludes nothing legitimate. `presence.ts` validates
+ * again on its own side — the IPC guard protects the process from a hostile
+ * renderer, the module guard protects the native call from every caller.
+ */
+const MAX_PRESENCE_SYSTEM = 64;
 
 /**
  * The reply shape for every channel. The bridge turns `{ ok: false }` back into
@@ -210,6 +249,45 @@ let steamSession: SteamSession = initSteam({
   env: {},
   load: () => null,
 });
+
+/**
+ * T-1702b · What Steam Cloud resolved to on this launch, and the sink every
+ * local save write is marked dirty on.
+ *
+ * READER CHAIN (standing constraint 7), end to end: `cloudSession.status.state`
+ * and `.restored.length` → the {@link CHANNELS.about} IPC channel →
+ * `preload.ts`'s `about()` → `packages/ui/src/storage.ts`'s `cloudStatus` /
+ * `cloudRestored` → `App.tsx`'s Settings "Steam → Cloud saves" row. Asserted by
+ * `e2e/shell.spec.ts` (a career restored onto a WIPED save dir reports
+ * `1 save restored`, and a populated one reports `0` — the no-clobber half),
+ * `e2e/packaged.spec.ts` (`unavailable` in a real package) and
+ * `packages/ui/e2e/settings-saves.spec.ts` (`web` on the browser build).
+ *
+ * Seeded with an `unavailable` session rather than `null` for the same reason
+ * `steamSession` is: a `sq-store:set` that somehow beats `whenReady` must be a
+ * harmless no-op, not a crash. The session contract is total on every path.
+ */
+let cloudSession: CloudSession = initCloud({
+  client: null,
+  readLocal: () => null,
+  writeLocal: () => undefined,
+  schedule: () => undefined,
+});
+
+/**
+ * T-1702b · The rich-presence sink for this launch.
+ *
+ * READER CHAIN (standing constraint 7): `packages/ui/src/store.ts`'s one
+ * state-update choke point → `steam.ts`'s `syncPresence` → `storage.ts`'s
+ * `setRichPresence` → `preload.ts`'s `setPresence` → the
+ * {@link CHANNELS.presence} channel → here → `presence.ts`'s
+ * `PresenceSession.set` → Steamworks. Asserted end to end by
+ * `e2e/shell.spec.ts`, which reads the far side of the REAL IPC bridge in the
+ * REAL main process and watches it move when the player ends a day.
+ *
+ * Seeded `unavailable` for the same reason as the two sessions above.
+ */
+let presenceSession: PresenceSession = initPresence({ client: null });
 
 /**
  * Where saves live.
@@ -321,6 +399,15 @@ function registerStorageIpc(): void {
   ipcMain.on(CHANNELS.set, (event, key: string, value: string) =>
     reply(event, () => {
       saveStore!.setItem(key, value);
+      // T-1702b · Mark it for Steam Cloud, and note the two constraints:
+      //   (a) AFTER the local write, and only if it did not throw — the cloud
+      //       must never hold bytes the local store rejected;
+      //   (b) `mark` is O(1) and merely arms a timer. It must NOT upload inline:
+      //       this channel is `sendSync` and blocks the renderer, and a
+      //       synchronous multi-MiB cloud write on every autosave would put the
+      //       T-1605c latency profile straight back. See `cloud.ts`'s
+      //       `CLOUD_FLUSH_MS` for the coalescing arithmetic.
+      cloudSession.mark(key);
       return null;
     }),
   );
@@ -340,6 +427,8 @@ function registerStorageIpc(): void {
       version: app.getVersion(),
       updates: updaterStatus.state,
       steam: steamSession.status.state,
+      cloud: cloudSession.status.state,
+      cloudRestored: cloudSession.status.restored.length,
     })),
   );
 }
@@ -367,6 +456,20 @@ function registerSteamIpc(): void {
     if (!trustedContents.has(event.sender.id)) return;
     if (typeof apiName !== 'string' || !SAFE_ACHIEVEMENT.test(apiName)) return;
     steamSession.unlock(apiName);
+  });
+
+  // T-1702b · THE PRESENCE CHANNEL. The SECOND asynchronous channel, and the
+  // reasoning above applies unchanged: nothing in the cockpit reads a result, so
+  // there is no reply, and both guards are SILENT DROPS rather than throws
+  // because there is no reply channel to fail on. `presence.ts` validates again
+  // on its own side — this guard is about the process, that one is about the
+  // native call.
+  ipcMain.on(CHANNELS.presence, (event, system: unknown, day: unknown) => {
+    if (!trustedContents.has(event.sender.id)) return;
+    if (typeof system !== 'string' || system.length === 0) return;
+    if (system.length > MAX_PRESENCE_SYSTEM) return;
+    if (typeof day !== 'number' || !Number.isSafeInteger(day) || day <= 0) return;
+    presenceSession.set(system, day);
   });
 }
 
@@ -398,9 +501,12 @@ function loadSteamClient(
   env: NodeJS.ProcessEnv,
   appId: number,
 ): SteamClientLike | null {
-  // TEST-ONLY, and refused outright when packaged (see `resolveFakeLogPath`).
-  const fakeLog = resolveFakeLogPath({ isPackaged, env, load: () => null });
-  if (fakeLog) return createRecordingClient(fakeLog);
+  // TEST-ONLY, and refused outright when packaged (see `resolveFakeLogPath` /
+  // `resolveFakeCloudDir`). T-1702b: the same recording client now also backs a
+  // file-based fake cloud, when — and only when — a directory was named.
+  const fakeHost: SteamHost = { isPackaged, env, load: () => null };
+  const fakeLog = resolveFakeLogPath(fakeHost);
+  if (fakeLog) return createRecordingClient(fakeLog, resolveFakeCloudDir(fakeHost));
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const steamworks = require('steamworks.js') as {
@@ -545,6 +651,40 @@ if (!app.requestSingleInstanceLock()) {
     };
     steamSession = initSteam(steamHost);
 
+    // T-1702b · THE RESTORE HAPPENS HERE, and the ORDER IS LOAD-BEARING.
+    //
+    //   saveStore  → must exist first: the restore writes THROUGH it, so the
+    //                cloud can never reach the save directory by a second,
+    //                unvalidated path (`SAFE_KEY`, atomic write-and-rename).
+    //   steamSession → Decision B: `initCloud` and `initPresence` are handed the
+    //                SAME client, so both are `unavailable` exactly when Steam
+    //                is, through one guarded load and one try/catch.
+    //   BEFORE createWindow → `packages/ui/src/storage.ts` resolves at MODULE
+    //                SCOPE and `store.ts` calls `init()` at module scope, so a
+    //                window created first would read the save directory before
+    //                the cloud copy landed and the player would boot into a
+    //                FRESH CAREER on a machine their cloud save was sitting in.
+    //                This is the same reason `initSteam` already runs here.
+    //
+    // `initCloud` never throws by contract, so this can never take the boot down.
+    cloudSession = initCloud({
+      client: steamSession.client?.cloud ?? null,
+      readLocal: (name) => saveStore!.getItem(name),
+      writeLocal: (name, content) => saveStore!.setItem(name, content),
+      schedule: (run, ms) => {
+        setTimeout(run, ms);
+      },
+      log: (message) => console.log(`[cloud] ${message}`),
+    });
+
+    // T-1702b · Rich presence. Nothing is published at boot: the cockpit sends
+    // the first pair from `store.ts`'s module scope once a career exists, which
+    // is the only moment a system and a day are both real.
+    presenceSession = initPresence({
+      client: steamSession.client?.localplayer ?? null,
+      log: (message) => console.log(`[presence] ${message}`),
+    });
+
     // Before the window: the first request the window makes is for the renderer
     // itself, and it goes through this handler.
     if (app.isPackaged) registerAppProtocol();
@@ -567,6 +707,23 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
     });
+  });
+
+  // T-1702b · THE LAST FLUSH, and the teardown of a presence line that must not
+  // outlive the process.
+  //
+  // Both calls are SYNCHRONOUS and TOTAL by contract, and neither calls
+  // `preventDefault()`. That is not incidental: the `window-all-closed →
+  // app.quit()` path routes through here, and `e2e/shell.spec.ts`'s
+  // window-close-exits-0 assertion is a SHIPPED GUARANTEE — it is the regression
+  // guard that caught T-1701a's `closed`-handler bug, where a throw inside an
+  // Electron listener aborted the rest of the emit and left the process
+  // resident. A quit-time hook that can throw or block is exactly that class of
+  // change, so `flush` and `clear` swallow everything (see `cloud.ts` /
+  // `presence.ts`).
+  app.on('before-quit', () => {
+    cloudSession.flush();
+    presenceSession.clear();
   });
 
   app.on('window-all-closed', () => {

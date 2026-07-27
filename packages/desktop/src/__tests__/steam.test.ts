@@ -7,6 +7,7 @@ import {
   createRecordingClient,
   initSteam,
   resolveAppId,
+  resolveFakeCloudDir,
   resolveFakeLogPath,
   type SteamClientLike,
   type SteamHost,
@@ -293,6 +294,134 @@ describe('T-1702a · the recording client (test-only)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// T-1702b · Decision B, and the fake cloud the round-trip e2e is built on.
+// ---------------------------------------------------------------------------
+
+describe('T-1702b · SteamSession.client — one load, three consumers', () => {
+  it('exposes the client it loaded, so cloud and presence need no second require', () => {
+    // DECISION B: `main.ts` hands this SAME object to `initCloud` and
+    // `initPresence`, which is what makes them `unavailable` exactly when Steam
+    // is — structurally, rather than by three copies of the same try/catch.
+    const client = fakeClient();
+    const session = initSteam(hostFor({ env: { ...SANDBOX }, load: () => client }));
+    expect(session.client).toBe(client);
+  });
+
+  it('is null on EVERY unavailable path, so both features degrade with Steam', () => {
+    expect(initSteam(hostFor()).client).toBeNull(); // no app id
+    expect(initSteam(hostFor({ env: { ...SANDBOX }, load: () => null })).client).toBeNull();
+    expect(
+      initSteam(
+        hostFor({
+          env: { ...SANDBOX },
+          load: () => {
+            throw new Error('no binding');
+          },
+        }),
+      ).client,
+    ).toBeNull();
+  });
+
+  it('a client with no cloud/localplayer namespaces still typechecks and loads', () => {
+    // The two new members are OPTIONAL on purpose: a binding that predates them
+    // must degrade, and every pre-existing fake in this file must keep compiling
+    // with no edits — which is what `fakeClient` above proves by still being used.
+    const session = initSteam(hostFor({ env: { ...SANDBOX }, load: () => fakeClient() }));
+    expect(session.status.state).toBe('ready');
+    expect(session.client?.cloud).toBeUndefined();
+    expect(session.client?.localplayer).toBeUndefined();
+  });
+});
+
+describe('T-1702b · the recording client records presence and backs a real cloud', () => {
+  const scratch: string[] = [];
+  afterEach(() => {
+    for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function scratchDir(prefix: string): string {
+    const dir = mkdtempSync(join(tmpdir(), `sq-${prefix}-`));
+    scratch.push(dir);
+    return dir;
+  }
+
+  it('the fake cloud dir is REFUSED when packaged, whatever the environment says', () => {
+    // Same security reasoning as `resolveFakeLogPath`: a packaged build whose
+    // cloud store an env var can redirect is a packaged build with an
+    // attacker-chosen save directory.
+    expect(
+      resolveFakeCloudDir(hostFor({ isPackaged: true, env: { SQ_STEAM_FAKE_CLOUD: '/tmp/x' } })),
+    ).toBeNull();
+  });
+
+  it('the fake cloud dir is honoured only on a dev build with a non-blank value', () => {
+    expect(resolveFakeCloudDir(hostFor({ isPackaged: false, env: {} }))).toBeNull();
+    expect(
+      resolveFakeCloudDir(hostFor({ isPackaged: false, env: { SQ_STEAM_FAKE_CLOUD: '   ' } })),
+    ).toBeNull();
+    expect(
+      resolveFakeCloudDir(hostFor({ isPackaged: false, env: { SQ_STEAM_FAKE_CLOUD: '/tmp/x' } })),
+    ).toBe('/tmp/x');
+  });
+
+  it('records presence lines into the SAME log the achievements use', () => {
+    const log = join(scratchDir('steam'), 'steam.jsonl');
+    const client = createRecordingClient(log);
+    client.achievement.activate('DEED_FIRST_MANIFEST');
+    client.localplayer!.setRichPresence('system', 'Sol');
+    client.localplayer!.setRichPresence('day', '1');
+    client.localplayer!.setRichPresence('steam_display', null);
+
+    const entries = readFileSync(log, 'utf8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(entries).toEqual([
+      { achievement: 'DEED_FIRST_MANIFEST' },
+      { presence: { key: 'system', value: 'Sol' } },
+      { presence: { key: 'day', value: '1' } },
+      { presence: { key: 'steam_display', value: null } },
+    ]);
+    // …and the achievement dedupe still reads its own log past the presence lines.
+    expect(client.achievement.isActivated('DEED_FIRST_MANIFEST')).toBe(true);
+    expect(client.achievement.isActivated('RANK_CONQUEROR')).toBe(false);
+  });
+
+  it('has NO cloud member unless a directory was named — the no-binding path', () => {
+    const log = join(scratchDir('steam'), 'steam.jsonl');
+    expect(createRecordingClient(log).cloud).toBeUndefined();
+    expect(createRecordingClient(log, null).cloud).toBeUndefined();
+  });
+
+  it('backs the cloud with REAL files, so a second session sees the first one’s writes', () => {
+    // This is what the e2e round trip stands on: an in-memory stub could not
+    // survive the relaunch that proves a career came down from the cloud.
+    const log = join(scratchDir('steam'), 'steam.jsonl');
+    const cloudDir = scratchDir('cloud');
+
+    const first = createRecordingClient(log, cloudDir);
+    expect(first.cloud!.isEnabledForApp()).toBe(true);
+    expect(first.cloud!.isEnabledForAccount()).toBe(true);
+    expect(first.cloud!.fileExists('sq.save.v1')).toBe(false);
+    expect(first.cloud!.writeFile('sq.save.v1', '{"v":8,"seed":1702}')).toBe(true);
+
+    const second = createRecordingClient(join(scratchDir('steam2'), 'steam.jsonl'), cloudDir);
+    expect(second.cloud!.fileExists('sq.save.v1')).toBe(true);
+    expect(second.cloud!.readFile('sq.save.v1')).toBe('{"v":8,"seed":1702}');
+  });
+
+  it('an unwritable cloud dir is a refused write, never a throw', () => {
+    // Same rule as the achievement log: a harness that cannot write must not be
+    // able to fail a player's action.
+    const log = join(scratchDir('steam'), 'steam.jsonl');
+    const client = createRecordingClient(log, join(tmpdir(), 'sq-cloud-nope bad'));
+    expect(client.cloud!.writeFile('sq.save.v1', 'x')).toBe(false);
+    expect(client.cloud!.readFile('sq.save.v1')).toBe('');
+    expect(client.cloud!.fileExists('sq.save.v1')).toBe(false);
+  });
+});
+
 describe('T-1702a · structural guard', () => {
   it('steam.ts imports no electron and no steamworks.js — so this suite needs neither', () => {
     // Same precedent (and same purpose) as `updater.test.ts`'s scan. The
@@ -305,5 +434,20 @@ describe('T-1702a · structural guard', () => {
     expect(source).not.toMatch(/from\s+['"]electron['"]/);
     expect(source).not.toMatch(/require\(\s*['"]electron['"]\s*\)/);
     expect(source).not.toMatch(/['"]steamworks\.js['"]/);
+  });
+
+  it('T-1702b · cloud.ts and presence.ts are held to the identical scan', () => {
+    // The single most important regression guard in this package: the whole
+    // optional-dependency story rests on NO module here naming `steamworks.js`,
+    // even in an `import type`. `cloud.ts` additionally never imports `node:fs` —
+    // every local read/write arrives through the injected host, so the cloud can
+    // only reach the save directory through the validated `saveStore.ts`.
+    for (const file of ['cloud.ts', 'presence.ts']) {
+      const source = readFileSync(join(__dirname, '..', file), 'utf8');
+      expect(source).not.toMatch(/from\s+['"]electron['"]/);
+      expect(source).not.toMatch(/require\(\s*['"]electron['"]\s*\)/);
+      expect(source).not.toMatch(/['"]steamworks\.js['"]/);
+      expect(source).not.toMatch(/from\s+['"]node:/);
+    }
   });
 });

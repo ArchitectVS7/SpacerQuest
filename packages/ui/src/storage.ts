@@ -32,13 +32,17 @@
 // thrown Error for exactly this reason. Every existing `try/catch` in `store.ts`
 // and `sound.ts` is therefore preserved verbatim.
 //
-// T-1702a ADDS THE ONE EXCEPTION, and states it rather than smuggling it:
-// {@link unlockAchievement} SWALLOWS. It is not storage — nothing is persisted,
-// nothing is read back, and no cockpit behaviour keys off it. The rule above
-// exists because a lost SAVE must be visible; a lost achievement is cosmetic,
-// and letting one throw would let a Steam hiccup cost a player their action. The
-// asymmetry is the point: everything that can lose a career throws, and the one
-// thing that cannot, does not.
+// T-1702a ADDED THE FIRST EXCEPTION AND T-1702b THE SECOND, both stated rather
+// than smuggled: {@link unlockAchievement} and {@link setRichPresence} SWALLOW.
+// Neither is storage — nothing is persisted, nothing is read back, and no cockpit
+// behaviour keys off either. The rule above exists because a lost SAVE must be
+// visible; a lost achievement (or a stale friends-list line) is cosmetic, and
+// letting one throw would let a Steam hiccup cost a player their action. The
+// asymmetry is the point: everything that can lose a career throws, and the two
+// things that cannot, do not. Steam CLOUD is not on this list at all — it is
+// performed entirely in the shell's main process, off the storage path, and
+// reaches the cockpit only as the read-only {@link cloudStatus} /
+// {@link cloudRestored} pair.
 //
 // WEB IS UNAFFECTED BY CONSTRUCTION. When `window.sqDesktop` is absent the seam
 // IS `window.localStorage`, same calls, same order, same throws. No behavioural
@@ -114,11 +118,31 @@ export type UpdateStatus = 'unsupported' | 'inert' | 'armed';
  */
 export type SteamStatus = 'ready' | 'unavailable';
 
-/** T-1701b/T-1702a · The shell's self-description, as `about()` reports it. */
+/**
+ * T-1702b · Whether this launch's saves are syncing to Steam Cloud.
+ *
+ * TWIN of `packages/desktop/src/cloud.ts`'s `CloudState`, duplicated for the
+ * same stated reason {@link UpdateStatus} and {@link SteamStatus} are:
+ * `packages/ui` must NEVER import from `@spacerquest/desktop`, not even
+ * type-only, or the web build acquires a desktop dependency — asserted by the
+ * source scan in `__tests__/storage.test.ts`, which must not be weakened to make
+ * a shared type compile.
+ *
+ * READER: `App.tsx`'s Settings "Steam → Cloud saves" row (`data-cloud-status`)
+ * via `format.ts`'s `cloudStatusMessage`.
+ */
+export type CloudStatus = 'ready' | 'unavailable';
+
+/** T-1701b/T-1702a/T-1702b · The shell's self-description, as `about()` reports
+ *  it. */
 export interface ShellInfo {
   version: string;
   updates: UpdateStatus;
   steam: SteamStatus;
+  cloud: CloudStatus;
+  /** How many saves this launch pulled down from Steam Cloud. A COUNT, not the
+   *  names — a filename list on a Settings row is developer output. */
+  cloudRestored: number;
 }
 
 /**
@@ -155,6 +179,21 @@ export interface DesktopStorageBridge {
    * `sq-steam:unlock` handler → `steam.ts`'s `SteamSession.unlock`.
    */
   unlockAchievement(apiName: string): void;
+  /**
+   * T-1702b · Publish the player's current system and day as Steam rich
+   * presence.
+   *
+   * The SECOND deliberate exception to this file's "throwing is the contract"
+   * rule, on exactly the terms the {@link DesktopStorageBridge.unlockAchievement}
+   * paragraph above states — nothing is persisted, nothing is read back, no
+   * cockpit behaviour keys off it, and a friends-list line must never be able to
+   * cost a player their action. Also `ipcRenderer.send`, so there is no reply to
+   * fail.
+   *
+   * READER of the values sent here: `packages/desktop/src/main.ts`'s
+   * `sq-steam:presence` handler → `presence.ts`'s `PresenceSession.set`.
+   */
+  setPresence(system: string, day: number): void;
 }
 
 /** The window shape this module reads. Kept minimal so the unit test can hand in
@@ -325,12 +364,25 @@ export interface SelectedStorage {
    * it with a fake window rather than a real bridge.
    */
   unlockAchievement: (apiName: string) => void;
+  /**
+   * T-1702b · The rich-presence sink for this process: the shell bridge under
+   * Electron, a no-op in a browser tab. Resolved as a VALUE here, like every
+   * other field, so the unit test can drive it with a fake window.
+   */
+  setRichPresence: (system: string, day: number) => void;
 }
 
 /** The web build's achievement sink. Not a stub awaiting an implementation — a
  *  browser tab has no Steam client, and the Settings row says so in words. */
 function noUnlock(): void {
   /* no Steam in a browser tab — see `format.ts`'s `steamStatusMessage(null)` */
+}
+
+/** The web build's rich-presence sink. Sibling of {@link noUnlock}, and honest
+ *  for the same reason: a browser tab has no Steam client and no friends list to
+ *  publish to, and the Settings row says exactly that. */
+function noPresence(): void {
+  /* no Steam in a browser tab — see `format.ts`'s `presenceMessage(null, …)` */
 }
 
 /**
@@ -403,6 +455,17 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
           /* no achievement is worth an action — see the header */
         }
       },
+      // T-1702b · The second swallowing call, on the same terms as the first.
+      // The `try` also covers a preload OLDER than this method (where
+      // `bridge.setPresence` is `undefined`), which is the shape a
+      // version-skewed shell takes.
+      setRichPresence: (system, day) => {
+        try {
+          bridge.setPresence(system, day);
+        } catch {
+          /* a friends-list line is not worth an action — see the header */
+        }
+      },
     };
   }
   if (win && safeLocalStorage(win)) {
@@ -413,6 +476,7 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
       migrated: [],
       shell: null,
       unlockAchievement: noUnlock,
+      setRichPresence: noPresence,
     };
   }
   return {
@@ -422,6 +486,7 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
     migrated: [],
     shell: null,
     unlockAchievement: noUnlock,
+    setRichPresence: noPresence,
   };
 }
 
@@ -473,3 +538,37 @@ export const steamStatus: SteamStatus | null = selected.shell?.steam ?? null;
  * which is the only caller and dedupes before it gets here.
  */
 export const unlockAchievement: (apiName: string) => void = selected.unlockAchievement;
+
+/**
+ * T-1702b · Whether this launch's saves are syncing to Steam Cloud, or `null` on
+ * web (a browser tab has no Steam client, and claiming otherwise would be a
+ * fiction — the same rule {@link steamStatus} follows).
+ *
+ * READER: `App.tsx`'s Settings "Steam → Cloud saves" row (`data-cloud-status`)
+ * through `format.ts`'s `cloudStatusMessage`, asserted consumed on ALL THREE
+ * backends: `packages/desktop/e2e/shell.spec.ts` (dev shell, both `ready` under
+ * the fake cloud and `unavailable` with no app id),
+ * `packages/desktop/e2e/packaged.spec.ts` (a real package → `unavailable`) and
+ * `packages/ui/e2e/settings-saves.spec.ts` (web → `web`).
+ */
+export const cloudStatus: CloudStatus | null = selected.shell?.cloud ?? null;
+
+/**
+ * T-1702b · How many saves were pulled DOWN from Steam Cloud on this launch.
+ *
+ * This is what makes the RESTORE visible rather than just the connection — the
+ * same argument the achievements tally makes. READER: the same Settings row as
+ * {@link cloudStatus}, asserted consumed by `packages/desktop/e2e/shell.spec.ts`
+ * (a wiped save dir reports `1 save restored`; a populated one reports `0`,
+ * which is the no-clobber policy proved rather than asserted in a comment).
+ */
+export const cloudRestored: number = selected.shell?.cloudRestored ?? 0;
+
+/**
+ * T-1702b · Publish the player's current system and day as Steam rich presence.
+ *
+ * A NO-OP ON WEB and a swallowing send under the shell — it never throws, by
+ * contract (see the header's stated exceptions). READER: `steam.ts`'s
+ * `syncPresence`, which is its only caller and dedupes before it gets here.
+ */
+export const setRichPresence: (system: string, day: number) => void = selected.setRichPresence;

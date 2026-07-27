@@ -5,9 +5,12 @@ import {
   bezel,
   cleanupTempDirs,
   closeSettings,
+  cloudFiles,
+  endDay,
   launch as launchShell,
   openSettings,
   payDebt,
+  presenceLog,
   startCareer,
   steamLog,
   tempDir,
@@ -89,9 +92,10 @@ test.describe('T-1701a · the Electron shell', () => {
     const bridgeMethods = await page.evaluate(() =>
       Object.keys((window as unknown as { sqDesktop: object }).sqDesktop).sort(),
     );
-    // T-1701b added `about`; T-1702a added `unlockAchievement`. The list is
-    // asserted EXACTLY so the three twins (`preload.ts`, `storage.ts`'s
-    // `DesktopStorageBridge`, this) cannot drift.
+    // T-1701b added `about`; T-1702a added `unlockAchievement`; T-1702b added
+    // `setPresence`. The list is asserted EXACTLY so the three twins
+    // (`preload.ts`, `storage.ts`'s `DesktopStorageBridge`, this) cannot drift —
+    // which is why each task UPDATES it rather than loosening it.
     expect(bridgeMethods).toEqual([
       'about',
       'dir',
@@ -99,6 +103,7 @@ test.describe('T-1701a · the Electron shell', () => {
       'keys',
       'removeItem',
       'setItem',
+      'setPresence',
       'unlockAchievement',
     ]);
 
@@ -394,6 +399,17 @@ test.describe('T-1702a · Steam achievements', () => {
     await expect(page.getByTestId('steam-achievements')).toHaveText(
       /^0 of \d+ earned — they will mirror when you play on Steam\.$/,
     );
+    // T-1702b · "The no-Steam fallback still clean for BOTH features" is a clause
+    // of that task's Accept, and this is where it is discharged: one client load
+    // means cloud and presence are `unavailable` exactly when Steam is, and both
+    // rows say so in words that do not read as a fault.
+    const cloud = page.getByTestId('steam-cloud');
+    await expect(cloud).toHaveAttribute('data-cloud-status', 'unavailable');
+    await expect(cloud).toHaveText('Not synced — your saves are kept on this machine.');
+    await expect(page.getByTestId('steam-presence')).toHaveText(
+      'Not connected — nothing is shown to friends.',
+    );
+
     // The rest of Settings is untouched by the new section.
     await expect(page.getByTestId('save-location')).toHaveAttribute(
       'data-storage-backend',
@@ -417,7 +433,9 @@ test.describe('T-1702a · Steam achievements', () => {
     );
     await closeSettings(page);
 
-    // …and closing the window still exits 0 with no Steam session to tear down.
+    // …and closing the window still exits 0 with no Steam session to tear down —
+    // T-1702b: and with a cloud session to flush and a presence session to clear
+    // in `before-quit`, both of which are on the quit path this asserts.
     const exited = new Promise<number | null>((resolve) =>
       app.process().once('exit', (code) => resolve(code)),
     );
@@ -425,5 +443,159 @@ test.describe('T-1702a · Steam achievements', () => {
       for (const w of BrowserWindow.getAllWindows()) w.close();
     });
     expect(await exited).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1702b ACCEPTANCE — Steam Cloud, and rich presence.
+//
+// "Cloud round-trip verified in the dev sandbox" and "rich presence shows
+// current system/day" (the Accept). Both are proved THROUGH THE REAL WINDOW,
+// driven by clicks: nothing here reaches into the store, the engine or a save
+// file to SET state — files are read only to assert.
+//
+// THE SANDBOX, and the same CI-evidence rule T-1702a set. No runner has a Steam
+// client, so delivery to a LIVE Steam Cloud (or a real friends list) cannot be a
+// CI assertion. The far end here is the shell's recording client
+// (`src/steam.ts`'s `createRecordingClient`), whose cloud is REAL FILES in a
+// directory — which is what lets the round trip survive a relaunch, the only
+// form in which "round trip" means anything. A live-client run is recorded in
+// the Delivered note.
+// ---------------------------------------------------------------------------
+
+test.describe('T-1702b · Steam Cloud & rich presence', () => {
+  test('a career survives a wiped machine: the Steam Cloud round trip', async () => {
+    const saveDirA = join(tempDir('savesA'), 'saves');
+    const userDataA = tempDir('userdataA');
+    const cloudDir = join(tempDir('cloud'), 'cloud');
+    const steamFakeLog = join(tempDir('steam'), 'steam.jsonl');
+
+    const first = await launch({
+      saveDir: saveDirA,
+      userDataDir: userDataA,
+      steamAppId: 480,
+      steamFakeLog,
+      steamFakeCloud: cloudDir,
+    });
+
+    // --- play a real career, by clicks -------------------------------------
+    await startCareer(first.page, 1702);
+    await payDebt(first.page, 500); // die-free and RNG-insensitive
+    const played = await bezel(first.page);
+
+    // --- the READER of `cloudStatus` / `cloudRestored`, on a fresh machine ---
+    await openSettings(first.page);
+    const cloudRow = first.page.getByTestId('steam-cloud');
+    await expect(cloudRow).toHaveAttribute('data-cloud-status', 'ready');
+    // Nothing came DOWN on this launch — there was nothing up there yet.
+    await expect(cloudRow).toHaveText('Synced — your careers are backed up to Steam Cloud.');
+    await closeSettings(first.page);
+
+    // --- the upload is COALESCED, so this is eventually-consistent by design.
+    // `expect.poll`, never a sleep: the flush window is a product decision
+    // (`cloud.ts`'s CLOUD_FLUSH_MS), not a timing this spec should encode.
+    await expect.poll(() => cloudFiles(cloudDir), { timeout: 15_000 }).toContain('sq.save.v1');
+    // Closing the app flushes anything still dirty, synchronously, in
+    // `before-quit`.
+    await first.app.close();
+
+    // --- THE CRITERION'S TEETH: a brand-new machine ------------------------
+    // A WIPED save dir AND a wiped user-data dir (so localStorage is empty too),
+    // pointed at the same cloud. If the career comes back it can only have come
+    // down from Steam Cloud — there is nowhere else left.
+    const saveDirB = join(tempDir('savesB'), 'saves');
+    const userDataB = tempDir('userdataB');
+    const second = await launch({
+      saveDir: saveDirB,
+      userDataDir: userDataB,
+      steamAppId: 480,
+      steamFakeLog: join(tempDir('steam2'), 'steam.jsonl'),
+      steamFakeCloud: cloudDir,
+    });
+
+    await expect(second.page.getByTestId('day')).toBeVisible();
+    // The SEED is the direct proof that what round-tripped is the seed-carrying
+    // T-1002 envelope: for a v2+ save the seed lives nowhere but the envelope.
+    expect(await bezel(second.page)).toEqual(played);
+    // …and it really landed as a FILE, through the same validated save store.
+    expect(existsSync(join(saveDirB, 'sq.save.v1'))).toBe(true);
+
+    await openSettings(second.page);
+    await expect(second.page.getByTestId('steam-cloud')).toHaveText(
+      'Synced — 1 save restored from Steam Cloud this launch.',
+    );
+    await closeSettings(second.page);
+    await second.app.close();
+
+    // --- THE NO-CLOBBER HALF (semantic 3), proved rather than commented ----
+    // Same save dir, now POPULATED, with a cloud copy sitting there. The restore
+    // must skip it: a career in progress on this machine beats whatever the
+    // cloud holds, because `listFiles()` carries no timestamp and "newest wins"
+    // cannot be implemented honestly.
+    const localBytes = readFileSync(join(saveDirB, 'sq.save.v1'), 'utf8');
+    const third = await launch({
+      saveDir: saveDirB,
+      userDataDir: userDataB,
+      steamAppId: 480,
+      steamFakeLog: join(tempDir('steam3'), 'steam.jsonl'),
+      steamFakeCloud: cloudDir,
+    });
+    await expect(third.page.getByTestId('day')).toBeVisible();
+    await openSettings(third.page);
+    await expect(third.page.getByTestId('steam-cloud')).toHaveText(
+      'Synced — your careers are backed up to Steam Cloud.',
+    );
+    await closeSettings(third.page);
+    expect(readFileSync(join(saveDirB, 'sq.save.v1'), 'utf8')).toBe(localBytes);
+    await third.app.close();
+  });
+
+  test('rich presence follows the player’s day and system', async () => {
+    const saveDir = join(tempDir('saves'), 'saves');
+    const userDataDir = tempDir('userdata');
+    const steamFakeLog = join(tempDir('steam'), 'steam.jsonl');
+
+    const { app, page } = await launch({ saveDir, userDataDir, steamAppId: 480, steamFakeLog });
+
+    await startCareer(page, 1702);
+
+    // --- what the PLAYER is shown ------------------------------------------
+    await openSettings(page);
+    const row = page.getByTestId('steam-presence');
+    await expect(row).toHaveText(/^Day 1 — .+$/);
+    const dayOneLine = await row.innerText();
+    await closeSettings(page);
+
+    // --- what STEAM was actually handed, on the far side of the real bridge --
+    // Two observations of the same value from opposite ends is what makes this
+    // evidence rather than a snapshot of our own render.
+    await expect
+      .poll(() => presenceLog(steamFakeLog), { timeout: 10_000 })
+      .toEqual([
+        { key: 'system', value: dayOneLine.replace('Day 1 — ', '') },
+        { key: 'day', value: '1' },
+        // The reserved key carries a partner-site TOKEN, never prose — the
+        // sentence itself is authored in App Admin (see docs/STEAM-ACHIEVEMENTS.md).
+        { key: 'steam_display', value: '#Status_InSystem' },
+      ]);
+
+    // --- and it MOVES when the player does ---------------------------------
+    await endDay(page);
+
+    await openSettings(page);
+    await expect(row).toHaveText(/^Day 2 — .+$/);
+    await closeSettings(page);
+
+    await expect
+      .poll(() => presenceLog(steamFakeLog).filter((p) => p.key === 'day'), { timeout: 10_000 })
+      .toEqual([
+        { key: 'day', value: '1' },
+        { key: 'day', value: '2' },
+      ]);
+
+    // …and the quit clears it, so a stale "Day 2 — Sun-3" does not outlive the
+    // process on the player's friends list.
+    await app.close();
+    expect(presenceLog(steamFakeLog).at(-1)).toEqual({ key: 'steam_display', value: null });
   });
 });

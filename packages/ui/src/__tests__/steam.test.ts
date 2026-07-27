@@ -10,10 +10,17 @@ import type { GameEvent, GameState } from '@spacerquest/engine';
 // BODY, so mocking it also keeps this suite free of that side effect.
 const sent: string[] = [];
 let sinkThrows = false;
+/** T-1702b · Every presence pair the mocked sink was handed, in order. */
+const presence: string[] = [];
+let presenceThrows = false;
 vi.mock('../storage', () => ({
   unlockAchievement: (apiName: string) => {
     sent.push(apiName);
     if (sinkThrows) throw new Error('bridge exploded');
+  },
+  setRichPresence: (system: string, day: number) => {
+    presence.push(`${system}|${day}`);
+    if (presenceThrows) throw new Error('bridge exploded');
   },
 }));
 
@@ -23,9 +30,14 @@ import {
   achievementsForEvents,
   achievementsForState,
   deedApiName,
+  presenceLine,
   resetSentForTests,
+  syncPresence,
   unlock,
 } from '../steam';
+// T-1702b · The cockpit's copy of the partner-site rich-presence sentence. Held
+// against the doc below so the two cannot drift.
+import { richPresenceLine } from '../format';
 
 // ---------------------------------------------------------------------------
 // T-1702a · The Steam achievement mirror.
@@ -90,6 +102,8 @@ function stateWith(earnedIds: string[], renownRank: RenownRankId): GameState {
 beforeEach(() => {
   sent.length = 0;
   sinkThrows = false;
+  presence.length = 0;
+  presenceThrows = false;
   resetSentForTests();
 });
 
@@ -216,6 +230,62 @@ describe('T-1702a · unlock — deduped, guarded, and never fatal', () => {
 });
 
 // ---------------------------------------------------------------------------
+// T-1702b · Rich presence — the second thing this module mirrors, and it adds
+// no rule either: both values are engine state that already round-trips.
+// ---------------------------------------------------------------------------
+
+/** Just enough `GameState` for presence — it reads exactly two fields, which is
+ *  what keeps `presenceLine` a pure function of the career's position. */
+function gameAt(currentSystemId: number, day: number): GameState {
+  return { day, player: { currentSystemId } } as unknown as GameState;
+}
+
+describe('T-1702b · presenceLine — pure, and total over any state', () => {
+  it('reads the current system’s authored name and the current day', () => {
+    expect(presenceLine(gameAt(1, 1))).toEqual({ system: 'Sun-3', day: 1 });
+    expect(presenceLine(gameAt(2, 12))).toEqual({ system: 'Aldebaran-1', day: 12 });
+  });
+
+  it('an unknown system id falls back rather than throwing', () => {
+    // `systemName`'s own `System-N` fallback. Presence runs on the path of every
+    // action, so a lookup miss must never be able to cost a player their turn.
+    expect(presenceLine(gameAt(9999, 3))).toEqual({ system: 'System-9999', day: 3 });
+  });
+});
+
+describe('T-1702b · syncPresence — deduped, guarded, and never fatal', () => {
+  it('publishes once per distinct system|day pair, however often it is called', () => {
+    // `store.ts` calls this from its ONE state-update choke point, so it fires on
+    // every UI-only patch (a die selected, a pane opened). The dedupe is what
+    // makes that free.
+    syncPresence(gameAt(1, 1));
+    syncPresence(gameAt(1, 1));
+    syncPresence(gameAt(1, 1));
+    expect(presence).toEqual(['Sun-3|1']);
+  });
+
+  it('republishes when the day moves and when the system moves', () => {
+    syncPresence(gameAt(1, 1));
+    syncPresence(gameAt(1, 2));
+    syncPresence(gameAt(2, 2));
+    expect(presence).toEqual(['Sun-3|1', 'Sun-3|2', 'Aldebaran-1|2']);
+  });
+
+  it('NEVER THROWS when the sink throws — a friends-list line is not worth an action', () => {
+    presenceThrows = true;
+    expect(() => syncPresence(gameAt(1, 1))).not.toThrow();
+    expect(presence).toEqual(['Sun-3|1']);
+  });
+
+  it('resetSentForTests clears the presence dedupe too, so suites cannot leak', () => {
+    syncPresence(gameAt(1, 1));
+    resetSentForTests();
+    syncPresence(gameAt(1, 1));
+    expect(presence).toEqual(['Sun-3|1', 'Sun-3|1']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The partner-site table is a DELIVERABLE, so it is tested like one.
 // ---------------------------------------------------------------------------
 
@@ -245,5 +315,30 @@ describe('T-1702a · docs/STEAM-ACHIEVEMENTS.md is the manifest, row for row', (
     // "mirror" stops being actionable on the Steamworks backend — which is where
     // a human has to type these rows in by hand.
     expect(rows).toEqual(ACHIEVEMENT_MANIFEST.map((a) => ({ ...a })));
+  });
+
+  // T-1702b ------------------------------------------------------------------
+
+  it('documents the rich-presence token in the exact shape the cockpit renders', () => {
+    // The partner-site token is the ONE piece of this feature no code can create,
+    // and the string a friend reads comes from it — so the doc and
+    // `format.ts`'s `richPresenceLine` must not be able to drift. The token text
+    // is `Day {#day} — {#system}`; `richPresenceLine('Sol', 1)` is
+    // `Day 1 — Sol`. Same words, same order, same separator.
+    const line = richPresenceLine('{#system}', Number.NaN).replace('NaN', '{#day}');
+    expect(doc).toContain(line);
+    expect(doc).toContain('#Status_InSystem');
+    // …and the three keys the shell actually sets.
+    for (const key of ['`system`', '`day`', '`steam_display`']) {
+      expect(doc).toContain(key);
+    }
+  });
+
+  it('documents the Steam Cloud configuration this code requires', () => {
+    // Auto-Cloud staying OFF is not a preference: the game drives the API
+    // directly (`packages/desktop/src/cloud.ts`, Decision A), and both at once
+    // would double-write the same files.
+    expect(doc).toMatch(/Auto-Cloud/);
+    expect(doc).toMatch(/sq\.save\.v1/);
   });
 });

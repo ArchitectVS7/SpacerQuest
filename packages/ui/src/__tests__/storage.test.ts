@@ -11,13 +11,16 @@ import {
   type StorageWindow,
 } from '../storage';
 import {
+  cloudStatusMessage,
+  presenceMessage,
+  richPresenceLine,
   saveRecoveryMessage,
   saveWriteFailedMessage,
   steamAchievementsMessage,
   steamStatusMessage,
   updateStatusMessage,
 } from '../format';
-import type { SteamStatus, UpdateStatus } from '../storage';
+import type { CloudStatus, SteamStatus, UpdateStatus } from '../storage';
 
 // ---------------------------------------------------------------------------
 // T-1701a · The storage seam.
@@ -197,6 +200,8 @@ describe('T-1701a · migrateInto — the localStorage → app-data import', () =
 describe('T-1701a · selectStorage — which backend the cockpit got', () => {
   /** T-1702a · Every API name a fake bridge was asked to unlock. */
   const unlocked: string[] = [];
+  /** T-1702b · Every presence pair a fake bridge was asked to publish. */
+  const published: string[] = [];
 
   function bridgeFor(map: Map<string, string>, dir: string): DesktopStorageBridge {
     return {
@@ -209,11 +214,20 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
       },
       keys: () => [...map.keys()],
       dir: () => dir,
-      // T-1701b/T-1702a · The shell's self-description. Same shape `preload.ts`
-      // returns.
-      about: () => ({ version: '1.0.0', updates: 'inert', steam: 'unavailable' }),
+      // T-1701b/T-1702a/T-1702b · The shell's self-description. Same shape
+      // `preload.ts` returns.
+      about: () => ({
+        version: '1.0.0',
+        updates: 'inert',
+        steam: 'unavailable',
+        cloud: 'unavailable',
+        cloudRestored: 0,
+      }),
       unlockAchievement: (apiName) => {
         unlocked.push(apiName);
+      },
+      setPresence: (system, day) => {
+        published.push(`${system}|${day}`);
       },
     };
   }
@@ -249,7 +263,13 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
 
     expect(selected.backend).toBe('desktop');
     expect(selected.saveLocation).toBe('/home/pilot/.config/Rimward/saves');
-    expect(selected.shell).toEqual({ version: '1.0.0', updates: 'inert', steam: 'unavailable' });
+    expect(selected.shell).toEqual({
+      version: '1.0.0',
+      updates: 'inert',
+      steam: 'unavailable',
+      cloud: 'unavailable',
+      cloudRestored: 0,
+    });
     expect(selected.migrated).toHaveLength(10);
     // The handed-out store IS the desktop one.
     expect(selected.storage.getItem('sq.save.v1')).toBe(CAREER['sq.save.v1']);
@@ -370,7 +390,13 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
     const selected = selectStorage(win);
     expect(selected.backend).toBe('desktop');
     expect(selected.migrated).toEqual([]);
-    expect(selected.shell).toEqual({ version: '1.0.0', updates: 'inert', steam: 'unavailable' });
+    expect(selected.shell).toEqual({
+      version: '1.0.0',
+      updates: 'inert',
+      steam: 'unavailable',
+      cloud: 'unavailable',
+      cloudRestored: 0,
+    });
   });
 
   // T-1702a ------------------------------------------------------------------
@@ -382,7 +408,13 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
       localStorage: fakeLocalStorage({}),
       sqDesktop: {
         ...bridge,
-        about: () => ({ version: '1.0.0', updates: 'inert', steam: 'ready' }),
+        about: () => ({
+          version: '1.0.0',
+          updates: 'inert',
+          steam: 'ready',
+          cloud: 'ready',
+          cloudRestored: 2,
+        }),
       },
     };
 
@@ -405,6 +437,80 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
 
     // …and with no window at all (node/SSR), same answer, still no throw.
     expect(() => selectStorage(null).unlockAchievement('DEED_FIRST_MANIFEST')).not.toThrow();
+  });
+
+  // T-1702b ------------------------------------------------------------------
+
+  it('reports the shell’s cloud state and restore count, and routes presence to the bridge', () => {
+    const files = new Map<string, string>();
+    const bridge = bridgeFor(files, '/home/pilot/.config/Rimward/saves');
+    const win: StorageWindow = {
+      localStorage: fakeLocalStorage({}),
+      sqDesktop: {
+        ...bridge,
+        about: () => ({
+          version: '1.0.0',
+          updates: 'inert',
+          steam: 'ready',
+          cloud: 'ready',
+          cloudRestored: 2,
+        }),
+      },
+    };
+
+    const selected = selectStorage(win);
+
+    // The RESTORE COUNT is what makes the sync visible rather than just the
+    // connection — the same argument the achievements tally makes.
+    expect(selected.shell?.cloud).toBe('ready');
+    expect(selected.shell?.cloudRestored).toBe(2);
+
+    published.length = 0;
+    selected.setRichPresence('Aldebaran-1', 12);
+    expect(published).toEqual(['Aldebaran-1|12']);
+  });
+
+  it('has NO cloud and a no-op presence sink on the web build', () => {
+    // A browser tab has no Steam client and no friends list to publish to.
+    const web = selectStorage({ localStorage: fakeLocalStorage({}) });
+    expect(web.shell?.cloud).toBeUndefined();
+    expect(web.shell?.cloudRestored).toBeUndefined();
+    published.length = 0;
+    expect(() => web.setRichPresence('Sol', 1)).not.toThrow();
+    expect(published).toEqual([]);
+
+    // …and with no window at all (node/SSR), same answer, still no throw.
+    expect(() => selectStorage(null).setRichPresence('Sol', 1)).not.toThrow();
+  });
+
+  it('a bridge whose setPresence THROWS — or is missing entirely — costs nothing', () => {
+    // The SECOND deliberate exception to "throwing is the contract", on the same
+    // terms as `unlockAchievement`. The `undefined` case is a preload OLDER than
+    // this method, which is the shape a version-skewed shell takes.
+    const files = new Map<string, string>();
+    const bridge = bridgeFor(files, '/home/pilot/.config/Rimward/saves');
+
+    const throwing = selectStorage({
+      localStorage: fakeLocalStorage({}),
+      sqDesktop: {
+        ...bridge,
+        setPresence: () => {
+          throw new Error('IPC failed');
+        },
+      },
+    });
+    expect(() => throwing.setRichPresence('Sol', 1)).not.toThrow();
+
+    const skewed = { ...bridge } as Partial<DesktopStorageBridge>;
+    delete skewed.setPresence;
+    const older = selectStorage({
+      localStorage: fakeLocalStorage({}),
+      sqDesktop: skewed as DesktopStorageBridge,
+    });
+    expect(() => older.setRichPresence('Sol', 1)).not.toThrow();
+    // …and the store still works, which is the point.
+    older.storage.setItem('sq.fx', 'off');
+    expect(files.get('sq.fx')).toBe('off');
   });
 
   it('a bridge whose unlockAchievement THROWS cannot cost the player an action', () => {
@@ -575,6 +681,79 @@ describe('T-1702a · the Steam prose is honest per state', () => {
       const line = steamAchievementsMessage(state, 0, 45);
       expect(line).toContain('0 of 45');
       expect(line).not.toMatch(/mirrored to Steam/);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1702b · The READERS of `cloudStatus` / `cloudRestored`, and the presence
+// sentence. Held to exactly the three properties `steamStatusMessage`'s tests
+// assert, because the honesty rule is the same one.
+// ---------------------------------------------------------------------------
+
+describe('T-1702b · the cloud prose is honest per state', () => {
+  const STATES: (CloudStatus | null)[] = [null, 'unavailable', 'ready'];
+
+  it('says something distinct for every state', () => {
+    const said = STATES.map((s) => cloudStatusMessage(s, 0));
+    expect(new Set(said).size).toBe(STATES.length);
+    for (const sentence of said) expect(sentence.length).toBeGreaterThan(0);
+  });
+
+  it('does not read as a fault — saves on one machine is a supported way to play', () => {
+    // `unavailable` is what EVERY build this repo produces resolves to today (no
+    // app id is compiled in), so this is the sentence that actually ships. A
+    // player told their saves have "failed" files a bug about a state that is
+    // working exactly as designed.
+    const off = cloudStatusMessage('unavailable', 0);
+    expect(off).not.toMatch(/fail|error|problem|unable|lost/i);
+    // …and it says where the careers ARE, which is the reassuring true thing.
+    expect(off).toContain('this machine');
+  });
+
+  it('never claims a sync that is not there, and never mentions a browser on desktop', () => {
+    expect(cloudStatusMessage('unavailable', 0)).not.toMatch(/^Synced/);
+    expect(cloudStatusMessage('ready', 0)).toMatch(/^Synced/);
+    for (const state of ['ready', 'unavailable'] as const) {
+      expect(cloudStatusMessage(state, 0)).not.toMatch(/browser/i);
+    }
+    // The web sentence never claims Steam Cloud is doing anything.
+    expect(cloudStatusMessage(null, 0)).toContain('desktop version');
+    expect(cloudStatusMessage(null, 0)).not.toMatch(/^Synced|^Not synced/);
+  });
+
+  it('surfaces the RESTORE, singular and plural, so a real download is visible', () => {
+    // Without this line a player whose career came down from the cloud has no
+    // way to know it did — which is the whole reason the count crosses the
+    // bridge at all.
+    expect(cloudStatusMessage('ready', 1)).toContain('1 save restored');
+    expect(cloudStatusMessage('ready', 3)).toContain('3 saves restored');
+    // Nothing restored is not a failure — it is the ordinary launch.
+    expect(cloudStatusMessage('ready', 0)).toContain('backed up');
+    expect(cloudStatusMessage('ready', 0)).not.toMatch(/restored/);
+  });
+});
+
+describe('T-1702b · the rich-presence prose', () => {
+  it('is the exact sentence the partner-site token renders', () => {
+    // The shell publishes `steam_display: '#Status_InSystem'`; the token's TEXT
+    // is authored on the partner site as `Day {#day} — {#system}`. This function
+    // is the cockpit's copy of that sentence, and `steam.test.ts`'s doc parity
+    // test pins the two together.
+    expect(richPresenceLine('Aldebaran-1', 12)).toBe('Day 12 — Aldebaran-1');
+  });
+
+  it('shows the line only when Steam answered, and never claims otherwise', () => {
+    const line = richPresenceLine('Sol', 1);
+    expect(presenceMessage('ready', line)).toBe(line);
+    expect(presenceMessage('unavailable', line)).toBe(
+      'Not connected — nothing is shown to friends.',
+    );
+    expect(presenceMessage('unavailable', line)).not.toContain('Sol');
+    expect(presenceMessage(null, line)).toContain('desktop version');
+    expect(presenceMessage(null, line)).not.toContain('Sol');
+    for (const state of ['ready', 'unavailable'] as const) {
+      expect(presenceMessage(state, line)).not.toMatch(/browser/i);
     }
   });
 });

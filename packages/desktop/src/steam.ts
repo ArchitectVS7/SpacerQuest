@@ -42,6 +42,16 @@
 // what crosses the bridge is a STRING. A shell that knew what a deed was would
 // be a shell with a game rule in it.
 //
+// T-1702b · ONE CLIENT LOAD, THREE CONSUMERS. `initSteam` is still the ONLY
+// guarded load and the ONLY graceful-fallback try/catch in this package. Steam
+// Cloud (`cloud.ts`) and rich presence (`presence.ts`) are handed the SAME client
+// through {@link SteamSession.client} rather than each performing their own
+// `require` and their own app-id resolution — which is what makes them
+// `unavailable` EXACTLY when Steam is, structurally, instead of by three copies
+// of the same reasoning. Neither of those modules is a game rule either: one
+// moves opaque save bytes under key names the shell already owns, the other
+// publishes two numbers the engine already round-trips.
+//
 // THE ONE RUNTIME DEPENDENCY. T-1701a/b stated "zero runtime dependencies"; that
 // claim is amended (here, in `main.ts` and in `updater.ts`) rather than left to
 // rot. The package now has ZERO WORKSPACE DEPENDENCIES and exactly ONE OPTIONAL
@@ -51,7 +61,15 @@
 // own tarball, so `npm ci` needs no toolchain and `npmRebuild: false` stays.
 // ---------------------------------------------------------------------------
 
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+// T-1702b · LOCAL modules, so the "never import from an optional dependency"
+// rule above is untouched — `cloud.ts` and `presence.ts` duplicate their slices
+// of the steamworks.js surface exactly as this file does, precisely so nothing
+// anywhere in `packages/desktop` names the optional package at type level. Said
+// out loud so a later reader does not think the rule was bent.
+import type { CloudClientLike } from './cloud';
+import type { PresenceClientLike } from './presence';
 
 /**
  * What Steam resolved to on this launch.
@@ -101,14 +119,26 @@ export type UnlockResult = 'unavailable' | 'already' | 'unlocked' | 'rejected';
  * DUPLICATED rather than imported, so this module stays dependency-free at TYPE
  * level too (an `import type` from an optional dependency is a compile error the
  * moment the optional install is skipped — which is precisely the state this
- * whole file exists to support). Two members are the whole surface; if it grows,
- * it grows here and nowhere else.
+ * whole file exists to support). T-1702a said "two members are the whole surface;
+ * if it grows, it grows here and nowhere else" — IT GREW, and the sentence is
+ * amended rather than left to rot: T-1702b added `cloud` and `localplayer`, and
+ * this is still the one place the shape of the client is stated.
+ *
+ * THE TWO NEW MEMBERS ARE OPTIONAL, and that is load-bearing twice over: a
+ * binding that predates those namespaces degrades to `unavailable` (see
+ * `cloud.ts`'s `no-binding` and `presence.ts`'s equivalent) instead of throwing,
+ * AND every pre-existing fake client in the unit suite keeps typechecking with no
+ * edits, which is the rebalance-fallout rule applied to a type.
  */
 export interface SteamClientLike {
   achievement: {
     activate(name: string): boolean;
     isActivated(name: string): boolean;
   };
+  /** T-1702b · Steam Cloud (`ISteamRemoteStorage`). See `cloud.ts`. */
+  cloud?: CloudClientLike;
+  /** T-1702b · Rich presence lives on `localplayer`. See `presence.ts`. */
+  localplayer?: PresenceClientLike;
 }
 
 /** Everything {@link initSteam} is allowed to know about the world. Injected so
@@ -136,6 +166,18 @@ export interface SteamHost {
 export interface SteamSession {
   status: SteamStatus;
   unlock(apiName: string): UnlockResult;
+  /**
+   * T-1702b · DECISION B — ONE CLIENT LOAD, THREE CONSUMERS.
+   *
+   * The client this session initialised, or `null` on every `unavailable` path.
+   * Exposed so `main.ts` can hand the SAME object to `initCloud` and
+   * `initPresence` rather than performing a second guarded require and
+   * a second app-id resolution. The consequence is the property this task wants:
+   * cloud and presence are `unavailable` EXACTLY when Steam is, through one code
+   * path, so "the no-Steam fallback still clean for both features" is structural
+   * rather than three copies of the same try/catch.
+   */
+  readonly client: SteamClientLike | null;
 }
 
 /**
@@ -187,6 +229,23 @@ export function resolveFakeLogPath(host: SteamHost): string | null {
 }
 
 /**
+ * T-1702b · TEST-ONLY · Where the recording client's FAKE STEAM CLOUD lives, or
+ * `null` for "no cloud".
+ *
+ * REFUSED WHEN PACKAGED, unconditionally, for exactly the reason
+ * {@link resolveFakeLogPath} is: a packaged build whose cloud store an
+ * environment variable can redirect is a packaged build with an
+ * attacker-chosen save directory — and the packaged e2e's whole job is to prove
+ * the REAL path. Like every other test switch in this project it lives entirely
+ * in `packages/desktop`, so the cockpit carries no test flag anywhere.
+ */
+export function resolveFakeCloudDir(host: SteamHost): string | null {
+  if (host.isPackaged) return null;
+  const raw = host.env.SQ_STEAM_FAKE_CLOUD?.trim();
+  return raw ? raw : null;
+}
+
+/**
  * TEST-ONLY · A {@link SteamClientLike} that records to a JSONL file instead of
  * talking to Steam.
  *
@@ -196,34 +255,91 @@ export function resolveFakeLogPath(host: SteamHost): string | null {
  * its own log, so the dedupe path (`already`) is exercised for real rather than
  * stubbed.
  *
+ * T-1702b · IT NOW RECORDS ALL THREE SURFACES:
+ *
+ *   * achievements — the unchanged JSONL `{"achievement": name}` lines;
+ *   * presence — `{"presence": {"key": k, "value": v}}` appended to the SAME log,
+ *     so one file is the whole record of what crossed into the main process;
+ *   * cloud — a REAL, FILE-BACKED fake when `cloudDir` is given: one file per
+ *     name, so `writeFile`/`readFile`/`fileExists` are a genuine round trip
+ *     through the filesystem rather than an in-memory stub that could not
+ *     survive the relaunch the Accept's round-trip test depends on. With no
+ *     `cloudDir` there is no `cloud` member at all, which is how a launch proves
+ *     the `no-binding` degradation.
+ *
  * Every method swallows its own I/O errors: a test harness that cannot write its
  * log must not be able to fail a player's action, which is the same rule the
  * real path follows.
  */
-export function createRecordingClient(logPath: string): SteamClientLike {
-  const recorded = (): string[] => {
+export function createRecordingClient(logPath: string, cloudDir?: string | null): SteamClientLike {
+  const lines = (): { achievement?: string }[] => {
     try {
       return readFileSync(logPath, 'utf8')
         .split('\n')
         .filter((line) => line.trim().length > 0)
-        .map((line) => (JSON.parse(line) as { achievement: string }).achievement);
+        .map((line) => JSON.parse(line) as { achievement?: string });
     } catch {
       return []; // no log yet, or an unreadable one — nothing is activated
     }
   };
-  return {
+  const append = (entry: unknown): boolean => {
+    try {
+      appendFileSync(logPath, `${JSON.stringify(entry)}\n`, 'utf8');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const client: SteamClientLike = {
     achievement: {
-      isActivated: (name) => recorded().includes(name),
-      activate: (name) => {
+      isActivated: (name) => lines().some((entry) => entry.achievement === name),
+      activate: (name) => append({ achievement: name }),
+    },
+    // Presence is write-only on the real API too, so recording it is the whole
+    // fake. `value` may be `null` (a clear), and that is recorded as `null`
+    // rather than dropped — a spec that asserts the quit-time clear needs it.
+    localplayer: {
+      setRichPresence: (key, value) => {
+        append({ presence: { key, value: value ?? null } });
+      },
+    },
+  };
+
+  if (cloudDir) {
+    const file = (name: string): string => join(cloudDir, name);
+    client.cloud = {
+      // A fake cloud that was configured IS enabled; there is no partner-site
+      // switch to consult in a test.
+      isEnabledForApp: () => true,
+      isEnabledForAccount: () => true,
+      fileExists: (name) => {
         try {
-          appendFileSync(logPath, `${JSON.stringify({ achievement: name })}\n`, 'utf8');
+          return existsSync(file(name));
+        } catch {
+          return false;
+        }
+      },
+      readFile: (name) => {
+        try {
+          return readFileSync(file(name), 'utf8');
+        } catch {
+          return '';
+        }
+      },
+      writeFile: (name, content) => {
+        try {
+          mkdirSync(cloudDir, { recursive: true });
+          writeFileSync(file(name), content, 'utf8');
           return true;
         } catch {
           return false;
         }
       },
-    },
-  };
+    };
+  }
+
+  return client;
 }
 
 /**
@@ -280,6 +396,8 @@ function session(
 ): SteamSession {
   return {
     status,
+    // T-1702b · Decision B: the one loaded client, handed on to cloud + presence.
+    client,
     unlock(apiName: string): UnlockResult {
       // 4. NO STEAM → nothing is attempted and nothing throws. This is the path
       //    every build this repo ships takes.
