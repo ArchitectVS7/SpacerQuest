@@ -111,6 +111,13 @@ import {
   type WireLogEntry,
   type StoryletChoice,
 } from './format';
+// T-1701a · Which store the cockpit is actually running against, and where its
+// saves live. `storageBackend` selects the right noun in the two storage-failure
+// sentences ("this browser" vs "the game"); `saveLocation` is the path the
+// Settings "Saves" row shows the player. Both are READ HERE — that is the
+// reader standing constraint 7 requires, asserted by
+// `packages/desktop/e2e/shell.spec.ts`.
+import { storageBackend, saveLocation } from './storage';
 
 const DIE_MIME = 'application/x-sq-die';
 
@@ -261,7 +268,42 @@ function SettingsPanel({ state, onClose }: { state: CockpitState; onClose: () =>
         <AudioMixer />
       </div>
 
+      <StorageRow />
       <SavesPanel state={state} />
+    </div>
+  );
+}
+
+// T-1701a · WHERE YOUR SAVES LIVE.
+//
+// The player-facing surface of the Electron shell, and the READER of both new
+// exports from `storage.ts` (standing constraint 7). On the web build it says
+// "Browser storage" — honest, and there is no path a player could open. Under
+// the shell it shows the absolute OS app-data directory, which is the answer to
+// "where did my career go?" and the thing a bug report needs to attach.
+//
+// Deliberately NOT a button: opening a folder is a shell capability the renderer
+// does not have, and adding an IPC channel for it would be scope this task's
+// Accept does not name. The path is selectable text.
+//
+// `data-storage-backend` is the structural handle — prose may be re-voiced, the
+// backend id is what a spec should assert on (the same rule `RecoveryNotice`'s
+// `data-recovery-code` follows). Asserted in `packages/desktop/e2e/shell.spec.ts`
+// (desktop) and `packages/ui/e2e/settings-saves.spec.ts` (web).
+function StorageRow() {
+  return (
+    <div className="set-section">
+      <span className="set-head">Storage</span>
+      <div className="set-row">
+        <span className="set-label">Saves</span>
+        <span
+          className="set-value"
+          data-testid="save-location"
+          data-storage-backend={storageBackend}
+        >
+          {saveLocation ?? 'Browser storage'}
+        </span>
+      </div>
     </div>
   );
 }
@@ -450,8 +492,10 @@ export function App() {
         {/* T-1605c · The autosave-write-failed banner, beside the corrupt-save
             notice: same slot, same styling, the other half of the same honesty.
             The read side was T-1605a; this is the write side, and it is the
-            failure a 1,000-day career actually hits (~10.9 MiB of save against a
-            ~5 MB localStorage quota). */}
+            failure a 1,000-day career actually hits ON THE WEB BUILD (~10.9 MiB
+            of save against a ~5 MB localStorage quota). T-1701a's Electron shell
+            has no such quota, but a disk write can still fail, so the banner is
+            backend-aware rather than retired. */}
         {s.saveWriteFailed && <SaveWriteFailedNotice />}
         {/* T-1406 · The control cluster is DIEGETIC now — a row of console
             switches on the terminal bezel, in-fiction, rather than a floating
@@ -555,7 +599,7 @@ function RecoveryNotice({ recovery }: { recovery: SaveRecoveryNotice }) {
       data-recovery-preserved={recovery.preserved ? '1' : '0'}
       role="alert"
     >
-      <span>{saveRecoveryMessage(recovery)}</span>
+      <span>{saveRecoveryMessage(recovery, storageBackend)}</span>
       <button className="btn small" data-testid="recovery-dismiss" onClick={dismissRecovery}>
         Dismiss
       </button>
@@ -574,7 +618,7 @@ function RecoveryNotice({ recovery }: { recovery: SaveRecoveryNotice }) {
 function SaveWriteFailedNotice() {
   return (
     <div className="notice recovery" data-testid="save-write-failed-notice" role="alert">
-      <span>{saveWriteFailedMessage()}</span>
+      <span>{saveWriteFailedMessage(storageBackend)}</span>
     </div>
   );
 }

@@ -36,8 +36,17 @@ jobs:
           node-version: 22
           cache: npm
 
+      # T-1701a: skip Electron's ~100 MB binary download. This job never
+      # launches the shell — it typechecks it, and `tsc -b` needs only the
+      # `electron.d.ts` that ships inside the npm package, while
+      # `saveStore.ts` deliberately imports no `electron` at all (asserted by
+      # `packages/desktop/src/__tests__/saveStore.test.ts`), so `npm test` runs
+      # the shell's unit suite without a binary. The `desktop` job below does
+      # download it.
       - name: Install dependencies
         run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       - name: Typecheck & build
         run: npx tsc -b
@@ -66,8 +75,12 @@ jobs:
           node-version: 22
           cache: npm
 
+      # T-1701a: same reasoning as the `ci` job — this job proves the WEB build
+      # and never launches Electron.
       - name: Install dependencies
         run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       - name: Build workspaces
         run: npx tsc -b
@@ -109,3 +122,52 @@ jobs:
           name: tour-one-run-report
           path: packages/ui/test-results/tour-one/
           if-no-files-found: error
+
+  # T-1701a · The Electron shell. A THIRD job, deliberately separate from `e2e`:
+  # that job proves the WEB build and must keep proving exactly that, unchanged,
+  # which together with this job is the "CI proves both" acceptance criterion.
+  # It also keeps the ~100 MB Electron download off the two jobs that do not
+  # need it.
+  desktop:
+    name: Electron desktop e2e
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Electron's postinstall downloads a per-platform binary into
+      # ~/.cache/electron. package-lock.json pins the version, so its hash
+      # changes exactly when the binary would.
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+
+      - name: Build workspaces
+        run: npx tsc -b
+
+      # Electron ships its own Chromium, so no browser download is needed — but
+      # it needs the same GTK/NSS/ALSA system libraries, and `install-deps` is
+      # the supported way to get them on a bare runner.
+      - name: Install system deps
+        run: npx playwright install-deps chromium
+        working-directory: packages/desktop
+
+      # `xvfb-run`: an Electron window needs a display server, and ubuntu
+      # runners are headless. The window really is created and really does
+      # paint — the shell e2e asserts `isVisible()`, which would fail otherwise.
+      - name: Run desktop e2e
+        run: xvfb-run -a npm run test:e2e
+        working-directory: packages/desktop

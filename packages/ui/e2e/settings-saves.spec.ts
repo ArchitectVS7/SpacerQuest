@@ -211,4 +211,27 @@ test.describe('T-312 settings, saves & new-game UX', () => {
     await page.reload();
     await expect(page.getByTestId('seed')).toContainText('777');
   });
+
+  // T-1701a · The web half of the storage row. The DESKTOP half (an absolute
+  // app-data path and `data-storage-backend="desktop"`) is asserted in
+  // `packages/desktop/e2e/shell.spec.ts`; this is the assertion that the WEB
+  // build is unaffected — same cockpit, same Settings panel, and it still
+  // reports browser storage.
+  //
+  // READER asserted here: `storage.ts`'s `storageBackend` and `saveLocation` →
+  // `App.tsx`'s `StorageRow` (standing constraint 7).
+  test('Settings names where saves live — browser storage on the web build', async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+    await newGameSeed(page, 424242);
+
+    await openSettings(page);
+    const row = page.getByTestId('save-location');
+    await expect(row).toBeVisible();
+    await expect(row).toHaveAttribute('data-storage-backend', 'browser');
+    await expect(row).toHaveText('Browser storage');
+    // The save slots still render below it — the new row must not displace them.
+    await expect(page.getByTestId('save-slot')).toHaveCount(3);
+  });
 });

@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite preview --port 5173",
     "typecheck": "tsc -b",
+    "test": "vitest run",
     "test:e2e": "playwright test",
     "flake:measure": "tsx e2e/support/flake-measure.ts",
     "flake:report": "tsx e2e/support/flake-cli.ts"
@@ -28,6 +29,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^1.5.0"
   }
 }

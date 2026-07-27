@@ -36,7 +36,9 @@ import type { GameEvent } from '@spacerquest/engine';
  *  drive hum   ambient  setDriveHum(true)         ~57Hz sine + detuned layer, slow LFO on a lowpass
  *
  * ---------------------------------------------------------------------------
- *  MIXER (persisted in localStorage; read at init, applied on first gesture)
+ *  MIXER (persisted through `storage.ts`; read at init, applied on first gesture)
+ *  — T-1701a: that seam is `localStorage` on the web build and an OS app-data
+ *  file store under the Electron shell. Same keys, same synchronous API.
  * ---------------------------------------------------------------------------
  *  sq.vol.master   0..1  default 0.7   masterGain → destination
  *  sq.vol.sfx      0..1  default 0.6   sfxGain    → masterGain
@@ -54,6 +56,12 @@ import type { GameEvent } from '@spacerquest/engine';
  *  simply dropped.
  * ============================================================================
  */
+
+// T-1701a · The cockpit's one storage surface (see `storage.ts`). The
+// `hasWindow()` guards below are kept: this module is imported by `store.ts`,
+// which is imported by node-side tooling, and the mixer snapshot is built at
+// module scope.
+import { storage } from './storage';
 
 export type Cue =
   | 'relay'
@@ -105,7 +113,7 @@ function audioCtor(): typeof AudioContext | null {
 function readNumber(key: string, fallback: number): number {
   if (!hasWindow()) return fallback;
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = storage.getItem(key);
     if (raw === null) return fallback;
     const n = Number.parseFloat(raw);
     return Number.isFinite(n) ? clamp01(n) : fallback;
@@ -117,7 +125,7 @@ function readNumber(key: string, fallback: number): number {
 function readBool(key: string, fallback: boolean): boolean {
   if (!hasWindow()) return fallback;
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = storage.getItem(key);
     if (raw === null) return fallback;
     return raw === 'true' || raw === '1';
   } catch {
@@ -128,7 +136,7 @@ function readBool(key: string, fallback: boolean): boolean {
 function writeString(key: string, value: string): void {
   if (!hasWindow()) return;
   try {
-    window.localStorage.setItem(key, value);
+    storage.setItem(key, value);
   } catch {
     /* storage unavailable — non-fatal for play */
   }

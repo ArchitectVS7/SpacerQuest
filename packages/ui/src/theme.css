@@ -1600,6 +1600,18 @@ body {
   font-size: 12px;
   color: var(--amber);
 }
+/* T-1701a · The Settings "Storage → Saves" value (the app-data path on the
+   Electron shell, "Browser storage" on the web build). A save directory is a
+   long absolute path, so it wraps mid-path and is selectable — a player copying
+   it into a bug report is the point. */
+.set-value {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--ember);
+  text-align: right;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
 .set-toggle {
   font-family: var(--font-display);
   letter-spacing: 0.12em;

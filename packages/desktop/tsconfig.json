@@ -1,0 +1,23 @@
+{
+  // T-1701a · The Electron shell.
+  //
+  // NO `"type": "module"` in package.json, deliberately: an Electron preload
+  // script must be CommonJS unless the sandbox is disabled, and disabling the
+  // sandbox to gain ESM would be trading a real security boundary for a syntax
+  // preference. The root tsconfig's `module: NodeNext` therefore emits CJS here,
+  // which is exactly what `main.js`/`preload.js` need.
+  //
+  // NO `references`: this package has ZERO workspace dependencies. It knows
+  // nothing about the engine, the content tables or the cockpit — it is a window
+  // and a file store (see src/main.ts's header). That is the property that keeps
+  // "content is data, engine is pure" from leaking into a shell.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node"],
+    "lib": ["ESNext"]
+  },
+  "include": ["src/**/*"]
+}

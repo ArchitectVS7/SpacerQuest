@@ -75,6 +75,12 @@ import {
   type SaveErrorCode,
 } from '@spacerquest/engine';
 import type { RenownRankId, AnonymousInterceptorKind } from '@spacerquest/content';
+// T-1701a · TYPE-ONLY on purpose: `format.ts` is the pure-prose module and must
+// not acquire a runtime dependency on the storage seam (which has module-scope
+// side effects — it performs the one-time localStorage import). Only the two
+// storage-failure sentences below are backend-dependent, and they take the
+// backend as a parameter rather than reading it.
+import type { StorageBackend } from './storage';
 
 /** Display label for a stat. The Stat enum values are already the labels we
  * want, so this is a stable pure lookup (no fabricated names). */
@@ -1934,8 +1940,9 @@ export function resolutionCeremony(game: GameState): ResolutionCeremonyView | nu
  * `SaveErrorCode` is the engine's own union, re-exported through
  * `@spacerquest/engine`. Two UI-side codes extend it, and only one of them is a
  * failure of the SAVE:
- *  - `storage-unavailable` — the localStorage READ itself threw (private mode, a
- *    blocked store). The save is not damaged and the message must not say it is;
+ *  - `storage-unavailable` — the save-storage READ itself threw (private mode or
+ *    a blocked store on the web build; an unreadable app-data dir on the desktop
+ *    shell). The save is not damaged and the message must not say it is;
  *  - `unknown` — something other than a `SaveError` escaped `loadSave`. Honest
  *    catch-all: never claim a cause we do not have.
  *
@@ -1967,9 +1974,30 @@ const SAVE_RECOVERY_CAUSE = {
   'invalid-state': 'that save no longer matches this build of Rimward',
   'no-migration': 'there is no upgrade path from that save’s version',
   'future-version': 'that save was written by a NEWER build of Rimward',
-  'storage-unavailable': 'this browser blocked access to save storage',
+  // T-1701a: the ONLY cause whose wording depends on which store the cockpit is
+  // running against — every other clause is about the save's own bytes, which
+  // are identical on both backends. See `STORAGE_UNAVAILABLE_CAUSE` below.
+  'storage-unavailable': 'save storage could not be reached',
   unknown: 'the save could not be loaded',
 } satisfies Record<SaveRecoveryCode, string>;
+
+/**
+ * T-1701a · The one storage-dependent clause, per backend.
+ *
+ * "this browser" became a LIE the moment the Electron shell shipped: on desktop
+ * there is no browser, there is an app-data folder, and telling a desktop player
+ * to check their browser's site settings sends them somewhere that cannot help.
+ * The rebalance-fallout rule applies to prose the same way it applies to
+ * numbers — the sentence had to move in the same commit as the shell.
+ *
+ * READER of `StorageBackend` here: {@link saveRecoveryMessage} and
+ * {@link saveWriteFailedMessage}; the value comes from `storage.ts`'s
+ * `storageBackend` and is passed in by `App.tsx`.
+ */
+const STORAGE_UNAVAILABLE_CAUSE = {
+  browser: 'this browser blocked access to save storage',
+  desktop: 'the game could not reach its save folder',
+} satisfies Record<StorageBackend, string>;
 
 /** The quarantine key the message names. Mirrors the store's `CORRUPT_SAVE_KEY`
  *  — the sentence must name the exact key a player (or a bug report) can go
@@ -1986,8 +2014,17 @@ const QUARANTINE_KEY_LABEL = 'sq.save.v1.corrupt';
  * `storage-unavailable` is deliberately not accused of damage, and the custody
  * clause is never a promise the store did not keep (`preserved`).
  */
-export function saveRecoveryMessage(notice: SaveRecoveryNotice): string {
-  const cause = SAVE_RECOVERY_CAUSE[notice.code];
+export function saveRecoveryMessage(
+  notice: SaveRecoveryNotice,
+  // T-1701a. Defaulted to `'browser'` so the ~30 existing call sites and tests
+  // that predate the desktop shell keep their exact wording; `App.tsx` passes
+  // the live `storageBackend`.
+  backend: StorageBackend = 'browser',
+): string {
+  const cause =
+    notice.code === 'storage-unavailable'
+      ? STORAGE_UNAVAILABLE_CAUSE[backend]
+      : SAVE_RECOVERY_CAUSE[notice.code];
   const custody = notice.preserved
     ? `The unreadable save was kept as “${QUARANTINE_KEY_LABEL}” and has not been overwritten.`
     : 'Nothing could be kept.';
@@ -2004,6 +2041,14 @@ export function saveRecoveryMessage(notice: SaveRecoveryNotice): string {
 // day ~420, and until now `store.ts autosave()` swallowed the resulting
 // QuotaExceededError in a bare catch. The cockpit kept playing and kept writing
 // nothing.
+//
+// T-1701a · THE QUOTA IS GONE ON DESKTOP, THE MESSAGE IS NOT. The Electron shell
+// writes saves as ordinary files in the OS app-data dir, so the ~5 MB ceiling
+// that motivated this message does not exist there. The message stays because
+// the web build is still the dev/playtest loop (TECH-STACK §3) and still has the
+// quota, and because a disk write can still fail (full disk, read-only profile
+// dir). What changed is that it no longer says "the browser" when there is no
+// browser — see `backend` below.
 //
 // Player-facing copy lives HERE, in format.ts, not in packages/content: content
 // is game DATA (systems, storylets, balance tables), and this is UI chrome about
@@ -2030,10 +2075,21 @@ export function saveRecoveryMessage(notice: SaveRecoveryNotice): string {
  * `CockpitState.saveWriteFailed` is true. Asserted in
  * `e2e/save-write-failure.spec.ts`.
  */
-export function saveWriteFailedMessage(): string {
+export function saveWriteFailedMessage(
+  // T-1701a. Defaulted for the same reason as `saveRecoveryMessage`'s parameter.
+  backend: StorageBackend = 'browser',
+): string {
+  // The two clauses that name the CONTAINER. Everything else is backend-neutral
+  // and stays word-for-word what T-1605c shipped — including the three phrases
+  // `e2e/save-write-failure.spec.ts` asserts ("no longer being saved
+  // automatically", "lost when you close or reload", "Save to a slot"), which is
+  // why both variants still contain all three.
+  const refuser =
+    backend === 'desktop' ? 'the write to disk failed' : 'the browser refused the write';
+  const closing = backend === 'desktop' ? 'close or reload the game' : 'close or reload the page';
   return (
-    'This career is no longer being saved automatically — the browser refused the write, ' +
+    `This career is no longer being saved automatically — ${refuser}, ` +
     'usually because save storage is full or blocked. Everything you do from here will be ' +
-    'lost when you close or reload the page. Save to a slot from Settings to keep it.'
+    `lost when you ${closing}. Save to a slot from Settings to keep it.`
   );
 }

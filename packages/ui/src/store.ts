@@ -24,6 +24,12 @@ import {
   type SuccessionSummary,
 } from './format';
 import * as sound from './sound';
+// T-1701a · The cockpit's ONE storage surface. `localStorage` on the web build,
+// an OS app-data file store on the Electron shell — same synchronous API, same
+// throwing contract, so every `try/catch` below is unchanged. See `storage.ts`;
+// the store must never reach around it (structurally asserted in
+// `__tests__/storage.test.ts`).
+import { storage } from './storage';
 
 /**
  * Play the audio cues an action's event stream implies (T-310). The store is the
@@ -243,7 +249,7 @@ export interface CockpitState {
    * for the failure this task's own measurements surfaced: a 1,000-day career
    * serializes to ~10.9 MiB (engine `__tests__/save-perf.test.ts`), Chromium's
    * localStorage quota is ~5 MB per origin, so a
-   * long career crosses the quota around day ~420 and the cockpit then keeps
+   * long career crosses the quota ON THE WEB BUILD around day ~420 and keeps
    * *playing* while writing nothing. Every subsequent action is lost on reload,
    * and nothing on screen says so. That is the same class of silent omission
    * T-1605a fixed on the READ side (`recovery`); this is the WRITE side.
@@ -263,9 +269,15 @@ export interface CockpitState {
    * saveWriteFailedMessage()`. Asserted consumed by
    * `e2e/save-write-failure.spec.ts`.
    *
-   * OUT OF SCOPE, deliberately: moving saves off localStorage entirely (the real
-   * cure for an 11 MB career) is T-1701a, the Electron shell & local saves.
-   * Truncating or capping the event log is NOT an option here — the wire IS the
+   * STILL LOAD-BEARING AFTER T-1701a. That task shipped the real cure — the
+   * Electron shell writes saves as ordinary files in the OS app-data dir, where
+   * there is no ~5 MB quota (see `storage.ts`) — but it did NOT retire this
+   * flag: the web build is still the dev/playtest loop (TECH-STACK §3) and still
+   * hits the quota, and the desktop file store has its own write failures (a
+   * full disk, a read-only profile dir). The desktop bridge therefore THROWS on
+   * a failed write exactly as `localStorage` does, so this flag keeps working on
+   * both backends; `format.ts saveWriteFailedMessage(backend)` is what names the
+   * right container. Truncating or capping the event log is NOT an option — the wire IS the
    * event log (TECH-STACK §2), so capping it is a rule change this task does not
    * own. `saveToSlot` needs nothing: it has surfaced its own failure notice since
    * T-312.
@@ -278,7 +290,7 @@ const listeners = new Set<() => void>();
 
 // T-1605a · `init()` runs at MODULE SCOPE, outside React, so an error boundary
 // could never catch a throw from here — the guard has to live in the readers. It
-// deliberately has no top-level try/catch: every localStorage read it performs
+// deliberately has no top-level try/catch: every storage read it performs
 // (`readFx` / `readSaveResult` / `readOnboarding` / `readReducedMotion` /
 // `readTextSize` / `readSlots`) is individually guarded and total over any input,
 // so module init cannot throw on any save. Considered and closed, not forgotten.
@@ -583,7 +595,7 @@ interface SaveReadResult {
 function readSaveResult(): SaveReadResult {
   let raw: string | null;
   try {
-    raw = localStorage.getItem(SAVE_KEY);
+    raw = storage.getItem(SAVE_KEY);
   } catch {
     // The store itself is unreachable (private mode / blocked). Not damage —
     // and the notice must not accuse the save of being damaged. Nothing can be
@@ -620,7 +632,7 @@ function readSaveResult(): SaveReadResult {
  */
 function quarantineAutosave(raw: string): boolean {
   try {
-    localStorage.setItem(CORRUPT_SAVE_KEY, raw);
+    storage.setItem(CORRUPT_SAVE_KEY, raw);
     return true;
   } catch {
     return false;
@@ -640,7 +652,7 @@ function quarantineAutosave(raw: string): boolean {
 export function quarantineAndClearAutosave(): boolean {
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(SAVE_KEY);
+    raw = storage.getItem(SAVE_KEY);
   } catch {
     return false;
   }
@@ -648,7 +660,7 @@ export function quarantineAndClearAutosave(): boolean {
   const preserved = quarantineAutosave(raw);
   if (!preserved) return false; // refuse to delete what we could not copy
   try {
-    localStorage.removeItem(SAVE_KEY);
+    storage.removeItem(SAVE_KEY);
   } catch {
     /* the copy survives either way — non-fatal */
   }
@@ -673,7 +685,7 @@ export function dismissRecovery(): void {
  */
 function autosave(game: GameState, seed: number): void {
   try {
-    localStorage.setItem(SAVE_KEY, createSave(game, seed));
+    storage.setItem(SAVE_KEY, createSave(game, seed));
     // T-1605c: a write that lands clears any standing alarm. Doing it HERE
     // (rather than in `newGame` / `loadSlot`) is what makes the flag honest in
     // both directions: those two paths clear it because they autosave and the
@@ -691,7 +703,7 @@ function autosave(game: GameState, seed: number): void {
 }
 function readFx(): boolean {
   try {
-    return localStorage.getItem(FX_KEY) !== 'off';
+    return storage.getItem(FX_KEY) !== 'off';
   } catch {
     return true;
   }
@@ -701,7 +713,7 @@ function readFx(): boolean {
 
 function readAutosaveSeed(): number {
   try {
-    const raw = localStorage.getItem(AUTOSAVE_SEED_KEY);
+    const raw = storage.getItem(AUTOSAVE_SEED_KEY);
     const n = raw === null ? NaN : Number.parseInt(raw, 10);
     return Number.isFinite(n) ? n : DEFAULT_SEED;
   } catch {
@@ -710,14 +722,14 @@ function readAutosaveSeed(): number {
 }
 function readReducedMotion(): boolean {
   try {
-    return localStorage.getItem(REDUCED_MOTION_KEY) === 'on';
+    return storage.getItem(REDUCED_MOTION_KEY) === 'on';
   } catch {
     return false;
   }
 }
 function readTextSize(): TextSize {
   try {
-    const v = localStorage.getItem(TEXT_SIZE_KEY);
+    const v = storage.getItem(TEXT_SIZE_KEY);
     return v === 'small' || v === 'large' ? v : 'normal';
   } catch {
     return 'normal';
@@ -725,7 +737,7 @@ function readTextSize(): TextSize {
 }
 function readSlotMeta(n: number): Omit<SlotSummary, 'index' | 'empty'> | null {
   try {
-    const raw = localStorage.getItem(SLOT_META_KEY(n));
+    const raw = storage.getItem(SLOT_META_KEY(n));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Omit<SlotSummary, 'index' | 'empty'>;
     return parsed && typeof parsed === 'object' ? parsed : null;
@@ -746,7 +758,7 @@ function readSlots(): SlotSummary[] {
 
 function readOnboarding(): Record<string, true> {
   try {
-    const raw = localStorage.getItem(ONBOARDING_KEY);
+    const raw = storage.getItem(ONBOARDING_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, true>;
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -756,7 +768,7 @@ function readOnboarding(): Record<string, true> {
 }
 function writeOnboarding(seen: Record<string, true>): void {
   try {
-    localStorage.setItem(ONBOARDING_KEY, JSON.stringify(seen));
+    storage.setItem(ONBOARDING_KEY, JSON.stringify(seen));
   } catch {
     /* storage unavailable — non-fatal for play */
   }
@@ -785,7 +797,7 @@ export function newGame(seed: number): void {
   // `readSaveResult` recover the seed for a pre-v2 envelope (seed: null).
   autosave(game, seed);
   try {
-    localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
+    storage.setItem(AUTOSAVE_SEED_KEY, String(seed));
   } catch {
     /* storage unavailable — non-fatal for play */
   }
@@ -1706,7 +1718,7 @@ export function endDay(): void {
 export function toggleFx(): void {
   const fx = !state.fx;
   try {
-    localStorage.setItem(FX_KEY, fx ? 'on' : 'off');
+    storage.setItem(FX_KEY, fx ? 'on' : 'off');
   } catch {
     /* ignore */
   }
@@ -1725,7 +1737,7 @@ export function toggleFx(): void {
  */
 export function saveToSlot(n: number): void {
   try {
-    localStorage.setItem(SLOT_KEY(n), createSave(state.game, state.seed));
+    storage.setItem(SLOT_KEY(n), createSave(state.game, state.seed));
     const meta: Omit<SlotSummary, 'index' | 'empty'> = {
       savedAt: Date.now(),
       seed: state.seed,
@@ -1733,7 +1745,7 @@ export function saveToSlot(n: number): void {
       credits: state.game.player.credits,
       systemId: state.game.player.currentSystemId,
     };
-    localStorage.setItem(SLOT_META_KEY(n), JSON.stringify(meta));
+    storage.setItem(SLOT_META_KEY(n), JSON.stringify(meta));
     set({ saves: readSlots(), notice: `Saved to slot ${n}.` });
   } catch {
     set({ notice: 'Could not write to that slot (storage unavailable).' });
@@ -1751,7 +1763,7 @@ export function saveToSlot(n: number): void {
 export function loadSlot(n: number): void {
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(SLOT_KEY(n));
+    raw = storage.getItem(SLOT_KEY(n));
   } catch {
     /* fall through to the empty-slot notice */
   }
@@ -1775,7 +1787,7 @@ export function loadSlot(n: number): void {
   // The loaded career becomes the live autosave.
   autosave(game, seed);
   try {
-    localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
+    storage.setItem(AUTOSAVE_SEED_KEY, String(seed));
   } catch {
     /* non-fatal */
   }
@@ -1804,8 +1816,8 @@ export function loadSlot(n: number): void {
  *  confirm is UI-local component state — the store just performs the deletion. */
 export function deleteSlot(n: number): void {
   try {
-    localStorage.removeItem(SLOT_KEY(n));
-    localStorage.removeItem(SLOT_META_KEY(n));
+    storage.removeItem(SLOT_KEY(n));
+    storage.removeItem(SLOT_META_KEY(n));
   } catch {
     /* non-fatal */
   }
@@ -1815,7 +1827,7 @@ export function deleteSlot(n: number): void {
 /** User reduced-motion override (persisted). Layered over the OS media query. */
 export function setReducedMotion(v: boolean): void {
   try {
-    localStorage.setItem(REDUCED_MOTION_KEY, v ? 'on' : 'off');
+    storage.setItem(REDUCED_MOTION_KEY, v ? 'on' : 'off');
   } catch {
     /* ignore */
   }
@@ -1825,7 +1837,7 @@ export function setReducedMotion(v: boolean): void {
 /** User text-size preference (persisted). */
 export function setTextSize(size: TextSize): void {
   try {
-    localStorage.setItem(TEXT_SIZE_KEY, size);
+    storage.setItem(TEXT_SIZE_KEY, size);
   } catch {
     /* ignore */
   }

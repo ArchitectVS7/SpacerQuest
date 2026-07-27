@@ -45,7 +45,14 @@ packages/
   ui/         the cockpit (web) — renders engine state, submits actions
   content/    NPC sheets, storylets, systems, balance tables (data, not code)
   sim/        headless harnesses: balance runs, UGT adapter
+  desktop/    Electron shell — window management + the OS app-data save dir
 ```
+`desktop/` was added by **T-1701a** (the §3 desktop shell target, on the
+Electron lean below). It has **zero workspace dependencies and zero game rules**:
+it is a window and a synchronous file-backed key/value store, and the cockpit
+reaches it through one seam (`ui/src/storage.ts`) that falls through to
+`localStorage` when no shell is present — so the browser build stays the
+dev/playtest loop, untouched. Packaging and the updater are T-1701b.
 `content/` is data (JSON/typed TS data modules) so expansion Seasons and the
 d20 cast stay authorable without touching engine code.
 

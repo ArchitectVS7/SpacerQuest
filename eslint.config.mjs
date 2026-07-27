@@ -18,7 +18,12 @@ export default tseslint.config(
     ],
   },
   {
-    files: ['packages/*/src/**/*.{ts,tsx}', 'packages/ui/e2e/**/*.ts'],
+    // T-1701a adds `packages/desktop/e2e` beside `packages/ui/e2e`: the gate
+    // requires lint to cover e2e specs, and the desktop suite is a second e2e
+    // root (it owns the `electron` dep and must not change the shape of the web
+    // suite or its flake gate). `packages/*/src/**` already covers the shell's
+    // own sources.
+    files: ['packages/*/src/**/*.{ts,tsx}', 'packages/*/e2e/**/*.ts'],
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: {

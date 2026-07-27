@@ -20,7 +20,13 @@
     { "path": "./packages/engine" },
     { "path": "./packages/ui" },
     { "path": "./packages/sim" },
-    { "path": "./packages/ui/e2e" }
+    { "path": "./packages/ui/e2e" },
+    // T-1701a · The Electron shell (window management + the OS app-data save
+    // dir) and its Playwright suite. No workspace deps in either direction: the
+    // shell knows nothing about the engine, and `packages/ui` knows nothing
+    // about the shell beyond the `window.sqDesktop` shape it duplicates.
+    { "path": "./packages/desktop" },
+    { "path": "./packages/desktop/e2e" }
   ],
   "exclude": ["node_modules", "dist"]
 }
