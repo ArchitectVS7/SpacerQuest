@@ -10,7 +10,8 @@ import {
   type KeyValueStore,
   type StorageWindow,
 } from '../storage';
-import { saveRecoveryMessage, saveWriteFailedMessage } from '../format';
+import { saveRecoveryMessage, saveWriteFailedMessage, updateStatusMessage } from '../format';
+import type { UpdateStatus } from '../storage';
 
 // ---------------------------------------------------------------------------
 // T-1701a · The storage seam.
@@ -199,6 +200,8 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
       },
       keys: () => [...map.keys()],
       dir: () => dir,
+      // T-1701b · The shell's self-description. Same shape `preload.ts` returns.
+      about: () => ({ version: '1.0.0', updates: 'inert' }),
     };
   }
 
@@ -233,6 +236,7 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
 
     expect(selected.backend).toBe('desktop');
     expect(selected.saveLocation).toBe('/home/pilot/.config/Rimward/saves');
+    expect(selected.shell).toEqual({ version: '1.0.0', updates: 'inert' });
     expect(selected.migrated).toHaveLength(10);
     // The handed-out store IS the desktop one.
     expect(selected.storage.getItem('sq.save.v1')).toBe(CAREER['sq.save.v1']);
@@ -246,6 +250,9 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
 
     expect(selected.backend).toBe('browser');
     expect(selected.saveLocation).toBeNull();
+    // T-1701b · No shell means no version and no updater — the Build row says
+    // "Web build" and hands updates to the browser.
+    expect(selected.shell).toBeNull();
     expect(selected.migrated).toEqual([]);
     expect(selected.storage.getItem('sq.save.v1')).toBe(CAREER['sq.save.v1']);
   });
@@ -274,9 +281,83 @@ describe('T-1701a · selectStorage — which backend the cockpit got', () => {
   it('falls back to memory with no window at all, so module init cannot throw', () => {
     const selected = selectStorage(null);
     expect(selected.backend).toBe('browser');
+    expect(selected.shell).toBeNull();
     expect(selected.storage.getItem('sq.save.v1')).toBeNull();
     selected.storage.setItem('sq.save.v1', 'x');
     expect(selected.storage.getItem('sq.save.v1')).toBe('x');
+  });
+
+  // T-1701b -----------------------------------------------------------------
+
+  it('a bridge that cannot name its own version is still a usable shell', () => {
+    const files = new Map<string, string>();
+    const bridge = bridgeFor(files, '/home/pilot/.config/Rimward/saves');
+    const win: StorageWindow = {
+      localStorage: fakeLocalStorage({}),
+      sqDesktop: {
+        ...bridge,
+        about: () => {
+          throw new Error('IPC failed');
+        },
+      },
+    };
+
+    let selected!: ReturnType<typeof selectStorage>;
+    expect(() => {
+      selected = selectStorage(win);
+    }).not.toThrow();
+
+    expect(selected.backend).toBe('desktop');
+    expect(selected.saveLocation).toBe('/home/pilot/.config/Rimward/saves');
+    expect(selected.shell).toBeNull();
+    // …and the store still works, which is the point.
+    selected.storage.setItem('sq.fx', 'off');
+    expect(files.get('sq.fx')).toBe('off');
+  });
+
+  it('a THROWING localStorage getter cannot take module init down', () => {
+    // `localStorage` throws `SecurityError` on an opaque origin — which is what
+    // a `file://` page is. Before T-1701b this module probed the getter with a
+    // bare property read at module scope, so one throw meant `selectStorage`
+    // threw during module EVALUATION and the cockpit never booted. The packaged
+    // build is served over a secure `app://` origin so this cannot arise there,
+    // but the seam must not depend on that staying true.
+    const win = {
+      get localStorage(): Storage {
+        throw new Error('SecurityError: storage is disabled inside this context');
+      },
+    } as unknown as StorageWindow;
+
+    let selected!: ReturnType<typeof selectStorage>;
+    expect(() => {
+      selected = selectStorage(win);
+    }).not.toThrow();
+
+    expect(selected.backend).toBe('browser');
+    expect(selected.saveLocation).toBeNull();
+    expect(selected.shell).toBeNull();
+    expect(selected.migrated).toEqual([]);
+    // A usable seam, not a broken one: the memory fallback round-trips.
+    selected.storage.setItem('sq.save.v1', 'x');
+    expect(selected.storage.getItem('sq.save.v1')).toBe('x');
+  });
+
+  it('a desktop bridge survives a throwing localStorage getter too', () => {
+    // Same origin hazard, but with a shell present: the IMPORT is skipped (there
+    // is nothing to import from) and the desktop store is handed out intact.
+    const files = new Map<string, string>();
+    const bridge = bridgeFor(files, '/home/pilot/.config/Rimward/saves');
+    const win = {
+      get localStorage(): Storage {
+        throw new Error('SecurityError');
+      },
+      sqDesktop: bridge,
+    } as unknown as StorageWindow;
+
+    const selected = selectStorage(win);
+    expect(selected.backend).toBe('desktop');
+    expect(selected.migrated).toEqual([]);
+    expect(selected.shell).toEqual({ version: '1.0.0', updates: 'inert' });
   });
 });
 
@@ -336,6 +417,41 @@ describe('T-1701a · the storage-failure prose names the right container', () =>
       'NEWER build',
     );
     expect(saveRecoveryMessage(notice, 'desktop')).toContain('could not be loaded');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1701b · The READER of `updateStatus`: one sentence per state.
+// ---------------------------------------------------------------------------
+
+describe('T-1701b · the updates prose is honest per state', () => {
+  const STATES: (UpdateStatus | null)[] = [null, 'unsupported', 'inert', 'armed'];
+
+  it('says something distinct for every state', () => {
+    const said = STATES.map((s) => updateStatusMessage(s));
+    expect(new Set(said).size).toBe(STATES.length);
+    for (const sentence of said) expect(sentence.length).toBeGreaterThan(0);
+  });
+
+  it('never promises an update the build will not fetch', () => {
+    // The shipped desktop package is `inert`, and this is the whole reason the
+    // row exists: a player who is told updates are coming and never gets one
+    // files a bug about the patch, not about the wording.
+    for (const state of [null, 'unsupported', 'inert'] as const) {
+      expect(updateStatusMessage(state)).not.toMatch(/checking/i);
+    }
+    expect(updateStatusMessage('armed')).toMatch(/checking/i);
+  });
+
+  it('names the right agent per state', () => {
+    // Web: the browser fetches a new build, and there is no shell to say more.
+    expect(updateStatusMessage(null)).toContain('browser');
+    // Desktop, inert: honest about being off rather than silent.
+    expect(updateStatusMessage('inert')).toBe('Automatic updates are off in this build.');
+    expect(updateStatusMessage('unsupported')).toContain('does not check');
+    // …and neither desktop sentence mentions a browser there is none of.
+    expect(updateStatusMessage('inert')).not.toContain('browser');
+    expect(updateStatusMessage('unsupported')).not.toContain('browser');
   });
 });
 

@@ -1,16 +1,21 @@
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { test, expect } from '@playwright/test';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import {
+  bezel,
+  cleanupTempDirs,
+  closeSettings,
+  launch as launchShell,
+  openSettings,
+  payDebt,
+  startCareer,
+  tempDir,
+  type LaunchOpts,
+} from './support/cockpit';
 
 // ---------------------------------------------------------------------------
-// T-1701a ACCEPTANCE — the Electron shell, driven as a player drives it.
+// T-1701a ACCEPTANCE — the Electron shell in DEV MODE, driven as a player
+// drives it. (The PACKAGED build is `packaged.spec.ts`, T-1701b.)
 //
 // Three claims, all through the real window:
 //   1. dev-mode Electron runs Tour One start-of-career;
@@ -20,9 +25,9 @@ import { tmpdir } from 'node:os';
 //      PLAYING one in a bridge-less launch first, so the fixture is a real
 //      browser career and not a hand-written blob.
 //
-// NOTHING here reaches into the store, the engine or a save file to SET state.
-// Files are read only to assert; every mutation is a click. That is the same
-// rule `packages/ui/e2e/support/career.ts` states for the web suite.
+// The driving helpers live in `support/cockpit.ts` (T-1701b extracted them so
+// the packaged spec drives the identical clicks). NOTHING here reaches into the
+// store, the engine or a save file to SET state.
 // ---------------------------------------------------------------------------
 
 /** The compiled main process. `npm run build` (tsc -b) produces it; the gate's
@@ -34,111 +39,11 @@ const MAIN = join(__dirname, '..', 'dist', 'main.js');
  *  e2e suite tests, started by `playwright.config.ts`'s `webServer`. */
 const RENDERER_URL = 'http://localhost:5173';
 
-/** Temp roots created during a test, torn down after it. */
-let scratch: string[] = [];
-
-function tempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), `sq-${prefix}-`));
-  scratch.push(dir);
-  return dir;
+function launch(opts: Omit<LaunchOpts, 'main' | 'rendererUrl' | 'executablePath'>) {
+  return launchShell({ ...opts, main: MAIN, rendererUrl: RENDERER_URL });
 }
 
-interface LaunchOpts {
-  saveDir: string;
-  userDataDir: string;
-  /** `'web'` launches the shell with NO storage bridge, so the cockpit falls
-   *  through to `localStorage` exactly as the web build does. Test-only; see
-   *  `src/main.ts`'s `webPreferences.preload`. */
-  storage?: 'web';
-}
-
-async function launch(opts: LaunchOpts): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({
-    // `--no-sandbox`: GitHub's ubuntu containers cannot use Chromium's setuid
-    // sandbox. It is a launch flag, not a product setting — `main.ts` still sets
-    // `contextIsolation`, `nodeIntegration: false` and `sandbox: true` on the
-    // window, and those are what keep the renderer unprivileged.
-    args: ['--no-sandbox', MAIN],
-    env: {
-      ...process.env,
-      SQ_SAVE_DIR: opts.saveDir,
-      SQ_USER_DATA_DIR: opts.userDataDir,
-      SQ_RENDERER_URL: RENDERER_URL,
-      ...(opts.storage ? { SQ_STORAGE: opts.storage } : {}),
-    },
-  });
-  const page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  return { app, page };
-}
-
-// ---- player-level driving (no store, no engine, no save file) ---------------
-
-/**
- * Tour One, start of career — the same four assertions
- * `packages/ui/e2e/support/career.ts`'s `startCareer` makes, minus its
- * `page.goto('/')` (the Electron window is already showing the cockpit).
- *
- * DUPLICATED rather than imported, deliberately: `career.ts` lives under
- * `packages/ui/e2e`, a different Playwright root with a different tsconfig and
- * its own `RunReport` bookkeeping, and importing across the two roots would
- * couple the desktop suite to the web suite's flake instrumentation. Twelve
- * lines is a cheaper price than that coupling. If the cockpit's start-of-career
- * markers ever move, both copies fail loudly, which is the behaviour we want.
- */
-async function startCareer(page: Page, seed: number): Promise<void> {
-  await page.getByRole('button', { name: 'New game' }).click();
-  await page.getByLabel('seed').fill(String(seed));
-  await page.getByRole('button', { name: 'Roll' }).click();
-
-  await expect(page.getByTestId('day')).toHaveText('1');
-  await expect(page.getByTestId('debt-chip')).toContainText('25,000');
-  await expect(page.getByTestId('campaign-era')).toHaveText('Frontier Era');
-  await expect(page.getByTestId('hand')).toBeVisible();
-}
-
-/** A die-free mutating action: pay down the guild debt. Every mutating action
- *  autosaves, so any would do; this one needs no die and no RNG-sensitive
- *  targeting, which keeps the spec robust to balance changes. */
-async function payDebt(page: Page, amount: number): Promise<void> {
-  await page.getByTestId('debt-amount').fill(String(amount));
-  await page.getByTestId('pay-debt').click();
-}
-
-async function openSettings(page: Page): Promise<void> {
-  await page.getByTestId('settings-toggle').click();
-  await expect(page.getByTestId('settings-panel')).toBeVisible();
-}
-
-async function closeSettings(page: Page): Promise<void> {
-  await page.getByTestId('settings-toggle').click();
-  await expect(page.getByTestId('settings-panel')).toHaveCount(0);
-}
-
-/** Everything the bezel shows that a save has to restore. */
-async function bezel(page: Page): Promise<{ day: string; credits: string; seed: string }> {
-  return {
-    day: await page.getByTestId('day').innerText(),
-    credits: await page.getByTestId('credits').innerText(),
-    seed: await page.getByTestId('seed').innerText(),
-  };
-}
-
-// BEST-EFFORT teardown, on purpose. A Chromium profile directory keeps file
-// handles open for a beat after the process exits, and on Windows that is an
-// EBUSY, not a leak — failing the test on it would turn every green run into a
-// coin flip over an OS detail the product does not care about. The dirs live
-// under `os.tmpdir()` and the OS reclaims them.
-test.afterEach(() => {
-  for (const dir of scratch) {
-    try {
-      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-    } catch {
-      /* see above */
-    }
-  }
-  scratch = [];
-});
+test.afterEach(() => cleanupTempDirs());
 
 // ---------------------------------------------------------------------------
 
@@ -183,7 +88,9 @@ test.describe('T-1701a · the Electron shell', () => {
     const bridgeMethods = await page.evaluate(() =>
       Object.keys((window as unknown as { sqDesktop: object }).sqDesktop).sort(),
     );
-    expect(bridgeMethods).toEqual(['dir', 'getItem', 'keys', 'removeItem', 'setItem']);
+    // T-1701b added `about`; the list is asserted EXACTLY so the three twins
+    // (`preload.ts`, `storage.ts`'s `DesktopStorageBridge`, this) cannot drift.
+    expect(bridgeMethods).toEqual(['about', 'dir', 'getItem', 'keys', 'removeItem', 'setItem']);
 
     // --- Tour One, start of career ----------------------------------------
     await startCareer(page, 1701);
@@ -193,6 +100,16 @@ test.describe('T-1701a · the Electron shell', () => {
     const row = page.getByTestId('save-location');
     await expect(row).toHaveAttribute('data-storage-backend', 'desktop');
     await expect(row).toHaveText(saveDir);
+
+    // --- T-1701b · the READER of `shellVersion` / `updateStatus` ------------
+    await expect(page.getByTestId('app-version')).toHaveText(/^\d+\.\d+\.\d+$/);
+    // A DEV shell is not packaged, so it can never self-update — worth
+    // ASSERTING rather than assuming: an updater that armed itself against a
+    // developer's working tree would overwrite it with a release.
+    await expect(page.getByTestId('update-status')).toHaveAttribute(
+      'data-update-status',
+      'unsupported',
+    );
     await closeSettings(page);
 
     // --- the save is a FILE, in the dir the player was shown ---------------

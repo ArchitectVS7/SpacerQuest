@@ -22,16 +22,51 @@
 // shell is a client of the cockpit in exactly the way the cockpit is a client of
 // the engine.
 //
-// SCOPE BOUNDARY, HELD EXPLICITLY. Packaging, `file://` loading and the
-// auto-updater are T-1701b. Rather than half-ship a `file://` path that would
-// silently fail, `resolveRendererUrl` refuses to guess when `app.isPackaged` and
-// shows an error page that names T-1701b. An honest dead end beats a broken
-// build that looks alive.
+// T-1701b · WHAT A PACKAGED BUILD NOW DOES. The scope boundary T-1701a held
+// (`resolveRendererUrl` refused to guess when `app.isPackaged`, and the window
+// showed an error page naming this task) is GONE. A packaged build serves the
+// bundled cockpit over the privileged `app://` scheme registered below, and
+// resolves an updater status at boot (`updater.ts`) that the player can read in
+// Settings → Build.
+//
+// WHY `app://` AND NOT `file://` — the load-bearing call of T-1701b. Two
+// concrete failure modes, both SILENT, neither caught by a dev-mode run:
+//
+//   1. `packages/ui/vite.config.ts` emits `base: '/'`, so `<script
+//      src="/assets/…">` under `file://` resolves against the FILESYSTEM ROOT
+//      and the cockpit renders a blank tube. The `file://` fix is `base: './'`
+//      — i.e. mutating the WEB build's config to serve the desktop build, the
+//      exact coupling T-1701a's "web unaffected by construction" property
+//      exists to prevent. Under `app://` (registered `standard: true`) URL
+//      parsing is real, `/assets/x.js` resolves against the app origin, and
+//      `vite.config.ts` is untouched.
+//   2. `file://` is an OPAQUE ORIGIN in Chromium. `packages/ui/src/storage.ts`
+//      probes `window.localStorage` at MODULE SCOPE; an opaque origin makes
+//      that getter throw `SecurityError`, `selectStorage` throws during module
+//      init, and the cockpit never boots — a total, packaging-only failure.
+//      (That probe is now also individually hardened, but the origin is the
+//      real cure: `secure: true` gives a trustworthy origin, so `localStorage`,
+//      `crypto.subtle` and the `AudioContext` behave exactly as they do on
+//      `http://localhost:5173`.)
+//
+// A real origin also keeps `will-navigate`'s same-origin guard MEANINGFUL
+// instead of degenerating into "block everything".
 // ---------------------------------------------------------------------------
 
-import { app, BrowserWindow, ipcMain, shell, type IpcMainEvent } from 'electron';
-import { join } from 'node:path';
+import {
+  app,
+  autoUpdater,
+  BrowserWindow,
+  ipcMain,
+  net,
+  protocol,
+  shell,
+  type IpcMainEvent,
+} from 'electron';
+import { join, normalize, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createSaveStore, type SaveStore } from './saveStore';
+import { initUpdater, type UpdaterStatus } from './updater';
 
 /**
  * The product name. Set BEFORE `whenReady`, because `app.getPath('userData')`
@@ -43,6 +78,20 @@ const APP_NAME = 'Rimward';
 /** Dev-mode renderer. `packages/ui`'s `vite` dev server and its `vite preview`
  *  both bind port 5173 with `strictPort`, so one constant covers both. */
 const DEFAULT_RENDERER_URL = 'http://localhost:5173';
+
+/** T-1701b · The custom scheme the PACKAGED renderer is served over. See the
+ *  header for why this is not `file://`. */
+const APP_SCHEME = 'app';
+/** The packaged renderer's ORIGIN. A real origin (not a path prefix) is what
+ *  makes the `will-navigate` check below mean something. */
+const APP_ORIGIN = `${APP_SCHEME}://rimward`;
+const PACKAGED_RENDERER_URL = `${APP_ORIGIN}/index.html`;
+/** The bundled cockpit, relative to the compiled main. `scripts/copy-renderer.mjs`
+ *  puts `packages/ui/dist-web` here; inside an asar archive this resolves to
+ *  `resources/app.asar/renderer`, which `net.fetch` reads through transparently. */
+const RENDERER_DIR = join(__dirname, '..', 'renderer');
+/** Served when the request path is the origin root. */
+const INDEX_FILE = '/index.html';
 
 const WINDOW = {
   width: 1280,
@@ -62,7 +111,17 @@ const CHANNELS = {
   remove: 'sq-store:remove',
   keys: 'sq-store:keys',
   dir: 'sq-store:dir',
+  // T-1701b · Not a store channel: the shell's own version and updater state,
+  // for Settings → Build. Registered on `replyRaw` because it needs no store.
+  about: 'sq-shell:about',
 } as const;
+
+/** What the `about` channel answers with. TWIN: `preload.ts`'s `ShellAbout` and
+ *  `packages/ui/src/storage.ts`'s `DesktopStorageBridge.about`. */
+interface ShellAbout {
+  version: string;
+  updates: UpdaterStatus['state'];
+}
 
 /**
  * The reply shape for every channel. The bridge turns `{ ok: false }` back into
@@ -82,6 +141,20 @@ let saveStore: SaveStore | null = null;
 let mainWindow: BrowserWindow | null = null;
 
 /**
+ * T-1701b · What the updater resolved to on this launch.
+ *
+ * READER CHAIN (standing constraint 7), end to end: this variable → the
+ * {@link CHANNELS.about} IPC channel → `preload.ts`'s `about()` →
+ * `packages/ui/src/storage.ts`'s `updateStatus` → `App.tsx`'s `BuildRow`, which
+ * is a line the player reads in Settings. Asserted by `e2e/packaged.spec.ts`
+ * (`inert` in a real package) and `e2e/shell.spec.ts` (`unsupported` in dev).
+ *
+ * Seeded `not-started` so a read that somehow beats `whenReady` is honest
+ * rather than optimistic.
+ */
+let updaterStatus: UpdaterStatus = { state: 'unsupported', reason: 'not-started', feed: null };
+
+/**
  * Where saves live.
  *
  * `app.getPath('userData')` IS the OS app-data directory —
@@ -98,39 +171,63 @@ function resolveSaveDir(): string {
 /**
  * Where the cockpit is served from.
  *
- * Returns `null` when packaged — see the header. `SQ_RENDERER_URL` lets the e2e
- * point at whatever port Playwright's `webServer` came up on.
+ * T-1701b: a packaged build gets the bundled renderer over `app://` (see the
+ * header); a dev build still gets the vite server, and `SQ_RENDERER_URL` lets
+ * the e2e point at whatever port Playwright's `webServer` came up on.
  */
-function resolveRendererUrl(): string | null {
-  if (app.isPackaged) return null;
+function resolveRendererUrl(): string {
+  if (app.isPackaged) return PACKAGED_RENDERER_URL;
   return process.env.SQ_RENDERER_URL ?? DEFAULT_RENDERER_URL;
 }
 
-/** The honest dead end for a packaged build. Inline so it needs no asset, which
- *  a packaged build is precisely what does not have yet. */
-function packagedPlaceholder(): string {
-  const body = `<!doctype html><html><head><meta charset="utf-8"><title>${APP_NAME}</title></head>
-<body style="background:#0b0906;color:#ffb000;font:14px ui-monospace,monospace;padding:48px">
-<h1 style="font-size:16px;letter-spacing:.16em">RIMWARD — SHELL ONLY</h1>
-<p>This build has the desktop shell (T-1701a) but not the packaged renderer.</p>
-<p>Packaging and the updater are <strong>T-1701b</strong>.</p>
-<p>To run the shell in dev mode: start the cockpit with
-<code>npm run dev -w @spacerquest/ui</code>, then
-<code>npm run dev -w @spacerquest/desktop</code>.</p>
-</body></html>`;
-  return `data:text/html;charset=utf-8,${encodeURIComponent(body)}`;
+/**
+ * T-1701b · Serve the bundled cockpit over `app://`.
+ *
+ * Registered only when packaged: a dev build must keep loading from vite so the
+ * hot-reload loop and the desktop e2e both keep working against the SAME
+ * artifact the web suite tests.
+ */
+function registerAppProtocol(): void {
+  void protocol.handle(APP_SCHEME, async (request) => {
+    let rel: string;
+    try {
+      rel = decodeURIComponent(new URL(request.url).pathname);
+    } catch {
+      return new Response('bad request', { status: 400 });
+    }
+    if (rel === '/' || rel === '') rel = INDEX_FILE;
+
+    // PATH-TRAVERSAL GUARD, the same discipline as `saveStore.ts`'s `SAFE_KEY`
+    // and for the same reason: the renderer is the surface an attacker reaches
+    // first in an Electron app, and this handler is a FILE-READ PRIMITIVE. A
+    // request for `app://rimward/../../../etc/passwd` must not become a read.
+    const target = normalize(join(RENDERER_DIR, rel));
+    if (target !== RENDERER_DIR && !target.startsWith(RENDERER_DIR + sep)) {
+      return new Response('forbidden', { status: 403 });
+    }
+
+    try {
+      // `net.fetch` reads through an asar archive transparently and infers the
+      // MIME type, which is the whole reason it is preferred over `readFile`
+      // plus a hand-rolled extension table.
+      return await net.fetch(pathToFileURL(target).toString());
+    } catch {
+      // NO SPA FALLBACK, deliberately: the cockpit has no client-side router,
+      // so 404 is the honest answer. Rewriting a miss to index.html would make
+      // a broken asset path render as a blank tube instead of failing loudly —
+      // and `e2e/packaged.spec.ts` probes for exactly that 404.
+      return new Response(null, { status: 404 });
+    }
+  });
 }
 
-/** Answer one synchronous storage call, converting any throw into a transport
- *  envelope the bridge can rethrow on the renderer side. */
-function reply<T>(event: IpcMainEvent, work: () => T): void {
+/** Answer one IPC call, converting any throw into a transport envelope the
+ *  bridge can rethrow on the renderer side. Sender-validated: an unvalidated
+ *  `ipcMain` handler is a privileged primitive for anything that gets a frame
+ *  into the process. */
+function replyRaw<T>(event: IpcMainEvent, work: () => T): void {
   if (!trustedContents.has(event.sender.id)) {
     event.returnValue = { ok: false, error: 'untrusted sender' } satisfies StoreReply<never>;
-    return;
-  }
-  const store = saveStore;
-  if (!store) {
-    event.returnValue = { ok: false, error: 'save store not ready' } satisfies StoreReply<never>;
     return;
   }
   try {
@@ -141,6 +238,17 @@ function reply<T>(event: IpcMainEvent, work: () => T): void {
       error: err instanceof Error ? err.message : String(err),
     } satisfies StoreReply<never>;
   }
+}
+
+/** {@link replyRaw} plus the save-store readiness check every storage channel
+ *  needs. Kept separate so the `about` channel — which touches no store — is
+ *  answerable before (and independently of) the store existing. */
+function reply<T>(event: IpcMainEvent, work: () => T): void {
+  if (!saveStore && trustedContents.has(event.sender.id)) {
+    event.returnValue = { ok: false, error: 'save store not ready' } satisfies StoreReply<never>;
+    return;
+  }
+  replyRaw(event, work);
 }
 
 /**
@@ -167,6 +275,15 @@ function registerStorageIpc(): void {
   );
   ipcMain.on(CHANNELS.keys, (event) => reply(event, () => saveStore!.keys()));
   ipcMain.on(CHANNELS.dir, (event) => reply(event, () => saveStore!.dir));
+  // T-1701b · The shell's own identity. `replyRaw`, not `reply`: it needs no
+  // save store, and a shell that cannot open its save dir should still be able
+  // to tell the player what build it is.
+  ipcMain.on(CHANNELS.about, (event) =>
+    replyRaw(event, (): ShellAbout => ({
+      version: app.getVersion(),
+      updates: updaterStatus.state,
+    })),
+  );
 }
 
 function createWindow(): BrowserWindow {
@@ -225,11 +342,21 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' };
   });
   const rendererUrl = resolveRendererUrl();
+  // T-1701b: an ORIGIN comparison, not a prefix test. The packaged renderer URL
+  // is a full URL (`app://rimward/index.html`), so `startsWith` would reject
+  // every legitimate in-app navigation; origin is the property that actually
+  // matters, on both schemes. Anything unparseable is refused.
   win.webContents.on('will-navigate', (event, url) => {
-    if (rendererUrl === null || !url.startsWith(rendererUrl)) event.preventDefault();
+    let sameOrigin = false;
+    try {
+      sameOrigin = new URL(url).origin === new URL(rendererUrl).origin;
+    } catch {
+      sameOrigin = false;
+    }
+    if (!sameOrigin) event.preventDefault();
   });
 
-  void (rendererUrl === null ? win.loadURL(packagedPlaceholder()) : win.loadURL(rendererUrl));
+  void win.loadURL(rendererUrl);
   return win;
 }
 
@@ -238,6 +365,24 @@ function createWindow(): BrowserWindow {
 // Both of these MUST run before `app.whenReady()`: `getPath('userData')` is
 // resolved from the app name, and `setPath` is only honoured pre-ready.
 app.setName(APP_NAME);
+
+// T-1701b · MUST run before `app.whenReady()` too — Chromium reads the scheme
+// registry once, while it boots. Registered unconditionally (the handler is
+// not), because a dev build that registered a different scheme table than the
+// packaged one would be testing a different browser.
+//
+// `standard`: real URL parsing, so vite's `base: '/'` absolute asset paths
+//   resolve against the app origin and `vite.config.ts` stays untouched.
+// `secure`: a trustworthy origin, so `localStorage`, `crypto.subtle` and the
+//   AudioContext behave exactly as on `http://localhost:5173`.
+// `supportFetchAPI`/`stream`: the cockpit's own `fetch` and streamed responses.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: APP_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+  },
+]);
+
 if (process.env.SQ_USER_DATA_DIR) {
   // Test-only. Playwright needs a throwaway Chromium profile per launch so it
   // can produce a genuinely EMPTY localStorage (to prove the career came out of
@@ -261,7 +406,22 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     saveStore = createSaveStore(resolveSaveDir());
+    // Before the window: the first request the window makes is for the renderer
+    // itself, and it goes through this handler.
+    if (app.isPackaged) registerAppProtocol();
     mainWindow = createWindow();
+
+    // T-1701b · Resolve (and, only with a feed, arm) the updater. Inert in every
+    // build this repo produces — see `updater.ts`'s header for the two
+    // independent reasons. `initUpdater` never throws by contract, so this can
+    // never take the boot down.
+    updaterStatus = initUpdater({
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      env: process.env,
+      autoUpdater,
+      log: (message) => console.log(`[updater] ${message}`),
+    });
 
     // macOS convention: the app stays alive with no windows, and the dock icon
     // reopens one.

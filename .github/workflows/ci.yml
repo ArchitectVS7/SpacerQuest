@@ -171,3 +171,81 @@ jobs:
       - name: Run desktop e2e
         run: xvfb-run -a npm run test:e2e
         working-directory: packages/desktop
+
+  # T-1701b · The PACKAGED builds. A matrix rather than two jobs so the mac and
+  # win halves cannot drift, and separate from `desktop` (which runs the DEV-mode
+  # shell on ubuntu and must keep proving the unpackaged path unchanged). Between
+  # them, `ci` + `e2e` (web), `desktop` (dev shell) and this job are the "CI
+  # proves web + both platform builds" acceptance criterion.
+  package:
+    name: Package (${{ matrix.platform }})
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            electron-cache: ~/Library/Caches/electron
+            builder-cache: ~/Library/Caches/electron-builder
+            artifact-glob: |
+              packages/desktop/release/*.zip
+          - os: windows-latest
+            platform: win
+            electron-cache: ~\AppData\Local\electron\Cache
+            builder-cache: ~\AppData\Local\electron-builder\Cache
+            artifact-glob: |
+              packages/desktop/release/*.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      # NO ELECTRON_SKIP_BINARY_DOWNLOAD here: this job packages and then LAUNCHES
+      # the result, so it needs the real binary.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Electron and electron-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ matrix.electron-cache }}
+            ${{ matrix.builder-cache }}
+          key: ${{ runner.os }}-eb-${{ hashFiles('package-lock.json') }}
+
+      - name: Typecheck & build
+        run: npx tsc -b
+
+      - name: Package
+        run: npm run package:${{ matrix.platform }}
+        env:
+          # Unsigned CI build. Code signing and (on macOS) notarization are a
+          # release-pipeline task with secrets this repo does not hold; without
+          # this, electron-builder tries to auto-discover a signing identity and
+          # fails on a runner that has none.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # The Accept's teeth: Tour One driven through the real packaged binary,
+      # with no dev server behind it (the packaged Playwright config has no
+      # `webServer` at all), plus the player-visible `inert` updater row.
+      - name: Run packaged e2e
+        run: npm run test:e2e:packaged -w @spacerquest/desktop
+
+      # `if-no-files-found: error` is what turns "win package builds" into a
+      # criterion that cannot silently rot into an empty upload — the same guard
+      # the Tour One report artifact uses.
+      - name: Upload package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rimward-${{ matrix.platform }}
+          path: ${{ matrix.artifact-glob }}
+          if-no-files-found: error

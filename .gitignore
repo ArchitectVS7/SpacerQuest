@@ -10,5 +10,11 @@ node_modules/
 dist/
 dist-web/
 .vite/
+# T-1701b · Packaging output. `renderer/` is a staged COPY of packages/ui/dist-web
+# (scripts/copy-renderer.mjs) and `release/` is electron-builder's output — both
+# are build artifacts of committed sources, so committing either would only
+# create a second, staler copy of the cockpit.
+packages/desktop/renderer/
+packages/desktop/release/
 *.tsbuildinfo
 .scratch/

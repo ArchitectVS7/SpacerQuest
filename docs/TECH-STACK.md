@@ -52,7 +52,22 @@ Electron lean below). It has **zero workspace dependencies and zero game rules**
 it is a window and a synchronous file-backed key/value store, and the cockpit
 reaches it through one seam (`ui/src/storage.ts`) that falls through to
 `localStorage` when no shell is present — so the browser build stays the
-dev/playtest loop, untouched. Packaging and the updater are T-1701b.
+dev/playtest loop, untouched.
+
+**T-1701b** added packaging and the updater. electron-builder produces mac
+(`dir` + `zip`) and win (`dir` + `nsis`) targets from `desktop/package.json`'s
+`build` block, with `packages/ui/dist-web` — the *same* vite bundle the web e2e
+suite tests — staged into `desktop/renderer` by `scripts/copy-renderer.mjs`. The
+packaged renderer is served over a **privileged `app://` scheme**, not `file://`:
+a standard, secure scheme keeps absolute asset paths resolving (so `ui`'s
+`vite.config.ts` is untouched) and gives a trustworthy origin, so the cockpit's
+storage, crypto and audio behave exactly as they do in the browser build. The
+auto-updater is a **stub that is inert because no build carries a feed** —
+`COMPILED_FEED_URL` is `null` and electron-builder's `publish` is `null`, so no
+`app-update.yml` is embedded either. The updater *backend* is deliberately still
+undecided: §3 is Steam-first and Steam ships its own patcher, so a second update
+channel may never be wanted. Code signing/notarization, app icons and
+self-hosted fonts are named follow-ups, not shipped here.
 `content/` is data (JSON/typed TS data modules) so expansion Seasons and the
 d20 cast stay authorable without touching engine code.
 

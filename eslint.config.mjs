@@ -11,6 +11,10 @@ export default tseslint.config(
       'docs/**',
       '**/node_modules/**',
       '**/dist/**',
+      // T-1701b · Packaging output: a staged copy of the vite bundle and
+      // electron-builder's release tree. Neither is a source this repo owns.
+      'packages/desktop/renderer/**',
+      'packages/desktop/release/**',
       '**/*.d.ts',
       '**/*.js',
       '**/*.cjs',

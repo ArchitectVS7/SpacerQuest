@@ -231,7 +231,20 @@ test.describe('T-312 settings, saves & new-game UX', () => {
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute('data-storage-backend', 'browser');
     await expect(row).toHaveText('Browser storage');
-    // The save slots still render below it — the new row must not displace them.
+
+    // T-1701b · The WEB half of the Build section, mirroring exactly how
+    // `storageBackend`/`saveLocation` are proved on both backends. The DESKTOP
+    // halves are `packages/desktop/e2e/shell.spec.ts` (dev → `unsupported`) and
+    // `packages/desktop/e2e/packaged.spec.ts` (a real package → `inert`).
+    //
+    // READER asserted here: `storage.ts`'s `shellVersion` and `updateStatus` →
+    // `App.tsx`'s `BuildRow` (standing constraint 7).
+    await expect(page.getByTestId('app-version')).toHaveText('Web build');
+    const updates = page.getByTestId('update-status');
+    await expect(updates).toHaveAttribute('data-update-status', 'web');
+    await expect(updates).toHaveText('Updates are handled by your browser.');
+
+    // The save slots still render below it — the new rows must not displace them.
     await expect(page.getByTestId('save-slot')).toHaveCount(3);
   });
 });

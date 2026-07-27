@@ -9,4 +9,9 @@ package-lock.json
 *.d.ts.map
 *.md
 packages/*/src/**/*.js
+# T-1701b · Packaging output — a staged copy of the vite bundle and
+# electron-builder's release tree. Formatting a minified bundle is meaningless
+# and `format:check` would go red the moment anyone packages locally.
+packages/desktop/renderer/
+packages/desktop/release/
 .scratch/

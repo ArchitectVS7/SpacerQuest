@@ -101,6 +101,7 @@ import {
   endingScreen,
   saveRecoveryMessage,
   saveWriteFailedMessage,
+  updateStatusMessage,
   type SaveRecoveryNotice,
   type EndingView,
   type OnboardingAnchor,
@@ -117,7 +118,10 @@ import {
 // Settings "Saves" row shows the player. Both are READ HERE — that is the
 // reader standing constraint 7 requires, asserted by
 // `packages/desktop/e2e/shell.spec.ts`.
-import { storageBackend, saveLocation } from './storage';
+// T-1701b · `shellVersion` and `updateStatus` are the shell's answer to "what
+// build am I running, and will it update itself?" — READ HERE by `BuildRow`,
+// which is the whole player-facing surface of the packaging/updater task.
+import { storageBackend, saveLocation, shellVersion, updateStatus } from './storage';
 
 const DIE_MIME = 'application/x-sq-die';
 
@@ -269,6 +273,7 @@ function SettingsPanel({ state, onClose }: { state: CockpitState; onClose: () =>
       </div>
 
       <StorageRow />
+      <BuildRow />
       <SavesPanel state={state} />
     </div>
   );
@@ -302,6 +307,47 @@ function StorageRow() {
           data-storage-backend={storageBackend}
         >
           {saveLocation ?? 'Browser storage'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// T-1701b · WHAT BUILD YOU ARE RUNNING, AND WHETHER IT UPDATES ITSELF.
+//
+// The player-facing surface of the packaging + updater task, and the READER of
+// both new exports from `storage.ts` (standing constraint 7). On the web build
+// there is no shell, so Version reads "Web build" and Updates says the browser
+// handles it — honest in both cases, and neither line ever claims an update is
+// coming when the packaged build's updater is inert (which it is in every build
+// this repo produces; see `packages/desktop/src/updater.ts`).
+//
+// Deliberately NOT a "Check now" button: nothing to check against without a
+// feed, and a button that does nothing is worse than a sentence that is true.
+//
+// `data-update-status` is the structural handle — prose may be re-voiced, the
+// state id is what a spec should assert on (the `data-storage-backend` /
+// `data-recovery-code` precedent). Asserted in `packages/desktop/e2e/shell.spec.ts`
+// (dev shell → `unsupported`), `packages/desktop/e2e/packaged.spec.ts` (a real
+// package → `inert`) and `packages/ui/e2e/settings-saves.spec.ts` (web → `web`).
+function BuildRow() {
+  return (
+    <div className="set-section">
+      <span className="set-head">Build</span>
+      <div className="set-row">
+        <span className="set-label">Version</span>
+        <span className="set-value" data-testid="app-version">
+          {shellVersion ?? 'Web build'}
+        </span>
+      </div>
+      <div className="set-row">
+        <span className="set-label">Updates</span>
+        <span
+          className="set-value"
+          data-testid="update-status"
+          data-update-status={updateStatus ?? 'web'}
+        >
+          {updateStatusMessage(updateStatus)}
         </span>
       </div>
     </div>

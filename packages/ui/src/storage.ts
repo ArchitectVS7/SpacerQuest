@@ -79,6 +79,24 @@ export interface KeyValueStore {
 export type StorageBackend = 'browser' | 'desktop';
 
 /**
+ * T-1701b · What the desktop shell's updater resolved to on this launch.
+ *
+ * TWIN of `packages/desktop/src/updater.ts`'s `UpdaterState`, duplicated for
+ * the same reason the bridge interface is (see {@link DesktopStorageBridge}):
+ * `packages/ui` must never import from `@spacerquest/desktop`.
+ *
+ * READER: `App.tsx`'s Settings "Build → Updates" row (`data-update-status`) via
+ * `format.ts`'s `updateStatusMessage`.
+ */
+export type UpdateStatus = 'unsupported' | 'inert' | 'armed';
+
+/** T-1701b · The shell's self-description, as `about()` reports it. */
+export interface ShellInfo {
+  version: string;
+  updates: UpdateStatus;
+}
+
+/**
  * The bridge the Electron preload exposes on `window`.
  *
  * TWIN: `packages/desktop/src/preload.ts` — the two are kept in sync by hand and
@@ -95,6 +113,9 @@ export interface DesktopStorageBridge {
   keys(): string[];
   /** Absolute path of the OS app-data save directory (for the Settings row). */
   dir(): string;
+  /** T-1701b · The shell's version and updater state (for the Settings "Build"
+   *  section). Read-only; touches no store. */
+  about(): ShellInfo;
 }
 
 /** The window shape this module reads. Kept minimal so the unit test can hand in
@@ -253,6 +274,31 @@ export interface SelectedStorage {
   saveLocation: string | null;
   /** Keys imported from localStorage on this boot (empty on every later boot). */
   migrated: string[];
+  /** T-1701b · What the shell says about itself. `null` on web (and on a shell
+   *  whose `about()` call failed) — there is no version a browser tab could
+   *  honestly report. */
+  shell: ShellInfo | null;
+}
+
+/**
+ * T-1701b · Read `win.localStorage` WITHOUT letting a throwing getter take
+ * module init down.
+ *
+ * This is not defensive padding. `localStorage` is a getter that THROWS
+ * (`SecurityError`) on an opaque origin — which is what a `file://` page is, and
+ * what any sandboxed/partitioned embedding can be. Every probe of it in this
+ * module used to be a bare property read at module scope, so a single throw
+ * there meant `selectStorage` threw during module evaluation and the cockpit
+ * never booted at all. The packaged desktop build is served over a SECURE
+ * origin precisely so this cannot happen (`main.ts`'s `app://` header), but the
+ * seam must not depend on that being true forever.
+ */
+function safeLocalStorage(win: StorageWindow): Storage | null {
+  try {
+    return win.localStorage ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -269,7 +315,7 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
     const target = desktopStore(bridge);
     // The import can only run when there is a localStorage to import FROM. In
     // the Electron renderer there always is; the guard is for completeness.
-    const migrated = win.localStorage ? migrateInto(browserStore(win), target) : [];
+    const migrated = safeLocalStorage(win) ? migrateInto(browserStore(win), target) : [];
     let saveLocation: string | null = null;
     try {
       saveLocation = bridge.dir();
@@ -278,12 +324,32 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
       // Settings row falls back to the generic label rather than crashing boot.
       saveLocation = null;
     }
-    return { storage: target, backend: 'desktop', saveLocation, migrated };
+    let shell: ShellInfo | null = null;
+    try {
+      shell = bridge.about();
+    } catch {
+      // Same rule as `dir()` above: a shell that cannot name its own version is
+      // still a usable shell. The Build row falls back to the web wording.
+      shell = null;
+    }
+    return { storage: target, backend: 'desktop', saveLocation, migrated, shell };
   }
-  if (win?.localStorage) {
-    return { storage: browserStore(win), backend: 'browser', saveLocation: null, migrated: [] };
+  if (win && safeLocalStorage(win)) {
+    return {
+      storage: browserStore(win),
+      backend: 'browser',
+      saveLocation: null,
+      migrated: [],
+      shell: null,
+    };
   }
-  return { storage: memoryStore(), backend: 'browser', saveLocation: null, migrated: [] };
+  return {
+    storage: memoryStore(),
+    backend: 'browser',
+    saveLocation: null,
+    migrated: [],
+    shell: null,
+  };
 }
 
 const selected = selectStorage(typeof window === 'undefined' ? null : window);
@@ -301,3 +367,17 @@ export const storageBackend: StorageBackend = selected.backend;
  *  go?", and the player-facing reachability of this whole task. Asserted
  *  consumed by `packages/desktop/e2e/shell.spec.ts`. */
 export const saveLocation: string | null = selected.saveLocation;
+
+/** T-1701b · The shell's version, or `null` on the web build (where "the build"
+ *  is whatever the browser last fetched, and a version string would be a
+ *  fiction). READER: `App.tsx`'s Settings "Build → Version" row
+ *  (`data-testid="app-version"`), asserted consumed by
+ *  `packages/desktop/e2e/shell.spec.ts` and `e2e/packaged.spec.ts` (desktop) and
+ *  `packages/ui/e2e/settings-saves.spec.ts` (web). */
+export const shellVersion: string | null = selected.shell?.version ?? null;
+
+/** T-1701b · Whether this build updates itself, or `null` on web (the browser
+ *  handles that). READER: `App.tsx`'s Settings "Build → Updates" row
+ *  (`data-update-status`) through `format.ts`'s `updateStatusMessage`, asserted
+ *  consumed on BOTH backends by the same three specs as {@link shellVersion}. */
+export const updateStatus: UpdateStatus | null = selected.shell?.updates ?? null;

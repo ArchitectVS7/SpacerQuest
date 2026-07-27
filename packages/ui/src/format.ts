@@ -79,8 +79,9 @@ import type { RenownRankId, AnonymousInterceptorKind } from '@spacerquest/conten
 // not acquire a runtime dependency on the storage seam (which has module-scope
 // side effects — it performs the one-time localStorage import). Only the two
 // storage-failure sentences below are backend-dependent, and they take the
-// backend as a parameter rather than reading it.
-import type { StorageBackend } from './storage';
+// backend as a parameter rather than reading it. T-1701b adds `UpdateStatus` on
+// the same terms — `updateStatusMessage` takes it as a parameter too.
+import type { StorageBackend, UpdateStatus } from './storage';
 
 /** Display label for a stat. The Stat enum values are already the labels we
  * want, so this is a stable pure lookup (no fabricated names). */
@@ -2092,4 +2093,32 @@ export function saveWriteFailedMessage(
     'usually because save storage is full or blocked. Everything you do from here will be ' +
     `lost when you ${closing}. Save to a slot from Settings to keep it.`
   );
+}
+
+// ---------------------------------------------------------------------------
+// T-1701b · WHETHER THIS BUILD UPDATES ITSELF.
+//
+// One honest sentence per state, and honesty is the whole point: the shipped
+// desktop package resolves to `inert` (no feed is compiled in, and
+// electron-builder's `publish` is `null`, so no `app-update.yml` exists either),
+// so the row must NOT imply that an update will ever arrive. A "checking for
+// updates…" that never checks is the kind of small lie that turns into a
+// support ticket when a patch does not land.
+//
+// READER of `storage.ts`'s `updateStatus`: `App.tsx`'s `BuildRow`. `null` means
+// the web build — there is no shell, and the browser is what fetches a new
+// version.
+// ---------------------------------------------------------------------------
+export function updateStatusMessage(status: UpdateStatus | null): string {
+  switch (status) {
+    case 'armed':
+      return 'Checking for updates in the background.';
+    case 'inert':
+      // The sentence the shipped desktop package actually shows today.
+      return 'Automatic updates are off in this build.';
+    case 'unsupported':
+      return 'This build does not check for updates.';
+    default:
+      return 'Updates are handled by your browser.';
+  }
 }

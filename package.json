@@ -12,7 +12,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "package:mac": "npm run build -w @spacerquest/ui && npx tsc -b && npm run package:mac -w @spacerquest/desktop",
+    "package:win": "npm run build -w @spacerquest/ui && npx tsc -b && npm run package:win -w @spacerquest/desktop"
   },
   "devDependencies": {
     "eslint": "^9.39.4",

@@ -4,6 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Spacer Quest · Rimward</title>
+    <!--
+      T-1701b · KNOWN LIMITATION, recorded rather than papered over: a PACKAGED
+      offline launch cannot reach Google Fonts, so Chakra Petch and IBM Plex
+      Mono do not load and the cockpit falls back to `system-ui` / `ui-monospace`
+      — the stacks in `theme.css` already carry those fallbacks, so it degrades
+      legibly rather than breaking. Self-hosting the two families is a named
+      FOLLOW-UP, not this task: font binaries are their own deliverable with
+      their own licensing question. No spec asserts anything about fonts.
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

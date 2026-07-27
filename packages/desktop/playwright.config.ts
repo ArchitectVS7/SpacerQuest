@@ -19,6 +19,10 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // T-1701b · The packaged suite has its own config (no `webServer` — that
+  // absence is its proof) and needs a built package to exist, so the dev-mode
+  // run must not collect it.
+  testIgnore: '**/packaged.spec.ts',
   // Same reasoning as `packages/ui/playwright.config.ts` — sized for a contended
   // workstation, not an idle one — but with a bigger budget, because these tests
   // do something no browser test does: the migration test LAUNCHES AND CLOSES
