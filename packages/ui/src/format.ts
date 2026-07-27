@@ -72,6 +72,7 @@ import {
   type FuelPurchaseQuote,
   type PortQuote,
   type PortEventFailReason,
+  type SaveErrorCode,
 } from '@spacerquest/engine';
 import type { RenownRankId, AnonymousInterceptorKind } from '@spacerquest/content';
 
@@ -1909,4 +1910,86 @@ export function resolutionCeremony(game: GameState): ResolutionCeremonyView | nu
     deedTitle,
     veteranUnlocked: game.flags['veteran.unlocked'] === true,
   };
+}
+
+// ---- T-1605a corrupt-save recovery (display-only) ------------------------
+//
+// Until this task a save that would not load was swallowed by the store's boot
+// path (`readSave`'s bare `catch { return null }`) and the player was handed a
+// fresh career with NO notice — and the first autosave after any action then
+// overwrote the damaged bytes, losing the career twice over. The fix is two
+// halves: the store QUARANTINES the unreadable blob (store.ts), and this
+// function turns the engine's own reason into one honest sentence.
+//
+// PURE TRANSLATION, exactly like `shipyardFailureExplanation`: the UI classifies
+// nothing. Save validity is decided in the ENGINE (`save.ts` `loadSave`, which
+// throws a typed `SaveError` carrying a `SaveErrorCode`) and proved there
+// headlessly (engine `__tests__/save.test.ts` covers all five codes). The store
+// reads `err.code`; this function only voices it. No new rule is added anywhere,
+// so there is nothing new to make reachable headlessly.
+
+/**
+ * Why the cockpit could not boot the player's last career.
+ *
+ * `SaveErrorCode` is the engine's own union, re-exported through
+ * `@spacerquest/engine`. Two UI-side codes extend it, and only one of them is a
+ * failure of the SAVE:
+ *  - `storage-unavailable` — the localStorage READ itself threw (private mode, a
+ *    blocked store). The save is not damaged and the message must not say it is;
+ *  - `unknown` — something other than a `SaveError` escaped `loadSave`. Honest
+ *    catch-all: never claim a cause we do not have.
+ *
+ * READER: `App.tsx`'s `RecoveryNotice`, via {@link saveRecoveryMessage}.
+ */
+export type SaveRecoveryCode = SaveErrorCode | 'storage-unavailable' | 'unknown';
+
+export interface SaveRecoveryNotice {
+  code: SaveRecoveryCode;
+  /**
+   * True when the unreadable bytes were successfully copied to the quarantine
+   * key (`sq.save.v1.corrupt`), so the message may promise they were kept. False
+   * when the copy failed (full quota / blocked store) — the sentence then says
+   * so rather than promising custody the game does not have.
+   * READER: {@link saveRecoveryMessage}'s third clause.
+   */
+  preserved: boolean;
+}
+
+/**
+ * One clause per cause, in the player's language. `satisfies Record<...>` is the
+ * exhaustiveness guard that matters here: if the engine ever adds a
+ * `SaveErrorCode`, this object stops type-checking instead of silently handing
+ * the player `undefined` prose.
+ */
+const SAVE_RECOVERY_CAUSE = {
+  'corrupt-json': 'the save data was damaged and could not be read',
+  'bad-envelope': "the save file's header was unreadable",
+  'invalid-state': 'that save no longer matches this build of Rimward',
+  'no-migration': 'there is no upgrade path from that save’s version',
+  'future-version': 'that save was written by a NEWER build of Rimward',
+  'storage-unavailable': 'this browser blocked access to save storage',
+  unknown: 'the save could not be loaded',
+} satisfies Record<SaveRecoveryCode, string>;
+
+/** The quarantine key the message names. Mirrors the store's `CORRUPT_SAVE_KEY`
+ *  — the sentence must name the exact key a player (or a bug report) can go
+ *  looking for, so the two are stated once each and asserted together in
+ *  `e2e/recovery.spec.ts`. */
+const QUARANTINE_KEY_LABEL = 'sq.save.v1.corrupt';
+
+/**
+ * The corrupt-save notice, as one sentence in three clauses — cause, consequence,
+ * custody. The player is TOLD (a) their last career could not be loaded and why,
+ * (b) that the fresh career on screen is a fallback and not their save, and (c)
+ * exactly what happened to the unreadable bytes.
+ *
+ * `storage-unavailable` is deliberately not accused of damage, and the custody
+ * clause is never a promise the store did not keep (`preserved`).
+ */
+export function saveRecoveryMessage(notice: SaveRecoveryNotice): string {
+  const cause = SAVE_RECOVERY_CAUSE[notice.code];
+  const custody = notice.preserved
+    ? `The unreadable save was kept as “${QUARANTINE_KEY_LABEL}” and has not been overwritten.`
+    : 'Nothing could be kept.';
+  return `Your last career could not be loaded — ${cause}. A fresh career has been started. ${custody}`;
 }

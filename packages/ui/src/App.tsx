@@ -36,6 +36,7 @@ import {
   dismissAftermath,
   dismissSuccession,
   dismissOnboarding,
+  dismissRecovery,
   standDown,
   toggleFx,
   clearBloom,
@@ -98,6 +99,8 @@ import {
   offersForSurface,
   resolutionCeremony,
   endingScreen,
+  saveRecoveryMessage,
+  type SaveRecoveryNotice,
   type EndingView,
   type OnboardingAnchor,
   type OnboardingMount,
@@ -418,6 +421,9 @@ export function App() {
   // the screen's own `newGame` control, which lands on a fresh day-1 cockpit.
   const ending = endingScreen(s.game);
   if (ending) {
+    // T-1605a · The recovery notice is deliberately NOT mounted here: a recovery
+    // boot always lands on a fresh day-1 career, which can never be an ended one,
+    // so this branch is unreachable with `s.recovery` set. Omission by decision.
     return (
       <div className="tube">
         <EffectsLayer />
@@ -435,6 +441,11 @@ export function App() {
       {!reduced && <div className="sweep" key={s.bootKey} aria-hidden="true" />}
 
       <div className="screen">
+        {/* T-1605a · The corrupt-save notice, first child of the screen so it is
+            the first thing the player sees. Before this, a save that would not
+            load was swallowed by the store and the player was silently handed a
+            fresh career (store.ts `readSave`'s bare catch). */}
+        {s.recovery && <RecoveryNotice recovery={s.recovery} />}
         {/* T-1406 · The control cluster is DIEGETIC now — a row of console
             switches on the terminal bezel, in-fiction, rather than a floating
             top-right toolbar. Same buttons, same testids; the audio popover is
@@ -518,6 +529,29 @@ export function App() {
         {s.succession && <SuccessionNotice succession={s.succession} />}
         {recordsOpen && <RecordsOverlay game={s.game} onClose={() => setRecordsOpen(false)} />}
       </div>
+    </div>
+  );
+}
+
+// T-1605a · The corrupt-save notice. Rendered above the bezel so it is the first
+// thing on the screen, `role="alert"` so a screen reader announces it, and NON-
+// MODAL like the onboarding coach — the fresh career underneath is playable while
+// it is up. The prose comes from `format.ts saveRecoveryMessage`; the ENGINE's own
+// failure code rides along as a structural attribute, because the sentence is
+// prose that may be re-voiced while the code is what a spec should assert on.
+function RecoveryNotice({ recovery }: { recovery: SaveRecoveryNotice }) {
+  return (
+    <div
+      className="notice recovery"
+      data-testid="recovery-notice"
+      data-recovery-code={recovery.code}
+      data-recovery-preserved={recovery.preserved ? '1' : '0'}
+      role="alert"
+    >
+      <span>{saveRecoveryMessage(recovery)}</span>
+      <button className="btn small" data-testid="recovery-dismiss" onClick={dismissRecovery}>
+        Dismiss
+      </button>
     </div>
   );
 }

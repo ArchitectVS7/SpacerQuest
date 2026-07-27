@@ -5,6 +5,7 @@ import {
   applyPlayerAction,
   createSave,
   loadSave,
+  SaveError,
   isDayOver,
   type GameState,
   type GameEvent,
@@ -19,6 +20,7 @@ import {
   shipyardFailureExplanation,
   successionSummary,
   type CombatAftermath,
+  type SaveRecoveryNotice,
   type SuccessionSummary,
 } from './format';
 import * as sound from './sound';
@@ -60,6 +62,15 @@ const DEFAULT_SEED = 424242;
 const AUTOSAVE_SEED_KEY = 'sq.save.seed'; // LEGACY seed fallback (pre-v2 envelopes)
 const SLOT_KEY = (n: number): string => `sq.slot.${n}.v1`; // envelope (createSave output)
 const SLOT_META_KEY = (n: number): string => `sq.slot.${n}.meta`; // display JSON
+// T-1605a · Quarantine for an autosave that would not load. The boot path used to
+// swallow the failure and hand the player a fresh career, whose FIRST autosave
+// then overwrote the damaged bytes — the career was lost twice over. Copying the
+// raw blob here before anything else can write is what makes the recovery
+// save-PRESERVING: the evidence survives for a reproducible bug report
+// (TECH-STACK's non-negotiable) and for a later hand-repair. It is also the
+// crash screen's escape hatch (`quarantineAndClearAutosave`), so a save that
+// faults on every boot can be set aside without being destroyed.
+const CORRUPT_SAVE_KEY = `${SAVE_KEY}.corrupt`; // 'sq.save.v1.corrupt'
 const REDUCED_MOTION_KEY = 'sq.reduced-motion'; // 'on' | 'off'
 const TEXT_SIZE_KEY = 'sq.text-size'; // 'small' | 'normal' | 'large'
 const SLOTS = [1, 2, 3] as const;
@@ -202,14 +213,41 @@ export interface CockpitState {
   textSize: TextSize;
   /** Cached slot summaries so React re-renders when a slot is written/deleted. */
   saves: SlotSummary[];
+  /**
+   * T-1605a · WHY the boot fell back to a fresh career, or null when it didn't.
+   * Set ONLY by `init()`, from `readSaveResult()`, carrying the ENGINE's own typed
+   * `SaveError.code` (the UI classifies nothing) plus whether the unreadable bytes
+   * reached the quarantine key.
+   *
+   * Like `succession` / `combatAftermath` / `explorationOutcome` / `patrolScan`
+   * this is CLIENT presentation meta-state, NOT GameState — so a JSON round-trip
+   * of game state is unaffected, `CURRENT_SAVE_VERSION` does not move and NO save
+   * migration is owed.
+   *
+   * READER: `App.tsx`'s `RecoveryNotice`, the first child of `.screen`, which
+   * renders `format.ts saveRecoveryMessage(recovery)` — the notice the player must
+   * be told instead of a silent reset. `preserved` is read by that same function
+   * to decide whether the sentence may promise the damaged bytes were kept.
+   *
+   * DELIBERATE: it is boot-scoped and dismissable (`dismissRecovery`). A reload of
+   * the now-fresh career will not show it again — by then the career IS the save,
+   * and repeating the warning would be a lie.
+   */
+  recovery: SaveRecoveryNotice | null;
 }
 
 let state: CockpitState = init();
 const listeners = new Set<() => void>();
 
+// T-1605a · `init()` runs at MODULE SCOPE, outside React, so an error boundary
+// could never catch a throw from here — the guard has to live in the readers. It
+// deliberately has no top-level try/catch: every localStorage read it performs
+// (`readFx` / `readSaveResult` / `readOnboarding` / `readReducedMotion` /
+// `readTextSize` / `readSlots`) is individually guarded and total over any input,
+// so module init cannot throw on any save. Considered and closed, not forgotten.
 function init(): CockpitState {
   const fx = readFx();
-  const loaded = readSave();
+  const { loaded, recovery } = readSaveResult();
   const game = loaded?.game ?? startDay(createInitialState(DEFAULT_SEED)).state;
   // The seed rides the loaded envelope (T-1002); with no save, the game booted
   // from DEFAULT_SEED, so the displayed seed matches it.
@@ -234,6 +272,7 @@ function init(): CockpitState {
     reducedMotion: readReducedMotion(),
     textSize: readTextSize(),
     saves: readSlots(),
+    recovery,
   };
 }
 
@@ -475,10 +514,43 @@ export function getSnapshot(): CockpitState {
 
 // ---- persistence (T-112 save envelope) ----------------------------------
 
-function readSave(): { game: GameState; seed: number } | null {
+/** T-1605a · What the boot read out of the autosave key: the career if it loaded,
+ *  and — if it did NOT — the reason the player is owed. */
+interface SaveReadResult {
+  loaded: { game: GameState; seed: number } | null;
+  /** Null on a clean boot AND on a first run: no save at all is not a failure,
+   *  and a banner there would be a lie. Non-null only when a save was PRESENT and
+   *  could not be turned into a career. */
+  recovery: SaveRecoveryNotice | null;
+}
+
+/**
+ * Read the live autosave.
+ *
+ * T-1605a replaced the old `readSave()`, whose bare `catch { return null }`
+ * silently traded a damaged career for a fresh one. The failure is now reported
+ * (`recovery`) and the unreadable bytes are quarantined before the fresh career's
+ * first autosave can overwrite them. The classification is the ENGINE's:
+ * `loadSave` throws `SaveError` with a typed `code`, and this function only
+ * forwards it — the UI never inspects a save blob itself.
+ *
+ * Note the sibling path is already honest and is deliberately untouched:
+ * `loadSlot` has told the player about a corrupt slot since T-312 (see its
+ * `Slot N is corrupt` notice). The gap this task closes is the AUTOSAVE BOOT path
+ * only; `newGame` is likewise unaffected.
+ */
+function readSaveResult(): SaveReadResult {
+  let raw: string | null;
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
+    raw = localStorage.getItem(SAVE_KEY);
+  } catch {
+    // The store itself is unreachable (private mode / blocked). Not damage —
+    // and the notice must not accuse the save of being damaged. Nothing can be
+    // quarantined either, so `preserved` is honestly false.
+    return { loaded: null, recovery: { code: 'storage-unavailable', preserved: false } };
+  }
+  if (!raw) return { loaded: null, recovery: null }; // first run — no save, no failure
+  try {
     const { state, seed } = loadSave(raw);
     // T-1002: a pre-v2 autosave has no seed in its envelope (loadSave returns
     // seed: null). Recover the seed the old build stashed in the legacy
@@ -487,10 +559,68 @@ function readSave(): { game: GameState; seed: number } | null {
     // embedded, so this legacy read path self-heals after one write. A v2 save
     // with an explicit seed — including seed 0 — never hits this fallback.
     const recovered = seed === null ? readAutosaveSeed() : seed;
-    return { game: state, seed: recovered };
-  } catch {
-    return null; // corrupt / missing → fall back to a fresh career
+    return { loaded: { game: state, seed: recovered }, recovery: null };
+  } catch (err) {
+    // Quarantine FIRST, then report: the copy has to land before the fallback
+    // career's first autosave can write over `SAVE_KEY`.
+    const preserved = quarantineAutosave(raw);
+    const code = err instanceof SaveError ? err.code : 'unknown';
+    return { loaded: null, recovery: { code, preserved } };
   }
+}
+
+/**
+ * Copy the unreadable autosave to the quarantine key. Returns whether the copy
+ * actually landed — the caller must not promise custody it does not have (a full
+ * quota or a blocked store makes this fail, and that is a report, not a crash).
+ *
+ * Deliberately a COPY, not a move: leaving `sq.save.v1` in place costs nothing
+ * and gives a future build (a new migration, a bug fix) a second chance at it.
+ */
+function quarantineAutosave(raw: string): boolean {
+  try {
+    localStorage.setItem(CORRUPT_SAVE_KEY, raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * T-1605a · The crash screen's last resort. A save that faults the cockpit on
+ * EVERY boot would otherwise brick the player, and this is the one place in the
+ * crash path that can remove their career — so it is routed through the same
+ * quarantine copy, which makes the escape hatch save-PRESERVING by construction
+ * rather than by luck. Returns whether the bytes were preserved; never deletes
+ * without copying first.
+ *
+ * READER: `ErrorBoundary.tsx`'s `CrashScreen` ("Start a fresh career").
+ */
+export function quarantineAndClearAutosave(): boolean {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(SAVE_KEY);
+  } catch {
+    return false;
+  }
+  if (raw === null) return false; // nothing to preserve — clearing is a no-op
+  const preserved = quarantineAutosave(raw);
+  if (!preserved) return false; // refuse to delete what we could not copy
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch {
+    /* the copy survives either way — non-fatal */
+  }
+  return true;
+}
+
+/**
+ * T-1605a · Dismiss the corrupt-save notice. Boot-scoped and one-way: the fresh
+ * career the player is now flying is real, and re-raising the warning later would
+ * be false.
+ */
+export function dismissRecovery(): void {
+  if (state.recovery) set({ recovery: null });
 }
 /**
  * Write the live career to the autosave slot. Called after EVERY mutating action
@@ -600,7 +730,7 @@ export function newGame(seed: number): void {
   // T-1002: the seed now rides the save envelope (autosave embeds it), so a
   // reload recovers it from the save itself — including an explicit seed of 0.
   // The legacy `sq.save.seed` write is kept as a redundant fallback: it lets
-  // `readSave` recover the seed for a pre-v2 envelope (loaded as seed: null).
+  // `readSaveResult` recover the seed for a pre-v2 envelope (seed: null).
   autosave(game, seed);
   try {
     localStorage.setItem(AUTOSAVE_SEED_KEY, String(seed));
@@ -625,6 +755,10 @@ export function newGame(seed: number): void {
     dareOutcome: null,
     patrolScan: null,
     onboardingSeen: {},
+    // T-1605a: the boot's corrupt-save notice is stale the moment the player
+    // deliberately starts a career of their own — the fallback career it was
+    // explaining no longer exists. The quarantined blob is untouched.
+    recovery: null,
   });
   // A fresh career: the dawn sting and the ambient drive-hum bed. The hum defers
   // itself internally until the first user gesture unlocks the AudioContext, so
@@ -1606,6 +1740,10 @@ export function loadSlot(n: number): void {
     combatMalfunction: false,
     dareOutcome: null,
     patrolScan: null,
+    // T-1605a: a slot load replaces the fallback career the boot notice was
+    // explaining, so the notice is stale. (This path's OWN corrupt case has told
+    // the player since T-312 — see the `Slot N is corrupt` notice above.)
+    recovery: null,
     // Do NOT reset onboardingSeen — loading a mid-career save shouldn't re-teach.
   });
 }
