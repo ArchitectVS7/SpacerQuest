@@ -489,14 +489,26 @@ T-1603c deliberately tuned for a **nonzero** death rate). Reported, not filed fo
 The HIGH list is **2**, comfortably under the "split before starting if >~5" threshold in TASKS.md,
 so T-1604b can absorb both without splitting.
 
-- [ ] **F1** — floor the storylet credits effect at 0 in `applyStoryletEffects`
-      (`packages/engine/src/storylets.ts:326`), mirroring the `fuel` branch, and emit the applied
-      delta. Regression: `packages/engine/src/__tests__/storylets.test.ts`, RED at −40.
-- [ ] **F2** — restore a floor the world provides for the zero-credit / undeliverable-contract
-      state (dusk subsistence stipend when stranded, and/or a player-initiated abandon-contract verb
-      advertised by `legalActions` and surfaced in the UI Trade pane). **The matching invariant is
-      T-1605b's**, which already owns the poverty-trap property test; this report hands it a fourth
-      named adversarial state rather than duplicating the task.
+- [x] **F1** — FIXED in T-1604b. Floored at the one site, `packages/engine/src/storylets.ts`
+      `applyEffects` (the `effects.credits` branch), mirroring the `fuel` clamp three lines below
+      it and emitting the **applied** delta. Regression:
+      `packages/engine/src/__tests__/storylets.test.ts` → `describe('T-1604b · F1 storylet credit
+      floor')`, four cases, all four verified RED against the pre-fix engine.
+- [x] **F2** — FIXED in T-1604b, on both locks. (a) A dusk **subsistence floor** in
+      `packages/engine/src/day.ts` `endDay` (content `SUBSISTENCE_FLOOR_CREDITS`,
+      `packages/content/src/subsistence.ts`), emitting the new `SubsistenceIncome` event;
+      (b) a player-initiated **`abandon-contract`** verb in
+      `packages/engine/src/actions/trade.ts`, advertised by `legalActions`
+      (`packages/sim/src/protocol.ts`) and surfaced in the UI Trade pane
+      (`packages/ui/src/App.tsx` `TradePane`, `[data-testid="abandon-contract"]`). Regressions:
+      `packages/engine/src/__tests__/economy.test.ts` → `describe('T-1604b · dusk subsistence
+      floor')`, `packages/engine/src/__tests__/actions.test.ts` → `describe('T-1604b ·
+      abandon-contract')`, `packages/sim/src/__tests__/protocol.test.ts` → `describe('T-1604b · F2
+      poverty/immobility trap')` (the audited state, driven through `legalActions`), and
+      `packages/ui/e2e/manifest-trade.spec.ts` → "dumping the run clears the hold and re-opens the
+      board". **The matching invariant remains T-1605b's**, which already owns the poverty-trap
+      property test; this report hands it a fourth named adversarial state rather than duplicating
+      the task.
 
 Worth carrying into the same batch if cheap, since F3/F5 share one root shape (*the enumerator
 advertises what the engine will refuse or charge a die for, and only the UI knows better*):
@@ -506,3 +518,129 @@ advertises what the engine will refuse or charge a die for, and only the UI know
 - [ ] **F5** — put the UI's `quoteShipyard().ok` predicate on the wire.
 
 F4 is a balance/reachability question for the crew price curve; F6/F7 belong to the UGT repo.
+
+---
+
+## 10 · T-1604b resolutions
+
+Written by T-1604b, the fix task. §7's findings text is deliberately **not** edited — a report's
+findings are the record of what was measured. Resolutions live here and in §9.
+
+**No waiver was requested.** The Accept line's "…or explicitly waived by the user, with the waiver
+recorded in the report" branch is **unused**: both HIGH findings are fixed with regression tests.
+Said here explicitly rather than left ambiguous.
+
+### F1 · HIGH · FIXED
+
+Floored at the single site — `packages/engine/src/storylets.ts`, `applyEffects`, the
+`effects.credits` branch — with the exact shape of the `fuel` clamp three lines below it: clamp
+first, then emit the **applied** delta. `StoryletEffectApplied.amount` therefore now means the
+delta that actually landed, not the authored one; that semantic change is pinned by test 3 below.
+**The content was NOT touched**, deliberately: `eat-the-loss` is the requirement-free choice its
+storylet needs to satisfy the T-401 invariant (`storylets.test.ts` "every storylet offers at least
+one requirement-free choice"), and `broker-it`'s −40 is the failure branch of a TRADE roll the
+captain could not decline. The engine floors; the content stays.
+
+Regressions in `packages/engine/src/__tests__/storylets.test.ts`:
+
+1. the audited leg-3 case (`cargo.nutri-goods.spoilage-scare` / `eat-the-loss` at 0 credits) → 0
+   credits, `amount: 0`;
+2. the audited leg-4 twin (`port.aldebaran.grain-exchange` / `broker-it`, failure branch forced by
+   a natural 1) → 0 credits;
+3. a **partial** floor (10 credits vs a −40 fine) → 0 credits and `amount: -10` — the test that
+   pins the applied-delta meaning;
+4. an **exhaustive content sweep** over every `STORYLETS` entry × choice ×
+   `effects`/`successEffects`/`failureEffects` that debits credits, driven from the poorest balance
+   each choice's own requirements allow: the purse never goes negative and the emitted deltas sum
+   to the real movement. This is the regression that closes the finding _class_ rather than the two
+   witnesses — a future unguarded fine is safe by construction.
+
+**Mutation evidence:** all four were run against the pre-fix engine (the `+=` restored) and failed
+RED — case 1 at `credits −40 / amount −40`, the sweep at
+`cargo.medicinals.quarantine-seal/inspect/failureEffects drove credits negative: −100`.
+
+### F2 · HIGH · FIXED (both locks)
+
+The audited trap had two locks — no income verb, and a hold that could not be re-let. Both are
+closed.
+
+**(a) The dusk subsistence floor.** `packages/engine/src/day.ts` `endDay`, immediately after the
+T-1307 port-income block (the dusk's last credit mutation — the loan and guild accruals write
+_ledgers_, never credits) and before the day-30 resolution and `evaluateDeeds`, so any deed reading
+credits sees the floored value. Guarded on `careerEnded(...) === false` and
+`credits < SUBSISTENCE_FLOOR_CREDITS`, so every solvent dusk is byte-identical — no event, no
+credit change, no rng draw (proven by a same-seed A/B on `rngState`). Credits are raised **to** the
+line, never by it: a floor, not a faucet, and unfarmable. The number is `100`, the game's existing
+broke line (`NPC_BROKE_CREDITS`), defined as data in `packages/content/src/subsistence.ts` and
+disclosed as a post-T-1603 economy number in `docs/BALANCE-POLICY.md` Part C (E8). Closes the
+asymmetry that was the actual bug: `npc.ts` `brokeIdle` has paid the _cast_ odd-job money since
+T-106, while the player — named in the same PRD sentence — had no floor at all.
+
+**(b) The `abandon-contract` verb.** `packages/engine/src/actions/trade.ts`: one die plus the
+forfeited payment, and deliberately **no credit fee** (a fee would re-strand exactly the captain
+the verb exists to free). An empty hold is a typed refusal that spends no die. The dumped contract
+does not return to `market.manifestBoard`. It is a **new** `TradeEvent.action` value, not a reuse
+of `'forfeit-cargo'` — that value is the succession/death forfeit and is read as such by the UI
+obituary and the sim's death path, so overloading it would file a voluntarily dumped crate in a
+captain's death notice.
+
+Reachability, per standing constraints 2 and 6: `legalActions` advertises `Trade/abandon-contract`
+whenever a die is in hand and the hold is full (`packages/sim/src/protocol.ts`, documented in
+`packages/sim/PROTOCOL.md`), and the cockpit carries `[data-testid="abandon-contract"]` in
+`TradePane`'s active-contract block.
+
+Named readers (standing constraint 7), each asserted:
+
+| Event / field                                            | Reader                                                                                              | Assertion                                                       |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `SubsistenceIncome`                                      | sim campaign roll-up `subsistenceDays` (`packages/sim/src/index.ts`)                                | `campaign-reach.test.ts`, broke-and-dry career                  |
+| `SubsistenceIncome` (paired `WireEntry{kind:'plain'}`)   | UI wire pane via the existing generic path (`packages/ui/src/format.ts` `wireKind`) — no new UI code | `economy.test.ts` asserts the WireEntry rides with the event    |
+| `TradeEvent{abandon-contract}`                           | sim route-leg tracker (closes the leg `'lost'`)                                                     | `campaign-reach.test.ts` → "abandon-contract closes its route leg" |
+| `TradeEvent{abandon-contract}` (refusal)                 | UI store `failNoticeFrom` → visible notice                                                          | `actions.test.ts` (no die spent) + the e2e disabled-control assertion |
+| `StoryletEffectApplied.amount` (new meaning)             | the F1 tests; the cockpit credits readout can no longer render negative                             | `storylets.test.ts` test 3                                      |
+
+**Regressions.** The headline is `packages/sim/src/__tests__/protocol.test.ts` →
+`describe('T-1604b · F2 poverty/immobility trap')`, which rebuilds the audited state field for
+field (day 16, Mira-9, 0 credits, 29/300 fuel, an undeliverable Pollux-7 contract) and asserts it
+through `legalActions` — the surface a headless driver actually sees: no income verb is advertised
+(the trap is real), `abandon-contract` **is** advertised and applying it re-opens `sign-contract`,
+and within five dusks `buy-fuel` is advertised again with credits above zero at every dawn. Both
+"escape" assertions are RED before this task.
+
+**Scope, restated from §7 F2's own split:** this is the regression for the _witnessed_ state. The
+exhaustive "no sequence escapes" **invariant remains T-1605b's**, which already owns the
+poverty-trap property test over adversarial states.
+
+### Explicitly DEFERRED: F3 and F5 (MED)
+
+§9 offers these as "worth carrying into the same batch if cheap". They were **not** done, and are
+not silently dropped:
+
+- **F3** (narrow the `Travel` `destinationId` domain to affordable destinations) changes the
+  _advertised-action contract_ — the `legalActions` destination domain plus `PROTOCOL.md` — which
+  is its own reviewable deliverable under the "one task ships one deliverable" rule, and it is a
+  behaviour change every headless driver would feel.
+- **F5** (put `quoteShipyard().ok` on the wire) is the same shape in a different subsystem.
+
+Both are MED; T-1604b's Accept line covers HIGH. Proposed follow-up for the orchestrator/user to
+add to TASKS.md: **`T-1604c · UGT MED-finding fixes (F3 travel-fuel gate, F5 shipyard
+die-before-check)`**. F4 (crew/reroll economic unreachability) remains a balance question for
+T-1603's successor, and F6/F7 remain UGT-repo defects.
+
+### Fallout, named rather than absorbed
+
+- **No `GameState` field was added** by either fix, so `CURRENT_SAVE_VERSION` is unchanged and no
+  `MIGRATIONS` entry was needed. The two new event shapes are additive to the serialized
+  `eventLog` and backward-compatible (old saves cannot contain them); a JSON round-trip test over a
+  log holding `SubsistenceIncome` ships with the fix.
+- **No existing golden was regenerated.** The day-loop golden and both protocol replay goldens are
+  byte-identical — the floor never fires on a solvent script. A **third** replay log
+  (`REPLAY_LOG_ABANDON`, seed 7) and its own new golden were added to cover the new Trade
+  sub-action, rather than splicing an action into a stable log and burying a real regression under
+  a re-pin.
+- **The T-1603 balance suite passes unchanged.** Two structural assertions moved, both because they
+  read a number the floor now touches: `crew.test.ts`'s crew-walk case (the "no charge on a walk"
+  claim is now asserted _directly_, as the absence of a `CrewEvent{wage}`, instead of inferred from
+  a closing balance) and `campaign-reach.test.ts`'s scripted broke-and-dry career (seed re-pinned
+  1 → 3, with the seeds-1..10 sweep recorded at the site: 8 of 10 still register fuel starvation,
+  so the T-1004 metric stays reachable).

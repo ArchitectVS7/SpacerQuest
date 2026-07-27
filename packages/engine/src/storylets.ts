@@ -324,14 +324,44 @@ function applyEffects(
   const events: GameEvent[] = [];
 
   if (effects.credits !== undefined) {
-    state.player.credits += effects.credits;
+    // T-1604b · F1 (UGT campaign, docs/playtests/T-1604a-ugt-campaign.md §7) —
+    // FLOOR THE FINE AT ZERO. This branch used to be a bare `+=`, so an authored
+    // penalty larger than the purse drove `player.credits` NEGATIVE (measured
+    // twice, in two independent legs, both landing on −40).
+    //
+    // The shape is copied verbatim from the `fuel` branch immediately below:
+    // clamp first, then emit the ACTUALLY APPLIED delta. That is a deliberate
+    // semantic change to `StoryletEffectApplied.amount` — it is now the applied
+    // delta, not the authored one — so a clamped fine can never overstate itself
+    // in the event log (the same honesty rule the fuel and disposition effects
+    // already keep). READERS of the new meaning: the applied-delta assertions in
+    // `__tests__/storylets.test.ts` (T-1604b block), and the player-facing
+    // cockpit credits readout, which can no longer render a negative balance.
+    //
+    // PRD-REIMAGINED §"Scarcity of choices, never a poverty trap" (docs/
+    // PRD-REIMAGINED.md:35): "Debt is a ledger — a number you owe — never a
+    // negative balance that turns credits into a hole you can't climb out of."
+    // Every other credit-deduction site in the engine (patrol fine, combat
+    // tribute, the dusk crew wage, the hangout dare wager cap) is already gated
+    // or clamped; this was the lone unguarded path.
+    //
+    // The FIX IS HERE AND NOT IN CONTENT, deliberately: `eat-the-loss`
+    // (content/storylets.ts:813) is the requirement-free choice its storylet
+    // needs to satisfy the T-401 "every storylet offers at least one
+    // requirement-free choice" invariant, and `broker-it`'s −40
+    // (content/storylets.ts:2134) is the FAILURE branch of a TRADE roll the
+    // captain could not decline. Gating either in content would break an
+    // authoring invariant or charge for an outcome with no opt-out. The engine
+    // floors; the content stays.
+    const before = state.player.credits;
+    state.player.credits = Math.max(0, before + effects.credits);
     events.push({
       type: 'StoryletEffectApplied',
       day: state.day,
       storyletId,
       choiceId,
       effect: 'credits',
-      amount: effects.credits,
+      amount: state.player.credits - before,
     });
   }
 

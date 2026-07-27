@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { SUBSISTENCE_FLOOR_CREDITS } from '@spacerquest/content';
 import { createInitialState, serializeState, deserializeState } from '../state.js';
 import { startDay, applyPlayerAction, endDay } from '../day.js';
 import { GameEvent, GameState } from '../types.js';
@@ -293,7 +294,18 @@ describe('T-1306 · crew wage upkeep at dusk', () => {
     const dismissed = events.filter((e) => e.type === 'CrewEvent' && e.kind === 'dismissed');
     expect(dismissed).toHaveLength(1);
     expect(dusk.player.crew).toHaveLength(0);
-    expect(dusk.player.credits).toBe(10); // no charge on a walk
+    // "No charge on a walk" is still the claim, but it can no longer be read off
+    // the closing balance: T-1604b's dusk subsistence floor (day.ts, content
+    // SUBSISTENCE_FLOOR_CREDITS) fires on the same dusk because 10 < 100. So the
+    // no-charge guarantee is asserted DIRECTLY — no CrewEvent{wage} at all — and
+    // the closing balance is then fully accounted for by the floor's own top-up
+    // (10 + 90 = 100). If the wage had been charged, `amount` would not be 90.
+    expect(events.some((e) => e.type === 'CrewEvent' && e.kind === 'wage')).toBe(false);
+    const floorEv = events.filter((e) => e.type === 'SubsistenceIncome');
+    expect(floorEv).toEqual([
+      { type: 'SubsistenceIncome', day: 1, amount: 90, creditsAfter: SUBSISTENCE_FLOOR_CREDITS },
+    ]);
+    expect(dusk.player.credits).toBe(SUBSISTENCE_FLOOR_CREDITS);
     expect(dusk.player.credits).toBeGreaterThanOrEqual(0);
   });
 

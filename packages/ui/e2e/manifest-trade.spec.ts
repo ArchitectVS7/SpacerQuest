@@ -167,6 +167,44 @@ test('paying debt clamps to credits, then over-paying with none surfaces a failu
   await expect(page.getByTestId('debt-chip')).toContainText('24,000');
 });
 
+// T-1604b · F2 (part B) through the cockpit. UGT finding F2: a captain carrying
+// an undeliverable run had no way to free the hold, because signing is refused
+// while a contract rides. The Trade pane now carries the release, and — like every
+// other die-cost control in this pane — it must never be a dead click.
+test('dumping the run clears the hold and re-opens the board', async ({ page }) => {
+  await page.goto('/');
+
+  // Sign the first offer, so there is something in the hold to dump.
+  await expect(page.getByTestId('active-contract-empty')).toBeVisible();
+  await selectUnspentDie(page);
+  await page.getByTestId('contract').first().click();
+  await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
+  await expect(page.getByTestId('contract')).toHaveCount(3);
+  expect(await spentCount(page)).toBe(1);
+
+  // Never a dead click: with no die armed the control is visibly refused (the
+  // fuel-depot affordance), so the player is told what is missing rather than
+  // clicking into silence — and nothing is spent.
+  await expect(page.getByTestId('abandon-contract')).toBeDisabled();
+  await expect(page.getByTestId('abandon-contract')).toHaveAttribute('title', /Pick a die first/);
+  expect(await spentCount(page)).toBe(1);
+  await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
+
+  // Arm a die and dump: the hold empties and exactly one more die is spent.
+  await selectUnspentDie(page);
+  await page.getByTestId('abandon-contract').click();
+  await expect(page.getByTestId('active-contract-empty')).toBeVisible();
+  expect(await spentCount(page)).toBe(2);
+  // The dumped run does NOT return to the board — the crates were vented.
+  await expect(page.getByTestId('contract')).toHaveCount(3);
+
+  // The point of the whole verb: the hold takes work again.
+  await selectUnspentDie(page);
+  await page.getByTestId('contract').first().click();
+  await expect(page.getByTestId('active-contract-empty')).toHaveCount(0);
+  expect(await spentCount(page)).toBe(3);
+});
+
 test('the manifest flags a storylet cargo (display-only, derived from content)', async ({
   page,
 }) => {

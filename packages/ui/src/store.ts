@@ -687,6 +687,43 @@ export function signContract(contractIndex: number): void {
 }
 
 /**
+ * T-1604b · Dump the run riding in the hold (UGT finding F2). Costs a die and the
+ * whole payment, so it mirrors `signContract` exactly: a die must be armed first,
+ * the ENGINE owns the refusal (nothing in the hold → a failed `TradeEvent` that
+ * `failNoticeFrom` surfaces as a visible notice, never a silent no-op), and the
+ * die only blooms when the engine actually spent it. No rule lives here — the UI
+ * is a client of `resolveTrade`, not its owner.
+ */
+export function abandonContract(): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then abandon the run.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Trade',
+      action: 'abandon-contract',
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const notice = failNoticeFrom(events);
+    set({
+      game: next,
+      // On refusal the engine spent no die; keep the selection so the player can
+      // retry, and don't bloom a die that was never consumed.
+      selectedDie: notice ? die : null,
+      bloomDie: notice ? null : die,
+      notice,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    playCues(events, !notice);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That action could not be resolved.' });
+  }
+}
+
+/**
  * Top up fuel at the local depot. Fueling consumes a die (engine PRD §7: every
  * meaningful action spends a die), so this requires a selection. A shortfall
  * (not enough credits) comes back as a failed TradeEvent and is surfaced via

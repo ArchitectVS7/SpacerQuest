@@ -127,6 +127,105 @@ describe('Player Actions', () => {
     expect(nextState.player.currentSystemId).toBe(20);
   });
 
+  // -------------------------------------------------------------------------
+  // T-1604b · F2 (part B) — the player-initiated hold release.
+  //
+  // UGT finding F2 (docs/playtests/T-1604a-ugt-campaign.md §7): a captain carrying
+  // an undeliverable contract had NO way to free the hold — `sign-contract` is
+  // refused while `activeContract` is set, and only delivery, a storylet, a patrol
+  // seizure or succession ever cleared it. Half of the measured poverty trap.
+  // -------------------------------------------------------------------------
+  describe('T-1604b · abandon-contract', () => {
+    function heldState(): ReturnType<typeof createInitialState> {
+      const state = createInitialState(123);
+      state.player.dawnHand = rollDawnHand(new SeededRng(123), {
+        handSize: 5,
+        floor: 0,
+        rerolls: 0,
+      });
+      state.player.activeContract = { destination: 7, cargoType: 3, payment: 2200, pods: 10 };
+      state.market.manifestBoard = [
+        { destination: 4, cargoType: 1, payment: 1500, pods: 10 },
+        { destination: 5, cargoType: 2, payment: 1800, pods: 10 },
+      ];
+      return state;
+    }
+
+    it('clears the hold, spends a die, and emits the typed event', () => {
+      const state = heldState();
+      const boardBefore = state.market.manifestBoard.length;
+
+      const { state: next, events } = resolveTrade(
+        state,
+        { type: 'Trade', action: 'abandon-contract', spendDie: 0 },
+        new SeededRng(123),
+      );
+
+      expect(next.player.activeContract).toBeNull();
+      expect(next.player.dawnHand!.spent[0]).toBe(true);
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'TradeEvent',
+          action: 'abandon-contract',
+          success: true,
+          destination: 7,
+          cargoType: 3,
+          payment: 2200,
+        }),
+      );
+      // The wire reader for the beat (UI format.ts consumes kind 'plain').
+      expect(events.some((e) => e.type === 'WireEntry' && e.kind === 'plain')).toBe(true);
+      // No credit fee — charging one would re-strand the captain this verb frees.
+      expect(next.player.credits).toBe(state.player.credits);
+      // The dumped run does NOT come back to the board: the crates are vented,
+      // not un-signed.
+      expect(next.market.manifestBoard).toHaveLength(boardBefore);
+      expect(next.market.manifestBoard.some((c) => c.destination === 7)).toBe(false);
+    });
+
+    it('with an EMPTY hold is a typed refusal that spends no die', () => {
+      const state = heldState();
+      state.player.activeContract = null;
+
+      const { state: next, events } = resolveTrade(
+        state,
+        { type: 'Trade', action: 'abandon-contract', spendDie: 0 },
+        new SeededRng(123),
+      );
+
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'TradeEvent',
+          action: 'abandon-contract',
+          success: false,
+          actionDetails: 'Nothing in the hold to abandon.',
+        }),
+      );
+      expect(next.player.dawnHand!.spent[0]).toBe(false);
+      expect(next.player.activeContract).toBeNull();
+    });
+
+    it('frees the hold so a fresh contract can be signed the same day', () => {
+      // The point of the whole verb: the trap is a hold that cannot be re-let.
+      const state = heldState();
+      const { state: dumped } = resolveTrade(
+        state,
+        { type: 'Trade', action: 'abandon-contract', spendDie: 0 },
+        new SeededRng(123),
+      );
+      const { state: signed, events } = resolveTrade(
+        dumped,
+        { type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 1 },
+        new SeededRng(123),
+      );
+
+      expect(signed.player.activeContract).toMatchObject({ destination: 4, payment: 1500 });
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'TradeEvent', action: 'sign-contract', success: true }),
+      );
+    });
+  });
+
   it('resolves combat run', () => {
     const state = createInitialState(123);
     state.player.dawnHand = rollDawnHand(new SeededRng(123), { handSize: 5, floor: 0, rerolls: 0 });

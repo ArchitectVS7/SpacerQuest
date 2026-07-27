@@ -3,7 +3,9 @@ import {
   DayPhase,
   SeededRng,
   createInitialState,
+  endDay,
   rollDawnHand,
+  startDay,
   type EncounterState,
   type GameState,
   type PlayerAction,
@@ -25,11 +27,14 @@ import {
 } from '../protocol.js';
 import { makeSessionHandler, processLine, runStdioAdapter } from '../protocol-stdio.js';
 import {
+  REPLAY_GOLDEN_ABANDON_RESPONSES,
+  REPLAY_GOLDEN_ABANDON_SESSION,
   REPLAY_GOLDEN_COMBAT_RESPONSES,
   REPLAY_GOLDEN_COMBAT_SESSION,
   REPLAY_GOLDEN_RESPONSES,
   REPLAY_GOLDEN_SESSION,
   REPLAY_LOG,
+  REPLAY_LOG_ABANDON,
   REPLAY_LOG_COMBAT,
 } from './fixtures/replay-golden.js';
 
@@ -213,7 +218,14 @@ describe('protocol deterministic replay', () => {
     expect(JSON.stringify(responses)).toBe(REPLAY_GOLDEN_COMBAT_RESPONSES);
   });
 
-  it('the two golden logs cover every PlayerAction type and sub-action', () => {
+  it('replays REPLAY_LOG_ABANDON (T-1604b hold release) to its committed golden', () => {
+    const { session, responses } = replay(REPLAY_LOG_ABANDON);
+    expect(session).not.toBeNull();
+    expect(serializeSession(session!)).toBe(REPLAY_GOLDEN_ABANDON_SESSION);
+    expect(JSON.stringify(responses)).toBe(REPLAY_GOLDEN_ABANDON_RESPONSES);
+  });
+
+  it('the golden logs cover every PlayerAction type and sub-action', () => {
     // Guards the fixture against silently losing coverage of an action shape.
     // Exhaustive BY CONSTRUCTION: each expectation table is a
     // `Record<Union, true>` validated by `satisfies`, so adding a discriminant
@@ -237,6 +249,8 @@ describe('protocol deterministic replay', () => {
       'sign-contract': true,
       haggle: true,
       'pay-debt': true,
+      // T-1604b · covered by REPLAY_LOG_ABANDON (refusal + success + re-let).
+      'abandon-contract': true,
     } satisfies Record<Extract<PlayerAction, { type: 'Trade' }>['action'], true>;
     const expectedShipyardKinds = {
       'buy-component-tier': true,
@@ -254,7 +268,7 @@ describe('protocol deterministic replay', () => {
     const tradeSubActions = new Set<string>();
     const shipyardKinds = new Set<string>();
     const combatStances = new Set<string>();
-    for (const request of [...REPLAY_LOG, ...REPLAY_LOG_COMBAT]) {
+    for (const request of [...REPLAY_LOG, ...REPLAY_LOG_COMBAT, ...REPLAY_LOG_ABANDON]) {
       if (request.type !== 'apply-action') continue;
       const action = request.action;
       types.add(action.type);
@@ -848,5 +862,106 @@ describe('stdio transport', () => {
     expect(responses[1]?.type).toBe('state-summary');
     expect(responses[2]?.type).toBe('state-summary');
     expect(responses[3]?.type).toBe('error');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1604b · F2 — the poverty/immobility trap has an exit.
+//
+// The REGRESSION for the state UGT actually witnessed (docs/playtests/
+// T-1604a-ugt-campaign.md §7 F2, seed 20260728): day 16 at Mira-9 (system 8, no
+// Hangout), 0 credits, 29/300 fuel, and an undeliverable Pollux-7 contract
+// nailing the hold shut. Left to run, that career reached day 401 still at 0
+// credits in the same system, 385 days without moving.
+//
+// Asserted through `legalActions` — the surface a headless driver actually sees —
+// because F2 is a defect of what the game OFFERS, not only of what it does.
+//
+// SCOPE, per the report's own split: this is the regression for the witnessed
+// state. The exhaustive "no sequence escapes" INVARIANT is T-1605b's, which
+// already owns the poverty-trap property test over adversarial states.
+// ---------------------------------------------------------------------------
+
+describe('T-1604b · F2 poverty/immobility trap', () => {
+  const MIRA_9 = 8;
+  const POLLUX_7 = 9;
+
+  /** The audited trap, rebuilt field for field. */
+  function trapState(seed = 20260728): GameState {
+    const state = startDay(createInitialState(seed)).state;
+    state.day = 16;
+    state.player.currentSystemId = MIRA_9;
+    state.player.credits = 0;
+    state.player.ship.fuel = 29;
+    state.player.ship.maxFuel = 300;
+    state.player.activeContract = {
+      destination: POLLUX_7,
+      cargoType: 3,
+      payment: 2200,
+      pods: 10,
+    };
+    return state;
+  }
+
+  function hasTrade(legal: LegalActions, action: string): boolean {
+    return legal.actions.some((spec) => spec.type === 'Trade' && spec.action === action);
+  }
+
+  it('the trap is real: at dawn with a full hand, no income verb is advertised', () => {
+    const legal = legalActions(trapState());
+    expect(legal.diceRemaining).toEqual([0, 1, 2, 3, 4]);
+
+    // The three income routes, each shut for its own reason:
+    expect(hasTrade(legal, 'buy-fuel')).toBe(false); // floor(0 / price) === 0
+    expect(hasTrade(legal, 'sign-contract')).toBe(false); // the hold is full
+    expect(legal.actions.some((s) => s.type === 'VisitHangout')).toBe(false); // Mira-9 has no desk
+    expect(hasTrade(legal, 'pay-debt')).toBe(false); // nothing to pay with
+  });
+
+  it('the ESCAPE HATCH is advertised: abandon-contract, and it re-opens signing', () => {
+    // RED before T-1604b — `abandon-contract` did not exist on this line at all,
+    // so this state had no advertised way to free the hold.
+    const trap = trapState();
+    const legal = legalActions(trap);
+    expect(hasTrade(legal, 'abandon-contract')).toBe(true);
+
+    const session: ProtocolSession = { seed: 20260728, state: trap };
+    const dumped = handleMessage(session, {
+      type: 'apply-action',
+      action: { type: 'Trade', action: 'abandon-contract', spendDie: 0 },
+    });
+    const result = expectActionResult(dumped.response);
+    expect(
+      result.events.some(
+        (e) => e.type === 'TradeEvent' && e.action === 'abandon-contract' && e.success === true,
+      ),
+    ).toBe(true);
+    expect(dumped.session!.state.player.activeContract).toBeNull();
+
+    // The point of the verb: the board is available again.
+    const after = legalActions(dumped.session!.state);
+    expect(hasTrade(after, 'sign-contract')).toBe(true);
+    expect(hasTrade(after, 'abandon-contract')).toBe(false); // nothing left to dump
+  });
+
+  it('the world provides a floor: dusks restore an income verb within days, not never', () => {
+    // RED before T-1604b — the purse stayed at exactly 0 through every dusk, so
+    // `buy-fuel` was never advertised again and the ship never moved.
+    let state = trapState();
+    let buyFuelDay: number | null = null;
+
+    for (let i = 0; i < 5; i += 1) {
+      state = endDay(state).state;
+      state = startDay(state).state;
+      // The floor holds at EVERY dawn, not just eventually.
+      expect(state.player.credits).toBeGreaterThan(0);
+      if (buyFuelDay === null && hasTrade(legalActions(state), 'buy-fuel')) {
+        buyFuelDay = state.day;
+      }
+    }
+
+    expect(buyFuelDay).not.toBeNull();
+    // A handful of days, not the 385 the campaign measured.
+    expect(buyFuelDay! - 16).toBeLessThanOrEqual(5);
   });
 });

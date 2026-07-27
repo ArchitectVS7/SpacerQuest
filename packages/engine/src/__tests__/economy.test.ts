@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { CARGO_TYPES, distance, SYSTEM_DANGER_LEVELS } from '@spacerquest/content';
+import {
+  CARGO_TYPES,
+  NEMESIS_SYSTEM_ID,
+  SUBSISTENCE_FLOOR_CREDITS,
+  distance,
+  SYSTEM_DANGER_LEVELS,
+} from '@spacerquest/content';
 import {
   calculateFuelCapacity,
   generateManifestBoard,
@@ -9,11 +15,11 @@ import {
   quoteFuelPurchase,
 } from '../economy.js';
 import { resolveShipyard } from '../actions/shipyard.js';
-import { applyPlayerAction, startDay } from '../day.js';
+import { applyPlayerAction, endDay, startDay } from '../day.js';
 import { calculateRouteDanger, travelDc, travelPreview } from '../actions/travel.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { SeededRng } from '../rng.js';
-import { GameState, ShipState } from '../types.js';
+import { GameEvent, GameState, ShipState } from '../types.js';
 
 describe('economy', () => {
   it('generates a deterministic manifest board', () => {
@@ -396,5 +402,105 @@ describe('quoteFuelPurchase (T-1401 export pack)', () => {
     const quote = quoteFuelPurchase(state, 50); // cost 250 > 100
     expect(quote.canAfford).toBe(false);
     expect(quote.overspends).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-1604b · F2 (part A) — the dusk SUBSISTENCE FLOOR.
+//
+// UGT finding F2 (docs/playtests/T-1604a-ugt-campaign.md §7): a captain at 0
+// credits with a full hold and no Hangout had no income verb at all, and the
+// measured career sat at Mira-9 for 385 consecutive days. The cast has had a
+// floor since T-106 (`npc.ts` brokeIdle); the PLAYER did not. PRD-REIMAGINED
+// §"Scarcity of choices, never a poverty trap": "the world provides floors …
+// no actor in the simulation, player or cast, gets permanently trapped at zero."
+//
+// The engine site is `day.ts` endDay, immediately after the T-1307 port income
+// (the dusk's last credit mutation) and before the day-30 resolution / deeds.
+// ---------------------------------------------------------------------------
+describe('T-1604b · dusk subsistence floor', () => {
+  /** A DAY-phase state at a chosen purse, with nothing else that moves credits
+   *  at dusk (no crew, no ports, no loan). */
+  function duskState(seed: number, credits: number): GameState {
+    const state = startDay(createInitialState(seed)).state;
+    state.player.credits = credits;
+    return state;
+  }
+
+  function floorEvents(events: GameEvent[]): Extract<GameEvent, { type: 'SubsistenceIncome' }>[] {
+    return events.filter(
+      (e): e is Extract<GameEvent, { type: 'SubsistenceIncome' }> => e.type === 'SubsistenceIncome',
+    );
+  }
+
+  it('fires at zero: credits are raised TO the floor, with a paired wire line', () => {
+    const { state: dusk, events } = endDay(duskState(1, 0));
+
+    expect(dusk.player.credits).toBe(SUBSISTENCE_FLOOR_CREDITS);
+    expect(floorEvents(events)).toEqual([
+      {
+        type: 'SubsistenceIncome',
+        day: 1,
+        amount: SUBSISTENCE_FLOOR_CREDITS,
+        creditsAfter: SUBSISTENCE_FLOOR_CREDITS,
+      },
+    ]);
+    // The UI wire reader (format.ts wireKind consumes kind 'plain').
+    expect(events.some((e) => e.type === 'WireEntry' && e.kind === 'plain')).toBe(true);
+  });
+
+  it('tops up PARTIALLY — the delta is what was actually needed', () => {
+    const { state: dusk, events } = endDay(duskState(1, 40));
+
+    expect(dusk.player.credits).toBe(SUBSISTENCE_FLOOR_CREDITS);
+    expect(floorEvents(events)).toEqual([
+      { type: 'SubsistenceIncome', day: 1, amount: 60, creditsAfter: SUBSISTENCE_FLOOR_CREDITS },
+    ]);
+  });
+
+  it('is a FLOOR, not a faucet: a solvent dusk is untouched and emits nothing', () => {
+    // Exactly at the line, and far above it. Neither pays out — so the rule can
+    // never be farmed, and every solvent career (i.e. every existing golden) is
+    // byte-identical.
+    for (const credits of [SUBSISTENCE_FLOOR_CREDITS, 5000]) {
+      const { state: dusk, events } = endDay(duskState(2, credits));
+      expect(floorEvents(events)).toEqual([]);
+      expect(dusk.player.credits).toBe(credits);
+    }
+  });
+
+  it('does not accrue once the career has ended', () => {
+    const state = duskState(3, 0);
+    state.player.currentSystemId = NEMESIS_SYSTEM_ID; // engine `careerEnded`
+    const { state: dusk, events } = endDay(state);
+
+    expect(floorEvents(events)).toEqual([]);
+    expect(dusk.player.credits).toBe(0);
+  });
+
+  it('draws NO rng: the same seed ends dusk on the same rngState with or without it', () => {
+    // The block's stated contract (matching the T-1306/T-1307 blocks it sits
+    // beside): pure arithmetic, one compare, no draw. A/B on the same seed —
+    // a destitute dusk and a solvent twin must leave the rng stream identical.
+    const broke = endDay(duskState(4, 0));
+    const solvent = endDay(duskState(4, 5000));
+
+    expect(floorEvents(broke.events)).toHaveLength(1);
+    expect(floorEvents(solvent.events)).toHaveLength(0);
+    expect(broke.state.rngState).toBe(solvent.state.rngState);
+  });
+
+  it('survives a JSON round-trip in the event log (no new state field, no migration)', () => {
+    // Standing constraint 3. The floor adds NO GameState field — only an eventLog
+    // shape — so the save version is untouched; what must hold is that the new
+    // event round-trips through serialize → deserialize byte-identically.
+    const { state: dusk } = endDay(duskState(5, 0));
+    const logged = dusk.eventLog.filter((e) => e.type === 'SubsistenceIncome');
+    expect(logged).toHaveLength(1);
+
+    const restored = deserializeState(serializeState(dusk));
+    expect(restored.eventLog.filter((e) => e.type === 'SubsistenceIncome')).toEqual(logged);
+    expect(restored.player.credits).toBe(SUBSISTENCE_FLOOR_CREDITS);
+    expect(serializeState(restored)).toBe(serializeState(dusk));
   });
 });

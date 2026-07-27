@@ -8,7 +8,7 @@ import {
   type ProtocolResponse,
   type ProtocolSession,
 } from '../../protocol.js';
-import { REPLAY_LOG, REPLAY_LOG_COMBAT } from './replay-golden.js';
+import { REPLAY_LOG, REPLAY_LOG_ABANDON, REPLAY_LOG_COMBAT } from './replay-golden.js';
 
 function replay(log: ProtocolRequest[]): {
   session: ProtocolSession | null;
@@ -33,3 +33,9 @@ function emit(name: string, log: ProtocolRequest[], sessionConst: string, respCo
 
 emit('primary', REPLAY_LOG, 'REPLAY_GOLDEN_SESSION', 'REPLAY_GOLDEN_RESPONSES');
 emit('combat', REPLAY_LOG_COMBAT, 'REPLAY_GOLDEN_COMBAT_SESSION', 'REPLAY_GOLDEN_COMBAT_RESPONSES');
+emit(
+  'abandon',
+  REPLAY_LOG_ABANDON,
+  'REPLAY_GOLDEN_ABANDON_SESSION',
+  'REPLAY_GOLDEN_ABANDON_RESPONSES',
+);

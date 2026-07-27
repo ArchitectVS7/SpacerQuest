@@ -2,6 +2,7 @@ import {
   CREW_ROLES,
   PURCHASABLE_PORTS_BY_SYSTEM,
   SPECIAL_EQUIPMENT,
+  SUBSISTENCE_FLOOR_CREDITS,
   distance as systemDistance,
   isGatedDestination,
   isPurchasablePort,
@@ -497,9 +498,37 @@ describe('T-1004 fuel starvation', () => {
       return actions;
     };
 
-    const report = runCampaign(1, 60, brokeAndDryPolicy);
+    // T-1604b RE-PIN (seed 1 → 3). PINNED, NOT STEERED: the policy, the horizon
+    // and every assertion below are unchanged; only the seed moved, and the
+    // reason is a real behaviour change, not a masked regression.
+    //
+    // The dusk subsistence floor (`day.ts`, content SUBSISTENCE_FLOOR_CREDITS)
+    // now leaves this career with 100 credits instead of 0, and
+    // `cannotAffordCheapestJump` reads credits as *convertible* fuel
+    // (`fuel + floor(credits / price)`). On seed 1 the ship strands with 50 fuel
+    // in the hand, and 50 + the ~20 units 100 credits buys clears the cheapest
+    // hop — so by the metric's own definition that career is no longer starved.
+    // It sits still because the POLICY refuses to refuel, which is not what
+    // `fuelStarvationDays` measures.
+    //
+    // SWEEP EVIDENCE (seeds 1..10 of this exact policy, post-floor):
+    //   starved days — 1:0  2:0  3:56  4:56  5:56  6:1  7:54  8:56  9:56  10:26
+    // Eight of ten still strand, so the metric is emphatically still reachable
+    // after the floor; seed 1 is one of the two that now sit just above the line.
+    // Seed 3 is the first that strands decisively.
+    const report = runCampaign(3, 60, brokeAndDryPolicy);
 
-    expect(report.finalState.credits).toBe(0);
+    // T-1604b · the closing balance is the SUBSISTENCE FLOOR, not 0. The policy
+    // still pours every credit it starts with into the marker (that is what makes
+    // it broke, and it is why the tank never refills), but the dusk floor refuses
+    // to leave the career pinned at exactly zero — PRD §"Scarcity of choices,
+    // never a poverty trap".
+    expect(report.finalState.credits).toBe(SUBSISTENCE_FLOOR_CREDITS);
+    // …and this is the campaign-level reader of `SubsistenceIncome`: a run this
+    // destitute must show the floor firing (standing constraint 7).
+    expect(report.subsistenceDays).toBeGreaterThan(0);
+    // The thing this test has always been for: 100 credits buys ~20 fuel a day,
+    // nowhere near the cheapest hop on a drained tank, so the ship still strands.
     expect(report.fuelStarvationDays).toBeGreaterThan(0);
   }, 30000);
 });
@@ -745,4 +774,38 @@ describe('T-1204 disposition with teeth (unguided 300-day sim)', () => {
       `peak |disposition| ${peakDisposition} on day ${peakDay}`,
     ).toBeGreaterThanOrEqual(5);
   }, 60000);
+});
+
+// ---------------------------------------------------------------------------
+// T-1604b · The sim-side READER of `TradeEvent{action:'abandon-contract'}`
+// (standing constraint 7). No shipped policy dumps cargo, so the route-leg
+// tracker's new branch is driven here by a bespoke policy — the same technique
+// the broke-and-dry fuel-starvation test above uses.
+// ---------------------------------------------------------------------------
+
+describe('T-1604b · abandon-contract closes its route leg', () => {
+  it('a signed-then-dumped run is filed as a LOST leg, on the day it was dumped', () => {
+    // Day 1: take the first offer. Day 2: dump it. The leg must close 'lost' —
+    // the cargo left the hold with no payday — rather than lingering open until
+    // some later signing implicitly swept it up.
+    const signThenDump: SimPolicy = ({ state, dayIndex }) => {
+      if (dayIndex === 0) {
+        return [{ type: 'Trade', action: 'sign-contract', contractIndex: 0, spendDie: 0 }];
+      }
+      if (state.player.activeContract) {
+        return [{ type: 'Trade', action: 'abandon-contract', spendDie: 0 }];
+      }
+      return [{ type: 'Wait' }];
+    };
+
+    const report = runCampaign(1, 3, signThenDump);
+
+    expect(report.routeLegs).toHaveLength(1);
+    expect(report.routeLegs[0]).toMatchObject({
+      signedDay: 1,
+      outcome: 'lost',
+      deliveredDay: null,
+      paidPayment: null,
+    });
+  }, 30000);
 });

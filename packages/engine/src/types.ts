@@ -143,7 +143,21 @@ export interface TradeEvent {
   characterId: string;
   actionDetails: string;
   action?:
-    'buy-fuel' | 'sign-contract' | 'haggle' | 'deliver-cargo' | 'forfeit-cargo' | 'pay-debt-failed';
+    | 'buy-fuel'
+    | 'sign-contract'
+    | 'haggle'
+    | 'deliver-cargo'
+    | 'forfeit-cargo'
+    /** T-1604b · The PLAYER-INITIATED hold release (UGT finding F2). Deliberately
+     *  NOT folded into 'forfeit-cargo': that value is the succession/death forfeit
+     *  and is read as such by the UI obituary (`packages/ui/src/format.ts`
+     *  `successionSummary`) and by the sim route-leg tracker's death path — reusing
+     *  it would file a voluntarily dumped crate as part of a captain's death
+     *  notice. Emitted with `success: true` when the hold was cleared (carrying
+     *  `destination` / `cargoType` / `payment` of the abandoned run) and
+     *  `success: false` when there was nothing to abandon (no die spent). */
+    | 'abandon-contract'
+    | 'pay-debt-failed';
   success?: boolean;
   amount?: number;
   fuelAmount?: number;
@@ -606,6 +620,32 @@ export type GameEvent =
       portCount?: number;
       failReason?: PortEventFailReason;
     }
+  | {
+      /**
+       * T-1604b · The dusk subsistence FLOOR fired (UGT finding F2; PRD §"Scarcity
+       * of choices, never a poverty trap" — "the world provides floors … no actor
+       * in the simulation, player or cast, gets permanently trapped at zero").
+       * Emitted by `day.ts` endDay ONLY when the purse ended the day below
+       * content's `SUBSISTENCE_FLOOR_CREDITS`, and only while the career is live.
+       *
+       * `amount` is the top-up actually applied (floor − credits before, always
+       * > 0); `creditsAfter` is the floor itself, recorded rather than implied so
+       * a reader never has to re-derive it from the constant. Always paired with a
+       * `WireEntry{kind:'plain'}` naming the dock work.
+       *
+       * This is an eventLog entry, NOT a GameState field — no new state, hence no
+       * save migration (the serialized `eventLog` gains a shape old saves simply
+       * never contain).
+       *
+       * READERS: the sim campaign roll-up's `subsistenceDays`
+       * (`packages/sim/src/index.ts`, `accumulateMetricEvents`), and the UI wire
+       * pane via the paired WireEntry (`packages/ui/src/format.ts` `wireKind`).
+       */
+      type: 'SubsistenceIncome';
+      day: number;
+      amount: number;
+      creditsAfter: number;
+    }
   | { type: 'StoryletOffered'; day: number; storyletId: string; scheduled: boolean }
   | {
       type: 'StoryletChoiceResolved';
@@ -880,7 +920,10 @@ export interface ShipyardFail {
 export type PlayerAction =
   | {
       type: 'Trade';
-      action: 'buy-fuel' | 'sign-contract' | 'haggle' | 'pay-debt';
+      /** T-1604b adds 'abandon-contract' — the player-initiated hold release that
+       *  frees a captain carrying an undeliverable run (UGT finding F2). Costs one
+       *  die and the forfeited payment; no credit fee (see actions/trade.ts). */
+      action: 'buy-fuel' | 'sign-contract' | 'haggle' | 'pay-debt' | 'abandon-contract';
       contractIndex?: number;
       fuelAmount?: number;
       amount?: number;

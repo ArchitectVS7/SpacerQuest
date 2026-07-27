@@ -149,7 +149,8 @@ interface LegalActions {
 
 - **DAWN** (or any non-DAY phase): `actions` is empty; `lifecycle` is
   `['start-day']`. No `PlayerAction` is legal until the day starts.
-- **DAY, no encounter**: trade (buy-fuel / sign-contract / haggle / pay-debt),
+- **DAY, no encounter**: trade (buy-fuel / sign-contract / haggle / pay-debt /
+  abandon-contract),
   travel, explore, shipyard, visit-hangout, crew (hire while a berth is free /
   dismiss while crew aboard), reroll (while a charge is banked), port (buy a stake
   at a purchasable core port you don't already own), and each eligible storylet
@@ -194,6 +195,13 @@ or large, so the enumerator exposes the action *shape* and each parameter's
 - **pay-debt** — `amount` is an `int` in `[1, min(credits, debt)]` (no die).
 - **haggle** — `contractIndex` from the un-haggled board; the payoff is a TRADE
   roll (unbounded outcome), noted, not enumerated.
+- **abandon-contract** (T-1604b) — advertised only while a die is in hand **and**
+  `player.activeContract` is set, so it is never a guaranteed refusal. `spendDie`
+  is its only parameter. Costs one die and the forfeited payment; there is **no
+  credit fee**, so a destitute captain can always free the hold. The dumped
+  contract does **not** return to `market.manifestBoard`. This is the escape
+  hatch for a hold carrying an undeliverable run — sign-contract stays
+  unadvertised while the hold is full.
 - **Travel** — `destinationId` is the `system-id` domain (every system but the
   current one); one spec, not one-per-destination.
 - **Shipyard** — `component`/`tier`/`quantity` shapes (buy-component-tier, repair,

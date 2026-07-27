@@ -835,6 +835,14 @@ const GameEventSchema = z.discriminatedUnion('type', [
       ])
       .optional(),
   }),
+  // T-1604b · the dusk subsistence floor (UGT finding F2). Sits beside the other
+  // dusk-economy events; see types.ts for the reader list.
+  z.object({
+    type: z.literal('SubsistenceIncome'),
+    day: z.number(),
+    amount: z.number(),
+    creditsAfter: z.number(),
+  }),
   z.object({
     type: z.literal('StoryletOffered'),
     day: z.number(),
@@ -922,6 +930,9 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'haggle',
         'deliver-cargo',
         'forfeit-cargo',
+        // T-1604b · the player-initiated hold release, distinct from the
+        // succession forfeit above (see types.ts TradeEvent for why).
+        'abandon-contract',
         'pay-debt-failed',
       ])
       .optional(),
@@ -1094,7 +1105,7 @@ const GameEventSchema = z.discriminatedUnion('type', [
 export const PlayerActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('Trade'),
-    action: z.enum(['buy-fuel', 'sign-contract', 'haggle', 'pay-debt']),
+    action: z.enum(['buy-fuel', 'sign-contract', 'haggle', 'pay-debt', 'abandon-contract']),
     contractIndex: z.number().optional(),
     fuelAmount: z.number().optional(),
     amount: z.number().optional(),
@@ -1325,6 +1336,7 @@ const _covEvLoanEvent: AssertEventKeys<'LoanEvent'> = true;
 const _covEvDiceRerolled: AssertEventKeys<'DiceRerolled'> = true;
 const _covEvCrewEvent: AssertEventKeys<'CrewEvent'> = true;
 const _covEvPortEvent: AssertEventKeys<'PortEvent'> = true;
+const _covEvSubsistenceIncome: AssertEventKeys<'SubsistenceIncome'> = true;
 const _covEvStoryletOffered: AssertEventKeys<'StoryletOffered'> = true;
 const _covEvStoryletChoiceResolved: AssertEventKeys<'StoryletChoiceResolved'> = true;
 const _covEvStoryletChoiceBlocked: AssertEventKeys<'StoryletChoiceBlocked'> = true;
@@ -1407,6 +1419,7 @@ void _covEvLoanEvent;
 void _covEvDiceRerolled;
 void _covEvCrewEvent;
 void _covEvPortEvent;
+void _covEvSubsistenceIncome;
 void _covEvStoryletOffered;
 void _covEvStoryletChoiceResolved;
 void _covEvStoryletChoiceBlocked;

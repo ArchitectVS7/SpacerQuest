@@ -500,6 +500,12 @@ export interface CampaignStatsReport {
   /** T-1603a balance-baseline instrumentation — see the interfaces above for
    *  readers. `tourOne` is null when the horizon never reached day 30. */
   tourOne: TourOneOutcomeStats | null;
+  /** T-1604b · Dusks on which the subsistence floor fired (`SubsistenceIncome`
+   *  events). Zero on every solvent career; > 0 is the fingerprint of a run the
+   *  world had to catch. READERS: the F2 escape regression in
+   *  `packages/sim/src/__tests__/protocol.test.ts`, and the CLI JSON that
+   *  `reportToJson` emits for `npm run sim`. */
+  subsistenceDays: number;
   combatEncounters: CombatEncounterRecord[];
   routeLegs: RouteLegRecord[];
   survival: SurvivalStats;
@@ -704,6 +710,13 @@ interface CampaignMetricAccumulator {
    *  reason `upgradedVolleys` is measured there. */
   survival: SurvivalStats;
   tourOne: TourOneOutcomeStats | null;
+  /** T-1604b · Dusks on which the engine's subsistence FLOOR fired — i.e. the
+   *  career ended a day below content's `SUBSISTENCE_FLOOR_CREDITS` and the world
+   *  put it back on the line. A plain counter fold like `survival`, but held on
+   *  the accumulator itself (rather than inside one of the sub-objects) because
+   *  it belongs to no existing block: it is the machine READER for the new
+   *  `SubsistenceIncome` event. Surfaced on the report as `subsistenceDays`. */
+  subsistenceDays: number;
 }
 
 /** T-1601a · Fold one day's events into the run-level behavior metrics. Kept as
@@ -747,6 +760,11 @@ function accumulateMetricEvents(
       } else if (event.kind === 'defaulted') {
         loanUsage.defaults += 1;
       }
+    } else if (event.type === 'SubsistenceIncome') {
+      // T-1604b · the named machine reader for the dusk floor (standing
+      // constraint 7). A run with `subsistenceDays > 0` is a run the world had to
+      // catch; T-1605b's poverty-trap property test reads the same signal.
+      metrics.subsistenceDays += 1;
     } else if (event.type === 'FragmentAcquired') {
       fragments.acquired += 1;
     } else if (event.type === 'FragmentDecoded') {
@@ -1006,6 +1024,13 @@ function ingestBalanceRecords(
       // `success: false` (`legacy.ts` — losing the cargo is not a success), so it
       // must be matched on the ACTION alone.
       if (event.action === 'forfeit-cargo') {
+        closeBalanceLeg(tracker, 'lost', null, null);
+      } else if (event.action === 'abandon-contract' && event.success === true) {
+        // T-1604b · the player-initiated dump (UGT finding F2) closes the leg
+        // 'lost', same as the succession forfeit above — the cargo left the hold
+        // without a payday. Handled EXPLICITLY rather than being swept up by the
+        // implicit close at the next signing, so the leg is filed on the day it
+        // actually ended. This is the named sim reader for the new action value.
         closeBalanceLeg(tracker, 'lost', null, null);
       } else if (event.success !== true) {
         continue;
@@ -3616,6 +3641,7 @@ export function runCampaign(
     hangoutPlay,
     survival,
     tourOne: null,
+    subsistenceDays: 0,
   };
   const balance = newBalanceRecordTracker();
 
@@ -3786,6 +3812,7 @@ export function runCampaign(
     smuggling,
     hangoutPlay,
     tourOne: metrics.tourOne,
+    subsistenceDays: metrics.subsistenceDays,
     combatEncounters: balance.encounters,
     routeLegs: balance.legs,
     survival,

@@ -82,3 +82,15 @@ _Source: T-1804 audit (Rimward)._
 **Claim (imprecise):** T-1307 describes an era-income "A/B test."
 
 **Correction:** It is an **in-scope-vs-base lever comparison** — the same seeded run evaluated with the era-income lever engaged versus the base configuration — not a statistical A/B experiment. There are no cohorts, no randomized assignment, and no significance testing; the "A/B" label denotes only the two-arm deterministic comparison of one lever against baseline.
+
+### E8 — `SUBSISTENCE_FLOOR_CREDITS` is a post-T-1603 economy number
+
+_Source: T-1604b (Rimward), fixing UGT finding F2._
+
+**Not a correction — a disclosure.** Rule 5 of Part B makes T-1603 the owner of the canonical balance targets, and T-1603a–c's sweeps ran before this constant existed. `SUBSISTENCE_FLOOR_CREDITS = 100` (`packages/content/src/subsistence.ts`) was introduced **after** that pass, so **no canonical sweep has ever seen it**. Recording that here is the honesty requirement; the number is not thereby exempt from a future T-1603-style pass.
+
+**Why it was allowed to land outside a balance task.** It is not a tuning knob but a *floor*, and the design law it implements is PRD-REIMAGINED §"Scarcity of choices, never a poverty trap": "the world provides floors … no actor in the simulation, **player or cast**, gets permanently trapped at zero." The cast has had this floor since T-106 (`npc.ts` `NPC_ODD_JOB_CREDITS`); the player did not, and the UGT campaign measured a career pinned at 0 credits for 385 consecutive days as a result. Fixing that is a correctness repair, not a rebalance.
+
+**Why it moves no canonical target.** The dusk block is guarded on `credits < SUBSISTENCE_FLOOR_CREDITS` and raises credits **to** the line, never by it, so it is unfarmable and structurally invisible to any solvent career (one contract pays 2,200+). Measured: the whole T-1603 balance suite (`balance-targets`, `balance-sweep`, `campaign-policies`, `lending-property`, `balance-combat-survival`) passes **unchanged** with the floor in place, and both protocol replay goldens and the day-loop golden are byte-identical. The one assertion that moved is a *structural* one — `campaign-reach.test.ts`'s scripted broke-and-dry career now ends at 100 credits instead of 0, and its seed was re-pinned 1 → 3 with the seeds-1..10 sweep recorded at the site (8 of 10 seeds still register fuel starvation, so the T-1004 metric remains reachable).
+
+**The value's provenance.** 100 is not a new invention: it is `NPC_BROKE_CREDITS` (`packages/engine/src/npc.ts`), the game's existing "broke" line for the cast. Player and cast now share one definition of broke.

@@ -10,6 +10,7 @@ import {
   NEMESIS_SYSTEM_ID,
   NPC_PROFILES,
   STAR_SYSTEMS,
+  SUBSISTENCE_FLOOR_CREDITS,
   Stat,
   isGatedDestination,
 } from '@spacerquest/content';
@@ -835,6 +836,54 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       message: `Launch fees from ${portCount} port stake${
         portCount === 1 ? '' : 's'
       } clear to your account: ${income} credits.`,
+    });
+  }
+
+  // T-1604b · Dusk SUBSISTENCE FLOOR — the world provides floors (PRD §"Scarcity
+  // of choices, never a poverty trap": "no actor in the simulation, PLAYER OR
+  // CAST, gets permanently trapped at zero with no move left"). Closes UGT
+  // finding F2 (docs/playtests/T-1604a-ugt-campaign.md §7): the cast has had this
+  // floor since T-106 (`npc.ts` brokeIdle pays NPC_ODD_JOB_CREDITS on an idle
+  // broke day, "keeps broke NPCs off an exact-zero pin"); the player was the one
+  // actor without it, and the campaign measured a career pinned at 0 credits for
+  // 385 consecutive days because of it.
+  //
+  // The WHOLE block is guarded on `credits < SUBSISTENCE_FLOOR_CREDITS`, so every
+  // solvent dusk — i.e. every existing golden — is byte-identical: no event, no
+  // credit change, and NO rng draw (pure arithmetic, a single compare). It is a
+  // FLOOR, not a faucet: credits are raised TO the line, never BY it, so it can
+  // never be farmed and never touches a working career (one contract pays 2,200+).
+  // Deterministic across a JSON round-trip; NO new GameState field, so no save
+  // migration (content SUBSISTENCE_FLOOR_CREDITS + the existing credits field).
+  //
+  // POSITION is load-bearing. The T-1307 port income immediately above is the LAST
+  // credit mutation of the dusk (the Penny Wise accrual writes `loan.outstanding`
+  // and the T-1309 guild accrual writes `player.debt` — both ledgers, never
+  // credits, per the debt-as-ledger law; the T-1306 crew wage already refuses to
+  // go negative), so this is a true END-of-dusk floor. It also lands BEFORE the
+  // day-30 Tour One resolution and `evaluateDeeds` below, so the marker check and
+  // every deed that reads credits sees the floored value.
+  //
+  // `careerEnded` gates it: a career that ended on the far side of the Nemesis
+  // shear accrues nothing.
+  //
+  // READERS: the sim campaign roll-up's `subsistenceDays` (packages/sim/src/index.ts
+  // accumulateMetricEvents), and the UI wire pane via the paired WireEntry
+  // (kind 'plain' → packages/ui/src/format.ts `wireKind`).
+  if (!careerEnded(nextState) && nextState.player.credits < SUBSISTENCE_FLOOR_CREDITS) {
+    const amount = SUBSISTENCE_FLOOR_CREDITS - nextState.player.credits;
+    nextState.player.credits = SUBSISTENCE_FLOOR_CREDITS;
+    events.push({
+      type: 'SubsistenceIncome',
+      day: nextState.day,
+      amount,
+      creditsAfter: nextState.player.credits,
+    });
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      kind: 'plain',
+      message: `Nothing in the purse at lock-up, so you take what the gantry crews are handing out — hoses coiled, pallets walked, a hull scrubbed for somebody with a fuller account. ${amount} credits and a meal, and the ship is not yet a dead thing at a mooring.`,
     });
   }
 

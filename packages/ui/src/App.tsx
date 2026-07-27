@@ -17,6 +17,7 @@ import {
   endDay,
   selectDie,
   signContract,
+  abandonContract,
   haggleContract,
   buyFuel,
   payDebt,
@@ -2621,6 +2622,33 @@ function TradePane({
               <div className="dest">
                 &#9656; {systemName(active.destination)} ·{' '}
                 {routePreview(game, active.destination).fuelCost} fuel · {active.pods} pods
+              </div>
+              {/* T-1604b · The hold release (UGT finding F2). A run you cannot
+                  reach — no fuel, no credits, no way to the destination — used to
+                  lock the hold forever, because signing is refused while a
+                  contract rides. Dumping costs a die and the whole payment, so
+                  the control mirrors the manifest rows' "arm a die" affordance
+                  and is never a dead click. The engine owns the refusal and the
+                  die; this button only sends the action. */}
+              <div className="lb-controls">
+                <button
+                  className="btn"
+                  data-testid="abandon-contract"
+                  disabled={!armed}
+                  title={
+                    armed
+                      ? 'Spend the selected die to vent the cargo and clear the hold'
+                      : 'Pick a die first, then dump the run'
+                  }
+                  onClick={() => abandonContract()}
+                >
+                  {/* The label is deliberately CONSTANT (the armed state rides
+                      `disabled` + `title` instead): this block's text is read
+                      whole by e2e/manifest-trade.spec.ts to prove a refused
+                      second signing left the tracker untouched, and a label that
+                      flickered with the die selection would break that read. */}
+                  DUMP THE RUN
+                </button>
               </div>
             </>
           ) : (

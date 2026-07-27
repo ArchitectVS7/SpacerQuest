@@ -732,6 +732,204 @@ describe('storylet engine', () => {
     expect(result.state.player.credits).toBe(50);
   });
 
+  // -------------------------------------------------------------------------
+  // T-1604b · F1 — a storylet credit penalty can never drive credits negative.
+  //
+  // UGT campaign finding F1 (docs/playtests/T-1604a-ugt-campaign.md §7): the
+  // `credits` branch of `applyEffects` was a bare `+=`, so an authored fine larger
+  // than the purse pushed `player.credits` below zero. Measured twice, in two
+  // independent legs, both landing on −40 — and once negative the state persisted
+  // for dozens of subsequent steps. That violates the PRD design law that debt is
+  // a LEDGER and credits are never a hole (PRD-REIMAGINED §"Scarcity of choices,
+  // never a poverty trap").
+  //
+  // MUTATION EVIDENCE: the first test below was run against the pre-fix engine and
+  // failed RED (credits −40, amount −40) before the one-line clamp in
+  // `storylets.ts` `applyEffects` turned it GREEN.
+  // -------------------------------------------------------------------------
+  describe('T-1604b · F1 storylet credit floor', () => {
+    /** Put a real content storylet on the offer list directly. The eligibility
+     *  triggers are not what is under test here — the effect application is — and
+     *  the two witnessed storylets are gated on cargo/system state that would
+     *  otherwise have to be faked anyway. */
+    function offerOf(state: GameState, storyletId: string): void {
+      const def = (STORYLETS as readonly StoryletDefinition[]).find((s) => s.id === storyletId);
+      if (!def) throw new Error(`no such storylet: ${storyletId}`);
+      state.storylets.available.push({
+        storyletId: def.id,
+        title: def.title,
+        prose: def.prose,
+        choices: def.choices.map((choice) => ({
+          id: choice.id,
+          label: choice.label,
+          prose: choice.prose,
+          requirements: choice.requirements,
+        })),
+        day: state.day,
+        scheduled: false,
+      });
+    }
+
+    /** A DAY state whose hand is [20, 1]: die 0 is a natural 20 (auto-success)
+     *  and die 1 a natural 1 (auto-fail), so either branch of a statCheck choice
+     *  can be forced deterministically without touching the rng. */
+    function forcedState(credits: number): GameState {
+      const state = createInitialState(110);
+      state.dayPhase = DayPhase.DAY;
+      state.player.dawnHand = { dice: [20, 1], spent: [false, false] };
+      state.player.credits = credits;
+      return state;
+    }
+
+    function creditEffects(
+      events: GameEvent[],
+    ): Extract<GameEvent, { type: 'StoryletEffectApplied' }>[] {
+      return events.filter(
+        (e): e is Extract<GameEvent, { type: 'StoryletEffectApplied' }> =>
+          e.type === 'StoryletEffectApplied' && e.effect === 'credits',
+      );
+    }
+
+    it('the audited −40 case: eat-the-loss at 0 credits floors at 0 and reports a 0 delta', () => {
+      // Leg 3, ep 6, step 73 (day 6, Aldebaran-1) of the T-1604a campaign.
+      const state = forcedState(0);
+      offerOf(state, 'cargo.nutri-goods.spoilage-scare');
+
+      const result = resolveStoryletChoice(
+        state,
+        {
+          type: 'Storylet',
+          storyletId: 'cargo.nutri-goods.spoilage-scare',
+          choiceId: 'eat-the-loss',
+        },
+        new SeededRng(1),
+      );
+
+      expect(result.state.player.credits).toBe(0);
+      // The APPLIED delta, not the authored −40 — the semantic this fix pins.
+      expect(creditEffects(result.events)).toEqual([
+        expect.objectContaining({
+          type: 'StoryletEffectApplied',
+          storyletId: 'cargo.nutri-goods.spoilage-scare',
+          choiceId: 'eat-the-loss',
+          effect: 'credits',
+          amount: 0,
+        }),
+      ]);
+    });
+
+    it('the roll-outcome twin: broker-it FAILING at 0 credits floors at 0', () => {
+      // Leg 4, ep 0, step 312 (day 23, Aldebaran-1). The −40 here is the failure
+      // branch of a TRADE check the captain could not decline, which is exactly
+      // why the floor belongs in the engine and not in a content requirement.
+      const state = forcedState(0);
+      offerOf(state, 'port.aldebaran.grain-exchange');
+
+      const result = resolveStoryletChoice(
+        state,
+        {
+          type: 'Storylet',
+          storyletId: 'port.aldebaran.grain-exchange',
+          choiceId: 'broker-it',
+          spendDie: 1, // face 1 → natural 1 → the check auto-fails
+        },
+        new SeededRng(1),
+      );
+
+      const roll = result.events.find((e) => e.type === 'StatCheck');
+      expect(roll && roll.type === 'StatCheck' && roll.result.success).toBe(false);
+      expect(result.state.player.credits).toBe(0);
+      expect(creditEffects(result.events)).toEqual([
+        expect.objectContaining({ effect: 'credits', amount: 0 }),
+      ]);
+    });
+
+    it('a PARTIAL floor reports the applied delta, not the authored one', () => {
+      // 10 credits against a −40 fine: the purse empties, and the event says −10.
+      const state = forcedState(10);
+      offerOf(state, 'cargo.nutri-goods.spoilage-scare');
+
+      const result = resolveStoryletChoice(
+        state,
+        {
+          type: 'Storylet',
+          storyletId: 'cargo.nutri-goods.spoilage-scare',
+          choiceId: 'eat-the-loss',
+        },
+        new SeededRng(1),
+      );
+
+      expect(result.state.player.credits).toBe(0);
+      expect(creditEffects(result.events)).toEqual([
+        expect.objectContaining({ effect: 'credits', amount: -10 }),
+      ]);
+    });
+
+    it('EVERY authored credit penalty in content is unpayable-safe (the finding class, not the two witnesses)', () => {
+      // The regression that actually closes F1: sweep every storylet × choice ×
+      // effect bundle that debits credits, drive it from the LOWEST balance the
+      // choice's own requirements permit, and assert (a) the purse never goes
+      // negative and (b) the emitted credit deltas sum to the real movement, so a
+      // clamped fine can never overstate itself in the log. A future content author
+      // writing an unguarded fine is safe by construction.
+      let swept = 0;
+      for (const storylet of STORYLETS as readonly StoryletDefinition[]) {
+        for (const choice of storylet.choices) {
+          const bundles: [string, number | undefined][] = [
+            ['effects', choice.effects?.credits],
+            ['successEffects', choice.successEffects?.credits],
+            ['failureEffects', choice.failureEffects?.credits],
+          ];
+          for (const [bundle, authored] of bundles) {
+            if (authored === undefined || authored >= 0) continue;
+            // Start at the poorest legal balance for this choice.
+            const gate = choice.requirements?.credits;
+            const startCredits = gate?.equals ?? gate?.gte ?? 0;
+            const state = forcedState(startCredits);
+            offerOf(state, storylet.id);
+            const needsDie = Boolean(
+              choice.requirements?.spendDie || choice.requirements?.statCheck,
+            );
+            // die 0 (nat 20) forces the success branch, die 1 (nat 1) the failure
+            // branch; an unconditional `effects` bundle takes whichever is legal.
+            const spendDie = needsDie ? (bundle === 'failureEffects' ? 1 : 0) : undefined;
+
+            const result = resolveStoryletChoice(
+              state,
+              {
+                type: 'Storylet',
+                storyletId: storylet.id,
+                choiceId: choice.id,
+                ...(spendDie === undefined ? {} : { spendDie }),
+              },
+              new SeededRng(1),
+            );
+
+            const label = `${storylet.id}/${choice.id}/${bundle}`;
+            expect(
+              result.events.some((e) => e.type === 'StoryletChoiceBlocked'),
+              `${label} was blocked — the sweep must actually resolve it`,
+            ).toBe(false);
+            expect(
+              result.state.player.credits,
+              `${label} drove credits negative`,
+            ).toBeGreaterThanOrEqual(0);
+            const reported = creditEffects(result.events).reduce(
+              (sum, e) => sum + (e.amount ?? 0),
+              0,
+            );
+            expect(reported, `${label} misreported its applied delta`).toBe(
+              result.state.player.credits - startCredits,
+            );
+            swept += 1;
+          }
+        }
+      }
+      // Non-vacuity: the sweep must actually have found penalties to test.
+      expect(swept).toBeGreaterThan(10);
+    });
+  });
+
   it('preserves flags, schedules, completion, and NPC disposition through serialization', () => {
     const state = createInitialState(110);
     state.flags['test.flag'] = true;

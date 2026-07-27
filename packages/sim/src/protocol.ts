@@ -498,6 +498,21 @@ export function legalActions(state: GameState): LegalActions {
     }
   }
 
+  // T-1604b · The player-initiated hold release (UGT finding F2). This is the
+  // HEADLESS reachability of the fix: without it a protocol driver carrying an
+  // undeliverable contract has no advertised way to free the hold, which is half
+  // of the measured poverty trap. Advertised exactly when the engine will honour
+  // it — a die in hand and something in the hold — so it is never a guaranteed
+  // refusal (the same T-1101 law the destination gate below follows).
+  if (hasDie && player.activeContract) {
+    actions.push({
+      type: 'Trade',
+      action: 'abandon-contract',
+      params: { spendDie: dieParam },
+      note: 'Dumps the cargo and frees the hold. Forfeits the payment; the contract does not return to the board.',
+    });
+  }
+
   if (player.debt > 0 && player.credits > 0) {
     actions.push({
       type: 'Trade',
