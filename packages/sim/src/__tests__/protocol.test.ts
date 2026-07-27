@@ -4,7 +4,9 @@ import {
   SeededRng,
   createInitialState,
   endDay,
+  quoteShipyard,
   rollDawnHand,
+  shipyardFailure,
   startDay,
   travelPreview,
   type EncounterState,
@@ -81,6 +83,36 @@ function expectLegal(response: ProtocolResponse): LegalActions {
 /** Round-trip a message through JSON to prove it is wire-serializable. */
 function wireRoundTrip<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/**
+ * T-1604a F5 · EVERY action a spec can legally be filled into — the cartesian
+ * product of its declared parameter domains, merged with its fixed discriminants.
+ * This is the caller's side of the enumerator's contract written out in full, so a
+ * test can assert the contract over all fillings rather than over one witness a
+ * fixture happened to pick. `spendDie` is excluded from the product: it is a die
+ * index, never a business-rule discriminant, and including it would multiply every
+ * case by the hand size for no added coverage.
+ */
+function fillsOf(spec: LegalActions['actions'][number]): Record<string, unknown>[] {
+  let fills: Record<string, unknown>[] = [
+    {
+      type: spec.type,
+      ...(spec.action === undefined ? {} : { action: spec.action }),
+      spendDie: 0,
+    },
+  ];
+  for (const [key, param] of Object.entries(spec.params)) {
+    if (key === 'spendDie') continue;
+    let values: unknown[];
+    if (param.kind === 'fixed') values = [param.value];
+    else if (param.kind === 'int') {
+      values = [];
+      for (let v = param.min; v <= param.max; v += 1) values.push(v);
+    } else values = [...param.choices];
+    fills = fills.flatMap((base) => values.map((value) => ({ ...base, [key]: value })));
+  }
+  return fills;
 }
 
 /** A DAY-phase state carrying an active interceptor encounter — mirrors the
@@ -647,7 +679,11 @@ describe('legal-actions enumerator', () => {
     expect(travel?.params.destinationId.kind).toBe('system-id');
     expect(travel?.params.spendDie.kind).toBe('die-index');
 
-    // Shipyard's buy-special-equipment is offered with its full 7-value domain.
+    // Shipyard's buy-special-equipment is offered as an enum domain rather than one
+    // action per item — that shape is what this test is about. T-1604a F5 narrowed
+    // WHICH items are in it (the purse, renown and mutual exclusion now filter the
+    // enum, so a starting captain sees the three it can actually buy, not all
+    // seven); the exact membership is asserted by the F5 tests below, not here.
     const buySpecial = legal.actions.find(
       (action) => action.type === 'Shipyard' && action.action === 'buy-special-equipment',
     );
@@ -655,15 +691,20 @@ describe('legal-actions enumerator', () => {
     const equipment = buySpecial?.params.equipment;
     expect(equipment?.kind).toBe('enum');
     if (equipment?.kind === 'enum') {
-      expect(equipment.choices).toEqual([
-        'CLOAKER',
-        'AUTO_REPAIR',
-        'STAR_BUSTER',
-        'ARCH_ANGEL',
-        'ASTRAXIAL_HULL',
-        'TITANIUM_HULL',
-        'TRANS_WARP',
-      ]);
+      expect(equipment.choices.length).toBeGreaterThan(0);
+      expect(equipment.choices).toEqual(
+        equipment.choices.filter((item) =>
+          [
+            'CLOAKER',
+            'AUTO_REPAIR',
+            'STAR_BUSTER',
+            'ARCH_ANGEL',
+            'ASTRAXIAL_HULL',
+            'TITANIUM_HULL',
+            'TRANS_WARP',
+          ].includes(item as string),
+        ),
+      );
     }
     expect(buySpecial?.params.spendDie.kind).toBe('die-index');
   });
@@ -793,6 +834,114 @@ describe('legal-actions enumerator', () => {
     // dry tank moving again are still on the list.
     expect(legal.canWait).toBe(true);
     expect(legal.lifecycle).toContain('end-day');
+  });
+
+  it('T-1604a F5 · every advertised Shipyard spec can be filled and will be honoured', () => {
+    // The contract, stated as a property over the whole yard: take each advertised
+    // spec, fill every declared domain with EVERY legal value, and the engine must
+    // not typed-fail any of them. 482 of 707 shipyard applies used to fail this way.
+    for (const [seed, credits] of [
+      [3, 1_000],
+      [3, 120],
+      [3, 0],
+      [11, 60_000],
+    ] as const) {
+      const state = createInitialState(seed);
+      state.dayPhase = DayPhase.DAY;
+      state.player.credits = credits;
+      state.player.dawnHand = rollDawnHand(new SeededRng(seed), {
+        handSize: 5,
+        floor: 0,
+        rerolls: 0,
+      });
+
+      const yardSpecs = legalActions(state).actions.filter((a) => a.type === 'Shipyard');
+      for (const spec of yardSpecs) {
+        for (const filled of fillsOf(spec)) {
+          expect(
+            shipyardFailure(state, filled as Extract<PlayerAction, { type: 'Shipyard' }>),
+            `credits ${credits}: advertised ${JSON.stringify(filled)} would have failed`,
+          ).toBeNull();
+        }
+      }
+    }
+  });
+
+  it('T-1604a F5 · the yard offer narrows with the purse, and a broke captain is offered only free work', () => {
+    const yardFills = (credits: number): Record<string, unknown>[] => {
+      const state = createInitialState(3);
+      state.dayPhase = DayPhase.DAY;
+      state.player.credits = credits;
+      state.player.dawnHand = rollDawnHand(new SeededRng(3), { handSize: 5, floor: 0, rerolls: 0 });
+      return legalActions(state)
+        .actions.filter((a) => a.type === 'Shipyard')
+        .flatMap((spec) => fillsOf(spec));
+    };
+
+    // The offer is a function of the purse — it was constant before, which is the
+    // whole finding.
+    expect(yardFills(0).length).toBeLessThan(yardFills(1_000).length);
+    expect(yardFills(1_000).length).toBeLessThan(yardFills(60_000).length);
+
+    // "No yard specs at all" would be the WRONG assertion at zero credits, and
+    // asserting it would have been a test written against an assumption instead of
+    // the engine: a pristine repair-all costs nothing, and the trade-in on a fresh
+    // junker's components can price a tier-1 swap at 0 too. So the honest claim is
+    // that everything still advertised is FREE.
+    const broke = createInitialState(3);
+    broke.dayPhase = DayPhase.DAY;
+    broke.player.credits = 0;
+    broke.player.dawnHand = rollDawnHand(new SeededRng(3), { handSize: 5, floor: 0, rerolls: 0 });
+    const brokeFills = legalActions(broke)
+      .actions.filter((a) => a.type === 'Shipyard')
+      .flatMap((spec) => fillsOf(spec));
+    expect(
+      brokeFills.length,
+      'fixture: nothing was advertised, so nothing was checked',
+    ).toBeGreaterThan(0);
+    for (const fill of brokeFills) {
+      const quote = quoteShipyard(broke, fill as Extract<PlayerAction, { type: 'Shipyard' }>);
+      expect(quote.cost, `a captain with 0 credits was offered ${JSON.stringify(fill)}`).toBe(0);
+    }
+  });
+
+  it('T-1604a F5 · repairMode "all" carries no component key to fill', () => {
+    // The F-R2-2 defect made unrepresentable: `execute` branches on the mere
+    // PRESENCE of `component`, so a repair-all spec that declared one could be
+    // filled into a single-part repair by a caller doing nothing wrong.
+    const state = createInitialState(3);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(3), { handSize: 5, floor: 0, rerolls: 0 });
+
+    const repairAll = legalActions(state).actions.find(
+      (a) =>
+        a.type === 'Shipyard' &&
+        a.action === 'repair' &&
+        a.params.repairMode?.kind === 'fixed' &&
+        a.params.repairMode.value === 'all',
+    );
+    expect(repairAll).toBeDefined();
+    expect(repairAll?.params.component).toBeUndefined();
+  });
+
+  it('T-1604a F5 · Crew/hire lists only roles the purse can cover', () => {
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+    state.player.credits = 0;
+
+    const hire = legalActions(state).actions.find((a) => a.type === 'Crew' && a.action === 'hire');
+    expect(hire, 'a captain with no credits was offered a hire').toBeUndefined();
+
+    state.player.credits = 1_000_000;
+    const richHire = legalActions(state).actions.find(
+      (a) => a.type === 'Crew' && a.action === 'hire',
+    );
+    expect(richHire, 'a captain who can afford every role was offered none').toBeDefined();
+    const roleParam = richHire?.params.roleId;
+    if (roleParam?.kind === 'enum') {
+      expect(roleParam.choices.length).toBeGreaterThan(0);
+    }
   });
 
   it('T-1303 · advertises VisitHangout at a Hangout system with an in-system NPC', () => {

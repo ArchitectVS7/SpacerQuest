@@ -42,6 +42,8 @@ import {
   deserializeState,
   eligibleStorylets,
   endDay,
+  quotePort,
+  shipyardFailure,
   serializeState,
   startDay,
   type GameEvent,
@@ -391,6 +393,12 @@ const SPECIAL_EQUIPMENT: SpecialEquipmentId[] = [
   'TRANS_WARP',
 ];
 
+/** The ceiling the cargo-pod quantity search bisects against. The engine's own
+ *  `CAPACITY_EXCEEDED` check is what actually bounds a purchase — this is only the
+ *  upper end of the range being searched, kept at the value the unbounded spec used
+ *  to advertise so nothing that was reachable before becomes unreachable. */
+const MAX_ADVERTISED_CARGO_PODS = 100;
+
 const ALL_SYSTEM_IDS: number[] = Object.keys(STAR_SYSTEMS)
   .map((id) => Number.parseInt(id, 10))
   .filter((id) => Number.isInteger(id))
@@ -647,19 +655,28 @@ export function legalActions(state: GameState): LegalActions {
     // would stall a headless driver on a wall. DISMISS stays advertised below —
     // a promoted-then-demoted career can carry crew in, and letting someone go is
     // not progression.
+    // T-1604a F5 · …and filter the roles by the HIRE PRICE, for the same reason.
+    // `resolveCrew` spends the die before it checks credits, so an unaffordable
+    // hire costs a die and returns `CrewEvent{failed}` — the campaign sent 247 of
+    // them and berthed nobody. `roleId` is the only discriminating parameter here,
+    // so filtering it is exact: every role still advertised can actually be signed.
+    const affordableRoleIds = hireableRoleIds.filter((id) => {
+      const role = CREW_ROLES.find((candidate) => candidate.id === id);
+      return role !== undefined && player.credits >= role.hirePrice;
+    });
     if (
       !demoLocked(state, 'crew-progression') &&
       player.crew.length < crewCapacity(ship) &&
-      hireableRoleIds.length > 0
+      affordableRoleIds.length > 0
     ) {
       actions.push({
         type: 'Crew',
         action: 'hire',
         params: {
-          roleId: { kind: 'enum', choices: hireableRoleIds },
+          roleId: { kind: 'enum', choices: affordableRoleIds },
           spendDie: dieParam,
         },
-        note: 'Hire price validated on apply (emits CrewEvent{failed} if unaffordable). Berthed against cabin capacity.',
+        note: 'Only roles the purse can cover are listed. Berthed against cabin capacity.',
       });
     }
     if (player.crew.length > 0) {
@@ -686,11 +703,17 @@ export function legalActions(state: GameState): LegalActions {
   // the dock ("ports" on the task's gate list). Same reasoning as the crew hire
   // above: the engine refuses it with `ActionBlocked{'demo-locked'}`, so
   // advertising it would be advertising a guaranteed refusal.
+  // T-1604a F5 · The stake is now gated on the engine's own `quotePort().ok` — the
+  // exact predicate the ledger pane disables its button on. `resolvePortPurchase`
+  // spends the die before it checks credits, so advertising an unaffordable stake
+  // costs a die and returns `PortEvent{failed}`. `systemId` is fixed here, so there
+  // is no domain to narrow and the whole verb is withheld instead.
   if (
     hasDie &&
     !demoLocked(state, 'port-ownership') &&
     isPurchasablePort(player.currentSystemId) &&
-    !player.ports.some((port) => port.systemId === player.currentSystemId)
+    !player.ports.some((port) => port.systemId === player.currentSystemId) &&
+    quotePort(state, player.currentSystemId).ok
   ) {
     actions.push({
       type: 'Port',
@@ -699,7 +722,7 @@ export function legalActions(state: GameState): LegalActions {
         systemId: { kind: 'fixed', value: player.currentSystemId },
         spendDie: dieParam,
       },
-      note: 'Purchase price validated on apply (emits PortEvent{failed} if unaffordable). Accrues per-dusk launch-fee income.',
+      note: 'Advertised only when affordable (engine quotePort().ok). Accrues per-dusk launch-fee income.',
     });
   }
 
@@ -739,46 +762,164 @@ export function legalActions(state: GameState): LegalActions {
     });
   }
 
-  // --- Shipyard (parameterized shape; engine validates cost/renown) ------
+  // --- Shipyard ----------------------------------------------------------
+  //
+  // T-1604a F5 · THE YARD USED TO ADVERTISE FOUR SHAPES AND LET THE ENGINE SAY NO.
+  // `resolveShipyard` documents that the die is spent BEFORE the business checks
+  // (`shipyard.ts` ~L545), and the cockpit's mitigation is to gate every button on
+  // `quoteShipyard().ok` — a mitigation that existed only in the UI. Over the wire
+  // the four unconditional shapes meant 707 shipyard applies produced **482
+  // `ShipyardFail`s**, each one a die burned on a refusal that was knowable before
+  // it was sent (docs/playtests/T-1604a-ugt-campaign.md §7 F5).
+  //
+  // The fix is not a new "is this affordable" field for the caller to interpret —
+  // it is to narrow what is advertised until FILLING A SPEC FROM ITS OWN DECLARED
+  // DOMAINS ALWAYS SUCCEEDS, which is the contract the rest of this enumerator
+  // already keeps. Two of the four shapes have a single discriminating parameter,
+  // so the domain can be filtered exactly. The other two are JOINT (cost depends on
+  // component AND tier / on repairMode AND component), and a `ParamSpec` cannot
+  // express a joint domain — so those split into one spec per component, each with
+  // an exact domain. More specs, no guesswork.
+  //
+  // Every gate below calls the engine's own `shipyardFailure` rather than
+  // recomputing a price here: content owns the numbers, and a second copy of them
+  // in the enumerator is exactly the drift this file exists to avoid. `spendDie` is
+  // passed as a placeholder because the type requires it — the predicate is pure and
+  // does not read it.
   if (hasDie) {
-    actions.push({
-      type: 'Shipyard',
-      action: 'buy-component-tier',
-      params: {
-        component: { kind: 'enum', choices: [...SHIPYARD_COMPONENTS] },
-        tier: { kind: 'int', min: 1, max: YARD_COMPONENT_TIER_PRICES.length },
-        spendDie: dieParam,
-      },
-      note: 'Affordability/renown validated on apply (emits ShipyardFail if not met).',
-    });
-    actions.push({
-      type: 'Shipyard',
-      action: 'repair',
-      params: {
-        repairMode: { kind: 'enum', choices: ['all', 'single'] },
-        component: { kind: 'enum', choices: [...SHIPYARD_COMPONENTS] },
-        spendDie: dieParam,
-      },
-      note: 'component is required only when repairMode is "single".',
-    });
-    actions.push({
-      type: 'Shipyard',
-      action: 'buy-cargo-pods',
-      params: {
-        quantity: { kind: 'int', min: 1, max: 100 },
-        spendDie: dieParam,
-      },
-      note: 'Capped by hull capacity; over-buying emits ShipyardFail (CAPACITY_EXCEEDED).',
-    });
-    actions.push({
-      type: 'Shipyard',
-      action: 'buy-special-equipment',
-      params: {
-        equipment: { kind: 'enum', choices: [...SPECIAL_EQUIPMENT] },
-        spendDie: dieParam,
-      },
-      note: 'Affordability/renown/mutual-exclusion validated on apply (emits ShipyardFail if not met).',
-    });
+    const probeDie = diceRemaining[0];
+    const canAfford = (action: Extract<PlayerAction, { type: 'Shipyard' }>): boolean =>
+      shipyardFailure(state, action) === null;
+
+    // buy-component-tier — one spec per component. `YARD_COMPONENT_TIER_PRICES` is
+    // strictly increasing and the trade-in is a per-component constant, so the
+    // affordable tiers are a PREFIX 1..k and an int domain expresses them exactly.
+    for (const component of SHIPYARD_COMPONENTS) {
+      let maxTier = 0;
+      for (let tier = 1; tier <= YARD_COMPONENT_TIER_PRICES.length; tier += 1) {
+        if (
+          !canAfford({
+            type: 'Shipyard',
+            action: 'buy-component-tier',
+            component,
+            tier,
+            spendDie: probeDie,
+          })
+        ) {
+          break;
+        }
+        maxTier = tier;
+      }
+      if (maxTier >= 1) {
+        actions.push({
+          type: 'Shipyard',
+          action: 'buy-component-tier',
+          params: {
+            component: { kind: 'fixed', value: component },
+            tier: { kind: 'int', min: 1, max: maxTier },
+            spendDie: dieParam,
+          },
+          note: `Every listed tier is affordable right now (tiers above ${maxTier} are not).`,
+        });
+      }
+    }
+
+    // repair — 'all' and 'single' price differently and 'single' also gates on the
+    // component's condition, so they are separate specs. `repairMode: 'all'` carries
+    // NO `component` key at all: the resolver branches on the mere presence of one
+    // (shipyard.ts:206-207,428), so filling it would silently downgrade a repair-all
+    // to a single-part repair — the F-R2-2 defect, made unrepresentable here.
+    if (canAfford({ type: 'Shipyard', action: 'repair', repairMode: 'all', spendDie: probeDie })) {
+      actions.push({
+        type: 'Shipyard',
+        action: 'repair',
+        params: {
+          repairMode: { kind: 'fixed', value: 'all' },
+          spendDie: dieParam,
+        },
+        note: 'Repairs every component. Send no `component` key — its presence selects a single-part repair.',
+      });
+    }
+    for (const component of SHIPYARD_COMPONENTS) {
+      if (
+        canAfford({
+          type: 'Shipyard',
+          action: 'repair',
+          repairMode: 'single',
+          component,
+          spendDie: probeDie,
+        })
+      ) {
+        actions.push({
+          type: 'Shipyard',
+          action: 'repair',
+          params: {
+            repairMode: { kind: 'fixed', value: 'single' },
+            component: { kind: 'fixed', value: component },
+            spendDie: dieParam,
+          },
+          note: 'Repairs this component only; it is below max condition and the repair is affordable.',
+        });
+      }
+    }
+
+    // buy-cargo-pods — `quantity` is the only discriminating parameter and the
+    // failure predicate is monotone in it (capacity and cost both rise), so the
+    // largest legal quantity is found by bisection over the engine's own check
+    // rather than by re-deriving the pod price and the hull capacity rule here.
+    if (
+      canAfford({ type: 'Shipyard', action: 'buy-cargo-pods', quantity: 1, spendDie: probeDie })
+    ) {
+      let low = 1;
+      let high = MAX_ADVERTISED_CARGO_PODS;
+      while (low < high) {
+        const mid = Math.ceil((low + high) / 2);
+        if (
+          canAfford({
+            type: 'Shipyard',
+            action: 'buy-cargo-pods',
+            quantity: mid,
+            spendDie: probeDie,
+          })
+        ) {
+          low = mid;
+        } else {
+          high = mid - 1;
+        }
+      }
+      actions.push({
+        type: 'Shipyard',
+        action: 'buy-cargo-pods',
+        params: {
+          quantity: { kind: 'int', min: 1, max: low },
+          spendDie: dieParam,
+        },
+        note: 'Every quantity in range fits the hull and the purse.',
+      });
+    }
+
+    // buy-special-equipment — `equipment` is the only discriminating parameter, so
+    // the enum filters exactly: affordability, renown and mutual exclusion all live
+    // inside `shipyardFailure`, and anything still listed will be sold.
+    const purchasableEquipment = SPECIAL_EQUIPMENT.filter((equipment) =>
+      canAfford({
+        type: 'Shipyard',
+        action: 'buy-special-equipment',
+        equipment,
+        spendDie: probeDie,
+      }),
+    );
+    if (purchasableEquipment.length > 0) {
+      actions.push({
+        type: 'Shipyard',
+        action: 'buy-special-equipment',
+        params: {
+          equipment: { kind: 'enum', choices: [...purchasableEquipment] },
+          spendDie: dieParam,
+        },
+        note: 'Only equipment that passes affordability, renown and mutual exclusion is listed.',
+      });
+    }
   }
 
   // --- Storylets (concrete choices enumerated) ---------------------------

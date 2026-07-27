@@ -215,12 +215,30 @@ or large, so the enumerator exposes the action *shape* and each parameter's
   can reach nothing gets **no `Travel` spec at all** rather than one with an empty
   `choices` list; fuel, the dusk subsistence floor and `abandon-contract` remain
   advertised, so this narrows the offer without stranding anyone.
-- **Shipyard** — `component`/`tier`/`quantity` shapes (buy-component-tier, repair,
-  buy-cargo-pods), plus **buy-special-equipment** whose `equipment` is an `enum`
-  over the 7 special items (`CLOAKER`, `AUTO_REPAIR`, `STAR_BUSTER`, `ARCH_ANGEL`,
-  `ASTRAXIAL_HULL`, `TITANIUM_HULL`, `TRANS_WARP`). **Affordability, renown, and
-  mutual-exclusion are validated on `apply-action`** (the engine emits
-  `ShipyardFail`), so they are not pre-checked here.
+- **Shipyard** (T-1604a F5 — reshaped) — the yard is advertised **pre-checked**
+  against the engine's own `shipyardFailure`, so **every filling of every listed
+  spec will be honoured**. Affordability, renown, condition and mutual exclusion
+  are applied *before* advertising, not left for `apply-action` to refuse — the die
+  is spent before those checks run (`shipyard.ts` ~L545), so a refusal costs a die.
+  The shapes that follow from that:
+  - **buy-component-tier** — one spec **per component**, `component` `fixed`, and
+    `tier` an `int` domain `1..k` where `k` is the highest tier the purse can cover
+    (prices rise with tier, so the affordable tiers are a prefix). Components with
+    no affordable tier are absent.
+  - **repair** — split in two. `repairMode: 'all'` is `fixed` and **carries no
+    `component` key at all** (the resolver branches on its mere presence, so a
+    filled `component` silently becomes a single-part repair); `repairMode:
+    'single'` is one spec per component, present only while that component is below
+    max condition and its repair is affordable.
+  - **buy-cargo-pods** — `quantity` is an `int` `1..max`, where `max` is the largest
+    quantity that fits both the hull and the purse.
+  - **buy-special-equipment** — `equipment` is an `enum` filtered to items that pass
+    affordability, renown **and** mutual exclusion. Absent when none qualify.
+- **Crew/hire** (T-1604a F5) — `roleId` is filtered to roles the purse can cover;
+  `resolveCrew` spends the die before it checks the hire price.
+- **Port/buy** (T-1604a F5) — advertised only when the engine's own
+  `quotePort().ok` holds. `systemId` is `fixed`, so there is no domain to narrow and
+  the verb is withheld entirely when the stake is unaffordable.
 - **Combat** — `stance` is an `enum` gated by fuel (`talk` always; `run` needs
   `RUN_FUEL_COST`; `fight` needs `FIGHT_FUEL_COST`); `targetId` is `fixed` to the
   interceptor.
