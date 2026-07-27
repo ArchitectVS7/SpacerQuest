@@ -40,9 +40,34 @@ export function longestZeroIncomeStreak(daily: { incomeActionCount: number }[]):
 /** Drive a competent policy headlessly through the engine exactly as
  *  runCampaign does (policy plans on the fresh post-startDay day state), and
  *  return the final GameState so a test can inspect REAL ship/charts state
- *  (upgrades bought, POIs charted) rather than only the report summary. */
+ *  (upgrades bought, POIs charted) rather than only the report summary.
+ *
+ *  A one-line delegation to {@link driveFrom} with `createInitialState(seed)` as
+ *  the starting state — the loop, the rng derivation and the mid-batch-death
+ *  guard all live there now, so the two drivers cannot drift. This is a pure
+ *  refactor: every caller's seeds, horizons and assertions are byte-identical
+ *  (asserted by the four campaign specs, which run unchanged). */
 export function driveCompetentCampaign(policy: SimPolicy, seed: number, days: number): GameState {
-  let state = createInitialState(seed);
+  return driveFrom(policy, createInitialState(seed), seed, days);
+}
+
+/** {@link driveCompetentCampaign} generalized over the STARTING state (T-1605b).
+ *  The poverty-trap invariant has to drive a policy from an adversarial state the
+ *  engine was steered into (indebted / post-confiscation / zero-fuel-rim), not
+ *  from a fresh career, and `createInitialState` is the only thing the original
+ *  driver hard-coded. `initial` must be in DAWN phase — `startDay` throws
+ *  otherwise, which is the check this function deliberately does not duplicate.
+ *
+ *  READER: `poverty-invariant.test.ts` PT-5, which idles an adversarial state for
+ *  150 days (so the loan and the guild marker compound without limit) and then
+ *  asserts the escape is STILL there in the resulting state. */
+export function driveFrom(
+  policy: SimPolicy,
+  initial: GameState,
+  seed: number,
+  days: number,
+): GameState {
+  let state = initial;
   for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
     const rng = new SeededRng(seed)
       .fork('policy')
