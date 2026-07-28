@@ -198,6 +198,41 @@ work — R1 is measure-only and deliberately does not touch them. Baseline of re
   alone changed the sloppy pilot's clear rate 0.72 → 0.75 and its ship losses 19 → 11. An
   uncorrected instrument would have charged those deltas to whatever R2 shipped.
 
+**Result (2026-07-28): DONE.** `planPacifistCombat` now calls `tributeForRound` with the
+interceptor's `kind` and the `interceptor.tier − player.tier` gap, matching `resolveTalk`'s own
+call. Sweep `baseline-r0a-oracle.json` (100 seeds × 120 days, same fleet as the pinned
+baseline) — **every competent policy moved; `greedy` is byte-identical**, which is the control
+that proves the diff is this code path and nothing else (greedy runs `greedyTraderPolicy`, not
+`planPacifistCombat`).
+
+| policy | clear | clear day | ships lost | routes lost | final cr |
+| --- | --- | --- | --- | --- | --- |
+| trader | 0.90 → 0.89 | 21 → 21 | **0 → 1** | **0 → 1** | 79,954 → 79,954 |
+| fighter | 0.71 → 0.72 | 19 → 20 | 5 → 5 | 5 → 5 | unchanged |
+| explorer | 0.00 → 0.00 | — | 7 → 8 | 19 → 19 | 93,342 → 92,531 |
+| veteran | 0.01 → 0.01 | 93 → 91 | 11 → 12 | 28 → 29 | 12,195 → 12,005 |
+| smuggler | 0.61 → 0.58 | 29 → 29 | **9 → 4** | 36 → 38 | 44,027 → 44,082 |
+| gambler | 0.82 → 0.78 | 26 → 27 | 2 → 2 | 16 → 15 | 66,413 → 64,927 |
+| greedy | IDENTICAL | — | — | — | — |
+| trader-degraded | 0.72 → 0.75 | 23 → 22 | **19 → 11** | 18 → 11 | — |
+
+**The direction is "the instrument got smarter, and mostly safer."** A policy that now sees the
+true demand correctly declines to talk when it cannot actually pay, and takes the getaway
+instead — so the smuggler's deaths more than halve (9 → 4) and the sloppy pilot's fall 19 → 11
+(deaths/1k 1.58 → 0.92). Two clear rates drop (smuggler −0.03, gambler −0.04) because running
+forfeits the delivery the old mis-estimate used to buy through. **This independently reproduces
+the bake-off's "sighted trader" arm (0.72 → 0.75, 19 → 11) from a different code path, which is
+the cross-check that the correction is real and not an artifact of either measurement.**
+
+Note the trader moving **0 → 1 ships and 0 → 1 routes** at 100 seeds: the bug fix ALONE lifts it
+off the zero that this document's executive summary was built on — a second, independent
+confirmation of the R0b sampling finding.
+
+Battery: typecheck, lint, and 1,102 tests green; the only failures are the two already red at
+HEAD. `campaign-degraded.test.ts` fingerprints re-pinned deliberately for `trader` and `fighter`
+with a re-pin log recording the previous values and the cause (the other five are unchanged
+*in that test's 5-seed × 40-day window only* — the sweep above shows they do move at scale).
+
 **R0b — re-pin the baseline at 1,000 seeds.**
 
 - **The defect:** `baseline-vet-t1605.json` is 100 seeds × 120 days and records the trader at

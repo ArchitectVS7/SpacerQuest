@@ -32,6 +32,7 @@ import {
   renownRankIndex,
   startDay,
   travelDc,
+  tributeForRound,
   applyPlayerAction,
   weaponVolleyDamage,
   SeededRng,
@@ -1593,7 +1594,30 @@ function planPacifistCombat(state: GameState, ledger: DieLedger): PlayerAction[]
   const targetId = encounter.interceptor.id;
 
   const round = encounter.round;
-  const tribute = Math.min(round * 1000, 10_000);
+  // R0a · ASK THE ENGINE WHAT THE TOLL IS. This used to be a local
+  // `Math.min(round * 1000, 10_000)` — the raw round schedule, with neither the
+  // class multiplier (TRIBUTE_CLASS_MULTIPLIER: a Reptiloid demands ×2, a Brigand
+  // ÷2) nor the tier-gap multiplier (TRIBUTE_TIER_GAP_STEP: up to ×1.75 when the
+  // interceptor outranks the player). Against a Reptiloid two tiers up the real
+  // demand is ~3.5× what this estimate said, so the policy could — and did —
+  // answer "affordable" about a bill the engine was never going to charge.
+  //
+  // WHY THAT IS A BUG AND NOT AN ACCEPTABLE SIMPLIFICATION. This file's standard
+  // is that a planner mirrors the engine gate it is deciding against, so it can
+  // never burn a die on a typed refusal — `planLoanBorrow` says exactly that of
+  // `resolveVisitHangout`. And the UI already calls this same function
+  // (`format.ts` `tributeThisRound`), so a HUMAN player sees the true demand
+  // before choosing a stance while the balance instrument did not. An instrument
+  // that is wrong about the one number a decision turns on cannot grade a change
+  // to that number, which is why this lands ahead of R2/R2.5 (worklist R0a).
+  //
+  // Sign convention matches `resolveTalk`'s own call: the gap is
+  // interceptor.tier − player.tier, positive when the player is outgunned.
+  const tribute = tributeForRound(
+    round,
+    encounter.interceptor.kind,
+    encounter.interceptor.tier - state.player.tier,
+  );
   const flaw = encounter.interceptor.flaw;
   const refusesTribute = flaw ? Boolean(FLAWS[flaw]?.refusesTribute) : false;
   const canPay = state.player.credits >= tribute;

@@ -30,8 +30,8 @@ import {
 // purpose is not making that claim.
 // ---------------------------------------------------------------------------
 
-/** The fleet whose reports must not move. `trader` first because it is the row
- *  R1 compares the degraded pilot against. */
+/** The shipped fleet whose reports are pinned. `trader` first because it is the
+ *  row R1 compares the degraded pilot against. */
 const UNCHANGED_POLICIES = [
   'trader',
   'fighter',
@@ -43,25 +43,49 @@ const UNCHANGED_POLICIES = [
 ] as const satisfies readonly SimPolicyName[];
 
 /**
- * Report fingerprints for seeds 1..5 × 40 days, MEASURED on the commit before
- * `trader-degraded` was added (`755ff2a0`, "T-1605: an ordinary jump always
- * arrives") and pinned here verbatim.
+ * Report fingerprints for seeds 1..5 × 40 days.
  *
  * WHY A HASH AND NOT A PROPERTY. The R1 refactor threads a `degradation` argument
  * through the trader's whole day plan and adds an optional slip to the shared
  * `dieLedger` every competent policy builds. Any of those touch points could
  * shift a die index, an rng draw order, or an action ordering in a way no
  * hand-written assertion would notice — and the resulting sweep would look
- * entirely plausible while being incomparable to `baseline-vet-t1605.json`. A
+ * entirely plausible while being incomparable to the pinned balance baseline. A
  * whole-report hash is the only assertion that cannot be accidentally satisfied.
  *
  * IF THIS FAILS: a change altered shipped-policy behavior. That is not necessarily
  * wrong — but it invalidates the pinned balance baseline, so re-pin the sweep
  * DELIBERATELY (BALANCE-POLICY.md), never by editing a number here to match.
+ *
+ * ---------------------------------------------------------------------------
+ * RE-PIN LOG. Every move of these numbers is recorded here with its cause, so a
+ * later reader can tell a deliberate re-pin from a silent regression.
+ *
+ * 1. ORIGINAL (755ff2a0, "T-1605: an ordinary jump always arrives") — the values
+ *    R1 was measured against, proving R1 changed no shipped policy:
+ *      trader 86c444b8ec619187 · fighter 97180262cbc60805
+ *      explorer daf1070d7cead726 · veteran 437f73e973337248
+ *      smuggler 14d763cf29110467 · gambler 4cd7cdfe4cec356e
+ *      greedy d0dbf1836f6246e9
+ *
+ * 2. R0a — `planPacifistCombat` now asks the engine for the tribute
+ *    (`tributeForRound`) instead of estimating it as `min(round*1000, 10_000)`.
+ *    See the block comment at that call site for why the estimate was a bug.
+ *    MOVED: `trader`, `fighter`. UNCHANGED: the other five — not because they
+ *    skip the code (all six competent policies route through
+ *    `planPacifistCombat`) but because within THIS window (5 seeds × 40 days)
+ *    none of them met an interceptor whose corrected demand crossed the
+ *    affordability threshold their decision turns on. The corrected number only
+ *    differs when a class multiplier ≠ 1 or a tier gap > 0 is in play. Treat
+ *    "unchanged here" as "unchanged in this window", never as "unaffected" —
+ *    the 100-seed × 120-day sweep moves more rows than this test does.
+ * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: '86c444b8ec619187',
-  fighter: '97180262cbc60805',
+  // R0a
+  trader: 'd7223f6ad5d95edc',
+  // R0a
+  fighter: '470eb1043295bbc1',
   explorer: 'daf1070d7cead726',
   veteran: '437f73e973337248',
   smuggler: '14d763cf29110467',
