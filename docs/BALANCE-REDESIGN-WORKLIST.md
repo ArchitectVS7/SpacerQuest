@@ -847,6 +847,175 @@ one candidate this bake-off could not simulate.
 
 ---
 
+## THE NPC PARITY TRACK (N-series)
+
+**Why this track exists, and why it interrupted the R-series.** The balance work kept
+producing findings that were really one finding: the 30 NPCs are not playing the game.
+They are an economic texture generator wearing a captain's name. Owner's framing, and
+it is the right one — *"an NPC needs to trade, so they need to upgrade their ship. They
+need to fly, so they need to interact with pirates. That means they pay bribes, with
+either credits or cargo, or fight, or flee. They literally MUST act like a player."*
+
+**WHAT AN NPC ACTUALLY IS TODAY (measured 2026-07-28, `packages/engine/src/npc.ts`):**
+
+- `NpcState` is `{ id, name, profileId, currentSystemId, credits, fuel, disposition,
+  lastAction }`. **No ship. No components. No XP.**
+- It trades against a **phantom ship** derived from a static profile tier —
+  `npcCargoPods(tier)`, `hullCondition: 9`, `npcDrives(tier)` — that never changes for
+  the whole career. So an NPC's income cannot grow with investment, because there is no
+  investment.
+- `executeTravel` picks a random destination, burns fuel from that phantom drive, rolls
+  a PILOT check for "clean vs rough jump", and arrives. **It generates no encounter.**
+  An NPC has never met a pirate.
+- `executeCombat` is an abstract GUNS check against no one, paying a flat `150 x tier`
+  bounty. No interceptor, no stance, no damage, no repair, no ship loss.
+- One action per day, on a random d20 — against the player's five-die hand with
+  allocation. **The NPC field does not face the game's central decision.**
+
+**The measured performance envelope this track has to live inside** (all taken
+2026-07-28; see the N0 result for the change that bought the headroom):
+
+| | per game day | 1,000-seed sweep, 8 cores |
+| --- | --- | --- |
+| today (abstract NPCs) | 1.07 ms | ~2.5 min |
+| 30 full-fidelity NPCs, naive | 51.4 ms | ~103 min |
+| 30 full-fidelity NPCs, post-N0 | ~40 ms | ~80 min |
+
+**Full fidelity is affordable for PLAYING and expensive for MEASURING** — 40 ms/day is
+imperceptible, an 80-minute sweep cannot be an iteration loop. That asymmetry is not a
+problem to solve, it is the shape of the plan: the full sweep becomes an infrequent
+CAPSTONE and the fast loop is staged smoke tests seeded from its output (N7).
+
+---
+
+### N0 — One copy-on-write discipline for player and NPC turns (SHIPPED 2026-07-28)
+
+- **Why first:** NPC records are about to grow a ship, and `cloneState` deep-copied all
+  thirty of them on every player action. Adding ships without this would have taxed the
+  player 3.5x (`cloneState` 0.0294 -> 0.0955 ms) and made 30 captains each acting
+  **quadratic** — measured 1.6 / 11.6 / 43.1 ms per day at 10 / 30 / 60 NPCs.
+- **Change:** `cloneState` shares NPC records between snapshots (fresh array, shared
+  records). All cross-boundary NPC writes route through one door, `mutableNpc`.
+- **Result:** clone 0.0294 -> 0.0125 ms today, 0.0955 -> **0.0121** ms with fat NPC
+  records — i.e. **flat in NPC richness instead of linear**, which is what kills the
+  quadratic. Player-day 1.394 -> 1.066 ms as a side effect.
+- **Two things worth carrying forward.** I asserted there was ONE cross-boundary NPC
+  writer; there were FOUR (a grep keyed on variable names missed `dealerNpc.credits`
+  and three `rescuer.*` writes — searching by FIELD found them). And it shook out a real
+  engine bug: `storylets.ts` computed a clamped disposition delta from a handle taken
+  before the update, reporting **0 for every clamped change**. `clone.test.ts` now holds
+  the line with a source scan, verified by reintroducing a violation and watching it fail.
+
+### N1 — NPCs own a real ship
+
+- **Hypothesis:** replacing the phantom tier-derived ship with a real `ShipState` on
+  `NpcState` changes what NPCs can earn and where they can fly, without yet changing any
+  decision they make.
+- **Change (state + migration):** `NpcState.ship: ShipState`. Seed it at world creation
+  from the profile tier so day 1 is close to today's behavior. Point `executeTrade` /
+  `executeTravel` at the real ship instead of `npcCargoPods(tier)` / `npcDrives(tier)` /
+  `hullCondition: 9`. **Costs a save-version bump + round-trip test** (`schema.ts`), and
+  the roster is 30 records, so watch save size.
+- **Simulate:** full sweep. Expect movement even with no new decisions — cargo capacity
+  and fuel burn now vary per captain instead of being a tier constant.
+- **Proves:** NPC wealth spread widens; no policy row moves for a reason other than
+  contract competition; save round-trips byte-identical.
+- **Disproves:** the field's wealth distribution collapses or explodes — the day-1 seed
+  is mis-calibrated against the old phantom.
+
+### N2 — NPCs upgrade their ships
+
+*The owner's stated core complaint: "If the NPC never upgrades their ship, they never
+increase their trade profit."*
+
+- **Hypothesis:** an NPC that reinvests profit into its fit earns more over a career,
+  producing the wealth SPREAD a 31-captain race needs — some compounding, some stuck.
+- **Change (programmatic):** an upgrade decision in the NPC turn, priced through the
+  engine's own `quoteShipyard` — never a parallel cost model. Note R2c's lesson here:
+  the sim's private copy of the yard maths inherited the same bug as the engine and so
+  agreed with it for the wrong reason.
+- **Simulate:** full sweep + the NPC wealth distribution at day 30/60/120.
+- **Proves:** NPC final-wealth spread widens materially vs N1; the richest captains are
+  the ones who upgraded; the poorest still exist (no universal escalator).
+- **Disproves:** every NPC converges on the same fit (the decision is not a decision), or
+  NPC wealth runs away and they out-compete the player for contracts.
+
+### N3 — NPCs meet pirates, and answer them
+
+- **Hypothesis:** routing NPC travel through real encounter generation, with a real
+  stance choice, makes the NPC field carry the same risk the player does — which is the
+  precondition for their wealth spread meaning anything.
+- **Change (programmatic):** generate encounters on NPC jumps; give the NPC a stance
+  (pay with credits, pay with cargo, fight, flee) resolved by the SAME combat rules;
+  apply damage, repair and — the sharp end — **ship loss**.
+- **Open design question to settle IN this step, not before:** what happens when an NPC
+  dies? Retire the captain, respawn a successor, or leave the slot empty? The player has
+  succession; the roster is a fixed cast of 30 with authored names and bond hooks, so
+  "delete the captain" has content consequences.
+- **Simulate:** full sweep + NPC deaths/1k days beside the player's.
+- **Proves:** NPCs lose ships at a rate in the same order as the player's archetypes;
+  contract competition drops when captains die; the wire narrates it.
+- **Disproves:** NPC death rate is wildly off the player's (the stance logic is not
+  player-like), or the roster empties out over a long career.
+
+### N4 — NPC archetypes
+
+- **Hypothesis:** assigning each of the 30 a playstyle (trader / fighter / explorer /
+  smuggler / gambler / veteran) produces a field that behaves like 30 different people
+  rather than 30 samples of one distribution.
+- **Change:** an archetype per NPC at world creation, driving its turn. Reuse the sim
+  policies' *logic* where possible — they already encode these styles — without paying
+  the player's full day loop (see the performance envelope above).
+- **Proves:** per-archetype NPC outcomes differ measurably (wealth, deaths, fit); the
+  Honor List (N6) shows different captains topping different titles.
+- **Disproves:** archetype makes no measurable difference — the NPC turn is too coarse
+  for the distinction to survive.
+
+### N5 — NPC proficiency spread
+
+- **Hypothesis:** *"some will play very well, some will make mistakes."* This is already
+  built and calibrated: R1's `PilotDegradationProfile` models exactly this (noisy die
+  allocation, thin fuel margin, greedy contract overreach) and measured a **7.6x**
+  survival difference between a sharp and a sloppy pilot.
+- **Change:** a proficiency profile per NPC at world creation, spread across the roster.
+- **Proves:** NPC outcomes correlate with proficiency, not just archetype; the field has
+  a visible top and bottom that is not purely luck.
+- **Disproves:** proficiency washes out — the NPC turn has too few decisions for skill to
+  express itself, which would itself be a finding about the turn's depth.
+
+### N6 — The Honor List becomes a real 31-way board
+
+- **Depends on N1** (NPCs must have components to rank).
+- The 1991 board is already shipped as a personal one (`honorList` in `ui/format.ts`,
+  T-1406) precisely because `NpcState` had no ship. Once N1 lands, the same function
+  ranks the whole field, which is what the owner asked for originally and what makes the
+  eight titles a contest rather than a progress bar.
+
+### N7 — The measurement rig: capstone sweep + staged smoke tests
+
+*Owner's design, recorded because it is the answer to the 80-minute sweep.*
+
+- **The loop:** a full sweep produces data -> the data is crunched and diffed against the
+  previous run -> **checkpoint markers are extracted from it** -> those become fast
+  staged smoke tests (e.g. days 1-3, 21-23, 41-43) run on every change. A full sweep is
+  only warranted as a **capstone after a series of green smoke tests**.
+- **Build:** (a) a differ that compares two sweep aggregates and reports what moved and
+  by how much; (b) a checkpoint extractor; (c) the staged runner.
+- **THE HONEST CAVEAT, which must be written into the rig itself:** you cannot *start* a
+  career at day 21 without simulating days 1-20, so the mid-game tiers need SYNTHESIZED
+  states. That is fine for a breakage detector and **must never be used to grade
+  balance** — this repo's own tests warn against poking state to reach a scenario. Smoke
+  tests catch regressions; the capstone sweep remains the only authority on numbers.
+
+### N8 — Re-pin the baseline against a living field
+
+- Everything above changes the world the player trades in — captains claiming contracts,
+  buying ships, dying. **Every balance number in this document moves.** Re-pin at 1,000
+  seeds (the R0b standing amendment) and re-read the R-series conclusions against it,
+  especially R2.5, whose escalation ladder was designed against a field that took no risk.
+
+---
+
 ## IMPORTANT
 
 ### R4 — Predation pressure, redesigned as authored pursuers
@@ -954,10 +1123,23 @@ one candidate this bake-off could not simulate.
 ## Sequencing at a glance
 
 ```
-R1 (measure, DONE) ──► R0a (fix the tribute oracle) ──► R0b (re-pin baseline @1k seeds)
-                                                          └─► R2 (near-peer pirates + table)
-                                                                └─► R2.5 (ladder + demands)
-                                                                      └─► R4 ──► R5b
+DONE: R1 ──► R0a ──► R0b ──► R2 ──► R2c ──► R2d ──► N0
+
+NPC PARITY TRACK (in progress — the R-series is PAUSED behind it, see below):
+  N0 (copy-on-write, DONE)
+   └─► N1 (NPCs own a real ship)  ──► N6 (Honor List becomes a 31-way board)
+        └─► N2 (NPCs upgrade)
+             └─► N3 (NPCs meet pirates + answer them)
+                  └─► N4 (archetypes) ──► N5 (proficiency spread)
+                       └─► N7 (capstone sweep + staged smoke tests)
+                            └─► N8 (re-pin the baseline against a living field)
+
+THEN the R-series resumes, re-read against N8's baseline:
+  R2.5 (escalation ladder + demand menu) ──► R4 (predation) ──► R5b (smuggler tariff)
+
+WHY THE PAUSE: R2.5's ladder was designed against a field that takes no risk and never
+upgrades. Landing it before N8 would tune the player's world against captains who are
+not in it.
 R3 (explorer)  — parallel, separate sweep
 R6 (instrument) — any time, goldens-identical
 R5a (fighter deeds) — after R2 lands
