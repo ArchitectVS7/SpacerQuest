@@ -21,6 +21,16 @@ lie. This file is the one place that says which is which.
   may change without ceremony — which is the literal truth while the balance model and
   the NPC architecture are being rebuilt. **`1.0.0` is reserved for public release** and
   must not be used before it.
+- **Prerelease suffixes live in the git TAG, never in the manifests** — e.g. tag
+  `v0.5.0-rc1` against manifests reading `0.5.0`. This is not stylistic: electron-builder
+  derives the Windows/macOS binary version from `packages/desktop/package.json`, NSIS
+  requires a bare `x.y.z` triple, and `packages/desktop/e2e/packaged.spec.ts` and
+  `e2e/shell.spec.ts` both assert `/^\d+\.\d+\.\d+$/`. A suffix in the manifests breaks
+  packaging and says nothing the tag does not.
+- **Unstamped bundles report `0.0.0-dev`** (`version.ts` `DEV_VERSION`) and must never
+  fall back to a plausible-looking release string — a bundle that guessed `1.0.0` would
+  impersonate a release in a support ticket.
+
 ### When it changes — NOT every commit
 
 **The product version stamps BUILDS PEOPLE RECEIVE, not commits.** A number that moved
@@ -51,15 +61,6 @@ decision rather than a release.
 
 Under `0.y.z` semver also grants explicit licence for the public surface to change
 without ceremony, so none of this needs agonising over while the redesign is in flight.
-- **Prerelease suffixes live in the git TAG, never in the manifests** — e.g. tag
-  `v0.5.0-rc1` against manifests reading `0.5.0`. This is not stylistic: electron-builder
-  derives the Windows/macOS binary version from `packages/desktop/package.json`, NSIS
-  requires a bare `x.y.z` triple, and `packages/desktop/e2e/packaged.spec.ts` and
-  `e2e/shell.spec.ts` both assert `/^\d+\.\d+\.\d+$/`. A suffix in the manifests breaks
-  packaging and says nothing the tag does not.
-- **Unstamped bundles report `0.0.0-dev`** (`version.ts` `DEV_VERSION`) and must never
-  fall back to a plausible-looking release string — a bundle that guessed `1.0.0` would
-  impersonate a release in a support ticket.
 
 ### Why the current number is `0.5.0`
 
