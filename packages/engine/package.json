@@ -1,6 +1,5 @@
 {
   "name": "@spacerquest/engine",
-  "version": "0.5.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -13,9 +13,10 @@ lie. This file is the one place that says which is which.
 
 **Answers: how mature is the game?**
 
-- **One source of truth: the root `package.json`.** All five workspace manifests carry
-  the identical string; `packages/ui/src/__tests__/version.test.ts` asserts it rather
-  than trusting it. Vite compiles it into the bundle as `__SQ_VERSION__`, and the
+- **One source of truth: the root `package.json`.** Exactly one other manifest repeats
+  it — `packages/desktop`, because electron-builder needs it for the installer — and
+  `packages/ui/src/__tests__/version.test.ts` asserts the agreement rather than trusting
+  it. The four library workspaces carry no version at all. Vite compiles it into the bundle as `__SQ_VERSION__`, and the
   cockpit shows it at Settings → Build → Version.
 - **The leading zero is load-bearing.** Under semver, `0.y.z` means the public surface
   may change without ceremony — which is the literal truth while the balance model and
@@ -73,10 +74,21 @@ without ceremony, so none of this needs agonising over while the redesign is in 
 **Editing the root `package.json` alone does not propagate.** Verified by doing it: the
 root-only bump fails the manifest-agreement tests. The full move is short:
 
-1. **All six manifests** — root plus `packages/{content,engine,sim,ui,desktop}`.
-2. **`package-lock.json`** — `npm install --package-lock-only`.
+1. **The root `package.json`** — Vite compiles it in as `__SQ_VERSION__`, and
+   `tag-rc.mjs` derives the release tag from it.
+2. **`packages/desktop/package.json`** — electron-builder derives the binary and
+   installer version from it, and a player comparing an installer filename to the
+   Settings row must not see two different numbers.
+3. **`package-lock.json`** — `npm install --package-lock-only`.
 
-Both are guarded: `version.test.ts` fails if the manifests disagree, if the lockfile's
+**That is the whole list. `content`, `engine`, `sim` and `ui` deliberately carry NO
+version** — they are consumed as `"*"` by every dependant and nothing reads their
+versions. Verified by deleting one: `npm install`, `tsc -b` and the suite were all green,
+and only the version tests complained. Four copies to hand-edit for no reader is exactly
+the manual step that rots, so they were removed and a test now asserts they stay absent.
+
+All three are guarded: `version.test.ts` fails if the two manifests disagree, if a
+library workspace re-grows a version, if the lockfile's
 workspace entries are stale, or if `RELEASE-CHECKLIST.md` restates the current version.
 **No document names the version** — that was the old design, it made every doc a second
 place to hand-edit, and it rotted exactly as you would expect (a bump left the checklist

@@ -75,20 +75,37 @@ describe('T-1704 · BUILD_VERSION', () => {
   });
 });
 
-describe('T-1704 · one version, six manifests', () => {
-  const WORKSPACES = ['content', 'engine', 'ui', 'sim', 'desktop'];
-
+describe('one version, two manifests', () => {
+  // WAS "six manifests". Four of those six were decoration: content, engine, sim and ui
+  // are consumed as `"*"` by every dependant and NOTHING reads their versions —
+  // verified by deleting one and finding `npm install`, `tsc -b` and the suite all
+  // green, with only these tests complaining. They were a version to hand-edit for no
+  // reader, which is precisely the manual step that rots.
+  //
+  // TWO carry meaning and are asserted here:
+  //   root            — Vite compiles it in as `__SQ_VERSION__`; tag-rc.mjs derives the
+  //                     release tag from it.
+  //   packages/desktop — electron-builder derives the binary and installer version from
+  //                     it, and a player comparing an installer filename to the Settings
+  //                     row must not see two different numbers.
   it('the root package.json carries a version at all', () => {
-    // It did not before this task, which is why the cockpit had nothing to stamp.
+    // It did not before T-1704, which is why the cockpit had nothing to stamp.
     expect(ROOT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it.each(WORKSPACES)('packages/%s agrees with the root version', (workspace) => {
-    // The guard that makes "one source of truth" true rather than aspirational:
-    // electron-builder reads `packages/desktop`'s version for the binary and the
-    // installer, Vite reads the root's for the cockpit, and a player comparing an
-    // installer to a Settings row must not see two different numbers.
-    expect(manifest('packages', workspace, 'package.json').version).toBe(ROOT_VERSION);
+  it('packages/desktop agrees with the root version', () => {
+    expect(manifest('packages', 'desktop', 'package.json').version).toBe(ROOT_VERSION);
+  });
+
+  it('the library workspaces carry NO version, so there is nothing to keep in step', () => {
+    // Asserted rather than merely done: re-adding one would quietly recreate a copy that
+    // no reader consumes and no bump remembers.
+    for (const workspace of ['content', 'engine', 'sim', 'ui']) {
+      expect(
+        manifest('packages', workspace, 'package.json').version,
+        `packages/${workspace} should not declare a version — nothing reads it`,
+      ).toBeUndefined();
+    }
   });
 });
 
@@ -137,7 +154,9 @@ describe('the lockfile agrees with the manifests', () => {
     const workspaces = Object.entries(lock.packages ?? {}).filter(
       ([key, value]) => /^packages\/[^/]+$/.test(key) && typeof value.version === 'string',
     );
-    expect(workspaces.length, 'fixture: no workspace entries found in the lockfile').toBe(5);
+    // Only `packages/desktop` declares a version now, so it is the only workspace the
+    // lockfile records one for.
+    expect(workspaces.length, 'fixture: expected exactly one versioned workspace').toBe(1);
     for (const [key, value] of workspaces) {
       expect(
         value.version,
