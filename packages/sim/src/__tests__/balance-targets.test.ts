@@ -139,7 +139,16 @@ beforeAll(() => {
 }, 180000);
 
 describe('T-1603b balance targets (pinned slice of the committed sweep)', () => {
-  it('the trader clears the Guild marker inside the target band, not sooner', () => {
+  // KNOWN RED, EXPECTED TO FAIL — owned by R2.5 (`docs/BALANCE-REDESIGN-WORKLIST.md`).
+  // The trader clears on day 21 against a [22, 30] band: the marker is trivial for the
+  // dominant archetype, which is the defect the balance redesign exists to remove. It is
+  // NOT commented out and NOT deleted — `it.fails` keeps every assertion below executing,
+  // and inverts the verdict, so the suite goes RED THE MOMENT R2.5 MOVES THE CLEAR DAY
+  // INTO BAND. That is the signal we want; a skipped test would report nothing.
+  // Held this way (owner decision 2026-07-28) so the NPC-parity N-series runs against a
+  // green gate without pulling R2.5's design work forward. Flip back to `it` in the same
+  // commit that lands the fix.
+  it.fails('the trader clears the Guild marker inside the target band, not sooner', () => {
     const trader = policyRow('trader');
 
     // Non-degeneracy first: an empty or near-empty sample would make the median

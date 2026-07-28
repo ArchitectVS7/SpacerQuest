@@ -85,6 +85,23 @@ Standing constraints from `BALANCE-POLICY.md` that every step must respect:
   day-loop golden. Goldens are *expected* to move when behavior changes — re-pin them
   deliberately, never silently.
 
+**THE TWO KNOWN-RED ASSERTIONS, and why they are `it.fails` rather than skipped
+(owner decision 2026-07-28, ahead of the N-series).** The gate was red at HEAD on two
+R-series debts, neither owned by the NPC-parity track:
+
+| assertion | owner | why it is red |
+| --- | --- | --- |
+| `balance-targets` — trader clears inside [22, 30] | **R2.5** | clears day 21; the marker is trivial for the dominant archetype — the defect the redesign exists to remove |
+| `balance-combat-survival` — "Auto-Repair no longer switches the death path off" | **R2c** | `debt === 0` kit gating moved fit-out ~day 20 → ~day 60, so careers-with-a-module is 5 of 15 against a `> 5` bar calibrated on the subsidised economy |
+
+Both are marked `it.fails`, **not `it.skip` and not commented out**. The distinction is
+load-bearing: every assertion still executes and the verdict is inverted, so each one goes
+**red again the moment the underlying defect is fixed**. They are tripwires that fire on
+success, not suppressed coverage — a skipped test would report nothing when R2.5 lands.
+Flip each back to `it` in the same commit that fixes it. The N-series therefore runs
+against a green gate without pulling R2.5's design work forward, and any third failure is
+unambiguously the N-task's.
+
 **The sweep command.** 1,000 seeds since R0b — see that step for why 100 cannot grade this.
 Eight shards run in ~2.5 min on a 10-core box; the fleet now includes `trader-degraded` as a
 second lens (a fix should hold up for the sloppy pilot too).
