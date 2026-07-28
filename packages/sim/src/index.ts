@@ -1302,12 +1302,23 @@ interface DieLedger {
 // ---------------------------------------------------------------------------
 // R1 (docs/BALANCE-REDESIGN-WORKLIST.md) · THE HUMAN-PLAUSIBLE PILOT.
 //
-// The archetype matrix records a trader that escaped all 1,052 encounters it was
-// outgunned in and lost zero ships across 12,000 simulated days. R1 asks the one
-// question that decides whether R2 is even the right task: is that record a
-// property of the ENGINE (running is near-free) or an artifact of a sim policy
+// The archetype matrix recorded a trader that survived all 1,052 encounters it
+// was outgunned in and lost zero ships across 12,000 simulated days. R1 asks the
+// one question that decides whether R2 is even the right task: is that record a
+// property of the ENGINE (the exit is near-free) or an artifact of a sim policy
 // that plays perfectly? The only way to tell them apart is to degrade the pilot
 // and re-measure — if a sloppy captain still never dies, the engine is the answer.
+//
+// TWO CORRECTIONS TO THAT FRAMING, both measured after this policy was written and
+// both recorded here so the comment does not outlive its own evidence:
+//   * R1 — "survived" is right, "escaped" was not. 979 of the 1,052 ended
+//     `talked-down` (paying tribute) and only 62 in flight. The free exit is the
+//     PURCHASE, not the getaway.
+//   * R0b — "zero ships" was a SAMPLING ARTIFACT of the 100-seed arm. At 1,000
+//     seeds the same policy loses 19 ships and 17 of 89,967 routes; its true
+//     outgunned `shipLostRate` is 0.00119, whose expected count over a 12,000-day
+//     arm is ~1. This policy's answer is unaffected and sharper at the larger n:
+//     degraded 0.00899 vs clean 0.00119, a 7.6x separation.
 //
 // The three slips below are the ones the worklist names, and each is a MISTAKE A
 // PLAYER ACTUALLY MAKES, not a random-action generator (a random policy would

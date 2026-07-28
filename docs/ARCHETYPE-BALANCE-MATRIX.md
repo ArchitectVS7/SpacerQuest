@@ -111,8 +111,30 @@ to `[tier−1, tier+1]`. **Wealth is not an input.**
 
 ## 4. The measured matrix
 
+**BASELINE OF RECORD — 1,000 careers per archetype × 120 in-game days (8,000 careers,
+960,000 sim-days), `docs/balance/baseline-vet-1k.json`, taken 2026-07-28 after the R0a
+tribute-oracle fix.** This table supersedes the 100-seed arm below it.
+
+| archetype | clears | clear day | final cr | deeds | enc/career | combat EV | ships lost | deaths/1k |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| trader | 0.92 | 21 | 80,305 | 17 | 31.6 | −1,245 | **19** | **0.16** |
+| smuggler | 0.55 | 30 | 42,769 | **28** | 34.2 | −1,400 | 66 | 0.55 |
+| gambler | 0.80 | 26 | 68,436 | 23 | 30.1 | −1,300 | 27 | 0.23 |
+| fighter | 0.70 | **20** | **158,978** | 13 | 26.4 | −400 | 56 | 0.47 |
+| explorer | 0.00 | — | 91,669 | 23 | **40.1** | −1,500 | 65 | 0.54 |
+| greedy | 0.00 | — | 1,000 | 8 | 2.0 | −27 | 111 | **0.93** |
+| veteran | 0.01 | 90 | 12,501 | 20 | 16.2 | −400 | 84 | 0.70 |
+| trader-degraded | 0.76 | 23 | 57,619 | 18 | 29.4 | −1,400 | 120 | 1.00 |
+| **fleet** | 0.47 | 25 | 57,959 | 19 | 26.2 | −850 | 548 | 0.57 |
+
+`trader-degraded` is the R1 measurement instrument (a human-plausible pilot), not an
+archetype — read it only against the `trader` row.
+
+<details><summary>RETIRED — the original 100-seed arm (<code>baseline-vet-t1605.json</code>),
+kept for provenance. Do not quote it.</summary>
+
 100 careers per archetype × 120 in-game days (700 careers), taken 2026-07-28 against the
-T-1605 travel change (`docs/balance/baseline-vet-t1605.json`).
+T-1605 travel change.
 
 | archetype | clears | clear day | final cr | deeds | enc/career | combat EV | ships lost | deaths/1k | top rank |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -125,22 +147,40 @@ T-1605 travel change (`docs/balance/baseline-vet-t1605.json`).
 | veteran | 0.01 | 93 | 12,195 | 20 | 15.8 | −400 | 11 | 0.92 | TOP_DOG |
 | **fleet** | 0.44 | 25 | 59,023 | 20 | 25.6 | −800 | 46 | 0.55 | — |
 
+**Why it was retired (R0b, 2026-07-28).** Its zeros are sampling artifacts: the trader's true
+outgunned loss rate is 0.00119, whose expected count in a 12,000-day arm is ~1, so observing
+0 was the single likeliest outcome. A 100-seed arm also cannot resolve the clear-day median
+to ±1 day, which is the resolution the [22, 30] target is graded at.
+
+</details>
+
 ---
 
 ## 5. The finding this matrix was built to expose
 
-**An unprepared trader wins the game without ever being at risk.**
+**An unprepared trader wins the game at a fraction of everyone else's risk.**
 
-- 0.90 clear rate, 80,000 credits, TOP_DOG rank, clears the marker on **day 21**
-- **0 ships lost across 12,000 simulated days**
-- **0 cargo routes lost to pirates out of 9,003 delivered**
-- Its `prepared = true` combat cells are **empty** — it never fits a weapon, ever
-- It fought **1,052 encounters while outgunned and unprepared** with a `shipLostRate` of
-  **0.0000**
+Figures below are the 1,000-seed baseline of record. The original 100-seed wording —
+"without ever being at risk", "0 ships", "0 cargo" — was **overstated by sampling**, and the
+corrected numbers are given here instead. The finding survives the correction; the absolutes
+did not.
 
-Compare `greedy` (0.0685 loss rate when outgunned) and `fighter` (0.0323). The trader is not
-avoiding pirates — at 32.5 encounters per career it meets **more of them than the fighter
-does (25.4)**. It is escaping all of them, permanently, at no cost.
+- **0.92** clear rate, 80,305 credits, TOP_DOG rank, clears the marker on **day 21**
+- **19 ships lost across 120,000 simulated days** — a rate of **0.16 deaths/1k** against a
+  **0.57 fleet average** and greedy's **0.93**
+- **17 cargo routes lost out of 89,967 delivered** (0.019%)
+- Its `prepared = true` combat cells are **empty** — across 1,000 careers and 31.6
+  encounters each, it **never fits a weapon, ever**
+- It fought **10,106 encounters while outgunned and unprepared** at a `shipLostRate` of
+  **0.00119**
+
+Compare `greedy` (**0.12934** when outgunned — ~109× the trader) and `fighter` (**0.00425**,
+~3.6×). The trader is not avoiding pirates: at 31.6 encounters per career it meets **more of
+them than the fighter does (26.4)**. It survives essentially all of them at trivial cost.
+
+**And the exit is a purchase, not a getaway** (R1): 93% of its outgunned encounters end
+`talked-down` — paying tribute — and under 6% end in flight. Read §6's "escape" claims with
+that substitution in mind.
 
 So the gap is **not attraction, it is consequence**. A wealthy captain currently buys
 immunity by declining to engage. Adding more interceptions to the trader's day would produce

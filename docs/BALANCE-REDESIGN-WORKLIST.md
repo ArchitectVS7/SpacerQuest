@@ -10,16 +10,27 @@ all run on Sonnet, all briefed with identical neutral data).
 
 ## Executive summary
 
-The measured matrix (100 careers × 120 days per archetype, `docs/balance/baseline-vet-t1605.json`)
-shows the game's dominant strategy is **total disengagement from risk**: an unarmed trader
-clears the 25,000cr marker 90% of the time by day 21, ends near-richest at TOP_DOG, and lost
-**0 ships and 0 cargo across 12,000 simulated days** — while meeting *more* pirates than the
-fighter (32.5 vs 25.4 encounters/career) and escaping **all 1,052** outgunned encounters.
+**CURRENT FIGURES (baseline of record: `docs/balance/baseline-vet-1k.json`, 1,000 careers ×
+120 days per archetype, post-R0a).** The game's dominant strategy is **disengagement from
+risk**: an unarmed trader clears the 25,000cr marker **92%** of the time by day **21**, ends
+near-richest at TOP_DOG, and dies at **0.16 deaths/1k days against a 0.57 fleet average** —
+while meeting *more* pirates than the fighter (31.6 vs 26.4 encounters/career) and surviving
+**10,106 outgunned encounters at a `shipLostRate` of 0.00119**, ~109× lower than greedy's
+0.12934 and ~3.6× lower than the fighter's 0.00425. It **never fits a weapon**: zero encounters
+in a `prepared` cell across 1,000 careers.
 
-> **Corrected by R1 (2026-07-28), left in place for provenance:** "escaping" here means
-> *survived*, not *ran*. The raw records show 979 of those 1,052 outgunned encounters ended
-> `talked-down` and only 62 ended `escaped`. The dominant risk-free exit is **paying tribute**,
-> not flight — which changes what R2 must price. See the R1 result below before working R2.
+> **Two corrections to the original text, kept visible rather than silently rewritten.**
+>
+> **(a) R1 — "escaping" meant *surviving*, not *running*.** The raw records show 979 of the
+> trader's 1,052 outgunned encounters (100-seed arm) ended `talked-down` and only 62 `escaped`.
+> The risk-free exit is **paying tribute**, not flight — which is why R2 was re-scoped.
+>
+> **(b) R0b — the original "0 ships and 0 cargo across 12,000 simulated days" was a sampling
+> artifact.** At 1,000 seeds the same policy loses **19 ships and 17 of 89,967 routes**. The
+> defect is real and the direction was right; the magnitude was overstated, and no rate in this
+> document should be read as a hard zero. The old 100-seed figures (0.90 clears, 0 ships,
+> 151,972 fighter credits, 0.75 smuggler deaths/1k) appear below only where a reviewer quoted
+> them at the time.
 
 The review's verdict, converged on independently by all three personas and the outside
 assessment: **this is one confined structural defect, not a full redesign.** The core loop,
@@ -41,6 +52,9 @@ Strongest convergence signals (weighted heavily, per the review brief):
 4. Two of three flagged the deeds/credits inversion: fighter is richest (151,972cr) with the
    fewest deeds (14); smuggler has the most deeds (28) with the worst viable-archetype
    survival (0.75 deaths/1k).
+   > **R0b update:** the inversion HOLDS at 1,000 seeds (fighter 158,978cr / 13 deeds;
+   > smuggler 28 deeds). The smuggler half does not: its death rate is **0.55**, below the
+   > veteran's 0.70, so "worst viable-archetype survival" is no longer true. See R5b.
 
 ---
 
@@ -71,15 +85,20 @@ Standing constraints from `BALANCE-POLICY.md` that every step must respect:
   day-loop golden. Goldens are *expected* to move when behavior changes — re-pin them
   deliberately, never silently.
 
-**The sweep command** (from matrix §7):
+**The sweep command.** 1,000 seeds since R0b — see that step for why 100 cannot grade this.
+Eight shards run in ~2.5 min on a 10-core box; the fleet now includes `trader-degraded` as a
+second lens (a fix should hold up for the sloppy pilot too).
 
 ```sh
-npm run balance:sweep -w @spacerquest/sim -- --label <label> --seeds 100 --days 120 --shard i/4  # ×4
+# ×8, one per shard
+npm run balance:sweep -w @spacerquest/sim -- --label <label> --seeds 1000 --days 120 \
+  --policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy --shard i/8
 npm run balance:sweep -w @spacerquest/sim -- --label <label> --merge
 ```
 
-**Baseline of record for all comparisons:** `docs/balance/baseline-vet-t1605.json` — the
-matrix table below is that baseline.
+**Baseline of record for all comparisons:** `docs/balance/baseline-vet-1k.json` (1,000 seeds,
+post-R0a). The table immediately below is the RETIRED 100-seed arm, kept because the review
+and the early steps quote it; the corrected figures are in the R0b result.
 
 | archetype | clears | clear day | final cr | deeds | enc/career | combat EV | ships lost | deaths/1k |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -252,6 +271,65 @@ with a re-pin log recording the previous values and the cause (the other five ar
 - **NOT affected: R1 does not need re-running.** Its conclusion strengthens at the larger
   sample — normal trader 21 ships / 0.175 per 1k vs the degraded pilot's 131 ships / 1.09 per
   1k, a ~6× separation that the 100-seed arm expressed only as "0 vs 19".
+
+**Result (2026-07-28): DONE. Baseline of record is now
+`docs/balance/baseline-vet-1k.json`** — 1,000 seeds × 120 days × 8 policies (8,000 careers,
+960,000 sim-days), taken after R0a. `baseline-vet-t1605.json` is retired; keep it only as the
+provenance of the numbers this document was originally written against.
+
+| archetype | clears | clear day | final cr | deeds | enc/career | combat EV | ships lost | deaths/1k |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| trader | 0.92 | 21 | 80,305 | 17 | 31.6 | −1,245 | **19** | **0.16** |
+| smuggler | 0.55 | 30 | 42,769 | **28** | 34.2 | −1,400 | 66 | 0.55 |
+| gambler | 0.80 | 26 | 68,436 | 23 | 30.1 | −1,300 | 27 | 0.23 |
+| fighter | 0.70 | **20** | **158,978** | 13 | 26.4 | −400 | 56 | 0.47 |
+| explorer | 0.00 | — | 91,669 | 23 | **40.1** | −1,500 | 65 | 0.54 |
+| greedy | 0.00 | — | 1,000 | 8 | 2.0 | −27 | 111 | **0.93** |
+| veteran | 0.01 | 90 | 12,501 | 20 | 16.2 | −400 | 84 | 0.70 |
+| trader-degraded | 0.76 | 23 | 57,619 | 18 | 29.4 | −1,400 | 120 | 1.00 |
+| **fleet** | 0.47 | 25 | 57,959 | 19 | 26.2 | −850 | 548 | 0.57 |
+
+**THREE LESSONS, in descending order of how much they should change future practice.**
+
+**1. Every headline zero in this document was a sampling artifact.** The trader loses **19
+ships and 17 of 89,967 routes** — not zero. Its outgunned `shipLostRate` is **0.00119** over
+10,106 outgunned encounters, not `0.0000`. "Immortal" was never true; "very rarely mortal"
+is. At n=100 a rate of 0.0012 has an expected count of ~1 in the whole arm, so observing 0
+was the likeliest single outcome — **the old baseline was not unlucky, it was under-powered,
+and a zero is the one value a small sample reports most confidently and least reliably.**
+*Practice change: never state a rate as 0.00 from a 100-seed arm. Report it as "< 1/n" or
+re-run at 1,000.*
+
+**2. The core finding SURVIVES — the defect is real, the magnitude was overstated.** The
+trader is still far and away the safest archetype: 0.16 deaths/1k against a 0.57 fleet
+average and greedy's 0.93, and an outgunned loss rate **~109× lower than greedy's 0.12934**
+and ~3.6× lower than the fighter's 0.00425 *while meeting more interceptors than the fighter
+does*. It still never fits a weapon (`prepared`-cell encounters: **0**, across 31.6
+encounters/career × 1,000 careers). R2/R2.5 are still the right work; they are correcting a
+strong bias, not an absolute.
+
+**3. The clear-day target is genuinely missed — this was NOT a sampling artifact, and my
+earlier speculation that R0b "might change what fixed means" for `balance-targets` was
+wrong.** The trader's clear day at n=1,000 is still **21** (n=985, p25 18 / median 21 / p75 25
+/ p90 30 / mean 22.8). The `balance-targets` failure is a real, reproducible miss of the
+[22, 30] band, and R2/R2.5 must actually move it. What n=100 could not resolve was ±1 day of
+*candidate* effect, which is why 1,000 seeds is now mandatory for grading — not the baseline
+value itself.
+
+**Secondary observations for downstream steps:**
+
+- **R1 is confirmed and sharpened.** Degraded-pilot outgunned `shipLostRate` **0.00899** vs
+  the clean trader's **0.00119** — a **7.6× separation**, measured on 10,123 vs 10,106
+  outgunned encounters. R1's conclusion needed no re-run; it is now quantified on both sides
+  instead of resting on a zero.
+- **R5's deeds/credits inversion holds at scale** — fighter is richest (158,978) with the
+  *fewest* deeds (13); smuggler leads deeds (28). Unchanged conclusion.
+- **R5b's premise weakened.** The smuggler's death tax was quoted at 0.75 deaths/1k; at
+  n=1,000 it is **0.55**, below the veteran's 0.70 and close to the explorer's 0.54. It is no
+  longer "the worst viable-archetype survival". Re-read R5b against this number before tuning
+  the contraband risk premium — the tariff it was written to reduce may not exist.
+- **R3 is untouched and still urgent:** explorer clears **0.00** at 1,000 seeds. Not a
+  sampling artifact by any reading.
 
 ### R2 — Make the pirate a threat (near-peer power + the pirate table)
 
@@ -689,10 +767,11 @@ hypothesis, and append the result under the step before moving on.
 
 **Two standing amendments from the R1/bake-off work (2026-07-28), binding on every step below:**
 
-1. **Grade at 1,000 seeds × 120 days, not 100.** The 100-seed arm cannot resolve the
-   clear-day target — a candidate passed at n=100 and failed at n=1,000, and the control's
-   "0 ships / 0 cargo" headline is itself a small-sample artifact (21 ships and 19 routes lost
-   at n=1,000). **This is R0b, and it gates R2.**
+1. **Grade at 1,000 seeds × 120 days, not 100 — DONE (R0b).** The 100-seed arm cannot resolve
+   the clear-day target to the ±1 day the [22, 30] band is graded at, and its "0 ships / 0
+   cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). Baseline of
+   record is now `baseline-vet-1k.json`. **Corollary for every future step: never report a
+   rate as 0.00 off a small arm — report `< 1/n`, or re-run bigger.**
 2. **A rejected hypothesis is a result.** R1's was rejected and produced the re-scope that
    this document now runs on. Record outcomes under the step, including the ones that say
    "the premise was wrong".
