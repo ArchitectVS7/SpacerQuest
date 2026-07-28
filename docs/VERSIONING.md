@@ -69,31 +69,27 @@ decision rather than a release.
 Under `0.y.z` semver also grants explicit licence for the public surface to change
 without ceremony, so none of this needs agonising over while the redesign is in flight.
 
-### Changing it — six manifests, one doc, and the lockfile
+### Changing it — one command
 
-**Editing the root `package.json` alone does not propagate.** Verified by doing it: the
-root-only bump fails the manifest-agreement tests. The full move is short:
+**Bump it with one command — do not hand-edit:**
 
-1. **The root `package.json`** — Vite compiles it in as `__SQ_VERSION__`, and
-   `tag-rc.mjs` derives the release tag from it.
-2. **`packages/desktop/package.json`** — electron-builder derives the binary and
-   installer version from it, and a player comparing an installer filename to the
-   Settings row must not see two different numbers.
-3. **`package-lock.json`** — `npm install --package-lock-only`.
+```sh
+npm version <x.y.z> --no-git-tag-version \
+  --workspace=@spacerquest/desktop --include-workspace-root
+```
 
-**That is the whole list. `content`, `engine`, `sim` and `ui` deliberately carry NO
-version** — they are consumed as `"*"` by every dependant and nothing reads their
-versions. Verified by deleting one: `npm install`, `tsc -b` and the suite were all green,
-and only the version tests complained. Four copies to hand-edit for no reader is exactly
-the manual step that rots, so they were removed and a test now asserts they stay absent.
+That writes the two manifests that have readers (root and `packages/desktop`) and
+regenerates `package-lock.json`, and it leaves the four unversioned library workspaces
+alone rather than re-growing versions in them. `--no-git-tag-version` is deliberate: the
+tag is the STAGE marker and is cut separately, by the ceremony, not as a side effect of a
+manifest edit.
 
-All three are guarded: `version.test.ts` fails if the two manifests disagree, if a
-library workspace re-grows a version, if the lockfile's
-workspace entries are stale, or if `RELEASE-CHECKLIST.md` restates the current version.
-**No document names the version** — that was the old design, it made every doc a second
-place to hand-edit, and it rotted exactly as you would expect (a bump left the checklist
-holding two different versions in different paragraphs, suite green). Docs point here;
-this file points at the manifest.
+**The lockfile is GENERATED, never authored.** It records the version in three places and
+you type it into none of them — npm derives all three from the manifests. Verified by
+corrupting it to `6.6.6` and watching `npm install --package-lock-only` restore it
+untouched by hand. It is listed here only because it must be regenerated and committed;
+skipping that is what left it reading `1.0.0` through a bump, which `version.test.ts` now
+catches.
 
 **No action needed** for the bundle: Vite reads the root manifest at config time and
 substitutes `__SQ_VERSION__`, so a rebuild picks it up. `scripts/tag-rc.mjs` likewise
