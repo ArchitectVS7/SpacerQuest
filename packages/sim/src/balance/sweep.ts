@@ -90,6 +90,11 @@ const VALID_POLICIES: readonly SimPolicyName[] = [
   'veteran',
   'smuggler',
   'gambler',
+  // R1 (docs/BALANCE-REDESIGN-WORKLIST.md) · the human-plausible pilot. Valid but
+  // deliberately OUT of DEFAULT_POLICIES: it is a measurement instrument run
+  // beside the `trader` row, not a seventh archetype, and folding it into the
+  // default fleet would silently move every `fleet` union number in the baseline.
+  'trader-degraded',
 ];
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');

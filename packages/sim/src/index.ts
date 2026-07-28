@@ -60,7 +60,10 @@ export type SimPolicyName =
   // T-1601b · the two net-new instruments: the smuggling pillar (contraband
   // supply → patrol scans → Ray's fence) and the Hangout tables (Spacer's Dare).
   | 'smuggler'
-  | 'gambler';
+  | 'gambler'
+  // R1 (BALANCE-REDESIGN-WORKLIST) · the human-plausible pilot. A MEASUREMENT
+  // instrument, not a balance archetype — see `degradedTraderPolicy`.
+  | 'trader-degraded';
 
 export interface RunCampaignOptions {
   seed: number;
@@ -551,6 +554,7 @@ const POLICY_NAMES = [
   'veteran',
   'smuggler',
   'gambler',
+  'trader-degraded',
 ] as const satisfies readonly SimPolicyName[];
 
 function isSimPolicyName(value: string): value is SimPolicyName {
@@ -1294,7 +1298,88 @@ interface DieLedger {
   remaining(): number;
 }
 
-function dieLedger(state: GameState): DieLedger {
+// ---------------------------------------------------------------------------
+// R1 (docs/BALANCE-REDESIGN-WORKLIST.md) · THE HUMAN-PLAUSIBLE PILOT.
+//
+// The archetype matrix records a trader that escaped all 1,052 encounters it was
+// outgunned in and lost zero ships across 12,000 simulated days. R1 asks the one
+// question that decides whether R2 is even the right task: is that record a
+// property of the ENGINE (running is near-free) or an artifact of a sim policy
+// that plays perfectly? The only way to tell them apart is to degrade the pilot
+// and re-measure — if a sloppy captain still never dies, the engine is the answer.
+//
+// The three slips below are the ones the worklist names, and each is a MISTAKE A
+// PLAYER ACTUALLY MAKES, not a random-action generator (a random policy would
+// answer a different, useless question):
+//
+//   1. NOISY DIE ALLOCATION — spending a middling die on the skill check where
+//      the optimal line spends the sharpest one. This is the load-bearing slip
+//      for R1: the run stance is an OPPOSED PILOT roll (engine `resolveRun`), so
+//      a duller die directly lowers the per-round escape chance, and a failed run
+//      does not end the encounter — it draws another round of enemy pressure
+//      (`continueEncounter`). If escape has a real price, this is where it shows.
+//   2. IMPERFECT FUEL RESERVES — topping the tank to just cover today's leg plus
+//      a single getaway burn, rather than to the working target. Arriving on a
+//      thin tank is what removes the exit: `resolveCombat` refuses a run below
+//      RUN_FUEL_COST and a fight below FIGHT_FUEL_COST, so a thin-tanked captain
+//      meets an interceptor with talk (tribute) as the only stance left.
+//   3. GREEDY CONTRACT OVERREACH — signing the biggest number on the board rather
+//      than the best NET run inside the re-flight margin cap (SIGN_FUEL_FRACTION).
+//      Long legs, no margin, and sometimes a contract that does not even clear its
+//      own fuel bill.
+//
+// These are POLICY tuning, exactly like TRADER_LOAN_MARKER_WINDOW, and live here
+// rather than in packages/content for the same reason: content holds the rules'
+// data, not a sim instrument's heuristics. Nothing in the engine or content reads
+// them.
+//
+// DETERMINISM: the slips are drawn from the per-day `rng` `runCampaign` already
+// forks for the policy (`seed → 'policy' → day-N → index-N`), never from
+// Math.random, so a seed still reproduces a degraded career byte-for-byte. That
+// rng is a policy-only fork — drawing from it cannot move any engine roll, so the
+// existing policies stay byte-identical (asserted in campaign-degraded.test.ts).
+// ---------------------------------------------------------------------------
+
+export interface PilotDegradationProfile {
+  /** Chance, per skill-check die pick, that a MIDDLING die is spent instead of
+   *  the sharpest remaining one. */
+  dullDieChance: number;
+  /** Chance, per day, that the refuel is sized to today's leg plus one getaway
+   *  burn instead of to the working target — the thin-tank arrival. */
+  thinFuelChance: number;
+  /** Chance, per day, that the contract choice is made on the RAW payment,
+   *  ignoring net value and the re-flight margin cap. */
+  overreachChance: number;
+}
+
+/** The R1 instrument's calibration. Deliberately CONSERVATIVE: a captain who
+ *  misallocates a die on about a third of checks, flies thin on a quarter of
+ *  days, and chases the big number on a fifth of them is a plausible human, not a
+ *  disaster. Conservatism is what makes the null result strong — if even this
+ *  pilot cannot lose a ship, the escape is free at any skill level. */
+const DEGRADED_TRADER_PROFILE: PilotDegradationProfile = {
+  dullDieChance: 0.35,
+  thinFuelChance: 0.25,
+  overreachChance: 0.2,
+};
+
+/** A profile bound to the day's policy rng. Null everywhere the competent
+ *  policies run, which is what keeps them byte-identical. */
+interface PilotDegradation {
+  profile: PilotDegradationProfile;
+  rng: SeededRng;
+}
+
+/** Did this day's slip fire? Sole draw site, so every slip costs exactly one
+ *  rng value and the draw ORDER is the order the policy asks the questions in. */
+function slips(degradation: PilotDegradation | null, chance: number): boolean {
+  if (!degradation) return false;
+  return degradation.rng.next() < chance;
+}
+
+/** `degradation` is null for every competent policy, in which case `takeBest` is
+ *  the plain `shift()` it has always been — the byte-identity guarantee. */
+function dieLedger(state: GameState, degradation: PilotDegradation | null = null): DieLedger {
   const hand = state.player.dawnHand;
   const available: number[] = [];
   if (hand) {
@@ -1305,7 +1390,21 @@ function dieLedger(state: GameState): DieLedger {
     for (let index = 0; index < 5; index += 1) available.push(index);
   }
   return {
-    takeBest: () => available.shift(),
+    takeBest: () => {
+      // The hand is sorted DESCENDING, so index 0 is the sharpest die and the
+      // MIDDLE of what is left is a genuinely middling one. Guarded at three
+      // remaining: with two left the "middle" IS the dullest, which is the die
+      // the rote actions are entitled to — a slip that stole it would degrade
+      // the day's plan rather than the day's roll.
+      if (
+        degradation &&
+        available.length >= 3 &&
+        slips(degradation, degradation.profile.dullDieChance)
+      ) {
+        return available.splice(Math.floor(available.length / 2), 1)[0];
+      }
+      return available.shift();
+    },
     takeWorst: () => available.pop(),
     remaining: () => available.length,
   };
@@ -1640,8 +1739,14 @@ const SIGN_FUEL_FRACTION = 0.6;
  * the repayment from the marker, and clears the balance at the desk before the
  * term runs out.
  */
-export const traderPolicy: SimPolicy = ({ state }) => {
-  const ledger = dieLedger(state);
+export const traderPolicy: SimPolicy = ({ state }) => planTraderDay(state, null);
+
+/** The trader's whole day, parameterised by the R1 degradation. `degradation`
+ *  is null for the shipped `trader` — every branch below then takes the exact
+ *  path it took before R1, which is why the trader's sweep numbers are unchanged
+ *  (pinned in `campaign-degraded.test.ts`). */
+function planTraderDay(state: GameState, degradation: PilotDegradation | null): PlayerAction[] {
+  const ledger = dieLedger(state, degradation);
   if (state.encounter) return planPacifistCombat(state, ledger);
 
   const ship = state.player.ship;
@@ -1688,13 +1793,31 @@ export const traderPolicy: SimPolicy = ({ state }) => {
     reachable = signableWithin(ship.maxFuel);
   }
 
+  // R1 SLIP 3 · GREEDY CONTRACT OVERREACH. On a slip day the pilot signs the
+  // biggest number on the board it can physically fund today — ignoring the net
+  // check (so a leg that does not clear its own fuel bill is fair game) and the
+  // SIGN_FUEL_FRACTION re-flight margin (so it arrives with nothing in hand). The
+  // `fuel <= maxFuel` floor stays: a leg the tank cannot hold is not a mistake a
+  // captain makes, it is a jump the engine refuses, and a day spent making
+  // refused jumps would measure nothing.
+  const overreach = slips(degradation, degradation?.profile.overreachChance ?? 0);
+  if (overreach) {
+    const grabbed = ranked
+      .filter((c) => c.fuel <= ship.maxFuel)
+      .map((c) => ({ ...c, net: c.payment - c.fuel * fuelDepotPrice }));
+    if (grabbed.length > 0) reachable = grabbed; // `ranked` is already richest-first
+  }
+
   // T-1601a · Which reachable run to take. The default is unchanged (the richest
   // NET run), with two preferences layered on top, both of which only ever pick a
   // DIFFERENT member of the already-fundable set — never a run the tank or the
   // purse cannot carry, which is the T-1104 strand this policy exists to avoid.
   let preferred = reachable.length > 0 ? reachable[0] : null;
   const loan = state.player.loan;
-  if (preferred && state.player.debt === 0) {
+  // R1: an overreaching pilot is chasing the number, not running a route plan —
+  // the rim and head-home preferences below are exactly the discipline the slip
+  // models the loss of, so they are skipped on a slip day.
+  if (preferred && !overreach && state.player.debt === 0) {
     // "One more run to the rim" (PRD §1/§9). Gated on the Guild marker being
     // CLEARED, deliberately: the marker is the Tour One failure condition and the
     // acceptance's clear-rate band, so the trader finishes paying the Guild before
@@ -1705,7 +1828,7 @@ export const traderPolicy: SimPolicy = ({ state }) => {
     const rimRun = reachable.find((c) => STAR_SYSTEMS[c.destination]?.isRim === true);
     if (rimRun) preferred = rimRun;
   }
-  if (preferred && loan && loan.dueDay - state.day <= TRADER_LOAN_HOME_WINDOW) {
+  if (preferred && !overreach && loan && loan.dueDay - state.day <= TRADER_LOAN_HOME_WINDOW) {
     // Head home to settle up: with the balance covered and the term nearly up,
     // prefer a fundable run that ENDS at the Penny Wise desk. Preference only —
     // if no such contract is on the board the trader flies its normal best run.
@@ -1788,8 +1911,19 @@ export const traderPolicy: SimPolicy = ({ state }) => {
 
   // Raise the refuel threshold/target to cover this day's jump (capped at the
   // tank). Never lower them below the working defaults.
+  //
+  // R1 SLIP 2 · THIN-TANK ARRIVAL. On a slip day the pilot buys the leg plus one
+  // getaway burn and calls it good, instead of topping to the working target. The
+  // margin removed is precisely the escape margin: arriving on `RUN_FUEL_COST` of
+  // fuel buys exactly ONE run attempt, and the engine refuses a second (and
+  // refuses a fight, at FIGHT_FUEL_COST, outright) — so a failed getaway leaves
+  // talk-and-pay as the only stance the ship can still take. The threshold is
+  // left alone: it decides WHETHER to refuel, and a pilot who skipped the pumps
+  // entirely would strand rather than fly thin, which measures nothing.
+  const thinTank = slips(degradation, degradation?.profile.thinFuelChance ?? 0);
+  const workingTarget = thinTank ? primaryFuelNeed + RUN_FUEL_COST : FUEL_REFUEL_TARGET;
   const refuelThreshold = Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_THRESHOLD, primaryFuelNeed));
-  const refuelTarget = Math.min(ship.maxFuel, Math.max(FUEL_REFUEL_TARGET, primaryFuelNeed));
+  const refuelTarget = Math.min(ship.maxFuel, Math.max(workingTarget, primaryFuelNeed));
   const refuel = planRefuel(
     state,
     ledger,
@@ -1912,7 +2046,47 @@ export const traderPolicy: SimPolicy = ({ state }) => {
   if (debtPayment) actions.push(debtPayment);
 
   return actions.length > 0 ? actions : [{ type: 'Wait' }];
-};
+}
+
+/**
+ * R1 · TRADER, DEGRADED — the human-plausible pilot the worklist's gating
+ * question is asked of. Identical route/fuel/marker planning to `traderPolicy`,
+ * with the three slips described at `PilotDegradationProfile` layered on top.
+ *
+ * IT IS AN INSTRUMENT, NOT AN ARCHETYPE. It is deliberately NOT a member of the
+ * sweep's DEFAULT_POLICIES fleet and NOT a member of `campaign-policies.test.ts`'s
+ * COMPETENT_POLICIES: the anti-poverty-trap invariant (T-1605b, scoped to the
+ * competent policies per errata E4) is a promise about what the WORLD offers a
+ * captain who plays well, and a policy that flies thin-tanked on purpose is not
+ * that captain. Read it only against the `trader` row, which is the comparison
+ * R1 is built to make.
+ */
+export const degradedTraderPolicy: SimPolicy = ({ state, rng }) =>
+  planTraderDay(state, { profile: DEGRADED_TRADER_PROFILE, rng });
+
+/**
+ * R1 · The same instrument at an arbitrary calibration — the ABLATION door.
+ *
+ * A single degraded pilot answers "does a sloppy captain die?" but not "which
+ * mistake killed it", and R1's whole output is a re-scoping decision that turns
+ * on exactly that: a death caused by a botched getaway argues for pricing the
+ * run, a death caused by a botched negotiation argues for pricing the tribute.
+ * Zeroing one field at a time separates them.
+ *
+ * Deliberately NOT given roster names: an ablation is a question asked once, and
+ * six near-identical entries in `SimPolicyName` would be six more rows every
+ * future sweep silently carries. The shipped `trader-degraded` is the one
+ * calibration the balance data is cut on.
+ *
+ * NOTE the driver requirement, which is a real trap: a bare `SimPolicy` handed to
+ * `runCampaign` resolves with `dawnBlind: true` and would be planned on the
+ * pre-board DAWN state, quietly measuring a blinded pilot. Drive this through
+ * `resolvePolicy('trader-degraded')`'s day-state contract, not through the
+ * function overload.
+ */
+export function makeDegradedTraderPolicy(profile: PilotDegradationProfile): SimPolicy {
+  return ({ state, rng }) => planTraderDay(state, { profile, rng });
+}
 
 // ---------------------------------------------------------------------------
 // T-1601b · SMUGGLER. The smuggling pillar (PRD §7.2 "patrol captains roll GUILE
@@ -3504,6 +3678,13 @@ export function resolvePolicy(policy: SimPolicyName | SimPolicy): ResolvedPolicy
     return { name: policy, policy: gamblerPolicy, dawnBlind: false };
   }
 
+  // R1 · same fallthrough hazard as the two above: an unrecognised name runs the
+  // RANDOM policy and would report plausible-looking zeros. Pinned in
+  // `campaign-degraded.test.ts`.
+  if (policy === 'trader-degraded') {
+    return { name: policy, policy: degradedTraderPolicy, dawnBlind: false };
+  }
+
   return { name: policy, policy: randomLegalActionPolicy, dawnBlind: true };
 }
 
@@ -3833,7 +4014,7 @@ export function reportToJson(report: CampaignStatsReport): string {
 
 function usage(): string {
   return [
-    'Usage: npm run sim -- --seed <integer> --days <integer> --policy <idle|greedy|random|trader|fighter|explorer|veteran|smuggler|gambler>',
+    'Usage: npm run sim -- --seed <integer> --days <integer> --policy <idle|greedy|random|trader|fighter|explorer|veteran|smuggler|gambler|trader-degraded>',
     'Defaults: --seed 1 --days 100 --policy idle',
     'Alias: --policy random-legal-action',
   ].join('\n');

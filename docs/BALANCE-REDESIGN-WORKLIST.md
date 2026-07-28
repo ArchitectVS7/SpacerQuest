@@ -1,0 +1,663 @@
+# Balance Redesign Worklist — one change, one hypothesis, one simulation
+
+**Status:** work list, written 2026-07-28. Output of the archetype-balance review (senior-dev
+assessment + three independent persona reviews: casual gamer, power gamer, game designer —
+all run on Sonnet, all briefed with identical neutral data).
+**Companions:** `ARCHETYPE-BALANCE-MATRIX.md` (the measured data), `BALANCE-POLICY.md`
+(governance), `PRD-REIMAGINED.md` (design intent).
+
+---
+
+## Executive summary
+
+The measured matrix (100 careers × 120 days per archetype, `docs/balance/baseline-vet-t1605.json`)
+shows the game's dominant strategy is **total disengagement from risk**: an unarmed trader
+clears the 25,000cr marker 90% of the time by day 21, ends near-richest at TOP_DOG, and lost
+**0 ships and 0 cargo across 12,000 simulated days** — while meeting *more* pirates than the
+fighter (32.5 vs 25.4 encounters/career) and escaping **all 1,052** outgunned encounters.
+
+> **Corrected by R1 (2026-07-28), left in place for provenance:** "escaping" here means
+> *survived*, not *ran*. The raw records show 979 of those 1,052 outgunned encounters ended
+> `talked-down` and only 62 ended `escaped`. The dominant risk-free exit is **paying tribute**,
+> not flight — which changes what R2 must price. See the R1 result below before working R2.
+
+The review's verdict, converged on independently by all three personas and the outside
+assessment: **this is one confined structural defect, not a full redesign.** The core loop,
+the face-up dice hand, and the NPC society were praised by every reviewer; the defect is the
+economics of the encounter triangle — *escaping is free, unlimited, and always works, and
+winning pays nothing* — plus one demo-breaking bug: the explorer archetype clears the Tour
+One debt **0%** of the time.
+
+Strongest convergence signals (weighted heavily, per the review brief):
+
+1. All three personas independently made consequence-free escape their #1 issue; both
+   mechanism-proposing personas independently concluded the §6 "predation pressure" proposal
+   treats the symptom (who gets intercepted) not the disease (escape has no cost).
+2. All three flagged explorer 0% as a bug aimed at the demo's story-driven audience, not
+   intended asymmetry.
+3. All three want the world to respond to wealth — but with the warning that a blanket
+   wealth-to-power dial *without* fixing escape/combat payoff makes "stay poor, never
+   upgrade" the new dominant line.
+4. Two of three flagged the deeds/credits inversion: fighter is richest (151,972cr) with the
+   fewest deeds (14); smuggler has the most deeds (28) with the worst viable-archetype
+   survival (0.75 deaths/1k).
+
+---
+
+## How to use this document
+
+Work the recommendations **in order** (dependencies are noted). For each one:
+
+1. **State the hypothesis** (pre-written below; refine before starting if the R1 measurement
+   changes the picture).
+2. **Make exactly one change** — a lever (constant/config) or a programmatic change, never
+   both in one step.
+3. **Run the simulation** and compare against the pinned baseline.
+4. **Accept or reject** against the written success/failure criteria. A rejected hypothesis
+   is a result, not a failure — record it and move to the alternative listed.
+5. **Record the outcome** in this file (append a `**Result:**` line under the step) and
+   re-pin the baseline if accepted.
+
+Standing constraints from `BALANCE-POLICY.md` that every step must respect:
+
+- Divergences from foundation are commented at the definition site (Part B rule 3).
+- The trader clear-day design band is **[22, 30]** (matrix §3). Post-fix, the trader
+  *should* land inside it — today's day-21 clear is below the band, i.e. the marker is
+  currently trivial for the trader.
+- The T-1605b anti-poverty-trap invariant must hold (`campaign-policies`, scoped to the
+  competent policies per errata E4).
+- The full validation battery is: `balance-targets`, `balance-sweep`, `campaign-policies`,
+  `lending-property`, `balance-combat-survival`, plus protocol replay goldens and the
+  day-loop golden. Goldens are *expected* to move when behavior changes — re-pin them
+  deliberately, never silently.
+
+**The sweep command** (from matrix §7):
+
+```sh
+npm run balance:sweep -w @spacerquest/sim -- --label <label> --seeds 100 --days 120 --shard i/4  # ×4
+npm run balance:sweep -w @spacerquest/sim -- --label <label> --merge
+```
+
+**Baseline of record for all comparisons:** `docs/balance/baseline-vet-t1605.json` — the
+matrix table below is that baseline.
+
+| archetype | clears | clear day | final cr | deeds | enc/career | combat EV | ships lost | deaths/1k |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| trader | 0.90 | 21 | 79,954 | 17 | 32.5 | −1,299 | **0** | **0.00** |
+| smuggler | 0.61 | 29 | 44,027 | **28** | 33.1 | −1,400 | 9 | 0.75 |
+| gambler | 0.82 | 26 | 66,413 | 22 | 30.2 | −1,309 | 2 | 0.17 |
+| fighter | 0.71 | **19** | **151,972** | 14 | 25.4 | −400 | 5 | 0.42 |
+| explorer | 0.00 | — | 93,342 | 23 | **40.2** | −1,500 | 7 | 0.58 |
+| greedy | 0.00 | — | 1,000 | 8 | 2.0 | −32 | 12 | 1.00 |
+| veteran | 0.01 | 93 | 12,195 | 20 | 15.8 | −400 | 11 | 0.92 |
+
+---
+
+## CRITICAL
+
+### R1 — Measure escape reliability under a human-plausible pilot
+
+*This is the matrix §6's own unanswered gating question. Nothing downstream should be built
+until it is answered.*
+
+- **Hypothesis:** the trader's perfect escape record (1,052/1,052 while outgunned) survives
+  even under degraded, human-plausible piloting — i.e. the defect is in the **engine**
+  (running is near-free), not in the sim policy's optimality.
+- **Change (programmatic, sim-only — no engine change):** add a degraded variant of the
+  trader policy in `packages/sim/src/index.ts` — noisy die allocation (sometimes spends a
+  mid die where the optimal spends the best), imperfect fuel reserves (occasionally arrives
+  at an encounter without the full-exchange tank margin), occasional greedy contract
+  overreach. No engine or content changes.
+- **Simulate:** run the balance sweep with the degraded trader added; 100 seeds × 120 days.
+- **Proves the hypothesis:** degraded-trader `shipLostRate` while outgunned remains ≈ 0
+  (say, < 0.005 vs greedy's 0.0685 and fighter's 0.0323) → escape is structurally free;
+  proceed to R2.
+- **Disproves:** degraded trader starts losing ships at a meaningful rate → the perfect
+  record is a policy artifact; re-scope R2 toward tuning against the human-plausible pilot
+  (and possibly UI/telegraphing work) instead of re-pricing escape.
+- **Supporting data:** matrix §5–§6; the trader met *more* interceptors than the fighter,
+  so attraction is already sufficient — only consequence is in question.
+
+**Result (2026-07-28): HYPOTHESIS DISPROVED — and the premise it rests on is wrong.**
+
+Instrument: `trader-degraded`, a shipped sim policy (`packages/sim/src/index.ts`,
+`degradedTraderPolicy`) that reuses the trader's whole day plan with three slips layered on —
+noisy die allocation (0.35/check), thin-tank arrival (0.25/day), greedy contract overreach
+(0.20/day). Slips draw from the per-day policy rng fork, so degraded careers replay
+byte-for-byte. No engine or content change. Sweep: `baseline-r1-degraded.json`, 100 seeds ×
+120 days, fleet + degraded. The seven baseline policies re-ran **JSON-identical** to
+`baseline-vet-t1605.json` (pinned in `campaign-degraded.test.ts`), so the comparison is sound.
+
+*Finding 1 — the criterion fails.* Degraded-trader `shipLostRate` while outgunned is
+**0.0133**, not the "< 0.005" the hypothesis predicted — 2.7× the bar, above fighter (0.0040)
+and explorer (0.0031), near veteran (0.0121). Fleet-wide it is the **worst** death rate
+measured: 19 ships lost, 1.58 deaths/1k days (greedy, the cautionary control: 1.00). Routes
+lost 18 (clean trader: 0 of 9,003). Tour One clear rate 0.90 → 0.72; clear day 21 → 22.
+The perfect record is substantially a **policy artifact**. Per the disproof branch, R2 must be
+re-scoped toward the human-plausible pilot rather than built on "escape is structurally free".
+
+*Finding 2 — and this is the bigger one — the trader does not escape. It pays.* Of its 1,052
+outgunned encounters, **979 (93%) end `talked-down` and only 62 (5.9%) end `escaped`**
+(`travelCompletedRate` 0.931 — a fleeing trader would not complete the trip). The executive
+summary above reads the matrix's "escaped all 1,052" as the *run stance*; the raw records say
+it means *survived*. **The consequence-free exit under measurement is TRIBUTE, not flight.**
+Mean tribute per outgunned encounter: 1,877cr, and combat EV of −1,299 is essentially all
+tribute. It is free not because it is unpriced but because **the price is capped
+(`round × 1000`, `TRIBUTE_MAX`, margin-shaved) while the purse is not** — a 1,877cr toll
+against a 48,000cr purse is a rounding error, and `planPacifistCombat` correctly prefers
+talk whenever the tribute is affordable, which for a solvent trader is always.
+
+*Finding 3 — slip ablation names the mechanism.* Deaths by slip, held one-at-a-time over the
+same 100 seeds × 120 days: dull-die only **9** (outgunned rate 0.0077), thin-fuel only **6**
+(0.0046), overreach only **1** (0.0000), all three **19** (0.0152). Doubling the die slip to
+0.70 gives **45** deaths (0.0379) — monotone in degradation, so this is a gradient, not a
+knife-edge artifact. Autopsy (seed 8, days 99–100): a rich trader talks, a middling die fails
+the talk check, `continueEncounter` lands 3 hull points, and two failed talks kill a
+full-hull ship. **The kill path runs through the talk roll, not the run roll.**
+
+**Consequence for R2 — re-scope before building.** R2 as written prices a successful
+`combat_run`. That stance carries 5.9% of the dominant archetype's outgunned encounters, so
+the change would move ~62 of 1,052 events and leave the actual dominant line (pay the toll,
+complete the delivery) untouched. The three candidates in R2's bakeoff should be re-drawn
+around the **exit that is actually taken**, e.g.: (a) tribute that scales with ability to pay
+or with cargo value rather than a flat capped ladder; (b) the interceptor takes *cargo* rather
+than credits when the hold is worth more than the toll; (c) a repeat-tribute reputation cost
+that makes "always pay" compound (the rim learns who pays). The run-pricing options stay live
+for the fighter/explorer profiles, which run far more often — but they are not the trader fix.
+Recommend a `/bakeoff` pass on the re-drawn candidate set before any lever moves.
+
+**Battery:** `npm test` green except two failures **already red at HEAD** (verified by stashing
+this change): `balance-targets` "trader median debt-clear day 21 outside [22, 30]" and
+`balance-combat-survival` "Auto-Repair no longer switches the death path off" (fighter
+`shipsLost === 0`). Both are *the defect this worklist exists to remove*, and both are R2/R3
+work — R1 is measure-only and deliberately does not touch them. Baseline of record is
+**unchanged** (`baseline-vet-t1605.json`), correctly: a disproved hypothesis re-pins nothing.
+
+### R0 — Fix the instrument, then re-pin the yardstick
+
+> **Owner decision 2026-07-28: bugs are addressed BEFORE R2.** Nothing below this step is
+> gradable until it lands, because R2/R2.5 are graded by diffing a sweep against a pinned
+> baseline — and today both the instrument and the baseline are wrong.
+
+**R0a — `planPacifistCombat`'s tribute oracle (bug fix, sim-only).**
+
+- **The defect:** `packages/sim/src/index.ts` grades tribute affordability with a hardcoded
+  `Math.min(round * 1000, 10_000)` and never calls the engine's `tributeForRound`, so it
+  ignores `TRIBUTE_CLASS_MULTIPLIER` (Reptiloid ×2) and `TRIBUTE_TIER_GAP_STEP` (×1.75) — the
+  sim's trader can decide "I can afford this" about a number the engine will not charge.
+- **Why it is a BUG and not a modelling simplification** (the distinction matters, because a
+  sim policy is allowed to be imperfect): this file's own standard is to mirror the engine
+  exactly — `planLoanBorrow`'s comment states its preconditions "mirror `resolveVisitHangout`
+  + day.ts's hangout/encounter gates exactly, so the policy can never burn a die on a typed
+  refusal". And the UI (`format.ts` `tributeThisRound`) already calls the real function, so a
+  human player HAS the true number while the instrument does not. Found independently by two
+  reviewers in the R2 bake-off.
+- **Blast radius:** changes trader/explorer/gambler stance decisions → **moves every policy
+  fingerprint and the baseline**. That is exactly why it must precede R0b.
+- **Measured cost of NOT fixing it first:** in the bake-off's control arm, patching the oracle
+  alone changed the sloppy pilot's clear rate 0.72 → 0.75 and its ship losses 19 → 11. An
+  uncorrected instrument would have charged those deltas to whatever R2 shipped.
+
+**R0b — re-pin the baseline at 1,000 seeds.**
+
+- **The defect:** `baseline-vet-t1605.json` is 100 seeds × 120 days and records the trader at
+  **0 ships / 0 routes lost**. At 1,000 seeds the same policy loses **21 ships and 19 routes**
+  (0.175 deaths/1k). The headline "0 ships and 0 cargo across 12,000 simulated days" — quoted
+  in this document's own executive summary and in `ARCHETYPE-BALANCE-MATRIX.md` — is a
+  **sampling artifact**, not a property of the game.
+- **The second defect:** the clear-day median is a discrete day number over a wide spread
+  (p25 18 / median 21 / p75 25), so ±1 day is noise at n=100. A bake-off candidate passed the
+  [22, 30] band at n=100 and failed it at n=1,000.
+- **Change:** re-run the veteran arm at 1,000 seeds × 120 days AFTER R0a, write
+  `docs/balance/baseline-vet-1k.json`, and make it the baseline of record. Update the matrix
+  table and this document's executive summary to the corrected figures.
+- **Proves/disproves:** measure-only. It cannot fail — but it CAN change the size of the
+  problem R2 is being asked to solve, and the corrected numbers must be read before R2's
+  acceptance thresholds are treated as final.
+- **NOT affected: R1 does not need re-running.** Its conclusion strengthens at the larger
+  sample — normal trader 21 ships / 0.175 per 1k vs the degraded pilot's 131 ships / 1.09 per
+  1k, a ~6× separation that the 100-seed arm expressed only as "0 vs 19".
+
+### R2 — Make the pirate a threat (near-peer power + the pirate table)
+
+> **SUPERSEDES the original R2 ("price the escape"), by owner decision 2026-07-28.** The
+> original step is preserved verbatim in *Appendix A* below, together with the bake-off that
+> retired it. Short version: pricing the run targets a stance the dominant archetype uses in
+> 5.9% of its dangerous encounters, and every per-encounter price the bake-off simulated was
+> either inert (escape pricing, wallet-scaled tribute) or an arbitrary tax on success (cargo
+> seizure). The owner's re-frame moves the lever off *what the player owns* and onto *what
+> the pirate is* and *what the player did last time*. R2 is the first half; R2.5 is the second.
+
+*No bake-off. The owner ruled the alternatives non-competing — these are complementary parts
+of one direction, not options to choose between — so this ships as designed and is graded by
+sweep. Two of the four measurements below already establish the defect; nothing is being
+taken on faith.*
+
+- **Hypothesis:** combat is a solved problem, not a decision, because interceptor power tops
+  out far below player power. Scaling high-tier interceptors toward near-peer — and moving
+  the pirate roster into an authored data table with its own demand lines — makes the fight
+  stance a real choice at the top of the curve without touching the T-1603c combat table's
+  per-event costs.
+
+- **THE MEASURED DEFECT (2026-07-28, from `baseline-vet-t1605.json` + engine source):**
+  An **armed** fighter's win rate is **97.0% while OUTGUNNED**, 98.2% at parity, 98.5% when
+  it outranks. Being outgunned costs 1.5 percentage points. The tier system is decorative.
+  The mechanism is arithmetic, not tuning:
+  - `travel.ts` sets `enemyHull: interceptor.tier` — **the deadliest pirate in the game has
+    5 hull points.**
+  - `weaponVolleyDamage` at max component tier (strength 90) is **5**, plus
+    `STAR_BUSTER_VOLLEY_BONUS` 2 = **7**. **A maxed player one-shots every pirate in the
+    game, tier 5 included.**
+  - The whole difficulty curve is "do you own a gun": the *unprepared* fighter wins only
+    67.7% outgunned, and then the curve is flat forever.
+  - **Stats are NOT the lever and must not be the fix:** interceptor stats are d20 modifiers
+    capped at 5, and the tier-4/5 roster is *already* maxed at PILOT 5 / GUNS 5 / GRIT 5
+    (measured across all 65 entries in `ANONYMOUS_INTERCEPTORS`). There is no headroom.
+    Hull, shields/mitigation and volley math are where the room is.
+
+- **Change (a) — content, the pirate table.** Move the interceptor roster into an authored
+  data table (`packages/content`, TS module exporting typed rows — NOT csv/json read at
+  runtime; content is typed source in this repo and a parsed file would dodge `tsc`).
+  Columns: name, ship name, ship class, kind, tier, stats, hull, and **authored demand
+  lines** ("Lord Valtrax demands you turn over 20,000 credits immediately or be destroyed"),
+  plus the conversational beats a demand can draw from. This is what makes an escalating
+  encounter *legible* — the ladder in R2.5 is invisible unless the pirate says it out loud.
+- **Change (b) — lever, near-peer power.** Scale `enemyHull` (and/or high-tier mitigation)
+  so a tier-5 interceptor survives a maxed volley and trades meaningfully with an endgame
+  ship. ONE knob per step: land the hull scale, sweep, then consider mitigation separately.
+- **Change (c) — presentation, the wingman.** A high-tier interceptor may carry a `wingman`
+  flag that adds hull and a second pressure roll, surfaced as *"Two pirates block your escape
+  and demand tribute!"*. **Deliberately ONE interceptor under the hood** —
+  `EncounterState.interceptor` is singular, and making it plural would touch every resolver,
+  the save schema, the UI and every golden for a fiction beat that a flag delivers. Owner
+  decision, recorded here so a later reader does not "fix" it into a real second ship.
+
+- **Simulate:** full fleet + `trader-degraded`, **1,000 seeds × 120 days** (see the sample-size
+  finding below — 100 seeds cannot grade this), then the full validation battery.
+- **Proves:** armed-fighter win rate while outgunned drops out of the high 90s into a band
+  where the fit and the stance both matter (target ~0.75–0.85); the *unprepared* penalty
+  stays at least as sharp as today; fighter final credits do not collapse; the trader's
+  numbers move only as much as the shared encounter path forces (R2.5 is the trader lever,
+  not this one); anti-poverty-trap suite green.
+- **Disproves:** win rate barely moves (hull scale too small — one step up, re-run) or the
+  fighter's clear rate/credits collapse (too large — halve it), or deaths concentrate on the
+  *unarmed* archetypes rather than at the top of the curve, which would mean the change hit
+  the wrong end of the ladder.
+
+### R2.5 — The escalation ladder (the world remembers what you did)
+
+*Depends on R2's pirate table landing — the ladder needs authored lines to speak through.*
+
+- **Hypothesis:** the dominant line is not "escape is free", it is "**pay-and-continue is
+  free**" (measured: 979 of 1,052 outgunned encounters end `talked-down`, 62 `escaped`). A
+  ladder that escalates on **encounter history rather than player wealth** prices that line
+  without punishing a player for being rich or for carrying good freight, and restores the
+  lethality that a pure cargo-seizure mechanic removes.
+- **Change (programmatic + state):** a career-scoped escalation counter. Every stance moves
+  it, which is the design's load-bearing property:
+  - **pay a demand →** the next demand is bigger;
+  - **kill a pirate →** the next interceptor comes back heavier (respecting or deliberately
+    breaking the `[tier−1, tier+1]` matchmaking clamp — decide and comment at the site);
+  - **run →** the pirate gets a **parting shot** (see below), and the ladder still moves.
+- **NO COOL-OFF — owner decision, 2026-07-28.** The ladder does not decay and does not reset.
+  *Recorded with its counter-argument, per BALANCE-POLICY Part B rule 3:* the review's
+  power-gamer flagged that a ladder which RESETS on a non-pay action is farmable (interleave
+  one cheap run to zero the counter — the wanted-level cooldown exploit). **This design is
+  immune to that specific exploit by construction, because every stance escalates and there
+  is no reset action.** The residual risk a cool-off would have covered is different and
+  should be watched in the sweep: an undecaying ladder is a one-way ratchet, so a long career
+  eventually meets uniformly maximal demands and every career may end the same way. The
+  acceptance below tests for exactly that (see the late-career check).
+- **The parting shot.** A *successful* run currently costs **nothing** — verified in
+  `resolveRun`: on success it goes straight to `resolveEncounter(..., 'escaped')` with no
+  damage. The parting shot fills a real hole. NOTE for whoever grades it: the bake-off
+  measured escape-pricing as inert, but **that result is conditional on nobody running**
+  (5.9%). If the ladder pushes players toward the getaway, the parting shot becomes
+  load-bearing — do not carry the old "this does nothing" finding forward unexamined.
+- **The escape math.** Fold ship **speed** into the run check. Today `resolveRun` is a pure
+  opposed PILOT roll: the ship plays no part, so **running is the only stance with no build
+  investment behind it** (fighting scales with `weapons`; `drives` does nothing for it).
+  `drives` already carries strength + condition and is yard-upgradeable, so this both gives
+  the stance an investment path and makes a dull component matter.
+- **The demand menu (R2.5b, sweep separately).** A demand may ask for credits, **credits AND
+  cargo** at the top of the ladder, or **a piece of ship tech**. Two rules:
+  1. **The player chooses how to pay.** The bake-off's cargo seizure failed the design bar
+     precisely because it was automatic — "your freight is good, so you lose it" is a tax on
+     success, structurally the same defect as the wealth-scaled tribute the same bake-off
+     rejected. As a *demand the player answers*, it becomes the decision the encounter is
+     missing.
+  2. **Tech seizure is the sharpest of the three and needs no new persistent state** —
+     components are already numbers on the ship and a seized tier is re-buyable, so it
+     pressures the player without ending the career, stays visible on the ship sheet for the
+     rest of the run, and gives the mid-game shipyard a reason to exist.
+- **Cargo is INDIVISIBLE — a constraint, not a choice.** `player.activeContract` is a single
+  nullable contract; `cargoPods` is capacity, not stackable freight. "Jettison X of your
+  holds" has nothing to operate on today. Jettison is therefore **binary** (dump the contract
+  or don't) unless a divisible-cargo model is scoped as its own task, which is out of scope
+  here.
+- **Simulate:** full fleet + `trader-degraded`, 1,000 seeds × 120 days. **Plus a mandatory
+  adversarial arm:** a "fly light" policy that runs short, safe, empty routes and never
+  engages, to test the failure mode this design most plausibly creates — all three stances
+  getting worse at once until not flying is the best play.
+- **Proves:** trader `routesLost`/`shipsLost` move off the floor; trader clear day inside
+  [22, 30] **at 1,000 seeds**; trader clear rate ≥ ~0.75; the **fly-light policy does NOT
+  outperform the honest trader**; fleet death rate does not fall (the "spacers die" target in
+  `balance-combat-survival` stays green — a cargo-only mechanic broke it, and this design
+  exists partly to avoid that); late-career demand distribution still has spread rather than
+  every career pinning to the ladder's maximum.
+- **Disproves:** fly-light wins (the ladder is taxing engagement rather than pricing the exit
+  — weaken the run/parting-shot arm first, since that is what makes flying loaded bad); or
+  clear rate collapses below ~0.6; or the ratchet flattens the late game (revisit the
+  no-cool-off decision with data, not opinion).
+
+### Cross-cutting note
+
+Both of the cross-cutting fixes that used to live here — the stale tribute oracle and the
+under-powered baseline — were promoted to **R0**, ahead of R2, by owner decision. They are
+prerequisites, not companions: R2/R2.5 are graded by diffing against a baseline, and neither
+the instrument nor the baseline is currently trustworthy.
+
+---
+
+**Appendix A — the retired R2 and the bake-off that retired it (2026-07-28).**
+
+*Original R2 hypothesis, verbatim:* "attaching a real cost to a successful `combat_run` —
+risk of cargo jettison or contract-deadline damage — moves trader `shipLostRate`/`routesLost`
+off zero and pushes its clear day into the [22, 30] band, without touching the tuned combat
+table and without breaking the anti-poverty-trap invariant." Original change: "on a successful
+run while outgunned, roll a jettison/delay consequence." Original supporting data: trader 0
+routes lost of 9,003 delivered.
+
+*Method.* Three reviewers (designer / systems engineer / power-gamer), isolated context,
+identical brief. Then every candidate simulated from the real engine before any code was
+written: variants are the shipped `resolveTalk`/`resolveRun` patched at named anchors in a
+tree sourced from `git archive HEAD`, each anchor asserted to match exactly once and to change
+the file. The no-change control reproduced production **byte-for-byte across all seven
+policies**. Rig validation: the power-gamer's advance prediction for the wealth-scaled
+candidate ("clear 0.88–0.90, day 21–22, routesLost 0, shipsLost 0") was reproduced exactly by
+a sweep it never saw.
+
+*Results, trader row, 100 seeds × 120 days, identical seeds:*
+
+| arm | clear | day | routes lost | ships | final cr |
+| --- | --- | --- | --- | --- | --- |
+| control | 0.90 | 21 | 0/9,003 | 0 | 79,954 |
+| wallet-scaled tribute (reserve-anchored) | 0.90 | 21 | 0/9,006 | 0 | 33,532 |
+| wallet-scaled tribute (gross, 12%/round) | 0.90 | 22 | 2/9,011 | 2 | 25,970 |
+| price the escape (jettison 30%) | 0.90 | 21 | 31/8,960 | 0 | 79,472 |
+| cargo seizure (hold > 2× toll) | 0.88 | 23 | 619/8,248 | 2 | 66,750 |
+
+*Findings that survive the retirement and constrain R2/R2.5:*
+
+1. **A tribute proportional to the purse cannot produce a loss** — a fraction of what you hold
+   is always payable. All three reviewers reached this analytically; the sweep confirms it
+   (0 ships, 0 routes, in every calibration, against a sighted trader too). It is a **wealth
+   tax, not a risk lever**: −58% final credits, zero change in danger.
+2. **Pricing the escape is opt-out-for-free** — a never-run trader dropped route losses 94%,
+   *raised* clear rate 0.90 → 0.95 and finished richer. Conditional on the 5.9% run rate; see
+   the parting-shot note in R2.5.
+3. **Cargo seizure worked mechanically and failed on design.** It survived both attacks (a
+   sighted trader: 631 routes lost; the run-away counter-play: 546 vs 619, a 12% dodge versus
+   escape-pricing's 94%) — the hatch is closed by existing rules, since fleeing forfeits the
+   delivery anyway. It fixed the red `balance-targets` test. **But** it is an automatic tax on
+   carrying good freight, and it made the world *safer* — fleet death rate 0.8 → 0.28/1k,
+   breaking the "spacers die" target — because seizing cargo ENDS encounters that used to
+   grind into the R1 kill path. Retired on the owner's design call; the *demand menu* in R2.5b
+   keeps its useful half by making it a choice rather than a confiscation.
+4. **⚠ TWO CONCLUSIONS REVERSED AT 10× SAMPLE (1,000 seeds × 120 days) — the most transferable
+   finding in this document:**
+
+   | arm | day @ n=100 | day @ n=1,000 | clear @ n=1,000 | routes lost @ n=1,000 |
+   | --- | --- | --- | --- | --- |
+   | control | 21 | 21 | 0.920 | **19/90,264** |
+   | cargo seizure 3× | **22** | **21 — fails band** | 0.903 | 2,571/87,325 |
+   | cargo seizure 2× | **23** | **22 — band edge** | 0.872 | 6,552/82,985 |
+
+   - **The trader is not immortal.** Over 120,000 sim-days the control loses **21 ships and 19
+     routes** (0.175 deaths/1k). The matrix's headline "0 ships and 0 cargo across 12,000
+     simulated days" — and this document's own executive summary — is a **small-sample artifact
+     of the 100-seed baseline**. The defect is real but smaller than stated.
+   - **The clear-day criterion is unstable at n=100.** It is a median of a discrete day number
+     over a wide spread (control p25 18 / median 21 / p75 25), so ±1 day is noise. A candidate
+     passed at n=100 and failed at n=1,000. **`baseline-vet-t1605.json`'s 100-seed methodology
+     is under-powered for the [22, 30] target.**
+
+Three independent reviewers (game designer / systems engineer / power-gamer), isolated context,
+identical brief. Then every candidate simulated from the real engine before any code was written.
+
+*Rig.* Variants are the shipped `resolveTalk`/`resolveRun` patched at named anchors in an isolated
+tree sourced from `git archive HEAD` (not the working tree — a concurrent reviewer edited
+`packages/engine` mid-run and two variants inherited it before the rig was hardened; the build now
+fails if a stray probe is staged). Every anchor must match exactly once and must change the file.
+The no-change control reproduces production **byte-for-byte across all seven policies**.
+*Rig validation:* the power-gamer's advance prediction for candidate (a) — "clear 0.88–0.90, day
+21–22, routesLost 0, shipsLost 0" — was reproduced exactly by a sweep it never saw.
+
+*Reviewer agreement (independent, different reasoning — banked):*
+1. A tribute proportional to the purse **cannot** produce a loss: a fraction of what you hold is
+   always payable. All three reached this analytically; one built it and measured 0/0.
+2. Candidate (d) is opt-out-for-free. Power-gamer built a never-run trader against it: routes lost
+   collapsed 94%, clear rate *rose* 0.90 → 0.95, final credits rose. The trader is already 88%
+   opted out before it ships.
+3. **`planPacifistCombat` grades affordability with a hardcoded `min(round*1000, 10_000)` and never
+   calls `tributeForRound`** — it ignores `TRIBUTE_CLASS_MULTIPLIER` (Reptiloid ×2) and
+   `TRIBUTE_TIER_GAP_STEP` (×1.75), while the UI's `format.ts` shows the player the true number.
+   Found independently by two reviewers. **Pre-existing bug; fix it in whatever PR lands R2**, or
+   the instrument grades a blind pilot the real player is not.
+
+*Results, trader row, 100 seeds × 120 days (identical seeds, one harness):*
+
+| arm | clear | day | routes lost | ships | final cr |
+| --- | --- | --- | --- | --- | --- |
+| control | 0.90 | 21 | 0/9,003 | 0 | 79,954 |
+| (a) purse-scaled, reserve-anchored | 0.90 | 21 | 0/9,006 | 0 | 33,532 |
+| (a) gross-purse 12%/round | 0.90 | 22 | 2/9,011 | 2 | 25,970 |
+| (d) jettison on escape 30% | 0.90 | 21 | 31/8,960 | 0 | 79,472 |
+| **(b) cargo seizure, hold > 2× toll** | 0.88 | 23 | **619/8,248** | 2 | 66,750 |
+| (b) at 3× toll | 0.89 | 22 | 222/8,746 | 0 | 74,007 |
+
+(a) is a **wealth tax, not a risk lever** — it removes 58% of final credits while leaving ships and
+cargo untouched, in every calibration and also against a *sighted* trader. (d) confirmed inert.
+
+*(b) survives both attacks.* Against a **sighted** trader (oracle patched to the engine's own
+function): routes lost 631, day 23 — unchanged. Against the **opt-out** counter-play the power-gamer
+predicted (run whenever the hold is seizable): routes lost 546 vs 619, a **12% reduction, versus
+(d)'s 94% collapse**. The hatch is closed by rules that already exist — fleeing forfeits the
+delivery anyway, so dodging the seizure costs about what the seizure costs. No new guard rail.
+
+**⚠ WHAT REVERSED AT 10× (1,000 seeds × 120 days — the most transferable finding here):**
+
+| arm | n=100 day | n=1,000 day | n=1,000 clear | n=1,000 routes lost |
+| --- | --- | --- | --- | --- |
+| control | 21 | 21 | 0.920 | **19/90,264** |
+| (b) 3× toll | **22** | **21 — FAILS band** | 0.903 | 2,571/87,325 |
+| (b) 2× toll | **23** | **22 — band edge** | 0.872 | 6,552/82,985 |
+
+1. **The trader is not immortal.** At 120,000 sim-days the control loses **21 ships and 19 routes**
+   (0.175 deaths/1k). The matrix's headline "0 ships and 0 cargo across 12,000 simulated days" —
+   and this document's own executive summary — is a **small-sample artifact of the 100-seed
+   baseline**, not a property of the game. The defect is real but smaller than stated.
+2. **The clear-day criterion is unstable at n=100.** It is a median of a discrete day number over a
+   wide distribution (control p25 18 / median 21 / p75 25), so ±1 day is noise. (b) at 3× looked
+   in-band at n=100 and fails at n=1,000. **`baseline-vet-t1605.json`'s 100-seed methodology is
+   under-powered to grade the [22, 30] target**; any R2 accept/reject must be run at 1,000 seeds.
+
+*Test ledger for (b) at 2× (run in the variant tree; control run the same way to separate rig noise):*
+- **FIXES `balance-targets`** — the headline red test at HEAD goes green.
+- `poverty-invariant` (10/10) and `lending-property` stay green. T-1605b holds.
+- **BREAKS, genuinely:** `balance-combat-survival` gains two failures — the parity cost ordering,
+  and **"spacers die" (fleet death rate 0.8 → 0.28/1k)**. Seizure *ends* encounters that used to
+  grind on into the R1 kill path, so the world gets **poorer but SAFER** — the opposite of R2's
+  intent. Also one `campaign-reach` and one `campaign-policies` scripted-seed failure.
+- Expected: `campaign-degraded` byte-identity pins move (any engine change moves them; re-pin
+  deliberately). Rig noise only: `campaign.test.ts` stdout test also fails in the control tree.
+
+**Recommendation: (b) cargo seizure at the 2× threshold, and NOT as R2's whole answer.** It is the
+only candidate that produces real cargo loss, it is robust to both the sighted and opt-out attacks,
+and it fixes the clear-day test — but only to the band's edge (22), and it *reduces* lethality. If
+the "spacers die" target is to be preserved, (b) needs a companion lever that restores the
+mortality it removes; that is a second step, not a bigger dial on this one. Deferred: (c) is the
+power-gamer's pick but needs a new persistent field + save migration and belongs in R4; it was the
+one candidate this bake-off could not simulate.
+
+- **Deferred alternative (requires reopening a constraint):** pay the victory — tier-scaled
+  bounty/salvage. This reopens the "don't touch combat maths" constraint (defensible: the
+  T-1603c table is tuned for *magnitudes*; combat-EV-negative-by-construction is a *sign*
+  problem, and victory proceeds are a new lever, not a retune). Only take this step if
+  R2's accepted form still leaves the fight stance strictly dominated in the R2 sweep —
+  check: does any non-fighter archetype ever rationally choose to fight?
+
+### R3 — Fix explorer funding inside Tour One
+
+*Independent of R1/R2 — can be worked in parallel, but land and sweep it separately.*
+
+- **Hypothesis:** the explorer 0% clear rate is a funding-rate problem (80-fuel sweeps as a
+  pure credit sink crowd out marker payments), and raising early-career explore EV — e.g.
+  better salvage rolls or reduced explore fuel cost during days ≤ 30 — lifts explorer to a
+  meaningfully nonzero clear rate without making explore farmable for the trader.
+- **Change (lever):** one knob — either the day-≤30 explore fuel cost or the salvage roll
+  band. Pick one; do not move both in the same step.
+- **Simulate:** full sweep; watch explorer *and* trader/smuggler (who must not start
+  preferring explore as an income exploit).
+- **Proves:** explorer clears ≥ ~0.4 with a clear-day median inside or near [22, 30];
+  explorer final credits don't balloon past the fighter; trader/gambler behavior unchanged.
+- **Disproves:** explorer still ≈ 0 (the sink is elsewhere — profile where its credits go
+  before day 30) or other archetypes pivot to explore-farming (lever too rich — bound it
+  to pre-marker-clear careers or shrink it).
+- **Supporting data:** explorer 0.00 clears yet 93,342 final credits and the *most*
+  encounters (40.2) — it earns fine over 120 days, it just can't front-load 25,000cr by
+  day 30. Tour One is the public demo; the exploration fantasy is the PRD's own §7.2
+  showcase vignette *set on Day 19, inside Tour One*, and it currently fails the tutorial
+  100% of the time. All three personas flagged this; two tied it to demo conversion.
+
+---
+
+## IMPORTANT
+
+### R4 — Predation pressure, redesigned as authored pursuers
+
+*Depends on R1's answer and R2/R2.5 landing first.*
+
+> **Re-scope note (2026-07-28):** R2.5's escalation ladder now owns "the world responds to
+> what you did". R4's remaining, non-overlapping half is "the world responds to what you
+> **have**" (the wealth-to-power ratio) — and the bake-off's power-gamer built the hoarder
+> policy that R4's acceptance calls for and found under-investment is *already* a bad trade
+> (final credits 10,970 vs the honest trader's 23,714, clear rate 0.80 vs 0.90). Re-read R4
+> against the ladder before starting it: it may collapse into "authored named pursuers as
+> content", with the wealth dial deleted.
+
+- **Hypothesis:** wealth-responsive pressure delivered as **legible, Flaw-driven authored
+  pursuers** (a Rattlesnake-grade grudge or a named predator that ignores the
+  [tier−1, tier+1] clamp when the wealth-to-power ratio is high) produces the "the rim
+  notices soft money" effect without creating a stay-poor/never-upgrade dominant line.
+- **Change (programmatic):** matchmaking-side only, per the matrix §6 constraint —
+  a pursuer encounter class whose `combat_run` is opposed at a penalty, gated on
+  credits-vs-fit ratio, fronted by named NPCs so the pressure is diegetic and learnable
+  rather than an invisible dial.
+- **Simulate:** full sweep + one adversarial policy added to the sim: a "pauper" variant
+  that deliberately hoards nothing and never upgrades, to prove under-investment is *not*
+  now optimal.
+- **Proves:** high-ratio archetypes (trader) see pursuer encounters and nonzero
+  consequences; banking the purse into fit measurably lowers pursuit (the self-correcting
+  property); the pauper policy does *not* outperform the trader; greedy (the control) does
+  not become unrecoverably worse than its 1.00 deaths/1k baseline.
+- **Disproves:** pauper wins (the power-gamer failure mode — shrink the ratio's rate effect,
+  keep only the pursuer-quality effect) or rich-but-fueled-down captains get stranded
+  (breaks T-1605b — add a fuel-state guard to pursuer eligibility).
+- **Supporting data:** matrix §6 open questions (liquid credits vs total assets; the
+  poverty-trap interaction) are decided by this step's design — record the choices here.
+
+### R5 — Repair the deeds/credits inversion
+
+- **Hypothesis:** the fighter's deed drought (14, the fewest, despite ADMIRAL rank money)
+  and the smuggler's death tax (0.75 deaths/1k for +11 deeds) are both incentive
+  misalignments: the progression spine (deeds → renown → tier) punishes the two most
+  engaged-with-risk styles. Adding combat-reachable deeds and/or softening the smuggler's
+  marginal mortality brings every archetype's deed rate into a band where no style is a
+  deed desert.
+- **Change:** two separate steps, swept separately —
+  (a) **content lever:** audit the 44 deeds for combat reachability; add or re-gate deeds a
+  fighting career actually triggers (the veteran policy proves the encounter-stance deeds
+  are reachable; the fighter simply never steers at them);
+  (b) **lever:** whatever R2/R4 landed on, check smuggler deaths/1k — if still ≥ 0.75,
+  tune the contraband/rim risk premium down one notch.
+- **Simulate:** full sweep; compare `deedCount.median` spread across archetypes.
+- **Proves:** fighter deeds ≥ ~20 (within reach of the fleet median) without its final
+  credits inflating; smuggler deaths/1k ≤ ~0.5 while keeping its deed lead (risk premium
+  preserved, tariff reduced).
+- **Disproves:** fighter deeds unmoved → the gap is policy (the sim fighter doesn't chase
+  deeds), not content — reclassify as a sim-fidelity fix, not a balance change.
+
+### R6 — Instrument Contract Competition in the sweep
+
+- **Hypothesis:** Contract Competition (PRD §2's named retention mechanic; errata E3 — NPCs
+  claim off the *player's* board, ≤ 1/dusk when co-located) is currently invisible in the
+  balance data and may not be biting the winning archetype at all.
+- **Change (sim/metrics only):** add columns to `packages/sim/src/balance/aggregate.ts` —
+  contracts lost to NPC claims per career, and the credit value of claimed contracts —
+  per archetype.
+- **Simulate:** re-run the sweep; no engine change, so goldens must be byte-identical.
+- **Proves/disproves:** this step only *measures*. If the trader loses ≈ 0 contracts to
+  competition, the PRD's most legible "economy fights back" mechanic is not reaching the
+  dominant style — feed that finding into a follow-on lever task.
+
+---
+
+## NICE-TO-HAVE
+
+### R7 — Escape-fatigue DC creep
+
+> **ABSORBED INTO R2.5 (2026-07-28).** The escalation ladder is this idea generalised from
+> the run stance to all three stances. **Do not build the reset-on-any-non-run form described
+> below** — the bake-off's power-gamer identified it as farmable (interleave one cheap
+> non-run stance to zero the counter, the wanted-level cooldown exploit). The ladder is immune
+> because every stance escalates and there is no reset action. Kept for the record only.
+
+- **Hypothesis:** cumulative DC creep on consecutive successful `combat_run` results within
+  a career (reset on any non-run stance) breaks the "escape as habit" pattern more cheaply
+  than R2's consequence roll. *Candidate mechanism for R2's bakeoff rather than a separate
+  step — listed here in case R2's chosen form under-delivers.*
+- **Simulate/criteria:** as R2.
+
+### R8 — Wire/story-engagement metric
+
+- **Hypothesis:** optimizing playstyles are silently skipping the emergent-narrative content
+  (storylets, hangout, NPC chains) the game is selling. **Measure-only:** add per-archetype
+  counters for storylet fires, hangout visits, NPC-chain touches to the aggregate. If the
+  trader's numbers are near zero, that is a retention finding for the design side.
+
+### R9 — Explain `greedy`'s ambient deaths
+
+- **Hypothesis:** 12 ships lost at only 2.0 encounters/career means the control archetype is
+  dying to something other than encounter outcomes (unrepaired hull attrition, stranding).
+  **Measure-only:** itemize its loss causes in one instrumented run. If losses are
+  encounter-independent noise that could also hit players, escalate; if they're the
+  intended cost of buying nothing (its role as the cautionary control), record and close.
+
+---
+
+## Sequencing at a glance
+
+```
+R1 (measure, DONE) ──► R0a (fix the tribute oracle) ──► R0b (re-pin baseline @1k seeds)
+                                                          └─► R2 (near-peer pirates + table)
+                                                                └─► R2.5 (ladder + demands)
+                                                                      └─► R4 ──► R5b
+R3 (explorer)  — parallel, separate sweep
+R6 (instrument) — any time, goldens-identical
+R5a (fighter deeds) — after R2 lands
+R7 — ABSORBED into R2.5.  R8/R9 — opportunistic
+```
+
+One change per step. One sweep per change. Re-pin the baseline only on an accepted
+hypothesis, and append the result under the step before moving on.
+
+**Two standing amendments from the R1/bake-off work (2026-07-28), binding on every step below:**
+
+1. **Grade at 1,000 seeds × 120 days, not 100.** The 100-seed arm cannot resolve the
+   clear-day target — a candidate passed at n=100 and failed at n=1,000, and the control's
+   "0 ships / 0 cargo" headline is itself a small-sample artifact (21 ships and 19 routes lost
+   at n=1,000). **This is R0b, and it gates R2.**
+2. **A rejected hypothesis is a result.** R1's was rejected and produced the re-scope that
+   this document now runs on. Record outcomes under the step, including the ones that say
+   "the premise was wrong".
