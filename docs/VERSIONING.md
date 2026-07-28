@@ -75,7 +75,8 @@ stage, it lives in the git tag, and it must not be inflated.
 
 | stage | tag | means | entry criteria |
 | --- | --- | --- | --- |
-| **alpha** | `v0.5.0-alpha.N` | internal only; systems still in flux | — **we are here** |
+| **pre-alpha** | *(no tag)* | nobody has played this build end to end | — **we are here** |
+| **alpha** | `v0.5.0-alpha.N` | internal only; systems still in flux | **the owner's own UAT passes** — played start to finish, holds together |
 | **beta** | `v0.5.0-beta.N` | feature-complete for the release scope; external testers | no known-red tests; balance graded against a CURRENT baseline; N-series complete |
 | **rc** | `v0.5.0-rc.N` | we would ship this if nothing new appears | beta feedback triaged; only blocker fixes since; `RELEASE-CHECKLIST.md` fully green incl. §G sign-off |
 | **release** | `v1.0.0` | public | the above, plus the decision to ship |
@@ -86,7 +87,15 @@ step. It is not. A release *candidate* is a claim that the build is shippable pe
 final validation, and making that claim while the balance model is mid-rebuild would be
 false — the kind of false that gets a build handed to someone with the wrong expectation.
 
-**What it takes to leave alpha**, concretely, so the gate is checkable rather than a
+**What it takes to leave PRE-ALPHA: the owner's one-man UAT.** Sit down and play the
+build through — not a scripted driver, not a sim policy, the actual cockpit. It is a real
+gate rather than ceremony, and the day this ladder was written supplies the argument: the
+yard had been selling component tiers 1-7 for **zero credits** (a 12,000cr fit free on
+day 1, a permanent ~92% cut to the game's primary constraint). No sweep caught it, because
+a policy never thinks *"wait, that should cost something"*. A human opening the shipyard
+screen once would have.
+
+**What it takes to leave ALPHA**, concretely, so the gate is checkable rather than a
 feeling:
 
 1. The **N-series** lands — the 30 NPCs reach player parity (`BALANCE-REDESIGN-WORKLIST.md`).
@@ -107,6 +116,23 @@ release: the balance model is mid-rebuild and the 30-NPC field is eight passes f
 player parity (`BALANCE-REDESIGN-WORKLIST.md`, N-series). `0.5.0` says "the shape is
 real, the systems are moving." Move it as those tracks land; do not move it to `1.x`
 until the game actually ships.
+
+### GitHub Releases — adopt at BETA, not before
+
+**The repo is public** (`github.com/ArchitectVS7/SpacerQuest`), so a Release is not a
+neutral filing action: it lands in the Releases tab, notifies watchers, and reads to a
+passerby as *"the game is out."* There is a press one-pager and a Steam achievements slate
+in `docs/`; a trail of pre-alpha releases would be the public face of a launch that has
+not happened.
+
+Tags already answer the only question we have today — *which code was that?* A Release
+adds **distribution**: a durable URL and an attached installer. That is worth exactly
+nothing while the only user is the person who compiled it.
+
+**Adopt at the beta boundary** — the first build handed to someone who is not you. Then a
+Release earns its keep, and the rules are: tick **"Set as a pre-release"** so it cannot be
+mistaken for a launch, attach the `electron-builder` artefacts, and let the notes be the
+changelog for that stage.
 
 ## 2. Save schema version — a plain integer, currently `9`
 

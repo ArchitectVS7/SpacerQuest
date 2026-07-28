@@ -1,11 +1,12 @@
 # Release checklist — Rimward `0.5.0`, tag `v0.5.0-rc1`
 
-> ## ⛔ NOT YET APPLICABLE — the build is at ALPHA
+> ## ⛔ NOT YET APPLICABLE — the build is PRE-ALPHA
 >
-> This document is the **release-candidate ceremony**. It is correct, and it is not the
-> next step. An RC asserts *"we would ship this if nothing new appears"*; the Rimward
-> redesign has the 30-NPC field eight passes from player parity and two known-red balance
-> targets, so that claim would be false today.
+> This document is the **release-candidate ceremony**. It is correct, and it is several
+> stages away. An RC asserts *"we would ship this if nothing new appears"*. The Rimward
+> redesign has the 30-NPC field eight passes from player parity, two known-red balance
+> targets, and — the plain one — **nobody has played this build end to end yet**. The next
+> milestone is not a tag; it is the owner's own UAT.
 >
 > **Do not run `npm run release:rc`.** It would derive a `v0.5.0-rc1` tag that overstates
 > the build. The stage ladder and the concrete criteria for leaving alpha are in
