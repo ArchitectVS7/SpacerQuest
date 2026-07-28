@@ -948,10 +948,20 @@ increase their trade profit."*
 - **Change (programmatic):** generate encounters on NPC jumps; give the NPC a stance
   (pay with credits, pay with cargo, fight, flee) resolved by the SAME combat rules;
   apply damage, repair and — the sharp end — **ship loss**.
-- **Open design question to settle IN this step, not before:** what happens when an NPC
-  dies? Retire the captain, respawn a successor, or leave the slot empty? The player has
-  succession; the roster is a fixed cast of 30 with authored names and bond hooks, so
-  "delete the captain" has content consequences.
+- **SETTLED (owner, 2026-07-28): an NPC death is PERMANENT. No succession, no
+  replacement, no respawn.** The player gets succession; an NPC does not. The framing is
+  *"in many real-world multiplayer games, sometimes a player quits"* — the seat empties
+  and stays empty. Consequences to build deliberately rather than discover:
+  - **The field shrinks over a career.** Contract competition falls, and the Honor List
+    (N6) loses contenders. That is the intended fiction, not drift — but N8 must measure
+    the shrink rate, because a roster that empties by day 60 is a different game from one
+    that loses two captains in 120 days.
+  - **Authored content attached to the dead.** The cast carries bond hooks, NPC chains and
+    fence/lender roles (Penny Wise, Smuggler Ray, the Sage). Killing the lender must not
+    strand the loan verb. Either exempt the service NPCs from mortality or make their
+    absence a real consequence — decide per NPC, and say which at the definition site.
+  - **A dead captain's record stays** (for the wire, the Honor List's history and any
+    grudge the player still carries); it is marked dead, not deleted.
 - **Simulate:** full sweep + NPC deaths/1k days beside the player's.
 - **Proves:** NPCs lose ships at a rate in the same order as the player's archetypes;
   contract competition drops when captains die; the wire narrates it.
@@ -1001,6 +1011,20 @@ increase their trade profit."*
   only warranted as a **capstone after a series of green smoke tests**.
 - **Build:** (a) a differ that compares two sweep aggregates and reports what moved and
   by how much; (b) a checkpoint extractor; (c) the staged runner.
+- **Fixtures live in `docs/balance/smoke/`** (folder and contract established
+  2026-07-28 — see its README). Every fixture records `productVersion`,
+  `saveSchemaVersion`, a **`rulesFingerprint`**, and its sweep provenance.
+- **VERSIONED BY A DERIVED FINGERPRINT, NOT A DECLARED NUMBER** (`docs/VERSIONING.md`
+  §3). The fingerprint is a hash over the sources that decide outcomes
+  (`packages/content/src` + the engine's rule modules), so changing a tribute constant
+  moves it without anyone remembering to. **A stale fingerprint fails loudly and is never
+  silently used** — a smoke run against another ruleset's checkpoints reports green about
+  a game that no longer exists, which is worse than no test at all.
+- **Each smoke tier seeds a best-guess SPREAD of progression across the 30 NPCs** (and
+  the player), so a tier exercises a realistic field rather than 31 identical captains.
+  The first spreads are estimates; **every capstone run harvests real milestone samples
+  to replace them**, so the fixtures get truer with each capstone instead of staying at
+  whatever was guessed on day one.
 - **THE HONEST CAVEAT, which must be written into the rig itself:** you cannot *start* a
   career at day 21 without simulating days 1-20, so the mid-game tiers need SYNTHESIZED
   states. That is fine for a breakage detector and **must never be used to grade
