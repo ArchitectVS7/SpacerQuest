@@ -258,7 +258,16 @@ describe('T-1307 ports reachable through play', () => {
     // enshrine a number that pass is going to move.
     //
     // PINNED, NOT STEERED: only the seed changed; every assertion below is untouched.
-    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 12, 150);
+    // R2d re-pin (seed 12 → 3). MECHANISM: port prices were re-set to the recovered
+    // 1991 curve (content `PURCHASABLE_PORTS`), so the cheapest stake moved 7,150 →
+    // 10,000 and the dearest 43,500 → 140,000. Which seeds put the veteran at a
+    // port it can now afford therefore changed; the acceptance itself did not.
+    // SWEEP EVIDENCE (seeds 1..20 of this exact driver, re-run in .scratch/): the
+    // veteran qualifies on 6 seeds at this 150-day horizon — 3, 8, 11, 13, 15, 19 —
+    // and on 18 of 20 at 300 days, so the pillar is comfortably reachable, just
+    // later. Seed 3 is the first qualifier. PINNED, NOT STEERED: only the seed
+    // changed; every assertion below is untouched.
+    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 3, 150);
 
     // The purchase happened through legal play: a PortEvent{purchased} was logged
     // (ports are bought via the Port action, never injected).

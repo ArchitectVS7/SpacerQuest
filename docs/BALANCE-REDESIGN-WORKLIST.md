@@ -555,7 +555,7 @@ veteran, smuggler and explorer moved.
   poorer, the veteran (6,359cr median) can no longer reach the cheapest 7,150cr port,
   and no seed qualifies at 150 OR 300 days. Owned by the port re-pricing step below.
 
-### R2d — Re-price ports to the 1991 curve (PENDING)
+### R2d — Re-price ports to the 1991 curve (SHIPPED 2026-07-28)
 
 Recovered from the original Apple II source in this repo's own history
 (`7ca606d7^:SQ/SP.BANK`, the live port registry; `Decompile/Source-Text/SP.REAL.txt`,
@@ -575,6 +575,25 @@ are a flat shelf, not a ladder** — 13 of 14 sit between 7,150 and 19,000, so a
 can buy one can buy twelve, and there is no race. The 1991 curve is linear 10,000 ->
 140,000 and lands exactly on the owner's stated goal: the cheapest reachable by ~62%,
 the second by precisely the top 50%, the best by 3%.
+
+**CORRECTION TO THE R2c ENTRY ABOVE.** R2c recorded that the trade-in fix had made
+ports unreachable — "no seed qualifies at 150 OR 300 days". **That was a measurement
+error, not a regression.** The probe used the wrong action shape (`buy-stake` for
+`buy`) and REPLACED the policy's actions instead of appending to them, so it never
+bought anything. Re-run faithfully, and *after* the re-pricing: the veteran qualifies
+on 6 of 20 seeds at 150 days (3, 8, 11, 13, 15, 19) and 18 of 20 at 300; the trader on
+18 of 20 at 150. Ports were always reachable. The `campaign-reach` test needed only a
+seed re-pin (12 → 3), which is the third time that test has been re-pinned for a
+content change and is its documented pattern.
+
+**Cost, stated at the definition site:** income is unchanged (the aggregate ceiling has
+no headroom), so payback stretches from [110, 150] dusks to [154, 1050]. A stake is now
+a status-and-control asset rather than an investment that repays inside a career. The
+"hub pays a premium" invariant was re-expressed: under a 14x price ladder against a
+~4.5x income spread, payback is no longer monotone in traffic, so the pinned property
+is now the plainer and now-true-by-construction one — **the dearest ports are the
+busiest ones**. Protocol replay goldens moved (port prices ride the F10 port ledger in
+the state summary) and were regenerated deliberately.
 
 Also recovered: **the original port was a fuel depot** — 10cr/unit, 20,000-unit
 inventory the owner stocks, plus an interest-bearing savings account. Income was
