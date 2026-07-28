@@ -4,6 +4,7 @@ import {
   SeededRng,
   createInitialState,
   endDay,
+  quotePort,
   quoteShipyard,
   rollDawnHand,
   shipyardFailure,
@@ -18,6 +19,7 @@ import {
 import {
   DEMO_FINAL_DAY,
   NEMESIS_SYSTEM_ID,
+  PURCHASABLE_PORTS,
   STAR_SYSTEMS,
   isGatedDestination,
 } from '@spacerquest/content';
@@ -1303,6 +1305,44 @@ describe('T-1703 · demo gate — legal-actions and the summary', () => {
     expect(demo.edition).toBe('demo');
     expect(demo.demoDaysRemaining).toBe(3);
     expect(wireRoundTrip(demo)).toEqual(demo);
+  });
+
+  it('the summary publishes every port stake still for sale, priced (T-1604a F10)', () => {
+    // Before this field the wire said only which stakes you ALREADY OWN, so a
+    // headless client could not learn that the property tier exists, where a
+    // stake is sold, or what one costs — `Port/buy` is advertised only once you
+    // are already standing in a purchasable system with the price covered. A UGT
+    // ladder ran 600 in-game days, peaked at 12,680cr against a 7,150cr cheapest
+    // stake, and never once coincided with a port it could buy.
+    const summary = buildStateSummary(createInitialState(1711));
+
+    // every core port is on offer at the start of a career, none owned yet
+    expect(summary.ports).toEqual([]);
+    expect(summary.portOffers).toHaveLength(PURCHASABLE_PORTS.length);
+
+    // the offer carries the price the purchase gate will actually charge
+    const cheapest = [...summary.portOffers].sort((a, b) => a.price - b.price)[0];
+    expect(cheapest.price).toBe(Math.min(...PURCHASABLE_PORTS.map((port) => port.purchasePrice)));
+    const def = PURCHASABLE_PORTS.find((port) => port.systemId === cheapest.systemId);
+    expect(def).toBeDefined();
+    expect(cheapest.price).toBe(def?.purchasePrice);
+    // and it is the SAME number the engine's own purchase quote charges, so the
+    // published ledger cannot drift from the gate that spends the credits
+    const atPort = createInitialState(1711);
+    atPort.player.currentSystemId = cheapest.systemId;
+    expect(quotePort(atPort, cheapest.systemId).cost).toBe(cheapest.price);
+
+    // a stake you own leaves the offer list and appears in `ports`
+    const owned = createInitialState(1712);
+    owned.player.credits = 100_000;
+    owned.player.currentSystemId = cheapest.systemId;
+    owned.player.ports.push({ systemId: cheapest.systemId, purchaseDay: owned.day });
+    const after = buildStateSummary(owned);
+    expect(after.ports).toContain(cheapest.systemId);
+    expect(after.portOffers.map((offer) => offer.systemId)).not.toContain(cheapest.systemId);
+    expect(after.portOffers).toHaveLength(PURCHASABLE_PORTS.length - 1);
+
+    expect(wireRoundTrip(after)).toEqual(after);
   });
 
   it('an apply-action a demo driver forces anyway comes back as a typed refusal', () => {

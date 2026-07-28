@@ -22,6 +22,7 @@ import {
   LOAN_MAX_PRINCIPAL,
   LOAN_MIN_PRINCIPAL,
   NEMESIS_SYSTEM_ID,
+  PURCHASABLE_PORTS,
   STAR_SYSTEMS,
   YARD_COMPONENT_TIER_PRICES,
   isGatedDestination,
@@ -42,6 +43,7 @@ import {
   deserializeState,
   eligibleStorylets,
   endDay,
+  eraPortIncomeMultiplier,
   quotePort,
   shipyardFailure,
   serializeState,
@@ -188,6 +190,16 @@ export interface StateSummary {
   /** T-1307 · Owned port stakes, by system id — the purchasable-property income
    *  ledger (each accrues per-dusk launch-fee income). Read by the harness/T-1405. */
   ports: number[];
+  /** T-1604a F10 · The port stakes that are STILL FOR SALE, with what each costs
+   *  and what it pays back per dusk. `ports` above says only what you already own,
+   *  so before this field a protocol client could not find out that stakes exist,
+   *  where they are sold, or what they cost: `Port/buy` is advertised only while
+   *  you are already standing in a purchasable system with the local price
+   *  covered, so the whole property tier was discoverable only by coincidence.
+   *  The UI reads the same content table to draw its ledger pane; this publishes
+   *  it on the wire so a headless client can plan a purchase instead of stumbling
+   *  into one. Excludes systems already owned (those are in `ports`). */
+  portOffers: { systemId: number; price: number; duskIncome: number }[];
   /** The contract currently in the hold, or null. */
   activeContract: {
     destination: number;
@@ -348,6 +360,18 @@ export function buildStateSummary(state: GameState): StateSummary {
     crew: player.crew.map((member) => member.roleId),
     crewCapacity: crewCapacity(ship),
     ports: player.ports.map((port) => port.systemId),
+    // T-1604a F10 · every stake still for sale, priced. `eraPortIncomeMultiplier`
+    // is the same era lever quotePort() applies, so the published duskIncome is
+    // what the stake would actually pay today rather than the raw content number.
+    portOffers: PURCHASABLE_PORTS.filter(
+      (port) => !player.ports.some((owned) => owned.systemId === port.systemId),
+    ).map((port) => ({
+      systemId: port.systemId,
+      price: port.purchasePrice,
+      duskIncome: Math.round(
+        port.baseDuskIncome * eraPortIncomeMultiplier(state.eraEvent, port.systemId),
+      ),
+    })),
     activeContract: contract
       ? {
           destination: contract.destination,
