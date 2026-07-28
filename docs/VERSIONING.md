@@ -21,8 +21,36 @@ lie. This file is the one place that says which is which.
   may change without ceremony — which is the literal truth while the balance model and
   the NPC architecture are being rebuilt. **`1.0.0` is reserved for public release** and
   must not be used before it.
-- **MINOR** bumps when a track completes (the N-series landing is a minor bump).
-  **PATCH** bumps for fixes and content within a track.
+### When it changes — NOT every commit
+
+**The product version stamps BUILDS PEOPLE RECEIVE, not commits.** A number that moved
+with every commit would stop being able to answer the only question it exists for: *"I
+hit a bug — which build were you running?"* You cannot say "0.5.0 has that bug" if
+`0.5.0` was one commit out of forty.
+
+**Nothing in this repo bumps it automatically, by design.** `scripts/tag-rc.mjs` only
+READS the root manifest and derives the tag from it (`v0.5.0-rc1`), refusing outright if
+the version is not a clean `x.y.z`. Bumping is a deliberate act, once per release cycle,
+as its own commit immediately before tagging.
+
+So the working tree between releases is *"0.5.0 plus commits"*, and the thing that
+identifies an exact tree is the **git commit**, not the version field. That division of
+labour is the point: the version answers "which release", the SHA answers "which code".
+
+| | bump | example |
+| --- | --- | --- |
+| **PATCH** `0.5.0 → 0.5.1` | a release with fixes or content inside the current track | a balance re-pin cut for a playtester |
+| **MINOR** `0.5.0 → 0.6.0` | a release after a track lands | the N-series reaching NPC parity |
+| **MAJOR** `0.x → 1.0.0` | public release, once | not yet |
+
+A worked example from the day this standard was written: **ten commits landed — an
+economy bug fix, a combat payout, a port re-pricing, two UI features, an engine
+refactor — and the version correctly did not move once**, because no build went to
+anyone. It moved exactly once, from `1.0.0` to `0.5.0`, and that was a re-versioning
+decision rather than a release.
+
+Under `0.y.z` semver also grants explicit licence for the public surface to change
+without ceremony, so none of this needs agonising over while the redesign is in flight.
 - **Prerelease suffixes live in the git TAG, never in the manifests** — e.g. tag
   `v0.5.0-rc1` against manifests reading `0.5.0`. This is not stylistic: electron-builder
   derives the Windows/macOS binary version from `packages/desktop/package.json`, NSIS
