@@ -68,6 +68,25 @@ decision rather than a release.
 Under `0.y.z` semver also grants explicit licence for the public surface to change
 without ceremony, so none of this needs agonising over while the redesign is in flight.
 
+### Changing it — six manifests, one doc, and the lockfile
+
+**Editing the root `package.json` alone does not propagate.** Verified by doing it: the
+root-only bump fails **seven** tests in `packages/ui/src/__tests__/version.test.ts`. The
+full move is:
+
+1. **All six manifests** — root plus `packages/{content,engine,sim,ui,desktop}`. The test
+   asserts they agree; it does not derive them.
+2. **`docs/RELEASE-CHECKLIST.md`** — it names the version in its title and §A, and the
+   test also pins its tag to `v<version>-rc1`. The doc is held to the manifest on purpose,
+   so a checklist can never describe a build that no longer exists.
+3. **`package-lock.json`** — `npm install --package-lock-only`. **Nothing tests this**, and
+   it is the one that silently rots: the 1.0.0 → 0.5.0 move left all five workspace entries
+   reading `1.0.0` in the lockfile and every test stayed green.
+
+**No action needed** for the bundle: Vite reads the root manifest at config time and
+substitutes `__SQ_VERSION__`, so a rebuild picks it up. `scripts/tag-rc.mjs` likewise
+derives its tag from the root and needs no edit.
+
 ### Prerelease stage — and we are at ALPHA
 
 `0.5.0` says how mature the code is. It does **not** say how validated it is. That is the
