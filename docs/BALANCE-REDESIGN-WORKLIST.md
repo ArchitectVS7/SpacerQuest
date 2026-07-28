@@ -497,6 +497,89 @@ Swept seeds 1..20: **12 qualify against the previous sweep's 9**, so the organic
 *more* reachable, not less. Only `balance-targets` (trader clear day 21) remains red; that is
 R2.5's target, not this step's.
 
+### R2c — Pay for the guns, and pay for winning (2026-07-28, SHIPPED)
+
+Three changes landed together, at the owner's direction, because the first one alone
+left an archetype non-viable.
+
+**1. The yard trade-in ladder was indexed by STRENGTH, not by owned TIER.** A live
+economy bug in the shipping build. `tradeInValue` flattened at 3,000cr for any
+strength >= 9, and `buy-component-tier` sets `strength = tier * 10` — so the
+trade-in credit exceeded the list price of tiers 1-7 and **every mid-ladder upgrade
+was free**. Measured on a fresh day-1 save with a 1,000cr purse: drives, navigation,
+lifeSupport and robotics all to tier 7 (12,000cr of list price) for **0 credits**,
+cutting the jump-fuel bill ~92% (distance-10: 120 fuel -> 10) permanently. Walking
+one component 1->9 cost 9,000 instead of 16,525 — a **7,525cr subsidy per
+component**. Values unchanged; only the indexing is corrected, so junker-start
+components (strengths 1-9) price exactly as before. The sim's private copy of the
+ladder — which had inherited the same mistake, and so agreed with the engine for the
+wrong reason — was deleted; it now asks `quoteShipyard`.
+
+**2. It exposed that combat has no income.** Removing the subsidy took the fighter's
+median career credits from **155,059 to 2,825** (its own operating reserve). The
+fighter was never a viable economy; it was a subsidised one. `resolveEncounter`
+granted no credits under any resolution, so `combatEv` was negative BY CONSTRUCTION.
+A destroyed interceptor now pays `COMBAT_SALVAGE_PER_TIER` (150/tier — the rate the
+NPC side has always paid its own combat wins, `npc.ts` `executeCombat`). Fighter
+combat EV: **negative-by-construction -> +350 median**. `combatEv` in
+`aggregate.ts` now reports salvage minus cost; pre-R2c figures are negated costs and
+are NOT comparable.
+
+**3. And it exposed that the fighter never paid its debts.** It bought kit before
+remitting to the Guild — the only competent policy that did. Survivable while kit was
+free; a debt spiral once it was not (seed 1 x 300 days: **4,253,290cr owed**). Kit is
+now gated on `debt === 0`, the rule every other competent policy already follows.
+Same seed/horizon: debt **4,253,290 -> 0**, credits **2,825 -> 584,456**, modules
+1 -> 3, component tiers 4 -> 9, `shieldAbsorbedPoints` 0 -> 86.
+
+*Measured and rejected on the way:* gating only the component ladder and letting
+special equipment through (ASTRAXIAL_HULL is 100,000cr — the spiral came straight
+back); a `credits >= debt + reserve` rule (stricter early, fitting rate 5/15 -> 4/15);
+widening `balance-combat-survival`'s window 60 -> 90 days (moved preparation-saves to
+48.0% against a 50% bar and the death rate to 0.74 against 0.8 — 60 is load-bearing).
+
+**Baseline of record: `docs/balance/baseline-r2c-final.json`** (1,000 seeds x 120
+days). trader / gambler / greedy / trader-degraded rows byte-identical; fighter,
+veteran, smuggler and explorer moved.
+
+**KNOWN RED, all three stated honestly rather than papered over:**
+- `balance-targets` — trader clears day 21 against [22, 30]. **Pre-existing at HEAD**,
+  untouched by this work, and R2.5's target.
+- `balance-combat-survival` "Auto-Repair" — **caused by this change.** The fighter now
+  kits out around day 60 instead of day 20, so careers-with-a-module inside the
+  60-day window is exactly 5 of 15 against a `> 5` bar (7 at 75 days, 8 at 90+). The
+  behavior change is intended; the threshold was calibrated against the subsidised
+  economy. **Deliberately NOT loosened here** — that is a design call, not a
+  mechanical re-pin.
+- `campaign-reach` T-1307 ports — **caused by this change.** The fleet is honestly
+  poorer, the veteran (6,359cr median) can no longer reach the cheapest 7,150cr port,
+  and no seed qualifies at 150 OR 300 days. Owned by the port re-pricing step below.
+
+### R2d — Re-price ports to the 1991 curve (PENDING)
+
+Recovered from the original Apple II source in this repo's own history
+(`7ca606d7^:SQ/SP.BANK`, the live port registry; `Decompile/Source-Text/SP.REAL.txt`,
+"Space Port Accounts & Fuel Depot Ltd"). **The currency needs no conversion: our
+`YARD_COMPONENT_TIER_PRICES` IS the 1991 ladder**, tier for tier (`SQ/SP.YARD.5`:
+"Atomic Missile 50cr ... Astral ASDRS 10000cr").
+
+| | ours | % of field affording | OG 1991 | % affording |
+| --- | --- | --- | --- | --- |
+| cheapest | 7,150 | 65% | 10,000 | 62% |
+| 2nd | 8,600 | 63% | 20,000 | **50%** |
+| dearest | 43,500 | 30% | 140,000 | **3%** |
+| all 14 | 211,750 | | 1,050,000 | |
+
+Measured against the real field (30 NPCs + the player, n=1,860, day 120). **Our prices
+are a flat shelf, not a ladder** — 13 of 14 sit between 7,150 and 19,000, so anyone who
+can buy one can buy twelve, and there is no race. The 1991 curve is linear 10,000 ->
+140,000 and lands exactly on the owner's stated goal: the cheapest reachable by ~62%,
+the second by precisely the top 50%, the best by 3%.
+
+Also recovered: **the original port was a fuel depot** — 10cr/unit, 20,000-unit
+inventory the owner stocks, plus an interest-bearing savings account. Income was
+TRAFFIC-driven. Ours pays a flat `baseDuskIncome` whether or not anyone visits.
+
 ### R2.5 — The escalation ladder (the world remembers what you did)
 
 *Depends on R2's pirate table landing — the ladder needs authored lines to speak through.*

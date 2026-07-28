@@ -90,19 +90,27 @@ const UNCHANGED_POLICIES = [
  *    than "unaffected in this window" — the 1,000-seed sweep confirms every other
  *    policy row is byte-identical, which is the control proving the diff is this
  *    function alone.
+ *
+ * 4. R2c — three changes landed together (see the worklist R2c result): the yard
+ *    trade-in ladder is indexed by owned TIER instead of raw strength (it used to
+ *    make every mid-ladder upgrade free), a destroyed interceptor now pays wreck
+ *    salvage, and the fighter clears the Guild marker before buying kit.
+ *    MOVED: ALL SEVEN. Note that even the policies whose BEHAVIOR is unchanged
+ *    (trader, gambler, greedy — byte-identical rows in the 1,000-seed sweep) move
+ *    here, because `CombatEncounterRecord` gained a `salvageCredits` field and
+ *    this fingerprint hashes the whole report JSON, shape included. A moved hash
+ *    is therefore NOT by itself evidence of a behavior change at this step; the
+ *    sweep is.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  // R0a
-  trader: 'd7223f6ad5d95edc',
-  // R0a, then R2a
-  fighter: 'e2395367a39b41fc',
-  explorer: 'daf1070d7cead726',
-  // R2a
-  veteran: 'ecc8c84bb5e09622',
-  smuggler: '14d763cf29110467',
-  gambler: '4cd7cdfe4cec356e',
-  greedy: 'd0dbf1836f6246e9',
+  trader: '467a83d44e32daf0',
+  fighter: 'b6ef1dc02f374170',
+  explorer: '90d35d3c4836eef0',
+  veteran: 'ece2f5c30e0da953',
+  smuggler: 'b480fc6f603a673b',
+  gambler: 'de62c3103de74d72',
+  greedy: '8a150df20e85b2e1',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

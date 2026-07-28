@@ -93,6 +93,10 @@ import {
 /** See SWEEP PROVENANCE. Explicit and fixed — never a hunt range. */
 const SEEDS = Array.from({ length: 15 }, (_, index) => index + 1);
 /** See SWEEP PROVENANCE for why 60 and not 35. */
+// R2c NOTE — DO NOT WIDEN THIS WINDOW. 60 days is load-bearing for the two
+// distribution targets below (preparation-saves and fleet death rate). Widening to
+// 90 to recover the Auto-Repair fitting rate was measured and REVERTED: it moved
+// preparation-saves to 48.0% (bar 50%) and the death rate to 0.74/1k (bar 0.8).
 const DAYS = 60;
 /** See SWEEP PROVENANCE for why these four. */
 const POLICIES: readonly SimPolicyName[] = ['fighter', 'smuggler', 'veteran', 'explorer'];

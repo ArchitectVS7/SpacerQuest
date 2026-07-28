@@ -142,14 +142,22 @@ export function combatCost(record: CombatEncounterRecord): number {
 }
 
 /**
- * THE combat-EV definition. Negative-or-zero by construction: the engine pays
- * nothing for winning a fight (no bounty, no wreck salvage — `resolveEncounter`
- * moves disposition and reputation only). That is a finding, not a bug in this
- * function; the memo records it and T-1603c owns the call. What the baseline
- * therefore compares is the MAGNITUDE of the loss across parity/preparation cells.
+ * THE combat-EV definition: what the encounter PAID minus what it COST.
+ *
+ * R2c CHANGED THE SIGN CONVENTION, deliberately. This used to read `-combatCost(...)`
+ * and its comment said the value was "negative-or-zero by construction: the engine
+ * pays nothing for winning a fight". That was true and it was the defect — an
+ * archetype whose whole strategy is combat could never be solvent, which only
+ * stayed invisible while a trade-in bug was handing out free ship components (see
+ * `YARD_COMPONENT_TRADE_IN`). Now a destroyed interceptor yields salvage, so the
+ * payout side is real and this function reports a genuine EV that CAN be positive.
+ *
+ * A consequence worth stating for anyone diffing baselines across R2c: every
+ * `combatEv` figure recorded before R2c is a negated cost, not an EV, and the two
+ * are not comparable on a cell where salvage was earned.
  */
 export function combatEv(record: CombatEncounterRecord): number {
-  return -combatCost(record);
+  return record.salvageCredits - combatCost(record);
 }
 
 /** A fight the player won on the field: the interceptor was destroyed or slipped

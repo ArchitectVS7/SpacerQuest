@@ -1,4 +1,8 @@
-import { SPECIAL_EQUIPMENT, YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
+import {
+  SPECIAL_EQUIPMENT,
+  YARD_COMPONENT_TIER_PRICES,
+  YARD_COMPONENT_TRADE_IN,
+} from '@spacerquest/content';
 import {
   GameEvent,
   GameState,
@@ -28,17 +32,31 @@ function isComponentId(value: unknown): value is ShipComponentId {
   return typeof value === 'string' && COMPONENT_IDS.includes(value as ShipComponentId);
 }
 
+/**
+ * What the yard allows against the fit being traded in.
+ *
+ * TWO SCALES, which is the whole point — see `YARD_COMPONENT_TRADE_IN` (content)
+ * for the measured bug this split fixes:
+ *   - **Junker sub-tier range, strengths 1..9.** A component the yard has never
+ *     touched. Indexed by strength, exactly as before, so every junker-start
+ *     component (hull, weapons, shields, cabin) is priced byte-identically to
+ *     the pre-fix behavior.
+ *   - **Bought range, strength >= 10.** `applyShipyardMutation` sets
+ *     `strength = tier * 10`, so the OWNED TIER is `floor(strength / 10)` and the
+ *     ladder is indexed by that. Previously this range fell through to a flat
+ *     3,000 catch-all, which exceeded the list price of tiers 1-7 and made them
+ *     free — on a fresh save the four components that start at strength 10
+ *     (drives, navigation, lifeSupport, robotics) could all be taken to tier 7
+ *     for 0 credits.
+ *
+ * Clamped at tier 9 so a titanium-boosted hull (strength + 10, up to 100) cannot
+ * index past the end of the ladder.
+ */
 function tradeInValue(strength: number): number {
   if (strength < 1) return 0;
-  if (strength === 1) return 25;
-  if (strength === 2) return 50;
-  if (strength === 3) return 100;
-  if (strength === 4) return 200;
-  if (strength === 5) return 400;
-  if (strength === 6) return 700;
-  if (strength === 7) return 1000;
-  if (strength === 8) return 2000;
-  return 3000;
+  if (strength < 10) return YARD_COMPONENT_TRADE_IN[strength - 1];
+  const ownedTier = Math.min(9, Math.floor(strength / 10));
+  return YARD_COMPONENT_TRADE_IN[ownedTier - 1];
 }
 
 function componentTierCost(state: GameState, component: ShipComponentId, tier: number): number {

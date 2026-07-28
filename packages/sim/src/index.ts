@@ -362,6 +362,12 @@ export interface CombatEncounterRecord {
   /** Σ `TributePaid.amount` — the talk-down price actually handed over (T-1202
    *  margin-shaved, so this is the paid figure, not `TributeDemanded.amount`). */
   tributeCredits: number;
+  /** R2c · `EncounterResolved.salvageCredits` — wreck salvage the player was PAID
+   *  for destroying the interceptor (content `COMBAT_SALVAGE_PER_TIER` x tier).
+   *  This is the first and only credit INFLOW an encounter can produce, and it is
+   *  why `combatEv` is no longer negative by construction. 0 on every resolution
+   *  but 'defeated'. */
+  salvageCredits: number;
   /** Σ `ContrabandConfiscated.fine` — a patrol scan only ever fires inside an
    *  encounter (`patrol.ts`), so the fine is an encounter cost. */
   fineCredits: number;
@@ -960,6 +966,7 @@ function ingestBalanceRecords(
         rounds: 0,
         creditsDelta: 0,
         tributeCredits: 0,
+        salvageCredits: 0,
         fineCredits: 0,
         successionCredits: 0,
         travelCompleted: false,
@@ -1001,6 +1008,7 @@ function ingestBalanceRecords(
       }
     } else if (event.type === 'EncounterResolved') {
       if (tracker.openEncounter?.encounterId === event.encounterId) {
+        tracker.openEncounter.salvageCredits += event.salvageCredits ?? 0;
         // Everything but a player flight resumes the interrupted jump
         // (`resolveEncounter` returns early to the origin on 'escaped').
         tracker.openEncounter.travelCompleted = event.resolution !== 'escaped';
@@ -2915,31 +2923,32 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   return plan.length > 0 ? plan : [{ type: 'Wait' }];
 };
 
-function componentTradeInValue(strength: number): number {
-  if (strength < 1) return 0;
-  if (strength === 1) return 25;
-  if (strength === 2) return 50;
-  if (strength === 3) return 100;
-  if (strength === 4) return 200;
-  if (strength === 5) return 400;
-  if (strength === 6) return 700;
-  if (strength === 7) return 1000;
-  if (strength === 8) return 2000;
-  return 3000;
-}
-
-/** Net cost of a component-tier upgrade — the yard sticker price less the
- *  trade-in on the current fit. Mirrors the engine's shipyard math so the
- *  fighter never burns a die on an unaffordable purchase. */
+/**
+ * Net cost of a component-tier upgrade — the yard sticker price less the trade-in
+ * on the current fit, so the fighter never burns a die on a purchase it cannot
+ * afford.
+ *
+ * ASKS THE ENGINE rather than restating its arithmetic. This used to be a private
+ * copy of the yard's price/trade-in maths, and the copy is exactly how the
+ * strength-vs-tier trade-in bug (see `YARD_COMPONENT_TRADE_IN` in content) stayed
+ * invisible on the sim side: the instrument agreed with the engine because it had
+ * inherited the same mistake. `quoteShipyard` is the engine's own pure preview and
+ * returns the figure the resolver will actually charge, so the two cannot drift
+ * again — the same lesson R0a recorded for the tribute oracle.
+ */
 function componentTierNetCost(
   state: GameState,
   component: 'weapons' | 'hull' | 'shields' | 'drives',
   tier: number,
 ): number {
-  const price = YARD_COMPONENT_TIER_PRICES[tier - 1] ?? Infinity;
-  let strength = state.player.ship[component].strength;
-  if (component === 'hull' && state.player.ship.hasTitaniumHull && strength > 9) strength -= 10;
-  return Math.max(0, price - componentTradeInValue(strength));
+  if (YARD_COMPONENT_TIER_PRICES[tier - 1] === undefined) return Infinity;
+  return quoteShipyard(state, {
+    type: 'Shipyard',
+    action: 'buy-component-tier',
+    component,
+    tier,
+    spendDie: 0,
+  }).cost;
 }
 
 const FIGHTER_RESERVE = 3000;
@@ -3123,7 +3132,36 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   // FIGHTER_EQUIPMENT_PRIORITY. The offensive items behind it (STAR_BUSTER /
   // ARCH_ANGEL at CAPTAIN, ASTRAXIAL_HULL at GIGA_HERO) still open only through
   // EARNED rank (T-114a); only the ORDER relative to the component tiers moved.
-  const special = planSpecialEquipment(state, ledger, FIGHTER_RESERVE, FIGHTER_EQUIPMENT_PRIORITY);
+  // R2c · CLEAR THE GUILD MARKER BEFORE DISCRETIONARY KIT.
+  //
+  // This policy used to buy special equipment and component tiers FIRST and remit
+  // only the leftovers to the Guild — the only competent policy that did. That was
+  // survivable while the yard's trade-in bug made mid-ladder upgrades free (see
+  // `YARD_COMPONENT_TRADE_IN` in content). Once upgrades cost real credits it
+  // became a debt spiral: measured on seed 1 x 300 days, the fighter ended owing
+  // **4,253,290 credits** while sitting on its 2,825 reserve, having bought one
+  // special module and four component tiers and never cleared the marker.
+  //
+  // Gating kit on `debt === 0` is not a tuning knob, it is the same rule every
+  // other competent policy already follows, and `traderPolicy` states the
+  // principle at its own rim-preference gate: the marker "is the Tour One failure
+  // condition and the acceptance's clear-rate band, so the trader finishes paying
+  // the Guild before it starts flying the long, expensive, lucrative rim legs."
+  // No captain buys a STAR_BUSTER while owing 25,000cr at compounding interest.
+  //
+  // Measured effect on the same seed/horizon: debt 4,253,290 -> 0, credits
+  // 2,825 -> 584,456, special equipment 1 -> 3, component tiers 4 -> 9, and
+  // `shieldAbsorbedPoints` 0 -> 86 (the fit is finally USED, which is what
+  // `campaign-policies.test.ts` asserts).
+  const kitAllowed = state.player.debt === 0;
+  // NOTE, measured: ungating special equipment does NOT work. It was tried — the
+  // priority list opens with a cheap AUTO_REPAIR but continues to STAR_BUSTER /
+  // ARCH_ANGEL (10,000 each) and ASTRAXIAL_HULL (100,000), and letting it through
+  // while the marker is open reproduced the full spiral (seed 1 x 300 days: debt
+  // back to 4,253,290). Both planners have to wait.
+  const special = kitAllowed
+    ? planSpecialEquipment(state, ledger, FIGHTER_RESERVE, FIGHTER_EQUIPMENT_PRIORITY)
+    : null;
   if (special) actions.push(special);
 
   const upgrade = planFighterUpgrade(state, ledger);

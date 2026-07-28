@@ -1091,6 +1091,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
     ]),
     round: z.number(),
     interceptorId: z.string(),
+    // R2c · optional, so pre-R2c eventLogs validate unchanged (no version bump).
+    salvageCredits: z.number().optional(),
   }),
   z.object({
     type: z.literal('ShipyardEvent'),

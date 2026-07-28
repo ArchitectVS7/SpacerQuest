@@ -910,6 +910,12 @@ export type GameEvent =
         'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled' | 'interceptor-escaped';
       round: number;
       interceptorId: string;
+      /** R2c · Wreck salvage paid to the player, present ONLY on 'defeated'
+       *  (content `COMBAT_SALVAGE_PER_TIER` x the interceptor's tier). Optional so
+       *  every pre-R2c save and golden round-trips unchanged. READER:
+       *  sim/balance/aggregate.ts `combatEv`, which is no longer negative by
+       *  construction now that a win can pay. */
+      salvageCredits?: number;
     }
   | ShipyardEvent
   | ShipyardFail

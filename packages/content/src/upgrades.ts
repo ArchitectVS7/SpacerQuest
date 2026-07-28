@@ -2,6 +2,40 @@ export const YARD_COMPONENT_TIER_PRICES = [
   50, 100, 200, 400, 800, 1500, 3000, 5000, 10000,
 ] as const;
 
+/**
+ * What the yard allows against the fit you are trading IN, indexed by the tier
+ * you currently OWN (index 0 = tier 1, index 8 = tier 9).
+ *
+ * THE BUG THIS LADDER'S INDEXING EXISTS TO PREVENT (found 2026-07-28). These nine
+ * numbers used to live inline in `engine/actions/shipyard.ts` as a chain of
+ * `if (strength === n)` tests ending in a catch-all `return 3000` — i.e. they
+ * were indexed by raw component STRENGTH, on the assumption that strength and
+ * tier were the same scale. They are not: `buy-component-tier` sets
+ * `strength = tier * 10`, and four components (drives, navigation, lifeSupport,
+ * robotics) START at strength 10, not at the junker's 1. So every one of those
+ * four fell straight through to the 3,000 catch-all on a brand-new save, and
+ * `max(0, price - 3000)` made tiers 1 THROUGH 7 cost exactly nothing.
+ *
+ * Measured on a fresh day-1 save before the fix: drives, navigation, lifeSupport
+ * and robotics could all be taken to tier 7 (strength 70 — a 12,000cr list price)
+ * for **0 credits**, which cut the jump-fuel bill by ~92% (a distance-10 jump:
+ * 120 fuel → 10) permanently, from day one, on a 1,000cr starting purse. Fuel is
+ * the game's primary economic constraint (T-1102), so this was the single largest
+ * unearned advantage available to any player who noticed it.
+ *
+ * The VALUES are unchanged — only the indexing is corrected — so a junker-start
+ * component (strengths 1..9, i.e. hull/weapons/shields/cabin) is priced exactly
+ * as it always was. See `tradeInValue` in engine/actions/shipyard.ts for the
+ * junker-range/owned-tier split, and note the standing invariant it must keep:
+ * **every step up the ladder costs real credits**, i.e.
+ * `YARD_COMPONENT_TRADE_IN[n-1] < YARD_COMPONENT_TIER_PRICES[n]` for all n.
+ *
+ * READERS: `engine/actions/shipyard.ts` `tradeInValue` (the single definition —
+ * the sim's former private copy was deleted in the same change and now asks the
+ * engine via `quoteShipyard`, so the two can never drift again).
+ */
+export const YARD_COMPONENT_TRADE_IN = [25, 50, 100, 200, 400, 700, 1000, 2000, 3000] as const;
+
 export const SHIP_COMPONENTS = [
   { id: 'hull', name: 'Hull' },
   { id: 'drives', name: 'Drives' },
