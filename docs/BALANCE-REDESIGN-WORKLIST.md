@@ -10,8 +10,8 @@ all run on Sonnet, all briefed with identical neutral data).
 
 ## Executive summary
 
-**CURRENT FIGURES (baseline of record: `docs/balance/baseline-vet-1k.json`, 1,000 careers ×
-120 days per archetype, post-R0a).** The game's dominant strategy is **disengagement from
+**CURRENT FIGURES (baseline of record: `docs/balance/baseline-vet-1k-r2a.json`, 1,000 careers
+× 120 days per archetype, post-R0a + R2a).** The game's dominant strategy is **disengagement from
 risk**: an unarmed trader clears the 25,000cr marker **92%** of the time by day **21**, ends
 near-richest at TOP_DOG, and dies at **0.16 deaths/1k days against a 0.57 fleet average** —
 while meeting *more* pirates than the fighter (31.6 vs 26.4 encounters/career) and surviving
@@ -96,8 +96,9 @@ npm run balance:sweep -w @spacerquest/sim -- --label <label> --seeds 1000 --days
 npm run balance:sweep -w @spacerquest/sim -- --label <label> --merge
 ```
 
-**Baseline of record for all comparisons:** `docs/balance/baseline-vet-1k.json` (1,000 seeds,
-post-R0a). The table immediately below is the RETIRED 100-seed arm, kept because the review
+**Baseline of record for all comparisons:** `docs/balance/baseline-vet-1k-r2a.json` (1,000
+seeds, post-R0a + R2a). `baseline-vet-1k.json` is its immediate predecessor (post-R0a only)
+and differs solely in the `fighter` and `veteran` rows. The table immediately below is the RETIRED 100-seed arm, kept because the review
 and the early steps quote it; the corrected figures are in the R0b result.
 
 | archetype | clears | clear day | final cr | deeds | enc/career | combat EV | ships lost | deaths/1k |
@@ -396,6 +397,105 @@ taken on faith.*
   fighter's clear rate/credits collapse (too large — halve it), or deaths concentrate on the
   *unarmed* archetypes rather than at the top of the curve, which would mean the change hit
   the wrong end of the ladder.
+
+**Result (2026-07-28): the LEVER is disproved; the PREMISE is confirmed; and the step
+uncovered a second instrument bug that was blocking the whole question.**
+
+**R2a (shipped) — the fighter's self-imposed upgrade ceiling.** `planFighterUpgrade` stopped
+buying at weapons strength 50 / everything-else 30, while the policy ended a 120-day career
+holding a measured **~126,000 credits** and yard tier 9 (strength 90) costs 10,000. The
+consequences, measured over 120 seeds × 120 days:
+
+- `player.tier = max(rankTier, shipClassTier)` and `shipClassTier` needs strength > 50 for
+  tier 4. Pinned at exactly 50, the fighter sat at **tier 3 in 97% of its encounters** and
+  reached tier 4 or 5 **never**. The trader (which never upgrades at all) likewise: tier 4 —
+  **0.0%**.
+- `chooseTargetTier` clamps interceptors to `[tier−1, tier+1]`, so the measured **tier-5
+  interceptor share was 0.0%** for both fighter and trader (6.7% for the veteran).
+- **25 of the 65 entries in `ANONYMOUS_INTERCEPTORS` — the entire tier-4/5 band — had never
+  been exercised by ANY balance sweep ever run.** R2 was asking "are top-tier pirates a real
+  threat?" about content the instrument could not reach. This is why the elite-only power
+  variants measured as an *exact* no-op: byte-identical to control, because tier 5 never
+  spawned.
+- With the ceiling lifted: fighter **player tier 5 in 87.7%** of encounters, **tier-5
+  interceptor share 0.0% → 62.2%**; veteran 48.1%.
+
+Same class of defect as R0a, and it is fixed the same way — by letting the instrument play
+the game a competent player would. Shipped. New baseline of record:
+**`docs/balance/baseline-vet-1k-r2a.json`**. At 1,000 seeds it moves **only** `fighter` and
+`veteran` (the two policies sharing the wishlist); the other six rows are byte-identical,
+which is the control proving the diff is this function alone.
+
+| policy | clears | clear day | final cr | ships | deaths/1k |
+| --- | --- | --- | --- | --- | --- |
+| fighter | 0.70 → **0.61** | 20 → **23** | 158,978 → 155,059 | 56 → 41 | 0.47 → **0.34** |
+| veteran | 0.01 → 0.00 | 90 → 96 | 12,501 → 8,372 | 84 → 103 | 0.70 → 0.86 |
+
+The fighter buys guns instead of paying the Guild, so its clear rate falls and its clear day
+moves **into the [22, 30] band**; better shields/hull make it *safer* per encounter.
+
+**The premise is CONFIRMED — and only measurable now.** With the instrument reaching the real
+top of the ladder, an armed fighter at tier 5 fighting tier-5 interceptors wins
+**0.982 of even-parity encounters in a median of 2 rounds (n=15,259)**; over all prepared
+cells, **0.971 (n=24,213)**. Top-tier pirates are chaff, exactly as the owner argued — it
+simply could not be shown before, because nobody had ever met one.
+
+> **A measurement trap worth recording, because it nearly produced the opposite conclusion.**
+> The obvious metric — win rate in the `below`-parity (outgunned) cell — is **not comparable
+> across these arms**. Raising the player's tier ceiling *empties* it: at tier 5 you cannot be
+> outgunned, so the cell collapses from n=3,681 to n=342 and starts reporting early-career
+> encounters only. Read naively it says the win rate fell 0.970 → 0.693 and "combat is no
+> longer solved". The robust metric is win rate over **all prepared cells** (0.977 → 0.968:
+> essentially unchanged). Same lesson as R0b, one level up: **check that the denominator
+> means the same thing in both arms before believing the ratio.**
+
+**The lever is DISPROVED. Both knobs overshoot; the smallest meaningful step already wrecks
+the archetype it aims at.** 300 seeds × 120 days, fighter row, win rate over all prepared
+cells:
+
+| arm | win | fighter final cr | deaths/1k | trader ships |
+| --- | --- | --- | --- | --- |
+| control | 0.977 | 160,459 | 0.39 | 8 |
+| enemy hull ×2 | 0.884 | **46,062 (−71%)** | **3.42 (×8.8)** | 8 |
+| enemy hull ×3 / ² | 0.47 / 0.09 | ~2,800 (−98%) | 5.8 / 7.7 | 8 |
+| +1 dmg at tier 4–5 | 0.960 | 101,088 (−37%) | 3.03 (×7.8) | 17 |
+| +⌊tier/2⌋ dmg | 0.935 | 65,107 (−59%) | 6.72 (×17) | 37 |
+| +(tier−1) dmg | 0.904 | 37,875 (−76%) | 11.11 (×28) | 96 |
+
+There is no calibration that moves the win rate more than ~2 points without taking 37–76% of
+the fighter's economy and multiplying fleet deaths by 6–28×. R2's own disproof branch says
+"too large — halve it", and halving the smallest step is the control. **A global power
+constant is the wrong shape of fix**: it fires on all ~30 encounters a career, so any setting
+big enough to matter at the top is ruinous everywhere else.
+
+**THE DISCRIMINATOR FOR R2.5 (the most useful thing this step produced).** The two knobs are
+not interchangeable:
+
+- **Enemy TOUGHNESS is a fighter-only tax.** The trader's ship losses are **8 in every hull
+  arm** — identical to control at ×2, ×3 and ². It never fights, so soaking volleys costs it
+  nothing.
+- **Enemy OFFENSE reaches everyone who enters an encounter.** The trader goes **8 → 17 → 37 →
+  96** ships across the damage ladder, because a failed talk draws return fire (the R1 kill
+  path).
+
+So hull scaling *punishes the archetype that engages and rewards the one that doesn't* — it
+would make the trader's pacifism MORE dominant, which is backwards. **R2.5's ladder should
+escalate the pirate's OFFENSE, not its hull**, and must be applied selectively (by history,
+per the owner's design) rather than as a global constant.
+
+**Deferred, deliberately:** the pirate data table and the wingman flag. Both are vehicles for
+R2.5's demands and escalation; landing authored demand lines now, with no mechanism reading
+them, would be scaffolding rather than content. They move to R2.5.
+
+**Battery:** typecheck, lint, **1,103 of 1,104 tests green**. Two changes to the red set:
+`balance-combat-survival` ("Auto-Repair no longer switches the death path off") **went GREEN**
+— it was red at HEAD and R2a fixed it, because a fighter that now buys AUTO_REPAIR *and still
+dies* is exactly what it asserts. `alliance-arcs` needed a seed re-pin (3 → 1) for the third
+time in its history and for the identical documented mechanism — `player.tier` moves →
+matchmaking draws a different interceptor sequence → the organic-mover half stops firing.
+Swept seeds 1..20: **12 qualify against the previous sweep's 9**, so the organic path became
+*more* reachable, not less. Only `balance-targets` (trader clear day 21) remains red; that is
+R2.5's target, not this step's.
 
 ### R2.5 — The escalation ladder (the world remembers what you did)
 

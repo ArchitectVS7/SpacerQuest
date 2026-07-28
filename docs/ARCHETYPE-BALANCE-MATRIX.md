@@ -112,18 +112,20 @@ to `[tier−1, tier+1]`. **Wealth is not an input.**
 ## 4. The measured matrix
 
 **BASELINE OF RECORD — 1,000 careers per archetype × 120 in-game days (8,000 careers,
-960,000 sim-days), `docs/balance/baseline-vet-1k.json`, taken 2026-07-28 after the R0a
-tribute-oracle fix.** This table supersedes the 100-seed arm below it.
+960,000 sim-days), `docs/balance/baseline-vet-1k-r2a.json`, taken 2026-07-28 after the R0a
+tribute-oracle fix and the R2a fighter-upgrade-ceiling fix.** This table supersedes the
+100-seed arm below it. NOTE the `fighter`/`veteran` rows moved again at R2a (they share the
+upgrade wishlist); every other row is byte-identical to the post-R0a arm.
 
 | archetype | clears | clear day | final cr | deeds | enc/career | combat EV | ships lost | deaths/1k |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | trader | 0.92 | 21 | 80,305 | 17 | 31.6 | −1,245 | **19** | **0.16** |
 | smuggler | 0.55 | 30 | 42,769 | **28** | 34.2 | −1,400 | 66 | 0.55 |
 | gambler | 0.80 | 26 | 68,436 | 23 | 30.1 | −1,300 | 27 | 0.23 |
-| fighter | 0.70 | **20** | **158,978** | 13 | 26.4 | −400 | 56 | 0.47 |
+| fighter | 0.61 | **23** | **155,059** | 13 | 26.4 | −400 | 41 | 0.34 |
 | explorer | 0.00 | — | 91,669 | 23 | **40.1** | −1,500 | 65 | 0.54 |
 | greedy | 0.00 | — | 1,000 | 8 | 2.0 | −27 | 111 | **0.93** |
-| veteran | 0.01 | 90 | 12,501 | 20 | 16.2 | −400 | 84 | 0.70 |
+| veteran | 0.00 | 96 | 8,372 | 20 | 16.2 | −400 | 103 | 0.86 |
 | trader-degraded | 0.76 | 23 | 57,619 | 18 | 29.4 | −1,400 | 120 | 1.00 |
 | **fleet** | 0.47 | 25 | 57,959 | 19 | 26.2 | −850 | 548 | 0.57 |
 

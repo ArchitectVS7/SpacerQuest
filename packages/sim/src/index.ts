@@ -2966,16 +2966,51 @@ const FIGHTER_EQUIPMENT_PRIORITY: readonly SpecialEquipmentId[] = [
   'ASTRAXIAL_HULL',
 ];
 
-/** The fighter's shopping list, cheapest meaningful refit first: a real gun,
- *  then a bigger gun, then a tougher hull/shields/drives — each bought only when
- *  the surplus above the operating reserve covers it. */
+/**
+ * The fighter's shopping list, cheapest meaningful refit first: a real gun, then
+ * a bigger gun, then a tougher hull/shields/drives — each bought only when the
+ * surplus above the operating reserve covers it.
+ *
+ * R2a · THE CEILING THIS LIST USED TO IMPOSE, AND WHY IT WAS A BUG. The wishlist
+ * stopped at weapons strength 50 (yard tier 5) and 30 for everything else, while
+ * the policy finished a 120-day career holding a MEASURED ~126,000 credits and
+ * yard tier 9 (strength 90) costs 10,000. A fighter that will not spend 8% of its
+ * purse on the gun it exists to fire is not "a fighter playing well" — it is an
+ * instrument that stops halfway up its own progression, which is the same class
+ * of defect as R0a's stale tribute oracle.
+ *
+ * WHAT THE CEILING HID, and why it blocked R2 (measured, 120 seeds × 120 days):
+ *   * `player.tier` is `max(rankTier, shipClassTier)` (engine tier.ts) and
+ *     `shipClassTier` needs strength > 50 for tier 4 and > 70 for tier 5. Capped
+ *     at exactly 50, the fighter sat at **tier 3 in 97% of its encounters** and
+ *     reached tier 4 or 5 **never**.
+ *   * `chooseTargetTier` clamps interceptors to [tier−1, tier+1], so a tier-3
+ *     player can only ever draw tiers 2–4. Measured tier-5 interceptor share:
+ *     **0.0%** for the fighter and the trader, 6.7% for the veteran.
+ *   * **25 of the 65 entries in `ANONYMOUS_INTERCEPTORS` — the whole tier-4/5
+ *     band — were therefore never exercised by any balance sweep ever run.**
+ *     R2 asked "are top-tier pirates a real threat?" about content the instrument
+ *     could not reach, which is why an elite-only power lever measured as an
+ *     exact no-op.
+ * With the ceiling lifted: player tier 5 in 87.7% of encounters, and the tier-5
+ * interceptor share goes 0.0% → 62.2%.
+ *
+ * The tiers below are the yard's own ladder (`YARD_COMPONENT_TIER_PRICES`, 9
+ * entries), walked in the same cheapest-first order as before — the shape of the
+ * list is unchanged, only its ceiling. Shared with the veteran policy, which
+ * calls this function too.
+ */
 function planFighterUpgrade(state: GameState, ledger: DieLedger): PlayerAction | null {
   const ship = state.player.ship;
   const wishlist: { component: 'weapons' | 'hull' | 'shields' | 'drives'; tier: number }[] = [];
   if (ship.weapons.strength < 30) wishlist.push({ component: 'weapons', tier: 3 });
   else if (ship.weapons.strength < 50) wishlist.push({ component: 'weapons', tier: 5 });
+  else if (ship.weapons.strength < 70) wishlist.push({ component: 'weapons', tier: 7 });
+  else if (ship.weapons.strength < 90) wishlist.push({ component: 'weapons', tier: 9 });
   if (ship.hull.strength < 30) wishlist.push({ component: 'hull', tier: 3 });
+  else if (ship.hull.strength < 70) wishlist.push({ component: 'hull', tier: 7 });
   if (ship.shields.strength < 30) wishlist.push({ component: 'shields', tier: 3 });
+  else if (ship.shields.strength < 70) wishlist.push({ component: 'shields', tier: 7 });
   if (ship.drives.strength < 30) wishlist.push({ component: 'drives', tier: 3 });
 
   for (const pick of wishlist) {

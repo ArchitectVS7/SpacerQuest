@@ -79,15 +79,27 @@ const UNCHANGED_POLICIES = [
  *    differs when a class multiplier ≠ 1 or a tier gap > 0 is in play. Treat
  *    "unchanged here" as "unchanged in this window", never as "unaffected" —
  *    the 100-seed × 120-day sweep moves more rows than this test does.
+ *
+ * 3. R2a — `planFighterUpgrade` no longer stops buying at weapons strength 50
+ *    (it walks the yard's own tier ladder to 9). See the block comment at that
+ *    function for the measurement: the ceiling pinned `player.tier` at 3 and made
+ *    the tier-4/5 half of the interceptor roster unreachable.
+ *    MOVED: `fighter` (470eb1043295bbc1 → e2395367a39b41fc) and `veteran`
+ *    (437f73e973337248 → ecc8c84bb5e09622) — the two policies that share the
+ *    wishlist. UNCHANGED: the other five, and here that IS "unaffected" rather
+ *    than "unaffected in this window" — the 1,000-seed sweep confirms every other
+ *    policy row is byte-identical, which is the control proving the diff is this
+ *    function alone.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // R0a
   trader: 'd7223f6ad5d95edc',
-  // R0a
-  fighter: '470eb1043295bbc1',
+  // R0a, then R2a
+  fighter: 'e2395367a39b41fc',
   explorer: 'daf1070d7cead726',
-  veteran: '437f73e973337248',
+  // R2a
+  veteran: 'ecc8c84bb5e09622',
   smuggler: '14d763cf29110467',
   gambler: '4cd7cdfe4cec356e',
   greedy: 'd0dbf1836f6246e9',
