@@ -35,10 +35,34 @@ import { GameState } from './types.js';
  * The stub keeps `eventLog` in its original key position so the clone's key
  * order — and therefore `serializeState`'s output for the replay goldens —
  * matches what a full round-trip produced.
+ *
+ * ---------------------------------------------------------------------------
+ * `npcs` GETS THE SAME TREATMENT, AND FOR A SHARPER REASON. The event log was
+ * excluded because it is unbounded; the NPC roster is excluded because it is
+ * about to get FAT. Making each of the 30 captains a real player — their own
+ * ship, their own components — takes this state from 6.8 KB to 22.2 KB, and a
+ * measured `cloneState` from 0.029 ms to 0.104 ms. Every player action pays that,
+ * four or five times a day, to copy thirty captains it will not touch.
+ *
+ * THE RULE THIS RELIES ON, and it is narrow enough to enforce: an NPC record is
+ * mutated in exactly two places. Its own turn (`resolveNpcDay`) already works on
+ * a private copy and is handed back by assignment in day.ts, and
+ * `applyDisposition` — the one cross-boundary writer — now REPLACES the array
+ * entry with a fresh record instead of mutating it in place. Nothing else in the
+ * engine writes to an NPC. `__tests__/clone.test.ts` holds that line by identity,
+ * the same way it already holds the event log's.
+ *
+ * MEASURED: 0.0955 ms → 0.0082 ms per clone with fat NPC records, and — the part
+ * that matters for scaling — FLAT in NPC count instead of linear, which is what
+ * stops "thirty captains each acting" from being quadratic.
+ * ---------------------------------------------------------------------------
  */
 export function cloneState(state: GameState): GameState {
-  const stub: GameState = { ...state, eventLog: [] };
+  const stub: GameState = { ...state, eventLog: [], npcs: [] };
   const cloned = JSON.parse(JSON.stringify(stub)) as GameState;
   cloned.eventLog = state.eventLog.slice();
+  // A fresh ARRAY (so an assignment into it cannot reach the previous snapshot)
+  // holding the SAME record objects (so no captain is deep-copied for nothing).
+  cloned.npcs = state.npcs.slice();
   return cloned;
 }

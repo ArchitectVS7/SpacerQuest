@@ -146,6 +146,37 @@ export function pickIntent(
 /** Clamp-and-apply a disposition change, emitting a typed event when the
  *  value actually moves. Shared by combat (tribute/defeat/fled), dusk decay,
  *  and anything else that touches per-NPC standing. */
+/**
+ * THE ONE DOOR to mutating an NPC from outside its own turn.
+ *
+ * `cloneState` SHARES NPC records between snapshots (see clone.ts for the
+ * measurement that motivated it). A record reached through `state.npcs.find(...)`
+ * therefore belongs to every earlier snapshot too — the replay goldens, the UI's
+ * previous render, the save about to be written — so writing to it in place
+ * corrupts history rather than advancing it.
+ *
+ * This replaces the array entry with a private copy and hands that back, so the
+ * caller can write to it exactly as before. Returns null when the id is unknown.
+ *
+ * FOUR CALLERS, and they are the complete set of cross-boundary NPC writers in the
+ * engine: `applyDisposition` (below), the Hangout dealer's dare stake
+ * (actions/hangout.ts), and the bond-hook rescuer's fuel and lastAction (day.ts,
+ * two sites). An NPC's OWN turn does not need this — `resolveNpcDay` already
+ * opens by copying its subject. `__tests__/clone.test.ts` holds the line with a
+ * source scan, the same way it already holds the event log's.
+ *
+ * A structural clone rather than a spread, deliberately: the record is about to
+ * grow a `ship` with nested component objects, and a shallow copy would share
+ * those and reintroduce exactly the bug this exists to prevent.
+ */
+export function mutableNpc(state: GameState, npcId: string): NpcState | null {
+  const index = state.npcs.findIndex((candidate) => candidate.id === npcId);
+  if (index === -1) return null;
+  const copy = structuredClone(state.npcs[index]);
+  state.npcs[index] = copy;
+  return copy;
+}
+
 export function applyDisposition(
   state: GameState,
   npcId: string,
@@ -168,13 +199,19 @@ export function applyDisposition(
     | 'contraband-caught',
   events: GameEvent[],
 ): void {
-  const npc = state.npcs.find((candidate) => candidate.id === npcId);
-  if (!npc || delta === 0) return;
-
-  const next = Math.max(-10, Math.min(10, npc.disposition + delta));
-  if (next === npc.disposition) return;
-
-  const applied = next - npc.disposition;
+  // COPY-ON-WRITE (see clone.ts): `cloneState` now SHARES NPC records between
+  // snapshots, so mutating one in place would reach back into every earlier state
+  // — including the ones the replay goldens and the UI's previous render hold. The
+  // record is replaced instead. This is the ONLY cross-boundary NPC writer in the
+  // engine; an NPC's own turn works on a private copy already.
+  if (delta === 0) return;
+  const existing = state.npcs.find((candidate) => candidate.id === npcId);
+  if (!existing) return;
+  const next = Math.max(-10, Math.min(10, existing.disposition + delta));
+  if (next === existing.disposition) return;
+  const applied = next - existing.disposition;
+  const npc = mutableNpc(state, npcId);
+  if (!npc) return;
   npc.disposition = next;
   events.push({
     type: 'DispositionChanged',

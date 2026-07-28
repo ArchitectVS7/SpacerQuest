@@ -64,20 +64,71 @@ describe('cloneState (copy-on-write snapshot)', () => {
     expect(state.eventLog.length).toBe(before);
   });
 
-  it('deep-copies every non-log field, so nested writes never reach the source', () => {
+  it('deep-copies every non-log, non-npc field, so nested writes never reach the source', () => {
     const state = playedState(6);
     const credits = state.player.credits;
-    const firstNpcDisposition = state.npcs[0].disposition;
 
     const clone = cloneState(state);
     clone.player.credits = credits + 5_000;
-    clone.npcs[0].disposition = firstNpcDisposition + 7;
     clone.flags['clone-test-flag'] = true;
 
     expect(state.player.credits).toBe(credits);
-    expect(state.npcs[0].disposition).toBe(firstNpcDisposition);
     expect(state.flags['clone-test-flag']).toBeUndefined();
-    expect(clone.npcs[0]).not.toBe(state.npcs[0]);
+  });
+
+  it('SHARES npc records but not the npc ARRAY, so a swap cannot reach the source', () => {
+    // The contract `mutableNpc` depends on. The array must be fresh (so assigning
+    // into it is safe) while the records are shared (so a player action does not
+    // deep-copy thirty captains it will never touch).
+    const state = playedState(6);
+    const clone = cloneState(state);
+
+    expect(clone.npcs).not.toBe(state.npcs);
+    expect(clone.npcs[0]).toBe(state.npcs[0]);
+
+    const replacement = { ...state.npcs[0], disposition: state.npcs[0].disposition + 7 };
+    clone.npcs[0] = replacement;
+    expect(state.npcs[0]).not.toBe(replacement);
+  });
+
+  it('routes every cross-boundary NPC write through mutableNpc', () => {
+    // THE STRUCTURAL GUARD, and it exists because this exact bug shipped once
+    // already: `storylets.ts` computed a clamped disposition delta by reading its
+    // own handle AFTER applyDisposition swapped the entry, and reported 0 for
+    // every clamped change. A source scan is the only thing that catches the next
+    // one, since a stale read is silent — it produces a plausible wrong number.
+    //
+    // The rule: outside `resolveNpcDay` (which opens by copying its own subject),
+    // no engine file may assign to a field of a record pulled out of `state.npcs`.
+    // Go through `mutableNpc`, which swaps in a private copy first.
+    const engineDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const files = [
+      'day.ts',
+      'storylets.ts',
+      ...readdirSync(join(engineDir, 'actions'))
+        .filter((f) => f.endsWith('.ts'))
+        .map((f) => join('actions', f)),
+    ];
+    const offenders: string[] = [];
+    for (const rel of files) {
+      const source = readFileSync(join(engineDir, rel), 'utf8');
+      // A write to a field of something that reads like an NPC handle.
+      const pattern =
+        /\b(dealerNpc|dealer|rescuer|npc|named|lender|targetNpc|dealerPurse)\.(?:credits|fuel|disposition|currentSystemId|lastAction)\s*[-+]?=[^=]/g;
+      for (const match of source.matchAll(pattern)) {
+        const line = source.slice(0, match.index).split('\n').length;
+        // The handle is legitimate if it was BOUND from `mutableNpc` anywhere in
+        // the file — that call is what swapped a private copy into the roster, so
+        // writing to what it returned is exactly the sanctioned path. Checked by
+        // binding rather than by proximity: the rescuer's writes sit ~50 lines
+        // below its binding, and a character-window heuristic flagged them.
+        const handle = match[1];
+        const bound = new RegExp(`(?:const|let)\\s+${handle}\\s*=[^;]*mutableNpc\\(`, 's');
+        if (bound.test(source)) continue;
+        offenders.push(`${rel}:${line} ${match[0].trim()}`);
+      }
+    }
+    expect(offenders, `cross-boundary NPC writes must go through mutableNpc`).toEqual([]);
   });
 
   it('leaves the input state untouched when the real day loop runs on it', () => {

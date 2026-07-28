@@ -176,12 +176,16 @@ describe('T-1305 · patrol contraband GUILE scan', () => {
     const state = carryingPodState(0, 1000);
     // Use a real named NPC id so applyDisposition finds the cast member.
     const named = state.npcs[0];
+    const namedId = named.id;
     const events = runScan(
       state,
       patrolEncounter({ guile: 6, source: 'named', id: named.id, name: named.name }),
       seed,
     );
-    expect(named.disposition).toBeLessThan(0);
+    // COPY-ON-WRITE: `applyDisposition` REPLACES the roster entry (npc.ts
+    // `mutableNpc`), so a handle taken before the action is a stale snapshot by
+    // design. Read the live record.
+    expect(state.npcs.find((n) => n.id === namedId)!.disposition).toBeLessThan(0);
     expect(events.some((e) => e.type === 'DispositionChanged')).toBe(true);
   });
 

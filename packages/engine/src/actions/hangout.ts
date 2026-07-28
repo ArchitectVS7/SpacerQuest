@@ -26,7 +26,7 @@ import { GameEvent, GameState, NpcState, PlayerAction } from '../types.js';
 type HangoutVenue = 'dare' | 'meet' | 'befriend' | 'insult' | 'rumor';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
-import { applyDisposition } from '../npc.js';
+import { applyDisposition, mutableNpc } from '../npc.js';
 import { cloneState } from '../clone.js';
 
 function systemName(systemId: number): string {
@@ -261,7 +261,10 @@ export function resolveVisitHangout(
       // Credits move BOTH directions off the same wager.
       const creditsDelta = playerWon ? wager : -wager;
       nextState.player.credits += creditsDelta;
-      dealerNpc.credits -= creditsDelta;
+      // COPY-ON-WRITE (npc.ts `mutableNpc`): NPC records are shared between
+      // snapshots, so the dealer's stake must be taken from a private copy.
+      const dealerPurse = mutableNpc(nextState, dealerNpc.id);
+      if (dealerPurse) dealerPurse.credits -= creditsDelta;
 
       // Disposition shifts on BOTH outcomes (a Dare is memorable either way): a
       // beaten dealer sours (DARE_WIN_DISPOSITION, negative), a dealer who took

@@ -20,7 +20,7 @@ import { SeededRng } from './rng.js';
 import { dawnDiceModifiers, equipmentDiceBenefits, rollDawnHand } from './dice.js';
 import { autoRepairRegen, lifeSupportCritical } from './components.js';
 import { applySuccession } from './legacy.js';
-import { applyDisposition, resolveNpcDay } from './npc.js';
+import { applyDisposition, mutableNpc, resolveNpcDay } from './npc.js';
 import { generateManifestBoard, localFuelPrice, syncMaxFuel } from './economy.js';
 import { advanceEraSchedule } from './era.js';
 import { resolveTrade } from './actions/trade.js';
@@ -470,7 +470,11 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // together with the rebalanced slower decay, let a storylet-bonded NPC (Doc)
   // hold their standing long enough for a low-fuel dusk to reach it.
   let intervenedNpcId: string | null = null;
-  const rescuer = nextState.npcs
+  // COPY-ON-WRITE (npc.ts `mutableNpc`): the rescuer is WRITTEN to below (fuel and
+  // lastAction), and NPC records are shared between snapshots, so the search below
+  // finds the read-only record and `mutableNpc` swaps in a private copy before any
+  // write. Named `rescuerRef` to make the read-only half explicit at the use sites.
+  const rescuerRef = nextState.npcs
     .filter((npc) => {
       const hook = NPC_PROFILES.find((p) => p.id === npc.profileId)?.bondHook;
       return (
@@ -480,6 +484,9 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       );
     })
     .sort((a, b) => b.disposition - a.disposition || a.id.localeCompare(b.id))[0];
+  // The search above reads the SHARED record; this swaps in a private copy before
+  // the fuel / lastAction writes below.
+  const rescuer = rescuerRef ? mutableNpc(nextState, rescuerRef.id) : null;
   if (rescuer) {
     const rescuerProfile = NPC_PROFILES.find((p) => p.id === rescuer.profileId);
     const hook = rescuerProfile?.bondHook;

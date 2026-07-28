@@ -422,6 +422,12 @@ function applyEffects(
     // change never overstates itself.
     const before = npc.disposition;
     applyDisposition(state, disposition.npcId, disposition.delta, 'storylet', events);
+    // COPY-ON-WRITE: `applyDisposition` REPLACES the roster entry (npc.ts
+    // `mutableNpc`), so `npc` above is a stale snapshot the moment it returns.
+    // Re-read the live record — reading the handle here reported 0 for every
+    // clamped change, which is exactly what this event exists to get right.
+    const after =
+      state.npcs.find((candidate) => candidate.id === disposition.npcId)?.disposition ?? before;
     events.push({
       type: 'StoryletEffectApplied',
       day: state.day,
@@ -429,7 +435,7 @@ function applyEffects(
       choiceId,
       effect: 'disposition',
       npcId: disposition.npcId,
-      amount: npc.disposition - before,
+      amount: after - before,
     });
   }
 
