@@ -71,17 +71,17 @@ without ceremony, so none of this needs agonising over while the redesign is in 
 ### Changing it — six manifests, one doc, and the lockfile
 
 **Editing the root `package.json` alone does not propagate.** Verified by doing it: the
-root-only bump fails **seven** tests in `packages/ui/src/__tests__/version.test.ts`. The
-full move is:
+root-only bump fails the manifest-agreement tests. The full move is short:
 
-1. **All six manifests** — root plus `packages/{content,engine,sim,ui,desktop}`. The test
-   asserts they agree; it does not derive them.
-2. **`docs/RELEASE-CHECKLIST.md`** — it names the version in its title and §A, and the
-   test also pins its tag to `v<version>-rc1`. The doc is held to the manifest on purpose,
-   so a checklist can never describe a build that no longer exists.
-3. **`package-lock.json`** — `npm install --package-lock-only`. **Nothing tests this**, and
-   it is the one that silently rots: the 1.0.0 → 0.5.0 move left all five workspace entries
-   reading `1.0.0` in the lockfile and every test stayed green.
+1. **All six manifests** — root plus `packages/{content,engine,sim,ui,desktop}`.
+2. **`package-lock.json`** — `npm install --package-lock-only`.
+
+Both are guarded: `version.test.ts` fails if the manifests disagree, if the lockfile's
+workspace entries are stale, or if `RELEASE-CHECKLIST.md` restates the current version.
+**No document names the version** — that was the old design, it made every doc a second
+place to hand-edit, and it rotted exactly as you would expect (a bump left the checklist
+holding two different versions in different paragraphs, suite green). Docs point here;
+this file points at the manifest.
 
 **No action needed** for the bundle: Vite reads the root manifest at config time and
 substitutes `__SQ_VERSION__`, so a rebuild picks it up. `scripts/tag-rc.mjs` likewise

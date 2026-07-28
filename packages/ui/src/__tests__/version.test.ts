@@ -92,23 +92,57 @@ describe('T-1704 · one version, six manifests', () => {
   });
 });
 
-describe('T-1704 · docs/RELEASE-CHECKLIST.md names the version it ships', () => {
+describe('the release checklist does NOT restate the version', () => {
   const doc = readFileSync(join(REPO_ROOT, 'docs', 'RELEASE-CHECKLIST.md'), 'utf8');
 
-  it('names the package version and the RC tag', () => {
-    // The checklist is the deliverable of this task, and its whole §A is about
-    // this number; a doc that drifted off the manifests would be a release
-    // checklist for a release that does not exist.
+  // INVERTED 2026-07-28, and the inversion is the point. This pair used to assert
+  // that the checklist NAMED the version and the rc tag — which made the doc a
+  // SECOND place a version had to be edited by hand, and the manual step is exactly
+  // what rots. It rotted: a bump left the doc holding `0.5.0` in some lines and
+  // `1.0.0` in others, self-contradictory, with the suite green.
+  //
+  // One source of truth means the checklist names no live version at all. It points
+  // at `docs/VERSIONING.md` and at the root manifest instead.
+  it('does not contain the CURRENT version anywhere', () => {
+    // THE PRECISE RULE. Not "no version-shaped strings" — the doc legitimately mentions
+    // the `0.0.0-dev` fail-safe constant, records that a past transcript was taken in the
+    // 1.0.0 era, and cites a real installer filename from a past packaging run. Those are
+    // history and constants; rewriting them would fabricate a record.
+    //
+    // What must never appear is TODAY'S version, because that is the copy someone has to
+    // remember to edit on a bump — and forgetting is what produced a checklist holding
+    // `0.5.0` in some lines and `1.0.0` in others while the suite stayed green.
     expect(ROOT_VERSION).toBeDefined();
-    expect(doc).toContain(`\`${ROOT_VERSION!}\``);
-    expect(doc).toContain('v1.0.0-rc1');
+    expect(
+      doc.includes(ROOT_VERSION!),
+      `the checklist restates the current version (${ROOT_VERSION!}). It lives in the ` +
+        `root package.json; point at docs/VERSIONING.md instead of copying the number.`,
+    ).toBe(false);
   });
 
-  it('the RC tag is the package version with an -rc suffix, not a different number', () => {
-    // The tag and the manifests differ ON PURPOSE (NSIS wants an x.y.z triple),
-    // and this is where that intent is pinned: `v1.0.0-rc1` must still be a
-    // candidate for THIS version, not for some other one.
-    const tag = /v(\d+\.\d+\.\d+)-rc\d+/.exec(doc);
-    expect(tag?.[1]).toBe(ROOT_VERSION);
+  it('points at the versioning standard instead', () => {
+    expect(doc).toContain('docs/VERSIONING.md');
+  });
+});
+
+describe('the lockfile agrees with the manifests', () => {
+  // THE ONE THE OTHER GUARDS MISSED. Six manifests and the checklist were all pinned,
+  // so none of them could rot — and the 1.0.0 -> 0.5.0 bump still left every workspace
+  // entry in package-lock.json reading 1.0.0, with the whole suite green. Nothing
+  // asserted the lockfile. Now something does.
+  it('every workspace entry matches the root version', () => {
+    const lock = JSON.parse(readFileSync(join(REPO_ROOT, 'package-lock.json'), 'utf8')) as {
+      packages?: Record<string, { version?: string }>;
+    };
+    const workspaces = Object.entries(lock.packages ?? {}).filter(
+      ([key, value]) => /^packages\/[^/]+$/.test(key) && typeof value.version === 'string',
+    );
+    expect(workspaces.length, 'fixture: no workspace entries found in the lockfile').toBe(5);
+    for (const [key, value] of workspaces) {
+      expect(
+        value.version,
+        `${key} in package-lock.json is stale — run \`npm install --package-lock-only\``,
+      ).toBe(ROOT_VERSION);
+    }
   });
 });

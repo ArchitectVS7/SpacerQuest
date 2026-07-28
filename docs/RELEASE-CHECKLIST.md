@@ -1,19 +1,20 @@
-# Release checklist — Rimward `0.5.0`, tag `v0.5.0-rc1`
+# Release checklist — Rimward
 
 > ## ⛔ NOT YET APPLICABLE — the build is PRE-ALPHA
 >
-> This document is the **release-candidate ceremony**. It is correct, and it is several
-> stages away. An RC asserts *"we would ship this if nothing new appears"*. The Rimward
-> redesign has the 30-NPC field eight passes from player parity, two known-red balance
-> targets, and — the plain one — **nobody has played this build end to end yet**. The next
+> This is the **release-candidate ceremony**. It is correct, and it is several stages
+> away. An RC asserts *"we would ship this if nothing new appears"*. The Rimward redesign
+> has the 30-NPC field eight passes from player parity, two known-red balance targets,
+> and — the plain one — **nobody has played this build end to end yet**. The next
 > milestone is not a tag; it is the owner's own UAT.
 >
-> **Do not run `npm run release:rc`.** It would derive a `v0.5.0-rc1` tag that overstates
-> the build. The stage ladder and the concrete criteria for leaving alpha are in
-> `docs/VERSIONING.md`; come back here when beta exits.
+> **Do not run `npm run release:rc`.** See `docs/VERSIONING.md` for the stage ladder and
+> the criteria for leaving pre-alpha.
 >
-> (`tag-rc.mjs` also only knows how to make `-rc` tags — it needs a stage parameter before
-> the first real tag is cut.)
+> **This document names no version number, deliberately.** The version lives in the root
+> `package.json` and nowhere else; a number copied into prose here is a number that goes
+> stale silently. Historical transcripts below DO carry the versions they were taken at —
+> those are records of past runs and are left exactly as they were recorded.
 
 **T-1704.** The final sweep before a release candidate: version stamping,
 credits and licences, the store-page asset export list, the partner-site
@@ -30,7 +31,7 @@ configuration, the build gate, the README and the press one-pager.
 > 1. **Answer every row of §G.** Any non-empty text counts, including a refusal
 >    or a deferral ("not for rc1", "ship unsigned").
 > 2. **Run `npm run release:rc`.** It refuses to tag while §G has a blank and it
->    has no override flag. **There is no `v0.5.0-rc1` tag in this repository
+>    has no override flag. **There is no release tag in this repository
 >    today, and that is the correct state rather than an oversight.**
 
 ## How to read this file
@@ -61,7 +62,7 @@ close it:
 | `npm run release:rc` | The whole RC ceremony in order: **sign-off** → clean working tree → annotated tag → `verify-clean-clone.mjs --ref <tag>`. **It refuses to tag while §G has a blank, and it has no override flag.** It never pushes; it prints the push command. If it created the tag and the clean clone then failed, it deletes the tag again — a tag pointing at a tree that does not build is a claim, not a marker. |
 
 So the two halves of this task's Accept are welded together: **there is no way to
-get a `v0.5.0-rc1` tag out of this repository without a complete §G.**
+get a release tag out of this repository without a complete §G.**
 
 **And that is the honest reason T-1704 is not a task a coder can finish.** Both
 halves of its Accept terminate in §G — the first *is* §G, and the second is
@@ -73,36 +74,20 @@ command.
 
 ## A. Version stamping
 
-> **Re-versioned 2026-07-28 (see `docs/VERSIONING.md`, which is now the standard).**
-> This checklist was written in the Museum-Edition era against `1.0.0` / `v1.0.0-rc1`.
-> The Rimward redesign is pre-release — the balance model is mid-rebuild and the 30-NPC
-> field is eight passes from player parity — so the product line moved to `0.MINOR.PATCH`
-> and **`1.0.0` is now reserved for actual public release**. The mechanism below is
-> unchanged; only the number is.
-
-One source of truth: the **root `package.json`**, version `0.5.0`. Vite reads it
-at config time and compiles it into the bundle as `__SQ_VERSION__`
-(`packages/ui/vite.config.ts`), `packages/ui/src/version.ts` reads it back with a
-fail-safe of `0.0.0-dev`, and the cockpit shows it at **Settings → Build →
-Version**.
-
-**Why the tag and the manifests differ.** The tag is `v0.5.0-rc1` — a *candidate
-for release 0.5.0* — while every `package.json` stays `0.5.0`. electron-builder
-derives the Windows/macOS binary version from `packages/desktop/package.json`,
-NSIS requires an `x.y.z` triple, and both `packages/desktop/e2e/packaged.spec.ts`
-and `e2e/shell.spec.ts` assert the shell reports `/^\d+\.\d+\.\d+$/`. A
-prerelease suffix in the manifests would break packaging and say nothing the tag
-does not already say. Recorded at the definition site in `version.ts`.
+**The mechanism, and where it is defined:** `docs/VERSIONING.md` — one source of truth
+(the root `package.json`), six manifests held to it by `version.test.ts`, prerelease stage
+carried by the git tag rather than the manifests, and the exact list of files a bump has to
+touch. Not restated here; a second copy is a second thing to keep in step.
 
 | ID | Item | Status | Evidence / open question |
 | --- | --- | --- | --- |
-| A1 | Root `package.json` carries `version: 0.5.0` | ✅ DONE | `package.json`; it had no `version` field before this task, which is why nothing could be stamped |
+| A1 | Root `package.json` carries a version | ✅ DONE | `package.json`; it had no `version` field before this task, which is why nothing could be stamped |
 | A2 | All six manifests agree on one version | ✅ DONE | `version.test.ts` → "one version, six manifests" reads root + the five `packages/*/package.json` off disk |
 | A3 | The version is compiled into the web bundle | ✅ DONE | `packages/ui/vite.config.ts` `define.__SQ_VERSION__`; `packages/ui/src/version.ts` `BUILD_VERSION`, fail-safe `0.0.0-dev` |
 | A4 | A player can read the version without dev tools | ✅ DONE | Settings → Build → Version; `data-version-source="bundle"` on web, `"shell"` under the shell. Asserted in `packages/ui/e2e/settings-saves.spec.ts` and `packages/desktop/e2e/packaged.spec.ts` |
 | A5 | Both editions carry the same stamp | ✅ DONE | One `define` for both modes in `vite.config.ts` — the demo and the full game are cut from one commit |
 | A6 | The RC tag ceremony is one command, and the tag name is derived | ✅ DONE | `scripts/tag-rc.mjs` (`npm run release:rc`): sign-off → clean tree → `git tag -a` → clean clone, with the tag derived as `v${root version}-rc1` rather than typed. Pinned by `release-checklist.test.ts` → "scripts/tag-rc.mjs is the RC ceremony, and it refuses things", and corroborated by the §E rehearsal. **This row closes the *ceremony*, not the tag** — the tag is E8, and it is open |
-| A7 | Annotated tag `v0.5.0-rc1` pushed to the remote | ⏸ WAIVER REQUESTED | **Q:** once `npm run release:rc` is green on the T-1704 commit, may the tag be pushed (`git push origin v0.5.0-rc1`)? Creating and verifying the tag is now mechanical; **pushing writes to your remote and no script in this repo does that unprompted.** Answer this before the run — the ceremony reads §G first, so a blank here is what stops the tag existing |
+| A7 | Annotated release tag pushed to the remote | ⏸ WAIVER REQUESTED | **Q:** once `npm run release:rc` is green on the T-1704 commit, may the tag be pushed (`git push origin <tag>`)? Creating and verifying the tag is now mechanical; **pushing writes to your remote and no script in this repo does that unprompted.** Answer this before the run — the ceremony reads §G first, so a blank here is what stops the tag existing |
 
 ---
 
@@ -179,7 +164,7 @@ binary and a display server); the e2e, desktop and packaged evidence is the CI
 matrix in `.github/workflows/ci.yml`, which runs all four jobs against the pushed
 commit and therefore against the tagged commit.
 
-**There is no `v0.5.0-rc1` tag in this repository.** `git tag -l` returns
+**There is no release tag in this repository.** `git tag -l` returns
 nothing. The ceremony refuses to reach `git tag` while §G has a blank, §G is
 blank, and that refusal is the design rather than a bug — so the Accept's second
 half, *"RC tag builds green from clean clone"*, is **open**, and it is tracked
@@ -199,6 +184,12 @@ earlier forbids. E8 is a ⏸ row, and this transcript now claims only what it ca
 carry: **the ceremony and the clean-clone gate work, end to end, including their
 refusals.** It is evidence for **A6** and **E1**, and for nothing else.
 
+> **HISTORICAL TRANSCRIPT — do not update the version numbers below.** This rehearsal was
+> run in the Museum-Edition era, when the product line was `1.0.0`. The numbers in it are
+> a record of what that run actually printed. Rewriting them to match today's version
+> would turn a true record into a fabricated one; a transcript that never happened is
+> worse than a stale one.
+
 The rehearsal, win32: this task's exact working tree was committed into a
 throwaway clone, that clone's §G filled with rehearsal answers *in the clone
 only*, `scripts/tag-rc.mjs` run there, and the clean-clone gate run against the
@@ -209,18 +200,18 @@ nothing else is.
 ========================================================================
 T-1704 · release candidate
   version  1.0.0
-  tag      v0.5.0-rc1
+  tag      v1.0.0-rc1
 ========================================================================
 
   sign-off   OK (23 waivers, all answered)
   tree       clean at 3a8fe00c
-  tag        v0.5.0-rc1 created (annotated, local only)
+  tag        v1.0.0-rc1 created (annotated, local only)
 
---- node scripts/verify-clean-clone.mjs --ref v0.5.0-rc1 ---
+--- node scripts/verify-clean-clone.mjs --ref v1.0.0-rc1 ---
 
 ========================================================================
 T-1704 · clean-clone verification
-  ref      v0.5.0-rc1 -> 63f36d2b79cd5bccb1bae64b105a791941c82bff
+  ref      v1.0.0-rc1 -> 63f36d2b79cd5bccb1bae64b105a791941c82bff
   commit   3a8fe00c T-1704 rehearsal tree (throwaway clone)
   electron skipped (mirrors CI)
 ========================================================================
@@ -236,34 +227,34 @@ T-1704 · clean-clone verification
 GREEN. Clone removed.
 
 ========================================================================
-v0.5.0-rc1 is GREEN from a clean clone.
+v1.0.0-rc1 is GREEN from a clean clone.
 
 This script does not push. The remote is yours; run this when you agree:
-  git push origin v0.5.0-rc1
+  git push origin v1.0.0-rc1
 ========================================================================
 ```
 
-`63f36d2b…` is the **annotated tag object** (`git cat-file -t v0.5.0-rc1` → `tag`),
+`63f36d2b…` is the **annotated tag object** (`git cat-file -t v1.0.0-rc1` → `tag`),
 not the commit — which is what proves `-a` rather than a lightweight ref.
 
 **Three refusals were observed, not merely coded**, in the same rehearsal:
 
 - With §G blank, the ceremony **stopped at the sign-off** and printed all 23 open
   ids without reaching `git tag` — the state this repository is in today, and the
-  reason no `v0.5.0-rc1` exists in it.
+  reason no `v1.0.0-rc1` exists in it.
 - An **earlier rehearsal went red at `format:check`**, and the run deleted the tag
-  it had just created (`v0.5.0-rc1 DELETED — it was created by this run and the
+  it had just created (`v1.0.0-rc1 DELETED — it was created by this run and the
   clean clone failed`). The rollback is real, not aspirational; it was the
   formatting of two files added by this very task that tripped it.
-- Re-running after a green run reported `v0.5.0-rc1 already at HEAD —
+- Re-running after a green run reported `v1.0.0-rc1 already at HEAD —
   re-verifying` instead of trying to re-tag, so the ceremony is idempotent.
 
 The real run — **which has not happened** — is what closes E8, and it needs the
 T-1704 commit to exist and **every** §G row answered, not only A7:
 
 ```
-npm run release:rc          # sign-off → clean tree → git tag -a v0.5.0-rc1 → clean clone
-git push origin v0.5.0-rc1  # the user's act; the script prints this and stops
+npm run release:rc          # sign-off → clean tree → git tag -a v1.0.0-rc1 → clean clone
+git push origin v1.0.0-rc1  # the user's act; the script prints this and stops
 ```
 
 | ID | Item | Status | Evidence / open question |
@@ -273,7 +264,7 @@ git push origin v0.5.0-rc1  # the user's act; the script prints this and stops
 | E3 | `npm run package:mac` produces a launchable build | ✅ DONE | CI's `Package (mac)` job — same matrix, same packaged e2e. No macOS machine is available locally, and the matrix is the evidence by the CI-evidence rule |
 | E4 | The demo installer is inside its size budget | ✅ DONE | 93,444,570 B (93.4 MB) against the 200 MB ceiling in `packages/desktop/src/size.ts`; `scripts/check-size.mjs` fails `package:*:demo` over budget |
 | E5 | Code signing (Windows) and notarization (macOS) | ⏸ WAIVER REQUESTED | **Q:** do you hold a Windows code-signing certificate and an Apple Developer ID, and where should the secrets live? CI packages with `CSC_IDENTITY_AUTO_DISCOVERY: false` — every build this repo produces today is **unsigned**, and macOS will gatekeeper-block it |
-| E6 | CI green on the tagged commit | ⏸ WAIVER REQUESTED | **Q:** confirm all four CI jobs (`ci`, `e2e`, `desktop`, `package` × 2) are green on the commit `v0.5.0-rc1` points at. Purely push-dependent — nothing can observe a CI run on a commit that has not been pushed — so it is confirmed after the push, under the CI-evidence rule in `docs/ENGINEERING-POLICY.md` §3. The clean-clone half that used to be bundled into this row is now E8, which is open for the same reason this row is |
+| E6 | CI green on the tagged commit | ⏸ WAIVER REQUESTED | **Q:** confirm all four CI jobs (`ci`, `e2e`, `desktop`, `package` × 2) are green on the commit `v1.0.0-rc1` points at. Purely push-dependent — nothing can observe a CI run on a commit that has not been pushed — so it is confirmed after the push, under the CI-evidence rule in `docs/ENGINEERING-POLICY.md` §3. The clean-clone half that used to be bundled into this row is now E8, which is open for the same reason this row is |
 | E7 | Steam overlay enabled | ⏸ WAIVER REQUESTED | **Q:** do you want the Steam overlay on? It needs `--in-process-gpu --disable-direct-composition`, which changes how the CRT tube composites — the aesthetic is the stated reason Electron was chosen at all, so this needs a visual pass before it is switched on. Deferred here by T-1702a and again by T-1702b |
 | E8 | The RC tag itself exists and builds green from a clean clone | ⏸ WAIVER REQUESTED | **Q:** may `npm run release:rc` be run on the T-1704 commit, and its transcript — including the annotated tag object sha — recorded here? Answer it like A7, *before* the run: the ceremony reads §G first, so a blank in this very row is one of the things that stops it. **This is the Accept's second half, and no script here can close it** — the tag is the artifact the sign-off is about, and `git tag -l` in this repository is empty today. The machinery is closed and proven (E1, A6); only the act is open |
 
@@ -313,7 +304,7 @@ this document is only its input.
 
 | ID | Question (short form) | User's response (verbatim) |
 | --- | --- | --- |
-| A7 | Push the annotated tag `v0.5.0-rc1` once `npm run release:rc` is green? | |
+| A7 | Push the annotated tag `v1.0.0-rc1` once `npm run release:rc` is green? | |
 | B6 | Accept the Valve Steamworks SDK agreement / legal-box text? | |
 | C2 | Who draws the 90 achievement icons? | |
 | C3 | Who produces the five store capsules? | |

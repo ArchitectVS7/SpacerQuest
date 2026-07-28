@@ -389,14 +389,20 @@ describe('T-1704 · scripts/tag-rc.mjs is the RC ceremony, and it refuses things
   });
 
   it('derives the tag from the root manifest rather than typing it', () => {
-    // `version.test.ts` already pins six manifests and the doc to one version;
-    // deriving here is what extends that guarantee to the tag itself.
+    // The script building the tag from the manifest is the whole guarantee — it is why
+    // a bump cannot produce a tag for the wrong version.
     expect(source).toContain('`v${version}-rc1`');
     const root = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')) as {
       version?: string;
       scripts?: Record<string, string>;
     };
-    expect(doc).toContain(`v${root.version ?? ''}-rc1`);
+    // DROPPED 2026-07-28: this used to also require the CHECKLIST to spell out
+    // `v<version>-rc1`. That was the second test forcing a version to be hand-copied into
+    // prose, and hand-copying is what rotted — a bump left the doc holding two different
+    // versions in different paragraphs with the suite green. The doc now names no live
+    // version at all (`version.test.ts` enforces that), so there is nothing to keep in
+    // step. The derivation above is the real assertion; the doc restating it added no
+    // safety and one more thing to forget.
     expect(root.scripts?.['release:rc']).toBe('node scripts/tag-rc.mjs');
     expect(root.scripts?.['release:signoff']).toBe('node scripts/check-signoff.mjs');
   });
