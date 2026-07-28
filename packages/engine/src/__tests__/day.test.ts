@@ -289,7 +289,9 @@ describe('Destination gate (T-1101)', () => {
     const result = applyPlayerAction(state, { type: 'Travel', destinationId: 2, spendDie: 0 });
 
     expect(result.events.some((event) => event.type === 'ActionBlocked')).toBe(false);
-    expect(result.events.some((event) => event.type === 'StatCheck')).toBe(true);
+    // T-1605: an ordinary jump takes no pilot check any more, so the signal that
+    // travel actually RESOLVED is the TravelEvent itself, not a StatCheck.
+    expect(result.events.some((event) => event.type === 'TravelEvent')).toBe(true);
   });
 
   // T-1505c · GUARD ORDER. The terminal guard sits ABOVE the destination gate, so

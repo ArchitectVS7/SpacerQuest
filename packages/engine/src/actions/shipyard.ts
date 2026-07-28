@@ -10,7 +10,7 @@ import {
 import { spendDie } from '../dice.js';
 import { renownRankIndex } from '../deeds.js';
 import { jumpFuelCost, maxJumpDistance } from '../economy.js';
-import { crewCapacity, hasSpecialEquipment, repairRate } from '../components.js';
+import { crewCapacity, hasSpecialEquipment, navFuelFactor, repairRate } from '../components.js';
 import { cloneState } from '../clone.js';
 
 const COMPONENT_IDS: readonly ShipComponentId[] = [
@@ -612,7 +612,12 @@ function shipPreview(
     maxCargoPods: maxCargoPodsForShip(state),
     fuel: ship.fuel,
     maxFuel: ship.maxFuel,
-    fuelPerJump: jumpFuelCost(ship.drives, REF_JUMP_DISTANCE, ship.hasTransWarpDrive ?? false),
+    fuelPerJump: jumpFuelCost(
+      ship.drives,
+      REF_JUMP_DISTANCE,
+      ship.hasTransWarpDrive ?? false,
+      navFuelFactor(ship), // T-1605: nav prices the jump, so the preview must say so
+    ),
     maxJumpDistance: maxJumpDistance(ship.drives, ship.fuel, ship.hasTransWarpDrive ?? false),
     crewCapacity: crewCapacity(ship),
   };

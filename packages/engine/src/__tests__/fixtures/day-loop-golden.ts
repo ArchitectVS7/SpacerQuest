@@ -340,11 +340,16 @@ export function runDayLoopGolden(
 // the demo work had leaked into the full game's day loop at all, the events
 // hashes would have moved too. They did not. Regenerated via
 // gen-day-loop-golden.ts.
+// T-1605 · Regenerated after ordinary jumps stopped taking a pilot check. The
+// StatCheck event no longer appears on a normal jump and navigation now prices
+// the burn, so both the event stream and the state hash move. No rng draw was
+// added or removed by that change (the check read the spent dawn die, it never
+// rolled), so this is an event/state shape move, not a divergence in the stream.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'b926031f0131d77bc9287bc80b7ea037e586f2d252f4a58eca28270785715b49';
+  '71b3315e062e482e6fb2ef5b020a246520d4bf46dd1b9bd1869bd01ac73ecf3a';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '727581969356397d6cfbfc435c85fa67b8b2664453f77b212673e20b40b31daa';
+  'a0e8ed7f51d6710787bb91a295651a31fb84fb73d00011c33af21cff7309f774';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '975ee08317f6f71fb8a0e028bb19de994335ceb4aab17c1da1a48995d2768dbc';
+  '1f187dbe2c425b2f6a9be238cee626d555a88ba5f7f442324aa96811faa36f36';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '731da3fdc1ecb08b14cef59f209fa15a3b916f85467b6c4f2c0896a17c1b858f';
+  '6f61a1d59ebc223d484f137fb4bd6164ccd5f9e73e3e7ca94ef8462a546c3440';

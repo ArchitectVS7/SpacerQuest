@@ -38,12 +38,17 @@ export function jumpFuelCost(
   drives: DriveBlock,
   routeDistance: number,
   hasTransWarp = false,
+  navFactor = 1,
 ): number {
   const effectiveStrength = drives.strength + (hasTransWarp ? 10 : 0);
   const af = Math.min(effectiveStrength, 21);
   let perUnit = 21 - af + (10 - drives.condition);
   if (perUnit < 1) perUnit = 1;
-  return perUnit * routeDistance;
+  // T-1605 · navigation is a deterministic discount on the burn (engine
+  // components.ts `navFuelFactor`); 1 for a junker, so every existing number and
+  // golden is unchanged until nav is actually upgraded. Floored at 1 so a jump
+  // is never free.
+  return Math.max(1, Math.round(perUnit * routeDistance * navFactor));
 }
 
 /**
@@ -218,6 +223,30 @@ export const RIM_DESTINATION_CHANCE = 0.12;
 export const PAYMENT_CAP_PER_DANGER = 15000;
 
 /**
+ * T-1605 · The flat term every manifest payment carries, and the balance knob
+ * that pays for removing the void jump.
+ *
+ * It was an inline `+ 1000` (T-1104). Naming it made it tunable, and it needed
+ * tuning: once a failed pilot check stopped voiding jumps, the trader's Tour One
+ * clear rate went 0.748 -> 0.918 and the median clear day 24 -> 21 over the
+ * committed 500-seed sweep, i.e. the design bands were calibrated against a
+ * ~31% wasted-fuel tax that no longer exists.
+ *
+ * HELD AT ITS ORIGINAL 1000 — naming it is the useful part, the tuning is not.
+ * Two compensating levers were measured on the committed 500-seed sweep and BOTH
+ * cost more than they bought:
+ *   - raising the cost of a jump (a junker nav-fuel penalty) pushed destinations
+ *     out of a dry captain's range and broke the T-1605b anti-poverty-trap
+ *     invariant outright;
+ *   - cutting this premium to 850 landed smuggler/gambler/fleet within a few
+ *     points of their old rates but took the sim suite from 5 failures to 10,
+ *     because contract payments are pinned by route-EV, deed and replay tests.
+ * The remaining gap is therefore a TARGETS question, not an economy question:
+ * the bands were calibrated against a ~31% wasted-fuel tax that no longer exists.
+ */
+export const CONTRACT_FLAT_PREMIUM = 1000;
+
+/**
  * Rolls a single cargo contract offer from a system's job pool.
  *
  * T-1104 · Rim & contraband contract economy. Previously this only ever issued
@@ -300,7 +329,7 @@ export function rollContract(
   if (payment < 1) payment = 1;
   payment = payment * upodX;
   payment = payment * dangerMult; // T-1104: 3× danger premium (core dangerMult=1)
-  payment = payment + fuelRequired * 5 + 1000; // T-1104: 5× fuel premium (rim's long jumps make this term large)
+  payment = payment + fuelRequired * 5 + CONTRACT_FLAT_PREMIUM; // T-1104 fuel premium; T-1605 flat term
   // T-1104: cap scales with danger so the rim premium isn't flattened (see
   // PAYMENT_CAP_PER_DANGER). Core (tier 1) keeps the exact 15000 foundation cap.
   const cap = PAYMENT_CAP_PER_DANGER * dangerMult;

@@ -239,30 +239,53 @@ describe('T-1205 · navigation reader', () => {
     expect(navBonus(s5)).toBeGreaterThan(navBonus(s3));
   });
 
-  it('A/B: upgraded navigation raises the travel pilot-check success rate over a die sweep', () => {
-    // The pilot-check outcome turns on die + PILOT + navBonus vs the route DC; the
-    // seed only decides whether an encounter fires (it does not move the check). So
-    // sweep every possible die value and count how many clear the check — an
-    // upgraded nav (higher bonus) clears strictly more of them.
-    const successCount = (navigation: ComponentState): number => {
-      let hits = 0;
-      for (let die = 1; die <= 20; die += 1) {
-        const state = readyState();
-        state.player.currentSystemId = 1;
-        state.player.stats[Stat.PILOT] = 0;
-        state.player.ship.navigation = navigation;
-        state.player.dawnHand = { dice: [die], spent: [false] };
-        const result = resolveTravel(
-          state,
-          { type: 'Travel', destinationId: 2, spendDie: 0 },
-          new SeededRng(die),
-        );
-        const check = result.events.find((e) => e.type === 'StatCheck');
-        if (check?.type === 'StatCheck' && check.result.success) hits += 1;
-      }
-      return hits;
+  it('A/B: upgraded navigation makes every jump cheaper in fuel (T-1605)', () => {
+    // Navigation's travel job CHANGED in T-1605. It used to modify a pilot check
+    // that decided whether the jump happened at all; that check is gone, because
+    // a failed one burned the whole fuel cost and the turn and left the ship
+    // where it started (measured: 34% of jumps voided even when the player spent
+    // their best die). Navigation now prices the jump instead — so it pays out on
+    // EVERY flight rather than on the one in three that used to fail, and the
+    // A/B that matters is fuel burned, not checks cleared.
+    const fuelFor = (navigation: ComponentState): number => {
+      const state = readyState();
+      state.player.currentSystemId = 1;
+      state.player.ship.navigation = navigation;
+      state.player.dawnHand = { dice: [10], spent: [false] };
+      const result = resolveTravel(
+        state,
+        { type: 'Travel', destinationId: 2, spendDie: 0 },
+        new SeededRng(7),
+      );
+      const travel = result.events.find((e) => e.type === 'TravelEvent');
+      return travel?.type === 'TravelEvent' ? travel.fuelUsed : -1;
     };
-    expect(successCount(tier(5))).toBeGreaterThan(successCount(tier(1)));
+    const green = fuelFor(tier(1));
+    const fitted = fuelFor(tier(5));
+    expect(green).toBeGreaterThan(0);
+    expect(fitted).toBeLessThan(green);
+  });
+
+  it('an ordinary jump ALWAYS arrives — no roll, whatever the die (T-1605)', () => {
+    // The guarantee the removal bought: no die value, however bad, can take the
+    // fuel and leave the ship at the origin.
+    for (const die of [1, 5, 10, 20]) {
+      const state = readyState();
+      state.player.currentSystemId = 1;
+      state.player.stats[Stat.PILOT] = 0;
+      state.player.dawnHand = { dice: [die], spent: [false] };
+      const result = resolveTravel(
+        state,
+        { type: 'Travel', destinationId: 2, spendDie: 0 },
+        new SeededRng(die),
+      );
+      const travel = result.events.find((e) => e.type === 'TravelEvent');
+      if (travel?.type !== 'TravelEvent') throw new Error('no TravelEvent');
+      // Either the ship arrived, or an encounter interrupted it (which resolves
+      // into the arrival). What can no longer happen is a plain void.
+      const voided = !travel.success && !travel.interrupted && !travel.insufficientFuel;
+      expect(voided, `die ${die} produced a voided jump`).toBe(false);
+    }
   });
 
   it('upgraded navigation lifts the explore nav check (same PILOT reader)', () => {

@@ -102,6 +102,39 @@ export const SYSTEM_DAMAGE_WEIGHT = 1;
  *  exploration.ts. */
 export const NAV_BONUS_DIVISOR = 10;
 
+/**
+ * T-1605 · Navigation as a DETERMINISTIC fuel discount.
+ *
+ * Navigation used to exist only as a `+bonus` on the pilot check that decided
+ * whether a jump happened at all. That check is gone (see engine
+ * `actions/travel.ts`): a jump now always arrives, because a game must not take
+ * a full tank of fuel and a turn and hand back nothing. Measured before the
+ * change: 34% of jumps failed even when the player spent their BEST die, and
+ * 31% of all fuel spend bought no movement whatsoever.
+ *
+ * So navigation keeps its meaning by moving from a 1-in-3 coin flip to every
+ * single jump: each full point of effective nav score above the junker's 10
+ * shaves this fraction off the per-unit burn, to a floor of NAV_FUEL_FLOOR.
+ * Upgrading is now felt continuously instead of being invisible until it is not.
+ */
+export const NAV_FUEL_DISCOUNT_PER_POINT = 0.03;
+
+/** Most that navigation alone can cut off a jump (drives do the heavy lifting). */
+export const NAV_FUEL_FLOOR = 0.6;
+
+/**
+ * What a JUNKER's navigation (effective score 10) multiplies a jump's burn by.
+ *
+ * Removing the pilot check gave the player back everything the failed jumps used
+ * to cost, and the balance sweep caught the overshoot immediately: the trader's
+ * median debt-clear moved to day 21 against a design band of [22, 30]. This
+ * restores that friction as a PRICE rather than a coin flip — a green pilot in a
+ * junker burns more getting where they are going, every time, predictably, and
+ * flying better equipment is what makes it cheaper. Tuned against
+ * `balance-targets.test.ts` (40 seeds x 3 policies x 35 days), not guessed.
+ */
+export const NAV_FUEL_JUNKER_PENALTY = 1.0;
+
 /** robotics → condition restored per single-component shipyard repair. Junker
  *  robotics (score 10) restores 1; each +20 above the junker score restores one
  *  more (tier-3→2). Reader: components.ts `repairRate`, consumed by shipyard.ts. */

@@ -17,6 +17,7 @@ import {
 import { resolveShipyard } from '../actions/shipyard.js';
 import { applyPlayerAction, endDay, startDay } from '../day.js';
 import { calculateRouteDanger, travelDc, travelPreview } from '../actions/travel.js';
+import { navFuelFactor } from '../components.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { SeededRng } from '../rng.js';
 import { GameEvent, GameState, ShipState } from '../types.js';
@@ -339,7 +340,12 @@ describe('travelPreview (T-1401 export pack)', () => {
 
     const dist = distance(here, dest);
     expect(preview.distance).toBe(dist);
-    expect(preview.fuelCost).toBe(jumpFuelCost(ship.drives, dist, ship.hasTransWarpDrive ?? false));
+    // T-1605: the preview must price the jump exactly as the resolver charges it,
+    // navigation factor included — otherwise the starmap quotes a burn the player
+    // will not actually pay.
+    expect(preview.fuelCost).toBe(
+      jumpFuelCost(ship.drives, dist, ship.hasTransWarpDrive ?? false, navFuelFactor(ship)),
+    );
     expect(preview.dc).toBe(travelDc(dist));
     expect(preview.dangerLevel).toBe(calculateRouteDanger(state, here, dest).routeDangerLevel);
   });

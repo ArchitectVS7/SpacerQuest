@@ -28,7 +28,7 @@ import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { jumpFuelCost } from '../economy.js';
 import { eraDangerDelta } from '../era.js';
-import { navBonus } from '../components.js';
+import { navBonus, navFuelFactor } from '../components.js';
 import { guildEncounterMultiplier } from '../guild.js';
 import { applyPatrolContrabandScan } from './patrol.js';
 import { cloneState } from '../clone.js';
@@ -160,7 +160,12 @@ export function travelPreview(state: GameState, destination: number): TravelPrev
   const origin = state.player.currentSystemId;
   const ship = state.player.ship;
   const routeDistance = systemDistance(origin, destination);
-  const fuelCost = jumpFuelCost(ship.drives, routeDistance, ship.hasTransWarpDrive ?? false);
+  const fuelCost = jumpFuelCost(
+    ship.drives,
+    routeDistance,
+    ship.hasTransWarpDrive ?? false,
+    navFuelFactor(ship),
+  );
   return {
     distance: routeDistance,
     fuelCost,
@@ -194,7 +199,14 @@ export function travelPreview(state: GameState, destination: number): TravelPrev
 export function canReachSystem(state: GameState, destination: number): boolean {
   const ship = state.player.ship;
   const routeDistance = systemDistance(state.player.currentSystemId, destination);
-  return jumpFuelCost(ship.drives, routeDistance, ship.hasTransWarpDrive ?? false) <= ship.fuel;
+  return (
+    jumpFuelCost(
+      ship.drives,
+      routeDistance,
+      ship.hasTransWarpDrive ?? false,
+      navFuelFactor(ship),
+    ) <= ship.fuel
+  );
 }
 
 function chooseTargetTier(
@@ -497,6 +509,7 @@ export function resolveTravel(
     nextState.player.ship.drives,
     routeDistance,
     nextState.player.ship.hasTransWarpDrive || false,
+    navFuelFactor(nextState.player.ship),
   );
 
   // Pilot check — DC scales with distance through the authoritative helper so
@@ -505,22 +518,37 @@ export function resolveTravel(
   // the destination is passed here and in `travelPreview` so both agree.
   const dc = travelDc(routeDistance, destination);
 
-  // T-1205 navigation → pilot check: a fresh junker's navigation (score 10) adds
-  // 0, so the starter-ship goldens are unchanged; upgraded nav adds accuracy.
-  // FOUNDATION: "damaged nav causes course errors" → an additive PILOT bonus.
-  // READER OF `navigation`: this line (via components.ts navBonus).
-  const result = check(
-    die,
-    nextState.player.stats[Stat.PILOT] + navBonus(nextState.player.ship),
-    dc,
-  );
-  events.push({
-    type: 'StatCheck',
-    actor: 'Player',
-    stat: Stat.PILOT,
-    dc,
-    result,
-  });
+  // T-1605 · AN ORDINARY JUMP ALWAYS ARRIVES.
+  //
+  // Travel used to be a PILOT check, and a failure burned the whole fuel cost
+  // and the die and left the ship at the origin. Measured on the shipped build:
+  // 34% of jumps failed even when the player spent their BEST die (53% on their
+  // worst), and 31% of ALL fuel spend bought no movement at all. A player cannot
+  // plan around that, and the failure is indistinguishable from "nothing
+  // happened" — you pay a full tank and a turn for no state change.
+  //
+  // Navigation did not lose its job, it changed shifts: it is now a deterministic
+  // discount on every jump's burn (`navFuelFactor`), so the upgrade is felt on
+  // every single flight instead of being invisible until a coin flip goes badly.
+  //
+  // The NEMESIS CROSSING keeps its check. That one is a content-gated story
+  // terminus with its own DC, taken once at the end of the arc, and failing it
+  // means being turned back by the shear rather than losing a routine haul.
+  const isCrossing = destination === NEMESIS_SYSTEM_ID;
+  const result = isCrossing
+    ? check(die, nextState.player.stats[Stat.PILOT] + navBonus(nextState.player.ship), dc)
+    : ({ success: true, total: 0, margin: 0, nat20: false, nat1: false } as ReturnType<
+        typeof check
+      >);
+  if (isCrossing) {
+    events.push({
+      type: 'StatCheck',
+      actor: 'Player',
+      stat: Stat.PILOT,
+      dc,
+      result,
+    });
+  }
 
   if (nextState.player.ship.fuel >= fuelRequired) {
     nextState.player.ship.fuel -= fuelRequired;
@@ -626,7 +654,8 @@ export function resolveTravel(
         });
       }
     } else {
-      // Failed pilot check, no encounter: nav malfunction, ship stays at origin.
+      // Only reachable for the NEMESIS CROSSING now (an ordinary jump always
+      // succeeds — see the T-1605 note above): the shear turned the ship back.
       events.push({
         type: 'TravelEvent',
         characterId: 'player',

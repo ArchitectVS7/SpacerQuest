@@ -27,6 +27,7 @@ import {
   SIGNAL_FRAGMENTS,
   distance as systemDistance,
 } from '@spacerquest/content';
+import { navFuelFactor } from './components.js';
 import { jumpFuelCost } from './economy.js';
 import {
   CrossingRefusal,
@@ -221,6 +222,10 @@ export function quoteCrossingStake(state: GameState): CrossingStakeQuote {
     player.ship.drives,
     systemDistance(player.currentSystemId, NEMESIS_SYSTEM_ID),
     player.ship.hasTransWarpDrive ?? false,
+    // T-1605: navigation prices every jump now, so the QUOTE has to include it
+    // or it promises a burn the resolver will not charge. crossing.test.ts
+    // ("burns the fuel the stake quote promised") is the guard that caught this.
+    navFuelFactor(player.ship),
   );
   const facts = {
     stakeCredits: player.credits,
