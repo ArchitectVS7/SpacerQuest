@@ -50,8 +50,14 @@ labour is the point: the version answers "which release", the SHA answers "which
 | | bump | example |
 | --- | --- | --- |
 | **PATCH** `0.5.0 → 0.5.1` | a release with fixes or content inside the current track | a balance re-pin cut for a playtester |
-| **MINOR** `0.5.0 → 0.6.0` | a release after a track lands | the N-series reaching NPC parity |
+| **MINOR** `0.5.0 → 0.6.0` | a release after a whole TRACK lands | all of N0–N8 done, i.e. NPCs at player parity |
 | **MAJOR** `0.x → 1.0.0` | public release, once | not yet |
+
+**"Track" means a named series of related steps in `BALANCE-REDESIGN-WORKLIST.md`,** and
+"lands" means the whole series is finished — not one step of it. There are two today: the
+**R-series** (the balance redesign: R0a, R0b, R1, R2, R2c, R2d, R2.5, R4, R5…) and the
+**N-series** (N0–N8, bringing the 30 NPCs to player parity). Finishing N1 alone does not
+move the version; finishing N0 through N8 does.
 
 A worked example from the day this standard was written: **ten commits landed — an
 economy bug fix, a combat payout, a port re-pricing, two UI features, an engine
@@ -61,6 +67,37 @@ decision rather than a release.
 
 Under `0.y.z` semver also grants explicit licence for the public surface to change
 without ceremony, so none of this needs agonising over while the redesign is in flight.
+
+### Prerelease stage — and we are at ALPHA
+
+`0.5.0` says how mature the code is. It does **not** say how validated it is. That is the
+stage, it lives in the git tag, and it must not be inflated.
+
+| stage | tag | means | entry criteria |
+| --- | --- | --- | --- |
+| **alpha** | `v0.5.0-alpha.N` | internal only; systems still in flux | — **we are here** |
+| **beta** | `v0.5.0-beta.N` | feature-complete for the release scope; external testers | no known-red tests; balance graded against a CURRENT baseline; N-series complete |
+| **rc** | `v0.5.0-rc.N` | we would ship this if nothing new appears | beta feedback triaged; only blocker fixes since; `RELEASE-CHECKLIST.md` fully green incl. §G sign-off |
+| **release** | `v1.0.0` | public | the above, plus the decision to ship |
+
+**WHY THIS SECTION EXISTS.** `scripts/tag-rc.mjs` derives `v${version}-rc1` and
+`RELEASE-CHECKLIST.md` is titled for that tag, which reads as though an RC were the next
+step. It is not. A release *candidate* is a claim that the build is shippable pending
+final validation, and making that claim while the balance model is mid-rebuild would be
+false — the kind of false that gets a build handed to someone with the wrong expectation.
+
+**What it takes to leave alpha**, concretely, so the gate is checkable rather than a
+feeling:
+
+1. The **N-series** lands — the 30 NPCs reach player parity (`BALANCE-REDESIGN-WORKLIST.md`).
+2. **N8** re-pins the baseline against that living field, and the R-series conclusions are
+   re-read against it.
+3. The **two known-red tests** are resolved, not carried: `balance-targets` (trader clears
+   day 21 against a [22, 30] band) and `balance-combat-survival` (Auto-Repair).
+
+**Until then: cut no tags.** `npm run release:rc` would produce an `-rc1` tag that lies
+about the build, and the script only knows how to make RC tags — generalise it to take a
+stage before the first real tag is cut.
 
 ### Why the current number is `0.5.0`
 

@@ -1,5 +1,19 @@
 # Release checklist — Rimward `0.5.0`, tag `v0.5.0-rc1`
 
+> ## ⛔ NOT YET APPLICABLE — the build is at ALPHA
+>
+> This document is the **release-candidate ceremony**. It is correct, and it is not the
+> next step. An RC asserts *"we would ship this if nothing new appears"*; the Rimward
+> redesign has the 30-NPC field eight passes from player parity and two known-red balance
+> targets, so that claim would be false today.
+>
+> **Do not run `npm run release:rc`.** It would derive a `v0.5.0-rc1` tag that overstates
+> the build. The stage ladder and the concrete criteria for leaving alpha are in
+> `docs/VERSIONING.md`; come back here when beta exits.
+>
+> (`tag-rc.mjs` also only knows how to make `-rc` tags — it needs a stage parameter before
+> the first real tag is cut.)
+
 **T-1704.** The final sweep before a release candidate: version stamping,
 credits and licences, the store-page asset export list, the partner-site
 configuration, the build gate, the README and the press one-pager.
