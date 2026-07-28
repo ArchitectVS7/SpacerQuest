@@ -86,6 +86,7 @@ import {
   shipComponents,
   specialEquipmentRows,
   shipyardQuote,
+  honorList,
   shipyardFailureExplanation,
   storyletChoiceCostLabel,
   storyletChoiceNeedsDie,
@@ -2601,6 +2602,31 @@ function ShipPane({ state }: { state: CockpitState }) {
             <ComponentRow key={c.id} row={c} game={game} armed={armed} />
           ))}
         </div>
+        {/* ---- T-1406 · Top Gun Honor List ----
+            The 1991 board (`SP.TOP.txt`), recovered from this repo's own history.
+            Eight titles ranked on strength x condition — NOT on credits, which is
+            the point: it cannot be won by hoarding, only by building. Rendered as
+            completion bars so a player can see at a glance which axes they have
+            invested in and which they have ignored. */}
+        <div className="ship-honor" data-testid="honor-list">
+          <div className="honor-head">TOP GUN HONOR LIST</div>
+          {honorList(game).map((t) => (
+            <div
+              key={t.id}
+              className={t.id === 'allAround' ? 'honor-row all-around' : 'honor-row'}
+              data-testid="honor-row"
+              data-honor={t.id}
+              data-completion={t.completion.toFixed(3)}
+            >
+              <span className="honor-title">{t.title}</span>
+              <span className="honor-bar" aria-hidden="true">
+                <i style={{ width: `${Math.round(t.completion * 100)}%` }} />
+              </span>
+              <span className="honor-pct">{Math.round(t.completion * 100)}%</span>
+            </div>
+          ))}
+        </div>
+
         <div className="ship-repair-all">
           <button
             className="btn"
@@ -2868,6 +2894,20 @@ function ComponentRow({
     >
       <div className="comp-id">
         <span className="comp-name">{row.name}</span>
+        {/* T-1406 · WHAT THIS PART DOES, next to what it costs. The yard used to
+            price a component without ever saying what it was for, which is a large
+            part of why four of the eight were never bought. Every figure comes
+            from the engine's own reader via `shipComponents` — the UI computes no
+            effect of its own. */}
+        <span className="comp-effect" data-testid="component-effect" title={row.effectLabel}>
+          {row.effectLabel}: <b>{row.effectNow}</b>
+          {row.effectNext !== null && row.effectNext !== row.effectNow && (
+            <>
+              {' \u2192 '}
+              <b className="comp-effect-next">{row.effectNext}</b>
+            </>
+          )}
+        </span>
         <span className="comp-str">
           STR <b data-testid="component-strength">{row.strength}</b>
         </span>

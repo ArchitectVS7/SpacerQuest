@@ -53,7 +53,15 @@ import {
   demoLocked,
   isDemo,
   type Edition,
+  type ShipState,
   componentTierForStrength,
+  calculateFuelCapacity,
+  jumpFuelCost,
+  weaponVolleyDamage,
+  shieldMitigation,
+  navFuelFactor,
+  effectiveScore,
+  repairRate,
   tributeForRound,
   nextRankFor,
   quoteStoryletChoice,
@@ -1109,6 +1117,79 @@ export interface ShipComponentRow {
   tier: number;
   /** The next purchasable tier, or null when already at the top tier (9). */
   nextTier: number | null;
+  /** What this component DOES, in one short phrase — the mechanical effect, not
+   *  flavour. */
+  effectLabel: string;
+  /** The effect at the CURRENT fit, already formatted for display. */
+  effectNow: string;
+  /** The effect at `nextTier`, formatted the same way, or null at the top tier.
+   *  Lets the yard show "18 fuel -> 10 fuel" instead of a bare price. */
+  effectNext: string | null;
+}
+
+/**
+ * T-1406 · What each component actually does, evaluated at a given strength.
+ *
+ * EVERY NUMBER COMES FROM THE ENGINE'S OWN READER — `jumpFuelCost`,
+ * `weaponVolleyDamage`, `shieldMitigation`, `navFuelFactor`, `navBonus`,
+ * `crewCapacity`, `repairRate`, `calculateFuelCapacity`. The UI owns no rule here,
+ * exactly as it owns no shipyard rule (`shipyardFailureExplanation` above states
+ * the same discipline). A hypothetical ship is built by cloning the live one and
+ * moving ONE component to the strength under test, so the quoted effect is what
+ * the engine would compute for that fit — never a UI approximation of it.
+ *
+ * WHY THIS EXISTS. The yard used to price a component without ever saying what it
+ * did: "Drives, tier 7, 2,975cr" told a player nothing about whether it was worth
+ * buying. Four of the eight components (drives, navigation, life support,
+ * robotics) had no visible effect at all, which is a large part of why nobody
+ * bought them.
+ */
+function componentEffect(
+  ship: ShipState,
+  id: ShipComponentId,
+  strength: number,
+): { label: string; value: string } {
+  // The same ship with ONE component moved — condition held at the live value so
+  // the comparison isolates the purchase.
+  const probe: ShipState = {
+    ...ship,
+    [id]: { strength, condition: ship[id].condition },
+  };
+  const REFERENCE_DISTANCE = 10;
+  switch (id) {
+    case 'hull':
+      return {
+        label: 'fuel capacity',
+        value: `${calculateFuelCapacity(strength, probe.hull.condition)} units`,
+      };
+    case 'drives':
+      return {
+        label: `fuel burned per ${REFERENCE_DISTANCE}-unit jump`,
+        value: `${jumpFuelCost(probe.drives, REFERENCE_DISTANCE, probe.hasTransWarpDrive ?? false, navFuelFactor(probe))} fuel`,
+      };
+    case 'weapons':
+      return { label: 'hull points per winning volley', value: `${weaponVolleyDamage(probe)}` };
+    case 'shields':
+      return { label: 'damage absorbed per hit', value: `${shieldMitigation(probe)}` };
+    case 'navigation':
+      return {
+        label: 'pilot bonus / fuel discount',
+        value: `+${navBonus(probe)} / x${navFuelFactor(probe).toFixed(2)}`,
+      };
+    case 'lifeSupport':
+      // Strength has no reader; only `condition === 0` is checked (the dusk
+      // survival gate). Said plainly rather than invented.
+      return {
+        label: 'dusk survival',
+        value: probe.lifeSupport.condition > 0 ? 'holding' : 'CRITICAL',
+      };
+    case 'robotics':
+      return { label: 'condition restored per repair', value: `${repairRate(probe)}` };
+    case 'cabin':
+      return { label: 'crew berths', value: `${crewCapacity(probe)}` };
+    default:
+      return { label: '', value: '' };
+  }
 }
 
 /** The eight ship components as grid rows (order from content). */
@@ -1122,6 +1203,8 @@ export function shipComponents(game: GameState): ShipComponentRow[] {
     // to tier 1 → nextTier 2, making TIER 1 UNBUYABLE. floor maps it to tier 0 →
     // nextTier 1 is buyable.
     const tier = componentTierForStrength(comp.strength);
+    const nextTier = tier < 9 ? tier + 1 : null;
+    const now = componentEffect(ship, id, comp.strength);
     return {
       id,
       name: def.name,
@@ -1129,7 +1212,10 @@ export function shipComponents(game: GameState): ShipComponentRow[] {
       condition: comp.condition,
       damaged: comp.condition < 9,
       tier,
-      nextTier: tier < 9 ? tier + 1 : null,
+      nextTier,
+      effectLabel: now.label,
+      effectNow: now.value,
+      effectNext: nextTier === null ? null : componentEffect(ship, id, nextTier * 10).value,
     };
   });
 }
@@ -2386,4 +2472,88 @@ export function presenceMessage(steam: SteamStatus | null, line: string): string
   if (steam === 'ready') return line;
   if (steam === 'unavailable') return 'Not connected — nothing is shown to friends.';
   return 'Rich presence is available in the desktop version.';
+}
+
+// ---- T-1406 · The Top Gun Honor List -------------------------------------
+//
+// RECOVERED FROM THE ORIGINAL, not invented. `SP.TOP.txt` in the 1991 Apple II
+// source (this repo's own history, `7ca606d7^:Decompile/Source-Text/`) prints an
+// "-=*=- Top Gun Honor List -=*=-" with eight titles — Fastest Drives, Fanciest
+// Cabin, Best Life Support, Strongest Weapons, Best Navigation, Best Robotics,
+// Strongest Shields, Best All-Around Ship — each ranked on `strength x condition`
+// per component, the all-around title summing all eight. Our `effectiveScore` is
+// that same quantity.
+//
+// WHY THIS AND NOT A NET-WORTH BOARD. A leaderboard on credits would simply
+// re-crown the archetype that already dominates by refusing all risk — the trader
+// hoards, and hoarding would win. The 1991 board cannot be won by hoarding: you
+// have to SPEND the money on the ship to place. That is also the answer to the
+// measured problem that the best weapon in the game is a net-negative purchase —
+// it does not have to pay for itself in credits if it wins you a title.
+//
+// EIGHT TITLES, NOT ONE LADDER. Measured across the shipped policies, the board is
+// multi-polar: the fighter takes Weapons and Hull, the veteran takes Shields, the
+// smuggler takes Drives and Navigation. Four playstyles, four things to be best at.
+//
+// SCOPE — deliberately a PERSONAL board in v1. `NpcState` carries credits, fuel and
+// disposition but NO ship components, so ranking the 30-NPC field would mean
+// inventing NPC ships out of their tier. That is a design decision with its own
+// blast radius, not a rendering detail, so this reports the player's own fit
+// against the ladder's ceiling instead of against a fabricated field. The moment
+// NPC ships become real state, this function is where the field plugs in.
+
+export interface HonorTitle {
+  id: ShipComponentId | 'allAround';
+  /** The 1991 title, verbatim where one existed. */
+  title: string;
+  /** `effectiveScore` for the component, or its sum for the all-around title. */
+  score: number;
+  /** The score at a fully-maxed fit (tier 9, pristine) — the ladder's ceiling. */
+  best: number;
+  /** score / best, clamped to [0, 1] — the completion bar. */
+  completion: number;
+}
+
+/** The 1991 titles, in the order `SP.TOP.txt` prints them. `hull` carries no
+ *  individual title in the original — it counts only toward Best All-Around — so
+ *  it is reported here the same way. */
+const HONOR_TITLES: readonly { id: ShipComponentId; title: string }[] = [
+  { id: 'drives', title: 'Fastest Drives' },
+  { id: 'cabin', title: 'Fanciest Cabin' },
+  { id: 'lifeSupport', title: 'Best Life Support' },
+  { id: 'weapons', title: 'Strongest Weapons' },
+  { id: 'navigation', title: 'Best Navigation' },
+  { id: 'robotics', title: 'Best Robotics' },
+  { id: 'shields', title: 'Strongest Shields' },
+];
+
+/** Score of a pristine tier-9 component — the ceiling every bar is drawn against.
+ *  Derived from `effectiveScore`, never a literal, so a change to the tier ladder
+ *  or the score formula moves the bars with it. */
+const MAX_COMPONENT_SCORE = effectiveScore({ strength: 9 * 10, condition: 9 });
+
+export function honorList(game: GameState): HonorTitle[] {
+  const ship = game.player.ship;
+  const rows: HonorTitle[] = HONOR_TITLES.map(({ id, title }) => {
+    const score = effectiveScore(ship[id]);
+    return {
+      id,
+      title,
+      score,
+      best: MAX_COMPONENT_SCORE,
+      completion: Math.max(0, Math.min(1, score / MAX_COMPONENT_SCORE)),
+    };
+  });
+  // Best All-Around sums ALL EIGHT components (hull included), exactly as the
+  // original's `tgfx` subroutine does.
+  const all = SHIP_COMPONENTS.reduce((sum, def) => sum + effectiveScore(ship[def.id]), 0);
+  const allBest = MAX_COMPONENT_SCORE * SHIP_COMPONENTS.length;
+  rows.push({
+    id: 'allAround',
+    title: 'Best All-Around Ship',
+    score: all,
+    best: allBest,
+    completion: Math.max(0, Math.min(1, all / allBest)),
+  });
+  return rows;
 }

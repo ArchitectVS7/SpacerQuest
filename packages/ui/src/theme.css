@@ -3421,3 +3421,56 @@ body {
   flex-wrap: wrap;
   gap: 10px;
 }
+
+/* T-1406 · Top Gun Honor List — the 1991 board, as completion bars. */
+.ship-honor {
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line, #2b3a44);
+  background: rgba(0, 0, 0, 0.18);
+}
+.ship-honor .honor-head {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  opacity: 0.75;
+  margin-bottom: 0.4rem;
+}
+.ship-honor .honor-row {
+  display: grid;
+  grid-template-columns: 10.5rem 1fr 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+.ship-honor .honor-row.all-around {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line, #2b3a44);
+  font-weight: 600;
+}
+.ship-honor .honor-bar {
+  position: relative;
+  height: 0.5rem;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.ship-honor .honor-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent, #4fd1c5);
+  transition: width 160ms ease-out;
+}
+.ship-honor .honor-pct {
+  text-align: right;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+/* T-1406 · the component's mechanical effect, shown beside its price. */
+.comp-effect {
+  font-size: 0.68rem;
+  opacity: 0.8;
+}
+.comp-effect-next {
+  color: var(--accent, #4fd1c5);
+}
