@@ -869,212 +869,130 @@ TRAFFIC-driven. Ours pays a flat `baseDuskIncome` whether or not anyone visits.
 
 ### N7-FP — The rules fingerprint hashes code, not bytes (SHIPPED 2026-07-29)
 
-**The defect.** `rules-fingerprint.ts` hashed raw file text, so editing a COMMENT in any
-content or engine rule source moved `rulesFingerprint` and declared every balance fixture
-stale. `docs/VERSIONING.md` §3 defines that hash as one "over the files that decide
-outcomes"; the implementation answered a broader question — "has any byte changed?" — and
-so answered **"this is a different game" when the truth was "same game, better sentence"**.
+**This is not a graded N-series step** — no hypothesis, no sweep, no verdict, no re-pin. It is
+a defect and its fix, recorded beside N7-RIG because both change *the instrument that decides
+whether a fixture still describes HEAD*. `rules-fingerprint.ts` used to hash raw file text, so
+editing a COMMENT in any rule source moved `rulesFingerprint` and declared every balance
+fixture stale — answering *"this is a different game"* when the truth was *"same game, better
+sentence"*, and taxing exactly the definition-site commentary BALANCE-POLICY Part B rule 3
+requires. **The fix (option C of three considered):** comments are now stripped before hashing
+**using the TypeScript parser rather than a regex** (`//` and `/* */` occur inside string
+literals here, so text-stripping would corrupt real code), and the re-print also normalises
+quote style, so a Prettier pass cannot move a rules fingerprint either.
 
-**Why it mattered, measured rather than asserted.** The trigger was the R2d doc audit
-above, which was comment-only and proved inert (8-shard capstone on the edited tree vs
-stashed clean HEAD, identical seeds, 7,000 rows, diffed to *"NOTHING MOVED. Every compared
-field is equal on both sides."*) and still cost a full fixture re-stamp. The cost lands
-exactly where this project can least afford it: `ports.ts` carries ~180 lines of
-commentary over ~120 lines of data, so the old rule taxed the activity that keeps
-definition-site prose true — and a payback range wrong by 2.2x plus an invariant that had
-stopped being true are what that tax bought. The instrument's own header already made the
-argument in miniature, excluding itself because self-inclusion "would invalidate every
-fixture on a comment edit here — churn with no signal in it."
+**Still binds:**
 
-**The fix (option C of three considered).** Comments are stripped before hashing, using
-the TypeScript parser rather than a regex — `//` and `/* */` occur inside string literals
-here, so text-stripping would corrupt real code and move the hash for the wrong reason.
-Re-printing also normalises quote style, so a Prettier pass cannot move a rules
-fingerprint either. The raw-byte hash is **not deleted, it is demoted**: `docsFingerprint`
-is recorded in fixture provenance and reported when it moves, but is never a
-`FreshnessProblem` — a commentary change is worth dating, not worth failing.
+- **The raw-byte hash is NOT deleted, it is demoted.** It survives as `docsFingerprint`,
+  recorded in fixture provenance and reported when it moves, but **never a
+  `FreshnessProblem`** — a commentary change is worth dating, not worth failing.
+  `fixtureFreshness` never reads it; its only reader, `fixtureDocsDrift`, returns
+  `string | null`.
+- **ACCEPTED COST: treat a `typescript` MAJOR bump as a re-stamp event.** The printer's output
+  can shift across TypeScript major versions, moving every fingerprint at once on a dependency
+  bump — loud, one-time, obviously attributable, remedied by the same re-stamp. This trades a
+  rare loud false positive for a frequent quiet one.
+- **What holds it honest, and only the pair is meaningful.** `balance-rig.test.ts` pins BOTH
+  directions against a synthetic tree (a comment edit does NOT move `rulesFingerprint`; a
+  `140000 -> 130000` edit in the same file DOES), plus a guard that a string literal containing
+  comment markers is still hashed as code, and two tests that docs drift stays informational.
+  Comment-insensitivity alone is satisfied by a hash that ignores everything.
+- **Changing the hash ALGORITHM is not a re-measure.** Both fingerprints moved, so the fixture
+  was re-extracted from the unchanged baseline of record — no rule changed, no new capstone
+  committed. Stated because *"re-stamped without re-measuring"* is exactly the move
+  `docs/VERSIONING.md` forbids doing silently.
+- **OI-4 — how to quote a battery total in this document.** This entry originally read "1,233
+  passing", N2's figure copied forward; `b7b52116`'s own commit message says **1,239** and the
+  audit re-measured 1,239 at that HEAD. Root `npm test` is
+  `npm run test --workspaces --if-present`, and **exactly four workspaces have a `test`
+  script** — desktop 102, engine 725, sim 277, ui 135 at `b7b52116`. `packages/content` has no
+  test script at all (only `build`), so a "content 102" arm in any note is `packages/desktop`
+  mislabelled. *Post-remediation the battery stands at **1,262 passing / 0 failing** — sim
+  **300**; the +23 is the OI-6 / OI-6b / OI-7 rig tests recorded in N7-RIG below.*
 
-**What holds it honest.** `balance-rig.test.ts` pins BOTH directions against a synthetic
-tree (a comment edit does NOT move `rulesFingerprint`; a `140000 -> 130000` edit in the
-same file DOES), plus a guard that a string literal containing comment markers is still
-hashed as code, and two tests that docs drift stays informational. Only the pair is
-meaningful: comment-insensitivity alone is satisfied by a hash that ignores everything.
-
-**Accepted cost, recorded so it is not a surprise.** The printer's output can shift across
-TypeScript MAJOR versions, moving every fingerprint at once on a dependency bump — loud,
-one-time, obviously attributable, remedied by the same re-stamp. Treat a `typescript`
-major bump as a re-stamp event. This trades a rare loud false positive for a frequent
-quiet one.
-
-**Not a re-measure.** Changing the hash ALGORITHM moves both fingerprints, so the fixture
-was re-extracted from the unchanged baseline of record — no rule changed, no new capstone
-committed. Stated here because "re-stamped without re-measuring" is exactly the move
-VERSIONING.md forbids doing silently. Battery **1,239 passing / 0 failing**.
-
-> **BATTERY COUNT CORRECTED 2026-07-29 (doc audit, item OI-4).** This line originally read
-> "1,233 passing" — N2's figure copied forward, not this step's. `b7b52116`'s own commit
-> message says **1,239**, and the audit re-measured 1,239 at that HEAD. Worth stating once
-> for everyone who quotes a battery total in this document: root `npm test` is
-> `npm run test --workspaces --if-present`, and **exactly four workspaces have a `test`
-> script** — desktop 102, engine 725, sim 277, ui 135 at `b7b52116`. `packages/content`
-> has no test script at all (only `build`), so a "content 102" arm in any note is
-> `packages/desktop` mislabelled. *Post-remediation this battery now stands at **1,262
-> passing / 0 failing** — desktop 102, engine 725, sim **300**, ui 135; the +23 is the
-> OI-6 / OI-6b / OI-7 rig tests recorded in N7-RIG immediately below.*
+*Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
 ### N7-RIG — Two blind spots in the fingerprint, closed by audit (REMEDIATION · 2026-07-29)
 
-**This is not a graded N-series step.** No hypothesis, no sweep, no verdict, no re-pin — it
-is remediation of three items (**OI-6**, **OI-6b**, **OI-7**) raised by the 2026-07-29
-N-series doc-vs-code audit — five independent verification passes over every step marked
-SHIPPED, run against HEAD `5e4b9f0c` on a clean tree, which raised **13 items (OI-1 … OI-12
-plus OI-6b), all closed the same day**. The audit's own working file was never committed:
-**this document is the whole record**, and every one of the 13 is traceable by grepping its
-OI-number here. Where an item stayed open by decision rather than being fixed, it is filed
-under the step that owns it (OI-2 and OI-8 → N3; OI-9 → N2 and the PARITY LEDGER; OI-11 →
-N6) rather than in a list of its own. It is
-recorded here, beside N7-FP, because both are changes to *the instrument that decides
-whether a fixture still describes HEAD*, and a reader who is relying on N7's staleness
-guarantee needs to find them in one place. N7's own entry points here too.
+**This is not a graded N-series step** — no hypothesis, no sweep, no verdict, no re-pin. It is
+remediation of three items (**OI-6**, **OI-6b**, **OI-7**) raised by the 2026-07-29 N-series
+doc-vs-code audit: five independent verification passes over every step marked SHIPPED, run
+against HEAD `5e4b9f0c` on a clean tree, which raised **13 items (OI-1 … OI-12 plus OI-6b),
+all closed the same day**. The audit's own working file was never committed: **this document
+is the whole record**, and every one of the 13 is traceable by grepping its OI-number here —
+`OI-1` and `OI-5` under N1/N2, `OI-2` under N6 and N3, `OI-3` under N7 and standing amendment
+3, `OI-4` under N7-FP, `OI-6`/`OI-6b`/`OI-7` here, `OI-8` under N3, `OI-9` under N2 and THE
+PARITY LEDGER, `OI-10` in the track preamble, `OI-11` under N6, `OI-12` under N8. Where an
+item stayed open by decision rather than being fixed, it is filed under the step that owns it
+rather than in a list of its own. It is recorded here, beside N7-FP, because both are changes
+to *the instrument that decides whether a fixture still describes HEAD*. **Nothing was
+re-stamped and nothing was owed** — rules **`91cfa4adc626ba54`** (56 files) and instrument
+**`79adfd2417aa9fcd`** (4 files) both unmoved and still matching
+`docs/balance/smoke/tiers.json`; running the new module against a pristine `git archive HEAD`
+tree reproduced the stamped `docsFingerprint` `e003c81c03bcd116` exactly, so the working-tree
+drift was 100% attributable to OI-1's comment rewrite in `npc.ts` (recorded in N1). Battery
+**1,239 -> 1,262 passing / 0 failing**; rig tests **29 -> 52**.
 
-**OI-6 — a new SUBDIRECTORY of rule code escaped both the hash and the totality tests.**
-`listTsFiles` read only the declared directories, so `packages/engine/src/rules/` would
-have been invisible to `computeRulesFingerprint` **and** to the three enumeration tests
-that exist precisely to make the classification total. That is the one failure direction
-the rig exists to prevent, arriving in the one mode where nothing goes red.
+**Still binds:**
 
-The guard **fails rather than auto-recursing**, and that is the judgment call. Auto-recursion
-would let a whole subtree join the fingerprint with nobody having decided that it should —
-the same "nobody noticed" failure wearing the opposite sign. Shipped in
-`packages/sim/src/balance/rules-fingerprint.ts`:
+- **OI-6 — every directory under a hashed root is a decision on record.** `listTsFiles` read
+  only the declared directories, so `packages/engine/src/rules/` would have been invisible to
+  `computeRulesFingerprint` **and** to the three enumeration tests that exist to make the
+  classification total. The guard **fails rather than auto-recursing**, deliberately:
+  auto-recursion would let a whole subtree join the fingerprint with nobody having decided
+  that it should. In `packages/sim/src/balance/rules-fingerprint.ts`: `:207`
+  `HASHED_ROOT_IGNORED_DIRECTORIES` (`__tests__`, `node_modules`, `dist`), each carrying its
+  stated reason; `:248` `assertNoUndeclaredSubdirectory()`, whose message names the offending
+  directory and both remedies; `:352` `listTsFiles()`; `:523` `collect()` and `:625`
+  `allSourceKeys()` both take the declared-subdirectory set through, **so the hash and the
+  enumeration tests walk the same guarded tree**. `listTsFiles` is the module's only
+  `readdirSync`. It lives in the PRODUCTION MODULE, not the test, and that is load-bearing:
+  `checkpoints.ts` and `smoke-extract.ts` stamp fixtures from the command line, and a
+  vitest-only guard cannot reach a CLI stamp. 8 tests, `balance-rig.test.ts:537`.
+- **SHARP BUT INTENTIONAL — an empty, `.d.ts`-only or asset-only directory all THROW, and they
+  hard-fail `smoke-extract` at the CLI, not just a test.** So adding e.g.
+  `packages/content/src/data/*.json` will stop a fixture extraction dead until someone declares
+  the directory. That is conservative-safe and consistent with the module's doctrine, but it is
+  a real cost, and the remedy is one line in `HASHED_ROOT_IGNORED_DIRECTORIES` or in the
+  declared set.
+- **OI-6b — the four symlink rules, settled.** `readdirSync(withFileTypes)` types a symlink by
+  ITSELF, not its target, so a symlinked directory slipped both the new guard and
+  `listTsFiles`. `listTsFiles` now classifies every entry ONCE via `statSync` — which follows
+  the link where `lstatSync` would not, and that is the entire reason for choosing it
+  (`classifyEntries()` / `ClassifiedEntry`, `rules-fingerprint.ts:276-350`). (1) A **symlinked
+  directory** trips the guard with the identical message and escapes it via
+  `HASHED_ROOT_IGNORED_DIRECTORIES` exactly as a real one does. (2) A **symlinked `.ts` file**
+  is HASHED like any other rule source — `readFileSync` follows the link, so it is real rule
+  code deciding real outcomes. (3) **The repo-relative path IN THIS TREE enters the manifest,
+  not the target's** — a fingerprint describes this tree. (4) A **dangling or
+  non-regular-file** link fails loudly with a named `UNRESOLVABLE SYMLINK` message rather than
+  letting a bare `ENOENT` escape from inside a fixture stamp. Cost on a healthy tree is zero
+  and is pinned by a test. 9 tests, `balance-rig.test.ts:634`.
+- **OI-7 — a file TypeScript cannot parse used to hash silently.** `ts.createSourceFile` does
+  not throw on bad syntax: it RECOVERS, records the problem in the `@internal`
+  `parseDiagnostics`, and the printer prints the recovered tree (`export const A = (` prints as
+  `export const A = ();`). Two different broken states can recover to the same tree — **a
+  fingerprint collision between rulesets that are not the same ruleset.** `assertParseClean`
+  (`rules-fingerprint.ts:485`) now fails with the file, the line:column and the parser's own
+  message before anything is hashed; `hashSemantic` (`:436`) calls it at `:444`, ahead of
+  `printFile` at `:445`. It is an assertion rather than a documented mitigation for the same
+  reason as OI-6: `tsc -b` is external and runs in the battery, not before `smoke-extract.ts`
+  stamps a fixture. **The assertion's own failure mode is covered: if `parseDiagnostics` ever
+  stops being readable (a TypeScript upgrade renaming that `@internal` field) it throws rather
+  than silently stopping checking.** 6 tests, `balance-rig.test.ts:761`.
+- **The hashed corpus, pinned as a test rather than remembered.** All **60** hashed files —
+  **56** rule plus **4** instrument, the instrument set being exactly `sim/index.ts`,
+  `balance/aggregate.ts`, `balance/smoke.ts`, `balance/synthesize.ts` — parse with **zero**
+  diagnostics under the exact `ScriptTarget.Latest` / `ScriptKind.TS` pair the hash uses.
+- **ONE HOLE OF THE SAME CLASS IS STILL OPEN — recorded, not closed.** The guard catches a new
+  *subdirectory* under a hashed root. A whole new hashed **root** — a new package, say
+  `packages/economy/src` — is caught by nothing: it would simply never be walked, and every
+  enumeration test would pass while describing a game that had grown a limb. Closing it needs
+  a different mechanism (the workspace list is the thing that would have to be
+  totality-checked, not a directory listing). **It belongs to whichever step first adds a
+  package** — that step must either declare the new root here or record why it holds no rule
+  code.
 
-- `:207` `HASHED_ROOT_IGNORED_DIRECTORIES` (`__tests__`, `node_modules`, `dist`), each
-  carrying its stated reason, in the same map-not-list shape as `ENGINE_NON_RULE_SOURCES`
-  — so an exclusion is always an argued one rather than a name on a list.
-- `:248` `assertNoUndeclaredSubdirectory()`, whose message names the offending directory
-  and both remedies.
-- `:352` `listTsFiles()` rewritten to `withFileTypes: true`, run the guard, then filter.
-- `:523` `collect()` and `:625` `allSourceKeys()` both take the declared-subdirectory set
-  through, so **the hash and the enumeration tests walk the same guarded tree**.
-  `listTsFiles` is the module's only `readdirSync`; there is no surviving second walk.
-
-**It lives in the PRODUCTION MODULE, not in the test, and that is load-bearing.**
-`checkpoints.ts` and `smoke-extract.ts` stamp fixtures from the command line. With the hole
-open, an extraction on a tree containing `engine/src/rules/` would write a fixture whose
-`rulesFingerprint` claimed to describe a ruleset it had never hashed — and `assertFixtureFresh`
-would then certify that fixture fresh indefinitely. A vitest-only guard cannot reach a CLI
-stamp, which is where fixtures are actually written.
-
-**Proved, not asserted.** Planting `packages/engine/src/rules/checks.ts` throws a message
-naming the directory and both remedies, and turns **12 rig tests red**. Under that planted
-directory **two of the three enumeration tests fail — not all three**: `classifies every sim
-source as instrument or not` correctly stays green, because it walks only the sim root. An
-adversarial pass then planted subdirectories under every hashed root — nested three deep,
-empty, `.d.ts`-only, asset-only and hidden — and every one of them throws, while `__tests__`
-/ `dist` / `node_modules` correctly pass and the properly declared `engine/src/actions` and
-`sim/src/balance` do not falsely trip. Mutation test: neutering the guard turns 8 rig tests
-red (5 here, 3 in OI-6b) **including an enumeration test**, which is the decisive evidence that `allSourceKeys`
-genuinely shares the guarded walk rather than merely resembling it. 8 tests,
-`balance-rig.test.ts:537`.
-
-> **SHARP BUT INTENTIONAL — written down so it is not discovered as a surprise.** An empty
-> directory, a `.d.ts`-only directory and an asset-only directory **all throw**, and they
-> hard-fail `smoke-extract` at the CLI, not just a test. So adding e.g.
-> `packages/content/src/data/*.json` will stop a fixture extraction dead until someone
-> declares the directory. That is conservative-safe and consistent with the module's own
-> doctrine — every directory under a hashed root is a decision on record — but it is a real
-> cost, and the remedy is one line in `HASHED_ROOT_IGNORED_DIRECTORIES` or in the declared
-> set.
-
-**OI-6b — a follow-on hole, found by the verifier and closed by a second pass.**
-`readdirSync(withFileTypes)` types a symlink by ITSELF, not by its target, so
-`entry.isDirectory()` was false for a symlinked directory and it slipped **both** the new
-guard and `listTsFiles`. Reproduced on the real tree: symlinking `packages/engine/src/rules`
-at a directory holding a `.ts` file left `computeRulesFingerprint` passing, fingerprint
-unmoved at `91cfa4adc626ba54` over the same 56 files — precisely the invisible-to-both mode
-OI-6 exists to close, wearing a different hat.
-
-`listTsFiles` now classifies every entry ONCE, via `statSync` — which follows the link where
-`lstatSync` would not, and that is the entire reason for choosing the former. New
-`classifyEntries()` / `ClassifiedEntry` at `rules-fingerprint.ts:276-350`; the guard now
-tests `entry.kind !== 'directory'`. The four rules it settles:
-
-- A **symlinked directory** trips the guard with the identical message, and escapes it via
-  `HASHED_ROOT_IGNORED_DIRECTORIES` exactly as a real one does. How the entry was created is
-  not a fact the author needs in order to make the decision.
-- A **symlinked `.ts` file** is HASHED like any other rule source. `readFileSync` follows the
-  link, so it is real rule code deciding real outcomes — and hashing it also drags it in
-  front of the enumeration totality tests.
-- **The repo-relative path IN THIS TREE enters the manifest, not the target's.** A
-  fingerprint describes this tree.
-- A **dangling or non-regular-file** link fails loudly with a named `UNRESOLVABLE SYMLINK`
-  message, rather than letting a bare `ENOENT` escape from inside a fixture stamp.
-
-9 tests at `balance-rig.test.ts:634`; **7 go red** under a mutation reverting the symlink
-resolution, and the 2 survivors are deliberate negative controls. Cost on a healthy tree is
-zero: `statSync` is reached only for an entry that is genuinely a link, and there are none
-under the real hashed roots — pinned by a test rather than remembered.
-
-**OI-7 — a file TypeScript cannot parse used to hash silently.** `ts.createSourceFile` does
-not throw on bad syntax. It RECOVERS, records the problem in the `@internal`
-`parseDiagnostics`, and the printer prints the recovered tree quite happily: verified,
-`export const A = (` yields one `Expression expected.` and prints `export const A = ();`.
-The loss is silent, and worse than silent — two different broken states can recover to the
-same tree, i.e. **a fingerprint collision between rulesets that are not the same ruleset**.
-This is the exact failure N7's own standing warning named ("a parser that mis-parses fails
-silently, in the one direction this whole design exists to prevent"). N7-FP shipped the
-parser; this closes the hole the warning was pointing at.
-
-`assertParseClean` (`rules-fingerprint.ts:485`) now fails with the file, the line:column and
-the parser's own message before anything is hashed. `hashSemantic` (`:436`) calls it at
-`:444`, ahead of `printFile` at `:445`.
-
-**Why the assertion rather than the merely-document-it option.** The `tsc -b` mitigation is
-EXTERNAL and runs in the battery — not before `smoke-extract.ts` stamps a fixture. Same
-argument as OI-6: the failure has to be reachable from the command line.
-
-**Cost is nil, measured rather than hoped.** All **60** hashed files — **56** rule plus
-**4** instrument, the instrument set being exactly `sim/index.ts`, `balance/aggregate.ts`,
-`balance/smoke.ts`, `balance/synthesize.ts` — parse with **zero** diagnostics under the exact
-`ScriptTarget.Latest` / `ScriptKind.TS` pair the hash uses, and **that corpus check is pinned
-as a test rather than remembered**. An independent verifier re-enumerated the corpus from the
-module's own declarations rather than trusting the count, then probed **19
-valid-but-unusual TypeScript constructs** for false positives — decorators in both flavours,
-`satisfies`, `using` / `await using`, `<T,>` arrow generics, `enum` and `const enum`,
-namespaces, `export type *`, `accessor` / static blocks / `#private`, const type parameters,
-import attributes, top-level await, shebang, BOM, CRLF — **all clean, zero spurious
-diagnostics**. BOM and CRLF even normalise to the same hash as plain LF, so the
-`ScriptKind`/target pair is not over-tight. The assertion's own failure mode is covered as
-well: if `parseDiagnostics` ever stops being readable (a TypeScript upgrade renaming that
-`@internal` field) it throws, rather than silently stopping checking. Mutation test:
-dropping `assertParseClean` turns 3 rig tests red. 6 tests, `balance-rig.test.ts:761`.
-
-**NOTHING WAS RE-STAMPED, AND NOTHING WAS OWED — verified by two independent parties.**
-Neither fingerprint moved: rules **`91cfa4adc626ba54`** (56 files), instrument
-**`79adfd2417aa9fcd`** (4 files), both still matching `docs/balance/smoke/tiers.json`.
-Stronger than a working-tree comparison: running the NEW module against a pristine
-`git archive HEAD` tree reproduces the stamped `docsFingerprint` `e003c81c03bcd116`
-**exactly**, which proves the working-tree drift to `a8d1a65c9f3e9cb5` is 100% attributable
-to OI-1's comment rewrite in `npc.ts` and **zero** of it to the rig change. So no re-stamp,
-no changelog entry and no baseline re-record was owed — and the semantic hash correctly NOT
-moving for a comment-only edit is N7-FP working exactly as designed. `docsFingerprint`
-cannot fail a test by construction: `fixtureFreshness` never reads it, and its only reader
-is `fixtureDocsDrift`, which returns `string | null` and is explicitly not a
-`FreshnessProblem`.
-
-**Battery.** Rig tests **29 → 52**; `packages/sim` **277 → 300**; smoke + rig **100 → 123**;
-whole battery **1,239 → 1,262 passing / 0 failing** (desktop 102, engine 725, sim 300, ui
-135). The rig work touched only `rules-fingerprint.ts` and `balance-rig.test.ts`; `npc.ts`
-and `clone.test.ts` moved in the same pass under **OI-1**, which is recorded in N1.
-
-**ONE HOLE OF THE SAME CLASS IS STILL OPEN — recorded, not closed.** The guard catches a
-new *subdirectory* under a hashed root. A whole new hashed **root** — a new package, say
-`packages/economy/src` — is caught by nothing: it would simply never be walked, and every
-enumeration test would pass while describing a game that had grown a limb. This is outside
-OI-6 as the audit stated it, and closing it needs a different mechanism (the workspace list
-is the thing that would have to be totality-checked, not a directory listing). **It belongs
-to whichever step first adds a package** — that step must either declare the new root here
-or record why it holds no rule code.
+*Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
 ### R2.5 — The escalation ladder (the world remembers what you did)
 
@@ -1512,310 +1430,143 @@ fast-forward, or exclude with a reason) before N8 pins the living-field baseline
 
 ### N1 — NPCs own a real ship (SHIPPED 2026-07-28 · `b438096b`)
 
-- **Hypothesis:** replacing the phantom tier-derived ship with a real `ShipState` on
-  `NpcState` changes what NPCs can earn and where they can fly, without yet changing any
-  decision they make.
-- **Change (state + migration):** `NpcState.ship: ShipState`. Seed it at world creation
-  from the profile tier so day 1 is close to today's behavior. Point `executeTrade` /
-  `executeTravel` at the real ship instead of `npcCargoPods(tier)` / `npcDrives(tier)` /
-  `hullCondition: 9`. **Costs a save-version bump + round-trip test** (`schema.ts`), and
-  the roster is 30 records, so watch save size.
-- **Simulate:** full sweep. Expect movement even with no new decisions — cargo capacity
-  and fuel burn now vary per captain instead of being a tier constant.
-- **Proves:** NPC wealth spread widens; no policy row moves for a reason other than
-  contract competition; save round-trips byte-identical.
-- **Disproves:** the field's wealth distribution collapses or explodes — the day-1 seed
-  is mis-calibrated against the old phantom.
+**Result (2026-07-28): CHANGE ACCEPTED — HYPOTHESIS DISPROVED** (the wording standing
+amendment 2 counts in its ratio). `NpcState.ship: ShipState` shipped and `NpcState.fuel` was
+**removed** rather than kept beside it — two fuel numbers on one captain would have been two
+sources of truth — under save schema **9 -> 10** via `MIGRATIONS[9]`, the first registry entry
+that MOVES a field rather than adding one. The capstone came back **byte-identical to
+`baseline-r2c-final.json` apart from `label`**, which was arithmetic rather than a null
+result: a ship seeded from profile tier and never mutated *is* the phantom wearing a struct,
+so the step's *"NPC wealth spread widens"* clause was mis-assigned and belongs to N2.
 
-**Result (2026-07-28): CHANGE ACCEPTED — HYPOTHESIS DISPROVED, and the step's own
-Proves clause contradicts its Change clause.**
+**Still binds:**
 
-`NpcState.ship: ShipState` shipped. `NpcState.fuel` was **removed** rather than kept
-beside it — the tank moved onto the ship, mirroring `PlayerState` (which has never
-carried a top-level `fuel`); two fuel numbers on one captain would have been two sources
-of truth. Save schema **9 → 10** with `MIGRATIONS[9]`, the first entry in that registry
-that MOVES a field rather than adding one: it seeds each captain's ship from their
-profile tier, pours the saved `fuel` into `ship.fuel`, and drops the old key. Idempotent,
-never throws, and shares ONE seeding function with `createInitialState` and
-`deserializeState` so a migrated roster cannot drift from a freshly created one.
+- **SUPERSEDED HULL FORMULA — do not re-derive it.** N1 shipped
+  `hull.strength = 2 + 2·tier`, calibrated against the phantom's *unbounded* tank so the
+  clamp could not bind. **N2's second task deliberately replaced it** — `npcHullStrength` is
+  now a search for the smallest hull strength whose `maxCargoPodsForShip` covers the tier's
+  pod count, removing the fuel-tank exemption. See N2. *A reader grepping current `npc.ts`
+  for `2 + 2 * tier` will not find it.*
+- **OI-1 — the clone measurement, one number in three places.** Re-measured 2026-07-29 over
+  10 seeds × 120 days of the ambient NPC loop, three alternated runs per side, node v24.13.1:
+  **0.355 ms/game-day for the JSON round trip against 0.399 for `structuredClone` — ~12%
+  more**, non-overlapping spreads; an independent verifier reproduced the direction with
+  board generation hoisted out of the timed region (**0.307 vs 0.358, +16.3%**) and on the
+  clone alone (**3.47 µs vs 5.02 µs, +45%**), identical simulation checksums both ways. **Read
+  ~12% as a FLOOR, not the effect size.** The clone stays as `JSON.parse(JSON.stringify(npc))`.
+  The false comment at `packages/engine/src/npc.ts:1031-1039` and the duplicate figures at
+  `packages/engine/src/__tests__/clone.test.ts:363-367` were rewritten to agree — one
+  measurement, three places, no third copy left to drift.
+- **OI-1 precision corrections, both easy to "fix" back into being wrong.** The roster is
+  **30 captains, not 31** (`createInitialState(seed).npcs.length === 30`); **31 is the BOARD
+  size** (the player plus the 30), so **N6's heading is correct and is not to be "fixed"**.
+  And where the code says N1 grew the NPC record "~10x", that is an **object count, not a
+  size**: 229 -> 745 bytes, **3.3× in bytes**, with exactly eight nested component objects
+  added (`types.ts:1139-1146`).
+- **Restated Proves for N1**, since the shipped one contradicted itself: *no behaviour moves;
+  NPC capability becomes mutable state the captain owns instead of a constant recomputed from
+  their profile.*
+- **`MIGRATIONS[9]` is the precedent N7 leans on** to keep `save.ts`/`schema.ts` out of
+  `rulesFingerprint`: it *calls* `npcShipForTier` rather than restating it, so the rule itself
+  lives in a hashed file. Anything that inlines a rule into a migration breaks that.
+  **Idempotent, never throws**, and it shares ONE seeding function with `createInitialState`
+  and `deserializeState`, so a migrated roster cannot drift from a freshly created one — the
+  three properties the next migration to touch this registry is expected to match.
+- **The guard was blind to nested writes and N1 closed it.** `clone.test.ts`'s scan matched
+  only `handle.field = …`, so `rescuer.ship.fuel -= amount` — the exact write this step
+  introduced — was structurally invisible. It now matches an assignment anywhere down a
+  member path rooted at an NPC handle while still permitting comparisons.
+- **Costs, measured, so a later step does not re-litigate them.** Save roster 4,129 -> 19,569
+  bytes (+519/ship × 30): +4.2% on a real 30-day save, +0.14% on a 1,000-day one, load time
+  unchanged. Per-day +8% on a 1,000-day career (1.40 -> 1.51 ms), ~0.1 ms of the ~39 ms of
+  headroom N0 bought.
+- **Baseline of record UNCHANGED (`baseline-r2c-final.json`)** — per R1's precedent a
+  disproved hypothesis re-pins nothing. `baseline-n1.json` is committed as this step's
+  capstone provenance only; that it diffs to nothing is the finding.
+- **What N1 found and handed on:** the shipyard API is player-shaped and blocks N2, and NPCs
+  fly on ~4× a player's fuel. Both are written into **N2's entry**, per standing amendment 4,
+  and the audit's OI-5 precision on the blocker is recorded there too.
 
-**Nothing moved. Not approximately — exactly.** The capstone (1,000 seeds × 120 days ×
-8 policies, 8 shards) is **byte-identical to `baseline-r2c-final.json` apart from the
-`label` field**: all 8 policy rows and the fleet aggregate compare equal. NPC wealth
-percentiles at day 30 / 60 / 120 (300 records) are identical **to the credit** at every
-one of min/p10/p25/median/p75/p90/max/mean/sd. A 10-seed × 120-day × 30-NPC trajectory
-hash over every captain's credits/fuel/system/disposition/lastAction is unchanged
-(`1fda0f41…c0c2f` both sides).
-
-**Why — and this is the transferable part.** The step asks the seed to be calibrated so
-"day 1 is close to today's behavior" and simultaneously asks that "NPC wealth spread
-widens". **Those cannot both hold.** The phantom ship IS a pure function of the profile
-tier, so a ship seeded from that tier and never mutated is arithmetically the phantom
-wearing a struct. Movement was only ever available by smuggling in a lever the step
-forbids. The Proves clause was mis-assigned: **it belongs to N2**, where the decision
-that could move it lives. Read correctly, N1's deliverable is a 30-record state change
-plus a save migration with a *zero*-behaviour blast radius — and the byte-identity is the
-proof it landed cleanly, not evidence of a null result. Restated Proves for N1: *no
-behaviour moves; NPC capability becomes mutable state the captain owns instead of a
-constant recomputed from their profile.*
-
-> **SUPERSEDED BY N2 (2026-07-29 correction, doc-audit finding).** The formula
-> below describes N1's shipped commit only. N2's second task deliberately replaced
-> it — `npcHullStrength` is now a search for the smallest hull strength whose
-> `maxCargoPodsForShip` covers the tier's pod count, removing the fuel-tank
-> exemption this paragraph explains. See N2's entry for the current logic; a
-> reader grepping current `npc.ts` for `2 + 2 * tier` will not find it.
-
-**The one genuinely new number is `hull.strength = 2 + 2·tier`**, and it is calibrated
-against the phantom's *unbounded* tank: pre-N1 an NPC's fuel had no ceiling. It yields
-1,200 (tier 1) … 3,600 (tier 5) via the engine's own `calculateFuelCapacity`, clearing
-both the 1,000-unit birth tank and the largest top-up `refuelIfNeeded` ever requests
-(640, on the distance-45 Cygnus-16 → Rigel-19 run at tier-1 drives). **The clamp
-therefore cannot bind** — which is what makes day 1 identical rather than merely close,
-and it was verified observationally too (across 120 day-loop days no captain's fuel ever
-reaches `maxFuel`). *Rejected deliberately, and recorded because it is a live candidate
-for a later step:* the engine's own `maxCargoPodsForShip` licenses a hull of 1–2 for
-these pod counts, which would clamp the roster's birth tank 1,000 → 300 and make every
-long haul a refuelling decision. **That is a fuel-scarcity lever, not a modelling
-choice**, and N1's contract is to change no decision. It stays out until a step owns it.
-
-**Costs, measured.** Save roster 4,129 → 19,569 bytes (+519/ship × 30); +4.2% on a real
-30-day save, +0.14% on a 1,000-day save (the event log dominates any real career); load
-time unchanged. Per-day cost +8% on a 1,000-day career (1.40 → 1.51 ms) — ~0.1 ms of the
-~39 ms of headroom N0 bought. `structuredClone` in `resolveNpcDay` was tried and is
-*worse* (0.399 vs the JSON round trip's 0.355 ms/game-day ambient, re-measured 2026-07-29);
-the existing `JSON.parse(JSON.stringify(npc))` stayed.
-
-> **FIGURES RESTATED 2026-07-29 (doc audit, item OI-1) — the DIRECTION was right all
-> along, which is why this record is the one that survived.** This paragraph used to quote
-> "0.47 vs 0.42 ms ambient", measured on the machine N1 shipped from. The comment that
-> landed at the clone site in the same commit `b438096b` said the OPPOSITE — that
-> `structuredClone` "puts it back at 0.35" — while the line directly beneath it was still
-> the JSON round trip. Two mutually exclusive measurements sat on the record until the
-> audit found them, and the tie was broken by re-measuring rather than by deciding which
-> author to believe.
->
-> **Re-measured 2026-07-29** over 10 seeds × 120 days of the ambient NPC loop, three
-> alternated runs per side, node v24.13.1: **0.355 ms/game-day for the JSON round trip
-> against 0.399 for `structuredClone` — ~12% more, with non-overlapping sample spreads.**
-> An independent verifier reproduced the direction twice on a different harness: with the
-> per-day market-board generation hoisted OUT of the timed region, **0.307 vs 0.358
-> (+16.3%)**; timing the clone alone, **3.47 µs vs 5.02 µs (+45%)**. Both variants produced
-> an identical simulation checksum, which is what proves the swap is a pure cost change and
-> nothing else. **So read ~12% as a FLOOR on the effect, not as the effect size** — the
-> headline pair still carries board generation inside the timed region, and that dilutes
-> it. The clone stays where it is. The false comment at
-> `packages/engine/src/npc.ts:1031-1039` was rewritten to say this, and the duplicate
-> figures in `packages/engine/src/__tests__/clone.test.ts:363-367` were refreshed to agree
-> — one measurement, three places, no third copy left to drift.
->
-> **Two precision corrections taken in the same pass.** The roster is **30 captains, not
-> 31** — `createInitialState(seed).npcs.length === 30`, and `clone.ts:42` says "each of the
-> 30 captains". Thirty-one is the *board* size (the player plus the 30), which is why N6's
-> heading is correctly a 31-way board and is not to be "fixed". And where the code says N1
-> grew the NPC record "~10x", that is an **object count, not a size**: the record went
-> **229 → 745 bytes — 3.3× in bytes** — and the ship adds exactly **eight** nested
-> component objects (`types.ts:1139-1146`).
-
-**N0's guard was blind to nested writes, and N1 is the change that would have walked into
-it.** `clone.test.ts`'s source scan matched only `handle.field = …`, so `rescuer.ship.fuel
--= amount` — the exact write this step introduces — was structurally invisible to it, as
-was any `npc.lastAction.details = …`. The pattern now matches an assignment anywhere down
-a member path rooted at an NPC handle while still permitting comparisons. Verified
-N0-style by injecting `npc.ship.fuel -= 1` into `storylets.ts` and watching it fail, then
-go green on removal. **The guard had never been tested against a nested path**; that is a
-latent hole this step closed, not one it opened.
-
-**Goldens re-pinned (2 files, deliberately).** `day-loop-golden.ts` STATE hashes
-`71b3315e…` → `f07d6de2…` and `1f187dbe…` → `86fbc0cc…` — mechanism: `serializeState`
-carries 30 more ship blocks. **Both EVENT hashes are unchanged**, and that split IS the
-evidence: a mis-calibrated seed would have moved the event hashes too. `replay-golden.ts`
-regenerated; only the three SESSION strings needed to (they embed `serializeState`), and
-rewriting every NPC record back to its pre-N1 shape makes all six compare equal, rngStates
-included.
-
-**Baseline of record is UNCHANGED: `docs/balance/baseline-r2c-final.json`.** Per R1's
-precedent, a disproved hypothesis re-pins nothing. `baseline-n1.json` is committed as the
-provenance of this step's capstone; that it diffs to nothing against its predecessor is
-the finding, and one `diff` reproduces it.
-
-**Battery:** `npm test` **1,114 passing / 0 failing** (1,104 + 10 new: 4 seed-calibration,
-6 v9→v10 migration), `tsc -b`, `eslint`, `prettier` all clean. The two `it.fails`
-tripwires were not touched and still hold — expected, since no policy row moved.
-
-> **BLOCKS N2, found here: the shipyard API is player-shaped.** `quoteShipyard`,
-> `shipyardCost`, `shipyardFailure` and `applyShipyardMutation` all
-> take `(state: GameState, …)` and read `state.player.ship` / `.credits` / `.registry`
-> directly. **An NPC cannot be priced through any of them as they stand** — so N2's
-> instruction to price upgrades "through the engine's own `quoteShipyard`, never a
-> parallel cost model" is currently *impossible*, and the path of least resistance is
-> exactly the parallel cost model R2c warns about. Giving these functions an actor
-> parameter (ship + credits + rank) is **N2's first task, not an optional cleanup**.
->
-> *Precision, 2026-07-29 (doc audit, item OI-5): this note originally listed
-> `maxCargoPodsForShip` as a fifth blocked function. It was never blocked and never got an
-> actor parameter, because it never needed one — it is `(ship: ShipState)` at
-> `packages/engine/src/actions/shipyard.ts:182` and argues the point at its own definition
-> site: "N2 · Takes the SHIP, not the state. It never needed anything else." **Four**
-> functions took `ShipyardActor`; this one was already actor-agnostic, which is the design
-> the standing constraint asks for rather than a gap in it.*
+*Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
 ### N2 — NPCs upgrade their ships (SHIPPED 2026-07-29)
 
-*The owner's stated core complaint: "If the NPC never upgrades their ship, they never
-increase their trade profit."*
+**Result (2026-07-29): ACCEPTED** — all three Proves limbs hold, neither Disproves limb fires.
+The step's first two tasks landed as stated: the `ShipyardActor { ship, credits, registry? }`
+refactor of four player-shaped shipyard functions, and the hull/component re-seed that
+**removed N1's fuel-tank exemption** — N1 had seeded `hull.strength = 2 + 2·tier` to clear the
+phantom's unbounded tank, **leaving NPCs on ~4× a player's fuel for comparable capacity** (see
+the standing constraint above), and this step re-seeded the hull to what a player's ship of
+that capability would be. On top of them sits `considerRefit`, an upgrade decision priced through
+the engine's own `quoteShipyard` with no parallel cost model. Day-120 NPC wealth spread
+**max/median 13.4 -> 155**, **distinct fits 5 -> 144**, richest captains median 282,247cr
+against 132cr in the bottom quartile — **and the poorest still exist** (p10 = 127, min hull
+strength still 1); the Honor List went **2 of 8 contested to 8 of 8**, which was N6's hand-off
+criterion. Arm A (actor param alone) diffed against `baseline-n9-shipped.json` as *"NOTHING
+MOVED"*, so the player did not move across the refactor. The step also found **R10**.
 
-- **Hypothesis:** an NPC that reinvests profit into its fit earns more over a career,
-  producing the wealth SPREAD a 31-captain race needs — some compounding, some stuck.
-- **INHERITS N1's PROVES CLAUSE.** *"NPC wealth spread widens"* was written into N1 and
-  is unachievable there: a ship seeded from profile tier and never mutated is
-  arithmetically the phantom it replaced (see N1's Result). The spread is **N2's** to
-  produce, because N2 owns the decision that moves it. Grade it here.
-- **FIRST TASK — the shipyard API is player-shaped, and this step is blocked until it
-  is not.** Found during N1. `quoteShipyard`, `shipyardCost`, `shipyardFailure` and
-  `applyShipyardMutation` all take `(state: GameState, …)` and
-  read `state.player.ship` / `.credits` / `.registry` directly, so **an NPC cannot be
-  priced through any of them as they stand.** Give them an actor parameter (ship +
-  credits + rank). This is not optional cleanup: without it the path of least resistance
-  is the parallel cost model the standing constraint forbids.
-  *(Precision, 2026-07-29 audit item OI-5: this task originally named
-  `maxCargoPodsForShip` as a fifth. It takes a bare `ShipState`
-  (`packages/engine/src/actions/shipyard.ts:182`), never took `GameState`, and correctly
-  never got an actor parameter — **four** functions gained `ShipyardActor`, not five.)*
-- **A FREE ACCEPTANCE TEST, handed over by N6.** The Honor List now ranks all 31 captains,
-  and **6 of its 8 titles are currently uncontestable** because `npcShipForTier` issues
-  every NPC — at every tier — weapons 1, shields 1, cabin 1, navigation 10, lifeSupport 10,
-  robotics 10. So *"how many of the eight titles have a real contest, and how many distinct
-  captains hold them"* is a mechanically checkable Accept criterion for this step, and it
-  reads the world rather than a sweep aggregate. **Today: 2 of 8 contested, 4 distinct
-  holders, day-120 NPC rows byte-identical to day 1, and the day-1 board seed-independent.**
-  Grade N2 against those numbers.
-- **THE HULL RE-SEED IS ACTUALLY A COMPONENT-RAMP RE-SEED.** N6's finding widens the task
-  below: `npcShipForTier` varies **only hull, drives and pods** by tier, so tier expresses
-  itself in three components and is flat in the other six. Fixing only the hull would leave
-  six titles frozen and the field still shaped like one captain. Treat the whole ramp as the
-  unit of work — while still sweeping one knob at a time.
-- **SECOND TASK — remove N1's fuel-tank exemption, here and not before.** N1 seeded
-  `hull.strength = 2 + 2·tier` to clear the phantom's unbounded tank, leaving NPCs on
-  ~4× a player's fuel for comparable capacity (see the standing constraint above).
-  Re-seed the hull to what a player's ship of that capability would be. **It must land in
-  THIS step and not earlier**, because tightening the tank without granting the upgrade
-  path makes an NPC permanently poorer with no recourse — which is itself a same-rules
-  violation, since a player can buy a better hull. Coupled with upgrades it becomes the
-  intended loop: profit → better hull → bigger tank and more pods → longer, richer hauls.
-  It IS a fuel-scarcity lever, so sweep it as its own knob (one change, one hypothesis).
-- **Change (programmatic):** an upgrade decision in the NPC turn, priced through the
-  engine's own `quoteShipyard` — never a parallel cost model. Note R2c's lesson here:
-  the sim's private copy of the yard maths inherited the same bug as the engine and so
-  agreed with it for the wrong reason.
-- **Simulate:** full sweep + the NPC wealth distribution at day 30/60/120.
-- **Proves:** NPC final-wealth spread widens materially vs N1; the richest captains are
-  the ones who upgraded; the poorest still exist (no universal escalator).
-- **Disproves:** every NPC converges on the same fit (the decision is not a decision), or
-  NPC wealth runs away and they out-compete the player for contracts.
+**Still binds:**
 
-**Result (2026-07-29): ACCEPTED — all three Proves limbs hold, neither Disproves limb fires,
-and the step found a day-1 player-reachable economy exploit that has been invisible for the
-whole project.**
+- **The refactor is structural, not an adapter, and that is load-bearing.** `PlayerState` and
+  `NpcState` both satisfy `ShipyardActor` as-is, so there is no wrapper on either side —
+  `applyShipyardMutation` *debits* `actor.credits`, and a wrapper would have banked the debit
+  on a copy. **`quoteShipyard`'s throwaway is now one ship (`structuredClone`) instead of a
+  whole `GameState` (`cloneState`), which is what makes quoting 30 captains a day
+  affordable** — tidying it back onto `cloneState` re-introduces the per-day cost N0 exists to
+  have killed, and N11's richer refit ladder, N12's per-NPC port pricing and N13's dawn hand
+  are all measured inside the envelope it bought.
 
-**The actor-parameter refactor is structural, not an adapter.** `ShipyardActor { ship,
-credits, registry? }` — and `PlayerState` and `NpcState` **both satisfy it as-is**, so there
-is no wrapper on either side. That is load-bearing: `applyShipyardMutation` *debits*
-`actor.credits`, and a wrapper would have banked the debit on a copy. `registry` optional is
-a rule, not a gap — a captain without one ranks `-1`, strictly below every Renown rung, so
-rank-gated purchases refuse with **no NPC branch**. `quoteShipyard`'s throwaway is now one
-ship (`structuredClone`) instead of a whole `GameState` (`cloneState`), which is what makes
-quoting 30 captains a day affordable.
+- **WATCH ITEM OI-9 — the NPC refit pays no die.** `considerRefit` applies
+  `applyShipyardMutation` directly; `resolveShipyard` is never called, and the `spendDie: 0`
+  sitting beside it is a placeholder, not a cost. A player buying at the yard burns 1 of
+  their 5 dice **even when the purchase is refused.** Everything else is at parity — same
+  prices, same gates, the engine's own functions on both sides, no location rule on either —
+  and the asymmetry is argued at its definition site (`npc.ts:648-673`: one coarse action
+  stands in for a whole NPC day, so charging a die would double-charge the abstraction). It
+  is recorded rather than closed because that argument is genuinely reasonable **and**
+  because the caveat below was measured against a field that gets one FREE purchase every
+  single day. *Trigger: if N3+ sweeps show the field out-fitting the player, the first knob
+  is making the refit displace the day's verb some fraction of the time — not re-pricing the
+  ladder.* Carried as a verb-parity question in THE PARITY LEDGER.
+- **THE CAVEAT, and it should govern N3's sequencing.** The *top* of the field converges on
+  an identical maxed fit. Across three seeds the first captains max out **on day 69 in every
+  one** — 72 rungs (8 components × 9 tiers) at one purchase per day. **Purchase opportunities
+  are the binding constraint, not money**: the yard's whole ladder costs ~132,400cr against
+  captains ending near 2M. (Distinct NPC holders on the Honor List peak at 12.3 on day 30 and
+  fall back to 5.4 by day 120 for the same reason.) A design correction was made mid-step and
+  reported rather than hidden — filling every hold before the ladder drove 20 of 31 onto an
+  identical fit, and moving pods onto the hull rung barely helped (18 of 31), **which is what
+  proves the root cause is the ladder's pricing, not the ordering** (see R10). No constant was
+  tuned to hide it.
+- **`greedy` IS NOT A VALID CONTROL FOR AN N-SERIES CHANGE — carry this forward.** It moved
+  in every arm. R0a introduced it as the control for *policy* changes, but it shares a galaxy
+  with the cast and reaches it through contract competition and the shared dusk RNG stream, so
+  an NPC-side change *should* move it. Written into `campaign-degraded.test.ts` so the next
+  step does not misread it.
+- **Save schema: no bump, decided deliberately** — recorded at `npcShipForProfile` and in
+  `save.ts`'s registry header. Existing v10 rosters are **not** re-seeded, because post-N1
+  `npc.ship` is owned mutable state and a migration **could not tell an issued fit from a
+  bought one — it would confiscate purchases.** `MIGRATIONS[9]` picks up the new ramp
+  automatically (it calls `seedNpcShip`), which is correct: a v9 roster never had ships.
+- **`registry` optional is a rule, not a gap.** A captain without one ranks `-1`, strictly
+  below every Renown rung, so rank-gated purchases refuse with **no NPC branch** — which is
+  also the permanent lockout **N11** exists to remove.
+- **OI-5 precision (2026-07-29 audit).** The first task originally named `maxCargoPodsForShip`
+  as a fifth blocked function. It takes a bare `ShipState`
+  (`packages/engine/src/actions/shipyard.ts:182`), never took `GameState`, and correctly never
+  got an actor parameter — **four** functions gained `ShipyardActor`, not five.
+- **Contract competition: no out-competition, and N10 reads this number.** 295 -> 301
+  `ContractClaimed` events (**+2.0%**) over 10 seeds × 120 dusks. The mechanism is capped at
+  one claim per dusk and gated on co-location, and richer NPCs actually trade *less* (the
+  poverty Trade boost stops firing), so an 8× wealth increase moves it by noise.
+- **Test pin taken deliberately:** `campaign.test.ts`'s NPC wealth-spread ceiling raised
+  10 -> 25 against measured ratios 7.52–15.99, i.e. **pinned ~56% above the worst observed
+  rather than at the last measurement.** `rulesFingerprint` `76ac9179…` -> `2273d380…`.
+- **Baseline of record re-pinned to `docs/balance/baseline-n2-final.json`** at this step
+  (standing amendment 1 as refined); it has since been superseded — the amendment is
+  authoritative.
 
-**Proof the player did not move across the refactor:** arm A (actor param alone) diffs
-against `baseline-n9-shipped.json` as **"NOTHING MOVED. Every compared field is equal on
-both sides"** — all 9 rows, all goldens, all seven policy fingerprints byte-identical. In the
-final tree the three `REPLAY_GOLDEN_*_RESPONSES` (the protocol's replies to *player* actions)
-remain byte-identical; only the `SESSION` strings moved, and those embed the cast.
-
-| arm | fleet clear | fleet final cr | fleet ships | trader clear/day |
-| --- | --- | --- | --- | --- |
-| baseline `n9-shipped` | 0.4164 | 31,205 | 647 | 0.916 / 21 |
-| **A — actor param** | **nothing moved** | | | |
-| **B — component ramp** | 0.4183 | 31,299 | 645 | 0.919 / 21 |
-| **C — + hull re-seed** | 0.4159 | 31,380 | 621 | 0.908 / 21 |
-| **D — + upgrade (shipped)** | 0.4145 | 31,321 | 609 | 0.918 / 21 |
-
-**NPC wealth spread — the criterion N1 could not deliver, now delivered** (240,000 NPC
-records per milestone day):
-
-| day 120 | min | p10 | p25 | median | p75 | p90 | max |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| before | 0 | 126 | 154 | 18,196 | 46,308 | 88,024 | 244,036 |
-| **after** | 0 | 127 | 792 | 12,987 | **289,538** | **556,028** | **2,019,719** |
-
-**max/median 13.4 → 155**; p90/median 4.8 → 42.8. **Distinct fits 5 → 144** at day 120
-(5 → 247 at day 30), against N1/N6's frozen "5 distinct fits, credits 25–199,910cr". The
-richest ARE the upgraders, measured rather than asserted: top-quartile-by-fit captains median
-**282,247cr**, bottom quartile **132cr**. And **the poorest still exist** — p10 = 127, min
-hull strength still 1. No universal escalator.
-
-**The Honor List went from a frozen board to a live one** — N6's hand-off criterion, read
-directly from the world: **contested titles 2 of 8 → 8 of 8**; largest tie 31 → 3 (day 1);
-and **day 120 no longer equals day 1**. Distinct NPC holders peak at 12.3 on day 30 and fall
-back to 5.4 by day 120 — see the caveat.
-
-**Contract competition: no out-competition.** 295 → 301 `ContractClaimed` events (**+2.0%**)
-over 10 seeds × 120 dusks. The mechanism is capped at one claim per dusk and gated on
-co-location, and richer NPCs actually trade *less* (the poverty Trade boost stops firing), so
-an 8× wealth increase moves it by noise.
-
-> **THE CAVEAT, and it should govern N3's sequencing.** The *top* of the field does converge
-> on an identical maxed fit. The cause is structural, not a flaw in the decision: across
-> three seeds the first captains max out **on day 69 in every one** — 72 rungs (8 components
-> × 9 tiers) at one purchase per day. **Purchase opportunities are the binding constraint,
-> not money**: the yard's entire ladder costs ~132,400cr against captains ending near 2M.
-> A design correction was made mid-step and reported rather than hidden — the first version
-> filled every hold *before* the ladder, imposing one global optimum on all 31 and driving
-> 20 of 31 onto an identical fit; moving pods onto the hull rung barely helped (18 of 31),
-> **which is what proves the root cause is the ladder's pricing, not the ordering.** No
-> constant was tuned to hide it.
-
-> **WATCH ITEM OPENED BY THE 2026-07-29 AUDIT (item OI-9) — no action taken, and it bears
-> directly on the caveat above.** The NPC refit **pays no die.** `considerRefit` applies
-> `applyShipyardMutation` directly; `resolveShipyard` is never called, and the `spendDie: 0`
-> sitting beside it is a placeholder, not a cost. A player buying at the yard burns 1 of
-> their 5 dice **even when the purchase is refused.** Everything else is at parity — same
-> prices, same gates, the engine's own functions on both sides, and no location rule on
-> either — and the asymmetry is argued at its definition site (`npc.ts:648-673`: one coarse
-> action stands in for a whole NPC day, so charging a die would double-charge the
-> abstraction).
->
-> It is recorded rather than closed because that argument is genuinely reasonable **and**
-> because the caveat above is partly a consequence of it: "purchase OPPORTUNITIES, not
-> money, are the binding constraint" was measured against a field that gets one FREE
-> purchase every single day. **Trigger:** if N3+ sweeps show the field out-fitting the
-> player, the first knob is making the refit displace the day's verb some fraction of the
-> time — not re-pricing the ladder. Until then it is a verb-parity question and it is
-> carried as one in THE PARITY LEDGER.
-
-**`greedy` IS NOT A VALID CONTROL FOR AN N-SERIES CHANGE — carry this forward.** It moved in
-every arm. R0a introduced it as the control for *policy* changes (nothing in the policies
-calls into it), but it shares a galaxy with the cast and reaches it through contract
-competition and the shared dusk RNG stream. An NPC-side change therefore *should* move it.
-Written into `campaign-degraded.test.ts` so the next step does not misread it.
-
-**Save schema: no bump, decided deliberately** and recorded at `npcShipForProfile` and in
-`save.ts`'s registry header. Existing v10 rosters are **not** re-seeded, because post-N1
-`npc.ship` is owned mutable state and a migration **could not tell an issued fit from a
-bought one — it would confiscate purchases.** `MIGRATIONS[9]` picks up the new ramp
-automatically (it calls `seedNpcShip`), which is correct: a v9 roster never had ships.
-
-**Battery:** **1,233 passing / 0 failing**, `tsc -b`, `eslint`, `prettier` clean; smoke
-94/94 after a single re-extraction (standing amendment 3, obeyed). Goldens re-pinned
-deliberately with mechanism logged at each site — the day-loop **event** hashes moved this
-time and were verified by diffing both streams (946 → 1,283 events; 382 added `WireEntry`
-refit lines, 45 changed downstream). `campaign.test.ts`'s NPC wealth-spread ceiling raised
-10 → 25 against measured ratios 7.52–15.99, i.e. **pinned ~56% above the worst observed
-rather than at the last measurement.** `rulesFingerprint` `76ac9179…` → `2273d380…`.
-
-**Baseline of record re-pinned to `docs/balance/baseline-n2-final.json`** (shipped code moved
-the numbers — standing amendment 1 as refined).
+*Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
 ### N3 — NPCs meet pirates, and answer them
 
@@ -2044,421 +1795,234 @@ interaction than the cast has.*
 
 ### N6 — The Honor List becomes a real 31-way board (SHIPPED 2026-07-28)
 
-- **Depends on N1** (NPCs must have components to rank).
-- The 1991 board is already shipped as a personal one (`honorList` in `ui/format.ts`,
-  T-1406) precisely because `NpcState` had no ship. Once N1 lands, the same function
-  ranks the whole field, which is what the owner asked for originally and what makes the
-  eight titles a contest rather than a progress bar.
+**Result (2026-07-28): ACCEPTED** — and it measured the field's flatness as a number, which was
+the most useful thing it produced. The board is **actor-shaped, not player-shaped**
+(`HonorCaptain`, `honorField(game)` building `[player, ...npcs]`, a `rankTitle` that never
+touches `game.player.*`), so one scoring path applies the engine's own `effectiveScore` whoever
+the captain is and **there is no NPC branch to drift**; no `packages/engine` change was needed,
+and **nothing outside `packages/ui` imports UI source**, verified, so that is the complete
+affected scope — which is what warrants a scope-limited battery for the next UI change, N3's
+`.filter((n) => !n.dead)` included.
+Its finding — six of the eight titles uncontestable **by construction**, because
+`npcShipForTier` varied only hull, drives and pods — became N2's premise and N2's acceptance
+criterion, and N2 discharged it (2 of 8 -> 8 of 8 contested).
 
-**Result (2026-07-28): ACCEPTED — and it measured the field's flatness as a number, which
-is the most useful thing it produced.**
+**Still binds:**
 
-The board is **actor-shaped, not player-shaped**: an internal `HonorCaptain { name,
-isPlayer, ship }`, a `honorField(game)` that builds `[player, ...npcs]`, and a `rankTitle`
-that never touches `game.player.*`. One scoring path applies the engine's own
-`effectiveScore` to `captain.ship[id]` whoever the captain is — **there is no NPC branch to
-drift**, which is the standing constraint satisfied structurally rather than by convention.
-The fabricated tier-9 ceiling the old progress bar was drawn against (`MAX_COMPONENT_SCORE`)
-is deleted. **No `packages/engine` change was needed** — `effectiveScore` and content's
-`SHIP_COMPONENTS` were already actor-agnostic, and the only player-shaped reader was
-`honorList` itself. *N2's shipyard blocker is neither helped nor changed by this step.*
+- **OI-2 — the fifth 1991 behaviour is a SEAM owned by N3, not a delivery.** Four behaviours
+  were recovered from the original BASIC (`7ca606d7^:Decompile/Source-Text/SP.TOP.txt`, quoted
+  at the definition site): the whole-registry walk, per-component max, co-held ties, and the
+  40-character holder-line budget. The fifth — **skip-don't-delete for marked records**
+  (`if (left$(na$,1)="*") … next`) — is **not implemented**: `honorField`
+  (`packages/ui/src/format.ts:2620`) applies no dead filter, and `NpcState` has no `dead`
+  field to read. The code says so in its own words at `format.ts:2611` — *"DEAD CAPTAINS (N3,
+  not yet landed — this is the seam, not the feature)"* — and names the exact remedy,
+  `.filter((n) => !n.dead)`. **Do not implement it here, and do not ask another step to
+  implement it early:** the `dead` field is N3's state shape, and building it ahead of N3 is
+  the ahead-of-the-step smuggling this track polices. **N3 owns it.**
+- **OI-11 — KNOWN COSMETIC GAP in the holder-line budget, recorded not fixed.** The
+  40-character budget counts **one** character per separator (`format.ts:2687`:
+  `line += (holders.length > 0 ? 1 : 0) + captain.name.length`), exactly what the BASIC
+  counted for its `"/"` join — so **the data-level 1991 parity is exact and the fidelity claim
+  stands unqualified.** The UI then renders the separator as `" / "`, three characters, so the
+  RENDERED line can exceed 40 visible characters. One surface, no rule depends on it. It is
+  filed rather than patched because closing it means deciding whether the budget is a DATA
+  rule (keep 1, the divergence moves to the renderer) or a DISPLAY rule (count 3, and 1991
+  parity is what bends) — a decision, not a typo.
+- **Ties are CO-HELD, not broken.** Any tiebreak available here (roster index, profile tier,
+  credits) would be *this file inventing a rule about who is the better captain* — the R2c
+  failure mode. Determinism comes from ordering: holders sort by name on a plain code-unit
+  compare with **no locale collator**, so the board cannot depend on the machine that rendered
+  it. Roster order is deliberately unused, asserted by a test that reverses `game.npcs` and
+  requires a byte-identical board — which also means **N3 marking captains dead cannot
+  reshuffle the display**.
+- **`playerRank` is computed blind to `isPlayer`, to holder order and to the line budget**
+  (`1 + captains scoring strictly higher`), so the player can never out-rank someone they
+  merely tied. The player is pinned first among co-holders for honesty, not favour: on a
+  31-way tie the 40-character budget prints ~3 of 31 names.
+- **One documented divergence from foundation** (BALANCE-POLICY Part B rule 3): 1991 credited
+  the **ship** (`nz$`); this board credits the **captain**, because Rimward's wire, dossier,
+  Hangout and grudges all name the captain. Scoring, ties and budget untouched.
+- **PROCESS: parallel agents need isolated worktrees.** N6 and N9 were run in parallel in one
+  shared working tree, so N6's full-suite and `balance:smoke` runs were contaminated by N9's
+  half-finished edits. The UI work itself was isolated and unaffected; the fix is cheap and it
+  cost real confidence.
+- **Out of scope, reported not fixed, and MEASURED ON THE CONTAMINATED TREE:** three shipped
+  policies allegedly never buy a component upgrade in 120 days (`trader` ending at 3,000cr on
+  the untouched day-1 junker, `veteran` at 1,085cr, only `smuggler` upgrading drives 10 -> 30).
+  That reading is hard to reconcile with the baseline's 80,305cr median trader, which is
+  itself a reason to distrust it. **Re-measure on a clean tree before acting.**
 
-**Four behaviours were recovered from the original BASIC, not invented — and a fifth is a
-documented seam, not a delivery** (`7ca606d7^:Decompile/Source-Text/SP.TOP.txt`, quoted at
-the definition site): the whole-registry walk, per-component max, **co-held ties**
-(`if (td=i) and (len(td$)<40) td$=td$+"/"+nz$`), and the **40-character holder-line
-budget**.
-
-> **CORRECTED 2026-07-29 (doc audit, item OI-2) — this entry originally claimed FIVE
-> recovered behaviours.** The fifth, **skip-don't-delete for marked records**
-> (`if (left$(na$,1)="*") … next`), is not implemented. `honorField`
-> (`packages/ui/src/format.ts:2620`) applies no dead filter at all, and `NpcState` has no
-> `dead` field for it to read. What N6 actually delivered is the SEAM, and the code says so
-> in its own words at `format.ts:2611` — *"DEAD CAPTAINS (N3, not yet landed — this is the
-> seam, not the feature)"* — naming the exact remedy (`.filter((n) => !n.dead)`) so that
-> the step which owns the state shape can take it in one line.
->
-> **Do not implement it here, and do not ask another step to implement it early.** The
-> `dead` field is N3's state shape; building it ahead of N3 is precisely the
-> ahead-of-the-step smuggling this track polices, and it would put a filter in the UI for a
-> field that nothing sets. **The fifth behaviour is owned by N3**, which is also where the
-> shape it filters on gets decided. The four above are real, are tested, and are what this
-> step delivered.
-
-**Ties are CO-HELD, not broken.** With 31 captains this is the common case, not a corner.
-Any tiebreak available here (roster index, profile tier, credits) would be *this file
-inventing a rule about who is the better captain* — the R2c failure mode. Determinism comes
-from ordering instead: holders sort by name on a plain code-unit compare with **no locale
-collator**, so the board cannot depend on the machine that rendered it. Roster order is
-deliberately unused, asserted by a test that reverses `game.npcs` and requires a
-byte-identical board — which also means **N3 marking captains dead cannot reshuffle the
-display**.
-
-**The player is `YOU`, pinned first among co-holders — and that pinning is required for
-honesty, not a favour.** On the day-1 31-way tie the 40-character budget prints ~3 of 31
-names, so an unpinned board would show three strangers holding a title the reader co-holds.
-`playerRank` is computed **blind to `isPlayer`**, to holder order and to the line budget
-(`1 + captains scoring strictly higher`), so the player can never out-rank someone they
-merely tied. Evidence it is a real contest: **at day 1 the player is #31 of 31 on Best
-All-Around Ship and #29 on Fastest Drives.**
-
-> **KNOWN COSMETIC GAP in that budget (2026-07-29 doc audit, item OI-11) — recorded, not
-> fixed.** The 40-character budget counts **one** character per separator
-> (`format.ts:2687`: `line += (holders.length > 0 ? 1 : 0) + captain.name.length`), which
-> is exactly what the BASIC counted for its `"/"` join — so **the data-level 1991 parity is
-> exact and the fidelity claim above stands unqualified.** The UI then renders the
-> separator as `" / "`, three characters, so the RENDERED holder line can exceed 40 visible
-> characters even though the field it was computed from does not. One surface, no rule
-> depends on it. It is filed rather than patched because closing it means deciding whether
-> the budget is a DATA rule (keep 1, and the divergence moves to the renderer) or a DISPLAY
-> rule (count 3, and 1991 parity is the thing that bends) — a decision, not a typo.
-
-> **THE FINDING — six of the eight titles are uncontestable BY CONSTRUCTION, and it traces
-> to one function.** Only 2 of 8 titles have a contest; the other six are 31-way ties, and
-> the day-1 board is **seed-independent** (seeds 12345 and 777 render identically). Cause:
-> `npcShipForTier` varies **only hull, drives and pods** by tier — **every NPC at every tier
-> is issued weapons 1, shields 1, cabin 1, navigation 10, lifeSupport 10, robotics 10.**
-> Confirmed by reading the function; it is structural, not sampled. At day 120 the NPC rows
-> are byte-identical to day 1 while NPC credits have spread to **25 – 199,910cr**: the
-> roster still shows exactly **5 distinct `(drives, weapons)` fits — the five seeded tiers.**
-> **NPCs hoard and never buy.** This is N2's premise, now quantified, and it lands on the
-> same function already flagged for the 4× fuel exemption.
-
-**The board is complete and correct and will light up the moment N2 lands, with no further
-work here.** It was built before N2 by the run order (N1 → N7 → N9 → N2), which is why it
-currently displays a frozen field.
-
-**One documented divergence from foundation** (BALANCE-POLICY Part B rule 3): 1991 credited
-the **ship** (`nz$`); this board credits the **captain**, because Rimward's wire, dossier,
-Hangout and grudges all name the captain and a board naming hulls would be the only surface
-that does not. Scoring, ties and budget untouched.
-
-**Battery — scope-limited, stated plainly rather than overclaimed.** `packages/ui` tests
-**135/135** (117 + 18 new, which drive worlds where an NPC out-fits the player and assert
-the NPC takes the title — a suite that only asserted the player's row would have passed
-against the old personal board); `tsc -b` clean across the whole build graph; `prettier`
-clean on all four files; and **nothing outside `packages/ui` imports UI source**, verified,
-so that is the complete affected scope. The full-suite run was **deferred**: a concurrent
-agent's in-progress N9 edits to `packages/sim` were live in the same working tree, and the
-next step's commit re-runs the whole battery over both. No goldens were re-pinned (this file
-rides none).
-
-> **PROCESS NOTE, recorded because it cost real confidence.** N6 and N9 were run in parallel
-> in **one shared working tree**, so N6's full-suite and `balance:smoke` runs were
-> contaminated by N9's half-finished edits and its policy-behaviour observations (below) were
-> measured against a contaminated tree. The UI work itself is isolated and unaffected.
-> **Parallel agents need isolated worktrees**; that is the fix, and it is cheap.
-
-**Out of scope, reported not fixed** — the first two are structural and verified from
-source; **the third was measured on the contaminated tree and needs re-measurement before it
-is believed**: three shipped policies allegedly never buy a component upgrade in 120 days
-(`trader` ending at 3,000cr on the untouched day-1 junker, `veteran` at 1,085cr, only
-`smuggler` upgrading drives 10 → 30). That reading is hard to reconcile with the baseline's
-80,305cr median trader, which is itself a reason to distrust it. **Re-measure on a clean
-tree before acting.**
+*Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
 ### N7 — The measurement rig: capstone sweep + staged smoke tests (SHIPPED 2026-07-28)
 
-*Owner's design, recorded because it is the answer to the 80-minute sweep.*
+**Result (2026-07-28): ACCEPTED.** The loop the owner designed — capstone sweep -> differ ->
+checkpoint extraction -> fast staged smoke tiers — ships as `npm run balance:diff` /
+`balance:extract` / `balance:smoke` plus `--milestone-days` on the sweep, with 94 new tests
+(71 smoke + 23 rig guards). **A full sweep is only warranted as a capstone after a series of
+green smoke tests.** It immediately found that the instrument had never played three of the
+game's eleven actions (see N9).
 
-- **The loop:** a full sweep produces data -> the data is crunched and diffed against the
-  previous run -> **checkpoint markers are extracted from it** -> those become fast
-  staged smoke tests (e.g. days 1-3, 21-23, 41-43) run on every change. A full sweep is
-  only warranted as a **capstone after a series of green smoke tests**.
-- **Build:** (a) a differ that compares two sweep aggregates and reports what moved and
-  by how much; (b) a checkpoint extractor; (c) the staged runner.
-- **Fixtures live in `docs/balance/smoke/`** (folder and contract established
-  2026-07-28 — see its README). Every fixture records `productVersion`,
-  `saveSchemaVersion`, a **`rulesFingerprint`**, and its sweep provenance.
-- **VERSIONED BY A DERIVED FINGERPRINT, NOT A DECLARED NUMBER** (`docs/VERSIONING.md`
-  §3). The fingerprint is a hash over the sources that decide outcomes
-  (`packages/content/src` + the engine's rule modules), so changing a tribute constant
-  moves it without anyone remembering to. **A stale fingerprint fails loudly and is never
-  silently used** — a smoke run against another ruleset's checkpoints reports green about
-  a game that no longer exists, which is worse than no test at all.
-- **Each smoke tier seeds a best-guess SPREAD of progression across the 30 NPCs** (and
-  the player), so a tier exercises a realistic field rather than 31 identical captains.
-  The first spreads are estimates; **every capstone run harvests real milestone samples
-  to replace them**, so the fixtures get truer with each capstone instead of staying at
-  whatever was guessed on day one.
-- **THE HONEST CAVEAT, which must be written into the rig itself:** you cannot *start* a
-  career at day 21 without simulating days 1-20, so the mid-game tiers need SYNTHESIZED
-  states. That is fine for a breakage detector and **must never be used to grade
-  balance** — this repo's own tests warn against poking state to reach a scenario. Smoke
-  tests catch regressions; the capstone sweep remains the only authority on numbers.
+**Still binds:**
 
-**Result (2026-07-28): ACCEPTED. The rig is both fast and honest, and it immediately found
-that the instrument has never played three of the game's eleven actions (see N9).**
+- **SUPERSEDED IN MECHANISM BY N7-FP (2026-07-29 · `b7b52116`), audit item OI-3.** N7 shipped
+  the fingerprint as a hash over **raw file bytes**, and explicitly refused comment-stripping
+  on the grounds that "a parser that mis-parses fails silently, in the one direction this
+  whole design exists to prevent." That is no longer HEAD: `rulesFingerprint` is now taken
+  over the TypeScript printer's re-emission with comments stripped, and the raw-byte hash
+  survives demoted as `docsFingerprint`. **The refused warning was RIGHT and was honoured, not
+  discarded** — the silent-mis-parse hole was real, was filed as **OI-7**, and is closed by a
+  hard `parseDiagnostics` assertion. See **N7-FP** and **N7-RIG**.
+- **The fixture contract.** Fixtures live in `docs/balance/smoke/` (see its README) and every
+  one records `productVersion`, `saveSchemaVersion`, a `rulesFingerprint` and its sweep
+  provenance. **A stale fixture fails loudly and is never silently used** — there is no
+  `--force`, no env override, no auto-refresh, and a rig test asserts that checking a stale
+  fixture leaves the file on disk untouched. Staleness was verified independently by moving
+  the hash and watching every tier fail in `beforeAll`, so **the 64 tier assertions did not
+  run at all** — nothing can report green about a game that no longer exists.
+- **Two fingerprints, not one.** `rulesFingerprint` covers `packages/content/src` + the
+  engine's rule modules; **`packages/sim` is deliberately OUT of it and into a separate
+  `instrumentFingerprint`** — the sim is the thermometer, not the weather, so folding it in
+  would assert "the ruleset changed" every time a policy was tuned. `save.ts`/`schema.ts` are
+  excluded because persistence is versioned by `saveSchemaVersion` (safe only on the N1
+  precedent, where `MIGRATIONS[9]` *calls* `npcShipForTier`); `types.ts` and `clone.ts` are
+  IN, on the N1 and N0 precedents. **The classification is total and reviewer-checkable:**
+  three tests enumerate `packages/{engine,content,sim}/src` and fail on any `.ts` that is
+  neither hashed nor named in the exclusion map with a reason, **so a new engine module cannot
+  land unclassified.** *Read that totality claim alongside N7-RIG: it was true for FILES
+  inside declared directories and silently untrue for DIRECTORIES until OI-6 landed, and it is
+  still untrue for a whole new hashed ROOT.*
+- **THE HONEST CAVEAT, enforced structurally rather than documented.** You cannot start a
+  career at day 21 without simulating days 1–20, so mid-game tiers use SYNTHESIZED states, and
+  **a synthesized run must never be used to grade balance.** `runCampaign`'s only door to a
+  mid-game start stamps `syntheticStart: true`, `summarizeReport` carries the stamp to the
+  `SeedRow`, and `aggregateRows` **throws** on any synthetic row, naming seed and policy.
+  Since a `BaselineAggregate` is the artefact every balance number in this document comes
+  from, a synthesized run cannot become a balance number by any route. Filtering was
+  considered and rejected: a silent drop turns *"you measured something you may not measure"*
+  into *"your sample was smaller than you thought"*. **Smoke tests catch regressions; the
+  capstone sweep remains the only authority on numbers.**
+- **What the smoke suite MISSES, stated because a breakage detector that oversells its
+  coverage is the failure mode here.** *Ship loss and succession: zero coverage* — at 0.57
+  deaths/1,000 days, 672 sim-days expects 0.38 deaths, so no seconds-scale tier can cover the
+  death path. *A synthesized captain has an empty deed registry and LIEUTENANT rank*, so
+  deed-gated storylets, rank-driven `player.tier` and the progression spine are untested in
+  the three mid-game tiers (fabricating deeds would be authoring content inside a fixture).
+  *The spread is rank-coupled marginals, not joint samples*, so the `max` slot holds 83,701
+  credits **and** 25,000 debt. *The recorded-outcome half only catches drift while the rules
+  hold still* — which is why the **invariants** are a separate half, including a per-tier "not
+  measuring a stalled field" check so the goldens cannot quietly become tautologies.
+- **The `days-29-31` tier is declared per tier, not inferred from the day window.** `day.ts`
+  forks the career at `day === player.debtDueDay` (30) into cleared/unpaid, and the unpaid
+  branch sets `guild.debt-flagged`, which re-prices every board and encounter thereafter:
+  **56/56 runs resolve Tour One on that tier, 0/56 on each of the other three.** If
+  `debtDueDay` moves, the assertion fails and is re-decided instead of silently re-deriving.
+- **Every capstone harvests real milestone samples to replace the estimated spreads**, so the
+  fixtures get truer with each capstone. The shipped fixture is `spreadSource: "harvested"`;
+  the `estimatedSpread` fallback was verified and correctly reports `spreadSource:
+  "estimated"` with a re-run note. `--milestone-days` is proven non-invasive: 0 numeric
+  changes, 0 value changes, 3,699 shape changes — all of them added `milestones[…]` paths.
+- **Reading a differ report: `label` is the sole deliberate ignore, and the report names what
+  it ignored.** Keying `topRoutes` by route id once produced 192 phantom "shape changes" — a
+  route dropping out of the top five is a value change, not a schema difference. Check the
+  shape/value split before believing a moved row.
+- **Baseline of record UNCHANGED at this step** (`baseline-r2c-final.json`); the harvest
+  capstone was numerically identical to `baseline-n1.json` and was deliberately left
+  uncommitted in `.scratch/`, because **writing a `baseline-*.json` into `docs/balance/` reads
+  as a re-pin, and a re-pin is a decision, not a side effect.**
 
-Ships as `npm run balance:diff` / `balance:extract` / `balance:smoke`, plus
-`--milestone-days` on the sweep. **94 new tests** (71 smoke + 23 rig guards), 1,114 →
-**1,208 passing**.
-
-| | measured |
-| --- | --- |
-| capstone (1,000 seeds × 120 d × 8 policies, 8 shards) | **1 m 46 s** + ~20 s merge |
-| checkpoint extraction (224 careers) | 502 ms |
-| **smoke suite, wall clock** | **1.5 s** (674 ms inside `npm test`) |
-| fingerprint computation, 56 rule sources | 13 ms |
-
-**Two fingerprints, not one — the judgment call this step turned on.** `rulesFingerprint`
-(`76ac9179…`, 56 sources) covers `packages/content/src` + the engine's rule modules.
-**`packages/sim` is deliberately OUT of it and into a separate `instrumentFingerprint`**:
-the sim is the thermometer, not the weather, so folding it in would assert *"the ruleset
-changed"* every time a policy was tuned — i.e. continuously through N2–N6, exactly the
-steps this rig exists to serve. But a checkpoint IS produced by the instrument, so
-ignoring it entirely would be worse. Two hashes, two failure sentences, two responses.
-`save.ts`/`schema.ts` are excluded because persistence is versioned by `saveSchemaVersion`
-(which the fixture also carries and checks) — safe only because of the N1 precedent, where
-`MIGRATIONS[9]` *calls* `npcShipForTier` rather than restating it, so the rule itself lives
-in a hashed file. `types.ts` and `clone.ts` are IN, on the N1 and N0 precedents
-respectively. **The classification is total and reviewer-checkable:** three tests enumerate
-`packages/{engine,content,sim}/src` and fail on any `.ts` that is neither hashed nor named
-in the exclusion map with a reason, so a new engine module cannot land unclassified.
-
-**Staleness verified independently, on a different file than the author used.** Appending a
-two-line comment to `packages/engine/src/npc.ts` moved the fingerprint `76ac9179…` →
-`48a96fbe…` and every tier failed in `beforeAll` — **the 64 tier assertions did not run at
-all**, so nothing could report green. There is no `--force`, no env override and no
-auto-refresh, and a rig test asserts that checking a stale fixture leaves the file on disk
-untouched.
-
-> **KNOWN OVER-SENSITIVITY, recorded rather than silently accepted:** the hash is over raw
-> file bytes, so a *comment* moves it — and BALANCE-POLICY Part B rule 3 requires
-> divergences to be commented at the definition site, which means rule-source comments
-> change often in exactly the steps N7 serves. Per the rig's own rule the fix is a new
-> capstone, which is 2 minutes, not 80 — so this is friction, not a defect, and it errs in
-> the safe direction. **Do not "optimise" it by stripping comments before hashing without
-> owner sign-off:** that needs a parser, and a parser that mis-parses fails silently in the
-> one direction this whole design exists to prevent.
-
-> **SUPERSEDED BY N7-FP (2026-07-29 · `b7b52116`) — annotated rather than rewritten, on
-> two counts.** *Flagged by the 2026-07-29 doc audit as item **OI-3**: N7-FP updated
-> `docs/VERSIONING.md` and the smoke README and left this block standing as if current.*
->
-> **First, the mechanism.** The block above describes the hash as it shipped at N7: over
-> raw file bytes, with comment-stripping explicitly refused. That is no longer HEAD.
-> `rulesFingerprint` is now taken over the TypeScript printer's re-emission with comments
-> stripped, so a comment edit — or a `prettier --write` — does not move it at all. The
-> raw-byte hash is **not deleted, it is demoted**: it survives as `docsFingerprint`,
-> recorded in fixture provenance and reported when it moves, never a `FreshnessProblem`.
-> The reasoning above is kept because it is the record of why the byte hash was chosen in
-> the first place, and because the sign-off it demanded is exactly what N7-FP obtained. See
-> the N7-FP entry for the argument and for the accepted cost (a `typescript` MAJOR bump is
-> now a re-stamp event).
->
-> **Second, and more usefully: the warning was RIGHT, and it was honoured rather than
-> discarded.** "A parser that mis-parses fails silently, in the one direction this whole
-> design exists to prevent" described a real hole that N7-FP opened and did not close —
-> `ts.createSourceFile` recovers from broken syntax instead of throwing, and prints the
-> recovered tree. The 2026-07-29 audit found it as **OI-7**, and it is now closed by a hard
-> assertion on `parseDiagnostics` before anything is hashed. The same audit found
-> **OI-6/OI-6b**: a new subdirectory, or a symlink, under a hashed root escaping both the
-> hash and the totality tests. **All three are recorded in the N7-RIG entry, immediately
-> after N7-FP.**
->
-> Read the totality claim three paragraphs above ("the classification is total and
-> reviewer-checkable") alongside that entry: it was true for FILES inside declared
-> directories, and silently untrue for DIRECTORIES, until OI-6 landed.
-
-**The differ validated on real pairs, both cross-checked against this document.**
-`baseline-r2c-final.json → baseline-n1.json` prints *"NOTHING MOVED. Every compared field
-is equal on both sides"* (`label` is the sole deliberate ignore, and the report names what
-it ignored). `baseline-vet-1k.json → -r2a.json` reports moved rows `fleet, fighter,
-veteran` and unchanged `explorer, gambler, greedy, smuggler, trader, trader-degraded` —
-matching R2a's table to the credit, with R2a's byte-identical control reported as a
-first-class field. *Bug found and fixed during validation:* keying `topRoutes` by route id
-made the R2a pair report 192 phantom "shape changes" — a route dropping out of the top five
-is a value change, not a schema difference.
-
-**A fourth tier was added that the worklist did not specify: `days-29-31`.** `day.ts` forks
-the career at `day === player.debtDueDay` (30) into cleared/unpaid, and the unpaid branch
-sets `guild.debt-flagged`, which re-prices every board and encounter thereafter. Measured:
-**56/56 runs resolve Tour One on that tier, 0/56 on each of the other three.** Declared per
-tier rather than inferred from the day window, so if `debtDueDay` moves, the assertion
-fails and is re-decided instead of silently re-deriving.
-
-**The synthesized-state caveat is enforced structurally, not documented.** `runCampaign`'s
-only door to a mid-game start stamps `syntheticStart: true`; `summarizeReport` carries the
-stamp to the `SeedRow`; `aggregateRows` **throws** on any synthetic row, naming the seed and
-policy. Since a `BaselineAggregate` is the artefact every balance number in this document
-comes from, **a synthesized run cannot become a balance number by any route, including an
-accidental one.** Filtering was considered and rejected: a silent drop turns *"you measured
-something you may not measure"* into *"your sample was smaller than you thought"*.
-
-**What the smoke suite MISSES, stated because a breakage detector that oversells its
-coverage is the failure mode here.** *Ship loss and succession: zero coverage* — at 0.57
-deaths/1,000 days, 672 sim-days expects 0.38 deaths; that is arithmetic, not luck, and no
-seconds-scale tier can cover the death path. *A synthesized captain has an empty deed
-registry and LIEUTENANT rank*, so deed-gated storylets, rank-driven `player.tier` and the
-progression spine are untested in the three mid-game tiers (fabricating deeds would be
-authoring content inside a fixture — judged worse than the gap). *The spread is rank-coupled
-marginals, not joint samples*, so the `max` slot holds 83,701 credits **and** 25,000 debt —
-a captain who could have paid. *The recorded-outcome half only catches drift while the rules
-hold still*; when they move, the fingerprint fires and re-extraction rewrites the
-expectations by construction — which is why the **invariants** are a separate half, and why
-they include a per-tier "not measuring a stalled field" check so the goldens cannot quietly
-become tautologies.
-
-**Harvest path is built, not stubbed.** The shipped fixture is `spreadSource: "harvested"`
-from a real capstone; the `estimatedSpread` fallback was verified by extracting against a
-milestone-less baseline and correctly produced `spreadSource: "estimated"` with a re-run
-note. `--milestone-days` proven non-invasive: the harvest capstone diffs against
-`baseline-n1.json` at **0 numeric changes, 0 value changes, 3,699 shape changes — all of
-them added `milestones[…]` paths.** Same measurement, extra data.
-
-**Baseline of record UNCHANGED** (`baseline-r2c-final.json`). The harvest capstone is
-numerically identical to `baseline-n1.json` and was deliberately left uncommitted in
-`.scratch/` — writing a `baseline-*.json` into `docs/balance/` reads as a re-pin, and a
-re-pin is a decision, not a side effect.
-
-**Battery:** 1,208 passing / 0 failing, `tsc -b`, `eslint`, `prettier` clean. Both `it.fails`
-tripwires untouched (`git diff --stat` empty on each) and still holding.
+*Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
 ### N9 — The instrument has never played three of the eleven actions (SHIPPED 2026-07-28 · `55233e15`)
 
 > **Found by N7, 2026-07-28. Sequenced BEFORE N8** — N-IDs are labels, not an order
-> (`docs/VERSIONING.md` §4). This is the same class of defect as R0a and R2a
-> ("let the instrument play the game a competent player would"), one level larger, and N8
-> re-pins the baseline every R-series conclusion will be re-read against. Re-pinning against
-> an instrument with a known blind spot bakes the blind spot into the yardstick.
+> (`docs/VERSIONING.md` §4).
 
-- **The measurement.** `packages/sim/src/index.ts` emits `type: 'Crew'` **0** times,
-  `type: 'Port'` **0** times, `type: 'Reroll'` **0** times. All three are first-class
-  `PlayerAction` members the engine fully resolves, and all three ARE emitted by
-  `protocol.ts` — the UGT adapter the LLM playtest driver uses. So the *game* supports them
-  and the *balance instrument* has never once used them. Confirmed empirically as well:
-  `player.crew.length` is **0 at every percentile** across 8,000 careers at days 21/29/41,
-  and 0 at days 30/60/90/120 across 10 seeds × 8 policies × 120 days.
-- **Why each one matters, with its named reader:**
-  - **`Reroll`** is part of the dawn five-die hand — *the game's central decision*, in this
-    track's own preamble. Every policy plays the hand it is dealt and never spends to
-    reshape it.
-  - **`Crew`** is T-1306's dice-progression source, read by `dice.ts` `dawnDiceModifiers`.
-  - **`Port`** is T-1307's dusk income, read by `port.ts` `portDuskIncome`.
-- **The sharp consequence: every balance number in this document was produced by that
-  instrument.** State this precisely rather than over-claiming — R2d's port re-pricing
-  measured *affordability* against the real field and re-ran its reach probe with appended
-  buy actions, so it is not invalidated. What IS true is that **no standing policy's economy
-  has ever included port income, crew dice, or a rerolled hand**, so the fleet's income
-  ceiling, its dice distribution and its clear-day medians are all measured on a strictly
-  narrower game than the one that ships.
-- **Corroborating measurement from the same source:** the yard is barely touched either —
-  at day 41 across 8,000 careers `playerShipRating` median AND p75 are both **1** (≥75% of
-  careers never buy a single combat component), and `playerCargoPods` runs **min 10 / max
-  11** against a starting 10. Cargo pods are effectively never bought. Consistent with R2a's
-  fighter-ceiling finding, now visible fleet-wide.
-- **Hypothesis to grade:** giving the competent policies the three missing verbs moves the
-  fleet's income and dice distributions materially — i.e. the current baseline understates
-  what competent play earns.
-- **Proves/disproves:** run it as its own step against `baseline-r2c-final.json`. If the
-  rows move, N8 must re-pin against the *complete* instrument. If they do not, that is a
-  finding about how marginal those verbs are, and it retires a standing doubt cheaply.
+**Result (2026-07-28): HYPOTHESIS REJECTED — but the code SHIPPED and was retained**, which is
+the case standing amendment 1's refinement was written for: it moved **7 of 8 policy rows** —
+`greedy`, the untouched control, is the eighth and is byte-identical. `packages/sim` emitted
+`Crew`, `Port` and `Reroll` **zero** times, so no standing policy's economy had ever included
+port income, crew dice or a rerolled hand; all three now fire, priced through engine/content
+functions throughout (`planReroll` on the sharpest unspent die below `expectedFreshDieFace`;
+`planCaptainOverhead` arbitrating **one** die-costed purchase per day — berth -> crew -> port
+— on the dullest remaining die, queued last so income actions are never displaced). The
+direction was wrong: fleet final credits **50,448 -> 31,205 (−38.1%)** with Tour One
+essentially frozen (≤0.3% on every clear rate) and `encountersPerRun` 24.33 -> 24.37 — **the
+extra deaths are a thinner purse, not more fights**. `player.crew.length` was **0 at every
+percentile** across 8,000 careers at days 21/29/41; it is now **median 2 / p75 3 at day 41** —
+the post-state N13 has to grade a hand-bearing cast against.
 
-**Result (2026-07-28): HYPOTHESIS REJECTED — the direction is wrong. And the step exposed a
-measurement gap that matters more than the verdict.**
+**Still binds:**
 
-The three verbs now fire. `planReroll` spends a charge on the sharpest unspent die when it
-sits below `expectedFreshDieFace`, integrating over the d20 under the floor returned by the
-engine's own `dawnDiceModifiers`. `planCaptainOverhead` arbitrates **one** die-costed
-purchase per day — berth → crew → port — on the **dullest** remaining die, queued last so
-income actions are never displaced. Everything is priced through engine/content functions;
-`componentTierNetCost` was widened from four combat components to `ShipComponentId` so the
-cabin reads the same source of truth. `player.crew.length` was 0 at every percentile at
-days 21/29/41; it is now median **2** / p75 **3** at day 41.
+- **Per-verb attribution, four capstones at 1,000 seeds × 120 days** — N12 reads the port
+  figure: **Port only** 39,193cr (**−22.3%**, ships +0.5%), **Crew + berths only** 37,888
+  (−24.9%, ships +10.9%), **+ Reroll** a further −0.2%, all three shipped 31,205 (−38.1%,
+  ships +13.3%).
+- **Why the three verbs are ONE change, and why they had never fired.** `rerollsRemaining` is
+  seeded only from `dawnDiceModifiers`, whose only live source is the crew roster; crew is
+  gated by `crewCapacity = 1 + floor(cabin.strength/10)`, so the junker berths exactly **one**
+  and a full three-role roster needs cabin tier 2. **Nothing could have fired them** — the
+  blind spot was structural, not an oversight in any one policy. Their named readers, for the
+  steps that follow: **`Crew`** is T-1306's dice-progression source, read by `dice.ts`
+  `dawnDiceModifiers`; **`Port`** is T-1307's dusk income, read by `port.ts` `portDuskIncome`.
+- **Every balance number in this document was produced by that instrument — but this is not a
+  blanket invalidation, and the carve-out is on record.** R2d's port re-pricing measured
+  *affordability* against the real field and re-ran its reach probe with appended buy actions,
+  **so it is not invalidated**. What IS scoped by the blind spot are the numbers the aggregate
+  produced: the fleet's income ceiling, its dice distribution and its clear-day medians were
+  all measured on a strictly narrower game than the one that ships.
 
-**Why the three verbs are ONE change, not three — this is also why they had never fired.**
-They are a chain: `rerollsRemaining` is seeded only from `dawnDiceModifiers`, whose only
-live source is the crew roster (`EQUIPMENT_DICE_BENEFITS` ships empty); crew is gated by
-`crewCapacity = 1 + floor(cabin.strength/10)`, so the junker berths exactly **one**, and a
-full three-role roster needs cabin tier 2. **Nothing could have fired them.** The blind spot
-was structural, not an oversight in any one policy.
+- **THE FINDING THAT OUTRANKS THE VERDICT — the instrument measures CASH, not NET WORTH.**
+  `finalCredits` cannot see an asset. The trader's ~13,500cr of port spend is still on its
+  balance sheet yielding 65–290/dusk in perpetuity, and the aggregate scores it as a 100% loss.
+  So *"the fleet got poorer"* is unambiguously true only of the **crew** arm (wages, ~15,100
+  out and ~1,500 back — a genuine operating loss); the **port** arm is balance-sheet conversion
+  the instrument structurally cannot read. **`sampleMilestone` records `crew` but not `ports`,
+  so port ownership is invisible to every aggregate this project produces.** Same class as R0a
+  and R2a. **This must be fixed before N8 re-pins** — the milestone half is now N12's first
+  task, the net-worth question stays with N8.
+- **The marker HOLD, not a hard block — a judgment call made, reversed, and documented at the
+  site.** The overhead first shipped *without* a marker gate, on the argument that crew is a
+  throughput purchase. A full capstone refuted it — trader clear 0.916 -> 0.759 and clear day
+  21 -> 25, smuggler 0.535 -> 0.210 and day 30 -> 44, fleet ships 571 -> 816 — and the premise
+  failed on its own terms: a trader's day is a two-run plan capped at five dice, so the sixth
+  die a First Officer grants buys no extra contract. It was restored as a **hold**
+  (`spendable` subtracts the outstanding marker) rather than a hard block, **because a hard
+  block silences all three verbs for the explorer (clears 0.00) and veteran (0.001) *forever*,
+  re-creating the very blind spot this step removes.**
+- **Reading `greedy` as a control.** It is untouched here and its row is byte-identical — but
+  *the differ reports `greedy` under MOVED when the arm carries `--milestone-days`*, because
+  the added `milestones[…]` paths are a shape change. Strip that key and the values are equal.
+  **Check the shape/value split before reading a control as broken.**
+- **The reroll is arithmetically marginal, not badly played.** Played strictly +EV it can only
+  fire when the *sharpest* die is already below the fresh expectation, and
+  `P(max of 5d20 < 11) = 0.5⁵ ≈ 3.1%` — verified independently. A career sees ~1.2 charges
+  worth ~2 pips: −0.2% credits, +1.7% ships, both inside noise. **The verb is now exercised; it
+  is not a lever.** Zero crew walkouts in 280 careers.
+- **Out of scope, reported not fixed.** (1) N7's fingerprint over-sensitivity cost **three
+  re-runs in one step** here, which is the evidence N7-FP was granted on; closed by N7-FP.
+  (2) **The extra-die crew role is near-worthless to trader-shaped policies by construction**:
+  their day is a fixed two-run plan capped at five dice, so a sixth die has no queued use. If
+  the First Officer is meant to be the strongest hire, something needs a use for the die.
+  (3) **Ports are unreachable for two archetypes structurally** — under the marker hold the
+  explorer (clears 0.00) and veteran (0.001) never accumulate surplus above debt, so any
+  fleet-wide port-ownership criterion is measured on five policies, not seven.
+- **Provenance pointers.** Baseline re-pinned to `docs/balance/baseline-n9-shipped.json` (the
+  refinement in standing amendment 1); `campaign-degraded` fingerprints re-pinned deliberately
+  with **logged entry #5** (trader `467a83d4->2e4f1623`, fighter `b6ef1dc0->620348f8`, explorer
+  `90d35d3c->6f4d8c17`, smuggler `b480fc6f->49d98c00`, gambler `de62c310->29fc3a0c`), **greedy
+  and veteran unchanged**. `rulesFingerprint` unchanged at `76ac9179…` — the proof no
+  engine/content rule moved — while `instrumentFingerprint` moved `34453d51…->37f920ed…` and
+  the smoke fixture was re-extracted. **The `balance-targets` tripwire did NOT fire:** trader
+  clear day 21 -> 21 at 1,000 seeds, so it still fails its assertion and still passes as
+  `it.fails`.
+- **Corroborating measurement still cited elsewhere:** at day 41 across 8,000 careers
+  `playerShipRating` median AND p75 are both **1** (≥75% of careers never buy a combat
+  component) and `playerCargoPods` runs **min 10 / max 11** against a starting 10 — cargo pods
+  are effectively never bought, which is why R10 stayed invisible for the whole project.
 
-**`greedy` is untouched and its row is byte-identical** — R0a's attribution control,
-verified independently. *(Note for future readers: the differ reports `greedy` under MOVED
-when the arm carries `--milestone-days`, because the added `milestones[…]` paths are a shape
-change. Strip that key and the values are equal. Check the shape/value split before reading
-a control as broken.)*
-
-| row | clear | clear day | final cr (median) | deeds | ships lost |
-| --- | --- | --- | --- | --- | --- |
-| fleet | 0.4168 → 0.4164 | 25 → 25 | 50,448 → **31,205 (−38.1%)** | 19 → 20 | 571 → 647 |
-| trader | 0.916 → 0.916 | **21 → 21** | 80,305 → 50,081 (−37.6%) | 17 → 20 | 19 → 24 |
-| trader-degraded | 0.760 → 0.758 | 23 → 23 | 57,619 → 33,634 (−41.6%) | 18 → 19 | 120 → 173 |
-| fighter | 0.327 → 0.328 | 24 → 24 | 2,825 → 2,825 | 10 → 10 | 15 → 20 |
-| explorer | — | — | 91,366 → 78,579 (−14.0%) | 23 → 24 | 65 → **54** |
-| smuggler | 0.535 → 0.535 | 30 → 30 | 42,211 → 28,424 (−32.7%) | 28 → 29 | 72 → 91 |
-| gambler | 0.795 → 0.793 | 26 → 26 | 68,436 → 44,492 (−35.0%) | 23 → 25 | 27 → 32 |
-| veteran | 0.001 → 0.001 | 100 → 99 | 6,359 → 6,172 (−2.9%) | 20 → 20 | 142 → 142 |
-| **greedy** | **byte-identical (control)** | | | | |
-
-Tour One is essentially frozen (≤0.3% on every clear rate). `encountersPerRun` moves
-24.33 → 24.37, so **the extra deaths are not more fights — they are a thinner purse**
-(fleet fuel-starved days/career 1.48 → 1.70).
-
-**Per-verb attribution, four separate capstones at 1,000 seeds × 120 days:**
-
-| arm | fleet clear | fleet final cr | fleet ships |
-| --- | --- | --- | --- |
-| baseline `r2c-final` | 0.4168 | 50,448 | 571 |
-| **Port only** | 0.4168 | 39,193 (−22.3%) | 574 (+0.5%) |
-| **Crew + berths only** | 0.4160 | 37,888 (−24.9%) | 633 (+10.9%) |
-| Crew + berths + **Reroll** | 0.4160 | 37,807 (−0.2% vs crew) | 644 (+1.7%) |
-| all three (shipped) | 0.4164 | 31,205 (−38.1%) | 647 (+13.3%) |
-
-**The reroll is arithmetically marginal, not badly played.** Played strictly +EV it can only
-fire when the *sharpest* die is already below the fresh expectation, and
-`P(max of 5d20 < 11) = 0.5⁵ ≈ 3.1%` — verified independently. A career sees ~1.2 charges
-worth ~2 pips of die face: −0.2% credits and +1.7% ships, both inside noise. **The verb is
-now exercised; it is not a lever.** Zero crew walkouts in 280 careers.
-
-> **THE FINDING THAT OUTRANKS THE VERDICT — the instrument measures CASH, not NET WORTH.**
-> `finalCredits` cannot see an asset. The trader's ~13,500cr of port spend is still on its
-> balance sheet yielding 65–290/dusk in perpetuity, and the aggregate scores it as a 100%
-> loss. So *"the fleet got poorer"* is unambiguously true only of the **crew** arm (wages,
-> ~15,100/career out and ~1,500 back — a genuine operating loss). The **port** arm is
-> balance-sheet conversion the instrument structurally cannot read, and R2d's own entry
-> predicted exactly this and flagged it as "the thing to revisit first".
-> **`sampleMilestone` records `crew` but not `ports`, so port ownership is invisible to
-> every aggregate this project produces.** Same class as R0a and R2a — the instrument
-> cannot see part of the game it is grading. **This must be fixed before N8 re-pins**, or
-> the new baseline of record inherits a blind spot on an asset class the policies now buy.
-
-**A judgment call made, reversed, and documented at the site.** The overhead first shipped
-*without* a marker gate, on the argument that crew is a throughput purchase. A full capstone
-refuted it — trader clear 0.916 → 0.759, clear day 21 → 25; smuggler 0.535 → 0.210, day
-30 → 44; fleet ships 571 → 816 — and the premise failed on its own terms: a trader's day is
-a two-run plan capped at five dice, so the sixth die a First Officer grants buys no extra
-contract. Restored as a **hold** (`spendable` subtracts the outstanding marker) rather than
-a hard block, because a hard block silences all three verbs for the explorer (clears 0.00)
-and veteran (0.001) *forever*, re-creating the very blind spot this step removes.
-
-**Battery:** **1,226 passing / 0 failing**, `tsc -b`, `eslint`, `prettier` clean.
-`campaign-degraded` fingerprints re-pinned deliberately with logged entry #5 (trader
-`467a83d4→2e4f1623`, fighter `b6ef1dc0→620348f8`, explorer `90d35d3c→6f4d8c17`, smuggler
-`b480fc6f→49d98c00`, gambler `de62c310→29fc3a0c`); **greedy and veteran unchanged.**
-`rulesFingerprint` is unchanged at `76ac9179…` — the proof no engine/content rule moved —
-while `instrumentFingerprint` moved `34453d51…→37f920ed…` and the smoke fixture was
-re-extracted. **The `balance-targets` tripwire did NOT fire:** trader clear day 21 → 21 at
-1,000 seeds, so it still fails its assertion and still passes as `it.fails`.
-
-**Baseline re-pinned to `docs/balance/baseline-n9-shipped.json`** — see the refined rule in
-standing amendment 1. N9's verdict was REJECT but its code SHIPPED, so the yardstick had to
-follow HEAD; the fresh capstone reproduces N9's own arm with *"NO MEASURED VALUE MOVED"*.
-Experiment arms live in `.scratch/balance/`.
-
-**Out of scope, reported not fixed:**
-1. **N7's fingerprint over-sensitivity is now a measured tax, not just friction.** `prettier
-   --write` and a two-word comment each staled the fixture and forced a fresh capstone —
-   **three re-runs in one step.** The rig is behaving correctly (a fixture carries both
-   hashes and fails on either); the cost is real. Revisit the raw-bytes decision with this
-   number in hand.
-2. **The extra-die crew role is near-worthless to trader-shaped policies by construction** —
-   their day is a fixed two-run plan capped at five dice, so a sixth die has no queued use.
-   If the First Officer is meant to be the strongest hire, something needs a use for the die.
-3. **Ports are unreachable for two archetypes structurally** — under the marker hold, the
-   explorer (clears 0.00) and veteran (0.001) never accumulate surplus above debt, so any
-   fleet-wide port-ownership criterion is measured on five policies, not seven.
+*Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
 ### N8 — Re-pin the baseline against a living field
 
