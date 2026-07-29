@@ -1,7 +1,7 @@
 # Balance smoke checkpoints
 
 Fast regression fixtures extracted from a full capstone sweep. **These catch breakage;
-they do not grade balance.** See `BALANCE-REDESIGN-WORKLIST.md` N7 for the loop this
+they do not grade balance.** See `NPC_REDESIGN.md` N7 for the loop this
 serves and `docs/VERSIONING.md` §3 for the versioning contract.
 
 ## The loop

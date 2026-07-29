@@ -97,7 +97,7 @@ const TRADER_CLEAR_DAY_MAX = 30;
  * instead of silently grading nothing. The path is deliberately the single string
  * that must be updated when the baseline is re-pinned — the same commit that writes
  * the new file updates this line and the pointer in
- * `docs/BALANCE-REDESIGN-WORKLIST.md`'s standing amendment 1.
+ * `docs/NPC_REDESIGN.md`'s standing amendment 1.
  */
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
   new URL('../../../../docs/balance/baseline-r2c-explorer-remit.json', import.meta.url),
@@ -175,7 +175,7 @@ describe('T-1603b balance targets (pinned slice of the committed sweep)', () => 
   // announce a balance fix that did not happen is worse than no criterion.
   //
   // So (a) stays here as a live test, and (b) moves to the capstone-graded block
-  // below, which is the only authority on that number. See BALANCE-REDESIGN-WORKLIST
+  // below, which is the only authority on that number. See NPC_REDESIGN
   // standing amendment 1.
   it('the trader clears the Guild marker, and clears it fastest', () => {
     const trader = policyRow('trader');

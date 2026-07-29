@@ -54,7 +54,7 @@ labour is the point: the version answers "which release", the SHA answers "which
 | **MINOR** `0.5.0 → 0.6.0` | a release after a whole TRACK lands | all of N0–N8 done, i.e. NPCs at player parity |
 | **MAJOR** `0.x → 1.0.0` | public release, once | not yet |
 
-**"Track" means a named series of related steps in `BALANCE-REDESIGN-WORKLIST.md`,** and
+**"Track" means a named series of related steps in the balance worklists — `BALANCE-REDESIGN-WORKLIST.md` (R-series) and `NPC_REDESIGN.md` (N-series),** and
 "lands" means the whole series is finished — not one step of it. There are two today: the
 **R-series** (the balance redesign: R0a, R0b, R1, R2, R2c, R2d, R2.5, R4, R5…) and the
 **N-series** (N0–N8, bringing the 30 NPCs to player parity). Finishing N1 alone does not
@@ -125,7 +125,7 @@ screen once would have.
 **What it takes to leave ALPHA**, concretely, so the gate is checkable rather than a
 feeling:
 
-1. The **N-series** lands — the 30 NPCs reach player parity (`BALANCE-REDESIGN-WORKLIST.md`).
+1. The **N-series** lands — the 30 NPCs reach player parity (`NPC_REDESIGN.md`).
 2. **N8** re-pins the baseline against that living field, and the R-series conclusions are
    re-read against it.
 3. The **two known-red tests** are resolved, not carried: `balance-targets` (trader clears
@@ -140,7 +140,7 @@ stage before the first real tag is cut.
 A judgement call, recorded so it can be argued with. The Rimward redesign is playable
 end to end, demo-gated and packaged — so it is well past an 0.1. It is **not** near
 release: the balance model is mid-rebuild and the 30-NPC field is eight passes from
-player parity (`BALANCE-REDESIGN-WORKLIST.md`, N-series). `0.5.0` says "the shape is
+player parity (`NPC_REDESIGN.md`, N-series). `0.5.0` says "the shape is
 real, the systems are moving." Move it as those tracks land; do not move it to `1.x`
 until the game actually ships.
 
@@ -213,7 +213,7 @@ misleading one. (Precedent for the technique: the report fingerprints in
 **Answers: which piece of work is this?**
 
 Not versions, and they do not sort against each other. `T-####` are engineering tasks,
-`R#`/`N#` are steps in `BALANCE-REDESIGN-WORKLIST.md`, `F#` are protocol findings. They
+`R#` are steps in `BALANCE-REDESIGN-WORKLIST.md`, `N#` steps in `NPC_REDESIGN.md`, `F#` are protocol findings. They
 appear in code comments so a rule can be traced to the decision that produced it; keep
 using them that way.
 

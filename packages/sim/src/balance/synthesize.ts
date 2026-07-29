@@ -13,7 +13,7 @@
  * `syntheticStart` on any report begun from one of these states, `summarizeReport`
  * carries the stamp onto the row, and `aggregate.ts` THROWS rather than fold a
  * stamped row into a `BaselineAggregate` — the artefact every balance number in
- * `docs/BALANCE-REDESIGN-WORKLIST.md` comes from. There is no flag to disable
+ * `docs/NPC_REDESIGN.md` and `docs/BALANCE-REDESIGN-WORKLIST.md` comes from. There is no flag to disable
  * that and no filter that quietly drops the row.
  *
  * This is the same line `poverty-invariant.test.ts` holds ("the fix would be to

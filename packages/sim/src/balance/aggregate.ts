@@ -566,7 +566,7 @@ function rejectSyntheticRows(rows: readonly SeedRow[]): void {
     `Refusing to aggregate ${synthetic.length} SYNTHESIZED row(s) (first: seed ${sample.seed}, ` +
       `policy ${sample.policy}). A career that began from a fabricated mid-game state is a ` +
       `breakage sample, never a balance measurement — see N7 in ` +
-      `docs/BALANCE-REDESIGN-WORKLIST.md and docs/balance/smoke/README.md. The capstone sweep ` +
+      `docs/NPC_REDESIGN.md and docs/balance/smoke/README.md. The capstone sweep ` +
       `is the only authority on numbers.`,
   );
 }

@@ -183,7 +183,7 @@ describe('N7 · the differ answers "nothing moved"', () => {
     // N1's central finding: its capstone is byte-identical to its predecessor
     // apart from the `label`. A differ that could not say so would have made
     // that finding unrepeatable, so this pair is the differ's own acceptance
-    // test — see the N1 result in docs/BALANCE-REDESIGN-WORKLIST.md.
+    // test — see the N1 result in docs/NPC_REDESIGN.md.
     const diff = diffAggregates(load('baseline-r2c-final.json'), load('baseline-n1.json'));
     expect(diff.identical).toBe(true);
     expect(diff.movedRows).toEqual([]);

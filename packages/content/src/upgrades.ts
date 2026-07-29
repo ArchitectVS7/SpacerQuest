@@ -62,7 +62,7 @@ export type ShipComponentContentId = (typeof SHIP_COMPONENTS)[number]['id'];
  * {@link INTENT_STAT_AFFINITY} (which says what their stats incline them to DO).
  * Data only; the engine does the ordering.
  *
- * THE PROBLEM IT SOLVES, measured by N6 (BALANCE-REDESIGN-WORKLIST): `npc.ts`
+ * THE PROBLEM IT SOLVES, measured by N6 (NPC_REDESIGN): `npc.ts`
  * `npcShipForTier` varied only hull, drives and pods by tier, so every NPC at
  * every tier was issued weapons 1, shields 1, cabin 1, navigation 10, lifeSupport
  * 10, robotics 10 — **six of the Honor List's eight titles were uncontestable by

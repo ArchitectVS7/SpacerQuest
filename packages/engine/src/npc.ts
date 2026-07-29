@@ -113,7 +113,7 @@ function npcCargoPods(tier: number): number {
  * tier-1 NPC holding 4 cargo pods and a **1,200-unit tank** where a player with
  * comparable capacity — the junker: 10 pods, hull strength 1 — holds **300**.
  * NPCs flew on ~4× a player's fuel. N1 flagged it at this site as an exemption
- * (BALANCE-REDESIGN-WORKLIST, standing constraint 2: "a number chosen so that a
+ * (NPC_REDESIGN, standing constraint 2: "a number chosen so that a
  * rule will NOT bite is a rule exemption, even when the resulting state is
  * legal") and handed the removal to N2, which is where it lands.
  *

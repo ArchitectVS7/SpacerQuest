@@ -1855,7 +1855,7 @@ function planLoanRepay(state: GameState, ledger: DieLedger): PlayerAction | null
 }
 
 // ---------------------------------------------------------------------------
-// N9 (docs/BALANCE-REDESIGN-WORKLIST.md) · THE THREE VERBS THE INSTRUMENT NEVER
+// N9 (docs/NPC_REDESIGN.md) · THE THREE VERBS THE INSTRUMENT NEVER
 // PLAYED — `Reroll`, `Crew` and `Port`.
 //
 // THE DEFECT, as N7 measured it: this file emitted `type: 'Crew'` 0 times,

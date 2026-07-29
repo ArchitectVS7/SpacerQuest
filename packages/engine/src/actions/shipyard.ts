@@ -42,7 +42,7 @@ function isComponentId(value: unknown): value is ShipComponentId {
  * could not be priced through any of them.** That made N2's instruction to price
  * NPC upgrades "through the engine's own `quoteShipyard`, never a parallel cost
  * model" literally impossible, and the path of least resistance was exactly the
- * parallel cost model the standing constraint forbids (BALANCE-REDESIGN-WORKLIST,
+ * parallel cost model the standing constraint forbids (NPC_REDESIGN,
  * "same rules, no exemptions"; R2c is the warning — the sim's private copy of this
  * yard ladder had inherited the engine's own bug and so agreed with it *for the
  * wrong reason*, hiding a live economy defect for months).
