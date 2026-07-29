@@ -134,6 +134,15 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * save migrating today receives the CURRENT ramp — the only honest answer for a
  * roster that never carried ships at all.
  *
+ * N11 bumped {@link CURRENT_SAVE_VERSION} to 11, and the v10→v11 change IS a
+ * GameState shape change: every `NpcState` gains a required `registry`
+ * ({@link DeedRegistryState}) so each captain can earn deeds and Renown. The
+ * v10→v11 migration backfills an empty registry on every NPC whose record lacks
+ * one. Idempotent via `??=`: a record already carrying a registry (a same-session
+ * save round-trip) passes through untouched. An empty shell is the correct and
+ * honest backfill: a captain who never earned a deed before N11 starts at
+ * LIEUTENANT with no matchCounts and earns forward from there.
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
@@ -275,9 +284,27 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
     });
     return { ...(v9State as object), npcs };
   },
+  // v10->v11: N11 gave every NPC a `registry` (DeedRegistryState) so each
+  // captain can earn deeds and Renown. Walk the roster and backfill an empty
+  // registry on every NPC that lacks one. Idempotent via `??=`: a record already
+  // carrying a registry is left alone. An empty shell is the honest backfill — a
+  // captain who earned nothing before N11 starts fresh from LIEUTENANT.
+  // A state with no readable roster is passed through untouched for the schema to
+  // reject — a migration must never be the thing that throws.
+  10: (v10State) => {
+    const s = v10State as { npcs?: unknown };
+    if (!Array.isArray(s.npcs)) return v10State;
+    const emptyRegistry = { earned: [], renownRank: 'LIEUTENANT', matchCounts: {} };
+    const npcs = (s.npcs as unknown[]).map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const npc = entry as Record<string, unknown>;
+      return { ...npc, registry: npc['registry'] ?? emptyRegistry };
+    });
+    return { ...(v10State as object), npcs };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 10;
+export const CURRENT_SAVE_VERSION = 11;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

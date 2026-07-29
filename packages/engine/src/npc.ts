@@ -1,5 +1,6 @@
 import {
   CARGO_TYPES,
+  DEEDS,
   DEFAULT_IDEAL_WEIGHTS,
   FLAWS,
   IDEAL_WEIGHTS,
@@ -16,6 +17,7 @@ import {
   NPC_TRAVEL_FAIL_EXTRA_FUEL,
   NpcIntentType,
   NpcProfile,
+  RENOWN_RANKS,
   STAR_SYSTEMS,
   SHIP_COMPONENTS,
   Stat,
@@ -53,6 +55,7 @@ import {
   maxCargoPodsForShip,
   quoteShipyard,
 } from './actions/shipyard.js';
+import { rankForDeedCount } from './deeds.js';
 
 /**
  * NPC simulation v2 — the living galaxy (T-106).
@@ -449,8 +452,17 @@ const NPC_PATROL_FUEL = 10;
 
 export interface NpcDayContext {
   day: number;
-  /** The player's live manifest board when this NPC is allowed to claim from
-   *  it (same system as the player, no claim spent today); null otherwise.
+  /** N10 · A system-local job board sized against this NPC's own ship (generated
+   *  by day.ts before calling `resolveNpcDay`). When present, `executeTrade`
+   *  selects from it via `pickContract` instead of synthesizing a private offer.
+   *  Non-null whenever day.ts generates a board for this dusk tick.
+   *  READ-ONLY here — day.ts owns the pool; this is a snapshot of the offers
+   *  visible to this captain. */
+  systemBoard: readonly CargoContract[] | null;
+  /** The player's live manifest board when this NPC is in the same system and
+   *  the board still has offers; null otherwise. Legacy T-106 hook kept as an
+   *  additional competitive fallback — an NPC in the player's system may claim
+   *  from here if their own system board yields nothing.
    *  READ-ONLY here — the caller (day.ts) performs the splice and emits the
    *  claim events. */
   claimableBoard: readonly CargoContract[] | null;
@@ -464,7 +476,8 @@ export interface NpcDayResult {
   npc: NpcState;
   events: GameEvent[];
   /** Index into ctx.claimableBoard of the offer this NPC took (T-106 contract
-   *  competition). Only set when the NPC actually executed the haul. */
+   *  competition). Only set when the NPC actually claimed from the PLAYER'S live
+   *  board (ctx.claimableBoard path), not from their own system board. */
   claimedContractIndex?: number;
 }
 
@@ -761,6 +774,94 @@ function componentDisplayName(component: ShipComponentId): string {
 }
 
 /**
+ * N10 · Archetype-driven contract selection.
+ *
+ * Given 1 or more offers, each archetype applies its own ranking strategy and
+ * picks the contract that fits its worldview. The function is PURE (no state
+ * mutation) and exported so the engine test suite can assert per-archetype
+ * determinism in isolation.
+ *
+ * SCORING AXES (all derived from CargoContract fields):
+ *   payment          — raw income (what the reckless see)
+ *   fuelCost         — proxy for distance (what the cautious avoid)
+ *   payment/fuelCost — efficiency (what the long-game players optimise)
+ *
+ * RNG IS CONSUMED ONLY for the 'gambler' archetype (random top-half pick).
+ * All other archetypes are fully deterministic. The rng fork is supplied by
+ * `executeTrade` so the draw is attributed to this captain and does not bleed
+ * into the verb-check stream.
+ *
+ * ARCHETYPE → CRITERION TABLE:
+ *   trader   — best payment/fuelCost (efficiency; long game)
+ *   smuggler — highest payment, rim preferred (greed)
+ *   fighter  — shortest fuelCost (wants to stay close for Combat days)
+ *   explorer — farthest destination (distance = adventure)
+ *   gambler  — random pick from top half by payment (reckless)
+ *   veteran  — weighted by payment − fuelCost×5 (experienced; fuel-aware)
+ */
+export function pickContract(
+  contracts: readonly CargoContract[],
+  profile: NpcProfile,
+  rng: SeededRng,
+): CargoContract {
+  if (contracts.length === 1) return contracts[0]!;
+
+  // Pre-compute fuel costs for every candidate (avoids repeating the formula).
+  const withCosts = contracts.map((c) => ({
+    contract: c,
+    fuelCost: Math.max(1, systemDistance(0, c.destination)), // non-zero guard for division
+  }));
+
+  switch (profile.archetype) {
+    case 'trader': {
+      // Efficiency: highest payment per unit of fuel cost.
+      return withCosts.reduce((best, cur) =>
+        cur.contract.payment / cur.fuelCost > best.contract.payment / best.fuelCost ? cur : best,
+      ).contract;
+    }
+    case 'smuggler': {
+      // Greed: highest payment, rim preferred (mirrors executeTrade's rim bias).
+      const rimOptions = withCosts.filter(
+        (w) => STAR_SYSTEMS[w.contract.destination]?.isRim,
+      );
+      const pool = rimOptions.length > 0 ? rimOptions : withCosts;
+      return pool.reduce((best, cur) =>
+        cur.contract.payment > best.contract.payment ? cur : best,
+      ).contract;
+    }
+    case 'fighter': {
+      // Nearest: smallest fuel cost — the fighter wants to stay close for
+      // bounty hunting and doesn't care about the haul itself.
+      return withCosts.reduce((best, cur) =>
+        cur.fuelCost < best.fuelCost ? cur : best,
+      ).contract;
+    }
+    case 'explorer': {
+      // Farthest: biggest fuel cost — distance equals adventure.
+      return withCosts.reduce((best, cur) =>
+        cur.fuelCost > best.fuelCost ? cur : best,
+      ).contract;
+    }
+    case 'gambler': {
+      // Reckless: pick randomly from the top half of offers by payment.
+      const sorted = [...contracts].sort((a, b) => b.payment - a.payment);
+      const topHalf = sorted.slice(0, Math.max(1, Math.ceil(sorted.length / 2)));
+      return topHalf[Math.floor(rng.next() * topHalf.length)]!;
+    }
+    case 'veteran':
+    default: {
+      // Seasoned: weight by payment minus a fuel-cost penalty. A veteran knows
+      // fuel is money and refuses to burn it all on one run.
+      return withCosts.reduce((best, cur) => {
+        const score = cur.contract.payment - cur.fuelCost * 5;
+        const bestScore = best.contract.payment - best.fuelCost * 5;
+        return score > bestScore ? cur : best;
+      }).contract;
+    }
+  }
+}
+
+/**
  * N2 · What a captain will not spend at the yard.
  *
  * It is {@link NPC_POVERTY_CREDITS} — the line the cast already lives by, below
@@ -844,27 +945,30 @@ function executeTrade(
   ctx: NpcDayContext,
   events: GameEvent[],
 ): { action: NpcAction; claimedContractIndex?: number } {
-  // T-106 contract competition mechanism: when trading in the player's
-  // system, the NPC pulls a SPECIFIC offer off the live manifest board (the
-  // shared per-system job pool) instead of synthesizing one. The caller
-  // splices it from the board and shrinks tomorrow's board generation pool,
-  // so the player watches an offer they saw disappear.
+  // N10 · Contract source priority:
+  //   1. ctx.systemBoard  — the per-NPC system-local board (generated by day.ts
+  //      from the same rollContract pool, sized against this captain's own ship).
+  //      This is the primary N10 path: every captain in any system gets offers.
+  //   2. ctx.claimableBoard — the player's live board (T-106 competition hook).
+  //      Kept as a fallback so a captain co-located with the player can also take
+  //      a visible contract when their own board is empty or absent.
+  //   3. Synthesize a private offer — last resort (no board at all).
+  //
+  // In all cases the pick is made via `pickContract`, which applies the captain's
+  // archetype strategy. The co-location claim index is tracked ONLY for the
+  // claimableBoard path, so day.ts can splice it from the player's live board.
   let claimedContractIndex: number | undefined;
   let contract: CargoContract;
-  if (ctx.claimableBoard && ctx.claimableBoard.length > 0) {
-    let indices = ctx.claimableBoard.map((_, i) => i);
-    
-    // N4 · Smuggler preference for the rim
-    if (profile.archetype === 'smuggler') {
-      const rimIndices = indices.filter(i => STAR_SYSTEMS[ctx.claimableBoard![i]!.destination]?.isRim);
-      if (rimIndices.length > 0) {
-        indices = rimIndices;
-      }
-    }
 
-    const pick = Math.floor(rng.next() * indices.length);
-    claimedContractIndex = indices[pick];
-    contract = ctx.claimableBoard[claimedContractIndex]!;
+  if (ctx.systemBoard && ctx.systemBoard.length > 0) {
+    // N10: claim from the system-local board using the archetype picker.
+    contract = pickContract(ctx.systemBoard, profile, rng.fork(`pick-${npc.id}`));
+  } else if (ctx.claimableBoard && ctx.claimableBoard.length > 0) {
+    // Legacy T-106: captain is co-located with the player; pick from their board.
+    // Run through the archetype picker for parity — the old index-shuffle path
+    // is replaced but the contract-competition outcome is equivalent.
+    contract = pickContract(ctx.claimableBoard, profile, rng.fork(`pick-${npc.id}`));
+    claimedContractIndex = ctx.claimableBoard.indexOf(contract);
   } else {
     // N1 · The offer is sized against the ship this captain actually owns,
     // through the engine's own `contractSpecFromShip` — the same adapter the
@@ -902,6 +1006,18 @@ function executeTrade(
   npc.currentSystemId = contract.destination;
   npc.credits += contract.payment;
   const cargoName = CARGO_TYPES[contract.cargoType]?.name ?? `type-${contract.cargoType} cargo`;
+
+  // N11 · Emit a TradeEvent so `evaluateNpcDeeds` can credit delivery-based deeds.
+  events.push({
+    type: 'TradeEvent',
+    characterId: npc.id,
+    actionDetails: `${npc.name} hauled ${cargoName} to ${systemName(contract.destination)}`,
+    action: 'deliver-cargo',
+    success: true,
+    destination: contract.destination,
+    cargoType: contract.cargoType,
+    payment: contract.payment,
+  });
 
   const result = rollNpcCheck(npc, profile, 'Trade', rng, events);
   if (result.success) {
@@ -1054,6 +1170,127 @@ function executeSocialize(
   };
 }
 
+/**
+ * N11 · Evaluate deed progress for an NPC against the events their day produced.
+ *
+ * MIRRORS `evaluateDeeds` (deeds.ts) but scoped to an NPC:
+ *   - Operates on `NpcState.registry` instead of `PlayerState.registry`.
+ *   - Only the event types an NPC can actually emit are meaningful here. NPC
+ *     days currently produce TradeEvent (deliver-cargo) and will add TravelEvent
+ *     and EncounterResolved when N3 lands. The full DEEDS list is still tested
+ *     because the matcher is already O(sourceEvents) via matchCounts — there is
+ *     no cost to scanning deed types the NPC cannot trigger today, and it means
+ *     N3-emitted events are credited automatically the day they arrive.
+ *   - StoryletDeedProgress is NEVER emitted by NPC turns, so that branch is
+ *     omitted entirely.
+ *   - The demo cap (T-1703 CONQUEROR ceiling) is NOT applied — NPCs are never
+ *     demo-locked; a captain who earns enough deeds reaches CONQUEROR.
+ *
+ * Returns any DeedEarned / RenownRankUp / WireEntry events to append to the
+ * day's event batch (via `resolveNpcDay`). `day.ts` picks them up through the
+ * normal channel without any special case.
+ *
+ * IMPORT NOTE: DEEDS / RENOWN_RANKS / RENOWN_RANK_ORDER are available at the
+ * module top via the `@spacerquest/content` import and the deeds.ts import
+ * already in this file — no dynamic import is needed.
+ */
+function evaluateNpcDeeds(
+  npc: NpcState,
+  sourceEvents: readonly GameEvent[],
+  day: number,
+): GameEvent[] {
+  if (sourceEvents.length === 0) return [];
+
+  const emitted: GameEvent[] = [];
+  const registry = npc.registry;
+  const earnedIds = new Set(registry.earned.map((d) => d.id));
+
+  for (const deed of DEEDS) {
+    if (earnedIds.has(deed.id)) continue;
+    // StoryletDeedProgress is never emitted by NPC turns — skip it outright.
+    const triggerMatches = sourceEvents.filter(
+      (event) =>
+        event.type !== 'StoryletDeedProgress' &&
+        event.type === deed.trigger.eventType &&
+        (deed.trigger.match ?? []).every((matcher) => {
+          // Read a dotted path off the event object.
+          let value: unknown = event;
+          for (const segment of matcher.path.split('.')) {
+            if (value === null || typeof value !== 'object') {
+              value = undefined;
+              break;
+            }
+            value = (value as Record<string, unknown>)[segment];
+          }
+          if (matcher.equals !== undefined && value !== matcher.equals) return false;
+          if (matcher.gte !== undefined && (typeof value !== 'number' || value < matcher.gte))
+            return false;
+          if (matcher.lte !== undefined && (typeof value !== 'number' || value > matcher.lte))
+            return false;
+          return (
+            typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+          );
+        }),
+    );
+
+    if (triggerMatches.length === 0) continue;
+
+    const previousCount = registry.matchCounts[deed.id] ?? 0;
+    const increment = triggerMatches.length;
+    const totalCount = previousCount + increment;
+    registry.matchCounts[deed.id] = totalCount;
+
+    if (deed.trigger.count && totalCount < deed.trigger.count.gte) continue;
+
+    // State matchers (e.g. player.ship.fuel) are not meaningful for NPCs —
+    // skip if any state matcher exists so we never fire against the wrong object.
+    if (deed.trigger.state && deed.trigger.state.length > 0) continue;
+
+    const deedCount = registry.earned.length + 1;
+    const previousRank = registry.renownRank;
+    const nextRank = rankForDeedCount(deedCount);
+    const citation = deed.citationTemplate.replaceAll('{day}', String(day));
+
+    registry.earned.push({
+      id: deed.id,
+      title: deed.title,
+      citation,
+      day,
+      eventIndex: 0, // NPC events are not indexed into the global eventLog here
+    });
+    earnedIds.add(deed.id);
+
+    emitted.push({
+      type: 'DeedEarned',
+      day,
+      deedId: deed.id,
+      title: deed.title,
+      citation,
+      renownRank: nextRank,
+    });
+
+    if (nextRank !== previousRank) {
+      registry.renownRank = nextRank;
+      emitted.push({
+        type: 'RenownRankUp',
+        day,
+        previousRank,
+        newRank: nextRank,
+        deedCount,
+      });
+      const rankDef = RENOWN_RANKS[nextRank];
+      emitted.push({
+        type: 'WireEntry',
+        day,
+        kind: 'plain',
+        message: rankDef.citation,
+      });
+    }
+  }
+
+  return emitted;
+}
+
 export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext): NpcDayResult {
   const events: GameEvent[] = [];
   // The subject's private copy for the day — this is why an NPC's OWN turn does
@@ -1152,6 +1389,13 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
   //    player's yard die rides beside their trade plan.
   considerRefit(updatedNpc, profile, ctx.day, events);
 
+  // N11 · Evaluate the day's events against the NPC's deed registry. Runs AFTER
+  // the yard so a deed triggered by a delivery is credited on the day's full batch.
+  // Deed events (DeedEarned / RenownRankUp / WireEntry) join the same batch that
+  // `day.ts` appends to the global event log — no special case needed there.
+  const deedEvents = evaluateNpcDeeds(updatedNpc, events, ctx.day);
+  events.push(...deedEvents);
+
   updatedNpc.lastAction = action;
 
   events.push({
@@ -1162,3 +1406,4 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
 
   return { npc: updatedNpc, events, claimedContractIndex };
 }
+

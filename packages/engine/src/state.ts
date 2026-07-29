@@ -92,6 +92,10 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     // born with the player's 300, not the 1,000 this line used to set directly.
     ship: npcShipForProfile(p),
     disposition: 0,
+    // N11 · Every captain is born with an empty deed registry — the same shell
+    // the player starts with. `evaluateNpcDeeds` in npc.ts fills it from the
+    // events the captain's days produce.
+    registry: { earned: [], renownRank: 'LIEUTENANT' as const, matchCounts: {} },
   }));
 
   return {
@@ -280,6 +284,10 @@ export function deserializeState(json: string): GameState {
     const legacy = npc as unknown as { fuel?: unknown };
     if (npc.ship === undefined) npc.ship = seedNpcShip(npc.profileId, legacy.fuel);
     delete legacy.fuel;
+    // N11 save-compat: pre-N11 states have no `npc.registry`. Backfill the empty
+    // shell so the strict NpcStateSchema accepts this captain without a migration
+    // bump (the MIGRATIONS[10] envelope path does the same, idempotently).
+    npc.registry ??= { earned: [], renownRank: 'LIEUTENANT', matchCounts: {} };
   });
   parsed.market.npcClaims ??= 0;
   parsed.encounter ??= null;

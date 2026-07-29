@@ -1126,6 +1126,14 @@ export interface NpcState {
   disposition: number;
   lastAction?: NpcAction;
   /**
+   * N11 · Deed registry, same shape as PlayerState.registry. Fed by the NPC's
+   * real actions (TradeEvent / TravelEvent / EncounterResolved) via
+   * `evaluateNpcDeeds` (npc.ts), which runs at the end of every `resolveNpcDay`.
+   * Opens the rank gate in `actorRankIndex` (shipyard.ts) so a captain with
+   * enough Renown can buy special equipment — same rules, same check, no NPC
+   * branch. Backfilled from empty on pre-N11 saves via MIGRATIONS[10] (save.ts)
+   * and `deserializeState`'s `??=` guard (state.ts).
+   *
    * N3 WILL ADD `dead` HERE — and adding it is only half the change. A dead
    * captain's record STAYS (the wire, the Honor List's history and the player's
    * grudges all still reference it), so the Honor List has to skip it rather than
@@ -1134,6 +1142,7 @@ export interface NpcState {
    * the fifth behaviour the 1991 registry had and N6 shipped only as a seam
    * (worklist item OI-2). Marking dead without it ranks corpses forever.
    */
+  registry: DeedRegistryState;
 }
 
 export interface ComponentState {
