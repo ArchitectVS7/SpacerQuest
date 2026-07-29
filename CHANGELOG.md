@@ -4,7 +4,8 @@
 - Split the NPC redesign into its own task
 
 ## 0.5.0
-- Implemented NPC parity track (N-series)
+- Started the NPC parity track (N-series); N0, N1, N2, N6, N7 and N9 shipped.
+  N3–N5, N8 and N10–N14 remain open — see docs/NPC_REDESIGN.md for the status board.
 - NPCs now play by the player's rules, owning real ships and upgrading them
 - Established versioning standard and lockfile generation
 - Added copy-on-write discipline for player and NPC turns

@@ -479,10 +479,6 @@ const NpcStateSchema = z
     ship: ShipStateSchema,
     disposition: z.number(),
     lastAction: NpcActionSchema.optional(),
-    // N11: deed registry, same shape as PlayerState.registry. Backfilled from
-    // empty by MIGRATIONS[10] on pre-N11 saves so this required key validates
-    // against all v11+ saves and all freshly migrated older ones.
-    registry: DeedRegistryStateSchema,
   })
   .strict();
 

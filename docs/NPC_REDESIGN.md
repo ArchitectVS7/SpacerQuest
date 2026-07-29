@@ -50,15 +50,30 @@ N5 → N8 (see "Sequencing at a glance" for why N7 moved; N10–N13 added by own
 | N7 — capstone diff + smoke rig | **SHIPPED** | **accepted** — 1.5 s smoke vs 2 min capstone; staleness fails loudly; found N9 |
 | N2 — NPCs upgrade their ships | **SHIPPED** | **ACCEPTED** — spread max/median 13.4→155, fits 5→144, Honor List 2/8→8/8 contested; found R10 |
 | N6 — Honor List, 31-way board | **SHIPPED** | **accepted** — actor-shaped board; found 6 of 8 titles uncontestable by construction |
-| N3 — NPCs meet pirates | **SHIPPED** | **ACCEPTED** — all 30 simulation captains are completely mortal and meet pirates, 11 storylet characters moved to separate quest roster |
-| N4 — NPC archetypes | TODO | — |
+| N3 — NPCs meet pirates | **PARTIAL · REOPENED** | roster split landed (11 quest characters extracted); **mortality and encounters were never built** — see the 2026-07-29 correction under N3 |
+| N4 — NPC archetypes | **PARTIAL · REOPENED** | `archetype` field landed on all 41 profiles; the assignment was machine-generated and left **0 veterans / 1 smuggler** in the sim roster, and no sweep graded it — see the correction under N4 |
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile`; **GATED BY N13** — its die-allocation lever needs a decision surface to act on |
 | **N10 — NPCs work the contract board** | **TODO · MUST-HAVE** | owner ruling 2026-07-29 — NPCs interact with trade contracts as players do; the co-location gate and 1-claim/dusk cap get measured, not assumed |
 | **N11 — NPCs earn deeds and Renown** | **TODO · MUST-HAVE** | removes the rank −1 dead end; the yard's Renown gate becomes reachable with no NPC branch |
 | **N12 — NPCs buy ports** | **TODO · MUST-HAVE** | lands BEFORE N8; pulls N8's aggregate-sees-assets task forward as its own first task |
 | **N13 — NPC decision surface (dawn-hand parity)** | **TODO · MUST-HAVE** | literal reduced hand vs algorithmic equivalent — owner accepts algorithmic fast-forward; gates N5 |
+| **N14 — captain voice: the daily wire boast** | **TODO · EXPERIMENT** | owner spec 2026-07-29 — 3 boasts × 30 captains, top-3 candidates, one per day, 2-day cooldown + line rotation; **not** PvP messaging (PRD non-goal) |
 | **N9 — the instrument's three unplayed actions** | **SHIPPED** | **hypothesis REJECTED** — verbs cost 38% of fleet cash, not gain; found the aggregate cannot see an asset |
 | N8 — re-pin against a living field | TODO | **must first teach the aggregate to see ports**; re-pin against the post-N9 instrument; **follows N10–N12** (owner ruling 2026-07-29) |
+
+> [!CAUTION]
+> **OPEN MEASUREMENT DEBT (2026-07-29). `npm run balance:smoke -w @spacerquest/sim`
+> is RED** — the N7 staleness gate fires: *"STALE FIXTURE: the ruleset has changed
+> since these checkpoints were measured (fixture `91cfa4adc626ba54`, tree
+> `c58cdfaad09bebbe` over 56 rule sources)."* N3's roster split and N4's archetype
+> field moved hashed rule sources and **neither step ran its capstone**. The fixture
+> was verifiably fresh at `b6b568f3` and went stale across `8324d85c`+`6d8647b2`.
+>
+> **The fix is a new capstone, never a refreshed number** (the gate says so itself,
+> and `docs/VERSIONING.md` calls it "the rule that matters most"). Deliberately NOT
+> run yet: N3 and N4 are both reopened above and will move the same rule sources
+> again, so a capstone now would measure a ruleset about to change. **The capstone is
+> owed at the close of the reopened N4 + N3 work, before N10 opens.**
 
 **WHAT AN NPC ACTUALLY IS TODAY (measured 2026-07-28, `packages/engine/src/npc.ts`):**
 
@@ -148,8 +163,8 @@ ruling; it is what makes the fast-forward honest).
 | player verb | NPC today | owed by |
 | --- | --- | --- |
 | Trade | coarse haul; claims the player's board only when co-located, 1 claim/dusk fleet cap | **N10** |
-| Travel | real fuel, real routes, real encounters, real death | shipped (N3) |
-| Combat | full parity via resolveCombat | shipped (N3) |
+| Travel | real fuel, real routes, **no encounters** — `executeTravel` generates none | **N3 (reopened)** |
+| Combat | **abstract GUNS check vs no one, flat `150 × tier` bounty** — `resolveCombat` is never called from `npc.ts` | **N3 (reopened)** |
 | Shipyard | full price/gate parity via `ShipyardActor` — **but the refit spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · OI-9 open |
 | Explore | never | **UNRULED — owner decides by N8** |
 | VisitHangout | Socialize stand-in; no borrow/repay | **UNRULED — owner decides by N8** |
@@ -327,9 +342,38 @@ MOVED"*, so the player did not move across the refactor. The step also found **R
 
 *Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
-### N3 — NPCs meet pirates, and answer them (SHIPPED)
+### N3 — NPCs meet pirates, and answer them (PARTIAL · REOPENED 2026-07-29)
 
-**Result:** **ACCEPTED** — NPCs now meet pirates, face damage and lose ships. The field size actually shrinks. 11 storylet-only characters were correctly removed from random encounters to preserve narrative chains without awkward death exemptions.
+> [!CAUTION]
+> **CORRECTION (2026-07-29 doc-vs-code audit). This step was marked SHIPPED /
+> ACCEPTED at `8324d85c` and its core change was never built.** The Result block
+> claimed *"NPCs now meet pirates, face damage and lose ships"*, and the PARITY
+> LEDGER was edited to read *"real encounters, real death"* and *"full parity via
+> resolveCombat"*. All of that was false at the commit that wrote it. What the
+> commit actually landed was the `QUEST_PROFILES` roster split — one bullet of
+> this step. Verified absent at `6d8647b2`:
+>
+> | N3 deliverable | state |
+> | --- | --- |
+> | encounters generated on NPC jumps | **absent** — `executeTravel` (`npc.ts:1041`) has no encounter call |
+> | stance choice resolved by shared combat rules | **absent** — `resolveCombat` (`actions/combat.ts:371`) is never called from `npc.ts`; `executeCombat` is still the pre-N3 abstract GUNS check + flat `150 × tier` bounty |
+> | damage / repair / ship loss | **absent** |
+> | `dead` on `NpcState` | **absent** — `types.ts` still reads "N3 WILL ADD `dead` HERE" |
+> | `honorField` `.filter((n) => !n.dead)` | **absent** — `ui/src/format.ts:2617` still names its own unfixed remedy |
+> | FIRST TASK: widen `clone.test.ts`'s scan to `npc.ts`/`state.ts`/`packages/sim` | **absent** — the scan is still `[...actionFiles, 'day.ts', 'storylets.ts']`, and `clone.test.ts:360` still says npc.ts is "DELIBERATELY outside the scanned set" |
+> | Simulate: full sweep + NPC deaths/1k days | **never run** |
+>
+> The track's own preamble at line 69 contradicted the SHIPPED marking the whole
+> time — *"Still true at HEAD: no encounters (N3)"*. **The lesson to carry: a
+> status board is not evidence.** This audit's method was to grep for the named
+> function at the named call site, and every falsified row failed that check in
+> one command.
+>
+> **WHAT LANDED AND STAYS:** the `QUEST_PROFILES` roster split. It implements the
+> owner's ruling recorded below (SETTLED 2026-07-29) and is a better answer than a
+> mortality exemption inside the sim. `NPC_PROFILES` (30) / `QUEST_PROFILES` (11) /
+> `ALL_NPC_PROFILES` (41, for global lookups) is the shape to build the rest of N3
+> on top of.
 
 - **Hypothesis:** routing NPC travel through real encounter generation, with a real
   stance choice, makes the NPC field carry the same risk the player does — which is the
@@ -395,12 +439,86 @@ MOVED"*, so the player did not move across the refactor. The step also found **R
 - **Disproves:** NPC death rate is wildly off the player's (the stance logic is not
   player-like), or the roster empties out over a long career.
 
-### N4 — NPC archetypes (SHIPPED 2026-07-29)
+### N4 — NPC archetypes (PARTIAL · REOPENED 2026-07-29)
 
-**Result:** **ACCEPTED** — Archetypes now dictate the intent logic behind the scenes, eliminating the reliance on a generic probability matrix.
-The 30 `NPC_PROFILES` were assigned archetypes spanning Trader, Smuggler, Fighter, Explorer, Gambler, and Veteran.
-`pickIntent` was refactored to read these archetypes and behave deterministically (with poverty overrides).
-Additional bespoke behavior was added for smugglers (preferring Rim contracts in `executeTrade`) and explorers (preferring Rim travel destinations in `executeTravel`).
+> [!CAUTION]
+> **CORRECTION (2026-07-29 doc-vs-code audit).** Marked SHIPPED / ACCEPTED at
+> `6d8647b2`. The `archetype` field is real and stays; the assignment, the
+> selection logic, and the grading were all unsound.
+>
+> **1. The Result text was false.** It claimed *"The 30 `NPC_PROFILES` were assigned
+> archetypes spanning Trader, Smuggler, Fighter, Explorer, Gambler, and Veteran."*
+> Measured across the sim roster:
+>
+> | trader | fighter | explorer | gambler | smuggler | veteran |
+> | --- | --- | --- | --- | --- | --- |
+> | 10 | 12 | 4 | 3 | **1** | **0** |
+>
+> **`veteran` has zero members**, so its `pickIntent` branch is unreachable for
+> every simulation captain. The roster's only veteran sits in `QUEST_PROFILES`,
+> which the dusk loop skips by construction.
+>
+> **2. The assignment was machine-generated, not authored.** A one-off regex script
+> (`modify_cast.js`, committed to the repo root and since deleted) mapped profiles
+> by a first-match branch chain whose ordering starves the last two archetypes.
+>
+> **3. Two questions were raised in the step's own plan and shipped unanswered** —
+> the archetype distribution, and the fate of `ideal`. Both are ruled below.
+>
+> **4. A deterministic `switch` was the wrong medium for this step's hypothesis.**
+> `pickIntent` was rewritten to return a fixed verb per archetype. Ten trader
+> captains became *literally the same function* — `return 'Trade'`, every day,
+> forever, zero variance. The step's hypothesis is *"a field that behaves like 30
+> different people rather than 30 samples of one distribution"*; collapsing 30
+> authored `ideal` profiles into 6 constant branches is **further** from that than
+> the weight table it replaced. It also destroys the step's own grading: with a
+> deterministic switch there is no control arm, so *"archetype makes no measurable
+> difference"* (the Disproves) cannot be distinguished from *"archetype is the only
+> input left"*.
+>
+> **5. Nothing was measured.** No sweep was run, and N3+N4 together moved hashed
+> rule sources (`cast.ts`, `npc.ts`, `day.ts`, `travel.ts`, `hangout.ts`, `wire.ts`,
+> `state.ts`), so `npm run balance:smoke` now fails the N7 staleness gate: *"STALE
+> FIXTURE … these checkpoints describe a game that no longer exists."* The fixture
+> was fresh at `b6b568f3` and went stale across these two commits. Both steps were
+> graded on nothing, which is the failure mode this track built the rig to prevent.
+>
+> **6. Resequencing, recorded rather than drifted into.** The run order has N4
+> *after* N10–N13. N4 landing first is now deliberate and load-bearing: N10's
+> archetype-driven `pickContract` reads `profile.archetype`, so the field has to
+> exist before the board step can use it. N4 keeps its early slot.
+
+#### OWNER RULINGS (2026-07-29) — the two questions N4 shipped without
+
+**RULING 1 — `ideal` stays live, and archetype BIASES it rather than replacing it.**
+*Context the ruling rests on:* `ideal` is not a second personality axis, it is
+**this step's own predecessor at 30-value resolution.** `ideals.ts:6` — *"an NPC's
+Ideal steers what they want to do with their day"* — and `IDEAL_WEIGHTS` maps each
+worldview to relative weights over the five verbs, where a `0` vetoes a verb
+outright (the Stellar Monk's `Balance` never initiates combat). It had exactly one
+mechanical reader, `IDEAL_WEIGHTS[profile.ideal]` in the old `pickIntent`, and it is
+**never surfaced to the player** — `format.ts:809-810` builds the player-facing
+temperament line from `bond` + `flaw` only.
+
+So the design is multiplicative, not substitutive: **archetype scales the captain's
+own `IDEAL_WEIGHTS`, and the engine draws from the combined distribution.**
+
+```
+Iron Vex   · fighter · Dominance   {T:1, Tr:1, C:5, P:3, S:0}
+  ×archetype                       {  1,    1,  10,   6,   0}  → Combat ~59%, Patrol ~35%
+Cargo King · trader  · Wealth      {T:6, Tr:2, C:0, P:1, S:1}
+  ×archetype                       { 12,    2,   0,   1,   1}  → Trade ~75%, Travel ~13%
+Zero Risk  · trader  · Survival    {T:4, Tr:2, C:0, P:2, S:1}
+  ×archetype                       {  8,    2,   0,   2,   1}  → Trade ~62%, Patrol ~15%
+```
+
+Two traders remain measurably different captains, every captain keeps a distinct
+profile, `ideal`'s authored `0` vetoes survive the multiply, and archetype becomes a
+**separable** effect the sweep can attribute. The poverty override stays.
+
+**RULING 2 — archetypes are hand-curated from each captain's stats / ideal / bond,
+with a floor guaranteeing every archetype has enough members for its branch to be
+live and measurable** (roughly 4–6 each across the 30). No machine assignment.
 
 - **Hypothesis:** assigning each of the 30 a playstyle (trader / fighter / explorer /
   smuggler / gambler / veteran) produces a field that behaves like 30 different people
@@ -458,6 +576,37 @@ interaction than the cast has.*
   nothing moves at all (the cap was the binding constraint and still is — a finding about
   the cap, to take back to the owner).
 
+> [!WARNING]
+> **REVERTED ATTEMPT (`7334c5d5`, reverted 2026-07-29) — read before rebuilding.**
+> An unfinished implementation was committed and rolled back. It left the engine at
+> **154 failing tests and a failing typecheck**. Three things to not repeat:
+>
+> **1. It built a PRIVATE board, which inverts the step.** Each NPC got its own
+> `generateManifestBoard(npc.currentSystemId, …, 4)` that **depletes nothing and is
+> invisible to the player**. This step's Change clause sanctions exactly one
+> fast-forward — *"a shared depletion pool: a synthesized claim debits the same
+> generation pool that shapes the next board the player sees — the player must be
+> able to WATCH the competition, not just share a galaxy with it."* A private board
+> is the parallel cost model the standing constraint forbids and R2c is the standing
+> warning about.
+>
+> **2. It silently killed the one competition signal that already existed.** With
+> `systemBoard` always non-null, the `ctx.claimableBoard` branch became unreachable,
+> so `claimedContractIndex` was never set and `ContractClaimed` would have gone to
+> **zero** — measurably *worse* than pre-N10, with this step's Proves failing by
+> construction. The Change clause also asked for the 1-claim/dusk cap and the
+> co-location gate to be **swept as knobs**; they were inherited as dead code instead.
+>
+> **3. `pickContract` hardcoded the origin system.** `systemDistance(0, c.destination)`
+> — every archetype's distance reasoning measured from system 0 rather than
+> `npc.currentSystemId`, and it threw `Unknown star system route: 0 -> 11` outright.
+>
+> **WHAT IS WORTH SALVAGING:** the *shape* of `pickContract` — an exported, pure,
+> archetype-keyed selector that takes the offer list and returns one contract, so the
+> per-archetype strategy is unit-testable in isolation. That matches the owner's
+> constraint that *the contract an NPC picks is driven by their archetype/persona*.
+> Keep the shape; fix the origin, and feed it the shared pool rather than a private one.
+
 ### N11 — NPCs earn deeds and Renown (MUST-HAVE · owner ruling 2026-07-29)
 
 - **The dead end, measured (2026-07-29 audit):** `ShipyardActor.registry` is optional and
@@ -488,6 +637,39 @@ interaction than the cast has.*
 - **Disproves:** renown inflation (the median captain outranks a competent player — deed
   pacing is wrong for a 30-seat field), or zero accrual (the coarse turn cannot reach the
   thresholds — a finding about deed pacing, not a reason to seed ranks).
+
+> [!WARNING]
+> **REVERTED ATTEMPT (`7334c5d5`, reverted 2026-07-29) — read before rebuilding.**
+> Committed unfinished alongside the N10 attempt. The `NpcState.registry` field, the
+> schema entry and the save migration were all the right *idea*; five things went wrong.
+>
+> **1. It wrote the NPC a private deed evaluator.** `evaluateNpcDeeds` reimplemented
+> `evaluateDeeds` inline — the matcher, the dotted-path reader, the count logic and the
+> rank-up emission. The standing constraint is explicit: *"Where an NPC cannot use the
+> engine's own function today, the fix is to make the function usable by both (give it
+> an actor parameter), **never to write the NPC a private one**."* This is the R2c
+> failure mode verbatim: a second copy that agrees with the first until it drifts.
+>
+> **2. It granted itself two exemptions, both in its own comments.** The T-1703
+> CONQUEROR demo cap *"is NOT applied"*, and any deed carrying a `state` matcher was
+> skipped outright — which makes those deeds **easier** for an NPC than for the player,
+> against this step's own renown-inflation Disproves. Either remove them or record them
+> as ruled exclusions; do not leave them as silent code comments.
+>
+> **3. It inlined the registry shell in three places** — `createInitialState`,
+> `deserializeState`, and `MIGRATIONS[10]`. N1's recorded precedent is the opposite:
+> `MIGRATIONS[9]` *"calls `npcShipForTier` rather than restating it … **Anything that
+> inlines a rule into a migration breaks that**"*, and it shares ONE seeding function
+> with `createInitialState` and `deserializeState` so a migrated roster cannot drift
+> from a freshly created one. Write one seeding function; call it three times.
+>
+> **4. `ShipyardActor.registry` was left optional.** The step's own plan said make it
+> required once every NPC has one. Left optional, `actorRankIndex` can still return −1
+> and the gate stays quietly closable — the dead end this step exists to remove.
+>
+> **5. The new `TradeEvent` was emitted before the stat check with `success: true`
+> hardcoded**, so a *failed* Trade check still credited a delivery deed. And
+> `eventIndex: 0` was stuffed into every earned deed as a placeholder.
 
 ### N12 — NPCs buy ports (MUST-HAVE · owner ruling 2026-07-29 · LANDS BEFORE N8)
 
@@ -543,6 +725,52 @@ interaction than the cast has.*
   per-captain variance stops being pure verb-weight luck.
 - **Disproves:** outcomes statistically indistinguishable from the pre-N13 turn — the
   added surface carried no decision, and N5 should not be graded on top of it.
+
+### N14 — Captain voice: the daily wire boast (EXPERIMENT · owner spec 2026-07-29)
+
+*Added by the owner during the 2026-07-29 audit, out of the question "what per-captain
+axis do we NOT have yet?". Framed by the owner as **an experiment that will likely
+mutate** — grade it on whether the wire reads better, not on a sweep.*
+
+- **The gap.** The cast has six mechanical axes (`archetype`, `ideal`, `stats`, `flaw`
+  + `flawDc`, `bond`, `tier`) and **no voice**. `wireStories.ts` keys its authored lines
+  by verb CATEGORY with an `{actor}` placeholder, so all 30 captains speak identically:
+  *"Iron Vex turned a legendary profit on a single haul"* reads word-for-word the same as
+  *"The Chef turned a legendary profit on a single haul."*
+- **NOT PvP messaging, and that is a deliberate exclusion.** `PRD-REIMAGINED.md:231`
+  lists *"Multiplayer of any kind"* under non-goals, with the async arena *"parked
+  deliberately"* for a future Season. Greetings / threats / victory / retreat lines for
+  player-to-player contact are therefore **out of scope**. The Galactic Wire is the live
+  player-facing surface that needs voice today; encounter narration becomes the second
+  once N3 is actually built.
+- **Change (owner spec):**
+  - **Three authored boast lines per captain**, voiced individually and informed by that
+    captain's name and archetype. 30 × 3 = 90 lines, in `content/` as pure data.
+  - **One boast per day reaches the player, not thirty.** The owner's constraint is
+    explicit: *"at the player's start, the player should NOT see 30 messages from NPC
+    actions, but a top 3 based on actions that day."*
+  - **Selection:** rank the day's captains by their actions, take the **top 3** as
+    candidates, and emit the boast of the **first candidate not on cooldown**.
+  - **Cooldown:** a captain who boasts is barred for **2 days**. This is what the top-3
+    candidate list is for — if #1 is cooling down you fall to #2, then #3.
+  - **Line rotation:** mark the emitted line used, so a captain's next boast draws a
+    fresh one of their three. Together with the cooldown this is what *"makes those three
+    text blurbs last a long time."*
+- **OPEN — must be pinned before implementation, not drifted into:**
+  > [!IMPORTANT]
+  > **(a) What does "top 3 based on actions that day" rank ON?** Credits earned that
+  > day? Contract value? A nat-20 in the day's check? Deed progress (N11)? The rank
+  > function is the whole feature — a boast is only interesting if it is attached to
+  > something the player can see the captain actually did.
+  >
+  > **(b) What happens when all three candidates are on cooldown?** Silence for the day,
+  > or fall through to candidate #4+? Silence is cheaper and arguably better texture;
+  > falling through guarantees a daily beat. Owner's call.
+- **Proves:** the wire reads like 30 people rather than one narrator; a captain's boast
+  is recognisably theirs; the 90 lines do not visibly repeat over a 120-day career.
+- **Disproves:** the cooldown + rotation still cycles visibly inside one career (90 lines
+  is too few), or the boast reads as noise because the rank function attached it to a day
+  the player had no stake in.
 
 ### N6 — The Honor List becomes a real 31-way board (SHIPPED 2026-07-28)
 

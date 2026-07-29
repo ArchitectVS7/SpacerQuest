@@ -688,13 +688,9 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     }
   }
 
-  // 3. DUSK (NPC Actions). Every NPC gets their own system-local job board
-  // (N10: NPCs work the contract board) — 4 offers sized to the captain's own
-  // ship, generated from the same `rollContract` pool the player board uses. The
-  // legacy co-location hook (T-106: NPC sniping a job from the PLAYER's live
-  // board) is kept as a fallback inside `npc.ts` executeTrade; an NPC who is
-  // in the same system as the player and whose system board comes up empty may
-  // still claim from the player's board and reduce tomorrow's pool by one.
+  // 3. DUSK (NPC Actions). NPCs sharing the player's system compete for the
+  // player's manifest board — at most one job is claimed per dusk (texture
+  // stays cheap; the loss is legible on the wire and in tomorrow's board).
   const npcOrder = dayRng.shuffle([...nextState.npcs]);
   let boardClaimSpent = false;
   let snipingNpcId: string | null = null;
@@ -705,24 +701,6 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     // Quest characters do not participate in the daily simulation.
     if (QUEST_PROFILES.some(q => q.id === npc.profileId)) continue;
     const npcRng = dayRng.fork(`npc-${npc.id}`);
-    // N10 · Every NPC captain gets a private 4-offer board sized against their
-    // own ship. Generated BEFORE resolveNpcDay so pickContract can run its
-    // archetype strategy against real offers (not a synthesized phantom).
-    // The board is generated here, not inside npc.ts, for three reasons:
-    //   1. day.ts already owns the RNG stream for all economy draws (the player
-    //      board, fuel price, era event) — keeping NPC boards here avoids a new
-    //      entry point into the economy.
-    //   2. The board fork is named per NPC (`board-${npc.id}`) so its draws are
-    //      deterministic and isolated from the verb-check stream inside npc.ts.
-    //   3. Sized at 4 (the same as the player board) for test predictability; a
-    //      future tuning pass can parameterise this without touching npc.ts.
-    const systemBoard = generateManifestBoard(
-      npc.currentSystemId,
-      npcRng.fork(`board-${npc.id}`),
-      npc.ship,
-      4,
-      nextState.eraEvent,
-    );
     const canClaim =
       !boardClaimSpent &&
       npc.currentSystemId === nextState.player.currentSystemId &&
@@ -733,7 +711,6 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       claimedContractIndex,
     } = resolveNpcDay(npc, npcRng, {
       day: nextState.day,
-      systemBoard,
       claimableBoard: canClaim ? nextState.market.manifestBoard : null,
       eraEvent: nextState.eraEvent,
     });
