@@ -17,6 +17,8 @@ export interface AnonymousInterceptorProfile {
   tier: PowerTier;
 }
 
+export type NpcArchetype = 'trader' | 'fighter' | 'explorer' | 'smuggler' | 'gambler' | 'veteran';
+
 export interface NpcProfile {
   id: string;
   name: string;
@@ -29,6 +31,7 @@ export interface NpcProfile {
   flawDc: number;
   /** Power tier: 1 = mudlark, 5 = legend (PRD §6). */
   tier: PowerTier;
+  archetype: NpcArchetype;
   /** T-1204: the dusk Bond intervention this NPC performs when the player has
    *  earned their standing. Present only on the handful of profiles whose Bond
    *  implies a player-facing obligation; the beat (drive-off / fuel-gift) is the
@@ -49,6 +52,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Bloodthirsty',
     flawDc: 14,
     tier: 3,
+    archetype: 'fighter',
   },
   {
     id: 'npc-cargo-king',
@@ -60,6 +64,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Cowardly',
     flawDc: 13,
     tier: 3,
+    archetype: 'trader',
   },
   {
     id: 'npc-admiral-stern',
@@ -71,6 +76,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Overcautious',
     flawDc: 10,
     tier: 5,
+    archetype: 'fighter',
     bondHook: { beat: 'drive-off', activateAt: 3, dc: 12 },
   },
   {
@@ -83,6 +89,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Reckless',
     flawDc: 15,
     tier: 3,
+    archetype: 'fighter',
   },
   {
     id: 'npc-black-tide',
@@ -94,6 +101,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Cruel',
     flawDc: 12,
     tier: 5,
+    archetype: 'fighter',
   },
   {
     id: 'npc-frost-helm',
@@ -105,6 +113,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Rigid',
     flawDc: 10,
     tier: 3,
+    archetype: 'trader',
   },
   {
     id: 'npc-atlas-prime',
@@ -116,6 +125,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Slothful',
     flawDc: 12,
     tier: 3,
+    archetype: 'trader',
   },
   {
     id: 'npc-crimson-ace',
@@ -127,6 +137,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Prideful',
     flawDc: 13,
     tier: 4,
+    archetype: 'fighter',
   },
   {
     id: 'npc-zero-risk',
@@ -138,6 +149,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Cowardly',
     flawDc: 15,
     tier: 2,
+    archetype: 'trader',
   },
   {
     id: 'npc-neon-fox',
@@ -149,6 +161,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Treacherous',
     flawDc: 14,
     tier: 4,
+    archetype: 'gambler',
   },
   {
     id: 'npc-warp-hound',
@@ -160,6 +173,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Wanderlust',
     flawDc: 14,
     tier: 3,
+    archetype: 'explorer',
   },
   {
     id: 'npc-gold-rush',
@@ -171,6 +185,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Greedy',
     flawDc: 15,
     tier: 4,
+    archetype: 'trader',
   },
   // The 10 New Cast Members (minus 3 extracted) = 7
   {
@@ -183,6 +198,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Distracted',
     flawDc: 15,
     tier: 1,
+    archetype: 'explorer',
   },
   {
     id: 'npc-the-warden',
@@ -194,6 +210,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Relentless',
     flawDc: 13,
     tier: 4,
+    archetype: 'fighter',
   },
   {
     id: 'npc-nebula-rose',
@@ -205,6 +222,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Vain',
     flawDc: 12,
     tier: 3,
+    archetype: 'trader',
   },
   {
     id: 'npc-the-phantom',
@@ -216,6 +234,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Enigmatic',
     flawDc: 10,
     tier: 5,
+    archetype: 'gambler',
   },
   {
     id: 'npc-crash-override',
@@ -227,6 +246,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Arrogant',
     flawDc: 13,
     tier: 3,
+    archetype: 'gambler',
   },
   {
     id: 'npc-the-chef',
@@ -238,6 +258,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Perfectionist',
     flawDc: 12,
     tier: 2,
+    archetype: 'trader',
   },
   {
     id: 'npc-junk-lord',
@@ -249,6 +270,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Possessive',
     flawDc: 13,
     tier: 3,
+    archetype: 'fighter',
   },
   // 11 Newly Generated Simulation Characters
   {
@@ -261,6 +283,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Stubborn',
     flawDc: 14,
     tier: 4,
+    archetype: 'fighter',
   },
   {
     id: 'npc-stellar-drift',
@@ -272,6 +295,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Flighty',
     flawDc: 12,
     tier: 2,
+    archetype: 'explorer',
   },
   {
     id: 'npc-void-runner',
@@ -283,6 +307,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Impulsive',
     flawDc: 15,
     tier: 3,
+    archetype: 'trader',
   },
   {
     id: 'npc-crimson-hawk',
@@ -294,6 +319,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Reckless',
     flawDc: 13,
     tier: 4,
+    archetype: 'fighter',
   },
   {
     id: 'npc-neon-shade',
@@ -305,6 +331,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Paranoid',
     flawDc: 14,
     tier: 2,
+    archetype: 'smuggler',
   },
   {
     id: 'npc-dust-devil',
@@ -316,6 +343,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Greedy',
     flawDc: 12,
     tier: 2,
+    archetype: 'trader',
   },
   {
     id: 'npc-star-chaser',
@@ -327,6 +355,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Distracted',
     flawDc: 11,
     tier: 3,
+    archetype: 'explorer',
   },
   {
     id: 'npc-rogue-star',
@@ -338,6 +367,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Defiant',
     flawDc: 14,
     tier: 3,
+    archetype: 'fighter',
   },
   {
     id: 'npc-plasma-burn',
@@ -349,6 +379,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Destructive',
     flawDc: 16,
     tier: 3,
+    archetype: 'fighter',
   },
   {
     id: 'npc-comet-tail',
@@ -360,6 +391,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Miserly',
     flawDc: 12,
     tier: 2,
+    archetype: 'trader',
   },
   {
     id: 'npc-solar-flare',
@@ -371,6 +403,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Arrogant',
     flawDc: 13,
     tier: 3,
+    archetype: 'fighter',
   },
 ];
 
@@ -385,6 +418,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Vengeful',
     flawDc: 12,
     tier: 4,
+    archetype: 'gambler',
   },
   {
     id: 'npc-lucky-seven',
@@ -396,6 +430,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Compulsive Gambler',
     flawDc: 16,
     tier: 2,
+    archetype: 'gambler',
   },
   {
     id: 'npc-rattlesnake',
@@ -407,6 +442,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Vengeful',
     flawDc: 14,
     tier: 3,
+    archetype: 'trader',
   },
   {
     id: 'npc-penny-wise',
@@ -418,6 +454,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Miserly',
     flawDc: 12,
     tier: 2,
+    archetype: 'trader',
   },
   {
     id: 'npc-doc-salvage',
@@ -429,6 +466,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Savior Complex',
     flawDc: 15,
     tier: 2,
+    archetype: 'trader',
     bondHook: {
       beat: 'fuel-gift',
       activateAt: 2,
@@ -448,6 +486,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Chaotic',
     flawDc: 17,
     tier: 3,
+    archetype: 'gambler',
   },
   {
     id: 'npc-smuggler-ray',
@@ -459,6 +498,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Paranoid',
     flawDc: 13,
     tier: 3,
+    archetype: 'gambler',
   },
   {
     id: 'npc-stellar-monk',
@@ -470,6 +510,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Pacifist',
     flawDc: 8,
     tier: 3,
+    archetype: 'smuggler',
   },
   {
     id: 'npc-void-whisper',
@@ -481,6 +522,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Zealous',
     flawDc: 14,
     tier: 4,
+    archetype: 'veteran',
   },
   {
     id: 'npc-the-broker',
@@ -492,6 +534,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Manipulative',
     flawDc: 12,
     tier: 4,
+    archetype: 'trader',
   },
   {
     id: 'npc-rust-bucket',
@@ -503,6 +546,7 @@ export const QUEST_PROFILES: NpcProfile[] = [
     flaw: 'Hoarder',
     flawDc: 13,
     tier: 1,
+    archetype: 'trader',
   },
 ];
 

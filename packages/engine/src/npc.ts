@@ -480,31 +480,38 @@ export function pickIntent(
   credits: number,
   rng: SeededRng,
 ): NpcIntentType | 'Idle' {
-  const base = IDEAL_WEIGHTS[profile.ideal] ?? DEFAULT_IDEAL_WEIGHTS;
-  const weighted = NPC_INTENT_TYPES.map((intent) => {
-    const stat = Math.max(0, profile.stats[INTENT_STAT_AFFINITY[intent]]);
-    let weight = base[intent] * (1 + stat);
-    if (intent === 'Trade' && credits < NPC_POVERTY_CREDITS) {
-      weight += NPC_POVERTY_TRADE_BOOST;
-    }
-    return { intent, weight };
-  });
-
-  const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
-  if (total <= 0) {
-    // Invariant: a weight of 0 DISABLES a verb (ideals.ts contract), so an
-    // Ideal that zeroes every verb must resolve to a no-op day — never to a
-    // verb the table forbade. Unreachable with the current tables (every
-    // Ideal has a positive weight), but future content must not break it.
-    return 'Idle';
+  // If extremely poor, everyone prioritizes trade to survive and get fuel money
+  if (credits < NPC_POVERTY_CREDITS && profile.archetype !== 'trader' && profile.archetype !== 'smuggler') {
+    // 50% chance to drop their archetype and try to haul freight to survive
+    if (rng.next() < 0.5) return 'Trade';
   }
 
-  let roll = rng.next() * total;
-  for (const entry of weighted) {
-    roll -= entry.weight;
-    if (roll < 0) return entry.intent;
+  // N4 · Archetype-driven intent selection
+  switch (profile.archetype) {
+    case 'trader':
+      // Traders always trade if they can afford it
+      return 'Trade';
+    case 'smuggler':
+      // Smugglers trade, with a preference for the rim implemented in executeTrade
+      return 'Trade';
+    case 'fighter':
+      // Fighters mix Combat (bounty hunting) and Patrol
+      return rng.next() < 0.7 ? 'Combat' : 'Patrol';
+    case 'explorer':
+      // Explorers travel off-lane
+      return 'Travel';
+    case 'gambler':
+      // Gamblers socialize and trade
+      return rng.next() < 0.6 ? 'Socialize' : 'Trade';
+    case 'veteran':
+      // Veterans mix it up
+      const r = rng.next();
+      if (r < 0.4) return 'Combat';
+      if (r < 0.7) return 'Trade';
+      return 'Patrol';
+    default:
+      return 'Idle';
   }
-  return weighted[weighted.length - 1].intent;
 }
 
 /** Clamp-and-apply a disposition change, emitting a typed event when the
@@ -845,7 +852,18 @@ function executeTrade(
   let claimedContractIndex: number | undefined;
   let contract: CargoContract;
   if (ctx.claimableBoard && ctx.claimableBoard.length > 0) {
-    claimedContractIndex = Math.floor(rng.next() * ctx.claimableBoard.length);
+    let indices = ctx.claimableBoard.map((_, i) => i);
+    
+    // N4 · Smuggler preference for the rim
+    if (profile.archetype === 'smuggler') {
+      const rimIndices = indices.filter(i => STAR_SYSTEMS[ctx.claimableBoard![i]!.destination]?.isRim);
+      if (rimIndices.length > 0) {
+        indices = rimIndices;
+      }
+    }
+
+    const pick = Math.floor(rng.next() * indices.length);
+    claimedContractIndex = indices[pick];
     contract = ctx.claimableBoard[claimedContractIndex]!;
   } else {
     // N1 · The offer is sized against the ship this captain actually owns,
@@ -911,8 +929,17 @@ function executeTravel(
   ctx: NpcDayContext,
   events: GameEvent[],
 ): NpcAction {
-  const options = NPC_SYSTEM_IDS.filter((id) => id !== npc.currentSystemId);
-  const destination = options[Math.floor(rng.next() * options.length)];
+  let options = NPC_SYSTEM_IDS.filter((id) => id !== npc.currentSystemId);
+  
+  // N4 · Explorer preference for off-lane/rim charting
+  if (profile.archetype === 'explorer') {
+    const rimOptions = options.filter(id => STAR_SYSTEMS[id]?.isRim);
+    if (rimOptions.length > 0) {
+      options = rimOptions;
+    }
+  }
+
+  const destination = options[Math.floor(rng.next() * options.length)]!;
   const fuelCost = npcJumpFuelCost(npc.ship, systemDistance(npc.currentSystemId, destination));
   refuelIfNeeded(npc, fuelCost, ctx.eraEvent);
   if (npc.ship.fuel < fuelCost) {

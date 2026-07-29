@@ -380,11 +380,7 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  f07d6de2… -> a16ca706…   (events a0e8ed7f… -> 2ae4bb5f…)
 //   STORYLET state  86fbc0cc… -> a4374515…   (events 6f61a1d5… -> a5522f39…)
 // Regenerated via gen-day-loop-golden.ts.
-export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '687de63f02addb502260daf6af6c7bbea68bf509f9049f31d65460fafcec67d8';
-export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'f6cb28b57a067300d07b1fe1d25e984c60f86eee1648a6ea48bc179da154dbc2';
-export const STORYLET_GOLDEN_STATE_HASH =
-  'ed97fe4fd073edb786c081823ebc59f90d28354550a7bfafa2d4936a19790dab';
-export const STORYLET_GOLDEN_EVENTS_HASH =
-  'd56175f6ce8a9751af639dd140b9cc2fae1c974b0d8f7f3a2ebef726b183f692';
+export const DAY_LOOP_GOLDEN_STATE_HASH = '3c1e90890e8eb1f9349fa1f64561ae311f8e83d9d0989812cb935c60331e41bb';
+export const DAY_LOOP_GOLDEN_EVENTS_HASH = 'b1c93fb4d9cae09d66d9c9d2c0e1ec6d395ef68e44079e2663bc985c8f844dab';
+export const STORYLET_GOLDEN_STATE_HASH = 'ecbc7f67eeaade908f3093fc9e66d48ec62245b08af76c8eb635cfe9add5ae06';
+export const STORYLET_GOLDEN_EVENTS_HASH = '06ba117b5d4e6b7ffadecac2bc70c95d5fa4ca58c0d964e30715a0f6e96b9340';

@@ -395,7 +395,12 @@ MOVED"*, so the player did not move across the refactor. The step also found **R
 - **Disproves:** NPC death rate is wildly off the player's (the stance logic is not
   player-like), or the roster empties out over a long career.
 
-### N4 — NPC archetypes
+### N4 — NPC archetypes (SHIPPED 2026-07-29)
+
+**Result:** **ACCEPTED** — Archetypes now dictate the intent logic behind the scenes, eliminating the reliance on a generic probability matrix.
+The 30 `NPC_PROFILES` were assigned archetypes spanning Trader, Smuggler, Fighter, Explorer, Gambler, and Veteran.
+`pickIntent` was refactored to read these archetypes and behave deterministically (with poverty overrides).
+Additional bespoke behavior was added for smugglers (preferring Rim contracts in `executeTrade`) and explorers (preferring Rim travel destinations in `executeTravel`).
 
 - **Hypothesis:** assigning each of the 30 a playstyle (trader / fighter / explorer /
   smuggler / gambler / veteran) produces a field that behaves like 30 different people
