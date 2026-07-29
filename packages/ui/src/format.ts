@@ -2495,23 +2495,77 @@ export function presenceMessage(steam: SteamStatus | null, line: string): string
 // multi-polar: the fighter takes Weapons and Hull, the veteran takes Shields, the
 // smuggler takes Drives and Navigation. Four playstyles, four things to be best at.
 //
-// SCOPE — deliberately a PERSONAL board in v1. `NpcState` carries credits, fuel and
-// disposition but NO ship components, so ranking the 30-NPC field would mean
-// inventing NPC ships out of their tier. That is a design decision with its own
-// blast radius, not a rendering detail, so this reports the player's own fit
-// against the ladder's ceiling instead of against a fabricated field. The moment
-// NPC ships become real state, this function is where the field plugs in.
+// SCOPE — N6: A REAL 31-WAY BOARD. v1 shipped this as a PERSONAL board (the player's
+// fit against the ladder's ceiling, drawn as completion bars) for one reason only:
+// `NpcState` had no ship, so there was no field to rank. N1 landed `NpcState.ship:
+// ShipState` — the SAME type the player flies, validated by the same schema — so the
+// board is now what the original was: the whole registry, ranked, one holder (or a
+// tie) per title. The progress bar is gone; a contest replaced it.
+//
+// THE STANDING CONSTRAINT (worklist, "same rules, no exemptions") IS SATISFIED
+// STRUCTURALLY, not by convention: the ranking reader below takes an ACTOR
+// ({@link HonorCaptain}) and never touches `game.player.*`. There is exactly one
+// scoring path, `effectiveScore` — the engine's own derived value — and it is applied
+// to `captain.ship[id]` whoever the captain is. There is no NPC branch to drift.
+//
+// WHAT THE ORIGINAL DID, LINE BY LINE (`sp.top.s`, quoted so the fidelity claims here
+// are checkable):
+//   - it walked EVERY registry record (`for x=1 to oa`), not the caller's own;
+//   - it scored `i=(d1*d2)` per component and kept the running max;
+//   - TIES WERE CO-HELD, not broken: `if (td=i) and (len(td$)<40) td$=td$+"/"+nz$`
+//     appends an equal scorer to the holder line, and only a strictly greater score
+//     (`if td<i td$=nz$:td=i`) takes the title outright;
+//   - THE HOLDER LINE WAS BUDGETED AT 40 CHARACTERS and overflow was dropped silently;
+//   - a record marked with a leading `*` was SKIPPED, not deleted
+//     (`if (left$(na$,1)="*") or (left$(q2$,1)="*") next`).
+// All five behaviours are reproduced below. See {@link HONOR_HOLDER_LINE_BUDGET},
+// {@link rankTitle} and {@link honorField}.
+//
+// ONE DELIBERATE DIVERGENCE FROM THE ORIGINAL, per BALANCE-POLICY Part B rule 3.
+// `sp.top.s` credits the SHIP (`nz$`, the second registry field); this board credits
+// the CAPTAIN (`NpcState.name`). Rimward's cast is authored as captains — the wire
+// links captain names (`npcNameIndex`), the dossier is a captain's, the Hangout lists
+// captains, and a grudge is held by a captain — so a board that named hulls would be
+// the only surface in the game that does not name the person. The scoring, the ties
+// and the budget are untouched.
+//
+// WHY THIS BOARD AND NOT A NET-WORTH ONE — unchanged from v1, and it matters more now
+// that the field is real: a leaderboard on credits would re-crown the archetype that
+// already dominates by refusing all risk. This one cannot be won by hoarding.
+
+/** One name on a title's holder line. `isPlayer` is the ONLY thing that
+ *  distinguishes the player anywhere in this board's data. */
+export interface HonorHolder {
+  /** The captain's name, or {@link PLAYER_HONOR_LABEL} for the player, who has no
+   *  name in `GameState` to print. */
+  name: string;
+  isPlayer: boolean;
+}
 
 export interface HonorTitle {
   id: ShipComponentId | 'allAround';
   /** The 1991 title, verbatim where one existed. */
   title: string;
-  /** `effectiveScore` for the component, or its sum for the all-around title. */
+  /** The WINNING score in the field — `effectiveScore` for the component, or its
+   *  sum over all eight for the all-around title. 0 when nobody is ranked. */
   score: number;
-  /** The score at a fully-maxed fit (tier 9, pristine) — the ladder's ceiling. */
-  best: number;
-  /** score / best, clamped to [0, 1] — the completion bar. */
-  completion: number;
+  /** Every captain tied at `score`, in display order, cut to the original's
+   *  40-character line budget. Empty only when the field is empty. */
+  holders: HonorHolder[];
+  /** Co-holders the budget cut. The original dropped them silently; counting them
+   *  is the one presentational addition, because a 31-captain field ties far more
+   *  often than a BBS registry of individually-fitted ships did. */
+  overflow: number;
+  /** What the player scored for this title — their standing, not their progress. */
+  playerScore: number;
+  /** The player's COMPETITION rank: `1 + (captains scoring strictly higher)`. 1
+   *  means the player holds or co-holds the title. See the tiebreak note on
+   *  {@link rankTitle} for why this is the tie-blind form. */
+  playerRank: number;
+  /** How many captains were ranked for this title — the player plus every living
+   *  NPC. Per-title rather than global so a future qualification rule (a title
+   *  nobody can hold without, say, a fitted module) needs no new field. */
+  field: number;
 }
 
 /** The 1991 titles, in the order `SP.TOP.txt` prints them. `hull` carries no
@@ -2527,33 +2581,148 @@ const HONOR_TITLES: readonly { id: ShipComponentId; title: string }[] = [
   { id: 'shields', title: 'Strongest Shields' },
 ];
 
-/** Score of a pristine tier-9 component — the ceiling every bar is drawn against.
- *  Derived from `effectiveScore`, never a literal, so a change to the tier ladder
- *  or the score formula moves the bars with it. */
-const MAX_COMPONENT_SCORE = effectiveScore({ strength: 9 * 10, condition: 9 });
+/** What the player is called on a board where every other row is a named captain.
+ *  `GameState` carries no player name — there is nothing else to print, and
+ *  inventing one here would be a second source of truth for the captain's identity
+ *  the moment the game grows one. */
+export const PLAYER_HONOR_LABEL = 'YOU';
+
+/** The original's holder-line budget, recovered verbatim from `sp.top.s`
+ *  (`len(td$)<40`). Note the original tests the length BEFORE appending, so a line
+ *  may finish slightly over 40; that off-by-a-name is reproduced rather than
+ *  "corrected", because the budget's job is to stop a runaway line, not to be exact. */
+const HONOR_HOLDER_LINE_BUDGET = 40;
+
+/**
+ * A ranked captain — the ACTOR the whole board is written against. Player and NPC
+ * both arrive here as `{ name, ship }` and nothing downstream can tell them apart
+ * except the `isPlayer` flag, which is used for DISPLAY ONLY and never reaches
+ * {@link rankTitle}'s arithmetic.
+ */
+interface HonorCaptain {
+  name: string;
+  isPlayer: boolean;
+  ship: ShipState;
+}
+
+/**
+ * THE FIELD: the player plus every ranked NPC, in one list.
+ *
+ * DEAD CAPTAINS (N3, not yet landed — this is the seam, not the feature). The
+ * worklist settles that a dead captain's record STAYS, marked dead rather than
+ * deleted, because the wire, the Honor List's history and the player's grudges all
+ * still reference it. The original had exactly this case and handled it exactly this
+ * way: `sp.top.s` skips a registry record whose name begins with `*` and ranks the
+ * rest. So the board needs no re-architecting for mortality — it needs one clause in
+ * this filter (`.filter((n) => !n.dead)`), and every score, tie, rank and budget
+ * below already works on a field of any size, including the empty one.
+ */
+function honorField(game: GameState): HonorCaptain[] {
+  return [
+    { name: PLAYER_HONOR_LABEL, isPlayer: true, ship: game.player.ship },
+    ...game.npcs.map((npc) => ({ name: npc.name, isPlayer: false, ship: npc.ship })),
+  ];
+}
+
+/**
+ * Rank the field on one title.
+ *
+ * TIES ARE CO-HELD, NOT BROKEN — recovered, not invented. With 31 captains over
+ * eight titles a tie is the common case, not the corner one (at world creation every
+ * NPC is seeded from `npcShipForTier`, which varies only hull, drives and pods, so
+ * five of the seven component titles open as a whole-field tie). A tiebreak would
+ * therefore be doing most of the work of the board, and any tiebreak available here
+ * — roster index, profile tier, credits — would be a rule this file invented about
+ * who is better, i.e. exactly the "never restate an engine rule" failure. The
+ * original's answer is better and is the one used: everyone at the top score holds
+ * the title jointly.
+ *
+ * DETERMINISM, which the co-holding makes load-bearing: `holders` is ordered by NAME
+ * (plain code-unit compare, no locale — a locale collator would make the board
+ * depend on the machine that rendered it), and captain names are unique. The player
+ * is PINNED FIRST among co-holders, and that is the one place display order is not
+ * alphabetical: with a 31-way tie the 40-character budget shows about three names,
+ * so a player who genuinely co-holds a title would otherwise never see themselves on
+ * the line they are on. It moves no rank — `playerRank` counts captains scoring
+ * STRICTLY HIGHER and is blind to order, to `isPlayer` and to the budget, so the
+ * player cannot out-rank a captain they merely tied.
+ *
+ * A TITLE NOBODY HOLDS IS NOT REACHABLE, and there is deliberately no branch for it.
+ * Every title is scored by the same total function over the same eight components, so
+ * the only way to vacate one is to empty the field — and the field always contains at
+ * least the captain reading the board, who is the one thing the N3 dead-filter can
+ * never remove. (Every `effectiveScore` is > 0 as well: `strength` is 1..199, so the
+ * `0` seed on the max below can never be mistaken for a real score.) The day a title
+ * grows a QUALIFICATION rule — "only ships with a fitted Star-Buster contend" — is the
+ * day this becomes reachable; `field` is already per-title rather than global so that
+ * rule has somewhere to land, and that is the point at which a vacant branch should be
+ * written, tested, and not before.
+ */
+function rankTitle(
+  id: ShipComponentId | 'allAround',
+  title: string,
+  field: readonly HonorCaptain[],
+  scoreOf: (ship: ShipState) => number,
+  playerScore: number,
+): HonorTitle {
+  const scored = field.map((captain) => ({ captain, score: scoreOf(captain.ship) }));
+  const score = scored.reduce((best, row) => Math.max(best, row.score), 0);
+
+  const tied = scored
+    .filter((row) => row.score === score)
+    .map((row) => row.captain)
+    .sort((a, b) => {
+      if (a.isPlayer !== b.isPlayer) return a.isPlayer ? -1 : 1;
+      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+    });
+
+  // `sp.top.s`: the first holder is set unconditionally, each further tie is appended
+  // only while the line so far is still under budget.
+  const holders: HonorHolder[] = [];
+  let line = 0;
+  for (const captain of tied) {
+    if (holders.length > 0 && line >= HONOR_HOLDER_LINE_BUDGET) break;
+    line += (holders.length > 0 ? 1 : 0) + captain.name.length;
+    holders.push({ name: captain.name, isPlayer: captain.isPlayer });
+  }
+
+  return {
+    id,
+    title,
+    score,
+    holders,
+    overflow: tied.length - holders.length,
+    playerScore,
+    // COMPETITION rank, the tie-blind form: it counts captains who beat the player
+    // and nothing else. It cannot see `isPlayer`, holder order or the line budget, so
+    // no display choice above can move it.
+    playerRank: 1 + scored.filter((row) => row.score > playerScore).length,
+    field: scored.length,
+  };
+}
+
+/** Best All-Around sums ALL EIGHT components (hull included), exactly as the
+ *  original's `tgfx` subroutine does. Read through `SHIP_COMPONENTS` and
+ *  `effectiveScore` so a change to the roster of components or to the score formula
+ *  moves the title with it — never a restated sum. */
+function allAroundScore(ship: ShipState): number {
+  return SHIP_COMPONENTS.reduce((sum, def) => sum + effectiveScore(ship[def.id]), 0);
+}
 
 export function honorList(game: GameState): HonorTitle[] {
-  const ship = game.player.ship;
-  const rows: HonorTitle[] = HONOR_TITLES.map(({ id, title }) => {
-    const score = effectiveScore(ship[id]);
-    return {
-      id,
-      title,
-      score,
-      best: MAX_COMPONENT_SCORE,
-      completion: Math.max(0, Math.min(1, score / MAX_COMPONENT_SCORE)),
-    };
-  });
-  // Best All-Around sums ALL EIGHT components (hull included), exactly as the
-  // original's `tgfx` subroutine does.
-  const all = SHIP_COMPONENTS.reduce((sum, def) => sum + effectiveScore(ship[def.id]), 0);
-  const allBest = MAX_COMPONENT_SCORE * SHIP_COMPONENTS.length;
-  rows.push({
-    id: 'allAround',
-    title: 'Best All-Around Ship',
-    score: all,
-    best: allBest,
-    completion: Math.max(0, Math.min(1, all / allBest)),
-  });
+  const field = honorField(game);
+  // `playerScore` is the SAME `scoreOf` applied to the player's ship, never a
+  // second expression that happens to agree — the player is one captain in the
+  // field, and the row's own summary of them must be the field's arithmetic.
+  const rank = (
+    id: ShipComponentId | 'allAround',
+    title: string,
+    scoreOf: (ship: ShipState) => number,
+  ): HonorTitle => rankTitle(id, title, field, scoreOf, scoreOf(game.player.ship));
+
+  const rows = HONOR_TITLES.map(({ id, title }) =>
+    rank(id, title, (ship) => effectiveScore(ship[id])),
+  );
+  rows.push(rank('allAround', 'Best All-Around Ship', allAroundScore));
   return rows;
 }

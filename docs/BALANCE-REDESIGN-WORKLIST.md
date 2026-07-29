@@ -883,7 +883,7 @@ a glance" for why N7 moved).
 | N1 — NPCs own a real ship | **SHIPPED** `b438096b` | change accepted, **hypothesis disproved** — capstone byte-identical; found the N2 blocker + the fuel exemption |
 | N7 — capstone diff + smoke rig | **SHIPPED** | **accepted** — 1.5 s smoke vs 2 min capstone; staleness fails loudly; found N9 |
 | N2 — NPCs upgrade their ships | TODO | blocked on the shipyard actor param; owns N1's orphaned spread clause + the hull re-seed |
-| N6 — Honor List, 31-way board | TODO | unblocked by N1 |
+| N6 — Honor List, 31-way board | **SHIPPED** | **accepted** — actor-shaped board; found 6 of 8 titles uncontestable by construction |
 | N3 — NPCs meet pirates | TODO | permanent NPC death is SETTLED; service-NPC mortality is not |
 | N4 — NPC archetypes | TODO | — |
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile` |
@@ -1090,6 +1090,19 @@ increase their trade profit."*
   priced through any of them as they stand.** Give them an actor parameter (ship +
   credits + rank). This is not optional cleanup: without it the path of least resistance
   is the parallel cost model the standing constraint forbids.
+- **A FREE ACCEPTANCE TEST, handed over by N6.** The Honor List now ranks all 31 captains,
+  and **6 of its 8 titles are currently uncontestable** because `npcShipForTier` issues
+  every NPC — at every tier — weapons 1, shields 1, cabin 1, navigation 10, lifeSupport 10,
+  robotics 10. So *"how many of the eight titles have a real contest, and how many distinct
+  captains hold them"* is a mechanically checkable Accept criterion for this step, and it
+  reads the world rather than a sweep aggregate. **Today: 2 of 8 contested, 4 distinct
+  holders, day-120 NPC rows byte-identical to day 1, and the day-1 board seed-independent.**
+  Grade N2 against those numbers.
+- **THE HULL RE-SEED IS ACTUALLY A COMPONENT-RAMP RE-SEED.** N6's finding widens the task
+  below: `npcShipForTier` varies **only hull, drives and pods** by tier, so tier expresses
+  itself in three components and is flat in the other six. Fixing only the hull would leave
+  six titles frozen and the field still shaped like one captain. Treat the whole ramp as the
+  unit of work — while still sweeping one knob at a time.
 - **SECOND TASK — remove N1's fuel-tank exemption, here and not before.** N1 seeded
   `hull.strength = 2 + 2·tier` to clear the phantom's unbounded tank, leaving NPCs on
   ~4× a player's fuel for comparable capacity (see the standing constraint above).
@@ -1162,13 +1175,94 @@ increase their trade profit."*
 - **Disproves:** proficiency washes out — the NPC turn has too few decisions for skill to
   express itself, which would itself be a finding about the turn's depth.
 
-### N6 — The Honor List becomes a real 31-way board
+### N6 — The Honor List becomes a real 31-way board (SHIPPED 2026-07-28)
 
 - **Depends on N1** (NPCs must have components to rank).
 - The 1991 board is already shipped as a personal one (`honorList` in `ui/format.ts`,
   T-1406) precisely because `NpcState` had no ship. Once N1 lands, the same function
   ranks the whole field, which is what the owner asked for originally and what makes the
   eight titles a contest rather than a progress bar.
+
+**Result (2026-07-28): ACCEPTED — and it measured the field's flatness as a number, which
+is the most useful thing it produced.**
+
+The board is **actor-shaped, not player-shaped**: an internal `HonorCaptain { name,
+isPlayer, ship }`, a `honorField(game)` that builds `[player, ...npcs]`, and a `rankTitle`
+that never touches `game.player.*`. One scoring path applies the engine's own
+`effectiveScore` to `captain.ship[id]` whoever the captain is — **there is no NPC branch to
+drift**, which is the standing constraint satisfied structurally rather than by convention.
+The fabricated tier-9 ceiling the old progress bar was drawn against (`MAX_COMPONENT_SCORE`)
+is deleted. **No `packages/engine` change was needed** — `effectiveScore` and content's
+`SHIP_COMPONENTS` were already actor-agnostic, and the only player-shaped reader was
+`honorList` itself. *N2's shipyard blocker is neither helped nor changed by this step.*
+
+**Five behaviours were recovered from the original BASIC, not invented**
+(`7ca606d7^:Decompile/Source-Text/SP.TOP.txt`, quoted at the definition site): the
+whole-registry walk, per-component max, **co-held ties**
+(`if (td=i) and (len(td$)<40) td$=td$+"/"+nz$`), the **40-character holder-line budget**,
+and **skip-don't-delete for marked records** (`if (left$(na$,1)="*") … next`) — which is
+exactly the shape N3's dead captains need.
+
+**Ties are CO-HELD, not broken.** With 31 captains this is the common case, not a corner.
+Any tiebreak available here (roster index, profile tier, credits) would be *this file
+inventing a rule about who is the better captain* — the R2c failure mode. Determinism comes
+from ordering instead: holders sort by name on a plain code-unit compare with **no locale
+collator**, so the board cannot depend on the machine that rendered it. Roster order is
+deliberately unused, asserted by a test that reverses `game.npcs` and requires a
+byte-identical board — which also means **N3 marking captains dead cannot reshuffle the
+display**.
+
+**The player is `YOU`, pinned first among co-holders — and that pinning is required for
+honesty, not a favour.** On the day-1 31-way tie the 40-character budget prints ~3 of 31
+names, so an unpinned board would show three strangers holding a title the reader co-holds.
+`playerRank` is computed **blind to `isPlayer`**, to holder order and to the line budget
+(`1 + captains scoring strictly higher`), so the player can never out-rank someone they
+merely tied. Evidence it is a real contest: **at day 1 the player is #31 of 31 on Best
+All-Around Ship and #29 on Fastest Drives.**
+
+> **THE FINDING — six of the eight titles are uncontestable BY CONSTRUCTION, and it traces
+> to one function.** Only 2 of 8 titles have a contest; the other six are 31-way ties, and
+> the day-1 board is **seed-independent** (seeds 12345 and 777 render identically). Cause:
+> `npcShipForTier` varies **only hull, drives and pods** by tier — **every NPC at every tier
+> is issued weapons 1, shields 1, cabin 1, navigation 10, lifeSupport 10, robotics 10.**
+> Confirmed by reading the function; it is structural, not sampled. At day 120 the NPC rows
+> are byte-identical to day 1 while NPC credits have spread to **25 – 199,910cr**: the
+> roster still shows exactly **5 distinct `(drives, weapons)` fits — the five seeded tiers.**
+> **NPCs hoard and never buy.** This is N2's premise, now quantified, and it lands on the
+> same function already flagged for the 4× fuel exemption.
+
+**The board is complete and correct and will light up the moment N2 lands, with no further
+work here.** It was built before N2 by the run order (N1 → N7 → N9 → N2), which is why it
+currently displays a frozen field.
+
+**One documented divergence from foundation** (BALANCE-POLICY Part B rule 3): 1991 credited
+the **ship** (`nz$`); this board credits the **captain**, because Rimward's wire, dossier,
+Hangout and grudges all name the captain and a board naming hulls would be the only surface
+that does not. Scoring, ties and budget untouched.
+
+**Battery — scope-limited, stated plainly rather than overclaimed.** `packages/ui` tests
+**135/135** (117 + 18 new, which drive worlds where an NPC out-fits the player and assert
+the NPC takes the title — a suite that only asserted the player's row would have passed
+against the old personal board); `tsc -b` clean across the whole build graph; `prettier`
+clean on all four files; and **nothing outside `packages/ui` imports UI source**, verified,
+so that is the complete affected scope. The full-suite run was **deferred**: a concurrent
+agent's in-progress N9 edits to `packages/sim` were live in the same working tree, and the
+next step's commit re-runs the whole battery over both. No goldens were re-pinned (this file
+rides none).
+
+> **PROCESS NOTE, recorded because it cost real confidence.** N6 and N9 were run in parallel
+> in **one shared working tree**, so N6's full-suite and `balance:smoke` runs were
+> contaminated by N9's half-finished edits and its policy-behaviour observations (below) were
+> measured against a contaminated tree. The UI work itself is isolated and unaffected.
+> **Parallel agents need isolated worktrees**; that is the fix, and it is cheap.
+
+**Out of scope, reported not fixed** — the first two are structural and verified from
+source; **the third was measured on the contaminated tree and needs re-measurement before it
+is believed**: three shipped policies allegedly never buy a component upgrade in 120 days
+(`trader` ending at 3,000cr on the untouched day-1 junker, `veteran` at 1,085cr, only
+`smuggler` upgrading drives 10 → 30). That reading is hard to reconcile with the baseline's
+80,305cr median trader, which is itself a reason to distrust it. **Re-measure on a clean
+tree before acting.**
 
 ### N7 — The measurement rig: capstone sweep + staged smoke tests (SHIPPED 2026-07-28)
 
@@ -1462,7 +1556,7 @@ NPC PARITY TRACK (in progress — the R-series is PAUSED behind it, see below):
    └─► N1 (NPCs own a real ship) ............. DONE  (change accepted, hypothesis disproved)
         ├─► N7 (capstone diff + smoke rig) ... DONE  (accepted; 1.5 s smoke, 2 min capstone)
         │    └─► N9 (the instrument's three unplayed actions)  ◄── NEW, found by N7
-        ├─► N6 (Honor List, 31-way board)
+        ├─► N6 (Honor List, 31-way board) ... DONE  (accepted; 6/8 titles frozen until N2)
         └─► N2 (NPCs upgrade + shipyard actor param + hull re-seed)
              └─► N3 (NPCs meet pirates + answer them)
                   └─► N4 (archetypes) ──► N5 (proficiency spread)

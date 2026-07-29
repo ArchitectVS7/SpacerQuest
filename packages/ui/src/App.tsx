@@ -2602,12 +2602,17 @@ function ShipPane({ state }: { state: CockpitState }) {
             <ComponentRow key={c.id} row={c} game={game} armed={armed} />
           ))}
         </div>
-        {/* ---- T-1406 · Top Gun Honor List ----
-            The 1991 board (`SP.TOP.txt`), recovered from this repo's own history.
-            Eight titles ranked on strength x condition — NOT on credits, which is
-            the point: it cannot be won by hoarding, only by building. Rendered as
-            completion bars so a player can see at a glance which axes they have
-            invested in and which they have ignored. */}
+        {/* ---- T-1406 / N6 · Top Gun Honor List ----
+            The 1991 board (`sp.top.s`), recovered from this repo's own history, and
+            since N1 the FULL 31-WAY BOARD it was in the original: the player plus
+            every NPC captain, ranked on strength x condition — NOT on credits, which
+            is the point, since it cannot be won by hoarding, only by building.
+            Rendered in the original's own shape, `Title : holder / holder`, with the
+            player's competition rank in the trailing column so you can find yourself
+            whether you hold the title or are twelfth on it. The completion bar it
+            used to draw is gone deliberately: eight titles against a fabricated
+            ceiling was a progress bar; eight titles against thirty rivals is a
+            contest. See `format.ts` `honorList` for the tie and budget rules. */}
         <div className="ship-honor" data-testid="honor-list">
           <div className="honor-head">TOP GUN HONOR LIST</div>
           {honorList(game).map((t) => (
@@ -2616,13 +2621,33 @@ function ShipPane({ state }: { state: CockpitState }) {
               className={t.id === 'allAround' ? 'honor-row all-around' : 'honor-row'}
               data-testid="honor-row"
               data-honor={t.id}
-              data-completion={t.completion.toFixed(3)}
+              data-holders={t.holders.length}
+              data-rank={t.playerRank}
             >
               <span className="honor-title">{t.title}</span>
-              <span className="honor-bar" aria-hidden="true">
-                <i style={{ width: `${Math.round(t.completion * 100)}%` }} />
+              {/* No empty-holders branch: a title cannot be vacant while the captain
+                  reading the board is ranked. See `format.ts` `rankTitle`. */}
+              <span className="honor-holders">
+                {t.holders.map((h, i) => (
+                  <span key={h.name}>
+                    {i > 0 && <span className="honor-sep"> / </span>}
+                    <span className={h.isPlayer ? 'honor-holder you' : 'honor-holder'}>
+                      {h.name}
+                    </span>
+                  </span>
+                ))}
+                {t.overflow > 0 && <span className="honor-more"> +{t.overflow}</span>}
               </span>
-              <span className="honor-pct">{Math.round(t.completion * 100)}%</span>
+              <span
+                className={t.playerRank === 1 ? 'honor-rank held' : 'honor-rank'}
+                title={
+                  t.playerRank === 1
+                    ? `You hold this title — ${t.playerScore} of a leading ${t.score}, ${t.field} captains ranked`
+                    : `You rank ${t.playerRank} of ${t.field} captains — ${t.playerScore} of a leading ${t.score}`
+                }
+              >
+                #{t.playerRank}
+              </span>
             </div>
           ))}
         </div>
