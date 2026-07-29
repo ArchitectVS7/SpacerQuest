@@ -1549,8 +1549,10 @@ while `instrumentFingerprint` moved `34453d51…→37f920ed…` and the smoke fi
 re-extracted. **The `balance-targets` tripwire did NOT fire:** trader clear day 21 → 21 at
 1,000 seeds, so it still fails its assertion and still passes as `it.fails`.
 
-**Baseline of record UNCHANGED** (`baseline-r2c-final.json`) — a rejected hypothesis re-pins
-nothing (R1's precedent). Arms live in `.scratch/balance/`.
+**Baseline re-pinned to `docs/balance/baseline-n9-shipped.json`** — see the refined rule in
+standing amendment 1. N9's verdict was REJECT but its code SHIPPED, so the yardstick had to
+follow HEAD; the fresh capstone reproduces N9's own arm with *"NO MEASURED VALUE MOVED"*.
+Experiment arms live in `.scratch/balance/`.
 
 **Out of scope, reported not fixed:**
 1. **N7's fingerprint over-sensitivity is now a measured tax, not just friction.** `prettier
@@ -1580,9 +1582,8 @@ nothing (R1's precedent). Arms live in `.scratch/balance/`.
   they graded. A `ports: state.player.ports.length` on the milestone is the minimum;
   consider whether the fleet needs a net-worth figure alongside the cash one, since
   **"the fleet got poorer" is currently unfalsifiable for any purchase of an asset.**
-- **Re-pin against the POST-N9 instrument**, not `baseline-r2c-final.json`. N9 moved 7 of
-  8 policy rows (−38% fleet cash, +13% ships); a baseline taken from the pre-N9 instrument
-  describes a fleet that never hires, never buys a port and never rerolls.
+- **The post-N9 re-pin is DONE** — baseline of record is `baseline-n9-shipped.json`, taken
+  at HEAD. N8 re-pins again on top of the living field; it no longer has to unpick N9.
 
 ---
 
@@ -1741,11 +1742,24 @@ hypothesis, and append the result under the step before moving on.
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record has moved twice since this was written.** It is
-   > **`docs/balance/baseline-r2c-final.json`** (1,000 seeds × 120 days), re-pinned by R2c
-   > and left in place by N1, whose capstone reproduced it byte-for-byte. `baseline-vet-1k`
-   > and `-r2a` are its predecessors. **Update this pointer in the same commit that re-pins
-   > the baseline** — a stale yardstick silently mis-grades every step that diffs against it.
+   > **Baseline of record is `docs/balance/baseline-n9-shipped.json`** (1,000 seeds × 120
+   > days, taken at HEAD after N9 shipped). `baseline-r2c-final` and `baseline-vet-1k*` are
+   > its predecessors. **Update this pointer in the same commit that re-pins the baseline** —
+   > a stale yardstick silently mis-grades every step that diffs against it.
+   >
+   > **RULE REFINED 2026-07-28 — re-pin on SHIPPED CODE, not on an accepted hypothesis.**
+   > The old wording ("re-pin the baseline only on an accepted hypothesis") was written for
+   > R1 and R2's lever, which were **measure-only or never shipped** — for those, re-pinning
+   > nothing is right. **N9 is the case it did not anticipate: hypothesis REJECTED, code
+   > SHIPPED and retained**, moving 7 of 8 policy rows. Under the old wording the baseline
+   > stayed at `r2c-final`, which no longer described HEAD, and N2's differ would have shown
+   > N9's deltas tangled with N2's own. **The test is "does the baseline describe HEAD?",
+   > not "did we like the answer?"** A verdict is a judgement about a hypothesis; a baseline
+   > is a description of the tree.
+   >
+   > *Provenance:* `baseline-n9-shipped.json` was taken fresh at HEAD and diffed against
+   > N9's own shipped arm — **"NO MEASURED VALUE MOVED"**, an independent reproduction of
+   > N9's figures from a clean run rather than a copied artefact.
 2. **A rejected hypothesis is a result.** R1's was rejected and produced the re-scope that
    this document now runs on. Record outcomes under the step, including the ones that say
    "the premise was wrong". **Two of the four graded steps so far were disproved** (R1, R2's
