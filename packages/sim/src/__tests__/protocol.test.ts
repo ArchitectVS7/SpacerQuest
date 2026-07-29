@@ -867,7 +867,7 @@ describe('legal-actions enumerator', () => {
       for (const spec of yardSpecs) {
         for (const filled of fillsOf(spec)) {
           expect(
-            shipyardFailure(state, filled as Extract<PlayerAction, { type: 'Shipyard' }>),
+            shipyardFailure(state.player, filled as Extract<PlayerAction, { type: 'Shipyard' }>),
             `credits ${credits}: advertised ${JSON.stringify(filled)} would have failed`,
           ).toBeNull();
         }
@@ -891,11 +891,18 @@ describe('legal-actions enumerator', () => {
     expect(yardFills(0).length).toBeLessThan(yardFills(1_000).length);
     expect(yardFills(1_000).length).toBeLessThan(yardFills(60_000).length);
 
-    // "No yard specs at all" would be the WRONG assertion at zero credits, and
-    // asserting it would have been a test written against an assumption instead of
-    // the engine: a pristine repair-all costs nothing, and the trade-in on a fresh
-    // junker's components can price a tier-1 swap at 0 too. So the honest claim is
-    // that everything still advertised is FREE.
+    // R2c · THIS CLAUSE USED TO ASSERT A BUG. It previously required that SOMETHING
+    // still be advertised at zero credits and that all of it be free, reasoning that
+    // "the trade-in on a fresh junker's components can price a tier-1 swap at 0".
+    // That was true, and it was the defect: the yard's trade-in ladder was indexed
+    // by component STRENGTH rather than by owned TIER, so a fresh save could buy
+    // four components up to tier 7 for nothing (see `YARD_COMPONENT_TRADE_IN` in
+    // content). With the ladder corrected, every rung costs real credits and a
+    // captain with an empty purse is correctly offered NOTHING.
+    //
+    // The property under test is unchanged and is now asserted in its stronger
+    // form: the yard never advertises what the purse cannot cover — checked at
+    // every purse level, not just at zero.
     const broke = createInitialState(3);
     broke.dayPhase = DayPhase.DAY;
     broke.player.credits = 0;
@@ -903,13 +910,28 @@ describe('legal-actions enumerator', () => {
     const brokeFills = legalActions(broke)
       .actions.filter((a) => a.type === 'Shipyard')
       .flatMap((spec) => fillsOf(spec));
-    expect(
-      brokeFills.length,
-      'fixture: nothing was advertised, so nothing was checked',
-    ).toBeGreaterThan(0);
-    for (const fill of brokeFills) {
-      const quote = quoteShipyard(broke, fill as Extract<PlayerAction, { type: 'Shipyard' }>);
-      expect(quote.cost, `a captain with 0 credits was offered ${JSON.stringify(fill)}`).toBe(0);
+    expect(brokeFills.length, 'a broke captain is offered no yard work at all').toBe(0);
+
+    // ...and nothing unaffordable is ever advertised, at any purse.
+    for (const credits of [1_000, 60_000]) {
+      const state = createInitialState(3);
+      state.dayPhase = DayPhase.DAY;
+      state.player.credits = credits;
+      state.player.dawnHand = rollDawnHand(new SeededRng(3), { handSize: 5, floor: 0, rerolls: 0 });
+      const fills = legalActions(state)
+        .actions.filter((a) => a.type === 'Shipyard')
+        .flatMap((spec) => fillsOf(spec));
+      expect(fills.length, `fixture: nothing advertised at ${credits}cr`).toBeGreaterThan(0);
+      for (const fill of fills) {
+        const quote = quoteShipyard(
+          state.player,
+          fill as Extract<PlayerAction, { type: 'Shipyard' }>,
+        );
+        expect(
+          quote.cost,
+          `a captain with ${credits} credits was offered ${JSON.stringify(fill)}`,
+        ).toBeLessThanOrEqual(credits);
+      }
     }
   });
 

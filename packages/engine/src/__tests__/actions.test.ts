@@ -97,8 +97,10 @@ describe('Player Actions', () => {
     );
 
     // T-1102: strictly per-distance cost, no cap/packaging. Maxed drives
-    // (strength 21, condition 10) → perUnit floored to 1; distance(1,21) = 50, so
-    // fuelUsed = 1 × 50 = 50 (was 30 under the old +10/÷2 packaging).
+    // (strength 21, condition 10) → perUnit floored to 1; distance(1,21) = 50.
+    // T-1605: navigation now multiplies the burn (`navFuelFactor`), but it is a
+    // pure DISCOUNT — a junker's factor is exactly 1, so this number is unmoved.
+    // Upgrading nav is what makes it cheaper (floor 0.6).
     const travel = events.find((e) => e.type === 'TravelEvent');
     expect(travel).toMatchObject({ fuelUsed: 50 });
     expect(nextState.player.ship.fuel).toBe(950);

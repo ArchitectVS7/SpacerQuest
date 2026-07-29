@@ -229,7 +229,7 @@ describe('Bond hook — one intervention per dusk (T-106 / T-1204)', () => {
 
       const dawn = startDay(state);
       dawn.state.player.ship.fuel = 0;
-      const docFuelBefore = dawn.state.npcs.find((npc) => npc.id === 'npc-doc-salvage')!.fuel;
+      const docFuelBefore = dawn.state.npcs.find((npc) => npc.id === 'npc-doc-salvage')!.ship.fuel;
 
       const dusk = endDay(dawn.state);
       const gift = dusk.events.find((e) => e.type === 'BondIntervention' && e.kind === 'fuel-gift');
@@ -246,7 +246,7 @@ describe('Bond hook — one intervention per dusk (T-106 / T-1204)', () => {
       // and he spent his whole day on it — exactly 50 fuel gone, no contract
       // hauled, no jump made, lastAction is the rescue.
       const docAfter = dusk.state.npcs.find((npc) => npc.id === 'npc-doc-salvage')!;
-      expect(docAfter.fuel).toBe(docFuelBefore - 50);
+      expect(docAfter.ship.fuel).toBe(docFuelBefore - 50);
       expect(docAfter.currentSystemId).toBe(dusk.state.player.currentSystemId);
       expect(docAfter.lastAction).toMatchObject({ type: 'Trade' });
       expect(docAfter.lastAction?.details).toContain('answering a mayday');

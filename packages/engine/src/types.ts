@@ -910,6 +910,12 @@ export type GameEvent =
         'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled' | 'interceptor-escaped';
       round: number;
       interceptorId: string;
+      /** R2c · Wreck salvage paid to the player, present ONLY on 'defeated'
+       *  (content `COMBAT_SALVAGE_PER_TIER` x the interceptor's tier). Optional so
+       *  every pre-R2c save and golden round-trips unchanged. READER:
+       *  sim/balance/aggregate.ts `combatEv`, which is no longer negative by
+       *  construction now that a win can pay. */
+      salvageCredits?: number;
     }
   | ShipyardEvent
   | ShipyardFail
@@ -1095,11 +1101,39 @@ export interface NpcState {
   profileId: string;
   currentSystemId: number;
   credits: number;
-  fuel: number;
+  /**
+   * N1 · THE SHIP THE CAPTAIN OWNS — the same {@link ShipState} the player flies,
+   * not a tier-derived phantom recomputed on every action.
+   *
+   * Before N1 an NPC had no ship at all: `npc.ts` synthesized `npcCargoPods(tier)`
+   * / `npcDrives(tier)` / a literal `hullCondition: 9` at each call site, so an
+   * NPC's capability was a CONSTANT of its profile and could never change — which
+   * is why an NPC could never earn more by investing (the N2 complaint).
+   *
+   * IT ALSO OWNS THE TANK. `NpcState.fuel` is gone; the fuel an NPC is carrying is
+   * `npc.ship.fuel`, bounded by `npc.ship.maxFuel`, exactly as the player's is.
+   * Two fuel numbers on one captain would be two sources of truth, and the phantom
+   * had no tank ceiling at all.
+   *
+   * SEEDED BY: `npc.ts` `npcShipForProfile` (world creation, and the v9→v10 save
+   * migration). READ BY: `npc.ts` `executeTrade` / `executeTravel` /
+   * `executeCombat` / `executePatrol` / `refuelIfNeeded`, and `day.ts`'s bond-hook
+   * fuel gift.
+   */
+  ship: ShipState;
   /** Per-NPC standing toward the player, clamped to [-10, +10]; decays one
    *  step toward 0 each dusk. */
   disposition: number;
   lastAction?: NpcAction;
+  /**
+   * N3 WILL ADD `dead` HERE — and adding it is only half the change. A dead
+   * captain's record STAYS (the wire, the Honor List's history and the player's
+   * grudges all still reference it), so the Honor List has to skip it rather than
+   * lose it: `honorField` in `packages/ui/src/format.ts` applies no dead filter
+   * today and names the one-line remedy at its own definition site. That skip is
+   * the fifth behaviour the 1991 registry had and N6 shipped only as a seam
+   * (worklist item OI-2). Marking dead without it ranks corpses forever.
+   */
 }
 
 export interface ComponentState {

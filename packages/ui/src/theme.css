@@ -3421,3 +3421,67 @@ body {
   flex-wrap: wrap;
   gap: 10px;
 }
+
+/* T-1406 / N6 · Top Gun Honor List — the 1991 board, as a 31-way contest.
+   `Title : holder / holder   #rank`, the shape `sp.top.s` printed. */
+.ship-honor {
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line, #2b3a44);
+  background: rgba(0, 0, 0, 0.18);
+}
+.ship-honor .honor-head {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  opacity: 0.75;
+  margin-bottom: 0.4rem;
+}
+.ship-honor .honor-row {
+  display: grid;
+  grid-template-columns: 10.5rem 1fr 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+.ship-honor .honor-row.all-around {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line, #2b3a44);
+  font-weight: 600;
+}
+.ship-honor .honor-holders {
+  /* A grid item defaults to min-width:auto; without this a long tie line pushes
+     the rank column off the pane instead of ellipsising. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ship-honor .honor-sep,
+.ship-honor .honor-more {
+  opacity: 0.5;
+}
+/* The player is marked, never ranked differently — `playerRank` counts captains
+   scoring strictly higher and is blind to this class. */
+.ship-honor .honor-holder.you {
+  color: var(--accent, #4fd1c5);
+  font-weight: 600;
+}
+.ship-honor .honor-rank {
+  text-align: right;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.ship-honor .honor-rank.held {
+  color: var(--accent, #4fd1c5);
+  opacity: 1;
+}
+/* T-1406 · the component's mechanical effect, shown beside its price. */
+.comp-effect {
+  font-size: 0.68rem;
+  opacity: 0.8;
+}
+.comp-effect-next {
+  color: var(--accent, #4fd1c5);
+}

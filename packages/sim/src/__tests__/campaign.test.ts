@@ -93,6 +93,28 @@ describe('campaign runner', () => {
     expect(parsed.daily).toHaveLength(5);
   });
 
+  /**
+   * N2 RE-PIN, 10 → 25. PREVIOUS VALUE 10, NEW VALUE 25, MECHANISM: N2's upgrade
+   * decision (`npc.ts` `considerRefit`), which is the step whose stated purpose is
+   * to produce a wealth SPREAD across the 31-captain field. This bar was written
+   * at T-106 against a cast that could not invest, where a top-to-median ratio
+   * above 10 could only mean a degenerate distribution; with reinvestment it is
+   * the intended shape, and leaving it at 10 would make the test fail *because the
+   * step succeeded*.
+   *
+   * MEASURED before choosing the number, rather than set to just clear seed 1:
+   * seeds 1..10 at this exact 200-day horizon give top/median ratios 10.20, 9.53,
+   * 14.06, 15.99, 12.26, 7.52, 7.92, 12.15, 12.52, 7.60 — max 15.99. 25 sits ~56%
+   * above the worst observed seed, so this stays a runaway detector rather than a
+   * value re-pinned to the last measurement.
+   *
+   * WHAT IT STILL CATCHES, which is the reason not to simply delete it: the
+   * `credits[0] > 0` floor below is untouched (the T-1605b anti-poverty-trap
+   * invariant), and a genuine runaway — one captain owning the field — is still
+   * orders of magnitude past 25.
+   */
+  const NPC_WEALTH_SPREAD_CEILING = 25;
+
   it('keeps the galaxy alive over 200 days: NPCs spread out and stay solvent', () => {
     let state = createInitialState(1);
     for (let day = 0; day < 200; day += 1) {
@@ -103,12 +125,12 @@ describe('campaign runner', () => {
     const systems = new Set(state.npcs.map((npc) => npc.currentSystemId));
     expect(systems.size).toBeGreaterThanOrEqual(8);
 
-    // Economics are real but non-degenerate: nobody pinned at exactly 0,
-    // nobody running away past 10x the median.
+    // Economics are real but non-degenerate: nobody pinned at exactly 0, nobody
+    // running away past NPC_WEALTH_SPREAD_CEILING x the median.
     const credits = state.npcs.map((npc) => npc.credits).sort((a, b) => a - b);
     const median = credits[Math.floor(credits.length / 2)];
     expect(credits[0]).toBeGreaterThan(0);
-    expect(credits[credits.length - 1]).toBeLessThanOrEqual(10 * median);
+    expect(credits[credits.length - 1]).toBeLessThanOrEqual(NPC_WEALTH_SPREAD_CEILING * median);
   }, 30000);
 
   it('T-1201: a 200-day sim shows a non-degenerate NPC trade failure rate', () => {

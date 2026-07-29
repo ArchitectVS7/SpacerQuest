@@ -340,11 +340,51 @@ export function runDayLoopGolden(
 // the demo work had leaked into the full game's day loop at all, the events
 // hashes would have moved too. They did not. Regenerated via
 // gen-day-loop-golden.ts.
+// T-1605 · Regenerated after ordinary jumps stopped taking a pilot check. The
+// StatCheck event no longer appears on a normal jump and navigation now prices
+// the burn, so both the event stream and the state hash move. No rng draw was
+// added or removed by that change (the check read the spent dawn die, it never
+// rolled), so this is an event/state shape move, not a divergence in the stream.
+// N1 · STATE HASHES RE-PINNED, EVENT HASHES DELIBERATELY NOT — and the split is
+// the evidence, not a formality. N1 gave every `NpcState` a real `ship` and moved
+// its `fuel` onto it, so `serializeState` now carries 30 more ship blocks: a pure
+// SHAPE move. Nothing about what any actor DOES changed, so not one rng draw
+// moved, and both event-stream hashes came back byte-identical from the
+// regenerator. If the seed had been mis-calibrated — a tighter NPC hull clamping
+// the roster's tank, a different drive ramp changing a jump's fuel — the event
+// hashes would have moved with the state hashes. They did not.
+//   DAY_LOOP state  71b3315e… -> f07d6de2…   (events a0e8ed7f… UNCHANGED)
+//   STORYLET state  1f187dbe… -> 86fbc0cc…   (events 6f61a1d5… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
+//
+// N2 · ALL FOUR HASHES RE-PINNED, and unlike N1 the EVENT hashes move too — which
+// is the correct signal, not a regression. N2 does three things to the cast, each
+// of which reaches this stream:
+//   1. the component ramp re-seed (`npc.ts` `npcShipForProfile`) gives navigation
+//      to the captains whose stats want it, so `navFuelFactor` re-prices their
+//      jumps and their credits/fuel/positions diverge — a STATE move;
+//   2. the hull re-seed puts every captain on the tank the yard licenses for their
+//      hold (1,200 → 300 at tier 1), so `refuelIfNeeded` can now fail to fund a
+//      jump and a captain falls to `brokeIdle`, which TAKES AN rng DRAW — so the
+//      shared dusk stream genuinely diverges, not just its payload;
+//   3. the upgrade decision emits a `WireEntry` per refit — new events by design
+//      (the player-facing surface that the field is now buying ships).
+// MEASURED rather than asserted, by dumping and diffing both streams (.scratch/):
+// the seed-1 script runs 946 events BEFORE and 1,283 AFTER; 382 lines are ADDED
+// and 45 changed — the additions are all `WireEntry` refit lines, the changes are
+// NpcAction prose, contract payments and NPC positions downstream of (1) and (2).
+// No player action, no player rule and no player-side rng draw is involved: the
+// scripts' own `applyPlayerAction` results are untouched, and the day-loop rules
+// themselves did not move (`rulesFingerprint` DID move, because these are rule
+// sources, so the smoke fixture was re-extracted alongside).
+//   DAY_LOOP state  f07d6de2… -> a16ca706…   (events a0e8ed7f… -> 2ae4bb5f…)
+//   STORYLET state  86fbc0cc… -> a4374515…   (events 6f61a1d5… -> a5522f39…)
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'b926031f0131d77bc9287bc80b7ea037e586f2d252f4a58eca28270785715b49';
+  'a16ca706c43550ebf363ba7ddb922054a8d951666a87113bded21af6647addae';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '727581969356397d6cfbfc435c85fa67b8b2664453f77b212673e20b40b31daa';
+  '2ae4bb5fdb3759d02832a958f8ab1541cc9d5fd51cb1a2007ce500ca00d1b555';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '975ee08317f6f71fb8a0e028bb19de994335ceb4aab17c1da1a48995d2768dbc';
+  'a437451578c71623045e5a62354c6001f6d089ccc78e08e263646ae358837a82';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '731da3fdc1ecb08b14cef59f209fa15a3b916f85467b6c4f2c0896a17c1b858f';
+  'a5522f39219a90f5baba6a3fc6c2989df7b33f47fb980e06289de88f3c4035ef';

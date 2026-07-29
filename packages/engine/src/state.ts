@@ -9,6 +9,7 @@ import {
 } from './types.js';
 import { NPC_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, rankForDeedCount } from './deeds.js';
+import { npcShipForProfile, seedNpcShip } from './npc.js';
 import { calculateFuelCapacity, syncMaxFuel } from './economy.js';
 import { computePlayerTier, syncPlayerTier } from './tier.js';
 
@@ -81,7 +82,15 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     profileId: p.id,
     currentSystemId: (index % 20) + 1, // Spread them out
     credits: 5000,
-    fuel: 1000,
+    // N1 · Every captain is born owning a real ship, seeded by the engine's
+    // single mapping (npc.ts `npcShipForProfile`, which the v9→v10 save migration
+    // also uses so a legacy roster lands on the identical fit).
+    // N2 · The WHOLE PROFILE goes in, not just the tier: tier sets how far along
+    // a captain is and their stat block sets which three systems they put it in,
+    // which is what makes the Honor List a contest instead of a 31-way tie. The
+    // tank rides on the ship and is now CLAMPED to the hull — a tier-1 captain is
+    // born with the player's 300, not the 1,000 this line used to set directly.
+    ship: npcShipForProfile(p),
     disposition: 0,
   }));
 
@@ -262,6 +271,15 @@ export function deserializeState(json: string): GameState {
   parsed.npcs ??= [];
   parsed.npcs.forEach((npc) => {
     npc.disposition ??= 0;
+    // N1 save-compat: pre-N1 states have no `npc.ship` — the cast flew a phantom
+    // derived from their profile tier, and carried a bare `npc.fuel`. Seed the
+    // real ship from the tier and pour the saved fuel into its tank — the same
+    // backfill the v9→v10 save migration applies for the envelope path, through
+    // the SAME function so the two cannot drift. The stale `fuel` key is then
+    // dropped, or the strict schema's NpcState would reject it as unknown.
+    const legacy = npc as unknown as { fuel?: unknown };
+    if (npc.ship === undefined) npc.ship = seedNpcShip(npc.profileId, legacy.fuel);
+    delete legacy.fuel;
   });
   parsed.market.npcClaims ??= 0;
   parsed.encounter ??= null;

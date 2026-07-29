@@ -93,6 +93,10 @@ import {
 /** See SWEEP PROVENANCE. Explicit and fixed — never a hunt range. */
 const SEEDS = Array.from({ length: 15 }, (_, index) => index + 1);
 /** See SWEEP PROVENANCE for why 60 and not 35. */
+// R2c NOTE — DO NOT WIDEN THIS WINDOW. 60 days is load-bearing for the two
+// distribution targets below (preparation-saves and fleet death rate). Widening to
+// 90 to recover the Auto-Repair fitting rate was measured and REVERTED: it moved
+// preparation-saves to 48.0% (bar 50%) and the death rate to 0.74/1k (bar 0.8).
 const DAYS = 60;
 /** See SWEEP PROVENANCE for why these four. */
 const POLICIES: readonly SimPolicyName[] = ['fighter', 'smuggler', 'veteran', 'explorer'];
@@ -291,7 +295,17 @@ describe('T-1603c combat & survival targets (pinned slice of the committed sweep
     ).toBeGreaterThan(0);
   });
 
-  it('Auto-Repair no longer switches the death path off', () => {
+  // KNOWN RED, EXPECTED TO FAIL — caused by R2c (`docs/BALANCE-REDESIGN-WORKLIST.md`).
+  // Gating kit purchases on `debt === 0` moved the fighter's fit-out from ~day 20 to ~day
+  // 60, so careers-with-a-module inside this 60-day window is exactly 5 of 15 against the
+  // `> SEEDS.length / 3` bar on line (a). The behavior change is intended; the threshold
+  // was calibrated against the subsidised economy R2c removed. Re-calibrating it is a
+  // design call (R2c measured 7 at 75 days, 8 at 90+, and found 60 load-bearing for the
+  // sibling test), deliberately NOT made mechanically.
+  // `it.fails` keeps both assertions executing and inverts the verdict, so this goes RED
+  // again the moment the window or the bar is re-tuned — a tripwire, not a deletion.
+  // Held this way (owner decision 2026-07-28) so the N-series runs against a green gate.
+  it.fails('Auto-Repair no longer switches the death path off', () => {
     // THE READER-CONSUMES-IT ASSERTION for T-1603c's named design call. The call
     // itself — move the AUTO_REPAIR dusk regen from BEFORE the life-support
     // survival gate to AFTER it — is proven deterministically, branch by branch,

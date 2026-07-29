@@ -75,40 +75,93 @@ describe('T-1704 · BUILD_VERSION', () => {
   });
 });
 
-describe('T-1704 · one version, six manifests', () => {
-  const WORKSPACES = ['content', 'engine', 'ui', 'sim', 'desktop'];
-
+describe('one version, two manifests', () => {
+  // WAS "six manifests". Four of those six were decoration: content, engine, sim and ui
+  // are consumed as `"*"` by every dependant and NOTHING reads their versions —
+  // verified by deleting one and finding `npm install`, `tsc -b` and the suite all
+  // green, with only these tests complaining. They were a version to hand-edit for no
+  // reader, which is precisely the manual step that rots.
+  //
+  // TWO carry meaning and are asserted here:
+  //   root            — Vite compiles it in as `__SQ_VERSION__`; tag-rc.mjs derives the
+  //                     release tag from it.
+  //   packages/desktop — electron-builder derives the binary and installer version from
+  //                     it, and a player comparing an installer filename to the Settings
+  //                     row must not see two different numbers.
   it('the root package.json carries a version at all', () => {
-    // It did not before this task, which is why the cockpit had nothing to stamp.
+    // It did not before T-1704, which is why the cockpit had nothing to stamp.
     expect(ROOT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it.each(WORKSPACES)('packages/%s agrees with the root version', (workspace) => {
-    // The guard that makes "one source of truth" true rather than aspirational:
-    // electron-builder reads `packages/desktop`'s version for the binary and the
-    // installer, Vite reads the root's for the cockpit, and a player comparing an
-    // installer to a Settings row must not see two different numbers.
-    expect(manifest('packages', workspace, 'package.json').version).toBe(ROOT_VERSION);
+  it('packages/desktop agrees with the root version', () => {
+    expect(manifest('packages', 'desktop', 'package.json').version).toBe(ROOT_VERSION);
+  });
+
+  it('the library workspaces carry NO version, so there is nothing to keep in step', () => {
+    // Asserted rather than merely done: re-adding one would quietly recreate a copy that
+    // no reader consumes and no bump remembers.
+    for (const workspace of ['content', 'engine', 'sim', 'ui']) {
+      expect(
+        manifest('packages', workspace, 'package.json').version,
+        `packages/${workspace} should not declare a version — nothing reads it`,
+      ).toBeUndefined();
+    }
   });
 });
 
-describe('T-1704 · docs/RELEASE-CHECKLIST.md names the version it ships', () => {
+describe('the release checklist does NOT restate the version', () => {
   const doc = readFileSync(join(REPO_ROOT, 'docs', 'RELEASE-CHECKLIST.md'), 'utf8');
 
-  it('names the package version and the RC tag', () => {
-    // The checklist is the deliverable of this task, and its whole §A is about
-    // this number; a doc that drifted off the manifests would be a release
-    // checklist for a release that does not exist.
+  // INVERTED 2026-07-28, and the inversion is the point. This pair used to assert
+  // that the checklist NAMED the version and the rc tag — which made the doc a
+  // SECOND place a version had to be edited by hand, and the manual step is exactly
+  // what rots. It rotted: a bump left the doc holding `0.5.0` in some lines and
+  // `1.0.0` in others, self-contradictory, with the suite green.
+  //
+  // One source of truth means the checklist names no live version at all. It points
+  // at `docs/VERSIONING.md` and at the root manifest instead.
+  it('does not contain the CURRENT version anywhere', () => {
+    // THE PRECISE RULE. Not "no version-shaped strings" — the doc legitimately mentions
+    // the `0.0.0-dev` fail-safe constant, records that a past transcript was taken in the
+    // 1.0.0 era, and cites a real installer filename from a past packaging run. Those are
+    // history and constants; rewriting them would fabricate a record.
+    //
+    // What must never appear is TODAY'S version, because that is the copy someone has to
+    // remember to edit on a bump — and forgetting is what produced a checklist holding
+    // `0.5.0` in some lines and `1.0.0` in others while the suite stayed green.
     expect(ROOT_VERSION).toBeDefined();
-    expect(doc).toContain(`\`${ROOT_VERSION!}\``);
-    expect(doc).toContain('v1.0.0-rc1');
+    expect(
+      doc.includes(ROOT_VERSION!),
+      `the checklist restates the current version (${ROOT_VERSION!}). It lives in the ` +
+        `root package.json; point at docs/VERSIONING.md instead of copying the number.`,
+    ).toBe(false);
   });
 
-  it('the RC tag is the package version with an -rc suffix, not a different number', () => {
-    // The tag and the manifests differ ON PURPOSE (NSIS wants an x.y.z triple),
-    // and this is where that intent is pinned: `v1.0.0-rc1` must still be a
-    // candidate for THIS version, not for some other one.
-    const tag = /v(\d+\.\d+\.\d+)-rc\d+/.exec(doc);
-    expect(tag?.[1]).toBe(ROOT_VERSION);
+  it('points at the versioning standard instead', () => {
+    expect(doc).toContain('docs/VERSIONING.md');
+  });
+});
+
+describe('the lockfile agrees with the manifests', () => {
+  // THE ONE THE OTHER GUARDS MISSED. Six manifests and the checklist were all pinned,
+  // so none of them could rot — and the 1.0.0 -> 0.5.0 bump still left every workspace
+  // entry in package-lock.json reading 1.0.0, with the whole suite green. Nothing
+  // asserted the lockfile. Now something does.
+  it('every workspace entry matches the root version', () => {
+    const lock = JSON.parse(readFileSync(join(REPO_ROOT, 'package-lock.json'), 'utf8')) as {
+      packages?: Record<string, { version?: string }>;
+    };
+    const workspaces = Object.entries(lock.packages ?? {}).filter(
+      ([key, value]) => /^packages\/[^/]+$/.test(key) && typeof value.version === 'string',
+    );
+    // Only `packages/desktop` declares a version now, so it is the only workspace the
+    // lockfile records one for.
+    expect(workspaces.length, 'fixture: expected exactly one versioned workspace').toBe(1);
+    for (const [key, value] of workspaces) {
+      expect(
+        value.version,
+        `${key} in package-lock.json is stale — run \`npm install --package-lock-only\``,
+      ).toBe(ROOT_VERSION);
+    }
   });
 });

@@ -12,6 +12,7 @@ import {
 import {
   FLAWS,
   NEMESIS_SYSTEM_ID,
+  NPC_PROFILES,
   RENOWN_DEED_THRESHOLDS,
   SIGNAL_FRAGMENTS,
   type RenownRankId,
@@ -22,6 +23,7 @@ import { advanceDay } from '../day.js';
 import { careerEnded } from '../nemesis.js';
 import { RENOWN_RANK_ORDER, rankForDeedCount } from '../deeds.js';
 import { computePlayerTier } from '../tier.js';
+import { npcShipForProfile } from '../npc.js';
 import { GameState, PlayerAction } from '../types.js';
 
 /**
@@ -436,14 +438,16 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 9', () => {
+  it('CURRENT_SAVE_VERSION is 10', () => {
     // T-1401 bumped 5 → 6 (WireEntry.kind); T-1503 bumped 6 → 7 for the required
     // nested PlayerState.reputation container; T-1603b bumped 7 → 8 to re-derive
     // `registry.renownRank` + `player.tier` after the canonical
     // RENOWN_DEED_THRESHOLDS rescale — the first migration that adds no field and
     // instead repairs the MEANING of two it finds; T-1703 bumped 8 → 9 for the new
-    // ROOT-level `GameState.edition` (the demo gate's persisted scalar). See save.ts.
-    expect(CURRENT_SAVE_VERSION).toBe(9);
+    // ROOT-level `GameState.edition` (the demo gate's persisted scalar); N1 bumped
+    // 9 → 10 for `NpcState.ship`, the first migration that MOVES a field (the
+    // captain's `fuel` becomes `ship.fuel`). See save.ts.
+    expect(CURRENT_SAVE_VERSION).toBe(10);
   });
 });
 
@@ -658,6 +662,131 @@ describe('save envelope — v8 → v9 edition migration (T-1703)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// N1 · v9 → v10 — the first migration here that MOVES a field rather than adding
+// one. Every `NpcState` gains a required `ship` (the real ShipState the captain
+// owns, replacing the tier-derived phantom npc.ts used to synthesize per action)
+// and loses its top-level `fuel`, which becomes `ship.fuel`.
+//
+// Both halves are asserted, because `NpcStateSchema` is `.strict()` and a
+// half-done migration fails in two different directions: an orphaned `fuel` is
+// an unknown key, a missing `ship` is a missing one. And the fuel must CARRY —
+// a legacy captain down to their last few units must not be handed a full tank
+// by the upgrade.
+// ---------------------------------------------------------------------------
+describe('save envelope — v9 → v10 NPC ship migration (N1)', () => {
+  /** A v9-shaped roster: strip `ship`, put the tank back at the top level, the
+   *  way a genuinely pre-N1 save carried it. */
+  function asV9(state: GameState): GameState {
+    const legacy = JSON.parse(JSON.stringify(state)) as GameState;
+    legacy.npcs.forEach((npc) => {
+      const raw = npc as unknown as Record<string, unknown>;
+      raw.fuel = npc.ship.fuel;
+      delete raw.ship;
+    });
+    return legacy;
+  }
+
+  it('gives every captain a tier-seeded ship and pours the saved fuel into it', () => {
+    const state = drive50Days(85);
+    const expected = new Map(state.npcs.map((npc) => [npc.id, npc.ship.fuel]));
+    const v9 = JSON.stringify({ version: 9, state: asV9(state), seed: 95 });
+
+    const loaded = loadSave(v9);
+    expect(loaded.seed).toBe(95);
+    expect(loaded.state.npcs).toHaveLength(30);
+    for (const npc of loaded.state.npcs) {
+      const profile = NPC_PROFILES.find((p) => p.id === npc.profileId)!;
+      // The fit is the tier's — the same mapping createInitialState seeds with.
+      const seeded = npcShipForProfile(profile);
+      expect(npc.ship.cargoPods).toBe(seeded.cargoPods);
+      expect(npc.ship.drives).toEqual(seeded.drives);
+      expect(npc.ship.hull).toEqual(seeded.hull);
+      expect(npc.ship.maxFuel).toBe(seeded.maxFuel);
+      // ...but the TANK is the save's, not the seed's.
+      expect(npc.ship.fuel).toBe(expected.get(npc.id));
+      expect((npc as unknown as Record<string, unknown>).fuel).toBeUndefined();
+    }
+  });
+
+  it('a migrated roster carries everything a v9 save actually held', () => {
+    // N1 asserted the sharper property here: round-tripping a live v10 state DOWN
+    // to the v9 shape and back up landed on EXACTLY the state it started from.
+    // That held only while a captain's ship was a pure function of their tier.
+    //
+    // N2 MAKES IT FALSE ON PURPOSE, and the failure is the feature. A captain now
+    // BUYS their fit (`npc.ts` `considerRefit`), so by day 50 the roster's ships
+    // are earned state. The v9 shape has no `ship` key at all, so down-converting
+    // DESTROYS every refit — and re-deriving them is not "migration", it is
+    // recovering data the format never carried. The migration's real contract is
+    // what a v9 save genuinely held, which is asserted below: identity, purse,
+    // standing, position, last action, and the saved fuel poured into a
+    // tier-seeded tank. Everything else is correctly the seed's.
+    const state = drive50Days(86);
+    const loaded = loadSave(JSON.stringify({ version: 9, state: asV9(state), seed: 96 }));
+    expect(loaded.state.npcs).toHaveLength(state.npcs.length);
+    for (const [index, npc] of loaded.state.npcs.entries()) {
+      const live = state.npcs[index];
+      expect(npc.id).toBe(live.id);
+      expect(npc.name).toBe(live.name);
+      expect(npc.profileId).toBe(live.profileId);
+      expect(npc.credits).toBe(live.credits);
+      expect(npc.disposition).toBe(live.disposition);
+      expect(npc.currentSystemId).toBe(live.currentSystemId);
+      expect(npc.lastAction).toEqual(live.lastAction);
+      // The tank is the save's, clamped to the seeded hull it is being poured into.
+      const seeded = npcShipForProfile(NPC_PROFILES.find((p) => p.id === npc.profileId)!);
+      expect(npc.ship.fuel).toBe(Math.min(seeded.maxFuel, live.ship.fuel));
+      expect((npc as unknown as Record<string, unknown>).fuel).toBeUndefined();
+    }
+  });
+
+  it('is idempotent — a record that already carries a ship is left alone', () => {
+    const state = drive50Days(87);
+    const loaded = loadSave(JSON.stringify({ version: 9, state, seed: 97 }));
+    expect(loaded.state.npcs).toEqual(state.npcs);
+  });
+
+  it('does not throw on a roster it cannot read (a migration must never be the thrower)', () => {
+    const state = drive50Days(88);
+    (state as unknown as Record<string, unknown>).npcs = 'not-an-array';
+    // The SCHEMA rejects it, as a typed SaveError — the migration itself passes
+    // the unreadable roster through rather than blowing up mid-walk.
+    expect(() => loadSave(JSON.stringify({ version: 9, state, seed: 98 }))).toThrow(SaveError);
+  });
+
+  it('strict schema rejects a v10 roster that still carries the old top-level fuel', () => {
+    const state = drive50Days(89);
+    (state.npcs[0] as unknown as Record<string, unknown>).fuel = 500;
+    expect(() => loadSave(createSave(state, 99))).toThrow(SaveError);
+  });
+
+  it('round-trips the whole 30-ship roster byte-identically, at a cost worth naming', () => {
+    // Constraint 3 in the same commit as the field. The size claim is measured,
+    // not asserted with a magic threshold: 30 ShipStates is the whole cost of N1
+    // on disk, and the worklist asked for it to be watched.
+    const state = drive50Days(90);
+    const blob = createSave(state, 100);
+    const loaded = loadSave(blob);
+    expect(loaded.state).toEqual(state);
+    // BYTE-IDENTICAL, stated as the fixed point it actually is: `loadSave` runs
+    // the state through zod, which rebuilds every object in SCHEMA key order, so
+    // a first round trip can re-order keys without changing a value. What must
+    // hold — and what a mis-modelled `ship` would break — is that the SECOND trip
+    // changes nothing at all, byte for byte, including all 30 ships.
+    const once = createSave(loaded.state, 100);
+    const twice = createSave(loadSave(once).state, 100);
+    expect(twice).toBe(once);
+
+    const rosterBytes = JSON.stringify(state.npcs).length;
+    const shipBytes = state.npcs.reduce((sum, npc) => sum + JSON.stringify(npc.ship).length, 0);
+    // The ships are the bulk of the roster now (~86% of it) and the roster is a
+    // small fraction of the save — the eventLog dominates a real career.
+    expect(shipBytes).toBeGreaterThan(rosterBytes * 0.5);
+    expect(shipBytes).toBeLessThan(blob.length * 0.5);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // T-1505a · The twelve-fragment Nemesis file round-trips, including the two
 // source literals the arc only started producing in this task.
 //
@@ -693,10 +822,10 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     // The WHOLE state is deep-equal — nothing about the fuller file perturbed it.
     expect(loaded.state).toEqual(state);
     // No version bump was needed for any of it. (T-1603b later bumped 7 → 8 for
-    // an unrelated reason — the renown re-derivation — and T-1703 8 → 9 for the
-    // new `edition` field, so this pins the CURRENT version rather than claiming
-    // the fragment file caused it.)
-    expect(CURRENT_SAVE_VERSION).toBe(9);
+    // an unrelated reason — the renown re-derivation — T-1703 8 → 9 for the new
+    // `edition` field and N1 9 → 10 for `NpcState.ship`, so this pins the CURRENT
+    // version rather than claiming the fragment file caused it.)
+    expect(CURRENT_SAVE_VERSION).toBe(10);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -740,9 +869,9 @@ describe('save envelope — an ended career round-trips with no migration (T-150
       reason: 'career-ended',
     });
     // Nothing needed a bump for any of it. (T-1603b later bumped 7 → 8 for the
-    // unrelated renown re-derivation and T-1703 8 → 9 for the new `edition`
-    // field; this pins the CURRENT version.)
-    expect(CURRENT_SAVE_VERSION).toBe(9);
+    // unrelated renown re-derivation, T-1703 8 → 9 for the new `edition` field
+    // and N1 9 → 10 for `NpcState.ship`; this pins the CURRENT version.)
+    expect(CURRENT_SAVE_VERSION).toBe(10);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {

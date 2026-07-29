@@ -20,7 +20,7 @@
 **Platforms** · Windows and macOS, via Steam
 **Genre** · Single-player space trading RPG · dice-driven · retro terminal
 **Price** · **$15–20 premium. No microtransactions, ever.** (PRD §1)
-**Status** · Release candidate `v1.0.0-rc1`
+**Status** · Pre-alpha. No release candidate has been tagged — see `docs/VERSIONING.md`.
 **Release date** · `[TO BE SUPPLIED]`
 **Store page** · `[TO BE SUPPLIED]` (checklist F7)
 **Trailer** · `[TO BE SUPPLIED]` (checklist F7)

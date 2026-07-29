@@ -1,6 +1,43 @@
+import type { RenownRankId } from './deeds.js';
+import { Stat } from './stats.js';
+
 export const YARD_COMPONENT_TIER_PRICES = [
   50, 100, 200, 400, 800, 1500, 3000, 5000, 10000,
 ] as const;
+
+/**
+ * What the yard allows against the fit you are trading IN, indexed by the tier
+ * you currently OWN (index 0 = tier 1, index 8 = tier 9).
+ *
+ * THE BUG THIS LADDER'S INDEXING EXISTS TO PREVENT (found 2026-07-28). These nine
+ * numbers used to live inline in `engine/actions/shipyard.ts` as a chain of
+ * `if (strength === n)` tests ending in a catch-all `return 3000` — i.e. they
+ * were indexed by raw component STRENGTH, on the assumption that strength and
+ * tier were the same scale. They are not: `buy-component-tier` sets
+ * `strength = tier * 10`, and four components (drives, navigation, lifeSupport,
+ * robotics) START at strength 10, not at the junker's 1. So every one of those
+ * four fell straight through to the 3,000 catch-all on a brand-new save, and
+ * `max(0, price - 3000)` made tiers 1 THROUGH 7 cost exactly nothing.
+ *
+ * Measured on a fresh day-1 save before the fix: drives, navigation, lifeSupport
+ * and robotics could all be taken to tier 7 (strength 70 — a 12,000cr list price)
+ * for **0 credits**, which cut the jump-fuel bill by ~92% (a distance-10 jump:
+ * 120 fuel → 10) permanently, from day one, on a 1,000cr starting purse. Fuel is
+ * the game's primary economic constraint (T-1102), so this was the single largest
+ * unearned advantage available to any player who noticed it.
+ *
+ * The VALUES are unchanged — only the indexing is corrected — so a junker-start
+ * component (strengths 1..9, i.e. hull/weapons/shields/cabin) is priced exactly
+ * as it always was. See `tradeInValue` in engine/actions/shipyard.ts for the
+ * junker-range/owned-tier split, and note the standing invariant it must keep:
+ * **every step up the ladder costs real credits**, i.e.
+ * `YARD_COMPONENT_TRADE_IN[n-1] < YARD_COMPONENT_TIER_PRICES[n]` for all n.
+ *
+ * READERS: `engine/actions/shipyard.ts` `tradeInValue` (the single definition —
+ * the sim's former private copy was deleted in the same change and now asks the
+ * engine via `quoteShipyard`, so the two can never drift again).
+ */
+export const YARD_COMPONENT_TRADE_IN = [25, 50, 100, 200, 400, 700, 1000, 2000, 3000] as const;
 
 export const SHIP_COMPONENTS = [
   { id: 'hull', name: 'Hull' },
@@ -13,7 +50,50 @@ export const SHIP_COMPONENTS = [
   { id: 'shields', name: 'Shields' },
 ] as const;
 
-import type { RenownRankId } from './deeds.js';
+/** The eight component ids, DERIVED from {@link SHIP_COMPONENTS} rather than
+ *  restated, so a component added to the table cannot be forgotten by anything
+ *  keyed on the union. Mirrors the engine's hand-written `ShipComponentId`; the
+ *  engine asserts the two agree by assigning {@link NPC_COMPONENT_STAT_AFFINITY}
+ *  into its own `Record<ShipComponentId, Stat>`. */
+export type ShipComponentContentId = (typeof SHIP_COMPONENTS)[number]['id'];
+
+/**
+ * N2 · WHAT A CAPTAIN'S STATS INCLINE THEM TO SPEND MONEY ON — the sibling of
+ * {@link INTENT_STAT_AFFINITY} (which says what their stats incline them to DO).
+ * Data only; the engine does the ordering.
+ *
+ * THE PROBLEM IT SOLVES, measured by N6 (BALANCE-REDESIGN-WORKLIST): `npc.ts`
+ * `npcShipForTier` varied only hull, drives and pods by tier, so every NPC at
+ * every tier was issued weapons 1, shields 1, cabin 1, navigation 10, lifeSupport
+ * 10, robotics 10 — **six of the Honor List's eight titles were uncontestable by
+ * construction**, and a pure tier ramp would not have fixed it: it would only have
+ * moved the 31-way tie onto the three tier-5 captains. Tier has to say HOW FAR a
+ * captain has got; something else has to say WHERE they put it. That something is
+ * the character sheet the cast already carries.
+ *
+ * THE MAPPING, and why each one: a captain buys the system their strongest stat
+ * uses. GUNS shoots and is shot at (weapons, shields). PILOT flies (drives,
+ * navigation). GRIT endures (hull, lifeSupport). TRADE keeps the ship earning
+ * (robotics — the repair rate that keeps a worn fit working). GUILE entertains
+ * and recruits (cabin). Two components per combat-ish stat and one each for the
+ * rest is not a balance choice; it falls out of there being eight components and
+ * five stats.
+ *
+ * READERS: `engine/npc.ts` `npcComponentLadder` — consumed by BOTH the day-1 seed
+ * (`npcShipForProfile`) and the live upgrade decision (`considerRefit`),
+ * deliberately: one statement of what a captain wants, so the fit a captain is
+ * issued and the fit they buy toward cannot disagree.
+ */
+export const NPC_COMPONENT_STAT_AFFINITY: Record<ShipComponentContentId, Stat> = {
+  weapons: Stat.GUNS,
+  shields: Stat.GUNS,
+  drives: Stat.PILOT,
+  navigation: Stat.PILOT,
+  hull: Stat.GRIT,
+  lifeSupport: Stat.GRIT,
+  robotics: Stat.TRADE,
+  cabin: Stat.GUILE,
+};
 
 export interface SpecialEquipmentDefinition {
   readonly id: string;

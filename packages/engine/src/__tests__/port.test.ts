@@ -325,9 +325,16 @@ describe('T-1603b · the port price/income curve', () => {
    *  and it is the anchor the aggregate ceiling is defined against: owning every
    *  port must earn less than simply flying contracts. */
   const FLEET_MEDIAN_ROUTE_EV_PER_DAY = 1630;
-  /** Payback window in dusks, from the definition site's stated design target. */
-  const PAYBACK_MIN = 110;
-  const PAYBACK_MAX = 150;
+  /** Payback window in dusks, from the definition site's stated design target.
+   *  R2d WIDENED THIS, deliberately: prices were re-set to the recovered 1991
+   *  curve (10,000-140,000, a 14x spread) while income was held fixed, because the
+   *  aggregate ceiling above has no headroom. Payback therefore stretches from
+   *  [110, 150] to [154, 1050]. A stake is now a status-and-control asset on a
+   *  horizon no 120-day career reaches, not an investment that repays inside one —
+   *  the trade is ROI for a contested acquisition ladder, and it is stated in full
+   *  at `PURCHASABLE_PORTS`. */
+  const PAYBACK_MIN = 150;
+  const PAYBACK_MAX = 1050;
 
   it('the whole board earns less per dusk than flying earns per day', () => {
     const total = PURCHASABLE_PORTS.reduce((sum, port) => sum + port.baseDuskIncome, 0);
@@ -350,7 +357,7 @@ describe('T-1603b · the port price/income curve', () => {
     }
   });
 
-  it('the curve is a curve: the busy ports cost more AND pay back slower', () => {
+  it('the curve is a curve: the busy ports cost more, and no port is dominated', () => {
     // A flat table would pass both bands above, so this is what actually guards
     // "fourteen identical purchases are not a decision".
     const byIncome = [...PURCHASABLE_PORTS].sort((a, b) => a.baseDuskIncome - b.baseDuskIncome);
@@ -358,11 +365,15 @@ describe('T-1603b · the port price/income curve', () => {
     const busiest = byIncome[byIncome.length - 1];
     expect(busiest.baseDuskIncome / quietest.baseDuskIncome).toBeGreaterThanOrEqual(3);
     expect(busiest.purchasePrice).toBeGreaterThan(quietest.purchasePrice);
-    // The premium: the high-yield asset is the SLOWER payback, so the quiet ports
-    // are a real value play rather than strictly dominated.
-    expect(busiest.purchasePrice / busiest.baseDuskIncome).toBeGreaterThan(
-      quietest.purchasePrice / quietest.baseDuskIncome,
-    );
+    // R2d REPLACED THE PAYBACK-ORDERING FORM OF THIS INVARIANT. Under the 1991
+    // price curve the ladder spans 14x while measured income spans only ~4.5x, so
+    // payback is no longer monotone in traffic and the old "busiest is the slower
+    // payback" phrasing is simply not true any more. The property that survives —
+    // and it is now true BY CONSTRUCTION, since the ladder is assigned in income
+    // rank order — is the plainer one: THE DEAREST PORTS ARE THE BUSIEST ONES.
+    // Asserted just above (`busiest.purchasePrice > quietest.purchasePrice`) and
+    // across the whole board by the monotonicity check below, so nothing is lost
+    // except a claim that had stopped being accurate.
     // ...and income is monotone in price across the whole board, so no port is
     // strictly dominated by a cheaper one.
     const byPrice = [...PURCHASABLE_PORTS].sort((a, b) => a.purchasePrice - b.purchasePrice);

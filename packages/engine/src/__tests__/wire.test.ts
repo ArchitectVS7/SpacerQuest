@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Stat } from '@spacerquest/content';
+import { NPC_PROFILES, Stat } from '@spacerquest/content';
 import { FLAWS } from '@spacerquest/content';
 import { natWireStories } from '../wire.js';
+import { npcShipForProfile } from '../npc.js';
 import { advanceDay } from '../day.js';
 import { resolveTrade } from '../actions/trade.js';
 import { applyEncounterDuskPressure } from '../actions/combat.js';
@@ -83,7 +84,8 @@ describe('Galactic Wire nat-20/nat-1 stories (T-1202, PRD §6)', () => {
         profileId: 'npc-lucky-seven',
         currentSystemId: 5,
         credits: 5000,
-        fuel: 1000,
+        // N1: the tank rides on the captain's own ship, seeded from their tier.
+        ship: npcShipForProfile(NPC_PROFILES.find((p) => p.id === 'npc-lucky-seven')!),
         disposition: 0,
       },
       {
@@ -92,7 +94,8 @@ describe('Galactic Wire nat-20/nat-1 stories (T-1202, PRD §6)', () => {
         profileId: 'npc-cargo-king',
         currentSystemId: 5,
         credits: 5000,
-        fuel: 1000,
+        // N1: the tank rides on the captain's own ship, seeded from their tier.
+        ship: npcShipForProfile(NPC_PROFILES.find((p) => p.id === 'npc-cargo-king')!),
         disposition: 0,
       },
     ];

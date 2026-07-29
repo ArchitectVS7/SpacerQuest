@@ -303,21 +303,14 @@ describe('Encounter system', () => {
     expect(veteran).toBeGreaterThan(tourOne);
   });
 
-  it('a failed pilot check still produces an encounter (trigger decoupled from success)', () => {
-    // T-1103 acceptance: a botched jump is no longer perfectly safe. Route 1->2
-    // has DC travelDc(dist)=10; a die of 1 with PILOT 0 always fails the check.
-    // Find a seed whose encounter roll < 0.30 (tier-1 core chance) so the jump is
-    // both failed AND intercepted, then assert all three signals of decoupling.
-    const losingRoute = () => {
-      const state = readyState();
-      state.player.dawnHand = { dice: [1], spent: [false] };
-      state.player.stats[Stat.PILOT] = 0;
-      return state;
-    };
-
+  it('an ordinary jump can still be intercepted, with no pilot check involved (T-1605)', () => {
+    // T-1103 established that a jump is dangerous regardless of how the pilot
+    // check went. T-1605 then removed the check from ordinary jumps entirely
+    // (a failure burned the fuel and the turn for no movement). The danger must
+    // survive that removal: interception is a property of the ROUTE, not of a
+    // roll. This is the same acceptance, restated without the check.
     let chosenSeed = -1;
     for (let seed = 1; seed <= 10_000; seed += 1) {
-      // Probe with a throwaway state: encounter roll < 0.30 means a hit on 1->2.
       if (generateEncounter(readyState(), 1, 2, 5, new SeededRng(seed))) {
         chosenSeed = seed;
         break;
@@ -325,16 +318,19 @@ describe('Encounter system', () => {
     }
     expect(chosenSeed).toBeGreaterThan(0);
 
+    const state = readyState();
+    state.player.dawnHand = { dice: [1], spent: [false] }; // the worst possible die
+    state.player.stats[Stat.PILOT] = 0;
+
     const { state: nextState, events } = resolveTravel(
-      losingRoute(),
+      state,
       { type: 'Travel', destinationId: 2, spendDie: 0 },
       new SeededRng(chosenSeed),
     );
 
-    const statCheck = events.find((event) => event.type === 'StatCheck');
-    expect(statCheck).toBeDefined();
-    if (statCheck?.type !== 'StatCheck') throw new Error('unreachable');
-    expect(statCheck.result.success).toBe(false);
+    // no roll is taken for an ordinary jump any more
+    expect(events.some((event) => event.type === 'StatCheck')).toBe(false);
+    // but the route is still dangerous
     expect(nextState.encounter).toBeTruthy();
     expect(events.some((event) => event.type === 'EncounterStarted')).toBe(true);
   });

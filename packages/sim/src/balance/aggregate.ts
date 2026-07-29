@@ -24,6 +24,7 @@ import type {
   CampaignDayStats,
   CampaignStatsReport,
   CombatEncounterRecord,
+  MilestoneSample,
   RouteLegRecord,
   SimPolicyName,
 } from '../index.js';
@@ -142,14 +143,22 @@ export function combatCost(record: CombatEncounterRecord): number {
 }
 
 /**
- * THE combat-EV definition. Negative-or-zero by construction: the engine pays
- * nothing for winning a fight (no bounty, no wreck salvage — `resolveEncounter`
- * moves disposition and reputation only). That is a finding, not a bug in this
- * function; the memo records it and T-1603c owns the call. What the baseline
- * therefore compares is the MAGNITUDE of the loss across parity/preparation cells.
+ * THE combat-EV definition: what the encounter PAID minus what it COST.
+ *
+ * R2c CHANGED THE SIGN CONVENTION, deliberately. This used to read `-combatCost(...)`
+ * and its comment said the value was "negative-or-zero by construction: the engine
+ * pays nothing for winning a fight". That was true and it was the defect — an
+ * archetype whose whole strategy is combat could never be solvent, which only
+ * stayed invisible while a trade-in bug was handing out free ship components (see
+ * `YARD_COMPONENT_TRADE_IN`). Now a destroyed interceptor yields salvage, so the
+ * payout side is real and this function reports a genuine EV that CAN be positive.
+ *
+ * A consequence worth stating for anyone diffing baselines across R2c: every
+ * `combatEv` figure recorded before R2c is a negated cost, not an EV, and the two
+ * are not comparable on a cell where salvage was earned.
  */
 export function combatEv(record: CombatEncounterRecord): number {
-  return -combatCost(record);
+  return record.salvageCredits - combatCost(record);
 }
 
 /** A fight the player won on the field: the interceptor was destroyed or slipped
@@ -264,6 +273,12 @@ export interface SeedRow {
   successions: number;
   combat: CombatEncounterRecord[];
   routes: RouteLegRecord[];
+  /** N7 · Carried from the report when the sweep asked for milestone days. */
+  milestones?: MilestoneSample[];
+  /** N7 · Carried from the report when the career started from a SYNTHESIZED
+   *  state. {@link aggregate} refuses to fold a row that carries it — see the
+   *  throw there for why that guard is the honest caveat made structural. */
+  syntheticStart?: true;
 }
 
 export function summarizeReport(report: CampaignStatsReport): SeedRow {
@@ -288,6 +303,8 @@ export function summarizeReport(report: CampaignStatsReport): SeedRow {
     successions: report.survival.successions,
     combat: report.combatEncounters,
     routes: report.routeLegs,
+    ...(report.milestones === undefined ? {} : { milestones: report.milestones }),
+    ...(report.syntheticStart === undefined ? {} : { syntheticStart: true as const }),
   };
 }
 
@@ -377,6 +394,77 @@ export interface PolicyAggregate {
   routeDiversityTopShare: Distribution;
   // --- Survival -----------------------------------------------------------
   survival: SurvivalAggregate;
+  // --- N7 milestone harvest ------------------------------------------------
+  /** Present only when the sweep ran with `--milestone-days`. See
+   *  {@link MilestoneAggregate}. */
+  milestones?: MilestoneAggregate[];
+}
+
+/**
+ * N7 · The progression spread of the 31 captains at one milestone day, pooled
+ * across every run in the row. This is what turns a smoke fixture's tier seeding
+ * from a guess into a measurement: `checkpoints.ts` reads these distributions and
+ * `synthesize.ts` lays them back down across the roster.
+ *
+ * Absent from every aggregate produced before N7 and from any sweep run without
+ * `--milestone-days`, which is why the field is optional on `PolicyAggregate` —
+ * and why the differ reports a path present on one side only rather than
+ * pretending the two aggregates are the same measurement.
+ */
+export interface MilestoneAggregate {
+  day: number;
+  /** Runs that reached this day. A horizon shorter than `day` yields 0. */
+  runs: number;
+  playerCredits: Distribution;
+  playerDebt: Distribution;
+  playerFuel: Distribution;
+  playerTier: Distribution;
+  playerDeedCount: Distribution;
+  /** `max(weapons, hull, shields)` — the fit `computePlayerTier` reads. */
+  playerShipRating: Distribution;
+  playerWeaponsStrength: Distribution;
+  playerHullStrength: Distribution;
+  playerShieldsStrength: Distribution;
+  playerDrivesStrength: Distribution;
+  playerCargoPods: Distribution;
+  playerCrew: Distribution;
+  /** Pooled over every NPC of every run: 30 × runs samples. THE field spread. */
+  npcCredits: Distribution;
+  npcHullStrength: Distribution;
+  npcFuel: Distribution;
+}
+
+function milestoneAggregatesFor(rows: readonly SeedRow[]): MilestoneAggregate[] | undefined {
+  const byDay = new Map<number, MilestoneSample[]>();
+  for (const row of rows) {
+    for (const sample of row.milestones ?? []) {
+      const bucket = byDay.get(sample.day);
+      if (bucket) bucket.push(sample);
+      else byDay.set(sample.day, [sample]);
+    }
+  }
+  if (byDay.size === 0) return undefined;
+  return [...byDay.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([day, samples]) => ({
+      day,
+      runs: samples.length,
+      playerCredits: distribution(samples.map((sample) => sample.player.credits)),
+      playerDebt: distribution(samples.map((sample) => sample.player.debt)),
+      playerFuel: distribution(samples.map((sample) => sample.player.fuel)),
+      playerTier: distribution(samples.map((sample) => sample.player.tier)),
+      playerDeedCount: distribution(samples.map((sample) => sample.player.deedCount)),
+      playerShipRating: distribution(samples.map((sample) => sample.player.shipRating)),
+      playerWeaponsStrength: distribution(samples.map((sample) => sample.player.weaponsStrength)),
+      playerHullStrength: distribution(samples.map((sample) => sample.player.hullStrength)),
+      playerShieldsStrength: distribution(samples.map((sample) => sample.player.shieldsStrength)),
+      playerDrivesStrength: distribution(samples.map((sample) => sample.player.drivesStrength)),
+      playerCargoPods: distribution(samples.map((sample) => sample.player.cargoPods)),
+      playerCrew: distribution(samples.map((sample) => sample.player.crew)),
+      npcCredits: distribution(samples.flatMap((sample) => sample.npcCredits)),
+      npcHullStrength: distribution(samples.flatMap((sample) => sample.npcHullStrength)),
+      npcFuel: distribution(samples.flatMap((sample) => sample.npcFuel)),
+    }));
 }
 
 export interface BaselineAggregate {
@@ -449,9 +537,45 @@ function routeAggregatesFor(legs: readonly RouteLegRecord[]): RouteAggregate[] {
   return aggregates;
 }
 
+/**
+ * N7 · THE STRUCTURAL FORM OF THE HONEST CAVEAT.
+ *
+ * A mid-game smoke tier runs against a SYNTHESIZED world — a day-21 state built
+ * to look like day 21 rather than played into. That is fine for a breakage
+ * detector and it must never grade balance, and this repo already knows that a
+ * documented rule is not the same as an enforced one (`poverty-invariant.test.ts`:
+ * "the fix would be to re-author a storylet trigger or the map, not to poke
+ * state").
+ *
+ * So the rule is enforced where it can actually be broken. A baseline aggregate
+ * is THE artefact that grades balance — the memo tables, the worklist's Results,
+ * every before/after in this document are `BaselineAggregate` fields. Folding one
+ * synthesized row into one would silently launder a fabricated state into a
+ * balance number, so the fold refuses: not a warning, not a filter that drops the
+ * row quietly, a THROW naming the offending seed.
+ *
+ * Filtering was considered and rejected. A silent drop turns "you measured
+ * something you may not measure" into "your sample was smaller than you thought",
+ * which is the same failure wearing a disguise.
+ */
+function rejectSyntheticRows(rows: readonly SeedRow[]): void {
+  const synthetic = rows.filter((row) => row.syntheticStart === true);
+  if (synthetic.length === 0) return;
+  const sample = synthetic[0];
+  throw new Error(
+    `Refusing to aggregate ${synthetic.length} SYNTHESIZED row(s) (first: seed ${sample.seed}, ` +
+      `policy ${sample.policy}). A career that began from a fabricated mid-game state is a ` +
+      `breakage sample, never a balance measurement — see N7 in ` +
+      `docs/BALANCE-REDESIGN-WORKLIST.md and docs/balance/smoke/README.md. The capstone sweep ` +
+      `is the only authority on numbers.`,
+  );
+}
+
 /** Fold a set of rows into one aggregate. `policy` is the label the row carries
  *  ('fleet' for the union). */
 export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyAggregate {
+  rejectSyntheticRows(rows);
+  const milestones = milestoneAggregatesFor(rows);
   const combat = rows.flatMap((row) => row.combat);
   const legs = rows.flatMap((row) => row.routes);
   const delivered = legs.filter((leg) => leg.outcome === 'delivered');
@@ -536,6 +660,7 @@ export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyA
       deathsPer1000Days: simDays === 0 ? 0 : (shipsLost / simDays) * 1000,
       runsWithDeathRate: share(rows.filter((row) => row.shipsLost > 0).length, rows.length),
     },
+    ...(milestones === undefined ? {} : { milestones }),
   };
 }
 

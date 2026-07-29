@@ -470,7 +470,13 @@ const NpcStateSchema = z
     profileId: z.string(),
     currentSystemId: z.number(),
     credits: z.number(),
-    fuel: z.number(),
+    // N1: the captain's own ship — the SAME ShipStateSchema the player's ship
+    // validates against, deliberately, because it is the same type. The tank
+    // rides on it, which is why the old top-level `fuel: z.number()` is gone;
+    // the v9→v10 migration moves a legacy save's number into `ship.fuel`, and
+    // `.strict()` is what makes a save that still carries the old key fail
+    // loudly instead of silently keeping two disagreeing fuel numbers.
+    ship: ShipStateSchema,
     disposition: z.number(),
     lastAction: NpcActionSchema.optional(),
   })
@@ -1091,6 +1097,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
     ]),
     round: z.number(),
     interceptorId: z.string(),
+    // R2c · optional, so pre-R2c eventLogs validate unchanged (no version bump).
+    salvageCredits: z.number().optional(),
   }),
   z.object({
     type: z.literal('ShipyardEvent'),

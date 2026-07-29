@@ -1,4 +1,6 @@
 import { RENOWN_RANK_ORDER } from '@spacerquest/engine';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { runCampaign, type SimPolicyName } from '../index.js';
 import {
@@ -86,6 +88,25 @@ const POLICIES: readonly SimPolicyName[] = ['trader', 'smuggler', 'gambler'];
 const TRADER_CLEAR_DAY_MIN = 22;
 const TRADER_CLEAR_DAY_MAX = 30;
 
+/**
+ * THE BASELINE OF RECORD — the committed 1,000-seed capstone, and the only sample
+ * that resolves the [22, 30] band (R0b; see the split note on the band test below).
+ *
+ * Read from disk rather than imported so that re-pinning the baseline is a data
+ * change, not a code change, and so a MISSING or RENAMED baseline fails loudly here
+ * instead of silently grading nothing. The path is deliberately the single string
+ * that must be updated when the baseline is re-pinned — the same commit that writes
+ * the new file updates this line and the pointer in
+ * `docs/BALANCE-REDESIGN-WORKLIST.md`'s standing amendment 1.
+ */
+const BASELINE_OF_RECORD_PATH = fileURLToPath(
+  new URL('../../../../docs/balance/baseline-r2c-explorer-remit.json', import.meta.url),
+);
+const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
+  label: string;
+  byPolicy: { policy: string; debtClearedDay: { median: number; n: number } }[];
+};
+
 /** T-1603b acceptance: "no stable optimal route across the fleet". The full
  *  500-seed after-arm measures the most-flown route at 1.3% of 59,979 legs across
  *  396 distinct routes; this 120-run slice measures 1.48% across 274 (3,252
@@ -139,7 +160,24 @@ beforeAll(() => {
 }, 180000);
 
 describe('T-1603b balance targets (pinned slice of the committed sweep)', () => {
-  it('the trader clears the Guild marker inside the target band, not sooner', () => {
+  // SPLIT 2026-07-29 (owner decision), because this test's 40-seed arm cannot grade
+  // what it was asserting. It bundled two claims of very different statistical cost:
+  //
+  //   (a) the trader clears, and clears FASTEST of the three  — resolves at n=40;
+  //   (b) its median clear day sits inside [22, 30]           — DOES NOT.
+  //
+  // (b) is a median of a discrete day over a wide spread (capstone p25 18 / p75 25),
+  // so ±1 day is noise at this sample size. R0b's standing amendment already said
+  // exactly this — "a candidate passed at n=100 and failed at n=1,000" — and it bit
+  // here for real: during N2 this arm read 22 and flipped the tripwire green while
+  // the authoritative 1,000-seed capstone read 21 both before and after, i.e. the
+  // R2.5 defect was untouched and the test reported it fixed. A criterion that can
+  // announce a balance fix that did not happen is worse than no criterion.
+  //
+  // So (a) stays here as a live test, and (b) moves to the capstone-graded block
+  // below, which is the only authority on that number. See BALANCE-REDESIGN-WORKLIST
+  // standing amendment 1.
+  it('the trader clears the Guild marker, and clears it fastest', () => {
     const trader = policyRow('trader');
 
     // Non-degeneracy first: an empty or near-empty sample would make the median
@@ -152,19 +190,13 @@ describe('T-1603b balance targets (pinned slice of the committed sweep)', () => 
     ).toBeGreaterThan(0.5);
     expect(trader.debtClearedDay.n).toBeGreaterThan(SEEDS.length / 2);
 
-    // The acceptance itself. BOTH bounds matter and for different reasons: below
-    // 22 the marker is trivial ("not 10"), above 30 it is not clearable inside
-    // Tour One at all ("not never").
-    expect(
-      trader.debtClearedDay.median,
-      `trader median debt-clear day ${trader.debtClearedDay.median} outside [${TRADER_CLEAR_DAY_MIN}, ${TRADER_CLEAR_DAY_MAX}]`,
-    ).toBeGreaterThanOrEqual(TRADER_CLEAR_DAY_MIN);
-    expect(trader.debtClearedDay.median).toBeLessThanOrEqual(TRADER_CLEAR_DAY_MAX);
-
     // The marker is a real 30-day clock, not a formality: the trader is the
     // FASTEST of the three policies here, and the other two sit at or past it.
     // If a tuning change ever made a different line strictly better than trading
     // at clearing the marker, that is a balance finding, and it lands here.
+    // This comparison is ROBUST at n=40 in a way the band is not: it is an
+    // ordering between three medians measured on identical seeds, not the
+    // absolute position of one of them.
     for (const policy of POLICIES) {
       if (policy === 'trader') continue;
       const row = policyRow(policy);
@@ -174,6 +206,41 @@ describe('T-1603b balance targets (pinned slice of the committed sweep)', () => 
         `${policy} now clears the marker faster than the trader`,
       ).toBeGreaterThanOrEqual(trader.debtClearedDay.median);
     }
+  });
+});
+
+describe('T-1603b · the [22, 30] band, graded on the committed capstone', () => {
+  // THE BAND LIVES HERE, not in the 40-seed arm above, because a 1,000-seed capstone
+  // is the only sample that resolves it (R0b). This reads the committed baseline of
+  // record rather than re-running campaigns: that file IS the measurement of record,
+  // it is re-pinned deliberately by whichever step moves it, and reading it costs
+  // milliseconds instead of minutes.
+  //
+  // KNOWN RED, EXPECTED TO FAIL — owned by R2.5. The trader clears on day 21 against
+  // [22, 30]: the marker is trivial for the dominant archetype, which is the defect
+  // the balance redesign exists to remove. NOT skipped and NOT deleted — `it.fails`
+  // keeps the assertions executing and inverts the verdict, so this goes RED THE
+  // MOMENT R2.5 MOVES THE CLEAR DAY INTO BAND, at a sample size that can actually
+  // tell. Flip back to `it` in the same commit that lands the fix.
+  it.fails('the trader clears the marker inside the target band, not sooner', () => {
+    const trader = BASELINE_OF_RECORD.byPolicy.find((row) => row.policy === 'trader');
+    if (!trader) throw new Error("baseline of record has no 'trader' row");
+
+    // Non-degeneracy: guard against grading a band on a baseline that was itself
+    // measured on a thin or broken arm.
+    expect(
+      trader.debtClearedDay.n,
+      'baseline of record was measured on too few clearing careers to grade a median',
+    ).toBeGreaterThan(500);
+
+    // The acceptance itself. BOTH bounds matter and for different reasons: below
+    // 22 the marker is trivial ("not 10"), above 30 it is not clearable inside
+    // Tour One at all ("not never").
+    expect(
+      trader.debtClearedDay.median,
+      `trader median debt-clear day ${trader.debtClearedDay.median} outside [${TRADER_CLEAR_DAY_MIN}, ${TRADER_CLEAR_DAY_MAX}]`,
+    ).toBeGreaterThanOrEqual(TRADER_CLEAR_DAY_MIN);
+    expect(trader.debtClearedDay.median).toBeLessThanOrEqual(TRADER_CLEAR_DAY_MAX);
   });
 
   it('no single route dominates the fleet', () => {

@@ -66,6 +66,7 @@ function encounterRecord(overrides: Partial<CombatEncounterRecord> = {}): Combat
     rounds: 1,
     creditsDelta: 0,
     tributeCredits: 0,
+    salvageCredits: 0,
     fineCredits: 0,
     successionCredits: 0,
     travelCompleted: true,

@@ -3,6 +3,9 @@ import {
   AUTO_REPAIR_REGEN,
   CREW_PER_CABIN_STRENGTH,
   NAV_BONUS_DIVISOR,
+  NAV_FUEL_DISCOUNT_PER_POINT,
+  NAV_FUEL_FLOOR,
+  NAV_FUEL_JUNKER_PENALTY,
   ROBOTICS_REPAIR_DIVISOR,
   SHIELD_MITIGATION_DIVISOR,
   STAR_BUSTER_VOLLEY_BONUS,
@@ -150,6 +153,20 @@ export function shieldMitigation(ship: ShipState): number {
  * READER OF `navigation`. CONSUMED BY: travel.ts `resolveTravel` and
  * exploration.ts `resolveExploration` (the PILOT `check` modifier).
  */
+/**
+ * Navigation → multiplier on a jump's fuel burn (<= 1). T-1605.
+ *
+ * Replaces navigation's old job as a modifier on the pilot check that decided
+ * whether a jump landed at all. A jump always lands now, so nav pays out on
+ * every jump instead of on the 1-in-3 that used to fail.
+ *
+ * READER OF `navigation`. CONSUMED BY: economy.ts `jumpFuelCost`.
+ */
+export function navFuelFactor(ship: ShipState): number {
+  const above = Math.max(0, effectiveScore(ship.navigation) - 10);
+  return Math.max(NAV_FUEL_FLOOR, NAV_FUEL_JUNKER_PENALTY - above * NAV_FUEL_DISCOUNT_PER_POINT);
+}
+
 export function navBonus(ship: ShipState): number {
   return Math.max(0, Math.floor((effectiveScore(ship.navigation) - 10) / NAV_BONUS_DIVISOR));
 }

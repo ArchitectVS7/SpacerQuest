@@ -90,6 +90,11 @@ const VALID_POLICIES: readonly SimPolicyName[] = [
   'veteran',
   'smuggler',
   'gambler',
+  // R1 (docs/BALANCE-REDESIGN-WORKLIST.md) · the human-plausible pilot. Valid but
+  // deliberately OUT of DEFAULT_POLICIES: it is a measurement instrument run
+  // beside the `trader` row, not a seventh archetype, and folding it into the
+  // default fleet would silently move every `fleet` union number in the baseline.
+  'trader-degraded',
 ];
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -107,6 +112,13 @@ export interface SweepOptions {
   rowsDir: string;
   aggregateDir: string;
   merge: boolean;
+  /**
+   * N7 · Days at which every run records a {@link MilestoneSample} — the real
+   * progression spread the smoke fixtures are seeded from. Empty by default so
+   * an ordinary sweep is byte-identical to a pre-N7 one; a capstone that intends
+   * to re-cut the fixtures passes the smoke tiers' start days.
+   */
+  milestoneDays: number[];
 }
 
 function usage(): string {
@@ -121,6 +133,9 @@ function usage(): string {
     '  --shard i/N           Run only seeds where (seed - seedStart) % N === i - 1.',
     '  --out <dir>           Raw row directory. Default .scratch/balance (gitignored).',
     '  --aggregate-out <dir> Aggregate directory. Default docs/balance.',
+    '  --milestone-days a,b  N7: record a milestone sample at the dawn of each day, so the',
+    '                        capstone harvests the real progression spread the smoke fixtures',
+    '                        are seeded from. Off by default (rows stay pre-N7 shaped).',
     '  --merge               Do not sweep: read every shard row file for --label,',
     '                        aggregate, and write docs/balance/baseline-<label>.json.',
     '  --help',
@@ -157,6 +172,20 @@ function parsePolicies(raw: string | undefined): SimPolicyName[] {
   return names as SimPolicyName[];
 }
 
+/** N7 · Comma-separated day numbers. Validated rather than coerced for the same
+ *  reason `parsePolicies` throws: a silently-dropped typo would produce a capstone
+ *  with no milestones in it and no sign that any were asked for. */
+function parseMilestoneDays(raw: string | undefined): number[] {
+  if (raw === undefined || raw.trim() === '') throw new Error('Missing value for --milestone-days');
+  const days = raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part !== '')
+    .map((part) => parsePositiveInteger('--milestone-days', part));
+  if (days.length === 0) throw new Error('--milestone-days listed no days');
+  return [...new Set(days)].sort((a, b) => a - b);
+}
+
 function parseShard(raw: string | undefined): { index: number; count: number } {
   if (raw === undefined || raw.trim() === '') throw new Error('Missing value for --shard');
   const parts = raw.split('/');
@@ -179,6 +208,7 @@ export function parseSweepArgs(argv: readonly string[]): SweepOptions | { help: 
     rowsDir: DEFAULT_ROWS_DIR,
     aggregateDir: DEFAULT_AGGREGATE_DIR,
     merge: false,
+    milestoneDays: [],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -199,6 +229,9 @@ export function parseSweepArgs(argv: readonly string[]): SweepOptions | { help: 
       index += 1;
     } else if (arg === '--days') {
       options.days = parsePositiveInteger('--days', argv[index + 1]);
+      index += 1;
+    } else if (arg === '--milestone-days') {
+      options.milestoneDays = parseMilestoneDays(argv[index + 1]);
       index += 1;
     } else if (arg === '--policies') {
       options.policies = parsePolicies(argv[index + 1]);
@@ -264,7 +297,16 @@ function runSweep(options: SweepOptions): void {
   for (let seed = options.seedStart; seed <= lastSeed; seed += 1) {
     if (!inShard(seed, options)) continue;
     for (const policy of options.policies) {
-      rows.push(summarizeReport(runCampaign(seed, options.days, policy)));
+      rows.push(
+        summarizeReport(
+          runCampaign(
+            seed,
+            options.days,
+            policy,
+            options.milestoneDays.length === 0 ? {} : { milestoneDays: options.milestoneDays },
+          ),
+        ),
+      );
       completed += 1;
       if (completed % 25 === 0 || completed === planned) {
         process.stderr.write(

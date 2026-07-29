@@ -1,6 +1,7 @@
 import {
   FLAWS,
   Stat,
+  COMBAT_SALVAGE_PER_TIER,
   RUN_FUEL_COST,
   FIGHT_FUEL_COST,
   TRIBUTE_BASE_MULTIPLIER,
@@ -155,12 +156,23 @@ function resolveEncounter(
   events: GameEvent[],
   resolution: 'escaped' | 'talked-down' | 'defeated' | 'interceptor-fled' | 'interceptor-escaped',
 ): void {
+  // R2c · PAY THE VICTORY. A destroyed interceptor leaves a wreck worth
+  // COMBAT_SALVAGE_PER_TIER per tier (content combat.ts — the same 150/tier the
+  // NPC side has always paid its own combat wins). ONLY on 'defeated': the other
+  // resolutions are exits or escapes, not kills, and leave nothing to strip.
+  // Consumes no rng, so no golden's roll order moves.
+  const salvageCredits =
+    resolution === 'defeated' ? COMBAT_SALVAGE_PER_TIER * encounter.interceptor.tier : 0;
+  if (salvageCredits > 0) {
+    state.player.credits += salvageCredits;
+  }
   events.push({
     type: 'EncounterResolved',
     encounterId: encounter.id,
     resolution,
     round: encounter.round,
     interceptorId: encounter.interceptor.id,
+    ...(salvageCredits > 0 ? { salvageCredits } : {}),
   });
   state.encounter = null;
 

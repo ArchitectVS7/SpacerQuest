@@ -83,6 +83,40 @@ export const FIGHT_FUEL_COST = 50;
  * and `sim/__tests__/balance-combat-survival.test.ts`.
  */
 export const TIER_GAP_DAMAGE_BONUS = 1;
+
+/**
+ * Credits a DESTROYED interceptor's wreck yields, per tier of the interceptor.
+ *
+ * THE PROBLEM THIS EXISTS TO FIX, measured 2026-07-28. Until now `resolveEncounter`
+ * granted no credits under any resolution, so `combatEv` was ≤ 0 **by construction**
+ * — the engine paid nothing for winning a fight, ever. That was survivable only
+ * because a second defect was quietly paying for the guns: the yard's trade-in
+ * ladder was indexed by component STRENGTH rather than by owned TIER, which made
+ * every mid-ladder upgrade free (see `YARD_COMPONENT_TRADE_IN` in upgrades.ts).
+ * Fixing that exposed the real shape of the fighter's economy — its median career
+ * credits fell from 155,059 to **2,825**, i.e. to its own operating reserve, because
+ * it spends its surplus on a fit that cannot pay for itself. An archetype whose
+ * whole strategy is combat cannot be solvent in a game where combat has no income.
+ *
+ * WHY 150/TIER, and why that number is not invented here. The engine ALREADY prices
+ * a combat win at exactly `150 * tier` — on the NPC side, in `npc.ts` `executeCombat`,
+ * where the comment reads "150×tier keeps fighting a living, not a money printer,
+ * next to the shared contract-payment formula." That figure was calibrated against
+ * the same contract economy the player flies. Paying the player's victories at the
+ * NPC rate makes one fiction priced one way for both sides of it, rather than
+ * inventing a second scale.
+ *
+ * SCOPE — deliberately narrow. Paid ONLY on `'defeated'`: you broke the ship, you
+ * take the wreck. A `'interceptor-escaped'` win pays nothing (it flew away under its
+ * own power; there is no wreck), and `'talked-down'`/`'escaped'` are exits, not
+ * victories. This keeps the T-1603c combat table untouched — it adds a payout term,
+ * it does not retune a cost term.
+ *
+ * READERS: `engine/actions/combat.ts` `resolveEncounter` (the grant, stamped onto
+ * `EncounterResolved.salvageCredits`), and `sim/balance/aggregate.ts` `combatEv`,
+ * which now subtracts cost from salvage instead of reporting a negated cost.
+ */
+export const COMBAT_SALVAGE_PER_TIER = 150;
 export const BIG_HIT_MARGIN = 10;
 
 /**

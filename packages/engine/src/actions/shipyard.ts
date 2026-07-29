@@ -1,16 +1,22 @@
-import { SPECIAL_EQUIPMENT, YARD_COMPONENT_TIER_PRICES } from '@spacerquest/content';
+import {
+  RenownRankId,
+  SPECIAL_EQUIPMENT,
+  YARD_COMPONENT_TIER_PRICES,
+  YARD_COMPONENT_TRADE_IN,
+} from '@spacerquest/content';
 import {
   GameEvent,
   GameState,
   PlayerAction,
   ShipComponentId,
+  ShipState,
   ShipyardFail,
   SpecialEquipmentId,
 } from '../types.js';
 import { spendDie } from '../dice.js';
 import { renownRankIndex } from '../deeds.js';
 import { jumpFuelCost, maxJumpDistance } from '../economy.js';
-import { crewCapacity, hasSpecialEquipment, repairRate } from '../components.js';
+import { crewCapacity, hasSpecialEquipment, navFuelFactor, repairRate } from '../components.js';
 import { cloneState } from '../clone.js';
 
 const COMPONENT_IDS: readonly ShipComponentId[] = [
@@ -28,28 +34,82 @@ function isComponentId(value: unknown): value is ShipComponentId {
   return typeof value === 'string' && COMPONENT_IDS.includes(value as ShipComponentId);
 }
 
-function tradeInValue(strength: number): number {
-  if (strength < 1) return 0;
-  if (strength === 1) return 25;
-  if (strength === 2) return 50;
-  if (strength === 3) return 100;
-  if (strength === 4) return 200;
-  if (strength === 5) return 400;
-  if (strength === 6) return 700;
-  if (strength === 7) return 1000;
-  if (strength === 8) return 2000;
-  return 3000;
+/**
+ * N2 · THE CAPTAIN A SHIPYARD ACTION IS PRICED AND APPLIED AGAINST.
+ *
+ * WHY THIS TYPE EXISTS. Every function below used to take `(state: GameState, …)`
+ * and read `state.player.ship` / `.credits` / `.registry` directly, so **an NPC
+ * could not be priced through any of them.** That made N2's instruction to price
+ * NPC upgrades "through the engine's own `quoteShipyard`, never a parallel cost
+ * model" literally impossible, and the path of least resistance was exactly the
+ * parallel cost model the standing constraint forbids (BALANCE-REDESIGN-WORKLIST,
+ * "same rules, no exemptions"; R2c is the warning — the sim's private copy of this
+ * yard ladder had inherited the engine's own bug and so agreed with it *for the
+ * wrong reason*, hiding a live economy defect for months).
+ *
+ * IT IS DELIBERATELY STRUCTURAL, NOT AN ADAPTER. `PlayerState` satisfies it as-is
+ * (`ship`, `credits`, and a `registry` that carries a `renownRank` among its other
+ * fields) and so does `NpcState` (`ship`, `credits`, and no registry at all). So
+ * both captains are passed to the SAME functions with no wrapper object on either
+ * side — which matters for more than tidiness: `applyShipyardMutation` DEBITS
+ * `actor.credits`, and a wrapper would have made that debit land on a copy.
+ *
+ * `registry` IS OPTIONAL, AND ITS ABSENCE IS A RULE, NOT A GAP. Renown gates
+ * special equipment (content `SPECIAL_EQUIPMENT.requiredRenownRank`). An NPC holds
+ * no Renown, so a captain with no registry ranks BELOW every rank on the ladder and
+ * every rank-gated purchase is refused — the same rule the player meets, evaluated
+ * against the standing they actually have. See {@link actorRankIndex}.
+ */
+export interface ShipyardActor {
+  ship: ShipState;
+  credits: number;
+  registry?: { renownRank: RenownRankId };
 }
 
-function componentTierCost(state: GameState, component: ShipComponentId, tier: number): number {
+/** Where the actor stands on the Renown ladder, or `-1` for a captain who holds
+ *  no Renown at all (an NPC). `-1` is strictly below every real rank index, so the
+ *  gate in {@link specialEquipmentFailure} refuses on every gated item without a
+ *  branch of its own — the comparison is unchanged, only its input is honest. */
+function actorRankIndex(actor: ShipyardActor): number {
+  return actor.registry ? renownRankIndex(actor.registry.renownRank) : -1;
+}
+
+/**
+ * What the yard allows against the fit being traded in.
+ *
+ * TWO SCALES, which is the whole point — see `YARD_COMPONENT_TRADE_IN` (content)
+ * for the measured bug this split fixes:
+ *   - **Junker sub-tier range, strengths 1..9.** A component the yard has never
+ *     touched. Indexed by strength, exactly as before, so every junker-start
+ *     component (hull, weapons, shields, cabin) is priced byte-identically to
+ *     the pre-fix behavior.
+ *   - **Bought range, strength >= 10.** `applyShipyardMutation` sets
+ *     `strength = tier * 10`, so the OWNED TIER is `floor(strength / 10)` and the
+ *     ladder is indexed by that. Previously this range fell through to a flat
+ *     3,000 catch-all, which exceeded the list price of tiers 1-7 and made them
+ *     free — on a fresh save the four components that start at strength 10
+ *     (drives, navigation, lifeSupport, robotics) could all be taken to tier 7
+ *     for 0 credits.
+ *
+ * Clamped at tier 9 so a titanium-boosted hull (strength + 10, up to 100) cannot
+ * index past the end of the ladder.
+ */
+function tradeInValue(strength: number): number {
+  if (strength < 1) return 0;
+  if (strength < 10) return YARD_COMPONENT_TRADE_IN[strength - 1];
+  const ownedTier = Math.min(9, Math.floor(strength / 10));
+  return YARD_COMPONENT_TRADE_IN[ownedTier - 1];
+}
+
+function componentTierCost(ship: ShipState, component: ShipComponentId, tier: number): number {
   const price = YARD_COMPONENT_TIER_PRICES[tier - 1];
   if (price === undefined) {
     throw new Error('Invalid shipyard component tier');
   }
 
-  const current = state.player.ship[component];
+  const current = ship[component];
   let tradeStrength = current.strength;
-  if (component === 'hull' && state.player.ship.hasTitaniumHull && tradeStrength > 9) {
+  if (component === 'hull' && ship.hasTitaniumHull && tradeStrength > 9) {
     tradeStrength -= 10;
   }
 
@@ -60,20 +120,20 @@ function rebuildFee(condition: number): number {
   return condition === 0 ? 2000 : 0;
 }
 
-function repairCost(state: GameState, component: ShipComponentId, mode: 'all' | 'single'): number {
-  const current = state.player.ship[component];
+function repairCost(ship: ShipState, component: ShipComponentId, mode: 'all' | 'single'): number {
+  const current = ship[component];
   if (mode === 'single') {
     return current.strength + rebuildFee(current.condition);
   }
   return (9 - current.condition) * current.strength + rebuildFee(current.condition);
 }
 
-function repairAllCost(state: GameState): number {
+function repairAllCost(ship: ShipState): number {
   let cost = 100;
   for (const component of COMPONENT_IDS) {
-    const current = state.player.ship[component];
+    const current = ship[component];
     if (current.condition < 9) {
-      cost += repairCost(state, component, 'all');
+      cost += repairCost(ship, component, 'all');
     }
   }
   return cost;
@@ -114,9 +174,12 @@ export function componentTierForStrength(strength: number): number {
  * hx19, TITANIUM str1 → hx1+5. Only strength 10 (the fix) and the unreachable
  * 11–19 band move. READERS: the `buy-cargo-pods` capacity cap (below),
  * `ShipPreview.maxCargoPods`, and UI `format.ts` `shipComponents`.
+ *
+ * N2 · Takes the SHIP, not the state. It never needed anything else, and an NPC's
+ * pod ceiling has to come from this same rule — `npc.ts` `npcHullStrength` reads it
+ * to seed a hull that licenses the captain's pods instead of guessing one.
  */
-export function maxCargoPodsForShip(state: GameState): number {
-  const ship = state.player.ship;
+export function maxCargoPodsForShip(ship: ShipState): number {
   let hullCapacity = ship.hull.strength;
   if (hullCapacity > 10) {
     hullCapacity -= 10;
@@ -137,13 +200,13 @@ export function maxCargoPodsForShip(state: GameState): number {
 // "intentional engine divergence" note — see docs/BALANCE-POLICY.md v0.1 errata.)
 const HULL_SCALED_EQUIPMENT_PRICE_CAP = 20000;
 
-function specialEquipmentCost(state: GameState, equipment: SpecialEquipmentId): number {
+function specialEquipmentCost(ship: ShipState, equipment: SpecialEquipmentId): number {
   if (equipment === 'CLOAKER') return 500;
   if (equipment === 'AUTO_REPAIR')
-    return Math.min(state.player.ship.hull.strength * 1000, HULL_SCALED_EQUIPMENT_PRICE_CAP);
+    return Math.min(ship.hull.strength * 1000, HULL_SCALED_EQUIPMENT_PRICE_CAP);
   if (equipment === 'ASTRAXIAL_HULL') return 100000;
   if (equipment === 'TITANIUM_HULL')
-    return Math.min(state.player.ship.hull.strength * 1000, HULL_SCALED_EQUIPMENT_PRICE_CAP);
+    return Math.min(ship.hull.strength * 1000, HULL_SCALED_EQUIPMENT_PRICE_CAP);
   return 10000;
 }
 
@@ -164,15 +227,15 @@ function fail(
 }
 
 function ensureCredits(
-  state: GameState,
+  actor: ShipyardActor,
   action: Extract<PlayerAction, { type: 'Shipyard' }>,
   cost: number,
 ): ShipyardFail | null {
-  if (state.player.credits >= cost) return null;
+  if (actor.credits >= cost) return null;
   return fail(action, {
     reason: 'INSUFFICIENT_CREDITS',
     cost,
-    credits: state.player.credits,
+    credits: actor.credits,
   });
 }
 
@@ -223,8 +286,7 @@ function validateSpecialEquipment(
   return action.equipment;
 }
 
-function installSpecialEquipment(state: GameState, equipment: SpecialEquipmentId): void {
-  const ship = state.player.ship;
+function installSpecialEquipment(ship: ShipState, equipment: SpecialEquipmentId): void {
   if (equipment === 'CLOAKER') {
     ship.hasCloaker = true;
     ship.hull.condition = 9;
@@ -252,11 +314,11 @@ function installSpecialEquipment(state: GameState, equipment: SpecialEquipmentId
 }
 
 function specialEquipmentFailure(
-  state: GameState,
+  actor: ShipyardActor,
   action: Extract<PlayerAction, { type: 'Shipyard' }>,
   equipment: SpecialEquipmentId,
 ): ShipyardFail | null {
-  const ship = state.player.ship;
+  const ship = actor.ship;
 
   // T-1601c: the fitted-equipment mapping this guard used to keep private now
   // lives in components.ts `hasSpecialEquipment`, shared with the dice
@@ -332,10 +394,7 @@ function specialEquipmentFailure(
   const requiredRank = SPECIAL_EQUIPMENT.find(
     (entry) => entry.id === equipment,
   )?.requiredRenownRank;
-  if (
-    requiredRank &&
-    renownRankIndex(state.player.registry.renownRank) < renownRankIndex(requiredRank)
-  ) {
+  if (requiredRank && actorRankIndex(actor) < renownRankIndex(requiredRank)) {
     return fail(action, { reason: 'INSUFFICIENT_RENOWN', requiredRank });
   }
 
@@ -378,21 +437,21 @@ function validateShipyardShape(action: Extract<PlayerAction, { type: 'Shipyard' 
  * resolver, the failure check (INSUFFICIENT_CREDITS), and the preview quote.
  */
 export function shipyardCost(
-  state: GameState,
+  actor: ShipyardActor,
   action: Extract<PlayerAction, { type: 'Shipyard' }>,
 ): number {
   if (action.action === 'buy-component-tier') {
     const { component, tier } = validateTierPurchase(action);
-    return componentTierCost(state, component, tier);
+    return componentTierCost(actor.ship, component, tier);
   }
   if (action.action === 'repair') {
     const { component, repairMode } = validateRepair(action);
-    return component ? repairCost(state, component, repairMode) : repairAllCost(state);
+    return component ? repairCost(actor.ship, component, repairMode) : repairAllCost(actor.ship);
   }
   if (action.action === 'buy-cargo-pods') {
     return validateCargoPods(action) * 10;
   }
-  return specialEquipmentCost(state, validateSpecialEquipment(action));
+  return specialEquipmentCost(actor.ship, validateSpecialEquipment(action));
 }
 
 /**
@@ -405,58 +464,68 @@ export function shipyardCost(
  * typed reasons the engine would emit on a real purchase.
  */
 export function shipyardFailure(
-  state: GameState,
+  actor: ShipyardActor,
   action: Extract<PlayerAction, { type: 'Shipyard' }>,
 ): ShipyardFail | null {
+  const ship = actor.ship;
+
   if (action.action === 'buy-component-tier') {
     const { component, tier } = validateTierPurchase(action);
-    return ensureCredits(state, action, componentTierCost(state, component, tier));
+    return ensureCredits(actor, action, componentTierCost(ship, component, tier));
   }
 
   if (action.action === 'repair') {
     const { component, repairMode } = validateRepair(action);
     if (component) {
-      if (state.player.ship[component].condition >= 9) {
+      if (ship[component].condition >= 9) {
         return fail(action, { reason: 'AT_MAX_CONDITION' });
       }
-      return ensureCredits(state, action, repairCost(state, component, repairMode));
+      return ensureCredits(actor, action, repairCost(ship, component, repairMode));
     }
-    return ensureCredits(state, action, repairAllCost(state));
+    return ensureCredits(actor, action, repairAllCost(ship));
   }
 
   if (action.action === 'buy-cargo-pods') {
     const quantity = validateCargoPods(action);
-    if (state.player.ship.hull.strength < 1) {
+    if (ship.hull.strength < 1) {
       return fail(action, { reason: 'NO_HULL' });
     }
-    const maxPods = maxCargoPodsForShip(state);
-    if (state.player.ship.cargoPods + quantity > maxPods) {
+    const maxPods = maxCargoPodsForShip(ship);
+    if (ship.cargoPods + quantity > maxPods) {
       return fail(action, { reason: 'CAPACITY_EXCEEDED', maxPods });
     }
-    return ensureCredits(state, action, quantity * 10);
+    return ensureCredits(actor, action, quantity * 10);
   }
 
   const equipment = validateSpecialEquipment(action);
-  const equipmentFailure = specialEquipmentFailure(state, action, equipment);
+  const equipmentFailure = specialEquipmentFailure(actor, action, equipment);
   if (equipmentFailure) return equipmentFailure;
-  return ensureCredits(state, action, specialEquipmentCost(state, equipment));
+  return ensureCredits(actor, action, specialEquipmentCost(ship, equipment));
 }
 
 /**
  * Apply the pure state mutation of a shipyard purchase, ASSUMING it has already
- * passed `shipyardFailure` (caller's responsibility). Mutates `state` in place —
- * `resolveShipyard` runs it on its clone, and `quoteShipyard` runs it on a
- * throwaway clone to project the "after". No die, no events, no validation.
+ * passed `shipyardFailure` (caller's responsibility). Mutates the ACTOR in place —
+ * `resolveShipyard` runs it on its clone's player, `quoteShipyard` runs it on a
+ * throwaway copy to project the "after", and `npc.ts` runs it on the captain's own
+ * private turn copy. No die, no events, no validation.
+ *
+ * IT DOES NOT SYNC `maxFuel`. That is the caller's chokepoint, deliberately and
+ * unchanged from before this took an actor: `day.ts` calls `syncMaxFuel` once at
+ * the end of `applyPlayerAction` so every hull-touching action propagates to the
+ * tank in one place, and several unit tests build a ship with a hand-set `maxFuel`
+ * and call the resolvers directly. The NPC turn honours the same contract by
+ * calling `syncMaxFuel` at its own end of day.
  */
 export function applyShipyardMutation(
-  state: GameState,
+  actor: ShipyardActor,
   action: Extract<PlayerAction, { type: 'Shipyard' }>,
 ): void {
-  const ship = state.player.ship;
+  const ship = actor.ship;
 
   if (action.action === 'buy-component-tier') {
     const { component, tier } = validateTierPurchase(action);
-    state.player.credits -= componentTierCost(state, component, tier);
+    actor.credits -= componentTierCost(ship, component, tier);
     ship[component].strength = tier * 10;
     ship[component].condition = 9;
     if (component === 'hull' && ship.hull.strength > 4) {
@@ -469,7 +538,7 @@ export function applyShipyardMutation(
     const { component, repairMode } = validateRepair(action);
     if (component) {
       const current = ship[component];
-      state.player.credits -= repairCost(state, component, repairMode);
+      actor.credits -= repairCost(ship, component, repairMode);
       // T-1205 robotics → repair rate: a single repair restores `repairRate`
       // condition, not a flat +1. Junker robotics (score 10) restores 1
       // (unchanged); upgraded robotics restores more per action. READER OF
@@ -478,7 +547,7 @@ export function applyShipyardMutation(
         repairMode === 'single' ? Math.min(9, current.condition + repairRate(ship)) : 9;
       return;
     }
-    state.player.credits -= repairAllCost(state);
+    actor.credits -= repairAllCost(ship);
     for (const repairComponent of COMPONENT_IDS) {
       ship[repairComponent].condition = 9;
     }
@@ -487,14 +556,14 @@ export function applyShipyardMutation(
 
   if (action.action === 'buy-cargo-pods') {
     const quantity = validateCargoPods(action);
-    state.player.credits -= quantity * 10;
+    actor.credits -= quantity * 10;
     ship.cargoPods += quantity;
     return;
   }
 
   const equipment = validateSpecialEquipment(action);
-  state.player.credits -= specialEquipmentCost(state, equipment);
-  installSpecialEquipment(state, equipment);
+  actor.credits -= specialEquipmentCost(ship, equipment);
+  installSpecialEquipment(ship, equipment);
 }
 
 /** Build the success event with exactly the fields the action carries — the
@@ -548,7 +617,11 @@ export function resolveShipyard(
   const { hand } = spendDie(nextState.player.dawnHand!, action.spendDie);
   nextState.player.dawnHand = hand;
 
-  const failure = shipyardFailure(nextState, action);
+  // N2 · The player is one ShipyardActor among two; `PlayerState` satisfies the
+  // interface as-is, so this is the same object the rules already read — no
+  // wrapper, which is what keeps `applyShipyardMutation`'s credit debit landing
+  // on the real purse.
+  const failure = shipyardFailure(nextState.player, action);
   if (failure) {
     events.push(failure);
     return { state: nextState, events };
@@ -556,8 +629,8 @@ export function resolveShipyard(
 
   // Cost is snapshot BEFORE mutation (trade-in / hull-scaled prices read current
   // strength); the mutation recomputes it against the same pre-mutation state.
-  const cost = shipyardCost(nextState, action);
-  applyShipyardMutation(nextState, action);
+  const cost = shipyardCost(nextState.player, action);
+  applyShipyardMutation(nextState.player, action);
   events.push(shipyardEvent(action, cost));
   return { state: nextState, events };
 }
@@ -603,16 +676,20 @@ export interface ShipyardQuote {
 }
 
 function shipPreview(
-  state: GameState,
+  ship: ShipState,
   action: Extract<PlayerAction, { type: 'Shipyard' }>,
 ): ShipPreview {
-  const ship = state.player.ship;
   const preview: ShipPreview = {
     cargoPods: ship.cargoPods,
-    maxCargoPods: maxCargoPodsForShip(state),
+    maxCargoPods: maxCargoPodsForShip(ship),
     fuel: ship.fuel,
     maxFuel: ship.maxFuel,
-    fuelPerJump: jumpFuelCost(ship.drives, REF_JUMP_DISTANCE, ship.hasTransWarpDrive ?? false),
+    fuelPerJump: jumpFuelCost(
+      ship.drives,
+      REF_JUMP_DISTANCE,
+      ship.hasTransWarpDrive ?? false,
+      navFuelFactor(ship), // T-1605: nav prices the jump, so the preview must say so
+    ),
     maxJumpDistance: maxJumpDistance(ship.drives, ship.fuel, ship.hasTransWarpDrive ?? false),
     crewCapacity: crewCapacity(ship),
   };
@@ -640,19 +717,28 @@ function shipPreview(
  * real purchase.
  */
 export function quoteShipyard(
-  state: GameState,
+  actor: ShipyardActor,
   action: Extract<PlayerAction, { type: 'Shipyard' }>,
 ): ShipyardQuote {
   validateShipyardShape(action);
-  const cost = shipyardCost(state, action);
-  const failure = shipyardFailure(state, action);
+  const cost = shipyardCost(actor, action);
+  const failure = shipyardFailure(actor, action);
   const ok = failure === null;
-  const before = shipPreview(state, action);
+  const before = shipPreview(actor.ship, action);
   let after = before;
   if (ok) {
-    const clone = cloneState(state);
-    applyShipyardMutation(clone, action);
-    after = shipPreview(clone, action);
+    // N2 · The throwaway is now the ACTOR, not the whole `GameState`. Nothing
+    // outside `{ ship, credits }` is either mutated by `applyShipyardMutation` or
+    // read by `shipPreview`, so this projects exactly what the old `cloneState`
+    // did — for the cost of one ship instead of one world, which is what makes
+    // quoting 30 captains a day affordable.
+    const projected: ShipyardActor = {
+      ship: structuredClone(actor.ship),
+      credits: actor.credits,
+      registry: actor.registry,
+    };
+    applyShipyardMutation(projected, action);
+    after = shipPreview(projected.ship, action);
   }
   return { ok, cost, failure, before, after };
 }
