@@ -7,7 +7,7 @@ import {
   INTENT_STAT_AFFINITY,
   NAV_FUEL_FLOOR,
   NPC_CHECK_DCS,
-  NPC_PROFILES,
+  ALL_NPC_PROFILES,
   NpcIntentType,
   STAR_SYSTEMS,
   distance,
@@ -71,7 +71,7 @@ function npcFor(
   profileId: string,
   overrides: Partial<NpcState> & { fuel?: number } = {},
 ): NpcState {
-  const profile = NPC_PROFILES.find((p) => p.id === profileId)!;
+  const profile = ALL_NPC_PROFILES.find((p) => p.id === profileId)!;
   const { fuel, ...rest } = overrides;
   const ship = npcShipForProfile(profile);
   if (fuel !== undefined) ship.fuel = fuel;
@@ -104,7 +104,7 @@ describe('NPC Resolution', () => {
   });
 
   it('has an intent weight entry for every distinct Ideal in the cast', () => {
-    for (const profile of NPC_PROFILES) {
+    for (const profile of ALL_NPC_PROFILES) {
       expect(
         IDEAL_WEIGHTS[profile.ideal],
         `missing weights for Ideal "${profile.ideal}"`,
@@ -142,7 +142,7 @@ describe('N2 · the day-1 seed (calibration)', () => {
     // hull CONDITION and drives, none of which this step re-seeds. So NPC contract
     // income on day 1 is what it has been since T-106, and any income movement in
     // the sweep is the upgrade decision, not a re-priced board.
-    for (const profile of NPC_PROFILES) {
+    for (const profile of ALL_NPC_PROFILES) {
       const spec = contractSpecFromShip(npcShipForProfile(profile));
       expect(spec).toEqual({
         cargoPods: 2 + profile.tier * 2,
@@ -159,7 +159,7 @@ describe('N2 · the day-1 seed (calibration)', () => {
     // [NAV_FUEL_FLOOR, 1] — and the jump must be priced through it, exactly as the
     // player's is.
     let discounted = 0;
-    for (const profile of NPC_PROFILES) {
+    for (const profile of ALL_NPC_PROFILES) {
       const ship = npcShipForProfile(profile);
       const factor = navFuelFactor(ship);
       expect(factor).toBeLessThanOrEqual(1);
@@ -177,14 +177,14 @@ describe('N2 · the day-1 seed (calibration)', () => {
     // mean the ramp never fired) and not all-discounted (which would mean it fired
     // for everyone, i.e. it is not a specialism).
     expect(discounted).toBeGreaterThan(0);
-    expect(discounted).toBeLessThan(NPC_PROFILES.length);
+    expect(discounted).toBeLessThan(ALL_NPC_PROFILES.length);
   });
 
   it("seeds a hull the yard would license for the captain's hold, and no larger", () => {
     // THE REMOVED EXEMPTION, pinned from the other side. The hull must cover the
     // pods (or the captain is born holding cargo the engine says they cannot) and
     // must be the SMALLEST that does (or the tank is a gift the player never got).
-    for (const profile of NPC_PROFILES) {
+    for (const profile of ALL_NPC_PROFILES) {
       const ship = npcShipForProfile(profile);
       expect(maxCargoPodsForShip(ship)).toBeGreaterThanOrEqual(ship.cargoPods);
       const oneSmaller = { ...ship, hull: { ...ship.hull, strength: ship.hull.strength - 1 } };
@@ -199,14 +199,14 @@ describe('N2 · the day-1 seed (calibration)', () => {
     // The exact inversion of N1's "the ceiling cannot bind". `NPC_START_FUEL` is
     // 1,000 and the player-shaped hull holds 300 (600 at tier 5), so every captain
     // is born full and capped rather than born with four times a player's fuel.
-    for (const profile of NPC_PROFILES) {
+    for (const profile of ALL_NPC_PROFILES) {
       const ship = npcShipForProfile(profile);
       expect(ship.maxFuel).toBeLessThan(NPC_START_FUEL);
       expect(ship.fuel).toBe(ship.maxFuel);
     }
     // And a tier-1 captain now holds exactly what the player's junker holds.
     const junker = starterShip();
-    const lowest = npcShipForProfile({ tier: 1, stats: NPC_PROFILES[0].stats });
+    const lowest = npcShipForProfile({ tier: 1, stats: ALL_NPC_PROFILES[0].stats });
     expect(lowest.maxFuel).toBe(junker.maxFuel);
   });
 
@@ -229,7 +229,7 @@ describe('N2 · the day-1 seed (calibration)', () => {
       robotics: 10,
     };
     const fits = new Set<string>();
-    for (const profile of NPC_PROFILES) {
+    for (const profile of ALL_NPC_PROFILES) {
       const ship = npcShipForProfile(profile);
       const raised = RAMPED.filter((id) => ship[id].strength > BASE[id]);
       expect(raised, `${profile.name} specialisms`).toHaveLength(3);
@@ -249,7 +249,7 @@ describe('N2 · the day-1 seed (calibration)', () => {
     // the one property that must hold is that `componentTierForStrength` floors
     // them onto a rung whose NEXT rung is a strict improvement — otherwise a
     // captain's first purchase would be a downgrade.
-    for (const profile of NPC_PROFILES) {
+    for (const profile of ALL_NPC_PROFILES) {
       const ship = npcShipForProfile(profile);
       for (const id of COMPONENT_IDS) {
         const next = componentTierForStrength(ship[id].strength) + 1;
@@ -445,7 +445,7 @@ describe('T-1201 NPCs roll real checks', () => {
       { credits: 30, fuel: 5 }, // broke & dry: verb executors fall back to Idle
     ];
 
-    for (const profile of NPC_PROFILES) {
+    for (const profile of ALL_NPC_PROFILES) {
       for (const funding of fundings) {
         for (let seed = 1; seed <= 40; seed += 1) {
           const { npc, events } = resolveNpcDay(
@@ -518,7 +518,7 @@ describe('T-1201 NPCs roll real checks', () => {
         expect(check.stat).toBe(INTENT_STAT_AFFINITY[intent]);
         // The recorded modifier is the profile's affinity stat, proving the roll
         // read profile.stats[stat] (not NpcState — stats live on the profile).
-        const profile = NPC_PROFILES.find((p) => p.id === profileId)!;
+        const profile = ALL_NPC_PROFILES.find((p) => p.id === profileId)!;
         expect(check.result.modifier).toBe(profile.stats[INTENT_STAT_AFFINITY[intent]]);
         verified.add(context);
       }

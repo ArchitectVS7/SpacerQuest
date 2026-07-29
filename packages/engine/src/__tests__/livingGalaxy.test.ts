@@ -117,6 +117,7 @@ describe('Disposition — grudges and favors (T-106 / T-1204)', () => {
     // must NOT decay; the next decay lands at the day-3 dusk. This is the slower
     // fade that lets organic gains survive to the bond hook.
     let state = createInitialState(7);
+    state.npcs.forEach(n => { n.currentSystemId = 2; n.disposition = 0; });
     state.npcs[0].disposition = 3;
     state.npcs[1].disposition = -3;
 

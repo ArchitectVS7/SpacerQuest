@@ -10,6 +10,7 @@ import {
   NPC_PATROL_FAIL_CREDITS,
   NPC_PATROL_SUCCESS_CREDITS,
   NPC_PROFILES,
+  ALL_NPC_PROFILES,
   NPC_SOCIALIZE_LOSS_CREDITS,
   NPC_SOCIALIZE_WIN_CREDITS,
   NPC_TRAVEL_FAIL_EXTRA_FUEL,
@@ -414,7 +415,7 @@ const UNKNOWN_CAPTAIN: Pick<NpcProfile, 'tier' | 'stats'> = {
  * a migration must never be the thing that throws (save.ts registry header).
  */
 export function seedNpcShip(profileId: string, carriedFuel: unknown): ShipState {
-  const profile = NPC_PROFILES.find((p) => p.id === profileId);
+  const profile = ALL_NPC_PROFILES.find((p) => p.id === profileId);
   const ship = npcShipForProfile(profile ?? UNKNOWN_CAPTAIN);
   if (typeof carriedFuel === 'number' && Number.isFinite(carriedFuel)) {
     ship.fuel = Math.max(0, Math.min(ship.maxFuel, carriedFuel));
@@ -1039,7 +1040,7 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
   // depth of copy either way, so the cheaper one keeps the line.
   const updatedNpc = JSON.parse(JSON.stringify(npc)) as NpcState;
 
-  const profile = NPC_PROFILES.find((p) => p.id === updatedNpc.profileId);
+  const profile = ALL_NPC_PROFILES.find((p) => p.id === updatedNpc.profileId);
   if (!profile) {
     throw new Error(`Profile not found for NPC ${updatedNpc.id}`);
   }

@@ -1,5 +1,5 @@
 import { CARGO_TYPES } from './cargo.js';
-import { NPC_PROFILES } from './cast.js';
+import { ALL_NPC_PROFILES } from './cast.js';
 import { DEEDS, RENOWN_RANKS } from './deeds.js';
 import { ERA_EVENTS_BY_ID } from './eraEvents.js';
 import { FACTION_IDS } from './factions.js';
@@ -106,7 +106,7 @@ function validateEffects(
   );
 
   effects.disposition?.forEach((effect, index) => {
-    if (!NPC_PROFILES.some((npc) => npc.id === effect.npcId)) {
+    if (!ALL_NPC_PROFILES.some((npc) => npc.id === effect.npcId)) {
       errors.push(`${path}.disposition[${index}].npcId is not a valid NPC ID`);
     }
     validateInteger(errors, `${path}.disposition[${index}].delta`, effect.delta);
@@ -222,7 +222,7 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
     }
 
     if (storylet.trigger.npc) {
-      if (!NPC_PROFILES.some((npc) => npc.id === storylet.trigger.npc?.id)) {
+      if (!ALL_NPC_PROFILES.some((npc) => npc.id === storylet.trigger.npc?.id)) {
         errors.push(`${path}.trigger.npc.id is not a valid NPC ID`);
       }
       validateNumberMatcher(

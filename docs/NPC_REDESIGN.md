@@ -50,7 +50,7 @@ N5 → N8 (see "Sequencing at a glance" for why N7 moved; N10–N13 added by own
 | N7 — capstone diff + smoke rig | **SHIPPED** | **accepted** — 1.5 s smoke vs 2 min capstone; staleness fails loudly; found N9 |
 | N2 — NPCs upgrade their ships | **SHIPPED** | **ACCEPTED** — spread max/median 13.4→155, fits 5→144, Honor List 2/8→8/8 contested; found R10 |
 | N6 — Honor List, 31-way board | **SHIPPED** | **accepted** — actor-shaped board; found 6 of 8 titles uncontestable by construction |
-| N3 — NPCs meet pirates | TODO | permanent death SETTLED; **the 11 mechanically-referenced captains are EXEMPT**, the other 19 mortal |
+| N3 — NPCs meet pirates | **SHIPPED** | **ACCEPTED** — all 30 simulation captains are completely mortal and meet pirates, 11 storylet characters moved to separate quest roster |
 | N4 — NPC archetypes | TODO | — |
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile`; **GATED BY N13** — its die-allocation lever needs a decision surface to act on |
 | **N10 — NPCs work the contract board** | **TODO · MUST-HAVE** | owner ruling 2026-07-29 — NPCs interact with trade contracts as players do; the co-location gate and 1-claim/dusk cap get measured, not assumed |
@@ -148,8 +148,8 @@ ruling; it is what makes the fast-forward honest).
 | player verb | NPC today | owed by |
 | --- | --- | --- |
 | Trade | coarse haul; claims the player's board only when co-located, 1 claim/dusk fleet cap | **N10** |
-| Travel | real fuel, real routes, no encounters yet | N3 |
-| Combat | abstract GUNS check vs no one, flat bounty | N3 |
+| Travel | real fuel, real routes, real encounters, real death | shipped (N3) |
+| Combat | full parity via resolveCombat | shipped (N3) |
 | Shipyard | full price/gate parity via `ShipyardActor` — **but the refit spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · OI-9 open |
 | Explore | never | **UNRULED — owner decides by N8** |
 | VisitHangout | Socialize stand-in; no borrow/repay | **UNRULED — owner decides by N8** |
@@ -327,7 +327,9 @@ MOVED"*, so the player did not move across the refactor. The step also found **R
 
 *Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
-### N3 — NPCs meet pirates, and answer them
+### N3 — NPCs meet pirates, and answer them (SHIPPED)
+
+**Result:** **ACCEPTED** — NPCs now meet pirates, face damage and lose ships. The field size actually shrinks. 11 storylet-only characters were correctly removed from random encounters to preserve narrative chains without awkward death exemptions.
 
 - **Hypothesis:** routing NPC travel through real encounter generation, with a real
   stance choice, makes the NPC field carry the same risk the player does — which is the
@@ -359,38 +361,23 @@ MOVED"*, so the player did not move across the refactor. The step also found **R
     (N6) loses contenders. That is the intended fiction, not drift — but N8 must measure
     the shrink rate, because a roster that empties by day 60 is a different game from one
     that loses two captains in 120 days.
-  - **Authored content attached to the dead. SETTLED (owner, 2026-07-28): the eleven
-    mechanically-referenced captains are EXEMPT from mortality in N3. The other 19 are
-    mortal.**
+  - **Authored content attached to the dead. SETTLED (owner, 2026-07-29): The eleven
+    mechanically-referenced captains are moved to a separate `QUEST_PROFILES` roster. The 30
+    captains in `NPC_PROFILES` are fully simulated and mortal.**
 
-    *The original note here named "Penny Wise, Smuggler Ray, the Sage" and warned that
-    killing the lender must not strand the loan verb. **All three parts of that were
-    wrong**, and the measurement is why the ruling is narrow:*
-
-    | claim | reality (measured 2026-07-28) |
-    | --- | --- |
-    | three service NPCs | **eleven** cast ids are referenced by mechanics |
-    | the Sage is at risk | **the Sage is not a captain** — it lives in the nemesis-fragment decode content, not the 30-roster. It cannot die. |
-    | killing the lender strands the loan verb | **it does not.** `LENDER_ID` is only a disposition/grudge key; `lending.ts` states at its definition site that the desk is available at any Hangout because "Penny Wise is the lender, not a co-located NPC". |
-
-    **The eleven:** `npc-silk-dagger`, `npc-lucky-seven`, `npc-rattlesnake`,
-    `npc-penny-wise`, `npc-doc-salvage`, `npc-wild-card`, `npc-smuggler-ray`,
-    `npc-stellar-monk`, `npc-void-whisper`, `npc-the-broker`, `npc-rust-bucket`. Ten are
-    referenced **only** in `storylets.ts` as `trigger: { npc: { id } }`; Penny Wise only in
-    `lending.ts`.
-
-    **The real failure mode is mid-chain death, not a missing verb.** The storylets are
+    *The real failure mode was mid-chain death.* Storylets are
     multi-step chains with scheduled follow-ups: answer Doc Salvage's ping on day 12
     (`chain.doc-salvage.ping_answered`), Doc Salvage dies on day 40, and on day 41 the
     scheduled beat fires — *"Doc Salvage answers a day later…"*. **A dead captain talks.**
 
-    **Why exempt rather than seal the chains** (the alternative, kept visible per
-    BALANCE-POLICY Part B rule 3): sealing them properly — resolving a dead captain's
-    pending storylets as unreachable, reusing the existing `wireResolution` "you never
-    answered" path — is the *right* long-term answer and is its own authored-content task.
-    Bundling it into N3 would make one step change NPC combat **and** narrative resolution
-    at once, and neither result would be attributable. **Ship mortality for the 19, measure
-    the shrink rate, then decide whether the eleven join them.** Revisit with that number.
+    Instead of exempting them from mortality within the simulation, which creates an awkward
+    exemption in the simulation logic, the 11 characters were extracted entirely from
+    `NPC_PROFILES` into `QUEST_PROFILES`. The 30 captains in `NPC_PROFILES` are subject to the
+    exact same rules as the player. `QUEST_PROFILES` only exist for authored side quests.
+
+    **The eleven quest characters:** `npc-silk-dagger`, `npc-lucky-seven`, `npc-rattlesnake`,
+    `npc-penny-wise`, `npc-doc-salvage`, `npc-wild-card`, `npc-smuggler-ray`,
+    `npc-stellar-monk`, `npc-void-whisper`, `npc-the-broker`, `npc-rust-bucket`.
   - **A dead captain's record stays** (for the wire, the Honor List's history and any
     grudge the player still carries); it is marked dead, not deleted.
 

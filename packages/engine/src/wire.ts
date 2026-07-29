@@ -1,4 +1,4 @@
-import { NAT_WIRE_TEMPLATES, NPC_PROFILES, Stat, WireStoryCategory } from '@spacerquest/content';
+import { NAT_WIRE_TEMPLATES, NPC_PROFILES, ALL_NPC_PROFILES, Stat, WireStoryCategory } from '@spacerquest/content';
 import { GameEvent, NpcState } from './types.js';
 import { SeededRng } from './rng.js';
 
@@ -50,7 +50,7 @@ export function natWireStories(
       const loser = pickGambleLoser(event.actor, npcs, rng, playerSystemId);
       if (loser) {
         loserName = loser.name;
-        loserShip = NPC_PROFILES.find((p) => p.id === loser.profileId)?.shipName ?? 'ship';
+        loserShip = ALL_NPC_PROFILES.find((p) => p.id === loser.profileId)?.shipName ?? 'ship';
       } else {
         // No rival to lose the ship to (degenerate single-NPC roster) — fall back
         // to a generic bucket so the "always emit" guarantee never drops an entry.

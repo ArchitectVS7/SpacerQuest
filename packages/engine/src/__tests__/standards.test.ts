@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { distance, NPC_PROFILES, STAR_SYSTEMS } from '@spacerquest/content';
+import { distance, ALL_NPC_PROFILES, STAR_SYSTEMS } from '@spacerquest/content';
 import { createInitialState } from '../state.js';
 import { advanceDay } from '../day.js';
 import { resolveTrade } from '../actions/trade.js';
@@ -234,7 +234,7 @@ describe('Contracts', () => {
 
 describe('Flaws trigger only when touched (PRD §6)', () => {
   function npcFor(profileId: string): NpcState {
-    const profile = NPC_PROFILES.find((p) => p.id === profileId)!;
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === profileId)!;
     return {
       id: profile.id,
       name: profile.name,
@@ -248,7 +248,7 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
   }
 
   it('Iron Vex (Bloodthirsty, combat-facing) risks his flaw most days; the check uses HIS flawDc', () => {
-    const profile = NPC_PROFILES.find((p) => p.id === 'npc-iron-vex')!;
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === 'npc-iron-vex')!;
     let flawCheckDays = 0;
     for (let seed = 1; seed <= 200; seed++) {
       const { npc, events } = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), {

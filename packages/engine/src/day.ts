@@ -9,6 +9,8 @@ import {
   LOAN_DEFAULT_DISPOSITION,
   NEMESIS_SYSTEM_ID,
   NPC_PROFILES,
+  QUEST_PROFILES,
+  ALL_NPC_PROFILES,
   STAR_SYSTEMS,
   SUBSISTENCE_FLOOR_CREDITS,
   Stat,
@@ -476,7 +478,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // write. Named `rescuerRef` to make the read-only half explicit at the use sites.
   const rescuerRef = nextState.npcs
     .filter((npc) => {
-      const hook = NPC_PROFILES.find((p) => p.id === npc.profileId)?.bondHook;
+      const hook = ALL_NPC_PROFILES.find((p) => p.id === npc.profileId)?.bondHook;
       return (
         hook !== undefined &&
         npc.disposition >= hook.activateAt &&
@@ -488,7 +490,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // the fuel / lastAction writes below.
   const rescuer = rescuerRef ? mutableNpc(nextState, rescuerRef.id) : null;
   if (rescuer) {
-    const rescuerProfile = NPC_PROFILES.find((p) => p.id === rescuer.profileId);
+    const rescuerProfile = ALL_NPC_PROFILES.find((p) => p.id === rescuer.profileId);
     const hook = rescuerProfile?.bondHook;
     const grit = rescuerProfile?.stats[Stat.GRIT] ?? 0;
     if (hook?.beat === 'drive-off' && nextState.encounter) {
@@ -696,6 +698,8 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   for (const npc of npcOrder) {
     // The bond-hook rescuer already spent their day intervening.
     if (npc.id === intervenedNpcId) continue;
+    // Quest characters do not participate in the daily simulation.
+    if (QUEST_PROFILES.some(q => q.id === npc.profileId)) continue;
     const npcRng = dayRng.fork(`npc-${npc.id}`);
     const canClaim =
       !boardClaimSpent &&

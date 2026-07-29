@@ -13,6 +13,7 @@ import {
   LOAN_TERM_DAYS,
   MEET_DISPOSITION,
   NPC_PROFILES,
+  ALL_NPC_PROFILES,
   RUMOR_EMPTY_LINE,
   RUMOR_QUIET_TEMPLATE,
   RUMOR_TEMPLATES,
@@ -98,7 +99,7 @@ export function hangoutRumors(state: GameState): string[] {
 /** GUILE score of the NPC behind a state id (via its profile — NpcState carries
  *  no stat block, only a `profileId`). Falls back to 0 for an unknown profile. */
 function npcGuile(npc: NpcState): number {
-  return NPC_PROFILES.find((p) => p.id === npc.profileId)?.stats[Stat.GUILE] ?? 0;
+  return ALL_NPC_PROFILES.find((p) => p.id === npc.profileId)?.stats[Stat.GUILE] ?? 0;
 }
 
 /**

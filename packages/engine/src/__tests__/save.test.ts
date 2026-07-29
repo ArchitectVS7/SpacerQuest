@@ -12,7 +12,7 @@ import {
 import {
   FLAWS,
   NEMESIS_SYSTEM_ID,
-  NPC_PROFILES,
+  ALL_NPC_PROFILES,
   RENOWN_DEED_THRESHOLDS,
   SIGNAL_FRAGMENTS,
   type RenownRankId,
@@ -693,9 +693,9 @@ describe('save envelope — v9 → v10 NPC ship migration (N1)', () => {
 
     const loaded = loadSave(v9);
     expect(loaded.seed).toBe(95);
-    expect(loaded.state.npcs).toHaveLength(30);
+    expect(loaded.state.npcs).toHaveLength(ALL_NPC_PROFILES.length);
     for (const npc of loaded.state.npcs) {
-      const profile = NPC_PROFILES.find((p) => p.id === npc.profileId)!;
+      const profile = ALL_NPC_PROFILES.find((p) => p.id === npc.profileId)!;
       // The fit is the tier's — the same mapping createInitialState seeds with.
       const seeded = npcShipForProfile(profile);
       expect(npc.ship.cargoPods).toBe(seeded.cargoPods);
@@ -734,7 +734,7 @@ describe('save envelope — v9 → v10 NPC ship migration (N1)', () => {
       expect(npc.currentSystemId).toBe(live.currentSystemId);
       expect(npc.lastAction).toEqual(live.lastAction);
       // The tank is the save's, clamped to the seeded hull it is being poured into.
-      const seeded = npcShipForProfile(NPC_PROFILES.find((p) => p.id === npc.profileId)!);
+      const seeded = npcShipForProfile(ALL_NPC_PROFILES.find((p) => p.id === npc.profileId)!);
       expect(npc.ship.fuel).toBe(Math.min(seeded.maxFuel, live.ship.fuel));
       expect((npc as unknown as Record<string, unknown>).fuel).toBeUndefined();
     }
@@ -760,7 +760,7 @@ describe('save envelope — v9 → v10 NPC ship migration (N1)', () => {
     expect(() => loadSave(createSave(state, 99))).toThrow(SaveError);
   });
 
-  it('round-trips the whole 30-ship roster byte-identically, at a cost worth naming', () => {
+  it('round-trips the whole roster byte-identically, at a cost worth naming', () => {
     // Constraint 3 in the same commit as the field. The size claim is measured,
     // not asserted with a magic threshold: 30 ShipStates is the whole cost of N1
     // on disk, and the worklist asked for it to be watched.

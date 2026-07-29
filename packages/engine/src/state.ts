@@ -7,7 +7,7 @@ import {
   NpcState,
   ShipState,
 } from './types.js';
-import { NPC_PROFILES, Stat } from '@spacerquest/content';
+import { NPC_PROFILES, QUEST_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, rankForDeedCount } from './deeds.js';
 import { npcShipForProfile, seedNpcShip } from './npc.js';
 import { calculateFuelCapacity, syncMaxFuel } from './economy.js';
@@ -76,7 +76,7 @@ function reconstructEarnedDeeds(eventLog: readonly GameEvent[]): EarnedDeedState
  */
 export function createInitialState(seed: number, edition: Edition = 'full'): GameState {
   // Initialize the cast
-  const npcs: NpcState[] = NPC_PROFILES.map((p, index) => ({
+  const npcs: NpcState[] = [...NPC_PROFILES, ...QUEST_PROFILES].map((p, index) => ({
     id: p.id,
     name: p.name,
     profileId: p.id,
