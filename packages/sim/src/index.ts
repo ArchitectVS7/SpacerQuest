@@ -1,4 +1,5 @@
 import {
+  CREW_ROLES,
   DARE_MAX_WAGER,
   DARE_MIN_WAGER,
   EXPLORATION_FUEL_COST,
@@ -12,6 +13,7 @@ import {
   YARD_COMPONENT_TIER_PRICES,
   distance as systemDistance,
   isGatedDestination,
+  type DiceBenefit,
   type PowerTier,
   type RenownRankId,
 } from '@spacerquest/content';
@@ -19,15 +21,21 @@ import {
   FIGHT_FUEL_COST,
   RUN_FUEL_COST,
   calculateFuelCapacity,
+  componentTierForStrength,
   createInitialState,
+  crewCapacity,
+  dawnDiceModifiers,
   decodedFragmentCount,
+  demoLocked,
   endDay,
+  equipmentDiceBenefits,
   fragmentCount,
   hasAnyUndecoded,
   hasFragment,
   isCarryingIllicit,
   jumpFuelCost,
   navBonus,
+  quotePort,
   quoteShipyard,
   renownRankIndex,
   startDay,
@@ -1846,6 +1854,359 @@ function planLoanRepay(state: GameState, ledger: DieLedger): PlayerAction | null
   return { type: 'VisitHangout', venue: 'repay', amount: outstanding, spendDie: die };
 }
 
+// ---------------------------------------------------------------------------
+// N9 (docs/BALANCE-REDESIGN-WORKLIST.md) · THE THREE VERBS THE INSTRUMENT NEVER
+// PLAYED — `Reroll`, `Crew` and `Port`.
+//
+// THE DEFECT, as N7 measured it: this file emitted `type: 'Crew'` 0 times,
+// `type: 'Port'` 0 times and `type: 'Reroll'` 0 times, across every policy and
+// every sweep ever run. All three are first-class `PlayerAction` members the
+// engine fully resolves (actions/crew.ts, actions/port.ts), and all three ARE
+// advertised by `protocol.ts` — the UGT adapter a human-driven headless client
+// plays through. So the GAME supports them and the BALANCE INSTRUMENT never used
+// them: `player.crew.length` was 0 at every percentile across 8,000 careers.
+//
+// This is the same class of defect as R0a (a stale tribute oracle) and R2a (a
+// self-imposed upgrade ceiling), one level larger, and it is fixed the same way
+// — by letting the instrument play the game a competent player would.
+//
+// THE STRUCTURAL FACT THAT SHAPES THE WHOLE DESIGN, and the reason these three
+// are ONE change rather than three: they are a chain, not a set.
+//   * a `Reroll` charge exists only while a crew member GRANTS one — `rollDawnHand`
+//     seeds `rerollsRemaining` from `dawnDiceModifiers`, whose only live source is
+//     the crew roster (`EQUIPMENT_DICE_BENEFITS` ships empty). No crew, no reroll,
+//     ever. That is why the verb had never fired: nothing could have fired it.
+//   * a `Crew` hire needs a free CABIN BERTH — `crewCapacity` is
+//     `1 + floor(cabin.strength / CREW_PER_CABIN_STRENGTH)`, and the junker cabin
+//     berths exactly one. The whole three-role roster needs cabin strength 20,
+//     which is yard tier 2 — 50 and 100 credits off `YARD_COMPONENT_TIER_PRICES`,
+//     less trade-in. The cheapest unbought progression in the game, and no policy
+//     had ever bought it either.
+// So "give the policies the crew verb" necessarily means "let them buy berths",
+// and "give them the reroll verb" necessarily means "let them hire the reroll
+// crew". A design that skipped either link would emit the verb zero times again.
+//
+// NEVER RESTATE AN ENGINE RULE (R2c's standing warning: the sim's private copy of
+// the yard ladder inherited the engine's bug and so agreed with it for the wrong
+// reason). Every precondition and every price below is asked of the engine or read
+// from content:
+//   * berth count → engine `crewCapacity`; next cabin tier → engine
+//     `componentTierForStrength`; its price → engine `quoteShipyard` (via
+//     `componentTierNetCost`);
+//   * hire price / wage / benefit → content `CREW_ROLES`, never a literal;
+//   * the reroll floor → engine `dawnDiceModifiers` + `equipmentDiceBenefits`,
+//     the exact pair `resolveReroll` applies to a re-rolled die;
+//   * the port buy → engine `quotePort(...).ok`, which IS `resolvePortPurchase`'s
+//     own rule order and the predicate `protocol.ts` and the UI's ledger pane
+//     already gate on;
+//   * the two demo locks → engine `demoLocked`, so a policy can never burn a die
+//     on a typed `ActionBlocked`.
+// The only numbers authored here are POLICY tuning (when a captain judges a hire
+// or a stake worth it), which is the same latitude `TRADER_LOAN_MARKER_WINDOW`
+// and `FIGHTER_RESERVE` already take, and they live here rather than in
+// `packages/content` for the same reason: content holds the rules' data, not an
+// instrument's heuristics.
+//
+// WHO GETS THE VERBS. Every COMPETENT policy (trader, smuggler, gambler, fighter,
+// explorer, veteran) plus `trader-degraded`, which is the trader's own planner
+// with R1's slips layered on and must not be allowed to diverge strategically
+// from the captain it degrades. `greedy` is deliberately UNTOUCHED: it runs
+// `greedyTraderPolicy`, a separate function, and R0a used exactly that separation
+// as the control proving a sweep diff came from one code path and nothing else.
+// It is the cautionary control here too, and a byte-identical `greedy` row is
+// this change's proof of attribution.
+// ---------------------------------------------------------------------------
+
+/** Faces on the die the engine deals a dawn hand from (`SeededRng.d20`). Not a
+ *  balance number — the identity of the die — and the sole reason it is named
+ *  here is that `expectedFreshDieFace` has to integrate over it. */
+const D20_FACES = 20;
+
+/**
+ * The expected face of a FRESHLY re-rolled die, under whatever floor the captain
+ * currently has. `resolveReroll` computes its result as `max(rng.d20(), floor)`
+ * with the floor taken from `dawnDiceModifiers(crew, equipmentDiceBenefits(ship))`
+ * — so this asks those same two engine functions rather than assuming 10.5, and a
+ * captain who hires the floor crew correctly values their re-rolls higher
+ * (floor 5 → 11.0 rather than 10.5).
+ */
+function expectedFreshDieFace(state: GameState): number {
+  const { floor } = dawnDiceModifiers(state.player.crew, equipmentDiceBenefits(state.player.ship));
+  let total = 0;
+  for (let face = 1; face <= D20_FACES; face += 1) total += Math.max(face, floor);
+  return total / D20_FACES;
+}
+
+/**
+ * Spend a re-roll charge on the SHARPEST unspent die when that die is worse than
+ * a fresh one would be expected to be.
+ *
+ * WHY THE SHARPEST AND NOT THE DULLEST. The hand is dealt descending, and every
+ * planner in this file spends `takeBest()` (index 0) on the day's one action that
+ * actually rolls a check — the jump, the stance, the sweep — and `takeWorst()` on
+ * the rote ones (sign, refuel, yard, hire), which roll nothing. Improving the
+ * dull end therefore buys nothing at all; improving the top of the hand is the
+ * whole value of the charge. And if the sharpest die is below the expected fresh
+ * face, so is every other die in the hand, so the re-roll is +EV by construction.
+ *
+ * COSTS NO DIE — only a `rerollsRemaining` charge (engine `resolveReroll`), so
+ * this never competes with the day's income actions and takes nothing from the
+ * ledger. It must be queued FIRST in the batch, because it rewrites the face at
+ * `dieIndex` IN PLACE and every later action in the plan names dice by index.
+ *
+ * THE HONEST LIMITATION, stated because it makes this policy strictly WEAKER than
+ * the human it models: `runCampaign` asks a policy for the whole day's batch at
+ * dawn and then applies it, so the re-roll is committed BLIND — the planner never
+ * sees the new face and cannot re-plan around it, where a player at the HandDock
+ * does. The instrument therefore under-states the verb's value; it cannot
+ * over-state it.
+ *
+ * Preconditions mirror `resolveReroll` exactly (a hand, a banked charge, an
+ * in-range unspent index), so the action can never resolve to a typed
+ * `DiceRerolled{failReason}`.
+ */
+function planReroll(state: GameState): PlayerAction | null {
+  const hand = state.player.dawnHand;
+  if (!hand) return null;
+  if ((hand.rerollsRemaining ?? 0) <= 0) return null;
+  const dieIndex = hand.spent.findIndex((spent) => !spent);
+  if (dieIndex < 0 || dieIndex >= hand.dice.length) return null;
+  if (hand.dice[dieIndex] >= expectedFreshDieFace(state)) return null;
+  return { type: 'Reroll', dieIndex };
+}
+
+/**
+ * Queue today's re-roll, if one is worth a charge, AHEAD of the plan it is meant
+ * to improve. Every competent policy funnels its returns through this, including
+ * the encounter and single-storylet branches — a weak top die matters most on
+ * exactly the days that come down to one check. `Reroll` costs no die and is
+ * exempt from day.ts's active-encounter block (T-1306), so prepending it is
+ * always legal and never displaces an income action.
+ */
+function withReroll(state: GameState, actions: PlayerAction[]): PlayerAction[] {
+  const reroll = planReroll(state);
+  return reroll ? [reroll, ...actions] : actions;
+}
+
+/** Days of payroll a captain wants covered, on top of the operating reserve,
+ *  before signing a hand. Not arbitrary: an unpayable crew WALK at dusk (day.ts
+ *  endDay dismisses the whole roster and charges nothing), and the hire price is
+ *  not refunded — so hiring into a purse that cannot make payroll burns the fee
+ *  outright. Ten days is a working stretch either side of one bad run. */
+const CREW_WAGE_RUNWAY_DAYS = 10;
+
+/** How many times over the free capital must cover a port stake before a captain
+ *  buys one. A stake is ILLIQUID and, at R2d's 1991 price curve, pays back in
+ *  154–1,043 dusks — far beyond a 120-day sweep — so it is bought as a status and
+ *  control asset out of genuine surplus, never out of working capital. Halving
+ *  the surplus is the plainest form of "don't put more than half your free money
+ *  into one thing you cannot sell". */
+const PORT_SURPLUS_COVER = 2;
+
+/**
+ * Rank the dice benefits a hire can grant, strongest first, by KIND — never by
+ * role id, so a content edit that re-prices or renames a role, or adds a fourth,
+ * needs no change here.
+ *   0 `extra-die` — a whole extra action every day for the rest of the career.
+ *   1 `reroll`    — one targeted re-draw a day on the die that carries the check.
+ *   2 `floor`     — a smaller uplift, but on EVERY die; it also removes the nat-1
+ *                   auto-fail (`check()`), which is why it is not last by much.
+ */
+function crewBenefitRank(benefit: DiceBenefit): number {
+  if (benefit.kind === 'extra-die') return 0;
+  if (benefit.kind === 'reroll') return 1;
+  return 2;
+}
+
+/** One die-costed captain's-overhead purchase, priced before it is committed. */
+interface OverheadPick {
+  cost: number;
+  make: (spendDie: number) => PlayerAction;
+}
+
+/** What `planCaptainOverhead` decided: the queued actions and the credits they
+ *  commit, so the caller can hold that money back from the Guild marker exactly
+ *  as it already holds back the refuel. */
+interface CaptainOverhead {
+  actions: PlayerAction[];
+  cost: number;
+}
+
+const NO_OVERHEAD: CaptainOverhead = { actions: [], cost: 0 };
+
+/**
+ * Buy the next cabin tier — the BERTHS the crew roster needs. Fires only once the
+ * berths already fitted are full, so a captain never buys space before filling
+ * the space they have. Stops at `CREW_ROLES.length`: there is no reason to fit a
+ * cabin larger than the whole hireable roster, and doing so would be exactly the
+ * "buy it because it is buyable" behaviour R2a's ceiling finding warns against in
+ * the other direction.
+ */
+function planBerthUpgrade(state: GameState, spendable: number): OverheadPick | null {
+  const ship = state.player.ship;
+  const berths = crewCapacity(ship);
+  if (berths >= CREW_ROLES.length) return null;
+  if (state.player.crew.length < berths) return null;
+  const tier = componentTierForStrength(ship.cabin.strength) + 1;
+  if (YARD_COMPONENT_TIER_PRICES[tier - 1] === undefined) return null;
+  const cost = componentTierNetCost(state, 'cabin', tier);
+  if (!Number.isFinite(cost) || cost > spendable) return null;
+  return {
+    cost,
+    make: (spendDie) => ({
+      type: 'Shipyard',
+      action: 'buy-component-tier',
+      component: 'cabin',
+      tier,
+      spendDie,
+    }),
+  };
+}
+
+/**
+ * Sign the strongest hand the purse can carry and the cabin can berth.
+ *
+ * PRIORITY ORDER IS CONTENT'S OWN CLAIM, not an invention here: crew.ts prices
+ * "the extra-die Second [as] the dearest (the strongest benefit — a whole extra
+ * action's worth of die), the navigator's re-roll mid, and the quartermaster's
+ * floor the cheapest", and `crewBenefitRank` reads that ordering off the benefit
+ * KIND so a content re-price cannot desynchronise it.
+ *
+ * Preconditions mirror `resolveCrew` + day.ts's demo gate exactly — the role
+ * exists and is not aboard, a berth is free, the price is covered — so the hire
+ * can never resolve to a typed `CrewEvent{failed}` or `ActionBlocked`.
+ */
+function planCrewHire(state: GameState, spendable: number): OverheadPick | null {
+  if (demoLocked(state, 'crew-progression')) return null;
+  const crew = state.player.crew;
+  if (crew.length >= crewCapacity(state.player.ship)) return null;
+  const aboard = new Set(crew.map((member) => member.roleId));
+  const wanted = CREW_ROLES.filter((role) => !aboard.has(role.id)).sort(
+    (a, b) => crewBenefitRank(a.benefit) - crewBenefitRank(b.benefit),
+  );
+  for (const role of wanted) {
+    if (role.hirePrice + role.dailyWage * CREW_WAGE_RUNWAY_DAYS > spendable) continue;
+    return {
+      cost: role.hirePrice,
+      make: (spendDie) => ({ type: 'Crew', action: 'hire', roleId: role.id, spendDie }),
+    };
+  }
+  return null;
+}
+
+/**
+ * Buy the controlling stake in the port the captain is STANDING IN — the only
+ * port `resolvePortPurchase` will sell them.
+ *
+ * The legality test is `quotePort(...).ok`, which is the engine's own preview and
+ * runs `resolvePortPurchase`'s rules in its own order (at-port, purchasable, not
+ * already owned, affordable). Nothing about the port ladder is restated here.
+ *
+ * One COMPETENCE rule on top of legality — the marker-first rule that gates all
+ * three verbs lives in `planCaptainOverhead`, and content's ports.ts states it
+ * for this one directly ("the cheapest stake is a deliberate trap DURING [Tour
+ * One] — 65cr/dusk against a 25,000cr marker on a 30-day clock never pays"): the
+ * stake must cost no more than 1/PORT_SURPLUS_COVER of the free capital.
+ *
+ * STATED PLAINLY, because it is the thing to read this arm's numbers against:
+ * inside a 120-day window a stake is a NET CREDIT LOSS at R2d's prices — the
+ * shortest payback on the board is 154 dusks. A captain buys one because the
+ * career is longer than the measurement, and the sweep will score that as
+ * poorer. That is a true consequence of the shipping price curve, not an
+ * instrument defect, and it is why this verb is graded as its own arm.
+ */
+function planPortStake(state: GameState, spendable: number): OverheadPick | null {
+  if (demoLocked(state, 'port-ownership')) return null;
+  const systemId = state.player.currentSystemId;
+  const quote = quotePort(state, systemId);
+  if (!quote.ok) return null;
+  if (quote.cost * PORT_SURPLUS_COVER > spendable) return null;
+  return {
+    cost: quote.cost,
+    make: (spendDie) => ({ type: 'Port', action: 'buy', systemId, spendDie }),
+  };
+}
+
+/**
+ * THE CAPTAIN'S OVERHEAD — at most ONE die-costed purchase a day, taken with the
+ * DULLEST remaining die, after the day's income actions are already queued, and
+ * only out of the surplus left once the whole Guild marker is held back.
+ *
+ * THE MARKER-FIRST RULE IS THE HOUSE RULE, and it is recorded here with the
+ * measurement that put it back, per BALANCE-POLICY Part B rule 3. It is the same
+ * rule R2c imposed on the fighter's kit after an ungated version spiralled to a
+ * 4,253,290-credit marker, and the same one `traderPolicy` states at its rim
+ * preference: the marker "is the Tour One failure condition and the acceptance's
+ * clear-rate band, so the trader finishes paying the Guild before it starts
+ * flying the long, expensive, lucrative rim legs."
+ *
+ * THE COUNTER-ARGUMENT WAS TRIED FIRST AND MEASURED FALSE. This planner was
+ * originally written WITHOUT the gate, on the argument that crew are a throughput
+ * purchase — an extra die is an extra contract, which is how the marker gets paid
+ * — and that 7,500 credits of hiring is nothing beside a 100,000-credit kit
+ * ladder. A full capstone (1,000 seeds x 120 days, N9 arm `n9-crew`) says
+ * otherwise, and says it in the fuel:
+ *   * trader clear rate 0.916 -> 0.759, clear day 21 -> 25, final credits
+ *     80,305 -> 63,892, fuel-starved days/career 0.14 -> 1.08;
+ *   * smuggler clear rate 0.535 -> 0.210, clear day 30 -> 44, ships lost
+ *     72 -> 204; fleet ships lost 571 -> 816.
+ * The mechanism is the one R2c already documented: credits spent before the
+ * marker clears are credits the marker then compounds against, the flagged board
+ * pays worse, and a captain who cannot fill the tank meets interceptors with
+ * tribute as the only stance left. The throughput premise ALSO failed on its own
+ * terms — the trader's day is a two-run plan that uses at most five dice, so the
+ * sixth die a First Officer grants buys it no extra contract at all. Both halves
+ * of the argument for skipping the gate are therefore refuted, and the gate goes
+ * back where every other discretionary purchase in this file already has one.
+ *
+ * Three further properties, each deliberate:
+ *   * ONE per day. Berths, hires and stakes all read the DAWN state, so two in a
+ *     batch would be planned against preconditions the first one has already
+ *     moved (a hire into a berth the same batch is still buying). Mirroring the
+ *     engine exactly means planning against the state the engine will see.
+ *   * DULLEST die, like every other rote purchase in this file — none of these
+ *     three actions rolls a check.
+ *   * LAST in the plan, so the ledger is already empty on a full working day and
+ *     the shopping simply does not happen. That is what keeps `incomeActionCount`
+ *     where it was and the poverty-trap invariant (`longestZeroIncomeStreak < 5`)
+ *     untouched — the same rule `planLoanBorrow` states for itself.
+ *
+ * `committed` is the credits the rest of today's plan has already spent (refuel,
+ * repayment, less any advance), so affordability is judged on what will really be
+ * in the purse, not on the dawn balance.
+ */
+function planCaptainOverhead(
+  state: GameState,
+  ledger: DieLedger,
+  reserve: number,
+  committed = 0,
+): CaptainOverhead {
+  if (state.encounter) return NO_OVERHEAD;
+  if (ledger.remaining() === 0) return NO_OVERHEAD;
+  // THE MARKER COMES OUT FIRST. `spendable` is what is left after the operating
+  // reserve, what the rest of today's plan has already committed, AND THE WHOLE
+  // OUTSTANDING GUILD MARKER — see the block comment above for the capstone that
+  // put this term back. Expressed as a hold rather than a hard `debt === 0`
+  // block on purpose: a captain sitting on 60,000 credits against a 25,000
+  // marker is not being reckless by signing a 3,000-credit second, and a hard
+  // block would silence all three verbs for the whole career of any policy that
+  // never clears (the explorer clears on 0.00 of seeds, the veteran on 0.001) —
+  // which would re-create the exact blind spot this step exists to remove.
+  // Callers that can carry a Penny Wise balance pass it inside `reserve`, the
+  // same way they already do for `planDebtPayment`.
+  const spendable = state.player.credits - committed - reserve - state.player.debt;
+  if (spendable <= 0) return NO_OVERHEAD;
+
+  const pick =
+    planBerthUpgrade(state, spendable) ??
+    planCrewHire(state, spendable) ??
+    planPortStake(state, spendable);
+  if (!pick) return NO_OVERHEAD;
+  const die = ledger.takeWorst();
+  if (die === undefined) return NO_OVERHEAD;
+  return { actions: [pick.make(die)], cost: pick.cost };
+}
+
 // T-1102: the largest share of the tank a single contract's jump may cost. Below
 // 1.0 so a run leaves fuel/credit margin to re-fly after an encounter-run and to
 // pay tribute — the headroom that keeps the scarcity economy out of deadlock.
@@ -1874,7 +2235,7 @@ export const traderPolicy: SimPolicy = ({ state }) => planTraderDay(state, null)
  *  (pinned in `campaign-degraded.test.ts`). */
 function planTraderDay(state: GameState, degradation: PilotDegradation | null): PlayerAction[] {
   const ledger = dieLedger(state, degradation);
-  if (state.encounter) return planPacifistCombat(state, ledger);
+  if (state.encounter) return withReroll(state, planPacifistCombat(state, ledger));
 
   const ship = state.player.ship;
   const from = state.player.currentSystemId;
@@ -2164,15 +2525,25 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
   // that costs far more than the days of marker payment it defers. A repayment
   // queued TODAY needs no such hold; it is already committed spending instead.
   const loanHold = state.player.loan && !repay ? state.player.loan.outstanding : 0;
+  // N9 · The captain's overhead — berths, crew, a port stake — with whatever dull
+  // die the working day left over, and BEFORE the marker payment is sized so the
+  // money it commits is held back from the Guild exactly as the refuel is.
+  const overhead = planCaptainOverhead(
+    state,
+    ledger,
+    TRADER_RESERVE + loanHold,
+    refuelCost + repaid - borrowed,
+  );
+  actions.push(...overhead.actions);
   const debtPayment = planDebtPayment(
     state,
     TRADER_RESERVE + loanHold,
-    refuelCost + repaid,
+    refuelCost + repaid + overhead.cost,
     borrowed,
   );
   if (debtPayment) actions.push(debtPayment);
 
-  return actions.length > 0 ? actions : [{ type: 'Wait' }];
+  return withReroll(state, actions.length > 0 ? actions : [{ type: 'Wait' }]);
 }
 
 /**
@@ -2353,7 +2724,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // ALREADY happened by the time this runs — `applyPatrolContrabandScan` fires
   // at interdiction inside resolveTravel, before any stance is chosen — so no
   // combat choice here can suppress a scan or change its outcome.
-  if (state.encounter) return planPacifistCombat(state, ledger);
+  if (state.encounter) return withReroll(state, planPacifistCombat(state, ledger));
 
   const actions: PlayerAction[] = [];
   const ship = state.player.ship;
@@ -2367,7 +2738,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     if (storyletAction.type === 'Storylet' && storyletAction.spendDie === undefined) {
       actions.push(storyletAction);
     } else {
-      return [storyletAction];
+      return withReroll(state, [storyletAction]);
     }
   }
 
@@ -2705,11 +3076,32 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // 12, 16 and 19 idled 7, 7 and 5). The high floor still applies on a normal
   // working day, because exploring down to the last credit on days that ALREADY
   // earn is its own spiral (measured at a flat 500 floor: seed 1 idled 183 days).
+  // T-1601a's protection, ported: while a Penny Wise balance is live and unpaid
+  // today, hold it back on top of the operating reserve rather than sending it to
+  // the Guild. A defaulted loan grudge-weights Penny Wise into the interceptor
+  // draw AND multiplies the encounter chance until cleared; a late marker does
+  // neither.
+  const loanHold = state.player.loan && !repay ? state.player.loan.outstanding : 0;
+
+  // N9 · The captain's overhead. Placed AHEAD of the Explore loop below and
+  // nowhere else it could go: that loop drains every remaining die by design, so
+  // a shopping planner queued after it would be handed an empty ledger on every
+  // fuelled, solvent day — the smuggler and the explorer would have gone on
+  // emitting the three verbs exactly zero times. It still runs after the day's
+  // contract and travel actions, so it never displaces the income work.
+  const overhead = planCaptainOverhead(
+    state,
+    ledger,
+    SMUGGLER_RESERVE + loanHold,
+    refuelCost + repaid - borrowed,
+  );
+  actions.push(...overhead.actions);
+
   const exploreFloor = actions.some(isIncomeAction)
     ? SMUGGLER_EXPLORE_RESERVE
     : SMUGGLER_IDLE_EXPLORE_RESERVE;
   while (
-    state.player.credits + borrowed - refuelCost - repaid > exploreFloor &&
+    state.player.credits + borrowed - refuelCost - repaid - overhead.cost > exploreFloor &&
     projectedFuel >= EXPLORATION_FUEL_COST &&
     ledger.remaining() > 0
   ) {
@@ -2719,21 +3111,15 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     projectedFuel -= EXPLORATION_FUEL_COST;
   }
 
-  // T-1601a's protection, ported: while a Penny Wise balance is live and unpaid
-  // today, hold it back on top of the operating reserve rather than sending it to
-  // the Guild. A defaulted loan grudge-weights Penny Wise into the interceptor
-  // draw AND multiplies the encounter chance until cleared; a late marker does
-  // neither.
-  const loanHold = state.player.loan && !repay ? state.player.loan.outstanding : 0;
   const debtPayment = planDebtPayment(
     state,
     SMUGGLER_RESERVE + loanHold,
-    refuelCost + repaid,
+    refuelCost + repaid + overhead.cost,
     borrowed,
   );
   if (debtPayment) actions.push(debtPayment);
 
-  return actions.length > 0 ? actions : [{ type: 'Wait' }];
+  return withReroll(state, actions.length > 0 ? actions : [{ type: 'Wait' }]);
 };
 
 // ---------------------------------------------------------------------------
@@ -2835,7 +3221,7 @@ function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerA
  */
 export const gamblerPolicy: SimPolicy = ({ state }) => {
   const ledger = dieLedger(state);
-  if (state.encounter) return planPacifistCombat(state, ledger);
+  if (state.encounter) return withReroll(state, planPacifistCombat(state, ledger));
 
   const actions: PlayerAction[] = [];
   const ship = state.player.ship;
@@ -2846,7 +3232,7 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
     if (storyletAction.type === 'Storylet' && storyletAction.spendDie === undefined) {
       actions.push(storyletAction);
     } else {
-      return [storyletAction];
+      return withReroll(state, [storyletAction]);
     }
   }
 
@@ -2983,10 +3369,20 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // hold it back from the Guild marker (a default grudge-weights Penny Wise into
   // the interceptor draw and multiplies the encounter chance until cleared).
   const loanHold = state.player.loan && !repay ? state.player.loan.outstanding : 0;
+  // N9 · The captain's overhead, ahead of the marker payment (see traderPolicy)
+  // and ahead of the tables below, so a hire is never funded with money the day
+  // has already staked.
+  const overhead = planCaptainOverhead(
+    state,
+    ledger,
+    GAMBLER_RESERVE + loanHold,
+    refuelCost + repaid - borrowed,
+  );
+  actions.push(...overhead.actions);
   const debtPayment = planDebtPayment(
     state,
     GAMBLER_RESERVE + loanHold,
-    refuelCost + repaid,
+    refuelCost + repaid + overhead.cost,
     borrowed,
   );
   if (debtPayment) actions.push(debtPayment);
@@ -2995,7 +3391,7 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // Each hand is re-clamped against the credits the previous one would leave in
   // the worst case (a loss), so two queued stakes can never over-commit the purse.
   const dares: PlayerAction[] = [];
-  let purse = state.player.credits;
+  let purse = state.player.credits - overhead.cost;
   for (let hand = 0; hand < GAMBLER_MAX_DARES_PER_DAY; hand += 1) {
     const dare = planDare(state, ledger, purse);
     if (!dare) break;
@@ -3004,7 +3400,7 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   }
 
   const plan = [...dares, ...actions];
-  return plan.length > 0 ? plan : [{ type: 'Wait' }];
+  return withReroll(state, plan.length > 0 ? plan : [{ type: 'Wait' }]);
 };
 
 /**
@@ -3022,7 +3418,11 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
  */
 function componentTierNetCost(
   state: GameState,
-  component: 'weapons' | 'hull' | 'shields' | 'drives',
+  // N9 widened this from the fighter's four combat components to the engine's
+  // whole `ShipComponentId` union, so the CABIN (the crew-berth socket,
+  // `crewCapacity`) is priced through the same single source of truth. No new
+  // arithmetic — `quoteShipyard` already accepts every component id.
+  component: ShipComponentId,
   tier: number,
 ): number {
   if (YARD_COMPONENT_TIER_PRICES[tier - 1] === undefined) return Infinity;
@@ -3165,10 +3565,10 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
         if (die === undefined) break;
         fights.push({ type: 'Combat', stance: 'fight', targetId, spendDie: die });
       }
-      if (fights.length > 0) return fights;
+      if (fights.length > 0) return withReroll(state, fights);
     }
     // Can't win this one cleanly: fall back to the pacifist escape logic.
-    return planPacifistCombat(state, ledger);
+    return withReroll(state, planPacifistCombat(state, ledger));
   }
 
   const actions: PlayerAction[] = [];
@@ -3251,11 +3651,16 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   const upgrade = planFighterUpgrade(state, ledger);
   if (upgrade) actions.push(upgrade);
 
+  // N9 · The captain's overhead, after the gun budget: a fighter fits its ship
+  // first and its cabin second.
+  const overhead = planCaptainOverhead(state, ledger, FIGHTER_RESERVE, refuel?.cost ?? 0);
+  actions.push(...overhead.actions);
+
   // Keep the marker from festering, but never at the cost of the war chest.
-  const debtPayment = planDebtPayment(state, FIGHTER_RESERVE, refuel?.cost ?? 0);
+  const debtPayment = planDebtPayment(state, FIGHTER_RESERVE, (refuel?.cost ?? 0) + overhead.cost);
   if (debtPayment) actions.push(debtPayment);
 
-  return actions.length > 0 ? actions : [{ type: 'Wait' }];
+  return withReroll(state, actions.length > 0 ? actions : [{ type: 'Wait' }]);
 };
 
 const EXPLORER_RESERVE = 2000;
@@ -3292,7 +3697,7 @@ const EXPLORER_DECODE_TRIP_FIRST_DAY = 30;
  */
 export const explorerPolicy: SimPolicy = ({ state }) => {
   const ledger = dieLedger(state);
-  if (state.encounter) return planPacifistCombat(state, ledger);
+  if (state.encounter) return withReroll(state, planPacifistCombat(state, ledger));
 
   const actions: PlayerAction[] = [];
 
@@ -3335,7 +3740,7 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
     if (storyletAction.type === 'Storylet' && storyletAction.spendDie === undefined) {
       actions.push(storyletAction);
     } else {
-      return [storyletAction];
+      return withReroll(state, [storyletAction]);
     }
   }
 
@@ -3508,13 +3913,19 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // pursuing the arc the explorer banks its contract income instead, so the tier and
   // the fragment become affordable; normal off-lane charting resumes the moment the
   // fragment is in hand (pursuit ends) or before day 25.
+  // N9 · The captain's overhead, ahead of the Explore loop for the reason the
+  // smuggler's copy states: that loop consumes every remaining die by design, so
+  // anything queued after it would never be handed one.
+  const overhead = planCaptainOverhead(state, ledger, EXPLORER_RESERVE, refuel?.cost ?? 0);
+  actions.push(...overhead.actions);
+
   if (!pursuingArc) {
     let projectedFuel = postRefuelFuel;
     if (actions.some((action) => action.type === 'Travel')) {
       projectedFuel -= playerJumpFuel(state, 5);
     }
     while (
-      state.player.credits > EXPLORER_RESERVE &&
+      state.player.credits - overhead.cost > EXPLORER_RESERVE &&
       projectedFuel >= EXPLORATION_FUEL_COST &&
       ledger.remaining() > 0
     ) {
@@ -3525,7 +3936,7 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
     }
   }
 
-  return actions.length > 0 ? actions : [{ type: 'Wait' }];
+  return withReroll(state, actions.length > 0 ? actions : [{ type: 'Wait' }]);
 };
 
 /** Mirror of the engine's private `specialEquipmentCost` (shipyard.ts) so a
@@ -3649,15 +4060,17 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
         if (die === undefined) break;
         fights.push({ type: 'Combat', stance: 'fight', targetId, spendDie: die });
       }
-      if (fights.length > 0) return fights;
+      if (fights.length > 0) return withReroll(state, fights);
     }
     if (need('silver_tongue')) {
       const die = ledger.takeBest();
-      if (die !== undefined) return [{ type: 'Combat', stance: 'talk', targetId, spendDie: die }];
+      if (die !== undefined)
+        return withReroll(state, [{ type: 'Combat', stance: 'talk', targetId, spendDie: die }]);
     }
     if (need('clean_getaway') && state.player.ship.fuel >= RUN_FUEL_COST) {
       const die = ledger.takeBest();
-      if (die !== undefined) return [{ type: 'Combat', stance: 'run', targetId, spendDie: die }];
+      if (die !== undefined)
+        return withReroll(state, [{ type: 'Combat', stance: 'run', targetId, spendDie: die }]);
     }
     // Carrying a delivery, deeds all earned: FIGHT the interceptor down rather
     // than fall through to the pacifist run. A fight win resolves the encounter
@@ -3680,16 +4093,16 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
         if (die === undefined) break;
         fights.push({ type: 'Combat', stance: 'fight', targetId, spendDie: die });
       }
-      if (fights.length > 0) return fights;
+      if (fights.length > 0) return withReroll(state, fights);
     }
-    return planPacifistCombat(state, ledger);
+    return withReroll(state, planPacifistCombat(state, ledger));
   }
 
   // A storylet in the queue is taken as a standalone day (matches the other
   // policies) so its die spend never collides with the trade-day ledger — this
   // is how beacon_keeper and chained storylets progress.
   const storyletAction = chooseStoryletAction(state);
-  if (storyletAction) return [storyletAction];
+  if (storyletAction) return withReroll(state, [storyletAction]);
 
   const actions: PlayerAction[] = [];
   const ship = state.player.ship;
@@ -3823,10 +4236,17 @@ export const veteranPolicy: SimPolicy = ({ state }) => {
   const special = planSpecialEquipment(state, ledger, VETERAN_RESERVE);
   if (special) actions.push(special);
 
-  const debtPayment = planDebtPayment(state, VETERAN_RESERVE, refuelCost);
+  // N9 · The captain's overhead. The veteran is the LONG-HORIZON archetype — the
+  // one whose whole premise is that the career outlives the measurement window —
+  // so it is the policy a port stake's 154-to-1,043-dusk payback is least unfair
+  // to. It plays the verbs on exactly the same rules as everyone else regardless.
+  const overhead = planCaptainOverhead(state, ledger, VETERAN_RESERVE, refuelCost);
+  actions.push(...overhead.actions);
+
+  const debtPayment = planDebtPayment(state, VETERAN_RESERVE, refuelCost + overhead.cost);
   if (debtPayment) actions.push(debtPayment);
 
-  return actions.length > 0 ? actions : [{ type: 'Wait' }];
+  return withReroll(state, actions.length > 0 ? actions : [{ type: 'Wait' }]);
 };
 
 export function resolvePolicy(policy: SimPolicyName | SimPolicy): ResolvedPolicy {

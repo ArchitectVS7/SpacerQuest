@@ -101,15 +101,38 @@ const UNCHANGED_POLICIES = [
  *    this fingerprint hashes the whole report JSON, shape included. A moved hash
  *    is therefore NOT by itself evidence of a behavior change at this step; the
  *    sweep is.
+ *
+ * 5. N9 — the three verbs the instrument had never played. Every competent
+ *    policy now spends its spare dull die on the captain's overhead (cabin
+ *    berths -> `Crew` hires -> a `Port` stake, all out of the surplus left after
+ *    the whole Guild marker is held back) and prepends a `Reroll` when the
+ *    sharpest die in the hand is below a fresh one's expectation. See the N9
+ *    block comment above `planReroll` in `../index.ts`.
+ *      trader   467a83d44e32daf0 -> 2e4f1623f239a489
+ *      fighter  b6ef1dc02f374170 -> 620348f8c23055bf
+ *      explorer 90d35d3c4836eef0 -> 6f4d8c179c605b65
+ *      smuggler b480fc6f603a673b -> 49d98c0014f5623f
+ *      gambler  de62c3103de74d72 -> 29fc3a0c3839cdc5
+ *    UNCHANGED, and each for its own reason:
+ *      * `greedy` (8a150df20e85b2e1) is UNTOUCHED BY DESIGN — it runs
+ *        `greedyTraderPolicy`, which N9 never calls into. It is the cautionary
+ *        control R0a used for exactly this purpose, and the 1,000-seed capstone
+ *        confirms its whole row is byte-identical.
+ *      * `veteran` (ece2f5c30e0da953) DOES take the new code path, but is
+ *        unchanged IN THIS WINDOW: 5 seeds x 40 days never leaves it solvent
+ *        above its 3,000 reserve AND its outstanding marker at once, so the
+ *        overhead planner never fires. Read that as "unchanged here", never as
+ *        "unaffected" — the capstone moves the veteran row (final credits
+ *        6,359 -> 6,172, clear day 100 -> 99).
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: '467a83d44e32daf0',
-  fighter: 'b6ef1dc02f374170',
-  explorer: '90d35d3c4836eef0',
+  trader: '2e4f1623f239a489',
+  fighter: '620348f8c23055bf',
+  explorer: '6f4d8c179c605b65',
   veteran: 'ece2f5c30e0da953',
-  smuggler: 'b480fc6f603a673b',
-  gambler: 'de62c3103de74d72',
+  smuggler: '49d98c0014f5623f',
+  gambler: '29fc3a0c3839cdc5',
   greedy: '8a150df20e85b2e1',
 };
 
