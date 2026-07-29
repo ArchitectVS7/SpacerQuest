@@ -885,7 +885,7 @@ a glance" for why N7 moved).
 | N7 — capstone diff + smoke rig | **SHIPPED** | **accepted** — 1.5 s smoke vs 2 min capstone; staleness fails loudly; found N9 |
 | N2 — NPCs upgrade their ships | TODO | blocked on the shipyard actor param; owns N1's orphaned spread clause + the hull re-seed |
 | N6 — Honor List, 31-way board | **SHIPPED** | **accepted** — actor-shaped board; found 6 of 8 titles uncontestable by construction |
-| N3 — NPCs meet pirates | TODO | permanent NPC death is SETTLED; service-NPC mortality is not |
+| N3 — NPCs meet pirates | TODO | permanent death SETTLED; **the 11 mechanically-referenced captains are EXEMPT**, the other 19 mortal |
 | N4 — NPC archetypes | TODO | — |
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile` |
 | **N9 — the instrument's three unplayed actions** | **SHIPPED** | **hypothesis REJECTED** — verbs cost 38% of fleet cash, not gain; found the aggregate cannot see an asset |
@@ -1139,10 +1139,38 @@ increase their trade profit."*
     (N6) loses contenders. That is the intended fiction, not drift — but N8 must measure
     the shrink rate, because a roster that empties by day 60 is a different game from one
     that loses two captains in 120 days.
-  - **Authored content attached to the dead.** The cast carries bond hooks, NPC chains and
-    fence/lender roles (Penny Wise, Smuggler Ray, the Sage). Killing the lender must not
-    strand the loan verb. Either exempt the service NPCs from mortality or make their
-    absence a real consequence — decide per NPC, and say which at the definition site.
+  - **Authored content attached to the dead. SETTLED (owner, 2026-07-28): the eleven
+    mechanically-referenced captains are EXEMPT from mortality in N3. The other 19 are
+    mortal.**
+
+    *The original note here named "Penny Wise, Smuggler Ray, the Sage" and warned that
+    killing the lender must not strand the loan verb. **All three parts of that were
+    wrong**, and the measurement is why the ruling is narrow:*
+
+    | claim | reality (measured 2026-07-28) |
+    | --- | --- |
+    | three service NPCs | **eleven** cast ids are referenced by mechanics |
+    | the Sage is at risk | **the Sage is not a captain** — it lives in the nemesis-fragment decode content, not the 30-roster. It cannot die. |
+    | killing the lender strands the loan verb | **it does not.** `LENDER_ID` is only a disposition/grudge key; `lending.ts` states at its definition site that the desk is available at any Hangout because "Penny Wise is the lender, not a co-located NPC". |
+
+    **The eleven:** `npc-silk-dagger`, `npc-lucky-seven`, `npc-rattlesnake`,
+    `npc-penny-wise`, `npc-doc-salvage`, `npc-wild-card`, `npc-smuggler-ray`,
+    `npc-stellar-monk`, `npc-void-whisper`, `npc-the-broker`, `npc-rust-bucket`. Ten are
+    referenced **only** in `storylets.ts` as `trigger: { npc: { id } }`; Penny Wise only in
+    `lending.ts`.
+
+    **The real failure mode is mid-chain death, not a missing verb.** The storylets are
+    multi-step chains with scheduled follow-ups: answer Doc Salvage's ping on day 12
+    (`chain.doc-salvage.ping_answered`), Doc Salvage dies on day 40, and on day 41 the
+    scheduled beat fires — *"Doc Salvage answers a day later…"*. **A dead captain talks.**
+
+    **Why exempt rather than seal the chains** (the alternative, kept visible per
+    BALANCE-POLICY Part B rule 3): sealing them properly — resolving a dead captain's
+    pending storylets as unreachable, reusing the existing `wireResolution` "you never
+    answered" path — is the *right* long-term answer and is its own authored-content task.
+    Bundling it into N3 would make one step change NPC combat **and** narrative resolution
+    at once, and neither result would be attributable. **Ship mortality for the 19, measure
+    the shrink rate, then decide whether the eleven join them.** Revisit with that number.
   - **A dead captain's record stays** (for the wire, the Honor List's history and any
     grudge the player still carries); it is marked dead, not deleted.
 - **Simulate:** full sweep + NPC deaths/1k days beside the player's.
@@ -1723,7 +1751,19 @@ hypothesis, and append the result under the step before moving on.
    "the premise was wrong". **Two of the four graded steps so far were disproved** (R1, R2's
    lever) and a third was accepted-with-hypothesis-disproved (N1); that ratio is the method
    working, not a problem to fix.
-3. **Close the loop on the step before starting the next one** (added 2026-07-28, after
+3. **Re-extract the smoke fixture ONCE, at the end of a step** (owner decision 2026-07-28).
+   N7's `rulesFingerprint` hashes raw file bytes, so a comment or a `prettier --write`
+   stales the fixture — and Part B rule 3 *requires* commenting at definition sites, so this
+   fires constantly. N9 paid it **three times in one step**. The mechanism is correct and
+   deliberately not being "optimised": stripping comments needs a parser, and a parser that
+   mis-parses fails **silently**, in the one direction the whole design exists to prevent.
+   So the fix is procedural — finish the code, *then* re-extract. A capstone is 1m46s, not
+   the 80 minutes that motivated the rig, so the tax is small if it is paid once.
+   *If it still hurts after N2, the option with real data behind it is hashing the
+   TypeScript **emit** rather than source bytes — `tsc` re-prints from the AST, so comments
+   and formatting normalise away while real code changes still move the hash, and it is the
+   same compiler that builds the product rather than a bespoke parser.*
+4. **Close the loop on the step before starting the next one** (added 2026-07-28, after
    this was caught drifting). Landing a step means all four of: the heading carries
    `(SHIPPED <date> · <sha>)`, a `**Result:**` block is appended under it, the sequencing
    diagram above reflects reality, and **anything learned that changes DIRECTION is written
