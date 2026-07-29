@@ -867,6 +867,50 @@ Also recovered: **the original port was a fuel depot** — 10cr/unit, 20,000-uni
 inventory the owner stocks, plus an interest-bearing savings account. Income was
 TRAFFIC-driven. Ours pays a flat `baseDuskIncome` whether or not anyone visits.
 
+### N7-FP — The rules fingerprint hashes code, not bytes (SHIPPED 2026-07-29)
+
+**The defect.** `rules-fingerprint.ts` hashed raw file text, so editing a COMMENT in any
+content or engine rule source moved `rulesFingerprint` and declared every balance fixture
+stale. `docs/VERSIONING.md` §3 defines that hash as one "over the files that decide
+outcomes"; the implementation answered a broader question — "has any byte changed?" — and
+so answered **"this is a different game" when the truth was "same game, better sentence"**.
+
+**Why it mattered, measured rather than asserted.** The trigger was the R2d doc audit
+above, which was comment-only and proved inert (8-shard capstone on the edited tree vs
+stashed clean HEAD, identical seeds, 7,000 rows, diffed to *"NOTHING MOVED. Every compared
+field is equal on both sides."*) and still cost a full fixture re-stamp. The cost lands
+exactly where this project can least afford it: `ports.ts` carries ~180 lines of
+commentary over ~120 lines of data, so the old rule taxed the activity that keeps
+definition-site prose true — and a payback range wrong by 2.2x plus an invariant that had
+stopped being true are what that tax bought. The instrument's own header already made the
+argument in miniature, excluding itself because self-inclusion "would invalidate every
+fixture on a comment edit here — churn with no signal in it."
+
+**The fix (option C of three considered).** Comments are stripped before hashing, using
+the TypeScript parser rather than a regex — `//` and `/* */` occur inside string literals
+here, so text-stripping would corrupt real code and move the hash for the wrong reason.
+Re-printing also normalises quote style, so a Prettier pass cannot move a rules
+fingerprint either. The raw-byte hash is **not deleted, it is demoted**: `docsFingerprint`
+is recorded in fixture provenance and reported when it moves, but is never a
+`FreshnessProblem` — a commentary change is worth dating, not worth failing.
+
+**What holds it honest.** `balance-rig.test.ts` pins BOTH directions against a synthetic
+tree (a comment edit does NOT move `rulesFingerprint`; a `140000 -> 130000` edit in the
+same file DOES), plus a guard that a string literal containing comment markers is still
+hashed as code, and two tests that docs drift stays informational. Only the pair is
+meaningful: comment-insensitivity alone is satisfied by a hash that ignores everything.
+
+**Accepted cost, recorded so it is not a surprise.** The printer's output can shift across
+TypeScript MAJOR versions, moving every fingerprint at once on a dependency bump — loud,
+one-time, obviously attributable, remedied by the same re-stamp. Treat a `typescript`
+major bump as a re-stamp event. This trades a rare loud false positive for a frequent
+quiet one.
+
+**Not a re-measure.** Changing the hash ALGORITHM moves both fingerprints, so the fixture
+was re-extracted from the unchanged baseline of record — no rule changed, no new capstone
+committed. Stated here because "re-stamped without re-measuring" is exactly the move
+VERSIONING.md forbids doing silently. Battery **1,233 passing / 0 failing**.
+
 ### R2.5 — The escalation ladder (the world remembers what you did)
 
 *Depends on R2's pirate table landing — the ladder needs authored lines to speak through.*

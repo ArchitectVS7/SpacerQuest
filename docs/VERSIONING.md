@@ -182,6 +182,27 @@ hand-maintained "balance version" would be forgotten exactly when it mattered, s
 plus the engine's rule modules). Change a tribute constant or a resolver and the
 fingerprint moves on its own.
 
+**It hashes their CODE, not their bytes** (N7-FP, 2026-07-29). Comments are stripped
+before hashing — via the TypeScript parser, not a regex, because `//` and `/* */` appear
+inside string literals in this codebase — so rewriting a comment no longer invalidates a
+measurement. It previously did, and that was a false positive with a real cost: a
+documentation audit correcting two wrong figures in `content/ports.ts` was provably inert
+(an 8-shard capstone against clean HEAD diffed to "NOTHING MOVED") and still forced a full
+re-stamp. Content here is deliberately comment-dense, so the byte hash taxed precisely the
+work that keeps that commentary true — which is how the two wrong figures survived.
+Any change to code — a constant, an operator, an import, a rename — still moves the
+fingerprint, and `balance-rig.test.ts` pins **both** directions so the property cannot rot.
+
+The raw-byte hash survives as **`docsFingerprint`**, recorded in fixture provenance and
+reported when it moves. It is deliberately **informational and never fails a test**: it
+dates a commentary change without claiming the game changed. Promoting it to a failing
+check would reinstate the false positive it replaced.
+
+One accepted cost, stated plainly: the printer's output can shift across TypeScript
+**major** versions, which would move every fingerprint at once on a dependency bump. That
+is loud, one-time and obviously attributable, and the remedy is the same re-stamp — a
+deliberate trade of a rare loud false positive for a frequent quiet one.
+
 The rule for consumers: **a stale fingerprint fails loudly, it is never silently used.**
 A smoke test run against checkpoints from a different ruleset is not a weak test, it is a
 misleading one. (Precedent for the technique: the report fingerprints in

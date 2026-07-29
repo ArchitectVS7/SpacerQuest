@@ -4,10 +4,16 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { aggregate, summarizeReport, type BaselineAggregate } from '../balance/aggregate.js';
-import { assertFixtureFresh, fixtureFreshness, type SmokeFixture } from '../balance/checkpoints.js';
+import {
+  assertFixtureFresh,
+  fixtureDocsDrift,
+  fixtureFreshness,
+  type SmokeFixture,
+} from '../balance/checkpoints.js';
 import { diffAggregates } from '../balance/diff.js';
 import {
   allSourceKeys,
+  computeDocsFingerprint,
   computeInstrumentFingerprint,
   computeRulesFingerprint,
   CONTENT_HASHED_DIRECTORIES,
@@ -382,5 +388,115 @@ describe('N7 · a stale fixture fails loudly', () => {
     expect(readFileSync(join(DOCS_BALANCE, 'smoke', 'tiers.json'), 'utf8')).toContain(
       fixture.rulesFingerprint,
     );
+  });
+
+  it('reports commentary drift as a NOTE, never as a freshness problem', () => {
+    // The C-half of N7-FP: a moved docs hash is informational. If this ever
+    // appears in `fixtureFreshness`, the false positive is back.
+    const drifted: SmokeFixture = { ...fixture, docsFingerprint: '0000000000000000' };
+    expect(fixtureFreshness(drifted)).toEqual([]);
+    expect(() => assertFixtureFresh(drifted)).not.toThrow();
+    expect(fixtureDocsDrift(drifted)).toContain('not a failure');
+  });
+
+  it('says nothing about docs drift for a fixture written before N7-FP', () => {
+    const { docsFingerprint: _omitted, ...legacy } = fixture;
+    expect(fixtureDocsDrift(legacy as SmokeFixture)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5 · N7-FP · the fingerprint hashes CODE, not bytes
+// ---------------------------------------------------------------------------
+
+/**
+ * THE PROPERTY THAT MAKES THE SEMANTIC HASH SAFE, pinned in BOTH directions
+ * because only the pair is meaningful. Comment-insensitivity alone would be
+ * satisfied by a hash that ignored everything; rule-sensitivity alone is what the
+ * old byte hash had. A regression in either direction is a silent correctness
+ * failure — too loose and a real rule change slips past a stale fixture, too
+ * tight and documentation is taxed again (see `hashSemantic` for the history).
+ *
+ * Driven against a synthetic tree rather than by mutating the real one: these
+ * tests must never leave the working copy dirty, and `computeRulesFingerprint`
+ * takes a repo root precisely so this is possible.
+ */
+describe('N7-FP · comments do not move the rules fingerprint, code does', () => {
+  const roots: string[] = [];
+
+  /** Builds the minimum tree the collectors walk: engine `''` + `actions`,
+   *  content `''`, and sim `''` + `balance` (the docs hash spans all three). */
+  function fakeRepo(contentBody: string): string {
+    const root = mkdtempSync(join(tmpdir(), 'sq-fp-'));
+    roots.push(root);
+    mkdirSync(join(root, ENGINE_SOURCE_ROOT, 'actions'), { recursive: true });
+    mkdirSync(join(root, CONTENT_SOURCE_ROOT), { recursive: true });
+    mkdirSync(join(root, SIM_SOURCE_ROOT, 'balance'), { recursive: true });
+    writeFileSync(join(root, ENGINE_SOURCE_ROOT, 'day.ts'), 'export const DAY = 1;\n', 'utf8');
+    writeFileSync(
+      join(root, ENGINE_SOURCE_ROOT, 'actions', 'travel.ts'),
+      'export const TRAVEL = 2;\n',
+      'utf8',
+    );
+    writeFileSync(join(root, CONTENT_SOURCE_ROOT, 'ports.ts'), contentBody, 'utf8');
+    writeFileSync(join(root, SIM_SOURCE_ROOT, 'index.ts'), 'export const SIM = 3;\n', 'utf8');
+    writeFileSync(
+      join(root, SIM_SOURCE_ROOT, 'balance', 'aggregate.ts'),
+      'export const AGG = 4;\n',
+      'utf8',
+    );
+    return root;
+  }
+
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+
+  // The string literals here are the reason this uses a parser and not a regex:
+  // both contain comment markers that a text strip would eat.
+  const WITH_COMMENT = `
+// The price ladder, assigned by traffic band.
+/** See https://example.invalid/spec for the derivation. */
+export const PRICE = 140000;
+const NOTE = "/* not a comment */";
+`;
+  const COMMENT_EDITED = `
+// The price ladder, assigned by MEASURED traffic band (reworded 2026-07-29).
+export const PRICE = 140000;
+const NOTE = "/* not a comment */";
+`;
+  const CONSTANT_EDITED = `
+// The price ladder, assigned by traffic band.
+/** See https://example.invalid/spec for the derivation. */
+export const PRICE = 130000;
+const NOTE = "/* not a comment */";
+`;
+
+  it('a comment-only edit leaves the rules fingerprint untouched', () => {
+    const before = computeRulesFingerprint(fakeRepo(WITH_COMMENT)).fingerprint;
+    const after = computeRulesFingerprint(fakeRepo(COMMENT_EDITED)).fingerprint;
+    expect(after, 'rewriting a comment is not a ruleset change').toBe(before);
+  });
+
+  it('a one-constant edit in the same file DOES move it', () => {
+    const before = computeRulesFingerprint(fakeRepo(WITH_COMMENT)).fingerprint;
+    const after = computeRulesFingerprint(fakeRepo(CONSTANT_EDITED)).fingerprint;
+    expect(after, '140000 -> 130000 is a ruleset change and must be caught').not.toBe(before);
+  });
+
+  it('the docs fingerprint moves on BOTH, which is what keeps the edit traceable', () => {
+    const base = computeDocsFingerprint(fakeRepo(WITH_COMMENT)).fingerprint;
+    expect(computeDocsFingerprint(fakeRepo(COMMENT_EDITED)).fingerprint).not.toBe(base);
+    expect(computeDocsFingerprint(fakeRepo(CONSTANT_EDITED)).fingerprint).not.toBe(base);
+  });
+
+  it('a string literal containing comment markers survives hashing intact', () => {
+    // Guards the specific way a regex implementation would break: truncating at
+    // the `/*` inside NOTE would make these two trees collide.
+    const keptMarkers = computeRulesFingerprint(fakeRepo(WITH_COMMENT)).fingerprint;
+    const strippedMarkers = computeRulesFingerprint(
+      fakeRepo(WITH_COMMENT.replace('"/* not a comment */"', '""')),
+    ).fingerprint;
+    expect(strippedMarkers, 'the literal is code and must be hashed').not.toBe(keptMarkers);
   });
 });

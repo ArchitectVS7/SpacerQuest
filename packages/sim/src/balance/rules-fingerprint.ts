@@ -8,6 +8,14 @@
  * about the game we are shipping?"* is a HASH OVER THE SOURCES THAT DECIDE
  * OUTCOMES, computed on demand from the working tree.
  *
+ * WHAT "THE SOURCES THAT DECIDE OUTCOMES" MEANS, PRECISELY (N7-FP, 2026-07-29):
+ * their CODE, not their bytes. Comments are stripped before hashing, because a
+ * comment decides nothing and a byte hash answered a broader question than §3
+ * asks — it called a provably inert documentation fix a ruleset change. The
+ * raw-byte hash is not lost, it is DEMOTED to `computeDocsFingerprint`: recorded
+ * in fixture provenance, reported on mismatch, never failing. See `hashSemantic`
+ * for the full argument and the trade it accepts.
+ *
  * Nothing here may ever be bumped, refreshed or overridden to make a test pass
  * (`docs/VERSIONING.md`, "The rule that matters most"). There is deliberately no
  * `--force`, no environment escape hatch and no "expected" constant to edit: the
@@ -23,6 +31,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, posix, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
@@ -196,9 +205,66 @@ function toPosix(relative: string): string {
  * runtime budget was measured on Windows). A fingerprint that moved when someone
  * cloned on a different OS would train readers to ignore it.
  */
-function hashFile(absolute: string): string {
-  const text = readFileSync(absolute, 'utf8').replace(/\r\n/g, '\n');
-  return createHash('sha256').update(text).digest('hex');
+function readNormalised(absolute: string): string {
+  return readFileSync(absolute, 'utf8').replace(/\r\n/g, '\n');
+}
+
+/** The RAW hash — every byte, comments included. Feeds `docsFingerprint` only. */
+function hashRaw(absolute: string): string {
+  return createHash('sha256').update(readNormalised(absolute)).digest('hex');
+}
+
+const SEMANTIC_PRINTER = ts.createPrinter({ removeComments: true });
+
+/**
+ * THE SEMANTIC HASH — comments stripped before hashing, which is the whole of
+ * the N7-FP fix (2026-07-29).
+ *
+ * WHY THIS CHANGED. `docs/VERSIONING.md` §3 defines this hash as one "over the
+ * files that decide outcomes", answering *"is this measurement still about the
+ * game we are shipping?"* Hashing raw bytes answered a broader question — "has
+ * any byte of these files changed?" — so a comment edit made it answer NO when
+ * the truth was YES. That is a FALSE POSITIVE, and it was not free: the trigger
+ * case was a documentation audit correcting two wrong figures in
+ * `content/ports.ts` (a payback range understated 2.2x, and an invariant that had
+ * stopped being true). Comment-only, provably inert — an 8-shard capstone on the
+ * edited tree against clean HEAD, identical seeds, diffed to "NOTHING MOVED" —
+ * and it still cost a full re-stamp. Content here is deliberately comment-dense
+ * (`ports.ts` carries ~180 lines of commentary over ~120 lines of data), so the
+ * old rule taxed exactly the activity that keeps the commentary true, which is
+ * how those two figures survived as long as they did. This file's own header
+ * already made the argument in miniature: it excludes itself because
+ * self-inclusion "would invalidate every fixture on a comment edit here — churn
+ * with no signal in it". The same reasoning applies to every hashed source.
+ *
+ * WHY AN AST AND NOT A REGEX. `//` and `/* ... *\/` occur inside string literals
+ * in this codebase (URLs, printed banners), so text-stripping would corrupt real
+ * code and silently change the hash for the wrong reason. The TypeScript parser
+ * is the only thing that knows the difference. Re-printing also normalises quote
+ * style and layout, so a Prettier pass cannot move a rules fingerprint either —
+ * correct for the same reason.
+ *
+ * THE COST, STATED PLAINLY: the printer's output can change across TypeScript
+ * MAJOR versions, which would move every fingerprint at once on a dependency
+ * bump. That is a loud, one-time, obviously-attributable failure rather than a
+ * silent one, and the remedy is the same re-stamp. It is a deliberate trade of a
+ * rare loud false positive for a frequent quiet one. `typescript` is pinned at
+ * ^5.4 in this package; treat a major bump as a re-stamp event.
+ *
+ * WHAT THIS DOES NOT WEAKEN: any change to code — a constant, an operator, an
+ * import, a rename — changes the printed output and still moves the hash. The
+ * pair of rig tests in `balance-rig.test.ts` pins BOTH directions, so this
+ * property cannot rot.
+ */
+function hashSemantic(absolute: string): string {
+  const source = ts.createSourceFile(
+    absolute,
+    readNormalised(absolute),
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS,
+  );
+  return createHash('sha256').update(SEMANTIC_PRINTER.printFile(source)).digest('hex');
 }
 
 function fingerprintOf(files: HashedSource[]): string {
@@ -218,6 +284,7 @@ function collect(
   packageDir: string,
   subdirectories: readonly string[],
   excluded: Readonly<Record<string, string>>,
+  hash: (absolute: string) => string = hashSemantic,
 ): SourceFingerprint {
   const files: HashedSource[] = [];
   for (const subdirectory of subdirectories) {
@@ -227,7 +294,7 @@ function collect(
       if (key in excluded) continue;
       files.push({
         path: toPosix(join(packageDir, subdirectory, name)),
-        sha256: hashFile(join(absoluteDir, name)),
+        sha256: hash(join(absoluteDir, name)),
       });
     }
   }
@@ -238,27 +305,37 @@ function collect(
 /** Every hashed rule source, engine + content, repo-relative and sorted. Exposed
  *  so a failure message and a reviewer can both see the exact input set rather
  *  than being handed an opaque hash. */
-export function ruleSources(repoRoot: string = REPO_ROOT): HashedSource[] {
+export function ruleSources(
+  repoRoot: string = REPO_ROOT,
+  hash: (absolute: string) => string = hashSemantic,
+): HashedSource[] {
   const engine = collect(
     repoRoot,
     join('packages', 'engine', 'src'),
     ENGINE_RULE_DIRECTORIES,
     ENGINE_NON_RULE_SOURCES,
+    hash,
   );
-  const content = collect(repoRoot, join('packages', 'content', 'src'), [''], {
-    ...CONTENT_NON_RULE_SOURCES,
-  });
+  const content = collect(
+    repoRoot,
+    join('packages', 'content', 'src'),
+    [''],
+    { ...CONTENT_NON_RULE_SOURCES },
+    hash,
+  );
   return [...engine.files, ...content.files].sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** THE fingerprint: `packages/content/src` plus the engine's rule modules. */
+/** THE fingerprint: `packages/content/src` plus the engine's rule modules,
+ *  hashed SEMANTICALLY (comments stripped — see `hashSemantic`). */
 export function computeRulesFingerprint(repoRoot: string = REPO_ROOT): SourceFingerprint {
   const files = ruleSources(repoRoot);
   return { fingerprint: fingerprintOf(files), fileCount: files.length, files };
 }
 
 /** The measuring device: `packages/sim/src`. See `SIM_NON_INSTRUMENT_SOURCES`
- *  for why this is a second number and not part of the first. */
+ *  for why this is a second number and not part of the first. Semantic, for the
+ *  same reason as the rules hash. */
 export function computeInstrumentFingerprint(repoRoot: string = REPO_ROOT): SourceFingerprint {
   return collect(
     repoRoot,
@@ -266,6 +343,36 @@ export function computeInstrumentFingerprint(repoRoot: string = REPO_ROOT): Sour
     SIM_INSTRUMENT_DIRECTORIES,
     SIM_NON_INSTRUMENT_SOURCES,
   );
+}
+
+/**
+ * THE DOCS FINGERPRINT — raw bytes over every hashed source, rules AND
+ * instrument, so the commentary state of the measured tree stays recorded.
+ *
+ * WHY THIS EXISTS RATHER THAN JUST DELETING THE BYTE HASH. Making the two hashes
+ * above semantic removes a false alarm, but it also silently discards a true
+ * fact: that the prose describing a ruleset moved. That fact has real diagnostic
+ * value — "the numbers are from the same game, but the explanation of them was
+ * rewritten in between" is exactly the thing a reader chasing a stale comment
+ * wants to know. So it is KEPT, and merely demoted.
+ *
+ * IT MUST NEVER FAIL A TEST. It is reported by `fixtureFreshness` as an
+ * informational note and is not a `FreshnessProblem`; a fixture whose docs hash
+ * has moved is still perfectly fresh, because comments decide no outcomes. If
+ * this is ever promoted to a failing check, the false positive it was created to
+ * remove comes straight back.
+ */
+export function computeDocsFingerprint(repoRoot: string = REPO_ROOT): SourceFingerprint {
+  const rules = ruleSources(repoRoot, hashRaw);
+  const instrument = collect(
+    repoRoot,
+    join('packages', 'sim', 'src'),
+    SIM_INSTRUMENT_DIRECTORIES,
+    SIM_NON_INSTRUMENT_SOURCES,
+    hashRaw,
+  ).files;
+  const files = [...rules, ...instrument].sort((a, b) => a.path.localeCompare(b.path));
+  return { fingerprint: fingerprintOf(files), fileCount: files.length, files };
 }
 
 /** Every `.ts` under a package's hashed directories, INCLUDING the excluded

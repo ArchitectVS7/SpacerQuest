@@ -109,7 +109,8 @@ export function main(argv: string[] = process.argv.slice(2)): void {
     writeFileSync(parsed.out, `${JSON.stringify(fixture, null, 2)}\n`, 'utf8');
     process.stderr.write(
       `[smoke] ${fixture.checkpoints.length} tiers, spreads ${fixture.provenance.spreadSource}, ` +
-        `rules ${fixture.rulesFingerprint} / instrument ${fixture.instrumentFingerprint} -> ` +
+        `rules ${fixture.rulesFingerprint} / instrument ${fixture.instrumentFingerprint} / ` +
+        `docs ${fixture.docsFingerprint} -> ` +
         `${parsed.out} (${Date.now() - started} ms)\n`,
     );
   } catch (error) {

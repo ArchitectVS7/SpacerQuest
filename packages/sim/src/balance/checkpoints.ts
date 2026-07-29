@@ -24,6 +24,7 @@ import { CURRENT_SAVE_VERSION, calculateFuelCapacity } from '@spacerquest/engine
 import type { SimPolicyName } from '../index.js';
 import type { BaselineAggregate, Distribution, MilestoneAggregate } from './aggregate.js';
 import {
+  computeDocsFingerprint,
   computeInstrumentFingerprint,
   computeRulesFingerprint,
   REPO_ROOT,
@@ -69,6 +70,11 @@ export interface SmokeFixture {
   /** The measuring device, hashed separately — see `rules-fingerprint.ts` for why
    *  this is a second number rather than part of the first. */
   instrumentFingerprint: string;
+  /** RAW bytes of every hashed source, comments included — the commentary state
+   *  of the tree this fixture was measured against. INFORMATIONAL ONLY: it is
+   *  never a `FreshnessProblem`, because comments decide no outcomes. Optional so
+   *  fixtures written before N7-FP still load. See `computeDocsFingerprint`. */
+  docsFingerprint?: string;
   provenance: FixtureProvenance;
   checkpoints: FixtureTier[];
 }
@@ -350,6 +356,7 @@ export function extractFixture(
     saveSchemaVersion: CURRENT_SAVE_VERSION,
     rulesFingerprint: computeRulesFingerprint(repoRoot).fingerprint,
     instrumentFingerprint: computeInstrumentFingerprint(repoRoot).fingerprint,
+    docsFingerprint: computeDocsFingerprint(repoRoot).fingerprint,
     provenance: {
       sweepLabel: aggregate.label,
       seeds: aggregate.seeds,
@@ -402,7 +409,11 @@ export function fixtureFreshness(
         `test at all.\n` +
         `THE FIX IS A NEW CAPSTONE, never a refreshed number:\n` +
         `  1. npm run balance:sweep -w @spacerquest/sim -- --label <new> --seeds 1000 ` +
-        `--days 120 --milestone-days 21,29,41 --shard i/8   (x8, then --merge)\n` +
+        `--days 120 --milestone-days 21,29,30,41,60,120 ` +
+        `--policies explorer,fighter,gambler,greedy,smuggler,trader,trader-degraded,veteran ` +
+        `--shard i/8   (x8, then --merge)\n` +
+        `     (MATCH the outgoing baseline's milestone set and policy list, or every ` +
+        `milestones[i] index shifts and the diff in step 2 fills with phantom deltas.)\n` +
         `  2. npm run balance:diff  -w @spacerquest/sim -- docs/balance/<prev>.json ` +
         `docs/balance/baseline-<new>.json\n` +
         `  3. npm run balance:extract -w @spacerquest/sim -- --aggregate docs/balance/` +
@@ -437,6 +448,45 @@ export function fixtureFreshness(
     });
   }
   return problems;
+}
+
+/**
+ * INFORMATIONAL ONLY — never a failure, by design (N7-FP).
+ *
+ * Reports that the COMMENTARY of the hashed sources moved since this fixture was
+ * measured, while the code did not. That is not staleness: comments decide no
+ * outcomes, so the checkpoints still describe the shipped game exactly. It is
+ * worth SAYING, because "same game, rewritten explanation" is a useful thing to
+ * know when chasing a comment that disagrees with a number.
+ *
+ * Returns `null` when nothing moved, or when the fixture predates `docsFingerprint`
+ * — an absent hash is not a mismatch, and inventing a warning for old fixtures
+ * would be noise. Do NOT promote this to a `FreshnessProblem`; that reinstates the
+ * exact false positive this whole change exists to remove.
+ */
+export function fixtureDocsDrift(
+  fixture: SmokeFixture,
+  repoRoot: string = REPO_ROOT,
+): string | null {
+  if (fixture.docsFingerprint === undefined) return null;
+  const docs = computeDocsFingerprint(repoRoot);
+  if (fixture.docsFingerprint === docs.fingerprint) return null;
+  // Whether the CODE also moved is CHECKED, never assumed. An earlier draft
+  // asserted "the code is unchanged" unconditionally and was caught stating that
+  // while a freshness problem was outstanding — a note that lies is worse than no
+  // note, because this one exists to be trusted without being enforced.
+  const codeAlsoMoved = fixtureFreshness(fixture, repoRoot).length > 0;
+  return (
+    `NOTE (not a failure): the COMMENTARY of the hashed sources has changed since this ` +
+    `fixture was extracted (fixture ${fixture.docsFingerprint}, tree ${docs.fingerprint} over ` +
+    `${docs.fileCount} sources).\n` +
+    (codeAlsoMoved
+      ? `The CODE moved too — see the staleness failure reported alongside this note, which is ` +
+        `the one that matters. This line only dates the prose.`
+      : `The CODE is unchanged — rulesFingerprint and instrumentFingerprint both still match — ` +
+        `so these checkpoints describe the shipped game and no re-measure is needed.`) +
+    `\nRecorded because a comment that disagrees with a number is worth being able to date.`
+  );
 }
 
 /** Throws on a stale fixture. There is deliberately no `force`, no environment
