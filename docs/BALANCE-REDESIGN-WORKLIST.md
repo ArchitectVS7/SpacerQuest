@@ -873,6 +873,22 @@ it is the right one — *"an NPC needs to trade, so they need to upgrade their s
 need to fly, so they need to interact with pirates. That means they pay bribes, with
 either credits or cargo, or fight, or flee. They literally MUST act like a player."*
 
+**STATUS BOARD** — updated as each step lands; the per-step `**Result:**` blocks below are
+the detail. Run order is N0 → N1 → **N7** → N2 → N6 → N3 → N4 → N5 → N8 (see "Sequencing at
+a glance" for why N7 moved).
+
+| step | status | outcome |
+| --- | --- | --- |
+| N0 — copy-on-write discipline | **SHIPPED** | clone flat in NPC richness, not linear; killed the quadratic |
+| N1 — NPCs own a real ship | **SHIPPED** `b438096b` | change accepted, **hypothesis disproved** — capstone byte-identical; found the N2 blocker + the fuel exemption |
+| N7 — capstone diff + smoke rig | IN PROGRESS | — |
+| N2 — NPCs upgrade their ships | TODO | blocked on the shipyard actor param; owns N1's orphaned spread clause + the hull re-seed |
+| N6 — Honor List, 31-way board | TODO | unblocked by N1 |
+| N3 — NPCs meet pirates | TODO | permanent NPC death is SETTLED; service-NPC mortality is not |
+| N4 — NPC archetypes | TODO | — |
+| N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile` |
+| N8 — re-pin against a living field | TODO | gates the R-series resuming |
+
 **WHAT AN NPC ACTUALLY IS TODAY (measured 2026-07-28, `packages/engine/src/npc.ts`):**
 
 - `NpcState` is `{ id, name, profileId, currentSystemId, credits, fuel, disposition,
@@ -952,7 +968,7 @@ engine **for the wrong reason** and hid a live economy defect for months.
   before the update, reporting **0 for every clamped change**. `clone.test.ts` now holds
   the line with a source scan, verified by reintroducing a violation and watching it fail.
 
-### N1 — NPCs own a real ship
+### N1 — NPCs own a real ship (SHIPPED 2026-07-28 · `b438096b`)
 
 - **Hypothesis:** replacing the phantom tier-derived ship with a real `ShipState` on
   `NpcState` changes what NPCs can earn and where they can fly, without yet changing any
@@ -1302,13 +1318,21 @@ increase their trade profit."*
 DONE: R1 ──► R0a ──► R0b ──► R2 ──► R2c ──► R2d ──► N0
 
 NPC PARITY TRACK (in progress — the R-series is PAUSED behind it, see below):
-  N0 (copy-on-write, DONE)
-   └─► N1 (NPCs own a real ship)  ──► N6 (Honor List becomes a 31-way board)
-        └─► N2 (NPCs upgrade)
+  N0 (copy-on-write) ......................... DONE
+   └─► N1 (NPCs own a real ship) ............. DONE  (change accepted, hypothesis disproved)
+        ├─► N7 (capstone diff + smoke rig) ... ◄── PULLED FORWARD, see below
+        ├─► N6 (Honor List, 31-way board)
+        └─► N2 (NPCs upgrade + shipyard actor param + hull re-seed)
              └─► N3 (NPCs meet pirates + answer them)
                   └─► N4 (archetypes) ──► N5 (proficiency spread)
-                       └─► N7 (capstone sweep + staged smoke tests)
-                            └─► N8 (re-pin the baseline against a living field)
+                       └─► N8 (re-pin the baseline against a living field)
+
+WHY N7 MOVED (owner decision 2026-07-28): the doc originally ran it after N4/N5. Every
+step from N2 on is graded by diffing a sweep, and at full NPC fidelity that capstone is
+projected at ~80 min — unusable as an iteration loop. N7's fingerprinted smoke fixtures
+turn it into a seconds-long check, so building it SECOND gives N2–N6 a real fast gate
+instead of grading them on faith. N1 first regardless: N7's checkpoints need a world
+with ships in it to harvest from.
 
 THEN the R-series resumes, re-read against N8's baseline:
   R2.5 (escalation ladder + demand menu) ──► R4 (predation) ──► R5b (smuggler tariff)
@@ -1329,9 +1353,23 @@ hypothesis, and append the result under the step before moving on.
 
 1. **Grade at 1,000 seeds × 120 days, not 100 — DONE (R0b).** The 100-seed arm cannot resolve
    the clear-day target to the ±1 day the [22, 30] band is graded at, and its "0 ships / 0
-   cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). Baseline of
-   record is now `baseline-vet-1k.json`. **Corollary for every future step: never report a
-   rate as 0.00 off a small arm — report `< 1/n`, or re-run bigger.**
+   cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
+   for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
+   re-run bigger.**
+   > **Baseline of record has moved twice since this was written.** It is
+   > **`docs/balance/baseline-r2c-final.json`** (1,000 seeds × 120 days), re-pinned by R2c
+   > and left in place by N1, whose capstone reproduced it byte-for-byte. `baseline-vet-1k`
+   > and `-r2a` are its predecessors. **Update this pointer in the same commit that re-pins
+   > the baseline** — a stale yardstick silently mis-grades every step that diffs against it.
 2. **A rejected hypothesis is a result.** R1's was rejected and produced the re-scope that
    this document now runs on. Record outcomes under the step, including the ones that say
-   "the premise was wrong".
+   "the premise was wrong". **Two of the four graded steps so far were disproved** (R1, R2's
+   lever) and a third was accepted-with-hypothesis-disproved (N1); that ratio is the method
+   working, not a problem to fix.
+3. **Close the loop on the step before starting the next one** (added 2026-07-28, after
+   this was caught drifting). Landing a step means all four of: the heading carries
+   `(SHIPPED <date> · <sha>)`, a `**Result:**` block is appended under it, the sequencing
+   diagram above reflects reality, and **anything learned that changes DIRECTION is written
+   into the step it affects** — not just recorded under the step that found it. N1 found the
+   shipyard API blocks N2 and that NPCs fly on ~4× a player's fuel; both belong in N2's
+   entry, and are there.
