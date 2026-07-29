@@ -888,8 +888,8 @@ a glance" for why N7 moved).
 | N3 — NPCs meet pirates | TODO | permanent NPC death is SETTLED; service-NPC mortality is not |
 | N4 — NPC archetypes | TODO | — |
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile` |
-| **N9 — the instrument's three unplayed actions** | **TODO — NEW** | found by N7; `Crew`/`Port`/`Reroll` emitted 0 times; **must precede N8** |
-| N8 — re-pin against a living field | TODO | gates the R-series resuming |
+| **N9 — the instrument's three unplayed actions** | **SHIPPED** | **hypothesis REJECTED** — verbs cost 38% of fleet cash, not gain; found the aggregate cannot see an asset |
+| N8 — re-pin against a living field | TODO | **must first teach the aggregate to see ports**; re-pin against the post-N9 instrument |
 
 **WHAT AN NPC ACTUALLY IS TODAY (measured 2026-07-28, `packages/engine/src/npc.ts`):**
 
@@ -1394,7 +1394,7 @@ re-pin is a decision, not a side effect.
 **Battery:** 1,208 passing / 0 failing, `tsc -b`, `eslint`, `prettier` clean. Both `it.fails`
 tripwires untouched (`git diff --stat` empty on each) and still holding.
 
-### N9 — The instrument has never played three of the eleven actions
+### N9 — The instrument has never played three of the eleven actions (SHIPPED 2026-07-28 · `55233e15`)
 
 > **Found by N7, 2026-07-28. Sequenced BEFORE N8** — N-IDs are labels, not an order
 > (`docs/VERSIONING.md` §4). This is the same class of defect as R0a and R2a
@@ -1434,12 +1434,127 @@ tripwires untouched (`git diff --stat` empty on each) and still holding.
   rows move, N8 must re-pin against the *complete* instrument. If they do not, that is a
   finding about how marginal those verbs are, and it retires a standing doubt cheaply.
 
+**Result (2026-07-28): HYPOTHESIS REJECTED — the direction is wrong. And the step exposed a
+measurement gap that matters more than the verdict.**
+
+The three verbs now fire. `planReroll` spends a charge on the sharpest unspent die when it
+sits below `expectedFreshDieFace`, integrating over the d20 under the floor returned by the
+engine's own `dawnDiceModifiers`. `planCaptainOverhead` arbitrates **one** die-costed
+purchase per day — berth → crew → port — on the **dullest** remaining die, queued last so
+income actions are never displaced. Everything is priced through engine/content functions;
+`componentTierNetCost` was widened from four combat components to `ShipComponentId` so the
+cabin reads the same source of truth. `player.crew.length` was 0 at every percentile at
+days 21/29/41; it is now median **2** / p75 **3** at day 41.
+
+**Why the three verbs are ONE change, not three — this is also why they had never fired.**
+They are a chain: `rerollsRemaining` is seeded only from `dawnDiceModifiers`, whose only
+live source is the crew roster (`EQUIPMENT_DICE_BENEFITS` ships empty); crew is gated by
+`crewCapacity = 1 + floor(cabin.strength/10)`, so the junker berths exactly **one**, and a
+full three-role roster needs cabin tier 2. **Nothing could have fired them.** The blind spot
+was structural, not an oversight in any one policy.
+
+**`greedy` is untouched and its row is byte-identical** — R0a's attribution control,
+verified independently. *(Note for future readers: the differ reports `greedy` under MOVED
+when the arm carries `--milestone-days`, because the added `milestones[…]` paths are a shape
+change. Strip that key and the values are equal. Check the shape/value split before reading
+a control as broken.)*
+
+| row | clear | clear day | final cr (median) | deeds | ships lost |
+| --- | --- | --- | --- | --- | --- |
+| fleet | 0.4168 → 0.4164 | 25 → 25 | 50,448 → **31,205 (−38.1%)** | 19 → 20 | 571 → 647 |
+| trader | 0.916 → 0.916 | **21 → 21** | 80,305 → 50,081 (−37.6%) | 17 → 20 | 19 → 24 |
+| trader-degraded | 0.760 → 0.758 | 23 → 23 | 57,619 → 33,634 (−41.6%) | 18 → 19 | 120 → 173 |
+| fighter | 0.327 → 0.328 | 24 → 24 | 2,825 → 2,825 | 10 → 10 | 15 → 20 |
+| explorer | — | — | 91,366 → 78,579 (−14.0%) | 23 → 24 | 65 → **54** |
+| smuggler | 0.535 → 0.535 | 30 → 30 | 42,211 → 28,424 (−32.7%) | 28 → 29 | 72 → 91 |
+| gambler | 0.795 → 0.793 | 26 → 26 | 68,436 → 44,492 (−35.0%) | 23 → 25 | 27 → 32 |
+| veteran | 0.001 → 0.001 | 100 → 99 | 6,359 → 6,172 (−2.9%) | 20 → 20 | 142 → 142 |
+| **greedy** | **byte-identical (control)** | | | | |
+
+Tour One is essentially frozen (≤0.3% on every clear rate). `encountersPerRun` moves
+24.33 → 24.37, so **the extra deaths are not more fights — they are a thinner purse**
+(fleet fuel-starved days/career 1.48 → 1.70).
+
+**Per-verb attribution, four separate capstones at 1,000 seeds × 120 days:**
+
+| arm | fleet clear | fleet final cr | fleet ships |
+| --- | --- | --- | --- |
+| baseline `r2c-final` | 0.4168 | 50,448 | 571 |
+| **Port only** | 0.4168 | 39,193 (−22.3%) | 574 (+0.5%) |
+| **Crew + berths only** | 0.4160 | 37,888 (−24.9%) | 633 (+10.9%) |
+| Crew + berths + **Reroll** | 0.4160 | 37,807 (−0.2% vs crew) | 644 (+1.7%) |
+| all three (shipped) | 0.4164 | 31,205 (−38.1%) | 647 (+13.3%) |
+
+**The reroll is arithmetically marginal, not badly played.** Played strictly +EV it can only
+fire when the *sharpest* die is already below the fresh expectation, and
+`P(max of 5d20 < 11) = 0.5⁵ ≈ 3.1%` — verified independently. A career sees ~1.2 charges
+worth ~2 pips of die face: −0.2% credits and +1.7% ships, both inside noise. **The verb is
+now exercised; it is not a lever.** Zero crew walkouts in 280 careers.
+
+> **THE FINDING THAT OUTRANKS THE VERDICT — the instrument measures CASH, not NET WORTH.**
+> `finalCredits` cannot see an asset. The trader's ~13,500cr of port spend is still on its
+> balance sheet yielding 65–290/dusk in perpetuity, and the aggregate scores it as a 100%
+> loss. So *"the fleet got poorer"* is unambiguously true only of the **crew** arm (wages,
+> ~15,100/career out and ~1,500 back — a genuine operating loss). The **port** arm is
+> balance-sheet conversion the instrument structurally cannot read, and R2d's own entry
+> predicted exactly this and flagged it as "the thing to revisit first".
+> **`sampleMilestone` records `crew` but not `ports`, so port ownership is invisible to
+> every aggregate this project produces.** Same class as R0a and R2a — the instrument
+> cannot see part of the game it is grading. **This must be fixed before N8 re-pins**, or
+> the new baseline of record inherits a blind spot on an asset class the policies now buy.
+
+**A judgment call made, reversed, and documented at the site.** The overhead first shipped
+*without* a marker gate, on the argument that crew is a throughput purchase. A full capstone
+refuted it — trader clear 0.916 → 0.759, clear day 21 → 25; smuggler 0.535 → 0.210, day
+30 → 44; fleet ships 571 → 816 — and the premise failed on its own terms: a trader's day is
+a two-run plan capped at five dice, so the sixth die a First Officer grants buys no extra
+contract. Restored as a **hold** (`spendable` subtracts the outstanding marker) rather than
+a hard block, because a hard block silences all three verbs for the explorer (clears 0.00)
+and veteran (0.001) *forever*, re-creating the very blind spot this step removes.
+
+**Battery:** **1,226 passing / 0 failing**, `tsc -b`, `eslint`, `prettier` clean.
+`campaign-degraded` fingerprints re-pinned deliberately with logged entry #5 (trader
+`467a83d4→2e4f1623`, fighter `b6ef1dc0→620348f8`, explorer `90d35d3c→6f4d8c17`, smuggler
+`b480fc6f→49d98c00`, gambler `de62c310→29fc3a0c`); **greedy and veteran unchanged.**
+`rulesFingerprint` is unchanged at `76ac9179…` — the proof no engine/content rule moved —
+while `instrumentFingerprint` moved `34453d51…→37f920ed…` and the smoke fixture was
+re-extracted. **The `balance-targets` tripwire did NOT fire:** trader clear day 21 → 21 at
+1,000 seeds, so it still fails its assertion and still passes as `it.fails`.
+
+**Baseline of record UNCHANGED** (`baseline-r2c-final.json`) — a rejected hypothesis re-pins
+nothing (R1's precedent). Arms live in `.scratch/balance/`.
+
+**Out of scope, reported not fixed:**
+1. **N7's fingerprint over-sensitivity is now a measured tax, not just friction.** `prettier
+   --write` and a two-word comment each staled the fixture and forced a fresh capstone —
+   **three re-runs in one step.** The rig is behaving correctly (a fixture carries both
+   hashes and fails on either); the cost is real. Revisit the raw-bytes decision with this
+   number in hand.
+2. **The extra-die crew role is near-worthless to trader-shaped policies by construction** —
+   their day is a fixed two-run plan capped at five dice, so a sixth die has no queued use.
+   If the First Officer is meant to be the strongest hire, something needs a use for the die.
+3. **Ports are unreachable for two archetypes structurally** — under the marker hold, the
+   explorer (clears 0.00) and veteran (0.001) never accumulate surplus above debt, so any
+   fleet-wide port-ownership criterion is measured on five policies, not seven.
+
 ### N8 — Re-pin the baseline against a living field
 
 - Everything above changes the world the player trades in — captains claiming contracts,
   buying ships, dying. **Every balance number in this document moves.** Re-pin at 1,000
   seeds (the R0b standing amendment) and re-read the R-series conclusions against it,
   especially R2.5, whose escalation ladder was designed against a field that took no risk.
+- **FIRST TASK — teach the aggregate to see an asset, before re-pinning anything.** N9
+  found that `sampleMilestone` records `crew` but not `ports`, so **port ownership is
+  invisible to every aggregate this project produces** and `finalCredits` scores a bought
+  port as a 100% loss. The policies now buy ports (N9), so re-pinning first would bake a
+  blind spot on a live asset class into the yardstick every R-series conclusion is
+  re-read against. Same class as R0a and R2a, and both of those had to precede the work
+  they graded. A `ports: state.player.ports.length` on the milestone is the minimum;
+  consider whether the fleet needs a net-worth figure alongside the cash one, since
+  **"the fleet got poorer" is currently unfalsifiable for any purchase of an asset.**
+- **Re-pin against the POST-N9 instrument**, not `baseline-r2c-final.json`. N9 moved 7 of
+  8 policy rows (−38% fleet cash, +13% ships); a baseline taken from the pre-N9 instrument
+  describes a fleet that never hires, never buys a port and never rerolls.
 
 ---
 
@@ -1556,7 +1671,7 @@ NPC PARITY TRACK (in progress — the R-series is PAUSED behind it, see below):
   N0 (copy-on-write) ......................... DONE
    └─► N1 (NPCs own a real ship) ............. DONE  (change accepted, hypothesis disproved)
         ├─► N7 (capstone diff + smoke rig) ... DONE  (accepted; 1.5 s smoke, 2 min capstone)
-        │    └─► N9 (the instrument's three unplayed actions)  ◄── NEW, found by N7
+        │    └─► N9 (the instrument's three unplayed actions) ... DONE  (rejected; found the cash-vs-net-worth gap)
         ├─► N6 (Honor List, 31-way board) ... DONE  (accepted; 6/8 titles frozen until N2)
         └─► N2 (NPCs upgrade + shipyard actor param + hull re-seed)
              └─► N3 (NPCs meet pirates + answer them)
