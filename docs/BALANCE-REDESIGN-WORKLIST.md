@@ -135,9 +135,25 @@ second lens (a fix should hold up for the sloppy pilot too).
 ```sh
 # ×8, one per shard
 npm run balance:sweep -w @spacerquest/sim -- --label <label> --seeds 1000 --days 120 \
+  --milestone-days 21,29,30,41,60,120 \
   --policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy --shard i/8
 npm run balance:sweep -w @spacerquest/sim -- --label <label> --merge
+
+# THEN re-extract the smoke fixture FROM THE CAPSTONE YOU JUST WROTE — not bare.
+npm run balance:extract -w @spacerquest/sim -- --aggregate docs/balance/baseline-<label>.json
 ```
+
+> **BOTH FLAGS ARE LOAD-BEARING, and this block omitted both until 2026-07-29.**
+> Copy-pasting the old version cost a re-run in the R2c-follow-up step, twice:
+> - **No `--milestone-days`** and the capstone carries no milestone samples, so it is
+>   ~7,400 fields SHORT of its predecessor. `balance:diff` reports those as removed
+>   paths, which is easy to mistake for diff noise and filter away — that is exactly
+>   how it got missed the first time.
+> - **A bare `balance:extract`** defaults to `--aggregate docs/balance/baseline-n1.json`,
+>   which has no milestones — so it silently rewrites the fixture with
+>   `spreadSource: "estimated"` and downgrades a `"harvested"` one. The extractor
+>   prints which it did (`spreads harvested` vs `spreads estimated`); read that line.
+>   The fixture's own `provenance.spreadSource` is the durable record.
 
 **Baseline of record for all comparisons:** `docs/balance/baseline-vet-1k-r2a.json` (1,000
 seeds, post-R0a + R2a). `baseline-vet-1k.json` is its immediate predecessor (post-R0a only)
@@ -375,6 +391,10 @@ value itself.
   the contraband risk premium — the tariff it was written to reduce may not exist.
 - **R3 is untouched and still urgent:** explorer clears **0.00** at 1,000 seeds. Not a
   sampling artifact by any reading.
+  > **CLOSED 2026-07-29** (R2c-follow-up): 0.00 -> **0.777**. The 0.00 was real, and it was
+  > not a funding rate — `explorerPolicy` had no `planDebtPayment` call at all. Note this
+  > bullet's own warning got the diagnosis exactly backwards in a way n could not fix:
+  > the rate really was 0.00, at every sample size, because nothing ever paid.
 
 ### R2 — Make the pirate a threat (near-peer power + the pirate table)
 
@@ -576,6 +596,20 @@ now gated on `debt === 0`, the rule every other competent policy already follows
 Same seed/horizon: debt **4,253,290 -> 0**, credits **2,825 -> 584,456**, modules
 1 -> 3, component tiers 4 -> 9, `shieldAbsorbedPoints` 0 -> 86.
 
+> **CORRECTION TO CLAIM 3 (2026-07-29, doc-audit finding).** Two things in that
+> paragraph were false as written, and the second one hid a live defect for a day.
+> **(a)** "the rule every other competent policy already follows" — it was the
+> fighter's new rule and nobody else's. `COMPETENT_POLICIES` is
+> `[trader, fighter, explorer]`, and the explorer gated its yard purchase on
+> `credits >= EXPLORER_RESERVE / 2` with no reference to `player.debt` at all.
+> **(b)** "the fighter never paid its debts … the only competent policy that did"
+> — the audit that produced (a) went looking for the explorer's *late* remittance
+> and found it had **no remittance of any kind**: `planDebtPayment` appeared in
+> five policies and never in `explorerPolicy`. A policy that never remits at all
+> cannot show up in a search for policies that remit late, which is exactly how
+> R2c looked straight at this and missed it. **Both are now fixed in code** — see
+> the R2c-follow-up entry below, which also settles R3.
+
 *Measured and rejected on the way:* gating only the component ladder and letting
 special equipment through (ASTRAXIAL_HULL is 100,000cr — the spiral came straight
 back); a `credits >= debt + reserve` rule (stricter early, fitting rate 5/15 -> 4/15);
@@ -598,6 +632,119 @@ veteran, smuggler and explorer moved.
 - `campaign-reach` T-1307 ports — **caused by this change.** The fleet is honestly
   poorer, the veteran (6,359cr median) can no longer reach the cheapest 7,150cr port,
   and no seed qualifies at 150 OR 300 days. Owned by the port re-pricing step below.
+
+### R2c-follow-up — The explorer remits to the Guild (SHIPPED 2026-07-29)
+
+**Found by auditing this document against the code it describes, not by a sweep.**
+R2c's claim 3 said kit was "gated on `debt === 0`, the rule every other competent
+policy already follows." Checking that sentence against `COMPETENT_POLICIES`
+(`[trader, fighter, explorer]`) found the explorer buying at the yard on
+`credits >= EXPLORER_RESERVE / 2`, never reading `player.debt`. Pulling that thread
+found the real defect underneath it, which was larger and older.
+
+**THE EXPLORER HAD NO DEBT REMITTANCE AT ALL.** Not a late one, not a weak one:
+`planDebtPayment` was called by the trader, smuggler, gambler, fighter and veteran,
+and never by `explorerPolicy`. Measured on shipped code, 30 seeds x 120 days:
+
+| | before | after |
+| --- | --- | --- |
+| marker cleared | **0 of 30** | 30 of 30 |
+| `TourOneResolved` | `unpaid` 30 of 30 | `cleared` 30 of 30 |
+| credits held on day 30 | median **39,866** | — |
+| debt at day 120 | **148,696**, identical on every seed | 0 |
+
+That last row is the tell. A debt that lands on the same number from every starting
+seed is a debt **nothing ever touches** — 25,000 principal, flagged unpaid at day 30,
+then compounded by `day.ts`'s dusk interest for ninety days with no payment against
+it. And the explorer could afford it the whole time: a median 39,866 credits on the
+day the marker fell due. It also ate the `guild.debt-flagged` penalty — leaner
+manifests, keener patrols — for every career, which is why `encountersPerRun` drops
+40.5 -> 37.1 once the marker is actually paid.
+
+**Fix: the missing verb, not a new one.** `explorerPolicy` now ends with the same
+`planDebtPayment` call every other policy already had, held back by a dedicated
+`EXPLORER_DEBT_RESERVE` (6,000) so the remittance cannot eat tomorrow's refuel.
+
+**THE YARD PURCHASE IS DELIBERATELY *NOT* DEBT-GATED, and this is the interesting
+half.** The obvious reading of the audit finding — "make the explorer obey the
+fighter's `debt === 0` rule" — is wrong, and measurement says so three times over:
+1. `quoteShipyard` prices the tier-3 drives buy at **175 credits**. R2c's spiral was
+   built out of 10,000cr STAR_BUSTERs and a 100,000cr ASTRAXIAL_HULL. A 175cr
+   purchase is not that class of kit and cannot reproduce that failure.
+2. It fires on **day 1**, out of the 1,000cr starting purse, 29 days before the
+   marker is due. Any debt-shaped gate is unsatisfiable on day 1 by construction —
+   `debt === 0` and an N9-style `credits - debt` hold (which needs 26,000cr) would
+   not have *delayed* this buy, they would have **deleted** it.
+3. Deleting it breaks the arc. Tier-3 drives cut fuel-per-jump 60 -> 5, the only
+   thing that brings the Polaris-1 rim hop inside the sign-cap — so the whole T-1310
+   pursuit that `campaign-nemesis.test.ts` grades at ≥80% of 50 seeds hangs off that
+   one 175cr line.
+
+The general rule this earns, and it generalises past this policy: **a debt gate is a
+gate on DISCRETIONARY kit, never on the capability that generates the income.** The
+drives *are* the explorer's earning power, so gating them behind the marker gates the
+explorer out of ever paying the marker — the anti-poverty-trap invariant in its
+purest form. R2c's phrasing invited the wrong generalisation by describing its rule
+as fleet-wide when it was one policy's answer to one five-figure shopping list.
+
+**Reserve tuning, and a sampling mistake caught in flight.** The first cut reserved
+only `EXPLORER_RESERVE` (2,000) and the capstone answered with `shipsLost` **41 ->
+57** and `fuelStarvationDays.mean` 0.0130 -> 0.1390 — precisely the failure
+`TRADER_RESERVE`'s own comment records ("pays down debt aggressively, then strands
+with no credits to fill the tank"). A 250-seed sweep then picked 8,000 on a
+starvation reading of **0.012 that did not survive n=1,000 (0.104)**. Only 9-17 runs
+in 1,000 starve at all, so that column is a ten-run tail and its non-monotonicity is
+noise; the clear rate and clear-day median are monotone over all 1,000 and are what
+the value is actually ranked on. **This is R0b's standing amendment biting a
+constant instead of a test** — the same shape as the `balance-targets` split, and
+the second time in this document a candidate has passed at a small n and failed at
+1,000. Re-swept at 1,000 seeds, 6,000 is the highest clear rate among values landing
+the median inside R3's [22, 30] band, and the only one whose ship losses come in at
+or below the pre-change 41. Full table in the `EXPLORER_DEBT_RESERVE` comment.
+
+**Capstone (1,000 seeds x 120 days), explorer row:**
+
+| | N2 baseline | now |
+| --- | --- | --- |
+| `tourOneClearRate` | 0.000 | **0.777** |
+| `debtClearedDay.median` | never | **23** |
+| `survival.shipsLost` | 41 | **39** |
+| `deedCount.median` | 24 | 28 |
+| `encountersPerRun` | 40.47 | 37.07 |
+| `finalCredits.median` | 79,168 | 57,327 |
+
+The explorer's renown profile moves with its purse, and this is the one row worth
+flagging that is not in the table: `renownRanks` goes `{GRAND_MUFTI 907, MEGA_HERO 88,
+TOP_DOG 5}` -> `{MEGA_HERO 865, GIGA_HERO 68, GRAND_MUFTI 67}`. It is a downstream
+consequence of the -27.6% final credits, not a separate lever, and the TOP_DOG bucket
+disappearing is 5 careers out of 1,000. Recorded, not tuned.
+
+Fleet `tourOneClearRate` 0.4145 -> 0.5116; fleet `shipsLost` 609 -> 607. **Only the
+explorer row moves** — trader, fighter, veteran, smuggler, gambler, greedy and
+trader-degraded are byte-identical, which is the control proving the edit stayed
+inside `explorerPolicy`. `rulesFingerprint` is UNCHANGED (`2273d380…`): this is an
+instrument change, not a ruleset change, and the smoke fixture was re-extracted once
+at the end per standing amendment 3, from this capstone, `spreadSource: "harvested"`.
+
+**Two procedural traps this step fell into, both now fixed in the sweep block at the
+top of this document rather than just described here.** The capstone was first run
+without `--milestone-days`, producing a baseline ~7,400 fields short of its
+predecessor; `balance:diff` DID report every missing path, and they were filtered out
+of the terminal as noise. Then a bare `balance:extract` — which defaults to
+`baseline-n1.json`, a capstone with no milestones — rewrote the fixture from
+`spreadSource: "harvested"` down to `"estimated"`. Neither failed a test: the smoke
+suite validates the fixture it is given, and a fixture full of estimates is still a
+valid fixture. **The check that catches both is reading the extractor's own
+`spreads harvested` / `spreads estimated` line, and diffing the new baseline's field
+set against the outgoing one before re-pinning.**
+
+**This closes R3** — see that step for the disproved hypothesis and the one
+acceptance criterion it does *not* close.
+
+**Baseline of record re-pinned to `docs/balance/baseline-r2c-explorer-remit.json`**
+(standing amendment 1: re-pin on shipped code). Battery **1,233 passing / 0
+failing**; `tsc -b`, `eslint`, `prettier` clean. The `campaign-degraded` explorer
+fingerprint is re-pinned with mechanism logged at the site (entry 7).
 
 ### R2d — Re-price ports to the 1991 curve (SHIPPED 2026-07-28)
 
@@ -629,6 +776,20 @@ on 6 of 20 seeds at 150 days (3, 8, 11, 13, 15, 19) and 18 of 20 at 300; the tra
 18 of 20 at 150. Ports were always reachable. The `campaign-reach` test needed only a
 seed re-pin (12 → 3), which is the third time that test has been re-pinned for a
 content change and is its documented pattern.
+
+> **STALE AS OF N2 (2026-07-29 correction, doc-audit finding).** N2's NPC field
+> (`considerRefit`, `npcComponentLadder`) shifts the encounter matchmaker's
+> interceptor draws for every long unguided trajectory, same mechanism as the
+> T-1504a/T-1603b re-pins in `campaign-reach.test.ts`. The test itself was already
+> re-pinned to seed 9 in the N2 commit, but this entry and the test's own comment
+> block were not updated at the time — a doc-currency gap, not a functional break.
+> **Re-swept 2026-07-29 (seeds 1..20 of the exact driver, current HEAD):** the
+> veteran now qualifies on only **2 of 20** seeds at 150 days — **9, 13** — and
+> **8 of 20** at 300 days — 1, 5, 6, 8, 9, 11, 13, 19. **Seed 9 is the current pin
+> and the first qualifier.** The qualifying rate falling 6/20 → 2/20 at the 150-day
+> horizon is a real, recorded economic consequence of N2 (the veteran now competes
+> for ports against an NPC field that reinvests), not something to tune away. The
+> in-file comment at `campaign-reach.test.ts` has been updated to match.
 
 **Cost, stated at the definition site:** income is unchanged (the aggregate ceiling has
 no headroom), so payback stretches from [110, 150] dusks to [154, 1050]. A stake is now
@@ -889,6 +1050,34 @@ one candidate this bake-off could not simulate.
   showcase vignette *set on Day 19, inside Tour One*, and it currently fails the tutorial
   100% of the time. All three personas flagged this; two tied it to demo conversion.
 
+> **RESOLVED WITHOUT ITS LEVER (2026-07-29) — see the R2c-follow-up entry above.**
+> **The hypothesis is DISPROVED, and that is the finding.** The 0% clear rate was
+> never a funding-rate problem, so neither knob in "Change (lever)" needed to move:
+> the explorer was already sitting on a median **39,866 credits on day 30** against
+> the 25,000 it owed. It could afford the marker on essentially every seed and
+> simply never paid it, because `explorerPolicy` had no `planDebtPayment` call at
+> all. "Supporting data" above had the shape of it — *"it earns fine over 120 days,
+> it just can't front-load 25,000cr by day 30"* — and drew the wrong conclusion
+> from it. It could front-load it. Nothing ever asked it to.
+>
+> **Acceptance, measured at 1,000 seeds x 120 days:**
+> - *"clears ≥ ~0.4"* — **0.777.** ✅
+> - *"clear-day median inside or near [22, 30]"* — **23.** ✅
+> - *"trader/gambler behavior unchanged"* — **byte-identical**, along with fighter,
+>   veteran, smuggler, greedy and trader-degraded. Only the explorer row moves. ✅
+> - *"explorer final credits don't balloon past the fighter"* — **still open, and NOT
+>   closed by this work.** Explorer 57,327 vs fighter 2,825. It improved (79,168 ->
+>   57,327, -27.6%) but the gap is 20x either way, and it is a *fighter-side* fact:
+>   2,825 is the fighter's own operating reserve, the "combat has no income" finding
+>   R2c recorded under its own claim 2. Read this criterion as belonging to the
+>   fighter's economy, not the explorer's funding rate.
+>
+> **What this leaves open:** the PRD §7.2 Day-19 vignette now succeeds ~78% of the
+> time instead of 0%, so the demo-conversion concern the personas raised is largely
+> answered. Whether explore EV itself should still rise is a *separate* design
+> question about whether the exploration fantasy pays — it is no longer load-bearing
+> for Tour One, and should not be justified by the clear rate any more.
+
 ---
 
 ## THE NPC PARITY TRACK (N-series)
@@ -1044,6 +1233,13 @@ plus a save migration with a *zero*-behaviour blast radius — and the byte-iden
 proof it landed cleanly, not evidence of a null result. Restated Proves for N1: *no
 behaviour moves; NPC capability becomes mutable state the captain owns instead of a
 constant recomputed from their profile.*
+
+> **SUPERSEDED BY N2 (2026-07-29 correction, doc-audit finding).** The formula
+> below describes N1's shipped commit only. N2's second task deliberately replaced
+> it — `npcHullStrength` is now a search for the smallest hull strength whose
+> `maxCargoPodsForShip` covers the tier's pod count, removing the fuel-tank
+> exemption this paragraph explains. See N2's entry for the current logic; a
+> reader grepping current `npc.ts` for `2 + 2 * tier` will not find it.
 
 **The one genuinely new number is `hull.strength = 2 + 2·tier`**, and it is calibrated
 against the phantom's *unbounded* tank: pre-N1 an NPC's fuel had no ceiling. It yields
@@ -1878,7 +2074,7 @@ THEN the R-series resumes, re-read against N8's baseline:
 WHY THE PAUSE: R2.5's ladder was designed against a field that takes no risk and never
 upgrades. Landing it before N8 would tune the player's world against captains who are
 not in it.
-R3 (explorer)  — parallel, separate sweep
+R3 (explorer)  — CLOSED 2026-07-29 by the R2c-follow-up (clear rate 0.00 -> 0.777)
 R6 (instrument) — any time, goldens-identical
 R5a (fighter deeds) — after R2 lands
 R7 — ABSORBED into R2.5.  R8/R9 — opportunistic
@@ -1894,8 +2090,9 @@ hypothesis, and append the result under the step before moving on.
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-n2-final.json`** (1,000 seeds × 120 days).
-   > `baseline-n9-shipped`, `baseline-r2c-final` and `baseline-vet-1k*` are its predecessors.
+   > **Baseline of record is `docs/balance/baseline-r2c-explorer-remit.json`** (1,000 seeds
+   > × 120 days). `baseline-n2-final`, `baseline-n9-shipped`, `baseline-r2c-final` and
+   > `baseline-vet-1k*` are its predecessors.
    > **It is also read at runtime by `balance-targets.test.ts`'s band block**, so re-pinning
    > means updating that path in the same commit. **Update this pointer in the same commit that re-pins the baseline** —
    > a stale yardstick silently mis-grades every step that diffs against it.

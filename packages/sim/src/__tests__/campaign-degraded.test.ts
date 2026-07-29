@@ -146,12 +146,30 @@ const UNCHANGED_POLICIES = [
  *        galaxy with the cast, so an N-series change moves it like everything
  *        else. Reading its movement here as "N2 leaked into the policies" would
  *        be a misdiagnosis; the 1,000-seed capstone shows the same thing.
+ *
+ * 7. R2c-follow-up (doc-audit) — the explorer remits to the Guild. EXACTLY ONE
+ *    row moves, and that is the assertion this table is making:
+ *      explorer 2625825072195040 -> 2755c18f179a8c8a
+ *    MECHANISM: `explorerPolicy` gained the `planDebtPayment` call every other
+ *    policy in the fleet already had. It was the only one with NO debt
+ *    remittance at all, so it cleared the marker on 0 of 30 seeds and resolved
+ *    `unpaid` on 30 of 30 while holding a median 39,866 credits at day 30
+ *    against the 25,000 it owed; the flagged principal then compounded to
+ *    148,696 by day 120, identical on every seed. With the remittance, at the
+ *    1,000-seed capstone: `tourOneClearRate` 0 -> 0.78, `debtClearedDay.median`
+ *    never -> 23, end debt 0. It also carries `EXPLORER_DEBT_RESERVE`, held
+ *    back so the remittance cannot eat the next refuel — see that constant for
+ *    the value sweep and why 6,000 rather than the operating reserve.
+ *      * This is a POLICY change, so unlike entry 6 the other six rows are
+ *        byte-identical — `greedy` included, back in its R0a role as the
+ *        control for policy work. A second row moving here would have meant the
+ *        edit leaked out of `explorerPolicy`, and none did.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   trader: '08b757b5501d8278',
   fighter: '3868e2a61f07d811',
-  explorer: '2625825072195040',
+  explorer: '2755c18f179a8c8a',
   veteran: 'aebb5d643c7411cc',
   smuggler: '853f1da76afe73c5',
   gambler: '976a6f103338f27a',

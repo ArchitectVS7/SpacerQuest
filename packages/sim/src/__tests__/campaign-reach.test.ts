@@ -267,6 +267,19 @@ describe('T-1307 ports reachable through play', () => {
     // and on 18 of 20 at 300 days, so the pillar is comfortably reachable, just
     // later. Seed 3 is the first qualifier. PINNED, NOT STEERED: only the seed
     // changed; every assertion below is untouched.
+    //
+    // N2 re-pin (seed 3 → 9). MECHANISM: same class as the T-1504a and T-1603b
+    // re-pins above — `npcComponentLadder`/`considerRefit` (N2, `packages/engine/
+    // src/npc.ts`) change what the NPC field flies and how it upgrades, which
+    // shifts the encounter matchmaker's interceptor draws for every long unguided
+    // trajectory, this one included. SWEEP EVIDENCE (seeds 1..20 of this exact
+    // driver, re-run 2026-07-29): the veteran now qualifies on only 2 of 20 seeds
+    // at this 150-day horizon — 9, 13 — and on 8 of 20 at 300 days — 1, 5, 6, 8, 9,
+    // 11, 13, 19. Seed 9 is the first qualifier. The qualifying rate falling
+    // 6/20 → 2/20 is a real economic consequence of N2 (the veteran now competes
+    // with an NPC field that reinvests), recorded here rather than tuned away.
+    // PINNED, NOT STEERED: only the seed changed; every assertion below is
+    // untouched.
     const state = driveCompetentCampaign(portBuyingVeteranPolicy, 9, 150);
 
     // The purchase happened through legal play: a PortEvent{purchased} was logged

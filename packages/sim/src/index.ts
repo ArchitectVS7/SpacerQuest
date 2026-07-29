@@ -3687,6 +3687,47 @@ const EXPLORER_DECODE_TRIP_RESERVE = 10000;
  *  resolution): the first month is where this policy is poorest, and a deadhead
  *  flown out of it is what turned into the strands above. */
 const EXPLORER_DECODE_TRIP_FIRST_DAY = 30;
+/** What the explorer holds BACK from the Guild, over and above the operating
+ *  reserve, so that remitting can never eat tomorrow's refuel. This is
+ *  `TRADER_RESERVE`'s lesson paid for a second time, at this policy's prices:
+ *  the first cut of the remittance below reserved only `EXPLORER_RESERVE`
+ *  (2,000), and the 1,000-seed capstone answered with a **10x rise in
+ *  `fuelStarvationDays.mean` (0.0130 -> 0.1390, max 11 -> 26)** and
+ *  **`shipsLost` 41 -> 57**, the exact "pays down debt aggressively, then
+ *  strands with no credits to fill the tank" failure `TRADER_RESERVE` records.
+ *
+ *  SWEPT AT 1,000 SEEDS x 120 days (reserve -> tourOneClearRate / clearDay
+ *  median / starvation mean / starved runs / shipsLost), against a pre-remittance
+ *  explorer of 0.000 / never / 0.0130 / - / 41:
+ *       2,000 -> 0.950 / 19 / 0.139 / 17 / 57
+ *       4,000 -> 0.894 / 21 / 0.071 /  9 / 50
+ *       6,000 -> 0.777 / 23 / 0.067 / 11 / 39   <- kept
+ *       8,000 -> 0.721 / 25 / 0.104 /  9 / 43
+ *      10,000 -> 0.661 / 27 / 0.053 / 15 / 49
+ *
+ *  READ THE COLUMNS DIFFERENTLY, because they do not all carry the same weight.
+ *  `tourOneClearRate` and the clear-day median are monotone in the reserve and
+ *  measured over all 1,000 runs, so they rank values reliably. **The starvation
+ *  mean does not**: only 9-17 runs in 1,000 starve at all, so that column is a
+ *  ten-run tail and its non-monotonicity (0.139, 0.071, 0.067, 0.104, 0.053) is
+ *  noise, not signal. Ranking on it is how an earlier cut of this constant chose
+ *  8,000 off a 250-seed probe that read starvation 0.012 — a number that did not
+ *  survive n=1,000 (0.104). That is R0b's standing amendment, and the
+ *  balance-targets split's "match the assertion to the sample", landing on a
+ *  constant instead of a test.
+ *
+ *  So 6,000 is chosen on the two columns that hold: it is the HIGHEST clear rate
+ *  among the values whose clear-day median lands inside R3's [22, 30] band
+ *  (2,000 and 4,000 clear too FAST, at 19 and 21, and fall out the bottom), and
+ *  it is the only value whose `shipsLost` (39) is at or BELOW the 41 the
+ *  explorer lost before the remittance existed — i.e. the marker gets paid
+ *  without costing a single extra ship. The curve turns back on itself above
+ *  8,000 for a mechanical reason worth keeping: holding that much back pushes
+ *  the payment past day 30, the marker resolves `unpaid`, and the flagged
+ *  principal compounds into exactly the poverty the reserve was raised to
+ *  prevent. The debt still reaches zero at every value swept; the reserve
+ *  decides whether it clears ON TIME. */
+const EXPLORER_DEBT_RESERVE = 6000;
 
 /**
  * EXPLORER — fragment chaser. Off-lane sweeps are a credit SINK (a detour burns
@@ -3749,6 +3790,10 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   const crippledRepair = planCrippledRepair(state, ledger, EXPLORER_RESERVE);
   if (crippledRepair) actions.push(crippledRepair);
 
+  /** What today's plan has already promised the yard, tracked so the remittance
+   *  at the bottom cannot spend the same credits twice. */
+  let drivesCost = 0;
+
   // T-1310: the explorer invests in DRIVES early — its defining upgrade, the way the
   // fighter buys guns. A tier-3 drive (strength 30) costs ~0 net (the strength-10
   // trade-in dwarfs the 200cr sticker) and drops per-unit jump fuel from 12 to ~1, so
@@ -3759,6 +3804,26 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
   // pursuit can fly straight there. Component tiers are NOT renown-gated (engine
   // shipyard.ts), so a low-renown explorer can buy them. Gated above a working reserve
   // so it never spends its last credits on the yard.
+  //
+  // DELIBERATELY NOT GATED ON THE MARKER, and this is the one exemption to R2c's
+  // kit rule (doc-audit finding, 2026-07-29). Three measured facts force it:
+  //   1. `quoteShipyard` prices this buy at **175 credits** on a day-1 junker —
+  //      it is not the 10,000cr STAR_BUSTER / 100,000cr ASTRAXIAL_HULL class of
+  //      kit the fighter's `debt === 0` rule exists to stop. R2c's spiral was
+  //      built out of five-figure purchases; a 175cr one cannot reproduce it.
+  //   2. It fires on **day 1**, out of the 1,000cr starting purse, against a
+  //      25,000cr marker that is 29 days from due. Any debt-shaped gate — hard
+  //      `debt === 0` or an N9-style `credits - debt` hold — is unsatisfiable on
+  //      day 1 by construction, so it would not delay this buy, it would DELETE
+  //      it (a hold needs 26,000cr, which seed 30 never reaches at all).
+  //   3. Deleting it breaks the arc. Tier-3 drives cut fuel-per-jump 60 -> 5,
+  //      which is the ONLY thing that puts the Polaris-1 rim hop inside the
+  //      sign-cap — i.e. the whole T-1310 pursuit `campaign-nemesis.test.ts`
+  //      grades at >= 80% of 50 seeds hangs off this one 175cr line.
+  // This is the anti-poverty-trap invariant in its purest form: the drives ARE
+  // the explorer's income, so gating them behind the marker gates the explorer
+  // out of ever paying the marker. The remittance below is what actually settles
+  // the Guild, and it settles it in full.
   if (state.player.ship.drives.strength < 30 && state.player.credits >= EXPLORER_RESERVE / 2) {
     const die = ledger.takeWorst();
     if (die !== undefined) {
@@ -3769,6 +3834,7 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
         tier: 3,
         spendDie: die,
       });
+      drivesCost = componentTierNetCost(state, 'drives', 3);
     }
   }
 
@@ -3935,6 +4001,37 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
       projectedFuel -= EXPLORATION_FUEL_COST;
     }
   }
+
+  // THE MARKER. Until this line the explorer was the ONLY policy in the fleet
+  // with no debt remittance of any kind — not a weak one, none: `planDebtPayment`
+  // appeared in the trader, smuggler, gambler, fighter and veteran, and never
+  // here. R2c recorded that the fighter "was the only competent policy that
+  // [bought kit before remitting]"; that was measured against the fighter's
+  // spiral and missed this policy entirely, because an explorer that never remits
+  // at all never shows up as one that remits late.
+  //
+  // Measured on shipped code before this line existed, 30 seeds x 120 days: the
+  // marker was cleared on **0 of 30** seeds and resolved `unpaid` on 30 of 30,
+  // while the explorer sat on a median **39,866 credits at day 30** against the
+  // 25,000 it owed. It could simply afford it, every seed, and never paid. The
+  // `guild.debt-flagged` penalty (leaner manifests, keener patrols) then landed
+  // on every career, and day.ts's dusk interest compounded the untouched
+  // principal to **148,696 credits by day 120** — identical on all 30 seeds,
+  // which is the fingerprint of a debt nothing ever touches. That is the same
+  // spiral R2c fixed for the fighter, in a policy the fix never looked at.
+  //
+  // Placed LAST, after the Explore loop, for the fighter's stated reason: the
+  // marker must not fester, but it also must not eat the day's working capital
+  // before the day has done its work. `pay-debt` consumes no die, so sitting at
+  // the end of the list costs the plan nothing. The committed term carries the
+  // refuel, the captain's overhead AND the yard buy above, so the remittance can
+  // never promise credits another action in this same plan has already spent.
+  const debtPayment = planDebtPayment(
+    state,
+    EXPLORER_DEBT_RESERVE,
+    (refuel?.cost ?? 0) + overhead.cost + drivesCost,
+  );
+  if (debtPayment) actions.push(debtPayment);
 
   return withReroll(state, actions.length > 0 ? actions : [{ type: 'Wait' }]);
 };
