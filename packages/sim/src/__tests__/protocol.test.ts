@@ -867,7 +867,7 @@ describe('legal-actions enumerator', () => {
       for (const spec of yardSpecs) {
         for (const filled of fillsOf(spec)) {
           expect(
-            shipyardFailure(state, filled as Extract<PlayerAction, { type: 'Shipyard' }>),
+            shipyardFailure(state.player, filled as Extract<PlayerAction, { type: 'Shipyard' }>),
             `credits ${credits}: advertised ${JSON.stringify(filled)} would have failed`,
           ).toBeNull();
         }
@@ -923,7 +923,10 @@ describe('legal-actions enumerator', () => {
         .flatMap((spec) => fillsOf(spec));
       expect(fills.length, `fixture: nothing advertised at ${credits}cr`).toBeGreaterThan(0);
       for (const fill of fills) {
-        const quote = quoteShipyard(state, fill as Extract<PlayerAction, { type: 'Shipyard' }>);
+        const quote = quoteShipyard(
+          state.player,
+          fill as Extract<PlayerAction, { type: 'Shipyard' }>,
+        );
         expect(
           quote.cost,
           `a captain with ${credits} credits was offered ${JSON.stringify(fill)}`,

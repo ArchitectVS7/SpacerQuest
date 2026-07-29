@@ -120,8 +120,19 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * `.strict()`, a half-done migration fails loudly: leaving `fuel` behind is
  * rejected as an unknown key, and omitting `ship` is rejected as a missing one.
  * The mapping is `npc.ts` `seedNpcShip` — the SAME function `deserializeState`
- * and (via `npcShipForTier`) `createInitialState` use, so a migrated roster and a
- * freshly created one land on identical fits.
+ * and (via `npcShipForProfile`) `createInitialState` use, so a migrated roster and
+ * a freshly created one land on identical fits.
+ *
+ * N2 re-seeded that mapping (the component ramp and the hull) and added NO entry
+ * here, deliberately. NOTHING IN THE SAVE'S SHAPE MOVED — only the values
+ * `npcShipForProfile` returns — and an existing v10 roster must NOT be re-seeded:
+ * post-N1 an NPC's ship is state the captain OWNS, and post-N2 they buy it, so a
+ * migration could not distinguish an issued fit from a purchased one and would
+ * confiscate the difference. The full reasoning is at `npcShipForProfile`'s
+ * definition site. Note the consequence for THIS entry, which is correct and
+ * intended: because it calls `seedNpcShip` rather than restating a table, a v9
+ * save migrating today receives the CURRENT ramp — the only honest answer for a
+ * roster that never carried ships at all.
  *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +

@@ -1091,7 +1091,7 @@ type ShipyardAction = Extract<PlayerAction, { type: 'Shipyard' }>;
 /** Thin re-export so panes never import the engine directly (the store stays the
  *  sole engine caller for MUTATIONS; this is a pure read used for previews). */
 export function shipyardQuote(game: GameState, action: ShipyardAction): ShipyardQuote {
-  return quoteShipyard(game, action);
+  return quoteShipyard(game.player, action);
 }
 
 /** Authored display name for a component (from content SHIP_COMPONENTS). */
@@ -1259,7 +1259,7 @@ export function specialEquipmentRows(game: GameState): SpecialEquipmentRow[] {
       id,
       name: def.name,
       owned: equipmentOwned(game, id),
-      quote: quoteShipyard(game, {
+      quote: quoteShipyard(game.player, {
         type: 'Shipyard',
         action: 'buy-special-equipment',
         equipment: id,
@@ -2628,9 +2628,11 @@ function honorField(game: GameState): HonorCaptain[] {
  * Rank the field on one title.
  *
  * TIES ARE CO-HELD, NOT BROKEN — recovered, not invented. With 31 captains over
- * eight titles a tie is the common case, not the corner one (at world creation every
- * NPC is seeded from `npcShipForTier`, which varies only hull, drives and pods, so
- * five of the seven component titles open as a whole-field tie). A tiebreak would
+ * eight titles a tie is the common case, not the corner one. (Until N2 it was the
+ * ONLY case: `npcShipForTier` varied only hull, drives and pods, so six of the
+ * seven component titles opened as a whole-field 31-way tie. N2's stat-driven seed
+ * makes day 1 a contest — but ties of two to twenty remain routine as captains buy
+ * their way up the same nine-rung yard ladder.) A tiebreak would
  * therefore be doing most of the work of the board, and any tiebreak available here
  * — roster index, profile tier, credits — would be a rule this file invented about
  * who is better, i.e. exactly the "never restate an engine rule" failure. The

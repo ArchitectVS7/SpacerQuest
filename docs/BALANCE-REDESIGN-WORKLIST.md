@@ -92,6 +92,32 @@ R-series debts, neither owned by the NPC-parity track:
 | assertion | owner | why it is red |
 | --- | --- | --- |
 | `balance-targets` — trader clears inside [22, 30] | **R2.5** | clears day 21; the marker is trivial for the dominant archetype — the defect the redesign exists to remove |
+| *(the band assertion was SPLIT out and re-homed on 2026-07-29 — see below)* | | |
+
+> **THE BAND TRIPWIRE FIRED ON NOISE DURING N2, AND THAT IS THE MOST IMPORTANT TESTING
+> LESSON THIS TRACK HAS PRODUCED.** `balance-targets` bundled two claims of very different
+> statistical cost into one test running a **40-seed** arm:
+>
+> - *the trader clears, and clears fastest of the three* — resolves fine at n=40;
+> - *its median clear day sits inside [22, 30]* — **does not.**
+>
+> The band is a median of a discrete day over a wide spread (capstone p25 18 / p75 25), so
+> ±1 day is noise at n=40. During N2 that arm read **22**, flipping the tripwire green and
+> **announcing that R2.5's defect was fixed — while the authoritative 1,000-seed capstone
+> read 21 both before and after.** R0b's standing amendment had already predicted exactly
+> this ("a candidate passed at n=100 and failed at n=1,000"); it simply had not been applied
+> to the test itself. **A criterion that can announce a balance fix that did not happen is
+> worse than no criterion.**
+>
+> **Fix (owner decision, 2026-07-29): split by what the sample can resolve.** The 40-seed arm
+> keeps the ordering claim — robust at n=40 precisely because it compares three medians on
+> identical seeds rather than pinning the absolute position of one. The band moved to a new
+> block graded against **the committed capstone**, read from disk so that re-pinning is a
+> data change and a missing baseline fails loudly. It carries the `it.fails` tripwire, now at
+> a sample size that can actually tell when R2.5 lands.
+>
+> **General rule this earns: match the assertion to the sample, not the sample to the
+> assertion.** Splitting one test into two is usually the cheaper half of that trade.
 | `balance-combat-survival` — "Auto-Repair no longer switches the death path off" | **R2c** | `debt === 0` kit gating moved fit-out ~day 20 → ~day 60, so careers-with-a-module is 5 of 15 against a `> 5` bar calibrated on the subsidised economy |
 
 Both are marked `it.fails`, **not `it.skip` and not commented out**. The distinction is
@@ -883,7 +909,7 @@ a glance" for why N7 moved).
 | N0 — copy-on-write discipline | **SHIPPED** | clone flat in NPC richness, not linear; killed the quadratic |
 | N1 — NPCs own a real ship | **SHIPPED** `b438096b` | change accepted, **hypothesis disproved** — capstone byte-identical; found the N2 blocker + the fuel exemption |
 | N7 — capstone diff + smoke rig | **SHIPPED** | **accepted** — 1.5 s smoke vs 2 min capstone; staleness fails loudly; found N9 |
-| N2 — NPCs upgrade their ships | TODO | blocked on the shipyard actor param; owns N1's orphaned spread clause + the hull re-seed |
+| N2 — NPCs upgrade their ships | **SHIPPED** | **ACCEPTED** — spread max/median 13.4→155, fits 5→144, Honor List 2/8→8/8 contested; found R10 |
 | N6 — Honor List, 31-way board | **SHIPPED** | **accepted** — actor-shaped board; found 6 of 8 titles uncontestable by construction |
 | N3 — NPCs meet pirates | TODO | permanent death SETTLED; **the 11 mechanically-referenced captains are EXEMPT**, the other 19 mortal |
 | N4 — NPC archetypes | TODO | — |
@@ -1073,7 +1099,7 @@ tripwires were not touched and still hold — expected, since no policy row move
 > exactly the parallel cost model R2c warns about. Giving these functions an actor
 > parameter (ship + credits + rank) is **N2's first task, not an optional cleanup**.
 
-### N2 — NPCs upgrade their ships
+### N2 — NPCs upgrade their ships (SHIPPED 2026-07-29)
 
 *The owner's stated core complaint: "If the NPC never upgrades their ship, they never
 increase their trade profit."*
@@ -1122,6 +1148,91 @@ increase their trade profit."*
   the ones who upgraded; the poorest still exist (no universal escalator).
 - **Disproves:** every NPC converges on the same fit (the decision is not a decision), or
   NPC wealth runs away and they out-compete the player for contracts.
+
+**Result (2026-07-29): ACCEPTED — all three Proves limbs hold, neither Disproves limb fires,
+and the step found a day-1 player-reachable economy exploit that has been invisible for the
+whole project.**
+
+**The actor-parameter refactor is structural, not an adapter.** `ShipyardActor { ship,
+credits, registry? }` — and `PlayerState` and `NpcState` **both satisfy it as-is**, so there
+is no wrapper on either side. That is load-bearing: `applyShipyardMutation` *debits*
+`actor.credits`, and a wrapper would have banked the debit on a copy. `registry` optional is
+a rule, not a gap — a captain without one ranks `-1`, strictly below every Renown rung, so
+rank-gated purchases refuse with **no NPC branch**. `quoteShipyard`'s throwaway is now one
+ship (`structuredClone`) instead of a whole `GameState` (`cloneState`), which is what makes
+quoting 30 captains a day affordable.
+
+**Proof the player did not move across the refactor:** arm A (actor param alone) diffs
+against `baseline-n9-shipped.json` as **"NOTHING MOVED. Every compared field is equal on
+both sides"** — all 9 rows, all goldens, all seven policy fingerprints byte-identical. In the
+final tree the three `REPLAY_GOLDEN_*_RESPONSES` (the protocol's replies to *player* actions)
+remain byte-identical; only the `SESSION` strings moved, and those embed the cast.
+
+| arm | fleet clear | fleet final cr | fleet ships | trader clear/day |
+| --- | --- | --- | --- | --- |
+| baseline `n9-shipped` | 0.4164 | 31,205 | 647 | 0.916 / 21 |
+| **A — actor param** | **nothing moved** | | | |
+| **B — component ramp** | 0.4183 | 31,299 | 645 | 0.919 / 21 |
+| **C — + hull re-seed** | 0.4159 | 31,380 | 621 | 0.908 / 21 |
+| **D — + upgrade (shipped)** | 0.4145 | 31,321 | 609 | 0.918 / 21 |
+
+**NPC wealth spread — the criterion N1 could not deliver, now delivered** (240,000 NPC
+records per milestone day):
+
+| day 120 | min | p10 | p25 | median | p75 | p90 | max |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| before | 0 | 126 | 154 | 18,196 | 46,308 | 88,024 | 244,036 |
+| **after** | 0 | 127 | 792 | 12,987 | **289,538** | **556,028** | **2,019,719** |
+
+**max/median 13.4 → 155**; p90/median 4.8 → 42.8. **Distinct fits 5 → 144** at day 120
+(5 → 247 at day 30), against N1/N6's frozen "5 distinct fits, credits 25–199,910cr". The
+richest ARE the upgraders, measured rather than asserted: top-quartile-by-fit captains median
+**282,247cr**, bottom quartile **132cr**. And **the poorest still exist** — p10 = 127, min
+hull strength still 1. No universal escalator.
+
+**The Honor List went from a frozen board to a live one** — N6's hand-off criterion, read
+directly from the world: **contested titles 2 of 8 → 8 of 8**; largest tie 31 → 3 (day 1);
+and **day 120 no longer equals day 1**. Distinct NPC holders peak at 12.3 on day 30 and fall
+back to 5.4 by day 120 — see the caveat.
+
+**Contract competition: no out-competition.** 295 → 301 `ContractClaimed` events (**+2.0%**)
+over 10 seeds × 120 dusks. The mechanism is capped at one claim per dusk and gated on
+co-location, and richer NPCs actually trade *less* (the poverty Trade boost stops firing), so
+an 8× wealth increase moves it by noise.
+
+> **THE CAVEAT, and it should govern N3's sequencing.** The *top* of the field does converge
+> on an identical maxed fit. The cause is structural, not a flaw in the decision: across
+> three seeds the first captains max out **on day 69 in every one** — 72 rungs (8 components
+> × 9 tiers) at one purchase per day. **Purchase opportunities are the binding constraint,
+> not money**: the yard's entire ladder costs ~132,400cr against captains ending near 2M.
+> A design correction was made mid-step and reported rather than hidden — the first version
+> filled every hold *before* the ladder, imposing one global optimum on all 31 and driving
+> 20 of 31 onto an identical fit; moving pods onto the hull rung barely helped (18 of 31),
+> **which is what proves the root cause is the ladder's pricing, not the ordering.** No
+> constant was tuned to hide it.
+
+**`greedy` IS NOT A VALID CONTROL FOR AN N-SERIES CHANGE — carry this forward.** It moved in
+every arm. R0a introduced it as the control for *policy* changes (nothing in the policies
+calls into it), but it shares a galaxy with the cast and reaches it through contract
+competition and the shared dusk RNG stream. An NPC-side change therefore *should* move it.
+Written into `campaign-degraded.test.ts` so the next step does not misread it.
+
+**Save schema: no bump, decided deliberately** and recorded at `npcShipForProfile` and in
+`save.ts`'s registry header. Existing v10 rosters are **not** re-seeded, because post-N1
+`npc.ship` is owned mutable state and a migration **could not tell an issued fit from a
+bought one — it would confiscate purchases.** `MIGRATIONS[9]` picks up the new ramp
+automatically (it calls `seedNpcShip`), which is correct: a v9 roster never had ships.
+
+**Battery:** **1,233 passing / 0 failing**, `tsc -b`, `eslint`, `prettier` clean; smoke
+94/94 after a single re-extraction (standing amendment 3, obeyed). Goldens re-pinned
+deliberately with mechanism logged at each site — the day-loop **event** hashes moved this
+time and were verified by diffing both streams (946 → 1,283 events; 382 added `WireEntry`
+refit lines, 45 changed downstream). `campaign.test.ts`'s NPC wealth-spread ceiling raised
+10 → 25 against measured ratios 7.52–15.99, i.e. **pinned ~56% above the worst observed
+rather than at the last measurement.** `rulesFingerprint` `76ac9179…` → `2273d380…`.
+
+**Baseline of record re-pinned to `docs/balance/baseline-n2-final.json`** (shipped code moved
+the numbers — standing amendment 1 as refined).
 
 ### N3 — NPCs meet pirates, and answer them
 
@@ -1589,6 +1700,47 @@ Experiment arms live in `.scratch/balance/`.
 
 ## IMPORTANT
 
+### R10 — The tier-1 hull is a 25-credit day-1 exploit (found by N2, 2026-07-29)
+
+> **This is an R-series economy defect, not N-series work**, and it is the root cause of the
+> top-of-field convergence recorded in N2's Result. Filed here so it is not carried as an
+> NPC problem.
+
+**Reproduced on a fresh `createInitialState(12345)` and verified independently from the
+constants.** `maxCargoPodsForShip` computes `(cond + 1) × hullCapacity`, where
+`hullCapacity = strength` until strength exceeds 10. So:
+
+| hull | strength | cargo pods | fuel tank |
+| --- | --- | --- | --- |
+| junker (start) | 1 | **10** | **300** |
+| tier 1 | 10 | **100** | **3,000** |
+| tier 2 | 20 | 100 | 6,000 |
+
+**One rung multiplies cargo capacity by ten, and it costs 25 credits** — `YARD_COMPONENT_
+TIER_PRICES[0]` is 50, less a 25 junker trade-in. Ninety extra pods at 10cr each is another
+900. **For 925 of a 1,000-credit starting purse**, the same seeded manifest board goes from
+payments `1,910 / 6,280 / 2,300 / 2,080 / 6,280` to `6,300 / 41,900 / 8,600 / 5,300 /
+41,900`. Note also that tier 1 and tier 2 both yield 100 pods — tier 1 is a cliff, not a
+step.
+
+**Why it stayed invisible for the entire project:** N9 measured that no shipped policy ever
+buys cargo pods (`playerCargoPods` min 10 / max 11 across 8,000 careers). **N2's NPC refit
+is the first actor in the codebase that reinvests profit, and it fell straight into it.**
+The instrument could not find a bug in a purchase it never made — the same shape as R0a,
+R2a and N9, and the fourth instance of it.
+
+**Related, found alongside and also player-facing:**
+- **`quoteShipyard`'s `after.maxFuel` is wrong for a hull purchase.** `applyShipyardMutation`
+  deliberately leaves the tank to `day.ts`'s chokepoint, so the shipyard pane previews the
+  fuel ceiling as **unchanged** — 300 → 300 where the real purchase yields 3,000. Pre-existing
+  and untouched by N2. **A player-visible preview lie on the single most valuable purchase in
+  the game.**
+- **`tradeInValue`'s junker band out-prices the tier-1 list price.** Indexed by raw strength,
+  it reaches 3,000 at strength 9 against a 50cr tier-1 sticker, so any component at strength
+  ≥ 2 gets its first rung free. Unreachable for the player (the yard only sets multiples of
+  10; the junker starts at 1), but N2's seed puts NPCs in that band, so it is live for them —
+  one rung, once, per component.
+
 ### R4 — Predation pressure, redesigned as authored pursuers
 
 *Depends on R1's answer and R2/R2.5 landing first.*
@@ -1702,7 +1854,7 @@ NPC PARITY TRACK (in progress — the R-series is PAUSED behind it, see below):
         ├─► N7 (capstone diff + smoke rig) ... DONE  (accepted; 1.5 s smoke, 2 min capstone)
         │    └─► N9 (the instrument's three unplayed actions) ... DONE  (rejected; found the cash-vs-net-worth gap)
         ├─► N6 (Honor List, 31-way board) ... DONE  (accepted; 6/8 titles frozen until N2)
-        └─► N2 (NPCs upgrade + shipyard actor param + hull re-seed)
+        └─► N2 (NPCs upgrade + shipyard actor param + ramp re-seed) ... DONE  (accepted)
              └─► N3 (NPCs meet pirates + answer them)
                   └─► N4 (archetypes) ──► N5 (proficiency spread)
                        └─► N8 (re-pin the baseline against a living field)
@@ -1742,9 +1894,10 @@ hypothesis, and append the result under the step before moving on.
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-n9-shipped.json`** (1,000 seeds × 120
-   > days, taken at HEAD after N9 shipped). `baseline-r2c-final` and `baseline-vet-1k*` are
-   > its predecessors. **Update this pointer in the same commit that re-pins the baseline** —
+   > **Baseline of record is `docs/balance/baseline-n2-final.json`** (1,000 seeds × 120 days).
+   > `baseline-n9-shipped`, `baseline-r2c-final` and `baseline-vet-1k*` are its predecessors.
+   > **It is also read at runtime by `balance-targets.test.ts`'s band block**, so re-pinning
+   > means updating that path in the same commit. **Update this pointer in the same commit that re-pins the baseline** —
    > a stale yardstick silently mis-grades every step that diffs against it.
    >
    > **RULE REFINED 2026-07-28 — re-pin on SHIPPED CODE, not on an accepted hypothesis.**

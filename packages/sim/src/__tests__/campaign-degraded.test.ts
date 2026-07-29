@@ -124,16 +124,38 @@ const UNCHANGED_POLICIES = [
  *        overhead planner never fires. Read that as "unchanged here", never as
  *        "unaffected" — the capstone moves the veteran row (final credits
  *        6,359 -> 6,172, clear day 100 -> 99).
+ *
+ * 6. N2 — NPCs upgrade their ships. ALL SEVEN moved, `greedy` included, and that
+ *    is the entry worth reading before the next N-step re-pins this table.
+ *      trader   2e4f1623f239a489 -> 08b757b5501d8278
+ *      fighter  620348f8c23055bf -> 3868e2a61f07d811
+ *      explorer 6f4d8c179c605b65 -> 2625825072195040
+ *      veteran  ece2f5c30e0da953 -> aebb5d643c7411cc
+ *      smuggler 49d98c0014f5623f -> 853f1da76afe73c5
+ *      gambler  29fc3a0c3839cdc5 -> 976a6f103338f27a
+ *      greedy   8a150df20e85b2e1 -> 2f43b0bfb33f35aa
+ *    MECHANISM: not one line of any policy changed. N2 changed the WORLD the
+ *    policies play in — the 30 captains got a stat-driven component seed, a
+ *    player-shaped fuel tank, and an upgrade decision — and every one of those
+ *    reaches the player through the shared dusk rng stream and through contract
+ *    competition (`ctx.claimableBoard`, engine `day.ts`).
+ *      * `greedy` IS NOT A CONTROL FOR AN NPC-SIDE CHANGE, and this is the entry
+ *        that says so. R0a introduced it as the control for POLICY changes — it
+ *        runs `greedyTraderPolicy`, which no policy work calls into — and N9
+ *        confirmed its row byte-identical for exactly that reason. It shares a
+ *        galaxy with the cast, so an N-series change moves it like everything
+ *        else. Reading its movement here as "N2 leaked into the policies" would
+ *        be a misdiagnosis; the 1,000-seed capstone shows the same thing.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: '2e4f1623f239a489',
-  fighter: '620348f8c23055bf',
-  explorer: '6f4d8c179c605b65',
-  veteran: 'ece2f5c30e0da953',
-  smuggler: '49d98c0014f5623f',
-  gambler: '29fc3a0c3839cdc5',
-  greedy: '8a150df20e85b2e1',
+  trader: '08b757b5501d8278',
+  fighter: '3868e2a61f07d811',
+  explorer: '2625825072195040',
+  veteran: 'aebb5d643c7411cc',
+  smuggler: '853f1da76afe73c5',
+  gambler: '976a6f103338f27a',
+  greedy: '2f43b0bfb33f35aa',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

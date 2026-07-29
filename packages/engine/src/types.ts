@@ -1115,7 +1115,7 @@ export interface NpcState {
    * Two fuel numbers on one captain would be two sources of truth, and the phantom
    * had no tank ceiling at all.
    *
-   * SEEDED BY: `npc.ts` `npcShipForTier` (world creation, and the v9→v10 save
+   * SEEDED BY: `npc.ts` `npcShipForProfile` (world creation, and the v9→v10 save
    * migration). READ BY: `npc.ts` `executeTrade` / `executeTravel` /
    * `executeCombat` / `executePatrol` / `refuelIfNeeded`, and `day.ts`'s bond-hook
    * fuel gift.

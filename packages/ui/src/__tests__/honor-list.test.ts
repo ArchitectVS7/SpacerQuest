@@ -25,6 +25,21 @@ function row(rows: HonorTitle[], id: HonorTitle['id']): HonorTitle {
 
 const names = (r: HonorTitle): string[] => r.holders.map((h) => h.name);
 
+/**
+ * N2 · A world whose WEAPONS column is flat across all 31 captains — the shape the
+ * day-1 roster used to have for free, before `npcShipForProfile` gave every
+ * captain three stat-driven specialisms. Built here rather than assumed, so the
+ * tests that exercise the 40-character budget and the player pinning still drive a
+ * whole-field tie without depending on the field staying frozen.
+ */
+function flatField(): GameState {
+  const game = world();
+  for (const npc of game.npcs) {
+    npc.ship.weapons = { ...game.player.ship.weapons };
+  }
+  return game;
+}
+
 /** Give one captain a component nobody else can match. */
 function fit(ship: ShipState, id: 'weapons' | 'drives' | 'cabin', strength: number): void {
   ship[id] = { strength, condition: 9 };
@@ -126,32 +141,36 @@ describe('N6 · ties are co-held, and the rank is blind to them', () => {
     expect(row(honorList(game), 'cabin').playerRank).toBe(3);
   });
 
-  it('opens with a whole-field tie on the six titles `npcShipForTier` seeds flat', () => {
-    // The seeded roster varies hull, drives and pods by tier and NOTHING else, so
-    // on day 1 all 31 captains co-hold six of the seven component titles. Recorded
-    // as a fact about the FIELD, not about the board: N2 is what makes it move.
+  it('opens as a real contest on every title, not a whole-field tie (N2)', () => {
+    // WHAT THIS TEST USED TO SAY, and why it is inverted rather than deleted:
+    // before N2, `npcShipForTier` varied hull, drives and pods by tier and NOTHING
+    // else, so all 31 captains co-held SIX of the seven component titles and this
+    // test asserted `holders + overflow === 31` for each. That was N6's finding —
+    // six titles uncontestable BY CONSTRUCTION — recorded as a fact about the
+    // FIELD, with the note "N2 is what makes it move". It moved.
+    //
+    // N2's seed gives every captain three specialisms drawn from their own stat
+    // block (engine `npcShipForProfile` + content `NPC_COMPONENT_STAT_AFFINITY`),
+    // so tier says how far along a captain is and the character sheet says where.
+    // Every title is now a contest between a handful of captains, and the PLAYER
+    // — flying the junker — no longer co-holds any of them.
     const rows = honorList(world());
-    for (const id of [
-      'cabin',
-      'lifeSupport',
-      'weapons',
-      'navigation',
-      'robotics',
-      'shields',
-    ] as const) {
-      const r = row(rows, id);
-      expect(r.holders.length + r.overflow).toBe(31);
-      expect(r.playerRank).toBe(1);
+    for (const r of rows) {
+      expect(r.holders.length + r.overflow, `${r.title} tie size`).toBeLessThan(r.field);
+      expect(r.playerRank, `${r.title} player rank`).toBeGreaterThan(1);
     }
-    // The two that are a contest on day 1, both won by the tier-5 captains.
-    expect(row(rows, 'drives').holders.length + row(rows, 'drives').overflow).toBe(3);
-    expect(row(rows, 'allAround').holders.length + row(rows, 'allAround').overflow).toBe(3);
+    // At least one title is held OUTRIGHT by a single captain, which was
+    // structurally impossible on the old flat field.
+    expect(rows.some((r) => r.holders.length + r.overflow === 1)).toBe(true);
   });
 });
 
 describe("N6 · the original's 40-character holder-line budget", () => {
   it('cuts the line and counts what it cut, so holders + overflow is the whole tie', () => {
-    const r = row(honorList(world()), 'weapons'); // the day-1 31-way tie
+    // N2 · The 31-way tie used to be the day-1 default and is now BUILT, because
+    // the seeded field is a contest. The budget rule under test is unchanged; only
+    // the way the tie is reached is (see `flatField`).
+    const r = row(honorList(flatField()), 'weapons');
     expect(r.overflow).toBeGreaterThan(0);
     expect(r.holders.length + r.overflow).toBe(31);
     // `sp.top.s` tests the length BEFORE appending, so the line may finish one name
@@ -187,10 +206,10 @@ describe('N6 · the board is deterministic and finds the player', () => {
   });
 
   it('shows the player on a tie line they would otherwise be truncated off', () => {
-    // The day-1 31-way tie prints ~3 of 31 names. The player co-holds it, so the
+    // A 31-way tie prints ~3 of 31 names. The player co-holds it, so the
     // player must be ON the line — a board that showed three strangers under a
     // title the reader holds would be misinformation.
-    const weapons = row(honorList(world()), 'weapons');
+    const weapons = row(honorList(flatField()), 'weapons');
     expect(weapons.holders[0]).toEqual({ name: PLAYER_HONOR_LABEL, isPlayer: true });
     expect(weapons.holders.filter((h) => h.isPlayer)).toHaveLength(1);
   });
@@ -202,7 +221,7 @@ describe('N6 · the board is deterministic and finds the player', () => {
   });
 
   it('orders co-holders by name once the player is placed', () => {
-    const game = world();
+    const game = flatField();
     const sorted = [...names(row(honorList(game), 'weapons'))];
     const rest = sorted.slice(1);
     expect(rest).toEqual([...rest].sort());

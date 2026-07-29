@@ -9,7 +9,7 @@ import {
 } from './types.js';
 import { NPC_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, rankForDeedCount } from './deeds.js';
-import { npcShipForTier, seedNpcShip } from './npc.js';
+import { npcShipForProfile, seedNpcShip } from './npc.js';
 import { calculateFuelCapacity, syncMaxFuel } from './economy.js';
 import { computePlayerTier, syncPlayerTier } from './tier.js';
 
@@ -82,12 +82,15 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     profileId: p.id,
     currentSystemId: (index % 20) + 1, // Spread them out
     credits: 5000,
-    // N1 · Every captain is born owning a real ship, seeded from their profile
-    // tier by the engine's single mapping (npc.ts `npcShipForTier`, which the
-    // v9→v10 save migration also uses so a legacy roster lands on the identical
-    // fit). The tank rides on it — `ship.fuel` starts at NPC_START_FUEL, the
-    // 1,000 units this line used to set directly.
-    ship: npcShipForTier(p.tier),
+    // N1 · Every captain is born owning a real ship, seeded by the engine's
+    // single mapping (npc.ts `npcShipForProfile`, which the v9→v10 save migration
+    // also uses so a legacy roster lands on the identical fit).
+    // N2 · The WHOLE PROFILE goes in, not just the tier: tier sets how far along
+    // a captain is and their stat block sets which three systems they put it in,
+    // which is what makes the Honor List a contest instead of a 31-way tie. The
+    // tank rides on the ship and is now CLAMPED to the hull — a tier-1 captain is
+    // born with the player's 300, not the 1,000 this line used to set directly.
+    ship: npcShipForProfile(p),
     disposition: 0,
   }));
 

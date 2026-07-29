@@ -1,3 +1,6 @@
+import type { RenownRankId } from './deeds.js';
+import { Stat } from './stats.js';
+
 export const YARD_COMPONENT_TIER_PRICES = [
   50, 100, 200, 400, 800, 1500, 3000, 5000, 10000,
 ] as const;
@@ -47,7 +50,50 @@ export const SHIP_COMPONENTS = [
   { id: 'shields', name: 'Shields' },
 ] as const;
 
-import type { RenownRankId } from './deeds.js';
+/** The eight component ids, DERIVED from {@link SHIP_COMPONENTS} rather than
+ *  restated, so a component added to the table cannot be forgotten by anything
+ *  keyed on the union. Mirrors the engine's hand-written `ShipComponentId`; the
+ *  engine asserts the two agree by assigning {@link NPC_COMPONENT_STAT_AFFINITY}
+ *  into its own `Record<ShipComponentId, Stat>`. */
+export type ShipComponentContentId = (typeof SHIP_COMPONENTS)[number]['id'];
+
+/**
+ * N2 · WHAT A CAPTAIN'S STATS INCLINE THEM TO SPEND MONEY ON — the sibling of
+ * {@link INTENT_STAT_AFFINITY} (which says what their stats incline them to DO).
+ * Data only; the engine does the ordering.
+ *
+ * THE PROBLEM IT SOLVES, measured by N6 (BALANCE-REDESIGN-WORKLIST): `npc.ts`
+ * `npcShipForTier` varied only hull, drives and pods by tier, so every NPC at
+ * every tier was issued weapons 1, shields 1, cabin 1, navigation 10, lifeSupport
+ * 10, robotics 10 — **six of the Honor List's eight titles were uncontestable by
+ * construction**, and a pure tier ramp would not have fixed it: it would only have
+ * moved the 31-way tie onto the three tier-5 captains. Tier has to say HOW FAR a
+ * captain has got; something else has to say WHERE they put it. That something is
+ * the character sheet the cast already carries.
+ *
+ * THE MAPPING, and why each one: a captain buys the system their strongest stat
+ * uses. GUNS shoots and is shot at (weapons, shields). PILOT flies (drives,
+ * navigation). GRIT endures (hull, lifeSupport). TRADE keeps the ship earning
+ * (robotics — the repair rate that keeps a worn fit working). GUILE entertains
+ * and recruits (cabin). Two components per combat-ish stat and one each for the
+ * rest is not a balance choice; it falls out of there being eight components and
+ * five stats.
+ *
+ * READERS: `engine/npc.ts` `npcComponentLadder` — consumed by BOTH the day-1 seed
+ * (`npcShipForProfile`) and the live upgrade decision (`considerRefit`),
+ * deliberately: one statement of what a captain wants, so the fit a captain is
+ * issued and the fit they buy toward cannot disagree.
+ */
+export const NPC_COMPONENT_STAT_AFFINITY: Record<ShipComponentContentId, Stat> = {
+  weapons: Stat.GUNS,
+  shields: Stat.GUNS,
+  drives: Stat.PILOT,
+  navigation: Stat.PILOT,
+  hull: Stat.GRIT,
+  lifeSupport: Stat.GRIT,
+  robotics: Stat.TRADE,
+  cabin: Stat.GUILE,
+};
 
 export interface SpecialEquipmentDefinition {
   readonly id: string;

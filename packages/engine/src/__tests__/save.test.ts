@@ -23,7 +23,7 @@ import { advanceDay } from '../day.js';
 import { careerEnded } from '../nemesis.js';
 import { RENOWN_RANK_ORDER, rankForDeedCount } from '../deeds.js';
 import { computePlayerTier } from '../tier.js';
-import { npcShipForTier } from '../npc.js';
+import { npcShipForProfile } from '../npc.js';
 import { GameState, PlayerAction } from '../types.js';
 
 /**
@@ -697,7 +697,7 @@ describe('save envelope — v9 → v10 NPC ship migration (N1)', () => {
     for (const npc of loaded.state.npcs) {
       const profile = NPC_PROFILES.find((p) => p.id === npc.profileId)!;
       // The fit is the tier's — the same mapping createInitialState seeds with.
-      const seeded = npcShipForTier(profile.tier);
+      const seeded = npcShipForProfile(profile);
       expect(npc.ship.cargoPods).toBe(seeded.cargoPods);
       expect(npc.ship.drives).toEqual(seeded.drives);
       expect(npc.ship.hull).toEqual(seeded.hull);
@@ -708,13 +708,36 @@ describe('save envelope — v9 → v10 NPC ship migration (N1)', () => {
     }
   });
 
-  it('a migrated roster is deep-equal to the live one it was derived from', () => {
-    // The sharpest form of "day 1 is close to today": round-tripping a live v10
-    // state DOWN to the v9 shape and back up through the migration must land on
-    // exactly the state it started from — same fits, same tanks, same order.
+  it('a migrated roster carries everything a v9 save actually held', () => {
+    // N1 asserted the sharper property here: round-tripping a live v10 state DOWN
+    // to the v9 shape and back up landed on EXACTLY the state it started from.
+    // That held only while a captain's ship was a pure function of their tier.
+    //
+    // N2 MAKES IT FALSE ON PURPOSE, and the failure is the feature. A captain now
+    // BUYS their fit (`npc.ts` `considerRefit`), so by day 50 the roster's ships
+    // are earned state. The v9 shape has no `ship` key at all, so down-converting
+    // DESTROYS every refit — and re-deriving them is not "migration", it is
+    // recovering data the format never carried. The migration's real contract is
+    // what a v9 save genuinely held, which is asserted below: identity, purse,
+    // standing, position, last action, and the saved fuel poured into a
+    // tier-seeded tank. Everything else is correctly the seed's.
     const state = drive50Days(86);
     const loaded = loadSave(JSON.stringify({ version: 9, state: asV9(state), seed: 96 }));
-    expect(loaded.state.npcs).toEqual(state.npcs);
+    expect(loaded.state.npcs).toHaveLength(state.npcs.length);
+    for (const [index, npc] of loaded.state.npcs.entries()) {
+      const live = state.npcs[index];
+      expect(npc.id).toBe(live.id);
+      expect(npc.name).toBe(live.name);
+      expect(npc.profileId).toBe(live.profileId);
+      expect(npc.credits).toBe(live.credits);
+      expect(npc.disposition).toBe(live.disposition);
+      expect(npc.currentSystemId).toBe(live.currentSystemId);
+      expect(npc.lastAction).toEqual(live.lastAction);
+      // The tank is the save's, clamped to the seeded hull it is being poured into.
+      const seeded = npcShipForProfile(NPC_PROFILES.find((p) => p.id === npc.profileId)!);
+      expect(npc.ship.fuel).toBe(Math.min(seeded.maxFuel, live.ship.fuel));
+      expect((npc as unknown as Record<string, unknown>).fuel).toBeUndefined();
+    }
   });
 
   it('is idempotent — a record that already carries a ship is left alone', () => {

@@ -363,7 +363,7 @@ describe('T-1205 · cabin reader', () => {
       tier: 5,
       spendDie: 0,
     };
-    const quote = quoteShipyard(state, action);
+    const quote = quoteShipyard(state.player, action);
     expect(quote.before.crewCapacity).toBe(crewCapacity(state.player.ship));
     expect(quote.after.crewCapacity).toBeGreaterThan(quote.before.crewCapacity);
   });

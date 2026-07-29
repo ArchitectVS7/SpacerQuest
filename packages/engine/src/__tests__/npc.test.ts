@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
   IDEAL_WEIGHTS,
   INTENT_STAT_AFFINITY,
+  NAV_FUEL_FLOOR,
   NPC_CHECK_DCS,
   NPC_PROFILES,
   NpcIntentType,
@@ -15,9 +16,12 @@ import {
   NPC_START_FUEL,
   applyDisposition,
   npcDrives,
-  npcShipForTier,
+  npcShipForProfile,
   resolveNpcDay,
 } from '../npc.js';
+import { componentTierForStrength, maxCargoPodsForShip } from '../actions/shipyard.js';
+import { starterShip } from '../state.js';
+import { ShipComponentId } from '../types.js';
 import { calculateFuelCapacity, contractSpecFromShip, jumpFuelCost } from '../economy.js';
 import { navFuelFactor } from '../components.js';
 import { advanceDay } from '../day.js';
@@ -34,6 +38,19 @@ const MAX_NPC_ROUTE_DISTANCE = Math.max(
 import { createInitialState } from '../state.js';
 import { SeededRng } from '../rng.js';
 import { GameEvent, NpcState } from '../types.js';
+
+/** The eight ship components, in content order — the fit an N2 captain buys
+ *  across. Named here so the assertions below read as "the whole ship". */
+const COMPONENT_IDS: readonly ShipComponentId[] = [
+  'hull',
+  'drives',
+  'cabin',
+  'lifeSupport',
+  'weapons',
+  'navigation',
+  'robotics',
+  'shields',
+];
 
 /** The five verb action-types and their StatCheck actionContext tags — the
  *  contract T-1201 asserts: a resolved verb ⟺ exactly one StatCheck with the
@@ -56,7 +73,7 @@ function npcFor(
 ): NpcState {
   const profile = NPC_PROFILES.find((p) => p.id === profileId)!;
   const { fuel, ...rest } = overrides;
-  const ship = npcShipForTier(profile.tier);
+  const ship = npcShipForProfile(profile);
   if (fuel !== undefined) ship.fuel = fuel;
   return {
     id: profile.id,
@@ -109,20 +126,24 @@ describe('NPC Resolution', () => {
 });
 
 // ---------------------------------------------------------------------------
-// N1 · THE DAY-1 CALIBRATION, held by assertion rather than by comment.
+// N2 · THE DAY-1 SEED, held by assertion rather than by comment.
 //
-// `npcShipForTier` seeds a real ShipState from the profile tier, and the only
-// number in it with no pre-N1 counterpart is the HULL STRENGTH — the phantom had
-// none, and the engine derives the fuel TANK from it. The phantom's tank was
-// UNBOUNDED, so the seed is correct only while the derived ceiling cannot bind.
-// If it ever binds, N1 has silently become a fuel-scarcity change and the sweep's
-// "no policy row moved" result stops meaning what it says.
+// N1's block here asserted the seed REPRODUCED THE PHANTOM: nav factor exactly 1,
+// and a fuel ceiling that could never bind. Both were true, and the second was N1's
+// own recorded fuel EXEMPTION written down as a test — a tier-1 NPC held a
+// 1,200-unit tank against the player's 300 for comparable capacity. N2 owns
+// removing it, so those two assertions are REPLACED rather than deleted: the
+// relationships they pinned are re-pinned in the direction the step moved them, so
+// the file still fails loudly if the seed drifts back.
 // ---------------------------------------------------------------------------
-describe('N1 · the seeded NPC ship reproduces the phantom (day-1 calibration)', () => {
-  it('hands rollContract exactly the spec the tier-derived phantom did', () => {
+describe('N2 · the day-1 seed (calibration)', () => {
+  it('still hands rollContract the pods/hull-condition/drives spec the phantom did', () => {
+    // UNCHANGED ACROSS N2, and deliberately: `contractSpecFromShip` reads pods,
+    // hull CONDITION and drives, none of which this step re-seeds. So NPC contract
+    // income on day 1 is what it has been since T-106, and any income movement in
+    // the sweep is the upgrade decision, not a re-priced board.
     for (const profile of NPC_PROFILES) {
-      const spec = contractSpecFromShip(npcShipForTier(profile.tier));
-      // The pre-N1 literal, verbatim from the old executeTrade call site.
+      const spec = contractSpecFromShip(npcShipForProfile(profile));
       expect(spec).toEqual({
         cargoPods: 2 + profile.tier * 2,
         hullCondition: 9,
@@ -131,50 +152,180 @@ describe('N1 · the seeded NPC ship reproduces the phantom (day-1 calibration)',
     }
   });
 
-  it('prices a jump identically through the ship as through the tier drives', () => {
-    // The old call was `jumpFuelCost(npcDrives(tier), distance)`. The new one goes
-    // through the ship's Trans-Warp flag and nav discount as the player's does —
-    // and must cost the same, because the seed carries neither.
+  it("prices a jump through the captain's OWN navigation, not a hard-coded 1", () => {
+    // N1 pinned `navFuelFactor(ship) === 1` for every captain, because every
+    // captain was issued the junker's navigation. N2 gives navigation to the
+    // captains whose stats want it, so the factor is now a per-captain number in
+    // [NAV_FUEL_FLOOR, 1] — and the jump must be priced through it, exactly as the
+    // player's is.
+    let discounted = 0;
     for (const profile of NPC_PROFILES) {
-      const ship = npcShipForTier(profile.tier);
-      expect(navFuelFactor(ship)).toBe(1);
+      const ship = npcShipForProfile(profile);
+      const factor = navFuelFactor(ship);
+      expect(factor).toBeLessThanOrEqual(1);
+      expect(factor).toBeGreaterThanOrEqual(NAV_FUEL_FLOOR);
+      if (factor < 1) discounted += 1;
       expect(ship.hasTransWarpDrive).toBe(false);
       for (const dist of [1, 5, 14, 30, MAX_NPC_ROUTE_DISTANCE]) {
-        expect(jumpFuelCost(ship.drives, dist, ship.hasTransWarpDrive, navFuelFactor(ship))).toBe(
-          jumpFuelCost(npcDrives(profile.tier), dist),
+        // The captain's own nav discount, never an omitted argument.
+        expect(jumpFuelCost(ship.drives, dist, ship.hasTransWarpDrive, factor)).toBe(
+          jumpFuelCost(npcDrives(profile.tier), dist, false, factor),
         );
       }
     }
+    // Non-degeneracy in both directions: the field is not all-junker (which would
+    // mean the ramp never fired) and not all-discounted (which would mean it fired
+    // for everyone, i.e. it is not a specialism).
+    expect(discounted).toBeGreaterThan(0);
+    expect(discounted).toBeLessThan(NPC_PROFILES.length);
   });
 
-  it('gives every tier a tank the refueller can never fill (the ceiling cannot bind)', () => {
-    // Two ways the clamp in `refuelIfNeeded` could bite, both ruled out per tier:
-    //   1. the roster is BORN with NPC_START_FUEL, so the ceiling must clear it;
-    //   2. the largest single top-up ever requested is `jumpFuelCost + 100` on the
-    //      longest route an NPC can fly.
+  it("seeds a hull the yard would license for the captain's hold, and no larger", () => {
+    // THE REMOVED EXEMPTION, pinned from the other side. The hull must cover the
+    // pods (or the captain is born holding cargo the engine says they cannot) and
+    // must be the SMALLEST that does (or the tank is a gift the player never got).
     for (const profile of NPC_PROFILES) {
-      const ship = npcShipForTier(profile.tier);
+      const ship = npcShipForProfile(profile);
+      expect(maxCargoPodsForShip(ship)).toBeGreaterThanOrEqual(ship.cargoPods);
+      const oneSmaller = { ...ship, hull: { ...ship.hull, strength: ship.hull.strength - 1 } };
+      if (ship.hull.strength > 1) {
+        expect(maxCargoPodsForShip(oneSmaller)).toBeLessThan(ship.cargoPods);
+      }
       expect(ship.maxFuel).toBe(calculateFuelCapacity(ship.hull.strength, ship.hull.condition));
-      expect(ship.fuel).toBe(NPC_START_FUEL);
-      expect(ship.maxFuel).toBeGreaterThanOrEqual(NPC_START_FUEL);
-      const worstTopUp = jumpFuelCost(ship.drives, MAX_NPC_ROUTE_DISTANCE) + 100;
-      expect(ship.maxFuel).toBeGreaterThan(worstTopUp);
     }
   });
 
-  it('never clamps a tank across a long ambient career (the invariant, observed)', () => {
-    // The assertions above are arithmetic; this one watches the actual sim. Over
-    // 120 days of the real day loop no captain's tank ever reaches its ceiling, so
-    // the clamp is evaluated constantly and fires never — which is why the day-loop
-    // event goldens are byte-identical across N1.
-    let state = createInitialState(7);
+  it('clamps the birth tank to the hull, so the ceiling now BINDS on day 1', () => {
+    // The exact inversion of N1's "the ceiling cannot bind". `NPC_START_FUEL` is
+    // 1,000 and the player-shaped hull holds 300 (600 at tier 5), so every captain
+    // is born full and capped rather than born with four times a player's fuel.
+    for (const profile of NPC_PROFILES) {
+      const ship = npcShipForProfile(profile);
+      expect(ship.maxFuel).toBeLessThan(NPC_START_FUEL);
+      expect(ship.fuel).toBe(ship.maxFuel);
+    }
+    // And a tier-1 captain now holds exactly what the player's junker holds.
+    const junker = starterShip();
+    const lowest = npcShipForProfile({ tier: 1, stats: NPC_PROFILES[0].stats });
+    expect(lowest.maxFuel).toBe(junker.maxFuel);
+  });
+
+  it('gives every captain the same number of specialisms, and not the same ones', () => {
+    // The seed's whole job: tier says HOW FAR, the character sheet says WHERE.
+    const RAMPED = [
+      'cabin',
+      'lifeSupport',
+      'weapons',
+      'navigation',
+      'robotics',
+      'shields',
+    ] as const;
+    const BASE: Record<(typeof RAMPED)[number], number> = {
+      cabin: 1,
+      weapons: 1,
+      shields: 1,
+      lifeSupport: 10,
+      navigation: 10,
+      robotics: 10,
+    };
+    const fits = new Set<string>();
+    for (const profile of NPC_PROFILES) {
+      const ship = npcShipForProfile(profile);
+      const raised = RAMPED.filter((id) => ship[id].strength > BASE[id]);
+      expect(raised, `${profile.name} specialisms`).toHaveLength(3);
+      for (const id of raised) {
+        // The ramp is exactly `2 x tier` on top of the player's starting strength.
+        expect(ship[id].strength).toBe(BASE[id] + 2 * profile.tier);
+      }
+      fits.add(RAMPED.map((id) => `${id}:${ship[id].strength}`).join(' '));
+    }
+    // N6 measured ONE distinct component fit across all 30 captains. Anything close
+    // to that again means tier is back to being the only axis.
+    expect(fits.size).toBeGreaterThan(10);
+  });
+
+  it('leaves every seeded component on a rung the yard can sell the next step of', () => {
+    // Seeded strengths sit BETWEEN yard tiers (as `npcDrives` has since T-106), so
+    // the one property that must hold is that `componentTierForStrength` floors
+    // them onto a rung whose NEXT rung is a strict improvement — otherwise a
+    // captain's first purchase would be a downgrade.
+    for (const profile of NPC_PROFILES) {
+      const ship = npcShipForProfile(profile);
+      for (const id of COMPONENT_IDS) {
+        const next = componentTierForStrength(ship[id].strength) + 1;
+        expect(next).toBeLessThanOrEqual(9);
+        expect(next * 10).toBeGreaterThan(ship[id].strength);
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N2 · THE UPGRADE DECISION. The step's premise, measured by N6: NPCs hoarded and
+// never bought, so the day-120 roster was byte-identical to day 1 and six of the
+// Honor List's eight titles were uncontestable by construction.
+// ---------------------------------------------------------------------------
+describe('N2 · NPCs upgrade their ships', () => {
+  it("buys through the engine's own yard — the fit moves and the purse pays for it", () => {
+    const before = npcFor('npc-cargo-king', { credits: 50000 });
+    const { npc } = resolveNpcDay(before, new SeededRng(1), NO_BOARD);
+    const changed = COMPONENT_IDS.filter(
+      (id) => npc.ship[id].strength !== before.ship[id].strength,
+    );
+    expect(changed.length + (npc.ship.cargoPods === before.ship.cargoPods ? 0 : 1)).toBeGreaterThan(
+      0,
+    );
+    // A bought component sits on an exact yard rung (`strength = tier * 10`) — the
+    // signature of `applyShipyardMutation`, not of an NPC-private mutation.
+    for (const id of changed) {
+      expect(npc.ship[id].strength % 10).toBe(0);
+      expect(npc.ship[id].condition).toBe(9);
+    }
+  });
+
+  it('never spends a captain below the broke line the cast already lives by', () => {
+    // The reserve is `NPC_POVERTY_CREDITS`, so a refit can never be the thing that
+    // puts a captain under poverty pressure.
+    let state = createInitialState(4);
     for (let day = 0; day < 120; day += 1) {
       state = advanceDay(state, [{ type: 'Wait' }]).state;
       for (const npc of state.npcs) {
-        expect(npc.ship.fuel).toBeLessThan(npc.ship.maxFuel);
+        expect(npc.credits).toBeGreaterThanOrEqual(0);
         expect(npc.ship.fuel).toBeGreaterThanOrEqual(0);
+        expect(npc.ship.fuel).toBeLessThanOrEqual(npc.ship.maxFuel);
+        expect(npc.ship.cargoPods).toBeLessThanOrEqual(maxCargoPodsForShip(npc.ship));
       }
     }
+  });
+
+  it('unfreezes the roster: day 120 is no longer day 1, and the field diverges', () => {
+    // N6's reading, as an assertion. Before N2 this set had exactly five members
+    // at every horizon — the five seeded tiers — at day 1 and at day 120 alike.
+    const fitOf = (ship: (typeof state.npcs)[number]['ship']) =>
+      `${COMPONENT_IDS.map((id) => ship[id].strength).join('/')}#${ship.cargoPods}`;
+    let state = createInitialState(5);
+    const day1 = new Set(state.npcs.map((npc) => fitOf(npc.ship)));
+    for (let day = 0; day < 120; day += 1) {
+      state = advanceDay(state, [{ type: 'Wait' }]).state;
+    }
+    const day120 = new Set(state.npcs.map((npc) => fitOf(npc.ship)));
+    expect(day120).not.toEqual(day1);
+    expect(day120.size).toBeGreaterThan(5);
+    // Some captains compound and some stay stuck — no universal escalator.
+    const pods = state.npcs.map((npc) => npc.ship.cargoPods);
+    expect(Math.max(...pods)).toBeGreaterThan(Math.min(...pods));
+  });
+
+  it('rolls no die of its own (the verb ⟺ StatCheck invariant is untouched)', () => {
+    // The refit must consume no rng: if it did, an arm that changes only the yard
+    // ladder would move every downstream roll and stop being attributable.
+    const rich = npcFor('npc-cargo-king', { credits: 500000 });
+    const poor = { ...structuredClone(rich), credits: 200 };
+    const richDay = resolveNpcDay(rich, new SeededRng(11), NO_BOARD);
+    const poorDay = resolveNpcDay(poor, new SeededRng(11), NO_BOARD);
+    const checks = (events: GameEvent[]) => events.filter((e) => e.type === 'StatCheck');
+    expect(checks(richDay.events)).toEqual(checks(poorDay.events));
+    expect(richDay.npc.lastAction!.type).toBe(poorDay.npc.lastAction!.type);
   });
 });
 
@@ -218,10 +369,17 @@ describe('NPC economics are real (T-106)', () => {
       const { npc } = resolveNpcDay(before, new SeededRng(seed), NO_BOARD);
       if (npc.lastAction?.type !== 'Travel') continue;
 
-      const profile = NPC_PROFILES.find((p) => p.id === 'npc-warp-hound')!;
+      // N2 · Through the SHIP's own drives, Trans-Warp flag and navigation
+      // discount — the player's four-argument call. It used to read
+      // `npcDrives(profile.tier)` with the nav argument omitted, which was only
+      // ever correct while every captain flew the junker's navigation; a
+      // navigation specialist now pays strictly less for the same route, and this
+      // is the assertion that says so rather than one that pins it back to 1.
       const expectedCost = jumpFuelCost(
-        npcDrives(profile.tier),
+        before.ship.drives,
         distance(before.currentSystemId, npc.currentSystemId),
+        before.ship.hasTransWarpDrive,
+        navFuelFactor(before.ship),
       );
       expect(npc.currentSystemId).not.toBe(before.currentSystemId);
       expect(npc.ship.fuel).toBe(before.ship.fuel - expectedCost);

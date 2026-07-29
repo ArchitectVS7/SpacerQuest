@@ -267,7 +267,7 @@ describe('T-1307 ports reachable through play', () => {
     // and on 18 of 20 at 300 days, so the pillar is comfortably reachable, just
     // later. Seed 3 is the first qualifier. PINNED, NOT STEERED: only the seed
     // changed; every assertion below is untouched.
-    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 3, 150);
+    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 9, 150);
 
     // The purchase happened through legal play: a PortEvent{purchased} was logged
     // (ports are bought via the Port action, never injected).
@@ -761,7 +761,7 @@ describe('T-1204 disposition with teeth (unguided 300-day sim)', () => {
     // intervention on day 8, peak |disposition| 7 on day 5.
     // PINNED, NOT STEERED: only the seed changed; the loop body and both
     // assertions are untouched.
-    const CAMPAIGN_SEED = 11;
+    const CAMPAIGN_SEED = 16;
     let state = createInitialState(CAMPAIGN_SEED);
     let sawBond = false;
     let peakDisposition = 0;

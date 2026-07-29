@@ -1677,7 +1677,7 @@ function crippledRepairNeed(state: GameState): {
     ship.maxFuel < cheapestContractFuel &&
     pristineCapacity >= cheapestContractFuel;
   if (!crippled && !strandedByTank) return none;
-  const quote = quoteShipyard(state, {
+  const quote = quoteShipyard(state.player, {
     type: 'Shipyard',
     action: 'repair',
     repairMode: 'all',
@@ -2941,7 +2941,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     // long ones. `planCrippledRepair` above only fires on the HULL's fuel-ceiling
     // collapse, so nothing else in the sim ever notices a worn drive. Affordable
     // above the working reserve, dull die (a repair rolls no check).
-    const quote = quoteShipyard(state, {
+    const quote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'repair',
       repairMode: 'all',
@@ -3042,7 +3042,7 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   // POLICY fix, not a game-data change — the instrument was refusing a free
   // upgrade, not the game withholding one.
   if (!actions.some(isIncomeAction) && ship.drives.strength < 30) {
-    const refitQuote = quoteShipyard(state, {
+    const refitQuote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'buy-component-tier',
       component: 'drives',
@@ -3426,7 +3426,7 @@ function componentTierNetCost(
   tier: number,
 ): number {
   if (YARD_COMPONENT_TIER_PRICES[tier - 1] === undefined) return Infinity;
-  return quoteShipyard(state, {
+  return quoteShipyard(state.player, {
     type: 'Shipyard',
     action: 'buy-component-tier',
     component,

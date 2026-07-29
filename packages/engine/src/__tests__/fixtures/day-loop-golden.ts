@@ -356,11 +356,35 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  71b3315e… -> f07d6de2…   (events a0e8ed7f… UNCHANGED)
 //   STORYLET state  1f187dbe… -> 86fbc0cc…   (events 6f61a1d5… UNCHANGED)
 // Regenerated via gen-day-loop-golden.ts.
+//
+// N2 · ALL FOUR HASHES RE-PINNED, and unlike N1 the EVENT hashes move too — which
+// is the correct signal, not a regression. N2 does three things to the cast, each
+// of which reaches this stream:
+//   1. the component ramp re-seed (`npc.ts` `npcShipForProfile`) gives navigation
+//      to the captains whose stats want it, so `navFuelFactor` re-prices their
+//      jumps and their credits/fuel/positions diverge — a STATE move;
+//   2. the hull re-seed puts every captain on the tank the yard licenses for their
+//      hold (1,200 → 300 at tier 1), so `refuelIfNeeded` can now fail to fund a
+//      jump and a captain falls to `brokeIdle`, which TAKES AN rng DRAW — so the
+//      shared dusk stream genuinely diverges, not just its payload;
+//   3. the upgrade decision emits a `WireEntry` per refit — new events by design
+//      (the player-facing surface that the field is now buying ships).
+// MEASURED rather than asserted, by dumping and diffing both streams (.scratch/):
+// the seed-1 script runs 946 events BEFORE and 1,283 AFTER; 382 lines are ADDED
+// and 45 changed — the additions are all `WireEntry` refit lines, the changes are
+// NpcAction prose, contract payments and NPC positions downstream of (1) and (2).
+// No player action, no player rule and no player-side rng draw is involved: the
+// scripts' own `applyPlayerAction` results are untouched, and the day-loop rules
+// themselves did not move (`rulesFingerprint` DID move, because these are rule
+// sources, so the smoke fixture was re-extracted alongside).
+//   DAY_LOOP state  f07d6de2… -> a16ca706…   (events a0e8ed7f… -> 2ae4bb5f…)
+//   STORYLET state  86fbc0cc… -> a4374515…   (events 6f61a1d5… -> a5522f39…)
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'f07d6de2253c7c590bdefd49bd00c5d1ea05688b1cce871f34aba51e7f609b65';
+  'a16ca706c43550ebf363ba7ddb922054a8d951666a87113bded21af6647addae';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  'a0e8ed7f51d6710787bb91a295651a31fb84fb73d00011c33af21cff7309f774';
+  '2ae4bb5fdb3759d02832a958f8ab1541cc9d5fd51cb1a2007ce500ca00d1b555';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '86fbc0cc1e34496047b34074168bc547a597fb02ce2c9df66ac4f038e4a40330';
+  'a437451578c71623045e5a62354c6001f6d089ccc78e08e263646ae358837a82';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '6f61a1d59ebc223d484f137fb4bd6164ccd5f9e73e3e7ca94ef8462a546c3440';
+  'a5522f39219a90f5baba6a3fc6c2989df7b33f47fb980e06289de88f3c4035ef';

@@ -827,7 +827,7 @@ export function legalActions(state: GameState): LegalActions {
   if (hasDie) {
     const probeDie = diceRemaining[0];
     const canAfford = (action: Extract<PlayerAction, { type: 'Shipyard' }>): boolean =>
-      shipyardFailure(state, action) === null;
+      shipyardFailure(state.player, action) === null;
 
     // buy-component-tier — one spec per component. `YARD_COMPONENT_TIER_PRICES` is
     // strictly increasing and the trade-in is a per-component constant, so the

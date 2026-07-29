@@ -490,7 +490,7 @@ describe('quoteShipyard (T-308 preview)', () => {
     state.player.ship.weapons = { strength: 3, condition: 2 };
     const snapshot = structuredClone(state);
 
-    const quote = quoteShipyard(state, {
+    const quote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'buy-component-tier',
       component: 'weapons',
@@ -511,7 +511,7 @@ describe('quoteShipyard (T-308 preview)', () => {
       tier: 4,
       spendDie: 0,
     };
-    const quote = quoteShipyard(shipyardState(), action);
+    const quote = quoteShipyard(shipyardState().player, action);
     const resolved = resolveShipyard(shipyardState(), action);
     const spent = 200000 - resolved.state.player.credits;
 
@@ -525,7 +525,7 @@ describe('quoteShipyard (T-308 preview)', () => {
     state.player.ship.hull = { strength: 1, condition: 9 };
     state.player.ship.cargoPods = 5;
 
-    const quote = quoteShipyard(state, {
+    const quote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'buy-cargo-pods',
       quantity: 3,
@@ -544,7 +544,7 @@ describe('quoteShipyard (T-308 preview)', () => {
     const state = shipyardState();
     state.player.ship.hasCloaker = true;
 
-    const quote = quoteShipyard(state, {
+    const quote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'buy-special-equipment',
       equipment: 'AUTO_REPAIR',
@@ -562,7 +562,7 @@ describe('quoteShipyard (T-308 preview)', () => {
     const state = shipyardState();
     state.player.registry.renownRank = 'LIEUTENANT';
 
-    const quote = quoteShipyard(state, {
+    const quote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'buy-special-equipment',
       equipment: 'STAR_BUSTER',
@@ -577,7 +577,7 @@ describe('quoteShipyard (T-308 preview)', () => {
   it('reports the capacity ceiling for a full default hold', () => {
     const state = startDay(createInitialState(424242)).state;
     // Default ship: hull str1 cond9 → max pods (9+1)*1 = 10, and it starts full.
-    const quote = quoteShipyard(state, {
+    const quote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'buy-cargo-pods',
       quantity: 1,
@@ -593,7 +593,7 @@ describe('quoteShipyard (T-308 preview)', () => {
     const state = shipyardState();
     state.player.ship.drives = { strength: 10, condition: 9 };
 
-    const quote = quoteShipyard(state, {
+    const quote = quoteShipyard(state.player, {
       type: 'Shipyard',
       action: 'buy-component-tier',
       component: 'drives',
@@ -612,9 +612,9 @@ describe('quoteShipyard (T-308 preview)', () => {
   // reads hasTitaniumHull: a fitted Titanium hull raises the serviceable capacity.
   it('TITANIUM_HULL raises serviceable cargo capacity (maxCargoPodsForShip reader)', () => {
     const state = shipyardState();
-    const before = maxCargoPodsForShip(state);
+    const before = maxCargoPodsForShip(state.player.ship);
     state.player.ship.hasTitaniumHull = true;
-    const after = maxCargoPodsForShip(state);
+    const after = maxCargoPodsForShip(state.player.ship);
     expect(after).toBeGreaterThan(before);
   });
 
@@ -633,7 +633,7 @@ describe('quoteShipyard (T-308 preview)', () => {
       const state = shipyardState();
       state.player.ship.hull = { strength, condition: 9 };
       state.player.ship.hasTitaniumHull = false;
-      expect(maxCargoPodsForShip(state)).toBe(expectedPods);
+      expect(maxCargoPodsForShip(state.player.ship)).toBe(expectedPods);
     }
   });
 });
