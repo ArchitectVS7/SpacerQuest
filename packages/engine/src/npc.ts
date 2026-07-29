@@ -1,15 +1,11 @@
 import {
   CARGO_TYPES,
-  DEFAULT_IDEAL_WEIGHTS,
   FLAWS,
-  IDEAL_WEIGHTS,
   INTENT_STAT_AFFINITY,
   NPC_CHECK_DCS,
   NPC_COMPONENT_STAT_AFFINITY,
-  NPC_INTENT_TYPES,
   NPC_PATROL_FAIL_CREDITS,
   NPC_PATROL_SUCCESS_CREDITS,
-  NPC_PROFILES,
   ALL_NPC_PROFILES,
   NPC_SOCIALIZE_LOSS_CREDITS,
   NPC_SOCIALIZE_WIN_CREDITS,
@@ -22,10 +18,20 @@ import {
   StatBlock,
   YARD_COMPONENT_TIER_PRICES,
   distance as systemDistance,
+  EraId,
+  // N3 · the interdiction's numbers, all of them the player's own
+  CLOAK_ENCOUNTER_MULTIPLIER,
+  COMBAT_SALVAGE_PER_TIER,
+  FIGHT_FUEL_COST,
+  NPC_ENCOUNTER_MAX_ROUNDS,
+  RETREAT_KILL_EDGE,
+  RUN_FUEL_COST,
+  TOUR_ONE_ENCOUNTER_MULTIPLIER,
 } from '@spacerquest/content';
 import {
   CargoContract,
   CheckResult,
+  EncounterInterceptorState,
   EraEventState,
   GameEvent,
   GameState,
@@ -37,6 +43,18 @@ import {
 } from './types.js';
 import { SeededRng } from './rng.js';
 import { check } from './dice.js';
+import { weaponVolleyDamage } from './components.js';
+// N3 · The interdiction reaches the engine's own encounter machinery. `travel.ts`
+// does NOT import this file, so this direction closes no cycle (unlike
+// `actions/combat.ts`, which imports `applyDisposition` from here — the reason the
+// shared damage rule lives in the neutral `combatRules.ts`).
+import { routeDangerFor, selectAnonymousInterceptor } from './actions/travel.js';
+import {
+  applyInterceptorHit,
+  interceptorPressureDc,
+  interceptorRefusesTribute,
+  tributeForRound,
+} from './combatRules.js';
 import {
   DriveBlock,
   calculateFuelCapacity,
@@ -436,10 +454,11 @@ function npcJumpFuelCost(ship: ShipState, routeDistance: number): number {
 /** Broke line: under this an NPC stops discretionary spending, takes odd
  *  jobs, and may show up on the wire begging for fuel money. */
 const NPC_BROKE_CREDITS = 100;
-/** Poverty pressure: below this an NPC's Trade weight gets a flat boost —
- *  a hungry spacer looks for paying work regardless of worldview. */
+/** Poverty pressure: below this a captain drops their worldview and looks for
+ *  paying work. (Pre-N4 this scaled a Trade WEIGHT; N4's deterministic
+ *  `pickIntent` reduced it to a probability gate, and the reopened N4 blend will
+ *  make it a weight again — see docs/NPC_REDESIGN.md N4 RULING 1.) */
 const NPC_POVERTY_CREDITS = 1000;
-const NPC_POVERTY_TRADE_BOOST = 10;
 /** Odd-job alms earned on an idle broke day — keeps the floor above zero so
  *  nobody is pinned at exactly 0 credits forever. */
 const NPC_ODD_JOB_CREDITS = 25;
@@ -458,6 +477,12 @@ export interface NpcDayContext {
    *  economy as the player: synthesized contract income and depot refuel costs
    *  read the same modifiers. Null when no event is active. */
   eraEvent: EraEventState | null;
+  /** N3 · The campaign era, for the interdiction rate. Tour One is gentler on the
+   *  cast for the same reason it is gentler on the player — the lane multiplier
+   *  `TOUR_ONE_ENCOUNTER_MULTIPLIER` is a property of the ERA, not of who is
+   *  flying, so exempting the cast from it would be an exemption in the other
+   *  direction. Read by {@link resolveNpcEncounter}. */
+  era: EraId;
 }
 
 export interface NpcDayResult {
@@ -720,6 +745,271 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
   }
 }
 
+/**
+ * N3 · A CAPTAIN MEETS A PIRATE, AND ANSWERS IT — resolved inside the dusk tick.
+ *
+ * Called from every NPC jump ({@link executeTravel} and {@link executeTrade}), which
+ * is what makes the cast carry the same lane risk the player does. Returns `true`
+ * when the captain lost their ship, so the caller can stop resolving their day.
+ *
+ * ── WHAT IS SHARED, AND WHY THAT IS THE WHOLE POINT ──────────────────────────
+ * Every rule below is the engine's own, reached through the engine's own function:
+ *   · the lane's danger and interception chance — `routeDangerFor`, including the
+ *     loaded-run bump, so a captain hauling INTO a port is in more danger too
+ *   · the interceptor and its tier band — `selectAnonymousInterceptor`
+ *   · every roll — the shared `check()`
+ *   · the fight DC — `10 + interceptor.tier`, the player's number
+ *   · the volley — `weaponVolleyDamage(ship)`
+ *   · the tribute schedule — `tributeForRound`, class and tier-gap modifiers and all
+ *   · the flaw refusal — `interceptorRefusesTribute`, so a Bloodthirsty pirate slams
+ *     the tribute door on a captain exactly as it does on the player
+ *   · the incoming damage — `applyInterceptorHit` (`combatRules.ts`), margin, tier
+ *     gap, shield mitigation and the hull-to-0 kill, one definition for both sides
+ *   · the fuel prices — RUN_FUEL_COST / FIGHT_FUEL_COST
+ *   · the post-kill escape — the opposed PILOT roll with RETREAT_KILL_EDGE
+ *
+ * ── THE ONE SANCTIONED ABSTRACTION, NAMED AT ITS DEFINITION SITE ─────────────
+ * OWNER RULING (2026-07-29): this does NOT call `resolveCombat`. It cannot — that
+ * function spends a die from `player.dawnHand`, and the cast holds no hand until
+ * N13 builds them a decision surface. So the fight runs here, on the primitives
+ * above, and gives up EXACTLY ONE THING: **die CHOICE**. A player picks which of
+ * five visible dice to spend, which is the game's central decision; a captain in the
+ * coarse one-verb day has no hand to pick from, so its die is `rng.d20()`.
+ *
+ * That is a real gap and it is not to be described as parity. **N13 is the step
+ * that closes it** — when the cast holds a hand, the stance picker below reads it
+ * instead of drawing raw, and this note comes out. Until then the PARITY LEDGER
+ * says "shared primitives, one-tick", never "full parity via resolveCombat"; the
+ * 2026-07-29 audit found that exact false claim in this document and it is not to
+ * be re-introduced.
+ *
+ * The second, smaller abstraction: the encounter resolves in ONE tick rather than
+ * spanning days on a fresh hand. `NPC_ENCOUNTER_MAX_ROUNDS` bounds it, and a captain
+ * still on the field at the cap breaks off unharmed.
+ */
+function resolveNpcEncounter(
+  npc: NpcState,
+  profile: NpcProfile,
+  origin: number,
+  destination: number,
+  /** The contract destination when this jump is a delivery — raises the lane a
+   *  danger level, the same rule the player's loaded run obeys. */
+  haulingTo: number | undefined,
+  rng: SeededRng,
+  ctx: NpcDayContext,
+  events: GameEvent[],
+): boolean {
+  const danger = routeDangerFor(origin, destination, ctx.eraEvent, haulingTo);
+  // The multiplier chain, in the player's order. Two of the player's four terms
+  // have NO NPC ANALOGUE and are absent rather than zeroed: a defaulted Penny Wise
+  // loan and a Guild debt flag are player-only mechanics, so there is nothing to
+  // read. That is an absent INPUT, not a threshold tuned so a rule will not bite —
+  // the distinction the standing constraint's consequence 2 turns on.
+  let chance =
+    ctx.era === 'TOUR_ONE' ? danger.routeDangerChance * TOUR_ONE_ENCOUNTER_MULTIPLIER : danger.routeDangerChance;
+  if (npc.ship.hasCloaker) chance *= CLOAK_ENCOUNTER_MULTIPLIER;
+
+  if (rng.next() >= chance) return false;
+
+  const interceptor = selectAnonymousInterceptor(
+    profile.tier,
+    origin,
+    destination,
+    danger.routeDangerLevel,
+    rng,
+  );
+  if (!interceptor) return false;
+
+  const stances: ('talk' | 'run' | 'fight')[] = [];
+  let creditsPaid = 0;
+  let enemyHull = Math.max(1, interceptor.tier);
+  let resolution: 'talked-down' | 'escaped' | 'defeated' | 'destroyed' | 'survived' = 'survived';
+  let round = 1;
+
+  for (; round <= NPC_ENCOUNTER_MAX_ROUNDS; round += 1) {
+    const stance = pickNpcStance(npc, profile, interceptor, round, rng);
+    stances.push(stance);
+
+    if (stance === 'talk') {
+      const demand = tributeForRound(
+        round,
+        interceptor.kind,
+        Math.max(0, interceptor.tier - profile.tier),
+      );
+      // The interceptor's flaw can slam the door — the player's rule, unchanged.
+      const refused = interceptorRefusesTribute(interceptor, rng, events);
+      const result = rollEncounterCheck(npc, profile, Stat.TRADE, 'npc-encounter-talk', rng, events, interceptor);
+      if (!refused && result.success && npc.credits >= demand) {
+        npc.credits -= demand;
+        creditsPaid += demand;
+        resolution = 'talked-down';
+        break;
+      }
+    } else if (stance === 'run') {
+      npc.ship.fuel = Math.max(0, npc.ship.fuel - RUN_FUEL_COST);
+      const result = rollEncounterCheck(npc, profile, Stat.PILOT, 'npc-encounter-run', rng, events, interceptor);
+      if (result.success) {
+        resolution = 'escaped';
+        break;
+      }
+    } else {
+      npc.ship.fuel = Math.max(0, npc.ship.fuel - FIGHT_FUEL_COST);
+      const result = rollEncounterCheck(npc, profile, Stat.GUNS, 'npc-encounter-fight', rng, events, interceptor);
+      if (result.success) {
+        enemyHull = Math.max(0, enemyHull - weaponVolleyDamage(npc.ship));
+        if (enemyHull <= 0) {
+          // The dying interceptor's opposed PILOT retreat — PRD §7.4's miracle
+          // burn, available against a captain exactly as against the player.
+          const enemyDie = rng.d20();
+          const npcDie = rng.d20();
+          const npcPin = npcDie + profile.stats[Stat.PILOT] + RETREAT_KILL_EDGE;
+          const escaped = check(enemyDie, interceptor.stats[Stat.PILOT], npcPin);
+          events.push({
+            type: 'StatCheck',
+            actor: interceptor.name,
+            stat: Stat.PILOT,
+            dc: escaped.dc,
+            result: escaped,
+            actionContext: 'retreat',
+          });
+          resolution = escaped.success ? 'survived' : 'defeated';
+          if (resolution === 'defeated') {
+            npc.credits += COMBAT_SALVAGE_PER_TIER * interceptor.tier;
+          }
+          break;
+        }
+      }
+    }
+
+    // The interceptor answers. Same DC, same damage rule, same killing blow.
+    const pressure = check(
+      rng.d20(),
+      interceptor.stats[Stat.GUNS],
+      interceptorPressureDc(profile.stats),
+    );
+    if (pressure.success) {
+      const hit = applyInterceptorHit(npc.ship, profile.tier, interceptor.tier, pressure, rng);
+      if (hit.shipLost) {
+        resolution = 'destroyed';
+        break;
+      }
+    }
+  }
+
+  const rounds = Math.min(round, NPC_ENCOUNTER_MAX_ROUNDS);
+  events.push({
+    type: 'NpcEncounter',
+    day: ctx.day,
+    npcId: npc.id,
+    interceptorId: interceptor.id,
+    interceptorName: interceptor.name,
+    stances,
+    resolution,
+    rounds,
+    ...(creditsPaid > 0 ? { creditsPaid } : {}),
+    ...(resolution === 'defeated'
+      ? { salvageCredits: COMBAT_SALVAGE_PER_TIER * interceptor.tier }
+      : {}),
+  });
+
+  if (resolution === 'destroyed') {
+    // PERMANENT. No succession, no replacement, no respawn — the seat empties and
+    // stays empty (owner ruling 2026-07-28). The record is MARKED, never deleted,
+    // because the wire, the Honor List's history and the player's grudges all still
+    // reference it; every "living field" reader skips it instead (see the field's
+    // doc comment on `NpcState.dead` for the four that matter).
+    npc.dead = true;
+    events.push({
+      type: 'NpcShipLost',
+      day: ctx.day,
+      npcId: npc.id,
+      npcName: npc.name,
+      interceptorId: interceptor.id,
+      interceptorName: interceptor.name,
+      systemId: destination,
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * N3 · Which corner of the triangle a captain plays this round.
+ *
+ * The player's three options priced by what a captain can actually afford, then
+ * broken by archetype — the same "run, talk, or fight" decision, made without a
+ * hand to read (see the abstraction note on {@link resolveNpcEncounter}).
+ *
+ * The affordability gates come FIRST and they are the honest part: firing costs
+ * FIGHT_FUEL_COST and a captain that cannot pay it cannot shoot, exactly as a player
+ * with a dry tank cannot. A captain who can afford nothing talks, because tribute is
+ * the only corner that costs no fuel.
+ */
+function pickNpcStance(
+  npc: NpcState,
+  profile: NpcProfile,
+  interceptor: EncounterInterceptorState,
+  round: number,
+  rng: SeededRng,
+): 'talk' | 'run' | 'fight' {
+  const canFight = npc.ship.fuel >= FIGHT_FUEL_COST;
+  const canRun = npc.ship.fuel >= RUN_FUEL_COST;
+  const canPay =
+    npc.credits >=
+    tributeForRound(round, interceptor.kind, Math.max(0, interceptor.tier - profile.tier));
+
+  // Outgunned by two tiers or more, nobody's archetype makes them brave.
+  const outgunned = interceptor.tier - profile.tier >= 2;
+
+  switch (profile.archetype) {
+    case 'fighter':
+      if (canFight && !outgunned) return 'fight';
+      return canRun ? 'run' : 'talk';
+    case 'veteran':
+      // Fights what it can beat, buys off what it cannot, runs as a last resort.
+      if (canFight && interceptor.tier <= profile.tier) return 'fight';
+      if (canPay) return 'talk';
+      return canRun ? 'run' : 'talk';
+    case 'smuggler':
+      // Carrying contraband: never stay to chat if the tank can carry you out.
+      if (canRun) return 'run';
+      return canPay ? 'talk' : canFight ? 'fight' : 'talk';
+    case 'trader':
+      // A haul is worth more than a fight — pay the toll and keep the cargo.
+      if (canPay) return 'talk';
+      return canRun ? 'run' : canFight ? 'fight' : 'talk';
+    case 'explorer':
+      if (canRun) return 'run';
+      return canPay ? 'talk' : 'talk';
+    case 'gambler':
+    default: {
+      // Reckless: picks a corner by feel, from what it can afford.
+      const options: ('talk' | 'run' | 'fight')[] = ['talk'];
+      if (canRun) options.push('run');
+      if (canFight && !outgunned) options.push('fight');
+      return options[Math.floor(rng.next() * options.length)];
+    }
+  }
+}
+
+/** N3 · One encounter-round roll for a captain, emitted with an interdiction
+ *  context so it reaches the wire without inflating the T-1201 verb ⟺ StatCheck
+ *  count (see the `actionContext` union in types.ts for why that split matters). */
+function rollEncounterCheck(
+  npc: NpcState,
+  profile: NpcProfile,
+  stat: Stat,
+  actionContext: 'npc-encounter-talk' | 'npc-encounter-run' | 'npc-encounter-fight',
+  rng: SeededRng,
+  events: GameEvent[],
+  interceptor: EncounterInterceptorState,
+): CheckResult {
+  const dc = 10 + interceptor.tier;
+  const result = check(rng.d20(), profile.stats[stat], dc);
+  events.push({ type: 'StatCheck', actor: npc.id, stat, dc, result, actionContext });
+  return result;
+}
+
 /** Buy as many cargo pods as the captain's new hull licenses and their purse (less
  *  {@link NPC_YARD_RESERVE}) covers. Called only from the hull rung of
  *  {@link considerRefit}; the quote is still what authorises and charges it. */
@@ -856,7 +1146,9 @@ function executeTrade(
     
     // N4 · Smuggler preference for the rim
     if (profile.archetype === 'smuggler') {
-      const rimIndices = indices.filter(i => STAR_SYSTEMS[ctx.claimableBoard![i]!.destination]?.isRim);
+      const rimIndices = indices.filter(
+        (i) => STAR_SYSTEMS[ctx.claimableBoard![i].destination]?.isRim,
+      );
       if (rimIndices.length > 0) {
         indices = rimIndices;
       }
@@ -899,9 +1191,25 @@ function executeTrade(
   // failure, not a payout change. (Verified: a payout/fuel penalty here pushes
   // the seed-1 solvency ratio out of band; this design holds it at baseline.)
   npc.ship.fuel -= fuelCost;
+  const origin = npc.currentSystemId;
   npc.currentSystemId = contract.destination;
-  npc.credits += contract.payment;
   const cargoName = CARGO_TYPES[contract.cargoType]?.name ?? `type-${contract.cargoType} cargo`;
+  // N3 · The loaded run is the dangerous one, for a captain exactly as for the
+  // player: `haulingTo` is the contract destination, which raises the lane a full
+  // danger level inside `routeDangerFor`. A captain lost with the cargo aboard is
+  // never paid — the delivery did not happen.
+  if (
+    resolveNpcEncounter(npc, profile, origin, contract.destination, contract.destination, rng, ctx, events)
+  ) {
+    return {
+      action: {
+        type: 'Trade',
+        details: `was lost hauling ${cargoName} to ${systemName(contract.destination)}`,
+      },
+      claimedContractIndex,
+    };
+  }
+  npc.credits += contract.payment;
 
   const result = rollNpcCheck(npc, profile, 'Trade', rng, events);
   if (result.success) {
@@ -939,14 +1247,20 @@ function executeTravel(
     }
   }
 
-  const destination = options[Math.floor(rng.next() * options.length)]!;
+  const destination = options[Math.floor(rng.next() * options.length)];
   const fuelCost = npcJumpFuelCost(npc.ship, systemDistance(npc.currentSystemId, destination));
   refuelIfNeeded(npc, fuelCost, ctx.eraEvent);
   if (npc.ship.fuel < fuelCost) {
     return brokeIdle(npc, rng, ctx.day, events);
   }
   npc.ship.fuel -= fuelCost;
+  const origin = npc.currentSystemId;
   npc.currentSystemId = destination;
+  // N3 · The lane can be interdicted. A captain who loses the ship here is done —
+  // no verb resolves, and their day ends with the wreck.
+  if (resolveNpcEncounter(npc, profile, origin, destination, undefined, rng, ctx, events)) {
+    return { type: 'Travel', details: `was lost on the run to ${systemName(destination)}` };
+  }
   // A Travel (PILOT) check decides a clean jump vs a rough one (T-1201).
   const result = rollNpcCheck(npc, profile, 'Travel', rng, events);
   if (result.success) {

@@ -11,8 +11,6 @@ import {
   NEMESIS_CROSSING_DC,
   NEMESIS_SYSTEM_ID,
   NPC_PROFILES,
-  QUEST_PROFILES,
-  ALL_NPC_PROFILES,
   ROUTE_DANGER_CHANCE,
   RouteDangerLevel,
   SYSTEM_DANGER_LEVELS,
@@ -103,31 +101,61 @@ export function travelDc(routeDistance: number, destinationId?: number): number 
   return 8 + Math.floor(routeDistance / 2);
 }
 
-export function calculateRouteDanger(
-  state: GameState,
-  origin: number,
-  destination: number,
-): {
+export interface RouteDanger {
   routeDistance: number;
   routeDangerLevel: RouteDangerLevel;
   routeDangerChance: number;
-} {
+}
+
+/**
+ * N3 · HOW DANGEROUS A LANE IS, for anyone flying it.
+ *
+ * The content-only core of {@link calculateRouteDanger}, extracted so the cast can
+ * price the same lane the player does. It takes no `GameState`: everything it needs
+ * is the two endpoints, the live era event, and — the one actor-specific term —
+ * whether the flier is hauling a contract INTO the destination.
+ *
+ * `haulingTo` is the interesting one. A loaded run into the delivery port raises
+ * the lane a full danger level, which is the rule behind "the loaded run is the
+ * dangerous one". It applies to an NPC exactly as it applies to the player: an NPC
+ * executing a Trade verb passes its contract destination, and one merely
+ * repositioning passes nothing.
+ */
+export function routeDangerFor(
+  origin: number,
+  destination: number,
+  eraEvent: GameState['eraEvent'],
+  haulingTo?: number,
+): RouteDanger {
   const routeDistance = systemDistance(origin, destination);
   const baseDanger = Math.max(
     SYSTEM_DANGER_LEVELS[origin] ?? 1,
     SYSTEM_DANGER_LEVELS[destination] ?? 1,
   );
   const distanceBump = routeDistance >= 8 ? 1 : 0;
-  const cargoBump = state.player.activeContract?.destination === destination ? 1 : 0;
+  const cargoBump = haulingTo === destination ? 1 : 0;
   // T-107: an active era event (blockade, plague, patrol crackdown) shifts the
-  // lane's danger. eraEvent rides on the passed-in state — no global read.
-  const eraDelta = eraDangerDelta(state.eraEvent, origin, destination);
+  // lane's danger. eraEvent is passed in — no global read.
+  const eraDelta = eraDangerDelta(eraEvent, origin, destination);
   const routeDangerLevel = clampDanger(baseDanger + distanceBump + cargoBump + eraDelta);
   return {
     routeDistance,
     routeDangerLevel,
     routeDangerChance: ROUTE_DANGER_CHANCE[routeDangerLevel],
   };
+}
+
+export function calculateRouteDanger(
+  state: GameState,
+  origin: number,
+  destination: number,
+): RouteDanger {
+  return routeDangerFor(
+    origin,
+    destination,
+    state.eraEvent,
+    state.player.activeContract?.destination,
+  );
 }
 
 /** T-1401 · A previewed jump in REAL engine units — every number the starmap
@@ -249,6 +277,11 @@ function buildNamedCandidates(
   tier: RouteDangerLevel,
 ): EncounterInterceptorState[] {
   return state.npcs.flatMap((npc) => {
+    // N3 · A dead captain does not fly. The record STAYS (the wire, the Honor
+    // List's history and the player's grudges all still reference it) but it must
+    // not be drawn as an interceptor — "a dead captain talks" is the exact failure
+    // mode the roster split was designed around.
+    if (npc.dead) return [];
     const profile = NPC_PROFILES.find((candidate) => candidate.id === npc.profileId);
     if (!profile || profile.tier !== tier) return [];
     return [
@@ -304,9 +337,14 @@ function buildAnonymousCandidates(
  * tier-band matchmaking invariant (the 500-seed sweep) is untouched.
  */
 function chooseWeighted(
-  state: GameState,
   rng: SeededRng,
   candidates: EncounterInterceptorState[],
+  /** N3 · Standing the FLIER has earned with a named candidate. Supplied by the
+   *  caller because disposition is defined as standing toward the PLAYER: the
+   *  player's path looks it up off the roster, and an NPC's path has no analogue
+   *  to look up, so it returns 0 and every weight collapses to 1 (a uniform pick,
+   *  one rng draw — exactly as before). */
+  dispositionOf: (candidateId: string) => number,
 ): EncounterInterceptorState {
   if (candidates.length === 0) {
     throw new Error('Cannot choose from an empty encounter candidate list');
@@ -314,7 +352,7 @@ function chooseWeighted(
 
   const weights = candidates.map((candidate) => {
     if (candidate.source !== 'named') return 1;
-    const disposition = state.npcs.find((npc) => npc.id === candidate.id)?.disposition ?? 0;
+    const disposition = dispositionOf(candidate.id);
     if (disposition < 0) return 1 + INTERCEPT_GRUDGE_WEIGHT * -disposition;
     if (disposition > 0) {
       return Math.max(INTERCEPT_MIN_WEIGHT, 1 - INTERCEPT_FRIEND_WEIGHT * disposition);
@@ -338,6 +376,8 @@ export function selectEncounterInterceptor(
   routeDangerLevel: RouteDangerLevel,
   rng: SeededRng,
 ): EncounterInterceptorState {
+  const dispositionOf = (id: string): number =>
+    state.npcs.find((npc) => npc.id === id)?.disposition ?? 0;
   const playerTier = state.player.tier ?? 1;
   const minTier = Math.max(1, playerTier - 1);
   const maxTier = Math.min(5, playerTier + 1);
@@ -349,7 +389,7 @@ export function selectEncounterInterceptor(
     const preferNamed = namedCandidates.length > 0 && rng.next() < 0.25;
     const preferred = preferNamed ? namedCandidates : anonymousCandidates;
     const fallback = preferNamed ? anonymousCandidates : namedCandidates;
-    return chooseWeighted(state, rng, preferred.length > 0 ? preferred : fallback);
+    return chooseWeighted(rng, preferred.length > 0 ? preferred : fallback, dispositionOf);
   }
 
   const bandCandidates: EncounterInterceptorState[] = [];
@@ -364,7 +404,52 @@ export function selectEncounterInterceptor(
     throw new Error('No encounter interceptors available for tier band');
   }
 
-  return chooseWeighted(state, rng, bandCandidates);
+  return chooseWeighted(rng, bandCandidates, dispositionOf);
+}
+
+/**
+ * N3 · THE INTERCEPTOR THAT ANSWERS AN NPC'S JUMP.
+ *
+ * OWNER RULING (2026-07-29): the cast meets the ANONYMOUS rank-and-file only —
+ * the 65-entry pirate / patrol / brigand / Reptiloid roster the PRD redistributes
+ * across the tiers. Two reasons, both recorded so this is a decision rather than
+ * an omission:
+ *   1. It is what N3's own title says: "NPCs meet pirates".
+ *   2. A captain-versus-captain fight mutates TWO shared roster records inside one
+ *      encounter, which is the copy-on-write hazard this step's FIRST TASK exists
+ *      to guard. Captain rivalry is a real idea and belongs in its own step, with
+ *      an NPC-to-NPC standing surface nothing in the track has scoped yet.
+ *
+ * Consequently no grudge weighting applies (`disposition` is standing toward the
+ * PLAYER, and there is no NPC-to-NPC analogue to read), so the pick collapses to
+ * the uniform one-draw case inside the shared {@link chooseWeighted}.
+ *
+ * Tier matchmaking is the player's rule unchanged: band the interceptor to
+ * [tier-1, tier+1] via {@link chooseTargetTier}, weighted by the lane's danger.
+ */
+export function selectAnonymousInterceptor(
+  actorTier: number,
+  origin: number,
+  destination: number,
+  routeDangerLevel: RouteDangerLevel,
+  rng: SeededRng,
+): EncounterInterceptorState | null {
+  const noGrudges = (): number => 0;
+  const targetTier = chooseTargetTier(rng, actorTier, routeDangerLevel);
+  const atTier = buildAnonymousCandidates(origin, destination, targetTier);
+  if (atTier.length > 0) return chooseWeighted(rng, atTier, noGrudges);
+
+  const minTier = Math.max(1, actorTier - 1);
+  const maxTier = Math.min(5, actorTier + 1);
+  const band: EncounterInterceptorState[] = [];
+  for (let tier = minTier; tier <= maxTier; tier += 1) {
+    band.push(...buildAnonymousCandidates(origin, destination, tier as RouteDangerLevel));
+  }
+  // Unlike the player's path this does NOT throw on an empty band. A lane whose
+  // allowed interceptor kinds happen to hold nobody in the band is a quiet
+  // no-encounter for the cast, not an engine fault: 30 captains jump every dusk
+  // and a throw here would take the whole day loop down.
+  return band.length > 0 ? chooseWeighted(rng, band, noGrudges) : null;
 }
 
 // T-1103 · Tour One is gentler than the open galaxy. PRD-REIMAGINED §"Tour One"

@@ -50,7 +50,7 @@ N5 → N8 (see "Sequencing at a glance" for why N7 moved; N10–N13 added by own
 | N7 — capstone diff + smoke rig | **SHIPPED** | **accepted** — 1.5 s smoke vs 2 min capstone; staleness fails loudly; found N9 |
 | N2 — NPCs upgrade their ships | **SHIPPED** | **ACCEPTED** — spread max/median 13.4→155, fits 5→144, Honor List 2/8→8/8 contested; found R10 |
 | N6 — Honor List, 31-way board | **SHIPPED** | **accepted** — actor-shaped board; found 6 of 8 titles uncontestable by construction |
-| N3 — NPCs meet pirates | **PARTIAL · REOPENED** | roster split landed (11 quest characters extracted); **mortality and encounters were never built** — see the 2026-07-29 correction under N3 |
+| N3 — NPCs meet pirates | **SHIPPED 2026-07-29 (rebuilt)** | encounters on every NPC jump, stance triangle on the shared rules, permanent death, four dead-field skips; **capstone still owed** — see N3's Result |
 | N4 — NPC archetypes | **PARTIAL · REOPENED** | `archetype` field landed on all 41 profiles; the assignment was machine-generated and left **0 veterans / 1 smuggler** in the sim roster, and no sweep graded it — see the correction under N4 |
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile`; **GATED BY N13** — its die-allocation lever needs a decision surface to act on |
 | **N10 — NPCs work the contract board** | **TODO · MUST-HAVE** | owner ruling 2026-07-29 — NPCs interact with trade contracts as players do; the co-location gate and 1-claim/dusk cap get measured, not assumed |
@@ -163,8 +163,8 @@ ruling; it is what makes the fast-forward honest).
 | player verb | NPC today | owed by |
 | --- | --- | --- |
 | Trade | coarse haul; claims the player's board only when co-located, 1 claim/dusk fleet cap | **N10** |
-| Travel | real fuel, real routes, **no encounters** — `executeTravel` generates none | **N3 (reopened)** |
-| Combat | **abstract GUNS check vs no one, flat `150 × tier` bounty** — `resolveCombat` is never called from `npc.ts` | **N3 (reopened)** |
+| Travel | real fuel, real routes, real encounters, real permanent death | shipped (N3) |
+| Combat | interdiction on the SHARED rules, one-tick — same DC, tribute, damage, salvage, retreat. **NOT `resolveCombat`**: gives up die CHOICE only, closed by N13 | shipped (N3) · N13 closes the gap |
 | Shipyard | full price/gate parity via `ShipyardActor` — **but the refit spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · OI-9 open |
 | Explore | never | **UNRULED — owner decides by N8** |
 | VisitHangout | Socialize stand-in; no borrow/repay | **UNRULED — owner decides by N8** |
@@ -231,9 +231,19 @@ so the step's *"NPC wealth spread widens"* clause was mis-assigned and belongs t
   The false comment at `packages/engine/src/npc.ts:1031-1039` and the duplicate figures at
   `packages/engine/src/__tests__/clone.test.ts:363-367` were rewritten to agree — one
   measurement, three places, no third copy left to drift.
-- **OI-1 precision corrections, both easy to "fix" back into being wrong.** The roster is
-  **30 captains, not 31** (`createInitialState(seed).npcs.length === 30`); **31 is the BOARD
-  size** (the player plus the 30), so **N6's heading is correct and is not to be "fixed"**.
+- **OI-1 precision corrections, both easy to "fix" back into being wrong.** The SIMULATION
+  roster is **30 captains, not 31**; **31 is the BOARD size** (the player plus the 30), so
+  **N6's heading is correct and is not to be "fixed"**.
+  > **AMENDED BY N3's ROSTER SPLIT (2026-07-29).** This bullet used to read
+  > `createInitialState(seed).npcs.length === 30`, and that identity is now FALSE:
+  > `state.npcs` carries **41** records — the 30 simulation captains plus the 11
+  > `QUEST_PROFILES` characters, who need `NpcState` records because storylet triggers
+  > and dispositions look them up by id, but who take no turn. **The three numbers are
+  > now distinct and conflating any two of them has already caused two live bugs:** the
+  > Honor List silently became a 42-way board ranking eleven captains frozen at their
+  > day-1 fit, and `balance-rig.test.ts` lost 52 tests to a hardcoded 30. Read
+  > `NPC_PROFILES.length` for the simulation field (30), `state.npcs.length` for the
+  > record count (41), and 31 for the board.
   And where the code says N1 grew the NPC record "~10x", that is an **object count, not a
   size**: 229 -> 745 bytes, **3.3× in bytes**, with exactly eight nested component objects
   added (`types.ts:1139-1146`).
@@ -342,7 +352,92 @@ MOVED"*, so the player did not move across the refactor. The step also found **R
 
 *Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
 
-### N3 — NPCs meet pirates, and answer them (PARTIAL · REOPENED 2026-07-29)
+### N3 — NPCs meet pirates, and answer them (SHIPPED 2026-07-29, rebuilt)
+
+**Result (2026-07-29): ACCEPTED on behaviour, CAPSTONE OWED.** Rebuilt from the
+ground up after the audit below found the step marked SHIPPED with none of its core
+change built. What landed:
+
+- **FIRST TASK discharged.** The copy-on-write scan is widened by SHAPE, not by
+  another name: provenance-based tainting (any handle bound from a `.npcs` read,
+  propagated through re-bindings and alias casts, untainted only by a real copy),
+  scanning all of engine AND sim. A sibling test drives the same scan over each of
+  its three historical blind spots. The two legitimate raw writers now carry
+  argued `COW-EXEMPT:` markers, block-scoped, with the set pinned in the test.
+  Verified by injecting `captain.profileId = 'tampered'` into `day.ts` and watching
+  the guard name the file and line. *This landed BEFORE the death write, which is
+  the whole reason it was folded in here.*
+- **Encounters on every NPC jump** — `executeTravel` and `executeTrade` both roll,
+  through `routeDangerFor`, the extracted content-only core of the player's
+  `calculateRouteDanger`. **Including the loaded-run bump**: a captain hauling INTO
+  the delivery port raises the lane a full danger level, the player's own rule.
+- **The stance triangle, on the shared rules.** `resolveNpcEncounter` runs
+  talk/run/fight against `10 + tier`, `tributeForRound` (class and tier-gap
+  modifiers included), `interceptorRefusesTribute` (so a Bloodthirsty pirate slams
+  the tribute door on a captain as it does on the player), `weaponVolleyDamage`,
+  `RUN_FUEL_COST`/`FIGHT_FUEL_COST`, `COMBAT_SALVAGE_PER_TIER`, and the opposed
+  PILOT retreat with `RETREAT_KILL_EDGE`.
+- **The rules moved to a module neither side owns.** `applyInterceptorHit`,
+  `interceptorPressureDc`, `damageComponentForHit`, `tributeForRound` and
+  `interceptorRefusesTribute` now live in `combatRules.ts` and are called by BOTH
+  the player's `applyEnemyPressure` and the cast's interdiction — one definition of
+  the damage rule, not two. The extraction was verified behaviour-preserving: the
+  engine suite stayed at 726/726 with **every golden hash unmoved** before any NPC
+  encounter was wired in.
+- **Permanent death.** `NpcState.dead` (optional, so no migration is owed — absent
+  means alive), `NpcShipLost`, no succession. **Plus the four skips that marking a
+  record dead makes mandatory**, each of which would otherwise have been a live bug:
+  `honorField` (the OI-2 seam, closed), the interceptor pool, the dusk turn loop,
+  and Hangout presence. A fifth decision recorded rather than drifted into: **a
+  dead captain's disposition STOPS MOVING** rather than decaying to neutral, because
+  the grudge is part of what the record is for.
+- **The wire narrates it.** Interdiction rolls carry their own
+  `npc-encounter-{fight,run,talk}` contexts so a nat-20 still makes the wire (PRD
+  §6's guarantee holds for the cast), routed per stance to the combat / travel /
+  haggle buckets. Split from the `npc-*` VERB contexts deliberately: the T-1201
+  verb ⟺ StatCheck invariant now counts checks carrying the verb's OWN context, so
+  an interdiction cannot inflate the sim's trade-failure denominator.
+
+**MEASURED (3 seeds × 200 days, engine-level probe):** ~700 interdictions and 1–4
+permanent deaths per 200 days; the living field ends at 26–29 of 30. Tribute is
+**5–7% of gross field wealth** — a real cost, not an economy-breaker. **The
+Disproves does not fire: the roster does not empty out.**
+
+> [!IMPORTANT]
+> **WHAT N3 FOUND AND HANDS TO N4** (standing amendment 4). Interdictions are
+> distributed by archetype like this: **trader 465, explorer ~110, gambler ~60,
+> smuggler ~20, fighter 32.** The twelve FIGHTERS — the largest archetype group in
+> the roster — face almost no lane risk, while ten traders absorb ~68% of all
+> interdictions. The cause is not N3: it is N4's deterministic `pickIntent`, under
+> which a fighter returns Combat or Patrol and therefore **never jumps**. Risk
+> exposure is currently allocated by a bug. The reopened N4 blend fixes it directly
+> (every captain's `IDEAL_WEIGHTS` carries some Travel weight), and **N3's rate
+> numbers must be re-measured after N4 lands** — which is one reason the capstone
+> is deliberately deferred to the close of that work.
+
+> [!CAUTION]
+> **CAPSTONE STILL OWED.** `npm run balance:smoke` and 23 tests in
+> `@spacerquest/sim` are red, traced to two root causes and neither is a behaviour
+> fault in this step:
+> 1. **Stale fixture** (8 of them, `balance-smoke` + `balance-rig`) — the N7
+>    staleness gate firing exactly as designed. The fix is a new capstone.
+> 2. **Shared-RNG stream shift** (the rest) — the roster split shuffles 41 records
+>    where it used to shuffle 30, so every seeded player career diverges. The
+>    visible symptom is `balance-combat-survival`'s live band: the player death
+>    rate reads 0.28 per 1,000 sim days against a guarded floor of 0.8. These are
+>    LIVE BANDS, not fixtures ("bands with visible headroom, never pinned digits"),
+>    so they are a real signal about a shifted sample and must be re-measured, not
+>    re-pinned. **Do not edit a band to make it pass** (docs/VERSIONING.md).
+>
+> One genuine defect was found and fixed on the way: `balance-rig.test.ts` learned
+> the roster size by calling `synthesizeTierState` with a hardcoded 30 — but that
+> function VALIDATES the spread against the roster before returning, so the
+> discovery call became a throw the moment the roster hit 41, taking the whole file
+> (52 tests) down. It now reads `createInitialState(1).npcs.length`.
+
+---
+
+#### The audit that reopened this step (2026-07-29)
 
 > [!CAUTION]
 > **CORRECTION (2026-07-29 doc-vs-code audit). This step was marked SHIPPED /

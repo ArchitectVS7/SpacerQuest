@@ -304,3 +304,23 @@ export const TRIBUTE_TIER_GAP_STEP = 0.75;
  * wins.
  */
 export const RETREAT_KILL_EDGE = 15;
+
+/**
+ * N3 · How many rounds an NPC's interdiction may run before it is broken off.
+ *
+ * The cast's encounter resolves inside ONE dusk tick (owner ruling, 2026-07-29 —
+ * see docs/NPC_REDESIGN.md N3), so unlike the player's encounter it cannot span
+ * days waiting on a fresh hand, and it needs a hard stop. 6 is deliberately
+ * generous against the measured shape of a real fight: the T-1603c tuning memo
+ * records that "encounters still resolve in 2-4 rounds", so this binds only on the
+ * tail and is not a balance lever in disguise.
+ *
+ * IT IS ALSO THE COST CEILING. 30 captains jump every dusk, and each round emits a
+ * StatCheck plus an interceptor pressure check into the append-only event log — the
+ * cost T-1605c exists to protect. This constant is what bounds that growth to
+ * something measurable.
+ *
+ * A captain still holding the field at the cap breaks off unharmed: the
+ * interdiction is survived, not won. Reader: engine `npc.ts` `resolveNpcEncounter`.
+ */
+export const NPC_ENCOUNTER_MAX_ROUNDS = 6;

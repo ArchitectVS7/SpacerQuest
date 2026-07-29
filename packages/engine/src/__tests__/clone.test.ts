@@ -115,13 +115,13 @@ function exemptRanges(source: string): Array<[number, number]> {
   const lines = source.split('\n');
   const ranges: Array<[number, number]> = [];
   for (let i = 0; i < lines.length; i += 1) {
-    if (!lines[i]!.includes('COW-EXEMPT:')) continue;
+    if (!lines[i].includes('COW-EXEMPT:')) continue;
     // Walk forward to the first brace that opens a block, then to its match.
     let depth = 0;
     let opened = false;
     let end = i + 1;
     for (let j = i; j < lines.length; j += 1) {
-      for (const ch of lines[j]!) {
+      for (const ch of lines[j]) {
         if (ch === '{') {
           depth += 1;
           opened = true;

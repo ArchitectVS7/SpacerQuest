@@ -8,7 +8,6 @@ import {
   LIFE_SUPPORT_SURVIVAL_DC,
   LOAN_DEFAULT_DISPOSITION,
   NEMESIS_SYSTEM_ID,
-  NPC_PROFILES,
   QUEST_PROFILES,
   ALL_NPC_PROFILES,
   STAR_SYSTEMS,
@@ -700,6 +699,11 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     if (npc.id === intervenedNpcId) continue;
     // Quest characters do not participate in the daily simulation.
     if (QUEST_PROFILES.some(q => q.id === npc.profileId)) continue;
+    // N3 · A dead captain takes no turn. The record STAYS (the wire, the Honor
+    // List's history and the player's grudges reference it) — it is skipped here,
+    // never removed, which is why the roster length does not shrink even as the
+    // living field does.
+    if (npc.dead) continue;
     const npcRng = dayRng.fork(`npc-${npc.id}`);
     const canClaim =
       !boardClaimSpent &&
@@ -713,6 +717,10 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       day: nextState.day,
       claimableBoard: canClaim ? nextState.market.manifestBoard : null,
       eraEvent: nextState.eraEvent,
+      // N3 · Tour One damps the interdiction rate for the cast the same way it
+      // damps it for the player — the multiplier belongs to the era, not to who
+      // is flying.
+      era: nextState.era,
     });
 
     let sniped = false;
@@ -778,6 +786,12 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   //   read a disposition that now actually persists.
   if (nextState.day % DISPOSITION_DECAY_INTERVAL_DAYS === 0) {
     for (const npc of nextState.npcs) {
+      // N3 · A dead captain's standing STOPS MOVING — it does not fade to neutral
+      // over the remaining career. This is the deliberate reading of "a dead
+      // captain's record stays … for any grudge the player still carries": the
+      // grudge is part of what the record is FOR. Letting it decay would quietly
+      // erase the history of everyone the player ever wronged who later died.
+      if (npc.dead) continue;
       if (npc.disposition !== 0) {
         applyDisposition(nextState, npc.id, npc.disposition > 0 ? -1 : 1, 'decay', events);
       }
@@ -801,6 +815,11 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
 
   // Generate daily wire entries from notable events
   for (const npc of nextState.npcs) {
+    // N3 · A DEAD CAPTAIN DOES NOT TALK. Their `lastAction` is preserved (it is
+    // how they died) and this loop would otherwise re-narrate it on the wire every
+    // day for the rest of the career — the exact "a dead captain talks" failure the
+    // roster split was designed around, arriving through a different door.
+    if (npc.dead) continue;
     if (npc.lastAction) {
       // Flaw overrides are ALWAYS notable. Other actions are semi-randomly notable.
       const isFlawOverride = npc.lastAction.type === 'FlawOverride';

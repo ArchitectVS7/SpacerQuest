@@ -479,6 +479,11 @@ const NpcStateSchema = z
     ship: ShipStateSchema,
     disposition: z.number(),
     lastAction: NpcActionSchema.optional(),
+    // N3: permanent NPC death. Optional because absent means alive — an old save
+    // has no dead captains, so this needs no migration and no version bump. The
+    // schema is `.strict()`, so the key still has to be declared here or a v11
+    // save carrying it would be rejected as unknown.
+    dead: z.boolean().optional(),
   })
   .strict();
 
@@ -559,6 +564,11 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'retreat',
         // T-1303: the player's Spacer's Dare GUILE roll (see types.ts StatCheck).
         'gamble',
+        // N3: a captain's per-round rolls inside an interdiction (see types.ts
+        // StatCheck for why these are split from the `npc-*` verb contexts).
+        'npc-encounter-fight',
+        'npc-encounter-run',
+        'npc-encounter-talk',
       ])
       .optional(),
   }),
@@ -571,6 +581,29 @@ const GameEventSchema = z.discriminatedUnion('type', [
     resisted: z.boolean(),
   }),
   z.object({ type: z.literal('NpcAction'), npcId: z.string(), actionDetails: z.string() }),
+  // N3 · A captain's interdiction, one summary line per encounter.
+  z.object({
+    type: z.literal('NpcEncounter'),
+    day: z.number(),
+    npcId: z.string(),
+    interceptorId: z.string(),
+    interceptorName: z.string(),
+    stances: z.array(z.enum(['talk', 'run', 'fight'])).readonly(),
+    resolution: z.enum(['talked-down', 'escaped', 'defeated', 'destroyed', 'survived']),
+    rounds: z.number(),
+    creditsPaid: z.number().optional(),
+    salvageCredits: z.number().optional(),
+  }),
+  // N3 · A captain died. Separate from ShipLost on purpose — see the type's comment.
+  z.object({
+    type: z.literal('NpcShipLost'),
+    day: z.number(),
+    npcId: z.string(),
+    npcName: z.string(),
+    interceptorId: z.string(),
+    interceptorName: z.string(),
+    systemId: z.number(),
+  }),
   z.object({
     type: z.literal('ContractClaimed'),
     day: z.number(),
@@ -1362,6 +1395,8 @@ const _covEvDawnRoll: AssertEventKeys<'DawnRoll'> = true;
 const _covEvStatCheck: AssertEventKeys<'StatCheck'> = true;
 const _covEvFlawCheck: AssertEventKeys<'FlawCheck'> = true;
 const _covEvNpcAction: AssertEventKeys<'NpcAction'> = true;
+const _covEvNpcEncounter: AssertEventKeys<'NpcEncounter'> = true;
+const _covEvNpcShipLost: AssertEventKeys<'NpcShipLost'> = true;
 const _covEvContractClaimed: AssertEventKeys<'ContractClaimed'> = true;
 const _covEvDispositionChanged: AssertEventKeys<'DispositionChanged'> = true;
 const _covEvReputationChanged: AssertEventKeys<'ReputationChanged'> = true;

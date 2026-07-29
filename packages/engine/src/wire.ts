@@ -1,4 +1,4 @@
-import { NAT_WIRE_TEMPLATES, NPC_PROFILES, ALL_NPC_PROFILES, Stat, WireStoryCategory } from '@spacerquest/content';
+import { NAT_WIRE_TEMPLATES, ALL_NPC_PROFILES, Stat, WireStoryCategory } from '@spacerquest/content';
 import { GameEvent, NpcState } from './types.js';
 import { SeededRng } from './rng.js';
 
@@ -110,6 +110,17 @@ function classifyCheck(
         // T-1207: an interceptor's post-kill retreat roll — a nat-20 is the
         // "miracle burn" escape story, its own wire beat.
         return 'retreat';
+      // N3: a captain's rolls inside an interdiction. Each stance routes to the
+      // bucket that reads correctly for what they actually did — a natted run is a
+      // piloting story, a natted tribute a haggling one — so PRD §6's "a natural 20
+      // always generates a story" holds for the cast's fights, not just the
+      // player's.
+      case 'npc-encounter-fight':
+        return 'combat';
+      case 'npc-encounter-run':
+        return 'travel';
+      case 'npc-encounter-talk':
+        return 'haggle';
     }
   }
   if (actor === 'Player') {

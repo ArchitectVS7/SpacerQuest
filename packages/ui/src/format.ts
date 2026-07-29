@@ -2606,21 +2606,36 @@ interface HonorCaptain {
 }
 
 /**
- * THE FIELD: the player plus every ranked NPC, in one list.
+ * THE FIELD: the player plus every LIVING ranked NPC, in one list.
  *
- * DEAD CAPTAINS (N3, not yet landed — this is the seam, not the feature). The
- * worklist settles that a dead captain's record STAYS, marked dead rather than
- * deleted, because the wire, the Honor List's history and the player's grudges all
- * still reference it. The original had exactly this case and handled it exactly this
- * way: `sp.top.s` skips a registry record whose name begins with `*` and ranks the
- * rest. So the board needs no re-architecting for mortality — it needs one clause in
- * this filter (`.filter((n) => !n.dead)`), and every score, tie, rank and budget
- * below already works on a field of any size, including the empty one.
+ * DEAD CAPTAINS (N3, LANDED 2026-07-29 — this was the seam; it is now the feature).
+ * A dead captain's record STAYS, marked dead rather than deleted, because the wire,
+ * the Honor List's history and the player's grudges all still reference it. The board
+ * therefore has to SKIP the marked records rather than lose them, and marking dead
+ * without this clause ranks corpses forever.
+ *
+ * The original had exactly this case and handled it exactly this way: `sp.top.s`
+ * skips a registry record whose name begins with `*` and ranks the rest. This is the
+ * fifth of the 1991 registry's behaviours, which N6 shipped only as a seam (worklist
+ * item OI-2) and N3 closes. No re-architecting was needed — every score, tie, rank
+ * and budget below already works on a field of any size, including the empty one,
+ * which is what a career that outlives its whole cohort eventually produces.
  */
 function honorField(game: GameState): HonorCaptain[] {
+  // QUEST CHARACTERS ARE NOT ON THE BOARD (fixed 2026-07-29, alongside N3's dead
+  // filter). N3's roster split gave `state.npcs` 41 records — the 30 simulation
+  // captains plus the 11 authored quest characters, who need `NpcState` records
+  // because storylet triggers and dispositions look them up by id, but who take no
+  // turn and never buy a component. Left in, they sat on this board forever at
+  // their day-1 fit: eleven permanent, frozen entries on a leaderboard about who is
+  // doing well, and a "31-way board" silently become 42-way. The board is the
+  // SIMULATION field — the captains actually playing.
+  const simulated = new Set(NPC_PROFILES.map((p) => p.id));
   return [
     { name: PLAYER_HONOR_LABEL, isPlayer: true, ship: game.player.ship },
-    ...game.npcs.map((npc) => ({ name: npc.name, isPlayer: false, ship: npc.ship })),
+    ...game.npcs
+      .filter((npc) => simulated.has(npc.profileId) && !npc.dead)
+      .map((npc) => ({ name: npc.name, isPlayer: false, ship: npc.ship })),
   ];
 }
 

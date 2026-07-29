@@ -12,7 +12,6 @@ import {
   LOAN_MIN_PRINCIPAL,
   LOAN_TERM_DAYS,
   MEET_DISPOSITION,
-  NPC_PROFILES,
   ALL_NPC_PROFILES,
   RUMOR_EMPTY_LINE,
   RUMOR_QUIET_TEMPLATE,
@@ -69,8 +68,12 @@ function fillRumor(template: string, vars: Record<string, string>): string {
  */
 export function hangoutRumors(state: GameState): string[] {
   const here = state.player.currentSystemId;
-  const inSystem = state.npcs.filter((n) => n.currentSystemId === here);
-  const elsewhere = state.npcs.filter((n) => n.currentSystemId !== here);
+  // N3 · A dead captain is not at the tables and is not gossiped about in the
+  // present tense. Their record stays on the roster, so every "who is around"
+  // read has to filter — the rumour mill is one of them.
+  const living = state.npcs.filter((n) => !n.dead);
+  const inSystem = living.filter((n) => n.currentSystemId === here);
+  const elsewhere = living.filter((n) => n.currentSystemId !== here);
   const ordered = [...inSystem, ...elsewhere].slice(0, 5);
 
   const facts: string[] = [];
@@ -169,8 +172,9 @@ export function resolveVisitHangout(
     action.venue === 'rumor' || action.venue === 'borrow' || action.venue === 'repay';
   let dealer: NpcState | undefined;
   if (!opponentlessVenue) {
+    // N3 · A dead captain cannot deal a hand of Spacer's Dare.
     const inSystem = nextState.npcs.filter(
-      (n) => n.currentSystemId === nextState.player.currentSystemId,
+      (n) => !n.dead && n.currentSystemId === nextState.player.currentSystemId,
     );
     dealer = inSystem.find((n) => n.id === action.opponentId);
     if (!dealer) {

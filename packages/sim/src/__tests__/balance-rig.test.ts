@@ -34,6 +34,7 @@ import {
 } from '../balance/rules-fingerprint.js';
 import { synthesizeTierState, type TierSpread } from '../balance/synthesize.js';
 import { runCampaign } from '../index.js';
+import { createInitialState } from '@spacerquest/engine';
 
 // ---------------------------------------------------------------------------
 // N7 · THE MEASUREMENT RIG's own tests. Three things are held here that the
@@ -278,7 +279,12 @@ function spreadFor(npcCount: number): TierSpread {
 }
 
 describe('N7 · a synthesized run cannot become a balance number', () => {
-  const npcCount = synthesizeTierState(1, 0, 1, spreadFor(30)).npcs.length;
+  // The roster size is read from `createInitialState`, NOT discovered by calling
+  // `synthesizeTierState` with a guessed count: that function VALIDATES the
+  // spread against the roster before it returns, so a guessed count is a throw
+  // rather than a discovery. It was hardcoded to 30 and broke the moment N3's
+  // roster split made the roster 41 (30 simulation captains + 11 quest records).
+  const npcCount = createInitialState(1).npcs.length;
   const spread = spreadFor(npcCount);
   const synthetic = runCampaign(1, 2, 'trader', {
     startState: synthesizeTierState(1, 0, 21, spread),
@@ -332,7 +338,12 @@ describe('N7 · the synthesizer refuses a partial field', () => {
   });
 
   it('writes the day, the fit and the tank through the engine chokepoints', () => {
-    const npcCount = synthesizeTierState(1, 0, 1, spreadFor(30)).npcs.length;
+    // The roster size is read from `createInitialState`, NOT discovered by calling
+  // `synthesizeTierState` with a guessed count: that function VALIDATES the
+  // spread against the roster before it returns, so a guessed count is a throw
+  // rather than a discovery. It was hardcoded to 30 and broke the moment N3's
+  // roster split made the roster 41 (30 simulation captains + 11 quest records).
+  const npcCount = createInitialState(1).npcs.length;
     const state = synthesizeTierState(3, 0, 41, spreadFor(npcCount));
     expect(state.day).toBe(41);
     // maxFuel follows the synthesized hull (syncMaxFuel), never a stale literal.
