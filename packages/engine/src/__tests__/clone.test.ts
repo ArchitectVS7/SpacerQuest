@@ -362,8 +362,9 @@ describe('T-1605c · every copy-on-write resolver shares the event log', () => {
     // carries no event log and is not a GameState snapshot. N1 grew that record
     // ~10x (it owns a ShipState now) and the round trip is still the cheapest
     // deep copy of it measured — `structuredClone` costs ~12% MORE per ambient
-    // game day (0.42 -> 0.47 ms over 10 seeds x 120 days). The scan's exclusion
-    // is about the event log, and that reasoning is unchanged.
+    // game day (0.355 -> 0.399 ms over 10 seeds x 120 days, re-measured
+    // 2026-07-29 under OI-1; see the note at npc.ts `resolveNpcDay`). The scan's
+    // exclusion is about the event log, and that reasoning is unchanged.
     const files = [...actionFiles, 'day.ts', 'storylets.ts'];
     expect(actionFiles.length).toBeGreaterThan(5);
 

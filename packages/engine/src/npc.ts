@@ -1029,12 +1029,14 @@ function executeSocialize(
 export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext): NpcDayResult {
   const events: GameEvent[] = [];
   // The subject's private copy for the day — this is why an NPC's OWN turn does
-  // not need `mutableNpc`. N1 · `structuredClone` rather than the old
-  // `JSON.parse(JSON.stringify(npc))`: the record grew a ship with eight nested
-  // component objects, and the JSON round-trip on the fatter record cost ~21% of
-  // the ambient NPC day (0.345 -> 0.418 ms/game-day over 10 seeds x 120 days;
-  // structuredClone puts it back at 0.35). Same depth of copy, same result — and
-  // it is already the clone `mutableNpc` uses on the same type.
+  // not need `mutableNpc`. The JSON round trip STAYS, against the instinct to
+  // match `mutableNpc`'s `structuredClone` on the same type: N1 grew this record
+  // ~10x (it owns a ship with eight nested component objects), and on the fatter
+  // record structuredClone is the slower of the two. Re-measured 2026-07-29
+  // (OI-1) over 10 seeds x 120 days of ambient NPC days, three alternated runs
+  // per side on node 24: 0.355 ms/game-day for the JSON round trip against 0.399
+  // for structuredClone — ~12% more, and the two spreads do not overlap. Same
+  // depth of copy either way, so the cheaper one keeps the line.
   const updatedNpc = JSON.parse(JSON.stringify(npc)) as NpcState;
 
   const profile = NPC_PROFILES.find((p) => p.id === updatedNpc.profileId);

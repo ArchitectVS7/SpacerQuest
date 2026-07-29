@@ -909,7 +909,172 @@ quiet one.
 **Not a re-measure.** Changing the hash ALGORITHM moves both fingerprints, so the fixture
 was re-extracted from the unchanged baseline of record — no rule changed, no new capstone
 committed. Stated here because "re-stamped without re-measuring" is exactly the move
-VERSIONING.md forbids doing silently. Battery **1,233 passing / 0 failing**.
+VERSIONING.md forbids doing silently. Battery **1,239 passing / 0 failing**.
+
+> **BATTERY COUNT CORRECTED 2026-07-29 (doc audit, item OI-4).** This line originally read
+> "1,233 passing" — N2's figure copied forward, not this step's. `b7b52116`'s own commit
+> message says **1,239**, and the audit re-measured 1,239 at that HEAD. Worth stating once
+> for everyone who quotes a battery total in this document: root `npm test` is
+> `npm run test --workspaces --if-present`, and **exactly four workspaces have a `test`
+> script** — desktop 102, engine 725, sim 277, ui 135 at `b7b52116`. `packages/content`
+> has no test script at all (only `build`), so a "content 102" arm in any note is
+> `packages/desktop` mislabelled. *Post-remediation this battery now stands at **1,262
+> passing / 0 failing** — desktop 102, engine 725, sim **300**, ui 135; the +23 is the
+> OI-6 / OI-6b / OI-7 rig tests recorded in N7-RIG immediately below.*
+
+### N7-RIG — Two blind spots in the fingerprint, closed by audit (REMEDIATION · 2026-07-29)
+
+**This is not a graded N-series step.** No hypothesis, no sweep, no verdict, no re-pin — it
+is remediation of three items (**OI-6**, **OI-6b**, **OI-7**) raised by the 2026-07-29
+N-series doc-vs-code audit — five independent verification passes over every step marked
+SHIPPED, run against HEAD `5e4b9f0c` on a clean tree, which raised **13 items (OI-1 … OI-12
+plus OI-6b), all closed the same day**. The audit's own working file was never committed:
+**this document is the whole record**, and every one of the 13 is traceable by grepping its
+OI-number here. Where an item stayed open by decision rather than being fixed, it is filed
+under the step that owns it (OI-2 and OI-8 → N3; OI-9 → N2 and the PARITY LEDGER; OI-11 →
+N6) rather than in a list of its own. It is
+recorded here, beside N7-FP, because both are changes to *the instrument that decides
+whether a fixture still describes HEAD*, and a reader who is relying on N7's staleness
+guarantee needs to find them in one place. N7's own entry points here too.
+
+**OI-6 — a new SUBDIRECTORY of rule code escaped both the hash and the totality tests.**
+`listTsFiles` read only the declared directories, so `packages/engine/src/rules/` would
+have been invisible to `computeRulesFingerprint` **and** to the three enumeration tests
+that exist precisely to make the classification total. That is the one failure direction
+the rig exists to prevent, arriving in the one mode where nothing goes red.
+
+The guard **fails rather than auto-recursing**, and that is the judgment call. Auto-recursion
+would let a whole subtree join the fingerprint with nobody having decided that it should —
+the same "nobody noticed" failure wearing the opposite sign. Shipped in
+`packages/sim/src/balance/rules-fingerprint.ts`:
+
+- `:207` `HASHED_ROOT_IGNORED_DIRECTORIES` (`__tests__`, `node_modules`, `dist`), each
+  carrying its stated reason, in the same map-not-list shape as `ENGINE_NON_RULE_SOURCES`
+  — so an exclusion is always an argued one rather than a name on a list.
+- `:248` `assertNoUndeclaredSubdirectory()`, whose message names the offending directory
+  and both remedies.
+- `:352` `listTsFiles()` rewritten to `withFileTypes: true`, run the guard, then filter.
+- `:523` `collect()` and `:625` `allSourceKeys()` both take the declared-subdirectory set
+  through, so **the hash and the enumeration tests walk the same guarded tree**.
+  `listTsFiles` is the module's only `readdirSync`; there is no surviving second walk.
+
+**It lives in the PRODUCTION MODULE, not in the test, and that is load-bearing.**
+`checkpoints.ts` and `smoke-extract.ts` stamp fixtures from the command line. With the hole
+open, an extraction on a tree containing `engine/src/rules/` would write a fixture whose
+`rulesFingerprint` claimed to describe a ruleset it had never hashed — and `assertFixtureFresh`
+would then certify that fixture fresh indefinitely. A vitest-only guard cannot reach a CLI
+stamp, which is where fixtures are actually written.
+
+**Proved, not asserted.** Planting `packages/engine/src/rules/checks.ts` throws a message
+naming the directory and both remedies, and turns **12 rig tests red**. Under that planted
+directory **two of the three enumeration tests fail — not all three**: `classifies every sim
+source as instrument or not` correctly stays green, because it walks only the sim root. An
+adversarial pass then planted subdirectories under every hashed root — nested three deep,
+empty, `.d.ts`-only, asset-only and hidden — and every one of them throws, while `__tests__`
+/ `dist` / `node_modules` correctly pass and the properly declared `engine/src/actions` and
+`sim/src/balance` do not falsely trip. Mutation test: neutering the guard turns 8 rig tests
+red (5 here, 3 in OI-6b) **including an enumeration test**, which is the decisive evidence that `allSourceKeys`
+genuinely shares the guarded walk rather than merely resembling it. 8 tests,
+`balance-rig.test.ts:537`.
+
+> **SHARP BUT INTENTIONAL — written down so it is not discovered as a surprise.** An empty
+> directory, a `.d.ts`-only directory and an asset-only directory **all throw**, and they
+> hard-fail `smoke-extract` at the CLI, not just a test. So adding e.g.
+> `packages/content/src/data/*.json` will stop a fixture extraction dead until someone
+> declares the directory. That is conservative-safe and consistent with the module's own
+> doctrine — every directory under a hashed root is a decision on record — but it is a real
+> cost, and the remedy is one line in `HASHED_ROOT_IGNORED_DIRECTORIES` or in the declared
+> set.
+
+**OI-6b — a follow-on hole, found by the verifier and closed by a second pass.**
+`readdirSync(withFileTypes)` types a symlink by ITSELF, not by its target, so
+`entry.isDirectory()` was false for a symlinked directory and it slipped **both** the new
+guard and `listTsFiles`. Reproduced on the real tree: symlinking `packages/engine/src/rules`
+at a directory holding a `.ts` file left `computeRulesFingerprint` passing, fingerprint
+unmoved at `91cfa4adc626ba54` over the same 56 files — precisely the invisible-to-both mode
+OI-6 exists to close, wearing a different hat.
+
+`listTsFiles` now classifies every entry ONCE, via `statSync` — which follows the link where
+`lstatSync` would not, and that is the entire reason for choosing the former. New
+`classifyEntries()` / `ClassifiedEntry` at `rules-fingerprint.ts:276-350`; the guard now
+tests `entry.kind !== 'directory'`. The four rules it settles:
+
+- A **symlinked directory** trips the guard with the identical message, and escapes it via
+  `HASHED_ROOT_IGNORED_DIRECTORIES` exactly as a real one does. How the entry was created is
+  not a fact the author needs in order to make the decision.
+- A **symlinked `.ts` file** is HASHED like any other rule source. `readFileSync` follows the
+  link, so it is real rule code deciding real outcomes — and hashing it also drags it in
+  front of the enumeration totality tests.
+- **The repo-relative path IN THIS TREE enters the manifest, not the target's.** A
+  fingerprint describes this tree.
+- A **dangling or non-regular-file** link fails loudly with a named `UNRESOLVABLE SYMLINK`
+  message, rather than letting a bare `ENOENT` escape from inside a fixture stamp.
+
+9 tests at `balance-rig.test.ts:634`; **7 go red** under a mutation reverting the symlink
+resolution, and the 2 survivors are deliberate negative controls. Cost on a healthy tree is
+zero: `statSync` is reached only for an entry that is genuinely a link, and there are none
+under the real hashed roots — pinned by a test rather than remembered.
+
+**OI-7 — a file TypeScript cannot parse used to hash silently.** `ts.createSourceFile` does
+not throw on bad syntax. It RECOVERS, records the problem in the `@internal`
+`parseDiagnostics`, and the printer prints the recovered tree quite happily: verified,
+`export const A = (` yields one `Expression expected.` and prints `export const A = ();`.
+The loss is silent, and worse than silent — two different broken states can recover to the
+same tree, i.e. **a fingerprint collision between rulesets that are not the same ruleset**.
+This is the exact failure N7's own standing warning named ("a parser that mis-parses fails
+silently, in the one direction this whole design exists to prevent"). N7-FP shipped the
+parser; this closes the hole the warning was pointing at.
+
+`assertParseClean` (`rules-fingerprint.ts:485`) now fails with the file, the line:column and
+the parser's own message before anything is hashed. `hashSemantic` (`:436`) calls it at
+`:444`, ahead of `printFile` at `:445`.
+
+**Why the assertion rather than the merely-document-it option.** The `tsc -b` mitigation is
+EXTERNAL and runs in the battery — not before `smoke-extract.ts` stamps a fixture. Same
+argument as OI-6: the failure has to be reachable from the command line.
+
+**Cost is nil, measured rather than hoped.** All **60** hashed files — **56** rule plus
+**4** instrument, the instrument set being exactly `sim/index.ts`, `balance/aggregate.ts`,
+`balance/smoke.ts`, `balance/synthesize.ts` — parse with **zero** diagnostics under the exact
+`ScriptTarget.Latest` / `ScriptKind.TS` pair the hash uses, and **that corpus check is pinned
+as a test rather than remembered**. An independent verifier re-enumerated the corpus from the
+module's own declarations rather than trusting the count, then probed **19
+valid-but-unusual TypeScript constructs** for false positives — decorators in both flavours,
+`satisfies`, `using` / `await using`, `<T,>` arrow generics, `enum` and `const enum`,
+namespaces, `export type *`, `accessor` / static blocks / `#private`, const type parameters,
+import attributes, top-level await, shebang, BOM, CRLF — **all clean, zero spurious
+diagnostics**. BOM and CRLF even normalise to the same hash as plain LF, so the
+`ScriptKind`/target pair is not over-tight. The assertion's own failure mode is covered as
+well: if `parseDiagnostics` ever stops being readable (a TypeScript upgrade renaming that
+`@internal` field) it throws, rather than silently stopping checking. Mutation test:
+dropping `assertParseClean` turns 3 rig tests red. 6 tests, `balance-rig.test.ts:761`.
+
+**NOTHING WAS RE-STAMPED, AND NOTHING WAS OWED — verified by two independent parties.**
+Neither fingerprint moved: rules **`91cfa4adc626ba54`** (56 files), instrument
+**`79adfd2417aa9fcd`** (4 files), both still matching `docs/balance/smoke/tiers.json`.
+Stronger than a working-tree comparison: running the NEW module against a pristine
+`git archive HEAD` tree reproduces the stamped `docsFingerprint` `e003c81c03bcd116`
+**exactly**, which proves the working-tree drift to `a8d1a65c9f3e9cb5` is 100% attributable
+to OI-1's comment rewrite in `npc.ts` and **zero** of it to the rig change. So no re-stamp,
+no changelog entry and no baseline re-record was owed — and the semantic hash correctly NOT
+moving for a comment-only edit is N7-FP working exactly as designed. `docsFingerprint`
+cannot fail a test by construction: `fixtureFreshness` never reads it, and its only reader
+is `fixtureDocsDrift`, which returns `string | null` and is explicitly not a
+`FreshnessProblem`.
+
+**Battery.** Rig tests **29 → 52**; `packages/sim` **277 → 300**; smoke + rig **100 → 123**;
+whole battery **1,239 → 1,262 passing / 0 failing** (desktop 102, engine 725, sim 300, ui
+135). The rig work touched only `rules-fingerprint.ts` and `balance-rig.test.ts`; `npc.ts`
+and `clone.test.ts` moved in the same pass under **OI-1**, which is recorded in N1.
+
+**ONE HOLE OF THE SAME CLASS IS STILL OPEN — recorded, not closed.** The guard catches a
+new *subdirectory* under a hashed root. A whole new hashed **root** — a new package, say
+`packages/economy/src` — is caught by nothing: it would simply never be walked, and every
+enumeration test would pass while describing a game that had grown a limb. This is outside
+OI-6 as the audit stated it, and closing it needs a different mechanism (the workspace list
+is the thing that would have to be totality-checked, not a directory listing). **It belongs
+to whichever step first adds a package** — that step must either declare the new root here
+or record why it holds no rule code.
 
 ### R2.5 — The escalation ladder (the world remembers what you did)
 
@@ -1197,8 +1362,9 @@ need to fly, so they need to interact with pirates. That means they pay bribes, 
 either credits or cargo, or fight, or flee. They literally MUST act like a player."*
 
 **STATUS BOARD** — updated as each step lands; the per-step `**Result:**` blocks below are
-the detail. Run order is N0 → N1 → **N7** → N2 → N6 → N3 → N4 → N5 → N8 (see "Sequencing at
-a glance" for why N7 moved).
+the detail. Run order is N0 → N1 → **N7** → N2 → N6 → N3 → **N10 → N11 → N12 → N13** → N4 →
+N5 → N8 (see "Sequencing at a glance" for why N7 moved; N10–N13 added by owner ruling
+2026-07-29 — see THE PARITY LEDGER below).
 
 | step | status | outcome |
 | --- | --- | --- |
@@ -1209,11 +1375,23 @@ a glance" for why N7 moved).
 | N6 — Honor List, 31-way board | **SHIPPED** | **accepted** — actor-shaped board; found 6 of 8 titles uncontestable by construction |
 | N3 — NPCs meet pirates | TODO | permanent death SETTLED; **the 11 mechanically-referenced captains are EXEMPT**, the other 19 mortal |
 | N4 — NPC archetypes | TODO | — |
-| N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile` |
+| N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile`; **GATED BY N13** — its die-allocation lever needs a decision surface to act on |
+| **N10 — NPCs work the contract board** | **TODO · MUST-HAVE** | owner ruling 2026-07-29 — NPCs interact with trade contracts as players do; the co-location gate and 1-claim/dusk cap get measured, not assumed |
+| **N11 — NPCs earn deeds and Renown** | **TODO · MUST-HAVE** | removes the rank −1 dead end; the yard's Renown gate becomes reachable with no NPC branch |
+| **N12 — NPCs buy ports** | **TODO · MUST-HAVE** | lands BEFORE N8; pulls N8's aggregate-sees-assets task forward as its own first task |
+| **N13 — NPC decision surface (dawn-hand parity)** | **TODO · MUST-HAVE** | literal reduced hand vs algorithmic equivalent — owner accepts algorithmic fast-forward; gates N5 |
 | **N9 — the instrument's three unplayed actions** | **SHIPPED** | **hypothesis REJECTED** — verbs cost 38% of fleet cash, not gain; found the aggregate cannot see an asset |
-| N8 — re-pin against a living field | TODO | **must first teach the aggregate to see ports**; re-pin against the post-N9 instrument |
+| N8 — re-pin against a living field | TODO | **must first teach the aggregate to see ports**; re-pin against the post-N9 instrument; **follows N10–N12** (owner ruling 2026-07-29) |
 
 **WHAT AN NPC ACTUALLY IS TODAY (measured 2026-07-28, `packages/engine/src/npc.ts`):**
+
+> **PARTLY SUPERSEDED (2026-07-29 audit, item OI-10) — kept as the track's baseline
+> description.**
+> N1 gave every captain a real ship and N2 a real upgrade decision, so the "no ship, no
+> components, phantom trading" bullets below describe the field as the track FOUND it,
+> not HEAD. Still true at HEAD: no encounters (N3), no deeds or rank (N11), no board
+> claims away from the player (N10), no ports (N12), and one coarse d20 action per day
+> (N13).
 
 - `NpcState` is `{ id, name, profileId, currentSystemId, credits, fuel, disposition,
   lastAction }`. **No ship. No components. No XP.**
@@ -1271,6 +1449,46 @@ engine **for the wrong reason** and hid a live economy defect for months.
    a **1,200-unit tank**, where a player with comparable capacity (the junker: 10 pods,
    hull strength 1) holds **300**. **NPCs currently fly on ~4× a player's fuel.** That is
    an exemption, and N2 owns removing it (see N2's first two tasks).
+
+### THE PARITY LEDGER — which player verbs the cast must play (owner ruling 2026-07-29)
+
+*Recorded from the owner directly, after the 2026-07-29 doc-vs-code audit of the shipped
+N steps. This ruling adds four MUST-HAVE steps (N10–N13) and turns "all or most of a full
+player's actions" from a preamble sentence into a checkable ledger.*
+
+**The ruling.** The 30 NPCs must perform all or most of the actions of a full player, to
+simulate a multiplayer field. Specifically MUST-HAVE: NPCs **interact with trade
+contracts** (N10), **gain Renown** (N11), and **buy ports** (N12) — the owner had assumed
+ports were already NPC-purchasable; they never were. *"If these actions can be
+fast-forwarded algorithmically that is fine, but they must happen"* — the coarse
+one-action day may stand in for hour-by-hour play, but the ACTION itself must occur, under
+the same rules and the same prices, priced through the engine's own functions and never
+through a private parallel model (the standing constraint above is unchanged by this
+ruling; it is what makes the fast-forward honest).
+
+**The ledger** — the player's eleven verbs, audited against the cast at HEAD (2026-07-29):
+
+| player verb | NPC today | owed by |
+| --- | --- | --- |
+| Trade | coarse haul; claims the player's board only when co-located, 1 claim/dusk fleet cap | **N10** |
+| Travel | real fuel, real routes, no encounters yet | N3 |
+| Combat | abstract GUNS check vs no one, flat bounty | N3 |
+| Shipyard | full price/gate parity via `ShipyardActor` — **but the refit spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · OI-9 open |
+| Explore | never | **UNRULED — owner decides by N8** |
+| VisitHangout | Socialize stand-in; no borrow/repay | **UNRULED — owner decides by N8** |
+| Crew | never (meaningless without a hand) | N13 decides |
+| Port | never — the player is the only possible port owner | **N12** |
+| Reroll | n/a without a hand | N13 decides |
+| Storylet | authored player-facing content | **UNRULED — owner decides by N8** |
+| Wait | Idle | shipped |
+
+Renown is the verb-less twelfth row: every rank gate applies to NPCs (`actorRankIndex`
+returns −1 without a registry) but no deed can ever accrue — a no-recourse lockout, which
+consequence 2 above already defines as an exemption. **N11** removes it.
+
+The three UNRULED rows are deliberately not defaulted: "most" is only honest if every
+exclusion is a recorded decision rather than a silent gap. Rule on each (implement,
+fast-forward, or exclude with a reason) before N8 pins the living-field baseline.
 
 ---
 
@@ -1365,7 +1583,39 @@ choice**, and N1's contract is to change no decision. It stays out until a step 
 30-day save, +0.14% on a 1,000-day save (the event log dominates any real career); load
 time unchanged. Per-day cost +8% on a 1,000-day career (1.40 → 1.51 ms) — ~0.1 ms of the
 ~39 ms of headroom N0 bought. `structuredClone` in `resolveNpcDay` was tried and is
-*worse* (0.47 vs 0.42 ms ambient); the existing clone stayed.
+*worse* (0.399 vs the JSON round trip's 0.355 ms/game-day ambient, re-measured 2026-07-29);
+the existing `JSON.parse(JSON.stringify(npc))` stayed.
+
+> **FIGURES RESTATED 2026-07-29 (doc audit, item OI-1) — the DIRECTION was right all
+> along, which is why this record is the one that survived.** This paragraph used to quote
+> "0.47 vs 0.42 ms ambient", measured on the machine N1 shipped from. The comment that
+> landed at the clone site in the same commit `b438096b` said the OPPOSITE — that
+> `structuredClone` "puts it back at 0.35" — while the line directly beneath it was still
+> the JSON round trip. Two mutually exclusive measurements sat on the record until the
+> audit found them, and the tie was broken by re-measuring rather than by deciding which
+> author to believe.
+>
+> **Re-measured 2026-07-29** over 10 seeds × 120 days of the ambient NPC loop, three
+> alternated runs per side, node v24.13.1: **0.355 ms/game-day for the JSON round trip
+> against 0.399 for `structuredClone` — ~12% more, with non-overlapping sample spreads.**
+> An independent verifier reproduced the direction twice on a different harness: with the
+> per-day market-board generation hoisted OUT of the timed region, **0.307 vs 0.358
+> (+16.3%)**; timing the clone alone, **3.47 µs vs 5.02 µs (+45%)**. Both variants produced
+> an identical simulation checksum, which is what proves the swap is a pure cost change and
+> nothing else. **So read ~12% as a FLOOR on the effect, not as the effect size** — the
+> headline pair still carries board generation inside the timed region, and that dilutes
+> it. The clone stays where it is. The false comment at
+> `packages/engine/src/npc.ts:1031-1039` was rewritten to say this, and the duplicate
+> figures in `packages/engine/src/__tests__/clone.test.ts:363-367` were refreshed to agree
+> — one measurement, three places, no third copy left to drift.
+>
+> **Two precision corrections taken in the same pass.** The roster is **30 captains, not
+> 31** — `createInitialState(seed).npcs.length === 30`, and `clone.ts:42` says "each of the
+> 30 captains". Thirty-one is the *board* size (the player plus the 30), which is why N6's
+> heading is correctly a 31-way board and is not to be "fixed". And where the code says N1
+> grew the NPC record "~10x", that is an **object count, not a size**: the record went
+> **229 → 745 bytes — 3.3× in bytes** — and the ship adds exactly **eight** nested
+> component objects (`types.ts:1139-1146`).
 
 **N0's guard was blind to nested writes, and N1 is the change that would have walked into
 it.** `clone.test.ts`'s source scan matched only `handle.field = …`, so `rescuer.ship.fuel
@@ -1394,13 +1644,21 @@ the finding, and one `diff` reproduces it.
 tripwires were not touched and still hold — expected, since no policy row moved.
 
 > **BLOCKS N2, found here: the shipyard API is player-shaped.** `quoteShipyard`,
-> `shipyardCost`, `shipyardFailure`, `applyShipyardMutation` and `maxCargoPodsForShip` all
+> `shipyardCost`, `shipyardFailure` and `applyShipyardMutation` all
 > take `(state: GameState, …)` and read `state.player.ship` / `.credits` / `.registry`
 > directly. **An NPC cannot be priced through any of them as they stand** — so N2's
 > instruction to price upgrades "through the engine's own `quoteShipyard`, never a
 > parallel cost model" is currently *impossible*, and the path of least resistance is
 > exactly the parallel cost model R2c warns about. Giving these functions an actor
 > parameter (ship + credits + rank) is **N2's first task, not an optional cleanup**.
+>
+> *Precision, 2026-07-29 (doc audit, item OI-5): this note originally listed
+> `maxCargoPodsForShip` as a fifth blocked function. It was never blocked and never got an
+> actor parameter, because it never needed one — it is `(ship: ShipState)` at
+> `packages/engine/src/actions/shipyard.ts:182` and argues the point at its own definition
+> site: "N2 · Takes the SHIP, not the state. It never needed anything else." **Four**
+> functions took `ShipyardActor`; this one was already actor-agnostic, which is the design
+> the standing constraint asks for rather than a gap in it.*
 
 ### N2 — NPCs upgrade their ships (SHIPPED 2026-07-29)
 
@@ -1414,12 +1672,16 @@ increase their trade profit."*
   arithmetically the phantom it replaced (see N1's Result). The spread is **N2's** to
   produce, because N2 owns the decision that moves it. Grade it here.
 - **FIRST TASK — the shipyard API is player-shaped, and this step is blocked until it
-  is not.** Found during N1. `quoteShipyard`, `shipyardCost`, `shipyardFailure`,
-  `applyShipyardMutation` and `maxCargoPodsForShip` all take `(state: GameState, …)` and
+  is not.** Found during N1. `quoteShipyard`, `shipyardCost`, `shipyardFailure` and
+  `applyShipyardMutation` all take `(state: GameState, …)` and
   read `state.player.ship` / `.credits` / `.registry` directly, so **an NPC cannot be
   priced through any of them as they stand.** Give them an actor parameter (ship +
   credits + rank). This is not optional cleanup: without it the path of least resistance
   is the parallel cost model the standing constraint forbids.
+  *(Precision, 2026-07-29 audit item OI-5: this task originally named
+  `maxCargoPodsForShip` as a fifth. It takes a bare `ShipState`
+  (`packages/engine/src/actions/shipyard.ts:182`), never took `GameState`, and correctly
+  never got an actor parameter — **four** functions gained `ShipyardActor`, not five.)*
 - **A FREE ACCEPTANCE TEST, handed over by N6.** The Honor List now ranks all 31 captains,
   and **6 of its 8 titles are currently uncontestable** because `npcShipForTier` issues
   every NPC — at every tier — weapons 1, shields 1, cabin 1, navigation 10, lifeSupport 10,
@@ -1514,6 +1776,24 @@ an 8× wealth increase moves it by noise.
 > **which is what proves the root cause is the ladder's pricing, not the ordering.** No
 > constant was tuned to hide it.
 
+> **WATCH ITEM OPENED BY THE 2026-07-29 AUDIT (item OI-9) — no action taken, and it bears
+> directly on the caveat above.** The NPC refit **pays no die.** `considerRefit` applies
+> `applyShipyardMutation` directly; `resolveShipyard` is never called, and the `spendDie: 0`
+> sitting beside it is a placeholder, not a cost. A player buying at the yard burns 1 of
+> their 5 dice **even when the purchase is refused.** Everything else is at parity — same
+> prices, same gates, the engine's own functions on both sides, and no location rule on
+> either — and the asymmetry is argued at its definition site (`npc.ts:648-673`: one coarse
+> action stands in for a whole NPC day, so charging a die would double-charge the
+> abstraction).
+>
+> It is recorded rather than closed because that argument is genuinely reasonable **and**
+> because the caveat above is partly a consequence of it: "purchase OPPORTUNITIES, not
+> money, are the binding constraint" was measured against a field that gets one FREE
+> purchase every single day. **Trigger:** if N3+ sweeps show the field out-fitting the
+> player, the first knob is making the refit displace the day's verb some fraction of the
+> time — not re-pricing the ladder. Until then it is a verb-parity question and it is
+> carried as one in THE PARITY LEDGER.
+
 **`greedy` IS NOT A VALID CONTROL FOR AN N-SERIES CHANGE — carry this forward.** It moved in
 every arm. R0a introduced it as the control for *policy* changes (nothing in the policies
 calls into it), but it shares a galaxy with the cast and reaches it through contract
@@ -1542,6 +1822,22 @@ the numbers — standing amendment 1 as refined).
 - **Hypothesis:** routing NPC travel through real encounter generation, with a real
   stance choice, makes the NPC field carry the same risk the player does — which is the
   precondition for their wealth spread meaning anything.
+- **FIRST TASK — widen `clone.test.ts`'s copy-on-write scan before adding a new
+  cross-boundary NPC writer.** Filed by the 2026-07-29 audit as **OI-8** and deliberately
+  folded in here rather than fixed on its own: N3 introduces death marking, which IS a new
+  cross-boundary NPC write, and the guard should be ahead of it rather than behind it.
+  What the scan covers today is `day.ts`, `storylets.ts` and `actions/*.ts` — **`npc.ts`,
+  `state.ts` and the whole of `packages/sim` are unscanned** — and both the handle names
+  and the field names it matches are hard-coded allowlists, so a writer named `captain`, or
+  a field like `name` or `profileId`, walks straight past it. This document has already
+  recorded the same lesson twice: N0 asserted one cross-boundary writer and found four (a
+  grep keyed on variable names), and N1 found the pattern blind to nested paths. The third
+  instance is the one to fix by widening the scan's SHAPE, not by adding another name to a
+  list. **Known benign escapee, named so it is not discovered as a surprise:**
+  `packages/sim/src/balance/synthesize.ts:158-164` writes NPC records raw. It is safe today
+  only because the state is fresh from `createInitialState`, so there is no snapshot for it
+  to corrupt — but that is a property of its caller, not of the write, and it sits outside
+  the door and outside the scan.
 - **Change (programmatic):** generate encounters on NPC jumps; give the NPC a stance
   (pay with credits, pay with cargo, fight, flee) resolved by the SAME combat rules;
   apply damage, repair and — the sharp end — **ship loss**.
@@ -1587,6 +1883,15 @@ the numbers — standing amendment 1 as refined).
     the shrink rate, then decide whether the eleven join them.** Revisit with that number.
   - **A dead captain's record stays** (for the wire, the Honor List's history and any
     grudge the player still carries); it is marked dead, not deleted.
+
+    **— and the Honor List must then SKIP it. This is a N3 deliverable, not a N6 one.**
+    Read alone, the bullet above argues only that the record persists, and a reader who
+    implements `dead` and stops there ships a board that ranks corpses forever. Skipping
+    marked records is the **fifth 1991 behaviour N6 deliberately left as a seam** (filed by
+    the 2026-07-29 audit as **OI-2**; see N6's correction block). `honorField`
+    (`packages/ui/src/format.ts:2611`) applies no dead filter, says so in its own words,
+    and names the exact remedy — `.filter((n) => !n.dead)`. **One clause, in a file N3
+    otherwise has no reason to open**, which is precisely why it is written down here.
 - **Simulate:** full sweep + NPC deaths/1k days beside the player's.
 - **Proves:** NPCs lose ships at a rate in the same order as the player's archetypes;
   contract competition drops when captains die; the wire narrates it.
@@ -1617,6 +1922,125 @@ the numbers — standing amendment 1 as refined).
   a visible top and bottom that is not purely luck.
 - **Disproves:** proficiency washes out — the NPC turn has too few decisions for skill to
   express itself, which would itself be a finding about the turn's depth.
+- **GATED BY N13 (2026-07-29).** "Noisy die allocation" presupposes a hand the cast does
+  not hold — the very Disproves clause above was at risk of firing *by construction*.
+  Grade this step against whichever decision surface N13 ships, and rewrite the lever
+  list here at N13's close to name which degradation levers survive the translation.
+
+### N10 — NPCs work the contract board (MUST-HAVE · owner ruling 2026-07-29)
+
+*Found by the 2026-07-29 audit: the owner's parity intent assumed fuller contract
+interaction than the cast has.*
+
+- **What exists today, measured:** `executeTrade` synthesizes a private offer via
+  `rollContract` for every haul EXCEPT when the NPC shares the player's system, in which
+  case it may claim one visible offer off the player's live board — capped at **one claim
+  per dusk across the whole fleet** and gated on co-location (`NpcDayContext.claimableBoard`,
+  `day.ts`). N2 measured the consequence: an 8× wealth increase across the field moved
+  `ContractClaimed` by +2.0% — noise. Competition is a texture, not a force.
+- **Hypothesis:** letting captains claim from the shared per-system job pool wherever they
+  fly — not only under the player's nose — makes contract competition a real economic
+  force and the market feel inhabited.
+- **Change (programmatic):** NPCs claim against the same job pool that generates the
+  player's board. If materializing live boards for 20 systems × 30 captains breaches the
+  performance envelope, the sanctioned fast-forward (per the PARITY LEDGER ruling) is a
+  shared depletion pool: a synthesized claim debits the same generation pool that shapes
+  the next board the player sees — the player must be able to WATCH the competition, not
+  just share a galaxy with it. The 1-claim/dusk cap and the co-location gate are throttles
+  from the texture era: sweep them as knobs here rather than inheriting them silently.
+- **Simulate:** full sweep + `ContractClaimed` rates + board-depth percentiles at the
+  player's location.
+- **Proves:** claims scale with field activity; offers the player saw disappear at rates
+  that track the cast; the trader's clear-day band holds or moves attributably.
+- **Disproves:** boards empty and Tour One clear collapses (competition tuned too hot), or
+  nothing moves at all (the cap was the binding constraint and still is — a finding about
+  the cap, to take back to the owner).
+
+### N11 — NPCs earn deeds and Renown (MUST-HAVE · owner ruling 2026-07-29)
+
+- **The dead end, measured (2026-07-29 audit):** `ShipyardActor.registry` is optional and
+  no NPC has one, so `actorRankIndex` returns −1 — strictly below every rung — forever.
+  No NPC deed source exists anywhere in the engine. Every rank gate therefore applies to
+  the cast as a permanent lockout with no recourse, which is precisely what standing-
+  constraint consequence 2 defines as an exemption ("a number chosen so that a rule will
+  NOT bite…" has a mirror: a gate the actor can never open is not the same rule the player
+  plays under, because the player can EARN the key). Dormant today only because
+  `considerRefit` never requests special equipment; N3's combat and the Honor List's top
+  end will make it bite.
+- **Hypothesis:** captains who accrue deeds from their real actions produce a field whose
+  top end contests the player's endgame — rank-gated gear stops being a player monopoly.
+- **Change (programmatic):** give captains a deed registry fed by the actions they already
+  perform, through the same deed definitions and thresholds (`deeds.ts`) — hauls
+  delivered, fights won (N3), careers survived. The fast-forward allowance applies to the
+  SOURCE (the coarse verbs stand in for played days); it does not license synthetic
+  backfill of unearned rank at world creation — that is the phantom pattern again, and a
+  tier-5 captain seeded with a rank they never earned is exactly the "constant recomputed
+  from profile" N1 existed to kill. Rank-gated purchases then flow through the EXISTING
+  gate with no NPC branch — `considerRefit`'s ladder learns about special equipment and
+  nothing else changes.
+- **Simulate:** full sweep + rank distribution at day 30/60/120 + special-equipment
+  purchase counts.
+- **Proves:** by day 120 some captains hold real ranks and buy through the Renown gate;
+  the Honor List's top end includes rank-gated fits; the player's progression spine is
+  contested, not copied.
+- **Disproves:** renown inflation (the median captain outranks a competent player — deed
+  pacing is wrong for a 30-seat field), or zero accrual (the coarse turn cannot reach the
+  thresholds — a finding about deed pacing, not a reason to seed ranks).
+
+### N12 — NPCs buy ports (MUST-HAVE · owner ruling 2026-07-29 · LANDS BEFORE N8)
+
+- **Why, and why the owner flagged it:** N9 measured port stakes as the game's biggest
+  asset lever — the port arm alone converted 22% of fleet cash into perpetual dusk income
+  — and the player is structurally the only possible owner (`resolvePortPurchase` exists
+  only behind the player's `Port` action). The owner had assumed the cast could already
+  buy ports. Ports are finite and per-system: they are the single best multiplayer-
+  scarcity surface the game owns, and today the player bids against nobody.
+- **FIRST TASK — pull N8's asset-visibility task forward to here.** `sampleMilestone`
+  records `crew` but not `ports`; the aggregate cannot see an asset for the player, let
+  alone for a captain. If the cast starts buying ports before the instrument can count
+  them, this step's own sweep cannot see its own effect — the R0a/R2a class of mistake,
+  one more time. Milestones learn `ports` (player AND per-NPC) as the opening move, and
+  N8 inherits the net-worth question with the plumbing already laid.
+- **Change (programmatic):** the NPC turn may buy a stake through the same pricing and
+  the same rules — `isPurchasablePort`, the standing-in-the-system co-location rule the
+  player obeys, one stake per port, first come first served. `NPC_YARD_RESERVE` (the
+  cast's existing discretionary-money line) throttles it the same way it throttles the
+  yard; no new pacing constant unless the sweep demands one.
+- **Simulate:** full sweep + port-ownership counts by day + who owns what at day 120.
+- **Proves:** some ports end the career NPC-owned; the player faces real scarcity (the
+  port they wanted can be gone); NPC wealth spread becomes partly asset-shaped rather
+  than purely cash-shaped.
+- **Disproves:** a day-N land grab locks the player out of every port before Tour One
+  resolves (pacing wrong), or no captain ever crosses the price line and ports stay a
+  player monopoly de facto (the reserve line is mis-set for six-figure assets).
+
+### N13 — The NPC decision surface: dawn-hand parity (MUST-HAVE · owner ruling 2026-07-29 · GATES N5)
+
+- **The gap, in this track's own words:** the preamble says *"the NPC field does not face
+  the game's central decision"* — and no step before this one addressed it. N5's premise
+  (R1's `PilotDegradationProfile`, whose signature lever is noisy die ALLOCATION) silently
+  presupposed a hand the cast does not hold.
+- **Owner ruling (2026-07-29):** the decision must be represented; an algorithmic
+  fast-forward is acceptable. The choice between the two designs below is the owner's,
+  made at step start and recorded here — not drifted into.
+  - **(a) A literal reduced hand** — 2–3 dice per captain-day, allocated across the day's
+    verb, the refit, and overhead. *Pro:* the same rules literally; N5/R1's levers apply
+    verbatim; `Crew` and `Reroll` become real NPC verbs (fold crew hiring in here, which
+    also resolves the ledger's two "N13 decides" rows). *Con:* real per-day cost against
+    the ~40 ms envelope (measure before committing); a genuinely new balance surface.
+  - **(b) An algorithmic equivalent** — keep the one-verb day; derive the day's quality
+    from a virtual hand drawn under the same RNG discipline, with proficiency (N5)
+    expressed as allocation noise on it. *Pro:* envelope-cheap; N5 gets its medium
+    anyway. *Con:* it is a MODEL of the decision, not the decision — it must be flagged
+    at its definition site as the one sanctioned abstraction in the parity design, and
+    `Crew`/`Reroll` then stay player-only, which the PARITY LEDGER must record as a ruled
+    exclusion rather than a gap.
+- **Simulate:** full sweep + per-captain outcome variance decomposition (verb-weight luck
+  vs skill).
+- **Proves:** NPC day outcomes gain a skill-sensitive spread that N5 can then widen;
+  per-captain variance stops being pure verb-weight luck.
+- **Disproves:** outcomes statistically indistinguishable from the pre-N13 turn — the
+  added surface carried no decision, and N5 should not be graded on top of it.
 
 ### N6 — The Honor List becomes a real 31-way board (SHIPPED 2026-07-28)
 
@@ -1639,12 +2063,27 @@ is deleted. **No `packages/engine` change was needed** — `effectiveScore` and 
 `SHIP_COMPONENTS` were already actor-agnostic, and the only player-shaped reader was
 `honorList` itself. *N2's shipyard blocker is neither helped nor changed by this step.*
 
-**Five behaviours were recovered from the original BASIC, not invented**
-(`7ca606d7^:Decompile/Source-Text/SP.TOP.txt`, quoted at the definition site): the
-whole-registry walk, per-component max, **co-held ties**
-(`if (td=i) and (len(td$)<40) td$=td$+"/"+nz$`), the **40-character holder-line budget**,
-and **skip-don't-delete for marked records** (`if (left$(na$,1)="*") … next`) — which is
-exactly the shape N3's dead captains need.
+**Four behaviours were recovered from the original BASIC, not invented — and a fifth is a
+documented seam, not a delivery** (`7ca606d7^:Decompile/Source-Text/SP.TOP.txt`, quoted at
+the definition site): the whole-registry walk, per-component max, **co-held ties**
+(`if (td=i) and (len(td$)<40) td$=td$+"/"+nz$`), and the **40-character holder-line
+budget**.
+
+> **CORRECTED 2026-07-29 (doc audit, item OI-2) — this entry originally claimed FIVE
+> recovered behaviours.** The fifth, **skip-don't-delete for marked records**
+> (`if (left$(na$,1)="*") … next`), is not implemented. `honorField`
+> (`packages/ui/src/format.ts:2620`) applies no dead filter at all, and `NpcState` has no
+> `dead` field for it to read. What N6 actually delivered is the SEAM, and the code says so
+> in its own words at `format.ts:2611` — *"DEAD CAPTAINS (N3, not yet landed — this is the
+> seam, not the feature)"* — naming the exact remedy (`.filter((n) => !n.dead)`) so that
+> the step which owns the state shape can take it in one line.
+>
+> **Do not implement it here, and do not ask another step to implement it early.** The
+> `dead` field is N3's state shape; building it ahead of N3 is precisely the
+> ahead-of-the-step smuggling this track polices, and it would put a filter in the UI for a
+> field that nothing sets. **The fifth behaviour is owned by N3**, which is also where the
+> shape it filters on gets decided. The four above are real, are tested, and are what this
+> step delivered.
 
 **Ties are CO-HELD, not broken.** With 31 captains this is the common case, not a corner.
 Any tiebreak available here (roster index, profile tier, credits) would be *this file
@@ -1662,6 +2101,17 @@ names, so an unpinned board would show three strangers holding a title the reade
 (`1 + captains scoring strictly higher`), so the player can never out-rank someone they
 merely tied. Evidence it is a real contest: **at day 1 the player is #31 of 31 on Best
 All-Around Ship and #29 on Fastest Drives.**
+
+> **KNOWN COSMETIC GAP in that budget (2026-07-29 doc audit, item OI-11) — recorded, not
+> fixed.** The 40-character budget counts **one** character per separator
+> (`format.ts:2687`: `line += (holders.length > 0 ? 1 : 0) + captain.name.length`), which
+> is exactly what the BASIC counted for its `"/"` join — so **the data-level 1991 parity is
+> exact and the fidelity claim above stands unqualified.** The UI then renders the
+> separator as `" / "`, three characters, so the RENDERED holder line can exceed 40 visible
+> characters even though the field it was computed from does not. One surface, no rule
+> depends on it. It is filed rather than patched because closing it means deciding whether
+> the budget is a DATA rule (keep 1, and the divergence moves to the renderer) or a DISPLAY
+> rule (count 3, and 1991 parity is the thing that bends) — a decision, not a typo.
 
 > **THE FINDING — six of the eight titles are uncontestable BY CONSTRUCTION, and it traces
 > to one function.** Only 2 of 8 titles have a contest; the other six are 31-way ties, and
@@ -1781,6 +2231,35 @@ untouched.
 > the safe direction. **Do not "optimise" it by stripping comments before hashing without
 > owner sign-off:** that needs a parser, and a parser that mis-parses fails silently in the
 > one direction this whole design exists to prevent.
+
+> **SUPERSEDED BY N7-FP (2026-07-29 · `b7b52116`) — annotated rather than rewritten, on
+> two counts.** *Flagged by the 2026-07-29 doc audit as item **OI-3**: N7-FP updated
+> `docs/VERSIONING.md` and the smoke README and left this block standing as if current.*
+>
+> **First, the mechanism.** The block above describes the hash as it shipped at N7: over
+> raw file bytes, with comment-stripping explicitly refused. That is no longer HEAD.
+> `rulesFingerprint` is now taken over the TypeScript printer's re-emission with comments
+> stripped, so a comment edit — or a `prettier --write` — does not move it at all. The
+> raw-byte hash is **not deleted, it is demoted**: it survives as `docsFingerprint`,
+> recorded in fixture provenance and reported when it moves, never a `FreshnessProblem`.
+> The reasoning above is kept because it is the record of why the byte hash was chosen in
+> the first place, and because the sign-off it demanded is exactly what N7-FP obtained. See
+> the N7-FP entry for the argument and for the accepted cost (a `typescript` MAJOR bump is
+> now a re-stamp event).
+>
+> **Second, and more usefully: the warning was RIGHT, and it was honoured rather than
+> discarded.** "A parser that mis-parses fails silently, in the one direction this whole
+> design exists to prevent" described a real hole that N7-FP opened and did not close —
+> `ts.createSourceFile` recovers from broken syntax instead of throwing, and prints the
+> recovered tree. The 2026-07-29 audit found it as **OI-7**, and it is now closed by a hard
+> assertion on `parseDiagnostics` before anything is hashed. The same audit found
+> **OI-6/OI-6b**: a new subdirectory, or a symlink, under a hashed root escaping both the
+> hash and the totality tests. **All three are recorded in the N7-RIG entry, immediately
+> after N7-FP.**
+>
+> Read the totality claim three paragraphs above ("the classification is total and
+> reviewer-checkable") alongside that entry: it was true for FILES inside declared
+> directories, and silently untrue for DIRECTORIES, until OI-6 landed.
 
 **The differ validated on real pairs, both cross-checked against this document.**
 `baseline-r2c-final.json → baseline-n1.json` prints *"NOTHING MOVED. Every compared field
@@ -1996,8 +2475,26 @@ Experiment arms live in `.scratch/balance/`.
   they graded. A `ports: state.player.ports.length` on the milestone is the minimum;
   consider whether the fleet needs a net-worth figure alongside the cash one, since
   **"the fleet got poorer" is currently unfalsifiable for any purchase of an asset.**
-- **The post-N9 re-pin is DONE** — baseline of record is `baseline-n9-shipped.json`, taken
-  at HEAD. N8 re-pins again on top of the living field; it no longer has to unpick N9.
+  *2026-07-29: the milestone half of this task is pulled forward into N12's first task
+  (the cast starts buying ports there and the sweep must see it); the net-worth question
+  stays here.*
+- **SECOND PRECONDITION — N10, N11 and N12 land first (owner ruling 2026-07-29, THE
+  PARITY LEDGER).** A "living field" whose captains cannot work the contract board, hold
+  a rank, or own a port is not the field the player actually ships against. Re-pinning
+  before those verbs exist would bake three known absences into the yardstick every
+  R-series conclusion is re-read against — the same class of mistake this step's first
+  task exists to prevent. Rule on the ledger's three UNRULED verbs (Explore,
+  VisitHangout, Storylet) before pinning, so every exclusion is a decision on record.
+- **The post-N9 re-pin is DONE** — `baseline-n9-shipped.json`, taken fresh at HEAD. N8
+  re-pins again on top of the living field; it no longer has to unpick N9.
+  *(2026-07-29, doc audit item **OI-12**: this bullet named `baseline-n9-shipped.json` as
+  the baseline OF RECORD, which was true when it was written and is now stale by two
+  re-pins — N2 and then R2c-follow-up. The current baseline of record is
+  `docs/balance/baseline-r2c-explorer-remit.json`, which is what **standing amendment 1**
+  names and what `packages/sim/src/__tests__/balance-targets.test.ts:103` reads at runtime.
+  **The amendment is authoritative; read it before diffing anything.** The N9 re-pin itself
+  genuinely happened and its rule refinement is the reason amendment 1 reads the way it
+  does, so it is left on the record here rather than overwritten.)*
 
 ---
 
@@ -2159,9 +2656,17 @@ NPC PARITY TRACK (in progress — the R-series is PAUSED behind it, see below):
         ├─► N6 (Honor List, 31-way board) ... DONE  (accepted; 6/8 titles frozen until N2)
         └─► N2 (NPCs upgrade + shipyard actor param + ramp re-seed) ... DONE  (accepted)
              └─► N3 (NPCs meet pirates + answer them)
-                  └─► N4 (archetypes) ──► N5 (proficiency spread)
-                       └─► N8 (re-pin the baseline against a living field)
-                            ▲ N9 MUST LAND FIRST — see below
+                  └─► N10 (NPCs work the contract board) ......... MUST-HAVE (owner 2026-07-29)
+                       └─► N11 (NPCs earn deeds + Renown) ........ MUST-HAVE
+                            └─► N12 (NPCs buy ports; the aggregate
+                                 learns to see assets FIRST) ..... MUST-HAVE, lands before N8
+                                 └─► N13 (NPC decision surface:
+                                      dawn-hand parity) .......... MUST-HAVE, gates N5
+                                      └─► N4 (archetypes) ──► N5 (proficiency spread)
+                                           └─► N8 (re-pin the baseline against a living field)
+                                                ▲ N9 MUST LAND FIRST — see below
+                                                ▲ N10–N12 + the ledger's UNRULED verbs
+                                                  MUST BE SETTLED FIRST (owner 2026-07-29)
 
 WHY N9 GATES N8: N8 re-pins the baseline that every R-series conclusion gets re-read
 against. The instrument that would produce it has never emitted Crew, Port or Reroll
@@ -2234,6 +2739,27 @@ hypothesis, and append the result under the step before moving on.
    TypeScript **emit** rather than source bytes — `tsc` re-prints from the AST, so comments
    and formatting normalise away while real code changes still move the hash, and it is the
    same compiler that builds the product rather than a bespoke parser.*
+   > **THE MECHANISM ABOVE IS SUPERSEDED BY N7-FP (2026-07-29 · `b7b52116`) — and this
+   > amendment predicted its own supersession.** *Flagged by the 2026-07-29 doc audit as
+   > item **OI-3**; annotated rather than rewritten, because the cost it records is the
+   > evidence that motivated the change.*
+   >
+   > **The procedural rule stands, unchanged: re-extract ONCE, at the end of a step.** What
+   > no longer describes HEAD is its premise. `rulesFingerprint` does not hash raw file
+   > bytes any more — the raw-byte hash was **demoted to `docsFingerprint`**, which is
+   > informational only and cannot fail a test (`fixtureFreshness` never reads it; its one
+   > reader, `fixtureDocsDrift`, returns `string | null` and is explicitly not a
+   > `FreshnessProblem`). So a comment or a `prettier --write` no longer stales the fixture
+   > at all, and the tax N9 paid three times in one step is gone. The closing paragraph
+   > directly above is what shipped: *"hashing the TypeScript **emit** rather than source
+   > bytes"* is precisely option C of N7-FP, using the same compiler that builds the
+   > product rather than a bespoke parser.
+   >
+   > Its stated risk — "a parser that mis-parses fails **silently**" — was real, and N7-FP
+   > did **not** discharge it: `ts.createSourceFile` recovers from broken syntax and prints
+   > the recovered tree without complaint. The audit filed that as **OI-7** and it is now
+   > closed by a hard `parseDiagnostics` assertion ahead of the hash. See the **N7-RIG**
+   > entry (immediately after N7-FP) for OI-7 and for OI-6/OI-6b.
 4. **Close the loop on the step before starting the next one** (added 2026-07-28, after
    this was caught drifting). Landing a step means all four of: the heading carries
    `(SHIPPED <date> · <sha>)`, a `**Result:**` block is appended under it, the sequencing

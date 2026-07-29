@@ -1,6 +1,7 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import ts from 'typescript';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { aggregate, summarizeReport, type BaselineAggregate } from '../balance/aggregate.js';
@@ -13,6 +14,7 @@ import {
 import { diffAggregates } from '../balance/diff.js';
 import {
   allSourceKeys,
+  assertParseClean,
   computeDocsFingerprint,
   computeInstrumentFingerprint,
   computeRulesFingerprint,
@@ -22,6 +24,8 @@ import {
   ENGINE_HASHED_DIRECTORIES,
   ENGINE_NON_RULE_SOURCES,
   ENGINE_SOURCE_ROOT,
+  hashSemantic,
+  HASHED_ROOT_IGNORED_DIRECTORIES,
   REPO_ROOT,
   ruleSources,
   SIM_HASHED_DIRECTORIES,
@@ -498,5 +502,341 @@ const NOTE = "/* not a comment */";
       fakeRepo(WITH_COMMENT.replace('"/* not a comment */"', '""')),
     ).fingerprint;
     expect(strippedMarkers, 'the literal is code and must be hashed').not.toBe(keptMarkers);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6 · OI-6/OI-7 · the two ways a source could have escaped the hash silently
+// ---------------------------------------------------------------------------
+
+/** The minimum tree every collector walks — engine `''` + `actions`, content
+ *  `''`, sim `''` + `balance` — so `computeRulesFingerprint`,
+ *  `computeInstrumentFingerprint` and `computeDocsFingerprint` all run on it. */
+function minimalRepo(roots: string[]): string {
+  const root = mkdtempSync(join(tmpdir(), 'sq-oi6-'));
+  roots.push(root);
+  mkdirSync(join(root, ENGINE_SOURCE_ROOT, 'actions'), { recursive: true });
+  mkdirSync(join(root, CONTENT_SOURCE_ROOT), { recursive: true });
+  mkdirSync(join(root, SIM_SOURCE_ROOT, 'balance'), { recursive: true });
+  writeFileSync(join(root, ENGINE_SOURCE_ROOT, 'day.ts'), 'export const DAY = 1;\n', 'utf8');
+  writeFileSync(
+    join(root, ENGINE_SOURCE_ROOT, 'actions', 'travel.ts'),
+    'export const TRAVEL = 2;\n',
+    'utf8',
+  );
+  writeFileSync(join(root, CONTENT_SOURCE_ROOT, 'ports.ts'), 'export const P = 3;\n', 'utf8');
+  writeFileSync(join(root, SIM_SOURCE_ROOT, 'index.ts'), 'export const SIM = 4;\n', 'utf8');
+  writeFileSync(
+    join(root, SIM_SOURCE_ROOT, 'balance', 'aggregate.ts'),
+    'export const AGG = 5;\n',
+    'utf8',
+  );
+  return root;
+}
+
+describe('OI-6 · an undeclared SUBDIRECTORY under a hashed root fails loudly', () => {
+  // The hole this closes: the walk only ever visited DECLARED directories, so a
+  // new `engine/src/rules/` was invisible to the hash AND to the three
+  // enumeration tests above, which inherit the walk's scope. Neither the too-broad
+  // nor the too-narrow direction — a whole subtree simply not present.
+  const roots: string[] = [];
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+
+  const withDirectory = (relative: string[]): string => {
+    const root = minimalRepo(roots);
+    mkdirSync(join(root, ...relative), { recursive: true });
+    writeFileSync(join(root, ...relative, 'dc.ts'), 'export const DC = 12;\n', 'utf8');
+    return root;
+  };
+
+  it('refuses to fingerprint a tree with an unclassified rules subdirectory', () => {
+    const root = withDirectory([ENGINE_SOURCE_ROOT, 'rules']);
+    expect(() => computeRulesFingerprint(root)).toThrow(/UNDECLARED DIRECTORY/);
+    // The message has to say WHICH directory and WHAT to do, or the loud failure
+    // is just noise — the same bar the staleness message is held to above.
+    expect(() => computeRulesFingerprint(root)).toThrow(/packages\/engine\/src\/rules/);
+    expect(() => computeRulesFingerprint(root)).toThrow(/HASHED_ROOT_IGNORED_DIRECTORIES/);
+  });
+
+  it('does not offer the ignore list as the easy way out', () => {
+    // The one thing that would quietly undo this guard is an author reading the
+    // message as "add it to the ignore list". It says otherwise, in as many words.
+    try {
+      computeRulesFingerprint(withDirectory([ENGINE_SOURCE_ROOT, 'rules']));
+      throw new Error('expected the guard to fire');
+    } catch (error) {
+      expect((error as Error).message).toContain('not the quick way out');
+    }
+  });
+
+  it('catches it under a nested declared directory too, naming the full key', () => {
+    const root = withDirectory([ENGINE_SOURCE_ROOT, 'actions', 'combat']);
+    expect(() => computeRulesFingerprint(root)).toThrow(/packages\/engine\/src\/actions\/combat/);
+  });
+
+  it('catches it in content and in the instrument, not only in the engine', () => {
+    expect(() => computeRulesFingerprint(withDirectory([CONTENT_SOURCE_ROOT, 'eras']))).toThrow(
+      /packages\/content\/src\/eras/,
+    );
+    expect(() =>
+      computeInstrumentFingerprint(withDirectory([SIM_SOURCE_ROOT, 'balance', 'policies'])),
+    ).toThrow(/packages\/sim\/src\/balance\/policies/);
+  });
+
+  it('fires for the enumeration tests as well, not only for the hash', () => {
+    // `allSourceKeys` is what the three totality tests above enumerate with. If it
+    // walked a wider or narrower tree than `collect`, the totality they prove
+    // would be about a different tree than the one that gets hashed.
+    const root = withDirectory([ENGINE_SOURCE_ROOT, 'rules']);
+    expect(() => allSourceKeys(root, ENGINE_SOURCE_ROOT, ENGINE_HASHED_DIRECTORIES)).toThrow(
+      /UNDECLARED DIRECTORY/,
+    );
+  });
+
+  it('lets the declared and the explicitly-ignored directories through', () => {
+    const root = minimalRepo(roots);
+    for (const ignored of Object.keys(HASHED_ROOT_IGNORED_DIRECTORIES)) {
+      mkdirSync(join(root, ENGINE_SOURCE_ROOT, ignored), { recursive: true });
+      writeFileSync(
+        join(root, ENGINE_SOURCE_ROOT, ignored, 'noise.ts'),
+        'export const NOISE = 0;\n',
+        'utf8',
+      );
+    }
+    expect(() => computeRulesFingerprint(root)).not.toThrow();
+    // ...and their contents are still not hashed: the guard is about noticing a
+    // directory, never about widening the hash to swallow one.
+    expect(computeRulesFingerprint(root).files.map((source) => source.path)).toEqual([
+      'packages/content/src/ports.ts',
+      'packages/engine/src/actions/travel.ts',
+      'packages/engine/src/day.ts',
+    ]);
+  });
+
+  it('every ignored name carries the reason it decides nothing', () => {
+    // Map-not-list, same as ENGINE_NON_RULE_SOURCES: an entry with no reason is
+    // an entry nobody has to defend.
+    for (const [name, reason] of Object.entries(HASHED_ROOT_IGNORED_DIRECTORIES)) {
+      expect(reason.length, `${name} needs a stated reason`).toBeGreaterThan(40);
+    }
+    expect(Object.keys(HASHED_ROOT_IGNORED_DIRECTORIES)).toContain('__tests__');
+  });
+
+  it('passes on the real tree, which is the state it must hold', () => {
+    expect(() => computeRulesFingerprint()).not.toThrow();
+    expect(() => computeInstrumentFingerprint()).not.toThrow();
+    expect(() => computeDocsFingerprint()).not.toThrow();
+  });
+});
+
+describe('OI-6b · a SYMLINK does not get past the guard the way a directory cannot', () => {
+  // The residual hole in the first cut, reproduced on the real tree before the
+  // fix: `readdirSync(withFileTypes)` types a symlink by ITSELF, not its target,
+  // so a symlinked `packages/engine/src/rules` answered `isDirectory()` false,
+  // slipped the undeclared-directory guard, was not listed by `listTsFiles`, and
+  // left the fingerprint sitting at 91cfa4adc626ba54/56 with a `sneak.ts` inside
+  // it. One shell command wide, and the exact "invisible to the hash AND to the
+  // enumeration tests" mode the guard above exists to close.
+  const roots: string[] = [];
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+
+  /** A repo with a link at `<relative>` pointing at a target OUTSIDE the hashed
+   *  roots — the shape of the reproduction, and the shape any real one takes. */
+  const withSymlink = (
+    relative: string[],
+    target: { readonly kind: 'directory' | 'file' | 'missing'; readonly contents?: string },
+  ): string => {
+    const root = minimalRepo(roots);
+    const targetPath = join(root, 'elsewhere');
+    if (target.kind === 'directory') {
+      mkdirSync(targetPath, { recursive: true });
+      writeFileSync(join(targetPath, 'sneak.ts'), 'export const SNEAK = 999;\n', 'utf8');
+    } else if (target.kind === 'file') {
+      writeFileSync(targetPath, target.contents ?? 'export const SNEAK = 999;\n', 'utf8');
+    }
+    symlinkSync(targetPath, join(root, ...relative));
+    return root;
+  };
+
+  it('a symlinked DIRECTORY trips the undeclared-directory guard exactly as a real one does', () => {
+    const root = withSymlink([ENGINE_SOURCE_ROOT, 'rules'], { kind: 'directory' });
+    expect(() => computeRulesFingerprint(root)).toThrow(/UNDECLARED DIRECTORY/);
+    expect(() => computeRulesFingerprint(root)).toThrow(/packages\/engine\/src\/rules/);
+    // Same message, same two remedies: how the entry was created is not a fact
+    // the author needs, and offering a symlink-specific escape would be one.
+    expect(() => computeRulesFingerprint(root)).toThrow(/not the quick way out/);
+  });
+
+  it('and it trips the enumeration walk too, not only the hash', () => {
+    const root = withSymlink([ENGINE_SOURCE_ROOT, 'rules'], { kind: 'directory' });
+    expect(() => allSourceKeys(root, ENGINE_SOURCE_ROOT, ENGINE_HASHED_DIRECTORIES)).toThrow(
+      /UNDECLARED DIRECTORY/,
+    );
+  });
+
+  it('fires in content and in the instrument as well', () => {
+    expect(() =>
+      computeRulesFingerprint(withSymlink([CONTENT_SOURCE_ROOT, 'eras'], { kind: 'directory' })),
+    ).toThrow(/packages\/content\/src\/eras/);
+    expect(() =>
+      computeInstrumentFingerprint(
+        withSymlink([SIM_SOURCE_ROOT, 'balance', 'policies'], { kind: 'directory' }),
+      ),
+    ).toThrow(/packages\/sim\/src\/balance\/policies/);
+  });
+
+  it('a symlinked directory whose NAME is on the ignore list is still ignored', () => {
+    // The escape has to work through a link too, and for the reason the ignore
+    // list gives: what makes `__tests__` inert is what is inside it, never how
+    // the entry was created. Anything else would be a guard that fails on the
+    // legitimate case while the illegitimate one is the point.
+    const root = withSymlink([ENGINE_SOURCE_ROOT, '__tests__'], { kind: 'directory' });
+    expect(() => computeRulesFingerprint(root)).not.toThrow();
+    expect(computeRulesFingerprint(root).files.map((source) => source.path)).toEqual([
+      'packages/content/src/ports.ts',
+      'packages/engine/src/actions/travel.ts',
+      'packages/engine/src/day.ts',
+    ]);
+  });
+
+  it('a symlinked `.ts` FILE is hashed, because its content is real rule code', () => {
+    // The second instance of the same hole, decided the same way. `readFileSync`
+    // follows the link, so this is a rule source that decides outcomes; skipping
+    // it would leave the identical silent gap. It is the PATH in this tree that
+    // enters the manifest, not the target's.
+    const root = withSymlink([ENGINE_SOURCE_ROOT, 'sneak.ts'], { kind: 'file' });
+    const files = computeRulesFingerprint(root).files.map((source) => source.path);
+    expect(files).toContain('packages/engine/src/sneak.ts');
+    expect(computeRulesFingerprint(root).fileCount).toBe(4);
+    // ...and being hashed is what drags it in front of the totality tests, so it
+    // still has to be classified as rule or non-rule like any other file.
+    expect(allSourceKeys(root, ENGINE_SOURCE_ROOT, ENGINE_HASHED_DIRECTORIES)).toContain(
+      'sneak.ts',
+    );
+  });
+
+  it('and editing through that link moves the fingerprint, which is the whole point', () => {
+    const before = withSymlink([ENGINE_SOURCE_ROOT, 'sneak.ts'], {
+      kind: 'file',
+      contents: 'export const SNEAK = 999;\n',
+    });
+    const after = withSymlink([ENGINE_SOURCE_ROOT, 'sneak.ts'], {
+      kind: 'file',
+      contents: 'export const SNEAK = 111;\n',
+    });
+    expect(computeRulesFingerprint(after).fingerprint).not.toBe(
+      computeRulesFingerprint(before).fingerprint,
+    );
+  });
+
+  it('a DANGLING symlink stops the fingerprint rather than raising a bare ENOENT', () => {
+    // Skipping it would be a guess about a target we cannot see, and letting the
+    // `statSync` ENOENT escape would surface as an unattributable stack trace out
+    // of a fixture stamp. So: an explicit, named failure.
+    const root = withSymlink([ENGINE_SOURCE_ROOT, 'ghost'], { kind: 'missing' });
+    expect(() => computeRulesFingerprint(root)).toThrow(/UNRESOLVABLE SYMLINK/);
+    expect(() => computeRulesFingerprint(root)).toThrow(/its target does not exist/);
+    expect(() => computeRulesFingerprint(root)).toThrow(/ghost/);
+    expect(() => computeRulesFingerprint(root)).toThrow(/do not fingerprint a broken tree/);
+  });
+
+  it('a dangling symlink named `.ts` fails the same way, not by hashing nothing', () => {
+    const root = withSymlink([ENGINE_SOURCE_ROOT, 'ghost.ts'], { kind: 'missing' });
+    expect(() => computeRulesFingerprint(root)).toThrow(/UNRESOLVABLE SYMLINK/);
+  });
+
+  it('the real tree contains no symlink under a hashed root, which is why this costs nothing', () => {
+    // `statSync` is only reached for an entry that is genuinely a link. If this
+    // ever fails, the note in `classifyEntries` about zero cost has stopped being
+    // true and wants re-reading, not deleting.
+    expect(() => computeRulesFingerprint()).not.toThrow();
+    expect(() => computeInstrumentFingerprint()).not.toThrow();
+  });
+});
+
+describe('OI-7 · a file TypeScript cannot parse never hashes silently', () => {
+  const roots: string[] = [];
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+
+  const fileWith = (body: string): string => {
+    const root = mkdtempSync(join(tmpdir(), 'sq-oi7-'));
+    roots.push(root);
+    const path = join(root, 'broken.ts');
+    writeFileSync(path, body, 'utf8');
+    return path;
+  };
+
+  it('throws on the exact snippet that used to hash anyway', () => {
+    // `ts.createSourceFile('export const A = (')` does not throw: it recovers,
+    // records one diagnostic, and prints `export const A = ();`. The old code
+    // hashed that recovered tree without a word.
+    expect(() => hashSemantic(fileWith('export const A = ('))).toThrow(/UNPARSEABLE/);
+  });
+
+  it('names the file, the position and the parser message', () => {
+    try {
+      hashSemantic(fileWith('export const DC = 12;\nexport const A = (\n'));
+      throw new Error('expected the parse check to fire');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain('broken.ts:');
+      expect(message).toContain('Expression expected.');
+    }
+  });
+
+  it('does not fire on valid TypeScript, including the syntax this repo uses', () => {
+    // The false-positive direction. A check that tripped on a real source would
+    // be removed within the week, so it has to be quiet on the corpus.
+    expect(() =>
+      hashSemantic(
+        fileWith(
+          'import type { X } from "./x.js";\n' +
+            'export const enum E { A = 1 }\n' +
+            'export const f = <T,>(x: T): T => x satisfies T;\n' +
+            'export const g = { a: 1 } as const;\n',
+        ),
+      ),
+    ).not.toThrow();
+  });
+
+  it('stops the whole fingerprint, not just the one file', () => {
+    const root = minimalRepo(roots);
+    writeFileSync(join(root, CONTENT_SOURCE_ROOT, 'ports.ts'), 'export const P = (\n', 'utf8');
+    expect(() => computeRulesFingerprint(root)).toThrow(/UNPARSEABLE/);
+  });
+
+  it('refuses to run at all if the parser stops reporting diagnostics', () => {
+    // The assertion's own failure mode: `parseDiagnostics` is `@internal`, so a
+    // TypeScript upgrade could rename it and leave a check that silently stops
+    // checking. That fails loudly instead.
+    expect(() => assertParseClean({} as ts.SourceFile, 'nowhere.ts')).toThrow(
+      /no longer readable from the TypeScript API/,
+    );
+  });
+
+  it('every currently hashed source parses with zero diagnostics', () => {
+    // The corpus proof, pinned rather than remembered: this is what makes the
+    // assertion safe to leave switched on, and it is exactly the check that would
+    // catch a half-written rule module before a sweep measured one.
+    const corpus = [
+      ...ruleSources().map((source) => source.path),
+      ...computeInstrumentFingerprint().files.map((source) => source.path),
+    ];
+    expect(corpus.length).toBeGreaterThan(50);
+    const unparseable = corpus.filter((relative) => {
+      try {
+        hashSemantic(join(REPO_ROOT, relative));
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    expect(unparseable).toEqual([]);
   });
 });

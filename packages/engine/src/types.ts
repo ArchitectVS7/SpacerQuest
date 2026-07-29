@@ -1125,6 +1125,15 @@ export interface NpcState {
    *  step toward 0 each dusk. */
   disposition: number;
   lastAction?: NpcAction;
+  /**
+   * N3 WILL ADD `dead` HERE — and adding it is only half the change. A dead
+   * captain's record STAYS (the wire, the Honor List's history and the player's
+   * grudges all still reference it), so the Honor List has to skip it rather than
+   * lose it: `honorField` in `packages/ui/src/format.ts` applies no dead filter
+   * today and names the one-line remedy at its own definition site. That skip is
+   * the fifth behaviour the 1991 registry had and N6 shipped only as a seam
+   * (worklist item OI-2). Marking dead without it ranks corpses forever.
+   */
 }
 
 export interface ComponentState {
