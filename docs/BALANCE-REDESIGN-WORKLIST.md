@@ -903,6 +903,35 @@ imperceptible, an 80-minute sweep cannot be an iteration loop. That asymmetry is
 problem to solve, it is the shape of the plan: the full sweep becomes an infrequent
 CAPSTONE and the fast loop is staged smoke tests seeded from its output (N7).
 
+### THE STANDING CONSTRAINT FOR THE WHOLE TRACK — same rules, no exemptions
+
+*Owner ruling, 2026-07-28. This governs every N step and outranks any per-step
+convenience.* **An NPC plays by the rules a player plays by.** Not "similar rules",
+not "rules calibrated to produce similar outcomes" — the same functions, the same
+costs, the same constraints. Where an NPC cannot use the engine's own function today,
+the fix is to make the function usable by both (give it an actor parameter), never to
+write the NPC a private one. R2c is the standing warning: the sim kept a private copy
+of the yard ladder that had inherited the same bug as the engine, so it agreed with the
+engine **for the wrong reason** and hid a live economy defect for months.
+
+**Two consequences that are easy to miss, both already live:**
+
+1. **Capability is a property of the SHIP, not of the captain's tier.** Tier and
+   capability correlate only because a tier-5 captain *earned* a tier-5 ship. So cargo
+   capacity is **objectively not a static per-captain value** — an NPC that profits from
+   a delivery can buy pods, and its capacity changes. Any step that treats capacity as a
+   function of `profile.tier` has re-introduced the phantom. N1 removed the last such
+   read (`npcCargoPods`/`npcDrives` are now seed-only); N2 is what makes the value
+   actually move.
+2. **A number chosen so that a rule will NOT bite is a rule exemption, even when the
+   resulting state is legal.** N1's `npcHullStrength` is the live example, and it is
+   flagged at its own definition site: the ramp was calibrated against the phantom's
+   *unbounded* tank rather than against what a player's ship of that capability would be.
+   The seeded ships pass `maxCargoPodsForShip` — but a tier-1 NPC holds 4 cargo pods and
+   a **1,200-unit tank**, where a player with comparable capacity (the junker: 10 pods,
+   hull strength 1) holds **300**. **NPCs currently fly on ~4× a player's fuel.** That is
+   an exemption, and N2 owns removing it (see N2's first two tasks).
+
 ---
 
 ### N0 — One copy-on-write discipline for player and NPC turns (SHIPPED 2026-07-28)
@@ -1033,6 +1062,26 @@ increase their trade profit."*
 
 - **Hypothesis:** an NPC that reinvests profit into its fit earns more over a career,
   producing the wealth SPREAD a 31-captain race needs — some compounding, some stuck.
+- **INHERITS N1's PROVES CLAUSE.** *"NPC wealth spread widens"* was written into N1 and
+  is unachievable there: a ship seeded from profile tier and never mutated is
+  arithmetically the phantom it replaced (see N1's Result). The spread is **N2's** to
+  produce, because N2 owns the decision that moves it. Grade it here.
+- **FIRST TASK — the shipyard API is player-shaped, and this step is blocked until it
+  is not.** Found during N1. `quoteShipyard`, `shipyardCost`, `shipyardFailure`,
+  `applyShipyardMutation` and `maxCargoPodsForShip` all take `(state: GameState, …)` and
+  read `state.player.ship` / `.credits` / `.registry` directly, so **an NPC cannot be
+  priced through any of them as they stand.** Give them an actor parameter (ship +
+  credits + rank). This is not optional cleanup: without it the path of least resistance
+  is the parallel cost model the standing constraint forbids.
+- **SECOND TASK — remove N1's fuel-tank exemption, here and not before.** N1 seeded
+  `hull.strength = 2 + 2·tier` to clear the phantom's unbounded tank, leaving NPCs on
+  ~4× a player's fuel for comparable capacity (see the standing constraint above).
+  Re-seed the hull to what a player's ship of that capability would be. **It must land in
+  THIS step and not earlier**, because tightening the tank without granting the upgrade
+  path makes an NPC permanently poorer with no recourse — which is itself a same-rules
+  violation, since a player can buy a better hull. Coupled with upgrades it becomes the
+  intended loop: profit → better hull → bigger tank and more pods → longer, richer hauls.
+  It IS a fuel-scarcity lever, so sweep it as its own knob (one change, one hypothesis).
 - **Change (programmatic):** an upgrade decision in the NPC turn, priced through the
   engine's own `quoteShipyard` — never a parallel cost model. Note R2c's lesson here:
   the sim's private copy of the yard maths inherited the same bug as the engine and so
