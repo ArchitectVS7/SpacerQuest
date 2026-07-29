@@ -52,8 +52,16 @@ export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..
  *     leaves a stale fixture reporting green about a game that no longer exists,
  *     which the smoke README calls "worse than no test at all".
  *   - Too BROAD is only a cost. A false positive fails loudly, and the remedy is
- *     one capstone sweep (measured 2026-07-28: ~2 min across 8 shards) plus a
- *     differ run that says "nothing moved" — which is exactly the N1 loop.
+ *     one capstone sweep (re-measured 2026-07-29: 207s wall clock across 8
+ *     concurrent shards on a 10-core box, for the full 8,000 runs) plus a differ
+ *     run that says "nothing moved" — which is exactly the N1 loop.
+ *
+ *     N7-FP QUALIFIES THIS. The reasoning above is still right for genuinely
+ *     borderline SOURCES — `types.ts` and `clone.ts` stay IN on it. It is no
+ *     longer a licence to hash more of each file than decides an outcome: the
+ *     comment-edit false positive it was used to wave through turned out to cost
+ *     documentation currency rather than three minutes of CPU, which is not a
+ *     price this repo can pay. Breadth of FILES, yes; breadth of BYTES, no.
  *
  * The asymmetry decides every borderline case in favour of INCLUSION. Two
  * consequences are worth naming rather than discovering:
