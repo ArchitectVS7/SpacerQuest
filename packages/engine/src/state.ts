@@ -269,6 +269,14 @@ export function deserializeState(json: string): GameState {
   parsed.player.reputation.confederation ??= 0;
   parsed.player.reputation.rebels ??= 0;
   parsed.npcs ??= [];
+  // COW-EXEMPT: these writes reach roster records raw, without `mutableNpc`, and
+  // are legal ONLY because of the caller. `parsed` is a value this function just
+  // produced from `JSON.parse` of a save string, so no snapshot, replay golden or
+  // rendered frame shares these records yet — there is nothing behind them to
+  // corrupt. That is a property of the CALLER, not of the write: reuse this
+  // backfill loop on a live `GameState` and it becomes the exact bug the
+  // copy-on-write scan in `__tests__/clone.test.ts` exists to catch. The scan
+  // pins this site in `COW_EXEMPT_SITES`; removing this marker fails it.
   parsed.npcs.forEach((npc) => {
     npc.disposition ??= 0;
     // N1 save-compat: pre-N1 states have no `npc.ship` — the cast flew a phantom
