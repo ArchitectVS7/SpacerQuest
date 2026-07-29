@@ -161,7 +161,7 @@ Release earns its keep, and the rules are: tick **"Set as a pre-release"** so it
 mistaken for a launch, attach the `electron-builder` artefacts, and let the notes be the
 changelog for that stage.
 
-## 2. Save schema version — a plain integer, currently `9`
+## 2. Save schema version — a plain integer, currently `10`
 
 **Answers: can this build read that save file?**
 

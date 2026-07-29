@@ -4,7 +4,7 @@ import { createInitialState } from '../state.js';
 import { advanceDay } from '../day.js';
 import { resolveTrade } from '../actions/trade.js';
 import { resolveCombat, RUN_FUEL_COST, FIGHT_FUEL_COST } from '../actions/combat.js';
-import { resolveNpcDay } from '../npc.js';
+import { npcShipForTier, resolveNpcDay } from '../npc.js';
 import { rollDawnHand } from '../dice.js';
 import { SeededRng } from '../rng.js';
 import { EncounterState, NpcState } from '../types.js';
@@ -241,7 +241,8 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
       profileId: profile.id,
       currentSystemId: 1,
       credits: 5000,
-      fuel: 1000,
+      // N1: the tank rides on the captain's own ship, seeded from their tier.
+      ship: npcShipForTier(profile.tier),
       disposition: 0,
     };
   }

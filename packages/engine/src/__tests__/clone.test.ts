@@ -112,9 +112,19 @@ describe('cloneState (copy-on-write snapshot)', () => {
     const offenders: string[] = [];
     for (const rel of files) {
       const source = readFileSync(join(engineDir, rel), 'utf8');
-      // A write to a field of something that reads like an NPC handle.
+      // A write anywhere down a member path rooted at something that reads like
+      // an NPC handle. N1 · the path form is load-bearing: the record grew a
+      // `ship`, so the writes to watch are now NESTED (`rescuer.ship.fuel -= n`)
+      // and a pattern that only matched `handle.field =` would have gone quiet on
+      // exactly the field this step added. The N0 lesson, again: grep the FIELD,
+      // not the variable — so `ship` is in the field list below and the path may
+      // continue past it.
+      //
+      // Assignment operators only (`=` not followed by `=`, or a compound `+=` /
+      // `-=` / `*=` / `/=`). Comparisons must not match: `rescuer.ship.fuel >=
+      // hook.minRescuerFuel` is a READ and is legal on a shared record.
       const pattern =
-        /\b(dealerNpc|dealer|rescuer|npc|named|lender|targetNpc|dealerPurse)\.(?:credits|fuel|disposition|currentSystemId|lastAction)\s*[-+]?=[^=]/g;
+        /\b(dealerNpc|dealer|rescuer|npc|named|lender|targetNpc|dealerPurse)\.(credits|fuel|disposition|currentSystemId|lastAction|ship)(?:\.\w+)*\s*(?:[-+*/]=|=[^=])/g;
       for (const match of source.matchAll(pattern)) {
         const line = source.slice(0, match.index).split('\n').length;
         // The handle is legitimate if it was BOUND from `mutableNpc` anywhere in
@@ -348,8 +358,12 @@ describe('T-1605c · every copy-on-write resolver shares the event log', () => {
       .map((name) => join('actions', name));
     // day.ts and storylets.ts host resolvers too (the day loop's own snapshot
     // and resolveStoryletChoice). npc.ts is DELIBERATELY outside the scanned
-    // set: its `JSON.parse(JSON.stringify(npc))` clones a single ~100-byte
-    // NpcState, which carries no event log and is not a GameState snapshot.
+    // set: its `JSON.parse(JSON.stringify(npc))` clones a single NpcState, which
+    // carries no event log and is not a GameState snapshot. N1 grew that record
+    // ~10x (it owns a ShipState now) and the round trip is still the cheapest
+    // deep copy of it measured — `structuredClone` costs ~12% MORE per ambient
+    // game day (0.42 -> 0.47 ms over 10 seeds x 120 days). The scan's exclusion
+    // is about the event log, and that reasoning is unchanged.
     const files = [...actionFiles, 'day.ts', 'storylets.ts'];
     expect(actionFiles.length).toBeGreaterThan(5);
 

@@ -4,6 +4,7 @@ import { GameState, ShipState } from './types.js';
 import { validateGameState } from './schema.js';
 import { rankForDeedCount } from './deeds.js';
 import { computePlayerTier } from './tier.js';
+import { seedNpcShip } from './npc.js';
 
 // T-1401 · The v5→v6 WireEntry.kind migration's ONE legitimate, retro-only use of
 // the flaw-detail suffix heuristic. A v5 save's WireEntry events predate the typed
@@ -109,6 +110,18 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * full-game career. Getting this wrong in the other direction would be the
  * serious failure — a save wrongly marked 'demo' would lose a real player their
  * ports, their crew and their capstone rank.
+ *
+ * N1 bumped {@link CURRENT_SAVE_VERSION} to 10, and the v9->v10 change is a
+ * GameState shape change of a kind none of the nine above were: it MOVES a field
+ * rather than adding one. Every `NpcState` gains a required `ship` (the real
+ * {@link ShipState} the captain owns, replacing the tier-derived phantom `npc.ts`
+ * used to synthesize per action) and LOSES its top-level `fuel`, whose value
+ * becomes `ship.fuel`. Because the roster is 30 records and `NpcStateSchema` is
+ * `.strict()`, a half-done migration fails loudly: leaving `fuel` behind is
+ * rejected as an unknown key, and omitting `ship` is rejected as a missing one.
+ * The mapping is `npc.ts` `seedNpcShip` — the SAME function `deserializeState`
+ * and (via `npcShipForTier`) `createInitialState` use, so a migrated roster and a
+ * freshly created one land on identical fits.
  *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
@@ -232,9 +245,28 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
     const s = v8State as { edition?: unknown };
     return { ...(v8State as object), edition: s.edition ?? 'full' };
   },
+  // v9->v10: N1 gave every NPC a real `ship` and moved their tank onto it. Walk
+  // the roster, seed each captain's ship from their profile tier through the
+  // engine's own `seedNpcShip`, pour the saved `fuel` into it, and DROP the old
+  // top-level key (strict schema — an orphan `fuel` is an unknown key and would
+  // fail validation). Idempotent: a record that already carries a `ship` is left
+  // alone apart from shedding a stray `fuel`. A state with no readable roster is
+  // passed through untouched for the schema to reject — a migration must never be
+  // the thing that throws.
+  9: (v9State) => {
+    const s = v9State as { npcs?: unknown };
+    if (!Array.isArray(s.npcs)) return v9State;
+    const npcs = (s.npcs as unknown[]).map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const { fuel, ...rest } = entry as { fuel?: unknown; ship?: unknown; profileId?: unknown };
+      const profileId = typeof rest.profileId === 'string' ? rest.profileId : '';
+      return { ...rest, ship: rest.ship ?? seedNpcShip(profileId, fuel) };
+    });
+    return { ...(v9State as object), npcs };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 9;
+export const CURRENT_SAVE_VERSION = 10;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

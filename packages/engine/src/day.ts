@@ -470,8 +470,8 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // together with the rebalanced slower decay, let a storylet-bonded NPC (Doc)
   // hold their standing long enough for a low-fuel dusk to reach it.
   let intervenedNpcId: string | null = null;
-  // COPY-ON-WRITE (npc.ts `mutableNpc`): the rescuer is WRITTEN to below (fuel and
-  // lastAction), and NPC records are shared between snapshots, so the search below
+  // COPY-ON-WRITE (npc.ts `mutableNpc`): the rescuer is WRITTEN to below (ship.fuel
+  // and lastAction), and NPC records are shared between snapshots, so the search below
   // finds the read-only record and `mutableNpc` swaps in a private copy before any
   // write. Named `rescuerRef` to make the read-only half explicit at the use sites.
   const rescuerRef = nextState.npcs
@@ -523,12 +523,15 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       hook?.beat === 'fuel-gift' &&
       !nextState.encounter &&
       nextState.player.ship.fuel <= (hook.lowFuelThreshold ?? 0) &&
-      rescuer.fuel >= (hook.minRescuerFuel ?? 100)
+      rescuer.ship.fuel >= (hook.minRescuerFuel ?? 100)
     ) {
       const giftRng = dayRng.fork(`bond-gift-${rescuer.id}`);
       if (giftRng.d20() + grit >= hook.dc) {
         const amount = hook.fuelAmount ?? 50;
-        rescuer.fuel -= amount;
+        // N1: the gifted fuel comes out of the rescuer's SHIP's tank. `rescuer`
+        // is the `mutableNpc` copy, whose `structuredClone` gave it a private
+        // ship — writing through the shared record would reach every snapshot.
+        rescuer.ship.fuel -= amount;
         nextState.player.ship.fuel = Math.min(
           nextState.player.ship.maxFuel,
           nextState.player.ship.fuel + amount,

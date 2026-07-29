@@ -345,11 +345,22 @@ export function runDayLoopGolden(
 // the burn, so both the event stream and the state hash move. No rng draw was
 // added or removed by that change (the check read the spent dawn die, it never
 // rolled), so this is an event/state shape move, not a divergence in the stream.
+// N1 · STATE HASHES RE-PINNED, EVENT HASHES DELIBERATELY NOT — and the split is
+// the evidence, not a formality. N1 gave every `NpcState` a real `ship` and moved
+// its `fuel` onto it, so `serializeState` now carries 30 more ship blocks: a pure
+// SHAPE move. Nothing about what any actor DOES changed, so not one rng draw
+// moved, and both event-stream hashes came back byte-identical from the
+// regenerator. If the seed had been mis-calibrated — a tighter NPC hull clamping
+// the roster's tank, a different drive ramp changing a jump's fuel — the event
+// hashes would have moved with the state hashes. They did not.
+//   DAY_LOOP state  71b3315e… -> f07d6de2…   (events a0e8ed7f… UNCHANGED)
+//   STORYLET state  1f187dbe… -> 86fbc0cc…   (events 6f61a1d5… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '71b3315e062e482e6fb2ef5b020a246520d4bf46dd1b9bd1869bd01ac73ecf3a';
+  'f07d6de2253c7c590bdefd49bd00c5d1ea05688b1cce871f34aba51e7f609b65';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   'a0e8ed7f51d6710787bb91a295651a31fb84fb73d00011c33af21cff7309f774';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '1f187dbe2c425b2f6a9be238cee626d555a88ba5f7f442324aa96811faa36f36';
+  '86fbc0cc1e34496047b34074168bc547a597fb02ce2c9df66ac4f038e4a40330';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '6f61a1d59ebc223d484f137fb4bd6164ccd5f9e73e3e7ca94ef8462a546c3440';

@@ -8,10 +8,29 @@ import {
   NPC_CHECK_DCS,
   NPC_PROFILES,
   NpcIntentType,
+  STAR_SYSTEMS,
   distance,
 } from '@spacerquest/content';
-import { applyDisposition, npcDrives, resolveNpcDay } from '../npc.js';
-import { jumpFuelCost } from '../economy.js';
+import {
+  NPC_START_FUEL,
+  applyDisposition,
+  npcDrives,
+  npcShipForTier,
+  resolveNpcDay,
+} from '../npc.js';
+import { calculateFuelCapacity, contractSpecFromShip, jumpFuelCost } from '../economy.js';
+import { navFuelFactor } from '../components.js';
+import { advanceDay } from '../day.js';
+
+/** Longest route the cast can fly (systems 1-20): Cygnus-16 → Rigel-19. The
+ *  worst case the hull-derived fuel ceiling has to clear — computed from the
+ *  content star map, never restated as a literal. */
+const MAX_NPC_ROUTE_DISTANCE = Math.max(
+  ...Object.values(STAR_SYSTEMS)
+    .map((s) => s.id)
+    .filter((id) => id <= 20)
+    .flatMap((a, _i, ids) => ids.map((b) => distance(a, b))),
+);
 import { createInitialState } from '../state.js';
 import { SeededRng } from '../rng.js';
 import { GameEvent, NpcState } from '../types.js';
@@ -27,17 +46,27 @@ const VERB_CONTEXT: Record<string, string> = {
   Socialize: 'npc-socialize',
 };
 
-function npcFor(profileId: string, overrides: Partial<NpcState> = {}): NpcState {
+/** N1 · `fuel` is no longer a field on `NpcState` — it is the ship's tank. It
+ *  stays a top-level knob HERE because every funding case below reads as
+ *  "credits X, fuel Y", and routing it into `ship.fuel` keeps those cases
+ *  legible while the state stays single-sourced. */
+function npcFor(
+  profileId: string,
+  overrides: Partial<NpcState> & { fuel?: number } = {},
+): NpcState {
   const profile = NPC_PROFILES.find((p) => p.id === profileId)!;
+  const { fuel, ...rest } = overrides;
+  const ship = npcShipForTier(profile.tier);
+  if (fuel !== undefined) ship.fuel = fuel;
   return {
     id: profile.id,
     name: profile.name,
     profileId: profile.id,
     currentSystemId: 1,
     credits: 5000,
-    fuel: 1000,
+    ship,
     disposition: 0,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -74,7 +103,77 @@ describe('NPC Resolution', () => {
         NO_BOARD,
       );
       expect(npc.credits).toBeGreaterThanOrEqual(0);
-      expect(npc.fuel).toBeGreaterThanOrEqual(0);
+      expect(npc.ship.fuel).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N1 · THE DAY-1 CALIBRATION, held by assertion rather than by comment.
+//
+// `npcShipForTier` seeds a real ShipState from the profile tier, and the only
+// number in it with no pre-N1 counterpart is the HULL STRENGTH — the phantom had
+// none, and the engine derives the fuel TANK from it. The phantom's tank was
+// UNBOUNDED, so the seed is correct only while the derived ceiling cannot bind.
+// If it ever binds, N1 has silently become a fuel-scarcity change and the sweep's
+// "no policy row moved" result stops meaning what it says.
+// ---------------------------------------------------------------------------
+describe('N1 · the seeded NPC ship reproduces the phantom (day-1 calibration)', () => {
+  it('hands rollContract exactly the spec the tier-derived phantom did', () => {
+    for (const profile of NPC_PROFILES) {
+      const spec = contractSpecFromShip(npcShipForTier(profile.tier));
+      // The pre-N1 literal, verbatim from the old executeTrade call site.
+      expect(spec).toEqual({
+        cargoPods: 2 + profile.tier * 2,
+        hullCondition: 9,
+        drives: npcDrives(profile.tier),
+      });
+    }
+  });
+
+  it('prices a jump identically through the ship as through the tier drives', () => {
+    // The old call was `jumpFuelCost(npcDrives(tier), distance)`. The new one goes
+    // through the ship's Trans-Warp flag and nav discount as the player's does —
+    // and must cost the same, because the seed carries neither.
+    for (const profile of NPC_PROFILES) {
+      const ship = npcShipForTier(profile.tier);
+      expect(navFuelFactor(ship)).toBe(1);
+      expect(ship.hasTransWarpDrive).toBe(false);
+      for (const dist of [1, 5, 14, 30, MAX_NPC_ROUTE_DISTANCE]) {
+        expect(jumpFuelCost(ship.drives, dist, ship.hasTransWarpDrive, navFuelFactor(ship))).toBe(
+          jumpFuelCost(npcDrives(profile.tier), dist),
+        );
+      }
+    }
+  });
+
+  it('gives every tier a tank the refueller can never fill (the ceiling cannot bind)', () => {
+    // Two ways the clamp in `refuelIfNeeded` could bite, both ruled out per tier:
+    //   1. the roster is BORN with NPC_START_FUEL, so the ceiling must clear it;
+    //   2. the largest single top-up ever requested is `jumpFuelCost + 100` on the
+    //      longest route an NPC can fly.
+    for (const profile of NPC_PROFILES) {
+      const ship = npcShipForTier(profile.tier);
+      expect(ship.maxFuel).toBe(calculateFuelCapacity(ship.hull.strength, ship.hull.condition));
+      expect(ship.fuel).toBe(NPC_START_FUEL);
+      expect(ship.maxFuel).toBeGreaterThanOrEqual(NPC_START_FUEL);
+      const worstTopUp = jumpFuelCost(ship.drives, MAX_NPC_ROUTE_DISTANCE) + 100;
+      expect(ship.maxFuel).toBeGreaterThan(worstTopUp);
+    }
+  });
+
+  it('never clamps a tank across a long ambient career (the invariant, observed)', () => {
+    // The assertions above are arithmetic; this one watches the actual sim. Over
+    // 120 days of the real day loop no captain's tank ever reaches its ceiling, so
+    // the clamp is evaluated constantly and fires never — which is why the day-loop
+    // event goldens are byte-identical across N1.
+    let state = createInitialState(7);
+    for (let day = 0; day < 120; day += 1) {
+      state = advanceDay(state, [{ type: 'Wait' }]).state;
+      for (const npc of state.npcs) {
+        expect(npc.ship.fuel).toBeLessThan(npc.ship.maxFuel);
+        expect(npc.ship.fuel).toBeGreaterThanOrEqual(0);
+      }
     }
   });
 });
@@ -125,7 +224,7 @@ describe('NPC economics are real (T-106)', () => {
         distance(before.currentSystemId, npc.currentSystemId),
       );
       expect(npc.currentSystemId).not.toBe(before.currentSystemId);
-      expect(npc.fuel).toBe(before.fuel - expectedCost);
+      expect(npc.ship.fuel).toBe(before.ship.fuel - expectedCost);
       return;
     }
     throw new Error('no travel day found in 100 seeds');
@@ -139,7 +238,7 @@ describe('NPC economics are real (T-106)', () => {
 
       expect(npc.currentSystemId).not.toBe(before.currentSystemId);
       expect(npc.credits).toBeGreaterThan(before.credits);
-      expect(npc.fuel).toBeLessThan(before.fuel);
+      expect(npc.ship.fuel).toBeLessThan(before.ship.fuel);
       return;
     }
     throw new Error('no trade day found in 100 seeds');
@@ -183,7 +282,7 @@ describe('T-1201 NPCs roll real checks', () => {
 
     // Sweep the whole cast across two funding states so all five verbs AND the
     // broke fallbacks (Idle) AND flaw overrides actually fire.
-    const fundings: Partial<NpcState>[] = [
+    const fundings: (Partial<NpcState> & { fuel?: number })[] = [
       { credits: 5000, fuel: 1000 }, // flush: verbs execute
       { credits: 30, fuel: 5 }, // broke & dry: verb executors fall back to Idle
     ];

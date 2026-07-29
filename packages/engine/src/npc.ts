@@ -25,10 +25,19 @@ import {
   GameState,
   NpcAction,
   NpcState,
+  ShipState,
 } from './types.js';
 import { SeededRng } from './rng.js';
 import { check } from './dice.js';
-import { DriveBlock, jumpFuelCost, localFuelPrice, rollContract } from './economy.js';
+import {
+  DriveBlock,
+  calculateFuelCapacity,
+  contractSpecFromShip,
+  jumpFuelCost,
+  localFuelPrice,
+  rollContract,
+} from './economy.js';
+import { navFuelFactor } from './components.js';
 
 /**
  * NPC simulation v2 — the living galaxy (T-106).
@@ -46,7 +55,7 @@ const NPC_SYSTEM_IDS: readonly number[] = Object.values(STAR_SYSTEMS)
   .map((system) => system.id)
   .filter((id) => id <= 20);
 
-/** Nominal NPC ship by power tier: better drives make longer hauls cheaper.
+/** Nominal NPC drives by power tier: better drives make longer hauls cheaper.
  *  Tier 1 matches the player's starting drives (strength 10, condition 9).
  *
  *  T-106 intentionally SYNTHESIZES these numbers: the named cast never had
@@ -54,7 +63,12 @@ const NPC_SYSTEM_IDS: readonly number[] = Object.values(STAR_SYSTEMS)
  *  drives (20-30) are combat-encounter loadouts — too hot for an ambient
  *  economy sim (they would make every NPC jump nearly free). A gentle
  *  8 + 2×tier ramp keeps tier legible in fuel bills without breaking the
- *  shared jumpFuelCost math. */
+ *  shared jumpFuelCost math.
+ *
+ *  N1 · SEED-ONLY NOW. This was called on every NPC trade and every NPC jump,
+ *  which is what made an NPC's drives a constant of its profile forever. It is
+ *  now read exactly once per captain, by {@link npcShipForTier}; from then on
+ *  the drives live on `npc.ship.drives` and are the ship's, not the tier's. */
 export function npcDrives(tier: number): DriveBlock {
   return { strength: 8 + tier * 2, condition: 9 };
 }
@@ -64,9 +78,146 @@ export function npcDrives(tier: number): DriveBlock {
  *
  *  T-106 synthesized, same rationale as npcDrives: no canonical NPC pod
  *  counts exist. 2 + 2×tier brackets the player's starting 10 pods around
- *  mid-tier so NPC contract income scales like the player's. */
+ *  mid-tier so NPC contract income scales like the player's.
+ *
+ *  N1 · SEED-ONLY NOW, same as {@link npcDrives}. */
 function npcCargoPods(tier: number): number {
   return 2 + tier * 2;
+}
+
+/**
+ * N1 · Nominal NPC HULL STRENGTH by tier — the one genuinely new number this
+ * step adds, and the only place the day-1 calibration can go wrong.
+ *
+ * WHY A NEW NUMBER AT ALL. The phantom ship had no hull strength: the call
+ * sites passed a bare `hullCondition: 9` into `rollContract` and nothing else.
+ * A real {@link ShipState} needs one, and the engine derives the FUEL TANK from
+ * it (`calculateFuelCapacity(strength, condition)`), so the value chosen here
+ * decides how much fuel a captain can hold.
+ *
+ * WHAT IT IS CALIBRATED AGAINST: **the phantom's UNBOUNDED tank.** Before N1 an
+ * NPC's fuel was a bare number with no ceiling — `refuelIfNeeded` could top it
+ * up without limit and the roster was born with 1,000 units
+ * ({@link NPC_START_FUEL}). The worst case the tank must therefore absorb is
+ * the birth tank (1,000) and the largest single top-up the refueller ever asks
+ * for, which is `jumpFuelCost + 100` on the longest route an NPC can fly
+ * (distance 45, Cygnus-16 → Rigel-19, at tier-1 drives → 540 + 100 = 640).
+ * `2 + 2×tier` gives 1,200 units at tier 1 and 3,600 at tier 5, so the ceiling
+ * clears both at every tier and CANNOT BIND — which is what makes day 1
+ * numerically identical to the phantom rather than merely close.
+ * `npc.test.ts` asserts exactly that, per tier, so a future change to the ramp,
+ * to `NPC_START_FUEL`, to `FUEL_CAPACITY_HULL_MULTIPLIER` or to the star map
+ * cannot silently turn this into a fuel-scarcity change.
+ *
+ * WHY NOT TIGHTER. The engine's own pod rule (`shipyard.ts`
+ * `maxCargoPodsForShip`) would license a hull of 1–2 for these pod counts, and
+ * that is the shape a "realistic" NPC hull would have — it puts a tier-1
+ * captain on the player's 300-unit junker tank. It is also, precisely, a
+ * FUEL-SCARCITY LEVER: it would clamp the roster's birth tank 1,000 → 300 and
+ * make every long haul a refuelling decision. N1's contract is a state
+ * refactor that changes NO decision (BALANCE-REDESIGN-WORKLIST, N1), so the
+ * scarcity stays out. Tightening this ramp toward the player's hull is a real
+ * candidate for a later N-step that owns one knob and sweeps it.
+ *
+ * FOUNDATION: no divergence to declare. Foundation (f2f95fa9) gives the named
+ * cast no ship stat blocks at all, so — like `npcDrives` and `npcCargoPods`
+ * before it — this is a Rimward-authored ramp with no prior number to preserve.
+ */
+function npcHullStrength(tier: number): number {
+  return 2 + tier * 2;
+}
+
+/** Fuel every captain is born with. Unchanged from T-106, where it was a bare
+ *  literal in `createInitialState`; named here because {@link npcHullStrength}
+ *  is calibrated against it and `npc.test.ts` asserts the relationship. */
+export const NPC_START_FUEL = 1000;
+
+/**
+ * N1 · The day-1 seed: profile tier → the {@link ShipState} that captain owns.
+ *
+ * CALLED BY `state.ts` `createInitialState` (world creation) and by the v9→v10
+ * save migration in `save.ts`, which is the same mapping applied retroactively —
+ * they must never drift, which is why there is one function.
+ *
+ * EVERY FIELD IS CHOSEN TO REPRODUCE THE PHANTOM EXACTLY, not to look plausible:
+ *   - `cargoPods` / `drives` — the T-106 ramps, unchanged, so `rollContract` is
+ *     handed the same spec it was handed before (via `contractSpecFromShip`).
+ *   - `hull.condition: 9` — the literal the `rollContract` call sites passed.
+ *   - `hull.strength` — {@link npcHullStrength}; see there for the calibration.
+ *   - `navigation: { strength: 10, condition: 9 }` — the junker's nav, whose
+ *     `navFuelFactor` is exactly 1.0, so routing NPC jumps through the player's
+ *     full `jumpFuelCost(drives, dist, transWarp, navFactor)` signature costs
+ *     the same fuel the old two-argument call did. It is a real 1, not an
+ *     omitted argument: when N2 lets a captain buy nav, the discount lands
+ *     without touching this call site.
+ *   - `weapons` / `shields` / `lifeSupport` / `robotics` / `cabin` — the
+ *     junker's, and NOTHING READS THEM YET. They are structurally required by
+ *     `ShipState` and become live in N3 (NPCs meet pirates: `weaponVolleyDamage`
+ *     and `shieldMitigation` are their named future readers). Seeding them at
+ *     the player's starting values rather than at tier-scaled guesses is
+ *     deliberate: an invented combat fit would be an unmeasured balance change
+ *     smuggled in ahead of the step that is supposed to measure it.
+ *   - every special-equipment flag false — the phantom had none.
+ */
+export function npcShipForTier(tier: number): ShipState {
+  const hull = { strength: npcHullStrength(tier), condition: 9 };
+  return {
+    fuel: NPC_START_FUEL,
+    // Through the engine's own capacity function — never a restated formula.
+    maxFuel: calculateFuelCapacity(hull.strength, hull.condition),
+    cargoPods: npcCargoPods(tier),
+    hull,
+    drives: npcDrives(tier),
+    weapons: { strength: 1, condition: 9 },
+    shields: { strength: 1, condition: 9 },
+    navigation: { strength: 10, condition: 9 },
+    lifeSupport: { strength: 10, condition: 9 },
+    robotics: { strength: 10, condition: 9 },
+    cabin: { strength: 1, condition: 9 },
+    hasTransWarpDrive: false,
+    hasCloaker: false,
+    hasAutoRepair: false,
+    hasStarBuster: false,
+    hasArchAngel: false,
+    isAstraxialHull: false,
+    hasTitaniumHull: false,
+  };
+}
+
+/**
+ * N1 · THE SAVE BACKFILL, in one place, because there are two paths into a
+ * loaded game and they must not drift: the versioned envelope (`save.ts`'s
+ * v9→v10 migration) and the schema-tolerant `deserializeState` (`state.ts`).
+ *
+ * Gives a pre-N1 captain the ship their tier says they always had, and carries
+ * their SAVED fuel across into its tank rather than refilling it — a legacy
+ * captain who was down to 12 units stays down to 12 units. `carriedFuel` is
+ * `unknown` because the migration hands over raw JSON; anything that is not a
+ * finite number falls back to the seeded tank, and an over-full legacy tank is
+ * clamped to the hull's ceiling (which cannot happen from a real save — the old
+ * tank only ever held `jumpFuelCost + 100` — but a migration must not be the
+ * thing that produces an invalid state).
+ *
+ * An unknown `profileId` resolves to tier 1 rather than throwing: a migration
+ * must never be the thing that throws (save.ts registry header).
+ */
+export function seedNpcShip(profileId: string, carriedFuel: unknown): ShipState {
+  const tier = NPC_PROFILES.find((p) => p.id === profileId)?.tier ?? 1;
+  const ship = npcShipForTier(tier);
+  if (typeof carriedFuel === 'number' && Number.isFinite(carriedFuel)) {
+    ship.fuel = Math.max(0, Math.min(ship.maxFuel, carriedFuel));
+  }
+  return ship;
+}
+
+/** The fuel an NPC jump costs, through the SAME call the player's travel makes
+ *  (`actions/travel.ts`): the ship's drives, its Trans-Warp flag and its
+ *  navigation discount. Seeded ships carry no Trans-Warp and a junker nav
+ *  (factor 1.0), so this is numerically identical to the pre-N1
+ *  `jumpFuelCost(npcDrives(tier), distance)` — and it stops being identical the
+ *  moment N2 lets a captain buy either, with no change needed here. */
+function npcJumpFuelCost(ship: ShipState, routeDistance: number): number {
+  return jumpFuelCost(ship.drives, routeDistance, ship.hasTransWarpDrive, navFuelFactor(ship));
 }
 
 /** Broke line: under this an NPC stops discretionary spending, takes odd
@@ -165,9 +316,11 @@ export function pickIntent(
  * opens by copying its subject. `__tests__/clone.test.ts` holds the line with a
  * source scan, the same way it already holds the event log's.
  *
- * A structural clone rather than a spread, deliberately: the record is about to
- * grow a `ship` with nested component objects, and a shallow copy would share
- * those and reintroduce exactly the bug this exists to prevent.
+ * A structural clone rather than a spread, deliberately — and as of N1 that is no
+ * longer a precaution but a requirement: the record now carries a `ship` with
+ * eight nested component objects, and a shallow copy would share them, so
+ * `mutableNpc(...).ship.fuel -= n` would reach straight back into every earlier
+ * snapshot. That is the exact bug this function exists to prevent.
  */
 export function mutableNpc(state: GameState, npcId: string): NpcState | null {
   const index = state.npcs.findIndex((candidate) => candidate.id === npcId);
@@ -224,16 +377,27 @@ export function applyDisposition(
 }
 
 /** Refuel at the CURRENT system's real depot price when the tank can't cover
- *  `needed`. Keeps a small credit reserve so refueling never zeroes an NPC. */
+ *  `needed`. Keeps a small credit reserve so refueling never zeroes an NPC.
+ *
+ *  N1 · The tank is now the SHIP's, so the top-up is clamped to `maxFuel` the
+ *  same way the player's `resolveTrade` clamps a fuel purchase — a captain
+ *  cannot carry more than the hull holds. THIS CLAMP IS EVALUATED ON EVERY
+ *  REFUEL AND NEVER BINDS at the seeded fits (npcHullStrength is calibrated so
+ *  it cannot; `npc.test.ts` pins that per tier), which is exactly why day 1 is
+ *  numerically identical to the phantom's unbounded tank. It is here so that a
+ *  captain who later loses hull condition — N3 — is fuel-limited by their ship
+ *  rather than by nothing. */
 function refuelIfNeeded(npc: NpcState, needed: number, eraEvent: EraEventState | null): void {
-  if (npc.fuel >= needed) return;
+  const ship = npc.ship;
+  if (ship.fuel >= needed) return;
   const price = localFuelPrice(npc.currentSystemId, eraEvent);
   const spendable = Math.max(0, npc.credits - NPC_BROKE_CREDITS);
   const affordable = Math.floor(spendable / price);
-  const amount = Math.min(needed - npc.fuel + 100, affordable);
+  const room = Math.max(0, ship.maxFuel - ship.fuel);
+  const amount = Math.min(needed - ship.fuel + 100, affordable, room);
   if (amount <= 0) return;
   npc.credits -= amount * price;
-  npc.fuel += amount;
+  ship.fuel += amount;
 }
 
 function brokeIdle(npc: NpcState, rng: SeededRng, day: number, events: GameEvent[]): NpcAction {
@@ -317,22 +481,16 @@ function executeTrade(
     claimedContractIndex = Math.floor(rng.next() * ctx.claimableBoard.length);
     contract = ctx.claimableBoard[claimedContractIndex]!;
   } else {
-    contract = rollContract(
-      npc.currentSystemId,
-      rng,
-      {
-        cargoPods: npcCargoPods(profile.tier),
-        hullCondition: 9,
-        drives: npcDrives(profile.tier),
-      },
-      ctx.eraEvent,
-    );
+    // N1 · The offer is sized against the ship this captain actually owns,
+    // through the engine's own `contractSpecFromShip` — the same adapter the
+    // player's manifest board uses — instead of a tier-derived phantom spec.
+    contract = rollContract(npc.currentSystemId, rng, contractSpecFromShip(npc.ship), ctx.eraEvent);
   }
 
   const routeDistance = systemDistance(npc.currentSystemId, contract.destination);
-  const fuelCost = jumpFuelCost(npcDrives(profile.tier), routeDistance);
+  const fuelCost = npcJumpFuelCost(npc.ship, routeDistance);
   refuelIfNeeded(npc, fuelCost, ctx.eraEvent);
-  if (npc.fuel < fuelCost) {
+  if (npc.ship.fuel < fuelCost) {
     // Can't fund the haul: the claim never happens (the offer stays on the
     // board) and the day is lost to the docks.
     return { action: brokeIdle(npc, rng, ctx.day, events) };
@@ -355,7 +513,7 @@ function executeTrade(
   // So the soured-run consequence is the visible wire narrative + the recorded
   // failure, not a payout change. (Verified: a payout/fuel penalty here pushes
   // the seed-1 solvency ratio out of band; this design holds it at baseline.)
-  npc.fuel -= fuelCost;
+  npc.ship.fuel -= fuelCost;
   npc.currentSystemId = contract.destination;
   npc.credits += contract.payment;
   const cargoName = CARGO_TYPES[contract.cargoType]?.name ?? `type-${contract.cargoType} cargo`;
@@ -388,22 +546,19 @@ function executeTravel(
 ): NpcAction {
   const options = NPC_SYSTEM_IDS.filter((id) => id !== npc.currentSystemId);
   const destination = options[Math.floor(rng.next() * options.length)];
-  const fuelCost = jumpFuelCost(
-    npcDrives(profile.tier),
-    systemDistance(npc.currentSystemId, destination),
-  );
+  const fuelCost = npcJumpFuelCost(npc.ship, systemDistance(npc.currentSystemId, destination));
   refuelIfNeeded(npc, fuelCost, ctx.eraEvent);
-  if (npc.fuel < fuelCost) {
+  if (npc.ship.fuel < fuelCost) {
     return brokeIdle(npc, rng, ctx.day, events);
   }
-  npc.fuel -= fuelCost;
+  npc.ship.fuel -= fuelCost;
   npc.currentSystemId = destination;
   // A Travel (PILOT) check decides a clean jump vs a rough one (T-1201).
   const result = rollNpcCheck(npc, profile, 'Travel', rng, events);
   if (result.success) {
     return { type: 'Travel', details: `jumped to ${systemName(destination)}` };
   }
-  npc.fuel = Math.max(0, npc.fuel - NPC_TRAVEL_FAIL_EXTRA_FUEL);
+  npc.ship.fuel = Math.max(0, npc.ship.fuel - NPC_TRAVEL_FAIL_EXTRA_FUEL);
   return {
     type: 'Travel',
     details: `made a rough jump to ${systemName(destination)}, burning extra fuel`,
@@ -418,10 +573,10 @@ function executeCombat(
   events: GameEvent[],
 ): NpcAction {
   refuelIfNeeded(npc, NPC_COMBAT_FUEL, ctx.eraEvent);
-  if (npc.fuel < NPC_COMBAT_FUEL) {
+  if (npc.ship.fuel < NPC_COMBAT_FUEL) {
     return brokeIdle(npc, rng, ctx.day, events);
   }
-  npc.fuel -= NPC_COMBAT_FUEL;
+  npc.ship.fuel -= NPC_COMBAT_FUEL;
   // A Combat (GUNS) check through the shared check() decides the engagement
   // (T-1201, replacing a raw inline d20+GUNS threshold of 12 — the DC now lives
   // in content NPC_CHECK_DCS); a win pays a tier-scaled bounty (the anonymous
@@ -456,7 +611,7 @@ function executePatrol(
   if (npc.credits < NPC_BROKE_CREDITS) {
     return brokeIdle(npc, rng, ctx.day, events);
   }
-  npc.fuel = Math.max(0, npc.fuel - NPC_PATROL_FUEL);
+  npc.ship.fuel = Math.max(0, npc.ship.fuel - NPC_PATROL_FUEL);
   // A Patrol (GRIT) check decides a productive sweep vs a costly quiet day
   // (T-1201).
   const result = rollNpcCheck(npc, profile, 'Patrol', rng, events);
@@ -507,6 +662,13 @@ function executeSocialize(
 
 export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext): NpcDayResult {
   const events: GameEvent[] = [];
+  // The subject's private copy for the day — this is why an NPC's OWN turn does
+  // not need `mutableNpc`. N1 · `structuredClone` rather than the old
+  // `JSON.parse(JSON.stringify(npc))`: the record grew a ship with eight nested
+  // component objects, and the JSON round-trip on the fatter record cost ~21% of
+  // the ambient NPC day (0.345 -> 0.418 ms/game-day over 10 seeds x 120 days;
+  // structuredClone puts it back at 0.35). Same depth of copy, same result — and
+  // it is already the clone `mutableNpc` uses on the same type.
   const updatedNpc = JSON.parse(JSON.stringify(npc)) as NpcState;
 
   const profile = NPC_PROFILES.find((p) => p.id === updatedNpc.profileId);
@@ -562,9 +724,9 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
       }
     }
     if (flawDef.fuel === 'drain') {
-      updatedNpc.fuel = 0;
+      updatedNpc.ship.fuel = 0;
     } else if (flawDef.fuel) {
-      updatedNpc.fuel = Math.max(0, updatedNpc.fuel + flawDef.fuel);
+      updatedNpc.ship.fuel = Math.max(0, updatedNpc.ship.fuel + flawDef.fuel);
     }
   } else if (intent === 'Trade') {
     const result = executeTrade(updatedNpc, profile, rng, ctx, events);

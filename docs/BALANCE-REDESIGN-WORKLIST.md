@@ -940,6 +940,92 @@ CAPSTONE and the fast loop is staged smoke tests seeded from its output (N7).
 - **Disproves:** the field's wealth distribution collapses or explodes — the day-1 seed
   is mis-calibrated against the old phantom.
 
+**Result (2026-07-28): CHANGE ACCEPTED — HYPOTHESIS DISPROVED, and the step's own
+Proves clause contradicts its Change clause.**
+
+`NpcState.ship: ShipState` shipped. `NpcState.fuel` was **removed** rather than kept
+beside it — the tank moved onto the ship, mirroring `PlayerState` (which has never
+carried a top-level `fuel`); two fuel numbers on one captain would have been two sources
+of truth. Save schema **9 → 10** with `MIGRATIONS[9]`, the first entry in that registry
+that MOVES a field rather than adding one: it seeds each captain's ship from their
+profile tier, pours the saved `fuel` into `ship.fuel`, and drops the old key. Idempotent,
+never throws, and shares ONE seeding function with `createInitialState` and
+`deserializeState` so a migrated roster cannot drift from a freshly created one.
+
+**Nothing moved. Not approximately — exactly.** The capstone (1,000 seeds × 120 days ×
+8 policies, 8 shards) is **byte-identical to `baseline-r2c-final.json` apart from the
+`label` field**: all 8 policy rows and the fleet aggregate compare equal. NPC wealth
+percentiles at day 30 / 60 / 120 (300 records) are identical **to the credit** at every
+one of min/p10/p25/median/p75/p90/max/mean/sd. A 10-seed × 120-day × 30-NPC trajectory
+hash over every captain's credits/fuel/system/disposition/lastAction is unchanged
+(`1fda0f41…c0c2f` both sides).
+
+**Why — and this is the transferable part.** The step asks the seed to be calibrated so
+"day 1 is close to today's behavior" and simultaneously asks that "NPC wealth spread
+widens". **Those cannot both hold.** The phantom ship IS a pure function of the profile
+tier, so a ship seeded from that tier and never mutated is arithmetically the phantom
+wearing a struct. Movement was only ever available by smuggling in a lever the step
+forbids. The Proves clause was mis-assigned: **it belongs to N2**, where the decision
+that could move it lives. Read correctly, N1's deliverable is a 30-record state change
+plus a save migration with a *zero*-behaviour blast radius — and the byte-identity is the
+proof it landed cleanly, not evidence of a null result. Restated Proves for N1: *no
+behaviour moves; NPC capability becomes mutable state the captain owns instead of a
+constant recomputed from their profile.*
+
+**The one genuinely new number is `hull.strength = 2 + 2·tier`**, and it is calibrated
+against the phantom's *unbounded* tank: pre-N1 an NPC's fuel had no ceiling. It yields
+1,200 (tier 1) … 3,600 (tier 5) via the engine's own `calculateFuelCapacity`, clearing
+both the 1,000-unit birth tank and the largest top-up `refuelIfNeeded` ever requests
+(640, on the distance-45 Cygnus-16 → Rigel-19 run at tier-1 drives). **The clamp
+therefore cannot bind** — which is what makes day 1 identical rather than merely close,
+and it was verified observationally too (across 120 day-loop days no captain's fuel ever
+reaches `maxFuel`). *Rejected deliberately, and recorded because it is a live candidate
+for a later step:* the engine's own `maxCargoPodsForShip` licenses a hull of 1–2 for
+these pod counts, which would clamp the roster's birth tank 1,000 → 300 and make every
+long haul a refuelling decision. **That is a fuel-scarcity lever, not a modelling
+choice**, and N1's contract is to change no decision. It stays out until a step owns it.
+
+**Costs, measured.** Save roster 4,129 → 19,569 bytes (+519/ship × 30); +4.2% on a real
+30-day save, +0.14% on a 1,000-day save (the event log dominates any real career); load
+time unchanged. Per-day cost +8% on a 1,000-day career (1.40 → 1.51 ms) — ~0.1 ms of the
+~39 ms of headroom N0 bought. `structuredClone` in `resolveNpcDay` was tried and is
+*worse* (0.47 vs 0.42 ms ambient); the existing clone stayed.
+
+**N0's guard was blind to nested writes, and N1 is the change that would have walked into
+it.** `clone.test.ts`'s source scan matched only `handle.field = …`, so `rescuer.ship.fuel
+-= amount` — the exact write this step introduces — was structurally invisible to it, as
+was any `npc.lastAction.details = …`. The pattern now matches an assignment anywhere down
+a member path rooted at an NPC handle while still permitting comparisons. Verified
+N0-style by injecting `npc.ship.fuel -= 1` into `storylets.ts` and watching it fail, then
+go green on removal. **The guard had never been tested against a nested path**; that is a
+latent hole this step closed, not one it opened.
+
+**Goldens re-pinned (2 files, deliberately).** `day-loop-golden.ts` STATE hashes
+`71b3315e…` → `f07d6de2…` and `1f187dbe…` → `86fbc0cc…` — mechanism: `serializeState`
+carries 30 more ship blocks. **Both EVENT hashes are unchanged**, and that split IS the
+evidence: a mis-calibrated seed would have moved the event hashes too. `replay-golden.ts`
+regenerated; only the three SESSION strings needed to (they embed `serializeState`), and
+rewriting every NPC record back to its pre-N1 shape makes all six compare equal, rngStates
+included.
+
+**Baseline of record is UNCHANGED: `docs/balance/baseline-r2c-final.json`.** Per R1's
+precedent, a disproved hypothesis re-pins nothing. `baseline-n1.json` is committed as the
+provenance of this step's capstone; that it diffs to nothing against its predecessor is
+the finding, and one `diff` reproduces it.
+
+**Battery:** `npm test` **1,114 passing / 0 failing** (1,104 + 10 new: 4 seed-calibration,
+6 v9→v10 migration), `tsc -b`, `eslint`, `prettier` all clean. The two `it.fails`
+tripwires were not touched and still hold — expected, since no policy row moved.
+
+> **BLOCKS N2, found here: the shipyard API is player-shaped.** `quoteShipyard`,
+> `shipyardCost`, `shipyardFailure`, `applyShipyardMutation` and `maxCargoPodsForShip` all
+> take `(state: GameState, …)` and read `state.player.ship` / `.credits` / `.registry`
+> directly. **An NPC cannot be priced through any of them as they stand** — so N2's
+> instruction to price upgrades "through the engine's own `quoteShipyard`, never a
+> parallel cost model" is currently *impossible*, and the path of least resistance is
+> exactly the parallel cost model R2c warns about. Giving these functions an actor
+> parameter (ship + credits + rank) is **N2's first task, not an optional cleanup**.
+
 ### N2 — NPCs upgrade their ships
 
 *The owner's stated core complaint: "If the NPC never upgrades their ship, they never

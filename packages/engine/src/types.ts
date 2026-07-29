@@ -1101,7 +1101,26 @@ export interface NpcState {
   profileId: string;
   currentSystemId: number;
   credits: number;
-  fuel: number;
+  /**
+   * N1 · THE SHIP THE CAPTAIN OWNS — the same {@link ShipState} the player flies,
+   * not a tier-derived phantom recomputed on every action.
+   *
+   * Before N1 an NPC had no ship at all: `npc.ts` synthesized `npcCargoPods(tier)`
+   * / `npcDrives(tier)` / a literal `hullCondition: 9` at each call site, so an
+   * NPC's capability was a CONSTANT of its profile and could never change — which
+   * is why an NPC could never earn more by investing (the N2 complaint).
+   *
+   * IT ALSO OWNS THE TANK. `NpcState.fuel` is gone; the fuel an NPC is carrying is
+   * `npc.ship.fuel`, bounded by `npc.ship.maxFuel`, exactly as the player's is.
+   * Two fuel numbers on one captain would be two sources of truth, and the phantom
+   * had no tank ceiling at all.
+   *
+   * SEEDED BY: `npc.ts` `npcShipForTier` (world creation, and the v9→v10 save
+   * migration). READ BY: `npc.ts` `executeTrade` / `executeTravel` /
+   * `executeCombat` / `executePatrol` / `refuelIfNeeded`, and `day.ts`'s bond-hook
+   * fuel gift.
+   */
+  ship: ShipState;
   /** Per-NPC standing toward the player, clamped to [-10, +10]; decays one
    *  step toward 0 each dusk. */
   disposition: number;
