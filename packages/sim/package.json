@@ -8,6 +8,9 @@
     "build": "tsc -b",
     "sim": "tsx src/index.ts",
     "balance:sweep": "tsx src/balance/sweep.ts",
+    "balance:diff": "tsx src/balance/diff-cli.ts",
+    "balance:extract": "tsx src/balance/smoke-extract.ts",
+    "balance:smoke": "vitest run src/__tests__/balance-smoke.test.ts src/__tests__/balance-rig.test.ts",
     "test": "vitest run"
   },
   "dependencies": {

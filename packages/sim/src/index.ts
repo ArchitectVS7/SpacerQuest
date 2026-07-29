@@ -527,6 +527,90 @@ export interface CampaignStatsReport {
     systemId: number;
   };
   daily: CampaignDayStats[];
+  /**
+   * N7 · THE POISON MARK. Present, and only present, when this career did not
+   * start at day 1 from `createInitialState` — i.e. when `RunCampaignExtras.
+   * startState` supplied a SYNTHESIZED mid-game world (see
+   * `balance/synthesize.ts`).
+   *
+   * It exists to make the smoke rig's honest caveat STRUCTURAL rather than
+   * documentary: `balance/aggregate.ts` `summarizeReport` copies it onto the row
+   * and `aggregate` THROWS on any row that carries it, so a synthesized run
+   * cannot be folded into a baseline — the artefact that grades balance — by any
+   * route, including an accidental one. Breakage detection only.
+   *
+   * `?: true` rather than `: boolean` is deliberate: `JSON.stringify` omits an
+   * absent optional, so an ordinary career's report JSON is byte-identical to its
+   * pre-N7 self and the pinned fingerprints in `campaign-degraded.test.ts` do not
+   * move. READERS: `balance/aggregate.ts` (both functions), `balance/smoke.ts`.
+   */
+  syntheticStart?: true;
+  /**
+   * N7 · MILESTONE SAMPLES — the real progression spread a capstone harvests so
+   * the smoke fixtures stop being guesses (the worklist's "every capstone run
+   * harvests real milestone samples to replace them").
+   *
+   * Absent unless `RunCampaignExtras.milestoneDays` asked for them, for the same
+   * byte-identity reason as `syntheticStart`. READER:
+   * `balance/aggregate.ts` `summarizeReport` → `balance/checkpoints.ts`.
+   */
+  milestones?: MilestoneSample[];
+}
+
+/**
+ * N7 · One captain-field snapshot, taken at the START of a milestone day — the
+ * moment a synthesized tier state has to reproduce.
+ *
+ * WHAT IS AND IS NOT HERE. Only the fields `balance/synthesize.ts` writes back:
+ * a sample is the spec for a synthesized state, so carrying anything the
+ * synthesizer cannot restore would invite a reader to believe the synthesis is
+ * more faithful than it is. The NPC arrays are the whole roster in roster order.
+ */
+export interface MilestoneSample {
+  day: number;
+  player: {
+    credits: number;
+    debt: number;
+    fuel: number;
+    maxFuel: number;
+    systemId: number;
+    tier: number;
+    deedCount: number;
+    renownRank: RenownRankId;
+    /** `max(weapons, hull, shields)` — the combat fit `computePlayerTier` reads. */
+    shipRating: number;
+    /** The four component strengths a synthesized ship is rebuilt from. Carried
+     *  individually rather than as the rating alone because the HULL decides the
+     *  fuel tank (`calculateFuelCapacity`): a synthesis that restored the rating
+     *  by moving weapons only would hand a tier-5 captain a day-1 tank and the
+     *  tier would measure stranding instead of play. */
+    weaponsStrength: number;
+    hullStrength: number;
+    shieldsStrength: number;
+    drivesStrength: number;
+    cargoPods: number;
+    crew: number;
+  };
+  /** Every NPC's purse, roster order. The wealth SPREAD across the field. */
+  npcCredits: number[];
+  /** Every NPC's hull strength, roster order — the capability their ship carries. */
+  npcHullStrength: number[];
+  npcFuel: number[];
+  npcSystemId: number[];
+}
+
+/** N7 · Optional extras for `runCampaign`. Both are absent on every ordinary
+ *  call, and both leave the report JSON byte-identical when absent. */
+export interface RunCampaignExtras {
+  /**
+   * Start from THIS state instead of `createInitialState(seed)`. The one and only
+   * door to a mid-game start, and it stamps `syntheticStart` on the report —
+   * there is deliberately no way to open it without being marked.
+   */
+  startState?: GameState;
+  /** Days (by `state.day`, sampled at dawn before the day is played) to record a
+   *  {@link MilestoneSample} for. */
+  milestoneDays?: readonly number[];
 }
 
 export type SimPolicy = (context: {
@@ -3856,12 +3940,19 @@ export function runCampaign(
   seed: number,
   days: number,
   policy: SimPolicyName | SimPolicy,
+  extras: RunCampaignExtras = {},
 ): CampaignStatsReport {
   validateInteger('seed', seed, Number.MIN_SAFE_INTEGER);
   validateInteger('days', days, 0);
 
   const resolvedPolicy = resolvePolicy(policy);
-  let state = createInitialState(seed);
+  // N7 · ONE loop, two possible starting worlds. The staged smoke runner reuses
+  // this function rather than re-implementing start→act→dusk, which is R2c's
+  // lesson applied to the instrument: a second copy of the day loop would agree
+  // with this one right up until it inherited a bug and stopped.
+  const milestoneDays = new Set(extras.milestoneDays ?? []);
+  const milestones: MilestoneSample[] = [];
+  let state = extras.startState ?? createInitialState(seed);
   const creditsCurve: number[] = [];
   const daily: CampaignDayStats[] = [];
   let debtClearedDay: number | null = null;
@@ -3936,6 +4027,10 @@ export function runCampaign(
 
   for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
     const startingDay = state.day;
+    // N7 · Sampled at DAWN, before the day is played: a milestone is the spec for
+    // a synthesized state, and a synthesizer hands `runCampaign` a world that has
+    // not yet had its day-N dawn either.
+    if (milestoneDays.has(startingDay)) milestones.push(sampleMilestone(state));
     const rng = new SeededRng(seed)
       .fork('policy')
       .fork(`day-${startingDay}`)
@@ -4113,6 +4208,41 @@ export function runCampaign(
       systemId: state.player.currentSystemId,
     },
     daily,
+    // Spread rather than assigned so an ordinary call emits neither key and its
+    // report JSON stays byte-identical to the pre-N7 shape.
+    ...(extras.startState === undefined ? {} : { syntheticStart: true as const }),
+    ...(milestones.length === 0 ? {} : { milestones }),
+  };
+}
+
+/** N7 · The dawn snapshot behind {@link MilestoneSample}. Reads the live state;
+ *  every derived number comes from the engine's own field rather than a
+ *  re-computation here. */
+function sampleMilestone(state: GameState): MilestoneSample {
+  const ship = state.player.ship;
+  return {
+    day: state.day,
+    player: {
+      credits: state.player.credits,
+      debt: state.player.debt,
+      fuel: ship.fuel,
+      maxFuel: ship.maxFuel,
+      systemId: state.player.currentSystemId,
+      tier: state.player.tier,
+      deedCount: state.player.registry.earned.length,
+      renownRank: state.player.registry.renownRank,
+      shipRating: Math.max(ship.weapons.strength, ship.hull.strength, ship.shields.strength),
+      weaponsStrength: ship.weapons.strength,
+      hullStrength: ship.hull.strength,
+      shieldsStrength: ship.shields.strength,
+      drivesStrength: ship.drives.strength,
+      cargoPods: ship.cargoPods,
+      crew: state.player.crew.length,
+    },
+    npcCredits: state.npcs.map((npc) => npc.credits),
+    npcHullStrength: state.npcs.map((npc) => npc.ship.hull.strength),
+    npcFuel: state.npcs.map((npc) => npc.ship.fuel),
+    npcSystemId: state.npcs.map((npc) => npc.currentSystemId),
   };
 }
 

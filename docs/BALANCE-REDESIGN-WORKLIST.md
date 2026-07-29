@@ -881,12 +881,13 @@ a glance" for why N7 moved).
 | --- | --- | --- |
 | N0 — copy-on-write discipline | **SHIPPED** | clone flat in NPC richness, not linear; killed the quadratic |
 | N1 — NPCs own a real ship | **SHIPPED** `b438096b` | change accepted, **hypothesis disproved** — capstone byte-identical; found the N2 blocker + the fuel exemption |
-| N7 — capstone diff + smoke rig | IN PROGRESS | — |
+| N7 — capstone diff + smoke rig | **SHIPPED** | **accepted** — 1.5 s smoke vs 2 min capstone; staleness fails loudly; found N9 |
 | N2 — NPCs upgrade their ships | TODO | blocked on the shipyard actor param; owns N1's orphaned spread clause + the hull re-seed |
 | N6 — Honor List, 31-way board | TODO | unblocked by N1 |
 | N3 — NPCs meet pirates | TODO | permanent NPC death is SETTLED; service-NPC mortality is not |
 | N4 — NPC archetypes | TODO | — |
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile` |
+| **N9 — the instrument's three unplayed actions** | **TODO — NEW** | found by N7; `Crew`/`Port`/`Reroll` emitted 0 times; **must precede N8** |
 | N8 — re-pin against a living field | TODO | gates the R-series resuming |
 
 **WHAT AN NPC ACTUALLY IS TODAY (measured 2026-07-28, `packages/engine/src/npc.ts`):**
@@ -1169,7 +1170,7 @@ increase their trade profit."*
   ranks the whole field, which is what the owner asked for originally and what makes the
   eight titles a contest rather than a progress bar.
 
-### N7 — The measurement rig: capstone sweep + staged smoke tests
+### N7 — The measurement rig: capstone sweep + staged smoke tests (SHIPPED 2026-07-28)
 
 *Owner's design, recorded because it is the answer to the 80-minute sweep.*
 
@@ -1198,6 +1199,145 @@ increase their trade profit."*
   states. That is fine for a breakage detector and **must never be used to grade
   balance** — this repo's own tests warn against poking state to reach a scenario. Smoke
   tests catch regressions; the capstone sweep remains the only authority on numbers.
+
+**Result (2026-07-28): ACCEPTED. The rig is both fast and honest, and it immediately found
+that the instrument has never played three of the game's eleven actions (see N9).**
+
+Ships as `npm run balance:diff` / `balance:extract` / `balance:smoke`, plus
+`--milestone-days` on the sweep. **94 new tests** (71 smoke + 23 rig guards), 1,114 →
+**1,208 passing**.
+
+| | measured |
+| --- | --- |
+| capstone (1,000 seeds × 120 d × 8 policies, 8 shards) | **1 m 46 s** + ~20 s merge |
+| checkpoint extraction (224 careers) | 502 ms |
+| **smoke suite, wall clock** | **1.5 s** (674 ms inside `npm test`) |
+| fingerprint computation, 56 rule sources | 13 ms |
+
+**Two fingerprints, not one — the judgment call this step turned on.** `rulesFingerprint`
+(`76ac9179…`, 56 sources) covers `packages/content/src` + the engine's rule modules.
+**`packages/sim` is deliberately OUT of it and into a separate `instrumentFingerprint`**:
+the sim is the thermometer, not the weather, so folding it in would assert *"the ruleset
+changed"* every time a policy was tuned — i.e. continuously through N2–N6, exactly the
+steps this rig exists to serve. But a checkpoint IS produced by the instrument, so
+ignoring it entirely would be worse. Two hashes, two failure sentences, two responses.
+`save.ts`/`schema.ts` are excluded because persistence is versioned by `saveSchemaVersion`
+(which the fixture also carries and checks) — safe only because of the N1 precedent, where
+`MIGRATIONS[9]` *calls* `npcShipForTier` rather than restating it, so the rule itself lives
+in a hashed file. `types.ts` and `clone.ts` are IN, on the N1 and N0 precedents
+respectively. **The classification is total and reviewer-checkable:** three tests enumerate
+`packages/{engine,content,sim}/src` and fail on any `.ts` that is neither hashed nor named
+in the exclusion map with a reason, so a new engine module cannot land unclassified.
+
+**Staleness verified independently, on a different file than the author used.** Appending a
+two-line comment to `packages/engine/src/npc.ts` moved the fingerprint `76ac9179…` →
+`48a96fbe…` and every tier failed in `beforeAll` — **the 64 tier assertions did not run at
+all**, so nothing could report green. There is no `--force`, no env override and no
+auto-refresh, and a rig test asserts that checking a stale fixture leaves the file on disk
+untouched.
+
+> **KNOWN OVER-SENSITIVITY, recorded rather than silently accepted:** the hash is over raw
+> file bytes, so a *comment* moves it — and BALANCE-POLICY Part B rule 3 requires
+> divergences to be commented at the definition site, which means rule-source comments
+> change often in exactly the steps N7 serves. Per the rig's own rule the fix is a new
+> capstone, which is 2 minutes, not 80 — so this is friction, not a defect, and it errs in
+> the safe direction. **Do not "optimise" it by stripping comments before hashing without
+> owner sign-off:** that needs a parser, and a parser that mis-parses fails silently in the
+> one direction this whole design exists to prevent.
+
+**The differ validated on real pairs, both cross-checked against this document.**
+`baseline-r2c-final.json → baseline-n1.json` prints *"NOTHING MOVED. Every compared field
+is equal on both sides"* (`label` is the sole deliberate ignore, and the report names what
+it ignored). `baseline-vet-1k.json → -r2a.json` reports moved rows `fleet, fighter,
+veteran` and unchanged `explorer, gambler, greedy, smuggler, trader, trader-degraded` —
+matching R2a's table to the credit, with R2a's byte-identical control reported as a
+first-class field. *Bug found and fixed during validation:* keying `topRoutes` by route id
+made the R2a pair report 192 phantom "shape changes" — a route dropping out of the top five
+is a value change, not a schema difference.
+
+**A fourth tier was added that the worklist did not specify: `days-29-31`.** `day.ts` forks
+the career at `day === player.debtDueDay` (30) into cleared/unpaid, and the unpaid branch
+sets `guild.debt-flagged`, which re-prices every board and encounter thereafter. Measured:
+**56/56 runs resolve Tour One on that tier, 0/56 on each of the other three.** Declared per
+tier rather than inferred from the day window, so if `debtDueDay` moves, the assertion
+fails and is re-decided instead of silently re-deriving.
+
+**The synthesized-state caveat is enforced structurally, not documented.** `runCampaign`'s
+only door to a mid-game start stamps `syntheticStart: true`; `summarizeReport` carries the
+stamp to the `SeedRow`; `aggregateRows` **throws** on any synthetic row, naming the seed and
+policy. Since a `BaselineAggregate` is the artefact every balance number in this document
+comes from, **a synthesized run cannot become a balance number by any route, including an
+accidental one.** Filtering was considered and rejected: a silent drop turns *"you measured
+something you may not measure"* into *"your sample was smaller than you thought"*.
+
+**What the smoke suite MISSES, stated because a breakage detector that oversells its
+coverage is the failure mode here.** *Ship loss and succession: zero coverage* — at 0.57
+deaths/1,000 days, 672 sim-days expects 0.38 deaths; that is arithmetic, not luck, and no
+seconds-scale tier can cover the death path. *A synthesized captain has an empty deed
+registry and LIEUTENANT rank*, so deed-gated storylets, rank-driven `player.tier` and the
+progression spine are untested in the three mid-game tiers (fabricating deeds would be
+authoring content inside a fixture — judged worse than the gap). *The spread is rank-coupled
+marginals, not joint samples*, so the `max` slot holds 83,701 credits **and** 25,000 debt —
+a captain who could have paid. *The recorded-outcome half only catches drift while the rules
+hold still*; when they move, the fingerprint fires and re-extraction rewrites the
+expectations by construction — which is why the **invariants** are a separate half, and why
+they include a per-tier "not measuring a stalled field" check so the goldens cannot quietly
+become tautologies.
+
+**Harvest path is built, not stubbed.** The shipped fixture is `spreadSource: "harvested"`
+from a real capstone; the `estimatedSpread` fallback was verified by extracting against a
+milestone-less baseline and correctly produced `spreadSource: "estimated"` with a re-run
+note. `--milestone-days` proven non-invasive: the harvest capstone diffs against
+`baseline-n1.json` at **0 numeric changes, 0 value changes, 3,699 shape changes — all of
+them added `milestones[…]` paths.** Same measurement, extra data.
+
+**Baseline of record UNCHANGED** (`baseline-r2c-final.json`). The harvest capstone is
+numerically identical to `baseline-n1.json` and was deliberately left uncommitted in
+`.scratch/` — writing a `baseline-*.json` into `docs/balance/` reads as a re-pin, and a
+re-pin is a decision, not a side effect.
+
+**Battery:** 1,208 passing / 0 failing, `tsc -b`, `eslint`, `prettier` clean. Both `it.fails`
+tripwires untouched (`git diff --stat` empty on each) and still holding.
+
+### N9 — The instrument has never played three of the eleven actions
+
+> **Found by N7, 2026-07-28. Sequenced BEFORE N8** — N-IDs are labels, not an order
+> (`docs/VERSIONING.md` §4). This is the same class of defect as R0a and R2a
+> ("let the instrument play the game a competent player would"), one level larger, and N8
+> re-pins the baseline every R-series conclusion will be re-read against. Re-pinning against
+> an instrument with a known blind spot bakes the blind spot into the yardstick.
+
+- **The measurement.** `packages/sim/src/index.ts` emits `type: 'Crew'` **0** times,
+  `type: 'Port'` **0** times, `type: 'Reroll'` **0** times. All three are first-class
+  `PlayerAction` members the engine fully resolves, and all three ARE emitted by
+  `protocol.ts` — the UGT adapter the LLM playtest driver uses. So the *game* supports them
+  and the *balance instrument* has never once used them. Confirmed empirically as well:
+  `player.crew.length` is **0 at every percentile** across 8,000 careers at days 21/29/41,
+  and 0 at days 30/60/90/120 across 10 seeds × 8 policies × 120 days.
+- **Why each one matters, with its named reader:**
+  - **`Reroll`** is part of the dawn five-die hand — *the game's central decision*, in this
+    track's own preamble. Every policy plays the hand it is dealt and never spends to
+    reshape it.
+  - **`Crew`** is T-1306's dice-progression source, read by `dice.ts` `dawnDiceModifiers`.
+  - **`Port`** is T-1307's dusk income, read by `port.ts` `portDuskIncome`.
+- **The sharp consequence: every balance number in this document was produced by that
+  instrument.** State this precisely rather than over-claiming — R2d's port re-pricing
+  measured *affordability* against the real field and re-ran its reach probe with appended
+  buy actions, so it is not invalidated. What IS true is that **no standing policy's economy
+  has ever included port income, crew dice, or a rerolled hand**, so the fleet's income
+  ceiling, its dice distribution and its clear-day medians are all measured on a strictly
+  narrower game than the one that ships.
+- **Corroborating measurement from the same source:** the yard is barely touched either —
+  at day 41 across 8,000 careers `playerShipRating` median AND p75 are both **1** (≥75% of
+  careers never buy a single combat component), and `playerCargoPods` runs **min 10 / max
+  11** against a starting 10. Cargo pods are effectively never bought. Consistent with R2a's
+  fighter-ceiling finding, now visible fleet-wide.
+- **Hypothesis to grade:** giving the competent policies the three missing verbs moves the
+  fleet's income and dice distributions materially — i.e. the current baseline understates
+  what competent play earns.
+- **Proves/disproves:** run it as its own step against `baseline-r2c-final.json`. If the
+  rows move, N8 must re-pin against the *complete* instrument. If they do not, that is a
+  finding about how marginal those verbs are, and it retires a standing doubt cheaply.
 
 ### N8 — Re-pin the baseline against a living field
 
@@ -1320,12 +1460,19 @@ DONE: R1 ──► R0a ──► R0b ──► R2 ──► R2c ──► R2d �
 NPC PARITY TRACK (in progress — the R-series is PAUSED behind it, see below):
   N0 (copy-on-write) ......................... DONE
    └─► N1 (NPCs own a real ship) ............. DONE  (change accepted, hypothesis disproved)
-        ├─► N7 (capstone diff + smoke rig) ... ◄── PULLED FORWARD, see below
+        ├─► N7 (capstone diff + smoke rig) ... DONE  (accepted; 1.5 s smoke, 2 min capstone)
+        │    └─► N9 (the instrument's three unplayed actions)  ◄── NEW, found by N7
         ├─► N6 (Honor List, 31-way board)
         └─► N2 (NPCs upgrade + shipyard actor param + hull re-seed)
              └─► N3 (NPCs meet pirates + answer them)
                   └─► N4 (archetypes) ──► N5 (proficiency spread)
                        └─► N8 (re-pin the baseline against a living field)
+                            ▲ N9 MUST LAND FIRST — see below
+
+WHY N9 GATES N8: N8 re-pins the baseline that every R-series conclusion gets re-read
+against. The instrument that would produce it has never emitted Crew, Port or Reroll
+(N7's finding), so re-pinning first would bake a known blind spot into the yardstick.
+Same class as R0a/R2a, and both of those had to precede the steps they graded.
 
 WHY N7 MOVED (owner decision 2026-07-28): the doc originally ran it after N4/N5. Every
 step from N2 on is graded by diffing a sweep, and at full NPC fidelity that capstone is

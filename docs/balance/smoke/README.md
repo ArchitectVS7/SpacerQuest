@@ -33,6 +33,16 @@ Every file records the world it was measured in, or it is not usable later:
 | `provenance` | sweep label, seed count, horizon, date, git commit |
 | `checkpoints` | the measured markers themselves |
 
+**N7 added one field beyond this table: `instrumentFingerprint`**, a second hash over
+`packages/sim`'s measuring code. The sim is the thermometer, not the weather — folding it
+into `rulesFingerprint` would make that field assert "the ruleset changed" every time a
+policy was tuned. But a checkpoint is still *produced* by the instrument, so an instrument
+change invalidates it just as thoroughly. Two hashes, two sentences, two responses. The
+classification and its reasoning live in `packages/sim/src/balance/rules-fingerprint.ts`.
+
+The fixture in this folder is `tiers.json`. Regenerate it with
+`npm run balance:extract` (never by hand); check it with `npm run balance:smoke`.
+
 ## The rule that makes this safe
 
 **A fixture whose `rulesFingerprint` does not match the current tree is STALE and must
