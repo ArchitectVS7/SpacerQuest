@@ -3,7 +3,7 @@
 
 **Version:** 0.1 — Visionary Draft
 **Date:** July 2026
-**Status:** Redesign phase. Supersedes the faithful-port PRD (`docs/PRD.md`) as design direction; the original PRD remains the canonical record of the 1991 rules and lore.
+**Status:** Redesign phase. Supersedes the original faithful-port design as design direction; the 1991 rules and lore of record live at git ref `f2f95fa9` (`git show f2f95fa9:foundation/rules/<file>`, `f2f95fa9:foundation/lore/User-Manual.md`), not as a file in this tree.
 **Working title:** *Spacer Quest: Rimward* (placeholder — "Rimward" evokes the frontier pull of the original's rim systems).
 
 ---

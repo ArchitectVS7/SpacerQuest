@@ -3,8 +3,8 @@
 **Status:** work list, written 2026-07-28. Output of the archetype-balance review (senior-dev
 assessment + three independent persona reviews: casual gamer, power gamer, game designer —
 all run on Sonnet, all briefed with identical neutral data).
-**Companions:** `ARCHETYPE-BALANCE-MATRIX.md` (the measured data), `BALANCE-POLICY.md`
-(governance), `PRD-REIMAGINED.md` (design intent).
+**Companions:** `BALANCE-POLICY.md` (governance, plus the archetype vocabulary and measured
+baseline in its Part D), `PRD-REIMAGINED.md` (design intent).
 
 ---
 
@@ -275,7 +275,8 @@ with a re-pin log recording the previous values and the cause (the other five ar
 - **The defect:** `baseline-vet-t1605.json` is 100 seeds × 120 days and records the trader at
   **0 ships / 0 routes lost**. At 1,000 seeds the same policy loses **21 ships and 19 routes**
   (0.175 deaths/1k). The headline "0 ships and 0 cargo across 12,000 simulated days" — quoted
-  in this document's own executive summary and in `ARCHETYPE-BALANCE-MATRIX.md` — is a
+  in this document's own executive summary and in `BALANCE-POLICY.md`'s archetype matrix
+  (Part D) — is a
   **sampling artifact**, not a property of the game.
 - **The second defect:** the clear-day median is a discrete day number over a wide spread
   (p25 18 / median 21 / p75 25), so ±1 day is noise at n=100. A bake-off candidate passed the

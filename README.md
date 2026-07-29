@@ -8,9 +8,11 @@ principles for how people actually play in 2026.
 > **FTL × Taipan × Citizen Sleeper, set in a galaxy full of D&D characters who
 > play the game whether you're watching or not.** — `docs/PRD-REIMAGINED.md` §1
 
-**Status:** release candidate `1.0.0` (tag `v1.0.0-rc1`). Windows and macOS
-desktop builds plus a browser build; the demo is Tour One, shipped as its own
-build configuration.
+**Status:** pre-alpha. The version lives only in the root `package.json` —
+see `docs/VERSIONING.md` for the stage ladder and what it takes to leave
+pre-alpha. No release candidate has been tagged. Windows and macOS desktop
+builds plus a browser build; the demo is Tour One, shipped as its own build
+configuration.
 
 ## Repository map
 
@@ -78,11 +80,13 @@ not a marker.
 | --- | --- |
 | [`docs/PRD-REIMAGINED.md`](docs/PRD-REIMAGINED.md) | The design. It wins over every other source in this repository. |
 | [`docs/TECH-STACK.md`](docs/TECH-STACK.md) | Stack decisions and the reasoning that closed each alternative. |
+| [`docs/ENGINEERING-POLICY.md`](docs/ENGINEERING-POLICY.md) | The standing constraints every change is reviewed against. |
+| [`docs/VERSIONING.md`](docs/VERSIONING.md) | The four version axes (product, save schema, rules fingerprint, work IDs) and the pre-alpha → release ladder. |
+| [`docs/BALANCE-POLICY.md`](docs/BALANCE-POLICY.md) | How balance numbers are set, measured and disclosed, plus the archetype reference and measured baseline. |
 | [`docs/RELEASE-CHECKLIST.md`](docs/RELEASE-CHECKLIST.md) | The release sweep: version stamping, store assets, partner-site setup, open decisions. |
 | [`docs/CREDITS.md`](docs/CREDITS.md) | Fonts, audio and dependency licences — also shown in-game at Settings → Credits. |
 | [`docs/PRESS-ONE-PAGER.md`](docs/PRESS-ONE-PAGER.md) | The press sheet. |
 | [`docs/STEAM-ACHIEVEMENTS.md`](docs/STEAM-ACHIEVEMENTS.md) | The achievement table to paste into Steamworks, generated from the code. |
-| [`docs/BALANCE-POLICY.md`](docs/BALANCE-POLICY.md) | How balance numbers are set, measured and disclosed. |
 
 ## The short history
 
