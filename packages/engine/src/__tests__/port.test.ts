@@ -357,7 +357,7 @@ describe('T-1603b · the port price/income curve', () => {
     }
   });
 
-  it('the curve is a curve: the busy ports cost more AND pay back slower', () => {
+  it('the curve is a curve: the busy ports cost more, and no port is dominated', () => {
     // A flat table would pass both bands above, so this is what actually guards
     // "fourteen identical purchases are not a decision".
     const byIncome = [...PURCHASABLE_PORTS].sort((a, b) => a.baseDuskIncome - b.baseDuskIncome);

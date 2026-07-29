@@ -110,9 +110,32 @@ export interface PortStakeDefinition {
  * WHERE THE NUMBERS COME FROM. Not invented and not ratioed — recovered from the
  * original Apple II source, which lives in this repo's own history: the live port
  * registry at `7ca606d7^:SQ/SP.BANK` stores each port's price in units of 10,000cr
- * (`SP.REAL.txt` prints it as `m6"0,000 cr"`). The fourteen ports there are the
- * fourteen systems here, by name, priced linearly 10,000 (Vega-6) to 140,000
- * (Sun-3) — i.e. `(15 - systemId) * 10_000`.
+ * (`7ca606d7^:Decompile/Source-Text/SP.REAL.txt` prints it as `m6"0,000 cr"` and
+ * charges it at `buy1`). The fourteen ports THERE are the fourteen systems here,
+ * by name, priced linearly 10,000 (Vega-6) to 140,000 (Sun-3) — i.e. the source's
+ * own assignment is `(15 - systemId) * 10_000`.
+ *
+ * WHAT WAS RECOVERED, AND WHAT WAS NOT — read this before citing the formula above
+ * as if it were the table below. The fourteen VALUES are recovered exactly: the
+ * price multiset here is precisely {10,000, 20,000, ... 140,000}, every rung of the
+ * 1991 ladder, once each. The per-port ASSIGNMENT is deliberately NOT the source's:
+ * the rungs are handed out in measured-traffic-band order (the banding documented
+ * above), not by `systemId`. Only Sun-3 (1) and Fomalhaut-2 (7) land on the same
+ * price both ways; the other twelve do not, so `(15 - systemId) * 10_000` describes
+ * the 1991 registry and NOT this table.
+ *
+ * WHY THE SOURCE'S ASSIGNMENT WAS REJECTED (2026-07-29, doc audit). It is not
+ * fidelity-vs-laziness, it breaks two invariants pinned below. The 1991 port income
+ * was TRAFFIC-driven (see the fuel-depot note under "WHY PRICES FELL"), so its
+ * systemId order carried the traffic signal implicitly; ours pays a flat
+ * `baseDuskIncome`, so if price is not assigned in income rank order the ladder
+ * stops being a ladder. Concretely, applying `(15 - systemId) * 10_000` to the
+ * income column below puts SIX ports outside the payback window (Altair-3 1,600
+ * dusks, Denebola-5 1,385, Aldebaran-1 1,368, Deneb-4 1,053, Vega-6 118) and
+ * creates STRICTLY DOMINATED ports — Aldebaran-1 would cost 130,000cr for 95/dusk
+ * against Mira-9 at 70,000cr for 115/dusk — which fails the price/income
+ * monotonicity check in `port.test.ts`. Traffic-rank assignment is the design call;
+ * this paragraph is the place it is admitted.
  *
  * NO CURRENCY CONVERSION WAS NEEDED, which is the finding that made this a lift
  * rather than an estimate: `YARD_COMPONENT_TIER_PRICES` IS the 1991 ladder, tier
@@ -130,7 +153,7 @@ export interface PortStakeDefinition {
  * THE COST, STATED PLAINLY. Income is UNCHANGED, because the aggregate ceiling
  * below is the invariant that keeps flying better than owning and there is no
  * headroom under it (1,595 of a ~1,620cr/day route EV). So payback stretches from
- * [110, 150] dusks to **[154, 483]** — Vega-6 154, Sun-3 483. A stake is now a
+ * [110, 150] dusks to **[154, 1044]** — Denebola-5 154, Mira-9 1044. A stake is now a
  * STATUS AND CONTROL asset on a horizon no 120-day career reaches, not an
  * investment that repays inside a career. That is a deliberate trade of ROI for a
  * contested ladder, and it is the thing to revisit first if ports feel pointless
@@ -146,12 +169,20 @@ export interface PortStakeDefinition {
  *     whole board is now 1,050,000cr, not 211,750) — still earns less than simply
  *     flying contracts. This is the invariant that answers reason (2), and it is
  *     what forces the per-port income down.
- *   - PAYBACK WINDOW: SUPERSEDED BY R2d — was [110, 150] dusks, now [154, 483].
- *     See the R2d block above; the per-port `// payback N dusks` comments are
- *     regenerated and correct.
- *   - THE HUB PAYS A PREMIUM: payback rises with traffic (Denebola-5 110 dusks →
- *     Sun-3 150), so the quiet ports are the value play and the busy ones are the
- *     absolute-income play. That, not the flat table, is where the decision lives.
+ *   - PAYBACK WINDOW: SUPERSEDED BY R2d — was [110, 150] dusks, now [154, 1044]:
+ *     Denebola-5 pays back fastest at 154, Mira-9 slowest at 1044. Note the slowest
+ *     is NOT the dearest — Sun-3, the 140,000cr hub, pays back in 483 — which is
+ *     the whole content of the next invariant. The test pins the window at
+ *     [150, 1050]; see the R2d block above, and the per-port `// payback N dusks`
+ *     comments are regenerated and correct.
+ *   - THE DEAREST PORTS ARE THE BUSIEST ONES. This REPLACES the pre-R2d "the hub
+ *     pays a premium" form, which said payback rises with traffic (Denebola-5 110
+ *     dusks → Sun-3 150) and is simply not true any more: the 14x price ladder
+ *     against a ~4.5x income spread makes payback non-monotone in traffic (Sun-3
+ *     483 against Mira-9 1044). What survives is true by construction, because the
+ *     ladder is assigned in income rank order — price and income move together, so
+ *     no port is strictly dominated by a cheaper one, and the decision is what you
+ *     can REACH rather than which rung is secretly the bargain.
  *
  * WHY PRICES FELL. The ceiling fixes total income near 1,600cr/dusk, i.e. ~114 per
  * port; a sane payback window then forces prices into roughly 7k–44k. There is no

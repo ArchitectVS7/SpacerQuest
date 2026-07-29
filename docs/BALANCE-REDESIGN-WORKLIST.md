@@ -746,13 +746,26 @@ acceptance criterion it does *not* close.
 failing**; `tsc -b`, `eslint`, `prettier` clean. The `campaign-degraded` explorer
 fingerprint is re-pinned with mechanism logged at the site (entry 7).
 
+> **THIS IS THE CURRENT BASELINE OF RECORD — read this before diffing (2026-07-29).**
+> `docs/balance/` holds every historical capstone, and the two most recent-LOOKING
+> names are not the current one. In particular **`baseline-n9-shipped.json` is
+> SUPERSEDED** by the line above; diffing against it reports ~2,000 moved fields
+> across all 9 rows that were already accounted for by this re-pin. A doc audit did
+> exactly that and briefly mis-filed the result as live baseline drift. If you are
+> checking whether the baseline still describes HEAD, diff
+> `baseline-r2c-explorer-remit.json`, and pass the milestone set it was measured with
+> (`--milestone-days 21,29,30,41,60,120`) — a different milestone set shifts every
+> `milestones[i]` index and manufactures thousands of phantom deltas.
+
 ### R2d — Re-price ports to the 1991 curve (SHIPPED 2026-07-28)
 
 Recovered from the original Apple II source in this repo's own history
-(`7ca606d7^:SQ/SP.BANK`, the live port registry; `Decompile/Source-Text/SP.REAL.txt`,
+(`7ca606d7^:SQ/SP.BANK`, the live port registry; `7ca606d7^:Decompile/Source-Text/SP.REAL.txt`,
 "Space Port Accounts & Fuel Depot Ltd"). **The currency needs no conversion: our
-`YARD_COMPONENT_TIER_PRICES` IS the 1991 ladder**, tier for tier (`SQ/SP.YARD.5`:
-"Atomic Missile 50cr ... Astral ASDRS 10000cr").
+`YARD_COMPONENT_TIER_PRICES` IS the 1991 ladder**, tier for tier
+(`7ca606d7^:SQ/SP.YARD.5`: "Atomic Missile 50cr ... Astral ASDRS 10000cr").
+*All three paths are HISTORICAL — `7ca606d7` quarantined the Museum Edition, so none
+of them exist at HEAD and each needs the `7ca606d7^:` prefix to resolve.*
 
 | | ours | % of field affording | OG 1991 | % affording |
 | --- | --- | --- | --- | --- |
@@ -766,6 +779,55 @@ are a flat shelf, not a ladder** — 13 of 14 sit between 7,150 and 19,000, so a
 can buy one can buy twelve, and there is no race. The 1991 curve is linear 10,000 ->
 140,000 and lands exactly on the owner's stated goal: the cheapest reachable by ~62%,
 the second by precisely the top 50%, the best by 3%.
+
+> **WHAT "RECOVERED" MEANS HERE — precision added 2026-07-29 (doc audit), no code
+> change.** The distinction is worth stating because an earlier audit pass read the
+> `(15 - systemId) * 10_000` formula in `content/ports.ts` as a description of the
+> shipped table and flagged it as an overclaim.
+>
+> - **The VALUES are recovered exactly.** The shipped price multiset is precisely
+>   {10,000, 20,000, ... 140,000} — every rung of the 1991 ladder, once each. Verified
+>   against `7ca606d7^:SQ/SP.BANK`, whose third numeric field is the price in units of
+>   10,000cr (`SP.REAL.txt` prints it `m6"0,000 cr"` and charges it at `buy1`), and
+>   which is `15 - systemId` for all fourteen ports.
+> - **The per-port ASSIGNMENT is deliberately ours, not the source's.** The rungs are
+>   handed out in measured-traffic-band order, not by `systemId`. Only Sun-3 (1) and
+>   Fomalhaut-2 (7) coincide; the other twelve do not. The aggregate row in the table
+>   above is what R2d claimed and it holds — but `(15 - systemId) * 10_000` describes
+>   the 1991 registry, **not** this table, and should never be cited as if it did.
+> - **The "tier for tier" phrase above is about `YARD_COMPONENT_TIER_PRICES`, not
+>   ports** — and it is exact: `[50, 100, 200, 400, 800, 1500, 3000, 5000, 10000]`
+>   matches `SQ/SP.YARD.5` nine for nine.
+>
+> **Why the source's assignment was rejected — settled, do not re-litigate.** Applying
+> `(15 - systemId) * 10_000` against our income column puts **six of fourteen ports
+> outside the pinned payback window** (Altair-3 1,600 dusks, Denebola-5 1,385,
+> Aldebaran-1 1,368, Deneb-4 1,053, Vega-6 118) and creates **strictly dominated
+> ports** — Aldebaran-1 at 130,000cr for 95/dusk against Mira-9 at 70,000cr for
+> 115/dusk — failing the price/income monotonicity check in `port.test.ts`. The reason
+> is structural: 1991 port income was TRAFFIC-driven, so its `systemId` order carried
+> the traffic signal implicitly; ours pays a flat `baseDuskIncome`, so price must be
+> assigned in income rank order or the ladder stops being a ladder. Full fidelity to
+> the source's assignment would be a worse board, not a purer one.
+>
+> **SMOKE FIXTURE RE-STAMPED, AND WHY THAT IS NOT A RE-MEASURE.** The corrections
+> above are comment-only, but `rules-fingerprint.ts` hashes raw file bytes, so
+> editing a comment in `content/ports.ts` moved `rulesFingerprint`
+> (`2273d3802c590a13` → `17a2a0a078160bbe`) and turned the three N7 freshness tests
+> red. The change was proved inert before anything was re-stamped: an 8-shard
+> capstone on the edited tree versus stashed clean HEAD, identical seeds, 7,000 rows
+> each, diffed to **"NOTHING MOVED. Every compared field is equal on both sides."**
+> `docs/balance/smoke/tiers.json` was therefore re-extracted from the UNCHANGED
+> baseline of record — provenance still `r2c-explorer-remit`, 8,000 runs, spreads
+> `harvested` — so the only fields that moved are the fingerprint and the extraction
+> date. No new capstone was committed, because no rule changed. Battery **1,233
+> passing / 0 failing**.
+>
+> **This is a false positive of the instrument, and it is being fixed** — see the
+> N7-FP entry below. The byte hash is broader than the contract in
+> `docs/VERSIONING.md` §3 ("a hash over the files that decide outcomes"), and the
+> cost lands precisely on keeping definition-site commentary correct, which is how
+> the two wrong figures above survived this long.
 
 **CORRECTION TO THE R2c ENTRY ABOVE.** R2c recorded that the trade-in fix had made
 ports unreachable — "no seed qualifies at 150 OR 300 days". **That was a measurement
@@ -792,7 +854,8 @@ content change and is its documented pattern.
 > in-file comment at `campaign-reach.test.ts` has been updated to match.
 
 **Cost, stated at the definition site:** income is unchanged (the aggregate ceiling has
-no headroom), so payback stretches from [110, 150] dusks to [154, 1050]. A stake is now
+no headroom), so payback stretches from [110, 150] dusks to [154, 1044] — Denebola-5
+154, Mira-9 1044, with the test pinning the window at [150, 1050]. A stake is now
 a status-and-control asset rather than an investment that repays inside a career. The
 "hub pays a premium" invariant was re-expressed: under a 14x price ladder against a
 ~4.5x income spread, payback is no longer monotone in traffic, so the pinned property
