@@ -236,7 +236,7 @@ Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (
 
 ## M2 — Explore: build the system, then fill it
 
-### T-110 · The Explore outcome framework, extracted behaviour-preserving — `status: TODO` · `coder: opus` · `after: T-102`
+### T-110 · The Explore outcome framework, extracted behaviour-preserving — `status: DONE` · `coder: opus` · `after: T-102`
 
 Restructure `resolveExploration` so an outcome is a **content-supplied typed payload the
 engine resolves generically**, replacing today's hard-coded three-component roll (salvage /
@@ -252,6 +252,62 @@ goldens are byte-identical in the extraction commit** (state this explicitly in 
 body, the N3 `combatRules.ts` precedent); each new outcome type has a resolver and a unit
 test proving an instance of it resolves; a `grep` for `beacon`/`derelict` in
 `packages/engine/src/actions/exploration.ts` returns nothing outside comments; gate green.
+
+**Delivered (2026-07-30):** An explore payoff is now a content row the engine resolves
+generically. `packages/content/src/exploration.ts` gains `ExploreOutcomeDefinition` /
+`ExploreOutcomePayload` and `EXPLORE_OUTCOMES` (the two shipped POI tables re-expressed as 12
+`legacy-` rows — two salvage bands, eight lore rows derived by `.map` over the two fragment
+pools in pool order, two contraband pods), plus `POI_DISCOVERY_TABLE` (which retires
+`BEACON_DISCOVERY_CHANCE` and takes the last POI-type literal out of the engine) and
+`LEGACY_POI_LOOT` (the three-leg draw kept alive as DATA pointing at row ids, per spec §2.4).
+`POI_LOOT` / `PoiLootTable` / `SalvageLoot` / `FragmentLoot` / `LootComponentChance` are
+deleted. The new `packages/engine/src/exploreOutcomes.ts` owns `drawPoiKind`,
+`drawLegacyLoot` and `resolveExploreOutcome` — an exhaustive switch with a `never` default,
+one arm per kind — and `applyEffects` is exported from `storylets.ts` so four of the five
+kinds reduce to a `StoryletEffects` payload applied through the one authoritative
+implementation (synthetic pair: `storyletId` = the row id, `choiceId` = `'explore'`).
+`actions/exploration.ts` keeps only the refusals, the die, the fuel and the nav check: 124
+lines lighter, `resolveLoot` and the beacon/derelict ternary gone, and a case-insensitive
+`grep -ni 'beacon\|derelict'` over it returns **nothing at all**, not even in comments.
+
+BEHAVIOUR-PRESERVING, EVIDENCED: `packages/engine/src/__tests__/exploration.test.ts` has a
+**zero-line diff** and all 18 of its tests pass unchanged; all four `day-loop-golden.ts`
+hashes, both `replay-golden.ts` pins and `campaign-degraded`'s seven `PINNED_FINGERPRINTS`
+(explorer included) are byte-identical — the fixture directories show a zero-line diff. A new
+`exploreOutcomes.test.ts` pins the WHOLE per-seed result (credits, nemesis file, contraband
+flag, charted POI, ordered event stream) over 300 boarded seeds to a sha256 stamped from the
+PRE-refactor tree, plus the readable aggregate (202 salvage / 96 fragment / 57 contraband
+events, 346,939cr) — both were authored and run green against `main` before a line moved.
+Gate: 1,369 tests green across all four workspaces (engine 810, up 15), `tsc -b` clean, lint
+clean, `format:check` clean.
+
+Four findings, each carried in code comments at the site:
+- **F-110-A · the settled five-kind taxonomy cannot express today's contraband leg.** No
+  settled kind emits `ContrabandFound`, and routing the flag through `lore.effects` would
+  emit `StoryletEffectApplied` instead, breaking two pre-existing `exploration.test.ts`
+  assertions and moving the replay goldens. Since "every pre-existing exploration test passes
+  unchanged" is a hard accept clause, a **sixth, explicitly transitional** `{ kind:
+  'contraband' }` payload ships, marked at its declaration and its resolver arm for
+  **retirement by T-113** once the weighted draw lands and no row uses it.
+- **F-110-B · the legacy rows carry `wireFound: ''` and the resolver guards on non-empty.**
+  Emitting a line for them would add a `WireEntry` per boarded POI and move
+  `REPLAY_GOLDEN_RESPONSES` (its `REPLAY_LOG` charts a derelict). §2.4's "never charged 80
+  fuel for total silence" fix arrives with the authored copy at T-113, exactly as the spec
+  sequences it; T-113/T-115 should assert no authored row has empty copy.
+- **F-110-C · `rulesFingerprint` moved despite the extraction being inert**, because the hash
+  covers code, not outcomes (`b6f27d2bceabde59` → `e58d5afd90b43ad5`). Remedied by
+  `npm run balance:extract -- --aggregate docs/balance/baseline-n11-shipped.json` (the T-021
+  precedent), NOT by a capstone and NOT by editing the fixture: the resulting
+  `docs/balance/smoke/tiers.json` diff is fingerprints + `gitCommit` + `productVersion` and
+  **every recorded checkpoint number is identical**, which is itself evidence of inertness.
+  No sweep was taken, so T-116's capstone batching is untouched.
+- **F-110-D · `unique-item` has no grant surface until T-112.** `hasSpecialEquipment` reads a
+  fixed set of named `ShipState` booleans and `EXPLORE_MODULES` does not exist yet, so the
+  arm resolves to its wire line and mutates nothing, with a named `// T-112 seam:` comment
+  rather than an invented stand-in grant. A test compares whole state before/after to hold
+  that line.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/EXPLORE_REDESIGN.md` §0–§5/§8, `docs/0.5.2-SPEC-REVIEW.md · attempts=1/4.
 
 ### T-111 · The time cost of recovery — `status: TODO` · `coder: opus` · `after: T-110`
 
