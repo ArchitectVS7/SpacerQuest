@@ -108,7 +108,11 @@ Statuses: `TODO` | `IN-PROGRESS` | `DONE` | `BLOCKED(reason)`
 
 ## M1 — Specification (both systems, before any implementation)
 
-### T-100 · Spec the Explore system: engine/content framework + the time cost — `status: TODO` · `coder: opus` · `after: —`
+### T-100 · Spec the Explore system: engine/content framework + the time cost — `status: DONE` · `coder: opus` · `after: —`
+
+**Delivered (2026-07-30):** Wrote `docs/EXPLORE_REDESIGN.md`, settling all four required designs against the owner's two rulings without re-opening either: §2 the value-headed outcome row (one typed content shape, five engine resolvers, zero instance knowledge in the engine); §3 the anchored single-slot recovery (the new `player.recovery` state, the `recoveryDays(valuePoints)` band-table rule, save v13 + `MIGRATIONS[12]`, and explicit rulings on all four interaction questions — travel-away forfeits by location predicate, death forfeits at succession, a second recovery refuses the verb, and an open recovery survives the day-30 era flip untouched); §4 two effect classes (unbounded Class-A ship-element deltas plus a Class-B die effect bounded at exactly three modules through the existing `DiceBenefit`/`EQUIPMENT_DICE_BENEFITS` hook, with Finding F-100-1 recording the one real cost that bound carries and its recommended second-loop resolution); and §5 the `valuePoints` → band → everything ladder (one dial per row, five bands, a 100-row spread across T-113/114/115, and the reachability arithmetic that makes it a property check rather than a tuning exercise). Deliberate scope boundary: this is a specification only — no engine, content, sim, or UI source file was touched, and Explore's fuel cost, nav DC, NPC interaction, and the 0.5.2 version bump are all explicitly left unsettled for later tasks (§7).
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading the Explore engine/content pair, `dice.ts`/`crew.ts`/`upgrades. · attempts=1/4.
 
 Audit today's Explore end to end (`packages/engine/src/actions/exploration.ts`,
 `packages/content/src/exploration.ts`, `POI_KINDS`, `POI_LOOT`, `EXPLORATION_NAV_DC`,
