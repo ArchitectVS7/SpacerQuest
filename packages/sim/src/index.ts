@@ -41,6 +41,7 @@ import {
   startDay,
   travelDc,
   tributeForRound,
+  venueOffered,
   wagerBandFor,
   applyPlayerAction,
   weaponVolleyDamage,
@@ -830,6 +831,31 @@ export function hangoutSystemIds(): number[] {
  *  caller share, so there is one definition of "where the desk is". */
 function isHangoutSystem(systemId: number): boolean {
   return hangoutSystemIds().includes(systemId);
+}
+
+/**
+ * T-123 · IS PENNY WISE'S DESK ACTUALLY AT THIS PORT? `isHangoutSystem` answers
+ * "is there a bar", which used to be the same question — every port offered all
+ * seven venues. It is not the same question any more: T-123's Arcturus-6 authors
+ * a `venues` list with no `borrow` and no `repay` (§6.2's strict garrison), so the
+ * engine now typed-refuses a lending action there with
+ * `LoanEvent{failReason:'venue-not-offered'}` BEFORE the die is spent.
+ *
+ * THIS MIRRORS AN ENGINE GATE, IT DOES NOT ADD ONE — the same relationship
+ * `planDare`'s `!npc.dead` guard (F-121-1) has to the resolver's N3 guard, and the
+ * same thing `campaign-smuggler-gambler.test.ts`'s "PROOF THE POLICY'S GUARDS ARE
+ * THE ENGINE'S GUARDS" asserts. Read through the engine's own `venueOffered`
+ * accessor, never against a hard-coded id and never against a restated venue list,
+ * so a port that withdraws or restores a desk moves the policy with it.
+ *
+ * Without it the lending planners would queue an action the engine refuses, which
+ * burns a die SLOT out of the day's ledger for nothing — and the trader's and
+ * smuggler's "head home to settle up" preferences could steer a repayment run at a
+ * port with no desk, which is exactly the compounding-loan pathology the comment
+ * above `traderPolicy`'s homeRun documents.
+ */
+function isLendingDeskSystem(systemId: number, venue: 'borrow' | 'repay'): boolean {
+  return isHangoutSystem(systemId) && venueOffered(systemId, venue);
 }
 
 export function nextSystemId(currentSystemId: number): number {
@@ -2032,7 +2058,9 @@ function planLoanBorrow(
 ): { action: PlayerAction; principal: number } | null {
   if (state.encounter) return null;
   if (state.player.loan) return null;
-  if (!isHangoutSystem(state.player.currentSystemId)) return null;
+  // T-123 · mirrors the engine's `venueOffered(systemId,'borrow')` gate in
+  // `resolveVisitHangout` — a Hangout is not automatically a credit desk.
+  if (!isLendingDeskSystem(state.player.currentSystemId, 'borrow')) return null;
   if (!(shortfall >= 1)) return null;
   const principal = Math.max(
     LOAN_MIN_PRINCIPAL,
@@ -2060,7 +2088,9 @@ function planLoanRepay(state: GameState, ledger: DieLedger): PlayerAction | null
   const loan = state.player.loan;
   if (!loan) return null;
   if (state.encounter) return null;
-  if (!isHangoutSystem(state.player.currentSystemId)) return null;
+  // T-123 · mirrors the engine's `venueOffered(systemId,'repay')` gate — the
+  // garrison mess at Arcturus-6 runs no desk to settle a marker at.
+  if (!isLendingDeskSystem(state.player.currentSystemId, 'repay')) return null;
   const outstanding = loan.outstanding;
   if (outstanding < 1) return null;
   const urgent = loan.dueDay - state.day <= 2;
@@ -2540,7 +2570,11 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
     // prefer a fundable run that ENDS at the Penny Wise desk. Preference only —
     // if no such contract is on the board the trader flies its normal best run.
     if (state.player.credits >= loan.outstanding) {
-      const homeRun = reachable.find((c) => isHangoutSystem(c.destination));
+      // T-123 · a run that ends at a bar with no credit desk is not a settle-up
+      // run — `isLendingDeskSystem` mirrors the engine's `venueOffered` gate, so
+      // the preference cannot steer the trader to a port where `planLoanRepay`
+      // will then refuse itself and the marker compounds untouched.
+      const homeRun = reachable.find((c) => isLendingDeskSystem(c.destination, 'repay'));
       if (homeRun) preferred = homeRun;
     }
   }
@@ -3087,7 +3121,10 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     loan.dueDay - state.day <= TRADER_LOAN_HOME_WINDOW &&
     state.player.credits >= loan.outstanding
   ) {
-    const homeRun = reachable.find((c) => isHangoutSystem(c.destination));
+    // T-123 · the trader's guard, ported with the preference: mirrors the engine's
+    // `venueOffered(...,'repay')` gate so a desk-less port is never chosen as the
+    // place to settle up.
+    const homeRun = reachable.find((c) => isLendingDeskSystem(c.destination, 'repay'));
     if (homeRun) preferred = homeRun;
   }
 
@@ -3402,6 +3439,14 @@ const GAMBLER_MAX_DARES_PER_DAY = 2;
 function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerAction | null {
   if (state.encounter) return null;
   if (!isHangoutSystem(state.player.currentSystemId)) return null;
+  // T-123 · THE PORT MUST ACTUALLY DEAL. Mirrors the engine's
+  // `venueOffered(systemId,'dare')` gate in `resolveVisitHangout`, exactly as the
+  // `!npc.dead` guard above mirrors its N3 guard. ARITHMETICALLY INERT TODAY: all
+  // fourteen authored and baseline rows offer `dare` (T-123 narrows `venues` at
+  // two ports, and neither withdraws the tables), so this cannot move a number —
+  // and that is precisely why it lands now, on the T-121 precedent of shipping a
+  // mirror while it is provably inert rather than after a later row makes it a bug.
+  if (!venueOffered(state.player.currentSystemId, 'dare')) return null;
 
   let dealer: GameState['npcs'][number] | null = null;
   for (const npc of state.npcs) {
@@ -3494,7 +3539,12 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // set — the gambler never flies a run it cannot fund just to reach a game.
   let preferred = reachable.length > 0 ? reachable[0] : null;
   if (preferred) {
-    const tablesRun = reachable.find((c) => isHangoutSystem(c.destination));
+    // T-123 · "where the tables are" means where a hand is actually DEALT — the
+    // same `venueOffered` mirror `planDare` now carries, so the two cannot drift.
+    // Inert today (every port offers `dare`), landed while it is provably so.
+    const tablesRun = reachable.find(
+      (c) => isHangoutSystem(c.destination) && venueOffered(c.destination, 'dare'),
+    );
     if (tablesRun) preferred = tablesRun;
   }
 

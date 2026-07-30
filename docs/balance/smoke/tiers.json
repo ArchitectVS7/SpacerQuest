@@ -1,9 +1,9 @@
 {
   "productVersion": "0.5.2",
   "saveSchemaVersion": 13,
-  "rulesFingerprint": "5b2f53a8c30edbd9",
-  "instrumentFingerprint": "537f29b61ecc9719",
-  "docsFingerprint": "840187f2e76d8438",
+  "rulesFingerprint": "b9b83a6a67cbfdde",
+  "instrumentFingerprint": "4e7184c378da068f",
+  "docsFingerprint": "c807452107b9ff16",
   "provenance": {
     "sweepLabel": "t116-explore",
     "seeds": 1000,
@@ -20,7 +20,7 @@
       "veteran"
     ],
     "extractedOn": "2026-07-30",
-    "gitCommit": "a4c5901ef9e123b3abb2bf9bb5fdd8d776f549d2",
+    "gitCommit": "b5dab26447c983095ce68a8d3e70577ce2bf5469",
     "spreadSource": "harvested",
     "note": "Tier spreads are milestone samples harvested from the named sweep. They are still SYNTHESIZED starting states and are never balance verdicts — see docs/balance/smoke/README.md."
   },
@@ -168,9 +168,9 @@
           "shipsLost": 0,
           "deliveredLegs": 16,
           "fuelStarvationDays": 0,
-          "deedsEarned": 57,
+          "deedsEarned": 58,
           "tourOneResolved": 0,
-          "outcomeHash": "b39529cb43e10a21"
+          "outcomeHash": "4a7817b488cd52ac"
         },
         {
           "policy": "greedy",
@@ -608,7 +608,7 @@
           "endDay": 24,
           "creditsMin": 3097,
           "creditsMedian": 5695,
-          "creditsMax": 17041,
+          "creditsMax": 15986,
           "debtTotal": 29158,
           "incomeDays": 21,
           "encounters": 3,
@@ -617,7 +617,7 @@
           "fuelStarvationDays": 0,
           "deedsEarned": 53,
           "tourOneResolved": 0,
-          "outcomeHash": "7569c38771802113"
+          "outcomeHash": "19b6c394b35abe87"
         },
         {
           "policy": "greedy",
@@ -1055,8 +1055,8 @@
           "endDay": 32,
           "creditsMin": 1950,
           "creditsMedian": 5058,
-          "creditsMax": 43068,
-          "debtTotal": 15040,
+          "creditsMax": 42068,
+          "debtTotal": 15262,
           "incomeDays": 19,
           "encounters": 4,
           "shipsLost": 0,
@@ -1064,7 +1064,7 @@
           "fuelStarvationDays": 0,
           "deedsEarned": 54,
           "tourOneResolved": 7,
-          "outcomeHash": "e7553a3147267a18"
+          "outcomeHash": "8e8bcd93d50a88de"
         },
         {
           "policy": "greedy",
@@ -1503,15 +1503,15 @@
           "creditsMin": 4496,
           "creditsMedian": 5050,
           "creditsMax": 44211,
-          "debtTotal": 5355,
+          "debtTotal": 5320,
           "incomeDays": 21,
           "encounters": 3,
           "shipsLost": 0,
           "deliveredLegs": 18,
           "fuelStarvationDays": 0,
-          "deedsEarned": 53,
+          "deedsEarned": 56,
           "tourOneResolved": 0,
-          "outcomeHash": "e2e7419ce6eaa54a"
+          "outcomeHash": "d70479f96122e514"
         },
         {
           "policy": "greedy",

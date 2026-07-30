@@ -719,11 +719,23 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 
 | id | System | Concept label | Axis notes |
 | --- | --- | --- | --- |
-| 4 | Arcturus-6 | the garrison mess | the strict-governance port: high DCs, punitive insult, **no desk** |
-| 5 | Deneb-4 | the partisan hall | `regulars` list, wide band, asymmetric dare consequence |
-| 11 | Regulus-6 | the high table | the high-roller room: `wager.min` prices out a Tour One captain (see **F-101-1**) |
-| 12 | Rigel-8 | the underbelly | low `min`, high ceiling, smuggler/gambler clientele |
-| 14 | Vega-6 | the outfitters' long room | veteran clientele, hard to charm, long memories (large deltas both ways) |
+| 4 | Arcturus-6 | the garrison mess (`the Garrison Mess`, `dangerous`) | the strict-governance port: high DCs, punitive insult, **no desk**. Shipped: venues minus `borrow`/`repay`, band 100/400, befriend DC 16 / +2, insult −9, dare +1/−7, meet **0**, clientele `veteran`+`fighter` |
+| 5 | Deneb-4 | the partisan hall (`the Standing Hall`, `exotic`) | `regulars` list, wide band, asymmetric dare consequence. Shipped: **also omits `meet`** — §6.1's "a room that will not seat a stranger", taken in the open so the venue-set axis is not carried by hostility alone; band 25/2000, befriend DC 14 / +5, insult −6, dare +1/−6, regulars = the four Astro League captains |
+| 11 | Regulus-6 | the high table (`the High Table`, `exotic`) | the high-roller room: `wager.min` prices out a Tour One captain (see **F-101-1** and its T-123 addendum). Shipped: band 500/3000 — the only band strictly outside the default envelope at both ends and the highest floor in the game; befriend DC 15, insult −5, dare +1/−3, regulars Nebula Rose + Neon Fox |
+| 12 | Rigel-8 | the underbelly (`the Underhold`, `dangerous`) | low `min`, high ceiling, smuggler/gambler clientele. Shipped: band **10/3000 — the widest SPAN in the galaxy**, which is the claim T-123 pins rather than "the lowest floor": Mira-9's dive (T-122, floor 5) still holds that, and a dive has no ceiling worth the name. The ceiling deliberately matches the high table's — the money is the same money; befriend DC 8 (cheapest room to charm), insult −8 |
+| 14 | Vega-6 | the outfitters' long room (`the Long Room`, `exotic`) | veteran clientele, hard to charm, long memories (large deltas both ways). Shipped: band 250/1500, befriend DC 15 / **+6**, insult −8, dare +4/−4, meet +2, regulars Star Gazer + Stellar Drift |
+
+> **T-123's in-place corrections to the rows above**, recorded the way T-122 corrected the
+> Altair-3 row rather than taken silently. (1) **Deneb-4 also omits `meet`.** §6.3 asked only
+> for a `regulars` list, a wide band and an asymmetric dare arm; the omission was added so that
+> the venue-set axis is exercised for a reason other than hostility — otherwise "narrowed
+> venues" and "the garrison" would be synonyms and §6.4's distinctness rule would be carrying
+> that axis alone. Zero sim impact: the instrument issues only `dare` / `borrow` / `repay`.
+> (2) **Rigel-8 is graded on SPAN, not on floor.** §6.2's underbelly asks for "a low `min`, a
+> high ceiling"; the testable form of that is the widest `max − min` of any authored port, and
+> the lowest floor in the game already belongs to T-122's Mira-9. (3) **The tone spread of pass
+> 2 is two `dangerous` and three `exotic`**; no pass-2 port is `everyday`, and `comic` remains
+> T-124's.
 
 **T-124 — the last four, including the comic register:**
 
@@ -768,6 +780,48 @@ ruling 3's parameter-only surface.
 **Recommended resolution:** none in this track. **T-123 must measure realized-vs-declared
 stakes at its high-band port and report the gap**, rather than compensate for it by inflating
 the band. Compensating would be tuning a number to reach an answer.
+
+#### T-123 addendum (2026-07-30) · the measurement, and it partly REFUTES the finding as written
+
+**Rig.** The `gambler` policy driven headlessly through the real engine (the `driveFrom` loop,
+mirrored in a throwaway script and not committed), seeds 1..10 × 120 days = 1,200 careers-days,
+recording for every day the docked system, the dawn purse, whether a live co-located dealer
+existed, and every `HangoutEvent{venue:'dare'}` with the stake the resolver actually settled on.
+1,319 hands were played in total. Nothing was tuned before, during or after this measurement.
+
+| port | declared band | hands | realized min / median / max | hands AT the declared ceiling | hands the DEALER's purse capped |
+| --- | --- | --- | --- | --- | --- |
+| **Regulus-6** (the high table) | 500 / 3,000 | 99 | 0 / 1,383 / **3,000** | 41 of 99 (41%) | **5 of 99 (5%)** |
+| Rigel-8 (the underbelly) | 10 / 3,000 | 108 | 53 / 865 / **3,000** | 24 of 108 (22%) | 5 of 108 (5%) |
+| Sun-3 (the default band) | 25 / 1,000 | 124 | 39 / 1,000 / **1,000** | 75 of 124 (**60%**) | 1 of 124 (0.8%) |
+
+**The plain gap sentence: declared max 3,000 versus realized max 3,000 — at the high table there
+is no gap at the top at all.** The declared ceiling is reached on 41 of 99 hands, and the
+dealer's purse is the binding cap on 5. The captains sitting down at Regulus-6 carry a median
+7,605 credits and a maximum of 1.54 million.
+
+**Why the finding reads differently now, and this is the substantive result.** F-101-1 was
+written against the pre-N10 cast. **N2** (NPCs upgrade their ships), **N10** (the shared job
+pool) and **N11/T-021** moved the cast's day-120 median wealth 21,884 → 76,049 — recorded in
+ledger entries 6, 9 and 10 of `campaign-degraded.test.ts`. A dealer that rich caps almost
+nothing. The constraint the finding names is real in the ALGEBRA (`hangout.ts:279`, the stake is
+still `min(band.max, player.credits, dealer.credits)`) and it still bites on ~5% of hands, but
+it is no longer the operative limit on a Tour One captain's table. **What binds instead is the
+BAND ITSELF**, and it binds hardest where the band is smallest: at Sun-3's default 1,000 the
+ceiling is the operative limit on 60% of hands.
+
+**And the floor does not price the run out either — measured, not assumed.** At Regulus-6 the
+gambler was docked with a live dealer on 65 days and played on 50 of them; on the 15 days it
+played nothing its median dawn purse was 32,038 credits, so the reason was the day's dice
+budget, not the 500 floor. In Tour One itself (days 1–30) it was docked with a dealer on 18 days
+and played 29 hands. The 500 floor prices out the captain the PRD describes on day 1 (starting
+credits 1,000, `engine/state.ts:125`) and stops mattering within a Tour.
+
+**Nothing is tuned in response, in either direction.** The band is not lowered because the floor
+turned out to be affordable, and it is not raised because the ceiling turned out to be
+reachable. T-125 owns the milestone's verdict; the evidence this addendum contributes is that
+**the dealer-purse cap is a solved problem the N-series solved, and the wager BAND is now the
+live constraint on how a port plays** — which is precisely the lever ruling 3 gives content.
 
 ### Finding F-101-2 · Clientele cannot summon a clientele
 
@@ -909,6 +963,102 @@ bands make deed reachability port-dependent for the first time, and T-125's cove
 measurement should read a Mira-9 zero as expected rather than as a regression. T-123's bands
 (Regulus-6's high table, Rigel-8's underbelly) will widen the same question in the other
 direction.
+
+**T-123's mirror image, recorded so T-125 reads both as expected.** Regulus-6's floor is 500,
+so **every** hand dealt there clears the 250cr `high_roller` bar — the deed is not merely
+reachable at the high table, it is unavoidable. The same floor is half a day-1 captain's whole
+purse (1,000, `engine/state.ts:125`), so the port that guarantees the deed is the port an early
+captain cannot sit down at. T-125's deed coverage should therefore expect a Mira-9 zero, a
+Regulus-6 saturation, and a Regulus-6 count that rises with career age rather than being flat.
+
+### Finding F-123-1 · The Hangout pane offers a credit desk at a port that has none — **REPORTED, NOT FIXED**
+
+**Found by T-123, whose Arcturus-6 row is the first to withhold a venue.** The cockpit gates the
+Penny Wise desk on `hangoutOpen` alone — `packages/ui/src/format.ts:340` reads
+`STAR_SYSTEMS[id].hasHangout`, and `packages/ui/src/store.ts`'s `borrowLoan` (`:1333`) and
+`repayLoan` (`:1369`) build a `VisitHangout{borrow|repay}` unconditionally, with **no
+`venueOffered` filter anywhere in the UI layer**. The UGT protocol already filters
+(`sim/protocol.ts:807`) and the engine already refuses (`actions/hangout.ts:173`); the pane does
+neither. Two consequences, both live at Arcturus-6 the moment a player opens the panel there:
+
+- **The desk is visible and does nothing useful.** The engine answers
+  `LoanEvent{kind:'failed', failReason:'venue-not-offered'}` — no die spent, no crash — and
+  `loanFailNoticeFrom`'s `default:` arm (`store.ts:514`) renders the vague *"Penny Wise turned
+  that request down."* The player is told they were refused, never that there is no desk here.
+- **A social-venue refusal would render SILENCE.** `hangoutFailNoticeFrom` (`store.ts:478`) has
+  arms for `no-opponent` and the three malformed-die reasons and **no arm for
+  `'venue-not-offered'`**, so it returns `null` and the pane says nothing at all. That violates
+  the "typed fails render, never silence" guarantee the function's own docstring states. It is
+  unreachable today only because the pane issues no social venue but `dare` (**F-101-4**), and
+  Deneb-4's omitted `meet` is exactly the row that would make it reachable the day `meet` is
+  surfaced.
+
+**Why T-123 did not fix it.** It is a `packages/ui/src` product change; a UI edit here moves
+`packages/ui/e2e/hangout.spec.ts`; and the charter for a content pass is zero UI edits. The
+repair is small and obvious — filter the desk affordances through `venueOffered`, and give
+both notice helpers a `'venue-not-offered'` arm in the house's own voice ("There is no credit
+desk in this room.") — but it is **surfacing**, and the standing constraint requires surfacing
+to be a named task.
+
+**Recommended resolution:** fold into **T-130** with **F-101-4 / F-101-5 / F-101-6**. It is the
+same surfacing job — the pane does not read `prose`, does not filter the dead, does not offer
+three of the six venues, and now does not read `venues` either.
+
+### Finding F-123-2 · A port with no credit desk removes the §7.5 bad-day out AT THAT PORT
+
+**Found by T-123 through `lending-property.test.ts` P2, which went red on the authored row and
+was restated rather than narrowed.** P2 asserts that "a borrow within the band clears a state
+that cannot afford the cheapest jump" — the anti-poverty property the loan mechanism exists to
+guarantee. It was written when every `hasHangout` port offered all seven venues, so "a loan is
+always an out" and "a loan is an out at every port" were the same sentence. They are not any
+more: at Arcturus-6 a captain with an empty purse and a dry tank is typed-refused and **stays
+stranded there**.
+
+**What was done.** The property now carries the precondition the engine carries
+(`venueOffered(systemId,'borrow')`), and the desk-less case is asserted in its own test rather
+than dropped from the sample: the refusal is typed, spends no die, moves no credits, writes no
+loan, and the strand persists. Nothing was softened — the second test states the true fact
+where the first used to state a false one.
+
+**Why it is not fixed here.** Both repairs are out of scope by rulings this spec already made.
+A row-level predicate ("the garrison bars debtors, but not the destitute") is **F-101-3**'s
+category and out by ruling 3. A rule that no port may withhold the desk contradicts §2.2 ruling
+5, which grants a port exactly that one bit. The third option — an engine-side floor ("if the
+captain cannot jump, the desk is always there") — is a new rule in `actions/hangout.ts` and a
+content pass may not add one.
+
+**Recommended resolution:** an owner ruling at **T-130**, informed by T-125's measurement. The
+question to put is narrow: *may a core port remove the anti-poverty out, or is the desk a
+guarantee the galaxy makes everywhere?* Note that the exposure is bounded — Arcturus-6 is one
+of fourteen, the other thirteen run desks, and no driven career in the 10-seed × 120-day
+measurement produced a single `venue-not-offered` event (see F-123-3's rig) — so this is a
+design question, not an observed regression.
+
+### Finding F-123-3 · The gambler's second hand of the day can be a ZERO-credit stake
+
+**Found by T-123's F-101-1 measurement; an INSTRUMENT defect, not a game defect.** `planDare`
+picks "the richest live in-system dealer" once, off the DAWN state, and the caller subtracts
+each queued stake from the PLAYER's purse for the next hand (`sim/index.ts`, the `credits`
+parameter) but not from the DEALER's. With `GAMBLER_MAX_DARES_PER_DAY = 2`, the first hand can
+empty the dealer and the second is then clamped by `min(band.max, playerCredits, dealerCredits)`
+to **zero**. Measured over seeds 1..10 × 120 days: **34 of 1,319 hands (2.6%) settled at a zero
+stake**, and 3 more settled below their port's own floor.
+
+This is exactly the pathology `planDare`'s own comment says the richest-dealer pick exists to
+avoid — "dealing with a broke NPC produces a zero-or-tiny-stake hand that inflates the dare
+count and drags `expectedValuePerDare` toward 0" — and the guard is simply evaluated once per
+day rather than once per hand. It is not a typed failure (`failedVisits` stays 0, correctly: a
+zero-stake hand is a legal hand), so no existing assertion catches it.
+
+**Why it is not fixed here.** It is a change to a shipped policy's planning, which would move
+the `gambler` fingerprint for a reason unrelated to this task's content, and `expectedValuePerDare`
+is one of the numbers T-125 is chartered to read. Fixing it inside a content pass would
+contaminate that measurement.
+
+**Recommended resolution:** **T-125**, as a one-line instrument repair taken deliberately with
+its own before/after — thread the queued stake through the dealer pick, or cap
+`GAMBLER_MAX_DARES_PER_DAY` at one hand per dealer per day. Report the effect on
+`expectedValuePerDare` when it lands.
 
 ---
 

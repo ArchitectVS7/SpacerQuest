@@ -581,13 +581,79 @@ const UNCHANGED_POLICIES = [
  *    T-123's. NOTHING WAS TUNED TO PRODUCE THIS AND NOTHING IS TUNED IN RESPONSE:
  *    five seeds cannot separate a shift of this size from stream noise, and T-125
  *    owns the milestone's single capstone, its measurement and its verdict.
+ *
+ * 19. T-123 · HANGOUT CONTENT PASS 2 OF 3 — THE EXOTIC AND THE DANGEROUS
+ *     (2026-07-30, docs/HANGOUT_REDESIGN.md §6.3 pass 2). Five more ports gain
+ *     authored parameters, and for the first time a port NARROWS ITS VENUE SET.
+ *     EXACTLY TWO ROWS MOVE:
+ *      trader   1b4e953468311f40 -> 7ee040b0931caff9
+ *      gambler  f10a74640899d867 -> 40fa56c309b70e74
+ *      smuggler / fighter / explorer / veteran / greedy — ALL UNCHANGED, byte for
+ *      byte. `smuggler` staying put is the sharp control here: it borrows and
+ *      repays at the same desks the trader does, so its identity says the trader's
+ *      move is about WHERE the desk is and not about lending in general — within
+ *      this window the smuggler's routes never put it at Arcturus-6 with a marker
+ *      to settle.
+ *
+ *    MECHANISM, and it is CONTENT plus a POLICY MIRROR — no engine line changed
+ *    (`git diff --stat HEAD -- packages/engine/src ':!.../__tests__'` prints
+ *    nothing). Two independent channels, and they are separated by measurement
+ *    below rather than asserted:
+ *      (a) THE BANDS. Arcturus-6 100/400, Deneb-4 25/2000, Regulus-6 500/3000,
+ *          Rigel-8 10/3000, Vega-6 250/1500. `planDare` sizes every stake through
+ *          `wagerBandFor` (T-121's edit), so the gambler now bets a different
+ *          amount at five more of the fourteen ports it visits and each
+ *          differently-sized hand re-phases that seed's rng stream. Two of the
+ *          five bands reach 3,000 — three times the galaxy's old ceiling — which
+ *          is why this pass moves the gambler much further than T-122's did.
+ *      (b) THE WITHDRAWN DESK. Arcturus-6's row omits `borrow` and `repay`
+ *          (§6.2's strict garrison), so `resolveVisitHangout` typed-refuses a
+ *          lending action there. `planLoanBorrow` / `planLoanRepay` and the two
+ *          "head home to settle up" preferences now mirror that gate through
+ *          `isLendingDeskSystem` (`sim/index.ts`) — the F-121-1 idiom, a policy
+ *          guard made equal to an engine guard, not a new rule.
+ *
+ *    THE DECOMPOSITION, measured over these exact runs rather than reasoned about.
+ *    With the content rows in and the sim mirror REVERTED, the trader hashes
+ *    4519a706ae2dc8a2 and takes 9 loans; with the mirror it hashes 7ee040b0931caff9
+ *    and takes 7. So the mirror is LOAD-BEARING, not cosmetic — and the direct
+ *    evidence is the refusal count: driven headlessly over 5 seeds x 40 days the
+ *    trader emits ONE `LoanEvent{failReason:'venue-not-offered'}` without the
+ *    mirror and ZERO with it. That one refusal is a die slot taken out of the day's
+ *    ledger for an act the house never offered, which is exactly the drift
+ *    `hangoutPlay.failedVisits === 0` exists to forbid. Widened to 10 seeds x 120
+ *    days across ALL SEVEN policies with the mirror in: zero refusals of either
+ *    event variant. The gambler's hash is IDENTICAL with and without the mirror,
+ *    which is the control saying the `venueOffered(...,'dare')` guards added to
+ *    `planDare` and to the "go where the tables are" preference are arithmetically
+ *    inert today (all fourteen ports deal) and landed while provably so.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      trader    final credits  median 16,667 -> 16,667   mean 15,508 -> 14,809
+ *      trader    loans taken 7 -> 7, cleared 7 -> 7, defaults 0 -> 0,
+ *                interest accrued 1,107 -> 1,236
+ *      gambler   final credits  median  6,849 ->  6,314   mean  7,158 -> 11,453
+ *      gambler   dares played 220 -> 236, wagered 52,005 -> 62,305,
+ *                dare net credits -1,927 -> +2,573
+ *      gambler   loans taken 5 -> 5, interest 1,400 -> 1,400 (its lending is
+ *                untouched — only its stakes moved)
+ *      failed Hangout visits 0 -> 0 for every policy, as the invariant requires.
+ *    The gambler stakes 20% more for sixteen more hands and its dare net flips
+ *    sign; the wide 3,000-ceiling bands are the whole of it. NOTHING WAS TUNED TO
+ *    PRODUCE THIS AND NOTHING IS TUNED IN RESPONSE: five seeds cannot separate a
+ *    shift of this size from stream noise (the mean/median divergence in the
+ *    gambler row — mean up 60%, median down 8% — is itself the signature of one
+ *    seed running hot), re-pricing the Dare is R-owned per §8, and T-125 owns the
+ *    milestone's single capstone, its measurement and its verdict.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
   // so the trader borrows and repays on the day it needs to rather than on the day
-  // it gets home.
-  trader: '1b4e953468311f40',
+  // it gets home. Entry 19: re-derived again — Arcturus-6 withdraws its desk, and
+  // the policy's lending guards now mirror the engine's `venueOffered` gate rather
+  // than queueing an action the resolver refuses.
+  trader: '7ee040b0931caff9',
   fighter: 'dc6ca4fbcce58659',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
@@ -601,7 +667,9 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // when the route passes Sun-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
   // down (and every hand after it) re-phases. The only row entry 18 moves.
-  gambler: 'f10a74640899d867',
+  // Entry 19: re-derived a third time — five more authored bands, two of them
+  // reaching 3,000, so the stakes move much further than pass 1's did.
+  gambler: '40fa56c309b70e74',
   greedy: '0f2ff82982dcbf2d',
 };
 

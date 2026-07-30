@@ -8,6 +8,7 @@ import {
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { applyPlayerAction } from '../day.js';
 import { resolveVisitHangout, hangoutRumors } from '../actions/hangout.js';
+import { venueOffered, wagerBandFor } from '../hangoutRules.js';
 import { SeededRng } from '../rng.js';
 import { DawnHand, DayPhase, GameState } from '../types.js';
 
@@ -335,28 +336,40 @@ describe('hangout-system gate', () => {
 // in `day.ts` is precisely the thing that changed, so a test that calls the
 // resolver directly would have passed before this task and proves nothing.
 //
-// The numbers here are Sun-3's numbers, on purpose: ids 2–14 carry BASELINE rows
-// that resolve field-wise to `DEFAULT_PORT_HANGOUT`, so this is a proof about
-// REACH, not about parameters. T-122 … T-124 make the ports differ.
+// The numbers here were Sun-3's numbers, on purpose: at T-121 ids 2–14 all carried
+// BASELINE rows that resolved field-wise to `DEFAULT_PORT_HANGOUT`, so this was a
+// proof about REACH and not about parameters.
+//
+// T-123 · VEGA-6 IS NOW AN AUTHORED PORT (band 250/1500, §6.3 pass 2), so a 100cr
+// request is clamped UP to the port's floor and the restated 1,100 stopped being
+// true. The test is repaired the way the standing constraint requires — by reading
+// the stake through `wagerBandFor`, the same accessor the resolver clamps with,
+// rather than by re-recording a literal. It is still a REACH proof: what it asserts
+// is that the action resolves off-hub at all, that the transfer is zero-sum, and
+// that the die is spent.
 // ---------------------------------------------------------------------------
 describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
   it('a Dare plays at Vega-6 (id 14) — no ActionBlocked, credits move, the die is spent', () => {
     const VEGA_6 = 14;
     const state = hangoutState([20, 3, 3, 3, 3], VEGA_6); // die[0] = 20 → player wins
-    state.player.credits = 1000;
+    state.player.credits = 10_000;
+    const dealerStart = dealerOf(state).credits;
+    // The port's own floor — inside its band by construction, and inside both
+    // purses, so the resolver's clamp is the identity and the transfer is exact.
+    const stake = wagerBandFor(VEGA_6).min;
     const { state: after, events } = applyPlayerAction(state, {
       type: 'VisitHangout',
       venue: 'dare',
       opponentId: DEALER,
-      wager: 100,
+      wager: stake,
       spendDie: 0,
     });
 
     expect(events.some((e) => e.type === 'ActionBlocked')).toBe(false);
     expect(events.some((e) => e.type === 'HangoutEvent' && e.venue === 'dare')).toBe(true);
     // The same zero-sum transfer the home port produces.
-    expect(after.player.credits).toBe(1100);
-    expect(dealerOf(after).credits).toBe(4900);
+    expect(after.player.credits).toBe(10_000 + stake);
+    expect(dealerOf(after).credits).toBe(dealerStart - stake);
     expect(after.player.dawnHand?.spent[0]).toBe(true);
   });
 
@@ -391,14 +404,14 @@ describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
 // same `failVenue` helper — so the five social venues report a HangoutEvent and
 // the two lending venues report a LoanEvent.
 //
-// F-120-1 · THE REFUSAL IS NOT REACHABLE END TO END AT T-120, and that is
+// F-120-1 · THE REFUSAL WAS NOT REACHABLE END TO END AT T-120, and that was
 // deliberate rather than an omission: Sun-3's row and `DEFAULT_PORT_HANGOUT` both
-// offer all seven venues, so no state can drive `resolveVisitHangout` into that
-// branch while exactly one port exists. What is asserted here is the SERIALIZED
+// offer all seven venues, so no state could drive `resolveVisitHangout` into that
+// branch while exactly one port existed. What is asserted here is the SERIALIZED
 // SHAPE of both event variants (the schema mirror + the drift guard); the
-// resolver-level assertion (a VisitHangout at a port whose row omits the venue →
-// typed fail, no die spent) is owed by the first task that authors such a port —
-// T-123's Arcturus-6, which §6.3 gives no lending desk.
+// resolver-level assertion it named as owed is DISCHARGED by T-123 in the
+// describe block below — Arcturus-6 (4) runs no credit desk and Deneb-4 (5) seats
+// no stranger, so both event variants are now driven for real.
 // ---------------------------------------------------------------------------
 describe("T-120 · the 'venue-not-offered' refusal round-trips on both event shapes", () => {
   it('a HangoutEvent carrying it survives serialize → deserialize byte-identically', () => {
@@ -433,5 +446,118 @@ describe("T-120 · the 'venue-not-offered' refusal round-trips on both event sha
     expect(
       restored.eventLog.some((e) => e.type === 'LoanEvent' && e.failReason === 'venue-not-offered'),
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-123 · THE REFUSAL, DRIVEN FOR REAL — the assertion F-120-1 recorded as owed
+// by the first task to author a port that withholds a beat
+// (`docs/HANGOUT_REDESIGN.md` §2.6, §6.2).
+//
+// Two ports narrow their venue set, for two different reasons, and between them
+// they reach BOTH typed event variants at the resolver:
+//   * Arcturus-6 (4) — the garrison mess runs no credit desk, so 'borrow' and
+//     'repay' report a `LoanEvent{kind:'failed'}`;
+//   * Deneb-4 (5) — the partisan hall will not seat a stranger, so 'meet' reports
+//     a `HangoutEvent`.
+// In every case the refusal lands BEFORE the die is spent, which is the property
+// that matters: nothing is charged for an act the house never offered.
+//
+// NO NUMBER FROM THE CONTENT ROWS IS RESTATED HERE. The tests read `venueOffered`
+// to state the precondition, so an author who later gives Arcturus-6 a desk gets a
+// failing precondition assertion rather than a silently vacuous test.
+// ---------------------------------------------------------------------------
+describe('T-123 · a port that withholds a venue refuses it BEFORE the die is spent', () => {
+  const ARCTURUS_6 = 4;
+  const DENEB_4 = 5;
+
+  it('borrow at Arcturus-6 is a typed LoanEvent fail — no die, no loan, no credits moved', () => {
+    expect(venueOffered(ARCTURUS_6, 'borrow')).toBe(false);
+    const state = hangoutState([10, 3, 3, 3, 3], ARCTURUS_6);
+    const startCredits = state.player.credits;
+
+    const { state: after, events } = resolveVisitHangout(
+      state,
+      { type: 'VisitHangout', venue: 'borrow', amount: 500, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'LoanEvent',
+        kind: 'failed',
+        failReason: 'venue-not-offered',
+      }),
+    );
+    // The lending pair reports a LoanEvent, never the social HangoutEvent —
+    // `failVenue`'s whole reason for existing.
+    expect(events.some((e) => e.type === 'HangoutEvent')).toBe(false);
+    expect(after.player.dawnHand?.spent[0]).toBe(false);
+    expect(after.player.loan ?? null).toBeNull();
+    expect(after.player.credits).toBe(startCredits);
+  });
+
+  it('repay at Arcturus-6 is refused for the VENUE, not for the absent loan', () => {
+    // Ordering matters: the venue gate sits ABOVE the lending preconditions in the
+    // resolver, so a captain with no marker still gets 'venue-not-offered' rather
+    // than 'no-loan'. That is what makes the refusal a statement about the port.
+    expect(venueOffered(ARCTURUS_6, 'repay')).toBe(false);
+    const state = hangoutState([10, 3, 3, 3, 3], ARCTURUS_6);
+
+    const { state: after, events } = resolveVisitHangout(
+      state,
+      { type: 'VisitHangout', venue: 'repay', amount: 100, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'LoanEvent',
+        kind: 'failed',
+        failReason: 'venue-not-offered',
+      }),
+    );
+    expect(after.player.dawnHand?.spent[0]).toBe(false);
+  });
+
+  it('meet at Deneb-4 is a typed HangoutEvent fail — no die spent, no disposition moved', () => {
+    expect(venueOffered(DENEB_4, 'meet')).toBe(false);
+    const state = hangoutState([10, 3, 3, 3, 3], DENEB_4);
+    const startDisposition = dealerOf(state).disposition;
+
+    const { state: after, events } = resolveVisitHangout(
+      state,
+      { type: 'VisitHangout', venue: 'meet', opponentId: DEALER, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'HangoutEvent',
+        venue: 'meet',
+        failReason: 'venue-not-offered',
+      }),
+    );
+    expect(events.some((e) => e.type === 'LoanEvent')).toBe(false);
+    expect(events.some((e) => e.type === 'DispositionChanged')).toBe(false);
+    expect(after.player.dawnHand?.spent[0]).toBe(false);
+    expect(dealerOf(after).disposition).toBe(startDisposition);
+  });
+
+  it('the beats those two ports DO run still resolve normally', () => {
+    // The control. Without it the three tests above would also pass at a port that
+    // refused everything, and "narrowed" would be indistinguishable from "broken".
+    const state = hangoutState([20, 3, 3, 3, 3], ARCTURUS_6);
+    state.player.credits = 1000;
+    const { state: after, events } = resolveVisitHangout(
+      state,
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 200, spendDie: 0 },
+      new SeededRng(1),
+    );
+    expect(events.some((e) => e.type === 'HangoutEvent' && e.venue === 'dare')).toBe(true);
+    expect(
+      events.some((e) => e.type === 'HangoutEvent' && e.failReason === 'venue-not-offered'),
+    ).toBe(false);
+    expect(after.player.dawnHand?.spent[0]).toBe(true);
   });
 });

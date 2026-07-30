@@ -1256,7 +1256,7 @@ absorbed.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md` §2/§6/§7, `TASKS.md` T-120…T-125, and the  · attempts=1/4.
 
-### T-123 · Hangout content pass 2 of 3 — the exotic and the dangerous (5 ports) — `status: TODO` · `coder: opus` · `after: T-122`
+### T-123 · Hangout content pass 2 of 3 — the exotic and the dangerous (5 ports) — `status: DONE` · `coder: opus` · `after: T-122`
 
 The next five, leaning into the axes the spec named: ports where the clientele is unusual, the
 house rules are hostile, or the wager band is out of proportion to the rest of the galaxy. A
@@ -1267,6 +1267,217 @@ never through a special case in the engine.
 exotic on their parameters, asserted by a test against the spec's axes; **zero engine
 changes** — if a port's concept needed one, it is reported as a framework finding instead;
 gate green.
+
+**Delivered (2026-07-30):** five authored rows in `packages/content/src/portHangouts.ts` —
+`ARCTURUS_6_HANGOUT` (id 4), `DENEB_4_HANGOUT` (5), `REGULUS_6_HANGOUT` (11), `RIGEL_8_HANGOUT`
+(12), `VEGA_6_HANGOUT` (14) — swapped into `PORT_HANGOUTS` keys `4` / `5` / `11` / `12` / `14`
+over T-121's `baselineHangout(id)` calls. With pass 1 that is **ten of the fourteen ports
+carrying authored content**; four baselines remain (6, 7, 9, 13) for T-124. Axis vectors, each
+deviation carrying its one-line reason in the row's own comment:
+**Arcturus-6, the garrison mess (`the Garrison Mess`, `dangerous`)** — venues **minus `borrow`
+and `repay`** (§6.2's strict garrison; §2.2 ruling 5's one bit of per-port lending control, the
+first narrowed venue set in the game), band 100/400 (the narrowest anywhere), `befriend` DC
+12→16 and +3→+2, `insult` −4→−9, `dare` +2/−2 → +1/−7 (beating the garrison's dealer is the
+worst sin in the galaxy; losing to him earns almost nothing), `meet` +1→**0** (an authored zero,
+which `venueParamsFor`'s `??` preserves), clientele `['veteran','fighter']`.
+**Deneb-4, the partisan hall (`the Standing Hall`, `exotic`)** — venues minus **`meet`** (§6.1's
+"a room that will not seat a stranger"), band 25/2000, `befriend` DC 12→14 and +3→+5, `insult`
+−4→−6, `dare` +1/−6 (§6.2's asymmetric consequence), **the first row with `regulars`** — the four
+Astro League captains (`npc-cargo-king`, `npc-admiral-stern`, `npc-zero-risk`, `npc-the-warden`),
+which is what makes the port partisan rather than decorative — plus `['veteran']`.
+**Regulus-6, the high table (`the High Table`, `exotic`)** — band 500/3000: the floor is half a
+Tour One captain's whole starting purse (`engine/state.ts:125`, credits 1,000) and the ceiling is
+three times the galaxy's; the highest floor of any authored port and a band strictly outside the
+default envelope at BOTH ends. `befriend` DC 15, `insult` −5, `dare` +1/−3; regulars
+`npc-nebula-rose` + `npc-neon-fox`, archetypes `['gambler','trader']`. All seven venues, so its
+identity rests on stakes alone and the F-101-1 measurement is clean.
+**Rigel-8, the underbelly (`the Underhold`, `dangerous`)** — band 10/3000, **the widest span in
+the galaxy**; `befriend` DC 12→8 (the cheapest room anywhere to charm) beside `insult` −4→−8 (the
+most expensive place bar the garrison to say the wrong thing) — easy in, hard to leave; `dare`
+failure arm −2→−4; clientele `['smuggler','gambler']`.
+**Vega-6, the outfitters' long room (`the Long Room`, `exotic`)** — §6.3's "long memories, large
+deltas both ways": band 250/1500, `befriend` DC 12→15 and +3→**+6**, `insult` −4→−8, `dare`
++2/−2 → **+4/−4**, `meet` +1→+2; regulars `npc-star-gazer` + `npc-stellar-drift`, archetypes
+`['veteran','explorer']`. `storylets.ts:2186` ("The Homecoming Gantry") is the port's own
+established voice and the row is written against it. All ten authored bands and all ten full
+axis vectors are distinct; the §6.4 cardinality check confirms it.
+
+**The Accept clause is mechanical, and threshold-free.** Three new describe blocks in
+`hangoutContent.test.ts`, every assertion read through `venueParamsFor` / `wagerBandFor` /
+`venueOffered` against **Sun-3's resolved defaults** or against the other authored ports — never
+a restated literal, so an authored number can move without editing a test. **Hostile:**
+Arcturus-6 is strictly harsher than the default on all five hostility axes (DC, insult,
+dare-failure, meet, venue count) AND is the **unique per-axis maximum** on every one of them
+across all authored ports (failures name the offending port by house name); it is the only port
+that withholds the credit desk, and every other authored port still offers both lending venues.
+**Exotic:** Regulus-6's band is strictly outside the default envelope at both ends and has the
+strictly highest floor of any authored port, with a non-empty `regulars` list; Rigel-8 holds the
+strictly widest span and a floor below the default. **Tone correlates with the numbers (§6.1),
+quantified over ALL authored ports so T-124 inherits it unedited:** a non-`everyday` port moves
+at least two of the six axes; a `dangerous` port is strictly harsher than the default on at least
+one consequence axis; an `exotic` port is unusual on stakes, regulars or venue set; plus a
+non-vacuity guard that at least one of each exists.
+
+**Zero lines changed under `packages/engine/src` outside `__tests__`:**
+`git diff --stat HEAD -- packages/engine/src ':!packages/engine/src/__tests__'` prints **nothing**.
+No `packages/engine/src/npc.ts` edit (§5.2 stays open for T-130); no `packages/ui/src` edit; no
+save-shape change — `CURRENT_SAVE_VERSION` stays **13** and no migration is owed.
+
+**The one sim change, and why it is not an engine change.** Withdrawing the desk at one port put
+three policy planners out of step with the engine, so `packages/sim/src/index.ts` gains
+`isLendingDeskSystem(systemId, venue)` = `isHangoutSystem(...) && venueOffered(...)` beside
+`isHangoutSystem`, used by `planLoanBorrow` (`borrow`), `planLoanRepay` (`repay`) and the
+trader's and smuggler's two "head home to settle up" preferences (`repay`). This is the F-121-1
+idiom — **a policy guard made equal to an engine guard, read through the engine's own accessor**,
+never a new rule — and it is proven load-bearing rather than asserted: driven headlessly over 5
+seeds × 40 days the trader emits **one** `LoanEvent{failReason:'venue-not-offered'}` without the
+mirror and **zero** with it, and the trader's fingerprint differs between the two
+(`4519a706ae2dc8a2` content-only vs `7ee040b0931caff9` with the mirror). Widened to **10 seeds ×
+120 days across all seven policies with the mirror in: zero refusals of either event variant**.
+`planDare` and the gambler's "go where the tables are" preference also gained
+`venueOffered(..., 'dare')`; those are **arithmetically inert today** (all fourteen ports deal)
+and the gambler's hash is identical with and without them — landed while provably inert, on the
+T-121 precedent, and the comments say so.
+
+Tests: `hangoutContent.test.ts` 84 assertions (was 38) — `AUTHORED_PORTS` and
+`MECHANICALLY_DEVIANT_PORTS` extended, plus the three new blocks above.
+`hangoutRules.test.ts`'s baseline-inertness list shrank 9 → **4** (6, 7, 9, 13), and its
+"BASELINE ONLY — no port has yet narrowed its venue set" test — which its own comment said T-123
+was expected to rewrite — is replaced by the positive form: a `NARROWED` table naming
+Arcturus-6's `borrow`/`repay` and Deneb-4's `meet`, asserted across all fourteen core ports with
+a non-vacuity guard, phrased so T-124 extends it by adding a row. `hangout.test.ts` **discharges
+the resolver-level assertion F-120-1 recorded as owed**: `borrow` and `repay` at Arcturus-6 →
+`LoanEvent{kind:'failed', failReason:'venue-not-offered'}` (and `repay` is refused for the VENUE,
+above the lending preconditions, so a captain with no marker still gets the port's answer rather
+than `no-loan`); `meet` at Deneb-4 → `HangoutEvent{failReason:'venue-not-offered'}`, no
+`DispositionChanged`; in every case **no die spent, no credits moved, no loan written**, plus a
+control that the beats those ports DO run still resolve and DO spend the die. `protocol.test.ts`
+gains the harness mirror at Arcturus-6 — `legalActions` advertises `dare`/`rumor` but neither
+`borrow` nor `repay`, and the `wager` domain is the port's 100/400 read through `wagerBandFor`,
+with a non-vacuity check that the port band differs from the global one. **Two existing tests
+were repaired rather than re-recorded**, both by reading an accessor where a literal used to be:
+T-121's "a Dare plays at Vega-6" restated its stake as `wagerBandFor(14).min` (Vega-6's authored
+floor of 250 clamps the old 100cr request up), and `lending-property.test.ts` P2 now carries the
+precondition the ENGINE carries — see F-123-2 below.
+
+Fingerprints: **exactly two policies moved.** `trader 1b4e953468311f40 → 7ee040b0931caff9` and
+`gambler f10a74640899d867 → 40fa56c309b70e74`; `smuggler` / `fighter` / `explorer` / `veteran` /
+`greedy` are **byte-identical**. The smuggler holding still is the sharp control: it borrows and
+repays at the same desks the trader does, so the trader's move is about WHERE the desk is, not
+about lending. Mechanism per policy is written up as **ledger entry 19** in
+`campaign-degraded.test.ts` in the voice of entries 17/18, including the content-only vs
+content+mirror decomposition above and the measured deltas (trader final credits median
+16,667 → 16,667, mean 15,508 → 14,809, loans 7 → 7, interest 1,107 → 1,236, defaults 0 → 0;
+gambler median 6,849 → 6,314, mean 7,158 → 11,453, dares 220 → 236, wagered 52,005 → 62,305, dare
+net −1,927 → **+2,573**, loans and interest unchanged; `failedVisits` 0 → 0 everywhere). Nothing
+was tuned to produce it and nothing is tuned in response — five seeds cannot separate a shift of
+this size from stream noise, and the gambler's mean-up/median-down signature is one seed running
+hot. T-125 owns the verdict.
+
+Goldens, stated explicitly: **both regenerated through their own generators and both
+byte-identical, so neither was re-recorded.**
+`packages/sim/src/__tests__/fixtures/replay-golden.ts` — all six constants identical (verified by
+JSON-comparing the generator's output against the committed module, not by string-matching the
+prettier-wrapped file); `packages/engine/src/__tests__/fixtures/day-loop-golden.ts` — all four
+hashes identical (`3405f608…`, `7274873…`, `9e332c2e…`, `3e96fe90…`). **Event-count diff: zero
+events added or removed in either fixture**, and no `rngState` moved.
+
+Fixture position: `docs/balance/smoke/tiers.json` **re-extracted** from the stored `t116-explore`
+aggregate after `npm run format` (`npm run balance:extract -w @spacerquest/sim -- --aggregate
+docs/balance/baseline-t116-explore.json`): `rulesFingerprint` `5b2f53a8c30edbd9 →
+b9b83a6a67cbfdde`, `instrumentFingerprint` `537f29b61ecc9719 → 4e7184c378da068f`, `docsFingerprint`
+`840187f2e76d8438 → c807452107b9ff16`, `gitCommit` `a4c5901e… → b5dab264…`;
+`provenance.sweepLabel` stays `t116-explore`. **The instrument fingerprint DID move this time,
+and that is expected rather than a slip** — unlike T-122 this task changes
+`packages/sim/src/index.ts` (the §4 policy mirror), which is a hashed instrument source; T-122's
+"unchanged" held only because it touched no sim file. Checkpoint deltas repeat the fingerprint
+control: **only `gambler` moved, and in all four tiers** — days-1-3 `deedsEarned` 57 → 58 and
+`outcomeHash` `b39529cb43e10a21 → 4a7817b488cd52ac`; days-21-23 `creditsMax` 17,041 → 15,986,
+hash `7569c38771802113 → 19b6c394b35abe87`; days-29-31 `creditsMax` 43,068 → 42,068, `debtTotal`
+15,040 → 15,262, hash `e7553a3147267a18 → 8e8bcd93d50a88de`; days-41-43 `debtTotal` 5,355 →
+5,320, `deedsEarned` 53 → 56, hash `e2e7419ce6eaa54a → d70479f96122e514`. The other seven
+policies are identical in all four tiers. **This is not a capstone — T-125 owns the milestone's
+single capstone**, its sweep, its re-pinned baseline and its verdict.
+`balance-targets.test.ts`'s live 40-seed "the trader clears the marker, and clears it fastest"
+(`:180`) stayed green and the `it.fails` [22, 30] band (`:225`) still fails as pinned; neither
+was touched, and no threshold, band or golden was edited to make anything pass.
+
+**F-101-1 measured, as the Accept clause requires — and the measurement partly REFUTES the
+finding as written.** The gambler driven headlessly, seeds 1..10 × 120 days, 1,319 hands, every
+realized stake recorded (throwaway script, not committed). At **Regulus-6**: declared 500/3,000,
+99 hands, realized min 0 / median 1,383 / **max 3,000** — the declared ceiling is reached on 41
+of 99 hands and the **dealer's purse binds on only 5 (5%)**. The plain gap sentence is therefore
+*declared max 3,000 versus realized max 3,000 — no gap at the top at all*. Rigel-8: 108 hands,
+53 / 865 / 3,000, dealer-capped 5. Sun-3 (the default band): 124 hands, 39 / 1,000 / 1,000, and
+the **band ceiling is the operative limit on 60% of hands** while the dealer's purse binds on
+0.8%. The reason is the N-series: N2/N10/T-021 moved the cast's day-120 median wealth
+21,884 → 76,049, and a dealer that rich caps almost nothing. **The floor does not price the run
+out either** — at Regulus-6 the gambler played on 50 of its 65 docked days, and on the 15 idle
+ones its median dawn purse was 32,038 credits (the dice budget, not the 500 floor); in Tour One
+itself it was docked with a dealer on 18 days and played 29 hands. **Nothing was compensated in
+either direction** — the band was neither lowered because the floor proved affordable nor raised
+because the ceiling proved reachable. Written up as a dated addendum under **F-101-1** in
+`docs/HANGOUT_REDESIGN.md` §7. The evidence it contributes to T-125: the dealer-purse cap is a
+problem the N-series already solved, and **the wager band itself is now the live constraint** —
+which is exactly the lever ruling 3 gives content.
+
+Findings recorded in §7, reported and not fixed. **F-123-1 — the Hangout pane offers a credit
+desk at a port that has none.** `packages/ui/src/format.ts:340` gates on `hasHangout` alone and
+`store.ts`'s `borrowLoan` (`:1333`) / `repayLoan` (`:1369`) build the action unconditionally with
+**no `venueOffered` filter anywhere in the UI**; at Arcturus-6 the engine answers
+`venue-not-offered` and `loanFailNoticeFrom`'s `default:` arm (`:514`) renders the vague *"Penny
+Wise turned that request down."* Worse, `hangoutFailNoticeFrom` (`:478`) has **no arm** for
+`'venue-not-offered'`, so a social-venue refusal would render **silence** — a violation of the
+"typed fails render, never silence" guarantee, unreachable today only because the pane issues no
+social venue but `dare` (F-101-4), and Deneb-4's omitted `meet` is precisely the row that makes
+it reachable the day `meet` is surfaced. Not fixed: a `packages/ui/src` product change that would
+move `packages/ui/e2e/hangout.spec.ts`, and surfacing must be a named task. **Recommended: fold
+into T-130 with F-101-4/5/6 — it is one surfacing job, not four.**
+**F-123-2 — a port with no credit desk removes the §7.5 bad-day out at that port.**
+`lending-property.test.ts` P2 went red on the authored row: at Arcturus-6 a captain with an empty
+purse and a dry tank is typed-refused and stays stranded. **The property was restated, not
+narrowed** — it now carries the engine's own precondition (`venueOffered(...,'borrow')`), and the
+desk-less case is asserted in a test of its own (typed refusal, no die, no credits, no loan, the
+strand persists) instead of being dropped from the sample. Both candidate repairs are out by
+rulings this spec already made (a row predicate is F-101-3's category and out by ruling 3; "no
+port may withhold the desk" contradicts §2.2 ruling 5), and an engine-side floor is a new rule a
+content pass may not add. **Recommended: an owner ruling at T-130** — *may a core port remove the
+anti-poverty out, or is the desk a galaxy-wide guarantee?* Exposure is bounded: one port of
+fourteen, and zero `venue-not-offered` events in any driven career.
+**F-123-3 — the gambler's second hand of the day can be a ZERO-credit stake.** An INSTRUMENT
+defect found by the F-101-1 rig: `planDare` picks the richest dealer once off the dawn state and
+the caller subtracts queued stakes from the player's purse but not the dealer's, so with
+`GAMBLER_MAX_DARES_PER_DAY = 2` the first hand can empty the dealer and the second clamps to
+zero — **34 of 1,319 hands (2.6%)**, plus 3 more below their port's floor. It is exactly the
+pathology `planDare`'s own comment says the richest-dealer pick exists to avoid, with the guard
+evaluated once a day instead of once a hand, and it is not a typed failure so `failedVisits`
+stays correctly 0. Not fixed here: it changes a shipped policy's planning and would contaminate
+the `expectedValuePerDare` number **T-125** is chartered to read. **Recommended: T-125, with its
+own before/after.**
+No `F-101-3x` was raised — none of the five concepts wanted a predicate; the garrison's "no
+desk", the hall's "no introductions" and the high table's floor were all expressible as
+parameters, which is the surface working as designed.
+
+Spec corrections taken in the open, not silently: **`docs/HANGOUT_REDESIGN.md` §6.3's five T-123
+rows are annotated in place** with what actually shipped, plus a block under the table recording
+three deviations from the axis notes — (1) Deneb-4 **also** omits `meet`, so the venue-set axis
+is exercised for a reason other than hostility rather than being a synonym for the garrison;
+(2) Rigel-8 is graded on **span**, not on floor, because Mira-9's dive (T-122, floor 5) already
+holds the lowest floor and the testable form of "low min, high ceiling" is the widest `max−min`;
+(3) pass 2's register is two `dangerous` and three `exotic`, with `comic` left to T-124.
+**F-101-7 gains its mirror image**, recorded so T-125's deed coverage reads both as expected:
+Mira-9's 200 ceiling makes the 250cr `high_roller` deed unreachable there, while Regulus-6's 500
+floor makes **every** hand deed-eligible — the port that guarantees the deed is the port an early
+captain cannot sit down at, so expect a Mira-9 zero, a Regulus-6 saturation, and a Regulus-6
+count that rises with career age.
+
+Gate: `npx tsc -b`, `npm run lint`, `npm run format:check` and all four workspaces' vitest suites
+green (**1,599 tests, 0 failures**); `packages/ui/e2e/hangout.spec.ts` green (3/3). The three
+`packages/ui/e2e/onboarding.spec.ts` failures are the pre-existing **F-121-2** T-121 regression,
+re-confirmed unchanged and still escalated rather than absorbed — they were not routed around by
+pre-seeding fixtures.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md` §2/§4/§6/§7, the authored T-122 rows in `p · attempts=1/4.
 
 ### T-124 · Hangout content pass 3 of 3 — the last four, and the humour — `status: TODO` · `coder: opus` · `after: T-123`
 

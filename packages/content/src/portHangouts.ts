@@ -439,13 +439,320 @@ const PROCYON_5_HANGOUT: PortHangout = {
 };
 
 /**
+ * T-123 · Arcturus-6 — the garrison mess (§6.3, pass 2). THE MEASURABLY HOSTILE
+ * PORT, and the first port in the game to NARROW ITS VENUE SET.
+ *
+ * `content/ports.ts:223` gives Arcturus-6 to the `rebels`, so this is a garrison
+ * of that allegiance rather than a neutral one: a room that already knows whose
+ * side it is on before you walk in.
+ *
+ * AXIS VECTOR: venue set (no credit desk), stakes (a narrow, disciplined band),
+ * difficulty (the hardest room in the galaxy to charm), consequence (punitive on
+ * every arm), clientele (`veteran` + `fighter`). That is five of the six axes,
+ * which is what §6.2's "strict garrison world" asks for — governance expressed
+ * jointly through the mechanical four.
+ *
+ * IT IS THE UNIQUE PER-AXIS MAXIMUM ON EVERY HOSTILITY AXIS, deliberately: the
+ * highest `befriend.dc`, the most negative `insult`, the most negative
+ * dare-failure arm, the lowest `meet`, and the fewest venues of any authored
+ * port. That is what lets `hangoutContent.test.ts` assert "measurably hostile"
+ * WITHOUT a threshold — it compares this port against the others and against the
+ * default row, and never against a restated number.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `venues` omits `borrow` AND `repay` — §6.2's strict garrison "no lending
+ *     desk", and §2.2 ruling 5's exactly-one-bit of per-port lending control. The
+ *     garrison does not run a credit desk; the loan BAND stays global, because a
+ *     port may only decide whether the desk is there, never what it charges.
+ *   - `wager` 100/400 — the narrowest band in the galaxy. Soldiers bet in fixed
+ *     sums out of fixed pay, and the mess deals nothing below a hundred.
+ *   - `befriend.dc` 16 (default 12) / `dispositionOnSuccess` 2 (default 3) — §6.1's
+ *     hard pole, and even a passed check buys less warmth than it does anywhere
+ *     else.
+ *   - `insult.dispositionOnSuccess` −9 (default −4) — the clannish end of §6.1's
+ *     consequence axis, and one worse than Procyon-5's −7, which T-122 explicitly
+ *     left for this row.
+ *   - `dare.dispositionOnSuccess` 1 (default 2) / `dispositionOnFailure` −7
+ *     (default −2) — the asymmetry is the whole character of the room. Losing to
+ *     the garrison's dealer earns you almost nothing; BEATING him is the worst
+ *     thing a stranger can do at Arcturus-6.
+ *   - `meet.dispositionOnSuccess` 0 (default 1) — an AUTHORED ZERO, not an
+ *     omission: `venueParamsFor` resolves with `??`, so a written 0 is a real
+ *     authored value. Nobody in this room makes space for a stranger.
+ */
+const ARCTURUS_6_HANGOUT: PortHangout = {
+  systemId: 4,
+  venues: ['dare', 'meet', 'befriend', 'insult', 'rumor'],
+  wager: { min: 100, max: 400 },
+  venueParams: {
+    dare: { dispositionOnSuccess: 1, dispositionOnFailure: -7 },
+    meet: { dispositionOnSuccess: 0 },
+    befriend: { dc: 16, dispositionOnSuccess: 2 },
+    insult: { dispositionOnSuccess: -9 },
+  },
+  clientele: { archetypes: ['veteran', 'fighter'] },
+  prose: {
+    houseName: 'the Garrison Mess',
+    tone: 'dangerous',
+    roomLine:
+      "The Garrison Mess at Arcturus-6 is a soldiers' room with a civilian door, and the door is watched.",
+    flavour: {
+      dare: "The cup is the garrison's, the table is the garrison's, and the room would rather you lost.",
+      meet: 'You give your name to a bench that does not move over, and that is the whole introduction.',
+      befriend:
+        "A stranger buying rounds in a soldiers' mess is a stranger buying rounds, and they know it.",
+      insult: 'A hard word here is not forgotten by one man; it is remembered by a garrison.',
+      rumor: 'Talk stops when you pass and starts again behind you, which is its own kind of news.',
+    },
+  },
+};
+
+/**
+ * T-123 · Deneb-4 — the partisan hall (§6.3, pass 2). THE FACTION ROOM.
+ *
+ * `content/ports.ts:232` gives Deneb-4 to the `league`, and this row makes that
+ * allegiance mechanical rather than decorative: its `regulars` are the four Astro
+ * League captains on the roster — Cargo King and Zero Risk are "Loyal to the Astro
+ * League", Admiral Stern "Protects" it and The Warden "Hunts for" it — so on any
+ * day the simulation has moved one of them here, the hall seats its own first.
+ * THE FIRST ROW IN THE GAME WITH `regulars`.
+ *
+ * AXIS VECTOR: venue set (no `meet`), stakes (a very wide, high-ceilinged band),
+ * difficulty (hard to get in), consequence (asymmetric on the dare arms, dear on
+ * an insult), clientele (four named regulars + `veteran`).
+ *
+ * F-101-2 IS RESPECTED HERE RATHER THAN WISHED AWAY: `clientele` ranks and never
+ * spawns, so this port's identity has to survive an empty or off-theme room. It
+ * does — the omitted `meet`, the band and the dare asymmetry are true every day,
+ * and the regulars only decide who deals on the days the cast has provided one.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `venues` omits `meet` — §6.1's named "a room that will not seat a stranger".
+ *     The hall makes no introductions; you are already known here or you are not.
+ *   - `wager` 25/2000 — the faction's people bet large among ONE ANOTHER, so the
+ *     ceiling is twice the galaxy's while the floor stays where anyone can sit.
+ *   - `dare.dispositionOnSuccess` 1 (default 2) / `dispositionOnFailure` −6
+ *     (default −2) — §6.2's named asymmetric consequence: beating the house sours
+ *     the room harder than losing to it warms it.
+ *   - `befriend.dc` 14 (default 12) / `dispositionOnSuccess` 5 (default 3) — hard
+ *     to get in; once in, you are theirs.
+ *   - `insult.dispositionOnSuccess` −6 (default −4) — a slight to one of them is a
+ *     slight to the League, and the League keeps the score.
+ */
+const DENEB_4_HANGOUT: PortHangout = {
+  systemId: 5,
+  venues: ['dare', 'befriend', 'insult', 'rumor', 'borrow', 'repay'],
+  wager: { min: 25, max: 2000 },
+  venueParams: {
+    dare: { dispositionOnSuccess: 1, dispositionOnFailure: -6 },
+    befriend: { dc: 14, dispositionOnSuccess: 5 },
+    insult: { dispositionOnSuccess: -6 },
+  },
+  clientele: {
+    regulars: ['npc-cargo-king', 'npc-admiral-stern', 'npc-zero-risk', 'npc-the-warden'],
+    archetypes: ['veteran'],
+  },
+  prose: {
+    houseName: 'the Standing Hall',
+    tone: 'exotic',
+    roomLine:
+      'The Standing Hall keeps League colours over the bar at Deneb-4, and every face under them is a face the hall already knows.',
+    flavour: {
+      dare: 'They deal deep here, among themselves, and let you sit in if the coin is real.',
+      befriend:
+        'The hall takes a long look before it takes your hand — and then it does not let go.',
+      insult: 'A slight to one of them is a slight to the League, and the League keeps the score.',
+      rumor:
+        'League business is discussed openly, which is how you know it is not the real business.',
+      borrow: 'The desk is at the end of the hall, under the colours, and it lends to anyone.',
+      repay: 'You clear the line where the whole hall can see the ledger close.',
+    },
+  },
+};
+
+/**
+ * T-123 · Regulus-6 — the high table (§6.3, pass 2). THE MEASURABLY EXOTIC PORT,
+ * and the F-101-1 measurement target.
+ *
+ * AXIS VECTOR: stakes and NOTHING ELSE structural — all seven venues, so the
+ * port's identity rests on the one axis F-101-1 asks to be measured, and the
+ * measurement is clean. Difficulty, consequence and clientele move too, but the
+ * band is the port.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `wager` 500/3000 — the FLOOR is half a Tour One captain's entire starting
+ *     purse (`engine/state.ts:125`, credits 1,000) and the ceiling is three times
+ *     the galaxy's. It is the only band in the game strictly outside the default
+ *     envelope at BOTH ends, which is exactly §6.1's "a high-roller room whose
+ *     `min` prices out a Tour One captain".
+ *   - `befriend.dc` 15 (default 12) — the room is not unfriendly, it is simply not
+ *     for everyone.
+ *   - `insult.dispositionOnSuccess` −5 (default −4) — dearer than most, but the
+ *     high table would rather ignore you than fight you.
+ *   - `dare.dispositionOnSuccess` 1 (default 2) / `dispositionOnFailure` −3
+ *     (default −2) — money lost at this table is not enough to buy warmth, and
+ *     money won off it is remembered a little longer than elsewhere.
+ *   - `clientele` `npc-nebula-rose` ("loves high society", the Hangout is her
+ *     venue) and `npc-neon-fox` (GUILE 5, Treacherous), then `gambler` / `trader`.
+ *
+ * F-101-1 IS A LIVE FINDING AT THIS ROW, not an aspiration: the resolver caps
+ * every stake at `min(band.max, player.credits, dealer.credits)`, so the 3,000
+ * ceiling is only ever reached when both sides can cover it. The measurement of
+ * realized-vs-declared stakes here is an explicit T-123 obligation and is written
+ * up as the F-101-1 addendum in `docs/HANGOUT_REDESIGN.md` §7. The band is NOT
+ * inflated to compensate for the gap; the gap is the finding.
+ */
+const REGULUS_6_HANGOUT: PortHangout = {
+  systemId: 11,
+  venues: ALL_HANGOUT_VENUES,
+  wager: { min: 500, max: 3000 },
+  venueParams: {
+    dare: { dispositionOnSuccess: 1, dispositionOnFailure: -3 },
+    befriend: { dc: 15 },
+    insult: { dispositionOnSuccess: -5 },
+  },
+  clientele: { regulars: ['npc-nebula-rose', 'npc-neon-fox'], archetypes: ['gambler', 'trader'] },
+  prose: {
+    houseName: 'the High Table',
+    tone: 'exotic',
+    roomLine:
+      'The High Table sits above the concourse at Regulus-6, and the smallest hand it will deal you costs more than a week of fuel.',
+    flavour: {
+      dare: 'The float on this table would buy your ship, and nobody at it looks up when it moves.',
+      meet: 'Introductions are made by the house, in its own time, and not on your account.',
+      befriend: 'The room is not unfriendly. It is simply not for everyone, and it knows which.',
+      insult:
+        'A rudeness here is answered by being looked past, which is worse than being answered.',
+      rumor: 'What is said at this table moves prices three systems away by morning.',
+      borrow: 'The desk here will lend you the same as anywhere — which buys one hand.',
+      repay: 'You settle the marker quietly, because that is the only way anything is done here.',
+    },
+  },
+};
+
+/**
+ * T-123 · Rigel-8 — the underbelly (§6.3, pass 2). THE OPPOSITE POLE TO THE HIGH
+ * TABLE: the room that will deal you in for pocket change and take your whole
+ * hold in the same evening.
+ *
+ * AXIS VECTOR: stakes (the WIDEST SPAN in the galaxy), difficulty (the cheapest
+ * room anywhere to charm), consequence (the most expensive place bar the garrison
+ * to say the wrong thing), clientele (`smuggler` + `gambler`). All seven venues —
+ * the underbelly refuses nobody, which is the point.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `wager` 10/3000 — §6.2's "a low `wager.min`, a high ceiling", and the widest
+ *     span of any authored port. THE CEILING DELIBERATELY MATCHES THE HIGH
+ *     TABLE'S: the money in this room is the same money, it simply arrived by a
+ *     different route. What makes it the underbelly is the 10cr floor UNDER it —
+ *     the same table will deal a spacer with nothing. (Mira-9's 5 is still the
+ *     lowest floor in the galaxy; that is a dive, and a dive has no ceiling worth
+ *     the name. This is the span, not the floor.)
+ *   - `befriend.dc` 8 (default 12) — the cheapest room in the galaxy to charm.
+ *     Nobody here is asking where you have been.
+ *   - `insult.dispositionOnSuccess` −8 (default −4) — and the most expensive place
+ *     to say the wrong thing, one short of the garrison's −9. The two costs
+ *     together ARE the character: easy in, hard to leave.
+ *   - `dare.dispositionOnFailure` −4 (default −2) — beating this house is noticed
+ *     by people who notice things for a living.
+ */
+const RIGEL_8_HANGOUT: PortHangout = {
+  systemId: 12,
+  venues: ALL_HANGOUT_VENUES,
+  wager: { min: 10, max: 3000 },
+  venueParams: {
+    dare: { dispositionOnFailure: -4 },
+    befriend: { dc: 8 },
+    insult: { dispositionOnSuccess: -8 },
+  },
+  clientele: { archetypes: ['smuggler', 'gambler'] },
+  prose: {
+    houseName: 'the Underhold',
+    tone: 'dangerous',
+    roomLine:
+      'The Underhold is two decks below the Rigel-8 concourse, and the lifts that go down to it do not go anywhere else.',
+    flavour: {
+      dare: 'They will take a ten-credit hand off you at one table and a hold off you at the next.',
+      meet: 'Names are given cheaply here and none of them are the right ones.',
+      befriend: 'Nobody in the Underhold asks where you have been. That is what the room is for.',
+      insult: 'You will be forgiven a great deal here, and never that.',
+      rumor: 'Half of what is traded down here is cargo and the other half is what people know.',
+      borrow: 'The desk keeps to the lit end of the room, which tells you about the rest of it.',
+      repay: 'You pay it off and step back into the dark, square with at least one ledger.',
+    },
+  },
+};
+
+/**
+ * T-123 · Vega-6 — the outfitters' long room (§6.3, pass 2). THE RETURNERS' PORT.
+ *
+ * `content/storylets.ts:2186` ("The Homecoming Gantry") already establishes
+ * Vega-6 as the port that keeps a gantry lit for the ships coming back from the
+ * deep runs. This row is that gantry's bar: a room with LONG MEMORIES, which
+ * §6.3's axis note asks for and which is expressed as LARGE DELTAS IN BOTH
+ * DIRECTIONS — the biggest positive arms in the galaxy sitting beside some of
+ * the dearest negative ones.
+ *
+ * AXIS VECTOR: stakes (a high-floored, high-ceilinged band — outfitting money),
+ * difficulty (hard to charm), consequence (large both ways), clientele (two named
+ * returners + `veteran` / `explorer`).
+ *
+ * Every deviation from the default, with its reason:
+ *   - `wager` 250/1500 — the long room bets what an outfitting bill costs. The
+ *     floor prices out a captain who has not yet been anywhere.
+ *   - `befriend.dc` 15 (default 12) / `dispositionOnSuccess` 6 (default 3) — the
+ *     purest statement of the axis: hard to earn, and worth double when earned.
+ *   - `insult.dispositionOnSuccess` −8 (default −4) — the same memory, pointed the
+ *     other way.
+ *   - `dare.dispositionOnSuccess` 4 (default 2) / `dispositionOnFailure` −4
+ *     (default −2) — they like a captain who loses well and mind one who wins.
+ *   - `meet.dispositionOnSuccess` 2 (default 1) — a returner is introduced
+ *     properly here or not at all.
+ *   - `clientele` `npc-star-gazer` and `npc-stellar-drift`, the roster's two
+ *     `explorer` captains, then `veteran` / `explorer` behind them.
+ */
+const VEGA_6_HANGOUT: PortHangout = {
+  systemId: 14,
+  venues: ALL_HANGOUT_VENUES,
+  wager: { min: 250, max: 1500 },
+  venueParams: {
+    dare: { dispositionOnSuccess: 4, dispositionOnFailure: -4 },
+    meet: { dispositionOnSuccess: 2 },
+    befriend: { dc: 15, dispositionOnSuccess: 6 },
+    insult: { dispositionOnSuccess: -8 },
+  },
+  clientele: {
+    regulars: ['npc-star-gazer', 'npc-stellar-drift'],
+    archetypes: ['veteran', 'explorer'],
+  },
+  prose: {
+    houseName: 'the Long Room',
+    tone: 'exotic',
+    roomLine:
+      "The Long Room runs the length of the Vega-6 outfitters' hall, under the gantry they keep lit for the ships that come back.",
+    flavour: {
+      dare: 'They play long hands here, for outfitting money, and they remember every one of them.',
+      meet: 'You are walked down the room and introduced properly, or you are not introduced at all.',
+      befriend:
+        'It takes a season to be counted a friend of the Long Room, and then it takes a lifetime to stop being one.',
+      insult: 'They will still be telling that story about you when your ship has another name.',
+      rumor: 'Deep-run crews come back through here, and they bring the far news with them.',
+      borrow:
+        "The desk is a chandler's desk as much as a lender's, and it knows what a refit costs.",
+      repay: 'You clear it before you leave, because Vega-6 is a port you intend to come back to.',
+    },
+  },
+};
+
+/**
  * T-121 · A BASELINE ROW — a real venue definition that is not yet an authored
  * one. It carries `systemId` and `prose` and omits `venues`, `wager`,
  * `venueParams` and `clientele` entirely, so every number the resolver reads at
  * that port resolves field-wise through `DEFAULT_PORT_HANGOUT` to the same
- * imported constant Sun-3 reads. Thirteen ports got one at T-121; T-122 has since
- * authored over four of them (ids 2, 3, 8, 10), so nine remain, and those nine are
- * mechanically IDENTICAL to each other and to Sun-3.
+ * imported constant Sun-3 reads. Thirteen ports got one at T-121; T-122 authored
+ * over four of them (ids 2, 3, 8, 10) and T-123 over five more (ids 4, 5, 11, 12,
+ * 14), so FOUR remain (6, 7, 9, 13), and those four are mechanically IDENTICAL to
+ * each other and to Sun-3.
  *
  * WHY IDENTICAL, DELIBERATELY. T-121 is the REACH change — fourteen of
  * twenty-eight ports gain a bar — and the reach change is meant to be measurable
@@ -478,30 +785,37 @@ function baselineHangout(systemId: number): PortHangout {
  * equality test in `packages/engine/src/__tests__/hangoutRules.test.ts` keeps the
  * two sets from drifting apart in either direction.
  *
- * FOURTEEN ROWS, FIVE AUTHORED (T-122, §6.3 pass 1). Sun-3 carries its own voice
- * and, by §2.3, the default row's mechanics; Aldebaran-1, Altair-3, Mira-9 and
- * Procyon-5 carry authored voice AND their own axis vectors. The remaining nine
- * (4, 5, 6, 7, 9, 11, 12, 13, 14) still carry a baseline row apiece and are
- * therefore mechanically indistinguishable from Sun-3 — T-123 authors ids 4, 5,
- * 11, 12 and 14; T-124 authors ids 6, 7, 9 and 13. Written out key by key rather
- * than generated from a range so the table stays greppable and one line can be
- * replaced at a time. The
+ * FOURTEEN ROWS, TEN AUTHORED (T-122 pass 1 + T-123 pass 2, §6.3). Sun-3 carries
+ * its own voice and, by §2.3, the default row's mechanics; Aldebaran-1, Altair-3,
+ * Mira-9 and Procyon-5 (pass 1) and Arcturus-6, Deneb-4, Regulus-6, Rigel-8 and
+ * Vega-6 (pass 2) carry authored voice AND their own axis vectors. The remaining
+ * FOUR (6, 7, 9, 13) still carry a baseline row apiece and are therefore
+ * mechanically indistinguishable from Sun-3 — T-124 authors them and closes the
+ * table at 14. Written out key by key rather than generated from a range so the
+ * table stays greppable and one line can be replaced at a time. The
  * rim (15–20), Andromeda (21–26), MALIGNA (27) and NEMESIS (28) are absent by
  * design — see the `hasHangout` note in `./systems.ts`.
+ *
+ * T-123 · THE TABLE IS NO LONGER UNIFORM IN ITS VENUE SET. Arcturus-6 (4) omits
+ * `borrow`/`repay` and Deneb-4 (5) omits `meet`, so `venueOffered` stops being the
+ * identity for the first time and the engine's `'venue-not-offered'` refusal is
+ * reachable end to end. Readers that enumerate venues — `protocol.ts`'s
+ * `legalActions`, the sim's lending planners — must ask `venueOffered` rather than
+ * assume all seven.
  */
 export const PORT_HANGOUTS: Readonly<Record<number, PortHangout>> = {
   1: SUN_3_HANGOUT,
   2: ALDEBARAN_1_HANGOUT,
   3: ALTAIR_3_HANGOUT,
-  4: baselineHangout(4),
-  5: baselineHangout(5),
+  4: ARCTURUS_6_HANGOUT,
+  5: DENEB_4_HANGOUT,
   6: baselineHangout(6),
   7: baselineHangout(7),
   8: MIRA_9_HANGOUT,
   9: baselineHangout(9),
   10: PROCYON_5_HANGOUT,
-  11: baselineHangout(11),
-  12: baselineHangout(12),
+  11: REGULUS_6_HANGOUT,
+  12: RIGEL_8_HANGOUT,
   13: baselineHangout(13),
-  14: baselineHangout(14),
+  14: VEGA_6_HANGOUT,
 };

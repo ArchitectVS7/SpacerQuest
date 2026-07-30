@@ -10,6 +10,7 @@ import {
   shipyardFailure,
   startDay,
   travelPreview,
+  wagerBandFor,
   type Edition,
   type EncounterState,
   type GameState,
@@ -1098,6 +1099,40 @@ describe('legal-actions enumerator', () => {
       expect(venue.choices).toContain('repay'); // a loan is active → repay offered
       expect(venue.choices).not.toContain('borrow');
     }
+  });
+
+  it('T-123 · at Arcturus-6 the harness advertises no credit desk, and the wager domain is the PORT band', () => {
+    // The protocol mirror of the engine's `venueOffered` gate, driven at the first
+    // port to narrow its venue set (`content/portHangouts.ts`, §6.2's garrison).
+    // Advertising `borrow` here would hand a UGT driver an action the resolver
+    // answers with `LoanEvent{'venue-not-offered'}` — the exact class of drift
+    // `hangoutPlay.failedVisits === 0` exists to forbid.
+    const ARCTURUS_6 = 4;
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = ARCTURUS_6;
+    // A dealer in the room, so the social beats are live and the venue list is not
+    // narrow merely because the port is empty.
+    state.npcs[0].currentSystemId = ARCTURUS_6;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+
+    const hangout = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    const venue = hangout?.params.venue;
+    expect(venue?.kind).toBe('enum');
+    if (venue?.kind === 'enum') {
+      expect(venue.choices).toContain('dare');
+      expect(venue.choices).toContain('rumor');
+      expect(venue.choices).not.toContain('borrow');
+      expect(venue.choices).not.toContain('repay');
+    }
+    // …and the stake domain is the port's own band, read through the same accessor
+    // the resolver clamps with rather than restated here.
+    const band = wagerBandFor(ARCTURUS_6);
+    expect(hangout?.params.wager).toEqual({ kind: 'int', min: band.min, max: band.max });
+    // NON-VACUITY: the port band must actually differ from the global one, or this
+    // assertion would pass against the default row.
+    expect(JSON.stringify(band)).not.toBe(JSON.stringify(wagerBandFor(1)));
   });
 });
 

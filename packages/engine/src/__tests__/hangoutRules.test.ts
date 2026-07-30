@@ -181,8 +181,9 @@ const CORE_HANGOUT_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
  *  `ActionBlocked{'no-hangout'}` reachable. */
 const RIM_SYSTEM = 15;
 /** The core ports no content pass has authored yet. T-122 removed 2, 3, 8 and 10
- *  (§6.3 pass 1); T-123 removes 4, 5, 11, 12 and 14; T-124 removes the rest. */
-const UNAUTHORED_HANGOUT_IDS = [4, 5, 6, 7, 9, 11, 12, 13, 14];
+ *  (§6.3 pass 1); T-123 removed 4, 5, 11, 12 and 14 (pass 2), shrinking this to
+ *  four; T-124 authors those four and empties it. */
+const UNAUTHORED_HANGOUT_IDS = [6, 7, 9, 13];
 
 describe('T-121 · the reach change — a bar at all fourteen core spaceports', () => {
   it('every core port 1–14 carries the flag AND a venue definition', () => {
@@ -240,12 +241,12 @@ describe('T-121 · the reach change — a bar at all fourteen core spaceports', 
     // field-wise to the shipped constant — which is what lets a moved golden or a
     // moved roll-up be attributed to reach alone. T-122 … T-124 author over these.
     //
-    // T-122 authored ids 2, 3, 8 and 10 (§6.3 pass 1), so the list below is nine
-    // rather than thirteen. KEEP THIS TEST as the control that holds the
-    // unauthored remainder honest: T-123 is expected to shrink it to 4 (ids 6, 7,
-    // 9, 13) and T-124 to empty it. Altair-3 (3) leaves this list even though it
-    // is the deliberate numeric mean, because it now authors `clientele` — its
-    // numeric inertness is pinned in `hangoutContent.test.ts` instead.
+    // T-122 authored ids 2, 3, 8 and 10 (§6.3 pass 1) and T-123 ids 4, 5, 11, 12
+    // and 14 (pass 2), so the list below is FOUR rather than thirteen. KEEP THIS
+    // TEST as the control that holds the unauthored remainder honest: T-124 is
+    // expected to empty it. Altair-3 (3) left this list even though it is the
+    // deliberate numeric mean, because it authors `clientele` — its numeric
+    // inertness is pinned in `hangoutContent.test.ts` instead.
     for (const id of UNAUTHORED_HANGOUT_IDS) {
       const row = PORT_HANGOUTS[id];
       expect(row.wager).toBeUndefined();
@@ -260,14 +261,29 @@ describe('T-121 · the reach change — a bar at all fourteen core spaceports', 
     }
   });
 
-  it('BASELINE ONLY — no port has yet narrowed its venue set', () => {
-    // Deliberately phrased as a statement about TODAY, not a permanent rule:
-    // §6.3 gives Arcturus-6 (id 4) no lending desk, so T-123 is EXPECTED to
-    // rewrite this test rather than to keep it green.
+  it('T-123 · the venue set is narrowed at exactly two ports, and everywhere else all seven run', () => {
+    // The POSITIVE form of T-122's "no port has yet narrowed its venue set", which
+    // T-123 was expected to rewrite rather than keep green. Phrased so T-124 can
+    // extend it by adding to `NARROWED` if one of its four withholds a beat:
+    //   * Arcturus-6 (4) runs no credit desk — §6.2's strict garrison, and the
+    //     reason `'venue-not-offered'` is reachable end to end at all.
+    //   * Deneb-4 (5) will not seat a stranger — §6.1's named "no `meet`" room.
+    // This is a rules-level statement (which venues resolve as offered), not a
+    // content one; the axis assertions live in `hangoutContent.test.ts`.
+    const NARROWED: Record<number, readonly string[]> = {
+      4: ['borrow', 'repay'],
+      5: ['meet'],
+    };
     for (const id of CORE_HANGOUT_IDS) {
+      const withheld = NARROWED[id] ?? [];
       for (const venue of ALL_VENUES) {
-        expect(venueOffered(id, venue)).toBe(true);
+        expect(venueOffered(id, venue), `port ${id}, venue '${venue}'`).toBe(
+          !withheld.includes(venue),
+        );
       }
     }
+    // NON-VACUITY: the table above must describe something real, or this test
+    // silently becomes the old all-seven assertion again.
+    expect(Object.keys(NARROWED).length).toBeGreaterThan(0);
   });
 });
