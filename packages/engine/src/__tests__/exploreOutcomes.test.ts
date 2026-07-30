@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import {
+  BEACON_FRAGMENT_POOL,
+  DERELICT_FRAGMENT_POOL,
   EXPLORE_OUTCOMES,
   EXPLORE_VALUE_BANDS,
   ExploreOutcomeDefinition,
@@ -88,9 +90,43 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
   //   The rule is unchanged: never re-stamp this hash to make a change pass. It
   //   was re-derived here because T-111 is a ruled behaviour change with its own
   //   ledger entry, not because a measurement was inconvenient.
-  const LEGACY_PARITY_HASH = '668f8ce9b165cd62bafd08d86b3803d6cf5ff447f5dea9db268d92eca867cfd3';
+  //
+  // T-113 (pinned '4e8f44b4…'): THE AUTHORED POOLS LANDED. The 34 rows of bands
+  //   0-1 (docs/EXPLORE_REDESIGN.md §5.3 pass 1) are authored, and the
+  //   transitional carrier now addresses them on two of its five legs. Two
+  //   mechanisms move this sweep, and both are consequences of the CONTENT rather
+  //   than of a rule:
+  //
+  //     (1) The legacy LORE rows are retired outright: both fragment legs now draw
+  //         the eight authored `explore-lore-*` rows. Per-fragment probability is
+  //         UNCHANGED — same pools, same order, same leg chance — and the only
+  //         difference on that leg is that a board now also SPEAKS (F-110-B).
+  //     (2) The BEACON salvage leg now holds the six authored band-1 beacon rows
+  //         where it held one, so a fired beacon salvage leg consumes one further
+  //         index draw and re-phases the legs after it on that board. That is the
+  //         same rng-sharing property the T-111 entry documents, and it is why the
+  //         FRAGMENT count moves at all.
+  //
+  //   THE DERELICT SALVAGE LEG IS DELIBERATELY UNTOUCHED (finding F-113-D on
+  //   `EXPLORE_OUTCOMES`): `legacy-salvage-derelict` is the only row that can trip
+  //   the `rich_hulk` deed's 400cr trigger until band 2 is authored at T-114, and
+  //   a measured sweep showed that even DILUTING that leg sixfold pushed the deed
+  //   out of 21 of 24 careers. That is why `salvageEvents`, `contrabandEvents` and
+  //   `RecoveryStarted` are all unmoved from T-111 here — the derelict half of the
+  //   board is byte-identical, and only the beacon half re-phased.
+  //
+  //   WHAT MOVED, aggregate over the same 300 seeds:
+  //     salvageEvents      79 → 79     fragmentEvents  102 → 97
+  //     contrabandEvents   44 → 44     totalCredits    308,941 → 309,047
+  //     RecoveryStarted   136 → 136
+  //
+  //   Finding F-113-C (the authored band-1 ceiling of 260cr sitting below the
+  //   shipped derelict band) is therefore only half-realized in the tree so far —
+  //   the beacon half. T-116 measures the whole of it over real careers, and it is
+  //   NOT tuned around.
+  const LEGACY_PARITY_HASH = '4e8f44b42d60b5a83b7063215f11da108913bf1f880216ebad296f6c1b0924e7';
 
-  it('300 seeds of boarded POIs are byte-identical to the pre-extraction resolver', () => {
+  it('300 seeds of boarded POIs match the pinned per-seed result, exactly', () => {
     const hash = createHash('sha256');
     for (let seed = 0; seed < 300; seed += 1) {
       hash.update(digest(seed));
@@ -119,10 +155,10 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
         if (e.type === 'RecoveryStarted') recoveryStarted += 1;
       }
     }
-    // T-111 re-pin — see the LEGACY_PARITY_HASH ledger above for the pre/post
-    // table and the rng mechanism. `recoveryStarted` is counted from T-111 on so
-    // the readable signal names the deferred finds instead of leaving them as an
-    // unexplained hole in the salvage count.
+    // T-113 re-pin — see the LEGACY_PARITY_HASH ledger above for the pre/post
+    // table and the three mechanisms. `recoveryStarted` is counted from T-111 on
+    // so the readable signal names the deferred finds instead of leaving them as
+    // an unexplained hole in the salvage count.
     expect({
       salvageEvents,
       fragmentEvents,
@@ -131,10 +167,10 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
       totalCredits,
     }).toEqual({
       salvageEvents: 79,
-      fragmentEvents: 102,
+      fragmentEvents: 97,
       contrabandEvents: 44,
       recoveryStarted: 136,
-      totalCredits: 308941,
+      totalCredits: 309047,
     });
   });
 });
@@ -317,17 +353,32 @@ describe('explore outcome framework — content integrity (T-110)', () => {
     }
   });
 
-  it('the legacy lore rows are exactly the two fragment pools, in pool order', () => {
+  it('the fragment legs are exactly the two pools, in pool order, and resolve', () => {
     // A pool edit that never reaches the rows would silently drop a fragment from
     // the game; deriving both sides from the pools is what makes that impossible.
-    const beacon = LEGACY_POI_LOOT.beacon.fragment.outcomeIds;
-    const derelict = LEGACY_POI_LOOT.derelict.fragment.outcomeIds;
-    const loreIds = EXPLORE_OUTCOMES.filter((o) => o.payload.kind === 'lore').map((o) => o.id);
-    expect(loreIds).toEqual([...beacon, ...derelict]);
-    for (const outcome of EXPLORE_OUTCOMES) {
-      if (outcome.payload.kind !== 'lore') continue;
-      expect(outcome.payload.fragmentId).toBeDefined();
-      expect(outcome.id.endsWith(outcome.payload.fragmentId!)).toBe(true);
+    //
+    // T-113 RETARGETED, intent preserved exactly. The old form asserted that
+    // EVERY `lore` row in the table carries a `fragmentId` — true while the only
+    // lore rows were the legacy fragment rows, and false the moment the 14
+    // authored DEAD ENDS landed (a dead end is `{ kind: 'lore' }` with neither
+    // field, §2.2). The claim that actually mattered — "no pool entry can lose
+    // its row" — is asserted directly instead, leg by leg.
+    const byId = new Map(EXPLORE_OUTCOMES.map((o) => [o.id, o]));
+    const legs: [PoiType, readonly string[], readonly string[]][] = [
+      ['beacon', LEGACY_POI_LOOT.beacon.fragment.outcomeIds, BEACON_FRAGMENT_POOL],
+      ['derelict', LEGACY_POI_LOOT.derelict.fragment.outcomeIds, DERELICT_FRAGMENT_POOL],
+    ];
+    for (const [type, ids, pool] of legs) {
+      expect(ids).toHaveLength(pool.length);
+      pool.forEach((fragmentId, index) => {
+        const outcome = byId.get(ids[index]);
+        expect(outcome, `unresolved fragment row ${ids[index]}`).toBeDefined();
+        expect(outcome?.pools).toContain(type);
+        expect(outcome?.payload.kind).toBe('lore');
+        // The row at pool index i carries the fragment at pool index i — the
+        // ORDER is what a seeded index pick lands on.
+        expect(outcome?.payload.kind === 'lore' && outcome.payload.fragmentId).toBe(fragmentId);
+      });
     }
   });
 

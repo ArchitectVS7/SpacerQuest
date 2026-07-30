@@ -458,7 +458,107 @@ existing hand cap still binds with an item equipped, asserted by a test; the eff
 surfaced in `packages/ui` and asserted by a UI test; no effect is applied by a branch keyed on
 a specific item id; gate green.
 
-### T-113 · Explore content pass 1 of 3 — the spine (~34 outcomes) — `status: TODO` · `coder: opus` · `after: T-112`
+### T-113 · Explore content pass 1 of 3 — the spine (~34 outcomes) — `status: DONE` · `coder: opus` · `after: T-112`
+
+**Delivered (2026-07-30):** **34 authored rows — bands 0 and 1 exactly** (§5.3 pass 1): 14
+dead ends (`{ kind: 'lore' }` with neither optional field, `valuePoints: 0`), 12 salvage rows
+(6 per pool, credit bands inside §5.2's authored 40–260cr, midpoints averaging 140cr against
+§5.5's 150cr band-1 credit-equivalent), and 8 lore rows carrying one Signal Fragment each —
+ids derived by `.map` over `BEACON_FRAGMENT_POOL` / `DERELICT_FRAGMENT_POOL` so a pool edit
+cannot orphan a fragment. **Zero lines changed under `packages/engine/src`** outside
+`__tests__` (`git diff --stat HEAD~1 -- packages/engine/src ':!packages/engine/src/__tests__'`
+is empty), and `grep -c "if (" packages/content/src/exploration.ts` is **0**.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked with `ls`; absent), so I oriented by reading `docs/EXPLORE_REDESIGN.md` §1.3/§2/§5/§8, `TASKS.md`  · attempts=1/4.
+
+- **THE HOUSE VOICE IS A SET OF RULES, NOT A TASTE**, and every one falls out of the engine:
+  third person past tense with the literal subject `Player` (`wire.ts` treats that string as
+  the player actor); `{name}` at most once per row (`String.replace` substitutes the first
+  occurrence only); a salvage row names **what was stripped**, never the credit figure (the
+  amount rides `SalvageRecovered`); a lore row's copy is the **second** line on a new fragment
+  and the **only** line on a repeat, so it is written to read correctly both ways. All four
+  are asserted, not just described.
+- **F-110-B IS CLOSED.** Every authored row carries non-empty, mutually distinct copy, so
+  §2.4's "a board is never 80 fuel and a die for total silence" is now a property of the rows
+  rather than a promise. A sweep asserts no boarded POI emits an empty wire line.
+- **`permittedKinds` lands on `ExploreValueBand`** (the fourth of §5.2's seven columns),
+  populated from the spec and read by the new validator. The `weight` column is still absent
+  on F-112-C's exact argument: it has no consumer until the draw flips, and a column with no
+  consumer is a stub raising a coverage signal.
+- **The validator is `packages/engine/src/__tests__/exploreContent.test.ts`** (19 tests).
+  Well-formedness: id uniqueness + convention, integer `valuePoints` on 0–100, real POI pools,
+  non-empty/unique/`{name}`-safe copy, no `recoveryDays` key **and** `recoveryDays === 0` for
+  every row, ordered credit bands inside 40–260, fragment ids resolving against
+  `ALL_FRAGMENT_IDS`. Ladder: the 14/20/0/0/0 band counts, `permittedKinds` per band, the
+  dead-end shape, the band's floor and ceiling actually **reached**, the 130–170 mean, and a
+  monotone rank property tying `valuePoints` to mid-credits (a property, not a threshold).
+  **It lives in the engine suite because `packages/content` has no test runner at all** — its
+  `package.json` carries only `build` and there is not one `*.test.ts` under it. Flagged as an
+  observation; building that infra is not a content pass's job.
+- **Each outcome TYPE in this pass is driven through the REAL Explore path** — a 2,000-seed
+  sweep of `resolveExploration`, asserting an authored `salvage` row paid inside its own band
+  and an authored `lore` row granted its fragment, each identified by its unique wire copy,
+  plus full coverage of every row the carrier can draw.
+
+**Four findings, reported rather than routed around:**
+
+- **F-113-A · the single band-weighted draw is UNOWNED.** §2.4 pencilled the flip into T-113,
+  but it is two engine changes (`drawOutcome` + a call-site swap) and this task forbids engine
+  lines; §8's handoff row never asked for it. `docs/EXPLORE_REDESIGN.md` §2.4 and §8 are
+  corrected in place. **Consequence:** the 14 dead ends are authored but undrawable — the
+  three-leg carrier has no "nothing else fired" arm — and **T-115's "a sweep finds every
+  outcome" clause is arithmetically impossible until the flip lands.** Recommend a dedicated
+  engine task between T-114 and T-115.
+- **F-113-B · `contraband` cannot be retired by a content pass.** F-110-A assigned it here,
+  but deleting the union member makes the engine's exhaustive `case 'contraband':` a `tsc`
+  error. The two rows survive — which also preserves the sealed-pod carry-choice storylet
+  instead of silently deleting it. Retire it with F-113-A.
+- **F-113-C · a spec-sequenced income dip, recorded and NOT tuned around.** §5.2 authors
+  band-1 salvage at 40–260, below the shipped beacon top, and band 2's 240–700 is T-114's.
+  Measured on the `campaign-degraded` window (5 seeds × 40 days): explorer median final
+  credits 25,013 → 9,094, smuggler 9,802 → 4,841. Re-pricing Explore is R-series and an owner
+  call; T-116 owns the verdict.
+- **F-113-D · the DERELICT salvage leg is staged to T-114, and this is the one place the plan
+  was overruled by a measurement.** The `rich_hulk` deed fires on a `SalvageRecovered` of
+  400cr+, and its own comment cites this file's 120–520 derelict band as what makes 400
+  "reachable, never automatic". Retiring `legacy-salvage-derelict` makes the deed
+  arithmetically unreachable; merely **diluting** its leg with the six authored rows cut it to
+  missed-by-21-of-24 careers and dropped whole-slate careers to one, redding
+  `deed-coverage.test.ts` for a reason **no wider sample could fix**. Lowering the deed
+  threshold is what `docs/BALANCE-POLICY.md` forbids. So the beacon salvage leg and both
+  fragment legs were re-pointed and `legacy-salvage-beacon` retired, while the derelict
+  salvage leg was left whole. **T-114 owes:** author band 2, then delete
+  `legacy-salvage-derelict` and re-point that leg. The validator's surviving-legacy-rows
+  tripwire names all three remaining ids and fails loudly if it is forgotten.
+
+**Fixtures moved, each re-derived with a ledger entry — never edited to go green:**
+
+- `exploreOutcomes.test.ts` `LEGACY_PARITY_HASH` + the aggregate, with entry **T-113** naming
+  both mechanisms (the fragment legs re-pointed at rows that now speak; the beacon salvage leg
+  holding six ids where it held one, consuming an extra index draw). The derelict half of every
+  board is byte-identical to T-111, which is why only `fragmentEvents` (102 → 97) and
+  `totalCredits` (308,941 → 309,047) move at all. Its "every lore row has a `fragmentId`"
+  assertion was **retargeted, not deleted** — the claim that mattered ("no pool entry can lose
+  its row") is now asserted leg by leg, in pool order.
+- `recovery.test.ts` — **one seed of three** (`SEED_OPENS` 4 → 36), re-found by re-running the
+  file's own documented scan against the real loop with the extra condition that the opened row
+  is still `legacy-salvage-derelict`. No assertion changed shape or value.
+- `campaign-degraded.test.ts` `PINNED_FINGERPRINTS` — ledger entry **14**. **Exactly the two
+  sweeping policies move** (explorer, smuggler); trader/fighter/veteran/gambler/greedy are
+  byte-identical, which is the control that says a verb-yield change moved the callers and not
+  the world.
+- `docs/balance/smoke/tiers.json` re-extracted from the stored N11 aggregate (**not** a
+  capstone — standing amendment 3 gives the milestone's single capstone to T-116). Its
+  checkpoint numbers therefore describe the new ruleset's replay of a stored sweep, not a fresh
+  measurement of the new content.
+- **`replay-golden.ts` did NOT move**, and that is a real signal rather than luck: the primary
+  log's day-1 Explore charts a derelict and every derelict leg is untouched by this pass.
+
+**Two collateral tests were investigated to root cause rather than dismissed.**
+`nemesis-fragments.test.ts`'s Sage seed and `deed-coverage.test.ts` both went red on the first
+attempt (which diluted the derelict leg); both are green with **zero edits** under the staged
+shape above — the second was what surfaced F-113-D, and it is exactly the regression that test
+exists to catch.
 
 Author the first third of the 100-outcome table in `packages/content`, weighted toward the
 **common and low-value** end: salvage rows, lore/dead-end rows, and a small number of

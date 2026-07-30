@@ -28,14 +28,26 @@ import type { EncounterState, GameEvent, GameState } from '../types.js';
 // seed is magic: it is simply a board that reaches the state the ruling is about.
 //
 // All of them draw `legacy-salvage-derelict` — 20 `valuePoints`, band 2, N = 1.
-// With only legacy content in the tree band 2 is the HIGHEST band any drawable
-// row reaches, so every recovery here is a one-day one. The rulings under test
-// are all clock-agnostic (`day >= dueDay`, a location compare, a slot compare),
-// so N = 1 exercises them identically to N = 6; T-115 makes N = 6 drivable when
-// band-4 rows exist.
+// Band 2 is the HIGHEST band any drawable row reaches while the authored table
+// covers only bands 0-1 (T-113 pass 1), so every recovery here is a one-day one.
+// The rulings under test are all clock-agnostic (`day >= dueDay`, a location
+// compare, a slot compare), so N = 1 exercises them identically to N = 6; T-115
+// makes N = 6 drivable when band-4 rows exist.
+//
+// T-113 RE-SEEDED — ONE seed of the three (4 → 36). MECHANISM: the authored
+// band-1 BEACON salvage rows joined the beacon salvage leg, which now holds six
+// ids where it held one, so a fired beacon salvage leg consumes one further index
+// draw and re-phases that board. The derelict half is untouched (F-113-D), which
+// is why the two derelict-driven seeds below are unmoved. Seed 4 still OPENS a
+// recovery on day 1; what it lost is the second property `SEED_OPENS` carries —
+// its day-1 jump now arrives instead of being interdicted. The same scan was
+// re-run against the real loop, with the same extra condition (the opened row IS
+// `legacy-salvage-derelict`), and seed 36 is the first that satisfies BOTH the
+// interrupted-jump property and the day-30 one, exactly as seed 4 used to. No
+// assertion below changed shape or value.
 
 /** Opens a recovery on day 1 at Sun-3, and its day-1 Travel is INTERRUPTED. */
-const SEED_OPENS = 4;
+const SEED_OPENS = 36;
 /** Opens a recovery on day 1 AND its day-1 Travel to system 2 actually ARRIVES. */
 const SEED_TRAVELS_AWAY = 10;
 /** Opens a recovery on day 1 AND the planted dusk encounter lands a fatal blow. */
@@ -336,7 +348,7 @@ describe('T-111 · §3.3(d) the Tour One marker does nothing to an open recovery
     expect(opened.events.some((e) => e.type === 'RecoveryStarted')).toBe(true);
     const recovery = opened.state.player.recovery!;
     // dueDay 31, not the spec's illustrative 33: band 2 (N = 1) is the highest
-    // band any DRAWABLE row reaches while only the legacy rows exist. The ruling
+    // band any DRAWABLE row reaches while bands 0-1 are the authored table. The ruling
     // under test — the era flip does nothing to an open recovery — is exercised
     // identically; T-115 makes N = 6 drivable when band-4 rows are authored.
     expect(recovery.dueDay).toBe(31);

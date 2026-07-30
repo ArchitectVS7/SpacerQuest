@@ -358,16 +358,46 @@ const UNCHANGED_POLICIES = [
  *    would move all seven hashes for a shape reason unrelated to the rule. T-116
  *    owns the recovery measurement and the verdict; do not tune anything off this
  *    window.
+ *
+ * 14. T-113 — the Explore content pass 1 of 3 (bands 0-1). EXACTLY THE SAME TWO
+ *    ROWS MOVE, for the same structural reason as entry 13 and by the same
+ *    control: only a policy that flies off-lane sweeps can feel a change to what
+ *    a board yields.
+ *      explorer 765d376ac547518d -> 9110009d148f6c4a
+ *      smuggler 1425c6406f18b25c -> 459ee18f292bf2c9
+ *      trader / fighter / veteran / gambler / greedy — ALL UNCHANGED.
+ *
+ *    MECHANISM. Two content edits reach a board (docs/EXPLORE_REDESIGN.md §5.3
+ *    pass 1): both FRAGMENT legs now draw the eight authored `explore-lore-*` rows
+ *    instead of the retired legacy ones — same pools, same order, same chance, so
+ *    per-fragment probability is unchanged and the only new thing is that the row
+ *    SPEAKS — and the BEACON salvage leg now holds six authored band-1 rows where
+ *    it held one, so a fired beacon salvage leg consumes one further index draw
+ *    and re-phases the legs after it. The DERELICT salvage leg is untouched
+ *    (finding F-113-D in content `exploration.ts`), so half of every board is
+ *    byte-identical to entry 13.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      explorer  final credits  median 25,013 -> 9,094   mean 24,910 -> 14,818
+ *      smuggler  final credits  median  9,802 -> 4,841   mean 10,159 ->  9,003
+ *      fragments acquired (sum) explorer 25 -> 21, smuggler 28 -> 27
+ *      fuel starvation days 0 -> 0 and subsistence days 0 -> 0 in both.
+ *    THE DIRECTION IS DOWN, WHICH IS EXPECTED AND IS FINDING F-113-C: §5.2 authors
+ *    band-1 salvage at 40-260cr, below the shipped beacon band's top, and band 2's
+ *    240-700 does not exist until T-114. This is a SPEC-SEQUENCED income dip, it is
+ *    recorded rather than tuned around (re-pricing Explore is R-series and an owner
+ *    call), and five seeds cannot separate its size from stream noise in any case.
+ *    T-116 owns the measurement and the verdict.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   trader: 'f3e01b2a843c1c0f',
   fighter: 'dc6ca4fbcce58659',
-  // T-111 entry 13: re-derived — the recovery rule reaches the sweeping policies.
-  explorer: '765d376ac547518d',
+  // T-113 entry 14: re-derived — the authored pools reach the sweeping policies.
+  explorer: '9110009d148f6c4a',
   veteran: 'f701430cfe32f7cb',
-  // T-111 entry 13: re-derived, same reason as `explorer`.
-  smuggler: '1425c6406f18b25c',
+  // T-113 entry 14: re-derived, same reason as `explorer`.
+  smuggler: '459ee18f292bf2c9',
   gambler: 'fbb8b4df794fa5f4',
   greedy: '0f2ff82982dcbf2d',
 };

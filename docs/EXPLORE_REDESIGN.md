@@ -286,6 +286,19 @@ three-component structure alive:
 > for exactly the span T-110 → T-113, and the switch is a one-line change of draw function,
 > not a rewrite.
 
+**CORRECTION (T-113, 2026-07-30): the flip did NOT land at T-113, and it has no owner.** The
+sentence above pencilled it into T-113, but T-113's acceptance is *"zero lines changed under
+`packages/engine/src`"* and §8's per-task handoff row asks only for the rows. A
+`drawOutcome(rows, poiType, rng)` reading a new `weight` column, plus the call-site swap in
+`actions/exploration.ts`, are both engine lines. T-113 therefore re-pointed the transitional
+carrier's beacon-salvage and both fragment legs at the authored rows and reported the gap as
+**finding F-113-A** (recorded in `packages/content/src/exploration.ts` beside
+`LEGACY_POI_LOOT`). **Consequence for the milestone, stated here so it is not discovered
+late:** T-115's accept clause *"a seeded sweep finds at least one instance of every outcome"*
+is arithmetically impossible under a three-leg draw — the 14 band-0 dead ends have no leg to
+be drawn from. The flip needs a dedicated engine task between T-114 and T-115, or T-115's
+first commit.
+
 Stating this here is the point of the spec: without it, T-110's "byte-identical goldens"
 acceptance and its "outcome is a content-supplied payload" acceptance are in direct conflict
 and the coder has to guess which one to break.
@@ -959,8 +972,8 @@ The save-bump recommendation for T-102 to rule on is in §3d.
 | **T-110** | §2 (all), §2.4 in particular | Two POI types re-expressed as content rows; `applyEffects` exported; five resolvers; **the three-independent-roll draw survives the extraction commit** so the goldens are byte-identical |
 | **T-111** | §3 (all) | `player.recovery`, `EXPLORE_VALUE_BANDS` + `recoveryDays`, save v13 + `MIGRATIONS[12]` + `deserializeState` backfill; four interaction tests; the dusk block positioned per §3c(d) and the subsistence-floor comment updated |
 | **T-112** | §4 (all), §6 F-100-1 | Class A resolver; three Class-B modules via the second-loop shape; cockpit readouts; `check()` unchanged; hand cap still binds |
-| **T-113** | §5.3 pass 1 | 34 rows = bands 0 + 1 exactly; house voice; zero engine lines |
-| **T-114** | §5.3 pass 2 | 33 rows = band 2 exactly; questlines resolve into the real storylet system; NPC ids resolve against `ALL_NPC_PROFILES` |
+| **T-113** | §5.3 pass 1 | 34 rows = bands 0 + 1 exactly; house voice; zero engine lines **(delivered; the draw flip did not land here — F-113-A)** |
+| **T-114** | §5.3 pass 2 | 33 rows = band 2 exactly; questlines resolve into the real storylet system; NPC ids resolve against `ALL_NPC_PROFILES`. **Also owed by T-113 (F-113-D): retire `legacy-salvage-derelict` and re-point the derelict salvage leg, which band 2's 240-700 makes safe for the `rich_hulk` deed** |
 | **T-115** | §5.3 pass 3, §5.4 | 33 rows = bands 3 + 4; table totals 100; the two-part monotonicity property of §5.4; the reachability sweep at the size §5.3 computes |
 | **T-116** | §5.5, §9 | Capstone after `npm run format`; re-run the ablation; append the before/after to §9; **do not tune to reach an answer** |
 
