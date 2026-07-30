@@ -1764,7 +1764,7 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
   const game = state.game;
   const npcs = hangoutNpcs(game);
   const rumors = hangoutRumorLines(game);
-  const bounds = dareWagerBounds();
+  const bounds = dareWagerBounds(game);
   const terms = lendingTerms();
   const loan = game.player.loan;
   const armed = state.selectedDie !== null;

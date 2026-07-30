@@ -15,8 +15,6 @@ import {
   RUN_FUEL_COST,
   EXPLORATION_NAV_DC,
   EXPLORATION_FUEL_COST,
-  DARE_MIN_WAGER,
-  DARE_MAX_WAGER,
   LOAN_MIN_PRINCIPAL,
   LOAN_MAX_PRINCIPAL,
   LOAN_DAILY_RATE,
@@ -75,6 +73,8 @@ import {
   travelPreview,
   quoteFuelPurchase,
   hangoutRumors,
+  rankClientele,
+  wagerBandFor,
   dawnDiceModifiers,
   equipmentDiceBenefits,
   hasExploreModule,
@@ -352,9 +352,18 @@ export interface HangoutNpc {
 
 export function hangoutNpcs(game: GameState): HangoutNpc[] {
   const here = game.player.currentSystemId;
-  return game.npcs
-    .filter((n) => n.currentSystemId === here)
-    .map((n) => ({ id: n.id, name: n.name, disposition: n.disposition }));
+  // T-120 · the house's own order. `rankClientele` (engine) REORDERS the live
+  // in-system set by the port's authored `clientele` — regulars first, then the
+  // preferred archetypes, then everyone else, each bucket keeping its incoming
+  // order. It never adds an NPC, so the pane still lists exactly the captains the
+  // Dare resolver will accept as an opponent. Under Sun-3's default (empty)
+  // clientele it is the identity and this list is unchanged.
+  const present = game.npcs.filter((n) => n.currentSystemId === here);
+  return rankClientele(game, here, present).map((n) => ({
+    id: n.id,
+    name: n.name,
+    disposition: n.disposition,
+  }));
 }
 
 /** The rumor-table lines — a pure pass-through to the engine's own exported
@@ -365,15 +374,17 @@ export function hangoutRumorLines(game: GameState): string[] {
   return hangoutRumors(game);
 }
 
-/** The Dare wager band (content DARE_MIN/MAX_WAGER) — the same bounds the engine
- *  clamps a requested wager into. Reader: the pane's wager input + its label. */
+/** The Dare wager band — the same bounds the engine clamps a requested wager into.
+ *  T-120: the band is now the PORT's (`wagerBandFor`), so a high table and a
+ *  dockside room show different limits; the UI reads the engine's accessor rather
+ *  than a bare constant. Reader: the pane's wager input + its label. */
 export interface DareWagerBounds {
   min: number;
   max: number;
 }
 
-export function dareWagerBounds(): DareWagerBounds {
-  return { min: DARE_MIN_WAGER, max: DARE_MAX_WAGER };
+export function dareWagerBounds(game: GameState): DareWagerBounds {
+  return wagerBandFor(game.player.currentSystemId);
 }
 
 /** Penny Wise's up-front lending terms — the raw content constants the engine

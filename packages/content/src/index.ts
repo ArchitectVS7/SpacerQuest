@@ -4,6 +4,7 @@ export * from './components.js';
 export * from './disposition.js';
 export * from './factions.js';
 export * from './hangout.js';
+export * from './portHangouts.js';
 export * from './lending.js';
 export * from './subsistence.js';
 export * from './guild.js';

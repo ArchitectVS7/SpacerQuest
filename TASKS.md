@@ -982,7 +982,7 @@ Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (
 
 ## M3 — Hangout: parameterise it, spread it, fill it
 
-### T-120 · Extract the Hangout engine from its content, behaviour-preserving — `status: TODO` · `coder: opus` · `after: T-116`
+### T-120 · Extract the Hangout engine from its content, behaviour-preserving — `status: DONE` · `coder: opus` · `after: T-116`
 
 Split today's `resolveVisitHangout` along ruling 3, to the shape T-101 specced: the engine keeps the rules
 (opposed-GUILE dare resolution, disposition deltas, the loan ledger, die spending), content
@@ -997,6 +997,31 @@ byte-identical** (stated in the commit body); the engine reads venue parameters 
 no port-specific branch (a `grep` for `Sun-3` / `systemId === 1` in
 `packages/engine/src/actions/hangout.ts` returns nothing); the dare's opposed-GUILE
 resolution and the disposition deltas are still engine-side; gate green.
+
+**Delivered (2026-07-30):** split `resolveVisitHangout` along ruling 3 — content gained a new
+`packages/content/src/portHangouts.ts` (`PortHangout`, `HangoutVenueParams`, `HangoutClientele`,
+`HangoutProse`, a fully-resolved `DEFAULT_PORT_HANGOUT` built entirely from `hangout.ts`'s existing
+R-owned constants, and Sun-3's `SUN_3_HANGOUT` row keyed into `PORT_HANGOUTS`), and the engine
+gained `packages/engine/src/hangoutRules.ts` (`portHangoutFor`, `wagerBandFor`, `venueParamsFor`,
+`venueOffered`, `rankClientele`), all field-wise-resolved against the default so an omitted field
+inherits today's shipped number by construction. `actions/hangout.ts` now reads the wager band, the
+befriend DC and every venue's disposition deltas through those accessors instead of the old bare
+`DARE_MIN_WAGER` / `DARE_MAX_WAGER` / `BEFRIEND_DC` / `*_DISPOSITION` constants, adds one new typed
+refusal (`venue-not-offered`, checked before `spendDie`, routed through the existing `failVenue`
+split so it lands on `HangoutEvent` for the five social venues and `LoanEvent` for borrow/repay),
+and contains no port-specific branch. `packages/sim/src/protocol.ts`'s `legalActions` and
+`packages/ui/src/format.ts`'s `dareWagerBounds` / `hangoutNpcs` were moved onto the same accessors
+so the UGT harness and the Hangout pane never advertise or clamp against a value the engine no
+longer reads from a constant. A compile-time `AssertEqual` pin ties content's `HangoutVenueId` to
+the engine's `VisitHangout` venue union so the two can never drift. Deliberate scope boundary: only
+Sun-3 has a row today (`PORT_HANGOUTS = { 1: SUN_3_HANGOUT }`), it reproduces current behaviour
+exactly (every pre-existing hangout test passes unchanged), and the new `venue-not-offered` path is
+proven only at the serialization layer (`hangout.test.ts`'s round-trip pair) — it is not reachable
+end to end while every known port offers all seven venues, and the resolver-level assertion is
+explicitly deferred to T-123's Arcturus-6 row. `docs/balance/smoke/tiers.json`'s `rulesFingerprint`
+and `docsFingerprint` moved accordingly (new engine-root module, `hangoutRules.ts`, auto-hashed by
+`ENGINE_RULE_DIRECTORIES`); no save shape moved and `CURRENT_SAVE_VERSION` is untouched.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md`, `docs/0.5.2-SPEC-REVIEW.md`, `TASKS.md` a · attempts=1/4.
 
 ### T-121 · A bar at all 14 spaceports — the reach change — `status: TODO` · `coder: opus` · `after: T-120`
 

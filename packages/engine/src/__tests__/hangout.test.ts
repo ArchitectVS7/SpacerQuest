@@ -318,3 +318,54 @@ describe('hangout-system gate', () => {
     expect(after.player.dawnHand?.spent[0]).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// T-120 · The one new refusal (docs/HANGOUT_REDESIGN.md §2.6). A port whose venue
+// definition omits a beat refuses it BEFORE the die is spent, routed through the
+// same `failVenue` helper — so the five social venues report a HangoutEvent and
+// the two lending venues report a LoanEvent.
+//
+// F-120-1 · THE REFUSAL IS NOT REACHABLE END TO END AT T-120, and that is
+// deliberate rather than an omission: Sun-3's row and `DEFAULT_PORT_HANGOUT` both
+// offer all seven venues, so no state can drive `resolveVisitHangout` into that
+// branch while exactly one port exists. What is asserted here is the SERIALIZED
+// SHAPE of both event variants (the schema mirror + the drift guard); the
+// resolver-level assertion (a VisitHangout at a port whose row omits the venue →
+// typed fail, no die spent) is owed by the first task that authors such a port —
+// T-123's Arcturus-6, which §6.3 gives no lending desk.
+// ---------------------------------------------------------------------------
+describe("T-120 · the 'venue-not-offered' refusal round-trips on both event shapes", () => {
+  it('a HangoutEvent carrying it survives serialize → deserialize byte-identically', () => {
+    const state = hangoutState([10, 3, 3, 3, 3]);
+    state.eventLog.push({
+      type: 'HangoutEvent',
+      day: state.day,
+      venue: 'befriend',
+      failReason: 'venue-not-offered',
+    });
+    const s1 = serializeState(state);
+    const restored = deserializeState(s1);
+    expect(serializeState(restored)).toBe(s1);
+    expect(
+      restored.eventLog.some(
+        (e) => e.type === 'HangoutEvent' && e.failReason === 'venue-not-offered',
+      ),
+    ).toBe(true);
+  });
+
+  it('a LoanEvent carrying it survives serialize → deserialize byte-identically', () => {
+    const state = hangoutState([10, 3, 3, 3, 3]);
+    state.eventLog.push({
+      type: 'LoanEvent',
+      day: state.day,
+      kind: 'failed',
+      failReason: 'venue-not-offered',
+    });
+    const s1 = serializeState(state);
+    const restored = deserializeState(s1);
+    expect(serializeState(restored)).toBe(s1);
+    expect(
+      restored.eventLog.some((e) => e.type === 'LoanEvent' && e.failReason === 'venue-not-offered'),
+    ).toBe(true);
+  });
+});

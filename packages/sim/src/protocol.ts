@@ -16,8 +16,6 @@
 
 import {
   CREW_ROLES,
-  DARE_MAX_WAGER as HANGOUT_DARE_MAX_WAGER,
-  DARE_MIN_WAGER as HANGOUT_DARE_MIN_WAGER,
   EXPLORATION_FUEL_COST,
   LOAN_MAX_PRINCIPAL,
   LOAN_MIN_PRINCIPAL,
@@ -27,6 +25,7 @@ import {
   YARD_COMPONENT_TIER_PRICES,
   isGatedDestination,
   isPurchasablePort,
+  type HangoutVenueId,
 } from '@spacerquest/content';
 import {
   DayPhase,
@@ -48,6 +47,8 @@ import {
   shipyardFailure,
   serializeState,
   startDay,
+  venueOffered,
+  wagerBandFor,
   type Edition,
   type GameEvent,
   type GameState,
@@ -788,21 +789,35 @@ export function legalActions(state: GameState): LegalActions {
     // harness honest). Lending needs NO co-located NPC (Penny Wise is the desk),
     // so it — and the whole VisitHangout action — is now advertised even at an
     // empty Hangout, making the §7.5 bad-day loan out reliably reachable.
-    const venueChoices: string[] = ['rumor', state.player.loan ? 'repay' : 'borrow'];
+    const liveVenues: HangoutVenueId[] = ['rumor', state.player.loan ? 'repay' : 'borrow'];
     if (inSystemNpcIds.length > 0) {
-      venueChoices.unshift('dare', 'meet', 'befriend', 'insult');
+      liveVenues.unshift('dare', 'meet', 'befriend', 'insult');
     }
-    actions.push({
-      type: 'VisitHangout',
-      params: {
-        venue: { kind: 'enum', choices: venueChoices },
-        opponentId: { kind: 'enum', choices: [...inSystemNpcIds] },
-        wager: { kind: 'int', min: HANGOUT_DARE_MIN_WAGER, max: HANGOUT_DARE_MAX_WAGER },
-        amount: { kind: 'int', min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL },
-        spendDie: dieParam,
-      },
-      note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to what both sides can cover). amount applies to borrow (principal, clamped to the loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
-    });
+    // T-120 · THE PORT MIRROR. Live state decides which beats are POSSIBLE (above);
+    // the port's venue definition decides which it OFFERS. Advertising a venue the
+    // house does not run would burn a die on a guaranteed 'venue-not-offered'
+    // refusal, so the harness drops it here — the same rule the engine enforces,
+    // read through the same accessor. At Sun-3 all seven are offered, so this
+    // filter is the identity and the advertised array is byte-identical to before.
+    const venueChoices: string[] = liveVenues.filter((venue) =>
+      venueOffered(player.currentSystemId, venue),
+    );
+    // A port that offers none of the currently-possible beats is not advertised at
+    // all rather than advertised with an empty domain.
+    if (venueChoices.length > 0) {
+      const wagerBand = wagerBandFor(player.currentSystemId);
+      actions.push({
+        type: 'VisitHangout',
+        params: {
+          venue: { kind: 'enum', choices: venueChoices },
+          opponentId: { kind: 'enum', choices: [...inSystemNpcIds] },
+          wager: { kind: 'int', min: wagerBand.min, max: wagerBand.max },
+          amount: { kind: 'int', min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL },
+          spendDie: dieParam,
+        },
+        note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
+      });
+    }
   }
 
   // --- Shipyard ----------------------------------------------------------

@@ -1,17 +1,9 @@
 import {
-  BEFRIEND_DC,
-  BEFRIEND_DISPOSITION,
-  DARE_LOSS_DISPOSITION,
-  DARE_MAX_WAGER,
-  DARE_MIN_WAGER,
-  DARE_WIN_DISPOSITION,
-  INSULT_DISPOSITION,
   LENDER_ID,
   LOAN_DAILY_RATE,
   LOAN_MAX_PRINCIPAL,
   LOAN_MIN_PRINCIPAL,
   LOAN_TERM_DAYS,
-  MEET_DISPOSITION,
   ALL_NPC_PROFILES,
   RUMOR_EMPTY_LINE,
   RUMOR_QUIET_TEMPLATE,
@@ -28,6 +20,7 @@ import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { applyDisposition, mutableNpc } from '../npc.js';
 import { cloneState } from '../clone.js';
+import { venueOffered, venueParamsFor, wagerBandFor } from '../hangoutRules.js';
 
 function systemName(systemId: number): string {
   return STAR_SYSTEMS[systemId]?.name ?? `system ${systemId}`;
@@ -120,6 +113,15 @@ function npcGuile(npc: NpcState): number {
  *
  * The hangout-system gate and encounter gate live in day.ts (the only runtime
  * caller), which emits a typed ActionBlocked before this resolver is reached.
+ *
+ * T-120 · PARAMETERISED PER PORT (docs/HANGOUT_REDESIGN.md ruling 3). Every number
+ * this resolver used to read from a bare content constant now comes from the
+ * port's row through `hangoutRules.ts` — `wagerBandFor` for the stake band,
+ * `venueParamsFor` for the DCs and disposition deltas, `venueOffered` for whether
+ * the house runs the beat at all. THE RULES DID NOT MOVE: the opposed-GUILE
+ * resolution, the clamp algebra, `applyDisposition`, `spendDie` and the loan ledger
+ * are all still here, identical, and there is NO port-specific branch anywhere in
+ * this file. A port is an instance; this is the rule that reads it.
  */
 export function resolveVisitHangout(
   state: GameState,
@@ -129,6 +131,9 @@ export function resolveVisitHangout(
   const events: GameEvent[] = [];
   const nextState = cloneState(state);
   const day = nextState.day;
+  // T-120: the port whose venue definition parameterises this whole resolution.
+  // Resolved ONCE, from live state — never a literal, never a branch.
+  const systemId = nextState.player.currentSystemId;
 
   // --- Die validation (malformed input → typed fail, NO die spent) ----------
   // Same three-way split as resolveExploration: a type-valid action can still
@@ -138,7 +143,7 @@ export function resolveVisitHangout(
   // the Hangout social pane), so `failVenue` picks the right typed event.
   const isLending = action.venue === 'borrow' || action.venue === 'repay';
   const failVenue = (
-    failReason: 'no-die' | 'invalid-die-index' | 'die-already-spent',
+    failReason: 'no-die' | 'invalid-die-index' | 'die-already-spent' | 'venue-not-offered',
   ): GameEvent =>
     isLending
       ? { type: 'LoanEvent', day, kind: 'failed', failReason }
@@ -156,6 +161,17 @@ export function resolveVisitHangout(
   }
   if (hand.spent[index]) {
     events.push(failVenue('die-already-spent'));
+    return { state: nextState, events };
+  }
+
+  // --- The port must actually run this venue (T-120, HANGOUT_REDESIGN §2.6) ---
+  // ONE rule, evaluated the same way at every port — not a per-port branch. A
+  // garrison mess with no credit desk omits 'borrow'/'repay'; a card room that will
+  // not seat a stranger omits 'meet'. Refused BEFORE spendDie, like every other
+  // typed refusal, so nothing is charged for an act the house never offered, and
+  // routed through `failVenue` so the lending pair still reports a LoanEvent.
+  if (!venueOffered(systemId, action.venue)) {
+    events.push(failVenue('venue-not-offered'));
     return { state: nextState, events };
   }
 
@@ -256,12 +272,14 @@ export function resolveVisitHangout(
         actionContext: 'npc-socialize',
       });
 
-      // Wager: the requested stake, clamped into [MIN, MAX] and DOWN to what both
-      // sides can cover (a stake a broke dealer can't match is capped, never a
-      // crash / never a negative balance either way).
-      const requested = action.wager ?? DARE_MIN_WAGER;
-      const cap = Math.min(DARE_MAX_WAGER, nextState.player.credits, dealerNpc.credits);
-      const wager = Math.max(0, Math.min(Math.max(requested, DARE_MIN_WAGER), cap));
+      // Wager: the requested stake, clamped into the PORT'S band and DOWN to what
+      // both sides can cover (a stake a broke dealer can't match is capped, never a
+      // crash / never a negative balance either way). T-120: the two bounds are the
+      // port's parameters; the clamp ALGEBRA is the engine's rule and is unchanged.
+      const band = wagerBandFor(systemId);
+      const requested = action.wager ?? band.min;
+      const cap = Math.min(band.max, nextState.player.credits, dealerNpc.credits);
+      const wager = Math.max(0, Math.min(Math.max(requested, band.min), cap));
 
       // Credits move BOTH directions off the same wager.
       const creditsDelta = playerWon ? wager : -wager;
@@ -272,13 +290,18 @@ export function resolveVisitHangout(
       if (dealerPurse) dealerPurse.credits -= creditsDelta;
 
       // Disposition shifts on BOTH outcomes (a Dare is memorable either way): a
-      // beaten dealer sours (DARE_WIN_DISPOSITION, negative), a dealer who took
-      // the spacer's stake warms (DARE_LOSS_DISPOSITION, positive). Feeds T-1204's
-      // live interception + tribute-DC readers.
+      // beaten dealer sours, a dealer who took the spacer's stake warms. Feeds
+      // T-1204's live interception + tribute-DC readers. T-120: the two deltas are
+      // the port's parameters, framed from the HOUSE's side — the dare's SUCCESS
+      // arm is the one where the dealer prevails (the player lost the hand), so a
+      // player win reads `dispositionOnFailure`. How a delta is APPLIED (the ±10
+      // clamp, the applied-delta computation, DispositionChanged) stays engine-side
+      // in `applyDisposition`.
+      const dareParams = venueParamsFor(systemId, 'dare');
       applyDisposition(
         nextState,
         dealerNpc.id,
-        playerWon ? DARE_WIN_DISPOSITION : DARE_LOSS_DISPOSITION,
+        playerWon ? dareParams.dispositionOnFailure : dareParams.dispositionOnSuccess,
         'dare',
         events,
       );
@@ -296,20 +319,28 @@ export function resolveVisitHangout(
     }
 
     case 'befriend': {
-      // A GUILE charm check against a fixed table DC — charm can fall flat. No
+      // A GUILE charm check against the PORT's table DC — charm can fall flat, and
+      // a house that is hard to charm says so with a number, not a rule. No
       // actionContext: a context-less player GUILE check classifies to the wire's
       // 'talk' bucket (wire.ts classifyCheck), not the gamble bucket.
       const dealerNpc = dealer!;
-      const result = check(die, playerGuile, BEFRIEND_DC);
+      const befriendParams = venueParamsFor(systemId, 'befriend');
+      const result = check(die, playerGuile, befriendParams.dc);
       events.push({
         type: 'StatCheck',
         actor: 'Player',
         stat: Stat.GUILE,
-        dc: BEFRIEND_DC,
+        dc: befriendParams.dc,
         result,
       });
       if (result.success) {
-        applyDisposition(nextState, dealerNpc.id, BEFRIEND_DISPOSITION, 'befriend', events);
+        applyDisposition(
+          nextState,
+          dealerNpc.id,
+          befriendParams.dispositionOnSuccess,
+          'befriend',
+          events,
+        );
       }
       events.push({
         type: 'HangoutEvent',
@@ -326,7 +357,13 @@ export function resolveVisitHangout(
       // 'I never let an insult go'"). This is exactly the disposition drop that
       // makes a co-located NPC re-hunt the player through T-1204's live readers.
       const dealerNpc = dealer!;
-      applyDisposition(nextState, dealerNpc.id, INSULT_DISPOSITION, 'insult', events);
+      applyDisposition(
+        nextState,
+        dealerNpc.id,
+        venueParamsFor(systemId, 'insult').dispositionOnSuccess,
+        'insult',
+        events,
+      );
       events.push({ type: 'HangoutEvent', day, venue: 'insult', opponentId: dealerNpc.id });
       break;
     }
@@ -334,7 +371,13 @@ export function resolveVisitHangout(
     case 'meet': {
       // An introduction: a single friendly step, and gossip comes with it.
       const dealerNpc = dealer!;
-      applyDisposition(nextState, dealerNpc.id, MEET_DISPOSITION, 'meet', events);
+      applyDisposition(
+        nextState,
+        dealerNpc.id,
+        venueParamsFor(systemId, 'meet').dispositionOnSuccess,
+        'meet',
+        events,
+      );
       events.push({
         type: 'HangoutEvent',
         day,
