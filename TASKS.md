@@ -27,6 +27,36 @@ recorded under THE THREE VERB RULINGS in `docs/NPC_REDESIGN.md`:
   violence or competition — and disposition demonstrably weights **who intercepts you**
   (`chooseWeighted` in `actions/travel.ts`).
 
+## THE THREE DESIGN RULINGS (owner, 2026-07-30) — settled before any task ran
+
+Every task below is built on these. They are recorded here rather than only in the specs
+because a sub-agent gets this file and its named pointers, and nothing else.
+
+1. **Explore recovery costs CALENDAR DAYS — a multi-day committed recovery.** Starting a
+   salvage op occupies N future days, N scaling with the outcome's power. This is expected
+   to need persistent state (`player.recovery` or equivalent) and therefore a save bump.
+   It was chosen over a same-day scaling die cost because the game's tension is already
+   fuel + days + a marker due on day 30, and a recovery that eats days trades directly
+   against that clock. **The three questions it owes answers to — travel away mid-recovery,
+   die mid-recovery, start a second one — are the spec's job, not the owner's.**
+2. **A unique item's die effect uses the EXISTING, SHIPPED-EMPTY hook.** `DiceBenefit`
+   (`packages/content/src/crew.ts`) is already
+   `{ kind: 'extra-die' } | { kind: 'reroll' } | { kind: 'floor'; floor: number }`, and
+   `EQUIPMENT_DICE_BENEFITS` is an empty table whose own comment says *"a future
+   die-granting module joins with one entry — no engine change, no new call site"*. It
+   folds through `dice.ts` `equipmentDiceBenefits` → `dawnDiceModifiers`, the same
+   accumulators as the crew roster, and an existing cap stops content inflating the hand.
+   **"+y on a roll" is expressed as a floor / extra die / reroll. NO new check-level
+   modifier surface is to be built.** If a content row provably cannot be expressed this
+   way, that is a finding to REPORT, and adding the second surface is a fresh owner call.
+3. **A Hangout port definition controls OUTCOMES, not RULES.** It carries: which of the six
+   venues are offered, the wager band, per-venue check DCs, per-venue disposition deltas,
+   the drawable clientele, and the prose/tone. The engine keeps the opposed-GUILE dare
+   resolution, the loan ledger, die spending, and how disposition is applied. **A dangerous
+   bar is dangerous through numbers.** Per-port "house rules" needing an engine special
+   case are explicitly OUT — if a content pass hits a port it cannot express, report it;
+   that finding is what would earn a richer surface later.
+
 ## Orchestrator protocol
 
 1. **Check out** the first task with `status: TODO` whose `after:` tasks are all DONE. Set it IN-PROGRESS.
@@ -83,28 +113,31 @@ Statuses: `TODO` | `IN-PROGRESS` | `DONE` | `BLOCKED(reason)`
 Audit today's Explore end to end (`packages/engine/src/actions/exploration.ts`,
 `packages/content/src/exploration.ts`, `POI_KINDS`, `POI_LOOT`, `EXPLORATION_NAV_DC`,
 `EXPLORATION_FUEL_COST`, and the fragment pools in `content/nemesis.ts`) and write
-`docs/EXPLORE_REDESIGN.md`: a spec, not an implementation. It must settle four things.
-**(1) The outcome taxonomy** — the owner's brief names _unique item_, _questline_, _NPC_,
-_lore bit_, and plain _salvage/credits_, with "dead end" meaning lore with no mechanical
-payoff. Define each as a typed content shape the engine can resolve without knowing any
-instance. **(2) The time cost, which is the sharp new mechanic** — _"recovering said items
-should consume time, especially if powerful"_. Today Explore resolves inside one day. Cost
-out at least three shapes (a multi-day committed recovery that occupies future days; a
-repeated-visit model; a single day whose die cost scales with value), and say what each does
-to the day loop, to `GameState`, and to the save version. **(3) The unique-item effect
-surface** — the brief names _+x to a ship element_ and _+y on a die roll_. The first has a
-home (`ShipState` components, `SPECIAL_EQUIPMENT`); the second **does not exist in the engine
-today** and is the harder half — say where a die-roll modifier would live and what reads it.
-**(4) The value ladder** — how a 100-row table spreads across power levels without a
-hand-tuned constant per row. Recommend one option per question with reasons; do not
-implement.
+`docs/EXPLORE_REDESIGN.md`: a spec, not an implementation. **The owner has already ruled the two load-bearing questions (rulings 1 and 2 above) — spec
+the ruled design, do not re-open it.** It must settle four things.
+**(1) The outcome taxonomy** — the brief names _unique item_, _questline_, _NPC_, _lore bit_,
+and plain _salvage/credits_, with "dead end" meaning lore with no mechanical payoff. Define
+each as a typed content shape the engine can resolve without knowing any instance.
+**(2) The multi-day recovery, in detail** — ruling 1 fixes the model; the spec owes the
+mechanics. Exactly what state is added and where; how N is derived from an outcome's power by
+a rule rather than a per-row constant; and the three interaction answers: **travelling away
+mid-recovery, dying mid-recovery, and starting a second recovery while one is open.** Name
+the save version it lands on and what the migration backfills. **(3) The effect surface** —
+_+x to a ship element_ has a home (`ShipState`, `SPECIAL_EQUIPMENT`); the die effect uses the
+existing `DiceBenefit` / `EQUIPMENT_DICE_BENEFITS` hook per ruling 2. Show concretely how
+three different items of different power map onto `floor` / `extra-die` / `reroll`, and state
+the expressive limit that mapping has. **(4) The value ladder** — how a 100-row table spreads
+across power levels, and how recovery time and effect strength stay correlated, without a
+hand-tuned constant per row. Do not implement.
 
-**Accept:** `docs/EXPLORE_REDESIGN.md` exists and settles all four questions with a named
-recommendation each; every engine/content symbol it cites resolves (`grep` each and confirm a
-hit); the time-cost section costs out at least three shapes with their `GameState` and
-save-version consequences; the die-roll-modifier section states explicitly that no such
-surface exists today and names where it would live; no engine, content or sim source file is
-modified by this task; gate green.
+**Accept:** `docs/EXPLORE_REDESIGN.md` exists and settles all four with a named design each;
+every engine/content symbol it cites resolves (`grep` each and confirm a hit); the recovery
+section names the added state, the derivation rule for N, the save version, AND answers all
+three interaction questions explicitly; the effect section maps three worked example items
+onto the existing `DiceBenefit` kinds and states that mapping's expressive limit; **the spec
+implements the owner's ruled options 1 and 2 — if either proves unworkable the task FAILS
+with the reason rather than documenting an alternative**; no engine, content or sim source
+file is modified; gate green.
 
 ### T-101 · Spec the Hangout system: engine vs content, parameterised per port — `status: TODO` · `coder: opus` · `after: T-100`
 
@@ -112,12 +145,14 @@ Audit today's Hangout (`packages/engine/src/actions/hangout.ts` — 413 lines, s
 `dare`, `befriend`, `insult`, `meet`, `rumor`, plus `borrow`/`repay`; and
 `packages/content/src/hangout.ts`) and write `docs/HANGOUT_REDESIGN.md`. The target the owner
 set: **a bar at every one of the 14 core spaceports**, each with its own clientele and vibe,
-driven by parameters rather than by 14 code paths. Settle: **(1) the parameter surface** —
-what a port's venue definition carries (which venues it offers, wager band, check DCs,
-clientele, tone, house rules), such that a new port is a content row and nothing else.
-**(2) What stays hard-coded** — the opposed-GUILE dare resolution and the disposition deltas
-are RULES and belong to the engine; the prose, the tone and the odds bands are content. Draw
-that line explicitly. **(3) The reach change and its consequence** — going from 1 venue to 14
+driven by parameters rather than by 14 code paths. **Ruling 3 above fixes the parameter surface — spec it, do not re-open it.** Settle:
+**(1) the parameter surface in detail** — the typed shape of a port venue definition carrying
+exactly what ruling 3 lists (venues offered, wager band, per-venue DCs, per-venue disposition
+deltas, drawable clientele, prose/tone), such that a new port is one content row and nothing
+else. **(2) The engine/content line, as an explicit two-column list** naming every current
+behaviour on one side or the other. Per ruling 3 the engine keeps opposed-GUILE resolution,
+the loan ledger, die spending and disposition application; note that per-venue disposition
+DELTAS are content while how a delta is APPLIED is engine. **(3) The reach change and its consequence** — going from 1 venue to 14
 makes a currently-unreachable feature reachable, which will move the player's economy and
 every golden; say so and size it. **(4) The three known defects**, recorded under the vacated
 VisitHangout ruling in `docs/NPC_REDESIGN.md` — decide whether each is in scope for this
@@ -132,21 +167,27 @@ recommendation each; the engine-vs-content line is drawn as an explicit two-colu
 naming every current behaviour on one side or the other; the reach section states the
 expected blast radius (which goldens, which bands, whether a capstone is owed); each of the
 three defects is marked in-scope or deferred WITH a reason; the 14-port brief names the
-differentiating axes and proposes a spread; no engine, content or sim source file is
-modified; gate green.
+differentiating axes and proposes a spread; **the spec implements ruling 3 — no per-port
+house-rule mechanism is specced, and if a proposed port concept needs one that is recorded
+as a finding**; no engine, content or sim source file is modified; gate green.
 
-### T-102 · CHECKPOINT — owner review of both specs — `status: TODO` · `coder: sonnet` · `after: T-101` · `[BLOCKED BY = Human Gate]`
+### T-102 · Spec consistency check — do the two specs honour the rulings, and do they collide? — `status: TODO` · `coder: opus` · `after: T-101`
 
-Automated preparation only: assemble `docs/0.5.2-SPEC-REVIEW.md` collecting, with no new
-analysis, each spec's open questions and its recommended option, flagging every place the two
-specs disagree or overlap (both touch the day loop and both may want a save bump — say
-whether they can share one). Commit it. Then the run **halts**: the owner picks the time-cost
-model, the die-modifier home, and the hangout parameter surface before any implementation
-starts, because every task in M2 and M3 is built on those three answers.
+**This was a human gate until the owner ruled all three questions up front; it is now the
+automated check that the specs actually built what was ruled.** Read both specs against THE
+THREE DESIGN RULINGS and against each other, and write `docs/0.5.2-SPEC-REVIEW.md`: a short
+cross-check, not a re-analysis. Two jobs. **(1) Ruling compliance** — confirm each spec
+implements its ruled option, and name any place one quietly substituted a different design.
+**(2) Collision** — both systems touch the day loop and both may want persistent state; say
+whether they can share ONE save bump or need two, and in which order they must land so the
+second does not invalidate the first's migration. Flag any place the two specs use different
+names for the same concept.
 
-**Accept:** (human-checked) the review doc is committed and lists each spec's recommendations
-and the cross-spec conflicts; the owner has ruled on the time-cost model, the
-die-roll-modifier surface, and the hangout parameter surface.
+**Accept:** `docs/0.5.2-SPEC-REVIEW.md` exists with both sections; **the task FAILS if either
+spec departed from its ruling** — a departure is escalated, never documented as an
+alternative and never accepted by this task; the save-bump collision question is answered
+with a specific recommendation (one bump or two, and the landing order); no engine, content
+or sim source file is modified; gate green.
 
 ---
 
@@ -171,11 +212,13 @@ test proving an instance of it resolves; a `grep` for `beacon`/`derelict` in
 
 ### T-111 · The time cost of recovery — `status: TODO` · `coder: opus` · `after: T-110`
 
-Implement the time-cost model the owner ruled at T-102, so that recovering a valuable find
-occupies real time rather than resolving free inside one day. This is expected to need
-persistent state (an in-progress recovery survives a save) and therefore a save bump with a
-migration and a round-trip test. It must interact honestly with the day loop: state what
-happens if the player travels away mid-recovery, dies mid-recovery, or starts a second one.
+Implement the **multi-day committed recovery** of ruling 1, to the mechanics T-100 specced,
+so recovering a valuable find occupies real calendar days rather than resolving free inside
+one day. This needs persistent state (an in-progress recovery survives a save) and therefore
+a save bump with a migration and a round-trip test. It must interact honestly with the day
+loop, in the three ways the spec settled: travelling away mid-recovery, dying mid-recovery,
+and starting a second recovery while one is open. `N` derives from the outcome's power by the
+spec's rule — **never a per-row constant.**
 
 **Accept:** a recovery that spans days is driven end to end in a test (start → intervening
 days → payout) through the real `startDay`/`applyPlayerAction`/`endDay` loop, never by poking
@@ -187,17 +230,21 @@ gate green.
 
 ### T-112 · The unique-item effect surface — `status: TODO` · `coder: opus` · `after: T-111`
 
-Build the two effect classes the brief names: **+x to a ship element** (which has a home in
-`ShipState` / `SPECIAL_EQUIPMENT`) and **+y on a die roll** (which does not exist today —
-this is the new surface, and T-100 named where it should live). A die-roll modifier must read
-through the engine's own `check()` / dice path so player and NPC are affected by one rule,
-and must be visible to the player in the cockpit rather than a silent buff.
+Build the two effect classes the brief names. **+x to a ship element** has a home in
+`ShipState` / `SPECIAL_EQUIPMENT`. **The die effect is ruling 2 and is deliberately NOT a new
+engine surface**: an explore item grants a `DiceBenefit` (`extra-die` / `reroll` / `floor`)
+through the shipped-empty `EQUIPMENT_DICE_BENEFITS` table, which already folds into
+`dawnDiceModifiers` — *"a future die-granting module joins with one entry, no engine change,
+no new call site"* is its own comment, and this task is that entry. **This task is therefore
+mostly wiring and UI, not new rules.** The effect must be visible in the cockpit rather than
+a silent buff, and the existing hand cap must still hold.
 
-**Accept:** both effect classes are content-declared and engine-resolved; a test shows a
-die-roll modifier changing a `check()` outcome through the real path (not a unit-test stub of
-the formula); the modifier is surfaced in `packages/ui` and asserted by a UI test; no effect
-is applied by a branch keyed on a specific item id (a `grep` for item ids in
-`packages/engine/src` returns nothing); gate green.
+**Accept:** an explore-granted item produces a real `DiceBenefit` at dawn, asserted by a test
+driving the actual `startDay` hand roll (not a stub of the formula); **no new check-level
+modifier surface was added** — a `grep` confirms `check()`'s signature is unchanged; the
+existing hand cap still binds with an item equipped, asserted by a test; the effect is
+surfaced in `packages/ui` and asserted by a UI test; no effect is applied by a branch keyed on
+a specific item id; gate green.
 
 ### T-113 · Explore content pass 1 of 3 — the spine (~34 outcomes) — `status: TODO` · `coder: opus` · `after: T-112`
 
@@ -258,7 +305,7 @@ gate green.
 
 ### T-120 · Extract the Hangout engine from its content, behaviour-preserving — `status: TODO` · `coder: opus` · `after: T-116`
 
-Split today's `resolveVisitHangout` along the line T-101 drew: the engine keeps the rules
+Split today's `resolveVisitHangout` along ruling 3, to the shape T-101 specced: the engine keeps the rules
 (opposed-GUILE dare resolution, disposition deltas, the loan ledger, die spending), content
 gains a **per-port venue definition** carrying which venues exist, the wager band, the check
 DCs, the clientele and the tone. **Behaviour-preserving first:** Sun-3's venue definition must
