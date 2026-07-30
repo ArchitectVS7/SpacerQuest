@@ -791,6 +791,377 @@ this memo selects among them.
 
 ---
 
+### Storylet — decision memo
+
+The ledger records this row as **"authored player-facing content"**, which makes it the row
+most likely to be correctly EXCLUDED — and that is exactly why it needs a memo. An exclusion
+that is *obvious* is still an assumption until the reason is written down and the cost is
+priced. This memo does that and nothing more.
+
+**Counted throughout — the content census** (`.scratch/t012-storylet-census.ts`, gitignored;
+re-runnable with `npx tsx`). It reads the shipped arrays through the package **source**
+(`packages/content/src/index.js`, never `@spacerquest/content`, which resolves to a possibly
+stale `dist`). **It carries no R2c fidelity check, deliberately, and the absence is not an
+omission:** it is a static table read — no rng, no day stepped, no engine rule duplicated —
+so there is no arm to check against `runCampaign`. Where a number below is labelled
+**counted** it came from this probe.
+
+**(a) What the PLAYER's Storylet actually does.**
+
+- **Dispatch.** `Storylet` is the terminal `else` of `applyPlayerAction`
+  (`packages/engine/src/day.ts:434-440`), which forks `action-storylet-${actionEventIndex}`
+  and calls `resolveStoryletChoice` (`packages/engine/src/storylets.ts:666`). The fork is
+  taken for stream alignment only — `resolveStoryletChoice`'s rng parameter is named
+  `_rng` and is **unused** (`storylets.ts:669`), so the verb draws no randomness of its own
+  beyond the die. It is in the die-costed action union at `day.ts:96` and behind the gates
+  at `day.ts:103` and `:283`.
+- **The offer pipeline runs constantly.** `refreshAvailableStorylets` (`storylets.ts:198`)
+  → `eligibleStorylets` (`:192`) → `triggerMatches` (`:64`), called at dawn and again after
+  **every** action (`day.ts:190`, `:217`, `:457`).
+- **Every input `triggerMatches` reads is player- or world-scoped.**
+  `state.player.currentSystemId`, `state.era`, `state.day`, `state.player.activeContract`
+  (`storylets.ts:70-88`), `state.npcs[…].disposition` (`:89-98`),
+  `state.player.reputation` (`:103-108`), the **global** `state.flags` (`:109-113`),
+  `state.player.nemesisFile` (`:114-140`), `state.eraEvent` (`:145-157`),
+  `state.player.registry.renownRank` via `renownRankIndex` (`:161-166`), and
+  `state.player.registry.earned` (`:169-171`). Counted, over the 114 storylets: **36
+  (31.6%)** gate on at least one field that exists **only** on the player —
+  `nemesis` 15, `cargo.activeContract` 11, `reputation` 8, `renown` 3, `deed` 0 — and
+  **41** gate on `flags`.
+- **The entry gate is a die.** `spendRequiredDie` (`storylets.ts:223-255`): any choice
+  carrying `requirements.spendDie` **or** `requirements.statCheck` calls
+  `spendDie(state.player.dawnHand, action.spendDie)`
+  (`packages/engine/src/dice.ts:165`), then rolls the shared
+  `check(die, state.player.stats[statCheck.stat], statCheck.dc)` (`dice.ts:137`) and emits
+  a `StatCheck` with a **hardcoded `actor: 'Player'`** (`storylets.ts:248`) and
+  `actionContext: 'storylet'` (`:252`). That is the identical shape the Explore memo found
+  at `actions/exploration.ts:194`. Counted from the engine source, `actor: 'Player'` is a
+  literal at **ten** non-test sites — `storylets.ts:248`, `actions/hangout.ts:244,306`,
+  `actions/travel.ts:633`, `actions/combat.ts:343,408,494,618`, `actions/trade.ts:171`,
+  `actions/exploration.ts:194` — so this is one instance of a project-wide pattern, not a
+  storylet quirk.
+- **Counted: 254 choices across 114 storylets.** Of those, **40 are die-gated** (3 by a
+  bare `spendDie`, 37 by a `statCheck`) and **14** carry a `credits` gate. Those 40 sit
+  across **39** storylets — and **no storylet has all of its choices die-gated**, which is
+  the T-401 "every storylet offers at least one requirement-free choice" invariant holding.
+  The checks roll GRIT, GUILE, GUNS and TRADE at **DC 11-13**.
+- **The refusal ladder**, in `resolveStoryletChoice`, in order: `not-available`
+  (`storylets.ts:676`), `unknown-choice` (`:683`), `insufficient-credits` (`:687`),
+  `missing-die` (`:700`). It is mirrored non-mutatingly by `quoteStoryletChoice` (`:611`,
+  ladder at `:629/:637/:647/:660`), whose doc comment (`:596-610`) states the
+  pane-can-never-disagree contract explicitly.
+- **`applyEffects` (`storylets.ts:316-555`) writes, in order:** `state.player.credits`
+  floored at 0 (`:356-366`, behind the long T-1604b argument at `:327-355`),
+  `state.player.ship.fuel` clamped (`:368-382`), `state.player.activeContract` (`:384-393`),
+  `state.market.manifestBoard` (`:395-407`), the **global** `state.flags` (`:409-414`, via
+  `applyFlagEffect` `:257`), NPC disposition through the shared
+  `applyDisposition(…, 'storylet', …)` (`:416-440`; `applyDisposition` is `npc.ts:657`, and
+  the copy-on-write re-read comment is at `storylets.ts:425-427`),
+  `state.player.reputation` (`:446-459`), `StoryletDeedProgress` (`:461-470`),
+  **`state.storylets.scheduled.push`** (`:472-488`), `grantFragment` into
+  `state.player.nemesisFile` (`:496-516`), `decodeFragment` (`:520-537`), and
+  `commitCrossingStake` (`:550-552`). Counted, by how many storylets write each:
+  credits 55 · flags 71 · disposition 29 · reputation 17 · fuel 8 · cargo 6 ·
+  `grantFragment` 6 · deedProgress 4 · `decodeFragment` 12 · crossing stake 1.
+- **Completion is world state, and it is a consumption ledger.**
+  `resolveStoryletChoice` stamps `nextState.storylets.completed[storylet.id] =
+  nextState.day` (`:716`) and drops the offer and its due schedule (`:717-722`).
+  `isCompletedForNow` (`:54-59`) then hides the storylet **forever** unless
+  `repeat === 'daily'`. Counted: of 114 storylets, `repeat: 'never'` **112** and
+  `repeat: 'daily'` **2** — i.e. **98.2% of the authored table is once per career**.
+- **The chain state itself is one structure per WORLD.**
+  `StoryletState { available, completed, scheduled, offeredToday }`
+  (`packages/engine/src/types.ts:150-155`) and
+  `StoryletScheduleState { storyletId, dueDay, sourceStoryletId, sourceChoiceId }`
+  (`types.ts:143-148`), hung off `GameState.storylets` (`types.ts:1526`). There is **no
+  per-actor storylet state anywhere in the engine** — the world has exactly one chain
+  ledger, and it is the player's.
+- **The multi-step mechanism, which is the part that matters for this row.**
+  `effects.schedule` (`storylets.ts:472-488`) pushes a follow-up at
+  `state.day + delayDays`; `trigger.scheduledOnly` (`:67-69`, via `hasDueSchedule` `:48-52`)
+  makes an episode reachable *only* once its schedule is due; and `resolveAbandonedChains`
+  (`:756-793`, called from the dusk block at `day.ts:1255`) resolves a past-grace episode
+  **for** the player, filing the authored `wireResolution.wireMessage` as a
+  `WireEntry{kind:'npc'}` and applying its consequences through the same `applyEffects`
+  path (the definition-site argument is at `:736-755`). Counted: **26** storylets schedule
+  a follow-up, at delays of **1 or 2 days**; **26** are `scheduledOnly`; **20** carry a
+  `wireResolution`, with `graceDays` **4-7**.
+- **Content.** `STORYLETS = defineStorylets([…])` at
+  `packages/content/src/storylets.ts:198`; the file is **4,982 lines** of authored prose,
+  titles, choice labels and per-choice `prose`. The trigger's `npc.inCurrentSystem` is
+  declared at `content/src/storylets.ts:48`.
+
+**(b) What the cast has instead.**
+
+**Frequency is 0 by construction, not measured as 0.** `NPC_INTENT_TYPES`
+(`packages/content/src/ideals.ts:14`) has exactly five members —
+`Trade | Travel | Combat | Patrol | Socialize`. `resolveNpcDay`
+(`packages/engine/src/npc.ts:1604`, if/else chain `:1675-1687`) dispatches off `pickIntent`
+(`npc.ts:583`) into `executeTrade` (`:1324`), `executeTravel` (`:1462`), `executeCombat`
+(`:1509`), `executePatrol` (`:1545`), `executeSocialize` (`:1573`). **There is no Storylet
+verb and no Storylet intent.** As with Explore, "0 by construction" is the honest statement;
+"0.00 measured off a small arm" is what standing amendment 1 forbids.
+
+**What the cast DOES have — and it is the reason all 41 records exist.**
+`createInitialState` seeds `state.npcs` from `[...NPC_PROFILES, ...QUEST_PROFILES]`
+(`packages/engine/src/state.ts:79`), giving **41** records at `disposition: 0`
+(`state.ts:93`). `NPC_PROFILES` (`packages/content/src/cast.ts:87`) is the 30 simulated
+mortal captains; `QUEST_PROFILES` (`cast.ts:483`) is the 11 storyline characters;
+`ALL_NPC_PROFILES` is `cast.ts:626` and `isSimulatedCaptain` is `cast.ts:660`. The 41-record
+doc comment (`cast.ts:628-657`) states the purpose in as many words: the eleven "hold
+`NpcState` records **so storylet triggers and dispositions can look them up by id**". So the
+cast is the storylet system's **subject and lookup target** — `triggerMatches` finds a
+captain by id and gates on `disposition` (`storylets.ts:89-98`), and `applyEffects` moves a
+captain's disposition (`:416-440`). That is **presence in the roster, not participation in
+the verb**, the same distinction T-011's part (b) drew for `hangoutRumors` ("NPCs are its
+SUBJECT, never its reader", this doc line 466).
+
+**The `NPC_PROFILES` / `QUEST_PROFILES` split is doing live work — the census confirms it
+against the real arrays rather than by grep.** Counted: **10 distinct npc ids** are
+referenced by any storylet (8 distinct in a `trigger.npc.id`, 10 distinct in a
+`effects.disposition[].npcId`, including success/failure branches and `wireResolution`
+effects) — `npc-doc-salvage`, `npc-lucky-seven`, `npc-rattlesnake`, `npc-rust-bucket`,
+`npc-silk-dagger`, `npc-smuggler-ray`, `npc-stellar-monk`, `npc-the-broker`,
+`npc-void-whisper`, `npc-wild-card`. Partitioned through `isSimulatedCaptain`: **10 of 10
+are `QUEST_PROFILES`, 0 of 30 are `NPC_PROFILES`, 0 unknown.** `npc-penny-wise` is the
+eleventh quest profile and is the only one no storylet references — she is reached through
+the lending path instead (the VisitHangout memo above). So authored chains reference
+**only** captains that take no turn (`day.ts:753`,
+`if (!isSimulatedCaptain(npc.profileId)) continue;`) and therefore can never die
+(`npc.dead = true` is set at exactly one site, `npc.ts:1026`, inside the simulated path).
+That is what makes the split load-bearing today rather than historical.
+
+**The mid-chain-death failure mode, and why the question is not hypothetical.** The N3
+ruling records it verbatim (this doc, lines 1469-1472, under N3's "Authored content attached
+to the dead"):
+
+> *The real failure mode was mid-chain death.* Storylets are multi-step chains with
+> scheduled follow-ups: answer Doc Salvage's ping on day 12
+> (`chain.doc-salvage.ping_answered`), Doc Salvage dies on day 40, and on day 41 the
+> scheduled beat fires — *"Doc Salvage answers a day later…"*. **A dead captain talks.**
+
+And the owner's reasoning, recorded at lines 1479-1487, closes the obvious alternative: the
+option on the table was *eleven immortal NPCs*, rejected *"because it didn't make thematic
+sense"*; the eleven "are not immortal captains; they are not captains in the simulation at
+all." **This is the mechanism whose interaction with NPC mortality forced the split** — so
+any option in (c) that puts a chain near a mortal captain is re-opening a question the owner
+has already answered once.
+
+**The mechanism is still armed — a verified finding of this memo, and it is a defect that
+exists today under every option below.** The storylet path filters `dead` **nowhere**:
+
+1. `triggerMatches`'s npc lookup is a bare
+   `state.npcs.find((candidate) => candidate.id === trigger.npc?.id)`
+   (`storylets.ts:90-91`) — **no `dead` check**, so a dead captain still satisfies a
+   disposition or co-location trigger.
+2. `applyEffects`'s disposition loop is a bare `state.npcs.find(…)` (`storylets.ts:417-418`)
+   — a storylet can move a **dead** captain's disposition.
+3. `resolveAbandonedChains` (`storylets.ts:756-793`) files the authored `wireMessage` on a
+   grace-window expiry with **no liveness test at all** — a dead captain speaking on the
+   wire, which is precisely the N3 shape.
+
+Contrast the two sites that *do* guard, both closed at N3: `hangoutRumors` filters `dead`
+(this doc line 466), and `buildNamedCandidates` (`actions/travel.ts:275-301`) both filters
+`npc.dead` and looks the profile up in `NPC_PROFILES`, with the reason written at the
+definition site ("*'a dead captain talks' is the exact failure mode the roster split was
+designed around*"). **So on the storylet path the roster split is currently the ONLY thing
+holding this closed, and it is held by content discipline — which ids get authored — rather
+than by a code invariant.** Naming a mortal captain in one chain re-opens it in one commit.
+Recorded here as a finding, not fixed: this memo changes no code.
+
+**The N13 hand dependency.** `spendRequiredDie` (`storylets.ts:223-255`) is the entry gate
+for all **40** die- or check-bearing choices, and `NpcState` (`types.ts:1153-1206`:
+`id / name / profileId / currentSystemId / credits / ship / disposition / lastAction? /
+dead?`) carries **no `dawnHand`** — `dawnHand` exists once, on `PlayerState`
+(`types.ts:1444`). That is the same block that stops full-parity Explore (this doc, lines
+294-296) and the same shape as watch item **OI-9**, and it is **N13's** to remove. The
+cast's existing check path does **not** substitute for free either: `rollNpcCheck`
+(`npc.ts:1214-1232`) is module-private and **keyed to `NpcIntentType`** — it reads
+`INTENT_STAT_AFFINITY[intent]` (`ideals.ts:27`), `NPC_CHECK_DCS[intent]` (`ideals.ts:46`)
+and `NPC_CHECK_CONTEXT[intent]` (`npc.ts:1193-1202`), so an authored
+`statCheck { stat, dc }` cannot pass through it without a stat+DC parameterisation and a new
+`actionContext` member. Its T-1201 verb⟺`StatCheck` invariant (doc comment
+`npc.ts:1204-1213`) is an invariant a sixth verb has to be **added to**, never bypassed.
+
+**Instrument blindness — a verified negative, and a live cross-contamination hazard.**
+
+- `grep -c storylet docs/balance/baseline-n10-shipped.json` returns **0**, case-insensitive
+  included. The `fleet` keys and the `fleet.milestones[…]` keys
+  (`day, runs, player*, npcCredits, npcHullStrength, npcFuel`) carry **no storylet metric at
+  all**, in `fleet` or in any of the eight `byPolicy` rows. Same verified-negative form as
+  the VisitHangout memo's loan finding (lines 606-608): the instrument cannot see this
+  mechanism, and a mechanism the instrument cannot see cannot be graded.
+- **No storylet event carries an actor.** `StoryletOffered` (`types.ts:740`),
+  `StoryletChoiceResolved` (`:742`), `StoryletChoiceBlocked` (`:749`),
+  `StoryletEffectApplied` (`:756`), `StoryletScheduled` (`:783`) and `StoryletDeedProgress`
+  (`:791`) have **no actor field**, and `packages/sim/src/index.ts:937-949` folds
+  `StoryletChoiceResolved` **unconditionally** into the player's `SmugglingStats.podsTaken`
+  / `fenceSales` (`index.ts:231,235`; the ids at `:827-832`). An NPC resolving
+  `derelict.sealed-pod`'s `take`, or any `fence.ray.*` sell, would be counted as the
+  **player's** smuggling. **This is the third instance of one pattern in three memos** —
+  the Explore memo's deed cross-contamination (lines 304-309) and the VisitHangout memo's
+  actor-less `LoanEvent` (lines 631-637) are the same defect class, and it should be closed
+  as a class rather than three times.
+
+**(c) The three options, each with its real cost.**
+
+**Option 1 — implement (full parity).** This is the most expensive option in the three
+memos, and the reason is structural rather than incidental.
+
+- **Not one field but a whole sub-state.** Because `StoryletState` (`types.ts:150-155`) is
+  world-scoped, parity means a per-captain `available / completed / scheduled /
+  offeredToday` on `NpcState` — **30 of them** — plus a declaration in the `.strict()`
+  `NpcStateSchema` (`packages/engine/src/schema.ts:466`, read at `:1286` and covered by the
+  `AssertEqual<keyof NpcState, …>` at `:1332`, so an undeclared key is a compile error and
+  an unknown key on a save is a rejection), a `CURRENT_SAVE_VERSION` bump
+  (`save.ts:331`, currently **11**), a `MIGRATIONS[n]` entry (`save.ts:156`) that **calls**
+  the seeding rule rather than restating it (the `MIGRATIONS[9]` / `[10]` discipline, stated
+  at `save.ts:302`), a round-trip test, and `deserializeState` performing the identical
+  move pinned by a test. Carrying T-011's sequencing point forward: **N11's T-020 already
+  claims 11 → 12**, so this lands at **v13** or folds into N11's bump.
+- **The global flag namespace is not separable from the state question.** `triggerMatches`
+  reads and `applyFlagEffect` writes the **single** `state.flags` map (`storylets.ts:109-113`,
+  `:257-306`), and **71** of the 114 storylets write flags (counted). Thirty captains
+  writing `chain.*` flags either collide in one namespace or need per-actor flags — so
+  deciding the flags is deciding the state shape.
+- **`completed` is a consumption ledger, and 98.2% of the table is once-only.** With
+  `isCompletedForNow` (`storylets.ts:54-59`) reading a **world-scoped** `completed` map, a
+  cast-side resolve against the shared structure **deletes authored content from the
+  player's game**. Counted: 112 of 114 storylets are `repeat: 'never'`; only 2 are `daily`.
+  The sharpest instance: the Sage of Mizar-9's decode storylets are *"the game's ONLY
+  decoder"* (`packages/sim/src/index.ts:1309-1310`), and counted, **12** storylets carry a
+  `decodeFragment` effect — `sage.mizar.decode-first` plus `decode-02..12`
+  (`content/src/storylets.ts:547`, `:1967`-`:2051`, `:4712`-`:4880`), each `repeat: 'never'`
+  and each the sole route to decoding one specific fragment. A captain resolving any one of
+  them takes that fragment's only decode with it, and with it a step the player needs to
+  clear the `minDecoded` crossing gate (`storylets.ts:134-138`). Avoiding that requires a
+  per-actor `completed`, which is the sub-state above.
+- **Authored prose has no cast-side reader, and the CHOICE is the harder half.**
+  `StoryletOffer` (`types.ts:129-141`) carries `title`, `prose` and per-choice
+  `label`/`prose`; the cast has no UI, so option 1 buys a prose surface nobody reads.
+  Worse, a captain must *select* a choice, and the only choice-selection code that exists is
+  `chooseStoryletAction` (`packages/sim/src/index.ts:1290-1307`) — a **player** policy in
+  `packages/sim`, not an engine actor model. Lifting it into `npc.ts` is exactly the private
+  parallel model the standing constraint forbids; parameterising `resolveStoryletChoice`
+  with an actor is the only compliant route, and it is the whole 793-line module.
+- **And the rest of the bill:** the die (**N13**), the hardcoded `actor: 'Player'`
+  (`storylets.ts:248`), an actor discriminator owed on **all six** storylet events before
+  the sim mis-attributes (part (b) above), a sixth `NPC_INTENT_TYPES` member with its full
+  authored table cost (the Explore memo's enumeration at lines 310-316 —
+  `IDEAL_WEIGHTS` alone is **30** rows, one per authored Ideal), a new sim limb because the
+  instrument cannot see the mechanism at all, and **a new capstone, never a refreshed
+  number** (this doc's own rule at line 82).
+
+**Option 2 — algorithmic fast-forward.** The task asks specifically whether a *non-authored*
+subset could be fast-forwarded — a captain's disposition or flags moving *as if* a beat had
+resolved — and whether that would be a rule the player plays under or a private parallel
+model. Split honestly, it is two different things:
+
+- **(i) A cast-side beat with cast-side consequences.** There is nothing for it to move.
+  `NpcState.disposition` is defined as standing **toward the player**
+  (`types.ts:1179-1181`; the note at `travel.ts:343`), and NPC↔NPC standing is an *absent
+  model*, not a number left at zero (T-011's part (b) item 7, lines 542-545). A beat between
+  two captains has no state to land in.
+- **(ii) A cast-side beat with player-facing consequences** — moving a disposition, or a
+  `chain.*` flag the player's 41 flag-gated triggers read. The player's version of that
+  outcome is only ever produced by `resolveStoryletChoice` **after** prose was shown, a die
+  was spent and a four-rung typed refusal ladder was cleared. A fast-forward that reaches
+  the same write without those is a **second definition of the same outcome** — R2c's exact
+  failure mode, and the standing constraint's "never write the NPC a private one". So the
+  answer to the task's question, for sub-shape (ii): **as stated, it is a private parallel
+  model, not a rule the player plays under.**
+- **The one narrow sub-shape that is arguably compliant, so the option is costed rather
+  than dismissed.** `resolveAbandonedChains` (`storylets.ts:756-793`) is an **existing,
+  blessed precedent for an outcome resolving without the actor playing it**: it routes
+  through the same `applyEffects`, emits the identical `DispositionChanged` /
+  `StoryletEffectApplied` events, and its argument lives at its definition site
+  (`:736-755`). Note precisely what it is a precedent *for*: its subject is the **player's
+  own** unplayed chain, so it is a precedent for the **mechanism**, not for the **scope**.
+  Extending it to a captain's private chain is a design question for the owner, not a
+  refactor.
+- **The asymmetry with both prior memos.** Explore's option 2 was cheap because no save
+  shape moved. VisitHangout's was not, because a debt is persistent state. Storylet's is
+  worse than either: **a chain is persistent state AND authored content**, so there is no
+  save-free version and no content-free version of this option.
+- If recorded, it must be recorded as a **partial**, for the reason both prior memos give:
+  an actor playing the same rules over a smaller surface is honest only while the smaller
+  surface is written down.
+
+**Option 3 — exclude with a reason.** Zero code. The reason available to be stated, all of
+it verified above: the verb's inputs and outputs are **player-scoped by construction**
+(`GameState.storylets` is one ledger per world; the triggers read `player.nemesisFile`,
+`player.reputation`, `player.registry`, `player.activeContract` and the global
+`state.flags`); its payload is **authored prose with no cast-side reader**; its `completed`
+ledger is **98.2% once-only**, which makes cast participation *consumption of the player's
+content* rather than parallel play; and its multi-step scheduling is the **exact mechanism
+the N3 `NPC_PROFILES` / `QUEST_PROFILES` split was created to keep away from mortal
+captains** — a chain currently references 10 quest profiles and 0 of the 30 simulated
+captains, by content discipline.
+
+**The cost of exclusion, in the ledger's own terms.** One of the player's **eleven** verbs
+(the ledger table, lines 189-201) stays player-only, and N8's *"all or most of a full
+player's actions"* (the ruling at line 177, the precondition bullet at lines 2462-2468) has
+to count Storylet as a **ruled exclusion** rather than a gap. Classified precisely, and
+unlike VisitHangout: because the cast does **not** play this verb at all, this would be a
+ruled **absence**, the same class as Explore's option 3 — not a ruled partial.
+
+**(d) Recommendation, with its reason.**
+
+Offered as a recommendation, not as a ruling. **Option 3 — exclude with the reason
+recorded** — on four grounds, in descending strength:
+
+1. **The shared once-only `completed` ledger makes cast participation subtractive for the
+   player.** This is the strongest argument because it is structural and needs no
+   measurement: 112 of 114 storylets are `repeat: 'never'` against **one world-scoped**
+   `completed` map, so a captain resolving a beat does not play *alongside* the player, it
+   plays *instead of* them. The Sage's decode storylets are the proof case — the game's only
+   decoder, and each of its twelve beats consumable exactly once.
+2. **The verb's rewards and gates are player-scoped by design, and the standing constraint
+   requires the same rules *where the verb applies*, not that every verb apply** (the
+   Explore memo's formulation, lines 334-335). 31.6% of triggers read a field that exists
+   only on the player; the payload is prose with no cast-side reader.
+3. **Option 1 is not reachable in this track's remaining steps regardless of the ruling.**
+   It is blocked on N13 for the die and on a per-actor sub-state that queues behind N11's
+   version bump — so the practical choice this quarter is between option 2 and option 3.
+4. **And option 2's honest form is narrower than it first looks.** Its sub-shape (i) has no
+   state to write and its sub-shape (ii) is a second definition of a player-facing outcome.
+   What remains is the `resolveAbandonedChains` precedent, which is a precedent for the
+   mechanism and not for the scope.
+
+What stays genuinely open, and belongs to the owner:
+
+- **Whether a *non-storylet* expression of cast-side narrative belongs anywhere.** The N4
+  `loan-default` / `contraband-caught` re-siting question (lines 681-687) is the same shape
+  — grudge writes that need a storylet-side expression or a re-siting — and it should be
+  ruled with an eye to this row, since "express it storylet-side" would be a heavier answer
+  in the hypothetical where this row is eventually ruled an exclusion.
+- **Two defects that exist today whichever option is chosen, recorded here rather than
+  folded into the recommendation** (the register T-011 used at lines 755-756): the
+  `dead`-unfiltered storylet lookups (part (b), three sites) and the actor-less storylet
+  events that the sim already folds into the player's smuggling counters. Neither is caused
+  by this ruling and neither is fixed by it; both are separate work items for the owner to
+  schedule.
+
+**(e)**
+
+**DECISION: OWED**
+
+The owner is choosing between: **option 1** implement at full parity (a per-captain
+`StoryletState` sub-state on `NpcState` with a `.strict()` schema declaration, a version
+bump queued behind N11's, a migration that calls the seeding rule, a per-actor answer to
+the global flag namespace, an actor parameter threaded through the whole 793-line storylets
+module, an actor discriminator on all six storylet events, a sixth `NPC_INTENT_TYPES`
+member with 30 `IDEAL_WEIGHTS` rows, a new sim limb, a new capstone, and the die still
+blocked on N13), **option 2** a fast-forward recorded as a partial (whose compliant form
+reduces to extending the `resolveAbandonedChains` precedent from the player's own unplayed
+chain to a captain's, which is a design question rather than a refactor — and which still
+buys persistent state and authored content, so it is save-free in neither direction), and
+**option 3** exclude with the stated reason (zero code, and N8 counts the row as a ruled
+**absence**, the same class as Explore, not a ruled partial). Nothing in this memo selects
+among them.
+
+---
+
 ### N0 — One copy-on-write discipline for player and NPC turns (SHIPPED 2026-07-28)
 
 - **Why first:** NPC records are about to grow a ship, and `cloneState` deep-copied all

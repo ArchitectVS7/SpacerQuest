@@ -195,7 +195,7 @@ engine or save-shape code was touched — this task is documentation-only, as sc
 whichever future task the owner selects.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
 
-### T-012 · Memo: the Storylet verb — `status: TODO` · `coder: opus` · `after: T-011`
+### T-012 · Memo: the Storylet verb — `status: DONE` · `coder: opus` · `after: T-011`
 
 The ledger records Storylet as **"authored player-facing content"**. This is the row most
 likely to be correctly EXCLUDED, and the memo's job is to make that a recorded decision
@@ -218,6 +218,31 @@ a ruled exclusion.
 question is not hypothetical; it addresses the N13 hand dependency; it states the cost of
 exclusion in the ledger's own terms; it contains `**DECISION: OWED**`; the three memos now
 present cover exactly Explore, VisitHangout and Storylet and no other verb; gate green.
+
+**Delivered (2026-07-29):** Added the "Storylet — decision memo" section to
+`docs/NPC_REDESIGN.md`, covering all five parts (a)–(e). Part (a) decomposes the player's
+storylet pipeline (dispatch, the constantly-running offer refresh, `triggerMatches`'
+player-and-world-scoped inputs, the die-gated entry, the refusal ladder, `applyEffects`'
+ten write targets, the once-only `completed` ledger, and the multi-step scheduling
+mechanism) with content-derived arithmetic from a gitignored census script (114 storylets,
+254 choices, 40 die-gated, 112 of 114 `repeat: 'never'`). Part (b) shows the cast has no
+Storylet verb or intent at all — "0 by construction" — and that the 41 `NpcState` records
+exist only as the storylet system's lookup subject, not as participants; it also verifies
+the `NPC_PROFILES`/`QUEST_PROFILES` split is live (10/10 storylet-referenced npc ids are
+quest profiles, 0/30 are simulated captains) and flags that the `dead` check is missing at
+three storylet call sites plus that storylet events carry no actor and get folded into the
+player's smuggling counters. Part (c) prices all three options, showing option 1 requires a
+per-captain `StoryletState` sub-state, a save-version bump queued behind N11, and a sixth
+`NPC_INTENT_TYPES` member, while option 2 reduces to the narrow `resolveAbandonedChains`
+precedent once its two sub-shapes are separated. Part (d) recommends option 3
+(exclude-with-reason) on four grounds, chiefly that the shared once-only `completed` ledger
+makes cast participation subtractive rather than additive for the player. Part (e) closes
+with `**DECISION: OWED**` — the memo prices and recommends but does not itself choose,
+matching T-011's pattern. Scope boundary: no engine or save-shape code was touched — this
+task is documentation-only, as scoped; the two flagged defects (unfiltered `dead` lookups,
+actor-less storylet events) and the option-1/option-2 implementation work all remain for
+whichever future task the owner selects.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
 
 ---
 
