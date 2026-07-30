@@ -8,7 +8,7 @@ import {
   LIFE_SUPPORT_SURVIVAL_DC,
   LOAN_DEFAULT_DISPOSITION,
   NEMESIS_SYSTEM_ID,
-  QUEST_PROFILES,
+  isSimulatedCaptain,
   ALL_NPC_PROFILES,
   STAR_SYSTEMS,
   SUBSISTENCE_FLOOR_CREDITS,
@@ -697,8 +697,12 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   for (const npc of npcOrder) {
     // The bond-hook rescuer already spent their day intervening.
     if (npc.id === intervenedNpcId) continue;
-    // Quest characters do not participate in the daily simulation.
-    if (QUEST_PROFILES.some(q => q.id === npc.profileId)) continue;
+    // Quest characters do not participate in the daily simulation — the shared
+    // predicate, not a local `.some()`, because this distinction has already
+    // caused four live bugs by being spelled differently at each site (see
+    // `isSimulatedCaptain` in content/cast.ts). The Set lookup also drops this
+    // from an 11-element scan per captain per day to O(1) in the dusk loop.
+    if (!isSimulatedCaptain(npc.profileId)) continue;
     // N3 · A dead captain takes no turn. The record STAYS (the wire, the Honor
     // List's history and the player's grudges reference it) — it is skipped here,
     // never removed, which is why the roster length does not shrink even as the

@@ -31,6 +31,9 @@ export interface NpcProfile {
   flawDc: number;
   /** Power tier: 1 = mudlark, 5 = legend (PRD §6). */
   tier: PowerTier;
+  /** N4 · The captain's playstyle. It does not REPLACE {@link ideal} — it biases
+   *  it, through `ARCHETYPE_INTENT_MULTIPLIERS` in ideals.ts. See the curation
+   *  note above {@link NPC_PROFILES} for how the 30 were assigned. */
   archetype: NpcArchetype;
   /** T-1204: the dusk Bond intervention this NPC performs when the player has
    *  earned their standing. Present only on the handful of profiles whose Bond
@@ -40,6 +43,47 @@ export interface NpcProfile {
   bondHook?: BondHook;
 }
 
+/**
+ * N4 · THE ARCHETYPE ASSIGNMENT IS HAND-CURATED, and that is a ruling, not a
+ * preference (docs/NPC_REDESIGN.md, N4 RULING 2: *"archetypes are hand-curated
+ * from each captain's stats / ideal / bond, with a floor guaranteeing every
+ * archetype has enough members for its branch to be live and measurable"*).
+ *
+ * WHY THE RULING EXISTS — the first attempt generated the field with a one-off
+ * regex script whose first-match branch chain starved the last two archetypes,
+ * leaving **0 veterans and 1 smuggler** across these 30. A branch with no
+ * members is not a design decision, it is dead code that reads as one, and no
+ * sweep can measure it. The floor is what makes each branch gradeable.
+ *
+ * THE DISTRIBUTION, pinned by `cast.test.ts` so it cannot quietly starve again:
+ * trader 6 · fighter 6 · explorer 5 · veteran 5 · gambler 4 · smuggler 4 = 30.
+ *
+ * HOW A CAPTAIN WAS PLACED — read in this order, and the ORDER is not a
+ * precedence chain (that is what went wrong the first time), it is what each
+ * archetype means:
+ *   · **trader**   — TRADE 4+ under a commerce Ideal (Wealth / Profit / Opulence
+ *                    / Industry). The manifest board is the whole day.
+ *   · **fighter**  — GUNS at or near the top of the line under a martial Ideal
+ *                    (Dominance / Glory / Power / Excellence), TRADE 0–1.
+ *   · **explorer** — PILOT top of the line with a Travel-heavy Ideal (Discovery /
+ *                    Truth / Freedom / Mystery) and a bond pointed outward
+ *                    ("loyal to the cosmos", "the open stars", "the next horizon").
+ *   · **smuggler** — a bond outside the lawful factions (the rim, the shadows, a
+ *                    faction they hate) plus the means to work it: TRADE to move
+ *                    the cargo or PILOT to outrun what objects.
+ *   · **gambler**  — GUILE 4+, or a volatile flaw (Reckless / Impulsive /
+ *                    Arrogant / Treacherous) on a line with no dominant stat.
+ *   · **veteran**  — a career rather than a specialism: tier 3+, no stat above 4,
+ *                    at least three stats filled, and a disciplined flawDc. These
+ *                    are the captains who play the whole loop.
+ * Where a captain's assignment is not obvious from their line, the reason is
+ * written at their own entry below rather than left to be re-derived.
+ *
+ * Three assignments are FIXED by the owner's ruling, which worked their
+ * arithmetic out by hand: **Iron Vex fighter**, **Cargo King trader**, **Zero
+ * Risk trader**. Changing one of those three silently invalidates a recorded
+ * worked example; change the ruling first.
+ */
 export const NPC_PROFILES: NpcProfile[] = [
   // The Original 20 (minus 8 extracted) = 12
   {
@@ -76,7 +120,9 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Overcautious',
     flawDc: 10,
     tier: 5,
-    archetype: 'fighter',
+    /** N4 · tier 5, no stat above 4 and four of five filled, flawDc 10 (the most disciplined
+     *  captain on the roster): the broad, seasoned game the archetype names */
+    archetype: 'veteran',
     bondHook: { beat: 'drive-off', activateAt: 3, dc: 12 },
   },
   {
@@ -101,7 +147,9 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Cruel',
     flawDc: 12,
     tier: 5,
-    archetype: 'fighter',
+    /** N4 · tier 5 and rules a faction — a career, not a specialism; GUNS 4 + GRIT 4 + GUILE 2
+     *  fights, endures and negotiates, which is the veteran stance exactly */
+    archetype: 'veteran',
   },
   {
     id: 'npc-frost-helm',
@@ -113,7 +161,9 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Rigid',
     flawDc: 10,
     tier: 3,
-    archetype: 'trader',
+    /** N4 · the flattest stat line in the cast (3/2/3/3/0) under a Logic ideal and flawDc 10 —
+     *  a methodical all-rounder, not a specialist trader */
+    archetype: 'veteran',
   },
   {
     id: 'npc-atlas-prime',
@@ -210,7 +260,10 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Relentless',
     flawDc: 13,
     tier: 4,
-    archetype: 'fighter',
+    /** N4 · a tier-4 bounty hunter who hunts FOR an institution: the roster's natural
+     *  deed-chaser, which is what the sim's veteran policy is. Justice vetoes Trade outright,
+     *  so the blend leaves them on Combat and Patrol without an archetype needing to say so */
+    archetype: 'veteran',
   },
   {
     id: 'npc-nebula-rose',
@@ -222,7 +275,9 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Vain',
     flawDc: 12,
     tier: 3,
-    archetype: 'trader',
+    /** N4 · TRADE 4 beside GUILE 4, a Beauty ideal weighted on Socialize, and a bond that
+     *  literally reads "loves high society" — the Hangout is her venue, not the manifest board */
+    archetype: 'gambler',
   },
   {
     id: 'npc-the-phantom',
@@ -234,7 +289,9 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Enigmatic',
     flawDc: 10,
     tier: 5,
-    archetype: 'gambler',
+    /** N4 · tier 5, PILOT 5, TRADE 0, and a Mystery ideal already weighted Travel 5 — nothing
+     *  about this captain trades, and "loyal to the unknown" is the explorer's remit */
+    archetype: 'explorer',
   },
   {
     id: 'npc-crash-override',
@@ -258,7 +315,10 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Perfectionist',
     flawDc: 12,
     tier: 2,
-    archetype: 'trader',
+    /** N4 · TRADE 4 with a bond that reads "feeds the rim" — the rim run IS the smuggler's
+     *  mechanical signature (`executeTrade`'s rim preference), and this is the captain it was
+     *  authored for */
+    archetype: 'smuggler',
   },
   {
     id: 'npc-junk-lord',
@@ -270,7 +330,9 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Possessive',
     flawDc: 13,
     tier: 3,
-    archetype: 'fighter',
+    /** N4 · GUNS 3, TRADE 3, GRIT 4 under a Possession ideal — a scrapyard baron who fights,
+     *  hauls and holds ground rather than doing one of the three */
+    archetype: 'veteran',
   },
   // 11 Newly Generated Simulation Characters
   {
@@ -307,7 +369,10 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Impulsive',
     flawDc: 15,
     tier: 3,
-    archetype: 'trader',
+    /** N4 · PILOT 5 and "hunts the fastest routes" on a Thrill ideal: the blockade runner.
+     *  TRADE 1 means thin margins, which is the point — the archetype is not a promise of
+     *  profit */
+    archetype: 'smuggler',
   },
   {
     id: 'npc-crimson-hawk',
@@ -343,6 +408,8 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Greedy',
     flawDc: 12,
     tier: 2,
+    /** N4 · frontier-loyal, but GUILE 0 — a captain who cannot keep a secret is not a smuggler,
+     *  whatever their bond says */
     archetype: 'trader',
   },
   {
@@ -367,7 +434,10 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Defiant',
     flawDc: 14,
     tier: 3,
-    archetype: 'fighter',
+    /** N4 · a Chaos ideal, a Defiant flaw and a bond that HATES the Astro League: runs cargo
+     *  past the patrols of the faction they hate. GUNS 3 keeps them dangerous when the run goes
+     *  wrong */
+    archetype: 'smuggler',
   },
   {
     id: 'npc-plasma-burn',
@@ -403,7 +473,10 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Arrogant',
     flawDc: 13,
     tier: 3,
-    archetype: 'fighter',
+    /** N4 · the roster's third Glory/Power hotshot with a PILOT 4 / GUNS 3 line; Arrogant, and
+     *  the one of the three whose day is a bet rather than a discipline. Keeping all three as
+     *  fighters made near-duplicate captains */
+    archetype: 'gambler',
   },
 ];
 
@@ -551,6 +624,42 @@ export const QUEST_PROFILES: NpcProfile[] = [
 ];
 
 export const ALL_NPC_PROFILES: NpcProfile[] = [...NPC_PROFILES, ...QUEST_PROFILES];
+
+/**
+ * THE ONE PREDICATE for "does this record take a turn in the daily simulation?"
+ *
+ * `state.npcs` carries **41** records — the 30 in {@link NPC_PROFILES} who are
+ * fully simulated and mortal, plus the 11 in {@link QUEST_PROFILES} who are set
+ * aside for STORYLINE ONLY (owner, 2026-07-29) and take no turn. They hold
+ * `NpcState` records so storylet triggers and dispositions can look them up by
+ * id, and they sit FROZEN at their day-1 credits, ship and system for an entire
+ * career. That is the design, not an oversight: the split replaced an earlier
+ * "eleven immortal captains" idea, which was dropped because a cast where a
+ * third of the names cannot die made no thematic sense. Reading the eleven as
+ * simulated captains is the mistake this predicate exists to prevent.
+ *
+ * That distinction has now caused FOUR live bugs by being spelled a different
+ * way at each call site (or not at all): the Honor List silently became a 42-way
+ * board ranking eleven day-1 captains; `balance-rig.test.ts` lost 52 tests to a
+ * hardcoded 30; `campaign.test.ts`'s NPC wealth-spread invariant took its MEDIAN
+ * over all 41, so eleven records pinned at 5,000cr set the median and the
+ * assertion read a 344x spread where the simulated field's was 10.3x; and
+ * `sampleMilestone` sampled all 41, quietly diluting **every NPC wealth, hull
+ * and position percentile this project has measured** since the roster split.
+ *
+ * So it is one exported predicate over a Set, not a `.some()` at each site:
+ * three numbers stay distinct (`NPC_PROFILES.length` = the simulated field,
+ * `state.npcs.length` = the record count, 31 = the Honor List board), and the
+ * next reader gets the right one by asking rather than by remembering. Note the
+ * polarity: it asks whether a record IS simulated rather than whether it is a
+ * quest character, so a record with an unrecognised profile is excluded rather
+ * than fed to a turn resolver that would throw on it.
+ */
+const SIMULATED_PROFILE_IDS: ReadonlySet<string> = new Set(NPC_PROFILES.map((p) => p.id));
+
+export function isSimulatedCaptain(profileId: string): boolean {
+  return SIMULATED_PROFILE_IDS.has(profileId);
+}
 
 export const ANONYMOUS_INTERCEPTORS: AnonymousInterceptorProfile[] = [
   {

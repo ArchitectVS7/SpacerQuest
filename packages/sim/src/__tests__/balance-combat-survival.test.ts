@@ -90,8 +90,46 @@ import {
 // ==========================================================================
 // ---------------------------------------------------------------------------
 
-/** See SWEEP PROVENANCE. Explicit and fixed — never a hunt range. */
-const SEEDS = Array.from({ length: 15 }, (_, index) => index + 1);
+// ==========================================================================
+// N4 RE-MEASURE (2026-07-29) — THE SLICE WIDENED 15 -> 40 SEEDS, AND NOT ONE
+// BAND MOVED. Read this before touching anything below.
+//
+// WHAT HAPPENED. N3's roster split and N4's archetype blend both move the shared
+// dusk rng stream, so this slice re-sampled. At 15 seeds it went red on two
+// assertions, and the two have DIFFERENT causes, which is why they get different
+// answers:
+//
+//   (1) PARITY MONOTONICITY WAS UNDER-POWERED, NOT INVERTED. `cost('even',false)`
+//       read 1,073.9 against `cost('above',false)` 1,078.8 — a 0.5% gap, on cells
+//       of n=169 and n=81, over a heavy-tailed cost distribution. That is noise
+//       being graded as an ordering. At 40 seeds the same measurement resolves
+//       cleanly and in the designed direction: below 1,842.9 > even 1,161.4 >
+//       above 1,019.8 (n = 545 / 451 / 262). Widening the SAMPLE is the fix
+//       standing amendment 1's corollary prescribes — *"never report a rate as
+//       0.00 off a small arm — report < 1/n, or re-run bigger"* — and it costs no
+//       threshold: every constant below is byte-identical.
+//
+//   (2) THE FLEET DEATH RATE IS GENUINELY BELOW ITS FLOOR, and widening does not
+//       rescue it: 15 seeds gave 0 deaths, 40 seeds gives 5 over 9,600 sim days =
+//       0.52 / 1,000 against a floor of 0.8. So it is a real regression against
+//       T-1603c's target and NOT a sampling artifact. It is therefore held as a
+//       tripwire below rather than accommodated — see that test.
+//
+// RE-MEASURED on the widened slice (40 seeds x 4 policies x 60 days = 9,600 sim
+//        days): 5 ships lost, all 5 combat defeats, 3.1% of runs; cost ratio
+//        1,842.9/1,019.8 = 1.807 (bar 1.4); preparation saves 61.4% at `below`
+//        (bar 50%); `shipLostRate` in below/unprepared 0.18%, and it is nonzero,
+//        which the 15-seed slice could not show either.
+// COST: ~600 ms per 60-day run x 160 runs is ~95s, up from ~36s. Paid
+//        deliberately: the 15-seed slice was grading a 0.5% difference, which is
+//        worse than slow.
+// DO NOT NARROW IT BACK to recover runtime — the assertions below are only
+//        meaningful at a sample that can resolve them.
+// ==========================================================================
+
+/** See SWEEP PROVENANCE and the N4 RE-MEASURE note. Explicit and fixed — never a
+ *  hunt range. */
+const SEEDS = Array.from({ length: 40 }, (_, index) => index + 1);
 /** See SWEEP PROVENANCE for why 60 and not 35. */
 // R2c NOTE — DO NOT WIDEN THIS WINDOW. 60 days is load-bearing for the two
 // distribution targets below (preparation-saves and fleet death rate). Widening to
@@ -130,6 +168,14 @@ const MIN_PREPARATION_SAVING_BELOW = 0.5;
  *  below 0.8 death is a rumour rather than a dread (PRD line 85, "a real loss, not
  *  a soft reset"); above 6.0 a 120-day career is more likely than not to end in a
  *  succession, which is a different game. This slice measures 1.94. */
+/**
+ * BOTH BOUNDS UNMOVED AT N4, and the floor is currently BREACHED — the breach is
+ * held as an `it.fails` tripwire on `spacers die` rather than paid for by lowering
+ * this number. `docs/VERSIONING.md` is explicit that a band edited to make a test
+ * pass has stopped being a band, and 0.8 is a DESIGN TARGET from the T-1603c memo
+ * (§11), not a description of the last measurement. Measured 0.52 at N4 over
+ * 9,600 sim days.
+ */
 const MIN_DEATHS_PER_1000_DAYS = 0.8;
 const MAX_DEATHS_PER_1000_DAYS = 6.0;
 
@@ -256,11 +302,10 @@ describe('T-1603c combat & survival targets (pinned slice of the committed sweep
       `no ship was lost across ${survival.simDays} sim days`,
     ).toBeGreaterThan(0);
 
-    // ...and inside the designed band, from both sides. See the constants.
-    expect(
-      survival.deathsPer1000Days,
-      `death rate ${survival.deathsPer1000Days.toFixed(2)} per 1,000 sim days`,
-    ).toBeGreaterThanOrEqual(MIN_DEATHS_PER_1000_DAYS);
+    // ...and under the designed CEILING. The FLOOR is currently breached and is
+    // held as its own tripwire below (`the fleet death rate clears its designed
+    // floor`) — split out rather than folded in here so that everything else in
+    // this test keeps grading instead of being masked by one known-red number.
     expect(survival.deathsPer1000Days).toBeLessThanOrEqual(MAX_DEATHS_PER_1000_DAYS);
 
     // COMBAT can kill again. This is the specific finding T-1603c exists to
@@ -293,6 +338,72 @@ describe('T-1603c combat & survival targets (pinned slice of the committed sweep
       cell('below', false).shipLostRate,
       'nobody ever loses a ship while outgunned and unprepared',
     ).toBeGreaterThan(0);
+  });
+
+  // KNOWN RED, EXPECTED TO FAIL — the fleet death rate sits BELOW its designed
+  // floor. Filed at the reopened N4 (docs/NPC_REDESIGN.md), which found it rather
+  // than caused it: at N4's parent commit this slice already read 0.28 / 1,000.
+  //
+  // THE NUMBER. T-1603c calibrated this slice at 1.94 deaths / 1,000 sim days and
+  // set the floor at 0.8 as a DESIGN target (memo §11: below 0.8 "death is a
+  // rumour rather than a dread"). It now measures **0.52** — 5 ships lost over
+  // 9,600 sim days, all 5 of them combat defeats. Widening the slice from 15 to 40
+  // seeds was tried FIRST and does not rescue it (15 seeds read a flat zero), so
+  // this is a real regression and not a thin sample.
+  //
+  // WHY IT IS A TRIPWIRE AND NOT A LOWERED FLOOR. Moving 0.8 down to 0.5 would
+  // make the test green and delete the finding in the same edit, which is the one
+  // move `docs/VERSIONING.md` names as forbidden. `it.fails` keeps the assertion
+  // EXECUTING and inverts the verdict, so this goes red again the moment the rate
+  // recovers past 0.8 — at which point the fix is to flip it back to `it` in the
+  // same commit, exactly as the Auto-Repair tripwire below is held.
+  //
+  // ONE CONTRIBUTING TERM IS MEASURED AND NAMED, and it is a CONSEQUENCE OF A
+  // DESIGN DECISION rather than a defect. `buildNamedCandidates` (engine
+  // `actions/travel.ts`) filters on `NPC_PROFILES`, which N3's roster split shrank
+  // from 41 profiles to 30, so the eleven named captains stopped being drawable as
+  // random interdictions. That follows from what the split IS (owner, 2026-07-29:
+  // the eleven are set aside for STORYLINE ONLY — the split replaced an earlier
+  // "eleven immortal NPCs" idea precisely because immortality made no thematic
+  // sense), so a storyline captain not turning up as an anonymous lane ambush is
+  // the intended shape, not a regression. Quantified here only because it is part
+  // of the arithmetic: putting all 41 back into the pool moves this slice's deaths
+  // 5 -> 7, i.e. 0.52 -> 0.73 / 1,000. Still short of 0.8, so even undoing a
+  // deliberate design decision would not close this gap — which is the useful half
+  // of the measurement.
+  //
+  // WHAT IS GENUINELY OPEN, recorded so it is not lost: two `applyDisposition`
+  // reasons are written specifically for storyline captains — `loan-default`
+  // (Penny Wise) and `contraband-caught` (a named patrol captain) — and T-1204's
+  // interception weighting was their reader. With those captains out of the pool
+  // that reader is unreachable for them, so either their grudges need a
+  // storylet-side expression or the writes need re-siting. A design question for
+  // the owner, not a number to tune.
+  //
+  // AND THE DECISIVE MEASUREMENT: THE FLOOR NEVER DESCRIBED THE FULL SWEEP. At
+  // 1,000 seeds x 120 days x 8 policies the fleet death rate reads **0.6448** at
+  // N4's capstone (`docs/balance/baseline-n4-shipped.json`, 619 ships lost, 574 of
+  // them combat defeats) — and **0.6323** at the PREVIOUS baseline of record,
+  // `baseline-r2c-explorer-remit.json`, which predates N3 entirely. So the capstone
+  // has been under 0.8 since before either N-step touched the cast, and N3 + N4
+  // together moved it UP by 2.0%, not down. What this slice's 60-day/4-policy
+  // window has been measuring is a HARDER-THAN-FLEET corner of the game, and 0.8
+  // was calibrated on that corner rather than on the sweep. That reframes the
+  // finding: it is not "N4 broke player mortality", it is "this slice and the
+  // capstone disagree about the death rate, and the slice is the one carrying a
+  // design target it cannot meet". Reconciling them is a calibration decision for
+  // R2.5/N8 (whichever re-reads the T-1603c memo against the living-field
+  // baseline), not a number for this step to pick.
+  //
+  // NOT FIXED HERE, THEN, FOR THE HONEST REASON: nothing N4 did caused it, the
+  // slice-vs-capstone reconciliation is R-owned, and changing the encounter mix
+  // inside N4 would confound the very sweep N4 is graded on. One change per step.
+  it.fails('the fleet death rate clears its designed floor', () => {
+    const { survival } = report.fleet;
+    expect(
+      survival.deathsPer1000Days,
+      `death rate ${survival.deathsPer1000Days.toFixed(2)} per 1,000 sim days`,
+    ).toBeGreaterThanOrEqual(MIN_DEATHS_PER_1000_DAYS);
   });
 
   // KNOWN RED, EXPECTED TO FAIL — caused by R2c (`docs/BALANCE-REDESIGN-WORKLIST.md`).

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isSimulatedCaptain } from '@spacerquest/content';
 import { advanceDay, createInitialState, DayPhase, type PlayerAction } from '@spacerquest/engine';
 import { describe, expect, it } from 'vitest';
 import { availablePlannedActions, parseCliArgs, reportToJson, runCampaign } from '../index.js';
@@ -112,6 +113,37 @@ describe('campaign runner', () => {
    * `credits[0] > 0` floor below is untouched (the T-1605b anti-poverty-trap
    * invariant), and a genuine runaway — one captain owning the field — is still
    * orders of magnitude past 25.
+   *
+   * THE CEILING IS UNMOVED AT THE REOPENED N4; WHAT MOVED IS WHO IS COUNTED, and
+   * that was a live bug rather than a re-pin. This block used to take its median
+   * over all of `state.npcs`, which N3's roster split had grown to 41 records —
+   * the 30 simulated captains plus 11 quest characters who take no turn and so
+   * sit frozen at exactly 5,000cr. Eleven identical mid-distribution constants
+   * SET the median: at seed 1 / day 200 the 41-record median reads 5,000 against
+   * the simulated field's 167,421, and the assertion therefore measured a 344x
+   * spread where the field's real one is 10.3x. It passed before N4 only because
+   * the pre-blend field was poor enough for 5,000 to be a plausible median —
+   * i.e. it was already measuring the wrong thing and getting away with it.
+   *
+   * RE-MEASURED over the SIMULATED LIVING field, seeds 1..10 at this exact
+   * horizon: 10.29, 15.51, 9.05, 13.24, 11.92, 17.30, 20.09, 9.54, 9.87, 10.00.
+   * **The ceiling stays 25 and the headroom is now thin — 24% above the worst
+   * observed seed, where N2 chose 25 for ~56%.** It is deliberately NOT raised:
+   * a band moved to keep a test green stops being a detector
+   * (docs/VERSIONING.md), and 20.09 is a PASS. But the direction is a real
+   * finding rather than noise — N4's specialisation concentrates wealth in the
+   * six traders (seed 1: Cargo King 1,722,968 against the six fighters' ~125)
+   * and widened the spread from N2's worst-of-ten 15.99 to 20.09. **N8 owns the
+   * decision** when it re-pins against the living field: either the fighter's
+   * flat `150 x tier` bounty is under-priced against a haul (the likelier
+   * reading, and the same shape as R10) or this ceiling belongs somewhere else.
+   * If a future seed crosses 25, read it as that finding arriving, not as a
+   * fixture to nudge.
+   *
+   * THE DEAD ARE EXCLUDED, for the `credits[0]` floor rather than for the ratio:
+   * a captain lost to an interdiction (N3) keeps whatever purse they died with,
+   * and a corpse at 0 credits is a historical record, not the poverty trap
+   * T-1605b's floor exists to detect.
    */
   const NPC_WEALTH_SPREAD_CEILING = 25;
 
@@ -121,13 +153,18 @@ describe('campaign runner', () => {
       state = advanceDay(state, [{ type: 'Wait' }]).state;
     }
 
+    // THE FIELD, not the record count — content's shared predicate (see
+    // `isSimulatedCaptain`, and the four bugs that conflation has caused).
+    const field = state.npcs.filter((npc) => isSimulatedCaptain(npc.profileId) && !npc.dead);
+    expect(field.length).toBeGreaterThan(20);
+
     // Movement is real: the cast has scattered across the starmap.
-    const systems = new Set(state.npcs.map((npc) => npc.currentSystemId));
+    const systems = new Set(field.map((npc) => npc.currentSystemId));
     expect(systems.size).toBeGreaterThanOrEqual(8);
 
     // Economics are real but non-degenerate: nobody pinned at exactly 0, nobody
     // running away past NPC_WEALTH_SPREAD_CEILING x the median.
-    const credits = state.npcs.map((npc) => npc.credits).sort((a, b) => a - b);
+    const credits = field.map((npc) => npc.credits).sort((a, b) => a - b);
     const median = credits[Math.floor(credits.length / 2)];
     expect(credits[0]).toBeGreaterThan(0);
     expect(credits[credits.length - 1]).toBeLessThanOrEqual(NPC_WEALTH_SPREAD_CEILING * median);

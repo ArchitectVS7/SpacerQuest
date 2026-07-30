@@ -1,6 +1,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { NPC_PROFILES } from '@spacerquest/content';
 import ts from 'typescript';
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -323,7 +324,17 @@ describe('N7 · a synthesized run cannot become a balance number', () => {
   it('harvests milestones only when asked, and only at the requested days', () => {
     const harvested = runCampaign(1, 5, 'trader', { milestoneDays: [2, 4] });
     expect(harvested.milestones?.map((sample) => sample.day)).toEqual([2, 4]);
-    expect(harvested.milestones?.[0].npcCredits.length).toBe(npcCount);
+    // A MILESTONE SAMPLES THE SIMULATED FIELD (30), NOT THE RECORD COUNT (41) —
+    // and this line is the fourth site where those two numbers have been confused
+    // (see `isSimulatedCaptain` in content/cast.ts for the other three). It read
+    // `npcCount` — the 41 records `synthesizeTierState`'s spread legitimately
+    // covers — while `sampleMilestone` was quietly sampling all 41 too, so eleven
+    // quest captains frozen at their day-1 credits landed in every wealth
+    // percentile the aggregate produces. Fixing the sampler moved this assertion
+    // from a matching pair of wrong numbers to the right one; the two constants
+    // stay DELIBERATELY distinct here so a future re-conflation goes red.
+    expect(harvested.milestones?.[0].npcCredits.length).toBe(NPC_PROFILES.length);
+    expect(NPC_PROFILES.length).toBeLessThan(npcCount);
     // Non-invasive: asking for milestones must not change the career itself.
     const { milestones: _milestones, ...rest } = harvested;
     expect(JSON.stringify(rest)).toBe(JSON.stringify(runCampaign(1, 5, 'trader')));

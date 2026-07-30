@@ -13,6 +13,7 @@ import {
   YARD_COMPONENT_TIER_PRICES,
   distance as systemDistance,
   isGatedDestination,
+  isSimulatedCaptain,
   type DiceBenefit,
   type PowerTier,
   type RenownRankId,
@@ -599,9 +600,11 @@ export interface MilestoneSample {
     cargoPods: number;
     crew: number;
   };
-  /** Every NPC's purse, roster order. The wealth SPREAD across the field. */
+  /** Every SIMULATED captain's purse, roster order. The wealth SPREAD across the
+   *  field. Simulated, not every record: see {@link sampleMilestone}. */
   npcCredits: number[];
-  /** Every NPC's hull strength, roster order — the capability their ship carries. */
+  /** Every simulated captain's hull strength, roster order — the capability their
+   *  ship carries. */
   npcHullStrength: number[];
   npcFuel: number[];
   npcSystemId: number[];
@@ -4735,6 +4738,21 @@ export function runCampaign(
 /** N7 · The dawn snapshot behind {@link MilestoneSample}. Reads the live state;
  *  every derived number comes from the engine's own field rather than a
  *  re-computation here. */
+/** The four per-captain arrays behind {@link MilestoneSample}, over the SIMULATED
+ *  roster only. One traversal, one filter, so the four arrays cannot fall out of
+ *  step with each other — index i is the same captain in all of them. */
+function sampleField(
+  state: GameState,
+): Pick<MilestoneSample, 'npcCredits' | 'npcHullStrength' | 'npcFuel' | 'npcSystemId'> {
+  const field = state.npcs.filter((npc) => isSimulatedCaptain(npc.profileId));
+  return {
+    npcCredits: field.map((npc) => npc.credits),
+    npcHullStrength: field.map((npc) => npc.ship.hull.strength),
+    npcFuel: field.map((npc) => npc.ship.fuel),
+    npcSystemId: field.map((npc) => npc.currentSystemId),
+  };
+}
+
 function sampleMilestone(state: GameState): MilestoneSample {
   const ship = state.player.ship;
   return {
@@ -4756,10 +4774,19 @@ function sampleMilestone(state: GameState): MilestoneSample {
       cargoPods: ship.cargoPods,
       crew: state.player.crew.length,
     },
-    npcCredits: state.npcs.map((npc) => npc.credits),
-    npcHullStrength: state.npcs.map((npc) => npc.ship.hull.strength),
-    npcFuel: state.npcs.map((npc) => npc.ship.fuel),
-    npcSystemId: state.npcs.map((npc) => npc.currentSystemId),
+    // THE SIMULATED FIELD, NOT EVERY RECORD — an instrument defect found and
+    // fixed at the reopened N4, and it silently scoped every NPC number this
+    // project has measured since N3's roster split. `state.npcs` carries 41
+    // records: the 30 captains who take a turn, plus 11 quest characters who
+    // never do and therefore sit FROZEN at 5,000cr and their day-1 fit for the
+    // whole career. Sampling all 41 mixed eleven constants into every percentile
+    // — and because they cluster mid-distribution, they landed ON the median: at
+    // seed 1 / day 200 the 41-record median reads 5,000cr against the simulated
+    // field's 167,421, which reported the field's wealth spread as 344x when it
+    // is 10.3x. Same class as N9's "the aggregate cannot see an asset", and
+    // fixed for the same reason: an instrument blind spot has to close BEFORE
+    // the capstone it would corrupt, not after.
+    ...sampleField(state),
   };
 }
 

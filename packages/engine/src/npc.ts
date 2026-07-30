@@ -1,8 +1,13 @@
 import {
+  ARCHETYPE_INTENT_MULTIPLIERS,
   CARGO_TYPES,
+  DEFAULT_IDEAL_WEIGHTS,
   FLAWS,
+  IDEAL_WEIGHTS,
   INTENT_STAT_AFFINITY,
+  NEUTRAL_INTENT_MULTIPLIERS,
   NPC_CHECK_DCS,
+  NPC_INTENT_TYPES,
   NPC_COMPONENT_STAT_AFFINITY,
   NPC_PATROL_FAIL_CREDITS,
   NPC_PATROL_SUCCESS_CREDITS,
@@ -454,11 +459,30 @@ function npcJumpFuelCost(ship: ShipState, routeDistance: number): number {
 /** Broke line: under this an NPC stops discretionary spending, takes odd
  *  jobs, and may show up on the wire begging for fuel money. */
 const NPC_BROKE_CREDITS = 100;
-/** Poverty pressure: below this a captain drops their worldview and looks for
- *  paying work. (Pre-N4 this scaled a Trade WEIGHT; N4's deterministic
- *  `pickIntent` reduced it to a probability gate, and the reopened N4 blend will
- *  make it a weight again — see docs/NPC_REDESIGN.md N4 RULING 1.) */
+/** Poverty pressure: below this a captain leans on paying work. (Pre-N4 this
+ *  scaled a Trade WEIGHT; N4's deterministic `pickIntent` reduced it to a
+ *  probability gate, and the reopened N4 blend makes it a weight again — owner
+ *  RULING 1, docs/NPC_REDESIGN.md: *"the poverty override stays"*.) */
 const NPC_POVERTY_CREDITS = 1000;
+/**
+ * How much harder a broke captain leans on Trade — a MULTIPLIER on their own
+ * Trade weight, deliberately not the flat `+10` this was before N4.
+ *
+ * The flat term cannot come back, for two independent reasons. **It breaks the
+ * veto:** an Ideal's `0` means "this captain does not do that", and `0 + 10` hands
+ * the Warden (`Justice`, Trade 0) the one verb their worldview forbids the moment
+ * their purse dips — a rule exemption bought with a constant, which is exactly
+ * what the standing constraint's consequence 2 names. **And its scale was wrong
+ * by an order of magnitude:** pre-N4 weights carried the `x (1 + stat)` term and
+ * ran to ~70, so `+10` was a nudge; the blend's weights top out near 12, where
+ * `+10` would be a near-deterministic order to trade.
+ *
+ * 3x is chosen to land a broke fighter near the pre-N4 behaviour it replaces
+ * (Iron Vex at ~15% Trade against pre-N4's ~22%) while leaving a broke trader
+ * effectively committed (Cargo King ~90%). It is a pacing constant, so it is a
+ * legitimate knob for a later sweep — but it must stay a multiplier.
+ */
+const NPC_POVERTY_TRADE_MULTIPLIER = 3;
 /** Odd-job alms earned on an idle broke day — keeps the floor above zero so
  *  nobody is pinned at exactly 0 credits forever. */
 const NPC_ODD_JOB_CREDITS = 25;
@@ -497,46 +521,77 @@ function systemName(systemId: number): string {
   return STAR_SYSTEMS[systemId]?.name ?? `system ${systemId}`;
 }
 
-/** Weighted intent pick: base weight from the Ideal table x (1 + affinity
- *  stat, floored at 0). Poverty pressure adds a flat Trade boost. Returns
- *  'Idle' only in the all-weights-zero corner. */
+/**
+ * N4 · Which verb a captain wants today: their Ideal, BIASED by their archetype,
+ * drawn as a distribution. Returns 'Idle' only in the all-weights-zero corner.
+ *
+ * `weight = IDEAL_WEIGHTS[ideal] x ARCHETYPE_INTENT_MULTIPLIERS[archetype]`, and
+ * the multiplicative shape is the owner's ruling (docs/NPC_REDESIGN.md N4 RULING
+ * 1), not a convenience. Three properties come out of it and all three are
+ * load-bearing:
+ *
+ *   1. **Two captains of the same archetype stay different people.** Cargo King
+ *      (Wealth) draws Trade ~75% / Travel ~13%; Zero Risk (Survival) draws Trade
+ *      ~62% / Patrol ~15%. Both are traders. Over the curated roster the average
+ *      captain has 4.3 verbs at 5% or better.
+ *   2. **An Ideal's authored `0` is a VETO and survives the multiply** — 0 x 2 is
+ *      still 0, so the Stellar Monk's `Balance` never initiates combat no matter
+ *      what archetype sits on top of it, and the Warden's `Justice` never haggles.
+ *      A multiplier can re-weight a worldview; it cannot overrule one.
+ *   3. **The archetype effect is SEPARABLE**, so N4 could be graded: an arm with
+ *      every multiplier set to {@link NEUTRAL_INTENT_MULTIPLIERS} is a real
+ *      control, and *"archetype makes no measurable difference"* is therefore
+ *      distinguishable from *"archetype is the only input left"*.
+ *
+ * WHAT THIS REPLACED, so it is not re-derived: N4 first shipped a deterministic
+ * `switch` returning one fixed verb per archetype. Ten trader captains became
+ * literally the same function (`return 'Trade'`, every day, forever) — further
+ * from this step's own hypothesis than the weight table it replaced, and it
+ * destroyed the control arm that makes the step gradeable at all.
+ *
+ * NOT IN THE PRODUCT: the pre-N4 `x (1 + affinity stat)` term. It concentrated
+ * the average captain onto 3.1 verbs (a TRADE-5 trader onto ONE), which is the
+ * same collapse by a subtler route — the measurement is recorded at
+ * ARCHETYPE_INTENT_MULTIPLIERS. {@link INTENT_STAT_AFFINITY} still decides which
+ * stat ROLLS the day's check ({@link rollNpcCheck}); a captain's stats therefore
+ * shape how WELL the day goes rather than how often they choose it.
+ */
 export function pickIntent(
   profile: NpcProfile,
   credits: number,
   rng: SeededRng,
 ): NpcIntentType | 'Idle' {
-  // If extremely poor, everyone prioritizes trade to survive and get fuel money
-  if (credits < NPC_POVERTY_CREDITS && profile.archetype !== 'trader' && profile.archetype !== 'smuggler') {
-    // 50% chance to drop their archetype and try to haul freight to survive
-    if (rng.next() < 0.5) return 'Trade';
+  const base = IDEAL_WEIGHTS[profile.ideal] ?? DEFAULT_IDEAL_WEIGHTS;
+  const archetype = ARCHETYPE_INTENT_MULTIPLIERS[profile.archetype] ?? NEUTRAL_INTENT_MULTIPLIERS;
+  const weighted = NPC_INTENT_TYPES.map((intent) => {
+    let weight = base[intent] * archetype[intent];
+    // Poverty pressure is a WEIGHT, not a branch: a broke captain leans harder on
+    // paying work without being ordered to take it, so the poorest fighter still
+    // sometimes fights and a Justice idealist — whose Trade weight is an authored
+    // 0 — is not handed the one verb their worldview forbids. (The N4 switch made
+    // this a 50% early return, which did exactly that.)
+    if (intent === 'Trade' && credits < NPC_POVERTY_CREDITS) {
+      weight *= NPC_POVERTY_TRADE_MULTIPLIER;
+    }
+    return { intent, weight };
+  });
+
+  const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+  if (total <= 0) {
+    // Invariant: a weight of 0 DISABLES a verb (ideals.ts contract), so a
+    // captain whose every verb is zeroed must resolve to a no-op day — never to
+    // a verb the table forbade. Unreachable with the current tables (every Ideal
+    // has a positive weight and no multiplier is 0), but future content must not
+    // break it, which is why the branch exists and is tested.
+    return 'Idle';
   }
 
-  // N4 · Archetype-driven intent selection
-  switch (profile.archetype) {
-    case 'trader':
-      // Traders always trade if they can afford it
-      return 'Trade';
-    case 'smuggler':
-      // Smugglers trade, with a preference for the rim implemented in executeTrade
-      return 'Trade';
-    case 'fighter':
-      // Fighters mix Combat (bounty hunting) and Patrol
-      return rng.next() < 0.7 ? 'Combat' : 'Patrol';
-    case 'explorer':
-      // Explorers travel off-lane
-      return 'Travel';
-    case 'gambler':
-      // Gamblers socialize and trade
-      return rng.next() < 0.6 ? 'Socialize' : 'Trade';
-    case 'veteran':
-      // Veterans mix it up
-      const r = rng.next();
-      if (r < 0.4) return 'Combat';
-      if (r < 0.7) return 'Trade';
-      return 'Patrol';
-    default:
-      return 'Idle';
+  let roll = rng.next() * total;
+  for (const entry of weighted) {
+    roll -= entry.weight;
+    if (roll < 0) return entry.intent;
   }
+  return weighted[weighted.length - 1].intent;
 }
 
 /** Clamp-and-apply a disposition change, emitting a typed event when the
@@ -1142,13 +1197,16 @@ function executeTrade(
   let claimedContractIndex: number | undefined;
   let contract: CargoContract;
   if (ctx.claimableBoard && ctx.claimableBoard.length > 0) {
-    let indices = ctx.claimableBoard.map((_, i) => i);
-    
-    // N4 · Smuggler preference for the rim
+    const board = ctx.claimableBoard;
+    let indices = board.map((_, i) => i);
+
+    // N4 · A smuggler takes the rim job when the board offers one. This is the
+    // archetype's only reach into WHICH contract is claimed rather than how often
+    // — the frequency lives in the content multiplier table, this is the
+    // destination bias, and it is the same shape N10's `pickContract` will
+    // generalise to all six archetypes against the shared pool.
     if (profile.archetype === 'smuggler') {
-      const rimIndices = indices.filter(
-        (i) => STAR_SYSTEMS[ctx.claimableBoard![i].destination]?.isRim,
-      );
+      const rimIndices = indices.filter((i) => STAR_SYSTEMS[board[i].destination]?.isRim);
       if (rimIndices.length > 0) {
         indices = rimIndices;
       }
@@ -1238,10 +1296,14 @@ function executeTravel(
   events: GameEvent[],
 ): NpcAction {
   let options = NPC_SYSTEM_IDS.filter((id) => id !== npc.currentSystemId);
-  
-  // N4 · Explorer preference for off-lane/rim charting
+
+  // N4 · An explorer charts the rim rather than the core lanes. Note what this
+  // costs them: `routeDangerFor` prices a rim destination as the dangerous lane it
+  // is, so this preference BUYS the archetype its own mortality rate rather than
+  // being free flavour — which is the half of N3's risk-allocation finding that
+  // an intent weight alone cannot express.
   if (profile.archetype === 'explorer') {
-    const rimOptions = options.filter(id => STAR_SYSTEMS[id]?.isRim);
+    const rimOptions = options.filter((id) => STAR_SYSTEMS[id]?.isRim);
     if (rimOptions.length > 0) {
       options = rimOptions;
     }

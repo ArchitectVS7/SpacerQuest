@@ -380,7 +380,29 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  f07d6de2… -> a16ca706…   (events a0e8ed7f… -> 2ae4bb5f…)
 //   STORYLET state  86fbc0cc… -> a4374515…   (events 6f61a1d5… -> a5522f39…)
 // Regenerated via gen-day-loop-golden.ts.
-export const DAY_LOOP_GOLDEN_STATE_HASH = '1308cbc8c6a925aad8bb816ae52771aaf3678bdcba33c17e760cbaf584a05165';
-export const DAY_LOOP_GOLDEN_EVENTS_HASH = 'b9b7ec154fc4b9018c7077e8f64c321bf27ff20857c8304205bc58d2b59f71a8';
-export const STORYLET_GOLDEN_STATE_HASH = 'b405b3e17b1a74c4fb3fd503144c42444628ceaf9517579adc4f8df30e7e5fb7';
-export const STORYLET_GOLDEN_EVENTS_HASH = 'a5ce5053856498a2bc8fbab4750ad271d01b51357b89b576657229ad6a09f40a';
+//
+// RE-RECORDED AGAIN AT THE REOPENED N4 (archetypes bias the Ideal). Every one of
+// the 30 captains draws its verb from a different distribution than it did the
+// day before, so the shared dusk rng stream diverges from the first NPC turn of
+// day 1 and everything downstream of it moves. MEASURED the same way as the N2
+// entry above, by dumping and diffing both streams (.scratch/): 1,482 events
+// BEFORE, 1,451 AFTER, of which
+//   · `NpcAction` is UNCHANGED at 330 (11 days x 30 captains) — the cast still
+//     takes exactly one action each per day; only WHICH action moved;
+//   · `StatCheck` 260 -> 288 and `FlawCheck` 199 -> 156 — more days now resolve a
+//     real verb check and fewer are eaten by a flaw override, because the blend
+//     lands captains on verbs their flaw does not trigger as often;
+//   · `ContractClaimed` 6 -> 2 and `DispositionChanged` 10 -> 4 — fewer snipes off
+//     the player's board inside this 11-day window (an 11-day sample, not a
+//     finding: the sweep is what grades competition, and it is N10's number);
+//   · `WireEntry` 561 -> 556.
+// THE PLAYER SIDE IS BYTE-IDENTICAL IN COUNT AND KIND: DawnRoll 11, DayAdvanced
+// 11, DebtPayment 4, DeedEarned 6, RenownRankUp 3, TradeEvent 8, TravelEvent 6
+// and all three Storylet events are unmoved, which is the check that this is an
+// NPC-side change and not a quiet player rebalance.
+//   DAY_LOOP state  1308cbc8… -> 7f111e79…   (events b9b7ec15… -> 33f661e6…)
+//   STORYLET state  b405b3e1… -> de48563d…   (events a5ce5053… -> 2b927f80…)
+export const DAY_LOOP_GOLDEN_STATE_HASH = '7f111e792db441b282b9ee4bad664699005fa9ea5e908af2e732f89c5d91eb9c';
+export const DAY_LOOP_GOLDEN_EVENTS_HASH = '33f661e61b0266e1e2310777b4d7d61c5742d2bac75be5c285959e56dfdf7573';
+export const STORYLET_GOLDEN_STATE_HASH = 'de48563dc3ddcf5585db011ce6d5734081602acb8fbc588f7b548ae3a5f69957';
+export const STORYLET_GOLDEN_EVENTS_HASH = '2b927f80f3bb9a2674b5e85c72a9d08fb5c77b7924c3481006849ab08d7688c0';

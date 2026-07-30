@@ -3,8 +3,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import {
+  ARCHETYPE_INTENT_MULTIPLIERS,
   IDEAL_WEIGHTS,
   INTENT_STAT_AFFINITY,
+  NEUTRAL_INTENT_MULTIPLIERS,
+  NPC_INTENT_TYPES,
+  NPC_PROFILES,
+  NpcArchetype,
   NAV_FUEL_FLOOR,
   NPC_CHECK_DCS,
   ALL_NPC_PROFILES,
@@ -20,6 +25,7 @@ import {
   applyDisposition,
   npcDrives,
   npcShipForProfile,
+  pickIntent,
   resolveNpcDay,
   NpcDayContext,
 } from '../npc.js';
@@ -702,21 +708,36 @@ describe('N3 · NPC interdictions and permanent death', () => {
   it('generates real interdictions on NPC jumps, and captains die permanently', () => {
     // The two deliverables the audit found entirely absent: encounters on NPC
     // jumps, and the sharp end — ship loss.
-    const { state, encounters, losses } = encounterRun(7, 200);
-    expect(encounters.length, 'the cast must actually be interdicted').toBeGreaterThan(50);
-    expect(losses.length, 'captains must actually be able to die').toBeGreaterThan(0);
+    //
+    // DEATH IS SAMPLED ACROSS SEEDS, and it has to be. Permanent loss runs at
+    // ~1.4 captains per 200 days (re-measured under N4's blend: 14 deaths over
+    // 10 seeds x 200 days, 731 interdictions/run), so a single seed asserting
+    // `> 0` is a coin flip dressed as a test — it passed on seed 7 before N4
+    // moved the intent distribution and failed after, telling us nothing about
+    // whether death still works. Standing amendment 1's corollary is the rule
+    // here: never grade a rate this thin off one arm.
+    const runs = [1, 7, 42].map((seed) => ({ seed, ...encounterRun(seed, 200) }));
+    for (const run of runs) {
+      expect(run.encounters.length, `seed ${run.seed} must be interdicted`).toBeGreaterThan(50);
+    }
+    const allLosses = runs.flatMap((r) => r.losses);
+    expect(allLosses.length, 'captains must actually be able to die').toBeGreaterThan(0);
 
     // Every loss marks the record dead, and the record STAYS on the roster.
-    for (const loss of losses) {
-      const record = state.npcs.find((n) => n.id === loss.npcId);
-      expect(record, 'a dead captain is MARKED, never deleted').toBeDefined();
-      expect(record!.dead).toBe(true);
+    for (const run of runs) {
+      for (const loss of run.losses) {
+        const record = run.state.npcs.find((n) => n.id === loss.npcId);
+        expect(record, 'a dead captain is MARKED, never deleted').toBeDefined();
+        expect(record!.dead).toBe(true);
+      }
+      // Permanent: no succession, no replacement. The roster length never changes,
+      // but the LIVING field shrinks — the intended fiction ("sometimes a player
+      // quits"), and the thing N8 must measure the rate of.
+      expect(run.state.npcs.length).toBe(createInitialState(run.seed).npcs.length);
+      expect(run.state.npcs.filter((n) => n.dead).length).toBe(
+        new Set(run.losses.map((l) => l.npcId)).size,
+      );
     }
-    // Permanent: no succession, no replacement. The roster length never changes,
-    // but the LIVING field shrinks — the intended fiction ("sometimes a player
-    // quits"), and the thing N8 must measure the rate of.
-    expect(state.npcs.length).toBe(createInitialState(7).npcs.length);
-    expect(state.npcs.filter((n) => n.dead).length).toBe(new Set(losses.map((l) => l.npcId)).size);
   });
 
   it('does not empty the roster over a long career (the Disproves limb)', () => {
@@ -900,5 +921,169 @@ describe('N3 · NPC interdictions and permanent death', () => {
         expect(picked.id).not.toBe(victimId);
       }
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N4 · Archetypes bias the Ideal; they do not replace it.
+// ---------------------------------------------------------------------------
+//
+// These tests exist because the FIRST N4 shipped without them and nothing
+// caught either failure: an assignment with 0 veterans and 1 smuggler (two
+// branches no sweep could reach), and a `pickIntent` that returned a fixed verb
+// per archetype, which made ten trader captains the same function and destroyed
+// the step's own control arm. Each `it` below pins one of the properties the
+// owner's two rulings turn on.
+
+describe('N4 · the archetype roster is curated, not generated', () => {
+  it('gives every archetype enough members for its branch to be measurable', () => {
+    // RULING 2's floor. A branch with too few members cannot be graded by a
+    // sweep, and one with zero is dead code that reads as a design decision.
+    const counts = new Map<NpcArchetype, number>();
+    for (const profile of NPC_PROFILES) {
+      counts.set(profile.archetype, (counts.get(profile.archetype) ?? 0) + 1);
+    }
+    for (const archetype of Object.keys(ARCHETYPE_INTENT_MULTIPLIERS) as NpcArchetype[]) {
+      expect(counts.get(archetype) ?? 0, `${archetype} members`).toBeGreaterThanOrEqual(4);
+    }
+    // The whole simulation roster is placed — nobody is carrying a default.
+    expect([...counts.values()].reduce((a, b) => a + b, 0)).toBe(NPC_PROFILES.length);
+  });
+
+  it('carries a multiplier row for every archetype the cast can name', () => {
+    // The `?? NEUTRAL_INTENT_MULTIPLIERS` fallback in pickIntent is a safety net
+    // for future content, NOT a licence for a shipped archetype to be silently
+    // archetype-blind. Adding a seventh archetype to the union without a row
+    // here should fail loudly at this line.
+    for (const profile of NPC_PROFILES) {
+      expect(
+        ARCHETYPE_INTENT_MULTIPLIERS[profile.archetype],
+        `${profile.name} (${profile.archetype})`,
+      ).toBeDefined();
+    }
+  });
+
+  it('keeps the three assignments the owner ruling worked out by hand', () => {
+    // RULING 1's arithmetic is quoted in docs/NPC_REDESIGN.md against these
+    // three captains. Re-archetyping one invalidates a recorded worked example.
+    const archetypeOf = (id: string) => NPC_PROFILES.find((p) => p.id === id)?.archetype;
+    expect(archetypeOf('npc-iron-vex')).toBe('fighter');
+    expect(archetypeOf('npc-cargo-king')).toBe('trader');
+    expect(archetypeOf('npc-zero-risk')).toBe('trader');
+  });
+});
+
+describe('N4 · the intent blend', () => {
+  /** The distribution `pickIntent` actually draws from, measured rather than
+   *  re-derived: 4,000 draws per captain against a fixed seed sequence. */
+  function intentRates(profileId: string, credits = 5000): Record<string, number> {
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === profileId)!;
+    const draws = 4000;
+    const counts: Record<string, number> = {};
+    const rng = new SeededRng(20260729);
+    for (let i = 0; i < draws; i++) {
+      const intent = pickIntent(profile, credits, rng);
+      counts[intent] = (counts[intent] ?? 0) + 1;
+    }
+    const rates: Record<string, number> = {};
+    for (const [intent, count] of Object.entries(counts)) rates[intent] = count / draws;
+    return rates;
+  }
+
+  it("reproduces the owner ruling's worked distribution for Cargo King", () => {
+    // Wealth {T:6,Tr:2,C:0,P:1,S:1} x trader {2,1,1,1,1} -> {12,2,0,1,1}/16.
+    const rates = intentRates('npc-cargo-king');
+    expect(rates['Trade']).toBeCloseTo(12 / 16, 1);
+    expect(rates['Travel']).toBeCloseTo(2 / 16, 1);
+  });
+
+  it('leaves two traders measurably different captains', () => {
+    // The point of biasing the Ideal instead of replacing it. Cargo King
+    // (Wealth) and Zero Risk (Survival) are both traders; Survival's Patrol 2
+    // has to survive the trader multiplier or the archetype has eaten the Ideal.
+    const king = intentRates('npc-cargo-king');
+    const zero = intentRates('npc-zero-risk');
+    expect(king['Trade']).toBeGreaterThan(zero['Trade']);
+    expect(zero['Patrol'] ?? 0).toBeGreaterThan(2 * (king['Patrol'] ?? 0));
+  });
+
+  it("honours an Ideal's 0 as a veto that no archetype can overrule", () => {
+    // Justice zeroes Trade and Socialize outright. The Warden is a VETERAN,
+    // whose multiplier doubles Trade — 0 x 2 is still 0.
+    expect(IDEAL_WEIGHTS['Justice'].Trade).toBe(0);
+    expect(ARCHETYPE_INTENT_MULTIPLIERS['veteran'].Trade).toBeGreaterThan(1);
+    const rates = intentRates('npc-the-warden');
+    expect(rates['Trade'] ?? 0).toBe(0);
+    expect(rates['Socialize'] ?? 0).toBe(0);
+  });
+
+  it('keeps the veto shut even when the captain is broke', () => {
+    // The poverty override is the one place a flat additive boost would have
+    // handed a Justice idealist the verb their worldview forbids. It is a
+    // MULTIPLIER for exactly this reason.
+    const rates = intentRates('npc-the-warden', 0);
+    expect(rates['Trade'] ?? 0).toBe(0);
+  });
+
+  it('makes poverty lean a captain toward paying work without ordering it', () => {
+    const solvent = intentRates('npc-iron-vex');
+    const broke = intentRates('npc-iron-vex', 0);
+    expect(broke['Trade'] ?? 0).toBeGreaterThan(1.5 * (solvent['Trade'] ?? 0));
+    // ...and he still fights. A broke fighter is not a trader.
+    expect(broke['Combat'] ?? 0).toBeGreaterThan(0.3);
+  });
+
+  it('gives every captain in the field a real chance of a jump (N3 hand-off)', () => {
+    // N3 measured risk exposure allocated by a bug: under the deterministic
+    // switch a fighter returned Combat or Patrol and therefore NEVER jumped, so
+    // twelve captains faced no lane risk while ten traders absorbed ~68% of all
+    // interdictions. Every Ideal carries a positive Travel weight and no
+    // multiplier zeroes it, so the blend closes that by construction — this is
+    // the assertion that keeps it closed.
+    for (const profile of NPC_PROFILES) {
+      const rates = intentRates(profile.id);
+      expect(rates['Travel'] ?? 0, `${profile.name} Travel share`).toBeGreaterThan(0.02);
+    }
+  });
+
+  it('never returns a verb an all-zero table forbade', () => {
+    // The Idle corner. Unreachable from shipped content, so it is reached here
+    // through a synthetic profile rather than left as a comment.
+    const silent = {
+      ...ALL_NPC_PROFILES.find((p) => p.id === 'npc-cargo-king')!,
+      ideal: '__all-zero__',
+    };
+    IDEAL_WEIGHTS['__all-zero__'] = { Trade: 0, Travel: 0, Combat: 0, Patrol: 0, Socialize: 0 };
+    try {
+      const rng = new SeededRng(7);
+      for (let i = 0; i < 50; i++) expect(pickIntent(silent, 5000, rng)).toBe('Idle');
+      // ...and poverty does not talk it into trading either.
+      expect(pickIntent(silent, 0, rng)).toBe('Idle');
+    } finally {
+      delete IDEAL_WEIGHTS['__all-zero__'];
+    }
+  });
+
+  it('is separable: neutral multipliers reproduce the unbiased Ideal draw', () => {
+    // This is what makes the step gradeable. The control arm N4 was measured
+    // against sets every multiplier to 1, and that arm must be the pure Ideal
+    // distribution — if the archetype leaked in anywhere else in pickIntent, the
+    // control would not be a control.
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === 'npc-iron-vex')!;
+    const ideal = IDEAL_WEIGHTS[profile.ideal];
+    const total = NPC_INTENT_TYPES.reduce((sum, i) => sum + ideal[i], 0);
+    const saved = ARCHETYPE_INTENT_MULTIPLIERS['fighter'];
+    ARCHETYPE_INTENT_MULTIPLIERS['fighter'] = NEUTRAL_INTENT_MULTIPLIERS;
+    try {
+      const rates = intentRates(profile.id);
+      for (const intent of NPC_INTENT_TYPES) {
+        expect(rates[intent] ?? 0, `${intent} under the control arm`).toBeCloseTo(
+          ideal[intent] / total,
+          1,
+        );
+      }
+    } finally {
+      ARCHETYPE_INTENT_MULTIPLIERS['fighter'] = saved;
+    }
   });
 });

@@ -3,6 +3,7 @@ import {
   CARGO_TYPES,
   STORYLETS,
   NPC_PROFILES,
+  isSimulatedCaptain,
   ANONYMOUS_INTERCEPTORS,
   SHIP_COMPONENTS,
   SPECIAL_EQUIPMENT,
@@ -2629,12 +2630,14 @@ function honorField(game: GameState): HonorCaptain[] {
   // turn and never buy a component. Left in, they sat on this board forever at
   // their day-1 fit: eleven permanent, frozen entries on a leaderboard about who is
   // doing well, and a "31-way board" silently become 42-way. The board is the
-  // SIMULATION field — the captains actually playing.
-  const simulated = new Set(NPC_PROFILES.map((p) => p.id));
+  // SIMULATION field — the captains actually playing. The membership test is
+  // content's shared `isSimulatedCaptain`, not a Set built here: the same
+  // distinction spelled locally at four sites is what produced this bug and three
+  // others (see the predicate's own comment).
   return [
     { name: PLAYER_HONOR_LABEL, isPlayer: true, ship: game.player.ship },
     ...game.npcs
-      .filter((npc) => simulated.has(npc.profileId) && !npc.dead)
+      .filter((npc) => isSimulatedCaptain(npc.profileId) && !npc.dead)
       .map((npc) => ({ name: npc.name, isPlayer: false, ship: npc.ship })),
   ];
 }

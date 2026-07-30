@@ -164,16 +164,41 @@ const UNCHANGED_POLICIES = [
  *        byte-identical — `greedy` included, back in its R0a role as the
  *        control for policy work. A second row moving here would have meant the
  *        edit leaked out of `explorerPolicy`, and none did.
+ *
+ * 8. N3 + N4 TOGETHER — and the fact that it is TWO steps in one entry is itself
+ *    the record. ALL SEVEN rows move.
+ *      trader   08b757b5501d8278 -> e25a0fe4ae77c658
+ *      fighter  3868e2a61f07d811 -> aca22292cd206845
+ *      explorer 2755c18f179a8c8a -> e4bea4fbe2af563c
+ *      veteran  aebb5d643c7411cc -> 6f19055026802305
+ *      smuggler 853f1da76afe73c5 -> 0f008671c2f48432
+ *      gambler  976a6f103338f27a -> 8262c90a3fa780d7
+ *      greedy   2f43b0bfb33f35aa -> aecf1a7e5a7d896b
+ *    WHY TWO STEPS SHARE ONE ENTRY: N3 (NPC interdictions, permanent death and
+ *    the 30/11 roster split) shipped WITHOUT re-pinning this table, so these
+ *    seven rows have been red since that commit. The reopened N4 (the Ideal x
+ *    archetype intent blend) then moved them again. Splitting the entry now would
+ *    mean inventing an intermediate column nobody measured, so the honest form is
+ *    one entry naming both — and the lesson, which entry 6 already tried to teach
+ *    the next N-step: RE-PIN THIS TABLE IN THE COMMIT THAT MOVES IT.
+ *    MECHANISM: entry 6's, twice over, and again not one line of any policy
+ *    changed. N3 gave the cast real encounters and permanent death; N4 changed
+ *    what all 30 captains choose to do with a day. Both reach the player through
+ *    the shared dusk rng stream and through contract competition.
+ *      * `greedy` moving is EXPECTED for the same reason entry 6 gives, and this
+ *        is now the third consecutive NPC-side step where it has moved. It is a
+ *        control for POLICY changes only. Reading its movement as a leak would be
+ *        a misdiagnosis both times.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: '08b757b5501d8278',
-  fighter: '3868e2a61f07d811',
-  explorer: '2755c18f179a8c8a',
-  veteran: 'aebb5d643c7411cc',
-  smuggler: '853f1da76afe73c5',
-  gambler: '976a6f103338f27a',
-  greedy: '2f43b0bfb33f35aa',
+  trader: 'e25a0fe4ae77c658',
+  fighter: 'aca22292cd206845',
+  explorer: 'e4bea4fbe2af563c',
+  veteran: '6f19055026802305',
+  smuggler: '0f008671c2f48432',
+  gambler: '8262c90a3fa780d7',
+  greedy: 'aecf1a7e5a7d896b',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;
