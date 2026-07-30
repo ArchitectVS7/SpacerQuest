@@ -113,7 +113,7 @@ three options — implement / algorithmic fast-forward / exclude — each with a
 sketch of what it would take and what it would cost; (d) a recommendation with its reason;
 (e) an explicit `**DECISION: OWED**` line. **No option may be presented as chosen.**
 
-### T-010 · Memo: the Explore verb — `status: TODO` · `coder: opus` · `after: T-001`
+### T-010 · Memo: the Explore verb — `status: DONE` · `coder: opus` · `after: T-001`
 
 The ledger records Explore as **"never"** for the cast. Read the player's implementation
 (`resolveExploration`, `packages/engine/src/actions/exploration.ts`) and establish what it
@@ -136,6 +136,21 @@ for Explore; every engine function it names resolves (`grep` each named symbol i
 `packages/engine/src` and confirm a hit); it cites at least one MEASURED number with its
 provenance (capstone path, or probe shape + seeds × days); it contains the literal string
 `**DECISION: OWED**`; no sentence asserts a decision has been made; gate green.
+
+**Delivered (2026-07-29):** Added the "UNRULED VERBS — decision memos" section to
+`docs/NPC_REDESIGN.md` with the Explore memo covering all five required parts: what the
+player's `resolveExploration` does (die spend, fuel gate, PILOT nav check, POI discovery,
+and the three-leg loot roll), what the cast lacks (no `Explore` member in
+`NPC_INTENT_TYPES`, no `charts`/`nemesisFile` on `NpcState`), the three costed options
+(full parity blocked on N13's dice and N11's actor-scoped deeds; an algorithmic
+fast-forward recorded as a partial; exclusion as a ruled decision), a recommendation
+grounded in two measured numbers (a from-scratch ablation probe over 120 seeds × 120 days
+showing Explore nets 53.8cr/attempt against 400–640cr fuel, and the committed N10 capstone
+showing the median day-120 captain cannot afford the fuel gate at all), and a closing
+`**DECISION: OWED**` line. Scope boundary: this memo makes no ruling and changes no engine
+code — Explore's status for the cast remains unimplemented pending the owner's decision
+among the three options.
+Orchestration: graphify=none — no graphify-out/graph.json in the repo root · attempts=1/4.
 
 ### T-011 · Memo: the VisitHangout verb — `status: TODO` · `coder: opus` · `after: T-010`
 

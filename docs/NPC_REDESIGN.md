@@ -210,6 +210,215 @@ fast-forward, or exclude with a reason) before N8 pins the living-field baseline
 
 ---
 
+## UNRULED VERBS — decision memos (prepared 2026-07-29)
+
+The ledger leaves three rows UNRULED (Explore, VisitHangout, Storylet). These memos cost
+each row out so that the owner's eventual call lands against measured numbers rather than
+an intuition about symmetry. **They make no call and change no code.** Each memo lays out
+(a) what the player's verb does, (b) what the cast has instead, (c) the three options with
+their real prices, (d) a recommendation with its reason, and (e) nothing further — it
+closes on `DECISION: OWED` and stops there. The ledger rows above are left untouched on
+purpose: a memo is an input to a decision, not the decision.
+
+### Explore — decision memo
+
+**(a) What the PLAYER's Explore actually does.**
+
+- Reached only from `applyPlayerAction` (`packages/engine/src/day.ts:206`; the Explore
+  branch is at `:409`), which dispatches into `resolveExploration`
+  (`packages/engine/src/actions/exploration.ts:103`).
+- **Entry cost is a die out of the dawn hand.** `spendDie(currentHand, index)`
+  (`packages/engine/src/dice.ts`) is the gate, and three typed failure paths short-circuit
+  before anything at all is spent: `no-die`, `invalid-die-index`, `die-already-spent`.
+- **Then a fuel gate.** `EXPLORATION_FUEL_COST = 80`
+  (`packages/content/src/exploration.ts:43`, imported at `actions/exploration.ts:3`). The
+  die is spent anyway on a dry tank, deliberately mirroring Travel's dry-tank path.
+- **Then a PILOT nav check through the shared `check()`** — `player.stats[Stat.PILOT] +
+  navBonus(ship)` (`navBonus` in `packages/engine/src/components.ts`) against
+  `EXPLORATION_NAV_DC = 12` (`packages/content/src/exploration.ts:42`). It emits a
+  `StatCheck` with a hardcoded `actor: 'Player'` (`actions/exploration.ts:194`).
+- On success a seeded POI (`BEACON_DISCOVERY_CHANCE = 0.5`,
+  `packages/content/src/exploration.ts:47`) is pushed into
+  **`nextState.player.charts.discoveredPois`** (`ChartsState` / `DiscoveredPoi`,
+  `packages/engine/src/types.ts:1238-1259`) — a field whose own doc comment defines it as
+  persistent knowledge that "survives death and passes wholesale to the successor".
+- Then `resolveLoot` (`actions/exploration.ts:25`) rolls `POI_LOOT`
+  (`packages/content/src/exploration.ts:106`) three times independently, in a fixed order:
+  - **salvage** — beacon 0.55 x 40-180, derelict 0.8 x 120-520 -> `state.player.credits`,
+    plus a `SalvageRecovered` event;
+  - **fragment** — beacon 0.30, derelict 0.35 -> `grantFragment(state.player.nemesisFile,
+    ...)` (`packages/engine/src/nemesis.ts`), feeding the authored Nemesis arc;
+  - **contraband** — derelict 0.40 -> sets the *global* flag
+    `state.flags['signal.contraband.pending']`, which arms the `derelict.sealed-pod`
+    storylet (the carry choice).
+- Content-derived EV per **discovered** POI: `0.5 x (0.55 x 110) + 0.5 x (0.8 x 320)` =
+  **158cr**. That figure is derived from the content table, not measured; the measured
+  per-*attempt* number in (d) is far lower, because two attempts in three never reach a POI
+  at all.
+
+**(b) What the cast has instead.**
+
+- `npc.ts` has **no exploration verb**. It has five, dispatched by `resolveNpcDay`
+  (`packages/engine/src/npc.ts:1604`, if/else chain at `:1675-1687`) off `pickIntent`
+  (`npc.ts:583`): `executeTrade` (`:1324`), `executeTravel` (`:1462`), `executeCombat`
+  (`:1509`), `executePatrol` (`:1545`), `executeSocialize` (`:1573`).
+- `NPC_INTENT_TYPES` (`packages/content/src/ideals.ts:14`, imported at `npc.ts:10`) has
+  exactly five members — `Trade | Travel | Combat | Patrol | Socialize`. There is no
+  Explore member, so **the cast's Explore frequency is 0 by construction**. That is the
+  honest statement; "0.00 measured" off a small arm is what standing amendment 1 forbids.
+- The nearest analogue is `executePatrol` (`npc.ts:1545`): it burns `NPC_PATROL_FUEL = 10`
+  (`npc.ts:493` — note this one is an *engine* constant, not content), rolls GRIT through
+  the shared check against `NPC_CHECK_DCS.Patrol = 11` (`ideals.ts:46`), and pays
+  `NPC_PATROL_SUCCESS_CREDITS = 40` or costs `NPC_PATROL_FAIL_CREDITS = 20`
+  (`ideals.ts:66,69`). So the cast already owns a cheap "sweep" verb at 10 fuel; the
+  player's Explore is 80.
+- `NpcState` (`packages/engine/src/types.ts:1153-1206`) carries **no `charts`, no
+  `nemesisFile`, and no `registry`** (the last is N11's). Its fields are id / name /
+  profileId / currentSystemId / credits / ship / disposition / lastAction / dead.
+- Fuel is not free for the cast either: `refuelIfNeeded` (`npc.ts:714-725`) buys at
+  `localFuelPrice` (`packages/engine/src/economy.ts:119`) — the same function the player's
+  market uses, sourcing `FUEL_DEFAULT_BUY_PRICE = 5` and `RIM_FUEL_BUY_PRICE = 8`
+  (`packages/content/src/systems.ts:209,220`). An NPC exploring would face the identical
+  bill: 80 fuel is **400cr core / 640cr rim**.
+
+**(c) The three options, each with its real cost.**
+
+**Option 1 — implement (full parity).** `resolveExploration` would gain an actor
+parameter, which means parameterising seven player-scoped touches: `player.dawnHand`,
+`player.ship.fuel`, `player.stats[PILOT]` + `navBonus(ship)`,
+`player.charts.discoveredPois`, and inside `resolveLoot` — `player.credits`,
+`player.nemesisFile`, and the *global* `state.flags['signal.contraband.pending']` (an NPC's
+derelict would otherwise arm the **player's** storylet) — plus the `StatCheck` event's
+hardcoded `actor: 'Player'`. The prices, stated plainly:
+
+- **A dawn hand the cast does not hold.** `spendDie` is the verb's entry gate, and NPCs
+  have no hand until **N13**. That is exactly why the ledger already defers `Crew` and
+  `Reroll` to N13, so full-parity Explore is not reachable before N13 either.
+- **A save-shape change.** Giving `NpcState` a `charts` (and/or `nemesisFile`) field is a
+  version bump plus a migration plus a round-trip test, with the migration *calling* a
+  seeding rule shared with `createInitialState` / `deserializeState` — the
+  `MIGRATIONS[9]` / `[10]` precedent. There is also a semantic mismatch worth recording:
+  `ChartsState` is defined as knowledge that survives death and passes to the successor,
+  while N3's ruling (owner, 2026-07-28) is that an NPC death is permanent with no
+  succession — so the field's own inheritance contract is void for the cast.
+- **Deed cross-contamination, which is an ordering dependency rather than a detail.**
+  `evaluateDeeds(nextState, events)` at `day.ts:1239` folds the whole dusk batch into the
+  **player's** registry with no actor scoping, and `day.ts:822` pushes `npcEvents` into
+  that same array. `rich_hulk` (`packages/content/src/deeds.ts:792-798`) triggers on
+  `SalvageRecovered` with `amount >= 400` and no actor filter, so an NPC's salvage would
+  earn the player a deed. Actor-scoping the deed path is **N11's** deliverable.
+- **40 authored table rows.** Adding an `Explore` member to `NPC_INTENT_TYPES` makes every
+  `Record<NpcIntentType, ...>` table incomplete — a compile error until each row is
+  filled: `INTENT_STAT_AFFINITY` (1), `NPC_CHECK_DCS` (1), `DEFAULT_IDEAL_WEIGHTS` (1),
+  `IDEAL_WEIGHTS` (**30**, one per authored Ideal), `ARCHETYPE_INTENT_MULTIPLIERS` (6),
+  `NEUTRAL_INTENT_MULTIPLIERS` (1). It also re-weights every captain's verb mix, so the
+  N10 baseline of record stops being comparable and **a new capstone becomes owed** — a
+  new one, never a refreshed number, per this doc's own rule at line 82.
+
+**Option 2 — algorithmic fast-forward.** A credits-only Explore intent shaped like
+`executePatrol`: burn fuel through the shared `localFuelPrice`, roll the shared `check()`
+against `EXPLORATION_NAV_DC`, and call an actor-parameterised `resolveLoot` for the salvage
+leg only — POI and fragment dropped, because the cast has nowhere to put either. Cheaper,
+since no save shape moves. But it would have to be recorded as a **partial**: the actor
+plays the same *rules* over a *smaller reward set*. The standing constraint's consequence 2
+is the reason that matters — a reward the actor can never collect is the shape of an
+exemption, so this option's honesty rests entirely on the partial being **recorded** rather
+than silent. It still leaves the die question open (N13), or needs a ruled substitute for
+the die cost.
+
+**Option 3 — exclude with a reason.** Zero code. The cost, in the ledger's own terms: one
+of the player's eleven verbs stays player-only, and N8's "all or most of a full player's
+actions" has to count Explore as a **ruled exclusion** rather than a gap. The reason
+available to be stated is that all three of Explore's rewards are player-scoped by
+design — an authored Nemesis arc, a successor-inheriting chart, and a player-facing
+storylet flag — and the standing constraint requires the same rules *where the verb
+applies*, not that every verb apply.
+
+**(d) Recommendation, with its reason.**
+
+Two MEASURED numbers bear on this, both stated with provenance.
+
+**Measurement 1 — the ablation probe** (`.scratch/t010-ablate.ts`, gitignored; re-runnable
+with `npx tsx`). Two arms over **seeds 1..120 x 120 days**, identical except that arm B
+filters `Explore` out of the actions `explorerPolicy` returns. The probe drives the
+engine's own `startDay` -> `applyPlayerAction` -> `endDay` and reproduces `runCampaign`'s
+day-loop ordering, including the per-day fork
+`new SeededRng(seed).fork('policy').fork('day-'+state.day).fork('index-'+dayIndex)` and the
+`Combat`-with-no-encounter skip. It is hand-rolled for a specific reason: `resolvePolicy`
+(`packages/sim/src/index.ts:4387`) returns `dawnBlind: true` for *any function* policy, so
+handing `explorerPolicy` to `runCampaign` as a lambda runs it against the pre-`startDay`
+state and collapses the arm (480 / 480 / 910 on seeds 1-3, against the named policy's
+5,315 / 38,486 / 74,997). **Its R2c admissibility comes from a fidelity check carried in
+the probe itself:** arm A's `finalCredits` is byte-equal to
+`runCampaign(seed, 120, 'explorer').finalState.credits` on seeds 1-5 — 5/5 MATCH
+(5,315 / 38,486 / 74,997 / 74,866 / 30,639).
+
+| quantity (n = 120 seeds x 120 days) | value |
+| --- | --- |
+| Explore attempts / run | 180.2 |
+| POIs discovered / run (nav-check pass rate) | 60.5 (**0.336**) |
+| `SalvageRecovered` events / run | 41.0 |
+| GROSS salvage credits / run | mean **9,688** · median 9,418 · p25 7,873 · p75 11,112 |
+| **GROSS salvage per _attempt_** | **53.8cr**, against 80 fuel = **400-640cr** |
+| POI-sourced fragments / run | 6.33 |
+| `ExplorationFailed` reasons (totals) | `nav-check` 3,275 · `insufficient-fuel` 923 |
+| finalCredits **with** Explore | median **60,391** · mean 57,847 |
+| finalCredits **without** Explore | median **90,135** · mean 90,198 |
+| seeds that ended **richer without** Explore | **101 / 120** |
+
+**Measurement 2 — the committed capstone.** `docs/balance/baseline-n10-shipped.json`,
+`fleet.milestones[day = 120]`, n = **240,000** captain-samples (8,000 runs x 30 captains):
+`npcCredits` p10 **126**, p25 **150**, median 76,049; `npcFuel` p10 **0**, p25 **4**,
+median **27**, p75 69, p90 100. Against `EXPLORATION_FUEL_COST = 80`, that means on day 120
+**the median captain cannot pay the fuel gate for a single Explore**, and the p25 captain's
+150cr cannot buy the 80 fuel at either depot price (400cr core / 640cr rim).
+
+Three honesty caveats on measurement 1, none of which the recommendation leans past:
+
+1. **The ablation is not rng-paired.** Removing actions shifts the within-day event-index
+   forks, so the arms diverge rather than tracking each other. That is why the result is
+   reported distributionally *and* as a paired sign count (101/120), never as a single mean
+   difference.
+2. **Arm B leaves the freed dice unspent.** It measures Explore's own net contribution, not
+   "Explore against its best substitute".
+3. **`explorerPolicy` is a _player_ policy** in `packages/sim/src`; it is not the NPC
+   explorer archetype. What transfers to the cast is the **per-attempt** economics (53.8cr
+   gross against 400-640cr of fuel), not the whole-run figure.
+
+On that evidence, the recommendation — offered as a recommendation, not as a ruling:
+
+- **The destitute-explorer argument does not survive measurement.** It was the strongest
+  case for implementing: explorers are one of the two destitute archetypes (medians 167 for
+  explorers and 132 for fighters, as N10's Result records under "THE MONOPOLY LIMB IS NOW
+  ARCHETYPE-SPLIT"), and salvage looked like income they cannot reach. Measured, Explore is
+  a net credit **sink** for the actor that plays it — 53.8cr gross per attempt against
+  400-640cr of fuel — and removing the verb from the shipped explorer policy leaves it
+  **richer**
+  (median 90,135 against 60,391; 101 of 120 seeds). So salvage is measurably a **cost the
+  cast cannot afford**, not income they are missing.
+- **It is doubly unreachable for the captains it was meant to help.** At day 120 the
+  capstone's median captain carries 27 fuel (p25 = 4, p10 = 0) against an 80-fuel gate, and
+  the p25 captain's 150cr buys none of it.
+- **Therefore Explore is not the floor fix N11/N12 are hunting.** Worth saying plainly,
+  because it removes a candidate from that search rather than leaving it open — the
+  non-trader floor that did not move at N10 (p10 126 -> 126) will not move here.
+- What stays genuinely open, and belongs to the owner: whether the *authored* rewards
+  (fragments, charts) are worth carrying to the cast at all, and whether the verb is worth
+  revisiting **after N13** gives the cast a hand — at which point the die-cost question
+  that blocks option 1 has an answer.
+
+**(e)**
+
+**DECISION: OWED**
+
+The owner is choosing between: **option 1** implement at full parity (blocked on N13 and
+N11, costs a save migration and a new capstone), **option 2** algorithmic fast-forward
+recorded as a partial (no save change, still needs the die question answered), and
+**option 3** exclude with the stated reason (zero code, and N8 counts it as a ruled
+exclusion). Nothing in this memo selects among them.
+
+---
+
 ### N0 — One copy-on-write discipline for player and NPC turns (SHIPPED 2026-07-28)
 
 - **Why first:** NPC records are about to grow a ship, and `cloneState` deep-copied all
