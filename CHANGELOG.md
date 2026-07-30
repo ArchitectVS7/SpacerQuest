@@ -1,7 +1,11 @@
 # Changelog
 
+## 0.5.2
+- Explore and Socialize redesign arc
+
 ## 0.5.1
 - Split the NPC redesign into its own task
+- Completed bulk of the NPC base work, discovered two major gaps (Explore, Socialize)
 
 ## 0.5.0
 - Started the NPC parity track (N-series); N0, N1, N2, N6, N7 and N9 shipped.
