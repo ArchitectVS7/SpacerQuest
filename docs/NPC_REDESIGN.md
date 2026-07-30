@@ -52,10 +52,10 @@ need to fly, so they need to interact with pirates. That means they pay bribes, 
 either credits or cargo, or fight, or flee. They literally MUST act like a player."*
 
 **STATUS BOARD** — updated as each step lands; the per-step `**Result:**` blocks below are
-the detail. Run order is N0 → N1 → **N7** → N2 → N6 → N3 → **N4** → **N10** → **N11 → N12 → N13** →
+the detail. Run order is N0 → N1 → **N7** → N2 → N6 → N3 → **N4** → **N10** → **N11** → **N12 → N13** →
 N5 → N8 (see "Sequencing at a glance" for why N7 moved and why N4 kept its early slot;
 N10–N13 added by owner ruling 2026-07-29 — see THE PARITY LEDGER below). **Next unblocked
-step: N11.**
+step: N12.**
 
 | step | status | outcome |
 | --- | --- | --- |
@@ -68,7 +68,7 @@ step: N11.**
 | N4 — NPC archetypes | **SHIPPED 2026-07-29 (rebuilt)** | **ACCEPTED** — the Ideal×archetype blend, a hand-curated 6/6/5/5/4/4 roster, and a control arm that makes the effect attributable: median wealth trader +43% / veteran +31% / gambler −38% / explorer −99% / fighter −71% against the neutral arm. Found the **verb payout asymmetry** (only Trade pays) and two live instrument bugs |
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile`; **GATED BY N13** — its die-allocation lever needs a decision surface to act on |
 | **N10 — NPCs work the contract board** | **SHIPPED 2026-07-29** | **CHANGE ACCEPTED · HYPOTHESIS DISPROVED** — the shared per-system pool is built and the cast works it galaxy-wide, but competition is not a force: cast demand is ~6% of the galaxy's job supply, and neither throttle was ever the binding constraint. The step's real effect was the parity gap it was not looking for — the cast now CHOOSES its contract (`pickContract`), worth +247% on cast median wealth. **The non-trader floor did not move (p10 126 → 126)** |
-| **N11 — NPCs earn deeds and Renown** | **TODO · MUST-HAVE** | removes the rank −1 dead end; the yard's Renown gate becomes reachable with no NPC branch |
+| **N11 — NPCs earn deeds and Renown** | **SHIPPED 2026-07-30** | **CHANGE ACCEPTED · HYPOTHESIS HELD, BOTH DISPROVES LIMBS SURVIVED** — the −1 dead end is gone (98.7% of cast slots hold an earned rank at day 120, 42.8 gated purchases per run), the median captain sits **two rungs BELOW** a competent player (COMMODORE vs TOP_DOG), and nobody accrues zero. **The floor did not move for the THIRD time (p10 126 → 126) and the structural reason is now known: a deed pays no credits — rank is a spending unlock, not income**, so cast median wealth FELL 76,049 → 55,437 |
 | **N12 — NPCs buy ports** | **TODO · MUST-HAVE** | lands BEFORE N8; pulls N8's aggregate-sees-assets task forward as its own first task |
 | **N13 — NPC decision surface (dawn-hand parity)** | **TODO · MUST-HAVE** | literal reduced hand vs algorithmic equivalent — owner accepts algorithmic fast-forward; gates N5 |
 | **N14 — captain voice: the daily wire boast** | **TODO · EXPERIMENT** | owner spec 2026-07-29 — 3 boasts × 30 captains, top-3 candidates, one per day, 2-day cooldown + line rotation; **not** PvP messaging (PRD non-goal) |
@@ -85,18 +85,26 @@ step: N11.**
 > re-extracted FROM it with `spreads harvested`). Fingerprints moved to rules
 > `c9530236d51b237e` / instrument `75e73b1e7d32168c` / docs `774c91af0fbdecc0`.
 >
-> **The battery stands at 1,312 passing / 0 failing** (engine 769 · sim 306 · ui 135
-> · desktop 102) with `balance:smoke` green — **updated at N10**, which entered at
-> 1,287/0 and left at 1,312/0. N4 entered at **1,184 / 23 failing**; both steps
+> **The battery stands at 1,347 passing / 0 failing** (engine 795 · sim 315 · ui 135
+> · desktop 102) with `balance:smoke` green (123) — **updated at N11's closeout**, which
+> entered green and left green, with no threshold, band, golden or fingerprint edited and
+> no sample widened. N10 entered at 1,287/0 and left at 1,312/0. Three `it.fails`
+> tripwires are still correctly red and all three are R-owned: `balance-targets`'
+> clear-day band (trader median 21 against `[22, 30]`, unmoved by the N11 capstone) and
+> `balance-combat-survival`'s death-rate floor and Auto-Repair assertions. N4 entered at
+> **1,184 / 23 failing**; both steps
 > summarise their inherited reds under their own Result and the red-by-red account is
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
-> **BASELINE OF RECORD RE-PINNED AT N10** to
-> `docs/balance/baseline-n10-shipped.json` (1,000 seeds × 120 days × 8 policies =
+> **BASELINE OF RECORD RE-PINNED AT N11** to
+> `docs/balance/baseline-n11-shipped.json` (1,000 seeds × 120 days × 8 policies =
 > 8,000 runs, both `--milestone-days` and `--aggregate` honoured, fixture
-> re-extracted FROM it with `spreads harvested`). Fingerprints are now rules
-> `3079dec9aa5a4af0` / instrument `979f28907cf89d1d` / docs `db4715d924429106`.
+> re-extracted FROM it with `spreads harvested`). Fingerprints are rules
+> `b6f27d2bceabde59` / instrument `db515475e166a538` / docs `118e033b2c04807a` —
+> **all three unmoved from T-021/T-022**, because T-023 measures and writes documents
+> and touches no hashed rule source. N10's `baseline-n10-shipped.json` is now the
+> predecessor.
 
 **WHAT AN NPC ACTUALLY IS TODAY (measured 2026-07-28, `packages/engine/src/npc.ts`):**
 
@@ -106,8 +114,9 @@ step: N11.**
 > components, phantom trading" bullets below describe the field as the track FOUND it,
 > not HEAD. **Superseded further by N3** (encounters and permanent death are real) and
 > **by N10** (captains claim off the shared per-system job pool wherever they fly, and
-> choose which job by archetype). Still true at HEAD: **no deeds or rank (N11), no
-> ports (N12), and one coarse d20 action per day (N13)** — and note that the last
+> choose which job by archetype) and **by N11** (every captain owns a real deed registry
+> and an earned Renown rank). Still true at HEAD: **no ports (N12), and one coarse d20
+> action per day (N13)** — and note that the last
 > bullet below, *"the NPC field does not face the game's central decision"*, is the one
 > statement here that nothing has yet touched.
 
@@ -191,7 +200,7 @@ ruling; it is what makes the fast-forward honest).
 | Trade | coarse haul, but on the SHARED pool: every captain draws the local board through the player's own `generateManifestBoard` and CHOOSES off it by archetype (`pickContract`), and the claim debits a per-system ledger that sizes the next board the player sees there. The co-location gate no longer gates participation — it governs only the visible snipe | shipped (N10) |
 | Travel | real fuel, real routes, real encounters, real permanent death | shipped (N3) |
 | Combat | interdiction on the SHARED rules, one-tick — same DC, tribute, damage, salvage, retreat. **NOT `resolveCombat`**: gives up die CHOICE only, closed by N13. **GAP FOUND AT N4:** that is the verb a captain is FORCED into; the one they CHOOSE (`executeCombat`) is still the pre-N3 abstract GUNS check + flat `150 × tier`, with no interceptor, no damage and no ship loss — so the six fighters take 6.4 interdictions each and **0 deaths** | shipped (N3) · N13 closes the die gap · **`executeCombat` still owed** |
-| Shipyard | full price/gate parity via `ShipyardActor`, and since T-021 the RENOWN GATE IS EXERCISED: the refit ladder asks for rank-gated special equipment and is refused or served by the player's own `requiredRank` check, on the standing the captain earned — no NPC branch. Still **spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · gate reachable (N11/T-021) · OI-9 open |
+| Shipyard | full price/gate parity via `ShipyardActor`, and since N11 the RENOWN GATE IS EXERCISED AND MEASURED: the refit ladder asks for rank-gated special equipment and is refused or served by the player's own `requiredRank` check, on the standing the captain earned — no NPC branch, **42.8 gated purchases per run at the N11 capstone**. Still **spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · **gate shipped (N11)** · OI-9 open |
 | Explore | never | **UNRULED — owner decides by N8** |
 | VisitHangout | Socialize stand-in; no borrow/repay | **UNRULED — owner decides by N8** |
 | Crew | never (meaningless without a hand) | N13 decides |
@@ -200,9 +209,14 @@ ruling; it is what makes the fast-forward honest).
 | Storylet | authored player-facing content | **UNRULED — owner decides by N8** |
 | Wait | Idle | shipped |
 
-Renown is the verb-less twelfth row: every rank gate applies to NPCs (`actorRankIndex`
-returns −1 without a registry) but no deed can ever accrue — a no-recourse lockout, which
-consequence 2 above already defines as an exemption. **N11** removes it.
+Renown is the verb-less twelfth row, and **N11 removed it (2026-07-30)**: every captain
+carries a real `DeedRegistry`, fed by the actions they already perform through the
+player's own `accrueDeeds` / `rankForDeedCount`, and `actorRankIndex` no longer returns
+−1 for anyone. 98.7% of cast slots hold an earned rank at day 120 and the gate is
+exercised. **What N11 also established, and it is a fact about the deed economy rather
+than about NPCs: a deed pays no credits.** Rank is a SPENDING UNLOCK, so this row can
+never be the one that moves the wealth floor — see N11's Result and the hand-off into
+N12.
 
 The three UNRULED rows are deliberately not defaulted: "most" is only honest if every
 exclusion is a recorded decision rather than a silent gap. Rule on each (implement,
@@ -1885,10 +1899,219 @@ bullet above.
 >    `Unknown star system route: 0 -> 11`. *Rebuilt:* origin is a parameter, pinned by a
 >    test that drives one board from two origins to two answers.
 
-### N11 — NPCs earn deeds and Renown (MUST-HAVE · owner ruling 2026-07-29 · NEXT)
+### N11 — NPCs earn deeds and Renown (SHIPPED 2026-07-30)
+
+**Result (2026-07-30): CHANGE ACCEPTED — HYPOTHESIS HELD, AND BOTH DISPROVES LIMBS
+SURVIVED.** Graded at `docs/balance/baseline-n11-shipped.json` (1,000 seeds × 120 days ×
+8 policies; the merge reported *"wrote aggregate for 8000 rows"*), diffed against
+`baseline-n10-shipped.json`, with the smoke fixture re-extracted FROM that capstone
+(`spreads harvested`). All four limbs by name:
+
+- **PROVES 1 — real ranks and purchases through the gate: HELD.** The cast's rank
+  distribution (`fleet.milestones[*].npcRenownRanks`, 240,000 captain-slots at each day)
+  at all three reporting days:
+
+  | rung | day 30 | day 60 | day 120 |
+  | --- | --- | --- | --- |
+  | ADMIRAL | 8 (0.0%) | 105 (0.0%) | 881 (0.4%) |
+  | COMMODORE | 104,288 (43.5%) | 159,440 (66.4%) | 180,989 (75.4%) |
+  | CAPTAIN | 94,696 (39.5%) | 54,146 (22.6%) | 35,411 (14.8%) |
+  | COMMANDER | 37,049 (15.4%) | 22,886 (9.5%) | 19,494 (8.1%) |
+  | LIEUTENANT (zero-deed rung) | 3,959 (1.6%) | 3,423 (1.4%) | 3,225 (1.3%) |
+
+  An EARNED rank above the zero-deed rung is held by 98.4% → 98.6% → 98.7% of slots
+  across days 30/60/120, CAPTAIN-or-better by 82.9% → 89.0% → 90.5% (exact day-120
+  value 90.53%; an earlier draft's "90.6%" was a rounding slip, corrected here with the
+  counts shown), and the modal rung is already COMMODORE at day 30.
+  `fleet.npcSpecialEquipmentPurchases` is **342,168 over 8,000 runs =
+  42.771 per run**. The −1 lockout is gone, through the player's own
+  `requiredRank` check with no NPC branch — `grep -rn "isNpc"
+  packages/engine/src/actions/shipyard.ts` returns nothing.
+- **PROVES 2 — the Honor List's top end and a contested spine: HELD AS AN INTERSECTION,
+  with a recorded blindness.** Over 20 ambient seeds × 120 days, **73.3% of captain-slots
+  own a rank-gated fit** (Star Buster 440, Arch Angel 413, both 413 of 600) and owners sit
+  at mean component-score rank **11.73** against non-owners' **25.06** — the gated-fit
+  owners ARE the top of the board, in 20 of 20 seeds, and a waiting player holds **0 of
+  the 8 titles**. It is graded as an intersection and not as "the board shows the fits"
+  because **`honorList` scores components only** (`effectiveScore(ship[id])` +
+  `allAroundScore` over `SHIP_COMPONENTS`) and is structurally **blind to the boolean
+  `hasStarBuster` / `hasArchAngel`**. That blindness is a finding, not a defect fixed
+  here — see the hand-off.
+- **DISPROVES · renown inflation — NOT DEMONSTRATED.** Off the rank-distribution table
+  above, the cast's median rung runs **CAPTAIN → COMMODORE → COMMODORE** across days
+  30/60/120 and never exceeds COMMODORE. At day 120 the median captain sits
+  **COMMODORE (9 deeds)**; the median player, off the same capstone at the same day,
+  sits **TOP_DOG (17 deeds)** — two rungs higher, and the cast's 13-deed source ceiling
+  is *below* the player's median rank. **No cast slot reaches TOP_DOG or above at any
+  milestone day** (ADMIRAL, the cast's ceiling rung, peaks at 0.4% of slots at day 120).
+  Even the pathological `greedy` arm (a player who never trades) is
+  CAPTAIN 55.2% / COMMODORE 43.1%, i.e. level with the cast median rather than under it,
+  while every competent arm is TOP_DOG..GIGA_HERO. Deed pacing is right for a 30-seat
+  field.
+- **DISPROVES · zero accrual — NOT DEMONSTRATED.** Every archetype accrues at every
+  milestone day, and the limb N10 flagged as most at risk is the one that clears most
+  clearly: the **fighter's** deed count runs p10 1 → 2 → 2 and median 5 → 7 → 8 across
+  days 30/60/120, the **explorer's** p10 4 → 5 → 5. Fleet-wide `npcDeedCount` is p10 3/4/5
+  and median 8/9/10. The coarse turn reaches the thresholds.
+
+**DISCHARGED — N10'S HAND-OFF, WHICH OUTRANKS THE VERDICT, AND IT ANSWERS NO FOR THE
+THIRD TIME.** Per-archetype `npcCredits` **p10 (the FLOOR)** at the milestone days, n10
+before → n11 after, off the two capstones' own 8,000-run row sets (the probe's pooled p10
+and median were asserted equal to both committed artefacts before any before/after number
+was believed):
+
+| archetype | p10 day 30 | p10 day 60 | p10 day 120 | median day 120 |
+| --- | --- | --- | --- | --- |
+| trader | 1003 → **132** | 74192 → **27987** | 382939 → **329990** | 687781 → 660977 |
+| fighter | 125 → **125** | 125 → **125** | 125 → **125** | 152 → 145 |
+| explorer | 125 → **125** | 125 → **125** | 125 → **125** | 136 → 149 |
+| veteran | 126 → **126** | 126 → **126** | 127 → **127** | 161070 → 140763 |
+| gambler | 126 → **125** | 109 → **106** | 128 → **126** | 55697 → 41668 |
+| smuggler | 128 → **127** | 128 → **128** | 132 → **130** | 256210 → 233188 |
+| POOLED | 126 → **126** | 126 → **126** | 126 → **126** | 76049 → **55437** |
+
+**THE STRUCTURAL REASON THE FLOOR CANNOT MOVE HERE, and it is the finding to carry
+forward: A DEED PAYS NO CREDITS.** `deeds.ts` never touches `credits` — a deed is a rank
+counter and rank is a SPENDING UNLOCK. So the only cash effect N11 can have is OUTWARD,
+and that is exactly what the capstone measures: cast median wealth **fell** 76,049 →
+55,437 (−27%) and the trader floor fell 382,939 → 329,990, because the captains who could
+afford the gate bought through it. N10's hand-off hoped *"a deed sourced from fights won
+is the first income-adjacent reward a fighter earns"*; there is no such reward in the
+engine, for player or NPC. Four of six archetypes sit at a day-120 p10 of **125–130cr on a
+hull-40 ship, unchanged at every milestone day and unchanged by every policy arm** (the
+archetype × policy split is flat to ±1cr). **No deed weight, threshold, `150 × tier` or
+pacing constant was touched to move this** — a re-pricing is an owner call.
+
+**Still binds:**
+
+- **THE FLOOR IS NOW A THREE-TIME NULL RESULT WITH A KNOWN MECHANISM, AND N12 IS THE LAST
+  MUST-HAVE THAT COULD MOVE IT.** N4 found *"only Trade pays"*; N10 found *a fix routed
+  through Trade cannot reach a captain who does not trade*; N11 finds *the Renown economy
+  routes no credits at all*. The cast has a **two-tier wealth field**: traders (and, late,
+  veterans and smugglers) in the hundreds of thousands, fighters and explorers at ~125cr
+  forever. Any future step that proposes to fix the floor must first say **which function
+  moves credits toward a captain who fights and does not trade** — that is the question,
+  and neither the board nor the ladder is the answer.
+- **THE CHEAPEST WIDENING LEVER, still unspent and still owner-owned:** `considerRefit` /
+  `fillHold` emit no `ShipyardEvent`, so `yard_rat` / `cargo_expansion` never accrue
+  (recorded at T-020). It widens the *deed* supply, not the *credit* supply, so on N11's
+  measurement it would move ranks and **not** the floor. Proposed, not slipped in.
+- **THREE T-020 RULED EXCLUSIONS, unchanged and still load-bearing.** (i) A captain's
+  `deliver-cargo` carries `success: true` regardless of the Trade check and **that is
+  parity**: the player's delivery is not gated on a check either, and gating the NPC's
+  would make `first_delivery` / `fat_manifest` / `rim_runner` strictly harder for a
+  captain than for a player — the exemption in the other direction, landing on exactly the
+  poor low-TRADE captains. A rough jump is likewise still an arrival. (ii) **"Careers
+  survived" is UNSOURCED and owed**: content ships no survival / day-count deed, so
+  sourcing it means authoring a player-facing deed, which moves `rulesFingerprint` and
+  owes its own capstone. An NPC-only deed would be the second deed table this step exists
+  to prevent. (iii) `survived` / `destroyed` encounters and the yard emit no deed source;
+  inventing a resolution literal so one would is authoring a rule. **The reverted attempt's
+  two self-granted exemptions are NOT on this list because they were REMOVED, not ruled** —
+  the CONQUEROR demo cap applies through `NpcDayContext.edition` → the one `demoLocked`
+  predicate, and the `state`-matcher skip is gone (the matcher reads the actor's own tank,
+  so `fuel_fumes_arrival` is earnable by a captain). The warning block above asks for one or
+  the other; this is which.
+- **THE 13-DEED / ADMIRAL CEILING IS A STRUCTURAL FACT AND NEVER A REASON TO TOUCH
+  `RENOWN_DEED_THRESHOLDS`.** The cast's earnable set is exactly 13 ids, so `TOP_DOG` (17)
+  and above are unreachable by construction — confirmed at 8,000 runs, where no cast slot
+  reaches TOP_DOG at any milestone day. **So `ASTRAXIAL_HULL` (TOP_DOG-gated) is
+  permanently outside the cast's reach**, while the two CAPTAIN-gated items open at 5
+  deeds. It is what makes the renown-inflation limb clear, and it is a DEED SUPPLY property
+  of the content slate, not a pacing number.
+- **FOUR T-021 RULINGS, unchanged.** Rank-gated equipment is asked for as a **data filter**
+  (`requiredRenownRank !== undefined`), so a re-gated table moves the cast's appetite for
+  free and the four ungated items stay deliberately deferred (`TITANIUM_HULL` alone is +50
+  pods — a non-Renown economy swing inside the arm this step must attribute to the Renown
+  gate). **Equipment is considered BEFORE the component ladder** because one purchase a day
+  plus a first-affordable-rung loop would otherwise leave the gate dormant; the throttle is
+  the two lines that already existed (earned rank, `NPC_YARD_RESERVE`) and no new pacing
+  constant was added. **Convergence is confirmed, and the next lever is content, never a
+  constant in `npc.ts`** — 73.3% of captain-slots own gated fits by day 120 and 413 of 440
+  owners hold BOTH CAPTAIN-gated items, so the equipment axis does converge; an
+  archetype-shaped appetite is a content mapping and an owner call. **OI-9 is untouched:**
+  the equipment action carries `spendDie: 0` and the NPC refit still pays no die (N13's).
+- **THE PLAYER'S GAME BARELY MOVED, WHICH IS WHAT MAKES THIS AN NPC-SIDE CHANGE.** Fleet
+  Tour One clear 0.5180 → 0.5172, fleet final credits median 30,915 → 30,518 (−1.3%),
+  deaths/1,000 days 0.6573 → 0.6417; no policy's clear rate moves more than 2.4 points,
+  while NPC-facing rows move by tens of percent (`fleet.milestones[day 60].npcCredits.p75`
+  16,641 → 5,967). The one player-side coupling is real and intended: an armed captain
+  survives N3's interdictions, so `survival.shipsLost` moves in both directions per policy
+  (explorer +34%, smuggler −13%).
+- **Baseline of record re-pinned to `docs/balance/baseline-n11-shipped.json`**, with
+  `balance-targets.test.ts`'s path and standing amendment 1's pointer moved in the same
+  commit. **No fingerprint moved** (rules `b6f27d2bceabde59` / instrument
+  `db515475e166a538` / docs `118e033b2c04807a`) — T-023 touches no hashed rule source. The
+  trader clear-day median is **21 at both capstones**, i.e. the R-owned `it.fails` tripwire
+  is still correctly red for the same reason and was not made to pass.
+- **EVERY T-020/T-021 DELIVERABLE RE-VERIFIED BY GREP AT ITS CALL SITE at the closing
+  commit** (full output in T-023's TASKS.md record). The three that would silently undo the
+  step if they ever stopped holding: **`RENOWN_DEED_THRESHOLDS` appears in no NPC-specific
+  copy** — `deeds.ts` is the only reader and `npc.ts:781` carries the "appear nowhere in
+  this file" comment; **`emptyDeedRegistry` has ONE definition (`deeds.ts:300`) and four
+  call sites** (`state.ts:101`/`158`/`309`, `save.ts` `MIGRATIONS[11]`), so a migrated
+  roster cannot drift from a created one; and **`grep -rn "isNpc"
+  packages/engine/src/actions/shipyard.ts` returns NOTHING** — the gate has no NPC branch,
+  which is the standing constraint made checkable.
+
+*Full record — the four-limb grading tables, the per-archetype deed and rank histograms,
+the archetype × policy floor split, the complete `balance:diff`, and the rulings recorded
+during the three implementing tasks: `git show <closing sha> -- docs/NPC_REDESIGN.md
+TASKS.md` for this Result, and `git show 57fe2dcb 67b5f4eb 7f7cc5d0 --
+docs/NPC_REDESIGN.md TASKS.md` for T-020's registry / T-021's gate / T-022's instrument.
+The measurement numbers themselves live in `docs/balance/baseline-n11-shipped.json`; every
+rule is argued at its own definition site in code, which is the copy that cannot go stale.*
+
+---
 
 > [!IMPORTANT]
-> **WHAT N10 HANDS TO N11** (standing amendment 4). **The non-trader floor is
+> **WHAT N11 HANDS TO N12** (standing amendment 4). Four things, and the first changes
+> what N12 is FOR.
+>
+> **1. N12 IS THE LAST MUST-HAVE THAT COULD MOVE THE WEALTH FLOOR, AND A CASH-FUNDED PORT
+> ECONOMY IS A TWO-ARCHETYPE ECONOMY, NOT A SIX.** The floor has now failed to move three
+> times, and N11 established why the ladder could never move it: a deed pays no credits.
+> A port is different — it is an ASSET that pays a yield — but **a port must be BOUGHT**,
+> and at day 120 the per-archetype p10 is 329,990cr for a trader and **125–130cr for a
+> fighter, an explorer, a gambler and a veteran**. If port purchase is priced off cash on
+> hand, N12 will hand ports to the same captains who already have everything and the
+> two-tier field will widen rather than close. **Measure port ownership PER ARCHETYPE from
+> the first task, not fleet-wide** — a fleet-wide "the cast owns N ports" number would hide
+> this completely, which is the same class of blind spot as N4's 41-record instrument bug.
+> If N12 finds ports unreachable for four of six archetypes, that is a finding to report
+> and a re-pricing is an owner call — do not tune a port price to make the floor move.
+>
+> **2. THE FIELD IS NOW ARMED, WHICH CHANGES N12's PACING INPUT.** 73.3% of captain-slots
+> hold a rank-gated fit by day 120 (Star Buster and/or Arch Angel), feeding
+> `weaponVolleyDamage` and `applyInterceptorHit`, and the cast's median wealth is
+> **27% lower** than at N10 because it spent that money at the yard. So a land-grab paced
+> against N10's `npcCredits` distribution is paced against a purse that no longer exists —
+> read the day-30/60/120 `npcCredits` percentiles from **`baseline-n11-shipped.json`**,
+> and expect competition for a port to arrive later and from fewer captains than N10's
+> numbers suggest.
+>
+> **3. `honorList` IS BLIND TO NON-COMPONENT ASSETS, and N12 will hit this before N13
+> does.** The board scores `SHIP_COMPONENTS` only, so the two rank-gated fits N11 shipped
+> are invisible on it and **a port will be invisible too** — a captain who owns three
+> ports and a stock hull ranks below a captain with a good cabin. Deliberately not fixed at
+> N11 (a title is authored content and a scoring change moves eight goldens). If N12 wants
+> the cast's port holdings to READ as standing, that is a content-and-title change with its
+> own argument, and it belongs in N12's own task list rather than being discovered late.
+>
+> **4. FOR N13, one sharpened input.** The die gap is unchanged, but N11 narrows what
+> closing it buys: the cast's rank ceiling is bounded by the **13-deed content slate**, not
+> by the coarse turn (fleet `npcDeedCount` median is 10 of an available 13 by day 120 —
+> the cast is nearly saturated). So a five-die hand will not raise cast rank much; what it
+> would move is the *choice* of which verb pays, which is the floor question again.
+
+> [!IMPORTANT]
+> **WHAT N10 HANDS TO N11 — DISCHARGED 2026-07-30, ANSWERED NO.** *Kept as the brief this
+> step was graded against; the answer is in the Result above (the per-archetype p10 table
+> and the deed-pays-no-credits mechanism). Its warning about the Disproves limb was right to
+> make but did not bite: accrual is universal, and it is the credit routing rather than the
+> deed sourcing that leaves the floor flat.*
+>
+> **The non-trader floor is
 > untouched and one of its three chances is spent.** N10 gave the cast a shared board
 > and the right to choose off it; measured at the 1,000-seed capstone, cast median
 > wealth at day 120 went **21,884 → 76,049 (+247%)** while its **p10 did not move
@@ -1974,126 +2197,27 @@ bullet above.
 > hardcoded**, so a *failed* Trade check still credited a delivery deed. And
 > `eventIndex: 0` was stuffed into every earned deed as a placeholder.
 
-#### RULINGS RECORDED AT T-020 (the rebuild)
+#### THE THREE IMPLEMENTING TASKS — pruned to a pointer (2026-07-30)
 
-The doc's own instruction on the reverted attempt's exemptions is *"record them as ruled
-exclusions; do not leave them as silent code comments"*. Three, and only three, are owed:
+T-020 built the registry, T-021 opened the gate and T-022 taught the aggregate to see
+both. Every clause of their records that changes what a later step DOES is carried in
+the Result above (the three ruled exclusions, the 13-deed ceiling, T-021's four rulings,
+the `honorList` blindness and the floor mechanism). What is left is measurement narration
+— the per-task capstones, the ten-day golden window, the fingerprint-by-fingerprint
+re-pin logs and the three band widenings — and git holds it losslessly:
 
-- **A captain's `deliver-cargo` carries `success: true` regardless of the Trade check,
-  and that is parity, not the reverted attempt's bug.** The defect at `7334c5d5` was
-  emitting the event *before* the check with the flag hardcoded; T-020 emits it *after*
-  the check, and the flag's honest value is still `true` on two pieces of evidence. (i)
-  The **player's** delivery emits `success: true` whenever the payment lands
-  (`actions/travel.ts`) — it is not gated on a check either. (ii) `npc.ts` already rules
-  that the NPC Trade check *"decides how CLEANLY the run went"* and carries **no**
-  economic swing, for the measured reason recorded at that site. Gating the deed on
-  `result.success` would make `first_delivery` / `fat_manifest` / `rim_runner` strictly
-  **harder** for a captain than for the player — the exemption in the other direction —
-  and would land the penalty on exactly the low-TRADE poor captains this step's Disproves
-  limb warns about. Likewise a **rough jump is still an arrival** (`success: true`),
-  because since T-1605 an ordinary player jump takes no pilot check and always arrives.
-- **"Careers survived" is UNSOURCED, and is owed rather than delivered.** Content ships
-  no survival / day-count / career-triggered deed (44 deeds, verified), so sourcing that
-  limb of N11's Change means **authoring a new player-facing content deed** — which moves
-  `rulesFingerprint` and owes its own capstone. An NPC-only deed would be the second deed
-  table this step exists to prevent. Recorded at the accrual site in `npc.ts`.
-- **`survived` / `destroyed` encounters and the yard emit no deed source.** Neither
-  encounter resolution matches any content deed today, so nothing is being withheld;
-  inventing a resolution literal so one would is authoring a rule. `considerRefit` /
-  `fillHold` emit no `ShipyardEvent`, so `yard_rat` / `cargo_expansion` do not accrue —
-  the cheapest next widening lever if T-023 measures the fighter/explorer floor at zero,
-  to be proposed to the owner rather than slipped in. The CONQUEROR ceiling and the
-  `state`-matcher skip are **not** ruled exclusions: both exemptions are removed, the cap
-  through `NpcDayContext.edition` → the one `demoLocked` predicate, and the matcher by
-  scoping its read to the actor's own tank so `fuel_fumes_arrival` is earnable.
+```sh
+git show 57fe2dcb 67b5f4eb 7f7cc5d0 -- docs/NPC_REDESIGN.md TASKS.md
+```
 
-**THE FIELD'S RANK CEILING IS BOUNDED BY THE SOURCE SET, measured at T-020, and it is a
-structural fact rather than a pacing finding.** Over 3 seeds x 120 ambient days the cast's
-earned ids are **exactly 13** — `first_manifest`, `first_delivery`, `fat_manifest`,
-`rim_runner`, `mercy_runner`, `contraband_run`, `first_jump`, `road_regular`,
-`rimward_bound`, `fuel_fumes_arrival`, `first_combat_win`, `silver_tongue`,
-`clean_getaway` — and the best captain observed holds all 13, i.e. **ADMIRAL is the
-ceiling** while `TOP_DOG` (17) and above stay unreachable and `CAPTAIN`-gated
-`STAR_BUSTER` / `ARCH_ANGEL` become reachable at 5. Rank distribution at day 120, 3 seeds
-x 41 records: LIEUTENANT 35 · COMMANDER 8 · CAPTAIN 15 · COMMODORE 64 · ADMIRAL 1. That is
-an input to T-021/T-023 and never a reason to touch `RENOWN_DEED_THRESHOLDS`.
-
-**THE SMOKE FIXTURE WAS RE-EXTRACTED AT T-020, FROM ITS OWN CAPSTONE — and the diff says
-NOTHING MOVED, which is the honest reading here rather than the stale-`dist` tell.** The
-registry moved `rulesFingerprint` (`3079dec9aa5a4af0` → `c0ee134318b4ef6f`, 57 rule sources)
-and `saveSchemaVersion` (11 → 12), so `docs/balance/smoke/tiers.json` went stale exactly as
-N7 intends. Fixed the sanctioned way and no other: `npm run format` first (no-op), then a
-full 8,000-row capstone at `docs/balance/baseline-t020-registry.json` (1,000 seeds x 120 days
-x 8 policies, `--milestone-days 21,29,30,41,60,120`, shards 1/8…8/8 merged, merge line
-reported 8,000 rows), then a re-extract that printed `spreads harvested`. No fingerprint,
-band, threshold or golden was edited. `balance:diff` against `baseline-n10-shipped.json`
-reports **NOTHING MOVED — every compared field equal**, and the reason it is not the
-byte-identical control-arm failure the standing constraint warns about is structural, checked
-three ways: the sweep resolved `@spacerquest/engine` to a freshly built `dist` (probed:
-`CURRENT_SAVE_VERSION 12`, `npcs[0].registry` present); `accrueDeeds` draws no rng and feeds
-back into no captain decision until T-021 opens the gate; and no field on `PolicyAggregate`
-can see an NPC deed until T-022 adds one. The capstone is **blind to this step by
-construction** — which is precisely why T-022 lands before T-023. Baseline of record is
-UNCHANGED (`baseline-n10-shipped.json`); T-023 still owns the authoritative `baseline-n11-*`
-capstone, the four-limb verdict and any re-pin.
-
-#### RULINGS RECORDED AT T-021 (the gate becomes reachable)
-
-`considerRefit` now asks the yard for special equipment, so the −1 lockout stops being
-dormant. The gate itself did not move: `specialEquipmentFailure`'s `requiredRank` check is
-still the one and only one, `shipyard.ts` gained nothing but an `export` on
-`actorRankIndex` (so "returns ≥ 0 for a captain" is *assertable* — a −1 and a 0 produce the
-same refusal, which is how the lockout hid), and no NPC branch exists on either side. Four
-rulings, all argued at their definition sites and recorded here only because they set
-direction:
-
-- **RANK-GATED ONLY, and as a data filter rather than a list.** The captain asks for every
-  `SPECIAL_EQUIPMENT` row that declares a `requiredRenownRank`, so a re-gated table moves
-  the cast's appetite for free. The four ungated items are deliberately deferred:
-  `TITANIUM_HULL` alone is +50 pods, and putting a non-Renown economy swing inside the arm
-  T-023 must attribute to the Renown gate would repeat the R0a/R2a mistake. Mirrors the
-  player-side `planSpecialEquipment`, whose priority list is also rank-gated.
-- **EQUIPMENT IS CONSIDERED BEFORE THE COMPONENT LADDER** — the one judgement in the
-  change. A captain gets ONE purchase a day and the component loop takes the first
-  *affordable* rung, so an equipment rung placed after it would fire only when all eight
-  components were maxed or unaffordable, i.e. the gate would stay dormant and the step
-  would ship a mechanism nothing exercises. Placed first, the throttle is the two lines
-  that already existed — EARNED rank and `NPC_YARD_RESERVE` — and it displaces at most one
-  component rung per gated item per career, because the yard refuses the repeat
-  (`ALREADY_INSTALLED`). **No new pacing constant was added.**
-- **CONVERGENCE IS THE WATCH ITEM HANDED TO T-023, not a defect fixed here.** Every captain
-  who reaches CAPTAIN with ~11,000cr eventually owns BOTH CAPTAIN-gated items, so the
-  *equipment* axis converges even though the component fit does not; `ASTRAXIAL_HULL`
-  (TOP_DOG, 17) stays unreachable at T-020's measured 13-deed / ADMIRAL ceiling. If T-023
-  grades that as renown inflation or convergence, the next lever is an **archetype-shaped
-  appetite** — a content mapping, an owner call and its own capstone — never a tuning
-  constant in `npc.ts`.
-- **OI-9 IS UNTOUCHED.** The equipment action carries `spendDie: 0`, the component rung's
-  existing convention. The NPC refit still pays no die; that is still N13's.
-
-**WHAT THE GATE ACTUALLY DOES, measured in the day-loop golden's own ten-day window
-(re-recorded with the measured note the track requires):** SEVEN gated purchases fire (5×
-Star Buster, 2× Arch Angel) while **all 176 non-NPC events in the stream diff
-byte-identical** — every player StatCheck, DawnRoll, TradeEvent, TravelEvent, DeedEarned,
-RenownRankUp, DebtPayment, StoryletOffered, DispositionChanged and ContractClaimed. The
-seed-555 storylet script (one day, nobody reaches five deeds) is unmoved on both hashes.
-That asymmetry is the evidence this is an NPC-side change. `hasStarBuster` /
-`hasArchAngel` feed `weaponVolleyDamage` and `applyInterceptorHit`, so an armed captain
-now genuinely survives N3's interdictions — which is the "progression spine contested, not
-copied" limb becoming real, and also why every downstream NPC-facing pin moved.
-
-**THREE PINS RE-DERIVED, none of them widened or lowered.** (i) The smoke fixture went
-stale as N7 intends (`rulesFingerprint c0ee134318b4ef6f → b6f27d2bceabde59`) and was fixed
-the sanctioned way only: `npm run format`, `npx tsc -b`, then a re-extract against T-020's
-own capstone that printed `spreads harvested`. The diff is three lines — the two
-fingerprints and `gitCommit`; no `expected` number moved, spreads stay byte-identical and
-`provenance.sweepLabel` still names the **T-020** sweep. **T-023 replaces it** with the
-authoritative `baseline-n11-*` capstone; T-021 deliberately does not spend one. (ii) The
-seven `campaign-degraded` policy fingerprints moved for the fifth consecutive NPC-side step
-and were re-pinned **in the commit that moved them**, with the mechanism and the mixed
-per-policy direction recorded in that table's own entry 10. (iii) `campaign-reach`'s port
-acceptance re-pinned seed 22 → 1 after **widening the sample, never the horizon**: 9 of
-seeds 1..80 qualify (11%), exactly N10's 9/80, so the port pillar is no harder to reach.
+Two of those records deserve naming here because they are METHOD rather than
+measurement, and the track pays for them repeatedly if they are lost: **T-020's capstone
+diffed to "NOTHING MOVED" and that was the HONEST reading, not the stale-`dist` tell** —
+the registry fed back into no decision until T-021 and no aggregate field could see a
+deed until T-022, so the capstone was blind to the step BY CONSTRUCTION, which is exactly
+why T-022 had to land before T-023. And **`campaign-reach`'s port acceptance was re-pinned
+by widening the sample, never the horizon** (9 of seeds 1..80 qualify, 11%, identical to
+N10's 9/80).
 
 ### N12 — NPCs buy ports (MUST-HAVE · owner ruling 2026-07-29 · LANDS BEFORE N8)
 
@@ -2648,9 +2772,13 @@ NPC PARITY TRACK (in progress — the R-series is PAUSED behind it, see below):
                             |                                     hypothesis disproved — the
                             |                                     board is not where the
                             |                                     non-trader floor gets fixed)
-                            └─► N11 (NPCs earn deeds + Renown) .. MUST-HAVE ◄── NEXT
+                            └─► N11 (NPCs earn deeds + Renown) .. DONE  (change accepted,
+                                 |                                hypothesis held; both
+                                 |                                Disproves limbs survived —
+                                 |                                but a deed pays no credits,
+                                 |                                so the floor is still flat)
                                  └─► N12 (NPCs buy ports; the aggregate
-                                      learns to see assets FIRST) MUST-HAVE, before N8
+                                      learns to see assets FIRST) MUST-HAVE, before N8 ◄── NEXT
                                       └─► N13 (NPC decision surface:
                                            dawn-hand parity) .... MUST-HAVE, gates N5
                                            └─► N5 (proficiency spread)
@@ -2701,11 +2829,11 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-n10-shipped.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at N10 2026-07-29).
-   > `baseline-n4-shipped`, `baseline-r2c-explorer-remit`, `baseline-n2-final`,
-   > `baseline-n9-shipped`, `baseline-r2c-final` and `baseline-vet-1k*` are its
-   > predecessors.
+   > **Baseline of record is `docs/balance/baseline-n11-shipped.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at N11 2026-07-30).
+   > `baseline-n10-shipped`, `baseline-t020-registry`, `baseline-n4-shipped`,
+   > `baseline-r2c-explorer-remit`, `baseline-n2-final`, `baseline-n9-shipped`,
+   > `baseline-r2c-final` and `baseline-vet-1k*` are its predecessors.
    > **`baseline-n4-control.json` sits beside it and is NOT a baseline** — it is N4's
    > control arm (the same capstone with every archetype multiplier set to 1), kept as
    > that step's grading evidence. Presence in `docs/balance/` never makes a file the
