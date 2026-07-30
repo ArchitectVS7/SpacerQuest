@@ -419,6 +419,378 @@ exclusion). Nothing in this memo selects among them.
 
 ---
 
+### VisitHangout — decision memo
+
+**(a) What the PLAYER's VisitHangout actually does.**
+
+**Seven venues behind one action**, split by which event reads them: `dare | meet |
+befriend | insult | rumor` report a `HangoutEvent`; `borrow | repay` report a `LoanEvent`
+(the `isLending` / `failVenue` split, `packages/engine/src/actions/hangout.ts:139-145` —
+the lending venues' reader is Penny Wise's desk pane, not the Hangout social pane). Six
+separable parts:
+
+- **Entry part 1 — a VENUE gate that actually bites.** `applyPlayerAction`'s
+  `hasHangout` gate (`packages/engine/src/day.ts:376-394`) refuses the action anywhere
+  `STAR_SYSTEMS[...].hasHangout !== true`, as a typed `ActionBlocked` with **no die
+  spent**. Content read (counted, `.scratch/t011-sys.ts`): **1 of 28 systems carries the
+  flag — Sun-3, id 1** (`packages/content/src/systems.ts:79`), and it is 1 of the 20 in
+  the cast's own travel pool (`NPC_SYSTEM_IDS`, `packages/engine/src/npc.ts:94-96`). So
+  the player is refused at 27 of 28 systems.
+- **Entry part 2 — a die out of the dawn hand.** `spendDie(hand, index)`
+  (`packages/engine/src/dice.ts:165`), with the same three typed no-spend fails as
+  Explore: `no-die`, `invalid-die-index`, `die-already-spent`.
+- **Presence — a living, co-located counterparty.** For the four social venues the dealer
+  must be an NPC whose *simulated* `currentSystemId` equals the player's and who is not
+  `dead` (`hangout.ts:171-191`); otherwise `failReason: 'no-opponent'`, no die burned.
+  `rumor`, `borrow` and `repay` are opponent-less — Penny Wise is the lender-of-record
+  (a **desk**), not a captain at the table (`hangout.ts:168-172`).
+- **The dare/wager loop** (`hangout.ts:227-296`). Opposed GUILE through the shared
+  `check()` (`dice.ts:137`), each side's check framed against the *other's* total,
+  mirroring `resolveRun`; there is deliberately **no fixed DC** — the dealer's live GUILE
+  total IS the difficulty (the argument is at the resolver's definition site). The wager is
+  the requested stake clamped into `[DARE_MIN_WAGER = 25, DARE_MAX_WAGER = 1000]`
+  (`packages/content/src/hangout.ts:65-66`) **and down to
+  `min(player.credits, dealer.credits)`**. Credits then move **both directions off the
+  same wager**, and the dealer's purse is debited through `mutableNpc`
+  (`packages/engine/src/npc.ts:649`, copy-on-write) — i.e. **a zero-sum transfer between
+  two purses**, not a payout.
+- **Disposition beats, all through `applyDisposition`** (`npc.ts:657`):
+  `DARE_WIN_DISPOSITION = -2` / `DARE_LOSS_DISPOSITION = +2` (both outcomes move it),
+  `BEFRIEND_DISPOSITION = +3` behind a real `BEFRIEND_DC = 12` GUILE check,
+  `INSULT_DISPOSITION = -4` uncontested (no roll), `MEET_DISPOSITION = +1`
+  (`packages/content/src/hangout.ts:78-100`). **These have live readers**: T-1204's
+  interceptor grudge weighting (`chooseWeighted` + `dispositionOf`,
+  `packages/engine/src/actions/travel.ts:339-360,379`) and the tribute DCs.
+- **The rumor host slot.** `hangoutRumors` (`hangout.ts:69`) synthesises ≥1 authored line
+  per co-located NPC out of live `lastAction` / `currentSystemId` / `disposition`, filtering
+  `dead`. **NPCs are its SUBJECT, never its reader.**
+- **The loan mechanics** — the half the ledger row calls out.
+  - **borrow** (`hangout.ts:354-384`): principal clamped into
+    `[LOAN_MIN_PRINCIPAL = 250, LOAN_MAX_PRINCIPAL = 5000]`
+    (`packages/content/src/lending.ts:76-77`) and advanced; `player.loan` is written
+    `{ lender: LENDER_ID = 'npc-penny-wise' (lending.ts:56), dailyRate:
+    LOAN_DAILY_RATE = 0.05 (lending.ts:63), dueDay: day + LOAN_TERM_DAYS = 15
+    (lending.ts:69), status: 'active' }` and `credits += principal`.
+  - **repay** (`hangout.ts:386-409`): payment clamped to
+    `min(requested, credits, outstanding)`; a balance driven to `<= 0` clears the whole
+    loan. Both venues' preconditions (`hangout.ts:193-218`) fail typed and spend
+    **nothing** — the debt-as-ledger law: a loan can only ever add an out.
+  - **dusk accrual + default** (`packages/engine/src/day.ts:907-948`): simple interest
+    `ceil(principal * dailyRate)` accrues to `outstanding`, **never** to credits; crossing
+    `dueDay` still owing flips `active → defaulted` **once** and fires
+    `applyDisposition(LENDER_ID, LOAN_DEFAULT_DISPOSITION = -5, 'loan-default')`
+    (`lending.ts:85`) plus a `LoanEvent{defaulted}` and a WireEntry.
+  - **The default has exactly two readers**: the disposition hit (interceptor grudge
+    weighting, `travel.ts` `chooseWeighted`) and the collection flag, which multiplies the
+    realized encounter chance by `COLLECTION_ENCOUNTER_MULTIPLIER = 1.5`
+    (`lending.ts:92`, read at `travel.ts:495-503`).
+
+**Content-derived arithmetic** (derived from the tables, not measured — labelled as such,
+and it is what part (d) prices the loan against). At `LOAN_MIN_PRINCIPAL = 250` the carry
+is `ceil(250 × 0.05)` = **13cr every dusk**; held the full 15-dusk term that is **195cr of
+interest on 250cr borrowed (78%)**, 445cr to clear. (`lending.ts`'s own header says "~75%
+simple interest over a full term"; the `ceil` is what makes it 78% at the band floor.) At
+the ceiling, 5,000cr carries **250cr/dusk**, 3,750cr over a term. What 250cr *buys*: at
+`localFuelPrice` (`FUEL_DEFAULT_BUY_PRICE = 5` core / `RIM_FUEL_BUY_PRICE = 8` rim,
+`packages/content/src/systems.ts:209,220`) it is **31–50 fuel**, i.e. **3–5 NPC patrols**
+at `NPC_PATROL_FUEL = 10` (`npc.ts:493`) — and **not one** player-style 80-fuel Explore in
+the rim. Against the yard ladder `YARD_COMPONENT_TIER_PRICES =
+[50, 100, 200, 400, 800, 1500, 3000, 5000, 10000]`
+(`packages/content/src/upgrades.ts:4`) it reaches the **tier-3 rung and no further**;
+`LOAN_MAX_PRINCIPAL` reaches tier-8.
+
+**(b) What the cast has instead.**
+
+`executeSocialize` (`packages/engine/src/npc.ts:1573-1601`), dispatched by `resolveNpcDay`
+(`npc.ts:1604`, if/else chain `:1675-1687`) off `pickIntent` (`npc.ts:583`). Of the parts
+in (a) it reproduces **one**:
+
+- **One GUILE check through the SHARED `check()`**, via `rollNpcCheck` (`npc.ts:1214`)
+  against the content DC `NPC_CHECK_DCS.Socialize = 14` (`packages/content/src/ideals.ts:51`),
+  paying `NPC_SOCIALIZE_WIN_CREDITS = 150` or costing `NPC_SOCIALIZE_LOSS_CREDITS = 50`
+  (`ideals.ts:73,76`).
+- Plus an **ante gate**: `npc.credits < NPC_BROKE_CREDITS + 50` (i.e. **< 150**;
+  `NPC_BROKE_CREDITS = 100` at `npc.ts:463`) falls through to `brokeIdle` (`npc.ts:1172`,
+  which pays `NPC_ODD_JOB_CREDITS = 25`, `npc.ts:490`) — preserving T-1201's
+  verb⟺StatCheck invariant, because a returned `Socialize` always means a check was
+  rolled. Worth recording as an observation rather than a finding: the `+ 50` is an
+  **engine-side literal**, so the ante itself is not a content-tunable number the way
+  every payoff around it is.
+
+Nine parts it does **not** reproduce. The reasons differ in kind, which is why they are
+enumerated rather than summed:
+
+1. **The opposed roll.** A fixed DC 14 against the player's live-dealer-GUILE-as-DC. A
+   strong dealer is not a hard table for the cast.
+2. **The wager.** Fixed +150 / −50; no `[25, 1000]` band, no choice of stake, no clamp to
+   what either side can actually cover.
+3. **No counterparty — the deeper one.** The player's dare *moves* credits between two
+   purses. `executeSocialize` **mints or burns credits against nothing**, so the cast's
+   social verb is not zero-sum where the player's is. This is a field-credit-conservation
+   question **independent of the loan decision**; it is measured below.
+4. **No `hasHangout` gate.** The player is refused at 27 of 28 systems; the cast plays
+   "the Hangout tables" at any of the 20 `NPC_SYSTEM_IDS` systems, and the action's own
+   flavour text names the local system. This is consequence 2's exact shape — a gate that
+   never bites — and it is the **cheapest real parity item in this memo** (one
+   `STAR_SYSTEMS` read). It is not free: it deletes ~96% of the verb's occurrences
+   (measured below), which moves the verb mix, stales the N10 baseline of record and owes
+   **a new capstone, never a refreshed number** (this doc, line 82).
+5. **No presence requirement.** No co-located captain is needed; nobody is across the
+   table.
+6. **No die cost.** The same shape as watch item **OI-9** (the NPC refit spends no die);
+   blocked on **N13** for a real fix.
+7. **No disposition movement — and structurally none available.** `disposition` is defined
+   on `NpcState` as standing **toward the player** (`packages/engine/src/types.ts:1179-1181`;
+   the note at `travel.ts:343`). NPC↔NPC standing is an *absent model*, not a number left
+   at zero.
+8. **No rumor consumption — and none owed.** NPCs are `hangoutRumors`' subject, never its
+   reader. Recorded so it counts as considered rather than skipped.
+9. **No borrow and no repay at all.** `NpcState` (`packages/engine/src/types.ts:1153-1206`)
+   carries `id / name / profileId / currentSystemId / credits / ship / disposition /
+   lastAction? / dead?` — **there is no `loan` field**. This is a **field absence on the
+   save shape**, not a policy choice: a captain can neither borrow nor default, and no
+   amount of engine work reaches it without moving the record.
+
+**MEASURED — the cast probe** (`.scratch/t011-cast-probe.ts`, gitignored; re-runnable with
+`npx tsx`). Seeds **1..120 × 120 days**, folding over every **living simulated** captain's
+`lastAction` each dusk (the eleven storyline records are excluded via `isSimulatedCaptain`,
+`packages/content/src/cast.ts:660` — they take no turn and sit at seed credits, and
+including them was exactly the dilution N4 recorded). It drives the engine's own
+`startDay` → `applyPlayerAction` → `endDay` and reproduces `runCampaign`'s day-loop
+ordering including the per-day fork
+`new SeededRng(seed).fork('policy').fork('day-'+state.day).fork('index-'+dayIndex)` and the
+`Combat`-with-no-encounter skip. **R2c admissibility is carried in the probe itself**: its
+`finalCredits` is byte-equal to `runCampaign(seed, 120, 'trader').finalState.credits` on
+seeds 1-5 — **5/5 MATCH** (15,836 / 67,482 / 60,556 / 31,537 / 51,925). The named policy
+string is deliberate: `resolvePolicy` (`packages/sim/src/index.ts:4387`) returns
+`dawnBlind: true` for *any function* policy, so handing the lambda to `runCampaign` would
+collapse the arm.
+
+| quantity (n = **424,695** living simulated captain-days; 120 seeds × 120 days) | value |
+| --- | --- |
+| verb mix — `FlawOverride` / `Trade` / `Travel` | 129,500 · 65,802 · 62,180 |
+| … `Idle` / `Socialize` / `Combat` / `Patrol` | 51,793 · **46,757** · 34,943 · 33,720 |
+| Socialize share of captain-days | **0.1101** |
+| Socialize resolved where `hasHangout !== true` | **44,843 / 46,757 = 0.9591** |
+| Socialize win rate (vs DC 14) | **0.4705** (21,999 wins / 24,758 losses) |
+| **EV per Socialize action** | `0.4705 × 150 − 0.5295 × 50` = **+44.1cr** |
+| **NET credits Socialize adds to the field** | **+2,061,950** = **+4.86cr / captain-day** |
+| `brokeIdle` days (`Idle` + "hard up for credits") | 51,793 = **0.1220** of captain-days |
+| T-1201 cross-check: `actionContext === 'npc-socialize'` | **46,757** = the `Socialize` tally |
+| player `dare` HangoutEvents in this arm (would also emit one) | **0** |
+| living field **under the 150 ante** | day 30 **0.2301** · 60 **0.2682** · 120 **0.2389** |
+| living field under `NPC_BROKE_CREDITS` (100) | day 30 0.0098 · 60 0.0130 · 120 0.0075 |
+
+Two of those rows carry more than a number. The NET figure is credits the field gains
+against **no counterparty at all** — the faucet in part (d)'s third bullet. And the
+`brokeIdle` count is **identical to the whole `Idle` tally**, i.e. **every idle day in the
+sample is a broke day**; the `npc-socialize` StatCheck count matching the `Socialize` tally
+exactly, with zero player dares in this arm to confound it, is the T-1201 verb⟺StatCheck
+invariant holding at n = 46,757.
+
+Two honesty notes on the probe, neither of which (d) leans past. The field figures are
+conditioned on a **single player policy** (`trader`) sharing the world, so the absolute
+verb counts are one arm, not the fleet; and `brokeIdle` is a **lower bound** on
+intent-level rejection — it is the fallback for the underfunded Trade and Patrol paths too,
+so it cannot be read as the Socialize-intent rejection rate (and modelling that by calling
+`pickIntent` here would be exactly the private parallel model the standing constraint
+forbids).
+
+**FREE — the committed capstone.** `docs/balance/baseline-n10-shipped.json`,
+`fleet.milestones[day = 120]`, n = **240,000** captain-samples (8,000 runs × 30 captains):
+`npcCredits` p10 **126**, p25 **150**, median 76,049; `npcFuel` p10 0, p25 4, median 27.
+Against the Socialize ante of **150** that is this memo's sharpest free datum — **the
+bottom quartile of the field sits at or below the ante** (p25 is the ante, to the credit),
+which the probe's independent 0.24 share corroborates. N10's Result records the two
+destitute archetype medians as **fighter 132** and **explorer 167**: the fighter's median
+captain is *below* the ante and the explorer's is barely above one losing hand of it. Also
+worth stating as a verified negative: the capstone carries **no loan metric at all** — not
+in `fleet`, not in any of the eight `byPolicy` rows.
+
+**(c) The three options, each with its real cost.**
+
+**Option 1 — implement (full parity).** The pieces, each with its price:
+
+- **`NpcState.loan`** — priced in full under the save-shape heading below. It is the
+  gating cost, and it is unavoidable for any option that lets a captain owe money.
+- **One shared accrual/default function.** The dusk block at `day.ts:907-948` must be
+  **extracted and given an actor parameter so both sides call it**, never copied into
+  `npc.ts`. That is the standing constraint and R2c, and it is the difference between
+  parity and a second definition of interest.
+- **An NPC-side collection reader, into a slot that already exists and is already
+  commented.** `resolveNpcEncounter` (`npc.ts:869`) says at its multiplier chain: *"Two of
+  the player's four terms have NO NPC ANALOGUE and are absent rather than zeroed: a
+  defaulted Penny Wise loan and a Guild debt flag are player-only mechanics, so there is
+  nothing to read. That is an absent INPUT, not a threshold tuned so a rule will not
+  bite."* That comment is the definition-site argument this option is buying out; an
+  `NpcState.loan` turns the absent input into a present one and the
+  `COLLECTION_ENCOUNTER_MULTIPLIER` term becomes readable for the cast.
+- **The lender needs no roster work.** `LENDER_ID` is a **desk**, not a co-located
+  captain (`hangout.ts:168-172`), so the cast can borrow wherever a Hangout exists without
+  touching N4's roster split.
+- **An actor discriminator on `LoanEvent`, or the instrument lies.** `LoanEvent`
+  (`packages/engine/src/types.ts:612-630`) has **no actor field**, and the sim folds it
+  unconditionally: `packages/sim/src/index.ts:892-903` credits every `borrowed` /
+  `accrued` / `repaid` / `defaulted` into `LoanUsageStats` (`index.ts:146`) as the
+  **player's**. Emit NPC loan events without an actor and every loan number this project
+  has measured silently absorbs the cast — the same shape as the Explore memo's deed
+  cross-contamination finding, and it must be closed in the same commit.
+- **The non-loan parity items:** the `hasHangout` read, the opposed roll with a real
+  counterparty transfer through `mutableNpc`, and the die (**blocked on N13**).
+- **And a new sim limb plus a new capstone.** N9's lesson applies directly: the instrument
+  cannot currently see an NPC loan at all, and a mechanism the instrument cannot see cannot
+  be graded.
+
+**Option 2 — algorithmic fast-forward.** The loan **ledger** without the rest: a captain
+under the ante takes `LOAN_MIN_PRINCIPAL` through the same clamp, accrues through the same
+shared function, and expresses default **only** as the encounter multiplier. It buys the
+verb's *consequence* without its *scene*. State the asymmetry with the Explore memo's
+option 2 plainly: **a debt IS persistent state, so there is no save-free version of this
+option** — `NpcState.loan` is owed either way, and the only thing option 2 saves is the
+wager, the counterparty and the disposition beat. It must be recorded as a **partial** for
+the same reason Explore's is: an actor playing the same rules over a smaller surface is
+honest only while the smaller surface is written down.
+
+**Option 3 — exclude the loan half with a reason.** Zero code for lending. The three cheap
+non-loan parity items (venue gate, opposed roll + counterparty, the die at N13) stay
+separately decidable, because none of them touches the save shape. Note that this exclusion
+is **not symmetric with Explore's**: the cast already plays this verb, so the ledger row
+becomes a **ruled partial** — "Socialize stand-in; lending ruled player-only" — rather than
+a ruled absence, and that is what N8's "all or most of a full player's actions" would have
+to count. The reason available to be stated is that Penny Wise's desk is authored
+player-facing content whose quest line (PRD §7.5) has no cast-side expression, and that the
+default's grudge reader is the very thing N4 left open.
+
+**The borrow/repay gap and the OPEN N4 question — the live connection.**
+
+`state.npcs` is seeded from **all 41** profiles, `[...NPC_PROFILES, ...QUEST_PROFILES]`
+(`packages/engine/src/state.ts:79`), and Penny Wise (`npc-penny-wise`) is one of the eleven
+storyline captains — **not** a simulated captain (`isSimulatedCaptain`,
+`packages/content/src/cast.ts:660`). So the player's `loan-default` write **still lands on
+her record**; what it lost is a reader. Precisely: of the default's two consequences,
+**one survives and one is unreachable.**
+
+- **Survives:** the collection flag. `travel.ts:495-503` multiplies the player's realized
+  encounter chance by `COLLECTION_ENCOUNTER_MULTIPLIER` off `loan.status === 'defaulted'`,
+  which has nothing to do with who Penny Wise is.
+- **Unreachable:** the interceptor identity. `buildNamedCandidates`
+  (`travel.ts:275-301`) filters on `NPC_PROFILES`, so the −5 disposition hit that
+  `LOAN_DEFAULT_DISPOSITION`'s own comment says exists to make her "far likelier to BE your
+  interceptor" now feeds `chooseWeighted` for a candidate that can never be drawn.
+
+That is **N4's already-open owner question**, recorded in this doc at the N4 ruling
+("**OPEN, and an owner design question:** `applyDisposition`'s `loan-default` (Penny Wise)
+and `contraband-caught` (a named patrol captain) reasons were written so T-1204's
+interception weighting could read them … those grudges need a storylet-side expression or
+the writes need re-siting") and again under N4's Result as "**an owner design question, not
+a number**". It covers **`contraband-caught`** (`packages/engine/src/actions/patrol.ts:115`)
+in exactly the same way, and T-040's checkpoint already carries it.
+
+**The two questions are separable but one constrains the other, so they should be ruled
+together:**
+
+- **(i) NPC borrowing needs an NPC-side collection consequence.** The multiplier slot
+  exists and is commented (`npc.ts:869-886`), so the *flag* half transfers cleanly. The
+  *grudge* half does not, because it has nowhere to point.
+- **(ii) The N4 re-siting ruling decides whether it ever will.** If the owner rules
+  "express the grudge storylet-side / re-site the writes", then an NPC default has no
+  disposition target either and NPC lending inherits a half-consequence. If the owner rules
+  "Penny Wise becomes drawable", both readers return and NPC lending inherits a working
+  consequence chain on day one. Ruling (ii) first is strictly cheaper than ruling (i)
+  first.
+
+**The save-shape cost of an `NpcState.loan`, both forms, so the owner is pricing the real
+thing.**
+
+- **Nullable (`loan: LoanState | null`, matching `PlayerState`)** — a save-shape change,
+  and the precedent is exact: **`MIGRATIONS[2]` is the v2→v3 entry that added
+  `PlayerState.loan`** by backfilling the key to `null`
+  (`packages/engine/src/save.ts:157-166`). The bill is a `CURRENT_SAVE_VERSION` bump, a
+  `MIGRATIONS[n]` entry backfilling every `npcs[]` element to `null`, a **round-trip
+  test**, and `deserializeState` performing the same backfill pinned by a test. The
+  migration must **call** the rule rather than restate it — the `MIGRATIONS[9]` /
+  `MIGRATIONS[10]` discipline (`save.ts:276-327`).
+- **Optional (`loan?: LoanState`, absent = no loan)** — the **`dead?: boolean`** precedent
+  (`types.ts:1183-1205`; `schema.ts:482-486`): a pure addition, **no migration and no
+  version bump**, because an old save having no key is exactly what `undefined` means.
+  The key must still be declared in the `.strict()` `NpcStateSchema`
+  (`packages/engine/src/schema.ts:466-487`) or a save carrying it is rejected as unknown.
+  The honest trade-off: an optional field makes "this captain has no loan" indistinguishable
+  from "this save predates NPC lending", where the nullable form states it. Either way
+  `LoanStateSchema` (`schema.ts:319-331`) is reusable **as-is** — it is already the shape
+  the player's loan validates against.
+- **Sequencing the owner is actually pricing.** `CURRENT_SAVE_VERSION = 11`
+  (`save.ts:331`), and **N11's T-020 already claims 11 → 12 with `MIGRATIONS[11]`**. So a
+  nullable `NpcState.loan` lands at **v13 after N11**, or must be folded into N11's bump.
+  The optional form sidesteps the ordering entirely, which is the strongest argument in its
+  favour.
+
+**(d) Recommendation, with its reason.**
+
+The task's sharp question is whether NPC borrowing gives the destitute archetypes a real
+recourse or merely a more elaborate bankruptcy. The arithmetic answers it, and it answers
+it differently for the two halves of the field:
+
+- **For a captain below the ante, the loan is a rope, not a lever.** A captain locked out
+  of Socialize is on `brokeIdle`, which pays **`NPC_ODD_JOB_CREDITS = 25`/day**. The carry
+  on the *smallest loan the band allows* is **13cr/dusk** — **52% of that captain's entire
+  daily income**, before a single credit of principal. They cannot service it, so they
+  reach `dueDay` owing 445cr, default, and collect a 1.5× encounter multiplier they have no
+  ship to survive (the same capstone puts `npcFuel` p25 at 4 and `npcHullStrength` p10 at
+  10 against a 90 ceiling). That is the elaborate bankruptcy, arrived at by content
+  arithmetic rather than by intuition.
+- **The recourse it does buy is one step wide, and the step is real but small.** 250cr
+  clears the 150 ante immediately, which unlocks a verb worth a measured **+44.1cr per
+  action** at a measured **0.1101** frequency — about **+4.9cr per captain-day**. Against
+  13cr/dusk of carry, the unlocked verb pays back **~37% of the interest** it was borrowed
+  to reach. It also buys **31–50 fuel = 3–5 patrols** (at +40/−20 a sweep), which is the
+  more plausible route out. Neither reaches a hull: 250cr stops at the **tier-3** yard rung,
+  and **R10 (the tier-1 hull cliff) is R-owned and confounds any "buy a hull" arm** of this
+  question outright, so that arm should not be run under this track.
+- **So the destitute-borrower case is weak on the numbers, and the strongest case for
+  lending is a different one.** It is the **counterparty defect**, which the probe measures
+  independently of the loan question: `executeSocialize` adds **+4.86cr per captain-day**
+  to the field against no counterparty at all — a pure **faucet** where the player's dare is
+  a zero-sum transfer. That is a parity break in the verb the cast *already plays*, it needs
+  no save-shape change, and it is arguably worth more than lending is. Recorded here rather
+  than folded into the recommendation, because it is not the question the owner was asked.
+- **And the cheapest item on the list is the venue gate.** **95.91% of the cast's
+  Socialize actions resolve at a system with no Hangout.** One `STAR_SYSTEMS` read closes
+  it — but it deletes ~96% of the verb's occurrences, so it moves the verb mix and owes a
+  new capstone. That is a real price, and it is the reason the gate should not be treated as
+  a free drive-by fix.
+
+On that evidence, offered as a recommendation and not as a ruling: **option 2 over option
+1, and only after the N4 ruling** — the ledger (borrow, shared accrual, default expressed
+as the encounter multiplier) is where the parity value is, the wager and the disposition
+beat are where the cost is, and the disposition beat in particular is unbuildable until (ii)
+above is answered. The `NpcState.loan` field is owed by option 1 and option 2 alike, so the
+**optional-field form** is the one to price first, because it is the only route that does
+not queue behind N11's version bump.
+
+What stays genuinely open, and belongs to the owner: whether Penny Wise's authored quest
+line tolerates thirty captains at her desk at all; the N4 `loan-default` /
+`contraband-caught` pairing, which should be ruled **with** this row rather than after it;
+the die cost, which is **N13's** and which no option here can close; and whether the
+counterparty faucet in bullet three is a separate work item or part of whatever this row
+becomes.
+
+**(e)**
+
+**DECISION: OWED**
+
+The owner is choosing between: **option 1** implement at full parity (an `NpcState.loan`
+plus a migration or the optional-field route, an actor-parameterised accrual function, an
+actor discriminator on `LoanEvent` before the instrument mis-attributes NPC debt to the
+player, a new sim limb, a new capstone, the N4 ruling as an input, and the die still blocked
+on N13), **option 2** the loan ledger fast-forwarded and recorded as a partial (same field
+cost — a debt is persistent state — but no wager, no counterparty, no disposition beat), and
+**option 3** exclude lending with the stated reason (zero code, and N8 counts the row as a
+ruled **partial**, not a ruled absence, because the cast already plays the verb). Nothing in
+this memo selects among them.
+
+---
+
 ### N0 — One copy-on-write discipline for player and NPC turns (SHIPPED 2026-07-28)
 
 - **Why first:** NPC records are about to grow a ship, and `cloneState` deep-copied all

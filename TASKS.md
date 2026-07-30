@@ -152,7 +152,7 @@ code — Explore's status for the cast remains unimplemented pending the owner's
 among the three options.
 Orchestration: graphify=none — no graphify-out/graph.json in the repo root · attempts=1/4.
 
-### T-011 · Memo: the VisitHangout verb — `status: TODO` · `coder: opus` · `after: T-010`
+### T-011 · Memo: the VisitHangout verb — `status: DONE` · `coder: opus` · `after: T-010`
 
 The ledger records VisitHangout as **"Socialize stand-in; no borrow/repay"**. Read the
 player's implementation (`resolveVisitHangout`, `packages/engine/src/actions/hangout.ts`)
@@ -174,6 +174,26 @@ and correctly characterises `executeSocialize` and `resolveVisitHangout` (both g
 it explicitly addresses the borrow/repay gap AND its link to the open N4
 `loan-default`/`contraband-caught` question; it states the save-migration cost of an
 `NpcState.loan`; it contains `**DECISION: OWED**`; gate green.
+
+**Delivered (2026-07-29):** Added the "VisitHangout — decision memo" section to
+`docs/NPC_REDESIGN.md`, covering all five parts (a)–(e). Part (a) decomposes the player's
+`resolveVisitHangout` into its six separable parts (venue gate, die spend, presence, the
+dare/wager loop, disposition beats, the rumor host slot) plus the loan mechanics
+(borrow/repay/accrual/default) with their content-derived arithmetic. Part (b) shows
+`executeSocialize` reproduces only the GUILE check, with a measured cast probe (n =
+424,695 living simulated captain-days) quantifying the counterparty-less faucet at +44.1cr
+per action / +4.86cr per captain-day, and that 95.91% of cast Socialize actions resolve
+where no Hangout exists. Part (c) prices all three options (full parity, algorithmic
+fast-forward, exclude-with-reason), including both the nullable and optional forms of an
+`NpcState.loan` save-shape addition. Part (d) recommends option 2 over option 1, gated on
+the N4 `loan-default`/`contraband-caught` ruling being resolved first, and explicitly
+flags the counterparty faucet as the strongest independent finding. Part (e) closes with
+`**DECISION: OWED**` — the memo characterizes and prices the options but does not itself
+choose among them, matching T-012's identical pattern for Storylet. Scope boundary: no
+engine or save-shape code was touched — this task is documentation-only, as scoped; the
+`NpcState.loan` field, shared accrual extraction, and N4 re-siting ruling all remain for
+whichever future task the owner selects.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
 
 ### T-012 · Memo: the Storylet verb — `status: TODO` · `coder: opus` · `after: T-011`
 
