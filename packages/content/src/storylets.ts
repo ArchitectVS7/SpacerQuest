@@ -5150,6 +5150,434 @@ export const STORYLETS = defineStorylets(
         },
       ],
     },
+
+    // --- T-115 · THE BAND-3 AND BAND-4 EXPLORE EPISODES -----------------------
+    //
+    // Eight more targets, in the shape T-114 established and for the same
+    // reasons: `scheduledOnly` with no further gate (an era or system gate on a
+    // beat whose scheduler is a chance find would strand the schedule entry the
+    // day the gate never opened), each with a `wireResolution` so an unplayed
+    // hook is closed by the dusk sweep rather than dangling.
+    //
+    // WHAT MAKES THESE BANDS 3 AND 4 IS THE DECISION, not a bigger number. A
+    // band-2 episode was a small choice with a small payment attached; these ask
+    // the captain to cross a power, give something up, or take on a debt. Where
+    // credits appear at all they are one option among several, and the largest
+    // sits inside the ~1,200cr (band 3) / ~3,500cr (band 4) credit-equivalents
+    // §5.5 prices those bands at — a figure that also has to cover six days of
+    // recovery the captain has already paid before the episode is even offered.
+    {
+      id: 'explore.long-orbit.lifeboat',
+      title: 'The Boat On The Long Orbit',
+      prose:
+        'The lifeboat you pulled alongside is dry, and has been dry a long time. Its course was laid by hand, deliberately, for a system with no port, no beacon and no reason. Somebody aboard chose that heading knowing what it cost them.',
+      repeat: 'never',
+      trigger: {
+        scheduledOnly: true,
+      },
+      wireResolution: {
+        graceDays: 7,
+        wireMessage:
+          'The hand-laid course out of the recovered lifeboat went stale in your locker, and the orbit it named carried on without anyone to read it.',
+        effects: {
+          flags: [{ name: 'explore.long-orbit.resolved', value: 'wire' }],
+        },
+      },
+      choices: [
+        {
+          id: 'fly-the-heading',
+          label: 'Fly the heading yourself',
+          prose:
+            'Burn the numbers off the boat and see what is at the end of them. There is nothing there but cold and a marker, and the marker has a name on it that the registry says died somewhere else entirely.',
+          effects: {
+            flags: [
+              { name: 'explore.long-orbit.resolved', value: 'flown' },
+              { name: 'explore.long-orbit.marker', value: true },
+            ],
+            disposition: [{ npcId: 'npc-star-gazer', delta: 2 }],
+          },
+        },
+        {
+          id: 'file-the-boat',
+          label: 'File the boat with the registry',
+          prose:
+            'Tow it in, log it, and let the clerks work out whose it was. It is the correct thing to do and it pays a finderly, correctly, and without a word of thanks.',
+          effects: {
+            credits: 400,
+            flags: [{ name: 'explore.long-orbit.resolved', value: 'filed' }],
+            reputation: [{ faction: 'confederation', delta: 1 }],
+          },
+        },
+      ],
+    },
+    {
+      id: 'explore.quarantine.seal',
+      title: 'Welded From The Inside',
+      prose:
+        'The seal you cut was welded from the inside, which means the quarantine was not imposed on that compartment — it was chosen. What is behind it has been behind it for a very long time, and the log that would say why is on the other side of the door.',
+      repeat: 'never',
+      trigger: {
+        scheduledOnly: true,
+      },
+      wireResolution: {
+        graceDays: 6,
+        wireMessage:
+          'The quarantine compartment you opened and did not enter drifted on unlogged, and someone else will find it welded shut a second time.',
+        effects: {
+          flags: [{ name: 'explore.quarantine.resolved', value: 'wire' }],
+        },
+      },
+      choices: [
+        {
+          id: 'go-in',
+          label: 'Go in with a lamp',
+          prose:
+            'What is inside is a workshop, a bunk, and forty years of one person keeping careful notes about a thing they would not name. The notes are worth carrying. The rest you leave exactly as they arranged it.',
+          effects: {
+            credits: 600,
+            flags: [
+              { name: 'explore.quarantine.resolved', value: 'entered' },
+              { name: 'explore.quarantine.notes', value: true },
+            ],
+          },
+        },
+        {
+          id: 'report-it',
+          label: 'Report it to the Confederation',
+          prose:
+            'Give the bearing to a patrol office and let people whose job it is bring the right equipment. They take it seriously enough that you are asked, twice, whether you went inside.',
+          effects: {
+            flags: [{ name: 'explore.quarantine.resolved', value: 'reported' }],
+            reputation: [{ faction: 'confederation', delta: 2 }],
+          },
+        },
+        {
+          id: 'weld-it-shut',
+          label: 'Weld it shut again',
+          prose:
+            'Somebody sealed this from the inside and had a reason. Run a fresh bead round the frame, log nothing, and put the wreck behind you at speed.',
+          effects: {
+            flags: [{ name: 'explore.quarantine.resolved', value: 'resealed' }],
+          },
+        },
+      ],
+    },
+    {
+      id: 'explore.witness.tape',
+      title: 'Three Names, Two Of Them Flying',
+      prose:
+        'The recording is a deposition nobody ever filed. It names three captains and what they did to a hull that was not theirs. One of the three is dead. The other two are still on the boards, still taking cargo, still buying rounds in the ports you use.',
+      repeat: 'never',
+      trigger: {
+        scheduledOnly: true,
+      },
+      wireResolution: {
+        graceDays: 5,
+        wireMessage:
+          'The unfiled deposition off the wreck stayed unfiled in your locker, and the two captains it names kept their berths.',
+        effects: {
+          flags: [{ name: 'explore.witness.resolved', value: 'wire' }],
+        },
+      },
+      choices: [
+        {
+          id: 'file-the-deposition',
+          label: 'File the deposition',
+          prose:
+            'Walk it into a Confederation office and sign your own name under a dead witness. Two captains lose their tickets. A great many people now know exactly who took it in.',
+          effects: {
+            flags: [{ name: 'explore.witness.resolved', value: 'filed' }],
+            reputation: [{ faction: 'confederation', delta: 2 }],
+            disposition: [{ npcId: 'npc-crimson-hawk', delta: -3 }],
+          },
+        },
+        {
+          id: 'sell-the-silence',
+          label: 'Sell them the silence',
+          prose:
+            'Put out a quiet word that a recording exists and that its keeper is reasonable. The payment arrives without a covering note, which is how you know they understood.',
+          effects: {
+            credits: 900,
+            flags: [{ name: 'explore.witness.resolved', value: 'sold' }],
+            disposition: [{ npcId: 'npc-the-broker', delta: 2 }],
+          },
+        },
+        {
+          id: 'give-it-to-the-dead',
+          label: "Give it to the dead captain's people",
+          prose:
+            'Find whoever is left of the third name and hand the recording over. They do not pay you. They do write your ident down, and the spacer grapevine is not a fast thing but it is a thorough one.',
+          effects: {
+            flags: [{ name: 'explore.witness.resolved', value: 'given' }],
+            disposition: [
+              { npcId: 'npc-doc-salvage', delta: 3 },
+              { npcId: 'npc-nebula-rose', delta: 2 },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      id: 'explore.bonded.crate',
+      title: 'Addressed To A Closed Office',
+      prose:
+        'The crate is League-bonded, which means it is legally somebody else, and the office it is addressed to shut its doors ten years ago. Bonded cargo with no consignee is the kind of problem that has a whole shelf of precedent and no answer on it.',
+      repeat: 'never',
+      trigger: {
+        scheduledOnly: true,
+      },
+      wireResolution: {
+        graceDays: 7,
+        wireMessage:
+          'The bonded crate sat in your hold until the Astro League sent a tender for it, and the tender did not ask whether you had opened it.',
+        effects: {
+          flags: [{ name: 'explore.bonded-crate.resolved', value: 'wire' }],
+        },
+      },
+      choices: [
+        {
+          id: 'crack-the-bond',
+          label: 'Crack the bond',
+          prose:
+            'Cut the seals and find machine tooling, still in grease, still worth what tooling is always worth. The bond number is now a number on a crate nobody will ever look for.',
+          effects: {
+            credits: 1200,
+            flags: [{ name: 'explore.bonded-crate.resolved', value: 'cracked' }],
+            reputation: [{ faction: 'league', delta: -1 }],
+          },
+        },
+        {
+          id: 'hand-it-to-the-league',
+          label: 'Hand it to the League intact',
+          prose:
+            'Deliver it seals-unbroken to the nearest Astro League hall and let them work out who owns a closed office. They are not warm about it. They are, very precisely, correct about it.',
+          effects: {
+            credits: 300,
+            flags: [{ name: 'explore.bonded-crate.resolved', value: 'returned' }],
+            reputation: [{ faction: 'league', delta: 2 }],
+          },
+        },
+      ],
+    },
+    {
+      id: 'explore.charted.lane',
+      title: 'A Lane On No Chart',
+      prose:
+        'The astrogation stack off the find carries a lane that the Confederation survey does not admit exists. It is short, it is old, and every waypoint on it is expressed in a reference frame that went out of use before the Confederation did.',
+      repeat: 'never',
+      trigger: {
+        scheduledOnly: true,
+      },
+      wireResolution: {
+        graceDays: 6,
+        wireMessage:
+          'The uncharted lane you copied off the find aged out of its own reference frame in your locker, and the numbers no longer resolve.',
+        effects: {
+          flags: [{ name: 'explore.charted-lane.resolved', value: 'wire' }],
+        },
+      },
+      choices: [
+        {
+          id: 'sell-to-the-rebels',
+          label: 'Sell it to people who avoid patrols',
+          prose:
+            'A lane nobody charts is worth most to the people most anxious not to be met. The handover happens in a bar with no name and the coin is counted twice.',
+          effects: {
+            credits: 1000,
+            flags: [{ name: 'explore.charted-lane.resolved', value: 'sold-rebels' }],
+            reputation: [{ faction: 'rebels', delta: 2 }],
+            disposition: [{ npcId: 'npc-smuggler-ray', delta: 2 }],
+          },
+        },
+        {
+          id: 'lodge-the-survey',
+          label: 'Lodge it with the survey office',
+          prose:
+            'Convert the waypoints into the current frame yourself, which takes four days and a headache, and lodge the result. It goes onto the chart with your ident in the margin, where it will stay.',
+          effects: {
+            flags: [
+              { name: 'explore.charted-lane.resolved', value: 'lodged' },
+              { name: 'explore.charted-lane.credited', value: true },
+            ],
+            reputation: [{ faction: 'confederation', delta: 2 }],
+            disposition: [{ npcId: 'npc-star-gazer', delta: 3 }],
+          },
+        },
+        {
+          id: 'keep-it',
+          label: 'Keep it to yourself',
+          prose:
+            'Fold the numbers into your own stack and tell nobody. A lane is worth more to one captain who knows it than to a chart everybody reads.',
+          effects: {
+            flags: [
+              { name: 'explore.charted-lane.resolved', value: 'kept' },
+              { name: 'explore.charted-lane.private', value: true },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      id: 'explore.last.transmission',
+      title: 'Addressed, By Name',
+      prose:
+        'The last thing the find ever sent was not a distress call. It was addressed to a captain who is alive, who is flying, and who has never mentioned being owed a message by a ship that died out there.',
+      repeat: 'never',
+      trigger: {
+        scheduledOnly: true,
+      },
+      wireResolution: {
+        graceDays: 5,
+        wireMessage:
+          'The last transmission off the find stayed undelivered in your locker, and the captain it names went on not knowing it was ever sent.',
+        effects: {
+          flags: [{ name: 'explore.last-transmission.resolved', value: 'wire' }],
+        },
+      },
+      choices: [
+        {
+          id: 'deliver-it',
+          label: 'Deliver it in person',
+          prose:
+            'Find the berth, sit down opposite, and play it through once. They listen to the end, thank you, and ask you not to say where you found it. You agree, and you mean it.',
+          effects: {
+            flags: [{ name: 'explore.last-transmission.resolved', value: 'delivered' }],
+            disposition: [
+              { npcId: 'npc-the-phantom', delta: 4 },
+              { npcId: 'npc-void-runner', delta: 2 },
+            ],
+          },
+        },
+        {
+          id: 'sell-the-recording',
+          label: 'Sell the recording on',
+          prose:
+            'There is always a market for a dead ship talking to a living captain. It goes for a good price and, within a month, for a better one somewhere you cannot see.',
+          effects: {
+            credits: 1100,
+            flags: [{ name: 'explore.last-transmission.resolved', value: 'sold' }],
+            disposition: [
+              { npcId: 'npc-the-broker', delta: 2 },
+              { npcId: 'npc-the-phantom', delta: -3 },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      id: 'explore.cold.fleet',
+      title: 'Moored In Line Abreast',
+      prose:
+        'It is not a wreck field. It is a squadron: nine hulls moored in line abreast, cables still rigged between them, reactors cold and every hatch dogged from outside. Somebody parked a fleet here in good order and then never came back for it.',
+      repeat: 'never',
+      trigger: {
+        scheduledOnly: true,
+      },
+      wireResolution: {
+        graceDays: 8,
+        wireMessage:
+          'The cold squadron you charted sat on your board unworked until the bearing was stale, and the hulls stayed moored in line abreast without you.',
+        effects: {
+          flags: [{ name: 'explore.cold-fleet.resolved', value: 'wire' }],
+        },
+      },
+      choices: [
+        {
+          id: 'work-one-hull',
+          label: 'Work one hull properly',
+          prose:
+            'Pick the soundest of the nine and take it apart the right way, over days, with the lamps rigged and the tools laid out. One hull done properly is worth six done in a hurry.',
+          effects: {
+            credits: 2400,
+            flags: [{ name: 'explore.cold-fleet.resolved', value: 'worked' }],
+          },
+        },
+        {
+          id: 'sell-the-bearing',
+          label: 'Sell the bearing to a breaker',
+          prose:
+            'Nine hulls is more than one ship can lift and everybody in the trade knows it. Sell the numbers to somebody with a yard behind them and take a clean cut for the finding.',
+          effects: {
+            credits: 1500,
+            flags: [{ name: 'explore.cold-fleet.resolved', value: 'sold' }],
+            disposition: [
+              { npcId: 'npc-junk-lord', delta: 4 },
+              { npcId: 'npc-rust-bucket', delta: 2 },
+            ],
+          },
+        },
+        {
+          id: 'report-the-squadron',
+          label: 'Report the squadron',
+          prose:
+            'Nine hulls in good order is not salvage, it is a fleet somebody mislaid. Hand the whole thing to the Confederation and watch a very old file get opened in front of you.',
+          effects: {
+            flags: [
+              { name: 'explore.cold-fleet.resolved', value: 'reported' },
+              { name: 'explore.cold-fleet.filed', value: true },
+            ],
+            reputation: [{ faction: 'confederation', delta: 3 }],
+          },
+        },
+      ],
+    },
+    {
+      id: 'explore.nemesis.berth',
+      title: 'The Berth Made Up For Nobody',
+      prose:
+        'The berth is made up. Blanket squared, locker stowed, a name stencilled on the door — and no sign that anybody ever slept in it. You know the name. Everybody who has been chasing the Signal knows the name.',
+      repeat: 'never',
+      trigger: {
+        scheduledOnly: true,
+      },
+      wireResolution: {
+        graceDays: 6,
+        wireMessage:
+          'The made-up berth with the name on the locker went unworked, and whatever was stowed in it went wherever the hull went.',
+        effects: {
+          flags: [{ name: 'explore.nemesis-berth.resolved', value: 'wire' }],
+        },
+      },
+      choices: [
+        {
+          id: 'open-the-locker',
+          label: 'Open the locker',
+          prose:
+            'Inside is a folder of pages, hand-annotated, cross-referencing traffic movements nobody should have been able to collate. It is a piece of the file, and it was left where it would be found.',
+          effects: {
+            grantFragment: 'frag-nemesis-08',
+            fragmentSource: 'derelict',
+            flags: [
+              { name: 'explore.nemesis-berth.resolved', value: 'opened' },
+              { name: 'explore.nemesis-berth.folder', value: true },
+            ],
+          },
+        },
+        {
+          id: 'strip-the-cabin',
+          label: 'Strip the cabin and go',
+          prose:
+            'The fittings are good, the plate is better, and a stencilled door is only a door. Take what is worth taking and do not read anything on the way out.',
+          effects: {
+            credits: 1800,
+            flags: [{ name: 'explore.nemesis-berth.resolved', value: 'stripped' }],
+          },
+        },
+        {
+          id: 'leave-it-made',
+          label: 'Leave it made up',
+          prose:
+            'Close the door, dog it as you found it, and log the compartment as empty. Some berths are waiting for somebody and it is not your business to say they waited in vain.',
+          effects: {
+            flags: [
+              { name: 'explore.nemesis-berth.resolved', value: 'left' },
+              { name: 'explore.nemesis-berth.untouched', value: true },
+            ],
+            disposition: [{ npcId: 'npc-stellar-monk', delta: 3 }],
+          },
+        },
+      ],
+    },
   ] as const,
   EXPLORE_SCHEDULED_STORYLET_IDS,
 );

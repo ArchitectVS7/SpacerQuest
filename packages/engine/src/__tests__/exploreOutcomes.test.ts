@@ -6,14 +6,15 @@ import {
   EXPLORE_OUTCOMES,
   EXPLORE_VALUE_BANDS,
   ExploreOutcomeDefinition,
-  LEGACY_POI_LOOT,
   POI_DISCOVERY_TABLE,
+  POI_KINDS,
   PoiType,
   Stat,
 } from '@spacerquest/content';
 import { resolveExploration } from '../actions/exploration.js';
 import {
   claimOutcome,
+  drawOutcome,
   drawPoiKind,
   recoveryDays,
   resolveExploreOutcome,
@@ -34,6 +35,18 @@ function craftExploreState(die: number, pilot: number): GameState {
   return state;
 }
 
+/** Which band index a `valuePoints` falls in — the `bandFor` walk, restated here
+ *  because the engine keeps `bandFor` module-private on purpose (its header says
+ *  so: a bare `bandFor` on a barrel would collide with the Hangout's own band
+ *  lookup). Reads the CONTENT table, so it cannot drift from the rule it mirrors. */
+function bandIndexOf(valuePoints: number): number {
+  let band = EXPLORE_VALUE_BANDS[0];
+  for (const candidate of EXPLORE_VALUE_BANDS) {
+    if (valuePoints >= candidate.minValuePoints) band = candidate;
+  }
+  return band.band;
+}
+
 /** The whole observable result of one boarded POI, flattened to a string. */
 function digest(seed: number): string {
   const res = resolveExploration(
@@ -50,13 +63,19 @@ function digest(seed: number): string {
   });
 }
 
-describe('explore outcome framework — legacy parity (T-110)', () => {
-  // THE SPINE OF THE EXTRACTION COMMIT. Pinned from the PRE-refactor tree: the
-  // whole per-seed result (credits, nemesisFile, the contraband flag, the charted
-  // POI and the ORDERED event stream) over 300 seeds, hashed. If the extraction
-  // moved a single rng draw, an event field or an emission order, this goes red.
-  // NEVER re-stamp it to make T-110 pass — a move here means the extraction is
-  // not behaviour-preserving.
+describe('explore outcome framework — the WEIGHTED DRAW aggregate (T-117)', () => {
+  // THE SPINE OF THE EXTRACTION COMMIT, AND NOW OF THE FLIP THAT ENDED IT. The
+  // whole per-seed result (credits, nemesisFile, the sealed-pod flag, the charted
+  // POI and the ORDERED event stream) over 300 seeds, hashed. If a draw, an event
+  // field or an emission order moves, this goes red. NEVER re-stamp it to make a
+  // change pass — a move here is either a ruled behaviour change with its own
+  // ledger entry below, or a bug.
+  //
+  // T-117 RENAMED THIS BLOCK. It was "legacy parity (T-110)" and it pinned the
+  // transitional three-leg carrier; that carrier is deleted, so the block is
+  // re-pointed at the mechanism that replaced it rather than retired with it —
+  // the 300-seed hash is the cheapest tripwire in the tree and the draw still
+  // needs one.
   //
   // RE-PIN LEDGER
   // -------------
@@ -66,101 +85,68 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
   // T-111 (pinned '668f8ce9…'): DELIBERATELY NOT INERT. A drawn row whose band
   //   carries `recoveryDays > 0` no longer pays out on the day of the board — it
   //   opens the multi-day recovery slot and is delivered at the dusk of `dueDay`
-  //   (docs/EXPLORE_REDESIGN.md §3). Two of the four shipped legacy rows sit in
-  //   band 2 (`legacy-salvage-derelict` at 20 vp, both `legacy-contraband-*` at
-  //   14 vp), so this sweep sees the change directly.
-  //
-  //   WHAT MOVED, aggregate over the same 300 seeds:
+  //   (docs/EXPLORE_REDESIGN.md §3).
   //     salvageEvents     202 → 79     fragmentEvents  96 → 102
   //     contrabandEvents   57 → 44     totalCredits    346,939 → 308,941
-  //     RecoveryStarted      0 → 136   (the deferred finds — none paid out here:
-  //                                     this sweep drives the ACTION only, never
-  //                                     a dusk, so no payout can occur in it)
+  //     RecoveryStarted      0 → 136
   //
-  //   WHY THE FRAGMENT COUNT ROSE, which is the one number that looks wrong until
-  //   you follow the rng: the DRAW stream in `drawLegacyLoot` — the leg chance
-  //   rolls and the fragment index pick — is untouched. What moved is that a
-  //   DEFERRED row consumes no within-payload roll (its value is rolled at payout,
-  //   off a fork of the dusk rng, so nothing about the payload is frozen onto the
-  //   save). The three legacy legs share one rng, so a skipped payload roll
-  //   re-phases every subsequent leg on that board. This is inherent to the legacy
-  //   MULTI-LEG draw and disappears with it at T-113, when a board draws one
-  //   weighted row.
-  //
-  //   The rule is unchanged: never re-stamp this hash to make a change pass. It
-  //   was re-derived here because T-111 is a ruled behaviour change with its own
-  //   ledger entry, not because a measurement was inconvenient.
-  //
-  // T-113 (pinned '4e8f44b4…'): THE AUTHORED POOLS LANDED. The 34 rows of bands
-  //   0-1 (docs/EXPLORE_REDESIGN.md §5.3 pass 1) are authored, and the
-  //   transitional carrier now addresses them on two of its five legs. Two
-  //   mechanisms move this sweep, and both are consequences of the CONTENT rather
-  //   than of a rule:
-  //
-  //     (1) The legacy LORE rows are retired outright: both fragment legs now draw
-  //         the eight authored `explore-lore-*` rows. Per-fragment probability is
-  //         UNCHANGED — same pools, same order, same leg chance — and the only
-  //         difference on that leg is that a board now also SPEAKS (F-110-B).
-  //     (2) The BEACON salvage leg now holds the six authored band-1 beacon rows
-  //         where it held one, so a fired beacon salvage leg consumes one further
-  //         index draw and re-phases the legs after it on that board. That is the
-  //         same rng-sharing property the T-111 entry documents, and it is why the
-  //         FRAGMENT count moves at all.
-  //
-  //   THE DERELICT SALVAGE LEG IS DELIBERATELY UNTOUCHED (finding F-113-D on
-  //   `EXPLORE_OUTCOMES`): `legacy-salvage-derelict` is the only row that can trip
-  //   the `rich_hulk` deed's 400cr trigger until band 2 is authored at T-114, and
-  //   a measured sweep showed that even DILUTING that leg sixfold pushed the deed
-  //   out of 21 of 24 careers. That is why `salvageEvents`, `contrabandEvents` and
-  //   `RecoveryStarted` are all unmoved from T-111 here — the derelict half of the
-  //   board is byte-identical, and only the beacon half re-phased.
-  //
-  //   WHAT MOVED, aggregate over the same 300 seeds:
+  // T-113 (pinned '4e8f44b4…'): THE AUTHORED POOLS LANDED (bands 0-1), and the
+  //   carrier addressed them on two of its five legs.
   //     salvageEvents      79 → 79     fragmentEvents  102 → 97
   //     contrabandEvents   44 → 44     totalCredits    308,941 → 309,047
   //     RecoveryStarted   136 → 136
   //
-  //   Finding F-113-C (the authored band-1 ceiling of 260cr sitting below the
-  //   shipped derelict band) is therefore only half-realized in the tree so far —
-  //   the beacon half. T-116 measures the whole of it over real careers, and it is
-  //   NOT tuned around.
-  //
-  // T-114 (pinned 'f62b45af…'): BAND 2 LANDED, AND BOTH SALVAGE LEGS ARE NOW
-  //   AUTHORED. The 33 rows of band 2 (docs/EXPLORE_REDESIGN.md §5.3 pass 2) are
-  //   authored and `legacy-salvage-derelict` is DELETED (F-113-D discharged).
-  //   Three CONTENT mechanisms move this sweep, and no rule changed at all:
-  //
-  //     (1) The DERELICT salvage leg is re-pointed from one legacy row onto the 14
-  //         authored derelict salvage rows (6 band-1 + 8 band-2). A 14-id leg
-  //         consumes one further index draw where a single-id leg consumed none,
-  //         which re-phases everything after it on every derelict board — and the
-  //         derelict board is the half T-113 left byte-identical, so this is the
-  //         single biggest contributor here.
-  //     (2) The BEACON salvage leg becomes the "find" leg: 31 ids, carrying the
-  //         band-2 items, NPC introductions, questline hooks and effect-bearing
-  //         lore alongside salvage. That is what makes the whole of pass 2
-  //         reachable through the real verb with zero engine lines.
-  //     (3) EVERY BAND-2 ROW DEFERS (band 2 is `recoveryDays: 1`), and a deferred
-  //         row consumes NO within-payload roll — the T-111 entry's mechanism,
-  //         now applied to 33 rows instead of three legacy ones.
-  //
-  //   WHAT MOVED, aggregate over the same 300 seeds:
+  // T-114 (pinned 'f62b45af…'): BAND 2 LANDED and both salvage legs became
+  //   authored; the derelict leg went from 1 id to 14 and so consumed an index
+  //   draw it never used to.
   //     salvageEvents      79 → 70     fragmentEvents   97 → 93
   //     contrabandEvents   44 → 26     totalCredits     309,047 → 310,192
   //     RecoveryStarted   136 → 167
   //
-  //   WHY `contrabandEvents` FELL HARDEST, which is the one number that looks
-  //   wrong until you follow the rng: the contraband legs are UNTOUCHED — same
-  //   chance, same single id, same order. What moved is that the derelict salvage
-  //   leg now consumes an extra index draw ahead of them on every derelict board,
-  //   re-phasing the fragment and contraband chance rolls. `RecoveryStarted` rose
-  //   because band-2 rows are the common beacon draw now, and every one of them
-  //   opens the slot.
+  // T-117 (pinned below): THE SINGLE BAND-WEIGHTED DRAW. This is the largest move
+  //   in the ledger and it is a RULE change, not a content one — the one T-110
+  //   deferred, §2.4 specified, and F-113-A recorded as unowned through two
+  //   passes. The mechanism, in one sentence: A BOARD NOW DRAWS EXACTLY ONE ROW
+  //   INSTEAD OF UP TO THREE INDEPENDENT LEGS.
   //
-  //   The rule is unchanged: never re-stamp this hash to make a change pass. It is
-  //   re-derived here because T-114 is an authored content change with its own
-  //   ledger entry, and the aggregate above is the readable signal for it.
-  const LEGACY_PARITY_HASH = 'f62b45af833ff18fde3d6b53b3456ffefffb2360f0dbbc2491ab9df65c1e7ab8';
+  //   Four consequences, each traceable rather than lumped together:
+  //     (1) EVENT COUNTS FALL BY CONSTRUCTION. Under the carrier a lucky board
+  //         yielded salvage AND a fragment AND a pod; one row cannot. §2.4 said
+  //         outright that the flip is not behaviour-preserving on its own.
+  //     (2) THE DRAW COST IS NOW A FLAT TWO `rng.next()` CALLS (band, then row)
+  //         where the carrier consumed one chance roll per leg plus a conditional
+  //         index draw. Every board's stream re-phases.
+  //     (3) THE 14 BAND-0 DEAD ENDS ARE DRAWABLE FOR THE FIRST TIME, at 25% of
+  //         boards — the single biggest contributor to the fall in credits and in
+  //         payload events, and the entire point of the flip.
+  //     (4) `ContrabandFound` IS NEVER EMITTED AGAIN. The payload kind is deleted
+  //         (F-113-B); the sealed pod is armed instead by three band-1 derelict
+  //         lore rows through `effects.flags`, which is what `podFlagged` counts.
+  //
+  //   WHAT MOVED, aggregate over the same 300 seeds:
+  //     salvageEvents      70 → 78     fragmentEvents   93 → 38
+  //     contrabandEvents   26 → 0      podFlagged       26 → 15
+  //     totalCredits  310,192 → 310,219
+  //     RecoveryStarted   167 → 134
+  //
+  //   READ THOSE AGAINST THE PREDICTED SHARES rather than as a verdict. All 300
+  //   seeds board (the helper hands the nav check a 18 on a +40 PILOT), so a
+  //   count divided by 300 is a share of successful boards:
+  //     RecoveryStarted 134/300 = 44.7%, against the 24+15+3 = 42% of the table
+  //       that sits in bands 2-4 — the deferring bands, exactly;
+  //     fragmentEvents 38/300 = 12.7%, against the 13.0% the band-1 lore rows
+  //       occupy once the per-pool renormalisation is done;
+  //     podFlagged 15/300 = 5.0%, against the 4.5% three of eleven band-1
+  //       derelict rows predict (see `DERELICT_POD_EFFECTS`);
+  //     contrabandEvents 0, exactly and permanently.
+  //   `salvageEvents` runs high against its own 20% (78 vs ≈60, about 2.6 sd on
+  //   300 draws) and `totalCredits` lands within 30cr of T-114's, which is
+  //   coincidence rather than signal: this sweep never reaches a dusk, so the
+  //   entire band-2-and-up payout — most of the ladder's value — is invisible to
+  //   it. IT IS NOT A MEASUREMENT OF WHETHER EXPLORE PAYS. §5.5 predicts ≈447cr
+  //   of value per successful board; T-116 measures it over real careers and owns
+  //   the verdict, and nothing here is tuned to reach a number.
+  const WEIGHTED_DRAW_HASH = 'bb6ae5834b4dcc087390672c7a2137f9856611da2da11252266543aeae9625b8';
 
   it('300 seeds of boarded POIs match the pinned per-seed result, exactly', () => {
     const hash = createHash('sha256');
@@ -168,13 +154,14 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
       hash.update(digest(seed));
       hash.update('\n');
     }
-    expect(hash.digest('hex')).toBe(LEGACY_PARITY_HASH);
+    expect(hash.digest('hex')).toBe(WEIGHTED_DRAW_HASH);
   });
 
-  it('the legacy aggregate shape is unmoved (readable signal when the hash drifts)', () => {
+  it('the aggregate shape is unmoved (readable signal when the hash drifts)', () => {
     let salvageEvents = 0;
     let fragmentEvents = 0;
     let contrabandEvents = 0;
+    let podFlagged = 0;
     let recoveryStarted = 0;
     let totalCredits = 0;
     for (let seed = 0; seed < 300; seed += 1) {
@@ -184,6 +171,7 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
         new SeededRng(seed),
       );
       totalCredits += res.state.player.credits;
+      if (res.state.flags['signal.contraband.pending'] === true) podFlagged += 1;
       for (const e of res.events) {
         if (e.type === 'SalvageRecovered') salvageEvents += 1;
         if (e.type === 'FragmentAcquired') fragmentEvents += 1;
@@ -191,23 +179,94 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
         if (e.type === 'RecoveryStarted') recoveryStarted += 1;
       }
     }
-    // T-114 re-pin — see the LEGACY_PARITY_HASH ledger above for the pre/post
-    // table and the three mechanisms. `recoveryStarted` is counted from T-111 on
-    // so the readable signal names the deferred finds instead of leaving them as
-    // an unexplained hole in the salvage count.
+    // T-117 re-pin — see the ledger above for the pre/post table and the four
+    // mechanisms. `contrabandEvents` is still COUNTED, at zero: the event variant
+    // survives in `types.ts`/`schema.ts` (deleting an event shape is save/schema
+    // surface and would drag a version bump into a content pass), so a future
+    // change that started emitting it again would show up here rather than
+    // silently.
     expect({
       salvageEvents,
       fragmentEvents,
       contrabandEvents,
+      podFlagged,
       recoveryStarted,
       totalCredits,
     }).toEqual({
-      salvageEvents: 70,
-      fragmentEvents: 93,
-      contrabandEvents: 26,
-      recoveryStarted: 167,
-      totalCredits: 310192,
+      salvageEvents: 78,
+      fragmentEvents: 38,
+      contrabandEvents: 0,
+      podFlagged: 15,
+      recoveryStarted: 134,
+      totalCredits: 310219,
     });
+  });
+});
+
+describe('T-117 · drawOutcome — one band-weighted row per board', () => {
+  it('draws only rows whose OWN pools include the drawn POI type', () => {
+    // The structural guard the transitional carrier needed a leg-by-leg check
+    // for. It is now a property of the draw itself, so it is asserted as one.
+    for (const type of Object.keys(POI_KINDS) as PoiType[]) {
+      for (let seed = 0; seed < 400; seed += 1) {
+        const row = drawOutcome(type, new SeededRng(seed));
+        expect(row, `${type} drew nothing on seed ${seed}`).toBeDefined();
+        expect(row!.pools, `${row!.id} drawn at a ${type}`).toContain(type);
+      }
+    }
+  });
+
+  it('consumes EXACTLY two rng draws, always — even for a one-row band', () => {
+    // Load-bearing determinism: the legacy draw's single-id short-circuit made
+    // the stream depend on how many ids an author happened to write on a leg.
+    // A flat cost means a content edit inside a band cannot re-phase the day.
+    for (const type of Object.keys(POI_KINDS) as PoiType[]) {
+      const measured = new SeededRng(11);
+      drawOutcome(type, measured);
+      const reference = new SeededRng(11);
+      reference.next();
+      reference.next();
+      expect(measured.getState(), `${type} draw cost`).toBe(reference.getState());
+    }
+  });
+
+  it('is deterministic for a seed, and spreads across every band of the pool', () => {
+    for (const type of Object.keys(POI_KINDS) as PoiType[]) {
+      expect(drawOutcome(type, new SeededRng(4242))!.id).toBe(
+        drawOutcome(type, new SeededRng(4242))!.id,
+      );
+      const bands = new Set<number>();
+      for (let seed = 0; seed < 3000; seed += 1) {
+        bands.add(bandIndexOf(drawOutcome(type, new SeededRng(seed))!.valuePoints));
+      }
+      // Every band of the table is reachable at every POI type — the property
+      // `exploreContent.test.ts` asserts on the CONTENT side (every band has a
+      // row in every pool), observed here on the DRAW side.
+      expect([...bands].sort(), `${type} bands reached`).toEqual([0, 1, 2, 3, 4]);
+    }
+  });
+
+  it('honours the §5.2 band weights within sampling error', () => {
+    // A distribution check, not a tuned threshold: the tolerance is a wide ±4
+    // percentage points on a 20,000-draw sample, which no plausible re-weighting
+    // could slip through and no seed choice could break. It exists so that a
+    // `drawOutcome` that silently stopped renormalising — handing an absent
+    // band's share to whichever band happened to be last — would be caught.
+    const counts = new Map<number, number>();
+    const SAMPLES = 20000;
+    for (let seed = 0; seed < SAMPLES; seed += 1) {
+      const rng = new SeededRng(seed);
+      const type = drawPoiKind(rng).type;
+      const row = drawOutcome(type, rng)!;
+      const band = bandIndexOf(row.valuePoints);
+      counts.set(band, (counts.get(band) ?? 0) + 1);
+    }
+    for (const band of EXPLORE_VALUE_BANDS) {
+      const observed = ((counts.get(band.band) ?? 0) / SAMPLES) * 100;
+      expect(Math.abs(observed - band.weight), `band ${band.band} share ${observed}`).toBeLessThan(
+        4,
+      );
+    }
   });
 });
 
@@ -374,47 +433,45 @@ describe('explore outcome framework — content integrity (T-110)', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('every legacy draw-table id resolves to a row whose pools include that POI type', () => {
-    const byId = new Map(EXPLORE_OUTCOMES.map((o) => [o.id, o]));
-    for (const type of Object.keys(LEGACY_POI_LOOT) as PoiType[]) {
-      const table = LEGACY_POI_LOOT[type];
-      for (const leg of [table.salvage, table.fragment, table.contraband]) {
-        expect(leg.outcomeIds.length).toBeGreaterThan(0);
-        for (const id of leg.outcomeIds) {
-          const outcome = byId.get(id);
-          expect(outcome, `unresolved outcome id ${id}`).toBeDefined();
-          expect(outcome?.pools).toContain(type);
-        }
+  it('every row is reachable at a POI type it claims, and claims at least one', () => {
+    // T-117 RETARGETED. This asserted the transitional carrier's leg ids resolved
+    // to rows whose pools included the leg's POI type; the legs are gone, so the
+    // claim that survives is the one that always mattered — a row declares which
+    // POI types can surface it, and `drawOutcome` filters on exactly that. A row
+    // with no pool is content that exists and cannot be found.
+    const types = new Set(Object.keys(POI_KINDS) as PoiType[]);
+    for (const outcome of EXPLORE_OUTCOMES) {
+      expect(outcome.pools.length, `${outcome.id} pools`).toBeGreaterThan(0);
+      for (const pool of outcome.pools) {
+        expect(types.has(pool), `${outcome.id} names pool ${pool}`).toBe(true);
       }
     }
   });
 
-  it('the fragment legs are exactly the two pools, in pool order, and resolve', () => {
+  it('every fragment in either pool has a lore row in that pool, derived not transcribed', () => {
     // A pool edit that never reaches the rows would silently drop a fragment from
-    // the game; deriving both sides from the pools is what makes that impossible.
+    // the game; deriving the rows from the pools is what makes that impossible.
     //
-    // T-113 RETARGETED, intent preserved exactly. The old form asserted that
-    // EVERY `lore` row in the table carries a `fragmentId` — true while the only
-    // lore rows were the legacy fragment rows, and false the moment the 14
-    // authored DEAD ENDS landed (a dead end is `{ kind: 'lore' }` with neither
-    // field, §2.2). The claim that actually mattered — "no pool entry can lose
-    // its row" — is asserted directly instead, leg by leg.
-    const byId = new Map(EXPLORE_OUTCOMES.map((o) => [o.id, o]));
-    const legs: [PoiType, readonly string[], readonly string[]][] = [
-      ['beacon', LEGACY_POI_LOOT.beacon.fragment.outcomeIds, BEACON_FRAGMENT_POOL],
-      ['derelict', LEGACY_POI_LOOT.derelict.fragment.outcomeIds, DERELICT_FRAGMENT_POOL],
+    // T-117 RETARGETED, intent preserved exactly. The old form walked the
+    // carrier's fragment LEGS and checked the row at pool index i carried the
+    // fragment at pool index i, because a seeded index pick landed on that order.
+    // With the legs deleted the order is no longer load-bearing, but the coverage
+    // claim is — so it is asserted directly against the pools.
+    const legs: [PoiType, readonly string[]][] = [
+      ['beacon', BEACON_FRAGMENT_POOL],
+      ['derelict', DERELICT_FRAGMENT_POOL],
     ];
-    for (const [type, ids, pool] of legs) {
-      expect(ids).toHaveLength(pool.length);
-      pool.forEach((fragmentId, index) => {
-        const outcome = byId.get(ids[index]);
-        expect(outcome, `unresolved fragment row ${ids[index]}`).toBeDefined();
-        expect(outcome?.pools).toContain(type);
-        expect(outcome?.payload.kind).toBe('lore');
-        // The row at pool index i carries the fragment at pool index i — the
-        // ORDER is what a seeded index pick lands on.
-        expect(outcome?.payload.kind === 'lore' && outcome.payload.fragmentId).toBe(fragmentId);
-      });
+    for (const [type, pool] of legs) {
+      const rows = EXPLORE_OUTCOMES.filter(
+        (o) => o.pools.includes(type) && o.payload.kind === 'lore' && o.payload.fragmentId,
+      );
+      expect(rows).toHaveLength(pool.length);
+      for (const fragmentId of pool) {
+        const row = rows.find(
+          (o) => o.payload.kind === 'lore' && o.payload.fragmentId === fragmentId,
+        );
+        expect(row, `no ${type} row grants ${fragmentId}`).toBeDefined();
+      }
     }
   });
 
@@ -460,7 +517,7 @@ describe('T-111 · recoveryDays reads the band table, never a per-row constant',
     expect(recoveryDays(100)).toBe(6); // the ladder's ceiling
   });
 
-  it('is monotone non-decreasing over every authored row (the §5.4 property)', () => {
+  it('is monotone non-decreasing over every row in the table (§5.4 part 1)', () => {
     // Written NOW so T-113/T-114/T-115 inherit it: "the most powerful outcomes are
     // the slowest to recover" is true BY CONSTRUCTION for any rows anyone authors,
     // because `recoveryDays` is a function of a band and a band is monotone in
@@ -472,6 +529,36 @@ describe('T-111 · recoveryDays reads the band table, never a per-row constant',
         }
       }
     }
+  });
+
+  it('RECOVERY TIME CORRELATES WITH VALUE across the whole table (§5.4 part 2)', () => {
+    // T-115's SECOND ACCEPT CLAUSE, and §5.4's second half: the mean
+    // `recoveryDays` of the top `valuePoints` quartile is STRICTLY GREATER than
+    // the bottom quartile's.
+    //
+    // WHY THIS IS NOT A TUNED THRESHOLD, said plainly so nobody later "fixes" it
+    // by moving a number: `recoveryDays` is a function of BAND and band is a
+    // monotone function of `valuePoints`, so part 1 above (monotonicity over every
+    // pair) is true by construction for any 100 rows anyone authors. Part 2 adds
+    // the only thing part 1 cannot say — that the ladder is not FLAT — and it is
+    // strict as long as the table spans more than one band, which the 14/20/33/25/8
+    // spread does by definition. Neither half can rot, and neither can be made to
+    // pass by editing a band (docs/BALANCE-POLICY.md forbids that anyway).
+    //
+    // WHOLE-TABLE, NOT ROW BY ROW, which is the clause's own wording: no
+    // assertion here names a row or an id.
+    const sorted = [...EXPLORE_OUTCOMES].sort((a, b) => a.valuePoints - b.valuePoints);
+    const quartile = Math.floor(sorted.length / 4);
+    expect(quartile).toBeGreaterThan(0);
+    const mean = (rows: ExploreOutcomeDefinition[]): number =>
+      rows.reduce((sum, row) => sum + recoveryDays(row.valuePoints), 0) / rows.length;
+    const bottom = mean(sorted.slice(0, quartile));
+    const top = mean(sorted.slice(sorted.length - quartile));
+    expect(top, `top quartile mean N ${top} vs bottom ${bottom}`).toBeGreaterThan(bottom);
+    // …and the ladder's ends are the ones §5.2 authored: the cheapest quarter of
+    // the table recovers same-day, the dearest quarter never does.
+    expect(bottom).toBe(0);
+    expect(top).toBeGreaterThanOrEqual(EXPLORE_VALUE_BANDS[3].recoveryDays);
   });
 
   it('NO outcome row carries a recoveryDays key — the clock is not authorable per row', () => {

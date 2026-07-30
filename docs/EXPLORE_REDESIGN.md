@@ -299,6 +299,39 @@ is arithmetically impossible under a three-leg draw — the 14 band-0 dead ends 
 be drawn from. The flip needs a dedicated engine task between T-114 and T-115, or T-115's
 first commit.
 
+**DISCHARGED (T-117, 2026-07-30) — F-113-A and F-113-B are both closed, by the dedicated
+engine task this correction asked for.** The first attempt landed the flip inside T-115 and
+amended T-115's own accept clause to permit it; review rejected that, and the flip was routed
+to **`T-117`**, a task between T-114 and T-115 with its own accept clause — the first of the
+two options the sentence above offers, and the one F-113-A recommended. T-115's accept clause
+is unamended. What landed:
+
+- `weight` joins `ExploreValueBand` (25/33/24/15/3, §5.2 verbatim) — the sixth column, now
+  with a consumer, which discharges the F-112-C "a column with no consumer is a stub"
+  objection that kept T-113 and T-114 from adding it.
+- `drawOutcome(poiType, rng)` in `packages/engine/src/exploreOutcomes.ts` filters
+  `EXPLORE_OUTCOMES` by pool, groups by band, spends **one** `rng.next()` on a band weighted
+  over the bands actually present in that pool (renormalised, so an empty band cannot swallow
+  probability) and **one** on a uniform pick inside it. The cost is a flat two draws, always.
+- `drawLegacyLoot`, `LEGACY_POI_LOOT`, `LegacyLootLeg`, `LegacyPoiLootTable` and the two
+  `legacy-contraband-*` rows are **deleted**, and with them the transitional `contraband`
+  payload kind (F-113-B). `EXPLORE_OUTCOMES` now holds 100 authored rows and no `legacy-`
+  prefixed row at all.
+- **The sealed pod is re-homed, not deleted.** `flags['signal.contraband.pending']` — the
+  supply line for the `derelict.sealed-pod` carry choice — moves onto three authored band-1
+  derelict `lore` rows through `effects.flags` (`DERELICT_POD_EFFECTS`), chosen on fiction:
+  the cargo manifest off the purser's station, the burn schedule with no destination, and the
+  survey file stowed away from the log. **Measured 20% → 4.4% of successful boards**, and the
+  fall is reported rather than tuned around: an independent leg firing on 20% of boards is not
+  reproducible by a single weighted draw, which is what §2.4 says outright. The tripwire that
+  matters — `podsTaken > 0` over a real 300-day smuggler career — stays green (7 pods, 95 days
+  carrying illicit, 7 scans on seed 1).
+
+The **`ContrabandFound` event variant is deliberately NOT deleted** from the engine's
+`types.ts`/`schema.ts`. Removing an event shape is save/schema surface and would drag a
+version bump into a content pass; it simply stops being emitted, and the UI clause that reads
+it stays with a comment saying so.
+
 Stating this here is the point of the spec: without it, T-110's "byte-identical goldens"
 acceptance and its "outcome is a content-supplied payload" acceptance are in direct conflict
 and the coder has to guess which one to break.
@@ -793,9 +826,22 @@ true — would be metric-gaming and is forbidden by the standing constraints.
 **PROVENANCE FOR THE TWO EFFECT-CEILING COLUMNS (T-114).** `Class-A ceiling` and `Class-B
 permitted` were transcribed verbatim from this table onto `ExploreValueBand` at T-114
 (`classACeiling` / `classB`), which is the pass with the first `unique-item` rows to check
-them against — finding F-112-C re-targeted them here from T-112 for exactly that reason. The
-`draw weight` column is still **not** on the type: it has no consumer until the engine draws
-one weighted row per board (F-113-A), and a column with no consumer is a stub.
+them against — finding F-112-C re-targeted them here from T-112 for exactly that reason.
+
+**THE `draw weight` COLUMN LANDED AT T-117 (2026-07-30), WITH ITS CONSUMER.** It is now
+`weight` on `ExploreValueBand`, transcribed verbatim from this table, and the engine's
+`drawOutcome` is what reads it. F-112-C is thereby discharged in the direction it always
+pointed: the column was a stub while nothing drew from it, and it is a rule now that something
+does.
+
+**F-114-B IS CLOSED BY AUTHORING (T-115), AND NOTHING IN THIS TABLE MOVED.** T-114 reported
+that band 2's `+1` Class-A strength ceiling sits below its own readers' granularity —
+`navBonus` divides by `NAV_BONUS_DIVISOR = 10`, so `navigation +1` buys `+0` on a PILOT check
+— and recommended the question to T-115. The answer is that the ceiling was never the problem:
+band 4 already authorises `+10`, and T-115's `item-lane-computer` (`navigation +10`) is the
+first perceptible component grant in the table, worth a whole `+1` to every PILOT check for
+the rest of the career. The ladder is *supposed* to have a tier where a component grant is a
+rounding error and a tier where it is permanent. No ceiling was raised.
 
 **Provenance for the credit bands** (§5.5 uses them): band 1 salvage is authored at
 **40–260cr** and band 2 at **240–700cr**, anchored on the two bands that actually ship today
@@ -994,7 +1040,8 @@ The save-bump recommendation for T-102 to rule on is in §3d.
 | **T-112** | §4 (all), §6 F-100-1 | Class A resolver; three Class-B modules via the second-loop shape; cockpit readouts; `check()` unchanged; hand cap still binds |
 | **T-113** | §5.3 pass 1 | 34 rows = bands 0 + 1 exactly; house voice; zero engine lines **(delivered; the draw flip did not land here — F-113-A)** |
 | **T-114** | §5.3 pass 2 | 33 rows = band 2 exactly; questlines resolve into the real storylet system; NPC ids resolve against `ALL_NPC_PROFILES`; **F-113-D discharged** — `legacy-salvage-derelict` deleted and the derelict salvage leg re-pointed at the 14 authored derelict rows (`rich_hulk` P(≥400) 0.302 → 0.384). §5.2 corrected in place (**F-114-A**); the two effect-ceiling columns landed; zero engine lines **(delivered)** |
-| **T-115** | §5.3 pass 3, §5.4 | 33 rows = bands 3 + 4; table totals 100; the two-part monotonicity property of §5.4; the reachability sweep at the size §5.3 computes |
+| **T-117** | §2.4's draw flip, §5.1 | The dedicated engine task F-113-A asked for, inserted between T-114 and T-115. **F-113-A and F-113-B discharged** — `weight` on the band table, `drawOutcome` in the engine (two engine-source files, no others), the three-leg carrier and the `contraband` payload kind deleted, the sealed pod re-homed onto three authored band-1 lore rows (20% → 4.4% of boards). No save bump **(delivered)** |
+| **T-115** | §5.3 pass 3, §5.4 | 33 rows = bands 3 + 4; **table totals 100 and carries no `legacy-` row**; the two-part monotonicity property of §5.4; the reachability sweep at the size §5.3 computes, now finding **all 100 rows**. **F-114-B closed by authoring**, no ceiling moved; zero engine-source lines **(delivered)** |
 | **T-116** | §5.5, §9 | Capstone after `npm run format`; re-run the ablation; append the before/after to §9; **do not tune to reach an answer** |
 
 ---

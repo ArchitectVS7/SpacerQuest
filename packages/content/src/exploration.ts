@@ -57,6 +57,26 @@
  * F-113-C and is measured, not tuned around: a successful board now also costs
  * the NEXT day's Explore, because the fifth typed refusal
  * (`recovery-in-progress`) is live.
+ *
+ * THE END OF THE TRANSITION. Two tasks land here, in this order, and the split
+ * matters because only one of them is allowed to touch the engine:
+ *
+ *  - T-117, the single band-weighted draw — the dedicated ENGINE task F-113-A
+ *    asked for, inserted between T-114 and T-115. The `weight` column joins
+ *    `EXPLORE_VALUE_BANDS`, the transitional three-leg carrier (`LEGACY_POI_LOOT`
+ *    and its two `legacy-contraband-*` rows) is DELETED, and with it the
+ *    transitional `contraband` payload kind — findings F-113-A and F-113-B, both
+ *    discharged. The sealed-pod carry choice that kind used to arm is re-homed
+ *    onto three authored band-1 derelict lore rows (see `DERELICT_POD_EFFECTS`).
+ *  - T-115, THE TAIL — content pass 3 of 3 (§5.3), the 33 rows of BANDS 3 AND 4:
+ *    14 band-3 items (13 Class A + the `reroll` module), 6 band-3 questline hooks,
+ *    5 band-3 NPC rows at `dispositionDelta` 3-4, 6 band-4 items (5 Class A + the
+ *    `extra-die` module) and 2 band-4 questlines. Zero engine-source lines.
+ *    THE TABLE NOW TOTALS 100 AND EVERY ROW IS AUTHORED.
+ *
+ * THE LADDER IS NOW VISIBLE END TO END, and it is visible as a RULE: a band-4 row
+ * costs six calendar days to recover and a dead end costs none, and no row
+ * anywhere says so — `recoveryDays` reads the band table and nothing else.
  */
 
 import { BEACON_FRAGMENT_POOL, DERELICT_FRAGMENT_POOL } from './nemesis.js';
@@ -137,34 +157,35 @@ export interface ExploreOutcomeDefinition {
   /** Which POI types can surface this row. */
   pools: readonly PoiType[];
   /** Period-voice line; `{name}` is resolved by the engine, the POI_KINDS precedent.
-   *  Empty string ⇒ no line (the legacy rows only; see LEGACY_POI_LOOT). */
+   *  T-115: EVERY row in the table carries copy, so the engine's `wireFound !== ''`
+   *  guard is now vacuous by shape rather than by review — which is §2.4's
+   *  silent-return fix (F-110-B) finally true of the whole table. */
   wireFound: string;
   payload: ExploreOutcomePayload;
 }
 
 /**
- * The five kinds §2.2 settles, plus one transitional sixth.
+ * THE FIVE KINDS §2.2 SETTLES — and, from T-117, nothing else.
  *
  * A "DEAD END" is not a sixth kind: it is `{ kind: 'lore' }` with neither
  * optional field — prose and a wire line, no mechanical payoff, `valuePoints: 0`.
  *
- * FINDING F-110-A · `contraband` is TRANSITIONAL and is NOT part of the settled
- * taxonomy. The shipped derelict table arms `flags['signal.contraband.pending']`
- * (the sealed-pod carry choice), and no settled kind emits `ContrabandFound`;
- * routing it through `lore.effects` would emit `StoryletEffectApplied` instead
- * and break pre-existing exploration assertions. T-110 is behaviour-preserving,
- * so the leg survives as an explicit payload kind. T-113 COULD NOT RETIRE IT —
- * see finding F-113-B on `EXPLORE_OUTCOMES` below: deleting the member makes the
- * engine's exhaustive `case 'contraband':` a `tsc` error, which is engine work.
- * It retires with the single band-weighted draw (F-113-A).
+ * FINDING F-110-A / F-113-B · DISCHARGED AT T-117. The transitional `contraband`
+ * member is DELETED here. It survived T-110 (behaviour-preserving by charter),
+ * T-113 and T-114 (content passes: deleting the member makes the engine's
+ * exhaustive `case 'contraband':` a `tsc` error, which is engine work a content
+ * pass is forbidden). T-117 IS the draw flip — the dedicated engine task F-113-A
+ * asked for, inserted between T-114 and T-115 — so the retirement lands with it,
+ * exactly where F-113-A said it would. The sealed-pod carry choice it used to arm is NOT deleted with it: it is
+ * re-homed onto three authored band-1 derelict lore rows through `effects.flags`,
+ * which is the settled route (§2.2, and the `explore-lore-*` precedent T-114 set).
  */
 export type ExploreOutcomePayload =
   | { kind: 'salvage'; minCredits: number; maxCredits: number }
   | { kind: 'lore'; fragmentId?: string; effects?: StoryletEffects }
   | { kind: 'unique-item'; itemId: string }
   | { kind: 'questline'; storyletId: string; delayDays: number }
-  | { kind: 'npc'; profileId: string; dispositionDelta: number }
-  | { kind: 'contraband' };
+  | { kind: 'npc'; profileId: string; dispositionDelta: number };
 
 // --- T-113 · BAND 0 — the dead ends (docs/EXPLORE_REDESIGN.md §5.3) ---------
 //
@@ -427,6 +448,57 @@ function fragmentRowId(pool: PoiType, fragmentId: string): string {
   return `explore-lore-${pool}-${fragmentId}`;
 }
 
+/**
+ * T-117 · THE SEALED POD, RE-HOMED (F-110-A discharged).
+ *
+ * `flags['signal.contraband.pending']` is the supply line for the
+ * `derelict.sealed-pod` carry-choice storylet (`storylets.ts`), which is the only
+ * way a pod ever enters the hold. Until T-117 it was armed by the transitional
+ * `contraband` payload kind on the derelict contraband leg (0.40 chance × 50% of
+ * boards ≈ 20% of successful boards). Deleting that kind with the draw flip would
+ * have deleted the pod with it, so the flag is re-homed here — as `effects.flags`
+ * on ALREADY-AUTHORED band-1 derelict lore rows, which is the settled route T-114
+ * established with `explore-lore-roll-of-the-lost`.
+ *
+ * NO ROW IS ADDED FOR IT. §5.3's per-band counts (14/20/33/25/8) are fixed and
+ * asserted, so a fourth "pod row" would be authoring against the ladder.
+ *
+ * THE THREE ARE CHOSEN ON FICTION, and each has to answer "why would this find
+ * put a sealed pod in front of the captain?":
+ *
+ *  - `frag-nemesis-02` — the crew lift a CARGO MANIFEST off the purser's station.
+ *    A manifest is the document that says what is aboard; reading one on a dead
+ *    ship is exactly how a crew learns a hold holds something the paper does not.
+ *    (The pod storylet's own prose opens "No manifest" — the two read together.)
+ *  - `frag-nemesis-04` — a BURN SCHEDULE with all figures and no destination.
+ *    Paperwork written not to be filed. A ship flying unfiled burns was carrying
+ *    something it did not want logged, and it is still bolted in the hold.
+ *  - `frag-nemesis-07` — a withdrawn Confederation survey file STOWED WELL AWAY
+ *    FROM THE LOG. The row's own copy already says this ship hid things, and
+ *    where one thing was hidden the crew look for the next.
+ *
+ * The other two derelict fragments are deliberately NOT on this list: a Reptiloid
+ * choral pattern on a dead bus (`-03`) and the wreck's own flight log (`-06`) are
+ * finds about listening and reading, not about cargo, and hanging a pod off them
+ * would be arming a number rather than authoring a scene.
+ *
+ * BALANCE: three of the eleven derelict rows in band 1 ⇒ measured **20% → 4.4%**
+ * of successful boards arm the pod. That is a deliberate, large fall and it is
+ * REPORTED, not tuned around: the old rate was a leg that fired independently of
+ * everything else on the board, and a single weighted draw cannot reproduce an
+ * independent leg (§2.4). What it must do is keep the pillar SUPPLIED, and
+ * `campaign-smuggler-gambler.test.ts`'s `podsTaken > 0` over a 300-day career is
+ * the tripwire that says whether it does.
+ *
+ * A LOOKUP, NOT A BRANCH. The rows below read this table by key; content never
+ * decides an outcome with an `if`.
+ */
+const DERELICT_POD_EFFECTS: Readonly<Record<string, StoryletEffects | undefined>> = {
+  'frag-nemesis-02': { flags: [{ name: 'signal.contraband.pending', value: true }] },
+  'frag-nemesis-04': { flags: [{ name: 'signal.contraband.pending', value: true }] },
+  'frag-nemesis-07': { flags: [{ name: 'signal.contraband.pending', value: true }] },
+};
+
 const FRAGMENT_LORE_ROWS: readonly ExploreOutcomeDefinition[] = [
   ...BEACON_FRAGMENT_POOL.map((fragmentId) => ({
     id: fragmentRowId('beacon', fragmentId),
@@ -443,7 +515,7 @@ const FRAGMENT_LORE_ROWS: readonly ExploreOutcomeDefinition[] = [
     valuePoints: 6,
     pools: ['derelict'] as const,
     wireFound: DERELICT_FRAGMENT_COPY[fragmentId],
-    payload: { kind: 'lore' as const, fragmentId },
+    payload: { kind: 'lore' as const, fragmentId, effects: DERELICT_POD_EFFECTS[fragmentId] },
   })),
 ];
 
@@ -813,34 +885,385 @@ const BAND2_LORE_EFFECT_ROWS: readonly ExploreOutcomeDefinition[] = [
   },
 ];
 
+// --- T-115 · BAND 3 — the real-effect items (§4, §5.2) ----------------------
+//
+// 14 rows, `valuePoints` 31-60, and the CEILING they are authored against is
+// §5.2's band-3 column, transcribed onto `EXPLORE_VALUE_BANDS` below: +6
+// component strength / +40 maxFuel / +1 cargo pod for Class A, `reroll` for
+// Class B. N = 3: a band-3 find costs the ship three calendar days, which is the
+// ladder showing through as a rule rather than as a per-row dial.
+//
+// 13 CLASS A + 1 CLASS B (`item-marked-ephemeris`, §4.2's item 2 of 3, in
+// `EXPLORE_ITEMS` since T-112 and granted by no row until now).
+//
+// THE FIRST CARGO PODS IN THE TABLE ARE HERE. §5.2 puts pods at bands 3-4 and
+// T-114 reasoned that a ceiling column nothing ever touches is a narrower band
+// wearing its label, so two rows grant `cargoPods: +1` — clamped by the SHIPYARD's
+// own `maxCargoPodsForShip`, never by a pod ceiling written a second time. All
+// three `ShipElementDelta` element classes are exercised in this band.
+//
+// BALANCE: §5.5 prices band 3 at ~1,200cr credit-equivalent, estimated off the
+// `CREW_ROLES` hire prices as the in-game market comparable. The Class-A grants
+// here are 5-6x band 2's (`+1 strength` → `+5/+6`; `+20 maxFuel` → `+40`), which
+// is the same multiple, and the Class-B `reroll` is `crew-navigator`'s 2,500cr
+// benefit with no `dailyWage` attached. Nothing here is a fresh judgement about
+// what an item is worth: the ceilings are §5.2 verbatim and the mix reaches them.
+const BAND3_ITEM_ROWS: readonly ExploreOutcomeDefinition[] = [
+  {
+    id: 'explore-item-survey-array',
+    valuePoints: 31,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew stripped a deep-survey array off {name} and spent three days marrying it to their own charts.",
+    payload: { kind: 'unique-item', itemId: 'item-survey-array' },
+  },
+  {
+    id: 'explore-item-long-tanks',
+    valuePoints: 33,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew cut a pair of long-range tanks out of the wreck and plumbed them the length of the spine.",
+    payload: { kind: 'unique-item', itemId: 'item-long-tanks' },
+  },
+  {
+    id: 'explore-item-torque-frames',
+    valuePoints: 35,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew recovered a set of drive torque frames and shimmed them into their own mounts.",
+    payload: { kind: 'unique-item', itemId: 'item-torque-frames' },
+  },
+  {
+    id: 'explore-item-belt-loader',
+    valuePoints: 37,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew freed a belt-loader arm from the wreck and bolted it over their own hold.",
+    payload: { kind: 'unique-item', itemId: 'item-belt-loader' },
+  },
+  {
+    id: 'explore-item-armoured-glacis',
+    valuePoints: 39,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew cut an armoured glacis plate off a warship frame and welded it across their own bow.",
+    payload: { kind: 'unique-item', itemId: 'item-armoured-glacis' },
+  },
+  {
+    id: 'explore-item-recirculators',
+    valuePoints: 41,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew found a full bank of air recirculators sealed against the cold and carried every one across.",
+    payload: { kind: 'unique-item', itemId: 'item-recirculators' },
+  },
+  {
+    id: 'explore-item-laid-rails',
+    valuePoints: 43,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew unshipped a pair of laid gun rails from {name} and spent a day getting them true.",
+    payload: { kind: 'unique-item', itemId: 'item-laid-rails' },
+  },
+  {
+    id: 'explore-item-yard-crawler',
+    valuePoints: 45,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew coaxed a yard crawler out of its cradle and taught it their own hull's frames.",
+    payload: { kind: 'unique-item', itemId: 'item-yard-crawler' },
+  },
+  {
+    id: 'explore-item-pod-cradles',
+    valuePoints: 47,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew cut a set of cargo pod cradles free of the wreck and hung them under their own keel.",
+    payload: { kind: 'unique-item', itemId: 'item-pod-cradles' },
+  },
+  {
+    id: 'explore-item-field-coils',
+    valuePoints: 49,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew salvaged a set of shield field coils out of {name}, still cased in their shipping grease.",
+    payload: { kind: 'unique-item', itemId: 'item-field-coils' },
+  },
+  {
+    id: 'explore-item-deep-tanks',
+    valuePoints: 51,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew opened the wreck's deep bunkerage, found it sound, and cut the whole run out to carry home.",
+    payload: { kind: 'unique-item', itemId: 'item-deep-tanks' },
+  },
+  {
+    id: 'explore-item-lighter-hull',
+    valuePoints: 53,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew towed an intact cargo lighter out of the wreck's belly and racked it as a pod of their own.",
+    payload: { kind: 'unique-item', itemId: 'item-lighter-hull' },
+  },
+  {
+    id: 'explore-item-pilot-plate',
+    valuePoints: 55,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew lifted a pilot's armoured deck plate out of {name} and set it under their own station.",
+    payload: { kind: 'unique-item', itemId: 'item-pilot-plate' },
+  },
+  {
+    // CLASS B, §4.2's item 2 of 3. `item-marked-ephemeris` grants
+    // `{ kind: 'reroll' }` — band 3's whole `classB` column — and it is the
+    // navigator's 2,500cr benefit found rather than hired, so it draws no wage.
+    id: 'explore-item-marked-ephemeris',
+    valuePoints: 58,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew found an astrogator's ephemeris aboard {name}, every page marked up in a dead woman's hand.",
+    payload: { kind: 'unique-item', itemId: 'item-marked-ephemeris' },
+  },
+];
+
+// --- T-115 · BAND 3 — the deep questline hooks (§2.2, §2.5) -----------------
+//
+// 6 rows, `delayDays` 1-5. The shape is T-114's exactly: a `storyletId` and a
+// `delayDays` and NOTHING else, turned into a real `StoryletEffects.schedule` by
+// the same `applyEffects` a played choice uses. Every target is a `scheduledOnly`
+// storylet with a `wireResolution`, authored in `storylets.ts` under the
+// `explore.*` prefix, and the ids are re-exported below by `.flatMap` rather than
+// transcribed.
+//
+// BALANCE: these hooks pay in choices, not in a fixed sum. A band-3 hook's
+// episode offers a larger decision than band 2's — a faction to cross, a berth to
+// give up, a debt to take on — which is the honest shape of a ~1,200cr
+// credit-equivalent that cannot be a credit figure without becoming a salvage row.
+const BAND3_QUESTLINE_ROWS: readonly ExploreOutcomeDefinition[] = [
+  {
+    id: 'explore-quest-long-orbit',
+    valuePoints: 32,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      'Player found a lifeboat still on its long orbit, dry of air, with a course laid for a system nobody settles.',
+    payload: { kind: 'questline', storyletId: 'explore.long-orbit.lifeboat', delayDays: 2 },
+  },
+  {
+    id: 'explore-quest-quarantine-seal',
+    valuePoints: 36,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      'Player cut through a quarantine seal on {name} that had been welded shut from the inside.',
+    payload: { kind: 'questline', storyletId: 'explore.quarantine.seal', delayDays: 3 },
+  },
+  {
+    id: 'explore-quest-witness-tape',
+    valuePoints: 40,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      'Player recovered a witness recording naming three captains, two of whom are still flying.',
+    payload: { kind: 'questline', storyletId: 'explore.witness.tape', delayDays: 4 },
+  },
+  {
+    id: 'explore-quest-bonded-crate',
+    valuePoints: 46,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      'Player found a bonded crate aboard {name} addressed to an Astro League office that closed a decade ago.',
+    payload: { kind: 'questline', storyletId: 'explore.bonded.crate', delayDays: 1 },
+  },
+  {
+    id: 'explore-quest-charted-lane',
+    valuePoints: 52,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player copied a lane out of the find's astrogation stack that appears on no Confederation chart.",
+    payload: { kind: 'questline', storyletId: 'explore.charted.lane', delayDays: 5 },
+  },
+  {
+    id: 'explore-quest-last-transmission',
+    valuePoints: 57,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      'Player recovered the last transmission off {name} and found it addressed, by name, to a living captain.',
+    payload: { kind: 'questline', storyletId: 'explore.last.transmission', delayDays: 2 },
+  },
+];
+
+// --- T-115 · BAND 3 — the standing that a real find buys (§2.2, §5.2) -------
+//
+// 5 rows, `dispositionDelta` 3-4 — against band 2's 1-2. THE LADDER HAS TO SHOW
+// THROUGH HERE: a band-2 row is an INTRODUCTION (a pip of standing for a civil
+// exchange over the wire); a band-3 row is a DEBT (the captain hands over
+// something they could have kept and sold). The delta is the only dial that
+// difference has, so it moves.
+//
+// Every `profileId` is resolved by the validator against BOTH `ALL_NPC_PROFILES`
+// and the live `createInitialState().npcs` roster, because `applyEffects`'s
+// disposition arm silently `continue`s on a roster miss.
+const BAND3_NPC_ROWS: readonly ExploreOutcomeDefinition[] = [
+  {
+    id: 'explore-npc-void-runner',
+    valuePoints: 34,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player passed Void Runner the whole of the find's lane data and would not be argued into a price.",
+    payload: { kind: 'npc', profileId: 'npc-void-runner', dispositionDelta: 3 },
+  },
+  {
+    id: 'explore-npc-the-phantom',
+    valuePoints: 42,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player found the Phantom's own ident buried in the wreck's logs and wiped it before anyone else read it.",
+    payload: { kind: 'npc', profileId: 'npc-the-phantom', dispositionDelta: 4 },
+  },
+  {
+    id: 'explore-npc-nebula-rose',
+    valuePoints: 48,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player carried a locker of personal effects off {name} and set it in Nebula Rose's hands unopened.",
+    payload: { kind: 'npc', profileId: 'npc-nebula-rose', dispositionDelta: 4 },
+  },
+  {
+    id: 'explore-npc-stellar-monk',
+    valuePoints: 54,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player read the dead crew's names into the wire for the Stellar Monk and let the channel run to the end of it.",
+    payload: { kind: 'npc', profileId: 'npc-stellar-monk', dispositionDelta: 3 },
+  },
+  {
+    id: 'explore-npc-void-whisper',
+    valuePoints: 60,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      'Player handed Void Whisper a signal recovered off the find that no receiver in the Confederation admits to hearing.',
+    payload: { kind: 'npc', profileId: 'npc-void-whisper', dispositionDelta: 4 },
+  },
+];
+
+// --- T-115 · BAND 4 — the top of the table (§4, §5.2) -----------------------
+//
+// 6 unique-item rows, `valuePoints` 61-100, N = 6. This band is 3% of successful
+// boards and its rows are the rarest content in the game, which is why the ceiling
+// is REACHED rather than approached: +10 component strength / +80 maxFuel / +1 pod
+// for Class A, `extra-die` for Class B. 5 CLASS A + 1 CLASS B
+// (`item-berth-couch`, §4.2's item 3 of 3).
+//
+// FINDING F-114-B · CLOSED BY AUTHORING, not by a ceiling change. T-114 reported
+// that band 2's `+1` Class-A strength ceiling sits below its own readers'
+// granularity — `navBonus` divides component strength by `NAV_BONUS_DIVISOR = 10`,
+// so `navigation +1` yields `+0` to a PILOT check — and recommended the question
+// to T-115. The answer is that the ceiling was never the problem: §5.2 already
+// authorises `+10` here, and `item-lane-computer` below is the FIRST perceptible
+// component grant in the whole table, worth exactly `+1` to every PILOT check the
+// captain ever rolls again. Band 2's granularity is band 2's, by design — the
+// ladder is supposed to have a tier where a component grant is a rounding error
+// and a tier where it is a permanent bonus. NOTHING IN §5.2 IS CHANGED.
+//
+// BALANCE: §5.5 prices band 4 at ~3,500cr credit-equivalent, estimated off
+// `crew-second`'s 3,000cr extra-die hire plus the wage it never charges.
+const BAND4_ITEM_ROWS: readonly ExploreOutcomeDefinition[] = [
+  {
+    id: 'explore-item-lane-computer',
+    valuePoints: 61,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew brought a Confederation lane computer off {name} intact, cradle, coolant loop and all.",
+    payload: { kind: 'unique-item', itemId: 'item-lane-computer' },
+  },
+  {
+    id: 'explore-item-bunker-run',
+    valuePoints: 68,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew spent six days cutting a capital bunkerage out of the wreck and rebuilding it around their own tanks.",
+    payload: { kind: 'unique-item', itemId: 'item-bunker-run' },
+  },
+  {
+    id: 'explore-item-capital-belt',
+    valuePoints: 76,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew unpicked a capital armour belt plate by plate and stitched every one onto their own hull.",
+    payload: { kind: 'unique-item', itemId: 'item-capital-belt' },
+  },
+  {
+    id: 'explore-item-spinal-mount',
+    valuePoints: 84,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew cut a spinal gun mount free of {name} and spent a week teaching their own frames to carry it.",
+    payload: { kind: 'unique-item', itemId: 'item-spinal-mount' },
+  },
+  {
+    id: 'explore-item-fleet-tender',
+    valuePoints: 92,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew walked a fleet tender's whole repair shop across, deck robots and racking together.",
+    payload: { kind: 'unique-item', itemId: 'item-fleet-tender' },
+  },
+  {
+    // CLASS B, §4.2's item 3 of 3 and the top of the item set on the ladder.
+    // `item-berth-couch` grants `{ kind: 'extra-die' }` — band 4's whole `classB`
+    // column, and the game's most expensive crew benefit (`crew-second`, 3,000cr)
+    // found instead of hired. The existing hand cap still binds it.
+    id: 'explore-item-berth-couch',
+    valuePoints: 100,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      "Player's crew cut a staff pilot's berth-couch out of {name} and mounted it beside their own board.",
+    payload: { kind: 'unique-item', itemId: 'item-berth-couch' },
+  },
+];
+
+// --- T-115 · BAND 4 — the two questlines at the top of the ladder -----------
+//
+// 2 rows. Same shape as every other questline row; what makes them band 4 is the
+// weight of the decision the episode puts in front of the captain, and the six
+// calendar days the find costs before it is even opened.
+const BAND4_QUESTLINE_ROWS: readonly ExploreOutcomeDefinition[] = [
+  {
+    id: 'explore-quest-cold-fleet',
+    valuePoints: 65,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      'Player charted a whole squadron of hulls off {name}, moored in line abreast and cold for forty years.',
+    payload: { kind: 'questline', storyletId: 'explore.cold.fleet', delayDays: 3 },
+  },
+  {
+    id: 'explore-quest-nemesis-berth',
+    valuePoints: 88,
+    pools: ['beacon', 'derelict'],
+    wireFound:
+      'Player found a berth aboard the find made up for someone who never boarded, and a name on the locker they know.',
+    payload: { kind: 'questline', storyletId: 'explore.nemesis.berth', delayDays: 4 },
+  },
+];
+
 /**
- * Every explore outcome the game can yield.
+ * Every explore outcome the game can yield — 100 rows, and every one authored.
  *
- * T-113 shipped the 34 AUTHORED rows of bands 0 and 1 (§5.3 pass 1); T-114 adds
- * the 33 rows of band 2 (§5.3 pass 2), for 67 authored rows plus the two
- * surviving transitional `legacy-contraband-*` rows. T-115 adds bands 3-4 and
- * the table totals 100.
+ * T-113 shipped the 34 rows of bands 0 and 1 (§5.3 pass 1); T-114 added the 33
+ * rows of band 2 (pass 2); T-115 adds the 25 rows of band 3 and the 8 of band 4
+ * (pass 3). **The table totals 100 and carries no `legacy-` prefixed row at all**,
+ * which is what makes "the table totals 100 outcomes" an unambiguous claim rather
+ * than a count with an asterisk.
  *
- * FINDING F-113-B · the transitional `contraband` kind SURVIVES this pass.
- * F-110-A assigned its retirement to T-113, but deleting the member from
- * `ExploreOutcomePayload` makes the engine's exhaustive `case 'contraband':` a
- * `tsc` error — engine work, which this task is forbidden. The two rows below
- * therefore stay, which also preserves the sealed-pod carry-choice storylet
- * rather than silently deleting it. Retire it with the draw flip (F-113-A).
+ * FINDING F-113-B · DISCHARGED AT T-117. The two `legacy-contraband-*` rows are
+ * deleted with the `contraband` payload kind and the transitional three-leg
+ * carrier, all in T-117. See the `ExploreOutcomePayload` header for the
+ * retirement and `DERELICT_POD_EFFECTS` for where the sealed pod went.
  *
- * FINDING F-113-D · CLOSED AT T-114. T-113 staged the derelict salvage leg here
- * rather than re-pointing it, because the `rich_hulk` deed (content `deeds.ts`)
- * fires on a `SalvageRecovered` of 400cr or more and `legacy-salvage-derelict`
- * (120-520) was the only row in the game that could trip it while the authored
- * table topped out at band 1's 260cr. Merely diluting that leg with six authored
- * rows was measured to push the deed out of 21 of 24 careers.
- *
- * BAND 2 REMOVES THE COUPLING, arithmetically rather than by hope. The derelict
- * salvage leg now draws uniformly over the 6 band-1 + 8 band-2 derelict salvage
- * rows, and P(SalvageRecovered >= 400) over that leg is 0.384 — against 0.302 for
- * the single row it replaces. So `legacy-salvage-derelict` is DELETED here and
- * the leg re-pointed, exactly as T-114 was owed. The two `legacy-contraband-*`
- * rows still survive (F-113-B): deleting the union member is engine work.
+ * FINDING F-113-D · CLOSED AT T-114, and it stays closed under the weighted draw.
+ * The `rich_hulk` deed (content `deeds.ts`) fires on a `SalvageRecovered` of 400cr
+ * or more; band 2's derelict salvage rows are what put that trigger back in reach
+ * after `legacy-salvage-derelict` (120-520) was retired. Under the single draw the
+ * deed's supply is the derelict salvage rows of bands 1-2 taken together, and
+ * `exploreContent.test.ts` re-targets the assertion onto exactly that set.
  */
 export const EXPLORE_OUTCOMES: readonly ExploreOutcomeDefinition[] = [
   ...DEAD_END_ROWS,
@@ -851,20 +1274,11 @@ export const EXPLORE_OUTCOMES: readonly ExploreOutcomeDefinition[] = [
   ...BAND2_NPC_ROWS,
   ...BAND2_QUESTLINE_ROWS,
   ...BAND2_LORE_EFFECT_ROWS,
-  {
-    id: 'legacy-contraband-beacon',
-    valuePoints: 14,
-    pools: ['beacon'],
-    wireFound: '',
-    payload: { kind: 'contraband' },
-  },
-  {
-    id: 'legacy-contraband-derelict',
-    valuePoints: 14,
-    pools: ['derelict'],
-    wireFound: '',
-    payload: { kind: 'contraband' },
-  },
+  ...BAND3_ITEM_ROWS,
+  ...BAND3_QUESTLINE_ROWS,
+  ...BAND3_NPC_ROWS,
+  ...BAND4_ITEM_ROWS,
+  ...BAND4_QUESTLINE_ROWS,
 ];
 
 /**
@@ -945,6 +1359,13 @@ export type ExploreItemDefinition =
  * against its own band's column, so an item cannot outgrow the row that grants
  * it. See finding F-114-B on `BAND2_ITEM_ROWS` for the honest limit of `+1`.
  *
+ * T-115 adds 18 more Class-A items — 13 at band 3, 5 at band 4 — and gives the
+ * two remaining Class-B modules the rows that grant them, so every entry in this
+ * table is now reachable through the real Explore verb. The CLASS-B TIER IS STILL
+ * EXACTLY THREE (`uniqueItem.test.ts` asserts the cap): §4.2 caps it because each
+ * module costs engine work per instance (finding F-100-1), and three authored rows
+ * granting three shipped modules is the cap being SPENT, not raised.
+ *
  * READERS: the engine's `unique-item` arm (`exploreOutcomes.ts`, by id) and the
  * UI's acquisition line (`ui/format.ts` `explorationOutcome`, for the name only).
  */
@@ -992,6 +1413,138 @@ export const EXPLORE_ITEMS: readonly ExploreItemDefinition[] = [
     name: 'Hull Doubler Plates',
     class: 'ship',
     deltas: [{ element: 'component', component: 'hull', strength: 1 }],
+  },
+  // --- T-115 · Class A, band 3 (ceiling +6 strength / +40 maxFuel / +1 pod) ---
+  //
+  // 13 items, and the band's ceiling is REACHED on all three element classes: +6
+  // strength (`item-armoured-glacis`, `item-pilot-plate`), +40 maxFuel
+  // (`item-long-tanks`, `item-deep-tanks`) and the table's FIRST +1 cargo pod
+  // (`item-pod-cradles`, `item-lighter-hull`). Two items carry a paired delta,
+  // which the resolver handles as a list without a branch of its own.
+  {
+    id: 'item-survey-array',
+    name: 'Deep-Survey Array',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'navigation', strength: 5 }],
+  },
+  {
+    id: 'item-long-tanks',
+    name: 'Long-Range Tankage',
+    class: 'ship',
+    deltas: [{ element: 'maxFuel', amount: 40 }],
+  },
+  {
+    id: 'item-torque-frames',
+    name: 'Drive Torque Frames',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'drives', strength: 5 }],
+  },
+  {
+    id: 'item-belt-loader',
+    name: 'Belt-Loader Arm',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'robotics', strength: 5 }],
+  },
+  {
+    id: 'item-armoured-glacis',
+    name: 'Armoured Glacis Plate',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'hull', strength: 6 }],
+  },
+  {
+    id: 'item-recirculators',
+    name: 'Air Recirculator Bank',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'lifeSupport', strength: 6 }],
+  },
+  {
+    id: 'item-laid-rails',
+    name: 'Laid Gun Rails',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'weapons', strength: 5 }],
+  },
+  {
+    id: 'item-yard-crawler',
+    name: 'Yard Crawler',
+    class: 'ship',
+    deltas: [
+      { element: 'component', component: 'robotics', strength: 3 },
+      { element: 'component', component: 'hull', strength: 3 },
+    ],
+  },
+  {
+    id: 'item-pod-cradles',
+    name: 'Cargo Pod Cradles',
+    class: 'ship',
+    deltas: [{ element: 'cargoPods', amount: 1 }],
+  },
+  {
+    id: 'item-field-coils',
+    name: 'Shield Field Coils',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'shields', strength: 6 }],
+  },
+  {
+    id: 'item-deep-tanks',
+    name: 'Deep Bunkerage',
+    class: 'ship',
+    deltas: [{ element: 'maxFuel', amount: 40 }],
+  },
+  {
+    id: 'item-lighter-hull',
+    name: 'Salvaged Cargo Lighter',
+    class: 'ship',
+    deltas: [
+      { element: 'cargoPods', amount: 1 },
+      { element: 'maxFuel', amount: 20 },
+    ],
+  },
+  {
+    id: 'item-pilot-plate',
+    name: "Pilot's Armoured Deck Plate",
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'cabin', strength: 6 }],
+  },
+  // --- T-115 · Class A, band 4 (ceiling +10 strength / +80 maxFuel / +1 pod) ---
+  //
+  // 5 items, the rarest content in the game. `item-lane-computer` is the FIRST
+  // PERCEPTIBLE COMPONENT GRANT IN THE TABLE — `navBonus` divides by
+  // `NAV_BONUS_DIVISOR = 10`, so `navigation +10` is the first delta anywhere that
+  // buys a whole `+1` on a PILOT check. That is finding F-114-B answered by
+  // authoring rather than by moving a ceiling (see `BAND4_ITEM_ROWS`).
+  {
+    id: 'item-lane-computer',
+    name: 'Confederation Lane Computer',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'navigation', strength: 10 }],
+  },
+  {
+    id: 'item-bunker-run',
+    name: 'Capital Bunkerage Run',
+    class: 'ship',
+    deltas: [{ element: 'maxFuel', amount: 80 }],
+  },
+  {
+    id: 'item-capital-belt',
+    name: 'Capital Armour Belt',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'hull', strength: 10 }],
+  },
+  {
+    id: 'item-spinal-mount',
+    name: 'Spinal Gun Mount',
+    class: 'ship',
+    deltas: [{ element: 'component', component: 'weapons', strength: 10 }],
+  },
+  {
+    id: 'item-fleet-tender',
+    name: "Fleet Tender's Repair Shop",
+    class: 'ship',
+    deltas: [
+      { element: 'component', component: 'robotics', strength: 10 },
+      { element: 'component', component: 'drives', strength: 8 },
+      { element: 'cargoPods', amount: 1 },
+    ],
   },
   // --- T-112 · Class B, the bounded module tier (§4.2) ---
   {
@@ -1111,6 +1664,29 @@ export interface ExploreValueBand {
    * `crew-second` 3,000cr — not a fresh judgement (§5.2's provenance note).
    */
   classB: readonly DiceBenefit[];
+  /**
+   * T-117 · THE DRAW WEIGHT (§5.1, §5.2) — the sixth and last column, and the one
+   * §5.2 reserved for "the task that flips the engine to the single weighted
+   * draw". That is T-117, so it lands here with its consumer.
+   *
+   * F-112-C IS THEREBY DISCHARGED. The finding's rule was "a column with no
+   * consumer is a stub", and it is why T-113 and T-114 both refused to add this
+   * one. `drawOutcome` (engine `exploreOutcomes.ts`) is the consumer: it groups a
+   * pool's rows by band, picks a band weighted by this number, then picks
+   * uniformly inside it.
+   *
+   * THE WEIGHTS SUM TO 100, so a weight reads directly as a percentage of
+   * successful boards — but ONLY when every band has a row in the pool being
+   * drawn. `drawOutcome` renormalises against the summed weight of the bands
+   * actually present, so an empty band cannot silently swallow probability.
+   *
+   * THERE IS DELIBERATELY NO ROW-LEVEL WEIGHT (§5.1). Rows inside a band are drawn
+   * uniformly, which is what makes "no hand-tuned constant per row" enforced by
+   * the TYPE rather than by review — and what makes per-row probability
+   * (`bandWeight / rowsInBand`) analytically checkable, which is the arithmetic
+   * §5.3 does and T-115's reachability sweep is sized from.
+   */
+  weight: number;
 }
 
 // BALANCE: the day counts are VERBATIM docs/EXPLORE_REDESIGN.md §5.2. Bands 0-1
@@ -1124,6 +1700,13 @@ export interface ExploreValueBand {
 // The Class-A ceilings and Class-B permissions are VERBATIM §5.2 as well. A
 // ceiling of 0 is "not permitted in this band"; an empty `classB` is "no die
 // effect at this band at all".
+//
+// T-117 · THE DRAW WEIGHTS ARE VERBATIM §5.2 TOO — 25/33/24/15/3, summing to 100.
+// They are not re-derived from the authored row counts and must never be: the
+// weights are the DESIGN of the ladder and the row counts (14/20/33/25/8) are the
+// spread §5.3 lays over it. A row the reachability sweep cannot find is a
+// content-shape defect to be fixed by moving a row, never by re-cutting a weight
+// to flatter a test.
 export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
   {
     band: 0,
@@ -1132,6 +1715,7 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
     permittedKinds: ['lore'],
     classACeiling: { strength: 0, maxFuel: 0, cargoPods: 0 },
     classB: [],
+    weight: 25,
   },
   {
     band: 1,
@@ -1140,6 +1724,7 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
     permittedKinds: ['salvage', 'lore'],
     classACeiling: { strength: 0, maxFuel: 0, cargoPods: 0 },
     classB: [],
+    weight: 33,
   },
   {
     band: 2,
@@ -1150,6 +1735,7 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
     permittedKinds: ['salvage', 'unique-item', 'npc', 'lore', 'questline'],
     classACeiling: { strength: 1, maxFuel: 20, cargoPods: 0 },
     classB: [{ kind: 'floor', floor: 3 }],
+    weight: 24,
   },
   {
     band: 3,
@@ -1158,6 +1744,7 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
     permittedKinds: ['unique-item', 'questline', 'npc'],
     classACeiling: { strength: 6, maxFuel: 40, cargoPods: 1 },
     classB: [{ kind: 'reroll' }],
+    weight: 15,
   },
   {
     band: 4,
@@ -1166,118 +1753,6 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
     permittedKinds: ['unique-item', 'questline'],
     classACeiling: { strength: 10, maxFuel: 80, cargoPods: 1 },
     classB: [{ kind: 'extra-die' }],
+    weight: 3,
   },
 ];
-
-// --- The TRANSITIONAL three-leg draw (T-111b's shape, kept alive as DATA) ---
-
-/**
- * T-110 · §2.4 is explicit that the single weighted draw is NOT behaviour-
- * preserving on its own: today's three legs are INDEPENDENT, so a lucky board
- * yields salvage AND a fragment AND a pod. The extraction therefore keeps the
- * three-leg draw alive — but as a content table pointing at row ids, not as
- * engine control flow.
- *
- * T-113 · THIS IS NO LONGER "the shipped T-111b table". It is the TRANSITIONAL
- * CARRIER: the leg chances are still the shipped ones verbatim, but every id it
- * addresses is now an AUTHORED row, which is what makes the 34 rows below
- * reachable through the real Explore verb without an engine line.
- *
- * FINDING F-113-A · THE SINGLE BAND-WEIGHTED DRAW IS UNOWNED, and T-115 cannot
- * ship without it. §2.4 pencilled the flip into T-113, but T-113's acceptance is
- * "zero lines changed under packages/engine/src" and §8's per-task handoff row
- * asks only for the rows — so the flip has no owner. It is two engine changes: a
- * `drawOutcome(rows, poiType, rng)` in `exploreOutcomes.ts` reading a new
- * `weight` column on `EXPLORE_VALUE_BANDS`, and one call-site swap in
- * `actions/exploration.ts`.
- *
- * T-114 · STILL UNOWNED, and the gap is now exactly as wide as it was: every
- * authored row except the 14 band-0 dead ends is addressed by a leg after this
- * pass, and those 14 remain undrawable for the same structural reason.
- *
- * TWO CONSEQUENCES CARRIED HERE, stated rather than hidden:
- *   1. The 14 band-0 DEAD ENDS are authored to §5.3 but are NOT DRAWABLE. This
- *      carrier has exactly three named legs and no "nothing else fired" arm, and
- *      inventing one would be the engine branch this task is forbidden.
- *   2. T-115's accept clause — "a seeded sweep finds at least one instance of
- *      every outcome" — is arithmetically impossible under a three-leg draw.
- * Recommended: a dedicated engine task between T-114 and T-115, or T-115's first
- * commit. The extraction it builds on is already done, so it is a draw-function
- * swap plus a fixture re-pin.
- */
-export interface LegacyLootLeg {
-  /** Probability (0-1) this leg fires on a given board. */
-  chance: number;
-  /** Rows this leg can yield. Empty ⇒ the leg never fires (and rolls nothing). */
-  outcomeIds: readonly string[];
-}
-
-export interface LegacyPoiLootTable {
-  salvage: LegacyLootLeg;
-  fragment: LegacyLootLeg;
-  contraband: LegacyLootLeg;
-}
-
-// The chances are VERBATIM the shipped T-111b table (beacon 0.55/0.30/0,
-// derelict 0.80/0.35/0.40) — T-113 re-points the IDS and re-tunes NOTHING. The
-// fragment leg's ids are the fragment pools in POOL ORDER, derived by `.map` and
-// never transcribed, because the index a seeded pick lands on is load-bearing;
-// per-fragment probability is therefore UNCHANGED by this pass, and the only
-// difference on that leg is that a board now also speaks. The beacon's
-// contraband leg keeps its zero chance (a beacon leaks signal, not sealed pods).
-//
-// T-114 · BOTH SALVAGE LEGS ARE NOW AUTHORED, and `legacy-salvage-derelict` is
-// gone (F-113-D, closed on `EXPLORE_OUTCOMES` above). The two legs are shaped
-// DIFFERENTLY, on purpose:
-//
-//   - the DERELICT leg stays SALVAGE-ONLY — the 6 band-1 + 8 band-2 derelict
-//     salvage rows. The `rich_hulk` deed is calibrated on this leg's credit
-//     distribution and nothing else in the game is, so putting a non-credit row
-//     on it would dilute an authored deed for no gain.
-//   - the BEACON leg is the "find" leg: its 6 band-1 + 6 band-2 beacon salvage
-//     rows PLUS the 19 non-salvage band-2 rows (items, NPC introductions,
-//     questline hooks, lore-with-effects). No deed is calibrated on the beacon
-//     half — which is exactly why T-113 retired `legacy-salvage-beacon` outright
-//     — and `drawLegacyLoot` resolves whatever id a leg names without caring what
-//     KIND the row is. This is what makes the whole of pass 2 reachable through
-//     the real Explore verb without an engine line, and it is the same move T-113
-//     made when it re-pointed the fragment legs at authored lore rows.
-//
-// The consequence authored for: every row on a leg for pool P declares P in its
-// own `pools`, which the validator asserts leg by leg.
-function authoredSalvageLeg(pool: PoiType): readonly string[] {
-  return [...SALVAGE_ROWS, ...BAND2_SALVAGE_ROWS]
-    .filter((row) => row.pools.includes(pool))
-    .map((row) => row.id);
-}
-
-/** The band-2 rows that are not salvage — the items, introductions, hooks and
- *  effect-bearing lore. Derived by `.filter`/`.map`, never transcribed, so a row
- *  added to any of the four blocks above cannot be orphaned off the leg. */
-function band2NonSalvageLeg(pool: PoiType): readonly string[] {
-  return [...BAND2_ITEM_ROWS, ...BAND2_NPC_ROWS, ...BAND2_QUESTLINE_ROWS, ...BAND2_LORE_EFFECT_ROWS]
-    .filter((row) => row.pools.includes(pool))
-    .map((row) => row.id);
-}
-
-export const LEGACY_POI_LOOT: Readonly<Record<PoiType, LegacyPoiLootTable>> = {
-  beacon: {
-    salvage: {
-      chance: 0.55,
-      outcomeIds: [...authoredSalvageLeg('beacon'), ...band2NonSalvageLeg('beacon')],
-    },
-    fragment: {
-      chance: 0.3,
-      outcomeIds: BEACON_FRAGMENT_POOL.map((id) => fragmentRowId('beacon', id)),
-    },
-    contraband: { chance: 0, outcomeIds: ['legacy-contraband-beacon'] },
-  },
-  derelict: {
-    salvage: { chance: 0.8, outcomeIds: authoredSalvageLeg('derelict') },
-    fragment: {
-      chance: 0.35,
-      outcomeIds: DERELICT_FRAGMENT_POOL.map((id) => fragmentRowId('derelict', id)),
-    },
-    contraband: { chance: 0.4, outcomeIds: ['legacy-contraband-derelict'] },
-  },
-};

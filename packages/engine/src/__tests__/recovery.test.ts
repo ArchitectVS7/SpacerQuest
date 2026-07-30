@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { advanceDay, applyPlayerAction, endDay, startDay } from '../day.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import type { EncounterState, GameEvent, GameState } from '../types.js';
+import { outcomeById, recoveryDays } from '../exploreOutcomes.js';
+import { EXPLORE_VALUE_BANDS } from '@spacerquest/content';
 
 /**
  * T-111 · THE MULTI-DAY COMMITTED RECOVERY (docs/EXPLORE_REDESIGN.md §3).
@@ -27,40 +29,52 @@ import type { EncounterState, GameEvent, GameState } from '../types.js';
 // and then PINNED here with the property it was selected for. Nothing about a
 // seed is magic: it is simply a board that reaches the state the ruling is about.
 //
-// All of them open a BAND-2 row — N = 1. Band 2 is the HIGHEST band any drawable
-// row reaches while the authored table covers bands 0-2 (T-114 pass 2), so every
-// recovery here is a one-day one. The rulings under test are all clock-agnostic
-// (`day >= dueDay`, a location compare, a slot compare), so N = 1 exercises them
-// identically to N = 6; T-115 makes N = 6 drivable when band-4 rows exist.
+// The three ruling seeds open a BAND-2 row — N = 1. The rulings under test are all
+// clock-agnostic (`day >= dueDay`, a location compare, a slot compare), so N = 1
+// exercises them identically to N = 6, and a one-day clock keeps each test to the
+// smallest number of real days that can demonstrate it. SECTION 7 ADDS THE N = 6
+// CASE ON ITS OWN SEED, which is what T-115 owed: bands 3 and 4 are authored, so
+// the longest recovery on the ladder is drivable through the real loop for the
+// first time and no longer has to be argued by analogy.
 //
 // T-113 RE-SEEDED one seed of the three (4 → 36), because the authored band-1
 // beacon rows joined the beacon salvage leg and re-phased that board.
 //
-// T-114 RE-SEEDED THE SAME ONE (36 → 82), and the mechanism is bigger: the row
-// all three seeds used to draw, `legacy-salvage-derelict`, IS DELETED. F-113-D is
-// discharged — band 2 is authored, so the derelict salvage leg is re-pointed at
-// the 6 band-1 + 8 band-2 authored derelict rows and the legacy row has no reason
-// to exist. The same scan was re-run against the real loop with the condition
-// updated to "the opened row is an AUTHORED band-2 salvage row", and:
-//   - SEED_TRAVELS_AWAY (10) and SEED_DIES (24) are UNMOVED. They still open a
-//     recovery on day 1 and still reach the state their ruling is about; only the
-//     identity of the row they open changed.
-//   - SEED_OPENS moved to 82, the first seed satisfying BOTH the interrupted-jump
-//     property and the day-30 one, exactly as 36 did.
-// NO ASSERTION CHANGED SHAPE. Two literals moved because they NAME THE DRAWN ROW
-// and the drawn row changed: the payout's `valuePoints` (20 → 18, read off
-// `explore-salvage-derelict-lifeboat`) and the abandoned op's `outcomeId`
-// (`legacy-salvage-derelict` → `explore-salvage-derelict-flag-bridge`, seed 10's
+// T-114 RE-SEEDED THE SAME ONE (36 → 82): the row all three seeds drew,
+// `legacy-salvage-derelict`, was deleted (F-113-D discharged).
+//
+// T-117 RE-SEEDED TWO OF THE THREE, and the mechanism is the largest yet — THE
+// DRAW ITSELF CHANGED. A board no longer walks three independent legs; it draws
+// one band-weighted row (F-113-A discharged, engine `drawOutcome`), so every
+// board in the game re-phases and which seed reaches which state is entirely
+// re-derived. The same scan was re-run against the real loop, condition unchanged
+// ("the opened row is an authored band-2 salvage row", plus the per-seed property):
+//   - SEED_OPENS → 52. The lowest seed satisfying ALL THREE properties the tests
+//     using it require: a band-2 salvage row on day 1, an INTERRUPTED day-1 jump
+//     to system 2, and a day-30 board that also opens a one-day op.
+//   - SEED_TRAVELS_AWAY (10) is UNMOVED — it still opens on day 1 and still
+//     ARRIVES at system 2. Only the identity of the row it opens changed.
+//   - SEED_DIES → 12. Seed 24's board no longer opens a recovery at all under the
+//     weighted draw (it draws a band-0/1 row, which resolves same-day), so there
+//     is nothing for the succession to forfeit; 12 is the lowest seed that opens
+//     one AND dies to the planted dusk encounter.
+// NO ASSERTION CHANGED SHAPE. Two literals moved because they NAME THE DRAWN ROW:
+// the payout's `valuePoints` (18 → 11, read off
+// `explore-salvage-beacon-fusion-stack`) and the abandoned op's `outcomeId`
+// (`explore-salvage-derelict-flag-bridge` → `explore-lore-rebel-cache`, seed 10's
 // row). Both are still read off CONTENT at payout, which is what they were there
 // to prove.
 
 /** Opens a recovery on day 1 at Sun-3 with an authored band-2 SALVAGE row, and
  *  its day-1 Travel is INTERRUPTED. */
-const SEED_OPENS = 82;
+const SEED_OPENS = 52;
 /** Opens a recovery on day 1 AND its day-1 Travel to system 2 actually ARRIVES. */
 const SEED_TRAVELS_AWAY = 10;
 /** Opens a recovery on day 1 AND the planted dusk encounter lands a fatal blow. */
-const SEED_DIES = 24;
+const SEED_DIES = 12;
+/** T-115 · Opens a BAND-4 recovery on day 1 — N = 6, the longest clock on the
+ *  ladder and the one no seed could reach until bands 3-4 were authored. */
+const SEED_BAND4 = 2;
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -177,8 +191,8 @@ describe('T-111 · a recovery spans real calendar days (the whole loop, no pokin
       outcomeId: recovery.outcomeId,
       poiId: recovery.poiId,
       // Read off the CONTENT row at payout, never off the save.
-      // 18 = `explore-salvage-derelict-lifeboat`, the band-2 row seed 82 opens.
-      valuePoints: 18,
+      // 11 = `explore-salvage-beacon-fusion-stack`, the band-2 row seed 52 opens.
+      valuePoints: 11,
     });
 
     const salvage = eventsOfType(duskTwo.events, 'SalvageRecovered');
@@ -220,7 +234,7 @@ describe('T-111 · §3.3(a) travelling away forfeits the op', () => {
     const abandoned = eventsOfType(dusk.events, 'RecoveryAbandoned');
     expect(abandoned).toHaveLength(1);
     expect(abandoned[0].reason).toBe('departed');
-    expect(abandoned[0].outcomeId).toBe('explore-salvage-derelict-flag-bridge');
+    expect(abandoned[0].outcomeId).toBe('explore-lore-rebel-cache');
     expect(dusk.state.player.recovery).toBeNull();
     // No partial credit, and nothing paid out.
     expect(eventsOfType(dusk.events, 'RecoveryPaidOut')).toHaveLength(0);
@@ -357,10 +371,11 @@ describe('T-111 · §3.3(d) the Tour One marker does nothing to an open recovery
     });
     expect(opened.events.some((e) => e.type === 'RecoveryStarted')).toBe(true);
     const recovery = opened.state.player.recovery!;
-    // dueDay 31, not the spec's illustrative 33: band 2 (N = 1) is the highest
-    // band any DRAWABLE row reaches while bands 0-2 are the authored table. The ruling
-    // under test — the era flip does nothing to an open recovery — is exercised
-    // identically; T-115 makes N = 6 drivable when band-4 rows are authored.
+    // dueDay 31: seed 52's day-30 board draws a band-2 row (N = 1). That is a
+    // property of the seed, not of the table — bands 3 and 4 are authored now, so
+    // a day-30 board CAN open a six-day op. The ruling under test (the era flip
+    // does nothing to an open recovery) is clock-agnostic and is exercised
+    // identically either way; section 7 drives the N = 6 clock end to end.
     expect(recovery.dueDay).toBe(31);
 
     const marker = endDay(opened.state);
@@ -461,5 +476,67 @@ describe('T-111 · a stored outcome id that no longer resolves', () => {
     expect(eventsOfType(dusk.events, 'RecoveryPaidOut')).toHaveLength(1);
     expect(eventsOfType(dusk.events, 'SalvageRecovered')).toHaveLength(1);
     expect(dusk.state.player.recovery).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7 · T-115 · THE LONGEST CLOCK ON THE LADDER, driven end to end
+// ---------------------------------------------------------------------------
+
+describe('T-115 · a BAND-4 find is a six-day commitment (§5.2, §5.4)', () => {
+  it('opens N = 6 from the band table alone, and pays out on the sixth dusk', () => {
+    // WHAT THIS PROVES, and why it could not be written before T-115: "the most
+    // powerful outcomes are the slowest to recover" has been asserted since T-111
+    // as a PROPERTY of the band table (`exploreOutcomes.test.ts`, §5.4). Until
+    // bands 3 and 4 were authored, no row in the game could reach N = 3 or N = 6,
+    // so the longest clock had never actually run through the real day loop. This
+    // runs it: dawn, the Explore verb, six real duskes, and the payout.
+    //
+    // NOTHING HERE NAMES A NUMBER THE CONTENT DOES NOT. The expected `dueDay` is
+    // `day + recoveryDays(row.valuePoints)` read off the drawn row, so a re-banded
+    // row moves the test with it rather than breaking it — and the assertion that
+    // matters (`N === 6` at band 4) is checked against the BAND TABLE, which is
+    // the one place a day-count may be written.
+    const opened = openRecovery(SEED_BAND4);
+    const recovery = opened.state.player.recovery!;
+    const row = outcomeById(recovery.outcomeId)!;
+    expect(row, `${recovery.outcomeId} resolves to no content row`).toBeDefined();
+
+    const N = recoveryDays(row.valuePoints);
+    expect(N).toBe(EXPLORE_VALUE_BANDS[4].recoveryDays);
+    expect(N).toBe(6);
+    expect(recovery.dueDay).toBe(recovery.startedDay + N);
+
+    // Six real duskes pass without paying (the predicate is `day >= dueDay`, and
+    // the day of the find is `dueDay - 6`), and the Explore verb is refused on
+    // every dawn in between — which is the cost the ladder charges for the top of
+    // the table, and the whole point of §5.4's correlation.
+    let live = opened.state;
+    for (let step = 0; step < N; step += 1) {
+      const dusk = endDay(live);
+      expect(
+        eventsOfType(dusk.events, 'RecoveryPaidOut'),
+        `paid early on step ${step}`,
+      ).toHaveLength(0);
+      expect(eventsOfType(dusk.events, 'RecoveryAbandoned')).toHaveLength(0);
+      expect(dusk.state.player.recovery).toEqual(recovery);
+      live = startDay(dusk.state).state;
+      const refused = applyPlayerAction(live, { type: 'Explore', spendDie: bestUnspentDie(live) });
+      expect(
+        refused.events.some(
+          (e) => e.type === 'ExplorationFailed' && e.reason === 'recovery-in-progress',
+        ),
+        `the verb was not refused on day ${live.day}`,
+      ).toBe(true);
+    }
+
+    // The sixth dusk is the one `day >= dueDay` is true on.
+    const payout = endDay(live);
+    const paid = eventsOfType(payout.events, 'RecoveryPaidOut');
+    expect(paid).toHaveLength(1);
+    expect(paid[0].day).toBe(recovery.dueDay);
+    expect(paid[0].outcomeId).toBe(recovery.outcomeId);
+    expect(paid[0].valuePoints).toBe(row.valuePoints);
+    expect(payout.state.player.recovery).toBeNull();
   });
 });

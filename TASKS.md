@@ -694,7 +694,226 @@ storylet system and every NPC outcome references a real cast or quest profile id
 a test that resolves the ids against content); zero lines changed under
 `packages/engine/src`; gate green.
 
-### T-115 · Explore content pass 3 of 3 — the tail (~33 outcomes) — `status: TODO` · `coder: opus` · `after: T-114`
+### T-117 · The single band-weighted draw — the F-113-A engine flip — `status: DONE` · `coder: opus` · `after: T-114`
+
+**Why this task exists, and why its number is out of order.** It was inserted after T-114 had
+already shipped, as the fix round of T-115's review. `docs/EXPLORE_REDESIGN.md` §2.4 (T-113,
+already committed and gated) says the flip *"needs a dedicated engine task between T-114 and
+T-115, or T-115's first commit"*, and **F-113-A recommended the dedicated task explicitly**.
+That recommendation was not acted upon when T-115 was scheduled, so T-115 absorbed the engine
+work and then amended its own **Accept** clause to permit it. **A task rewriting its own bar
+in the same commit as the work being judged is not a legitimate amendment** — the precedents
+it cited (F-113-A, F-114-A) amended the *design spec*, not acceptance criteria. This block is
+the process gap being closed the way F-113-A asked for: the engine change gets an owner other
+than the content pass, and **T-115's Accept clause is restored verbatim** (see F-115-A).
+
+**Delivered (2026-07-30):** F-113-A and F-113-B discharged. Explore now draws **one
+band-weighted row per board** out of `EXPLORE_OUTCOMES`, and the transitional three-leg
+carrier is gone.
+
+- `weight` joins `ExploreValueBand` — **25/33/24/15/3**, §5.2 verbatim, summing to 100. This
+  discharges **F-112-C**'s "a column with no consumer is a stub" objection, which is exactly
+  why T-113 and T-114 both refused to add it: `drawOutcome` is now the consumer.
+- **`drawOutcome(poiType, rng)`** in `packages/engine/src/exploreOutcomes.ts`. Filters
+  `EXPLORE_OUTCOMES` by pool, groups by band, spends **one** `rng.next()` on a band weighted
+  over the bands actually present in that pool (**renormalised**, so an empty band cannot
+  swallow probability) and **one** on a uniform pick inside it. **A flat two draws, always** —
+  the legacy single-id short-circuit died with the model it reproduced. The row goes to
+  `claimOutcome`, so a band-2+ find opens the recovery slot. Determinism order is §2.4's:
+  POI type → flavour name → band → row → within-payload roll.
+- **The call-site swap** in `packages/engine/src/actions/exploration.ts`: `drawLegacyLoot` out,
+  `drawOutcome` + `claimOutcome` in. These **two files are the whole engine-source diff** —
+  `git diff --stat packages/engine/src -- ':!**/__tests__/**'` names exactly them.
+- **DELETED:** `drawLegacyLoot`, `LEGACY_POI_LOOT`, `LegacyLootLeg`, `LegacyPoiLootTable`,
+  `authoredSalvageLeg`, `band2NonSalvageLeg`, the two `legacy-contraband-*` rows, the
+  `contraband` member of `ExploreOutcomePayload` and the engine's `case 'contraband':`.
+- **KEPT deliberately:** the `ContrabandFound` event variant in `types.ts`/`schema.ts`.
+  Removing an event shape is save/schema surface and would drag a version bump into a content
+  pass; it simply stops being emitted. `packages/ui/src/format.ts`'s clause for it survives
+  with a comment saying so. **No save-shape change, so no migration and no bump** —
+  `CURRENT_SAVE_VERSION` stays 13 and `packages/engine/src/save.ts` is untouched. An in-flight
+  save naming a deleted `legacy-contraband-*` id resolves to
+  `RecoveryAbandoned{unknown-outcome}` and mutates nothing — the test T-114 shipped for
+  `legacy-salvage-derelict` already covers the shape.
+- **THE SEALED POD IS RE-HOMED, NOT DELETED, and it is the one real risk this task carried.**
+  `flags['signal.contraband.pending']` — the only supply line for `derelict.sealed-pod` →
+  `smuggling.podsTaken` — moves onto **three already-authored band-1 derelict `lore` rows**
+  through `effects.flags` (`DERELICT_POD_EFFECTS`). No row was added: §5.3's per-band counts
+  are fixed. The three are chosen on **fiction** and each is argued in the comment — the cargo
+  manifest off the purser's station, the burn schedule with all figures and no destination,
+  and the survey file stowed well away from the log. The other two derelict fragments (a
+  choral pattern on a dead bus, the wreck's flight log) are deliberately NOT on the list.
+  **MEASURED: 20% → 4.4% of successful boards** (6,000-board sweep through the real verb,
+  asserted with a wide window). The tripwire held without any tuning:
+  `campaign-smuggler-gambler.test.ts` `podsTaken > 0` is green at **7 pods, 95 days carrying
+  illicit, 7 scans (2 evaded)** on seed 1, against 17/151/9 before.
+
+**F-117-A · THIS TASK AND T-115 LAND IN ONE COMMIT, AND THAT IS RECORDED RATHER THAN
+DRESSED UP.** They are separate tasks because the engine change needed an owner other than the
+content pass. They are not separable into two *green* commits: the flip alone would leave the
+suite red until every fixture in T-115's "Fixtures moved" list is re-derived against a 67-row
+table, and every one of them would then have to be re-derived a second time at 100 rows — two golden regenerations and two
+fingerprint ledger entries for one behaviour change, which is precisely the fixture churn
+`docs/VERSIONING.md` and standing amendment 3 exist to prevent. So the fixture ledger entries
+in the source tree name the combined move, and each names **both** mechanisms. The reviewer
+should read the two Accept clauses against one diff, with the engine-source lines charged
+here.
+
+**Accept:** `drawOutcome` exists in `packages/engine/src/exploreOutcomes.ts` and is the sole
+outcome draw at `resolveExploration`'s call site (grep both); `drawLegacyLoot`,
+`LEGACY_POI_LOOT` and the `contraband` payload kind are gone from the tree entirely; the
+engine-source diff is **exactly** `exploreOutcomes.ts` and `actions/exploration.ts`; a test
+drives `drawOutcome` directly and asserts the renormalised band split and the flat two-draw
+cost; `CURRENT_SAVE_VERSION` unchanged; gate green.
+
+### T-115 · Explore content pass 3 of 3 — the tail (~33 outcomes) — `status: DONE` · `coder: opus` · `after: T-117`
+
+**Delivered (2026-07-30):** **the table totals 100 rows and every one is authored** — no
+`legacy-` prefixed row survives.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root. · attempts=2/4.
+
+**The 33 rows of bands 3 and 4 — zero engine-source lines** (the draw flip that makes them
+drawable is **T-117**, the dedicated engine task F-113-A asked for).
+
+- **Band 3 (25 rows, N = 3):** 14 unique items (13 Class A + `item-marked-ephemeris`, §4.2's
+  `reroll` module, granted by no row until now), 6 questline hooks (`delayDays` 1-5), 5 NPC
+  rows at `dispositionDelta` **3-4** against band 2's 1-2 — a band-2 row is an INTRODUCTION,
+  a band-3 row is a DEBT, and the validator now checks the delta **per band** so a band-2 row
+  cannot quietly buy band-3 standing.
+- **Band 4 (8 rows, N = 6):** 6 unique items (5 Class A + `item-berth-couch`, the `extra-die`
+  module) and 2 questlines.
+- **18 new `EXPLORE_ITEMS`**, every one inside its granting row's band ceiling, and the
+  ceilings are **reached** on all three `ShipElementDelta` element classes: `+6`/`+10`
+  strength, `+40`/`+80` maxFuel, and **the table's first `cargoPods: +1` grants** (3 of them,
+  clamped by the shipyard's own `maxCargoPodsForShip`). Every shipped item is now granted by
+  exactly one row — a new test asserts no item is orphaned and none is granted twice.
+- **8 new `explore.*` storylets** in `storylets.ts`, each `scheduledOnly` with a
+  `wireResolution`, reaching `EXPLORE_SCHEDULED_STORYLET_IDS` by the existing `.flatMap`.
+- **Pool discipline:** every band-3/4 row is `pools: ['beacon', 'derelict']`, and a new test
+  asserts **every band has at least one row in every pool** — which is a reachability property
+  under `drawOutcome`'s renormalisation, not a style rule.
+
+**The three Accept criteria, and the test that satisfies each:**
+
+- *table totals 100* — `exploreContent.test.ts` asserts `EXPLORE_OUTCOMES` **and** `authored`
+  are both 100 and the per-band spread is **14/20/33/25/8**, plus the per-kind spreads for
+  bands 3 and 4. The "names EXACTLY the two legacy rows still owed a retirement" tripwire is
+  **kept and flipped** to assert zero survive.
+- *recovery time correlates with value across the whole table* —
+  `exploreOutcomes.test.ts` keeps §5.4 part 1 (monotone over all pairs, now 100 rows) and adds
+  **part 2**: the mean `recoveryDays` of the top `valuePoints` quartile is strictly greater
+  than the bottom's (0 → ≥3). Both are structural properties of a function of a band, so
+  neither is a tuned threshold and neither can rot. `recovery.test.ts` additionally drives
+  **N = 6 end to end through the real day loop** for the first time — six duskes, the verb
+  refused on every dawn between, payout on the sixth.
+- *the rarest tier is reachable* — the sweep is raised **2,000 → 6,000** boards (§5.3 computes
+  1,351 for 95% confidence on the 8 band-4 rows at 0.375%; 6,000 is margin) and the three
+  partial-reachability tests collapse into **one**: all 100 rows observed, failure message
+  lists the missing ids. The "records EXACTLY which rows are still inert" ledger is **kept and
+  taken to zero** rather than deleted.
+
+**Findings, reported rather than routed around:**
+
+- **F-115-A · T-115's two Accept clauses could not both hold, and the resolution was to give
+  the engine work its own task — NOT to rewrite this task's bar.** "A seeded sweep finds at
+  least one instance of every outcome" is arithmetically impossible under the three-leg
+  carrier — the 14 band-0 dead ends are on no leg, and five of them are derelict-specific, so
+  re-pooling them onto the beacon "find" leg would be false fiction. This is not a discovery:
+  it is **F-113-A**, recorded by T-113, re-confirmed by T-114, written into §2.4, and it
+  **recommended a dedicated engine task between T-114 and T-115**, which was never scheduled.
+  The first attempt at this task absorbed the flip and amended the Accept clause below in
+  place; **review rejected that, correctly** — the precedents cited (F-113-A, F-114-A) amended
+  the design spec, and a task may not amend its own acceptance criteria in the same commit as
+  the work being judged. **The fix acts on F-113-A instead: the flip is now `T-117`, a task
+  with its own Accept clause, and the clause below is restored VERBATIM.** T-115's own diff
+  therefore contains **zero lines under `packages/engine/src`** outside `__tests__`, and its
+  reachability clause is satisfiable and satisfied because T-117 precedes it. See F-117-A for
+  the one thing this does not paper over: both tasks land in a single commit.
+- **F-114-B · CLOSED BY AUTHORING, and no ceiling moved.** T-114 recommended band 2's `+1`
+  Class-A strength ceiling to T-115. The ceiling was never the problem: §5.2 already
+  authorises `+10` at band 4, and `item-lane-computer` (`navigation +10`) is the **first
+  perceptible component grant in the whole table** — `navBonus` divides by
+  `NAV_BONUS_DIVISOR = 10`, so it is the first delta anywhere worth a whole `+1` on a PILOT
+  check. A ladder is supposed to have a tier where a component grant is a rounding error and a
+  tier where it is permanent. §5.2 is unchanged.
+- **F-115-B · EXPLORE'S PER-OUTCOME EVENT RATE FALLS BY ROUGHLY 10x, BY DESIGN, AND IT MOVES
+  TWO SEPARATE DEED SUPPLY LINES.** A board used to walk three independent legs and now draws
+  one row of a hundred. `rich_hulk` (a 400cr+ `SalvageRecovered`) came off a leg firing on 80%
+  of derelict boards and is now a band-2 derelict salvage row at ~3.6% of boards;
+  `slipped_the_scan` / `known_to_the_league` / `run_seized` are all downstream of the sealed
+  pod, at 20% → 4.4%. Measured on `deed-coverage.test.ts`'s own driver over **seeds 1..160**:
+  the union is **still 44/44** (and 44/44 inside 1..28 alone), so no deed is dead content — but
+  the number of careers that earn the whole slate alone fell from *four in twelve* to **two in
+  sixty-five** (seeds 31 and 65), and twelve of the fourteen near-misses miss
+  `slipped_the_scan`, the same long pole every previous sweep names. **The sample was widened,
+  never the threshold** — `>= 2` is byte-identical and every other number in that file is
+  untouched. Re-pricing Explore or the pod supply to flatter it would be metric-gaming; T-116
+  owns the verdict.
+- **F-113-C, final measurement.** On the `campaign-degraded` window (5 seeds × 40 days) the
+  explorer's median final credits go **34,234 → 10,553** and the smuggler's **5,650 → 5,844**.
+  The explorer's fall is expected and is not tuned around: 25% of boards are now dead ends
+  (drawable for the first time), 42% open a multi-day recovery, and §5.5's ~447cr of value per
+  board is mostly permanent items, hooks and standing that a final-credits figure cannot see
+  inside 40 days. **T-116 owns the verdict.**
+- **Nothing had to be dropped.** Every row §5.3 pass 3 asks for was expressible as a row. Two
+  incidental repairs were needed and both are recorded where they happened: the Astro League
+  is `league` (there is no `guild` `FactionId`, so the bonded-crate episode was re-authored
+  around the real faction), and `storylets.test.ts`'s
+  `STORYLETS.find(...)!.wireResolution.wireMessage` needed splitting into a named binding
+  because eight more entries widened the `as const` tuple past where TypeScript carried the
+  non-null assertion through the chained access. The split asserts strictly more than the line
+  it replaced.
+
+**Fixtures moved, each re-derived with a ledger entry — never edited to go green.** Every
+entry below is charged to the **combined** T-117 + T-115 commit and names both mechanisms,
+per F-117-A: separating them would mean re-deriving each fixture twice for one behaviour
+change.
+
+- `exploreOutcomes.test.ts` — the "legacy parity (T-110)" describe **retires with the table it
+  pinned** and is re-pointed at the mechanism that replaced it, as **"the WEIGHTED DRAW
+  aggregate (T-117)"**, with a ledger entry naming the four mechanisms. Over the same
+  300 seeds: salvage 70 → 78, fragments 93 → 38, contraband **26 → 0**, podFlagged 26 → 15,
+  RecoveryStarted 167 → 134, credits 310,192 → 310,219. `contrabandEvents` is still counted,
+  at zero, so a re-emission would show up rather than pass silently. Each figure is read
+  against its predicted share (RecoveryStarted 44.7% vs the 42% of the table in bands 2-4;
+  podFlagged 5.0% vs 4.5%) rather than reported as a verdict.
+- `replay-golden.ts` — **regenerated via `gen-golden.ts`, and it moved exactly as T-114's own
+  note predicted it would.** Only the PRIMARY pair changed: its day-1 board fired no leg under
+  the carrier and now draws `explore-item-field-coils` (band 3, dueDay 4). Of 22 responses
+  exactly ONE differs, gaining `RecoveryStarted` and its wire line; **all three `rngState`s are
+  unchanged**; purse, fuel, charted POI, flags, deeds and rank are identical; the only other
+  state change is two `registry.earned[].eventIndex` anchors moving by exactly 2. The op is
+  then forfeited by the §3.3(a) location predicate when the log travels away on day 2 — the
+  recovery rule working end to end inside a fixture written before it existed.
+- `campaign-degraded.test.ts` `PINNED_FINGERPRINTS` — ledger **entry 16**. **Exactly the two
+  sweeping policies move** (explorer `735e77e3` → `2537a7aa`, smuggler `e3319430` → `edab634b`);
+  trader/fighter/veteran/gambler/greedy are byte-identical, the control that says an Explore
+  change moved the callers and not the world.
+- `recovery.test.ts` — **two seeds of three re-derived** (`SEED_OPENS` 82 → 52, `SEED_DIES`
+  24 → 12; `SEED_TRAVELS_AWAY` 10 is **unmoved**). No assertion changed shape; two literals
+  moved because they NAME THE DRAWN ROW. A new `SEED_BAND4 = 2` drives the N = 6 clock.
+- `nemesis-fragments.test.ts` — `DERELICT_SEED` 17 → 18 and `SAGE_SEED` 2 → 5, both re-swept
+  with the same driver and horizon. Mode 1 still lands a net-new pool addition on day 1; mode 3
+  still crosses its `minFragments` gate **organically** and now lands a day earlier.
+- `deed-coverage.test.ts` — `COVERAGE_SEEDS` **widened 1..12 → 1..65** (see F-115-B). No
+  threshold, band or assertion moved.
+- `exploration.test.ts` — the three-explore determinism seed 1 → 3 (42% of boards now commit
+  the ship, so which seeds thread three uncommitted boards moved); the contraband sweep and the
+  sealed-pod test **retargeted onto the flag** the storylet actually triggers on, and the
+  latter additionally asserts the board **speaks** — which the empty-`wireFound` legacy rows
+  never did, so the retirement is a strict improvement on the player's side.
+- `storylets.test.ts` — a `T115_STORYLET_IDS` batch line beside T-114's, same seam.
+- `docs/balance/smoke/tiers.json` re-extracted from the **stored N11 aggregate** (`npm run
+  balance:extract -- --aggregate docs/balance/baseline-n11-shipped.json`), **not** a capstone —
+  standing amendment 3 gives the milestone's single capstone to T-116. `npm run format` was run
+  BEFORE the re-extract so the recorded `rulesFingerprint` (`bbf007a6bf38a932`) describes the
+  formatted tree.
+
+**No save-shape change, so no migration and no bump.** `CURRENT_SAVE_VERSION` stays 13 and
+`packages/engine/src/save.ts` is untouched — adding rows to a content table is not save
+surface. (The one deletion that touches an id a save can hold is T-117's, and it is ruled on
+there.)
 
 The final third, weighted toward the **rare and powerful** end, where the time cost bites
 hardest. This pass proves the ladder: the most powerful outcomes must be the slowest to

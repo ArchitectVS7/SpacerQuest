@@ -2,7 +2,7 @@ import { EXPLORATION_FUEL_COST, EXPLORATION_NAV_DC, POI_KINDS, Stat } from '@spa
 import { DiscoveredPoi, GameEvent, GameState, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
-import { drawLegacyLoot, drawPoiKind } from '../exploreOutcomes.js';
+import { claimOutcome, drawOutcome, drawPoiKind } from '../exploreOutcomes.js';
 import { navBonus } from '../components.js';
 import { cloneState } from '../clone.js';
 
@@ -13,8 +13,8 @@ import { cloneState } from '../clone.js';
  * WHAT THIS FILE OWNS, and only this: the five typed refusals, the die spend,
  * the fuel burn, and the nav check. WHICH kinds of point of interest exist, and
  * WHAT a board pays out, are content — drawn through `exploreOutcomes.ts`
- * (`drawPoiKind` reads `POI_DISCOVERY_TABLE`, `drawLegacyLoot` reads
- * `LEGACY_POI_LOOT` and hands the drawn rows through `claimOutcome` to the
+ * (`drawPoiKind` reads `POI_DISCOVERY_TABLE`; T-117's `drawOutcome` draws ONE
+ * band-weighted row out of `EXPLORE_OUTCOMES` and `claimOutcome` hands it to the
  * generic resolver, which is also where a band-2+ find OPENS the multi-day
  * recovery slot instead of paying out today — T-111, spec §3). T-110
  * removed the hard-coded type ternary and the three-leg loot branch that used to
@@ -193,9 +193,12 @@ export function resolveExploration(
   });
 
   // Attach the payoff to the fresh discovery. Continues on the SAME action rng so
-  // it is deterministic for the seed + action sequence. T-113 swaps this one call
-  // for the single weighted draw over EXPLORE_OUTCOMES (spec §2.4).
-  drawLegacyLoot(nextState, poi, rng, events);
+  // it is deterministic for the seed + action sequence. T-117 · this is §2.4's
+  // single band-weighted draw over EXPLORE_OUTCOMES, in place of the transitional
+  // three-leg carrier (finding F-113-A discharged). A pool with no rows at all
+  // draws nothing rather than throwing — content integrity is a test's job.
+  const outcome = drawOutcome(type, rng);
+  if (outcome) claimOutcome(nextState, outcome, poi, rng, events);
 
   return { state: nextState, events };
 }

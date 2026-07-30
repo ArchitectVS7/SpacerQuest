@@ -424,17 +424,61 @@ const UNCHANGED_POLICIES = [
  *    response: five seeds cannot separate a credit shift of this size from stream
  *    noise, re-pricing Explore is R-series and an owner call, and T-116 owns the
  *    measurement and the verdict.
+ *
+ * 16. T-117 + T-115 · THE SINGLE BAND-WEIGHTED DRAW, AND THE 33 ROWS OF BANDS 3-4
+ *     (2026-07-30). Two tasks, one commit — see TASKS.md F-117-A: splitting them
+ *     would mean re-deriving every fixture twice for one behaviour change.
+ *      explorer 735e77e304bc46fc -> 2537a7aa5185d3fd
+ *      smuggler e3319430951ceca6 -> edab634b451035f3
+ *      trader / fighter / veteran / gambler / greedy — ALL UNCHANGED, byte for
+ *      byte. Exactly the two sweeping policies move, for the third entry running,
+ *      which is the control that says an Explore change moved the CALLERS and not
+ *      the world.
+ *
+ *    MECHANISM, and unlike entries 14 and 15 this one is a RULE change rather
+ *    than a content one — it is the flip §2.4 specified, T-110 deferred, and
+ *    finding F-113-A recorded as unowned through two content passes. A board no
+ *    longer walks three INDEPENDENT legs; it draws ONE band-weighted row out of
+ *    the now-100-row table (engine `drawOutcome`, reading the new `weight` column
+ *    on `EXPLORE_VALUE_BANDS`). Four things follow, all of them predicted by the
+ *    spec rather than discovered here:
+ *      (1) A LUCKY BOARD NO LONGER COMPOUNDS. §2.4 is explicit that the flip is
+ *          not behaviour-preserving: salvage AND a fragment AND a pod on one
+ *          board was a property of independent legs, and one row cannot do it.
+ *      (2) THE DRAW COST IS A FLAT TWO rng CALLS, so every board re-phases.
+ *      (3) THE 14 BAND-0 DEAD ENDS ARE DRAWABLE FOR THE FIRST TIME, at 25% of
+ *          boards. A quarter of successful boards now pay prose and nothing else,
+ *          which is the ladder's own design and the single biggest contributor to
+ *          the credit fall below.
+ *      (4) 42% OF BOARDS OPEN A RECOVERY (bands 2-4 by weight, against band 2
+ *          alone before), so the fifth typed refusal costs the sweeping policies
+ *          more days of the verb than it did.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      explorer  final credits  median 34,234 -> 10,553   mean 30,514 -> 15,693
+ *      smuggler  final credits  median  5,650 ->  5,844   mean  6,104 ->  6,337
+ *      fragments acquired (sum) explorer 26 -> 17, smuggler 18 -> 12
+ *    THE DIRECTION IS DOWN FOR THE EXPLORER ON CREDITS, and that is expected
+ *    rather than alarming: §5.5 prices the ladder at ~447cr of VALUE per
+ *    successful board, of which only bands 1-2 are credits at all — bands 3 and 4
+ *    are permanent items, questline hooks and standing, none of which a
+ *    final-credits figure can see, and a 40-day window is short enough that a
+ *    six-day recovery is a large fraction of it. NOTHING WAS TUNED TO PRODUCE
+ *    THIS AND NOTHING IS TUNED IN RESPONSE: five seeds cannot separate a shift of
+ *    this size from stream noise, re-pricing Explore is R-series and an owner
+ *    call, and T-116 owns the measurement and the verdict.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   trader: 'f3e01b2a843c1c0f',
   fighter: 'dc6ca4fbcce58659',
-  // T-114 entry 15: re-derived — band 2 reaches both draw legs (T-113 entry 14
-  // moved it last, for the beacon half alone).
-  explorer: '735e77e304bc46fc',
+  // Entry 16: re-derived — T-117's single band-weighted draw replaces the
+  // three-leg carrier and T-115 fills bands 3-4, so every board this policy
+  // takes re-phases.
+  explorer: '2537a7aa5185d3fd',
   veteran: 'f701430cfe32f7cb',
-  // T-114 entry 15: re-derived, same reason as `explorer`.
-  smuggler: 'e3319430951ceca6',
+  // Entry 16: re-derived, same reason as `explorer`.
+  smuggler: 'edab634b451035f3',
   gambler: 'fbb8b4df794fa5f4',
   greedy: '0f2ff82982dcbf2d',
 };

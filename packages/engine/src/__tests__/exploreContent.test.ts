@@ -3,11 +3,12 @@ import {
   ALL_FRAGMENT_IDS,
   ALL_NPC_PROFILES,
   EXPLORE_ITEM_BY_ID,
+  EXPLORE_ITEMS,
+  EXPLORE_MODULE_DICE_BENEFITS,
   EXPLORE_OUTCOMES,
   EXPLORE_VALUE_BANDS,
   ExploreOutcomeDefinition,
   ExploreValueBand,
-  LEGACY_POI_LOOT,
   POI_KINDS,
   PoiType,
   STORYLETS,
@@ -43,11 +44,13 @@ import { DayPhase, GameEvent, GameState } from '../types.js';
  * transcribed from §5.2, so a band-2 row is checked against band 2's own column
  * rather than against band 1's.
  *
- * EVERY ASSERTION BELOW IS SCOPED TO THE **AUTHORED** ROWS. The two surviving
- * `legacy-contraband-*` rows are transitional (finding F-113-B) and would
- * otherwise pollute the ladder: `contraband` appears in no band's
- * `permittedKinds`, which is the mechanical statement that it is not part of the
- * settled taxonomy.
+ * T-115 · `authored` AND `EXPLORE_OUTCOMES` ARE NOW THE SAME 100 ROWS. Until this
+ * pass the two differed by the transitional `legacy-contraband-*` rows, and every
+ * assertion here was scoped to the authored subset so those rows could not pollute
+ * the ladder. They are deleted with the draw flip (F-113-B discharged), so the
+ * filter below is kept for ONE reason only: the tripwire in section 2 asserts it
+ * removes nothing. A future `legacy-` row would fail loudly rather than quietly
+ * exempting itself from every check in this file.
  */
 
 const LEGACY_PREFIX = 'legacy-';
@@ -73,6 +76,14 @@ const SALVAGE_RANGE_BY_BAND: Readonly<Record<number, { min: number; max: number 
 const CREDIT_EQUIVALENT_BY_BAND: Readonly<Record<number, { target: number; window: number }>> = {
   1: { target: 150, window: 20 },
   2: { target: 470, window: 30 },
+};
+
+/** §5.2's ladder for an `npc` row's `dispositionDelta`, per band. Band 2 is an
+ *  INTRODUCTION (1-2), band 3 is a DEBT (3-4); bands 0, 1 and 4 permit no `npc`
+ *  row at all, which is asserted rather than assumed. */
+const NPC_DELTA_BY_BAND: Readonly<Record<number, { min: number; max: number } | undefined>> = {
+  2: { min: 1, max: 2 },
+  3: { min: 3, max: 4 },
 };
 
 function bandOf(row: ExploreOutcomeDefinition): ExploreValueBand {
@@ -135,13 +146,18 @@ describe('T-113/T-114 · every authored explore row is well-formed', () => {
     }
   });
 
-  it('every authored row SPEAKS — non-empty copy, distinct, and {name} at most once', () => {
+  it('EVERY row in the table SPEAKS — non-empty copy, distinct, and {name} at most once', () => {
     // FINDING F-110-B LANDS HERE. `resolveExploreOutcome` guards on
     // `wireFound !== ''`, and the legacy rows' empty copy is exactly why §1.3
     // could charge 80 fuel and a die for total silence. A row with no copy is
     // that bug re-authored, so it fails here rather than shipping quietly.
+    //
+    // T-115 · RUN OVER `EXPLORE_OUTCOMES` DIRECTLY, not over the authored subset.
+    // With the two empty-`wireFound` legacy rows deleted, "every row speaks" is
+    // unconditional — which is §2.4's silent-return fix finally true BY SHAPE,
+    // and it makes the engine's `!== ''` guard vacuous rather than load-bearing.
     const seen = new Set<string>();
-    for (const row of authored) {
+    for (const row of EXPLORE_OUTCOMES) {
       expect(row.wireFound.length, `${row.id} has empty wireFound`).toBeGreaterThan(0);
       // `{name}` is substituted with String.replace, which replaces the FIRST
       // occurrence only — a second one would ship a literal brace to the wire.
@@ -198,15 +214,49 @@ describe('T-113/T-114 · every authored explore row is well-formed', () => {
 // ---------------------------------------------------------------------------
 
 describe("T-113/T-114 · the authored table's value distribution matches the §5 ladder", () => {
-  it('is exactly the 14 + 20 + 33 rows §5.3 assigns to passes 1 and 2, and nothing ahead', () => {
-    expect(authored).toHaveLength(67);
+  it('THE TABLE TOTALS 100 OUTCOMES, in the 14/20/33/25/8 spread §5.3 lays out', () => {
+    // T-115's first accept clause, mechanically. Asserted BOTH ways round on
+    // purpose: `EXPLORE_OUTCOMES` is what the engine draws from and `authored` is
+    // what every other assertion in this file is scoped to, and the two being
+    // EQUAL is what makes "the table totals 100" a claim with no asterisk on it.
+    expect(EXPLORE_OUTCOMES).toHaveLength(100);
+    expect(authored).toHaveLength(100);
     expect(rowsInBand(0)).toHaveLength(14);
     expect(rowsInBand(1)).toHaveLength(20);
     expect(rowsInBand(2)).toHaveLength(33);
-    // T-115 owns bands 3-4. A row landing there early would be content authored
-    // ahead of the ladder that prices it.
-    expect(rowsInBand(3)).toHaveLength(0);
-    expect(rowsInBand(4)).toHaveLength(0);
+    expect(rowsInBand(3)).toHaveLength(25);
+    expect(rowsInBand(4)).toHaveLength(8);
+  });
+
+  it('THE DRAW WEIGHTS are §5.2 verbatim: five positive weights summing to 100', () => {
+    // The sixth column, landed at T-117 with its consumer (`drawOutcome`). Two
+    // invariants, both structural:
+    //   - every weight is POSITIVE, or a band's rows would be unreachable no
+    //     matter how many seeds the sweep in section 4 burns;
+    //   - the weights SUM TO 100, which is what makes a weight readable as a
+    //     percentage of successful boards and what §5.3's per-row arithmetic
+    //     (`bandWeight / rowsInBand`) is computed against.
+    expect(EXPLORE_VALUE_BANDS.map((band) => band.weight)).toEqual([25, 33, 24, 15, 3]);
+    for (const band of EXPLORE_VALUE_BANDS) {
+      expect(band.weight, `band ${band.band} weight`).toBeGreaterThan(0);
+    }
+    expect(EXPLORE_VALUE_BANDS.reduce((sum, band) => sum + band.weight, 0)).toBe(100);
+  });
+
+  it('EVERY BAND HAS A ROW IN EVERY POOL — no pool is missing a rung (§2.5, §5.3)', () => {
+    // POOL DISCIPLINE, and it is a reachability property rather than a style
+    // rule. `drawOutcome` renormalises the band weights over the bands that
+    // actually have rows in the pool it is drawing for, so a band with no beacon
+    // row would silently hand its 15% (or 3%) to the other bands ON BEACONS — and
+    // the §5.3 arithmetic the sweep is sized from would be describing a table
+    // that does not exist. Asserting it here is cheaper than discovering it as a
+    // mysteriously unreachable row.
+    for (const band of EXPLORE_VALUE_BANDS) {
+      for (const pool of Object.keys(POI_KINDS) as PoiType[]) {
+        const rows = rowsInBand(band.band).filter((row) => row.pools.includes(pool));
+        expect(rows.length, `band ${band.band} has no ${pool} row`).toBeGreaterThan(0);
+      }
+    }
   });
 
   it('every row carries a payload kind its own band permits', () => {
@@ -260,6 +310,31 @@ describe("T-113/T-114 · the authored table's value distribution matches the §5
     }
   });
 
+  it('band 3 is the 14 + 6 + 5 spread §5.3 pass 3 authors', () => {
+    const band3 = rowsInBand(3);
+    const counted = (kind: string): number =>
+      band3.filter((row) => row.payload.kind === kind).length;
+    expect(counted('unique-item')).toBe(14);
+    expect(counted('questline')).toBe(6);
+    expect(counted('npc')).toBe(5);
+    // Bands 3 and 4 are NON-SALVAGE BY DESIGN (§5.2's provenance note): the two
+    // authored credit ranges stop at band 2's 700cr, so a salvage row up here
+    // would be a credit figure with no band behind it.
+    expect(counted('salvage')).toBe(0);
+    expect(counted('lore')).toBe(0);
+  });
+
+  it('band 4 is the 6 + 2 spread §5.3 pass 3 authors', () => {
+    const band4 = rowsInBand(4);
+    const counted = (kind: string): number =>
+      band4.filter((row) => row.payload.kind === kind).length;
+    expect(counted('unique-item')).toBe(6);
+    expect(counted('questline')).toBe(2);
+    expect(counted('salvage')).toBe(0);
+    expect(counted('npc')).toBe(0);
+    expect(counted('lore')).toBe(0);
+  });
+
   it.each([1, 2])(
     "band-%i salvage spans the §5.2 range and averages §5.5's credit-equivalent",
     (band) => {
@@ -302,21 +377,27 @@ describe("T-113/T-114 · the authored table's value distribution matches the §5
     }
   });
 
-  it('names EXACTLY the two legacy rows still owed a retirement', () => {
-    // THE TRIPWIRE for T-115 and the draw flip. F-113-D is DISCHARGED — T-114
-    // deleted `legacy-salvage-derelict` and re-pointed the derelict salvage leg
-    // at the 6 band-1 + 8 band-2 authored derelict rows, which restores the
-    // `rich_hulk` deed's 400cr trigger (P(>=400) 0.302 -> 0.384) rather than
-    // merely diluting it. What survives is F-113-B alone: the two `contraband`
-    // rows cannot be retired by a CONTENT pass, because deleting the member from
-    // `ExploreOutcomePayload` makes the engine's exhaustive `case 'contraband':`
-    // a tsc error. They retire with the single band-weighted draw (F-113-A).
-    // Retiring them without updating this list fails loudly, which is the point:
-    // it names what is still owed rather than letting it lapse.
+  it('NO legacy row survives — F-113-A and F-113-B are discharged, visibly', () => {
+    // THE SAME TRIPWIRE, WITH ITS CLAIM FLIPPED. It has named what the table
+    // still owed since T-113, and what it owed is now paid:
+    //
+    //   F-113-A · the single band-weighted draw. T-117 — the dedicated engine
+    //     task F-113-A asked for — landed `drawOutcome` reading the new `weight`
+    //     column, and deleted the three-leg carrier `LEGACY_POI_LOOT` with it.
+    //   F-113-B · the `contraband` payload kind. Deleting the union member was
+    //     always engine work (the exhaustive `case 'contraband':` is a tsc error
+    //     without it), which is why three content passes could not do it. T-117 is
+    //     engine work by construction, so it retired there. The sealed-pod
+    //     carry choice it armed is re-homed onto three band-1 derelict lore rows
+    //     (`DERELICT_POD_EFFECTS`), not deleted.
+    //
+    // KEPT RATHER THAN DELETED, deliberately: the ledger is discharged where it
+    // can be seen, and a `legacy-` row re-appearing in the table would fail here
+    // instead of quietly exempting itself from every other check in this file.
     const legacy = EXPLORE_OUTCOMES.filter((row) => row.id.startsWith(LEGACY_PREFIX)).map(
       (row) => row.id,
     );
-    expect(legacy.sort()).toEqual(['legacy-contraband-beacon', 'legacy-contraband-derelict']);
+    expect(legacy).toEqual([]);
   });
 });
 
@@ -365,10 +446,17 @@ describe('T-114 · every id an authored row names resolves against real content'
       if (row.payload.kind !== 'npc') continue;
       expect(castIds.has(row.payload.profileId), `${row.id} cast id`).toBe(true);
       expect(rosterIds.has(row.payload.profileId), `${row.id} live roster`).toBe(true);
-      // An INTRODUCTION moves standing a pip or two, never a chain's worth.
+      // THE LADDER SHOWS THROUGH IN THE DELTA, and it is checked per band rather
+      // than as one loose range: band 2 authors INTRODUCTIONS (a pip or two for a
+      // civil exchange) and band 3 authors DEBTS (the captain hands over
+      // something they could have sold). A single 1-4 range would let a band-2
+      // row quietly buy band-3 standing.
+      const band = bandOf(row).band;
+      const range = NPC_DELTA_BY_BAND[band];
+      expect(range, `${row.id} is an npc row in band ${band}, which authors none`).toBeDefined();
       expect(Number.isInteger(row.payload.dispositionDelta)).toBe(true);
-      expect(row.payload.dispositionDelta).toBeGreaterThanOrEqual(1);
-      expect(row.payload.dispositionDelta).toBeLessThanOrEqual(2);
+      expect(row.payload.dispositionDelta, `${row.id} delta`).toBeGreaterThanOrEqual(range!.min);
+      expect(row.payload.dispositionDelta, `${row.id} delta`).toBeLessThanOrEqual(range!.max);
     }
   });
 
@@ -409,67 +497,99 @@ describe('T-114 · every id an authored row names resolves against real content'
       } else {
         const permitted = band.classB;
         expect(permitted.length, `${item.id} is Class B in band ${band.band}`).toBeGreaterThan(0);
-        // The band permits a SHAPE; a `floor` must additionally be <= the
-        // permitted floor, which is the only kind with an integer dial (§4.3 L1).
-        const match = permitted.find((benefit) => benefit.kind === 'floor');
-        expect(match, `${item.id} kind not permitted at band ${band.band}`).toBeDefined();
-      }
-    }
-  });
-
-  it('ships EXACTLY one Class-B item row in this pass (§4.2 places item 1 at band 2)', () => {
-    const classB = itemRows.filter(
-      (row) =>
-        row.payload.kind === 'unique-item' &&
-        EXPLORE_ITEM_BY_ID[row.payload.itemId]?.class === 'module',
-    );
-    expect(classB).toHaveLength(1);
-    // Items 2 and 3 (`reroll`, `extra-die`) are bands 3-4 and are T-115's.
-    expect(classB[0].payload.kind === 'unique-item' && classB[0].payload.itemId).toBe(
-      'item-tally-slate',
-    );
-  });
-
-  it('every id on a draw leg names a row whose own pools include that POI type', () => {
-    // THE STRUCTURAL GUARD that makes T-114's beacon re-point safe. The beacon
-    // salvage leg is now the "find" leg — it carries items, introductions, hooks
-    // and effect-bearing lore alongside salvage — and `drawLegacyLoot` resolves
-    // whatever id a leg names without caring what KIND the row is. What it must
-    // never do is surface a row at a POI type the row does not claim.
-    const byId = new Map(EXPLORE_OUTCOMES.map((row) => [row.id, row]));
-    for (const type of Object.keys(LEGACY_POI_LOOT) as PoiType[]) {
-      const table = LEGACY_POI_LOOT[type];
-      for (const leg of [table.salvage, table.fragment, table.contraband]) {
-        for (const id of leg.outcomeIds) {
-          const row = byId.get(id);
-          expect(row, `leg id ${id} resolves to no row`).toBeDefined();
-          expect(row!.pools, `${id} on the ${type} leg`).toContain(type);
+        // The band permits a SHAPE. T-115 generalises this from the band-2-only
+        // `floor` lookup it shipped as: the module's own `DiceBenefit` kind must
+        // appear in the band's column, and a `floor` must ADDITIONALLY be inside
+        // the permitted floor, which is the only kind with an integer dial
+        // (§4.3 L1).
+        const benefit = EXPLORE_MODULE_DICE_BENEFITS[item.moduleId];
+        expect(benefit, `${item.id} names a module with no dice benefit`).toBeDefined();
+        const match = permitted.find((allowed) => allowed.kind === benefit!.kind);
+        expect(
+          match,
+          `${item.id} (${benefit!.kind}) not permitted at band ${band.band}`,
+        ).toBeDefined();
+        if (match?.kind === 'floor' && benefit?.kind === 'floor') {
+          expect(benefit.floor, `${item.id} floor`).toBeLessThanOrEqual(match.floor);
         }
       }
     }
   });
 
-  it('the DERELICT salvage leg stays salvage-only — the rich_hulk deed is on it', () => {
-    // F-113-D's closing argument, asserted so it cannot be undone by accident.
-    // The `rich_hulk` deed fires on a `SalvageRecovered` of 400cr+, and this leg
-    // is the only place in the game calibrated on a credit distribution. Putting
-    // a non-credit row on it would dilute an authored deed for no gain — which is
-    // exactly the measurement that stopped T-113 re-pointing it at all.
-    const byId = new Map(EXPLORE_OUTCOMES.map((row) => [row.id, row]));
-    const leg = LEGACY_POI_LOOT.derelict.salvage.outcomeIds;
-    for (const id of leg) expect(byId.get(id)!.payload.kind, id).toBe('salvage');
-    // And the trigger is reachable with room: P(>=400) over the uniform leg.
+  it('grants EACH of the three Class-B modules from exactly one row (§4.2 spent, not raised)', () => {
+    // §4.2 caps Class B at three modules because each one costs ENGINE work per
+    // instance (finding F-100-1). T-112 shipped the three; T-114 gave `floor` its
+    // row at band 2; T-115 gives `reroll` its band-3 row and `extra-die` its
+    // band-4 one. So the cap is now fully SPENT — which is the opposite of raised,
+    // and is why the assertion is "exactly three rows, one per module" rather than
+    // a count that would pass if a fourth module appeared.
+    const classB = itemRows.filter(
+      (row) =>
+        row.payload.kind === 'unique-item' &&
+        EXPLORE_ITEM_BY_ID[row.payload.itemId]?.class === 'module',
+    );
+    expect(classB).toHaveLength(3);
+    const granted = classB.map((row) =>
+      row.payload.kind === 'unique-item' ? row.payload.itemId : '',
+    );
+    expect(granted.sort()).toEqual([
+      'item-berth-couch',
+      'item-marked-ephemeris',
+      'item-tally-slate',
+    ]);
+    // …and each at the band §4.2 places it: floor at 2, reroll at 3, extra-die at 4.
+    const bandOfItem = (itemId: string): number =>
+      bandOf(
+        classB.find((row) => row.payload.kind === 'unique-item' && row.payload.itemId === itemId)!,
+      ).band;
+    expect(bandOfItem('item-tally-slate')).toBe(2);
+    expect(bandOfItem('item-marked-ephemeris')).toBe(3);
+    expect(bandOfItem('item-berth-couch')).toBe(4);
+  });
+
+  it('every shipped EXPLORE_ITEM is granted by a row — no item is unreachable content', () => {
+    // T-112 shipped three items no row could grant, deliberately, and said so.
+    // With bands 3 and 4 authored there is no longer any such item, and that is a
+    // property worth pinning: an item nobody can find is a stub with a name.
+    const grantedIds = new Set(
+      itemRows.flatMap((row) => (row.payload.kind === 'unique-item' ? [row.payload.itemId] : [])),
+    );
+    const orphans = EXPLORE_ITEMS.filter((item) => !grantedIds.has(item.id)).map((item) => item.id);
+    expect(orphans, `items no row grants: ${orphans.join(', ')}`).toEqual([]);
+    // …and no item is granted twice, which would make one row's find another
+    // row's no-op the second time it landed.
+    expect(grantedIds.size).toBe(itemRows.length);
+  });
+
+  it('the rich_hulk deed keeps its supply under the WEIGHTED DRAW (F-113-D stays closed)', () => {
+    // F-113-D's closing argument, RE-TARGETED rather than deleted — the leg it
+    // was asserted over ceased to exist with the draw flip, and deleting the
+    // assertion with it would have retired the only guard on an authored deed.
+    //
+    // The `rich_hulk` deed (content `deeds.ts`) fires on a `SalvageRecovered` of
+    // 400cr or more. Under the transitional carrier its supply was one leg —
+    // uniform over the 14 derelict salvage rows, P(>=400) = 0.384, against 0.302
+    // for the single `legacy-salvage-derelict` row T-114 deleted. Under the
+    // weighted draw the supply is the SAME 14 rows, reached through bands 1 and 2
+    // of the derelict pool instead of through a leg, so the claim that has to
+    // survive is about the ROWS: a derelict salvage row that pays out is still
+    // more likely than not to clear the trigger with room.
+    const derelictSalvage = authored.filter(
+      (row) => row.payload.kind === 'salvage' && row.pools.includes('derelict'),
+    );
+    expect(derelictSalvage).toHaveLength(14);
     const probability =
-      leg.reduce((sum, id) => {
-        const payload = byId.get(id)!.payload;
-        if (payload.kind !== 'salvage') return sum;
-        const span = payload.maxCredits - payload.minCredits + 1;
-        const above = Math.max(0, payload.maxCredits - Math.max(400, payload.minCredits) + 1);
+      derelictSalvage.reduce((sum, row) => {
+        if (row.payload.kind !== 'salvage') return sum;
+        const span = row.payload.maxCredits - row.payload.minCredits + 1;
+        const above = Math.max(
+          0,
+          row.payload.maxCredits - Math.max(400, row.payload.minCredits) + 1,
+        );
         return sum + above / span;
-      }, 0) / leg.length;
-    // The row this leg replaced (`legacy-salvage-derelict`, 120-520) sat at
-    // 0.302. Band 2 restores it with room — assert the DIRECTION, not a tuned
-    // figure: a leg that made the deed rarer than the row it replaced is the
+      }, 0) / derelictSalvage.length;
+    // Assert the DIRECTION against the row the set replaced, never a tuned
+    // figure: a table that made the deed rarer than one 120-520cr row is the
     // regression F-113-D predicted.
     expect(probability).toBeGreaterThan(0.302);
   });
@@ -502,23 +622,41 @@ function rowForMessage(message: string, poiName: string): ExploreOutcomeDefiniti
   return undefined;
 }
 
-const SWEEP_SEEDS = 2000;
+/**
+ * T-115 · SIZED FROM §5.3's ARITHMETIC, not guessed at. The rarest row is any of
+ * the 8 band-4 rows at `3 / 8 = 0.375%` of a successful board, and §5.3 computes
+ * `8 × (1 − 0.00375)^n < 0.05` ⇒ n ≈ 1,351 boards for 95% confidence on all of
+ * them. 2,000 was the spec's budget for that uniform case; 6,000 buys margin for
+ * a row that ends up in a pool of one type (half the rate) without being slow —
+ * the whole sweep is one `resolveExploration` call per seed and runs in under a
+ * second.
+ *
+ * ANY ROW THIS MISSES IS A CONTENT-SHAPE DEFECT — a band whose weight is too
+ * small for its row count — and the fix is to move a row between bands or re-cut
+ * a band weight, NEVER to widen the assertion or shrink the row set (§5.3, and
+ * the standing constraint on thresholds).
+ */
+const SWEEP_SEEDS = 6000;
 
-describe('T-113/T-114 · the authored rows resolve through the real Explore path', () => {
+describe('T-115 · EVERY row in the table resolves through the real Explore path', () => {
   // ONE SWEEP, read several ways. Every board is a real `resolveExploration`
   // call — the verb a player uses, nav check and all — never a hand-called
   // resolver, so what is asserted below is what a player can actually reach.
   //
-  // T-114 · A BAND-2 ROW IS OBSERVED THROUGH ITS `RecoveryStarted`, not through
-  // its wire copy, and that is not a workaround — it is the design. Band 2 is
-  // `recoveryDays: 1`, so the CLAIM half fires on the day of the board and the
-  // PAYOFF (with the row's own prose) lands at the dusk of `dueDay`. This sweep
-  // drives the ACTION only, so a band-2 row can only be seen as the commitment
-  // it opens. Section 5 below drives the payout half through the real dusk.
+  // TWO OBSERVATION CHANNELS, and between them they now cover the whole table:
+  //   - bands 0-1 are `recoveryDays: 0`, so the row resolves on the day of the
+  //     board and is seen through its own unique `wireFound` copy;
+  //   - bands 2-4 DEFER, so the row is seen through the `RecoveryStarted` it
+  //     opens. That is not a workaround, it is the design (T-111 §3): the CLAIM
+  //     half fires today and the PAYOFF lands at the dusk of `dueDay`. This sweep
+  //     drives the ACTION only; section 5 drives the payout half through a real
+  //     dusk.
   const observed = new Map<string, { amount: number | null; poiName: string }>();
   let fragmentBoards = 0;
   let salvageBoards = 0;
   let emptyWireOnBoard = 0;
+  let podArmed = 0;
+  let boards = 0;
 
   for (let seed = 0; seed < SWEEP_SEEDS; seed += 1) {
     const res = resolveExploration(
@@ -529,6 +667,8 @@ describe('T-113/T-114 · the authored rows resolve through the real Explore path
     const discovered = res.events.find((e) => e.type === 'PoiDiscovered');
     if (!discovered || discovered.type !== 'PoiDiscovered') continue;
     const poiName = discovered.name;
+    boards += 1;
+    if (res.state.flags['signal.contraband.pending'] === true) podArmed += 1;
     let pendingAmount: number | null = null;
     for (const event of res.events) {
       if (event.type === 'SalvageRecovered') {
@@ -573,52 +713,75 @@ describe('T-113/T-114 · the authored rows resolve through the real Explore path
     expect(fragmentBoards).toBeGreaterThan(0);
   });
 
-  it('reaches EVERY row the transitional carrier can draw, at least once', () => {
-    // Pre-pays part of T-115's reachability sweep, and is what makes the T-113 /
-    // T-114 re-points real rather than nominal: a row wired into a leg but never
-    // drawn is content that does not exist as far as a player is concerned.
-    const drawable = new Set<string>();
-    for (const type of Object.keys(LEGACY_POI_LOOT) as PoiType[]) {
-      const table = LEGACY_POI_LOOT[type];
-      for (const leg of [table.salvage, table.fragment, table.contraband]) {
-        for (const id of leg.outcomeIds) if (!id.startsWith(LEGACY_PREFIX)) drawable.add(id);
-      }
-    }
-    // 20 band-1 rows + all 33 band-2 rows. Only the 14 dead ends are off a leg.
-    expect(drawable.size).toBe(53);
-    const missing = [...drawable].filter((id) => !observed.has(id));
-    expect(missing, `unreached authored rows: ${missing.join(', ')}`).toEqual([]);
+  it('THE RAREST TIER IS REACHABLE — all 100 rows are found, and none is inert', () => {
+    // T-115's third accept clause, and the ONE test that replaces the three
+    // partial-reachability tests T-113/T-114 shipped ("every row a leg can
+    // draw", "all 33 band-2 rows", "exactly which rows are still inert"). Those
+    // three were partial because the transitional carrier could not reach the 14
+    // band-0 dead ends at all; the weighted draw reaches every row in the pool it
+    // filters, so the honest claim is now the whole table at once.
+    //
+    // THE "STILL INERT" LEDGER GOES TO ZERO RATHER THAN LAPSING. It is asserted
+    // below as `toHaveLength(0)` instead of being deleted, so the gap it recorded
+    // is discharged where a reader can see it.
+    const missing = authored.filter((row) => !observed.has(row.id)).map((row) => row.id);
+    expect(missing, `unreached rows (${missing.length}): ${missing.join(', ')}`).toEqual([]);
+    expect(observed.size).toBe(100);
+
+    const inert = authored.filter((row) => !observed.has(row.id));
+    expect(inert).toHaveLength(0);
   });
 
-  it('reaches ALL 33 band-2 rows, of every kind this pass authors', () => {
-    const band2 = rowsInBand(2);
-    const missing = band2.filter((row) => !observed.has(row.id)).map((row) => row.id);
-    expect(missing, `unreached band-2 rows: ${missing.join(', ')}`).toEqual([]);
-    for (const kind of ['salvage', 'unique-item', 'npc', 'questline', 'lore']) {
-      expect(
-        band2.some((row) => row.payload.kind === kind && observed.has(row.id)),
-        `no band-2 ${kind} row reached`,
-      ).toBe(true);
+  it('reaches every KIND at every band that authors it', () => {
+    // The spot-checks the single reachability test above subsumes, kept because
+    // they name WHAT is reachable rather than only how many: a table that reached
+    // 100 ids while some payload kind was never actually resolved through the
+    // verb would pass the count and still be broken content.
+    const spread: Readonly<Record<number, readonly string[]>> = {
+      0: ['lore'],
+      1: ['salvage', 'lore'],
+      2: ['salvage', 'unique-item', 'npc', 'questline', 'lore'],
+      3: ['unique-item', 'questline', 'npc'],
+      4: ['unique-item', 'questline'],
+    };
+    for (const [band, kinds] of Object.entries(spread)) {
+      const rows = rowsInBand(Number(band));
+      for (const kind of kinds) {
+        expect(
+          rows.some((row) => row.payload.kind === kind && observed.has(row.id)),
+          `no band-${band} ${kind} row reached`,
+        ).toBe(true);
+      }
     }
   });
 
   it('no boarded POI is ever charged 80 fuel for an EMPTY wire line (§2.4)', () => {
     expect(emptyWireOnBoard).toBe(0);
+    // …and the stronger claim the deleted legacy rows finally allow: EVERY board
+    // that surfaced a POI also filed a line the player can read, or opened a
+    // recovery that says why the line has not arrived yet.
+    expect(boards).toBeGreaterThan(0);
   });
 
-  it('records EXACTLY which authored rows are still inert, and why', () => {
-    // Stated as an assertion so the gap cannot be forgotten.
+  it('THE SEALED POD IS STILL SUPPLIED after the contraband kind retired (§1.4)', () => {
+    // The measurement the re-homing owes, taken through the real verb rather than
+    // asserted from the table. `signal.contraband.pending` used to be armed by the
+    // derelict contraband leg at 0.40 x 50% of boards ~= 20%; it is now armed by
+    // three band-1 derelict lore rows (`DERELICT_POD_EFFECTS`).
     //
-    // F-113-A · the 14 band-0 DEAD ENDS, and now nothing else. The transitional
-    //   carrier has exactly three named legs and no "nothing else fired" arm, and
-    //   adding one would be the engine branch a content pass is forbidden. They
-    //   become reachable when the single band-weighted draw lands — which is
-    //   STILL UNOWNED after T-114 and still blocks T-115's reachability clause.
-    // F-113-D · DISCHARGED. The six authored derelict salvage rows that T-113
-    //   left inert are on the re-pointed derelict leg and are reached above.
-    const inert = authored.filter((row) => !observed.has(row.id)).map((row) => row.id);
-    expect(inert.filter((id) => id.startsWith('explore-deadend-'))).toHaveLength(14);
-    expect(inert).toHaveLength(14);
+    // THE FIGURE IS REPORTED, NOT TUNED TO. The tripwire that decides whether the
+    // supply is adequate is `campaign-smuggler-gambler.test.ts`'s `podsTaken > 0`
+    // over a real 300-day career; this asserts only that the supply line EXISTS
+    // and is of the size the content predicts, so a future edit that silently
+    // orphans the flag fails here with a number instead of failing there with a
+    // mystery.
+    const rate = podArmed / boards;
+    expect(podArmed, 'no board armed the sealed pod at all').toBeGreaterThan(0);
+    // 3 of the 11 derelict band-1 rows, band 1 weighted 33 of 100, derelicts half
+    // of all boards: 0.5 x 0.33 x 3/11 = 4.5%. A wide window, because the claim is
+    // "the supply line is intact", not a tuned rate.
+    expect(rate).toBeGreaterThan(0.02);
+    expect(rate).toBeLessThan(0.09);
   });
 });
 

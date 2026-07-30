@@ -274,6 +274,14 @@ export function explorationOutcome(events: GameEvent[]): string | null {
   for (const e of events) if (e.type === 'SalvageRecovered') salvage += e.amount;
   if (salvage > 0) parts.push(`${salvage.toLocaleString()}cr in salvage`);
   if (events.some((e) => e.type === 'FragmentAcquired')) parts.push('a Signal Fragment recovered');
+  // T-117 · DEAD BUT NOT DELETED. `ContrabandFound` stopped being emitted when the
+  // transitional `contraband` payload kind retired with the three-leg draw
+  // (docs/EXPLORE_REDESIGN.md §2.4, finding F-113-B); the sealed pod is now armed
+  // by an authored `lore` row whose own `wireFound` speaks for it. The event
+  // VARIANT survives in the engine's `types.ts`/`schema.ts` because removing an
+  // event shape is save/schema surface, so this clause survives with it — a
+  // reader that silently dropped a shape the schema still admits would be the
+  // drift this file avoids everywhere else.
   if (events.some((e) => e.type === 'ContrabandFound'))
     parts.push('a sealed pod bolted in the hold');
   // T-111: a deferred find would otherwise read as "Charted X." with no payoff —
