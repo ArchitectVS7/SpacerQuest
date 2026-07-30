@@ -120,9 +120,12 @@ and plain _salvage/credits_, with "dead end" meaning lore with no mechanical pay
 each as a typed content shape the engine can resolve without knowing any instance.
 **(2) The multi-day recovery, in detail** — ruling 1 fixes the model; the spec owes the
 mechanics. Exactly what state is added and where; how N is derived from an outcome's power by
-a rule rather than a per-row constant; and the three interaction answers: **travelling away
-mid-recovery, dying mid-recovery, and starting a second recovery while one is open.** Name
-the save version it lands on and what the migration backfills. **(3) The effect surface** —
+a rule rather than a per-row constant; and the four interaction answers: **travelling away
+mid-recovery, dying mid-recovery, starting a second recovery while one is open, and a recovery
+still open when the day-30 Tour One marker resolves** (`day.ts` fires `TourOneResolved` and
+flips the era at dusk of day 30 unconditionally — settle whether an open recovery survives the
+era flip, pays out early, or is forfeit). Name the save version it lands on and what the
+migration backfills. **(3) The effect surface** —
 _+x to a ship element_ has a home (`ShipState`, `SPECIAL_EQUIPMENT`); the die effect uses the
 existing `DiceBenefit` / `EQUIPMENT_DICE_BENEFITS` hook per ruling 2. Show concretely how
 three different items of different power map onto `floor` / `extra-die` / `reroll`, and state
@@ -133,7 +136,7 @@ hand-tuned constant per row. Do not implement.
 **Accept:** `docs/EXPLORE_REDESIGN.md` exists and settles all four with a named design each;
 every engine/content symbol it cites resolves (`grep` each and confirm a hit); the recovery
 section names the added state, the derivation rule for N, the save version, AND answers all
-three interaction questions explicitly; the effect section maps three worked example items
+four interaction questions explicitly (including the day-30 marker case); the effect section maps three worked example items
 onto the existing `DiceBenefit` kinds and states that mapping's expressive limit; **the spec
 implements the owner's ruled options 1 and 2 — if either proves unworkable the task FAILS
 with the reason rather than documenting an alternative**; no engine, content or sim source
@@ -160,7 +163,11 @@ track or explicitly deferred with the NPC question: the NPC-side faucet, the mis
 `hasHangout` check on the NPC path, and the 150cr ante that locks out the captains it would
 help. **(5) The content brief for 14 ports** — the owner asked for exotic, dangerous and
 humorous among them; propose the spread and the axes that differentiate a port, without
-writing the ports.
+writing the ports. **A port's governance/lawfulness is a candidate axis independent of the
+rim/contraband flag** — core systems need not be uniformly safe; a partisan faction, a seedy
+underbelly, or a strict garrison world are all core-compatible story hooks and are open
+territory for "exotic" or "dangerous" ports rather than reserving those for rim-flavoured
+reskins.
 
 **Accept:** `docs/HANGOUT_REDESIGN.md` exists and settles all five with a named
 recommendation each; the engine-vs-content line is drawn as an explicit two-column list
@@ -216,14 +223,15 @@ Implement the **multi-day committed recovery** of ruling 1, to the mechanics T-1
 so recovering a valuable find occupies real calendar days rather than resolving free inside
 one day. This needs persistent state (an in-progress recovery survives a save) and therefore
 a save bump with a migration and a round-trip test. It must interact honestly with the day
-loop, in the three ways the spec settled: travelling away mid-recovery, dying mid-recovery,
-and starting a second recovery while one is open. `N` derives from the outcome's power by the
+loop, in the four ways the spec settled: travelling away mid-recovery, dying mid-recovery,
+starting a second recovery while one is open, and a recovery still open when the day-30 Tour
+One marker resolves. `N` derives from the outcome's power by the
 spec's rule — **never a per-row constant.**
 
 **Accept:** a recovery that spans days is driven end to end in a test (start → intervening
 days → payout) through the real `startDay`/`applyPlayerAction`/`endDay` loop, never by poking
-state; the travel-away, death and second-recovery paths each have a test asserting the ruled
-behaviour; if state was added, `CURRENT_SAVE_VERSION` is bumped with a migration, a
+state; the travel-away, death, second-recovery, AND day-30-marker paths each have a test
+asserting the ruled behaviour; if state was added, `CURRENT_SAVE_VERSION` is bumped with a migration, a
 round-trip test, and `deserializeState` performing the same backfill pinned by a test;
 recovery time scales with outcome value by a content-driven rule, not a per-row constant;
 gate green.
@@ -394,7 +402,13 @@ measured results, every framework finding reported during the content passes (a 
 not be expressed is the most valuable output this track can produce), and the list of
 questions this track deliberately did not answer — chief among them **whether NPCs interact
 with Explore and the Hangout**, which the owner deferred until these systems are functional
-and which is the gate on re-ruling the two vacated PARITY LEDGER rows. Commit it, then halt.
+and which is the gate on re-ruling the two vacated PARITY LEDGER rows. **Name the NPC Hangout
+faucet explicitly, as its own callout, not folded into the generic deferred list**:
+`executeSocialize` pays NPCs with no `hasHangout` gate and no counterparty, which was easy to
+leave open when the player-facing verb barely existed (1 of 28 systems) and reads very
+differently now that the player's Hangout is a real, authored 14-port system — say so plainly
+so it is a decision at this gate, not a bullet that rolls forward unread. Commit it, then
+halt.
 
 **Accept:** (human-checked) the review doc is committed with both milestones' results, the
 framework findings, and the deferred-questions list; the owner has decided whether to re-open
