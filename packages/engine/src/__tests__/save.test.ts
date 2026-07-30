@@ -25,6 +25,7 @@ import { RENOWN_RANK_ORDER, emptyDeedRegistry, rankForDeedCount } from '../deeds
 import { computePlayerTier } from '../tier.js';
 import { JOB_POOL_BOARD_SIZE, JOB_POOL_MAX_CLAIMS, jobPoolDepth } from '../economy.js';
 import { npcShipForProfile } from '../npc.js';
+import { hasExploreModule } from '../components.js';
 import { DeedRegistryState, GameState, PlayerAction } from '../types.js';
 
 /**
@@ -439,7 +440,7 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 12', () => {
+  it('CURRENT_SAVE_VERSION is 13', () => {
     // T-1401 bumped 5 → 6 (WireEntry.kind); T-1503 bumped 6 → 7 for the required
     // nested PlayerState.reputation container; T-1603b bumped 7 → 8 to re-derive
     // `registry.renownRank` + `player.tier` after the canonical
@@ -454,10 +455,19 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     //
     // N11 bumped 11 → 12 for `NpcState.registry` — the captain's own deed ledger and
     // Renown rank, backfilled EMPTY (no save that exists can hold an NPC deed) and
-    // deliberately NOT backfilled with a rank derived from the profile tier. These
-    // three `CURRENT_SAVE_VERSION` pins move WITH an intended bump; they are version
-    // pins, not thresholds, and none of them was touched to make a measurement pass.
-    expect(CURRENT_SAVE_VERSION).toBe(12);
+    // deliberately NOT backfilled with a rank derived from the profile tier.
+    //
+    // T-111 bumped 12 → 13 for `PlayerState.recovery` — the open multi-day salvage
+    // op (types.ts RecoveryState). An ADDITIVE one-key backfill of exactly the
+    // shape MIGRATIONS[2] (`loan` → null) already is, and `null` here is a
+    // statement of fact rather than a convenience default: until T-111 no recovery
+    // could exist, so no save that exists can hold one. Because the backfilled
+    // value is a literal null there is no rule to call — the moment it becomes
+    // anything else, the `emptyDeedRegistry` "call the constructor" pattern
+    // applies. These `CURRENT_SAVE_VERSION` pins move WITH an intended bump; they
+    // are version pins, not thresholds, and none of them was touched to make a
+    // measurement pass.
+    expect(CURRENT_SAVE_VERSION).toBe(13);
   });
 });
 
@@ -1059,9 +1069,10 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     // No version bump was needed for any of it. (T-1603b later bumped 7 → 8 for
     // an unrelated reason — the renown re-derivation — T-1703 8 → 9 for the new
     // `edition` field, N1 9 → 10 for `NpcState.ship` and N10 10 → 11 for the
-    // per-system job pool and N11 11 → 12 for `NpcState.registry`, so this pins the
-    // CURRENT version rather than claiming the fragment file caused it.)
-    expect(CURRENT_SAVE_VERSION).toBe(12);
+    // per-system job pool, N11 11 → 12 for `NpcState.registry` and T-111 12 → 13
+    // for `PlayerState.recovery`, so this pins the CURRENT version rather than
+    // claiming the fragment file caused it.)
+    expect(CURRENT_SAVE_VERSION).toBe(13);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -1106,9 +1117,10 @@ describe('save envelope — an ended career round-trips with no migration (T-150
     });
     // Nothing needed a bump for any of it. (T-1603b later bumped 7 → 8 for the
     // unrelated renown re-derivation, T-1703 8 → 9 for the new `edition` field,
-    // N1 9 → 10 for `NpcState.ship`, N10 10 → 11 for the per-system job pool and
-    // N11 11 → 12 for `NpcState.registry`; this pins the CURRENT version.)
-    expect(CURRENT_SAVE_VERSION).toBe(12);
+    // N1 9 → 10 for `NpcState.ship`, N10 10 → 11 for the per-system job pool,
+    // N11 11 → 12 for `NpcState.registry` and T-111 12 → 13 for
+    // `PlayerState.recovery`; this pins the CURRENT version.)
+    expect(CURRENT_SAVE_VERSION).toBe(13);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {
@@ -1227,5 +1239,150 @@ describe('T-1603b renown rescale save compatibility (v7 -> v8)', () => {
         rank,
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-111 · v12 → v13 recovery migration + open-recovery round-trip.
+// ---------------------------------------------------------------------------
+describe('save envelope — v12 → v13 recovery migration (T-111)', () => {
+  it('backfills PlayerState.recovery = null on a v12 envelope with no recovery key', () => {
+    // Build a REAL v12-shaped state, then strip the key the way a genuinely
+    // pre-T-111 save would (it never had the field). NULL IS A STATEMENT OF FACT:
+    // no save that exists can carry a recovery, because until T-111 none could
+    // exist. The migration must re-add it before schema validation, else the
+    // strict schema (recovery is non-optional) rejects the save outright.
+    const state = drive50Days(61);
+    delete (state.player as unknown as Record<string, unknown>).recovery;
+    const v12 = JSON.stringify({ version: 12, state, seed: 61 });
+
+    const loaded = loadSave(v12); // walks 12→13 (recovery backfill), then validates
+    expect(loaded.state.player.recovery).toBeNull();
+    expect(loaded.seed).toBe(61);
+  });
+
+  it('is idempotent — a v12 state that somehow carries the key keeps it exactly', () => {
+    const state = drive50Days(62);
+    const live = {
+      outcomeId: 'legacy-salvage-derelict',
+      poiId: 'poi-1-d4-e2-derelict',
+      systemId: 1,
+      startedDay: 4,
+      dueDay: 5,
+    };
+    state.player.recovery = live;
+    const loaded = loadSave(JSON.stringify({ version: 12, state, seed: 62 }));
+    expect(loaded.state.player.recovery).toEqual(live);
+  });
+
+  it('round-trips a LIVE open recovery through createSave → loadSave (deep-equal)', () => {
+    const state = drive50Days(63);
+    state.player.recovery = {
+      outcomeId: 'legacy-salvage-derelict',
+      poiId: 'poi-3-d12-e5-derelict',
+      systemId: 3,
+      startedDay: 12,
+      dueDay: 18,
+    };
+    const loaded = loadSave(createSave(state, 63));
+    expect(loaded.state.player.recovery).toEqual(state.player.recovery);
+    // The WHOLE state survives — the new nested container perturbs nothing else.
+    expect(loaded.state).toEqual(state);
+  });
+
+  it('strict schema rejects an unknown key inside a recovery', () => {
+    // The T-1002 drift law applied to the new container: an unknown nested key
+    // fails LOUDLY rather than being silently stripped on load. In particular a
+    // cached `valuePoints` — the exact phantom `RecoveryState` refuses to store —
+    // cannot sneak onto a save.
+    const state = drive50Days(64);
+    (state.player.recovery as unknown) = {
+      outcomeId: 'legacy-salvage-derelict',
+      poiId: 'poi-1-d1-e3-derelict',
+      systemId: 1,
+      startedDay: 1,
+      dueDay: 2,
+      valuePoints: 20, // not part of RecoveryState
+    };
+    expect(() => loadSave(createSave(state, 64))).toThrow(SaveError);
+  });
+
+  it('deserializeState performs the SAME backfill (the loader path is separate)', () => {
+    // `loadSave` runs migrate → validateGameState and does NOT go through
+    // `deserializeState`, so both halves of the backfill are owed. Its own test,
+    // not folded into the migration ones above, because it is its own code path.
+    const state = drive50Days(65);
+    const parsed = JSON.parse(serializeState(state)) as { player: Record<string, unknown> };
+    delete parsed.player.recovery;
+    const restored = deserializeState(JSON.stringify(parsed));
+    expect(restored.player.recovery).toBeNull();
+  });
+
+  it('deserializeState leaves a live recovery exactly as it found it', () => {
+    const state = drive50Days(66);
+    state.player.recovery = {
+      outcomeId: 'legacy-contraband-derelict',
+      poiId: 'poi-9-d30-e1-derelict',
+      systemId: 9,
+      startedDay: 30,
+      dueDay: 31,
+    };
+    expect(deserializeState(serializeState(state)).player.recovery).toEqual(state.player.recovery);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-112 · The unique-item effect surface adds two OPTIONAL ship fields and owes
+// NO migration and NO version bump — the `NpcState.dead?` precedent, restated
+// mechanically here rather than asserted in a comment. Both fields are
+// absent-means-none/zero, every reader honours that, and `starterShip` is left
+// deliberately untouched so a module-free career serializes byte-identically.
+// ---------------------------------------------------------------------------
+describe('save envelope — the explore-module fields round-trip with no migration (T-112)', () => {
+  it('CURRENT_SAVE_VERSION is STILL 13 — a pure addition owes no bump', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(13);
+  });
+
+  it('round-trips a fitted module and a bonus tank through createSave → loadSave', () => {
+    const state = drive50Days(71);
+    state.player.ship.exploreModules = ['module-berth-couch'];
+    state.player.ship.bonusMaxFuel = 40;
+    const loaded = loadSave(createSave(state, 71));
+    expect(loaded.state.player.ship.exploreModules).toEqual(['module-berth-couch']);
+    expect(loaded.state.player.ship.bonusMaxFuel).toBe(40);
+    // The whole state survives — the two new keys perturb nothing else.
+    expect(loaded.state).toEqual(state);
+  });
+
+  it('round-trips them through serializeState → deserializeState too', () => {
+    const state = drive50Days(72);
+    state.player.ship.exploreModules = ['module-tally-slate', 'module-marked-ephemeris'];
+    state.player.ship.bonusMaxFuel = 80;
+    const restored = deserializeState(serializeState(state));
+    expect(restored.player.ship.exploreModules).toEqual([
+      'module-tally-slate',
+      'module-marked-ephemeris',
+    ]);
+    // The derived tank folds the bonus in through the loader's syncMaxFuel call.
+    expect(restored.player.ship.bonusMaxFuel).toBe(80);
+    expect(restored.player.ship.maxFuel).toBe(state.player.ship.maxFuel + 80);
+  });
+
+  it('a save written WITHOUT either field loads clean and reads as none', () => {
+    // Which is every save that exists: no career could have recovered a module
+    // before T-112. No backfill runs, so the keys stay absent — and that is what
+    // "absent means none" has to mean for the goldens to stay put.
+    const state = drive50Days(73);
+    expect(state.player.ship.exploreModules).toBeUndefined();
+    const loaded = loadSave(createSave(state, 73));
+    expect(loaded.state.player.ship.exploreModules).toBeUndefined();
+    expect(loaded.state.player.ship.bonusMaxFuel).toBeUndefined();
+    expect(hasExploreModule(loaded.state.player.ship, 'module-berth-couch')).toBe(false);
+  });
+
+  it('strict schema still rejects an unknown key inside the ship', () => {
+    const state = drive50Days(74);
+    (state.player.ship as unknown as Record<string, unknown>).exploreModulez = ['typo'];
+    expect(() => loadSave(createSave(state, 74))).toThrow(SaveError);
   });
 });

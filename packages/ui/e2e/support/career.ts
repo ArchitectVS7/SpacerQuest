@@ -421,14 +421,32 @@ export async function playDay(page: Page, opts: PlayDayOptions): Promise<number>
   await settleCoaches(page, report);
   await dismissAftermathIfAny(page, report);
 
+  // 1b — T-112 (fix round 1) · AN INTERDICTION CAN OUTLIVE THE DAY THAT STARTED IT.
+  //
+  // Standing down IS the dusk (store `standDown` → endDay), but it does NOT end the
+  // encounter: the interceptor is still alongside at dawn, the overlay is still
+  // mounted, and the new day opens with a fresh hand and the same fight. The driver
+  // used to walk straight past that into the manifest and the depot, where every
+  // click lands on the overlay's backdrop instead of the cockpit — the day never
+  // advances and the run stalls until the test's own timeout. A player finishes the
+  // fight; so does this. (Reached only when the hand ran out mid-fight, which is why
+  // the seed-21 career never exercised it before the T-1605 / N-series changes moved
+  // the economy into it.)
+  let duskAlreadyFell = false;
+  if ((await page.getByTestId('combat-overlay').count()) > 0) {
+    record.encounter = true;
+    duskAlreadyFell = await fightThrough(page, record, report);
+  }
+
   // 2 — take a job, if the hold is empty and the board has one worth taking.
-  if ((await page.getByTestId('active-contract-empty').count()) > 0) {
+  if (!duskAlreadyFell && (await page.getByTestId('active-contract-empty').count()) > 0) {
     await signBestContract(page, record);
   }
 
   // 3-6 — fuel the route, fly it, fight whatever meets us, retry a nav failure.
-  let duskAlreadyFell = false;
-  const destination = await page.getByTestId('active-contract').getAttribute('data-destination-id');
+  const destination = duskAlreadyFell
+    ? null
+    : await page.getByTestId('active-contract').getAttribute('data-destination-id');
   if (destination !== null) {
     duskAlreadyFell = await runTheJob(page, Number(destination), record, report);
   }

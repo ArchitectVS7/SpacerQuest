@@ -313,7 +313,17 @@ function stampEffect(
   return { ...event, storyletId, choiceId };
 }
 
-function applyEffects(
+/**
+ * Apply a `StoryletEffects` payload to `state`, returning the typed events it
+ * produced. EXPORTED at T-110 (docs/EXPLORE_REDESIGN.md §2.3): four of the five
+ * explore outcome kinds reduce to a `StoryletEffects` payload, so the explore
+ * resolver applies them through this one authoritative implementation rather
+ * than restating any of its rules. Callers outside the storylet flow supply a
+ * SYNTHETIC id pair (`storyletId` = the source content row, `choiceId` = the
+ * verb) — the `resolveAbandonedChains` idiom, which does the same with
+ * `'wire-resolution'`. The export is behaviour-preserving: no call site moved.
+ */
+export function applyEffects(
   state: GameState,
   storyletId: string,
   choiceId: string,

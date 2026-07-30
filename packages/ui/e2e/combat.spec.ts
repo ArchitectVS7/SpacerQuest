@@ -59,22 +59,35 @@ const B_DEST = 9;
 // Fuel remaining when the tank first drops below the 50-fuel fight cost (180 - 3×50).
 const B_OFFLINE_FUEL = 30;
 
-// T-1207 kill path (fix round 2): seed 2 again, but instead of draining with the
-// LOWEST die we land a KILLING volley with the value-15 die, so the post-kill
-// enemy-retreat mechanic (opposed PILOT roll) actually fires through the UI. Derived
-// OFFLINE by replaying startDay(createInitialState(2)) → applyPlayerAction exactly as
-// the store does: dawn hand [17,15,10,8,1] on Sol; the value-17 die jumps to Pollux-7
-// (system 9, 120 fuel, leaving 180); the value-15 die FIGHTS the tier-1 Chomper
-// (enemyHull 1) — GUNS 15+0 clears DC 11, weapons-1 removes the last hull point, and
-// the interceptor's opposed retreat roll wins under this seed → 'interceptor-escaped'
-// (the "miracle burn"). This is the ONE path that exercises the second Player
-// StatCheck (the retreat PILOT pin) the killing GUNS roll pushes — the exact fixture
-// that proves the CheckBreakdown keeps showing the committed GUNS roll, not the pin.
-const SEED_C = 2;
-const C_JUMP_DIE_INDEX = 0; // value 17
+// T-1207 kill path: land a KILLING volley so the post-kill enemy-retreat mechanic
+// (opposed PILOT roll) actually fires through the UI, and the interceptor WINS it —
+// the "miracle burn". This is the ONE path that exercises the second Player StatCheck
+// (the retreat PILOT pin) the killing GUNS roll pushes, i.e. the exact fixture that
+// proves the CheckBreakdown keeps showing the committed GUNS roll, not the pin.
+//
+// T-112 (fix round 1) · RE-PINNED from seed 2 to seed 16. The N-series NPC parity
+// pass (merge 74403ab4) re-cut the anonymous interceptor stat blocks: the tier-1
+// "Chomper" seed 2 opened on now carries PILOT 0, so its opposed retreat can never
+// clear a pressing player's RETREAT_KILL_EDGE and the kill always resolves
+// 'defeated'. The mechanic is intact — the fixture had simply stopped reaching it,
+// which is a dead assertion, not a passing one. Re-derived by sweeping seeds 1..400
+// OFFLINE (replaying startDay(createInitialState(seed)) → applyPlayerAction exactly
+// as the store does) for the first jump-then-kill that resolves 'interceptor-escaped'.
+//
+//  Seed 16: dawn hand [16,13,10,10,4] on Sol.
+//    - jump die INDEX 0 (value 16) to Pollux-7 (system 9, distance 10, cost 120,
+//      leaving 180 fuel) triggers a tier-1 encounter "Stomper", enemyHull 1.
+//    - the value-13 die FIGHTS: GUNS 13+0 clears DC 11 and weapons-1 removes the
+//      last hull point, so the post-kill retreat roll fires. The interceptor rolls
+//      17 against the player's 17 (a tie goes to the retreating ship) → the
+//      encounter resolves 'interceptor-escaped' and the player's own PILOT pin
+//      (die 1) is pushed as the LAST Player StatCheck — exactly the corruption the
+//      step-4 assertion below is here to rule out.
+const SEED_C = 16;
+const C_JUMP_DIE_INDEX = 0; // value 16
 const C_DEST = 9;
-const C_ENEMY_NAME = 'Chomper';
-const C_KILL_DIE_VALUE = 15;
+const C_ENEMY_NAME = 'Stomper';
+const C_KILL_DIE_VALUE = 13;
 
 test.beforeEach(async ({ page }) => {
   // Each test runs in a fresh, isolated context, so localStorage starts empty —

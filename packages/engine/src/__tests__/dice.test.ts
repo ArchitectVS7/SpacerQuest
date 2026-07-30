@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   EQUIPMENT_DICE_BENEFITS,
+  EXPLORE_MODULES,
+  EXPLORE_MODULE_DICE_BENEFITS,
   MAX_DAWN_HAND_SIZE,
   MAX_EXTRA_DICE,
   DAWN_BASE_HAND_SIZE,
   type DiceBenefit,
+  type ExploreModuleContentId,
 } from '@spacerquest/content';
 import { CrewMember, ShipState, SpecialEquipmentId } from '../types.js';
 import { SeededRng } from '../rng.js';
@@ -254,5 +257,91 @@ describe('T-1601c · the dice-progression extensibility hook', () => {
     for (const crew of [[] as CrewMember[], fullCrew]) {
       expect(dawnDiceModifiers(crew, equipmentDiceBenefits(ship))).toEqual(dawnDiceModifiers(crew));
     }
+  });
+});
+
+// --- T-112 · the explore-module leg (docs/EXPLORE_REDESIGN.md §4.2, §6) ------
+// The second loop F-100-1 recommended: a second content table the shipyard never
+// reads, folded into the SAME `granted` array by the SAME pure function. These
+// tests are about the LEG; `uniqueItem.test.ts` drives the real `startDay` roll.
+describe('T-112 · the explore-module dice leg', () => {
+  function bareShip(): ShipState {
+    return createInitialState(1).player.ship;
+  }
+
+  it('grants nothing for a ship with no explore modules — the parity case', () => {
+    const ship = bareShip();
+    expect(ship.exploreModules).toBeUndefined();
+    expect(equipmentDiceBenefits(ship)).toEqual([]);
+    const crew: CrewMember[] = [{ roleId: 'crew-second', hiredDay: 1 }];
+    expect(dawnDiceModifiers(crew, equipmentDiceBenefits(ship))).toEqual(dawnDiceModifiers(crew));
+  });
+
+  it('a fitted module grants its content benefit through the shipped table', () => {
+    const ship = bareShip();
+    ship.exploreModules = ['module-berth-couch'];
+    expect(equipmentDiceBenefits(ship)).toEqual([{ kind: 'extra-die' }]);
+    expect(dawnDiceModifiers([], equipmentDiceBenefits(ship)).handSize).toBe(
+      DAWN_BASE_HAND_SIZE + 1,
+    );
+  });
+
+  it('all three modules fold through the same three accumulators', () => {
+    const ship = bareShip();
+    ship.exploreModules = EXPLORE_MODULES.map((m) => m.id as ExploreModuleContentId);
+    const granted = equipmentDiceBenefits(ship);
+    // Shipped-table order, not recovery order.
+    expect(granted).toEqual([
+      { kind: 'floor', floor: 3 },
+      { kind: 'reroll' },
+      { kind: 'extra-die' },
+    ]);
+    expect(dawnDiceModifiers([], granted)).toEqual({
+      handSize: DAWN_BASE_HAND_SIZE + 1,
+      floor: 3,
+      rerolls: 1,
+    });
+  });
+
+  it("the tally-slate's floor goes INERT under a quartermaster (floors take MAX)", () => {
+    // §4.2's own pricing argument, made mechanical: floor 3 loses to floor 5.
+    const ship = bareShip();
+    ship.exploreModules = ['module-tally-slate'];
+    const quartermaster: CrewMember[] = [{ roleId: 'crew-quartermaster', hiredDay: 1 }];
+    expect(dawnDiceModifiers(quartermaster, equipmentDiceBenefits(ship)).floor).toBe(5);
+    expect(dawnDiceModifiers([], equipmentDiceBenefits(ship)).floor).toBe(3);
+  });
+
+  it('the hand cap SWALLOWS a third extra-die source (DI, no new content)', () => {
+    // §4.2: "a SECOND extra-die item would be silently swallowed" — the direct
+    // reason the tier is three items. Injected rather than authored, so the claim
+    // is proved without shipping a fourth module.
+    const ship = bareShip();
+    ship.exploreModules = ['module-tally-slate', 'module-berth-couch'];
+    const twoExtraDice: Partial<Record<ExploreModuleContentId, DiceBenefit>> = {
+      'module-tally-slate': { kind: 'extra-die' },
+      'module-berth-couch': { kind: 'extra-die' },
+    };
+    const granted = equipmentDiceBenefits(ship, EQUIPMENT_DICE_BENEFITS, twoExtraDice);
+    expect(granted).toHaveLength(2);
+    const second: CrewMember[] = [{ roleId: 'crew-second', hiredDay: 1 }]; // a third +1 die
+    expect(dawnDiceModifiers(second, granted).handSize).toBe(MAX_DAWN_HAND_SIZE);
+    expect(MAX_DAWN_HAND_SIZE).toBe(DAWN_BASE_HAND_SIZE + MAX_EXTRA_DICE);
+  });
+
+  it('the module tier is exactly three, and every module has a benefit', () => {
+    // The bound §4.2 argues for. F-112-A moved this from engine friction (a list
+    // field costs nothing per instance) onto this assertion plus the design note
+    // on the content table, so it is checked rather than merely tedious to break.
+    expect(EXPLORE_MODULES).toHaveLength(3);
+    expect(Object.keys(EXPLORE_MODULE_DICE_BENEFITS)).toHaveLength(3);
+    for (const module of EXPLORE_MODULES) {
+      expect(EXPLORE_MODULE_DICE_BENEFITS[module.id as ExploreModuleContentId]).toBeDefined();
+    }
+    // The three kinds span the whole PRD §7 axis, one each.
+    const kinds = EXPLORE_MODULES.map(
+      (m) => EXPLORE_MODULE_DICE_BENEFITS[m.id as ExploreModuleContentId]!.kind,
+    );
+    expect([...kinds].sort()).toEqual(['extra-die', 'floor', 'reroll']);
   });
 });

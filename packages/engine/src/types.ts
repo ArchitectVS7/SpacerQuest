@@ -1,5 +1,6 @@
 import {
   AnonymousInterceptorKind,
+  ExploreModuleContentId,
   FactionId,
   PoiType,
   PowerTier,
@@ -498,7 +499,18 @@ export type GameEvent =
       day: number;
       systemId: number;
       reason:
-        'nav-check' | 'insufficient-fuel' | 'no-die' | 'invalid-die-index' | 'die-already-spent';
+        | 'nav-check'
+        | 'insufficient-fuel'
+        | 'no-die'
+        | 'invalid-die-index'
+        | 'die-already-spent'
+        // T-111 · A THIRD CLASS, distinct from both above: the ship is already
+        // committed to an open recovery (`player.recovery !== null`), so the
+        // verb itself is refused before any resource is touched. NO die is spent
+        // and NO fuel is burned — the exact justification the `no-die` branch
+        // gives ("there was no usable die to spend on a detour"), for the same
+        // reason: there was nothing to fly, so there is nothing to charge.
+        | 'recovery-in-progress';
     }
   | {
       /** A boarded POI's loot roll yielded salvage — real credits (T-111b). */
@@ -515,6 +527,73 @@ export type GameEvent =
       day: number;
       poiId: string;
       systemId: number;
+    }
+  | {
+      /**
+       * T-112 · A `unique-item` outcome GRANTED its item (docs/EXPLORE_REDESIGN.md
+       * §4). Emitted by `exploreOutcomes.ts` `applyUniqueItem` AFTER the effect has
+       * been applied, so the wire reads effect-then-record in the order it
+       * happened. Carries the ITEM id only — never the realized effect, which is
+       * looked up from content by every reader (the same discipline `crew` and
+       * `RecoveryState` keep). Reaches the player through `ui/format.ts`
+       * `explorationOutcome`, which resolves the id to its content NAME and
+       * invents no effect of its own.
+       *
+       * Emitted on BOTH grant paths for free: the same-day resolve and T-111's
+       * deferred dusk payout both run through `resolveExploreOutcome`, so a
+       * band-3/4 item grants at the dusk of `dueDay` with no second code path.
+       */
+      type: 'UniqueItemAcquired';
+      day: number;
+      itemId: string;
+      poiId: string;
+      systemId: number;
+    }
+  | {
+      /**
+       * T-111 · A find too valuable to lift in a day OPENED the single recovery
+       * slot (docs/EXPLORE_REDESIGN.md §3). Emitted by `resolveExploration`'s
+       * draw when the drawn row's band carries `recoveryDays > 0`. The payoff is
+       * NOT resolved here — it rolls at the dusk of `dueDay`.
+       */
+      type: 'RecoveryStarted';
+      day: number;
+      outcomeId: string;
+      poiId: string;
+      /** THE ANCHOR — leaving this system before payout forfeits the op. */
+      systemId: number;
+      dueDay: number;
+    }
+  | {
+      /** T-111 · An open recovery reached its `dueDay` and PAID OUT at dusk
+       *  (`day.ts` endDay). Emitted immediately BEFORE the payload resolves, so
+       *  the wire reads payout-then-detail in the order the player experiences
+       *  it. `valuePoints` is read off the row at payout, never off the save. */
+      type: 'RecoveryPaidOut';
+      day: number;
+      outcomeId: string;
+      poiId: string;
+      valuePoints: number;
+    }
+  | {
+      /**
+       * T-111 · An open recovery ended with NO payout. Three ruled causes:
+       *  - 'departed'        — dusk found the captain outside the anchor system
+       *                        (`day.ts` endDay, §3.3(a)); a location predicate,
+       *                        not a hook on the Travel verb.
+       *  - 'succession'      — the ship was lost; the op was moored to it
+       *                        (`legacy.ts` applySuccession, §3.3(b)). The
+       *                        KNOWLEDGE half survives: the DiscoveredPoi is on
+       *                        `charts` and is inherited.
+       *  - 'unknown-outcome' — content drift: the stored `outcomeId` (or the
+       *                        stored POI) no longer resolves at payout
+       *                        (`day.ts` endDay). Clear and move on; a stored
+       *                        content id must never be able to throw.
+       */
+      type: 'RecoveryAbandoned';
+      day: number;
+      outcomeId: string;
+      reason: 'departed' | 'succession' | 'unknown-outcome';
     }
   | {
       /** A Signal Fragment entered the Nemesis file (T-111b). Fired only when the
@@ -1274,6 +1353,53 @@ export interface ShipState {
   hasArchAngel?: boolean;
   isAstraxialHull?: boolean;
   hasTitaniumHull?: boolean;
+  /**
+   * T-112 · THE EXPLORE-GRANTED MODULES FITTED TO THIS HULL (Class B,
+   * docs/EXPLORE_REDESIGN.md §4.2). Content ids from `EXPLORE_MODULES`
+   * (`content/crew.ts`). ABSENT ⇒ none fitted.
+   *
+   * NOT SHIPYARD EQUIPMENT. These are recovered off a derelict, never bought, so
+   * they deliberately do not join the seven `has…` booleans above — those mirror
+   * `SpecialEquipmentId`, which is the YARD's purchasable union.
+   *
+   * FINDING F-112-A · A LIST, NOT THREE BOOLEANS. §6's F-100-1 sketched "three
+   * optional booleans mirroring the existing seven". Three booleans would force
+   * TWO id-keyed switches in the engine — one to READ (`hasExploreModule`) and one
+   * to WRITE the grant — and the write-side switch is literally "an effect applied
+   * by a branch keyed on a specific item id", which this task's acceptance
+   * forbids. A list removes the write branch entirely (membership, not a case) and
+   * removes F-100-1's per-instance engine cost (a union member, a flag, a switch
+   * case, a schema field, a backfill) — which was the friction that capped Class B
+   * at three. The three-module bound is UNCHANGED; it now rests on §4.2's design
+   * argument (the `MAX_EXTRA_DICE` clamp and the three-kind vocabulary) and on a
+   * content test, rather than on how tedious a fourth would be to add.
+   *
+   * A PURE ADDITION TO THE SAVE SHAPE — the `NpcState.dead?` precedent. Optional
+   * and absent-means-none, so no migration and no version bump are owed, and a
+   * module-free career serializes byte-identically to before T-112.
+   *
+   * WRITTEN BY: `components.ts` `fitExploreModule` (the ONLY writer, called from
+   * `exploreOutcomes.ts` `applyUniqueItem`).
+   * READ BY: `components.ts` `hasExploreModule`, and through it `dice.ts`
+   * `equipmentDiceBenefits` (the dawn-hand module leg) and `ui/format.ts`
+   * `fittedModuleRows` (the ship pane's salvaged-fittings readout).
+   */
+  exploreModules?: readonly ExploreModuleContentId[];
+  /**
+   * T-112 · PERMANENT TANK CAPACITY granted by Class-A explore items. ABSENT ⇒ 0.
+   *
+   * FINDING F-112-B · `maxFuel` IS DERIVED, NOT STORED. `economy.ts` `syncMaxFuel`
+   * recomputes it from the hull at the end of EVERY `applyPlayerAction` and again
+   * on load, so a `{ element: 'maxFuel', amount: +40 }` delta written straight
+   * onto `ship.maxFuel` would be silently erased within the same action. §4.1 and
+   * §5.2's band ceilings both name maxFuel deltas, so this had to be solved rather
+   * than dropped. This field is the ONE additive term, and it is applied INSIDE
+   * `syncMaxFuel` — so there is still exactly one place `maxFuel` is decided.
+   *
+   * NPC hulls never carry one (`npc.ts` never sets it), so `undefined → 0` leaves
+   * every NPC tank byte-identical.
+   */
+  bonusMaxFuel?: number;
 }
 
 /** A point of interest the spacer has charted off the lane (T-111a). Part of
@@ -1344,6 +1470,47 @@ export interface LoanState {
    *  interceptor grudge-weighting (travel.ts chooseWeighted). Repaying clears the
    *  whole loan (status included). */
   status: 'active' | 'defaulted';
+}
+
+/**
+ * T-111 · AN IN-PROGRESS SALVAGE OP — "the anchored single-slot recovery"
+ * (docs/EXPLORE_REDESIGN.md §3). A find whose band carries `recoveryDays > 0`
+ * occupies real calendar days: the POI is charted on the day of the find, but the
+ * PAYOFF is delivered at the dusk of `dueDay`, and only if the captain is still
+ * parked at `systemId`.
+ *
+ * Sibling of `loan: LoanState | null` — ONE at a time (the T-1304 precedent), and
+ * the Explore VERB is refused while the slot is occupied rather than the outcome
+ * being silently downgraded.
+ *
+ * THE PAYLOAD IS LOOKED UP AT PAYOUT, NEVER STORED. Only the content id and the
+ * clock live here — the same discipline `crew` keeps (it stores only `roleId`)
+ * and `EQUIPMENT_DICE_BENEFITS` states outright ("nothing is stored on the save").
+ * Two consequences, both deliberate: re-tuning a row's `valuePoints` never has to
+ * rewrite a live save, and there is no phantom copy of a content number on the
+ * save to drift. The price is that a renamed/removed row must be tolerated at
+ * payout — see `RecoveryAbandoned{reason:'unknown-outcome'}`.
+ *
+ * A RECOVERY IS A ZERO-DIE COMMITMENT after the initiating Explore die. Ruling 1
+ * chose calendar days INSTEAD OF a scaling die cost; nothing may charge a die per
+ * recovery day.
+ *
+ * READERS: `day.ts` endDay (the dusk tick — departure forfeit, then payout);
+ * `legacy.ts` applySuccession (forfeit on death); `actions/exploration.ts` (the
+ * fifth typed refusal); `sim/protocol.ts` legalActions (stops advertising
+ * Explore); `ui/format.ts` `recoveryReadout` (the cockpit readout).
+ */
+export interface RecoveryState {
+  /** The content row being recovered (`ExploreOutcomeDefinition.id`). */
+  outcomeId: string;
+  /** The DiscoveredPoi this hangs off — already on charts, already survives death. */
+  poiId: string;
+  /** THE ANCHOR — the system the op is moored at. Read by the dusk predicate. */
+  systemId: number;
+  startedDay: number;
+  /** `startedDay + N`, N from `recoveryDays(valuePoints)`. The payout predicate is
+   *  `day >= dueDay` — NEVER `===`, or a past-due slot sticks forever. */
+  dueDay: number;
 }
 
 /** One Signal Fragment held in the Nemesis file (T-111b, PRD §8.1). A knowledge
@@ -1453,6 +1620,15 @@ export interface PlayerState {
    *  (travel.ts) reads `loan.status`; the day loop (day.ts endDay) accrues and
    *  defaults it; T-1404 surfaces it. */
   loan: LoanState | null;
+  /** T-111 · The ONE open multi-day salvage recovery, or null (v12→v13 save
+   *  migration + round-trip test ship with it). Like `loan`, one at a time — the
+   *  Explore verb is refused while it is occupied. READERS: day.ts endDay (the
+   *  dusk departure-forfeit + payout tick); legacy.ts applySuccession (forfeit on
+   *  death); actions/exploration.ts (the fifth typed refusal, and the site that
+   *  opens the slot); sim/protocol.ts legalActions; ui/format.ts
+   *  `recoveryReadout`. See {@link RecoveryState} for why the payload is not
+   *  stored here. */
+  recovery: RecoveryState | null;
   /** T-1306 · Hired crew — the dice-progression source (PRD §7). A new persistent
    *  field (v3→v4 save migration + round-trip test ship with it). Capped by
    *  `crewCapacity(ship)` (cabin berths, the T-1205 socket). READERS: dice.ts

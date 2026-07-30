@@ -127,6 +127,9 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
       debtDueDay: 30,
       // T-1304: no Penny Wise loan at the start of a run.
       loan: null,
+      // T-111: no salvage op in progress at the start of a run — the slot opens
+      // only when an Explore board draws a band-2-or-higher outcome.
+      recovery: null,
       // T-1306: no crew at the start of a run — a Day-1 spacer rolls the base
       // 5-die dawn hand (dice.ts dawnDiceModifiers of an empty crew).
       crew: [],
@@ -231,6 +234,13 @@ export function deserializeState(json: string): GameState {
   parsed.player.ship.hasArchAngel ??= false;
   parsed.player.ship.isAstraxialHull ??= false;
   parsed.player.ship.hasTitaniumHull ??= false;
+  // T-112 · `exploreModules` and `bonusMaxFuel` are DELIBERATELY NOT BACKFILLED
+  // here. Both are optional and absent-means-none/zero, and every reader honours
+  // that (`hasExploreModule` is `?.includes(…) === true`, `syncMaxFuel` reads
+  // `?? 0`). Backfilling would also have to seed `starterShip` to match, or
+  // `createInitialState → serialize → deserialize` would stop round-tripping to
+  // deep equality; doing NEITHER keeps `serializeState` byte-identical for every
+  // module-free career, which is what leaves the replay/day-loop goldens unmoved.
   // T-1102 fuel-capacity migration: `maxFuel` is now derived from the hull, not
   // stored. A legacy save carrying the old flat `maxFuel: 10000` recomputes to
   // its hull-derived ceiling (a fresh junker → 300) and clamps current fuel to
@@ -258,6 +268,15 @@ export function deserializeState(json: string): GameState {
   // for the envelope path. Without it a legacy save leaves `loan` undefined and
   // fails the strict schema's non-optional `loan` key.
   parsed.player.loan ??= null;
+  // T-111 save-compat: pre-T-111 states have no recovery field. Default to null
+  // (no salvage op in progress) — the SAME backfill the v12→v13 save migration
+  // applies for the envelope path (the loader path runs `migrate` →
+  // `validateGameState` and never comes through here, so both halves are owed).
+  // Null is a STATEMENT OF FACT, not a convenience default: no save that exists
+  // can contain a recovery, because until T-111 none could exist. Without it a
+  // legacy save leaves `recovery` undefined and fails the strict schema's
+  // non-optional `recovery` key.
+  parsed.player.recovery ??= null;
   // T-1306 save-compat: pre-T-1306 states have no crew field. Default to empty —
   // the same backfill the v3→v4 save migration applies for the envelope path.
   // Without it a legacy save leaves `crew` undefined and fails the strict schema's

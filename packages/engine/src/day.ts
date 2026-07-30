@@ -40,6 +40,9 @@ import {
 } from './actions/combat.js';
 import { resolveShipyard } from './actions/shipyard.js';
 import { resolveExploration } from './actions/exploration.js';
+// T-111: the dusk recovery payout resolves the STORED outcome row through the
+// same generic payoff resolver the day-of draw uses (exploreOutcomes.ts).
+import { outcomeById, resolveExploreOutcome } from './exploreOutcomes.js';
 import { resolveVisitHangout } from './actions/hangout.js';
 import { resolveCrew, resolveReroll } from './actions/crew.js';
 import { portDuskIncome, resolvePortPurchase } from './actions/port.js';
@@ -170,10 +173,12 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
   // byte-identical to before (only the added `rerollsRemaining: 0` key on the hand
   // moves the serialized-state golden hashes; the DawnRoll event is unchanged).
   // T-1601c: the aggregation also takes the EQUIPMENT leg — the dice benefits of
-  // the modules fitted to this ship (`equipmentDiceBenefits`, off the content table
-  // `EQUIPMENT_DICE_BENEFITS`). That table ships EMPTY (no die-granting module
-  // exists yet), so the leg contributes `[]` on every ship and the draw here stays
-  // byte-identical; a future module becomes live at this call site with no change.
+  // the modules fitted to this ship (`equipmentDiceBenefits`). T-112 made that leg
+  // LIVE without touching this call: the yard's `EQUIPMENT_DICE_BENEFITS` still
+  // ships empty, but the sibling `EXPLORE_MODULE_DICE_BENEFITS` now carries the
+  // three explore-granted modules, folded in by a second loop inside the same pure
+  // function. A ship with no fitted module still contributes `[]`, so the draw is
+  // byte-identical for every career that has not recovered one.
   const modifiers = dawnDiceModifiers(
     nextState.player.crew,
     equipmentDiceBenefits(nextState.player.ship),
@@ -1019,6 +1024,89 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     });
   }
 
+  // T-111 · THE DUSK RECOVERY TICK (docs/EXPLORE_REDESIGN.md §3.3). The WHOLE
+  // block is guarded on `recovery !== null`, so every recovery-free dusk — i.e.
+  // every existing golden — is byte-identical: no event, no credit change, and NO
+  // rng draw. The `dayRng.fork` below sits INSIDE the payout branch precisely
+  // because `SeededRng.fork` ADVANCES ITS PARENT (rng.ts): a fork on the guard
+  // path would move every golden in the repo. Same argument the AUTO_REPAIR dusk
+  // block and the subsistence floor below make for their own guards.
+  //
+  // ORDER INSIDE THE BLOCK IS RULED: departure check FIRST, payout second. A
+  // recovery whose day arrived while the captain was away is forfeit, not paid.
+  //
+  // POSITION: above the DebtDue check and well above the day-30 Tour One
+  // resolution, so the marker check and `evaluateDeeds` both see the paid-out
+  // state. The honest consequence, stated rather than hidden: a payout landing on
+  // day 30's dusk CANNOT retroactively clear the marker — `cleared` reads
+  // `player.debt`, and a recovery pays CREDITS, which become debt reduction only
+  // through a DAY-phase `pay-debt` act. A recovery with `dueDay >= 30` is a
+  // deliberate bet against the marker; that is the trade the day cost exists to
+  // create. The era flip itself does nothing to an open recovery: the payout
+  // predicate is `day >= dueDay`, era-blind by construction.
+  const recovery = nextState.player.recovery;
+  if (recovery !== null) {
+    if (nextState.player.currentSystemId !== recovery.systemId) {
+      // §3.3(a) — a LOCATION predicate, never a hook on the Travel verb. One rule
+      // covers `resolveTravel`, any future storylet that relocates the captain,
+      // and anything else that ever moves them, with ZERO per-caller wiring. Its
+      // verified price: a jump that is INTERRUPTED and fled returns the captain
+      // to the origin (actions/combat.ts), so dusk sees the anchor and the
+      // recovery survives. Position at dusk is the rule.
+      nextState.player.recovery = null;
+      events.push({
+        type: 'RecoveryAbandoned',
+        day: nextState.day,
+        outcomeId: recovery.outcomeId,
+        reason: 'departed',
+      });
+      events.push({
+        type: 'WireEntry',
+        day: nextState.day,
+        kind: 'plain',
+        message: `Player broke station and left the salvage op off ${
+          STAR_SYSTEMS[recovery.systemId]?.name ?? `system ${recovery.systemId}`
+        } to the scavengers.`,
+      });
+    } else if (nextState.day >= recovery.dueDay) {
+      // `>=`, NEVER `===` — a `dueDay` in the past on load (a hand-edited save, a
+      // future migration) must pay at the next dusk rather than stick forever.
+      const row = outcomeById(recovery.outcomeId);
+      const poi = nextState.player.charts.discoveredPois.find((p) => p.id === recovery.poiId);
+      nextState.player.recovery = null;
+      if (!row || !poi) {
+        // CONTENT DRIFT SAFETY, covering BOTH a renamed/removed row and a POI
+        // that is no longer on the charts. A stored content id must never be able
+        // to throw — the `CREW_BY_ID[member.roleId]?.benefit` guard in dice.ts is
+        // the same defensive shape for the same class of stored id. Clear the
+        // slot, say so, mutate nothing else.
+        events.push({
+          type: 'RecoveryAbandoned',
+          day: nextState.day,
+          outcomeId: recovery.outcomeId,
+          reason: 'unknown-outcome',
+        });
+      } else {
+        // Emitted BEFORE the payload resolves, so the wire and the UI read
+        // payout-then-detail in the order the player experiences it.
+        events.push({
+          type: 'RecoveryPaidOut',
+          day: nextState.day,
+          outcomeId: row.id,
+          poiId: poi.id,
+          valuePoints: row.valuePoints,
+        });
+        resolveExploreOutcome(
+          nextState,
+          row,
+          poi,
+          dayRng.fork(`recovery-${recovery.outcomeId}-${nextState.day}`),
+          events,
+        );
+      }
+    }
+  }
+
   // T-1604b · Dusk SUBSISTENCE FLOOR — the world provides floors (PRD §"Scarcity
   // of choices, never a poverty trap": "no actor in the simulation, PLAYER OR
   // CAST, gets permanently trapped at zero with no move left"). Closes UGT
@@ -1036,11 +1124,16 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // Deterministic across a JSON round-trip; NO new GameState field, so no save
   // migration (content SUBSISTENCE_FLOOR_CREDITS + the existing credits field).
   //
-  // POSITION is load-bearing. The T-1307 port income immediately above is the LAST
-  // credit mutation of the dusk (the Penny Wise accrual writes `loan.outstanding`
-  // and the T-1309 guild accrual writes `player.debt` — both ledgers, never
-  // credits, per the debt-as-ledger law; the T-1306 crew wage already refuses to
-  // go negative), so this is a true END-of-dusk floor. It also lands BEFORE the
+  // POSITION is load-bearing. The T-111 RECOVERY PAYOUT immediately above is the
+  // LAST credit mutation of the dusk — it was the T-1307 port income until T-111
+  // inserted the payout between them, and this comment is kept honest deliberately
+  // (a comment that lies about ordering is how the next person introduces a bug).
+  // Everything else below writes LEDGERS, never credits: the Penny Wise accrual
+  // writes `loan.outstanding` and the T-1309 guild accrual writes `player.debt`,
+  // per the debt-as-ledger law; the T-1306 crew wage already refuses to go
+  // negative. So this is still a true END-of-dusk floor, and a captain whose
+  // recovery just paid out is floored on the POST-payout balance. It also lands
+  // BEFORE the
   // day-30 Tour One resolution and `evaluateDeeds` below, so the marker check and
   // every deed that reads credits sees the floored value.
   //

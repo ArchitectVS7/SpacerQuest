@@ -58,6 +58,7 @@ import {
   starmapProjection,
   routePreview,
   explorationPreview,
+  recoveryReadout,
   hangoutOpen,
   hangoutNpcs,
   hangoutRumorLines,
@@ -67,6 +68,7 @@ import {
   dawnHandModifiers,
   crewRoster,
   crewBenefitLabel,
+  fittedModuleRows,
   portLedger,
   portFailureExplanation,
   contrabandHold,
@@ -2334,12 +2336,21 @@ function Starmap({ state }: { state: CockpitState }) {
   // engine's own fuel affordability; the label mirrors the confirm-jump pattern,
   // naming the reason it is disabled (read from the engine preview, never invented).
   const sweep = explorationPreview(game);
-  const canSweep = dieArmed && sweep.canAfford;
-  const sweepLabel = !dieArmed
-    ? 'Pick a die to sweep'
-    : !sweep.canAfford
-      ? `Need ${sweep.fuelCost} fuel`
-      : 'Off-lane sweep';
+  // T-111 · An open multi-day recovery is a commitment the player must be able to
+  // SEE, and the verb it blocks must say so rather than fail silently. The
+  // predicate is the engine's own (`player.recovery !== null` — the same one
+  // `resolveExploration` refuses on and `legalActions` withholds on), read
+  // through the pure `recoveryReadout`; no clock is recomputed in JSX.
+  const recovery = recoveryReadout(game);
+  const canSweep = dieArmed && sweep.canAfford && recovery === null;
+  const sweepLabel =
+    recovery !== null
+      ? 'Salvage op under way'
+      : !dieArmed
+        ? 'Pick a die to sweep'
+        : !sweep.canAfford
+          ? `Need ${sweep.fuelCost} fuel`
+          : 'Off-lane sweep';
 
   const hereNode = proj.here;
   // A transparent per-node hit target, narrower than the node spacing so
@@ -2509,6 +2520,15 @@ function Starmap({ state }: { state: CockpitState }) {
             PILOT DC {sweep.dc} · FUEL {sweep.fuelCost} · NAV{' '}
             {signedMargin(sweep.effectiveModifier)}
           </div>
+          {recovery && (
+            <div className="es-recovery" data-testid="explore-recovery">
+              SALVAGE OP · {recovery.outcomeName} at {recovery.systemName} ·{' '}
+              {recovery.daysRemaining === 0
+                ? 'lifts at dusk'
+                : `${recovery.daysRemaining} day${recovery.daysRemaining === 1 ? '' : 's'} to go`}{' '}
+              · hold station or lose it
+            </div>
+          )}
           <button
             className="btn"
             data-testid="explore-sweep"
@@ -2564,6 +2584,10 @@ function ShipPane({ state }: { state: CockpitState }) {
     spendDie: 0,
   });
   const anyDamaged = components.some((c) => c.damaged);
+  // T-112 · The Class-B readout. Class A needs no widget of its own: a component
+  // delta lands in the grid below, a pod grant in the PODS tag, and a maxFuel
+  // grant in the fuel-curve readout — all three already render live ship state.
+  const salvagedFittings = fittedModuleRows(game);
 
   return (
     <section className="pane ship" data-testid="ship-pane">
@@ -2595,6 +2619,27 @@ function ShipPane({ state }: { state: CockpitState }) {
             {curve.crewCapacity}
           </span>
         </div>
+
+        {/* ---- T-112 salvaged fittings (explore-granted modules) ----
+            Rendered only when something is fitted, so a fresh junker's pane is
+            byte-identical to before. The benefit label comes from the SAME content
+            table the dawn-hand aggregator reads (`format.ts` fittedModuleRows), and
+            the row reuses the crew pane's `crew-benefit` class deliberately: a
+            module and a crew member grant the same three benefits, so they must
+            read as the same instrument. */}
+        {salvagedFittings.length > 0 && (
+          <div className="ship-crew" data-testid="explore-modules">
+            <div className="crew-head">SALVAGED FITTINGS</div>
+            {salvagedFittings.map((row) => (
+              <div className="crew-row hired" key={row.id} data-testid="explore-module">
+                <div className="crew-main">
+                  <span className="crew-name">{row.name}</span>
+                  <span className="crew-benefit">{row.benefitLabel}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ---- component grid ---- */}
         <div className="ship-grid" data-testid="component-grid">

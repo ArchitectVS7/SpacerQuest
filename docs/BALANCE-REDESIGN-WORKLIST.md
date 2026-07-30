@@ -934,62 +934,9 @@ table and without breaking the anti-poverty-trap invariant." Original change: "o
 run while outgunned, roll a jettison/delay consequence." Original supporting data: trader 0
 routes lost of 9,003 delivered.
 
-*Method.* Three reviewers (designer / systems engineer / power-gamer), isolated context,
-identical brief. Then every candidate simulated from the real engine before any code was
-written: variants are the shipped `resolveTalk`/`resolveRun` patched at named anchors in a
-tree sourced from `git archive HEAD`, each anchor asserted to match exactly once and to change
-the file. The no-change control reproduced production **byte-for-byte across all seven
-policies**. Rig validation: the power-gamer's advance prediction for the wealth-scaled
-candidate ("clear 0.88–0.90, day 21–22, routesLost 0, shipsLost 0") was reproduced exactly by
-a sweep it never saw.
-
-*Results, trader row, 100 seeds × 120 days, identical seeds:*
-
-| arm | clear | day | routes lost | ships | final cr |
-| --- | --- | --- | --- | --- | --- |
-| control | 0.90 | 21 | 0/9,003 | 0 | 79,954 |
-| wallet-scaled tribute (reserve-anchored) | 0.90 | 21 | 0/9,006 | 0 | 33,532 |
-| wallet-scaled tribute (gross, 12%/round) | 0.90 | 22 | 2/9,011 | 2 | 25,970 |
-| price the escape (jettison 30%) | 0.90 | 21 | 31/8,960 | 0 | 79,472 |
-| cargo seizure (hold > 2× toll) | 0.88 | 23 | 619/8,248 | 2 | 66,750 |
-
-*Findings that survive the retirement and constrain R2/R2.5:*
-
-1. **A tribute proportional to the purse cannot produce a loss** — a fraction of what you hold
-   is always payable. All three reviewers reached this analytically; the sweep confirms it
-   (0 ships, 0 routes, in every calibration, against a sighted trader too). It is a **wealth
-   tax, not a risk lever**: −58% final credits, zero change in danger.
-2. **Pricing the escape is opt-out-for-free** — a never-run trader dropped route losses 94%,
-   *raised* clear rate 0.90 → 0.95 and finished richer. Conditional on the 5.9% run rate; see
-   the parting-shot note in R2.5.
-3. **Cargo seizure worked mechanically and failed on design.** It survived both attacks (a
-   sighted trader: 631 routes lost; the run-away counter-play: 546 vs 619, a 12% dodge versus
-   escape-pricing's 94%) — the hatch is closed by existing rules, since fleeing forfeits the
-   delivery anyway. It fixed the red `balance-targets` test. **But** it is an automatic tax on
-   carrying good freight, and it made the world *safer* — fleet death rate 0.8 → 0.28/1k,
-   breaking the "spacers die" target — because seizing cargo ENDS encounters that used to
-   grind into the R1 kill path. Retired on the owner's design call; the *demand menu* in R2.5b
-   keeps its useful half by making it a choice rather than a confiscation.
-4. **⚠ TWO CONCLUSIONS REVERSED AT 10× SAMPLE (1,000 seeds × 120 days) — the most transferable
-   finding in this document:**
-
-   | arm | day @ n=100 | day @ n=1,000 | clear @ n=1,000 | routes lost @ n=1,000 |
-   | --- | --- | --- | --- | --- |
-   | control | 21 | 21 | 0.920 | **19/90,264** |
-   | cargo seizure 3× | **22** | **21 — fails band** | 0.903 | 2,571/87,325 |
-   | cargo seizure 2× | **23** | **22 — band edge** | 0.872 | 6,552/82,985 |
-
-   - **The trader is not immortal.** Over 120,000 sim-days the control loses **21 ships and 19
-     routes** (0.175 deaths/1k). The matrix's headline "0 ships and 0 cargo across 12,000
-     simulated days" — and this document's own executive summary — is a **small-sample artifact
-     of the 100-seed baseline**. The defect is real but smaller than stated.
-   - **The clear-day criterion is unstable at n=100.** It is a median of a discrete day number
-     over a wide spread (control p25 18 / median 21 / p75 25), so ±1 day is noise. A candidate
-     passed at n=100 and failed at n=1,000. **`baseline-vet-t1605.json`'s 100-seed methodology
-     is under-powered for the [22, 30] target.**
-
-Three independent reviewers (game designer / systems engineer / power-gamer), isolated context,
-identical brief. Then every candidate simulated from the real engine before any code was written.
+*Method.* Three independent reviewers (game designer / systems engineer / power-gamer),
+isolated context, identical brief. Then every candidate simulated from the real engine before
+any code was written.
 
 *Rig.* Variants are the shipped `resolveTalk`/`resolveRun` patched at named anchors in an isolated
 tree sourced from `git archive HEAD` (not the working tree — a concurrent reviewer edited

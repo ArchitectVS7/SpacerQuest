@@ -52,6 +52,18 @@ import {
 // a tiebreak, or the ORDER of rng-perturbing clicks invalidates it. Re-hunt the
 // seed; do not patch the assertion down.
 //
+// T-112 (fix round 1, 2026-07-30) · THE DRIVER GAINED A DAWN BRANCH, AND THE PIN
+// SURVIVED IT. `playDay` now finishes an encounter that is still open when the day
+// opens (`support/career.ts` step 1b): standing down IS the dusk, but it does not
+// end the interdiction, so the overlay is still mounted at dawn and every later
+// click landed on its backdrop — the day stopped advancing and the run stalled to
+// the test timeout. Seed 21 walked into that only after T-1605 ("an ordinary jump
+// always arrives") and the N-series parity pass moved the career's economy; the
+// branch itself adds NO click on any day that does not open mid-fight, which is
+// why this is a driver hole being closed rather than the decision rules changing.
+// Re-verified end to end: seed 21 still flies all 30 days on both branches and
+// still banks past the 25,000cr marker. No assertion was patched down.
+//
 // FALLOUT OWNER: if a later economy or content pass (T-1603b and friends) drops
 // seed 21's day-30 bank below 25,000cr, re-pinning this seed is that task's job
 // under the rebalance-fallout rule — not a licence to weaken the gate here.

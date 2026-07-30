@@ -1,104 +1,30 @@
-import {
-  BEACON_DISCOVERY_CHANCE,
-  EXPLORATION_FUEL_COST,
-  EXPLORATION_NAV_DC,
-  POI_KINDS,
-  POI_LOOT,
-  PoiType,
-  Stat,
-} from '@spacerquest/content';
+import { EXPLORATION_FUEL_COST, EXPLORATION_NAV_DC, POI_KINDS, Stat } from '@spacerquest/content';
 import { DiscoveredPoi, GameEvent, GameState, PlayerAction } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
-import { fragmentCount, grantFragment } from '../nemesis.js';
+import { drawLegacyLoot, drawPoiKind } from '../exploreOutcomes.js';
 import { navBonus } from '../components.js';
 import { cloneState } from '../clone.js';
 
 /**
- * Roll a boarded POI's loot table (T-111b, PRD §7.2). Each of the three loot
- * components — salvage / fragment / contraband — is rolled INDEPENDENTLY off the
- * action rng in a fixed order, so a given seed always yields the identical loot.
- * Mutates `state` (credits, nemesisFile, the contraband flag) and pushes typed
- * events. The `Contraband` pod is not stowed here: it arms the
- * `derelict.sealed-pod` storylet (the carrying choice) via a flag.
- */
-function resolveLoot(
-  state: GameState,
-  poi: DiscoveredPoi,
-  rng: SeededRng,
-  events: GameEvent[],
-): void {
-  const table = POI_LOOT[poi.type];
-
-  // 1. SALVAGE — real credits.
-  if (rng.next() < table.salvage.chance) {
-    const span = table.salvage.maxCredits - table.salvage.minCredits + 1;
-    const amount = table.salvage.minCredits + Math.floor(rng.next() * span);
-    state.player.credits += amount;
-    events.push({
-      type: 'SalvageRecovered',
-      day: state.day,
-      poiId: poi.id,
-      systemId: poi.systemId,
-      amount,
-    });
-  }
-
-  // 2. FRAGMENT — the treasure. Seeded pick from the type's pool; dedupe keeps
-  //    the count monotonic, so a repeat id emits nothing.
-  if (table.fragment.pool.length > 0 && rng.next() < table.fragment.chance) {
-    const pool = table.fragment.pool;
-    const fragmentId = pool[Math.floor(rng.next() * pool.length)];
-    const added = grantFragment(state.player.nemesisFile, fragmentId, poi.type, state.day);
-    if (added) {
-      events.push({
-        type: 'FragmentAcquired',
-        day: state.day,
-        fragmentId,
-        source: poi.type,
-        fragmentCount: fragmentCount(state.player.nemesisFile),
-        poiId: poi.id,
-      });
-      events.push({
-        type: 'WireEntry',
-        day: state.day,
-        kind: 'plain',
-        message: `Player's Nemesis file logged a new Signal Fragment recovered off ${poi.name}.`,
-      });
-    }
-  }
-
-  // 3. CONTRABAND — a sealed pod. Arms the carry-choice storylet via a flag.
-  if (rng.next() < table.contraband.chance) {
-    state.flags['signal.contraband.pending'] = true;
-    events.push({
-      type: 'ContrabandFound',
-      day: state.day,
-      poiId: poi.id,
-      systemId: poi.systemId,
-    });
-  }
-}
-
-/** Deterministically pick one flavor name off the forked action rng. */
-function chooseName(rng: SeededRng, names: readonly string[]): string {
-  const name = names[Math.floor(rng.next() * names.length)];
-  return name ?? names[0] ?? 'an uncharted signal';
-}
-
-/**
  * T-111a · Off-lane exploration (PRD §7.2). The player burns a die on a PILOT
- * nav check to leave the trade lane and chart a point of interest — a
- * transmitting BEACON or a boardable DERELICT.
+ * nav check to leave the trade lane and chart a point of interest.
+ *
+ * WHAT THIS FILE OWNS, and only this: the five typed refusals, the die spend,
+ * the fuel burn, and the nav check. WHICH kinds of point of interest exist, and
+ * WHAT a board pays out, are content — drawn through `exploreOutcomes.ts`
+ * (`drawPoiKind` reads `POI_DISCOVERY_TABLE`, `drawLegacyLoot` reads
+ * `LEGACY_POI_LOOT` and hands the drawn rows through `claimOutcome` to the
+ * generic resolver, which is also where a band-2+ find OPENS the multi-day
+ * recovery slot instead of paying out today — T-111, spec §3). T-110
+ * removed the hard-coded type ternary and the three-leg loot branch that used to
+ * live here; adding a POI type or a payoff now touches no engine file
+ * (docs/EXPLORE_REDESIGN.md §2).
  *
  * Determinism: the POI type/name are drawn off `rng` (the day rng forked on the
  * action's event index in day.ts), so the same seed + action sequence surfaces
- * the identical POI. The nav check reads the player's PILOT modifier through the
- * SAME `check` idiom as Travel (die + modifier vs DC).
- *
- * T-111b seam: a discovered POI is a bare charted coordinate here. Loot
- * (salvage, Contraband, Signal fragments) and the Nemesis file attach to it by
- * id/type in T-111b — nothing rewarded here.
+ * the identical POI and the identical payoff. The nav check reads the player's
+ * PILOT modifier through the SAME `check` idiom as Travel (die + modifier vs DC).
  */
 export function resolveExploration(
   state: GameState,
@@ -111,6 +37,33 @@ export function resolveExploration(
   // Encounter gating lives in day.ts applyPlayerAction (the only runtime caller),
   // which emits a typed ActionBlocked event before this resolver is reached.
   const systemId = nextState.player.currentSystemId;
+
+  // T-111 · THE FIFTH TYPED REFUSAL (docs/EXPLORE_REDESIGN.md §3.3(c)). One open
+  // recovery at a time: while the ship is committed to a salvage op the Explore
+  // VERB is refused, rather than the second outcome being silently downgraded —
+  // one rule instead of two, and knowable BEFORE the player commits resources.
+  // The exact in-repo precedent is the one-loan-at-a-time gate (LoanState's own
+  // header: "one loan at a time; borrow is blocked while a loan is active").
+  //
+  // NO die is spent and NO fuel is burned, for the same reason the `no-die` branch
+  // below gives: the ship was already committed, so there was nothing to fly and
+  // there is nothing to charge. Placed at the very top so it precedes even the
+  // die-shape checks.
+  if (nextState.player.recovery !== null) {
+    events.push({
+      type: 'ExplorationFailed',
+      day: nextState.day,
+      systemId,
+      reason: 'recovery-in-progress',
+    });
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      kind: 'plain',
+      message: `Player's crew held station on the salvage op — no hands free for another off-lane sweep near system ${systemId}.`,
+    });
+    return { state: nextState, events };
+  }
 
   // T-1003 · Malformed die selection is a type-valid player input (the Explore
   // action shape carries an optional/free-form spendDie), so it must resolve to a
@@ -208,11 +161,9 @@ export function resolveExploration(
     return { state: nextState, events };
   }
 
-  // Seeded POI: the beacon/derelict split, then a flavor name — both drawn off
-  // the forked action rng so the discovery is identical for a given seed.
-  const type: PoiType = rng.next() < BEACON_DISCOVERY_CHANCE ? 'beacon' : 'derelict';
-  const kind = POI_KINDS[type];
-  const name = chooseName(rng, kind.names);
+  // Seeded POI: the content-weighted type draw, then a flavor name — both off the
+  // forked action rng so the discovery is identical for a given seed.
+  const { type, name } = drawPoiKind(rng);
   // Stable per (system, day, action-index, type). dayEventCount is the action's
   // event index at dispatch time (day.ts sets the running total afterward), so
   // repeated explores in one day get distinct ids.
@@ -236,15 +187,15 @@ export function resolveExploration(
   events.push({
     type: 'WireEntry',
     day: nextState.day,
-    // T-1401 wire-line kind: a world/system discovery line (`kind` here is the
-    // local POI_KINDS entry, unrelated to this event field). → 'plain'.
+    // T-1401 wire-line kind: a world/system discovery line. → 'plain'.
     kind: 'plain',
-    message: kind.wireDiscovered.replace('{name}', name),
+    message: POI_KINDS[type].wireDiscovered.replace('{name}', name),
   });
 
-  // T-111b: attach loot to the fresh discovery. Continues on the SAME action rng
-  // so the loot is deterministic for the seed + action sequence.
-  resolveLoot(nextState, poi, rng, events);
+  // Attach the payoff to the fresh discovery. Continues on the SAME action rng so
+  // it is deterministic for the seed + action sequence. T-113 swaps this one call
+  // for the single weighted draw over EXPLORE_OUTCOMES (spec §2.4).
+  drawLegacyLoot(nextState, poi, rng, events);
 
   return { state: nextState, events };
 }

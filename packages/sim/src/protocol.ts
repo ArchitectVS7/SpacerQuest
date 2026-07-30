@@ -658,11 +658,16 @@ export function legalActions(state: GameState): LegalActions {
   }
 
   // --- Explore -----------------------------------------------------------
-  if (hasDie && ship.fuel >= EXPLORATION_FUEL_COST) {
+  // T-111: an open multi-day recovery makes the verb a GUARANTEED refusal
+  // (`ExplorationFailed{'recovery-in-progress'}`, actions/exploration.ts), so it
+  // is withheld rather than advertised — the same discipline the dry-tank Travel
+  // gate above applies. Without this the policies would spend actions on a no-op
+  // and T-116's ablation would measure noise instead of the verb.
+  if (hasDie && ship.fuel >= EXPLORATION_FUEL_COST && player.recovery === null) {
     actions.push({
       type: 'Explore',
       params: { spendDie: dieParam },
-      note: `Burns ${EXPLORATION_FUEL_COST} fuel; PILOT nav check charts a POI on success.`,
+      note: `Burns ${EXPLORATION_FUEL_COST} fuel; PILOT nav check charts a POI on success. A high-value find opens a multi-day recovery that must be held station on.`,
     });
   }
 

@@ -18,7 +18,10 @@
  * future die-granting module joins with one entry — no engine change, no new call
  * site. The engine reads it via `dice.ts` `equipmentDiceBenefits`, whose output
  * folds through the SAME three accumulators as the crew roster in
- * `dawnDiceModifiers`.
+ * `dawnDiceModifiers`. T-112 CASHED THAT PROMISE, through the sibling table
+ * `EXPLORE_MODULE_DICE_BENEFITS` (also below): three explore-granted modules,
+ * three entries, one extra loop in `equipmentDiceBenefits`, and no change to
+ * `dawnDiceModifiers`, `rollDawnHand`, `check()` or any call site.
  *
  * FOUNDATION (f2f95fa9): foundation has NO d20 dawn-hand mechanic at all — the
  * dawn hand is engine-original (there is no `handSize`, no re-roll, no floor, and
@@ -129,12 +132,15 @@ export const MAX_DAWN_HAND_SIZE = 7;
  * Maps a FITTED SpecialEquipment id → the one dice benefit that module grants at
  * dawn.
  *
- * SHIPS EMPTY BY DESIGN: no gameplay module grants dice today, so every dawn hand
- * is byte-identical to pre-T-1601c (proved in `dice.test.ts`). A future
- * die-granting module is exactly one entry here — no engine change, no new call
- * site, and no save migration, because the benefit is looked up from the
- * fitted-equipment flags already on `ShipState` and is never stored on the save
- * (the same "content owns the tuning" shape `CREW_ROLES[].benefit` uses).
+ * STILL SHIPS EMPTY: no YARD-PURCHASABLE module grants dice, so this leg of the
+ * aggregation returns `[]` for every ship and the shipyard half of the dawn hand
+ * is byte-identical to pre-T-1601c (proved in `dice.test.ts`). What is no longer
+ * true is the old claim that "no dice-granting content exists" — T-112 landed the
+ * SIBLING table below, `EXPLORE_MODULE_DICE_BENEFITS`, which carries the three
+ * explore-granted modules and is read by the SAME engine function through a
+ * second loop. The two tables are deliberately separate: this one is keyed by the
+ * shipyard's purchasable ids, and a unique find recovered off a derelict must not
+ * appear on every yard's shelf (docs/EXPLORE_REDESIGN.md §6, finding F-100-1).
  *
  * Keyed by `SpecialEquipmentContentId` so a typo'd id is a compile error rather
  * than a silent no-op.
@@ -148,3 +154,89 @@ export const MAX_DAWN_HAND_SIZE = 7;
 export const EQUIPMENT_DICE_BENEFITS: Readonly<
   Partial<Record<SpecialEquipmentContentId, DiceBenefit>>
 > = {};
+
+// --- T-112 · The explore-module tier (docs/EXPLORE_REDESIGN.md §4.2, §6) -----
+
+/**
+ * T-112 · ONE EXPLORE-GRANTED MODULE — a Class-B unique item's fitting.
+ *
+ * HOME NOTE. §6's proposed-symbol table pencilled this table into
+ * `exploration.ts`; it ships HERE instead, beside `EQUIPMENT_DICE_BENEFITS` and
+ * the `DiceBenefit` vocabulary both tables are keyed on, so the whole dice axis
+ * is readable in one file and `exploration.ts` keeps importing (not exporting)
+ * the dice types. Nothing else about F-100-1's recommended shape changes.
+ *
+ * THIS TABLE IS NOT READ BY `SPECIAL_EQUIPMENT`, by `engine/actions/shipyard.ts`,
+ * or by the UI's special-equipment pane. That separation IS finding F-100-1's
+ * resolution: `EQUIPMENT_DICE_BENEFITS` is keyed by the shipyard's purchasable id
+ * union, so obtaining a key there would also put a unique derelict find on every
+ * yard's shelf — the one thing a unique find must not be. A second table the yard
+ * never reads costs one extra loop in one pure engine function and nothing else.
+ */
+export interface ExploreModuleDefinition {
+  /** Stable content id — the value stored on `ShipState.exploreModules`. */
+  readonly id: string;
+  /** Display name (the ship pane's salvaged-fittings readout). */
+  readonly name: string;
+}
+
+/** The literal source of the shipped module table. Kept `as const` (behind the
+ *  widened `EXPLORE_MODULES` export) purely so the id union can be DERIVED from
+ *  it — the `SPECIAL_EQUIPMENT_TABLE` idiom, for the same reason. */
+const EXPLORE_MODULES_TABLE = [
+  { id: 'module-tally-slate', name: 'Gunnery Tally-Slate' },
+  { id: 'module-marked-ephemeris', name: "Astrogator's Marked Ephemeris" },
+  { id: 'module-berth-couch', name: "Staff Pilot's Berth-Couch" },
+] as const satisfies readonly ExploreModuleDefinition[];
+
+/** The literal union of shipped explore-module ids, DERIVED from the table above
+ *  so a typo'd key in `EXPLORE_MODULE_DICE_BENEFITS` (or in an `EXPLORE_ITEMS`
+ *  row) is a COMPILE error rather than a silent no-op. */
+export type ExploreModuleContentId = (typeof EXPLORE_MODULES_TABLE)[number]['id'];
+
+/** The shipped explore modules, widened to the declared interface — the `as
+ *  const` above exists only to derive the id union, never to narrow this export.
+ *  READERS: `ui/format.ts` `fittedModuleRows` (the ship-pane readout) and the
+ *  content test that pins the tier at three. */
+export const EXPLORE_MODULES: readonly ExploreModuleDefinition[] = EXPLORE_MODULES_TABLE;
+
+/**
+ * T-112 · The three Class-B grants, ordered by power — the entry
+ * `EQUIPMENT_DICE_BENEFITS`'s header has promised since T-1601c ("a future
+ * die-granting module joins with one entry, no engine change, no new call site").
+ * This IS that entry, and the promise is kept: `dawnDiceModifiers`, `rollDawnHand`
+ * and `check()` are all untouched, and no call site changed.
+ *
+ * WHY EXACTLY THESE THREE KINDS, and why the tier stops at three
+ * (docs/EXPLORE_REDESIGN.md §4.2, verbatim in substance):
+ *
+ *  - `module-tally-slate` → `{ kind: 'floor', floor: 3 }`. Floors take MAX, and
+ *    `crew-quartermaster` already grants floor 5 for a 2,000cr hire — so this is
+ *    strictly a poor captain's item and goes COMPLETELY INERT the day a
+ *    quartermaster comes aboard. `floor` is the only kind with an integer dial,
+ *    so it is the only place fine power gradations can live.
+ *  - `module-marked-ephemeris` → `{ kind: 'reroll' }`. Rerolls SUM and are
+ *    unclamped, so this is strictly additive with `crew-navigator` and can never
+ *    be redundant — the safest mid grant, and the one whose realized value does
+ *    not depend on what the player has hired.
+ *  - `module-berth-couch` → `{ kind: 'extra-die' }`. The strongest benefit in the
+ *    game. Extra dice SUM THEN CLAMP: with `crew-second` aboard the combined
+ *    extra is 2 = `MAX_EXTRA_DICE`, hand size 7 = `MAX_DAWN_HAND_SIZE`. THE CAP
+ *    BINDS EXACTLY HERE, and a SECOND extra-die item would be silently swallowed.
+ *    That is the direct reason the tier is three items and not thirty.
+ *
+ * Keyed by `ExploreModuleContentId`. NOTHING IS STORED ON THE SAVE but the fitted
+ * id itself — the benefit is looked up here every dawn, the same discipline
+ * `CREW_ROLES[].benefit` keeps.
+ *
+ * READER: `packages/engine/src/dice.ts` `equipmentDiceBenefits` (its second
+ * loop), whose result folds through the SAME three accumulators as the crew and
+ * the yard modules.
+ */
+export const EXPLORE_MODULE_DICE_BENEFITS: Readonly<
+  Partial<Record<ExploreModuleContentId, DiceBenefit>>
+> = {
+  'module-tally-slate': { kind: 'floor', floor: 3 },
+  'module-marked-ephemeris': { kind: 'reroll' },
+  'module-berth-couch': { kind: 'extra-die' },
+};

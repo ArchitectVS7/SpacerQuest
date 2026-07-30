@@ -162,6 +162,25 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * profile" phantom N1 existed to kill. So a migrated roster loads at zero deeds and
  * LIEUTENANT, and earns from there.
  *
+ * T-111 bumped {@link CURRENT_SAVE_VERSION} to 13. The v12->v13 change IS a
+ * GameState shape change, and an ADDITIVE one-key backfill of exactly the shape
+ * {@link MIGRATIONS}[2] (`loan` -> null) and [3] (`crew` -> []) already are:
+ * `PlayerState.recovery` (the open multi-day salvage op — types.ts
+ * `RecoveryState`, docs/EXPLORE_REDESIGN.md §3) is a new persistent field. The
+ * v12->v13 migration backfills `recovery: null` on the player so a pre-recovery
+ * save validates against the v13 schema (whose `recovery` key is non-optional).
+ *
+ * NULL IS A STATEMENT OF FACT, NOT A CONVENIENCE DEFAULT — the same phrase the
+ * v8->v9 `edition` entry uses, for the same reason: no save that exists can
+ * contain a recovery, because until T-111 no recovery could exist.
+ *
+ * AND ON "A MIGRATION CALLS A RULE RATHER THAN RESTATING ONE" (the MIGRATIONS[9]
+ * / MIGRATIONS[11] precedent): here the backfilled value is a literal `null`, so
+ * THERE IS NO RULE TO CALL — stated explicitly rather than left for a reviewer to
+ * wonder about. The moment this backfill becomes anything other than `null`, the
+ * `emptyDeedRegistry` pattern applies without exception: call the engine's own
+ * constructor, never an inline literal.
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
@@ -359,9 +378,23 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
     });
     return { ...(v11State as object), npcs };
   },
+  // v12->v13: T-111 added PlayerState.recovery (the open multi-day salvage op). A
+  // v12 save has no `recovery` key, so backfill it to null before schema
+  // validation — a statement of fact, not a default (see the registry header).
+  // Idempotent: a state that already carries the key keeps it exactly.
+  12: (v12State) => {
+    const s = v12State as { player?: Record<string, unknown> };
+    return {
+      ...(v12State as object),
+      player: {
+        ...(s.player ?? {}),
+        recovery: (s.player as { recovery?: unknown })?.recovery ?? null,
+      },
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 12;
+export const CURRENT_SAVE_VERSION = 13;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

@@ -485,11 +485,32 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  ae6d73d7… -> 4ad8b677…   (events 9f864bfa… -> 72748730…)
 //   STORYLET state  11b73757… UNCHANGED      (events 3e96fe90… UNCHANGED)
 // Regenerated via gen-day-loop-golden.ts.
+//
+// T-111 · BOTH STATE HASHES RE-PINNED, BOTH EVENT HASHES DELIBERATELY NOT — the
+// same split as the N1 and N11 entries above, and here too the unmoved pair is the
+// evidence rather than a formality. T-111 added ONE serialized player key,
+// `recovery: null` (the open multi-day salvage op), so `serializeState` carries one
+// more field on both scripts and the state hash moves by definition. This is
+// exactly the T-1306 `rerollsRemaining` situation the `rollDawnHand` header
+// records: a new persisted key with no behavioural reach into these scripts.
+//
+// WHY THE EVENT HASHES MUST HOLD, and what a move would have meant. Neither script
+// contains an `Explore` action, so no recovery can be opened in either — and the
+// dusk recovery tick T-111 inserts into `endDay` is guarded WHOLE on
+// `player.recovery !== null`. On a recovery-free dusk it emits nothing, mutates
+// nothing, and — the load-bearing half — takes NO rng draw: its `dayRng.fork` sits
+// INSIDE the payout branch precisely because `SeededRng.fork` advances its parent.
+// A fork on the guard path would have re-phased every dusk in the repo and moved
+// both of these. They came back byte-identical from the regenerator. If either ever
+// moves on a change of this shape, that is the leak — fix the cause, never re-pin.
+//   DAY_LOOP state  4ad8b677… -> 3405f608…   (events 72748730… UNCHANGED)
+//   STORYLET state  11b73757… -> 9e332c2e…   (events 3e96fe90… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '4ad8b677121c80fa8b6e5410543f9948768cd03944c799037d293c24ce451ccd';
+  '3405f60869ed3d720ccd23c58c52cd78777cbaf3e224d9e1df5e1d8831321658';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   '7274873091b87cee192878a732e7ae8217575cc6650fd41f61290d2dfe1dbe71';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '11b73757bca8d1a31bbda0a91873269200f77bb1d0be6f977529e75c1d2a428f';
+  '9e332c2ee43f01d94288df7d7a30a86c3fc1622320f6070f408a48c6c5903233';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '3e96fe90247b837cba773049e855623f0381bb5cd0f9cf41fda9d86982a8b50e';

@@ -108,7 +108,11 @@ Statuses: `TODO` | `IN-PROGRESS` | `DONE` | `BLOCKED(reason)`
 
 ## M1 — Specification (both systems, before any implementation)
 
-### T-100 · Spec the Explore system: engine/content framework + the time cost — `status: TODO` · `coder: opus` · `after: —`
+### T-100 · Spec the Explore system: engine/content framework + the time cost — `status: DONE` · `coder: opus` · `after: —`
+
+**Delivered (2026-07-30):** Wrote `docs/EXPLORE_REDESIGN.md`, settling all four required designs against the owner's two rulings without re-opening either: §2 the value-headed outcome row (one typed content shape, five engine resolvers, zero instance knowledge in the engine); §3 the anchored single-slot recovery (the new `player.recovery` state, the `recoveryDays(valuePoints)` band-table rule, save v13 + `MIGRATIONS[12]`, and explicit rulings on all four interaction questions — travel-away forfeits by location predicate, death forfeits at succession, a second recovery refuses the verb, and an open recovery survives the day-30 era flip untouched); §4 two effect classes (unbounded Class-A ship-element deltas plus a Class-B die effect bounded at exactly three modules through the existing `DiceBenefit`/`EQUIPMENT_DICE_BENEFITS` hook, with Finding F-100-1 recording the one real cost that bound carries and its recommended second-loop resolution); and §5 the `valuePoints` → band → everything ladder (one dial per row, five bands, a 100-row spread across T-113/114/115, and the reachability arithmetic that makes it a property check rather than a tuning exercise). Deliberate scope boundary: this is a specification only — no engine, content, sim, or UI source file was touched, and Explore's fuel cost, nav DC, NPC interaction, and the 0.5.2 version bump are all explicitly left unsettled for later tasks (§7).
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading the Explore engine/content pair, `dice.ts`/`crew.ts`/`upgrades. · attempts=1/4.
 
 Audit today's Explore end to end (`packages/engine/src/actions/exploration.ts`,
 `packages/content/src/exploration.ts`, `POI_KINDS`, `POI_LOOT`, `EXPLORATION_NAV_DC`,
@@ -120,9 +124,12 @@ and plain _salvage/credits_, with "dead end" meaning lore with no mechanical pay
 each as a typed content shape the engine can resolve without knowing any instance.
 **(2) The multi-day recovery, in detail** — ruling 1 fixes the model; the spec owes the
 mechanics. Exactly what state is added and where; how N is derived from an outcome's power by
-a rule rather than a per-row constant; and the three interaction answers: **travelling away
-mid-recovery, dying mid-recovery, and starting a second recovery while one is open.** Name
-the save version it lands on and what the migration backfills. **(3) The effect surface** —
+a rule rather than a per-row constant; and the four interaction answers: **travelling away
+mid-recovery, dying mid-recovery, starting a second recovery while one is open, and a recovery
+still open when the day-30 Tour One marker resolves** (`day.ts` fires `TourOneResolved` and
+flips the era at dusk of day 30 unconditionally — settle whether an open recovery survives the
+era flip, pays out early, or is forfeit). Name the save version it lands on and what the
+migration backfills. **(3) The effect surface** —
 _+x to a ship element_ has a home (`ShipState`, `SPECIAL_EQUIPMENT`); the die effect uses the
 existing `DiceBenefit` / `EQUIPMENT_DICE_BENEFITS` hook per ruling 2. Show concretely how
 three different items of different power map onto `floor` / `extra-die` / `reroll`, and state
@@ -133,13 +140,31 @@ hand-tuned constant per row. Do not implement.
 **Accept:** `docs/EXPLORE_REDESIGN.md` exists and settles all four with a named design each;
 every engine/content symbol it cites resolves (`grep` each and confirm a hit); the recovery
 section names the added state, the derivation rule for N, the save version, AND answers all
-three interaction questions explicitly; the effect section maps three worked example items
+four interaction questions explicitly (including the day-30 marker case); the effect section maps three worked example items
 onto the existing `DiceBenefit` kinds and states that mapping's expressive limit; **the spec
 implements the owner's ruled options 1 and 2 — if either proves unworkable the task FAILS
 with the reason rather than documenting an alternative**; no engine, content or sim source
 file is modified; gate green.
 
-### T-101 · Spec the Hangout system: engine vs content, parameterised per port — `status: TODO` · `coder: opus` · `after: T-100`
+### T-101 · Spec the Hangout system: engine vs content, parameterised per port — `status: DONE` · `coder: opus` · `after: T-100`
+
+**Delivered (2026-07-30):** Wrote `docs/HANGOUT_REDESIGN.md`, implementing ruling 3 without
+re-opening it. It settles all five required questions: the typed `PortHangout` parameter
+surface (§2, "the port row, defaults resolved," field-wise default resolution against
+`DEFAULT_PORT_HANGOUT`); the engine/content line as an explicit 35-row two-column table (§3,
+"deltas are content, application is engine"); the reach change from 1-of-28 to 14-of-28 core
+ports with its blast-radius table across goldens, sim policies, `legalActions`, and the
+capstone/save-version position (§4, no `CURRENT_SAVE_VERSION` bump owed by this track); the
+three known VisitHangout defects, all ruled DEFERRED with two measurement obligations handed
+to T-125 (§5); and the 14-port content brief across six axes including governance as an
+axis independent of `isRim` (§6). Five framework findings (F-101-1…F-101-5) record the
+parameter-only surface's real expressive limits — most notably that the wager ceiling is
+dealer-purse-bound, not band-bound, and that conditional per-port house rules are
+out-of-scope by ruling 3 — rather than routing around them. Scope boundary: this is a spec
+only; no engine, content, or sim source file was touched, and the NPC-side Hangout question
+stays deferred to the owner per the standing gate.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading the Hangout engine/content pair, `day.ts`'s gate, the sim polic · attempts=1/4.
 
 Audit today's Hangout (`packages/engine/src/actions/hangout.ts` — 413 lines, six venues:
 `dare`, `befriend`, `insult`, `meet`, `rumor`, plus `borrow`/`repay`; and
@@ -160,7 +185,11 @@ track or explicitly deferred with the NPC question: the NPC-side faucet, the mis
 `hasHangout` check on the NPC path, and the 150cr ante that locks out the captains it would
 help. **(5) The content brief for 14 ports** — the owner asked for exotic, dangerous and
 humorous among them; propose the spread and the axes that differentiate a port, without
-writing the ports.
+writing the ports. **A port's governance/lawfulness is a candidate axis independent of the
+rim/contraband flag** — core systems need not be uniformly safe; a partisan faction, a seedy
+underbelly, or a strict garrison world are all core-compatible story hooks and are open
+territory for "exotic" or "dangerous" ports rather than reserving those for rim-flavoured
+reskins.
 
 **Accept:** `docs/HANGOUT_REDESIGN.md` exists and settles all five with a named
 recommendation each; the engine-vs-content line is drawn as an explicit two-column list
@@ -171,7 +200,7 @@ differentiating axes and proposes a spread; **the spec implements ruling 3 — n
 house-rule mechanism is specced, and if a proposed port concept needs one that is recorded
 as a finding**; no engine, content or sim source file is modified; gate green.
 
-### T-102 · Spec consistency check — do the two specs honour the rulings, and do they collide? — `status: TODO` · `coder: opus` · `after: T-101`
+### T-102 · Spec consistency check — do the two specs honour the rulings, and do they collide? — `status: DONE` · `coder: opus` · `after: T-101`
 
 **This was a human gate until the owner ruled all three questions up front; it is now the
 automated check that the specs actually built what was ruled.** Read both specs against THE
@@ -189,11 +218,25 @@ alternative and never accepted by this task; the save-bump collision question is
 with a specific recommendation (one bump or two, and the landing order); no engine, content
 or sim source file is modified; gate green.
 
+**Delivered (2026-07-30):** Wrote `docs/0.5.2-SPEC-REVIEW.md`, cross-checking
+`EXPLORE_REDESIGN.md` (T-100) and `HANGOUT_REDESIGN.md` (T-101) against THE THREE DESIGN
+RULINGS and against each other. Verdict: all three rulings HONOURED, with one recorded
+precondition on ruling 2 (D2) and five near-misses examined and cleared as not departures.
+Collision section recommends ONE save bump for the whole 0.5.2 track (v12→v13, taken by
+T-111; Hangout takes none), closes a second-order save question left open by both specs
+(D3), corrects the Hangout spec's shared-file count from zero to four (D6), and finds one
+real naming collision — `PortHangout.portId` vs. the repo's settled `systemId` — resolved as
+a rename directive (D7). Eight directives (D1–D8) carried forward to their owning
+downstream tasks. Scope boundary, deliberate: this task re-analysed neither spec's design,
+edited neither spec, opened no new design question, and touched no engine, content, sim or
+UI source file — corrections live only as directives in the review doc, per its own §4.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading both specs end to end plus TASKS.md's ruling block, and grounde · attempts=1/4.
+
 ---
 
 ## M2 — Explore: build the system, then fill it
 
-### T-110 · The Explore outcome framework, extracted behaviour-preserving — `status: TODO` · `coder: opus` · `after: T-102`
+### T-110 · The Explore outcome framework, extracted behaviour-preserving — `status: DONE` · `coder: opus` · `after: T-102`
 
 Restructure `resolveExploration` so an outcome is a **content-supplied typed payload the
 engine resolves generically**, replacing today's hard-coded three-component roll (salvage /
@@ -210,25 +253,194 @@ body, the N3 `combatRules.ts` precedent); each new outcome type has a resolver a
 test proving an instance of it resolves; a `grep` for `beacon`/`derelict` in
 `packages/engine/src/actions/exploration.ts` returns nothing outside comments; gate green.
 
-### T-111 · The time cost of recovery — `status: TODO` · `coder: opus` · `after: T-110`
+**Delivered (2026-07-30):** An explore payoff is now a content row the engine resolves
+generically. `packages/content/src/exploration.ts` gains `ExploreOutcomeDefinition` /
+`ExploreOutcomePayload` and `EXPLORE_OUTCOMES` (the two shipped POI tables re-expressed as 12
+`legacy-` rows — two salvage bands, eight lore rows derived by `.map` over the two fragment
+pools in pool order, two contraband pods), plus `POI_DISCOVERY_TABLE` (which retires
+`BEACON_DISCOVERY_CHANCE` and takes the last POI-type literal out of the engine) and
+`LEGACY_POI_LOOT` (the three-leg draw kept alive as DATA pointing at row ids, per spec §2.4).
+`POI_LOOT` / `PoiLootTable` / `SalvageLoot` / `FragmentLoot` / `LootComponentChance` are
+deleted. The new `packages/engine/src/exploreOutcomes.ts` owns `drawPoiKind`,
+`drawLegacyLoot` and `resolveExploreOutcome` — an exhaustive switch with a `never` default,
+one arm per kind — and `applyEffects` is exported from `storylets.ts` so four of the five
+kinds reduce to a `StoryletEffects` payload applied through the one authoritative
+implementation (synthetic pair: `storyletId` = the row id, `choiceId` = `'explore'`).
+`actions/exploration.ts` keeps only the refusals, the die, the fuel and the nav check: 124
+lines lighter, `resolveLoot` and the beacon/derelict ternary gone, and a case-insensitive
+`grep -ni 'beacon\|derelict'` over it returns **nothing at all**, not even in comments.
+
+BEHAVIOUR-PRESERVING, EVIDENCED: `packages/engine/src/__tests__/exploration.test.ts` has a
+**zero-line diff** and all 18 of its tests pass unchanged; all four `day-loop-golden.ts`
+hashes, both `replay-golden.ts` pins and `campaign-degraded`'s seven `PINNED_FINGERPRINTS`
+(explorer included) are byte-identical — the fixture directories show a zero-line diff. A new
+`exploreOutcomes.test.ts` pins the WHOLE per-seed result (credits, nemesis file, contraband
+flag, charted POI, ordered event stream) over 300 boarded seeds to a sha256 stamped from the
+PRE-refactor tree, plus the readable aggregate (202 salvage / 96 fragment / 57 contraband
+events, 346,939cr) — both were authored and run green against `main` before a line moved.
+Gate: 1,369 tests green across all four workspaces (engine 810, up 15), `tsc -b` clean, lint
+clean, `format:check` clean.
+
+Four findings, each carried in code comments at the site:
+- **F-110-A · the settled five-kind taxonomy cannot express today's contraband leg.** No
+  settled kind emits `ContrabandFound`, and routing the flag through `lore.effects` would
+  emit `StoryletEffectApplied` instead, breaking two pre-existing `exploration.test.ts`
+  assertions and moving the replay goldens. Since "every pre-existing exploration test passes
+  unchanged" is a hard accept clause, a **sixth, explicitly transitional** `{ kind:
+  'contraband' }` payload ships, marked at its declaration and its resolver arm for
+  **retirement by T-113** once the weighted draw lands and no row uses it.
+- **F-110-B · the legacy rows carry `wireFound: ''` and the resolver guards on non-empty.**
+  Emitting a line for them would add a `WireEntry` per boarded POI and move
+  `REPLAY_GOLDEN_RESPONSES` (its `REPLAY_LOG` charts a derelict). §2.4's "never charged 80
+  fuel for total silence" fix arrives with the authored copy at T-113, exactly as the spec
+  sequences it; T-113/T-115 should assert no authored row has empty copy.
+- **F-110-C · `rulesFingerprint` moved despite the extraction being inert**, because the hash
+  covers code, not outcomes (`b6f27d2bceabde59` → `e58d5afd90b43ad5`). Remedied by
+  `npm run balance:extract -- --aggregate docs/balance/baseline-n11-shipped.json` (the T-021
+  precedent), NOT by a capstone and NOT by editing the fixture: the resulting
+  `docs/balance/smoke/tiers.json` diff is fingerprints + `gitCommit` + `productVersion` and
+  **every recorded checkpoint number is identical**, which is itself evidence of inertness.
+  No sweep was taken, so T-116's capstone batching is untouched.
+- **F-110-D · `unique-item` has no grant surface until T-112.** `hasSpecialEquipment` reads a
+  fixed set of named `ShipState` booleans and `EXPLORE_MODULES` does not exist yet, so the
+  arm resolves to its wire line and mutates nothing, with a named `// T-112 seam:` comment
+  rather than an invented stand-in grant. A test compares whole state before/after to hold
+  that line.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/EXPLORE_REDESIGN.md` §0–§5/§8, `docs/0.5.2-SPEC-REVIEW.md · attempts=1/4.
+
+### T-111 · The time cost of recovery — `status: DONE` · `coder: opus` · `after: T-110`
+
+**Delivered (2026-07-30):** Multi-day committed recovery now runs end to end through the
+real day loop: a drawn outcome with `recoveryDays(valuePoints) > 0` (a content-driven band
+rule in `exploreOutcomes.ts`, never a per-row constant) opens the single `player.recovery`
+slot instead of resolving same-day, and the payoff fires at the dusk of `dueDay` through the
+existing `resolveExploreOutcome` payload roll. The four ruled interactions from
+`docs/EXPLORE_REDESIGN.md` §3.3 are each driven through `startDay`/`applyPlayerAction`/`endDay`
+in `recovery.test.ts` rather than by poking state: travelling away forfeits the op at dusk,
+death clears the slot via succession without touching the chart, a second `Explore` while one
+recovery is open is refused with a typed `recovery-in-progress` event and charges neither die
+nor fuel, and the day-30 Tour One marker passes through an open recovery untouched. State grew
+by one field, so the save version bumped to v13 with a `.strict()` `RecoveryStateSchema`, a
+migration backfilling `recovery: null` for v12 saves, and the same backfill in
+`deserializeState`, all covered by round-trip tests. Deliberate scope boundary: a stored
+recovery whose `outcomeId` or `poiId` no longer resolves against current content (a drift
+case, not a normal path) clears the slot as `unknown-outcome` rather than crashing or
+fabricating a payout, and T-112's unique-item grant surface is untouched — this task only
+moves value-point payouts onto the recovery clock.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/EXPLORE_REDESIGN.md` §2–§5, `docs/0.5.2-SPEC-REVIEW.md` § · attempts=1/4.
 
 Implement the **multi-day committed recovery** of ruling 1, to the mechanics T-100 specced,
 so recovering a valuable find occupies real calendar days rather than resolving free inside
 one day. This needs persistent state (an in-progress recovery survives a save) and therefore
 a save bump with a migration and a round-trip test. It must interact honestly with the day
-loop, in the three ways the spec settled: travelling away mid-recovery, dying mid-recovery,
-and starting a second recovery while one is open. `N` derives from the outcome's power by the
+loop, in the four ways the spec settled: travelling away mid-recovery, dying mid-recovery,
+starting a second recovery while one is open, and a recovery still open when the day-30 Tour
+One marker resolves. `N` derives from the outcome's power by the
 spec's rule — **never a per-row constant.**
 
 **Accept:** a recovery that spans days is driven end to end in a test (start → intervening
 days → payout) through the real `startDay`/`applyPlayerAction`/`endDay` loop, never by poking
-state; the travel-away, death and second-recovery paths each have a test asserting the ruled
-behaviour; if state was added, `CURRENT_SAVE_VERSION` is bumped with a migration, a
+state; the travel-away, death, second-recovery, AND day-30-marker paths each have a test
+asserting the ruled behaviour; if state was added, `CURRENT_SAVE_VERSION` is bumped with a migration, a
 round-trip test, and `deserializeState` performing the same backfill pinned by a test;
 recovery time scales with outcome value by a content-driven rule, not a per-row constant;
 gate green.
 
-### T-112 · The unique-item effect surface — `status: TODO` · `coder: opus` · `after: T-111`
+### T-112 · The unique-item effect surface — `status: DONE` · `coder: opus` · `after: T-111`
+
+**Delivered (2026-07-30):** Both effect classes ship as a framework, and the promise
+`EQUIPMENT_DICE_BENEFITS` has carried since T-1601c is now cashed. **Class B** is exactly
+F-100-1's recommended shape: a second content table the shipyard never reads
+(`EXPLORE_MODULE_DICE_BENEFITS`, three modules spanning floor/reroll/extra-die), folded in by
+a **second loop inside `equipmentDiceBenefits`** — no new accumulator, no new call site,
+`dawnDiceModifiers` and `rollDawnHand` untouched, so the modules reach the dealt hand, the
+re-roll floor and the HandDock badges for free. **Class A** is one engine resolver
+(`applyUniqueItem`) over a declared `ShipElementDelta` list, switching only on engine-owned
+kinds. `check()` is byte-identical (`grep -n "export function check" packages/engine/src/dice.ts`
+→ `check(die, statValue, dc)`; the whole `dice.ts` diff is `equipmentDiceBenefits` plus
+comments), and **no branch anywhere in the engine is keyed on an item id** — the Class-B grant
+is a list append and the Class-A grant a `delta.element` switch
+(`grep -rn "'item-\|'module-" packages/engine/src` outside tests hits only one prose comment).
+The acceptance dice tests drive the **real `startDay`**: a granted berth-couch deals 6 dice,
+an ephemeris banks a re-roll, a tally-slate floors every die at 3, and a Second **plus** the
+berth-couch deals exactly `MAX_DAWN_HAND_SIZE` — the cap still binds with an item equipped,
+in the engine and (via `dawnHandModifiers`) in the cockpit. The cockpit is not silent about
+it: a `SALVAGED FITTINGS` block in the ship pane (`data-testid="explore-modules"`) names each
+fitted module and its benefit off the same content table the engine reads, and
+`explorationOutcome` names the item on the day it is recovered — both asserted in
+`packages/ui/src/__tests__/format-modules.test.ts`. No `unique-item` outcome ROWS are
+authored here; T-113/T-114/T-115 own those, and the Class-A resolver is proved with
+test-local rows through the exported resolver rather than by shipping speculative content.
+
+**Findings:**
+
+- **F-112-A · fitted modules are a LIST on `ShipState`, not three booleans.** F-100-1
+  sketched "three optional booleans mirroring the existing seven". Three booleans force *two*
+  id-keyed switches — one to read, one to **write** the grant — and the write-side switch is
+  literally "an effect applied by a branch keyed on a specific item id", which this task's
+  acceptance forbids. `exploreModules?: readonly ExploreModuleContentId[]` removes the write
+  branch entirely (membership, not a case) and removes F-100-1's whole per-instance engine
+  cost (a union member, a flag, a `hasSpecialEquipment` case, a schema field, a backfill) —
+  which was the friction that capped Class B at three. **The three-module bound is unchanged**;
+  it now rests on §4.2's design argument (the `MAX_EXTRA_DICE` clamp, the three-kind
+  vocabulary) and on a content test, rather than on how tedious a fourth would be to add.
+- **F-112-B · `maxFuel` is DERIVED, so §4.1's `{ maxFuel: +40 }` needed a term, not a write.**
+  `syncMaxFuel` recomputes `maxFuel` from the hull at the end of *every* `applyPlayerAction`
+  and again on load, so a delta written onto `ship.maxFuel` would be erased inside the same
+  action. It is implemented as a stored `bonusMaxFuel` added **inside** that one chokepoint,
+  so there is still exactly one place `maxFuel` is decided. A dead hull (base 0) still holds
+  nothing. NPC hulls never set the field, so `npc.ts` is byte-identical. Both the direct
+  `syncMaxFuel` call and a real `applyPlayerAction` are asserted.
+- **F-112-C · §5.2's `Class-A ceiling` / `Class-B permitted` band columns are DEFERRED to
+  T-114, deliberately.** T-112 authored no `unique-item` rows, so those columns would have had
+  zero consumers and nothing to validate — a field added to raise a coverage signal rather
+  than a rule. The `ExploreValueBand` doc-comment previously attributed them to T-112 and is
+  re-targeted to T-114, where the validator has rows to check.
+- **T-110's F-110-D is CLOSED** — the `// T-112 SEAM` comment is gone and the arm grants real
+  items. Its whole-state no-op test survives, retargeted to the content-drift half (an
+  *unknown* item id must still resolve to prose and mutate nothing), so the changed test reads
+  as the deliverable rather than a regression.
+- **No save bump, and it is pinned.** Both new fields are optional and absent-means-none/zero
+  (the `NpcState.dead?` precedent), so `CURRENT_SAVE_VERSION` **stays 13** — asserted in
+  `save.test.ts`. `starterShip` gains no default and `deserializeState` gains no backfill:
+  doing *neither* keeps `serializeState` byte-identical for every module-free career, which is
+  why **the four `day-loop-golden.ts` hashes, both `replay-golden.ts` pins and
+  `campaign-degraded`'s `PINNED_FINGERPRINTS` are all UNMOVED by this task** (`git status`
+  confirms none of those files is touched). `docs/balance/smoke/tiers.json` was re-extracted,
+  not capstoned (the F-110-C remedy): its diff is fingerprints + `gitCommit` only and **every
+  recorded checkpoint number is identical** — the evidence of inertness. T-116 still owns the
+  milestone's single sweep.
+- **F-112-D · the e2e suite was RED ON `main` before this task touched it, and is repaired
+  here (fix round 1).** T-112 is the first task since 2026-07-28 whose gate required
+  `test:e2e` (it touches the cockpit), and it failed 7 of 95 specs. All seven reproduce on
+  `main@74403ab4` with this branch stashed — none is T-112 fallout. Two upstream causes, both
+  "the rule moved and the e2e fixtures were never re-derived": **(1) T-1605 "an ordinary jump
+  always arrives"** deleted the travel PILOT check, so `starmap.spec.ts`'s honest-check
+  assertion had been measuring a mechanic that no longer exists (rewritten to the inverse
+  claim — no roll happened, so the cockpit must render no check — the same "rewrite to the new
+  contract, never delete" the T-1605 commit applied to its engine and sim tests but missed
+  here), and seed 8's fuel-drain bounce now draws an interception (re-swept offline, seed 9).
+  **(2) The N-series parity merge** re-cut interceptor stat blocks and NPC movement:
+  `combat.spec.ts`'s miracle-burn fixture could no longer reach `interceptor-escaped` (seed 2's
+  tier-1 now carries PILOT 0 — re-derived by sweeping seeds 1..400, seed 16), and
+  `tour-one-death.spec.ts` pinned the casting rather than the claim (the two `'Lucky Seven'`
+  literals now resolve through the shipped cast, so a re-cast is not a regression). A third,
+  independent hole: **`support/career.ts` could not finish an encounter that was still open at
+  dawn** — standing down IS the dusk but does not end the interdiction, so every later click
+  landed on the overlay backdrop and the Tour One driver stalled to its timeout; `playDay`
+  gained a step 1b that fights it through, adding no click on any day that does not open
+  mid-fight, and **seed 21's pin survived unmoved on both branches**. `wire.spec.ts` read its
+  headline at rest from a VIRTUALIZED log that now files ~58 lines per dusk; it scrolls to it,
+  as a player does. No assertion was lowered, no test deleted, no seed re-anchored to dodge an
+  outcome. Suite: **95/95 in 22s** (the 15.4m runtime was three 300s timeouts × retries).
+- **Home note:** §6's proposed-symbol table pencilled the three module symbols into
+  `exploration.ts`; they ship in `crew.ts` beside `EQUIPMENT_DICE_BENEFITS` and the shared
+  `DiceBenefit` vocabulary, so the dice axis reads in one file. The spec's table is corrected
+  in place. Nothing else about F-100-1's shape changed.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked with `ls`; absent), so I oriented by reading `docs/EXPLORE_REDESIGN.md` §4/§5.2/§6 (F-100-1)/§8 an · attempts=2/4.
 
 Build the two effect classes the brief names. **+x to a ship element** has a home in
 `ShipState` / `SPECIAL_EQUIPMENT`. **The die effect is ruling 2 and is deliberately NOT a new
@@ -246,7 +458,107 @@ existing hand cap still binds with an item equipped, asserted by a test; the eff
 surfaced in `packages/ui` and asserted by a UI test; no effect is applied by a branch keyed on
 a specific item id; gate green.
 
-### T-113 · Explore content pass 1 of 3 — the spine (~34 outcomes) — `status: TODO` · `coder: opus` · `after: T-112`
+### T-113 · Explore content pass 1 of 3 — the spine (~34 outcomes) — `status: DONE` · `coder: opus` · `after: T-112`
+
+**Delivered (2026-07-30):** **34 authored rows — bands 0 and 1 exactly** (§5.3 pass 1): 14
+dead ends (`{ kind: 'lore' }` with neither optional field, `valuePoints: 0`), 12 salvage rows
+(6 per pool, credit bands inside §5.2's authored 40–260cr, midpoints averaging 140cr against
+§5.5's 150cr band-1 credit-equivalent), and 8 lore rows carrying one Signal Fragment each —
+ids derived by `.map` over `BEACON_FRAGMENT_POOL` / `DERELICT_FRAGMENT_POOL` so a pool edit
+cannot orphan a fragment. **Zero lines changed under `packages/engine/src`** outside
+`__tests__` (`git diff --stat HEAD~1 -- packages/engine/src ':!packages/engine/src/__tests__'`
+is empty), and `grep -c "if (" packages/content/src/exploration.ts` is **0**.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked with `ls`; absent), so I oriented by reading `docs/EXPLORE_REDESIGN.md` §1.3/§2/§5/§8, `TASKS.md`  · attempts=1/4.
+
+- **THE HOUSE VOICE IS A SET OF RULES, NOT A TASTE**, and every one falls out of the engine:
+  third person past tense with the literal subject `Player` (`wire.ts` treats that string as
+  the player actor); `{name}` at most once per row (`String.replace` substitutes the first
+  occurrence only); a salvage row names **what was stripped**, never the credit figure (the
+  amount rides `SalvageRecovered`); a lore row's copy is the **second** line on a new fragment
+  and the **only** line on a repeat, so it is written to read correctly both ways. All four
+  are asserted, not just described.
+- **F-110-B IS CLOSED.** Every authored row carries non-empty, mutually distinct copy, so
+  §2.4's "a board is never 80 fuel and a die for total silence" is now a property of the rows
+  rather than a promise. A sweep asserts no boarded POI emits an empty wire line.
+- **`permittedKinds` lands on `ExploreValueBand`** (the fourth of §5.2's seven columns),
+  populated from the spec and read by the new validator. The `weight` column is still absent
+  on F-112-C's exact argument: it has no consumer until the draw flips, and a column with no
+  consumer is a stub raising a coverage signal.
+- **The validator is `packages/engine/src/__tests__/exploreContent.test.ts`** (19 tests).
+  Well-formedness: id uniqueness + convention, integer `valuePoints` on 0–100, real POI pools,
+  non-empty/unique/`{name}`-safe copy, no `recoveryDays` key **and** `recoveryDays === 0` for
+  every row, ordered credit bands inside 40–260, fragment ids resolving against
+  `ALL_FRAGMENT_IDS`. Ladder: the 14/20/0/0/0 band counts, `permittedKinds` per band, the
+  dead-end shape, the band's floor and ceiling actually **reached**, the 130–170 mean, and a
+  monotone rank property tying `valuePoints` to mid-credits (a property, not a threshold).
+  **It lives in the engine suite because `packages/content` has no test runner at all** — its
+  `package.json` carries only `build` and there is not one `*.test.ts` under it. Flagged as an
+  observation; building that infra is not a content pass's job.
+- **Each outcome TYPE in this pass is driven through the REAL Explore path** — a 2,000-seed
+  sweep of `resolveExploration`, asserting an authored `salvage` row paid inside its own band
+  and an authored `lore` row granted its fragment, each identified by its unique wire copy,
+  plus full coverage of every row the carrier can draw.
+
+**Four findings, reported rather than routed around:**
+
+- **F-113-A · the single band-weighted draw is UNOWNED.** §2.4 pencilled the flip into T-113,
+  but it is two engine changes (`drawOutcome` + a call-site swap) and this task forbids engine
+  lines; §8's handoff row never asked for it. `docs/EXPLORE_REDESIGN.md` §2.4 and §8 are
+  corrected in place. **Consequence:** the 14 dead ends are authored but undrawable — the
+  three-leg carrier has no "nothing else fired" arm — and **T-115's "a sweep finds every
+  outcome" clause is arithmetically impossible until the flip lands.** Recommend a dedicated
+  engine task between T-114 and T-115.
+- **F-113-B · `contraband` cannot be retired by a content pass.** F-110-A assigned it here,
+  but deleting the union member makes the engine's exhaustive `case 'contraband':` a `tsc`
+  error. The two rows survive — which also preserves the sealed-pod carry-choice storylet
+  instead of silently deleting it. Retire it with F-113-A.
+- **F-113-C · a spec-sequenced income dip, recorded and NOT tuned around.** §5.2 authors
+  band-1 salvage at 40–260, below the shipped beacon top, and band 2's 240–700 is T-114's.
+  Measured on the `campaign-degraded` window (5 seeds × 40 days): explorer median final
+  credits 25,013 → 9,094, smuggler 9,802 → 4,841. Re-pricing Explore is R-series and an owner
+  call; T-116 owns the verdict.
+- **F-113-D · the DERELICT salvage leg is staged to T-114, and this is the one place the plan
+  was overruled by a measurement.** The `rich_hulk` deed fires on a `SalvageRecovered` of
+  400cr+, and its own comment cites this file's 120–520 derelict band as what makes 400
+  "reachable, never automatic". Retiring `legacy-salvage-derelict` makes the deed
+  arithmetically unreachable; merely **diluting** its leg with the six authored rows cut it to
+  missed-by-21-of-24 careers and dropped whole-slate careers to one, redding
+  `deed-coverage.test.ts` for a reason **no wider sample could fix**. Lowering the deed
+  threshold is what `docs/BALANCE-POLICY.md` forbids. So the beacon salvage leg and both
+  fragment legs were re-pointed and `legacy-salvage-beacon` retired, while the derelict
+  salvage leg was left whole. **T-114 owes:** author band 2, then delete
+  `legacy-salvage-derelict` and re-point that leg. The validator's surviving-legacy-rows
+  tripwire names all three remaining ids and fails loudly if it is forgotten.
+
+**Fixtures moved, each re-derived with a ledger entry — never edited to go green:**
+
+- `exploreOutcomes.test.ts` `LEGACY_PARITY_HASH` + the aggregate, with entry **T-113** naming
+  both mechanisms (the fragment legs re-pointed at rows that now speak; the beacon salvage leg
+  holding six ids where it held one, consuming an extra index draw). The derelict half of every
+  board is byte-identical to T-111, which is why only `fragmentEvents` (102 → 97) and
+  `totalCredits` (308,941 → 309,047) move at all. Its "every lore row has a `fragmentId`"
+  assertion was **retargeted, not deleted** — the claim that mattered ("no pool entry can lose
+  its row") is now asserted leg by leg, in pool order.
+- `recovery.test.ts` — **one seed of three** (`SEED_OPENS` 4 → 36), re-found by re-running the
+  file's own documented scan against the real loop with the extra condition that the opened row
+  is still `legacy-salvage-derelict`. No assertion changed shape or value.
+- `campaign-degraded.test.ts` `PINNED_FINGERPRINTS` — ledger entry **14**. **Exactly the two
+  sweeping policies move** (explorer, smuggler); trader/fighter/veteran/gambler/greedy are
+  byte-identical, which is the control that says a verb-yield change moved the callers and not
+  the world.
+- `docs/balance/smoke/tiers.json` re-extracted from the stored N11 aggregate (**not** a
+  capstone — standing amendment 3 gives the milestone's single capstone to T-116). Its
+  checkpoint numbers therefore describe the new ruleset's replay of a stored sweep, not a fresh
+  measurement of the new content.
+- **`replay-golden.ts` did NOT move**, and that is a real signal rather than luck: the primary
+  log's day-1 Explore charts a derelict and every derelict leg is untouched by this pass.
+
+**Two collateral tests were investigated to root cause rather than dismissed.**
+`nemesis-fragments.test.ts`'s Sage seed and `deed-coverage.test.ts` both went red on the first
+attempt (which diluted the derelict leg); both are green with **zero edits** under the staged
+shape above — the second was what surfaced F-113-D, and it is exactly the regression that test
+exists to catch.
 
 Author the first third of the 100-outcome table in `packages/content`, weighted toward the
 **common and low-value** end: salvage rows, lore/dead-end rows, and a small number of
@@ -394,7 +706,13 @@ measured results, every framework finding reported during the content passes (a 
 not be expressed is the most valuable output this track can produce), and the list of
 questions this track deliberately did not answer — chief among them **whether NPCs interact
 with Explore and the Hangout**, which the owner deferred until these systems are functional
-and which is the gate on re-ruling the two vacated PARITY LEDGER rows. Commit it, then halt.
+and which is the gate on re-ruling the two vacated PARITY LEDGER rows. **Name the NPC Hangout
+faucet explicitly, as its own callout, not folded into the generic deferred list**:
+`executeSocialize` pays NPCs with no `hasHangout` gate and no counterparty, which was easy to
+leave open when the player-facing verb barely existed (1 of 28 systems) and reads very
+differently now that the player's Hangout is a real, authored 14-port system — say so plainly
+so it is a decision at this gate, not a bullet that rolls forward unread. Commit it, then
+halt.
 
 **Accept:** (human-checked) the review doc is committed with both milestones' results, the
 framework findings, and the deferred-questions list; the owner has decided whether to re-open

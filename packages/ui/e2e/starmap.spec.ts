@@ -64,10 +64,23 @@ test('plan and execute a jump entirely via the map', async ({ page }) => {
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
   expect(spent.filter((s) => s === '1').length).toBe(1);
 
-  // The honest PILOT check rendered via the shared CheckBreakdown.
-  await expect(page.getByTestId('check-breakdown')).toBeVisible();
-  await expect(page.getByTestId('check-stat')).toHaveText('PILOT');
-  await expect(page.getByTestId('check-die')).toHaveText('17');
+  // T-112 (fix round 1) · REWRITTEN TO THE SHIPPED CONTRACT, not weakened.
+  //
+  // This block used to assert an honest PILOT CheckBreakdown (die 17 vs the DC
+  // above). T-1605 ("an ordinary jump always arrives", engine actions/travel.ts)
+  // deleted that roll outright: navigation changed shifts from a coin flip into a
+  // deterministic discount on every jump's burn, and only the NEMESIS CROSSING
+  // still rolls. That task rewrote its engine and sim tests to the new contract and
+  // missed this one, so the assertion has been measuring a mechanic that no longer
+  // exists — a dead expectation, never a passing one.
+  //
+  // The claim worth keeping is the honesty invariant, inverted: because no check
+  // was rolled, the cockpit must not render one. A phantom roll here would be the
+  // UI inventing dice, which is exactly what the shared readout exists to prevent.
+  await expect(page.locator('.starmap').getByTestId('check-breakdown')).toHaveCount(0);
+  // And the arrival is unconditional — the ship is at the destination, with no
+  // "navigation malfunction" notice anywhere on the bezel.
+  await expect(page.getByTestId('notice')).toHaveCount(0);
 });
 
 test('fuel ring and route preview match engine math', async ({ page }) => {
@@ -102,7 +115,16 @@ test('unreachable systems are visibly gated, not clickable-then-error', async ({
   // -rate repair (core 0.08 -> 0.30) means seed 3's drain now hits an interceptor
   // that would stall the loop; re-derived offline to seed 8, whose full 1<->2
   // drain to 0 stays encounter-free (verified deterministically per seed).
-  await newGameSeed(page, 8);
+  // T-112 (fix round 1): re-derived AGAIN, to seed 9. Seed 8's drain now draws an
+  // interception part-way down the tank, the combat overlay takes the pointer, and
+  // the bounce loop stalls on it — fallout of T-1605 ("an ordinary jump always
+  // arrives") and the N-series parity pass, which between them moved what a jump
+  // resolves. Swept seeds 1..60 offline against the engine with THIS loop's exact
+  // decision rule (bounce 1<->2 on the next unspent die, end the day when the hand
+  // is out): seed 9 spends its whole [16,12,10,6,2] hand on five clean 60-fuel
+  // jumps, draining 300 → 0 inside day 1 with no encounter drawn. The gating claim
+  // below is untouched; only the road to a dry tank moved.
+  await newGameSeed(page, 9);
 
   for (let i = 0; i < 14; i++) {
     const units = Number(await page.getByTestId('fuel-ring').getAttribute('data-radius-units'));

@@ -85,9 +85,23 @@ export function calculateFuelCapacity(hullStrength: number, hullCondition: numbe
  * fuel-capacity save migration. Deliberately NOT invoked inside the low-level
  * resolvers: several unit tests build a ship with a manual `maxFuel` and call
  * resolvers directly, and that must stay honoured.
+ *
+ * T-112 (finding F-112-B) · THE ONE ADDITIVE TERM. A Class-A explore item can
+ * grant `+x maxFuel` (docs/EXPLORE_REDESIGN.md §4.1), but `maxFuel` is DERIVED and
+ * this function overwrites it at the end of every action — so a delta written onto
+ * `ship.maxFuel` directly would be erased within the same action. `bonusMaxFuel`
+ * is therefore added HERE, inside the single chokepoint, which keeps "there is
+ * exactly one place `maxFuel` is decided" true. A ship with no bonus (`undefined
+ * → 0`, which is every NPC and every module-free career) recomputes to exactly the
+ * pre-T-112 value.
+ *
+ * A DEAD HULL STILL HOLDS NOTHING: `calculateFuelCapacity` returns 0 for a
+ * destroyed or strengthless hull, and a bolted-on tank must not resurrect it, so
+ * the bonus is only added to a non-zero base.
  */
 export function syncMaxFuel(ship: ShipState): void {
-  ship.maxFuel = calculateFuelCapacity(ship.hull.strength, ship.hull.condition);
+  const base = calculateFuelCapacity(ship.hull.strength, ship.hull.condition);
+  ship.maxFuel = base === 0 ? 0 : base + (ship.bonusMaxFuel ?? 0);
   if (ship.fuel > ship.maxFuel) ship.fuel = ship.maxFuel;
 }
 
