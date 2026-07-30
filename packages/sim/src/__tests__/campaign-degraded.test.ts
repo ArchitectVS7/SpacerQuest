@@ -529,6 +529,58 @@ const UNCHANGED_POLICIES = [
  *    `hangoutPlay.failedVisits === 0` exists to catch. All three now mirror the
  *    engine. The repair is INERT over this 40-day window — the three hashes above
  *    are identical with and without it — and restores `failedVisits` to 0 at 120.
+ *
+ * 18. T-122 · HANGOUT CONTENT PASS 1 OF 3 — THE CORE WORLDS (2026-07-30,
+ *     docs/HANGOUT_REDESIGN.md §6.3). Four ports gain authored parameters over
+ *     T-121's baseline rows. EXACTLY ONE ROW MOVES:
+ *      gambler  8950ea1dfd8d318e -> f10a74640899d867
+ *      trader / smuggler / fighter / explorer / veteran / greedy — ALL UNCHANGED,
+ *      byte for byte.
+ *
+ *    THAT CONTROL IS THE HEADLINE RESULT OF THE TASK, and it is a sharper control
+ *    than entry 17's. T-121 moved three rows because REACH moved three verbs
+ *    (borrow, repay, dare). T-122 moves only the STAKES and the DISPOSITION
+ *    DELTAS, so only the policy that plays a hand can feel it. The trader and the
+ *    smuggler still borrow and repay at the same fourteen desks — the loan band is
+ *    GLOBAL by §2.2 ruling 5, no port narrowed its `venues`, and `borrow`/`repay`
+ *    read no `venueParams` at all — so their streams are untouched to the byte.
+ *
+ *    MECHANISM, and it is CONTENT with no rule edit and no sim edit. Ids 2, 3, 8
+ *    and 10 in `content/portHangouts.ts` become authored rows:
+ *      - Aldebaran-1 (2) band 25/1000 -> 50/750; Mira-9 (8) -> 5/200; Procyon-5
+ *        (10) -> 100/500. `planDare` sizes every stake through `wagerBandFor`
+ *        (T-121's edit), so the gambler now bets a different amount at three of
+ *        the fourteen ports it visits, and each differently-sized hand re-phases
+ *        that seed's rng stream from the moment it is played.
+ *      - Mira-9's dare deltas go 2/-2 -> 3/-1 and Procyon-5's failure arm -2 ->
+ *        -3. Those feed `applyDisposition` on the dealer, which is read downstream
+ *        by the interception and tribute-DC checks — a second, slower channel into
+ *        the same stream.
+ *      - Altair-3 (3) is the DELIBERATE NUMERIC MEAN: default band, default DCs,
+ *        default deltas, distinct on `clientele` alone. `rankClientele` has exactly
+ *        one reader — the Hangout pane (`ui/format.ts`) — and `planDare` picks the
+ *        richest in-system dealer without consulting it, so no clientele authored
+ *        here can move a sim number. That is why the four authored `clientele`
+ *        lists appear nowhere in the deltas below.
+ *      - `befriend.dc` and the `befriend`/`insult`/`meet` deltas moved at three
+ *        ports and are invisible to every policy: the sim issues exactly three
+ *        venues (borrow, repay, dare). See F-101-4 — those venues have no player
+ *        UI either.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      gambler   final credits  median  6,672 ->  6,849   mean 6,739 -> 7,158
+ *      dares played       218 -> 220     wagered  51,680 -> 52,005
+ *      dare net credits   -2,120 -> -1,927
+ *      failed Hangout visits 0 -> 0 (unchanged, as the invariant requires)
+ *      trader/smuggler final credits, loans and interest — IDENTICAL, as the
+ *      unchanged hashes already say.
+ *    The gambler plays two more hands for 325cr more staked: the narrowed bands
+ *    at three ports very nearly cancel out (a raised floor at Aldebaran-1 and
+ *    Procyon-5 against a collapsed ceiling at Mira-9), which is what a pass of
+ *    EVERYDAY bars is supposed to look like — the exotic and dangerous bands are
+ *    T-123's. NOTHING WAS TUNED TO PRODUCE THIS AND NOTHING IS TUNED IN RESPONSE:
+ *    five seeds cannot separate a shift of this size from stream noise, and T-125
+ *    owns the milestone's single capstone, its measurement and its verdict.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -546,8 +598,10 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // as the trader.
   smuggler: 'faa0c778be299406',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
-  // when the route passes Sun-3.
-  gambler: '8950ea1dfd8d318e',
+  // when the route passes Sun-3. Entry 18: re-derived again — three of the
+  // fourteen ports now deal in their OWN wager band, so the stake this policy puts
+  // down (and every hand after it) re-phases. The only row entry 18 moves.
+  gambler: 'f10a74640899d867',
   greedy: '0f2ff82982dcbf2d',
 };
 

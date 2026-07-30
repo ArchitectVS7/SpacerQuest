@@ -1128,7 +1128,7 @@ player is told there is none — recorded here, not fixed in this task. Gate gre
 Playwright specs.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md` §2/§4/§5/§6, `TASKS.md` T-120/T-121, and t · attempts=1/4.
 
-### T-122 · Hangout content pass 1 of 3 — the core worlds (5 ports) — `status: TODO` · `coder: opus` · `after: T-121`
+### T-122 · Hangout content pass 1 of 3 — the core worlds (5 ports) — `status: DONE` · `coder: opus` · `after: T-121`
 
 Author the first five ports' clientele, tone and house rules over the placeholder parameters.
 These are the everyday bars — the baseline the exotic and dangerous ones are exotic and
@@ -1139,6 +1139,122 @@ storylet prose for the house voice).
 two ports identical) and that all authored prose is non-empty and placeholder-free (a `grep`
 for `TODO` / `TBD` / `placeholder` in the content returns nothing); zero lines changed under
 `packages/engine/src`; gate green.
+
+**Delivered (2026-07-30):** four authored rows in `packages/content/src/portHangouts.ts` —
+`ALDEBARAN_1_HANGOUT` (id 2), `ALTAIR_3_HANGOUT` (3), `MIRA_9_HANGOUT` (8), `PROCYON_5_HANGOUT`
+(10) — swapped into `PORT_HANGOUTS` keys `2` / `3` / `8` / `10` over T-121's `baselineHangout(id)`
+calls. With Sun-3 (authored at T-120) that is **five ports carrying authored content**. Axis
+vectors, each deviation carrying its one-line reason in the row's own comment:
+**Aldebaran-1, the exchange-floor bar (`the Weighbridge`)** — band 50/750 (narrowed at both ends:
+the floor deals no 25cr hands and nobody bets a hold), `meet` +1→+2 (introductions are the point of
+the room), `befriend` DC 12→11, `insult` −4→−3, `dare` untouched, clientele `['trader']`.
+**Altair-3, the lane-side stopover (`the Waypost`)** — the deliberate NUMERIC MEAN: `wager` and
+`venueParams` OMITTED (not restated), distinct on clientele `['smuggler','explorer']` alone.
+**Mira-9, the fuellers' canteen (`the Dry Tank`)** — §6.1's dive shape, band 5/200; `befriend`
+DC 12→10 and +3→+4; `meet` +1→+2; `insult` −4→−3; `dare` +2/−2 → +3/−1 (the forgiving pole);
+clientele `['trader','veteran']`. **Procyon-5, the freight-guild room (`the Bonded Room`)** —
+band 100/500 (the narrowest in pass 1), `befriend` DC 12→9 (§6.1's named easy pole), `insult`
+−4→−7 (dear; −8 and below deliberately left to T-123's garrison), `dare` failure arm −2→−3;
+clientele `['explorer','trader']`. All four offer all seven venues (§6.3 narrows no venue set
+until T-123's Arcturus-6), each carries a house name, a room line and seven flavour lines in the
+period register, and no two of the five share an axis vector.
+
+**Sun-3 is unchanged, proved rather than asserted:** `PORT_HANGOUTS[1].wager` / `.venueParams` /
+`.clientele` are all still `undefined` and `wagerBandFor(1)` / `venueParamsFor(1, v)` equal
+`DEFAULT_PORT_HANGOUT`'s for all seven venues (`hangoutContent.test.ts`, "Sun-3 is still the
+DEFAULT row plus prose"). **Zero lines changed under `packages/engine/src` outside `__tests__`:**
+`git diff --stat HEAD -- packages/engine/src ':!packages/engine/src/__tests__'` prints **nothing**
+(empty output, exit 0). No `packages/engine/src/npc.ts` edit (§5.2 stays open for T-130); no
+`packages/ui/src` edit; no save-shape change — `CURRENT_SAVE_VERSION` stays **13** and no
+migration is owed.
+
+Tests: new `packages/engine/src/__tests__/hangoutContent.test.ts` (38 assertions) is the T-122…
+T-124 content validator — well-formedness per port, the §6.4 **set-cardinality check over
+resolved axis vectors** (which reports the colliding ids by house name rather than a bare count),
+a "every authored deviation is a real deviation" check over ids 2/8/10, the Altair-3 numeric-mean
+pin, band well-formedness, archetype/regular membership, and the literal
+TODO/TBD/FIXME/placeholder file scan with a non-vacuity guard. T-123/T-124 extend
+`AUTHORED_PORTS` and change nothing else. `hangoutRules.test.ts`'s baseline-inertness test was
+narrowed from thirteen rows to the **nine** still-unauthored ones (4, 5, 6, 7, 9, 11, 12, 13, 14)
+and kept as the control; its "no port has yet narrowed its venue set" test is unchanged and still
+green. `hangout.test.ts` needed no edit — T-121's borrow-at-Mira-9 and Dare-at-Vega-6 tests both
+still pass, as the plan required.
+
+Fingerprints: **exactly one policy moved.** `gambler 8950ea1dfd8d318e → f10a74640899d867`;
+`trader` / `smuggler` / `fighter` / `explorer` / `veteran` / `greedy` are **byte-identical**.
+That control is the headline result: T-121 moved three rows because reach moved three verbs
+(borrow, repay, dare); T-122 moves only stakes and disposition deltas, and `borrow` / `repay`
+read the GLOBAL loan band and no `venueParams` at all, so the two lending policies cannot feel
+it. Mechanism per policy is written up as **ledger entry 18** in `campaign-degraded.test.ts`,
+in the voice of entries 16/17, with the measured deltas (gambler final credits median
+6,672 → 6,849, mean 6,739 → 7,158; dares 218 → 220; wagered 51,680 → 52,005; dare net
+−2,120 → −1,927; `failedVisits` 0 → 0). The narrowed bands very nearly cancel — which is what a
+pass of EVERYDAY bars should look like.
+
+Goldens, stated explicitly: **both regenerated through their own generators and both
+byte-identical, so neither was re-recorded.** `packages/sim/src/__tests__/fixtures/replay-golden.ts`
+— all six constants identical (verified by JSON-comparing the generator's output against the
+committed module, not by string-matching the prettier-wrapped file); the replay logs emit only
+`state-summary` / `action-result`, never `legal-actions`, so an authored band has nowhere to
+appear. `packages/engine/src/__tests__/fixtures/day-loop-golden.ts` — all four hashes identical
+(`3405f608…`, `7274873…`, `9e332c2e…`, `3e96fe90…`); neither script issues a `VisitHangout`.
+**Event-count diff: zero events added or removed in either fixture.**
+
+Fixture position: `docs/balance/smoke/tiers.json` **re-extracted** from the stored `t116-explore`
+aggregate after `npm run format` (`npm run balance:extract -w @spacerquest/sim -- --aggregate
+docs/balance/baseline-t116-explore.json`): `rulesFingerprint` `bdc51a44e6df92f0 →
+5b2f53a8c30edbd9`, `instrumentFingerprint` `537f29b61ecc9719 → 537f29b61ecc9719` (**unchanged** —
+no instrument moved), `docsFingerprint` `f0d2fa636fdbd10d → 840187f2e76d8438`;
+`provenance.sweepLabel` stays `t116-explore`. **This is not a capstone — T-125 owns the
+milestone's single capstone**, its sweep, its re-pinned baseline and its verdict. Checkpoint
+deltas repeat the fingerprint control exactly: **only `gambler` moved, in 2 of the 4 tiers** —
+days-1-3 `creditsMin` 3,456 → 3,451 and `outcomeHash` `f846d60ca1bab5ab → b39529cb43e10a21`;
+days-41-43 `outcomeHash` `b9f846f72655601a → e2e7419ce6eaa54a`; days-21-23 and days-29-31
+identical for all eight policies. `balance-targets.test.ts`'s live 40-seed "the trader clears the
+marker, and clears it fastest" (`:180`) stayed green and the `it.fails` [22, 30] band (`:225`)
+still fails as pinned — neither was touched.
+
+Spec correction taken in the open, not silently: **`docs/HANGOUT_REDESIGN.md` §6.3's Altair-3
+axis note is corrected in place** to "numerically the mean; distinct on clientele alone", with a
+block under the table stating the §6.3/§6.4 tension ("fully generic" vs cardinality 14 with
+Sun-3's tuple fixed) and the resolution — §6.4's own closing sentence settles it, and `clientele`
+is the one axis no sim policy reads, so Altair-3 satisfies §6.4 while staying a clean measurement
+control. Pinned by a named test so a later pass cannot quietly tune it.
+
+Findings recorded in §7, reported and not fixed: **F-101-6 — `prose` has no reader.**
+`houseName` / `roomLine` / `flavour` are authored by T-120, T-121 and now T-122 (four houses,
+four room lines, twenty-eight flavour lines) and rendered nowhere; `App.tsx:1805` prints
+`"Spacers Hangout · {systemName}"` and `grep` finds no consumer of `prose` outside content.
+With F-101-4 that means a port's identity reaches the player through `wager` and `venues` alone
+— a real limit on what any content pass can deliver, and a T-130 surfacing job.
+**F-101-7 — the `high_roller` deed (250cr stake, `deeds.ts:604`) is unreachable at Mira-9** once
+its ceiling is 200; reachable at the other four. That is a correct consequence of a dive bar and
+is **not** a reason to inflate the band — recorded so T-125's deed coverage reads a Mira-9 zero
+as expected. No `F-101-3x` was raised: none of the four concepts wanted a predicate.
+
+**ESCALATION — F-121-2, a T-121 regression this task found and deliberately did not fix.**
+Three `packages/ui/e2e/onboarding.spec.ts` tests are red (`:94`, `:243`, `:274`), and they are
+red **at the T-121 commit with T-122's whole diff stashed** — reproduced both ways before any
+conclusion was drawn. One defect behind all three: `activeOnboardingPrompt`
+(`packages/ui/src/format.ts:2121`) picks ONE global winner, and `first-loan` — whose predicate is
+`hangoutOpen(game) && loan == null` and whose mount is inside the *closed* Hangout panel — takes
+that slot at every `hasHangout` port, rendering nothing and blocking `first-contraband`,
+`first-port` and `first-explore`. Verified directly: the winner at Aldebaran-1 with the delivery
+chain and `first-hangout` pre-seen is `first-loan`, mount `hangout`. Latent at 1 of 28 ports;
+live at 14 of 28 since T-121 — the same class as F-121-1, and the second latent single-port
+assumption reach has exposed. **Not fixed here because the repair is a `packages/ui/src` design
+ruling** (mount-aware selector, or move `first-loan` down the registry) that changes what the
+player is taught and in what order, which the standing constraint requires to be a named task;
+and because pre-seeding `first-loan` in the fixtures would turn the specs green while leaving the
+coach dark for real players. Written up in full, with the recommended repair, as §7's
+**F-121-2** — re-open T-121 or fold into T-130.
+
+Gate: `typecheck`, `lint`, `format:check` and all four workspaces' vitest suites green
+(**1,547 tests, 0 failures**); `packages/ui/e2e/hangout.spec.ts` green (3/3). The three
+onboarding e2e failures above are the pre-existing F-121-2 regression, escalated rather than
+absorbed.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md` §2/§6/§7, `TASKS.md` T-120…T-125, and the  · attempts=1/4.
 
 ### T-123 · Hangout content pass 2 of 3 — the exotic and the dangerous (5 ports) — `status: TODO` · `coder: opus` · `after: T-122`
 

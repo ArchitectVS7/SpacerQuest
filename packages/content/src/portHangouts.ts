@@ -254,11 +254,197 @@ const SUN_3_HANGOUT: PortHangout = {
 };
 
 /**
+ * T-122 · Aldebaran-1 — the exchange-floor bar (§6.3, pass 1).
+ *
+ * AXIS VECTOR: stakes (a raised floor and a lowered ceiling), consequence
+ * (`meet` doubled, `insult` softened), difficulty (`befriend` one easier),
+ * clientele (`trader`). Venues: all seven.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `wager` 50/750 — the floor does not deal 25cr hands and nobody here bets a
+ *     hold; the band is narrowed at BOTH ends, which is what makes it an exchange
+ *     rather than a casino.
+ *   - `meet.dispositionOnSuccess` 2 (default 1) — introductions are the POINT of
+ *     the room; this is the one venue Aldebaran-1 is built around.
+ *   - `befriend.dc` 11 (default 12) — a trading floor shakes hands easily.
+ *   - `insult.dispositionOnSuccess` −3 (default −4) — a slight here is business,
+ *     priced and carried, not blood.
+ *   - `dare` left at the default entirely: the tables are not this port's identity.
+ */
+const ALDEBARAN_1_HANGOUT: PortHangout = {
+  systemId: 2,
+  venues: ALL_HANGOUT_VENUES,
+  wager: { min: 50, max: 750 },
+  venueParams: {
+    meet: { dispositionOnSuccess: 2 },
+    befriend: { dc: 11 },
+    insult: { dispositionOnSuccess: -3 },
+  },
+  clientele: { archetypes: ['trader'] },
+  prose: {
+    houseName: 'the Weighbridge',
+    tone: 'everyday',
+    roomLine:
+      "The Weighbridge sits under the exchange floor at Aldebaran-1, and the day's closing prices are still chalked up behind the bar.",
+    flavour: {
+      dare: 'A broker clears a space among the manifests and sets the cup down like a contract.',
+      meet: 'Introductions are the trade here; a name carries further across this bar than a drink does.',
+      befriend: "Buy a round at the Weighbridge and half the floor will remember your ship's name.",
+      insult: 'A slight here is business — noted, priced, and carried on the ledger.',
+      rumor: 'Somebody at the far end is reading the wire aloud for anyone who will listen.',
+      borrow:
+        'The credit desk sits where the whole floor can see it, which is how the floor prefers it.',
+      repay: 'You settle up in full view of the room, and the room notices.',
+    },
+  },
+};
+
+/**
+ * T-122 · Altair-3 — the lane-side stopover (§6.3, pass 1).
+ *
+ * AXIS VECTOR: clientele (`smuggler` + `explorer`) and NOTHING ELSE. This port is
+ * the deliberate NUMERIC MEAN — default band, default DCs, default deltas, all
+ * seven venues — so it stays a clean measurement control against which the exotic
+ * and dangerous rooms of T-123 read as exotic and dangerous.
+ *
+ * THE §6.3 / §6.4 TENSION, RESOLVED IN THE OPEN. §6.3 calls this port "fully
+ * generic, deliberately", while §6.4 requires no two ports to share an axis vector
+ * AND fixes Sun-3's vector to the default row — so "fully generic" and "distinct
+ * from Sun-3" cannot both hold literally. §6.4's own closing sentence settles it:
+ * Sun-3 is the one fixed tuple, "which means the other thirteen are the ones that
+ * must move". Altair-3 therefore moves on `clientele` ALONE, which is the one axis
+ * no sim policy reads (`rankClientele`'s only reader is the Hangout pane;
+ * `planDare` picks the richest in-system dealer without consulting it), so the port
+ * satisfies §6.4 while remaining numerically inert. §6.3's axis note is corrected
+ * in place to say so.
+ *
+ * `wager` and `venueParams` are OMITTED rather than restated at their defaults —
+ * omission is what makes the inertness true by construction, exactly as at Sun-3.
+ */
+const ALTAIR_3_HANGOUT: PortHangout = {
+  systemId: 3,
+  venues: ALL_HANGOUT_VENUES,
+  clientele: { archetypes: ['smuggler', 'explorer'] },
+  prose: {
+    houseName: 'the Waypost',
+    tone: 'everyday',
+    roomLine:
+      'The Waypost stands where the lanes cross at Altair-3, and nobody in it means to stay.',
+    flavour: {
+      dare: 'The cup goes round between departures, and half the players leave mid-hand.',
+      meet: 'Everyone here is passing through, which makes an introduction cheap and short.',
+      befriend:
+        'You can make a friend at the Waypost, but you will likely make them somewhere else.',
+      insult: 'A hard word costs little in a room that empties by morning.',
+      rumor: 'Crews inbound from four directions, and every one of them has heard something.',
+      borrow: 'The desk keeps the same hours as the lanes, which is to say all of them.',
+      repay: 'You clear the line before you clear the port; that is how it is done here.',
+    },
+  },
+};
+
+/**
+ * T-122 · Mira-9 — the fuellers' canteen (§6.3, pass 1).
+ *
+ * AXIS VECTOR: stakes (§6.1's named dive shape), difficulty (the easiest room to
+ * charm in pass 1 bar the guild), consequence (warm on every arm), clientele
+ * (`trader` + `veteran` — working hands who never left). Venues: all seven.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `wager` 5/200 — §6.1's dive: "min 5 and a ceiling far under the global
+ *     1,000". Nobody at Mira-9 plays for more than they carry.
+ *   - `befriend.dc` 10 / `dispositionOnSuccess` 4 (defaults 12 / 3) — a warm room,
+ *     and the cheap-fuel port is where a captain short of a week's pay is welcome.
+ *   - `meet.dispositionOnSuccess` 2 (default 1) — a bench is made without asking.
+ *   - `insult.dispositionOnSuccess` −3 (default −4) — the hands have heard worse
+ *     from better.
+ *   - `dare.dispositionOnSuccess` 3 / `dispositionOnFailure` −1 (defaults 2 / −2) —
+ *     nobody minds losing a small hand, and a captain who loses one gracefully is
+ *     liked for it. This is the forgiving pole of §6.1's consequence axis.
+ */
+const MIRA_9_HANGOUT: PortHangout = {
+  systemId: 8,
+  venues: ALL_HANGOUT_VENUES,
+  wager: { min: 5, max: 200 },
+  venueParams: {
+    dare: { dispositionOnSuccess: 3, dispositionOnFailure: -1 },
+    meet: { dispositionOnSuccess: 2 },
+    befriend: { dc: 10, dispositionOnSuccess: 4 },
+    insult: { dispositionOnSuccess: -3 },
+  },
+  clientele: { archetypes: ['trader', 'veteran'] },
+  prose: {
+    houseName: 'the Dry Tank',
+    tone: 'everyday',
+    roomLine:
+      'The Dry Tank smells of the fuel yards, and every hand at the bar has worked a hose today.',
+    flavour: {
+      dare: 'Small coins on a scratched table, and nobody at Mira-9 plays for more than they carry.',
+      meet: 'You shift down the bench and somebody makes room without being asked.',
+      befriend: 'A round here costs little and buys a great deal; the Dry Tank is a warm room.',
+      insult:
+        'The hands look up, then go back to their drinks — they have heard worse from better.',
+      rumor: 'The yard crews talk over one another, and some of what they say is even true.',
+      borrow:
+        'The desk in the corner is a small one, and the clerk has seen every kind of short week.',
+      repay: 'You put it down in coin and the clerk counts it twice, out of habit.',
+    },
+  },
+};
+
+/**
+ * T-122 · Procyon-5 — the freight-guild room (§6.3, pass 1).
+ *
+ * AXIS VECTOR: stakes (a narrow, high-floored band), difficulty (§6.1's named easy
+ * pole to charm), consequence (dear on insult, dear on beating the house),
+ * clientele (`explorer` + `trader`). Venues: all seven.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `wager` 100/500 — the narrowest band in pass 1: guild men bet in round
+ *     numbers and the room has a floor beneath which it will not deal.
+ *   - `befriend.dc` 9 (default 12) — §6.1's named easy pole. A captain who hauls
+ *     honest is halfway to welcome before the first drink.
+ *   - `insult.dispositionOnSuccess` −7 (default −4) — the guild keeps long books.
+ *     −8 and below is deliberately LEFT to T-123's garrison, which §6.1/§6.2
+ *     reserve for the clannish/strict pole; this is dear, not punitive.
+ *   - `dare.dispositionOnFailure` −3 (default −2) — beating a guild man at his own
+ *     table is remembered a little longer than elsewhere.
+ */
+const PROCYON_5_HANGOUT: PortHangout = {
+  systemId: 10,
+  venues: ALL_HANGOUT_VENUES,
+  wager: { min: 100, max: 500 },
+  venueParams: {
+    dare: { dispositionOnFailure: -3 },
+    befriend: { dc: 9 },
+    insult: { dispositionOnSuccess: -7 },
+  },
+  clientele: { archetypes: ['explorer', 'trader'] },
+  prose: {
+    houseName: 'the Bonded Room',
+    tone: 'everyday',
+    roomLine:
+      "The Bonded Room takes up one end of the freight guild's hall at Procyon-5, and the guild pays for the lamps.",
+    flavour: {
+      dare: 'Guild men bet in round numbers and expect the same back across the table.',
+      meet: 'You are introduced by trade and tonnage a while before anyone asks your name.',
+      befriend: 'A captain who hauls honest is halfway to welcome here before the first drink.',
+      insult: 'The guild keeps long books, and a word said badly goes into one of them.',
+      rumor: 'Two clerks are arguing about a consignment that neither of them ever saw.',
+      borrow: 'The desk here is guild business, and guild business is done quietly.',
+      repay:
+        'The clerk strikes the line, blots it, and files the sheet where the guild can find it.',
+    },
+  },
+};
+
+/**
  * T-121 · A BASELINE ROW — a real venue definition that is not yet an authored
  * one. It carries `systemId` and `prose` and omits `venues`, `wager`,
  * `venueParams` and `clientele` entirely, so every number the resolver reads at
  * that port resolves field-wise through `DEFAULT_PORT_HANGOUT` to the same
- * imported constant Sun-3 reads. Thirteen ports get one here, and they are
+ * imported constant Sun-3 reads. Thirteen ports got one at T-121; T-122 has since
+ * authored over four of them (ids 2, 3, 8, 10), so nine remain, and those nine are
  * mechanically IDENTICAL to each other and to Sun-3.
  *
  * WHY IDENTICAL, DELIBERATELY. T-121 is the REACH change — fourteen of
@@ -292,24 +478,28 @@ function baselineHangout(systemId: number): PortHangout {
  * equality test in `packages/engine/src/__tests__/hangoutRules.test.ts` keeps the
  * two sets from drifting apart in either direction.
  *
- * FOURTEEN ROWS, ONE AUTHORED (T-121, §4.5). Sun-3 carries its own voice; ids 2–14
- * carry a baseline row apiece and are therefore mechanically indistinguishable
- * from it. Written out key by key rather than generated from a range so the table
- * stays greppable and T-122 … T-124 can replace exactly one line at a time. The
+ * FOURTEEN ROWS, FIVE AUTHORED (T-122, §6.3 pass 1). Sun-3 carries its own voice
+ * and, by §2.3, the default row's mechanics; Aldebaran-1, Altair-3, Mira-9 and
+ * Procyon-5 carry authored voice AND their own axis vectors. The remaining nine
+ * (4, 5, 6, 7, 9, 11, 12, 13, 14) still carry a baseline row apiece and are
+ * therefore mechanically indistinguishable from Sun-3 — T-123 authors ids 4, 5,
+ * 11, 12 and 14; T-124 authors ids 6, 7, 9 and 13. Written out key by key rather
+ * than generated from a range so the table stays greppable and one line can be
+ * replaced at a time. The
  * rim (15–20), Andromeda (21–26), MALIGNA (27) and NEMESIS (28) are absent by
  * design — see the `hasHangout` note in `./systems.ts`.
  */
 export const PORT_HANGOUTS: Readonly<Record<number, PortHangout>> = {
   1: SUN_3_HANGOUT,
-  2: baselineHangout(2),
-  3: baselineHangout(3),
+  2: ALDEBARAN_1_HANGOUT,
+  3: ALTAIR_3_HANGOUT,
   4: baselineHangout(4),
   5: baselineHangout(5),
   6: baselineHangout(6),
   7: baselineHangout(7),
-  8: baselineHangout(8),
+  8: MIRA_9_HANGOUT,
   9: baselineHangout(9),
-  10: baselineHangout(10),
+  10: PROCYON_5_HANGOUT,
   11: baselineHangout(11),
   12: baselineHangout(12),
   13: baselineHangout(13),

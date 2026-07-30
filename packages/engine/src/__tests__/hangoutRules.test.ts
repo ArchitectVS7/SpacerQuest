@@ -180,6 +180,9 @@ const CORE_HANGOUT_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 /** The first rim id. Named rather than spelled inline, because it is what keeps
  *  `ActionBlocked{'no-hangout'}` reachable. */
 const RIM_SYSTEM = 15;
+/** The core ports no content pass has authored yet. T-122 removed 2, 3, 8 and 10
+ *  (§6.3 pass 1); T-123 removes 4, 5, 11, 12 and 14; T-124 removes the rest. */
+const UNAUTHORED_HANGOUT_IDS = [4, 5, 6, 7, 9, 11, 12, 13, 14];
 
 describe('T-121 · the reach change — a bar at all fourteen core spaceports', () => {
   it('every core port 1–14 carries the flag AND a venue definition', () => {
@@ -231,12 +234,19 @@ describe('T-121 · the reach change — a bar at all fourteen core spaceports', 
     }
   });
 
-  it('the thirteen new rows are BASELINE rows — mechanically identical to Sun-3', () => {
+  it('the nine unauthored rows are still BASELINE rows — mechanically identical to Sun-3', () => {
     // T-121 delivers reach, not tuning. Each new row carries `systemId` and
     // `prose` and omits the four parameter fields, so every number resolves
     // field-wise to the shipped constant — which is what lets a moved golden or a
     // moved roll-up be attributed to reach alone. T-122 … T-124 author over these.
-    for (const id of CORE_HANGOUT_IDS.filter((i) => i !== SUN_3)) {
+    //
+    // T-122 authored ids 2, 3, 8 and 10 (§6.3 pass 1), so the list below is nine
+    // rather than thirteen. KEEP THIS TEST as the control that holds the
+    // unauthored remainder honest: T-123 is expected to shrink it to 4 (ids 6, 7,
+    // 9, 13) and T-124 to empty it. Altair-3 (3) leaves this list even though it
+    // is the deliberate numeric mean, because it now authors `clientele` — its
+    // numeric inertness is pinned in `hangoutContent.test.ts` instead.
+    for (const id of UNAUTHORED_HANGOUT_IDS) {
       const row = PORT_HANGOUTS[id];
       expect(row.wager).toBeUndefined();
       expect(row.venueParams).toBeUndefined();

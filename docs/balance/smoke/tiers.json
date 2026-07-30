@@ -1,9 +1,9 @@
 {
   "productVersion": "0.5.2",
   "saveSchemaVersion": 13,
-  "rulesFingerprint": "bdc51a44e6df92f0",
+  "rulesFingerprint": "5b2f53a8c30edbd9",
   "instrumentFingerprint": "537f29b61ecc9719",
-  "docsFingerprint": "f0d2fa636fdbd10d",
+  "docsFingerprint": "840187f2e76d8438",
   "provenance": {
     "sweepLabel": "t116-explore",
     "seeds": 1000,
@@ -20,7 +20,7 @@
       "veteran"
     ],
     "extractedOn": "2026-07-30",
-    "gitCommit": "08defa5086ffcf5eeda40fe0b611be33b0731d9b",
+    "gitCommit": "a4c5901ef9e123b3abb2bf9bb5fdd8d776f549d2",
     "spreadSource": "harvested",
     "note": "Tier spreads are milestone samples harvested from the named sweep. They are still SYNTHESIZED starting states and are never balance verdicts — see docs/balance/smoke/README.md."
   },
@@ -159,7 +159,7 @@
           "policy": "gambler",
           "runs": 7,
           "endDay": 4,
-          "creditsMin": 3456,
+          "creditsMin": 3451,
           "creditsMedian": 5473,
           "creditsMax": 7599,
           "debtTotal": 172516,
@@ -170,7 +170,7 @@
           "fuelStarvationDays": 0,
           "deedsEarned": 57,
           "tourOneResolved": 0,
-          "outcomeHash": "f846d60ca1bab5ab"
+          "outcomeHash": "b39529cb43e10a21"
         },
         {
           "policy": "greedy",
@@ -1511,7 +1511,7 @@
           "fuelStarvationDays": 0,
           "deedsEarned": 53,
           "tourOneResolved": 0,
-          "outcomeHash": "b9f846f72655601a"
+          "outcomeHash": "e2e7419ce6eaa54a"
         },
         {
           "policy": "greedy",

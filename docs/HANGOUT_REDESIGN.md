@@ -697,9 +697,23 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 | --- | --- | --- | --- |
 | 1 | Sun-3 | the home-port hall | **must reproduce today's behaviour exactly** — the default row plus prose (§2.3) |
 | 2 | Aldebaran-1 | the exchange-floor bar | trader clientele; modest band; everything offered |
-| 3 | Altair-3 | the lane-side stopover | fully generic, deliberately — one port must be the mean |
+| 3 | Altair-3 | the lane-side stopover | **numerically the mean; distinct on clientele alone** — one port must be the mean *(corrected in place at T-122; see the note below the table)* |
 | 8 | Mira-9 | the fuellers' canteen | the cheap-fuel working port; low `min`, low ceiling, warm deltas |
 | 10 | Procyon-5 | the freight-guild room | explorer/trader clientele; easy `befriend`, dear `insult` |
+
+> **T-122's in-place correction to the Altair-3 row.** As originally written, §6.3 asked for a
+> port that is "fully generic, deliberately" while §6.4 requires cardinality 14 over the axis
+> vectors **and** fixes Sun-3's vector to the default row. Both cannot hold literally: a fully
+> generic port *is* Sun-3's vector. §6.4's own closing sentence settles it — "Sun-3 is the one
+> port whose tuple is fixed … which means the other thirteen are the ones that must move."
+> **Resolution taken:** Altair-3 is the *numeric* mean (default band, default DCs, default
+> deltas, all seven venues, `wager` and `venueParams` OMITTED rather than restated) and is
+> distinct on `clientele` **alone**. `rankClientele` has exactly one reader — the Hangout pane
+> (`ui/format.ts hangoutNpcs`) — and `planDare` picks the richest in-system dealer without
+> consulting it, so no clientele list can move a sim number. Altair-3 therefore satisfies §6.4
+> while remaining a clean measurement control, which is what the row was for. Pinned by
+> `hangoutContent.test.ts`'s "Altair-3 is the deliberate NUMERIC MEAN" assertion so a later
+> pass cannot quietly tune it.
 
 **T-123 — the exotic and the dangerous five:**
 
@@ -811,6 +825,90 @@ can offer a dead captain as a Dare opponent, and the engine correctly answers
 Harmless at one port; visible at fourteen. **Recommended resolution:** a one-line filter,
 folded into T-121's UI touch (it is the task that makes the pane reachable at scale), or
 reported to T-130 if T-121 chooses to keep its diff to the reach change alone.
+
+### Finding F-101-6 · `prose` has no reader — every authored house is invisible
+
+**Found by T-122, reported and not fixed.** `HangoutProse.houseName`, `.roomLine` and
+`.flavour` are authored by T-120 (Sun-3), by T-121 (thirteen baseline house names) and now by
+T-122 (four houses, four room lines, twenty-eight flavour lines), and **nothing reads any of
+them**. `grep` over the workspace finds no consumer of `prose` outside the content file and
+this spec; the Hangout pane header is a literal — `App.tsx:1805` renders
+`"Spacers Hangout · {systemName}"` — and `format.ts` exposes only `hangoutNpcs` and
+`dareWagerBounds`.
+
+**Consequence for content, and it is the sharp one.** Combined with **F-101-4** (three of the
+six social venues have no player UI) this means a port's identity reaches the player through
+`wager` and `venues` and nothing else. §6.2 says "a dangerous bar is dangerous through
+numbers"; today it is dangerous through *two* numbers, and its voice — the half of a content
+pass that is actually content — is dark. Passes 2 and 3 should keep authoring prose (it is
+cheap, it is the record of intent, and it is what a surfacing task will render), but no pass
+should be graded on player-visible differentiation it cannot deliver.
+
+**Recommended resolution:** none in this track. Surfacing must be a **named** task per the
+standing constraint, and a UI edit here would move `packages/ui/e2e/hangout.spec.ts`. Flagged
+for **T-130** alongside F-101-4 and F-101-5 — the three are one surfacing job, not three.
+
+### Finding F-121-2 · The reach change put the onboarding coach out at 14 of 28 ports — **ESCALATED, NOT FIXED**
+
+**Found by T-122 while running the gate; reproduced at the T-121 commit with T-122's diff
+stashed, so it is a T-121 regression and not a consequence of any authored row.** Three
+`packages/ui/e2e/onboarding.spec.ts` tests are red on `main`'s branch head:
+
+- `fresh seed: first delivery guided by visible affordances …` (`:94`)
+- `first-contraband coach fires once at a contraband offer …` (`:243`)
+- `first-port coach fires once at a purchasable port …` (`:274`)
+
+**Root cause, one defect behind all three.** `activeOnboardingPrompt`
+(`packages/ui/src/format.ts:2121`) picks **one global winner** — the first registry prompt that
+is active and unseen, anywhere. `onboardingMount` then routes that winner to one of three
+mounts, and `first-loan`'s anchor routes it to the **`hangout` mount, which only exists while
+the Hangout panel is open**. `first-loan`'s predicate is `hangoutOpen(game) && loan == null`
+— it does not, and cannot, read whether the panel is open, because that is view state.
+
+So at any `hasHangout` port, a captain with no loan and `first-hangout` already dismissed has
+`first-loan` holding the single coach slot while rendering **nothing**, and every
+lower-priority coach (`first-contraband`, `first-port`, `first-explore`) is silently blocked
+until the player happens to open the Hangout panel and dismiss it. Verified directly:
+`activeOnboardingPrompt(state@Aldebaran-1, {dawn-roll, first-sign, first-hangout seen})`
+returns `first-loan`, mount `hangout`.
+
+**Why it is new.** The defect is as old as T-1407, but it was reachable at **one** port. T-121
+took `hasHangout` from 1 of 28 to 14 of 28, so it now fires at essentially every port a Tour
+One captain visits — the three red specs are the first observable consequence. This is the
+same class as **F-121-1** (a latent guard that only bites once reach makes it reachable), and
+it is the second of its kind, which is itself the finding: **reach changes surface latent
+single-port assumptions, and the UI layer had more of them than the engine did.**
+
+**Why T-122 did not fix it.** It is a `packages/ui/src` product change and a design ruling —
+someone must decide whether the selector becomes mount-aware (each mount picks its own
+highest-priority active prompt) or whether `first-loan` moves below the screen-level prompts
+in the registry. Both change what the player is taught and in what order. The standing
+constraint requires that to be a **named** task, and T-122's charter is content authoring with
+zero UI edits. Pre-seeding `first-loan` in the three fixtures would make the specs green while
+leaving the coach dark for real players — weakening a check to reach an answer, which the
+balance policy forbids.
+
+**Recommended resolution:** re-open T-121 or fold into **T-130** with F-101-4/5/6. The
+minimal correct repair looks like `activeOnboardingPrompt(game, seen, mount)` returning the
+first active-unseen prompt whose `onboardingMount(anchor)` equals the caller's mount, with the
+three `OnboardingCallout` mounts each asking for their own winner; the three specs above then
+need only the `first-hangout` pre-seed that T-121's six other retargets already established as
+the idiom. **Do not land that inside a content pass.**
+
+### Finding F-101-7 · The `high_roller` deed is unreachable at Mira-9, correctly
+
+**Found by T-122, recorded so T-125's deed coverage is not surprised by it.** The `high_roller`
+deed (`content/src/deeds.ts:604`) requires a 250cr Dare stake. Mira-9's authored ceiling is
+200 — §6.1's named dive shape, "min 5 and a ceiling far under the global 1,000" — so the deed
+**cannot** be earned at that port. It stays reachable at the other four pass-1 ports
+(Sun-3 1,000, Aldebaran-1 750, Altair-3 1,000, Procyon-5 500) and at the nine unauthored ones.
+
+This is a *correct* consequence of a dive bar and **is not a reason to inflate the band**;
+inflating it would be tuning a number to reach an answer. It is recorded because per-port
+bands make deed reachability port-dependent for the first time, and T-125's coverage
+measurement should read a Mira-9 zero as expected rather than as a regression. T-123's bands
+(Regulus-6's high table, Rigel-8's underbelly) will widen the same question in the other
+direction.
 
 ---
 
