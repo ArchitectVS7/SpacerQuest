@@ -1042,10 +1042,341 @@ The save-bump recommendation for T-102 to rule on is in §3d.
 | **T-114** | §5.3 pass 2 | 33 rows = band 2 exactly; questlines resolve into the real storylet system; NPC ids resolve against `ALL_NPC_PROFILES`; **F-113-D discharged** — `legacy-salvage-derelict` deleted and the derelict salvage leg re-pointed at the 14 authored derelict rows (`rich_hulk` P(≥400) 0.302 → 0.384). §5.2 corrected in place (**F-114-A**); the two effect-ceiling columns landed; zero engine lines **(delivered)** |
 | **T-117** | §2.4's draw flip, §5.1 | The dedicated engine task F-113-A asked for, inserted between T-114 and T-115. **F-113-A and F-113-B discharged** — `weight` on the band table, `drawOutcome` in the engine (two engine-source files, no others), the three-leg carrier and the `contraband` payload kind deleted, the sealed pod re-homed onto three authored band-1 lore rows (20% → 4.4% of boards). No save bump **(delivered)** |
 | **T-115** | §5.3 pass 3, §5.4 | 33 rows = bands 3 + 4; **table totals 100 and carries no `legacy-` row**; the two-part monotonicity property of §5.4; the reachability sweep at the size §5.3 computes, now finding **all 100 rows**. **F-114-B closed by authoring**, no ceiling moved; zero engine-source lines **(delivered)** |
-| **T-116** | §5.5, §9 | Capstone after `npm run format`; re-run the ablation; append the before/after to §9; **do not tune to reach an answer** |
+| **T-116** | §5.5, §9 | Capstone after `npm run format`; re-run the ablation; append the before/after to §9. **Delivered 2026-07-30** — `baseline-t116-explore.json` (8,000 rows, `spreads harvested`), baseline of record re-pinned, ablation re-run in the documented shape. **The verdict is that Explore is STILL a net loss** (85/120 seeds richer without it, down from 101/120). **Zero constants, DCs, prices, bands, thresholds, goldens or fingerprints edited**; the lever stays an owner call, and **F-116-1** is filed, not fixed |
 
 ---
 
 ## §9 · Appendix: T-116 re-measurement
 
-*(Reserved. T-116 appends the re-measured ablation — before/after, with provenance — here.)*
+**Measured 2026-07-30 by T-116, on HEAD after T-110…T-115 and T-117 all shipped.** This
+appendix answers the question that scoped the track — *is Explore still a net loss?* — and
+records the capstone the milestone owed. **It changes no constant.**
+
+### 9.1 The verdict, first
+
+**YES. Explore is still a net loss for the player on this instrument, and the finding is
+that the gap NARROWED rather than closed.**
+
+The number that carries the verdict is the **paired sign count**: on **85 of 120 seeds** the
+`explorer` policy ends day 120 with MORE credits when Explore is filtered out of its plan,
+down from **101 of 120** at T-010. A clear majority of seeds is still richer without the
+verb, so the T-010 verdict is **reduced, not overturned**.
+
+Nothing below softens that. What follows explains *where* the value went, and why the credit
+column understates the rebuilt verb — but the understatement does not rescue it, because the
+sign count is measured on final credits and still reads 85/120.
+
+### 9.2 Method — the documented shape, unchanged
+
+The ablation is re-run in exactly the shape T-010 documented, so the two columns are
+comparable:
+
+- **Two arms over seeds 1..120 × 120 days.** Arm A ("with") runs `explorerPolicy` as
+  shipped. Arm B ("without") takes the *same* plan and filters `action.type !== 'Explore'`
+  out of it. Nothing else differs.
+- **The day loop is hand-rolled**, not `runCampaign`. This is not a shortcut, it is forced:
+  `resolvePolicy` returns `dawnBlind: true` for any *function* policy, so passing
+  `explorerPolicy` as a lambda to `runCampaign` would run it against the **pre-`startDay`**
+  state and collapse the arm. The loop reproduces `runCampaign`'s dawn → actions → dusk
+  order and its rng forks.
+- **Fidelity check first.** The hand-rolled loop is only admissible as an instrument if
+  arm A is byte-equal to the sim's own `runCampaign` on the **named** `'explorer'` policy.
+- The probe lives at `.scratch/t116-ablate.ts`, which is **gitignored** — hence the source
+  below, so the measurement is reproducible without the file. T-010's memo set this
+  precedent. **Counters were the only thing added to T-010's probe**: the arm definitions,
+  the seed range, the horizon, the arm-B filter line and the day loop are unchanged, and
+  reading the event stream cannot perturb the rng (which the 5/5 fidelity check re-proves).
+
+```ts
+function run(seed: number, days: number, ablate: boolean) {
+  let state = createInitialState(seed);
+  // ... counters ...
+  for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
+    const rng = new SeededRng(seed)
+      .fork('policy').fork(`day-${state.day}`).fork(`index-${dayIndex}`);
+    const dawn = startDay(state);
+    let dayState = dawn.state;
+    const events: GameEvent[] = [...dawn.events];
+    let actions: PlayerAction[] = explorerPolicy({ state: dayState, dayIndex, rng });
+    if (ablate) actions = actions.filter((a) => a.type !== 'Explore'); // <- THE ARM-B FILTER
+    attempts += actions.filter((a) => a.type === 'Explore').length;
+    for (const action of actions) {
+      if (action.type === 'Combat' && !dayState.encounter) continue;
+      const stepped = applyPlayerAction(dayState, action);
+      dayState = stepped.state;
+      events.push(...stepped.events);
+    }
+    const dusk = endDay(dayState);
+    state = dusk.state;
+    events.push(...dusk.events);
+    for (const e of events) { /* count SalvageRecovered / PoiDiscovered / FragmentAcquired /
+      ExplorationFailed / RecoveryStarted / RecoveryPaidOut / RecoveryAbandoned /
+      UniqueItemAcquired — reads only */ }
+  }
+  return { credits: state.player.credits, /* ...counters... */ };
+}
+```
+
+**Fidelity check output, verbatim (2026-07-30):**
+
+```
+fidelity seed 1: probe 39602 vs runCampaign 39602 -> MATCH
+fidelity seed 2: probe 29602 vs runCampaign 29602 -> MATCH
+fidelity seed 3: probe 89235 vs runCampaign 89235 -> MATCH
+fidelity seed 4: probe 60460 vs runCampaign 60460 -> MATCH
+fidelity seed 5: probe 68079 vs runCampaign 68079 -> MATCH
+```
+
+### 9.3 Before / after
+
+"Before" is T-010's arm, cited to `docs/N-SERIES-REVIEW-2026-07-30.md:91-104` (which itself
+carries the memo's provenance at `:353-388`). "After" is this run, 2026-07-30, on the
+commit this appendix ships in.
+
+| quantity (n = 120 seeds × 120 days) | **BEFORE** (T-010) | **AFTER** (T-116) |
+| --- | --- | --- |
+| fidelity check | 5/5 MATCH | **5/5 MATCH** |
+| **QUEUED** `Explore` actions / run | 180.2 | **189.4** |
+| **FLOWN** attempts / run (`PoiDiscovered` + `nav-check`) | 87.8 (derived) | **56.3** |
+| POIs discovered / run | 60.5 | **40.6** |
+| POIs ÷ **queued** actions | 0.336 | **0.214** |
+| POIs ÷ **flown** attempts (the real nav pass rate) | 0.689 (derived) | **0.721** |
+| `SalvageRecovered` events / run | 41.0 | **9.5** |
+| GROSS salvage cr / run | mean 9,688 · median 9,418 · p25 7,873 · p75 11,112 | mean **1,704** · median **1,714** · p25 **1,205** · p75 **2,301** |
+| GROSS salvage per **queued** action | 53.8cr | **9.0cr** |
+| GROSS salvage per **flown** attempt | 110.4cr (derived) | **30.3cr** |
+| POI-sourced fragments / run | 6.33 | **3.67** |
+| `UniqueItemAcquired` / run | — (kind did not exist) | **1.27** (153 total) |
+| `ExplorationFailed` totals | `nav-check` 3,275 · `insufficient-fuel` 923 | **`recovery-in-progress` 5,118** · `nav-check` 1,882 · `insufficient-fuel` 466 |
+| finalCredits **with** Explore | median 60,391 · mean 57,847 | median **69,310** · mean **68,687** |
+| finalCredits **without** Explore | median 90,135 · mean 90,198 | median **88,107** · mean **88,124** |
+| **seeds richer WITHOUT Explore** | **101 / 120** | **85 / 120** |
+
+Reading the movement honestly: arm A's median rose (60,391 → 69,310) and arm B's median
+*fell slightly* (90,135 → 88,107). **The arm-B movement is drift, not signal** — the arms are
+not rng-paired (caveat 1 below), so arm B is a different sample of the same policy-without-
+Explore, not a fixed control. **The sign count is the number to read**, and it moved
+101/120 → 85/120.
+
+Two denominators are reported because the meaning of "an attempt" changed under T-111. The
+**queued** column counts `Explore` actions the policy *planned* — the like-for-like column
+against T-010's 53.8cr. The **flown** column counts the attempts that actually reached the
+nav check and burned 80 fuel. They now differ by more than they did, because 5,118 of the
+22,728 queued Explores over the 120 runs (**22.5%**) are refused with
+`recovery-in-progress` before a die or a litre of fuel is spent (finding F-116-1).
+
+### 9.4 Where the value went — and why it does not rescue the verb
+
+**`SalvageRecovered` credits are no longer the payoff, by design.** Gross salvage fell
+9,688 → 1,704 per run because the rebuild deliberately moved value off the credit column:
+
+- T-117 replaced the three-leg carrier with a **single band-weighted draw**, so a board
+  yields one outcome instead of three independent rolls;
+- **25% of boards are band 0** — an authored dead end that pays nothing (§5.2);
+- **bands 2, 3 and 4 (42% of the weight) defer their payout to a recovery dusk** rather
+  than paying on the day;
+- most of §5.5's per-board value is **items, questline hooks, NPC standing and fragments**,
+  which a `finalCredits` column cannot see at all.
+
+**State it plainly: the credit column understates the rebuilt verb — and it still does not
+rescue it.** The sign count in §9.1 is measured on final credits, and 85 of 120 seeds are
+still richer without the verb.
+
+### 9.5 §5.5's prediction, measured against reality
+
+§5.5 predicted **≈447cr credit-equivalent per successful board** and **≈150cr per attempt**,
+a claimed 2.8× improvement on the audited 53.8cr. Measured:
+
+| §5.5 predicted | measured (T-116) |
+| --- | --- |
+| ≈447cr credit-equivalent per successful board | **42.0cr of actual credits per board** (1,704 ÷ 40.6) |
+| ≈150cr per attempt | **9.0cr per queued action · 30.3cr per flown attempt** |
+| "14.1% of attempts open a recovery" | **42.5% of BOARDS open one** (17.24 per run ÷ 40.6 boards) |
+| a 2.8× improvement over 53.8cr | **a 3.6× DECLINE** on the flown denominator (110.4 → 30.3cr) |
+
+**The prediction did not hold, and it lands squarely on §5.5's own first caveat** — "the day
+cost is a further cost not counted here … which makes the figure above optimistic". It is
+worse than that caveat allowed on two counts:
+
+1. **The recovery rate is 3× what the caveat assumed.** §5.5 wrote 14.1%; the shipped band
+   table puts `recoveryDays > 0` on bands 2, 3 and 4, whose weights sum to **42** — and the
+   measured 42.5% of boards matches the table exactly. **The table is behaving correctly;
+   §5.5's 14.1% was the stale figure** (it predates T-114 moving band 2 to `recoveryDays: 1`).
+2. **Three quarters of what defers is never collected.** See §9.6.
+
+The two remaining §5.5 caveats stand and are not contradicted here: Class-A/Class-B items
+are permanent and a one-number EV understates them over a long career, and fragments and
+questlines were never income. **Explore was rebuilt as the lore-and-item faucet, and it
+succeeded at that.** It did not become credit-positive, and §5.5 never claimed it would.
+
+### 9.6 The recovery ladder's real leak — 76% forfeiture
+
+Measured over the 120 runs:
+
+| | count | per run |
+| --- | --- | --- |
+| `RecoveryStarted` | 2,069 | 17.24 |
+| `RecoveryPaidOut` | 496 | 4.13 |
+| `RecoveryAbandoned{'departed'}` | 1,552 | 12.93 |
+| `RecoveryAbandoned{'succession'}` | 1 | 0.01 |
+| `RecoveryAbandoned{'unknown-outcome'}` | 0 | 0 |
+| still open at day 120 | 20 | 0.17 |
+
+**Of the 2,049 recoveries that RESOLVED, 1,553 (75.8%) forfeited** — essentially all of them
+because the captain left the anchor system before dusk (§3.3(a)). Mean committed span is
+**2.12 days**. Paid-out `valuePoints` run mean **19.96** · median **20** · min **11** ·
+max **60**.
+
+`RecoveryStarted` totals by committed span (span 1 = band 2, span 3 = band 3, span 6 =
+band 4), and `RecoveryPaidOut` split by band from the paid `valuePoints`:
+
+| band | `recoveryDays` | weight | started | share of starts | **paid out** | **payout rate** |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2 | 1 | 24 | 1,151 | 55.6% (expect 57.1%) | **485** | **42.1%** |
+| 3 | 3 | 15 | 758 | 36.6% (expect 35.7%) | **11** | **1.5%** |
+| 4 | 6 | 3 | 160 | 7.7% (expect 7.1%) | **0** | **0.0%** |
+
+The share-of-starts column matches the band weights to within a point, so **the draw is
+behaving exactly as `EXPLORE_VALUE_BANDS` specifies** — the leak is entirely in collection,
+not in selection. The payout rate collapses with the hold: one day is collectible 42% of the
+time, three days 1.5%, six days never.
+
+**Zero band-4 recoveries paid out across all 120 runs** — the maximum `valuePoints` ever
+collected is **60**, and band 4 begins at 61. The six-day hold at the top of the ladder is,
+on this policy, unclaimable.
+
+`'unknown-outcome'` firing zero times is the good news in this table: no stored `outcomeId`
+went stale across 2,069 recoveries, which is the content-drift guard §3.3(c) asked for
+working exactly as specified.
+
+**This is a measurement, not a defect ruling.** A ladder whose top rungs require holding
+station for six days is *supposed* to cost something, and an explorer policy that ranges
+constantly is close to the worst case for it. Whether 76% is the intended price is an
+owner call, and it is the second thing the owner should look at after pricing.
+
+### 9.7 Finding F-116-1 · `explorerPolicy` queues Explores it cannot fly
+
+**22.5% of every `Explore` the shipped explorer policy plans is a guaranteed refusal.**
+
+- The engine refuses correctly: `packages/engine/src/actions/exploration.ts:52` emits
+  `ExplorationFailed{'recovery-in-progress'}` and spends neither die nor fuel.
+- The **harness surface** withholds the verb correctly too:
+  `packages/sim/src/protocol.ts:666` gates `legalActions` on
+  `player.recovery === null`, and its comment names this exact risk — *"Without this the
+  policies would spend actions on a no-op and T-116's ablation would measure noise instead
+  of the verb."*
+- **But `explorerPolicy` does not go through `legalActions`.** It plans directly, and its
+  Explore loop at `packages/sim/src/index.ts:4208-4222` tests credits, projected fuel and
+  the die ledger — and never `state.player.recovery`. `runCampaign` never calls
+  `legalActions` either, so the gate the comment relies on is not in the sim's path.
+
+The consequence for this measurement is bounded and reported rather than corrected: the
+refusals cost no die and no fuel in the engine, so they do not distort the credit column;
+they inflate the *queued* denominator, which is why §9.3 reports both denominators and says
+which is which.
+
+**NOT FIXED HERE, deliberately.** It is a one-line change and it is tempting. It is also a
+**policy change**, and landing it would (a) invalidate the capstone taken in this same
+commit and (b) make the ablation measure a policy that never shipped rather than the one
+that did. T-116's mandate is measure-only. **Filed for the owner alongside the pricing
+lever.**
+
+### 9.8 The five honesty caveats
+
+The three from T-010's memo, carried forward verbatim because the verdict is hedged by them:
+
+1. **The ablation is not rng-paired.** Removing actions shifts the within-day event-index
+   forks, so the arms diverge rather than tracking each other. That is why the result is
+   reported distributionally *and* as a paired sign count (85/120), never as a single mean
+   difference.
+2. **Arm B leaves the freed dice unspent.** It measures Explore's own net contribution, not
+   "Explore against its best substitute".
+3. **`explorerPolicy` is a _player_ policy** in `packages/sim/src`; it is not the NPC
+   explorer archetype. What transfers to the cast is the **per-attempt** economics, not the
+   whole-run figure.
+
+Two new ones, owed by what changed under T-111:
+
+4. **Queued ≠ flown.** Every per-attempt figure must name its denominator or it is
+   meaningless, because 22.5% of queued Explores now never fly (F-116-1).
+5. **Credits cannot see the payoff the rebuild chose.** 153 unique items, 440 POI fragments,
+   and every questline hook and NPC introduction drawn over these 120 runs are worth
+   something to a career and worth exactly zero to `finalCredits`. The verdict is reported
+   on credits anyway, because credits are what the question asked about — but a reader who
+   concludes "the rebuild made Explore worse" from §9.3 has read one column of a two-column
+   ledger.
+
+### 9.9 Capstone provenance
+
+| | |
+| --- | --- |
+| label | `t116-explore` |
+| file | `docs/balance/baseline-t116-explore.json` |
+| shape | 1,000 seeds × 120 days × 8 policies = **8,000 runs**, 8 shards (1-indexed) + `--merge` |
+| `--milestone-days` | `21,29,30,41,60,120` (identical to N11) |
+| `--policies` | `trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy` |
+| taken | **after** `npm run format` (which changed zero files — the tree was already clean) |
+
+Merge output, verbatim:
+
+```
+[balance] wrote aggregate for 8000 rows to /Users/vs7/Dev/Games/SpacerQuest/docs/balance/baseline-t116-explore.json
+```
+
+Fixture re-extracted **from that file**, never bare:
+
+```
+[smoke] 4 tiers, spreads harvested, rules bbf007a6bf38a932 / instrument 313fde95fc5ee9db / docs d8cec298cd93f909 -> docs/balance/smoke/tiers.json
+```
+
+`docs/balance/smoke/tiers.json` `provenance` now reads `sweepLabel: "t116-explore"`,
+`runs: 8000`, `spreadSource: "harvested"`.
+
+**`balance:diff baseline-n11-shipped → baseline-t116-explore`, headline:** exactly **three**
+rows carry changed fields — `fleet` (443), `explorer` (613) and `smuggler` (625). **The other
+six policies, `trader` included, have zero changed fields**, which is the expected shape:
+`explorer` and `smuggler` are the only two policies in the fleet that call `Explore`.
+
+| row | metric | N11 → T-116 |
+| --- | --- | --- |
+| fleet | `tourOneClearRate` | 0.5172 → 0.5411 |
+| fleet | `finalCredits.median` | 30,518 → 34,213 |
+| explorer | `tourOneClearRate` | 0.7920 → 0.8430 |
+| explorer | `finalCredits.median` | 58,119 → 66,995 |
+| explorer | `debtClearedDay.median` | 24 → 23 |
+| smuggler | `tourOneClearRate` | 0.5270 → 0.6670 |
+| smuggler | `finalCredits.median` | 26,623 → 37,610 |
+| smuggler | `debtClearedDay.median` | 31 → 28 |
+
+The diff also reports **1,064 shape changes** (`fleet.portsOwned.*`,
+`milestones[i].playerPorts.*`, `milestones[i].npcPortCount.*`). These are **not drift**: they
+are T-030's port instrumentation (`7d193c57`, "the instrument learns to see ports"), which
+landed after N11 was taken. Milestone days and the policy list are identical on both sides,
+so no phantom milestone paths appear.
+
+**Baseline of record RE-PINNED** to `baseline-t116-explore.json`, under standing amendment
+1's refined rule ("re-pin on shipped code" / "does the baseline describe HEAD?"): T-110…T-117
+shipped a rebuilt Explore that demonstrably moved three rows, so N11 no longer describes
+HEAD. `packages/sim/src/__tests__/balance-targets.test.ts`'s path, standing amendment 1's
+pointer and the `docs/NPC_REDESIGN.md` status banner all move in this same commit.
+
+The `it.fails` clear-day tripwire remains **correctly red** on the new capstone: the trader's
+`debtClearedDay.median` is **21** against `[22, 30]` (n = 987), unmoved from N11. It was not
+converted to `it`, and the baseline was not chosen to make it pass.
+
+### 9.10 What was NOT changed
+
+**No constant, DC, price, band weight, threshold, golden or fingerprint was edited to reach
+this answer.** `EXPLORATION_FUEL_COST` is still **80**, `EXPLORATION_NAV_DC` is still **12**,
+`EXPLORE_VALUE_BANDS`'s weights and `recoveryDays` are untouched, and `git diff --stat` shows
+**zero lines** changed under `packages/engine/src/`, `packages/content/src/`,
+`packages/sim/src/index.ts` and `packages/sim/src/balance/`. The only source change in this
+commit is one path string in a test.
+
+**Explore is still a net loss, and the lever is an owner call** — exactly as §7 and §5.5
+routed it. Two things are now on the owner's desk instead of one:
+
+1. **The pricing lever** (R-series): 80 fuel ≈ 400–640cr per attempt against 30.3cr of
+   realised salvage per flown attempt.
+2. **F-116-1** (`explorerPolicy`'s missing recovery gate) — a sim-policy fix, cheap, and it
+   should land in a commit that is allowed to move a capstone.

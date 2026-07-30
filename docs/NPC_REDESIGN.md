@@ -89,25 +89,35 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > re-extracted FROM it with `spreads harvested`). Fingerprints moved to rules
 > `c9530236d51b237e` / instrument `75e73b1e7d32168c` / docs `774c91af0fbdecc0`.
 >
-> **The battery stands at 1,347 passing / 0 failing** (engine 795 · sim 315 · ui 135
-> · desktop 102) with `balance:smoke` green (123) — **updated at N11's closeout**, which
+> **The battery stands at 1,485 passing / 0 failing** (engine 906 · sim 323 · ui 154
+> · desktop 102) with `balance:smoke` green (123) — **updated at T-116's closeout**, which
 > entered green and left green, with no threshold, band, golden or fingerprint edited and
-> no sample widened. N10 entered at 1,287/0 and left at 1,312/0. Three `it.fails`
-> tripwires are still correctly red and all three are R-owned: `balance-targets`'
-> clear-day band (trader median 21 against `[22, 30]`, unmoved by the N11 capstone) and
-> `balance-combat-survival`'s death-rate floor and Auto-Repair assertions. N4 entered at
+> no sample widened. N11 closed at 1,347/0 (engine 795 · sim 315 · ui 135 · desktop 102);
+> N10 entered at 1,287/0 and left at 1,312/0; the M2 Explore rebuild (T-110…T-117) added
+> the difference. Three `it.fails` tripwires are still correctly red and all three are
+> R-owned: `balance-targets`' clear-day band (trader median **21** against `[22, 30]`,
+> n = 987, **unmoved by the T-116 capstone**) and `balance-combat-survival`'s death-rate
+> floor and Auto-Repair assertions. There is no fourth. N4 entered at
 > **1,184 / 23 failing**; both steps
 > summarise their inherited reds under their own Result and the red-by-red account is
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
-> **BASELINE OF RECORD RE-PINNED AT N11** to
-> `docs/balance/baseline-n11-shipped.json` (1,000 seeds × 120 days × 8 policies =
+> **BASELINE OF RECORD RE-PINNED AT T-116** to
+> `docs/balance/baseline-t116-explore.json` (1,000 seeds × 120 days × 8 policies =
 > 8,000 runs, both `--milestone-days` and `--aggregate` honoured, fixture
 > re-extracted FROM it with `spreads harvested`). Fingerprints are rules
-> `b6f27d2bceabde59` / instrument `db515475e166a538` / docs `118e033b2c04807a` —
-> **all three unmoved from T-021/T-022**, because T-023 measures and writes documents
-> and touches no hashed rule source. N10's `baseline-n10-shipped.json` is now the
+> `bbf007a6bf38a932` / instrument `313fde95fc5ee9db` / docs `d8cec298cd93f909` —
+> **all three moved from N11's** `b6f27d2bceabde59` / `db515475e166a538` /
+> `118e033b2c04807a`, which is the expected reading: T-110…T-117 rewrote hashed rule
+> source (the engine's outcome resolvers and draw, and the 100-row content table) and
+> the instrument gained T-030's port fields. The `balance:diff` against N11 moves
+> exactly three rows — `fleet`, `explorer` and `smuggler`, the two policies that call
+> `Explore` plus their aggregate — and leaves `trader` and the other five with **zero**
+> changed fields. **The re-pin is on SHIPPED CODE, not on an accepted hypothesis**:
+> T-116 itself measures and concludes that Explore is **still a net loss** (85/120 seeds
+> richer without it, down from 101/120), and no constant was moved to change that answer
+> — see `docs/EXPLORE_REDESIGN.md` §9. N11's `baseline-n11-shipped.json` is now the
 > predecessor.
 
 **WHAT AN NPC ACTUALLY IS TODAY (measured 2026-07-28, `packages/engine/src/npc.ts`):**
@@ -1969,11 +1979,14 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-n11-shipped.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at N11 2026-07-30).
-   > `baseline-n10-shipped`, `baseline-t020-registry`, `baseline-n4-shipped`,
-   > `baseline-r2c-explorer-remit`, `baseline-n2-final`, `baseline-n9-shipped`,
-   > `baseline-r2c-final` and `baseline-vet-1k*` are its predecessors.
+   > **Baseline of record is `docs/balance/baseline-t116-explore.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-116 2026-07-30 — the M2 Explore
+   > rebuild shipped and moved the `explorer`, `smuggler` and `fleet` rows, so
+   > `baseline-n11-shipped` no longer describes HEAD).
+   > `baseline-n11-shipped`, `baseline-n10-shipped`, `baseline-t020-registry`,
+   > `baseline-n4-shipped`, `baseline-r2c-explorer-remit`, `baseline-n2-final`,
+   > `baseline-n9-shipped`, `baseline-r2c-final` and `baseline-vet-1k*` are its
+   > predecessors.
    > **`baseline-n4-control.json` sits beside it and is NOT a baseline** — it is N4's
    > control arm (the same capstone with every archetype multiplier set to 1), kept as
    > that step's grading evidence. Presence in `docs/balance/` never makes a file the

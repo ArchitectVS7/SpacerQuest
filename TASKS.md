@@ -925,7 +925,7 @@ is reachable — a seeded sweep finds at least one instance of every outcome acr
 and any unreachable row fails the test; zero lines changed under `packages/engine/src`; gate
 green.
 
-### T-116 · Explore: measure it, and answer the question that started this — `status: TODO` · `coder: opus` · `after: T-115`
+### T-116 · Explore: measure it, and answer the question that started this — `status: DONE` · `coder: opus` · `after: T-115`
 
 Run `npm run format`, THEN one capstone for the whole milestone (the content passes have been
 staling the fixture since T-113 — this is the single re-extraction standing amendment 3 asks
@@ -941,6 +941,42 @@ before/after is recorded with provenance; the result explicitly answers whether 
 loses money and does not tune a constant to reach an answer; if the baseline is re-pinned,
 `balance-targets.test.ts`'s path and standing amendment 1's pointer move in the same commit;
 gate green.
+
+**Delivered (2026-07-30):** `npm run format` first (zero files changed — the tree was already
+prettier-clean), THEN the M2 capstone: eight 1-indexed shards × 1,000 seeds × 120 days × 8
+policies with `--milestone-days 21,29,30,41,60,120`, merged to
+`docs/balance/baseline-t116-explore.json` — `wrote aggregate for 8000 rows`. The smoke fixture
+was re-extracted **from that file** (`spreads harvested`; `provenance.sweepLabel t116-explore`,
+`runs 8000`), fingerprints rules `bbf007a6bf38a932` / instrument `313fde95fc5ee9db` / docs
+`d8cec298cd93f909`. **The answer is that Explore is STILL a net loss, and the gap narrowed
+rather than closed:** the paired sign count moved **101/120 → 85/120** seeds richer *without*
+Explore (arm A median finalCredits 60,391 → 69,310; arm B 90,135 → 88,107, which is drift, not
+signal, because the arms are not rng-paired). The ablation was re-run in the documented shape —
+same two arms, same seeds 1..120 × 120 days, same arm-B `action.type !== 'Explore'` filter,
+same hand-rolled loop, fidelity **5/5 MATCH** against `runCampaign(seed, 120, 'explorer')` —
+with counters added and nothing else. The full before/after, the fenced probe source, the five
+honesty caveats and the capstone provenance are appended as **`docs/EXPLORE_REDESIGN.md` §9**.
+Two things the measurement found that §5.5 did not predict: the recovery ladder forfeits
+**75.8%** of everything it defers (1,553 of 2,049 resolved recoveries, essentially all
+`departed`), with **zero band-4 payouts in 14,400 simulated days**; and **F-116-1** —
+`explorerPolicy` (`packages/sim/src/index.ts:4208-4222`) plans Explores without consulting
+`state.player.recovery`, so **22.5%** of the Explores it queues are guaranteed
+`recovery-in-progress` refusals, even though both the engine
+(`packages/engine/src/actions/exploration.ts:52`) and `legalActions`
+(`packages/sim/src/protocol.ts:666`) gate correctly. **F-116-1 is filed, not fixed** — it is a
+policy change and would have invalidated the capstone taken in this same commit. Baseline of
+record **re-pinned** to `baseline-t116-explore.json` under amendment 1's "does the baseline
+describe HEAD?" rule (the diff moves exactly three rows — `fleet`, `explorer`, `smuggler` — and
+leaves `trader` and the other five with zero changed fields); `balance-targets.test.ts:103`,
+amendment 1's pointer, the `NPC_REDESIGN.md` status banner and the stale `smoke/README.md`
+"current baseline" line all move in this commit. **Zero constants, DCs, prices, band weights,
+thresholds, goldens or fingerprints were edited to reach the answer** — `git diff --stat` shows
+zero lines under `packages/engine/src/`, `packages/content/src/`, `packages/sim/src/index.ts`
+and `packages/sim/src/balance/`; the only source change is one path string. `CURRENT_SAVE_VERSION`
+stays 13; no save shape moved. The `it.fails` clear-day tripwire is still correctly red on the
+new capstone (trader median 21 against `[22, 30]`, n = 987) and was not converted. The pricing
+lever remains an owner call, now with F-116-1 beside it.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading the spec, TASKS.md, the sweep/extract/fingerprint rig, and the  · attempts=1/4.
 
 ---
 
