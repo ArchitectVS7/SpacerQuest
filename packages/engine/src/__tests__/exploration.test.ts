@@ -151,6 +151,19 @@ describe('exploration — deterministic discovery per seed', () => {
   });
 
   it('a full advanceDay run is reproducible for a seed', () => {
+    // T-114 RE-SEEDED (2024 → 1), and the mechanism is a RULING rather than a
+    // draw shift. Three explores in one day only chart three POIs when none of
+    // them opens a recovery: the T-111 fifth typed refusal
+    // (`recovery-in-progress`) blocks the verb for the rest of the commitment,
+    // and T-114 authored band 2 — every row of which is `recoveryDays: 1` — onto
+    // both draw legs, so most boards now commit the ship. Seed 2024's first
+    // board does, which leaves it charting one POI instead of three.
+    //
+    // The claim under test is unchanged and neither assertion moved: a seeded run
+    // replays byte-for-byte, and three SUCCESSFUL boards chart three distinct
+    // POIs. Seed 1 is simply the lowest seed on which all three boards land
+    // without one of them opening an op — found by re-running the same three-die
+    // day over seeds 1..5000 through the real `advanceDay`.
     function run(seed: number): string[] {
       const state = createInitialState(seed);
       // Boost PILOT so explores land, then spend three dice exploring.
@@ -163,9 +176,9 @@ describe('exploration — deterministic discovery per seed', () => {
       ]);
       return res.state.player.charts.discoveredPois.map((p) => `${p.id}:${p.type}:${p.name}`);
     }
-    expect(run(2024)).toEqual(run(2024));
+    expect(run(1)).toEqual(run(1));
     // Three distinct explores → three distinct POI ids.
-    expect(new Set(run(2024)).size).toBe(3);
+    expect(new Set(run(1)).size).toBe(3);
   });
 });
 

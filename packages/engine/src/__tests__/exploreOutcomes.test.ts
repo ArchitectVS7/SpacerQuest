@@ -124,7 +124,43 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
   //   shipped derelict band) is therefore only half-realized in the tree so far —
   //   the beacon half. T-116 measures the whole of it over real careers, and it is
   //   NOT tuned around.
-  const LEGACY_PARITY_HASH = '4e8f44b42d60b5a83b7063215f11da108913bf1f880216ebad296f6c1b0924e7';
+  //
+  // T-114 (pinned 'f62b45af…'): BAND 2 LANDED, AND BOTH SALVAGE LEGS ARE NOW
+  //   AUTHORED. The 33 rows of band 2 (docs/EXPLORE_REDESIGN.md §5.3 pass 2) are
+  //   authored and `legacy-salvage-derelict` is DELETED (F-113-D discharged).
+  //   Three CONTENT mechanisms move this sweep, and no rule changed at all:
+  //
+  //     (1) The DERELICT salvage leg is re-pointed from one legacy row onto the 14
+  //         authored derelict salvage rows (6 band-1 + 8 band-2). A 14-id leg
+  //         consumes one further index draw where a single-id leg consumed none,
+  //         which re-phases everything after it on every derelict board — and the
+  //         derelict board is the half T-113 left byte-identical, so this is the
+  //         single biggest contributor here.
+  //     (2) The BEACON salvage leg becomes the "find" leg: 31 ids, carrying the
+  //         band-2 items, NPC introductions, questline hooks and effect-bearing
+  //         lore alongside salvage. That is what makes the whole of pass 2
+  //         reachable through the real verb with zero engine lines.
+  //     (3) EVERY BAND-2 ROW DEFERS (band 2 is `recoveryDays: 1`), and a deferred
+  //         row consumes NO within-payload roll — the T-111 entry's mechanism,
+  //         now applied to 33 rows instead of three legacy ones.
+  //
+  //   WHAT MOVED, aggregate over the same 300 seeds:
+  //     salvageEvents      79 → 70     fragmentEvents   97 → 93
+  //     contrabandEvents   44 → 26     totalCredits     309,047 → 310,192
+  //     RecoveryStarted   136 → 167
+  //
+  //   WHY `contrabandEvents` FELL HARDEST, which is the one number that looks
+  //   wrong until you follow the rng: the contraband legs are UNTOUCHED — same
+  //   chance, same single id, same order. What moved is that the derelict salvage
+  //   leg now consumes an extra index draw ahead of them on every derelict board,
+  //   re-phasing the fragment and contraband chance rolls. `RecoveryStarted` rose
+  //   because band-2 rows are the common beacon draw now, and every one of them
+  //   opens the slot.
+  //
+  //   The rule is unchanged: never re-stamp this hash to make a change pass. It is
+  //   re-derived here because T-114 is an authored content change with its own
+  //   ledger entry, and the aggregate above is the readable signal for it.
+  const LEGACY_PARITY_HASH = 'f62b45af833ff18fde3d6b53b3456ffefffb2360f0dbbc2491ab9df65c1e7ab8';
 
   it('300 seeds of boarded POIs match the pinned per-seed result, exactly', () => {
     const hash = createHash('sha256');
@@ -155,7 +191,7 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
         if (e.type === 'RecoveryStarted') recoveryStarted += 1;
       }
     }
-    // T-113 re-pin — see the LEGACY_PARITY_HASH ledger above for the pre/post
+    // T-114 re-pin — see the LEGACY_PARITY_HASH ledger above for the pre/post
     // table and the three mechanisms. `recoveryStarted` is counted from T-111 on
     // so the readable signal names the deferred finds instead of leaving them as
     // an unexplained hole in the salvage count.
@@ -166,11 +202,11 @@ describe('explore outcome framework — legacy parity (T-110)', () => {
       recoveryStarted,
       totalCredits,
     }).toEqual({
-      salvageEvents: 79,
-      fragmentEvents: 97,
-      contrabandEvents: 44,
-      recoveryStarted: 136,
-      totalCredits: 309047,
+      salvageEvents: 70,
+      fragmentEvents: 93,
+      contrabandEvents: 26,
+      recoveryStarted: 167,
+      totalCredits: 310192,
     });
   });
 });

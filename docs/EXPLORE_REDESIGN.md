@@ -771,11 +771,31 @@ than empirically guessed at (§5.3 does the arithmetic).
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | 0 | **0** | `lore` (dead end only) | — | — | **25** |
 | 1 | 1 | **0** | `salvage`, `lore` (+fragment) | — | — | **33** |
-| 2 | 11 | **1** | `salvage`, `unique-item`, `npc`, `lore` | +1 strength / +20 `maxFuel` | `floor ≤ 3` | **24** |
+| 2 | 11 | **1** | `salvage`, `unique-item`, `npc`, `lore`, `questline` | +1 strength / +20 `maxFuel` | `floor ≤ 3` | **24** |
 | 3 | 31 | **3** | `unique-item`, `questline`, `npc` | +6 strength / +40 `maxFuel` / +1 pod | `reroll` | **15** |
 | 4 | 61 | **6** | `unique-item`, `questline` | +10 strength / +80 `maxFuel` / +1 pod | `extra-die` | **3** |
 
 Weights sum to 100, so a weight reads directly as a percentage of successful boards.
+
+**CORRECTION (T-114, 2026-07-30) — finding F-114-A: band 2's `payload kinds permitted` cell
+gains `questline`, and it is corrected here in place.** As shipped, this table cell omitted
+`questline` while **three other places in this document plus T-114's charter** said band 2
+authors the first questline hooks: §5.3's pass-2 bullet ("NPC introductions, the first
+questline hooks"), §8's per-task handoff row ("questlines resolve into the real storylet
+system"), and T-114's Accept clause ("every questline outcome resolves into the existing
+storylet system"). That is an internal collision in the spec, not a test to satisfy — nothing
+was red, and `permittedKinds` has exactly one reader in the tree (the content validator), so
+no engine line and no seeded career reads it either way. It is closed in the direction the
+majority of the spec agrees on, on the T-113 precedent (F-113-A corrected §2.4 and §8 in
+place). The alternative — authoring zero questline rows so the Accept clause is vacuously
+true — would be metric-gaming and is forbidden by the standing constraints.
+
+**PROVENANCE FOR THE TWO EFFECT-CEILING COLUMNS (T-114).** `Class-A ceiling` and `Class-B
+permitted` were transcribed verbatim from this table onto `ExploreValueBand` at T-114
+(`classACeiling` / `classB`), which is the pass with the first `unique-item` rows to check
+them against — finding F-112-C re-targeted them here from T-112 for exactly that reason. The
+`draw weight` column is still **not** on the type: it has no consumer until the engine draws
+one weighted row per board (F-113-A), and a column with no consumer is a stub.
 
 **Provenance for the credit bands** (§5.5 uses them): band 1 salvage is authored at
 **40–260cr** and band 2 at **240–700cr**, anchored on the two bands that actually ship today
@@ -973,7 +993,7 @@ The save-bump recommendation for T-102 to rule on is in §3d.
 | **T-111** | §3 (all) | `player.recovery`, `EXPLORE_VALUE_BANDS` + `recoveryDays`, save v13 + `MIGRATIONS[12]` + `deserializeState` backfill; four interaction tests; the dusk block positioned per §3c(d) and the subsistence-floor comment updated |
 | **T-112** | §4 (all), §6 F-100-1 | Class A resolver; three Class-B modules via the second-loop shape; cockpit readouts; `check()` unchanged; hand cap still binds |
 | **T-113** | §5.3 pass 1 | 34 rows = bands 0 + 1 exactly; house voice; zero engine lines **(delivered; the draw flip did not land here — F-113-A)** |
-| **T-114** | §5.3 pass 2 | 33 rows = band 2 exactly; questlines resolve into the real storylet system; NPC ids resolve against `ALL_NPC_PROFILES`. **Also owed by T-113 (F-113-D): retire `legacy-salvage-derelict` and re-point the derelict salvage leg, which band 2's 240-700 makes safe for the `rich_hulk` deed** |
+| **T-114** | §5.3 pass 2 | 33 rows = band 2 exactly; questlines resolve into the real storylet system; NPC ids resolve against `ALL_NPC_PROFILES`; **F-113-D discharged** — `legacy-salvage-derelict` deleted and the derelict salvage leg re-pointed at the 14 authored derelict rows (`rich_hulk` P(≥400) 0.302 → 0.384). §5.2 corrected in place (**F-114-A**); the two effect-ceiling columns landed; zero engine lines **(delivered)** |
 | **T-115** | §5.3 pass 3, §5.4 | 33 rows = bands 3 + 4; table totals 100; the two-part monotonicity property of §5.4; the reachability sweep at the size §5.3 computes |
 | **T-116** | §5.5, §9 | Capstone after `npm run format`; re-run the ablation; append the before/after to §9; **do not tune to reach an answer** |
 

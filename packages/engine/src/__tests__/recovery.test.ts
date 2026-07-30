@@ -27,27 +27,36 @@ import type { EncounterState, GameEvent, GameState } from '../types.js';
 // and then PINNED here with the property it was selected for. Nothing about a
 // seed is magic: it is simply a board that reaches the state the ruling is about.
 //
-// All of them draw `legacy-salvage-derelict` — 20 `valuePoints`, band 2, N = 1.
-// Band 2 is the HIGHEST band any drawable row reaches while the authored table
-// covers only bands 0-1 (T-113 pass 1), so every recovery here is a one-day one.
-// The rulings under test are all clock-agnostic (`day >= dueDay`, a location
-// compare, a slot compare), so N = 1 exercises them identically to N = 6; T-115
-// makes N = 6 drivable when band-4 rows exist.
+// All of them open a BAND-2 row — N = 1. Band 2 is the HIGHEST band any drawable
+// row reaches while the authored table covers bands 0-2 (T-114 pass 2), so every
+// recovery here is a one-day one. The rulings under test are all clock-agnostic
+// (`day >= dueDay`, a location compare, a slot compare), so N = 1 exercises them
+// identically to N = 6; T-115 makes N = 6 drivable when band-4 rows exist.
 //
-// T-113 RE-SEEDED — ONE seed of the three (4 → 36). MECHANISM: the authored
-// band-1 BEACON salvage rows joined the beacon salvage leg, which now holds six
-// ids where it held one, so a fired beacon salvage leg consumes one further index
-// draw and re-phases that board. The derelict half is untouched (F-113-D), which
-// is why the two derelict-driven seeds below are unmoved. Seed 4 still OPENS a
-// recovery on day 1; what it lost is the second property `SEED_OPENS` carries —
-// its day-1 jump now arrives instead of being interdicted. The same scan was
-// re-run against the real loop, with the same extra condition (the opened row IS
-// `legacy-salvage-derelict`), and seed 36 is the first that satisfies BOTH the
-// interrupted-jump property and the day-30 one, exactly as seed 4 used to. No
-// assertion below changed shape or value.
+// T-113 RE-SEEDED one seed of the three (4 → 36), because the authored band-1
+// beacon rows joined the beacon salvage leg and re-phased that board.
+//
+// T-114 RE-SEEDED THE SAME ONE (36 → 82), and the mechanism is bigger: the row
+// all three seeds used to draw, `legacy-salvage-derelict`, IS DELETED. F-113-D is
+// discharged — band 2 is authored, so the derelict salvage leg is re-pointed at
+// the 6 band-1 + 8 band-2 authored derelict rows and the legacy row has no reason
+// to exist. The same scan was re-run against the real loop with the condition
+// updated to "the opened row is an AUTHORED band-2 salvage row", and:
+//   - SEED_TRAVELS_AWAY (10) and SEED_DIES (24) are UNMOVED. They still open a
+//     recovery on day 1 and still reach the state their ruling is about; only the
+//     identity of the row they open changed.
+//   - SEED_OPENS moved to 82, the first seed satisfying BOTH the interrupted-jump
+//     property and the day-30 one, exactly as 36 did.
+// NO ASSERTION CHANGED SHAPE. Two literals moved because they NAME THE DRAWN ROW
+// and the drawn row changed: the payout's `valuePoints` (20 → 18, read off
+// `explore-salvage-derelict-lifeboat`) and the abandoned op's `outcomeId`
+// (`legacy-salvage-derelict` → `explore-salvage-derelict-flag-bridge`, seed 10's
+// row). Both are still read off CONTENT at payout, which is what they were there
+// to prove.
 
-/** Opens a recovery on day 1 at Sun-3, and its day-1 Travel is INTERRUPTED. */
-const SEED_OPENS = 36;
+/** Opens a recovery on day 1 at Sun-3 with an authored band-2 SALVAGE row, and
+ *  its day-1 Travel is INTERRUPTED. */
+const SEED_OPENS = 82;
 /** Opens a recovery on day 1 AND its day-1 Travel to system 2 actually ARRIVES. */
 const SEED_TRAVELS_AWAY = 10;
 /** Opens a recovery on day 1 AND the planted dusk encounter lands a fatal blow. */
@@ -168,7 +177,8 @@ describe('T-111 · a recovery spans real calendar days (the whole loop, no pokin
       outcomeId: recovery.outcomeId,
       poiId: recovery.poiId,
       // Read off the CONTENT row at payout, never off the save.
-      valuePoints: 20,
+      // 18 = `explore-salvage-derelict-lifeboat`, the band-2 row seed 82 opens.
+      valuePoints: 18,
     });
 
     const salvage = eventsOfType(duskTwo.events, 'SalvageRecovered');
@@ -210,7 +220,7 @@ describe('T-111 · §3.3(a) travelling away forfeits the op', () => {
     const abandoned = eventsOfType(dusk.events, 'RecoveryAbandoned');
     expect(abandoned).toHaveLength(1);
     expect(abandoned[0].reason).toBe('departed');
-    expect(abandoned[0].outcomeId).toBe('legacy-salvage-derelict');
+    expect(abandoned[0].outcomeId).toBe('explore-salvage-derelict-flag-bridge');
     expect(dusk.state.player.recovery).toBeNull();
     // No partial credit, and nothing paid out.
     expect(eventsOfType(dusk.events, 'RecoveryPaidOut')).toHaveLength(0);
@@ -221,8 +231,8 @@ describe('T-111 · §3.3(a) travelling away forfeits the op', () => {
     // The verified price of deciding this by LOCATION rather than by hooking the
     // Travel verb, asserted rather than left as a comment: an interrupted jump
     // leaves the captain standing at the origin (the encounter holds the pending
-    // travel), so dusk sees the anchor system and the op survives. Seed 4's day-1
-    // jump to system 2 is interdicted.
+    // travel), so dusk sees the anchor system and the op survives. SEED_OPENS'
+    // day-1 jump to system 2 is interdicted.
     const opened = openRecovery(SEED_OPENS);
     const recovery = opened.state.player.recovery!;
 
@@ -348,7 +358,7 @@ describe('T-111 · §3.3(d) the Tour One marker does nothing to an open recovery
     expect(opened.events.some((e) => e.type === 'RecoveryStarted')).toBe(true);
     const recovery = opened.state.player.recovery!;
     // dueDay 31, not the spec's illustrative 33: band 2 (N = 1) is the highest
-    // band any DRAWABLE row reaches while bands 0-1 are the authored table. The ruling
+    // band any DRAWABLE row reaches while bands 0-2 are the authored table. The ruling
     // under test — the era flip does nothing to an open recovery — is exercised
     // identically; T-115 makes N = 6 drivable when band-4 rows are authored.
     expect(recovery.dueDay).toBe(31);
@@ -397,6 +407,32 @@ describe('T-111 · a stored outcome id that no longer resolves', () => {
     // Nothing else moved: no credits, no charts.
     expect(dusk.state.player.credits).toBe(creditsBefore);
     expect(dusk.state.player.charts.discoveredPois).toHaveLength(poisBefore);
+  });
+
+  it('T-114 · an IN-FLIGHT save holding the retired legacy-salvage-derelict is safe', () => {
+    // NOT a hypothetical, and not the same test as the one above with a different
+    // string. T-114 DELETED a row that could be on a real save right now: any
+    // career that opened a derelict salvage op before this pass stored
+    // `legacy-salvage-derelict` in `player.recovery.outcomeId`. The retirement is
+    // therefore a content-drift event that already happened, and the claim it
+    // owes is that no save bump is needed — the payout resolver's defensive
+    // lookup (the `CREW_BY_ID[…]?.benefit` shape) already tolerates the miss:
+    // clear the slot, say so, mutate nothing else.
+    const opened = openRecovery(SEED_OPENS);
+    const drifted = reloadWith(opened.state, (parsed) => {
+      (parsed as unknown as GameState).player.recovery!.outcomeId = 'legacy-salvage-derelict';
+    });
+    const creditsBefore = drifted.player.credits;
+
+    const dusk = endDay(startDay(endDay(drifted).state).state);
+
+    const abandoned = eventsOfType(dusk.events, 'RecoveryAbandoned');
+    expect(abandoned).toHaveLength(1);
+    expect(abandoned[0].reason).toBe('unknown-outcome');
+    expect(abandoned[0].outcomeId).toBe('legacy-salvage-derelict');
+    expect(dusk.state.player.recovery).toBeNull();
+    expect(eventsOfType(dusk.events, 'RecoveryPaidOut')).toHaveLength(0);
+    expect(dusk.state.player.credits).toBe(creditsBefore);
   });
 
   it('a POI that is no longer on the charts is the same unknown-outcome case', () => {

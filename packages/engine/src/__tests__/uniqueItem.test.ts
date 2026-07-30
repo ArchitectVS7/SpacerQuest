@@ -137,11 +137,23 @@ describe('T-112 · Class B — the grant itself', () => {
     expect(res.state).toEqual(cloneState(state));
   });
 
-  it('every shipped item resolves, and all three are Class-B modules at T-112', () => {
+  it('every shipped item resolves, and the Class-B tier is still exactly three', () => {
+    // T-114 RETARGETED, intent preserved. The old form asserted that EVERY
+    // shipped item is a Class-B module — true while T-112's three modules were
+    // the whole table, and false the moment T-114 authored the first Class-A
+    // items to go with its band-2 `unique-item` rows. The claim that actually
+    // mattered is §4.2's CAP: Class B is bounded at three because each instance
+    // costs engine work (finding F-100-1), and that is asserted directly.
     for (const item of Object.values(EXPLORE_ITEM_BY_ID)) {
       expect(EXPLORE_ITEM_BY_ID[item.id]).toBe(item);
-      expect(item.class).toBe('module');
     }
+    const modules = Object.values(EXPLORE_ITEM_BY_ID).filter((item) => item.class === 'module');
+    expect(modules).toHaveLength(3);
+    expect(modules.map((item) => item.id).sort()).toEqual([
+      'item-berth-couch',
+      'item-marked-ephemeris',
+      'item-tally-slate',
+    ]);
   });
 });
 

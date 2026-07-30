@@ -3,6 +3,7 @@ import {
   CARGO_TYPES,
   STORYLETS,
   NPC_PROFILES,
+  ALL_NPC_PROFILES,
   isSimulatedCaptain,
   ANONYMOUS_INTERCEPTORS,
   SHIP_COMPONENTS,
@@ -288,6 +289,26 @@ export function explorationOutcome(events: GameEvent[]): string | null {
   for (const e of events) {
     if (e.type !== 'UniqueItemAcquired') continue;
     parts.push(`${EXPLORE_ITEM_BY_ID[e.itemId]?.name ?? 'an unlogged fitting'} recovered`);
+  }
+  // T-114: the two band-2 kinds that had no clause at all. §4.4 is explicit that
+  // a committed find the player cannot see is a trap, and an `npc` row or a
+  // `questline` row would otherwise read as "Charted X." with no payoff — the
+  // same gap T-111's `RecoveryStarted` clause closed for a deferred find.
+  //
+  // BOTH ARE NAME LOOKUPS ONLY, on the engine's own emitted events. The
+  // disposition move is read off `DispositionChanged` (which `applyEffects`
+  // routes every standing change through) and the hook off `StoryletScheduled`
+  // — never re-derived here, because a second account of a rule the engine
+  // already applied is exactly how a UI drifts from the game.
+  for (const e of events) {
+    if (e.type !== 'DispositionChanged') continue;
+    const name = ALL_NPC_PROFILES.find((npc) => npc.id === e.npcId)?.name ?? 'a captain';
+    parts.push(e.delta >= 0 ? `${name} owes you a word` : `${name} took it badly`);
+  }
+  for (const e of events) {
+    if (e.type !== 'StoryletScheduled') continue;
+    const title = STORYLETS.find((s) => s.id === e.scheduledStoryletId)?.title;
+    parts.push(title ? `a lead opened: ${title}` : 'a lead opened');
   }
   return `${parts.join(' · ')}.`;
 }

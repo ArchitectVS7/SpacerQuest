@@ -388,16 +388,53 @@ const UNCHANGED_POLICIES = [
  *    recorded rather than tuned around (re-pricing Explore is R-series and an owner
  *    call), and five seeds cannot separate its size from stream noise in any case.
  *    T-116 owns the measurement and the verdict.
+ *
+ * 15. T-114 — the Explore content pass 2 of 3 (band 2). EXACTLY THE SAME TWO
+ *    ROWS MOVE, for the third time and by the same control: only a policy that
+ *    flies off-lane sweeps can feel a change to what a board yields.
+ *      explorer 9110009d148f6c4a -> 735e77e304bc46fc
+ *      smuggler 459ee18f292bf2c9 -> e3319430951ceca6
+ *      trader / fighter / veteran / gambler / greedy — ALL UNCHANGED, byte for
+ *      byte. That five of seven are identical is the evidence that a verb-yield
+ *      change moved the CALLERS and not the world; a report-shape change (entries
+ *      11/12) moves all seven.
+ *
+ *    MECHANISM. Three CONTENT edits reach a board (docs/EXPLORE_REDESIGN.md §5.3
+ *    pass 2), and no rule changed:
+ *      (1) `legacy-salvage-derelict` is DELETED and the DERELICT salvage leg is
+ *          re-pointed at the 14 authored derelict salvage rows (6 band-1 +
+ *          8 band-2, 240-700cr). This closes F-113-D: P(SalvageRecovered >= 400),
+ *          the `rich_hulk` trigger, goes 0.302 -> 0.384 over that leg.
+ *      (2) The BEACON salvage leg becomes the 31-id "find" leg, carrying the
+ *          band-2 items, NPC introductions, questline hooks and effect-bearing
+ *          lore alongside salvage.
+ *      (3) EVERY band-2 row is `recoveryDays: 1`, so a successful board now
+ *          commits the ship and the fifth typed refusal
+ *          (`recovery-in-progress`) costs the NEXT day's Explore as well.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      explorer  final credits  median  9,094 -> 34,234   mean 14,818 -> 30,514
+ *      smuggler  final credits  median  4,841 ->  5,650   mean  9,003 ->  6,104
+ *      fragments acquired (sum) explorer 21 -> 26, smuggler 27 -> 18
+ *      fuel starvation days 0 -> 0 and subsistence days 0 -> 0 in both.
+ *    THE DIRECTION IS UP FOR THE EXPLORER, which is F-113-C's temporary dip
+ *    reversing exactly as §5.2 sequenced it: band 2's 240-700cr is the shipped
+ *    derelict band widened, and the beacon leg now yields permanent items rather
+ *    than only coin. NOTHING WAS TUNED TO PRODUCE IT and nothing is tuned in
+ *    response: five seeds cannot separate a credit shift of this size from stream
+ *    noise, re-pricing Explore is R-series and an owner call, and T-116 owns the
+ *    measurement and the verdict.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   trader: 'f3e01b2a843c1c0f',
   fighter: 'dc6ca4fbcce58659',
-  // T-113 entry 14: re-derived — the authored pools reach the sweeping policies.
-  explorer: '9110009d148f6c4a',
+  // T-114 entry 15: re-derived — band 2 reaches both draw legs (T-113 entry 14
+  // moved it last, for the beacon half alone).
+  explorer: '735e77e304bc46fc',
   veteran: 'f701430cfe32f7cb',
-  // T-113 entry 14: re-derived, same reason as `explorer`.
-  smuggler: '459ee18f292bf2c9',
+  // T-114 entry 15: re-derived, same reason as `explorer`.
+  smuggler: 'e3319430951ceca6',
   gambler: 'fbb8b4df794fa5f4',
   greedy: '0f2ff82982dcbf2d',
 };

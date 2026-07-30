@@ -571,7 +571,119 @@ row is well-formed and that the table's value distribution matches the spec's la
 lines changed under `packages/engine/src`; a test drives at least one instance of each
 outcome TYPE present in this pass through the real Explore path; gate green.
 
-### T-114 · Explore content pass 2 of 3 — the middle (~33 outcomes) — `status: TODO` · `coder: opus` · `after: T-113`
+### T-114 · Explore content pass 2 of 3 — the middle (~33 outcomes) — `status: DONE` · `coder: opus` · `after: T-113`
+
+**Delivered (2026-07-30):** **33 authored rows — band 2 exactly** (§5.3 pass 2), for **67
+authored rows** in the table: 14 mid salvage (6 beacon / 8 derelict, credit bands inside
+§5.2's authored 240–700cr, floor and ceiling both **reached**, midpoints averaging **475cr**
+against §5.5's 470cr band-2 credit-equivalent), 8 unique items (7 Class A + the one Class-B
+`item-tally-slate`), 6 NPC introductions, 3 questline hooks and 2 lore rows carrying
+`effects`. **Zero lines changed under `packages/engine/src`** outside `__tests__`
+(`git diff --stat HEAD -- packages/engine/src ':!packages/engine/src/__tests__'` is empty),
+and `grep -c "if (" packages/content/src/exploration.ts` is **0**.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked with `ls`; absent), so I oriented from `docs/EXPLORE_REDESIGN.md` §2/§4/§5/§8, `TASKS.md`, and the · attempts=1/4.
+
+- **F-113-D IS DISCHARGED, arithmetically rather than by hope.** `legacy-salvage-derelict` is
+  **deleted** and the derelict salvage leg re-pointed at the 14 authored derelict salvage rows
+  (6 band-1 + 8 band-2), derived by `.filter`/`.map` and never transcribed. P(`SalvageRecovered`
+  ≥ 400) — the `rich_hulk` trigger — goes **0.302 → 0.3837** over that leg, so band 2 restores
+  the deed with room instead of diluting it. `deed-coverage.test.ts` and
+  `nemesis-fragments.test.ts` are both green with **zero edits**. The leg is kept
+  **salvage-only** and a validator assertion pins that, because it is the only leg in the game
+  calibrated on a credit distribution.
+- **THE BEACON LEG BECOMES THE "FIND" LEG (31 ids)** — the 12 beacon salvage rows plus all 19
+  non-salvage band-2 rows. `drawLegacyLoot` resolves whatever id a leg names without caring
+  what KIND the row is, which is what makes the whole of pass 2 reachable through the real
+  Explore verb with no engine line. A new validator assertion pins the structural guard: every
+  id on a leg for pool *P* names a row whose own `pools` include *P*.
+- **QUESTLINES RESOLVE INTO THE REAL STORYLET SYSTEM, end to end.** Three new `explore.*`
+  storylets in `packages/content/src/storylets.ts`, each `scheduledOnly` with a
+  `wireResolution` and a requirement-free choice. **The blocker and its fix:**
+  `validateStorylets` built its scheduled-target set only from other storylets'
+  `effects.schedule` and threw on a `scheduledOnly` beat nothing schedules — a rule written
+  when a storylet was the only possible scheduler. `validateStorylets`/`defineStorylets` now
+  take `externalScheduledIds`, and `storylets.ts` passes the **derived**
+  `EXPLORE_SCHEDULED_STORYLET_IDS` from `exploration.ts`. The rule is kept intact rather than
+  weakened. No import cycle: `exploration.ts`'s only runtime import is `./nemesis.js`.
+- **Asserted end to end, through the player-reachable path**: the 2,000-seed
+  `resolveExploration` sweep reaches **all 53 leg-addressed rows** (band-2 rows via their
+  `RecoveryStarted`, because band 2 defers), and a second block drives a band-2 row of each
+  kind to **payout through the real dusk** (`startDay`/`applyPlayerAction`/`endDay`, never a
+  hand-called resolver) asserting `RecoveryPaidOut` plus `SalvageRecovered` inside band,
+  `UniqueItemAcquired`, `DispositionChanged`, and — for the questline — `StoryletScheduled`
+  → the day arrives → `refreshAvailableStorylets` → **`StoryletOffered` for that exact id**.
+  NPC profile ids are resolved against **both** `ALL_NPC_PROFILES` and the live
+  `createInitialState().npcs` roster, because `applyEffects` silently `continue`s on a roster
+  miss.
+- **The two §5.2 effect-ceiling columns landed** (`classACeiling` / `classB`), transcribed
+  verbatim, closing F-112-C. The validator checks every item row against its own band's
+  column. The `draw weight` column is still absent on F-113-A's argument.
+- **UI:** `explorationOutcome` gains an NPC-introduction clause and a questline-hook clause
+  (name lookups on `DispositionChanged` / `StoryletScheduled`, never a re-derived effect), with
+  three new tests. §4.4: a committed find the player cannot see is a trap.
+
+**Findings, reported rather than routed around:**
+
+- **F-114-A · the spec collided with itself on band 2 and `questline`.** §5.2's band-2 cell
+  omitted it; §5.3's pass-2 bullet, §8's handoff row and T-114's own Accept clause all say
+  band 2 authors the first questline hooks. Nothing was red, and `permittedKinds` has exactly
+  one reader in the tree (the content validator) — no engine line reads it, so no seeded career
+  changes either way. Closed in the direction the majority of the spec agrees on;
+  `docs/EXPLORE_REDESIGN.md` §5.2 corrected **in place** (the T-113 precedent). The
+  alternative — authoring zero questline rows so the clause is vacuously true — is
+  metric-gaming.
+- **F-114-B · band 2's `+1` Class-A strength ceiling is below its own readers' granularity.**
+  `navBonus` divides component strength by `NAV_BONUS_DIVISOR = 10`, so `navigation +1` yields
+  **+0** to a PILOT check; every other strength reader divides too. The `maxFuel +20` arm is
+  the only unconditionally perceptible Class-A grant at this tier, so the mix leans on it (3 of
+  7). **Biasing the mix inside the ceiling is authoring; raising the ceiling would not be** —
+  the ceiling is authored verbatim. Recommend the question go to T-115/T-116 or the owner.
+- **F-113-A · still unowned, and now the ONLY thing between the table and full reachability.**
+  The inert set is exactly the **14 band-0 dead ends** and nothing else. The three-leg carrier
+  has no "nothing else fired" arm, and inventing one is an engine branch. T-115's "a sweep
+  finds every outcome" clause remains arithmetically impossible until the single band-weighted
+  draw lands.
+- **F-113-B · `contraband` still cannot be retired by a content pass** — deleting the union
+  member makes the engine's exhaustive `case 'contraband':` a `tsc` error. The two rows survive
+  and the tripwire now names exactly them.
+- **F-113-C deepens on BOTH halves, and the sign flipped up.** Every band-2 row is
+  `recoveryDays: 1`, so a successful board now also costs the next day's Explore (the fifth
+  typed refusal). Measured on the `campaign-degraded` window (5 seeds × 40 days): explorer
+  median final credits **9,094 → 34,234**, smuggler **4,841 → 5,650**. **Nothing was re-priced
+  in response** — five seeds cannot separate that from stream noise, re-pricing Explore is
+  R-series and an owner call, and T-116 owns the verdict.
+- **Nothing had to be dropped.** Every band-2 row §5.3 asks for was expressible as a row; the
+  only thing that needed a code change was the validator seam above, and it is content-side.
+
+**Fixtures moved, each re-derived with a ledger entry — never edited to go green:**
+
+- `exploreOutcomes.test.ts` `LEGACY_PARITY_HASH` + the aggregate, entry **T-114** naming the
+  three mechanisms (the derelict leg going from 1 id to 14 and so consuming an index draw it
+  never used to; the beacon leg becoming the 31-id find leg; 33 deferring rows each skipping a
+  payload roll). salvage 79 → 70, fragments 97 → 93, contraband 44 → 26, credits 309,047 →
+  310,192, RecoveryStarted 136 → 167.
+- `recovery.test.ts` — **one seed of three** (`SEED_OPENS` 36 → 82); 10 and 24 are **unmoved**.
+  No assertion changed shape; two literals moved because they *name the drawn row* and the row
+  they named was deleted. A new test asserts the **in-flight save** holding
+  `legacy-salvage-derelict` resolves to `RecoveryAbandoned{unknown-outcome}` and mutates
+  nothing — so the retirement owes **no save bump**.
+- `exploration.test.ts` — the three-explore determinism seed (2024 → 1), because three boards
+  in a day now only chart three POIs when none of them opens an op. Both assertions unchanged.
+- `campaign-degraded.test.ts` `PINNED_FINGERPRINTS` — ledger entry **15**. **Exactly the two
+  sweeping policies move** (explorer, smuggler); trader/fighter/veteran/gambler/greedy are
+  byte-identical, which is the control that says a verb-yield change moved the callers.
+- `uniqueItem.test.ts`'s "all three are Class-B modules" **retargeted, not deleted** — the
+  claim that mattered is §4.2's cap, so it now asserts the Class-B tier is exactly three.
+- `docs/balance/smoke/tiers.json` re-extracted from the stored N11 aggregate (**not** a
+  capstone — standing amendment 3 gives the milestone's single capstone to T-116). Its
+  checkpoint numbers therefore describe the new ruleset's **replay of a stored sweep**, not a
+  fresh measurement of the new content.
+- **`replay-golden.ts` did NOT move, and the reason is checkable rather than lucky:** the
+  primary log's day-1 Explore charts a derelict on which **no leg fired at all** (the fixture
+  contains one `PoiDiscovered` and zero `SalvageRecovered` / `FragmentAcquired` /
+  `ContrabandFound` / `RecoveryStarted`). A leg that never fires never reaches its index draw,
+  so re-pointing the ids behind it cannot re-phase that board.
 
 The second third, weighted toward **mid-value**: unique items with real effects, the first
 questline hooks, and NPC-introduction outcomes. Questline and NPC outcomes must connect to

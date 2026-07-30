@@ -212,6 +212,18 @@ const T1505_STORYLET_IDS = [
 // arc (re-attemptability after a decline or a refused stake).
 const T1505B_STORYLET_IDS = ['nemesis.crossing.the-stake'] as const;
 
+// T-114 · The three explore questline hooks (docs/EXPLORE_REDESIGN.md §2.2/§2.5).
+// Its own batch line for the established reason: it belongs to a different task.
+// What is NEW about these three is only WHO schedules them — an explore
+// `questline` outcome row rather than another storylet's choice — which is why
+// `defineStorylets` now takes `EXPLORE_SCHEDULED_STORYLET_IDS` as a second
+// argument. Every other property is an ordinary `scheduledOnly` chain episode's.
+const T114_STORYLET_IDS = [
+  'explore.cold-berth.survivor',
+  'explore.signal-debt.claim',
+  'explore.black-ledger.courier',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -262,6 +274,13 @@ describe('storylet content validation', () => {
     for (const id of T1505B_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-114 explore questline hooks loaded and validated. Reaching here at all
+    // proves the external-scheduler seam works: each is `scheduledOnly` with a
+    // `wireResolution`, and NO storylet schedules them — `defineStorylets` would
+    // throw on both counts if the explore rows were not supplying the ids.
+    for (const id of T114_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
@@ -274,7 +293,8 @@ describe('storylet content validation', () => {
         T1503_STORYLET_IDS.length +
         T1504_STORYLET_IDS.length +
         T1505_STORYLET_IDS.length +
-        T1505B_STORYLET_IDS.length,
+        T1505B_STORYLET_IDS.length +
+        T114_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);
