@@ -668,7 +668,9 @@ edited. Orchestration: graphify=none — no `graphify-out/graph.json` in the rep
 
 ## M4 — Checkpoint
 
-### T-040 · CHECKPOINT — owner review: three rulings + N11's verdict — `status: TODO` · `coder: sonnet` · `after: T-030` · `[BLOCKED BY = Human Gate]`
+*The review brief this milestone produces is `docs/N-SERIES-REVIEW-2026-07-30.md`.*
+
+### T-040 · CHECKPOINT — owner review: three rulings + N11's verdict — `status: BLOCKED(Human Gate)` · `coder: sonnet` · `after: T-030` · `[BLOCKED BY = Human Gate]`
 
 Automated preparation only: assemble a single review brief at
 `docs/N-SERIES-REVIEW-<date>.md` that collects, with no new analysis and no decisions, (1)
@@ -684,6 +686,36 @@ runner must never self-approve one.
 **Accept:** (human-checked) the brief is committed and contains all three parts with the
 still-open list complete; the owner has ruled on Explore, VisitHangout and Storylet, and has
 accepted or rejected N11's verdict.
+
+**Prepared (2026-07-30):** the automated step assembled the review brief at
+`docs/N-SERIES-REVIEW-2026-07-30.md`, containing four parts with no new analysis and no
+decisions: **(1)** the three UNRULED parity-ledger verbs (Explore `:204`, VisitHangout `:205`,
+Storylet `:209`), each with its ledger row verbatim, its memo's own §(d) recommendation
+bullets, its "what stays genuinely open, and belongs to the owner" paragraph verbatim, and its
+`DECISION: OWED` line plus the option 1 / 2 / 3 paragraph verbatim — including Explore's three
+honesty caveats, VisitHangout's counterparty-faucet (+4.86cr/captain-day) and venue-gate
+(95.91%) bullets kept outside the recommendation exactly as the memo keeps them, and Storylet's
+four numbered grounds plus its two separately-registered defects; **(2)** N11's
+`CHANGE ACCEPTED` verdict with its grading provenance, its four graded limbs by name (PROVES 1
+with the 5×3 rank table and the `42.771`/`42.8` purchase figure carried with both sources,
+PROVES 2 with the `honorList` blindness, and both DISPROVES limbs), the per-archetype p10
+floor table transcribed row-for-row including POOLED and the `median day 120` column, the
+`A DEED PAYS NO CREDITS` block verbatim, and the `WHAT N11 HANDS TO N12` four-item pointer
+list; **(3)** the five still-open items (`executeCombat`'s 0-death Combat-row gap, OI-9, the N4
+`loan-default`/`contraband-caught` re-siting, N7-RIG's new-hashed-ROOT hole, R-owned R10) each
+as what-it-is / where-argued / why-open / who-owns, each closing on *"No decision is proposed
+here"*; and **(4)** the unticked four-decision checklist. Every number is transcribed with its
+source named inline and none is re-derived — N11's `90.53%` is carried as the Result records
+it, not the corrected-away `90.6%`. No engine, content, sim, ui or desktop file was touched; no
+save-shape change and no migration; no threshold, band, golden or fingerprint was edited;
+`docs/NPC_REDESIGN.md` was not edited and the three UNRULED ledger rows are byte-identical. The
+gate that was already green for this tree was not re-run: `npx tsc -b`, `npm run lint`,
+`npm test` (1,354 passing / 0 failing) and `npm run format:check` were confirmed clean prior to
+this step and no source under `packages/` changed since, so no fingerprint moved. This
+automated preparation is complete; no human has reviewed, ruled on, or approved anything in the
+brief, and the task now awaits: Human Gate. Orchestration: graphify=none — no
+`graphify-out/graph.json` in the repo root (checked; nothing to query) · attempts=1/4 ·
+HUMAN-GATE HALT.
 
 ---
 
