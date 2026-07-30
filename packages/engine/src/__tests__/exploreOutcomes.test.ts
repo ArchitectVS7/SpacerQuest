@@ -243,14 +243,17 @@ describe('explore outcome framework — the resolvable kinds (T-110)', () => {
     );
   });
 
-  it('unique-item resolves to its wire line and mutates nothing (the T-112 seam)', () => {
+  it('unique-item naming an UNKNOWN item still speaks and mutates nothing', () => {
+    // T-112 CLOSED the seam this test used to guard (F-110-D): the arm now grants
+    // real items, and `uniqueItem.test.ts` owns those assertions. What survives
+    // here is the content-drift half — a save or a row naming an item that no
+    // longer exists must resolve to prose and nothing else, the same defensive
+    // shape `CREW_BY_ID[…]?.benefit` and `RecoveryAbandoned{'unknown-outcome'}`
+    // keep for every other stored content id.
     const state = baseState();
-    const res = resolveRow(
-      state,
-      row('t-item', { kind: 'unique-item', itemId: 'explore-module-x' }),
-    );
+    const res = resolveRow(state, row('t-item', { kind: 'unique-item', itemId: 'item-retired' }));
     expect(res.events.map((e) => e.type)).toEqual(['WireEntry']);
-    // Whole-state comparison: the seam must not invent a stand-in grant.
+    // Whole-state comparison: the miss must not invent a stand-in grant.
     expect(res.state).toEqual(cloneState(state));
   });
 

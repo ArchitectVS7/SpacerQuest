@@ -348,7 +348,99 @@ round-trip test, and `deserializeState` performing the same backfill pinned by a
 recovery time scales with outcome value by a content-driven rule, not a per-row constant;
 gate green.
 
-### T-112 · The unique-item effect surface — `status: TODO` · `coder: opus` · `after: T-111`
+### T-112 · The unique-item effect surface — `status: DONE` · `coder: opus` · `after: T-111`
+
+**Delivered (2026-07-30):** Both effect classes ship as a framework, and the promise
+`EQUIPMENT_DICE_BENEFITS` has carried since T-1601c is now cashed. **Class B** is exactly
+F-100-1's recommended shape: a second content table the shipyard never reads
+(`EXPLORE_MODULE_DICE_BENEFITS`, three modules spanning floor/reroll/extra-die), folded in by
+a **second loop inside `equipmentDiceBenefits`** — no new accumulator, no new call site,
+`dawnDiceModifiers` and `rollDawnHand` untouched, so the modules reach the dealt hand, the
+re-roll floor and the HandDock badges for free. **Class A** is one engine resolver
+(`applyUniqueItem`) over a declared `ShipElementDelta` list, switching only on engine-owned
+kinds. `check()` is byte-identical (`grep -n "export function check" packages/engine/src/dice.ts`
+→ `check(die, statValue, dc)`; the whole `dice.ts` diff is `equipmentDiceBenefits` plus
+comments), and **no branch anywhere in the engine is keyed on an item id** — the Class-B grant
+is a list append and the Class-A grant a `delta.element` switch
+(`grep -rn "'item-\|'module-" packages/engine/src` outside tests hits only one prose comment).
+The acceptance dice tests drive the **real `startDay`**: a granted berth-couch deals 6 dice,
+an ephemeris banks a re-roll, a tally-slate floors every die at 3, and a Second **plus** the
+berth-couch deals exactly `MAX_DAWN_HAND_SIZE` — the cap still binds with an item equipped,
+in the engine and (via `dawnHandModifiers`) in the cockpit. The cockpit is not silent about
+it: a `SALVAGED FITTINGS` block in the ship pane (`data-testid="explore-modules"`) names each
+fitted module and its benefit off the same content table the engine reads, and
+`explorationOutcome` names the item on the day it is recovered — both asserted in
+`packages/ui/src/__tests__/format-modules.test.ts`. No `unique-item` outcome ROWS are
+authored here; T-113/T-114/T-115 own those, and the Class-A resolver is proved with
+test-local rows through the exported resolver rather than by shipping speculative content.
+
+**Findings:**
+
+- **F-112-A · fitted modules are a LIST on `ShipState`, not three booleans.** F-100-1
+  sketched "three optional booleans mirroring the existing seven". Three booleans force *two*
+  id-keyed switches — one to read, one to **write** the grant — and the write-side switch is
+  literally "an effect applied by a branch keyed on a specific item id", which this task's
+  acceptance forbids. `exploreModules?: readonly ExploreModuleContentId[]` removes the write
+  branch entirely (membership, not a case) and removes F-100-1's whole per-instance engine
+  cost (a union member, a flag, a `hasSpecialEquipment` case, a schema field, a backfill) —
+  which was the friction that capped Class B at three. **The three-module bound is unchanged**;
+  it now rests on §4.2's design argument (the `MAX_EXTRA_DICE` clamp, the three-kind
+  vocabulary) and on a content test, rather than on how tedious a fourth would be to add.
+- **F-112-B · `maxFuel` is DERIVED, so §4.1's `{ maxFuel: +40 }` needed a term, not a write.**
+  `syncMaxFuel` recomputes `maxFuel` from the hull at the end of *every* `applyPlayerAction`
+  and again on load, so a delta written onto `ship.maxFuel` would be erased inside the same
+  action. It is implemented as a stored `bonusMaxFuel` added **inside** that one chokepoint,
+  so there is still exactly one place `maxFuel` is decided. A dead hull (base 0) still holds
+  nothing. NPC hulls never set the field, so `npc.ts` is byte-identical. Both the direct
+  `syncMaxFuel` call and a real `applyPlayerAction` are asserted.
+- **F-112-C · §5.2's `Class-A ceiling` / `Class-B permitted` band columns are DEFERRED to
+  T-114, deliberately.** T-112 authored no `unique-item` rows, so those columns would have had
+  zero consumers and nothing to validate — a field added to raise a coverage signal rather
+  than a rule. The `ExploreValueBand` doc-comment previously attributed them to T-112 and is
+  re-targeted to T-114, where the validator has rows to check.
+- **T-110's F-110-D is CLOSED** — the `// T-112 SEAM` comment is gone and the arm grants real
+  items. Its whole-state no-op test survives, retargeted to the content-drift half (an
+  *unknown* item id must still resolve to prose and mutate nothing), so the changed test reads
+  as the deliverable rather than a regression.
+- **No save bump, and it is pinned.** Both new fields are optional and absent-means-none/zero
+  (the `NpcState.dead?` precedent), so `CURRENT_SAVE_VERSION` **stays 13** — asserted in
+  `save.test.ts`. `starterShip` gains no default and `deserializeState` gains no backfill:
+  doing *neither* keeps `serializeState` byte-identical for every module-free career, which is
+  why **the four `day-loop-golden.ts` hashes, both `replay-golden.ts` pins and
+  `campaign-degraded`'s `PINNED_FINGERPRINTS` are all UNMOVED by this task** (`git status`
+  confirms none of those files is touched). `docs/balance/smoke/tiers.json` was re-extracted,
+  not capstoned (the F-110-C remedy): its diff is fingerprints + `gitCommit` only and **every
+  recorded checkpoint number is identical** — the evidence of inertness. T-116 still owns the
+  milestone's single sweep.
+- **F-112-D · the e2e suite was RED ON `main` before this task touched it, and is repaired
+  here (fix round 1).** T-112 is the first task since 2026-07-28 whose gate required
+  `test:e2e` (it touches the cockpit), and it failed 7 of 95 specs. All seven reproduce on
+  `main@74403ab4` with this branch stashed — none is T-112 fallout. Two upstream causes, both
+  "the rule moved and the e2e fixtures were never re-derived": **(1) T-1605 "an ordinary jump
+  always arrives"** deleted the travel PILOT check, so `starmap.spec.ts`'s honest-check
+  assertion had been measuring a mechanic that no longer exists (rewritten to the inverse
+  claim — no roll happened, so the cockpit must render no check — the same "rewrite to the new
+  contract, never delete" the T-1605 commit applied to its engine and sim tests but missed
+  here), and seed 8's fuel-drain bounce now draws an interception (re-swept offline, seed 9).
+  **(2) The N-series parity merge** re-cut interceptor stat blocks and NPC movement:
+  `combat.spec.ts`'s miracle-burn fixture could no longer reach `interceptor-escaped` (seed 2's
+  tier-1 now carries PILOT 0 — re-derived by sweeping seeds 1..400, seed 16), and
+  `tour-one-death.spec.ts` pinned the casting rather than the claim (the two `'Lucky Seven'`
+  literals now resolve through the shipped cast, so a re-cast is not a regression). A third,
+  independent hole: **`support/career.ts` could not finish an encounter that was still open at
+  dawn** — standing down IS the dusk but does not end the interdiction, so every later click
+  landed on the overlay backdrop and the Tour One driver stalled to its timeout; `playDay`
+  gained a step 1b that fights it through, adding no click on any day that does not open
+  mid-fight, and **seed 21's pin survived unmoved on both branches**. `wire.spec.ts` read its
+  headline at rest from a VIRTUALIZED log that now files ~58 lines per dusk; it scrolls to it,
+  as a player does. No assertion was lowered, no test deleted, no seed re-anchored to dodge an
+  outcome. Suite: **95/95 in 22s** (the 15.4m runtime was three 300s timeouts × retries).
+- **Home note:** §6's proposed-symbol table pencilled the three module symbols into
+  `exploration.ts`; they ship in `crew.ts` beside `EQUIPMENT_DICE_BENEFITS` and the shared
+  `DiceBenefit` vocabulary, so the dice axis reads in one file. The spec's table is corrected
+  in place. Nothing else about F-100-1's shape changed.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked with `ls`; absent), so I oriented by reading `docs/EXPLORE_REDESIGN.md` §4/§5.2/§6 (F-100-1)/§8 an · attempts=2/4.
 
 Build the two effect classes the brief names. **+x to a ship element** has a home in
 `ShipState` / `SPECIAL_EQUIPMENT`. **The die effect is ruling 2 and is deliberately NOT a new

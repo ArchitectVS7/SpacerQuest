@@ -1,5 +1,6 @@
 import {
   AnonymousInterceptorKind,
+  ExploreModuleContentId,
   FactionId,
   PoiType,
   PowerTier,
@@ -524,6 +525,27 @@ export type GameEvent =
        *  carrying choice is surfaced as the `derelict.sealed-pod` storylet. */
       type: 'ContrabandFound';
       day: number;
+      poiId: string;
+      systemId: number;
+    }
+  | {
+      /**
+       * T-112 · A `unique-item` outcome GRANTED its item (docs/EXPLORE_REDESIGN.md
+       * §4). Emitted by `exploreOutcomes.ts` `applyUniqueItem` AFTER the effect has
+       * been applied, so the wire reads effect-then-record in the order it
+       * happened. Carries the ITEM id only — never the realized effect, which is
+       * looked up from content by every reader (the same discipline `crew` and
+       * `RecoveryState` keep). Reaches the player through `ui/format.ts`
+       * `explorationOutcome`, which resolves the id to its content NAME and
+       * invents no effect of its own.
+       *
+       * Emitted on BOTH grant paths for free: the same-day resolve and T-111's
+       * deferred dusk payout both run through `resolveExploreOutcome`, so a
+       * band-3/4 item grants at the dusk of `dueDay` with no second code path.
+       */
+      type: 'UniqueItemAcquired';
+      day: number;
+      itemId: string;
       poiId: string;
       systemId: number;
     }
@@ -1331,6 +1353,53 @@ export interface ShipState {
   hasArchAngel?: boolean;
   isAstraxialHull?: boolean;
   hasTitaniumHull?: boolean;
+  /**
+   * T-112 · THE EXPLORE-GRANTED MODULES FITTED TO THIS HULL (Class B,
+   * docs/EXPLORE_REDESIGN.md §4.2). Content ids from `EXPLORE_MODULES`
+   * (`content/crew.ts`). ABSENT ⇒ none fitted.
+   *
+   * NOT SHIPYARD EQUIPMENT. These are recovered off a derelict, never bought, so
+   * they deliberately do not join the seven `has…` booleans above — those mirror
+   * `SpecialEquipmentId`, which is the YARD's purchasable union.
+   *
+   * FINDING F-112-A · A LIST, NOT THREE BOOLEANS. §6's F-100-1 sketched "three
+   * optional booleans mirroring the existing seven". Three booleans would force
+   * TWO id-keyed switches in the engine — one to READ (`hasExploreModule`) and one
+   * to WRITE the grant — and the write-side switch is literally "an effect applied
+   * by a branch keyed on a specific item id", which this task's acceptance
+   * forbids. A list removes the write branch entirely (membership, not a case) and
+   * removes F-100-1's per-instance engine cost (a union member, a flag, a switch
+   * case, a schema field, a backfill) — which was the friction that capped Class B
+   * at three. The three-module bound is UNCHANGED; it now rests on §4.2's design
+   * argument (the `MAX_EXTRA_DICE` clamp and the three-kind vocabulary) and on a
+   * content test, rather than on how tedious a fourth would be to add.
+   *
+   * A PURE ADDITION TO THE SAVE SHAPE — the `NpcState.dead?` precedent. Optional
+   * and absent-means-none, so no migration and no version bump are owed, and a
+   * module-free career serializes byte-identically to before T-112.
+   *
+   * WRITTEN BY: `components.ts` `fitExploreModule` (the ONLY writer, called from
+   * `exploreOutcomes.ts` `applyUniqueItem`).
+   * READ BY: `components.ts` `hasExploreModule`, and through it `dice.ts`
+   * `equipmentDiceBenefits` (the dawn-hand module leg) and `ui/format.ts`
+   * `fittedModuleRows` (the ship pane's salvaged-fittings readout).
+   */
+  exploreModules?: readonly ExploreModuleContentId[];
+  /**
+   * T-112 · PERMANENT TANK CAPACITY granted by Class-A explore items. ABSENT ⇒ 0.
+   *
+   * FINDING F-112-B · `maxFuel` IS DERIVED, NOT STORED. `economy.ts` `syncMaxFuel`
+   * recomputes it from the hull at the end of EVERY `applyPlayerAction` and again
+   * on load, so a `{ element: 'maxFuel', amount: +40 }` delta written straight
+   * onto `ship.maxFuel` would be silently erased within the same action. §4.1 and
+   * §5.2's band ceilings both name maxFuel deltas, so this had to be solved rather
+   * than dropped. This field is the ONE additive term, and it is applied INSIDE
+   * `syncMaxFuel` — so there is still exactly one place `maxFuel` is decided.
+   *
+   * NPC hulls never carry one (`npc.ts` never sets it), so `undefined → 0` leaves
+   * every NPC tank byte-identical.
+   */
+  bonusMaxFuel?: number;
 }
 
 /** A point of interest the spacer has charted off the lane (T-111a). Part of

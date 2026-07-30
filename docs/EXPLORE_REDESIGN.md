@@ -75,9 +75,18 @@ this document's code blocks (`storyletId`, `delayDays`, `fragmentId`, `profileId
 | `RecoveryStateSchema` | `packages/engine/src/schema.ts` | T-111 | §3d |
 | `RecoveryStarted` / `RecoveryPaidOut` / `RecoveryAbandoned` | `GameState` event union | T-111 | §3e |
 | `ExplorationFailed{reason:'recovery-in-progress'}` | `packages/engine/src/types.ts` | T-111 | §3c(c) |
-| `EXPLORE_MODULES` | `packages/content/src/exploration.ts` | T-112 | §4, §6 |
-| `EXPLORE_MODULE_DICE_BENEFITS` | `packages/content/src/exploration.ts` | T-112 | §4, §6 |
-| `ExploreModuleContentId` | `packages/content/src/exploration.ts` | T-112 | §6 |
+| `EXPLORE_MODULES` | `packages/content/src/crew.ts` (shipped) | T-112 | §4, §6 |
+| `EXPLORE_MODULE_DICE_BENEFITS` | `packages/content/src/crew.ts` (shipped) | T-112 | §4, §6 |
+| `ExploreModuleContentId` | `packages/content/src/crew.ts` (shipped) | T-112 | §6 |
+| `EXPLORE_ITEMS` / `EXPLORE_ITEM_BY_ID` / `ExploreItemDefinition` | `packages/content/src/exploration.ts` | T-112 | §4 |
+| `applyUniqueItem` | `packages/engine/src/exploreOutcomes.ts` | T-112 | §4 |
+| `ShipState.exploreModules` / `ShipState.bonusMaxFuel` | `packages/engine/src/types.ts` | T-112 | §4 (F-112-A/B) |
+
+> The three module symbols were pencilled into `exploration.ts` above and SHIPPED in
+> `crew.ts` instead, beside `EQUIPMENT_DICE_BENEFITS` and the `DiceBenefit` vocabulary both
+> tables are keyed on — so the whole dice axis reads in one file and `exploration.ts` imports
+> the dice types rather than exporting them. Nothing else about F-100-1's recommended shape
+> changed.
 
 ---
 

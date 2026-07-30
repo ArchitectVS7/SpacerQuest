@@ -63,16 +63,40 @@ test('a flaw-override headline from dusk appears next dawn', async ({ page }) =>
   // Fresh careers start on day 1, so each closed day advances the counter by one.
   await expect(page.getByTestId('day')).toHaveText(String(1 + daysToAdvance));
 
-  // Open the browsable log and find the exact dusk headline, tagged as a flaw
-  // override (classified in format.ts from the authored FLAWS details).
+  // Open the browsable log. It is filed under the day whose dusk produced it —
+  // that day's marker heads the list, so it is in the window at rest.
   await page.getByTestId('wire-log-toggle').click();
+  await expect(page.locator(`[data-testid="wire-day"][data-day="${duskDay}"]`)).toBeVisible();
+
+  // T-112 (fix round 1) · SCROLL TO IT, the way a player does.
+  //
+  // The log is VIRTUALIZED (the sibling test below is the assertion that says so):
+  // only a ~360px window of 24px rows is ever in the DOM. This assertion used to
+  // read the headline at rest because a single dusk filed few enough lines to fit
+  // in that first window. The N-series parity pass gave the roster its own verbs,
+  // so one dusk now files ~58 entries and the flaw override sits well below the
+  // fold — present, browsable, and simply not yet rendered. Waiting on it without
+  // scrolling asserts "the window is big enough", which is the opposite of what
+  // the log promises.
+  const view = page.locator('[data-testid="wire-log"] .wire-log-view');
   const entry = page.locator('[data-testid="wire-entry"][data-wire-kind="flaw-override"]', {
     hasText: headline,
   });
+  let found = false;
+  for (let step = 0; step < 100 && !found; step += 1) {
+    if ((await entry.count()) > 0) {
+      found = true;
+      break;
+    }
+    const stuck = await view.evaluate((el) => {
+      const before = el.scrollTop;
+      el.scrollTop = before + el.clientHeight / 2;
+      return el.scrollTop === before;
+    });
+    if (stuck) break;
+  }
+  expect(found, `the day-${duskDay} log must carry the dusk headline: ${headline}`).toBe(true);
   await expect(entry).toBeVisible();
-
-  // …and it is filed under the day whose dusk produced it.
-  await expect(page.locator(`[data-testid="wire-day"][data-day="${duskDay}"]`)).toBeVisible();
 });
 
 test('log paginates 100+ days without rendering every row (virtualized)', async ({ page }) => {

@@ -9,6 +9,7 @@ import {
   type GameEvent,
   type GameState,
 } from '@spacerquest/engine';
+import { ALL_NPC_PROFILES } from '@spacerquest/content';
 
 // ---------------------------------------------------------------------------
 // T-1602b · DEATH AND LEGACY, THROUGH THE REAL COCKPIT.
@@ -97,6 +98,16 @@ import {
 //           assertion below was touched, and no seed was re-anchored — a re-pin
 //           was prepared for and turned out not to be needed.
 //
+// T-112 RE-CAST (2026-07-30, fix round 1): the N-series NPC parity pass (merge
+// 74403ab4) gave the roster its own movement, so the hunter working seed 192's rim
+// lane on day 12 is no longer Lucky Seven. THE PIN ITSELF SURVIVED UNMOVED — seed
+// 192 is still intercepted on the same Arcturus-6 run and still loses the ship
+// inside the round loop, to a NAMED hunter off the same authored cast. Only the
+// casting moved, so the two literals that named it (`'Lucky Seven'` /
+// `'npc-lucky-seven'`) were replaced by the PROPERTY they stood for: the killer is
+// a named NPC, and the notice resolves its real content id. No seed was
+// re-anchored and no assertion was patched down — the outcome is unchanged.
+//
 // THE PIN DEPENDS ON THE ACTION ORDER BYTE FOR BYTE. Adding, removing or
 // reordering any rng-perturbing click (sign · buy fuel · confirm jump · a combat
 // stance · end day) invalidates it. Re-hunt the seed; do NOT patch an assertion
@@ -111,6 +122,12 @@ import {
 
 const DEATH_SEED = 192;
 const LIFE_SUPPORT_SEED = 3;
+
+/** Every NAMED hunter the game can cast, name → content id, read off the shipped
+ *  roster. Used to assert that the ship was taken by an authored NPC (never an
+ *  anonymous raider) and that the succession notice resolves that NPC's real id —
+ *  the claim the old `'Lucky Seven'` literal was standing in for. */
+const NAMED_NPC_IDS = new Map(ALL_NPC_PROFILES.map((npc) => [npc.name, npc.id]));
 
 /** Antares-5 — a rim port; every lane out of it is danger tier 4. */
 const ORIGIN_SYSTEM = 15;
@@ -406,7 +423,16 @@ test(
     const overlay = page.getByTestId('combat-overlay');
     await expect(overlay).toBeVisible();
     const enemyName = ((await page.getByTestId('combat-enemy-name').textContent()) ?? '').trim();
-    expect(enemyName).toBe('Lucky Seven');
+    // T-112 (fix round 1) · THE CLAIM, NOT THE CASTING. This read used to pin the
+    // literal 'Lucky Seven'. What the pin is FOR is that a NAMED hunter — not an
+    // anonymous raider — takes the ship, so the succession notice below has an
+    // authored name to resolve an engine id to. The N-series parity pass re-cut NPC
+    // movement, so seed 192's rim lane is now worked by a different name off the
+    // SAME authored roster; pinning the casting made a re-cast read as a regression.
+    // Assert the property instead, against the shipped cast itself.
+    expect(NAMED_NPC_IDS.has(enemyName), `${enemyName} must be a NAMED hunter off the cast`).toBe(
+      true,
+    );
 
     const notice = page.getByTestId('succession-notice');
     for (let round = 0; round < 5; round += 1) {
@@ -431,9 +457,11 @@ test(
     // The engine event carries an interceptor ID; the notice names the ship that
     // did it — the same name the overlay showed a moment ago.
     await expect(page.getByTestId('succession-lost-to')).toHaveText(enemyName);
+    // …and the id it carries is that named hunter's own content id, resolved from
+    // the shipped cast rather than restated here (see the enemy-name note above).
     await expect(page.getByTestId('succession-lost-to')).toHaveAttribute(
       'data-lost-to',
-      'npc-lucky-seven',
+      NAMED_NPC_IDS.get(enemyName)!,
     );
     expect(await readCreditText(page, 'succession-inherited-credits')).toBe(
       Math.floor(creditsBefore / 2),

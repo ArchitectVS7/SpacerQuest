@@ -173,10 +173,12 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
   // byte-identical to before (only the added `rerollsRemaining: 0` key on the hand
   // moves the serialized-state golden hashes; the DawnRoll event is unchanged).
   // T-1601c: the aggregation also takes the EQUIPMENT leg — the dice benefits of
-  // the modules fitted to this ship (`equipmentDiceBenefits`, off the content table
-  // `EQUIPMENT_DICE_BENEFITS`). That table ships EMPTY (no die-granting module
-  // exists yet), so the leg contributes `[]` on every ship and the draw here stays
-  // byte-identical; a future module becomes live at this call site with no change.
+  // the modules fitted to this ship (`equipmentDiceBenefits`). T-112 made that leg
+  // LIVE without touching this call: the yard's `EQUIPMENT_DICE_BENEFITS` still
+  // ships empty, but the sibling `EXPLORE_MODULE_DICE_BENEFITS` now carries the
+  // three explore-granted modules, folded in by a second loop inside the same pure
+  // function. A ship with no fitted module still contributes `[]`, so the draw is
+  // byte-identical for every career that has not recovered one.
   const modifiers = dawnDiceModifiers(
     nextState.player.crew,
     equipmentDiceBenefits(nextState.player.ship),

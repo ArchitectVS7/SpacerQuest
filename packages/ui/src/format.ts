@@ -23,6 +23,9 @@ import {
   LENDER_ID,
   CREW_ROLES,
   CREW_BY_ID,
+  EXPLORE_MODULES,
+  EXPLORE_MODULE_DICE_BENEFITS,
+  EXPLORE_ITEM_BY_ID,
   PURCHASABLE_PORTS_BY_SYSTEM,
   isPurchasablePort,
   FACTION_IDS,
@@ -39,6 +42,8 @@ import {
   type FactionId,
   type StoryletTrigger,
   type CrewRole,
+  type DiceBenefit,
+  type ExploreModuleContentId,
 } from '@spacerquest/content';
 import {
   maxJumpDistance,
@@ -71,6 +76,7 @@ import {
   hangoutRumors,
   dawnDiceModifiers,
   equipmentDiceBenefits,
+  hasExploreModule,
   quotePort,
   crewCapacity,
   isCarryingContraband,
@@ -276,6 +282,13 @@ export function explorationOutcome(events: GameEvent[]): string | null {
     (e): e is Extract<GameEvent, { type: 'RecoveryStarted' }> => e.type === 'RecoveryStarted',
   );
   if (started) parts.push(`a salvage op under way — holds station to day ${started.dueDay}`);
+  // T-112: the moment of acquisition. NAME LOOKUP ONLY — the effect is the ship
+  // pane's and the HandDock's job; inventing one here would be a second, drifting
+  // account of a rule the engine already applied.
+  for (const e of events) {
+    if (e.type !== 'UniqueItemAcquired') continue;
+    parts.push(`${EXPLORE_ITEM_BY_ID[e.itemId]?.name ?? 'an unlogged fitting'} recovered`);
+  }
   return `${parts.join(' · ')}.`;
 }
 
@@ -374,9 +387,12 @@ export function lendingTerms(): LendingTerms {
  *  deal the hand) merged with the LIVE remaining reroll charges off the dealt
  *  hand. T-1601c: it also passes the SAME equipment leg (`equipmentDiceBenefits`
  *  off the ship's fitted modules) that `startDay` does, so the badges a player
- *  reads can never disagree with the hand the engine dealt. That content table
- *  ships empty, so today's badges are unchanged. A pure read. READER: the HandDock
- *  floor badge + reroll count + per-die reroll affordance. */
+ *  reads can never disagree with the hand the engine dealt. T-112: THIS FUNCTION
+ *  NEEDED NO CHANGE for the explore modules to surface — `equipmentDiceBenefits`
+ *  grew the module leg internally, so a fitted module's floor/reroll/extra-die
+ *  badge appears the moment the item is granted. The YARD's table still ships
+ *  empty; the module table does not. A pure read. READER: the HandDock floor badge
+ *  + reroll count + per-die reroll affordance. */
 export interface DawnHandModifiers {
   handSize: number;
   floor: number;
@@ -394,18 +410,62 @@ export function dawnHandModifiers(game: GameState): DawnHandModifiers {
   };
 }
 
-/** The one-word benefit label for a crew role, read straight off its content
- *  `benefit` discriminant — never a UI-invented effect. */
-export function crewBenefitLabel(role: CrewRole): string {
-  const b = role.benefit;
-  switch (b.kind) {
+/** The one-word label for ANY `DiceBenefit`, read straight off its content
+ *  discriminant — never a UI-invented effect. T-112 extracted this from
+ *  `crewBenefitLabel` unchanged (same three strings) because crew and
+ *  explore-granted modules share one benefit vocabulary and must therefore read
+ *  the same in the cockpit. READERS: `crewBenefitLabel` (the crew pane) and
+ *  `fittedModuleRows` (the ship pane's salvaged fittings). */
+export function diceBenefitLabel(benefit: DiceBenefit): string {
+  switch (benefit.kind) {
     case 'extra-die':
       return '+1 die';
     case 'reroll':
       return 'one re-roll/day';
     case 'floor':
-      return `floor ${b.floor}`;
+      return `floor ${benefit.floor}`;
   }
+}
+
+/** The one-word benefit label for a crew role, read straight off its content
+ *  `benefit` discriminant — never a UI-invented effect. */
+export function crewBenefitLabel(role: CrewRole): string {
+  return diceBenefitLabel(role.benefit);
+}
+
+/** One explore-granted module currently fitted to the ship — its content name and
+ *  the label for the dice benefit it grants. */
+export interface FittedModuleRow {
+  id: string;
+  name: string;
+  benefitLabel: string;
+}
+
+/**
+ * T-112 · THE SALVAGED-FITTINGS READOUT (docs/EXPLORE_REDESIGN.md §4.4). Class B
+ * must not be a silent buff: an item whose only evidence is a bigger hand is a
+ * mystery, not a reward.
+ *
+ * Reads the ENGINE's own predicate (`hasExploreModule`) against the SAME content
+ * table `equipmentDiceBenefits` folds into the dawn hand
+ * (`EXPLORE_MODULE_DICE_BENEFITS`), so this pane and the dealt hand cannot
+ * disagree — the same discipline `dawnHandModifiers` keeps by calling the
+ * aggregator `startDay` uses rather than re-deriving it. A pure read; the UI
+ * invents no effect and no name.
+ *
+ * Iterates the CONTENT table, not the ship, so the rows come out in the shipped
+ * order regardless of the order the player recovered them.
+ */
+export function fittedModuleRows(game: GameState): FittedModuleRow[] {
+  const rows: FittedModuleRow[] = [];
+  for (const module of EXPLORE_MODULES) {
+    const id = module.id as ExploreModuleContentId;
+    if (!hasExploreModule(game.player.ship, id)) continue;
+    const benefit = EXPLORE_MODULE_DICE_BENEFITS[id];
+    if (!benefit) continue;
+    rows.push({ id: module.id, name: module.name, benefitLabel: diceBenefitLabel(benefit) });
+  }
+  return rows;
 }
 
 /** One hired crew member — its content role definition + the day it came aboard. */

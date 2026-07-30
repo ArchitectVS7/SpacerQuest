@@ -2,11 +2,13 @@ import {
   CREW_BY_ID,
   DAWN_BASE_HAND_SIZE,
   EQUIPMENT_DICE_BENEFITS,
+  EXPLORE_MODULE_DICE_BENEFITS,
   MAX_DAWN_HAND_SIZE,
   MAX_EXTRA_DICE,
   type DiceBenefit,
+  type ExploreModuleContentId,
 } from '@spacerquest/content';
-import { hasSpecialEquipment } from './components.js';
+import { hasExploreModule, hasSpecialEquipment } from './components.js';
 import { SeededRng } from './rng.js';
 import { CrewMember, DawnHand, CheckResult, ShipState, SpecialEquipmentId } from './types.js';
 
@@ -32,31 +34,52 @@ export interface DawnDiceModifiers {
  * (`components.ts` `hasSpecialEquipment` — the same predicate the shipyard's
  * ALREADY_INSTALLED guard uses, so purchase and benefit can never disagree).
  *
- * `table` defaults to the content table `EQUIPMENT_DICE_BENEFITS`, which SHIPS
- * EMPTY: no gameplay module grants dice today, so this returns `[]` for every ship
- * and `dawnDiceModifiers(crew, equipmentDiceBenefits(ship))` is byte-identical to
- * `dawnDiceModifiers(crew)`. The parameter exists purely so the hook is PROVABLE
- * without shipping a gameplay module — plain dependency injection, no mocks. A
- * future die-granting module is one entry in the content table; nothing here or at
- * any call site changes.
+ * T-112 · THE PROMISE IS NOW KEPT, THROUGH A SECOND LOOP. This function's old
+ * header promised that "a future die-granting module joins with one entry, no
+ * engine change, no new call site". T-112 is that entry — three of them, in the
+ * SIBLING content table `EXPLORE_MODULE_DICE_BENEFITS`, read by the second loop
+ * below against `hasExploreModule` and appended into the SAME `granted` array.
+ * What did NOT change is the load-bearing part: `dawnDiceModifiers` is untouched,
+ * `check()` is untouched, there is no new accumulator, and all three call sites
+ * still call `equipmentDiceBenefits(ship)` exactly as they did — so the modules
+ * reach the dealt hand, the re-roll floor and the UI badges for free.
  *
- * Iterates the TABLE (not the ship), so the shipped-empty case costs zero
- * iterations. PURE — a total function of ship state and content data (no rng, no
- * I/O). Nothing is stored on the save: the grant is derived from the fitted flags
- * already on `ShipState`, so this needs no `GameState` field and no migration.
+ * TWO TABLES, DELIBERATELY (docs/EXPLORE_REDESIGN.md §6, finding F-100-1).
+ * `table` is keyed by the SHIPYARD's purchasable id union and STILL SHIPS EMPTY —
+ * `dawnDiceModifiers(crew, equipmentDiceBenefits(bareShip))` remains byte-identical
+ * to `dawnDiceModifiers(crew)` for a ship with no explore modules. `moduleTable` is
+ * keyed by explore-module ids the yard never sells, because a unique find
+ * recovered off a derelict must not appear on every yard's shelf.
  *
- * READER of `ShipState`'s special-equipment flags. CONSUMED BY:
- * {@link dawnDiceModifiers} at all three of its call sites — day.ts `startDay`,
- * actions/crew.ts `resolveReroll`, and the UI's `format.ts` `dawnHandModifiers`.
+ * Both parameters are injectable so each leg is PROVABLE without shipping a
+ * gameplay module — plain dependency injection, no mocks.
+ *
+ * Iterates the TABLES (not the ship), so each leg costs its table's size and the
+ * empty yard table costs zero iterations. PURE — a total function of ship state
+ * and content data (no rng, no I/O). No benefit is stored on the save: the yard
+ * leg derives from the fitted flags and the module leg from the fitted-id list,
+ * both already on `ShipState`.
+ *
+ * READER of `ShipState`'s special-equipment flags and of `ShipState.exploreModules`.
+ * CONSUMED BY: {@link dawnDiceModifiers} at all three of its call sites — day.ts
+ * `startDay`, actions/crew.ts `resolveReroll`, and the UI's `format.ts`
+ * `dawnHandModifiers`.
  */
 export function equipmentDiceBenefits(
   ship: ShipState,
   table: Readonly<Partial<Record<SpecialEquipmentId, DiceBenefit>>> = EQUIPMENT_DICE_BENEFITS,
+  moduleTable: Readonly<
+    Partial<Record<ExploreModuleContentId, DiceBenefit>>
+  > = EXPLORE_MODULE_DICE_BENEFITS,
 ): readonly DiceBenefit[] {
   const granted: DiceBenefit[] = [];
   for (const [id, benefit] of Object.entries(table)) {
     if (!benefit) continue;
     if (hasSpecialEquipment(ship, id as SpecialEquipmentId)) granted.push(benefit);
+  }
+  for (const [id, benefit] of Object.entries(moduleTable)) {
+    if (!benefit) continue;
+    if (hasExploreModule(ship, id as ExploreModuleContentId)) granted.push(benefit);
   }
   return granted;
 }

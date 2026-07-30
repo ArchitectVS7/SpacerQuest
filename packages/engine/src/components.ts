@@ -1,3 +1,4 @@
+import type { ExploreModuleContentId } from '@spacerquest/content';
 import {
   ARCH_ANGEL_MITIGATION_FLOOR,
   AUTO_REPAIR_REGEN,
@@ -69,6 +70,43 @@ export function hasSpecialEquipment(ship: ShipState, equipment: SpecialEquipment
     default:
       return false;
   }
+}
+
+/**
+ * T-112 · Is an EXPLORE-GRANTED module fitted to this ship? The sibling of
+ * {@link hasSpecialEquipment}, and the one honest "is this module fitted"
+ * mapping for Class B (docs/EXPLORE_REDESIGN.md §4.2).
+ *
+ * DELIBERATELY NOT A SWITCH. `ShipState.exploreModules` is a LIST of content ids,
+ * so this is a membership test — which means the read side and the grant side
+ * ({@link fitExploreModule}) cannot disagree about what "fitted" means, because
+ * neither of them enumerates the ids at all. See F-112-A on `ShipState` for why a
+ * list rather than F-100-1's three booleans.
+ *
+ * PURE — a total function of ship state (no rng, no I/O).
+ *
+ * READERS: `dice.ts` `equipmentDiceBenefits` (the module leg of the dawn-hand
+ * aggregation) and `ui/format.ts` `fittedModuleRows` (the ship pane).
+ */
+export function hasExploreModule(ship: ShipState, moduleId: ExploreModuleContentId): boolean {
+  return ship.exploreModules?.includes(moduleId) === true;
+}
+
+/**
+ * T-112 · Fit an explore-granted module. THE ONLY WRITER of
+ * `ShipState.exploreModules`, and idempotent: returns `false` and mutates nothing
+ * when the module is already aboard, so resolving the same find twice (a repeated
+ * row, a replayed event) can never double-count a benefit.
+ *
+ * The array is REPLACED rather than pushed into, because the field is declared
+ * `readonly ExploreModuleContentId[]` — the immutability is real, not a comment.
+ *
+ * CALLER: `exploreOutcomes.ts` `applyUniqueItem`, the Class-B arm.
+ */
+export function fitExploreModule(ship: ShipState, moduleId: ExploreModuleContentId): boolean {
+  if (hasExploreModule(ship, moduleId)) return false;
+  ship.exploreModules = [...(ship.exploreModules ?? []), moduleId];
+  return true;
 }
 
 /**

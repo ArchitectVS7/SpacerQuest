@@ -234,6 +234,13 @@ export function deserializeState(json: string): GameState {
   parsed.player.ship.hasArchAngel ??= false;
   parsed.player.ship.isAstraxialHull ??= false;
   parsed.player.ship.hasTitaniumHull ??= false;
+  // T-112 · `exploreModules` and `bonusMaxFuel` are DELIBERATELY NOT BACKFILLED
+  // here. Both are optional and absent-means-none/zero, and every reader honours
+  // that (`hasExploreModule` is `?.includes(…) === true`, `syncMaxFuel` reads
+  // `?? 0`). Backfilling would also have to seed `starterShip` to match, or
+  // `createInitialState → serialize → deserialize` would stop round-tripping to
+  // deep equality; doing NEITHER keeps `serializeState` byte-identical for every
+  // module-free career, which is what leaves the replay/day-loop goldens unmoved.
   // T-1102 fuel-capacity migration: `maxFuel` is now derived from the hull, not
   // stored. A legacy save carrying the old flat `maxFuel: 10000` recomputes to
   // its hull-derived ceiling (a fresh junker → 300) and clamps current fuel to

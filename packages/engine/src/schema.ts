@@ -266,6 +266,13 @@ const ShipStateSchema = z
     hasArchAngel: z.boolean().optional(),
     isAstraxialHull: z.boolean().optional(),
     hasTitaniumHull: z.boolean().optional(),
+    // T-112 · Both optional and absent-means-none/zero, so an old save loads
+    // clean and no migration is owed (the `NpcState.dead?` precedent). Kept as
+    // `z.string()` rather than a literal enum: the shipped id set is content, and
+    // a save carrying a retired module id must LOAD and be ignored by the
+    // benefit lookup, not fail validation and lose the whole career.
+    exploreModules: z.array(z.string()).optional(),
+    bonusMaxFuel: z.number().optional(),
   })
   .strict();
 
@@ -800,6 +807,13 @@ const GameEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ContrabandFound'),
     day: z.number(),
+    poiId: z.string(),
+    systemId: z.number(),
+  }),
+  z.object({
+    type: z.literal('UniqueItemAcquired'),
+    day: z.number(),
+    itemId: z.string(),
     poiId: z.string(),
     systemId: z.number(),
   }),
@@ -1477,6 +1491,7 @@ const _covEvPoiDiscovered: AssertEventKeys<'PoiDiscovered'> = true;
 const _covEvExplorationFailed: AssertEventKeys<'ExplorationFailed'> = true;
 const _covEvSalvageRecovered: AssertEventKeys<'SalvageRecovered'> = true;
 const _covEvContrabandFound: AssertEventKeys<'ContrabandFound'> = true;
+const _covEvUniqueItemAcquired: AssertEventKeys<'UniqueItemAcquired'> = true;
 const _covEvRecoveryStarted: AssertEventKeys<'RecoveryStarted'> = true;
 const _covEvRecoveryPaidOut: AssertEventKeys<'RecoveryPaidOut'> = true;
 const _covEvRecoveryAbandoned: AssertEventKeys<'RecoveryAbandoned'> = true;
@@ -1566,6 +1581,7 @@ void _covEvPoiDiscovered;
 void _covEvExplorationFailed;
 void _covEvSalvageRecovered;
 void _covEvContrabandFound;
+void _covEvUniqueItemAcquired;
 void _covEvRecoveryStarted;
 void _covEvRecoveryPaidOut;
 void _covEvRecoveryAbandoned;

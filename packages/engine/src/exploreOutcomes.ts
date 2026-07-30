@@ -22,19 +22,41 @@
  */
 
 import {
+  EXPLORE_ITEM_BY_ID,
   EXPLORE_OUTCOMES,
   EXPLORE_VALUE_BANDS,
+  ExploreItemDefinition,
   ExploreOutcomeDefinition,
   ExploreValueBand,
   LEGACY_POI_LOOT,
   POI_DISCOVERY_TABLE,
   POI_KINDS,
   PoiType,
+  ShipElementComponentId,
 } from '@spacerquest/content';
-import { DiscoveredPoi, GameEvent, GameState } from './types.js';
+import { DiscoveredPoi, GameEvent, GameState, ShipComponentId } from './types.js';
 import { SeededRng } from './rng.js';
+import { fitExploreModule } from './components.js';
+import { maxCargoPodsForShip } from './actions/shipyard.js';
 import { fragmentCount, grantFragment } from './nemesis.js';
 import { applyEffects } from './storylets.js';
+
+/**
+ * T-112 · COMPILE-TIME PIN between content's `ShipElementComponentId` (declared in
+ * `exploration.ts`, because content must not import engine types) and the engine's
+ * own `ShipComponentId`. If either union gains, loses or renames a member, this
+ * fails `tsc` — so a Class-A row can never name a component the engine does not
+ * have, and a renamed component can never leave a row silently dead.
+ */
+type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const _shipElementIdsAgree: AssertEqual<ShipComponentId, ShipElementComponentId> = true;
+void _shipElementIdsAgree;
+
+/** The documented `ComponentState.strength` bound — "1-199" on the interface in
+ *  `types.ts`. Written once here so the Class-A clamp cites the type's own range
+ *  rather than inventing a second ceiling. */
+const COMPONENT_STRENGTH_MIN = 1;
+const COMPONENT_STRENGTH_MAX = 199;
 
 /** Row lookup by id — built once; the draw tables address rows by id only. */
 const OUTCOMES_BY_ID: ReadonlyMap<string, ExploreOutcomeDefinition> = new Map(
@@ -106,6 +128,83 @@ export function drawPoiKind(rng: SeededRng): { type: PoiType; name: string } {
     }
   }
   return { type, name: chooseName(rng, POI_KINDS[type].names) };
+}
+
+/**
+ * T-112 · GRANT ONE UNIQUE ITEM — the `unique-item` resolver
+ * (docs/EXPLORE_REDESIGN.md §4). Mutates the player's ship and pushes
+ * `UniqueItemAcquired`.
+ *
+ * NO BRANCH ANYWHERE HERE IS KEYED ON A SPECIFIC ITEM ID. The two switches below
+ * are on `item.class` and `delta.element` — ENGINE-OWNED KINDS, the same
+ * discipline `resolveExploreOutcome` keeps over `payload.kind`. There is no
+ * `itemId === …`, no `case 'item-…'` and no `moduleId === …` in the engine at
+ * all: the Class-B grant is a list append (`fitExploreModule`), and the benefit
+ * that append eventually buys is looked up from content at dawn.
+ *
+ * EXPORTED so the Class-A resolver is provable with test-local rows without
+ * shipping speculative content — the same dependency-injection shape
+ * `equipmentDiceBenefits(ship, table)` uses. `EXPLORE_ITEMS` ships only the three
+ * Class-B modules at T-112; the authored item rows land with T-113/T-114/T-115.
+ *
+ * EVERY DELTA CALLS A RULE RATHER THAN RESTATING ONE: component strength clamps
+ * to the `ComponentState` interface's own documented 1-199 bound, a `maxFuel`
+ * grant accumulates into `bonusMaxFuel` and is realized by `economy.ts`
+ * `syncMaxFuel` (F-112-B — writing `ship.maxFuel` here would be erased at the end
+ * of the action), and a pod grant is capped by the SHIPYARD's own
+ * `maxCargoPodsForShip`, never by a pod ceiling written a second time.
+ *
+ * ONE GRANT PATH, TWO CALLERS, FOR FREE: `resolveExploreOutcome` is reached both
+ * by the same-day resolve and by T-111's deferred dusk payout, so a band-3/4 item
+ * grants at the dusk of `dueDay` with no second code path.
+ */
+export function applyUniqueItem(
+  state: GameState,
+  item: ExploreItemDefinition,
+  poi: DiscoveredPoi,
+  events: GameEvent[],
+): void {
+  const ship = state.player.ship;
+  if (item.class === 'module') {
+    // Idempotent by construction — a repeated grant leaves one entry, so a
+    // benefit can never be double-counted.
+    fitExploreModule(ship, item.moduleId);
+  } else {
+    for (const delta of item.deltas) {
+      switch (delta.element) {
+        case 'component': {
+          const component = ship[delta.component];
+          component.strength = Math.min(
+            COMPONENT_STRENGTH_MAX,
+            Math.max(COMPONENT_STRENGTH_MIN, component.strength + delta.strength),
+          );
+          break;
+        }
+        case 'maxFuel': {
+          // NOT `ship.maxFuel` — see F-112-B. The tank stays derived; this is the
+          // stored additive term `syncMaxFuel` folds in at the end of the action.
+          ship.bonusMaxFuel = (ship.bonusMaxFuel ?? 0) + delta.amount;
+          break;
+        }
+        case 'cargoPods': {
+          ship.cargoPods = Math.min(ship.cargoPods + delta.amount, maxCargoPodsForShip(ship));
+          break;
+        }
+        default: {
+          // Exhaustiveness: a new element class is a compile error here.
+          const unreachable: never = delta;
+          return unreachable;
+        }
+      }
+    }
+  }
+  events.push({
+    type: 'UniqueItemAcquired',
+    day: state.day,
+    itemId: item.id,
+    poiId: poi.id,
+    systemId: poi.systemId,
+  });
 }
 
 /**
@@ -187,13 +286,13 @@ export function resolveExploreOutcome(
     }
 
     case 'unique-item': {
-      // T-112 SEAM · There is no grant surface for an explore module yet: the
-      // ship's special equipment is a fixed set of named `ShipState` booleans
-      // read by `hasSpecialEquipment`, and the three explore modules
-      // (`EXPLORE_MODULES` / `EXPLORE_MODULE_DICE_BENEFITS`, spec §4/§6) do not
-      // exist. T-112 fills this arm; until then the find is prose only — the
-      // wire line below is emitted and NOTHING else is mutated. Inventing a
-      // stand-in grant here would be a rule the framework has not settled.
+      // T-112 · The row names an ITEM; the engine owns what each ELEMENT CLASS
+      // means. The lookup is DEFENSIVE — the `CREW_BY_ID[…]?.benefit` precedent
+      // (dice.ts) for the same class of stored-content-id: a row (or a deferred
+      // recovery) naming an item that no longer exists mutates nothing and still
+      // emits the row's wire line below.
+      const item = EXPLORE_ITEM_BY_ID[payload.itemId];
+      if (item) applyUniqueItem(state, item, poi, events);
       break;
     }
 

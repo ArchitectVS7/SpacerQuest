@@ -25,6 +25,7 @@ import { RENOWN_RANK_ORDER, emptyDeedRegistry, rankForDeedCount } from '../deeds
 import { computePlayerTier } from '../tier.js';
 import { JOB_POOL_BOARD_SIZE, JOB_POOL_MAX_CLAIMS, jobPoolDepth } from '../economy.js';
 import { npcShipForProfile } from '../npc.js';
+import { hasExploreModule } from '../components.js';
 import { DeedRegistryState, GameState, PlayerAction } from '../types.js';
 
 /**
@@ -1327,5 +1328,61 @@ describe('save envelope — v12 → v13 recovery migration (T-111)', () => {
       dueDay: 31,
     };
     expect(deserializeState(serializeState(state)).player.recovery).toEqual(state.player.recovery);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-112 · The unique-item effect surface adds two OPTIONAL ship fields and owes
+// NO migration and NO version bump — the `NpcState.dead?` precedent, restated
+// mechanically here rather than asserted in a comment. Both fields are
+// absent-means-none/zero, every reader honours that, and `starterShip` is left
+// deliberately untouched so a module-free career serializes byte-identically.
+// ---------------------------------------------------------------------------
+describe('save envelope — the explore-module fields round-trip with no migration (T-112)', () => {
+  it('CURRENT_SAVE_VERSION is STILL 13 — a pure addition owes no bump', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(13);
+  });
+
+  it('round-trips a fitted module and a bonus tank through createSave → loadSave', () => {
+    const state = drive50Days(71);
+    state.player.ship.exploreModules = ['module-berth-couch'];
+    state.player.ship.bonusMaxFuel = 40;
+    const loaded = loadSave(createSave(state, 71));
+    expect(loaded.state.player.ship.exploreModules).toEqual(['module-berth-couch']);
+    expect(loaded.state.player.ship.bonusMaxFuel).toBe(40);
+    // The whole state survives — the two new keys perturb nothing else.
+    expect(loaded.state).toEqual(state);
+  });
+
+  it('round-trips them through serializeState → deserializeState too', () => {
+    const state = drive50Days(72);
+    state.player.ship.exploreModules = ['module-tally-slate', 'module-marked-ephemeris'];
+    state.player.ship.bonusMaxFuel = 80;
+    const restored = deserializeState(serializeState(state));
+    expect(restored.player.ship.exploreModules).toEqual([
+      'module-tally-slate',
+      'module-marked-ephemeris',
+    ]);
+    // The derived tank folds the bonus in through the loader's syncMaxFuel call.
+    expect(restored.player.ship.bonusMaxFuel).toBe(80);
+    expect(restored.player.ship.maxFuel).toBe(state.player.ship.maxFuel + 80);
+  });
+
+  it('a save written WITHOUT either field loads clean and reads as none', () => {
+    // Which is every save that exists: no career could have recovered a module
+    // before T-112. No backfill runs, so the keys stay absent — and that is what
+    // "absent means none" has to mean for the goldens to stay put.
+    const state = drive50Days(73);
+    expect(state.player.ship.exploreModules).toBeUndefined();
+    const loaded = loadSave(createSave(state, 73));
+    expect(loaded.state.player.ship.exploreModules).toBeUndefined();
+    expect(loaded.state.player.ship.bonusMaxFuel).toBeUndefined();
+    expect(hasExploreModule(loaded.state.player.ship, 'module-berth-couch')).toBe(false);
+  });
+
+  it('strict schema still rejects an unknown key inside the ship', () => {
+    const state = drive50Days(74);
+    (state.player.ship as unknown as Record<string, unknown>).exploreModulez = ['typo'];
+    expect(() => loadSave(createSave(state, 74))).toThrow(SaveError);
   });
 });

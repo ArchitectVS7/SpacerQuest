@@ -68,6 +68,7 @@ import {
   dawnHandModifiers,
   crewRoster,
   crewBenefitLabel,
+  fittedModuleRows,
   portLedger,
   portFailureExplanation,
   contrabandHold,
@@ -2583,6 +2584,10 @@ function ShipPane({ state }: { state: CockpitState }) {
     spendDie: 0,
   });
   const anyDamaged = components.some((c) => c.damaged);
+  // T-112 · The Class-B readout. Class A needs no widget of its own: a component
+  // delta lands in the grid below, a pod grant in the PODS tag, and a maxFuel
+  // grant in the fuel-curve readout — all three already render live ship state.
+  const salvagedFittings = fittedModuleRows(game);
 
   return (
     <section className="pane ship" data-testid="ship-pane">
@@ -2614,6 +2619,27 @@ function ShipPane({ state }: { state: CockpitState }) {
             {curve.crewCapacity}
           </span>
         </div>
+
+        {/* ---- T-112 salvaged fittings (explore-granted modules) ----
+            Rendered only when something is fitted, so a fresh junker's pane is
+            byte-identical to before. The benefit label comes from the SAME content
+            table the dawn-hand aggregator reads (`format.ts` fittedModuleRows), and
+            the row reuses the crew pane's `crew-benefit` class deliberately: a
+            module and a crew member grant the same three benefits, so they must
+            read as the same instrument. */}
+        {salvagedFittings.length > 0 && (
+          <div className="ship-crew" data-testid="explore-modules">
+            <div className="crew-head">SALVAGED FITTINGS</div>
+            {salvagedFittings.map((row) => (
+              <div className="crew-row hired" key={row.id} data-testid="explore-module">
+                <div className="crew-main">
+                  <span className="crew-name">{row.name}</span>
+                  <span className="crew-benefit">{row.benefitLabel}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ---- component grid ---- */}
         <div className="ship-grid" data-testid="component-grid">

@@ -22,6 +22,7 @@
  */
 
 import { BEACON_FRAGMENT_POOL, DERELICT_FRAGMENT_POOL } from './nemesis.js';
+import type { ExploreModuleContentId } from './crew.js';
 import type { StoryletEffects } from './storylets.js';
 
 /** The two kinds of point of interest exploration can surface. */
@@ -184,6 +185,93 @@ export const EXPLORE_OUTCOMES: readonly ExploreOutcomeDefinition[] = [
   },
 ];
 
+// --- The unique-item table (T-112, docs/EXPLORE_REDESIGN.md §4) -------------
+
+/**
+ * T-112 · The ship elements a CLASS-A item can move.
+ *
+ * DECLARED HERE, NOT IMPORTED FROM THE ENGINE. `ShipComponentId` is an engine
+ * type and content must never depend on the engine — the precedent is stated
+ * outright in `components.ts` (`HULL_DAMAGE_WEIGHT`). The engine pins the two
+ * unions equal with a compile-time `AssertEqual` in `exploreOutcomes.ts`, so a
+ * component renamed on either side is a `tsc` failure rather than a dead row.
+ */
+export type ShipElementComponentId =
+  'hull' | 'drives' | 'cabin' | 'lifeSupport' | 'weapons' | 'navigation' | 'robotics' | 'shields';
+
+/**
+ * ONE declared delta a Class-A item applies to the ship. The ELEMENT CLASS is the
+ * discriminant the engine switches on; the row supplies only its parameters. No
+ * row names a rule: `component` deltas clamp to the documented `ComponentState`
+ * strength bound, a `maxFuel` delta is realized through the engine's single
+ * `syncMaxFuel` chokepoint, and a `cargoPods` delta is clamped by the yard's own
+ * `maxCargoPodsForShip`.
+ */
+export type ShipElementDelta =
+  | { element: 'component'; component: ShipElementComponentId; strength: number }
+  | { element: 'maxFuel'; amount: number }
+  | { element: 'cargoPods'; amount: number };
+
+/**
+ * ONE unique item a `{ kind: 'unique-item' }` outcome row can grant, in the two
+ * classes §4 names:
+ *
+ *  - `class: 'ship'` — CLASS A, the workhorse tier: a declared list of ship-element
+ *    deltas. Unbounded and pure content; this is where "+2 to PILOT checks"
+ *    ambitions are re-authored as `navigation.strength +20`, which the engine's
+ *    existing `navBonus` reader already turns into a check bonus.
+ *  - `class: 'module'` — CLASS B, the die effect: the row names an
+ *    `ExploreModuleContentId` and the module's `DiceBenefit` is looked up from
+ *    `EXPLORE_MODULE_DICE_BENEFITS` (crew.ts). Deliberately capped at the three
+ *    shipped modules — see that table's header for the cap argument.
+ */
+export type ExploreItemDefinition =
+  | { id: string; name: string; class: 'ship'; deltas: readonly ShipElementDelta[] }
+  | { id: string; name: string; class: 'module'; moduleId: ExploreModuleContentId };
+
+/**
+ * Every unique item the game can grant.
+ *
+ * ONLY THE THREE CLASS-B ITEMS SHIP AT T-112, AND THAT ABSENCE IS DELIBERATE.
+ * T-112 owns the effect SURFACE; the `unique-item` outcome ROWS that reach for it
+ * are authored by T-113/T-114/T-115 against the §5.2 band ceilings. Shipping
+ * speculative Class-A items here would be content invented ahead of the ladder
+ * that prices it. The Class-A resolver is proved instead by test-local rows
+ * handed straight to the engine's exported `applyUniqueItem` — the same
+ * dependency-injection shape `equipmentDiceBenefits(ship, table)` already uses to
+ * prove a shipped-empty table's path.
+ *
+ * READERS: the engine's `unique-item` arm (`exploreOutcomes.ts`, by id) and the
+ * UI's acquisition line (`ui/format.ts` `explorationOutcome`, for the name only).
+ */
+export const EXPLORE_ITEMS: readonly ExploreItemDefinition[] = [
+  {
+    id: 'item-tally-slate',
+    name: 'Gunnery Tally-Slate',
+    class: 'module',
+    moduleId: 'module-tally-slate',
+  },
+  {
+    id: 'item-marked-ephemeris',
+    name: "Astrogator's Marked Ephemeris",
+    class: 'module',
+    moduleId: 'module-marked-ephemeris',
+  },
+  {
+    id: 'item-berth-couch',
+    name: "Staff Pilot's Berth-Couch",
+    class: 'module',
+    moduleId: 'module-berth-couch',
+  },
+];
+
+/** Items keyed by id for O(1) lookup by the engine's `unique-item` arm. A miss is
+ *  tolerated by the reader (the `CREW_BY_ID[…]?.benefit` precedent), so a save or
+ *  a row naming a retired item mutates nothing. */
+export const EXPLORE_ITEM_BY_ID: Record<string, ExploreItemDefinition> = Object.fromEntries(
+  EXPLORE_ITEMS.map((item) => [item.id, item]),
+);
+
 // --- The value ladder's band table (T-111, docs/EXPLORE_REDESIGN.md §5.2) ---
 
 /**
@@ -193,9 +281,17 @@ export const EXPLORE_OUTCOMES: readonly ExploreOutcomeDefinition[] = [
  *
  * Only the three columns T-111 consumes ship here. §5.2 reserves four more for
  * the content passes that follow — `payload kinds permitted` (T-113/T-114/T-115),
- * `Class-A ceiling` and `Class-B permitted` (T-112's effect surface), and
- * `draw weight` (T-113, when the single weighted draw replaces the legacy legs).
+ * `Class-A ceiling` and `Class-B permitted` (T-114), and `draw weight` (T-113,
+ * when the single weighted draw replaces the legacy legs).
  * Extend this interface when those land; do not re-invent a second table.
+ *
+ * FINDING F-112-C · the two effect-strength columns were attributed to T-112 and
+ * are RE-TARGETED to T-114 here. T-112 built the effect SURFACE (the resolver,
+ * the module tier, the cockpit readouts) but authored NO `unique-item` outcome
+ * rows — the first ones are band-2 rows and land with T-114. A ceiling column
+ * added at T-112 would therefore have had zero consumers and nothing to validate
+ * against, which is a stub raising a coverage signal rather than a rule. T-114
+ * has rows to check, so the columns land with the validator that reads them.
  *
  * THE ENFORCEMENT, stated so it is not lost: `ExploreOutcomeDefinition` has NO
  * `recoveryDays` key and MUST NEVER GAIN ONE. A content author cannot hand-tune
