@@ -15,7 +15,20 @@ the named gate for 0.5.0).
 **Cross-references:** `R#` step references resolve to `BALANCE-REDESIGN-WORKLIST.md`.
 `OI-#` items are the 2026-07-29 doc-vs-code audit; these entries are its whole record
 (grep the OI number, here and in the worklist). Fuller per-step records than the pruned
-"Still binds" blocks: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`.
+"Still binds" blocks: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md` for
+N0–N2/N6/N7/N9, and `git show a9cffd85 -- docs/NPC_REDESIGN.md` for N3/N4/N7-RIG/N10.
+
+**THE PRUNE RULE, since this document is the record and records grow.** A SHIPPED step
+keeps its verdict, its "Still binds" bullets and a `git show` pointer — nothing else. The
+test is PROSPECTIVE vs RETROSPECTIVE: *does this text change what the next step does?* If
+yes it stays; if it only says what happened, git has it losslessly at a hash. Three things
+are explicitly NOT prunable, because they are the reason the record exists: **lessons that
+changed method** (e.g. "a status board is not evidence"), **superseded-formula landmines**
+(e.g. "do not re-derive `2 + 2·tier`", "31 is the BOARD size and is not to be 'fixed'"),
+and **owner rulings**. Full measurement tables, red-test enumerations and hash-by-hash
+re-pin logs go to git — most are already duplicated at their definition site in code,
+which is the copy that cannot go stale. Both `#### The audit that reopened this step`
+blocks are kept in full by owner decision (2026-07-29).
 
 ---
 
@@ -51,7 +64,7 @@ step: N11.**
 | N7 — capstone diff + smoke rig | **SHIPPED** | **accepted** — 1.5 s smoke vs 2 min capstone; staleness fails loudly; found N9 |
 | N2 — NPCs upgrade their ships | **SHIPPED** | **ACCEPTED** — spread max/median 13.4→155, fits 5→144, Honor List 2/8→8/8 contested; found R10 |
 | N6 — Honor List, 31-way board | **SHIPPED** | **accepted** — actor-shaped board; found 6 of 8 titles uncontestable by construction |
-| N3 — NPCs meet pirates | **SHIPPED 2026-07-29 (rebuilt)** | encounters on every NPC jump, stance triangle on the shared rules, permanent death, four dead-field skips; **capstone discharged at N4** (the two steps share one capstone — see N4's Result) |
+| N3 — NPCs meet pirates | **SHIPPED 2026-07-29 (rebuilt)** | encounters on every NPC jump, stance triangle on the shared rules, permanent death, four dead-field skips; **capstone discharged at N4** (the two steps share one capstone, and the cost of that is under N3's own Result) |
 | N4 — NPC archetypes | **SHIPPED 2026-07-29 (rebuilt)** | **ACCEPTED** — the Ideal×archetype blend, a hand-curated 6/6/5/5/4/4 roster, and a control arm that makes the effect attributable: median wealth trader +43% / veteran +31% / gambler −38% / explorer −99% / fighter −71% against the neutral arm. Found the **verb payout asymmetry** (only Trade pays) and two live instrument bugs |
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile`; **GATED BY N13** — its die-allocation lever needs a decision surface to act on |
 | **N10 — NPCs work the contract board** | **SHIPPED 2026-07-29** | **CHANGE ACCEPTED · HYPOTHESIS DISPROVED** — the shared per-system pool is built and the cast works it galaxy-wide, but competition is not a force: cast demand is ~6% of the galaxy's job supply, and neither throttle was ever the binding constraint. The step's real effect was the parity gap it was not looking for — the cast now CHOOSES its contract (`pickContract`), worth +247% on cast median wealth. **The non-trader floor did not move (p10 126 → 126)** |
@@ -74,10 +87,10 @@ step: N11.**
 >
 > **The battery stands at 1,312 passing / 0 failing** (engine 769 · sim 306 · ui 135
 > · desktop 102) with `balance:smoke` green — **updated at N10**, which entered at
-> 1,287/0 and left at 1,312/0. N4 entered at **1,184 / 23 failing**; what those 23
-> were and why each moved is under N4's Result, and the 18 N10 inherited are under
-> N10's. One `it.fails` tripwire was filed at N4, with its evidence — see that
-> Result; it is still correctly red at N10's widened sample.
+> 1,287/0 and left at 1,312/0. N4 entered at **1,184 / 23 failing**; both steps
+> summarise their inherited reds under their own Result and the red-by-red account is
+> in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
+> that Result; it is still correctly red at N10's widened sample.
 >
 > **BASELINE OF RECORD RE-PINNED AT N10** to
 > `docs/balance/baseline-n10-shipped.json` (1,000 seeds × 120 days × 8 policies =
@@ -373,118 +386,64 @@ MOVED"*, so the player did not move across the refactor. The step also found **R
 
 ### N3 — NPCs meet pirates, and answer them (SHIPPED 2026-07-29, rebuilt)
 
-**Result (2026-07-29): ACCEPTED on behaviour, CAPSTONE OWED.** Rebuilt from the
-ground up after the audit below found the step marked SHIPPED with none of its core
-change built. What landed:
+**Result (2026-07-29): ACCEPTED on behaviour, CAPSTONE DISCHARGED AT N4.** Rebuilt from
+the ground up after the audit below found the step marked SHIPPED with none of its core
+change built. Encounters now roll on every NPC jump through `routeDangerFor` (the extracted
+content-only core of the player's `calculateRouteDanger`, loaded-run bump included); the
+talk/run/fight triangle resolves on the shared rules — `tributeForRound`,
+`interceptorRefusesTribute`, `weaponVolleyDamage`, the real fuel costs, the player's salvage
+rate and the opposed PILOT retreat; and death is permanent.
 
-- **FIRST TASK discharged.** The copy-on-write scan is widened by SHAPE, not by
-  another name: provenance-based tainting (any handle bound from a `.npcs` read,
-  propagated through re-bindings and alias casts, untainted only by a real copy),
-  scanning all of engine AND sim. A sibling test drives the same scan over each of
-  its three historical blind spots. The two legitimate raw writers now carry
-  argued `COW-EXEMPT:` markers, block-scoped, with the set pinned in the test.
-  Verified by injecting `captain.profileId = 'tampered'` into `day.ts` and watching
-  the guard name the file and line. *This landed BEFORE the death write, which is
-  the whole reason it was folded in here.*
-- **Encounters on every NPC jump** — `executeTravel` and `executeTrade` both roll,
-  through `routeDangerFor`, the extracted content-only core of the player's
-  `calculateRouteDanger`. **Including the loaded-run bump**: a captain hauling INTO
-  the delivery port raises the lane a full danger level, the player's own rule.
-- **The stance triangle, on the shared rules.** `resolveNpcEncounter` runs
-  talk/run/fight against `10 + tier`, `tributeForRound` (class and tier-gap
-  modifiers included), `interceptorRefusesTribute` (so a Bloodthirsty pirate slams
-  the tribute door on a captain as it does on the player), `weaponVolleyDamage`,
-  `RUN_FUEL_COST`/`FIGHT_FUEL_COST`, `COMBAT_SALVAGE_PER_TIER`, and the opposed
-  PILOT retreat with `RETREAT_KILL_EDGE`.
-- **The rules moved to a module neither side owns.** `applyInterceptorHit`,
-  `interceptorPressureDc`, `damageComponentForHit`, `tributeForRound` and
-  `interceptorRefusesTribute` now live in `combatRules.ts` and are called by BOTH
-  the player's `applyEnemyPressure` and the cast's interdiction — one definition of
-  the damage rule, not two. The extraction was verified behaviour-preserving: the
-  engine suite stayed at 726/726 with **every golden hash unmoved** before any NPC
-  encounter was wired in.
-- **Permanent death.** `NpcState.dead` (optional, so no migration is owed — absent
-  means alive), `NpcShipLost`, no succession. **Plus the four skips that marking a
-  record dead makes mandatory**, each of which would otherwise have been a live bug:
-  `honorField` (the OI-2 seam, closed), the interceptor pool, the dusk turn loop,
-  and Hangout presence. A fifth decision recorded rather than drifted into: **a
-  dead captain's disposition STOPS MOVING** rather than decaying to neutral, because
-  the grudge is part of what the record is for.
-- **The wire narrates it.** Interdiction rolls carry their own
-  `npc-encounter-{fight,run,talk}` contexts so a nat-20 still makes the wire (PRD
-  §6's guarantee holds for the cast), routed per stance to the combat / travel /
-  haggle buckets. Split from the `npc-*` VERB contexts deliberately: the T-1201
-  verb ⟺ StatCheck invariant now counts checks carrying the verb's OWN context, so
-  an interdiction cannot inflate the sim's trade-failure denominator.
+**MEASURED (3 seeds × 200 days, engine-level probe):** ~700 interdictions and 1–4 permanent
+deaths per 200 days, the living field ending at 26–29 of 30. Tribute is **5–7% of gross
+field wealth** — a real cost, not an economy-breaker. **The Disproves does not fire: the
+roster does not empty out.**
 
-**MEASURED (3 seeds × 200 days, engine-level probe):** ~700 interdictions and 1–4
-permanent deaths per 200 days; the living field ends at 26–29 of 30. Tribute is
-**5–7% of gross field wealth** — a real cost, not an economy-breaker. **The
-Disproves does not fire: the roster does not empty out.**
+**Still binds:**
 
-> [!IMPORTANT]
-> **WHAT N3 FOUND AND HANDED TO N4 — DISCHARGED, AND RE-MEASURED** (standing
-> amendment 4). N3 measured interdictions distributed by archetype as **trader 465,
-> explorer ~110, gambler ~60, smuggler ~20, fighter 32** and diagnosed the cause
-> correctly: it was not N3 but N4's deterministic `pickIntent`, under which a fighter
-> returned Combat or Patrol and therefore **never jumped**. Risk exposure was
-> allocated by a bug.
->
-> **RE-MEASURED under the blend** (10 seeds × 200 days, engine-level probe, the same
-> shape of probe N3 used), as interdictions per captain per run so the numbers survive
-> the roster re-curation:
->
-> | | trader | smuggler | explorer | veteran | gambler | fighter |
-> | --- | --- | --- | --- | --- | --- | --- |
-> | members | 6 | 4 | 5 | 5 | 4 | 6 |
-> | interdictions / captain / run | 43.5 | 29.8 | 26.2 | 21.6 | 18.5 | **6.4** |
->
-> **The bug is gone: no archetype is at zero, and every captain now has a positive
-> Travel share** (lowest 5.6%, Iron Vex — pinned by a test). The trader share of all
-> interdictions falls from ~68% to ~36%, and fighters go from *structurally
-> unreachable* to 6.4 per captain per run.
->
-> **The remaining 6.8× trader-to-fighter gap is CORRECT and is not the same finding.**
-> A captain who spends the day patrolling their own lanes should not meet the risk of
-> one hauling cargo across the map — unequal exposure is the archetype working. What
-> *is* still open is the sharper thing N4 found underneath it: a fighter's chosen
-> Combat day cannot kill them at all, because `executeCombat` is still the pre-N3
-> abstract GUNS check paying a flat `150 × tier` with no interceptor, no damage and no
-> ship loss. **N3 wired the shared rules into the two verbs that TRAVEL (`executeTravel`
-> and `executeTrade`) and left the cast's own Combat verb an abstraction** — so the six
-> fighters absorb 6.4 interdictions each and take **0 deaths**, while five explorers
-> take 0.2 each. That is a real parity gap in the PARITY LEDGER's Combat row, it is
-> N3-shaped rather than N4-shaped, and it is recorded there.
+- **THE RULES LIVE IN A MODULE NEITHER SIDE OWNS, and that is the point of the step.**
+  `applyInterceptorHit`, `interceptorPressureDc`, `damageComponentForHit`, `tributeForRound`
+  and `interceptorRefusesTribute` sit in `combatRules.ts`, called by BOTH the player's
+  `applyEnemyPressure` and the cast's interdiction — one definition of the damage rule, not
+  two. A separate module because `actions/combat.ts` imports `npc.ts`, so importing back
+  would close a cycle. The extraction was verified behaviour-preserving FIRST: 726/726 with
+  every golden hash unmoved before any NPC encounter was wired in.
+- **FIRST TASK: the copy-on-write scan is widened by SHAPE, not by another name** —
+  provenance-based tainting over all of engine AND sim, a sibling test driving each of its
+  three historical blind spots, and argued block-scoped `COW-EXEMPT:` markers with the set
+  pinned. **It landed BEFORE the death write, which is the whole reason it was folded in
+  here.** Third instance of one lesson: N0 asserted one cross-boundary writer and found
+  four, N1 found the guard blind to nested paths.
+- **Permanent death forced FOUR SKIPS, each a live bug otherwise:** `honorField` (the OI-2
+  seam), the interceptor pool, the dusk turn loop, Hangout presence. A fifth decision
+  recorded rather than drifted into: **a dead captain's disposition STOPS MOVING** rather
+  than decaying to neutral, because the grudge is part of what the record is for.
+- **THE PARITY GAP THIS STEP LEFT OPEN, and it is N3-shaped rather than N4-shaped.** N3
+  wired the shared rules into the two verbs that TRAVEL (`executeTravel`, `executeTrade`)
+  and **left the cast's own Combat verb an abstraction** — `executeCombat` is still the
+  pre-N3 GUNS check paying a flat `150 × tier` with no interceptor, no damage and no ship
+  loss. So the six fighters absorb 6.4 interdictions each and take **0 deaths** while five
+  explorers take 0.2 each. Recorded in the PARITY LEDGER's Combat row as still owed.
+- **THE INTERDICTION WIRE IS SPLIT FROM THE VERB CONTEXTS DELIBERATELY.** Rolls carry their
+  own `npc-encounter-{fight,run,talk}` contexts so a nat-20 still makes the wire (PRD §6
+  holds for the cast), while the T-1201 verb ⟺ StatCheck invariant counts only checks
+  carrying the verb's OWN context — otherwise an interdiction would inflate the sim's
+  trade-failure denominator.
+- **THE COST OF SHIPPING WITHOUT A CAPSTONE, recorded rather than papered over.** N3 and the
+  reopened N4 both moved the same hashed rule sources, so they share one capstone
+  (`baseline-n4-shipped.json`). Because N3 never pinned one of its own, **the diff from
+  `baseline-r2c-explorer-remit.json` carries N3's and N4's deltas tangled together and there
+  is no honest way to separate them after the fact.** N4's own effect IS separable, through
+  its control arm. N3's per-archetype interdiction rates were re-measured under the blend
+  and live in N4's table.
+- **A defect worth the retelling: a discovery call that was really a validation call.**
+  `balance-rig.test.ts` learned the roster size by calling `synthesizeTierState` with a
+  hardcoded 30 — but that function VALIDATES the spread against the roster before
+  returning, so the discovery call became a throw the moment the roster hit 41, taking the
+  whole file (52 tests) down. It now reads `createInitialState(1).npcs.length`.
 
-> [!NOTE]
-> **CAPSTONE DISCHARGED AT N4 (2026-07-29), and the two steps deliberately share
-> one.** N3 and the reopened N4 both moved the same hashed rule sources, so a
-> capstone taken between them would have measured a ruleset about to change. The
-> combined capstone is `docs/balance/baseline-n4-shipped.json`; because N3 never
-> pinned one of its own, **the diff from `baseline-r2c-explorer-remit.json` carries
-> N3's and N4's deltas tangled together and there is no honest way to separate them
-> after the fact** — that is the cost of shipping N3 without its capstone, recorded
-> rather than papered over. N4's own effect IS separable, through its control arm;
-> see N4's Result. Both root causes below were cleared there. **N3's rate numbers
-> were re-measured under the blend, as this step required — the new table is in the
-> IMPORTANT block above, updated in place.**
->
-> The two root causes as N3 recorded them, kept for the diagnosis:
-> 1. **Stale fixture** (8 of them, `balance-smoke` + `balance-rig`) — the N7
->    staleness gate firing exactly as designed. The fix is a new capstone.
-> 2. **Shared-RNG stream shift** (the rest) — the roster split shuffles 41 records
->    where it used to shuffle 30, so every seeded player career diverges. The
->    visible symptom is `balance-combat-survival`'s live band: the player death
->    rate reads 0.28 per 1,000 sim days against a guarded floor of 0.8. These are
->    LIVE BANDS, not fixtures ("bands with visible headroom, never pinned digits"),
->    so they are a real signal about a shifted sample and must be re-measured, not
->    re-pinned. **Do not edit a band to make it pass** (docs/VERSIONING.md).
->
-> One genuine defect was found and fixed on the way: `balance-rig.test.ts` learned
-> the roster size by calling `synthesizeTierState` with a hardcoded 30 — but that
-> function VALIDATES the spread against the roster before returning, so the
-> discovery call became a throw the moment the roster hit 41, taking the whole file
-> (52 tests) down. It now reads `createInitialState(1).npcs.length`.
+*Full record — the per-deliverable landing notes, N3's original by-archetype interdiction
+counts and the two root-cause blocks: `git show a9cffd85 -- docs/NPC_REDESIGN.md`.*
 
 ---
 
@@ -609,22 +568,22 @@ Disproves does not fire: the roster does not empty out.**
 
 **Result (2026-07-29): ACCEPTED.** Both Proves limbs hold, the Disproves does not
 fire, and — unlike the first attempt — the step was *gradeable*, because the
-multiplicative design leaves a real control arm. Rebuilt against the two owner
-rulings below after the audit found the field machine-generated and the selection
-logic collapsed to a constant per archetype.
+multiplicative design leaves a real control arm. Rebuilt against the two owner rulings
+below after the audit found the field machine-generated and the selection logic collapsed
+to a constant per archetype.
 
 **THE CONTROL ARM IS THE HEADLINE, because it is what the deterministic switch
-destroyed.** Two full capstones, 1,000 seeds × 120 days × 8 policies each, identical
-in every respect except `ARCHETYPE_INTENT_MULTIPLIERS`: the shipped table, against
-`NEUTRAL_INTENT_MULTIPLIERS` (every archetype scaled by 1, i.e. captains driven by
-`ideal` alone). `docs/balance/baseline-n4-shipped.json` is the **baseline of record**;
-`docs/balance/baseline-n4-control.json` is the control, committed as this step's
-grading evidence and **not** a baseline — the three things that define the baseline of
-record are standing amendment 1's pointer, `balance-targets.test.ts`'s path, and this
-sentence, never mere presence in `docs/balance/`.
+destroyed.** Two full capstones, 1,000 seeds × 120 days × 8 policies each, identical in
+every respect except `ARCHETYPE_INTENT_MULTIPLIERS`: the shipped table against
+`NEUTRAL_INTENT_MULTIPLIERS` (every archetype scaled by 1, i.e. captains driven by `ideal`
+alone). `docs/balance/baseline-n4-control.json` is that control, committed as grading
+evidence and **not** a baseline — the things that define the baseline of record are
+standing amendment 1's pointer and `balance-targets.test.ts`'s path, never mere presence
+in `docs/balance/`. (`baseline-n4-shipped.json` WAS the baseline of record at this step;
+N10 superseded it.)
 
 Archetype's attributable effect on the CAST (10 seeds × 200 days, medians over the
-simulated field; control → shipped):
+simulated field; control → shipped). **Later steps grade against this table** — N10 did:
 
 | archetype | n | interdictions/captain/run | median credits | median hull |
 | --- | --- | --- | --- | --- |
@@ -635,199 +594,100 @@ simulated field; control → shipped):
 | explorer | 5 | 30.9 → **26.2** | 27,873 → **206** (−99%) | 90 → **80** |
 | fighter | 6 | 8.8 → **6.4** | 592 → **170** (−71%) | 70 → **50** |
 
-Every archetype moves in its own direction and none is noise: **the Disproves —
-*"archetype makes no measurable difference"* — does not fire.** Note the control arm
-already separates the six groups (they were curated to correlate with `ideal`), which
-is exactly why the arm was needed: without it, "archetype works" and "the ideals
-underneath it work" are the same measurement.
-
-**Proves limb 2 holds** — the Honor List shows different captains topping different
-titles: **8 of 8 titles contested** on every seed, **8.8 distinct holders** across the
-8 titles (5 seeds × 120 days), and Best All-Around is topped by a wholly different set
-(Dust Devil / Junk Lord / Nebula Rose / Rogue Star) than the component titles (Admiral
-Stern / Black Tide / Cargo King). N2's 8-of-8 hand-off is preserved, not spent.
-
-**The PLAYER's game barely moves, which is the correct result for an NPC-side
-personality change.** Control → shipped, at 1,000 seeds: fleet Tour One clear
-0.5145 → 0.5199, fleet final credits median 30,533 → 30,425 (−0.4%), encounters/run
-23.93 → 24.01, deaths/1,000 days 0.6573 → 0.6448. Against the *previous* baseline of
-record (`baseline-r2c-explorer-remit`, so N3+N4 tangled): clear 0.5116 → 0.5199,
-credits median 29,604 → 30,425 (+2.8%), deaths/1,000 0.6323 → 0.6448 (+2.0%). No
-policy's clear rate moves more than a few points; the yardstick is intact.
+Every archetype moves in its own direction and none is noise, so *"archetype makes no
+measurable difference"* does not fire. The control arm already separates the six groups
+(they were curated to correlate with `ideal`), which is exactly why the arm was needed:
+without it, "archetype works" and "the ideals underneath it work" are one measurement.
+**Proves limb 2 holds** — 8 of 8 Honor List titles contested on every seed, 8.8 distinct
+holders. **The PLAYER's game barely moves** (control → shipped, 1,000 seeds: fleet clear
+0.5145 → 0.5199, credits median 30,533 → 30,425, deaths/1,000 0.6573 → 0.6448).
 
 **Still binds:**
 
-- **THE FINDING THAT OUTRANKS THE VERDICT — ONLY TRADE PAYS, so specialising away
-  from it is a wealth penalty rather than a different strategy.** Look at the table
-  again: the two archetypes that specialise *out* of Trade end at **206 and 170
-  credits median** — twelve of the thirty captains are destitute — and they are the two
-  whose median HULL also falls (90→80, 70→50), because a captain with no purse buys no
-  ship. The cause is the NPC verb payout table, not the blend: `executeTravel` pays
-  **nothing** (it is pure fuel cost), `executePatrol` pays 40, `executeCombat` pays a
-  flat `150 × tier`, and `executeTrade` pays a real contract. So an archetype is
-  currently a choice about *how poor to be*. **This is the same shape as N9's finding
-  that the player's combat pays nothing** — R2c fixed the player side by giving a
-  destroyed interceptor salvage, and the cast never got the equivalent. It is
-  deliberately NOT tuned here (one change per step, and re-pricing a verb is a design
-  call), and it is the direct reason the next three steps matter: **N10** gives the
-  non-traders a real board to work, **N11** gives fighters and veterans a deed economy,
-  **N12** gives everyone an asset that is not cash. If those three do not close it, the
-  fighter's `150 × tier` is the first knob and it belongs to the owner.
-- **The wealth-spread ceiling is intact but its headroom has thinned, and N8 owns
-  the call.** `campaign.test.ts`'s 25× top/median ceiling is **unmoved**; re-measured
-  over the simulated living field, seeds 1..10 give 10.29 · 15.51 · 9.05 · 13.24 ·
-  11.92 · 17.30 · 20.09 · 9.54 · 9.87 · 10.00 — worst 20.09, so 25 now sits 24% above
-  the worst observed where N2 chose it for ~56%. It is a PASS and it is not raised;
-  the direction is the finding above arriving in a second instrument.
-- **TWO LIVE INSTRUMENT BUGS FOUND AND FIXED, both the same class as N9's "the
-  aggregate cannot see an asset", and both had to close BEFORE this step's own
-  capstone could mean anything.**
-  1. **`sampleMilestone` sampled all 41 records, so every NPC wealth, hull and
-     position percentile this project has produced since N3's roster split was
-     diluted by eleven captains frozen at day 1.** They cluster mid-distribution, so
-     they did not merely add noise — they *set the median*: at seed 1 / day 200 the
-     41-record median reads **5,000cr** against the simulated field's **167,421**, and
-     `campaign.test.ts` therefore graded a **344×** wealth spread where the field's is
-     **10.3×**. It passed before N4 only because the pre-blend field was poor enough
-     for 5,000 to look like a plausible median — i.e. it was already measuring the
-     wrong thing and getting away with it. Fixed at the source (`sampleField`).
-  2. **The same conflation at a fourth site**, `balance-rig.test.ts`'s milestone
-     field-size assertion, which read the record count. It now pins
-     `NPC_PROFILES.length` *and* asserts it is strictly less than `state.npcs.length`,
-     so a future re-conflation goes red.
-  **The fix is the SHAPE, not the instance** — N3's lesson about the copy-on-write
-  scan, applied to this: one exported `isSimulatedCaptain` predicate in
-  `content/cast.ts` replaces four local spellings (`day.ts`'s dusk loop, `format.ts`'s
-  `honorField`, `sampleMilestone`, `campaign.test.ts`), and its definition site
-  carries the tally of what conflating the three numbers has already cost. Read
-  `NPC_PROFILES.length` for the field (30), `state.npcs.length` for the records (41),
-  31 for the board.
-- **THE STAT-AFFINITY TERM IS GONE FROM `pickIntent`, and that is a deliberate
-  divergence from the pre-N4 formula — measured, not assumed.** Pre-N4 the weight was
-  `IDEAL_WEIGHTS × (1 + the verb's affinity stat)`; the blend replaces that second
-  factor with the archetype multiplier rather than stacking on top of it. Measured
-  over the curated roster, keeping the stat term concentrates the average captain onto
-  **3.1** verbs at ≥5% against **4.3** without it, and takes a TRADE-5 trader to 89%
-  Trade with **one** live verb — i.e. it re-creates the "ten traders are the same
-  function" collapse this step exists to undo, by a subtler route. It also contradicts
-  the arithmetic RULING 1 recorded. `INTENT_STAT_AFFINITY` keeps its other and more
-  honest reader: which stat ROLLS the day's check, so a captain's stats decide how
-  WELL the day goes rather than how often they choose it.
-- **THE RULING'S OWN WORKED EXAMPLES REPRODUCE EXACTLY, and one of its three has an
-  arithmetic slip worth knowing about.** Cargo King draws Trade 12/16 = **75%**,
-  Travel **13%**; Zero Risk Trade 8/13 = **62%**, Patrol **15%** — both exactly as
-  recorded, and both pinned by tests. Iron Vex's row divides by 17 where the weights
-  sum to 18, so the ruling's *"Combat ~59%, Patrol ~35%"* is really **56% / 33%**. The
-  design is unaffected; it is flagged so a reader does not "fix" the code to match the
-  prose. The two multiplier rows the ruling worked out by hand (trader, fighter) are
-  reproduced in the table verbatim rather than re-derived.
-- **The poverty override is a MULTIPLIER (×3), never the old flat `+10`** — and this
-  is a rule-exemption question, not a tuning one. `0 + 10` hands The Warden (`Justice`,
-  Trade weight an authored **0**) the one verb his worldview forbids the moment his
-  purse dips: a rule exemption bought with a constant, which is what standing-constraint
-  consequence 2 names. The scale was also wrong by an order of magnitude — pre-N4
-  weights carried the stat term and ran to ~70, where the blend's top out near 12. ×3
-  lands a broke fighter near the behaviour it replaces (Iron Vex ~15% Trade against
-  pre-N4's ~22%) and leaves a broke trader effectively committed (~90%). It is a
-  legitimate knob for a later sweep, **but it must stay a multiplier.**
-- **THE 23 RED TESTS THIS STEP INHERITED, and what each one actually was.** The
-  battery entered at 1,184 passing / 23 failing and leaves at **1,287 / 0**. Grouped
-  by what was really wrong, because "the rng stream moved" was the proximate cause of
-  all of them and the *right response differed*:
-  - **8 stale-fixture (`balance-smoke` + `balance-rig`)** — the N7 gate firing as
-    designed. Cleared by the capstone, never by a refreshed number.
-  - **7 `campaign-degraded` policy fingerprints + 1 poverty-trap** — re-pinned with
-    **logged entry 8**, which names N3 *and* N4 together because **N3 shipped without
-    re-pinning this table**, so no intermediate column was ever measured. `greedy`
-    moved for the third consecutive NPC-side step; entry 6 already explains why that is
-    expected and not a leak.
-  - **3 `protocol` replay goldens** — regenerated via `fixtures/gen-golden.ts`.
-  - **4 single-seed "first qualifier" hunts** (`campaign-reach` ×3,
-    `campaign-policies`' fighter) — re-swept and re-pinned in each test's own
-    documented protocol, driving **the exact committed test** through a temporary
-    env-var seed override so the swept code is the shipped code. Every one came back
-    *more* reachable, not less: port 2→3 of 20, bond 7-of-45→8-of-30, fighter kit
-    5→8 of 20, fuel-starvation 8 of 10 unchanged.
-  - **1 `era-storylet-coverage`** — re-swept 1..40, pinned [4, 22], both individually
-    total on both unions.
-  - **1 `alliance-arcs` organic-reputation** — **converted to a sweep property
-    instead of re-pinned.** It had been re-pinned *five* times (3→6→2→3→1) by five
-    different upstream changes with one cause, and its own comment called it the most
-    seed-sensitive assertion in the file; a sixth lucky seed guarantees a seventh
-    re-pin. Now every seed of 1..20 must move reputation (20/20 measured) and ≥5 of 20
-    must fire an organic mover (10/20 measured) — both halves *stronger* than any
-    single seed, and 1.9s for all twenty. The precedent is this repo's own route-churn
-    test: *"Rather than re-pick a lucky seed, this asserts the property over a seed
-    sweep."*
-  - **1 `campaign.test` wealth spread** — the instrument bug above, not a re-pin.
-  - **2 `balance-combat-survival`** — the one genuinely unresolved item; see below.
-- **ONE NEW `it.fails` TRIPWIRE, and it is the third the battery carries — which the
-  track's preamble says should make it N4's. It is not, and the capstone is what
-  proves that.** `balance-combat-survival`'s fleet death-rate FLOOR (0.8 per 1,000 sim
-  days, a T-1603c design target) is breached. Two separate things were wrong and they
-  got different answers:
-  1. **The parity-monotonicity assertion was UNDER-POWERED, not inverted** — it graded
-     a 0.5% gap (1,073.9 vs 1,078.8) on cells of n=169 and n=81. The slice was widened
-     15 → **40 seeds** and it resolves cleanly in the designed direction (below 1,842.9
-     > even 1,161.4 > above 1,019.8). **Not one band moved**; this is a power increase,
-     which is the fix amendment 1's corollary prescribes.
-  2. **The death rate is genuinely under its floor, and THE FLOOR NEVER DESCRIBED THE
-     FULL SWEEP.** At 1,000 seeds the fleet rate is **0.6448** — and it was **0.6323**
-     at `baseline-r2c-explorer-remit`, which predates N3 entirely. So the capstone has
-     been under 0.8 since before either N-step touched the cast, and N3+N4 together
-     moved it **UP** by 2.0%. What the 60-day/4-policy slice measures is a
-     harder-than-fleet corner, and 0.8 was calibrated on that corner. Reconciling the
-     slice with the capstone is a calibration decision for **R2.5/N8**, not a number
-     for this step to pick — so the floor is held as a tripwire with the measurement
-     at its site, and only the floor: everything else in that test still grades.
-- **A DELIBERATE DESIGN CONSEQUENCE, quantified so it is not rediscovered as a bug.**
-  `buildNamedCandidates` (`actions/travel.ts`) filters on `NPC_PROFILES`, which N3's
-  split shrank 41 → 30, so the eleven named captains stopped being drawable as random
-  interdictions. **That follows from what the split IS** (owner, 2026-07-29: the eleven
-  are set aside for STORYLINE ONLY, replacing an earlier "eleven immortal captains"
-  idea that was dropped because immortality made no thematic sense), so it is the
-  intended shape. Quantified only because it is part of the death-rate arithmetic:
-  putting all 41 back moves the slice 5 → 7 ships lost (0.52 → 0.73/1,000), still short
-  of 0.8. **What IS genuinely open:** two `applyDisposition` reasons are written for
-  storyline captains — `loan-default` (Penny Wise) and `contraband-caught` (a named
-  patrol captain) — and T-1204's interception weighting was their reader. Those grudges
-  now need a storylet-side expression or the writes need re-siting. **An owner design
-  question, not a number to tune.**
-- **The day-loop golden was re-recorded with a measured note, in the fixture's own
-  established style.** 1,482 → 1,451 events; `NpcAction` **unchanged at 330** (11 days
-  × 30 captains — the cast still takes exactly one action each, only WHICH moved);
-  `StatCheck` 260 → 288 and `FlawCheck` 199 → 156, because the blend lands captains on
-  verbs their flaw triggers less often. **The player side is identical in count and
-  kind** (DawnRoll 11, DayAdvanced 11, DebtPayment 4, DeedEarned 6, RenownRankUp 3,
-  TradeEvent 8, TravelEvent 6, all three Storylet events), which is the check that this
-  is an NPC-side change and not a quiet player rebalance.
-- **`archetype` now has FIVE readers, and the split between them is the design.**
-  Two are content-driven and belong to this step (`ARCHETYPE_INTENT_MULTIPLIERS` in
-  `pickIntent`; the poverty weight riding on the same numbers). Three are engine-side
-  destination/stance biases inherited from the first attempt and kept because they are
-  the half an intent weight cannot express: `pickNpcStance` (N3's triangle),
-  `executeTrade`'s smuggler rim preference, and `executeTravel`'s explorer rim
-  preference. **The explorer one is why explorers own 10 of 12 deaths** — a rim
-  destination is priced as the dangerous lane it is by `routeDangerFor`, so the
-  preference BUYS the archetype its own mortality rather than being free flavour.
-  **N10's `pickContract` is the fourth of that kind** and should read `profile.archetype`
-  the same way, which is why N4 keeps its early slot.
-- **Test coverage added: 11 engine tests** (`npc.test.ts`), one per property the two
-  rulings turn on — the ≥4 member floor, a multiplier row per archetype, the three
-  owner-fixed assignments, the two worked distributions, two traders staying distinct,
-  the `Justice` veto surviving both the multiply *and* poverty, the poverty lean
-  without an order, **every captain having a non-zero Travel share** (N3's hand-off,
-  held by assertion), the all-zero → `Idle` corner, and **separability** (neutral
-  multipliers reproduce the pure `ideal` draw, so the control arm really is a control).
-  The N3 death test was also fixed rather than re-pinned: it asserted `losses > 0` on
-  **one seed** for a ~1.4-per-200-day event, which is a coin flip dressed as a test —
-  it now samples seeds 1, 7, 42.
+- **THE FINDING THAT OUTRANKS THE VERDICT — ONLY TRADE PAYS, so specialising away from it
+  is a wealth penalty rather than a different strategy.** The two archetypes that
+  specialise *out* of Trade end at **206 and 170 credits median** — twelve of the thirty
+  captains destitute — and they are the two whose median HULL also falls, because a captain
+  with no purse buys no ship. The cause is the NPC verb payout table, not the blend:
+  `executeTravel` pays **nothing**, `executePatrol` 40, `executeCombat` a flat
+  `150 × tier`, and only `executeTrade` a real contract. So an archetype is currently a
+  choice about *how poor to be*. **Same shape as N9's finding that the player's combat pays
+  nothing** — R2c fixed the player side with wreck salvage; the cast never got the
+  equivalent. Deliberately NOT tuned here (one change per step; re-pricing a verb is a
+  design call). **N10 has since spent one of the three chances and the floor did not move**
+  (cast p10 126 → 126) — see N10's Result. If N11 and N12 do not close it, the fighter's
+  `150 × tier` is the first knob and it belongs to the owner.
+- **The wealth-spread ceiling is intact but its headroom has thinned, and N8 owns the
+  call.** `campaign.test.ts`'s 25× top/median ceiling is **unmoved**; re-measured over the
+  simulated living field, seeds 1..10 worst 20.09, so 25 now sits 24% above the worst
+  observed where N2 chose it for ~56%. A PASS, not raised; the direction is the finding
+  above arriving in a second instrument.
+- **THE THREE NUMBERS, and conflating any two has now caused four live bugs.** Read
+  `NPC_PROFILES.length` for the simulated field (**30**), `state.npcs.length` for the
+  record count (**41**), **31** for the board. Two instrument bugs of exactly this class
+  were found and fixed here — `sampleMilestone` sampled all 41 records, so every NPC
+  percentile since N3's roster split was diluted by eleven captains frozen at day 1 (they
+  cluster mid-distribution, so they *set the median*: 5,000cr against the field's 167,421,
+  reporting a 344× wealth spread where the field's is 10.3×). **The fix was the SHAPE, not
+  the instance:** one exported `isSimulatedCaptain` predicate replaced four local
+  spellings, and its definition site carries the tally of what the conflation has cost.
+- **THE STAT-AFFINITY TERM IS GONE FROM `pickIntent` — a deliberate divergence from the
+  pre-N4 formula, measured rather than assumed.** Pre-N4 the weight was
+  `IDEAL_WEIGHTS × (1 + affinity stat)`; the blend replaces that second factor with the
+  archetype multiplier instead of stacking on it. Keeping the stat term concentrates the
+  average captain onto **3.1** verbs at ≥5% against **4.3** without it, and takes a TRADE-5
+  trader to 89% Trade with ONE live verb — i.e. it re-creates by a subtler route the "ten
+  traders are the same function" collapse this step exists to undo. `INTENT_STAT_AFFINITY`
+  keeps its honest reader: which stat ROLLS the day's check.
+- **THE RULING'S WORKED EXAMPLES REPRODUCE EXACTLY, and one has an arithmetic slip.** Cargo
+  King draws Trade 12/16 = **75%** / Travel **13%**; Zero Risk Trade 8/13 = **62%** /
+  Patrol **15%** — both pinned by tests. Iron Vex's row divides by 17 where the weights sum
+  to 18, so the ruling's *"Combat ~59%, Patrol ~35%"* is really **56% / 33%**. The design is
+  unaffected; flagged **so a reader does not "fix" the code to match the prose.**
+- **The poverty override is a MULTIPLIER (×3), never the old flat `+10`** — a
+  rule-exemption question, not a tuning one. `0 + 10` hands The Warden (`Justice`, Trade
+  weight an authored **0**) the one verb his worldview forbids the moment his purse dips:
+  an exemption bought with a constant, which is what standing-constraint consequence 2
+  names. The scale was also wrong by an order of magnitude (pre-N4 weights ran to ~70, the
+  blend's top out near 12). A legitimate knob for a later sweep, **but it must stay a
+  multiplier.**
+- **ONE `it.fails` TRIPWIRE, the battery's third, and the capstone is what proves it is
+  not N4's.** `balance-combat-survival`'s fleet death-rate FLOOR (0.8/1,000 sim days, a
+  T-1603c design target) is breached — but at 1,000 seeds the fleet rate is **0.6448**, and
+  it was **0.6323** at `baseline-r2c-explorer-remit`, which predates N3 entirely. So the
+  capstone has been under 0.8 since before either N-step touched the cast, and N3+N4
+  together moved it **UP** 2.0%. The 60-day/4-policy slice measures a harder-than-fleet
+  corner and 0.8 was calibrated on that corner; reconciling the two is a calibration
+  decision for **R2.5/N8**, not a number for this step to pick.
+- **A DELIBERATE DESIGN CONSEQUENCE, with an OPEN owner question inside it.**
+  `buildNamedCandidates` filters on `NPC_PROFILES`, which N3's split shrank 41 → 30, so the
+  eleven storyline captains stopped being drawable as random interdictions. That follows
+  from what the split IS, so it is intended (putting all 41 back moves the slice
+  0.52 → 0.73/1,000, still short of 0.8). **What IS genuinely open:** two
+  `applyDisposition` reasons are written for storyline captains — `loan-default` (Penny
+  Wise) and `contraband-caught` (a named patrol captain) — and T-1204's interception
+  weighting was their reader, now unreachable for them. Those grudges need a storylet-side
+  expression or the writes need re-siting. **An owner design question, not a number.**
+- **`archetype` has FIVE readers and the split between them is the design.** Two are
+  content-driven and belong to this step (`ARCHETYPE_INTENT_MULTIPLIERS` in `pickIntent`;
+  the poverty weight on the same numbers). Three are engine-side destination/stance biases,
+  kept because they are the half an intent weight cannot express: `pickNpcStance`,
+  `executeTrade`'s smuggler rim preference, `executeTravel`'s explorer rim preference.
+  **The explorer one is why explorers own 10 of 12 deaths** — `routeDangerFor` prices a rim
+  lane as the dangerous thing it is, so the preference BUYS the archetype its own mortality
+  rather than being free flavour. N10's `pickContract` joined them as the sixth, which is
+  why N4 keeps its early slot.
+- **A METHOD PRECEDENT worth reusing: a chronically re-pinned assertion becomes a sweep
+  PROPERTY, not a luckier seed.** `alliance-arcs`' organic-reputation test had been re-pinned
+  five times (3→6→2→3→1) by five upstream changes with one cause. It now asserts that every
+  seed of 1..20 moves reputation and ≥5 of 20 fire an organic mover — both halves *stronger*
+  than any single seed, and 1.9s for all twenty.
 
 *Provenance: capstone `docs/balance/baseline-n4-shipped.json`, control arm
-`docs/balance/baseline-n4-control.json`, fixture re-extracted from the capstone
-(`spreads harvested`), `rulesFingerprint` `91cfa4adc626ba54` → `c9530236d51b237e`,
-`instrumentFingerprint` `79adfd2417aa9fcd` → `75e73b1e7d32168c`, `docsFingerprint`
-`774c91af0fbdecc0`.*
+`docs/balance/baseline-n4-control.json`. Full record — the 23-red-test account, the
+day-loop golden diff, the per-test re-sweep protocols and the added-coverage list:
+`git show a9cffd85 -- docs/NPC_REDESIGN.md`.*
+
 
 ---
 
@@ -955,300 +815,123 @@ live and measurable** (roughly 4–6 each across the 30). No machine assignment.
 ### N10 — NPCs work the contract board (SHIPPED 2026-07-29)
 
 **Result (2026-07-29): CHANGE ACCEPTED — HYPOTHESIS DISPROVED** (the wording standing
-amendment 2 counts in its ratio; N1 is the precedent). The shared pool is built, the
-cast works it everywhere, and the player's board is shaped by it. What does not hold is
-the hypothesis: *"makes contract competition a real economic force"*. **It does not, and
-the step measured why — the reason is neither of the two throttles the Change clause
-suspected.**
+amendment 2 counts in its ratio; N1 is the precedent). The shared per-system pool is
+built, the cast works it everywhere, and the player's board is shaped by it. What does
+not hold is *"makes contract competition a real economic force"* — **and the reason is
+neither throttle the Change clause suspected. The cast consumes ~6% of the galaxy's
+daily job supply (4.61 claims against 20 systems × 4 offers), spread almost evenly, so
+79% of system-days still open on a full board.** Sweeping both knobs confirms it: the
+snipe cap at 1 / 2 / unbounded gives 354 / 420 / 423 visible snipes per 2,000 days, and
+`JOB_POOL_REGEN_PER_DAY` at 1 / 2 / 4 gives galaxy mean board depth 3.740 / 3.768 /
+3.770. A pool's memory length cannot matter at ~0.2 claims/system/day.
 
-**THE ARITHMETIC THAT DECIDES IT, and it is a structural fact rather than a tuning
-miss.** The galaxy generates `20 systems × 4 offers = 80 jobs a day`. The cast consumes
-**4.61 of them** (10 seeds × 200 days, engine-level probe) — about **6%** — and spreads
-that almost perfectly evenly: the hottest port carries **0.303** outstanding claims per
-system-day against the coldest's **0.191**, a 1.6× spread with no hub effect in it. So
-**79.2% of system-days still offer a full four-job board** and the galaxy-wide mean depth
-is **3.768**. No pool rule can make 6% of supply feel like scarcity.
-
-**BOTH THROTTLES SWEPT, and the Disproves' stated cause is REFUTED** — its second limb
-reads *"the cap was the binding constraint and still is"*, and the measurement says it
-never was:
-
-| knob | value | visible snipes / 2,000 days | player board depth (mean) |
-| --- | --- | --- | --- |
-| `MAX_VISIBLE_SNIPES_PER_DUSK` | **1** (shipped) | 354 | 3.63 |
-| | 2 | 420 | 3.58 |
-| | unbounded | 423 | 3.58 |
-
-Lifting the cap entirely buys **69 more snipes in 2,000 days** and 2-vs-unbounded is
-noise (420 against 423) — two co-located trading captains on one dusk is simply rare. The
-regen knob is even flatter, which is the sharper finding: `JOB_POOL_REGEN_PER_DAY` of
-**1 / 2 / 4** gives galaxy mean depth **3.740 / 3.768 / 3.770**. A pool's MEMORY LENGTH
-cannot matter when the per-system claim rate (~0.2/day) is an order of magnitude under a
-four-job daily board. Both knobs keep their shipped values, and the reason is recorded at
-their definition sites rather than inferred from the numbers surviving.
-
-**WHAT THE STEP ACTUALLY DELIVERED — a parity gap it was not looking for.** Pre-N10 an
-NPC took ONE randomly-rolled contract; the player picks from four. That is not a
-different rule, it is *less of the game*, and `pickContract` closes it. Measured against
-a true control arm (the pre-N10 tree, both arms rebuilt so neither read a stale `dist` —
-see the caution below), 10 seeds × 200 days, medians over the living simulated field:
-
-| archetype | n | median credits, control → N10 | median hull |
-| --- | --- | --- | --- |
-| trader | 6 | 851,930 → **1,355,994** (+59%) | 90 → 90 |
-| smuggler | 4 | 413,723 → **629,706** (+52%) | 90 → 90 |
-| veteran | 5 | 175,878 → **365,407** (+108%) | 90 → 90 |
-| gambler | 4 | 129,544 → **248,749** (+92%) | 90 → 90 |
-| explorer | 5 | 1,286 → **167** | 90 → 90 |
-| fighter | 6 | 168 → **132** | 50 → **40** |
-
-The control's trader median reproduces N4's shipped table **exactly** (851,930), which is
-what certifies the arm as the real pre-N10 state rather than a re-derivation.
-
-**THE FINDING THAT MATTERS MOST — THE NON-TRADER FLOOR DID NOT MOVE, and the capstone
-says so at 1,000 seeds.** N4 handed this step the non-trader wealth floor as its success
-measure, ahead of `ContractClaimed`. At day 120 the cast's median wealth goes
-**21,884 → 76,049 (+247%)** and its **p10 is UNCHANGED at 126**. One number, two
-readings: everyone who was already trading got much richer, and nobody who was destitute
-stopped being destitute. The engine probe agrees (field p10 128 → 127; captain-runs under
-1,000cr **80 → 86 of 286**). The cause is visible in the verb mix and is not the board:
-a fighter chooses Trade on **3.0%** of days and an explorer on **7.6%**, against a
-trader's 41.1%, so a better board is a lever they almost never pull.
-
-**So the opportunity clause is answered NO, and the risk clause is answered NO.** N10 did
-not turn every archetype into a trader (the verb mix barely moved, and N4's archetype
-separation survives intact); it also did not lift the floor. *"If N10–N12 together do not
-close it, the fighter's `150 × tier` is the first knob and it belongs to the owner"* —
-one of the three is now spent and the gap is untouched. See the hand-offs written into
-N11 and N12.
-
-**THE PLAYER'S GAME BARELY MOVES, which is the correct result for an NPC-side change.**
-Capstone, `baseline-n4-shipped` → `baseline-n10-shipped`, 8,000 runs: fleet Tour One
-clear **0.5199 → 0.5180**, fleet final credits median **30,425 → 30,915** (+1.6%),
-encounters/run **24.01 → 23.94**, deaths/1,000 days **0.6448 → 0.6573** (+1.9%).
-Per-policy clear rates: trader 0.9050 → 0.9210, trader-degraded 0.7810 → 0.7670, fighter
-0.3700 → 0.3480, explorer 0.7970 → 0.7910, veteran 0.0010 → 0.0000, smuggler
-0.5150 → 0.5400, gambler 0.7900 → 0.7770, greedy 0.0000 → 0.0000. **No policy moves more
-than ~2 points; the yardstick is intact.**
+**The step's real effect was a parity gap it was not looking for.** Pre-N10 an NPC took
+ONE randomly-rolled contract where the player picks from four — not a different rule,
+just *less of the game*. `pickContract` closes it, and it is worth **+247% on the cast's
+day-120 median wealth** (21,884 → 76,049 at 1,000 seeds).
 
 **Still binds:**
 
-- **THE INSTRUMENT HAD NEVER COUNTED CONTRACT COMPETITION AT ALL, and that had to close
-  before this step's own capstone.** `day.ts` emitted `ContractClaimed` and **nothing in
-  `packages/sim` read it** — which is why N2's *"+2.0%"* had to be an ad-hoc probe and why
-  no committed baseline has ever carried the number. Same class as N9's *"the aggregate
-  cannot see an asset"* and N4's `sampleMilestone` defect, and closed the same way, ahead
-  of the measurement rather than after it: `CampaignStatsReport.contractClaims`,
-  `CampaignDayStats.boardDepth` / `contractsSniped`, and
-  `contractClaims` / `contractClaimsPerRun` / `boardDepth` (a full Distribution, because
-  competition shows up in the TAIL long before the median) on every aggregate row. Named
-  reader: `packages/sim/src/__tests__/campaign-contracts.test.ts`. The capstone now
-  carries **22.6–26.2 claims per 120-day run** and **boardDepth p10 3 / median 4 / mean
-  3.756–3.793** per policy.
-- **`market.npcClaims` → `market.jobPoolClaims`, and it is a MOVE (save v10 → v11).** The
-  second field move in `MIGRATIONS` after N1's `fuel` → `ship.fuel`, and it inherits that
-  precedent's strictness in both directions: an orphan `npcClaims` is an unknown key, a
-  missing `jobPoolClaims` a missing one, so a half-done migration fails loudly. The old
-  scalar is credited to `player.currentSystemId` as a **statement of fact** — the
-  co-located snipe was its only writer and that dawn's board its only reader — and clamped
-  through the engine's own `JOB_POOL_MAX_CLAIMS` rather than a literal, keeping `save.ts`'s
-  exclusion from `rulesFingerprint` honest. `deserializeState` performs the SAME move and a
-  test pins the two paths to the same answer, because N1's `fuel` backfill is the precedent
-  for them drifting.
-- **THE ONE THING THAT WOULD UNDO THIS STEP: decoupling depth from the ledger.** The
-  away-claim path calls `generateManifestBoard` per trading captain, which is *literally
-  what the reverted attempt did* (`7334c5d5`). The difference is the coupling in BOTH
-  directions — the depth is READ from the shared ledger (`jobPoolDepth`) and the claim is
-  WRITTEN back to it (`debitJobPool` via `NpcDayResult.claimedFromPool`). Remove either and
-  this becomes the private board the standing constraint forbids, with no test necessarily
-  going red on the day it happens. The three tests that would notice are in
-  `livingGalaxy.test.ts` under *"the shared job pool is galaxy-wide, persists, and
+- **THE FINDING THAT OUTRANKS THE VERDICT — THE NON-TRADER FLOOR DID NOT MOVE, and one
+  of its three chances is spent.** At day 120 the cast's median wealth tripled while its
+  **p10 did not move: 126 → 126**. Everyone already trading got much richer; nobody
+  destitute stopped being destitute. The cause is the verb mix, not the board — a fighter
+  chooses Trade on **3.0%** of days and an explorer on **7.6%**, against a trader's 41.1%
+  — so **a fix routed through Trade cannot reach a captain who does not trade.** That is
+  the corollary to N4's *"only Trade pays"*, and it is what N11 and N12 have to answer;
+  both carry a hand-off block. If they do not close it, the fighter's `150 × tier` is the
+  owner's knob (N4's Result).
+- **The player's game barely moved, which is what makes this an NPC-side change.** Fleet
+  Tour One clear 0.5199 → 0.5180, fleet final credits median 30,425 → 30,915, deaths/1,000
+  0.6448 → 0.6573; no policy's clear rate moves more than ~2 points.
+- **THE ONE CHANGE THAT WOULD UNDO THIS STEP: decoupling depth from the ledger.** The
+  away-claim path calls `generateManifestBoard` per trading captain — *literally what the
+  reverted attempt did* (`7334c5d5`). The difference is the coupling in BOTH directions:
+  depth is READ from the shared ledger (`jobPoolDepth`) and the claim is WRITTEN back to it
+  (`debitJobPool` via `NpcDayResult.claimedFromPool`). Remove either and this silently
+  becomes the private board the standing constraint forbids. The tests that would notice
+  are in `livingGalaxy.test.ts` under *"the shared job pool is galaxy-wide, persists, and
   restocks"*.
-- **The pool REGENERATES, and pre-N10 is a value of that knob rather than a different
-  mechanism.** At `JOB_POOL_REGEN_PER_DAY >= JOB_POOL_BOARD_SIZE` the rule reduces exactly
-  to T-106's dawn reset. Regeneration is applied AFTER the board is drawn, and that order
-  is load-bearing: restocking first would refill the pool before anyone could see it
-  drained, silently deleting T-106's mechanism instead of generalising it. Tallies are
-  clamped and zeroes are DELETED, so a quiet galaxy serializes as `{}`.
-- **THE `dist` TRAP, and it invalidated a control arm before it was caught — read this
-  before measuring any future N step.** Probes that import `@spacerquest/engine` resolve
-  to `packages/engine/dist`, so `git stash`-ing `packages/` and re-running produces a
-  control that is **byte-identical to the shipped arm** — the stash reverts `src` and the
-  built `dist` stays. It happened twice here (once on the archetype table, once on the
-  combat-cell slice) and in both cases the tell was output identical to the last decimal,
-  which is not what a shifted rng stream looks like. Two fixes, both used: import
-  `../packages/engine/src/index.js` directly from a probe, and `npx tsc -b` between arms
-  when the import is by package name.
-- **`rulesFingerprint` IS NOT FORMATTING-INVARIANT, which contradicts standing amendment
-  3's N7-FP note.** A `prettier --write` over the tree (fixing 3 pre-existing violations in
-  files this step never touched, plus its own) moved it **`bed3c00ac19f43d7` →
-  `3079dec9aa5a4af0`** and staled a fixture extracted minutes earlier. N7-FP's argument is
-  that hashing the TypeScript *emit* normalises formatting away; that is evidently not
-  fully true. **Handled without touching a fingerprint**: the capstone was re-run on the
-  formatted tree and diffed against the pre-format one — **"NOTHING MOVED. Every compared
-  field is equal on both sides"** across 8,000 runs — and the fixture re-extracted from
-  the re-run. So the reformat is *proven* measurement-neutral rather than asserted, and
-  the amendment's premise is filed as newly-doubtful rather than quietly relied upon.
-  *Procedural consequence for the next step: format BEFORE the capstone, not after.*
-- **THE 18 RED TESTS THIS STEP INHERITED, grouped by what was really wrong.** The battery
-  entered at 1,287 / 0 and leaves at **1,312 / 0**.
-  - **9 stale-fixture (`balance-smoke` ×5 + `balance-rig` ×4)** — the N7 gate firing as
-    designed against the moved rules/instrument/save fingerprints. Cleared by the capstone,
-    never by a refreshed number.
-  - **7 `campaign-degraded` policy fingerprints** — re-pinned with **logged entry 9**,
-    which separates the two routes into those hashes: the report SHAPE (new fields) and the
-    dusk STREAM (more rng draws per trading captain). `greedy` moved for the fourth
-    consecutive NPC-side step; entry 6 remains the standing explanation.
-  - **3 `protocol` replay goldens** — regenerated, and **one RESPONSES array moved**, which
-    the N2 note says should not happen for an NPC-side change. Diffed rather than waved
-    through: of 22 responses exactly one differs, everything outside its `manifestBoard` is
-    identical, the board's DEPTH is unchanged at 3, and 1 of its 3 offers was re-rolled.
-    N2's responses held still because N2 changed no rng draw COUNTS; N10 does. Recorded at
-    the fixture.
-  - **2 goldens (`day.test.ts`)** — re-recorded with the event-count diff the convention
-    asks for: DAY_LOOP 1,310 → 1,301 events, `NpcAction` unchanged at 300, and **every
-    player-side event unchanged in count and kind**, which is the check that this is an
-    NPC-side change.
-  - **1 `balance-combat-survival` (`spacers die`)** — a live band on a rare event, and the
-    honest answer was to WIDEN THE SAMPLE, exactly as the same file's N4 block prescribes.
-    Measured on both arms at 40 seeds: pre-N10 lost 5 ships / 9,600 sim days with **one** in
-    below/unprepared; post-N10 lost 3 with **none**. The assertion was being graded on an
-    expected count of about one — and that file's own N4 note already recorded that it only
-    became nonzero when the slice widened from 15 to 40 seeds, so it has been one unlucky
-    resample from red since it started passing. Re-measured at 120 seeds / 28,800 sim days:
-    16 ships lost, below/unprepared **n=1,774 at 0.338%** — six expected deaths, a sample
-    that can resolve the claim. **Every threshold in that file is byte-identical, and the
-    death-rate floor is still breached (0.556 against 0.8), so the R-owned tripwire stays
-    correctly red** rather than being papered over by the widening.
-  - **1 `deed-coverage`** — same shape, same answer. Re-swept over the 1..16 range the
-    file's own provenance establishes: **the union is still 44/44 with nothing missing** (no
-    coverage regression — the design property this file guards is intact) and six careers
-    are individually total (7, 9, 11, 12, 15, 16) against seven before, but seeds 1..8 now
-    hold only ONE of them. Range widened 1..8 → 1..12 (holding four), threshold unmoved.
-    Its "~8.5s per career" runtime note is stale by an order of magnitude — twelve 300-day
-    careers now run in 5.7s — and that is recorded there.
-  - **1 `campaign-reach` (veteran buys a port)** — a documented single-seed hunt, re-swept
-    in its own protocol (seeds 1..80 through the exact committed test, via a temporary
-    env-var seed override so the swept code IS the shipped code). **Zero of seeds 1..20
-    qualify**, which is why the sweep had to widen rather than the horizon; 9 of 21..80 do
-    (22, 26, 27, 51, 55, 67, 69, 71, 79). That is 9/80 = 11% against N4's 3/20 = 15% —
-    the same rate inside sampling error on counts this small, so the pillar is no harder to
-    reach. Re-pinned to seed 22. **The 150-day horizon is deliberately unmoved**: widening
-    it would enshrine the number that test's own T-1504a note warns keeps moving.
+- **Regeneration runs AFTER the board is drawn, and that order is load-bearing** —
+  restocking first would refill the pool before anyone could see it drained, deleting
+  T-106's mechanism instead of generalising it. At
+  `JOB_POOL_REGEN_PER_DAY >= JOB_POOL_BOARD_SIZE` the rule reduces exactly to T-106's dawn
+  reset, so pre-N10 is a value of this knob rather than a different mechanism.
+- **`market.npcClaims` → `market.jobPoolClaims` is a MOVE (save v10 → v11)** — the second
+  in `MIGRATIONS` after N1's `fuel` → `ship.fuel`, with the same two-directional strictness
+  making a half-done migration fail loudly. `deserializeState` performs the same move and a
+  test pins both paths to one answer, because N1's `fuel` backfill is the precedent for them
+  drifting.
+- **THE `dist` TRAP — read this before measuring any future N step.** A probe importing
+  `@spacerquest/engine` resolves to `packages/engine/dist`, so `git stash`-ing `packages/`
+  and re-running yields a "control" **byte-identical to the shipped arm**: the stash reverts
+  `src` and the stale build stays. It cost two control arms here, and the tell both times
+  was output matching to the last decimal, which is not what a shifted rng stream looks
+  like. Fixes: import `../packages/engine/src/index.js` directly, or `npx tsc -b` between
+  arms.
+- **`rulesFingerprint` IS NOT FORMATTING-INVARIANT, contradicting standing amendment 3's
+  N7-FP note.** A `prettier --write` moved it `bed3c00ac19f43d7` → `3079dec9aa5a4af0` and
+  staled a fixture extracted minutes earlier. N7-FP argues that hashing the TypeScript
+  *emit* normalises formatting away; that is evidently not fully true. Handled without
+  touching a fingerprint — the capstone was re-run on the formatted tree and diffed:
+  **"NOTHING MOVED"** across 8,000 runs. *Procedural consequence: format BEFORE the
+  capstone, not after.*
+- **The instrument had never counted contract competition at all.** `day.ts` emitted
+  `ContractClaimed` and nothing in `packages/sim` read it, which is why N2's *"+2.0%"* was
+  an ad-hoc probe and no baseline has ever carried the number. Same class as N9's *"the
+  aggregate cannot see an asset"*, closed the same way — ahead of the capstone, not after.
+  `contractClaims` / `boardDepth` now ride the report, the per-day series and every
+  aggregate row; named reader `campaign-contracts.test.ts`. **This is the worked example
+  N12's FIRST TASK is asked to copy for `ports`.**
+- **No pool claim emits an event, deliberately.** ~4.6 claims/day would add ~550 events to
+  a persisted `eventLog` for a signal the player cannot act on, so away-claims are measured
+  through state and the wire still narrates only the visible snipe — the one a player can
+  actually watch. Per-claim provenance would be a new event type with its own cost
+  argument, never a widening of `ContractClaimed`.
+- **18 red tests inherited, battery 1,287 / 0 → 1,312 / 0.** Nine were the N7 staleness
+  gate (cleared by the capstone), seven `campaign-degraded` fingerprints (logged entry 9),
+  three protocol goldens, two day-loop goldens, and **three live bands that were sample
+  size rather than regression** — `spacers die`, `deed-coverage` and the `campaign-reach`
+  port hunt were all re-measured on widened samples with **every threshold byte-identical**,
+  each recorded in its own file. The R-owned death-rate tripwire is still correctly red.
 - **Baseline of record re-pinned to `docs/balance/baseline-n10-shipped.json`**, with
   `balance-targets.test.ts`'s path and standing amendment 1's pointer moved in the same
-  commit, as that amendment requires.
-- **WHAT WAS NOT DONE, so it is not mistaken for an oversight.** No pool claim emits an
-  event. ~4.6 claims/day over a 120-day career would add ~550 events to a persisted
-  `eventLog` for a signal the player cannot act on, so the away-claims are measured through
-  state (`boardDepth`) and the WIRE still narrates only the visible snipe — the one the
-  player can actually watch. If a later step wants per-claim provenance, that is a new event
-  type with its own cost argument, not a widening of `ContractClaimed`.
+  commit.
 
-*Measurement provenance: capstone `docs/balance/baseline-n10-shipped.json` (8,000 runs).
-The per-archetype and pool-depth figures come from a throwaway engine-level probe of the
-ambient NPC loop (10 seeds × 200 days, no player actions, medians over
-`isSimulatedCaptain` records only) — the same shape of probe N3 and N4 used, and it is
-NOT committed: the numbers are the durable artefact and a scripts/ file nothing imports
-would rot. Rebuild it from this paragraph if N11 needs the same table.*
+*Full record — the per-archetype control table, the complete knob sweeps, the per-policy
+capstone rows and the red-test-by-red-test account: `git show a9cffd85 --
+docs/NPC_REDESIGN.md`. The measurement numbers themselves live in
+`docs/balance/baseline-n10-shipped.json`; the knob sweeps, the golden diffs and the band
+widenings are each argued at their own definition sites in code, which is the copy that
+cannot go stale.*
 
 ---
 
-*Below is the step as specified, kept for the record.*
-
-*Found by the 2026-07-29 audit: the owner's parity intent assumed fuller contract
-interaction than the cast has.*
-
-- **What exists today, measured:** `executeTrade` synthesizes a private offer via
-  `rollContract` for every haul EXCEPT when the NPC shares the player's system, in which
-  case it may claim one visible offer off the player's live board — capped at **one claim
-  per dusk across the whole fleet** and gated on co-location (`NpcDayContext.claimableBoard`,
-  `day.ts`). N2 measured the consequence: an 8× wealth increase across the field moved
-  `ContractClaimed` by +2.0% — noise. Competition is a texture, not a force.
-> [!IMPORTANT]
-> **WHAT N4 FOUND AND HANDS TO N10** (standing amendment 4). **Only Trade pays.**
-> `executeTravel` pays nothing (pure fuel cost), `executePatrol` 40, `executeCombat` a
-> flat `150 × tier`, and `executeTrade` a real contract — so under N4's blend the two
-> archetypes that specialise AWAY from Trade end at **206 and 170 credits median** at
-> day 200 (explorer, fighter) against the trader's **851,930**, and their median hull
-> falls with it (90→80, 70→50). Twelve of the thirty captains are destitute, and an
-> archetype is currently a choice about how poor to be.
->
-> That is this step's opportunity and its risk. **Opportunity:** a shared board the
-> whole field can work is the first real income source for a non-trader, so watch the
-> non-trader wealth floor as a success measure here, not just `ContractClaimed`.
-> **Risk:** if the board is the only fix, N10 turns every archetype back into a trader
-> — which would undo N4. Sweep the per-archetype INCOME MIX, not just the claim count.
-> If N10–N12 together do not lift the floor, the fighter's `150 × tier` is the first
-> knob and it is an owner call (see N4's Result).
->
-> **DISCHARGED, and BOTH clauses answered NO.** Opportunity: the floor did not move —
-> cast p10 **126 → 126** at the 1,000-seed capstone while the median went
-> 21,884 → 76,049. Risk: no archetype turned back into a trader — the verb mix barely
-> shifted and N4's separation is intact. The income mix was swept as asked, and it is
-> what explains both answers: a fighter chooses Trade on **3.0%** of days and an
-> explorer on **7.6%**, so a better board is a lever they almost never pull. **One of
-> the three chances is spent.** Full numbers in N10's Result.
-
-- **Hypothesis:** letting captains claim from the shared per-system job pool wherever they
-  fly — not only under the player's nose — makes contract competition a real economic
-  force and the market feel inhabited.
-- **Change (programmatic):** NPCs claim against the same job pool that generates the
-  player's board. If materializing live boards for 20 systems × 30 captains breaches the
-  performance envelope, the sanctioned fast-forward (per the PARITY LEDGER ruling) is a
-  shared depletion pool: a synthesized claim debits the same generation pool that shapes
-  the next board the player sees — the player must be able to WATCH the competition, not
-  just share a galaxy with it. The 1-claim/dusk cap and the co-location gate are throttles
-  from the texture era: sweep them as knobs here rather than inheriting them silently.
-- **Simulate:** full sweep + `ContractClaimed` rates + board-depth percentiles at the
-  player's location.
-- **Proves:** claims scale with field activity; offers the player saw disappear at rates
-  that track the cast; the trader's clear-day band holds or moves attributably.
-- **Disproves:** boards empty and Tour One clear collapses (competition tuned too hot), or
-  nothing moves at all (the cap was the binding constraint and still is — a finding about
-  the cap, to take back to the owner).
+**DISCHARGED — N4's hand-off, both clauses answered NO.** N4 asked this step to watch the
+non-trader wealth FLOOR (opportunity) and the per-archetype income MIX (risk: that a
+shared board turns every archetype back into a trader). The floor did not move (cast p10
+126 → 126); no archetype turned back into a trader (the verb mix barely shifted and N4's
+separation is intact). The income mix is what explains both — see the first Still-binds
+bullet above.
 
 > [!WARNING]
-> **REVERTED ATTEMPT (`7334c5d5`, reverted 2026-07-29) — read before rebuilding.**
-> An unfinished implementation was committed and rolled back. It left the engine at
-> **154 failing tests and a failing typecheck**. Three things to not repeat:
+> **REVERTED ATTEMPT (`7334c5d5`, reverted 2026-07-29) — the anti-pattern, kept because
+> the rebuilt code looks almost identical to it.** An unfinished implementation was
+> committed and rolled back, leaving the engine at 154 failing tests. Three failure modes,
+> **all three avoided in the 2026-07-29 rebuild**:
 >
-> **1. It built a PRIVATE board, which inverts the step.** Each NPC got its own
-> `generateManifestBoard(npc.currentSystemId, …, 4)` that **depletes nothing and is
-> invisible to the player**. This step's Change clause sanctions exactly one
-> fast-forward — *"a shared depletion pool: a synthesized claim debits the same
-> generation pool that shapes the next board the player sees — the player must be
-> able to WATCH the competition, not just share a galaxy with it."* A private board
-> is the parallel cost model the standing constraint forbids and R2c is the standing
-> warning about.
->
-> **2. It silently killed the one competition signal that already existed.** With
-> `systemBoard` always non-null, the `ctx.claimableBoard` branch became unreachable,
-> so `claimedContractIndex` was never set and `ContractClaimed` would have gone to
-> **zero** — measurably *worse* than pre-N10, with this step's Proves failing by
-> construction. The Change clause also asked for the 1-claim/dusk cap and the
-> co-location gate to be **swept as knobs**; they were inherited as dead code instead.
->
-> **3. `pickContract` hardcoded the origin system.** `systemDistance(0, c.destination)`
-> — every archetype's distance reasoning measured from system 0 rather than
-> `npc.currentSystemId`, and it threw `Unknown star system route: 0 -> 11` outright.
->
-> **WHAT IS WORTH SALVAGING:** the *shape* of `pickContract` — an exported, pure,
-> archetype-keyed selector that takes the offer list and returns one contract, so the
-> per-archetype strategy is unit-testable in isolation. That matches the owner's
-> constraint that *the contract an NPC picks is driven by their archetype/persona*.
-> Keep the shape; fix the origin, and feed it the shared pool rather than a private one.
->
-> **ALL THREE AVOIDED, and the salvage was taken (2026-07-29 rebuild).** (1) The pool is
-> shared: depth is READ from `market.jobPoolClaims` and every claim is WRITTEN back to
-> it, which is the coupling that separates this from a private board — spelled out at
-> `executeTrade`'s definition site because the code otherwise looks identical. (2) The
-> `ctx.claimableBoard` branch is intact and still the ONLY route to `ContractClaimed`;
-> the capstone measures 22.6–26.2 claims per 120-day run, so it did not go to zero, and
-> both throttles were swept rather than inherited. (3) `pickContract` takes
-> `originSystemId` as a parameter and a test drives the same board from two origins to
-> two different answers. It became the step's largest measured effect — see the Result
-> above.
+> 1. **A PRIVATE board** — `generateManifestBoard` per captain that depleted nothing and
+>    was invisible to the player, i.e. the parallel cost model the standing constraint
+>    forbids. *Rebuilt:* depth is read from `market.jobPoolClaims` and every claim written
+>    back to it. **That two-way coupling is the whole difference, and the code reads the
+>    same without it** — argued at `executeTrade`'s definition site.
+> 2. **It silently killed the one competition signal that existed** — with `systemBoard`
+>    always non-null the `ctx.claimableBoard` branch became unreachable and
+>    `ContractClaimed` would have gone to ZERO, failing this step's Proves by construction.
+>    *Rebuilt:* that branch is intact and still the only route to the event.
+> 3. **`pickContract` hardcoded the origin** (`systemDistance(0, …)`), throwing
+>    `Unknown star system route: 0 -> 11`. *Rebuilt:* origin is a parameter, pinned by a
+>    test that drives one board from two origins to two answers.
 
 ### N11 — NPCs earn deeds and Renown (MUST-HAVE · owner ruling 2026-07-29 · NEXT)
 
@@ -1655,86 +1338,66 @@ quote style, so a Prettier pass cannot move a rules fingerprint either.
 
 ### N7-RIG — Two blind spots in the fingerprint, closed by audit (REMEDIATION · 2026-07-29)
 
-**This is not a graded N-series step** — no hypothesis, no sweep, no verdict, no re-pin. It is
-remediation of three items (**OI-6**, **OI-6b**, **OI-7**) raised by the 2026-07-29 N-series
-doc-vs-code audit: five independent verification passes over every step marked SHIPPED, run
-against HEAD `5e4b9f0c` on a clean tree, which raised **13 items (OI-1 … OI-12 plus OI-6b),
-all closed the same day**. The audit's own working file was never committed: **this document
-is the whole record**, and every one of the 13 is traceable by grepping its OI-number here —
-`OI-1` and `OI-5` under N1/N2, `OI-2` under N6 and N3, `OI-3` under N7 and standing amendment
-3, `OI-4` under N7-FP, `OI-6`/`OI-6b`/`OI-7` here, `OI-8` under N3, `OI-9` under N2 and THE
-PARITY LEDGER, `OI-10` in the track preamble, `OI-11` under N6, `OI-12` under N8. Where an
-item stayed open by decision rather than being fixed, it is filed under the step that owns it
-rather than in a list of its own. It is recorded here, beside N7-FP, because both are changes
-to *the instrument that decides whether a fixture still describes HEAD*. **Nothing was
-re-stamped and nothing was owed** — rules **`91cfa4adc626ba54`** (56 files) and instrument
-**`79adfd2417aa9fcd`** (4 files) both unmoved and still matching
-`docs/balance/smoke/tiers.json`; running the new module against a pristine `git archive HEAD`
-tree reproduced the stamped `docsFingerprint` `e003c81c03bcd116` exactly, so the working-tree
-drift was 100% attributable to OI-1's comment rewrite in `npc.ts` (recorded in N1). Battery
-**1,239 -> 1,262 passing / 0 failing**; rig tests **29 -> 52**.
+**This is not a graded N-series step** — no hypothesis, no sweep, no verdict, no re-pin. It
+is remediation of three items (**OI-6**, **OI-6b**, **OI-7**) from the 2026-07-29 doc-vs-code
+audit: five verification passes over every step marked SHIPPED, which raised **13 items
+(OI-1 … OI-12 plus OI-6b), all closed the same day**. The audit's own working file was never
+committed — **this document is the whole record**, and every item is traceable by grepping its
+OI-number: `OI-1`/`OI-5` under N1/N2, `OI-2` under N6 and N3, `OI-3` under N7 and standing
+amendment 3, `OI-4` under N7-FP, `OI-6`/`OI-6b`/`OI-7` here, `OI-8` under N3, `OI-9` under N2
+and THE PARITY LEDGER, `OI-10` in the track preamble, `OI-11` under N6, `OI-12` under N8.
+Where an item stayed open by decision it is filed under the step that owns it. **Nothing was
+re-stamped and nothing was owed** — both fingerprints unmoved, and the stamped
+`docsFingerprint` reproduced exactly against a pristine `git archive HEAD` tree, so the
+working-tree drift was 100% attributable to OI-1's comment rewrite in `npc.ts`.
 
-**Still binds:**
+**Still binds** (all in `packages/sim/src/balance/rules-fingerprint.ts`, deliberately without
+the line citations the full record carries — they rot):
 
-- **OI-6 — every directory under a hashed root is a decision on record.** `listTsFiles` read
-  only the declared directories, so `packages/engine/src/rules/` would have been invisible to
-  `computeRulesFingerprint` **and** to the three enumeration tests that exist to make the
-  classification total. The guard **fails rather than auto-recursing**, deliberately:
-  auto-recursion would let a whole subtree join the fingerprint with nobody having decided
-  that it should. In `packages/sim/src/balance/rules-fingerprint.ts`: `:207`
-  `HASHED_ROOT_IGNORED_DIRECTORIES` (`__tests__`, `node_modules`, `dist`), each carrying its
-  stated reason; `:248` `assertNoUndeclaredSubdirectory()`, whose message names the offending
-  directory and both remedies; `:352` `listTsFiles()`; `:523` `collect()` and `:625`
-  `allSourceKeys()` both take the declared-subdirectory set through, **so the hash and the
-  enumeration tests walk the same guarded tree**. `listTsFiles` is the module's only
-  `readdirSync`. It lives in the PRODUCTION MODULE, not the test, and that is load-bearing:
-  `checkpoints.ts` and `smoke-extract.ts` stamp fixtures from the command line, and a
-  vitest-only guard cannot reach a CLI stamp. 8 tests, `balance-rig.test.ts:537`.
-- **SHARP BUT INTENTIONAL — an empty, `.d.ts`-only or asset-only directory all THROW, and they
-  hard-fail `smoke-extract` at the CLI, not just a test.** So adding e.g.
-  `packages/content/src/data/*.json` will stop a fixture extraction dead until someone declares
-  the directory. That is conservative-safe and consistent with the module's doctrine, but it is
-  a real cost, and the remedy is one line in `HASHED_ROOT_IGNORED_DIRECTORIES` or in the
-  declared set.
+- **OI-6 — every directory under a hashed root is a decision on record.** The walk read only
+  the declared directories, so `packages/engine/src/rules/` would have been invisible to the
+  hash **and** to the enumeration tests that exist to make the classification total. The guard
+  **fails rather than auto-recursing**, deliberately: auto-recursion would let a whole subtree
+  join the fingerprint with nobody having decided it should. It lives in the PRODUCTION MODULE
+  rather than a test, and that is load-bearing — `checkpoints.ts` and `smoke-extract.ts` stamp
+  fixtures from the command line, and a vitest-only guard cannot reach a CLI stamp.
+- **SHARP BUT INTENTIONAL, and a future step will hit this:** an empty, `.d.ts`-only or
+  asset-only directory THROWS, and it hard-fails `smoke-extract` at the CLI rather than only in
+  a test. Adding e.g. `packages/content/src/data/*.json` will stop a fixture extraction dead
+  until someone declares the directory. Conservative-safe and consistent with the module's
+  doctrine, but a real cost; the remedy is one line in `HASHED_ROOT_IGNORED_DIRECTORIES` or in
+  the declared set.
 - **OI-6b — the four symlink rules, settled.** `readdirSync(withFileTypes)` types a symlink by
-  ITSELF, not its target, so a symlinked directory slipped both the new guard and
-  `listTsFiles`. `listTsFiles` now classifies every entry ONCE via `statSync` — which follows
-  the link where `lstatSync` would not, and that is the entire reason for choosing it
-  (`classifyEntries()` / `ClassifiedEntry`, `rules-fingerprint.ts:276-350`). (1) A **symlinked
-  directory** trips the guard with the identical message and escapes it via
-  `HASHED_ROOT_IGNORED_DIRECTORIES` exactly as a real one does. (2) A **symlinked `.ts` file**
-  is HASHED like any other rule source — `readFileSync` follows the link, so it is real rule
-  code deciding real outcomes. (3) **The repo-relative path IN THIS TREE enters the manifest,
-  not the target's** — a fingerprint describes this tree. (4) A **dangling or
-  non-regular-file** link fails loudly with a named `UNRESOLVABLE SYMLINK` message rather than
-  letting a bare `ENOENT` escape from inside a fixture stamp. Cost on a healthy tree is zero
-  and is pinned by a test. 9 tests, `balance-rig.test.ts:634`.
+  ITSELF, not its target, so a symlinked directory slipped both the guard and the walk. Every
+  entry is now classified ONCE via `statSync` — which FOLLOWS the link where `lstatSync` would
+  not, and that is the entire reason for choosing it. (1) A symlinked *directory* trips the
+  guard and escapes it exactly as a real one does. (2) A symlinked `.ts` file is HASHED —
+  `readFileSync` follows the link, so it is real rule code deciding real outcomes. (3) The
+  repo-relative path IN THIS TREE enters the manifest, not the target's, because a fingerprint
+  describes this tree. (4) A dangling or non-regular link fails loudly with a named
+  `UNRESOLVABLE SYMLINK` message rather than letting a bare `ENOENT` escape from inside a
+  fixture stamp.
 - **OI-7 — a file TypeScript cannot parse used to hash silently.** `ts.createSourceFile` does
-  not throw on bad syntax: it RECOVERS, records the problem in the `@internal`
-  `parseDiagnostics`, and the printer prints the recovered tree (`export const A = (` prints as
-  `export const A = ();`). Two different broken states can recover to the same tree — **a
-  fingerprint collision between rulesets that are not the same ruleset.** `assertParseClean`
-  (`rules-fingerprint.ts:485`) now fails with the file, the line:column and the parser's own
-  message before anything is hashed; `hashSemantic` (`:436`) calls it at `:444`, ahead of
-  `printFile` at `:445`. It is an assertion rather than a documented mitigation for the same
-  reason as OI-6: `tsc -b` is external and runs in the battery, not before `smoke-extract.ts`
-  stamps a fixture. **The assertion's own failure mode is covered: if `parseDiagnostics` ever
-  stops being readable (a TypeScript upgrade renaming that `@internal` field) it throws rather
-  than silently stopping checking.** 6 tests, `balance-rig.test.ts:761`.
-- **The hashed corpus, pinned as a test rather than remembered.** All **60** hashed files —
-  **56** rule plus **4** instrument, the instrument set being exactly `sim/index.ts`,
-  `balance/aggregate.ts`, `balance/smoke.ts`, `balance/synthesize.ts` — parse with **zero**
-  diagnostics under the exact `ScriptTarget.Latest` / `ScriptKind.TS` pair the hash uses.
+  not throw on bad syntax: it RECOVERS, and the printer prints the recovered tree
+  (`export const A = (` prints as `export const A = ();`). Two different broken states can
+  recover to the same tree — **a fingerprint collision between rulesets that are not the same
+  ruleset.** `assertParseClean` now fails with the file, line:column and the parser's own
+  message before anything is hashed. An assertion rather than a documented mitigation for the
+  same reason as OI-6: `tsc -b` runs in the battery, not before `smoke-extract` stamps a
+  fixture. **Its own failure mode is covered** — if `parseDiagnostics` ever stops being
+  readable (a TypeScript upgrade renaming that `@internal` field) it throws rather than
+  silently stopping checking.
 - **ONE HOLE OF THE SAME CLASS IS STILL OPEN — recorded, not closed.** The guard catches a new
   *subdirectory* under a hashed root. A whole new hashed **root** — a new package, say
-  `packages/economy/src` — is caught by nothing: it would simply never be walked, and every
-  enumeration test would pass while describing a game that had grown a limb. Closing it needs
-  a different mechanism (the workspace list is the thing that would have to be
-  totality-checked, not a directory listing). **It belongs to whichever step first adds a
-  package** — that step must either declare the new root here or record why it holds no rule
-  code.
+  `packages/economy/src` — is caught by nothing: it would never be walked, and every
+  enumeration test would pass while describing a game that had grown a limb. Closing it needs a
+  different mechanism (the workspace list is what would have to be totality-checked, not a
+  directory listing). **It belongs to whichever step first adds a package** — that step must
+  either declare the new root here or record why it holds no rule code.
 
-*Full record: `git show 433ffce3 -- docs/BALANCE-REDESIGN-WORKLIST.md`*
+*Full record — the per-item line citations, the hashed-corpus pin, test counts and fingerprint
+values: `git show a9cffd85 -- docs/NPC_REDESIGN.md`.*
+
 
 ### N9 — The instrument has never played three of the eleven actions (SHIPPED 2026-07-28 · `55233e15`)
 
