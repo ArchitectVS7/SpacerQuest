@@ -38,8 +38,10 @@ The 30 NPCs operate with the full player loop — same rules, same prices, same
 functions, to simulate a multiplayer field. THE PARITY LEDGER below is the completion
 criterion: **this track is DONE when every ledger row is SHIPPED, fast-forwarded under
 the standing constraint, or EXCLUDED by a recorded owner ruling — and N8 has re-pinned
-the baseline of record against that field.** Three rows are UNRULED today (Explore,
-VisitHangout, Storylet); they are owner decisions owed, and they gate N8.
+the baseline of record against that field.** **Every ledger row is now ruled (owner,
+2026-07-30): Explore and Storylet are recorded EXCLUSIONS, VisitHangout a recorded PARTIAL.
+So the only rows still owing WORK are Port (N12) and the two that wait on N13's hand (Crew,
+Reroll) — and N8's ruling precondition is discharged.**
 
 
 ## THE NPC PARITY TRACK (N-series)
@@ -55,7 +57,9 @@ either credits or cargo, or fight, or flee. They literally MUST act like a playe
 the detail. Run order is N0 → N1 → **N7** → N2 → N6 → N3 → **N4** → **N10** → **N11** → **N12 → N13** →
 N5 → N8 (see "Sequencing at a glance" for why N7 moved and why N4 kept its early slot;
 N10–N13 added by owner ruling 2026-07-29 — see THE PARITY LEDGER below). **Next unblocked
-step: N12.**
+step: N12 — and its FIRST TASK is already discharged** (the instrument learned to see ports
+ahead of the step, so N12 can measure its own effect from day one). **The parity ledger is
+fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 
 | step | status | outcome |
 | --- | --- | --- |
@@ -69,11 +73,11 @@ step: N12.**
 | N5 — NPC proficiency spread | TODO | reuses R1's `PilotDegradationProfile`; **GATED BY N13** — its die-allocation lever needs a decision surface to act on |
 | **N10 — NPCs work the contract board** | **SHIPPED 2026-07-29** | **CHANGE ACCEPTED · HYPOTHESIS DISPROVED** — the shared per-system pool is built and the cast works it galaxy-wide, but competition is not a force: cast demand is ~6% of the galaxy's job supply, and neither throttle was ever the binding constraint. The step's real effect was the parity gap it was not looking for — the cast now CHOOSES its contract (`pickContract`), worth +247% on cast median wealth. **The non-trader floor did not move (p10 126 → 126)** |
 | **N11 — NPCs earn deeds and Renown** | **SHIPPED 2026-07-30** | **CHANGE ACCEPTED · HYPOTHESIS HELD, BOTH DISPROVES LIMBS SURVIVED** — the −1 dead end is gone (98.7% of cast slots hold an earned rank at day 120, 42.8 gated purchases per run), the median captain sits **two rungs BELOW** a competent player (COMMODORE vs TOP_DOG), and nobody accrues zero. **The floor did not move for the THIRD time (p10 126 → 126) and the structural reason is now known: a deed pays no credits — rank is a spending unlock, not income**, so cast median wealth FELL 76,049 → 55,437 |
-| **N12 — NPCs buy ports** | **TODO · MUST-HAVE** | lands BEFORE N8; pulls N8's aggregate-sees-assets task forward as its own first task |
+| **N12 — NPCs buy ports** | **TODO · MUST-HAVE** · FIRST TASK DONE | lands BEFORE N8. Its FIRST TASK — the aggregate learning to see ports, player AND per-NPC — **landed ahead of the step (2026-07-30)**, so the step can measure its own effect. **N11 hands it the sharpened question:** the floor has now failed to move three times, and a port must be BOUGHT, so measure port ownership PER ARCHETYPE from the first sweep — fleet-wide would hide a two-archetype economy |
 | **N13 — NPC decision surface (dawn-hand parity)** | **TODO · MUST-HAVE** | literal reduced hand vs algorithmic equivalent — owner accepts algorithmic fast-forward; gates N5 |
 | **N14 — captain voice: the daily wire boast** | **TODO · EXPERIMENT** | owner spec 2026-07-29 — 3 boasts × 30 captains, top-3 candidates, one per day, 2-day cooldown + line rotation; **not** PvP messaging (PRD non-goal) |
 | **N9 — the instrument's three unplayed actions** | **SHIPPED** | **hypothesis REJECTED** — verbs cost 38% of fleet cash, not gain; found the aggregate cannot see an asset |
-| N8 — re-pin against a living field | TODO | **must first teach the aggregate to see ports**; re-pin against the post-N9 instrument; **follows N10–N12** (owner ruling 2026-07-29) |
+| N8 — re-pin against a living field | TODO | **ledger rulings discharged 2026-07-30; the aggregate now sees ports**; re-pin against the post-N9 instrument; **follows N10–N12** (owner ruling 2026-07-29) |
 
 > [!NOTE]
 > **MEASUREMENT DEBT DISCHARGED (2026-07-29).** The caution that stood here recorded
@@ -201,12 +205,12 @@ ruling; it is what makes the fast-forward honest).
 | Travel | real fuel, real routes, real encounters, real permanent death | shipped (N3) |
 | Combat | interdiction on the SHARED rules, one-tick — same DC, tribute, damage, salvage, retreat. **NOT `resolveCombat`**: gives up die CHOICE only, closed by N13. **GAP FOUND AT N4:** that is the verb a captain is FORCED into; the one they CHOOSE (`executeCombat`) is still the pre-N3 abstract GUNS check + flat `150 × tier`, with no interceptor, no damage and no ship loss — so the six fighters take 6.4 interdictions each and **0 deaths** | shipped (N3) · N13 closes the die gap · **`executeCombat` still owed** |
 | Shipyard | full price/gate parity via `ShipyardActor`, and since N11 the RENOWN GATE IS EXERCISED AND MEASURED: the refit ladder asks for rank-gated special equipment and is refused or served by the player's own `requiredRank` check, on the standing the captain earned — no NPC branch, **42.8 gated purchases per run at the N11 capstone**. Still **spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · **gate shipped (N11)** · OI-9 open |
-| Explore | never | **UNRULED — owner decides by N8** |
-| VisitHangout | Socialize stand-in; no borrow/repay | **UNRULED — owner decides by N8** |
+| Explore | never — and it is not coming: measured a net credit SINK (53.8cr/attempt against 400–640cr of fuel), with the shipped explorer policy ending RICHER without it on 101 of 120 seeds | **EXCLUDED (owner 2026-07-30)** — ruled absence |
+| VisitHangout | the cast plays the verb (`executeSocialize`); the borrow/repay half is excluded — the smallest legal loan carries 13cr/dusk against a broke captain's 25cr/day. **Two open defects found while ruling it:** the verb is a pure faucet (+4.86cr/captain-day, no counterparty) and 95.91% of its actions resolve where there is no Hangout | **PARTIAL, lending EXCLUDED (owner 2026-07-30)** |
 | Crew | never (meaningless without a hand) | N13 decides |
 | Port | never — the player is the only possible port owner | **N12** |
 | Reroll | n/a without a hand | N13 decides |
-| Storylet | authored player-facing content | **UNRULED — owner decides by N8** |
+| Storylet | authored player-facing content, and cast participation is SUBTRACTIVE: 112 of 114 storylets are `repeat: 'never'` against one world-scoped `completed` map, so a captain resolving a beat plays instead of the player | **EXCLUDED (owner 2026-07-30)** — ruled absence |
 | Wait | Idle | shipped |
 
 Renown is the verb-less twelfth row, and **N11 removed it (2026-07-30)**: every captain
@@ -218,961 +222,82 @@ than about NPCs: a deed pays no credits.** Rank is a SPENDING UNLOCK, so this ro
 never be the one that moves the wealth floor — see N11's Result and the hand-off into
 N12.
 
-The three UNRULED rows are deliberately not defaulted: "most" is only honest if every
-exclusion is a recorded decision rather than a silent gap. Rule on each (implement,
-fast-forward, or exclude with a reason) before N8 pins the living-field baseline.
+**THE LEDGER IS NOW FULLY RULED (2026-07-30), and N8's precondition is discharged.** The
+three rows that were deliberately not defaulted — "most" is only honest if every exclusion
+is a recorded decision rather than a silent gap — are ruled: Explore and Storylet are ruled
+ABSENCES, VisitHangout a ruled PARTIAL. Reasons and the measurements behind them are in THE
+THREE VERB RULINGS below. **Of the player's eleven verbs the cast now plays seven** (Trade,
+Travel, Combat, Shipyard, Socialize-as-VisitHangout, Wait, plus the verb-less Renown row),
+**two are excluded by ruling** (Explore, Storylet), and **two wait on N13's hand** (Crew,
+Reroll) with **Port owed by N12** — which is the honest form of the owner's "all or most of
+a full player's actions".
 
 ---
 
-## UNRULED VERBS — decision memos (prepared 2026-07-29)
+## THE THREE VERB RULINGS (owner, 2026-07-30) — the ledger is fully ruled
+
+**All three formerly-UNRULED rows are now ruled, so N8's precondition is discharged: every
+one of the player's eleven verbs is either shipped for the cast or excluded by a recorded
+decision.** The ruling on each is below with the reason that decided it. Each was prepared
+as a full costed memo (options, measurements, provenance) before being ruled; the memos ran
+to ~940 lines and are **not** kept inline — `git show 3e8cbeda -- docs/NPC_REDESIGN.md`.
+
+**Explore — EXCLUDED. N8 counts a ruled ABSENCE.** The case for implementing was that
+explorers are one of the two destitute archetypes and salvage looked like income they
+cannot reach. **Measurement killed it, and inverted it.** An ablation probe over 120 seeds
+× 120 days — fidelity-checked byte-equal to `runCampaign` on 5 seeds before any number was
+believed — measures Explore as a net credit **SINK** for whoever plays it: **53.8cr gross
+salvage per attempt against 400–640cr of fuel**, and removing the verb from the shipped
+`explorerPolicy` leaves it **richer** (median finalCredits 90,135 against 60,391; **101 of
+120 seeds ended richer without it**). It is also doubly unreachable for the captains it was
+meant to help — at day 120 the capstone's median captain carries 27 fuel (p25 = 4, p10 = 0)
+against an 80-fuel gate. The authored rewards (Nemesis fragments, charts) are player-scoped
+by design, and the standing constraint requires the same rules *where the verb applies*, not
+that every verb apply. **Carry forward: Explore is not the floor fix — that is a candidate
+removed from the search, not left open.**
+
+**VisitHangout — LENDING EXCLUDED. N8 counts a ruled PARTIAL, not an absence**, because the
+cast already plays the verb through `executeSocialize`; only the borrow/repay half is
+excluded. The reason is arithmetic, not preference: a captain below the ante is on
+`brokeIdle` earning `NPC_ODD_JOB_CREDITS = 25`/day, and the smallest loan the band allows
+carries **13cr/dusk — 52% of that captain's entire daily income before a credit of
+principal**. They cannot service it, reach `dueDay` owing 445cr, default, and collect a
+1.5× encounter multiplier with no ship to survive it (capstone `npcFuel` p25 = 4,
+`npcHullStrength` p10 = 10 against a 90 ceiling). The loan is a rope, not a lever.
+
+**Storylet — EXCLUDED. N8 counts a ruled ABSENCE.** The deciding ground is structural and
+needed no measurement: **112 of 114 storylets are `repeat: 'never'` against ONE
+world-scoped `completed` map**, so a captain resolving a beat does not play *alongside* the
+player, it plays *instead of* them. The Sage's decode storylets are the proof case — the
+game's only decoder, each of its twelve beats consumable exactly once. Cast participation
+in this verb is **subtractive for the player**, which is a different thing from expensive.
+Secondary: 31.6% of triggers read a field that exists only on the player, and the payload
+is authored prose with no cast-side reader.
+
+> [!IMPORTANT]
+> **COUPLED DECISION, STILL OPEN — the N4 re-siting question is now harder, and this ruling
+> is why.** N4 left `applyDisposition`'s `loan-default` (Penny Wise) and
+> `contraband-caught` reasons without a reader when the eleven storyline captains left
+> `NPC_PROFILES`; the recorded remedy was *"a storylet-side expression or the writes need
+> re-siting"*. **Storylet being ruled an absence removes the first of those two**, so the
+> re-siting is now the only route and it is owed as its own decision. Recorded here rather
+> than under N4 because this ruling is what narrowed it.
+
+**THREE FINDINGS THE MEMOS TURNED UP THAT OUTLIVE THE RULINGS**, filed here because each
+belongs to a different owner and none is closed:
+
+1. **Explore is a net loss for the PLAYER, not just the cast** — 101 of 120 seeds end
+   richer with the verb removed from the shipped policy. That is an **R-series balance
+   finding** about the player's own economy, not an N-series parity question, and it is
+   recorded in `BALANCE-REDESIGN-WORKLIST.md`'s terms rather than acted on here.
+2. **`executeSocialize` is a pure FAUCET** — it adds **+4.86cr per captain-day to the field
+   against no counterparty at all**, where the player's dare is a zero-sum transfer. That is
+   a parity break in a verb the cast *already plays*, it needs no save-shape change, and it
+   is arguably worth more than the lending this row just excluded.
+3. **95.91% of the cast's Socialize actions resolve at a system with no Hangout.** One
+   `STAR_SYSTEMS` read closes it — but it deletes ~96% of the verb's occurrences, so it
+   moves the verb mix and owes a capstone. Not free, and not this ruling's business.
 
-The ledger leaves three rows UNRULED (Explore, VisitHangout, Storylet). These memos cost
-each row out so that the owner's eventual call lands against measured numbers rather than
-an intuition about symmetry. **They make no call and change no code.** Each memo lays out
-(a) what the player's verb does, (b) what the cast has instead, (c) the three options with
-their real prices, (d) a recommendation with its reason, and (e) nothing further — it
-closes on `DECISION: OWED` and stops there. The ledger rows above are left untouched on
-purpose: a memo is an input to a decision, not the decision.
-
-### Explore — decision memo
-
-**(a) What the PLAYER's Explore actually does.**
-
-- Reached only from `applyPlayerAction` (`packages/engine/src/day.ts:206`; the Explore
-  branch is at `:409`), which dispatches into `resolveExploration`
-  (`packages/engine/src/actions/exploration.ts:103`).
-- **Entry cost is a die out of the dawn hand.** `spendDie(currentHand, index)`
-  (`packages/engine/src/dice.ts`) is the gate, and three typed failure paths short-circuit
-  before anything at all is spent: `no-die`, `invalid-die-index`, `die-already-spent`.
-- **Then a fuel gate.** `EXPLORATION_FUEL_COST = 80`
-  (`packages/content/src/exploration.ts:43`, imported at `actions/exploration.ts:3`). The
-  die is spent anyway on a dry tank, deliberately mirroring Travel's dry-tank path.
-- **Then a PILOT nav check through the shared `check()`** — `player.stats[Stat.PILOT] +
-  navBonus(ship)` (`navBonus` in `packages/engine/src/components.ts`) against
-  `EXPLORATION_NAV_DC = 12` (`packages/content/src/exploration.ts:42`). It emits a
-  `StatCheck` with a hardcoded `actor: 'Player'` (`actions/exploration.ts:194`).
-- On success a seeded POI (`BEACON_DISCOVERY_CHANCE = 0.5`,
-  `packages/content/src/exploration.ts:47`) is pushed into
-  **`nextState.player.charts.discoveredPois`** (`ChartsState` / `DiscoveredPoi`,
-  `packages/engine/src/types.ts:1238-1259`) — a field whose own doc comment defines it as
-  persistent knowledge that "survives death and passes wholesale to the successor".
-- Then `resolveLoot` (`actions/exploration.ts:25`) rolls `POI_LOOT`
-  (`packages/content/src/exploration.ts:106`) three times independently, in a fixed order:
-  - **salvage** — beacon 0.55 x 40-180, derelict 0.8 x 120-520 -> `state.player.credits`,
-    plus a `SalvageRecovered` event;
-  - **fragment** — beacon 0.30, derelict 0.35 -> `grantFragment(state.player.nemesisFile,
-    ...)` (`packages/engine/src/nemesis.ts`), feeding the authored Nemesis arc;
-  - **contraband** — derelict 0.40 -> sets the *global* flag
-    `state.flags['signal.contraband.pending']`, which arms the `derelict.sealed-pod`
-    storylet (the carry choice).
-- Content-derived EV per **discovered** POI: `0.5 x (0.55 x 110) + 0.5 x (0.8 x 320)` =
-  **158cr**. That figure is derived from the content table, not measured; the measured
-  per-*attempt* number in (d) is far lower, because two attempts in three never reach a POI
-  at all.
-
-**(b) What the cast has instead.**
-
-- `npc.ts` has **no exploration verb**. It has five, dispatched by `resolveNpcDay`
-  (`packages/engine/src/npc.ts:1604`, if/else chain at `:1675-1687`) off `pickIntent`
-  (`npc.ts:583`): `executeTrade` (`:1324`), `executeTravel` (`:1462`), `executeCombat`
-  (`:1509`), `executePatrol` (`:1545`), `executeSocialize` (`:1573`).
-- `NPC_INTENT_TYPES` (`packages/content/src/ideals.ts:14`, imported at `npc.ts:10`) has
-  exactly five members — `Trade | Travel | Combat | Patrol | Socialize`. There is no
-  Explore member, so **the cast's Explore frequency is 0 by construction**. That is the
-  honest statement; "0.00 measured" off a small arm is what standing amendment 1 forbids.
-- The nearest analogue is `executePatrol` (`npc.ts:1545`): it burns `NPC_PATROL_FUEL = 10`
-  (`npc.ts:493` — note this one is an *engine* constant, not content), rolls GRIT through
-  the shared check against `NPC_CHECK_DCS.Patrol = 11` (`ideals.ts:46`), and pays
-  `NPC_PATROL_SUCCESS_CREDITS = 40` or costs `NPC_PATROL_FAIL_CREDITS = 20`
-  (`ideals.ts:66,69`). So the cast already owns a cheap "sweep" verb at 10 fuel; the
-  player's Explore is 80.
-- `NpcState` (`packages/engine/src/types.ts:1153-1206`) carries **no `charts`, no
-  `nemesisFile`, and no `registry`** (the last is N11's). Its fields are id / name /
-  profileId / currentSystemId / credits / ship / disposition / lastAction / dead.
-- Fuel is not free for the cast either: `refuelIfNeeded` (`npc.ts:714-725`) buys at
-  `localFuelPrice` (`packages/engine/src/economy.ts:119`) — the same function the player's
-  market uses, sourcing `FUEL_DEFAULT_BUY_PRICE = 5` and `RIM_FUEL_BUY_PRICE = 8`
-  (`packages/content/src/systems.ts:209,220`). An NPC exploring would face the identical
-  bill: 80 fuel is **400cr core / 640cr rim**.
-
-**(c) The three options, each with its real cost.**
-
-**Option 1 — implement (full parity).** `resolveExploration` would gain an actor
-parameter, which means parameterising seven player-scoped touches: `player.dawnHand`,
-`player.ship.fuel`, `player.stats[PILOT]` + `navBonus(ship)`,
-`player.charts.discoveredPois`, and inside `resolveLoot` — `player.credits`,
-`player.nemesisFile`, and the *global* `state.flags['signal.contraband.pending']` (an NPC's
-derelict would otherwise arm the **player's** storylet) — plus the `StatCheck` event's
-hardcoded `actor: 'Player'`. The prices, stated plainly:
-
-- **A dawn hand the cast does not hold.** `spendDie` is the verb's entry gate, and NPCs
-  have no hand until **N13**. That is exactly why the ledger already defers `Crew` and
-  `Reroll` to N13, so full-parity Explore is not reachable before N13 either.
-- **A save-shape change.** Giving `NpcState` a `charts` (and/or `nemesisFile`) field is a
-  version bump plus a migration plus a round-trip test, with the migration *calling* a
-  seeding rule shared with `createInitialState` / `deserializeState` — the
-  `MIGRATIONS[9]` / `[10]` precedent. There is also a semantic mismatch worth recording:
-  `ChartsState` is defined as knowledge that survives death and passes to the successor,
-  while N3's ruling (owner, 2026-07-28) is that an NPC death is permanent with no
-  succession — so the field's own inheritance contract is void for the cast.
-- **Deed cross-contamination, which is an ordering dependency rather than a detail.**
-  `evaluateDeeds(nextState, events)` at `day.ts:1239` folds the whole dusk batch into the
-  **player's** registry with no actor scoping, and `day.ts:822` pushes `npcEvents` into
-  that same array. `rich_hulk` (`packages/content/src/deeds.ts:792-798`) triggers on
-  `SalvageRecovered` with `amount >= 400` and no actor filter, so an NPC's salvage would
-  earn the player a deed. Actor-scoping the deed path is **N11's** deliverable.
-- **40 authored table rows.** Adding an `Explore` member to `NPC_INTENT_TYPES` makes every
-  `Record<NpcIntentType, ...>` table incomplete — a compile error until each row is
-  filled: `INTENT_STAT_AFFINITY` (1), `NPC_CHECK_DCS` (1), `DEFAULT_IDEAL_WEIGHTS` (1),
-  `IDEAL_WEIGHTS` (**30**, one per authored Ideal), `ARCHETYPE_INTENT_MULTIPLIERS` (6),
-  `NEUTRAL_INTENT_MULTIPLIERS` (1). It also re-weights every captain's verb mix, so the
-  N10 baseline of record stops being comparable and **a new capstone becomes owed** — a
-  new one, never a refreshed number, per this doc's own rule at line 82.
-
-**Option 2 — algorithmic fast-forward.** A credits-only Explore intent shaped like
-`executePatrol`: burn fuel through the shared `localFuelPrice`, roll the shared `check()`
-against `EXPLORATION_NAV_DC`, and call an actor-parameterised `resolveLoot` for the salvage
-leg only — POI and fragment dropped, because the cast has nowhere to put either. Cheaper,
-since no save shape moves. But it would have to be recorded as a **partial**: the actor
-plays the same *rules* over a *smaller reward set*. The standing constraint's consequence 2
-is the reason that matters — a reward the actor can never collect is the shape of an
-exemption, so this option's honesty rests entirely on the partial being **recorded** rather
-than silent. It still leaves the die question open (N13), or needs a ruled substitute for
-the die cost.
-
-**Option 3 — exclude with a reason.** Zero code. The cost, in the ledger's own terms: one
-of the player's eleven verbs stays player-only, and N8's "all or most of a full player's
-actions" has to count Explore as a **ruled exclusion** rather than a gap. The reason
-available to be stated is that all three of Explore's rewards are player-scoped by
-design — an authored Nemesis arc, a successor-inheriting chart, and a player-facing
-storylet flag — and the standing constraint requires the same rules *where the verb
-applies*, not that every verb apply.
-
-**(d) Recommendation, with its reason.**
-
-Two MEASURED numbers bear on this, both stated with provenance.
-
-**Measurement 1 — the ablation probe** (`.scratch/t010-ablate.ts`, gitignored; re-runnable
-with `npx tsx`). Two arms over **seeds 1..120 x 120 days**, identical except that arm B
-filters `Explore` out of the actions `explorerPolicy` returns. The probe drives the
-engine's own `startDay` -> `applyPlayerAction` -> `endDay` and reproduces `runCampaign`'s
-day-loop ordering, including the per-day fork
-`new SeededRng(seed).fork('policy').fork('day-'+state.day).fork('index-'+dayIndex)` and the
-`Combat`-with-no-encounter skip. It is hand-rolled for a specific reason: `resolvePolicy`
-(`packages/sim/src/index.ts:4387`) returns `dawnBlind: true` for *any function* policy, so
-handing `explorerPolicy` to `runCampaign` as a lambda runs it against the pre-`startDay`
-state and collapses the arm (480 / 480 / 910 on seeds 1-3, against the named policy's
-5,315 / 38,486 / 74,997). **Its R2c admissibility comes from a fidelity check carried in
-the probe itself:** arm A's `finalCredits` is byte-equal to
-`runCampaign(seed, 120, 'explorer').finalState.credits` on seeds 1-5 — 5/5 MATCH
-(5,315 / 38,486 / 74,997 / 74,866 / 30,639).
-
-| quantity (n = 120 seeds x 120 days) | value |
-| --- | --- |
-| Explore attempts / run | 180.2 |
-| POIs discovered / run (nav-check pass rate) | 60.5 (**0.336**) |
-| `SalvageRecovered` events / run | 41.0 |
-| GROSS salvage credits / run | mean **9,688** · median 9,418 · p25 7,873 · p75 11,112 |
-| **GROSS salvage per _attempt_** | **53.8cr**, against 80 fuel = **400-640cr** |
-| POI-sourced fragments / run | 6.33 |
-| `ExplorationFailed` reasons (totals) | `nav-check` 3,275 · `insufficient-fuel` 923 |
-| finalCredits **with** Explore | median **60,391** · mean 57,847 |
-| finalCredits **without** Explore | median **90,135** · mean 90,198 |
-| seeds that ended **richer without** Explore | **101 / 120** |
-
-**Measurement 2 — the committed capstone.** `docs/balance/baseline-n10-shipped.json`,
-`fleet.milestones[day = 120]`, n = **240,000** captain-samples (8,000 runs x 30 captains):
-`npcCredits` p10 **126**, p25 **150**, median 76,049; `npcFuel` p10 **0**, p25 **4**,
-median **27**, p75 69, p90 100. Against `EXPLORATION_FUEL_COST = 80`, that means on day 120
-**the median captain cannot pay the fuel gate for a single Explore**, and the p25 captain's
-150cr cannot buy the 80 fuel at either depot price (400cr core / 640cr rim).
-
-Three honesty caveats on measurement 1, none of which the recommendation leans past:
-
-1. **The ablation is not rng-paired.** Removing actions shifts the within-day event-index
-   forks, so the arms diverge rather than tracking each other. That is why the result is
-   reported distributionally *and* as a paired sign count (101/120), never as a single mean
-   difference.
-2. **Arm B leaves the freed dice unspent.** It measures Explore's own net contribution, not
-   "Explore against its best substitute".
-3. **`explorerPolicy` is a _player_ policy** in `packages/sim/src`; it is not the NPC
-   explorer archetype. What transfers to the cast is the **per-attempt** economics (53.8cr
-   gross against 400-640cr of fuel), not the whole-run figure.
-
-On that evidence, the recommendation — offered as a recommendation, not as a ruling:
-
-- **The destitute-explorer argument does not survive measurement.** It was the strongest
-  case for implementing: explorers are one of the two destitute archetypes (medians 167 for
-  explorers and 132 for fighters, as N10's Result records under "THE MONOPOLY LIMB IS NOW
-  ARCHETYPE-SPLIT"), and salvage looked like income they cannot reach. Measured, Explore is
-  a net credit **sink** for the actor that plays it — 53.8cr gross per attempt against
-  400-640cr of fuel — and removing the verb from the shipped explorer policy leaves it
-  **richer**
-  (median 90,135 against 60,391; 101 of 120 seeds). So salvage is measurably a **cost the
-  cast cannot afford**, not income they are missing.
-- **It is doubly unreachable for the captains it was meant to help.** At day 120 the
-  capstone's median captain carries 27 fuel (p25 = 4, p10 = 0) against an 80-fuel gate, and
-  the p25 captain's 150cr buys none of it.
-- **Therefore Explore is not the floor fix N11/N12 are hunting.** Worth saying plainly,
-  because it removes a candidate from that search rather than leaving it open — the
-  non-trader floor that did not move at N10 (p10 126 -> 126) will not move here.
-- What stays genuinely open, and belongs to the owner: whether the *authored* rewards
-  (fragments, charts) are worth carrying to the cast at all, and whether the verb is worth
-  revisiting **after N13** gives the cast a hand — at which point the die-cost question
-  that blocks option 1 has an answer.
-
-**(e)**
-
-**DECISION: OWED**
-
-The owner is choosing between: **option 1** implement at full parity (blocked on N13 and
-N11, costs a save migration and a new capstone), **option 2** algorithmic fast-forward
-recorded as a partial (no save change, still needs the die question answered), and
-**option 3** exclude with the stated reason (zero code, and N8 counts it as a ruled
-exclusion). Nothing in this memo selects among them.
-
----
-
-### VisitHangout — decision memo
-
-**(a) What the PLAYER's VisitHangout actually does.**
-
-**Seven venues behind one action**, split by which event reads them: `dare | meet |
-befriend | insult | rumor` report a `HangoutEvent`; `borrow | repay` report a `LoanEvent`
-(the `isLending` / `failVenue` split, `packages/engine/src/actions/hangout.ts:139-145` —
-the lending venues' reader is Penny Wise's desk pane, not the Hangout social pane). Six
-separable parts:
-
-- **Entry part 1 — a VENUE gate that actually bites.** `applyPlayerAction`'s
-  `hasHangout` gate (`packages/engine/src/day.ts:376-394`) refuses the action anywhere
-  `STAR_SYSTEMS[...].hasHangout !== true`, as a typed `ActionBlocked` with **no die
-  spent**. Content read (counted, `.scratch/t011-sys.ts`): **1 of 28 systems carries the
-  flag — Sun-3, id 1** (`packages/content/src/systems.ts:79`), and it is 1 of the 20 in
-  the cast's own travel pool (`NPC_SYSTEM_IDS`, `packages/engine/src/npc.ts:94-96`). So
-  the player is refused at 27 of 28 systems.
-- **Entry part 2 — a die out of the dawn hand.** `spendDie(hand, index)`
-  (`packages/engine/src/dice.ts:165`), with the same three typed no-spend fails as
-  Explore: `no-die`, `invalid-die-index`, `die-already-spent`.
-- **Presence — a living, co-located counterparty.** For the four social venues the dealer
-  must be an NPC whose *simulated* `currentSystemId` equals the player's and who is not
-  `dead` (`hangout.ts:171-191`); otherwise `failReason: 'no-opponent'`, no die burned.
-  `rumor`, `borrow` and `repay` are opponent-less — Penny Wise is the lender-of-record
-  (a **desk**), not a captain at the table (`hangout.ts:168-172`).
-- **The dare/wager loop** (`hangout.ts:227-296`). Opposed GUILE through the shared
-  `check()` (`dice.ts:137`), each side's check framed against the *other's* total,
-  mirroring `resolveRun`; there is deliberately **no fixed DC** — the dealer's live GUILE
-  total IS the difficulty (the argument is at the resolver's definition site). The wager is
-  the requested stake clamped into `[DARE_MIN_WAGER = 25, DARE_MAX_WAGER = 1000]`
-  (`packages/content/src/hangout.ts:65-66`) **and down to
-  `min(player.credits, dealer.credits)`**. Credits then move **both directions off the
-  same wager**, and the dealer's purse is debited through `mutableNpc`
-  (`packages/engine/src/npc.ts:649`, copy-on-write) — i.e. **a zero-sum transfer between
-  two purses**, not a payout.
-- **Disposition beats, all through `applyDisposition`** (`npc.ts:657`):
-  `DARE_WIN_DISPOSITION = -2` / `DARE_LOSS_DISPOSITION = +2` (both outcomes move it),
-  `BEFRIEND_DISPOSITION = +3` behind a real `BEFRIEND_DC = 12` GUILE check,
-  `INSULT_DISPOSITION = -4` uncontested (no roll), `MEET_DISPOSITION = +1`
-  (`packages/content/src/hangout.ts:78-100`). **These have live readers**: T-1204's
-  interceptor grudge weighting (`chooseWeighted` + `dispositionOf`,
-  `packages/engine/src/actions/travel.ts:339-360,379`) and the tribute DCs.
-- **The rumor host slot.** `hangoutRumors` (`hangout.ts:69`) synthesises ≥1 authored line
-  per co-located NPC out of live `lastAction` / `currentSystemId` / `disposition`, filtering
-  `dead`. **NPCs are its SUBJECT, never its reader.**
-- **The loan mechanics** — the half the ledger row calls out.
-  - **borrow** (`hangout.ts:354-384`): principal clamped into
-    `[LOAN_MIN_PRINCIPAL = 250, LOAN_MAX_PRINCIPAL = 5000]`
-    (`packages/content/src/lending.ts:76-77`) and advanced; `player.loan` is written
-    `{ lender: LENDER_ID = 'npc-penny-wise' (lending.ts:56), dailyRate:
-    LOAN_DAILY_RATE = 0.05 (lending.ts:63), dueDay: day + LOAN_TERM_DAYS = 15
-    (lending.ts:69), status: 'active' }` and `credits += principal`.
-  - **repay** (`hangout.ts:386-409`): payment clamped to
-    `min(requested, credits, outstanding)`; a balance driven to `<= 0` clears the whole
-    loan. Both venues' preconditions (`hangout.ts:193-218`) fail typed and spend
-    **nothing** — the debt-as-ledger law: a loan can only ever add an out.
-  - **dusk accrual + default** (`packages/engine/src/day.ts:907-948`): simple interest
-    `ceil(principal * dailyRate)` accrues to `outstanding`, **never** to credits; crossing
-    `dueDay` still owing flips `active → defaulted` **once** and fires
-    `applyDisposition(LENDER_ID, LOAN_DEFAULT_DISPOSITION = -5, 'loan-default')`
-    (`lending.ts:85`) plus a `LoanEvent{defaulted}` and a WireEntry.
-  - **The default has exactly two readers**: the disposition hit (interceptor grudge
-    weighting, `travel.ts` `chooseWeighted`) and the collection flag, which multiplies the
-    realized encounter chance by `COLLECTION_ENCOUNTER_MULTIPLIER = 1.5`
-    (`lending.ts:92`, read at `travel.ts:495-503`).
-
-**Content-derived arithmetic** (derived from the tables, not measured — labelled as such,
-and it is what part (d) prices the loan against). At `LOAN_MIN_PRINCIPAL = 250` the carry
-is `ceil(250 × 0.05)` = **13cr every dusk**; held the full 15-dusk term that is **195cr of
-interest on 250cr borrowed (78%)**, 445cr to clear. (`lending.ts`'s own header says "~75%
-simple interest over a full term"; the `ceil` is what makes it 78% at the band floor.) At
-the ceiling, 5,000cr carries **250cr/dusk**, 3,750cr over a term. What 250cr *buys*: at
-`localFuelPrice` (`FUEL_DEFAULT_BUY_PRICE = 5` core / `RIM_FUEL_BUY_PRICE = 8` rim,
-`packages/content/src/systems.ts:209,220`) it is **31–50 fuel**, i.e. **3–5 NPC patrols**
-at `NPC_PATROL_FUEL = 10` (`npc.ts:493`) — and **not one** player-style 80-fuel Explore in
-the rim. Against the yard ladder `YARD_COMPONENT_TIER_PRICES =
-[50, 100, 200, 400, 800, 1500, 3000, 5000, 10000]`
-(`packages/content/src/upgrades.ts:4`) it reaches the **tier-3 rung and no further**;
-`LOAN_MAX_PRINCIPAL` reaches tier-8.
-
-**(b) What the cast has instead.**
-
-`executeSocialize` (`packages/engine/src/npc.ts:1573-1601`), dispatched by `resolveNpcDay`
-(`npc.ts:1604`, if/else chain `:1675-1687`) off `pickIntent` (`npc.ts:583`). Of the parts
-in (a) it reproduces **one**:
-
-- **One GUILE check through the SHARED `check()`**, via `rollNpcCheck` (`npc.ts:1214`)
-  against the content DC `NPC_CHECK_DCS.Socialize = 14` (`packages/content/src/ideals.ts:51`),
-  paying `NPC_SOCIALIZE_WIN_CREDITS = 150` or costing `NPC_SOCIALIZE_LOSS_CREDITS = 50`
-  (`ideals.ts:73,76`).
-- Plus an **ante gate**: `npc.credits < NPC_BROKE_CREDITS + 50` (i.e. **< 150**;
-  `NPC_BROKE_CREDITS = 100` at `npc.ts:463`) falls through to `brokeIdle` (`npc.ts:1172`,
-  which pays `NPC_ODD_JOB_CREDITS = 25`, `npc.ts:490`) — preserving T-1201's
-  verb⟺StatCheck invariant, because a returned `Socialize` always means a check was
-  rolled. Worth recording as an observation rather than a finding: the `+ 50` is an
-  **engine-side literal**, so the ante itself is not a content-tunable number the way
-  every payoff around it is.
-
-Nine parts it does **not** reproduce. The reasons differ in kind, which is why they are
-enumerated rather than summed:
-
-1. **The opposed roll.** A fixed DC 14 against the player's live-dealer-GUILE-as-DC. A
-   strong dealer is not a hard table for the cast.
-2. **The wager.** Fixed +150 / −50; no `[25, 1000]` band, no choice of stake, no clamp to
-   what either side can actually cover.
-3. **No counterparty — the deeper one.** The player's dare *moves* credits between two
-   purses. `executeSocialize` **mints or burns credits against nothing**, so the cast's
-   social verb is not zero-sum where the player's is. This is a field-credit-conservation
-   question **independent of the loan decision**; it is measured below.
-4. **No `hasHangout` gate.** The player is refused at 27 of 28 systems; the cast plays
-   "the Hangout tables" at any of the 20 `NPC_SYSTEM_IDS` systems, and the action's own
-   flavour text names the local system. This is consequence 2's exact shape — a gate that
-   never bites — and it is the **cheapest real parity item in this memo** (one
-   `STAR_SYSTEMS` read). It is not free: it deletes ~96% of the verb's occurrences
-   (measured below), which moves the verb mix, stales the N10 baseline of record and owes
-   **a new capstone, never a refreshed number** (this doc, line 82).
-5. **No presence requirement.** No co-located captain is needed; nobody is across the
-   table.
-6. **No die cost.** The same shape as watch item **OI-9** (the NPC refit spends no die);
-   blocked on **N13** for a real fix.
-7. **No disposition movement — and structurally none available.** `disposition` is defined
-   on `NpcState` as standing **toward the player** (`packages/engine/src/types.ts:1179-1181`;
-   the note at `travel.ts:343`). NPC↔NPC standing is an *absent model*, not a number left
-   at zero.
-8. **No rumor consumption — and none owed.** NPCs are `hangoutRumors`' subject, never its
-   reader. Recorded so it counts as considered rather than skipped.
-9. **No borrow and no repay at all.** `NpcState` (`packages/engine/src/types.ts:1153-1206`)
-   carries `id / name / profileId / currentSystemId / credits / ship / disposition /
-   lastAction? / dead?` — **there is no `loan` field**. This is a **field absence on the
-   save shape**, not a policy choice: a captain can neither borrow nor default, and no
-   amount of engine work reaches it without moving the record.
-
-**MEASURED — the cast probe** (`.scratch/t011-cast-probe.ts`, gitignored; re-runnable with
-`npx tsx`). Seeds **1..120 × 120 days**, folding over every **living simulated** captain's
-`lastAction` each dusk (the eleven storyline records are excluded via `isSimulatedCaptain`,
-`packages/content/src/cast.ts:660` — they take no turn and sit at seed credits, and
-including them was exactly the dilution N4 recorded). It drives the engine's own
-`startDay` → `applyPlayerAction` → `endDay` and reproduces `runCampaign`'s day-loop
-ordering including the per-day fork
-`new SeededRng(seed).fork('policy').fork('day-'+state.day).fork('index-'+dayIndex)` and the
-`Combat`-with-no-encounter skip. **R2c admissibility is carried in the probe itself**: its
-`finalCredits` is byte-equal to `runCampaign(seed, 120, 'trader').finalState.credits` on
-seeds 1-5 — **5/5 MATCH** (15,836 / 67,482 / 60,556 / 31,537 / 51,925). The named policy
-string is deliberate: `resolvePolicy` (`packages/sim/src/index.ts:4387`) returns
-`dawnBlind: true` for *any function* policy, so handing the lambda to `runCampaign` would
-collapse the arm.
-
-| quantity (n = **424,695** living simulated captain-days; 120 seeds × 120 days) | value |
-| --- | --- |
-| verb mix — `FlawOverride` / `Trade` / `Travel` | 129,500 · 65,802 · 62,180 |
-| … `Idle` / `Socialize` / `Combat` / `Patrol` | 51,793 · **46,757** · 34,943 · 33,720 |
-| Socialize share of captain-days | **0.1101** |
-| Socialize resolved where `hasHangout !== true` | **44,843 / 46,757 = 0.9591** |
-| Socialize win rate (vs DC 14) | **0.4705** (21,999 wins / 24,758 losses) |
-| **EV per Socialize action** | `0.4705 × 150 − 0.5295 × 50` = **+44.1cr** |
-| **NET credits Socialize adds to the field** | **+2,061,950** = **+4.86cr / captain-day** |
-| `brokeIdle` days (`Idle` + "hard up for credits") | 51,793 = **0.1220** of captain-days |
-| T-1201 cross-check: `actionContext === 'npc-socialize'` | **46,757** = the `Socialize` tally |
-| player `dare` HangoutEvents in this arm (would also emit one) | **0** |
-| living field **under the 150 ante** | day 30 **0.2301** · 60 **0.2682** · 120 **0.2389** |
-| living field under `NPC_BROKE_CREDITS` (100) | day 30 0.0098 · 60 0.0130 · 120 0.0075 |
-
-Two of those rows carry more than a number. The NET figure is credits the field gains
-against **no counterparty at all** — the faucet in part (d)'s third bullet. And the
-`brokeIdle` count is **identical to the whole `Idle` tally**, i.e. **every idle day in the
-sample is a broke day**; the `npc-socialize` StatCheck count matching the `Socialize` tally
-exactly, with zero player dares in this arm to confound it, is the T-1201 verb⟺StatCheck
-invariant holding at n = 46,757.
-
-Two honesty notes on the probe, neither of which (d) leans past. The field figures are
-conditioned on a **single player policy** (`trader`) sharing the world, so the absolute
-verb counts are one arm, not the fleet; and `brokeIdle` is a **lower bound** on
-intent-level rejection — it is the fallback for the underfunded Trade and Patrol paths too,
-so it cannot be read as the Socialize-intent rejection rate (and modelling that by calling
-`pickIntent` here would be exactly the private parallel model the standing constraint
-forbids).
-
-**FREE — the committed capstone.** `docs/balance/baseline-n10-shipped.json`,
-`fleet.milestones[day = 120]`, n = **240,000** captain-samples (8,000 runs × 30 captains):
-`npcCredits` p10 **126**, p25 **150**, median 76,049; `npcFuel` p10 0, p25 4, median 27.
-Against the Socialize ante of **150** that is this memo's sharpest free datum — **the
-bottom quartile of the field sits at or below the ante** (p25 is the ante, to the credit),
-which the probe's independent 0.24 share corroborates. N10's Result records the two
-destitute archetype medians as **fighter 132** and **explorer 167**: the fighter's median
-captain is *below* the ante and the explorer's is barely above one losing hand of it. Also
-worth stating as a verified negative: the capstone carries **no loan metric at all** — not
-in `fleet`, not in any of the eight `byPolicy` rows.
-
-**(c) The three options, each with its real cost.**
-
-**Option 1 — implement (full parity).** The pieces, each with its price:
-
-- **`NpcState.loan`** — priced in full under the save-shape heading below. It is the
-  gating cost, and it is unavoidable for any option that lets a captain owe money.
-- **One shared accrual/default function.** The dusk block at `day.ts:907-948` must be
-  **extracted and given an actor parameter so both sides call it**, never copied into
-  `npc.ts`. That is the standing constraint and R2c, and it is the difference between
-  parity and a second definition of interest.
-- **An NPC-side collection reader, into a slot that already exists and is already
-  commented.** `resolveNpcEncounter` (`npc.ts:869`) says at its multiplier chain: *"Two of
-  the player's four terms have NO NPC ANALOGUE and are absent rather than zeroed: a
-  defaulted Penny Wise loan and a Guild debt flag are player-only mechanics, so there is
-  nothing to read. That is an absent INPUT, not a threshold tuned so a rule will not
-  bite."* That comment is the definition-site argument this option is buying out; an
-  `NpcState.loan` turns the absent input into a present one and the
-  `COLLECTION_ENCOUNTER_MULTIPLIER` term becomes readable for the cast.
-- **The lender needs no roster work.** `LENDER_ID` is a **desk**, not a co-located
-  captain (`hangout.ts:168-172`), so the cast can borrow wherever a Hangout exists without
-  touching N4's roster split.
-- **An actor discriminator on `LoanEvent`, or the instrument lies.** `LoanEvent`
-  (`packages/engine/src/types.ts:612-630`) has **no actor field**, and the sim folds it
-  unconditionally: `packages/sim/src/index.ts:892-903` credits every `borrowed` /
-  `accrued` / `repaid` / `defaulted` into `LoanUsageStats` (`index.ts:146`) as the
-  **player's**. Emit NPC loan events without an actor and every loan number this project
-  has measured silently absorbs the cast — the same shape as the Explore memo's deed
-  cross-contamination finding, and it must be closed in the same commit.
-- **The non-loan parity items:** the `hasHangout` read, the opposed roll with a real
-  counterparty transfer through `mutableNpc`, and the die (**blocked on N13**).
-- **And a new sim limb plus a new capstone.** N9's lesson applies directly: the instrument
-  cannot currently see an NPC loan at all, and a mechanism the instrument cannot see cannot
-  be graded.
-
-**Option 2 — algorithmic fast-forward.** The loan **ledger** without the rest: a captain
-under the ante takes `LOAN_MIN_PRINCIPAL` through the same clamp, accrues through the same
-shared function, and expresses default **only** as the encounter multiplier. It buys the
-verb's *consequence* without its *scene*. State the asymmetry with the Explore memo's
-option 2 plainly: **a debt IS persistent state, so there is no save-free version of this
-option** — `NpcState.loan` is owed either way, and the only thing option 2 saves is the
-wager, the counterparty and the disposition beat. It must be recorded as a **partial** for
-the same reason Explore's is: an actor playing the same rules over a smaller surface is
-honest only while the smaller surface is written down.
-
-**Option 3 — exclude the loan half with a reason.** Zero code for lending. The three cheap
-non-loan parity items (venue gate, opposed roll + counterparty, the die at N13) stay
-separately decidable, because none of them touches the save shape. Note that this exclusion
-is **not symmetric with Explore's**: the cast already plays this verb, so the ledger row
-becomes a **ruled partial** — "Socialize stand-in; lending ruled player-only" — rather than
-a ruled absence, and that is what N8's "all or most of a full player's actions" would have
-to count. The reason available to be stated is that Penny Wise's desk is authored
-player-facing content whose quest line (PRD §7.5) has no cast-side expression, and that the
-default's grudge reader is the very thing N4 left open.
-
-**The borrow/repay gap and the OPEN N4 question — the live connection.**
-
-`state.npcs` is seeded from **all 41** profiles, `[...NPC_PROFILES, ...QUEST_PROFILES]`
-(`packages/engine/src/state.ts:79`), and Penny Wise (`npc-penny-wise`) is one of the eleven
-storyline captains — **not** a simulated captain (`isSimulatedCaptain`,
-`packages/content/src/cast.ts:660`). So the player's `loan-default` write **still lands on
-her record**; what it lost is a reader. Precisely: of the default's two consequences,
-**one survives and one is unreachable.**
-
-- **Survives:** the collection flag. `travel.ts:495-503` multiplies the player's realized
-  encounter chance by `COLLECTION_ENCOUNTER_MULTIPLIER` off `loan.status === 'defaulted'`,
-  which has nothing to do with who Penny Wise is.
-- **Unreachable:** the interceptor identity. `buildNamedCandidates`
-  (`travel.ts:275-301`) filters on `NPC_PROFILES`, so the −5 disposition hit that
-  `LOAN_DEFAULT_DISPOSITION`'s own comment says exists to make her "far likelier to BE your
-  interceptor" now feeds `chooseWeighted` for a candidate that can never be drawn.
-
-That is **N4's already-open owner question**, recorded in this doc at the N4 ruling
-("**OPEN, and an owner design question:** `applyDisposition`'s `loan-default` (Penny Wise)
-and `contraband-caught` (a named patrol captain) reasons were written so T-1204's
-interception weighting could read them … those grudges need a storylet-side expression or
-the writes need re-siting") and again under N4's Result as "**an owner design question, not
-a number**". It covers **`contraband-caught`** (`packages/engine/src/actions/patrol.ts:115`)
-in exactly the same way, and T-040's checkpoint already carries it.
-
-**The two questions are separable but one constrains the other, so they should be ruled
-together:**
-
-- **(i) NPC borrowing needs an NPC-side collection consequence.** The multiplier slot
-  exists and is commented (`npc.ts:869-886`), so the *flag* half transfers cleanly. The
-  *grudge* half does not, because it has nowhere to point.
-- **(ii) The N4 re-siting ruling decides whether it ever will.** If the owner rules
-  "express the grudge storylet-side / re-site the writes", then an NPC default has no
-  disposition target either and NPC lending inherits a half-consequence. If the owner rules
-  "Penny Wise becomes drawable", both readers return and NPC lending inherits a working
-  consequence chain on day one. Ruling (ii) first is strictly cheaper than ruling (i)
-  first.
-
-**The save-shape cost of an `NpcState.loan`, both forms, so the owner is pricing the real
-thing.**
-
-- **Nullable (`loan: LoanState | null`, matching `PlayerState`)** — a save-shape change,
-  and the precedent is exact: **`MIGRATIONS[2]` is the v2→v3 entry that added
-  `PlayerState.loan`** by backfilling the key to `null`
-  (`packages/engine/src/save.ts:157-166`). The bill is a `CURRENT_SAVE_VERSION` bump, a
-  `MIGRATIONS[n]` entry backfilling every `npcs[]` element to `null`, a **round-trip
-  test**, and `deserializeState` performing the same backfill pinned by a test. The
-  migration must **call** the rule rather than restate it — the `MIGRATIONS[9]` /
-  `MIGRATIONS[10]` discipline (`save.ts:276-327`).
-- **Optional (`loan?: LoanState`, absent = no loan)** — the **`dead?: boolean`** precedent
-  (`types.ts:1183-1205`; `schema.ts:482-486`): a pure addition, **no migration and no
-  version bump**, because an old save having no key is exactly what `undefined` means.
-  The key must still be declared in the `.strict()` `NpcStateSchema`
-  (`packages/engine/src/schema.ts:466-487`) or a save carrying it is rejected as unknown.
-  The honest trade-off: an optional field makes "this captain has no loan" indistinguishable
-  from "this save predates NPC lending", where the nullable form states it. Either way
-  `LoanStateSchema` (`schema.ts:319-331`) is reusable **as-is** — it is already the shape
-  the player's loan validates against.
-- **Sequencing the owner is actually pricing.** `CURRENT_SAVE_VERSION = 11`
-  (`save.ts:331`), and **N11's T-020 already claims 11 → 12 with `MIGRATIONS[11]`**. So a
-  nullable `NpcState.loan` lands at **v13 after N11**, or must be folded into N11's bump.
-  The optional form sidesteps the ordering entirely, which is the strongest argument in its
-  favour.
-
-**(d) Recommendation, with its reason.**
-
-The task's sharp question is whether NPC borrowing gives the destitute archetypes a real
-recourse or merely a more elaborate bankruptcy. The arithmetic answers it, and it answers
-it differently for the two halves of the field:
-
-- **For a captain below the ante, the loan is a rope, not a lever.** A captain locked out
-  of Socialize is on `brokeIdle`, which pays **`NPC_ODD_JOB_CREDITS = 25`/day**. The carry
-  on the *smallest loan the band allows* is **13cr/dusk** — **52% of that captain's entire
-  daily income**, before a single credit of principal. They cannot service it, so they
-  reach `dueDay` owing 445cr, default, and collect a 1.5× encounter multiplier they have no
-  ship to survive (the same capstone puts `npcFuel` p25 at 4 and `npcHullStrength` p10 at
-  10 against a 90 ceiling). That is the elaborate bankruptcy, arrived at by content
-  arithmetic rather than by intuition.
-- **The recourse it does buy is one step wide, and the step is real but small.** 250cr
-  clears the 150 ante immediately, which unlocks a verb worth a measured **+44.1cr per
-  action** at a measured **0.1101** frequency — about **+4.9cr per captain-day**. Against
-  13cr/dusk of carry, the unlocked verb pays back **~37% of the interest** it was borrowed
-  to reach. It also buys **31–50 fuel = 3–5 patrols** (at +40/−20 a sweep), which is the
-  more plausible route out. Neither reaches a hull: 250cr stops at the **tier-3** yard rung,
-  and **R10 (the tier-1 hull cliff) is R-owned and confounds any "buy a hull" arm** of this
-  question outright, so that arm should not be run under this track.
-- **So the destitute-borrower case is weak on the numbers, and the strongest case for
-  lending is a different one.** It is the **counterparty defect**, which the probe measures
-  independently of the loan question: `executeSocialize` adds **+4.86cr per captain-day**
-  to the field against no counterparty at all — a pure **faucet** where the player's dare is
-  a zero-sum transfer. That is a parity break in the verb the cast *already plays*, it needs
-  no save-shape change, and it is arguably worth more than lending is. Recorded here rather
-  than folded into the recommendation, because it is not the question the owner was asked.
-- **And the cheapest item on the list is the venue gate.** **95.91% of the cast's
-  Socialize actions resolve at a system with no Hangout.** One `STAR_SYSTEMS` read closes
-  it — but it deletes ~96% of the verb's occurrences, so it moves the verb mix and owes a
-  new capstone. That is a real price, and it is the reason the gate should not be treated as
-  a free drive-by fix.
-
-On that evidence, offered as a recommendation and not as a ruling: **option 2 over option
-1, and only after the N4 ruling** — the ledger (borrow, shared accrual, default expressed
-as the encounter multiplier) is where the parity value is, the wager and the disposition
-beat are where the cost is, and the disposition beat in particular is unbuildable until (ii)
-above is answered. The `NpcState.loan` field is owed by option 1 and option 2 alike, so the
-**optional-field form** is the one to price first, because it is the only route that does
-not queue behind N11's version bump.
-
-What stays genuinely open, and belongs to the owner: whether Penny Wise's authored quest
-line tolerates thirty captains at her desk at all; the N4 `loan-default` /
-`contraband-caught` pairing, which should be ruled **with** this row rather than after it;
-the die cost, which is **N13's** and which no option here can close; and whether the
-counterparty faucet in bullet three is a separate work item or part of whatever this row
-becomes.
-
-**(e)**
-
-**DECISION: OWED**
-
-The owner is choosing between: **option 1** implement at full parity (an `NpcState.loan`
-plus a migration or the optional-field route, an actor-parameterised accrual function, an
-actor discriminator on `LoanEvent` before the instrument mis-attributes NPC debt to the
-player, a new sim limb, a new capstone, the N4 ruling as an input, and the die still blocked
-on N13), **option 2** the loan ledger fast-forwarded and recorded as a partial (same field
-cost — a debt is persistent state — but no wager, no counterparty, no disposition beat), and
-**option 3** exclude lending with the stated reason (zero code, and N8 counts the row as a
-ruled **partial**, not a ruled absence, because the cast already plays the verb). Nothing in
-this memo selects among them.
-
----
-
-### Storylet — decision memo
-
-The ledger records this row as **"authored player-facing content"**, which makes it the row
-most likely to be correctly EXCLUDED — and that is exactly why it needs a memo. An exclusion
-that is *obvious* is still an assumption until the reason is written down and the cost is
-priced. This memo does that and nothing more.
-
-**Counted throughout — the content census** (`.scratch/t012-storylet-census.ts`, gitignored;
-re-runnable with `npx tsx`). It reads the shipped arrays through the package **source**
-(`packages/content/src/index.js`, never `@spacerquest/content`, which resolves to a possibly
-stale `dist`). **It carries no R2c fidelity check, deliberately, and the absence is not an
-omission:** it is a static table read — no rng, no day stepped, no engine rule duplicated —
-so there is no arm to check against `runCampaign`. Where a number below is labelled
-**counted** it came from this probe.
-
-**(a) What the PLAYER's Storylet actually does.**
-
-- **Dispatch.** `Storylet` is the terminal `else` of `applyPlayerAction`
-  (`packages/engine/src/day.ts:434-440`), which forks `action-storylet-${actionEventIndex}`
-  and calls `resolveStoryletChoice` (`packages/engine/src/storylets.ts:666`). The fork is
-  taken for stream alignment only — `resolveStoryletChoice`'s rng parameter is named
-  `_rng` and is **unused** (`storylets.ts:669`), so the verb draws no randomness of its own
-  beyond the die. It is in the die-costed action union at `day.ts:96` and behind the gates
-  at `day.ts:103` and `:283`.
-- **The offer pipeline runs constantly.** `refreshAvailableStorylets` (`storylets.ts:198`)
-  → `eligibleStorylets` (`:192`) → `triggerMatches` (`:64`), called at dawn and again after
-  **every** action (`day.ts:190`, `:217`, `:457`).
-- **Every input `triggerMatches` reads is player- or world-scoped.**
-  `state.player.currentSystemId`, `state.era`, `state.day`, `state.player.activeContract`
-  (`storylets.ts:70-88`), `state.npcs[…].disposition` (`:89-98`),
-  `state.player.reputation` (`:103-108`), the **global** `state.flags` (`:109-113`),
-  `state.player.nemesisFile` (`:114-140`), `state.eraEvent` (`:145-157`),
-  `state.player.registry.renownRank` via `renownRankIndex` (`:161-166`), and
-  `state.player.registry.earned` (`:169-171`). Counted, over the 114 storylets: **36
-  (31.6%)** gate on at least one field that exists **only** on the player —
-  `nemesis` 15, `cargo.activeContract` 11, `reputation` 8, `renown` 3, `deed` 0 — and
-  **41** gate on `flags`.
-- **The entry gate is a die.** `spendRequiredDie` (`storylets.ts:223-255`): any choice
-  carrying `requirements.spendDie` **or** `requirements.statCheck` calls
-  `spendDie(state.player.dawnHand, action.spendDie)`
-  (`packages/engine/src/dice.ts:165`), then rolls the shared
-  `check(die, state.player.stats[statCheck.stat], statCheck.dc)` (`dice.ts:137`) and emits
-  a `StatCheck` with a **hardcoded `actor: 'Player'`** (`storylets.ts:248`) and
-  `actionContext: 'storylet'` (`:252`). That is the identical shape the Explore memo found
-  at `actions/exploration.ts:194`. Counted from the engine source, `actor: 'Player'` is a
-  literal at **ten** non-test sites — `storylets.ts:248`, `actions/hangout.ts:244,306`,
-  `actions/travel.ts:633`, `actions/combat.ts:343,408,494,618`, `actions/trade.ts:171`,
-  `actions/exploration.ts:194` — so this is one instance of a project-wide pattern, not a
-  storylet quirk.
-- **Counted: 254 choices across 114 storylets.** Of those, **40 are die-gated** (3 by a
-  bare `spendDie`, 37 by a `statCheck`) and **14** carry a `credits` gate. Those 40 sit
-  across **39** storylets — and **no storylet has all of its choices die-gated**, which is
-  the T-401 "every storylet offers at least one requirement-free choice" invariant holding.
-  The checks roll GRIT, GUILE, GUNS and TRADE at **DC 11-13**.
-- **The refusal ladder**, in `resolveStoryletChoice`, in order: `not-available`
-  (`storylets.ts:676`), `unknown-choice` (`:683`), `insufficient-credits` (`:687`),
-  `missing-die` (`:700`). It is mirrored non-mutatingly by `quoteStoryletChoice` (`:611`,
-  ladder at `:629/:637/:647/:660`), whose doc comment (`:596-610`) states the
-  pane-can-never-disagree contract explicitly.
-- **`applyEffects` (`storylets.ts:316-555`) writes, in order:** `state.player.credits`
-  floored at 0 (`:356-366`, behind the long T-1604b argument at `:327-355`),
-  `state.player.ship.fuel` clamped (`:368-382`), `state.player.activeContract` (`:384-393`),
-  `state.market.manifestBoard` (`:395-407`), the **global** `state.flags` (`:409-414`, via
-  `applyFlagEffect` `:257`), NPC disposition through the shared
-  `applyDisposition(…, 'storylet', …)` (`:416-440`; `applyDisposition` is `npc.ts:657`, and
-  the copy-on-write re-read comment is at `storylets.ts:425-427`),
-  `state.player.reputation` (`:446-459`), `StoryletDeedProgress` (`:461-470`),
-  **`state.storylets.scheduled.push`** (`:472-488`), `grantFragment` into
-  `state.player.nemesisFile` (`:496-516`), `decodeFragment` (`:520-537`), and
-  `commitCrossingStake` (`:550-552`). Counted, by how many storylets write each:
-  credits 55 · flags 71 · disposition 29 · reputation 17 · fuel 8 · cargo 6 ·
-  `grantFragment` 6 · deedProgress 4 · `decodeFragment` 12 · crossing stake 1.
-- **Completion is world state, and it is a consumption ledger.**
-  `resolveStoryletChoice` stamps `nextState.storylets.completed[storylet.id] =
-  nextState.day` (`:716`) and drops the offer and its due schedule (`:717-722`).
-  `isCompletedForNow` (`:54-59`) then hides the storylet **forever** unless
-  `repeat === 'daily'`. Counted: of 114 storylets, `repeat: 'never'` **112** and
-  `repeat: 'daily'` **2** — i.e. **98.2% of the authored table is once per career**.
-- **The chain state itself is one structure per WORLD.**
-  `StoryletState { available, completed, scheduled, offeredToday }`
-  (`packages/engine/src/types.ts:150-155`) and
-  `StoryletScheduleState { storyletId, dueDay, sourceStoryletId, sourceChoiceId }`
-  (`types.ts:143-148`), hung off `GameState.storylets` (`types.ts:1526`). There is **no
-  per-actor storylet state anywhere in the engine** — the world has exactly one chain
-  ledger, and it is the player's.
-- **The multi-step mechanism, which is the part that matters for this row.**
-  `effects.schedule` (`storylets.ts:472-488`) pushes a follow-up at
-  `state.day + delayDays`; `trigger.scheduledOnly` (`:67-69`, via `hasDueSchedule` `:48-52`)
-  makes an episode reachable *only* once its schedule is due; and `resolveAbandonedChains`
-  (`:756-793`, called from the dusk block at `day.ts:1255`) resolves a past-grace episode
-  **for** the player, filing the authored `wireResolution.wireMessage` as a
-  `WireEntry{kind:'npc'}` and applying its consequences through the same `applyEffects`
-  path (the definition-site argument is at `:736-755`). Counted: **26** storylets schedule
-  a follow-up, at delays of **1 or 2 days**; **26** are `scheduledOnly`; **20** carry a
-  `wireResolution`, with `graceDays` **4-7**.
-- **Content.** `STORYLETS = defineStorylets([…])` at
-  `packages/content/src/storylets.ts:198`; the file is **4,982 lines** of authored prose,
-  titles, choice labels and per-choice `prose`. The trigger's `npc.inCurrentSystem` is
-  declared at `content/src/storylets.ts:48`.
-
-**(b) What the cast has instead.**
-
-**Frequency is 0 by construction, not measured as 0.** `NPC_INTENT_TYPES`
-(`packages/content/src/ideals.ts:14`) has exactly five members —
-`Trade | Travel | Combat | Patrol | Socialize`. `resolveNpcDay`
-(`packages/engine/src/npc.ts:1604`, if/else chain `:1675-1687`) dispatches off `pickIntent`
-(`npc.ts:583`) into `executeTrade` (`:1324`), `executeTravel` (`:1462`), `executeCombat`
-(`:1509`), `executePatrol` (`:1545`), `executeSocialize` (`:1573`). **There is no Storylet
-verb and no Storylet intent.** As with Explore, "0 by construction" is the honest statement;
-"0.00 measured off a small arm" is what standing amendment 1 forbids.
-
-**What the cast DOES have — and it is the reason all 41 records exist.**
-`createInitialState` seeds `state.npcs` from `[...NPC_PROFILES, ...QUEST_PROFILES]`
-(`packages/engine/src/state.ts:79`), giving **41** records at `disposition: 0`
-(`state.ts:93`). `NPC_PROFILES` (`packages/content/src/cast.ts:87`) is the 30 simulated
-mortal captains; `QUEST_PROFILES` (`cast.ts:483`) is the 11 storyline characters;
-`ALL_NPC_PROFILES` is `cast.ts:626` and `isSimulatedCaptain` is `cast.ts:660`. The 41-record
-doc comment (`cast.ts:628-657`) states the purpose in as many words: the eleven "hold
-`NpcState` records **so storylet triggers and dispositions can look them up by id**". So the
-cast is the storylet system's **subject and lookup target** — `triggerMatches` finds a
-captain by id and gates on `disposition` (`storylets.ts:89-98`), and `applyEffects` moves a
-captain's disposition (`:416-440`). That is **presence in the roster, not participation in
-the verb**, the same distinction T-011's part (b) drew for `hangoutRumors` ("NPCs are its
-SUBJECT, never its reader", this doc line 466).
-
-**The `NPC_PROFILES` / `QUEST_PROFILES` split is doing live work — the census confirms it
-against the real arrays rather than by grep.** Counted: **10 distinct npc ids** are
-referenced by any storylet (8 distinct in a `trigger.npc.id`, 10 distinct in a
-`effects.disposition[].npcId`, including success/failure branches and `wireResolution`
-effects) — `npc-doc-salvage`, `npc-lucky-seven`, `npc-rattlesnake`, `npc-rust-bucket`,
-`npc-silk-dagger`, `npc-smuggler-ray`, `npc-stellar-monk`, `npc-the-broker`,
-`npc-void-whisper`, `npc-wild-card`. Partitioned through `isSimulatedCaptain`: **10 of 10
-are `QUEST_PROFILES`, 0 of 30 are `NPC_PROFILES`, 0 unknown.** `npc-penny-wise` is the
-eleventh quest profile and is the only one no storylet references — she is reached through
-the lending path instead (the VisitHangout memo above). So authored chains reference
-**only** captains that take no turn (`day.ts:753`,
-`if (!isSimulatedCaptain(npc.profileId)) continue;`) and therefore can never die
-(`npc.dead = true` is set at exactly one site, `npc.ts:1026`, inside the simulated path).
-That is what makes the split load-bearing today rather than historical.
-
-**The mid-chain-death failure mode, and why the question is not hypothetical.** The N3
-ruling records it verbatim (this doc, lines 1469-1472, under N3's "Authored content attached
-to the dead"):
-
-> *The real failure mode was mid-chain death.* Storylets are multi-step chains with
-> scheduled follow-ups: answer Doc Salvage's ping on day 12
-> (`chain.doc-salvage.ping_answered`), Doc Salvage dies on day 40, and on day 41 the
-> scheduled beat fires — *"Doc Salvage answers a day later…"*. **A dead captain talks.**
-
-And the owner's reasoning, recorded at lines 1479-1487, closes the obvious alternative: the
-option on the table was *eleven immortal NPCs*, rejected *"because it didn't make thematic
-sense"*; the eleven "are not immortal captains; they are not captains in the simulation at
-all." **This is the mechanism whose interaction with NPC mortality forced the split** — so
-any option in (c) that puts a chain near a mortal captain is re-opening a question the owner
-has already answered once.
-
-**The mechanism is still armed — a verified finding of this memo, and it is a defect that
-exists today under every option below.** The storylet path filters `dead` **nowhere**:
-
-1. `triggerMatches`'s npc lookup is a bare
-   `state.npcs.find((candidate) => candidate.id === trigger.npc?.id)`
-   (`storylets.ts:90-91`) — **no `dead` check**, so a dead captain still satisfies a
-   disposition or co-location trigger.
-2. `applyEffects`'s disposition loop is a bare `state.npcs.find(…)` (`storylets.ts:417-418`)
-   — a storylet can move a **dead** captain's disposition.
-3. `resolveAbandonedChains` (`storylets.ts:756-793`) files the authored `wireMessage` on a
-   grace-window expiry with **no liveness test at all** — a dead captain speaking on the
-   wire, which is precisely the N3 shape.
-
-Contrast the two sites that *do* guard, both closed at N3: `hangoutRumors` filters `dead`
-(this doc line 466), and `buildNamedCandidates` (`actions/travel.ts:275-301`) both filters
-`npc.dead` and looks the profile up in `NPC_PROFILES`, with the reason written at the
-definition site ("*'a dead captain talks' is the exact failure mode the roster split was
-designed around*"). **So on the storylet path the roster split is currently the ONLY thing
-holding this closed, and it is held by content discipline — which ids get authored — rather
-than by a code invariant.** Naming a mortal captain in one chain re-opens it in one commit.
-Recorded here as a finding, not fixed: this memo changes no code.
-
-**The N13 hand dependency.** `spendRequiredDie` (`storylets.ts:223-255`) is the entry gate
-for all **40** die- or check-bearing choices, and `NpcState` (`types.ts:1153-1206`:
-`id / name / profileId / currentSystemId / credits / ship / disposition / lastAction? /
-dead?`) carries **no `dawnHand`** — `dawnHand` exists once, on `PlayerState`
-(`types.ts:1444`). That is the same block that stops full-parity Explore (this doc, lines
-294-296) and the same shape as watch item **OI-9**, and it is **N13's** to remove. The
-cast's existing check path does **not** substitute for free either: `rollNpcCheck`
-(`npc.ts:1214-1232`) is module-private and **keyed to `NpcIntentType`** — it reads
-`INTENT_STAT_AFFINITY[intent]` (`ideals.ts:27`), `NPC_CHECK_DCS[intent]` (`ideals.ts:46`)
-and `NPC_CHECK_CONTEXT[intent]` (`npc.ts:1193-1202`), so an authored
-`statCheck { stat, dc }` cannot pass through it without a stat+DC parameterisation and a new
-`actionContext` member. Its T-1201 verb⟺`StatCheck` invariant (doc comment
-`npc.ts:1204-1213`) is an invariant a sixth verb has to be **added to**, never bypassed.
-
-**Instrument blindness — a verified negative, and a live cross-contamination hazard.**
-
-- `grep -c storylet docs/balance/baseline-n10-shipped.json` returns **0**, case-insensitive
-  included. The `fleet` keys and the `fleet.milestones[…]` keys
-  (`day, runs, player*, npcCredits, npcHullStrength, npcFuel`) carry **no storylet metric at
-  all**, in `fleet` or in any of the eight `byPolicy` rows. Same verified-negative form as
-  the VisitHangout memo's loan finding (lines 606-608): the instrument cannot see this
-  mechanism, and a mechanism the instrument cannot see cannot be graded.
-- **No storylet event carries an actor.** `StoryletOffered` (`types.ts:740`),
-  `StoryletChoiceResolved` (`:742`), `StoryletChoiceBlocked` (`:749`),
-  `StoryletEffectApplied` (`:756`), `StoryletScheduled` (`:783`) and `StoryletDeedProgress`
-  (`:791`) have **no actor field**, and `packages/sim/src/index.ts:937-949` folds
-  `StoryletChoiceResolved` **unconditionally** into the player's `SmugglingStats.podsTaken`
-  / `fenceSales` (`index.ts:231,235`; the ids at `:827-832`). An NPC resolving
-  `derelict.sealed-pod`'s `take`, or any `fence.ray.*` sell, would be counted as the
-  **player's** smuggling. **This is the third instance of one pattern in three memos** —
-  the Explore memo's deed cross-contamination (lines 304-309) and the VisitHangout memo's
-  actor-less `LoanEvent` (lines 631-637) are the same defect class, and it should be closed
-  as a class rather than three times.
-
-**(c) The three options, each with its real cost.**
-
-**Option 1 — implement (full parity).** This is the most expensive option in the three
-memos, and the reason is structural rather than incidental.
-
-- **Not one field but a whole sub-state.** Because `StoryletState` (`types.ts:150-155`) is
-  world-scoped, parity means a per-captain `available / completed / scheduled /
-  offeredToday` on `NpcState` — **30 of them** — plus a declaration in the `.strict()`
-  `NpcStateSchema` (`packages/engine/src/schema.ts:466`, read at `:1286` and covered by the
-  `AssertEqual<keyof NpcState, …>` at `:1332`, so an undeclared key is a compile error and
-  an unknown key on a save is a rejection), a `CURRENT_SAVE_VERSION` bump
-  (`save.ts:331`, currently **11**), a `MIGRATIONS[n]` entry (`save.ts:156`) that **calls**
-  the seeding rule rather than restating it (the `MIGRATIONS[9]` / `[10]` discipline, stated
-  at `save.ts:302`), a round-trip test, and `deserializeState` performing the identical
-  move pinned by a test. Carrying T-011's sequencing point forward: **N11's T-020 already
-  claims 11 → 12**, so this lands at **v13** or folds into N11's bump.
-- **The global flag namespace is not separable from the state question.** `triggerMatches`
-  reads and `applyFlagEffect` writes the **single** `state.flags` map (`storylets.ts:109-113`,
-  `:257-306`), and **71** of the 114 storylets write flags (counted). Thirty captains
-  writing `chain.*` flags either collide in one namespace or need per-actor flags — so
-  deciding the flags is deciding the state shape.
-- **`completed` is a consumption ledger, and 98.2% of the table is once-only.** With
-  `isCompletedForNow` (`storylets.ts:54-59`) reading a **world-scoped** `completed` map, a
-  cast-side resolve against the shared structure **deletes authored content from the
-  player's game**. Counted: 112 of 114 storylets are `repeat: 'never'`; only 2 are `daily`.
-  The sharpest instance: the Sage of Mizar-9's decode storylets are *"the game's ONLY
-  decoder"* (`packages/sim/src/index.ts:1309-1310`), and counted, **12** storylets carry a
-  `decodeFragment` effect — `sage.mizar.decode-first` plus `decode-02..12`
-  (`content/src/storylets.ts:547`, `:1967`-`:2051`, `:4712`-`:4880`), each `repeat: 'never'`
-  and each the sole route to decoding one specific fragment. A captain resolving any one of
-  them takes that fragment's only decode with it, and with it a step the player needs to
-  clear the `minDecoded` crossing gate (`storylets.ts:134-138`). Avoiding that requires a
-  per-actor `completed`, which is the sub-state above.
-- **Authored prose has no cast-side reader, and the CHOICE is the harder half.**
-  `StoryletOffer` (`types.ts:129-141`) carries `title`, `prose` and per-choice
-  `label`/`prose`; the cast has no UI, so option 1 buys a prose surface nobody reads.
-  Worse, a captain must *select* a choice, and the only choice-selection code that exists is
-  `chooseStoryletAction` (`packages/sim/src/index.ts:1290-1307`) — a **player** policy in
-  `packages/sim`, not an engine actor model. Lifting it into `npc.ts` is exactly the private
-  parallel model the standing constraint forbids; parameterising `resolveStoryletChoice`
-  with an actor is the only compliant route, and it is the whole 793-line module.
-- **And the rest of the bill:** the die (**N13**), the hardcoded `actor: 'Player'`
-  (`storylets.ts:248`), an actor discriminator owed on **all six** storylet events before
-  the sim mis-attributes (part (b) above), a sixth `NPC_INTENT_TYPES` member with its full
-  authored table cost (the Explore memo's enumeration at lines 310-316 —
-  `IDEAL_WEIGHTS` alone is **30** rows, one per authored Ideal), a new sim limb because the
-  instrument cannot see the mechanism at all, and **a new capstone, never a refreshed
-  number** (this doc's own rule at line 82).
-
-**Option 2 — algorithmic fast-forward.** The task asks specifically whether a *non-authored*
-subset could be fast-forwarded — a captain's disposition or flags moving *as if* a beat had
-resolved — and whether that would be a rule the player plays under or a private parallel
-model. Split honestly, it is two different things:
-
-- **(i) A cast-side beat with cast-side consequences.** There is nothing for it to move.
-  `NpcState.disposition` is defined as standing **toward the player**
-  (`types.ts:1179-1181`; the note at `travel.ts:343`), and NPC↔NPC standing is an *absent
-  model*, not a number left at zero (T-011's part (b) item 7, lines 542-545). A beat between
-  two captains has no state to land in.
-- **(ii) A cast-side beat with player-facing consequences** — moving a disposition, or a
-  `chain.*` flag the player's 41 flag-gated triggers read. The player's version of that
-  outcome is only ever produced by `resolveStoryletChoice` **after** prose was shown, a die
-  was spent and a four-rung typed refusal ladder was cleared. A fast-forward that reaches
-  the same write without those is a **second definition of the same outcome** — R2c's exact
-  failure mode, and the standing constraint's "never write the NPC a private one". So the
-  answer to the task's question, for sub-shape (ii): **as stated, it is a private parallel
-  model, not a rule the player plays under.**
-- **The one narrow sub-shape that is arguably compliant, so the option is costed rather
-  than dismissed.** `resolveAbandonedChains` (`storylets.ts:756-793`) is an **existing,
-  blessed precedent for an outcome resolving without the actor playing it**: it routes
-  through the same `applyEffects`, emits the identical `DispositionChanged` /
-  `StoryletEffectApplied` events, and its argument lives at its definition site
-  (`:736-755`). Note precisely what it is a precedent *for*: its subject is the **player's
-  own** unplayed chain, so it is a precedent for the **mechanism**, not for the **scope**.
-  Extending it to a captain's private chain is a design question for the owner, not a
-  refactor.
-- **The asymmetry with both prior memos.** Explore's option 2 was cheap because no save
-  shape moved. VisitHangout's was not, because a debt is persistent state. Storylet's is
-  worse than either: **a chain is persistent state AND authored content**, so there is no
-  save-free version and no content-free version of this option.
-- If recorded, it must be recorded as a **partial**, for the reason both prior memos give:
-  an actor playing the same rules over a smaller surface is honest only while the smaller
-  surface is written down.
-
-**Option 3 — exclude with a reason.** Zero code. The reason available to be stated, all of
-it verified above: the verb's inputs and outputs are **player-scoped by construction**
-(`GameState.storylets` is one ledger per world; the triggers read `player.nemesisFile`,
-`player.reputation`, `player.registry`, `player.activeContract` and the global
-`state.flags`); its payload is **authored prose with no cast-side reader**; its `completed`
-ledger is **98.2% once-only**, which makes cast participation *consumption of the player's
-content* rather than parallel play; and its multi-step scheduling is the **exact mechanism
-the N3 `NPC_PROFILES` / `QUEST_PROFILES` split was created to keep away from mortal
-captains** — a chain currently references 10 quest profiles and 0 of the 30 simulated
-captains, by content discipline.
-
-**The cost of exclusion, in the ledger's own terms.** One of the player's **eleven** verbs
-(the ledger table, lines 189-201) stays player-only, and N8's *"all or most of a full
-player's actions"* (the ruling at line 177, the precondition bullet at lines 2462-2468) has
-to count Storylet as a **ruled exclusion** rather than a gap. Classified precisely, and
-unlike VisitHangout: because the cast does **not** play this verb at all, this would be a
-ruled **absence**, the same class as Explore's option 3 — not a ruled partial.
-
-**(d) Recommendation, with its reason.**
-
-Offered as a recommendation, not as a ruling. **Option 3 — exclude with the reason
-recorded** — on four grounds, in descending strength:
-
-1. **The shared once-only `completed` ledger makes cast participation subtractive for the
-   player.** This is the strongest argument because it is structural and needs no
-   measurement: 112 of 114 storylets are `repeat: 'never'` against **one world-scoped**
-   `completed` map, so a captain resolving a beat does not play *alongside* the player, it
-   plays *instead of* them. The Sage's decode storylets are the proof case — the game's only
-   decoder, and each of its twelve beats consumable exactly once.
-2. **The verb's rewards and gates are player-scoped by design, and the standing constraint
-   requires the same rules *where the verb applies*, not that every verb apply** (the
-   Explore memo's formulation, lines 334-335). 31.6% of triggers read a field that exists
-   only on the player; the payload is prose with no cast-side reader.
-3. **Option 1 is not reachable in this track's remaining steps regardless of the ruling.**
-   It is blocked on N13 for the die and on a per-actor sub-state that queues behind N11's
-   version bump — so the practical choice this quarter is between option 2 and option 3.
-4. **And option 2's honest form is narrower than it first looks.** Its sub-shape (i) has no
-   state to write and its sub-shape (ii) is a second definition of a player-facing outcome.
-   What remains is the `resolveAbandonedChains` precedent, which is a precedent for the
-   mechanism and not for the scope.
-
-What stays genuinely open, and belongs to the owner:
-
-- **Whether a *non-storylet* expression of cast-side narrative belongs anywhere.** The N4
-  `loan-default` / `contraband-caught` re-siting question (lines 681-687) is the same shape
-  — grudge writes that need a storylet-side expression or a re-siting — and it should be
-  ruled with an eye to this row, since "express it storylet-side" would be a heavier answer
-  in the hypothetical where this row is eventually ruled an exclusion.
-- **Two defects that exist today whichever option is chosen, recorded here rather than
-  folded into the recommendation** (the register T-011 used at lines 755-756): the
-  `dead`-unfiltered storylet lookups (part (b), three sites) and the actor-less storylet
-  events that the sim already folds into the player's smuggling counters. Neither is caused
-  by this ruling and neither is fixed by it; both are separate work items for the owner to
-  schedule.
-
-**(e)**
-
-**DECISION: OWED**
-
-The owner is choosing between: **option 1** implement at full parity (a per-captain
-`StoryletState` sub-state on `NpcState` with a `.strict()` schema declaration, a version
-bump queued behind N11's, a migration that calls the seeding rule, a per-actor answer to
-the global flag namespace, an actor parameter threaded through the whole 793-line storylets
-module, an actor discriminator on all six storylet events, a sixth `NPC_INTENT_TYPES`
-member with 30 `IDEAL_WEIGHTS` rows, a new sim limb, a new capstone, and the die still
-blocked on N13), **option 2** a fast-forward recorded as a partial (whose compliant form
-reduces to extending the `resolveAbandonedChains` precedent from the player's own unplayed
-chain to a captain's, which is a design question rather than a refactor — and which still
-buys persistent state and authored content, so it is save-free in neither direction), and
-**option 3** exclude with the stated reason (zero code, and N8 counts the row as a ruled
-**absence**, the same class as Explore, not a ruled partial). Nothing in this memo selects
-among them.
 
 ---
 
@@ -1907,52 +1032,28 @@ SURVIVED.** Graded at `docs/balance/baseline-n11-shipped.json` (1,000 seeds × 1
 `baseline-n10-shipped.json`, with the smoke fixture re-extracted FROM that capstone
 (`spreads harvested`). All four limbs by name:
 
-- **PROVES 1 — real ranks and purchases through the gate: HELD.** The cast's rank
-  distribution (`fleet.milestones[*].npcRenownRanks`, 240,000 captain-slots at each day)
-  at all three reporting days:
-
-  | rung | day 30 | day 60 | day 120 |
-  | --- | --- | --- | --- |
-  | ADMIRAL | 8 (0.0%) | 105 (0.0%) | 881 (0.4%) |
-  | COMMODORE | 104,288 (43.5%) | 159,440 (66.4%) | 180,989 (75.4%) |
-  | CAPTAIN | 94,696 (39.5%) | 54,146 (22.6%) | 35,411 (14.8%) |
-  | COMMANDER | 37,049 (15.4%) | 22,886 (9.5%) | 19,494 (8.1%) |
-  | LIEUTENANT (zero-deed rung) | 3,959 (1.6%) | 3,423 (1.4%) | 3,225 (1.3%) |
-
-  An EARNED rank above the zero-deed rung is held by 98.4% → 98.6% → 98.7% of slots
-  across days 30/60/120, CAPTAIN-or-better by 82.9% → 89.0% → 90.5% (exact day-120
-  value 90.53%; an earlier draft's "90.6%" was a rounding slip, corrected here with the
-  counts shown), and the modal rung is already COMMODORE at day 30.
-  `fleet.npcSpecialEquipmentPurchases` is **342,168 over 8,000 runs =
-  42.771 per run**. The −1 lockout is gone, through the player's own
-  `requiredRank` check with no NPC branch — `grep -rn "isNpc"
-  packages/engine/src/actions/shipyard.ts` returns nothing.
-- **PROVES 2 — the Honor List's top end and a contested spine: HELD AS AN INTERSECTION,
-  with a recorded blindness.** Over 20 ambient seeds × 120 days, **73.3% of captain-slots
-  own a rank-gated fit** (Star Buster 440, Arch Angel 413, both 413 of 600) and owners sit
-  at mean component-score rank **11.73** against non-owners' **25.06** — the gated-fit
-  owners ARE the top of the board, in 20 of 20 seeds, and a waiting player holds **0 of
-  the 8 titles**. It is graded as an intersection and not as "the board shows the fits"
-  because **`honorList` scores components only** (`effectiveScore(ship[id])` +
-  `allAroundScore` over `SHIP_COMPONENTS`) and is structurally **blind to the boolean
-  `hasStarBuster` / `hasArchAngel`**. That blindness is a finding, not a defect fixed
-  here — see the hand-off.
-- **DISPROVES · renown inflation — NOT DEMONSTRATED.** Off the rank-distribution table
-  above, the cast's median rung runs **CAPTAIN → COMMODORE → COMMODORE** across days
-  30/60/120 and never exceeds COMMODORE. At day 120 the median captain sits
-  **COMMODORE (9 deeds)**; the median player, off the same capstone at the same day,
-  sits **TOP_DOG (17 deeds)** — two rungs higher, and the cast's 13-deed source ceiling
-  is *below* the player's median rank. **No cast slot reaches TOP_DOG or above at any
-  milestone day** (ADMIRAL, the cast's ceiling rung, peaks at 0.4% of slots at day 120).
-  Even the pathological `greedy` arm (a player who never trades) is
-  CAPTAIN 55.2% / COMMODORE 43.1%, i.e. level with the cast median rather than under it,
-  while every competent arm is TOP_DOG..GIGA_HERO. Deed pacing is right for a 30-seat
-  field.
+- **PROVES 1 — real ranks and purchases through the gate: HELD.** An EARNED rank above the
+  zero-deed rung is held by **98.4% → 98.6% → 98.7%** of captain-slots at days 30/60/120,
+  CAPTAIN-or-better by 82.9% → 89.0% → 90.5%, and the modal rung is already COMMODORE at
+  day 30. `fleet.npcSpecialEquipmentPurchases` is **42.771 per run**. The −1 lockout is
+  gone, through the player's own `requiredRank` check with no NPC branch.
+- **PROVES 2 — the Honor List's top end: HELD AS AN INTERSECTION, with a recorded
+  blindness.** Over 20 ambient seeds × 120 days, **73.3% of captain-slots own a rank-gated
+  fit** and owners sit at mean component-score rank **11.73** against non-owners' **25.06**
+  — the gated-fit owners ARE the top of the board in 20 of 20 seeds, and a waiting player
+  holds 0 of the 8 titles. Graded as an intersection rather than directly because
+  **`honorList` scores `SHIP_COMPONENTS` only and is structurally blind to the boolean
+  `hasStarBuster` / `hasArchAngel`** — a finding, not a defect fixed here (see the hand-off).
+- **DISPROVES · renown inflation — NOT DEMONSTRATED.** The cast's median rung runs
+  CAPTAIN → COMMODORE → COMMODORE and never exceeds COMMODORE; at day 120 the median
+  captain sits COMMODORE (9 deeds) against the median player's TOP_DOG (17) — two rungs
+  higher, with the cast's 13-deed source ceiling *below* the player's median rank. **No cast
+  slot reaches TOP_DOG or above at any milestone day.** Even the pathological `greedy` arm
+  is level with the cast median rather than under it.
 - **DISPROVES · zero accrual — NOT DEMONSTRATED.** Every archetype accrues at every
-  milestone day, and the limb N10 flagged as most at risk is the one that clears most
-  clearly: the **fighter's** deed count runs p10 1 → 2 → 2 and median 5 → 7 → 8 across
-  days 30/60/120, the **explorer's** p10 4 → 5 → 5. Fleet-wide `npcDeedCount` is p10 3/4/5
-  and median 8/9/10. The coarse turn reaches the thresholds.
+  milestone day, and the limb N10 flagged as most at risk clears most clearly: the
+  **fighter's** deed count runs p10 1 → 2 → 2 / median 5 → 7 → 8 across days 30/60/120, the
+  **explorer's** p10 4 → 5 → 5. Fleet-wide `npcDeedCount` is p10 3/4/5, median 8/9/10.
 
 **DISCHARGED — N10'S HAND-OFF, WHICH OUTRANKS THE VERDICT, AND IT ANSWERS NO FOR THE
 THIRD TIME.** Per-archetype `npcCredits` **p10 (the FLOOR)** at the milestone days, n10
@@ -2056,7 +1157,7 @@ pacing constant was touched to move this** — a re-pricing is an owner call.
 
 *Full record — the four-limb grading tables, the per-archetype deed and rank histograms,
 the archetype × policy floor split, the complete `balance:diff`, and the rulings recorded
-during the three implementing tasks: `git show <closing sha> -- docs/NPC_REDESIGN.md
+during the three implementing tasks: `git show 81186739 -- docs/NPC_REDESIGN.md
 TASKS.md` for this Result, and `git show 57fe2dcb 67b5f4eb 7f7cc5d0 --
 docs/NPC_REDESIGN.md TASKS.md` for T-020's registry / T-021's gate / T-022's instrument.
 The measurement numbers themselves live in `docs/balance/baseline-n11-shipped.json`; every
@@ -2726,8 +1827,10 @@ the post-state N13 has to grade a hand-bearing cast against.
   a rank, or own a port is not the field the player actually ships against. Re-pinning
   before those verbs exist would bake three known absences into the yardstick every
   R-series conclusion is re-read against — the same class of mistake this step's first
-  task exists to prevent. Rule on the ledger's three UNRULED verbs (Explore,
-  VisitHangout, Storylet) before pinning, so every exclusion is a decision on record.
+  task exists to prevent. **RULING PRECONDITION DISCHARGED (owner, 2026-07-30):** Explore
+  and Storylet are recorded EXCLUSIONS and VisitHangout a recorded PARTIAL, so every
+  exclusion is now a decision on record and N8's remaining wait is on N12 alone (N10 and
+  N11 have landed).
 - **The post-N9 re-pin is DONE** — `baseline-n9-shipped.json`, taken fresh at HEAD. N8
   re-pins again on top of the living field; it no longer has to unpick N9.
   *(2026-07-29, doc audit item **OI-12**: this bullet named `baseline-n9-shipped.json` as
@@ -2800,10 +1903,9 @@ NPC PARITY TRACK (in progress — the R-series is PAUSED behind it, see below):
                                            dawn-hand parity) .... MUST-HAVE, gates N5
                                            └─► N5 (proficiency spread)
                                                 └─► N8 (re-pin against a living field)
-                                                     ▲ N9 MUST LAND FIRST — see below
-                                                     ▲ N10–N12 + the ledger's UNRULED
-                                                       verbs MUST BE SETTLED FIRST
-                                                       (owner 2026-07-29)
+                                                     ▲ N9 MUST LAND FIRST — done
+                                                     ▲ N10, N11 done · N12 OUTSTANDING
+                                                     ▲ ledger verbs RULED 2026-07-30
 
 WHY N4 SITS BEFORE N10 (owner ruling 2026-07-29, and it is load-bearing rather than
 tidy): N10's archetype-driven `pickContract` reads `profile.archetype`, so the field

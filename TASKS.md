@@ -670,7 +670,7 @@ edited. Orchestration: graphify=none — no `graphify-out/graph.json` in the rep
 
 *The review brief this milestone produces is `docs/N-SERIES-REVIEW-2026-07-30.md`.*
 
-### T-040 · CHECKPOINT — owner review: three rulings + N11's verdict — `status: BLOCKED(Human Gate)` · `coder: sonnet` · `after: T-030` · `[BLOCKED BY = Human Gate]`
+### T-040 · CHECKPOINT — owner review: three rulings + N11's verdict — `status: DONE` · `coder: sonnet` · `after: T-030` · `[BLOCKED BY = Human Gate]`
 
 Automated preparation only: assemble a single review brief at
 `docs/N-SERIES-REVIEW-<date>.md` that collects, with no new analysis and no decisions, (1)
@@ -738,3 +738,23 @@ Out of scope for this run — recorded so they are not re-scoped in by a coder:
   on both sides; its trigger is the field out-fitting the player, which has not fired.
 - **Anything R-owned:** R10's tier-1 hull cliff and the known-red `it.fails` tripwires. Flip
   a tripwire back to `it` only in the commit that fixes its defect.
+
+**Resolved by the owner (2026-07-30).** All four decisions taken, and recorded in
+`docs/NPC_REDESIGN.md` rather than here:
+
+- **Explore — EXCLUDED**, a ruled ABSENCE. Decided on the ablation measurement: a net credit
+  sink (53.8cr/attempt against 400–640cr of fuel), with the shipped explorer policy ending
+  richer without it on 101 of 120 seeds.
+- **VisitHangout — LENDING EXCLUDED**, the row a ruled PARTIAL (the cast already plays the
+  verb). Decided on the carry arithmetic: 13cr/dusk against a broke captain's 25cr/day.
+- **Storylet — EXCLUDED**, a ruled ABSENCE. Decided on the shared once-only `completed`
+  ledger: cast participation is subtractive for the player, not merely expensive.
+- **N11's verdict — ACCEPTED**, after independent re-verification (battery 1,354/0, every
+  T-020/T-021 deliverable re-grepped at its call site, capstone confirmed at 8,000 runs,
+  baseline pointer moved in both places).
+
+**THE PARITY LEDGER IS NOW FULLY RULED, so N8's ruling precondition is discharged** and N8
+waits on N12 alone. Follow-up recorded in the doc rather than left implicit: the N4
+`loan-default` / `contraband-caught` re-siting is now **narrower** — the Storylet exclusion
+removed "express it storylet-side" as an option, so re-siting is the only route and it is
+owed as its own decision.
