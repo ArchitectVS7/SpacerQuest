@@ -53,7 +53,10 @@ export interface ShipLostContext {
  *     records it; the killing-blow path nulls the encounter directly and never
  *     routes through resolveEncounter, so nothing upstream clears it);
  *     scheduled storylets CANCELLED (they were appointments with a dead
- *     spacer); the day's remaining dawn hand is LOST (succession consumes the
+ *     spacer); (T-111) an open multi-day `recovery` is FORFEITED — the op was
+ *     moored to a ship that no longer exists, a RecoveryAbandoned{'succession'}
+ *     records it, and the knowledge half (the charted POI) is inherited as
+ *     always; the day's remaining dawn hand is LOST (succession consumes the
  *     day — the successor starts fresh at dawn).
  *   LOCATION: the successor starts at the origin system of the fatal encounter
  *     (where the wreck was towed).
@@ -103,6 +106,26 @@ export function applySuccession(state: GameState, context: ShipLostContext): Gam
       cargoType: forfeited.cargoType,
       payment: forfeited.payment,
       actionDetails: 'Contract cargo lost with the ship.',
+    });
+  }
+
+  // FORFEIT (T-111): an in-progress salvage op moored to a ship that no longer
+  // exists — the explicit sibling of the voided contract above and the cancelled
+  // appointments below. The KNOWLEDGE half is untouched and INHERITED: the
+  // DiscoveredPoi is already in `charts`, which death never takes. Pushed BEFORE
+  // the LegacySuccession record because it is a consequence of the loss, not of
+  // the succession. Note this runs ahead of the dusk departure predicate at both
+  // call sites (day.ts life-support death, actions/combat.ts day-phase death), so
+  // the succession clear always wins and there is no double-emit — even though
+  // this function relocates the captain to `originSystem` below.
+  const abandonedRecovery = state.player.recovery;
+  if (abandonedRecovery) {
+    state.player.recovery = null;
+    events.push({
+      type: 'RecoveryAbandoned',
+      day: state.day,
+      outcomeId: abandonedRecovery.outcomeId,
+      reason: 'succession',
     });
   }
 

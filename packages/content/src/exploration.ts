@@ -14,6 +14,11 @@
  * predicate on a row and NO per-row day-count: conditions belong on the storylet
  * a `questline` row points at (§2.5), and the recovery clock is derived by an
  * engine rule from `valuePoints` (§3b, T-111).
+ *
+ * T-111 · THE VALUE BANDS (docs/EXPLORE_REDESIGN.md §5.2). `EXPLORE_VALUE_BANDS`
+ * below is the ONLY place in the codebase a recovery day-count is written. The
+ * engine's `bandFor`/`recoveryDays` (exploreOutcomes.ts) read it; no row carries
+ * an N of its own, and the type is what enforces that.
  */
 
 import { BEACON_FRAGMENT_POOL, DERELICT_FRAGMENT_POOL } from './nemesis.js';
@@ -177,6 +182,55 @@ export const EXPLORE_OUTCOMES: readonly ExploreOutcomeDefinition[] = [
     wireFound: '',
     payload: { kind: 'contraband' },
   },
+];
+
+// --- The value ladder's band table (T-111, docs/EXPLORE_REDESIGN.md §5.2) ---
+
+/**
+ * ONE BAND on the value ladder. A band is a half-open range of `valuePoints`
+ * starting at `minValuePoints` and running to the next band's start; the engine's
+ * `bandFor` walks the ordered list and keeps the LAST satisfied entry.
+ *
+ * Only the three columns T-111 consumes ship here. §5.2 reserves four more for
+ * the content passes that follow — `payload kinds permitted` (T-113/T-114/T-115),
+ * `Class-A ceiling` and `Class-B permitted` (T-112's effect surface), and
+ * `draw weight` (T-113, when the single weighted draw replaces the legacy legs).
+ * Extend this interface when those land; do not re-invent a second table.
+ *
+ * THE ENFORCEMENT, stated so it is not lost: `ExploreOutcomeDefinition` has NO
+ * `recoveryDays` key and MUST NEVER GAIN ONE. A content author cannot hand-tune
+ * one row's recovery clock because there is nowhere to write it — a missing field
+ * is a compile error, which is stronger than any test. `grep recoveryDays
+ * packages/content/src/exploration.ts` must hit ONLY inside EXPLORE_VALUE_BANDS.
+ *
+ * IN-REPO PRECEDENT, deliberately copied: `RENOWN_DEED_THRESHOLDS` (deeds.ts) is
+ * a content band table and `rankForDeedCount` (engine deeds.ts) is the one-line
+ * engine rule that reads it by walking the ordered list and keeping the last
+ * satisfied entry. Content owns where the bands sit; the engine owns what a band
+ * MEANS.
+ */
+export interface ExploreValueBand {
+  /** Ladder index. Monotone with `minValuePoints`; band 0 is the dead-end floor. */
+  band: number;
+  /** Inclusive lower bound on `valuePoints`. Rows MUST be ordered ascending. */
+  minValuePoints: number;
+  /** N — calendar days a find in this band takes to recover. 0 ⇒ same-day. */
+  recoveryDays: number;
+}
+
+// BALANCE: the day counts are VERBATIM docs/EXPLORE_REDESIGN.md §5.2. Bands 0-1
+// (58% of successful boards under §5.2's weights) recover same-day, so the common
+// find behaves exactly like today's instant loot — the audit measured a median
+// day-120 captain carrying 27 fuel, and a verb that always cost a multi-day
+// commitment on top of an 80-fuel gate would be unusable for the captain it is
+// meant to serve. Band 4's N is held at 6 so a day-24 find still reads as a
+// legible gamble against the day-30 Tour One marker.
+export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
+  { band: 0, minValuePoints: 0, recoveryDays: 0 },
+  { band: 1, minValuePoints: 1, recoveryDays: 0 },
+  { band: 2, minValuePoints: 11, recoveryDays: 1 },
+  { band: 3, minValuePoints: 31, recoveryDays: 3 },
+  { band: 4, minValuePoints: 61, recoveryDays: 6 },
 ];
 
 // --- The legacy three-leg draw (T-111b's shape, kept alive as DATA) ---

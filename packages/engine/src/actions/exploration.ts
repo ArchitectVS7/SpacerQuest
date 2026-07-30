@@ -10,11 +10,13 @@ import { cloneState } from '../clone.js';
  * T-111a · Off-lane exploration (PRD §7.2). The player burns a die on a PILOT
  * nav check to leave the trade lane and chart a point of interest.
  *
- * WHAT THIS FILE OWNS, and only this: the four typed refusals, the die spend,
+ * WHAT THIS FILE OWNS, and only this: the five typed refusals, the die spend,
  * the fuel burn, and the nav check. WHICH kinds of point of interest exist, and
  * WHAT a board pays out, are content — drawn through `exploreOutcomes.ts`
  * (`drawPoiKind` reads `POI_DISCOVERY_TABLE`, `drawLegacyLoot` reads
- * `LEGACY_POI_LOOT` and hands the drawn rows to the generic resolver). T-110
+ * `LEGACY_POI_LOOT` and hands the drawn rows through `claimOutcome` to the
+ * generic resolver, which is also where a band-2+ find OPENS the multi-day
+ * recovery slot instead of paying out today — T-111, spec §3). T-110
  * removed the hard-coded type ternary and the three-leg loot branch that used to
  * live here; adding a POI type or a payoff now touches no engine file
  * (docs/EXPLORE_REDESIGN.md §2).
@@ -35,6 +37,33 @@ export function resolveExploration(
   // Encounter gating lives in day.ts applyPlayerAction (the only runtime caller),
   // which emits a typed ActionBlocked event before this resolver is reached.
   const systemId = nextState.player.currentSystemId;
+
+  // T-111 · THE FIFTH TYPED REFUSAL (docs/EXPLORE_REDESIGN.md §3.3(c)). One open
+  // recovery at a time: while the ship is committed to a salvage op the Explore
+  // VERB is refused, rather than the second outcome being silently downgraded —
+  // one rule instead of two, and knowable BEFORE the player commits resources.
+  // The exact in-repo precedent is the one-loan-at-a-time gate (LoanState's own
+  // header: "one loan at a time; borrow is blocked while a loan is active").
+  //
+  // NO die is spent and NO fuel is burned, for the same reason the `no-die` branch
+  // below gives: the ship was already committed, so there was nothing to fly and
+  // there is nothing to charge. Placed at the very top so it precedes even the
+  // die-shape checks.
+  if (nextState.player.recovery !== null) {
+    events.push({
+      type: 'ExplorationFailed',
+      day: nextState.day,
+      systemId,
+      reason: 'recovery-in-progress',
+    });
+    events.push({
+      type: 'WireEntry',
+      day: nextState.day,
+      kind: 'plain',
+      message: `Player's crew held station on the salvage op — no hands free for another off-lane sweep near system ${systemId}.`,
+    });
+    return { state: nextState, events };
+  }
 
   // T-1003 · Malformed die selection is a type-valid player input (the Explore
   // action shape carries an optional/free-form spendDie), so it must resolve to a

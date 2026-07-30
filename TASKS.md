@@ -309,7 +309,27 @@ Four findings, each carried in code comments at the site:
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/EXPLORE_REDESIGN.md` §0–§5/§8, `docs/0.5.2-SPEC-REVIEW.md · attempts=1/4.
 
-### T-111 · The time cost of recovery — `status: TODO` · `coder: opus` · `after: T-110`
+### T-111 · The time cost of recovery — `status: DONE` · `coder: opus` · `after: T-110`
+
+**Delivered (2026-07-30):** Multi-day committed recovery now runs end to end through the
+real day loop: a drawn outcome with `recoveryDays(valuePoints) > 0` (a content-driven band
+rule in `exploreOutcomes.ts`, never a per-row constant) opens the single `player.recovery`
+slot instead of resolving same-day, and the payoff fires at the dusk of `dueDay` through the
+existing `resolveExploreOutcome` payload roll. The four ruled interactions from
+`docs/EXPLORE_REDESIGN.md` §3.3 are each driven through `startDay`/`applyPlayerAction`/`endDay`
+in `recovery.test.ts` rather than by poking state: travelling away forfeits the op at dusk,
+death clears the slot via succession without touching the chart, a second `Explore` while one
+recovery is open is refused with a typed `recovery-in-progress` event and charges neither die
+nor fuel, and the day-30 Tour One marker passes through an open recovery untouched. State grew
+by one field, so the save version bumped to v13 with a `.strict()` `RecoveryStateSchema`, a
+migration backfilling `recovery: null` for v12 saves, and the same backfill in
+`deserializeState`, all covered by round-trip tests. Deliberate scope boundary: a stored
+recovery whose `outcomeId` or `poiId` no longer resolves against current content (a drift
+case, not a normal path) clears the slot as `unknown-outcome` rather than crashing or
+fabricating a payout, and T-112's unique-item grant surface is untouched — this task only
+moves value-point payouts onto the recovery clock.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/EXPLORE_REDESIGN.md` §2–§5, `docs/0.5.2-SPEC-REVIEW.md` § · attempts=1/4.
 
 Implement the **multi-day committed recovery** of ruling 1, to the mechanics T-100 specced,
 so recovering a valuable find occupies real calendar days rather than resolving free inside

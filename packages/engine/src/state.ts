@@ -127,6 +127,9 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
       debtDueDay: 30,
       // T-1304: no Penny Wise loan at the start of a run.
       loan: null,
+      // T-111: no salvage op in progress at the start of a run — the slot opens
+      // only when an Explore board draws a band-2-or-higher outcome.
+      recovery: null,
       // T-1306: no crew at the start of a run — a Day-1 spacer rolls the base
       // 5-die dawn hand (dice.ts dawnDiceModifiers of an empty crew).
       crew: [],
@@ -258,6 +261,15 @@ export function deserializeState(json: string): GameState {
   // for the envelope path. Without it a legacy save leaves `loan` undefined and
   // fails the strict schema's non-optional `loan` key.
   parsed.player.loan ??= null;
+  // T-111 save-compat: pre-T-111 states have no recovery field. Default to null
+  // (no salvage op in progress) — the SAME backfill the v12→v13 save migration
+  // applies for the envelope path (the loader path runs `migrate` →
+  // `validateGameState` and never comes through here, so both halves are owed).
+  // Null is a STATEMENT OF FACT, not a convenience default: no save that exists
+  // can contain a recovery, because until T-111 none could exist. Without it a
+  // legacy save leaves `recovery` undefined and fails the strict schema's
+  // non-optional `recovery` key.
+  parsed.player.recovery ??= null;
   // T-1306 save-compat: pre-T-1306 states have no crew field. Default to empty —
   // the same backfill the v3→v4 save migration applies for the envelope path.
   // Without it a legacy save leaves `crew` undefined and fails the strict schema's

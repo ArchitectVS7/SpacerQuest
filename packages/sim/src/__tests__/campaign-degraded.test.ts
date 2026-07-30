@@ -323,14 +323,51 @@ const UNCHANGED_POLICIES = [
  *      * `greedy` moving is EXPECTED, and here for the SHAPE reason of entries 4
  *        and 11 rather than the world-side reason of entry 6 — no policy and no
  *        NPC behaviour changed at this step at all.
+ *
+ * 13. T-111 — the multi-day committed recovery. EXACTLY TWO ROWS MOVE, and unlike
+ *    entries 11 and 12 this is a REAL BEHAVIOUR CHANGE, not a report-shape one.
+ *    `rulesFingerprint` moves with it (engine + content are both touched), which
+ *    is the honest tell and is stated plainly rather than buried.
+ *      explorer 616ad4c19c3f60b9 -> 765d376ac547518d
+ *      smuggler abbaf33b67be9f19 -> 1425c6406f18b25c
+ *      trader / fighter / veteran / gambler / greedy — ALL UNCHANGED.
+ *
+ *    MECHANISM, and why the split falls exactly where it does. T-111 makes a
+ *    band-2+ explore find occupy calendar days: the payoff is deferred to the dusk
+ *    of `dueDay`, the Explore VERB is refused while the slot is open, and
+ *    `legalActions` stops advertising Explore for the same span. Only a policy
+ *    that actually flies off-lane sweeps can feel any of that — `explorer` by
+ *    charter and `smuggler` because its route play reaches for Explore too. The
+ *    five that never sweep are byte-identical, which is the control: a shape
+ *    change (entries 11/12) moves all seven; a verb change moves the callers.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      explorer  final credits  median 20,587 -> 25,013   mean 19,343 -> 24,910
+ *      smuggler  final credits  median  4,899 ->  9,802   mean  5,007 -> 10,159
+ *      fragments acquired (sum) explorer 30 -> 25, smuggler 31 -> 28
+ *      fuel starvation days 0 -> 0 and subsistence days 0 -> 0 in both (the verb
+ *      refusal does not strand anyone — the point of refusing the VERB rather than
+ *      silently downgrading the outcome).
+ *    THE DIRECTION IS UP, WHICH IS NOT A BUG AND IS WORTH NAMING: a refused sweep
+ *    is 80 fuel and a die NOT spent, so a committed captain hauls instead, and the
+ *    deferred salvage still arrives. Fewer boards is why the fragment counts fall.
+ *
+ *    WHAT THIS TABLE CANNOT SAY, and deliberately does not: five seeds cannot
+ *    separate that credit shift from stream noise, and there is no
+ *    `recoveriesOpened`/`recoveriesPaid` key in `CampaignStatsReport` — adding one
+ *    would move all seven hashes for a shape reason unrelated to the rule. T-116
+ *    owns the recovery measurement and the verdict; do not tune anything off this
+ *    window.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
   trader: 'f3e01b2a843c1c0f',
   fighter: 'dc6ca4fbcce58659',
-  explorer: '616ad4c19c3f60b9',
+  // T-111 entry 13: re-derived — the recovery rule reaches the sweeping policies.
+  explorer: '765d376ac547518d',
   veteran: 'f701430cfe32f7cb',
-  smuggler: 'abbaf33b67be9f19',
+  // T-111 entry 13: re-derived, same reason as `explorer`.
+  smuggler: '1425c6406f18b25c',
   gambler: 'fbb8b4df794fa5f4',
   greedy: '0f2ff82982dcbf2d',
 };

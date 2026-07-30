@@ -58,6 +58,7 @@ import {
   starmapProjection,
   routePreview,
   explorationPreview,
+  recoveryReadout,
   hangoutOpen,
   hangoutNpcs,
   hangoutRumorLines,
@@ -2334,12 +2335,21 @@ function Starmap({ state }: { state: CockpitState }) {
   // engine's own fuel affordability; the label mirrors the confirm-jump pattern,
   // naming the reason it is disabled (read from the engine preview, never invented).
   const sweep = explorationPreview(game);
-  const canSweep = dieArmed && sweep.canAfford;
-  const sweepLabel = !dieArmed
-    ? 'Pick a die to sweep'
-    : !sweep.canAfford
-      ? `Need ${sweep.fuelCost} fuel`
-      : 'Off-lane sweep';
+  // T-111 · An open multi-day recovery is a commitment the player must be able to
+  // SEE, and the verb it blocks must say so rather than fail silently. The
+  // predicate is the engine's own (`player.recovery !== null` — the same one
+  // `resolveExploration` refuses on and `legalActions` withholds on), read
+  // through the pure `recoveryReadout`; no clock is recomputed in JSX.
+  const recovery = recoveryReadout(game);
+  const canSweep = dieArmed && sweep.canAfford && recovery === null;
+  const sweepLabel =
+    recovery !== null
+      ? 'Salvage op under way'
+      : !dieArmed
+        ? 'Pick a die to sweep'
+        : !sweep.canAfford
+          ? `Need ${sweep.fuelCost} fuel`
+          : 'Off-lane sweep';
 
   const hereNode = proj.here;
   // A transparent per-node hit target, narrower than the node spacing so
@@ -2509,6 +2519,15 @@ function Starmap({ state }: { state: CockpitState }) {
             PILOT DC {sweep.dc} · FUEL {sweep.fuelCost} · NAV{' '}
             {signedMargin(sweep.effectiveModifier)}
           </div>
+          {recovery && (
+            <div className="es-recovery" data-testid="explore-recovery">
+              SALVAGE OP · {recovery.outcomeName} at {recovery.systemName} ·{' '}
+              {recovery.daysRemaining === 0
+                ? 'lifts at dusk'
+                : `${recovery.daysRemaining} day${recovery.daysRemaining === 1 ? '' : 's'} to go`}{' '}
+              · hold station or lose it
+            </div>
+          )}
           <button
             className="btn"
             data-testid="explore-sweep"

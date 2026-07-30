@@ -1,9 +1,9 @@
 {
   "productVersion": "0.5.2",
-  "saveSchemaVersion": 12,
-  "rulesFingerprint": "e58d5afd90b43ad5",
+  "saveSchemaVersion": 13,
+  "rulesFingerprint": "dab8a5ce44943ff5",
   "instrumentFingerprint": "313fde95fc5ee9db",
-  "docsFingerprint": "37ec3ae65b2467e7",
+  "docsFingerprint": "4e82edf9286b4ec0",
   "provenance": {
     "sweepLabel": "n11-shipped",
     "seeds": 1000,
@@ -20,7 +20,7 @@
       "veteran"
     ],
     "extractedOn": "2026-07-30",
-    "gitCommit": "6d051bb8883d27b16ebce129121eef30e35c9b79",
+    "gitCommit": "3468ef5f138e51e468b19bd1cf58e1a80ed440dc",
     "spreadSource": "harvested",
     "note": "Tier spreads are milestone samples harvested from the named sweep. They are still SYNTHESIZED starting states and are never balance verdicts — see docs/balance/smoke/README.md."
   },
@@ -111,15 +111,15 @@
           "creditsMin": 825,
           "creditsMedian": 2605,
           "creditsMax": 13008,
-          "debtTotal": 172048,
+          "debtTotal": 170959,
           "incomeDays": 16,
           "encounters": 5,
           "shipsLost": 0,
           "deliveredLegs": 11,
           "fuelStarvationDays": 0,
-          "deedsEarned": 49,
+          "deedsEarned": 46,
           "tourOneResolved": 0,
-          "outcomeHash": "7fbf107fafa64440"
+          "outcomeHash": "b7749c67e9749389"
         },
         {
           "policy": "veteran",
@@ -143,17 +143,17 @@
           "runs": 7,
           "endDay": 4,
           "creditsMin": 3945,
-          "creditsMedian": 6210,
+          "creditsMedian": 5602,
           "creditsMax": 7521,
-          "debtTotal": 174130,
+          "debtTotal": 174380,
           "incomeDays": 21,
           "encounters": 6,
           "shipsLost": 0,
           "deliveredLegs": 15,
           "fuelStarvationDays": 0,
-          "deedsEarned": 65,
+          "deedsEarned": 63,
           "tourOneResolved": 0,
-          "outcomeHash": "cc08e54a69945e42"
+          "outcomeHash": "7438f457a980c646"
         },
         {
           "policy": "gambler",
@@ -556,17 +556,17 @@
           "runs": 7,
           "endDay": 24,
           "creditsMin": 177,
-          "creditsMedian": 8272,
-          "creditsMax": 39988,
+          "creditsMedian": 7880,
+          "creditsMax": 39378,
           "debtTotal": 40688,
           "incomeDays": 18,
           "encounters": 5,
           "shipsLost": 0,
           "deliveredLegs": 13,
           "fuelStarvationDays": 3,
-          "deedsEarned": 58,
+          "deedsEarned": 60,
           "tourOneResolved": 0,
-          "outcomeHash": "578c5f59c3de3aba"
+          "outcomeHash": "822c8e2c463c7fd4"
         },
         {
           "policy": "veteran",
@@ -592,15 +592,15 @@
           "creditsMin": 445,
           "creditsMedian": 4885,
           "creditsMax": 29619,
-          "debtTotal": 36633,
+          "debtTotal": 33658,
           "incomeDays": 20,
-          "encounters": 5,
+          "encounters": 4,
           "shipsLost": 0,
-          "deliveredLegs": 15,
+          "deliveredLegs": 16,
           "fuelStarvationDays": 0,
-          "deedsEarned": 66,
+          "deedsEarned": 63,
           "tourOneResolved": 0,
-          "outcomeHash": "917d23c4dc6a0878"
+          "outcomeHash": "c0b8a005646853ff"
         },
         {
           "policy": "gambler",
@@ -1038,16 +1038,16 @@
           "endDay": 32,
           "creditsMin": 2920,
           "creditsMedian": 5751,
-          "creditsMax": 56104,
+          "creditsMax": 57270,
           "debtTotal": 22439,
           "incomeDays": 20,
           "encounters": 4,
           "shipsLost": 0,
           "deliveredLegs": 16,
           "fuelStarvationDays": 0,
-          "deedsEarned": 69,
+          "deedsEarned": 65,
           "tourOneResolved": 7,
-          "outcomeHash": "f56bd60a3674ae4b"
+          "outcomeHash": "ada184f0cc1f1d76"
         },
         {
           "policy": "gambler",
@@ -1485,16 +1485,16 @@
           "endDay": 44,
           "creditsMin": 285,
           "creditsMedian": 5364,
-          "creditsMax": 45266,
-          "debtTotal": 13545,
+          "creditsMax": 44785,
+          "debtTotal": 13155,
           "incomeDays": 19,
           "encounters": 5,
           "shipsLost": 0,
           "deliveredLegs": 14,
           "fuelStarvationDays": 0,
-          "deedsEarned": 65,
+          "deedsEarned": 62,
           "tourOneResolved": 0,
-          "outcomeHash": "1ca96bc17bcae866"
+          "outcomeHash": "8de638848a1acca2"
         },
         {
           "policy": "gambler",

@@ -14,6 +14,7 @@ import type {
   DiscoveredPoi,
   LegacyState,
   LoanState,
+  RecoveryState,
   CrewMember,
   PortStake,
   FactionReputation,
@@ -330,6 +331,19 @@ const LoanStateSchema = z
   })
   .strict();
 
+// T-111 · The open multi-day recovery (types.ts RecoveryState). `.strict()` — an
+// unknown key inside a recovery fails loudly on load, per the T-1002
+// drift-protection law that every ENGINE-owned state container is strict.
+const RecoveryStateSchema = z
+  .object({
+    outcomeId: z.string(),
+    poiId: z.string(),
+    systemId: z.number(),
+    startedDay: z.number(),
+    dueDay: z.number(),
+  })
+  .strict();
+
 const EarnedDeedStateSchema = z
   .object({
     id: z.string(),
@@ -523,6 +537,11 @@ const PlayerStateSchema = z
     // T-1304: the Penny Wise loan (or null). Nullable, non-optional — every
     // v3+ save serializes the key (v2 saves backfill it via the migration).
     loan: LoanStateSchema.nullable(),
+    // T-111: the open multi-day recovery (or null). Nullable, NON-OPTIONAL —
+    // every v13+ save serializes the key (v12 saves backfill it via the
+    // migration, and `deserializeState` performs the same backfill for the
+    // loader path).
+    recovery: RecoveryStateSchema.nullable(),
     // T-1306: hired crew (the dice-progression source). Non-optional — every v4+
     // save serializes the key (v3 saves backfill it via the migration).
     crew: z.array(CrewMemberSchema),
@@ -768,6 +787,7 @@ const GameEventSchema = z.discriminatedUnion('type', [
       'no-die',
       'invalid-die-index',
       'die-already-spent',
+      'recovery-in-progress',
     ]),
   }),
   z.object({
@@ -782,6 +802,27 @@ const GameEventSchema = z.discriminatedUnion('type', [
     day: z.number(),
     poiId: z.string(),
     systemId: z.number(),
+  }),
+  z.object({
+    type: z.literal('RecoveryStarted'),
+    day: z.number(),
+    outcomeId: z.string(),
+    poiId: z.string(),
+    systemId: z.number(),
+    dueDay: z.number(),
+  }),
+  z.object({
+    type: z.literal('RecoveryPaidOut'),
+    day: z.number(),
+    outcomeId: z.string(),
+    poiId: z.string(),
+    valuePoints: z.number(),
+  }),
+  z.object({
+    type: z.literal('RecoveryAbandoned'),
+    day: z.number(),
+    outcomeId: z.string(),
+    reason: z.enum(['departed', 'succession', 'unknown-outcome']),
   }),
   z.object({
     type: z.literal('FragmentAcquired'),
@@ -1349,6 +1390,10 @@ const _covCharts: AssertEqual<keyof ChartsState, keyof z.infer<typeof ChartsStat
 const _covPoi: AssertEqual<keyof DiscoveredPoi, keyof z.infer<typeof DiscoveredPoiSchema>> = true;
 const _covLegacy: AssertEqual<keyof LegacyState, keyof z.infer<typeof LegacyStateSchema>> = true;
 const _covLoan: AssertEqual<keyof LoanState, keyof z.infer<typeof LoanStateSchema>> = true;
+// T-111: the open recovery — an engine-owned nested container, so an explicit
+// keyof guard (not just `.strict()`) keeps schema↔interface in lockstep.
+const _covRecovery: AssertEqual<keyof RecoveryState, keyof z.infer<typeof RecoveryStateSchema>> =
+  true;
 const _covCrew: AssertEqual<keyof CrewMember, keyof z.infer<typeof CrewMemberSchema>> = true;
 const _covPortStake: AssertEqual<keyof PortStake, keyof z.infer<typeof PortStakeSchema>> = true;
 // T-1503: the nested reputation container — its four fixed keys are an engine shape,
@@ -1432,6 +1477,9 @@ const _covEvPoiDiscovered: AssertEventKeys<'PoiDiscovered'> = true;
 const _covEvExplorationFailed: AssertEventKeys<'ExplorationFailed'> = true;
 const _covEvSalvageRecovered: AssertEventKeys<'SalvageRecovered'> = true;
 const _covEvContrabandFound: AssertEventKeys<'ContrabandFound'> = true;
+const _covEvRecoveryStarted: AssertEventKeys<'RecoveryStarted'> = true;
+const _covEvRecoveryPaidOut: AssertEventKeys<'RecoveryPaidOut'> = true;
+const _covEvRecoveryAbandoned: AssertEventKeys<'RecoveryAbandoned'> = true;
 const _covEvFragmentAcquired: AssertEventKeys<'FragmentAcquired'> = true;
 const _covEvFragmentDecoded: AssertEventKeys<'FragmentDecoded'> = true;
 const _covEvNemesisCrossing: AssertEventKeys<'NemesisCrossing'> = true;
@@ -1485,6 +1533,7 @@ void _covCharts;
 void _covPoi;
 void _covLegacy;
 void _covLoan;
+void _covRecovery;
 void _covCrew;
 void _covPortStake;
 void _covReputation;
@@ -1517,6 +1566,9 @@ void _covEvPoiDiscovered;
 void _covEvExplorationFailed;
 void _covEvSalvageRecovered;
 void _covEvContrabandFound;
+void _covEvRecoveryStarted;
+void _covEvRecoveryPaidOut;
+void _covEvRecoveryAbandoned;
 void _covEvFragmentAcquired;
 void _covEvFragmentDecoded;
 void _covEvNemesisCrossing;

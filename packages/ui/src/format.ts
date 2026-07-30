@@ -222,11 +222,40 @@ export function explorationPreview(game: GameState): ExplorationPreview {
 }
 
 /**
+ * T-111 · THE OPEN RECOVERY, as the cockpit shows it (docs/EXPLORE_REDESIGN.md
+ * §3/§4.4). A committed multi-day op the player cannot see is a trap rather than
+ * a trade, so the commitment gets a readout. A PURE READ — it recomputes no rule:
+ * the day count is the engine's own `dueDay` minus the live day, clamped at 0 (an
+ * overdue slot pays at the next dusk, so "0 days" is the honest reading), and the
+ * name comes off the CHARTED POI rather than the outcome row (every legacy row's
+ * `wireFound` is deliberately empty — inventing a name here would be UI fiction).
+ */
+export interface RecoveryReadout {
+  /** The charted POI the op hangs off — its flavour name, straight off `charts`. */
+  outcomeName: string;
+  systemName: string;
+  /** `max(0, dueDay - day)`. 0 ⇒ pays at this dusk (or is already overdue). */
+  daysRemaining: number;
+}
+
+export function recoveryReadout(game: GameState): RecoveryReadout | null {
+  const recovery = game.player.recovery;
+  if (!recovery) return null;
+  const poi = game.player.charts.discoveredPois.find((p) => p.id === recovery.poiId);
+  return {
+    outcomeName: poi?.name ?? 'an uncharted salvage claim',
+    systemName: systemName(recovery.systemId),
+    daysRemaining: Math.max(0, recovery.dueDay - game.day),
+  };
+}
+
+/**
  * One honest line summarising a SUCCESSFUL sweep, composed straight from the
  * action's typed events — the charted POI plus whatever loot the roll surfaced
- * (salvage credits, a Signal Fragment, a sealed contraband pod). Returns null when
- * no POI was discovered (a failed sweep speaks through its notice instead). The UI
- * invents nothing here: every clause reads an emitted event.
+ * (salvage credits, a Signal Fragment, a sealed contraband pod), or the multi-day
+ * recovery the find opened (T-111). Returns null when no POI was discovered (a
+ * failed sweep speaks through its notice instead). The UI invents nothing here:
+ * every clause reads an emitted event.
  */
 export function explorationOutcome(events: GameEvent[]): string | null {
   const poi = events.find(
@@ -240,6 +269,13 @@ export function explorationOutcome(events: GameEvent[]): string | null {
   if (events.some((e) => e.type === 'FragmentAcquired')) parts.push('a Signal Fragment recovered');
   if (events.some((e) => e.type === 'ContrabandFound'))
     parts.push('a sealed pod bolted in the hold');
+  // T-111: a deferred find would otherwise read as "Charted X." with no payoff —
+  // the commitment must be legible on the day it is made. Reads the event's own
+  // `dueDay`, never a re-derived clock.
+  const started = events.find(
+    (e): e is Extract<GameEvent, { type: 'RecoveryStarted' }> => e.type === 'RecoveryStarted',
+  );
+  if (started) parts.push(`a salvage op under way — holds station to day ${started.dueDay}`);
   return `${parts.join(' · ')}.`;
 }
 

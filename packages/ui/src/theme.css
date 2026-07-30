@@ -527,6 +527,15 @@ body {
   font-size: 11px;
   line-height: 1.35;
 }
+/* T-111 · the open multi-day recovery. Styled like the cost strip (a live
+   commitment the player is reading off, not a result), not like the outcome. */
+.explore-sweep .es-recovery {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ---- ship & shipyard (T-308) ---- */
 .ship .body {

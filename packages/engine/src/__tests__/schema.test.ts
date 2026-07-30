@@ -514,3 +514,77 @@ describe('GameStateSchema — export surface', () => {
     expect(GameStateSchema).toBeInstanceOf(z.ZodType);
   });
 });
+
+describe('T-111 · the recovery container and its three events round-trip', () => {
+  it('validates a state carrying a live recovery plus all three Recovery events', () => {
+    const state = createInitialState(1);
+    state.player.recovery = {
+      outcomeId: 'legacy-salvage-derelict',
+      poiId: 'poi-1-d1-e3-derelict',
+      systemId: 1,
+      startedDay: 1,
+      dueDay: 2,
+    };
+    state.eventLog.push(
+      {
+        type: 'RecoveryStarted',
+        day: 1,
+        outcomeId: 'legacy-salvage-derelict',
+        poiId: 'poi-1-d1-e3-derelict',
+        systemId: 1,
+        dueDay: 2,
+      },
+      {
+        type: 'RecoveryPaidOut',
+        day: 2,
+        outcomeId: 'legacy-salvage-derelict',
+        poiId: 'poi-1-d1-e3-derelict',
+        valuePoints: 20,
+      },
+      { type: 'RecoveryAbandoned', day: 3, outcomeId: 'legacy-x', reason: 'departed' },
+      { type: 'RecoveryAbandoned', day: 4, outcomeId: 'legacy-y', reason: 'succession' },
+      { type: 'RecoveryAbandoned', day: 5, outcomeId: 'legacy-z', reason: 'unknown-outcome' },
+      // The fifth ExplorationFailed reason ships in the same commit.
+      { type: 'ExplorationFailed', day: 1, systemId: 1, reason: 'recovery-in-progress' },
+    );
+
+    const restored = validateGameState(JSON.parse(serializeState(state)));
+    expect(restored.player.recovery).toEqual(state.player.recovery);
+    expect(restored.eventLog.filter((e) => e.type === 'RecoveryAbandoned')).toHaveLength(3);
+    expect(restored.eventLog.some((e) => e.type === 'RecoveryStarted')).toBe(true);
+    expect(restored.eventLog.some((e) => e.type === 'RecoveryPaidOut')).toBe(true);
+    expect(
+      restored.eventLog.some(
+        (e) => e.type === 'ExplorationFailed' && e.reason === 'recovery-in-progress',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects an unknown nested key under player.recovery (T-1002 drift protection)', () => {
+    const state = createInitialState(2);
+    const raw = JSON.parse(serializeState(state)) as { player: Record<string, unknown> };
+    raw.player.recovery = {
+      outcomeId: 'legacy-salvage-derelict',
+      poiId: 'poi-1-d1-e3-derelict',
+      systemId: 1,
+      startedDay: 1,
+      dueDay: 2,
+      // A cached copy of the content number the design refuses to store — the
+      // strict container is what makes writing it a load failure, not a silent
+      // strip that would later drift against the row.
+      valuePoints: 20,
+    };
+    const result = safeValidateGameState(raw);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path.includes('recovery'))).toBe(true);
+    }
+  });
+
+  it('rejects an unknown RecoveryAbandoned reason', () => {
+    const state = createInitialState(3);
+    const raw = JSON.parse(serializeState(state)) as { eventLog: unknown[] };
+    raw.eventLog.push({ type: 'RecoveryAbandoned', day: 1, outcomeId: 'x', reason: 'bored' });
+    expect(safeValidateGameState(raw).success).toBe(false);
+  });
+});

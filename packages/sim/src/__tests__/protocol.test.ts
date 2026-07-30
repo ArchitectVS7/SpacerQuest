@@ -655,6 +655,41 @@ describe('legal-actions enumerator', () => {
     expect(legal.diceRemaining).toEqual([0, 1, 2, 3, 4]);
   });
 
+  // T-111 · An open multi-day recovery makes Explore a GUARANTEED refusal
+  // (`ExplorationFailed{'recovery-in-progress'}`), so the protocol must stop
+  // advertising it — otherwise the policies spend actions on a no-op and T-116's
+  // ablation measures noise rather than the verb. The same discipline the
+  // dry-tank Travel gate applies.
+  it('withholds Explore while a recovery is open, and offers it again once the slot clears', () => {
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.debt = 0;
+    state.player.ship.fuel = 300;
+    state.player.dawnHand = {
+      dice: [20, 18, 12, 9, 2],
+      spent: [false, false, false, false, false],
+    };
+
+    // The control: with the slot free and a full tank, Explore IS advertised.
+    expect(legalActions(state).actions.some((a) => a.type === 'Explore')).toBe(true);
+
+    state.player.recovery = {
+      outcomeId: 'legacy-salvage-derelict',
+      poiId: 'poi-1-d1-e3-derelict',
+      systemId: 1,
+      startedDay: 1,
+      dueDay: 2,
+    };
+    const committed = legalActions(state);
+    expect(committed.actions.some((a) => a.type === 'Explore')).toBe(false);
+    // Nothing ELSE is withheld — the ship is committed to a salvage op, not idle.
+    expect(committed.actions.some((a) => a.type === 'Travel')).toBe(true);
+    expect(committed.diceRemaining).toEqual([0, 1, 2, 3, 4]);
+
+    state.player.recovery = null;
+    expect(legalActions(state).actions.some((a) => a.type === 'Explore')).toBe(true);
+  });
+
   it('DAWN offers no player actions, only the start-day transition', () => {
     const state = createInitialState(1);
     const legal = legalActions(state);
