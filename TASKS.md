@@ -200,7 +200,7 @@ differentiating axes and proposes a spread; **the spec implements ruling 3 — n
 house-rule mechanism is specced, and if a proposed port concept needs one that is recorded
 as a finding**; no engine, content or sim source file is modified; gate green.
 
-### T-102 · Spec consistency check — do the two specs honour the rulings, and do they collide? — `status: TODO` · `coder: opus` · `after: T-101`
+### T-102 · Spec consistency check — do the two specs honour the rulings, and do they collide? — `status: DONE` · `coder: opus` · `after: T-101`
 
 **This was a human gate until the owner ruled all three questions up front; it is now the
 automated check that the specs actually built what was ruled.** Read both specs against THE
@@ -217,6 +217,20 @@ spec departed from its ruling** — a departure is escalated, never documented a
 alternative and never accepted by this task; the save-bump collision question is answered
 with a specific recommendation (one bump or two, and the landing order); no engine, content
 or sim source file is modified; gate green.
+
+**Delivered (2026-07-30):** Wrote `docs/0.5.2-SPEC-REVIEW.md`, cross-checking
+`EXPLORE_REDESIGN.md` (T-100) and `HANGOUT_REDESIGN.md` (T-101) against THE THREE DESIGN
+RULINGS and against each other. Verdict: all three rulings HONOURED, with one recorded
+precondition on ruling 2 (D2) and five near-misses examined and cleared as not departures.
+Collision section recommends ONE save bump for the whole 0.5.2 track (v12→v13, taken by
+T-111; Hangout takes none), closes a second-order save question left open by both specs
+(D3), corrects the Hangout spec's shared-file count from zero to four (D6), and finds one
+real naming collision — `PortHangout.portId` vs. the repo's settled `systemId` — resolved as
+a rename directive (D7). Eight directives (D1–D8) carried forward to their owning
+downstream tasks. Scope boundary, deliberate: this task re-analysed neither spec's design,
+edited neither spec, opened no new design question, and touched no engine, content, sim or
+UI source file — corrections live only as directives in the review doc, per its own §4.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading both specs end to end plus TASKS.md's ruling block, and grounde · attempts=1/4.
 
 ---
 
