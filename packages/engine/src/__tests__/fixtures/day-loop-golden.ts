@@ -453,10 +453,42 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  b1c4db25… -> ae6d73d7…   (events 9f864bfa… UNCHANGED)
 //   STORYLET state  deefa3d7… -> 11b73757…   (events 3e96fe90… UNCHANGED)
 // Regenerated via gen-day-loop-golden.ts.
+//
+// N11/T-021 · THE TWO DAY-LOOP HASHES RE-PINNED; BOTH STORYLET HASHES ARE
+// BYTE-IDENTICAL and were not touched. CAUSE: `considerRefit` now asks the yard for
+// rank-gated special equipment, so the −1 renown lockout stops being dormant and
+// captains who have EARNED the CAPTAIN rung spend 10,000cr on gear instead of on
+// their next component rung.
+//
+// MEASURED, not asserted — both streams dumped and diffed (scratchpad), 1,301 events
+// BEFORE and 1,304 AFTER over the ten-day window:
+//   · SEVEN gated purchases actually happen inside the window (5x Star Buster, 2x
+//     Arch Angel), which is the point of the step: the gate is reachable. Their wire
+//     lines REPLACE the component-refit lines those captains would otherwise have
+//     bought — yard lines hold at 281 -> 282 while `racked … cargo pods` lines fall
+//     42 -> 40, i.e. two hull rungs (and the `fillHold` purchase that rides each) are
+//     displaced by a day, which is the whole of `WireEntry` 496 -> 495.
+//   · `NpcAction` is UNCHANGED at 300 (10 days x 30 captains): the cast still takes
+//     exactly one action each per day. `StatCheck` 254 -> 258, `FlawCheck` 144 -> 143,
+//     `NpcEncounter` 20 -> 21 — a captain who spent their purse differently can now
+//     fund a jump they previously could not (Zero Risk's day-7/day-10 broke-idle
+//     becomes a real haul), so the shared dusk stream diverges from the first
+//     displaced purchase onward. That is the downstream consequence of the money
+//     moving, not drift.
+//   · THE ENTIRE NON-NPC STREAM IS BYTE-IDENTICAL — all 176 events that are not
+//     `kind:'npc'` / `npcId` / `characterId:'npc-…'` / `actor:'npc-…'` diff clean,
+//     including every player StatCheck, DawnRoll 10, DayAdvanced 10, TradeEvent 8,
+//     TravelEvent 5, DeedEarned 5, RenownRankUp 2, DebtPayment 4, StoryletOffered 37,
+//     DispositionChanged 4 and ContractClaimed 2. That is the check that this is an
+//     NPC-side change and not a quiet player rebalance, and it is why the seed-555
+//     storylet script (one day, no captain reaches 5 deeds) is unmoved.
+//   DAY_LOOP state  ae6d73d7… -> 4ad8b677…   (events 9f864bfa… -> 72748730…)
+//   STORYLET state  11b73757… UNCHANGED      (events 3e96fe90… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'ae6d73d78a830738c1de161a4da7aa4222a29247a7ffbcd2ed93693d49802bbb';
+  '4ad8b677121c80fa8b6e5410543f9948768cd03944c799037d293c24ce451ccd';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '9f864bfa649b978b729888e9b22a0d93785b9e115027bf3d5332d295143c7d8d';
+  '7274873091b87cee192878a732e7ae8217575cc6650fd41f61290d2dfe1dbe71';
 export const STORYLET_GOLDEN_STATE_HASH =
   '11b73757bca8d1a31bbda0a91873269200f77bb1d0be6f977529e75c1d2a428f';
 export const STORYLET_GOLDEN_EVENTS_HASH =

@@ -222,16 +222,55 @@ const UNCHANGED_POLICIES = [
  *    docs/NPC_REDESIGN.md.
  *      * `greedy` moving is EXPECTED, for the fourth consecutive NPC-side step.
  *        Entry 6 is the standing explanation and it has not needed amending since.
+ *
+ * 10. N11/T-021 — the Renown gate becomes reachable. ALL SEVEN rows move, and this
+ *    entry is re-pinned IN THE COMMIT THAT MOVED IT (entries 6 and 8's standing
+ *    request, honoured for the second consecutive step).
+ *      trader   6e5587cd62fc3923 -> eb116ca31928a037
+ *      fighter  6bbda5a92b4f0e6b -> 3f5a84bb0a65f91d
+ *      explorer 46147d5e9ae4fdb9 -> d865b1b4aadf166c
+ *      veteran  b62056c846949576 -> 306775019564eb9d
+ *      smuggler b90fa5cc5e6c2489 -> 2dd84772323e6206
+ *      gambler  1ace34c3afb1643b -> d3e02794985aafa9
+ *      greedy   35760632ac51c736 -> 8a13d3d1802ef6a2
+ *    MECHANISM: entry 6's, and again not one line of any policy changed. T-020 gave
+ *    the cast a deed registry but nothing read it, so it moved no row here; T-021
+ *    makes `considerRefit` ask the yard for rank-gated special equipment, so a
+ *    captain who has EARNED the CAPTAIN rung spends 10,000cr on a Star Buster /
+ *    Arch Angel instead of on their next component rung. TWO routes into these
+ *    hashes, both world-side:
+ *      * WHAT THE FIELD FLIES. `hasStarBuster` / `hasArchAngel` feed
+ *        `weaponVolleyDamage` and `applyInterceptorHit`, so an armed captain
+ *        survives interdictions they used to lose.
+ *      * WHAT THE FIELD CAN AFFORD NEXT. The 10,000cr is money not spent on a
+ *        component rung, so refuelling, jumping and hauling all shift for that
+ *        captain — and a captain who can now fund a jump takes rng draws they
+ *        previously skipped (`brokeIdle`), so the shared dusk stream diverges.
+ *    THE DIRECT EVIDENCE that this is NPC-side, measured rather than asserted (the
+ *    day-loop golden's own note carries the numbers): over the golden's ten-day
+ *    window SEVEN gated purchases fire (5x Star Buster, 2x Arch Angel) while ALL 176
+ *    non-NPC events in the stream — every player StatCheck, DawnRoll, TradeEvent,
+ *    TravelEvent, DeedEarned, RenownRankUp, DebtPayment, StoryletOffered,
+ *    DispositionChanged and ContractClaimed — diff BYTE-IDENTICAL.
+ *    WHAT THIS TABLE CANNOT SAY, stated so nobody reads a verdict into it: across
+ *    these 35 runs (7 policies x 5 seeds x 40 days) player final credits move median
+ *    7,370 -> 5,070 and mean 9,511 -> 8,554, deed count median 16 -> 17, and offers
+ *    sniped by the cast 282 -> 295 — with the per-policy direction MIXED (trader
+ *    12,498 -> 14,600 and greedy 1,280 -> 2,680 up, veteran 9,335 -> 5,070 and
+ *    gambler 11,080 -> 7,287 down). Five seeds cannot separate that from stream
+ *    noise. T-023 owns the authoritative capstone and the four-limb verdict; do not
+ *    tune anything off this window.
+ *      * `greedy` moving is EXPECTED, for the fifth consecutive NPC-side step.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: '6e5587cd62fc3923',
-  fighter: '6bbda5a92b4f0e6b',
-  explorer: '46147d5e9ae4fdb9',
-  veteran: 'b62056c846949576',
-  smuggler: 'b90fa5cc5e6c2489',
-  gambler: '1ace34c3afb1643b',
-  greedy: '35760632ac51c736',
+  trader: 'eb116ca31928a037',
+  fighter: '3f5a84bb0a65f91d',
+  explorer: 'd865b1b4aadf166c',
+  veteran: '306775019564eb9d',
+  smuggler: '2dd84772323e6206',
+  gambler: 'd3e02794985aafa9',
+  greedy: '8a13d3d1802ef6a2',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

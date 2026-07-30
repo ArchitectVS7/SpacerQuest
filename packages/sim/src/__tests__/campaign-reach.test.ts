@@ -313,7 +313,24 @@ describe('T-1307 ports reachable through play', () => {
     // untouched — and note what was NOT done, because it was the tempting fix:
     // the 150-day horizon is unmoved, since widening it would enshrine exactly
     // the number the T-1504a note above warns is going to keep moving.
-    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 22, 150);
+    //
+    // N11/T-021 re-pin (seed 22 -> 1). MECHANISM: the same class one more time, and
+    // one rung further along. `considerRefit` now asks the yard for rank-gated
+    // special equipment, so a captain who has EARNED the CAPTAIN rung spends 10,000cr
+    // on a Star Buster / Arch Angel instead of on their next component rung. That
+    // changes what the field flies AND what it can afford to fly next, both of which
+    // reach the player through the shared dusk rng stream and through contract
+    // competition — so every long unguided trajectory re-rolls, this one included.
+    // SWEEP EVIDENCE (seeds 1..80 of this exact committed test, run through a
+    // temporary in-file seed loop so the swept code IS the shipped code): 9 of 80
+    // qualify — 1, 13, 15, 33, 43, 48, 71, 72, 78 — which is 11%, THE SAME 9/80 N10
+    // measured, so the pillar is no harder to reach at this horizon. Three of the
+    // first twenty seeds now qualify against N10's zero. Seed 1 is the first
+    // qualifier (1 purchase, 61 income accruals, a stake live at the horizon).
+    // PINNED, NOT STEERED: only the seed changed; every assertion below is untouched,
+    // the 150-day horizon is unmoved, and the sample was WIDENED rather than the
+    // threshold.
+    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 1, 150);
 
     // The purchase happened through legal play: a PortEvent{purchased} was logged
     // (ports are bought via the Port action, never injected).

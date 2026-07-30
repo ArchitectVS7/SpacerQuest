@@ -191,7 +191,7 @@ ruling; it is what makes the fast-forward honest).
 | Trade | coarse haul, but on the SHARED pool: every captain draws the local board through the player's own `generateManifestBoard` and CHOOSES off it by archetype (`pickContract`), and the claim debits a per-system ledger that sizes the next board the player sees there. The co-location gate no longer gates participation — it governs only the visible snipe | shipped (N10) |
 | Travel | real fuel, real routes, real encounters, real permanent death | shipped (N3) |
 | Combat | interdiction on the SHARED rules, one-tick — same DC, tribute, damage, salvage, retreat. **NOT `resolveCombat`**: gives up die CHOICE only, closed by N13. **GAP FOUND AT N4:** that is the verb a captain is FORCED into; the one they CHOOSE (`executeCombat`) is still the pre-N3 abstract GUNS check + flat `150 × tier`, with no interceptor, no damage and no ship loss — so the six fighters take 6.4 interdictions each and **0 deaths** | shipped (N3) · N13 closes the die gap · **`executeCombat` still owed** |
-| Shipyard | full price/gate parity via `ShipyardActor` — **but the refit spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · OI-9 open |
+| Shipyard | full price/gate parity via `ShipyardActor`, and since T-021 the RENOWN GATE IS EXERCISED: the refit ladder asks for rank-gated special equipment and is refused or served by the player's own `requiredRank` check, on the standing the captain earned — no NPC branch. Still **spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · gate reachable (N11/T-021) · OI-9 open |
 | Explore | never | **UNRULED — owner decides by N8** |
 | VisitHangout | Socialize stand-in; no borrow/repay | **UNRULED — owner decides by N8** |
 | Crew | never (meaningless without a hand) | N13 decides |
@@ -2036,6 +2036,64 @@ can see an NPC deed until T-022 adds one. The capstone is **blind to this step b
 construction** — which is precisely why T-022 lands before T-023. Baseline of record is
 UNCHANGED (`baseline-n10-shipped.json`); T-023 still owns the authoritative `baseline-n11-*`
 capstone, the four-limb verdict and any re-pin.
+
+#### RULINGS RECORDED AT T-021 (the gate becomes reachable)
+
+`considerRefit` now asks the yard for special equipment, so the −1 lockout stops being
+dormant. The gate itself did not move: `specialEquipmentFailure`'s `requiredRank` check is
+still the one and only one, `shipyard.ts` gained nothing but an `export` on
+`actorRankIndex` (so "returns ≥ 0 for a captain" is *assertable* — a −1 and a 0 produce the
+same refusal, which is how the lockout hid), and no NPC branch exists on either side. Four
+rulings, all argued at their definition sites and recorded here only because they set
+direction:
+
+- **RANK-GATED ONLY, and as a data filter rather than a list.** The captain asks for every
+  `SPECIAL_EQUIPMENT` row that declares a `requiredRenownRank`, so a re-gated table moves
+  the cast's appetite for free. The four ungated items are deliberately deferred:
+  `TITANIUM_HULL` alone is +50 pods, and putting a non-Renown economy swing inside the arm
+  T-023 must attribute to the Renown gate would repeat the R0a/R2a mistake. Mirrors the
+  player-side `planSpecialEquipment`, whose priority list is also rank-gated.
+- **EQUIPMENT IS CONSIDERED BEFORE THE COMPONENT LADDER** — the one judgement in the
+  change. A captain gets ONE purchase a day and the component loop takes the first
+  *affordable* rung, so an equipment rung placed after it would fire only when all eight
+  components were maxed or unaffordable, i.e. the gate would stay dormant and the step
+  would ship a mechanism nothing exercises. Placed first, the throttle is the two lines
+  that already existed — EARNED rank and `NPC_YARD_RESERVE` — and it displaces at most one
+  component rung per gated item per career, because the yard refuses the repeat
+  (`ALREADY_INSTALLED`). **No new pacing constant was added.**
+- **CONVERGENCE IS THE WATCH ITEM HANDED TO T-023, not a defect fixed here.** Every captain
+  who reaches CAPTAIN with ~11,000cr eventually owns BOTH CAPTAIN-gated items, so the
+  *equipment* axis converges even though the component fit does not; `ASTRAXIAL_HULL`
+  (TOP_DOG, 17) stays unreachable at T-020's measured 13-deed / ADMIRAL ceiling. If T-023
+  grades that as renown inflation or convergence, the next lever is an **archetype-shaped
+  appetite** — a content mapping, an owner call and its own capstone — never a tuning
+  constant in `npc.ts`.
+- **OI-9 IS UNTOUCHED.** The equipment action carries `spendDie: 0`, the component rung's
+  existing convention. The NPC refit still pays no die; that is still N13's.
+
+**WHAT THE GATE ACTUALLY DOES, measured in the day-loop golden's own ten-day window
+(re-recorded with the measured note the track requires):** SEVEN gated purchases fire (5×
+Star Buster, 2× Arch Angel) while **all 176 non-NPC events in the stream diff
+byte-identical** — every player StatCheck, DawnRoll, TradeEvent, TravelEvent, DeedEarned,
+RenownRankUp, DebtPayment, StoryletOffered, DispositionChanged and ContractClaimed. The
+seed-555 storylet script (one day, nobody reaches five deeds) is unmoved on both hashes.
+That asymmetry is the evidence this is an NPC-side change. `hasStarBuster` /
+`hasArchAngel` feed `weaponVolleyDamage` and `applyInterceptorHit`, so an armed captain
+now genuinely survives N3's interdictions — which is the "progression spine contested, not
+copied" limb becoming real, and also why every downstream NPC-facing pin moved.
+
+**THREE PINS RE-DERIVED, none of them widened or lowered.** (i) The smoke fixture went
+stale as N7 intends (`rulesFingerprint c0ee134318b4ef6f → b6f27d2bceabde59`) and was fixed
+the sanctioned way only: `npm run format`, `npx tsc -b`, then a re-extract against T-020's
+own capstone that printed `spreads harvested`. The diff is three lines — the two
+fingerprints and `gitCommit`; no `expected` number moved, spreads stay byte-identical and
+`provenance.sweepLabel` still names the **T-020** sweep. **T-023 replaces it** with the
+authoritative `baseline-n11-*` capstone; T-021 deliberately does not spend one. (ii) The
+seven `campaign-degraded` policy fingerprints moved for the fifth consecutive NPC-side step
+and were re-pinned **in the commit that moved them**, with the mechanism and the mixed
+per-policy direction recorded in that table's own entry 10. (iii) `campaign-reach`'s port
+acceptance re-pinned seed 22 → 1 after **widening the sample, never the horizon**: 9 of
+seeds 1..80 qualify (11%), exactly N10's 9/80, so the port pillar is no harder to reach.
 
 ### N12 — NPCs buy ports (MUST-HAVE · owner ruling 2026-07-29 · LANDS BEFORE N8)
 

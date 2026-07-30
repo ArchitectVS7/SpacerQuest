@@ -21,6 +21,8 @@ import {
   NPC_ENCOUNTER_MAX_ROUNDS,
   // N11 · the ONE deed slate — a captain's earned ids are asserted to be members of it
   DEEDS,
+  // N11/T-021 · the gated rows the captain's refit ladder now asks the yard for
+  SPECIAL_EQUIPMENT,
 } from '@spacerquest/content';
 import {
   NPC_START_FUEL,
@@ -43,8 +45,8 @@ import {
   generateManifestBoard,
   jumpFuelCost,
 } from '../economy.js';
-import { emptyDeedRegistry, rankForDeedCount } from '../deeds.js';
-import { navFuelFactor } from '../components.js';
+import { accrueDeeds, emptyDeedRegistry, rankForDeedCount } from '../deeds.js';
+import { hasSpecialEquipment, navFuelFactor } from '../components.js';
 import { advanceDay } from '../day.js';
 
 /** Longest route the cast can fly (systems 1-20): Cygnus-16 → Rigel-19. The
@@ -58,7 +60,7 @@ const MAX_NPC_ROUTE_DISTANCE = Math.max(
 );
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { SeededRng } from '../rng.js';
-import { GameEvent, NpcState } from '../types.js';
+import { GameEvent, NpcState, SpecialEquipmentId } from '../types.js';
 
 /** The eight ship components, in content order — the fit an N2 captain buys
  *  across. Named here so the assertions below read as "the whole ship". */
@@ -1215,5 +1217,116 @@ describe('N11 · captains earn deeds and Renown', () => {
     for (let day = 0; day < 60; day++) state = advanceDay(state, []).state;
     const restored = deserializeState(serializeState(state));
     expect(restored.npcs.map((npc) => npc.registry)).toEqual(state.npcs.map((npc) => npc.registry));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N11/T-021 · THE RENOWN GATE IS REACHABLE FROM THE CAPTAIN'S OWN DAY.
+//
+// `considerRefit` never asked for special equipment, which is the only reason the
+// lockout was dormant. Both directions are exercised through `resolveNpcDay` — the
+// captain's real turn — and the rank is EARNED through the player's own
+// `accrueDeeds`, never assigned. The gate itself is asserted in
+// `shipyard.test.ts`; what is asserted here is that a captain reaches it.
+// ---------------------------------------------------------------------------
+describe('N11 · the Renown gate is reachable from the captain’s own day', () => {
+  /** The gated rows, derived from content — the same filter `considerRefit` applies,
+   *  so a re-gated table moves both together and neither carries an id list. */
+  const GATED = SPECIAL_EQUIPMENT.filter((item) => item.requiredRenownRank !== undefined);
+
+  /** Real deed sources in the shapes `executeTrade` / `executeTravel` emit: a signed
+   *  manifest, a delivery and five arrivals (one rimward). Measured to earn exactly
+   *  five deeds — first_manifest, first_delivery, first_jump, road_regular,
+   *  rimward_bound — which is CAPTAIN, the rung STAR_BUSTER / ARCH_ANGEL sit behind.
+   *  No rank is named or written here; `accrueDeeds` derives it. */
+  function deedSourceBatch(characterId: string): GameEvent[] {
+    const arrive = (destination: number): GameEvent => ({
+      type: 'TravelEvent',
+      characterId,
+      origin: 1,
+      destination,
+      fuelUsed: 40,
+      success: true,
+    });
+    return [
+      {
+        type: 'TradeEvent',
+        characterId,
+        action: 'sign-contract',
+        success: true,
+        destination: 2,
+        cargoType: 1,
+        payment: 900,
+        actionDetails: 'Signed a manifest.',
+      },
+      {
+        type: 'TradeEvent',
+        characterId,
+        action: 'deliver-cargo',
+        success: true,
+        destination: 2,
+        cargoType: 1,
+        payment: 900,
+        actionDetails: 'Delivered cargo!',
+      },
+      arrive(2),
+      arrive(3),
+      arrive(4),
+      arrive(5),
+      arrive(17),
+    ];
+  }
+
+  function earnedCaptain(credits: number): NpcState {
+    const npc = npcFor('npc-cargo-king', { credits });
+    accrueDeeds(npc, deedSourceBatch(npc.id), { day: 1, conquerorLocked: false });
+    return npc;
+  }
+
+  const fittedGated = (ship: NpcState['ship']) =>
+    GATED.filter((item) => hasSpecialEquipment(ship, item.id as SpecialEquipmentId));
+
+  it('a captain who EARNED the rank buys rank-gated gear on their own turn', () => {
+    const earner = earnedCaptain(500000);
+    expect(earner.registry.renownRank).toBe(rankForDeedCount(earner.registry.earned.length));
+
+    let bought = 0;
+    for (let seed = 1; seed <= 20 && bought === 0; seed += 1) {
+      const { npc, events } = resolveNpcDay(earner, new SeededRng(seed), NO_BOARD);
+      const fitted = fittedGated(npc.ship);
+      if (fitted.length === 0) continue;
+      bought += 1;
+      // ONE purchase a day, exactly as the component rung allows.
+      expect(fitted).toHaveLength(1);
+      // The wire says so, naming content's own item name.
+      const wire = events.filter(
+        (event): event is Extract<GameEvent, { type: 'WireEntry' }> => event.type === 'WireEntry',
+      );
+      expect(
+        wire.some((entry) => entry.kind === 'npc' && entry.message.includes(fitted[0].name)),
+      ).toBe(true);
+      // The captain's own purse paid for it (the EXACT debit — credits === before -
+      // quote.cost — is pinned in `shipyard.test.ts`; here the day's trade income
+      // rides on top, so what is asserted is that the purse fell and stayed solvent).
+      expect(npc.credits).toBeLessThan(earner.credits);
+      expect(npc.credits).toBeGreaterThanOrEqual(0);
+    }
+    expect(bought, 'no earned-rank captain reached the gate in 20 seeded days').toBe(1);
+  });
+
+  it('the zero-deed twin is REFUSED on every one of the same days (the gate bites)', () => {
+    // Identical captain, identical purse, identical seed — only the standing differs.
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const twin = npcFor('npc-cargo-king', { credits: 500000 });
+      expect(twin.registry.earned).toEqual([]);
+      const { npc } = resolveNpcDay(twin, new SeededRng(seed), NO_BOARD);
+      expect(fittedGated(npc.ship)).toEqual([]);
+      // …and the day was an ordinary refit day, so the refusal is the rank and not a
+      // captain who never reached the yard: a component rung was taken instead.
+      const movedComponent = COMPONENT_IDS.some(
+        (id) => npc.ship[id].strength !== twin.ship[id].strength,
+      );
+      expect(movedComponent || npc.ship.cargoPods !== twin.ship.cargoPods).toBe(true);
+    }
   });
 });

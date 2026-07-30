@@ -75,8 +75,14 @@ export interface ShipyardActor {
 /** Where the actor stands on the Renown ladder. ONE expression for both captains
  *  since N11 — there is no longer a "holds no Renown" case to special-case, so the
  *  gate in {@link specialEquipmentFailure} compares earned standing against the
- *  content requirement and nothing else. */
-function actorRankIndex(actor: ShipyardActor): number {
+ *  content requirement and nothing else.
+ *
+ *  EXPORTED (T-021) so the removal of the −1 case is ASSERTABLE rather than inferred:
+ *  a −1 and a 0 produce the identical `INSUFFICIENT_RENOWN` refusal from a quote, so
+ *  a test reading the outcome cannot tell the dead end from a real bottom rung — which
+ *  is precisely how the lockout stayed invisible. `shipyard.test.ts` pins that a
+ *  captain's index is >= 0 and equals `renownRankIndex(actor.registry.renownRank)`. */
+export function actorRankIndex(actor: ShipyardActor): number {
   return renownRankIndex(actor.registry.renownRank);
 }
 

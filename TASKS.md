@@ -327,7 +327,7 @@ this task delivers the registry and its accrual plumbing only; the Renown gate i
 (rank-gated equipment in `considerRefit`) remains T-021's, untouched here.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root. · attempts=2/4.
 
-### T-021 · The Renown gate becomes reachable — `considerRefit` learns rank-gated equipment — `status: TODO` · `coder: opus` · `after: T-020`
+### T-021 · The Renown gate becomes reachable — `considerRefit` learns rank-gated equipment — `status: DONE` · `coder: opus` · `after: T-020`
 
 With a registry in place, make the gate actually bite and actually open. `considerRefit`
 (`packages/engine/src/npc.ts`) currently never requests special equipment, which is the only
@@ -347,6 +347,26 @@ and a captain without them being REFUSED, both through `quoteShipyard`/
 `applyShipyardMutation` with no NPC-specific branch in `shipyard.ts` (diff shows no new
 `if (isNpc…)`-shaped code); `actorRankIndex` returns ≥ 0 for a captain carrying a registry,
 asserted directly; no new pacing constant, or one with a definition-site argument; gate green.
+
+**Delivered (2026-07-30):** `considerRefit` (`packages/engine/src/npc.ts`) now walks
+`SPECIAL_EQUIPMENT` filtered to rows declaring a `requiredRenownRank` — a data filter read
+off content, not an NPC-side id list — and asks the yard for each one BEFORE the component
+ladder, so the ask is exercised every career rather than only after all eight components
+are maxed. The ask itself carries no rank comparison: `actorRankIndex`
+(`packages/engine/src/actions/shipyard.ts`) was exported so "returns ≥ 0 for a captain" is
+directly assertable, and `specialEquipmentFailure`'s `requiredRank` check remains the one
+and only gate on both sides (`grep -n "if (isNpc"` on the `shipyard.ts` diff returns
+nothing). New tests in `npc.test.ts` and `shipyard.test.ts` earn a captain's rank through
+real `accrueDeeds` deed sources (never a hand-set `renownRank`) and show the earned captain
+purchasing a rank-gated item through `resolveNpcDay` while a zero-deed twin is refused on
+every one of 20 seeded days. Scope boundary: the four ungated special-equipment items
+(CLOAKER, AUTO_REPAIR, TITANIUM_HULL, TRANS_WARP) are deliberately deferred — TITANIUM_HULL
+alone adds +50 cargo pods, which would put a non-Renown economy swing inside the arm T-023
+must attribute to the Renown gate — and OI-9 (the NPC refit spends no die) remains
+untouched, per the task's own exclusion. The smoke fixture and two campaign fixtures were
+re-pinned against the moved `rulesFingerprint`/`docsFingerprint` and policy fingerprints;
+no `expected` number or baseline of record moved.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; nothing to query). · attempts=1/4.
 
 ### T-022 · Instrument: rank distribution and special-equipment purchases — `status: TODO` · `coder: sonnet` · `after: T-021`
 

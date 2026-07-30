@@ -21,6 +21,7 @@ import {
   STAR_SYSTEMS,
   SYSTEM_DANGER_LEVELS,
   SHIP_COMPONENTS,
+  SPECIAL_EQUIPMENT,
   Stat,
   StatBlock,
   YARD_COMPONENT_TIER_PRICES,
@@ -48,6 +49,7 @@ import {
   PlayerAction,
   ShipComponentId,
   ShipState,
+  SpecialEquipmentId,
 } from './types.js';
 import { SeededRng } from './rng.js';
 import { check } from './dice.js';
@@ -759,6 +761,61 @@ function refuelIfNeeded(npc: NpcState, needed: number, eraEvent: EraEventState |
  * component they can afford. Two captains with the same purse therefore buy
  * different ships, which is what makes this a decision rather than an escalator.
  *
+ * ── N11/T-021 · RANK-GATED SPECIAL EQUIPMENT, AND WHY IT IS THE FIRST RUNG ────
+ *
+ * WHY RANK-GATED ONLY, AS A DATA FILTER AND NOT A LIST. The captain asks the yard
+ * for every `SPECIAL_EQUIPMENT` entry that declares a `requiredRenownRank`, read
+ * off content — so a newly gated item joins the cast's appetite for free and an
+ * ungated one never does, and there is no NPC-side id list to drift from the table.
+ * The scope is N11's: make the Renown gate REACHABLE. The four ungated items
+ * (CLOAKER, AUTO_REPAIR, TITANIUM_HULL, TRANS_WARP) are a separate appetite
+ * question, deliberately deferred — TITANIUM_HULL alone adds +50 pods, which would
+ * put a non-Renown economy swing inside the very arm T-023 has to attribute to the
+ * Renown gate. The player-side precedent is the same shape: `planSpecialEquipment`
+ * (`sim/src/index.ts`) also drives a rank-gated priority list, cheapest gate first,
+ * with the fighter's AUTO_REPAIR the documented exception (priced, not gated).
+ *
+ * NO RANK COMPARISON HAPPENS HERE, and that is the standing constraint as code.
+ * The captain merely ASKS; `quoteShipyard` → `specialEquipmentFailure`'s
+ * `requiredRank` check (`actions/shipyard.ts`) is the ONE AND ONLY gate, so
+ * `renownRankIndex` / `RENOWN_DEED_THRESHOLDS` appear nowhere in this file. Nor is
+ * anything pre-filtered by id: ALREADY_INSTALLED (so the repeat purchase is
+ * impossible without NPC bookkeeping), ASTRAXIAL_HULL's drives-25 prerequisite and
+ * INSUFFICIENT_CREDITS are all the yard's own refusals. Let the quote say no.
+ *
+ * WHY IT IS CONSIDERED BEFORE THE COMPONENT LADDER — the one judgement in this
+ * change, recorded because it decides whether the gate is exercised at all. The
+ * captain gets ONE purchase a day and the component loop takes the first AFFORDABLE
+ * rung, so an equipment rung placed after it would fire only once all eight
+ * components were maxed or unaffordable — i.e. effectively never, and N11 would ship
+ * a mechanism nothing exercises (the R0a/R2a class of mistake this track keeps
+ * paying for). Placed first, the throttle is the two lines that ALREADY exist:
+ * EARNED rank (5 deeds for CAPTAIN, accrued at step 5 of the captain's day) and
+ * {@link NPC_YARD_RESERVE} (so ~11,000cr in hand for a 10,000cr item). It displaces
+ * at most one component rung per gated item per career, because the yard refuses
+ * the repeat.
+ *
+ * WHAT THE PURCHASE DOES FOR THE CAPTAIN, so it is not mistaken for cosmetics:
+ * `weaponVolleyDamage` reads `hasStarBuster` and `shieldMitigation` /
+ * `applyInterceptorHit` read `hasArchAngel` (`components.ts`, `combatRules.ts`) —
+ * both called by N3's interdiction — so a captain who clears the gate genuinely
+ * fights and survives better, which feeds back into `first_combat_win`. This is
+ * N11's "the player's progression spine is CONTESTED, not copied" becoming real.
+ *
+ * WATCH ITEM HANDED TO T-023, named rather than hidden: every captain who reaches
+ * CAPTAIN with ~11,000cr eventually owns BOTH CAPTAIN-gated items, so the equipment
+ * axis converges even though the component fit does not; ASTRAXIAL_HULL stays
+ * unreachable at T-020's measured 13-deed / ADMIRAL ceiling. If T-023 grades that as
+ * renown inflation or convergence, the next lever is an ARCHETYPE-SHAPED APPETITE (a
+ * content mapping, an owner call and its own capstone) — never a tuning constant
+ * here. NO NEW PACING CONSTANT was added: the discretionary-money line is
+ * {@link NPC_YARD_RESERVE}, for the reason argued at its own definition site (the E8
+ * precedent — the game already had a number for "this captain has spare money").
+ *
+ * OUT OF SCOPE AND STILL OPEN: OI-9, the NPC refit spends no die. `spendDie: 0` on
+ * the equipment action is the component rung's existing convention, not a claim that
+ * the die question is settled.
+ *
  * CARGO PODS RIDE THE HULL RUNG, AND NOTHING ELSE, and that placement is the one
  * judgement in this function — recorded because the first version got it wrong and
  * the measurement said so. Pods are the direct trade-profit lever (`rollContract`
@@ -792,12 +849,17 @@ function refuelIfNeeded(npc: NpcState, needed: number, eraEvent: EraEventState |
  * price the captain's next manifest), `npcJumpFuelCost` (drives and navigation
  * price their next jump), and the wire line below.
  *
- * COST, MEASURED. Up to eight `quoteShipyard` calls per captain per day (the
- * ladder is walked until something is affordable) puts the ambient game day at
- * 0.658 → **0.892 ms** over 300 days × 30 captains, and the 1,000-seed capstone at
- * 1m50s → 2m25s. That is ~0.23 ms against the ~39 ms of headroom N0 bought, and
- * `quoteShipyard`'s throwaway is now one SHIP rather than one `GameState`, which
- * is what keeps it in that range.
+ * COST, RE-MEASURED AT T-021 (the earlier note claimed eight calls and 0.892 ms; both
+ * are superseded, and a stale measurement in a comment is worse than none). Up to
+ * ELEVEN `quoteShipyard` calls per captain per day — three gated-equipment asks plus
+ * the eight-rung ladder, each walked only until something is affordable. Ambient day
+ * over 300 days × the shipped 41-record roster, seven samples, best-of: **0.87 ms with
+ * the equipment rung against 0.88 ms without it** (medians 0.90 / 0.90) — i.e. the
+ * three added asks are inside run-to-run noise, and that is structural rather than
+ * lucky: a REFUSED quote never reaches `structuredClone`, and the common case for a
+ * gated item is a refusal (unearned rank, then ALREADY_INSTALLED forever after). The
+ * N2 measurement it replaces (0.658 → 0.892 ms at 30 captains) still describes what
+ * introducing the refit cost; nothing since has moved it.
  */
 function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: GameEvent[]): void {
   const spendable = npc.credits - NPC_YARD_RESERVE;
@@ -819,6 +881,34 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
     });
     return true;
   };
+
+  // N11/T-021 · THE RANK-GATED RUNG, FIRST. See the header for why it leads and why
+  // the filter is `requiredRenownRank !== undefined` read off content rather than an
+  // NPC-side id list. Content order is already cheapest-gate-first (STAR_BUSTER and
+  // ARCH_ANGEL at CAPTAIN, then ASTRAXIAL_HULL at TOP_DOG), which is the player's own
+  // ordering, so re-sorting here would be a second ladder.
+  for (const entry of SPECIAL_EQUIPMENT) {
+    if (entry.requiredRenownRank === undefined) continue;
+    const action: Extract<PlayerAction, { type: 'Shipyard' }> = {
+      type: 'Shipyard',
+      action: 'buy-special-equipment',
+      // `SPECIAL_EQUIPMENT` is widened to its declared interface (`id: string`) while
+      // the action takes the engine's narrower `SpecialEquipmentId` union, so this cast
+      // is the one place the content table and the union are assumed to agree. It is
+      // ASSERTED rather than assumed, and the failure mode is worth naming:
+      // `installSpecialEquipment`'s final `else` fits a Trans-Warp, so an unmodelled
+      // content id would quietly install the WRONG item. The N11 block in
+      // `shipyard.test.ts` drives every gated content row through the real quote and
+      // reads the fit back through `hasSpecialEquipment`, so such a row reddens there
+      // instead of reaching a captain's ship.
+      equipment: entry.id as SpecialEquipmentId,
+      spendDie: 0,
+    };
+    // "for the Arch Angel", definite article on purpose: content names start with
+    // both vowels and consonants, and "a Arch Angel" on a player-facing wire line is
+    // the price of an indefinite article the engine would have to inflect.
+    if (buy(action, `the ${entry.name}`)) return;
+  }
 
   for (const component of npcComponentLadder(profile.stats)) {
     const tier = componentTierForStrength(npc.ship[component].strength) + 1;
