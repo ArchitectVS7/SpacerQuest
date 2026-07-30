@@ -593,7 +593,7 @@ Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (
 
 ## M3 — N12 groundwork
 
-### T-030 · FIRST TASK: the instrument learns to see ports — `status: TODO` · `coder: sonnet` · `after: T-023`
+### T-030 · FIRST TASK: the instrument learns to see ports — `status: DONE` · `coder: sonnet` · `after: T-023`
 
 N12's own FIRST TASK, pulled forward by owner ruling because it is a precondition rather
 than part of the port change: `sampleMilestone` (`packages/sim/src/index.ts`) records `crew`
@@ -616,6 +616,53 @@ asserts the player's port count tracks a career that buys one (drive it, or reus
 `portBuyingVeteranPolicy` pattern from `packages/sim/src/__tests__/campaign-reach.test.ts`);
 the `MilestoneSample` doc comment is either satisfied by an extended `synthesize.ts` or
 amended with the stated exemption — verify by reading it; gate green.
+
+**Delivered (2026-07-30):** `MilestoneSample.player` gained `ports`
+(`state.player.ports.length`) and `MilestoneSample` gained `npcPortCount`, added to
+`sampleField`'s single traversal/filter so all seven per-captain arrays stay
+index-aligned; the NPC reader is a sim-local `npcPortCount(npc)` over an optional
+`ports` intersection, which reads 0 for every captain today because `NpcState`
+deliberately has no `ports` field yet — adding one would move `rulesFingerprint`
+for a rule that did not change and would prejudge where N12 stores a finite,
+per-system, first-come-first-served stake. `CampaignStatsReport` gained
+`portsOwned`, read once off the final state as a STOCK (a stake only ever goes up
+and is carried through succession) rather than summed from a per-day series the way
+`contractClaims` is. Surfaced on `PolicyAggregate` as `portsOwned: Distribution` and
+`portOwnershipRate` (the share of runs ending with a stake — the readable figure
+when most policies end at zero, and the figure N12's two Disproves limbs are
+statements about), on `MilestoneAggregate` as `playerPorts` / `npcPortCount` (the
+by-DAY series N10's hand-off to N12 explicitly asks for), and as a new
+`HEADLINE_METRICS` row in `balance/diff.ts`. Named reader:
+`packages/sim/src/__tests__/campaign-ports.test.ts` — 30-vs-41 field/roster
+distinction, seven-array index alignment, non-negative integer stake counts
+(deliberately NOT `=== 0`, which would go red the day N12 succeeds), the live band
+that a shipped-policy career ends holding a stake, monotonicity across milestone
+days, the report-vs-dawn-sample cross-check, the one-row aggregate identities, and
+the JSON round-trip. **Reachability, swept before the seed was pinned** (seeds 1..80
+× 120 days, shipped policies, no test-local policy and no `startState` — the stake
+is bought by N9's own `planPortStake` through the engine's real `Port` action):
+trader 64/80, explorer 64/80, gambler 58/80, fighter 31/80, smuggler 21/80,
+**veteran 0/80**; seed 1 / trader is the first qualifier and is what the test pins.
+**The doc-comment invariant is amended, not quietly satisfied** — and the amendment
+fixes a PRE-EXISTING falsehood the task asked to be surfaced: `MilestoneSample`
+claimed to carry "only the fields `balance/synthesize.ts` writes back", but
+`synthesize.ts`'s NOT-RESTORED list names **"Crew, ports, …"** in one bullet, so
+`player.crew` has been a silent measurement-only exception since N7. The comment now
+carries a named MEASUREMENT-ONLY list (deeds/rank from T-022, ports from this step,
+and crew recorded rather than left false) plus the consequence: a synthesized
+captain owns no port and no crew, so the smoke rig's mid-game tiers carry no port
+dusk income. `synthesize.ts` was deliberately NOT extended — restoring a stake would
+fabricate a perpetual dusk income stream no career earned, i.e. author content
+inside a fixture. Gate work: `campaign-degraded`'s seven fingerprints re-pinned with
+**RE-PIN LOG entry 12**, whose shape-only claim is PROVEN locally rather than
+asserted (with `portsOwned` deleted from the report, all seven hashes are
+byte-identical to their entry-11 values); `docs/balance/smoke/tiers.json`
+re-extracted from `baseline-n11-shipped.json` — `instrumentFingerprint`
+`db515475e166a538` → `313fde95fc5ee9db` and the docs hash moved, **`rulesFingerprint`
+`b6f27d2bceabde59` unchanged**, `spreads harvested`, and no recorded outcome moved.
+No engine, content, save-shape or migration change; no threshold, band or golden was
+edited. Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root
+(checked; nothing to query). · attempts=1/4.
 
 ---
 

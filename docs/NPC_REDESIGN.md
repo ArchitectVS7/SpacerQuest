@@ -2233,6 +2233,23 @@ N10's 9/80).
   them, this step's own sweep cannot see its own effect — the R0a/R2a class of mistake,
   one more time. Milestones learn `ports` (player AND per-NPC) as the opening move, and
   N8 inherits the net-worth question with the plumbing already laid.
+  - **DONE (T-030, 2026-07-30) — the plumbing is laid and N12 proper inherits it.**
+    `MilestoneSample.player.ports` and `MilestoneSample.npcPortCount` (the latter through
+    `sampleField`'s single traversal, so it stays index-aligned with the other six
+    per-captain arrays); `CampaignStatsReport.portsOwned`; `PolicyAggregate.portsOwned` +
+    `portOwnershipRate` (the latter also a `HEADLINE_METRICS` row in `balance/diff.ts`);
+    `MilestoneAggregate.playerPorts` + `npcPortCount`, which is the **by-DAY** series this
+    step's hand-off asks for. Named reader:
+    `packages/sim/src/__tests__/campaign-ports.test.ts`. **The cast side reads all zeroes
+    until N12 proper lands** — `NpcState` has no `ports` field yet, deliberately (adding
+    one would move `rulesFingerprint` for a rule that did not change, and would prejudge
+    where N12 stores a finite per-system stake); when the cast gains it, `npcPortCount`
+    starts returning real counts and nothing else in the instrument changes.
+    **Reachability measured on the way past**, seeds 1..80 × 120 days, shipped policies
+    only: trader 64/80 careers end holding a stake, explorer 64/80, gambler 58/80,
+    fighter 31/80, smuggler 21/80, **veteran 0/80** — the last is N9's "the veteran never
+    clears its reserve plus the marker" showing up in the instrument for the first time,
+    and it is a finding for N12's monopoly limb rather than a defect.
 - **Change (programmatic):** the NPC turn may buy a stake through the same pricing and
   the same rules — `isPurchasablePort`, the standing-in-the-system co-location rule the
   player obeys, one stake per port, first come first served. `NPC_YARD_RESERVE` (the

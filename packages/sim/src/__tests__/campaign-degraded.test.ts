@@ -290,16 +290,49 @@ const UNCHANGED_POLICIES = [
  *    these runs are made WITHOUT `milestoneDays`, so `milestones` is absent from
  *    every report hashed above and the sampler change cannot touch these numbers.
  *    Its reader is `campaign-renown.test.ts`.
+ *
+ * 12. N12/T-030 — the instrument learns to SEE PORTS. ALL SEVEN rows move and NOT
+ *    ONE CAREER CHANGED. Entry 11's shape-only form, repeated deliberately: the
+ *    claim is PROVEN below rather than asserted.
+ *      trader   40c03627bc30e5fa -> f3e01b2a843c1c0f
+ *      fighter  298315eaa3494e41 -> dc6ca4fbcce58659
+ *      explorer 6e4e53ecb734b805 -> 616ad4c19c3f60b9
+ *      veteran  f5813a71e402402a -> f701430cfe32f7cb
+ *      smuggler 807c06d614d84fb6 -> abbaf33b67be9f19
+ *      gambler  eb5ab6b0dea7b673 -> fbb8b4df794fa5f4
+ *      greedy   38c0405f24b71b87 -> 0f2ff82982dcbf2d
+ *    MECHANISM: `CampaignStatsReport` gained exactly ONE key, `portsOwned` — the
+ *    player's stake count at the horizon, read off the final state as a STOCK. No
+ *    per-day key was added (a stake is a holding, not an event), so unlike entry 11
+ *    this is seven new keys and not seven plus forty. This fingerprint hashes the
+ *    whole report JSON, shape included, so one key per report moves every hash on
+ *    its own.
+ *    THE PROOF, run locally over these exact 35 careers rather than claimed: with
+ *    `portsOwned` deleted from the report, each policy's hash is BYTE-IDENTICAL to
+ *    its entry-11 value above — all seven, no exceptions. Two structural facts say
+ *    why that had to hold: `rulesFingerprint` did not move (this step touches no
+ *    engine and no content file — it adds no `ports` field to `NpcState`, precisely
+ *    so that it would not), and the new measurement draws NO rng — it is
+ *    `state.player.ports.length` and a `.map` over the sampled field — so no seeded
+ *    career can diverge.
+ *    WHAT THIS TABLE CANNOT REACH, for the same reason entry 11 records: the other
+ *    half of T-030 is `MilestoneSample.player.ports` / `npcPortCount`, and these
+ *    runs are made WITHOUT `milestoneDays`, so `milestones` is absent from every
+ *    report hashed above and the sampler change cannot touch these numbers. Its
+ *    reader is `campaign-ports.test.ts`.
+ *      * `greedy` moving is EXPECTED, and here for the SHAPE reason of entries 4
+ *        and 11 rather than the world-side reason of entry 6 — no policy and no
+ *        NPC behaviour changed at this step at all.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: '40c03627bc30e5fa',
-  fighter: '298315eaa3494e41',
-  explorer: '6e4e53ecb734b805',
-  veteran: 'f5813a71e402402a',
-  smuggler: '807c06d614d84fb6',
-  gambler: 'eb5ab6b0dea7b673',
-  greedy: '38c0405f24b71b87',
+  trader: 'f3e01b2a843c1c0f',
+  fighter: 'dc6ca4fbcce58659',
+  explorer: '616ad4c19c3f60b9',
+  veteran: 'f701430cfe32f7cb',
+  smuggler: 'abbaf33b67be9f19',
+  gambler: 'fbb8b4df794fa5f4',
+  greedy: '0f2ff82982dcbf2d',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

@@ -48,7 +48,9 @@ import {
   SeededRng,
   type GameEvent,
   type GameState,
+  type NpcState,
   type PlayerAction,
+  type PortStake,
   type ShipComponentId,
   type SpecialEquipmentId,
 } from '@spacerquest/engine';
@@ -582,6 +584,28 @@ export interface CampaignStatsReport {
    * `reportToJson` emits for `npm run sim`.
    */
   npcSpecialEquipmentPurchases: number;
+  /**
+   * N12/T-030 · Port stakes the PLAYER holds at the end of the horizon
+   * (`state.player.ports.length`) — the first asset, as opposed to cash, this
+   * report has ever carried. N9 measured the port arm as the game's biggest asset
+   * lever (22% of fleet cash converted into perpetual dusk income) and the
+   * aggregate could not see a single stake; N12 is about to hand the same asset to
+   * the cast, so the count has to exist before the sweep that grades it.
+   *
+   * A STOCK, NOT A FLOW, which is why it is read once off the final state exactly
+   * as `finalState.credits` is rather than summed from a per-day series the way
+   * `contractClaims` and `npcSpecialEquipmentPurchases` are. Those two count
+   * EVENTS, which only a trajectory can hold; a stake is a holding that only ever
+   * goes up (ports are buy-only and survive succession via `legacy.ts`), so a
+   * 120-entry series would add a number per day to every report to say a thing the
+   * milestone samples already say at the days anyone reads.
+   *
+   * READERS (constraint 7): `packages/sim/src/__tests__/campaign-ports.test.ts`,
+   * `SeedRow` / `PolicyAggregate` (`portsOwned`, `portOwnershipRate`) in
+   * `balance/aggregate.ts`, and the CLI JSON that `reportToJson` emits for
+   * `npm run sim`.
+   */
+  portsOwned: number;
   combatEncounters: CombatEncounterRecord[];
   routeLegs: RouteLegRecord[];
   survival: SurvivalStats;
@@ -632,21 +656,38 @@ export interface CampaignStatsReport {
  * synthesizer cannot restore would invite a reader to believe the synthesis is
  * more faithful than it is. The NPC arrays are the whole roster in roster order.
  *
- * N11/T-022 · ONE RULED EXCEPTION to the paragraph above, `npcDeedCount` and
- * `npcRenownRank`. They are MEASUREMENT-ONLY: `synthesize.ts`'s own "NOT
- * RESTORED" list names the deed registry and the renown rank first, and it is
- * right to — fabricating deed entries so a synthesized captain could carry a rank
- * would be authoring content inside a fixture. They are carried anyway because
- * N11's Simulate clause asks for the CAST's rank distribution at day 30/60/120
- * and there is no other route to it: the aggregate's `renownRanks` is the
- * player's, and a mechanism the instrument cannot see cannot be graded (N9's "the
- * aggregate cannot see an asset").
+ * THE MEASUREMENT-ONLY LIST — ruled exceptions to the paragraph above, named one
+ * by one so the invariant is never left silently false. Each is carried because a
+ * mechanism the instrument cannot see cannot be graded (N9's "the aggregate
+ * cannot see an asset"), and each is one the synthesizer refuses on purpose:
+ *
+ *   * N11/T-022 · `npcDeedCount` and `npcRenownRank`. `synthesize.ts`'s own "NOT
+ *     RESTORED" list names the deed registry and the renown rank first, and it is
+ *     right to — fabricating deed entries so a synthesized captain could carry a
+ *     rank would be authoring content inside a fixture. They are carried anyway
+ *     because N11's Simulate clause asks for the CAST's rank distribution at day
+ *     30/60/120 and there is no other route to it: the aggregate's `renownRanks`
+ *     is the player's.
+ *   * N12/T-030 · `player.ports` and `npcPortCount`. The SAME "NOT RESTORED"
+ *     bullet names ports verbatim ("Crew, ports, faction reputation, charts, the
+ *     nemesis file, storylet history and the event log. All start empty"), and
+ *     again it is right to: restoring a stake would hand a fixture a perpetual
+ *     dusk income stream (`portDuskIncome`) that no career earned — authoring
+ *     content in a test, the same objection that keeps deeds out. They are carried
+ *     because N12's sweep has to count an asset it is about to hand the cast, and
+ *     the instrument gap has to close BEFORE the capstone, not after.
+ *   * N12/T-030, RECORDED RATHER THAN LEFT FALSE · `player.crew` HAS BEEN IN THIS
+ *     POSITION SINCE N7 AND THIS COMMENT DID NOT SAY SO. The same NOT-RESTORED
+ *     bullet names crew alongside ports, so the "only the fields `synthesize.ts`
+ *     writes back" claim above has been untrue for as long as `crew` has been on
+ *     this type. Nothing about the field changes here; the claim does.
  *
  * THE CONSEQUENCE A READER MUST NOT MIS-TAKE: because the synthesizer cannot
- * restore them, a synthesized captain is still a zero-deed LIEUTENANT. The smoke
- * rig's mid-game tiers therefore still do not exercise rank at all — the gap
- * `balance-smoke.test.ts`'s header already declares — and these two arrays are
- * honest only about PLAYED careers.
+ * restore any of them, a synthesized captain is a zero-deed LIEUTENANT with NO
+ * CREW AND NO PORT. The smoke rig's mid-game tiers therefore do not exercise rank
+ * at all — the gap `balance-smoke.test.ts`'s header already declares — and carry
+ * no port dusk income and no crew wage either. These five fields are honest only
+ * about PLAYED careers.
  */
 export interface MilestoneSample {
   day: number;
@@ -672,6 +713,13 @@ export interface MilestoneSample {
     drivesStrength: number;
     cargoPods: number;
     crew: number;
+    /** N12/T-030 · `state.player.ports.length` — the stake COUNT, not the stakes.
+     *  A count rather than the `PortStake[]` itself because price, per-dusk income
+     *  and alliance are content lookups from `PURCHASABLE_PORTS_BY_SYSTEM`
+     *  (`PortStake`'s own comment says why they are never denormalized onto the
+     *  save), and denormalizing them into a measurement here would be a second
+     *  source of truth for tuning that lives in data. */
+    ports: number;
   };
   /** Every SIMULATED captain's purse, roster order. The wealth SPREAD across the
    *  field. Simulated, not every record: see {@link sampleMilestone}. */
@@ -691,6 +739,14 @@ export interface MilestoneSample {
    *  makes T-023's renown-inflation limb — "does the median captain outrank a
    *  competent player?" — gradeable off ONE artefact. */
   npcRenownRank: RenownRankId[];
+  /** N12/T-030 · Port stakes held per simulated captain, roster order — the
+   *  cast-side twin of `player.ports` above. IT READS 0 FOR EVERY CAPTAIN TODAY
+   *  and that is the correct, expected value: `NpcState` has no `ports` field
+   *  until N12 proper lands (see {@link npcPortCount}). It exists NOW so that when
+   *  the cast starts buying, N12's sweep can already see its own effect — the
+   *  R0a/R2a/N9/N4/N10 blind-spot class, closed ahead of the capstone rather than
+   *  after it. */
+  npcPortCount: number[];
 }
 
 /** N7 · Optional extras for `runCampaign`. Both are absent on every ordinary
@@ -4913,6 +4969,10 @@ export function runCampaign(
       (total, day) => total + day.npcSpecialEquipmentBought,
       0,
     ),
+    // N12/T-030 · A STOCK, read once off the final state exactly as
+    // `finalState.credits` below is — see the field's own comment for why it is
+    // deliberately not summed from a per-day series like the two lines above.
+    portsOwned: state.player.ports.length,
     combatEncounters: balance.encounters,
     routeLegs: balance.legs,
     survival,
@@ -4934,8 +4994,27 @@ export function runCampaign(
 /** N7 · The dawn snapshot behind {@link MilestoneSample}. Reads the live state;
  *  every derived number comes from the engine's own field rather than a
  *  re-computation here. */
-/** The six per-captain arrays behind {@link MilestoneSample}, over the SIMULATED
- *  roster only. One traversal, one filter, so the six arrays cannot fall out of
+/**
+ * N12/T-030 · Port stakes this captain holds. NO NPC RECORD CARRIES THE KEY
+ * TODAY — `NpcState` has no `ports` field, so this reads 0 for every captain by
+ * construction, and that zero is the honest measurement rather than a stub. N12
+ * proper gives the cast the PLAYER's own `ports: PortStake[]` (the parity shape N1
+ * used for `ShipState` and N11 for `DeedRegistryState`); when it does, this
+ * function starts returning real counts and NOTHING ELSE IN THE INSTRUMENT
+ * CHANGES.
+ *
+ * The optional intersection is deliberate in place of adding an unwritten field to
+ * the engine now. Adding `ports?: PortStake[]` to `NpcState` here would move
+ * `rulesFingerprint` — re-pinning every balance fixture for a rule that did not
+ * change — and would prejudge where N12 chooses to store a finite, per-system,
+ * first-come-first-served stake.
+ */
+function npcPortCount(npc: NpcState & { readonly ports?: readonly PortStake[] }): number {
+  return npc.ports?.length ?? 0;
+}
+
+/** The seven per-captain arrays behind {@link MilestoneSample}, over the SIMULATED
+ *  roster only. One traversal, one filter, so the seven arrays cannot fall out of
  *  step with each other — index i is the same captain in all of them. That
  *  property is load-bearing rather than tidy since N11/T-022: `npcDeedCount[i]`
  *  and `npcRenownRank[i]` are only readable together (a rank is a step function of
@@ -4948,7 +5027,13 @@ function sampleField(
   state: GameState,
 ): Pick<
   MilestoneSample,
-  'npcCredits' | 'npcHullStrength' | 'npcFuel' | 'npcSystemId' | 'npcDeedCount' | 'npcRenownRank'
+  | 'npcCredits'
+  | 'npcHullStrength'
+  | 'npcFuel'
+  | 'npcSystemId'
+  | 'npcDeedCount'
+  | 'npcRenownRank'
+  | 'npcPortCount'
 > {
   const field = state.npcs.filter((npc) => isSimulatedCaptain(npc.profileId));
   return {
@@ -4958,6 +5043,7 @@ function sampleField(
     npcSystemId: field.map((npc) => npc.currentSystemId),
     npcDeedCount: field.map((npc) => npc.registry.earned.length),
     npcRenownRank: field.map((npc) => npc.registry.renownRank),
+    npcPortCount: field.map((npc) => npcPortCount(npc)),
   };
 }
 
@@ -4981,6 +5067,7 @@ function sampleMilestone(state: GameState): MilestoneSample {
       drivesStrength: ship.drives.strength,
       cargoPods: ship.cargoPods,
       crew: state.player.crew.length,
+      ports: state.player.ports.length,
     },
     // THE SIMULATED FIELD, NOT EVERY RECORD — an instrument defect found and
     // fixed at the reopened N4, and it silently scoped every NPC number this
