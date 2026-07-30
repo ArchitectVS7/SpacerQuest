@@ -1464,11 +1464,41 @@ export interface CargoContract {
 export interface MarketState {
   manifestBoard: CargoContract[];
   localFuelPrice: number;
-  /** T-106 contract competition: jobs claimed off the local board by NPCs at
-   *  dusk. Each claim removes the offer from the live board immediately AND
-   *  shrinks the next dawn's board generation pool by one (the depot's job
-   *  pool was drained). Reset to 0 by startDay after it is consumed. */
-  npcClaims: number;
+  /**
+   * N10 · THE SHARED JOB POOL — outstanding claims against EVERY system's
+   * generation pool, keyed by `String(systemId)`.
+   *
+   * This replaces T-106's `npcClaims: number`, which counted claims in the
+   * player's system only and was reset to 0 every dawn. Two things were wrong
+   * with that shape, and they are the same thing said twice: a captain hauling
+   * out of Vega-7 drained nothing, and a pool the player was not standing in
+   * could not be drained at all. So competition existed only under the player's
+   * nose — a texture, not a force (N2 measured an 8x field-wealth increase move
+   * `ContractClaimed` by +2.0%).
+   *
+   * Now every claim, wherever it happens, debits the origin system's pool, and
+   * `startDay` sizes the player's board from the pool of the system they are
+   * actually in. THAT is what lets the player WATCH the competition rather than
+   * merely share a galaxy with it: fly into a hub the cast has been working and
+   * the board is thin; fly somewhere quiet and it is full.
+   *
+   * Two properties, both load-bearing and both enforced by the accessors in
+   * `economy.ts` (`jobPoolDepth` / `debitJobPool` / `regeneratePools`) rather
+   * than by any call site spelling the arithmetic itself:
+   *
+   *   1. **Pools RECOVER.** `regeneratePools` steps every tally back toward 0 by
+   *      `JOB_POOL_REGEN_PER_DAY` each dawn. Without it the galaxy ratchets: 30
+   *      captains claiming for 120 days would leave every port permanently dark,
+   *      which is not competition but attrition.
+   *   2. **Tallies are CLAMPED** to `JOB_POOL_MAX_CLAIMS`, so a pool cannot bank
+   *      a debt it needs twenty quiet days to work off.
+   *
+   * A missing key means an undrained pool, which is why this is a sparse record
+   * and not a 20-slot array: `regeneratePools` deletes a tally the moment it
+   * reaches 0, so a quiet galaxy serializes as `{}` and the save does not grow a
+   * key per system.
+   */
+  jobPoolClaims: Record<string, number>;
 }
 
 export interface GameState {

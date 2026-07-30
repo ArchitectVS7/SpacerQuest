@@ -23,6 +23,7 @@ import { advanceDay } from '../day.js';
 import { careerEnded } from '../nemesis.js';
 import { RENOWN_RANK_ORDER, rankForDeedCount } from '../deeds.js';
 import { computePlayerTier } from '../tier.js';
+import { JOB_POOL_BOARD_SIZE, JOB_POOL_MAX_CLAIMS, jobPoolDepth } from '../economy.js';
 import { npcShipForProfile } from '../npc.js';
 import { GameState, PlayerAction } from '../types.js';
 
@@ -438,7 +439,7 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 10', () => {
+  it('CURRENT_SAVE_VERSION is 11', () => {
     // T-1401 bumped 5 → 6 (WireEntry.kind); T-1503 bumped 6 → 7 for the required
     // nested PlayerState.reputation container; T-1603b bumped 7 → 8 to re-derive
     // `registry.renownRank` + `player.tier` after the canonical
@@ -446,8 +447,11 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     // instead repairs the MEANING of two it finds; T-1703 bumped 8 → 9 for the new
     // ROOT-level `GameState.edition` (the demo gate's persisted scalar); N1 bumped
     // 9 → 10 for `NpcState.ship`, the first migration that MOVES a field (the
-    // captain's `fuel` becomes `ship.fuel`). See save.ts.
-    expect(CURRENT_SAVE_VERSION).toBe(10);
+    // captain's `fuel` becomes `ship.fuel`); N10 bumped 10 → 11 for the SECOND
+    // move, `market.npcClaims` → `market.jobPoolClaims` (one scalar counting
+    // claims in the player's system becomes a sparse per-system pool ledger that
+    // persists and regenerates). See save.ts.
+    expect(CURRENT_SAVE_VERSION).toBe(11);
   });
 });
 
@@ -787,6 +791,106 @@ describe('save envelope — v9 → v10 NPC ship migration (N1)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// N10 · v10 → v11 — the SECOND migration here that moves a field.
+// `market.npcClaims` (one scalar: claims against the player's system, reset every
+// dawn) becomes `market.jobPoolClaims` (a sparse `systemId -> claims` record that
+// persists across days and restocks).
+//
+// The same two-directional strictness as v9 → v10 applies and is asserted here:
+// `MarketStateSchema` is `.strict()`, so an orphaned `npcClaims` is an unknown key
+// and a missing `jobPoolClaims` is a missing one. The value must LAND SOMEWHERE
+// REAL — a drained port that migrates to a full board silently hands the loading
+// player four offers the cast had already taken.
+// ---------------------------------------------------------------------------
+describe('save envelope — v10 → v11 shared job pool migration (N10)', () => {
+  /** A v10-shaped market: the scalar back, the record gone. */
+  function asV10(state: GameState, npcClaims: number): GameState {
+    const legacy = JSON.parse(JSON.stringify(state)) as GameState;
+    const market = legacy.market as unknown as Record<string, unknown>;
+    delete market.jobPoolClaims;
+    market.npcClaims = npcClaims;
+    return legacy;
+  }
+
+  it('credits the old scalar to the system the player was standing in', () => {
+    // Not a guess: the co-located snipe was the scalar's only writer and that
+    // dawn's board its only reader, so the player's system is the only system it
+    // could ever have described.
+    const state = drive50Days(120);
+    const system = state.player.currentSystemId;
+    const loaded = loadSave(JSON.stringify({ version: 10, state: asV10(state, 2), seed: 120 }));
+
+    expect(loaded.state.market.jobPoolClaims).toEqual({ [String(system)]: 2 });
+    expect((loaded.state.market as unknown as Record<string, unknown>).npcClaims).toBeUndefined();
+    // The drained port stays drained — the loading player does not get a free
+    // board back.
+    expect(jobPoolDepth(loaded.state.market.jobPoolClaims, system)).toBe(JOB_POOL_BOARD_SIZE - 2);
+  });
+
+  it('an undrained v10 market migrates to an EMPTY ledger, not to a zero per system', () => {
+    const state = drive50Days(121);
+    const loaded = loadSave(JSON.stringify({ version: 10, state: asV10(state, 0), seed: 121 }));
+    expect(loaded.state.market.jobPoolClaims).toEqual({});
+  });
+
+  it('clamps a scalar deeper than a pool can legally be drained', () => {
+    // Through the engine's own constant, not a literal: a migration CALLS a rule,
+    // it never restates one (the MIGRATIONS[9] precedent that keeps save.ts out of
+    // the rules fingerprint honest).
+    const state = drive50Days(122);
+    const loaded = loadSave(JSON.stringify({ version: 10, state: asV10(state, 99), seed: 122 }));
+    const system = String(loaded.state.player.currentSystemId);
+    expect(loaded.state.market.jobPoolClaims[system]).toBe(JOB_POOL_MAX_CLAIMS);
+  });
+
+  it('is idempotent — a market that already carries the record is left alone', () => {
+    const state = drive50Days(123);
+    state.market.jobPoolClaims = { '3': 1, '9': 2 };
+    const loaded = loadSave(JSON.stringify({ version: 10, state, seed: 123 }));
+    expect(loaded.state.market.jobPoolClaims).toEqual({ '3': 1, '9': 2 });
+  });
+
+  it('does not throw on a market it cannot read (a migration must never be the thrower)', () => {
+    const state = drive50Days(124);
+    (state as unknown as Record<string, unknown>).market = 'not-an-object';
+    expect(() => loadSave(JSON.stringify({ version: 10, state, seed: 124 }))).toThrow(SaveError);
+  });
+
+  it('strict schema rejects a v11 market that still carries the old scalar', () => {
+    const state = drive50Days(125);
+    (state.market as unknown as Record<string, unknown>).npcClaims = 1;
+    expect(() => loadSave(createSave(state, 125))).toThrow(SaveError);
+  });
+
+  it('round-trips a drained galaxy byte-identically', () => {
+    // Constraint 3 in the same commit as the field. The pool is GALAXY state now,
+    // so a save that loses it loses every port's memory of being worked.
+    const state = drive50Days(126);
+    state.market.jobPoolClaims = { '1': 1, '7': 2, '20': JOB_POOL_MAX_CLAIMS };
+    const loaded = loadSave(createSave(state, 126));
+    expect(loaded.state.market.jobPoolClaims).toEqual(state.market.jobPoolClaims);
+    const once = createSave(loaded.state, 126);
+    expect(createSave(loadSave(once).state, 126)).toBe(once);
+  });
+
+  it('deserializeState performs the SAME move as the migration', () => {
+    // Two paths, one rule. `loadSave` runs the migration registry; the UI store's
+    // `deserializeState` does its own save-compat backfill, and N1's `fuel` move
+    // is the precedent for them being able to drift. Both must credit the same
+    // system, or a save loaded through one door would describe a different galaxy
+    // than the same save loaded through the other.
+    const state = drive50Days(127);
+    const system = state.player.currentSystemId;
+    const viaLoader = loadSave(JSON.stringify({ version: 10, state: asV10(state, 2), seed: 127 }));
+    const viaDeserialize = deserializeState(JSON.stringify(asV10(state, 2)));
+
+    expect(viaDeserialize.market.jobPoolClaims).toEqual({ [String(system)]: 2 });
+    expect(viaDeserialize.market.jobPoolClaims).toEqual(viaLoader.state.market.jobPoolClaims);
+    expect((viaDeserialize.market as unknown as Record<string, unknown>).npcClaims).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // T-1505a · The twelve-fragment Nemesis file round-trips, including the two
 // source literals the arc only started producing in this task.
 //
@@ -823,9 +927,10 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     expect(loaded.state).toEqual(state);
     // No version bump was needed for any of it. (T-1603b later bumped 7 → 8 for
     // an unrelated reason — the renown re-derivation — T-1703 8 → 9 for the new
-    // `edition` field and N1 9 → 10 for `NpcState.ship`, so this pins the CURRENT
-    // version rather than claiming the fragment file caused it.)
-    expect(CURRENT_SAVE_VERSION).toBe(10);
+    // `edition` field, N1 9 → 10 for `NpcState.ship` and N10 10 → 11 for the
+    // per-system job pool, so this pins the CURRENT version rather than claiming
+    // the fragment file caused it.)
+    expect(CURRENT_SAVE_VERSION).toBe(11);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -869,9 +974,10 @@ describe('save envelope — an ended career round-trips with no migration (T-150
       reason: 'career-ended',
     });
     // Nothing needed a bump for any of it. (T-1603b later bumped 7 → 8 for the
-    // unrelated renown re-derivation, T-1703 8 → 9 for the new `edition` field
-    // and N1 9 → 10 for `NpcState.ship`; this pins the CURRENT version.)
-    expect(CURRENT_SAVE_VERSION).toBe(10);
+    // unrelated renown re-derivation, T-1703 8 → 9 for the new `edition` field,
+    // N1 9 → 10 for `NpcState.ship` and N10 10 → 11 for the per-system job pool;
+    // this pins the CURRENT version.)
+    expect(CURRENT_SAVE_VERSION).toBe(11);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {

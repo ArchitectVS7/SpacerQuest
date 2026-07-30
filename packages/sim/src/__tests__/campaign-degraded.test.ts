@@ -189,16 +189,49 @@ const UNCHANGED_POLICIES = [
  *        is now the third consecutive NPC-side step where it has moved. It is a
  *        control for POLICY changes only. Reading its movement as a leak would be
  *        a misdiagnosis both times.
+ *
+ * 9. N10 — the shared per-system job pool. ALL SEVEN rows move, and this entry is
+ *    re-pinned IN THE COMMIT THAT MOVED IT, which is what entries 6 and 8 both
+ *    asked the next N-step to do.
+ *      trader   e25a0fe4ae77c658 -> 6e5587cd62fc3923
+ *      fighter  aca22292cd206845 -> 6bbda5a92b4f0e6b
+ *      explorer e4bea4fbe2af563c -> 46147d5e9ae4fdb9
+ *      veteran  6f19055026802305 -> b62056c846949576
+ *      smuggler 0f008671c2f48432 -> b90fa5cc5e6c2489
+ *      gambler  8262c90a3fa780d7 -> 1ace34c3afb1643b
+ *      greedy   aecf1a7e5a7d896b -> 35760632ac51c736
+ *    MECHANISM: entry 6's again, and once more not one line of any policy changed.
+ *    N10 has TWO distinct routes into these hashes and they are worth separating,
+ *    because only the second is behavioural:
+ *      * SHAPE. `market.jobPoolClaims` replaced `market.npcClaims` in the state,
+ *        and `CampaignStatsReport` gained `contractClaims` while `CampaignDayStats`
+ *        gained `boardDepth` / `contractsSniped`. This hash covers the whole report
+ *        JSON including its shape, so — exactly as entry 4 records for R2c's
+ *        `salvageCredits` — a moved hash here is not by itself evidence of a
+ *        behaviour change.
+ *      * STREAM. A captain trading away from the player now draws a whole local
+ *        board (`generateManifestBoard`) and picks off it (`pickContract`) where
+ *        they used to draw one `rollContract`. That is a different number of rng
+ *        draws per trading captain, so the shared dusk stream diverges and every
+ *        seeded player career re-rolls downstream of the first away-haul.
+ *    WHAT THE SWEEP SAYS, since this table cannot: at the 1,000-seed capstone the
+ *    player's game barely moves (fleet Tour One clear 0.5199 -> 0.5180, fleet final
+ *    credits median 30,425 -> 30,915, deaths/1,000 0.6448 -> 0.6573) while the
+ *    CAST's day-120 median wealth goes 21,884 -> 76,049. That asymmetry is the
+ *    evidence that this is an NPC-side change; see N10's Result in
+ *    docs/NPC_REDESIGN.md.
+ *      * `greedy` moving is EXPECTED, for the fourth consecutive NPC-side step.
+ *        Entry 6 is the standing explanation and it has not needed amending since.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: 'e25a0fe4ae77c658',
-  fighter: 'aca22292cd206845',
-  explorer: 'e4bea4fbe2af563c',
-  veteran: '6f19055026802305',
-  smuggler: '0f008671c2f48432',
-  gambler: '8262c90a3fa780d7',
-  greedy: 'aecf1a7e5a7d896b',
+  trader: '6e5587cd62fc3923',
+  fighter: '6bbda5a92b4f0e6b',
+  explorer: '46147d5e9ae4fdb9',
+  veteran: 'b62056c846949576',
+  smuggler: 'b90fa5cc5e6c2489',
+  gambler: '1ace34c3afb1643b',
+  greedy: '35760632ac51c736',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

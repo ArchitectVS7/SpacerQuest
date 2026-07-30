@@ -10,7 +10,7 @@ import {
 import { NPC_PROFILES, QUEST_PROFILES, Stat } from '@spacerquest/content';
 import { computeMatchCounts, rankForDeedCount } from './deeds.js';
 import { npcShipForProfile, seedNpcShip } from './npc.js';
-import { calculateFuelCapacity, syncMaxFuel } from './economy.js';
+import { JOB_POOL_MAX_CLAIMS, calculateFuelCapacity, syncMaxFuel } from './economy.js';
 import { computePlayerTier, syncPlayerTier } from './tier.js';
 
 /** The exact junker every spacer starts (and re-starts) with. SINGLE SOURCE OF
@@ -158,7 +158,9 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     market: {
       manifestBoard: [],
       localFuelPrice: 5,
-      npcClaims: 0,
+      // N10 · Every pool starts undrained, which a sparse record spells as empty
+      // rather than as twenty zeroes (see `MarketState.jobPoolClaims`).
+      jobPoolClaims: {},
     },
     npcs,
     encounter: null,
@@ -289,7 +291,22 @@ export function deserializeState(json: string): GameState {
     if (npc.ship === undefined) npc.ship = seedNpcShip(npc.profileId, legacy.fuel);
     delete legacy.fuel;
   });
-  parsed.market.npcClaims ??= 0;
+  // N10 save-compat: pre-N10 states carry a single `market.npcClaims` scalar —
+  // claims against the player's system only. Move it onto that system's pool and
+  // drop the stale key, or the strict MarketState schema would reject it as
+  // unknown. The SAME move the v10→v11 save migration performs, and it is the one
+  // place the two paths could drift: both credit the pool of the system the
+  // player was standing in, because that is the only system the old counter could
+  // ever have been about.
+  const legacyMarket = parsed.market as unknown as { npcClaims?: unknown };
+  parsed.market.jobPoolClaims ??= {};
+  if (typeof legacyMarket.npcClaims === 'number' && legacyMarket.npcClaims > 0) {
+    parsed.market.jobPoolClaims[String(parsed.player.currentSystemId)] = Math.min(
+      JOB_POOL_MAX_CLAIMS,
+      legacyMarket.npcClaims,
+    );
+  }
+  delete legacyMarket.npcClaims;
   parsed.encounter ??= null;
   // Save-compat: older states predate era events — default to no active event
   // and a zero cooldown anchor (T-107).

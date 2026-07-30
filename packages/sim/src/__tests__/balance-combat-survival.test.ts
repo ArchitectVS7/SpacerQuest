@@ -125,11 +125,47 @@ import {
 //        worse than slow.
 // DO NOT NARROW IT BACK to recover runtime — the assertions below are only
 //        meaningful at a sample that can resolve them.
+//
+// ==========================================================================
+// WIDENED AGAIN AT N10 (40 -> 120 seeds), for the same reason and by the same
+// rule. Read this with the N4 block above; it is the second instance of one
+// pattern, and the pattern is the finding.
+//
+// WHAT HAPPENED. N10's shared job pool changes how many rng draws a trading
+// captain consumes at dusk (a whole local board through `generateManifestBoard`
+// where they used to take one `rollContract`), so this slice re-sampled once more.
+// One assertion went red: `shipLostRate` in below/unprepared read 0.
+//
+// WHY THAT IS A SAMPLE SIZE AND NOT A REGRESSION, measured on both arms at 40
+// seeds with the engine rebuilt for each:
+//   · pre-N10:  5 ships lost / 9,600 sim days, of which ONE was in
+//               below/unprepared (n=545, rate 0.183%);
+//   · post-N10: 3 ships lost / 9,600 sim days, of which NONE was (n=547).
+// The assertion was being graded on an EXPECTED COUNT OF ABOUT ONE. The N4 block
+// above already recorded that it only became nonzero when the slice widened from
+// 15 to 40 seeds — so it has been sitting one unlucky resample away from red since
+// the day it started passing, and this is that resample.
+//
+// RE-MEASURED at 120 seeds x 4 policies x 60 days = 28,800 sim days: 16 ships
+//        lost (15 combat defeats, 1 life support), 3.1% of runs, fleet rate 0.556
+//        / 1,000. below/unprepared n=1,774 at 0.338% — SIX expected deaths rather
+//        than one, which is a sample that can actually resolve the claim.
+//        EVERY THRESHOLD IN THIS FILE IS BYTE-IDENTICAL across the widening. The
+//        death-rate floor is still breached (0.556 against 0.8) and its tripwire
+//        below is still correctly red — widening did not paper over it, exactly as
+//        the N4 block found at 40 seeds.
+// COST: 3x the runs for a MEASURED 37s wall clock on this file (vitest, warm) —
+//        cheaper than the ~95s the N4 block predicted for a third of the sample,
+//        which is worth recording so nobody narrows the slice back to buy time
+//        that is not there to buy. The `beforeAll` budget was raised with it.
+//        Paid for the same reason N4 paid: an assertion graded on one expected
+//        event is not a test, and a green that depends on the rng stream not
+//        moving is worse than slow.
 // ==========================================================================
 
-/** See SWEEP PROVENANCE and the N4 RE-MEASURE note. Explicit and fixed — never a
- *  hunt range. */
-const SEEDS = Array.from({ length: 40 }, (_, index) => index + 1);
+/** See SWEEP PROVENANCE and the N4 / N10 RE-MEASURE notes. Explicit and fixed —
+ *  never a hunt range. */
+const SEEDS = Array.from({ length: 120 }, (_, index) => index + 1);
 /** See SWEEP PROVENANCE for why 60 and not 35. */
 // R2c NOTE — DO NOT WIDEN THIS WINDOW. 60 days is load-bearing for the two
 // distribution targets below (preparation-saves and fleet death rate). Widening to
@@ -219,7 +255,10 @@ beforeAll(() => {
     }
   }
   report = aggregate('balance-combat-survival', rows);
-}, 180000);
+  // N10 · Raised with the slice (40 -> 120 seeds). The measured build is 37s here,
+  // so 180s would probably still have held — raised anyway, because a 3x sample on
+  // a budget sized for the old one is a failure waiting for a slower machine.
+}, 600000);
 
 describe('T-1603c combat & survival targets (pinned slice of the committed sweep)', () => {
   it('combat is a losing proposition, and losing it outgunned and unprepared is the worst version', () => {

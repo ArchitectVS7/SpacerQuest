@@ -254,6 +254,7 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
       const { npc, events } = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), {
         day: 1,
         claimableBoard: null,
+        jobPoolClaims: {},
         era: 'VETERAN' as const,
         eraEvent: null,
       });
@@ -282,6 +283,7 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
       const { npc, events } = resolveNpcDay(npcFor('npc-stellar-monk'), new SeededRng(seed), {
         day: 1,
         claimableBoard: null,
+        jobPoolClaims: {},
         era: 'VETERAN' as const,
         eraEvent: null,
       });

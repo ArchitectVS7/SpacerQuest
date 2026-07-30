@@ -402,7 +402,40 @@ export function runDayLoopGolden(
 // NPC-side change and not a quiet player rebalance.
 //   DAY_LOOP state  1308cbc8… -> 7f111e79…   (events b9b7ec15… -> 33f661e6…)
 //   STORYLET state  b405b3e1… -> de48563d…   (events a5ce5053… -> 2b927f80…)
-export const DAY_LOOP_GOLDEN_STATE_HASH = '7f111e792db441b282b9ee4bad664699005fa9ea5e908af2e732f89c5d91eb9c';
-export const DAY_LOOP_GOLDEN_EVENTS_HASH = '33f661e61b0266e1e2310777b4d7d61c5742d2bac75be5c285959e56dfdf7573';
-export const STORYLET_GOLDEN_STATE_HASH = 'de48563dc3ddcf5585db011ce6d5734081602acb8fbc588f7b548ae3a5f69957';
-export const STORYLET_GOLDEN_EVENTS_HASH = '2b927f80f3bb9a2674b5e85c72a9d08fb5c77b7924c3481006849ab08d7688c0';
+//
+// RE-RECORDED AT N10 (the shared per-system job pool). Two independent reasons the
+// stream had to move, and neither is a player-side rebalance:
+//   1. THE STATE SHAPE. `market.npcClaims` (one scalar) became
+//      `market.jobPoolClaims` (a per-system record), so the serialized state hash
+//      moves even where no value does.
+//   2. THE DUSK RNG STREAM. A captain trading away from the player now draws a
+//      LOCAL BOARD through `generateManifestBoard` and chooses off it via
+//      `pickContract`, where pre-N10 they took a single `rollContract`. That is
+//      more draws per trading captain, so the shared dusk stream diverges from the
+//      first away-haul of day 1.
+// MEASURED the same way as the two entries above, by dumping and diffing both
+// streams: DAY_LOOP 1,310 events BEFORE, 1,301 AFTER, of which
+//   · `NpcAction` is UNCHANGED at 300 (10 days x 30 captains) — the cast still
+//     takes exactly one action each per day; only WHICH action moved;
+//   · `StatCheck` 261 -> 254 and `FlawCheck` 145 -> 144 — a handful of days land on
+//     a different verb, so a different check rolls;
+//   · `NpcEncounter` 19 -> 20 and `WireEntry` 498 -> 496;
+//   · `ContractClaimed` is UNCHANGED at 2. Worth stating because it is the field
+//     N10 is about: an 11-day two-snipe sample cannot grade competition, and this
+//     step's numbers come from the sweep and the capstone, never from here.
+// THE PLAYER SIDE IS BYTE-IDENTICAL IN COUNT AND KIND: DawnRoll 10, DayAdvanced 10,
+// DebtPayment 4, DeedEarned 5, RenownRankUp 2, TradeEvent 8, TravelEvent 5,
+// StoryletOffered 37 and DispositionChanged 4 are all unmoved — the same check the
+// N4 entry above used, and the same conclusion: an NPC-side change.
+// (STORYLET moves the same way and no further: 141 -> 138, entirely
+// `NpcEncounter` 3 -> 2, `StatCheck` 27 -> 26, `WireEntry` 58 -> 57.)
+//   DAY_LOOP state  7f111e79… -> b1c4db25…   (events 33f661e6… -> 9f864bfa…)
+//   STORYLET state  de48563d… -> deefa3d7…   (events 2b927f80… -> 3e96fe90…)
+export const DAY_LOOP_GOLDEN_STATE_HASH =
+  'b1c4db25f9b0a57d057435062af123305bb0a571d2c01be9d5cafda161f30547';
+export const DAY_LOOP_GOLDEN_EVENTS_HASH =
+  '9f864bfa649b978b729888e9b22a0d93785b9e115027bf3d5332d295143c7d8d';
+export const STORYLET_GOLDEN_STATE_HASH =
+  'deefa3d7d0c9a3965bbb9cec0e8923166366840050e854c2cd1858083eaa8bb9';
+export const STORYLET_GOLDEN_EVENTS_HASH =
+  '3e96fe90247b837cba773049e855623f0381bb5cd0f9cf41fda9d86982a8b50e';

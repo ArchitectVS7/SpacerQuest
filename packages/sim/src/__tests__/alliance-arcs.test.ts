@@ -297,7 +297,10 @@ describe('T-1503 reputation moves through 100 days of play (organic, not injecte
       // Some faction standing is nonzero (rep actually moved through play) — of
       // every seed, not of a chosen one.
       const reps = Object.values(state.player.reputation);
-      expect(reps.some((v) => v !== 0), `seed ${seed} moved no reputation`).toBe(true);
+      expect(
+        reps.some((v) => v !== 0),
+        `seed ${seed} moved no reputation`,
+      ).toBe(true);
 
       // The moves went through the real event trail (never injected).
       const repEvents = state.eventLog.filter(

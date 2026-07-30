@@ -271,6 +271,11 @@ export interface SeedRow {
   lifeSupportFailures: number;
   lifeSupportScares: number;
   successions: number;
+  /** N10 · Offers the cast took off this run's live board (`ContractClaimed`). */
+  contractClaims: number;
+  /** N10 · The dawn board's DEPTH across the run — one entry per day, so the
+   *  aggregate can report percentiles rather than a mean that hides a dark port. */
+  boardDepths: number[];
   combat: CombatEncounterRecord[];
   routes: RouteLegRecord[];
   /** N7 · Carried from the report when the sweep asked for milestone days. */
@@ -301,6 +306,8 @@ export function summarizeReport(report: CampaignStatsReport): SeedRow {
     lifeSupportFailures: report.survival.lifeSupportFailures,
     lifeSupportScares: report.survival.lifeSupportScares,
     successions: report.survival.successions,
+    contractClaims: report.contractClaims,
+    boardDepths: report.daily.map((day) => day.boardDepth),
     combat: report.combatEncounters,
     routes: report.routeLegs,
     ...(report.milestones === undefined ? {} : { milestones: report.milestones }),
@@ -374,6 +381,18 @@ export interface PolicyAggregate {
    *  runs that reached it; `n` therefore doubles as the reach count. */
   dayOfNthDeed: Distribution[];
   renownRanks: Record<string, number>;
+  // --- Contract competition (N10) -----------------------------------------
+  /** Offers the cast took off players' live boards, summed over the row. */
+  contractClaims: number;
+  contractClaimsPerRun: number;
+  /**
+   * The dawn board's depth, pooled over every day of every run in the row. The
+   * PERCENTILES are the point and a mean would defeat it: competition shows up as
+   * the bottom of this distribution moving (p10 dropping from 4 to 1) long before
+   * the median does, and this step's Disproves — "boards empty" — is a statement
+   * about that tail.
+   */
+  boardDepth: Distribution;
   // --- Combat -------------------------------------------------------------
   encounters: number;
   encountersPerRun: number;
@@ -600,6 +619,7 @@ export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyA
 
   const resolvedRuns = rows.filter((row) => row.tourOneOutcome !== null);
   const shipsLost = rows.reduce((total, row) => total + row.shipsLost, 0);
+  const claims = rows.reduce((total, row) => total + row.contractClaims, 0);
 
   return {
     policy,
@@ -628,6 +648,9 @@ export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyA
     deedsPer100Days: distribution(rows.map((row) => row.deedPacing.deedsPer100Days)),
     dayOfNthDeed,
     renownRanks,
+    contractClaims: claims,
+    contractClaimsPerRun: rows.length === 0 ? 0 : claims / rows.length,
+    boardDepth: distribution(rows.flatMap((row) => row.boardDepths)),
     encounters: combat.length,
     encountersPerRun: rows.length === 0 ? 0 : combat.length / rows.length,
     combatCells: combatCellsFor(combat),

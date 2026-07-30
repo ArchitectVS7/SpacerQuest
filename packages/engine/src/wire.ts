@@ -1,4 +1,9 @@
-import { NAT_WIRE_TEMPLATES, ALL_NPC_PROFILES, Stat, WireStoryCategory } from '@spacerquest/content';
+import {
+  NAT_WIRE_TEMPLATES,
+  ALL_NPC_PROFILES,
+  Stat,
+  WireStoryCategory,
+} from '@spacerquest/content';
 import { GameEvent, NpcState } from './types.js';
 import { SeededRng } from './rng.js';
 

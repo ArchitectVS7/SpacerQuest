@@ -15,9 +15,11 @@ import {
   NPC_SOCIALIZE_LOSS_CREDITS,
   NPC_SOCIALIZE_WIN_CREDITS,
   NPC_TRAVEL_FAIL_EXTRA_FUEL,
+  NpcArchetype,
   NpcIntentType,
   NpcProfile,
   STAR_SYSTEMS,
+  SYSTEM_DANGER_LEVELS,
   SHIP_COMPONENTS,
   Stat,
   StatBlock,
@@ -63,10 +65,10 @@ import {
 import {
   DriveBlock,
   calculateFuelCapacity,
-  contractSpecFromShip,
+  generateManifestBoard,
+  jobPoolDepth,
   jumpFuelCost,
   localFuelPrice,
-  rollContract,
   syncMaxFuel,
 } from './economy.js';
 import { navFuelFactor } from './components.js';
@@ -497,6 +499,17 @@ export interface NpcDayContext {
    *  READ-ONLY here — the caller (day.ts) performs the splice and emits the
    *  claim events. */
   claimableBoard: readonly CargoContract[] | null;
+  /**
+   * N10 · The shared per-system job pool (`MarketState.jobPoolClaims`), READ-ONLY
+   * here: it sizes the local board a captain trading AWAY from the player draws
+   * from, so a port the cast has been working supplies fewer jobs to the next
+   * captain through it exactly as it will to the player.
+   *
+   * The WRITE goes back through {@link NpcDayResult.claimedFromPool} rather than
+   * happening here, the same division of labour `claimedContractIndex` already
+   * uses: `day.ts` owns the market record, an NPC turn owns its own captain.
+   */
+  jobPoolClaims: Readonly<Record<string, number>>;
   /** The active world economic event (T-107). NPCs feel the same re-priced
    *  economy as the player: synthesized contract income and depot refuel costs
    *  read the same modifiers. Null when no event is active. */
@@ -515,6 +528,17 @@ export interface NpcDayResult {
   /** Index into ctx.claimableBoard of the offer this NPC took (T-106 contract
    *  competition). Only set when the NPC actually executed the haul. */
   claimedContractIndex?: number;
+  /**
+   * N10 · The system whose shared job pool this captain claimed out of, when the
+   * claim did NOT come off the player's live board — i.e. the ordinary case,
+   * anywhere in the galaxy. The caller debits it (`debitJobPool`), which is what
+   * makes the next board the player sees in that system thinner.
+   *
+   * MUTUALLY EXCLUSIVE with `claimedContractIndex` by construction: a claim is
+   * either the visible snipe off the player's board or a draw against the local
+   * pool, never both. Both are absent when the haul did not happen at all.
+   */
+  claimedFromPool?: number;
 }
 
 function systemName(systemId: number): string {
@@ -861,7 +885,9 @@ function resolveNpcEncounter(
   // read. That is an absent INPUT, not a threshold tuned so a rule will not bite —
   // the distinction the standing constraint's consequence 2 turns on.
   let chance =
-    ctx.era === 'TOUR_ONE' ? danger.routeDangerChance * TOUR_ONE_ENCOUNTER_MULTIPLIER : danger.routeDangerChance;
+    ctx.era === 'TOUR_ONE'
+      ? danger.routeDangerChance * TOUR_ONE_ENCOUNTER_MULTIPLIER
+      : danger.routeDangerChance;
   if (npc.ship.hasCloaker) chance *= CLOAK_ENCOUNTER_MULTIPLIER;
 
   if (rng.next() >= chance) return false;
@@ -893,7 +919,15 @@ function resolveNpcEncounter(
       );
       // The interceptor's flaw can slam the door — the player's rule, unchanged.
       const refused = interceptorRefusesTribute(interceptor, rng, events);
-      const result = rollEncounterCheck(npc, profile, Stat.TRADE, 'npc-encounter-talk', rng, events, interceptor);
+      const result = rollEncounterCheck(
+        npc,
+        profile,
+        Stat.TRADE,
+        'npc-encounter-talk',
+        rng,
+        events,
+        interceptor,
+      );
       if (!refused && result.success && npc.credits >= demand) {
         npc.credits -= demand;
         creditsPaid += demand;
@@ -902,14 +936,30 @@ function resolveNpcEncounter(
       }
     } else if (stance === 'run') {
       npc.ship.fuel = Math.max(0, npc.ship.fuel - RUN_FUEL_COST);
-      const result = rollEncounterCheck(npc, profile, Stat.PILOT, 'npc-encounter-run', rng, events, interceptor);
+      const result = rollEncounterCheck(
+        npc,
+        profile,
+        Stat.PILOT,
+        'npc-encounter-run',
+        rng,
+        events,
+        interceptor,
+      );
       if (result.success) {
         resolution = 'escaped';
         break;
       }
     } else {
       npc.ship.fuel = Math.max(0, npc.ship.fuel - FIGHT_FUEL_COST);
-      const result = rollEncounterCheck(npc, profile, Stat.GUNS, 'npc-encounter-fight', rng, events, interceptor);
+      const result = rollEncounterCheck(
+        npc,
+        profile,
+        Stat.GUNS,
+        'npc-encounter-fight',
+        rng,
+        events,
+        interceptor,
+      );
       if (result.success) {
         enemyHull = Math.max(0, enemyHull - weaponVolleyDamage(npc.ship));
         if (enemyHull <= 0) {
@@ -1182,52 +1232,158 @@ function rollNpcCheck(
   return result;
 }
 
+/**
+ * N10 · WHICH job a captain takes off a board, by archetype. Exported and pure —
+ * the per-archetype strategy is unit-testable in isolation, which is the one
+ * thing worth salvaging from the reverted first attempt at this step.
+ *
+ * Returns an INDEX into `offers`, because both callers need the index and not
+ * just the contract: the co-located path hands it to `day.ts` to splice out of
+ * the player's live board.
+ *
+ * THE SHAPE, and why it is a score rather than a filter chain. Each archetype
+ * supplies one comparable number per offer; the best-scoring offers are the
+ * candidate set and `rng` breaks the tie. Ties are the common case, not the
+ * corner: a four-offer core board has one danger level across all of it, so a
+ * fighter with nothing to prefer picks uniformly — the honest answer, and the
+ * pre-N10 behaviour, rather than a spurious preference invented by an
+ * argmax-takes-index-0 rule.
+ *
+ * WHAT EACH ARCHETYPE IS ACTUALLY SAYING, since a score table reads as arbitrary
+ * unless the sentence behind each row is written down:
+ *
+ *   - `trader` — the biggest cheque. The professional's read, and the one the
+ *     wealth table already shows them winning with.
+ *   - `veteran` — the biggest cheque PER UNIT OF DISTANCE. Seasoned captains do
+ *     not chase gross revenue across the map; they price the fuel.
+ *   - `gambler` — payment weighted by the destination's danger. The long-odds
+ *     payday: the rim run that pays triple, consequences later.
+ *   - `explorer` — the FARTHEST destination. Same instinct as N4's rim-biased
+ *     `executeTravel`, and it costs them the same way: `routeDangerFor` prices
+ *     the long lane as the dangerous one it is.
+ *   - `fighter` — the most dangerous destination. They are not avoiding trouble;
+ *     a haul is a reason to be somewhere trouble is.
+ *   - `smuggler` — contraband first, then any rim destination. This is N4's
+ *     rim-first filter GENERALISED, not replaced: with contraband absent the
+ *     candidate set is exactly the rim subset N4 filtered to, so the smuggler's
+ *     selection behaviour is deliberately unchanged in shape and their column in
+ *     N4's table stays comparable.
+ */
+export function pickContract(
+  archetype: NpcArchetype,
+  offers: readonly CargoContract[],
+  originSystemId: number,
+  rng: SeededRng,
+): number {
+  // THE ORIGIN IS A PARAMETER, and the reverted attempt is why it is spelled out
+  // here: it measured every archetype's distance reasoning as
+  // `systemDistance(0, destination)` — from system 0, not from where the captain
+  // was standing — and threw `Unknown star system route: 0 -> 11` outright.
+  const score = (offer: CargoContract): number => {
+    const danger = SYSTEM_DANGER_LEVELS[offer.destination] ?? 1;
+    const legDistance = systemDistance(originSystemId, offer.destination);
+    switch (archetype) {
+      case 'trader':
+        return offer.payment;
+      case 'veteran':
+        return offer.payment / Math.max(1, legDistance);
+      case 'gambler':
+        return offer.payment * danger;
+      case 'explorer':
+        return legDistance;
+      case 'fighter':
+        return danger;
+      case 'smuggler':
+        // The contraband test is the CONTENT flag, never the id: `cargoType === 10`
+        // would be the engine restating a content table (constraint 4), and the
+        // same literal has already been factored out of the payment math.
+        return CARGO_TYPES[offer.cargoType]?.isContraband
+          ? 2
+          : STAR_SYSTEMS[offer.destination]?.isRim
+            ? 1
+            : 0;
+    }
+  };
+
+  let best = -Infinity;
+  const candidates: number[] = [];
+  for (let i = 0; i < offers.length; i++) {
+    const value = score(offers[i]);
+    if (value > best) {
+      best = value;
+      candidates.length = 0;
+      candidates.push(i);
+    } else if (value === best) {
+      candidates.push(i);
+    }
+  }
+
+  return candidates[Math.floor(rng.next() * candidates.length)];
+}
+
 function executeTrade(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
   ctx: NpcDayContext,
   events: GameEvent[],
-): { action: NpcAction; claimedContractIndex?: number } {
-  // T-106 contract competition mechanism: when trading in the player's
-  // system, the NPC pulls a SPECIFIC offer off the live manifest board (the
-  // shared per-system job pool) instead of synthesizing one. The caller
-  // splices it from the board and shrinks tomorrow's board generation pool,
-  // so the player watches an offer they saw disappear.
+): { action: NpcAction; claimedContractIndex?: number; claimedFromPool?: number } {
+  // THE SHARED JOB POOL (T-106, generalised by N10). A captain trading anywhere
+  // works the same per-system pool the player's board is drawn from, through the
+  // engine's own `generateManifestBoard` at the depth that system's pool can
+  // currently supply. Two paths, ONE pool:
+  //
+  //   - IN THE PLAYER'S SYSTEM, with the dusk's claim unspent, they take a
+  //     specific offer off the player's LIVE board — the visible snipe. The
+  //     caller splices it and narrates it.
+  //   - ANYWHERE ELSE they draw the local board and claim from that, and the
+  //     claim debits the same ledger, so the next board the PLAYER sees in that
+  //     system is thinner. `claimedFromPool` carries the system id back to the
+  //     caller, which owns the market record.
+  //
+  // WHY THE SECOND PATH IS NOT THE "PRIVATE BOARD" THE REVERTED ATTEMPT SHIPPED.
+  // That attempt also called `generateManifestBoard` per captain — at a hardcoded
+  // depth of 4, depleting nothing, invisible to the player, which is the parallel
+  // cost model the standing constraint forbids. The difference is the coupling in
+  // BOTH directions: the depth is read from the shared ledger and the claim is
+  // written back to it. Remove either and this becomes that.
   let claimedContractIndex: number | undefined;
+  let claimedFromPool: number | undefined;
   let contract: CargoContract;
   if (ctx.claimableBoard && ctx.claimableBoard.length > 0) {
-    const board = ctx.claimableBoard;
-    let indices = board.map((_, i) => i);
-
-    // N4 · A smuggler takes the rim job when the board offers one. This is the
-    // archetype's only reach into WHICH contract is claimed rather than how often
-    // — the frequency lives in the content multiplier table, this is the
-    // destination bias, and it is the same shape N10's `pickContract` will
-    // generalise to all six archetypes against the shared pool.
-    if (profile.archetype === 'smuggler') {
-      const rimIndices = indices.filter((i) => STAR_SYSTEMS[board[i].destination]?.isRim);
-      if (rimIndices.length > 0) {
-        indices = rimIndices;
-      }
-    }
-
-    const pick = Math.floor(rng.next() * indices.length);
-    claimedContractIndex = indices[pick];
+    claimedContractIndex = pickContract(
+      profile.archetype,
+      ctx.claimableBoard,
+      npc.currentSystemId,
+      rng,
+    );
     contract = ctx.claimableBoard[claimedContractIndex]!;
   } else {
-    // N1 · The offer is sized against the ship this captain actually owns,
-    // through the engine's own `contractSpecFromShip` — the same adapter the
-    // player's manifest board uses — instead of a tier-derived phantom spec.
-    contract = rollContract(npc.currentSystemId, rng, contractSpecFromShip(npc.ship), ctx.eraEvent);
+    // N1 · The offers are sized against the ship this captain actually owns,
+    // through `generateManifestBoard`'s own `contractSpecFromShip` — the same
+    // adapter the player's board uses — instead of a tier-derived phantom spec.
+    // N10 · A BOARD, not a single roll: a captain who cannot choose between jobs
+    // has no strategy to express, so the archetype selector would have nothing to
+    // act on and `pickContract` would be decoration.
+    const localBoard = generateManifestBoard(
+      npc.currentSystemId,
+      rng,
+      npc.ship,
+      jobPoolDepth(ctx.jobPoolClaims, npc.currentSystemId),
+      ctx.eraEvent,
+    );
+    contract = localBoard[pickContract(profile.archetype, localBoard, npc.currentSystemId, rng)]!;
+    claimedFromPool = npc.currentSystemId;
   }
 
   const routeDistance = systemDistance(npc.currentSystemId, contract.destination);
   const fuelCost = npcJumpFuelCost(npc.ship, routeDistance);
   refuelIfNeeded(npc, fuelCost, ctx.eraEvent);
   if (npc.ship.fuel < fuelCost) {
-    // Can't fund the haul: the claim never happens (the offer stays on the
-    // board) and the day is lost to the docks.
+    // Can't fund the haul: the claim never happens — the offer stays on the
+    // player's board AND the system's pool is not debited (neither
+    // `claimedContractIndex` nor `claimedFromPool` is returned) — and the day is
+    // lost to the docks.
     return { action: brokeIdle(npc, rng, ctx.day, events) };
   }
 
@@ -1257,14 +1413,27 @@ function executeTrade(
   // danger level inside `routeDangerFor`. A captain lost with the cargo aboard is
   // never paid — the delivery did not happen.
   if (
-    resolveNpcEncounter(npc, profile, origin, contract.destination, contract.destination, rng, ctx, events)
+    resolveNpcEncounter(
+      npc,
+      profile,
+      origin,
+      contract.destination,
+      contract.destination,
+      rng,
+      ctx,
+      events,
+    )
   ) {
+    // The job was taken off the board even though it was never delivered — the
+    // pool is debited on the CLAIM, not on the payout, which is why a captain
+    // lost with the cargo aboard still thins the port they signed at.
     return {
       action: {
         type: 'Trade',
         details: `was lost hauling ${cargoName} to ${systemName(contract.destination)}`,
       },
       claimedContractIndex,
+      claimedFromPool,
     };
   }
   npc.credits += contract.payment;
@@ -1277,6 +1446,7 @@ function executeTrade(
         details: `hauled ${cargoName} to ${systemName(contract.destination)} for ${contract.payment} credits`,
       },
       claimedContractIndex,
+      claimedFromPool,
     };
   }
   return {
@@ -1285,6 +1455,7 @@ function executeTrade(
       details: `delivered ${cargoName} to ${systemName(contract.destination)} for ${contract.payment} credits, but the run soured — a rough, costly haul`,
     },
     claimedContractIndex,
+    claimedFromPool,
   };
 }
 
@@ -1478,6 +1649,7 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
 
   let action: NpcAction;
   let claimedContractIndex: number | undefined;
+  let claimedFromPool: number | undefined;
 
   if (overridden && flawDef) {
     // Flaw Override! The flaw chooses the day.
@@ -1504,6 +1676,7 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
     const result = executeTrade(updatedNpc, profile, rng, ctx, events);
     action = result.action;
     claimedContractIndex = result.claimedContractIndex;
+    claimedFromPool = result.claimedFromPool;
   } else if (intent === 'Travel') {
     action = executeTravel(updatedNpc, profile, rng, ctx, events);
   } else if (intent === 'Combat') {
@@ -1536,5 +1709,5 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
     actionDetails: action.details,
   });
 
-  return { npc: updatedNpc, events, claimedContractIndex };
+  return { npc: updatedNpc, events, claimedContractIndex, claimedFromPool };
 }

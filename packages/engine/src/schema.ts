@@ -491,7 +491,15 @@ const MarketStateSchema = z
   .object({
     manifestBoard: z.array(CargoContractSchema),
     localFuelPrice: z.number(),
-    npcClaims: z.number(),
+    // N10 · The shared per-system job pool, replacing T-106's single
+    // `npcClaims` counter. Keyed by `String(systemId)`; a missing key is an
+    // undrained pool, so a quiet galaxy validates as `{}`. REQUIRED, not
+    // optional: the v10→v11 migration MOVES the old scalar into this record
+    // (`MIGRATIONS[10]`), and the schema being `.strict()` is what makes a
+    // half-done move fail loudly — an orphan `npcClaims` is an unknown key and
+    // a missing `jobPoolClaims` is a missing one. Same discipline as N1's
+    // `fuel`→`ship.fuel` move at v9→v10.
+    jobPoolClaims: z.record(z.string(), z.number()),
   })
   .strict();
 

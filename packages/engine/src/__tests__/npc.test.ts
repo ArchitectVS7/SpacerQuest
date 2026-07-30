@@ -103,9 +103,12 @@ function npcFor(
 // N3 added `era` to NpcDayContext (the interdiction rate is era-scaled). VETERAN
 // is the undamped rate, so a test asserting encounter behaviour sees the full
 // chance rather than Tour One's 0.5x.
+// N10 added `jobPoolClaims` — an empty ledger is an undrained galaxy, so a
+// captain trading here draws a full-depth local board.
 const NO_BOARD: NpcDayContext = {
   day: 1,
   claimableBoard: null,
+  jobPoolClaims: {},
   eraEvent: null,
   era: 'VETERAN',
 };
@@ -854,9 +857,7 @@ describe('N3 · NPC interdictions and permanent death', () => {
     /** A state with one captain killed off, and the roster otherwise untouched. */
     function withOneDead(seed = 3) {
       const state = createInitialState(seed);
-      const victim = state.npcs.find((n) =>
-        ALL_NPC_PROFILES.some((p) => p.id === n.profileId),
-      )!;
+      const victim = state.npcs.find((n) => ALL_NPC_PROFILES.some((p) => p.id === n.profileId))!;
       // Route the write through the same door the engine uses; the test owns this
       // state outright, so a direct mark is a fixture, not a cross-boundary write.
       const marked = { ...victim, dead: true, disposition: -6 };
@@ -888,7 +889,9 @@ describe('N3 · NPC interdictions and permanent death', () => {
       next = {
         ...next,
         npcs: next.npcs.map((n) =>
-          n.id === victimId ? { ...n, lastAction: { type: 'Trade' as const, details: 'hauled ore' } } : n,
+          n.id === victimId
+            ? { ...n, lastAction: { type: 'Trade' as const, details: 'hauled ore' } }
+            : n,
         ),
       };
       for (let d = 0; d < 20; d += 1) {

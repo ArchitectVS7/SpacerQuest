@@ -96,6 +96,21 @@ export interface CampaignDayStats {
   /** Destination of the best-payment offer on this dawn's manifest board (T-107
    *  route-diversity tracking); null on a completely dark board. */
   bestOfferDestination: number | null;
+  /**
+   * N10 · How many offers this dawn's board actually carried at the player's
+   * location — the DEPTH the shared job pool could supply, between
+   * `JOB_POOL_MIN_BOARD` and `JOB_POOL_BOARD_SIZE`.
+   *
+   * This is the player-facing face of contract competition and the series the
+   * step's Disproves limb is read off ("boards empty and Tour One clear
+   * collapses"). Before N10 it was a constant 4 except on the dawn after a
+   * co-located snipe, which is precisely why nobody needed to measure it.
+   */
+  boardDepth: number;
+  /** N10 · Offers taken off the player's LIVE board this dusk (`ContractClaimed`).
+   *  The VISIBLE half of competition — claims made elsewhere in the galaxy thin
+   *  `boardDepth` on a later day instead of showing up here. */
+  contractsSniped: number;
   /** Number of income-producing actions the policy actually took this day
    *  (T-201): signing a contract, travelling toward a delivery, exploring for
    *  salvage/fragments, or engaging combat (fight/talk) for gain. The
@@ -525,6 +540,16 @@ export interface CampaignStatsReport {
    *  `packages/sim/src/__tests__/protocol.test.ts`, and the CLI JSON that
    *  `reportToJson` emits for `npm run sim`. */
   subsistenceDays: number;
+  /**
+   * N10 · Offers taken off the player's live board by the cast over the whole run
+   * (`ContractClaimed`) — the run total behind `CampaignDayStats.contractsSniped`.
+   *
+   * READERS (constraint 7): the contract-competition assertions in
+   * `packages/sim/src/__tests__/campaign-contracts.test.ts`, the per-policy
+   * aggregate `contractClaims` in `balance/aggregate.ts`, and the CLI JSON that
+   * `reportToJson` emits for `npm run sim`.
+   */
+  contractClaims: number;
   combatEncounters: CombatEncounterRecord[];
   routeLegs: RouteLegRecord[];
   survival: SurvivalStats;
@@ -742,10 +767,12 @@ function countDailyEvents(events: GameEvent[]): {
   flawChecks: number;
   flawOverrides: number;
   deedsEarned: string[];
+  contractsSniped: number;
 } {
   let wireEntries = 0;
   let flawChecks = 0;
   let flawOverrides = 0;
+  let contractsSniped = 0;
   const deedsEarned: string[] = [];
 
   for (const event of events) {
@@ -758,10 +785,18 @@ function countDailyEvents(events: GameEvent[]): {
       }
     } else if (event.type === 'DeedEarned') {
       deedsEarned.push(event.deedId);
+    } else if (event.type === 'ContractClaimed') {
+      // N10 · Contract competition had NO sim reader at all before this step:
+      // `ContractClaimed` was emitted by `day.ts` and counted by nothing, so N2's
+      // "+2.0%" had to be an ad-hoc probe and no baseline has ever carried the
+      // number. That gap is the same class as N9's "the aggregate cannot see an
+      // asset" — a mechanism the instrument is blind to cannot be graded — and it
+      // has to close before this step's own capstone, not after.
+      contractsSniped += 1;
     }
   }
 
-  return { wireEntries, flawChecks, flawOverrides, deedsEarned };
+  return { wireEntries, flawChecks, flawOverrides, deedsEarned, contractsSniped };
 }
 
 /** The seven components a fitted AUTO_REPAIR module regenerates overnight.
@@ -4481,6 +4516,7 @@ export function runCampaign(
   let flawOverrides = 0;
   let wireVolume = 0;
   const bestOfferDestinations: (number | null)[] = [];
+  const boardDepths: number[] = [];
   // T-1601a behavior metrics (see the interface doc comments for readers).
   const loanUsage: LoanUsageStats = {
     loansTaken: 0,
@@ -4571,6 +4607,10 @@ export function runCampaign(
     // skipped it would silently lose those.
     ingestBalanceRecords(dawn.events, balanceSample(dayState), balance);
     bestOfferDestinations.push(bestOfferDestination(dayState.market.manifestBoard));
+    // N10 · The board's DEPTH, sampled at the same moment as its best offer and
+    // for the same reason: this is the dawn board, before the player signs
+    // anything off it and before the dusk splices a snipe out of it.
+    boardDepths.push(dayState.market.manifestBoard.length);
     const actions = resolvedPolicy.policy({
       state: resolvedPolicy.dawnBlind ? dawnState : dayState,
       dayIndex,
@@ -4677,6 +4717,12 @@ export function runCampaign(
       deedCount: state.player.registry.earned.length,
       renownRank: state.player.registry.renownRank,
       bestOfferDestination: bestOfferDestinations[dayIndex] ?? null,
+      // N10 · Sampled from the DAWN board (`boardDepths`, pushed beside
+      // `bestOfferDestinations` above) and not from `state.market` here: by this
+      // point the dusk has spliced any sniped offer out, so reading it now would
+      // conflate "the pool supplied 3" with "4 were offered and one was taken".
+      boardDepth: boardDepths[dayIndex] ?? 0,
+      contractsSniped: counts.contractsSniped,
       incomeActionCount,
       fuelStarved,
     });
@@ -4717,6 +4763,10 @@ export function runCampaign(
     hangoutPlay,
     tourOne: metrics.tourOne,
     subsistenceDays: metrics.subsistenceDays,
+    // N10 · Summed from the per-day series rather than kept as a second running
+    // counter, so the scalar and the trajectory cannot disagree — the discipline
+    // T-1601a's `fuelStarved` established one field above.
+    contractClaims: daily.reduce((total, day) => total + day.contractsSniped, 0),
     combatEncounters: balance.encounters,
     routeLegs: balance.legs,
     survival,
