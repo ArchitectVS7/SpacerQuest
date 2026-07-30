@@ -38,6 +38,7 @@ import {
 import {
   CargoContract,
   CheckResult,
+  Edition,
   EncounterInterceptorState,
   EraEventState,
   GameEvent,
@@ -72,6 +73,11 @@ import {
   syncMaxFuel,
 } from './economy.js';
 import { navFuelFactor } from './components.js';
+// N11 · The captain's deeds accrue through the PLAYER's own deed machinery — one
+// matcher, one count ladder, one `rankForDeedCount`. `deeds.ts` does not import
+// this file, so this direction closes no cycle.
+import { accrueDeeds } from './deeds.js';
+import { demoLocked } from './demo.js';
 import {
   applyShipyardMutation,
   componentTierForStrength,
@@ -520,6 +526,15 @@ export interface NpcDayContext {
    *  flying, so exempting the cast from it would be an exemption in the other
    *  direction. Read by {@link resolveNpcEncounter}. */
   era: EraId;
+  /**
+   * N11 · The career's licence, for the CONQUEROR ceiling on a captain's deed
+   * accrual. The mirror of the `era` field directly above, and the same argument: a
+   * demo licence belongs to the WORLD, not to who is flying it, so a captain meets
+   * the same capstone lock the player does — asked through the one `demoLocked`
+   * predicate (`demo.ts`), never re-implemented here. The reverted attempt exempted
+   * the cast from this cap in a code comment; that exemption is not re-granted.
+   */
+  edition: Edition;
 }
 
 export interface NpcDayResult {
@@ -877,6 +892,10 @@ function resolveNpcEncounter(
   rng: SeededRng,
   ctx: NpcDayContext,
   events: GameEvent[],
+  /** N11 · The captain's LOCAL deed-source batch. See {@link resolveNpcDay} for why
+   *  it is separate from `events`: anything pushed into `events` reaches the shared
+   *  day array (`day.ts`) and would earn the PLAYER the deed. */
+  deedSource: GameEvent[],
 ): boolean {
   const danger = routeDangerFor(origin, destination, ctx.eraEvent, haulingTo);
   // The multiplier chain, in the player's order. Two of the player's four terms
@@ -1002,6 +1021,34 @@ function resolveNpcEncounter(
   }
 
   const rounds = Math.min(round, NPC_ENCOUNTER_MAX_ROUNDS);
+  // N11 · THE FIGHT AS A DEED SOURCE — the player's own `EncounterResolved`, in the
+  // shape `actions/combat.ts:65` emits it, for the three resolutions that have an
+  // EXACT player analogue: `talked-down`, `escaped`, `defeated` (with the same
+  // `COMBAT_SALVAGE_PER_TIER x tier` the NpcEncounter record already carries). That
+  // is what reaches content `first_combat_win` / `silver_tongue` / `clean_getaway`
+  // through the same matcher the player's fight goes through.
+  //
+  // `survived` and `destroyed` emit NOTHING, deliberately and not as a withholding:
+  // `survived` is the round-limit break-off (or an interceptor that won its own
+  // retreat roll) and `destroyed` is the captain's death — no content deed matches
+  // either resolution today, and inventing a resolution literal so one would is
+  // authoring a rule, not accruing against one.
+  //
+  // The id is a LOCAL correlation id in `travel.ts`'s format. It labels a batch that
+  // never enters `state.eventLog`, so it names no persisted encounter — and no deed
+  // matcher reads `encounterId` (it is not on `EVENT_PATHS.EncounterResolved`).
+  if (resolution === 'talked-down' || resolution === 'escaped' || resolution === 'defeated') {
+    deedSource.push({
+      type: 'EncounterResolved',
+      encounterId: `npc-enc-${ctx.day}-${npc.id}-${origin}-${destination}-${interceptor.id}`,
+      resolution,
+      round: rounds,
+      interceptorId: interceptor.id,
+      ...(resolution === 'defeated'
+        ? { salvageCredits: COMBAT_SALVAGE_PER_TIER * interceptor.tier }
+        : {}),
+    });
+  }
   events.push({
     type: 'NpcEncounter',
     day: ctx.day,
@@ -1327,6 +1374,8 @@ function executeTrade(
   rng: SeededRng,
   ctx: NpcDayContext,
   events: GameEvent[],
+  /** N11 · The captain's LOCAL deed-source batch — see {@link resolveNpcDay}. */
+  deedSource: GameEvent[],
 ): { action: NpcAction; claimedContractIndex?: number; claimedFromPool?: number } {
   // THE SHARED JOB POOL (T-106, generalised by N10). A captain trading anywhere
   // works the same per-system pool the player's board is drawn from, through the
@@ -1387,6 +1436,22 @@ function executeTrade(
     return { action: brokeIdle(npc, rng, ctx.day, events) };
   }
 
+  // N11 · THE CLAIM IS SIGNED HERE, and this is the earliest honest place for it:
+  // the bail directly above is where the code's own comment says "the claim never
+  // happens", so past it the manifest IS on this captain's papers. The player's own
+  // sign-contract shape (`actions/trade.ts`), which is what reaches content
+  // `first_manifest` through the same matcher.
+  deedSource.push({
+    type: 'TradeEvent',
+    characterId: npc.id,
+    action: 'sign-contract',
+    success: true,
+    destination: contract.destination,
+    cargoType: contract.cargoType,
+    payment: contract.payment,
+    actionDetails: `Signed a manifest for ${systemName(contract.destination)}.`,
+  });
+
   // Coarse NPC day: sign, jump, deliver in one dusk tick. Real fuel out —
   // the same formula that prices the player's day. The contract is fulfilled
   // and paid either way (payment is contractual); the Trade check (T-1201)
@@ -1422,8 +1487,22 @@ function executeTrade(
       rng,
       ctx,
       events,
+      deedSource,
     )
   ) {
+    // N11 · The leg that ended in a wreck, in the player's own interrupted-jump
+    // shape (`actions/travel.ts`, the interdiction branch): no arrival, so
+    // `success: false` — which is why it matches none of the four TravelEvent deeds,
+    // all of which require `success: true`.
+    deedSource.push({
+      type: 'TravelEvent',
+      characterId: npc.id,
+      origin,
+      destination: contract.destination,
+      fuelUsed: fuelCost,
+      success: false,
+      interrupted: true,
+    });
     // The job was taken off the board even though it was never delivered — the
     // pool is debited on the CLAIM, not on the payout, which is why a captain
     // lost with the cargo aboard still thins the port they signed at.
@@ -1436,9 +1515,49 @@ function executeTrade(
       claimedFromPool,
     };
   }
+  // N11 · THE JUMP ARRIVED. One `TravelEvent` per jump actually taken, in
+  // `actions/travel.ts`'s arrival shape. Note the parity fact that makes
+  // `success: true` correct even on a rough jump: since T-1605 an ORDINARY player
+  // jump takes no pilot check and ALWAYS arrives, so a captain's failed
+  // `rollNpcCheck('Travel')` costs extra fuel but is still an arrival. Reaches
+  // `first_jump`, `road_regular`, `rimward_bound` and — evaluated against this
+  // captain's own tank — `fuel_fumes_arrival`.
+  deedSource.push({
+    type: 'TravelEvent',
+    characterId: npc.id,
+    origin,
+    destination: contract.destination,
+    fuelUsed: fuelCost,
+    success: true,
+  });
   npc.credits += contract.payment;
 
   const result = rollNpcCheck(npc, profile, 'Trade', rng, events);
+  // N11 · THE DELIVERY, emitted AFTER the check so no unresolved outcome is stamped
+  // — the reverted attempt's defect #5 fixed at its root rather than by flipping a
+  // flag. `success: true` is the honest value on two pieces of evidence:
+  //
+  //   (i) the PLAYER's delivery emits `success: true` whenever the payment lands
+  //       (`actions/travel.ts`, the activeContract branch) — it is not gated on any
+  //       check either, and the credit above has already landed here;
+  //   (ii) this file's own ruling, forty lines up: the NPC Trade check "decides how
+  //       CLEANLY the run went" and carries NO economic swing by design.
+  //
+  // Gating the deed on `result.success` would make `first_delivery` / `fat_manifest`
+  // / `rim_runner` strictly HARDER for a captain than for the player — an exemption
+  // in the other direction — and it would land that penalty on precisely the
+  // low-TRADE poor captains N11's Disproves limb warns about. Recorded as a ruling
+  // under N11 in `docs/NPC_REDESIGN.md`, not left as a silent code comment.
+  deedSource.push({
+    type: 'TradeEvent',
+    characterId: npc.id,
+    action: 'deliver-cargo',
+    success: true,
+    destination: contract.destination,
+    cargoType: contract.cargoType,
+    payment: contract.payment,
+    actionDetails: `Delivered cargo! Earned ${contract.payment} credits.`,
+  });
   if (result.success) {
     return {
       action: {
@@ -1465,6 +1584,8 @@ function executeTravel(
   rng: SeededRng,
   ctx: NpcDayContext,
   events: GameEvent[],
+  /** N11 · The captain's LOCAL deed-source batch — see {@link resolveNpcDay}. */
+  deedSource: GameEvent[],
 ): NpcAction {
   let options = NPC_SYSTEM_IDS.filter((id) => id !== npc.currentSystemId);
 
@@ -1491,15 +1612,55 @@ function executeTravel(
   npc.currentSystemId = destination;
   // N3 · The lane can be interdicted. A captain who loses the ship here is done —
   // no verb resolves, and their day ends with the wreck.
-  if (resolveNpcEncounter(npc, profile, origin, destination, undefined, rng, ctx, events)) {
+  if (
+    resolveNpcEncounter(npc, profile, origin, destination, undefined, rng, ctx, events, deedSource)
+  ) {
+    // N11 · The wreck's leg, in the player's interrupted-jump shape. No arrival, so
+    // `success: false` matches none of the TravelEvent deeds.
+    deedSource.push({
+      type: 'TravelEvent',
+      characterId: npc.id,
+      origin,
+      destination,
+      fuelUsed: fuelCost,
+      success: false,
+      interrupted: true,
+    });
     return { type: 'Travel', details: `was lost on the run to ${systemName(destination)}` };
   }
   // A Travel (PILOT) check decides a clean jump vs a rough one (T-1201).
   const result = rollNpcCheck(npc, profile, 'Travel', rng, events);
   if (result.success) {
+    // N11 · The arrival. Same shape and same reasoning as the Trade leg's jump: an
+    // ordinary player jump always arrives (T-1605), so a captain's arrival is
+    // `success: true` on the clean AND the rough branch — see the comment on the
+    // rough branch below, which is the one where the parity fact does the work.
+    deedSource.push({
+      type: 'TravelEvent',
+      characterId: npc.id,
+      origin,
+      destination,
+      fuelUsed: fuelCost,
+      success: true,
+    });
     return { type: 'Travel', details: `jumped to ${systemName(destination)}` };
   }
   npc.ship.fuel = Math.max(0, npc.ship.fuel - NPC_TRAVEL_FAIL_EXTRA_FUEL);
+  // N11 · A ROUGH JUMP IS STILL AN ARRIVAL, and this is where that matters. Since
+  // T-1605 the player's ordinary jump takes no pilot check at all and cannot fail to
+  // arrive; a captain's failed Travel check buys `NPC_TRAVEL_FAIL_EXTRA_FUEL` of
+  // grief, not a cancelled jump. Marking it `success: false` would make the four
+  // TravelEvent deeds harder for a captain than for the player. The extra burn is
+  // subtracted FIRST, so `fuel_fumes_arrival` reads the tank the captain actually
+  // limped in on.
+  deedSource.push({
+    type: 'TravelEvent',
+    characterId: npc.id,
+    origin,
+    destination,
+    fuelUsed: fuelCost + NPC_TRAVEL_FAIL_EXTRA_FUEL,
+    success: true,
+  });
   return {
     type: 'Travel',
     details: `made a rough jump to ${systemName(destination)}, burning extra fuel`,
@@ -1603,6 +1764,18 @@ function executeSocialize(
 
 export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext): NpcDayResult {
   const events: GameEvent[] = [];
+  // N11 · THE CAPTAIN'S OWN DEED-SOURCE BATCH, and it is LOCAL ON PURPOSE — this is
+  // the single most load-bearing structural decision in the step.
+  //
+  // `day.ts` pushes the `events` array this function returns into the same array it
+  // later hands to the PLAYER's `evaluateDeeds`. So a captain's `TradeEvent` /
+  // `TravelEvent` / `EncounterResolved` in `events` would earn the PLAYER
+  // `first_delivery`, `road_regular`, `first_combat_win` and the rest. (Today's
+  // isolation is accidental, not designed: `broker_shark` only escapes because it
+  // requires `actionContext: 'haggle'` and NPC checks are tagged with
+  // `NPC_CHECK_CONTEXT`.) The batch therefore stays here, is evaluated here, and is
+  // discarded here.
+  const deedSource: GameEvent[] = [];
   // The subject's private copy for the day — this is why an NPC's OWN turn does
   // not need `mutableNpc`. The JSON round trip STAYS, against the instinct to
   // match `mutableNpc`'s `structuredClone` on the same type: N1 grew this record
@@ -1673,12 +1846,12 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
       updatedNpc.ship.fuel = Math.max(0, updatedNpc.ship.fuel + flawDef.fuel);
     }
   } else if (intent === 'Trade') {
-    const result = executeTrade(updatedNpc, profile, rng, ctx, events);
+    const result = executeTrade(updatedNpc, profile, rng, ctx, events, deedSource);
     action = result.action;
     claimedContractIndex = result.claimedContractIndex;
     claimedFromPool = result.claimedFromPool;
   } else if (intent === 'Travel') {
-    action = executeTravel(updatedNpc, profile, rng, ctx, events);
+    action = executeTravel(updatedNpc, profile, rng, ctx, events, deedSource);
   } else if (intent === 'Combat') {
     action = executeCombat(updatedNpc, profile, rng, ctx, events);
   } else if (intent === 'Patrol') {
@@ -1700,6 +1873,44 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
   //    is a purchase made alongside the day's work, not instead of it, exactly as a
   //    player's yard die rides beside their trade plan.
   considerRefit(updatedNpc, profile, ctx.day, events);
+
+  // 5. N11 · THE REGISTRY. Same position in the captain's turn as the player's dusk
+  //    evaluation (`day.ts`, after the day's events are collected), through the SAME
+  //    `accrueDeeds` the player goes through — same content `DEEDS`, same
+  //    `RENOWN_DEED_THRESHOLDS`, same `rankForDeedCount`, same CONQUEROR ceiling.
+  //    Draws no rng, which is what keeps the day-loop EVENT goldens byte-identical.
+  //
+  //    COST: `accrueDeeds` is O(sourceEvents x DEEDS) and never scans an event log —
+  //    the historical count rides on `registry.matchCounts`. A captain's batch is at
+  //    most four events against the 44 shipped deeds, and an Idle / Patrol / Socialize day emits
+  //    none at all, so `accrueDeeds`'s empty-batch early return makes those days free.
+  //    That is what fits thirty captains inside the ~40 ms/day envelope N0 bought.
+  //
+  //    THE RETURNED EVENTS ARE DELIBERATELY DISCARDED, and that is a recorded scope
+  //    boundary rather than a silent drop. `DeedEarned`, `RenownRankUp` and the
+  //    rank-citation `WireEntry` are PLAYER-FACING records with no actor field: put a
+  //    captain's on the wire and it renders as the player's own deed and reaches the
+  //    achievement path. The durable record of a captain's standing is the registry
+  //    this call writes; SURFACING it (the daily boast) is N6/N14's job, and it needs
+  //    an actor-tagged event shape that does not exist yet.
+  //
+  //    OWED, AND NAMED SO IT IS NOT MISTAKEN FOR DONE: "careers survived" — the third
+  //    source N11 lists — is UNSOURCED. Content ships no survival/day/career-triggered
+  //    deed, so sourcing it means AUTHORING a new player-facing content deed, which
+  //    moves `rulesFingerprint` and owes its own capstone. An NPC-only deed would be
+  //    the second deed table this step exists to prevent. Likewise `considerRefit` /
+  //    `fillHold` emit no `ShipyardEvent`, so `yard_rat` / `cargo_expansion` do not
+  //    accrue — the cheapest next widening lever if T-023 measures the fighter and
+  //    explorer floors at zero, to be PROPOSED to the owner rather than slipped in.
+  //
+  //    THIS IS THE WRITE SITE for `NpcState.registry`: the captain record is passed
+  //    as the actor itself (no wrapper — see `DeedActor`), so `accrueDeeds` pushes
+  //    onto `updatedNpc.registry.earned`, updates `updatedNpc.registry.matchCounts`
+  //    and re-derives `updatedNpc.registry.renownRank` in place on this captain.
+  accrueDeeds(updatedNpc, deedSource, {
+    day: ctx.day,
+    conquerorLocked: demoLocked(ctx, 'conqueror'),
+  });
 
   updatedNpc.lastAction = action;
 

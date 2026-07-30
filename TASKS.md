@@ -257,7 +257,7 @@ a permanent lockout with **no recourse**, which standing-constraint consequence 
 an exemption: a gate the actor can never open is not the same rule the player plays under,
 because the player can EARN the key.
 
-### T-020 · NPC deed registry, fed by the actions captains already perform — `status: TODO` · `coder: opus` · `after: T-012`
+### T-020 · NPC deed registry, fed by the actions captains already perform — `status: DONE` · `coder: opus` · `after: T-012`
 
 Give every simulated captain a deed registry that accrues from their real actions, through
 the **same** deed definitions and thresholds the player uses (`DEEDS` and
@@ -292,6 +292,40 @@ NPC-specific copy); `createInitialState(1)` gives every captain zero deeds and r
 `LIEUTENANT`, asserted by a test; `CURRENT_SAVE_VERSION === 12` with a `MIGRATIONS[11]`
 entry, a v11→v12 round-trip test, and a test asserting `deserializeState` and the migration
 agree; gate green.
+
+**Delivered (2026-07-29):** Every simulated captain now accrues deeds through the exact
+same machinery the player uses. `deeds.ts`'s `evaluateDeeds` was generalized into
+`accrueDeeds(actor: DeedActor, sourceEvents, ctx)`, an actor-shaped function taking either
+`state.player` or an `NpcState` with no wrapper object, backed by one matcher
+(`matchesState` now reads a `{ player: actor }` view so `STATE_PATHS` stays literally true
+for both sides), one count ladder, and one `rankForDeedCount` rank derivation — content's
+`DEEDS` and `RENOWN_DEED_THRESHOLDS` remain the only source of truth, with no NPC-only deed
+table (`grep -rn "RENOWN_DEED_THRESHOLDS" packages/engine/src` shows no second copy).
+`NpcState` gained a `registry: DeedRegistryState` field, written at the real verb call
+sites in `npc.ts` (haul delivery, jump arrival, interdiction combat, socialize) via a new
+`accrueDeeds(updatedNpc, deedSource, ctx)` write site, and every captain is seeded through
+one shared `emptyDeedRegistry()` (called from `createInitialState`, `deserializeState`, and
+the new `MIGRATIONS[11]` entry) so no captain is born or migrated with unearned rank —
+`createInitialState` gives every captain zero deeds and rank `LIEUTENANT`, pinned by a
+test. `CURRENT_SAVE_VERSION` bumped 11 → 12 with a `MIGRATIONS[11]` backfill, a v11→v12
+round-trip test, and a test asserting the migration and `deserializeState` agree.
+`docs/NPC_REDESIGN.md` records three ruled scope boundaries rather than silent exemptions:
+a captain's `deliver-cargo` legitimately carries `success: true` regardless of the Trade
+check (matching the player's own delivery event and the existing "no economic swing"
+ruling on that check); "careers survived" is left **unsourced** because content ships no
+survival/day-count deed and inventing an NPC-only one would recreate the second deed table
+this task exists to prevent; and encounter/yard verbs that emit no matching deed source
+are named as the cheapest next widening lever rather than fabricated. A measured 3-seed x
+120-day ambient run shows the reachable set is bounded to 13 deed ids with ADMIRAL as the
+observed ceiling — a structural finding for T-021/T-023, not a threshold to retune. The
+smoke fixture (`docs/balance/smoke/tiers.json`) was re-extracted from a fresh 8,000-row
+capstone (`docs/balance/baseline-t020-registry.json`) because the registry moved
+`rulesFingerprint` and `saveSchemaVersion`; `balance:diff` against the shipped baseline
+reports nothing moved, which is expected since no `PolicyAggregate` field can see an NPC
+deed until a later task wires one in — the baseline of record is unchanged. Scope boundary:
+this task delivers the registry and its accrual plumbing only; the Renown gate itself
+(rank-gated equipment in `considerRefit`) remains T-021's, untouched here.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root. · attempts=2/4.
 
 ### T-021 · The Renown gate becomes reachable — `considerRefit` learns rank-gated equipment — `status: TODO` · `coder: opus` · `after: T-020`
 

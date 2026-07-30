@@ -1974,6 +1974,69 @@ bullet above.
 > hardcoded**, so a *failed* Trade check still credited a delivery deed. And
 > `eventIndex: 0` was stuffed into every earned deed as a placeholder.
 
+#### RULINGS RECORDED AT T-020 (the rebuild)
+
+The doc's own instruction on the reverted attempt's exemptions is *"record them as ruled
+exclusions; do not leave them as silent code comments"*. Three, and only three, are owed:
+
+- **A captain's `deliver-cargo` carries `success: true` regardless of the Trade check,
+  and that is parity, not the reverted attempt's bug.** The defect at `7334c5d5` was
+  emitting the event *before* the check with the flag hardcoded; T-020 emits it *after*
+  the check, and the flag's honest value is still `true` on two pieces of evidence. (i)
+  The **player's** delivery emits `success: true` whenever the payment lands
+  (`actions/travel.ts`) — it is not gated on a check either. (ii) `npc.ts` already rules
+  that the NPC Trade check *"decides how CLEANLY the run went"* and carries **no**
+  economic swing, for the measured reason recorded at that site. Gating the deed on
+  `result.success` would make `first_delivery` / `fat_manifest` / `rim_runner` strictly
+  **harder** for a captain than for the player — the exemption in the other direction —
+  and would land the penalty on exactly the low-TRADE poor captains this step's Disproves
+  limb warns about. Likewise a **rough jump is still an arrival** (`success: true`),
+  because since T-1605 an ordinary player jump takes no pilot check and always arrives.
+- **"Careers survived" is UNSOURCED, and is owed rather than delivered.** Content ships
+  no survival / day-count / career-triggered deed (44 deeds, verified), so sourcing that
+  limb of N11's Change means **authoring a new player-facing content deed** — which moves
+  `rulesFingerprint` and owes its own capstone. An NPC-only deed would be the second deed
+  table this step exists to prevent. Recorded at the accrual site in `npc.ts`.
+- **`survived` / `destroyed` encounters and the yard emit no deed source.** Neither
+  encounter resolution matches any content deed today, so nothing is being withheld;
+  inventing a resolution literal so one would is authoring a rule. `considerRefit` /
+  `fillHold` emit no `ShipyardEvent`, so `yard_rat` / `cargo_expansion` do not accrue —
+  the cheapest next widening lever if T-023 measures the fighter/explorer floor at zero,
+  to be proposed to the owner rather than slipped in. The CONQUEROR ceiling and the
+  `state`-matcher skip are **not** ruled exclusions: both exemptions are removed, the cap
+  through `NpcDayContext.edition` → the one `demoLocked` predicate, and the matcher by
+  scoping its read to the actor's own tank so `fuel_fumes_arrival` is earnable.
+
+**THE FIELD'S RANK CEILING IS BOUNDED BY THE SOURCE SET, measured at T-020, and it is a
+structural fact rather than a pacing finding.** Over 3 seeds x 120 ambient days the cast's
+earned ids are **exactly 13** — `first_manifest`, `first_delivery`, `fat_manifest`,
+`rim_runner`, `mercy_runner`, `contraband_run`, `first_jump`, `road_regular`,
+`rimward_bound`, `fuel_fumes_arrival`, `first_combat_win`, `silver_tongue`,
+`clean_getaway` — and the best captain observed holds all 13, i.e. **ADMIRAL is the
+ceiling** while `TOP_DOG` (17) and above stay unreachable and `CAPTAIN`-gated
+`STAR_BUSTER` / `ARCH_ANGEL` become reachable at 5. Rank distribution at day 120, 3 seeds
+x 41 records: LIEUTENANT 35 · COMMANDER 8 · CAPTAIN 15 · COMMODORE 64 · ADMIRAL 1. That is
+an input to T-021/T-023 and never a reason to touch `RENOWN_DEED_THRESHOLDS`.
+
+**THE SMOKE FIXTURE WAS RE-EXTRACTED AT T-020, FROM ITS OWN CAPSTONE — and the diff says
+NOTHING MOVED, which is the honest reading here rather than the stale-`dist` tell.** The
+registry moved `rulesFingerprint` (`3079dec9aa5a4af0` → `c0ee134318b4ef6f`, 57 rule sources)
+and `saveSchemaVersion` (11 → 12), so `docs/balance/smoke/tiers.json` went stale exactly as
+N7 intends. Fixed the sanctioned way and no other: `npm run format` first (no-op), then a
+full 8,000-row capstone at `docs/balance/baseline-t020-registry.json` (1,000 seeds x 120 days
+x 8 policies, `--milestone-days 21,29,30,41,60,120`, shards 1/8…8/8 merged, merge line
+reported 8,000 rows), then a re-extract that printed `spreads harvested`. No fingerprint,
+band, threshold or golden was edited. `balance:diff` against `baseline-n10-shipped.json`
+reports **NOTHING MOVED — every compared field equal**, and the reason it is not the
+byte-identical control-arm failure the standing constraint warns about is structural, checked
+three ways: the sweep resolved `@spacerquest/engine` to a freshly built `dist` (probed:
+`CURRENT_SAVE_VERSION 12`, `npcs[0].registry` present); `accrueDeeds` draws no rng and feeds
+back into no captain decision until T-021 opens the gate; and no field on `PolicyAggregate`
+can see an NPC deed until T-022 adds one. The capstone is **blind to this step by
+construction** — which is precisely why T-022 lands before T-023. Baseline of record is
+UNCHANGED (`baseline-n10-shipped.json`); T-023 still owns the authoritative `baseline-n11-*`
+capstone, the four-limb verdict and any re-pin.
+
 ### N12 — NPCs buy ports (MUST-HAVE · owner ruling 2026-07-29 · LANDS BEFORE N8)
 
 - **Why, and why the owner flagged it:** N9 measured port stakes as the game's biggest

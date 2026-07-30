@@ -19,6 +19,8 @@ import {
   // N3
   COMBAT_SALVAGE_PER_TIER,
   NPC_ENCOUNTER_MAX_ROUNDS,
+  // N11 · the ONE deed slate — a captain's earned ids are asserted to be members of it
+  DEEDS,
 } from '@spacerquest/content';
 import {
   NPC_START_FUEL,
@@ -35,7 +37,13 @@ import { selectEncounterInterceptor } from '../actions/travel.js';
 import { tributeForRound } from '../combatRules.js';
 import { starterShip } from '../state.js';
 import { ShipComponentId } from '../types.js';
-import { calculateFuelCapacity, contractSpecFromShip, jumpFuelCost } from '../economy.js';
+import {
+  calculateFuelCapacity,
+  contractSpecFromShip,
+  generateManifestBoard,
+  jumpFuelCost,
+} from '../economy.js';
+import { emptyDeedRegistry, rankForDeedCount } from '../deeds.js';
 import { navFuelFactor } from '../components.js';
 import { advanceDay } from '../day.js';
 
@@ -48,7 +56,7 @@ const MAX_NPC_ROUTE_DISTANCE = Math.max(
     .filter((id) => id <= 20)
     .flatMap((a, _i, ids) => ids.map((b) => distance(a, b))),
 );
-import { createInitialState } from '../state.js';
+import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { SeededRng } from '../rng.js';
 import { GameEvent, NpcState } from '../types.js';
 
@@ -95,6 +103,9 @@ function npcFor(
     currentSystemId: 1,
     credits: 5000,
     ship,
+    // N11 · Every captain carries a real registry now, seeded through the engine's
+    // one `emptyDeedRegistry()` exactly as `createInitialState` seeds it.
+    registry: emptyDeedRegistry(),
     disposition: 0,
     ...rest,
   };
@@ -105,12 +116,15 @@ function npcFor(
 // chance rather than Tour One's 0.5x.
 // N10 added `jobPoolClaims` — an empty ledger is an undrained galaxy, so a
 // captain trading here draws a full-depth local board.
+// N11 added `edition` — the demo's CONQUEROR ceiling is a property of the world, so
+// a captain's deed accrual asks the same `demoLocked` question the player's does.
 const NO_BOARD: NpcDayContext = {
   day: 1,
   claimableBoard: null,
   jobPoolClaims: {},
   eraEvent: null,
   era: 'VETERAN',
+  edition: 'full',
 };
 
 describe('NPC Resolution', () => {
@@ -1088,5 +1102,118 @@ describe('N4 · the intent blend', () => {
     } finally {
       ARCHETYPE_INTENT_MULTIPLIERS['fighter'] = saved;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N11 · CAPTAINS EARN DEEDS AND RENOWN.
+//
+// The step's accept criteria, each as its own case: zero at birth (no synthetic
+// backfill), real accrual over an ambient career, every earned id a member of
+// content `DEEDS`, `rankForDeedCount` as the ONLY rank derivation, and no leak into
+// the player's own registry.
+// ---------------------------------------------------------------------------
+describe('N11 · captains earn deeds and Renown', () => {
+  const DEED_IDS = new Set(DEEDS.map((deed) => deed.id));
+
+  it('createInitialState(1) gives every captain ZERO deeds at LIEUTENANT', () => {
+    // The anti-backfill pin. N11's ruling: the fast-forward allowance covers the
+    // SOURCE, never unearned rank — a tier-5 captain seeded with a rank they never
+    // earned is the "constant recomputed from profile" phantom N1 killed.
+    const state = createInitialState(1);
+    expect(state.npcs.length).toBeGreaterThan(0);
+    // Non-vacuous: the roster really does contain top-tier captains who would have
+    // been the tempting ones to seed.
+    expect(
+      state.npcs.some(
+        (npc) => (ALL_NPC_PROFILES.find((p) => p.id === npc.profileId)?.tier ?? 0) >= 5,
+      ),
+    ).toBe(true);
+    for (const npc of state.npcs) {
+      expect(npc.registry.earned).toEqual([]);
+      expect(npc.registry.matchCounts).toEqual({});
+      expect(npc.registry.renownRank).toBe('LIEUTENANT');
+      expect(npc.registry.renownRank).toBe(rankForDeedCount(0));
+    }
+  });
+
+  it('a single forced Trade day writes the captain’s registry', () => {
+    // Unit-level, so the ambient-run assertion below cannot pass by accident of a
+    // long run: one claimable board, one Trade day, one registry write.
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === 'npc-cargo-king')!;
+    const board = generateManifestBoard(1, new SeededRng(7), npcShipForProfile(profile), 4, null);
+    let wrote = false;
+    for (let seed = 1; seed <= 60 && !wrote; seed++) {
+      const { npc } = resolveNpcDay(npcFor('npc-cargo-king'), new SeededRng(seed), {
+        ...NO_BOARD,
+        claimableBoard: board,
+      });
+      if (npc.lastAction?.type !== 'Trade') continue;
+      if (npc.registry.earned.length === 0) continue;
+      wrote = true;
+      // A signed manifest and a delivery both reach content deeds, and every id is a
+      // real one.
+      for (const deed of npc.registry.earned) expect(DEED_IDS.has(deed.id)).toBe(true);
+      expect(npc.registry.earned.map((deed) => deed.id)).toContain('first_manifest');
+      expect(npc.registry.renownRank).toBe(rankForDeedCount(npc.registry.earned.length));
+    }
+    expect(wrote, 'no captain wrote a registry across 60 seeded Trade days').toBe(true);
+  });
+
+  it('accrues real deeds and real ranks across a 120-day ambient run', () => {
+    let state = createInitialState(1);
+    for (let day = 0; day < 120; day++) state = advanceDay(state, []).state;
+
+    const total = state.npcs.reduce((sum, npc) => sum + npc.registry.earned.length, 0);
+    expect(total).toBeGreaterThan(0);
+
+    for (const npc of state.npcs) {
+      // EVERY earned id is a member of content `DEEDS` — no NPC-only deed table.
+      for (const deed of npc.registry.earned) {
+        expect(DEED_IDS.has(deed.id), `${npc.id} earned unknown deed ${deed.id}`).toBe(true);
+      }
+      // …and no id twice.
+      expect(new Set(npc.registry.earned.map((deed) => deed.id)).size).toBe(
+        npc.registry.earned.length,
+      );
+      // THE MECHANICAL PROOF that `rankForDeedCount` is the only rank derivation for
+      // the cast: every captain's stored rank is exactly what their count buys.
+      expect(npc.registry.renownRank, `${npc.id} rank`).toBe(
+        rankForDeedCount(npc.registry.earned.length),
+      );
+    }
+
+    // The dead end N11 exists to remove: at least one captain outranks the opening
+    // rung, so `actorRankIndex` is no longer pinned below every gate.
+    expect(state.npcs.some((npc) => npc.registry.renownRank !== 'LIEUTENANT')).toBe(true);
+  });
+
+  it('no captain’s deed leaks into the PLAYER’s registry over 120 ambient days', () => {
+    // THE LEAK THIS GUARDS: `day.ts` pushes `npcEvents` into the same array it later
+    // hands to `evaluateDeeds`, so a captain's TradeEvent/TravelEvent/EncounterResolved
+    // in that array would earn the PLAYER the deed. The captain's deed-source batch is
+    // local for exactly this reason.
+    let state = createInitialState(1);
+    for (let day = 0; day < 120; day++) state = advanceDay(state, []).state;
+
+    // The player took no action for 120 days, so they earned nothing at all — the
+    // strongest form of the assertion, and it holds because the only player-side
+    // events an empty career logs (DawnRoll / DayAdvanced / wire lines) match no deed.
+    expect(state.player.registry.earned).toEqual([]);
+    expect(state.player.registry.matchCounts).toEqual({});
+    // And the log agrees: one DeedEarned per player row, which is zero here.
+    expect(state.eventLog.filter((event) => event.type === 'DeedEarned')).toHaveLength(
+      state.player.registry.earned.length,
+    );
+    // The captains, meanwhile, demonstrably earned — so the assertion above is about
+    // isolation, not about a dead accrual path.
+    expect(state.npcs.reduce((sum, npc) => sum + npc.registry.earned.length, 0)).toBeGreaterThan(0);
+  });
+
+  it('a captain’s registry survives the save round trip with the rank it earned', () => {
+    let state = createInitialState(3);
+    for (let day = 0; day < 60; day++) state = advanceDay(state, []).state;
+    const restored = deserializeState(serializeState(state));
+    expect(restored.npcs.map((npc) => npc.registry)).toEqual(state.npcs.map((npc) => npc.registry));
   });
 });

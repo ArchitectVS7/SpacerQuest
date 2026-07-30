@@ -5,6 +5,7 @@ import { advanceDay } from '../day.js';
 import { resolveTrade } from '../actions/trade.js';
 import { resolveCombat, RUN_FUEL_COST, FIGHT_FUEL_COST } from '../actions/combat.js';
 import { npcShipForProfile, resolveNpcDay } from '../npc.js';
+import { emptyDeedRegistry } from '../deeds.js';
 import { rollDawnHand } from '../dice.js';
 import { SeededRng } from '../rng.js';
 import { EncounterState, NpcState } from '../types.js';
@@ -243,6 +244,8 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
       credits: 5000,
       // N1: the tank rides on the captain's own ship, seeded from their tier.
       ship: npcShipForProfile(profile),
+      // N11: the captain's own (empty) deed registry, through the one seed function.
+      registry: emptyDeedRegistry(),
       disposition: 0,
     };
   }
@@ -257,6 +260,7 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
         jobPoolClaims: {},
         era: 'VETERAN' as const,
         eraEvent: null,
+        edition: 'full' as const,
       });
       const flawCheck = events.find((e) => e.type === 'FlawCheck');
       if (flawCheck?.type === 'FlawCheck') {
@@ -286,6 +290,7 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
         jobPoolClaims: {},
         era: 'VETERAN' as const,
         eraEvent: null,
+        edition: 'full' as const,
       });
       // His intents (Trade/Travel/Socialize) never touch Pacifist (Combat/Patrol)
       expect(events.some((e) => e.type === 'FlawCheck')).toBe(false);

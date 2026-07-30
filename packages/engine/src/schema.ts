@@ -336,7 +336,11 @@ const EarnedDeedStateSchema = z
     title: z.string(),
     citation: z.string(),
     day: z.number(),
-    eventIndex: z.number(),
+    // N11 · OPTIONAL. A captain's accrual runs over a LOCAL event batch that never
+    // enters `state.eventLog`, so an NPC-earned row carries no index into it — see
+    // the field's own doc comment in types.ts for why a number there would be a
+    // fabricated pointer. Player rows still always carry one.
+    eventIndex: z.number().optional(),
   })
   .strict();
 
@@ -477,6 +481,14 @@ const NpcStateSchema = z
     // `.strict()` is what makes a save that still carries the old key fail
     // loudly instead of silently keeping two disagreeing fuel numbers.
     ship: ShipStateSchema,
+    // N11 · The captain's own deed ledger and Renown rank — the SAME
+    // DeedRegistryStateSchema the player's registry validates against, because it is
+    // the same type. REQUIRED, unlike `dead` below: from v12 on every captain has one
+    // (`createInitialState`, `deserializeState` and the v11→v12 migration all seed it
+    // through `emptyDeedRegistry`), and `.strict()` plus a non-optional key is what
+    // makes a half-done migration fail loudly instead of leaving a rosterful of
+    // rankless captains.
+    registry: DeedRegistryStateSchema,
     disposition: z.number(),
     lastAction: NpcActionSchema.optional(),
     // N3: permanent NPC death. Optional because absent means alive — an old save

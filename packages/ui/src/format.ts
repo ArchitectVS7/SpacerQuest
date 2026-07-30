@@ -1437,7 +1437,13 @@ export function deedRegistry(game: GameState): DeedRegistryView {
     rankCitation: RENOWN_RANKS[registry.renownRank].citation,
     successionCount: game.player.legacy.successionCount,
     earned: [...registry.earned]
-      .sort((a, b) => b.eventIndex - a.eventIndex)
+      // N11 made `eventIndex` optional on `EarnedDeedState` — an NPC-earned row has
+      // no index into the shared event log to carry (see the field's doc comment).
+      // This reader only ever sees the PLAYER's rows, which always carry one, so the
+      // `?? 0` is a type-level guard rather than a live case: a hypothetical
+      // index-less row simply sorts to the bottom instead of poisoning the compare
+      // with NaN.
+      .sort((a, b) => (b.eventIndex ?? 0) - (a.eventIndex ?? 0))
       .map((d) => ({ id: d.id, title: d.title, citation: d.citation, day: d.day })),
   };
 }

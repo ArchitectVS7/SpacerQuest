@@ -115,7 +115,22 @@ export interface EarnedDeedState {
   title: string;
   citation: string;
   day: number;
-  eventIndex: number;
+  /**
+   * Where in `state.eventLog` the event that earned this deed sits.
+   *
+   * N11 · OPTIONAL, and its absence is a statement about the batch, not a gap. A
+   * captain's deed accrual runs over a LOCAL per-captain event batch that never
+   * enters `state.eventLog` (see `npc.ts` — putting a captain's `TradeEvent` in the
+   * shared array would earn the PLAYER the deed), so there is no index into that log
+   * to record and none is written. A number here would be a fabricated pointer:
+   * the reverted attempt (`7334c5d5`) stuffed `eventIndex: 0` into every NPC row,
+   * which is exactly what the field's absence now prevents. Player rows still always
+   * carry one — `evaluateDeeds` passes `sourceStartIndex`, so the anchor is real.
+   *
+   * READER: `ui/src/format.ts` `deedRegistry`, which sorts by it; that reader only
+   * ever sees player rows and nullish-guards the comparison anyway.
+   */
+  eventIndex?: number;
 }
 
 export interface DeedRegistryState {
@@ -1176,6 +1191,36 @@ export interface NpcState {
    * fuel gift.
    */
   ship: ShipState;
+  /**
+   * N11 · THE CAPTAIN'S OWN DEED REGISTRY AND RENOWN RANK — the same
+   * {@link DeedRegistryState} the player's standing lives in, evaluated by the same
+   * `accrueDeeds` against the same content `DEEDS` and `RENOWN_DEED_THRESHOLDS`.
+   *
+   * WHY IT EXISTS. Before N11 no NPC had a registry at all, so `actorRankIndex`
+   * (`actions/shipyard.ts`) returned −1 for every captain — strictly below every
+   * rung of the Renown ladder, forever. Every rank-gated purchase was therefore
+   * refused with no recourse, which the track's standing constraint defines as an
+   * exemption: a gate the actor can never open is not the rule the player plays
+   * under, because the player can EARN the key.
+   *
+   * SEEDED BY: `deeds.ts` `emptyDeedRegistry()` — the ONE seeding function, called
+   * by `state.ts` `createInitialState` (world creation), `state.ts`
+   * `deserializeState` (raw JSON path) and `save.ts` `MIGRATIONS[11]` (envelope
+   * path), so a migrated roster cannot drift from a freshly created one.
+   * WRITTEN BY: the verb paths in `npc.ts` — `executeTrade` / `executeTravel` /
+   * `resolveNpcEncounter` feed a local `deedSource` batch that `resolveNpcDay`
+   * hands to `accrueDeeds` at the captain's dusk.
+   * READ BY: `actorRankIndex` (the yard's Renown gate).
+   *
+   * IT STARTS AT ZERO AND IS NEVER BACKFILLED FROM THE PROFILE. N11's ruling is
+   * explicit that the fast-forward allowance applies to the SOURCE — the coarse
+   * verbs standing in for played days — and *"does not license synthetic backfill
+   * of unearned rank at world creation"*. A tier-5 captain seeded with a rank they
+   * never earned is precisely the "constant recomputed from profile" phantom N1
+   * existed to kill, so no `profile.tier` read reaches this field anywhere,
+   * including the migration.
+   */
+  registry: DeedRegistryState;
   /** Per-NPC standing toward the player, clamped to [-10, +10]; decays one
    *  step toward 0 each dusk. */
   disposition: number;

@@ -21,11 +21,11 @@ import { validateGameState } from '../schema.js';
 import { createInitialState, deserializeState, serializeState, starterShip } from '../state.js';
 import { advanceDay } from '../day.js';
 import { careerEnded } from '../nemesis.js';
-import { RENOWN_RANK_ORDER, rankForDeedCount } from '../deeds.js';
+import { RENOWN_RANK_ORDER, emptyDeedRegistry, rankForDeedCount } from '../deeds.js';
 import { computePlayerTier } from '../tier.js';
 import { JOB_POOL_BOARD_SIZE, JOB_POOL_MAX_CLAIMS, jobPoolDepth } from '../economy.js';
 import { npcShipForProfile } from '../npc.js';
-import { GameState, PlayerAction } from '../types.js';
+import { DeedRegistryState, GameState, PlayerAction } from '../types.js';
 
 /**
  * Drive a real, evolving GameState by running ~50 days through advanceDay with a
@@ -439,7 +439,7 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 11', () => {
+  it('CURRENT_SAVE_VERSION is 12', () => {
     // T-1401 bumped 5 → 6 (WireEntry.kind); T-1503 bumped 6 → 7 for the required
     // nested PlayerState.reputation container; T-1603b bumped 7 → 8 to re-derive
     // `registry.renownRank` + `player.tier` after the canonical
@@ -451,7 +451,13 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     // move, `market.npcClaims` → `market.jobPoolClaims` (one scalar counting
     // claims in the player's system becomes a sparse per-system pool ledger that
     // persists and regenerates). See save.ts.
-    expect(CURRENT_SAVE_VERSION).toBe(11);
+    //
+    // N11 bumped 11 → 12 for `NpcState.registry` — the captain's own deed ledger and
+    // Renown rank, backfilled EMPTY (no save that exists can hold an NPC deed) and
+    // deliberately NOT backfilled with a rank derived from the profile tier. These
+    // three `CURRENT_SAVE_VERSION` pins move WITH an intended bump; they are version
+    // pins, not thresholds, and none of them was touched to make a measurement pass.
+    expect(CURRENT_SAVE_VERSION).toBe(12);
   });
 });
 
@@ -783,10 +789,23 @@ describe('save envelope — v9 → v10 NPC ship migration (N1)', () => {
 
     const rosterBytes = JSON.stringify(state.npcs).length;
     const shipBytes = state.npcs.reduce((sum, npc) => sum + JSON.stringify(npc.ship).length, 0);
-    // The ships are the bulk of the roster now (~86% of it) and the roster is a
-    // small fraction of the save — the eventLog dominates a real career.
-    expect(shipBytes).toBeGreaterThan(rosterBytes * 0.5);
-    expect(shipBytes).toBeLessThan(blob.length * 0.5);
+    const registryBytes = state.npcs.reduce(
+      (sum, npc) => sum + JSON.stringify(npc.registry).length,
+      0,
+    );
+    // N11 · THE "~86% SHIPS" CLAIM ABOVE IS NO LONGER TRUE, and this is the same
+    // measurement RE-TAKEN, not a bound relaxed to force a pass — N11 added a second
+    // per-captain field, so the composition it described changed by construction.
+    // Re-measured on this exact 50-day seed-90 state: roster 72,826 bytes, of which
+    // ships 21,303 (29%) and REGISTRIES 42,714 (59%) — the registry overtakes the
+    // ship because a deed row carries an authored citation string where a component
+    // carries two small integers. Both bounds below stay non-vacuous and both are
+    // facts about the shape rather than about a tuning number: the two owned
+    // sub-objects are still ~88% of a captain's record, and the roster is still a
+    // small fraction of the save (7.7% here — the eventLog dominates a real career).
+    expect(shipBytes + registryBytes).toBeGreaterThan(rosterBytes * 0.8);
+    expect(registryBytes).toBeGreaterThan(shipBytes);
+    expect(rosterBytes).toBeLessThan(blob.length * 0.5);
   });
 });
 
@@ -891,6 +910,118 @@ describe('save envelope — v10 → v11 shared job pool migration (N10)', () => 
 });
 
 // ---------------------------------------------------------------------------
+// N11 · v11 → v12 — `NpcState.registry`, the captain's own deed ledger.
+//
+// An ADDITION, not a move (the two before it — v9→v10 and v10→v11 — were moves),
+// so the discipline being asserted here is different: what matters is WHAT the
+// backfill puts there. Two things, both pinned below:
+//
+//   1. EMPTY IS A STATEMENT OF FACT. No save that exists can carry an NPC deed,
+//      because until N11 no NPC could earn one. There is nothing to reconstruct.
+//   2. AND IT MUST NOT BE A SYNTHETIC RANK. The tempting version of this migration
+//      seeds each captain a rank off their profile tier so a loaded field looks
+//      lived-in. N11's ruling forbids it: the fast-forward allowance covers the
+//      SOURCE, never unearned rank, and a tier-5 captain holding a rank they never
+//      earned is the "constant recomputed from profile" phantom N1 killed. The
+//      anti-backfill test below is the pin for that, and it is the whole reason this
+//      block exists rather than one round-trip case.
+// ---------------------------------------------------------------------------
+describe('save envelope — v11 → v12 NPC deed registry (N11)', () => {
+  /** A v11-shaped roster: every captain's registry gone. */
+  function asV11(state: GameState): GameState {
+    const legacy = JSON.parse(JSON.stringify(state)) as GameState;
+    for (const npc of legacy.npcs) {
+      delete (npc as unknown as Record<string, unknown>).registry;
+    }
+    return legacy;
+  }
+
+  it('backfills an EMPTY registry at LIEUTENANT for every captain', () => {
+    const state = drive50Days(130);
+    const loaded = loadSave(JSON.stringify({ version: 11, state: asV11(state), seed: 130 }));
+
+    expect(loaded.state.npcs.length).toBeGreaterThan(0);
+    for (const npc of loaded.state.npcs) {
+      expect(npc.registry).toEqual(emptyDeedRegistry());
+      expect(npc.registry.earned).toEqual([]);
+      expect(npc.registry.matchCounts).toEqual({});
+      // Through the ladder, not against a literal: `rankForDeedCount` is the ONLY
+      // rank derivation on either side of the game.
+      expect(npc.registry.renownRank).toBe(rankForDeedCount(0));
+      expect(npc.registry.renownRank).toBe('LIEUTENANT');
+    }
+  });
+
+  it('does NOT synthesise a rank from the profile tier — a tier-5 captain loads at LIEUTENANT', () => {
+    // The explicit anti-backfill pin N11 demands. Nothing about `profileId` or its
+    // tier may reach the registry, in the migration or anywhere else.
+    const state = drive50Days(131);
+    const loaded = loadSave(JSON.stringify({ version: 11, state: asV11(state), seed: 131 }));
+
+    const topTier = loaded.state.npcs.filter(
+      (npc) => (ALL_NPC_PROFILES.find((p) => p.id === npc.profileId)?.tier ?? 0) >= 5,
+    );
+    expect(topTier.length).toBeGreaterThan(0);
+    for (const npc of topTier) {
+      expect(npc.registry.earned).toHaveLength(0);
+      expect(npc.registry.renownRank).toBe('LIEUTENANT');
+    }
+  });
+
+  it('is idempotent — a roster that already carries earned deeds keeps them byte-for-byte', () => {
+    const state = drive50Days(132);
+    const earnedBefore = state.npcs.map((npc) => JSON.stringify(npc.registry));
+    // The 50-day drive is what makes this non-vacuous: the cast has really accrued.
+    expect(state.npcs.some((npc) => npc.registry.earned.length > 0)).toBe(true);
+
+    const loaded = loadSave(JSON.stringify({ version: 11, state, seed: 132 }));
+    expect(loaded.state.npcs.map((npc) => JSON.stringify(npc.registry))).toEqual(earnedBefore);
+  });
+
+  it('does not throw on a roster it cannot read (a migration must never be the thrower)', () => {
+    const state = drive50Days(133);
+    (state as unknown as Record<string, unknown>).npcs = 'not-an-array';
+    // The SCHEMA rejects it as a typed SaveError; the migration passes the
+    // unreadable roster through rather than blowing up mid-walk — the MIGRATIONS[9]
+    // shape.
+    expect(() => loadSave(JSON.stringify({ version: 11, state, seed: 133 }))).toThrow(SaveError);
+  });
+
+  it('round-trips a captain WITH earned deeds byte-identically, including a row with no eventIndex', () => {
+    const state = drive50Days(134);
+    const captain = state.npcs[0];
+    // N11 · An NPC-earned row carries NO `eventIndex`: the accrual batch is local and
+    // never enters `state.eventLog`, so there is no index to record (see the field's
+    // doc comment). The schema has to accept its absence or the very first dusk a
+    // captain earns a deed would make the autosave unloadable.
+    expect(captain.registry.earned.every((deed) => deed.eventIndex === undefined)).toBe(true);
+    expect(state.npcs.some((npc) => npc.registry.earned.length > 0)).toBe(true);
+
+    const loaded = loadSave(createSave(state, 134));
+    expect(loaded.state.npcs).toEqual(state.npcs);
+    const once = createSave(loaded.state, 134);
+    expect(createSave(loadSave(once).state, 134)).toBe(once);
+  });
+
+  it('deserializeState performs the SAME backfill as the migration', () => {
+    // Two paths, one rule — the v10→v11 pattern. `loadSave` runs the migration
+    // registry; the UI store's `deserializeState` does its own save-compat backfill,
+    // and both call `emptyDeedRegistry()`, so they cannot drift into two different
+    // starting standings for the same save.
+    const state = drive50Days(135);
+    const viaLoader = loadSave(JSON.stringify({ version: 11, state: asV11(state), seed: 135 }));
+    const viaDeserialize = deserializeState(JSON.stringify(asV11(state)));
+
+    const loaderRegistries: DeedRegistryState[] = viaLoader.state.npcs.map((npc) => npc.registry);
+    const deserializeRegistries: DeedRegistryState[] = viaDeserialize.npcs.map(
+      (npc) => npc.registry,
+    );
+    expect(deserializeRegistries).toEqual(loaderRegistries);
+    expect(deserializeRegistries.every((registry) => registry.earned.length === 0)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // T-1505a · The twelve-fragment Nemesis file round-trips, including the two
 // source literals the arc only started producing in this task.
 //
@@ -928,9 +1059,9 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     // No version bump was needed for any of it. (T-1603b later bumped 7 → 8 for
     // an unrelated reason — the renown re-derivation — T-1703 8 → 9 for the new
     // `edition` field, N1 9 → 10 for `NpcState.ship` and N10 10 → 11 for the
-    // per-system job pool, so this pins the CURRENT version rather than claiming
-    // the fragment file caused it.)
-    expect(CURRENT_SAVE_VERSION).toBe(11);
+    // per-system job pool and N11 11 → 12 for `NpcState.registry`, so this pins the
+    // CURRENT version rather than claiming the fragment file caused it.)
+    expect(CURRENT_SAVE_VERSION).toBe(12);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -975,9 +1106,9 @@ describe('save envelope — an ended career round-trips with no migration (T-150
     });
     // Nothing needed a bump for any of it. (T-1603b later bumped 7 → 8 for the
     // unrelated renown re-derivation, T-1703 8 → 9 for the new `edition` field,
-    // N1 9 → 10 for `NpcState.ship` and N10 10 → 11 for the per-system job pool;
-    // this pins the CURRENT version.)
-    expect(CURRENT_SAVE_VERSION).toBe(11);
+    // N1 9 → 10 for `NpcState.ship`, N10 10 → 11 for the per-system job pool and
+    // N11 11 → 12 for `NpcState.registry`; this pins the CURRENT version.)
+    expect(CURRENT_SAVE_VERSION).toBe(12);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {

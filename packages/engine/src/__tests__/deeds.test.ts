@@ -16,14 +16,19 @@ import {
   EVENT_PATHS,
   RENOWN_RANK_ORDER,
   STATE_PATHS,
+  accrueDeeds,
   computeMatchCounts,
+  emptyDeedRegistry,
   evaluateDeeds,
   nextRankFor,
   rankForDeedCount,
   renownRankIndex,
 } from '../deeds.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
-import { EarnedDeedState, GameEvent } from '../types.js';
+import { npcShipForProfile } from '../npc.js';
+import { ALL_NPC_PROFILES } from '@spacerquest/content';
+import { EarnedDeedState, GameEvent, NpcState } from '../types.js';
+import type { DeedActor } from '../deeds.js';
 
 /** Fabricate `count` earned-deed records with ids that cannot collide with any
  *  real DEED id, so a genuine deed (e.g. first_manifest) can still be earned on
@@ -1206,5 +1211,161 @@ describe('nextRankFor (T-1401 export pack)', () => {
       expect(nextRankFor(RENOWN_RANK_ORDER[i])).toBe(RENOWN_RANK_ORDER[i + 1]);
     }
     expect(nextRankFor(RENOWN_RANK_ORDER[RENOWN_RANK_ORDER.length - 1])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N11 · THE DEED MACHINERY IS ACTOR-SHAPED.
+//
+// The standing constraint's whole point, tested at the seam it turns on: there is
+// ONE `accrueDeeds`, and a captain goes through it. The four cases below are chosen
+// to be exactly the four the reverted attempt (`7334c5d5`) got wrong — a private
+// evaluator, a skipped `state` matcher, an un-applied CONQUEROR cap, and a rank
+// derived somewhere other than `rankForDeedCount`.
+// ---------------------------------------------------------------------------
+describe('N11 · the deed machinery is actor-shaped', () => {
+  /** A live captain record, seeded exactly as `createInitialState` seeds one. */
+  function captain(profileId = 'npc-cargo-king'): NpcState {
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === profileId)!;
+    return {
+      id: profile.id,
+      name: profile.name,
+      profileId: profile.id,
+      currentSystemId: 1,
+      credits: 5000,
+      ship: npcShipForProfile(profile),
+      registry: emptyDeedRegistry(),
+      disposition: 0,
+    };
+  }
+
+  /** A captain's delivery, in the shape `npc.ts` `executeTrade` emits. */
+  function deliverEvent(characterId: string): GameEvent {
+    return {
+      type: 'TradeEvent',
+      characterId,
+      action: 'deliver-cargo',
+      success: true,
+      destination: 2,
+      cargoType: 1,
+      payment: 900,
+      actionDetails: 'Delivered cargo! Earned 900 credits.',
+    };
+  }
+
+  /** An arrival, in the shape `npc.ts` emits on a completed jump. */
+  function arriveEvent(characterId: string, destination = 2): GameEvent {
+    return {
+      type: 'TravelEvent',
+      characterId,
+      origin: 1,
+      destination,
+      fuelUsed: 40,
+      success: true,
+    };
+  }
+
+  it("writes the ACTOR's registry and leaves the player's untouched", () => {
+    const state = createInitialState(4);
+    const npc = captain();
+
+    const emitted = accrueDeeds(npc, [deliverEvent(npc.id)], {
+      day: 7,
+      conquerorLocked: false,
+    });
+
+    // The captain earned it, through the same content definition the player uses.
+    expect(npc.registry.earned.map((deed) => deed.id)).toContain('first_delivery');
+    expect(npc.registry.matchCounts.first_delivery).toBe(1);
+    expect(npc.registry.renownRank).toBe(rankForDeedCount(npc.registry.earned.length));
+    // …and the player, who did nothing, holds nothing.
+    expect(state.player.registry.earned).toEqual([]);
+    expect(state.player.registry.matchCounts).toEqual({});
+    // The events come back for the CALLER to decide about; nothing is pushed to a
+    // log by the accrual itself.
+    expect(emitted.some((event) => event.type === 'DeedEarned')).toBe(true);
+    expect(state.eventLog).toEqual([]);
+  });
+
+  it('records no eventIndex when the batch is local (no sourceStartIndex)', () => {
+    const npc = captain();
+    accrueDeeds(npc, [deliverEvent(npc.id)], { day: 3, conquerorLocked: false });
+    // The reverted attempt stuffed `eventIndex: 0` here. There is no index into a
+    // log that does not contain the event, so the field is absent.
+    expect(npc.registry.earned.every((deed) => deed.eventIndex === undefined)).toBe(true);
+    expect(npc.registry.earned[0].day).toBe(3);
+  });
+
+  it("the `state` matcher reads the ACTOR's tank — fuel_fumes_arrival is earnable by a captain", () => {
+    // The deed the reverted attempt skipped outright, which made every `state`-gated
+    // deed strictly EASIER for an NPC than for the player.
+    const onFumes = captain();
+    onFumes.ship.fuel = 20;
+    accrueDeeds(onFumes, [arriveEvent(onFumes.id)], { day: 5, conquerorLocked: false });
+    expect(onFumes.registry.earned.map((deed) => deed.id)).toContain('fuel_fumes_arrival');
+
+    // Same actor, same event, a full tank: the matcher refuses it.
+    const fullTank = captain();
+    fullTank.ship.fuel = fullTank.ship.maxFuel;
+    accrueDeeds(fullTank, [arriveEvent(fullTank.id)], { day: 5, conquerorLocked: false });
+    expect(fullTank.registry.earned.map((deed) => deed.id)).not.toContain('fuel_fumes_arrival');
+    // …but the un-gated arrival deed still lands, so the refusal is the matcher and
+    // not a dead path.
+    expect(fullTank.registry.earned.map((deed) => deed.id)).toContain('first_jump');
+  });
+
+  it('the CONQUEROR ceiling applies to a captain exactly as to the player', () => {
+    // The mirror of `demo.test.ts`'s player case: CONQUEROR's threshold is 38, so 37
+    // synthetic deeds plus one real one is exactly the crossing.
+    const npc = captain();
+    npc.registry.earned = syntheticEarned(37);
+    npc.registry.renownRank = 'GIGA_HERO';
+
+    const emitted = accrueDeeds(npc, [deliverEvent(npc.id)], {
+      day: 9,
+      conquerorLocked: true,
+    });
+
+    // The deed IS earned — the lock is on the RANK, not on playing the game.
+    expect(npc.registry.earned).toHaveLength(38);
+    expect(npc.registry.renownRank).toBe('GIGA_HERO');
+    expect(
+      emitted.filter((event) => event.type === 'RenownRankUp' && event.newRank === 'CONQUEROR'),
+    ).toHaveLength(0);
+  });
+
+  it('a captain at the same deed count on a FULL licence reaches CONQUEROR (the control)', () => {
+    const npc = captain();
+    npc.registry.earned = syntheticEarned(37);
+    npc.registry.renownRank = 'GIGA_HERO';
+    accrueDeeds(npc, [deliverEvent(npc.id)], { day: 9, conquerorLocked: false });
+    expect(npc.registry.renownRank).toBe('CONQUEROR');
+  });
+
+  it('emptyDeedRegistry derives its rank through rankForDeedCount, not a literal', () => {
+    const registry = emptyDeedRegistry();
+    expect(registry).toEqual({ earned: [], renownRank: rankForDeedCount(0), matchCounts: {} });
+    expect(registry.renownRank).toBe('LIEUTENANT');
+    // Two calls hand back independent objects — three sites seed from this and none
+    // of them may share a shell.
+    expect(emptyDeedRegistry().earned).not.toBe(registry.earned);
+  });
+
+  it('the player satisfies DeedActor structurally, with no wrapper', () => {
+    // The `ShipyardActor` argument restated as a test: if this ever needs an adapter,
+    // the write would land on a copy and the registry would silently stop growing.
+    const state = createInitialState(11);
+    const playerActor: DeedActor = state.player;
+    const npcActor: DeedActor = captain();
+    expect(playerActor.registry).toBe(state.player.registry);
+    expect(npcActor.registry.earned).toEqual([]);
+  });
+
+  it('evaluateDeeds is a wrapper: it still stamps the player row with a real eventIndex', () => {
+    const state = createInitialState(12);
+    state.eventLog.push({ type: 'DayAdvanced', day: 1 });
+    evaluateDeeds(state, [deliverEvent('player')]);
+    const earned = state.player.registry.earned.find((deed) => deed.id === 'first_delivery');
+    expect(earned?.eventIndex).toBe(1);
   });
 });

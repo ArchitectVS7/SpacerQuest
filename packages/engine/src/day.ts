@@ -775,6 +775,9 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       // damps it for the player — the multiplier belongs to the era, not to who
       // is flying.
       era: nextState.era,
+      // N11 · Same argument for the licence: the demo's CONQUEROR ceiling is a
+      // property of the world, so a captain's deed accrual meets it too.
+      edition: nextState.edition,
     });
 
     // N10 · The pool claim: a captain trading anywhere but under the player's nose

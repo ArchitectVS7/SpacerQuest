@@ -431,11 +431,33 @@ export function runDayLoopGolden(
 // `NpcEncounter` 3 -> 2, `StatCheck` 27 -> 26, `WireEntry` 58 -> 57.)
 //   DAY_LOOP state  7f111e79… -> b1c4db25…   (events 33f661e6… -> 9f864bfa…)
 //   STORYLET state  de48563d… -> deefa3d7…   (events 2b927f80… -> 3e96fe90…)
+//
+// N11 · STATE HASHES RE-PINNED, EVENT HASHES DELIBERATELY NOT — the same split as
+// the N1 entry above, and for the same reason it is evidence rather than a
+// formality. N11 gave every `NpcState` a `registry` (the captain's own deed ledger
+// and Renown rank), so `serializeState` now carries 31 more registry blocks and the
+// state hash moves by definition. What the cast DOES did not change: the accrual
+// runs after the day's verb, reads the cached `registry.matchCounts`, and TAKES NO
+// rng DRAW — and, load-bearing, a captain's deed-source events (`TradeEvent` /
+// `TravelEvent` / `EncounterResolved`) go into a LOCAL per-captain batch that never
+// enters the shared `events` array, so nothing is added to, removed from or
+// reordered in the stream `day.ts` returns.
+//
+// BOTH EVENT HASHES CAME BACK BYTE-IDENTICAL FROM THE REGENERATOR, and that is the
+// proof of both claims at once. If the accrual had drawn a die the stream would have
+// diverged from the first trading captain of day 1; if a captain's source event had
+// leaked into `events` it would appear in the stream AND earn the PLAYER the deed
+// (day.ts pushes `npcEvents` into the array it later hands to `evaluateDeeds`).
+// Neither happened. If either of these two ever moves on a change of this shape,
+// that is the leak — fix the cause, never re-pin the number.
+//   DAY_LOOP state  b1c4db25… -> ae6d73d7…   (events 9f864bfa… UNCHANGED)
+//   STORYLET state  deefa3d7… -> 11b73757…   (events 3e96fe90… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'b1c4db25f9b0a57d057435062af123305bb0a571d2c01be9d5cafda161f30547';
+  'ae6d73d78a830738c1de161a4da7aa4222a29247a7ffbcd2ed93693d49802bbb';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   '9f864bfa649b978b729888e9b22a0d93785b9e115027bf3d5332d295143c7d8d';
 export const STORYLET_GOLDEN_STATE_HASH =
-  'deefa3d7d0c9a3965bbb9cec0e8923166366840050e854c2cd1858083eaa8bb9';
+  '11b73757bca8d1a31bbda0a91873269200f77bb1d0be6f977529e75c1d2a428f';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '3e96fe90247b837cba773049e855623f0381bb5cd0f9cf41fda9d86982a8b50e';

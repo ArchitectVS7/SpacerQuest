@@ -16,8 +16,18 @@ import { cloneState } from './clone.js';
  * PURE, like every engine module: no DOM, no I/O, no `Math.random`, no `Date`.
  */
 
-/** Whether this career is being flown on a demo licence. */
-export function isDemo(state: GameState): boolean {
+/**
+ * Whether this career is being flown on a demo licence.
+ *
+ * N11 · Takes `Pick<GameState, 'edition'>`, not the whole state. It never read
+ * anything else, and the widening is STRUCTURAL so no call site changes: a
+ * `GameState` still satisfies it, and so does the `{ edition }` an NPC turn holds
+ * (`NpcDayContext.edition`) without having a `GameState` to hand. That is what lets
+ * the captain's accrual ask the SAME `demoLocked` question the player's does
+ * instead of a copy of it. {@link demoLocks} and {@link demoLocked} are widened for
+ * the same reason and nothing else about them moved.
+ */
+export function isDemo(state: Pick<GameState, 'edition'>): boolean {
   return state.edition === 'demo';
 }
 
@@ -58,13 +68,13 @@ export function demoDaysRemaining(state: GameState): number | null {
  * before advertising, and the cockpit before disabling a control. Add a fourth
  * lock to the content list and all four honor it without another edit.
  */
-export function demoLocks(state: GameState): readonly DemoLockedFeature[] {
+export function demoLocks(state: Pick<GameState, 'edition'>): readonly DemoLockedFeature[] {
   return isDemo(state) ? DEMO_LOCKED_FEATURES : [];
 }
 
 /** Whether a named feature is locked in this state. Sugar over
  *  {@link demoLocks}, so no call site hand-rolls an `includes`. */
-export function demoLocked(state: GameState, feature: DemoLockedFeature): boolean {
+export function demoLocked(state: Pick<GameState, 'edition'>, feature: DemoLockedFeature): boolean {
   return demoLocks(state).includes(feature);
 }
 

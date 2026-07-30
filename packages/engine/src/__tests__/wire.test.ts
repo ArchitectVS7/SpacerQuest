@@ -3,6 +3,7 @@ import { ALL_NPC_PROFILES, Stat } from '@spacerquest/content';
 import { FLAWS } from '@spacerquest/content';
 import { natWireStories } from '../wire.js';
 import { npcShipForProfile } from '../npc.js';
+import { emptyDeedRegistry } from '../deeds.js';
 import { advanceDay } from '../day.js';
 import { resolveTrade } from '../actions/trade.js';
 import { applyEncounterDuskPressure } from '../actions/combat.js';
@@ -86,6 +87,8 @@ describe('Galactic Wire nat-20/nat-1 stories (T-1202, PRD §6)', () => {
         credits: 5000,
         // N1: the tank rides on the captain's own ship, seeded from their tier.
         ship: npcShipForProfile(ALL_NPC_PROFILES.find((p) => p.id === 'npc-lucky-seven')!),
+        // N11: the captain's own (empty) deed registry, through the one seed function.
+        registry: emptyDeedRegistry(),
         disposition: 0,
       },
       {
@@ -96,6 +99,7 @@ describe('Galactic Wire nat-20/nat-1 stories (T-1202, PRD §6)', () => {
         credits: 5000,
         // N1: the tank rides on the captain's own ship, seeded from their tier.
         ship: npcShipForProfile(ALL_NPC_PROFILES.find((p) => p.id === 'npc-cargo-king')!),
+        registry: emptyDeedRegistry(),
         disposition: 0,
       },
     ];
