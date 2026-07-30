@@ -872,3 +872,80 @@ Out of scope for 0.5.2 — recorded so a coder does not re-scope them in:
   deliberate act, once per release cycle, as its own commit immediately before tagging" — so
   the manifest stays at 0.5.1 until this track ships. T-130 asks the owner to confirm.
 - **Anything R-owned:** R10's tier-1 hull cliff and the known-red `it.fails` tripwires.
+
+---
+
+## M5 — Telemetry & Dev Tooling (new initiative, gated behind this track's T-130)
+
+Four specs, sequenced, written outside this track and living at the repo root under `docs/`:
+`docs/BALANCE-TELEMETRY_SPEC.md`, `docs/PLAYTEST-TELEMETRY_SPEC.md`,
+`docs/TELEMETRY-REPORT_SPEC.md`, `docs/DEV-CONTROL-PANEL_SPEC.md`. Each settles its own
+design; these four tasks implement them in the order the specs themselves already require.
+**Every task here implements its named spec's settled design — it does not re-open it.** The
+Gate and Standing constraints in this file's header still apply (ENGINE OWNS RULES / CONTENT
+OWNS INSTANCES, extract behaviour-preserving, never edit a fingerprint, etc.) to whichever
+task touches engine/content source.
+
+**Naming note:** this file already has an `M3` (Hangout) earlier on — this milestone is
+labeled `M5` to avoid a duplicate heading, since the orchestrator resolves a milestone scope
+by heading-text match and two identical headings would be ambiguous.
+
+### T-140 · Implement NPC decision tracing — `status: TODO` · `coder: opus` · `after: T-130`
+
+Implement `docs/BALANCE-TELEMETRY_SPEC.md` end to end: settle §4's open design question (the
+callback-injection vs. always-return-the-distribution choice for `pickIntent`/`pickContract`)
+and record the reason chosen; wire the trace sink so only `packages/sim`'s sweep/campaign
+runner ever supplies one, gated behind an explicit `--trace-npc-decisions` flag; write traces
+as gitignored JSONL per the spec's §4(4) location convention.
+
+**Accept:** per `docs/BALANCE-TELEMETRY_SPEC.md` §6 — the `NpcDecisionTrace` shape (§3) is
+implemented and unit-tested against a known weight table; an UNTRACED sweep run is
+byte-identical to pre-change (goldens, `campaign-degraded` pins); `rulesFingerprint`'s move
+is the ONLY expected diff in `docs/balance/smoke/tiers.json` when re-extracted, stated
+explicitly in the commit body; a `grep` for the trace-sink parameter under `packages/ui` and
+`packages/desktop` returns nothing; a dedicated traced sweep run produces the gitignored
+JSONL; gate green.
+
+### T-141 · Implement opt-in playtest logging — `status: TODO` · `coder: opus` · `after: T-130`
+
+Implement `docs/PLAYTEST-TELEMETRY_SPEC.md` end to end: the settings toggle (OFF by default,
+disclosure copy per §3), the local JSONL capture over `applyPlayerAction` plus the manual
+"flag this moment" annotation and `ErrorBoundary` capture (§1), and the player-triggered
+"Export Playtest Log" action producing JSON/CSV (§5-6) — no network call anywhere in this
+task.
+
+**Accept:** per `docs/PLAYTEST-TELEMETRY_SPEC.md` §8 — toggle defaults OFF and persists via
+`storage.ts`'s `KeyValueStore`, not the save file (asserted by a save-round-trip test); a test
+drives real actions through `applyPlayerAction` and asserts the resulting JSONL matches §6's
+shape; the flag-action and `ErrorBoundary` entry kinds are each asserted by a test; export
+produces a file with no network call anywhere in the feature; the disclosure copy matches
+what's settled in the spec; no save version bump; no engine source file touched; gate green.
+
+### T-142 · Build the Tier 1 telemetry report generator — `status: TODO` · `coder: opus` · `after: T-140, T-141`
+
+Implement `docs/TELEMETRY-REPORT_SPEC.md` end to end: the leaderboard, option-frequency, and
+before/after views (§1) over the real inputs T-140/T-141 now produce (§2), generated as
+self-contained provenance-stamped static HTML to a gitignored path (§3), using the `dataviz`
+skill's palette/method for the actual chart work (§4).
+
+**Accept:** per the spec's intent — the three views in §1 render correctly against real
+sample inputs from T-140/T-141's output; a report comparing two aggregates with different
+`rulesFingerprint`s visibly says so; before/after deltas display each input's seed count
+alongside the numbers (no bare-delta display); nothing is committed to the repo by running
+the generator; read-only over its inputs — no source file it reads is modified by running it;
+gate green.
+
+### T-143 · Build the Tier 1.5 dev control panel — `status: TODO` · `coder: opus` · `after: T-142`
+
+Implement `docs/DEV-CONTROL-PANEL_SPEC.md` end to end: the five-command surface (§1), shard
+orchestration for `balance:sweep` (§2), gitignored-by-default run output with a deliberate
+promote-to-baseline step (§3), and the local dev-only server + UI (§4). Settle §5's open
+question (whether `lint:fix`/`format` belong in the panel) explicitly and record the reason.
+
+**Accept:** per `docs/DEV-CONTROL-PANEL_SPEC.md` §6 — every §1 command is triggerable with a
+flag set that is a verified subset of its script's real parsed arguments; a sweep run
+launches shards concurrently and only merges after every shard exits 0; panel-triggered
+output is byte-for-byte identical to the same command run directly by hand; a `grep` for the
+panel's entry point under `packages/desktop`'s packaging config and any production build
+output returns nothing; no source file outside the panel's own new code is modified by
+running any panel action; gate green.
