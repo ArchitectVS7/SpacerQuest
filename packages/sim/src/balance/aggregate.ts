@@ -273,6 +273,10 @@ export interface SeedRow {
   successions: number;
   /** N10 · Offers the cast took off this run's live board (`ContractClaimed`). */
   contractClaims: number;
+  /** N11 · Rank-gated special equipment the simulated field bought over this run —
+   *  the one row that says whether the Renown gate T-021 opened is being walked
+   *  through. Carried straight off the report; no re-derivation here. */
+  npcSpecialEquipmentPurchases: number;
   /** N10 · The dawn board's DEPTH across the run — one entry per day, so the
    *  aggregate can report percentiles rather than a mean that hides a dark port. */
   boardDepths: number[];
@@ -307,6 +311,7 @@ export function summarizeReport(report: CampaignStatsReport): SeedRow {
     lifeSupportScares: report.survival.lifeSupportScares,
     successions: report.survival.successions,
     contractClaims: report.contractClaims,
+    npcSpecialEquipmentPurchases: report.npcSpecialEquipmentPurchases,
     boardDepths: report.daily.map((day) => day.boardDepth),
     combat: report.combatEncounters,
     routes: report.routeLegs,
@@ -393,6 +398,19 @@ export interface PolicyAggregate {
    * about that tail.
    */
   boardDepth: Distribution;
+  // --- Renown gate (N11) ---------------------------------------------------
+  /**
+   * Rank-gated special equipment the simulated field bought, summed over the row,
+   * and the same figure per run. T-021 made the gate REACHABLE; this is the field
+   * that says whether it is being reached, and a zero is a finding about
+   * reachability rather than an empty cell.
+   *
+   * The per-run form is the one a diff should read: the raw sum scales with the
+   * number of seeds in the row, so comparing two sweeps of different width on it
+   * would compare sample sizes.
+   */
+  npcSpecialEquipmentPurchases: number;
+  npcSpecialEquipmentPurchasesPerRun: number;
   // --- Combat -------------------------------------------------------------
   encounters: number;
   encountersPerRun: number;
@@ -451,6 +469,21 @@ export interface MilestoneAggregate {
   npcCredits: Distribution;
   npcHullStrength: Distribution;
   npcFuel: Distribution;
+  /** N11 · Deeds earned per captain, pooled the same way: 30 × runs samples. */
+  npcDeedCount: Distribution;
+  /**
+   * N11 · THE CAST'S RANK DISTRIBUTION at this milestone day — a HISTOGRAM, not a
+   * `Distribution`, because a rank is categorical and a median over an eight-rung
+   * ladder's indices would be a fiction dressed as a measurement.
+   *
+   * Deliberately the same shape as `PolicyAggregate.renownRanks`, which is the
+   * PLAYER's: the two side by side are what makes T-023's renown-inflation limb —
+   * "does the median captain outrank a competent player?" — answerable off a single
+   * artefact instead of two sweeps.
+   *
+   * Keys sum to `NPC_PROFILES.length × runs`; every key is a content rank id.
+   */
+  npcRenownRanks: Record<string, number>;
 }
 
 function milestoneAggregatesFor(rows: readonly SeedRow[]): MilestoneAggregate[] | undefined {
@@ -483,7 +516,21 @@ function milestoneAggregatesFor(rows: readonly SeedRow[]): MilestoneAggregate[] 
       npcCredits: distribution(samples.flatMap((sample) => sample.npcCredits)),
       npcHullStrength: distribution(samples.flatMap((sample) => sample.npcHullStrength)),
       npcFuel: distribution(samples.flatMap((sample) => sample.npcFuel)),
+      npcDeedCount: distribution(samples.flatMap((sample) => sample.npcDeedCount)),
+      npcRenownRanks: rankHistogram(samples.flatMap((sample) => sample.npcRenownRank)),
     }));
+}
+
+/** N11 · Count ranks by name. Built the same way `aggregateRows` builds the
+ *  player's `renownRanks`, and kept as a named function rather than inlined
+ *  because a categorical count and a `Distribution` must never be mistaken for
+ *  each other at a call site. */
+function rankHistogram(ranks: readonly string[]): Record<string, number> {
+  const histogram: Record<string, number> = {};
+  for (const rank of ranks) {
+    histogram[rank] = (histogram[rank] ?? 0) + 1;
+  }
+  return histogram;
 }
 
 export interface BaselineAggregate {
@@ -620,6 +667,7 @@ export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyA
   const resolvedRuns = rows.filter((row) => row.tourOneOutcome !== null);
   const shipsLost = rows.reduce((total, row) => total + row.shipsLost, 0);
   const claims = rows.reduce((total, row) => total + row.contractClaims, 0);
+  const gatedPurchases = rows.reduce((total, row) => total + row.npcSpecialEquipmentPurchases, 0);
 
   return {
     policy,
@@ -651,6 +699,9 @@ export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyA
     contractClaims: claims,
     contractClaimsPerRun: rows.length === 0 ? 0 : claims / rows.length,
     boardDepth: distribution(rows.flatMap((row) => row.boardDepths)),
+    npcSpecialEquipmentPurchases: gatedPurchases,
+    // Guarded exactly as `contractClaimsPerRun` is: an empty row set is 0, never NaN.
+    npcSpecialEquipmentPurchasesPerRun: rows.length === 0 ? 0 : gatedPurchases / rows.length,
     encounters: combat.length,
     encountersPerRun: rows.length === 0 ? 0 : combat.length / rows.length,
     combatCells: combatCellsFor(combat),

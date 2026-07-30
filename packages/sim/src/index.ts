@@ -33,6 +33,7 @@ import {
   fragmentCount,
   hasAnyUndecoded,
   hasFragment,
+  hasSpecialEquipment,
   isCarryingIllicit,
   jumpFuelCost,
   navBonus,
@@ -111,6 +112,21 @@ export interface CampaignDayStats {
    *  The VISIBLE half of competition — claims made elsewhere in the galaxy thin
    *  `boardDepth` on a later day instead of showing up here. */
   contractsSniped: number;
+  /**
+   * N11/T-022 · Rank-gated special equipment the SIMULATED field installed during
+   * this dusk — the per-day series behind `CampaignStatsReport.
+   * npcSpecialEquipmentPurchases`.
+   *
+   * A STATE DIFF, not an event count, and deliberately so: `considerRefit` narrates
+   * a captain's purchase as a `WireEntry` only, exactly the bind
+   * `equipmentUse.autoRepairDusks` is in a few fields above, and emitting a
+   * `ShipyardEvent` from the NPC path is ruled out (it would source deeds T-020
+   * reserves for the owner and would pollute the player-scoped
+   * `equipmentUse.specialEquipmentBought`). See {@link gatedEquipmentWorn} for why
+   * the difference is exactly a purchase count — monotone gated items, a roster
+   * that never shrinks — and for the content-driven definition of "gated".
+   */
+  npcSpecialEquipmentBought: number;
   /** Number of income-producing actions the policy actually took this day
    *  (T-201): signing a contract, travelling toward a delivery, exploring for
    *  salvage/fragments, or engaging combat (fight/talk) for gain. The
@@ -550,6 +566,22 @@ export interface CampaignStatsReport {
    * `reportToJson` emits for `npm run sim`.
    */
   contractClaims: number;
+  /**
+   * N11/T-022 · Rank-gated special equipment the SIMULATED field bought over the
+   * whole run — the run total behind `CampaignDayStats.npcSpecialEquipmentBought`,
+   * summed from that series rather than kept as a second counter.
+   *
+   * This is the number N11's Simulate clause calls "special-equipment purchase
+   * counts", and it is the only field in the report that can say whether the Renown
+   * gate T-021 opened is actually being WALKED THROUGH rather than merely offered.
+   * A zero here at a 120-day horizon is a finding about reachability, not a quiet
+   * absence.
+   *
+   * READERS (constraint 7): `packages/sim/src/__tests__/campaign-renown.test.ts`,
+   * `SeedRow` / `PolicyAggregate` in `balance/aggregate.ts`, and the CLI JSON that
+   * `reportToJson` emits for `npm run sim`.
+   */
+  npcSpecialEquipmentPurchases: number;
   combatEncounters: CombatEncounterRecord[];
   routeLegs: RouteLegRecord[];
   survival: SurvivalStats;
@@ -599,6 +631,22 @@ export interface CampaignStatsReport {
  * a sample is the spec for a synthesized state, so carrying anything the
  * synthesizer cannot restore would invite a reader to believe the synthesis is
  * more faithful than it is. The NPC arrays are the whole roster in roster order.
+ *
+ * N11/T-022 · ONE RULED EXCEPTION to the paragraph above, `npcDeedCount` and
+ * `npcRenownRank`. They are MEASUREMENT-ONLY: `synthesize.ts`'s own "NOT
+ * RESTORED" list names the deed registry and the renown rank first, and it is
+ * right to — fabricating deed entries so a synthesized captain could carry a rank
+ * would be authoring content inside a fixture. They are carried anyway because
+ * N11's Simulate clause asks for the CAST's rank distribution at day 30/60/120
+ * and there is no other route to it: the aggregate's `renownRanks` is the
+ * player's, and a mechanism the instrument cannot see cannot be graded (N9's "the
+ * aggregate cannot see an asset").
+ *
+ * THE CONSEQUENCE A READER MUST NOT MIS-TAKE: because the synthesizer cannot
+ * restore them, a synthesized captain is still a zero-deed LIEUTENANT. The smoke
+ * rig's mid-game tiers therefore still do not exercise rank at all — the gap
+ * `balance-smoke.test.ts`'s header already declares — and these two arrays are
+ * honest only about PLAYED careers.
  */
 export interface MilestoneSample {
   day: number;
@@ -633,6 +681,16 @@ export interface MilestoneSample {
   npcHullStrength: number[];
   npcFuel: number[];
   npcSystemId: number[];
+  /** N11/T-022 · `registry.earned.length` per simulated captain, roster order —
+   *  the deed STOCK behind the rank below, carried separately because the rank is
+   *  a step function of it and a distribution over ranks alone cannot say how far
+   *  into a rung the field has climbed. */
+  npcDeedCount: number[];
+  /** N11/T-022 · `registry.renownRank` per simulated captain, roster order. The
+   *  cast-side twin of `PolicyAggregate.renownRanks` (the player's), which is what
+   *  makes T-023's renown-inflation limb — "does the median captain outrank a
+   *  competent player?" — gradeable off ONE artefact. */
+  npcRenownRank: RenownRankId[];
 }
 
 /** N7 · Optional extras for `runCampaign`. Both are absent on every ordinary
@@ -813,6 +871,74 @@ const AUTO_REPAIR_SIM_COMPONENTS: readonly ShipComponentId[] = [
   'robotics',
   'shields',
 ];
+
+/**
+ * N11/T-022 · The RANK-GATED special equipment, read off content by the same
+ * filter `considerRefit` uses (`requiredRenownRank !== undefined`) rather than
+ * written out as an id list. A newly gated content row therefore joins this
+ * instrument for free, and an ungated one can never sneak into a "the gate is
+ * reachable" number — which is the whole claim N11 is graded on.
+ *
+ * The cast today can reach STAR_BUSTER / ARCH_ANGEL (CAPTAIN) and ASTRAXIAL_HULL
+ * (TOP_DOG). CLOAKER, AUTO_REPAIR, TITANIUM_HULL and TRANS_WARP are ungated and
+ * deliberately absent: counting them would report ordinary yard shopping as
+ * evidence that the Renown gate opened.
+ *
+ * The cast is the same cast as at `npc.ts`'s gated rung, so the cast to
+ * `SpecialEquipmentId` is the same assumption made there for the same reason:
+ * `SPECIAL_EQUIPMENT` is widened to `id: string` while the engine takes its
+ * narrower union. Here the failure mode is milder than the yard's (an unmodelled
+ * id makes `hasSpecialEquipment` return false, so it would under-count rather than
+ * mis-fit a ship), but the assertion that keeps them honest is the same one: the
+ * N11 block in `shipyard.test.ts` drives every gated content row through the real
+ * quote and reads the fit back through `hasSpecialEquipment`.
+ */
+const GATED_SPECIAL_EQUIPMENT: readonly SpecialEquipmentId[] = SPECIAL_EQUIPMENT.filter(
+  (entry) => entry.requiredRenownRank !== undefined,
+).map((entry) => entry.id as SpecialEquipmentId);
+
+/**
+ * N11/T-022 · How many rank-gated items the SIMULATED field is wearing right now.
+ * Counted through the engine's own `hasSpecialEquipment` predicate rather than off
+ * the raw `hasStarBuster` / `isAstraxialHull` flags, so this cannot drift from
+ * what the yard considers fitted, and over the 30 simulated captains only
+ * (`isSimulatedCaptain` — the same shared predicate `sampleField` uses, so the
+ * scalar describes the same field the milestone arrays do; 41 is the roster and 31
+ * is the board).
+ *
+ * Compared across a dusk, the DIFFERENCE is exactly a purchase count. Three facts
+ * make that exact rather than approximate, and all three are properties of the
+ * engine as it stands:
+ *   1. Captains are born with every special-equipment flag false (`npc.ts`
+ *      `npcShipForTier`), so the count starts at 0 and every increment is a `buy`.
+ *   2. Gated items are MONOTONE per captain: nothing uninstalls one. The only flag
+ *      the engine ever clears is `hasCloaker`, and CLOAKER is ungated, hence
+ *      excluded above.
+ *   3. Dead captains are SKIPPED, never spliced out of `state.npcs` (`day.ts`),
+ *      and `cloneState` hands each snapshot a fresh array of the same records — so
+ *      the pre-dusk total and the post-dusk total are over the same 30 captains
+ *      and no index can alias a different one. A shrinking roster would make the
+ *      delta go negative and is a finding, not a band.
+ *
+ * WHY A STATE DIFF AND NOT AN EVENT COUNT. `considerRefit` narrates a purchase as
+ * a `WireEntry` only — there is nothing typed to fold — which is the same bind
+ * `equipmentUse.autoRepairDusks` is in, and it is measured the same way. Emitting
+ * a `ShipyardEvent` from the NPC path is RULED OUT rather than merely unused:
+ * every existing reader of that event treats it as the player's (including
+ * `equipmentUse.specialEquipmentBought` in this file), and it would source
+ * `yard_rat` / `cargo_expansion` for the cast — deeds `docs/NPC_REDESIGN.md`'s
+ * T-020 rulings reserve for an owner decision, not for an instrument step.
+ */
+function gatedEquipmentWorn(state: GameState): number {
+  let worn = 0;
+  for (const npc of state.npcs) {
+    if (!isSimulatedCaptain(npc.profileId)) continue;
+    for (const equipment of GATED_SPECIAL_EQUIPMENT) {
+      if (hasSpecialEquipment(npc.ship, equipment)) worn += 1;
+    }
+  }
+  return worn;
+}
 
 /** T-1601b · The one contraband cargo type (content `CARGO_TYPES`, id 10). Only a
  *  port with `allowsContraband` issues it (engine `rollContract`), and it is what
@@ -4657,6 +4783,13 @@ export function runCampaign(
     // comparing condition across the dusk on the seven components the engine's
     // reader actually touches (hull excluded, exactly as engine-side).
     const preDuskShip = dayState.player.ship;
+    // N11/T-022: the cast's yard is measured the same way, and for the same reason
+    // — `considerRefit` narrates a purchase as a WireEntry only. Sampled here so
+    // the pair straddles exactly one `endDay`, which is the tick `resolveNpcDay`
+    // runs on. `cloneState` gives the next state a fresh array of the SAME records
+    // and `resolveNpcDay` assigns a `structuredClone` copy back, so this total is a
+    // reading of the field BEFORE the dusk and cannot be mutated out from under us.
+    const preDuskGatedWorn = gatedEquipmentWorn(dayState);
     const dusk = endDay(dayState);
     state = dusk.state;
     dayEvents.push(...dusk.events);
@@ -4671,6 +4804,11 @@ export function runCampaign(
     ) {
       equipmentUse.autoRepairDusks += 1;
     }
+    // N11/T-022: the dusk delta. Non-negative by the monotonicity argument at
+    // `gatedEquipmentWorn`; `Math.max` is NOT used to clamp it, because a negative
+    // value would mean an item was uninstalled or the roster shrank, and that is a
+    // finding the reader test is meant to surface rather than hide.
+    const npcSpecialEquipmentBought = gatedEquipmentWorn(state) - preDuskGatedWorn;
     if (state.player.loan) {
       loanUsage.daysWithLoan += 1;
     }
@@ -4723,6 +4861,7 @@ export function runCampaign(
       // conflate "the pool supplied 3" with "4 were offered and one was taken".
       boardDepth: boardDepths[dayIndex] ?? 0,
       contractsSniped: counts.contractsSniped,
+      npcSpecialEquipmentBought,
       incomeActionCount,
       fuelStarved,
     });
@@ -4767,6 +4906,13 @@ export function runCampaign(
     // counter, so the scalar and the trajectory cannot disagree — the discipline
     // T-1601a's `fuelStarved` established one field above.
     contractClaims: daily.reduce((total, day) => total + day.contractsSniped, 0),
+    // N11/T-022 · Summed from its own per-day series for the same reason the line
+    // above is: the scalar and the trajectory are one measurement in two shapes and
+    // must not be able to disagree.
+    npcSpecialEquipmentPurchases: daily.reduce(
+      (total, day) => total + day.npcSpecialEquipmentBought,
+      0,
+    ),
     combatEncounters: balance.encounters,
     routeLegs: balance.legs,
     survival,
@@ -4788,18 +4934,30 @@ export function runCampaign(
 /** N7 · The dawn snapshot behind {@link MilestoneSample}. Reads the live state;
  *  every derived number comes from the engine's own field rather than a
  *  re-computation here. */
-/** The four per-captain arrays behind {@link MilestoneSample}, over the SIMULATED
- *  roster only. One traversal, one filter, so the four arrays cannot fall out of
- *  step with each other — index i is the same captain in all of them. */
+/** The six per-captain arrays behind {@link MilestoneSample}, over the SIMULATED
+ *  roster only. One traversal, one filter, so the six arrays cannot fall out of
+ *  step with each other — index i is the same captain in all of them. That
+ *  property is load-bearing rather than tidy since N11/T-022: `npcDeedCount[i]`
+ *  and `npcRenownRank[i]` are only readable together (a rank is a step function of
+ *  a deed count), and the cross-milestone monotonicity assertion in
+ *  `campaign-renown.test.ts` compares index i at day 30 with index i at day 60. A
+ *  second `state.npcs.filter` anywhere here would make all of that a coincidence,
+ *  so the `Pick<>` is deliberately the compiler's way of forcing a new array into
+ *  THIS traversal. */
 function sampleField(
   state: GameState,
-): Pick<MilestoneSample, 'npcCredits' | 'npcHullStrength' | 'npcFuel' | 'npcSystemId'> {
+): Pick<
+  MilestoneSample,
+  'npcCredits' | 'npcHullStrength' | 'npcFuel' | 'npcSystemId' | 'npcDeedCount' | 'npcRenownRank'
+> {
   const field = state.npcs.filter((npc) => isSimulatedCaptain(npc.profileId));
   return {
     npcCredits: field.map((npc) => npc.credits),
     npcHullStrength: field.map((npc) => npc.ship.hull.strength),
     npcFuel: field.map((npc) => npc.ship.fuel),
     npcSystemId: field.map((npc) => npc.currentSystemId),
+    npcDeedCount: field.map((npc) => npc.registry.earned.length),
+    npcRenownRank: field.map((npc) => npc.registry.renownRank),
   };
 }
 

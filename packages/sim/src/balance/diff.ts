@@ -248,6 +248,11 @@ export const HEADLINE_METRICS: readonly string[] = [
   'combatEvAll.median',
   'survival.shipsLost',
   'survival.deathsPer1000Days',
+  // N11/T-022. Added because the alternative is worse than noise: a brand-new path
+  // lands in the long TAIL, and this differ's own first outing proved a reader can
+  // draw the opposite conclusion from a tail (the "3,699 paths" note below). The gate
+  // T-021 opened is the headline of the step T-023 grades, so it prints with the rest.
+  'npcSpecialEquipmentPurchasesPerRun',
 ];
 
 function formatNumber(value: number): string {

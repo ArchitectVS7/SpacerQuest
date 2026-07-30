@@ -261,16 +261,45 @@ const UNCHANGED_POLICIES = [
  *    noise. T-023 owns the authoritative capstone and the four-limb verdict; do not
  *    tune anything off this window.
  *      * `greedy` moving is EXPECTED, for the fifth consecutive NPC-side step.
+ *
+ * 11. N11/T-022 — the instrument learns to SEE the Renown gate. ALL SEVEN rows move
+ *    and NOT ONE CAREER CHANGED. This is the purest SHAPE-ONLY entry in the log, and
+ *    unlike entry 4's `salvageCredits` and entry 9's shape bullet — both of which
+ *    asserted "shape only" and left the reader to believe it — this one is PROVEN:
+ *      trader   eb116ca31928a037 -> 40c03627bc30e5fa
+ *      fighter  3f5a84bb0a65f91d -> 298315eaa3494e41
+ *      explorer d865b1b4aadf166c -> 6e4e53ecb734b805
+ *      veteran  306775019564eb9d -> f5813a71e402402a
+ *      smuggler 2dd84772323e6206 -> 807c06d614d84fb6
+ *      gambler  d3e02794985aafa9 -> eb5ab6b0dea7b673
+ *      greedy   8a13d3d1802ef6a2 -> 38c0405f24b71b87
+ *    MECHANISM: `CampaignStatsReport` gained `npcSpecialEquipmentPurchases` and
+ *    `CampaignDayStats` gained `npcSpecialEquipmentBought`. This fingerprint hashes
+ *    the whole report JSON, shape included, so seven new keys plus forty per-day
+ *    keys move every hash on their own.
+ *    THE PROOF, run locally over these exact 35 careers rather than claimed: with
+ *    `npcSpecialEquipmentPurchases` deleted from the report and
+ *    `npcSpecialEquipmentBought` stripped from every `daily` entry, each policy's
+ *    hash is BYTE-IDENTICAL to its entry-10 value above — all seven. Two structural
+ *    facts say why that had to hold: `rulesFingerprint` did not move (no engine or
+ *    content file is touched by this step), and the new measurement draws NO rng —
+ *    it is a state comparison across `endDay` and a `.map` over the sampled field —
+ *    so no seeded career can diverge.
+ *    WHAT THIS TABLE CANNOT REACH, worth naming so nobody looks for it here: the
+ *    other half of T-022 is `MilestoneSample.npcDeedCount` / `npcRenownRank`, and
+ *    these runs are made WITHOUT `milestoneDays`, so `milestones` is absent from
+ *    every report hashed above and the sampler change cannot touch these numbers.
+ *    Its reader is `campaign-renown.test.ts`.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: 'eb116ca31928a037',
-  fighter: '3f5a84bb0a65f91d',
-  explorer: 'd865b1b4aadf166c',
-  veteran: '306775019564eb9d',
-  smuggler: '2dd84772323e6206',
-  gambler: 'd3e02794985aafa9',
-  greedy: '8a13d3d1802ef6a2',
+  trader: '40c03627bc30e5fa',
+  fighter: '298315eaa3494e41',
+  explorer: '6e4e53ecb734b805',
+  veteran: 'f5813a71e402402a',
+  smuggler: '807c06d614d84fb6',
+  gambler: 'eb5ab6b0dea7b673',
+  greedy: '38c0405f24b71b87',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

@@ -114,6 +114,10 @@ function dayStats(day: number, deedsEarned: string[]): CampaignDayStats {
     // case rather than to something the arithmetic here would read.
     boardDepth: 4,
     contractsSniped: 0,
+    // N11/T-022 · Same reasoning: this helper drives the deed-pacing math only, so
+    // the cast's yard is set to the quiet day rather than to a number the
+    // arithmetic under test would pick up.
+    npcSpecialEquipmentBought: 0,
     incomeActionCount: 0,
     fuelStarved: false,
   };

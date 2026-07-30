@@ -368,7 +368,7 @@ re-pinned against the moved `rulesFingerprint`/`docsFingerprint` and policy fing
 no `expected` number or baseline of record moved.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; nothing to query). · attempts=1/4.
 
-### T-022 · Instrument: rank distribution and special-equipment purchases — `status: TODO` · `coder: sonnet` · `after: T-021`
+### T-022 · Instrument: rank distribution and special-equipment purchases — `status: DONE` · `coder: sonnet` · `after: T-021`
 
 N11's Simulate clause asks for **rank distribution at day 30/60/120** and
 **special-equipment purchase counts**, and this must land BEFORE the capstone — the lesson
@@ -391,6 +391,29 @@ special-equipment purchase count; both appear on `PolicyAggregate`; a named-read
 exists and asserts the scalar-equals-its-own-series identity plus bounds; a test asserts the
 sampled field length equals `NPC_PROFILES.length` AND is strictly less than
 `state.npcs.length`; gate green.
+
+**Delivered (2026-07-30):** `MilestoneSample` now carries `npcDeedCount` and
+`npcRenownRank` per simulated captain, added to `sampleField`'s single
+traversal/filter alongside the existing four arrays so all six stay index-aligned;
+`CampaignStatsReport` gained `npcSpecialEquipmentPurchases` (summed from a new
+per-day `CampaignDayStats.npcSpecialEquipmentBought` state-diff over the
+rank-gated `SPECIAL_EQUIPMENT` rows, read off content rather than an id list);
+both surfaced on `PolicyAggregate` (`npcSpecialEquipmentPurchases(PerRun)`) and
+`MilestoneAggregate` (`npcDeedCount` distribution, `npcRenownRanks` histogram);
+the new headline metric was added to `diff.ts`. A named-reader test,
+`packages/sim/src/__tests__/campaign-renown.test.ts`, asserts the
+scalar-equals-its-own-series identity, the 30-vs-41 field/roster distinction,
+six-array index alignment, monotonicity across milestone days, the JSON
+round-trip, and the one live band (the gate is actually walked through, not
+merely offered). The deliberate scope boundary: `MilestoneSample`'s per-captain
+data is measurement-only and is NOT restored by the synthesizer, so a
+synthesized captain in the smoke-tier fixtures still reads as a zero-deed
+LIEUTENANT — that gap is documented on the type rather than silently left; the
+smoke `tiers.json` fixture was re-extracted (instrument/docs fingerprints moved,
+`rulesFingerprint` unchanged since no engine/content file was touched) and
+`balance-degraded`'s fingerprint log carries the before/after hashes with a
+locally-verified proof that the new fields are the only cause of the move.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; nothing to query). · attempts=1/4.
 
 ### T-023 · N11 closeout: capstone, verdict, re-pin, Result block — `status: TODO` · `coder: opus` · `after: T-022`
 
