@@ -1,7 +1,5 @@
 import {
   CREW_ROLES,
-  DARE_MAX_WAGER,
-  DARE_MIN_WAGER,
   EXPLORATION_FUEL_COST,
   FENCE_REP_FLAG,
   FLAWS,
@@ -43,6 +41,7 @@ import {
   startDay,
   travelDc,
   tributeForRound,
+  wagerBandFor,
   applyPlayerAction,
   weaponVolleyDamage,
   SeededRng,
@@ -276,7 +275,7 @@ export interface HangoutPlayStats {
   /** Dares the dealer took. `daresWon + daresLost === dares`. */
   daresLost: number;
   /** Sum of `HangoutEvent.wager` — total stake across the run. Note the engine
-   *  clamps every stake to [DARE_MIN_WAGER, DARE_MAX_WAGER] AND down to what the
+   *  clamps every stake into the PORT's band (`wagerBandFor`) AND down to what the
    *  DEALER can cover, so a broke dealer shows up here as a thin wager. */
   wagered: number;
   /** Sum of `HangoutEvent.creditsDelta` — the tables' net effect on the purse. */
@@ -3351,13 +3350,15 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
 // and wagers on opposed-GUILE Dares while it is standing there.
 //
 // Policy tuning, not game data (same justification as the smuggler's constants
-// above): the Dare's own band — DARE_MIN_WAGER / DARE_MAX_WAGER — is CONTENT and
-// is imported, never restated, exactly as planLoanBorrow treats the lending band.
+// above): the Dare's own band is CONTENT, and after T-120/T-121 it is PER-PORT —
+// read through the engine's `wagerBandFor` accessor, never restated and no longer
+// even read as a global constant, exactly as planLoanBorrow treats the (still
+// global, §2.2 ruling 5) lending band.
 // ---------------------------------------------------------------------------
 
 /** The working float the gambler never stakes into. Mirrors TRADER_RESERVE, and
  *  is deliberately larger than a full day of dares (GAMBLER_MAX_DARES_PER_DAY ×
- *  DARE_MAX_WAGER = 1,000) so that even a total wipeout at the tables leaves the
+ *  the default band's max = 1,000) so that even a total wipeout at the tables leaves the
  *  day's refuel/repair budget intact — which is what makes it safe to settle the
  *  stakes FIRST in the day's plan. */
 const GAMBLER_RESERVE = 3000;
@@ -3379,8 +3380,8 @@ const GAMBLER_MAX_DARES_PER_DAY = 2;
  *   - a co-located NPC to deal (`currentSystemId === player's`), else the engine
  *     returns a 'no-opponent' fail;
  *   - the RICHEST such NPC, first-wins on a tie. This is load-bearing, not
- *     cosmetic: the engine caps the wager at `min(DARE_MAX_WAGER, playerCredits,
- *     dealerCredits)`, so dealing with a broke NPC produces a zero-or-tiny-stake
+ *     cosmetic: the engine caps the wager at `min(the port band's max,
+ *     playerCredits, dealerCredits)`, so dealing with a broke NPC produces a zero-or-tiny-stake
  *     hand that inflates the dare count and drags `expectedValuePerDare` toward
  *     0 — the one value the acceptance forbids;
  *   - the purse is above the reserve and the dealer can cover the minimum stake.
@@ -3404,19 +3405,37 @@ function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerA
 
   let dealer: GameState['npcs'][number] | null = null;
   for (const npc of state.npcs) {
+    // F-121-1 · `!npc.dead` MIRRORS THE ENGINE'S N3 GUARD (`actions/hangout.ts`:
+    // "a dead captain cannot deal a hand of Spacer's Dare"), and its absence here
+    // was a real divergence, not a nicety: the resolver typed-fails a Dare against
+    // a dead dealer with 'no-opponent', which is precisely what
+    // `hangoutPlay.failedVisits === 0` exists to forbid. It was LATENT while one
+    // port had a bar — measured 0 failures over 10 seeds x 120 days before T-121,
+    // and 2 (seed 7, day 75, `npc-black-tide`) after, because the reach change puts
+    // the gambler at a table on most days instead of a handful.
+    if (npc.dead) continue;
     if (npc.currentSystemId !== state.player.currentSystemId) continue;
     if (dealer === null || npc.credits > dealer.credits) dealer = npc;
   }
   if (dealer === null) return null;
+  // T-121 · THE BAND IS THE PORT'S, read through the same engine accessor
+  // `protocol.ts` and the Hangout pane use — never the bare content constants and
+  // never a restated number. Before T-120 there was one band because there was one
+  // bar; now that fourteen ports run tables, a policy that sized its stake off the
+  // global constants would request a wager the engine then re-clamped, and the
+  // measured `expectedValuePerDare` would drift away from what was actually played
+  // (`docs/HANGOUT_REDESIGN.md` §4.2). Arithmetically inert today — all fourteen
+  // rows inherit `DEFAULT_PORT_HANGOUT`'s band — and that is the point: it lands
+  // while it is provably inert, ahead of the authored bands at T-123.
+  const band = wagerBandFor(state.player.currentSystemId);
   // A dealer who cannot cover the minimum stake makes a zero-EV hand — skip it.
-  if (dealer.credits < DARE_MIN_WAGER) return null;
+  if (dealer.credits < band.min) return null;
 
   const bankroll = credits - GAMBLER_RESERVE;
-  if (bankroll < DARE_MIN_WAGER) return null;
-  // Clamped with the CONTENT band constants, never with restated numbers.
+  if (bankroll < band.min) return null;
   const wager = Math.max(
-    DARE_MIN_WAGER,
-    Math.min(DARE_MAX_WAGER, Math.floor(bankroll * GAMBLER_BANKROLL_FRACTION)),
+    band.min,
+    Math.min(band.max, Math.floor(bankroll * GAMBLER_BANKROLL_FRACTION)),
   );
 
   const die = ledger.takeBest();

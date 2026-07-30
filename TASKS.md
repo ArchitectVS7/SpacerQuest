@@ -1023,7 +1023,7 @@ and `docsFingerprint` moved accordingly (new engine-root module, `hangoutRules.t
 `ENGINE_RULE_DIRECTORIES`); no save shape moved and `CURRENT_SAVE_VERSION` is untouched.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md`, `docs/0.5.2-SPEC-REVIEW.md`, `TASKS.md` a · attempts=1/4.
 
-### T-121 · A bar at all 14 spaceports — the reach change — `status: TODO` · `coder: opus` · `after: T-120`
+### T-121 · A bar at all 14 spaceports — the reach change — `status: DONE` · `coder: opus` · `after: T-120`
 
 Set `hasHangout` on all 14 core spaceports (ids 1–14, Sun-3 … Vega-6) with a **placeholder
 venue definition** per port — real parameters, not yet the authored voice, so the reach change
@@ -1037,6 +1037,96 @@ test enumerating them; a test drives `VisitHangout` successfully at a port that 
 any moved golden is re-recorded with the event-count diff the fixture convention asks for, and
 the commit body states which player-side counts moved; **no rim or gated system gained a
 venue** unless the spec ruled otherwise; gate green.
+
+**Delivered (2026-07-30):** `hasHangout: true` on ids 2–14 in `packages/content/src/systems.ts`
+(fourteen hits, ids 1–14, Sun-3 … Vega-6) and thirteen baseline rows in
+`packages/content/src/portHangouts.ts`, built by a branch-free `baselineHangout(systemId)` helper
+and written out key by key so `PORT_HANGOUTS` stays greppable and T-122 … T-124 can replace one
+line at a time. **Reach went 1 of 28 → 14 of 28.** The rim (15–20), Andromeda (21–26), MALIGNA (27)
+and NEMESIS (28) gained nothing, per §4.5 and because a non-empty un-flagged set is what keeps
+`ActionBlocked{'no-hangout'}` reachable at all. Deliberate scope boundary: the thirteen rows carry
+`systemId` and `prose` only and OMIT `venues` / `wager` / `venueParams` / `clientele`, so every
+number resolves field-wise to `DEFAULT_PORT_HANGOUT` and is mechanically identical to Sun-3's —
+which is what lets every moved number below be attributed to reach rather than to tuning. All
+authored voice, bands, DCs, dispositions and clientele are T-122 … T-124.
+
+Tests: `packages/engine/src/__tests__/hangoutRules.test.ts` gains
+`describe('T-121 · the reach change …')` with the enumerating assertion (all fourteen carry the
+flag, a row, `key === systemId`, a non-empty house name and a well-ordered band), the **two-way
+`hasHangout` ↔ `PORT_HANGOUTS` set equality** §2.2 ruling 3 owed, a non-vacuous "no rim or gated
+system gained a venue" sweep over every id > 14, and a baseline-inertness check asserting the
+thirteen rows resolve to Sun-3's values through the accessors rather than through restated
+literals. `hangout.test.ts` generalises `hangoutState(dice, systemId = 1)` and drives
+`applyPlayerAction` (not the resolver — the gate is what changed) for a **Dare at Vega-6 (id 14)**
+and a **borrow at Mira-9 (id 8) with the port emptied of NPCs**. New
+`packages/ui/src/__tests__/hangout-gate.test.ts` pins `hangoutOpen()` to the `hasHangout` set port
+for port. Six retargets: the two `no-hangout` refusal tests (`hangout.test.ts`,
+`sim/protocol.test.ts`) and the enumerator's negative case moved from Aldebaran-1 to Antares-5 (15);
+`e2e/hangout.spec.ts`'s gate test was **inverted** to "the Hangout pane follows the engine gate to a
+second port" (§4.2's own recommendation — a rim hop is unfundable from a fresh start, so the
+negative case moved to the new unit test); the stale "the only `hasHangout` system" prose in
+`deed-hunter.ts`, `poverty-invariant.test.ts` and the e2e fixture header was corrected.
+`deed-hunter.ts` keeps `HANGOUT_SYSTEM = 1` and its fixed routing deliberately — §4.2's
+"route to the nearest Hangout" option was **not** taken, so the veteran's deed errand stays
+deterministic across this measurement.
+
+Goldens, stated explicitly. `packages/engine/src/__tests__/fixtures/day-loop-golden.ts` — **not
+regenerated, byte-identical**, as §4.2 predicted: neither script issues a `VisitHangout` and
+`hasHangout` never enters `serializeState`. All six `replay-golden.ts` constants — **byte-identical
+and not regenerated**, which CONTRADICTS §4.2's prediction and is recorded rather than hidden: the
+replay logs only ever emit `state-summary` and `action-result` responses (verified — the generator's
+output matches the committed constants exactly), never a `legal-actions` enumeration, so the thirteen
+new `VisitHangout` advertisements have nowhere to appear. **Event-count diff: 0 added `VisitHangout`
+advertisements, response counts unchanged 22/12/7, and all three session `rngState`s unchanged
+(-163636262 / 268015010 / -1231248819).** `campaign-degraded.test.ts`'s `PINNED_FINGERPRINTS`
+**did** move and were re-recorded with ledger entry 17: trader `f3e01b2a843c1c0f → 1b4e953468311f40`,
+smuggler `edab634b451035f3 → faa0c778be299406`, gambler `fbb8b4df794fa5f4 → 8950ea1dfd8d318e`;
+fighter / explorer / veteran / greedy byte-identical — the control that says the change is reach and
+nothing else.
+
+Player-side counts that moved (10 seeds × 120 days, before → after). Trader: loan defaults 6 → **0**,
+interest accrued 19,866 → 2,833, days carrying a loan 181 → 32, mean final credits 40,082 → 43,903,
+mean debt-cleared day 28.2 → 23.0. Smuggler: loans taken 10 → 16, defaults 3 → **0**, interest
+14,100 → 3,091, days with a loan 141 → 38, mean final credits 38,003 → 34,278, subsistence days
+0 → 14. Gambler: visits/dares 272 → **1,314**, wagered 186,626 → 867,112, dare net credits
+54,024 → 132,746, `expectedValuePerDare` **198.62 → 101.02** (still firmly positive), mean final
+credits 44,519 → 53,221. Veteran unchanged in every field. **The headline is that the Penny Wise
+desk stopped being a trap** — defaults fall to zero because a captain can now repay where it stands
+rather than only where it started — **and that the tables stopped being free money**, because the
+law of large numbers finally reaches a verb the gambler could previously play a handful of times.
+Nothing was tuned in response.
+
+**F-121-1, found by this measurement and fixed here.** `planDare` (`sim/index.ts`), `legalActions`
+(`sim/protocol.ts`) and the deed hunter's `dealerHere` all picked an in-system dealer **without** the
+resolver's N3 `!npc.dead` guard, so all three could name a dead captain the engine then typed-fails
+with `'no-opponent'` — exactly the drift `hangoutPlay.failedVisits === 0` exists to catch. Latent
+while one port had a bar (0 failures over 10 seeds × 120 days); live after the reach change
+(2 failures, seed 7, day 75, `npc-black-tide`). All three now mirror the engine; `failedVisits` is
+back to 0. Also carried over from T-120 per §4.2: `planDare` now clamps with `wagerBandFor(portId)`
+instead of the bare `DARE_MIN_WAGER` / `DARE_MAX_WAGER` (arithmetically inert today — every row
+inherits the default band — and it lands while it is provably so, ahead of T-123's authored bands).
+
+Fixture position: `docs/balance/smoke/tiers.json` was **re-extracted** from the stored
+`t116-explore` aggregate after `npm run format` (`rulesFingerprint`
+`d458b149c4ae2c64 → bdc51a44e6df92f0`, `instrumentFingerprint`
+`313fde95fc5ee9db → 537f29b61ecc9719`, `docsFingerprint` `e79d7f5b4cd69818 → f0d2fa636fdbd10d`;
+`provenance.sweepLabel` stays `t116-explore`). **This is not a capstone** — no sweep was run and no
+baseline was re-pinned; the milestone's single capstone is owed at T-125. Checkpoint deltas repeat
+the same control: fighter / explorer / veteran / greedy are IDENTICAL at all four tiers, and only
+trader, trader-degraded, smuggler and gambler moved (e.g. days-1-3 gambler `deedsEarned` 41 → 57,
+`outcomeHash` `71e4619ff5df056c → f846d60ca1bab5ab`; days-41-43 trader `debtTotal` 22,209 → 7,280,
+`outcomeHash` `15c2af2c8f8c4708 → 236f75db23e0b91a`).
+
+Obligations honoured: **no `packages/engine/src/npc.ts` edit** (§5.2 — the `executeSocialize`
+`hasHangout` defect stays open for T-130, and T-125 re-measures the 95.91% figure this task has just
+halved by construction); **no save-shape change**, `CURRENT_SAVE_VERSION` untouched (§4.3). The
+`balance-targets.test.ts:180` live 40-seed "the trader clears the marker, and clears it fastest" —
+§4.2's one to watch — stayed green, as did the `it.fails` [22,30] band at `:225`. Fiction consequence
+created and knowingly accepted (§5.2): the rumor mill will now name a Hangout at ports where the
+player is told there is none — recorded here, not fixed in this task. Gate green: typecheck, lint,
+`format:check`, all four workspaces' vitest suites (1,509 tests) and the Hangout/onboarding
+Playwright specs.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md` §2/§4/§5/§6, `TASKS.md` T-120/T-121, and t · attempts=1/4.
 
 ### T-122 · Hangout content pass 1 of 3 — the core worlds (5 ports) — `status: TODO` · `coder: opus` · `after: T-121`
 

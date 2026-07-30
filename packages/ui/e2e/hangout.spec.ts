@@ -9,11 +9,12 @@ import {
 // T-1404 acceptance: the Spacers Hangout as a visitable place, driven ENTIRELY
 // through the real UI (no state injection, no API calls). Visit the pane, wager a
 // die on a Spacer's Dare and read BOTH opposed actors' honest checks; take and
-// repay a Penny Wise loan through the desk; confirm the pane is offered ONLY where
+// repay a Penny Wise loan through the desk; confirm the pane tracks exactly where
 // the engine says a Hangout exists; and trace every displayed number to an engine
 // export / content constant.
 //
-// FIXTURE: the player starts at Sun-3 (id 1, the sole `hasHangout` system) and the
+// FIXTURE: the player starts at Sun-3 (id 1 — the home hall, and since T-121 one
+// of fourteen `hasHangout` core ports) and the
 // cast's index-0 NPC `npc-iron-vex` starts co-located at Sun-3 on ANY seed —
 // `createInitialState` seats NPCs at `(index % 20) + 1` and `startDay` never moves
 // them (movement is a dusk step), so Iron Vex is a valid, solvent (5000cr) Dare
@@ -123,22 +124,35 @@ test('take and repay a Penny Wise loan entirely through the UI', async ({ page }
   await expect(page.getByTestId('loan-borrow')).toBeVisible();
 });
 
-test('the Hangout is offered only where the engine says one exists', async ({ page }) => {
+// T-121 · INVERTED, deliberately (docs/HANGOUT_REDESIGN.md §4.2). This test used
+// to jump to Aldebaran-1 and assert the launcher VANISHED; the reach change gives
+// Aldebaran-1 a bar, so the old assertion is simply false. It was NOT retargeted
+// to a rim port: the rim shell sits ~20–24 units out (`content/systems.ts` layout
+// note) and a fresh day-1 start cannot fund that hop, so the test would become
+// unrunnable rather than merely different. The negative case moved to a unit test
+// over `hangoutOpen()` at a rim id and at NEMESIS
+// (`packages/ui/src/__tests__/hangout-gate.test.ts`), which needs no funded jump.
+//
+// What is asserted here is now STRONGER than what it replaced: the pane FOLLOWS
+// the engine's content gate to a second, non-home port, rather than merely
+// disappearing where content is absent.
+test('the Hangout pane follows the engine gate to a second port', async ({ page }) => {
   await page.goto('/');
   await newGameSeed(page, SEED);
 
-  // Sun-3 hosts the sole Hangout — the launcher is present.
+  // Sun-3 — the launcher is present at the home hall.
   await expect(page.getByTestId('hangout-toggle')).toHaveCount(1);
 
-  // Jump one clean, encounter-free hop to Aldebaran-1 (id 2, no `hasHangout`).
+  // Jump one clean, encounter-free hop to Aldebaran-1 (id 2 — a core port, and
+  // since T-121 a `hasHangout` one).
   await page.getByTestId('die').nth(0).click();
   const dest = page.locator('[data-testid="starmap-system"][data-system-id="2"]');
   await expect(dest).toHaveAttribute('data-reachable', '1');
   await dest.click();
   await page.getByTestId('confirm-jump').click();
 
-  // Arrived off the Hangout hub: the launcher is gone — the pane tracks the exact
-  // `hasHangout` gate day.ts enforces, not a UI guess.
+  // Arrived at a different bar: the launcher is still there — the pane tracks the
+  // exact `hasHangout` gate day.ts enforces, not a hard-coded home port.
   await expect(page.getByTestId('day')).toBeVisible();
-  await expect(page.getByTestId('hangout-toggle')).toHaveCount(0);
+  await expect(page.getByTestId('hangout-toggle')).toHaveCount(1);
 });

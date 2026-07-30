@@ -48,6 +48,7 @@ import {
   INSULT_DISPOSITION,
   MEET_DISPOSITION,
 } from './hangout.js';
+import { STAR_SYSTEMS } from './systems.js';
 
 /** The seven venues `resolveVisitHangout` already switches on. NOT a new
  *  vocabulary — the same seven strings the `PlayerAction` `VisitHangout` union
@@ -131,8 +132,8 @@ export interface HangoutProse {
  * CONSTRUCTION.
  */
 export interface PortHangout {
-  /** `STAR_SYSTEMS` id. The row's identity; the table is keyed by it too, and a
-   *  validation test asserts key === systemId (widened to fourteen at T-121). */
+  /** `STAR_SYSTEMS` id. The row's identity; the table is keyed by it too, and the
+   *  T-121 validation test asserts key === systemId across all fourteen rows. */
   systemId: number;
   /** Which of the seven this port offers. A port with no credit desk simply omits
    *  'borrow'/'repay'; a card room that will not seat a stranger omits 'meet'. */
@@ -253,12 +254,64 @@ const SUN_3_HANGOUT: PortHangout = {
 };
 
 /**
- * The port table, keyed by `STAR_SYSTEMS` id. `hasHangout` remains the
- * AUTHORITATIVE gate (§2.2 ruling 3) — this table never becomes it; T-121 owes the
- * two-way equality test that keeps the two sets from drifting.
+ * T-121 · A BASELINE ROW — a real venue definition that is not yet an authored
+ * one. It carries `systemId` and `prose` and omits `venues`, `wager`,
+ * `venueParams` and `clientele` entirely, so every number the resolver reads at
+ * that port resolves field-wise through `DEFAULT_PORT_HANGOUT` to the same
+ * imported constant Sun-3 reads. Thirteen ports get one here, and they are
+ * mechanically IDENTICAL to each other and to Sun-3.
  *
- * One row today. T-121 … T-124 widen it to fourteen.
+ * WHY IDENTICAL, DELIBERATELY. T-121 is the REACH change — fourteen of
+ * twenty-eight ports gain a bar — and the reach change is meant to be measurable
+ * on its own. Had these thirteen rows also carried thirteen invented parameter
+ * vectors, no moved golden and no moved roll-up could be attributed to reach
+ * rather than to tuning, and the two halves would stop being separately
+ * reviewable. §6.4's rule that no two ports share a mechanical tuple is graded at
+ * T-122 … T-124, which overwrite these rows one at a time; identical baselines are
+ * the correct state until then.
+ *
+ * NO BRANCH (§2.5): this builder is a straight-line expression. It reads the port
+ * name off `STAR_SYSTEMS` so a renamed system cannot leave a stale house name
+ * behind. Importing `./systems.js` here is acyclic — `systems.ts` imports nothing
+ * from this module.
+ */
+function baselineHangout(systemId: number): PortHangout {
+  return {
+    systemId,
+    prose: {
+      houseName: `the ${STAR_SYSTEMS[systemId].name} Hangout`,
+      tone: 'everyday',
+      flavour: {},
+    },
+  };
+}
+
+/**
+ * The port table, keyed by `STAR_SYSTEMS` id. `hasHangout` remains the
+ * AUTHORITATIVE gate (§2.2 ruling 3) — this table never becomes it; the two-way
+ * equality test in `packages/engine/src/__tests__/hangoutRules.test.ts` keeps the
+ * two sets from drifting apart in either direction.
+ *
+ * FOURTEEN ROWS, ONE AUTHORED (T-121, §4.5). Sun-3 carries its own voice; ids 2–14
+ * carry a baseline row apiece and are therefore mechanically indistinguishable
+ * from it. Written out key by key rather than generated from a range so the table
+ * stays greppable and T-122 … T-124 can replace exactly one line at a time. The
+ * rim (15–20), Andromeda (21–26), MALIGNA (27) and NEMESIS (28) are absent by
+ * design — see the `hasHangout` note in `./systems.ts`.
  */
 export const PORT_HANGOUTS: Readonly<Record<number, PortHangout>> = {
   1: SUN_3_HANGOUT,
+  2: baselineHangout(2),
+  3: baselineHangout(3),
+  4: baselineHangout(4),
+  5: baselineHangout(5),
+  6: baselineHangout(6),
+  7: baselineHangout(7),
+  8: baselineHangout(8),
+  9: baselineHangout(9),
+  10: baselineHangout(10),
+  11: baselineHangout(11),
+  12: baselineHangout(12),
+  13: baselineHangout(13),
+  14: baselineHangout(14),
 };

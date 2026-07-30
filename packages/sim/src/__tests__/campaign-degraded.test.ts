@@ -467,19 +467,87 @@ const UNCHANGED_POLICIES = [
  *    THIS AND NOTHING IS TUNED IN RESPONSE: five seeds cannot separate a shift of
  *    this size from stream noise, re-pricing Explore is R-series and an owner
  *    call, and T-116 owns the measurement and the verdict.
+ *
+ * 17. T-121 · THE REACH CHANGE — A BAR AT ALL FOURTEEN CORE SPACEPORTS
+ *     (2026-07-30, docs/HANGOUT_REDESIGN.md §4). `hasHangout` goes from 1 of 28
+ *     systems to 14 of 28. THREE ROWS MOVE, and they are exactly the three
+ *     policies that transact at a Hangout:
+ *      trader   f3e01b2a843c1c0f -> 1b4e953468311f40
+ *      smuggler edab634b451035f3 -> faa0c778be299406
+ *      gambler  fbb8b4df794fa5f4 -> 8950ea1dfd8d318e
+ *      fighter / explorer / veteran / greedy — ALL UNCHANGED, byte for byte.
+ *      That control is the evidence the change is REACH and nothing else: the
+ *      four policies that never open the Hangout verb are untouched, while the
+ *      two that borrow (trader, smuggler) and the one that plays (gambler) all
+ *      re-phase. Note the inversion of entries 14-16's control — an EXPLORE
+ *      change moves the two sweepers; a HANGOUT change moves these three.
+ *
+ *    MECHANISM, and it is a CONTENT change with no rule edit: `hasHangout: true`
+ *    on ids 2-14 plus a baseline `PORT_HANGOUTS` row apiece (mechanically
+ *    identical to Sun-3's, so no parameter moved). Three of §4.1's four
+ *    mechanisms fire here — `planDare` is legal on most docked days instead of
+ *    only at Sun-3; `planLoanBorrow` / `planLoanRepay` stop being routing-gated,
+ *    so the §7.5 bad-day out is available on the day the bad day happens; and the
+ *    trader's home-run preference collapses toward a no-op at 14 of 28
+ *    destinations. Two sim-side edits ride along, both of which make the policy
+ *    agree with an engine rule rather than change one: `planDare` now clamps with
+ *    the PORT's band (`wagerBandFor`) instead of the global content constants,
+ *    which is arithmetically inert while every row inherits the default band; and
+ *    F-121-1 adds the resolver's `!npc.dead` guard to the dealer pick (see below).
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      trader    final credits  median 14,600 -> 16,667   mean 13,882 -> 15,508
+ *      smuggler  final credits  median  5,844 ->  7,492   mean  6,337 ->  6,440
+ *      gambler   final credits  median  7,287 ->  6,672   mean 10,894 ->  6,739
+ *      loans taken (sum)  trader 6 -> 7, smuggler 5 -> 9, gambler 10 -> 11
+ *      loan DEFAULTS      trader 4 -> 0, smuggler 3 -> 0 (unchanged 0 for gambler)
+ *      interest accrued   trader 10,975 -> 1,107; smuggler 4,500 -> 1,628
+ *      dares played       gambler 50 -> 218; wagered 15,976 -> 51,680
+ *      dare net credits   gambler +1,680 -> -2,120
+ *
+ *    THE HEADLINE IS THAT THE DESK STOPPED BEING A TRAP AND THE TABLES STOPPED
+ *    BEING FREE MONEY, and neither was tuned to produce it. Defaults fall to zero
+ *    because a captain can now REPAY where it stands rather than only where it
+ *    started — the interest collapse is the same fact seen from the ledger side
+ *    (a loan is cleared in days rather than carried to term). The gambler's dare
+ *    count quadruples and its net turns NEGATIVE over this window, which is the
+ *    law of large numbers arriving at a table the policy could previously only
+ *    visit a handful of times: `expectedValuePerDare` over the wider 10-seed x
+ *    120-day measurement falls 198.62 -> 101.02 and stays firmly positive, so the
+ *    -2,120 here is a five-seed forty-day sample, not a sign flip in the verb.
+ *    NOTHING IS TUNED IN RESPONSE: five seeds cannot separate shifts of this size
+ *    from stream noise, and T-125 owns the milestone's single capstone, its
+ *    measurement and its verdict.
+ *
+ *    F-121-1, FOUND BY THIS MEASUREMENT AND FIXED HERE. `planDare`
+ *    (`sim/index.ts`), `legalActions` (`sim/protocol.ts`) and the deed hunter's
+ *    `dealerHere` all picked an in-system dealer WITHOUT the resolver's N3
+ *    `!npc.dead` guard, so all three could name a dead captain the engine then
+ *    typed-fails with 'no-opponent'. Latent while one port had a bar (0 failures
+ *    over 10 seeds x 120 days); live after the reach change (2 failures, seed 7,
+ *    day 75, `npc-black-tide`), which is exactly the drift
+ *    `hangoutPlay.failedVisits === 0` exists to catch. All three now mirror the
+ *    engine. The repair is INERT over this 40-day window — the three hashes above
+ *    are identical with and without it — and restores `failedVisits` to 0 at 120.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: 'f3e01b2a843c1c0f',
+  // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
+  // so the trader borrows and repays on the day it needs to rather than on the day
+  // it gets home.
+  trader: '1b4e953468311f40',
   fighter: 'dc6ca4fbcce58659',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases.
   explorer: '2537a7aa5185d3fd',
   veteran: 'f701430cfe32f7cb',
-  // Entry 16: re-derived, same reason as `explorer`.
-  smuggler: 'edab634b451035f3',
-  gambler: 'fbb8b4df794fa5f4',
+  // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
+  // as the trader.
+  smuggler: 'faa0c778be299406',
+  // Entry 17: re-derived — the tables are open on most docked days now, not only
+  // when the route passes Sun-3.
+  gambler: '8950ea1dfd8d318e',
   greedy: '0f2ff82982dcbf2d',
 };
 

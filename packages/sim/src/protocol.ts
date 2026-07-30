@@ -778,8 +778,13 @@ export function legalActions(state: GameState): LegalActions {
   // social beat against anyone else is a typed HangoutEvent fail), honoring "an
   // NPC actually present in-system". `venue` picks the beat; `wager` is the Dare
   // stake domain. The engine validates the rest on apply.
+  // F-121-1 · `!npc.dead` is part of "the exact set resolveVisitHangout accepts"
+  // the comment below claims: the resolver filters `!n.dead` (its N3 guard), so
+  // advertising a dead captain as an opponent offers the driver an action the
+  // engine answers with a typed 'no-opponent' fail. Latent until T-121 gave
+  // fourteen ports a bar; see the same repair in `planDare`.
   const inSystemNpcIds = state.npcs
-    .filter((npc) => npc.currentSystemId === player.currentSystemId)
+    .filter((npc) => !npc.dead && npc.currentSystemId === player.currentSystemId)
     .map((npc) => npc.id);
   if (hasDie && STAR_SYSTEMS[player.currentSystemId]?.hasHangout) {
     // T-1304: the venue set depends on live state. 'rumor' is always available at

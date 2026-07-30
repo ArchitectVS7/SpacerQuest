@@ -9,7 +9,9 @@ import {
   DEFAULT_PORT_HANGOUT,
   INSULT_DISPOSITION,
   MEET_DISPOSITION,
+  NEMESIS_SYSTEM_ID,
   PORT_HANGOUTS,
+  STAR_SYSTEMS,
   type HangoutVenueId,
   type PortHangout,
 } from '@spacerquest/content';
@@ -154,7 +156,6 @@ describe('the venue vocabulary is one vocabulary', () => {
 
 describe('PORT_HANGOUTS is data', () => {
   it('every key equals its row’s systemId', () => {
-    // T-121 widens this to fourteen rows plus the two-way `hasHangout` equality.
     for (const [key, row] of Object.entries(PORT_HANGOUTS)) {
       expect(row.systemId).toBe(Number(key));
     }
@@ -162,5 +163,101 @@ describe('PORT_HANGOUTS is data', () => {
 
   it('the default row is never keyed by a real system id', () => {
     expect(DEFAULT_PORT_HANGOUT.systemId).toBe(-1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-121 · THE REACH CHANGE (docs/HANGOUT_REDESIGN.md §4, §4.5, §2.2 ruling 3).
+//
+// 1 of 28 systems → 14 of 28. This block is the enumerating assertion the task's
+// acceptance names, plus the two-way set-equality guard that keeps `hasHangout`
+// (the authoritative gate) and `PORT_HANGOUTS` (the parameter table) from ever
+// drifting apart in either direction.
+// ---------------------------------------------------------------------------
+
+/** ids 1–14, Sun-3 … Vega-6 — the fourteen CORE ports §4.5 rules in. */
+const CORE_HANGOUT_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+/** The first rim id. Named rather than spelled inline, because it is what keeps
+ *  `ActionBlocked{'no-hangout'}` reachable. */
+const RIM_SYSTEM = 15;
+
+describe('T-121 · the reach change — a bar at all fourteen core spaceports', () => {
+  it('every core port 1–14 carries the flag AND a venue definition', () => {
+    for (const id of CORE_HANGOUT_IDS) {
+      expect(STAR_SYSTEMS[id]?.hasHangout).toBe(true);
+      const row = PORT_HANGOUTS[id];
+      expect(row).toBeDefined();
+      // The table's key and the row's own identity agree at every port.
+      expect(row?.systemId).toBe(id);
+      expect(portHangoutFor(id).systemId).toBe(id);
+      // A venue definition, not an empty shell: the house has a name to render.
+      expect(portHangoutFor(id).prose.houseName.length).toBeGreaterThan(0);
+      // And a band the engine can clamp into.
+      const band = wagerBandFor(id);
+      expect(band.min).toBeLessThanOrEqual(band.max);
+    }
+  });
+
+  it('the `hasHangout` set and the PORT_HANGOUTS key set are equal, in both directions', () => {
+    // §2.2 ruling 3's owed test. The drift this closes is the one that makes the
+    // pillar silently wrong rather than loudly broken: a port flagged with no row
+    // renders as a generic house forever, and a row at an unflagged port is dead
+    // content the gate never reaches. Neither shows up in any other assertion.
+    const flagged = Object.values(STAR_SYSTEMS)
+      .filter((s) => s.hasHangout === true)
+      .map((s) => s.id)
+      .sort((a, b) => a - b);
+    const rowed = Object.keys(PORT_HANGOUTS)
+      .map(Number)
+      .sort((a, b) => a - b);
+    expect(flagged).toEqual(CORE_HANGOUT_IDS);
+    expect(rowed).toEqual(CORE_HANGOUT_IDS);
+    expect(flagged).toEqual(rowed);
+  });
+
+  it('no rim, Andromeda or special system gained a venue', () => {
+    // §4.5. Every id past the core band stays unflagged and unrowed — the rim
+    // (15–20), Andromeda (21–26), MALIGNA (27) and NEMESIS (28).
+    const beyondCore = Object.values(STAR_SYSTEMS).filter((s) => s.id > 14);
+    // NON-VACUITY: an empty un-flagged set would make the loop below pass while
+    // saying nothing, AND would make `ActionBlocked{'no-hangout'}` unreachable —
+    // which is exactly why §4.5 keeps the set non-empty as a design requirement.
+    expect(beyondCore.length).toBeGreaterThan(0);
+    expect(beyondCore.map((s) => s.id)).toContain(RIM_SYSTEM);
+    expect(beyondCore.map((s) => s.id)).toContain(NEMESIS_SYSTEM_ID);
+    for (const system of beyondCore) {
+      expect(system.hasHangout).not.toBe(true);
+      expect(PORT_HANGOUTS[system.id]).toBeUndefined();
+    }
+  });
+
+  it('the thirteen new rows are BASELINE rows — mechanically identical to Sun-3', () => {
+    // T-121 delivers reach, not tuning. Each new row carries `systemId` and
+    // `prose` and omits the four parameter fields, so every number resolves
+    // field-wise to the shipped constant — which is what lets a moved golden or a
+    // moved roll-up be attributed to reach alone. T-122 … T-124 author over these.
+    for (const id of CORE_HANGOUT_IDS.filter((i) => i !== SUN_3)) {
+      const row = PORT_HANGOUTS[id];
+      expect(row.wager).toBeUndefined();
+      expect(row.venueParams).toBeUndefined();
+      expect(row.clientele).toBeUndefined();
+      // Resolved values are Sun-3's, asserted against the accessors rather than
+      // against restated literals.
+      expect(wagerBandFor(id)).toEqual(wagerBandFor(SUN_3));
+      for (const venue of ALL_VENUES) {
+        expect(venueParamsFor(id, venue)).toEqual(venueParamsFor(SUN_3, venue));
+      }
+    }
+  });
+
+  it('BASELINE ONLY — no port has yet narrowed its venue set', () => {
+    // Deliberately phrased as a statement about TODAY, not a permanent rule:
+    // §6.3 gives Arcturus-6 (id 4) no lending desk, so T-123 is EXPECTED to
+    // rewrite this test rather than to keep it green.
+    for (const id of CORE_HANGOUT_IDS) {
+      for (const venue of ALL_VENUES) {
+        expect(venueOffered(id, venue)).toBe(true);
+      }
+    }
   });
 });

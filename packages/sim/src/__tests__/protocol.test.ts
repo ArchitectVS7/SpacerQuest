@@ -461,7 +461,10 @@ describe('protocol deterministic replay', () => {
 
   it('T-1604a · ActionBlocked parity — no-hangout commits, spends no die', () => {
     const session = blockableSession(12, (state) => {
-      state.player.currentSystemId = 2; // Aldebaran-1 — no Spacers Hangout.
+      // T-121 · Antares-5 (15), a RIM port. Aldebaran-1 stood here until the reach
+      // change gave all fourteen core ports a bar; §4.5 keeps the rim unflagged
+      // precisely so this refusal — and this parity assertion — stays reachable.
+      state.player.currentSystemId = 15;
     });
     expectBlocked(
       session,
@@ -1034,7 +1037,10 @@ describe('legal-actions enumerator', () => {
   it('T-1303 · does NOT advertise VisitHangout at a non-Hangout system', () => {
     const state = createInitialState(1);
     state.dayPhase = DayPhase.DAY;
-    state.player.currentSystemId = 2; // Aldebaran-1 — no Hangout
+    // T-121 · Antares-5 (15), a RIM port. Aldebaran-1 stood here until the reach
+    // change; §4.5 keeps the rim un-flagged so this enumerator assertion — and the
+    // engine refusal it mirrors — stay reachable.
+    state.player.currentSystemId = 15;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
 
     const legal = legalActions(state);
@@ -1205,15 +1211,27 @@ describe('T-1604b · F2 poverty/immobility trap', () => {
     return legal.actions.some((spec) => spec.type === 'Trade' && spec.action === action);
   }
 
-  it('the trap is real: at dawn with a full hand, no income verb is advertised', () => {
+  it('the trap is PARTLY real: every Trade route is shut, and T-121 opened the desk', () => {
     const legal = legalActions(trapState());
     expect(legal.diceRemaining).toEqual([0, 1, 2, 3, 4]);
 
-    // The three income routes, each shut for its own reason:
+    // The three TRADE routes, each still shut for its own reason:
     expect(hasTrade(legal, 'buy-fuel')).toBe(false); // floor(0 / price) === 0
     expect(hasTrade(legal, 'sign-contract')).toBe(false); // the hold is full
-    expect(legal.actions.some((s) => s.type === 'VisitHangout')).toBe(false); // Mira-9 has no desk
     expect(hasTrade(legal, 'pay-debt')).toBe(false); // nothing to pay with
+
+    // T-121 · A MEASURED CONSEQUENCE OF THE REACH CHANGE, RECORDED RATHER THAN
+    // ABSORBED. This line asserted `false` under the comment "Mira-9 has no desk".
+    // Mira-9 (id 8) is a CORE port, so it now runs a bar and a Penny Wise desk —
+    // the audited F2 trap has gained a second way out (borrow → buy fuel → jump)
+    // on top of T-1604b's `abandon-contract`. The assertion is INVERTED rather
+    // than deleted so the enumerator still pins exactly what is on offer here, and
+    // the escape-hatch test below still owns the T-1604b guarantee.
+    const hangout = legal.actions.find((s) => s.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    const venue = hangout?.params.venue;
+    expect(venue?.kind).toBe('enum');
+    if (venue?.kind === 'enum') expect(venue.choices).toContain('borrow');
   });
 
   it('the ESCAPE HATCH is advertised: abandon-contract, and it re-opens signing', () => {

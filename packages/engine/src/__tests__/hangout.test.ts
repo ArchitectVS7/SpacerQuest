@@ -17,19 +17,24 @@ import { DawnHand, DayPhase, GameState } from '../types.js';
 
 const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sun-3 (id 1).
 
-/** A DAY-phase state at Sun-3 (the hasHangout hub) with a hand-picked dawn hand
- *  and a co-located, solvent dealer. `dice` become the player's Dare die by
- *  index, so a nat-20 / nat-1 is dialled in directly. */
-function hangoutState(dice: number[]): GameState {
+/** A DAY-phase state at a hasHangout port with a hand-picked dawn hand and a
+ *  co-located, solvent dealer. `dice` become the player's Dare die by index, so a
+ *  nat-20 / nat-1 is dialled in directly.
+ *
+ *  T-121 · `systemId` defaults to Sun-3 so no existing test moves, and is a
+ *  parameter so the reach change can be driven at a port that is not the home
+ *  hub. The dealer is moved to WHEREVER the player is put, which is what keeps a
+ *  Dare off-hub from decaying into a 'no-opponent' fail. */
+function hangoutState(dice: number[], systemId = 1): GameState {
   const state = createInitialState(1);
   state.dayPhase = DayPhase.DAY;
   state.dayEventCount = 0;
-  state.player.currentSystemId = 1; // Sun-3
+  state.player.currentSystemId = systemId;
   state.player.stats[Stat.GUILE] = 0;
   const spent = new Array<boolean>(dice.length).fill(false);
   state.player.dawnHand = { dice: [...dice], spent } satisfies DawnHand;
   const dealer = state.npcs.find((n) => n.id === DEALER)!;
-  dealer.currentSystemId = 1;
+  dealer.currentSystemId = systemId;
   dealer.credits = 5000;
   dealer.disposition = 0;
   return state;
@@ -302,7 +307,11 @@ describe('mid-day serialization round-trip', () => {
 describe('hangout-system gate', () => {
   it('blocks a VisitHangout at a system without a Hangout (no die spent)', () => {
     const state = hangoutState([10, 3, 3, 3, 3]);
-    state.player.currentSystemId = 2; // Aldebaran-1 — no Hangout
+    // T-121 · Antares-5, a RIM port. Aldebaran-1 used to stand here; it now runs a
+    // bar like every other core port. §4.5 keeps the rim unflagged precisely so
+    // this refusal stays reachable — an empty un-flagged set would delete the only
+    // state that can produce ActionBlocked{'no-hangout'} and this test with it.
+    state.player.currentSystemId = 15;
     const { state: after, events } = applyPlayerAction(state, {
       type: 'VisitHangout',
       venue: 'rumor',
@@ -316,6 +325,63 @@ describe('hangout-system gate', () => {
       }),
     ]);
     expect(after.player.dawnHand?.spent[0]).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-121 · THE REACH CHANGE, DRIVEN (docs/HANGOUT_REDESIGN.md §4).
+//
+// Both tests go through `applyPlayerAction`, NOT `resolveVisitHangout` — the gate
+// in `day.ts` is precisely the thing that changed, so a test that calls the
+// resolver directly would have passed before this task and proves nothing.
+//
+// The numbers here are Sun-3's numbers, on purpose: ids 2–14 carry BASELINE rows
+// that resolve field-wise to `DEFAULT_PORT_HANGOUT`, so this is a proof about
+// REACH, not about parameters. T-122 … T-124 make the ports differ.
+// ---------------------------------------------------------------------------
+describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
+  it('a Dare plays at Vega-6 (id 14) — no ActionBlocked, credits move, the die is spent', () => {
+    const VEGA_6 = 14;
+    const state = hangoutState([20, 3, 3, 3, 3], VEGA_6); // die[0] = 20 → player wins
+    state.player.credits = 1000;
+    const { state: after, events } = applyPlayerAction(state, {
+      type: 'VisitHangout',
+      venue: 'dare',
+      opponentId: DEALER,
+      wager: 100,
+      spendDie: 0,
+    });
+
+    expect(events.some((e) => e.type === 'ActionBlocked')).toBe(false);
+    expect(events.some((e) => e.type === 'HangoutEvent' && e.venue === 'dare')).toBe(true);
+    // The same zero-sum transfer the home port produces.
+    expect(after.player.credits).toBe(1100);
+    expect(dealerOf(after).credits).toBe(4900);
+    expect(after.player.dawnHand?.spent[0]).toBe(true);
+  });
+
+  it('a borrow works at Mira-9 (id 8) with NO co-located NPC — the desk travels with the flag', () => {
+    const MIRA_9 = 8;
+    const state = hangoutState([5, 5, 5, 5, 5], MIRA_9);
+    // Empty the port: 'borrow' is opponent-less (Penny Wise is the counterparty,
+    // not a captain), so this also proves the off-hub path does not quietly
+    // depend on a dealer being in the room.
+    for (const npc of state.npcs) npc.currentSystemId = 1;
+    const startCredits = state.player.credits;
+
+    const { state: after, events } = applyPlayerAction(state, {
+      type: 'VisitHangout',
+      venue: 'borrow',
+      amount: 500,
+      spendDie: 0,
+    });
+
+    expect(events.some((e) => e.type === 'ActionBlocked')).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'LoanEvent', kind: 'borrowed', principal: 500 }),
+    );
+    expect(after.player.loan).toMatchObject({ principal: 500, outstanding: 500 });
+    expect(after.player.credits).toBe(startCredits + 500);
   });
 });
 
