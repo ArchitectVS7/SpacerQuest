@@ -146,7 +146,25 @@ implements the owner's ruled options 1 and 2 — if either proves unworkable the
 with the reason rather than documenting an alternative**; no engine, content or sim source
 file is modified; gate green.
 
-### T-101 · Spec the Hangout system: engine vs content, parameterised per port — `status: TODO` · `coder: opus` · `after: T-100`
+### T-101 · Spec the Hangout system: engine vs content, parameterised per port — `status: DONE` · `coder: opus` · `after: T-100`
+
+**Delivered (2026-07-30):** Wrote `docs/HANGOUT_REDESIGN.md`, implementing ruling 3 without
+re-opening it. It settles all five required questions: the typed `PortHangout` parameter
+surface (§2, "the port row, defaults resolved," field-wise default resolution against
+`DEFAULT_PORT_HANGOUT`); the engine/content line as an explicit 35-row two-column table (§3,
+"deltas are content, application is engine"); the reach change from 1-of-28 to 14-of-28 core
+ports with its blast-radius table across goldens, sim policies, `legalActions`, and the
+capstone/save-version position (§4, no `CURRENT_SAVE_VERSION` bump owed by this track); the
+three known VisitHangout defects, all ruled DEFERRED with two measurement obligations handed
+to T-125 (§5); and the 14-port content brief across six axes including governance as an
+axis independent of `isRim` (§6). Five framework findings (F-101-1…F-101-5) record the
+parameter-only surface's real expressive limits — most notably that the wager ceiling is
+dealer-purse-bound, not band-bound, and that conditional per-port house rules are
+out-of-scope by ruling 3 — rather than routing around them. Scope boundary: this is a spec
+only; no engine, content, or sim source file was touched, and the NPC-side Hangout question
+stays deferred to the owner per the standing gate.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading the Hangout engine/content pair, `day.ts`'s gate, the sim polic · attempts=1/4.
 
 Audit today's Hangout (`packages/engine/src/actions/hangout.ts` — 413 lines, six venues:
 `dare`, `befriend`, `insult`, `meet`, `rumor`, plus `borrow`/`repay`; and
