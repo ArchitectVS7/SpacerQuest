@@ -1,760 +1,397 @@
-# SpacerQuest — NPC Parity Track (N-series) Task List
+# SpacerQuest — 0.5.2: the Explore and Hangout systems
 
-Continues the NPC parity track defined in **`docs/NPC_REDESIGN.md`** — read the track
-preamble, THE STANDING CONSTRAINT, THE PARITY LEDGER, and the target step's own section
-before implementing anything. That document is the source of truth and the record: every
-step's outcome is appended there. Companion docs: `docs/BALANCE-REDESIGN-WORKLIST.md`
-(the R-series and the known-red tripwires), `docs/BALANCE-POLICY.md` (governance),
-`docs/VERSIONING.md` (fingerprints, bands, save versions), `docs/PRD-REIMAGINED.md`
-(design intent).
+Two player-facing systems are being rebuilt from near-stubs into real content-driven
+features. Both follow the same shape — **spec the engine/content split first, extract
+behaviour-preserving, then author content in passes** — and both are deliberately
+multi-pass: no task here tries to design a system and fill it in one go.
 
-Baseline of record at the time of writing: `docs/balance/baseline-n10-shipped.json`
-(8,000 runs). Battery at the time of writing: **1,312 passing / 0 failing**
-(engine 769 · sim 306 · ui 135 · desktop 102).
+**Source of truth:** `docs/EXPLORE_REDESIGN.md` and `docs/HANGOUT_REDESIGN.md` (both
+authored by the first two tasks below; until then, this file and the audit findings in
+`docs/NPC_REDESIGN.md`'s vacated-ruling block are the brief). Companions:
+`docs/PRD-REIMAGINED.md` (design intent), `docs/VERSIONING.md` (fingerprints, save
+versions), `docs/BALANCE-POLICY.md` (governance), `docs/NPC_REDESIGN.md` (the N-series,
+paused behind this track for the two verbs in question).
+
+**Why this track exists — the two measurements that scoped it**, both taken 2026-07-30 and
+recorded under THE THREE VERB RULINGS in `docs/NPC_REDESIGN.md`:
+
+- **Explore costs ~10x what it returns.** 80 fuel (400–640cr) plus a die, a PILOT DC-12 nav
+  check that passes **33.6%** of the time with the fuel burnt _before_ the check, for an
+  expected **53.8cr** of salvage per attempt. Removing it from the shipped explorer policy
+  leaves that policy **richer on 101 of 120 seeds**. The verb is not mistuned income — it is
+  the Nemesis-lore faucet wearing an income action's costume, and the redesign is to give it
+  a payoff worth the price.
+- **The Hangout exists at ONE system out of 28** (Sun-3, the starting system). The social
+  pillar has never been tested at a size where it could matter. It is also the only
+  _voluntary_ input to disposition — every other disposition change is a by-product of
+  violence or competition — and disposition demonstrably weights **who intercepts you**
+  (`chooseWeighted` in `actions/travel.ts`).
 
 ## Orchestrator protocol
 
-1. **Check out** the first task with `status: TODO` whose `after:` tasks are all DONE. Set it `IN-PROGRESS`.
+1. **Check out** the first task with `status: TODO` whose `after:` tasks are all DONE. Set it IN-PROGRESS.
 2. **Plan** — hand the coder the task block plus the pointers named in the intro. Nothing else.
 3. **Code** — implement per the plan and the Standing constraints.
 4. **Review** — check the diff against the task's **Accept** criteria (written to be mechanically checkable).
 5. On pass: run the gate, commit as `<ID>: <title>`, set `status: DONE`, update this file in the same commit. On fail: one fix round, then escalate, then halt.
 
-**Gate (every task):** `npm test`, `npx tsc -b`, and `npm run lint` must all exit 0.
-A green battery means ZERO failing tests, not "the ones we care about". The two known-red
-`it.fails` tripwires are R-owned and are *expected* to fail-as-designed (vitest counts them
-as passing); if one flips to unexpectedly PASSING, halt and escalate — do not flip it to
-`it`.
+**Gate (every task):** `npm test`, `npx tsc -b`, and `npm run lint` must all exit 0. A green
+battery means ZERO failing tests. The known-red `it.fails` tripwires are R-owned and are
+_expected_ to fail-as-designed; if one flips to unexpectedly PASSING, halt and escalate — do
+not flip it to `it`.
 
 **Format check (optional):** `npm run format`
 
 **Standing constraints** (the reviewer enforces on every task):
 
-- **Same rules, no exemptions.** An NPC uses the engine's own function, or that function
-  gains an actor parameter so both sides call it. Never write the cast a private parallel
-  model — R2c is the standing warning (the sim kept a private copy of the yard ladder that
-  had inherited the same bug, so it agreed with the engine *for the wrong reason* and hid a
-  live defect for months).
-- **Content is data, not logic.** Read the content tables (`DEEDS`,
-  `RENOWN_DEED_THRESHOLDS`, `CARGO_TYPES`, `PURCHASABLE_PORTS`, …). Never restate an
-  id→value mapping inside the engine.
-- **Argue at the definition site.** A rule's reasoning lives in a comment next to the rule,
-  not only in `docs/NPC_REDESIGN.md`. The doc is pruned; the code comment is the copy that
-  cannot go stale.
+- **ENGINE OWNS RULES, CONTENT OWNS INSTANCES — this is the whole point of the track.** A
+  new _kind_ of outcome is engine work; a new _instance_ of one is a content row. If
+  authoring the 74th explore outcome requires an engine change, the framework is wrong and
+  that is a finding to report, not a branch to add. `packages/content` is data: a `grep` for
+  `if (` over a new content file should find nothing that decides an outcome.
+- **Extract behaviour-preserving BEFORE adding anything** — the N3 `combatRules.ts`
+  precedent, which is the model for both refactors: the engine suite stayed at 726/726 with
+  **every golden hash unmoved** before one new behaviour was wired in. Prove the move is
+  inert, in its own commit, then build on it.
+- **CONTENT IS HASHED WHOLESALE into `rulesFingerprint`**, so _every_ content pass stales
+  the smoke fixture. Do NOT take a capstone per content task — that is six capstones for
+  work that should cost two. Batch it: the milestone's final task takes one capstone and
+  re-extracts once (standing amendment 3's "re-extract ONCE, at the end"). Run
+  `npm run format` BEFORE that capstone, never after — `rulesFingerprint` is not
+  formatting-invariant (found at N10).
 - **Never edit a fingerprint, band, threshold or golden to make a test pass**
-  (`docs/VERSIONING.md`, "The rule that matters most"). A **stale fixture** gets a new
-  capstone. A **live band** that goes red gets re-measured on a **wider sample** — standing
-  amendment 1's corollary, *"never report a rate as 0.00 off a small arm — report `< 1/n`,
-  or re-run bigger"*. Widening the SAMPLE while every threshold stays byte-identical is the
-  sanctioned fix and has precedent at N4 and N10; moving a threshold is not.
-- **A save-shape change owes a migration and a round-trip test**, and a migration **calls**
-  a rule rather than restating one (the `MIGRATIONS[9]`/`[10]` precedent). `deserializeState`
-  must perform the same move as the migration, pinned by a test — the two paths drifting is
-  a known hazard.
-- **Run `npm run format` BEFORE taking a capstone, never after.** `rulesFingerprint` is
-  **not** formatting-invariant (found at N10, contradicting standing amendment 3's N7-FP
-  note): a `prettier --write` moves it and stales a fixture extracted minutes earlier.
-- **Control arms must not read a stale build.** A probe importing `@spacerquest/engine`
-  resolves to `packages/engine/dist`, so `git stash`-ing `packages/` and re-running yields a
-  "control" byte-identical to the shipped arm. Import `../packages/engine/src/index.js`
-  directly, or run `npx tsc -b` between arms. **The tell is output matching to the last
-  decimal** — that is not what a shifted rng stream looks like.
-- **Sweep invocation, exactly.** Shards are **1-indexed**: `--shard 1/8` … `--shard 8/8`,
-  then `--merge`; verify the merge line reports **8,000 rows** before believing a capstone.
-  Both `--milestone-days` and `--aggregate` are load-bearing (see the doc's "sweep command"
-  section for why each was missed before).
-- **NEVER mark a step SHIPPED without grepping for the named deliverable at the named call
-  site.** N3 and N4 were *both* marked SHIPPED with their core change absent; the audit that
-  caught them did it in one command per row. A status board is not evidence.
+  (`docs/VERSIONING.md`). A stale fixture gets a new capstone; a red live band gets a WIDER
+  SAMPLE, never a moved threshold (precedent at N4 and N10).
+- **A save-shape change owes a migration and a round-trip test**, and a migration CALLS a
+  rule rather than restating one. `CURRENT_SAVE_VERSION` is **12** at the start of this
+  track; two tasks below are expected to need it.
+- **Sweep invocation, exactly.** Shards are **1-indexed** (`--shard 1/8` … `8/8`), then
+  `--merge`; verify the merge reports **8,000 rows**. Both `--milestone-days` and
+  `--aggregate` are load-bearing.
+- **Never mark a task DONE without grepping for its named deliverable at its named call
+  site.** Two N-series steps were once marked SHIPPED with the core change absent; the audit
+  that caught them did it in one command per row.
 
 Statuses: `TODO` | `IN-PROGRESS` | `DONE` | `BLOCKED(reason)`
 
 ---
 
-## M0 — Housekeeping
+## M1 — Specification (both systems, before any implementation)
 
-### T-001 · Commit the N-series doc prune — `status: DONE` · `coder: sonnet` · `after: —`
+### T-100 · Spec the Explore system: engine/content framework + the time cost — `status: TODO` · `coder: opus` · `after: —`
 
-`docs/NPC_REDESIGN.md` has an uncommitted prune in the working tree: the N3, N4, N10 and
-N7-RIG Result blocks were reduced to `Result` + `Still binds` + a `git show a9cffd85`
-pointer, the prune rule was written into the preamble, and two cross-references that
-promised now-pruned detail were repointed. Both `#### The audit that reopened this step`
-blocks, the parity ledger, the standing constraint, the owner rulings and the N11/N12
-hand-offs are deliberately untouched. Commit it as its own logical change. Do not alter the
-content — only commit it.
+Audit today's Explore end to end (`packages/engine/src/actions/exploration.ts`,
+`packages/content/src/exploration.ts`, `POI_KINDS`, `POI_LOOT`, `EXPLORATION_NAV_DC`,
+`EXPLORATION_FUEL_COST`, and the fragment pools in `content/nemesis.ts`) and write
+`docs/EXPLORE_REDESIGN.md`: a spec, not an implementation. It must settle four things.
+**(1) The outcome taxonomy** — the owner's brief names _unique item_, _questline_, _NPC_,
+_lore bit_, and plain _salvage/credits_, with "dead end" meaning lore with no mechanical
+payoff. Define each as a typed content shape the engine can resolve without knowing any
+instance. **(2) The time cost, which is the sharp new mechanic** — _"recovering said items
+should consume time, especially if powerful"_. Today Explore resolves inside one day. Cost
+out at least three shapes (a multi-day committed recovery that occupies future days; a
+repeated-visit model; a single day whose die cost scales with value), and say what each does
+to the day loop, to `GameState`, and to the save version. **(3) The unique-item effect
+surface** — the brief names _+x to a ship element_ and _+y on a die roll_. The first has a
+home (`ShipState` components, `SPECIAL_EQUIPMENT`); the second **does not exist in the engine
+today** and is the harder half — say where a die-roll modifier would live and what reads it.
+**(4) The value ladder** — how a 100-row table spreads across power levels without a
+hand-tuned constant per row. Recommend one option per question with reasons; do not
+implement.
 
-**Accept:** `git status --porcelain docs/NPC_REDESIGN.md` is empty after the commit; a
-section-by-section line-count comparison against `a9cffd85` shows changes ONLY in the four
-named sections (`### N3`, `### N4`, `### N10`, `### N7-RIG`) with every other `##`/`###`/`####`
-section byte-identical; `grep -c "git show a9cffd85" docs/NPC_REDESIGN.md` returns 4; gate green.
+**Accept:** `docs/EXPLORE_REDESIGN.md` exists and settles all four questions with a named
+recommendation each; every engine/content symbol it cites resolves (`grep` each and confirm a
+hit); the time-cost section costs out at least three shapes with their `GameState` and
+save-version consequences; the die-roll-modifier section states explicitly that no such
+surface exists today and names where it would live; no engine, content or sim source file is
+modified by this task; gate green.
 
-**Delivered (2026-07-29):** `2ccbe494`. Committed ahead of the run rather than by it — the
-runner halts on a dirty tree as a precondition, and this task's whole deliverable *was* the
-dirty tree, so leaving it TODO would have stopped the run before it started. All Accept
-clauses verified: prune confined to the four sections, 4 pointers present, 2,054 → 1,717
-lines, battery green at 1,312 / 0.
+### T-101 · Spec the Hangout system: engine vs content, parameterised per port — `status: TODO` · `coder: opus` · `after: T-100`
 
----
+Audit today's Hangout (`packages/engine/src/actions/hangout.ts` — 413 lines, six venues:
+`dare`, `befriend`, `insult`, `meet`, `rumor`, plus `borrow`/`repay`; and
+`packages/content/src/hangout.ts`) and write `docs/HANGOUT_REDESIGN.md`. The target the owner
+set: **a bar at every one of the 14 core spaceports**, each with its own clientele and vibe,
+driven by parameters rather than by 14 code paths. Settle: **(1) the parameter surface** —
+what a port's venue definition carries (which venues it offers, wager band, check DCs,
+clientele, tone, house rules), such that a new port is a content row and nothing else.
+**(2) What stays hard-coded** — the opposed-GUILE dare resolution and the disposition deltas
+are RULES and belong to the engine; the prose, the tone and the odds bands are content. Draw
+that line explicitly. **(3) The reach change and its consequence** — going from 1 venue to 14
+makes a currently-unreachable feature reachable, which will move the player's economy and
+every golden; say so and size it. **(4) The three known defects**, recorded under the vacated
+VisitHangout ruling in `docs/NPC_REDESIGN.md` — decide whether each is in scope for this
+track or explicitly deferred with the NPC question: the NPC-side faucet, the missing
+`hasHangout` check on the NPC path, and the 150cr ante that locks out the captains it would
+help. **(5) The content brief for 14 ports** — the owner asked for exotic, dangerous and
+humorous among them; propose the spread and the axes that differentiate a port, without
+writing the ports.
 
-## M1 — Owner decision memos: the three UNRULED parity-ledger verbs
+**Accept:** `docs/HANGOUT_REDESIGN.md` exists and settles all five with a named
+recommendation each; the engine-vs-content line is drawn as an explicit two-column list
+naming every current behaviour on one side or the other; the reach section states the
+expected blast radius (which goldens, which bands, whether a capstone is owed); each of the
+three defects is marked in-scope or deferred WITH a reason; the 14-port brief names the
+differentiating axes and proposes a spread; no engine, content or sim source file is
+modified; gate green.
 
-THE PARITY LEDGER leaves three rows **UNRULED**, and they gate N8: *"'most' is only honest
-if every exclusion is a recorded decision rather than a silent gap. Rule on each (implement,
-fast-forward, or exclude with a reason) before N8 pins the living-field baseline."* These
-three tasks **do not make the decisions** — they cost each option out with measured evidence
-so the owner can rule quickly. Sequenced first because they are cheap, they are the N8
-critical path, and they need no capstone.
+### T-102 · CHECKPOINT — owner review of both specs — `status: TODO` · `coder: sonnet` · `after: T-101` · `[BLOCKED BY = Human Gate]`
 
-Each memo goes in `docs/NPC_REDESIGN.md` under a new `## UNRULED VERBS — decision memos
-(prepared <date>)` section placed immediately after THE PARITY LEDGER. Each must state, for
-its verb: (a) what the PLAYER's version does, by named function and file; (b) what the cast
-does today, by named function, with a measured frequency where one is cheap to get; (c) the
-three options — implement / algorithmic fast-forward / exclude — each with a concrete
-sketch of what it would take and what it would cost; (d) a recommendation with its reason;
-(e) an explicit `**DECISION: OWED**` line. **No option may be presented as chosen.**
+Automated preparation only: assemble `docs/0.5.2-SPEC-REVIEW.md` collecting, with no new
+analysis, each spec's open questions and its recommended option, flagging every place the two
+specs disagree or overlap (both touch the day loop and both may want a save bump — say
+whether they can share one). Commit it. Then the run **halts**: the owner picks the time-cost
+model, the die-modifier home, and the hangout parameter surface before any implementation
+starts, because every task in M2 and M3 is built on those three answers.
 
-### T-010 · Memo: the Explore verb — `status: DONE` · `coder: opus` · `after: T-001`
-
-The ledger records Explore as **"never"** for the cast. Read the player's implementation
-(`resolveExploration`, `packages/engine/src/actions/exploration.ts`) and establish what it
-actually yields — salvage, Nemesis-file signal fragments, POI discovery into
-`player.charts.discoveredPois`, and its fuel cost (`EXPLORATION_FUEL_COST`). Establish what
-the cast has instead: `npc.ts` has no exploration verb at all, and `NPC_INTENT_TYPES` has no
-member for it. Assess honestly whether an NPC exploring is *meaningful*: fragments feed the
-player's Nemesis arc (authored, player-facing), and POI discovery writes to a per-actor
-charts structure NPCs do not carry — so "implement" may mean inventing a reward that only
-exists to be symmetrical, which the standing constraint does NOT require (it requires the
-same rules where the verb applies, not that every verb apply). Weigh that against the
-opposite reading: explorers are one of the two destitute archetypes (median 167cr) and
-salvage is income they currently cannot reach. Quantify the second point — measure the
-explorer policy's realised Explore income per 120-day run from the committed capstone or a
-short probe — because it decides between "exclude with a reason" and "this is the floor fix
-N11/N12 are hunting".
-
-**Accept:** the memo section exists in `docs/NPC_REDESIGN.md` with all five parts (a)–(e)
-for Explore; every engine function it names resolves (`grep` each named symbol in
-`packages/engine/src` and confirm a hit); it cites at least one MEASURED number with its
-provenance (capstone path, or probe shape + seeds × days); it contains the literal string
-`**DECISION: OWED**`; no sentence asserts a decision has been made; gate green.
-
-**Delivered (2026-07-29):** Added the "UNRULED VERBS — decision memos" section to
-`docs/NPC_REDESIGN.md` with the Explore memo covering all five required parts: what the
-player's `resolveExploration` does (die spend, fuel gate, PILOT nav check, POI discovery,
-and the three-leg loot roll), what the cast lacks (no `Explore` member in
-`NPC_INTENT_TYPES`, no `charts`/`nemesisFile` on `NpcState`), the three costed options
-(full parity blocked on N13's dice and N11's actor-scoped deeds; an algorithmic
-fast-forward recorded as a partial; exclusion as a ruled decision), a recommendation
-grounded in two measured numbers (a from-scratch ablation probe over 120 seeds × 120 days
-showing Explore nets 53.8cr/attempt against 400–640cr fuel, and the committed N10 capstone
-showing the median day-120 captain cannot afford the fuel gate at all), and a closing
-`**DECISION: OWED**` line. Scope boundary: this memo makes no ruling and changes no engine
-code — Explore's status for the cast remains unimplemented pending the owner's decision
-among the three options.
-Orchestration: graphify=none — no graphify-out/graph.json in the repo root · attempts=1/4.
-
-### T-011 · Memo: the VisitHangout verb — `status: DONE` · `coder: opus` · `after: T-010`
-
-The ledger records VisitHangout as **"Socialize stand-in; no borrow/repay"**. Read the
-player's implementation (`resolveVisitHangout`, `packages/engine/src/actions/hangout.ts`)
-and separate its parts: the dare/wager loop, the loan mechanics (`LOAN_MIN_PRINCIPAL` /
-`LOAN_MAX_PRINCIPAL`, `player.loan`, and Penny Wise as the lender), reputation/disposition
-effects, and hangout presence. Then read the cast's `executeSocialize` in
-`packages/engine/src/npc.ts` and state exactly which of those parts it already reproduces
-and which it does not. The sharp question for the memo is the **loan** half: `NpcState` has
-no `loan` field, so a captain can neither borrow nor default — and note the live connection
-to an ALREADY-OPEN owner question recorded under N4, that `applyDisposition`'s
-`loan-default` reason (Penny Wise) lost its reader when the eleven storyline captains left
-`NPC_PROFILES`. Assess whether NPC borrowing would give the destitute archetypes a real
-recourse (a fighter at 132cr cannot buy fuel, let alone a hull) or merely a way to go
-bankrupt more elaborately. Note the save-shape cost of an `NpcState.loan` (a v-bump plus a
-migration) so the owner is pricing the real thing.
-
-**Accept:** the memo section exists with all five parts (a)–(e) for VisitHangout; it names
-and correctly characterises `executeSocialize` and `resolveVisitHangout` (both greppable);
-it explicitly addresses the borrow/repay gap AND its link to the open N4
-`loan-default`/`contraband-caught` question; it states the save-migration cost of an
-`NpcState.loan`; it contains `**DECISION: OWED**`; gate green.
-
-**Delivered (2026-07-29):** Added the "VisitHangout — decision memo" section to
-`docs/NPC_REDESIGN.md`, covering all five parts (a)–(e). Part (a) decomposes the player's
-`resolveVisitHangout` into its six separable parts (venue gate, die spend, presence, the
-dare/wager loop, disposition beats, the rumor host slot) plus the loan mechanics
-(borrow/repay/accrual/default) with their content-derived arithmetic. Part (b) shows
-`executeSocialize` reproduces only the GUILE check, with a measured cast probe (n =
-424,695 living simulated captain-days) quantifying the counterparty-less faucet at +44.1cr
-per action / +4.86cr per captain-day, and that 95.91% of cast Socialize actions resolve
-where no Hangout exists. Part (c) prices all three options (full parity, algorithmic
-fast-forward, exclude-with-reason), including both the nullable and optional forms of an
-`NpcState.loan` save-shape addition. Part (d) recommends option 2 over option 1, gated on
-the N4 `loan-default`/`contraband-caught` ruling being resolved first, and explicitly
-flags the counterparty faucet as the strongest independent finding. Part (e) closes with
-`**DECISION: OWED**` — the memo characterizes and prices the options but does not itself
-choose among them, matching T-012's identical pattern for Storylet. Scope boundary: no
-engine or save-shape code was touched — this task is documentation-only, as scoped; the
-`NpcState.loan` field, shared accrual extraction, and N4 re-siting ruling all remain for
-whichever future task the owner selects.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
-
-### T-012 · Memo: the Storylet verb — `status: DONE` · `coder: opus` · `after: T-011`
-
-The ledger records Storylet as **"authored player-facing content"**. This is the row most
-likely to be correctly EXCLUDED, and the memo's job is to make that a recorded decision
-with a reason rather than an assumption. Establish: storylets are authored prose with
-player-facing choices (`packages/content/src/storylets.ts`, resolved by
-`packages/engine/src/storylets.ts`), they carry `spendDie` requirements and stat checks
-against a hand the cast does not hold until N13, and they are multi-step chains with
-scheduled follow-ups — the exact mechanism whose interaction with NPC mortality forced the
-`NPC_PROFILES` / `QUEST_PROFILES` split at N3 (a dead captain talking). Note what the cast
-DOES already have: dispositions and storylet triggers look them up by id, which is why all
-41 records exist. Then assess whether any *non-authored* subset could be fast-forwarded
-(e.g. a captain's disposition or flags moving as if a beat had resolved) and whether that
-would be a rule the player plays under or a private parallel model the standing constraint
-forbids. Recommend, and say plainly what the cost of exclusion is: one of the eleven player
-verbs stays player-only, and N8's "most of a full player's actions" claim must count it as
-a ruled exclusion.
-
-**Accept:** the memo section exists with all five parts (a)–(e) for Storylet; it names the
-`NPC_PROFILES`/`QUEST_PROFILES` split and the mid-chain-death failure mode as the reason the
-question is not hypothetical; it addresses the N13 hand dependency; it states the cost of
-exclusion in the ledger's own terms; it contains `**DECISION: OWED**`; the three memos now
-present cover exactly Explore, VisitHangout and Storylet and no other verb; gate green.
-
-**Delivered (2026-07-29):** Added the "Storylet — decision memo" section to
-`docs/NPC_REDESIGN.md`, covering all five parts (a)–(e). Part (a) decomposes the player's
-storylet pipeline (dispatch, the constantly-running offer refresh, `triggerMatches`'
-player-and-world-scoped inputs, the die-gated entry, the refusal ladder, `applyEffects`'
-ten write targets, the once-only `completed` ledger, and the multi-step scheduling
-mechanism) with content-derived arithmetic from a gitignored census script (114 storylets,
-254 choices, 40 die-gated, 112 of 114 `repeat: 'never'`). Part (b) shows the cast has no
-Storylet verb or intent at all — "0 by construction" — and that the 41 `NpcState` records
-exist only as the storylet system's lookup subject, not as participants; it also verifies
-the `NPC_PROFILES`/`QUEST_PROFILES` split is live (10/10 storylet-referenced npc ids are
-quest profiles, 0/30 are simulated captains) and flags that the `dead` check is missing at
-three storylet call sites plus that storylet events carry no actor and get folded into the
-player's smuggling counters. Part (c) prices all three options, showing option 1 requires a
-per-captain `StoryletState` sub-state, a save-version bump queued behind N11, and a sixth
-`NPC_INTENT_TYPES` member, while option 2 reduces to the narrow `resolveAbandonedChains`
-precedent once its two sub-shapes are separated. Part (d) recommends option 3
-(exclude-with-reason) on four grounds, chiefly that the shared once-only `completed` ledger
-makes cast participation subtractive rather than additive for the player. Part (e) closes
-with `**DECISION: OWED**` — the memo prices and recommends but does not itself choose,
-matching T-011's pattern. Scope boundary: no engine or save-shape code was touched — this
-task is documentation-only, as scoped; the two flagged defects (unfiltered `dead` lookups,
-actor-less storylet events) and the option-1/option-2 implementation work all remain for
-whichever future task the owner selects.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent) · attempts=1/4.
+**Accept:** (human-checked) the review doc is committed and lists each spec's recommendations
+and the cross-spec conflicts; the owner has ruled on the time-cost model, the
+die-roll-modifier surface, and the hangout parameter surface.
 
 ---
 
-## M2 — N11: NPCs earn deeds and Renown (MUST-HAVE)
+## M2 — Explore: build the system, then fill it
 
-Implements `### N11` in `docs/NPC_REDESIGN.md` — **read that section and its
-`[!IMPORTANT]` hand-off block from N10 first.** The dead end being removed: `ShipyardActor.
-registry` is optional and no NPC has one, so `actorRankIndex`
-(`packages/engine/src/actions/shipyard.ts:73`) returns −1 — strictly below every rung —
-forever, and no NPC deed source exists anywhere in the engine. Every rank gate is therefore
-a permanent lockout with **no recourse**, which standing-constraint consequence 2 defines as
-an exemption: a gate the actor can never open is not the same rule the player plays under,
-because the player can EARN the key.
+### T-110 · The Explore outcome framework, extracted behaviour-preserving — `status: TODO` · `coder: opus` · `after: T-102`
 
-### T-020 · NPC deed registry, fed by the actions captains already perform — `status: DONE` · `coder: opus` · `after: T-012`
+Restructure `resolveExploration` so an outcome is a **content-supplied typed payload the
+engine resolves generically**, replacing today's hard-coded three-component roll (salvage /
+fragment / contraband). Land it **behaviour-preserving first**: the existing beacon and
+derelict tables are re-expressed in the new shape and every existing exploration test and
+golden must be unmoved before any new outcome type is wired in. Then add the taxonomy the
+spec settled (unique item, questline, NPC, lore, dead-end) as resolvable types with no
+instances yet.
 
-Give every simulated captain a deed registry that accrues from their real actions, through
-the **same** deed definitions and thresholds the player uses (`DEEDS` and
-`RENOWN_DEED_THRESHOLDS` from `@spacerquest/content`; `rankForDeedCount` from
-`packages/engine/src/deeds.ts`). Sources are the ones N11 names: hauls delivered, fights won
-(N3's interdictions), careers survived.
+**Accept:** the diff shows the two existing POI types re-expressed as content rows, not as
+engine branches; **every pre-existing exploration test passes unchanged and the day-loop
+goldens are byte-identical in the extraction commit** (state this explicitly in the commit
+body, the N3 `combatRules.ts` precedent); each new outcome type has a resolver and a unit
+test proving an instance of it resolves; a `grep` for `beacon`/`derelict` in
+`packages/engine/src/actions/exploration.ts` returns nothing outside comments; gate green.
 
-**The design tension to resolve, named because it is the whole task:** the player's
-`evaluateDeeds` (`packages/engine/src/deeds.ts:270`) is hard-wired to
-`state.player.registry` and scans `state.eventLog` from a source index. Re-running that per
-captain per dusk over an unbounded log for 30 captains is not affordable (see the doc's
-performance envelope: ~40 ms/day total is the budget N0 bought). Resolve it **without** a
-private parallel model: either give the deed machinery an actor parameter so both sides call
-one function, or accrue per-captain counters on the `NpcState` record and evaluate them
-against the SAME content thresholds through a shared predicate. Whichever you choose, the
-THRESHOLDS and the DEED DEFINITIONS must come from content and the rank must come from
-`rankForDeedCount` — no second ladder, no NPC-only deed table. **Do NOT synthetically
-backfill rank at world creation**: N11 is explicit that the fast-forward allowance applies
-to the SOURCE (coarse verbs standing in for played days), never to unearned rank, and a
-tier-5 captain seeded with a rank they never earned is exactly the "constant recomputed from
-profile" N1 existed to kill. `createInitialState` must start every captain at zero deeds.
-This is a save-shape change: bump `CURRENT_SAVE_VERSION` 11 → 12 with a `MIGRATIONS[11]`
-entry that backfills an empty registry (a statement of fact — no existing save has NPC
-deeds), and make `deserializeState` perform the same backfill, pinned by a test.
+### T-111 · The time cost of recovery — `status: TODO` · `coder: opus` · `after: T-110`
 
-**Accept:** `grep -n "registry" packages/engine/src/npc.ts` shows a real per-captain
-registry being written by the verb paths (not merely typed); a simulated captain's deed
-count is > 0 after a 120-day ambient run in a test, and every earned id is a member of
-content `DEEDS`; `rankForDeedCount` is the only rank derivation for NPCs (no second
-threshold table anywhere — `grep -rn "RENOWN_DEED_THRESHOLDS" packages/engine/src` shows no
-NPC-specific copy); `createInitialState(1)` gives every captain zero deeds and rank
-`LIEUTENANT`, asserted by a test; `CURRENT_SAVE_VERSION === 12` with a `MIGRATIONS[11]`
-entry, a v11→v12 round-trip test, and a test asserting `deserializeState` and the migration
-agree; gate green.
+Implement the time-cost model the owner ruled at T-102, so that recovering a valuable find
+occupies real time rather than resolving free inside one day. This is expected to need
+persistent state (an in-progress recovery survives a save) and therefore a save bump with a
+migration and a round-trip test. It must interact honestly with the day loop: state what
+happens if the player travels away mid-recovery, dies mid-recovery, or starts a second one.
 
-**Delivered (2026-07-29):** Every simulated captain now accrues deeds through the exact
-same machinery the player uses. `deeds.ts`'s `evaluateDeeds` was generalized into
-`accrueDeeds(actor: DeedActor, sourceEvents, ctx)`, an actor-shaped function taking either
-`state.player` or an `NpcState` with no wrapper object, backed by one matcher
-(`matchesState` now reads a `{ player: actor }` view so `STATE_PATHS` stays literally true
-for both sides), one count ladder, and one `rankForDeedCount` rank derivation — content's
-`DEEDS` and `RENOWN_DEED_THRESHOLDS` remain the only source of truth, with no NPC-only deed
-table (`grep -rn "RENOWN_DEED_THRESHOLDS" packages/engine/src` shows no second copy).
-`NpcState` gained a `registry: DeedRegistryState` field, written at the real verb call
-sites in `npc.ts` (haul delivery, jump arrival, interdiction combat, socialize) via a new
-`accrueDeeds(updatedNpc, deedSource, ctx)` write site, and every captain is seeded through
-one shared `emptyDeedRegistry()` (called from `createInitialState`, `deserializeState`, and
-the new `MIGRATIONS[11]` entry) so no captain is born or migrated with unearned rank —
-`createInitialState` gives every captain zero deeds and rank `LIEUTENANT`, pinned by a
-test. `CURRENT_SAVE_VERSION` bumped 11 → 12 with a `MIGRATIONS[11]` backfill, a v11→v12
-round-trip test, and a test asserting the migration and `deserializeState` agree.
-`docs/NPC_REDESIGN.md` records three ruled scope boundaries rather than silent exemptions:
-a captain's `deliver-cargo` legitimately carries `success: true` regardless of the Trade
-check (matching the player's own delivery event and the existing "no economic swing"
-ruling on that check); "careers survived" is left **unsourced** because content ships no
-survival/day-count deed and inventing an NPC-only one would recreate the second deed table
-this task exists to prevent; and encounter/yard verbs that emit no matching deed source
-are named as the cheapest next widening lever rather than fabricated. A measured 3-seed x
-120-day ambient run shows the reachable set is bounded to 13 deed ids with ADMIRAL as the
-observed ceiling — a structural finding for T-021/T-023, not a threshold to retune. The
-smoke fixture (`docs/balance/smoke/tiers.json`) was re-extracted from a fresh 8,000-row
-capstone (`docs/balance/baseline-t020-registry.json`) because the registry moved
-`rulesFingerprint` and `saveSchemaVersion`; `balance:diff` against the shipped baseline
-reports nothing moved, which is expected since no `PolicyAggregate` field can see an NPC
-deed until a later task wires one in — the baseline of record is unchanged. Scope boundary:
-this task delivers the registry and its accrual plumbing only; the Renown gate itself
-(rank-gated equipment in `considerRefit`) remains T-021's, untouched here.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root. · attempts=2/4.
+**Accept:** a recovery that spans days is driven end to end in a test (start → intervening
+days → payout) through the real `startDay`/`applyPlayerAction`/`endDay` loop, never by poking
+state; the travel-away, death and second-recovery paths each have a test asserting the ruled
+behaviour; if state was added, `CURRENT_SAVE_VERSION` is bumped with a migration, a
+round-trip test, and `deserializeState` performing the same backfill pinned by a test;
+recovery time scales with outcome value by a content-driven rule, not a per-row constant;
+gate green.
 
-### T-021 · The Renown gate becomes reachable — `considerRefit` learns rank-gated equipment — `status: DONE` · `coder: opus` · `after: T-020`
+### T-112 · The unique-item effect surface — `status: TODO` · `coder: opus` · `after: T-111`
 
-With a registry in place, make the gate actually bite and actually open. `considerRefit`
-(`packages/engine/src/npc.ts`) currently never requests special equipment, which is the only
-reason the −1 lockout has been dormant. Extend its ladder to consider rank-gated special
-equipment (`SPECIAL_EQUIPMENT`), routed through the EXISTING gate in
-`quoteShipyard`/`applyShipyardMutation` — the `requiredRank` check at
-`packages/engine/src/actions/shipyard.ts:397` must be the one and only gate, with **no NPC
-branch**. Pass the captain's registry through `ShipyardActor` so `actorRankIndex` reads a
-real standing instead of returning −1. Respect `NPC_YARD_RESERVE` as the existing
-discretionary-money line; add no new pacing constant unless the sweep demands one, and if
-you do, argue it at its definition site. Note the open watch item **OI-9** (the NPC refit
-spends no die) is deliberately NOT in scope — do not "fix" it here.
+Build the two effect classes the brief names: **+x to a ship element** (which has a home in
+`ShipState` / `SPECIAL_EQUIPMENT`) and **+y on a die roll** (which does not exist today —
+this is the new surface, and T-100 named where it should live). A die-roll modifier must read
+through the engine's own `check()` / dice path so player and NPC are affected by one rule,
+and must be visible to the player in the cockpit rather than a silent buff.
 
-**Accept:** `grep -n "SPECIAL_EQUIPMENT" packages/engine/src/npc.ts` returns a hit inside
-the refit path; a test shows a captain with sufficient deeds PURCHASING a rank-gated item
-and a captain without them being REFUSED, both through `quoteShipyard`/
-`applyShipyardMutation` with no NPC-specific branch in `shipyard.ts` (diff shows no new
-`if (isNpc…)`-shaped code); `actorRankIndex` returns ≥ 0 for a captain carrying a registry,
-asserted directly; no new pacing constant, or one with a definition-site argument; gate green.
+**Accept:** both effect classes are content-declared and engine-resolved; a test shows a
+die-roll modifier changing a `check()` outcome through the real path (not a unit-test stub of
+the formula); the modifier is surfaced in `packages/ui` and asserted by a UI test; no effect
+is applied by a branch keyed on a specific item id (a `grep` for item ids in
+`packages/engine/src` returns nothing); gate green.
 
-**Delivered (2026-07-30):** `considerRefit` (`packages/engine/src/npc.ts`) now walks
-`SPECIAL_EQUIPMENT` filtered to rows declaring a `requiredRenownRank` — a data filter read
-off content, not an NPC-side id list — and asks the yard for each one BEFORE the component
-ladder, so the ask is exercised every career rather than only after all eight components
-are maxed. The ask itself carries no rank comparison: `actorRankIndex`
-(`packages/engine/src/actions/shipyard.ts`) was exported so "returns ≥ 0 for a captain" is
-directly assertable, and `specialEquipmentFailure`'s `requiredRank` check remains the one
-and only gate on both sides (`grep -n "if (isNpc"` on the `shipyard.ts` diff returns
-nothing). New tests in `npc.test.ts` and `shipyard.test.ts` earn a captain's rank through
-real `accrueDeeds` deed sources (never a hand-set `renownRank`) and show the earned captain
-purchasing a rank-gated item through `resolveNpcDay` while a zero-deed twin is refused on
-every one of 20 seeded days. Scope boundary: the four ungated special-equipment items
-(CLOAKER, AUTO_REPAIR, TITANIUM_HULL, TRANS_WARP) are deliberately deferred — TITANIUM_HULL
-alone adds +50 cargo pods, which would put a non-Renown economy swing inside the arm T-023
-must attribute to the Renown gate — and OI-9 (the NPC refit spends no die) remains
-untouched, per the task's own exclusion. The smoke fixture and two campaign fixtures were
-re-pinned against the moved `rulesFingerprint`/`docsFingerprint` and policy fingerprints;
-no `expected` number or baseline of record moved.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; nothing to query). · attempts=1/4.
+### T-113 · Explore content pass 1 of 3 — the spine (~34 outcomes) — `status: TODO` · `coder: opus` · `after: T-112`
 
-### T-022 · Instrument: rank distribution and special-equipment purchases — `status: DONE` · `coder: sonnet` · `after: T-021`
+Author the first third of the 100-outcome table in `packages/content`, weighted toward the
+**common and low-value** end: salvage rows, lore/dead-end rows, and a small number of
+low-tier unique items. Establish the house voice and the row shape the next two passes
+follow. No engine change is permitted in this task — if a row cannot be expressed, that is a
+framework finding to report, not a branch to add.
 
-N11's Simulate clause asks for **rank distribution at day 30/60/120** and
-**special-equipment purchase counts**, and this must land BEFORE the capstone — the lesson
-N9, N4 and N10 each paid for is that a mechanism the instrument cannot see cannot be graded
-(N9: "the aggregate cannot see an asset"; N4: `sampleMilestone` sampled all 41 records;
-N10: nothing in `packages/sim` counted `ContractClaimed` at all). Copy N10's worked example:
-add the per-captain rank/deed-count to `MilestoneSample` alongside the existing
-`npcCredits`/`npcHullStrength`/`npcFuel`/`npcSystemId` arrays (via `sampleField`, so the
-arrays cannot fall out of step), add a special-equipment purchase count to
-`CampaignStatsReport`, and surface both on `PolicyAggregate` in
-`packages/sim/src/balance/aggregate.ts`. Sample the FIELD, not the record count —
-`isSimulatedCaptain` from `@spacerquest/content` is the shared predicate; `NPC_PROFILES.
-length` is 30, `state.npcs.length` is 41, and 31 is the board. Write a named-reader test in
-the style of `packages/sim/src/__tests__/campaign-contracts.test.ts` (bands and structural
-invariants, never pinned digits).
+**Accept:** ~34 outcomes committed as content rows; a content-validation test asserts every
+row is well-formed and that the table's value distribution matches the spec's ladder; zero
+lines changed under `packages/engine/src`; a test drives at least one instance of each
+outcome TYPE present in this pass through the real Explore path; gate green.
 
-**Accept:** `MilestoneSample` carries per-captain rank/deed data and it is populated via
-`sampleField` (diff shows one traversal, one filter); the report carries a
-special-equipment purchase count; both appear on `PolicyAggregate`; a named-reader test file
-exists and asserts the scalar-equals-its-own-series identity plus bounds; a test asserts the
-sampled field length equals `NPC_PROFILES.length` AND is strictly less than
-`state.npcs.length`; gate green.
+### T-114 · Explore content pass 2 of 3 — the middle (~33 outcomes) — `status: TODO` · `coder: opus` · `after: T-113`
 
-**Delivered (2026-07-30):** `MilestoneSample` now carries `npcDeedCount` and
-`npcRenownRank` per simulated captain, added to `sampleField`'s single
-traversal/filter alongside the existing four arrays so all six stay index-aligned;
-`CampaignStatsReport` gained `npcSpecialEquipmentPurchases` (summed from a new
-per-day `CampaignDayStats.npcSpecialEquipmentBought` state-diff over the
-rank-gated `SPECIAL_EQUIPMENT` rows, read off content rather than an id list);
-both surfaced on `PolicyAggregate` (`npcSpecialEquipmentPurchases(PerRun)`) and
-`MilestoneAggregate` (`npcDeedCount` distribution, `npcRenownRanks` histogram);
-the new headline metric was added to `diff.ts`. A named-reader test,
-`packages/sim/src/__tests__/campaign-renown.test.ts`, asserts the
-scalar-equals-its-own-series identity, the 30-vs-41 field/roster distinction,
-six-array index alignment, monotonicity across milestone days, the JSON
-round-trip, and the one live band (the gate is actually walked through, not
-merely offered). The deliberate scope boundary: `MilestoneSample`'s per-captain
-data is measurement-only and is NOT restored by the synthesizer, so a
-synthesized captain in the smoke-tier fixtures still reads as a zero-deed
-LIEUTENANT — that gap is documented on the type rather than silently left; the
-smoke `tiers.json` fixture was re-extracted (instrument/docs fingerprints moved,
-`rulesFingerprint` unchanged since no engine/content file was touched) and
-`balance-degraded`'s fingerprint log carries the before/after hashes with a
-locally-verified proof that the new fields are the only cause of the move.
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; nothing to query). · attempts=1/4.
+The second third, weighted toward **mid-value**: unique items with real effects, the first
+questline hooks, and NPC-introduction outcomes. Questline and NPC outcomes must connect to
+the existing storylet and cast machinery rather than inventing a parallel one.
 
-### T-023 · N11 closeout: capstone, verdict, re-pin, Result block — `status: DONE` · `coder: opus` · `after: T-022`
+**Accept:** ~33 outcomes committed; every questline outcome resolves into the existing
+storylet system and every NPC outcome references a real cast or quest profile id (asserted by
+a test that resolves the ids against content); zero lines changed under
+`packages/engine/src`; gate green.
 
-Close the step per standing amendment 4 (all four of: heading carries `(SHIPPED <date>)`, a
-`**Result:**` block is appended, the sequencing diagram reflects reality, and anything that
-changes DIRECTION is written into the step it affects). Order matters: **`npm run format`
-FIRST**, then the capstone, then the fixture. Take the capstone exactly as the doc's "sweep
-command" section specifies (1,000 seeds × 120 days × 8 policies, `--milestone-days
-21,29,30,41,60,120`, all eight 1-indexed shards, `--merge`, confirm 8,000 rows), diff it
-against `docs/balance/baseline-n10-shipped.json`, then re-extract the smoke fixture FROM the
-new capstone and confirm the extractor prints `spreads harvested`. Grade **both** Proves
-limbs and **both** Disproves limbs explicitly — *renown inflation* (does the median captain
-outrank a competent player? compare against the player's rank distribution in the same
-capstone) and *zero accrual*. Then answer N10's hand-off, which is the thing that outranks
-the verdict: **report the per-archetype wealth FLOOR (p10) beside the rank distribution**,
-because a deed economy sourced from *winning* may be unreachable for the captains who most
-need it (a fighter at 132cr flies a hull-40 ship and loses fights). Do not tune deed
-weights to make the floor move — measure and report; a re-pricing is an owner call. If the
-baseline is re-pinned, move `balance-targets.test.ts`'s path and standing amendment 1's
-pointer **in the same commit**. Follow the prune rule in the doc preamble when writing the
-Result: verdict + Still binds + a `git show` pointer, not a narration.
+### T-115 · Explore content pass 3 of 3 — the tail (~33 outcomes) — `status: TODO` · `coder: opus` · `after: T-114`
 
-**Accept:** the capstone exists at `docs/balance/baseline-n11-*.json` and its merge reported
-8,000 rows; `npm run balance:diff` output against `baseline-n10-shipped.json` is recorded in
-the Result; the fixture was re-extracted from THAT capstone with `spreads harvested`; the
-Result block explicitly grades all four Proves/Disproves limbs by name and reports both the
-rank distribution at day 30/60/120 and the per-archetype p10 wealth floor; if the baseline
-moved, `grep -rn "baseline-n11" packages/sim/src/__tests__/balance-targets.test.ts` returns
-a hit AND standing amendment 1's pointer names the same file; the status board row, the
-sequencing diagram and any hand-off into N12/N13 are updated; **every deliverable named in
-T-020 and T-021 is re-verified by grep at its call site and the greps are recorded in the
-Result**; battery green with zero failures and no threshold, band, golden or fingerprint
-edited to achieve it (any live-band red was fixed by widening the sample, with the widening
-argued in that test file).
+The final third, weighted toward the **rare and powerful** end, where the time cost bites
+hardest. This pass proves the ladder: the most powerful outcomes must be the slowest to
+recover, by the content-driven rule from T-111 rather than by hand.
 
-**Delivered (2026-07-30):** N11 is SHIPPED — **CHANGE ACCEPTED, HYPOTHESIS HELD, both
-Disproves limbs survived**, and N10's hand-off is discharged with a NO for the third time.
+**Accept:** the table totals **100 outcomes**, asserted by a test; a test asserts recovery
+time correlates with outcome value across the whole table (not row by row); the rarest tier
+is reachable — a seeded sweep finds at least one instance of every outcome across N seeds,
+and any unreachable row fails the test; zero lines changed under `packages/engine/src`; gate
+green.
 
-Order kept: `npm run format` FIRST (**a no-op** — `prettier --check .` was already clean, so
-no fingerprint moved on the formatting pass), then `npx tsc -b`, then a dist-freshness probe
-(`CURRENT_SAVE_VERSION 12`, registry present on all 41 records) because the sweep resolves
-`@spacerquest/engine` to `dist` — N10's recorded trap. Stale `rows-n11-shipped-shard*` were
-removed before sweeping so the merge glob could not double-count.
+### T-116 · Explore: measure it, and answer the question that started this — `status: TODO` · `coder: opus` · `after: T-115`
 
-**The capstone.** Exactly the doc's sweep block: 1,000 seeds × 120 days × 8 policies,
-`--milestone-days 21,29,30,41,60,120`, all eight 1-indexed shards (each logged `wrote 1000
-rows`, ~2m57s), then `--merge`, which reported eight `merged 1000 rows` lines and *"wrote
-aggregate for 8000 rows to docs/balance/baseline-n11-shipped.json"*. Asserted off the
-artefact itself: `runs 8000`, `seeds 1000`, `days 120`, 8 policies, `byPolicy.length 8`,
-every `byPolicy[*].milestones.length 6`, `fleet.milestones` days `21,29,30,41,60,120`.
+Run `npm run format`, THEN one capstone for the whole milestone (the content passes have been
+staling the fixture since T-113 — this is the single re-extraction standing amendment 3 asks
+for). Re-measure the number that scoped this track: **is Explore still a net loss?** Re-run
+the T-010 ablation shape (an arm with Explore filtered out of the explorer policy, 120 seeds
+× 120 days) and report the before/after. Append the result to `docs/EXPLORE_REDESIGN.md`. Do
+NOT tune a payout to make it positive — if it is still negative, that is the finding and the
+lever is an owner call.
 
-**The diff** (`balance:diff` vs `baseline-n10-shipped.json`, epsilon 0): **9 moved rows,
-757 shape changes** — the added paths are exactly T-022's fields
-(`fleet.npcSpecialEquipmentPurchases(PerRun)` and per-milestone `npcDeedCount.*` /
-`npcRenownRanks.*`), reported as present-on-one-side rather than as equal. NOT "NOTHING
-MOVED", and the asymmetry is the evidence this is an NPC-side change: player rows barely
-move (fleet Tour One clear 0.5180 → 0.5172, final credits median 30,915 → 30,518, deaths per
-1,000 days 0.6573 → 0.6417; no policy's clear rate moves more than 2.4 points) while
-NPC-facing rows move by tens of percent (`fleet.milestones[day 60].npcCredits.p75` 16,641 →
-5,967, −64%). Per policy, `finalCredits.median`: explorer 58,533→58,119 · gambler
-45,869→45,343 · smuggler 27,147→26,623 · trader 50,856→51,561 · trader-degraded
-33,508→35,343 · veteran 5,552→5,640.
-
-**The fixture** was re-extracted FROM that capstone (never bare) and printed
-`[smoke] 4 tiers, spreads harvested, rules b6f27d2bceabde59 / instrument db515475e166a538 /
-docs 118e033b2c04807a`. `provenance` now reads `sweepLabel n11-shipped` / `runs 8000` /
-`spreadSource harvested`. **All three fingerprints unmoved** — T-023 touches no hashed rule
-source, so only the harvested spreads and the provenance changed.
-
-**The four limbs, each by name.** *Proves 1 (real ranks + purchases through the gate)* —
-**HELD**, with the rank distribution (`npcRenownRanks`, 240,000 captain-slots at each day)
-reported at ALL THREE days: **day 30** COMMODORE 43.5% / CAPTAIN 39.5% / COMMANDER 15.4% /
-LIEUTENANT 1.6% / ADMIRAL 0.0% (8 slots) · **day 60** COMMODORE 66.4% / CAPTAIN 22.6% /
-COMMANDER 9.5% / LIEUTENANT 1.4% / ADMIRAL 0.0% (105) · **day 120** COMMODORE 75.4% /
-CAPTAIN 14.8% / COMMANDER 8.1% / LIEUTENANT 1.3% / ADMIRAL 0.4% (881). An earned rank above
-the zero-deed rung is held by 98.4% → 98.6% → 98.7% of slots and CAPTAIN or better by
-82.9% → 89.0% → 90.5% (exact day-120 value 90.53%; an earlier draft's "90.6%" was a
-rounding slip, corrected); `npcSpecialEquipmentPurchases` 342,168 over 8,000 runs
-= **42.771 per run**. *Proves 2 (Honor List top end / spine contested)* — **HELD as an
-intersection**: 73.3% of captain-slots own a gated fit at day 120, owners sit at mean
-component rank 11.73 vs non-owners 25.06, gated owners are in the component top 5 in 20/20
-seeds and a waiting player holds 0 of the 8 titles — graded as an intersection because
-`honorList` scores `SHIP_COMPONENTS` only and is **structurally blind** to
-`hasStarBuster`/`hasArchAngel` (recorded as a finding and handed to N12; not "fixed" here).
-*Disproves · renown inflation* — **NOT DEMONSTRATED**: off the same distribution the cast's
-median rung runs CAPTAIN → COMMODORE → COMMODORE across days 30/60/120 and never exceeds
-COMMODORE; at day 120 that is cast median COMMODORE (9 deeds) vs player median TOP_DOG (17),
-two rungs apart, and **no cast slot reaches TOP_DOG or above at any milestone day**; even
-the pathological `greedy` arm is CAPTAIN 55.2% / COMMODORE 43.1%. *Disproves · zero accrual* — **NOT DEMONSTRATED**: the
-limb N10 flagged as most at risk clears most clearly — the fighter's deed count is p10
-1→2→2 / median 5→7→8 across days 30/60/120, the explorer's p10 4→5→5; fleet `npcDeedCount`
-p10 3/4/5, median 8/9/10.
-
-**N10's hand-off, which outranks the verdict — THE PER-ARCHETYPE p10 FLOOR, and it did not
-move for the THIRD time.** Measured with a gitignored probe over the two capstones' own row
-sets, importing `quantile` from `packages/sim/src/balance/aggregate.ts` rather than
-re-deriving it, and **self-checked before any before/after number was believed**: the
-probe's pooled p10/median equalled both committed artefacts exactly at all three days
-(n11 126/1007 · 126/1311 · 126/55437; n10 126/1024 · 126/2655 · 126/76049). p10 day 120,
-n10 → n11: trader 382,939 → 329,990 · **fighter 125 → 125** · **explorer 125 → 125** ·
-veteran 127 → 127 · gambler 128 → 126 · smuggler 132 → 130 · **POOLED 126 → 126**. Flat at
-day 30 and day 60 too, and flat to ±1cr across all eight policy arms.
-
-**The structural reason, which is the finding to carry forward: A DEED PAYS NO CREDITS.**
-`deeds.ts` never touches `credits` — a deed is a rank counter and rank is a *spending
-unlock*, so N11's only possible cash effect is OUTWARD, and that is what the capstone
-measures: cast median wealth **FELL** 76,049 → 55,437 (−27%) and the trader floor fell
-382,939 → 329,990, because the captains who could afford the gate bought through it. N10
-hoped a deed sourced from fights won would be "the first income-adjacent reward a fighter
-earns"; no such reward exists in the engine, for player or NPC. **No deed weight,
-`RENOWN_DEED_THRESHOLDS` entry, `150 × tier` or pacing constant was touched** — measured and
-reported; a re-pricing is an owner call.
-
-**The re-pin,** in this one commit: `balance-targets.test.ts:103` (the path string only — it
-is deliberately data, not code) and standing amendment 1's pointer both now name
-`docs/balance/baseline-n11-shipped.json`, with `baseline-n10-shipped` joining the predecessor
-list and the `baseline-n4-control.json` "is NOT a baseline" note untouched. The trader
-`debtClearedDay` median is **21 at both capstones**, so `balance-targets`' clear-day band is
-still correctly red for the same R-owned reason and `TRADER_CLEAR_DAY_MIN/MAX` were not
-touched. `docs/BALANCE-REDESIGN-WORKLIST.md:15`'s stale R-series pointer was deliberately
-left alone — it carries its own caveat at line 734, and amendment 1 plus the test path are
-the two authoritative pointers.
-
-**The T-020/T-021 re-verification greps, all ten at the closing tree.** `registry` in
-`npc.ts` (the `accrueDeeds(updatedNpc, deedSource, {…})` write site at `npc.ts:2000`, with
-the rule reasoning at `:1969-1999`) · `accrueDeeds` one definition (`deeds.ts:366`) called by
-both the NPC path (`npc.ts:2000`) and the player's dusk wrapper (`deeds.ts:536`) ·
-`RENOWN_DEED_THRESHOLDS` in engine src is `deeds.ts` only plus comments in
-`npc.ts`/`save.ts`/`types.ts` — **no NPC-specific copy**, and `npc.ts:781` still carries the
-"appear nowhere in this file" comment · `emptyDeedRegistry` one definition (`deeds.ts:300`),
-call sites `state.ts:101`/`158`/`309` and `save.ts:358` (`MIGRATIONS[11]`) — never inlined ·
-`CURRENT_SAVE_VERSION = 12` (`save.ts:364`) with `11: (v11State) =>` at `save.ts:352` ·
-`rankForDeedCount` the only rank derivation on both sides (`deeds.ts:257`, read by
-`state.ts:221`, `save.ts:270`, `demo.ts:110`, `deeds.ts:301`/`472`) ·
-`SPECIAL_EQUIPMENT`/`requiredRenownRank` as a **data filter** in the refit path
-(`npc.ts:890-891`) · `actorRankIndex` exported at `shipyard.ts:85` with the single gate at
-`:406-410` · **`grep -rn "isNpc" packages/engine/src/actions/shipyard.ts` returns NOTHING**
-(exit 1) — no NPC branch · `grep -rn "baseline-n11" packages/sim/src/__tests__/balance-targets.test.ts`
-hits `:103`.
-
-**Battery: 1,347 passing / 0 failing** (engine 795 · sim 315 · ui 135 · desktop 102), plus
-`balance:smoke` green (123 in `balance-smoke` + `balance-rig`). **No threshold, band, golden
-or fingerprint was edited and no sample needed widening** — the step touches no engine or
-content source, so nothing re-derived. Three `it.fails` tripwires are still correctly red
-and all three are R-owned: `balance-targets`' clear-day band and
-`balance-combat-survival`'s death-rate floor and Auto-Repair assertions.
-
-**Docs.** N11's heading carries `(SHIPPED 2026-07-30)`; the Result block is appended and
-pruned per the doc preamble's prune rule (verdict + Still binds + a `git show` pointer) —
-the two `#### RULINGS RECORDED AT T-02x` narration subsections were collapsed to
-`git show 57fe2dcb 67b5f4eb 7f7cc5d0 -- docs/NPC_REDESIGN.md TASKS.md` with every
-prospective clause carried into Still binds (the three ruled exclusions, the removal of the
-reverted attempt's two self-granted exemptions, the 13-deed/ADMIRAL ceiling as a structural
-fact and never a reason to touch `RENOWN_DEED_THRESHOLDS`, T-021's four rulings including
-OI-9 still open, and the `honorList` blindness); both `> [!WARNING] REVERTED ATTEMPT` blocks
-kept (superseded-landmine class). Status board row, run-order line and "Next unblocked step:
-N12" updated; the measurement-debt `[!NOTE]` re-pinned at N11 with the new battery count;
-the PARITY LEDGER's Shipyard row now reads **gate shipped (N11)** with OI-9 open and the
-Renown twelfth row is rewritten from "N11 removes it" to removed-at-N11 plus the
-deed-pays-no-credits fact; `WHAT AN NPC ACTUALLY IS TODAY` loses "no deeds or rank (N11)"
-from *still true at HEAD*; the sequencing diagram marks N11 DONE and N12 `◄── NEXT`.
-
-**Hand-off written into the step it affects** (amendment 4's fourth clause): a
-`> [!IMPORTANT] WHAT N11 HANDS TO N12` block with four items — (1) **N12 is the last
-MUST-HAVE that could move the floor, and a cash-funded port economy is a two-archetype
-economy, not a six**, so port ownership must be measured PER ARCHETYPE from the first task
-(a fleet-wide count would hide it, the same class of blind spot as N4's 41-record bug);
-(2) **the field is now armed and 27% poorer**, so a land-grab paced against N10's
-`npcCredits` distribution is paced against a purse that no longer exists; (3) **`honorList`
-is blind to non-component assets**, so a port will be invisible on the board too — N12 will
-hit this before N13 does; and (4) for **N13**, the cast is nearly deed-saturated (median 10
-of an available 13), so a five-die hand raises *choice*, not rank.
-
-Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; nothing to query). · attempts=4/4.
+**Accept:** capstone taken after formatting, merge reports 8,000 rows, fixture re-extracted
+from it with `spreads harvested`; the ablation is re-run in the documented shape and the
+before/after is recorded with provenance; the result explicitly answers whether Explore still
+loses money and does not tune a constant to reach an answer; if the baseline is re-pinned,
+`balance-targets.test.ts`'s path and standing amendment 1's pointer move in the same commit;
+gate green.
 
 ---
 
-## M3 — N12 groundwork
+## M3 — Hangout: parameterise it, spread it, fill it
 
-### T-030 · FIRST TASK: the instrument learns to see ports — `status: DONE` · `coder: sonnet` · `after: T-023`
+### T-120 · Extract the Hangout engine from its content, behaviour-preserving — `status: TODO` · `coder: opus` · `after: T-116`
 
-N12's own FIRST TASK, pulled forward by owner ruling because it is a precondition rather
-than part of the port change: `sampleMilestone` (`packages/sim/src/index.ts`) records `crew`
-but **not `ports`**, so the aggregate cannot see an asset for the player, let alone for a
-captain. If the cast starts buying ports before the instrument can count them, N12's sweep
-cannot see its own effect — the R0a/R2a class of mistake, one more time. Teach milestones
-`ports` for the PLAYER and per-NPC, following the shape T-022 and N10 established: extend
-`MilestoneSample` (per-NPC arrays through `sampleField` so they cannot fall out of step with
-each other), surface a port-ownership aggregate on `PolicyAggregate`, and add a named-reader
-test. Note that per-NPC port data will read as empty until N12 proper lands — that is
-correct and expected; assert the SHAPE and the player's side now, so N12 inherits working
-plumbing. `MilestoneSample`'s own doc comment states it carries only fields
-`balance/synthesize.ts` can write back, so either extend the synthesizer to restore ports or
-amend that comment to record precisely why ports are exempt — do not leave the invariant
-silently false.
+Split today's `resolveVisitHangout` along the line T-101 drew: the engine keeps the rules
+(opposed-GUILE dare resolution, disposition deltas, the loan ledger, die spending), content
+gains a **per-port venue definition** carrying which venues exist, the wager band, the check
+DCs, the clientele and the tone. **Behaviour-preserving first:** Sun-3's venue definition must
+reproduce today's Hangout exactly, with every existing hangout test and golden unmoved,
+before any second port exists.
 
-**Accept:** `MilestoneSample` carries player ports AND a per-NPC port array populated via
-`sampleField`; a port-ownership figure appears on `PolicyAggregate`; a named-reader test
-asserts the player's port count tracks a career that buys one (drive it, or reuse the
-`portBuyingVeteranPolicy` pattern from `packages/sim/src/__tests__/campaign-reach.test.ts`);
-the `MilestoneSample` doc comment is either satisfied by an extended `synthesize.ts` or
-amended with the stated exemption — verify by reading it; gate green.
+**Accept:** a port venue definition exists in `packages/content` and Sun-3's row reproduces
+current behaviour with **every pre-existing hangout test passing unchanged and the goldens
+byte-identical** (stated in the commit body); the engine reads venue parameters and contains
+no port-specific branch (a `grep` for `Sun-3` / `systemId === 1` in
+`packages/engine/src/actions/hangout.ts` returns nothing); the dare's opposed-GUILE
+resolution and the disposition deltas are still engine-side; gate green.
 
-**Delivered (2026-07-30):** `MilestoneSample.player` gained `ports`
-(`state.player.ports.length`) and `MilestoneSample` gained `npcPortCount`, added to
-`sampleField`'s single traversal/filter so all seven per-captain arrays stay
-index-aligned; the NPC reader is a sim-local `npcPortCount(npc)` over an optional
-`ports` intersection, which reads 0 for every captain today because `NpcState`
-deliberately has no `ports` field yet — adding one would move `rulesFingerprint`
-for a rule that did not change and would prejudge where N12 stores a finite,
-per-system, first-come-first-served stake. `CampaignStatsReport` gained
-`portsOwned`, read once off the final state as a STOCK (a stake only ever goes up
-and is carried through succession) rather than summed from a per-day series the way
-`contractClaims` is. Surfaced on `PolicyAggregate` as `portsOwned: Distribution` and
-`portOwnershipRate` (the share of runs ending with a stake — the readable figure
-when most policies end at zero, and the figure N12's two Disproves limbs are
-statements about), on `MilestoneAggregate` as `playerPorts` / `npcPortCount` (the
-by-DAY series N10's hand-off to N12 explicitly asks for), and as a new
-`HEADLINE_METRICS` row in `balance/diff.ts`. Named reader:
-`packages/sim/src/__tests__/campaign-ports.test.ts` — 30-vs-41 field/roster
-distinction, seven-array index alignment, non-negative integer stake counts
-(deliberately NOT `=== 0`, which would go red the day N12 succeeds), the live band
-that a shipped-policy career ends holding a stake, monotonicity across milestone
-days, the report-vs-dawn-sample cross-check, the one-row aggregate identities, and
-the JSON round-trip. **Reachability, swept before the seed was pinned** (seeds 1..80
-× 120 days, shipped policies, no test-local policy and no `startState` — the stake
-is bought by N9's own `planPortStake` through the engine's real `Port` action):
-trader 64/80, explorer 64/80, gambler 58/80, fighter 31/80, smuggler 21/80,
-**veteran 0/80**; seed 1 / trader is the first qualifier and is what the test pins.
-**The doc-comment invariant is amended, not quietly satisfied** — and the amendment
-fixes a PRE-EXISTING falsehood the task asked to be surfaced: `MilestoneSample`
-claimed to carry "only the fields `balance/synthesize.ts` writes back", but
-`synthesize.ts`'s NOT-RESTORED list names **"Crew, ports, …"** in one bullet, so
-`player.crew` has been a silent measurement-only exception since N7. The comment now
-carries a named MEASUREMENT-ONLY list (deeds/rank from T-022, ports from this step,
-and crew recorded rather than left false) plus the consequence: a synthesized
-captain owns no port and no crew, so the smoke rig's mid-game tiers carry no port
-dusk income. `synthesize.ts` was deliberately NOT extended — restoring a stake would
-fabricate a perpetual dusk income stream no career earned, i.e. author content
-inside a fixture. Gate work: `campaign-degraded`'s seven fingerprints re-pinned with
-**RE-PIN LOG entry 12**, whose shape-only claim is PROVEN locally rather than
-asserted (with `portsOwned` deleted from the report, all seven hashes are
-byte-identical to their entry-11 values); `docs/balance/smoke/tiers.json`
-re-extracted from `baseline-n11-shipped.json` — `instrumentFingerprint`
-`db515475e166a538` → `313fde95fc5ee9db` and the docs hash moved, **`rulesFingerprint`
-`b6f27d2bceabde59` unchanged**, `spreads harvested`, and no recorded outcome moved.
-No engine, content, save-shape or migration change; no threshold, band or golden was
-edited. Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root
-(checked; nothing to query). · attempts=1/4.
+### T-121 · A bar at all 14 spaceports — the reach change — `status: TODO` · `coder: opus` · `after: T-120`
+
+Set `hasHangout` on all 14 core spaceports (ids 1–14, Sun-3 … Vega-6) with a **placeholder
+venue definition** per port — real parameters, not yet the authored voice, so the reach change
+and the content authoring are separable and separately reviewable. This is the task that
+makes a previously-unreachable feature reachable, so it is expected to move the player's
+economy: measure and report rather than absorb it. Say explicitly which goldens moved and
+why.
+
+**Accept:** all 14 core systems carry `hasHangout: true` and a venue definition, asserted by a
+test enumerating them; a test drives `VisitHangout` successfully at a port that is not Sun-3;
+any moved golden is re-recorded with the event-count diff the fixture convention asks for, and
+the commit body states which player-side counts moved; **no rim or gated system gained a
+venue** unless the spec ruled otherwise; gate green.
+
+### T-122 · Hangout content pass 1 of 3 — the core worlds (5 ports) — `status: TODO` · `coder: opus` · `after: T-121`
+
+Author the first five ports' clientele, tone and house rules over the placeholder parameters.
+These are the everyday bars — the baseline the exotic and dangerous ones are exotic and
+dangerous _against_. Voice must match the game's period register (see the wire templates and
+storylet prose for the house voice).
+
+**Accept:** five ports carry authored content; a test asserts each has distinct parameters (no
+two ports identical) and that all authored prose is non-empty and placeholder-free (a `grep`
+for `TODO` / `TBD` / `placeholder` in the content returns nothing); zero lines changed under
+`packages/engine/src`; gate green.
+
+### T-123 · Hangout content pass 2 of 3 — the exotic and the dangerous (5 ports) — `status: TODO` · `coder: opus` · `after: T-122`
+
+The next five, leaning into the axes the spec named: ports where the clientele is unusual, the
+house rules are hostile, or the wager band is out of proportion to the rest of the galaxy. A
+dangerous bar must be dangerous **through parameters** (odds, DCs, disposition consequences),
+never through a special case in the engine.
+
+**Accept:** five more ports authored; at least one is measurably hostile and one measurably
+exotic on their parameters, asserted by a test against the spec's axes; **zero engine
+changes** — if a port's concept needed one, it is reported as a framework finding instead;
+gate green.
+
+### T-124 · Hangout content pass 3 of 3 — the last four, and the humour — `status: TODO` · `coder: opus` · `after: T-123`
+
+The final four ports, including the comic register the owner asked for. Humour in this game is
+period-voiced and dry — read the existing flaw-override and wire lines for the register before
+writing. This pass closes the table at 14.
+
+**Accept:** all **14** core ports carry authored, distinct content, asserted by a test that
+enumerates them and fails on any placeholder; the tonal spread (everyday / exotic / dangerous
+/ comic) is asserted against the spec's axes; zero engine changes; gate green.
+
+### T-125 · Hangout: measure the reach, and re-read disposition — `status: TODO` · `coder: opus` · `after: T-124`
+
+Run `npm run format`, THEN one capstone for this milestone. Report what a reachable social
+system did: hangout usage per run, the disposition distribution across the cast before and
+after, and — the interesting one — whether disposition is now doing real work in
+`chooseWeighted`'s interceptor draw, i.e. **whether who hunts you has started to depend on how
+you have treated people.** Append to `docs/HANGOUT_REDESIGN.md`. Do not tune to a target;
+report.
+
+**Accept:** capstone taken after formatting, 8,000 rows, fixture re-extracted with
+`spreads harvested`; the result records hangout usage per run, the before/after disposition
+spread, and a measured statement about disposition's effect on interceptor selection; no
+threshold, band or constant was tuned to produce a result; if the baseline is re-pinned, both
+pointers move in the same commit; gate green.
 
 ---
 
-## M4 — Checkpoint
+## M4 — Close out
 
-*The review brief this milestone produces is `docs/N-SERIES-REVIEW-2026-07-30.md`.*
+### T-130 · CHECKPOINT — owner review of both systems — `status: TODO` · `coder: sonnet` · `after: T-125` · `[BLOCKED BY = Human Gate]`
 
-### T-040 · CHECKPOINT — owner review: three rulings + N11's verdict — `status: DONE` · `coder: sonnet` · `after: T-030` · `[BLOCKED BY = Human Gate]`
+Automated preparation only: assemble `docs/0.5.2-REVIEW.md` collecting both milestones'
+measured results, every framework finding reported during the content passes (a row that could
+not be expressed is the most valuable output this track can produce), and the list of
+questions this track deliberately did not answer — chief among them **whether NPCs interact
+with Explore and the Hangout**, which the owner deferred until these systems are functional
+and which is the gate on re-ruling the two vacated PARITY LEDGER rows. Commit it, then halt.
 
-Automated preparation only: assemble a single review brief at
-`docs/N-SERIES-REVIEW-<date>.md` that collects, with no new analysis and no decisions, (1)
-the three UNRULED verb memos' recommendations and their `DECISION: OWED` lines, (2) N11's
-verdict with its four graded limbs and the per-archetype p10 floor, (3) the still-open items
-this run did not touch: `executeCombat` remains the pre-N3 abstraction so fighters take 0
-deaths (a PARITY LEDGER Combat-row gap), watch item **OI-9** (the NPC refit spends no die),
-the N4 `loan-default`/`contraband-caught` re-siting question, N7-RIG's still-open new-hashed-
-ROOT hole, and R-owned **R10** (the tier-1 hull cliff) which confounds this track's sweeps.
-Commit the brief. Then the run **halts** — every item in it is an owner decision and the
-runner must never self-approve one.
+**Accept:** (human-checked) the review doc is committed with both milestones' results, the
+framework findings, and the deferred-questions list; the owner has decided whether to re-open
+the two vacated ledger rows and whether the manifest version bumps to 0.5.2.
 
-**Accept:** (human-checked) the brief is committed and contains all three parts with the
-still-open list complete; the owner has ruled on Explore, VisitHangout and Storylet, and has
-accepted or rejected N11's verdict.
+---
 
-**Prepared (2026-07-30):** the automated step assembled the review brief at
-`docs/N-SERIES-REVIEW-2026-07-30.md`, containing four parts with no new analysis and no
-decisions: **(1)** the three UNRULED parity-ledger verbs (Explore `:204`, VisitHangout `:205`,
-Storylet `:209`), each with its ledger row verbatim, its memo's own §(d) recommendation
-bullets, its "what stays genuinely open, and belongs to the owner" paragraph verbatim, and its
-`DECISION: OWED` line plus the option 1 / 2 / 3 paragraph verbatim — including Explore's three
-honesty caveats, VisitHangout's counterparty-faucet (+4.86cr/captain-day) and venue-gate
-(95.91%) bullets kept outside the recommendation exactly as the memo keeps them, and Storylet's
-four numbered grounds plus its two separately-registered defects; **(2)** N11's
-`CHANGE ACCEPTED` verdict with its grading provenance, its four graded limbs by name (PROVES 1
-with the 5×3 rank table and the `42.771`/`42.8` purchase figure carried with both sources,
-PROVES 2 with the `honorList` blindness, and both DISPROVES limbs), the per-archetype p10
-floor table transcribed row-for-row including POOLED and the `median day 120` column, the
-`A DEED PAYS NO CREDITS` block verbatim, and the `WHAT N11 HANDS TO N12` four-item pointer
-list; **(3)** the five still-open items (`executeCombat`'s 0-death Combat-row gap, OI-9, the N4
-`loan-default`/`contraband-caught` re-siting, N7-RIG's new-hashed-ROOT hole, R-owned R10) each
-as what-it-is / where-argued / why-open / who-owns, each closing on *"No decision is proposed
-here"*; and **(4)** the unticked four-decision checklist. Every number is transcribed with its
-source named inline and none is re-derived — N11's `90.53%` is carried as the Result records
-it, not the corrected-away `90.6%`. No engine, content, sim, ui or desktop file was touched; no
-save-shape change and no migration; no threshold, band, golden or fingerprint was edited;
-`docs/NPC_REDESIGN.md` was not edited and the three UNRULED ledger rows are byte-identical. The
-gate that was already green for this tree was not re-run: `npx tsc -b`, `npm run lint`,
-`npm test` (1,354 passing / 0 failing) and `npm run format:check` were confirmed clean prior to
-this step and no source under `packages/` changed since, so no fingerprint moved. This
-automated preparation is complete; no human has reviewed, ruled on, or approved anything in the
-brief, and the task now awaits: Human Gate. Orchestration: graphify=none — no
-`graphify-out/graph.json` in the repo root (checked; nothing to query) · attempts=1/4 ·
-HUMAN-GATE HALT.
+## Completed — the N-series parity run (2026-07-29 → 30)
+
+Ten tasks, T-001 … T-040, delivered the N10 doc prune, the three UNRULED-verb decision memos,
+N11 (NPCs earn deeds and Renown) end to end, and N12's FIRST TASK (the instrument learning to
+see ports). Battery went 1,312 → **1,354 passing / 0 failing**; the baseline of record moved
+to `docs/balance/baseline-n11-shipped.json`.
+
+**Full record: `git show 1bf86bc6 -- TASKS.md`** (task-by-task bodies, Accept criteria and
+Delivered notes). The outcomes are recorded permanently under their steps in
+`docs/NPC_REDESIGN.md`.
+
+**Two of the three verb rulings that run produced were VACATED the same day** — Explore and
+VisitHangout, because this track replaces the systems they were ruled against. Storylet's
+exclusion stands. See the caution block above THE PARITY LEDGER.
 
 ---
 
 ## Deliberately deferred
 
-Out of scope for this run — recorded so they are not re-scoped in by a coder:
+Out of scope for 0.5.2 — recorded so a coder does not re-scope them in:
 
-- **N12 proper (NPCs buy ports).** Only its FIRST TASK (T-030) is in scope. The step itself
-  needs the owner's read on N11's floor result first, because N10 established that a fix
-  routed through Trade cannot reach a captain who does not trade, and ports funded out of
-  cash may be a four-archetype economy.
-- **N13 (dawn-hand parity) and N5 (proficiency spread).** N5 is gated by N13, and N13 is the
-  step that closes the die-choice gap in the Combat row.
-- **N14 (captain-voice wire boast).** An EXPERIMENT, outside the MUST-HAVE chain.
-- **N8 (re-pin against a living field).** Blocked until N10–N12 are done AND the three
-  UNRULED rows are ruled.
-- **`executeCombat`'s missing shared rules.** A real parity gap (N3-shaped, not N4-shaped),
-  but whether it lands as an N3 follow-up or at N13 is a sequencing decision for the owner.
-- **OI-9** (the NPC refit spends no die) — a recorded watch item with a reasonable argument
-  on both sides; its trigger is the field out-fitting the player, which has not fired.
-- **Anything R-owned:** R10's tier-1 hull cliff and the known-red `it.fails` tripwires. Flip
-  a tripwire back to `it` only in the commit that fixes its defect.
-
-**Resolved by the owner (2026-07-30).** All four decisions taken, and recorded in
-`docs/NPC_REDESIGN.md` rather than here:
-
-- **Explore — EXCLUDED**, a ruled ABSENCE. Decided on the ablation measurement: a net credit
-  sink (53.8cr/attempt against 400–640cr of fuel), with the shipped explorer policy ending
-  richer without it on 101 of 120 seeds.
-- **VisitHangout — LENDING EXCLUDED**, the row a ruled PARTIAL (the cast already plays the
-  verb). Decided on the carry arithmetic: 13cr/dusk against a broke captain's 25cr/day.
-- **Storylet — EXCLUDED**, a ruled ABSENCE. Decided on the shared once-only `completed`
-  ledger: cast participation is subtractive for the player, not merely expensive.
-- **N11's verdict — ACCEPTED**, after independent re-verification (battery 1,354/0, every
-  T-020/T-021 deliverable re-grepped at its call site, capstone confirmed at 8,000 runs,
-  baseline pointer moved in both places).
-
-**THE PARITY LEDGER IS NOW FULLY RULED, so N8's ruling precondition is discharged** and N8
-waits on N12 alone. Follow-up recorded in the doc rather than left implicit: the N4
-`loan-default` / `contraband-caught` re-siting is now **narrower** — the Storylet exclusion
-removed "express it storylet-side" as an option, so re-siting is the only route and it is
-owed as its own decision.
+- **Whether NPCs interact with Explore or the Hangout.** The owner's explicit sequencing: the
+  systems become functional first, and only then is the cast question asked. This gates
+  re-ruling the two vacated PARITY LEDGER rows, and therefore gates **N8**.
+- **The three Hangout defects** — the NPC-side faucet (+4.86cr/captain-day with no
+  counterparty), the missing `hasHangout` check on the NPC path, and the 150cr ante that locks
+  out the destitute captains. All three are NPC-side, so they defer with the question above
+  unless T-101 rules one in scope.
+- **The rest of the N-series: N12 (NPCs buy ports), N13 (dawn-hand parity), N5 (proficiency),
+  N8 (re-pin).** N12's FIRST TASK is already done, so that step is ready to resume when this
+  track ends.
+- **`executeCombat`'s missing shared rules** — fighters still take 0 deaths on their chosen
+  Combat day. A real PARITY LEDGER gap; whether it lands as an N3 follow-up or at N13 is an
+  owner sequencing call.
+- **Explore being a net loss for the PLAYER as a balance question.** T-116 re-measures it, but
+  _re-pricing_ is R-series work and an owner call, not something a content pass does.
+- **The manifest version bump to 0.5.2.** `docs/VERSIONING.md` is explicit that bumping is "a
+  deliberate act, once per release cycle, as its own commit immediately before tagging" — so
+  the manifest stays at 0.5.1 until this track ships. T-130 asks the owner to confirm.
+- **Anything R-owned:** R10's tier-1 hull cliff and the known-red `it.fails` tripwires.

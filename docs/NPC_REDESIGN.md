@@ -205,8 +205,8 @@ ruling; it is what makes the fast-forward honest).
 | Travel | real fuel, real routes, real encounters, real permanent death | shipped (N3) |
 | Combat | interdiction on the SHARED rules, one-tick — same DC, tribute, damage, salvage, retreat. **NOT `resolveCombat`**: gives up die CHOICE only, closed by N13. **GAP FOUND AT N4:** that is the verb a captain is FORCED into; the one they CHOOSE (`executeCombat`) is still the pre-N3 abstract GUNS check + flat `150 × tier`, with no interceptor, no damage and no ship loss — so the six fighters take 6.4 interdictions each and **0 deaths** | shipped (N3) · N13 closes the die gap · **`executeCombat` still owed** |
 | Shipyard | full price/gate parity via `ShipyardActor`, and since N11 the RENOWN GATE IS EXERCISED AND MEASURED: the refit ladder asks for rank-gated special equipment and is refused or served by the player's own `requiredRank` check, on the standing the captain earned — no NPC branch, **42.8 gated purchases per run at the N11 capstone**. Still **spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · **gate shipped (N11)** · OI-9 open |
-| Explore | never — and it is not coming: measured a net credit SINK (53.8cr/attempt against 400–640cr of fuel), with the shipped explorer policy ending RICHER without it on 101 of 120 seeds | **EXCLUDED (owner 2026-07-30)** — ruled absence |
-| VisitHangout | the cast plays the verb (`executeSocialize`); the borrow/repay half is excluded — the smallest legal loan carries 13cr/dusk against a broke captain's 25cr/day. **Two open defects found while ruling it:** the verb is a pure faucet (+4.86cr/captain-day, no counterparty) and 95.91% of its actions resolve where there is no Hangout | **PARTIAL, lending EXCLUDED (owner 2026-07-30)** |
+| Explore | never for the cast. The 2026-07-30 exclusion is **VACATED**: it was ruled against an Explore that is being replaced (0.5.2). The measurement that decided it — a net credit SINK, 53.8cr/attempt against 400–640cr of fuel — stands as a fact about the OLD verb and is the reason for the redesign | **DEFERRED (owner 2026-07-30)** — re-ruled after the 0.5.2 Explore system ships |
+| VisitHangout | the cast plays a stub of it (`executeSocialize`). The 2026-07-30 lending exclusion is **VACATED** — ruled against a Hangout that exists at ONE system of 28 and is being rebuilt as a parameterised system across all 14 spaceports (0.5.2). **Three defects found while ruling it, all still true and all deferred with it:** the NPC verb is a pure faucet (+4.86cr/captain-day, no counterparty, where the player's dare is zero-sum), 95.91% of its actions resolve where there is no Hangout, and the 150cr ante locks out the destitute captains it would help most | **DEFERRED (owner 2026-07-30)** — re-ruled after the 0.5.2 Hangout system ships |
 | Crew | never (meaningless without a hand) | N13 decides |
 | Port | never — the player is the only possible port owner | **N12** |
 | Reroll | n/a without a hand | N13 decides |
@@ -222,11 +222,26 @@ than about NPCs: a deed pays no credits.** Rank is a SPENDING UNLOCK, so this ro
 never be the one that moves the wealth floor — see N11's Result and the hand-off into
 N12.
 
-**THE LEDGER IS NOW FULLY RULED (2026-07-30), and N8's precondition is discharged.** The
+> [!CAUTION]
+> **TWO ROWS RE-OPENED THE SAME DAY THEY WERE RULED (owner, 2026-07-30), and N8's ruling
+> precondition is NO LONGER discharged.** Explore and VisitHangout were ruled EXCLUDED
+> against the systems as they exist today. The owner then scoped a **0.5.2 redesign of
+> both** — Explore gaining a ~100-entry outcome table (unique items, questlines, NPCs, lore)
+> with a time cost on recovery, and the Hangout becoming a parameterised engine present at
+> all 14 spaceports instead of one. **A ruling whose premise is being replaced is vacated,
+> not overturned:** nothing in the measurements was wrong, and Explore-is-a-net-sink is the
+> reason the redesign exists. Both rows are re-ruled **after** the new systems are
+> functional, and only then does the question "do NPCs interact with them" get asked.
+> N8 therefore waits on the 0.5.2 track as well as on N12. Storylet's exclusion is
+> UNAFFECTED — its deciding ground (the shared once-only `completed` ledger) is structural
+> and no redesign is scoped against it.
+
+**THE LEDGER WAS FULLY RULED FOR ONE AFTERNOON (2026-07-30); two rows are now DEFERRED.** The
 three rows that were deliberately not defaulted — "most" is only honest if every exclusion
-is a recorded decision rather than a silent gap — are ruled: Explore and Storylet are ruled
-ABSENCES, VisitHangout a ruled PARTIAL. Reasons and the measurements behind them are in THE
-THREE VERB RULINGS below. **Of the player's eleven verbs the cast now plays seven** (Trade,
+is a recorded decision rather than a silent gap — were ruled Explore ABSENCE, Storylet
+ABSENCE, VisitHangout PARTIAL. **Storylet's ruling stands. Explore's and VisitHangout's are
+vacated pending the 0.5.2 redesign of both systems** (see the caution above). Reasons and
+the measurements behind all three are in THE THREE VERB RULINGS below. **Of the player's eleven verbs the cast now plays seven** (Trade,
 Travel, Combat, Shipyard, Socialize-as-VisitHangout, Wait, plus the verb-less Renown row),
 **two are excluded by ruling** (Explore, Storylet), and **two wait on N13's hand** (Crew,
 Reroll) with **Port owed by N12** — which is the honest form of the owner's "all or most of
@@ -236,13 +251,17 @@ a full player's actions".
 
 ## THE THREE VERB RULINGS (owner, 2026-07-30) — the ledger is fully ruled
 
-**All three formerly-UNRULED rows are now ruled, so N8's precondition is discharged: every
-one of the player's eleven verbs is either shipped for the cast or excluded by a recorded
-decision.** The ruling on each is below with the reason that decided it. Each was prepared
+**Ruled 2026-07-30. TWO OF THE THREE WERE VACATED THE SAME DAY** — the owner scoped a 0.5.2
+redesign of Explore and of the Hangout, and a ruling whose premise is being replaced is
+vacated rather than overturned. **Storylet's exclusion stands.** The reasoning below is kept
+in full for all three: it is the input to the redesign, not waste — Explore-is-a-net-sink is
+why Explore is being rebuilt, and the Hangout's one-venue reach is why it is being spread to
+14. Both are re-ruled after the new systems ship (`docs/EXPLORE_REDESIGN.md`,
+`docs/HANGOUT_REDESIGN.md`). Each was prepared
 as a full costed memo (options, measurements, provenance) before being ruled; the memos ran
 to ~940 lines and are **not** kept inline — `git show 3e8cbeda -- docs/NPC_REDESIGN.md`.
 
-**Explore — EXCLUDED. N8 counts a ruled ABSENCE.** The case for implementing was that
+**Explore — EXCLUDED, now VACATED pending the 0.5.2 redesign.** The case for implementing was that
 explorers are one of the two destitute archetypes and salvage looked like income they
 cannot reach. **Measurement killed it, and inverted it.** An ablation probe over 120 seeds
 × 120 days — fidelity-checked byte-equal to `runCampaign` on 5 seeds before any number was
@@ -256,7 +275,8 @@ by design, and the standing constraint requires the same rules *where the verb a
 that every verb apply. **Carry forward: Explore is not the floor fix — that is a candidate
 removed from the search, not left open.**
 
-**VisitHangout — LENDING EXCLUDED. N8 counts a ruled PARTIAL, not an absence**, because the
+**VisitHangout — LENDING EXCLUDED, now VACATED pending the 0.5.2 redesign.** It was a ruled
+PARTIAL rather than an absence because the
 cast already plays the verb through `executeSocialize`; only the borrow/repay half is
 excluded. The reason is arithmetic, not preference: a captain below the ante is on
 `brokeIdle` earning `NPC_ODD_JOB_CREDITS = 25`/day, and the smallest loan the band allows
@@ -265,7 +285,8 @@ principal**. They cannot service it, reach `dueDay` owing 445cr, default, and co
 1.5× encounter multiplier with no ship to survive it (capstone `npcFuel` p25 = 4,
 `npcHullStrength` p10 = 10 against a 90 ceiling). The loan is a rope, not a lever.
 
-**Storylet — EXCLUDED. N8 counts a ruled ABSENCE.** The deciding ground is structural and
+**Storylet — EXCLUDED. N8 counts a ruled ABSENCE. THIS ONE STANDS**, because its deciding
+ground is structural and no redesign is scoped against it. The deciding ground is structural and
 needed no measurement: **112 of 114 storylets are `repeat: 'never'` against ONE
 world-scoped `completed` map**, so a captain resolving a beat does not play *alongside* the
 player, it plays *instead of* them. The Sage's decode storylets are the proof case — the
