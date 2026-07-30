@@ -1,6 +1,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { NPC_PROFILES } from '@spacerquest/content';
 import ts from 'typescript';
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -34,6 +35,7 @@ import {
 } from '../balance/rules-fingerprint.js';
 import { synthesizeTierState, type TierSpread } from '../balance/synthesize.js';
 import { runCampaign } from '../index.js';
+import { createInitialState } from '@spacerquest/engine';
 
 // ---------------------------------------------------------------------------
 // N7 · THE MEASUREMENT RIG's own tests. Three things are held here that the
@@ -183,7 +185,7 @@ describe('N7 · the differ answers "nothing moved"', () => {
     // N1's central finding: its capstone is byte-identical to its predecessor
     // apart from the `label`. A differ that could not say so would have made
     // that finding unrepeatable, so this pair is the differ's own acceptance
-    // test — see the N1 result in docs/BALANCE-REDESIGN-WORKLIST.md.
+    // test — see the N1 result in docs/NPC_REDESIGN.md.
     const diff = diffAggregates(load('baseline-r2c-final.json'), load('baseline-n1.json'));
     expect(diff.identical).toBe(true);
     expect(diff.movedRows).toEqual([]);
@@ -278,7 +280,12 @@ function spreadFor(npcCount: number): TierSpread {
 }
 
 describe('N7 · a synthesized run cannot become a balance number', () => {
-  const npcCount = synthesizeTierState(1, 0, 1, spreadFor(30)).npcs.length;
+  // The roster size is read from `createInitialState`, NOT discovered by calling
+  // `synthesizeTierState` with a guessed count: that function VALIDATES the
+  // spread against the roster before it returns, so a guessed count is a throw
+  // rather than a discovery. It was hardcoded to 30 and broke the moment N3's
+  // roster split made the roster 41 (30 simulation captains + 11 quest records).
+  const npcCount = createInitialState(1).npcs.length;
   const spread = spreadFor(npcCount);
   const synthetic = runCampaign(1, 2, 'trader', {
     startState: synthesizeTierState(1, 0, 21, spread),
@@ -317,7 +324,17 @@ describe('N7 · a synthesized run cannot become a balance number', () => {
   it('harvests milestones only when asked, and only at the requested days', () => {
     const harvested = runCampaign(1, 5, 'trader', { milestoneDays: [2, 4] });
     expect(harvested.milestones?.map((sample) => sample.day)).toEqual([2, 4]);
-    expect(harvested.milestones?.[0].npcCredits.length).toBe(npcCount);
+    // A MILESTONE SAMPLES THE SIMULATED FIELD (30), NOT THE RECORD COUNT (41) —
+    // and this line is the fourth site where those two numbers have been confused
+    // (see `isSimulatedCaptain` in content/cast.ts for the other three). It read
+    // `npcCount` — the 41 records `synthesizeTierState`'s spread legitimately
+    // covers — while `sampleMilestone` was quietly sampling all 41 too, so eleven
+    // quest captains frozen at their day-1 credits landed in every wealth
+    // percentile the aggregate produces. Fixing the sampler moved this assertion
+    // from a matching pair of wrong numbers to the right one; the two constants
+    // stay DELIBERATELY distinct here so a future re-conflation goes red.
+    expect(harvested.milestones?.[0].npcCredits.length).toBe(NPC_PROFILES.length);
+    expect(NPC_PROFILES.length).toBeLessThan(npcCount);
     // Non-invasive: asking for milestones must not change the career itself.
     const { milestones: _milestones, ...rest } = harvested;
     expect(JSON.stringify(rest)).toBe(JSON.stringify(runCampaign(1, 5, 'trader')));
@@ -332,7 +349,12 @@ describe('N7 · the synthesizer refuses a partial field', () => {
   });
 
   it('writes the day, the fit and the tank through the engine chokepoints', () => {
-    const npcCount = synthesizeTierState(1, 0, 1, spreadFor(30)).npcs.length;
+    // The roster size is read from `createInitialState`, NOT discovered by calling
+    // `synthesizeTierState` with a guessed count: that function VALIDATES the
+    // spread against the roster before it returns, so a guessed count is a throw
+    // rather than a discovery. It was hardcoded to 30 and broke the moment N3's
+    // roster split made the roster 41 (30 simulation captains + 11 quest records).
+    const npcCount = createInitialState(1).npcs.length;
     const state = synthesizeTierState(3, 0, 41, spreadFor(npcCount));
     expect(state.day).toBe(41);
     // maxFuel follows the synthesized hull (syncMaxFuel), never a stale literal.

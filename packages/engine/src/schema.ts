@@ -336,7 +336,11 @@ const EarnedDeedStateSchema = z
     title: z.string(),
     citation: z.string(),
     day: z.number(),
-    eventIndex: z.number(),
+    // N11 · OPTIONAL. A captain's accrual runs over a LOCAL event batch that never
+    // enters `state.eventLog`, so an NPC-earned row carries no index into it — see
+    // the field's own doc comment in types.ts for why a number there would be a
+    // fabricated pointer. Player rows still always carry one.
+    eventIndex: z.number().optional(),
   })
   .strict();
 
@@ -477,8 +481,21 @@ const NpcStateSchema = z
     // `.strict()` is what makes a save that still carries the old key fail
     // loudly instead of silently keeping two disagreeing fuel numbers.
     ship: ShipStateSchema,
+    // N11 · The captain's own deed ledger and Renown rank — the SAME
+    // DeedRegistryStateSchema the player's registry validates against, because it is
+    // the same type. REQUIRED, unlike `dead` below: from v12 on every captain has one
+    // (`createInitialState`, `deserializeState` and the v11→v12 migration all seed it
+    // through `emptyDeedRegistry`), and `.strict()` plus a non-optional key is what
+    // makes a half-done migration fail loudly instead of leaving a rosterful of
+    // rankless captains.
+    registry: DeedRegistryStateSchema,
     disposition: z.number(),
     lastAction: NpcActionSchema.optional(),
+    // N3: permanent NPC death. Optional because absent means alive — an old save
+    // has no dead captains, so this needs no migration and no version bump. The
+    // schema is `.strict()`, so the key still has to be declared here or a v11
+    // save carrying it would be rejected as unknown.
+    dead: z.boolean().optional(),
   })
   .strict();
 
@@ -486,7 +503,15 @@ const MarketStateSchema = z
   .object({
     manifestBoard: z.array(CargoContractSchema),
     localFuelPrice: z.number(),
-    npcClaims: z.number(),
+    // N10 · The shared per-system job pool, replacing T-106's single
+    // `npcClaims` counter. Keyed by `String(systemId)`; a missing key is an
+    // undrained pool, so a quiet galaxy validates as `{}`. REQUIRED, not
+    // optional: the v10→v11 migration MOVES the old scalar into this record
+    // (`MIGRATIONS[10]`), and the schema being `.strict()` is what makes a
+    // half-done move fail loudly — an orphan `npcClaims` is an unknown key and
+    // a missing `jobPoolClaims` is a missing one. Same discipline as N1's
+    // `fuel`→`ship.fuel` move at v9→v10.
+    jobPoolClaims: z.record(z.string(), z.number()),
   })
   .strict();
 
@@ -559,6 +584,11 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'retreat',
         // T-1303: the player's Spacer's Dare GUILE roll (see types.ts StatCheck).
         'gamble',
+        // N3: a captain's per-round rolls inside an interdiction (see types.ts
+        // StatCheck for why these are split from the `npc-*` verb contexts).
+        'npc-encounter-fight',
+        'npc-encounter-run',
+        'npc-encounter-talk',
       ])
       .optional(),
   }),
@@ -571,6 +601,29 @@ const GameEventSchema = z.discriminatedUnion('type', [
     resisted: z.boolean(),
   }),
   z.object({ type: z.literal('NpcAction'), npcId: z.string(), actionDetails: z.string() }),
+  // N3 · A captain's interdiction, one summary line per encounter.
+  z.object({
+    type: z.literal('NpcEncounter'),
+    day: z.number(),
+    npcId: z.string(),
+    interceptorId: z.string(),
+    interceptorName: z.string(),
+    stances: z.array(z.enum(['talk', 'run', 'fight'])).readonly(),
+    resolution: z.enum(['talked-down', 'escaped', 'defeated', 'destroyed', 'survived']),
+    rounds: z.number(),
+    creditsPaid: z.number().optional(),
+    salvageCredits: z.number().optional(),
+  }),
+  // N3 · A captain died. Separate from ShipLost on purpose — see the type's comment.
+  z.object({
+    type: z.literal('NpcShipLost'),
+    day: z.number(),
+    npcId: z.string(),
+    npcName: z.string(),
+    interceptorId: z.string(),
+    interceptorName: z.string(),
+    systemId: z.number(),
+  }),
   z.object({
     type: z.literal('ContractClaimed'),
     day: z.number(),
@@ -1362,6 +1415,8 @@ const _covEvDawnRoll: AssertEventKeys<'DawnRoll'> = true;
 const _covEvStatCheck: AssertEventKeys<'StatCheck'> = true;
 const _covEvFlawCheck: AssertEventKeys<'FlawCheck'> = true;
 const _covEvNpcAction: AssertEventKeys<'NpcAction'> = true;
+const _covEvNpcEncounter: AssertEventKeys<'NpcEncounter'> = true;
+const _covEvNpcShipLost: AssertEventKeys<'NpcShipLost'> = true;
 const _covEvContractClaimed: AssertEventKeys<'ContractClaimed'> = true;
 const _covEvDispositionChanged: AssertEventKeys<'DispositionChanged'> = true;
 const _covEvReputationChanged: AssertEventKeys<'ReputationChanged'> = true;

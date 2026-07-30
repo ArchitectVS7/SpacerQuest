@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { distance, NPC_PROFILES, STAR_SYSTEMS } from '@spacerquest/content';
+import { distance, ALL_NPC_PROFILES, STAR_SYSTEMS } from '@spacerquest/content';
 import { createInitialState } from '../state.js';
 import { advanceDay } from '../day.js';
 import { resolveTrade } from '../actions/trade.js';
 import { resolveCombat, RUN_FUEL_COST, FIGHT_FUEL_COST } from '../actions/combat.js';
 import { npcShipForProfile, resolveNpcDay } from '../npc.js';
+import { emptyDeedRegistry } from '../deeds.js';
 import { rollDawnHand } from '../dice.js';
 import { SeededRng } from '../rng.js';
 import { EncounterState, NpcState } from '../types.js';
@@ -234,7 +235,7 @@ describe('Contracts', () => {
 
 describe('Flaws trigger only when touched (PRD §6)', () => {
   function npcFor(profileId: string): NpcState {
-    const profile = NPC_PROFILES.find((p) => p.id === profileId)!;
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === profileId)!;
     return {
       id: profile.id,
       name: profile.name,
@@ -243,18 +244,23 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
       credits: 5000,
       // N1: the tank rides on the captain's own ship, seeded from their tier.
       ship: npcShipForProfile(profile),
+      // N11: the captain's own (empty) deed registry, through the one seed function.
+      registry: emptyDeedRegistry(),
       disposition: 0,
     };
   }
 
   it('Iron Vex (Bloodthirsty, combat-facing) risks his flaw most days; the check uses HIS flawDc', () => {
-    const profile = NPC_PROFILES.find((p) => p.id === 'npc-iron-vex')!;
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === 'npc-iron-vex')!;
     let flawCheckDays = 0;
     for (let seed = 1; seed <= 200; seed++) {
       const { npc, events } = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), {
         day: 1,
         claimableBoard: null,
+        jobPoolClaims: {},
+        era: 'VETERAN' as const,
         eraEvent: null,
+        edition: 'full' as const,
       });
       const flawCheck = events.find((e) => e.type === 'FlawCheck');
       if (flawCheck?.type === 'FlawCheck') {
@@ -281,7 +287,10 @@ describe('Flaws trigger only when touched (PRD §6)', () => {
       const { npc, events } = resolveNpcDay(npcFor('npc-stellar-monk'), new SeededRng(seed), {
         day: 1,
         claimableBoard: null,
+        jobPoolClaims: {},
+        era: 'VETERAN' as const,
         eraEvent: null,
+        edition: 'full' as const,
       });
       // His intents (Trade/Travel/Socialize) never touch Pacifist (Combat/Patrol)
       expect(events.some((e) => e.type === 'FlawCheck')).toBe(false);

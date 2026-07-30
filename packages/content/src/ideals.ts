@@ -126,3 +126,71 @@ export const IDEAL_WEIGHTS: Record<string, IdealWeights> = {
   Flavor: { Trade: 5, Travel: 3, Combat: 0, Patrol: 0, Socialize: 2 },
   Possession: { Trade: 4, Travel: 2, Combat: 2, Patrol: 2, Socialize: 0 },
 };
+
+/**
+ * N4 · How an archetype BIASES a captain's Ideal — a multiplier over
+ * {@link IDEAL_WEIGHTS}, never a replacement for it.
+ *
+ * OWNER RULING (docs/NPC_REDESIGN.md, N4 RULING 1): *"archetype scales the
+ * captain's own IDEAL_WEIGHTS, and the engine draws from the combined
+ * distribution"*. The design is multiplicative for three reasons that all
+ * matter: two traders with different Ideals stay measurably different captains,
+ * an Ideal's authored `0` VETO survives the multiply (0 x anything is still 0 —
+ * the Stellar Monk's `Balance` cannot be talked into a fight by an archetype),
+ * and the archetype effect is SEPARABLE, so a sweep can attribute it by running
+ * an arm with this whole table set to 1.
+ *
+ * THE RULE, and it is uniform on purpose: **an archetype DOUBLES the verbs it
+ * is about and leaves the rest alone.** Because doubling all five would be the
+ * identity, doubling three of them is equally a statement about the two it
+ * leaves behind — the veteran's `Patrol: 1` and `Socialize: 1` are "no time for
+ * sweeps or for the bar", not an absence of opinion. Every entry is 1 or 2:
+ * there is no third magnitude to argue about at a later step, and the two rows
+ * the owner's ruling worked out by hand (trader, fighter) are reproduced here
+ * EXACTLY rather than re-derived.
+ *
+ * WHAT THIS TABLE DELIBERATELY REPLACED: pre-N4 `pickIntent` scaled the Ideal by
+ * `(1 + the verb's affinity stat)`. Measured over the curated roster, that term
+ * concentrates the average captain onto **3.1** verbs against **4.3** without it
+ * (a TRADE-5 trader reaches 89% Trade and ONE live verb) — i.e. it re-creates
+ * the "ten traders are literally the same function" collapse the reopened N4
+ * exists to undo, and it contradicts the arithmetic the owner's ruling recorded.
+ * So archetype takes that slot. {@link INTENT_STAT_AFFINITY} keeps its other and
+ * more honest reader: which stat ROLLS the day's check in the engine.
+ */
+export type ArchetypeIntentMultipliers = Record<string, IdealWeights>;
+
+export const ARCHETYPE_INTENT_MULTIPLIERS: ArchetypeIntentMultipliers = {
+  /** The manifest board is the whole game. (Owner ruling's worked example:
+   *  Cargo King · Wealth {6,2,0,1,1} -> {12,2,0,1,1} = Trade 75%, Travel 13%.) */
+  trader: { Trade: 2, Travel: 1, Combat: 1, Patrol: 1, Socialize: 1 },
+  /** Runs cargo, runs far, and keeps the contacts that move it. The two left at
+   *  1 are the point: a smuggler's day is not a firefight and not a lane sweep,
+   *  which is a lawman's work. Their rim preference lives in the engine's
+   *  `executeTrade`, not here — this table only says how OFTEN they haul. */
+  smuggler: { Trade: 2, Travel: 2, Combat: 1, Patrol: 1, Socialize: 2 },
+  /** Guns and sweeps. (Owner ruling's worked example: Iron Vex · Dominance
+   *  {1,1,5,3,0} -> {1,1,10,6,0}.) */
+  fighter: { Trade: 1, Travel: 1, Combat: 2, Patrol: 2, Socialize: 1 },
+  /** The far lanes for their own sake. Their Ideals already carry Travel 5–6,
+   *  so a doubling is plenty — a third magnitude here would pin them at 90%. */
+  explorer: { Trade: 1, Travel: 2, Combat: 1, Patrol: 1, Socialize: 1 },
+  /** The Hangout table, and the float to sit at it. */
+  gambler: { Trade: 1, Travel: 1, Combat: 1, Patrol: 1, Socialize: 2 },
+  /** The only archetype that doubles three verbs: a veteran plays the whole
+   *  loop — earns, flies, and fights — which is also what makes them the field's
+   *  natural deed-earners when N11 gives deeds a source. */
+  veteran: { Trade: 2, Travel: 2, Combat: 2, Patrol: 1, Socialize: 1 },
+};
+
+/** The identity row: what an archetype-blind captain would draw from. Named
+ *  rather than inlined because it is BOTH the fallback for an archetype missing
+ *  from the table above AND the control arm N4 was graded against — one
+ *  definition, so the control cannot drift from the fallback. */
+export const NEUTRAL_INTENT_MULTIPLIERS: IdealWeights = {
+  Trade: 1,
+  Travel: 1,
+  Combat: 1,
+  Patrol: 1,
+  Socialize: 1,
+};

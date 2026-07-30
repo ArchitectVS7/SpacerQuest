@@ -27,7 +27,7 @@ States `docs/ENGINEERING-POLICY.md` standing constraint 5 in full. The precedenc
 2. **Foundation is consulted first.** Before diverging, read the foundation rule at `f2f95fa9`. A "divergence" you introduce because you never checked foundation is a bug, not a design decision — and half the time (see the hull-price cap errata below) there is no divergence at all, only a misremembered foundation rule.
 3. **Every divergence is commented at its definition site.** If the engine's number differs from foundation, the difference must be documented *where the value is defined*, with the PRD rationale for the change and the foundation figure it departs from. An undocumented balance divergence is a review failure.
 4. **A comment must not assert a divergence that does not exist.** The inverse of rule 3, and just as binding: if the code matches foundation, no comment may claim it diverges. A false divergence note sends future readers hunting for a design decision that was never made (this exact failure is errata #1).
-5. **Interim thresholds held until T-1603.** Balance thresholds and probabilities in place before T-1603 were interim; T-1603 set the canonical targets (`docs/balance/BASELINE-T-1603a.md`, `docs/balance/TUNING-T-1603.md`). The balance-redesign track has since moved past even those — `docs/BALANCE-REDESIGN-WORKLIST.md` carries the current baseline-of-record and supersedes any figure here that it has re-pinned.
+5. **Interim thresholds held until T-1603.** Balance thresholds and probabilities in place before T-1603 were interim; T-1603 set the canonical targets (`docs/balance/BASELINE-T-1603a.md`, `docs/balance/TUNING-T-1603.md`). The balance-redesign track has since moved past even those — `docs/NPC_REDESIGN.md` (standing amendment 1) carries the current baseline-of-record, and it and `docs/BALANCE-REDESIGN-WORKLIST.md` supersede any figure here that they have re-pinned.
 
 ---
 
@@ -101,9 +101,9 @@ _Source: T-1604b (Rimward), fixing UGT finding F2._
 
 ## Part D — Archetype Reference & Measured Baseline
 
-*Folded in from the retired standalone `ARCHETYPE-BALANCE-MATRIX.md` (written 2026-07-28); companion to `docs/balance/` (the committed sweep artifacts), `docs/BALANCE-REDESIGN-WORKLIST.md` (the current baseline-of-record and the balance-redesign work log), and `docs/PRD-REIMAGINED.md` §7 (combat), §9 (property).*
+*Folded in from the retired standalone `ARCHETYPE-BALANCE-MATRIX.md` (written 2026-07-28); companion to `docs/balance/` (the committed sweep artifacts), `docs/BALANCE-REDESIGN-WORKLIST.md` (the R-series work log) and `docs/NPC_REDESIGN.md` (the NPC parity track, and the current baseline-of-record), and `docs/PRD-REIMAGINED.md` §7 (combat), §9 (property).*
 
-This part exists because a balance discussion kept stalling on vocabulary. "The fighter lost 21 ships" reads like a squadron of drones being expended. It is not. It states, in one place, what each simulated archetype actually *does* on a turn, what every column of the balance matrix *measures*, and where the numbers below said the design was out of true at the time this was written. **The figures in D.4/D.5 are a snapshot, not a live dashboard** — `docs/BALANCE-REDESIGN-WORKLIST.md` is where the baseline-of-record has since moved (R2c, R2d and the N-series); read this part for vocabulary and method, that one for current numbers.
+This part exists because a balance discussion kept stalling on vocabulary. "The fighter lost 21 ships" reads like a squadron of drones being expended. It is not. It states, in one place, what each simulated archetype actually *does* on a turn, what every column of the balance matrix *measures*, and where the numbers below said the design was out of true at the time this was written. **The figures in D.4/D.5 are a snapshot, not a live dashboard** — `docs/BALANCE-REDESIGN-WORKLIST.md` and `docs/NPC_REDESIGN.md` are where the baseline-of-record has since moved (R2c, R2d and the N-series — the current pointer is `NPC_REDESIGN.md`'s standing amendment 1); read this part for vocabulary and method, those for current numbers.
 
 ### D.1 Terminology, stated once
 
@@ -197,7 +197,7 @@ band derived from **renown rank + combat ship fit**. It is the *only* input to e
 matchmaking — `selectEncounterInterceptor` reads it and `chooseTargetTier` clamps candidates
 to `[tier−1, tier+1]`. **Wealth is not an input** (this is the gap the predation-pressure brief in D.6 is about).
 
-### D.4 The measured matrix (snapshot — see `BALANCE-REDESIGN-WORKLIST.md` for current numbers)
+### D.4 The measured matrix (snapshot — see `BALANCE-REDESIGN-WORKLIST.md` / `NPC_REDESIGN.md` for current numbers)
 
 **BASELINE OF RECORD AT THE TIME OF WRITING — 1,000 careers per archetype × 120 in-game days (8,000 careers,
 960,000 sim-days), `docs/balance/baseline-vet-1k-r2a.json`, taken 2026-07-28 after the R0a

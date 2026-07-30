@@ -370,11 +370,106 @@ export function rollContract(
   };
 }
 
+// ---------------------------------------------------------------------------
+// N10 · THE SHARED JOB POOL — one place that owns the depletion arithmetic.
+//
+// `MarketState.jobPoolClaims` is the state; these four functions are the only
+// things allowed to read or write it. That is deliberate and it is the lesson N4
+// paid for twice: `isSimulatedCaptain` exists because four sites each spelled
+// "the simulated field" their own way and two of them were wrong. A per-system
+// tally invites exactly the same drift (`claims[id]` vs `claims[String(id)]` vs
+// a forgotten clamp), so the key spelling and the clamp live here once.
+//
+// THESE ARE THE STEP'S KNOBS. The Change clause for N10 says the T-106 throttles
+// are "throttles from the texture era: sweep them as knobs here rather than
+// inheriting them silently" — so they are named constants with measured
+// alternatives recorded at the definition site, not literals in a call site.
+// ---------------------------------------------------------------------------
+
+/** Offers a fully-stocked port puts on the board. The T-106 literal `4`, named. */
+export const JOB_POOL_BOARD_SIZE = 4;
+
+/** A port never goes completely dark: the board floor, however drained the pool. */
+export const JOB_POOL_MIN_BOARD = 1;
+
 /**
- * Generates the daily manifest board. Normally 4 contracts; T-106 contract
- * competition drains the pool — each board offer claimed by an NPC at the
- * previous dusk shrinks today's board by one (floor of 1 so a port never
- * goes completely dark).
+ * Jobs a port restocks per day, applied by {@link regeneratePools} at dawn.
+ *
+ * WHY A REGEN RATE EXISTS AT ALL. T-106's counter was reset to 0 every dawn, so
+ * a claim could only ever thin ONE following board. Under N10 the tally persists
+ * (that is the whole point — the player has to be able to arrive somewhere the
+ * cast has been working), and a persisting tally with no recovery ratchets: 30
+ * captains over 120 days would leave every port permanently at the floor, which
+ * is attrition rather than competition and would fire this step's own Disproves
+ * ("boards empty and Tour One clear collapses").
+ *
+ * WHY 2. Measured load is ~13 NPC hauls/day spread over 20 systems — 0.65
+ * claims/system/day on average, but the cast CLUSTERS (contract destinations are
+ * core-weighted), so hot systems take several a day and quiet ones take none.
+ * A regen of 2 lets a busy hub sit visibly thin for a day or two while a quiet
+ * port is always full, which is the signal this step exists to create.
+ *
+ * NOTE THE SPECIAL CASE THIS GENERALISES: at `>= JOB_POOL_BOARD_SIZE` this rule
+ * reduces exactly to T-106's dawn reset, so the pre-N10 behaviour is a value of
+ * this knob rather than a different mechanism. The sweep is recorded under N10 in
+ * `docs/NPC_REDESIGN.md`.
+ */
+export const JOB_POOL_REGEN_PER_DAY = 2;
+
+/**
+ * The deepest a pool can be drained. Clamped so the board floor is reached but
+ * never banked past: without this a hub could accumulate a 40-claim debt and take
+ * twenty quiet days to work it off, which no longer reads as a job pool.
+ * `BOARD_SIZE - MIN_BOARD` is the drain that already produces the floor, so any
+ * tally above it is arithmetic with no visible consequence.
+ */
+export const JOB_POOL_MAX_CLAIMS = JOB_POOL_BOARD_SIZE - JOB_POOL_MIN_BOARD;
+
+/** The one key spelling. `Record<string, number>` (the `matchCounts` precedent):
+ *  a JSON round trip returns string keys whatever TypeScript was told. */
+function poolKey(systemId: number): string {
+  return String(systemId);
+}
+
+/** Offers this system's pool can currently supply — the board size for anyone
+ *  reading it, player or captain. Never below {@link JOB_POOL_MIN_BOARD}. */
+export function jobPoolDepth(
+  claims: Readonly<Record<string, number>> | undefined,
+  systemId: number,
+): number {
+  const drained = claims?.[poolKey(systemId)] ?? 0;
+  return Math.max(JOB_POOL_MIN_BOARD, JOB_POOL_BOARD_SIZE - drained);
+}
+
+/** Records one claim against a system's pool, clamped to
+ *  {@link JOB_POOL_MAX_CLAIMS}. Mutates in place — the CALLER owns the market
+ *  record (day.ts), the same division of labour as `claimedContractIndex`. */
+export function debitJobPool(claims: Record<string, number>, systemId: number): void {
+  const key = poolKey(systemId);
+  claims[key] = Math.min(JOB_POOL_MAX_CLAIMS, (claims[key] ?? 0) + 1);
+}
+
+/**
+ * One day of restocking, across the whole galaxy. Steps every tally back toward
+ * 0 by {@link JOB_POOL_REGEN_PER_DAY} and DELETES the ones that reach it, so a
+ * quiet galaxy serializes as `{}` rather than growing a zero per system.
+ */
+export function regeneratePools(claims: Record<string, number>): void {
+  for (const key of Object.keys(claims)) {
+    const restocked = (claims[key] ?? 0) - JOB_POOL_REGEN_PER_DAY;
+    if (restocked > 0) claims[key] = restocked;
+    else delete claims[key];
+  }
+}
+
+/**
+ * Generates the daily manifest board. Normally {@link JOB_POOL_BOARD_SIZE}
+ * contracts; contract competition drains the pool — each job claimed out of this
+ * system by a captain thins it, down to a floor of {@link JOB_POOL_MIN_BOARD} so
+ * a port never goes completely dark. The depth comes from
+ * {@link jobPoolDepth}; N10 made that pool per-system and shared, so this is the
+ * same function and the same numbers for the player's board and for a captain
+ * working a port the player has never visited.
  */
 export function generateManifestBoard(
   originSystem: number,

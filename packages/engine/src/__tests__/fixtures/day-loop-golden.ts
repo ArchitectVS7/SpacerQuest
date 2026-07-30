@@ -380,11 +380,116 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  f07d6de2… -> a16ca706…   (events a0e8ed7f… -> 2ae4bb5f…)
 //   STORYLET state  86fbc0cc… -> a4374515…   (events 6f61a1d5… -> a5522f39…)
 // Regenerated via gen-day-loop-golden.ts.
+//
+// RE-RECORDED AGAIN AT THE REOPENED N4 (archetypes bias the Ideal). Every one of
+// the 30 captains draws its verb from a different distribution than it did the
+// day before, so the shared dusk rng stream diverges from the first NPC turn of
+// day 1 and everything downstream of it moves. MEASURED the same way as the N2
+// entry above, by dumping and diffing both streams (.scratch/): 1,482 events
+// BEFORE, 1,451 AFTER, of which
+//   · `NpcAction` is UNCHANGED at 330 (11 days x 30 captains) — the cast still
+//     takes exactly one action each per day; only WHICH action moved;
+//   · `StatCheck` 260 -> 288 and `FlawCheck` 199 -> 156 — more days now resolve a
+//     real verb check and fewer are eaten by a flaw override, because the blend
+//     lands captains on verbs their flaw does not trigger as often;
+//   · `ContractClaimed` 6 -> 2 and `DispositionChanged` 10 -> 4 — fewer snipes off
+//     the player's board inside this 11-day window (an 11-day sample, not a
+//     finding: the sweep is what grades competition, and it is N10's number);
+//   · `WireEntry` 561 -> 556.
+// THE PLAYER SIDE IS BYTE-IDENTICAL IN COUNT AND KIND: DawnRoll 11, DayAdvanced
+// 11, DebtPayment 4, DeedEarned 6, RenownRankUp 3, TradeEvent 8, TravelEvent 6
+// and all three Storylet events are unmoved, which is the check that this is an
+// NPC-side change and not a quiet player rebalance.
+//   DAY_LOOP state  1308cbc8… -> 7f111e79…   (events b9b7ec15… -> 33f661e6…)
+//   STORYLET state  b405b3e1… -> de48563d…   (events a5ce5053… -> 2b927f80…)
+//
+// RE-RECORDED AT N10 (the shared per-system job pool). Two independent reasons the
+// stream had to move, and neither is a player-side rebalance:
+//   1. THE STATE SHAPE. `market.npcClaims` (one scalar) became
+//      `market.jobPoolClaims` (a per-system record), so the serialized state hash
+//      moves even where no value does.
+//   2. THE DUSK RNG STREAM. A captain trading away from the player now draws a
+//      LOCAL BOARD through `generateManifestBoard` and chooses off it via
+//      `pickContract`, where pre-N10 they took a single `rollContract`. That is
+//      more draws per trading captain, so the shared dusk stream diverges from the
+//      first away-haul of day 1.
+// MEASURED the same way as the two entries above, by dumping and diffing both
+// streams: DAY_LOOP 1,310 events BEFORE, 1,301 AFTER, of which
+//   · `NpcAction` is UNCHANGED at 300 (10 days x 30 captains) — the cast still
+//     takes exactly one action each per day; only WHICH action moved;
+//   · `StatCheck` 261 -> 254 and `FlawCheck` 145 -> 144 — a handful of days land on
+//     a different verb, so a different check rolls;
+//   · `NpcEncounter` 19 -> 20 and `WireEntry` 498 -> 496;
+//   · `ContractClaimed` is UNCHANGED at 2. Worth stating because it is the field
+//     N10 is about: an 11-day two-snipe sample cannot grade competition, and this
+//     step's numbers come from the sweep and the capstone, never from here.
+// THE PLAYER SIDE IS BYTE-IDENTICAL IN COUNT AND KIND: DawnRoll 10, DayAdvanced 10,
+// DebtPayment 4, DeedEarned 5, RenownRankUp 2, TradeEvent 8, TravelEvent 5,
+// StoryletOffered 37 and DispositionChanged 4 are all unmoved — the same check the
+// N4 entry above used, and the same conclusion: an NPC-side change.
+// (STORYLET moves the same way and no further: 141 -> 138, entirely
+// `NpcEncounter` 3 -> 2, `StatCheck` 27 -> 26, `WireEntry` 58 -> 57.)
+//   DAY_LOOP state  7f111e79… -> b1c4db25…   (events 33f661e6… -> 9f864bfa…)
+//   STORYLET state  de48563d… -> deefa3d7…   (events 2b927f80… -> 3e96fe90…)
+//
+// N11 · STATE HASHES RE-PINNED, EVENT HASHES DELIBERATELY NOT — the same split as
+// the N1 entry above, and for the same reason it is evidence rather than a
+// formality. N11 gave every `NpcState` a `registry` (the captain's own deed ledger
+// and Renown rank), so `serializeState` now carries 31 more registry blocks and the
+// state hash moves by definition. What the cast DOES did not change: the accrual
+// runs after the day's verb, reads the cached `registry.matchCounts`, and TAKES NO
+// rng DRAW — and, load-bearing, a captain's deed-source events (`TradeEvent` /
+// `TravelEvent` / `EncounterResolved`) go into a LOCAL per-captain batch that never
+// enters the shared `events` array, so nothing is added to, removed from or
+// reordered in the stream `day.ts` returns.
+//
+// BOTH EVENT HASHES CAME BACK BYTE-IDENTICAL FROM THE REGENERATOR, and that is the
+// proof of both claims at once. If the accrual had drawn a die the stream would have
+// diverged from the first trading captain of day 1; if a captain's source event had
+// leaked into `events` it would appear in the stream AND earn the PLAYER the deed
+// (day.ts pushes `npcEvents` into the array it later hands to `evaluateDeeds`).
+// Neither happened. If either of these two ever moves on a change of this shape,
+// that is the leak — fix the cause, never re-pin the number.
+//   DAY_LOOP state  b1c4db25… -> ae6d73d7…   (events 9f864bfa… UNCHANGED)
+//   STORYLET state  deefa3d7… -> 11b73757…   (events 3e96fe90… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
+//
+// N11/T-021 · THE TWO DAY-LOOP HASHES RE-PINNED; BOTH STORYLET HASHES ARE
+// BYTE-IDENTICAL and were not touched. CAUSE: `considerRefit` now asks the yard for
+// rank-gated special equipment, so the −1 renown lockout stops being dormant and
+// captains who have EARNED the CAPTAIN rung spend 10,000cr on gear instead of on
+// their next component rung.
+//
+// MEASURED, not asserted — both streams dumped and diffed (scratchpad), 1,301 events
+// BEFORE and 1,304 AFTER over the ten-day window:
+//   · SEVEN gated purchases actually happen inside the window (5x Star Buster, 2x
+//     Arch Angel), which is the point of the step: the gate is reachable. Their wire
+//     lines REPLACE the component-refit lines those captains would otherwise have
+//     bought — yard lines hold at 281 -> 282 while `racked … cargo pods` lines fall
+//     42 -> 40, i.e. two hull rungs (and the `fillHold` purchase that rides each) are
+//     displaced by a day, which is the whole of `WireEntry` 496 -> 495.
+//   · `NpcAction` is UNCHANGED at 300 (10 days x 30 captains): the cast still takes
+//     exactly one action each per day. `StatCheck` 254 -> 258, `FlawCheck` 144 -> 143,
+//     `NpcEncounter` 20 -> 21 — a captain who spent their purse differently can now
+//     fund a jump they previously could not (Zero Risk's day-7/day-10 broke-idle
+//     becomes a real haul), so the shared dusk stream diverges from the first
+//     displaced purchase onward. That is the downstream consequence of the money
+//     moving, not drift.
+//   · THE ENTIRE NON-NPC STREAM IS BYTE-IDENTICAL — all 176 events that are not
+//     `kind:'npc'` / `npcId` / `characterId:'npc-…'` / `actor:'npc-…'` diff clean,
+//     including every player StatCheck, DawnRoll 10, DayAdvanced 10, TradeEvent 8,
+//     TravelEvent 5, DeedEarned 5, RenownRankUp 2, DebtPayment 4, StoryletOffered 37,
+//     DispositionChanged 4 and ContractClaimed 2. That is the check that this is an
+//     NPC-side change and not a quiet player rebalance, and it is why the seed-555
+//     storylet script (one day, no captain reaches 5 deeds) is unmoved.
+//   DAY_LOOP state  ae6d73d7… -> 4ad8b677…   (events 9f864bfa… -> 72748730…)
+//   STORYLET state  11b73757… UNCHANGED      (events 3e96fe90… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  'a16ca706c43550ebf363ba7ddb922054a8d951666a87113bded21af6647addae';
+  '4ad8b677121c80fa8b6e5410543f9948768cd03944c799037d293c24ce451ccd';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '2ae4bb5fdb3759d02832a958f8ab1541cc9d5fd51cb1a2007ce500ca00d1b555';
+  '7274873091b87cee192878a732e7ae8217575cc6650fd41f61290d2dfe1dbe71';
 export const STORYLET_GOLDEN_STATE_HASH =
-  'a437451578c71623045e5a62354c6001f6d089ccc78e08e263646ae358837a82';
+  '11b73757bca8d1a31bbda0a91873269200f77bb1d0be6f977529e75c1d2a428f';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  'a5522f39219a90f5baba6a3fc6c2989df7b33f47fb980e06289de88f3c4035ef';
+  '3e96fe90247b837cba773049e855623f0381bb5cd0f9cf41fda9d86982a8b50e';

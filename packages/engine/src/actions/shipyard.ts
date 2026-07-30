@@ -42,36 +42,48 @@ function isComponentId(value: unknown): value is ShipComponentId {
  * could not be priced through any of them.** That made N2's instruction to price
  * NPC upgrades "through the engine's own `quoteShipyard`, never a parallel cost
  * model" literally impossible, and the path of least resistance was exactly the
- * parallel cost model the standing constraint forbids (BALANCE-REDESIGN-WORKLIST,
+ * parallel cost model the standing constraint forbids (NPC_REDESIGN,
  * "same rules, no exemptions"; R2c is the warning — the sim's private copy of this
  * yard ladder had inherited the engine's own bug and so agreed with it *for the
  * wrong reason*, hiding a live economy defect for months).
  *
  * IT IS DELIBERATELY STRUCTURAL, NOT AN ADAPTER. `PlayerState` satisfies it as-is
  * (`ship`, `credits`, and a `registry` that carries a `renownRank` among its other
- * fields) and so does `NpcState` (`ship`, `credits`, and no registry at all). So
- * both captains are passed to the SAME functions with no wrapper object on either
- * side — which matters for more than tidiness: `applyShipyardMutation` DEBITS
+ * fields) and so does `NpcState` (the same three, from save v12 on). So both
+ * captains are passed to the SAME functions with no wrapper object on either side —
+ * which matters for more than tidiness: `applyShipyardMutation` DEBITS
  * `actor.credits`, and a wrapper would have made that debit land on a copy.
  *
- * `registry` IS OPTIONAL, AND ITS ABSENCE IS A RULE, NOT A GAP. Renown gates
- * special equipment (content `SPECIAL_EQUIPMENT.requiredRenownRank`). An NPC holds
- * no Renown, so a captain with no registry ranks BELOW every rank on the ladder and
- * every rank-gated purchase is refused — the same rule the player meets, evaluated
- * against the standing they actually have. See {@link actorRankIndex}.
+ * `registry` IS REQUIRED — N11 CHANGED THAT, AND WHAT IT REPLACED IS THE POINT. It
+ * used to be optional, and the comment here argued that its absence was "a rule, not
+ * a gap": an NPC held no Renown, so `actorRankIndex` returned −1, and every
+ * rank-gated purchase was refused. The 2026-07-29 audit named that for what it
+ * actually was — a gate the actor could never open, which the track's standing
+ * constraint defines as an exemption, because the player can EARN the key and the
+ * captain could not. N11 gives every captain a real registry fed by their real
+ * actions (`NpcState.registry`), so the captain now ranks on the standing they
+ * EARNED and the rung they clear is the same rung the player clears. Making the field
+ * required is what removes the −1 branch entirely: with no way to hold no registry,
+ * the gate can no longer be quietly unopenable.
  */
 export interface ShipyardActor {
   ship: ShipState;
   credits: number;
-  registry?: { renownRank: RenownRankId };
+  registry: { renownRank: RenownRankId };
 }
 
-/** Where the actor stands on the Renown ladder, or `-1` for a captain who holds
- *  no Renown at all (an NPC). `-1` is strictly below every real rank index, so the
- *  gate in {@link specialEquipmentFailure} refuses on every gated item without a
- *  branch of its own — the comparison is unchanged, only its input is honest. */
-function actorRankIndex(actor: ShipyardActor): number {
-  return actor.registry ? renownRankIndex(actor.registry.renownRank) : -1;
+/** Where the actor stands on the Renown ladder. ONE expression for both captains
+ *  since N11 — there is no longer a "holds no Renown" case to special-case, so the
+ *  gate in {@link specialEquipmentFailure} compares earned standing against the
+ *  content requirement and nothing else.
+ *
+ *  EXPORTED (T-021) so the removal of the −1 case is ASSERTABLE rather than inferred:
+ *  a −1 and a 0 produce the identical `INSUFFICIENT_RENOWN` refusal from a quote, so
+ *  a test reading the outcome cannot tell the dead end from a real bottom rung — which
+ *  is precisely how the lockout stayed invisible. `shipyard.test.ts` pins that a
+ *  captain's index is >= 0 and equals `renownRankIndex(actor.registry.renownRank)`. */
+export function actorRankIndex(actor: ShipyardActor): number {
+  return renownRankIndex(actor.registry.renownRank);
 }
 
 /**

@@ -271,6 +271,18 @@ export interface SeedRow {
   lifeSupportFailures: number;
   lifeSupportScares: number;
   successions: number;
+  /** N10 · Offers the cast took off this run's live board (`ContractClaimed`). */
+  contractClaims: number;
+  /** N11 · Rank-gated special equipment the simulated field bought over this run —
+   *  the one row that says whether the Renown gate T-021 opened is being walked
+   *  through. Carried straight off the report; no re-derivation here. */
+  npcSpecialEquipmentPurchases: number;
+  /** N12/T-030 · Port stakes the player holds at the horizon. Carried straight off
+   *  the report; no re-derivation here. */
+  portsOwned: number;
+  /** N10 · The dawn board's DEPTH across the run — one entry per day, so the
+   *  aggregate can report percentiles rather than a mean that hides a dark port. */
+  boardDepths: number[];
   combat: CombatEncounterRecord[];
   routes: RouteLegRecord[];
   /** N7 · Carried from the report when the sweep asked for milestone days. */
@@ -301,6 +313,10 @@ export function summarizeReport(report: CampaignStatsReport): SeedRow {
     lifeSupportFailures: report.survival.lifeSupportFailures,
     lifeSupportScares: report.survival.lifeSupportScares,
     successions: report.survival.successions,
+    contractClaims: report.contractClaims,
+    npcSpecialEquipmentPurchases: report.npcSpecialEquipmentPurchases,
+    portsOwned: report.portsOwned,
+    boardDepths: report.daily.map((day) => day.boardDepth),
     combat: report.combatEncounters,
     routes: report.routeLegs,
     ...(report.milestones === undefined ? {} : { milestones: report.milestones }),
@@ -374,6 +390,53 @@ export interface PolicyAggregate {
    *  runs that reached it; `n` therefore doubles as the reach count. */
   dayOfNthDeed: Distribution[];
   renownRanks: Record<string, number>;
+  // --- Contract competition (N10) -----------------------------------------
+  /** Offers the cast took off players' live boards, summed over the row. */
+  contractClaims: number;
+  contractClaimsPerRun: number;
+  /**
+   * The dawn board's depth, pooled over every day of every run in the row. The
+   * PERCENTILES are the point and a mean would defeat it: competition shows up as
+   * the bottom of this distribution moving (p10 dropping from 4 to 1) long before
+   * the median does, and this step's Disproves — "boards empty" — is a statement
+   * about that tail.
+   */
+  boardDepth: Distribution;
+  // --- Renown gate (N11) ---------------------------------------------------
+  /**
+   * Rank-gated special equipment the simulated field bought, summed over the row,
+   * and the same figure per run. T-021 made the gate REACHABLE; this is the field
+   * that says whether it is being reached, and a zero is a finding about
+   * reachability rather than an empty cell.
+   *
+   * The per-run form is the one a diff should read: the raw sum scales with the
+   * number of seeds in the row, so comparing two sweeps of different width on it
+   * would compare sample sizes.
+   */
+  npcSpecialEquipmentPurchases: number;
+  npcSpecialEquipmentPurchasesPerRun: number;
+  // --- Port ownership (N12/T-030) ------------------------------------------
+  /**
+   * Port stakes the PLAYER held at the horizon, pooled over every run in the row.
+   * The first ASSET this aggregate has ever been able to see — N9 measured the
+   * port arm as the game's biggest lever and the instrument could not count a
+   * single stake.
+   */
+  portsOwned: Distribution;
+  /**
+   * Share of runs that ended holding at least one stake — and this, not the
+   * median, is the readable figure today. Ports are dear enough that most policies
+   * end at zero, so `portsOwned.median` is 0 for a row where a quarter of the runs
+   * bought one; N9 additionally recorded ports as structurally unreachable for the
+   * explorer and the veteran, so a 0 here is a finding about REACHABILITY rather
+   * than an empty cell.
+   *
+   * It is also the figure N12's two Disproves limbs are statements about — "ports
+   * stay a player monopoly de facto" and "a day-N land grab locks the player out"
+   * are both claims about how many careers hold a stake, not about how many stakes
+   * the median career holds.
+   */
+  portOwnershipRate: number;
   // --- Combat -------------------------------------------------------------
   encounters: number;
   encountersPerRun: number;
@@ -428,10 +491,42 @@ export interface MilestoneAggregate {
   playerDrivesStrength: Distribution;
   playerCargoPods: Distribution;
   playerCrew: Distribution;
+  /** N12/T-030 · Port stakes the player held AT THIS DAY. The by-day series N12's
+   *  hand-off explicitly asks for ("measure port-ownership counts by DAY from the
+   *  first sweep, not just at day 120") on the player's side, against which the
+   *  cast's `npcPortCount` below is read. */
+  playerPorts: Distribution;
   /** Pooled over every NPC of every run: 30 × runs samples. THE field spread. */
   npcCredits: Distribution;
   npcHullStrength: Distribution;
   npcFuel: Distribution;
+  /** N11 · Deeds earned per captain, pooled the same way: 30 × runs samples. */
+  npcDeedCount: Distribution;
+  /**
+   * N12/T-030 · Port stakes per captain at this milestone day, pooled the same
+   * way: 30 × runs samples. THE by-day cast-side series N12's hand-off asks for —
+   * the land-grab limb ("a day-N land grab locks the player out before Tour One
+   * resolves") is a claim about day 30 against day 120, which only a per-day
+   * measurement can answer.
+   *
+   * Reads all zeroes until N12 proper gives `NpcState` a `ports` field; see
+   * `MilestoneSample.npcPortCount` for why the empty measurement is the honest one
+   * and why it ships a step early.
+   */
+  npcPortCount: Distribution;
+  /**
+   * N11 · THE CAST'S RANK DISTRIBUTION at this milestone day — a HISTOGRAM, not a
+   * `Distribution`, because a rank is categorical and a median over an eight-rung
+   * ladder's indices would be a fiction dressed as a measurement.
+   *
+   * Deliberately the same shape as `PolicyAggregate.renownRanks`, which is the
+   * PLAYER's: the two side by side are what makes T-023's renown-inflation limb —
+   * "does the median captain outrank a competent player?" — answerable off a single
+   * artefact instead of two sweeps.
+   *
+   * Keys sum to `NPC_PROFILES.length × runs`; every key is a content rank id.
+   */
+  npcRenownRanks: Record<string, number>;
 }
 
 function milestoneAggregatesFor(rows: readonly SeedRow[]): MilestoneAggregate[] | undefined {
@@ -461,10 +556,26 @@ function milestoneAggregatesFor(rows: readonly SeedRow[]): MilestoneAggregate[] 
       playerDrivesStrength: distribution(samples.map((sample) => sample.player.drivesStrength)),
       playerCargoPods: distribution(samples.map((sample) => sample.player.cargoPods)),
       playerCrew: distribution(samples.map((sample) => sample.player.crew)),
+      playerPorts: distribution(samples.map((sample) => sample.player.ports)),
       npcCredits: distribution(samples.flatMap((sample) => sample.npcCredits)),
       npcHullStrength: distribution(samples.flatMap((sample) => sample.npcHullStrength)),
       npcFuel: distribution(samples.flatMap((sample) => sample.npcFuel)),
+      npcDeedCount: distribution(samples.flatMap((sample) => sample.npcDeedCount)),
+      npcPortCount: distribution(samples.flatMap((sample) => sample.npcPortCount)),
+      npcRenownRanks: rankHistogram(samples.flatMap((sample) => sample.npcRenownRank)),
     }));
+}
+
+/** N11 · Count ranks by name. Built the same way `aggregateRows` builds the
+ *  player's `renownRanks`, and kept as a named function rather than inlined
+ *  because a categorical count and a `Distribution` must never be mistaken for
+ *  each other at a call site. */
+function rankHistogram(ranks: readonly string[]): Record<string, number> {
+  const histogram: Record<string, number> = {};
+  for (const rank of ranks) {
+    histogram[rank] = (histogram[rank] ?? 0) + 1;
+  }
+  return histogram;
 }
 
 export interface BaselineAggregate {
@@ -566,7 +677,7 @@ function rejectSyntheticRows(rows: readonly SeedRow[]): void {
     `Refusing to aggregate ${synthetic.length} SYNTHESIZED row(s) (first: seed ${sample.seed}, ` +
       `policy ${sample.policy}). A career that began from a fabricated mid-game state is a ` +
       `breakage sample, never a balance measurement — see N7 in ` +
-      `docs/BALANCE-REDESIGN-WORKLIST.md and docs/balance/smoke/README.md. The capstone sweep ` +
+      `docs/NPC_REDESIGN.md and docs/balance/smoke/README.md. The capstone sweep ` +
       `is the only authority on numbers.`,
   );
 }
@@ -600,6 +711,8 @@ export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyA
 
   const resolvedRuns = rows.filter((row) => row.tourOneOutcome !== null);
   const shipsLost = rows.reduce((total, row) => total + row.shipsLost, 0);
+  const claims = rows.reduce((total, row) => total + row.contractClaims, 0);
+  const gatedPurchases = rows.reduce((total, row) => total + row.npcSpecialEquipmentPurchases, 0);
 
   return {
     policy,
@@ -628,6 +741,16 @@ export function aggregateRows(policy: string, rows: readonly SeedRow[]): PolicyA
     deedsPer100Days: distribution(rows.map((row) => row.deedPacing.deedsPer100Days)),
     dayOfNthDeed,
     renownRanks,
+    contractClaims: claims,
+    contractClaimsPerRun: rows.length === 0 ? 0 : claims / rows.length,
+    boardDepth: distribution(rows.flatMap((row) => row.boardDepths)),
+    npcSpecialEquipmentPurchases: gatedPurchases,
+    // Guarded exactly as `contractClaimsPerRun` is: an empty row set is 0, never NaN.
+    npcSpecialEquipmentPurchasesPerRun: rows.length === 0 ? 0 : gatedPurchases / rows.length,
+    portsOwned: distribution(rows.map((row) => row.portsOwned)),
+    // Through the shared `share()` so an empty row set answers 0 rather than NaN,
+    // exactly as `debtClearedRate` above does.
+    portOwnershipRate: share(rows.filter((row) => row.portsOwned > 0).length, rows.length),
     encounters: combat.length,
     encountersPerRun: rows.length === 0 ? 0 : combat.length / rows.length,
     combatCells: combatCellsFor(combat),

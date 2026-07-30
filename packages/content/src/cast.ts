@@ -17,6 +17,8 @@ export interface AnonymousInterceptorProfile {
   tier: PowerTier;
 }
 
+export type NpcArchetype = 'trader' | 'fighter' | 'explorer' | 'smuggler' | 'gambler' | 'veteran';
+
 export interface NpcProfile {
   id: string;
   name: string;
@@ -29,6 +31,10 @@ export interface NpcProfile {
   flawDc: number;
   /** Power tier: 1 = mudlark, 5 = legend (PRD §6). */
   tier: PowerTier;
+  /** N4 · The captain's playstyle. It does not REPLACE {@link ideal} — it biases
+   *  it, through `ARCHETYPE_INTENT_MULTIPLIERS` in ideals.ts. See the curation
+   *  note above {@link NPC_PROFILES} for how the 30 were assigned. */
+  archetype: NpcArchetype;
   /** T-1204: the dusk Bond intervention this NPC performs when the player has
    *  earned their standing. Present only on the handful of profiles whose Bond
    *  implies a player-facing obligation; the beat (drive-off / fuel-gift) is the
@@ -37,8 +43,49 @@ export interface NpcProfile {
   bondHook?: BondHook;
 }
 
+/**
+ * N4 · THE ARCHETYPE ASSIGNMENT IS HAND-CURATED, and that is a ruling, not a
+ * preference (docs/NPC_REDESIGN.md, N4 RULING 2: *"archetypes are hand-curated
+ * from each captain's stats / ideal / bond, with a floor guaranteeing every
+ * archetype has enough members for its branch to be live and measurable"*).
+ *
+ * WHY THE RULING EXISTS — the first attempt generated the field with a one-off
+ * regex script whose first-match branch chain starved the last two archetypes,
+ * leaving **0 veterans and 1 smuggler** across these 30. A branch with no
+ * members is not a design decision, it is dead code that reads as one, and no
+ * sweep can measure it. The floor is what makes each branch gradeable.
+ *
+ * THE DISTRIBUTION, pinned by `cast.test.ts` so it cannot quietly starve again:
+ * trader 6 · fighter 6 · explorer 5 · veteran 5 · gambler 4 · smuggler 4 = 30.
+ *
+ * HOW A CAPTAIN WAS PLACED — read in this order, and the ORDER is not a
+ * precedence chain (that is what went wrong the first time), it is what each
+ * archetype means:
+ *   · **trader**   — TRADE 4+ under a commerce Ideal (Wealth / Profit / Opulence
+ *                    / Industry). The manifest board is the whole day.
+ *   · **fighter**  — GUNS at or near the top of the line under a martial Ideal
+ *                    (Dominance / Glory / Power / Excellence), TRADE 0–1.
+ *   · **explorer** — PILOT top of the line with a Travel-heavy Ideal (Discovery /
+ *                    Truth / Freedom / Mystery) and a bond pointed outward
+ *                    ("loyal to the cosmos", "the open stars", "the next horizon").
+ *   · **smuggler** — a bond outside the lawful factions (the rim, the shadows, a
+ *                    faction they hate) plus the means to work it: TRADE to move
+ *                    the cargo or PILOT to outrun what objects.
+ *   · **gambler**  — GUILE 4+, or a volatile flaw (Reckless / Impulsive /
+ *                    Arrogant / Treacherous) on a line with no dominant stat.
+ *   · **veteran**  — a career rather than a specialism: tier 3+, no stat above 4,
+ *                    at least three stats filled, and a disciplined flawDc. These
+ *                    are the captains who play the whole loop.
+ * Where a captain's assignment is not obvious from their line, the reason is
+ * written at their own entry below rather than left to be re-derived.
+ *
+ * Three assignments are FIXED by the owner's ruling, which worked their
+ * arithmetic out by hand: **Iron Vex fighter**, **Cargo King trader**, **Zero
+ * Risk trader**. Changing one of those three silently invalidates a recorded
+ * worked example; change the ruling first.
+ */
 export const NPC_PROFILES: NpcProfile[] = [
-  // The Original 20
+  // The Original 20 (minus 8 extracted) = 12
   {
     id: 'npc-iron-vex',
     name: 'Iron Vex',
@@ -49,17 +96,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Bloodthirsty',
     flawDc: 14,
     tier: 3,
-  },
-  {
-    id: 'npc-silk-dagger',
-    name: 'Silk Dagger',
-    shipName: 'Whisper',
-    stats: { PILOT: 3, GUNS: 3, TRADE: 1, GRIT: 1, GUILE: 4 },
-    ideal: 'Perfection',
-    bond: 'Loyal to the Space Dragons',
-    flaw: 'Vengeful',
-    flawDc: 12,
-    tier: 4,
+    archetype: 'fighter',
   },
   {
     id: 'npc-cargo-king',
@@ -71,17 +108,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Cowardly',
     flawDc: 13,
     tier: 3,
-  },
-  {
-    id: 'npc-lucky-seven',
-    name: 'Lucky Seven',
-    shipName: 'Jackpot',
-    stats: { PILOT: 2, GUNS: 1, TRADE: 2, GRIT: 0, GUILE: 4 },
-    ideal: 'Thrill',
-    bond: 'No loyalties, only the next hand',
-    flaw: 'Compulsive Gambler',
-    flawDc: 16,
-    tier: 2,
+    archetype: 'trader',
   },
   {
     id: 'npc-admiral-stern',
@@ -93,22 +120,10 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Overcautious',
     flawDc: 10,
     tier: 5,
-    // T-1204: the Admiral's Bond is protection — he drives an interceptor off a
-    // friend's tail (the drive-off beat), not a fuel handout. A guardian, not a
-    // paramedic. (His standing is harder to earn organically than Doc's, so the
-    // drive-off path is proven in unit coverage rather than the long sim.)
+    /** N4 · tier 5, no stat above 4 and four of five filled, flawDc 10 (the most disciplined
+     *  captain on the roster): the broad, seasoned game the archetype names */
+    archetype: 'veteran',
     bondHook: { beat: 'drive-off', activateAt: 3, dc: 12 },
-  },
-  {
-    id: 'npc-rattlesnake',
-    name: 'Rattlesnake',
-    shipName: 'Fang',
-    stats: { PILOT: 2, GUNS: 3, TRADE: 3, GRIT: 2, GUILE: 1 },
-    ideal: 'Profit',
-    bond: 'Loyal to the Warlord Confed',
-    flaw: 'Vengeful',
-    flawDc: 14,
-    tier: 3,
   },
   {
     id: 'npc-nova-blitz',
@@ -120,17 +135,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Reckless',
     flawDc: 15,
     tier: 3,
-  },
-  {
-    id: 'npc-penny-wise',
-    name: 'Penny Wise',
-    shipName: 'Thrift Star',
-    stats: { PILOT: 1, GUNS: 0, TRADE: 4, GRIT: 2, GUILE: 2 },
-    ideal: 'Efficiency',
-    bond: 'Loyal to their credits',
-    flaw: 'Miserly',
-    flawDc: 12,
-    tier: 2,
+    archetype: 'fighter',
   },
   {
     id: 'npc-black-tide',
@@ -142,6 +147,387 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Cruel',
     flawDc: 12,
     tier: 5,
+    /** N4 · tier 5 and rules a faction — a career, not a specialism; GUNS 4 + GRIT 4 + GUILE 2
+     *  fights, endures and negotiates, which is the veteran stance exactly */
+    archetype: 'veteran',
+  },
+  {
+    id: 'npc-frost-helm',
+    name: 'Frost Helm',
+    shipName: 'Glacier',
+    stats: { PILOT: 3, GUNS: 2, TRADE: 3, GRIT: 3, GUILE: 0 },
+    ideal: 'Logic',
+    bond: 'Loyal to the Rebel Alliance',
+    flaw: 'Rigid',
+    flawDc: 10,
+    tier: 3,
+    /** N4 · the flattest stat line in the cast (3/2/3/3/0) under a Logic ideal and flawDc 10 —
+     *  a methodical all-rounder, not a specialist trader */
+    archetype: 'veteran',
+  },
+  {
+    id: 'npc-atlas-prime',
+    name: 'Atlas Prime',
+    shipName: 'Titan Haul',
+    stats: { PILOT: 1, GUNS: 2, TRADE: 4, GRIT: 3, GUILE: 0 },
+    ideal: 'Industry',
+    bond: 'Loyal to the Warlord Confed',
+    flaw: 'Slothful',
+    flawDc: 12,
+    tier: 3,
+    archetype: 'trader',
+  },
+  {
+    id: 'npc-crimson-ace',
+    name: 'Crimson Ace',
+    shipName: 'Red Baron',
+    stats: { PILOT: 5, GUNS: 4, TRADE: 0, GRIT: 2, GUILE: 1 },
+    ideal: 'Excellence',
+    bond: 'Loyal to the Rebel Alliance',
+    flaw: 'Prideful',
+    flawDc: 13,
+    tier: 4,
+    archetype: 'fighter',
+  },
+  {
+    id: 'npc-zero-risk',
+    name: 'Zero Risk',
+    shipName: 'Safe Haven',
+    stats: { PILOT: 2, GUNS: 1, TRADE: 4, GRIT: 1, GUILE: 2 },
+    ideal: 'Survival',
+    bond: 'Loyal to the Astro League',
+    flaw: 'Cowardly',
+    flawDc: 15,
+    tier: 2,
+    archetype: 'trader',
+  },
+  {
+    id: 'npc-neon-fox',
+    name: 'Neon Fox',
+    shipName: 'Trickster',
+    stats: { PILOT: 3, GUNS: 1, TRADE: 3, GRIT: 1, GUILE: 5 },
+    ideal: 'Advantage',
+    bond: 'Loyal to no one',
+    flaw: 'Treacherous',
+    flawDc: 14,
+    tier: 4,
+    archetype: 'gambler',
+  },
+  {
+    id: 'npc-warp-hound',
+    name: 'Warp Hound',
+    shipName: 'Lightchaser',
+    stats: { PILOT: 5, GUNS: 0, TRADE: 1, GRIT: 3, GUILE: 1 },
+    ideal: 'Discovery',
+    bond: 'Loyal to the Rebel Alliance',
+    flaw: 'Wanderlust',
+    flawDc: 14,
+    tier: 3,
+    archetype: 'explorer',
+  },
+  {
+    id: 'npc-gold-rush',
+    name: 'Gold Rush',
+    shipName: 'Vault Breaker',
+    stats: { PILOT: 1, GUNS: 2, TRADE: 5, GRIT: 2, GUILE: 2 },
+    ideal: 'Opulence',
+    bond: 'Loyal to the Warlord Confed',
+    flaw: 'Greedy',
+    flawDc: 15,
+    tier: 4,
+    archetype: 'trader',
+  },
+  // The 10 New Cast Members (minus 3 extracted) = 7
+  {
+    id: 'npc-star-gazer',
+    name: 'Star Gazer',
+    shipName: 'Observatory',
+    stats: { PILOT: 4, GUNS: 0, TRADE: 1, GRIT: 2, GUILE: 1 },
+    ideal: 'Truth',
+    bond: 'Loyal to the cosmos',
+    flaw: 'Distracted',
+    flawDc: 15,
+    tier: 1,
+    archetype: 'explorer',
+  },
+  {
+    id: 'npc-the-warden',
+    name: 'The Warden',
+    shipName: 'Lockdown',
+    stats: { PILOT: 3, GUNS: 4, TRADE: 0, GRIT: 4, GUILE: 0 },
+    ideal: 'Justice',
+    bond: 'Hunts for the Astro League',
+    flaw: 'Relentless',
+    flawDc: 13,
+    tier: 4,
+    /** N4 · a tier-4 bounty hunter who hunts FOR an institution: the roster's natural
+     *  deed-chaser, which is what the sim's veteran policy is. Justice vetoes Trade outright,
+     *  so the blend leaves them on Combat and Patrol without an archetype needing to say so */
+    archetype: 'veteran',
+  },
+  {
+    id: 'npc-nebula-rose',
+    name: 'Nebula Rose',
+    shipName: 'Stardust',
+    stats: { PILOT: 2, GUNS: 1, TRADE: 4, GRIT: 1, GUILE: 4 },
+    ideal: 'Beauty',
+    bond: 'Loves high society',
+    flaw: 'Vain',
+    flawDc: 12,
+    tier: 3,
+    /** N4 · TRADE 4 beside GUILE 4, a Beauty ideal weighted on Socialize, and a bond that
+     *  literally reads "loves high society" — the Hangout is her venue, not the manifest board */
+    archetype: 'gambler',
+  },
+  {
+    id: 'npc-the-phantom',
+    name: 'The Phantom',
+    shipName: 'Ectoplasm',
+    stats: { PILOT: 5, GUNS: 2, TRADE: 0, GRIT: 3, GUILE: 4 },
+    ideal: 'Mystery',
+    bond: 'Loyal to the unknown',
+    flaw: 'Enigmatic',
+    flawDc: 10,
+    tier: 5,
+    /** N4 · tier 5, PILOT 5, TRADE 0, and a Mystery ideal already weighted Travel 5 — nothing
+     *  about this captain trades, and "loyal to the unknown" is the explorer's remit */
+    archetype: 'explorer',
+  },
+  {
+    id: 'npc-crash-override',
+    name: 'Crash Override',
+    shipName: 'Syntax Error',
+    stats: { PILOT: 3, GUNS: 1, TRADE: 2, GRIT: 1, GUILE: 5 },
+    ideal: 'Control',
+    bond: 'Loyal to the datastream',
+    flaw: 'Arrogant',
+    flawDc: 13,
+    tier: 3,
+    archetype: 'gambler',
+  },
+  {
+    id: 'npc-the-chef',
+    name: 'The Chef',
+    shipName: 'Bistro',
+    stats: { PILOT: 2, GUNS: 1, TRADE: 4, GRIT: 3, GUILE: 2 },
+    ideal: 'Flavor',
+    bond: 'Feeds the rim',
+    flaw: 'Perfectionist',
+    flawDc: 12,
+    tier: 2,
+    /** N4 · TRADE 4 with a bond that reads "feeds the rim" — the rim run IS the smuggler's
+     *  mechanical signature (`executeTrade`'s rim preference), and this is the captain it was
+     *  authored for */
+    archetype: 'smuggler',
+  },
+  {
+    id: 'npc-junk-lord',
+    name: 'Junk Lord',
+    shipName: 'Scrap Iron',
+    stats: { PILOT: 1, GUNS: 3, TRADE: 3, GRIT: 4, GUILE: 1 },
+    ideal: 'Possession',
+    bond: 'Ruler of the scrap yards',
+    flaw: 'Possessive',
+    flawDc: 13,
+    tier: 3,
+    /** N4 · GUNS 3, TRADE 3, GRIT 4 under a Possession ideal — a scrapyard baron who fights,
+     *  hauls and holds ground rather than doing one of the three */
+    archetype: 'veteran',
+  },
+  // 11 Newly Generated Simulation Characters
+  {
+    id: 'npc-iron-clad',
+    name: 'Iron Clad',
+    shipName: 'Dreadnought',
+    stats: { PILOT: 2, GUNS: 4, TRADE: 0, GRIT: 4, GUILE: 0 },
+    ideal: 'Dominance',
+    bond: 'Loyal to the Warlord Confed',
+    flaw: 'Stubborn',
+    flawDc: 14,
+    tier: 4,
+    archetype: 'fighter',
+  },
+  {
+    id: 'npc-stellar-drift',
+    name: 'Stellar Drift',
+    shipName: 'Wanderer',
+    stats: { PILOT: 4, GUNS: 0, TRADE: 3, GRIT: 1, GUILE: 2 },
+    ideal: 'Freedom',
+    bond: 'Loyal to the open stars',
+    flaw: 'Flighty',
+    flawDc: 12,
+    tier: 2,
+    archetype: 'explorer',
+  },
+  {
+    id: 'npc-void-runner',
+    name: 'Void Runner',
+    shipName: 'Slipstream',
+    stats: { PILOT: 5, GUNS: 1, TRADE: 1, GRIT: 2, GUILE: 1 },
+    ideal: 'Thrill',
+    bond: 'Hunts the fastest routes',
+    flaw: 'Impulsive',
+    flawDc: 15,
+    tier: 3,
+    /** N4 · PILOT 5 and "hunts the fastest routes" on a Thrill ideal: the blockade runner.
+     *  TRADE 1 means thin margins, which is the point — the archetype is not a promise of
+     *  profit */
+    archetype: 'smuggler',
+  },
+  {
+    id: 'npc-crimson-hawk',
+    name: 'Crimson Hawk',
+    shipName: 'Bloodwing',
+    stats: { PILOT: 3, GUNS: 4, TRADE: 0, GRIT: 3, GUILE: 0 },
+    ideal: 'Glory',
+    bond: 'Loyal to the Rebel Alliance',
+    flaw: 'Reckless',
+    flawDc: 13,
+    tier: 4,
+    archetype: 'fighter',
+  },
+  {
+    id: 'npc-neon-shade',
+    name: 'Neon Shade',
+    shipName: 'Nightfall',
+    stats: { PILOT: 2, GUNS: 2, TRADE: 2, GRIT: 1, GUILE: 3 },
+    ideal: 'Mystery',
+    bond: 'Loyal to the shadows',
+    flaw: 'Paranoid',
+    flawDc: 14,
+    tier: 2,
+    archetype: 'smuggler',
+  },
+  {
+    id: 'npc-dust-devil',
+    name: 'Dust Devil',
+    shipName: 'Sandstorm',
+    stats: { PILOT: 3, GUNS: 1, TRADE: 4, GRIT: 2, GUILE: 0 },
+    ideal: 'Profit',
+    bond: 'Loyal to the frontier',
+    flaw: 'Greedy',
+    flawDc: 12,
+    tier: 2,
+    /** N4 · frontier-loyal, but GUILE 0 — a captain who cannot keep a secret is not a smuggler,
+     *  whatever their bond says */
+    archetype: 'trader',
+  },
+  {
+    id: 'npc-star-chaser',
+    name: 'Star Chaser',
+    shipName: 'Comet',
+    stats: { PILOT: 4, GUNS: 1, TRADE: 3, GRIT: 1, GUILE: 1 },
+    ideal: 'Discovery',
+    bond: 'Loyal to the next horizon',
+    flaw: 'Distracted',
+    flawDc: 11,
+    tier: 3,
+    archetype: 'explorer',
+  },
+  {
+    id: 'npc-rogue-star',
+    name: 'Rogue Star',
+    shipName: 'Rebellion',
+    stats: { PILOT: 3, GUNS: 3, TRADE: 1, GRIT: 2, GUILE: 1 },
+    ideal: 'Chaos',
+    bond: 'Hates the Astro League',
+    flaw: 'Defiant',
+    flawDc: 14,
+    tier: 3,
+    /** N4 · a Chaos ideal, a Defiant flaw and a bond that HATES the Astro League: runs cargo
+     *  past the patrols of the faction they hate. GUNS 3 keeps them dangerous when the run goes
+     *  wrong */
+    archetype: 'smuggler',
+  },
+  {
+    id: 'npc-plasma-burn',
+    name: 'Plasma Burn',
+    shipName: 'Scorcher',
+    stats: { PILOT: 2, GUNS: 4, TRADE: 0, GRIT: 3, GUILE: 1 },
+    ideal: 'Power',
+    bond: 'Loyal to chaos',
+    flaw: 'Destructive',
+    flawDc: 16,
+    tier: 3,
+    archetype: 'fighter',
+  },
+  {
+    id: 'npc-comet-tail',
+    name: 'Comet Tail',
+    shipName: 'Icebreaker',
+    stats: { PILOT: 3, GUNS: 1, TRADE: 4, GRIT: 2, GUILE: 0 },
+    ideal: 'Wealth',
+    bond: 'Loyal to the trade routes',
+    flaw: 'Miserly',
+    flawDc: 12,
+    tier: 2,
+    archetype: 'trader',
+  },
+  {
+    id: 'npc-solar-flare',
+    name: 'Solar Flare',
+    shipName: 'Sunspot',
+    stats: { PILOT: 4, GUNS: 3, TRADE: 0, GRIT: 2, GUILE: 1 },
+    ideal: 'Power',
+    bond: 'Loyal to the Rebel Alliance',
+    flaw: 'Arrogant',
+    flawDc: 13,
+    tier: 3,
+    /** N4 · the roster's third Glory/Power hotshot with a PILOT 4 / GUNS 3 line; Arrogant, and
+     *  the one of the three whose day is a bet rather than a discipline. Keeping all three as
+     *  fighters made near-duplicate captains */
+    archetype: 'gambler',
+  },
+];
+
+export const QUEST_PROFILES: NpcProfile[] = [
+  {
+    id: 'npc-silk-dagger',
+    name: 'Silk Dagger',
+    shipName: 'Whisper',
+    stats: { PILOT: 3, GUNS: 3, TRADE: 1, GRIT: 1, GUILE: 4 },
+    ideal: 'Perfection',
+    bond: 'Loyal to the Space Dragons',
+    flaw: 'Vengeful',
+    flawDc: 12,
+    tier: 4,
+    archetype: 'gambler',
+  },
+  {
+    id: 'npc-lucky-seven',
+    name: 'Lucky Seven',
+    shipName: 'Jackpot',
+    stats: { PILOT: 2, GUNS: 1, TRADE: 2, GRIT: 0, GUILE: 4 },
+    ideal: 'Thrill',
+    bond: 'No loyalties, only the next hand',
+    flaw: 'Compulsive Gambler',
+    flawDc: 16,
+    tier: 2,
+    archetype: 'gambler',
+  },
+  {
+    id: 'npc-rattlesnake',
+    name: 'Rattlesnake',
+    shipName: 'Fang',
+    stats: { PILOT: 2, GUNS: 3, TRADE: 3, GRIT: 2, GUILE: 1 },
+    ideal: 'Profit',
+    bond: 'Loyal to the Warlord Confed',
+    flaw: 'Vengeful',
+    flawDc: 14,
+    tier: 3,
+    archetype: 'trader',
+  },
+  {
+    id: 'npc-penny-wise',
+    name: 'Penny Wise',
+    shipName: 'Thrift Star',
+    stats: { PILOT: 1, GUNS: 0, TRADE: 4, GRIT: 2, GUILE: 2 },
+    ideal: 'Efficiency',
+    bond: 'Loyal to their credits',
+    flaw: 'Miserly',
+    flawDc: 12,
+    tier: 2,
+    archetype: 'trader',
   },
   {
     id: 'npc-doc-salvage',
@@ -153,23 +539,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Savior Complex',
     flawDc: 15,
     tier: 2,
-    // T-1204: Doc's Savior Complex answers a mayday — the fuel-gift beat. His
-    // standing is the one an ORDINARY player can actually earn (the Tour One
-    // distress-ping storylet chain grants him disposition through legal play), so
-    // this is the organically-reachable bond intervention the acceptance
-    // exercises. Every field is tuned for reachability against the rebalanced
-    // decay:
-    //   - activateAt 2: the +3 refuse-payment beat clears it, and it stays
-    //     cleared for several days of decay — a wide enough window for the player
-    //     to reach Doc.
-    //   - lowFuelThreshold 150: a "running low" mayday (half a starter tank),
-    //     broadened far past the old dry-tank-only (=== 0). The old ===0 gate
-    //     never co-occurred with a bonded, co-located Doc in organic play — the
-    //     hook fired ZERO times ever. A bonded Doc (Savior Complex) tops off a
-    //     friend he finds flying the lanes low, not only one already dead in the
-    //     water; this is the single change that makes the beat reachable without
-    //     the player having to strand themselves precisely at 0.
-    //   - dc 8 vs d20 + Doc's GRIT (4): he almost always succeeds once present.
+    archetype: 'trader',
     bondHook: {
       beat: 'fuel-gift',
       activateAt: 2,
@@ -189,17 +559,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Chaotic',
     flawDc: 17,
     tier: 3,
-  },
-  {
-    id: 'npc-frost-helm',
-    name: 'Frost Helm',
-    shipName: 'Glacier',
-    stats: { PILOT: 3, GUNS: 2, TRADE: 3, GRIT: 3, GUILE: 0 },
-    ideal: 'Logic',
-    bond: 'Loyal to the Rebel Alliance',
-    flaw: 'Rigid',
-    flawDc: 10,
-    tier: 3,
+    archetype: 'gambler',
   },
   {
     id: 'npc-smuggler-ray',
@@ -211,72 +571,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Paranoid',
     flawDc: 13,
     tier: 3,
-  },
-  {
-    id: 'npc-atlas-prime',
-    name: 'Atlas Prime',
-    shipName: 'Titan Haul',
-    stats: { PILOT: 1, GUNS: 2, TRADE: 4, GRIT: 3, GUILE: 0 },
-    ideal: 'Industry',
-    bond: 'Loyal to the Warlord Confed',
-    flaw: 'Slothful',
-    flawDc: 12,
-    tier: 3,
-  },
-  {
-    id: 'npc-crimson-ace',
-    name: 'Crimson Ace',
-    shipName: 'Red Baron',
-    stats: { PILOT: 5, GUNS: 4, TRADE: 0, GRIT: 2, GUILE: 1 },
-    ideal: 'Excellence',
-    bond: 'Loyal to the Rebel Alliance',
-    flaw: 'Prideful',
-    flawDc: 13,
-    tier: 4,
-  },
-  {
-    id: 'npc-zero-risk',
-    name: 'Zero Risk',
-    shipName: 'Safe Haven',
-    stats: { PILOT: 2, GUNS: 1, TRADE: 4, GRIT: 1, GUILE: 2 },
-    ideal: 'Survival',
-    bond: 'Loyal to the Astro League',
-    flaw: 'Cowardly',
-    flawDc: 15,
-    tier: 2,
-  },
-  {
-    id: 'npc-neon-fox',
-    name: 'Neon Fox',
-    shipName: 'Trickster',
-    stats: { PILOT: 3, GUNS: 1, TRADE: 3, GRIT: 1, GUILE: 5 },
-    ideal: 'Advantage',
-    bond: 'Loyal to no one',
-    flaw: 'Treacherous',
-    flawDc: 14,
-    tier: 4,
-  },
-  {
-    id: 'npc-warp-hound',
-    name: 'Warp Hound',
-    shipName: 'Lightchaser',
-    stats: { PILOT: 5, GUNS: 0, TRADE: 1, GRIT: 3, GUILE: 1 },
-    ideal: 'Discovery',
-    bond: 'Loyal to the Rebel Alliance',
-    flaw: 'Wanderlust',
-    flawDc: 14,
-    tier: 3,
-  },
-  {
-    id: 'npc-gold-rush',
-    name: 'Gold Rush',
-    shipName: 'Vault Breaker',
-    stats: { PILOT: 1, GUNS: 2, TRADE: 5, GRIT: 2, GUILE: 2 },
-    ideal: 'Opulence',
-    bond: 'Loyal to the Warlord Confed',
-    flaw: 'Greedy',
-    flawDc: 15,
-    tier: 4,
+    archetype: 'gambler',
   },
   {
     id: 'npc-stellar-monk',
@@ -288,8 +583,8 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Pacifist',
     flawDc: 8,
     tier: 3,
+    archetype: 'smuggler',
   },
-  // The 10 New Cast Members
   {
     id: 'npc-void-whisper',
     name: 'Void Whisper',
@@ -300,6 +595,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Zealous',
     flawDc: 14,
     tier: 4,
+    archetype: 'veteran',
   },
   {
     id: 'npc-the-broker',
@@ -311,6 +607,7 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Manipulative',
     flawDc: 12,
     tier: 4,
+    archetype: 'trader',
   },
   {
     id: 'npc-rust-bucket',
@@ -322,85 +619,47 @@ export const NPC_PROFILES: NpcProfile[] = [
     flaw: 'Hoarder',
     flawDc: 13,
     tier: 1,
-  },
-  {
-    id: 'npc-star-gazer',
-    name: 'Star Gazer',
-    shipName: 'Observatory',
-    stats: { PILOT: 4, GUNS: 0, TRADE: 1, GRIT: 2, GUILE: 1 },
-    ideal: 'Truth',
-    bond: 'Loyal to the cosmos',
-    flaw: 'Distracted',
-    flawDc: 15,
-    tier: 1,
-  },
-  {
-    id: 'npc-the-warden',
-    name: 'The Warden',
-    shipName: 'Lockdown',
-    stats: { PILOT: 3, GUNS: 4, TRADE: 0, GRIT: 4, GUILE: 0 },
-    ideal: 'Justice',
-    bond: 'Hunts for the Astro League',
-    flaw: 'Relentless',
-    flawDc: 13,
-    tier: 4,
-  },
-  {
-    id: 'npc-nebula-rose',
-    name: 'Nebula Rose',
-    shipName: 'Stardust',
-    stats: { PILOT: 2, GUNS: 1, TRADE: 4, GRIT: 1, GUILE: 4 },
-    ideal: 'Beauty',
-    bond: 'Loves high society',
-    flaw: 'Vain',
-    flawDc: 12,
-    tier: 3,
-  },
-  {
-    id: 'npc-the-phantom',
-    name: 'The Phantom',
-    shipName: 'Ectoplasm',
-    stats: { PILOT: 5, GUNS: 2, TRADE: 0, GRIT: 3, GUILE: 4 },
-    ideal: 'Mystery',
-    bond: 'Loyal to the unknown',
-    flaw: 'Enigmatic',
-    flawDc: 10,
-    tier: 5,
-  },
-  {
-    id: 'npc-crash-override',
-    name: 'Crash Override',
-    shipName: 'Syntax Error',
-    stats: { PILOT: 3, GUNS: 1, TRADE: 2, GRIT: 1, GUILE: 5 },
-    ideal: 'Control',
-    bond: 'Loyal to the datastream',
-    flaw: 'Arrogant',
-    flawDc: 13,
-    tier: 3,
-  },
-  {
-    id: 'npc-the-chef',
-    name: 'The Chef',
-    shipName: 'Bistro',
-    stats: { PILOT: 2, GUNS: 1, TRADE: 4, GRIT: 3, GUILE: 2 },
-    ideal: 'Flavor',
-    bond: 'Feeds the rim',
-    flaw: 'Perfectionist',
-    flawDc: 12,
-    tier: 2,
-  },
-  {
-    id: 'npc-junk-lord',
-    name: 'Junk Lord',
-    shipName: 'Scrap Iron',
-    stats: { PILOT: 1, GUNS: 3, TRADE: 3, GRIT: 4, GUILE: 1 },
-    ideal: 'Possession',
-    bond: 'Ruler of the scrap yards',
-    flaw: 'Possessive',
-    flawDc: 13,
-    tier: 3,
+    archetype: 'trader',
   },
 ];
+
+export const ALL_NPC_PROFILES: NpcProfile[] = [...NPC_PROFILES, ...QUEST_PROFILES];
+
+/**
+ * THE ONE PREDICATE for "does this record take a turn in the daily simulation?"
+ *
+ * `state.npcs` carries **41** records — the 30 in {@link NPC_PROFILES} who are
+ * fully simulated and mortal, plus the 11 in {@link QUEST_PROFILES} who are set
+ * aside for STORYLINE ONLY (owner, 2026-07-29) and take no turn. They hold
+ * `NpcState` records so storylet triggers and dispositions can look them up by
+ * id, and they sit FROZEN at their day-1 credits, ship and system for an entire
+ * career. That is the design, not an oversight: the split replaced an earlier
+ * "eleven immortal captains" idea, which was dropped because a cast where a
+ * third of the names cannot die made no thematic sense. Reading the eleven as
+ * simulated captains is the mistake this predicate exists to prevent.
+ *
+ * That distinction has now caused FOUR live bugs by being spelled a different
+ * way at each call site (or not at all): the Honor List silently became a 42-way
+ * board ranking eleven day-1 captains; `balance-rig.test.ts` lost 52 tests to a
+ * hardcoded 30; `campaign.test.ts`'s NPC wealth-spread invariant took its MEDIAN
+ * over all 41, so eleven records pinned at 5,000cr set the median and the
+ * assertion read a 344x spread where the simulated field's was 10.3x; and
+ * `sampleMilestone` sampled all 41, quietly diluting **every NPC wealth, hull
+ * and position percentile this project has measured** since the roster split.
+ *
+ * So it is one exported predicate over a Set, not a `.some()` at each site:
+ * three numbers stay distinct (`NPC_PROFILES.length` = the simulated field,
+ * `state.npcs.length` = the record count, 31 = the Honor List board), and the
+ * next reader gets the right one by asking rather than by remembering. Note the
+ * polarity: it asks whether a record IS simulated rather than whether it is a
+ * quest character, so a record with an unrecognised profile is excluded rather
+ * than fed to a turn resolver that would throw on it.
+ */
+const SIMULATED_PROFILE_IDS: ReadonlySet<string> = new Set(NPC_PROFILES.map((p) => p.id));
+
+export function isSimulatedCaptain(profileId: string): boolean {
+  return SIMULATED_PROFILE_IDS.has(profileId);
+}
 
 export const ANONYMOUS_INTERCEPTORS: AnonymousInterceptorProfile[] = [
   {

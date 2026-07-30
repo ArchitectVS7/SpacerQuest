@@ -13,7 +13,7 @@
  * `syntheticStart` on any report begun from one of these states, `summarizeReport`
  * carries the stamp onto the row, and `aggregate.ts` THROWS rather than fold a
  * stamped row into a `BaselineAggregate` — the artefact every balance number in
- * `docs/BALANCE-REDESIGN-WORKLIST.md` comes from. There is no flag to disable
+ * `docs/NPC_REDESIGN.md` and `docs/BALANCE-REDESIGN-WORKLIST.md` comes from. There is no flag to disable
  * that and no filter that quietly drops the row.
  *
  * This is the same line `poverty-invariant.test.ts` holds ("the fix would be to
@@ -155,6 +155,16 @@ export function synthesizeTierState(
   player.ship.fuel = Math.round(clampShare(slot.fuelShare) * player.ship.maxFuel);
   syncPlayerTier(state);
 
+  // COW-EXEMPT: these writes reach roster records raw, without `mutableNpc`, and
+  // are legal ONLY because of the caller. `state` here is fresh from
+  // `createInitialState`, so no snapshot, replay golden or rendered frame shares
+  // these records yet — there is nothing behind them to corrupt. That is a
+  // property of the CALLER, not of the write: hand this function a mid-career
+  // `GameState` and every synthesized captain writes back through every earlier
+  // snapshot. The copy-on-write scan in
+  // `packages/engine/src/__tests__/clone.test.ts` pins this site in
+  // `COW_EXEMPT_SITES` — it was named in advance by the 2026-07-29 audit as the
+  // one known escapee, so it would not be discovered as a surprise.
   for (let index = 0; index < state.npcs.length; index += 1) {
     const npc = state.npcs[index];
     const npcSlot = spread.npc[index];

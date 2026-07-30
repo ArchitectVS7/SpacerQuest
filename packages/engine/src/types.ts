@@ -115,7 +115,22 @@ export interface EarnedDeedState {
   title: string;
   citation: string;
   day: number;
-  eventIndex: number;
+  /**
+   * Where in `state.eventLog` the event that earned this deed sits.
+   *
+   * N11 · OPTIONAL, and its absence is a statement about the batch, not a gap. A
+   * captain's deed accrual runs over a LOCAL per-captain event batch that never
+   * enters `state.eventLog` (see `npc.ts` — putting a captain's `TradeEvent` in the
+   * shared array would earn the PLAYER the deed), so there is no index into that log
+   * to record and none is written. A number here would be a fabricated pointer:
+   * the reverted attempt (`7334c5d5`) stuffed `eventIndex: 0` into every NPC row,
+   * which is exactly what the field's absence now prevents. Player rows still always
+   * carry one — `evaluateDeeds` passes `sourceStartIndex`, so the anchor is real.
+   *
+   * READER: `ui/src/format.ts` `deedRegistry`, which sorts by it; that reader only
+   * ever sees player rows and nullish-guards the comparison anyway.
+   */
+  eventIndex?: number;
 }
 
 export interface DeedRegistryState {
@@ -259,10 +274,65 @@ export type GameEvent =
         // nat here to the `gamble` wire bucket (wire.ts classifyCheck) — the
         // player-side twin of the NPC `npc-socialize` context, so a natted Dare
         // "makes the wire" as a Spacer's Dare story (PRD §6 sample line).
-        | 'gamble';
+        | 'gamble'
+        // N3: a captain's rolls INSIDE an interdiction, one per round per stance.
+        // Discriminated from the `npc-*` VERB contexts above on purpose, and the
+        // distinction is load-bearing twice over:
+        //   · The T-1201 verb ⟺ StatCheck invariant counts checks carrying the
+        //     verb's OWN context, so an interdiction cannot inflate the sim's
+        //     trade-failure denominator (see npc.test.ts).
+        //   · PRD §6 guarantees "a natural 20 or natural 1 always generates a
+        //     story" for ANY check, player or NPC — so these must reach the wire,
+        //     and each stance routes to the bucket that reads correctly for it.
+        | 'npc-encounter-fight'
+        | 'npc-encounter-run'
+        | 'npc-encounter-talk';
     }
   | { type: 'FlawCheck'; npcId: string; flaw: string; die: number; dc: number; resisted: boolean }
   | { type: 'NpcAction'; npcId: string; actionDetails: string }
+  | {
+      /**
+       * N3 · An interdiction answered a captain's jump, resolved inside the dusk
+       * tick. ONE SUMMARY EVENT PER ENCOUNTER, not one per round, and that is a
+       * cost decision: 30 captains jump every dusk into an append-only event log
+       * that T-1605c measured at ~94,000 entries on a 1,000-day career. The
+       * per-round detail that survives is the `StatCheck` stream (which the wire
+       * needs for nat-20 stories); everything else is folded into this line.
+       */
+      type: 'NpcEncounter';
+      day: number;
+      npcId: string;
+      interceptorId: string;
+      interceptorName: string;
+      /** The stances the captain played, in order — their answer to the pirate. */
+      stances: readonly ('talk' | 'run' | 'fight')[];
+      /** 'survived' is the round-cap break-off: held the field, won nothing. */
+      resolution: 'talked-down' | 'escaped' | 'defeated' | 'destroyed' | 'survived';
+      rounds: number;
+      /** Tribute handed over, when the captain talked their way out. */
+      creditsPaid?: number;
+      /** Wreck salvage collected, when the captain won. Same
+       *  COMBAT_SALVAGE_PER_TIER the player is paid — no separate NPC rate. */
+      salvageCredits?: number;
+    }
+  | {
+      /**
+       * N3 · A captain lost their ship and is gone for good. PERMANENT — no
+       * succession, no replacement, no respawn (owner ruling, 2026-07-28). This is
+       * the NPC twin of `ShipLost`, kept SEPARATE rather than reusing it: every
+       * `ShipLost` reader (wire prose, the UI obituary log, `applySuccession`)
+       * treats that event as the player's, and a shared type would have every one
+       * of them narrating the player's death when a stranger died.
+       */
+      type: 'NpcShipLost';
+      day: number;
+      npcId: string;
+      npcName: string;
+      interceptorId: string;
+      interceptorName: string;
+      /** Where the wreck was left — the lane's destination end. */
+      systemId: number;
+    }
   | {
       /** A same-system NPC took a job off the player's manifest board at dusk
        *  (T-106 contract competition). */
@@ -1121,19 +1191,63 @@ export interface NpcState {
    * fuel gift.
    */
   ship: ShipState;
+  /**
+   * N11 · THE CAPTAIN'S OWN DEED REGISTRY AND RENOWN RANK — the same
+   * {@link DeedRegistryState} the player's standing lives in, evaluated by the same
+   * `accrueDeeds` against the same content `DEEDS` and `RENOWN_DEED_THRESHOLDS`.
+   *
+   * WHY IT EXISTS. Before N11 no NPC had a registry at all, so `actorRankIndex`
+   * (`actions/shipyard.ts`) returned −1 for every captain — strictly below every
+   * rung of the Renown ladder, forever. Every rank-gated purchase was therefore
+   * refused with no recourse, which the track's standing constraint defines as an
+   * exemption: a gate the actor can never open is not the rule the player plays
+   * under, because the player can EARN the key.
+   *
+   * SEEDED BY: `deeds.ts` `emptyDeedRegistry()` — the ONE seeding function, called
+   * by `state.ts` `createInitialState` (world creation), `state.ts`
+   * `deserializeState` (raw JSON path) and `save.ts` `MIGRATIONS[11]` (envelope
+   * path), so a migrated roster cannot drift from a freshly created one.
+   * WRITTEN BY: the verb paths in `npc.ts` — `executeTrade` / `executeTravel` /
+   * `resolveNpcEncounter` feed a local `deedSource` batch that `resolveNpcDay`
+   * hands to `accrueDeeds` at the captain's dusk.
+   * READ BY: `actorRankIndex` (the yard's Renown gate).
+   *
+   * IT STARTS AT ZERO AND IS NEVER BACKFILLED FROM THE PROFILE. N11's ruling is
+   * explicit that the fast-forward allowance applies to the SOURCE — the coarse
+   * verbs standing in for played days — and *"does not license synthetic backfill
+   * of unearned rank at world creation"*. A tier-5 captain seeded with a rank they
+   * never earned is precisely the "constant recomputed from profile" phantom N1
+   * existed to kill, so no `profile.tier` read reaches this field anywhere,
+   * including the migration.
+   */
+  registry: DeedRegistryState;
   /** Per-NPC standing toward the player, clamped to [-10, +10]; decays one
    *  step toward 0 each dusk. */
   disposition: number;
   lastAction?: NpcAction;
   /**
-   * N3 WILL ADD `dead` HERE — and adding it is only half the change. A dead
-   * captain's record STAYS (the wire, the Honor List's history and the player's
-   * grudges all still reference it), so the Honor List has to skip it rather than
-   * lose it: `honorField` in `packages/ui/src/format.ts` applies no dead filter
-   * today and names the one-line remedy at its own definition site. That skip is
-   * the fifth behaviour the 1991 registry had and N6 shipped only as a seam
-   * (worklist item OI-2). Marking dead without it ranks corpses forever.
+   * N3 · This captain lost their ship and is gone. **PERMANENT — no succession, no
+   * replacement, no respawn** (owner ruling, 2026-07-28). The player gets
+   * succession; an NPC does not. The framing is *"in many real-world multiplayer
+   * games, sometimes a player quits"* — the seat empties and stays empty, so the
+   * field shrinks over a career and contract competition falls with it.
+   *
+   * OPTIONAL, and absent means alive. That is deliberate: it makes the field a
+   * pure addition to the save shape, so no migration and no version bump are owed
+   * (an old save has no dead captains, which is exactly what `undefined` means).
+   *
+   * THE RECORD STAYS — it is marked, never deleted, because the wire, the Honor
+   * List's history and any grudge the player still carries all reference it. Which
+   * means every reader that treats the roster as "the living field" must skip it,
+   * and MARKING DEAD WITHOUT THOSE SKIPS RANKS CORPSES FOREVER. The four that
+   * matter, all closed by N3:
+   *   · `honorField` (`packages/ui/src/format.ts`) — the fifth 1991 behaviour N6
+   *     shipped only as a seam (worklist item OI-2).
+   *   · `buildNamedCandidates` (`actions/travel.ts`) — a corpse must not intercept.
+   *   · the dusk NPC loop (`day.ts`) — a corpse takes no turn.
+   *   · Hangout presence (`actions/hangout.ts`) — a corpse is not at the tables.
    */
+  dead?: boolean;
 }
 
 export interface ComponentState {
@@ -1395,11 +1509,41 @@ export interface CargoContract {
 export interface MarketState {
   manifestBoard: CargoContract[];
   localFuelPrice: number;
-  /** T-106 contract competition: jobs claimed off the local board by NPCs at
-   *  dusk. Each claim removes the offer from the live board immediately AND
-   *  shrinks the next dawn's board generation pool by one (the depot's job
-   *  pool was drained). Reset to 0 by startDay after it is consumed. */
-  npcClaims: number;
+  /**
+   * N10 · THE SHARED JOB POOL — outstanding claims against EVERY system's
+   * generation pool, keyed by `String(systemId)`.
+   *
+   * This replaces T-106's `npcClaims: number`, which counted claims in the
+   * player's system only and was reset to 0 every dawn. Two things were wrong
+   * with that shape, and they are the same thing said twice: a captain hauling
+   * out of Vega-7 drained nothing, and a pool the player was not standing in
+   * could not be drained at all. So competition existed only under the player's
+   * nose — a texture, not a force (N2 measured an 8x field-wealth increase move
+   * `ContractClaimed` by +2.0%).
+   *
+   * Now every claim, wherever it happens, debits the origin system's pool, and
+   * `startDay` sizes the player's board from the pool of the system they are
+   * actually in. THAT is what lets the player WATCH the competition rather than
+   * merely share a galaxy with it: fly into a hub the cast has been working and
+   * the board is thin; fly somewhere quiet and it is full.
+   *
+   * Two properties, both load-bearing and both enforced by the accessors in
+   * `economy.ts` (`jobPoolDepth` / `debitJobPool` / `regeneratePools`) rather
+   * than by any call site spelling the arithmetic itself:
+   *
+   *   1. **Pools RECOVER.** `regeneratePools` steps every tally back toward 0 by
+   *      `JOB_POOL_REGEN_PER_DAY` each dawn. Without it the galaxy ratchets: 30
+   *      captains claiming for 120 days would leave every port permanently dark,
+   *      which is not competition but attrition.
+   *   2. **Tallies are CLAMPED** to `JOB_POOL_MAX_CLAIMS`, so a pool cannot bank
+   *      a debt it needs twenty quiet days to work off.
+   *
+   * A missing key means an undrained pool, which is why this is a sparse record
+   * and not a 20-slot array: `regeneratePools` deletes a tally the moment it
+   * reaches 0, so a quiet galaxy serializes as `{}` and the save does not grow a
+   * key per system.
+   */
+  jobPoolClaims: Record<string, number>;
 }
 
 export interface GameState {

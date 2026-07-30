@@ -109,6 +109,15 @@ function dayStats(day: number, deedsEarned: string[]): CampaignDayStats {
     deedCount: 0,
     renownRank: 'LIEUTENANT',
     bestOfferDestination: null,
+    // N10 · A full board and no snipe: this helper exists to exercise the deed
+    // pacing math, so the contract-competition fields are set to the undrained
+    // case rather than to something the arithmetic here would read.
+    boardDepth: 4,
+    contractsSniped: 0,
+    // N11/T-022 · Same reasoning: this helper drives the deed-pacing math only, so
+    // the cast's yard is set to the quiet day rather than to a number the
+    // arithmetic under test would pick up.
+    npcSpecialEquipmentBought: 0,
     incomeActionCount: 0,
     fuelStarved: false,
   };

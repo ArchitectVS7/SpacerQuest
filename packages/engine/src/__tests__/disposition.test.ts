@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NPC_PROFILES, Stat } from '@spacerquest/content';
+import { ALL_NPC_PROFILES, Stat } from '@spacerquest/content';
 import { resolveCombat } from '../actions/combat.js';
 import { selectEncounterInterceptor } from '../actions/travel.js';
 import { SeededRng } from '../rng.js';
@@ -13,18 +13,18 @@ import { DayPhase, EncounterInterceptorState, EncounterState, GameState } from '
 // probability." We hold the seed and every other input fixed and flip ONLY one
 // named NPC's disposition from neutral (0) to insulted (−5, the value the engine
 // itself writes on a combat defeat — see `applyDisposition('defeat')`), then show
-// both readers move in the wronged direction. Rattlesnake is the PRD §7.4 star.
+// both readers move in the wronged direction. Iron Vex is the PRD §7.4 star.
 // ---------------------------------------------------------------------------
 
-const RATTLESNAKE = 'npc-rattlesnake';
+const IRON_VEX = 'npc-iron-vex';
 
-function rattlesnakeProfile() {
-  const profile = NPC_PROFILES.find((p) => p.id === RATTLESNAKE)!;
+function ironVexProfile() {
+  const profile = ALL_NPC_PROFILES.find((p) => p.id === IRON_VEX)!;
   return profile;
 }
 
-function rattlesnakeInterceptor(): EncounterInterceptorState {
-  const profile = rattlesnakeProfile();
+function ironVexInterceptor(): EncounterInterceptorState {
+  const profile = ironVexProfile();
   return {
     id: profile.id,
     source: 'named',
@@ -39,7 +39,7 @@ function rattlesnakeInterceptor(): EncounterInterceptorState {
 }
 
 /** A DAY-phase state with a single high die in hand, generous fuel/credits, and
- *  Rattlesnake's disposition set to `disposition`. */
+ *  Iron Vex's disposition set to `disposition`. */
 function talkState(disposition: number): GameState {
   const state = createInitialState(123);
   state.dayPhase = DayPhase.DAY;
@@ -47,11 +47,11 @@ function talkState(disposition: number): GameState {
   state.player.ship.fuel = 1000;
   state.player.credits = 100_000;
   state.player.stats[Stat.TRADE] = 5;
-  state.npcs.find((npc) => npc.id === RATTLESNAKE)!.disposition = disposition;
+  state.npcs.find((npc) => npc.id === IRON_VEX)!.disposition = disposition;
   const encounter: EncounterState = {
     id: 'enc-ab',
     pendingTravel: { origin: 1, destination: 2, fuelUsed: 5 },
-    interceptor: rattlesnakeInterceptor(),
+    interceptor: ironVexInterceptor(),
     routeDangerLevel: 1,
     routeDangerChance: 0.3,
     encounterRoll: 0.01,
@@ -66,10 +66,10 @@ function talkDc(seed: number, disposition: number): number | undefined {
   const state = talkState(disposition);
   const { events } = resolveCombat(
     state,
-    { type: 'Combat', stance: 'talk', targetId: RATTLESNAKE, spendDie: 0 },
+    { type: 'Combat', stance: 'talk', targetId: IRON_VEX, spendDie: 0 },
     new SeededRng(seed),
   );
-  // The TRADE stat check only fires when Rattlesnake resists its own Vengeful
+  // The TRADE stat check only fires when Iron Vex resists its own Bloodthirsty
   // flaw (otherwise it refuses tribute before any talk-down roll). The caller
   // sweeps seeds to land on a resist.
   const talk = events.find((e) => e.type === 'StatCheck' && e.stat === Stat.TRADE);
@@ -78,7 +78,7 @@ function talkDc(seed: number, disposition: number): number | undefined {
 
 describe('T-1204 disposition raises the tribute/talk DC (same-seed A/B)', () => {
   it('an insulted (−5) named interceptor is harder to buy off than a neutral one', () => {
-    // Find a seed on which Rattlesnake RESISTS its Vengeful flaw (so the talk-down
+    // Find a seed on which Iron Vex RESISTS its Bloodthirsty flaw (so the talk-down
     // TRADE check — and its DC — is actually rolled). Disposition never touches the
     // flaw roll, so the SAME seed resists for both A and B: a clean A/B.
     let neutralDc: number | undefined;
@@ -104,16 +104,16 @@ describe('T-1204 disposition raises the tribute/talk DC (same-seed A/B)', () => 
 });
 
 /** Count, over a seed sweep, how often `selectEncounterInterceptor` returns
- *  Rattlesnake as the interceptor with its disposition set to `disposition`. */
-function rattlesnakePicks(disposition: number, seeds: number): number {
+ *  Iron Vex as the interceptor with its disposition set to `disposition`. */
+function ironVexPicks(disposition: number, seeds: number): number {
   let picks = 0;
   for (let seed = 1; seed <= seeds; seed += 1) {
     const state = createInitialState(seed);
     state.dayPhase = DayPhase.DAY;
-    state.player.tier = 3; // opens the matchmaking band to Rattlesnake (tier 3)
-    state.npcs.find((npc) => npc.id === RATTLESNAKE)!.disposition = disposition;
+    state.player.tier = 3; // opens the matchmaking band to Iron Vex (tier 3)
+    state.npcs.find((npc) => npc.id === IRON_VEX)!.disposition = disposition;
     const interceptor = selectEncounterInterceptor(state, 1, 2, 3, new SeededRng(seed));
-    if (interceptor.id === RATTLESNAKE) picks += 1;
+    if (interceptor.id === IRON_VEX) picks += 1;
   }
   return picks;
 }
@@ -121,13 +121,13 @@ function rattlesnakePicks(disposition: number, seeds: number): number {
 describe('T-1204 disposition raises interception probability (same-seed A/B)', () => {
   it('a grudge-holding (−5) named NPC hunts the player far more than at neutral', () => {
     const SEEDS = 1500;
-    const neutral = rattlesnakePicks(0, SEEDS);
-    const grudge = rattlesnakePicks(-5, SEEDS);
+    const neutral = ironVexPicks(0, SEEDS);
+    const grudge = ironVexPicks(-5, SEEDS);
     // The grudge weight (1 + 1.5×5 = 8.5 vs 1) makes the wronged NPC dramatically
     // more likely to be the interceptor among same-tier candidates. Same seeds,
     // identical everything else — only the disposition flipped.
     expect(grudge).toBeGreaterThan(neutral);
-    // Non-degenerate: the neutral case still picks Rattlesnake sometimes (so the
+    // Non-degenerate: the neutral case still picks Iron Vex sometimes (so the
     // grudge lift is a real re-weighting, not selection appearing from nothing).
     expect(neutral).toBeGreaterThan(0);
   });

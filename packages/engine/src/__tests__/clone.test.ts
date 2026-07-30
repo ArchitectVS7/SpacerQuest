@@ -1,11 +1,167 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { cloneState } from '../clone.js';
 import { advanceDay, applyPlayerAction, startDay } from '../day.js';
 import { createInitialState } from '../state.js';
 import { EncounterState, GameEvent, GameState, PlayerAction } from '../types.js';
+
+// ---------------------------------------------------------------------------
+// THE COPY-ON-WRITE SCAN (N3 FIRST TASK · audit item OI-8).
+//
+// `cloneState` SHARES NPC records between snapshots, so assigning to a field of
+// a record reached through `state.npcs` writes into every earlier snapshot too.
+// The sanctioned door is `mutableNpc`, which swaps in a private copy first.
+//
+// This scan is PROVENANCE-BASED rather than name-based, because the name-based
+// version was blind three separate times (see the long note at its call site).
+// It taints handles by where they CAME FROM, so neither a new handle name nor a
+// new field name can walk past it.
+// ---------------------------------------------------------------------------
+
+/** A binding whose right-hand side ran the record through a real copy is no
+ *  longer shared with any snapshot, so writes to it are legal. `mutableNpc` is
+ *  the door; `structuredClone` / `JSON.parse` / an object spread are the three
+ *  copies the engine actually uses (`resolveNpcDay` opens with the JSON one). */
+const NPC_COPY_FORMS = /mutableNpc\(|structuredClone\(|JSON\.parse\(|\{\s*\.\.\./;
+
+/** The COMPLETE set of sites that write a roster record raw. Each is safe ONLY
+ *  BECAUSE OF ITS CALLER — the state is fresh and no snapshot exists yet for the
+ *  write to corrupt. That is a property of the caller and not of the write, so
+ *  each one carries a `COW-EXEMPT:` marker in its own source (visible to a reader
+ *  of that file) AND is pinned here.
+ *
+ *  Pinning is deliberate: an exemption costs two edits in two files, so marking a
+ *  site can never be the quiet way to silence a failing guard. `synthesize.ts` is
+ *  the escapee the 2026-07-29 audit named in advance so it would not be
+ *  discovered as a surprise. */
+const COW_EXEMPT_SITES: readonly string[] = [
+  'packages/engine/src/state.ts', // deserializeState: backfills a freshly parsed save
+  'packages/sim/src/balance/synthesize.ts', // seeds a state fresh from createInitialState
+];
+
+interface SharedNpcWrite {
+  file: string;
+  line: number;
+  text: string;
+  /** The write carries an argued `COW-EXEMPT:` marker in its own source. */
+  exempt: boolean;
+}
+
+/** Identifiers in `source` that hold a record shared with a live snapshot. */
+function tainted(source: string): Set<string> {
+  const ids = new Set<string>();
+  const consider = (name: string | undefined, rhs: string | undefined): void => {
+    if (!name || !rhs) return;
+    if (NPC_COPY_FORMS.test(rhs)) return;
+    const fromRoster = /\.npcs\b/.test(rhs);
+    const fromTainted = [...ids].some((id) => new RegExp(`\\b${id}\\b`).test(rhs));
+    if (fromRoster || fromTainted) ids.add(name);
+  };
+  // Fix-point, because taint travels more than one hop: day.ts spreads the
+  // roster into a new array, shuffles it, then binds a loop variable over that.
+  for (let pass = 0; pass < 4; pass += 1) {
+    const before = ids.size;
+    for (const m of source.matchAll(/(?:const|let|var)\s+(\w+)\s*(?::[^=;]+)?=\s*([^;]*)/g)) {
+      consider(m[1], m[2]);
+    }
+    for (const m of source.matchAll(/for\s*\(\s*(?:const|let)\s+(\w+)\s+of\s+([^)]*)\)/g)) {
+      consider(m[1], m[2]);
+    }
+    // A callback parameter over a roster expression: `.npcs.forEach((npc) => …)`.
+    for (const m of source.matchAll(
+      /\.npcs\b[\s\S]{0,80}?\.(?:forEach|map|filter|flatMap|find|some|every|reduce)\(\s*\(?\s*(\w+)/g,
+    )) {
+      ids.add(m[1]);
+    }
+    if (ids.size === before) break;
+  }
+  return ids;
+}
+
+/** Every assignment down a member path rooted at a shared NPC record. */
+export function sharedNpcWrites(source: string, file = '<source>'): SharedNpcWrite[] {
+  const ids = tainted(source);
+  if (ids.size === 0) return [];
+  // `(?<![.\w$])` — the handle must be the ROOT of the path, not a property
+  // segment inside someone else's: a tainted handle named `legacy` must not
+  // match `parsed.player.legacy.successionCount ??= 0`.
+  // Assignment operators only. A comparison (`>=`, `===`) is a legal read.
+  const pattern = new RegExp(
+    `(?<![.\\w$])(${[...ids].join('|')})((?:\\.\\w+|\\[[^\\]]*\\])+)\\s*(?:\\?\\?=|[-+*/|&]=|=(?!=))`,
+    'g',
+  );
+  const ranges = exemptRanges(source);
+  const found: SharedNpcWrite[] = [];
+  for (const m of source.matchAll(pattern)) {
+    const line = source.slice(0, m.index).split('\n').length;
+    const exempt = ranges.some(([from, to]) => line >= from && line <= to);
+    found.push({ file, line, text: m[0].trim(), exempt });
+  }
+  return found;
+}
+
+/** Line ranges covered by a `COW-EXEMPT:` marker — the marker's own line through
+ *  the end of the block it introduces.
+ *
+ *  SCOPED BY BLOCK, NOT BY PROXIMITY, and the difference matters: a fixed
+ *  "N lines below the comment" window either fails to reach the bottom of a real
+ *  loop body or silently swallows the next unrelated write that drifts near it.
+ *  Tying the exemption to the braces means the argument covers exactly the code
+ *  it was written about, and a new write appended AFTER the block is an offender
+ *  again — which is the behaviour a reader of the marker would expect. */
+function exemptRanges(source: string): Array<[number, number]> {
+  const lines = source.split('\n');
+  const ranges: Array<[number, number]> = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!lines[i].includes('COW-EXEMPT:')) continue;
+    // Walk forward to the first brace that opens a block, then to its match.
+    let depth = 0;
+    let opened = false;
+    let end = i + 1;
+    for (let j = i; j < lines.length; j += 1) {
+      for (const ch of lines[j]) {
+        if (ch === '{') {
+          depth += 1;
+          opened = true;
+        } else if (ch === '}') depth -= 1;
+      }
+      if (opened && depth <= 0) {
+        end = j + 1;
+        break;
+      }
+    }
+    ranges.push([i + 1, end]);
+  }
+  return ranges;
+}
+
+/** Run {@link sharedNpcWrites} over every non-test source in engine and sim.
+ *  `packages/sim` is in scope because it drives the same records through the
+ *  same clone discipline, and it was entirely unscanned before N3. */
+function scanRepoForSharedNpcWrites(): SharedNpcWrite[] {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+  const found: SharedNpcWrite[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (['__tests__', 'node_modules', 'dist'].includes(entry.name)) continue;
+        walk(full);
+        continue;
+      }
+      if (!entry.name.endsWith('.ts') || entry.name.endsWith('.d.ts')) continue;
+      const rel = relative(repoRoot, full).split(sep).join('/');
+      const source = readFileSync(full, 'utf8');
+      if (!/\.npcs\b/.test(source)) continue;
+      found.push(...sharedNpcWrites(source, rel));
+    }
+  };
+  walk(join(repoRoot, 'packages', 'engine', 'src'));
+  walk(join(repoRoot, 'packages', 'sim', 'src'));
+  return found;
+}
 
 /** A state with a non-trivial event log and mutated nested containers. */
 function playedState(days: number): GameState {
@@ -99,46 +255,134 @@ describe('cloneState (copy-on-write snapshot)', () => {
     // one, since a stale read is silent — it produces a plausible wrong number.
     //
     // The rule: outside `resolveNpcDay` (which opens by copying its own subject),
-    // no engine file may assign to a field of a record pulled out of `state.npcs`.
+    // no file may assign to a field of a record pulled out of `state.npcs`.
     // Go through `mutableNpc`, which swaps in a private copy first.
-    const engineDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-    const files = [
-      'day.ts',
-      'storylets.ts',
-      ...readdirSync(join(engineDir, 'actions'))
-        .filter((f) => f.endsWith('.ts'))
-        .map((f) => join('actions', f)),
+    //
+    // N3 FIRST TASK · WIDENED BY SHAPE, WHICH IS THE WHOLE POINT. This scan has
+    // now been blind three times, and every previous fix added a name to a list:
+    //   · N0 asserted ONE cross-boundary writer and there were FOUR — a grep keyed
+    //     on VARIABLE names missed `dealerNpc.credits` and three `rescuer.*`.
+    //   · N1 found it blind to NESTED paths — `rescuer.ship.fuel -= n` was
+    //     structurally invisible to a `handle.field =` pattern.
+    //   · The 2026-07-29 audit (OI-8) found the third: it scanned only `day.ts`,
+    //     `storylets.ts` and `actions/*.ts`, and matched hard-coded allowlists of
+    //     BOTH handle names and field names — so a writer named `captain`, or a
+    //     write to `name` or `profileId`, walked straight past it, and `npc.ts`,
+    //     `state.ts` and the whole of `packages/sim` were never read at all.
+    //
+    // So the pattern is no longer "names we thought of". It is PROVENANCE: taint
+    // any handle bound from a `.npcs` read, propagate the taint through
+    // re-bindings and aliases, and untaint only what demonstrably went through a
+    // copy. A write down a member path rooted at a tainted handle is an offender
+    // whatever it or its field is called. `sharedNpcWrites` is exported to the
+    // sibling test below, which proves the scan has teeth by running it over
+    // sources containing each of the three historical blind spots.
+    const writes = scanRepoForSharedNpcWrites();
+    expect(
+      writes.filter((w) => !w.exempt).map((w) => `${w.file}:${w.line} ${w.text}`),
+      'cross-boundary NPC writes must go through mutableNpc',
+    ).toEqual([]);
+
+    // And the argued exemptions are exactly the two on the pinned list — a NEW
+    // raw writer cannot hide behind a `COW-EXEMPT:` comment without also being
+    // added here, in a different file, on purpose.
+    expect(
+      [...new Set(writes.filter((w) => w.exempt).map((w) => w.file))].sort(),
+      'a COW-EXEMPT marker requires a pinned entry in COW_EXEMPT_SITES',
+    ).toEqual([...COW_EXEMPT_SITES].sort());
+  });
+
+  it('the copy-on-write scan catches all three of its historical blind spots', () => {
+    // The scan above is only worth its runtime if it FAILS on a real violation.
+    // Each case below is a shape that the pre-N3 name-based scan let through;
+    // asserting them here means a future "simplification" of the pattern cannot
+    // quietly re-open a hole that has already cost this track three findings.
+    const cases: Array<{ why: string; source: string }> = [
+      {
+        why: 'a handle name nobody put on the allowlist',
+        source: `
+          const captain = state.npcs.find((n) => n.id === id);
+          captain.credits += 500;
+        `,
+      },
+      {
+        why: 'a field name nobody put on the allowlist',
+        source: `
+          const rec = state.npcs.find((n) => n.id === id);
+          rec.profileId = 'npc-someone-else';
+        `,
+      },
+      {
+        why: 'a nested write down a path (the N1 blind spot)',
+        source: `
+          const rescuer = nextState.npcs.find((n) => n.id === id);
+          rescuer.ship.fuel -= amount;
+        `,
+      },
+      {
+        why: 'taint laundered through an alias cast',
+        source: `
+          const found = state.npcs[0];
+          const alias = found as unknown as { dead?: boolean };
+          alias.dead = true;
+        `,
+      },
+      {
+        why: 'taint carried through a spread-into-array and a loop',
+        source: `
+          const order = rng.shuffle([...nextState.npcs]);
+          for (const member of order) {
+            member.disposition = 0;
+          }
+        `,
+      },
+      {
+        why: 'a forEach callback parameter over the roster',
+        source: `
+          state.npcs.forEach((entry) => {
+            entry.currentSystemId = 3;
+          });
+        `,
+      },
     ];
-    const offenders: string[] = [];
-    for (const rel of files) {
-      const source = readFileSync(join(engineDir, rel), 'utf8');
-      // A write anywhere down a member path rooted at something that reads like
-      // an NPC handle. N1 · the path form is load-bearing: the record grew a
-      // `ship`, so the writes to watch are now NESTED (`rescuer.ship.fuel -= n`)
-      // and a pattern that only matched `handle.field =` would have gone quiet on
-      // exactly the field this step added. The N0 lesson, again: grep the FIELD,
-      // not the variable — so `ship` is in the field list below and the path may
-      // continue past it.
-      //
-      // Assignment operators only (`=` not followed by `=`, or a compound `+=` /
-      // `-=` / `*=` / `/=`). Comparisons must not match: `rescuer.ship.fuel >=
-      // hook.minRescuerFuel` is a READ and is legal on a shared record.
-      const pattern =
-        /\b(dealerNpc|dealer|rescuer|npc|named|lender|targetNpc|dealerPurse)\.(credits|fuel|disposition|currentSystemId|lastAction|ship)(?:\.\w+)*\s*(?:[-+*/]=|=[^=])/g;
-      for (const match of source.matchAll(pattern)) {
-        const line = source.slice(0, match.index).split('\n').length;
-        // The handle is legitimate if it was BOUND from `mutableNpc` anywhere in
-        // the file — that call is what swapped a private copy into the roster, so
-        // writing to what it returned is exactly the sanctioned path. Checked by
-        // binding rather than by proximity: the rescuer's writes sit ~50 lines
-        // below its binding, and a character-window heuristic flagged them.
-        const handle = match[1];
-        const bound = new RegExp(`(?:const|let)\\s+${handle}\\s*=[^;]*mutableNpc\\(`, 's');
-        if (bound.test(source)) continue;
-        offenders.push(`${rel}:${line} ${match[0].trim()}`);
-      }
+    for (const { why, source } of cases) {
+      expect(sharedNpcWrites(source), `scan must catch: ${why}`).not.toEqual([]);
     }
-    expect(offenders, `cross-boundary NPC writes must go through mutableNpc`).toEqual([]);
+
+    // …and must NOT fire on the sanctioned door, or on a read.
+    const legal: Array<{ why: string; source: string }> = [
+      {
+        why: 'the mutableNpc door',
+        source: `
+          const target = mutableNpc(nextState, id);
+          target.ship.fuel -= amount;
+        `,
+      },
+      {
+        why: 'a private copy taken by the subject-copying resolver',
+        source: `
+          const updatedNpc = JSON.parse(JSON.stringify(npc)) as NpcState;
+          updatedNpc.credits += 100;
+        `,
+      },
+      {
+        why: 'a comparison, which is a legal read on a shared record',
+        source: `
+          const rescuer = nextState.npcs.find((n) => n.id === id);
+          if (rescuer.ship.fuel >= hook.minRescuerFuel) return;
+        `,
+      },
+      {
+        why: 'a tainted name appearing as someone else’s property segment',
+        source: `
+          const legacy = state.npcs[0] as unknown as { fuel?: unknown };
+          parsed.player.legacy.successionCount ??= 0;
+        `,
+      },
+    ];
+    for (const { why, source } of legal) {
+      expect(sharedNpcWrites(source), `scan must NOT fire on: ${why}`).toEqual([]);
+    }
   });
 
   it('leaves the input state untouched when the real day loop runs on it', () => {

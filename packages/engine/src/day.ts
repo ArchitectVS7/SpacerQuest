@@ -8,7 +8,8 @@ import {
   LIFE_SUPPORT_SURVIVAL_DC,
   LOAN_DEFAULT_DISPOSITION,
   NEMESIS_SYSTEM_ID,
-  NPC_PROFILES,
+  isSimulatedCaptain,
+  ALL_NPC_PROFILES,
   STAR_SYSTEMS,
   SUBSISTENCE_FLOOR_CREDITS,
   Stat,
@@ -21,7 +22,14 @@ import { dawnDiceModifiers, equipmentDiceBenefits, rollDawnHand } from './dice.j
 import { autoRepairRegen, lifeSupportCritical } from './components.js';
 import { applySuccession } from './legacy.js';
 import { applyDisposition, mutableNpc, resolveNpcDay } from './npc.js';
-import { generateManifestBoard, localFuelPrice, syncMaxFuel } from './economy.js';
+import {
+  debitJobPool,
+  generateManifestBoard,
+  jobPoolDepth,
+  localFuelPrice,
+  regeneratePools,
+  syncMaxFuel,
+} from './economy.js';
 import { advanceEraSchedule } from './era.js';
 import { resolveTrade } from './actions/trade.js';
 import { resolveTravel } from './actions/travel.js';
@@ -51,6 +59,24 @@ import { cloneState } from './clone.js';
 function appendEvents(state: GameState, events: GameEvent[]): void {
   state.eventLog.push(...events);
 }
+
+/**
+ * N10 · How many offers may be taken off the player's LIVE board in one dusk —
+ * T-106's implicit `boardClaimSpent` boolean, named so it can be swept.
+ *
+ * IT IS NO LONGER A THROTTLE ON PARTICIPATION, which is the whole change. Pre-N10
+ * this cap and the co-location gate together decided whether a captain competed
+ * for contracts AT ALL, so 29 of the 30 were economically invisible on any given
+ * day. Now every trading captain claims against their system's pool
+ * (`NpcDayResult.claimedFromPool`) and this cap governs only the SPECTACLE: how
+ * many offers can vanish from under the player's nose in one evening.
+ *
+ * ITS VALUE IS A SWEPT DECISION, not an inheritance — N10's Change clause asks
+ * for exactly that, and the measured comparison (this value against 2 and against
+ * unbounded, on claim counts and on the player's board depth) is recorded in
+ * N10's Result block in `docs/NPC_REDESIGN.md`. Read it there before moving this.
+ */
+const MAX_VISIBLE_SNIPES_PER_DUSK = 1;
 
 /**
  * T-1703 · The verbs a refusal can name — exactly the members of
@@ -94,11 +120,14 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
   nextState.storylets.offeredToday = [];
 
   // Generate manifest board and price the local depot from canon tables.
-  // T-106 contract competition: every job an NPC claimed off the board at the
-  // previous dusk drains today's generation pool by one (floor of 1 — a port
-  // never goes completely dark).
-  const claimedJobs = nextState.market.npcClaims ?? 0;
-  const boardSize = Math.max(1, 4 - claimedJobs);
+  //
+  // T-106 contract competition, GENERALISED BY N10: the board is sized from the
+  // pool of the system the player is STANDING IN, and that pool is drained by
+  // every captain who worked it — not only by the one who sniped an offer from
+  // under the player's nose. So arriving somewhere the cast has been hauling out
+  // of is visibly thin, which is the difference between watching the competition
+  // and merely sharing a galaxy with it.
+  const boardSize = jobPoolDepth(nextState.market.jobPoolClaims, nextState.player.currentSystemId);
   // T-1309 · Port-clerk flag reader (worse manifest terms). A `guild.debt-flagged`
   // captain (unpaid Tour One marker, day.ts endDay) gets the lower-paying runs: the
   // stored flag value is a guild-standing severity, and `guildManifestPenalty` maps
@@ -116,10 +145,21 @@ export function startDay(state: GameState): { state: GameState; events: GameEven
     nextState.eraEvent,
     manifestPenalty,
   );
+  // N10 · The pools restock AFTER the board is drawn, and the order is the whole
+  // reason the pre-N10 signal survives: a claim taken at dusk N is read by dawn
+  // N+1 (thinner board) and only then restocked. Restocking first would refill the
+  // pool before anyone could see it drained, which would silently delete T-106's
+  // mechanism rather than generalise it.
+  //
+  // The claims record is carried forward rather than reset — pools are galaxy
+  // state now, not a one-day counter. `regeneratePools` deletes tallies that reach
+  // 0, so the record does not grow.
+  const jobPoolClaims = nextState.market.jobPoolClaims;
+  regeneratePools(jobPoolClaims);
   nextState.market = {
     manifestBoard,
     localFuelPrice: localFuelPrice(nextState.player.currentSystemId, nextState.eraEvent),
-    npcClaims: 0,
+    jobPoolClaims,
   };
 
   // Roll player hand. T-1306: the hand size / floor / re-roll charges are now
@@ -476,7 +516,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // write. Named `rescuerRef` to make the read-only half explicit at the use sites.
   const rescuerRef = nextState.npcs
     .filter((npc) => {
-      const hook = NPC_PROFILES.find((p) => p.id === npc.profileId)?.bondHook;
+      const hook = ALL_NPC_PROFILES.find((p) => p.id === npc.profileId)?.bondHook;
       return (
         hook !== undefined &&
         npc.disposition >= hook.activateAt &&
@@ -488,7 +528,7 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   // the fuel / lastAction writes below.
   const rescuer = rescuerRef ? mutableNpc(nextState, rescuerRef.id) : null;
   if (rescuer) {
-    const rescuerProfile = NPC_PROFILES.find((p) => p.id === rescuer.profileId);
+    const rescuerProfile = ALL_NPC_PROFILES.find((p) => p.id === rescuer.profileId);
     const hook = rescuerProfile?.bondHook;
     const grit = rescuerProfile?.stats[Stat.GRIT] ?? 0;
     if (hook?.beat === 'drive-off' && nextState.encounter) {
@@ -686,38 +726,77 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
     }
   }
 
-  // 3. DUSK (NPC Actions). NPCs sharing the player's system compete for the
-  // player's manifest board — at most one job is claimed per dusk (texture
-  // stays cheap; the loss is legible on the wire and in tomorrow's board).
+  // 3. DUSK (NPC Actions). Every captain works the shared job pool wherever they
+  // are (N10). TWO THINGS ARE HAPPENING HERE and they used to be one:
+  //
+  //   - THE VISIBLE SNIPE. A captain in the player's system takes an offer off
+  //     the player's LIVE board, so it disappears in front of them and the wire
+  //     names who took it. Still throttled — see MAX_VISIBLE_SNIPES_PER_DUSK.
+  //   - THE POOL CLAIM. Every other trading captain claims against their own
+  //     system's pool, which thins the board the player will find when they get
+  //     there. Ungated: this is the participation N10 exists to open up.
+  //
+  // Pre-N10 only the first existed, so a captain hauling out of Vega-7 was
+  // economically invisible and the co-location gate was a gate on TAKING PART.
   const npcOrder = dayRng.shuffle([...nextState.npcs]);
-  let boardClaimSpent = false;
+  let visibleSnipes = 0;
   let snipingNpcId: string | null = null;
 
   for (const npc of npcOrder) {
     // The bond-hook rescuer already spent their day intervening.
     if (npc.id === intervenedNpcId) continue;
+    // Quest characters do not participate in the daily simulation — the shared
+    // predicate, not a local `.some()`, because this distinction has already
+    // caused four live bugs by being spelled differently at each site (see
+    // `isSimulatedCaptain` in content/cast.ts). The Set lookup also drops this
+    // from an 11-element scan per captain per day to O(1) in the dusk loop.
+    if (!isSimulatedCaptain(npc.profileId)) continue;
+    // N3 · A dead captain takes no turn. The record STAYS (the wire, the Honor
+    // List's history and the player's grudges reference it) — it is skipped here,
+    // never removed, which is why the roster length does not shrink even as the
+    // living field does.
+    if (npc.dead) continue;
     const npcRng = dayRng.fork(`npc-${npc.id}`);
     const canClaim =
-      !boardClaimSpent &&
+      visibleSnipes < MAX_VISIBLE_SNIPES_PER_DUSK &&
       npc.currentSystemId === nextState.player.currentSystemId &&
       nextState.market.manifestBoard.length > 0;
     const {
       npc: updatedNpc,
       events: npcEvents,
       claimedContractIndex,
+      claimedFromPool,
     } = resolveNpcDay(npc, npcRng, {
       day: nextState.day,
       claimableBoard: canClaim ? nextState.market.manifestBoard : null,
+      jobPoolClaims: nextState.market.jobPoolClaims,
       eraEvent: nextState.eraEvent,
+      // N3 · Tour One damps the interdiction rate for the cast the same way it
+      // damps it for the player — the multiplier belongs to the era, not to who
+      // is flying.
+      era: nextState.era,
+      // N11 · Same argument for the licence: the demo's CONQUEROR ceiling is a
+      // property of the world, so a captain's deed accrual meets it too.
+      edition: nextState.edition,
     });
+
+    // N10 · The pool claim: a captain trading anywhere but under the player's nose
+    // debits that system's pool. One line, and it is the whole mechanism the step
+    // is about — the reverted attempt's fatal shape was calling
+    // `generateManifestBoard` per captain with no counterpart to this write.
+    if (claimedFromPool !== undefined) {
+      debitJobPool(nextState.market.jobPoolClaims, claimedFromPool);
+    }
 
     let sniped = false;
     if (claimedContractIndex !== undefined) {
-      boardClaimSpent = true;
+      visibleSnipes++;
       const [claimed] = nextState.market.manifestBoard.splice(claimedContractIndex, 1);
       if (claimed) {
         sniped = true;
-        nextState.market.npcClaims = (nextState.market.npcClaims ?? 0) + 1;
+        // The visible snipe debits the SAME pool the away-claims do — one ledger,
+        // so tomorrow's board does not care which of the two routes took the job.
+        debitJobPool(nextState.market.jobPoolClaims, nextState.player.currentSystemId);
         const cargoName = CARGO_TYPES[claimed.cargoType]?.name ?? 'cargo';
         const destinationName =
           STAR_SYSTEMS[claimed.destination]?.name ?? `system ${claimed.destination}`;
@@ -774,6 +853,12 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   //   read a disposition that now actually persists.
   if (nextState.day % DISPOSITION_DECAY_INTERVAL_DAYS === 0) {
     for (const npc of nextState.npcs) {
+      // N3 · A dead captain's standing STOPS MOVING — it does not fade to neutral
+      // over the remaining career. This is the deliberate reading of "a dead
+      // captain's record stays … for any grudge the player still carries": the
+      // grudge is part of what the record is FOR. Letting it decay would quietly
+      // erase the history of everyone the player ever wronged who later died.
+      if (npc.dead) continue;
       if (npc.disposition !== 0) {
         applyDisposition(nextState, npc.id, npc.disposition > 0 ? -1 : 1, 'decay', events);
       }
@@ -797,6 +882,11 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
 
   // Generate daily wire entries from notable events
   for (const npc of nextState.npcs) {
+    // N3 · A DEAD CAPTAIN DOES NOT TALK. Their `lastAction` is preserved (it is
+    // how they died) and this loop would otherwise re-narrate it on the wire every
+    // day for the rest of the career — the exact "a dead captain talks" failure the
+    // roster split was designed around, arriving through a different door.
+    if (npc.dead) continue;
     if (npc.lastAction) {
       // Flaw overrides are ALWAYS notable. Other actions are semi-randomly notable.
       const isFlawOverride = npc.lastAction.type === 'FlawOverride';

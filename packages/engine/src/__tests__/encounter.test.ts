@@ -56,19 +56,19 @@ function findEncounterSeed(): number {
   throw new Error('No encounter seed found');
 }
 
-function selectRattlesnakeInterceptor() {
+function selectIronVexInterceptor() {
   const state = readyState();
   state.player.tier = 3;
-  state.npcs = state.npcs.filter((npc) => npc.profileId === 'npc-rattlesnake');
+  state.npcs = state.npcs.filter((npc) => npc.profileId === 'npc-iron-vex');
 
   for (let seed = 1; seed <= 10_000; seed += 1) {
     const interceptor = selectEncounterInterceptor(state, 1, 2, 3, new SeededRng(seed));
-    if (interceptor.profileId === 'npc-rattlesnake') {
+    if (interceptor.profileId === 'npc-iron-vex') {
       return interceptor;
     }
   }
 
-  throw new Error('No seed selected Rattlesnake as named interceptor');
+  throw new Error('No seed selected Iron Vex as named interceptor');
 }
 
 function resolveEncounterAction(
@@ -545,11 +545,11 @@ describe('Encounter system', () => {
   });
 
   it('enemy flaw check can refuse tribute and keep combat active', () => {
-    const rattlesnake = selectRattlesnakeInterceptor();
+    const ironVex = selectIronVexInterceptor();
     const state = readyState();
     state.player.dawnHand = { dice: [1], spent: [false] };
     state.player.credits = 10_000;
-    state.encounter = fixtureEncounter({ interceptor: rattlesnake });
+    state.encounter = fixtureEncounter({ interceptor: ironVex });
 
     const { state: nextState, events } = resolveCombat(
       state,
@@ -562,8 +562,8 @@ describe('Encounter system', () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: 'FlawCheck',
-        npcId: rattlesnake.id,
-        flaw: 'Vengeful',
+        npcId: ironVex.id,
+        flaw: 'Bloodthirsty',
         dc: 14,
         resisted: false,
       }),
@@ -607,22 +607,22 @@ describe('Encounter system', () => {
   });
 
   it('property: a refuses-tribute flaw never takes tribute when the flaw fires (seed sweep)', () => {
-    // Rattlesnake is Vengeful (refusesTribute). Across a seed sweep the flaw roll
+    // Iron Vex is Bloodthirsty (refusesTribute). Across a seed sweep the flaw roll
     // varies, so both outcomes occur — but the invariant is absolute: whenever the
     // flaw fires (resisted:false) the interceptor takes NO tribute and combat
     // stays live; only when it resists its own flaw does the tribute change hands.
-    const rattlesnake = selectRattlesnakeInterceptor();
+    const ironVex = selectIronVexInterceptor();
     let firedCount = 0;
     let resistedCount = 0;
     for (let seed = 1; seed <= 60; seed += 1) {
       const state = readyState();
       state.player.dawnHand = { dice: [19], spent: [false] }; // talk clears DC 11
       state.player.credits = 10_000;
-      state.encounter = fixtureEncounter({ interceptor: rattlesnake });
+      state.encounter = fixtureEncounter({ interceptor: ironVex });
 
       const { state: next, events } = resolveCombat(
         state,
-        { type: 'Combat', stance: 'talk', targetId: rattlesnake.id, spendDie: 0 },
+        { type: 'Combat', stance: 'talk', targetId: ironVex.id, spendDie: 0 },
         new SeededRng(seed),
       );
 

@@ -280,7 +280,57 @@ describe('T-1307 ports reachable through play', () => {
     // with an NPC field that reinvests), recorded here rather than tuned away.
     // PINNED, NOT STEERED: only the seed changed; every assertion below is
     // untouched.
-    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 9, 150);
+    //
+    // N4 re-pin (seed 9 -> 2). MECHANISM: the same class again, one rung earlier
+    // in the chain. The reopened N4 replaced the deterministic per-archetype
+    // `pickIntent` switch with the Ideal x archetype blend, so all 30 captains
+    // draw different verbs, the shared dusk rng stream diverges from day 1, and
+    // every long unguided trajectory — this one included — re-rolls.
+    // SWEEP EVIDENCE (seeds 1..20 of this exact committed test, driven through a
+    // temporary env-var seed override so the swept code IS the shipped code): the
+    // veteran qualifies on 3 of 20 at this 150-day horizon — 2, 8, 18. That is UP
+    // from N2's 2 of 20, so the pillar did not get harder to reach and the
+    // recorded downward trend (11/40 -> 6/40 -> 6/20 -> 2/20) has stopped rather
+    // than continued. Seed 2 is the first qualifier. PINNED, NOT STEERED: only
+    // the seed changed; every assertion below is untouched.
+    //
+    // N10 re-pin (seed 2 -> 22). MECHANISM: the same class one more time. N10's
+    // shared job pool makes a trading captain draw a whole local board
+    // (`generateManifestBoard` + `pickContract`) where they used to draw one
+    // `rollContract`, so the dusk consumes a different amount of the shared rng
+    // stream and every long unguided trajectory re-rolls from the first away-haul
+    // of day 1.
+    // SWEEP EVIDENCE (seeds 1..80 of this exact committed test, driven through a
+    // temporary env-var seed override so the swept code IS the shipped code):
+    // ZERO of seeds 1..20 qualify at this 150-day horizon — which is why the old
+    // pin went red and why the sweep had to be WIDENED rather than the horizon —
+    // and 9 of seeds 21..80 do: 22, 26, 27, 51, 55, 67, 69, 71, 79. That is
+    // 9 of 80 = 11% against N4's 3 of 20 = 15%, i.e. the same rate inside
+    // sampling error on counts this small, so the pillar is no harder to reach
+    // and the trend recorded above (11/40 -> 6/40 -> 6/20 -> 2/20 -> 3/20) has
+    // still not resumed falling. Seed 22 is the first qualifier overall.
+    // PINNED, NOT STEERED: only the seed changed; every assertion below is
+    // untouched — and note what was NOT done, because it was the tempting fix:
+    // the 150-day horizon is unmoved, since widening it would enshrine exactly
+    // the number the T-1504a note above warns is going to keep moving.
+    //
+    // N11/T-021 re-pin (seed 22 -> 1). MECHANISM: the same class one more time, and
+    // one rung further along. `considerRefit` now asks the yard for rank-gated
+    // special equipment, so a captain who has EARNED the CAPTAIN rung spends 10,000cr
+    // on a Star Buster / Arch Angel instead of on their next component rung. That
+    // changes what the field flies AND what it can afford to fly next, both of which
+    // reach the player through the shared dusk rng stream and through contract
+    // competition — so every long unguided trajectory re-rolls, this one included.
+    // SWEEP EVIDENCE (seeds 1..80 of this exact committed test, run through a
+    // temporary in-file seed loop so the swept code IS the shipped code): 9 of 80
+    // qualify — 1, 13, 15, 33, 43, 48, 71, 72, 78 — which is 11%, THE SAME 9/80 N10
+    // measured, so the pillar is no harder to reach at this horizon. Three of the
+    // first twenty seeds now qualify against N10's zero. Seed 1 is the first
+    // qualifier (1 purchase, 61 income accruals, a stake live at the horizon).
+    // PINNED, NOT STEERED: only the seed changed; every assertion below is untouched,
+    // the 150-day horizon is unmoved, and the sample was WIDENED rather than the
+    // threshold.
+    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 1, 150);
 
     // The purchase happened through legal play: a PortEvent{purchased} was logged
     // (ports are bought via the Port action, never injected).
@@ -596,7 +646,20 @@ describe('T-1004 fuel starvation', () => {
     // Eight of ten still strand, so the metric is emphatically still reachable
     // after the floor; seed 1 is one of the two that now sit just above the line.
     // Seed 3 is the first that strands decisively.
-    const report = runCampaign(3, 60, brokeAndDryPolicy);
+    //
+    // N4 RE-PIN (seed 3 -> 1). MECHANISM: N4's archetype blend moves all 30 NPC
+    // turns, so the shared dusk stream — and therefore which lanes interdict this
+    // scripted career — diverges. Seed 3 now strands 0 days.
+    // RE-SWEEP (seeds 1..10 of this exact committed test through a temporary
+    // env-var seed override, so the swept code IS the shipped code): 8 of 10 still
+    // strand — every seed but 3 and 8 — i.e. the SAME 8-of-10 rate the post-floor
+    // sweep above recorded, with only the membership re-rolled. The metric is
+    // exactly as reachable as it was. Seed 1 is the first qualifier; that it is
+    // also the seed this test used before T-1604b is a coincidence of the stream,
+    // not a revert of that finding.
+    // PINNED, NOT STEERED: the policy, the horizon and all three assertions below
+    // are unchanged; only the seed moved.
+    const report = runCampaign(1, 60, brokeAndDryPolicy);
 
     // T-1604b · the closing balance is the SUBSISTENCE FLOOR, not 0. The policy
     // still pours every credit it starts with into the marker (that is what makes
@@ -774,7 +837,24 @@ describe('T-1204 disposition with teeth (unguided 300-day sim)', () => {
     // intervention on day 8, peak |disposition| 7 on day 5.
     // PINNED, NOT STEERED: only the seed changed; the loop body and both
     // assertions are untouched.
-    const CAMPAIGN_SEED = 16;
+    //
+    // N4 re-pin (seed 16 -> 1), and this is the mechanism the header warns about,
+    // firing for the fifth time. N4's Ideal x archetype blend changes what all 30
+    // captains do with their days, which moves the shared dusk rng stream, which
+    // moves WHERE a bonded Doc Salvage stands at dusk and which hunters
+    // `selectEncounterInterceptor` draws — and the bond signal is a CONJUNCTION of
+    // co-location, a bonded standing and a tank at or below 150. Nothing about the
+    // bond arc, the decay or the deltas changed.
+    // RE-SWEEP (seeds 1..30, 300-day horizon, this exact committed test driven
+    // through a temporary env-var seed override so the swept code IS the shipped
+    // code): seeds 1, 4, 5, 7, 11, 13, 15 and 29 land BOTH signals — 8 qualifiers
+    // in 30 against the previous sweep's 7 in 45, so the conjunction became
+    // somewhat MORE reachable, not less. Every other seed fires the >= 5 grudge but
+    // never the bond, unchanged in character from every previous re-pin. Seed 1 is
+    // the first qualifier.
+    // PINNED, NOT STEERED: only the seed changed; the loop body and both
+    // assertions are untouched.
+    const CAMPAIGN_SEED = 1;
     let state = createInitialState(CAMPAIGN_SEED);
     let sawBond = false;
     let peakDisposition = 0;

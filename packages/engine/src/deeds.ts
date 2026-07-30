@@ -8,7 +8,7 @@ import {
   type RenownRankId,
   type StateMatcher,
 } from '@spacerquest/content';
-import { GameEvent, GameState } from './types.js';
+import { DeedRegistryState, GameEvent, GameState, ShipState } from './types.js';
 // T-1703 · The demo gate's ONE predicate set. This import and `demo.ts`'s import
 // of `rankForDeedCount` form a two-module ESM cycle, deliberately and safely:
 // both files export nothing but FUNCTION DECLARATIONS, which are hoisted, and
@@ -178,12 +178,28 @@ function matchesEvent(event: GameEvent, deed: DeedDefinition): boolean {
   return true;
 }
 
-function matchesState(state: GameState, matchers: readonly StateMatcher[] | undefined): boolean {
+/**
+ * N11 · The `trigger.state` matcher, evaluated against ONE ACTOR.
+ *
+ * `STATE_PATHS` is the single allowlist and it names `player.ship.fuel`. The
+ * source is a `{ player: actor }` view rather than the whole `GameState`, so the
+ * allowlisted string stays LITERALLY TRUE for both sides: the player's own
+ * evaluation passes `state.player` and reads its own tank; a captain's passes the
+ * `NpcState` and reads theirs. `fuel_fumes_arrival` is therefore earnable by a
+ * captain limping in on fumes on exactly the same terms.
+ *
+ * The reverted attempt (`7334c5d5`) SKIPPED every deed carrying a `state` matcher
+ * for the NPC path, which made those deeds strictly easier for a captain than for
+ * the player — an exemption in the direction of N11's own renown-inflation
+ * Disproves limb. Scoping the read is what removes the need for a skip at all.
+ */
+function matchesState(actor: DeedActor, matchers: readonly StateMatcher[] | undefined): boolean {
+  const source = { player: actor };
   for (const matcher of matchers ?? []) {
     if (!isAllowedStatePath(matcher.path)) {
       return false;
     }
-    if (!matchesValue(readPath(state, matcher.path), matcher)) {
+    if (!matchesValue(readPath(source, matcher.path), matcher)) {
       return false;
     }
   }
@@ -248,6 +264,43 @@ export function rankForDeedCount(deedCount: number): RenownRankId {
   return rank;
 }
 
+/**
+ * N11 · THE CAPTAIN A DEED IS ACCRUED AGAINST.
+ *
+ * IT IS DELIBERATELY STRUCTURAL, NOT AN ADAPTER — the same argument
+ * `ShipyardActor` (`actions/shipyard.ts`) records at its own definition site.
+ * `PlayerState` satisfies this as-is (it has a `registry` and a `ship`) and so
+ * does `NpcState` (from v12 on it has both), so BOTH captains are passed to the
+ * SAME function with no wrapper object on either side. That matters for more than
+ * tidiness: {@link accrueDeeds} PUSHES onto `actor.registry.earned`, and a wrapper
+ * would have made that write land on a copy.
+ *
+ * `ship` is here because a deed's `trigger.state` matchers read the actor's tank
+ * (`STATE_PATHS` = `player.ship.fuel`); see {@link matchesState}.
+ */
+export interface DeedActor {
+  registry: DeedRegistryState;
+  ship: ShipState;
+}
+
+/**
+ * N11 · The ONE deed-registry seed, called from all three sites that can bring a
+ * registry into existence: `createInitialState` (world creation, player AND every
+ * captain), `deserializeState` (the raw JSON path) and `MIGRATIONS[11]` (the
+ * envelope path). N1's recorded precedent is why it is a function and not three
+ * inline literals — `MIGRATIONS[9]` "calls `npcShipForTier` rather than restating
+ * it", and the reverted attempt (`7334c5d5`) inlined this shell in three places so
+ * a migrated roster could drift from a freshly created one.
+ *
+ * THE RANK COMES FROM {@link rankForDeedCount}, never from the literal
+ * `'LIEUTENANT'`. That is what makes "no second ladder" true at the SEED site too:
+ * a rescale of `RENOWN_DEED_THRESHOLDS` that ever moved the zero-deed rung would
+ * be honoured here without an edit.
+ */
+export function emptyDeedRegistry(): DeedRegistryState {
+  return { earned: [], renownRank: rankForDeedCount(0), matchCounts: {} };
+}
+
 /** One-time scan used only when reconstructing a registry from a raw event log
  *  (deserialize/save-compat). Runtime evaluation never calls this — it relies on
  *  the cached registry.matchCounts. */
@@ -267,15 +320,65 @@ export function computeMatchCounts(eventLog: readonly GameEvent[]): Record<strin
   return counts;
 }
 
-export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent[]): GameEvent[] {
+/**
+ * N11 · What an accrual needs to know that is NOT a property of the captain: the
+ * day it is, where the source batch sits in the log (if anywhere), and whether the
+ * career's licence withholds CONQUEROR.
+ */
+export interface DeedAccrualContext {
+  day: number;
+  /**
+   * The index in `state.eventLog` the source batch will occupy, when the batch IS
+   * going into the log. OMITTED means it is not: a captain's accrual batch is
+   * per-captain and local (see `npc.ts`), so there is no index into the shared log
+   * to record and none is written. That absence is the whole reason
+   * `EarnedDeedState.eventIndex` is optional — the reverted attempt (`7334c5d5`)
+   * stuffed `eventIndex: 0` into every NPC row, which is a fabricated pointer into
+   * a log that does not contain the event.
+   */
+  sourceStartIndex?: number;
+  /** Whether this career's edition withholds the CONQUEROR capstone. Passed in
+   *  rather than derived here so both sides go through the SAME `demoLocked`
+   *  predicate (`demo.ts`) — see the ceiling comment at the write site below. */
+  conquerorLocked: boolean;
+}
+
+/**
+ * N11 · THE DEED MACHINERY, actor-shaped. One matcher, one count ladder, one rank
+ * derivation, one set of emitted events — for the player and for all thirty
+ * captains. {@link evaluateDeeds} is now a three-line wrapper over this.
+ *
+ * WHY IT IS THIS AND NOT A SECOND EVALUATOR. The standing constraint
+ * (`docs/NPC_REDESIGN.md`, "same rules, no exemptions"): *"Where an NPC cannot use
+ * the engine's own function today, the fix is to make the function usable by both
+ * (give it an actor parameter), never to write the NPC a private one."* The
+ * reverted attempt's `evaluateNpcDeeds` reimplemented the matcher, the dotted-path
+ * reader, the count logic and the rank-up emission — the R2c failure mode verbatim,
+ * a second copy that agrees with the first until it drifts.
+ *
+ * COST, because the NPC path calls it thirty times a day. It is O(sourceEvents ×
+ * DEEDS) and NOTHING here scans `eventLog`: the historical count comes from the
+ * cached `registry.matchCounts`. A captain's batch is at most four events against the 44 shipped `DEEDS`,
+ * and the accrual DRAWS NO RNG — which is what keeps the day-loop event goldens
+ * byte-identical (see `fixtures/day-loop-golden.ts`). The `sourceEvents.length === 0`
+ * early return means an Idle / Patrol / Socialize day costs nothing at all.
+ */
+export function accrueDeeds(
+  actor: DeedActor,
+  sourceEvents: readonly GameEvent[],
+  ctx: DeedAccrualContext,
+): GameEvent[] {
   if (sourceEvents.length === 0) {
     return [];
   }
 
   const emitted: GameEvent[] = [];
-  const registry = state.player.registry;
+  const registry = actor.registry;
   const earnedIds = new Set(registry.earned.map((deed) => deed.id));
-  const sourceStartIndex = state.eventLog.length;
+  // Absent ⇒ the batch is local and 0-based indices order the candidates without
+  // ever being recorded. See DeedAccrualContext.sourceStartIndex.
+  const sourceStartIndex = ctx.sourceStartIndex ?? 0;
+  const recordEventIndex = ctx.sourceStartIndex !== undefined;
   const candidates: DeedCandidate[] = [];
 
   // Storylet deed progress advances a named count deed directly (dead wire fix):
@@ -325,7 +428,7 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
     if (deed.trigger.count && totalCount < deed.trigger.count.gte) {
       continue;
     }
-    if (!matchesState(state, deed.trigger.state)) {
+    if (!matchesState(actor, deed.trigger.state)) {
       continue;
     }
 
@@ -342,8 +445,8 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
   );
 
   for (const { deed, anchorIndex } of candidates) {
-    const deedCount = state.player.registry.earned.length + 1;
-    const previousRank = state.player.registry.renownRank;
+    const deedCount = registry.earned.length + 1;
+    const previousRank = registry.renownRank;
     // T-1703 · THE CONQUEROR CEILING, applied at this ONE write site and nowhere
     // else. A demo licence does not carry the career capstone — "Conqueror
     // content" is the third name on the task's gate list, and CONQUEROR is a
@@ -360,23 +463,29 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
     // import with a single re-derive — proved non-vacuously in `demo.test.ts`,
     // which drives one state to 38 deeds, asserts it tops out BELOW Conqueror,
     // then promotes it and asserts it lands ON Conqueror.
+    //
+    // N11 · IT APPLIES TO A CAPTAIN TOO. `ctx.conquerorLocked` comes from the same
+    // `demoLocked` predicate on both sides — a demo licence belongs to the WORLD,
+    // not to who is flying it, exactly as `NpcDayContext.era` already argues for the
+    // interdiction multiplier. The reverted attempt's comment said the cap "is NOT
+    // applied" to NPCs; that exemption is not re-granted.
     const uncappedRank = rankForDeedCount(deedCount);
     const nextRank =
-      uncappedRank === 'CONQUEROR' && demoLocked(state, 'conqueror') ? previousRank : uncappedRank;
-    const citation = citationFor(deed, state.day);
+      uncappedRank === 'CONQUEROR' && ctx.conquerorLocked ? previousRank : uncappedRank;
+    const citation = citationFor(deed, ctx.day);
 
-    state.player.registry.earned.push({
+    registry.earned.push({
       id: deed.id,
       title: deed.title,
       citation,
-      day: state.day,
-      eventIndex: anchorIndex,
+      day: ctx.day,
+      ...(recordEventIndex ? { eventIndex: anchorIndex } : {}),
     });
     earnedIds.add(deed.id);
 
     emitted.push({
       type: 'DeedEarned',
-      day: state.day,
+      day: ctx.day,
       deedId: deed.id,
       title: deed.title,
       citation,
@@ -384,10 +493,10 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
     });
 
     if (nextRank !== previousRank) {
-      state.player.registry.renownRank = nextRank;
+      registry.renownRank = nextRank;
       emitted.push({
         type: 'RenownRankUp',
-        day: state.day,
+        day: ctx.day,
         previousRank,
         newRank: nextRank,
         deedCount,
@@ -404,7 +513,7 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
       const rankDef: RenownRankDefinition = RENOWN_RANKS[nextRank];
       emitted.push({
         type: 'WireEntry',
-        day: state.day,
+        day: ctx.day,
         kind: 'plain',
         message: rankDef.citation,
       });
@@ -412,4 +521,21 @@ export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent
   }
 
   return emitted;
+}
+
+/**
+ * The PLAYER's dusk deed evaluation — a thin wrapper over {@link accrueDeeds},
+ * with the same signature it has always had.
+ *
+ * The three things it supplies are exactly the three that used to be hard-wired
+ * into the body: the actor (`state.player`), the log index the source batch will
+ * occupy, and the demo licence's CONQUEROR lock, asked through `demoLocked` so the
+ * gate still lives in one place (`demo.ts`).
+ */
+export function evaluateDeeds(state: GameState, sourceEvents: readonly GameEvent[]): GameEvent[] {
+  return accrueDeeds(state.player, sourceEvents, {
+    day: state.day,
+    sourceStartIndex: state.eventLog.length,
+    conquerorLocked: demoLocked(state, 'conqueror'),
+  });
 }

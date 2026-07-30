@@ -7,10 +7,10 @@ import {
   NpcState,
   ShipState,
 } from './types.js';
-import { NPC_PROFILES, Stat } from '@spacerquest/content';
-import { computeMatchCounts, rankForDeedCount } from './deeds.js';
+import { NPC_PROFILES, QUEST_PROFILES, Stat } from '@spacerquest/content';
+import { computeMatchCounts, emptyDeedRegistry, rankForDeedCount } from './deeds.js';
 import { npcShipForProfile, seedNpcShip } from './npc.js';
-import { calculateFuelCapacity, syncMaxFuel } from './economy.js';
+import { JOB_POOL_MAX_CLAIMS, calculateFuelCapacity, syncMaxFuel } from './economy.js';
 import { computePlayerTier, syncPlayerTier } from './tier.js';
 
 /** The exact junker every spacer starts (and re-starts) with. SINGLE SOURCE OF
@@ -76,7 +76,7 @@ function reconstructEarnedDeeds(eventLog: readonly GameEvent[]): EarnedDeedState
  */
 export function createInitialState(seed: number, edition: Edition = 'full'): GameState {
   // Initialize the cast
-  const npcs: NpcState[] = NPC_PROFILES.map((p, index) => ({
+  const npcs: NpcState[] = [...NPC_PROFILES, ...QUEST_PROFILES].map((p, index) => ({
     id: p.id,
     name: p.name,
     profileId: p.id,
@@ -91,6 +91,14 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     // tank rides on the ship and is now CLAMPED to the hull — a tier-1 captain is
     // born with the player's 300, not the 1,000 this line used to set directly.
     ship: npcShipForProfile(p),
+    // N11 · Every captain is born at ZERO DEEDS and the rank that buys — the same
+    // `emptyDeedRegistry()` the player's registry below is seeded from, and the same
+    // one `deserializeState` and `MIGRATIONS[11]` call. NOTHING about the profile
+    // reaches it: N11's ruling is that the fast-forward allowance covers the SOURCE
+    // (coarse verbs standing in for played days) and never unearned rank, so a tier-5
+    // captain starts as LIEUTENANT exactly like a tier-1 one. Seeding rank from
+    // `profile.tier` would be the "constant recomputed from profile" phantom N1 killed.
+    registry: emptyDeedRegistry(),
     disposition: 0,
   }));
 
@@ -142,11 +150,12 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
       tier: computePlayerTier('LIEUTENANT', starterShip()),
       currentSystemId: 1, // Sun-3
       ship: starterShip(),
-      registry: {
-        earned: [],
-        renownRank: 'LIEUTENANT',
-        matchCounts: {},
-      },
+      // N11 · Through the same one seeding function every captain's registry comes
+      // from (`deeds.ts` `emptyDeedRegistry`). It was an inline literal here; one rule,
+      // one function, so a fresh player and a fresh captain cannot start on different
+      // shells — and the opening rank is derived through `rankForDeedCount(0)` rather
+      // than written as the literal 'LIEUTENANT'.
+      registry: emptyDeedRegistry(),
       // Charts seed with the starting system — the spacer knows where they woke
       // up. Every subsequent arrival appends here (T-108 persistent knowledge).
       charts: { visitedSystemIds: [1], discoveredPois: [] },
@@ -158,7 +167,9 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     market: {
       manifestBoard: [],
       localFuelPrice: 5,
-      npcClaims: 0,
+      // N10 · Every pool starts undrained, which a sparse record spells as empty
+      // rather than as twenty zeroes (see `MarketState.jobPoolClaims`).
+      jobPoolClaims: {},
     },
     npcs,
     encounter: null,
@@ -269,6 +280,14 @@ export function deserializeState(json: string): GameState {
   parsed.player.reputation.confederation ??= 0;
   parsed.player.reputation.rebels ??= 0;
   parsed.npcs ??= [];
+  // COW-EXEMPT: these writes reach roster records raw, without `mutableNpc`, and
+  // are legal ONLY because of the caller. `parsed` is a value this function just
+  // produced from `JSON.parse` of a save string, so no snapshot, replay golden or
+  // rendered frame shares these records yet — there is nothing behind them to
+  // corrupt. That is a property of the CALLER, not of the write: reuse this
+  // backfill loop on a live `GameState` and it becomes the exact bug the
+  // copy-on-write scan in `__tests__/clone.test.ts` exists to catch. The scan
+  // pins this site in `COW_EXEMPT_SITES`; removing this marker fails it.
   parsed.npcs.forEach((npc) => {
     npc.disposition ??= 0;
     // N1 save-compat: pre-N1 states have no `npc.ship` — the cast flew a phantom
@@ -280,8 +299,31 @@ export function deserializeState(json: string): GameState {
     const legacy = npc as unknown as { fuel?: unknown };
     if (npc.ship === undefined) npc.ship = seedNpcShip(npc.profileId, legacy.fuel);
     delete legacy.fuel;
+    // N11 save-compat: pre-N11 states have no `npc.registry` — no captain could hold
+    // a deed. Backfill an EMPTY one: that is a statement of fact, not a convenience
+    // default, because no save that exists has NPC deeds in it. The SAME backfill the
+    // v11→v12 save migration applies for the envelope path, through the SAME function
+    // (`emptyDeedRegistry`) so the two paths cannot drift. Note what is NOT done here:
+    // no rank is synthesised from `npc.profileId`'s tier — a migrated tier-5 captain
+    // loads as LIEUTENANT with zero deeds, because they earned nothing yet.
+    npc.registry ??= emptyDeedRegistry();
   });
-  parsed.market.npcClaims ??= 0;
+  // N10 save-compat: pre-N10 states carry a single `market.npcClaims` scalar —
+  // claims against the player's system only. Move it onto that system's pool and
+  // drop the stale key, or the strict MarketState schema would reject it as
+  // unknown. The SAME move the v10→v11 save migration performs, and it is the one
+  // place the two paths could drift: both credit the pool of the system the
+  // player was standing in, because that is the only system the old counter could
+  // ever have been about.
+  const legacyMarket = parsed.market as unknown as { npcClaims?: unknown };
+  parsed.market.jobPoolClaims ??= {};
+  if (typeof legacyMarket.npcClaims === 'number' && legacyMarket.npcClaims > 0) {
+    parsed.market.jobPoolClaims[String(parsed.player.currentSystemId)] = Math.min(
+      JOB_POOL_MAX_CLAIMS,
+      legacyMarket.npcClaims,
+    );
+  }
+  delete legacyMarket.npcClaims;
   parsed.encounter ??= null;
   // Save-compat: older states predate era events — default to no active event
   // and a zero cooldown anchor (T-107).

@@ -1,6 +1,6 @@
 {
   "name": "@spacerquest/desktop",
-  "version": "0.5.0",
+  "version": "0.5.2",
   "private": true,
   "description": "T-1701a/b/T-1702a \u00b7 Electron shell: window management, OS app-data saves, packaging, an inert updater stub and the Steamworks achievement mirror. Zero game rules.",
   "author": "Rimward",

@@ -1,30 +1,46 @@
 import {
+  ARCHETYPE_INTENT_MULTIPLIERS,
   CARGO_TYPES,
   DEFAULT_IDEAL_WEIGHTS,
   FLAWS,
   IDEAL_WEIGHTS,
   INTENT_STAT_AFFINITY,
+  NEUTRAL_INTENT_MULTIPLIERS,
   NPC_CHECK_DCS,
-  NPC_COMPONENT_STAT_AFFINITY,
   NPC_INTENT_TYPES,
+  NPC_COMPONENT_STAT_AFFINITY,
   NPC_PATROL_FAIL_CREDITS,
   NPC_PATROL_SUCCESS_CREDITS,
-  NPC_PROFILES,
+  ALL_NPC_PROFILES,
   NPC_SOCIALIZE_LOSS_CREDITS,
   NPC_SOCIALIZE_WIN_CREDITS,
   NPC_TRAVEL_FAIL_EXTRA_FUEL,
+  NpcArchetype,
   NpcIntentType,
   NpcProfile,
   STAR_SYSTEMS,
+  SYSTEM_DANGER_LEVELS,
   SHIP_COMPONENTS,
+  SPECIAL_EQUIPMENT,
   Stat,
   StatBlock,
   YARD_COMPONENT_TIER_PRICES,
   distance as systemDistance,
+  EraId,
+  // N3 · the interdiction's numbers, all of them the player's own
+  CLOAK_ENCOUNTER_MULTIPLIER,
+  COMBAT_SALVAGE_PER_TIER,
+  FIGHT_FUEL_COST,
+  NPC_ENCOUNTER_MAX_ROUNDS,
+  RETREAT_KILL_EDGE,
+  RUN_FUEL_COST,
+  TOUR_ONE_ENCOUNTER_MULTIPLIER,
 } from '@spacerquest/content';
 import {
   CargoContract,
   CheckResult,
+  Edition,
+  EncounterInterceptorState,
   EraEventState,
   GameEvent,
   GameState,
@@ -33,19 +49,37 @@ import {
   PlayerAction,
   ShipComponentId,
   ShipState,
+  SpecialEquipmentId,
 } from './types.js';
 import { SeededRng } from './rng.js';
 import { check } from './dice.js';
+import { weaponVolleyDamage } from './components.js';
+// N3 · The interdiction reaches the engine's own encounter machinery. `travel.ts`
+// does NOT import this file, so this direction closes no cycle (unlike
+// `actions/combat.ts`, which imports `applyDisposition` from here — the reason the
+// shared damage rule lives in the neutral `combatRules.ts`).
+import { routeDangerFor, selectAnonymousInterceptor } from './actions/travel.js';
+import {
+  applyInterceptorHit,
+  interceptorPressureDc,
+  interceptorRefusesTribute,
+  tributeForRound,
+} from './combatRules.js';
 import {
   DriveBlock,
   calculateFuelCapacity,
-  contractSpecFromShip,
+  generateManifestBoard,
+  jobPoolDepth,
   jumpFuelCost,
   localFuelPrice,
-  rollContract,
   syncMaxFuel,
 } from './economy.js';
 import { navFuelFactor } from './components.js';
+// N11 · The captain's deeds accrue through the PLAYER's own deed machinery — one
+// matcher, one count ladder, one `rankForDeedCount`. `deeds.ts` does not import
+// this file, so this direction closes no cycle.
+import { accrueDeeds } from './deeds.js';
+import { demoLocked } from './demo.js';
 import {
   applyShipyardMutation,
   componentTierForStrength,
@@ -113,7 +147,7 @@ function npcCargoPods(tier: number): number {
  * tier-1 NPC holding 4 cargo pods and a **1,200-unit tank** where a player with
  * comparable capacity — the junker: 10 pods, hull strength 1 — holds **300**.
  * NPCs flew on ~4× a player's fuel. N1 flagged it at this site as an exemption
- * (BALANCE-REDESIGN-WORKLIST, standing constraint 2: "a number chosen so that a
+ * (NPC_REDESIGN, standing constraint 2: "a number chosen so that a
  * rule will NOT bite is a rule exemption, even when the resulting state is
  * legal") and handed the removal to N2, which is where it lands.
  *
@@ -414,7 +448,7 @@ const UNKNOWN_CAPTAIN: Pick<NpcProfile, 'tier' | 'stats'> = {
  * a migration must never be the thing that throws (save.ts registry header).
  */
 export function seedNpcShip(profileId: string, carriedFuel: unknown): ShipState {
-  const profile = NPC_PROFILES.find((p) => p.id === profileId);
+  const profile = ALL_NPC_PROFILES.find((p) => p.id === profileId);
   const ship = npcShipForProfile(profile ?? UNKNOWN_CAPTAIN);
   if (typeof carriedFuel === 'number' && Number.isFinite(carriedFuel)) {
     ship.fuel = Math.max(0, Math.min(ship.maxFuel, carriedFuel));
@@ -435,10 +469,30 @@ function npcJumpFuelCost(ship: ShipState, routeDistance: number): number {
 /** Broke line: under this an NPC stops discretionary spending, takes odd
  *  jobs, and may show up on the wire begging for fuel money. */
 const NPC_BROKE_CREDITS = 100;
-/** Poverty pressure: below this an NPC's Trade weight gets a flat boost —
- *  a hungry spacer looks for paying work regardless of worldview. */
+/** Poverty pressure: below this a captain leans on paying work. (Pre-N4 this
+ *  scaled a Trade WEIGHT; N4's deterministic `pickIntent` reduced it to a
+ *  probability gate, and the reopened N4 blend makes it a weight again — owner
+ *  RULING 1, docs/NPC_REDESIGN.md: *"the poverty override stays"*.) */
 const NPC_POVERTY_CREDITS = 1000;
-const NPC_POVERTY_TRADE_BOOST = 10;
+/**
+ * How much harder a broke captain leans on Trade — a MULTIPLIER on their own
+ * Trade weight, deliberately not the flat `+10` this was before N4.
+ *
+ * The flat term cannot come back, for two independent reasons. **It breaks the
+ * veto:** an Ideal's `0` means "this captain does not do that", and `0 + 10` hands
+ * the Warden (`Justice`, Trade 0) the one verb their worldview forbids the moment
+ * their purse dips — a rule exemption bought with a constant, which is exactly
+ * what the standing constraint's consequence 2 names. **And its scale was wrong
+ * by an order of magnitude:** pre-N4 weights carried the `x (1 + stat)` term and
+ * ran to ~70, so `+10` was a nudge; the blend's weights top out near 12, where
+ * `+10` would be a near-deterministic order to trade.
+ *
+ * 3x is chosen to land a broke fighter near the pre-N4 behaviour it replaces
+ * (Iron Vex at ~15% Trade against pre-N4's ~22%) while leaving a broke trader
+ * effectively committed (Cargo King ~90%). It is a pacing constant, so it is a
+ * legitimate knob for a later sweep — but it must stay a multiplier.
+ */
+const NPC_POVERTY_TRADE_MULTIPLIER = 3;
 /** Odd-job alms earned on an idle broke day — keeps the floor above zero so
  *  nobody is pinned at exactly 0 credits forever. */
 const NPC_ODD_JOB_CREDITS = 25;
@@ -453,10 +507,36 @@ export interface NpcDayContext {
    *  READ-ONLY here — the caller (day.ts) performs the splice and emits the
    *  claim events. */
   claimableBoard: readonly CargoContract[] | null;
+  /**
+   * N10 · The shared per-system job pool (`MarketState.jobPoolClaims`), READ-ONLY
+   * here: it sizes the local board a captain trading AWAY from the player draws
+   * from, so a port the cast has been working supplies fewer jobs to the next
+   * captain through it exactly as it will to the player.
+   *
+   * The WRITE goes back through {@link NpcDayResult.claimedFromPool} rather than
+   * happening here, the same division of labour `claimedContractIndex` already
+   * uses: `day.ts` owns the market record, an NPC turn owns its own captain.
+   */
+  jobPoolClaims: Readonly<Record<string, number>>;
   /** The active world economic event (T-107). NPCs feel the same re-priced
    *  economy as the player: synthesized contract income and depot refuel costs
    *  read the same modifiers. Null when no event is active. */
   eraEvent: EraEventState | null;
+  /** N3 · The campaign era, for the interdiction rate. Tour One is gentler on the
+   *  cast for the same reason it is gentler on the player — the lane multiplier
+   *  `TOUR_ONE_ENCOUNTER_MULTIPLIER` is a property of the ERA, not of who is
+   *  flying, so exempting the cast from it would be an exemption in the other
+   *  direction. Read by {@link resolveNpcEncounter}. */
+  era: EraId;
+  /**
+   * N11 · The career's licence, for the CONQUEROR ceiling on a captain's deed
+   * accrual. The mirror of the `era` field directly above, and the same argument: a
+   * demo licence belongs to the WORLD, not to who is flying it, so a captain meets
+   * the same capstone lock the player does — asked through the one `demoLocked`
+   * predicate (`demo.ts`), never re-implemented here. The reverted attempt exempted
+   * the cast from this cap in a code comment; that exemption is not re-granted.
+   */
+  edition: Edition;
 }
 
 export interface NpcDayResult {
@@ -465,36 +545,85 @@ export interface NpcDayResult {
   /** Index into ctx.claimableBoard of the offer this NPC took (T-106 contract
    *  competition). Only set when the NPC actually executed the haul. */
   claimedContractIndex?: number;
+  /**
+   * N10 · The system whose shared job pool this captain claimed out of, when the
+   * claim did NOT come off the player's live board — i.e. the ordinary case,
+   * anywhere in the galaxy. The caller debits it (`debitJobPool`), which is what
+   * makes the next board the player sees in that system thinner.
+   *
+   * MUTUALLY EXCLUSIVE with `claimedContractIndex` by construction: a claim is
+   * either the visible snipe off the player's board or a draw against the local
+   * pool, never both. Both are absent when the haul did not happen at all.
+   */
+  claimedFromPool?: number;
 }
 
 function systemName(systemId: number): string {
   return STAR_SYSTEMS[systemId]?.name ?? `system ${systemId}`;
 }
 
-/** Weighted intent pick: base weight from the Ideal table x (1 + affinity
- *  stat, floored at 0). Poverty pressure adds a flat Trade boost. Returns
- *  'Idle' only in the all-weights-zero corner. */
+/**
+ * N4 · Which verb a captain wants today: their Ideal, BIASED by their archetype,
+ * drawn as a distribution. Returns 'Idle' only in the all-weights-zero corner.
+ *
+ * `weight = IDEAL_WEIGHTS[ideal] x ARCHETYPE_INTENT_MULTIPLIERS[archetype]`, and
+ * the multiplicative shape is the owner's ruling (docs/NPC_REDESIGN.md N4 RULING
+ * 1), not a convenience. Three properties come out of it and all three are
+ * load-bearing:
+ *
+ *   1. **Two captains of the same archetype stay different people.** Cargo King
+ *      (Wealth) draws Trade ~75% / Travel ~13%; Zero Risk (Survival) draws Trade
+ *      ~62% / Patrol ~15%. Both are traders. Over the curated roster the average
+ *      captain has 4.3 verbs at 5% or better.
+ *   2. **An Ideal's authored `0` is a VETO and survives the multiply** — 0 x 2 is
+ *      still 0, so the Stellar Monk's `Balance` never initiates combat no matter
+ *      what archetype sits on top of it, and the Warden's `Justice` never haggles.
+ *      A multiplier can re-weight a worldview; it cannot overrule one.
+ *   3. **The archetype effect is SEPARABLE**, so N4 could be graded: an arm with
+ *      every multiplier set to {@link NEUTRAL_INTENT_MULTIPLIERS} is a real
+ *      control, and *"archetype makes no measurable difference"* is therefore
+ *      distinguishable from *"archetype is the only input left"*.
+ *
+ * WHAT THIS REPLACED, so it is not re-derived: N4 first shipped a deterministic
+ * `switch` returning one fixed verb per archetype. Ten trader captains became
+ * literally the same function (`return 'Trade'`, every day, forever) — further
+ * from this step's own hypothesis than the weight table it replaced, and it
+ * destroyed the control arm that makes the step gradeable at all.
+ *
+ * NOT IN THE PRODUCT: the pre-N4 `x (1 + affinity stat)` term. It concentrated
+ * the average captain onto 3.1 verbs (a TRADE-5 trader onto ONE), which is the
+ * same collapse by a subtler route — the measurement is recorded at
+ * ARCHETYPE_INTENT_MULTIPLIERS. {@link INTENT_STAT_AFFINITY} still decides which
+ * stat ROLLS the day's check ({@link rollNpcCheck}); a captain's stats therefore
+ * shape how WELL the day goes rather than how often they choose it.
+ */
 export function pickIntent(
   profile: NpcProfile,
   credits: number,
   rng: SeededRng,
 ): NpcIntentType | 'Idle' {
   const base = IDEAL_WEIGHTS[profile.ideal] ?? DEFAULT_IDEAL_WEIGHTS;
+  const archetype = ARCHETYPE_INTENT_MULTIPLIERS[profile.archetype] ?? NEUTRAL_INTENT_MULTIPLIERS;
   const weighted = NPC_INTENT_TYPES.map((intent) => {
-    const stat = Math.max(0, profile.stats[INTENT_STAT_AFFINITY[intent]]);
-    let weight = base[intent] * (1 + stat);
+    let weight = base[intent] * archetype[intent];
+    // Poverty pressure is a WEIGHT, not a branch: a broke captain leans harder on
+    // paying work without being ordered to take it, so the poorest fighter still
+    // sometimes fights and a Justice idealist — whose Trade weight is an authored
+    // 0 — is not handed the one verb their worldview forbids. (The N4 switch made
+    // this a 50% early return, which did exactly that.)
     if (intent === 'Trade' && credits < NPC_POVERTY_CREDITS) {
-      weight += NPC_POVERTY_TRADE_BOOST;
+      weight *= NPC_POVERTY_TRADE_MULTIPLIER;
     }
     return { intent, weight };
   });
 
   const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
   if (total <= 0) {
-    // Invariant: a weight of 0 DISABLES a verb (ideals.ts contract), so an
-    // Ideal that zeroes every verb must resolve to a no-op day — never to a
-    // verb the table forbade. Unreachable with the current tables (every
-    // Ideal has a positive weight), but future content must not break it.
+    // Invariant: a weight of 0 DISABLES a verb (ideals.ts contract), so a
+    // captain whose every verb is zeroed must resolve to a no-op day — never to
+    // a verb the table forbade. Unreachable with the current tables (every Ideal
+    // has a positive weight and no multiplier is 0), but future content must not
+    // break it, which is why the branch exists and is tested.
     return 'Idle';
   }
 
@@ -632,6 +761,61 @@ function refuelIfNeeded(npc: NpcState, needed: number, eraEvent: EraEventState |
  * component they can afford. Two captains with the same purse therefore buy
  * different ships, which is what makes this a decision rather than an escalator.
  *
+ * ── N11/T-021 · RANK-GATED SPECIAL EQUIPMENT, AND WHY IT IS THE FIRST RUNG ────
+ *
+ * WHY RANK-GATED ONLY, AS A DATA FILTER AND NOT A LIST. The captain asks the yard
+ * for every `SPECIAL_EQUIPMENT` entry that declares a `requiredRenownRank`, read
+ * off content — so a newly gated item joins the cast's appetite for free and an
+ * ungated one never does, and there is no NPC-side id list to drift from the table.
+ * The scope is N11's: make the Renown gate REACHABLE. The four ungated items
+ * (CLOAKER, AUTO_REPAIR, TITANIUM_HULL, TRANS_WARP) are a separate appetite
+ * question, deliberately deferred — TITANIUM_HULL alone adds +50 pods, which would
+ * put a non-Renown economy swing inside the very arm T-023 has to attribute to the
+ * Renown gate. The player-side precedent is the same shape: `planSpecialEquipment`
+ * (`sim/src/index.ts`) also drives a rank-gated priority list, cheapest gate first,
+ * with the fighter's AUTO_REPAIR the documented exception (priced, not gated).
+ *
+ * NO RANK COMPARISON HAPPENS HERE, and that is the standing constraint as code.
+ * The captain merely ASKS; `quoteShipyard` → `specialEquipmentFailure`'s
+ * `requiredRank` check (`actions/shipyard.ts`) is the ONE AND ONLY gate, so
+ * `renownRankIndex` / `RENOWN_DEED_THRESHOLDS` appear nowhere in this file. Nor is
+ * anything pre-filtered by id: ALREADY_INSTALLED (so the repeat purchase is
+ * impossible without NPC bookkeeping), ASTRAXIAL_HULL's drives-25 prerequisite and
+ * INSUFFICIENT_CREDITS are all the yard's own refusals. Let the quote say no.
+ *
+ * WHY IT IS CONSIDERED BEFORE THE COMPONENT LADDER — the one judgement in this
+ * change, recorded because it decides whether the gate is exercised at all. The
+ * captain gets ONE purchase a day and the component loop takes the first AFFORDABLE
+ * rung, so an equipment rung placed after it would fire only once all eight
+ * components were maxed or unaffordable — i.e. effectively never, and N11 would ship
+ * a mechanism nothing exercises (the R0a/R2a class of mistake this track keeps
+ * paying for). Placed first, the throttle is the two lines that ALREADY exist:
+ * EARNED rank (5 deeds for CAPTAIN, accrued at step 5 of the captain's day) and
+ * {@link NPC_YARD_RESERVE} (so ~11,000cr in hand for a 10,000cr item). It displaces
+ * at most one component rung per gated item per career, because the yard refuses
+ * the repeat.
+ *
+ * WHAT THE PURCHASE DOES FOR THE CAPTAIN, so it is not mistaken for cosmetics:
+ * `weaponVolleyDamage` reads `hasStarBuster` and `shieldMitigation` /
+ * `applyInterceptorHit` read `hasArchAngel` (`components.ts`, `combatRules.ts`) —
+ * both called by N3's interdiction — so a captain who clears the gate genuinely
+ * fights and survives better, which feeds back into `first_combat_win`. This is
+ * N11's "the player's progression spine is CONTESTED, not copied" becoming real.
+ *
+ * WATCH ITEM HANDED TO T-023, named rather than hidden: every captain who reaches
+ * CAPTAIN with ~11,000cr eventually owns BOTH CAPTAIN-gated items, so the equipment
+ * axis converges even though the component fit does not; ASTRAXIAL_HULL stays
+ * unreachable at T-020's measured 13-deed / ADMIRAL ceiling. If T-023 grades that as
+ * renown inflation or convergence, the next lever is an ARCHETYPE-SHAPED APPETITE (a
+ * content mapping, an owner call and its own capstone) — never a tuning constant
+ * here. NO NEW PACING CONSTANT was added: the discretionary-money line is
+ * {@link NPC_YARD_RESERVE}, for the reason argued at its own definition site (the E8
+ * precedent — the game already had a number for "this captain has spare money").
+ *
+ * OUT OF SCOPE AND STILL OPEN: OI-9, the NPC refit spends no die. `spendDie: 0` on
+ * the equipment action is the component rung's existing convention, not a claim that
+ * the die question is settled.
+ *
  * CARGO PODS RIDE THE HULL RUNG, AND NOTHING ELSE, and that placement is the one
  * judgement in this function — recorded because the first version got it wrong and
  * the measurement said so. Pods are the direct trade-profit lever (`rollContract`
@@ -665,12 +849,17 @@ function refuelIfNeeded(npc: NpcState, needed: number, eraEvent: EraEventState |
  * price the captain's next manifest), `npcJumpFuelCost` (drives and navigation
  * price their next jump), and the wire line below.
  *
- * COST, MEASURED. Up to eight `quoteShipyard` calls per captain per day (the
- * ladder is walked until something is affordable) puts the ambient game day at
- * 0.658 → **0.892 ms** over 300 days × 30 captains, and the 1,000-seed capstone at
- * 1m50s → 2m25s. That is ~0.23 ms against the ~39 ms of headroom N0 bought, and
- * `quoteShipyard`'s throwaway is now one SHIP rather than one `GameState`, which
- * is what keeps it in that range.
+ * COST, RE-MEASURED AT T-021 (the earlier note claimed eight calls and 0.892 ms; both
+ * are superseded, and a stale measurement in a comment is worse than none). Up to
+ * ELEVEN `quoteShipyard` calls per captain per day — three gated-equipment asks plus
+ * the eight-rung ladder, each walked only until something is affordable. Ambient day
+ * over 300 days × the shipped 41-record roster, seven samples, best-of: **0.87 ms with
+ * the equipment rung against 0.88 ms without it** (medians 0.90 / 0.90) — i.e. the
+ * three added asks are inside run-to-run noise, and that is structural rather than
+ * lucky: a REFUSED quote never reaches `structuredClone`, and the common case for a
+ * gated item is a refusal (unearned rank, then ALREADY_INSTALLED forever after). The
+ * N2 measurement it replaces (0.658 → 0.892 ms at 30 captains) still describes what
+ * introducing the refit cost; nothing since has moved it.
  */
 function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: GameEvent[]): void {
   const spendable = npc.credits - NPC_YARD_RESERVE;
@@ -693,6 +882,34 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
     return true;
   };
 
+  // N11/T-021 · THE RANK-GATED RUNG, FIRST. See the header for why it leads and why
+  // the filter is `requiredRenownRank !== undefined` read off content rather than an
+  // NPC-side id list. Content order is already cheapest-gate-first (STAR_BUSTER and
+  // ARCH_ANGEL at CAPTAIN, then ASTRAXIAL_HULL at TOP_DOG), which is the player's own
+  // ordering, so re-sorting here would be a second ladder.
+  for (const entry of SPECIAL_EQUIPMENT) {
+    if (entry.requiredRenownRank === undefined) continue;
+    const action: Extract<PlayerAction, { type: 'Shipyard' }> = {
+      type: 'Shipyard',
+      action: 'buy-special-equipment',
+      // `SPECIAL_EQUIPMENT` is widened to its declared interface (`id: string`) while
+      // the action takes the engine's narrower `SpecialEquipmentId` union, so this cast
+      // is the one place the content table and the union are assumed to agree. It is
+      // ASSERTED rather than assumed, and the failure mode is worth naming:
+      // `installSpecialEquipment`'s final `else` fits a Trans-Warp, so an unmodelled
+      // content id would quietly install the WRONG item. The N11 block in
+      // `shipyard.test.ts` drives every gated content row through the real quote and
+      // reads the fit back through `hasSpecialEquipment`, so such a row reddens there
+      // instead of reaching a captain's ship.
+      equipment: entry.id as SpecialEquipmentId,
+      spendDie: 0,
+    };
+    // "for the Arch Angel", definite article on purpose: content names start with
+    // both vowels and consonants, and "a Arch Angel" on a player-facing wire line is
+    // the price of an indefinite article the engine would have to inflect.
+    if (buy(action, `the ${entry.name}`)) return;
+  }
+
   for (const component of npcComponentLadder(profile.stats)) {
     const tier = componentTierForStrength(npc.ship[component].strength) + 1;
     if (tier > MAX_YARD_TIER) continue;
@@ -710,6 +927,329 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
     if (component === 'hull') fillHold(npc, profile, day, events);
     return;
   }
+}
+
+/**
+ * N3 · A CAPTAIN MEETS A PIRATE, AND ANSWERS IT — resolved inside the dusk tick.
+ *
+ * Called from every NPC jump ({@link executeTravel} and {@link executeTrade}), which
+ * is what makes the cast carry the same lane risk the player does. Returns `true`
+ * when the captain lost their ship, so the caller can stop resolving their day.
+ *
+ * ── WHAT IS SHARED, AND WHY THAT IS THE WHOLE POINT ──────────────────────────
+ * Every rule below is the engine's own, reached through the engine's own function:
+ *   · the lane's danger and interception chance — `routeDangerFor`, including the
+ *     loaded-run bump, so a captain hauling INTO a port is in more danger too
+ *   · the interceptor and its tier band — `selectAnonymousInterceptor`
+ *   · every roll — the shared `check()`
+ *   · the fight DC — `10 + interceptor.tier`, the player's number
+ *   · the volley — `weaponVolleyDamage(ship)`
+ *   · the tribute schedule — `tributeForRound`, class and tier-gap modifiers and all
+ *   · the flaw refusal — `interceptorRefusesTribute`, so a Bloodthirsty pirate slams
+ *     the tribute door on a captain exactly as it does on the player
+ *   · the incoming damage — `applyInterceptorHit` (`combatRules.ts`), margin, tier
+ *     gap, shield mitigation and the hull-to-0 kill, one definition for both sides
+ *   · the fuel prices — RUN_FUEL_COST / FIGHT_FUEL_COST
+ *   · the post-kill escape — the opposed PILOT roll with RETREAT_KILL_EDGE
+ *
+ * ── THE ONE SANCTIONED ABSTRACTION, NAMED AT ITS DEFINITION SITE ─────────────
+ * OWNER RULING (2026-07-29): this does NOT call `resolveCombat`. It cannot — that
+ * function spends a die from `player.dawnHand`, and the cast holds no hand until
+ * N13 builds them a decision surface. So the fight runs here, on the primitives
+ * above, and gives up EXACTLY ONE THING: **die CHOICE**. A player picks which of
+ * five visible dice to spend, which is the game's central decision; a captain in the
+ * coarse one-verb day has no hand to pick from, so its die is `rng.d20()`.
+ *
+ * That is a real gap and it is not to be described as parity. **N13 is the step
+ * that closes it** — when the cast holds a hand, the stance picker below reads it
+ * instead of drawing raw, and this note comes out. Until then the PARITY LEDGER
+ * says "shared primitives, one-tick", never "full parity via resolveCombat"; the
+ * 2026-07-29 audit found that exact false claim in this document and it is not to
+ * be re-introduced.
+ *
+ * The second, smaller abstraction: the encounter resolves in ONE tick rather than
+ * spanning days on a fresh hand. `NPC_ENCOUNTER_MAX_ROUNDS` bounds it, and a captain
+ * still on the field at the cap breaks off unharmed.
+ */
+function resolveNpcEncounter(
+  npc: NpcState,
+  profile: NpcProfile,
+  origin: number,
+  destination: number,
+  /** The contract destination when this jump is a delivery — raises the lane a
+   *  danger level, the same rule the player's loaded run obeys. */
+  haulingTo: number | undefined,
+  rng: SeededRng,
+  ctx: NpcDayContext,
+  events: GameEvent[],
+  /** N11 · The captain's LOCAL deed-source batch. See {@link resolveNpcDay} for why
+   *  it is separate from `events`: anything pushed into `events` reaches the shared
+   *  day array (`day.ts`) and would earn the PLAYER the deed. */
+  deedSource: GameEvent[],
+): boolean {
+  const danger = routeDangerFor(origin, destination, ctx.eraEvent, haulingTo);
+  // The multiplier chain, in the player's order. Two of the player's four terms
+  // have NO NPC ANALOGUE and are absent rather than zeroed: a defaulted Penny Wise
+  // loan and a Guild debt flag are player-only mechanics, so there is nothing to
+  // read. That is an absent INPUT, not a threshold tuned so a rule will not bite —
+  // the distinction the standing constraint's consequence 2 turns on.
+  let chance =
+    ctx.era === 'TOUR_ONE'
+      ? danger.routeDangerChance * TOUR_ONE_ENCOUNTER_MULTIPLIER
+      : danger.routeDangerChance;
+  if (npc.ship.hasCloaker) chance *= CLOAK_ENCOUNTER_MULTIPLIER;
+
+  if (rng.next() >= chance) return false;
+
+  const interceptor = selectAnonymousInterceptor(
+    profile.tier,
+    origin,
+    destination,
+    danger.routeDangerLevel,
+    rng,
+  );
+  if (!interceptor) return false;
+
+  const stances: ('talk' | 'run' | 'fight')[] = [];
+  let creditsPaid = 0;
+  let enemyHull = Math.max(1, interceptor.tier);
+  let resolution: 'talked-down' | 'escaped' | 'defeated' | 'destroyed' | 'survived' = 'survived';
+  let round = 1;
+
+  for (; round <= NPC_ENCOUNTER_MAX_ROUNDS; round += 1) {
+    const stance = pickNpcStance(npc, profile, interceptor, round, rng);
+    stances.push(stance);
+
+    if (stance === 'talk') {
+      const demand = tributeForRound(
+        round,
+        interceptor.kind,
+        Math.max(0, interceptor.tier - profile.tier),
+      );
+      // The interceptor's flaw can slam the door — the player's rule, unchanged.
+      const refused = interceptorRefusesTribute(interceptor, rng, events);
+      const result = rollEncounterCheck(
+        npc,
+        profile,
+        Stat.TRADE,
+        'npc-encounter-talk',
+        rng,
+        events,
+        interceptor,
+      );
+      if (!refused && result.success && npc.credits >= demand) {
+        npc.credits -= demand;
+        creditsPaid += demand;
+        resolution = 'talked-down';
+        break;
+      }
+    } else if (stance === 'run') {
+      npc.ship.fuel = Math.max(0, npc.ship.fuel - RUN_FUEL_COST);
+      const result = rollEncounterCheck(
+        npc,
+        profile,
+        Stat.PILOT,
+        'npc-encounter-run',
+        rng,
+        events,
+        interceptor,
+      );
+      if (result.success) {
+        resolution = 'escaped';
+        break;
+      }
+    } else {
+      npc.ship.fuel = Math.max(0, npc.ship.fuel - FIGHT_FUEL_COST);
+      const result = rollEncounterCheck(
+        npc,
+        profile,
+        Stat.GUNS,
+        'npc-encounter-fight',
+        rng,
+        events,
+        interceptor,
+      );
+      if (result.success) {
+        enemyHull = Math.max(0, enemyHull - weaponVolleyDamage(npc.ship));
+        if (enemyHull <= 0) {
+          // The dying interceptor's opposed PILOT retreat — PRD §7.4's miracle
+          // burn, available against a captain exactly as against the player.
+          const enemyDie = rng.d20();
+          const npcDie = rng.d20();
+          const npcPin = npcDie + profile.stats[Stat.PILOT] + RETREAT_KILL_EDGE;
+          const escaped = check(enemyDie, interceptor.stats[Stat.PILOT], npcPin);
+          events.push({
+            type: 'StatCheck',
+            actor: interceptor.name,
+            stat: Stat.PILOT,
+            dc: escaped.dc,
+            result: escaped,
+            actionContext: 'retreat',
+          });
+          resolution = escaped.success ? 'survived' : 'defeated';
+          if (resolution === 'defeated') {
+            npc.credits += COMBAT_SALVAGE_PER_TIER * interceptor.tier;
+          }
+          break;
+        }
+      }
+    }
+
+    // The interceptor answers. Same DC, same damage rule, same killing blow.
+    const pressure = check(
+      rng.d20(),
+      interceptor.stats[Stat.GUNS],
+      interceptorPressureDc(profile.stats),
+    );
+    if (pressure.success) {
+      const hit = applyInterceptorHit(npc.ship, profile.tier, interceptor.tier, pressure, rng);
+      if (hit.shipLost) {
+        resolution = 'destroyed';
+        break;
+      }
+    }
+  }
+
+  const rounds = Math.min(round, NPC_ENCOUNTER_MAX_ROUNDS);
+  // N11 · THE FIGHT AS A DEED SOURCE — the player's own `EncounterResolved`, in the
+  // shape `actions/combat.ts:65` emits it, for the three resolutions that have an
+  // EXACT player analogue: `talked-down`, `escaped`, `defeated` (with the same
+  // `COMBAT_SALVAGE_PER_TIER x tier` the NpcEncounter record already carries). That
+  // is what reaches content `first_combat_win` / `silver_tongue` / `clean_getaway`
+  // through the same matcher the player's fight goes through.
+  //
+  // `survived` and `destroyed` emit NOTHING, deliberately and not as a withholding:
+  // `survived` is the round-limit break-off (or an interceptor that won its own
+  // retreat roll) and `destroyed` is the captain's death — no content deed matches
+  // either resolution today, and inventing a resolution literal so one would is
+  // authoring a rule, not accruing against one.
+  //
+  // The id is a LOCAL correlation id in `travel.ts`'s format. It labels a batch that
+  // never enters `state.eventLog`, so it names no persisted encounter — and no deed
+  // matcher reads `encounterId` (it is not on `EVENT_PATHS.EncounterResolved`).
+  if (resolution === 'talked-down' || resolution === 'escaped' || resolution === 'defeated') {
+    deedSource.push({
+      type: 'EncounterResolved',
+      encounterId: `npc-enc-${ctx.day}-${npc.id}-${origin}-${destination}-${interceptor.id}`,
+      resolution,
+      round: rounds,
+      interceptorId: interceptor.id,
+      ...(resolution === 'defeated'
+        ? { salvageCredits: COMBAT_SALVAGE_PER_TIER * interceptor.tier }
+        : {}),
+    });
+  }
+  events.push({
+    type: 'NpcEncounter',
+    day: ctx.day,
+    npcId: npc.id,
+    interceptorId: interceptor.id,
+    interceptorName: interceptor.name,
+    stances,
+    resolution,
+    rounds,
+    ...(creditsPaid > 0 ? { creditsPaid } : {}),
+    ...(resolution === 'defeated'
+      ? { salvageCredits: COMBAT_SALVAGE_PER_TIER * interceptor.tier }
+      : {}),
+  });
+
+  if (resolution === 'destroyed') {
+    // PERMANENT. No succession, no replacement, no respawn — the seat empties and
+    // stays empty (owner ruling 2026-07-28). The record is MARKED, never deleted,
+    // because the wire, the Honor List's history and the player's grudges all still
+    // reference it; every "living field" reader skips it instead (see the field's
+    // doc comment on `NpcState.dead` for the four that matter).
+    npc.dead = true;
+    events.push({
+      type: 'NpcShipLost',
+      day: ctx.day,
+      npcId: npc.id,
+      npcName: npc.name,
+      interceptorId: interceptor.id,
+      interceptorName: interceptor.name,
+      systemId: destination,
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * N3 · Which corner of the triangle a captain plays this round.
+ *
+ * The player's three options priced by what a captain can actually afford, then
+ * broken by archetype — the same "run, talk, or fight" decision, made without a
+ * hand to read (see the abstraction note on {@link resolveNpcEncounter}).
+ *
+ * The affordability gates come FIRST and they are the honest part: firing costs
+ * FIGHT_FUEL_COST and a captain that cannot pay it cannot shoot, exactly as a player
+ * with a dry tank cannot. A captain who can afford nothing talks, because tribute is
+ * the only corner that costs no fuel.
+ */
+function pickNpcStance(
+  npc: NpcState,
+  profile: NpcProfile,
+  interceptor: EncounterInterceptorState,
+  round: number,
+  rng: SeededRng,
+): 'talk' | 'run' | 'fight' {
+  const canFight = npc.ship.fuel >= FIGHT_FUEL_COST;
+  const canRun = npc.ship.fuel >= RUN_FUEL_COST;
+  const canPay =
+    npc.credits >=
+    tributeForRound(round, interceptor.kind, Math.max(0, interceptor.tier - profile.tier));
+
+  // Outgunned by two tiers or more, nobody's archetype makes them brave.
+  const outgunned = interceptor.tier - profile.tier >= 2;
+
+  switch (profile.archetype) {
+    case 'fighter':
+      if (canFight && !outgunned) return 'fight';
+      return canRun ? 'run' : 'talk';
+    case 'veteran':
+      // Fights what it can beat, buys off what it cannot, runs as a last resort.
+      if (canFight && interceptor.tier <= profile.tier) return 'fight';
+      if (canPay) return 'talk';
+      return canRun ? 'run' : 'talk';
+    case 'smuggler':
+      // Carrying contraband: never stay to chat if the tank can carry you out.
+      if (canRun) return 'run';
+      return canPay ? 'talk' : canFight ? 'fight' : 'talk';
+    case 'trader':
+      // A haul is worth more than a fight — pay the toll and keep the cargo.
+      if (canPay) return 'talk';
+      return canRun ? 'run' : canFight ? 'fight' : 'talk';
+    case 'explorer':
+      if (canRun) return 'run';
+      return canPay ? 'talk' : 'talk';
+    case 'gambler':
+    default: {
+      // Reckless: picks a corner by feel, from what it can afford.
+      const options: ('talk' | 'run' | 'fight')[] = ['talk'];
+      if (canRun) options.push('run');
+      if (canFight && !outgunned) options.push('fight');
+      return options[Math.floor(rng.next() * options.length)];
+    }
+  }
+}
+
+/** N3 · One encounter-round roll for a captain, emitted with an interdiction
+ *  context so it reaches the wire without inflating the T-1201 verb ⟺ StatCheck
+ *  count (see the `actionContext` union in types.ts for why that split matters). */
+function rollEncounterCheck(
+  npc: NpcState,
+  profile: NpcProfile,
+  stat: Stat,
+  actionContext: 'npc-encounter-talk' | 'npc-encounter-run' | 'npc-encounter-fight',
+  rng: SeededRng,
+  events: GameEvent[],
+  interceptor: EncounterInterceptorState,
+): CheckResult {
+  const dc = 10 + interceptor.tier;
+  const result = check(rng.d20(), profile.stats[stat], dc);
+  events.push({ type: 'StatCheck', actor: npc.id, stat, dc, result, actionContext });
+  return result;
 }
 
 /** Buy as many cargo pods as the captain's new hull licenses and their purse (less
@@ -829,38 +1369,178 @@ function rollNpcCheck(
   return result;
 }
 
+/**
+ * N10 · WHICH job a captain takes off a board, by archetype. Exported and pure —
+ * the per-archetype strategy is unit-testable in isolation, which is the one
+ * thing worth salvaging from the reverted first attempt at this step.
+ *
+ * Returns an INDEX into `offers`, because both callers need the index and not
+ * just the contract: the co-located path hands it to `day.ts` to splice out of
+ * the player's live board.
+ *
+ * THE SHAPE, and why it is a score rather than a filter chain. Each archetype
+ * supplies one comparable number per offer; the best-scoring offers are the
+ * candidate set and `rng` breaks the tie. Ties are the common case, not the
+ * corner: a four-offer core board has one danger level across all of it, so a
+ * fighter with nothing to prefer picks uniformly — the honest answer, and the
+ * pre-N10 behaviour, rather than a spurious preference invented by an
+ * argmax-takes-index-0 rule.
+ *
+ * WHAT EACH ARCHETYPE IS ACTUALLY SAYING, since a score table reads as arbitrary
+ * unless the sentence behind each row is written down:
+ *
+ *   - `trader` — the biggest cheque. The professional's read, and the one the
+ *     wealth table already shows them winning with.
+ *   - `veteran` — the biggest cheque PER UNIT OF DISTANCE. Seasoned captains do
+ *     not chase gross revenue across the map; they price the fuel.
+ *   - `gambler` — payment weighted by the destination's danger. The long-odds
+ *     payday: the rim run that pays triple, consequences later.
+ *   - `explorer` — the FARTHEST destination. Same instinct as N4's rim-biased
+ *     `executeTravel`, and it costs them the same way: `routeDangerFor` prices
+ *     the long lane as the dangerous one it is.
+ *   - `fighter` — the most dangerous destination. They are not avoiding trouble;
+ *     a haul is a reason to be somewhere trouble is.
+ *   - `smuggler` — contraband first, then any rim destination. This is N4's
+ *     rim-first filter GENERALISED, not replaced: with contraband absent the
+ *     candidate set is exactly the rim subset N4 filtered to, so the smuggler's
+ *     selection behaviour is deliberately unchanged in shape and their column in
+ *     N4's table stays comparable.
+ */
+export function pickContract(
+  archetype: NpcArchetype,
+  offers: readonly CargoContract[],
+  originSystemId: number,
+  rng: SeededRng,
+): number {
+  // THE ORIGIN IS A PARAMETER, and the reverted attempt is why it is spelled out
+  // here: it measured every archetype's distance reasoning as
+  // `systemDistance(0, destination)` — from system 0, not from where the captain
+  // was standing — and threw `Unknown star system route: 0 -> 11` outright.
+  const score = (offer: CargoContract): number => {
+    const danger = SYSTEM_DANGER_LEVELS[offer.destination] ?? 1;
+    const legDistance = systemDistance(originSystemId, offer.destination);
+    switch (archetype) {
+      case 'trader':
+        return offer.payment;
+      case 'veteran':
+        return offer.payment / Math.max(1, legDistance);
+      case 'gambler':
+        return offer.payment * danger;
+      case 'explorer':
+        return legDistance;
+      case 'fighter':
+        return danger;
+      case 'smuggler':
+        // The contraband test is the CONTENT flag, never the id: `cargoType === 10`
+        // would be the engine restating a content table (constraint 4), and the
+        // same literal has already been factored out of the payment math.
+        return CARGO_TYPES[offer.cargoType]?.isContraband
+          ? 2
+          : STAR_SYSTEMS[offer.destination]?.isRim
+            ? 1
+            : 0;
+    }
+  };
+
+  let best = -Infinity;
+  const candidates: number[] = [];
+  for (let i = 0; i < offers.length; i++) {
+    const value = score(offers[i]);
+    if (value > best) {
+      best = value;
+      candidates.length = 0;
+      candidates.push(i);
+    } else if (value === best) {
+      candidates.push(i);
+    }
+  }
+
+  return candidates[Math.floor(rng.next() * candidates.length)];
+}
+
 function executeTrade(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
   ctx: NpcDayContext,
   events: GameEvent[],
-): { action: NpcAction; claimedContractIndex?: number } {
-  // T-106 contract competition mechanism: when trading in the player's
-  // system, the NPC pulls a SPECIFIC offer off the live manifest board (the
-  // shared per-system job pool) instead of synthesizing one. The caller
-  // splices it from the board and shrinks tomorrow's board generation pool,
-  // so the player watches an offer they saw disappear.
+  /** N11 · The captain's LOCAL deed-source batch — see {@link resolveNpcDay}. */
+  deedSource: GameEvent[],
+): { action: NpcAction; claimedContractIndex?: number; claimedFromPool?: number } {
+  // THE SHARED JOB POOL (T-106, generalised by N10). A captain trading anywhere
+  // works the same per-system pool the player's board is drawn from, through the
+  // engine's own `generateManifestBoard` at the depth that system's pool can
+  // currently supply. Two paths, ONE pool:
+  //
+  //   - IN THE PLAYER'S SYSTEM, with the dusk's claim unspent, they take a
+  //     specific offer off the player's LIVE board — the visible snipe. The
+  //     caller splices it and narrates it.
+  //   - ANYWHERE ELSE they draw the local board and claim from that, and the
+  //     claim debits the same ledger, so the next board the PLAYER sees in that
+  //     system is thinner. `claimedFromPool` carries the system id back to the
+  //     caller, which owns the market record.
+  //
+  // WHY THE SECOND PATH IS NOT THE "PRIVATE BOARD" THE REVERTED ATTEMPT SHIPPED.
+  // That attempt also called `generateManifestBoard` per captain — at a hardcoded
+  // depth of 4, depleting nothing, invisible to the player, which is the parallel
+  // cost model the standing constraint forbids. The difference is the coupling in
+  // BOTH directions: the depth is read from the shared ledger and the claim is
+  // written back to it. Remove either and this becomes that.
   let claimedContractIndex: number | undefined;
+  let claimedFromPool: number | undefined;
   let contract: CargoContract;
   if (ctx.claimableBoard && ctx.claimableBoard.length > 0) {
-    claimedContractIndex = Math.floor(rng.next() * ctx.claimableBoard.length);
+    claimedContractIndex = pickContract(
+      profile.archetype,
+      ctx.claimableBoard,
+      npc.currentSystemId,
+      rng,
+    );
     contract = ctx.claimableBoard[claimedContractIndex]!;
   } else {
-    // N1 · The offer is sized against the ship this captain actually owns,
-    // through the engine's own `contractSpecFromShip` — the same adapter the
-    // player's manifest board uses — instead of a tier-derived phantom spec.
-    contract = rollContract(npc.currentSystemId, rng, contractSpecFromShip(npc.ship), ctx.eraEvent);
+    // N1 · The offers are sized against the ship this captain actually owns,
+    // through `generateManifestBoard`'s own `contractSpecFromShip` — the same
+    // adapter the player's board uses — instead of a tier-derived phantom spec.
+    // N10 · A BOARD, not a single roll: a captain who cannot choose between jobs
+    // has no strategy to express, so the archetype selector would have nothing to
+    // act on and `pickContract` would be decoration.
+    const localBoard = generateManifestBoard(
+      npc.currentSystemId,
+      rng,
+      npc.ship,
+      jobPoolDepth(ctx.jobPoolClaims, npc.currentSystemId),
+      ctx.eraEvent,
+    );
+    contract = localBoard[pickContract(profile.archetype, localBoard, npc.currentSystemId, rng)]!;
+    claimedFromPool = npc.currentSystemId;
   }
 
   const routeDistance = systemDistance(npc.currentSystemId, contract.destination);
   const fuelCost = npcJumpFuelCost(npc.ship, routeDistance);
   refuelIfNeeded(npc, fuelCost, ctx.eraEvent);
   if (npc.ship.fuel < fuelCost) {
-    // Can't fund the haul: the claim never happens (the offer stays on the
-    // board) and the day is lost to the docks.
+    // Can't fund the haul: the claim never happens — the offer stays on the
+    // player's board AND the system's pool is not debited (neither
+    // `claimedContractIndex` nor `claimedFromPool` is returned) — and the day is
+    // lost to the docks.
     return { action: brokeIdle(npc, rng, ctx.day, events) };
   }
+
+  // N11 · THE CLAIM IS SIGNED HERE, and this is the earliest honest place for it:
+  // the bail directly above is where the code's own comment says "the claim never
+  // happens", so past it the manifest IS on this captain's papers. The player's own
+  // sign-contract shape (`actions/trade.ts`), which is what reaches content
+  // `first_manifest` through the same matcher.
+  deedSource.push({
+    type: 'TradeEvent',
+    characterId: npc.id,
+    action: 'sign-contract',
+    success: true,
+    destination: contract.destination,
+    cargoType: contract.cargoType,
+    payment: contract.payment,
+    actionDetails: `Signed a manifest for ${systemName(contract.destination)}.`,
+  });
 
   // Coarse NPC day: sign, jump, deliver in one dusk tick. Real fuel out —
   // the same formula that prices the player's day. The contract is fulfilled
@@ -880,11 +1560,94 @@ function executeTrade(
   // failure, not a payout change. (Verified: a payout/fuel penalty here pushes
   // the seed-1 solvency ratio out of band; this design holds it at baseline.)
   npc.ship.fuel -= fuelCost;
+  const origin = npc.currentSystemId;
   npc.currentSystemId = contract.destination;
-  npc.credits += contract.payment;
   const cargoName = CARGO_TYPES[contract.cargoType]?.name ?? `type-${contract.cargoType} cargo`;
+  // N3 · The loaded run is the dangerous one, for a captain exactly as for the
+  // player: `haulingTo` is the contract destination, which raises the lane a full
+  // danger level inside `routeDangerFor`. A captain lost with the cargo aboard is
+  // never paid — the delivery did not happen.
+  if (
+    resolveNpcEncounter(
+      npc,
+      profile,
+      origin,
+      contract.destination,
+      contract.destination,
+      rng,
+      ctx,
+      events,
+      deedSource,
+    )
+  ) {
+    // N11 · The leg that ended in a wreck, in the player's own interrupted-jump
+    // shape (`actions/travel.ts`, the interdiction branch): no arrival, so
+    // `success: false` — which is why it matches none of the four TravelEvent deeds,
+    // all of which require `success: true`.
+    deedSource.push({
+      type: 'TravelEvent',
+      characterId: npc.id,
+      origin,
+      destination: contract.destination,
+      fuelUsed: fuelCost,
+      success: false,
+      interrupted: true,
+    });
+    // The job was taken off the board even though it was never delivered — the
+    // pool is debited on the CLAIM, not on the payout, which is why a captain
+    // lost with the cargo aboard still thins the port they signed at.
+    return {
+      action: {
+        type: 'Trade',
+        details: `was lost hauling ${cargoName} to ${systemName(contract.destination)}`,
+      },
+      claimedContractIndex,
+      claimedFromPool,
+    };
+  }
+  // N11 · THE JUMP ARRIVED. One `TravelEvent` per jump actually taken, in
+  // `actions/travel.ts`'s arrival shape. Note the parity fact that makes
+  // `success: true` correct even on a rough jump: since T-1605 an ORDINARY player
+  // jump takes no pilot check and ALWAYS arrives, so a captain's failed
+  // `rollNpcCheck('Travel')` costs extra fuel but is still an arrival. Reaches
+  // `first_jump`, `road_regular`, `rimward_bound` and — evaluated against this
+  // captain's own tank — `fuel_fumes_arrival`.
+  deedSource.push({
+    type: 'TravelEvent',
+    characterId: npc.id,
+    origin,
+    destination: contract.destination,
+    fuelUsed: fuelCost,
+    success: true,
+  });
+  npc.credits += contract.payment;
 
   const result = rollNpcCheck(npc, profile, 'Trade', rng, events);
+  // N11 · THE DELIVERY, emitted AFTER the check so no unresolved outcome is stamped
+  // — the reverted attempt's defect #5 fixed at its root rather than by flipping a
+  // flag. `success: true` is the honest value on two pieces of evidence:
+  //
+  //   (i) the PLAYER's delivery emits `success: true` whenever the payment lands
+  //       (`actions/travel.ts`, the activeContract branch) — it is not gated on any
+  //       check either, and the credit above has already landed here;
+  //   (ii) this file's own ruling, forty lines up: the NPC Trade check "decides how
+  //       CLEANLY the run went" and carries NO economic swing by design.
+  //
+  // Gating the deed on `result.success` would make `first_delivery` / `fat_manifest`
+  // / `rim_runner` strictly HARDER for a captain than for the player — an exemption
+  // in the other direction — and it would land that penalty on precisely the
+  // low-TRADE poor captains N11's Disproves limb warns about. Recorded as a ruling
+  // under N11 in `docs/NPC_REDESIGN.md`, not left as a silent code comment.
+  deedSource.push({
+    type: 'TradeEvent',
+    characterId: npc.id,
+    action: 'deliver-cargo',
+    success: true,
+    destination: contract.destination,
+    cargoType: contract.cargoType,
+    payment: contract.payment,
+    actionDetails: `Delivered cargo! Earned ${contract.payment} credits.`,
+  });
   if (result.success) {
     return {
       action: {
@@ -892,6 +1655,7 @@ function executeTrade(
         details: `hauled ${cargoName} to ${systemName(contract.destination)} for ${contract.payment} credits`,
       },
       claimedContractIndex,
+      claimedFromPool,
     };
   }
   return {
@@ -900,6 +1664,7 @@ function executeTrade(
       details: `delivered ${cargoName} to ${systemName(contract.destination)} for ${contract.payment} credits, but the run soured — a rough, costly haul`,
     },
     claimedContractIndex,
+    claimedFromPool,
   };
 }
 
@@ -909,8 +1674,23 @@ function executeTravel(
   rng: SeededRng,
   ctx: NpcDayContext,
   events: GameEvent[],
+  /** N11 · The captain's LOCAL deed-source batch — see {@link resolveNpcDay}. */
+  deedSource: GameEvent[],
 ): NpcAction {
-  const options = NPC_SYSTEM_IDS.filter((id) => id !== npc.currentSystemId);
+  let options = NPC_SYSTEM_IDS.filter((id) => id !== npc.currentSystemId);
+
+  // N4 · An explorer charts the rim rather than the core lanes. Note what this
+  // costs them: `routeDangerFor` prices a rim destination as the dangerous lane it
+  // is, so this preference BUYS the archetype its own mortality rate rather than
+  // being free flavour — which is the half of N3's risk-allocation finding that
+  // an intent weight alone cannot express.
+  if (profile.archetype === 'explorer') {
+    const rimOptions = options.filter((id) => STAR_SYSTEMS[id]?.isRim);
+    if (rimOptions.length > 0) {
+      options = rimOptions;
+    }
+  }
+
   const destination = options[Math.floor(rng.next() * options.length)];
   const fuelCost = npcJumpFuelCost(npc.ship, systemDistance(npc.currentSystemId, destination));
   refuelIfNeeded(npc, fuelCost, ctx.eraEvent);
@@ -918,13 +1698,59 @@ function executeTravel(
     return brokeIdle(npc, rng, ctx.day, events);
   }
   npc.ship.fuel -= fuelCost;
+  const origin = npc.currentSystemId;
   npc.currentSystemId = destination;
+  // N3 · The lane can be interdicted. A captain who loses the ship here is done —
+  // no verb resolves, and their day ends with the wreck.
+  if (
+    resolveNpcEncounter(npc, profile, origin, destination, undefined, rng, ctx, events, deedSource)
+  ) {
+    // N11 · The wreck's leg, in the player's interrupted-jump shape. No arrival, so
+    // `success: false` matches none of the TravelEvent deeds.
+    deedSource.push({
+      type: 'TravelEvent',
+      characterId: npc.id,
+      origin,
+      destination,
+      fuelUsed: fuelCost,
+      success: false,
+      interrupted: true,
+    });
+    return { type: 'Travel', details: `was lost on the run to ${systemName(destination)}` };
+  }
   // A Travel (PILOT) check decides a clean jump vs a rough one (T-1201).
   const result = rollNpcCheck(npc, profile, 'Travel', rng, events);
   if (result.success) {
+    // N11 · The arrival. Same shape and same reasoning as the Trade leg's jump: an
+    // ordinary player jump always arrives (T-1605), so a captain's arrival is
+    // `success: true` on the clean AND the rough branch — see the comment on the
+    // rough branch below, which is the one where the parity fact does the work.
+    deedSource.push({
+      type: 'TravelEvent',
+      characterId: npc.id,
+      origin,
+      destination,
+      fuelUsed: fuelCost,
+      success: true,
+    });
     return { type: 'Travel', details: `jumped to ${systemName(destination)}` };
   }
   npc.ship.fuel = Math.max(0, npc.ship.fuel - NPC_TRAVEL_FAIL_EXTRA_FUEL);
+  // N11 · A ROUGH JUMP IS STILL AN ARRIVAL, and this is where that matters. Since
+  // T-1605 the player's ordinary jump takes no pilot check at all and cannot fail to
+  // arrive; a captain's failed Travel check buys `NPC_TRAVEL_FAIL_EXTRA_FUEL` of
+  // grief, not a cancelled jump. Marking it `success: false` would make the four
+  // TravelEvent deeds harder for a captain than for the player. The extra burn is
+  // subtracted FIRST, so `fuel_fumes_arrival` reads the tank the captain actually
+  // limped in on.
+  deedSource.push({
+    type: 'TravelEvent',
+    characterId: npc.id,
+    origin,
+    destination,
+    fuelUsed: fuelCost + NPC_TRAVEL_FAIL_EXTRA_FUEL,
+    success: true,
+  });
   return {
     type: 'Travel',
     details: `made a rough jump to ${systemName(destination)}, burning extra fuel`,
@@ -1028,6 +1854,18 @@ function executeSocialize(
 
 export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext): NpcDayResult {
   const events: GameEvent[] = [];
+  // N11 · THE CAPTAIN'S OWN DEED-SOURCE BATCH, and it is LOCAL ON PURPOSE — this is
+  // the single most load-bearing structural decision in the step.
+  //
+  // `day.ts` pushes the `events` array this function returns into the same array it
+  // later hands to the PLAYER's `evaluateDeeds`. So a captain's `TradeEvent` /
+  // `TravelEvent` / `EncounterResolved` in `events` would earn the PLAYER
+  // `first_delivery`, `road_regular`, `first_combat_win` and the rest. (Today's
+  // isolation is accidental, not designed: `broker_shark` only escapes because it
+  // requires `actionContext: 'haggle'` and NPC checks are tagged with
+  // `NPC_CHECK_CONTEXT`.) The batch therefore stays here, is evaluated here, and is
+  // discarded here.
+  const deedSource: GameEvent[] = [];
   // The subject's private copy for the day — this is why an NPC's OWN turn does
   // not need `mutableNpc`. The JSON round trip STAYS, against the instinct to
   // match `mutableNpc`'s `structuredClone` on the same type: N1 grew this record
@@ -1039,7 +1877,7 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
   // depth of copy either way, so the cheaper one keeps the line.
   const updatedNpc = JSON.parse(JSON.stringify(npc)) as NpcState;
 
-  const profile = NPC_PROFILES.find((p) => p.id === updatedNpc.profileId);
+  const profile = ALL_NPC_PROFILES.find((p) => p.id === updatedNpc.profileId);
   if (!profile) {
     throw new Error(`Profile not found for NPC ${updatedNpc.id}`);
   }
@@ -1074,6 +1912,7 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
 
   let action: NpcAction;
   let claimedContractIndex: number | undefined;
+  let claimedFromPool: number | undefined;
 
   if (overridden && flawDef) {
     // Flaw Override! The flaw chooses the day.
@@ -1097,11 +1936,12 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
       updatedNpc.ship.fuel = Math.max(0, updatedNpc.ship.fuel + flawDef.fuel);
     }
   } else if (intent === 'Trade') {
-    const result = executeTrade(updatedNpc, profile, rng, ctx, events);
+    const result = executeTrade(updatedNpc, profile, rng, ctx, events, deedSource);
     action = result.action;
     claimedContractIndex = result.claimedContractIndex;
+    claimedFromPool = result.claimedFromPool;
   } else if (intent === 'Travel') {
-    action = executeTravel(updatedNpc, profile, rng, ctx, events);
+    action = executeTravel(updatedNpc, profile, rng, ctx, events, deedSource);
   } else if (intent === 'Combat') {
     action = executeCombat(updatedNpc, profile, rng, ctx, events);
   } else if (intent === 'Patrol') {
@@ -1124,6 +1964,44 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
   //    player's yard die rides beside their trade plan.
   considerRefit(updatedNpc, profile, ctx.day, events);
 
+  // 5. N11 · THE REGISTRY. Same position in the captain's turn as the player's dusk
+  //    evaluation (`day.ts`, after the day's events are collected), through the SAME
+  //    `accrueDeeds` the player goes through — same content `DEEDS`, same
+  //    `RENOWN_DEED_THRESHOLDS`, same `rankForDeedCount`, same CONQUEROR ceiling.
+  //    Draws no rng, which is what keeps the day-loop EVENT goldens byte-identical.
+  //
+  //    COST: `accrueDeeds` is O(sourceEvents x DEEDS) and never scans an event log —
+  //    the historical count rides on `registry.matchCounts`. A captain's batch is at
+  //    most four events against the 44 shipped deeds, and an Idle / Patrol / Socialize day emits
+  //    none at all, so `accrueDeeds`'s empty-batch early return makes those days free.
+  //    That is what fits thirty captains inside the ~40 ms/day envelope N0 bought.
+  //
+  //    THE RETURNED EVENTS ARE DELIBERATELY DISCARDED, and that is a recorded scope
+  //    boundary rather than a silent drop. `DeedEarned`, `RenownRankUp` and the
+  //    rank-citation `WireEntry` are PLAYER-FACING records with no actor field: put a
+  //    captain's on the wire and it renders as the player's own deed and reaches the
+  //    achievement path. The durable record of a captain's standing is the registry
+  //    this call writes; SURFACING it (the daily boast) is N6/N14's job, and it needs
+  //    an actor-tagged event shape that does not exist yet.
+  //
+  //    OWED, AND NAMED SO IT IS NOT MISTAKEN FOR DONE: "careers survived" — the third
+  //    source N11 lists — is UNSOURCED. Content ships no survival/day/career-triggered
+  //    deed, so sourcing it means AUTHORING a new player-facing content deed, which
+  //    moves `rulesFingerprint` and owes its own capstone. An NPC-only deed would be
+  //    the second deed table this step exists to prevent. Likewise `considerRefit` /
+  //    `fillHold` emit no `ShipyardEvent`, so `yard_rat` / `cargo_expansion` do not
+  //    accrue — the cheapest next widening lever if T-023 measures the fighter and
+  //    explorer floors at zero, to be PROPOSED to the owner rather than slipped in.
+  //
+  //    THIS IS THE WRITE SITE for `NpcState.registry`: the captain record is passed
+  //    as the actor itself (no wrapper — see `DeedActor`), so `accrueDeeds` pushes
+  //    onto `updatedNpc.registry.earned`, updates `updatedNpc.registry.matchCounts`
+  //    and re-derives `updatedNpc.registry.renownRank` in place on this captain.
+  accrueDeeds(updatedNpc, deedSource, {
+    day: ctx.day,
+    conquerorLocked: demoLocked(ctx, 'conqueror'),
+  });
+
   updatedNpc.lastAction = action;
 
   events.push({
@@ -1132,5 +2010,5 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
     actionDetails: action.details,
   });
 
-  return { npc: updatedNpc, events, claimedContractIndex };
+  return { npc: updatedNpc, events, claimedContractIndex, claimedFromPool };
 }

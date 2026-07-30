@@ -1,4 +1,9 @@
-import { NAT_WIRE_TEMPLATES, NPC_PROFILES, Stat, WireStoryCategory } from '@spacerquest/content';
+import {
+  NAT_WIRE_TEMPLATES,
+  ALL_NPC_PROFILES,
+  Stat,
+  WireStoryCategory,
+} from '@spacerquest/content';
 import { GameEvent, NpcState } from './types.js';
 import { SeededRng } from './rng.js';
 
@@ -50,7 +55,7 @@ export function natWireStories(
       const loser = pickGambleLoser(event.actor, npcs, rng, playerSystemId);
       if (loser) {
         loserName = loser.name;
-        loserShip = NPC_PROFILES.find((p) => p.id === loser.profileId)?.shipName ?? 'ship';
+        loserShip = ALL_NPC_PROFILES.find((p) => p.id === loser.profileId)?.shipName ?? 'ship';
       } else {
         // No rival to lose the ship to (degenerate single-NPC roster) — fall back
         // to a generic bucket so the "always emit" guarantee never drops an entry.
@@ -110,6 +115,17 @@ function classifyCheck(
         // T-1207: an interceptor's post-kill retreat roll — a nat-20 is the
         // "miracle burn" escape story, its own wire beat.
         return 'retreat';
+      // N3: a captain's rolls inside an interdiction. Each stance routes to the
+      // bucket that reads correctly for what they actually did — a natted run is a
+      // piloting story, a natted tribute a haggling one — so PRD §6's "a natural 20
+      // always generates a story" holds for the cast's fights, not just the
+      // player's.
+      case 'npc-encounter-fight':
+        return 'combat';
+      case 'npc-encounter-run':
+        return 'travel';
+      case 'npc-encounter-talk':
+        return 'haggle';
     }
   }
   if (actor === 'Player') {

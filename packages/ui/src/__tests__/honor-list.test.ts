@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState, type GameState, type ShipState } from '@spacerquest/engine';
+import { NPC_PROFILES, QUEST_PROFILES } from '@spacerquest/content';
 import { honorList, PLAYER_HONOR_LABEL, type HonorTitle } from '../format';
 
 // ---------------------------------------------------------------------------
@@ -59,9 +60,19 @@ describe('N6 · the eight titles', () => {
     ]);
   });
 
-  it('ranks the whole field — the player plus every NPC — on every title', () => {
+  it('ranks the SIMULATION field — the player plus the 30 — on every title', () => {
+    // N3's roster split made the two numbers here different, and conflating them
+    // was a live bug: `state.npcs` carries 41 records (the 30 simulation captains
+    // plus the 11 authored quest characters, who need records because storylet
+    // triggers and dispositions look them up by id), while the BOARD is 31 — the
+    // player plus the 30 who actually take turns. Before the fix this test read
+    // `toHaveLength(30)` against the roster and failed at 41, with the board
+    // silently ranking 42 including eleven captains frozen at their day-1 fit.
     const game = world();
-    expect(game.npcs).toHaveLength(30);
+    expect(game.npcs, 'the roster holds simulation AND quest records').toHaveLength(
+      NPC_PROFILES.length + QUEST_PROFILES.length,
+    );
+    expect(NPC_PROFILES).toHaveLength(30);
     for (const r of honorList(game)) expect(r.field).toBe(31);
   });
 });

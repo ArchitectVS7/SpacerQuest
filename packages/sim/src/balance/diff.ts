@@ -248,6 +248,16 @@ export const HEADLINE_METRICS: readonly string[] = [
   'combatEvAll.median',
   'survival.shipsLost',
   'survival.deathsPer1000Days',
+  // N11/T-022. Added because the alternative is worse than noise: a brand-new path
+  // lands in the long TAIL, and this differ's own first outing proved a reader can
+  // draw the opposite conclusion from a tail (the "3,699 paths" note below). The gate
+  // T-021 opened is the headline of the step T-023 grades, so it prints with the rest.
+  'npcSpecialEquipmentPurchasesPerRun',
+  // N12/T-030, on T-022's argument one step later: a brand-new path otherwise lands
+  // in the long TAIL, where this differ's own first outing proved a reader can draw
+  // the opposite conclusion. Port ownership is the headline of the step N12 grades,
+  // so it prints with the rest rather than below the fold.
+  'portOwnershipRate',
 ];
 
 function formatNumber(value: number): string {

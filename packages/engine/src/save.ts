@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { FLAWS } from '@spacerquest/content';
 import { GameState, ShipState } from './types.js';
 import { validateGameState } from './schema.js';
-import { rankForDeedCount } from './deeds.js';
+import { emptyDeedRegistry, rankForDeedCount } from './deeds.js';
 import { computePlayerTier } from './tier.js';
 import { seedNpcShip } from './npc.js';
+import { JOB_POOL_MAX_CLAIMS } from './economy.js';
 
 // T-1401 · The v5→v6 WireEntry.kind migration's ONE legitimate, retro-only use of
 // the flaw-detail suffix heuristic. A v5 save's WireEntry events predate the typed
@@ -133,6 +134,33 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * intended: because it calls `seedNpcShip` rather than restating a table, a v9
  * save migrating today receives the CURRENT ramp — the only honest answer for a
  * roster that never carried ships at all.
+ *
+ * N10 bumped {@link CURRENT_SAVE_VERSION} to 11, and the v10->v11 change is the
+ * SECOND field MOVE here: `market.npcClaims` (one scalar, claims against the
+ * player's system, reset every dawn) becomes `market.jobPoolClaims` (a sparse
+ * `systemId -> claims` record that persists and regenerates). The old value is
+ * credited to `player.currentSystemId`, which is a statement of fact — the
+ * co-located snipe was the only writer and that dawn's board the only reader, so
+ * the player's system is the only system the scalar could have been about. Note
+ * the contrast with the N2 entry directly above: N2 changed VALUES and correctly
+ * added nothing here; N10 changes the SHAPE, which is what obliges an entry.
+ *
+ * N11 bumped {@link CURRENT_SAVE_VERSION} to 12, and the v11->v12 change is an
+ * ADDITION, not a move: every `NpcState` gains a `registry` (the captain's own deed
+ * ledger and Renown rank). The migration walks the roster and backfills an EMPTY one
+ * through `deeds.ts` `emptyDeedRegistry` — the SAME function `createInitialState` and
+ * `deserializeState` call, per the MIGRATIONS[9] precedent that a migration CALLS a
+ * rule and never restates one. EMPTY IS A STATEMENT OF FACT, not a convenience
+ * default: no save that exists can contain an NPC deed, because until N11 no NPC
+ * could earn one.
+ *
+ * AND IT MUST NOT BE A SYNTHETIC RANK. The obvious "helpful" version of this entry
+ * would seed each captain a rank from their profile tier so the field looks lived-in
+ * on load. N11's ruling forbids exactly that: the fast-forward allowance applies to
+ * the SOURCE (coarse verbs standing in for played days), never to unearned rank, and
+ * a tier-5 captain holding a rank they never earned is the "constant recomputed from
+ * profile" phantom N1 existed to kill. So a migrated roster loads at zero deeds and
+ * LIEUTENANT, and earns from there.
  *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
@@ -275,9 +303,65 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
     });
     return { ...(v9State as object), npcs };
   },
+  // v10->v11: N10 made the job pool SHARED and PER-SYSTEM. `market.npcClaims` (a
+  // single scalar, claims against the player's system only, reset every dawn)
+  // becomes `market.jobPoolClaims` — a sparse `systemId -> claims` record. This is
+  // a MOVE, the second one in this registry after v9->v10, so the same strict-schema
+  // discipline applies: leaving `npcClaims` behind is rejected as an unknown key and
+  // omitting `jobPoolClaims` as a missing one, and a half-done migration therefore
+  // fails loudly instead of quietly.
+  //
+  // WHERE THE OLD VALUE GOES, and why that is a fact rather than a guess: the old
+  // counter could only ever describe the system the player was standing in — it was
+  // incremented solely by the co-located snipe and consumed solely by that dawn's
+  // board — so it is credited to `player.currentSystemId` and nowhere else. Clamped
+  // to `JOB_POOL_MAX_CLAIMS` through the engine's own constant rather than a literal,
+  // per the MIGRATIONS[9] precedent: a migration CALLS a rule, it never restates one
+  // (this is what keeps `save.ts` out of `rulesFingerprint` honest — see
+  // `ENGINE_NON_RULE_SOURCES` in the sim's rules-fingerprint module).
+  //
+  // Idempotent: a state already carrying `jobPoolClaims` keeps it and only sheds a
+  // stray `npcClaims`. A state with no readable market or player is passed through
+  // untouched for the schema to reject — a migration must never be the thing that
+  // throws.
+  10: (v10State) => {
+    const s = v10State as {
+      market?: Record<string, unknown>;
+      player?: { currentSystemId?: unknown };
+    };
+    const market = s.market;
+    if (!market || typeof market !== 'object') return v10State;
+    const { npcClaims, ...rest } = market as { npcClaims?: unknown };
+    const existing = (rest as { jobPoolClaims?: unknown }).jobPoolClaims;
+    if (existing && typeof existing === 'object') {
+      return { ...(v10State as object), market: rest };
+    }
+    const jobPoolClaims: Record<string, number> = {};
+    const systemId = s.player?.currentSystemId;
+    if (typeof npcClaims === 'number' && npcClaims > 0 && typeof systemId === 'number') {
+      jobPoolClaims[String(systemId)] = Math.min(JOB_POOL_MAX_CLAIMS, npcClaims);
+    }
+    return { ...(v10State as object), market: { ...rest, jobPoolClaims } };
+  },
+  // v11->v12: N11 gave every captain a deed registry. Walk the roster and backfill an
+  // empty one through the engine's own `emptyDeedRegistry` — never an inline literal,
+  // and never a rank derived from the profile (see the registry header above for both
+  // reasons). Idempotent: a record that already carries a registry keeps it exactly,
+  // earned deeds and all. A state with no readable roster is passed through untouched
+  // for the schema to reject — a migration must never be the thing that throws.
+  11: (v11State) => {
+    const s = v11State as { npcs?: unknown };
+    if (!Array.isArray(s.npcs)) return v11State;
+    const npcs = (s.npcs as unknown[]).map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const record = entry as { registry?: unknown };
+      return { ...record, registry: record.registry ?? emptyDeedRegistry() };
+    });
+    return { ...(v11State as object), npcs };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 10;
+export const CURRENT_SAVE_VERSION = 12;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

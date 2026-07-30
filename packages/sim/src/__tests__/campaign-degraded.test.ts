@@ -164,16 +164,175 @@ const UNCHANGED_POLICIES = [
  *        byte-identical — `greedy` included, back in its R0a role as the
  *        control for policy work. A second row moving here would have meant the
  *        edit leaked out of `explorerPolicy`, and none did.
+ *
+ * 8. N3 + N4 TOGETHER — and the fact that it is TWO steps in one entry is itself
+ *    the record. ALL SEVEN rows move.
+ *      trader   08b757b5501d8278 -> e25a0fe4ae77c658
+ *      fighter  3868e2a61f07d811 -> aca22292cd206845
+ *      explorer 2755c18f179a8c8a -> e4bea4fbe2af563c
+ *      veteran  aebb5d643c7411cc -> 6f19055026802305
+ *      smuggler 853f1da76afe73c5 -> 0f008671c2f48432
+ *      gambler  976a6f103338f27a -> 8262c90a3fa780d7
+ *      greedy   2f43b0bfb33f35aa -> aecf1a7e5a7d896b
+ *    WHY TWO STEPS SHARE ONE ENTRY: N3 (NPC interdictions, permanent death and
+ *    the 30/11 roster split) shipped WITHOUT re-pinning this table, so these
+ *    seven rows have been red since that commit. The reopened N4 (the Ideal x
+ *    archetype intent blend) then moved them again. Splitting the entry now would
+ *    mean inventing an intermediate column nobody measured, so the honest form is
+ *    one entry naming both — and the lesson, which entry 6 already tried to teach
+ *    the next N-step: RE-PIN THIS TABLE IN THE COMMIT THAT MOVES IT.
+ *    MECHANISM: entry 6's, twice over, and again not one line of any policy
+ *    changed. N3 gave the cast real encounters and permanent death; N4 changed
+ *    what all 30 captains choose to do with a day. Both reach the player through
+ *    the shared dusk rng stream and through contract competition.
+ *      * `greedy` moving is EXPECTED for the same reason entry 6 gives, and this
+ *        is now the third consecutive NPC-side step where it has moved. It is a
+ *        control for POLICY changes only. Reading its movement as a leak would be
+ *        a misdiagnosis both times.
+ *
+ * 9. N10 — the shared per-system job pool. ALL SEVEN rows move, and this entry is
+ *    re-pinned IN THE COMMIT THAT MOVED IT, which is what entries 6 and 8 both
+ *    asked the next N-step to do.
+ *      trader   e25a0fe4ae77c658 -> 6e5587cd62fc3923
+ *      fighter  aca22292cd206845 -> 6bbda5a92b4f0e6b
+ *      explorer e4bea4fbe2af563c -> 46147d5e9ae4fdb9
+ *      veteran  6f19055026802305 -> b62056c846949576
+ *      smuggler 0f008671c2f48432 -> b90fa5cc5e6c2489
+ *      gambler  8262c90a3fa780d7 -> 1ace34c3afb1643b
+ *      greedy   aecf1a7e5a7d896b -> 35760632ac51c736
+ *    MECHANISM: entry 6's again, and once more not one line of any policy changed.
+ *    N10 has TWO distinct routes into these hashes and they are worth separating,
+ *    because only the second is behavioural:
+ *      * SHAPE. `market.jobPoolClaims` replaced `market.npcClaims` in the state,
+ *        and `CampaignStatsReport` gained `contractClaims` while `CampaignDayStats`
+ *        gained `boardDepth` / `contractsSniped`. This hash covers the whole report
+ *        JSON including its shape, so — exactly as entry 4 records for R2c's
+ *        `salvageCredits` — a moved hash here is not by itself evidence of a
+ *        behaviour change.
+ *      * STREAM. A captain trading away from the player now draws a whole local
+ *        board (`generateManifestBoard`) and picks off it (`pickContract`) where
+ *        they used to draw one `rollContract`. That is a different number of rng
+ *        draws per trading captain, so the shared dusk stream diverges and every
+ *        seeded player career re-rolls downstream of the first away-haul.
+ *    WHAT THE SWEEP SAYS, since this table cannot: at the 1,000-seed capstone the
+ *    player's game barely moves (fleet Tour One clear 0.5199 -> 0.5180, fleet final
+ *    credits median 30,425 -> 30,915, deaths/1,000 0.6448 -> 0.6573) while the
+ *    CAST's day-120 median wealth goes 21,884 -> 76,049. That asymmetry is the
+ *    evidence that this is an NPC-side change; see N10's Result in
+ *    docs/NPC_REDESIGN.md.
+ *      * `greedy` moving is EXPECTED, for the fourth consecutive NPC-side step.
+ *        Entry 6 is the standing explanation and it has not needed amending since.
+ *
+ * 10. N11/T-021 — the Renown gate becomes reachable. ALL SEVEN rows move, and this
+ *    entry is re-pinned IN THE COMMIT THAT MOVED IT (entries 6 and 8's standing
+ *    request, honoured for the second consecutive step).
+ *      trader   6e5587cd62fc3923 -> eb116ca31928a037
+ *      fighter  6bbda5a92b4f0e6b -> 3f5a84bb0a65f91d
+ *      explorer 46147d5e9ae4fdb9 -> d865b1b4aadf166c
+ *      veteran  b62056c846949576 -> 306775019564eb9d
+ *      smuggler b90fa5cc5e6c2489 -> 2dd84772323e6206
+ *      gambler  1ace34c3afb1643b -> d3e02794985aafa9
+ *      greedy   35760632ac51c736 -> 8a13d3d1802ef6a2
+ *    MECHANISM: entry 6's, and again not one line of any policy changed. T-020 gave
+ *    the cast a deed registry but nothing read it, so it moved no row here; T-021
+ *    makes `considerRefit` ask the yard for rank-gated special equipment, so a
+ *    captain who has EARNED the CAPTAIN rung spends 10,000cr on a Star Buster /
+ *    Arch Angel instead of on their next component rung. TWO routes into these
+ *    hashes, both world-side:
+ *      * WHAT THE FIELD FLIES. `hasStarBuster` / `hasArchAngel` feed
+ *        `weaponVolleyDamage` and `applyInterceptorHit`, so an armed captain
+ *        survives interdictions they used to lose.
+ *      * WHAT THE FIELD CAN AFFORD NEXT. The 10,000cr is money not spent on a
+ *        component rung, so refuelling, jumping and hauling all shift for that
+ *        captain — and a captain who can now fund a jump takes rng draws they
+ *        previously skipped (`brokeIdle`), so the shared dusk stream diverges.
+ *    THE DIRECT EVIDENCE that this is NPC-side, measured rather than asserted (the
+ *    day-loop golden's own note carries the numbers): over the golden's ten-day
+ *    window SEVEN gated purchases fire (5x Star Buster, 2x Arch Angel) while ALL 176
+ *    non-NPC events in the stream — every player StatCheck, DawnRoll, TradeEvent,
+ *    TravelEvent, DeedEarned, RenownRankUp, DebtPayment, StoryletOffered,
+ *    DispositionChanged and ContractClaimed — diff BYTE-IDENTICAL.
+ *    WHAT THIS TABLE CANNOT SAY, stated so nobody reads a verdict into it: across
+ *    these 35 runs (7 policies x 5 seeds x 40 days) player final credits move median
+ *    7,370 -> 5,070 and mean 9,511 -> 8,554, deed count median 16 -> 17, and offers
+ *    sniped by the cast 282 -> 295 — with the per-policy direction MIXED (trader
+ *    12,498 -> 14,600 and greedy 1,280 -> 2,680 up, veteran 9,335 -> 5,070 and
+ *    gambler 11,080 -> 7,287 down). Five seeds cannot separate that from stream
+ *    noise. T-023 owns the authoritative capstone and the four-limb verdict; do not
+ *    tune anything off this window.
+ *      * `greedy` moving is EXPECTED, for the fifth consecutive NPC-side step.
+ *
+ * 11. N11/T-022 — the instrument learns to SEE the Renown gate. ALL SEVEN rows move
+ *    and NOT ONE CAREER CHANGED. This is the purest SHAPE-ONLY entry in the log, and
+ *    unlike entry 4's `salvageCredits` and entry 9's shape bullet — both of which
+ *    asserted "shape only" and left the reader to believe it — this one is PROVEN:
+ *      trader   eb116ca31928a037 -> 40c03627bc30e5fa
+ *      fighter  3f5a84bb0a65f91d -> 298315eaa3494e41
+ *      explorer d865b1b4aadf166c -> 6e4e53ecb734b805
+ *      veteran  306775019564eb9d -> f5813a71e402402a
+ *      smuggler 2dd84772323e6206 -> 807c06d614d84fb6
+ *      gambler  d3e02794985aafa9 -> eb5ab6b0dea7b673
+ *      greedy   8a13d3d1802ef6a2 -> 38c0405f24b71b87
+ *    MECHANISM: `CampaignStatsReport` gained `npcSpecialEquipmentPurchases` and
+ *    `CampaignDayStats` gained `npcSpecialEquipmentBought`. This fingerprint hashes
+ *    the whole report JSON, shape included, so seven new keys plus forty per-day
+ *    keys move every hash on their own.
+ *    THE PROOF, run locally over these exact 35 careers rather than claimed: with
+ *    `npcSpecialEquipmentPurchases` deleted from the report and
+ *    `npcSpecialEquipmentBought` stripped from every `daily` entry, each policy's
+ *    hash is BYTE-IDENTICAL to its entry-10 value above — all seven. Two structural
+ *    facts say why that had to hold: `rulesFingerprint` did not move (no engine or
+ *    content file is touched by this step), and the new measurement draws NO rng —
+ *    it is a state comparison across `endDay` and a `.map` over the sampled field —
+ *    so no seeded career can diverge.
+ *    WHAT THIS TABLE CANNOT REACH, worth naming so nobody looks for it here: the
+ *    other half of T-022 is `MilestoneSample.npcDeedCount` / `npcRenownRank`, and
+ *    these runs are made WITHOUT `milestoneDays`, so `milestones` is absent from
+ *    every report hashed above and the sampler change cannot touch these numbers.
+ *    Its reader is `campaign-renown.test.ts`.
+ *
+ * 12. N12/T-030 — the instrument learns to SEE PORTS. ALL SEVEN rows move and NOT
+ *    ONE CAREER CHANGED. Entry 11's shape-only form, repeated deliberately: the
+ *    claim is PROVEN below rather than asserted.
+ *      trader   40c03627bc30e5fa -> f3e01b2a843c1c0f
+ *      fighter  298315eaa3494e41 -> dc6ca4fbcce58659
+ *      explorer 6e4e53ecb734b805 -> 616ad4c19c3f60b9
+ *      veteran  f5813a71e402402a -> f701430cfe32f7cb
+ *      smuggler 807c06d614d84fb6 -> abbaf33b67be9f19
+ *      gambler  eb5ab6b0dea7b673 -> fbb8b4df794fa5f4
+ *      greedy   38c0405f24b71b87 -> 0f2ff82982dcbf2d
+ *    MECHANISM: `CampaignStatsReport` gained exactly ONE key, `portsOwned` — the
+ *    player's stake count at the horizon, read off the final state as a STOCK. No
+ *    per-day key was added (a stake is a holding, not an event), so unlike entry 11
+ *    this is seven new keys and not seven plus forty. This fingerprint hashes the
+ *    whole report JSON, shape included, so one key per report moves every hash on
+ *    its own.
+ *    THE PROOF, run locally over these exact 35 careers rather than claimed: with
+ *    `portsOwned` deleted from the report, each policy's hash is BYTE-IDENTICAL to
+ *    its entry-11 value above — all seven, no exceptions. Two structural facts say
+ *    why that had to hold: `rulesFingerprint` did not move (this step touches no
+ *    engine and no content file — it adds no `ports` field to `NpcState`, precisely
+ *    so that it would not), and the new measurement draws NO rng — it is
+ *    `state.player.ports.length` and a `.map` over the sampled field — so no seeded
+ *    career can diverge.
+ *    WHAT THIS TABLE CANNOT REACH, for the same reason entry 11 records: the other
+ *    half of T-030 is `MilestoneSample.player.ports` / `npcPortCount`, and these
+ *    runs are made WITHOUT `milestoneDays`, so `milestones` is absent from every
+ *    report hashed above and the sampler change cannot touch these numbers. Its
+ *    reader is `campaign-ports.test.ts`.
+ *      * `greedy` moving is EXPECTED, and here for the SHAPE reason of entries 4
+ *        and 11 rather than the world-side reason of entry 6 — no policy and no
+ *        NPC behaviour changed at this step at all.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: '08b757b5501d8278',
-  fighter: '3868e2a61f07d811',
-  explorer: '2755c18f179a8c8a',
-  veteran: 'aebb5d643c7411cc',
-  smuggler: '853f1da76afe73c5',
-  gambler: '976a6f103338f27a',
-  greedy: '2f43b0bfb33f35aa',
+  trader: 'f3e01b2a843c1c0f',
+  fighter: 'dc6ca4fbcce58659',
+  explorer: '616ad4c19c3f60b9',
+  veteran: 'f701430cfe32f7cb',
+  smuggler: 'abbaf33b67be9f19',
+  gambler: 'fbb8b4df794fa5f4',
+  greedy: '0f2ff82982dcbf2d',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

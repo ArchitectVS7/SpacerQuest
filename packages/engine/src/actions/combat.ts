@@ -1,33 +1,35 @@
 import {
-  FLAWS,
   Stat,
   COMBAT_SALVAGE_PER_TIER,
   RUN_FUEL_COST,
   FIGHT_FUEL_COST,
   TRIBUTE_BASE_MULTIPLIER,
   TRIBUTE_MAX,
-  TRIBUTE_CLASS_MULTIPLIER,
-  TRIBUTE_TIER_GAP_STEP,
   RETREAT_KILL_EDGE,
-  TIER_GAP_DAMAGE_BONUS,
-  BIG_HIT_MARGIN,
-  HULL_DAMAGE_WEIGHT,
-  SYSTEM_DAMAGE_WEIGHT,
   DISPOSITION_DELTAS,
   TALK_DC_PER_DISPOSITION,
-  AnonymousInterceptorKind,
   PATROL_TRIBUTE_LEAGUE_DELTA,
   PATROL_EVADED_LEAGUE_DELTA,
 } from '@spacerquest/content';
-import { GameState, GameEvent, PlayerAction, EncounterState, ShipComponentId } from '../types.js';
+import { GameState, GameEvent, PlayerAction, EncounterState } from '../types.js';
 import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { completePendingTravel } from './travel.js';
 import { applyDisposition } from '../npc.js';
 import { applyReputation } from '../reputation.js';
 import { applySuccession } from '../legacy.js';
-import { shieldMitigation, weaponVolleyDamage } from '../components.js';
+import { weaponVolleyDamage } from '../components.js';
 import { cloneState } from '../clone.js';
+// N3 · The rules neither side owns. `applyInterceptorHit` and
+// `interceptorPressureDc` were inlined in this file, reachable only through
+// `state.player.*`; they now live in a neutral module so the NPC's dusk encounter
+// calls the SAME definitions. See combatRules.ts for why it is a separate file.
+import {
+  applyInterceptorHit,
+  interceptorPressureDc,
+  interceptorRefusesTribute,
+  tributeForRound,
+} from '../combatRules.js';
 
 // Combat balance numbers are data — sourced from @spacerquest/content
 // (see packages/content/src/combat.ts for values, foundation citation, and the
@@ -35,120 +37,13 @@ import { cloneState } from '../clone.js';
 // importers of these names keep resolving through the engine surface.
 export { RUN_FUEL_COST, FIGHT_FUEL_COST, TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX };
 
-const DAMAGE_COMPONENTS: readonly ShipComponentId[] = [
-  'shields',
-  'drives',
-  'weapons',
-  'hull',
-  'navigation',
-  'lifeSupport',
-  'robotics',
-  'cabin',
-];
-
-/**
- * T-1207: the demanded tribute for a round, scaled by the interceptor's CLASS.
- * The base round schedule (min(round·base, max)) is multiplied by the class
- * modifier (TRIBUTE_CLASS_MULTIPLIER — Brigand ÷2, Reptiloid ×2, everyone else
- * ×1) and re-capped at TRIBUTE_MAX. Anonymous interceptors carry a `kind`; named
- * interceptors do not, so they take the unmodified ×1 schedule.
- *
- * T-1401 · This is already surfaced through the engine barrel (index.ts
- * `export *`), so the "UI export pack" is just this existing symbol. CONSUMER:
- * T-1402 replaces the UI's own `tributeThisRound` reimplementation (format.ts,
- * ~L521 — which ignores the class modifier and can therefore preview a Brigand /
- * Reptiloid tribute the engine never charges) with a call to THIS function, so the
- * previewed demand matches the `TributeDemanded`/`TributePaid` the engine emits.
- *
- * T-1603c adds `tierGap` — how many TIERS the interceptor outranks the player by
- * (negative or zero when the player outranks, which costs nothing extra). An
- * interceptor holding the stronger hand prices accordingly:
- * `TRIBUTE_TIER_GAP_STEP` (content) per tier of gap, applied alongside the class
- * modifier and re-capped at TRIBUTE_MAX. See the constant's own comment for the
- * measurement that motivated it — tribute is ~95% of an unprepared encounter's
- * credit cost, so this is the lever that actually moves the parity axis of the
- * balance table. Defaults to 0 so every existing caller keeps its exact schedule.
- * Consumes no rng.
- */
-export function tributeForRound(
-  round: number,
-  kind?: AnonymousInterceptorKind,
-  tierGap = 0,
-): number {
-  const base = Math.min(round * TRIBUTE_BASE_MULTIPLIER, TRIBUTE_MAX);
-  const mult = kind ? TRIBUTE_CLASS_MULTIPLIER[kind] : 1;
-  const gapMult = 1 + TRIBUTE_TIER_GAP_STEP * Math.max(0, tierGap);
-  return Math.min(TRIBUTE_MAX, Math.floor(base * mult * gapMult));
-}
-
-function enemyRefusesTribute(
-  encounter: EncounterState,
-  rng: SeededRng,
-  events: GameEvent[],
-): boolean {
-  const flaw = encounter.interceptor.flaw;
-  if (!flaw) return false;
-
-  const flawDef = FLAWS[flaw];
-  if (!flawDef || !flawDef.refusesTribute) return false;
-
-  const dc = encounter.interceptor.flawDc ?? 10;
-  const die = rng.d20();
-  const resisted = die >= dc;
-  events.push({
-    type: 'FlawCheck',
-    npcId: encounter.interceptor.id,
-    flaw,
-    die,
-    dc,
-    resisted,
-  });
-  return !resisted;
-}
-
-/**
- * T-1205 seeded damage targeting. Replaces the old deterministic
- * `(round - 1) % 8` rotation, under which hull could only ever be struck on rounds
- * 4, 12, 20, … — so a never-miss interceptor needed 68 rounds to kill a
- * full-condition hull, and `ComponentDamaged` on the other components was pure
- * theatre. A uniform seeded pick makes EVERY component (hull included) reachable
- * on ANY round. FOUNDATION DIVERGENCE — foundation (f2f95fa9) resolved enemy
- * vandalism against a fixed cascade order (shields→cabin→nav→…→hull); the engine
- * uses a flat seeded pick so the property "hull is damageable on any round" holds
- * without threading cascade state through the encounter. The draw is taken ONLY on
- * a successful hit (after the d20 check) so the miss stream — and every existing
- * golden that turns on a missed pressure roll — is byte-identical.
- *
- * T-1603c: the pick is now WEIGHTED, not uniform (content `HULL_DAMAGE_WEIGHT` /
- * `SYSTEM_DAMAGE_WEIGHT`). FOUNDATION DIVERGENCE, third revision, stated in full:
- * foundation (f2f95fa9) resolved enemy vandalism against a fixed cascade
- * (shields→cabin→nav→…→hull); T-1205 flattened that to a uniform 1-in-8; T-1603c
- * re-weights the hull because the uniform pick made the killing blow
- * arithmetically unreachable — 9 hull condition at 1 per ordinary hit is ~72
- * landed hits against 2–4-round encounters, and the sweep measured ONE combat
- * defeat in 34,000+ encounters (`docs/balance/BASELINE-T-1603a.md` §4). The
- * weighting is a middle position between foundation's cascade and T-1205's flat
- * pick: every component including life support stays reachable on any round, but
- * the hull is struck 30% of the time rather than 12.5%.
- *
- * RNG-STREAM-PRESERVING: exactly ONE `rng.next()` is consumed, as before, in the
- * same position in the stream. Only the VALUE the draw maps to moves — which is
- * what confines this task's golden fallout to damaged-component payloads and
- * leaves every session `rngState` untouched.
- *
- * READER: `applyEnemyPressure` (below). Covered by `combat-property.test.ts`
- * (weight distribution + rounds-to-kill) and `encounter.test.ts`.
- */
-function damageComponentForHit(rng: SeededRng): ShipComponentId {
-  const total =
-    HULL_DAMAGE_WEIGHT + SYSTEM_DAMAGE_WEIGHT * Math.max(0, DAMAGE_COMPONENTS.length - 1);
-  let roll = rng.next() * total;
-  for (const id of DAMAGE_COMPONENTS) {
-    roll -= id === 'hull' ? HULL_DAMAGE_WEIGHT : SYSTEM_DAMAGE_WEIGHT;
-    if (roll < 0) return id;
-  }
-  return 'hull';
-}
+// N3 · `tributeForRound` and the flaw-refusal roll MOVED to the neutral
+// `combatRules.ts` so the cast can pay tribute through the same schedule (this
+// file imports `../npc.js`, so npc.ts cannot import it back). Re-exported here
+// because `tributeForRound` is part of the engine's public surface — the barrel
+// (index.ts `export *`) and the UI's tribute preview both resolve it through this
+// module, and T-1401/T-1402 made that preview a pass-through to this exact symbol.
+export { tributeForRound };
 
 function resolveEncounter(
   state: GameState,
@@ -256,7 +151,9 @@ function applyEnemyPressure(
 ): void {
   const round = encounter.round;
   const die = rng.d20();
-  const dc = 10 + state.player.stats[Stat.GRIT];
+  // N3 · `10 + defender GRIT`, from `combatRules.ts` — the same DC the cast is
+  // shot at, so a future tweak cannot move one side without the other.
+  const dc = interceptorPressureDc(state.player.stats);
   const result = check(die, encounter.interceptor.stats[Stat.GUNS], dc);
 
   events.push({
@@ -277,55 +174,34 @@ function applyEnemyPressure(
   });
 
   if (result.success) {
-    // T-1205: the struck component is a seeded pick (hull reachable on any round),
-    // drawn only now that the hit landed so misses don't perturb the rng stream.
-    const component = damageComponentForHit(rng);
-    const target = state.player.ship[component];
-    const previousCondition = target.condition;
-    // T-1202 (PRD §6 "the margin decides how well it goes"): a clean interceptor
-    // hit bites deeper. A natural 20 removes 3 condition, a big-margin (>=10) hit
-    // 2, an ordinary hit the base 1. FOUNDATION DIVERGENCE — foundation (f2f95fa9)
-    // resolved enemy damage as a flat vandalism roll with no d20 margin; the
-    // margin scaling is new. The BIG_HIT_MARGIN threshold (content, lifted out of
-    // this file by T-1603c) is deliberately out of reach for the low-GUNS
-    // rank-and-file (margin = die + interceptorGUNS - (10+playerGRIT)), so
-    // ordinary interceptors still chip the base amount; only strong guns or a
-    // nat-20 land the deeper hit.
-    //
-    // T-1603c TIER-GAP SEVERITY: an interceptor that OUTRANKS the player adds
-    // TIER_GAP_DAMAGE_BONUS per tier of gap. `chooseTargetTier` (travel.ts) bands
-    // the interceptor to [playerTier-1, playerTier+1], so this is +1 in the
-    // `below`-parity bucket and 0 otherwise — a x2 lever on the base hit, not an
-    // open-ended one. It is added BEFORE mitigation is subtracted on purpose: the
-    // extra is exactly what upgraded shields eat, so preparation pays off most
-    // when the player is outgunned (memo §11, Flag 3). Consumes NO rng.
-    const tierGap = Math.max(0, encounter.interceptor.tier - state.player.tier);
-    const raw =
-      (result.nat20 ? 3 : result.margin >= BIG_HIT_MARGIN ? 2 : 1) +
-      TIER_GAP_DAMAGE_BONUS * tierGap;
-    // T-1205 shields → mitigation: the player's shields absorb condition off the
-    // incoming hit. A junker (shields score 1) mitigates 0, so the raw damage is
-    // unchanged; upgraded shields subtract more, capped by the raw hit so a nat-20
-    // (raw 3) still penetrates strong shields for at least (3 - mitigation). This
-    // is what makes "upgraded shields reduce damage taken" true, and keeps the hull
-    // killable. READER OF `shields`: this line (via components.ts shieldMitigation).
-    const mitigated = Math.min(raw, shieldMitigation(state.player.ship));
-    const dmg = raw - mitigated;
-    target.condition = Math.max(0, target.condition - dmg);
+    // N3 · The damage rule now lives in `combatRules.ts` — ONE definition, called
+    // both here and by the NPC's dusk encounter (`npc.ts` `resolveNpcEncounter`),
+    // so the player and the cast cannot be shot at on different terms. The three
+    // scaling terms (margin, tier gap, shields) and their full history are
+    // documented at `applyInterceptorHit`; the component pick is still drawn only
+    // now that the hit landed, so the miss stream stays byte-identical.
+    const hit = applyInterceptorHit(
+      state.player.ship,
+      state.player.tier,
+      encounter.interceptor.tier,
+      result,
+      rng,
+    );
+    const { component, previousCondition, newCondition, amount, mitigated } = hit;
     events.push({
       type: 'ComponentDamaged',
       encounterId: encounter.id,
       component,
       previousCondition,
-      newCondition: target.condition,
-      amount: previousCondition - target.condition,
+      newCondition,
+      amount,
       // Shields' visible consumption: how much of the raw hit they soaked. 0 for a
-      // junker; a full absorb (dmg === 0) emits amount 0 with mitigated === raw so
-      // the wire can narrate the shields holding. READER: wire.ts + ui format.ts.
+      // junker; a full absorb (amount === 0) emits amount 0 with mitigated === raw
+      // so the wire can narrate the shields holding. READER: wire.ts + ui format.ts.
       mitigated,
     });
 
-    if (component === 'hull' && target.condition === 0) {
+    if (hit.shipLost) {
       events.push({
         type: 'ShipLost',
         day: state.day,
@@ -706,7 +582,7 @@ function resolveTalk(
 
   // 1. Flaw refusal FIRST: some interceptors want blood, not credits. Talking
   //    cannot resolve — the enemy presses on and the tribute escalates.
-  if (enemyRefusesTribute(encounter, rng, events)) {
+  if (interceptorRefusesTribute(encounter.interceptor, rng, events)) {
     const affordable = state.player.credits >= amount;
     events.push({
       type: 'CombatEvent',

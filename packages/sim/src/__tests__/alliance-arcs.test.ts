@@ -255,21 +255,33 @@ describe('T-1503 reputation moves through 100 days of play (organic, not injecte
     // one of the seeds firing TWO distinct organic reasons (`patrol-tribute` and
     // `patrol-evaded`), so it carries both halves of the acceptance with the most
     // margin — the same selection rule the previous two re-pins used.
-    // PINNED, NOT STEERED: only the seed changed.
-    const state = driveCompetentCampaign(veteranPolicy, 1, 100);
-
-    // Some faction standing is nonzero (rep actually moved through play).
-    const reps = Object.values(state.player.reputation);
-    expect(reps.some((v) => v !== 0)).toBe(true);
-
-    // The moves went through the real event trail (never injected).
-    const repEvents = state.eventLog.filter(
-      (e): e is Extract<GameEvent, { type: 'ReputationChanged' }> => e.type === 'ReputationChanged',
-    );
-    expect(repEvents.length).toBeGreaterThan(0);
-
-    // At least one move came from an ORGANIC source (patrol/smuggling/port — not a
-    // questline grant), proving the organic movers fire in ordinary play.
+    // ===================================================================
+    // N4: THE SEED TREADMILL ENDS HERE — THIS IS NOW A SWEEP PROPERTY.
+    //
+    // The five re-pins above (3 -> 6 -> 2 -> 3 -> 1) are five different upstream
+    // changes producing the SAME failure, and each one's own note says why: the
+    // organic half depends on the interceptor SEQUENCE, so anything that moves
+    // the rng stream re-rolls it. N4 is the sixth (the archetype blend moves all
+    // 30 NPC turns, and the dusk stream is shared), and picking a sixth lucky
+    // seed would guarantee a seventh re-pin. The precedent for the fix is in this
+    // repo already, in `campaign.test.ts`'s route-churn test: *"Rather than
+    // re-pick a lucky seed, this asserts the property over a seed sweep."*
+    //
+    // The ACCEPTANCE is unchanged and neither half is weakened — the sweep makes
+    // both STRONGER than any single seed could:
+    //   · nonzero rep + a real event trail is now required of EVERY seed
+    //     (measured 20/20 — it was never the fragile half);
+    //   · an organic mover is required of a MINIMUM SHARE of seeds, so the
+    //     mechanism has to work in ordinary play rather than in one career.
+    // MEASURED, seeds 1..20 of this exact driver: all 20 end nonzero with 1-15
+    // ReputationChanged events; 10 of 20 fire an organic mover (2, 5, 6, 9, 11,
+    // 13, 14, 15, 18, 19), seed 9 firing two distinct reasons. The floor is set
+    // at 5 of 20 — HALF the observed rate, so it is a detector with real headroom
+    // rather than a number pinned to today's measurement. Cost: 1.9s for all 20.
+    // ===================================================================
+    const SWEEP_SEEDS = 20;
+    /** See the measurement above: observed 10/20, asserted 5/20. */
+    const ORGANIC_SEED_FLOOR = 5;
     const organicReasons = new Set([
       'patrol-tribute',
       'patrol-evaded',
@@ -277,8 +289,37 @@ describe('T-1503 reputation moves through 100 days of play (organic, not injecte
       'fence-dealt',
       'port-deal',
     ]);
-    expect(repEvents.some((e) => organicReasons.has(e.reason))).toBe(true);
-  }, 30000);
+
+    let organicSeeds = 0;
+    for (let seed = 1; seed <= SWEEP_SEEDS; seed += 1) {
+      const state = driveCompetentCampaign(veteranPolicy, seed, 100);
+
+      // Some faction standing is nonzero (rep actually moved through play) — of
+      // every seed, not of a chosen one.
+      const reps = Object.values(state.player.reputation);
+      expect(
+        reps.some((v) => v !== 0),
+        `seed ${seed} moved no reputation`,
+      ).toBe(true);
+
+      // The moves went through the real event trail (never injected).
+      const repEvents = state.eventLog.filter(
+        (e): e is Extract<GameEvent, { type: 'ReputationChanged' }> =>
+          e.type === 'ReputationChanged',
+      );
+      expect(repEvents.length, `seed ${seed} logged no ReputationChanged`).toBeGreaterThan(0);
+
+      // ORGANIC source (patrol/smuggling/port — not a questline grant): counted
+      // across the sweep rather than demanded of each career, because a single
+      // 100-day career meeting no patrol it can tribute or evade is ordinary
+      // variance, not a regression.
+      if (repEvents.some((e) => organicReasons.has(e.reason))) organicSeeds += 1;
+    }
+    expect(
+      organicSeeds,
+      `only ${organicSeeds}/${SWEEP_SEEDS} seeds fired an organic reputation mover`,
+    ).toBeGreaterThanOrEqual(ORGANIC_SEED_FLOOR);
+  }, 60000);
 });
 
 describe('T-1503 alliance arcs — completion (organic reputation gates + cross-faction join)', () => {

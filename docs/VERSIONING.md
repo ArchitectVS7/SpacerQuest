@@ -50,11 +50,39 @@ labour is the point: the version answers "which release", the SHA answers "which
 
 | | bump | example |
 | --- | --- | --- |
-| **PATCH** `0.5.0 → 0.5.1` | a release with fixes or content inside the current track | a balance re-pin cut for a playtester |
-| **MINOR** `0.5.0 → 0.6.0` | a release after a whole TRACK lands | all of N0–N8 done, i.e. NPCs at player parity |
+| **PATCH** `0.5.1 → 0.5.2` | **the active work track changes** (amended 2026-07-30 — see below) | starting the Explore/Hangout rebuild |
+| **MINOR** `0.5.x → 0.6.0` | a development PHASE closes — see the phase ladder below | not yet decided; owed |
 | **MAJOR** `0.x → 1.0.0` | public release, once | not yet |
 
-**"Track" means a named series of related steps in `BALANCE-REDESIGN-WORKLIST.md`,** and
+> [!IMPORTANT]
+> **AMENDED 2026-07-30 — THE PATCH NUMBER NOW MARKS THE ACTIVE WORK TRACK.** Owner
+> decision, recorded because it reverses the rule immediately above it and the reversal
+> should be arguable rather than discovered.
+>
+> **What changed.** PATCH no longer means "a release someone received". It is a marker for
+> *which body of work the tree is in the middle of* — `0.5.1` was the N-series parity run,
+> `0.5.2` is the Explore/Hangout rebuild. It moves when a track starts, not when a build
+> ships. `CHANGELOG.md` carries a one-or-two-line entry per patch saying which track it was.
+>
+> **Why that is not a contradiction of the reasoning above, which still stands on its own
+> terms.** That reasoning turns on one premise: *the version answers "I hit a bug — which
+> build were you running?"* **In a pre-release environment there are no builds people
+> receive**, so that question has no askers yet, and the field is free to do a job that
+> actually helps today — telling the owner, the changelog and a returning sub-agent which
+> track a commit belongs to. The SHA still answers "which code", exactly as before; nothing
+> about that division was load-bearing on PATCH specifically.
+>
+> **When the old reasoning becomes live again: at the ALPHA boundary**, which is the first
+> time a build reaches anyone who is not the author. At that point "which build were you
+> running?" acquires a real asker and the field has to go back to answering it. See the
+> phase ladder — this is precisely why the ladder exists.
+>
+> **The worked example above is therefore historical**, not current practice: ten commits
+> landing without a bump was right under the old rule and would still be right today (ten
+> commits inside ONE track move nothing). What has changed is that finishing a track and
+> starting another now DOES move it, with no build involved.
+
+**"Track" means a named series of related steps in the balance worklists — `BALANCE-REDESIGN-WORKLIST.md` (R-series) and `NPC_REDESIGN.md` (N-series),** and
 "lands" means the whole series is finished — not one step of it. There are two today: the
 **R-series** (the balance redesign: R0a, R0b, R1, R2, R2c, R2d, R2.5, R4, R5…) and the
 **N-series** (N0–N8, bringing the 30 NPCs to player parity). Finishing N1 alone does not
@@ -97,15 +125,18 @@ derives its tag from the root and needs no edit.
 
 ### Prerelease stage — and we are at ALPHA
 
-`0.5.0` says how mature the code is. It does **not** say how validated it is. That is the
-stage, it lives in the git tag, and it must not be inflated.
+The product number says how mature the code is. It does **not** say how validated it is. That is the
+stage, it lives in the git tag, and it must not be inflated. **The tag examples below are
+deliberately written as `v<version>` rather than against a specific number**: the phase
+ladder predicts *when* each stage is expected, but the stage is earned by its entry criteria
+at whatever version the tree happens to be on.
 
 | stage | tag | means | entry criteria |
 | --- | --- | --- | --- |
 | **pre-alpha** | *(no tag)* | nobody has played this build end to end | — **we are here** |
-| **alpha** | `v0.5.0-alpha.N` | internal only; systems still in flux | **the owner's own UAT passes** — played start to finish, holds together |
-| **beta** | `v0.5.0-beta.N` | feature-complete for the release scope; external testers | no known-red tests; balance graded against a CURRENT baseline; N-series complete |
-| **rc** | `v0.5.0-rc.N` | we would ship this if nothing new appears | beta feedback triaged; only blocker fixes since; `RELEASE-CHECKLIST.md` fully green incl. §G sign-off |
+| **alpha** | `v<version>-alpha.N` | internal only; systems still in flux | **the owner's own UAT passes** — played start to finish, holds together |
+| **beta** | `v<version>-beta.N` | feature-complete for the release scope; external testers | no known-red tests; balance graded against a CURRENT baseline; N-series complete |
+| **rc** | `v<version>-rc.N` | we would ship this if nothing new appears | beta feedback triaged; only blocker fixes since; `RELEASE-CHECKLIST.md` fully green incl. §G sign-off |
 | **release** | `v1.0.0` | public | the above, plus the decision to ship |
 
 **WHY THIS SECTION EXISTS.** `scripts/tag-rc.mjs` derives `v${version}-rc1` and
@@ -125,7 +156,7 @@ screen once would have.
 **What it takes to leave ALPHA**, concretely, so the gate is checkable rather than a
 feeling:
 
-1. The **N-series** lands — the 30 NPCs reach player parity (`BALANCE-REDESIGN-WORKLIST.md`).
+1. The **N-series** lands — the 30 NPCs reach player parity (`NPC_REDESIGN.md`).
 2. **N8** re-pins the baseline against that living field, and the R-series conclusions are
    re-read against it.
 3. The **two known-red tests** are resolved, not carried: `balance-targets` (trader clears
@@ -135,14 +166,45 @@ feeling:
 about the build, and the script only knows how to make RC tags — generalise it to take a
 stage before the first real tag is cut.
 
-### Why the current number is `0.5.0`
+### The phase ladder — what the MINOR number is reserved for (owner, 2026-07-30)
 
-A judgement call, recorded so it can be argued with. The Rimward redesign is playable
-end to end, demo-gated and packaged — so it is well past an 0.1. It is **not** near
-release: the balance model is mid-rebuild and the 30-NPC field is eight passes from
-player parity (`BALANCE-REDESIGN-WORKLIST.md`, N-series). `0.5.0` says "the shape is
-real, the systems are moving." Move it as those tracks land; do not move it to `1.x`
-until the game actually ships.
+**Everything below `0.7` is strictly a development version.** The planned map:
+
+| range | phase | what it means |
+| --- | --- | --- |
+| `0.1` – `0.6.x` | **development** | no build reaches anyone but the author. PATCH marks the active work track. **We are here (`0.5.2`).** |
+| `0.7.x` | **alpha** | the first builds handed out. Internal / trusted testers. |
+| `0.8.x` – `0.9.x` | **beta** | external testers; feature-complete for the release scope. |
+| `1.0.0` | **release** | public, once. |
+
+**A NUMBER DOES NOT CONFER A STAGE, and this ladder must not be read as saying it does.**
+Reaching `0.7.0` does not *make* the build an alpha — it is the point at which the alpha
+gate is expected to be *attempted*, and the entry criteria in the stage table above still
+have to pass on their own merits. The distinction is the one the whole of §1 rests on:
+**the number says how mature the code is, the tag says how validated it is**, and the
+fastest way to ship something embarrassing is to let an edit to a manifest stand in for a
+playthrough.
+
+**Two consequences worth stating rather than discovering:**
+
+- **At `0.7` the PATCH amendment above expires.** Builds start reaching people, "which
+  build were you running?" gets a real asker, and PATCH goes back to marking builds. The
+  owner has flagged intent to adopt a stricter, release-focused scheme around the beta
+  boundary; **the honest trigger is alpha, not beta**, because alpha is where the first
+  build leaves the building.
+- **What earns a MINOR bump between `0.5` and `0.7` is NOT YET DECIDED** — recorded as owed
+  rather than invented here. The old rule ("a whole track lands") has been taken over by
+  PATCH, so MINOR currently has no trigger except arriving at a phase boundary. Decide it
+  when `0.6` is first proposed.
+
+### Why the current number is `0.5.2`
+
+A judgement call, recorded so it can be argued with. The Rimward redesign is playable end
+to end, demo-gated and packaged — so it is well past an 0.1. It is **not** near release:
+the balance model is mid-rebuild and the 30-NPC field is several passes from player parity
+(`NPC_REDESIGN.md`, N-series). `0.5.x` says "the shape is real, the systems are moving."
+The `.2` says which track is currently moving them (the Explore/Hangout rebuild). Do not
+move it to `1.x` until the game actually ships.
 
 ### GitHub Releases — adopt at BETA, not before
 
@@ -156,12 +218,15 @@ Tags already answer the only question we have today — *which code was that?* A
 adds **distribution**: a durable URL and an attached installer. That is worth exactly
 nothing while the only user is the person who compiled it.
 
-**Adopt at the beta boundary** — the first build handed to someone who is not you. Then a
+**Adopt at the beta boundary** — `0.8.x` on the phase ladder above. (Note the asymmetry
+with tags, and it is deliberate: the first build handed to someone who is not you happens at
+ALPHA and earns a *tag*; a public *Release* waits for beta, because a Release is
+distribution and a tag is only identification.) Then a
 Release earns its keep, and the rules are: tick **"Set as a pre-release"** so it cannot be
 mistaken for a launch, attach the `electron-builder` artefacts, and let the notes be the
 changelog for that stage.
 
-## 2. Save schema version — a plain integer, currently `10`
+## 2. Save schema version — a plain integer, currently `12`
 
 **Answers: can this build read that save file?**
 
@@ -213,7 +278,7 @@ misleading one. (Precedent for the technique: the report fingerprints in
 **Answers: which piece of work is this?**
 
 Not versions, and they do not sort against each other. `T-####` are engineering tasks,
-`R#`/`N#` are steps in `BALANCE-REDESIGN-WORKLIST.md`, `F#` are protocol findings. They
+`R#` are steps in `BALANCE-REDESIGN-WORKLIST.md`, `N#` steps in `NPC_REDESIGN.md`, `F#` are protocol findings. They
 appear in code comments so a rule can be traced to the decision that produced it; keep
 using them that way.
 
