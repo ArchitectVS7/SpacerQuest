@@ -2353,7 +2353,7 @@ closed — recorded here so it is never reintroduced):
   dealer-bluff-rate multiplier (no player agency) and a post-challenge "tell" (undermines the one
   thing a dice game must protect — that the reveal is real).
 
-### T-134 · Spec the Liar's Dice Dare — `status: TODO` · `coder: opus` · `after: T-125`
+### T-134 · Spec the Liar's Dice Dare — `status: DONE` · `coder: opus` · `after: T-125`
 
 Write `docs/LIARS-DICE_REDESIGN.md`, settling everything the ruleset above leaves to
 implementation detail: the exact `DareHandState` shape (both hidden hands, current bid, whose
@@ -2393,6 +2393,26 @@ FOLD's economics (seed + accumulated antes forfeited) are specified exactly; the
 disposition deltas (or an explicit disposition-neutral ruling with its stated cost to T-125's
 result) are settled; the baseline sim-player strategy is specified and total over the scene's
 state space; zero source files touched.
+
+**Delivered (2026-07-31):** `docs/LIARS-DICE_REDESIGN.md` settles the full scene design: the
+`GameState.dareHand` shape as a new top-level field (sibling to `encounter`, not nested under
+`player`); the seed wager kept player-chosen inside the port band as today; the ante formula
+(`round(band.max * 0.03)`, floor 1, doubled for RAISE BOTH, clamped to remaining headroom) read
+from `PortHangout` rather than hardcoded; the bid lattice with the exploit closure restated as a
+rule (RAISE FACE pinned to F→F+1, quantity unchanged) and wildcards confirmed permanently out of
+scope; FOLD's exact economics (seed + accumulated antes forfeited to escrow); disposition ruled
+NOT neutral — three per-outcome arms (win/loss/fold) through a new content field, with the T-125
+interceptor-lift clause stated explicitly as an Accept criterion; the Peek check as a second die
+before the first bid at DC 12; the AI dealer's anti-cheat policy shape (pure function of its own
+hidden dice, the current bid, and `dealerGuile` — never the player's hand); four new scene event
+variants (not a richer `HangoutEvent`) with their `schema.ts` + `AssertEventKeys` coverage; the
+save-version bump and migration entry; and a total baseline sim-player strategy covering every
+reachable scene state, so `planDare`/the gambler policy keep working once the one-shot venue call
+becomes a multi-turn scene. Deliberate scope boundary: this is a spec only — zero engine, sim, or
+UI source files touched (verified: `git diff` shows only `TASKS.md` and the new doc), matching
+the T-100/T-101 precedent this task explicitly mirrors; T-135 owes the implementation.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `TASKS.md`'s M4d ruleset block plus the real source: `actions/hangout · attempts=1/4.
 
 ### T-135 · Build the Liar's Dice engine — `status: TODO` · `coder: opus` · `after: T-134`
 
