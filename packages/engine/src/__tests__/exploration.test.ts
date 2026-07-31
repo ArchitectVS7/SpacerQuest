@@ -151,6 +151,20 @@ describe('exploration — deterministic discovery per seed', () => {
   });
 
   it('a full advanceDay run is reproducible for a seed', () => {
+    // T-114 RE-SEEDED (2024 → 1); T-117 RE-SEEDED AGAIN (1 → 3), and the
+    // mechanism is the same RULING both times rather than a draw shift. Three
+    // explores in one day only chart three POIs when none of them opens a
+    // recovery: the T-111 fifth typed refusal (`recovery-in-progress`) blocks the
+    // verb for the rest of the commitment. T-114 made most boards commit the ship
+    // by authoring band 2 onto both draw legs; T-117's weighted draw makes 42% of
+    // boards commit it (bands 2-4 by weight), so which seeds thread three
+    // uncommitted boards moved again.
+    //
+    // The claim under test is unchanged and neither assertion moved: a seeded run
+    // replays byte-for-byte, and three SUCCESSFUL boards chart three distinct
+    // POIs. Seed 3 is simply the lowest seed on which all three boards land
+    // without one of them opening an op — found by re-running the same three-die
+    // day over seeds 1..5000 through the real `advanceDay`.
     function run(seed: number): string[] {
       const state = createInitialState(seed);
       // Boost PILOT so explores land, then spend three dice exploring.
@@ -163,9 +177,9 @@ describe('exploration — deterministic discovery per seed', () => {
       ]);
       return res.state.player.charts.discoveredPois.map((p) => `${p.id}:${p.type}:${p.name}`);
     }
-    expect(run(2024)).toEqual(run(2024));
+    expect(run(3)).toEqual(run(3));
     // Three distinct explores → three distinct POI ids.
-    expect(new Set(run(2024)).size).toBe(3);
+    expect(new Set(run(3)).size).toBe(3);
   });
 });
 
@@ -188,11 +202,20 @@ describe('exploration — seed sweep surfaces both POI types', () => {
   });
 });
 
-describe('exploration — T-111b loot resolution', () => {
-  it('a seed sweep surfaces salvage, a fragment, and a contraband pod', () => {
+describe('exploration — loot resolution through the weighted draw (T-117)', () => {
+  it('a seed sweep surfaces salvage, a fragment, and a sealed pod', () => {
+    // T-117 RETARGETED, and the claim is unchanged: one boarded-POI sweep still
+    // has to surface all three of the shipped payoffs. What moved is HOW the pod
+    // is seen. `ContrabandFound` was emitted by the transitional `contraband`
+    // payload kind, which is deleted with the three-leg carrier (F-113-B); the
+    // sealed pod is now armed by three band-1 derelict lore rows through
+    // `effects.flags` (`DERELICT_POD_EFFECTS`), so the observable is the FLAG the
+    // `derelict.sealed-pod` storylet actually triggers on — which is the thing
+    // that mattered all along. The event variant survives unemitted in
+    // `types.ts`/`schema.ts` (deleting an event shape is save/schema surface).
     let sawSalvage = false;
     let sawFragment = false;
-    let sawContraband = false;
+    let sawPod = false;
 
     for (let seed = 0; seed < 300; seed += 1) {
       const res = resolveExploration(
@@ -200,16 +223,18 @@ describe('exploration — T-111b loot resolution', () => {
         { type: 'Explore', spendDie: 0 },
         new SeededRng(seed),
       );
+      if (res.state.flags['signal.contraband.pending'] === true) sawPod = true;
       for (const e of res.events) {
         if (e.type === 'SalvageRecovered') sawSalvage = true;
         if (e.type === 'FragmentAcquired') sawFragment = true;
-        if (e.type === 'ContrabandFound') sawContraband = true;
+        // The retired kind must never come back without this test noticing.
+        expect(e.type).not.toBe('ContrabandFound');
       }
     }
 
     expect(sawSalvage).toBe(true);
     expect(sawFragment).toBe(true);
-    expect(sawContraband).toBe(true);
+    expect(sawPod).toBe(true);
   });
 
   it('a granted fragment lands in the nemesisFile and the count matches the event', () => {
@@ -237,7 +262,14 @@ describe('exploration — T-111b loot resolution', () => {
     }
   });
 
-  it('contraband arms the sealed-pod storylet flag', () => {
+  it('a re-homed lore row arms the sealed-pod storylet flag, and SPEAKS', () => {
+    // T-117 RETARGETED onto the row that carries the pod now. Two things have to
+    // be true or the re-homing lost something the deleted kind had:
+    //   (1) the flag `derelict.sealed-pod` triggers on is set — the supply line;
+    //   (2) the board also files a WIRE LINE, which the legacy contraband rows
+    //       never did (their `wireFound` was empty — finding F-110-B). So the
+    //       retirement is a strict improvement on the player's side, not a
+    //       like-for-like swap.
     let armed: ReturnType<typeof resolveExploration> | null = null;
     for (let seed = 0; seed < 300 && !armed; seed += 1) {
       const res = resolveExploration(
@@ -245,12 +277,14 @@ describe('exploration — T-111b loot resolution', () => {
         { type: 'Explore', spendDie: 0 },
         new SeededRng(seed),
       );
-      if (res.events.some((e) => e.type === 'ContrabandFound')) {
+      if (res.state.flags['signal.contraband.pending'] === true) {
         armed = res;
       }
     }
-    expect(armed).not.toBeNull();
+    expect(armed, 'no seed under 300 armed the sealed pod').not.toBeNull();
     expect(armed!.state.flags['signal.contraband.pending']).toBe(true);
+    const spoke = armed!.events.filter((e) => e.type === 'WireEntry' && e.message !== '');
+    expect(spoke.length, 'the pod-bearing board filed no wire line').toBeGreaterThan(0);
   });
 
   it('loot is deterministic for a fixed seed (credits, nemesisFile, flags)', () => {

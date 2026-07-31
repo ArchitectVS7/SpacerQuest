@@ -35,10 +35,20 @@ import {
 // other sim specs, matching the campaign-split rationale.
 // ---------------------------------------------------------------------------
 
-/** Mode 1 · Sweep provenance: seeds 1..60, 25-day horizon, sweeping every dawn
- *  die at the starting system. Seed 17 is the first that boards a derelict whose
- *  loot roll draws one of the T-1505a pool additions; measured on day 1. */
-const DERELICT_SEED = 17;
+/** Mode 1 · Sweep provenance: seeds 1..200, 25-day horizon, sweeping every dawn
+ *  die at the starting system. Seed 18 is the first that boards a derelict whose
+ *  outcome draw yields one of the T-1505a pool additions; measured on day 1.
+ *
+ *  T-117 RE-SEEDED (17 → 18). MECHANISM: the single band-weighted draw replaces
+ *  the transitional three-leg carrier (finding F-113-A discharged, engine
+ *  `drawOutcome`), so a board draws ONE row instead of walking a salvage leg, a
+ *  fragment leg and a contraband leg independently. Two consequences meet here:
+ *  every board's rng stream re-phases, and a fragment row is now drawn against
+ *  the whole band-1 pool rather than off a dedicated 0.35-chance leg. Seed 17's
+ *  day-1 sweeps no longer land a pool addition; 18's do. THE ACCEPTANCE IS
+ *  UNCHANGED and no assertion moved shape — mode 1 is still reachable in legal
+ *  play inside the same 25-day horizon, on the second seed of the scan. */
+const DERELICT_SEED = 18;
 /** The id the FIRST derelict-sourced grant of that day yields — a NET-NEW pool
  *  entry, so this asserts the T-1505a pool growth is reachable, not merely that
  *  derelicts drop fragments. Seed 17's day-1 hand boards more than one wreck, so
@@ -61,10 +71,17 @@ const DERELICT_EXPECT_ID = 'frag-nemesis-07';
  *  first dawn after the jump); every seed in the sweep landed it by day 2. */
 const NPC_SEED = 1;
 
-/** Mode 3 · Sweep provenance: seeds 1..40, 45-day horizon, buying tier-3 drives,
+/** Mode 3 · Sweep provenance: seeds 1..60, 45-day horizon, buying tier-3 drives,
  *  hopping Sol → Mira-9 → Mizar-9, sweeping at the rim until a fragment lands,
- *  then playing the Sage's archive scene. Seed 2 lands it on day 5. */
-const SAGE_SEED = 2;
+ *  then playing the Sage's archive scene. Seed 5 lands it on day 4.
+ *
+ *  T-117 RE-SEEDED (2 → 5), same mechanism as mode 1 above: the weighted draw
+ *  re-phases every board, and this mode depends on a sweep supplying the
+ *  `nemesis.minFragments: 1` gate ORGANICALLY before the Sage's scene will offer.
+ *  Seed 2's rim sweeps no longer land a fragment inside the horizon; seed 5's do,
+ *  and land it EARLIER (day 5 → day 4). The organic-gate assertion below is
+ *  unchanged and still passes: the driver never grants a fragment directly. */
+const SAGE_SEED = 5;
 
 type FragmentAcquired = Extract<GameEvent, { type: 'FragmentAcquired' }>;
 

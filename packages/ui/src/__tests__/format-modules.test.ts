@@ -101,6 +101,95 @@ describe('T-112 · the moment of acquisition', () => {
     ]);
     expect(line).toBe('Charted a gutted freighter hulk · an unlogged fitting recovered.');
   });
+
+  // T-114 · the two band-2 kinds that had no clause before this pass. Both read
+  // an emitted event and look a NAME up; neither re-derives an effect.
+  it('names the captain an NPC introduction moved', () => {
+    const line = explorationOutcome([
+      poi,
+      {
+        type: 'DispositionChanged',
+        day: 3,
+        npcId: 'npc-doc-salvage',
+        delta: 2,
+        disposition: 2,
+        reason: 'storylet',
+      },
+    ]);
+    expect(line).toBe('Charted a gutted freighter hulk · Doc Salvage owes you a word.');
+  });
+
+  it('names the episode a questline hook scheduled', () => {
+    const line = explorationOutcome([
+      poi,
+      {
+        type: 'StoryletScheduled',
+        day: 3,
+        storyletId: 'explore-quest-cold-berth',
+        choiceId: 'explore',
+        scheduledStoryletId: 'explore.cold-berth.survivor',
+        dueDay: 5,
+      },
+    ]);
+    expect(line).toBe('Charted a gutted freighter hulk · a lead opened: The Berth That Was Warm.');
+  });
+
+  it('falls back honestly when the scheduled storylet id no longer resolves', () => {
+    const line = explorationOutcome([
+      poi,
+      {
+        type: 'StoryletScheduled',
+        day: 3,
+        storyletId: 'explore-quest-retired',
+        choiceId: 'explore',
+        scheduledStoryletId: 'explore.retired.beat',
+        dueDay: 5,
+      },
+    ]);
+    expect(line).toBe('Charted a gutted freighter hulk · a lead opened.');
+  });
+});
+
+describe('T-117 · explorationOutcome names the sealed pod', () => {
+  const poi: GameEvent = {
+    type: 'PoiDiscovered',
+    day: 3,
+    poiId: 'poi-1-d3-e0-derelict',
+    poiType: 'derelict',
+    name: 'a gutted freighter hulk',
+    systemId: 1,
+  };
+
+  it('reads the flag-set event, not the retired ContrabandFound', () => {
+    const line = explorationOutcome([
+      poi,
+      {
+        type: 'FragmentAcquired',
+        day: 3,
+        fragmentId: 'frag-nemesis-04',
+        source: 'derelict',
+        fragmentCount: 1,
+        poiId: 'poi-1-d3-e0-derelict',
+      },
+      {
+        type: 'StoryletEffectApplied',
+        day: 3,
+        storyletId: 'explore-lore-derelict-frag-nemesis-04',
+        choiceId: 'explore',
+        effect: 'flag',
+        flag: 'signal.contraband.pending',
+        value: true,
+      },
+    ]);
+    expect(line).toBe(
+      'Charted a gutted freighter hulk · a Signal Fragment recovered · a sealed pod bolted in the hold.',
+    );
+  });
+
+  it('says nothing about a pod when no pod flag fires', () => {
+    const line = explorationOutcome([poi]);
+    expect(line).toBe('Charted a gutted freighter hulk.');
+  });
 });
 
 describe('T-112 · the diceBenefitLabel extraction is inert', () => {

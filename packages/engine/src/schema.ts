@@ -886,7 +886,14 @@ const GameEventSchema = z.discriminatedUnion('type', [
     success: z.boolean().optional(),
     rumors: z.array(z.string()).optional(),
     failReason: z
-      .enum(['no-die', 'invalid-die-index', 'die-already-spent', 'no-opponent'])
+      .enum([
+        'no-die',
+        'invalid-die-index',
+        'die-already-spent',
+        'no-opponent',
+        // T-120 · the port's venue definition does not run this beat.
+        'venue-not-offered',
+      ])
       .optional(),
   }),
   z.object({
@@ -912,6 +919,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'already-has-loan',
         'no-loan',
         'insufficient-credits',
+        // T-120 · the port runs no credit desk.
+        'venue-not-offered',
       ])
       .optional(),
   }),

@@ -10,6 +10,7 @@ import {
   shipyardFailure,
   startDay,
   travelPreview,
+  wagerBandFor,
   type Edition,
   type EncounterState,
   type GameState,
@@ -461,7 +462,10 @@ describe('protocol deterministic replay', () => {
 
   it('T-1604a · ActionBlocked parity — no-hangout commits, spends no die', () => {
     const session = blockableSession(12, (state) => {
-      state.player.currentSystemId = 2; // Aldebaran-1 — no Spacers Hangout.
+      // T-121 · Antares-5 (15), a RIM port. Aldebaran-1 stood here until the reach
+      // change gave all fourteen core ports a bar; §4.5 keeps the rim unflagged
+      // precisely so this refusal — and this parity assertion — stays reachable.
+      state.player.currentSystemId = 15;
     });
     expectBlocked(
       session,
@@ -1034,7 +1038,10 @@ describe('legal-actions enumerator', () => {
   it('T-1303 · does NOT advertise VisitHangout at a non-Hangout system', () => {
     const state = createInitialState(1);
     state.dayPhase = DayPhase.DAY;
-    state.player.currentSystemId = 2; // Aldebaran-1 — no Hangout
+    // T-121 · Antares-5 (15), a RIM port. Aldebaran-1 stood here until the reach
+    // change; §4.5 keeps the rim un-flagged so this enumerator assertion — and the
+    // engine refusal it mirrors — stay reachable.
+    state.player.currentSystemId = 15;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
 
     const legal = legalActions(state);
@@ -1092,6 +1099,73 @@ describe('legal-actions enumerator', () => {
       expect(venue.choices).toContain('repay'); // a loan is active → repay offered
       expect(venue.choices).not.toContain('borrow');
     }
+  });
+
+  it('T-123 · at Arcturus-6 the harness advertises no credit desk, and the wager domain is the PORT band', () => {
+    // The protocol mirror of the engine's `venueOffered` gate, driven at the first
+    // port to narrow its venue set (`content/portHangouts.ts`, §6.2's garrison).
+    // Advertising `borrow` here would hand a UGT driver an action the resolver
+    // answers with `LoanEvent{'venue-not-offered'}` — the exact class of drift
+    // `hangoutPlay.failedVisits === 0` exists to forbid.
+    const ARCTURUS_6 = 4;
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = ARCTURUS_6;
+    // A dealer in the room, so the social beats are live and the venue list is not
+    // narrow merely because the port is empty.
+    state.npcs[0].currentSystemId = ARCTURUS_6;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+
+    const hangout = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    const venue = hangout?.params.venue;
+    expect(venue?.kind).toBe('enum');
+    if (venue?.kind === 'enum') {
+      expect(venue.choices).toContain('dare');
+      expect(venue.choices).toContain('rumor');
+      expect(venue.choices).not.toContain('borrow');
+      expect(venue.choices).not.toContain('repay');
+    }
+    // …and the stake domain is the port's own band, read through the same accessor
+    // the resolver clamps with rather than restated here.
+    const band = wagerBandFor(ARCTURUS_6);
+    expect(hangout?.params.wager).toEqual({ kind: 'int', min: band.min, max: band.max });
+    // NON-VACUITY: the port band must actually differ from the global one, or this
+    // assertion would pass against the default row.
+    expect(JSON.stringify(band)).not.toBe(JSON.stringify(wagerBandFor(1)));
+  });
+
+  it('T-124 · at Spica-3 the harness advertises no insult, and the wager domain is the PORT band', () => {
+    // The same mirror as the Arcturus-6 test above, driven at T-124's row and at
+    // the OTHER end of the venue list: the garrison withholds the two lending
+    // beats, the second watch withholds a social one. Two ports narrowed in two
+    // different directions is what says `legalActions`' filter is a filter and not
+    // a special case for the credit desk.
+    const SPICA_3 = 13;
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = SPICA_3;
+    // A dealer in the room, so the social beats are live and `insult` is missing
+    // because the HOUSE withholds it rather than because the room is empty.
+    state.npcs[0].currentSystemId = SPICA_3;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+
+    const hangout = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    const venue = hangout?.params.venue;
+    expect(venue?.kind).toBe('enum');
+    if (venue?.kind === 'enum') {
+      expect(venue.choices).toContain('dare');
+      expect(venue.choices).toContain('meet');
+      expect(venue.choices).toContain('befriend');
+      expect(venue.choices).toContain('rumor');
+      expect(venue.choices).toContain('borrow'); // no loan yet → the desk is open
+      expect(venue.choices).not.toContain('insult');
+    }
+    const band = wagerBandFor(SPICA_3);
+    expect(hangout?.params.wager).toEqual({ kind: 'int', min: band.min, max: band.max });
+    // NON-VACUITY: as above, the port band must differ from the global one.
+    expect(JSON.stringify(band)).not.toBe(JSON.stringify(wagerBandFor(1)));
   });
 });
 
@@ -1205,15 +1279,27 @@ describe('T-1604b · F2 poverty/immobility trap', () => {
     return legal.actions.some((spec) => spec.type === 'Trade' && spec.action === action);
   }
 
-  it('the trap is real: at dawn with a full hand, no income verb is advertised', () => {
+  it('the trap is PARTLY real: every Trade route is shut, and T-121 opened the desk', () => {
     const legal = legalActions(trapState());
     expect(legal.diceRemaining).toEqual([0, 1, 2, 3, 4]);
 
-    // The three income routes, each shut for its own reason:
+    // The three TRADE routes, each still shut for its own reason:
     expect(hasTrade(legal, 'buy-fuel')).toBe(false); // floor(0 / price) === 0
     expect(hasTrade(legal, 'sign-contract')).toBe(false); // the hold is full
-    expect(legal.actions.some((s) => s.type === 'VisitHangout')).toBe(false); // Mira-9 has no desk
     expect(hasTrade(legal, 'pay-debt')).toBe(false); // nothing to pay with
+
+    // T-121 · A MEASURED CONSEQUENCE OF THE REACH CHANGE, RECORDED RATHER THAN
+    // ABSORBED. This line asserted `false` under the comment "Mira-9 has no desk".
+    // Mira-9 (id 8) is a CORE port, so it now runs a bar and a Penny Wise desk —
+    // the audited F2 trap has gained a second way out (borrow → buy fuel → jump)
+    // on top of T-1604b's `abandon-contract`. The assertion is INVERTED rather
+    // than deleted so the enumerator still pins exactly what is on offer here, and
+    // the escape-hatch test below still owns the T-1604b guarantee.
+    const hangout = legal.actions.find((s) => s.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    const venue = hangout?.params.venue;
+    expect(venue?.kind).toBe('enum');
+    if (venue?.kind === 'enum') expect(venue.choices).toContain('borrow');
   });
 
   it('the ESCAPE HATCH is advertised: abandon-contract, and it re-opens signing', () => {

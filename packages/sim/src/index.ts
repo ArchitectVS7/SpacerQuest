@@ -1,7 +1,5 @@
 import {
   CREW_ROLES,
-  DARE_MAX_WAGER,
-  DARE_MIN_WAGER,
   EXPLORATION_FUEL_COST,
   FENCE_REP_FLAG,
   FLAWS,
@@ -43,6 +41,8 @@ import {
   startDay,
   travelDc,
   tributeForRound,
+  venueOffered,
+  wagerBandFor,
   applyPlayerAction,
   weaponVolleyDamage,
   SeededRng,
@@ -276,7 +276,7 @@ export interface HangoutPlayStats {
   /** Dares the dealer took. `daresWon + daresLost === dares`. */
   daresLost: number;
   /** Sum of `HangoutEvent.wager` — total stake across the run. Note the engine
-   *  clamps every stake to [DARE_MIN_WAGER, DARE_MAX_WAGER] AND down to what the
+   *  clamps every stake into the PORT's band (`wagerBandFor`) AND down to what the
    *  DEALER can cover, so a broke dealer shows up here as a thin wager. */
   wagered: number;
   /** Sum of `HangoutEvent.creditsDelta` — the tables' net effect on the purse. */
@@ -831,6 +831,31 @@ export function hangoutSystemIds(): number[] {
  *  caller share, so there is one definition of "where the desk is". */
 function isHangoutSystem(systemId: number): boolean {
   return hangoutSystemIds().includes(systemId);
+}
+
+/**
+ * T-123 · IS PENNY WISE'S DESK ACTUALLY AT THIS PORT? `isHangoutSystem` answers
+ * "is there a bar", which used to be the same question — every port offered all
+ * seven venues. It is not the same question any more: T-123's Arcturus-6 authors
+ * a `venues` list with no `borrow` and no `repay` (§6.2's strict garrison), so the
+ * engine now typed-refuses a lending action there with
+ * `LoanEvent{failReason:'venue-not-offered'}` BEFORE the die is spent.
+ *
+ * THIS MIRRORS AN ENGINE GATE, IT DOES NOT ADD ONE — the same relationship
+ * `planDare`'s `!npc.dead` guard (F-121-1) has to the resolver's N3 guard, and the
+ * same thing `campaign-smuggler-gambler.test.ts`'s "PROOF THE POLICY'S GUARDS ARE
+ * THE ENGINE'S GUARDS" asserts. Read through the engine's own `venueOffered`
+ * accessor, never against a hard-coded id and never against a restated venue list,
+ * so a port that withdraws or restores a desk moves the policy with it.
+ *
+ * Without it the lending planners would queue an action the engine refuses, which
+ * burns a die SLOT out of the day's ledger for nothing — and the trader's and
+ * smuggler's "head home to settle up" preferences could steer a repayment run at a
+ * port with no desk, which is exactly the compounding-loan pathology the comment
+ * above `traderPolicy`'s homeRun documents.
+ */
+function isLendingDeskSystem(systemId: number, venue: 'borrow' | 'repay'): boolean {
+  return isHangoutSystem(systemId) && venueOffered(systemId, venue);
 }
 
 export function nextSystemId(currentSystemId: number): number {
@@ -2033,7 +2058,9 @@ function planLoanBorrow(
 ): { action: PlayerAction; principal: number } | null {
   if (state.encounter) return null;
   if (state.player.loan) return null;
-  if (!isHangoutSystem(state.player.currentSystemId)) return null;
+  // T-123 · mirrors the engine's `venueOffered(systemId,'borrow')` gate in
+  // `resolveVisitHangout` — a Hangout is not automatically a credit desk.
+  if (!isLendingDeskSystem(state.player.currentSystemId, 'borrow')) return null;
   if (!(shortfall >= 1)) return null;
   const principal = Math.max(
     LOAN_MIN_PRINCIPAL,
@@ -2061,7 +2088,9 @@ function planLoanRepay(state: GameState, ledger: DieLedger): PlayerAction | null
   const loan = state.player.loan;
   if (!loan) return null;
   if (state.encounter) return null;
-  if (!isHangoutSystem(state.player.currentSystemId)) return null;
+  // T-123 · mirrors the engine's `venueOffered(systemId,'repay')` gate — the
+  // garrison mess at Arcturus-6 runs no desk to settle a marker at.
+  if (!isLendingDeskSystem(state.player.currentSystemId, 'repay')) return null;
   const outstanding = loan.outstanding;
   if (outstanding < 1) return null;
   const urgent = loan.dueDay - state.day <= 2;
@@ -2541,7 +2570,11 @@ function planTraderDay(state: GameState, degradation: PilotDegradation | null): 
     // prefer a fundable run that ENDS at the Penny Wise desk. Preference only —
     // if no such contract is on the board the trader flies its normal best run.
     if (state.player.credits >= loan.outstanding) {
-      const homeRun = reachable.find((c) => isHangoutSystem(c.destination));
+      // T-123 · a run that ends at a bar with no credit desk is not a settle-up
+      // run — `isLendingDeskSystem` mirrors the engine's `venueOffered` gate, so
+      // the preference cannot steer the trader to a port where `planLoanRepay`
+      // will then refuse itself and the marker compounds untouched.
+      const homeRun = reachable.find((c) => isLendingDeskSystem(c.destination, 'repay'));
       if (homeRun) preferred = homeRun;
     }
   }
@@ -3088,7 +3121,10 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
     loan.dueDay - state.day <= TRADER_LOAN_HOME_WINDOW &&
     state.player.credits >= loan.outstanding
   ) {
-    const homeRun = reachable.find((c) => isHangoutSystem(c.destination));
+    // T-123 · the trader's guard, ported with the preference: mirrors the engine's
+    // `venueOffered(...,'repay')` gate so a desk-less port is never chosen as the
+    // place to settle up.
+    const homeRun = reachable.find((c) => isLendingDeskSystem(c.destination, 'repay'));
     if (homeRun) preferred = homeRun;
   }
 
@@ -3351,13 +3387,15 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
 // and wagers on opposed-GUILE Dares while it is standing there.
 //
 // Policy tuning, not game data (same justification as the smuggler's constants
-// above): the Dare's own band — DARE_MIN_WAGER / DARE_MAX_WAGER — is CONTENT and
-// is imported, never restated, exactly as planLoanBorrow treats the lending band.
+// above): the Dare's own band is CONTENT, and after T-120/T-121 it is PER-PORT —
+// read through the engine's `wagerBandFor` accessor, never restated and no longer
+// even read as a global constant, exactly as planLoanBorrow treats the (still
+// global, §2.2 ruling 5) lending band.
 // ---------------------------------------------------------------------------
 
 /** The working float the gambler never stakes into. Mirrors TRADER_RESERVE, and
  *  is deliberately larger than a full day of dares (GAMBLER_MAX_DARES_PER_DAY ×
- *  DARE_MAX_WAGER = 1,000) so that even a total wipeout at the tables leaves the
+ *  the default band's max = 1,000) so that even a total wipeout at the tables leaves the
  *  day's refuel/repair budget intact — which is what makes it safe to settle the
  *  stakes FIRST in the day's plan. */
 const GAMBLER_RESERVE = 3000;
@@ -3379,8 +3417,8 @@ const GAMBLER_MAX_DARES_PER_DAY = 2;
  *   - a co-located NPC to deal (`currentSystemId === player's`), else the engine
  *     returns a 'no-opponent' fail;
  *   - the RICHEST such NPC, first-wins on a tie. This is load-bearing, not
- *     cosmetic: the engine caps the wager at `min(DARE_MAX_WAGER, playerCredits,
- *     dealerCredits)`, so dealing with a broke NPC produces a zero-or-tiny-stake
+ *     cosmetic: the engine caps the wager at `min(the port band's max,
+ *     playerCredits, dealerCredits)`, so dealing with a broke NPC produces a zero-or-tiny-stake
  *     hand that inflates the dare count and drags `expectedValuePerDare` toward
  *     0 — the one value the acceptance forbids;
  *   - the purse is above the reserve and the dealer can cover the minimum stake.
@@ -3401,22 +3439,48 @@ const GAMBLER_MAX_DARES_PER_DAY = 2;
 function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerAction | null {
   if (state.encounter) return null;
   if (!isHangoutSystem(state.player.currentSystemId)) return null;
+  // T-123 · THE PORT MUST ACTUALLY DEAL. Mirrors the engine's
+  // `venueOffered(systemId,'dare')` gate in `resolveVisitHangout`, exactly as the
+  // `!npc.dead` guard above mirrors its N3 guard. ARITHMETICALLY INERT TODAY: all
+  // fourteen authored and baseline rows offer `dare` (T-123 narrows `venues` at
+  // two ports, and neither withdraws the tables), so this cannot move a number —
+  // and that is precisely why it lands now, on the T-121 precedent of shipping a
+  // mirror while it is provably inert rather than after a later row makes it a bug.
+  if (!venueOffered(state.player.currentSystemId, 'dare')) return null;
 
   let dealer: GameState['npcs'][number] | null = null;
   for (const npc of state.npcs) {
+    // F-121-1 · `!npc.dead` MIRRORS THE ENGINE'S N3 GUARD (`actions/hangout.ts`:
+    // "a dead captain cannot deal a hand of Spacer's Dare"), and its absence here
+    // was a real divergence, not a nicety: the resolver typed-fails a Dare against
+    // a dead dealer with 'no-opponent', which is precisely what
+    // `hangoutPlay.failedVisits === 0` exists to forbid. It was LATENT while one
+    // port had a bar — measured 0 failures over 10 seeds x 120 days before T-121,
+    // and 2 (seed 7, day 75, `npc-black-tide`) after, because the reach change puts
+    // the gambler at a table on most days instead of a handful.
+    if (npc.dead) continue;
     if (npc.currentSystemId !== state.player.currentSystemId) continue;
     if (dealer === null || npc.credits > dealer.credits) dealer = npc;
   }
   if (dealer === null) return null;
+  // T-121 · THE BAND IS THE PORT'S, read through the same engine accessor
+  // `protocol.ts` and the Hangout pane use — never the bare content constants and
+  // never a restated number. Before T-120 there was one band because there was one
+  // bar; now that fourteen ports run tables, a policy that sized its stake off the
+  // global constants would request a wager the engine then re-clamped, and the
+  // measured `expectedValuePerDare` would drift away from what was actually played
+  // (`docs/HANGOUT_REDESIGN.md` §4.2). Arithmetically inert today — all fourteen
+  // rows inherit `DEFAULT_PORT_HANGOUT`'s band — and that is the point: it lands
+  // while it is provably inert, ahead of the authored bands at T-123.
+  const band = wagerBandFor(state.player.currentSystemId);
   // A dealer who cannot cover the minimum stake makes a zero-EV hand — skip it.
-  if (dealer.credits < DARE_MIN_WAGER) return null;
+  if (dealer.credits < band.min) return null;
 
   const bankroll = credits - GAMBLER_RESERVE;
-  if (bankroll < DARE_MIN_WAGER) return null;
-  // Clamped with the CONTENT band constants, never with restated numbers.
+  if (bankroll < band.min) return null;
   const wager = Math.max(
-    DARE_MIN_WAGER,
-    Math.min(DARE_MAX_WAGER, Math.floor(bankroll * GAMBLER_BANKROLL_FRACTION)),
+    band.min,
+    Math.min(band.max, Math.floor(bankroll * GAMBLER_BANKROLL_FRACTION)),
   );
 
   const die = ledger.takeBest();
@@ -3475,7 +3539,12 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // set — the gambler never flies a run it cannot fund just to reach a game.
   let preferred = reachable.length > 0 ? reachable[0] : null;
   if (preferred) {
-    const tablesRun = reachable.find((c) => isHangoutSystem(c.destination));
+    // T-123 · "where the tables are" means where a hand is actually DEALT — the
+    // same `venueOffered` mirror `planDare` now carries, so the two cannot drift.
+    // Inert today (every port offers `dare`), landed while it is provably so.
+    const tablesRun = reachable.find(
+      (c) => isHangoutSystem(c.destination) && venueOffered(c.destination, 'dare'),
+    );
     if (tablesRun) preferred = tablesRun;
   }
 

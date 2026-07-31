@@ -679,7 +679,11 @@ export type GameEvent =
       creditsDelta?: number;
       success?: boolean;
       rumors?: string[];
-      failReason?: 'no-die' | 'invalid-die-index' | 'die-already-spent' | 'no-opponent';
+      // T-120: 'venue-not-offered' — the port's venue definition
+      // (`PORT_HANGOUTS`) does not list this beat. ONE rule, evaluated the same
+      // way at every port; refused before the die is spent.
+      failReason?:
+        'no-die' | 'invalid-die-index' | 'die-already-spent' | 'no-opponent' | 'venue-not-offered';
     }
   | {
       /**
@@ -720,7 +724,10 @@ export type GameEvent =
         | 'die-already-spent'
         | 'already-has-loan'
         | 'no-loan'
-        | 'insufficient-credits';
+        | 'insufficient-credits'
+        // T-120: the port runs no credit desk — 'borrow'/'repay' are absent from
+        // its venue definition. The HangoutEvent sibling carries the same value.
+        | 'venue-not-offered';
     }
   | {
       /**

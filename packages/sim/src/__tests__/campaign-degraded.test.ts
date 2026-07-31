@@ -388,17 +388,362 @@ const UNCHANGED_POLICIES = [
  *    recorded rather than tuned around (re-pricing Explore is R-series and an owner
  *    call), and five seeds cannot separate its size from stream noise in any case.
  *    T-116 owns the measurement and the verdict.
+ *
+ * 15. T-114 — the Explore content pass 2 of 3 (band 2). EXACTLY THE SAME TWO
+ *    ROWS MOVE, for the third time and by the same control: only a policy that
+ *    flies off-lane sweeps can feel a change to what a board yields.
+ *      explorer 9110009d148f6c4a -> 735e77e304bc46fc
+ *      smuggler 459ee18f292bf2c9 -> e3319430951ceca6
+ *      trader / fighter / veteran / gambler / greedy — ALL UNCHANGED, byte for
+ *      byte. That five of seven are identical is the evidence that a verb-yield
+ *      change moved the CALLERS and not the world; a report-shape change (entries
+ *      11/12) moves all seven.
+ *
+ *    MECHANISM. Three CONTENT edits reach a board (docs/EXPLORE_REDESIGN.md §5.3
+ *    pass 2), and no rule changed:
+ *      (1) `legacy-salvage-derelict` is DELETED and the DERELICT salvage leg is
+ *          re-pointed at the 14 authored derelict salvage rows (6 band-1 +
+ *          8 band-2, 240-700cr). This closes F-113-D: P(SalvageRecovered >= 400),
+ *          the `rich_hulk` trigger, goes 0.302 -> 0.384 over that leg.
+ *      (2) The BEACON salvage leg becomes the 31-id "find" leg, carrying the
+ *          band-2 items, NPC introductions, questline hooks and effect-bearing
+ *          lore alongside salvage.
+ *      (3) EVERY band-2 row is `recoveryDays: 1`, so a successful board now
+ *          commits the ship and the fifth typed refusal
+ *          (`recovery-in-progress`) costs the NEXT day's Explore as well.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      explorer  final credits  median  9,094 -> 34,234   mean 14,818 -> 30,514
+ *      smuggler  final credits  median  4,841 ->  5,650   mean  9,003 ->  6,104
+ *      fragments acquired (sum) explorer 21 -> 26, smuggler 27 -> 18
+ *      fuel starvation days 0 -> 0 and subsistence days 0 -> 0 in both.
+ *    THE DIRECTION IS UP FOR THE EXPLORER, which is F-113-C's temporary dip
+ *    reversing exactly as §5.2 sequenced it: band 2's 240-700cr is the shipped
+ *    derelict band widened, and the beacon leg now yields permanent items rather
+ *    than only coin. NOTHING WAS TUNED TO PRODUCE IT and nothing is tuned in
+ *    response: five seeds cannot separate a credit shift of this size from stream
+ *    noise, re-pricing Explore is R-series and an owner call, and T-116 owns the
+ *    measurement and the verdict.
+ *
+ * 16. T-117 + T-115 · THE SINGLE BAND-WEIGHTED DRAW, AND THE 33 ROWS OF BANDS 3-4
+ *     (2026-07-30). Two tasks, one commit — see TASKS.md F-117-A: splitting them
+ *     would mean re-deriving every fixture twice for one behaviour change.
+ *      explorer 735e77e304bc46fc -> 2537a7aa5185d3fd
+ *      smuggler e3319430951ceca6 -> edab634b451035f3
+ *      trader / fighter / veteran / gambler / greedy — ALL UNCHANGED, byte for
+ *      byte. Exactly the two sweeping policies move, for the third entry running,
+ *      which is the control that says an Explore change moved the CALLERS and not
+ *      the world.
+ *
+ *    MECHANISM, and unlike entries 14 and 15 this one is a RULE change rather
+ *    than a content one — it is the flip §2.4 specified, T-110 deferred, and
+ *    finding F-113-A recorded as unowned through two content passes. A board no
+ *    longer walks three INDEPENDENT legs; it draws ONE band-weighted row out of
+ *    the now-100-row table (engine `drawOutcome`, reading the new `weight` column
+ *    on `EXPLORE_VALUE_BANDS`). Four things follow, all of them predicted by the
+ *    spec rather than discovered here:
+ *      (1) A LUCKY BOARD NO LONGER COMPOUNDS. §2.4 is explicit that the flip is
+ *          not behaviour-preserving: salvage AND a fragment AND a pod on one
+ *          board was a property of independent legs, and one row cannot do it.
+ *      (2) THE DRAW COST IS A FLAT TWO rng CALLS, so every board re-phases.
+ *      (3) THE 14 BAND-0 DEAD ENDS ARE DRAWABLE FOR THE FIRST TIME, at 25% of
+ *          boards. A quarter of successful boards now pay prose and nothing else,
+ *          which is the ladder's own design and the single biggest contributor to
+ *          the credit fall below.
+ *      (4) 42% OF BOARDS OPEN A RECOVERY (bands 2-4 by weight, against band 2
+ *          alone before), so the fifth typed refusal costs the sweeping policies
+ *          more days of the verb than it did.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      explorer  final credits  median 34,234 -> 10,553   mean 30,514 -> 15,693
+ *      smuggler  final credits  median  5,650 ->  5,844   mean  6,104 ->  6,337
+ *      fragments acquired (sum) explorer 26 -> 17, smuggler 18 -> 12
+ *    THE DIRECTION IS DOWN FOR THE EXPLORER ON CREDITS, and that is expected
+ *    rather than alarming: §5.5 prices the ladder at ~447cr of VALUE per
+ *    successful board, of which only bands 1-2 are credits at all — bands 3 and 4
+ *    are permanent items, questline hooks and standing, none of which a
+ *    final-credits figure can see, and a 40-day window is short enough that a
+ *    six-day recovery is a large fraction of it. NOTHING WAS TUNED TO PRODUCE
+ *    THIS AND NOTHING IS TUNED IN RESPONSE: five seeds cannot separate a shift of
+ *    this size from stream noise, re-pricing Explore is R-series and an owner
+ *    call, and T-116 owns the measurement and the verdict.
+ *
+ * 17. T-121 · THE REACH CHANGE — A BAR AT ALL FOURTEEN CORE SPACEPORTS
+ *     (2026-07-30, docs/HANGOUT_REDESIGN.md §4). `hasHangout` goes from 1 of 28
+ *     systems to 14 of 28. THREE ROWS MOVE, and they are exactly the three
+ *     policies that transact at a Hangout:
+ *      trader   f3e01b2a843c1c0f -> 1b4e953468311f40
+ *      smuggler edab634b451035f3 -> faa0c778be299406
+ *      gambler  fbb8b4df794fa5f4 -> 8950ea1dfd8d318e
+ *      fighter / explorer / veteran / greedy — ALL UNCHANGED, byte for byte.
+ *      That control is the evidence the change is REACH and nothing else: the
+ *      four policies that never open the Hangout verb are untouched, while the
+ *      two that borrow (trader, smuggler) and the one that plays (gambler) all
+ *      re-phase. Note the inversion of entries 14-16's control — an EXPLORE
+ *      change moves the two sweepers; a HANGOUT change moves these three.
+ *
+ *    MECHANISM, and it is a CONTENT change with no rule edit: `hasHangout: true`
+ *    on ids 2-14 plus a baseline `PORT_HANGOUTS` row apiece (mechanically
+ *    identical to Sun-3's, so no parameter moved). Three of §4.1's four
+ *    mechanisms fire here — `planDare` is legal on most docked days instead of
+ *    only at Sun-3; `planLoanBorrow` / `planLoanRepay` stop being routing-gated,
+ *    so the §7.5 bad-day out is available on the day the bad day happens; and the
+ *    trader's home-run preference collapses toward a no-op at 14 of 28
+ *    destinations. Two sim-side edits ride along, both of which make the policy
+ *    agree with an engine rule rather than change one: `planDare` now clamps with
+ *    the PORT's band (`wagerBandFor`) instead of the global content constants,
+ *    which is arithmetically inert while every row inherits the default band; and
+ *    F-121-1 adds the resolver's `!npc.dead` guard to the dealer pick (see below).
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      trader    final credits  median 14,600 -> 16,667   mean 13,882 -> 15,508
+ *      smuggler  final credits  median  5,844 ->  7,492   mean  6,337 ->  6,440
+ *      gambler   final credits  median  7,287 ->  6,672   mean 10,894 ->  6,739
+ *      loans taken (sum)  trader 6 -> 7, smuggler 5 -> 9, gambler 10 -> 11
+ *      loan DEFAULTS      trader 4 -> 0, smuggler 3 -> 0 (unchanged 0 for gambler)
+ *      interest accrued   trader 10,975 -> 1,107; smuggler 4,500 -> 1,628
+ *      dares played       gambler 50 -> 218; wagered 15,976 -> 51,680
+ *      dare net credits   gambler +1,680 -> -2,120
+ *
+ *    THE HEADLINE IS THAT THE DESK STOPPED BEING A TRAP AND THE TABLES STOPPED
+ *    BEING FREE MONEY, and neither was tuned to produce it. Defaults fall to zero
+ *    because a captain can now REPAY where it stands rather than only where it
+ *    started — the interest collapse is the same fact seen from the ledger side
+ *    (a loan is cleared in days rather than carried to term). The gambler's dare
+ *    count quadruples and its net turns NEGATIVE over this window, which is the
+ *    law of large numbers arriving at a table the policy could previously only
+ *    visit a handful of times: `expectedValuePerDare` over the wider 10-seed x
+ *    120-day measurement falls 198.62 -> 101.02 and stays firmly positive, so the
+ *    -2,120 here is a five-seed forty-day sample, not a sign flip in the verb.
+ *    NOTHING IS TUNED IN RESPONSE: five seeds cannot separate shifts of this size
+ *    from stream noise, and T-125 owns the milestone's single capstone, its
+ *    measurement and its verdict.
+ *
+ *    F-121-1, FOUND BY THIS MEASUREMENT AND FIXED HERE. `planDare`
+ *    (`sim/index.ts`), `legalActions` (`sim/protocol.ts`) and the deed hunter's
+ *    `dealerHere` all picked an in-system dealer WITHOUT the resolver's N3
+ *    `!npc.dead` guard, so all three could name a dead captain the engine then
+ *    typed-fails with 'no-opponent'. Latent while one port had a bar (0 failures
+ *    over 10 seeds x 120 days); live after the reach change (2 failures, seed 7,
+ *    day 75, `npc-black-tide`), which is exactly the drift
+ *    `hangoutPlay.failedVisits === 0` exists to catch. All three now mirror the
+ *    engine. The repair is INERT over this 40-day window — the three hashes above
+ *    are identical with and without it — and restores `failedVisits` to 0 at 120.
+ *
+ * 18. T-122 · HANGOUT CONTENT PASS 1 OF 3 — THE CORE WORLDS (2026-07-30,
+ *     docs/HANGOUT_REDESIGN.md §6.3). Four ports gain authored parameters over
+ *     T-121's baseline rows. EXACTLY ONE ROW MOVES:
+ *      gambler  8950ea1dfd8d318e -> f10a74640899d867
+ *      trader / smuggler / fighter / explorer / veteran / greedy — ALL UNCHANGED,
+ *      byte for byte.
+ *
+ *    THAT CONTROL IS THE HEADLINE RESULT OF THE TASK, and it is a sharper control
+ *    than entry 17's. T-121 moved three rows because REACH moved three verbs
+ *    (borrow, repay, dare). T-122 moves only the STAKES and the DISPOSITION
+ *    DELTAS, so only the policy that plays a hand can feel it. The trader and the
+ *    smuggler still borrow and repay at the same fourteen desks — the loan band is
+ *    GLOBAL by §2.2 ruling 5, no port narrowed its `venues`, and `borrow`/`repay`
+ *    read no `venueParams` at all — so their streams are untouched to the byte.
+ *
+ *    MECHANISM, and it is CONTENT with no rule edit and no sim edit. Ids 2, 3, 8
+ *    and 10 in `content/portHangouts.ts` become authored rows:
+ *      - Aldebaran-1 (2) band 25/1000 -> 50/750; Mira-9 (8) -> 5/200; Procyon-5
+ *        (10) -> 100/500. `planDare` sizes every stake through `wagerBandFor`
+ *        (T-121's edit), so the gambler now bets a different amount at three of
+ *        the fourteen ports it visits, and each differently-sized hand re-phases
+ *        that seed's rng stream from the moment it is played.
+ *      - Mira-9's dare deltas go 2/-2 -> 3/-1 and Procyon-5's failure arm -2 ->
+ *        -3. Those feed `applyDisposition` on the dealer, which is read downstream
+ *        by the interception and tribute-DC checks — a second, slower channel into
+ *        the same stream.
+ *      - Altair-3 (3) is the DELIBERATE NUMERIC MEAN: default band, default DCs,
+ *        default deltas, distinct on `clientele` alone. `rankClientele` has exactly
+ *        one reader — the Hangout pane (`ui/format.ts`) — and `planDare` picks the
+ *        richest in-system dealer without consulting it, so no clientele authored
+ *        here can move a sim number. That is why the four authored `clientele`
+ *        lists appear nowhere in the deltas below.
+ *      - `befriend.dc` and the `befriend`/`insult`/`meet` deltas moved at three
+ *        ports and are invisible to every policy: the sim issues exactly three
+ *        venues (borrow, repay, dare). See F-101-4 — those venues have no player
+ *        UI either.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      gambler   final credits  median  6,672 ->  6,849   mean 6,739 -> 7,158
+ *      dares played       218 -> 220     wagered  51,680 -> 52,005
+ *      dare net credits   -2,120 -> -1,927
+ *      failed Hangout visits 0 -> 0 (unchanged, as the invariant requires)
+ *      trader/smuggler final credits, loans and interest — IDENTICAL, as the
+ *      unchanged hashes already say.
+ *    The gambler plays two more hands for 325cr more staked: the narrowed bands
+ *    at three ports very nearly cancel out (a raised floor at Aldebaran-1 and
+ *    Procyon-5 against a collapsed ceiling at Mira-9), which is what a pass of
+ *    EVERYDAY bars is supposed to look like — the exotic and dangerous bands are
+ *    T-123's. NOTHING WAS TUNED TO PRODUCE THIS AND NOTHING IS TUNED IN RESPONSE:
+ *    five seeds cannot separate a shift of this size from stream noise, and T-125
+ *    owns the milestone's single capstone, its measurement and its verdict.
+ *
+ * 19. T-123 · HANGOUT CONTENT PASS 2 OF 3 — THE EXOTIC AND THE DANGEROUS
+ *     (2026-07-30, docs/HANGOUT_REDESIGN.md §6.3 pass 2). Five more ports gain
+ *     authored parameters, and for the first time a port NARROWS ITS VENUE SET.
+ *     EXACTLY TWO ROWS MOVE:
+ *      trader   1b4e953468311f40 -> 7ee040b0931caff9
+ *      gambler  f10a74640899d867 -> 40fa56c309b70e74
+ *      smuggler / fighter / explorer / veteran / greedy — ALL UNCHANGED, byte for
+ *      byte. `smuggler` staying put is the sharp control here: it borrows and
+ *      repays at the same desks the trader does, so its identity says the trader's
+ *      move is about WHERE the desk is and not about lending in general — within
+ *      this window the smuggler's routes never put it at Arcturus-6 with a marker
+ *      to settle.
+ *
+ *    MECHANISM, and it is CONTENT plus a POLICY MIRROR — no engine line changed
+ *    (`git diff --stat HEAD -- packages/engine/src ':!.../__tests__'` prints
+ *    nothing). Two independent channels, and they are separated by measurement
+ *    below rather than asserted:
+ *      (a) THE BANDS. Arcturus-6 100/400, Deneb-4 25/2000, Regulus-6 500/3000,
+ *          Rigel-8 10/3000, Vega-6 250/1500. `planDare` sizes every stake through
+ *          `wagerBandFor` (T-121's edit), so the gambler now bets a different
+ *          amount at five more of the fourteen ports it visits and each
+ *          differently-sized hand re-phases that seed's rng stream. Two of the
+ *          five bands reach 3,000 — three times the galaxy's old ceiling — which
+ *          is why this pass moves the gambler much further than T-122's did.
+ *      (b) THE WITHDRAWN DESK. Arcturus-6's row omits `borrow` and `repay`
+ *          (§6.2's strict garrison), so `resolveVisitHangout` typed-refuses a
+ *          lending action there. `planLoanBorrow` / `planLoanRepay` and the two
+ *          "head home to settle up" preferences now mirror that gate through
+ *          `isLendingDeskSystem` (`sim/index.ts`) — the F-121-1 idiom, a policy
+ *          guard made equal to an engine guard, not a new rule.
+ *
+ *    THE DECOMPOSITION, measured over these exact runs rather than reasoned about.
+ *    With the content rows in and the sim mirror REVERTED, the trader hashes
+ *    4519a706ae2dc8a2 and takes 9 loans; with the mirror it hashes 7ee040b0931caff9
+ *    and takes 7. So the mirror is LOAD-BEARING, not cosmetic — and the direct
+ *    evidence is the refusal count: driven headlessly over 5 seeds x 40 days the
+ *    trader emits ONE `LoanEvent{failReason:'venue-not-offered'}` without the
+ *    mirror and ZERO with it. That one refusal is a die slot taken out of the day's
+ *    ledger for an act the house never offered, which is exactly the drift
+ *    `hangoutPlay.failedVisits === 0` exists to forbid. Widened to 10 seeds x 120
+ *    days across ALL SEVEN policies with the mirror in: zero refusals of either
+ *    event variant. The gambler's hash is IDENTICAL with and without the mirror,
+ *    which is the control saying the `venueOffered(...,'dare')` guards added to
+ *    `planDare` and to the "go where the tables are" preference are arithmetically
+ *    inert today (all fourteen ports deal) and landed while provably so.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      trader    final credits  median 16,667 -> 16,667   mean 15,508 -> 14,809
+ *      trader    loans taken 7 -> 7, cleared 7 -> 7, defaults 0 -> 0,
+ *                interest accrued 1,107 -> 1,236
+ *      gambler   final credits  median  6,849 ->  6,314   mean  7,158 -> 11,453
+ *      gambler   dares played 220 -> 236, wagered 52,005 -> 62,305,
+ *                dare net credits -1,927 -> +2,573
+ *      gambler   loans taken 5 -> 5, interest 1,400 -> 1,400 (its lending is
+ *                untouched — only its stakes moved)
+ *      failed Hangout visits 0 -> 0 for every policy, as the invariant requires.
+ *    The gambler stakes 20% more for sixteen more hands and its dare net flips
+ *    sign; the wide 3,000-ceiling bands are the whole of it. NOTHING WAS TUNED TO
+ *    PRODUCE THIS AND NOTHING IS TUNED IN RESPONSE: five seeds cannot separate a
+ *    shift of this size from stream noise (the mean/median divergence in the
+ *    gambler row — mean up 60%, median down 8% — is itself the signature of one
+ *    seed running hot), re-pricing the Dare is R-owned per §8, and T-125 owns the
+ *    milestone's single capstone, its measurement and its verdict.
+ *
+ * 20. T-124 · HANGOUT CONTENT PASS 3 OF 3 — THE LAST FOUR, AND THE HUMOUR
+ *     (2026-07-30, docs/HANGOUT_REDESIGN.md §6.3 pass 3). The final four ports
+ *     gain authored parameters and the fourteen-port table CLOSES. EXACTLY ONE
+ *     ROW MOVES:
+ *      gambler  40fa56c309b70e74 -> 0c0c4fc26124fbc0
+ *      trader / smuggler / fighter / explorer / veteran / greedy — ALL UNCHANGED,
+ *      byte for byte.
+ *
+ *    THE ONE-ROW CONTROL IS SHARPER HERE THAN AT ENTRY 19, and it is the result
+ *    the task is really reporting. T-123 moved TWO rows because it withdrew a
+ *    credit desk, and the trader felt that through `isLendingDeskSystem`. T-124
+ *    narrows a venue set too — Spica-3 (13) omits `insult` — but ALL FOUR of its
+ *    ports keep `borrow` and `repay`, so no lending guard can see this pass and
+ *    the trader and the smuggler are untouched to the byte. The narrowing itself
+ *    is invisible to every policy for a second, independent reason: the
+ *    instrument issues exactly three venues (`dare` / `borrow` / `repay`) and the
+ *    cockpit issues the same three (F-101-4, F-123-1), so `insult` is a venue no
+ *    driver has ever asked for. That the gambler's hash moves ANYWAY, and moves
+ *    alone, says the pass reached the simulation through its BANDS and through
+ *    nothing else.
+ *
+ *    MECHANISM, and it is CONTENT with no rule edit and NO SIM EDIT — unlike
+ *    entry 19 there is no policy mirror to decompose, because there is nothing
+ *    for a policy to mirror. `git diff --stat HEAD -- packages/engine/src
+ *    ':!.../__tests__'` prints nothing, and so does the same command over
+ *    `packages/sim/src ':!.../__tests__'`. Three channels, in descending order of
+ *    effect:
+ *      (a) THE BANDS. Denebola-5 20/300, Fomalhaut-2 15/1200, Pollux-7 75/900,
+ *          Spica-3 200/1800. `planDare` sizes every stake through `wagerBandFor`
+ *          (T-121's edit), so the gambler bets a different amount at the last
+ *          four of the fourteen ports it visits and each differently-sized hand
+ *          re-phases that seed's rng stream from the moment it is played. This
+ *          is the whole of the delta below.
+ *      (b) THE DISPOSITION ARMS. Denebola-5's dare-failure arm is an AUTHORED
+ *          ZERO (-2 -> 0, the softest in the game), Pollux-7's dare-success arm
+ *          is +2 -> +1 and Spica-3's pair is +2/-2 -> +3/-5. Those feed
+ *          `applyDisposition` on the dealer, read downstream by the interception
+ *          and tribute-DC checks — the same second, slower channel entry 18
+ *          described.
+ *      (c) NOTHING ELSE. The `befriend` DCs (11 / 10 / 14) and the `meet` and
+ *          `insult` deltas moved at three ports and are invisible to every
+ *          policy and to the player alike; the four `clientele` lists are read
+ *          only by the Hangout pane. `venueOffered(..., 'dare')` is still true at
+ *          all fourteen ports, so the dare guards entry 19 added to `planDare`
+ *          and to the "go where the tables are" preference remain arithmetically
+ *          inert, exactly as they were when they landed.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      gambler   final credits  median  6,314 ->  6,314   mean 11,453 -> 9,880
+ *      gambler   dares played 236 -> 234, wagered 62,305 -> 63,563,
+ *                dare net credits +2,573 -> +5,473
+ *      gambler   loans taken 5 -> 5, interest 1,400 -> 1,400 (unchanged — only
+ *                its stakes moved, which is (a) and (b) and not lending)
+ *      trader    median 16,667, mean 14,809, loans 7, interest 1,236 — IDENTICAL
+ *      smuggler  median  7,492, mean  6,440, loans 9, interest 1,628 — IDENTICAL
+ *      failed Hangout visits 0 -> 0 for every policy, as the invariant requires;
+ *      re-confirmed at 10 seeds x 120 days across all seven policies: zero
+ *      refusals of either event variant, with a THIRD narrowed port in the table.
+ *    THE MEDIAN DOES NOT MOVE AT ALL while the mean falls 14% — the exact inverse
+ *    of entry 19's signature, and the same explanation: one seed. The gambler
+ *    stakes 1,258cr more across two FEWER hands and its dare net doubles;
+ *    `expectedValuePerDare` over the wider 10-seed x 120-day measurement is
+ *    151.82 (T-121 measured 101.02), so the verb is firmly positive and moving in
+ *    the direction the widened bands predict. NOTHING WAS TUNED TO PRODUCE THIS
+ *    AND NOTHING IS TUNED IN RESPONSE: five seeds cannot separate a shift of this
+ *    size from stream noise, re-pricing the Dare is R-owned per §8, and T-125 —
+ *    the very next task — owns the milestone's single capstone, its sweep, its
+ *    re-pinned baseline and its verdict.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
-  trader: 'f3e01b2a843c1c0f',
+  // Entry 17: re-derived — the Penny Wise desk is now reachable at 14 of 28 ports,
+  // so the trader borrows and repays on the day it needs to rather than on the day
+  // it gets home. Entry 19: re-derived again — Arcturus-6 withdraws its desk, and
+  // the policy's lending guards now mirror the engine's `venueOffered` gate rather
+  // than queueing an action the resolver refuses.
+  trader: '7ee040b0931caff9',
   fighter: 'dc6ca4fbcce58659',
-  // T-113 entry 14: re-derived — the authored pools reach the sweeping policies.
-  explorer: '9110009d148f6c4a',
+  // Entry 16: re-derived — T-117's single band-weighted draw replaces the
+  // three-leg carrier and T-115 fills bands 3-4, so every board this policy
+  // takes re-phases.
+  explorer: '2537a7aa5185d3fd',
   veteran: 'f701430cfe32f7cb',
-  // T-113 entry 14: re-derived, same reason as `explorer`.
-  smuggler: '459ee18f292bf2c9',
-  gambler: 'fbb8b4df794fa5f4',
+  // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
+  // as the trader.
+  smuggler: 'faa0c778be299406',
+  // Entry 17: re-derived — the tables are open on most docked days now, not only
+  // when the route passes Sun-3. Entry 18: re-derived again — three of the
+  // fourteen ports now deal in their OWN wager band, so the stake this policy puts
+  // down (and every hand after it) re-phases. The only row entry 18 moves.
+  // Entry 19: re-derived a third time — five more authored bands, two of them
+  // reaching 3,000, so the stakes move much further than pass 1's did.
+  // Entry 20: re-derived a FOURTH time — the last four authored bands close the
+  // table at fourteen, so every port this policy deals at now has a band of its
+  // own and there is no default-band port left for a stake to inherit. The only
+  // row entry 20 moves, and the only row it CAN move: pass 3 withdraws no credit
+  // desk, so nothing reaches the lending policies at all.
+  gambler: '0c0c4fc26124fbc0',
   greedy: '0f2ff82982dcbf2d',
 };
 

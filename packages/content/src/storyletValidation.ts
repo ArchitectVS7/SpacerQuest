@@ -171,10 +171,25 @@ function validateEffects(
   }
 }
 
-export function validateStorylets(storylets: readonly StoryletDefinition[]): string[] {
+/**
+ * @param externalScheduledIds T-114 · storylet ids scheduled by something that is
+ *   NOT itself a storylet. The `scheduledOnly` / `wireResolution` rules at the
+ *   foot of this function assert that a scheduled-only beat has a scheduler, and
+ *   until T-114 a storylet's own `effects.schedule` was the only scheduler that
+ *   could exist. An explore `questline` outcome row is a second, legitimate one:
+ *   the engine turns `{ storyletId, delayDays }` into the SAME
+ *   `StoryletEffects.schedule` through the same `applyEffects`, so the target is
+ *   genuinely scheduled — it simply has no storylet to walk back to. Seeding the
+ *   set from here keeps the rule intact instead of weakening it, and the caller
+ *   supplies `EXPLORE_SCHEDULED_STORYLET_IDS`, which is DERIVED from the rows.
+ */
+export function validateStorylets(
+  storylets: readonly StoryletDefinition[],
+  externalScheduledIds: readonly string[] = [],
+): string[] {
   const errors: string[] = [];
   const storyletIds = new Set<string>();
-  const scheduledTargets = new Set<string>();
+  const scheduledTargets = new Set<string>(externalScheduledIds);
 
   storylets.forEach((storylet, index) => {
     const path = `storylets[${index}](${storylet.id})`;
@@ -376,8 +391,11 @@ export function validateStorylets(storylets: readonly StoryletDefinition[]): str
   return errors;
 }
 
-export function defineStorylets<const T extends readonly StoryletDefinition[]>(storylets: T): T {
-  const errors = validateStorylets(storylets);
+export function defineStorylets<const T extends readonly StoryletDefinition[]>(
+  storylets: T,
+  externalScheduledIds: readonly string[] = [],
+): T {
+  const errors = validateStorylets(storylets, externalScheduledIds);
   if (errors.length > 0) {
     throw new Error(`Invalid storylet content:\n - ${errors.join('\n - ')}`);
   }

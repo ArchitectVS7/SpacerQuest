@@ -98,7 +98,6 @@ import {
   nemesisFile,
   crossingStatus,
   activeOnboardingPrompt,
-  onboardingMount,
   isGuildLetter,
   availableStorylets,
   offersForSurface,
@@ -947,20 +946,19 @@ function SaveWriteFailedNotice() {
 // The contextual onboarding coach (T-311). A NON-MODAL callout anchored to the
 // real affordance it teaches — no backdrop, no focus trap, nothing disabled, so
 // the player can act on the affordance while it is up (which auto-dismisses it).
-// This is the "no modal tutorial walls" guarantee. It renders at most one prompt
-// (the store's selector picks the highest-priority active, unseen one). `where`
-// selects which of THREE mount points this instance is: the combat coach renders
-// INSIDE the combat overlay, the loan coach INSIDE the open Hangout panel (both
-// overlays cover the cockpit), and everything else at screen level. The single
-// global selector still guarantees at most one prompt anywhere; `onboardingMount`
-// (T-1407) just routes the winner to its correct mount.
+// This is the "no modal tutorial walls" guarantee. `where` selects which of
+// THREE mount points this instance is: the combat coach renders INSIDE the
+// combat overlay, the loan coach INSIDE the open Hangout panel (both overlays
+// cover the cockpit), and everything else at screen level. Each mount asks
+// `activeOnboardingPrompt` for ITS OWN highest-priority active, unseen prompt
+// (F-121-2) — so a prompt routed to a closed-panel mount can never claim a
+// different mount's slot and render nowhere.
 function OnboardingCallout({ state, where }: { state: CockpitState; where: OnboardingMount }) {
   // The screen mount is suppressed while the combat overlay covers the cockpit,
   // so a lower-priority screen prompt can never render behind the overlay.
   if (where === 'screen' && state.game.encounter != null) return null;
-  const prompt = activeOnboardingPrompt(state.game, state.onboardingSeen);
+  const prompt = activeOnboardingPrompt(state.game, state.onboardingSeen, where);
   if (!prompt) return null;
-  if (onboardingMount(prompt.anchor) !== where) return null;
   return (
     <aside
       className="onboarding"
@@ -1764,7 +1762,7 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
   const game = state.game;
   const npcs = hangoutNpcs(game);
   const rumors = hangoutRumorLines(game);
-  const bounds = dareWagerBounds();
+  const bounds = dareWagerBounds(game);
   const terms = lendingTerms();
   const loan = game.player.loan;
   const armed = state.selectedDie !== null;

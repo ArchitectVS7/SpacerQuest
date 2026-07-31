@@ -27,9 +27,28 @@ export interface StarSystem {
    * §7.3 / §7.5 sample turns ("The Spacers Hangout, Sun-3"). This flag is the
    * extensible GATE: only systems flagged here surface the die-costed
    * `VisitHangout` player action (Spacer's Dare + social beats + rumor slot).
-   * Set true on Sun-3 first (the sample-turn hub, and the player's start system,
-   * so the venue is reachable on day 1); more hubs join later. READER: the
-   * hangout gate in engine `day.ts` applyPlayerAction, which emits an
+   *
+   * T-121 · THE REACH CHANGE — a bar at all fourteen CORE spaceports, ids 1–14
+   * (Sun-3 … Vega-6), and nowhere else (`docs/HANGOUT_REDESIGN.md` §4.5). It was
+   * set on Sun-3 alone from T-1303 until now, which made the whole Hangout pillar
+   * reachable only when a route happened to pass home.
+   *
+   * THE RIM (15–20), ANDROMEDA (21–26), MALIGNA (27) AND NEMESIS (28) CARRY NO
+   * VENUE, AND THAT IS A DESIGN REQUIREMENT RATHER THAN AN OMISSION. §4.5 gives
+   * two reasons: fourteen core ports is the owner's target verbatim, and
+   * `ActionBlocked{reason:'no-hangout'}` is a shipped engine behaviour whose three
+   * tests become unwritable the moment the un-flagged set is empty. Do not "finish
+   * the job" by flagging the rim.
+   *
+   * THIS FLAG STAYS THE AUTHORITATIVE GATE (§2.2 ruling 3). The paired table
+   * `PORT_HANGOUTS` (`./portHangouts.ts`) carries a port's PARAMETERS — venues,
+   * wager band, DCs, disposition deltas, clientele, prose — and never decides
+   * whether a bar exists; a flagged port with no row of its own resolves to
+   * `DEFAULT_PORT_HANGOUT` and renders as a generic house. The two sets are held
+   * equal in both directions by the enumerating test in
+   * `packages/engine/src/__tests__/hangoutRules.test.ts`, so neither can drift.
+   *
+   * READER: the hangout gate in engine `day.ts` applyPlayerAction, which emits an
    * ActionBlocked{reason:'no-hangout'} at un-flagged systems, and the UGT
    * protocol legalActions (`packages/sim/src/protocol.ts`), which only advertises
    * VisitHangout at a flagged system. Surfaced to the player by T-1404.
@@ -76,14 +95,15 @@ export const STAR_SYSTEMS: Record<number, StarSystem> = {
     fuelSellPrice: 1,
     // T-1303: the Spacers Hangout of the §7.3 / §7.5 sample turns. Sun-3 is the
     // player's home port, so the Hangout verb is reachable from day 1.
+    // T-121: no longer the only one — every core port below carries the flag too.
     hasHangout: true,
   },
-  2: { id: 2, name: 'Aldebaran-1', isRim: false, coordinates: { x: 4, y: 2 } },
-  3: { id: 3, name: 'Altair-3', isRim: false, coordinates: { x: 7, y: -1 } },
-  4: { id: 4, name: 'Arcturus-6', isRim: false, coordinates: { x: 2, y: 6 } },
-  5: { id: 5, name: 'Deneb-4', isRim: false, coordinates: { x: -3, y: 4 } },
-  6: { id: 6, name: 'Denebola-5', isRim: false, coordinates: { x: -5, y: -2 } },
-  7: { id: 7, name: 'Fomalhaut-2', isRim: false, coordinates: { x: -2, y: -6 } },
+  2: { id: 2, name: 'Aldebaran-1', isRim: false, coordinates: { x: 4, y: 2 }, hasHangout: true },
+  3: { id: 3, name: 'Altair-3', isRim: false, coordinates: { x: 7, y: -1 }, hasHangout: true },
+  4: { id: 4, name: 'Arcturus-6', isRim: false, coordinates: { x: 2, y: 6 }, hasHangout: true },
+  5: { id: 5, name: 'Deneb-4', isRim: false, coordinates: { x: -3, y: 4 }, hasHangout: true },
+  6: { id: 6, name: 'Denebola-5', isRim: false, coordinates: { x: -5, y: -2 }, hasHangout: true },
+  7: { id: 7, name: 'Fomalhaut-2', isRim: false, coordinates: { x: -2, y: -6 }, hasHangout: true },
   8: {
     id: 8,
     name: 'Mira-9',
@@ -91,17 +111,19 @@ export const STAR_SYSTEMS: Record<number, StarSystem> = {
     coordinates: { x: 3, y: -5 },
     fuelBuyPrice: 4,
     fuelSellPrice: 3,
+    hasHangout: true,
   },
-  9: { id: 9, name: 'Pollux-7', isRim: false, coordinates: { x: 9, y: 4 } },
-  10: { id: 10, name: 'Procyon-5', isRim: false, coordinates: { x: 6, y: 7 } },
-  11: { id: 11, name: 'Regulus-6', isRim: false, coordinates: { x: 11, y: -3 } },
-  12: { id: 12, name: 'Rigel-8', isRim: false, coordinates: { x: -8, y: 3 } },
+  9: { id: 9, name: 'Pollux-7', isRim: false, coordinates: { x: 9, y: 4 }, hasHangout: true },
+  10: { id: 10, name: 'Procyon-5', isRim: false, coordinates: { x: 6, y: 7 }, hasHangout: true },
+  11: { id: 11, name: 'Regulus-6', isRim: false, coordinates: { x: 11, y: -3 }, hasHangout: true },
+  12: { id: 12, name: 'Rigel-8', isRim: false, coordinates: { x: -8, y: 3 }, hasHangout: true },
   13: {
     id: 13,
     name: 'Spica-3',
     isRim: false,
     coordinates: { x: -7, y: -7 },
     fuelSellPrice: 5,
+    hasHangout: true,
   },
   14: {
     id: 14,
@@ -110,6 +132,7 @@ export const STAR_SYSTEMS: Record<number, StarSystem> = {
     coordinates: { x: 10, y: 9 },
     fuelBuyPrice: 6,
     fuelSellPrice: 4,
+    hasHangout: true,
   },
 
   // Rim Systems (outer shell ~20–24 units out — an order past the ~11 core–core

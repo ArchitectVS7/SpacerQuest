@@ -3,6 +3,7 @@ import {
   CARGO_TYPES,
   STORYLETS,
   NPC_PROFILES,
+  ALL_NPC_PROFILES,
   isSimulatedCaptain,
   ANONYMOUS_INTERCEPTORS,
   SHIP_COMPONENTS,
@@ -14,8 +15,6 @@ import {
   RUN_FUEL_COST,
   EXPLORATION_NAV_DC,
   EXPLORATION_FUEL_COST,
-  DARE_MIN_WAGER,
-  DARE_MAX_WAGER,
   LOAN_MIN_PRINCIPAL,
   LOAN_MAX_PRINCIPAL,
   LOAN_DAILY_RATE,
@@ -74,6 +73,8 @@ import {
   travelPreview,
   quoteFuelPurchase,
   hangoutRumors,
+  rankClientele,
+  wagerBandFor,
   dawnDiceModifiers,
   equipmentDiceBenefits,
   hasExploreModule,
@@ -273,7 +274,26 @@ export function explorationOutcome(events: GameEvent[]): string | null {
   for (const e of events) if (e.type === 'SalvageRecovered') salvage += e.amount;
   if (salvage > 0) parts.push(`${salvage.toLocaleString()}cr in salvage`);
   if (events.some((e) => e.type === 'FragmentAcquired')) parts.push('a Signal Fragment recovered');
-  if (events.some((e) => e.type === 'ContrabandFound'))
+  // T-117 re-homed the sealed pod onto three authored derelict lore rows'
+  // `effects.flags` (content `exploration.ts` `DERELICT_POD_EFFECTS`), which sets
+  // `signal.contraband.pending` and arms the `derelict.sealed-pod` storylet — but
+  // the row's own `wireFound` prose (a manifest, a burn schedule, a survey file)
+  // never actually says "pod", so without this clause the pod's arrival was
+  // invisible everywhere: not in this summary, not in the wire log, only
+  // discoverable by noticing a new launcher in the hold dispatches. Read the
+  // flag-set event `applyEffects` emits (`StoryletEffectApplied` `effect: 'flag'`)
+  // rather than the retired `ContrabandFound` event, which stopped being emitted
+  // when the transitional `contraband` payload kind retired with the three-leg
+  // draw (docs/EXPLORE_REDESIGN.md §2.4, finding F-113-B) and would never fire here.
+  if (
+    events.some(
+      (e) =>
+        e.type === 'StoryletEffectApplied' &&
+        e.effect === 'flag' &&
+        e.flag === 'signal.contraband.pending' &&
+        e.value === true,
+    )
+  )
     parts.push('a sealed pod bolted in the hold');
   // T-111: a deferred find would otherwise read as "Charted X." with no payoff —
   // the commitment must be legible on the day it is made. Reads the event's own
@@ -288,6 +308,26 @@ export function explorationOutcome(events: GameEvent[]): string | null {
   for (const e of events) {
     if (e.type !== 'UniqueItemAcquired') continue;
     parts.push(`${EXPLORE_ITEM_BY_ID[e.itemId]?.name ?? 'an unlogged fitting'} recovered`);
+  }
+  // T-114: the two band-2 kinds that had no clause at all. §4.4 is explicit that
+  // a committed find the player cannot see is a trap, and an `npc` row or a
+  // `questline` row would otherwise read as "Charted X." with no payoff — the
+  // same gap T-111's `RecoveryStarted` clause closed for a deferred find.
+  //
+  // BOTH ARE NAME LOOKUPS ONLY, on the engine's own emitted events. The
+  // disposition move is read off `DispositionChanged` (which `applyEffects`
+  // routes every standing change through) and the hook off `StoryletScheduled`
+  // — never re-derived here, because a second account of a rule the engine
+  // already applied is exactly how a UI drifts from the game.
+  for (const e of events) {
+    if (e.type !== 'DispositionChanged') continue;
+    const name = ALL_NPC_PROFILES.find((npc) => npc.id === e.npcId)?.name ?? 'a captain';
+    parts.push(e.delta >= 0 ? `${name} owes you a word` : `${name} took it badly`);
+  }
+  for (const e of events) {
+    if (e.type !== 'StoryletScheduled') continue;
+    const title = STORYLETS.find((s) => s.id === e.scheduledStoryletId)?.title;
+    parts.push(title ? `a lead opened: ${title}` : 'a lead opened');
   }
   return `${parts.join(' · ')}.`;
 }
@@ -323,9 +363,18 @@ export interface HangoutNpc {
 
 export function hangoutNpcs(game: GameState): HangoutNpc[] {
   const here = game.player.currentSystemId;
-  return game.npcs
-    .filter((n) => n.currentSystemId === here)
-    .map((n) => ({ id: n.id, name: n.name, disposition: n.disposition }));
+  // T-120 · the house's own order. `rankClientele` (engine) REORDERS the live
+  // in-system set by the port's authored `clientele` — regulars first, then the
+  // preferred archetypes, then everyone else, each bucket keeping its incoming
+  // order. It never adds an NPC, so the pane still lists exactly the captains the
+  // Dare resolver will accept as an opponent. Under Sun-3's default (empty)
+  // clientele it is the identity and this list is unchanged.
+  const present = game.npcs.filter((n) => n.currentSystemId === here);
+  return rankClientele(game, here, present).map((n) => ({
+    id: n.id,
+    name: n.name,
+    disposition: n.disposition,
+  }));
 }
 
 /** The rumor-table lines — a pure pass-through to the engine's own exported
@@ -336,15 +385,17 @@ export function hangoutRumorLines(game: GameState): string[] {
   return hangoutRumors(game);
 }
 
-/** The Dare wager band (content DARE_MIN/MAX_WAGER) — the same bounds the engine
- *  clamps a requested wager into. Reader: the pane's wager input + its label. */
+/** The Dare wager band — the same bounds the engine clamps a requested wager into.
+ *  T-120: the band is now the PORT's (`wagerBandFor`), so a high table and a
+ *  dockside room show different limits; the UI reads the engine's accessor rather
+ *  than a bare constant. Reader: the pane's wager input + its label. */
 export interface DareWagerBounds {
   min: number;
   max: number;
 }
 
-export function dareWagerBounds(): DareWagerBounds {
-  return { min: DARE_MIN_WAGER, max: DARE_MAX_WAGER };
+export function dareWagerBounds(game: GameState): DareWagerBounds {
+  return wagerBandFor(game.player.currentSystemId);
 }
 
 /** Penny Wise's up-front lending terms — the raw content constants the engine
@@ -2074,29 +2125,38 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
 ];
 
 /**
- * The single prompt to show right now: the first registry prompt that is active
- * for this state AND not yet seen. Returns null when nothing is due — the callout
- * then renders nothing. At most one at a time (non-modal, no stacking).
+ * The prompt to show right now AT THIS MOUNT: the first registry prompt that is
+ * active for this state, not yet seen, AND routes to `mount` (`onboardingMount`).
+ * Returns null when nothing is due for this mount — the callout then renders
+ * nothing. Each of the three `OnboardingCallout` mounts asks for its own winner
+ * independently, so a winner routed to a closed-panel mount (e.g. `first-loan`
+ * inside the closed Hangout panel) cannot hold the slot and silently block a
+ * screen-mount prompt behind it (F-121-2). At most one prompt per mount at a
+ * time (non-modal, no stacking).
  */
 export function activeOnboardingPrompt(
   game: GameState,
   seen: Record<string, true>,
+  mount: OnboardingMount,
 ): OnboardingPrompt | null {
   for (const prompt of ONBOARDING_PROMPTS) {
-    if (!seen[prompt.id] && prompt.active(game)) return prompt;
+    if (seen[prompt.id] || !prompt.active(game)) continue;
+    if (onboardingMount(prompt.anchor) !== mount) continue;
+    return prompt;
   }
   return null;
 }
 
-/** T-1407 · Where a prompt's callout renders. The single global selector still
- *  picks at-most-one prompt anywhere; this routes the winner to the right mount so
- *  a prompt anchored to an overlaid surface is not hidden behind that overlay. */
+/** T-1407 · Where a prompt's callout renders. `activeOnboardingPrompt` is
+ *  mount-aware (F-121-2) — each mount computes its own winner rather than
+ *  filtering a single global one, so a prompt anchored to an overlaid surface
+ *  cannot be hidden behind that overlay nor block a different mount's prompt. */
 export type OnboardingMount = 'screen' | 'combat' | 'hangout';
 
 /** Derive the mount a prompt's anchor renders in: the combat coach rides inside
  *  the combat overlay, the loan nudge inside the open Hangout panel, everything
- *  else at cockpit screen level. Reader: `OnboardingCallout` (each of the three
- *  mounts asks whether the current winner belongs to it). */
+ *  else at cockpit screen level. Reader: `activeOnboardingPrompt` (each of the
+ *  three mounts asks for its own winner). */
 export function onboardingMount(anchor: OnboardingAnchor): OnboardingMount {
   if (anchor === 'combat') return 'combat';
   if (anchor === 'loan') return 'hangout';

@@ -176,8 +176,47 @@ import { deedHunterPolicy, HUNTER_TARGET_DEED_IDS } from './support/deed-hunter.
  * argument for stopping at 1..8 no longer holds and is recorded here rather than
  * left to be re-derived. Every threshold in this file is byte-identical; only the
  * range moved.
+ *
+ * T-117 + T-115 · WIDENED 1..12 -> 1..65, and this is the largest widening the block has
+ * taken. It is a WIDENING and not a re-pin, and it is a widening rather than a
+ * loosened threshold, because the property it guards did not move and no number
+ * in this file changed: the union is still 44/44 and the slate is still winnable
+ * in one life. What changed is HOW OFTEN a single career wins it.
+ *
+ * MECHANISM, stated so the size of the move is checkable rather than asserted:
+ *   T-117 flips Explore to the SINGLE BAND-WEIGHTED DRAW (docs/EXPLORE_REDESIGN.md
+ *   §2.4, finding F-113-A). A board used to walk three INDEPENDENT legs — a
+ *   salvage roll, a fragment roll and a contraband roll — and now draws exactly
+ *   one row out of a 100-row table. §2.4 says outright that this is not
+ *   behaviour-preserving. Two deed supply lines run straight through it, and both
+ *   fall by roughly an order of magnitude PER BOARD:
+ *     · `rich_hulk` (a `SalvageRecovered` of 400cr+) used to come off a derelict
+ *       salvage leg that fired on 80% of derelict boards; it is now a band-2
+ *       derelict salvage row at ~3.6% of boards.
+ *     · `slipped_the_scan` / `known_to_the_league` / `run_seized` are all
+ *       downstream of CARRYING illicit cargo, and the sealed pod that supplies it
+ *       used to be an independent leg on 20% of boards. It is now three authored
+ *       band-1 derelict lore rows at ~4.5% (content `DERELICT_POD_EFFECTS`).
+ *   The hunter also loses raw throughput: 42% of boards now open a multi-day
+ *   recovery, and the T-111 fifth typed refusal blocks Explore for its duration.
+ *
+ * RE-SWEPT over seeds 1..160 of this exact driver at this exact horizon:
+ *   · THE UNION IS STILL 44/44 with nothing missing, and it is 44/44 inside
+ *     1..28 alone — so the design property this file exists to guard is intact
+ *     and has redundancy;
+ *   · TWO careers are individually total: seeds 31 and 65. Fourteen more miss
+ *     exactly one deed, and TWELVE of those fourteen miss `slipped_the_scan` —
+ *     the same long pole every previous sweep names, now longer.
+ * 1..65 is the shortest contiguous range holding both total careers, which is
+ * what the `>= 2` count needs. MEASURED COST: 65 careers in ~31s.
+ *
+ * REPORTED, NOT TUNED AROUND. That an evaded patrol scan is now a 1-in-14 career
+ * event for a deed-hunting captain is a real consequence of a ruled design change,
+ * and re-pricing Explore or the pod supply to flatter this file would be exactly
+ * the metric-gaming the standing constraints forbid. It is recorded as finding
+ * F-115-B for T-116, which owns the milestone's measurement.
  * ========================================================================== */
-const COVERAGE_SEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+const COVERAGE_SEEDS = Array.from({ length: 65 }, (_, index) => index + 1);
 /** See SWEEP PROVENANCE above. */
 const HORIZON = 300;
 

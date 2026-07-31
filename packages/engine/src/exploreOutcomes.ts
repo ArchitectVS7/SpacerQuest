@@ -8,17 +8,24 @@
  * `packages/content/src/exploration.ts` and zero lines here
  * (docs/EXPLORE_REDESIGN.md §2.3).
  *
- * DETERMINISM CONTRACT (unchanged from T-111b, §2.4): every draw runs off the
- * same forked action rng (`day.ts` forks on the action's event index) in a fixed
- * documented order — (1) POI type, (2) flavour name, (3) outcome row, (4) any
- * within-payload roll. A seed plus an action sequence reproduces the board
- * exactly.
+ * DETERMINISM CONTRACT (§2.4): every draw runs off the same forked action rng
+ * (`day.ts` forks on the action's event index) in a fixed documented order —
+ * (1) POI type, (2) flavour name, (3) BAND, (4) ROW, (5) any within-payload roll.
+ * A seed plus an action sequence reproduces the board exactly.
  *
  * T-111 · THE CLAIM/PAYOFF SPLIT. `resolveExploreOutcome` is unchanged and is the
  * PAYOFF resolver — the dusk payout in `day.ts` calls it too. In front of it sits
  * `claimOutcome`, which decides whether a drawn row is delivered today or opens
  * the multi-day recovery slot; `bandFor` / `recoveryDays` are the rule it reads
  * (docs/EXPLORE_REDESIGN.md §3).
+ *
+ * T-117 · THE DRAW IS NOW ONE WEIGHTED ROW PER BOARD. `drawOutcome` replaces the
+ * transitional three-leg `drawLegacyLoot`, which is deleted with the content table
+ * it read (`LEGACY_POI_LOOT`) and with the transitional `contraband` payload kind
+ * — findings F-113-A and F-113-B, both discharged. Note what did NOT change with
+ * them: the `ContrabandFound` EVENT VARIANT stays in `types.ts`/`schema.ts`.
+ * Removing an event shape is save/schema surface and would drag a version bump
+ * into a content pass; it simply stops being emitted.
  */
 
 import {
@@ -28,7 +35,6 @@ import {
   ExploreItemDefinition,
   ExploreOutcomeDefinition,
   ExploreValueBand,
-  LEGACY_POI_LOOT,
   POI_DISCOVERY_TABLE,
   POI_KINDS,
   PoiType,
@@ -104,6 +110,35 @@ function bandFor(valuePoints: number): ExploreValueBand {
 export function recoveryDays(valuePoints: number): number {
   return bandFor(valuePoints).recoveryDays;
 }
+
+/**
+ * T-117 · THE DRAW INDEX — `EXPLORE_OUTCOMES` bucketed once, per POI type, by the
+ * band each row's `valuePoints` falls in, in `EXPLORE_VALUE_BANDS` ORDER.
+ *
+ * Built at module load because the table is static, exactly as `OUTCOMES_BY_ID`
+ * is: a 6,000-board reachability sweep re-filtering 100 rows per board is work
+ * with no information in it. BANDS WITH NO ROW IN A POOL ARE ABSENT FROM THE
+ * LIST, which is what `drawOutcome` renormalises over — the empty band is dropped
+ * rather than special-cased at draw time.
+ *
+ * ORDER IS LOAD-BEARING: the cumulative walk in `drawOutcome` lands on whichever
+ * entry the roll falls in, so the list must be built in one stable documented
+ * order (ascending band) or a content edit could re-phase every seeded career.
+ */
+const ROWS_BY_POOL: ReadonlyMap<
+  PoiType,
+  readonly { band: ExploreValueBand; rows: readonly ExploreOutcomeDefinition[] }[]
+> = new Map(
+  (Object.keys(POI_KINDS) as PoiType[]).map((poiType) => [
+    poiType,
+    EXPLORE_VALUE_BANDS.map((band) => ({
+      band,
+      rows: EXPLORE_OUTCOMES.filter(
+        (row) => row.pools.includes(poiType) && bandFor(row.valuePoints).band === band.band,
+      ),
+    })).filter((entry) => entry.rows.length > 0),
+  ]),
+);
 
 /** Deterministically pick one flavor name off the forked action rng. */
 function chooseName(rng: SeededRng, names: readonly string[]): string {
@@ -272,19 +307,6 @@ export function resolveExploreOutcome(
       break;
     }
 
-    case 'contraband': {
-      // F-110-A · TRANSITIONAL, retired by T-113. A sealed pod arms the
-      // carry-choice storylet via a flag; the pod is not stowed here.
-      state.flags['signal.contraband.pending'] = true;
-      events.push({
-        type: 'ContrabandFound',
-        day: state.day,
-        poiId: poi.id,
-        systemId: poi.systemId,
-      });
-      break;
-    }
-
     case 'unique-item': {
       // T-112 · The row names an ITEM; the engine owns what each ELEMENT CLASS
       // means. The lookup is DEFENSIVE — the `CREW_BY_ID[…]?.benefit` precedent
@@ -353,19 +375,18 @@ export function resolveExploreOutcome(
  * still draws (1) POI type, (2) flavour name, (3) outcome row, (4) any
  * within-payload roll — step (4) simply happens N days later.
  *
- * MEASURED CONSEQUENCE, stated rather than glossed: in the LEGACY multi-leg draw
- * the three legs share one rng, so a deferred row's skipped payload roll shifts
- * every subsequent leg's chance roll on that board. A 300-seed sweep moves from
- * 202/96/57 salvage/fragment/contraband events to 79/102/44 plus 136 deferred
- * recoveries. That is a real behaviour change (T-111 is not an inert extraction),
- * it is re-pinned in `__tests__/exploreOutcomes.test.ts` with a ledger entry, and
- * it disappears with the multi-leg draw itself at T-113.
+ * T-117 · THE MULTI-LEG RE-PHASING IS GONE. While the transitional carrier lived,
+ * a deferred row's skipped payload roll shifted every subsequent leg's chance roll
+ * on the same board, because the three legs shared one rng. A board now draws
+ * exactly one row, so the defer path's zero rng cost is the END of the board's
+ * stream and cannot re-phase anything.
  *
  * THE SLOT-FREE PREDICATE is the same `player.recovery === null` the Explore verb
- * refuses on — one rule, not two. It matters only for the legacy MULTI-LEG draw,
- * which is the sole way one board can produce two recovery-bearing rows; a second
- * such row resolves immediately rather than being dropped.
- * T-113: unreachable once the draw is a single weighted row.
+ * refuses on — one rule, not two. Under the single draw it is UNREACHABLE from the
+ * Explore action (one board, one row, and the verb already refuses while a
+ * recovery is open), and it is kept because `claimOutcome` is a general entry
+ * point: a caller that ever delivers a second row must degrade to an immediate
+ * resolve rather than silently dropping it.
  */
 export function claimOutcome(
   state: GameState,
@@ -406,43 +427,69 @@ export function claimOutcome(
 }
 
 /**
- * THE LEGACY DRAW (T-111b's model, kept alive for the extraction span).
+ * T-117 · THE SINGLE BAND-WEIGHTED DRAW (docs/EXPLORE_REDESIGN.md §2.4, §5.1).
+ * This is finding F-113-A discharged — the flip §2.4 pencilled into T-113,
+ * re-reported by T-114, and owned by T-117 — the dedicated engine task F-113-A
+ * recommended, inserted between T-114 and T-115.
  *
- * §2.4: today's three legs are INDEPENDENT — a lucky board yields salvage AND a
- * fragment AND a pod — so a single weighted draw is not behaviour-preserving.
- * This walks `LEGACY_POI_LOOT`'s three legs in the shipped order, each its own
- * chance roll off the action rng, and hands whatever fires to the generic
- * resolver above. T-113 replaces this ONE CALL with the weighted draw over
- * `EXPLORE_OUTCOMES` and this function goes away with the table it reads.
+ * ONE ROW PER SUCCESSFUL BOARD. The transitional three-leg carrier it replaces
+ * (`drawLegacyLoot` + `LEGACY_POI_LOOT`) is deleted with it, and so is the
+ * transitional `contraband` payload kind that only that carrier could reach
+ * (F-113-B).
  *
- * Determinism, leg by leg, matching the pre-T-110 resolver draw for draw:
- *  - the empty-leg guard SHORT-CIRCUITS the chance roll (no ids ⇒ no draw);
- *  - a single-id leg consumes NO pick draw, only its chance roll;
- *  - a multi-id leg consumes exactly one further draw for the index;
- *  - a zero-chance leg still CONSUMES its chance roll (the beacon's contraband).
+ * THE RULE, and every part of it reads content:
+ *   1. filter `EXPLORE_OUTCOMES` to rows whose own `pools` include `poiType` —
+ *      which pools exist and which rows are in them is content;
+ *   2. group the survivors by `bandFor(valuePoints).band`;
+ *   3. ONE `rng.next()` picks the BAND, weighted by `EXPLORE_VALUE_BANDS[].weight`
+ *      RENORMALISED over the bands that actually have rows in this pool. The
+ *      renormalisation is not a nicety: an empty band would otherwise swallow its
+ *      share of the probability and the rarest rows would go unreachable;
+ *   4. ONE `rng.next()` picks uniformly INSIDE the band. §5.1 is explicit that
+ *      there is no row-level weight — rows in a band are equiprobable, which is
+ *      what makes per-row probability (`bandWeight / rowsInBand`) analytically
+ *      checkable rather than empirically guessed at.
+ *
+ * THE DRAW COST IS FIXED AT TWO `rng.next()` CALLS, always, even for a one-row
+ * band. The legacy draw's single-id short-circuit existed only to reproduce the
+ * pre-T-110 stream draw-for-draw and dies with the model it reproduced; a
+ * conditional draw here would make the stream depend on how many rows an author
+ * happened to write in a band.
+ *
+ * DETERMINISM ORDER, unchanged from §2.4: (1) POI type, (2) flavour name,
+ * (3) band, (4) row, (5) any within-payload roll — where step (5) happens N days
+ * later for a deferred find, off a fork of the dusk rng.
+ *
+ * THE ROW GOES TO `claimOutcome`, NOT to `resolveExploreOutcome`: a band-2+ row
+ * opens the multi-day recovery slot instead of paying out today (T-111, §3).
+ *
+ * Returns `undefined` only if the pool is empty of rows — content integrity is
+ * asserted in `__tests__/exploreContent.test.ts`, never enforced by a throw.
  */
-export function drawLegacyLoot(
-  state: GameState,
-  poi: DiscoveredPoi,
+export function drawOutcome(
+  poiType: PoiType,
   rng: SeededRng,
-  events: GameEvent[],
-): void {
-  const table = LEGACY_POI_LOOT[poi.type];
-  for (const leg of [table.salvage, table.fragment, table.contraband]) {
-    if (leg.outcomeIds.length === 0) continue;
-    if (rng.next() >= leg.chance) continue;
-    const id =
-      leg.outcomeIds.length === 1
-        ? leg.outcomeIds[0]
-        : leg.outcomeIds[Math.floor(rng.next() * leg.outcomeIds.length)];
-    const row = OUTCOMES_BY_ID.get(id);
-    // A dangling id resolves to nothing and consumes nothing — content integrity
-    // is asserted in `__tests__/exploreOutcomes.test.ts`, not enforced by a throw.
-    // T-111: through `claimOutcome`, not `resolveExploreOutcome` — a band-2+ row
-    // opens the recovery slot instead of paying out today. The leg chance rolls
-    // and index draws in THIS function are untouched; the shift a deferred row
-    // causes downstream comes from its skipped PAYLOAD roll, which the three legs
-    // share an rng with. See `claimOutcome`'s header for the measured size of it.
-    if (row) claimOutcome(state, row, poi, rng, events);
+): ExploreOutcomeDefinition | undefined {
+  const byBand = ROWS_BY_POOL.get(poiType);
+  if (!byBand || byBand.length === 0) return undefined;
+
+  const totalWeight = byBand.reduce((sum, entry) => sum + entry.band.weight, 0);
+  if (totalWeight <= 0) return undefined;
+
+  const roll = rng.next() * totalWeight;
+  let cumulative = 0;
+  // The seed is the LAST entry, so a floating-point roll that lands exactly on
+  // the total still resolves to a real band rather than to `undefined`.
+  let chosen = byBand[byBand.length - 1];
+  for (const entry of byBand) {
+    cumulative += entry.band.weight;
+    if (roll < cumulative) {
+      chosen = entry;
+      break;
+    }
   }
+
+  // Consumed UNCONDITIONALLY — see the fixed two-draw cost above.
+  const index = Math.floor(rng.next() * chosen.rows.length);
+  return chosen.rows[index] ?? chosen.rows[0];
 }

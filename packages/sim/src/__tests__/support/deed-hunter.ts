@@ -107,8 +107,16 @@ const PORT_HEADROOM = 3000;
 const REPAY_HEADROOM = 2000;
 /** The Guild marker's due day (PRD §5.1 / engine day.ts day-30 resolution). */
 const TOUR_ONE_LAST_DAY = 30;
-/** Sun-3 — the only `hasHangout` system (content systems.ts), so the only place
- *  a Dare or the Penny Wise desk exists. */
+/** Sun-3. T-121 gave all fourteen core ports a bar, so this is no longer the only
+ *  place a Dare or the Penny Wise desk exists — it is now only the errand's
+ *  FALLBACK DESTINATION, the port the hunter flies to when it wants Hangout
+ *  business and is not already standing at one. The `atHangout` test below reads
+ *  `hasHangout` directly and therefore already fires at any of the fourteen.
+ *
+ *  DELIBERATELY NOT CHANGED TO "the nearest Hangout" (the option
+ *  `docs/HANGOUT_REDESIGN.md` §4.2 floats): a fixed destination keeps the deed
+ *  errand deterministic across T-121's before/after measurement, which is the
+ *  whole point of the task. Revisit when a port's Hangout actually differs. */
 const HANGOUT_SYSTEM = 1;
 
 /** Indices of dice the planned actions already claim. */
@@ -135,8 +143,14 @@ function freeDie(state: GameState, used: Set<number>): number | undefined {
 /** A solvent NPC actually sitting in the player's system — the Dare needs a real
  *  co-located dealer (engine hangout.ts refuses anything else with a typed fail). */
 function dealerHere(state: GameState, minCredits: number): string | undefined {
+  // F-121-1 · `!npc.dead` mirrors the resolver's N3 guard; without it the errand
+  // can burn a die on a Dare the engine typed-fails with 'no-opponent'. Same
+  // repair as `planDare` and `legalActions`.
   return state.npcs.find(
-    (npc) => npc.currentSystemId === state.player.currentSystemId && npc.credits >= minCredits,
+    (npc) =>
+      !npc.dead &&
+      npc.currentSystemId === state.player.currentSystemId &&
+      npc.credits >= minCredits,
   )?.id;
 }
 
@@ -346,10 +360,13 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
   }
 
   // --- The Hangout errand (T-1303 gambling + T-1304 lending) ---------------
-  // Sun-3 (system 1) is the ONLY `hasHangout` system, and the shipped veteran
-  // never flies anywhere without a contract to deliver — so a career left to
-  // itself passes the tables perhaps twice in three hundred days and the Dare /
-  // Penny Wise deeds go begging. When Hangout business is outstanding the hunter
+  // The shipped veteran never flies anywhere without a contract to deliver, and
+  // until T-121 Sun-3 was the ONLY `hasHangout` system — so a career left to
+  // itself passed the tables perhaps twice in three hundred days and the Dare /
+  // Penny Wise deeds went begging. With fourteen core ports now running bars the
+  // errand is far less often NEEDED (`atHangout` is true on most docked days), but
+  // it is kept because it is what makes the deeds deterministic rather than
+  // incidental, and because the errand stops itself the moment the deeds land. When Hangout business is outstanding the hunter
   // makes a DELIBERATE ERRAND of it, exactly as the shipped explorer flies
   // straight to Polaris-1 for the Wise One (T-1310):
   //   - away from Sun-3 with a free hold → refuel and fly there;

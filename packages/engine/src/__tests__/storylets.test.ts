@@ -212,6 +212,32 @@ const T1505_STORYLET_IDS = [
 // arc (re-attemptability after a decline or a refused stake).
 const T1505B_STORYLET_IDS = ['nemesis.crossing.the-stake'] as const;
 
+// T-114 · The three explore questline hooks (docs/EXPLORE_REDESIGN.md §2.2/§2.5).
+// Its own batch line for the established reason: it belongs to a different task.
+// What is NEW about these three is only WHO schedules them — an explore
+// `questline` outcome row rather than another storylet's choice — which is why
+// `defineStorylets` now takes `EXPLORE_SCHEDULED_STORYLET_IDS` as a second
+// argument. Every other property is an ordinary `scheduledOnly` chain episode's.
+const T114_STORYLET_IDS = [
+  'explore.cold-berth.survivor',
+  'explore.signal-debt.claim',
+  'explore.black-ledger.courier',
+] as const;
+
+// T-115 · The eight band-3 and band-4 explore episodes, on the same seam and for
+// the same reason as the three above — six for the band-3 questline rows and two
+// for the band-4 ones (docs/EXPLORE_REDESIGN.md §5.3 pass 3).
+const T115_STORYLET_IDS = [
+  'explore.long-orbit.lifeboat',
+  'explore.quarantine.seal',
+  'explore.witness.tape',
+  'explore.bonded.crate',
+  'explore.charted.lane',
+  'explore.last.transmission',
+  'explore.cold.fleet',
+  'explore.nemesis.berth',
+] as const;
+
 describe('storylet content validation', () => {
   it('accepts exported STORYLETS with the originals as a prefix and the later batches appended', () => {
     const ids = STORYLETS.map((storylet) => storylet.id);
@@ -262,6 +288,17 @@ describe('storylet content validation', () => {
     for (const id of T1505B_STORYLET_IDS) {
       expect(ids).toContain(id);
     }
+    // T-114 explore questline hooks loaded and validated. Reaching here at all
+    // proves the external-scheduler seam works: each is `scheduledOnly` with a
+    // `wireResolution`, and NO storylet schedules them — `defineStorylets` would
+    // throw on both counts if the explore rows were not supplying the ids.
+    for (const id of T114_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
+    // T-115 explore band-3/4 episodes loaded and validated, same seam.
+    for (const id of T115_STORYLET_IDS) {
+      expect(ids).toContain(id);
+    }
     expect(ids).toHaveLength(
       ORIGINAL_STORYLET_IDS.length +
         T401_STORYLET_IDS.length +
@@ -274,7 +311,9 @@ describe('storylet content validation', () => {
         T1503_STORYLET_IDS.length +
         T1504_STORYLET_IDS.length +
         T1505_STORYLET_IDS.length +
-        T1505B_STORYLET_IDS.length,
+        T1505B_STORYLET_IDS.length +
+        T114_STORYLET_IDS.length +
+        T115_STORYLET_IDS.length,
     );
     // No duplicate ids across the whole set.
     expect(new Set(ids).size).toBe(ids.length);
@@ -419,7 +458,18 @@ describe('resolveAbandonedChains (T-1502 wire-resolution sweep)', () => {
     const { state: after, events } = resolveAbandonedChains(armed);
 
     // The authored Galactic-Wire line is filed (kind 'npc' → UI wire ticker).
-    const wireMsg = STORYLETS.find((s) => s.id === EP2)!.wireResolution.wireMessage;
+    // T-115 · SPLIT INTO A NAMED BINDING, and the reason is recorded because it
+    // looks like noise. This read `STORYLETS.find(...)!.wireResolution.wireMessage`
+    // as one expression; `STORYLETS` keeps its `as const` tuple type, and adding
+    // eight explore episodes widened that tuple far enough that TypeScript stopped
+    // carrying the non-null assertion through the chained access and reported the
+    // object as possibly undefined. Binding the found storylet first restores the
+    // narrowing, and the `toBeDefined()` states the claim the test actually needs
+    // — the same shape `npc-chains.test.ts` and `alliance-arcs.test.ts` use.
+    // NOTHING WAS WEAKENED: this asserts strictly more than the old line did.
+    const ep2 = STORYLETS.find((s) => s.id === EP2)!;
+    expect(ep2.wireResolution, `${EP2} has no wireResolution`).toBeDefined();
+    const wireMsg = ep2.wireResolution.wireMessage;
     expect(wireMsg).toContain('Silk Dagger');
     expect(events).toContainEqual({
       type: 'WireEntry',

@@ -44,14 +44,20 @@ import {
 // the JUMP's action event index — and the travel rng is
 // `dayRng.fork('action-travel-<index>')` (engine `day.ts`). Seed 5's jump now
 // draws a different fork and is interdicted before it reaches Mizar-9.
-// RE-SWEEP (seeds 1..200, this exact fixture and dispatch path, in .scratch/):
-// dozens of seeds still land the full funnel — 15, 20, 26, 27, 31, 32, 41, 44,
-// 45, 51, 52, 54, 61, 65, 67, 71, 72, 73, 80, 81, ... — so the funnel is as
-// broadly reachable as it was; only WHICH seed walks it cleanly moved. Seed 15 is
+//
+// T-125-audit re-pin (seed 15 → 6). MECHANISM: T-113/T-114/T-115's 100-row
+// explore outcome table and T-117's single band-weighted draw
+// (docs/EXPLORE_REDESIGN.md §2.4) replaced the legacy loot table the sweep's
+// `FragmentAcquired` draw ran against, so seed 15's sweep no longer finds a
+// fragment (it now draws a non-lore band-1 row). RE-SWEEP (seeds 1..500, this
+// exact fixture and dispatch path, in `.scratch/`): 59 seeds still land the full
+// funnel — 6, 8, 24, 28, 32, 43, 57, 61, 75, 82, 96, 103, 104, 107, 140, 141,
+// 146, 154, 174, 180, 188, 193, 194, 197, 238, ... — so the funnel is as broadly
+// reachable as it was; only WHICH seed walks it cleanly moved again. Seed 6 is
 // the first qualifier: it draws `frag-nemesis-05` and arrives at Mizar-9 with
 // `sage.mizar.decode-05` on the board.
 // PINNED, NOT STEERED: only the seed changed. Every assertion below is untouched.
-const FUNNEL_SEED = 15;
+const FUNNEL_SEED = 6;
 const ACHERNAR = 19;
 const MIZAR = 18;
 const SWEEP_DIE = 0;

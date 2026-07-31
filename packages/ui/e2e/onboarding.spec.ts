@@ -141,11 +141,17 @@ test('fresh seed: first delivery guided by visible affordances; each prompt fire
   await expect(page.getByTestId('credits')).toHaveText('3,420');
   await expect(page.getByTestId('active-contract-empty')).toBeVisible();
 
-  // 4) The delivery lands at Pollux-7 (system 9), a purchasable core port with a
-  //    full-enough tank — so the T-1407 contextual prompts now take over: first the
-  //    port nudge (higher priority), then the off-lane sweep nudge. Each fires once
-  //    and is dismissed via its own affordance (these are manual-dismiss-only). No
-  //    contraband rides the sys-9 board here, so the contraband nudge stays silent.
+  // 4) The delivery lands at Pollux-7 (system 9), a purchasable core port that
+  //    ALSO hosts a Hangout (T-121's reach change) — so the T-1407 contextual
+  //    prompts now take over: first the hangout nudge (highest priority), then
+  //    the port nudge, then the off-lane sweep nudge. Each fires once and is
+  //    dismissed via its own affordance (these are manual-dismiss-only). No
+  //    contraband rides the sys-9 board here, so the contraband nudge stays
+  //    silent, and first-loan — mount-routed inside the closed Hangout panel
+  //    (F-121-2) — never claims the screen slot.
+  await expect(coach).toHaveAttribute('data-onboarding-id', 'first-hangout');
+  await expect(coach).toHaveAttribute('data-onboarding-anchor', 'hangout');
+  await page.getByTestId('onboarding-dismiss').click();
   await expect(coach).toHaveAttribute('data-onboarding-id', 'first-port');
   await expect(coach).toHaveAttribute('data-onboarding-anchor', 'port');
   await page.getByTestId('onboarding-dismiss').click();
@@ -199,9 +205,17 @@ test('first-hangout never fires where no Hangout exists', async ({ page }) => {
 test('first-loan coach fires once inside the open Hangout panel, anchored, and persists', async ({
   page,
 }) => {
-  // Delivery chain + the hangout nudge pre-seen, so first-loan is the winner. It
-  // mounts INSIDE the panel, so it only surfaces once the player opens the Hangout.
-  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY, 'first-hangout': true });
+  // Delivery chain + the hangout nudge pre-seen. Sun-3 is ALSO a purchasable,
+  // unowned port with an affordable sweep, so first-port and first-explore are
+  // pre-seen too — otherwise one of them (now correctly, per-mount) claims the
+  // screen slot alongside first-loan's independent hangout-mount slot, which
+  // would test mount independence rather than isolate first-loan.
+  await bootOnboardingFixture(page, 424242, {
+    ...SEEN_DELIVERY,
+    'first-hangout': true,
+    'first-port': true,
+    'first-explore': true,
+  });
 
   // Nothing at cockpit screen level (the loan nudge routes to the hangout mount).
   await expect(page.getByTestId('onboarding')).toHaveCount(0);
@@ -243,9 +257,10 @@ test('first-loan never fires when a loan is already outstanding', async ({ page 
 test('first-contraband coach fires once at a contraband offer, anchored, and persists', async ({
   page,
 }) => {
-  // A non-Hangout core system (Aldebaran-1, id 2) with a contraband offer on the
-  // board and the delivery chain pre-seen: first-contraband is the winner.
-  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY }, (s) => {
+  // Aldebaran-1 (id 2) ALSO hosts a Hangout (T-121's reach change), so the
+  // hangout nudge is pre-seen alongside the delivery chain: first-contraband
+  // is then the winner.
+  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY, 'first-hangout': true }, (s) => {
     s.player.currentSystemId = 2;
     s.market.manifestBoard[0].cargoType = 10; // the lone contraband cargo id
   });
@@ -274,11 +289,17 @@ test('first-contraband never fires when the board carries no contraband', async 
 test('first-port coach fires once at a purchasable port, anchored, and persists', async ({
   page,
 }) => {
-  // A purchasable core port (Aldebaran-1, id 2) with the delivery chain + the
-  // contraband nudge pre-seen, so first-port is the winner (over first-explore).
-  await bootOnboardingFixture(page, 424242, { ...SEEN_DELIVERY, 'first-contraband': true }, (s) => {
-    s.player.currentSystemId = 2;
-  });
+  // A purchasable core port (Aldebaran-1, id 2, which also hosts a Hangout —
+  // T-121's reach change) with the delivery chain + the hangout and contraband
+  // nudges pre-seen, so first-port is the winner (over first-explore).
+  await bootOnboardingFixture(
+    page,
+    424242,
+    { ...SEEN_DELIVERY, 'first-hangout': true, 'first-contraband': true },
+    (s) => {
+      s.player.currentSystemId = 2;
+    },
+  );
 
   const coach = page.getByTestId('onboarding');
   await expect(coach).toBeVisible();
