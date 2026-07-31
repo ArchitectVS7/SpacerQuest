@@ -163,7 +163,14 @@ describe('T-117 · explorationOutcome names the sealed pod', () => {
   it('reads the flag-set event, not the retired ContrabandFound', () => {
     const line = explorationOutcome([
       poi,
-      { type: 'FragmentAcquired', day: 3, fragmentId: 'frag-nemesis-04', source: 'derelict', fragmentCount: 1, poiId: 'poi-1-d3-e0-derelict' },
+      {
+        type: 'FragmentAcquired',
+        day: 3,
+        fragmentId: 'frag-nemesis-04',
+        source: 'derelict',
+        fragmentCount: 1,
+        poiId: 'poi-1-d3-e0-derelict',
+      },
       {
         type: 'StoryletEffectApplied',
         day: 3,

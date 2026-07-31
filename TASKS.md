@@ -1790,7 +1790,7 @@ Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (
 
 ## M4 — Close out
 
-### T-130 · CHECKPOINT — owner review of both systems — `status: TODO` · `coder: sonnet` · `after: T-125` · `[BLOCKED BY = Human Gate]`
+### T-130 · CHECKPOINT — owner review of both systems — `status: BLOCKED(Human Gate)` · `coder: sonnet` · `after: T-125` · `[BLOCKED BY = Human Gate]`
 
 Automated preparation only: assemble `docs/0.5.2-REVIEW.md` collecting both milestones'
 measured results, every framework finding reported during the content passes (a row that could
@@ -1808,6 +1808,70 @@ halt.
 **Accept:** (human-checked) the review doc is committed with both milestones' results, the
 framework findings, and the deferred-questions list; the owner has decided whether to re-open
 the two vacated ledger rows and whether the manifest version bumps to 0.5.2.
+
+**Delivered (automated half, 2026-07-30):** `docs/0.5.2-REVIEW.md` — nine sections, assembling
+`docs/EXPLORE_REDESIGN.md` §9 and `docs/HANGOUT_REDESIGN.md` §10 without restating their method.
+§1 puts **seven** decisions to the owner as a table (the two vacated ledger rows, the faucet, the
+manifest, the four levers, the surfacing job, F-123-2). §2 carries Explore's verdict — **still a
+net loss, 101/120 → 85/120 seeds richer without it**, with the not-rng-paired caveat stated
+beside the headline, plus the 75.8% recovery forfeiture and **zero band-4 payouts in 14,400
+simulated days**. §3 carries the Hangout's, **with the inertness bound stated before the lift**
+per §10.0 (only 24.70% of interceptions reach the named pool and 69.56% of those are inert;
+gambler wronged-captain share **4.22% → 29.28%** against a 9.90% uniform counterfactual), the
+four byte-identical control policies, the `BondIntervention` 42 → 34 counter-evidence, and both
+discharged obligations (**BAND binds 88.93% / DEALER 10.97% / player ZERO of 15,461**;
+**95.91% → 37.96%**). §4 is the framework roster: **36 findings** — 33 from the two milestones
+plus three this task found — of which **25 CLOSED, 3 BOUNDARY (working as ruled), 8 OPEN**. It
+leads with the result that **zero `F-101-3x` reports were raised across all 14 authored ports**,
+so ruling 3 is vindicated on 14 instances, and it names F-101-4/5/6/F-123-1 as **one** surfacing
+job. **§5 is the NPC Hangout faucet as its own top-level callout**, not folded into the deferred
+list: `executeSocialize` (`packages/engine/src/npc.ts:1824`, called `:1950`) mints +4.86cr per
+captain-day with no counterparty and **no `hasHangout` read anywhere in `npc.ts`** (grepped —
+no match), with every deferral reason re-argued on the measured numbers (§5.1's load-bearing
+reason 3 is measured away by the 10.97%; §5.2's magnitude halved) and the ask stated as three
+named options with their costs. §6 is the deferred list, chief among it whether NPCs interact
+with Explore and the Hangout, and it names the widening gap: the cast plays a **stub** of a
+system that grew 14× under it. §7 reports that the manifest **already reads 0.5.2** (commit
+`9d9ff47e`, an owner decision, with `docs/VERSIONING.md:53` amended the same day) and that three
+documents still carry the stale "stays at 0.5.1" sentence.
+
+**Zero lines of BEHAVIOUR under `packages/`. No capstone owed and none taken** —
+`computeDocsFingerprint` (`packages/sim/src/balance/rules-fingerprint.ts:607-618`) hashes the
+rules and instrument `.ts` bytes, not `docs/`, so a new `.md` moves no fingerprint and
+`docs/balance/smoke/tiers.json` stays fresh. No constant, band, DC, threshold, golden or
+fingerprint touched; no spec edited; no ledger row re-ruled. The **one** file under `packages/`
+this commit touches is `packages/ui/src/__tests__/format-modules.test.ts`, reflowed by
+`npm run format` — whitespace only, in a UI **test** file that is neither a rules source nor an
+instrument source. **Three record corrections made in the review doc rather than by editing the
+specs:** **F-121-2 is CLOSED** by `125fc84f` (mount-aware onboarding coach) though four
+documents still record it ESCALATED — re-run at this gate, `onboarding.spec.ts` **14/14 green**;
+**`docs/VERSIONING.md:229` still says save version `12`** while HEAD ships
+`CURRENT_SAVE_VERSION = 13`, reported as finding **V-1** and deliberately **not** fixed; and
+**`125fc84f` landed with `npm run format:check` RED** (finding **V-2**, confirmed by re-running
+it against HEAD with this commit stashed) — repaired here rather than absorbed, and recorded
+because the standing "run `npm run format` BEFORE the capstone" constraint assumes the tree is
+already formatted, and `rulesFingerprint` is not formatting-invariant.
+
+Gate at HEAD (`125fc84f`, UI-only, so the T-125 fixture still describes HEAD): `npx tsc -b`,
+`npm run lint`, `npm run format:check` and all four workspaces' vitest suites green —
+**1,638 tests, 0 failures** (engine 1,051 / sim 326 / ui 159 / desktop 102).
+`packages/ui/e2e/onboarding.spec.ts` 14/14. The `it.fails` clear-day tripwire at
+`balance-targets.test.ts:225` is **still correctly red** (trader `debtClearedDay.median` 21
+against `[22, 30]`, n = 987) and was not converted.
+
+**The human half is UNRESOLVED and this task does not close.** The owner has not ruled on the
+two vacated PARITY LEDGER rows (`docs/NPC_REDESIGN.md:228`, `:229`), on the faucet (D3), or on
+the manifest residue (D4). **M5 (T-140/T-141) stays gated.**
+
+**Prepared (2026-07-30):** This pass assembled `docs/0.5.2-REVIEW.md` (nine sections collecting
+both milestones' measured results, the 36-finding framework roster, and the seven decisions
+put to the owner), reflowed `packages/ui/src/__tests__/format-modules.test.ts` via `npm run
+format`, and reconfirmed the gate at HEAD (`npx tsc -b`, `npm run lint`, `npm run format:check`,
+and all four workspaces' vitest suites — 1,638 tests, 0 failures — plus `onboarding.spec.ts`
+14/14). No file under `packages/` other than that one whitespace-only test file was touched, no
+spec was edited, and no ledger row was re-ruled. The task now awaits: Human Gate.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `TASKS.md` (protocol, standing constraints, the T-110…T-125 Del · attempts=1/4 · HUMAN-GATE HALT.
 
 ---
 
