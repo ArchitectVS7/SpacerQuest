@@ -87,3 +87,30 @@ Run the T-154 driver for real: at least 30 simulated days across at least 3 seed
 ```
 
 **Note on timing:** `TASKS.md` currently has an orchestrator run in flight (uncommitted changes present as of this writing). These four tasks are staged here rather than inserted directly to avoid racing that run's own edits to the file; they will be appended under a new `## M7` section once the tree is clean.
+
+---
+
+## Part G — Addendum (2026-07-31): closing the gap between "the sweep is a gate" and "confident before UAT"
+
+Parts A–F answer "how do we stop what's already covered from regressing." They do not answer the question the owner actually asked next: *by the time of the first human UAT, should there already be confidence the game is playable* — across archetype balance, port-to-port navigation, and overall player experience, not just per-feature UI/backend correctness. This addendum is that answer, and it does not replace M7 (T-152–T-155); it resequences and extends it.
+
+**The honest starting point is already on record, twice.** `docs/RELEASE-CHECKLIST.md`'s own header states the 30-NPC field is "eight passes from player parity," carries "two known-red balance targets" (`packages/sim/src/__tests__/balance-targets.test.ts:225`, the trader clear-day-band `it.fails` tripwire — deliberately red, not skipped or deleted), and that "nobody has played this build end to end yet." Part C of this document says the same thing from the testing side: Combat's chosen branch is an abstract GUNS check with zero modeled deaths across 6.4 interdictions/fighter; Explore and VisitHangout have zero fleet coverage; N13 (dawn-hand parity) is undecided, and until it lands the sweep's NPCs are not facing the five-die hand-allocation decision a player faces at all. Sweep-as-gate (Tier 1) makes the *already-covered* verbs reliably not-regress — it cannot manufacture coverage for combat, explore, hangout, or the dice-hand decision. Treating a green gate as "the game is tested" would be exactly the "green but hollow" failure mode Part A opened with, one level up.
+
+**Mapped onto the three things asked about:**
+
+- **Archetype balance.** The sweep runs 8 scripted policies (trader, fighter, explorer, veteran, smuggler, gambler, greedy, trader-degraded) — good nominal breadth. But `fighter`'s defining verb (chosen combat) and `explorer`'s defining verb (Explore) are exactly the two systems with no real parity per Part C's table. "Archetype balance is tested" is currently true for the economic archetypes and false for the two most distinctive ones — a content/parity gap, not something more sweep tooling can close.
+- **Port-to-port navigation.** The strongest-covered axis today — Travel/Shipyard are marked Shipped in Part C. Confidence here is reasonably justified once T-152/T-153 turn the sweep's numbers into hard pass/fail instead of eyeballed reports.
+- **Overall player experience.** Structurally out of reach for both the sweep and an LLM pilot — neither can judge whether pacing or dice-tension *feels* right. That is what the owner's own UAT is for. The lever available here is making sure that first session produces reusable evidence (decision traces, a playtest log) instead of only an impression — which is what T-140/T-141 are for, and neither is currently sequenced ahead of UAT.
+
+**Recommended resequencing of M7, plus two additions, before the first human UAT:**
+
+1. **T-152 → T-153 first**, unchanged. Cheap, mechanical, already spec'd; protects everything below from silently regressing while the rest of this happens.
+2. **N13 (dawn-hand parity) before further content work, not after.** Part C already calls it "the single biggest fidelity gap between NPC and player today" — every day it stays undecided, the sweep measures a different game than the one a human will play. This should outrank the remaining testing-infra tasks, since it changes what the *existing* sweep is worth.
+3. **Finish and measure Hangout before UAT, not after.** `TASKS.md` T-145–T-150 (roster, unlock ladder, achievement hooks, capstone measurement, named-pool gate) are open, and the whole Liar's Dice/roster/ladder system currently sits at the same zero-fleet-coverage status as Explore. It should not be the one system nobody — human or sweep — has run through yet when it's front-and-center in the build the owner sits down with.
+4. **Make a deliberate, recorded call on Combat's chosen branch before UAT**, even if the call is "not fixing the model this pass." Apply the release-checklist's own "the coder does not self-waive" discipline: name it as an open question rather than letting the sweep's silence stand in for an answer.
+5. **Pull T-140/T-141 (decision tracing + opt-in playtest logging) ahead of the first UAT session.** If they land first, the owner's own first playthrough stops being only an impression and becomes a structured, reviewable log — the same fix-then-encode-as-test discipline Part E already commits to for sweep/pilot findings, applied to human play.
+6. **Run T-154/T-155 (native LLM pilot) after the first human UAT, not before.** It is a Tier-2 audit tool, and the owner's own UAT is the best available Tier-2 pass for round one; better spent reproducing and extending whatever the owner finds by hand than run cold beforehand.
+
+**One addition to the mechanism itself.** Part C's verb-parity table is prose today — a human has to remember to cross-check it against which archetypes the sweep actually runs. Recommend a small script/test that cross-references the 8 sweep archetypes against their defining verb's parity status and fails/warns if an archetype's headline verb isn't marked Shipped. This turns "is archetype balance actually tested" into something CI can assert, the same way T-152 turns the invariants into a gate, instead of something that has to be re-derived by reading two documents side by side.
+
+**Disposition:** this addendum is a recommendation, not a ruling — the resequencing above, the Combat go/no-go, and the coverage-matrix addition are left for the team to weigh against what else is in flight before folding into `TASKS.md`.
