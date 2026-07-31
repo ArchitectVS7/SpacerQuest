@@ -6,6 +6,8 @@ import {
   ALL_NPC_PROFILES,
   DEFAULT_PORT_HANGOUT,
   PORT_HANGOUTS,
+  STAR_SYSTEMS,
+  isSimulatedCaptain,
   type HangoutTone,
   type HangoutVenueId,
   type NpcArchetype,
@@ -25,12 +27,14 @@ import { portHangoutFor, venueOffered, venueParamsFor, wagerBandFor } from '../h
  * the `exploreContent.test.ts` precedent, restated because it has not changed.
  * Giving content a runner is real infra and belongs to a task chartered for it.
  *
- * EXTENSION CONTRACT. T-124 adds ids to `AUTHORED_PORTS` and
- * `MECHANICALLY_DEVIANT_PORTS` and changes nothing else in this file — T-123
- * appended its five and ADDED the three describe blocks its own Accept clause
- * names (the hostile port, the exotic ports, and the tone/number correlation
- * §6.1 asks for), all of them quantified over `AUTHORED_PORTS` so that T-124's
- * four inherit every rule without an edit. Every assertion is written against the engine
+ * EXTENSION CONTRACT, HONOURED AND NOW CLOSED. T-124 added its four ids to
+ * `AUTHORED_PORTS` and `MECHANICALLY_DEVIANT_PORTS` and RESTRUCTURED NOTHING —
+ * every block T-122 and T-123 wrote is quantified over `AUTHORED_PORTS`, so the
+ * last four inherited every rule for free, exactly as the contract promised. What
+ * T-124 ADDS is the two describe blocks its own Accept clause names: the closing
+ * enumeration (the table is fourteen, the enumeration is pinned to the table, and
+ * no row is a placeholder) and the tonal spread against §6.1's register axis.
+ * Every assertion is written against the engine
  * accessors (`wagerBandFor` / `venueParamsFor` / `venueOffered` / `portHangoutFor`)
  * and against `DEFAULT_PORT_HANGOUT`, never against a restated literal, so an
  * authored number can move without this file needing an edit — and a number that
@@ -51,17 +55,18 @@ const ALL_VENUES: readonly HangoutVenueId[] = [
 const SUN_3 = 1;
 
 /**
- * §6.3 passes 1 and 2 — Sun-3 (authored at T-120, mechanically the default row by
- * §2.3), the four T-122 authors and the five T-123 authors (4, 5, 11, 12, 14) over
- * T-121's baselines. T-124 appends 6, 7, 9, 13; the closing check at T-124 is
- * cardinality 14.
+ * §6.3 passes 1, 2 and 3 — Sun-3 (authored at T-120, mechanically the default row
+ * by §2.3), the four T-122 authors, the five T-123 authors (4, 5, 11, 12, 14) and
+ * the four T-124 authors (6, 7, 9, 13) over T-121's baselines. THE TABLE IS NOW
+ * CLOSED AT FOURTEEN, and the T-124 block below pins this list against
+ * `PORT_HANGOUTS`'s own key set rather than leaving it a hand-maintained literal.
  */
-const AUTHORED_PORTS = [1, 2, 3, 4, 5, 8, 10, 11, 12, 14] as const;
+const AUTHORED_PORTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
 
 /** The ports whose rows must carry a real mechanical deviation. Sun-3 is excluded
  *  by §2.3 (its tuple is fixed to the default) and Altair-3 by its own design —
  *  it is the deliberate numeric mean, and its distinctness is `clientele` alone. */
-const MECHANICALLY_DEVIANT_PORTS = [2, 4, 5, 8, 10, 11, 12, 14] as const;
+const MECHANICALLY_DEVIANT_PORTS = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
 
 /** T-123's measurably HOSTILE port — Arcturus-6, §6.2's strict garrison. Named,
  *  because the Accept clause turns on it. */
@@ -75,6 +80,12 @@ const THE_WIDEST_BAND_PORT = 12;
 /** Deneb-4 — the one port whose venue set is narrowed by something OTHER than
  *  hostility, so the venue-set axis is exercised twice for two different reasons. */
 const THE_NO_MEET_PORT = 5;
+/** T-124's Spica-3 — §6.1's third and last venue-set expression, "a house that
+ *  tolerates no insults". Named for the same reason the two above are. */
+const THE_NO_INSULT_PORT = 13;
+/** T-124's Denebola-5 — the FORGIVING pole of §6.1's consequence axis, and the
+ *  mirror of `THE_HOSTILE_PORT`. The comic register is authored here. */
+const THE_FORGIVING_PORT = 6;
 
 /** Altair-3 — §6.3's "one port must be the mean". Named rather than spelled inline
  *  so the assertion that pins it reads as a decision, not an accident. */
@@ -272,6 +283,17 @@ describe('T-122 · every authored row is well-formed', () => {
       // `rankClientele` matches on `profileId`; a typo here would silently rank
       // nobody rather than fail. T-123's Deneb-4 is the first row with regulars.
       expect(ALL_NPC_PROFILES.map((p) => p.id)).toContain(profileId);
+      // F-124-1 · …and a real id is not enough. A QUEST_PROFILES captain sits
+      // FROZEN at their day-1 system for an entire career (`isSimulatedCaptain`,
+      // content/cast.ts; `day.ts:758` skips them in the dusk loop), so naming one
+      // as a regular at a port they did not happen to start at is content that can
+      // never rank — silently, because `rankClientele` returns the input unchanged
+      // when the intersection is empty. Only a SIMULATED captain can walk into a
+      // room they were not born in.
+      expect(
+        isSimulatedCaptain(profileId),
+        `${portName(id)} names the frozen quest captain '${profileId}' as a regular`,
+      ).toBe(true);
     }
   });
 
@@ -468,6 +490,162 @@ describe('T-123 · tone correlates with the numbers (§6.1)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// T-124 · THE CLOSE. "All 14 core ports carry authored, distinct content,
+// asserted by a test that enumerates them and fails on any placeholder; the tonal
+// spread is asserted against the spec's axes."
+//
+// The two blocks below are the only structural additions pass 3 makes. Everything
+// else T-124 needed was already quantified over `AUTHORED_PORTS` by T-122 and
+// T-123, which is what the extension contract at the top of this file promised.
+// ---------------------------------------------------------------------------
+describe('T-124 · the table closes at fourteen', () => {
+  it('the enumeration IS the table — not a hand-maintained list beside it', () => {
+    // Without this, a future row dropped from `AUTHORED_PORTS` would silently
+    // shrink every `it.each` above and nothing would go red. The list is pinned to
+    // `PORT_HANGOUTS`'s own key set, in both directions, and to §6.4's fourteen.
+    const keys = Object.keys(PORT_HANGOUTS)
+      .map(Number)
+      .sort((a, b) => a - b);
+    expect([...AUTHORED_PORTS]).toEqual(keys);
+    expect(AUTHORED_PORTS.length).toBe(14);
+  });
+
+  it('no row is a T-121 BASELINE row — every house has a name someone wrote', () => {
+    // The teeth the Accept clause asks for. The "not the DEFAULT house name" check
+    // in the T-122 block does NOT catch a baseline row: `baselineHangout` generated
+    // `the <system> Hangout` per port, so a baseline row already had a house name
+    // of its own and passed that assertion while carrying no authored voice at all.
+    // This is the shape assertion that catches it, stated against `STAR_SYSTEMS`
+    // rather than against a list of the fourteen generated strings.
+    for (const id of AUTHORED_PORTS) {
+      const prose = portHangoutFor(id).prose;
+      expect(
+        prose.houseName,
+        `port ${id} still carries the generated baseline house name`,
+      ).not.toBe(`the ${STAR_SYSTEMS[id]?.name} Hangout`);
+      expect((prose.roomLine ?? '').trim().length, `port ${id} has no room line`).toBeGreaterThan(
+        0,
+      );
+      expect(
+        Object.keys(prose.flavour).length,
+        `port ${id} has no flavour lines at all`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it('§6.4 · the set of axis vectors has cardinality exactly FOURTEEN', () => {
+    // The closing check §6.4 names. Same helper and same collision report as the
+    // T-122 block, restated at the closing number so the milestone has one
+    // assertion that says "fourteen" out loud.
+    const byVector = new Map<string, number[]>();
+    for (const id of AUTHORED_PORTS) {
+      byVector.set(axisVector(id), [...(byVector.get(axisVector(id)) ?? []), id]);
+    }
+    const collisions = [...byVector.values()]
+      .filter((ids) => ids.length > 1)
+      .map((ids) => ids.map(portName).join(' == '));
+    expect(collisions, 'ports sharing an axis vector').toEqual([]);
+    expect(new Set(AUTHORED_PORTS.map(axisVector)).size).toBe(14);
+  });
+});
+
+describe('T-124 · the tonal spread (§6.1)', () => {
+  const withTone = (tone: HangoutTone) =>
+    AUTHORED_PORTS.filter((id) => portHangoutFor(id).prose.tone === tone);
+
+  it('every one of §6.1’s four registers is represented', () => {
+    // The Accept clause's "the tonal spread is asserted against the spec's axes".
+    // Reports the MISSING registers by name rather than a bare count, because that
+    // is the only useful thing a failure here can say.
+    const missing = ALL_TONES.filter((tone) => withTone(tone).length === 0);
+    expect(missing, 'registers with no port').toEqual([]);
+    // …and the spread is a spread, not fourteen ports wearing one tag.
+    expect(new Set(AUTHORED_PORTS.map((id) => portHangoutFor(id).prose.tone)).size).toBe(
+      ALL_TONES.length,
+    );
+  });
+
+  it('a `comic` port is never harsher than the default — the joke is not at the player’s expense', () => {
+    // Stated as the EXACT NEGATION of the `dangerous` predicate in the T-123 block
+    // above, over the same four clauses and read through Sun-3's resolved values,
+    // so the two registers are graded on one axis set rather than on two invented
+    // ones. Threshold-free: nothing here names a number.
+    const comic = withTone('comic');
+    // NON-VACUITY: the owner asked for the comic register explicitly, so an empty
+    // set is a failure of the task and not a vacuous pass.
+    expect(comic.length).toBeGreaterThan(0);
+    for (const id of comic) {
+      expect(
+        venueParamsFor(id, 'befriend').dc,
+        `${portName(id)} is tagged comic but is harder to charm than the default`,
+      ).toBeLessThanOrEqual(venueParamsFor(SUN_3, 'befriend').dc);
+      expect(
+        venueParamsFor(id, 'insult').dispositionOnSuccess,
+        `${portName(id)} is tagged comic but punishes an insult harder than the default`,
+      ).toBeGreaterThanOrEqual(venueParamsFor(SUN_3, 'insult').dispositionOnSuccess);
+      expect(
+        venueParamsFor(id, 'dare').dispositionOnFailure,
+        `${portName(id)} is tagged comic but punishes beating the house harder than the default`,
+      ).toBeGreaterThanOrEqual(venueParamsFor(SUN_3, 'dare').dispositionOnFailure);
+      expect(
+        venueParamsFor(id, 'meet').dispositionOnSuccess,
+        `${portName(id)} is tagged comic but is colder to a stranger than the default`,
+      ).toBeGreaterThanOrEqual(venueParamsFor(SUN_3, 'meet').dispositionOnSuccess);
+      // …and it is still a port, not a re-skin: the ≥2-axes rule the T-123 block
+      // applies to every non-`everyday` tone, restated here so a failure names the
+      // register that broke it.
+      const axes = deviationAxes(id);
+      expect(
+        axes.length,
+        `${portName(id)} is tagged comic but moves ${axes.join('+')}`,
+      ).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('Denebola-5 is the FORGIVING pole — the strict mirror of the hostile port', () => {
+    // The maximality test of the T-123 hostile block, pointed the other way. Two
+    // axes rather than five, deliberately: forgiveness is only expressible on the
+    // arms that COST something, and `befriend.dc` / `meet` have their own poles
+    // elsewhere (Rigel-8's 8, and Denebola-5's own +3 is pinned by the tone check
+    // above). Reports the offender by house name.
+    expect(portHangoutFor(THE_FORGIVING_PORT).prose.tone).toBe('comic');
+    for (const id of AUTHORED_PORTS.filter((p) => p !== THE_FORGIVING_PORT)) {
+      expect(
+        venueParamsFor(id, 'insult').dispositionOnSuccess,
+        `${portName(id)} forgives an insult at least as readily as the forgiving port`,
+      ).toBeLessThan(venueParamsFor(THE_FORGIVING_PORT, 'insult').dispositionOnSuccess);
+      expect(
+        venueParamsFor(id, 'dare').dispositionOnFailure,
+        `${portName(id)} minds being beaten at least as little as the forgiving port`,
+      ).toBeLessThan(venueParamsFor(THE_FORGIVING_PORT, 'dare').dispositionOnFailure);
+    }
+  });
+
+  it('the venue-set axis is exercised a THIRD time — Spica-3 tolerates no insults', () => {
+    // §6.1's fourth named venue-set shape and the last one unexercised after the
+    // garrison's withdrawn desk (4) and the hall's withheld `meet` (5). Mirrors the
+    // Deneb-4 block exactly, so the axis reads unambiguously across all three.
+    expect(venueOffered(THE_NO_INSULT_PORT, 'insult')).toBe(false);
+    expect(venueOffered(THE_NO_INSULT_PORT, 'meet')).toBe(true);
+    expect(venueOffered(THE_NO_INSULT_PORT, 'borrow')).toBe(true);
+    expect(venueOffered(THE_NO_INSULT_PORT, 'repay')).toBe(true);
+    for (const id of AUTHORED_PORTS.filter((p) => p !== THE_NO_INSULT_PORT)) {
+      expect(venueOffered(id, 'insult'), `${portName(id)} also withholds 'insult'`).toBe(true);
+    }
+    // …and the three narrowings are three DIFFERENT withholdings, which is what
+    // makes the axis expressive rather than a synonym for hostility.
+    const withheld = (id: number) => ALL_VENUES.filter((v) => !venueOffered(id, v)).join('+');
+    expect(
+      new Set([
+        withheld(THE_HOSTILE_PORT),
+        withheld(THE_NO_MEET_PORT),
+        withheld(THE_NO_INSULT_PORT),
+      ]).size,
+    ).toBe(3);
+  });
+});
+
 describe('T-122 · the content file is placeholder-free', () => {
   it('a grep for TODO / TBD / FIXME / placeholder over portHangouts.ts returns nothing', () => {
     // The Accept clause names a literal grep, so this is a literal file read —
@@ -489,6 +667,15 @@ describe('T-122 · the content file is placeholder-free', () => {
     expect(source.length).toBeGreaterThan(1000);
     expect(source).toContain('PORT_HANGOUTS');
     expect(source).toContain('ALDEBARAN_1_HANGOUT');
+    // T-124's four, named so the grep is anchored to the CLOSED table rather than
+    // to whatever the file happened to contain when it was written.
+    expect(source).toContain('DENEBOLA_5_HANGOUT');
+    expect(source).toContain('FOMALHAUT_2_HANGOUT');
+    expect(source).toContain('POLLUX_7_HANGOUT');
+    expect(source).toContain('SPICA_3_HANGOUT');
+    // …and the T-121 baseline-row builder is gone with them. A surviving call
+    // would mean an unauthored port slipped back into a table this task closed.
+    expect(source).not.toContain('baselineHangout');
     const hits = source
       .split('\n')
       .map((line, i) => [i + 1, line] as const)

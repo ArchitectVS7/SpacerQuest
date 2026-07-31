@@ -180,10 +180,6 @@ const CORE_HANGOUT_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 /** The first rim id. Named rather than spelled inline, because it is what keeps
  *  `ActionBlocked{'no-hangout'}` reachable. */
 const RIM_SYSTEM = 15;
-/** The core ports no content pass has authored yet. T-122 removed 2, 3, 8 and 10
- *  (§6.3 pass 1); T-123 removed 4, 5, 11, 12 and 14 (pass 2), shrinking this to
- *  four; T-124 authors those four and empties it. */
-const UNAUTHORED_HANGOUT_IDS = [6, 7, 9, 13];
 
 describe('T-121 · the reach change — a bar at all fourteen core spaceports', () => {
   it('every core port 1–14 carries the flag AND a venue definition', () => {
@@ -235,44 +231,49 @@ describe('T-121 · the reach change — a bar at all fourteen core spaceports', 
     }
   });
 
-  it('the nine unauthored rows are still BASELINE rows — mechanically identical to Sun-3', () => {
-    // T-121 delivers reach, not tuning. Each new row carries `systemId` and
-    // `prose` and omits the four parameter fields, so every number resolves
-    // field-wise to the shipped constant — which is what lets a moved golden or a
-    // moved roll-up be attributed to reach alone. T-122 … T-124 author over these.
+  it('T-124 · the baseline row is retired — every core port carries an authored voice', () => {
+    // THE REPLACEMENT for T-121's "the unauthored rows are still BASELINE rows",
+    // which T-124 was expected to empty. An empty loop over an empty id list is a
+    // vacuous test, so the claim is INVERTED rather than deleted: the property
+    // T-121 tracked (how many ports are still generated) is now pinned at zero by
+    // asserting the positive over all fourteen.
     //
-    // T-122 authored ids 2, 3, 8 and 10 (§6.3 pass 1) and T-123 ids 4, 5, 11, 12
-    // and 14 (pass 2), so the list below is FOUR rather than thirteen. KEEP THIS
-    // TEST as the control that holds the unauthored remainder honest: T-124 is
-    // expected to empty it. Altair-3 (3) left this list even though it is the
-    // deliberate numeric mean, because it authors `clientele` — its numeric
-    // inertness is pinned in `hangoutContent.test.ts` instead.
-    for (const id of UNAUTHORED_HANGOUT_IDS) {
-      const row = PORT_HANGOUTS[id];
-      expect(row.wager).toBeUndefined();
-      expect(row.venueParams).toBeUndefined();
-      expect(row.clientele).toBeUndefined();
-      // Resolved values are Sun-3's, asserted against the accessors rather than
-      // against restated literals.
-      expect(wagerBandFor(id)).toEqual(wagerBandFor(SUN_3));
-      for (const venue of ALL_VENUES) {
-        expect(venueParamsFor(id, venue)).toEqual(venueParamsFor(SUN_3, venue));
-      }
+    // `baselineHangout` built `the <system> Hangout` per port, so the generated
+    // name is the shape to test against — read off `STAR_SYSTEMS` rather than
+    // restated, so a renamed system cannot make this pass by accident. This test
+    // is about the VOICE; Sun-3's and Altair-3's numeric inertness is pinned in
+    // `hangoutContent.test.ts`, which is where the content axes live.
+    //
+    // NON-VACUITY: the list must be the fourteen, or the loop says nothing.
+    expect(CORE_HANGOUT_IDS.length).toBe(14);
+    for (const id of CORE_HANGOUT_IDS) {
+      const prose = portHangoutFor(id).prose;
+      expect(prose.houseName, `port ${id} is still a generated baseline house`).not.toBe(
+        `the ${STAR_SYSTEMS[id]?.name} Hangout`,
+      );
+      expect((prose.roomLine ?? '').trim().length, `port ${id} has no room line`).toBeGreaterThan(
+        0,
+      );
+      expect(Object.keys(prose.flavour).length, `port ${id} has no flavour`).toBeGreaterThan(0);
     }
   });
 
-  it('T-123 · the venue set is narrowed at exactly two ports, and everywhere else all seven run', () => {
+  it('T-124 · the venue set is narrowed at exactly three ports, and everywhere else all seven run', () => {
     // The POSITIVE form of T-122's "no port has yet narrowed its venue set", which
-    // T-123 was expected to rewrite rather than keep green. Phrased so T-124 can
-    // extend it by adding to `NARROWED` if one of its four withholds a beat:
+    // T-123 rewrote at two ports and T-124 extends to three — which is exactly the
+    // extension the T-123 comment anticipated. One withholding per reason, and the
+    // three reasons are three different ones (§6.1's venue-set axis, fully used):
     //   * Arcturus-6 (4) runs no credit desk — §6.2's strict garrison, and the
     //     reason `'venue-not-offered'` is reachable end to end at all.
     //   * Deneb-4 (5) will not seat a stranger — §6.1's named "no `meet`" room.
+    //   * Spica-3 (13) tolerates no insults — §6.1's named "no `insult`" house,
+    //     the last of the four venue-set shapes the spec proposes.
     // This is a rules-level statement (which venues resolve as offered), not a
     // content one; the axis assertions live in `hangoutContent.test.ts`.
     const NARROWED: Record<number, readonly string[]> = {
       4: ['borrow', 'repay'],
       5: ['meet'],
+      13: ['insult'],
     };
     for (const id of CORE_HANGOUT_IDS) {
       const withheld = NARROWED[id] ?? [];

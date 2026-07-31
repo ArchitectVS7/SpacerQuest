@@ -454,12 +454,16 @@ describe("T-120 · the 'venue-not-offered' refusal round-trips on both event sha
 // by the first task to author a port that withholds a beat
 // (`docs/HANGOUT_REDESIGN.md` §2.6, §6.2).
 //
-// Two ports narrow their venue set, for two different reasons, and between them
-// they reach BOTH typed event variants at the resolver:
+// THREE ports narrow their venue set, for three different reasons, and between
+// them they reach BOTH typed event variants at the resolver:
 //   * Arcturus-6 (4) — the garrison mess runs no credit desk, so 'borrow' and
 //     'repay' report a `LoanEvent{kind:'failed'}`;
 //   * Deneb-4 (5) — the partisan hall will not seat a stranger, so 'meet' reports
-//     a `HangoutEvent`.
+//     a `HangoutEvent`;
+//   * Spica-3 (13) — T-124's second watch tolerates no insults, so 'insult'
+//     reports a `HangoutEvent` too. Driven here because a SECOND social venue at a
+//     DIFFERENT port is what says the refusal is a property of `venueOffered`
+//     rather than of Deneb-4's row or of the `meet` arm in particular.
 // In every case the refusal lands BEFORE the die is spent, which is the property
 // that matters: nothing is charged for an act the house never offered.
 //
@@ -470,6 +474,7 @@ describe("T-120 · the 'venue-not-offered' refusal round-trips on both event sha
 describe('T-123 · a port that withholds a venue refuses it BEFORE the die is spent', () => {
   const ARCTURUS_6 = 4;
   const DENEB_4 = 5;
+  const SPICA_3 = 13;
 
   it('borrow at Arcturus-6 is a typed LoanEvent fail — no die, no loan, no credits moved', () => {
     expect(venueOffered(ARCTURUS_6, 'borrow')).toBe(false);
@@ -544,8 +549,32 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
     expect(dealerOf(after).disposition).toBe(startDisposition);
   });
 
-  it('the beats those two ports DO run still resolve normally', () => {
-    // The control. Without it the three tests above would also pass at a port that
+  it('T-124 · insult at Spica-3 is a typed HangoutEvent fail — no die spent, no disposition moved', () => {
+    expect(venueOffered(SPICA_3, 'insult')).toBe(false);
+    const state = hangoutState([10, 3, 3, 3, 3], SPICA_3);
+    const startDisposition = dealerOf(state).disposition;
+
+    const { state: after, events } = resolveVisitHangout(
+      state,
+      { type: 'VisitHangout', venue: 'insult', opponentId: DEALER, spendDie: 0 },
+      new SeededRng(1),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'HangoutEvent',
+        venue: 'insult',
+        failReason: 'venue-not-offered',
+      }),
+    );
+    expect(events.some((e) => e.type === 'LoanEvent')).toBe(false);
+    expect(events.some((e) => e.type === 'DispositionChanged')).toBe(false);
+    expect(after.player.dawnHand?.spent[0]).toBe(false);
+    expect(dealerOf(after).disposition).toBe(startDisposition);
+  });
+
+  it('the beats those three ports DO run still resolve normally', () => {
+    // The control. Without it the four tests above would also pass at a port that
     // refused everything, and "narrowed" would be indistinguishable from "broken".
     const state = hangoutState([20, 3, 3, 3, 3], ARCTURUS_6);
     state.player.credits = 1000;
@@ -559,5 +588,20 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
       events.some((e) => e.type === 'HangoutEvent' && e.failReason === 'venue-not-offered'),
     ).toBe(false);
     expect(after.player.dawnHand?.spent[0]).toBe(true);
+
+    // …and the same at Spica-3, on a venue it DOES run, so the insult refusal above
+    // is a statement about the venue rather than about the port being broken.
+    expect(venueOffered(SPICA_3, 'befriend')).toBe(true);
+    const watch = hangoutState([20, 3, 3, 3, 3], SPICA_3);
+    const { state: afterWatch, events: watchEvents } = resolveVisitHangout(
+      watch,
+      { type: 'VisitHangout', venue: 'befriend', opponentId: DEALER, spendDie: 0 },
+      new SeededRng(1),
+    );
+    expect(watchEvents.some((e) => e.type === 'HangoutEvent' && e.venue === 'befriend')).toBe(true);
+    expect(
+      watchEvents.some((e) => e.type === 'HangoutEvent' && e.failReason === 'venue-not-offered'),
+    ).toBe(false);
+    expect(afterWatch.player.dawnHand?.spent[0]).toBe(true);
   });
 });

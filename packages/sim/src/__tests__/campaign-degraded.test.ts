@@ -645,6 +645,75 @@ const UNCHANGED_POLICIES = [
  *    gambler row — mean up 60%, median down 8% — is itself the signature of one
  *    seed running hot), re-pricing the Dare is R-owned per §8, and T-125 owns the
  *    milestone's single capstone, its measurement and its verdict.
+ *
+ * 20. T-124 · HANGOUT CONTENT PASS 3 OF 3 — THE LAST FOUR, AND THE HUMOUR
+ *     (2026-07-30, docs/HANGOUT_REDESIGN.md §6.3 pass 3). The final four ports
+ *     gain authored parameters and the fourteen-port table CLOSES. EXACTLY ONE
+ *     ROW MOVES:
+ *      gambler  40fa56c309b70e74 -> 0c0c4fc26124fbc0
+ *      trader / smuggler / fighter / explorer / veteran / greedy — ALL UNCHANGED,
+ *      byte for byte.
+ *
+ *    THE ONE-ROW CONTROL IS SHARPER HERE THAN AT ENTRY 19, and it is the result
+ *    the task is really reporting. T-123 moved TWO rows because it withdrew a
+ *    credit desk, and the trader felt that through `isLendingDeskSystem`. T-124
+ *    narrows a venue set too — Spica-3 (13) omits `insult` — but ALL FOUR of its
+ *    ports keep `borrow` and `repay`, so no lending guard can see this pass and
+ *    the trader and the smuggler are untouched to the byte. The narrowing itself
+ *    is invisible to every policy for a second, independent reason: the
+ *    instrument issues exactly three venues (`dare` / `borrow` / `repay`) and the
+ *    cockpit issues the same three (F-101-4, F-123-1), so `insult` is a venue no
+ *    driver has ever asked for. That the gambler's hash moves ANYWAY, and moves
+ *    alone, says the pass reached the simulation through its BANDS and through
+ *    nothing else.
+ *
+ *    MECHANISM, and it is CONTENT with no rule edit and NO SIM EDIT — unlike
+ *    entry 19 there is no policy mirror to decompose, because there is nothing
+ *    for a policy to mirror. `git diff --stat HEAD -- packages/engine/src
+ *    ':!.../__tests__'` prints nothing, and so does the same command over
+ *    `packages/sim/src ':!.../__tests__'`. Three channels, in descending order of
+ *    effect:
+ *      (a) THE BANDS. Denebola-5 20/300, Fomalhaut-2 15/1200, Pollux-7 75/900,
+ *          Spica-3 200/1800. `planDare` sizes every stake through `wagerBandFor`
+ *          (T-121's edit), so the gambler bets a different amount at the last
+ *          four of the fourteen ports it visits and each differently-sized hand
+ *          re-phases that seed's rng stream from the moment it is played. This
+ *          is the whole of the delta below.
+ *      (b) THE DISPOSITION ARMS. Denebola-5's dare-failure arm is an AUTHORED
+ *          ZERO (-2 -> 0, the softest in the game), Pollux-7's dare-success arm
+ *          is +2 -> +1 and Spica-3's pair is +2/-2 -> +3/-5. Those feed
+ *          `applyDisposition` on the dealer, read downstream by the interception
+ *          and tribute-DC checks — the same second, slower channel entry 18
+ *          described.
+ *      (c) NOTHING ELSE. The `befriend` DCs (11 / 10 / 14) and the `meet` and
+ *          `insult` deltas moved at three ports and are invisible to every
+ *          policy and to the player alike; the four `clientele` lists are read
+ *          only by the Hangout pane. `venueOffered(..., 'dare')` is still true at
+ *          all fourteen ports, so the dare guards entry 19 added to `planDare`
+ *          and to the "go where the tables are" preference remain arithmetically
+ *          inert, exactly as they were when they landed.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      gambler   final credits  median  6,314 ->  6,314   mean 11,453 -> 9,880
+ *      gambler   dares played 236 -> 234, wagered 62,305 -> 63,563,
+ *                dare net credits +2,573 -> +5,473
+ *      gambler   loans taken 5 -> 5, interest 1,400 -> 1,400 (unchanged — only
+ *                its stakes moved, which is (a) and (b) and not lending)
+ *      trader    median 16,667, mean 14,809, loans 7, interest 1,236 — IDENTICAL
+ *      smuggler  median  7,492, mean  6,440, loans 9, interest 1,628 — IDENTICAL
+ *      failed Hangout visits 0 -> 0 for every policy, as the invariant requires;
+ *      re-confirmed at 10 seeds x 120 days across all seven policies: zero
+ *      refusals of either event variant, with a THIRD narrowed port in the table.
+ *    THE MEDIAN DOES NOT MOVE AT ALL while the mean falls 14% — the exact inverse
+ *    of entry 19's signature, and the same explanation: one seed. The gambler
+ *    stakes 1,258cr more across two FEWER hands and its dare net doubles;
+ *    `expectedValuePerDare` over the wider 10-seed x 120-day measurement is
+ *    151.82 (T-121 measured 101.02), so the verb is firmly positive and moving in
+ *    the direction the widened bands predict. NOTHING WAS TUNED TO PRODUCE THIS
+ *    AND NOTHING IS TUNED IN RESPONSE: five seeds cannot separate a shift of this
+ *    size from stream noise, re-pricing the Dare is R-owned per §8, and T-125 —
+ *    the very next task — owns the milestone's single capstone, its sweep, its
+ *    re-pinned baseline and its verdict.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -669,7 +738,12 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // down (and every hand after it) re-phases. The only row entry 18 moves.
   // Entry 19: re-derived a third time — five more authored bands, two of them
   // reaching 3,000, so the stakes move much further than pass 1's did.
-  gambler: '40fa56c309b70e74',
+  // Entry 20: re-derived a FOURTH time — the last four authored bands close the
+  // table at fourteen, so every port this policy deals at now has a band of its
+  // own and there is no default-band port left for a stake to inherit. The only
+  // row entry 20 moves, and the only row it CAN move: pass 3 withdraws no credit
+  // desk, so nothing reaches the lending policies at all.
+  gambler: '0c0c4fc26124fbc0',
   greedy: '0f2ff82982dcbf2d',
 };
 

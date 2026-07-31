@@ -741,10 +741,67 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 
 | id | System | Concept label | Axis notes |
 | --- | --- | --- | --- |
-| 6 | Denebola-5 | — | one of the four; register spread is T-124's call |
-| 7 | Fomalhaut-2 | — | |
-| 9 | Pollux-7 | — | |
-| 13 | Spica-3 | — | at least one of these four carries `tone: 'comic'`, period-voiced and dry (read the flaw-override and wire lines for the register before writing) |
+| 6 | Denebola-5 | the incident book (`the Incident Book`, **`comic`**) | the FORGIVING pole of §6.1's consequence axis, and the deliberate mirror of Arcturus-6. Shipped: band 20/300, **`dare.dispositionOnFailure` 0 — an authored zero**, `meet` **+3** (the highest in the game), `insult` **−2** (the softest in the game), befriend DC 11, regular Nova Blitz + `trader` |
+| 7 | Fomalhaut-2 | the fittings (`the Fittings`, **`comic`**) | the bar at the edge of the dust market, where everything carries a chalked price. Shipped: band 15/1200, befriend DC 10, `meet` +2, `insult` −3, **`dare` left at the default entirely** (the T-122 Aldebaran-1 idiom), regulars Junk Lord + Dust Devil, `smuggler`/`trader` |
+| 9 | Pollux-7 | the turnaround (`the Turnaround`, `everyday`) | the concourse bar of the busiest League civil port — the interval between an arrival and a departure. Shipped: band 75/900, `dare` +1 (a dealer on shift), `meet` +2, befriend DC 14 (nobody invests in a face they will not see again), `explorer`+`fighter` |
+| 13 | Spica-3 | the second watch (`the Second Watch`, `exotic`) | the shift-change room on a world that runs on port time. Shipped: **venues omit `insult`** — §6.1's third and last venue-set expression; band 200/1800, dare **+3/−5**, `meet` +2, befriend DC left at the default, `gambler`+`veteran` |
+
+> **T-124's in-place corrections and decisions**, recorded the way T-122 and T-123 recorded
+> theirs rather than taken silently.
+>
+> **(a) The register spread chosen, and why.** §6.3 left the spread to T-124 with one
+> requirement — at least one `comic`. Shipped: **two `comic` (6, 7), one `everyday` (9), one
+> `exotic` (13)**, which closes the fourteen-port table at **6 `everyday` / 4 `exotic` /
+> 2 `dangerous` / 2 `comic`**. Two comic rooms rather than one because a single comic port is a
+> novelty and two are a register: Denebola-5's joke is *the quietest port in the core keeps an
+> incident book and the last entry records a spillage*, Fomalhaut-2's is *the bar is stock, and
+> everything in it has a chalked price, including the stools*. Both are straight sentences with
+> one deflating clause at the end — the house voice of `wireStories.ts`'s
+> `NAT_WIRE_TEMPLATES` ("*{loser} unavailable for comment.*") and `flaws.ts`'s `detail` lines
+> ("*gambled the day's profits away at the nearest Hangout table.*"), read before writing as
+> §6.3 instructed. No puns, no exclamation marks, nothing winked at the player.
+>
+> **(b) `comic` is graded as the exact negation of `dangerous`.** The tone-correlation rule
+> §6.1 states cuts both ways: if a `dangerous` port must be harsher than the default on at
+> least one consequence axis, then a `comic` port must be **no harsher than the default on
+> any** of them — because *the joke is never at the player's expense*. That is the assertion in
+> `hangoutContent.test.ts`, over the same four clauses the `dangerous` test uses and read
+> through Sun-3's resolved values, so the two registers are graded on one axis set rather than
+> two invented ones. Denebola-5 is additionally pinned as the strict per-axis **softest**
+> authored port on `insult` and on the dare-failure arm — the mirror of Arcturus-6's
+> maximality test, which is what makes "the forgiving pole" a measurement rather than a claim.
+>
+> **(c) Denebola-5's `dare.dispositionOnFailure: 0` is an AUTHORED ZERO.** `venueParamsFor`
+> resolves with `??`, so a written `0` is a real authored value and not an omission — the same
+> mechanism as Arcturus-6's `meet: 0`, pointed the other way. The two zeros are the ends of
+> §6.1's consequence axis: at the garrison nobody makes space for a stranger; at the incident
+> book, beating the house costs you nothing at all and makes you the story of the year.
+>
+> **(d) Spica-3 omits `insult` — §6.1's third and last venue-set expression**, after the
+> garrison's withdrawn desk (4) and the hall's withheld `meet` (5). All four shapes §6.1 names
+> are now either shipped or deliberately unused (the "only `dare` + `rumor`" card room is the
+> one left, and it is a *fifth* narrowing rather than a fourth expression of the axis).
+> **The F-101-4 caveat, taken in the open:** `insult` has no player UI, so this narrowing
+> reaches the player through nothing but the UGT harness today. The row therefore **also**
+> carries a stakes identity (200/1800) and a dare asymmetry, so its character is not
+> concentrated in an invisible venue — which is exactly what F-101-4's closing sentence asks
+> content passes not to do. It does **not** trip **F-123-1**'s silence bug: the cockpit issues
+> only `dare` / `borrow` / `repay` (`ui/store.ts:1268/1341/1377`), never `insult`, so
+> `hangoutFailNoticeFrom`'s missing `'venue-not-offered'` arm stays unreachable from the pane.
+>
+> **(e) T-121's baseline-row builder is deleted, not left unused.** With the table closed there
+> is no unauthored port for it to build, and leaving a generator for `the <system> Hangout` in
+> the file would leave a way to add an unauthored port silently. The test that used to hold the
+> unauthored remainder honest (`hangoutRules.test.ts`) is **inverted rather than deleted** — an
+> empty loop over an empty id list is a vacuous test — and now asserts the positive over all
+> fourteen: no house carries the generated name, every house has a room line, every house has
+> flavour.
+>
+> **(f) No port concept wanted a predicate.** As at T-123, none of the four rows hit F-101-3's
+> boundary: "the quietest port keeps a book", "everything here has a price", "the interval
+> between two gates" and "the room that opens at four in the morning" are all expressible as
+> numbers plus prose. Two passes running with no F-101-3 report is evidence the parameter-only
+> surface is the right size for this content, which is the finding's own stated purpose.
 
 ### 6.4 The distinctness rule the passes are graded on
 
@@ -1060,6 +1117,45 @@ its own before/after — thread the queued stake through the dealer pick, or cap
 `GAMBLER_MAX_DARES_PER_DAY` at one hand per dealer per day. Report the effect on
 `expectedValuePerDare` when it lands.
 
+### Finding F-124-1 · A `clientele.regulars` entry naming a QUEST captain is permanently dead content — **FOUND AND CLOSED BY A TEST**
+
+**Found by T-124 while authoring Denebola-5's and Fomalhaut-2's regulars, and fixed inside this
+task because the fix is a content choice plus one assertion, not a rule change.** The cast is
+split in two (`content/cast.ts`): the **30** in `NPC_PROFILES` are fully simulated and mortal,
+and the **11** in `QUEST_PROFILES` are storyline-only, take no turn in the dusk loop
+(`engine/day.ts:758` skips them through the shared `isSimulatedCaptain` predicate) and **sit
+frozen at their day-1 system for an entire career**.
+
+`rankClientele` ranks the live, in-system, non-dead set it is handed and never adds to it
+(§2.2 ruling 4, and **F-101-2**). So a `regulars` entry naming a quest captain can only ever
+rank at the ONE system that captain happens to be seeded at — `(index % 20) + 1` in
+`engine/state.ts:83` — and never anywhere else, for any seed, on any day. It is not a bug in
+the resolver; it is a content trap with **no symptom**: an empty intersection returns the input
+unchanged, so the row looks authored, passes every well-formedness check, and quietly ranks
+nobody forever.
+
+The two rows this task first drafted hit it exactly. `npc-wild-card` (the Denebola-5 storylet's
+own captain, `storylets.ts:2950`) is seeded at system **16** — a rim system with no bar at all;
+`npc-rust-bucket` (the Fomalhaut-2 salvage storylet, `storylets.ts:4549`) is seeded at **Sun-3**.
+Both are the thematically obvious regular for their port and both would have been dead the day
+they shipped. T-123's three `regulars` lists are all simulated captains and were correct by
+luck rather than by rule.
+
+**What was authored instead:** simulated captains at both ports — `npc-nova-blitz` (Reckless;
+the one captain who reliably gives a quiet port something to write down) at Denebola-5, and
+`npc-junk-lord` + `npc-dust-devil` at Fomalhaut-2's dust market. The quest captains stay where
+they belong, in the storylets that name them.
+
+**What closes it:** `hangoutContent.test.ts` now asserts `isSimulatedCaptain(profileId)` for
+every `regulars` entry at every authored port, reporting the offending house and profile id by
+name. A real-but-frozen id was previously indistinguishable from a real-and-mobile one, because
+the only existing check was membership of `ALL_NPC_PROFILES`.
+
+**What this does NOT claim.** It is not an argument for spawning (that is F-101-2, and ruling 4
+stands), and it is not a request to simulate the quest roster (an owner ruling of 2026-07-29).
+It is the narrower statement that **`regulars` is a field only a simulated captain can
+satisfy**, now enforced.
+
 ---
 
 ## §8 · What this spec deliberately does not settle, and the T-102 crossover
@@ -1119,7 +1215,7 @@ its own before/after — thread the queued stake through the dealer pick, or cap
 | **T-121** | §4 (all), §2.2 ruling 3 | ids 1–14 carry `hasHangout: true` and a placeholder row, asserted by an enumerating test; **the `hasHangout` ↔ `PORT_HANGOUTS` two-way equality test**; a `VisitHangout` driven successfully at a non-Sun-3 port; the six test/comment retargets in §4.2's table; replay goldens regenerated with the event-count diff and **both `rngState`s verified unchanged**; no rim or gated system flagged (§4.5); **no `npc.ts` edit** (§5.2's obligation) |
 | **T-122** | §6.3 pass 1, §6.4 | five everyday ports authored; distinctness asserted as a cardinality check over the axis tuples; Sun-3's mechanical tuple still the default row; no placeholder strings; zero lines under `packages/engine/src` |
 | **T-123** | §6.3 pass 2, §6.2 | five ports authored; at least one **measurably hostile** and one **measurably exotic** against §6.1's axes; the governance axis exercised without touching `isRim` / `allowsContraband`; **F-101-1's realized-vs-declared stake measurement reported** for the high-band port; any house rule wanted reported in F-101-3's format; zero engine changes |
-| **T-124** | §6.3 pass 3, §6.4 | the last four, including `tone: 'comic'`; the full 14 enumerated and distinct (cardinality 14); tonal spread asserted against the axes; zero engine changes |
+| **T-124** | §6.3 pass 3, §6.4 | the last four, including `tone: 'comic'`; the full 14 enumerated and distinct (cardinality 14); tonal spread asserted against the axes; zero engine changes. **Delivered as written, plus two things the criterion did not ask for and the work required:** the T-121 baseline-row builder is DELETED and its "the unauthored rows are still baseline rows" test inverted rather than emptied (§6.3 correction (e)), and **F-124-1** closes the frozen-quest-captain `regulars` trap with an `isSimulatedCaptain` assertion |
 | **T-125** | §4.2, §5.1's and §5.2's obligations, §10 | `npm run format`, THEN the milestone's single capstone; 8,000 merged rows from 1-indexed shards through `--merge`; fixture re-extracted with `spreads harvested`; reports hangout usage per run, the before/after disposition spread, **the dealer-purse distribution** (§5.1), **the re-measured off-Hangout Socialize percentage** (§5.2), and a measured statement about disposition's effect on `chooseWeighted`'s interceptor draw; appends to §10; **tunes nothing to reach a result**, and escalates rather than adjusts if `balance-targets.test.ts:180` went red |
 
 ---

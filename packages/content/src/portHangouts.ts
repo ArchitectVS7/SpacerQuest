@@ -48,7 +48,6 @@ import {
   INSULT_DISPOSITION,
   MEET_DISPOSITION,
 } from './hangout.js';
-import { STAR_SYSTEMS } from './systems.js';
 
 /** The seven venues `resolveVisitHangout` already switches on. NOT a new
  *  vocabulary — the same seven strings the `PlayerAction` `VisitHangout` union
@@ -745,39 +744,254 @@ const VEGA_6_HANGOUT: PortHangout = {
 };
 
 /**
- * T-121 · A BASELINE ROW — a real venue definition that is not yet an authored
- * one. It carries `systemId` and `prose` and omits `venues`, `wager`,
- * `venueParams` and `clientele` entirely, so every number the resolver reads at
- * that port resolves field-wise through `DEFAULT_PORT_HANGOUT` to the same
- * imported constant Sun-3 reads. Thirteen ports got one at T-121; T-122 authored
- * over four of them (ids 2, 3, 8, 10) and T-123 over five more (ids 4, 5, 11, 12,
- * 14), so FOUR remain (6, 7, 9, 13), and those four are mechanically IDENTICAL to
- * each other and to Sun-3.
+ * T-124 · Denebola-5 — the incident book (§6.3, pass 3). THE FORGIVING POLE, and
+ * one of the two `comic` rooms the owner asked for.
  *
- * WHY IDENTICAL, DELIBERATELY. T-121 is the REACH change — fourteen of
- * twenty-eight ports gain a bar — and the reach change is meant to be measurable
- * on its own. Had these thirteen rows also carried thirteen invented parameter
- * vectors, no moved golden and no moved roll-up could be attributed to reach
- * rather than to tuning, and the two halves would stop being separately
- * reviewable. §6.4's rule that no two ports share a mechanical tuple is graded at
- * T-122 … T-124, which overwrite these rows one at a time; identical baselines are
- * the correct state until then.
+ * `content/ports.ts:238` gives Denebola-5 to the `dragons` and calls it "5.9% of
+ * measured core departures — the quietest core port — the cheapest way in"
+ * (a 10,000cr stake, the cheapest in the game). The joke is that flat fact,
+ * played straight: the quietest port in the core keeps a ledger of everything
+ * worth remembering, and the last entry in it concerns a spillage. THE HUMOUR IS
+ * NEVER AT THE PLAYER'S EXPENSE — a `comic` port is a room where nothing costs
+ * you anything, which is why this row is the softest in the galaxy on both
+ * consequence arms rather than merely a differently-worded everyday bar.
  *
- * NO BRANCH (§2.5): this builder is a straight-line expression. It reads the port
- * name off `STAR_SYSTEMS` so a renamed system cannot leave a stale house name
- * behind. Importing `./systems.js` here is acyclic — `systems.ts` imports nothing
- * from this module.
+ * AXIS VECTOR: stakes (a small, tight band), difficulty (easy to charm),
+ * consequence (the softest arms in the game, in both directions), clientele
+ * (a named regular + `trader`). Venues: all seven — this room refuses nobody.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `wager` 20/300 — nobody at Denebola-5 bets more than they would have to
+ *     explain afterwards, and the ceiling is well under the galaxy's.
+ *   - `dare.dispositionOnFailure` 0 (default −2) — an AUTHORED ZERO, and the
+ *     deliberate mirror of Arcturus-6's authored `meet: 0`: the two zeros are the
+ *     opposite ends of §6.1's consequence axis. Beating the house here costs you
+ *     nothing at all; it makes you the story of the year.
+ *   - `meet.dispositionOnSuccess` 3 (default 1) — the highest in the game. A
+ *     stranger is an EVENT at the quietest port in the core.
+ *   - `insult.dispositionOnSuccess` −2 (default −4) — the softest in the game.
+ *     Forgiven before you have finished saying it, and quoted for years.
+ *   - `befriend.dc` 11 (default 12) — they are glad of the company.
+ *   - `clientele` `npc-nova-blitz` (fighter, ideal Glory, flaw Reckless) — the one
+ *     captain on the roster who reliably gives a quiet port something to write
+ *     down. He is a SIMULATED captain and therefore actually reaches this room;
+ *     see F-124-1 for the trap that rules out the quest roster here.
  */
-function baselineHangout(systemId: number): PortHangout {
-  return {
-    systemId,
-    prose: {
-      houseName: `the ${STAR_SYSTEMS[systemId].name} Hangout`,
-      tone: 'everyday',
-      flavour: {},
+const DENEBOLA_5_HANGOUT: PortHangout = {
+  systemId: 6,
+  venues: ALL_HANGOUT_VENUES,
+  wager: { min: 20, max: 300 },
+  venueParams: {
+    dare: { dispositionOnFailure: 0 },
+    meet: { dispositionOnSuccess: 3 },
+    befriend: { dc: 11 },
+    insult: { dispositionOnSuccess: -2 },
+  },
+  clientele: { regulars: ['npc-nova-blitz'], archetypes: ['trader'] },
+  prose: {
+    houseName: 'the Incident Book',
+    tone: 'comic',
+    roomLine:
+      'The Incident Book at Denebola-5 is a real ledger kept behind the bar, and the last entry in it records a spillage.',
+    flavour: {
+      dare: 'The house deals small, and no hand at Denebola-5 has ever needed explaining afterwards.',
+      meet: 'A stranger is an event here. You will be in the book by morning, under your own name.',
+      befriend: 'They are pleased to have the company and make no particular secret of it.',
+      insult:
+        'You are forgiven before you have finished saying it, and quoted for years afterwards.',
+      rumor: 'The news arrives by freighter, a week late, and is discussed at length regardless.',
+      borrow:
+        'The desk is a shelf, a lamp, and a clerk who was reading something else when you came in.',
+      repay: 'The line is struck, the book is closed, and the room goes back to being quiet.',
     },
-  };
-}
+  },
+};
+
+/**
+ * T-124 · Fomalhaut-2 — the fittings (§6.3, pass 3). THE SECOND `comic` ROOM, and
+ * a different joke from Denebola-5's so the register is not one gag told twice.
+ *
+ * `content/storylets.ts:2157` already establishes the port: "Fomalhaut-2's dust
+ * market never quite closes — a low sprawl of stalls under the gantry lights."
+ * This row is the bar at the edge of that sprawl, and the joke is that the bar is
+ * STOCK: everything in it carries a chalked price, including the stools. Nobody in
+ * the room finds this remarkable, which is the whole of it.
+ *
+ * AXIS VECTOR: stakes (the widest band of pass 3 — the pot is settled in goods as
+ * often as in coin), difficulty (the easiest room in pass 3 to charm), consequence
+ * (warm to a stranger, cheap to offend), clientele (two named scrap-and-frontier
+ * regulars + `smuggler` / `trader`). Venues: all seven.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `wager` 15/1200 — a low floor because a stall-holder will play for what is
+ *     in his apron, and a ceiling above the galaxy's because a pot here can be
+ *     settled with the contents of a berth.
+ *   - `befriend.dc` 10 (default 12) — they will befriend anybody who might one day
+ *     buy something, which is everybody.
+ *   - `meet.dispositionOnSuccess` 2 (default 1) — an introduction is the opening
+ *     of a negotiation and is treated with the warmth that deserves.
+ *   - `insult.dispositionOnSuccess` −3 (default −4) — they have been called worse
+ *     by better, and priced the remark before you sat down.
+ *   - `dare` left at the default ENTIRELY — the tables are not what this room
+ *     sells, and the T-122 Aldebaran-1 precedent for saying so by omission.
+ *   - `clientele` `npc-junk-lord` (veteran, "Ruler of the scrap yards", flaw
+ *     Possessive) and `npc-dust-devil` (trader, "Loyal to the frontier", flaw
+ *     Greedy) — both simulated captains, both at home in a dust market.
+ */
+const FOMALHAUT_2_HANGOUT: PortHangout = {
+  systemId: 7,
+  venues: ALL_HANGOUT_VENUES,
+  wager: { min: 15, max: 1200 },
+  venueParams: {
+    meet: { dispositionOnSuccess: 2 },
+    befriend: { dc: 10 },
+    insult: { dispositionOnSuccess: -3 },
+  },
+  clientele: { regulars: ['npc-junk-lord', 'npc-dust-devil'], archetypes: ['smuggler', 'trader'] },
+  prose: {
+    houseName: 'the Fittings',
+    tone: 'comic',
+    roomLine:
+      'The Fittings opens onto the Fomalhaut-2 dust market, and everything in it is chalked with a price, including the stools.',
+    flavour: {
+      dare: 'The pot is settled in coin, in scrap, or in whatever the loser owns that fits through the door.',
+      meet: 'You are introduced, and then you are asked what you are carrying.',
+      befriend: 'They will befriend anybody who might one day buy something, which is everybody.',
+      insult: 'They have been called worse by better, and priced the remark before you sat down.',
+      rumor: 'Every stall has heard something, and every stall will sell it to you.',
+      borrow:
+        'The desk shares a counter with a man selling gantry bolts, and neither of them minds.',
+      repay: 'You clear the line, and the bolt seller asks whether you are in the market.',
+    },
+  },
+};
+
+/**
+ * T-124 · Pollux-7 — the turnaround (§6.3, pass 3). THE CONCOURSE BAR, and pass
+ * 3's one `everyday` room.
+ *
+ * `content/ports.ts:262` gives Pollux-7 to the `league` at "6.8% of measured core
+ * departures — busy band" and a 110,000cr stake: the busiest League civil port in
+ * the game. The concept is the interval between an arrival and a departure — a
+ * room whose whole life is the half hour a crew has before its slot is called.
+ *
+ * IT IS NOT A SECOND ALTAIR-3. Altair-3 is the deliberate NUMERIC MEAN and moves
+ * on `clientele` alone (§6.3's corrected note); this port moves on four axes. What
+ * they share is a register, not a vector: the Waypost is a quiet crossroads where
+ * nobody MEANS to stay, the Turnaround is a busy concourse where nobody CAN.
+ *
+ * AXIS VECTOR: stakes (an ordinary band, slightly raised at the floor and lowered
+ * at the ceiling), difficulty (the hardest room in pass 3 to charm), consequence
+ * (a professional dealer and a warm introduction), clientele (`explorer` +
+ * `fighter`, the one archetype pair no other port had taken). Venues: all seven.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `wager` 75/900 — concourse money. Enough that a hand is worth sitting down
+ *     for, never enough to miss a slot over.
+ *   - `dare.dispositionOnSuccess` 1 (default 2) — the dealer is on shift rather
+ *     than on a run, so losing to him buys nothing personal.
+ *   - `meet.dispositionOnSuccess` 2 (default 1) — introductions happen constantly
+ *     on a concourse; the room is good at them because it does nothing else.
+ *   - `befriend.dc` 14 (default 12) — and forgets them at the same rate. Nobody
+ *     invests in a face they do not expect to see again.
+ */
+const POLLUX_7_HANGOUT: PortHangout = {
+  systemId: 9,
+  venues: ALL_HANGOUT_VENUES,
+  wager: { min: 75, max: 900 },
+  venueParams: {
+    dare: { dispositionOnSuccess: 1 },
+    meet: { dispositionOnSuccess: 2 },
+    befriend: { dc: 14 },
+  },
+  clientele: { archetypes: ['explorer', 'fighter'] },
+  prose: {
+    houseName: 'the Turnaround',
+    tone: 'everyday',
+    roomLine:
+      'The Turnaround keeps the Pollux-7 departure board where the whole bar can see it, and the whole bar checks it.',
+    flavour: {
+      dare: 'The dealer here is on shift rather than on a run, and takes your money as a matter of course.',
+      meet: 'Introductions happen constantly on a concourse, and are forgotten at about the same rate.',
+      befriend:
+        'It is a hard room to make a friend in, only because nobody expects to see you again.',
+      insult: 'The board changes, half the room stands up, and whatever you said leaves with them.',
+      rumor:
+        'Three hundred crews a day come through Pollux-7, and they leave their news behind them.',
+      borrow:
+        'The desk is by the gate, so a captain can sign for a loan and board on the same walk.',
+      repay:
+        'You clear the marker on the way through and hear your slot called as the clerk blots it.',
+    },
+  },
+};
+
+/**
+ * T-124 · Spica-3 — the second watch (§6.3, pass 3). THE SHIFT-CHANGE ROOM, and
+ * §6.1's THIRD AND LAST venue-set expression: "a house that tolerates no insults".
+ *
+ * `content/ports.ts:294` gives Spica-3 to the `league` in the mid band at a
+ * 40,000cr stake, and `systems.ts:120` puts it in the far southwestern corner of
+ * the chart at (−7, −7) with cheap fuel to sell. No storylet claims it, so the
+ * concept is free: a world that runs on port time rather than on daylight, and a
+ * room that opens when the night shift comes off. Introductions are made at four
+ * in the morning and grievances are settled at the table rather than across it.
+ *
+ * AXIS VECTOR: venue set (no `insult`), stakes (a high, wide band), consequence
+ * (they play long and remember who took money off the night shift), clientele
+ * (`gambler` + `veteran`, the other archetype pair no port had taken). NOT
+ * difficulty: `befriend.dc` is left at the default, so the row's identity is
+ * carried by the three axes above rather than by a fourth number that would say
+ * nothing new.
+ *
+ * Every deviation from the default, with its reason:
+ *   - `venues` omits `insult` — §6.1's fourth named venue-set shape and the only
+ *     one still unexercised after the garrison's withdrawn desk (4) and the
+ *     partisan hall's withheld `meet` (5). The watch settles things at the table.
+ *   - `wager` 200/1800 — the fourth-highest floor and a ceiling well above the
+ *     galaxy's. See the F-101-4 note below for WHY this row also carries a stakes
+ *     identity rather than resting on the omission alone.
+ *   - `dare.dispositionOnSuccess` 3 (default 2) / `dispositionOnFailure` −5
+ *     (default −2) — the sharpest asymmetry outside the garrison and the hall:
+ *     they like a captain who sits the watch out, and they remember one who took
+ *     money off them at the end of it.
+ *   - `meet.dispositionOnSuccess` 2 (default 1) — an introduction at four in the
+ *     morning is worth more than one at noon.
+ *
+ * F-101-4 IS LIVE AT THIS ROW AND IS RECORDED RATHER THAN TAKEN SILENTLY. `insult`
+ * has no player UI (§1.4), so this narrowing reaches the player through nothing but
+ * the UGT harness today; the row therefore ALSO carries a stakes identity so that
+ * its whole character is not concentrated in an invisible venue. It does NOT trip
+ * F-123-1's silence bug: the cockpit issues only `dare` / `borrow` / `repay`
+ * (`ui/store.ts:1268/1341/1377`), never `insult`, so `hangoutFailNoticeFrom`'s
+ * missing `'venue-not-offered'` arm stays unreachable from the pane.
+ */
+const SPICA_3_HANGOUT: PortHangout = {
+  systemId: 13,
+  venues: ['dare', 'meet', 'befriend', 'rumor', 'borrow', 'repay'],
+  wager: { min: 200, max: 1800 },
+  venueParams: {
+    dare: { dispositionOnSuccess: 3, dispositionOnFailure: -5 },
+    meet: { dispositionOnSuccess: 2 },
+  },
+  clientele: { archetypes: ['gambler', 'veteran'] },
+  prose: {
+    houseName: 'the Second Watch',
+    tone: 'exotic',
+    roomLine:
+      'The Second Watch at Spica-3 opens when the night shift comes off, which by port time is four in the morning.',
+    flavour: {
+      dare: 'They play long hands at odd hours, and they remember exactly who took money off the night shift.',
+      meet: 'Introductions here are made at four in the morning, because that is when Spica-3 makes them.',
+      befriend: "A captain who keeps the room's hours is halfway to being one of them.",
+      rumor: "The talk is shop, and the shop is a whole world's worth of it.",
+      borrow:
+        'The desk keeps watch hours too, and the clerk has never once been the first to yawn.',
+      repay:
+        'You settle at the end of the watch, with the ledger closed before the day shift arrives.',
+    },
+  },
+};
 
 /**
  * The port table, keyed by `STAR_SYSTEMS` id. `hasHangout` remains the
@@ -785,23 +999,31 @@ function baselineHangout(systemId: number): PortHangout {
  * equality test in `packages/engine/src/__tests__/hangoutRules.test.ts` keeps the
  * two sets from drifting apart in either direction.
  *
- * FOURTEEN ROWS, TEN AUTHORED (T-122 pass 1 + T-123 pass 2, §6.3). Sun-3 carries
- * its own voice and, by §2.3, the default row's mechanics; Aldebaran-1, Altair-3,
- * Mira-9 and Procyon-5 (pass 1) and Arcturus-6, Deneb-4, Regulus-6, Rigel-8 and
- * Vega-6 (pass 2) carry authored voice AND their own axis vectors. The remaining
- * FOUR (6, 7, 9, 13) still carry a baseline row apiece and are therefore
- * mechanically indistinguishable from Sun-3 — T-124 authors them and closes the
- * table at 14. Written out key by key rather than generated from a range so the
- * table stays greppable and one line can be replaced at a time. The
- * rim (15–20), Andromeda (21–26), MALIGNA (27) and NEMESIS (28) are absent by
- * design — see the `hasHangout` note in `./systems.ts`.
+ * T-124 · FOURTEEN ROWS, ALL FOURTEEN AUTHORED — THE TABLE IS CLOSED. Sun-3
+ * carries its own voice and, by §2.3, the default row's mechanics; the other
+ * thirteen carry authored voice AND their own axis vectors: Aldebaran-1, Altair-3,
+ * Mira-9 and Procyon-5 (pass 1), Arcturus-6, Deneb-4, Regulus-6, Rigel-8 and
+ * Vega-6 (pass 2), and Denebola-5, Fomalhaut-2, Pollux-7 and Spica-3 (pass 3).
+ * T-121's baseline-row builder is GONE — there is no unauthored port left for it
+ * to build, and keeping a generated house name in the file would leave a way to
+ * add one silently. Written out key by key rather than generated from a range so
+ * the table stays greppable and one line can be replaced at a time. The rim
+ * (15–20), Andromeda (21–26), MALIGNA (27) and NEMESIS (28) are absent by design —
+ * see the `hasHangout` note in `./systems.ts`.
  *
- * T-123 · THE TABLE IS NO LONGER UNIFORM IN ITS VENUE SET. Arcturus-6 (4) omits
- * `borrow`/`repay` and Deneb-4 (5) omits `meet`, so `venueOffered` stops being the
- * identity for the first time and the engine's `'venue-not-offered'` refusal is
- * reachable end to end. Readers that enumerate venues — `protocol.ts`'s
- * `legalActions`, the sim's lending planners — must ask `venueOffered` rather than
- * assume all seven.
+ * THE TABLE IS NOT UNIFORM IN ITS VENUE SET, at three ports and for three
+ * different reasons (§6.1's venue-set axis, fully exercised): Arcturus-6 (4) omits
+ * `borrow`/`repay` — the garrison runs no credit desk; Deneb-4 (5) omits `meet` —
+ * the hall seats no stranger; Spica-3 (13) omits `insult` — the watch settles
+ * things at the table. So `venueOffered` is not the identity, and the engine's
+ * `'venue-not-offered'` refusal is reachable end to end. Readers that enumerate
+ * venues — `protocol.ts`'s `legalActions`, the sim's lending planners, any future
+ * pane — must ask `venueOffered` rather than assume all seven.
+ *
+ * THE REGISTER SPREAD, closed at pass 3: six `everyday` (1, 2, 3, 8, 9, 10), four
+ * `exotic` (5, 11, 13, 14), two `dangerous` (4, 12), two `comic` (6, 7). All four
+ * of §6.1's registers are represented, which is the closing assertion in
+ * `hangoutContent.test.ts`.
  */
 export const PORT_HANGOUTS: Readonly<Record<number, PortHangout>> = {
   1: SUN_3_HANGOUT,
@@ -809,13 +1031,13 @@ export const PORT_HANGOUTS: Readonly<Record<number, PortHangout>> = {
   3: ALTAIR_3_HANGOUT,
   4: ARCTURUS_6_HANGOUT,
   5: DENEB_4_HANGOUT,
-  6: baselineHangout(6),
-  7: baselineHangout(7),
+  6: DENEBOLA_5_HANGOUT,
+  7: FOMALHAUT_2_HANGOUT,
   8: MIRA_9_HANGOUT,
-  9: baselineHangout(9),
+  9: POLLUX_7_HANGOUT,
   10: PROCYON_5_HANGOUT,
   11: REGULUS_6_HANGOUT,
   12: RIGEL_8_HANGOUT,
-  13: baselineHangout(13),
+  13: SPICA_3_HANGOUT,
   14: VEGA_6_HANGOUT,
 };

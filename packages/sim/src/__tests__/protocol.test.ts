@@ -1134,6 +1134,39 @@ describe('legal-actions enumerator', () => {
     // assertion would pass against the default row.
     expect(JSON.stringify(band)).not.toBe(JSON.stringify(wagerBandFor(1)));
   });
+
+  it('T-124 · at Spica-3 the harness advertises no insult, and the wager domain is the PORT band', () => {
+    // The same mirror as the Arcturus-6 test above, driven at T-124's row and at
+    // the OTHER end of the venue list: the garrison withholds the two lending
+    // beats, the second watch withholds a social one. Two ports narrowed in two
+    // different directions is what says `legalActions`' filter is a filter and not
+    // a special case for the credit desk.
+    const SPICA_3 = 13;
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = SPICA_3;
+    // A dealer in the room, so the social beats are live and `insult` is missing
+    // because the HOUSE withholds it rather than because the room is empty.
+    state.npcs[0].currentSystemId = SPICA_3;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+
+    const hangout = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    expect(hangout).toBeDefined();
+    const venue = hangout?.params.venue;
+    expect(venue?.kind).toBe('enum');
+    if (venue?.kind === 'enum') {
+      expect(venue.choices).toContain('dare');
+      expect(venue.choices).toContain('meet');
+      expect(venue.choices).toContain('befriend');
+      expect(venue.choices).toContain('rumor');
+      expect(venue.choices).toContain('borrow'); // no loan yet → the desk is open
+      expect(venue.choices).not.toContain('insult');
+    }
+    const band = wagerBandFor(SPICA_3);
+    expect(hangout?.params.wager).toEqual({ kind: 'int', min: band.min, max: band.max });
+    // NON-VACUITY: as above, the port band must differ from the global one.
+    expect(JSON.stringify(band)).not.toBe(JSON.stringify(wagerBandFor(1)));
+  });
 });
 
 // ---------------------------------------------------------------------------

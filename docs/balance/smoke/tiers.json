@@ -1,9 +1,9 @@
 {
   "productVersion": "0.5.2",
   "saveSchemaVersion": 13,
-  "rulesFingerprint": "b9b83a6a67cbfdde",
+  "rulesFingerprint": "6e8c9973fa7a4238",
   "instrumentFingerprint": "4e7184c378da068f",
-  "docsFingerprint": "c807452107b9ff16",
+  "docsFingerprint": "1002d9efefacf7fb",
   "provenance": {
     "sweepLabel": "t116-explore",
     "seeds": 1000,
@@ -19,8 +19,8 @@
       "trader-degraded",
       "veteran"
     ],
-    "extractedOn": "2026-07-30",
-    "gitCommit": "b5dab26447c983095ce68a8d3e70577ce2bf5469",
+    "extractedOn": "2026-07-31",
+    "gitCommit": "f8a7fb17b4115ef903784c5a75fc5bf52df402cb",
     "spreadSource": "harvested",
     "note": "Tier spreads are milestone samples harvested from the named sweep. They are still SYNTHESIZED starting states and are never balance verdicts — see docs/balance/smoke/README.md."
   },
@@ -170,7 +170,7 @@
           "fuelStarvationDays": 0,
           "deedsEarned": 58,
           "tourOneResolved": 0,
-          "outcomeHash": "4a7817b488cd52ac"
+          "outcomeHash": "65381601dc66af8e"
         },
         {
           "policy": "greedy",
@@ -617,7 +617,7 @@
           "fuelStarvationDays": 0,
           "deedsEarned": 53,
           "tourOneResolved": 0,
-          "outcomeHash": "19b6c394b35abe87"
+          "outcomeHash": "33965eb346230640"
         },
         {
           "policy": "greedy",

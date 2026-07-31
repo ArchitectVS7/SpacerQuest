@@ -1479,7 +1479,7 @@ pre-seeding fixtures.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md` §2/§4/§6/§7, the authored T-122 rows in `p · attempts=1/4.
 
-### T-124 · Hangout content pass 3 of 3 — the last four, and the humour — `status: TODO` · `coder: opus` · `after: T-123`
+### T-124 · Hangout content pass 3 of 3 — the last four, and the humour — `status: DONE` · `coder: opus` · `after: T-123`
 
 The final four ports, including the comic register the owner asked for. Humour in this game is
 period-voiced and dry — read the existing flaw-override and wire lines for the register before
@@ -1488,6 +1488,177 @@ writing. This pass closes the table at 14.
 **Accept:** all **14** core ports carry authored, distinct content, asserted by a test that
 enumerates them and fails on any placeholder; the tonal spread (everyday / exotic / dangerous
 / comic) is asserted against the spec's axes; zero engine changes; gate green.
+
+**Delivered (2026-07-30):** four authored rows in `packages/content/src/portHangouts.ts` —
+`DENEBOLA_5_HANGOUT` (id 6), `FOMALHAUT_2_HANGOUT` (7), `POLLUX_7_HANGOUT` (9),
+`SPICA_3_HANGOUT` (13) — swapped into `PORT_HANGOUTS` keys `6` / `7` / `9` / `13` over T-121's
+last four `baselineHangout(id)` calls. **The table is CLOSED at fourteen authored rows**, and
+the builder is DELETED along with its `STAR_SYSTEMS` import, so there is no way left to add an
+unauthored port silently. Axis vectors, each deviation carrying its one-line reason in the row's
+own comment:
+**Denebola-5, the incident book (`the Incident Book`, `comic`)** — the FORGIVING POLE and the
+deliberate mirror of Arcturus-6. Band 25/1000 → 20/300, **`dare` failure arm −2 → 0** (an
+authored zero, which `venueParamsFor`'s `??` preserves — beating the house here costs nothing at
+all), `meet` +1 → **+3** (the highest in the game: a stranger is an event at the quietest core
+port), `insult` −4 → **−2** (the softest in the game), `befriend` DC 12 → 11, regular
+`npc-nova-blitz` + `['trader']`. All seven venues. The joke, played straight: *the quietest port
+in the core keeps a real incident book, and the last entry in it records a spillage.*
+**Fomalhaut-2, the fittings (`the Fittings`, `comic`)** — the bar at the edge of the dust market
+`storylets.ts:2157` already established, where everything carries a chalked price including the
+stools. Band 15/1200, `befriend` DC 12 → 10, `meet` +1 → +2, `insult` −4 → −3, **`dare` left at
+the default entirely** (the T-122 Aldebaran-1 idiom for "the tables are not what this room
+sells"); regulars `npc-junk-lord` + `npc-dust-devil`, archetypes `['smuggler','trader']`.
+**Pollux-7, the turnaround (`the Turnaround`, `everyday`)** — the concourse bar of the busiest
+League civil port, and pass 3's one everyday room. Band 75/900, `dare` success arm +2 → +1 (the
+dealer is on shift, not on a run), `meet` +1 → +2, `befriend` DC 12 → 14 (nobody invests in a
+face they will not see again); `['explorer','fighter']`, the one archetype pair no port had
+taken. **Not a second Altair-3** — Altair-3 is the numeric mean and moves on `clientele` alone;
+this port moves four axes. They share a register, not a vector.
+**Spica-3, the second watch (`the Second Watch`, `exotic`)** — venues **minus `insult`**, §6.1's
+third and last venue-set expression ("a house that tolerates no insults") after the garrison's
+withdrawn desk and the hall's withheld `meet`. Band 200/1800, `dare` +2/−2 → **+3/−5**, `meet`
++1 → +2, `befriend` DC left at the default so the row's identity rests on the three axes above;
+`['gambler','veteran']`, the other unused pair.
+
+**The register spread, which §6.3 left to this task:** two `comic` (6, 7), one `everyday` (9),
+one `exotic` (13) — closing the fourteen-port table at **6 everyday / 4 exotic / 2 dangerous /
+2 comic**, all four of §6.1's registers represented. Two comic rooms rather than one because a
+single one is a novelty and two are a register. The voice was read before it was written, as
+§6.3 instructed: `wireStories.ts`'s `NAT_WIRE_TEMPLATES` ("*{loser} unavailable for comment.*")
+and `flaws.ts`'s `detail` lines ("*gambled the day's profits away at the nearest Hangout
+table.*") are both a plain sentence with one deflating clause at the end, and every comic line
+here is built the same way — no puns, no exclamation marks, nothing winked at the player.
+
+Tests. `hangoutContent.test.ts` extends `AUTHORED_PORTS` to fourteen and
+`MECHANICALLY_DEVIANT_PORTS` to twelve and **restructures nothing** — every T-122/T-123 block is
+quantified over `AUTHORED_PORTS`, so the last four inherited every rule for free (the file now
+runs **119 tests**), which is the extension contract that file's header promised. Two new describe blocks. **T-124 · the
+table closes at fourteen:** the enumeration is pinned to `Object.keys(PORT_HANGOUTS)` in both
+directions (so a row dropped from the list can never silently shrink every `it.each`); **no row
+is a baseline row**, asserted as `houseName !== 'the <system> Hangout'` — the shape
+`baselineHangout` generated, which the existing "not the DEFAULT house name" check does NOT
+catch because a baseline row already had a name of its own; and cardinality is **exactly 14**
+with the colliding-ids report. **T-124 · the tonal spread (§6.1):** every register has at least
+one port (failure names the missing ones); a `comic` port is **no harsher than the default on
+any** of the four clauses the `dangerous` test uses — the exact negation, so both registers are
+graded on one axis set; Denebola-5 is the strict per-axis **softest** authored port on `insult`
+and on the dare-failure arm, mirroring the Arcturus-6 maximality test; and Spica-3 is the only
+port withholding `insult` while still offering `meet`/`borrow`/`repay`, mirroring the Deneb-4
+block. All threshold-free, all non-vacuity-guarded. The source grep now anchors on the four new
+row constants and asserts **`baselineHangout` is absent from the file**.
+`hangoutRules.test.ts` **inverts rather than empties** T-121's "the unauthored rows are still
+BASELINE rows" — an empty loop over an empty id list is a vacuous test, so the claim is now the
+positive over all fourteen (no generated house name, a room line, flavour) with
+`CORE_HANGOUT_IDS.length === 14` as the non-vacuity guard; `NARROWED` gains `13: ['insult']` and
+is retitled "narrowed at exactly three ports", with the three reasons recorded.
+`hangout.test.ts` discharges the resolver-level refusal at the new port — `insult` at Spica-3 is
+a typed `HangoutEvent{'venue-not-offered'}` with no die spent, no `DispositionChanged` and no
+disposition moved — plus a control that a beat Spica-3 DOES run (`befriend`) still resolves and
+still spends the die. A second social venue at a different port is what says the refusal is a
+property of `venueOffered` rather than of Deneb-4's row. `protocol.test.ts` gains the harness
+mirror at Spica-3: `legalActions` advertises `dare`/`meet`/`befriend`/`rumor`/`borrow` and **not
+`insult`**, and the `wager` domain is 200/1800 read through `wagerBandFor(13)`, with the same
+non-vacuity check. **Two ports narrowed in two different directions** — the garrison withholds
+the lending pair, the watch withholds a social beat — is what says the filter is a filter and
+not a special case for the credit desk.
+
+Fingerprints: **exactly one policy moved.** `gambler 40fa56c309b70e74 → 0c0c4fc26124fbc0`;
+`trader` / `smuggler` / `fighter` / `explorer` / `veteran` / `greedy` are **byte-identical**.
+That one-row control is sharper than entry 19's two-row one and is the real result of the pass:
+T-124 narrows a venue set too, but **all four of its ports keep `borrow` and `repay`**, so no
+lending guard can see this pass and `isLendingDeskSystem` is untouched; and the narrowing itself
+is invisible to every driver twice over, because the instrument and the cockpit both issue only
+`dare`/`borrow`/`repay` (F-101-4, F-123-1). The gambler moves anyway, and alone, which says the
+pass reached the simulation through its **bands** and nothing else. `venueOffered(…,'dare')` is
+still true at all fourteen, so entry 19's dare guards stay arithmetically inert. Written up as
+**ledger entry 20** in `campaign-degraded.test.ts` in the voice of entries 17/18/19, with the
+measured deltas (gambler final credits median 6,314 → 6,314 — **the median does not move at
+all** — mean 11,453 → 9,880, dares 236 → 234, wagered 62,305 → 63,563, dare net +2,573 →
+**+5,473**, loans 5 → 5 and interest 1,400 → 1,400 unchanged; trader median 16,667 / mean 14,809
+/ loans 7 / interest 1,236 and smuggler 7,492 / 6,440 / 9 / 1,628 **identical**, as the hashes
+already say; `failedVisits` 0 → 0 for every policy, re-confirmed at 10 seeds × 120 days with a
+THIRD narrowed port in the table, and `expectedValuePerDare` 151.82 over that window). Nothing
+was tuned to produce it and nothing is tuned in response. **This is not a capstone — T-125 owns
+the milestone's single capstone**, its sweep, its re-pinned baseline and its verdict.
+
+Goldens, stated explicitly: **both regenerated through their own generators and both
+byte-identical, so neither was re-recorded.** `packages/engine/src/__tests__/fixtures/day-loop-golden.ts`
+— all four hashes identical (`3405f608…`, `72748730…`, `9e332c2e…`, `3e96fe90…`), which is
+expected because both generator scripts run at Sun-3.
+`packages/sim/src/__tests__/fixtures/replay-golden.ts` — all six constants identical, verified by
+JSON-comparing the generator's output against the committed module rather than string-matching
+the prettier-wrapped file. **Event-count diff: zero events added or removed in either fixture**,
+and **no `rngState` moved** in either direction — no replay log docks at 6, 7, 9 or 13.
+
+Fixture position: `docs/balance/smoke/tiers.json` **re-extracted** from the stored `t116-explore`
+aggregate after `npm run format` (`npm run balance:extract -w @spacerquest/sim -- --aggregate
+docs/balance/baseline-t116-explore.json`): `rulesFingerprint` `b9b83a6a67cbfdde →
+6e8c9973fa7a4238`, `docsFingerprint` `c807452107b9ff16 → 1002d9efefacf7fb`, `gitCommit`
+`b5dab264… → f8a7fb17…`; `provenance.sweepLabel` stays `t116-explore`. **`instrumentFingerprint`
+did NOT move** (`4e7184c378da068f`, unchanged) — the T-123 contrast, and the mechanical proof
+that this task edited no `packages/sim/src` non-test file. Checkpoint deltas repeat the
+fingerprint control exactly: **only `gambler`, and only its `outcomeHash`, in only two of the
+four tiers** — days-1-3 `4a7817b488cd52ac → 65381601dc66af8e` and days-21-23
+`19b6c394b35abe87 → 33965eb346230640`; days-29-31 and days-41-43 are unchanged entirely, and
+**every scalar in all four tiers is byte-identical** (credits min/median/max, debt, income days,
+encounters, ships lost, delivered legs, fuel starvation, deeds, Tour One). The other seven
+policies are identical in all four tiers. `balance-targets.test.ts`'s live 40-seed trader
+assertion (`:180`) stayed green and the `it.fails` [22, 30] band (`:225`) still fails as pinned;
+neither was touched, and no threshold, band, golden or fingerprint was edited to make anything
+pass.
+
+Zero engine changes, proven mechanically:
+`git diff --stat HEAD -- packages/engine/src ':!packages/engine/src/__tests__'` prints **nothing**,
+and so does the same command over `packages/sim/src ':!packages/sim/src/__tests__'`. No
+`packages/ui/src` edit. No save-shape change — `CURRENT_SAVE_VERSION` stays **13**, no migration
+owed.
+
+Finding recorded in §7 — and this one was **found and CLOSED here**, not reported and deferred.
+**F-124-1 — a `clientele.regulars` entry naming a QUEST captain is permanently dead content.**
+The cast splits 30 simulated / 11 quest-frozen (`isSimulatedCaptain`, `content/cast.ts`), and the
+eleven take no turn in the dusk loop (`engine/day.ts:758`) — they **sit frozen at their day-1
+system for an entire career**. `rankClientele` ranks and never adds, so a quest captain named as
+a regular can only ever rank at the single system `(index % 20) + 1` seeded them at, with **no
+symptom**: an empty intersection returns the input unchanged, so the row looks authored, passes
+every well-formedness check and ranks nobody forever. Both thematically obvious regulars for
+these ports hit it exactly — `npc-wild-card` (Denebola-5's own storylet captain,
+`storylets.ts:2950`) is frozen at system **16**, a rim system with no bar at all, and
+`npc-rust-bucket` (Fomalhaut-2's, `storylets.ts:4549`) at **Sun-3**. Both would have shipped
+dead. T-123's three `regulars` lists were correct by luck rather than by rule. **Closed by**
+authoring simulated captains at both ports and by a new assertion —
+`isSimulatedCaptain(profileId)` for every `regulars` entry at every authored port, reporting the
+offending house and profile id by name. A real-but-frozen id was previously indistinguishable
+from a real-and-mobile one, because the only check was membership of `ALL_NPC_PROFILES`.
+**No `F-101-3x` was raised** — none of the four concepts wanted a predicate. "The quietest port
+keeps a book", "everything here has a price", "the interval between two gates" and "the room that
+opens at four in the morning" are all expressible as numbers plus prose. **Two passes running
+with no F-101-3 report is evidence the parameter-only surface is the right size for this
+content**, which is that finding's own stated purpose.
+
+Spec corrections taken in the open, not silently: **`docs/HANGOUT_REDESIGN.md` §6.3's four T-124
+rows are annotated in place** with what shipped, plus a six-point block under the table
+recording (a) the register spread chosen and why, (b) `comic` graded as the exact negation of
+`dangerous`, (c) Denebola-5's authored `dare.dispositionOnFailure: 0` as the forgiving pole and
+the mirror of Arcturus-6's `meet: 0`, (d) Spica-3's `insult` omission as §6.1's third and last
+venue-set expression **with the F-101-4 caveat taken in the open** — the venue has no player UI,
+so the row also carries a stakes identity rather than concentrating its character in an
+invisible venue, and it does **not** trip F-123-1's silence bug because the pane never issues
+`insult` — (e) the baseline builder deleted rather than left unused with its test inverted rather
+than emptied, and (f) no concept wanting a predicate. §9's T-124 row is annotated with the two
+things the criterion did not ask for and the work required.
+
+Gate: `npx tsc -b`, `npm run lint`, `npm run format:check` and all four workspaces' vitest suites
+green (**1,636 tests, 0 failures** — engine 1,051 / sim 326 / ui 157 / desktop 102);
+`packages/ui/e2e/hangout.spec.ts` green (3/3). The three `packages/ui/e2e/onboarding.spec.ts`
+failures are the pre-existing **F-121-2** T-121 regression, re-confirmed **unchanged in cause and
+count**: the same three specs (`:94`, `:243`, `:274`), each failing on the same assertion — the
+coach resolves to `first-hangout` where the spec expects `first-port` / `first-contraband`,
+because T-121 put the Hangout affordance out at 14 of 28 ports and the hangout coach now
+pre-empts the two that used to fire there. **Still escalated rather than absorbed** — they were
+not routed around by pre-seeding fixtures, and T-124's diff changed nothing about their symptom
+in either direction.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md` §6.1–§6.4/§7, the ten authored rows in `packages/content/src/portHangouts.ts`, and the T-122/T-123 delivered blocks in `TASKS.md` · attempts=1/4.
 
 ### T-125 · Hangout: measure the reach, and re-read disposition — `status: TODO` · `coder: opus` · `after: T-124`
 
