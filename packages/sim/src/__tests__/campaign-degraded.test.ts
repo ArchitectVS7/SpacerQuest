@@ -830,6 +830,54 @@ const UNCHANGED_POLICIES = [
  *    that a captain stranded at the desk-less garrison stayed stranded; every
  *    travelable port now runs a desk, and the test asserts the positive — that
  *    the SHALLOWEST band in the galaxy still clears a strand.
+ *
+ * 23. T-135 — OWNER RULING D2: THE SPACER'S DARE BECOMES LIAR'S DICE. ALL SEVEN
+ *    ROWS MOVE, and the decomposition below shows that SIX of them move for a
+ *    reason that has nothing to do with the game:
+ *      trader    1b4e953468311f40 -> 9709fd22ff55bb3d
+ *      fighter   dc6ca4fbcce58659 -> 13b4155d3d53e543
+ *      explorer  cfe5aa73ce12c16f -> 0854b356ac9c8bce
+ *      veteran   f701430cfe32f7cb -> a0fee7f62c2167e3
+ *      smuggler  50d24df7e9891d8f -> e68b33db4f6149b4
+ *      gambler   0c0c4fc26124fbc0 -> 45dfa017875d0619
+ *      greedy    0f2ff82982dcbf2d -> 56df4d82dab33e08
+ *
+ *    TWO CHANNELS, SEPARATED BY MEASUREMENT RATHER THAN BY ARGUMENT. This
+ *    fingerprint hashes the WHOLE report JSON, and `HangoutPlayStats` gained one
+ *    new key — `dareGuardHits`, the runner's continuation-loop tripwire, which
+ *    §12.4 proves unreachable and which is therefore 0 on every row. Re-running
+ *    these exact five seeds and stripping `"dareGuardHits":0` from the hashed JSON
+ *    reproduces the OLD pin EXACTLY for six of the seven:
+ *      trader / fighter / explorer / veteran / smuggler / greedy — stripped hash
+ *      === the pre-T-135 value, byte for byte.
+ *    So for those six the ONLY delta is a report key. That is exactly what should
+ *    be true: `planDare` is called by `gamblerPolicy` and by nothing else
+ *    (`packages/sim/src/index.ts`, one call site), so no other policy has ever sat
+ *    at a table and none of them can feel a change to what happens there.
+ *
+ *    THE GAMBLER IS THE ONE REAL MOVE. Its stripped hash is 67423e42356a1e61 —
+ *    still not the old value, and correctly so: `VisitHangout{venue:'dare'}` now
+ *    OPENS a multi-turn scene instead of resolving one opposed GUILE roll, and the
+ *    runner plays the hand out through `planDareMove`. `planDare` itself is
+ *    UNCHANGED (same guards, same `wagerBandFor` stake sizing, same
+ *    `ledger.takeBest()`), and so is the gambler's two-hand loop — per §12.2, the
+ *    fix is a bounded continuation loop in the runner, never a policy rewrite.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days, gambler): 223 hands, 194
+ *    won, 29 lost, 87,126 wagered, +70,715 net, ZERO failed visits and ZERO
+ *    `dareGuardHits`. Over 10 seeds x 120 days: 1,204 hands, 93.9% player win
+ *    rate, +689cr EV per hand, again zero refusals and zero guard hits.
+ *
+ *    THE WIN RATE IS A REPORTED FINDING, NOT A TUNED NUMBER (F-135-1, see the
+ *    Delivered note and `docs/LIARS-DICE_REDESIGN.md` §1.3). Its cause was traced
+ *    rather than shrugged at: the baseline opener bids `(own(F*), F*)` — a claim
+ *    about dice it actually holds, so `actual >= quantity` is guaranteed — and the
+ *    dealer's §9.8 challenge test (`surplus > 1.5 - guile*0.15`) fires on a
+ *    two-of-a-kind opening whenever the dealer holds none of that face, which it
+ *    then loses by construction. Both halves are the specified policies,
+ *    implemented verbatim. §1.3 forbids retuning any constant in this spec to
+ *    reproduce an old figure, and T-137 is the named owner of the win-rate / EV /
+ *    fold-rate read, so nothing here was touched in response.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -841,19 +889,20 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // time, and back to entry 17's value — owner ruling D7 restores that desk against
   // a tight `loanBand`, so the withdrawal channel is exactly undone and the band
   // itself is provably inert over these seeds.
-  trader: '1b4e953468311f40',
-  fighter: 'dc6ca4fbcce58659',
+  // Entry 23: re-derived — the new `dareGuardHits` report key ONLY (see above).
+  trader: '9709fd22ff55bb3d',
+  fighter: '13b4155d3d53e543',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
   // pay dice at claim instead of days, so the finds this policy used to open and
   // then lose to the location predicate are now collected on the day.
-  explorer: 'cfe5aa73ce12c16f',
-  veteran: 'f701430cfe32f7cb',
+  explorer: '0854b356ac9c8bce',
+  veteran: 'a0fee7f62c2167e3',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
-  smuggler: '50d24df7e9891d8f',
+  smuggler: 'e68b33db4f6149b4',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sun-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -865,8 +914,10 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // own and there is no default-band port left for a stake to inherit. The only
   // row entry 20 moves, and the only row it CAN move: pass 3 withdraws no credit
   // desk, so nothing reaches the lending policies at all.
-  gambler: '0c0c4fc26124fbc0',
-  greedy: '0f2ff82982dcbf2d',
+  // Entry 23: re-derived a FIFTH time, and the only row entry 23 moves for a
+  // reason of its own — the Dare is now a Liar's Dice hand the runner plays out.
+  gambler: '45dfa017875d0619',
+  greedy: '56df4d82dab33e08',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

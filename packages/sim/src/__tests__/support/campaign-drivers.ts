@@ -17,7 +17,7 @@ import {
   startDay,
   type GameState,
 } from '@spacerquest/engine';
-import type { SimPolicy } from '../../index.js';
+import { DARE_MAX_MOVES_PER_HAND, planDareMove, type SimPolicy } from '../../index.js';
 
 /** The longest run of consecutive days on which the policy took NO
  *  income-producing action (sign / travel-to-deliver / explore / fight-or-talk).
@@ -89,7 +89,23 @@ export function driveFrom(
       // kills real and it does. Bringing the two drivers back into agreement is the
       // fix — nothing about any spec's seeds, horizons or assertions moves.
       if (action.type === 'Combat' && !dayState.encounter) continue;
+      if (action.type === 'Dare' && !dayState.dareHand) continue;
       dayState = applyPlayerAction(dayState, action).state;
+
+      // T-135: mirror `runCampaign`'s Liar's Dice continuation loop, for exactly
+      // the reason the Combat guard above is mirrored — the two drivers must not
+      // drift. A `VisitHangout{venue:'dare'}` now OPENS a scene instead of
+      // resolving inline, so without this the gambler ends every day with an open
+      // hand: gate 1 blocks every subsequent action of that day and the dusk
+      // timeout-fold forfeits the seed. Measured on seed 1 × 120 days, that alone
+      // drove the gambler from solvent to 148,696 in debt.
+      let dareGuard = 0;
+      while (dayState.dareHand && dareGuard < DARE_MAX_MOVES_PER_HAND) {
+        dareGuard += 1;
+        const move = planDareMove(dayState);
+        if (!move) break;
+        dayState = applyPlayerAction(dayState, move).state;
+      }
     }
     state = endDay(dayState).state;
   }

@@ -282,6 +282,110 @@ export type ExplorationFailReason =
   | 'recovery-in-progress'
   | 'insufficient-dice';
 
+/**
+ * T-135 · The `HangoutEvent.failReason` union, EXTRACTED from its inline site so
+ * `schema.ts` can pin it value-for-value (`_covHangoutFailReason`), exactly as
+ * {@link ExplorationFailReason} is pinned. `AssertEventKeys` compares KEYS, so a
+ * reason added here and forgotten in the schema's `z.enum` would sail past it and
+ * a save carrying the new reason would fail to parse at load — the same hole T-131
+ * closed for the exploration reasons.
+ *
+ * The first five are the shipped set (malformed die input, an opponent who is not
+ * in-system, a venue the house does not run). The last three are the Liar's Dice
+ * gates (`docs/LIARS-DICE_REDESIGN.md` §9.3 + §5.1):
+ *   - 'dare-hand-open'    — a `VisitHangout{venue:'dare'}` while a hand is already
+ *     open (gate 2). Refused BEFORE the die is spent.
+ *   - 'no-dare-hand'      — a `Dare` move with no open hand (gate 3). A typed
+ *     no-op, deliberately NOT a throw (unlike `resolveCombat`).
+ *   - 'illegal-dare-move' — a `Dare` move that is not in `legalDareMoves`, or
+ *     whose quantity/face arithmetic breaks §5.1's lattice. Refused rather than
+ *     clamped into legality, and nothing is spent or moved.
+ */
+export type HangoutFailReason =
+  | 'no-die'
+  | 'invalid-die-index'
+  | 'die-already-spent'
+  | 'no-opponent'
+  | 'venue-not-offered'
+  | 'dare-hand-open'
+  | 'no-dare-hand'
+  | 'illegal-dare-move';
+
+/**
+ * T-135 · One standing claim in a Liar's Dice hand: "there are at least
+ * `quantity` dice showing `face`, across all eight dice in play."
+ * `face` 1..6, `quantity` 1..8 (`docs/LIARS-DICE_REDESIGN.md` §2.2).
+ */
+export interface DareBid {
+  quantity: number;
+  face: number;
+}
+
+/** T-135 · One line of the hand's PUBLIC record — everything the UI's bid history
+ *  and T-137's balance fold need, and nothing that would leak a hidden die. */
+export interface DareBidEntry {
+  actor: 'player' | 'dealer';
+  move: 'bid' | 'raise-face' | 'raise-quantity' | 'raise-both';
+  quantity: number;
+  face: number;
+  /** Credits this actor paid into their own escrow for this move. 0 for the
+   *  opening bid (an opening bid is not a raise — §4.2). */
+  antePaid: number;
+}
+
+/**
+ * T-135 · The open Liar's Dice hand (`docs/LIARS-DICE_REDESIGN.md` §2.2). A SCENE,
+ * the architectural twin of {@link EncounterState}: it has a counterparty whose
+ * purse is already debited, an escrow neither side owns yet, and hidden
+ * information belonging to the other side — none of which belongs on the
+ * captain's own sheet.
+ *
+ * THERE IS NO `toAct` FIELD, deliberately (§2.3): the dealer answers synchronously
+ * inside the player's own action, so every PERSISTED hand is player-to-act by
+ * construction and a stored `toAct` would be a constant.
+ */
+export interface DareHandState {
+  /** `dare-${day}-${dealerId}-${dayEventCount}` — deterministic, no rng draw.
+   *  The `enc-${day}-${dayEventCount}-…` precedent (actions/travel.ts). */
+  id: string;
+  /** FROZEN at open. The port whose band, ante and venue params govern the WHOLE
+   *  hand, even if a later reload sees different content (§4.3). */
+  systemId: number;
+  dealerId: string;
+  openedDay: number;
+  /** 4 × d6, roll order preserved (NOT sorted — a sorted hand is a different hand
+   *  to look at, and the UI animates the roll). */
+  playerDice: number[];
+  /** 4 × d6. HIDDEN: never enters an event until a challenge reveal (§10.2). */
+  dealerDice: number[];
+  /** The standing claim, or null before the player opens the bidding. */
+  bid: DareBid | null;
+  /** Who owns the standing bid — decides who wins a challenge. null iff bid is null. */
+  bidder: 'player' | 'dealer' | null;
+  /** The per-side seed, resolved and clamped once at open (§3). */
+  seedWager: number;
+  /** The per-raise ante, resolved once at open (§4). */
+  ante: number;
+  /** ESCROW, not a tally: credits already debited from `player.credits`. */
+  potPlayer: number;
+  /** ESCROW: credits already debited from the dealer's purse. */
+  potDealer: number;
+  /** True after a Peek ATTEMPT, pass or fail. One per hand (§8). */
+  peekUsed: boolean;
+  /** The one dealer die a successful Peek revealed, or null. */
+  peekedDealerDie: { index: number; value: number } | null;
+  history: DareBidEntry[];
+}
+
+/** T-135 · The seven moves one `Dare` action can carry (§9.1). */
+export type DareMoveKind =
+  'bid' | 'raise-face' | 'raise-quantity' | 'raise-both' | 'challenge' | 'fold' | 'peek';
+
+/** T-135 · How a Liar's Dice hand ended (§10.2). `timeout-fold` is the dusk
+ *  clause's outcome and is identical to `player-fold` in every other respect. */
+export type DareOutcome =
+  'challenge-win' | 'challenge-loss' | 'player-fold' | 'dealer-fold' | 'timeout-fold';
+
 // Discriminator for game events
 export type GameEvent =
   | { type: 'DawnRoll'; day: number; hand: number[] }
@@ -502,8 +606,17 @@ export type GameEvent =
       // 'demo-ended' (T-1703): a demo career kept playing past DEMO_FINAL_DAY
       // (engine `demoConcluded`). Every blockable verb is inert, exactly as on the
       // far side of the shear. READER: the same pair, plus the cockpit's end card.
+      // 'active-dare-hand' (T-135): an open Liar's Dice hand (`state.dareHand`)
+      // blocks the world exactly as an encounter does — a captain cannot fly to
+      // another system and ask a dealer four jumps away to answer a standing bid.
+      // Refused with no die spent, no throw, `dayEventCount` untouched. This
+      // widens `reason` ONLY: `actionType` already carries all six blockable
+      // verbs. READERS: the gate in `applyPlayerAction` (day.ts) emits it; the
+      // sim's `legalActions` advertises only `Dare` while a hand is open, so a
+      // headless driver never earns it.
       reason:
         | 'active-encounter'
+        | 'active-dare-hand'
         | 'destination-locked'
         | 'no-hangout'
         | 'career-ended'
@@ -701,8 +814,81 @@ export type GameEvent =
       // T-120: 'venue-not-offered' — the port's venue definition
       // (`PORT_HANGOUTS`) does not list this beat. ONE rule, evaluated the same
       // way at every port; refused before the die is spent.
-      failReason?:
-        'no-die' | 'invalid-die-index' | 'die-already-spent' | 'no-opponent' | 'venue-not-offered';
+      // T-135: the union is now NAMED (`HangoutFailReason`) so schema.ts can pin
+      // it value-for-value, and carries the three Liar's Dice gates.
+      failReason?: HangoutFailReason;
+    }
+  | {
+      /**
+       * T-135 · A Liar's Dice hand OPENED (`docs/LIARS-DICE_REDESIGN.md` §10.2).
+       *
+       * THE HIDDEN-DICE DISCIPLINE: this carries `playerDice` and NEVER
+       * `dealerDice`. `state.eventLog` is serialized into the save and rendered
+       * line by line by the UI, so a `DareHandStarted` carrying both hands would
+       * leak the dealer's hand to the pane AND into a file a curious player can
+       * read. The dealer's dice enter an event on exactly two outcomes (see
+       * `DareHandResolved.dealerDice`) and nowhere else.
+       */
+      type: 'DareHandStarted';
+      day: number;
+      handId: string;
+      opponentId: string;
+      systemId: number;
+      seedWager: number;
+      ante: number;
+      /** The PLAYER's four dice. The dealer's are NEVER here. */
+      playerDice: number[];
+    }
+  | {
+      /** T-135 · A Peek was attempted (§8). One per hand, pass or fail; the die is
+       *  spent either way. `dieIndex`/`value` are present only on success. */
+      type: 'DarePeeked';
+      day: number;
+      handId: string;
+      success: boolean;
+      /** Present only on success. */
+      dieIndex?: number;
+      value?: number;
+    }
+  | {
+      /** T-135 · One bid or raise landed, by either side (§10.2). The public
+       *  record of the hand: the claim, what it cost, and both escrows after it. */
+      type: 'DareBidPlaced';
+      day: number;
+      handId: string;
+      actor: 'player' | 'dealer';
+      move: 'bid' | 'raise-face' | 'raise-quantity' | 'raise-both';
+      quantity: number;
+      face: number;
+      antePaid: number;
+      potPlayer: number;
+      potDealer: number;
+    }
+  | {
+      /**
+       * T-135 · A Liar's Dice hand SETTLED (§10.2). Emitted exactly once per hand,
+       * immediately before the terminal `HangoutEvent` that nine shipped readers
+       * key on (§10.3) — the two are a pair, and the `HangoutEvent`'s shape is
+       * deliberately unchanged so those readers need no defensive edit.
+       */
+      type: 'DareHandResolved';
+      day: number;
+      handId: string;
+      opponentId: string;
+      outcome: DareOutcome;
+      /** The standing bid at resolution; null iff the hand folded before any bid. */
+      bid: DareBid | null;
+      /** Present ONLY on the two challenge outcomes. */
+      actualCount?: number;
+      playerDice: number[];
+      /** Present ONLY on the two challenge outcomes — a fold NEVER reveals (§6.1). */
+      dealerDice?: number[];
+      /** From the player's view: `+potDealer` on a win, `−potPlayer` on a
+       *  loss/fold (§6.3's ledger). */
+      creditsDelta: number;
+      /** The delta PASSED to applyDisposition (pre-clamp). The APPLIED delta is on
+       *  the neighbouring DispositionChanged, which is the existing convention. */
+      dispositionDelta: number;
     }
   | {
       /**
@@ -1219,6 +1405,27 @@ export type PlayerAction =
       wager?: number;
       /** T-1304: borrow principal / repay amount (venue 'borrow' / 'repay'). */
       amount?: number;
+      spendDie?: number;
+    }
+  | {
+      /**
+       * T-135 · One move in the open Liar's Dice hand (`state.dareHand`). The hand
+       * is OPENED by `VisitHangout{venue:'dare'}` and closed by 'challenge',
+       * 'fold', a dealer answer that ends it, or the dusk timeout fold
+       * (`docs/LIARS-DICE_REDESIGN.md` §9.1).
+       *
+       * This is the `Combat{stance}` shape, chosen for the same reason: one verb
+       * whose variants share a scene, a counterparty and a lifecycle. RESOLVER:
+       * actions/dare.ts `resolveDare`, which NEVER throws — a move with no open
+       * hand is a typed `HangoutEvent{failReason:'no-dare-hand'}`.
+       */
+      type: 'Dare';
+      move: DareMoveKind;
+      /** Required for 'bid' / 'raise-quantity' / 'raise-both'; ignored otherwise. */
+      quantity?: number;
+      /** Required for 'bid' / 'raise-face' / 'raise-both'; ignored otherwise. */
+      face?: number;
+      /** 'peek' ONLY. Bids, raises, challenges and folds cost no die (§9.2). */
       spendDie?: number;
     }
   | {
@@ -1787,6 +1994,9 @@ export interface GameState {
   market: MarketState;
   npcs: NpcState[];
   encounter: EncounterState | null;
+  /** T-135 · The open Liar's Dice hand, or null. A SCENE, not player-owned data —
+   *  see the sibling `encounter` above and docs/LIARS-DICE_REDESIGN.md §2.1. */
+  dareHand: DareHandState | null;
   /** The single active world economic event, or null (T-107). At most one is
    *  ever active; the seeded dusk scheduler owns its lifecycle. */
   eraEvent: EraEventState | null;

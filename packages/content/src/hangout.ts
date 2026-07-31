@@ -99,6 +99,50 @@ export const INSULT_DISPOSITION = -4;
  *  handshake, not yet a bond. */
 export const MEET_DISPOSITION = 1;
 
+// ---------------------------------------------------------------------------
+// T-135 · LIAR'S DICE (docs/LIARS-DICE_REDESIGN.md, owner ruling D2). The Dare is
+// no longer one opposed GUILE roll; it is a multi-turn bluffing hand. Three
+// numbers move from the ruling into content, and NOT one of them is per-port:
+// the VARIATION comes from the wager bands content already authors, read by one
+// engine rule (`liarsDiceRules.ts` `anteFor`).
+// ---------------------------------------------------------------------------
+
+/**
+ * T-135 · The per-raise ante as a fraction of the port's own wager ceiling (owner
+ * ruling D2: "≈3% of band.max"). ONE number for all fourteen ports.
+ *
+ * A port that wants a steeper table authors a WIDER `wager` band; that is the
+ * whole of D2's "ports further away carry steeper stakes", stated as content and
+ * read by one rule. There is deliberately no per-port ante constant and no
+ * `HangoutVenueParams.ante` field.
+ *
+ * The lattice bounds a hand at 12 raises (§4.4), so `12 × ante = 0.36 × band.max`
+ * is the most either side can ever pay in antes — which is what makes `band.max`
+ * a per-side exposure ceiling for a whole hand rather than only a seed ceiling.
+ */
+export const DARE_ANTE_BAND_FRACTION = 0.03;
+
+/**
+ * T-135 · Disposition the dealer moves by when the PLAYER folds a Liar's Dice hand
+ * (including the dusk timeout fold). POSITIVE for the same reason
+ * `DARE_LOSS_DISPOSITION` is: the dealer just took the spacer's money. Smaller in
+ * magnitude because it was the cheapest possible win — the dealer out-played
+ * nobody and never had to show a hand, so the story is duller.
+ */
+export const DARE_FOLD_DISPOSITION = 1;
+
+/**
+ * T-135 · The GUILE DC for the Peek — the one check a Liar's Dice hand can emit,
+ * spending a SECOND dawn die to see one of the dealer's four dice before the
+ * bidding opens (§8).
+ *
+ * Sized on `BEFRIEND_DC` (also 12), the other GUILE check a player makes at a
+ * Hangout, so a captain's read on the Peek's difficulty transfers from a beat they
+ * already know. It fills the `dare` row's previously-ignored `dc` cell — no new
+ * content mechanism, and no authored port row changes.
+ */
+export const DARE_PEEK_DC = 12;
+
 // ===========================================================================
 // T-1501 · The rumor-table's authored beats (PRD §8.3 rumor table; the host slot
 // T-1303 built). Before this task the two rumor phrasings lived INLINE in the

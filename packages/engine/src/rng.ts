@@ -27,6 +27,13 @@ export class SeededRng {
     return Math.floor(this.next() * 20) + 1;
   }
 
+  /** T-135 · A six-sided die. The engine's dawn hand, its checks and its NPC sim
+   *  all roll d20; Liar's Dice (`liarsDiceRules.ts`) is the first and only reader
+   *  of a d6, and it draws eight of them at each hand's open. */
+  public d6(): number {
+    return Math.floor(this.next() * 6) + 1;
+  }
+
   public rollHand(size: number): number[] {
     const dice: number[] = [];
     for (let i = 0; i < size; i++) {

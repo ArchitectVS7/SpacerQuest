@@ -787,6 +787,16 @@ export function hangoutFailExplanation(reason: HangoutFailReason): string {
     // T-132 · the reason that used to be silence.
     case 'venue-not-offered':
       return 'No one here takes that kind of wager.';
+    // T-135 · the three Liar's Dice gates. The scene's own pane is T-136's; these
+    // lines exist because the mechanism above makes a new reason a BUILD FAILURE
+    // until it is answered, and inheriting a plausible-sounding wrong line is
+    // exactly what it was built to prevent.
+    case 'dare-hand-open':
+      return 'You already have a hand on the table — finish it first.';
+    case 'no-dare-hand':
+      return 'There is no hand on the table to play.';
+    case 'illegal-dare-move':
+      return 'The house will not take that call.';
   }
 }
 

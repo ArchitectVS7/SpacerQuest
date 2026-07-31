@@ -41,9 +41,11 @@ import type { NpcArchetype } from './cast.js';
 import {
   BEFRIEND_DC,
   BEFRIEND_DISPOSITION,
+  DARE_FOLD_DISPOSITION,
   DARE_LOSS_DISPOSITION,
   DARE_MAX_WAGER,
   DARE_MIN_WAGER,
+  DARE_PEEK_DC,
   DARE_WIN_DISPOSITION,
   INSULT_DISPOSITION,
   MEET_DISPOSITION,
@@ -71,27 +73,38 @@ export type HangoutTone = 'everyday' | 'exotic' | 'dangerous' | 'comic';
  * T-122 … T-124 author against this table, and the `dare` row is the one
  * non-obvious cell: SUCCESS is the arm where the HOUSE prevails.
  *
- * | venue      | `dc`                        | `dispositionOnSuccess`        | `dispositionOnFailure`       |
- * | ---------- | --------------------------- | ----------------------------- | ---------------------------- |
- * | `dare`     | ignored — a Dare is OPPOSED, the dealer's live GUILE total IS the DC | player LOST the hand, dealer warms (`DARE_LOSS_DISPOSITION`) | player WON, the beaten dealer sours (`DARE_WIN_DISPOSITION`) |
- * | `befriend` | the GUILE charm DC          | applied on a passed check     | ignored — a flat charm does not sour |
- * | `insult`   | ignored — an insult never rolls | always applied            | ignored                      |
- * | `meet`     | ignored — an introduction never rolls | always applied      | ignored                      |
- * | `rumor`    | ignored                     | ignored                       | ignored                      |
- * | `borrow`   | ignored — the desk's one parameter is `loanBand`, not a DC (§2.2 ruling 5 as amended by D7) | ignored    | ignored                      |
- * | `repay`    | ignored                     | ignored                       | ignored                      |
+ * | venue      | `dc`                        | `dispositionOnSuccess`        | `dispositionOnFailure`       | `dispositionOnFold`          |
+ * | ---------- | --------------------------- | ----------------------------- | ---------------------------- | ---------------------------- |
+ * | `dare`     | T-135 · the PEEK DC (`DARE_PEEK_DC`) — the GUILE check that buys a look at one dealer die before the bidding opens. (It was ignored while a Dare was a single OPPOSED roll.) | player LOST the hand, dealer warms (`DARE_LOSS_DISPOSITION`) | player WON, the beaten dealer sours (`DARE_WIN_DISPOSITION`) | T-135 · player FOLDED (or dusk closed the hand): the dealer took the pot without a showdown (`DARE_FOLD_DISPOSITION`) |
+ * | `befriend` | the GUILE charm DC          | applied on a passed check     | ignored — a flat charm does not sour | ignored                |
+ * | `insult`   | ignored — an insult never rolls | always applied            | ignored                      | ignored                      |
+ * | `meet`     | ignored — an introduction never rolls | always applied      | ignored                      | ignored                      |
+ * | `rumor`    | ignored                     | ignored                       | ignored                      | ignored                      |
+ * | `borrow`   | ignored — the desk's one parameter is `loanBand`, not a DC (§2.2 ruling 5 as amended by D7) | ignored    | ignored                      | ignored                      |
+ * | `repay`    | ignored                     | ignored                       | ignored                      | ignored                      |
  *
  * A field a venue does not read is carried as `0` on the default row so the engine
  * accessor can return plain numbers rather than `number | undefined` — which is
  * what keeps the resolver from ever restating a constant as a `??` fallback.
+ *
+ * T-135 · FINDING F-134-3 — `wager` NOW MEANS TWO THINGS. `wager.max` is still the
+ * ceiling on a Dare SEED, and it is now ALSO the per-side ceiling on total
+ * exposure for a whole Liar's Dice hand (seed + every ante that side pays; see
+ * `wagerBandFor`'s doc comment and `docs/LIARS-DICE_REDESIGN.md` §4.3). The two are
+ * consistent — the second contains the first — but an author retuning a band for
+ * one reason now moves the other, and in particular decides how many raises a hand
+ * at this port can hold.
  */
 export interface HangoutVenueParams {
-  /** DC for venues that roll (today: `befriend` only). Ignored by venues that do not. */
+  /** DC for venues that roll (`befriend`'s charm check; T-135 adds `dare`'s Peek). */
   dc?: number;
   /** Disposition delta on the venue's SUCCESS arm (befriend-success, meet, insult, dare-LOSS). */
   dispositionOnSuccess?: number;
   /** Disposition delta on the venue's FAILURE arm (today only `dare`: the beaten dealer sours). */
   dispositionOnFailure?: number;
+  /** T-135 · Disposition delta when the PLAYER folds a Liar's Dice hand (including
+   *  the dusk timeout fold). Read by `dare` only; 0 on every other venue. */
+  dispositionOnFold?: number;
 }
 
 /**
@@ -198,39 +211,48 @@ export const DEFAULT_PORT_HANGOUT: PortHangout = {
   loanBand: { min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL },
   venueParams: {
     dare: {
-      dc: 0, // ignored by this venue — a Dare is opposed
+      // T-135 · the PEEK DC. This cell was `0`/ignored while a Dare was a single
+      // opposed roll; Liar's Dice gives it the one check a hand can emit.
+      dc: DARE_PEEK_DC,
       dispositionOnSuccess: DARE_LOSS_DISPOSITION, // the house prevailed; the dealer warms
       dispositionOnFailure: DARE_WIN_DISPOSITION, // the player prevailed; the dealer sours
+      dispositionOnFold: DARE_FOLD_DISPOSITION, // the player walked; the dealer took the pot unshown
     },
     meet: {
       dc: 0, // ignored by this venue
       dispositionOnSuccess: MEET_DISPOSITION,
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     befriend: {
       dc: BEFRIEND_DC,
       dispositionOnSuccess: BEFRIEND_DISPOSITION,
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     insult: {
       dc: 0, // ignored by this venue — an insult never rolls
       dispositionOnSuccess: INSULT_DISPOSITION,
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     rumor: {
       dc: 0, // ignored by this venue
       dispositionOnSuccess: 0, // ignored by this venue
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     borrow: {
       dc: 0, // ignored by this venue — the desk's parameter is `loanBand`, above
       dispositionOnSuccess: 0, // ignored by this venue
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     repay: {
       dc: 0, // ignored by this venue
       dispositionOnSuccess: 0, // ignored by this venue
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
   },
   // Empty: `rankClientele` is the IDENTITY under the default row. Nothing about

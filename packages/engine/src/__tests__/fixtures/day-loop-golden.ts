@@ -506,11 +506,28 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  4ad8b677… -> 3405f608…   (events 72748730… UNCHANGED)
 //   STORYLET state  11b73757… -> 9e332c2e…   (events 3e96fe90… UNCHANGED)
 // Regenerated via gen-day-loop-golden.ts.
+//
+// T-135 re-derivation (Liar's Dice): the STATE hashes move for exactly one
+// reason — `GameState.dareHand` is a new serialized root key, so every
+// `serializeState` output gains `"dareHand":null`. Nothing else about either
+// script changed: neither contains a `VisitHangout`, so no hand is ever opened,
+// no d6 is ever drawn, and the endDay timeout-fold clause is guarded WHOLE on
+// `state.dareHand !== null` and takes NO rng draw on the guard path — the same
+// discipline the T-111 recovery tick above was written to.
+//
+// THE EVENT HASHES ARE THE TRIPWIRE, and both held. A move on a change of this
+// shape would have meant the new `SeededRng.d6`, the new action fork label or the
+// dusk clause had re-phased an rng stream somewhere neither script visits. They
+// came back byte-identical from the regenerator. If either ever moves on a change
+// of this shape, that is the leak — fix the cause, never re-pin.
+//   DAY_LOOP state  3405f608… -> 013f9cb5…   (events 72748730… UNCHANGED)
+//   STORYLET state  9e332c2e… -> cc9ea7c7…   (events 3e96fe90… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '3405f60869ed3d720ccd23c58c52cd78777cbaf3e224d9e1df5e1d8831321658';
+  '013f9cb5ab855a489ea7f230dfcbf10a0f889378895d0c1ac20e4ea44183a59e';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   '7274873091b87cee192878a732e7ae8217575cc6650fd41f61290d2dfe1dbe71';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '9e332c2ee43f01d94288df7d7a30a86c3fc1622320f6070f408a48c6c5903233';
+  'cc9ea7c748111bb6ba814621123a603a4946ae0ad917a65f8ad04aab7586d675';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '3e96fe90247b837cba773049e855623f0381bb5cd0f9cf41fda9d86982a8b50e';

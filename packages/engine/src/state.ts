@@ -176,6 +176,8 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     },
     npcs,
     encounter: null,
+    // T-135 · a career opens with no hand on the table, beside the sibling scene.
+    dareHand: null,
     eraEvent: null,
     lastEraEventEndedDay: 0,
     eventLog: [],

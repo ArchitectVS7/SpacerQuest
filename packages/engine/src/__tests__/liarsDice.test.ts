@@ -1,0 +1,1157 @@
+import { describe, it, expect } from 'vitest';
+import {
+  DARE_ANTE_BAND_FRACTION,
+  DARE_FOLD_DISPOSITION,
+  DARE_LOSS_DISPOSITION,
+  DARE_PEEK_DC,
+  DARE_WIN_DISPOSITION,
+  Stat,
+} from '@spacerquest/content';
+import { createInitialState, deserializeState, serializeState } from '../state.js';
+import { applyPlayerAction, endDay, startDay } from '../day.js';
+import { venueParamsFor, wagerBandFor } from '../hangoutRules.js';
+import {
+  anteFor,
+  dealerMove,
+  headroomFor,
+  legalDareMoves,
+  legalMovesFrom,
+  resolveChallenge,
+} from '../liarsDiceRules.js';
+import { CURRENT_SAVE_VERSION, MIGRATIONS, createSave, loadSave } from '../save.js';
+import { DawnHand, DayPhase, GameEvent, GameState } from '../types.js';
+
+// ---------------------------------------------------------------------------
+// T-135 · LIAR'S DICE (owner ruling D2, docs/LIARS-DICE_REDESIGN.md).
+//
+// EVERY hand in this file is driven through the REAL loop —
+// `applyPlayerAction(VisitHangout{venue:'dare'})` to open, then
+// `applyPlayerAction(Dare{…})` per move — and every state transition comes from a
+// RETURNED state. `state.dareHand` is written by hand in exactly one place: the
+// dealer-blindness test, which has to VARY HIDDEN INFORMATION to prove the dealer
+// cannot read it. That is setting up the experiment, not driving the scene.
+// ---------------------------------------------------------------------------
+
+const DEALER = 'npc-iron-vex'; // cast index 0 — starts co-located at Sun-3 (id 1).
+const SUN_3 = 1;
+
+/** A DAY-phase state at a hasHangout port with a hand-picked dawn hand and a
+ *  co-located, solvent dealer. Shaped on `hangout.test.ts`'s helper of the same
+ *  name; `seed` is a parameter because the eight opening d6 and every dealer
+ *  decision roll come off the action rng, which is derived from it. */
+function hangoutState(seed = 1, dice = [10, 10, 10, 10, 10], systemId = SUN_3): GameState {
+  const state = createInitialState(seed);
+  state.dayPhase = DayPhase.DAY;
+  state.dayEventCount = 0;
+  state.player.currentSystemId = systemId;
+  state.player.stats[Stat.GUILE] = 0;
+  state.player.credits = 20_000;
+  const spent = new Array<boolean>(dice.length).fill(false);
+  state.player.dawnHand = { dice: [...dice], spent } satisfies DawnHand;
+  const dealer = state.npcs.find((n) => n.id === DEALER)!;
+  dealer.currentSystemId = systemId;
+  dealer.credits = 20_000;
+  dealer.disposition = 0;
+  return state;
+}
+
+function dealerOf(state: GameState) {
+  return state.npcs.find((n) => n.id === DEALER)!;
+}
+
+/** Open a hand through the real resolver. */
+function openHand(state: GameState, wager = 100, spendDie = 0) {
+  return applyPlayerAction(state, {
+    type: 'VisitHangout',
+    venue: 'dare',
+    opponentId: DEALER,
+    wager,
+    spendDie,
+  });
+}
+
+function resolvedOf(events: GameEvent[]) {
+  return events.find((e) => e.type === 'DareHandResolved');
+}
+
+// ---------------------------------------------------------------------------
+// §4 · The ante is a RULE READING CONTENT, never a per-port branch
+// ---------------------------------------------------------------------------
+
+describe('T-135 · the ante rides the port’s own band', () => {
+  // The spec's §4.5 worked table. Restated here as the EXPECTED side so the test
+  // is a statement about the fourteen shipped bands rather than a re-derivation of
+  // the formula against itself.
+  const EXPECTED: Record<number, number> = {
+    1: 30,
+    2: 23,
+    3: 30,
+    4: 12,
+    5: 60,
+    6: 9,
+    7: 36,
+    8: 6,
+    9: 27,
+    10: 15,
+    11: 90,
+    12: 90,
+    13: 54,
+    14: 45,
+  };
+
+  it('is round(band.max × DARE_ANTE_BAND_FRACTION) at all fourteen ports', () => {
+    for (const [systemId, ante] of Object.entries(EXPECTED)) {
+      const id = Number(systemId);
+      expect(anteFor(id)).toBe(ante);
+      // …and it IS the formula, not a table: the same number falls out of the
+      // port's own band and content's one fraction. This is the "no per-port
+      // branch" proof — there is one rule and fourteen instances.
+      expect(anteFor(id)).toBe(
+        Math.max(1, Math.round(wagerBandFor(id).max * DARE_ANTE_BAND_FRACTION)),
+      );
+    }
+  });
+
+  it('is resolved ONCE at open and frozen onto the hand', () => {
+    const opened = openHand(hangoutState(222)).state;
+    expect(opened.dareHand?.ante).toBe(anteFor(SUN_3));
+    expect(opened.dareHand?.systemId).toBe(SUN_3);
+  });
+
+  it('the 12-raise lattice bound makes band.max a whole-hand exposure ceiling', () => {
+    // §4.4: from (1,1) at most (8−1)+(6−1) = 12 raises are possible, and RAISE
+    // BOTH costs exactly two steps' worth, so 12 × ante = 0.36 × band.max is the
+    // most either side can ever pay in antes — the arithmetic F-134-1 rests on.
+    for (const id of [1, 8, 11]) {
+      expect(12 * anteFor(id)).toBeLessThanOrEqual(Math.round(0.36 * wagerBandFor(id).max) + 12);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §5 · A FULL HAND, end to end through the real loop
+// ---------------------------------------------------------------------------
+
+describe('T-135 · a full hand plays through startDay/applyPlayerAction', () => {
+  // SEED 222 IS PINNED FOR A REASON, and the reason is the only thing a future
+  // author needs: searching seeds 1..4000 × six raise orders × two opening
+  // quantities, this is the first seed on which the dealer answers three
+  // consecutive player raises — FACE, then BOTH, then QUANTITY — without ending
+  // the hand, so it is the shortest script that exercises every raise kind in one
+  // hand. Nothing about the seed is otherwise special and no constant was fitted
+  // to it.
+  it('open → raise-face → raise-both → raise-quantity → challenge, never poking state', () => {
+    let state = hangoutState(222);
+    const creditsBefore = state.player.credits;
+    const dealerBefore = dealerOf(state).credits;
+
+    const opened = openHand(state);
+    state = opened.state;
+    expect(events(opened).some((e) => e.type === 'DareHandStarted')).toBe(true);
+    const seedWager = state.dareHand!.seedWager;
+    const ante = state.dareHand!.ante;
+
+    // §2.4's CONSERVATION INVARIANT, asserted at every step of the hand: money is
+    // debited into escrow at contribution time, so `credits + potPlayer` never
+    // moves while the hand is open.
+    const conserved = creditsBefore;
+    const checkConservation = (s: GameState) => {
+      expect(s.player.credits + (s.dareHand?.potPlayer ?? 0)).toBe(conserved);
+    };
+    checkConservation(state);
+
+    const played: string[] = [];
+    const play = (move: 'bid' | 'raise-face' | 'raise-quantity' | 'raise-both') => {
+      const bid = state.dareHand!.bid;
+      const quantity =
+        move === 'bid' ? 1 : move === 'raise-face' ? bid!.quantity : bid!.quantity + 1;
+      const face = move === 'bid' ? 1 : move === 'raise-quantity' ? bid!.face : bid!.face + 1;
+      const step = applyPlayerAction(state, { type: 'Dare', move, quantity, face });
+      state = step.state;
+      played.push(move);
+      // No refusal anywhere on this path.
+      expect(step.events.some((e) => e.type === 'HangoutEvent')).toBe(false);
+      expect(state.dareHand).not.toBeNull();
+      checkConservation(state);
+      return step;
+    };
+
+    play('bid');
+    play('raise-face');
+    play('raise-both');
+    play('raise-quantity');
+
+    // Both sides bid: the dealer answered every one of the four, in the same call.
+    const history = state.dareHand!.history;
+    expect(history.filter((h) => h.actor === 'player').map((h) => h.move)).toEqual(played);
+    expect(history.filter((h) => h.actor === 'dealer').length).toBe(4);
+    // The opening bid is NOT a raise (§4.2): it costs nothing.
+    expect(history[0]).toMatchObject({ actor: 'player', move: 'bid', antePaid: 0 });
+    // The player paid ante + 2×ante + ante across the three raises.
+    const playerAntes = history
+      .filter((h) => h.actor === 'player')
+      .reduce((sum, h) => sum + h.antePaid, 0);
+    expect(playerAntes).toBe(4 * ante);
+    expect(state.dareHand!.potPlayer).toBe(seedWager + 4 * ante);
+
+    const challenge = applyPlayerAction(state, { type: 'Dare', move: 'challenge' });
+    state = challenge.state;
+    expect(state.dareHand).toBeNull();
+
+    const resolved = resolvedOf(challenge.events)!;
+    expect(resolved.outcome).toBe('challenge-win');
+    // A CHALLENGE reveals — and only a challenge does.
+    expect(resolved.dealerDice).toHaveLength(4);
+    expect(resolved.actualCount).toBeGreaterThanOrEqual(0);
+    // The terminal HangoutEvent is unchanged in shape and reports the SEED, not
+    // the pot (§10.3) — four content deeds and HangoutPlayStats read it.
+    expect(challenge.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      venue: 'dare',
+      opponentId: DEALER,
+      wager: seedWager,
+      playerWon: true,
+      creditsDelta: resolved.creditsDelta,
+    });
+    // The whole ledger closes: the player is up the dealer's escrow, exactly.
+    expect(state.player.credits).toBe(creditsBefore + resolved.creditsDelta);
+    expect(dealerOf(state).credits).toBe(dealerBefore - resolved.creditsDelta);
+  });
+
+  it('drives a whole day through startDay and closes the hand inside it', () => {
+    // The other half of "through the real loop": a hand opened on a day that
+    // `startDay` produced, not on a hand-built DAY state.
+    const dawn = startDay(createInitialStateAtHangout(222));
+    let state = dawn.state;
+    const dealer = state.npcs.find(
+      (n) => !n.dead && n.currentSystemId === state.player.currentSystemId,
+    )!;
+    const dieIndex = state.player.dawnHand!.spent.findIndex((s) => !s);
+    state = applyPlayerAction(state, {
+      type: 'VisitHangout',
+      venue: 'dare',
+      opponentId: dealer.id,
+      wager: 100,
+      spendDie: dieIndex,
+    }).state;
+    expect(state.dareHand).not.toBeNull();
+
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    while (state.dareHand) {
+      state = applyPlayerAction(state, { type: 'Dare', move: 'challenge' }).state;
+    }
+    expect(state.dareHand).toBeNull();
+    // The day still ends cleanly with no hand outstanding.
+    expect(endDay(state).state.dareHand).toBeNull();
+  });
+});
+
+/** A DAWN-phase state standing at Sun-3 with a solvent co-located dealer, for the
+ *  tests that want `startDay` to roll the hand rather than a fixture. */
+function createInitialStateAtHangout(seed: number): GameState {
+  const state = createInitialState(seed);
+  state.player.credits = 20_000;
+  for (const npc of state.npcs) {
+    if (npc.currentSystemId === state.player.currentSystemId) npc.credits = 20_000;
+  }
+  return state;
+}
+
+function events(step: { events: GameEvent[] }): GameEvent[] {
+  return step.events;
+}
+
+// ---------------------------------------------------------------------------
+// §5.1/§5.2 · THE EXPLOIT STAYS CLOSED
+// ---------------------------------------------------------------------------
+
+describe('T-135 · the bid lattice refuses, never clamps (the closed exploit)', () => {
+  /** Open a hand and put a standing bid on the table, returning a state whose
+   *  `dareHand` still stands. */
+  function withStandingBid(): GameState {
+    // Opened at (3,2) rather than (1,1) so BOTH directions of the pinned-quantity
+    // rule are testable: `quantity - 1` and `face - 1` are still inside the
+    // lattice, so a refusal below is about the RULE and not about a bound.
+    let state = openHand(hangoutState(222)).state;
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 3, face: 2 }).state;
+    // The DEALER answered inside that same call (§9.4), so the standing bid the
+    // refusals below are measured against is the dealer's, which is exactly the
+    // state a player is ever asked to move from.
+    expect(state.dareHand).not.toBeNull();
+    const bid = state.dareHand!.bid!;
+    expect(bid.quantity).toBeGreaterThanOrEqual(3);
+    expect(bid.quantity).toBeLessThan(8);
+    expect(bid.face).toBeGreaterThanOrEqual(2);
+    expect(bid.face).toBeLessThan(6);
+    return state;
+  }
+
+  /** Every refusal must be typed, must change NOTHING, and must spend nothing. */
+  function expectRefused(
+    before: GameState,
+    move: 'raise-face' | 'raise-quantity',
+    q: number,
+    f: number,
+  ) {
+    const step = applyPlayerAction(before, { type: 'Dare', move, quantity: q, face: f });
+    expect(step.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      venue: 'dare',
+      failReason: 'illegal-dare-move',
+    });
+    expect(step.state.dareHand?.bid).toEqual(before.dareHand?.bid);
+    expect(step.state.dareHand?.bidder).toEqual(before.dareHand?.bidder);
+    expect(step.state.dareHand?.potPlayer).toBe(before.dareHand?.potPlayer);
+    expect(step.state.dareHand?.history.length).toBe(before.dareHand?.history.length);
+    expect(step.state.player.credits).toBe(before.player.credits);
+    expect(step.state.player.dawnHand?.spent).toEqual(before.player.dawnHand?.spent);
+    return step;
+  }
+
+  it('a FACE raise that also changes the quantity is refused (the risk-free claim)', () => {
+    // §5.2: if a face raise could move the quantity, a player holding k of some
+    // face could always claim (k, that face) — a claim `actual >= k` guarantees.
+    // Pinning the quantity is what makes the face raise a claim about the OTHER
+    // side's dice, which is the whole game.
+    const state = withStandingBid();
+    const bid = state.dareHand!.bid!;
+    expectRefused(state, 'raise-face', bid.quantity + 1, bid.face + 1);
+    expectRefused(state, 'raise-face', bid.quantity - 1 || 1, bid.face + 1);
+  });
+
+  it('a FACE raise that jumps more than one value is refused (no face search)', () => {
+    // §5.2: a multi-step jump would let a player SEARCH for the face on which
+    // their own count still matches the quantity, restoring the risk-free claim.
+    const state = withStandingBid();
+    const bid = state.dareHand!.bid!;
+    expectRefused(state, 'raise-face', bid.quantity, bid.face + 3);
+    expectRefused(state, 'raise-face', bid.quantity, bid.face + 2);
+  });
+
+  it('a QUANTITY raise that changes the face, or does not raise, is refused', () => {
+    const state = withStandingBid();
+    const bid = state.dareHand!.bid!;
+    expectRefused(state, 'raise-quantity', bid.quantity + 1, bid.face + 1);
+    expectRefused(state, 'raise-quantity', bid.quantity, bid.face);
+    expectRefused(state, 'raise-quantity', bid.quantity - 1 || 1, bid.face);
+  });
+
+  it('a second OPEN against a standing bid is refused', () => {
+    const state = withStandingBid();
+    const step = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 4, face: 4 });
+    expect(step.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      failReason: 'illegal-dare-move',
+    });
+    expect(step.state.dareHand?.bid).toEqual(state.dareHand?.bid);
+  });
+
+  it('an opening bid outside 1..8 × 1..6 is refused', () => {
+    const opened = openHand(hangoutState(222)).state;
+    for (const [q, f] of [
+      [9, 3],
+      [0, 3],
+      [2, 7],
+      [2, 0],
+    ]) {
+      const step = applyPlayerAction(opened, { type: 'Dare', move: 'bid', quantity: q, face: f });
+      expect(step.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+        failReason: 'illegal-dare-move',
+      });
+      expect(step.state.dareHand?.bid).toBeNull();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §6 · FOLD's economics
+// ---------------------------------------------------------------------------
+
+describe('T-135 · FOLD forfeits exactly the seed plus the antes paid', () => {
+  it('a player fold moves the whole escrow to the dealer and reveals nothing', () => {
+    let state = hangoutState(222);
+    const creditsBefore = state.player.credits;
+    const dealerBefore = dealerOf(state).credits;
+
+    state = openHand(state).state;
+    const seedWager = state.dareHand!.seedWager;
+    const ante = state.dareHand!.ante;
+
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    let bid = state.dareHand!.bid!;
+    state = applyPlayerAction(state, {
+      type: 'Dare',
+      move: 'raise-face',
+      quantity: bid.quantity,
+      face: bid.face + 1,
+    }).state;
+    expect(state.dareHand).not.toBeNull();
+    bid = state.dareHand!.bid!;
+    state = applyPlayerAction(state, {
+      type: 'Dare',
+      move: 'raise-both',
+      quantity: bid.quantity + 1,
+      face: bid.face + 1,
+    }).state;
+    expect(state.dareHand).not.toBeNull();
+
+    // THE FORFEIT, stated twice: once against the ledger the hand is carrying,
+    // once against the named prices of the two raises (ante + 2×ante).
+    const potPlayer = state.dareHand!.potPlayer;
+    const potDealer = state.dareHand!.potDealer;
+    expect(potPlayer).toBe(seedWager + 3 * ante);
+    expect(state.player.credits).toBe(creditsBefore - potPlayer); // escrow, not a promise
+
+    const fold = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+    const resolved = resolvedOf(fold.events)!;
+
+    expect(resolved.outcome).toBe('player-fold');
+    expect(resolved.creditsDelta).toBe(-potPlayer);
+    // A FOLD NEVER REVEALS (§6.1) — the player does not learn whether it was right.
+    expect(resolved.dealerDice).toBeUndefined();
+    expect(resolved.actualCount).toBeUndefined();
+
+    // Exactly the seed plus every ante the player paid this hand, and nothing more.
+    expect(fold.state.player.credits).toBe(creditsBefore - (seedWager + 3 * ante));
+    // The dealer takes the WHOLE pot; their own escrow was already their money, so
+    // their net is the player's forfeit.
+    expect(dealerOf(fold.state).credits).toBe(dealerBefore - potDealer + potPlayer + potDealer);
+    expect(dealerOf(fold.state).credits).toBe(dealerBefore + potPlayer);
+    expect(fold.state.dareHand).toBeNull();
+  });
+
+  it('a fold BEFORE the opening bid forfeits the seed alone', () => {
+    let state = hangoutState(222);
+    const creditsBefore = state.player.credits;
+    state = openHand(state).state;
+    const seedWager = state.dareHand!.seedWager;
+    // §6.1: legal, and it is what a captain who rolls four ones does.
+    expect(legalDareMoves(state.dareHand!, 'player', state.player.credits)).toContain('fold');
+    const fold = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+    const resolved = resolvedOf(fold.events)!;
+    expect(resolved.outcome).toBe('player-fold');
+    expect(resolved.bid).toBeNull();
+    expect(resolved.creditsDelta).toBe(-seedWager);
+    expect(fold.state.player.credits).toBe(creditsBefore - seedWager);
+  });
+
+  it('the dusk timeout fold is a player fold in every respect (§6.2)', () => {
+    const build = () => {
+      let s = openHand(hangoutState(222)).state;
+      s = applyPlayerAction(s, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+      return s;
+    };
+    const forFold = build();
+    const forDusk = build();
+    expect(forDusk.dareHand).not.toBeNull();
+
+    const creditsAtDusk = forDusk.player.credits;
+    const potPlayer = forDusk.dareHand!.potPlayer;
+    const dealerAtDusk = dealerOf(forDusk).credits;
+
+    const dusk = endDay(forDusk);
+    const duskResolved = resolvedOf(dusk.events)!;
+    expect(duskResolved.outcome).toBe('timeout-fold');
+    expect(duskResolved.dealerDice).toBeUndefined();
+    expect(duskResolved.creditsDelta).toBe(-potPlayer);
+    expect(dusk.state.dareHand).toBeNull();
+    // Identical economics to the explicit fold from the same position.
+    const explicit = applyPlayerAction(forFold, { type: 'Dare', move: 'fold' });
+    expect(resolvedOf(explicit.events)!.creditsDelta).toBe(duskResolved.creditsDelta);
+    expect(resolvedOf(explicit.events)!.dispositionDelta).toBe(duskResolved.dispositionDelta);
+    // The player's purse does not move at settlement — the escrow was already gone.
+    expect(dusk.state.player.credits).toBe(creditsAtDusk);
+    expect(dealerOf(dusk.state).credits).toBeGreaterThan(dealerAtDusk);
+  });
+
+  it('NO reachable state carries a hand into the next dawn', () => {
+    let state = openHand(hangoutState(222)).state;
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 2, face: 2 }).state;
+    const next = startDay(endDay(state).state);
+    expect(next.state.dareHand).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §7 · Disposition — three arms, one call per hand
+// ---------------------------------------------------------------------------
+
+describe('T-135 · the three disposition arms apply exactly as settled', () => {
+  const params = () => venueParamsFor(SUN_3, 'dare');
+
+  function dispositionEventsOf(evts: GameEvent[]) {
+    return evts.filter((e) => e.type === 'DispositionChanged');
+  }
+
+  it('challenge-win reads dispositionOnFailure (the beaten dealer sours)', () => {
+    // The seed-222 script from the full-hand block above, which lands on a
+    // challenge-WIN — asserted, not hoped for, so this test cannot pass vacuously.
+    let state = openHand(hangoutState(222)).state;
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    for (const move of ['raise-face', 'raise-both', 'raise-quantity'] as const) {
+      const bid = state.dareHand!.bid!;
+      const quantity = move === 'raise-face' ? bid.quantity : bid.quantity + 1;
+      const face = move === 'raise-quantity' ? bid.face : bid.face + 1;
+      state = applyPlayerAction(state, { type: 'Dare', move, quantity, face }).state;
+      expect(state.dareHand).not.toBeNull();
+    }
+    const step = applyPlayerAction(state, { type: 'Dare', move: 'challenge' });
+    const resolved = resolvedOf(step.events)!;
+    expect(resolved.outcome).toBe('challenge-win');
+    const disp = dispositionEventsOf(step.events);
+    expect(disp).toHaveLength(1);
+    expect(disp[0]).toMatchObject({ npcId: DEALER, reason: 'dare', delta: DARE_WIN_DISPOSITION });
+    expect(resolved.dispositionDelta).toBe(params().dispositionOnFailure);
+    expect(params().dispositionOnFailure).toBe(DARE_WIN_DISPOSITION);
+  });
+
+  it('challenge-loss reads dispositionOnSuccess (the house prevailed, the dealer warms)', () => {
+    // An (8,6) claim needs all eight dice showing 6 — arithmetically almost
+    // impossible, so this is a deterministic player loss whichever side calls it.
+    let state = openHand(hangoutState(222)).state;
+    const step = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 8, face: 6 });
+    state = step.state;
+    let evts = step.events;
+    if (state.dareHand) {
+      const called = applyPlayerAction(state, { type: 'Dare', move: 'challenge' });
+      state = called.state;
+      evts = called.events;
+    }
+    const resolved = resolvedOf(evts)!;
+    expect(resolved.outcome).toBe('challenge-loss');
+    expect(resolved.actualCount).toBeLessThan(8);
+    const disp = dispositionEventsOf(evts);
+    expect(disp).toHaveLength(1);
+    expect(disp[0]).toMatchObject({ npcId: DEALER, reason: 'dare', delta: DARE_LOSS_DISPOSITION });
+    expect(resolved.dispositionDelta).toBe(params().dispositionOnSuccess);
+  });
+
+  it('player-fold and timeout-fold read the NEW dispositionOnFold arm', () => {
+    for (const kind of ['player-fold', 'timeout-fold'] as const) {
+      let state = openHand(hangoutState(222)).state;
+      state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+      const step =
+        kind === 'player-fold'
+          ? applyPlayerAction(state, { type: 'Dare', move: 'fold' })
+          : endDay(state);
+      const resolved = resolvedOf(step.events)!;
+      expect(resolved.outcome).toBe(kind);
+      expect(resolved.dispositionDelta).toBe(params().dispositionOnFold);
+      expect(params().dispositionOnFold).toBe(DARE_FOLD_DISPOSITION);
+      const disp = dispositionEventsOf(step.events);
+      expect(disp).toHaveLength(1);
+      expect(disp[0]).toMatchObject({
+        npcId: DEALER,
+        reason: 'dare',
+        delta: DARE_FOLD_DISPOSITION,
+      });
+      // §7.2: a fold WARMS the dealer, like a loss, and less than one.
+      expect(DARE_FOLD_DISPOSITION).toBeGreaterThan(0);
+      expect(DARE_FOLD_DISPOSITION).toBeLessThan(DARE_LOSS_DISPOSITION);
+    }
+  });
+
+  it('no new DispositionChanged reason — every arm reports `dare` (§7.4)', () => {
+    let state = openHand(hangoutState(222)).state;
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    const step = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+    for (const e of step.events) {
+      if (e.type === 'DispositionChanged') expect(e.reason).toBe('dare');
+    }
+  });
+
+  it('emits NO DispositionChanged when the applied delta would be zero', () => {
+    // `applyDisposition`'s early returns are unchanged (§7.1). A dealer already at
+    // the +10 ceiling cannot warm further, so a fold moves nothing and says
+    // nothing — the same behaviour every other venue has for a zeroed field.
+    let state = hangoutState(222);
+    dealerOf(state).disposition = 10;
+    state = openHand(state).state;
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    const step = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+    expect(resolvedOf(step.events)!.outcome).toBe('player-fold');
+    // The event still REPORTS the delta that was passed; the applied one is zero.
+    expect(resolvedOf(step.events)!.dispositionDelta).toBe(DARE_FOLD_DISPOSITION);
+    expect(step.events.some((e) => e.type === 'DispositionChanged')).toBe(false);
+    expect(dealerOf(step.state).disposition).toBe(10);
+  });
+
+  it('applies exactly ONE disposition move per hand, whatever the hand’s length', () => {
+    // §7.5 property 2: the CADENCE is unchanged from the single-check Dare, which
+    // is what keeps T-125's interceptor measurement comparable.
+    let state = openHand(hangoutState(222)).state;
+    const all: GameEvent[] = [];
+    let step = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 });
+    state = step.state;
+    all.push(...step.events);
+    while (state.dareHand) {
+      const bid = state.dareHand.bid!;
+      const legal = legalDareMoves(state.dareHand, 'player', state.player.credits);
+      const next = legal.includes('raise-quantity')
+        ? ({ move: 'raise-quantity', quantity: bid.quantity + 1, face: bid.face } as const)
+        : ({ move: 'challenge' } as const);
+      step = applyPlayerAction(state, { type: 'Dare', ...next });
+      state = step.state;
+      all.push(...step.events);
+    }
+    expect(all.filter((e) => e.type === 'DispositionChanged')).toHaveLength(1);
+    expect(all.filter((e) => e.type === 'DareHandResolved')).toHaveLength(1);
+    expect(all.filter((e) => e.type === 'HangoutEvent')).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §9.7 · The dealer CANNOT see the player's dice
+// ---------------------------------------------------------------------------
+
+describe('T-135 · the dealer policy cannot read the player’s hand', () => {
+  // (a) COMPILE-TIME. The input interface has no member through which the
+  // player's dice, a GameState, or a DareHandState (which CONTAINS playerDice)
+  // could arrive. If the parameter ever grows one, this line stops compiling.
+  const _noPlayerDice: 'playerDice' extends keyof Parameters<typeof dealerMove>[0] ? never : true =
+    true;
+  const _noHand: 'hand' extends keyof Parameters<typeof dealerMove>[0] ? never : true = true;
+  const _noState: 'state' extends keyof Parameters<typeof dealerMove>[0] ? never : true = true;
+  void _noPlayerDice;
+  void _noHand;
+  void _noState;
+
+  it('(a) the signature has no channel for hidden player information', () => {
+    // The type-level guards above are the assertion; this keeps them from being
+    // dead code a formatter could strip, and names the property in the report.
+    expect(_noPlayerDice).toBe(true);
+    expect(_noHand).toBe(true);
+    expect(_noState).toBe(true);
+  });
+
+  it('(b) varying the player’s hidden dice never changes the dealer’s moves', () => {
+    // Seed, port, dealer, dealer dice and the player's SCRIPT are all fixed; only
+    // the hidden player dice vary. A dealer that peeked would diverge on at least
+    // one of these. Every move goes through the REAL applyPlayerAction — the one
+    // legitimate poke is writing the hidden hand BEFORE the first move, which is
+    // setting up the experiment rather than driving the scene.
+    const variants: number[][] = [];
+    for (let a = 1; a <= 6; a += 1) {
+      for (const rest of [
+        [1, 1, 1],
+        [3, 4, 5],
+        [6, 6, 6],
+        [2, 2, 6],
+      ]) {
+        variants.push([a, ...rest]);
+      }
+    }
+    expect(variants.length).toBeGreaterThanOrEqual(20);
+
+    const signatures = variants.map((playerDice) => {
+      let state = openHand(hangoutState(222)).state;
+      const fixedDealerDice = [...state.dareHand!.dealerDice];
+      state.dareHand!.playerDice = [...playerDice]; // the experiment's only poke
+      const script: Array<'bid' | 'raise-face' | 'raise-quantity'> = [
+        'bid',
+        'raise-face',
+        'raise-quantity',
+      ];
+      let endedAfter: number | null = null;
+      for (let i = 0; i < script.length; i += 1) {
+        if (!state.dareHand) {
+          endedAfter = i;
+          break;
+        }
+        const move = script[i];
+        const bid = state.dareHand.bid;
+        const quantity =
+          move === 'bid' ? 2 : move === 'raise-face' ? bid!.quantity : bid!.quantity + 1;
+        const face = move === 'bid' ? 3 : move === 'raise-quantity' ? bid!.face : bid!.face + 1;
+        state = applyPlayerAction(state, { type: 'Dare', move, quantity, face }).state;
+      }
+      // The dealer's DECISIONS — not the hand's outcome, which of course depends
+      // on the player's dice at a showdown.
+      const dealerMoves = state.dareHand
+        ? state.dareHand.history.filter((h) => h.actor === 'dealer')
+        : [];
+      return JSON.stringify({ dealerMoves, endedAfter, fixedDealerDice });
+    });
+
+    // Every dealer dice hand is the same (same seed), so the ONLY input that moved
+    // is the hidden player hand — and the dealer's answer sequence did not.
+    expect(new Set(signatures).size).toBe(1);
+    // …and the experiment is not vacuous: the dealer actually MADE decisions
+    // across the script rather than ending every variant on move one.
+    const witness = JSON.parse(signatures[0]) as {
+      dealerMoves: unknown[];
+      endedAfter: number | null;
+    };
+    expect(witness.dealerMoves.length + (witness.endedAfter ?? 0)).toBeGreaterThanOrEqual(2);
+  });
+
+  it('is a pure function of its declared inputs', () => {
+    const input = {
+      dealerDice: [3, 3, 5, 1] as const,
+      bid: { quantity: 3, face: 3 },
+      bidder: 'player' as const,
+      dealerGuile: 2,
+      ante: 30,
+      headroom: 900,
+      dealerCredits: 5000,
+      roll: 50,
+    };
+    expect(dealerMove({ ...input })).toEqual(dealerMove({ ...input }));
+  });
+
+  it('throws rather than inventing an opening policy it can never need (§9.9)', () => {
+    expect(() =>
+      dealerMove({
+        dealerDice: [1, 2, 3, 4],
+        bid: null,
+        bidder: null,
+        dealerGuile: 0,
+        ante: 30,
+        headroom: 900,
+        dealerCredits: 5000,
+        roll: 0,
+      }),
+    ).toThrow();
+  });
+
+  it('always has a legal move once a bid stands (the totality argument)', () => {
+    // §9.9 ruling 2: CHALLENGE is legal whenever a bid stands, unconditionally and
+    // at zero cost, so the dealer can never be asked a question it cannot answer —
+    // even broke, even with no headroom left.
+    for (const [quantity, face] of [
+      [1, 1],
+      [8, 6],
+      [4, 3],
+    ]) {
+      const move = dealerMove({
+        dealerDice: [1, 1, 1, 1],
+        bid: { quantity, face },
+        bidder: 'player',
+        dealerGuile: 0,
+        ante: 30,
+        headroom: 0,
+        dealerCredits: 0,
+        roll: 0,
+      });
+      expect(['challenge', 'fold']).toContain(move.move);
+    }
+  });
+
+  it('F-135-2 · the §9.8 challenge test STRICTLY DOMINATES its fold test', () => {
+    // A REPORTED FINDING, pinned mechanically rather than left as prose. Step 2's
+    // fold requires `own === 0` and `quantity >= 5`; with no matching dice the
+    // surplus is `quantity - 4/6 >= 4.33`, which always exceeds step 1's margin
+    // (`1.5 - guile*0.15`, at most 1.5), and 'challenge' is unconditionally in
+    // `choices`. So `DareHandResolved{outcome:'dealer-fold'}` is UNREACHABLE under
+    // the specified policy. The engine implements the outcome (it is a legal
+    // dealer answer and settlement handles it); it is the POLICY that never
+    // produces it, which is M4e archetype business, not a T-135 tuning licence.
+    for (let guile = 0; guile <= 5; guile += 1) {
+      for (let quantity = 5; quantity <= 8; quantity += 1) {
+        const move = dealerMove({
+          dealerDice: [1, 1, 1, 1], // holds none of face 3
+          bid: { quantity, face: 3 },
+          bidder: 'player',
+          dealerGuile: guile,
+          ante: 30,
+          headroom: 900,
+          dealerCredits: 5000,
+          roll: 0,
+        });
+        expect(move.move).toBe('challenge');
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §10.2 · The hidden-dice discipline
+// ---------------------------------------------------------------------------
+
+describe('T-135 · the dealer’s dice never enter the log before a reveal', () => {
+  it('a folded hand never reveals them, anywhere in the event log', () => {
+    let state = openHand(hangoutState(222)).state;
+    const dealerDice = [...state.dareHand!.dealerDice];
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    const fold = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+
+    // The WHOLE persisted log, not just this batch's events.
+    const log = JSON.stringify(fold.state.eventLog);
+    expect(log).not.toContain('dealerDice');
+    expect(fold.state.eventLog.some((e) => e.type === 'DareHandStarted')).toBe(true);
+    // …and the dice themselves are still in the scene state, which is where the
+    // hand has to live. The discipline is about the NARRATIVE LOG the UI renders.
+    expect(dealerDice).toHaveLength(4);
+  });
+
+  it('a challenged hand reveals them on DareHandResolved and nowhere earlier', () => {
+    let state = openHand(hangoutState(222)).state;
+    const before = state.eventLog.length;
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 8, face: 6 }).state;
+    let log = state.eventLog.slice(before);
+    if (state.dareHand) {
+      state = applyPlayerAction(state, { type: 'Dare', move: 'challenge' }).state;
+      log = state.eventLog.slice(before);
+    }
+    const revealers = log.filter(
+      (e) => e.type === 'DareHandResolved' && e.dealerDice !== undefined,
+    );
+    expect(revealers).toHaveLength(1);
+    for (const e of log) {
+      if (e.type !== 'DareHandResolved') {
+        expect(JSON.stringify(e)).not.toContain('dealerDice');
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §8 · The Peek
+// ---------------------------------------------------------------------------
+
+describe('T-135 · the Peek', () => {
+  it('spends a SECOND die against the port’s dare.dc and reveals one dealer die', () => {
+    // A nat-20 auto-succeeds, so this is deterministic without pinning a DC.
+    const state = openHand(hangoutState(222, [10, 20, 10, 10, 10])).state;
+    const dealerDice = [...state.dareHand!.dealerDice];
+    const step = applyPlayerAction(state, { type: 'Dare', move: 'peek', spendDie: 1 });
+
+    expect(venueParamsFor(SUN_3, 'dare').dc).toBe(DARE_PEEK_DC);
+    const check = step.events.find((e) => e.type === 'StatCheck');
+    expect(check).toMatchObject({
+      actor: 'Player',
+      stat: Stat.GUILE,
+      dc: DARE_PEEK_DC,
+      actionContext: 'gamble',
+    });
+    const peeked = step.events.find((e) => e.type === 'DarePeeked')!;
+    expect(peeked).toMatchObject({ success: true });
+    const revealed = step.state.dareHand!.peekedDealerDie!;
+    expect(revealed.value).toBe(dealerDice[revealed.index]);
+    expect(step.state.dareHand!.peekUsed).toBe(true);
+    expect(step.state.player.dawnHand!.spent[1]).toBe(true);
+    // A Peek answers no bid, so the dealer does not move.
+    expect(step.state.dareHand!.bid).toBeNull();
+    expect(step.state.dareHand!.history).toHaveLength(0);
+  });
+
+  it('a FAILED peek reveals nothing but still burns the die and the attempt', () => {
+    const state = openHand(hangoutState(222, [10, 1, 10, 10, 10])).state; // nat-1 auto-fail
+    const step = applyPlayerAction(state, { type: 'Dare', move: 'peek', spendDie: 1 });
+    expect(step.events.find((e) => e.type === 'DarePeeked')).toMatchObject({ success: false });
+    expect(step.state.dareHand!.peekedDealerDie).toBeNull();
+    expect(step.state.dareHand!.peekUsed).toBe(true);
+    expect(step.state.player.dawnHand!.spent[1]).toBe(true);
+  });
+
+  it('is refused a second time, and after the bidding opens', () => {
+    let state = openHand(hangoutState(222, [10, 20, 20, 10, 10])).state;
+    state = applyPlayerAction(state, { type: 'Dare', move: 'peek', spendDie: 1 }).state;
+    const again = applyPlayerAction(state, { type: 'Dare', move: 'peek', spendDie: 2 });
+    expect(again.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      failReason: 'illegal-dare-move',
+    });
+    expect(again.state.player.dawnHand!.spent[2]).toBe(false);
+
+    let afterBid = openHand(hangoutState(222, [10, 20, 20, 10, 10])).state;
+    afterBid = applyPlayerAction(afterBid, {
+      type: 'Dare',
+      move: 'bid',
+      quantity: 1,
+      face: 1,
+    }).state;
+    if (afterBid.dareHand) {
+      const late = applyPlayerAction(afterBid, { type: 'Dare', move: 'peek', spendDie: 1 });
+      expect(late.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+        failReason: 'illegal-dare-move',
+      });
+    }
+  });
+
+  it('refuses malformed die input BEFORE the rule input, spending nothing', () => {
+    const state = openHand(hangoutState(222)).state;
+    const cases: Array<[number | undefined, string]> = [
+      [undefined, 'no-die'],
+      [99, 'invalid-die-index'],
+      [0, 'die-already-spent'], // die 0 opened the hand
+    ];
+    for (const [spendDie, failReason] of cases) {
+      const step = applyPlayerAction(state, { type: 'Dare', move: 'peek', spendDie });
+      expect(step.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+        venue: 'dare',
+        failReason,
+      });
+      expect(step.state.dareHand!.peekUsed).toBe(false);
+      expect(step.state.player.dawnHand!.spent).toEqual(state.player.dawnHand!.spent);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §4.3 · The headroom clamp
+// ---------------------------------------------------------------------------
+
+describe('T-135 · the ante clamp closes the raising game, never the hand', () => {
+  const ante = anteFor(SUN_3);
+
+  it('an INSOLVENT actor is offered no raise, and a raise it cannot cover is refused', () => {
+    // Driven, not poked: the fixture starts the captain on 910 credits and seeds
+    // 900 into escrow, so after the open they hold 10 — less than the port's ante.
+    // The dealer is rich, so the hand STANDS and the clamp is visible on a live
+    // scene rather than on a hand that has already closed.
+    const fixture = hangoutState(1);
+    fixture.player.credits = 910; // fixture setup, before any action is taken
+    let state = openHand(fixture, 900).state;
+    expect(state.dareHand!.seedWager).toBe(900);
+    expect(state.player.credits).toBe(10);
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    expect(state.dareHand).not.toBeNull();
+    expect(state.player.credits).toBeLessThan(ante);
+
+    // §4.3's forced ending: only the two FREE moves are left, and they are ALWAYS
+    // left — that is the totality claim on the player's side.
+    expect(legalDareMoves(state.dareHand!, 'player', state.player.credits)).toEqual([
+      'challenge',
+      'fold',
+    ]);
+
+    const bid = state.dareHand!.bid!;
+    const potBefore = state.dareHand!.potPlayer;
+    const creditsBefore = state.player.credits;
+    for (const move of ['raise-face', 'raise-quantity', 'raise-both'] as const) {
+      const quantity = move === 'raise-face' ? bid.quantity : bid.quantity + 1;
+      const face = move === 'raise-quantity' ? bid.face : bid.face + 1;
+      const step = applyPlayerAction(state, { type: 'Dare', move, quantity, face });
+      expect(step.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+        venue: 'dare',
+        failReason: 'illegal-dare-move',
+      });
+      // A PARTIAL ANTE IS NEVER TAKEN: nothing moved at all.
+      expect(step.state.dareHand!.potPlayer).toBe(potBefore);
+      expect(step.state.player.credits).toBe(creditsBefore);
+      expect(step.state.dareHand!.bid).toEqual(bid);
+    }
+    // …and the hand is still playable, which is the point of the section title.
+    expect(applyPlayerAction(state, { type: 'Dare', move: 'fold' }).state.dareHand).toBeNull();
+  });
+
+  it('headroom is measured per side against the port’s ceiling, seed included', () => {
+    // §4.3, and the reason `band.max` is a WHOLE-HAND exposure ceiling: a seed of
+    // 900 at a 1,000 port leaves 100, not another 1,000.
+    const band = wagerBandFor(SUN_3);
+    const opened = openHand(hangoutState(222), 900).state;
+    expect(headroomFor(opened.dareHand!, 'player')).toBe(band.max - 900);
+    expect(headroomFor(opened.dareHand!, 'dealer')).toBe(band.max - 900);
+    const atCeiling = openHand(hangoutState(222), band.max).state;
+    expect(headroomFor(atCeiling.dareHand!, 'player')).toBe(0);
+    expect(headroomFor(atCeiling.dareHand!, 'dealer')).toBe(0);
+  });
+
+  it('the legality rule itself refuses every raise once headroom < ante', () => {
+    // The pure arithmetic behind the two tests above, exercised across the whole
+    // boundary rather than at the one point a seeded hand happens to reach. Both
+    // `legalDareMoves` and the dealer's own choice route through this function, so
+    // this is one statement about all three consumers.
+    const bid = { quantity: 3, face: 3 };
+    const rich = 10_000;
+    expect(legalMovesFrom(bid, ante, ante * 2, rich, true)).toEqual([
+      'raise-face',
+      'raise-quantity',
+      'raise-both',
+      'challenge',
+      'fold',
+    ]);
+    // One ante of room: the single raises fit, the double does not.
+    expect(legalMovesFrom(bid, ante, ante, rich, true)).toEqual([
+      'raise-face',
+      'raise-quantity',
+      'challenge',
+      'fold',
+    ]);
+    // A hair under one ante: no raise is legal at any price.
+    expect(legalMovesFrom(bid, ante, ante - 1, rich, true)).toEqual(['challenge', 'fold']);
+    expect(legalMovesFrom(bid, ante, 0, rich, true)).toEqual(['challenge', 'fold']);
+    // Credits clamp identically to headroom — §4.3's insolvency rule.
+    expect(legalMovesFrom(bid, ante, 10_000, ante - 1, true)).toEqual(['challenge', 'fold']);
+    // The lattice ceilings, independent of money.
+    expect(legalMovesFrom({ quantity: 8, face: 3 }, ante, 10_000, rich, true)).toEqual([
+      'raise-face',
+      'challenge',
+      'fold',
+    ]);
+    expect(legalMovesFrom({ quantity: 3, face: 6 }, ante, 10_000, rich, true)).toEqual([
+      'raise-quantity',
+      'challenge',
+      'fold',
+    ]);
+    expect(legalMovesFrom({ quantity: 8, face: 6 }, ante, 10_000, rich, true)).toEqual([
+      'challenge',
+      'fold',
+    ]);
+    // Before any bid: open, peek (once) and fold — and never a raise.
+    expect(legalMovesFrom(null, ante, 10_000, rich, false)).toEqual(['bid', 'peek', 'fold']);
+    expect(legalMovesFrom(null, ante, 10_000, rich, true)).toEqual(['bid', 'fold']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §9.3 · The three gates
+// ---------------------------------------------------------------------------
+
+describe('T-135 · the gates', () => {
+  it('gate 1 · an open hand blocks the world with ActionBlocked{active-dare-hand}', () => {
+    const state = openHand(hangoutState(222)).state;
+    for (const action of [
+      { type: 'Travel', destinationId: 2, spendDie: 1 },
+      { type: 'Trade', action: 'buy-fuel', fuelAmount: 1, spendDie: 1 },
+      { type: 'Explore', spendDie: 1 },
+      { type: 'VisitHangout', venue: 'rumor', spendDie: 1 },
+    ] as const) {
+      const step = applyPlayerAction(state, action);
+      expect(step.events).toEqual([
+        expect.objectContaining({
+          type: 'ActionBlocked',
+          actionType: action.type,
+          reason: 'active-dare-hand',
+        }),
+      ]);
+      // No die spent, no state moved, no throw.
+      expect(step.state.player.dawnHand?.spent).toEqual(state.player.dawnHand?.spent);
+      expect(step.state.dareHand).toEqual(state.dareHand);
+    }
+  });
+
+  it('gate 1 · Dare, Reroll, Crew and Port stay exempt', () => {
+    const state = openHand(hangoutState(222)).state;
+    for (const action of [
+      { type: 'Dare', move: 'fold' },
+      { type: 'Reroll', dieIndex: 1 },
+      { type: 'Crew', action: 'hire', roleId: 'crew-second', spendDie: 1 },
+      { type: 'Port', action: 'buy', systemId: SUN_3, spendDie: 1 },
+    ] as const) {
+      const step = applyPlayerAction(state, action);
+      expect(step.events.some((e) => e.type === 'ActionBlocked')).toBe(false);
+    }
+  });
+
+  it('gate 3 · a Dare with no open hand is a typed no-op, NEVER a throw', () => {
+    const state = hangoutState(222);
+    expect(state.dareHand).toBeNull();
+    for (const move of ['bid', 'raise-face', 'challenge', 'fold', 'peek'] as const) {
+      const step = applyPlayerAction(state, { type: 'Dare', move, quantity: 2, face: 2 });
+      expect(step.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+        venue: 'dare',
+        failReason: 'no-dare-hand',
+      });
+      expect(step.state.dareHand).toBeNull();
+      expect(step.state.player.credits).toBe(state.player.credits);
+      expect(step.state.player.dawnHand?.spent).toEqual(state.player.dawnHand?.spent);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §11 · Save version, migration, round trip
+// ---------------------------------------------------------------------------
+
+describe('T-135 · the hand survives serialization', () => {
+  /** A MID-HAND state with a standing bid, non-zero escrow on BOTH sides, a
+   *  revealed peek die and at least two history entries — built by playing, not by
+   *  assembling a literal. */
+  function midHand(): GameState {
+    let state = openHand(hangoutState(222, [10, 20, 10, 10, 10])).state;
+    state = applyPlayerAction(state, { type: 'Dare', move: 'peek', spendDie: 1 }).state;
+    expect(state.dareHand!.peekedDealerDie).not.toBeNull();
+    state = applyPlayerAction(state, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    expect(state.dareHand).not.toBeNull();
+    const bid = state.dareHand!.bid!;
+    state = applyPlayerAction(state, {
+      type: 'Dare',
+      move: 'raise-face',
+      quantity: bid.quantity,
+      face: bid.face + 1,
+    }).state;
+    expect(state.dareHand).not.toBeNull();
+    expect(state.dareHand!.history.length).toBeGreaterThanOrEqual(2);
+    expect(state.dareHand!.potPlayer).toBeGreaterThan(0);
+    expect(state.dareHand!.potDealer).toBeGreaterThan(0);
+    return state;
+  }
+
+  it('round-trips a mid-hand scene byte-identically, both hidden hands included', () => {
+    const state = midHand();
+    const s1 = serializeState(state);
+    const restored = deserializeState(s1);
+    expect(serializeState(restored)).toBe(s1);
+    expect(restored.dareHand).toEqual(state.dareHand);
+    expect(restored.dareHand!.playerDice).toEqual(state.dareHand!.playerDice);
+    expect(restored.dareHand!.dealerDice).toEqual(state.dareHand!.dealerDice);
+    expect(restored.dareHand!.peekedDealerDie).toEqual(state.dareHand!.peekedDealerDie);
+  });
+
+  it('the conservation invariant survives a reload (§2.4)', () => {
+    const state = midHand();
+    const restored = deserializeState(serializeState(state));
+    expect(restored.player.credits + restored.dareHand!.potPlayer).toBe(
+      state.player.credits + state.dareHand!.potPlayer,
+    );
+    // …and the reloaded hand plays on and settles for exactly the same money.
+    const foldA = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+    const foldB = applyPlayerAction(restored, { type: 'Dare', move: 'fold' });
+    expect(foldB.state.player.credits).toBe(foldA.state.player.credits);
+  });
+
+  it('a full save envelope round-trips a mid-hand scene', () => {
+    const state = midHand();
+    const loaded = loadSave(createSave(state, 222));
+    expect(loaded.state.dareHand).toEqual(state.dareHand);
+  });
+
+  it('CURRENT_SAVE_VERSION is 14 and MIGRATIONS[13] backfills dareHand: null', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(14);
+    const v13 = JSON.parse(serializeState(createInitialState(9))) as Record<string, unknown>;
+    delete v13.dareHand;
+    expect('dareHand' in v13).toBe(false);
+    const migrated = MIGRATIONS[13](v13) as { dareHand: unknown };
+    expect(migrated.dareHand).toBeNull();
+  });
+
+  it('the migration is idempotent — a state already holding a hand keeps it exactly', () => {
+    const state = midHand();
+    const raw = JSON.parse(serializeState(state)) as Record<string, unknown>;
+    const once = MIGRATIONS[13](raw) as { dareHand: unknown };
+    const twice = MIGRATIONS[13](once) as { dareHand: unknown };
+    expect(once.dareHand).toEqual(raw.dareHand);
+    expect(JSON.stringify(twice)).toBe(JSON.stringify(once));
+  });
+
+  it('a v13 envelope loads to v14 with no open hand', () => {
+    const state = createInitialState(9);
+    const raw = JSON.parse(serializeState(state)) as Record<string, unknown>;
+    delete raw.dareHand;
+    const v13 = JSON.stringify({ version: 13, state: raw, seed: 9 });
+    const loaded = loadSave(v13);
+    expect(loaded.state.dareHand).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §5.3 · The showdown arithmetic, in isolation
+// ---------------------------------------------------------------------------
+
+describe('T-135 · resolveChallenge counts across all eight dice', () => {
+  it('the bidder wins iff the actual count reaches the claim', () => {
+    const base = openHand(hangoutState(222)).state.dareHand!;
+    const hand = { ...base, playerDice: [3, 3, 1, 2], dealerDice: [3, 5, 6, 6] };
+    expect(resolveChallenge({ ...hand, bid: { quantity: 3, face: 3 } })).toEqual({
+      actualCount: 3,
+      bidderWins: true,
+    });
+    expect(resolveChallenge({ ...hand, bid: { quantity: 4, face: 3 } })).toEqual({
+      actualCount: 3,
+      bidderWins: false,
+    });
+    // No wildcards, permanently (§5.5): a held 1 satisfies only face 1.
+    expect(resolveChallenge({ ...hand, bid: { quantity: 2, face: 6 } })).toEqual({
+      actualCount: 2,
+      bidderWins: true,
+    });
+  });
+});

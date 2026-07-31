@@ -44,6 +44,7 @@ import { resolveExploration } from './actions/exploration.js';
 // same generic payoff resolver the day-of draw uses (exploreOutcomes.ts).
 import { outcomeById, resolveExploreOutcome } from './exploreOutcomes.js';
 import { resolveVisitHangout } from './actions/hangout.js';
+import { resolveDare, settleDareHand } from './actions/dare.js';
 import { resolveCrew, resolveReroll } from './actions/crew.js';
 import { portDuskIncome, resolvePortPurchase } from './actions/port.js';
 import { evaluateDeeds } from './deeds.js';
@@ -235,9 +236,17 @@ export function applyPlayerAction(
   // `player.ports` and credits, never the encounter, and the sim/UI never offer it
   // mid-fight. Exempting it avoids widening the ActionBlocked.actionType enum for
   // an action that has no reason to be blocked.
+  // T-135: `Dare` is exempt for the same reason the three above are — it touches
+  // only `state.dareHand`, never the encounter, and the two scenes are mutually
+  // exclusive by construction (this gate refuses the `VisitHangout` that would
+  // open a hand mid-fight; the dare gate below refuses the `Travel` that would
+  // start a fight mid-hand). Exempting it avoids widening `ActionBlocked.actionType`
+  // for a verb that has no reason to be blocked, exactly the T-1306/T-1307
+  // precedent.
   if (
     nextState.encounter &&
     action.type !== 'Combat' &&
+    action.type !== 'Dare' &&
     action.type !== 'Reroll' &&
     action.type !== 'Crew' &&
     action.type !== 'Port'
@@ -252,6 +261,42 @@ export function applyPlayerAction(
       day: nextState.day,
       actionType: action.type,
       reason: 'active-encounter',
+    };
+    appendEvents(nextState, [blocked]);
+    return { state: nextState, events: [blocked] };
+  }
+
+  // T-135 · GATE 1 · AN OPEN LIAR'S DICE HAND BLOCKS THE WORLD, exactly as an
+  // encounter does (docs/LIARS-DICE_REDESIGN.md §9.3). This is what makes "a hand
+  // is a scene like Combat" true rather than asserted, and it is what stops the
+  // pathological state where a captain opens a hand, flies three jumps, and asks
+  // a dealer they have left behind to answer a standing bid.
+  //
+  // EXEMPTIONS ARE THE ENCOUNTER GATE'S, verbatim and for the identical reasons:
+  // `Reroll` / `Crew` / `Port` touch the dawn hand, the roster and the ports and
+  // never the scene; `Combat` cannot co-occur (the gate above refuses the
+  // `VisitHangout` that would open a hand mid-fight, and this gate refuses the
+  // `Travel` that would start a fight mid-hand); `Dare` is the scene's own verb.
+  // Placed BELOW the encounter gate so that if both were somehow live the truer
+  // reason wins, matching the terminal guard's ordering rationale below.
+  //
+  // Refusal shape, also the encounter gate's: one typed ActionBlocked appended to
+  // the log, NO die spent, NO rng fork, `dayEventCount` untouched, no throw. This
+  // widens `ActionBlocked.reason` only — `actionType` already carries all six
+  // blockable verbs.
+  if (
+    nextState.dareHand &&
+    action.type !== 'Dare' &&
+    action.type !== 'Combat' &&
+    action.type !== 'Reroll' &&
+    action.type !== 'Crew' &&
+    action.type !== 'Port'
+  ) {
+    const blocked: GameEvent = {
+      type: 'ActionBlocked',
+      day: nextState.day,
+      actionType: action.type,
+      reason: 'active-dare-hand',
     };
     appendEvents(nextState, [blocked]);
     return { state: nextState, events: [blocked] };
@@ -423,6 +468,12 @@ export function applyPlayerAction(
       action,
       dayRng.fork(`action-hangout-${actionEventIndex}`),
     );
+  } else if (action.type === 'Dare') {
+    // T-135 · one move in the open Liar's Dice hand. A DEDICATED branch, and it
+    // must sit above the terminal `else` (which treats anything unmatched as a
+    // Storylet — a `Dare` falling into it would be a silent disaster). The fork
+    // label matches every other action's shape.
+    result = resolveDare(nextState, action, dayRng.fork(`action-dare-${actionEventIndex}`));
   } else if (action.type === 'Reroll') {
     result = resolveReroll(nextState, action, dayRng.fork(`action-reroll-${actionEventIndex}`));
   } else if (action.type === 'Crew') {
@@ -490,6 +541,27 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
   }
 
   const dayRng = new SeededRng(nextState.rngState);
+
+  // T-135 · THE DUSK FOLD (docs/LIARS-DICE_REDESIGN.md §6.2). An open Liar's Dice
+  // hand at dusk is resolved as a PLAYER FOLD — identical economics, identical
+  // disposition delta, identical events, `outcome: 'timeout-fold'`.
+  //
+  // WHY A FOLD and not an auto-challenge or a void: an auto-challenge would make
+  // "let the day run out" a free showdown, strictly better than folding, which
+  // would make FOLD dead; a void (refund both escrows) would be strictly better
+  // than ANY move. A fold is also what a table does when you walk away. With this
+  // clause NO REACHABLE STATE CAN CARRY A HAND INTO THE NEXT DAWN, which is the
+  // second safety net under the sim's continuation loop (§12.4).
+  //
+  // IT DRAWS NO RNG, deliberately: `settleDareHand` is pure arithmetic over the
+  // escrow plus `applyDisposition`, so `dayRng` is untouched and every downstream
+  // dusk draw — the bond hook, the NPC loop, the era scheduler — lands exactly
+  // where it did before. That is what keeps the day-loop goldens' EVENT hashes
+  // honest for scripts that never open a hand.
+  //
+  // FIRST, before the dawn-hand spend-out and before the NPC dusk loop, so the
+  // dealer's purse settles on the same tick their own day is simulated.
+  if (nextState.dareHand) settleDareHand(nextState, 'timeout-fold', events);
 
   // Set all dice to spent if player didn't use them (day is over)
   if (nextState.player.dawnHand) {

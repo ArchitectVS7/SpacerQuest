@@ -27,6 +27,10 @@ import type {
   StoryletScheduleState,
   EncounterState,
   EncounterInterceptorState,
+  DareBid,
+  DareBidEntry,
+  DareHandState,
+  HangoutFailReason,
   EraEventState,
   DawnHand,
   PendingTravelState,
@@ -482,6 +486,42 @@ const EncounterStateSchema = z
   })
   .strict();
 
+// T-135 · The open Liar's Dice hand — a SCENE, sibling to EncounterState above,
+// and STRICT at every level for the same reason: an unknown key here is schema
+// drift, not forward compatibility (the versioned envelope owns compatibility).
+// The three keyof guards below pin these to their interfaces.
+const DareBidSchema = z.object({ quantity: z.number(), face: z.number() }).strict();
+
+const DareBidEntrySchema = z
+  .object({
+    actor: z.enum(['player', 'dealer']),
+    move: z.enum(['bid', 'raise-face', 'raise-quantity', 'raise-both']),
+    quantity: z.number(),
+    face: z.number(),
+    antePaid: z.number(),
+  })
+  .strict();
+
+const DareHandStateSchema = z
+  .object({
+    id: z.string(),
+    systemId: z.number(),
+    dealerId: z.string(),
+    openedDay: z.number(),
+    playerDice: z.array(z.number()),
+    dealerDice: z.array(z.number()),
+    bid: DareBidSchema.nullable(),
+    bidder: z.enum(['player', 'dealer']).nullable(),
+    seedWager: z.number(),
+    ante: z.number(),
+    potPlayer: z.number(),
+    potDealer: z.number(),
+    peekUsed: z.boolean(),
+    peekedDealerDie: z.object({ index: z.number(), value: z.number() }).strict().nullable(),
+    history: z.array(DareBidEntrySchema),
+  })
+  .strict();
+
 const NpcActionSchema = z
   .object({
     type: z.enum(['Trade', 'Travel', 'Combat', 'Patrol', 'Socialize', 'Idle', 'FlawOverride']),
@@ -768,8 +808,11 @@ const GameEventSchema = z.discriminatedUnion('type', [
     // ceiling). Serialized in eventLog, so the schema must accept them or loadSave
     // would reject a save containing the event — including the autosave an ENDED
     // career or an EXPIRED demo licence writes.
+    // T-135 · 'active-dare-hand': an open Liar's Dice hand blocks the world
+    // exactly as an encounter does.
     reason: z.enum([
       'active-encounter',
+      'active-dare-hand',
       'destination-locked',
       'no-hangout',
       'career-ended',
@@ -896,8 +939,73 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'no-opponent',
         // T-120 · the port's venue definition does not run this beat.
         'venue-not-offered',
+        // T-135 · the three Liar's Dice gates. `_covHangoutFailReason` below pins
+        // this enum to the named `HangoutFailReason` union VALUE for value — a
+        // key-level guard cannot see a widened enum, which is the hole T-131
+        // closed for the exploration reasons.
+        'dare-hand-open',
+        'no-dare-hand',
+        'illegal-dare-move',
       ])
       .optional(),
+  }),
+  z.object({
+    // T-135 · a Liar's Dice hand opened (see types.ts DareHandStarted). Carries
+    // `playerDice` and NEVER `dealerDice` — the hidden-dice discipline
+    // (docs/LIARS-DICE_REDESIGN.md §10.2) is enforced by the interface, and this
+    // schema mirrors it so a leak could not even round-trip.
+    type: z.literal('DareHandStarted'),
+    day: z.number(),
+    handId: z.string(),
+    opponentId: z.string(),
+    systemId: z.number(),
+    seedWager: z.number(),
+    ante: z.number(),
+    playerDice: z.array(z.number()),
+  }),
+  z.object({
+    // T-135 · a Peek was attempted (see types.ts DarePeeked).
+    type: z.literal('DarePeeked'),
+    day: z.number(),
+    handId: z.string(),
+    success: z.boolean(),
+    dieIndex: z.number().optional(),
+    value: z.number().optional(),
+  }),
+  z.object({
+    // T-135 · one bid or raise landed (see types.ts DareBidPlaced).
+    type: z.literal('DareBidPlaced'),
+    day: z.number(),
+    handId: z.string(),
+    actor: z.enum(['player', 'dealer']),
+    move: z.enum(['bid', 'raise-face', 'raise-quantity', 'raise-both']),
+    quantity: z.number(),
+    face: z.number(),
+    antePaid: z.number(),
+    potPlayer: z.number(),
+    potDealer: z.number(),
+  }),
+  z.object({
+    // T-135 · a Liar's Dice hand settled (see types.ts DareHandResolved).
+    // `dealerDice` is present ONLY on the two challenge outcomes — a fold never
+    // reveals, and the optionality here is that rule, not a convenience.
+    type: z.literal('DareHandResolved'),
+    day: z.number(),
+    handId: z.string(),
+    opponentId: z.string(),
+    outcome: z.enum([
+      'challenge-win',
+      'challenge-loss',
+      'player-fold',
+      'dealer-fold',
+      'timeout-fold',
+    ]),
+    bid: DareBidSchema.nullable(),
+    actualCount: z.number().optional(),
+    playerDice: z.array(z.number()),
+    dealerDice: z.array(z.number()).optional(),
+    creditsDelta: z.number(),
+    dispositionDelta: z.number(),
   }),
   z.object({
     // T-1304 · a Penny Wise lending beat (see types.ts LoanEvent). Serialized in
@@ -1318,6 +1426,22 @@ export const PlayerActionSchema = z.discriminatedUnion('type', [
     spendDie: z.number().optional(),
   }),
   z.object({
+    // T-135 · one move in the open Liar's Dice hand (see types.ts PlayerAction).
+    type: z.literal('Dare'),
+    move: z.enum([
+      'bid',
+      'raise-face',
+      'raise-quantity',
+      'raise-both',
+      'challenge',
+      'fold',
+      'peek',
+    ]),
+    quantity: z.number().optional(),
+    face: z.number().optional(),
+    spendDie: z.number().optional(),
+  }),
+  z.object({
     // T-1306 · re-roll one un-spent dawn die (see types.ts PlayerAction).
     type: z.literal('Reroll'),
     dieIndex: z.number(),
@@ -1364,6 +1488,8 @@ export const GameStateSchema = z
     market: MarketStateSchema,
     npcs: z.array(NpcStateSchema),
     encounter: EncounterStateSchema.nullable(),
+    // T-135 · the open Liar's Dice hand, beside its sibling scene.
+    dareHand: DareHandStateSchema.nullable(),
     eraEvent: EraEventStateSchema.nullable(),
     lastEraEventEndedDay: z.number(),
     eventLog: z.array(GameEventSchema),
@@ -1452,6 +1578,12 @@ const _covStoryletSchedule: AssertEqual<
 > = true;
 const _covEncounter: AssertEqual<keyof EncounterState, keyof z.infer<typeof EncounterStateSchema>> =
   true;
+// T-135 · the Liar's Dice scene, guarded exactly as its `encounter` sibling is.
+const _covDareHand: AssertEqual<keyof DareHandState, keyof z.infer<typeof DareHandStateSchema>> =
+  true;
+const _covDareBid: AssertEqual<keyof DareBid, keyof z.infer<typeof DareBidSchema>> = true;
+const _covDareBidEntry: AssertEqual<keyof DareBidEntry, keyof z.infer<typeof DareBidEntrySchema>> =
+  true;
 const _covInterceptor: AssertEqual<
   keyof EncounterInterceptorState,
   keyof z.infer<typeof EncounterInterceptorStateSchema>
@@ -1522,6 +1654,19 @@ const _covEvFragmentAcquired: AssertEventKeys<'FragmentAcquired'> = true;
 const _covEvFragmentDecoded: AssertEventKeys<'FragmentDecoded'> = true;
 const _covEvNemesisCrossing: AssertEventKeys<'NemesisCrossing'> = true;
 const _covEvHangoutEvent: AssertEventKeys<'HangoutEvent'> = true;
+// T-135 · A VALUE-LEVEL GUARD, the twin of `_covExplorationFailReason` above and
+// added for the identical reason: widening `HangoutEvent.failReason` changes no
+// KEY, so `AssertEventKeys` sails past it and a save carrying the new reason would
+// fail to parse at load. It lands in the SAME commit that names the union, while
+// the two sides are provably identical.
+const _covHangoutFailReason: AssertEqual<
+  HangoutFailReason,
+  NonNullable<SchemaEventVariant<'HangoutEvent'>['failReason']>
+> = true;
+const _covEvDareHandStarted: AssertEventKeys<'DareHandStarted'> = true;
+const _covEvDarePeeked: AssertEventKeys<'DarePeeked'> = true;
+const _covEvDareBidPlaced: AssertEventKeys<'DareBidPlaced'> = true;
+const _covEvDareHandResolved: AssertEventKeys<'DareHandResolved'> = true;
 const _covEvLoanEvent: AssertEventKeys<'LoanEvent'> = true;
 const _covEvDiceRerolled: AssertEventKeys<'DiceRerolled'> = true;
 const _covEvCrewEvent: AssertEventKeys<'CrewEvent'> = true;
@@ -1582,6 +1727,9 @@ void _covEarnedDeed;
 void _covStorylet;
 void _covStoryletSchedule;
 void _covEncounter;
+void _covDareHand;
+void _covDareBid;
+void _covDareBidEntry;
 void _covInterceptor;
 void _covEraEvent;
 void _covEventTypes;
@@ -1613,6 +1761,11 @@ void _covEvFragmentAcquired;
 void _covEvFragmentDecoded;
 void _covEvNemesisCrossing;
 void _covEvHangoutEvent;
+void _covHangoutFailReason;
+void _covEvDareHandStarted;
+void _covEvDarePeeked;
+void _covEvDareBidPlaced;
+void _covEvDareHandResolved;
 void _covEvLoanEvent;
 void _covEvDiceRerolled;
 void _covEvCrewEvent;

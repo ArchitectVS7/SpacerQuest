@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  DARE_MAX_MOVES_PER_HAND,
   gamblerPolicy,
   parseCliArgs,
+  planDareMove,
   reportToJson,
   resolvePolicy,
   runCampaign,
@@ -9,7 +11,41 @@ import {
   type CampaignStatsReport,
   type SimPolicyName,
 } from '../index.js';
+import {
+  applyPlayerAction,
+  createInitialState,
+  legalDareMoves,
+  startDay,
+  wagerBandFor,
+  type GameState,
+} from '@spacerquest/engine';
 import { driveCompetentCampaign, longestZeroIncomeStreak } from './support/campaign-drivers.js';
+
+/** T-135 · A state carrying an OPEN Liar's Dice hand, produced by the REAL open
+ *  arm through `startDay` → `applyPlayerAction`. Never by assigning `dareHand`:
+ *  the point of the totality test is what a planner meets in play. */
+function openGamblerHand(seed: number): GameState {
+  const fresh = createInitialState(seed);
+  fresh.player.credits = 20_000;
+  for (const npc of fresh.npcs) {
+    if (npc.currentSystemId === fresh.player.currentSystemId) npc.credits = 20_000;
+  }
+  const state = startDay(fresh).state;
+  const dealer = state.npcs.find(
+    (npc) => !npc.dead && npc.currentSystemId === state.player.currentSystemId,
+  );
+  if (!dealer) throw new Error('fixture: no co-located dealer at the starting port');
+  const die = state.player.dawnHand!.spent.findIndex((spent) => !spent);
+  const opened = applyPlayerAction(state, {
+    type: 'VisitHangout',
+    venue: 'dare',
+    opponentId: dealer.id,
+    wager: 100,
+    spendDie: die,
+  }).state;
+  if (!opened.dareHand) throw new Error('fixture: the hand did not open');
+  return opened;
+}
 
 // ---------------------------------------------------------------------------
 // T-1601b · The two NET-NEW balance instruments: the SMUGGLER (contraband
@@ -198,7 +234,91 @@ describe('T-1601b smuggler & gambler policies', () => {
     // it never burns a die on a typed refusal — no 'no-opponent', no 'no-hangout',
     // no spent-die fail, over 300 days of play.
     expect(play.failedVisits).toBe(0);
+
+    // T-135 · THE SAME PROOF, NOW STRONGER. A `Dare` move outside the lattice is
+    // refused with `HangoutEvent{failReason:'illegal-dare-move'}` and lands in
+    // `failedVisits` too, so the zero above is now also the proof that
+    // `planDareMove` mirrors the engine's `legalDareMoves` rather than restating
+    // §5.1's arithmetic.
+    //
+    // AND THE TRIPWIRE IS UNTRIPPED. §12.4 proves the continuation loop's
+    // `DARE_MAX_MOVES_PER_HAND` bound unreachable (the bid lattice caps a hand at
+    // ~15 player actions), which is precisely why a non-zero count here is a bug
+    // to fail on rather than a number to swallow.
+    expect(play.dareGuardHits).toBe(0);
   }, 60000);
+
+  it('T-135 · the gambler plays every hand to completion — no dusk timeout folds', () => {
+    // THE REAL PROOF that the runner's continuation loop works. A `timeout-fold`
+    // means the day ended with a hand still open: the policy planned an opening
+    // `VisitHangout{venue:'dare'}` from the dawn state and then never answered the
+    // dealer, so `endDay` forfeited the seed. Before the loop existed that was
+    // EVERY hand, and the measured EV would have been "the gambler folds every
+    // time" — a measurement of nothing.
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const report = runCampaign(seed, 120, 'gambler');
+      const play = report.hangoutPlay;
+      expect(play.dares).toBeGreaterThan(0);
+      expect(play.failedVisits).toBe(0);
+      expect(play.dareGuardHits).toBe(0);
+      // `daresWon + daresLost === dares` holds only if every hand SETTLED.
+      expect(play.daresWon + play.daresLost).toBe(play.dares);
+    }
+  }, 120000);
+
+  it('T-135 · planDareMove is TOTAL over the scene’s reachable states (§12.4)', () => {
+    // (a) no hand → null; the loop's condition is already false.
+    expect(planDareMove(createInitialState(1))).toBeNull();
+
+    const state = openGamblerHand(1);
+    // (b) a hand with NO bid: an opening bid is always legal — any held face is in
+    // 1..6, `max(1, own(F*))` is in 1..4 ⊆ 1..8, and an opening bid costs no ante,
+    // so neither headroom nor credits can refuse it.
+    const opening = planDareMove(state);
+    expect(opening).not.toBeNull();
+    expect(opening).toMatchObject({ type: 'Dare', move: 'bid' });
+    expect(legalDareMoves(state.dareHand!, 'player', state.player.credits)).toContain(
+      (opening as { move: string }).move,
+    );
+    // …and it is TRUTHFUL: the claim is exactly what the player holds.
+    const face = (opening as { face: number }).face;
+    const quantity = (opening as { quantity: number }).quantity;
+    expect(quantity).toBe(Math.max(1, state.dareHand!.playerDice.filter((d) => d === face).length));
+
+    // (c) a hand with a standing bid, at the LATTICE CEILING and with ZERO
+    // headroom — the tightest reachable corner, where every raise is illegal.
+    const cornered: GameState = {
+      ...state,
+      player: { ...state.player, credits: 0 },
+      dareHand: {
+        ...state.dareHand!,
+        bid: { quantity: 8, face: 6 },
+        bidder: 'dealer',
+        potPlayer: wagerBandFor(state.dareHand!.systemId).max,
+      },
+    };
+    const cornerMove = planDareMove(cornered);
+    expect(cornerMove).not.toBeNull();
+    const legal = legalDareMoves(cornered.dareHand!, 'player', cornered.player.credits);
+    expect(legal).toEqual(['challenge', 'fold']);
+    expect(legal).toContain((cornerMove as { move: string }).move);
+
+    // …and the whole hand plays out through the REAL loop, driven only by the
+    // planner, reaching a settlement rather than a dusk forfeit.
+    let live = state;
+    let guard = 0;
+    while (live.dareHand && guard < DARE_MAX_MOVES_PER_HAND) {
+      guard += 1;
+      const move = planDareMove(live)!;
+      expect(move).not.toBeNull();
+      const step = applyPlayerAction(live, move);
+      // A planner that mirrors the engine never earns a typed refusal.
+      expect(step.events.some((e) => e.type === 'HangoutEvent' && e.failReason)).toBe(false);
+      live = step.state;
+    }
+    expect(live.dareHand).toBeNull();
+    expect(guard).toBeLessThan(DARE_MAX_MOVES_PER_HAND);
+  });
 
   it('neither new policy triggers a poverty trap across a seed sweep', () => {
     // The same three-seed-per-policy sweep the T-201 policies are held to. Both

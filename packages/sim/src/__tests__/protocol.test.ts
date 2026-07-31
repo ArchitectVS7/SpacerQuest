@@ -2,6 +2,7 @@ import { Readable, Writable } from 'node:stream';
 import {
   DayPhase,
   SeededRng,
+  applyPlayerAction,
   createInitialState,
   endDay,
   loanBandFor,
@@ -153,6 +154,30 @@ function fixtureEncounter(): EncounterState {
   };
 }
 
+/** T-135 · A DAY state carrying an OPEN Liar's Dice hand, produced by the REAL
+ *  open arm (`VisitHangout{venue:'dare'}` through `applyPlayerAction`) rather than
+ *  by assigning `state.dareHand` — a poked scene would prove nothing about what a
+ *  driver actually meets. Sun-3 (id 1) runs tables and seats the whole starting
+ *  cast, so the first co-located captain is a valid dealer. */
+function openDareHand(): GameState {
+  const state = createInitialState(9);
+  state.dayPhase = DayPhase.DAY;
+  state.player.credits = 10_000;
+  state.player.dawnHand = rollDawnHand(new SeededRng(9), { handSize: 5, floor: 0, rerolls: 0 });
+  const dealer = state.npcs.find(
+    (npc) => !npc.dead && npc.currentSystemId === state.player.currentSystemId,
+  );
+  if (!dealer) throw new Error('fixture: no co-located dealer at Sun-3');
+  dealer.credits = 5_000;
+  return applyPlayerAction(state, {
+    type: 'VisitHangout',
+    venue: 'dare',
+    opponentId: dealer.id,
+    wager: 100,
+    spendDie: 0,
+  }).state;
+}
+
 function dayStateWithEncounter(fuel: number): GameState {
   const state = createInitialState(9);
   state.dayPhase = DayPhase.DAY;
@@ -284,6 +309,11 @@ describe('protocol deterministic replay', () => {
       Storylet: true,
       Explore: true,
       VisitHangout: true,
+      // T-135 · the Liar's Dice scene verb. Covered by the dedicated
+      // `legalActions` case below (a hand open ⇒ only `Dare` is advertised) and by
+      // the engine's own `liarsDice.test.ts`, which drives full hands through the
+      // real `applyPlayerAction` loop.
+      Dare: true,
       Reroll: true,
       Crew: true,
       Port: true,
@@ -623,6 +653,65 @@ describe('legal-actions enumerator', () => {
     if (stance?.kind === 'enum') {
       expect(stance.choices).toEqual(['talk']);
     }
+  });
+
+  // T-135 · THE LIAR'S DICE SCENE, advertised exactly as the encounter is. The
+  // engine's gate 1 refuses all six blockable verbs with
+  // `ActionBlocked{'active-dare-hand'}` while a hand stands, so advertising any of
+  // them — the `VisitHangout{venue:'dare'}` that would open a second hand most of
+  // all — would hand a headless driver a guaranteed refusal. Driven through the
+  // REAL open arm, never by poking `state.dareHand`.
+  it("while a Liar's Dice hand is open, only Dare is advertised", () => {
+    const opened = openDareHand();
+    expect(opened.dareHand).not.toBeNull();
+
+    const legal = legalActions(opened);
+    const types = legal.actions.map((action) => action.type);
+    expect(types).toEqual(['Dare']);
+    expect(types).not.toContain('VisitHangout');
+    expect(types).not.toContain('Trade');
+    expect(types).not.toContain('Travel');
+    expect(legal.lifecycle).toEqual(['end-day']);
+
+    // The `move` domain is the ENGINE's own `legalDareMoves`, not a restatement:
+    // before any bid the hand offers open / peek / fold and nothing else.
+    const dare = legal.actions.find((action) => action.type === 'Dare');
+    expect(dare?.params.move).toEqual({ kind: 'enum', choices: ['bid', 'peek', 'fold'] });
+    expect(dare?.params.quantity).toEqual({ kind: 'int', min: 1, max: 8 });
+    expect(dare?.params.face).toEqual({ kind: 'int', min: 1, max: 6 });
+  });
+
+  it('after a bid stands, the advertised move domain follows the lattice', () => {
+    const opened = openDareHand();
+    const bid = applyPlayerAction(opened, {
+      type: 'Dare',
+      move: 'bid',
+      quantity: 2,
+      face: 3,
+    }).state;
+    // The dealer answered inside that same call; if it ended the hand there is
+    // nothing left to advertise, so assert only when a hand still stands.
+    if (!bid.dareHand) return;
+
+    const dare = legalActions(bid).actions.find((action) => action.type === 'Dare');
+    const move = dare?.params.move;
+    expect(move?.kind).toBe('enum');
+    if (move?.kind === 'enum') {
+      // Peek's window closed with the opening bid; challenge and fold are always
+      // there once a claim stands.
+      expect(move.choices).not.toContain('peek');
+      expect(move.choices).not.toContain('bid');
+      expect(move.choices).toContain('challenge');
+      expect(move.choices).toContain('fold');
+    }
+    // The quantity/face floors are the standing bid's, so a driver cannot propose
+    // a claim below the one it is answering.
+    expect(dare?.params.quantity).toEqual({
+      kind: 'int',
+      min: bid.dareHand.bid?.quantity,
+      max: 8,
+    });
+    expect(dare?.params.face).toEqual({ kind: 'int', min: bid.dareHand.bid?.face, max: 6 });
   });
 
   it('a dice-exhausted state offers only day-end', () => {

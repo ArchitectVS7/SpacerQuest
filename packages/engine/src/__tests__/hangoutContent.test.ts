@@ -276,6 +276,10 @@ describe('T-122 · §6.4 — no two authored ports share a mechanical axis vecto
         dc: DEFAULT_PORT_HANGOUT.venueParams?.[venue]?.dc,
         dispositionOnSuccess: DEFAULT_PORT_HANGOUT.venueParams?.[venue]?.dispositionOnSuccess,
         dispositionOnFailure: DEFAULT_PORT_HANGOUT.venueParams?.[venue]?.dispositionOnFailure,
+        // T-135 · the fourth arm (the Liar's Dice fold). Read off the default row
+        // like its three siblings, so this stays a statement that Sun-3 inherits
+        // whatever the default authors rather than a re-recorded literal.
+        dispositionOnFold: DEFAULT_PORT_HANGOUT.venueParams?.[venue]?.dispositionOnFold,
       });
     }
   });

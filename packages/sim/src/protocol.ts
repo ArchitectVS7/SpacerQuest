@@ -48,6 +48,7 @@ import {
   loanBandFor,
   venueOffered,
   wagerBandFor,
+  legalDareMoves,
   type Edition,
   type GameEvent,
   type GameState,
@@ -532,6 +533,44 @@ export function legalActions(state: GameState): LegalActions {
     return {
       phase,
       inEncounter: true,
+      diceRemaining,
+      actions,
+      canWait: true,
+      lifecycle: ['end-day'],
+    };
+  }
+
+  // T-135 · AN OPEN LIAR'S DICE HAND, and the SAME SHAPE the encounter branch
+  // above takes, deliberately: the engine's gate 1 refuses every one of the six
+  // blockable verbs with `ActionBlocked{'active-dare-hand'}` while a hand stands,
+  // so advertising any of them — including the `VisitHangout{venue:'dare'}` that
+  // would open a second hand — would hand a headless driver a guaranteed refusal.
+  // That is the T-1101 law and the same drift the T-120 port mirror closed. Only
+  // the scene's own verb is offered, exactly as only `Combat` is offered above.
+  //
+  // The `move` domain is filtered through the engine's OWN `legalDareMoves` (§5.4),
+  // so there is one definition of legality across the engine's refusal, the
+  // dealer's choice, this advertisement and the sim's planner. 'peek' is dropped
+  // when no die is left, mirroring the resolver's own die check.
+  if (state.dareHand) {
+    const hand = state.dareHand;
+    const moveChoices = legalDareMoves(hand, 'player', player.credits).filter(
+      (move) => move !== 'peek' || hasDie,
+    );
+    const params: LegalActionSpec['params'] = {
+      move: { kind: 'enum', choices: moveChoices },
+      quantity: { kind: 'int', min: hand.bid ? hand.bid.quantity : 1, max: 8 },
+      face: { kind: 'int', min: hand.bid ? hand.bid.face : 1, max: 6 },
+    };
+    if (hasDie) params.spendDie = dieParam;
+    actions.push({
+      type: 'Dare',
+      params,
+      note: "One move in the open Liar's Dice hand. quantity/face are required for bid and the raises; a face raise moves the face up by exactly one and leaves quantity unchanged; a quantity raise leaves the face unchanged. spendDie applies to 'peek' only.",
+    });
+    return {
+      phase,
+      inEncounter: false,
       diceRemaining,
       actions,
       canWait: true,

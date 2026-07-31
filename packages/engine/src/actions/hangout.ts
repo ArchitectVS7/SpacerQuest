@@ -2,7 +2,6 @@ import {
   LENDER_ID,
   LOAN_DAILY_RATE,
   LOAN_TERM_DAYS,
-  ALL_NPC_PROFILES,
   RUMOR_EMPTY_LINE,
   RUMOR_QUIET_TEMPLATE,
   RUMOR_TEMPLATES,
@@ -19,6 +18,7 @@ import { check, spendDie } from '../dice.js';
 import { applyDisposition, mutableNpc } from '../npc.js';
 import { cloneState } from '../clone.js';
 import { loanBandFor, venueOffered, venueParamsFor, wagerBandFor } from '../hangoutRules.js';
+import { anteFor } from '../liarsDiceRules.js';
 
 function systemName(systemId: number): string {
   return STAR_SYSTEMS[systemId]?.name ?? `system ${systemId}`;
@@ -88,12 +88,6 @@ export function hangoutRumors(state: GameState): string[] {
     facts.push(RUMOR_EMPTY_LINE);
   }
   return facts;
-}
-
-/** GUILE score of the NPC behind a state id (via its profile — NpcState carries
- *  no stat block, only a `profileId`). Falls back to 0 for an unknown profile. */
-function npcGuile(npc: NpcState): number {
-  return ALL_NPC_PROFILES.find((p) => p.id === npc.profileId)?.stats[Stat.GUILE] ?? 0;
 }
 
 /**
@@ -174,6 +168,20 @@ export function resolveVisitHangout(
     return { state: nextState, events };
   }
 
+  // --- GATE 2 (T-135, LIARS-DICE §9.3): one hand at a time ------------------
+  // A `VisitHangout{venue:'dare'}` while a hand is already open is a typed refusal
+  // with NO die spent — which is why it sits here, with the other pre-spend
+  // refusals, and not inside the switch (the die is burned a few lines below, for
+  // every venue). `day.ts`'s gate 1 already refuses this with an ActionBlocked;
+  // this is the RESOLVER'S OWN defence, so its never-throws contract is
+  // self-contained rather than dependent on its caller. NOT routed through
+  // `failVenue`: that helper also serves the two LENDING venues, whose LoanEvent
+  // carries its own reason union, and `dare-hand-open` is not one of them.
+  if (action.venue === 'dare' && nextState.dareHand) {
+    events.push({ type: 'HangoutEvent', day, venue: 'dare', failReason: 'dare-hand-open' });
+    return { state: nextState, events };
+  }
+
   // --- Opponent resolution (all venues except 'rumor') ----------------------
   // The load-bearing "an NPC actually present in-system" guarantee: the dealer /
   // target must be an NPC whose SIMULATED position (currentSystemId, moved by the
@@ -240,79 +248,77 @@ export function resolveVisitHangout(
 
   switch (action.venue) {
     case 'dare': {
-      // Opposed GUILE, mirroring combat.ts resolveRun: the dealer rolls a d20 off
-      // the forked action rng, and EACH side's check is framed against the OTHER's
-      // total so both StatChecks are well-formed. Ties go to the player (their
-      // check succeeds when totals are equal).
+      // T-135 · THE DARE IS NOW A SCENE, NOT A CHECK (owner ruling D2,
+      // docs/LIARS-DICE_REDESIGN.md). This arm OPENS a Liar's Dice hand and
+      // returns; the bidding, the dealer's answers and the settlement are
+      // `actions/dare.ts`'s, driven by further `Dare` actions.
+      //
+      // WHAT THIS ARM DOES **NOT** EMIT ANY MORE: no StatCheck (the hand's one
+      // possible check is the optional Peek, §8.4 — a named consequence, see
+      // finding F-134-2), no DispositionChanged, and no terminal HangoutEvent.
+      // All three come at settlement, which is where the outcome actually exists.
       const dealerNpc = dealer!;
-      const dealerGuile = npcGuile(dealerNpc);
-      const dealerDie = rng.d20();
-      const playerRoll = check(die, playerGuile, dealerDie + dealerGuile);
-      const dealerRoll = check(dealerDie, dealerGuile, die + playerGuile);
-      const playerWon = playerRoll.success;
 
-      // Player check carries actionContext 'gamble' → the wire scanner routes a
-      // nat here to the Spacer's Dare bucket (PRD §6 sample line). The dealer's
-      // roll carries 'npc-socialize', which also routes to the gamble bucket.
-      events.push({
-        type: 'StatCheck',
-        actor: 'Player',
-        stat: Stat.GUILE,
-        dc: playerRoll.dc,
-        result: playerRoll,
-        actionContext: 'gamble',
-      });
-      events.push({
-        type: 'StatCheck',
-        actor: dealerNpc.id,
-        stat: Stat.GUILE,
-        dc: dealerRoll.dc,
-        result: dealerRoll,
-        actionContext: 'npc-socialize',
-      });
-
-      // Wager: the requested stake, clamped into the PORT'S band and DOWN to what
-      // both sides can cover (a stake a broke dealer can't match is capped, never a
-      // crash / never a negative balance either way). T-120: the two bounds are the
-      // port's parameters; the clamp ALGEBRA is the engine's rule and is unchanged.
+      // The clamp algebra, CHARACTER FOR CHARACTER as before (§3): the requested
+      // stake, clamped into the PORT'S band and DOWN to what both sides can cover
+      // (a stake a broke dealer cannot match is capped, never a crash). Both sides
+      // post it, which is why the dealer's purse is inside the cap.
       const band = wagerBandFor(systemId);
       const requested = action.wager ?? band.min;
       const cap = Math.min(band.max, nextState.player.credits, dealerNpc.credits);
-      const wager = Math.max(0, Math.min(Math.max(requested, band.min), cap));
+      const seedWager = Math.max(0, Math.min(Math.max(requested, band.min), cap));
 
-      // Credits move BOTH directions off the same wager.
-      const creditsDelta = playerWon ? wager : -wager;
-      nextState.player.credits += creditsDelta;
+      // ROLL ORDER IS FIXED AND LOAD-BEARING: the player's four dice first, then
+      // the dealer's, off the action's forked rng. It decides the day-loop
+      // goldens, so it is stated rather than left to the reader.
+      const playerDice = [rng.d6(), rng.d6(), rng.d6(), rng.d6()];
+      const dealerDice = [rng.d6(), rng.d6(), rng.d6(), rng.d6()];
+
+      // ESCROW, NOT A PROMISE (§2.4): both seeds are debited NOW, so a reload
+      // mid-hand can neither mint nor lose the pot and a fold is a transfer of
+      // money that already exists. INVARIANT, asserted by liarsDice.test.ts:
+      // `player.credits + dareHand.potPlayer` is conserved across the whole hand.
+      nextState.player.credits -= seedWager;
       // COPY-ON-WRITE (npc.ts `mutableNpc`): NPC records are shared between
       // snapshots, so the dealer's stake must be taken from a private copy.
       const dealerPurse = mutableNpc(nextState, dealerNpc.id);
-      if (dealerPurse) dealerPurse.credits -= creditsDelta;
+      if (dealerPurse) dealerPurse.credits -= seedWager;
 
-      // Disposition shifts on BOTH outcomes (a Dare is memorable either way): a
-      // beaten dealer sours, a dealer who took the spacer's stake warms. Feeds
-      // T-1204's live interception + tribute-DC readers. T-120: the two deltas are
-      // the port's parameters, framed from the HOUSE's side — the dare's SUCCESS
-      // arm is the one where the dealer prevails (the player lost the hand), so a
-      // player win reads `dispositionOnFailure`. How a delta is APPLIED (the ±10
-      // clamp, the applied-delta computation, DispositionChanged) stays engine-side
-      // in `applyDisposition`.
-      const dareParams = venueParamsFor(systemId, 'dare');
-      applyDisposition(
-        nextState,
-        dealerNpc.id,
-        playerWon ? dareParams.dispositionOnFailure : dareParams.dispositionOnSuccess,
-        'dare',
-        events,
-      );
+      // The ante is resolved ONCE, here, and stored — so a content edit between
+      // two `applyPlayerAction` calls cannot move the price of a raise mid-hand.
+      // `systemId` is frozen for the same reason.
+      const ante = anteFor(systemId);
+      nextState.dareHand = {
+        id: `dare-${day}-${dealerNpc.id}-${nextState.dayEventCount}`,
+        systemId,
+        dealerId: dealerNpc.id,
+        openedDay: day,
+        playerDice,
+        dealerDice,
+        bid: null,
+        bidder: null,
+        seedWager,
+        ante,
+        potPlayer: seedWager,
+        potDealer: seedWager,
+        peekUsed: false,
+        peekedDealerDie: null,
+        history: [],
+      };
 
+      // THE HIDDEN-DICE DISCIPLINE (§10.2): `playerDice` only. `state.eventLog` is
+      // serialized into the save and rendered line by line by the UI, so a
+      // DareHandStarted carrying both hands would leak the dealer's hand to the
+      // pane and into a file a curious player can read.
       events.push({
-        type: 'HangoutEvent',
+        type: 'DareHandStarted',
         day,
-        venue: 'dare',
+        handId: nextState.dareHand.id,
         opponentId: dealerNpc.id,
-        wager,
-        playerWon,
-        creditsDelta,
+        systemId,
+        seedWager,
+        ante,
+        playerDice: [...playerDice],
       });
       break;
     }

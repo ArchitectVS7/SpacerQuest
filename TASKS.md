@@ -2414,7 +2414,11 @@ the T-100/T-101 precedent this task explicitly mirrors; T-135 owes the implement
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `TASKS.md`'s M4d ruleset block plus the real source: `actions/hangout · attempts=1/4.
 
-### T-135 · Build the Liar's Dice engine — `status: TODO` · `coder: opus` · `after: T-134`
+### T-135 · Build the Liar's Dice engine — `status: DONE` · `coder: opus` · `after: T-134`
+
+**Delivered (2026-07-31):** Implemented `docs/LIARS-DICE_REDESIGN.md` end to end on the engine side — the `dareHand` scene state and schema, the multi-call resolver (open/bid/raise/raise-both/challenge/fold) each as its own `applyPlayerAction` mirroring Combat's multi-turn shape, the AI dealer policy (verified via a test that it never reads the player's hidden dice), the FACE/QUANTITY/BOTH raise-ladder exploit closure, disposition deltas on win/loss/fold, a save-version bump with a mid-hand `dareHand` migration and round-trip test, and typed events, all driven through real `startDay`/`applyPlayerAction` loops rather than poked state. The old single-check Dare case in `hangout.ts` is fully replaced, not kept alongside it. `packages/sim`'s dare-playing path (`planDare`, the gambler policy, and the protocol) was updated to play full hands to completion through the new scene, and the smuggler-gambler sweep suite was extended accordingly. Scope boundary: the visual/UI layer for the scene (CSS-3D dice, bid history, reveal animation) is deliberately out of scope here and left to T-136, which depends on this task.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading the spec plus the real engine/content/sim sources it names. · attempts=1/4.
 
 Implement `docs/LIARS-DICE_REDESIGN.md` end to end on the engine side: the `dareHand` scene state,
 the multi-call resolver (open/bid/raise/raise-both/challenge/fold, each a separate
