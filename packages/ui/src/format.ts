@@ -77,7 +77,12 @@ import {
   portHangoutFor,
   rankClientele,
   venueOffered,
+  venueParamsFor,
   wagerBandFor,
+  // T-136 · The Liar's Dice RULES the fog projection reads. The pane never
+  // re-derives legality or headroom; it asks the engine's own functions.
+  headroomFor,
+  legalDareMoves,
   dawnDiceModifiers,
   equipmentDiceBenefits,
   hasExploreModule,
@@ -86,6 +91,10 @@ import {
   isCarryingContraband,
   isCarryingIllicit,
   type CheckResult,
+  type DareBid,
+  type DareBidEntry,
+  type DareMoveKind,
+  type DareOutcome,
   type GameEvent,
   type GameState,
   type PlayerAction,
@@ -407,6 +416,129 @@ export interface DareWagerBounds {
 
 export function dareWagerBounds(game: GameState): DareWagerBounds {
   return wagerBandFor(game.player.currentSystemId);
+}
+
+// ---- T-136 · THE LIAR'S DICE FOG PROJECTION ------------------------------
+//
+// THE PROBLEM THIS SOLVES, STATED PLAINLY. The engine keeps the dealer's four
+// dice out of every event (`DareHandStarted` carries `playerDice` only;
+// `DareHandResolved` carries `dealerDice` on the two CHALLENGE outcomes and on
+// no other — `docs/LIARS-DICE_REDESIGN.md` §10.2). But `game.dareHand.dealerDice`
+// is right there in the client's own state, one property access from any JSX in
+// `App.tsx`. A rendering HABIT ("don't read that field") is not a discipline; the
+// next person to touch the pane cannot see it, and no test can fail on it.
+//
+// So the discipline is STRUCTURAL. `DareSceneView` — the ONLY thing the live
+// scene component is given — HAS NO `dealerDice` FIELD. It carries a COUNT, never
+// values. A projection that cannot express the dealer's hand cannot leak it, and
+// `__tests__/liars-dice-pane.test.ts` proves the point the only way it can be
+// proved: it varies `dealerDice` across three different hands and asserts the
+// projection is deep-equal every time.
+//
+// Nothing here re-derives a rule. `legalMoves` is the engine's own
+// `legalDareMoves` verbatim (no UI-side filtering — a pane that decided legality
+// would be the same violation the standing constraints ban in `packages/content`),
+// `playerHeadroom` is `headroomFor`, and the ante/pots are the stored escrow the
+// resolver wrote.
+
+/**
+ * The live hand, as the PLAYER may see it. One peeked die is the single legal
+ * leak (§8.3) and is marked as such; everything else about the dealer's hand is a
+ * count.
+ */
+export interface DareSceneView {
+  handId: string;
+  dealerId: string;
+  dealerName: string;
+  /** PUBLIC — the player's own four dice, in roll order (never sorted: a sorted
+   *  hand is a different hand to look at). */
+  playerDice: number[];
+  /** A COUNT, never values. This field is the whole point of the projection. */
+  dealerDieCount: number;
+  /** The ONE dealer die a successful Peek revealed (§8.3), or null. */
+  peeked: { index: number; value: number } | null;
+  bid: DareBid | null;
+  bidder: 'player' | 'dealer' | null;
+  seedWager: number;
+  ante: number;
+  /** ESCROW already debited from each side (§2.4) — money that exists, not a promise. */
+  potPlayer: number;
+  potDealer: number;
+  /** `headroomFor(hand, 'player')` — how much more the player may stake this hand. */
+  playerHeadroom: number;
+  history: DareBidEntry[];
+  /** `legalDareMoves(hand, 'player', credits)`, verbatim. */
+  legalMoves: DareMoveKind[];
+  /** The port's Peek DC — DISPLAY ONLY; the engine rolls it. */
+  peekDc: number;
+}
+
+export function dareScene(game: GameState): DareSceneView | null {
+  const hand = game.dareHand;
+  if (!hand) return null;
+  const dealer = game.npcs.find((n) => n.id === hand.dealerId);
+  return {
+    handId: hand.id,
+    dealerId: hand.dealerId,
+    dealerName: dealer?.name ?? hand.dealerId,
+    playerDice: [...hand.playerDice],
+    // `.length`, deliberately. Never a value, never a map over the array.
+    dealerDieCount: hand.dealerDice.length,
+    peeked: hand.peekedDealerDie ? { ...hand.peekedDealerDie } : null,
+    bid: hand.bid ? { ...hand.bid } : null,
+    bidder: hand.bidder,
+    seedWager: hand.seedWager,
+    ante: hand.ante,
+    potPlayer: hand.potPlayer,
+    potDealer: hand.potDealer,
+    playerHeadroom: headroomFor(hand, 'player'),
+    history: hand.history.map((h) => ({ ...h })),
+    legalMoves: legalDareMoves(hand, 'player', game.player.credits),
+    peekDc: venueParamsFor(hand.systemId, 'dare').dc,
+  };
+}
+
+/**
+ * The SETTLED frame, built from the action's `DareHandResolved` event and NEVER
+ * recomputed — the same discipline `combatAftermathSummary` / `explorationOutcome`
+ * keep. This is the ONE place the dealer's dice may reach the DOM, and they reach
+ * it only because the ENGINE put them on the event.
+ *
+ * `dealerDice` is `undefined` on the event for BOTH fold arms (§6.1 — a fold never
+ * reveals, and the player never learns whether the call would have been correct).
+ * That is carried through as `null`; there is deliberately no fallback to
+ * `game.dareHand`, which is null by then anyway and whose values would be exactly
+ * the leak the event shape exists to prevent.
+ */
+export interface DareRevealView {
+  outcome: DareOutcome;
+  bid: DareBid | null;
+  /** The claimed face's true count across all eight dice — challenge outcomes only. */
+  actualCount: number | null;
+  playerDice: number[];
+  /** null on BOTH fold arms. */
+  dealerDice: number[] | null;
+  creditsDelta: number;
+  dispositionDelta: number;
+  dealerName: string;
+}
+
+export function dareRevealFrom(events: GameEvent[], game: GameState): DareRevealView | null {
+  const resolved = events.find(
+    (e): e is Extract<GameEvent, { type: 'DareHandResolved' }> => e.type === 'DareHandResolved',
+  );
+  if (!resolved) return null;
+  const dealer = game.npcs.find((n) => n.id === resolved.opponentId);
+  return {
+    outcome: resolved.outcome,
+    bid: resolved.bid ? { ...resolved.bid } : null,
+    actualCount: resolved.actualCount ?? null,
+    playerDice: [...resolved.playerDice],
+    dealerDice: resolved.dealerDice ? [...resolved.dealerDice] : null,
+    creditsDelta: resolved.creditsDelta,
+    dispositionDelta: resolved.dispositionDelta,
+    dealerName: dealer?.name ?? resolved.opponentId,
+  };
 }
 
 /**

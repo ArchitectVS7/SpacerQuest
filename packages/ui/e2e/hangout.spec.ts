@@ -51,7 +51,17 @@ function npcRow(page: Page, id: string) {
   return page.locator(`[data-testid="hangout-npc"][data-npc-id="${id}"]`);
 }
 
-test('visit the Hangout, wager a die, and read BOTH actors’ honest checks', async ({ page }) => {
+// T-136 · THIS TEST WAS REWRITTEN, NOT REPLACED. It used to assert
+// `dare-check-player` / `dare-check-opponent` — the two opposed GUILE checks the
+// Dare emitted until T-135 turned it into a hand of Liar's Dice. The engine emits
+// neither any more (§8.4: the hand's ONE possible check is the optional Peek), so
+// the old assertions could never pass again. What survives here is what is still
+// this file's business: the ROOM — the launcher, the opponent picker, the port's
+// wager band, and the fact that committing a die SEATS the player at a table. The
+// table itself is `liars-dice.spec.ts`'s.
+test('visit the Hangout, pick an opponent, and seat yourself at the dice table', async ({
+  page,
+}) => {
   await page.goto('/');
   await newGameSeed(page, SEED);
 
@@ -63,7 +73,7 @@ test('visit the Hangout, wager a die, and read BOTH actors’ honest checks', as
   await expect(npcRow(page, DEALER)).toBeVisible();
   await npcRow(page, DEALER).click();
 
-  // 3) The wager band is the CONTENT constant, shown up front; set a valid wager.
+  // 3) The wager band is the PORT's, shown up front; set a valid wager.
   await expect(page.getByTestId('dare-wager-bounds')).toContainText(`WAGER ${DARE_MIN_WAGER}`);
   await page.getByTestId('dare-wager').fill('100');
 
@@ -72,30 +82,24 @@ test('visit the Hangout, wager a die, and read BOTH actors’ honest checks', as
   await expect(page.getByTestId('dare-commit')).toBeEnabled();
   await page.getByTestId('dare-commit').click();
 
-  // 5) BOTH opposed checks render — the honest-dice signature applied to gambling.
-  for (const testid of ['dare-check-player', 'dare-check-opponent']) {
-    const check = page.getByTestId(testid);
-    await expect(check).toBeVisible();
-    // Opposed GUILE: each side's stat, a rolled d20, a DC, a margin and a verdict.
-    await expect(check.getByTestId('check-stat')).toHaveText('GUILE');
-    await expect(check.getByTestId('check-die')).toBeVisible();
-    await expect(check.getByTestId('check-dc')).toBeVisible();
-    await expect(check.getByTestId('check-margin')).toBeVisible();
-    // The verdict is seed-dependent; assert it is one of the honest two, not which.
-    await expect(check.getByTestId('check-result')).toHaveText(/SUCCESS|FAILURE/);
-  }
+  // 5) The SCENE opened. The opening visit no longer resolves anything — it deals
+  //    eight dice and posts both seeds into escrow.
+  await expect(page.getByTestId('dare-scene')).toBeVisible();
+  await expect(page.locator('[data-testid="dare-player-die"]')).toHaveCount(4);
+  await expect(page.getByTestId('dare-pot-player')).toContainText('100');
+  await expect(page.getByTestId('dare-pot-dealer')).toContainText('100');
+  // The seed is debited the moment the hand opens (§2.4 — escrow, not a promise).
+  await expect(page.getByTestId('credits')).toHaveText('900');
 
-  // 6) The signed credits delta reads off the engine's HangoutEvent, never recomputed.
-  const result = page.getByTestId('dare-result');
-  await expect(result).toBeVisible();
-  await expect(result).toHaveAttribute('data-won', /0|1/);
-  await expect(result).toContainText(/[+-]100cr/);
-
-  // Exactly one die was spent by the Dare.
+  // 6) Exactly one die was spent to seat yourself; the rest of the hand is credits.
   const spent = await page
     .getByTestId('die')
     .evaluateAll((els) => els.map((e) => e.getAttribute('data-spent')));
   expect(spent.filter((s) => s === '1').length).toBe(1);
+
+  // Fold out so the rest of this file's tests are not run behind a locked panel.
+  await page.locator('[data-testid="dare-move"][data-move="fold"]').click();
+  await expect(page.getByTestId('dare-reveal')).toBeVisible();
 });
 
 test('take and repay a Penny Wise loan entirely through the UI', async ({ page }) => {

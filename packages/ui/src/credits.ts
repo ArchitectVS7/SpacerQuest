@@ -97,6 +97,17 @@ export const CREDITS: readonly Credit[] = Object.freeze([
     note: 'Bundled into the cockpit on every build, web and desktop.',
   },
   {
+    // T-136 · A RUNTIME DEPENDENCY NEW TO THIS REPO, added for the Liar's Dice
+    // reveal timeline. It is bundled into the cockpit on every build, so it owes
+    // a notice here exactly as React does.
+    id: 'gsap',
+    name: 'GSAP 3.15.0',
+    holder: 'GreenSock, Inc.',
+    license: 'Standard "No Charge" GSAP License',
+    licenseUrl: 'https://gsap.com/standard-license',
+    note: 'Bundled into the cockpit on every build, web and desktop. The npm package ships no LICENSE file — its README names the licence and points at the URL above, which permits commercial use in a sold product and prohibits only building competing visual-animation tooling.',
+  },
+  {
     id: 'electron',
     name: 'Electron 43',
     holder: 'Electron contributors and the OpenJS Foundation',

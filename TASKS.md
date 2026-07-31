@@ -2443,7 +2443,7 @@ round-trip test covers a mid-hand `dareHand` surviving serialization; `CURRENT_S
 with a migration; the sim's gambler policy plays full hands to completion through the new scene
 and the sweep still runs (asserted by the sim suite, not just claimed); gate green.
 
-### T-136 · Build the Liar's Dice UI — `status: TODO` · `coder: opus` · `after: T-135`
+### T-136 · Build the Liar's Dice UI — `status: DONE` · `coder: opus` · `after: T-135`
 
 Load `~/.claude/skills/tabletop-ui/SKILL.md` first. Build the visual scene inside `HangoutPanel`
 (`packages/ui/src/App.tsx`): real CSS-3D d6s (no WebGL/3D-engine dependency — `transform-style:
@@ -2458,6 +2458,25 @@ body as a dependency addition, not a silent one.
 per this project's standing UX-test rule) and asserted by an e2e test; the dealer's dice are
 verifiably absent from the DOM before reveal (an e2e assertion, not just a code-review claim); the
 new dependency (if any) is named in the commit; gate green.
+
+**Delivered (2026-07-31):** Built the Liar's Dice visual scene inside `HangoutPanel`
+(`packages/ui/src/App.tsx`): real CSS-3D d6s via `transform-style: preserve-3d` (no WebGL/3D-engine
+dependency), sci-fi glow via gradient/filter, the bid history, and the current-bid/whose-turn
+readout, wired to the T-135 engine's `dareMove`/`darePeek` actions and `DareHand` state rather than
+poked state. The dealer's hidden dice render as shrouded placeholders and are verifiably absent
+from the DOM (no face values) until the reveal frame, matching the engine's server-side "hidden
+until resolved" discipline. GSAP (`gsap@^3.15.0`) was added as a new dependency, exactly as the
+tabletop-ui skill's prescribed stack anticipated, scoped to the one job CSS keyframes can't do
+cleanly — the staggered, callback-bearing reveal timeline — with every other visual (cubes, pips,
+glow, shroud) staying plain CSS; it is credited in `docs/CREDITS.md` and named here as required.
+A synchronous instant-mode rail (no timeline object created under reduced motion) keeps the settled
+DOM available on the very next render so the e2e suite can assert real state, not animation timing.
+`store.ts` and `format.ts` gained the read-model/formatting glue for the new scene, `hangout.spec.ts`
+was updated for the replaced Dare flow, and a new `liars-dice.spec.ts` e2e plus a
+`liars-dice-pane.test.ts` unit suite cover a full hand played end to end through real clicks. Scope
+boundary: capstone measurement of the new Dare's win-rate/EV is deliberately out of scope here and
+left to T-137, which depends on this task.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/LIARS-DICE_REDESIGN.md`, the T-135 engine sources, and th · attempts=1/4.
 
 ### T-137 · Capstone: measure the new Dare — `status: TODO` · `coder: opus` · `after: T-136`
 

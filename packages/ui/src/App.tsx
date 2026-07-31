@@ -1,6 +1,7 @@
 import {
   memo,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -8,6 +9,19 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
+// T-136 · THE ANIMATION DEPENDENCY, NEW TO THIS REPO (GSAP 3.15.0, GreenSock
+// Standard "No Charge" License — credited in `credits.ts` / `docs/CREDITS.md` and
+// named in the commit body). It earns its place on exactly one job: the Liar's
+// Dice REVEAL, a sequenced, staggered, callback-bearing timeline (dim the table →
+// lift the dealer's four shrouds in stagger → land the verdict) that CSS keyframes
+// can only fake with hand-tuned per-element delays. Everything static — the cubes,
+// the pips, the glow, the shroud — stays CSS.
+//
+// THE INSTANT RAIL IS LOAD-BEARING: under reduced motion the timeline is NEVER
+// CREATED (not "created and skipped"), so the settled DOM exists on the very next
+// render. That is what keeps the e2e honest and the tabletop-ui skill's
+// "every animation must also run in a synchronous instant mode" satisfied.
+import { gsap } from 'gsap';
 import {
   CARGO_TYPES,
   NEMESIS_SYSTEM_ID,
@@ -15,7 +29,16 @@ import {
   Stat,
   type HangoutVenueId,
 } from '@spacerquest/content';
-import type { GameState, CheckResult, StoryletOffer } from '@spacerquest/engine';
+import {
+  DARE_DICE_PER_SIDE,
+  DARE_MAX_FACE,
+  DARE_MAX_QUANTITY,
+  isLatticeMove,
+  type DareMoveKind,
+  type GameState,
+  type CheckResult,
+  type StoryletOffer,
+} from '@spacerquest/engine';
 import {
   subscribe,
   getSnapshot,
@@ -30,6 +53,10 @@ import {
   travelTo,
   explore,
   visitDare,
+  dareMove,
+  darePeek,
+  clearDareReveal,
+  clearDareBeats,
   visitSocial,
   borrowLoan,
   repayLoan,
@@ -72,6 +99,7 @@ import {
   hangoutVenueOffered,
   hangoutRumorLines,
   dareWagerBounds,
+  dareScene,
   lendingTerms,
   fuelPurchaseQuote,
   dawnHandModifiers,
@@ -125,6 +153,8 @@ import {
   richPresenceLine,
   presenceMessage,
   type SaveRecoveryNotice,
+  type DareRevealView,
+  type DareSceneView,
   type DemoBannerView,
   type DemoEndView,
   type EndingView,
@@ -760,6 +790,14 @@ export function App() {
   const hangoutAvailable =
     hangoutOpen(s.game) && !s.game.encounter && !s.combatAftermath && !ceremony;
 
+  // T-136 · A hand of Liar's Dice FORCES the pane open. While `dareHand` stands
+  // the engine refuses Trade / Travel / Shipyard / Storylet / Explore / a second
+  // VisitHangout with `ActionBlocked{active-dare-hand}`, so a player who closed
+  // the panel would have no legal verb left but Reroll / Crew / Port / End day.
+  // The panel is the only place the hand can be played from, so it stays mounted
+  // and loses its close control until the table settles.
+  const dareHandLive = s.game.dareHand !== null;
+
   // T-1505c · THE CAREER'S TERMINUS. Null until the engine says the career ended
   // (`careerEnded` → the ship is on the far side of the Nemesis shear); the UI
   // never decides this itself. Read AFTER every hook above, and rendered as an
@@ -890,8 +928,12 @@ export function App() {
               onClose={() => setOpenStoryletId(null)}
             />
           )}
-        {hangoutPanelOpen && hangoutAvailable && (
-          <HangoutPanel state={s} onClose={() => setHangoutPanelOpen(false)} />
+        {(hangoutPanelOpen || dareHandLive) && hangoutAvailable && (
+          <HangoutPanel
+            state={s}
+            onClose={() => setHangoutPanelOpen(false)}
+            locked={dareHandLive}
+          />
         )}
         <HandDock state={s} />
         {/* Contextual first-time coach prompt for the cockpit affordances. The
@@ -1805,7 +1847,20 @@ const SOCIAL_TITLES: Record<'meet' | 'befriend' | 'insult', string> = {
 // accessor — `hangoutHouse` (the authored prose) and `hangoutVenueOffered` (the
 // same `venueOffered` predicate `resolveVisitHangout` refuses on). There is no
 // per-port branch here and there must never be one.
-function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => void }) {
+function HangoutPanel({
+  state,
+  onClose,
+  locked,
+}: {
+  state: CockpitState;
+  onClose: () => void;
+  /** T-136 · A hand of Liar's Dice is on the table. The engine blocks Trade,
+   *  Travel, Shipyard, Storylet, Explore and a second VisitHangout behind
+   *  `ActionBlocked{active-dare-hand}` while it stands, so a closable panel would
+   *  leave the player with no legal verb but Reroll / Crew / Port / End day — a
+   *  soft-lock. The pane stays mounted and the close affordance goes away. */
+  locked: boolean;
+}) {
   const game = state.game;
   const npcs = hangoutNpcs(game);
   const rumors = hangoutRumorLines(game);
@@ -1813,7 +1868,9 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
   const terms = lendingTerms(game);
   const loan = game.player.loan;
   const armed = state.selectedDie !== null;
-  const dareOutcome = state.dareOutcome;
+  // T-136 · THE FOG PROJECTION, and the ONLY thing the live scene is given. It has
+  // no `dealerDice` field; see `format.ts`'s `DareSceneView`.
+  const scene = dareScene(game);
   const house = hangoutHouse(game);
   const socialOutcome = state.socialOutcome;
   const offers = (v: HangoutVenueId) => hangoutVenueOffered(game, v);
@@ -1824,14 +1881,16 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
   const [principal, setPrincipal] = useState(terms.minPrincipal);
   const [repayAmount, setRepayAmount] = useState(loan?.outstanding ?? terms.minPrincipal);
 
-  // Escape closes the panel (the StoryletPanel / Records convention).
+  // Escape closes the panel (the StoryletPanel / Records convention) — EXCEPT
+  // while a hand stands, for the reason `locked` documents.
   useEffect(() => {
+    if (locked) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, locked]);
 
   // T-133 (owner ruling D7) · the principal control tracks the LIVE port's band.
   // `useState(terms.minPrincipal)` is only correct on the render that mounted the
@@ -1877,14 +1936,16 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
         <h2 className="hp-title" data-testid="hangout-house">
           {house.houseName} · {systemName(game.player.currentSystemId)}
         </h2>
-        <button
-          className="sl-close"
-          data-testid="hangout-close"
-          aria-label="close"
-          onClick={onClose}
-        >
-          &times;
-        </button>
+        {!locked && (
+          <button
+            className="sl-close"
+            data-testid="hangout-close"
+            aria-label="close"
+            onClick={onClose}
+          >
+            &times;
+          </button>
+        )}
       </header>
 
       {/* The room-establishing line, when the port authors one. Absent ⇒ nothing
@@ -1909,86 +1970,84 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
         </div>
       )}
 
-      {/* ---- present NPCs (Dare opponent picker) ---- */}
-      <div className="hp-section">
-        <div className="hp-shead">AT THE TABLES</div>
-        {npcs.length === 0 ? (
-          <div className="hp-empty" data-testid="hangout-npc-empty">
-            The tables are empty tonight — no one to wager against.
-          </div>
-        ) : (
-          <ul className="hp-npcs">
-            {npcs.map((n) => (
-              <li key={n.id}>
-                <button
-                  className={chosen === n.id ? 'hp-npc on' : 'hp-npc'}
-                  data-testid="hangout-npc"
-                  data-npc-id={n.id}
-                  aria-pressed={chosen === n.id}
-                  onClick={() => setOpponentId(n.id)}
-                >
-                  <span className="hp-npc-name">{n.name}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {/* ---- present NPCs (Dare opponent picker) ----
+          T-136 · HIDDEN WHILE A HAND STANDS. The engine refuses EVERY
+          `VisitHangout` behind `ActionBlocked{active-dare-hand}` (`day.ts`), so the
+          opponent picker, the three social venues and Penny Wise's desk are all
+          dead affordances until the table settles — precisely the class of bug
+          `action-blocked-parity.spec.ts` exists to prevent. The rumor table is a
+          FREE read (no action, no die) and stays. */}
+      {!locked && (
+        <div className="hp-section">
+          <div className="hp-shead">AT THE TABLES</div>
+          {npcs.length === 0 ? (
+            <div className="hp-empty" data-testid="hangout-npc-empty">
+              The tables are empty tonight — no one to wager against.
+            </div>
+          ) : (
+            <ul className="hp-npcs">
+              {npcs.map((n) => (
+                <li key={n.id}>
+                  <button
+                    className={chosen === n.id ? 'hp-npc on' : 'hp-npc'}
+                    data-testid="hangout-npc"
+                    data-npc-id={n.id}
+                    aria-pressed={chosen === n.id}
+                    onClick={() => setOpponentId(n.id)}
+                  >
+                    <span className="hp-npc-name">{n.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
-      {/* ---- Spacer's Dare ---- */}
+      {/* ---- Liar's Dice (the Spacer's Dare) ----
+          T-136 · A THREE-STATE BLOCK. Idle: the wager input + "wager a die", which
+          is still how a hand OPENS. Live: the table itself, driven by
+          `dareScene`'s fog projection. Settled: the reveal frame, dismissible back
+          to idle. The three are mutually exclusive by construction — a hand is
+          open or it is not. */}
       <div className="hp-section hp-dare">
         <div className="hp-shead">SPACER&apos;S DARE</div>
         <VenueFlavour line={house.flavour.dare} venue="dare" />
-        <div className="hp-dare-controls">
-          <label className="hp-wager">
-            <span className="hp-k" data-testid="dare-wager-bounds">
-              WAGER {bounds.min}–{bounds.max} cr
-            </span>
-            <input
-              aria-label="wager amount"
-              data-testid="dare-wager"
-              inputMode="numeric"
-              value={wager}
-              onChange={(e) => setWager(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
-            />
-          </label>
-          <button
-            className="btn"
-            data-testid="dare-commit"
-            disabled={dareDisabledReason !== null}
-            title={dareDisabledReason ?? 'Roll opposed GUILE against the dealer'}
-            onClick={() => chosen && visitDare(chosen, wager)}
-          >
-            {dareDisabledReason ?? 'Wager a die'}
-          </button>
-        </div>
-        {dareOutcome && (
-          <div className="hp-dare-result" data-testid="dare-outcome">
-            {/* The honest-dice signature applied to gambling: BOTH opposed checks,
-                each read straight off the engine's StatCheck via CheckReadout. */}
-            <CheckReadout
-              key={`dp-${state.lastCheckKey}`}
-              stat={dareOutcome.player.stat}
-              result={dareOutcome.player.result}
-              label="YOU"
-              testid="dare-check-player"
-            />
-            <CheckReadout
-              key={`do-${state.lastCheckKey}`}
-              stat={dareOutcome.opponent.stat}
-              result={dareOutcome.opponent.result}
-              label={dareOutcome.opponent.npcName.toUpperCase()}
-              testid="dare-check-opponent"
-            />
-            <div
-              className={dareOutcome.playerWon ? 'hp-dare-verdict won' : 'hp-dare-verdict lost'}
-              data-testid="dare-result"
-              data-won={dareOutcome.playerWon ? '1' : '0'}
+        {scene === null && state.dareReveal === null && (
+          <div className="hp-dare-controls">
+            <label className="hp-wager">
+              <span className="hp-k" data-testid="dare-wager-bounds">
+                WAGER {bounds.min}–{bounds.max} cr
+              </span>
+              <input
+                aria-label="wager amount"
+                data-testid="dare-wager"
+                inputMode="numeric"
+                value={wager}
+                onChange={(e) => setWager(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
+              />
+            </label>
+            <button
+              className="btn"
+              data-testid="dare-commit"
+              disabled={dareDisabledReason !== null}
+              title={dareDisabledReason ?? 'Seat yourself and deal a hand of Liar’s Dice'}
+              onClick={() => chosen && visitDare(chosen, wager)}
             >
-              {dareOutcome.playerWon ? 'You took the hand' : 'The dealer took the hand'} ·{' '}
-              <b>{signedMargin(dareOutcome.creditsDelta)}cr</b>
-            </div>
+              {dareDisabledReason ?? 'Wager a die'}
+            </button>
           </div>
+        )}
+        {(scene !== null || state.dareReveal !== null) && (
+          <LiarsDiceScene
+            view={scene}
+            reveal={state.dareReveal}
+            beats={state.dareBeats}
+            armed={armed}
+            reduced={state.reducedMotion || systemPrefersReducedMotion()}
+            lastCheck={state.lastCheck}
+            lastCheckKey={state.lastCheckKey}
+          />
         )}
       </div>
 
@@ -2000,7 +2059,7 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
           introduction; the whole section disappears when a port runs none of the
           three. No per-port branch: the gate is one call, evaluated identically
           everywhere. */}
-      {socialVenues.length > 0 && (
+      {!locked && socialVenues.length > 0 && (
         <div className="hp-section hp-social">
           <div className="hp-shead">THE ROOM</div>
           {socialVenues.map((v) => (
@@ -2086,7 +2145,7 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
           difference the player actually sees is the principal band. The gate stays:
           a later row may close a desk again, and the pane must follow content
           either way. */}
-      {offers('borrow') && (
+      {!locked && offers('borrow') && (
         <div className="hp-section hp-lending">
           <div className="hp-shead">PENNY WISE&apos;S DESK</div>
           {/* The schedule, visible UP FRONT — no projected total (the engine still
@@ -2162,6 +2221,506 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
         </div>
       )}
     </section>
+  );
+}
+
+// =========================================================================
+// T-136 · THE LIAR'S DICE TABLE
+// (`docs/LIARS-DICE_REDESIGN.md`; the tabletop-ui house style)
+// =========================================================================
+//
+// THE HIDDEN-DICE RULE, STATED AS CODE DISCIPLINE — this is the claim the e2e
+// verifies, so it is written here rather than left to a reviewer's memory:
+//
+//   `LiarsDiceScene` receives a `DareSceneView` (the fog projection, which HAS NO
+//   `dealerDice` FIELD) and, separately, a `DareRevealView | null` built from the
+//   engine's own `DareHandResolved` event. A dealer cube is mounted from
+//   `DareRevealView.dealerDice` and from the single peeked die, AND FROM NOWHERE
+//   ELSE. There is no code path in this file from `game.dareHand.dealerDice` into
+//   JSX — the component is never handed the `GameState` at all.
+//
+// Before the reveal, each dealer slot is a SHROUD: an element that contains no
+// cube and carries no face data. `dare-dealer-die` therefore exists (four of
+// them, always — the table has four cups) with `data-hidden="1"` and NO
+// `data-face`, and `packages/ui/e2e/liars-dice.spec.ts` asserts exactly that at
+// three separate frames of a live hand.
+
+/** The canonical d6 pip layouts, as 3×3 grid cells. `a`..`g` are the seven
+ *  positions a standard die face uses; the CSS gives each a grid area. */
+const D6_PIPS: Readonly<Record<number, readonly string[]>> = Object.freeze({
+  1: ['d'],
+  2: ['a', 'g'],
+  3: ['a', 'd', 'g'],
+  4: ['a', 'b', 'f', 'g'],
+  5: ['a', 'b', 'd', 'f', 'g'],
+  6: ['a', 'b', 'c', 'e', 'f', 'g'],
+});
+
+/**
+ * A real CSS-3D d6 — six absolutely-positioned faces on a `preserve-3d` cube, no
+ * WebGL and no 3D-engine dependency. THE FACE IS SELECTED BY A TRANSFORM ON THE
+ * CUBE (`.d6[data-face]` in `theme.css`), never by re-ordering faces in the DOM:
+ * every face is always mounted in the same order, so a die "showing 4" is the
+ * same six elements a die "showing 1" is, rotated.
+ */
+function D6({ value, spin }: { value: number; spin?: boolean }) {
+  return (
+    <span className="d6-mount">
+      <span className={spin ? 'd6-spin settling' : 'd6-spin'}>
+        <span className="d6" data-face={value} aria-hidden="true">
+          {[1, 2, 3, 4, 5, 6].map((f) => (
+            <span key={f} className={`d6-face d6-f${f}`}>
+              {D6_PIPS[f].map((p) => (
+                <i key={p} className={`d6-pip d6-p${p}`} />
+              ))}
+            </span>
+          ))}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** The dealer's cup before the reveal: an opaque holo-shroud with NOTHING inside
+ *  it. Deliberately its own component so "the shroud has no cube" is one fact in
+ *  one place rather than a condition inside a bigger render. */
+function DealerShroud() {
+  return (
+    <span className="ld-shroud" aria-hidden="true">
+      <span className="ld-shroud-cup" />
+    </span>
+  );
+}
+
+const DARE_MOVE_LABEL: Readonly<Record<DareMoveKind, string>> = Object.freeze({
+  bid: 'Open the bidding',
+  'raise-face': 'Raise the face',
+  'raise-quantity': 'Raise the count',
+  'raise-both': 'Raise both',
+  challenge: 'Call the bluff',
+  fold: 'Fold',
+  peek: 'Peek',
+});
+
+const DARE_OUTCOME_LINE: Readonly<Record<string, string>> = Object.freeze({
+  'challenge-win': 'You took the pot',
+  'challenge-loss': 'The house took the pot',
+  'player-fold': 'You folded — the cup was never lifted',
+  'dealer-fold': 'The dealer folded — the cup was never lifted',
+  'timeout-fold': 'Dusk closed the table — the cup was never lifted',
+});
+
+function LiarsDiceScene({
+  view,
+  reveal,
+  beats,
+  armed,
+  reduced,
+  lastCheck,
+  lastCheckKey,
+}: {
+  /** The fog projection of the LIVE hand. Null once the hand settles. */
+  view: DareSceneView | null;
+  /** The settled frame, off `DareHandResolved`. Null while the hand stands. */
+  reveal: DareRevealView | null;
+  beats: CockpitState['dareBeats'];
+  armed: boolean;
+  reduced: boolean;
+  lastCheck: CockpitState['lastCheck'];
+  lastCheckKey: number;
+}) {
+  const sceneRef = useRef<HTMLDivElement | null>(null);
+  const timelineRef = useRef<gsap.core.Timeline | null>(null);
+  // The dealer's synchronous answer (§9.4) has already happened by the time this
+  // renders — there is no turn to wait for. This flag exists ONLY so the
+  // whose-turn readout can name the beat that is playing out of the queue.
+  const [dealerBeat, setDealerBeat] = useState(false);
+
+  const bid = reveal ? reveal.bid : (view?.bid ?? null);
+  const bidder = view?.bidder ?? null;
+  const dealerName = view?.dealerName ?? reveal?.dealerName ?? 'the dealer';
+  const playerDice = view ? view.playerDice : (reveal?.playerDice ?? []);
+  const revealedDealerDice = reveal?.dealerDice ?? null;
+  const dealerSlots = view
+    ? view.dealerDieCount
+    : // A settled FOLD reveals nothing (§6.1), so there is no revealed row to size
+      // from — the house always seats `DARE_DICE_PER_SIDE`, and the engine says so.
+      (revealedDealerDice?.length ?? DARE_DICE_PER_SIDE);
+  const history = view?.history ?? [];
+  const legal = view?.legalMoves ?? [];
+
+  // ---- the claim being composed (never a re-derivation of the lattice) ----
+  const [quantity, setQuantity] = useState(1);
+  const [face, setFace] = useState(1);
+  const bidKey = bid ? `${bid.quantity}x${bid.face}` : 'none';
+  useEffect(() => {
+    // Re-seed the composer whenever the standing claim moves: the cheapest legal
+    // raise is the sensible default, and the ceiling is the ENGINE's constant.
+    if (bid) {
+      setQuantity(Math.min(bid.quantity + 1, DARE_MAX_QUANTITY));
+      setFace(bid.face);
+    } else {
+      setQuantity(1);
+      setFace(1);
+    }
+  }, [bidKey]);
+
+  // ---- the dealer's answer, played as a beat (never awaited) ----
+  const beatKey = beats.map((b) => b.type).join('|') + `:${beats.length}`;
+  useEffect(() => {
+    const dealerAnswered = beats.some((b) => b.type === 'DareBidPlaced' && b.actor === 'dealer');
+    if (!dealerAnswered || reduced) {
+      // THE INSTANT RAIL: nothing is staged, the queue drains on this very render.
+      setDealerBeat(false);
+      clearDareBeats();
+      return;
+    }
+    setDealerBeat(true);
+    const t = setTimeout(() => {
+      setDealerBeat(false);
+      clearDareBeats();
+    }, 620);
+    return () => clearTimeout(t);
+  }, [beatKey, reduced]);
+
+  // The Hangout pane is a long scroll and the reveal is its dramatic moment; a
+  // verdict that lands below the fold is a verdict the player does not see. Bring
+  // the table into view whenever it opens or settles. `block: 'nearest'` so a
+  // scene already on screen is left exactly where it is.
+  useEffect(() => {
+    sceneRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [reveal, view === null]);
+
+  // ---- the reveal timeline (the one job the animation library has) ----
+  // Cinematic: dim the table, lift the four shrouds in stagger, land the verdict.
+  // Reduced: THE TIMELINE IS NEVER CREATED, so the settled DOM is final on this
+  // render — which is what makes the e2e non-flaky and the UI never input-blocked.
+  useLayoutEffect(() => {
+    const root = sceneRef.current;
+    if (!root || !reveal || reduced) return;
+    const cubes = root.querySelectorAll('.ld-dealer .d6-mount');
+    const verdict = root.querySelector('.ld-verdict');
+    const tl = gsap.timeline();
+    timelineRef.current = tl;
+    tl.fromTo(root, { '--ld-dim': 0 }, { '--ld-dim': 1, duration: 0.28, ease: 'power2.out' });
+    tl.from(
+      cubes,
+      { opacity: 0, y: -14, scale: 0.82, duration: 0.42, stagger: 0.13, ease: 'power3.out' },
+      '<0.1',
+    );
+    if (verdict) tl.from(verdict, { opacity: 0, y: 8, duration: 0.4, ease: 'power2.out' }, '-=0.1');
+    tl.to(root, { '--ld-dim': 0, duration: 0.5, ease: 'power2.inOut' });
+    return () => {
+      tl.kill();
+      timelineRef.current = null;
+    };
+  }, [reveal, reduced]);
+
+  const canMove = (m: DareMoveKind) => legal.includes(m);
+  const claimOk = (m: DareMoveKind, q: number, f: number) => isLatticeMove(bid, m, q, f);
+
+  return (
+    <div
+      className="ld-scene"
+      data-testid="dare-scene"
+      ref={sceneRef}
+      // The decoration is SKIPPABLE, never awaited: a click lands the timeline.
+      // (`progress()` returns the timeline for chaining, hence the discard.)
+      onClick={() => {
+        timelineRef.current?.progress(1);
+      }}
+    >
+      {/* ---- the house's side of the table ---- */}
+      <div className="ld-side ld-dealer">
+        <div className="ld-seat" data-testid="dare-dealer-name">
+          {dealerName.toUpperCase()}
+        </div>
+        <div className="ld-dice">
+          {Array.from({ length: dealerSlots }, (_, i) => {
+            // THE ONLY TWO SOURCES OF A DEALER FACE, both from the engine:
+            const shown =
+              revealedDealerDice?.[i] ??
+              (view?.peeked && view.peeked.index === i ? view.peeked.value : null);
+            const peeked = !revealedDealerDice && shown !== null;
+            return (
+              <span
+                key={i}
+                // `dare-dealer-face` is a REVEAL-ONLY class — it exists in the
+                // markup on the settled challenge frame and at no other moment,
+                // which is what lets the e2e sweep the scene's whole innerHTML for
+                // the string instead of trusting a selector.
+                className={
+                  revealedDealerDice
+                    ? 'ld-die dare-dealer-face'
+                    : peeked
+                      ? 'ld-die peeked'
+                      : 'ld-die hidden'
+                }
+                data-testid="dare-dealer-die"
+                {...(shown === null ? { 'data-hidden': '1' } : { 'data-face': String(shown) })}
+                {...(peeked ? { 'data-peeked': '1' } : {})}
+              >
+                {shown === null ? <DealerShroud /> : <D6 value={shown} spin={!reduced} />}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ---- the table itself: the standing claim + whose call it is ---- */}
+      <div className="ld-table">
+        {bid ? (
+          <div
+            className="ld-bid"
+            data-testid="dare-bid"
+            data-quantity={String(bid.quantity)}
+            data-face={String(bid.face)}
+          >
+            <b>{bid.quantity}</b>
+            <span className="ld-x">&times;</span>
+            <b>{bid.face}</b>
+            <span className="ld-bid-owner">
+              {reveal
+                ? 'the standing claim'
+                : bidder === 'player'
+                  ? 'your claim'
+                  : `${dealerName}’s claim`}
+            </span>
+          </div>
+        ) : (
+          <div className="ld-bid empty">NO CLAIM ON THE TABLE</div>
+        )}
+        {view && (
+          <div
+            className="ld-turn"
+            data-testid="dare-turn"
+            data-actor={dealerBeat ? 'dealer' : 'player'}
+          >
+            {dealerBeat ? 'THE DEALER ANSWERS…' : 'YOUR CALL'}
+          </div>
+        )}
+      </div>
+
+      {/* ---- your side ---- */}
+      <div className="ld-side ld-player">
+        <div className="ld-seat">YOUR HAND</div>
+        <div className="ld-dice">
+          {playerDice.map((v, i) => (
+            <span
+              key={i}
+              className="ld-die"
+              data-testid="dare-player-die"
+              data-face={String(v)}
+              aria-label={`your die ${i + 1}, showing ${v}`}
+            >
+              <D6 value={v} spin={!reduced} />
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* ---- the ledger. Every number off the projection / the event; the ante
+              and the headroom are the ENGINE's `anteFor` / `headroomFor`. ---- */}
+      {view && (
+        <div className="ld-ledger">
+          <span className="ld-cell">
+            SEED <b>{view.seedWager}</b>
+          </span>
+          <span className="ld-cell" data-testid="dare-ante">
+            ANTE <b>{view.ante}</b>
+          </span>
+          <span className="ld-cell" data-testid="dare-pot-player">
+            YOUR STAKE <b>{view.potPlayer}</b>
+          </span>
+          <span className="ld-cell" data-testid="dare-pot-dealer">
+            HOUSE STAKE <b>{view.potDealer}</b>
+          </span>
+          <span className="ld-cell" data-testid="dare-headroom">
+            ROOM LEFT <b>{view.playerHeadroom}</b>
+          </span>
+        </div>
+      )}
+
+      {/* ---- the public record of the hand ---- */}
+      {history.length > 0 && (
+        <ol className="ld-history" data-testid="dare-history">
+          {history.map((h, i) => (
+            <li
+              key={i}
+              className={h.actor === 'player' ? 'ld-hrow you' : 'ld-hrow house'}
+              data-testid="dare-history-entry"
+              data-actor={h.actor}
+              data-move={h.move}
+            >
+              <span className="ld-hactor">{h.actor === 'player' ? 'YOU' : 'HOUSE'}</span>
+              <span className="ld-hclaim">
+                {h.quantity} &times; {h.face}
+              </span>
+              <span className="ld-hmove">{DARE_MOVE_LABEL[h.move]}</span>
+              <span className="ld-hante">{h.antePaid > 0 ? `−${h.antePaid}cr` : '—'}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {/* ---- the peek's honest roll, when one was made ---- */}
+      {view && lastCheck && lastCheck.context === 'gamble' && (
+        <CheckReadout
+          key={`peek-${lastCheckKey}`}
+          stat={lastCheck.stat}
+          result={lastCheck.result}
+          label="PEEK"
+          testid="dare-peek-check"
+        />
+      )}
+
+      {/* ---- the controls, rendered FROM `legalDareMoves` ----
+              One button per legal KIND, and every composed claim validated with the
+              engine's own `isLatticeMove`. There is no arithmetic here deciding
+              what may be claimed — that would be the pane owning a rule. */}
+      {view && (
+        <div className="ld-moves">
+          {(canMove('bid') || canMove('raise-quantity') || canMove('raise-both')) && (
+            <label className="ld-input">
+              <span className="ld-k">COUNT</span>
+              <input
+                aria-label="claim quantity"
+                data-testid="dare-quantity"
+                inputMode="numeric"
+                data-max={String(DARE_MAX_QUANTITY)}
+                value={quantity}
+                onChange={(e) => setQuantity(Number.parseInt(e.target.value, 10) || 0)}
+              />
+            </label>
+          )}
+          {canMove('bid') && (
+            <label className="ld-input">
+              <span className="ld-k">FACE</span>
+              <input
+                aria-label="claim face"
+                data-testid="dare-face"
+                inputMode="numeric"
+                data-max={String(DARE_MAX_FACE)}
+                value={face}
+                onChange={(e) => setFace(Number.parseInt(e.target.value, 10) || 0)}
+              />
+            </label>
+          )}
+          {canMove('bid') && (
+            <button
+              className="btn"
+              data-testid="dare-move"
+              data-move="bid"
+              disabled={!claimOk('bid', quantity, face)}
+              title={`Claim ${quantity} × ${face} across all eight dice`}
+              onClick={() => dareMove('bid', quantity, face)}
+            >
+              {DARE_MOVE_LABEL.bid} · {quantity}&times;{face}
+            </button>
+          )}
+          {canMove('raise-quantity') && bid && (
+            <button
+              className="btn"
+              data-testid="dare-move"
+              data-move="raise-quantity"
+              disabled={!claimOk('raise-quantity', quantity, bid.face)}
+              title={`Raise to ${quantity} × ${bid.face} for ${view.ante}cr`}
+              onClick={() => dareMove('raise-quantity', quantity, bid.face)}
+            >
+              {DARE_MOVE_LABEL['raise-quantity']} · {quantity}&times;{bid.face}
+            </button>
+          )}
+          {canMove('raise-face') && bid && (
+            <button
+              className="btn"
+              data-testid="dare-move"
+              data-move="raise-face"
+              title={`Raise to ${bid.quantity} × ${bid.face + 1} for ${view.ante}cr`}
+              onClick={() => dareMove('raise-face', bid.quantity, bid.face + 1)}
+            >
+              {DARE_MOVE_LABEL['raise-face']} · {bid.quantity}&times;{bid.face + 1}
+            </button>
+          )}
+          {canMove('raise-both') && bid && (
+            <button
+              className="btn"
+              data-testid="dare-move"
+              data-move="raise-both"
+              disabled={!claimOk('raise-both', quantity, bid.face + 1)}
+              title={`Raise to ${quantity} × ${bid.face + 1} for ${2 * view.ante}cr`}
+              onClick={() => dareMove('raise-both', quantity, bid.face + 1)}
+            >
+              {DARE_MOVE_LABEL['raise-both']} · {quantity}&times;{bid.face + 1}
+            </button>
+          )}
+          {canMove('peek') && (
+            <button
+              className="btn ghost"
+              data-testid="dare-move"
+              data-move="peek"
+              disabled={!armed}
+              title={
+                armed
+                  ? `Spend a second die on a GUILE ${view.peekDc} check to see one of the house’s dice`
+                  : 'Pick a second die to peek'
+              }
+              onClick={() => darePeek()}
+            >
+              {DARE_MOVE_LABEL.peek} · DC {view.peekDc}
+            </button>
+          )}
+          {canMove('challenge') && (
+            <button
+              className="btn"
+              data-testid="dare-move"
+              data-move="challenge"
+              title="Call the bluff — all eight dice come up"
+              onClick={() => dareMove('challenge')}
+            >
+              {DARE_MOVE_LABEL.challenge}
+            </button>
+          )}
+          {canMove('fold') && (
+            <button
+              className="btn ghost"
+              data-testid="dare-move"
+              data-move="fold"
+              title="Pay the table and leave — the cup is never lifted"
+              onClick={() => dareMove('fold')}
+            >
+              {DARE_MOVE_LABEL.fold}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ---- the settled frame ---- */}
+      {reveal && (
+        <div className="ld-reveal" data-testid="dare-reveal" data-outcome={reveal.outcome}>
+          <div className={reveal.creditsDelta >= 0 ? 'ld-verdict won' : 'ld-verdict lost'}>
+            {DARE_OUTCOME_LINE[reveal.outcome] ?? reveal.outcome}
+            {reveal.actualCount !== null && reveal.bid && (
+              <span className="ld-count">
+                {' '}
+                · the table showed <b>{reveal.actualCount}</b> of face {reveal.bid.face} against a
+                claim of <b>{reveal.bid.quantity}</b>
+              </span>
+            )}
+          </div>
+          <div className="ld-deltas">
+            <span data-testid="dare-credits-delta" data-delta={String(reveal.creditsDelta)}>
+              <b>{signedMargin(reveal.creditsDelta)}cr</b>
+            </span>
+            <span data-testid="dare-disposition-delta" data-delta={String(reveal.dispositionDelta)}>
+              {reveal.dealerName} · <b>{signedMargin(reveal.dispositionDelta)}</b> warmth
+            </span>
+          </div>
+          <button className="btn" data-testid="dare-leave" onClick={() => clearDareReveal()}>
+            Leave the table
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -4074,8 +4633,13 @@ function HandDock({ state }: { state: CockpitState }) {
   }, [state.bloomDie]);
 
   const handSpent = dice.length > 0 && remaining === 0;
-  const hint =
-    remaining === 0
+  // T-136 · A live hand of Liar's Dice outranks every other hint: `endDay`'s dusk
+  // clause resolves an open hand as a player fold (§6.2), which costs the seed and
+  // every ante already paid. That must never be a surprise.
+  const dareHandLive = state.game.dareHand !== null;
+  const hint = dareHandLive
+    ? 'A hand is live at the tables — play it out. Ending the day folds it and forfeits the pot.'
+    : remaining === 0
       ? 'Hand empty. Close the day — dusk moves the galaxy.'
       : state.notice
         ? state.notice

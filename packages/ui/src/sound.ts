@@ -582,6 +582,22 @@ export function cuesForEvents(events: GameEvent[]): Cue[] {
           failDone = true;
         }
         break;
+      // T-136 · The Liar's Dice table. Foley for the two beats that have one: a
+      // claim landing on the boards, and a hand that cost the captain money.
+      // Additive — this switch has a `default: break`, so T-135's scene events
+      // were already silent rather than broken.
+      case 'DareBidPlaced':
+        if (!diceDone) {
+          cues.push('dice');
+          diceDone = true;
+        }
+        break;
+      case 'DareHandResolved':
+        if (e.creditsDelta < 0 && !failDone) {
+          cues.push('fail');
+          failDone = true;
+        }
+        break;
       case 'ShipyardFail':
         if (!failDone) {
           cues.push('fail');
