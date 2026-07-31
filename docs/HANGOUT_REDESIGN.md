@@ -158,6 +158,18 @@ The flag has **six independent readers** in `src`, and this list is what makes �
 
 ### 1.4 What the player can actually reach today — stated honestly, because §6 depends on it
 
+> **RECORD CORRECTION (T-132, 2026-07-31): NO LONGER TRUE, AND DELIBERATELY SO.** T-132 added
+> `visitSocial` (`packages/ui/src/store.ts`) and the `hangout-social` controls
+> (`packages/ui/src/App.tsx`), so the pane now exposes **six of the seven venues** — `dare`,
+> `meet`, `befriend`, `insult`, the free rumor table and Penny Wise's desk. The grep for
+> `befriend` / `insult` / `'meet'` under `packages/ui/src` now returns real dispatch sites. The
+> seventh, `rumor`, is still not dispatchable and never will be: it spends a die to emit exactly
+> the `hangoutRumors` lines the pane already renders for free every frame, so a paid control
+> would be strictly dominated by one already on screen. The paragraph below is kept as the
+> historical statement §6's argument was built on. Asserted by
+> `packages/ui/e2e/hangout.spec.ts` ("meet, befriend and insult are each dispatchable at the
+> Long Table").
+
 The T-1404 pane exposes **`dare`, the rumor table and the Penny Wise desk** and nothing else:
 `packages/ui/src/store.ts` builds exactly three venues (`:1269` `'dare'`, `:1342` `'borrow'`,
 `:1378` `'repay'`), and a grep for `befriend` / `insult` / `'meet'` under `packages/ui/src`
@@ -323,6 +335,48 @@ per-port principal band, rate or term would be a *second lender* — a new rule 
 places out of scope. **Rejected:** a `lending` block on `PortHangout`. A port that wants to
 feel usurious expresses it in `prose` and by *not* offering the desk.
 
+**AMENDED (T-133, owner ruling D7, 2026-07-31) — the first sentence, and only the first
+sentence.** The band does **not** stay global; the **rate, the term and the lender do**. D7
+splits the ruling along the line the original argument actually supports:
+
+- **Still global, and still a rule:** `LOAN_DAILY_RATE`, `LOAN_TERM_DAYS`, `LENDER_ID` and the
+  single `LoanState` slot. There is exactly one lender of record, one schedule and one marker,
+  at every port, forever. The "a second lender is a new rule" objection is untouched by this
+  amendment and remains the reason a per-port *rate* is still refused.
+- **Now content:** `PortHangout.loanBand` — a `{ min, max }` the engine clamps a requested
+  principal into, resolved whole against `DEFAULT_PORT_HANGOUT` exactly as `wager` is, and
+  read through one new accessor (`loanBandFor`, `engine/hangoutRules.ts`) beside
+  `wagerBandFor`. **A band is a clamp, not a counterparty.** It adds no state, no event, no
+  second ledger and no branch: the borrow arm's algebra is the same three-term
+  `Math.max(min, Math.min(max, requested))` it always was, with the two bounds coming from the
+  port instead of from two imported constants. That is the same move ruling 2 already makes
+  for the Dare's stake band, and it is why this is an amendment rather than a repeal.
+
+**What the amendment costs, recorded rather than discovered later.** Per-port control over
+lending is no longer "exactly one bit" — a row can now withhold the desk *or* narrow it, and
+T-133 uses the second because the first was the only vocabulary available before. Arcturus-6's
+garrison mess re-adds `'borrow'`/`'repay'` alongside a 250/1000 band, so **no authored row
+withholds a lending venue any more** and `LoanEvent{failReason:'venue-not-offered'}` is once
+again unreachable from content (the F-120-1 situation, reached by an amendment rather than by
+an oversight). The resolver arm and its schema mirror stay — the bit is still there for a
+later row — and the two social withholdings (Deneb-4's `meet`, Spica-3's `insult`) still drive
+the `HangoutEvent` variant for real.
+
+**What the amendment BUYS, and it is the reason the owner made it.** F-123-2 is closed. A
+withheld desk meant a captain who arrived at Arcturus-6 with an empty purse and a dry tank had
+no §7.5 bad-day out at all and stayed stranded there; a *tight* desk is an out that costs more
+trips. `packages/sim/src/__tests__/lending-property.test.ts` now asserts the positive — the
+shallowest band in the galaxy still clears a strand.
+
+**LOGGED, NOT CHOSEN:** a per-port *interest rate*. It was raised alongside the band and is
+refused for the original ruling's own reason — a port that charges its own price is a second
+lender of record, and `LoanState` carries one `dailyRate` because there is one lender. If a
+usurious port is ever wanted, it is a new rule and it needs its own task.
+
+**NOT RE-PRICED HERE.** The 1,000cr ceiling on Arcturus-6 is a first-pass **content** call, not
+a tuning verdict; §8's R-ownership of `LOAN_MIN_PRINCIPAL` / `LOAN_MAX_PRINCIPAL` is unchanged,
+and T-150 owns the read.
+
 **(6) Exactly one new engine event value: `'venue-not-offered'`.** See §2.6.
 
 ### 2.3 Sun-3 is `DEFAULT_PORT_HANGOUT` plus prose — the behaviour-preserving proof
@@ -441,7 +495,8 @@ confirm it stays green.
 | 31 | The rumor templates, quiet template and empty line | `content/hangout.ts:138–176` | | ● |
 | 32 | The clientele draw list | — (new) | | ● |
 | 33 | House name, tone register, per-venue flavour prose, room line | — (new) | | ● |
-| 34 | The global loan band, rate, term and `LENDER_ID` | `content/lending.ts:56–92` | | ● |
+| 34 | The loan band — **per port** since T-133/D7: `PortHangout.loanBand`, defaulting to `LOAN_MIN_PRINCIPAL` / `LOAN_MAX_PRINCIPAL` | `content/portHangouts.ts` + `content/lending.ts:76–77` | | ● |
+| 34b | The loan rate, term and `LENDER_ID` — still GLOBAL (D7 amended only the band) | `content/lending.ts:56–92` | | ● |
 | 35 | `hasHangout` itself | `content/systems.ts:37` | | ● |
 
 **Every behaviour in today's resolver appears exactly once.** Rows 1–22 are the whole of
@@ -456,7 +511,9 @@ confirm it stays green.
 > move to content**. The same split holds for every other pair on the table: the wager *band*
 > is content, the wager *clamp algebra* is engine; the befriend *DC* is content, the *check*
 > and the success-gates-the-delta rule are engine; the *loan band* is content, the *ledger* is
-> engine.
+> engine. **(T-133/D7: the last of those is now literally true of a per-port row —
+> `PortHangout.loanBand`, read by `loanBandFor` — and not merely of a global constant. The
+> rate, the term and the lender stay engine-side reads of global content.)**
 
 The mechanical form of the constraint: after T-120, `packages/content/src/portHangouts.ts`
 contains no `if (`, and `packages/engine/src/actions/hangout.ts` contains no port id — the
@@ -728,7 +785,7 @@ Keyed to real ids from `packages/content/src/systems.ts`. Concept **labels** onl
 
 | id | System | Concept label | Axis notes |
 | --- | --- | --- | --- |
-| 4 | Arcturus-6 | the garrison mess (`the Garrison Mess`, `dangerous`) | the strict-governance port: high DCs, punitive insult, **no desk**. Shipped: venues minus `borrow`/`repay`, band 100/400, befriend DC 16 / +2, insult −9, dare +1/−7, meet **0**, clientele `veteran`+`fighter` |
+| 4 | Arcturus-6 | the garrison mess (`the Garrison Mess`, `dangerous`) | the strict-governance port: high DCs, punitive insult, **tight credit**. Shipped (RE-AUTHORED at T-133/D7): **all seven venues** + **`loanBand` 250/1000** — the first per-port loan band in the game and the lowest ceiling in the galaxy; band 100/400, befriend DC 16 / +2, insult −9, dare +1/−7, meet **0**, clientele `veteran`+`fighter`. *Until T-133 it withheld `borrow`/`repay` instead; D7 moved the identity from the venue-set axis to the new credit axis (see §2.2 ruling 5's amendment and F-123-2's resolution).* |
 | 5 | Deneb-4 | the partisan hall (`the Standing Hall`, `exotic`) | `regulars` list, wide band, asymmetric dare consequence. Shipped: **also omits `meet`** — §6.1's "a room that will not seat a stranger", taken in the open so the venue-set axis is not carried by hostility alone; band 25/2000, befriend DC 14 / +5, insult −6, dare +1/−6, regulars = the four Astro League captains |
 | 11 | Regulus-6 | the high table (`the High Table`, `exotic`) | the high-roller room: `wager.min` prices out a Tour One captain (see **F-101-1** and its T-123 addendum). Shipped: band 500/3000 — the only band strictly outside the default envelope at both ends and the highest floor in the game; befriend DC 15, insult −5, dare +1/−3, regulars Nebula Rose + Neon Fox |
 | 12 | Rigel-8 | the underbelly (`the Underhold`, `dangerous`) | low `min`, high ceiling, smuggler/gambler clientele. Shipped: band **10/3000 — the widest SPAN in the galaxy**, which is the claim T-123 pins rather than "the lowest floor": Mira-9's dive (T-122, floor 5) still holds that, and a dive has no ceiling worth the name. The ceiling deliberately matches the high table's — the money is the same money; befriend DC 8 (cheapest room to charm), insult −8 |
@@ -927,6 +984,14 @@ T-130 collects these; the owner rules on whether they earn a richer surface.
 
 ### Finding F-101-4 · Three of the six social venues have no player UI
 
+> **RECORD CORRECTION (T-132, 2026-07-31): CLOSED.** The three venues are dispatchable through
+> the real UI: `visitSocial` (`packages/ui/src/store.ts`) behind the `hangout-social` controls
+> in `HangoutPanel` (`packages/ui/src/App.tsx`), each gated on the engine's own `venueOffered`
+> so the pane can never advertise a venue the resolver would refuse. Asserted by
+> `packages/ui/e2e/hangout.spec.ts` — "meet, befriend and insult are each dispatchable at the
+> Long Table" (real clicks: pick the dealer, arm a die, click the venue, read the engine's
+> readout), plus "a hall that seats no stranger offers no introduction" for the withheld case.
+
 `meet`, `befriend` and `insult` are reachable from the engine, the schema and the UGT protocol
 but **not from the cockpit** (§1.4). A port that differentiates itself on those three venues'
 DCs and deltas differentiates itself for the simulation and not for the player.
@@ -938,6 +1003,12 @@ in `befriend` / `insult` parameters while this is true.
 
 ### Finding F-101-5 · The pane's NPC list does not filter the dead
 
+> **RECORD CORRECTION (T-132, 2026-07-31): CLOSED.** `hangoutNpcs` (`packages/ui/src/format.ts`)
+> now filters `!n.dead` before handing the set to `rankClientele`, honouring that function's
+> stated contract ("the caller passes the ALREADY-FILTERED live in-system, non-dead set").
+> Asserted by `packages/ui/src/__tests__/hangout-pane.test.ts` over a mixed live/dead roster —
+> including a dead NPC OUT of system, so an accidentally-identity filter cannot pass.
+
 `hangoutNpcs` (`packages/ui/src/format.ts:277–281`) filters only on `currentSystemId`, while
 the engine's opponent resolution also requires `!n.dead` (`hangout.ts:176–178`). So the pane
 can offer a dead captain as a Dare opponent, and the engine correctly answers
@@ -947,6 +1018,16 @@ folded into T-121's UI touch (it is the task that makes the pane reachable at sc
 reported to T-130 if T-121 chooses to keep its diff to the reach change alone.
 
 ### Finding F-101-6 · `prose` has no reader — every authored house is invisible
+
+> **RECORD CORRECTION (T-132, 2026-07-31): CLOSED.** All three prose fields now render.
+> `hangoutHouse` (`packages/ui/src/format.ts`) reads the row through the engine's
+> `portHangoutFor`, so a rowless port falls back to `DEFAULT_PORT_HANGOUT` rather than to a
+> UI-side default: `houseName` replaces the generic pane header (`hangout-house`), `roomLine`
+> is a standing line under it (`hangout-room-line`, rendered only when authored — never a
+> placeholder), and `flavour[venue]` renders beside each venue's controls (`hangout-flavour`,
+> `data-venue`). Asserted by `packages/ui/e2e/hangout.spec.ts` ("the house speaks", against the
+> content row rather than a literal) and by `packages/ui/src/__tests__/hangout-pane.test.ts`
+> (the authored port, a second differently-voiced port, and the rowless fallback).
 
 **Found by T-122, reported and not fixed.** `HangoutProse.houseName`, `.roomLine` and
 `.flavour` are authored by T-120 (Sun-3), by T-121 (thirteen baseline house names) and now by
@@ -969,6 +1050,11 @@ standing constraint, and a UI edit here would move `packages/ui/e2e/hangout.spec
 for **T-130** alongside F-101-4 and F-101-5 — the three are one surfacing job, not three.
 
 ### Finding F-121-2 · The reach change put the onboarding coach out at 14 of 28 ports — **ESCALATED, NOT FIXED**
+
+> **RECORD CORRECTION (T-130 gate, 2026-07-31): CLOSED.** Fixed by commit `125fc84f`
+> (mount-aware onboarding coach); `onboarding.spec.ts` re-run at the gate, 14/14 green. The
+> heading above is kept as the historical record of the escalation; see `docs/0.5.2-REVIEW.md`
+> §8 for the closure evidence.
 
 **Found by T-122 while running the gate; reproduced at the T-121 commit with T-122's diff
 stashed, so it is a T-121 regression and not a consequence of any authored row.** Three
@@ -1039,6 +1125,29 @@ Regulus-6 saturation, and a Regulus-6 count that rises with career age rather th
 
 ### Finding F-123-1 · The Hangout pane offers a credit desk at a port that has none — **REPORTED, NOT FIXED**
 
+> **RECORD CORRECTION (T-132, 2026-07-31): CLOSED, both halves.** (1) The whole `hp-lending`
+> block is gated on `hangoutVenueOffered(game, 'borrow')` — a pure pass-through to the engine's
+> `venueOffered` — and the repay controls on `'repay'` independently, so Arcturus-6 shows no
+> desk at all rather than a desk that refuses. Asserted by `packages/ui/e2e/hangout.spec.ts`
+> ("a port with no credit desk shows none"; the offering case stays covered by the existing
+> Sun-3 loan test) and by the 14-ports × 7-venues agreement table in
+> `packages/ui/src/__tests__/hangout-pane.test.ts`. (2) The prose moved to
+> `hangoutFailExplanation` / `loanFailExplanation` (`packages/ui/src/format.ts`), both
+> exhaustive `switch`es with **no `default`** — the T-131 mechanism — so `'venue-not-offered'`
+> now renders *"No one here takes that kind of wager."* and *"There is no credit desk in this
+> room."* instead of `null` and of the misleading *"Penny Wise turned that request down."*
+> Asserted reason-by-reason over both full unions in `hangout-pane.test.ts`.
+>
+> **FOLLOW-ON (T-133, owner ruling D7, 2026-07-31).** The gate above is unchanged and still
+> load-bearing, but its e2e witness had to move: Arcturus-6 now RUNS its desk (against a
+> 250/1000 band), so "a port with no credit desk shows none" was asserting a fact that no
+> longer exists. The test was **inverted**, not deleted — it now flies to the garrison mess,
+> reads the port's own ceiling off the terms line, fills the principal control with the
+> galaxy's ceiling, arms a die, clicks Borrow, and asserts the marker came back at the
+> *clamped* amount. That is a strictly stronger witness: an absence is proved by counting
+> elements, a clamp has to be driven. The 14 × 7 agreement table is untouched and now records
+> two narrowings instead of three.
+
 **Found by T-123, whose Arcturus-6 row is the first to withhold a venue.** The cockpit gates the
 Penny Wise desk on `hangoutOpen` alone — `packages/ui/src/format.ts:340` reads
 `STAR_SYSTEMS[id].hasHangout`, and `packages/ui/src/store.ts`'s `borrowLoan` (`:1333`) and
@@ -1099,6 +1208,17 @@ guarantee the galaxy makes everywhere?* Note that the exposure is bounded — Ar
 of fourteen, the other thirteen run desks, and no driven career in the 10-seed × 120-day
 measurement produced a single `venue-not-offered` event (see F-123-3's rig) — so this is a
 design question, not an observed regression.
+
+**RESOLVED (T-133, owner ruling D7, 2026-07-31): the desk is a guarantee, and the way a port
+says "tight credit" is a NUMBER.** The owner answered the question above with the third option
+neither repair above could reach: not a predicate and not an engine floor, but a **content
+band**. §2.2 ruling 5 is amended so a row carries `loanBand`, Arcturus-6 re-adds
+`'borrow'`/`'repay'` alongside a 250/1000 ceiling, and every travelable port now runs a desk.
+`lending-property.test.ts` asserts the **positive** in place of the strand: the shallowest band
+in the galaxy still clears a state that cannot afford the cheapest jump — driven at the port
+the harness *finds* to be tightest, not at a named id. The old desk-less test is gone because
+the fact it recorded is gone; the finding stays on the page because the resolution is only
+legible beside the problem.
 
 ### Finding F-123-3 · The gambler's second hand of the day can be a ZERO-credit stake
 
@@ -1178,7 +1298,11 @@ satisfy**, now enforced.
 - **The three defects** (§5), each with its deferral reason and this track's obligations.
 - **The lending band's tuning.** `LOAN_MIN_PRINCIPAL` / `LOAN_MAX_PRINCIPAL` /
   `LOAN_DAILY_RATE` / `LOAN_TERM_DAYS` are R-owned and were ratified at T-1603b. §2.2 ruling 5
-  keeps them global; it does not re-price them.
+  keeps `LOAN_DAILY_RATE` and `LOAN_TERM_DAYS` global and does not re-price any of them.
+  **AMENDED (T-133, owner ruling D7, 2026-07-31):** the two principal constants are now the
+  *default* band rather than the only one — `PortHangout.loanBand` lets a row narrow it, and
+  Arcturus-6 is the first to. Their VALUES are still R-owned and still un-re-priced here, and
+  the per-port ceiling authored at T-133 is a first-pass content call for T-150 to read.
 - **The Dare's own balance.** `DARE_MIN_WAGER` / `DARE_MAX_WAGER` and the four disposition
   constants keep their T-1603b values as `DEFAULT_PORT_HANGOUT`. Per-port bands are content
   authoring, not a re-tune of the default.
@@ -1359,7 +1483,11 @@ is an absence by construction, not a measured rate: no shipped sim policy plans 
 player UI offers them (**F-101-4**). Nothing in this appendix speaks to what those three venues
 would do if surfaced. That is T-130's question.
 
-**`venue-not-offered` re-confirmed at 3.9× T-123's sample and still zero.** T-123 authored
+**`venue-not-offered` re-confirmed at 3.9× T-123's sample and still zero.** *(Measured at
+T-125. T-133/D7 has since re-opened Arcturus-6's desk against a tight `loanBand`, so the
+withheld-desk arm this paragraph describes no longer exists in content; the count it reports
+was zero then and is structurally zero now for a second reason. Left as measured — an appendix
+records what was seen on the day.)* T-123 authored
 Arcturus-6 with no credit desk and measured zero refusals in driven careers; at 16,783 actions
 the count is still 0, so the honest statement is `< 1/16,783` (< 0.006%), per standing
 amendment 1's corollary. The reason is structural rather than lucky: `isLendingDeskSystem`
@@ -1447,6 +1575,15 @@ Two secondary readings from the same table:
   decay rule working, not drift.
 
 ### 10.4 Disposition in `chooseWeighted` — the headline
+
+> **RE-MEASURED AFTER THE LIAR'S DICE REDESIGN — see `docs/LIARS-DICE_REDESIGN.md` §16.6 (T-137,
+> 2026-07-31).** The AFTER column below was measured against the opposed-d20 Dare, which M4d
+> replaced. Same instrument, same 960-run arm, same seeds: the gambler's wronged-captain share
+> **rose from 29.28% to 47.50%** and inertness fell from 31.65% to 23.52%. §7.5's four preserved
+> properties all held, so this is the *distribution over the three arms* moving, not a property
+> violation — but §16.6 files it as **finding F-137-2**, because the growth is a symptom of the
+> broken 94.66% win rate (F-137-1) rather than an independent win: the lift over *uniform*, which
+> is the part that measures the weighting itself, slipped 2.956× → 2.623×. Nothing was retuned.
 
 **Method — a counterfactual RE-DERIVATION of the draw, never a re-roll.** For every
 `EncounterStarted` on the player's path — and there is exactly one emitter, `travel.ts:688`, so

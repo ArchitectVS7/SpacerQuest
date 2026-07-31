@@ -11,17 +11,23 @@ import {
   type GameState,
   type GameEvent,
   type CheckResult,
+  type DareMoveKind,
 } from '@spacerquest/engine';
 import type { Stat } from '@spacerquest/content';
 import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerquest/engine';
 import {
   careerTransferMessage,
   combatAftermathSummary,
+  dareRevealFrom,
+  explorationFailExplanation,
   explorationOutcome,
+  hangoutFailExplanation,
+  loanFailExplanation,
   nextOnboardingSeen,
   shipyardFailureExplanation,
   successionSummary,
   type CombatAftermath,
+  type DareRevealView,
   type SaveRecoveryNotice,
   type SuccessionSummary,
 } from './format';
@@ -200,28 +206,63 @@ export interface CockpitState {
    */
   explorationOutcome: string | null;
   /**
-   * T-1404 Spacer's Dare. The two opposed honest checks (the player's GUILE gamble
-   * and the dealer's counter) plus the wager / winner / signed credits delta of the
-   * LAST Dare — built straight from the engine's two `StatCheck` events and the
-   * `HangoutEvent{dare}`, never recomputed. Like `explorationOutcome`/`combatAftermath`
-   * this is CLIENT presentation meta-state (NOT GameState), so a JSON round-trip of
-   * game state is unaffected and no save migration is needed. READER: the Hangout
-   * pane's `dare-check-player` / `dare-check-opponent` readouts and `dare-result`
-   * line. Null until a Dare resolves; cleared on selection / travel / new day.
+   * T-136 · THE SETTLED LIAR'S DICE FRAME — the outcome, the standing claim, both
+   * hands (the dealer's ONLY on a challenge, per §6.1) and the signed credits /
+   * disposition deltas of the LAST hand, built straight from the engine's
+   * `DareHandResolved` event and NEVER recomputed (`format.ts dareRevealFrom`).
+   *
+   * THIS REPLACED `dareOutcome`, which described two opposed GUILE `StatCheck`s
+   * the engine has not emitted since T-135 turned the Dare into a scene. It was
+   * RENAMED rather than reshaped in place: a live field wearing a doc comment
+   * about a mechanic that no longer exists is how this repo gets lied to.
+   *
+   * Like `explorationOutcome` / `combatAftermath` this is CLIENT presentation
+   * meta-state (NOT GameState), so a JSON round-trip of game state is unaffected
+   * and NO save migration is needed. READER: the Hangout pane's `dare-reveal`
+   * frame. Null until a hand settles; cleared on selection / travel / new day /
+   * new game / slot load, and by the pane's own "leave the table" control.
    */
-  dareOutcome: {
-    player: { stat: Stat; result: CheckResult };
-    opponent: { npcId: string; npcName: string; stat: Stat; result: CheckResult };
-    wager: number;
-    playerWon: boolean;
-    creditsDelta: number;
+  dareReveal: DareRevealView | null;
+  /**
+   * T-136 · The typed `Dare*` events the LAST action returned, in order — the
+   * scene's move queue ("semantic move stream: never re-render state snaps").
+   * At most ~3 per action: the player's move, the dealer's synchronous answer,
+   * and the resolution. The scene plays them and clears the queue; it is skippable
+   * by a click and is never awaited by an input path.
+   *
+   * CLIENT presentation meta-state, exactly like `dareReveal` — no `GameState`
+   * field, no save migration.
+   */
+  dareBeats: DareBeat[];
+  /**
+   * T-132 the three social venues (meet / befriend / insult). The honest readout of
+   * the LAST social beat: which venue, against whom, the GUILE check when the venue
+   * rolled one (`befriend` only — `meet` and `insult` never roll), and the SIGNED
+   * disposition delta the engine actually applied, read off its `DispositionChanged`
+   * and never recomputed. Like `dareReveal` / `explorationOutcome` this is CLIENT
+   * presentation meta-state (NOT GameState), so a JSON round-trip of game state is
+   * unaffected and NO save migration is needed. READER: the Hangout pane's
+   * `social-outcome` block (`social-check` + `social-result`). Null until a social
+   * venue resolves; cleared alongside `dareReveal` on selection / travel / new day.
+   */
+  socialOutcome: {
+    venue: 'meet' | 'befriend' | 'insult';
+    npcId: string;
+    npcName: string;
+    /** `befriend` only — the engine's player GUILE StatCheck against the PORT's DC.
+     *  Null for `meet` / `insult`, which land without a roll. */
+    check: { stat: Stat; result: CheckResult } | null;
+    /** The applied delta. 0 when the charm check failed (no disposition applied) or
+     *  when the port authors a zero — an HONEST zero, never a hidden one. */
+    dispositionDelta: number;
+    disposition: number;
   } | null;
   /**
    * T-1405 patrol contraband scan. The honest GUILE check the patrol rolled
    * against a smuggler's hold during the LAST jump, plus its consequence (caught +
    * fine + which cargo was seized) — built straight from the Travel action's typed
    * `ContrabandScan` / `ContrabandConfiscated` events, never recomputed. Like
-   * `combatAftermath` / `dareOutcome` this is CLIENT presentation meta-state (NOT
+   * `combatAftermath` / `dareReveal` this is CLIENT presentation meta-state (NOT
    * GameState), so a JSON round-trip of game state is unaffected and no save
    * migration is needed. The patrol's `StatCheck` carries `actor === interceptor.name`
    * (not 'Player'), so it never pollutes `lastCheck`; the scan renders its own
@@ -368,7 +409,9 @@ function init(): CockpitState {
     succession: null,
     combatMalfunction: false,
     explorationOutcome: null,
-    dareOutcome: null,
+    dareReveal: null,
+    dareBeats: [],
+    socialOutcome: null,
     patrolScan: null,
     onboardingSeen: readOnboarding(),
     seed,
@@ -443,77 +486,67 @@ function storyletBlockNoticeFrom(events: GameEvent[]): string | null {
 }
 
 /**
- * T-1403 · Translate the engine's typed `ExplorationFailed` refusal into an honest
- * visible notice — the "typed fails render as notices, never silence" guarantee.
- * Returns null when no sweep failure occurred (the detour discovered a POI). Every
- * `ExplorationFailed.reason` the resolver emits (exploration.ts) maps here. The
- * three UI-prevented reasons (no-die / invalid-die-index / die-already-spent) still
- * get a line so a race with state is never a silent no-op.
+ * T-1403 · FIND the `ExplorationFailed` in a returned event stream and render it.
+ * Returns null in EXACTLY ONE case — no `ExplorationFailed` is present at all (the
+ * detour discovered a POI and paid out). It is no longer possible for a present
+ * refusal to render as null.
+ *
+ * T-131 · THE PROSE LIVES IN `format.ts` `explorationFailExplanation`, which is an
+ * exhaustive `switch` over the named `ExplorationFailReason` union with no
+ * `default` — so a new reason is a compile error there rather than silence here.
+ * This function used to switch inline and covered five of six reasons;
+ * `recovery-in-progress` fell through to `null` from T-111 until T-131, despite
+ * this docstring claiming full coverage. It does not claim what it cannot enforce
+ * any more: the type does the enforcing.
  */
 function explorationFailNoticeFrom(events: GameEvent[]): string | null {
   for (const e of events) {
     if (e.type !== 'ExplorationFailed') continue;
-    switch (e.reason) {
-      case 'insufficient-fuel':
-        return 'Not enough fuel to reach an off-lane target.';
-      case 'nav-check':
-        return 'The sweep turned up nothing but static.';
-      case 'no-die':
-      case 'invalid-die-index':
-      case 'die-already-spent':
-        return 'That sweep needs a fresh die from the hand.';
-    }
+    return explorationFailExplanation(e.reason);
   }
   return null;
 }
 
 /**
- * T-1404 · Translate the engine's typed `HangoutEvent` fail (a social/Dare venue)
- * into an honest visible notice — the same "typed fails render, never silence"
- * guarantee. Returns null when no Hangout fail occurred (a successful venue carries
- * no `failReason`). `no-opponent` fires when the named dealer has wandered off; the
- * three malformed-die reasons are UI-prevented but still get a line so a race with
- * state is never a silent no-op.
+ * T-1404 · Find the engine's typed `HangoutEvent` fail (a social/Dare venue) and
+ * render it — the "typed fails render, never silence" guarantee. Returns null when
+ * no Hangout fail occurred (a successful venue carries no `failReason`).
+ *
+ * T-132 · The switch itself moved to `format.ts`'s `hangoutFailExplanation`, where
+ * it is exhaustive-by-compilation and unit-testable without booting the store
+ * (`init()` runs at module load here). This function is now purely the FINDER.
+ * Recorded because the move fixed a live hole: the old inline switch here covered
+ * `no-opponent` and the three malformed-die reasons and fell through to `null` on
+ * `'venue-not-offered'`, so a venue the port does not run refused in silence
+ * (F-123-1, the sibling of T-131's `recovery-in-progress`).
  */
 function hangoutFailNoticeFrom(events: GameEvent[]): string | null {
   for (const e of events) {
     if (e.type !== 'HangoutEvent' || !e.failReason) continue;
-    switch (e.failReason) {
-      case 'no-opponent':
-        return 'That spacer has left the tables — no one here to wager against.';
-      case 'no-die':
-      case 'invalid-die-index':
-      case 'die-already-spent':
-        return 'That table needs a fresh die from the hand.';
-    }
+    return hangoutFailExplanation(e.failReason);
   }
   return null;
 }
 
 /**
- * T-1404 · Translate a Penny Wise `LoanEvent{kind:'failed'}` refusal into an honest
- * visible notice. Returns null when the borrow/repay committed (a 'borrowed' /
- * 'repaid' event carries no `failReason`). Covers the lending preconditions
- * (already-has-loan / no-loan / insufficient-credits) that spend NO die, plus the
- * UI-prevented malformed-die reasons.
+ * T-1404 · Find a Penny Wise `LoanEvent{kind:'failed'}` refusal and render it.
+ * Returns null when the borrow/repay committed (a 'borrowed' / 'repaid' event
+ * carries no `failReason`).
+ *
+ * T-132 · The switch moved to `format.ts`'s `loanFailExplanation`. It no longer has
+ * (and must not regain) a `default` arm — the old one answered every unlisted
+ * reason with "Penny Wise turned that request down", which read as a REFUSAL when
+ * `'venue-not-offered'` actually means the port runs no desk at all.
  */
 function loanFailNoticeFrom(events: GameEvent[]): string | null {
   for (const e of events) {
     if (e.type !== 'LoanEvent' || e.kind !== 'failed') continue;
-    switch (e.failReason) {
-      case 'already-has-loan':
-        return 'You already carry a loan with Penny Wise — clear it before borrowing again.';
-      case 'no-loan':
-        return 'No loan to repay.';
-      case 'insufficient-credits':
-        return 'Not enough credits to make that payment.';
-      case 'no-die':
-      case 'invalid-die-index':
-      case 'die-already-spent':
-        return "Penny Wise's desk needs a fresh die from the hand.";
-      default:
-        return 'Penny Wise turned that request down.';
-    }
+    // The engine sets `failReason` on every 'failed' LoanEvent, but the field is
+    // OPTIONAL in the event type; this arm keeps that last structural gap from
+    // being the one place the desk goes quiet.
+    return e.failReason
+      ? loanFailExplanation(e.failReason)
+      : 'Penny Wise turned that request down.';
   }
   return null;
 }
@@ -894,7 +927,9 @@ export function newGame(seed: number): void {
     succession: null,
     combatMalfunction: false,
     explorationOutcome: null,
-    dareOutcome: null,
+    dareReveal: null,
+    dareBeats: [],
+    socialOutcome: null,
     patrolScan: null,
     onboardingSeen: {},
     // T-1605a: the boot's corrupt-save notice is stale the moment the player
@@ -923,7 +958,9 @@ export function selectDie(index: number): void {
     notice: null,
     lastCheck: null,
     explorationOutcome: null,
-    dareOutcome: null,
+    dareReveal: null,
+    dareBeats: [],
+    socialOutcome: null,
     patrolScan: null,
   });
 }
@@ -1182,7 +1219,9 @@ export function travelTo(destinationId: number): void {
       // must not read alongside a stale exploration outcome — and any prior Dare
       // readout (a jump can carry the player away from the Hangout).
       explorationOutcome: null,
-      dareOutcome: null,
+      dareReveal: null,
+      dareBeats: [],
+      socialOutcome: null,
       patrolScan,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
@@ -1222,7 +1261,11 @@ export function explore(): void {
     const lastCheck = lastCheckFrom(events);
     const failNotice = explorationFailNoticeFrom(events);
     // On a discovery, summarise the loot; a failed sweep clears the outcome and
-    // speaks through the notice instead.
+    // speaks through the notice instead. T-131 · re-checked for the new
+    // `insufficient-dice` reason, where a POI genuinely WAS charted but nothing
+    // paid out: there is no loot to summarise, so `null` is the honest value and
+    // the notice carries the whole story. `committed` below stays true — the
+    // sweep's own die is spent either way.
     const outcome = failNotice ? null : explorationOutcome(events);
     // The engine spends the die BEFORE the fuel gate (exploration.ts), so an
     // insufficient-fuel refusal still burns it — a StatCheck-based signal would
@@ -1247,15 +1290,46 @@ export function explore(): void {
 }
 
 /**
- * T-1404 · Wager a die on a Spacer's Dare against a co-located NPC (PRD §7). The
- * Hangout pane is a pure CLIENT of the T-1303 `VisitHangout{dare}` venue: it arms a
- * die and names an opponent, and this is the single engine call. The engine rolls
- * the opposed GUILE and emits TWO `StatCheck`s (the player's `gamble` roll framed
- * against the dealer's total, and the dealer's counter) plus a `HangoutEvent{dare}`
- * carrying the wager / winner / signed credits delta. Both honest checks + the delta
- * are captured into `dareOutcome` for the pane's two `CheckReadout`s — never
- * recomputed. A `no-opponent` / malformed-die fail spends NO die (read the
- * authoritative spent flag), keeps the selection, and surfaces a visible notice.
+ * T-136 · The typed `Dare*` events one action returned, in order — the scene's
+ * move queue. Deliberately the ENGINE's own event union rather than a UI-side
+ * re-description of it: a beat the engine did not emit cannot be played, and a
+ * new event variant is a compile error here rather than a silently-dropped beat.
+ */
+export type DareBeat = Extract<
+  GameEvent,
+  { type: 'DareHandStarted' | 'DareBidPlaced' | 'DarePeeked' | 'DareHandResolved' }
+>;
+
+/** The four scene-event types, as a runtime set for the beat filter. */
+const DARE_BEAT_TYPES = new Set<GameEvent['type']>([
+  'DareHandStarted',
+  'DareBidPlaced',
+  'DarePeeked',
+  'DareHandResolved',
+]);
+
+function dareBeatsFrom(events: GameEvent[]): DareBeat[] {
+  return events.filter((e): e is DareBeat => DARE_BEAT_TYPES.has(e.type));
+}
+
+/**
+ * T-1404 / T-136 · OPEN a hand of Liar's Dice against a co-located NPC (PRD §7,
+ * `docs/LIARS-DICE_REDESIGN.md`). The Hangout pane is still a pure CLIENT of the
+ * T-1303 `VisitHangout{dare}` venue: it arms a die, names an opponent and a seed
+ * wager, and this is the single engine call.
+ *
+ * WHAT CHANGED AT T-135, AND WHY THIS FUNCTION HAD TO FOLLOW. The opening visit no
+ * longer RESOLVES anything: it emits a `DareHandStarted` and OPENS
+ * `state.dareHand`. There are no opposed `StatCheck`s any more (§8.4 — the hand's
+ * one possible check is the optional Peek), so the old `dareOutcome` readout this
+ * function built could never be populated again, and the pane rendered nothing
+ * after a wager while the engine blocked every other verb behind
+ * `ActionBlocked{active-dare-hand}`. THE SUCCESS SIGNAL IS NOW `next.dareHand !==
+ * null` — the scene opened — not an outcome event.
+ *
+ * A `no-opponent` / `venue-not-offered` / malformed-die fail spends NO die (read
+ * the authoritative spent flag), keeps the selection, and surfaces a visible
+ * notice, exactly as before.
  */
 export function visitDare(opponentId: string, wager: number): void {
   const die = state.selectedDie;
@@ -1276,33 +1350,223 @@ export function visitDare(opponentId: string, wager: number): void {
     // malformed-die guards). Read the authoritative spent flag rather than infer.
     const committed = next.player.dawnHand?.spent[die] === true;
     const failNotice = hangoutFailNoticeFrom(events);
-    let dareOutcome: CockpitState['dareOutcome'] = null;
+    const opened = next.dareHand !== null;
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice: failNotice,
+      // The opening visit rolls nothing the player committed a die to a CHECK for
+      // — clear lastCheck so no stale readout lingers over the new table.
+      lastCheck: null,
+      // A fresh hand clears the LAST hand's settled frame: the table is live again.
+      dareReveal: null,
+      dareBeats: opened ? dareBeatsFrom(events) : [],
+      // T-132 · a fresh Dare clears any stale social readout: the two blocks sit in
+      // the same pane and a hand of cards must not read alongside last turn's
+      // introduction.
+      socialOutcome: null,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    reactToEvents(events, committed);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That wager could not be resolved.' });
+  }
+}
+
+/**
+ * T-136 · ONE MOVE in the open Liar's Dice hand — `bid`, `raise-face`,
+ * `raise-quantity`, `raise-both`, `challenge` or `fold`. (`peek` has its own thunk
+ * below: it is the only move that costs a DIE and the only one that rolls.)
+ *
+ * The `combat(stance)` shape, for the same reason: one engine call per player
+ * move, and THE DEALER'S ANSWER ARRIVES INSIDE IT (§9.4 — there is no `toAct`
+ * field, no dealer action to dispatch and nothing to await). Autosaves
+ * immediately so a mid-hand reload restores the table, exactly as a mid-encounter
+ * reload restores the fight.
+ *
+ * `resolveDare` NEVER throws: an illegal move is a typed
+ * `HangoutEvent{failReason:'illegal-dare-move'}` that spends nothing and moves
+ * nothing, routed through the same `hangoutFailNoticeFrom` every other Hangout
+ * refusal uses. The `try/catch` is belt-and-braces against `applyPlayerAction`'s
+ * outer gates (`ActionBlocked` for a career that has ended), not against the
+ * resolver.
+ *
+ * NOTHING HERE DECIDES LEGALITY. The pane offers only `legalDareMoves`' kinds and
+ * only `isLatticeMove` claims; this thunk sends what it is given and lets the
+ * engine refuse.
+ */
+export function dareMove(move: DareMoveKind, quantity?: number, face?: number): void {
+  if (!state.game.dareHand) {
+    set({ notice: 'There is no hand on the table.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Dare',
+      move,
+      ...(quantity !== undefined ? { quantity } : {}),
+      ...(face !== undefined ? { face } : {}),
+    });
+    // Required so a mid-hand reload restores the table (the engine already
+    // persists `dareHand` and has the round-trip test for it).
+    autosave(next, state.seed);
+    const failNotice = hangoutFailNoticeFrom(events);
+    // Built from `DareHandResolved` and never recomputed. Null while the hand
+    // still stands, which is exactly when the pane keeps showing the live scene.
+    const reveal = dareRevealFrom(events, next);
+    set({
+      game: next,
+      notice: failNotice,
+      // A bid, a raise, a call and a fold roll NOTHING (§8.4 — the Peek is the
+      // hand's only check), so any check still on screen belongs to a previous
+      // beat. Cleared for the same reason `visitDare` clears it.
+      lastCheck: null,
+      dareReveal: reveal ?? state.dareReveal,
+      dareBeats: dareBeatsFrom(events),
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    reactToEvents(events, false);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That move could not be resolved.' });
+  }
+}
+
+/**
+ * T-136 · THE PEEK (§8) — spend a SECOND dawn die, before the first bid, on a
+ * GUILE check against the port's own DC, to see ONE of the dealer's four dice.
+ *
+ * The only move in the hand that costs a die and the only one that rolls, so it is
+ * the only one that feeds the shared `lastCheck` readout — set from the engine's
+ * `StatCheck` exactly as `combat()` does, never recomputed. A failed check still
+ * burns the die and still closes the Peek window (`peekUsed`), which the pane
+ * shows honestly by dropping the control.
+ */
+export function darePeek(): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then peek.' });
+    return;
+  }
+  if (!state.game.dareHand) {
+    set({ notice: 'There is no hand on the table.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'Dare',
+      move: 'peek',
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const committed = next.player.dawnHand?.spent[die] === true;
+    const failNotice = hangoutFailNoticeFrom(events);
+    const playerCheck = events.find(
+      (e): e is Extract<GameEvent, { type: 'StatCheck' }> =>
+        e.type === 'StatCheck' && e.actor === 'Player',
+    );
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice: failNotice,
+      lastCheck: playerCheck
+        ? {
+            stat: playerCheck.stat,
+            result: playerCheck.result,
+            context: playerCheck.actionContext,
+          }
+        : state.lastCheck,
+      lastCheckKey: playerCheck ? state.lastCheckKey + 1 : state.lastCheckKey,
+      dareBeats: dareBeatsFrom(events),
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    reactToEvents(events, committed);
+  } catch (err) {
+    set({ notice: err instanceof Error ? err.message : 'That peek could not be resolved.' });
+  }
+}
+
+/** T-136 · Dismiss the settled frame and return the pane to its idle controls. */
+export function clearDareReveal(): void {
+  set({ dareReveal: null, dareBeats: [] });
+}
+
+/** T-136 · The scene has finished playing its queued beats. */
+export function clearDareBeats(): void {
+  if (state.dareBeats.length === 0) return;
+  set({ dareBeats: [] });
+}
+
+/**
+ * T-132 · Meet, befriend or insult a co-located captain at the Hangout
+ * (PRD §7.1–§7.4; `docs/HANGOUT_REDESIGN.md` F-101-4). The three social venues the
+ * T-1404 pane authored numbers for at fourteen ports and then never offered.
+ *
+ * A pure CLIENT of the T-1303 `VisitHangout` venues, exactly like `visitDare`: arm
+ * a die, name an opponent, ONE engine call, and read the result off the typed
+ * events. The venue is a DISPATCH PARAMETER, not a rule branch — the three beats
+ * differ only in what the ENGINE does with them, so there is one function and not
+ * three. `befriend` rolls a GUILE check against the PORT's authored DC and the
+ * engine emits a `StatCheck`; it is captured into `socialOutcome.check` and
+ * rendered by `CheckReadout`, so the honest-dice signature holds here exactly as it
+ * does for the Dare. `meet` and `insult` never roll: their whole result is the
+ * `DispositionChanged` delta the engine wrote, read off the event and NEVER
+ * recomputed.
+ *
+ * NO 'rumor' DISPATCH, DELIBERATELY (the seventh venue). `VisitHangout{rumor}`
+ * spends a die to emit exactly the `hangoutRumors(state)` output the pane already
+ * renders for free every frame (`format.ts` `hangoutRumorLines`), so a paid
+ * affordance would be strictly dominated by the free one already on screen. That is
+ * why F-101-4 counts "three of six venues" over a SEVEN-member venue union.
+ *
+ * A typed fail (`no-opponent`, `venue-not-offered`, malformed die) spends NO die —
+ * read the authoritative spent flag rather than infer — keeps the selection, and
+ * surfaces a visible notice.
+ */
+export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: string): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then approach the tables.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'VisitHangout',
+      venue,
+      opponentId,
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const committed = next.player.dawnHand?.spent[die] === true;
+    const failNotice = hangoutFailNoticeFrom(events);
+    let socialOutcome: CockpitState['socialOutcome'] = null;
     if (committed && !failNotice) {
+      const hangout = events.find(
+        (e): e is Extract<GameEvent, { type: 'HangoutEvent' }> =>
+          e.type === 'HangoutEvent' && e.venue === venue,
+      );
+      // `befriend` is the only social venue that rolls; the other two produce no
+      // player StatCheck at all, and `check` stays null rather than being faked.
       const playerCheck = events.find(
         (e): e is Extract<GameEvent, { type: 'StatCheck' }> =>
           e.type === 'StatCheck' && e.actor === 'Player',
       );
-      const oppCheck = events.find(
-        (e): e is Extract<GameEvent, { type: 'StatCheck' }> =>
-          e.type === 'StatCheck' && e.actor === opponentId,
+      // The applied delta, read off the engine's own event. Absent when the charm
+      // check failed (nothing was applied) — an honest zero, not a recomputation.
+      const shift = events.find(
+        (e): e is Extract<GameEvent, { type: 'DispositionChanged' }> =>
+          e.type === 'DispositionChanged' && e.npcId === opponentId,
       );
-      const hangout = events.find(
-        (e): e is Extract<GameEvent, { type: 'HangoutEvent' }> =>
-          e.type === 'HangoutEvent' && e.venue === 'dare',
-      );
-      if (playerCheck && oppCheck && hangout) {
+      if (hangout) {
         const npc = next.npcs.find((n) => n.id === opponentId);
-        dareOutcome = {
-          player: { stat: playerCheck.stat, result: playerCheck.result },
-          opponent: {
-            npcId: opponentId,
-            npcName: npc?.name ?? opponentId,
-            stat: oppCheck.stat,
-            result: oppCheck.result,
-          },
-          wager: hangout.wager ?? 0,
-          playerWon: hangout.playerWon ?? false,
-          creditsDelta: hangout.creditsDelta ?? 0,
+        socialOutcome = {
+          venue,
+          npcId: opponentId,
+          npcName: npc?.name ?? opponentId,
+          check: playerCheck ? { stat: playerCheck.stat, result: playerCheck.result } : null,
+          dispositionDelta: shift?.delta ?? 0,
+          disposition: shift?.disposition ?? npc?.disposition ?? 0,
         };
       }
     }
@@ -1311,15 +1575,19 @@ export function visitDare(opponentId: string, wager: number): void {
       selectedDie: committed ? null : die,
       bloomDie: committed ? die : null,
       notice: failNotice,
-      // The Dare's opposed checks ride their own dual readout (dareOutcome), not
-      // the shared single-check readout — clear lastCheck so no stale check lingers.
+      // The befriend check rides `socialOutcome.check`, its own readout, not the
+      // shared single-check one — clear lastCheck so no stale check lingers.
       lastCheck: null,
-      dareOutcome,
+      dareReveal: null,
+      dareBeats: [],
+      socialOutcome,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
     reactToEvents(events, committed);
   } catch (err) {
-    set({ notice: err instanceof Error ? err.message : 'That wager could not be resolved.' });
+    set({
+      notice: err instanceof Error ? err.message : 'That was not something the room allowed.',
+    });
   }
 }
 
@@ -1783,7 +2051,9 @@ export function endDay(): void {
       succession,
       combatMalfunction: false,
       explorationOutcome: null,
-      dareOutcome: null,
+      dareReveal: null,
+      dareBeats: [],
+      socialOutcome: null,
       patrolScan: null,
       onboardingSeen: reconcileOnboarding(state.game, dawn.state),
     });
@@ -1893,7 +2163,9 @@ export function loadSlot(n: number): void {
     combatAftermath: null,
     succession: null,
     combatMalfunction: false,
-    dareOutcome: null,
+    dareReveal: null,
+    dareBeats: [],
+    socialOutcome: null,
     patrolScan: null,
     // T-1605a: a slot load replaces the fallback career the boot notice was
     // explaining, so the notice is stale. (This path's OWN corrupt case has told
@@ -2016,7 +2288,9 @@ export async function importCareer(file: File): Promise<void> {
     succession: null,
     combatMalfunction: false,
     explorationOutcome: null,
-    dareOutcome: null,
+    dareReveal: null,
+    dareBeats: [],
+    socialOutcome: null,
     patrolScan: null,
     // The boot recovery notice (if any) described the career this one replaces.
     recovery: null,

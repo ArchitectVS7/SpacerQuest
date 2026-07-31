@@ -3,8 +3,6 @@ import {
   EXPLORATION_FUEL_COST,
   FENCE_REP_FLAG,
   FLAWS,
-  LOAN_MAX_PRINCIPAL,
-  LOAN_MIN_PRINCIPAL,
   SPECIAL_EQUIPMENT,
   STAR_SYSTEMS,
   Stat,
@@ -41,8 +39,10 @@ import {
   startDay,
   travelDc,
   tributeForRound,
+  loanBandFor,
   venueOffered,
   wagerBandFor,
+  legalDareMoves,
   applyPlayerAction,
   weaponVolleyDamage,
   SeededRng,
@@ -287,8 +287,17 @@ export interface HangoutPlayStats {
   socialBeats: number;
   /** `HangoutEvent`s carrying a `failReason`. A policy whose preconditions mirror
    *  the engine's gates never burns a die on a typed refusal, so this must be 0 —
-   *  it is the proof that `planDare`'s guards are the engine's guards. */
+   *  it is the proof that `planDare`'s guards are the engine's guards.
+   *
+   *  T-135 · This got STRONGER: a `Dare` move outside the lattice is refused with
+   *  `failReason: 'illegal-dare-move'` and lands here too, so a zero is now also
+   *  the proof that `planDareMove` mirrors the engine's `legalDareMoves`. */
   failedVisits: number;
+  /** T-135 · Times the runner's Liar's Dice continuation loop hit
+   *  `DARE_MAX_MOVES_PER_HAND`. MUST BE 0: §12.4 proves the tripwire unreachable
+   *  (the bid lattice bounds a hand at ~15 player actions), which is exactly why a
+   *  non-zero count is a bug to fail on rather than a number to swallow. */
+  dareGuardHits: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -2041,7 +2050,12 @@ const TRADER_LOAN_HOME_WINDOW = 5;
  * `resolveVisitHangout` + day.ts's hangout/encounter gates exactly, so the policy
  * can never burn a die on a typed refusal: a Hangout system, no live loan, no
  * encounter, a real shortfall, and a die left in the hand. The principal is
- * clamped with the CONTENT band constants (never restated numerically here).
+ * clamped with the PORT's own band (T-133 / owner ruling D7 — `loanBandFor`, the
+ * same accessor the resolver clamps with), never restated numerically here. A
+ * policy that asked for the global ceiling at a tight desk would still get a loan,
+ * because the engine clamps rather than refuses — but it would MIS-SIZE the day's
+ * shortfall plan, which is the F-121-1 "the policy's guards are the engine's
+ * guards" argument applied to an amount rather than to a gate.
  *
  * The die is the DULLEST remaining: borrowing rolls no check.
  *
@@ -2062,10 +2076,8 @@ function planLoanBorrow(
   // `resolveVisitHangout` — a Hangout is not automatically a credit desk.
   if (!isLendingDeskSystem(state.player.currentSystemId, 'borrow')) return null;
   if (!(shortfall >= 1)) return null;
-  const principal = Math.max(
-    LOAN_MIN_PRINCIPAL,
-    Math.min(LOAN_MAX_PRINCIPAL, Math.ceil(shortfall)),
-  );
+  const band = loanBandFor(state.player.currentSystemId);
+  const principal = Math.max(band.min, Math.min(band.max, Math.ceil(shortfall)));
   const die = ledger.takeWorst();
   if (die === undefined) return null;
   return {
@@ -3488,6 +3500,124 @@ function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerA
   return { type: 'VisitHangout', venue: 'dare', opponentId: dealer.id, wager, spendDie: die };
 }
 
+// ---------------------------------------------------------------------------
+// T-135 · PLAYING THE LIAR'S DICE HAND OUT (docs/LIARS-DICE_REDESIGN.md §12).
+//
+// `planDare` above is UNCHANGED and stays a one-shot: it queues the opening
+// `VisitHangout{venue:'dare'}` from the DAWN state, which is all a policy can
+// honestly do — every move after the opening bid answers a dealer bid that did not
+// exist at dawn. The rest of the hand is played by the runner's continuation loop
+// (see `runCampaign`'s batch loop), which asks `planDareMove` for one move at a
+// time against the LIVE state.
+//
+// Rejected, per the spec: re-invoking the whole policy mid-batch (it changes every
+// policy's contract — they are documented as planning from the dawn state, and
+// `dawnBlind` policies deliberately never see the mid-day state), and an
+// engine-side auto-play (a player policy inside the engine, and it would make the
+// UI's hand unplayable).
+// ---------------------------------------------------------------------------
+
+/** Mirrors the engine dealer's `DARE_AI_FOLD_QUANTITY` so the two sides fold on
+ *  comparable evidence and the measured fold rate is not an artefact of an
+ *  asymmetric baseline. */
+const SIM_DARE_FOLD_QUANTITY = 5;
+/** Mirrors the engine dealer's `DARE_AI_CHALLENGE_MARGIN`, for the same reason. */
+const SIM_DARE_CHALLENGE_MARGIN = 1.5;
+/**
+ * A TRIPWIRE, NOT A POLICY. The bid lattice bounds a hand at 12 raises (every
+ * raise strictly increases quantity or face and decreases neither, with
+ * quantity ≤ 8 and face ≤ 6), so with the opening bid and the terminal move a hand
+ * is at most ~15 player actions long and this can never fire. `dareGuardHits` is
+ * asserted ZERO by the sim suite precisely because the guard is provably
+ * unreachable — a non-zero count is a bug worth failing on, never something to
+ * swallow.
+ */
+export const DARE_MAX_MOVES_PER_HAND = 32;
+
+/**
+ * THE BASELINE HAND STRATEGY (§12.3). Pure: no rng, no `DieLedger`, no state
+ * mutation. Returns the next move in the open hand, or `null` when there is no
+ * hand to play.
+ *
+ * TOTAL over the scene's reachable state space, which partitions into exactly
+ * three (there is no fourth, because the dealer answers synchronously and so the
+ * returned state is always player-to-act):
+ *   (a) no hand              → `null`; the loop's condition is already false.
+ *   (b) a hand, no bid       → an OPENING BID is always legal: any held face is in
+ *                              1..6, `max(1, own(F*))` is in 1..4 ⊆ 1..8, and an
+ *                              opening bid costs no ante, so neither headroom nor
+ *                              credits can refuse it.
+ *   (c) a hand, a bid stands → CHALLENGE is legal unconditionally (its single
+ *                              precondition is `bid !== null`, it costs nothing,
+ *                              and no clamp applies), and the fallback reaches it
+ *                              on every path the earlier branches do not take.
+ *
+ * LEGALITY IS THE ENGINE'S. The raise branches filter through the engine's own
+ * `legalDareMoves` — the SAME function the resolver refuses with and the dealer
+ * chooses from — rather than restating §5.1's arithmetic here. That is the T-121 /
+ * T-123 mirror discipline: a policy that re-derived the lattice would drift, and
+ * `hangoutPlay.failedVisits === 0` is the assertion that holds it honest.
+ *
+ * TWO NAMED BASELINE LIMITATIONS, so T-137 reports the right thing (§12.5):
+ *   - IT NEVER PEEKS. Dice are reserved at PLAN time by the policy's `DieLedger`
+ *     and this loop runs after planning; grabbing a second die mid-batch would
+ *     break the reservation invariant every other planner depends on. The measured
+ *     win rate and EV are therefore a NO-PEEK baseline.
+ *   - IT NEVER RAISES BOTH. So T-137's "how often is the 2× ante used" figure
+ *     measures the DEALER's use only; a zero on the player's side is the baseline,
+ *     not a bug.
+ * Neither threatens totality: both are moves the baseline DECLINES, never states
+ * it cannot answer.
+ */
+export function planDareMove(state: GameState): PlayerAction | null {
+  const hand = state.dareHand;
+  if (!hand) return null;
+
+  const own = (face: number) => hand.playerDice.filter((d) => d === face).length;
+  const legal = legalDareMoves(hand, 'player', state.player.credits);
+
+  // (b) No bid stands — open truthfully on the face we hold most of.
+  if (hand.bid === null) {
+    let bestFace = 1;
+    // Ascending, with `>=`, so ties go to the HIGHER face: a claim on a taller
+    // face leaves the opponent fewer face-raise steps to answer with.
+    for (let face = 1; face <= 6; face += 1) {
+      if (own(face) >= own(bestFace)) bestFace = face;
+    }
+    return {
+      type: 'Dare',
+      move: 'bid',
+      face: bestFace,
+      quantity: Math.max(1, own(bestFace)),
+    };
+  }
+
+  const bid = hand.bid;
+  const expected = own(bid.face) + 4 / 6;
+
+  // (c1) Hopeless: none of the claimed face and a tall claim.
+  if (own(bid.face) === 0 && bid.quantity >= SIM_DARE_FOLD_QUANTITY && legal.includes('fold')) {
+    return { type: 'Dare', move: 'fold' };
+  }
+
+  // (c2) The claim is taller than the evidence supports.
+  if (bid.quantity > expected + SIM_DARE_CHALLENGE_MARGIN && legal.includes('challenge')) {
+    return { type: 'Dare', move: 'challenge' };
+  }
+
+  // (c3) Raise if a raise is legal AND affordable AND within headroom — all three
+  // answered by the engine's own accessor.
+  if (legal.includes('raise-quantity')) {
+    return { type: 'Dare', move: 'raise-quantity', quantity: bid.quantity + 1, face: bid.face };
+  }
+  if (legal.includes('raise-face')) {
+    return { type: 'Dare', move: 'raise-face', quantity: bid.quantity, face: bid.face + 1 };
+  }
+
+  // (c4) Terminal fallback. Unconditional, which is what makes (c) total.
+  return { type: 'Dare', move: 'challenge' };
+}
+
 /**
  * GAMBLER — a working trader who plays the tables. The day is the trader's
  * (refuel sized to the leg → crippled repair → richest NET fundable run → fly it
@@ -4811,6 +4941,7 @@ export function runCampaign(
     expectedValuePerDare: 0,
     socialBeats: 0,
     failedVisits: 0,
+    dareGuardHits: 0,
   };
   // T-1603a balance-baseline instrumentation (see the interface doc comments).
   const survival: SurvivalStats = {
@@ -4877,6 +5008,13 @@ export function runCampaign(
       // actions between steps and would never send it). This only fires on the new
       // mid-batch-death path, so deterministic non-fatal runs are unchanged.
       if (action.type === 'Combat' && !dayState.encounter) continue;
+      // T-135: the analogous orphan skip for the Liar's Dice scene. DEFENSIVE —
+      // no policy queues a `Dare` today (the continuation loop below plays hands
+      // out against the live state, so a `Dare` never reaches this batch) — but
+      // the same class of orphaning that produced the Combat skip applies, and
+      // unlike Combat the engine answers a `Dare` with no hand as a typed no-op
+      // rather than a throw, so this is belt to the engine's braces.
+      if (action.type === 'Dare' && !dayState.dareHand) continue;
       // T-1601a: `upgradedVolleys` cannot be read off the event stream — a
       // CombatEvent says a fight round landed, not what gun landed it. Sample the
       // fit on the PRE-action ship (the junker's `weaponVolleyDamage` is exactly
@@ -4895,6 +5033,35 @@ export function runCampaign(
         balanceSample(preActionState, dayState.player.credits),
         balance,
       );
+
+      // T-135 · A Liar's Dice hand is a SCENE (docs/LIARS-DICE_REDESIGN.md §12.2).
+      // The policy planned its OPENING from the dawn state and cannot plan the
+      // rest, because every later move answers a dealer bid that did not exist at
+      // dawn. Play it out here, one move at a time, folding each step's events
+      // exactly as the outer loop does — with a PRE-ACTION sample per iteration,
+      // because without it T-137 would measure the opening hand and nothing else.
+      //
+      // Without this loop every sweep that plays the tables would end its day with
+      // an open hand, which gate 1 then blocks every subsequent action against and
+      // which the dusk timeout-fold silently forfeits: the measured EV would be
+      // "the gambler folds every hand", a measurement of nothing.
+      let dareGuard = 0;
+      while (dayState.dareHand && dareGuard < DARE_MAX_MOVES_PER_HAND) {
+        dareGuard += 1;
+        const move = planDareMove(dayState);
+        if (!move) break;
+        const preMoveState = dayState;
+        const played = applyPlayerAction(dayState, move);
+        dayState = played.state;
+        dayEvents.push(...played.events);
+        ingestBalanceRecords(
+          played.events,
+          balanceSample(preMoveState, dayState.player.credits),
+          balance,
+        );
+      }
+      if (dareGuard >= DARE_MAX_MOVES_PER_HAND) hangoutPlay.dareGuardHits += 1;
+
       if (
         volleyDamageBefore > 1 &&
         stepped.events.some(

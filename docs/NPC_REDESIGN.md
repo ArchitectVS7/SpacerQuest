@@ -103,7 +103,42 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
-> **BASELINE OF RECORD RE-PINNED AT T-125** to
+> **BASELINE OF RECORD RE-PINNED AT T-137 (2026-07-31)** to
+> `docs/balance/baseline-t137-liars-dice.json` — M4d (T-134…T-137) replaced the
+> opposed-d20 Dare with the Liar's Dice scene, so `baseline-t131-explore-ap` predates
+> the whole mechanic and no longer describes HEAD. Same shape as every capstone back
+> to `baseline-r2c-explorer-remit` (1,000 seeds × 120 days × 8 policies = 8,000 runs,
+> 8 1-indexed shards through `--merge` reporting `wrote aggregate for 8000 rows`, both
+> `--milestone-days 21,29,30,41,60,120` and `--aggregate` honoured, fixture
+> re-extracted FROM it with `spreads harvested`). Fingerprints are rules
+> `a5ec29dba6457f77` / instrument `4de222a04b05a537` / docs `b8ed2b1cdefceaf7` — **all
+> three UNMOVED by this extract**, because T-135 already re-stamped them when it
+> landed `liarsDiceRules.ts` / `actions/dare.ts` (§15's "smoke re-extract only") and
+> T-136 was UI-only, which is not hashed. T-137's contribution is therefore the fresh
+> 8,000-row aggregate underneath them, not a new hash. `balance:diff` from
+> `t133-loanband` (the aggregate measured immediately before the engine landed)
+> isolates the mechanic exactly: **it moves precisely TWO rows, `gambler` and
+> `fleet`,** and leaves `explorer`, `fighter`, `greedy`, `smuggler`, `trader`,
+> `trader-degraded` and `veteran` byte-identical — every policy that never sits at a
+> table. NOTHING WAS TUNED IN RESPONSE; the gambler's measured lift is written up as
+> **finding F-137-1** in `docs/LIARS-DICE_REDESIGN.md` §16 and left for a fresh owner
+> call.
+>
+> **PREVIOUSLY RE-PINNED AT T-131 (2026-07-31)** to
+> `docs/balance/baseline-t131-explore-ap.json` — owner ruling D1 moved a content band
+> table, so `rulesFingerprint` moved and `baseline-t125-hangout` no longer describes
+> HEAD. Same shape as its predecessor (1,000 seeds × 120 days × 8 policies = 8,000
+> runs, 8 1-indexed shards through `--merge`, both `--milestone-days` and
+> `--aggregate` honoured, fixture re-extracted FROM it with `spreads harvested`).
+> Fingerprints are rules `8041f402932902df` / instrument `4e7184c378da068f` / docs
+> `421dd1ee5424cd3c`; the instrument hash is UNMOVED, which is the evidence that
+> T-131 changed a rule and not the measuring device. `balance:diff` against
+> `t125-hangout` moves exactly THREE rows — `explorer`, `smuggler` and `fleet`, i.e.
+> the two policies that fly off-lane sweeps plus the aggregate. NOTHING WAS TUNED IN
+> RESPONSE: the `apCost` values are the owner's first-pass numbers and D1 is explicit
+> that they move by playtest.
+>
+> **PREVIOUSLY RE-PINNED AT T-125** to
 > `docs/balance/baseline-t125-hangout.json` (1,000 seeds × 120 days × 8 policies =
 > 8,000 runs, both `--milestone-days` and `--aggregate` honoured, fixture
 > re-extracted FROM it with `spreads harvested`). Fingerprints are rules
@@ -1989,11 +2024,17 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t125-hangout.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at T-125 2026-07-30 — T-120…T-124
+   > **Baseline of record is `docs/balance/baseline-t137-liars-dice.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-137 2026-07-31 — M4d replaced the
+   > opposed-d20 Dare with the Liar's Dice scene, which moves exactly the `gambler` and
+   > `fleet` rows against `t133-loanband`, so `baseline-t131-explore-ap` no longer
+   > describes HEAD).
+   > `baseline-t131-explore-ap` (re-pinned at T-131 2026-07-31 — owner ruling D1
+   > repriced Explore bands 3-4 from calendar days to extra dice, which moved the
+   > `explorer`, `smuggler` and `fleet` rows),
+   > `baseline-t125-hangout` (re-pinned at T-125 2026-07-30 — T-120…T-124
    > shipped a parameterised Hangout at 14 ports where there was 1, and it moved the
-   > `fleet`, `gambler`, `smuggler`, `trader` and `trader-degraded` rows, so
-   > `baseline-t116-explore` no longer describes HEAD).
+   > `fleet`, `gambler`, `smuggler`, `trader` and `trader-degraded` rows),
    > `baseline-t116-explore`,
    > `baseline-n11-shipped`, `baseline-n10-shipped`, `baseline-t020-registry`,
    > `baseline-n4-shipped`, `baseline-r2c-explorer-remit`, `baseline-n2-final`,

@@ -1,14 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import {
-  DARE_LOSS_DISPOSITION,
-  DARE_WIN_DISPOSITION,
-  INSULT_DISPOSITION,
-  Stat,
-} from '@spacerquest/content';
+import { INSULT_DISPOSITION, Stat } from '@spacerquest/content';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { applyPlayerAction } from '../day.js';
 import { resolveVisitHangout, hangoutRumors } from '../actions/hangout.js';
-import { venueOffered, wagerBandFor } from '../hangoutRules.js';
+import { loanBandFor, venueOffered, wagerBandFor } from '../hangoutRules.js';
 import { SeededRng } from '../rng.js';
 import { DawnHand, DayPhase, GameState } from '../types.js';
 
@@ -45,9 +40,17 @@ function dealerOf(state: GameState) {
   return state.npcs.find((n) => n.id === DEALER)!;
 }
 
-describe("Spacer's Dare — win/loss move credits both directions + shift dealer", () => {
-  it('a player WIN pays the wager to the player and sours the dealer', () => {
-    const state = hangoutState([20, 3, 3, 3, 3]); // die[0] = 20 → nat-20 → player wins
+// ---------------------------------------------------------------------------
+// T-135 · THE DARE'S OPEN ARM. Owner ruling D2 replaced the single opposed-GUILE
+// check with a Liar's Dice scene, so `VisitHangout{venue:'dare'}` no longer
+// RESOLVES anything — it OPENS a hand. These blocks keep their original subject
+// (the stake clamp, the co-located dealer, the off-hub reach, the round trip) and
+// assert it against the open arm; the hand itself is driven end to end through the
+// real day loop in `liarsDice.test.ts`.
+// ---------------------------------------------------------------------------
+describe("Spacer's Dare — opening a hand posts BOTH seeds into escrow", () => {
+  it('debits both sides, opens the scene, and emits DareHandStarted and nothing else', () => {
+    const state = hangoutState([20, 3, 3, 3, 3]);
     state.player.credits = 1000;
     const { state: after, events } = resolveVisitHangout(
       state,
@@ -55,58 +58,46 @@ describe("Spacer's Dare — win/loss move credits both directions + shift dealer
       new SeededRng(1),
     );
 
-    // Credits move BOTH directions off the one wager.
-    expect(after.player.credits).toBe(1100);
-    expect(dealerOf(after).credits).toBe(4900);
-
-    const hangout = events.find((e) => e.type === 'HangoutEvent');
-    expect(hangout).toMatchObject({
-      type: 'HangoutEvent',
-      venue: 'dare',
-      opponentId: DEALER,
-      wager: 100,
-      playerWon: true,
-      creditsDelta: 100,
-    });
-
-    // Disposition shifts on a win (dealer just lost money — a sore-loser grudge).
-    const disp = events.find((e) => e.type === 'DispositionChanged');
-    expect(disp).toMatchObject({ npcId: DEALER, reason: 'dare', delta: DARE_WIN_DISPOSITION });
-    expect(DARE_WIN_DISPOSITION).not.toBe(0);
-    expect(dealerOf(after).disposition).toBe(DARE_WIN_DISPOSITION);
-
-    // Both sides' GUILE rolls are recorded; the player's carries the gamble
-    // context that routes a nat to the wire.
-    const playerCheck = events.find((e) => e.type === 'StatCheck' && e.actor === 'Player');
-    expect(playerCheck).toMatchObject({ actionContext: 'gamble', stat: Stat.GUILE });
-    const dealerCheck = events.find((e) => e.type === 'StatCheck' && e.actor === DEALER);
-    expect(dealerCheck).toBeDefined();
-  });
-
-  it('a player LOSS pays the wager to the dealer and warms the dealer', () => {
-    const state = hangoutState([1, 3, 3, 3, 3]); // die[0] = 1 → nat-1 → player loses
-    state.player.credits = 1000;
-    const { state: after, events } = resolveVisitHangout(
-      state,
-      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100, spendDie: 0 },
-      new SeededRng(1),
-    );
-
+    // ESCROW, not a promise: both seeds are debited AT OPEN (§2.4).
     expect(after.player.credits).toBe(900);
-    expect(dealerOf(after).credits).toBe(5100);
-
-    expect(events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
-      venue: 'dare',
-      playerWon: false,
-      creditsDelta: -100,
+    expect(dealerOf(after).credits).toBe(4900);
+    expect(after.dareHand).toMatchObject({
+      dealerId: DEALER,
+      seedWager: 100,
+      potPlayer: 100,
+      potDealer: 100,
+      bid: null,
+      bidder: null,
+      peekUsed: false,
+      peekedDealerDie: null,
+      history: [],
     });
+    // Four d6 a side, roll order preserved, all in 1..6.
+    expect(after.dareHand?.playerDice).toHaveLength(4);
+    expect(after.dareHand?.dealerDice).toHaveLength(4);
+    for (const die of [...after.dareHand!.playerDice, ...after.dareHand!.dealerDice]) {
+      expect(die).toBeGreaterThanOrEqual(1);
+      expect(die).toBeLessThanOrEqual(6);
+    }
 
-    const disp = events.find((e) => e.type === 'DispositionChanged');
-    expect(disp).toMatchObject({ npcId: DEALER, reason: 'dare', delta: DARE_LOSS_DISPOSITION });
-    expect(DARE_LOSS_DISPOSITION).not.toBe(0);
+    // THE HIDDEN-DICE DISCIPLINE (§10.2): the started event carries the PLAYER's
+    // hand and never the dealer's — `eventLog` is serialized into the save and
+    // rendered by the UI.
+    const started = events.find((e) => e.type === 'DareHandStarted');
+    expect(started).toMatchObject({ opponentId: DEALER, seedWager: 100, systemId: 1 });
+    expect(started).toEqual(expect.objectContaining({ playerDice: after.dareHand!.playerDice }));
+    expect(JSON.stringify(events)).not.toContain('dealerDice');
+
+    // The OPEN resolves nothing, so it emits none of the three the old single
+    // check produced. All three arrive at SETTLEMENT instead (§8.4's named
+    // consequence for the wire's gamble bucket).
+    expect(events.some((e) => e.type === 'StatCheck')).toBe(false);
+    expect(events.some((e) => e.type === 'DispositionChanged')).toBe(false);
+    expect(events.some((e) => e.type === 'HangoutEvent')).toBe(false);
+    expect(after.player.dawnHand?.spent[0]).toBe(true);
   });
 
-  it('caps the wager to what the dealer can cover instead of crashing', () => {
+  it('caps the SEED to what the dealer can cover instead of crashing', () => {
     const state = hangoutState([20, 3, 3, 3, 3]);
     state.player.credits = 10_000;
     dealerOf(state).credits = 40; // dealer can only cover 40
@@ -115,10 +106,35 @@ describe("Spacer's Dare — win/loss move credits both directions + shift dealer
       { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 500, spendDie: 0 },
       new SeededRng(1),
     );
-    const hangout = events.find((e) => e.type === 'HangoutEvent');
-    expect(hangout).toMatchObject({ venue: 'dare', playerWon: true, wager: 40 });
-    expect(after.player.credits).toBe(10_040);
+    // The clamp algebra is unchanged, character for character (§3) — only what it
+    // now sizes (the seed of a scene, not the whole stake of a check) has moved.
+    expect(events.find((e) => e.type === 'DareHandStarted')).toMatchObject({ seedWager: 40 });
+    expect(after.dareHand?.seedWager).toBe(40);
+    expect(after.player.credits).toBe(9_960);
     expect(dealerOf(after).credits).toBe(0); // never negative
+  });
+
+  it('refuses a SECOND hand while one is open, with NO die spent (gate 2)', () => {
+    const state = hangoutState([20, 3, 3, 3, 3]);
+    state.player.credits = 10_000;
+    const opened = resolveVisitHangout(
+      state,
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100, spendDie: 0 },
+      new SeededRng(1),
+    ).state;
+
+    const { state: after, events } = resolveVisitHangout(
+      opened,
+      { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100, spendDie: 1 },
+      new SeededRng(2),
+    );
+    expect(events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      venue: 'dare',
+      failReason: 'dare-hand-open',
+    });
+    expect(after.player.dawnHand?.spent[1]).toBe(false); // nothing spent
+    expect(after.dareHand).toEqual(opened.dareHand); // nothing moved
+    expect(after.player.credits).toBe(opened.player.credits);
   });
 });
 
@@ -144,16 +160,16 @@ describe("Spacer's Dare — opponents are drawn from in-system NPCs (asserted)",
     expect(after.player.dawnHand?.spent[0]).toBe(false);
   });
 
-  it('an in-system opponent resolves the dare and burns the die', () => {
+  it('an in-system opponent opens the hand and burns the die', () => {
     const state = hangoutState([15, 3, 3, 3, 3]);
     const { state: after, events } = resolveVisitHangout(
       state,
       { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 100, spendDie: 0 },
       new SeededRng(1),
     );
-    const hangout = events.find((e) => e.type === 'HangoutEvent');
-    expect(hangout).toMatchObject({ venue: 'dare' });
-    expect((hangout as { failReason?: string }).failReason).toBeUndefined();
+    expect(events.some((e) => e.type === 'DareHandStarted')).toBe(true);
+    expect(events.some((e) => e.type === 'HangoutEvent')).toBe(false); // no refusal
+    expect(after.dareHand?.dealerId).toBe(DEALER);
     expect(after.player.dawnHand?.spent[0]).toBe(true);
   });
 });
@@ -264,9 +280,13 @@ describe('malformed die input is a typed fail, never a throw', () => {
 });
 
 describe('day loop: a Dare nat makes the wire (via T-1202) naming the in-system opponent', () => {
-  it('routes a player nat-20 Dare to the gamble wire bucket', () => {
+  // T-135 · FINDING F-134-2, ASSERTED. A Liar's Dice hand emits at most ONE
+  // StatCheck — the optional Peek's — so the player-side gamble wire bucket is now
+  // PEEK-ONLY. The open arm emits no check at all, which is what the first
+  // assertion below pins; the second proves the bucket is still reachable through
+  // the beat that replaced it, so the wire's gamble stories are not dead prose.
+  it('the OPEN emits no StatCheck, so no gamble wire story fires from it', () => {
     const state = hangoutState([20, 3, 3, 3, 3]);
-    // Make the dealer the SOLE co-located NPC so the wire loser is deterministic.
     for (const npc of state.npcs) {
       if (npc.id !== DEALER) npc.currentSystemId = 5;
     }
@@ -277,6 +297,26 @@ describe('day loop: a Dare nat makes the wire (via T-1202) naming the in-system 
       wager: 100,
       spendDie: 0,
     });
+    expect(events.some((e) => e.type === 'StatCheck')).toBe(false);
+  });
+
+  it('routes a nat-20 PEEK to the gamble wire bucket, naming the co-located dealer', () => {
+    const state = hangoutState([15, 20, 3, 3, 3]);
+    // Make the dealer the SOLE co-located NPC so the wire loser is deterministic.
+    for (const npc of state.npcs) {
+      if (npc.id !== DEALER) npc.currentSystemId = 5;
+    }
+    const opened = applyPlayerAction(state, {
+      type: 'VisitHangout',
+      venue: 'dare',
+      opponentId: DEALER,
+      wager: 100,
+      spendDie: 0,
+    }).state;
+    const { events } = applyPlayerAction(opened, { type: 'Dare', move: 'peek', spendDie: 1 });
+
+    const check = events.find((e) => e.type === 'StatCheck');
+    expect(check).toMatchObject({ actor: 'Player', stat: Stat.GUILE, actionContext: 'gamble' });
     const wire = events.filter((e) => e.type === 'WireEntry');
     // The gamble templates all name the Hangout, and the player's nat names the
     // co-located dealer (Iron Vex) as the loser — "an NPC actually present".
@@ -286,7 +326,7 @@ describe('day loop: a Dare nat makes the wire (via T-1202) naming the in-system 
 });
 
 describe('mid-day serialization round-trip', () => {
-  it('a state carrying a HangoutEvent round-trips byte-identically', () => {
+  it("a state carrying an OPEN Liar's Dice hand round-trips byte-identically", () => {
     const state = hangoutState([20, 3, 3, 3, 3]);
     const { state: after } = applyPlayerAction(state, {
       type: 'VisitHangout',
@@ -299,9 +339,8 @@ describe('mid-day serialization round-trip', () => {
     const restored = deserializeState(s1);
     const s2 = serializeState(restored);
     expect(s2).toBe(s1);
-    expect(restored.eventLog.some((e) => e.type === 'HangoutEvent' && e.venue === 'dare')).toBe(
-      true,
-    );
+    expect(restored.dareHand).toEqual(after.dareHand);
+    expect(restored.eventLog.some((e) => e.type === 'DareHandStarted')).toBe(true);
   });
 });
 
@@ -366,10 +405,12 @@ describe('T-121 · VisitHangout resolves at a port that is not Sun-3', () => {
     });
 
     expect(events.some((e) => e.type === 'ActionBlocked')).toBe(false);
-    expect(events.some((e) => e.type === 'HangoutEvent' && e.venue === 'dare')).toBe(true);
-    // The same zero-sum transfer the home port produces.
-    expect(after.player.credits).toBe(10_000 + stake);
+    expect(events.some((e) => e.type === 'DareHandStarted')).toBe(true);
+    // T-135 · the same SYMMETRIC posting the home port produces — both sides put
+    // the port's own floor into escrow, off the port's own band.
+    expect(after.player.credits).toBe(10_000 - stake);
     expect(dealerOf(after).credits).toBe(dealerStart - stake);
+    expect(after.dareHand?.systemId).toBe(VEGA_6);
     expect(after.player.dawnHand?.spent[0]).toBe(true);
   });
 
@@ -454,76 +495,38 @@ describe("T-120 · the 'venue-not-offered' refusal round-trips on both event sha
 // by the first task to author a port that withholds a beat
 // (`docs/HANGOUT_REDESIGN.md` §2.6, §6.2).
 //
-// THREE ports narrow their venue set, for three different reasons, and between
-// them they reach BOTH typed event variants at the resolver:
-//   * Arcturus-6 (4) — the garrison mess runs no credit desk, so 'borrow' and
-//     'repay' report a `LoanEvent{kind:'failed'}`;
+// TWO ports narrow their venue set, for two different reasons:
 //   * Deneb-4 (5) — the partisan hall will not seat a stranger, so 'meet' reports
-//     a `HangoutEvent`;
+//     a `HangoutEvent{kind:'failed'}`;
 //   * Spica-3 (13) — T-124's second watch tolerates no insults, so 'insult'
 //     reports a `HangoutEvent` too. Driven here because a SECOND social venue at a
 //     DIFFERENT port is what says the refusal is a property of `venueOffered`
 //     rather than of Deneb-4's row or of the `meet` arm in particular.
-// In every case the refusal lands BEFORE the die is spent, which is the property
+// In both cases the refusal lands BEFORE the die is spent, which is the property
 // that matters: nothing is charged for an act the house never offered.
 //
+// T-133 (owner ruling D7) · IT WAS THREE PORTS, AND THE THIRD WAS THE ONE THAT
+// REACHED THE `LoanEvent` VARIANT. Arcturus-6 (4) withheld 'borrow'/'repay'
+// because a withheld venue was the only per-port lending control ruling 5 granted;
+// D7 gives a row its own `loanBand`, so the garrison runs its desk again against a
+// tight ceiling and its two refusal tests have been REPLACED by the clamp tests in
+// the block below — the coverage moved with the content rather than being deleted.
+// CONSEQUENCE, recorded rather than discovered later: no authored row withholds a
+// lending venue any more, so `LoanEvent{failReason:'venue-not-offered'}` is once
+// again unreachable from content — the exact F-120-1 situation, restored by an
+// amendment rather than by an oversight. The resolver arm and its schema mirror
+// stay (a later row may close a desk), and the serialized-shape pins above are
+// again the whole of that variant's coverage.
+//
 // NO NUMBER FROM THE CONTENT ROWS IS RESTATED HERE. The tests read `venueOffered`
-// to state the precondition, so an author who later gives Arcturus-6 a desk gets a
-// failing precondition assertion rather than a silently vacuous test.
+// and `loanBandFor` to state their preconditions, so an author who later gives
+// Deneb-4 a `meet` — or widens the garrison's band — gets a failing precondition
+// assertion rather than a silently vacuous test.
 // ---------------------------------------------------------------------------
 describe('T-123 · a port that withholds a venue refuses it BEFORE the die is spent', () => {
   const ARCTURUS_6 = 4;
   const DENEB_4 = 5;
   const SPICA_3 = 13;
-
-  it('borrow at Arcturus-6 is a typed LoanEvent fail — no die, no loan, no credits moved', () => {
-    expect(venueOffered(ARCTURUS_6, 'borrow')).toBe(false);
-    const state = hangoutState([10, 3, 3, 3, 3], ARCTURUS_6);
-    const startCredits = state.player.credits;
-
-    const { state: after, events } = resolveVisitHangout(
-      state,
-      { type: 'VisitHangout', venue: 'borrow', amount: 500, spendDie: 0 },
-      new SeededRng(1),
-    );
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: 'LoanEvent',
-        kind: 'failed',
-        failReason: 'venue-not-offered',
-      }),
-    );
-    // The lending pair reports a LoanEvent, never the social HangoutEvent —
-    // `failVenue`'s whole reason for existing.
-    expect(events.some((e) => e.type === 'HangoutEvent')).toBe(false);
-    expect(after.player.dawnHand?.spent[0]).toBe(false);
-    expect(after.player.loan ?? null).toBeNull();
-    expect(after.player.credits).toBe(startCredits);
-  });
-
-  it('repay at Arcturus-6 is refused for the VENUE, not for the absent loan', () => {
-    // Ordering matters: the venue gate sits ABOVE the lending preconditions in the
-    // resolver, so a captain with no marker still gets 'venue-not-offered' rather
-    // than 'no-loan'. That is what makes the refusal a statement about the port.
-    expect(venueOffered(ARCTURUS_6, 'repay')).toBe(false);
-    const state = hangoutState([10, 3, 3, 3, 3], ARCTURUS_6);
-
-    const { state: after, events } = resolveVisitHangout(
-      state,
-      { type: 'VisitHangout', venue: 'repay', amount: 100, spendDie: 0 },
-      new SeededRng(1),
-    );
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: 'LoanEvent',
-        kind: 'failed',
-        failReason: 'venue-not-offered',
-      }),
-    );
-    expect(after.player.dawnHand?.spent[0]).toBe(false);
-  });
 
   it('meet at Deneb-4 is a typed HangoutEvent fail — no die spent, no disposition moved', () => {
     expect(venueOffered(DENEB_4, 'meet')).toBe(false);
@@ -573,8 +576,8 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
     expect(dealerOf(after).disposition).toBe(startDisposition);
   });
 
-  it('the beats those three ports DO run still resolve normally', () => {
-    // The control. Without it the four tests above would also pass at a port that
+  it('the beats those ports DO run still resolve normally', () => {
+    // The control. Without it the tests above would also pass at a port that
     // refused everything, and "narrowed" would be indistinguishable from "broken".
     const state = hangoutState([20, 3, 3, 3, 3], ARCTURUS_6);
     state.player.credits = 1000;
@@ -583,7 +586,7 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
       { type: 'VisitHangout', venue: 'dare', opponentId: DEALER, wager: 200, spendDie: 0 },
       new SeededRng(1),
     );
-    expect(events.some((e) => e.type === 'HangoutEvent' && e.venue === 'dare')).toBe(true);
+    expect(events.some((e) => e.type === 'DareHandStarted')).toBe(true);
     expect(
       events.some((e) => e.type === 'HangoutEvent' && e.failReason === 'venue-not-offered'),
     ).toBe(false);
@@ -603,5 +606,87 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
       watchEvents.some((e) => e.type === 'HangoutEvent' && e.failReason === 'venue-not-offered'),
     ).toBe(false);
     expect(afterWatch.player.dawnHand?.spent[0]).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-133 · THE PER-PORT LOAN BAND, DRIVEN THROUGH THE REAL ACTION PATH (owner
+// ruling D7, `docs/HANGOUT_REDESIGN.md` §2.2 ruling 5 as amended).
+//
+// The block above proves a withheld VENUE is refused. This one proves the thing
+// D7 replaced that mechanism with: a desk that is OPEN but shallow. An over-ask at
+// the garrison mess is CLAMPED, not refused — the die is spent, a marker is
+// written, and the captain walks out with less than they asked for. That
+// distinction is the whole ruling: a band is a clamp, not a counterparty.
+//
+// DRIVEN THROUGH `applyPlayerAction`, not through `resolveVisitHangout` directly,
+// because the Accept clause asks for the real path: the day-loop gates (hangout
+// system, encounter, phase) run first, and a clamp that only worked when the
+// resolver was called by hand would prove nothing about the game.
+//
+// EVERY EXPECTATION READS `loanBandFor`. Nothing here names 1,000 or 5,000, so the
+// authored ceiling can move without this file needing an edit — and if the two
+// ports ever stop differing, the non-vacuity assertion says so out loud instead of
+// the tests quietly agreeing with each other.
+// ---------------------------------------------------------------------------
+describe('T-133 · a requested principal clamps into the PORT’s band', () => {
+  const ARCTURUS_6 = 4;
+  const SUN_3 = 1;
+
+  /** The engine-written marker off a real `applyPlayerAction`, plus its event. */
+  function borrowAt(systemId: number, amount: number) {
+    const state = hangoutState([10, 3, 3, 3, 3], systemId);
+    const before = state.player.credits;
+    const { state: after, events } = applyPlayerAction(state, {
+      type: 'VisitHangout',
+      venue: 'borrow',
+      amount,
+      spendDie: 0,
+    });
+    return { after, events, before };
+  }
+
+  it('the garrison mess deals a tighter band than the home hall — the precondition', () => {
+    // NON-VACUITY. Every assertion below is a comparison between these two ports;
+    // if the content ever collapses them, this fails first and says why.
+    expect(venueOffered(ARCTURUS_6, 'borrow')).toBe(true);
+    expect(loanBandFor(ARCTURUS_6).max).toBeLessThan(loanBandFor(SUN_3).max);
+  });
+
+  it('an over-ask at Arcturus-6 CLAMPS to the port’s ceiling — it does not error', () => {
+    const ceiling = loanBandFor(ARCTURUS_6).max;
+    const { after, events, before } = borrowAt(ARCTURUS_6, loanBandFor(SUN_3).max);
+
+    // Not blocked, not refused: the desk is open and it answered.
+    expect(events.some((e) => e.type === 'ActionBlocked')).toBe(false);
+    expect(events.some((e) => e.type === 'LoanEvent' && e.kind === 'failed')).toBe(false);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'LoanEvent', kind: 'borrowed', principal: ceiling }),
+    );
+    expect(after.player.loan?.principal).toBe(ceiling);
+    expect(after.player.loan?.outstanding).toBe(ceiling);
+    // Credits moved by exactly the CLAMPED amount, not by the amount asked for.
+    expect(after.player.credits).toBe(before + ceiling);
+    // …and the die was spent, because the action resolved rather than refusing.
+    expect(after.player.dawnHand?.spent[0]).toBe(true);
+  });
+
+  it('an under-ask at Arcturus-6 clamps UP to the port’s floor', () => {
+    const floor = loanBandFor(ARCTURUS_6).min;
+    const { after, before } = borrowAt(ARCTURUS_6, 1);
+    expect(after.player.loan?.principal).toBe(floor);
+    expect(after.player.credits).toBe(before + floor);
+  });
+
+  it('THE SAME REQUEST AT SUN-3 IS NOT CLAMPED — the two ports diverge through one accessor', () => {
+    // The control, and the behaviour-preserving half of the Accept clause driven
+    // rather than asserted: the request that the garrison trims is honoured in
+    // full at every port that did not author a band.
+    const asked = loanBandFor(SUN_3).max;
+    const { after, before } = borrowAt(SUN_3, asked);
+    expect(after.player.loan?.principal).toBe(asked);
+    expect(after.player.credits).toBe(before + asked);
+    expect(asked).toBeGreaterThan(loanBandFor(ARCTURUS_6).max);
   });
 });

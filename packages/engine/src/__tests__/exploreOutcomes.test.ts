@@ -15,6 +15,7 @@ import { resolveExploration } from '../actions/exploration.js';
 import {
   claimOutcome,
   drawOutcome,
+  apCost,
   drawPoiKind,
   recoveryDays,
   resolveExploreOutcome,
@@ -25,11 +26,18 @@ import { SeededRng } from '../rng.js';
 import { DiscoveredPoi, GameEvent, GameState, DayPhase } from '../types.js';
 
 /** Same shape as `exploration.test.ts`'s helper — a DAY-phase state with one
- *  controllable die, a PILOT modifier that guarantees the nav check, and fuel. */
+ *  controllable die, a PILOT modifier that guarantees the nav check, and fuel.
+ *
+ *  T-131 (D1) · PLUS THREE SPARE DICE at indices 1-3. Bands 3-4 charge `apCost`
+ *  (2 and 3) EXTRA dice at claim, so a one-die hand would forfeit every band-3/4
+ *  find and this 300-seed tripwire would be pinned against the top of the ladder
+ *  never paying — a measurement of nothing. The spares are never the die the nav
+ *  check reads (`spendDie: 0`), so the check is unchanged; the forfeit path has
+ *  its own dedicated tests in `exploreAp.test.ts`. */
 function craftExploreState(die: number, pilot: number): GameState {
   const state = createInitialState(1);
   state.dayPhase = DayPhase.DAY;
-  state.player.dawnHand = { dice: [die], spent: [false] };
+  state.player.dawnHand = { dice: [die, 1, 1, 1], spent: [false, false, false, false] };
   state.player.stats[Stat.PILOT] = pilot;
   state.player.ship.fuel = 1000;
   return state;
@@ -146,7 +154,34 @@ describe('explore outcome framework — the WEIGHTED DRAW aggregate (T-117)', ()
   //   it. IT IS NOT A MEASUREMENT OF WHETHER EXPLORE PAYS. §5.5 predicts ≈447cr
   //   of value per successful board; T-116 measures it over real careers and owns
   //   the verdict, and nothing here is tuned to reach a number.
-  const WEIGHTED_DRAW_HASH = 'bb6ae5834b4dcc087390672c7a2137f9856611da2da11252266543aeae9625b8';
+  // T-131 (pinned below): OWNER RULING D1 — BANDS 3-4 PAY IN DICE, NOT DAYS. A
+  //   RULE change, not a content one, and the second-largest move in this ledger.
+  //   Three mechanisms, each traceable:
+  //     (1) BANDS 3-4 NO LONGER OPEN THE RECOVERY SLOT. `recoveryDays` is 0 for
+  //         them, so `RecoveryStarted` is emitted for BAND 2 ALONE.
+  //     (2) THEY RESOLVE AT CLAIM INSTEAD, after paying `apCost` (2 / 3) extra
+  //         dice out of the same dawn hand — which means the payload roll happens
+  //         on the day of the board rather than at a later dusk, so every board
+  //         drawing a band-3/4 row re-phases its own stream. This is the change
+  //         the sim replay goldens were regenerated for.
+  //     (3) THE HELPER'S HAND WIDENED from one die to four, so those rows can
+  //         actually PAY. A one-die hand would have forfeited all 33 of them and
+  //         pinned this tripwire against the top of the ladder never resolving.
+  //
+  //   WHAT MOVED, aggregate over the same 300 seeds:
+  //     RecoveryStarted   134 → 81
+  //     salvageEvents      78 → 78     fragmentEvents   38 → 38
+  //     contrabandEvents    0 → 0      podFlagged       15 → 15
+  //     totalCredits  310,219 → 310,219
+  //
+  //   READ THE ONE MOVE AGAINST THE PREDICTED SHARE. All 300 seeds board, so
+  //   `RecoveryStarted` 81/300 = 27.0% against the 24% of the table band 2
+  //   occupies — the only deferring band left, exactly. It was 44.7% against
+  //   bands 2-4's 42% before the ruling. THAT THE OTHER FIVE COUNTERS DID NOT
+  //   MOVE AT ALL is the evidence that the ruling reached only the bands it was
+  //   aimed at: bands 3-4 author no salvage and no lore, so a change to how they
+  //   are claimed cannot touch credits, fragments or the sealed pod.
+  const WEIGHTED_DRAW_HASH = '9a80d36394b2b3d630cbf4864b38f8b1489b661adbdddef0471c6ba5a2c229e3';
 
   it('300 seeds of boarded POIs match the pinned per-seed result, exactly', () => {
     const hash = createHash('sha256');
@@ -197,7 +232,7 @@ describe('explore outcome framework — the WEIGHTED DRAW aggregate (T-117)', ()
       fragmentEvents: 38,
       contrabandEvents: 0,
       podFlagged: 15,
-      recoveryStarted: 134,
+      recoveryStarted: 81,
       totalCredits: 310219,
     });
   });
@@ -505,60 +540,118 @@ describe('T-111 · recoveryDays reads the band table, never a per-row constant',
   });
 
   it('pins N at each band floor and one point below each boundary', () => {
-    // The §5.2 ladder: 0 / 0 / 1 / 3 / 6 at 0 / 1 / 11 / 31 / 61.
+    // THE LADDER AFTER OWNER RULING D1 (2026-07-31, T-131): 0 / 0 / 1 / 0 / 0 at
+    // 0 / 1 / 11 / 31 / 61. Bands 3 and 4 were N = 3 and N = 6 until D1 retired
+    // the calendar-day cost for them; band 2 is DELIBERATELY UNTOUCHED.
     expect(recoveryDays(0)).toBe(0);
     expect(recoveryDays(1)).toBe(0);
     expect(recoveryDays(10)).toBe(0); // one below band 2
     expect(recoveryDays(11)).toBe(1);
     expect(recoveryDays(30)).toBe(1); // one below band 3
-    expect(recoveryDays(31)).toBe(3);
-    expect(recoveryDays(60)).toBe(3); // one below band 4
-    expect(recoveryDays(61)).toBe(6);
-    expect(recoveryDays(100)).toBe(6); // the ladder's ceiling
+    expect(recoveryDays(31)).toBe(0);
+    expect(recoveryDays(60)).toBe(0); // one below band 4
+    expect(recoveryDays(61)).toBe(0);
+    expect(recoveryDays(100)).toBe(0); // the ladder's ceiling
   });
 
-  it('is monotone non-decreasing over every row in the table (§5.4 part 1)', () => {
-    // Written NOW so T-113/T-114/T-115 inherit it: "the most powerful outcomes are
-    // the slowest to recover" is true BY CONSTRUCTION for any rows anyone authors,
-    // because `recoveryDays` is a function of a band and a band is monotone in
-    // `valuePoints`. This is a property, not a tuned threshold, so it cannot rot.
+  it('pins the D1 apCost ladder at each band floor and boundary (T-131)', () => {
+    // The mirror of the pin above, over the cost that REPLACED the day count at
+    // the top of the ladder: 0 / 0 / 0 / 2 / 3.
+    expect(apCost(0)).toBe(0);
+    expect(apCost(1)).toBe(0);
+    expect(apCost(10)).toBe(0);
+    expect(apCost(11)).toBe(0); // band 2 pays in a DAY, not in dice
+    expect(apCost(30)).toBe(0);
+    expect(apCost(31)).toBe(2);
+    expect(apCost(60)).toBe(2);
+    expect(apCost(61)).toBe(3);
+    expect(apCost(100)).toBe(3);
+  });
+
+  it('is monotone non-decreasing in apCost over every row in the table (§5.4 part 1)', () => {
+    // Written at T-111 so T-113/T-114/T-115 would inherit it: "the most powerful
+    // outcomes are the most expensive to bring home" is true BY CONSTRUCTION for
+    // any rows anyone authors, because the cost is a function of a band and a band
+    // is monotone in `valuePoints`. A property, not a tuned threshold.
+    //
+    // T-131 · IT IS RE-EXPRESSED, NOT DELETED. `recoveryDays` STOPPED being
+    // monotone at owner ruling D1 — band 2 pays a day and band 3 pays none — so
+    // asserting monotonicity over it would now be asserting something false. The
+    // claim §5.4 always meant is monotone in the cost that scales with value, and
+    // after D1 that is `apCost`. The day cost gets the weaker claim it can still
+    // honestly carry, one line below: it is bounded, and it is band 2's alone.
     for (const a of EXPLORE_OUTCOMES) {
       for (const b of EXPLORE_OUTCOMES) {
         if (a.valuePoints <= b.valuePoints) {
-          expect(recoveryDays(a.valuePoints)).toBeLessThanOrEqual(recoveryDays(b.valuePoints));
+          expect(apCost(a.valuePoints)).toBeLessThanOrEqual(apCost(b.valuePoints));
         }
+      }
+    }
+    // The day cost is now BAND 2's alone — nothing above it opens a clock at all.
+    for (const row of EXPLORE_OUTCOMES) {
+      if (recoveryDays(row.valuePoints) > 0) {
+        expect(bandIndexOf(row.valuePoints), `${row.id} opens a clock`).toBe(2);
       }
     }
   });
 
-  it('RECOVERY TIME CORRELATES WITH VALUE across the whole table (§5.4 part 2)', () => {
-    // T-115's SECOND ACCEPT CLAUSE, and §5.4's second half: the mean
-    // `recoveryDays` of the top `valuePoints` quartile is STRICTLY GREATER than
-    // the bottom quartile's.
+  it('COST CORRELATES WITH VALUE across the whole table (§5.4 part 2)', () => {
+    // T-115's SECOND ACCEPT CLAUSE, and §5.4's second half: the mean COST of the
+    // top `valuePoints` quartile is STRICTLY GREATER than the bottom quartile's.
+    //
+    // T-131 · RE-EXPRESSED OVER THE COMBINED COST, not deleted. It was stated over
+    // `recoveryDays` alone, and owner ruling D1 zeroes that for bands 3-4 — the
+    // old form would have gone VACUOUS (top quartile mean 0), which is exactly the
+    // failure mode this comment block was written to prevent. The clause's real
+    // subject is what a find costs to bring home, and after D1 that has two
+    // currencies:
+    //   dieCost(v) = 1 + apCost(v)   — the sweep's own die plus the band's extra
+    //   dayCost(v) = recoveryDays(v) — calendar days, band 2's alone since D1
+    // The correlation is asserted over BOTH, so neither currency can be quietly
+    // flattened without this going red.
     //
     // WHY THIS IS NOT A TUNED THRESHOLD, said plainly so nobody later "fixes" it
-    // by moving a number: `recoveryDays` is a function of BAND and band is a
-    // monotone function of `valuePoints`, so part 1 above (monotonicity over every
-    // pair) is true by construction for any 100 rows anyone authors. Part 2 adds
-    // the only thing part 1 cannot say — that the ladder is not FLAT — and it is
-    // strict as long as the table spans more than one band, which the 14/20/33/25/8
-    // spread does by definition. Neither half can rot, and neither can be made to
-    // pass by editing a band (docs/BALANCE-POLICY.md forbids that anyway).
+    // by moving a number: both costs are functions of BAND and band is a monotone
+    // function of `valuePoints`, so part 1 above (monotonicity over every pair) is
+    // true by construction for any 100 rows anyone authors. Part 2 adds the only
+    // thing part 1 cannot say — that the ladder is not FLAT — and it is strict as
+    // long as the table spans more than one band, which the 14/20/33/25/8 spread
+    // does by definition. Neither half can rot, and neither can be made to pass by
+    // editing a band (docs/BALANCE-POLICY.md forbids that anyway).
     //
     // WHOLE-TABLE, NOT ROW BY ROW, which is the clause's own wording: no
     // assertion here names a row or an id.
     const sorted = [...EXPLORE_OUTCOMES].sort((a, b) => a.valuePoints - b.valuePoints);
     const quartile = Math.floor(sorted.length / 4);
     expect(quartile).toBeGreaterThan(0);
-    const mean = (rows: ExploreOutcomeDefinition[]): number =>
-      rows.reduce((sum, row) => sum + recoveryDays(row.valuePoints), 0) / rows.length;
-    const bottom = mean(sorted.slice(0, quartile));
-    const top = mean(sorted.slice(sorted.length - quartile));
-    expect(top, `top quartile mean N ${top} vs bottom ${bottom}`).toBeGreaterThan(bottom);
-    // …and the ladder's ends are the ones §5.2 authored: the cheapest quarter of
-    // the table recovers same-day, the dearest quarter never does.
-    expect(bottom).toBe(0);
-    expect(top).toBeGreaterThanOrEqual(EXPLORE_VALUE_BANDS[3].recoveryDays);
+    const meanBy = (
+      rows: ExploreOutcomeDefinition[],
+      cost: (valuePoints: number) => number,
+    ): number => rows.reduce((sum, row) => sum + cost(row.valuePoints), 0) / rows.length;
+    const bottomRows = sorted.slice(0, quartile);
+    const topRows = sorted.slice(sorted.length - quartile);
+
+    const dieCost = (valuePoints: number): number => 1 + apCost(valuePoints);
+    const bottomDice = meanBy(bottomRows, dieCost);
+    const topDice = meanBy(topRows, dieCost);
+    expect(topDice, `top quartile mean dice ${topDice} vs bottom ${bottomDice}`).toBeGreaterThan(
+      bottomDice,
+    );
+    // …and the ladder's ends are the ones D1 authored: the cheapest quarter of the
+    // table costs the sweep's die and nothing else, the dearest quarter never does.
+    expect(bottomDice).toBe(1);
+    expect(topDice).toBeGreaterThanOrEqual(1 + EXPLORE_VALUE_BANDS[3].apCost);
+
+    // The day cost still separates the ends too, in the direction it always did —
+    // the bottom quartile never opens a clock and the top quartile's mean is at
+    // least as large. It is NO LONGER STRICT (both ends are 0 after D1: band 2 is
+    // the only clock left and it sits in the middle of the table), which is the
+    // honest statement of what the ruling left behind and is asserted as such
+    // rather than dropped.
+    const bottomDays = meanBy(bottomRows, recoveryDays);
+    const topDays = meanBy(topRows, recoveryDays);
+    expect(bottomDays).toBe(0);
+    expect(topDays).toBeGreaterThanOrEqual(bottomDays);
   });
 
   it('NO outcome row carries a recoveryDays key — the clock is not authorable per row', () => {
@@ -593,6 +686,16 @@ describe('T-111 · claimOutcome — deliver today, or open the recovery slot', (
     return { id, valuePoints, pools: ['derelict'], wireFound: '', payload };
   }
 
+  /** T-131 · Deal an explicit UNSPENT dawn hand. `baseState()` is
+   *  `createInitialState(1)`, which carries no hand at all (the hand is dealt by
+   *  `startDay`), and these are UNIT tests of `claimOutcome` — the die values are
+   *  the subject, so naming them is the honest construction. The loop-driven
+   *  proof, where nothing is assigned by hand, lives in `exploreAp.test.ts`. */
+  function handed(state: GameState, dice: number[]): GameState {
+    state.player.dawnHand = { dice: [...dice], spent: dice.map(() => false) };
+    return state;
+  }
+
   it('a band-0/1 row resolves IMMEDIATELY and never touches the slot', () => {
     const state = baseState();
     const before = state.player.credits;
@@ -606,60 +709,160 @@ describe('T-111 · claimOutcome — deliver today, or open the recovery slot', (
     expect(res.state.player.credits).toBeGreaterThan(before);
   });
 
-  it('a band-3 row opens the slot with dueDay = day + 3 and pays nothing today', () => {
+  it('a band-2 row opens the slot with dueDay = day + 1 and pays nothing today', () => {
     const state = baseState(); // day 3
     const before = state.player.credits;
     const res = claimRow(
       state,
-      valued('t-b3', 40, { kind: 'salvage', minCredits: 40, maxCredits: 180 }),
+      valued('t-b2', 20, { kind: 'salvage', minCredits: 40, maxCredits: 180 }),
     );
 
     expect(res.state.player.recovery).toEqual({
-      outcomeId: 't-b3',
+      outcomeId: 't-b2',
       poiId: POI.id,
       systemId: POI.systemId,
       startedDay: 3,
-      dueDay: 6,
+      dueDay: 4,
     });
     const started = res.events.find((e) => e.type === 'RecoveryStarted');
     expect(started).toEqual({
       type: 'RecoveryStarted',
       day: 3,
-      outcomeId: 't-b3',
+      outcomeId: 't-b2',
       poiId: POI.id,
       systemId: POI.systemId,
-      dueDay: 6,
+      dueDay: 4,
     });
     // The payload has NOT resolved: no credits, no SalvageRecovered.
     expect(res.state.player.credits).toBe(before);
     expect(res.events.some((e) => e.type === 'SalvageRecovered')).toBe(false);
   });
 
-  it('the defer path consumes ZERO rng draws (the payload rolls at payout)', () => {
+  it('T-131 · a band-3 row opens NO slot: it pays 2 extra dice and resolves today', () => {
+    // The rewrite of the old 'a band-3 row opens the slot with dueDay = day + 3'.
+    // Owner ruling D1 (2026-07-31) retired the day cost for bands 3-4; the
+    // coverage is kept and re-pointed at the contract that replaced it.
+    const state = handed(baseState(), [6, 2, 4]); // one spare above the 2 owed
+    const before = state.player.credits;
+    const res = claimRow(
+      state,
+      valued('t-b3', 40, { kind: 'salvage', minCredits: 40, maxCredits: 180 }),
+    );
+
+    expect(res.state.player.recovery).toBeNull();
+    expect(res.events.some((e) => e.type === 'RecoveryStarted')).toBe(false);
+    expect(res.events.some((e) => e.type === 'ExplorationFailed')).toBe(false);
+    // Resolved TODAY, exactly as a band-0/1 find does.
+    expect(res.events.some((e) => e.type === 'SalvageRecovered')).toBe(true);
+    expect(res.state.player.credits).toBeGreaterThan(before);
+    // The two LOWEST dice paid (values 2 and 4 at indices 1 and 2), not the 6.
+    expect(res.state.player.dawnHand!.spent).toEqual([false, true, true]);
+  });
+
+  it('T-131 · a band-4 row pays 3 extra dice, LOWEST first, and resolves today', () => {
+    const state = handed(baseState(), [5, 1, 9, 3, 7]);
+    const res = claimRow(
+      state,
+      valued('t-b4', 70, { kind: 'salvage', minCredits: 40, maxCredits: 180 }),
+    );
+    expect(res.state.player.recovery).toBeNull();
+    expect(res.events.some((e) => e.type === 'SalvageRecovered')).toBe(true);
+    // Values 1, 3, 5 are the three cheapest — indices 1, 3, 0. The 9 and the 7 are
+    // deliberately left for the checks still ahead in the day.
+    expect(res.state.player.dawnHand!.spent).toEqual([true, true, false, true, false]);
+  });
+
+  it('T-131 · a band-3/4 row with too thin a hand FORFEITS, with a typed reason', () => {
+    const state = handed(baseState(), [6]); // one die, two owed
+    const before = state.player.credits;
+    const res = claimRow(
+      state,
+      valued('t-b3', 40, { kind: 'salvage', minCredits: 40, maxCredits: 180 }),
+    );
+    const failed = res.events.find((e) => e.type === 'ExplorationFailed');
+    expect(failed).toEqual({
+      type: 'ExplorationFailed',
+      day: 3,
+      systemId: POI.systemId,
+      reason: 'insufficient-dice',
+    });
+    // No downgrade, no partial payout, no die taken for a payment not completed.
+    expect(res.state.player.credits).toBe(before);
+    expect(res.events.some((e) => e.type === 'SalvageRecovered')).toBe(false);
+    expect(res.state.player.recovery).toBeNull();
+    expect(res.state.player.dawnHand!.spent).toEqual([false]);
+    // …and the player is told, in the wire, what happened.
+    expect(res.events.some((e) => e.type === 'WireEntry')).toBe(true);
+  });
+
+  it('T-131 · a MISSING dawn hand counts as insufficient, never as free', () => {
+    const state = baseState();
+    delete state.player.dawnHand; // `dawnHand` is optional on PlayerState
+    const res = claimRow(
+      state,
+      valued('t-b4', 70, { kind: 'salvage', minCredits: 40, maxCredits: 180 }),
+    );
+    expect(
+      res.events.some((e) => e.type === 'ExplorationFailed' && e.reason === 'insufficient-dice'),
+    ).toBe(true);
+    expect(res.events.some((e) => e.type === 'SalvageRecovered')).toBe(false);
+  });
+
+  it('the BAND-2 defer path consumes ZERO rng draws (the payload rolls at payout)', () => {
     // Load-bearing: the value is rolled fresh off the CURRENT content row at the
-    // dusk of dueDay, not frozen onto the save at claim time.
+    // dusk of dueDay, not frozen onto the save at claim time. T-131 · re-pointed
+    // from a band-4 `valuePoints` (70) to a band-2 one (20), because band 4 no
+    // longer defers at all. The CLAIM is unchanged; only which band reaches it is.
     const rngBefore = new SeededRng(99).getState();
     const res = claimRow(
       baseState(),
-      valued('t-b4', 70, { kind: 'salvage', minCredits: 1, maxCredits: 999 }),
+      valued('t-b2', 20, { kind: 'salvage', minCredits: 1, maxCredits: 999 }),
       99,
     );
     expect(res.rng.getState()).toBe(rngBefore);
-    expect(res.state.player.recovery?.dueDay).toBe(3 + 6);
+    expect(res.state.player.recovery?.dueDay).toBe(3 + 1);
+  });
+
+  it('T-131 · a band-3/4 claim DOES advance the rng — the recorded stream change', () => {
+    // The counterpart of the assertion above, and the reason the sim replay
+    // goldens were regenerated with this task: the `apCost` path resolves the
+    // payload AT CLAIM, so step (5) of the determinism order happens today
+    // instead of at a later dusk. Named here so a future reader can see that the
+    // golden move was ruled, not discovered.
+    const rngBefore = new SeededRng(99).getState();
+    const res = claimRow(
+      handed(baseState(), [1, 2, 3, 4]),
+      valued('t-b3', 40, { kind: 'salvage', minCredits: 1, maxCredits: 999 }),
+      99,
+    );
+    expect(res.rng.getState()).not.toBe(rngBefore);
+    expect(res.state.player.recovery).toBeNull();
+  });
+
+  it('T-131 · the FORFEIT path consumes zero rng — nothing rolls, because nothing pays', () => {
+    const rngBefore = new SeededRng(99).getState();
+    const res = claimRow(
+      handed(baseState(), [6]),
+      valued('t-b3', 40, { kind: 'salvage', minCredits: 1, maxCredits: 999 }),
+      99,
+    );
+    expect(res.rng.getState()).toBe(rngBefore);
   });
 
   it('a second recovery-bearing row on the SAME board resolves immediately', () => {
     // The multi-leg legacy draw is the only way one board yields two such rows.
     // The predicate is the SAME `recovery === null` the Explore verb refuses on —
     // one rule, not two. T-113: unreachable once the draw is a single weighted row.
+    // T-131 · both rows re-pointed from band 3 (40) to band 2 (20): band 3 stopped
+    // being recovery-bearing at owner ruling D1, so 40 no longer occupies a slot.
     const state = baseState();
-    const first = claimRow(state, valued('t-first', 40, { kind: 'lore' }));
+    const first = claimRow(state, valued('t-first', 20, { kind: 'lore' }));
     expect(first.state.player.recovery?.outcomeId).toBe('t-first');
 
     const before = first.state.player.credits;
     const second = claimRow(
       first.state,
-      valued('t-second', 40, { kind: 'salvage', minCredits: 40, maxCredits: 180 }),
+      valued('t-second', 20, { kind: 'salvage', minCredits: 40, maxCredits: 180 }),
     );
     // The slot is untouched by the second row, which paid out on the spot.
     expect(second.state.player.recovery?.outcomeId).toBe('t-first');

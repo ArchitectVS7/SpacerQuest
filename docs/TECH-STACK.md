@@ -209,6 +209,37 @@ self-hosted fonts are named follow-ups, not shipped here.
 `content/` is data (JSON/typed TS data modules) so expansion Seasons and the
 d20 cast stay authorable without touching engine code.
 
+### 5. The cockpit's animation library: GSAP (T-136)
+
+**T-136** added the cockpit's first animation dependency — **GSAP 3.15.0**, in
+`packages/ui`'s `dependencies`. Recorded here because it is the second runtime
+package this project ships (after React) and because the licence is not one of
+the two this repo already carries.
+
+- **Licence: the Standard "No Charge" GSAP License**, not MIT. The npm package
+  ships **no LICENSE file** — its `README.md` names the licence and points at
+  <https://gsap.com/standard-license>, which was read before the dependency was
+  accepted. It permits commercial use in a **sold** product (§3's Steam-first
+  target) and prohibits only using GSAP to build tooling that competes with
+  Webflow's visual-animation builder. It is credited in `packages/ui/src/credits.ts`
+  and `docs/CREDITS.md`, so the notice ships inside the build.
+- **Why it earns its place, and where it stops.** It drives exactly one thing:
+  the Liar's Dice **reveal timeline** (dim the table → lift the dealer's four
+  shrouds in stagger → land the verdict), which is a sequenced, staggered,
+  callback-bearing sequence that CSS keyframes can only fake with hand-tuned
+  per-element delays. The dice themselves are **CSS 3D** (`transform-style:
+  preserve-3d`, six faces, pips as glowing dots) — there is no WebGL and no
+  3D-engine dependency anywhere in the cockpit, and there must not be one added
+  by the back door of an animation library.
+- **The instant rail is non-negotiable.** Under reduced motion the timeline is
+  **never created**, not created-and-skipped, so the settled DOM exists on the
+  very next render. That is what keeps the e2e suite honest (its specs run under
+  `emulateMedia({ reducedMotion: 'reduce' })`) and what keeps decoration from
+  ever gating input.
+- **The MIT fallback, if the licence ever changes**: `animejs` v4. Nothing in the
+  cockpit uses a GSAP plugin — only the core `gsap` timeline — so the swap is
+  contained to `LiarsDiceScene`.
+
 ## Deferred (with current lean)
 
 | Decision | Decide when | Current lean |

@@ -8,6 +8,8 @@ import {
   DARE_WIN_DISPOSITION,
   DEFAULT_PORT_HANGOUT,
   INSULT_DISPOSITION,
+  LOAN_MAX_PRINCIPAL,
+  LOAN_MIN_PRINCIPAL,
   MEET_DISPOSITION,
   NEMESIS_SYSTEM_ID,
   PORT_HANGOUTS,
@@ -17,6 +19,7 @@ import {
 } from '@spacerquest/content';
 import { createInitialState } from '../state.js';
 import {
+  loanBandFor,
   portHangoutFor,
   rankClientele,
   venueOffered,
@@ -76,6 +79,14 @@ describe('Sun-3 resolves to today’s shipped constants (the behaviour-preservin
     for (const venue of ALL_VENUES) {
       expect(venueOffered(SUN_3, venue)).toBe(true);
     }
+  });
+
+  it('T-133 · inherits the shipped LOAN band, because its row omits `loanBand`', () => {
+    expect(PORT_HANGOUTS[SUN_3]?.loanBand).toBeUndefined();
+    expect(loanBandFor(SUN_3)).toEqual({ min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL });
+    // …and the default row is BUILT from those two constants rather than restating
+    // them, which is what makes the inheritance a construction and not a match.
+    expect(loanBandFor(SUN_3)).toEqual(DEFAULT_PORT_HANGOUT.loanBand);
   });
 });
 
@@ -195,6 +206,12 @@ describe('T-121 · the reach change — a bar at all fourteen core spaceports', 
       // And a band the engine can clamp into.
       const band = wagerBandFor(id);
       expect(band.min).toBeLessThanOrEqual(band.max);
+      // T-133 · the same well-orderedness for the credit desk. A band with
+      // `min > max` would make `Math.max(min, Math.min(max, x))` return the FLOOR
+      // for every request, silently — the one shape of authored nonsense the
+      // clamp algebra cannot report.
+      const loan = loanBandFor(id);
+      expect(loan.min).toBeLessThanOrEqual(loan.max);
     }
   });
 
@@ -258,20 +275,20 @@ describe('T-121 · the reach change — a bar at all fourteen core spaceports', 
     }
   });
 
-  it('T-124 · the venue set is narrowed at exactly three ports, and everywhere else all seven run', () => {
+  it('T-133 · the venue set is narrowed at exactly two ports, and everywhere else all seven run', () => {
     // The POSITIVE form of T-122's "no port has yet narrowed its venue set", which
-    // T-123 rewrote at two ports and T-124 extends to three — which is exactly the
-    // extension the T-123 comment anticipated. One withholding per reason, and the
-    // three reasons are three different ones (§6.1's venue-set axis, fully used):
-    //   * Arcturus-6 (4) runs no credit desk — §6.2's strict garrison, and the
-    //     reason `'venue-not-offered'` is reachable end to end at all.
+    // T-123 rewrote at two ports and T-124 extended to three. T-133 (owner ruling
+    // D7) takes it BACK to two, deliberately and not by attrition:
     //   * Deneb-4 (5) will not seat a stranger — §6.1's named "no `meet`" room.
-    //   * Spica-3 (13) tolerates no insults — §6.1's named "no `insult`" house,
-    //     the last of the four venue-set shapes the spec proposes.
+    //   * Spica-3 (13) tolerates no insults — §6.1's named "no `insult`" house.
+    //   * Arcturus-6 (4) is NO LONGER NARROWED. It ran no credit desk because a
+    //     withheld venue was the only per-port lending control ruling 5 granted;
+    //     D7 gives a row its own `loanBand`, so the garrison runs the desk against
+    //     a tight ceiling instead. Its band is pinned in the T-133 block below —
+    //     the identity moved axes, it was not dropped.
     // This is a rules-level statement (which venues resolve as offered), not a
     // content one; the axis assertions live in `hangoutContent.test.ts`.
     const NARROWED: Record<number, readonly string[]> = {
-      4: ['borrow', 'repay'],
       5: ['meet'],
       13: ['insult'],
     };
@@ -286,5 +303,71 @@ describe('T-121 · the reach change — a bar at all fourteen core spaceports', 
     // NON-VACUITY: the table above must describe something real, or this test
     // silently becomes the old all-seven assertion again.
     expect(Object.keys(NARROWED).length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-133 · THE PER-PORT LOAN BAND (owner ruling D7, `docs/HANGOUT_REDESIGN.md`
+// §2.2 ruling 5 as amended).
+//
+// Ruling 5 as originally written kept the loan band GLOBAL and gave a port
+// exactly one bit of lending control: whether the desk was there at all. D7
+// narrows it — the RATE, the TERM and the LENDER stay global (one lender of
+// record, one `LoanState` slot), and only the PRINCIPAL BAND becomes content. A
+// band is a clamp, not a counterparty.
+//
+// THE POINT OF THIS BLOCK IS THE SAME AS THE FILE'S: INERTNESS EVERYWHERE BUT ONE
+// PORT. Thirteen authored rows and the rowless fallback must still read exactly
+// the two shipped constants, asserted against those constants rather than against
+// restated literals, and the one authored deviation is stated as a STRICT SUBSET
+// of the global band rather than as a number — so 1,000 can move to 800 or 1,200
+// without this file needing an edit.
+// ---------------------------------------------------------------------------
+describe('T-133 · the per-port loan band', () => {
+  /** Arcturus-6 — the garrison mess, and the only row that authors a `loanBand`. */
+  const THE_TIGHT_DESK = 4;
+  const OTHER_PORTS = CORE_HANGOUT_IDS.filter((id) => id !== THE_TIGHT_DESK);
+
+  it.each(OTHER_PORTS)('port %i still reads the GLOBAL band — behaviour-preserving', (id) => {
+    expect(PORT_HANGOUTS[id]?.loanBand, `port ${id} authored a band it was not meant to`).toBe(
+      undefined,
+    );
+    expect(loanBandFor(id)).toEqual({ min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL });
+  });
+
+  it('a port with no row at all reads the global band too', () => {
+    // The rowless fallback is what a `hasHangout` port would get if content ever
+    // forgot it — and what every non-core id resolves to. `portHangoutFor` never
+    // throws, so `loanBandFor` must never return undefined bounds either.
+    expect(PORT_HANGOUTS[UNROWED_SYSTEM]).toBeUndefined();
+    expect(loanBandFor(UNROWED_SYSTEM)).toEqual({
+      min: LOAN_MIN_PRINCIPAL,
+      max: LOAN_MAX_PRINCIPAL,
+    });
+    expect(loanBandFor(RIM_SYSTEM)).toEqual(loanBandFor(SUN_3));
+  });
+
+  it('Arcturus-6 deals a band STRICTLY INSIDE the global one', () => {
+    // Threshold-free, and stated against Sun-3's resolved band rather than against
+    // the constants, so this reads as "tighter than everyone else" rather than as
+    // "tighter than 5,000". The floor may match; the ceiling may not.
+    const tight = loanBandFor(THE_TIGHT_DESK);
+    const global = loanBandFor(SUN_3);
+    expect(tight.min).toBeGreaterThanOrEqual(global.min);
+    expect(tight.max).toBeLessThan(global.max);
+    expect(tight.min).toBeLessThanOrEqual(tight.max);
+  });
+
+  it('…and it is the ONLY port that narrows the desk — the axis reads unambiguously', () => {
+    for (const id of OTHER_PORTS) {
+      expect(
+        loanBandFor(id).max,
+        `port ${id} also fronts less than the galaxy's ceiling`,
+      ).toBeGreaterThan(loanBandFor(THE_TIGHT_DESK).max);
+    }
+    // …and the desk is genuinely OPEN there, which is the whole of D7: the
+    // tightness is a number now, not an absence.
+    expect(venueOffered(THE_TIGHT_DESK, 'borrow')).toBe(true);
+    expect(venueOffered(THE_TIGHT_DESK, 'repay')).toBe(true);
   });
 });

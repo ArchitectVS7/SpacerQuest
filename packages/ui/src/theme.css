@@ -1772,6 +1772,16 @@ body {
   .star.here {
     animation: none;
   }
+  /* T-136 · the Liar's Dice table. The cube's settle tumble and its face-change
+     rotation both go; the die still SHOWS the right face, because the face is a
+     transform, not an animation. The GSAP reveal timeline is never created at all
+     on this rail (App.tsx `LiarsDiceScene`) — this only covers the CSS half. */
+  .d6-spin.settling {
+    animation: none;
+  }
+  .d6 {
+    transition: none;
+  }
 }
 
 /* ---- T-312 user reduced-motion override ---- */
@@ -3091,19 +3101,6 @@ body {
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
 }
-.hp-dare-result {
-  display: grid;
-  gap: 6px;
-  margin-top: 4px;
-}
-.hp-dare-verdict {
-  font-size: 12px;
-  letter-spacing: 0.03em;
-  color: var(--amber);
-}
-.hp-dare-verdict.won b {
-  color: var(--ember);
-}
 .hp-rumors {
   list-style: none;
   margin: 0;
@@ -3130,9 +3127,436 @@ body {
 .hp-loan-status[data-status='defaulted'] {
   color: var(--ember);
 }
+/* T-132 · the house's authored voice + the three social venues. Prose reuses the
+   dim/italic treatment already established for `.hp-terms`/`.hp-rumor`; the venue
+   rows reuse `.hp-dare-controls`' layout. No new colour tokens. */
+.hp-room-line {
+  color: var(--amber);
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-style: italic;
+  opacity: 0.9;
+  margin: 0;
+}
+.hp-flavour {
+  color: var(--amber);
+  font-size: 11px;
+  line-height: 1.35;
+  font-style: italic;
+  opacity: 0.75;
+  margin: 0;
+}
+.hp-social {
+  gap: 9px;
+}
+.hp-social-venue {
+  display: grid;
+  gap: 4px;
+}
+.hp-social-result {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+.hp-social-verdict {
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+.hp-social-verdict b {
+  color: var(--ember);
+}
 .hangout-panel .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* =========================================================================
+   T-136 · THE LIAR'S DICE TABLE
+   Real CSS-3D d6s — `transform-style: preserve-3d`, six absolutely-positioned
+   faces, pips as glowing dots. NO WebGL and no 3D-engine dependency; the only
+   library involved is GSAP, and only for the reveal TIMELINE (see App.tsx).
+
+   PALETTE: the cockpit's, unchanged. One phosphor hue (`--ember` / `--amber`),
+   reverse-video for emphasis — the T-302 commitment. No new accent colour is
+   introduced here; the "sci-fi glow" is layered box-shadow + drop-shadow in the
+   ember the rest of the tube already burns.
+
+   FACE SELECTION IS A TRANSFORM ON THE CUBE (`--d6-rot`, keyed off `data-face`),
+   never a re-order of the face elements: all six faces are always mounted, in
+   the same order, for every value.
+   ========================================================================= */
+
+.ld-scene {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 12px 10px 10px;
+  /* the felt: a lit oval on a dark table, vignetted at the rim */
+  background:
+    radial-gradient(72% 88% at 50% 46%, rgba(255, 176, 0, 0.09), rgba(0, 0, 0, 0) 68%),
+    linear-gradient(180deg, #150e06, #0a0704);
+  border: 1px solid var(--amber-dim);
+  --ld-dim: 0;
+}
+/* SCENE FOCUS (tabletop-ui §2): during the reveal the table dims and the house's
+   cups + the verdict stay lit above the veil. Driven by `--ld-dim`, which the
+   GSAP timeline tweens — and which stays at 0 forever on the instant rail. */
+.ld-scene::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: calc(var(--ld-dim, 0) * 0.55);
+  pointer-events: none;
+  z-index: 3;
+}
+.ld-side {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+.ld-dealer,
+.ld-reveal {
+  position: relative;
+  z-index: 4;
+}
+.ld-seat {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--amber);
+}
+.ld-dice {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  min-height: 46px;
+}
+.ld-die {
+  display: inline-block;
+  line-height: 0;
+}
+
+/* ---- the cube ---- */
+.d6-mount {
+  /* Sized so the PIPS stay readable at gameplay size — the Gate-1 legibility
+     correction, applied to dice rather than to heraldry. */
+  --ld-cube: 42px;
+  --ld-half: 21px;
+  display: inline-block;
+  width: var(--ld-cube);
+  height: var(--ld-cube);
+  perspective: 620px;
+}
+.d6-spin {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.75)) drop-shadow(0 0 7px rgba(255, 176, 0, 0.3));
+}
+.d6-spin.settling {
+  animation: ld-settle 0.62s cubic-bezier(0.18, 0.86, 0.24, 1) 1;
+}
+@keyframes ld-settle {
+  0% {
+    transform: rotateX(-140deg) rotateY(120deg) translateY(-16px);
+  }
+  100% {
+    transform: rotateX(0deg) rotateY(0deg) translateY(0);
+  }
+}
+.d6 {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  /* default = face 1 toward the viewer, with a small tilt so two edges read */
+  --d6-rot: rotateY(0deg);
+  transform: rotateX(-14deg) rotateY(-18deg) var(--d6-rot);
+  transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+.d6[data-face='2'] {
+  --d6-rot: rotateY(-90deg);
+}
+.d6[data-face='3'] {
+  --d6-rot: rotateX(-90deg);
+}
+.d6[data-face='4'] {
+  --d6-rot: rotateX(90deg);
+}
+.d6[data-face='5'] {
+  --d6-rot: rotateY(90deg);
+}
+.d6[data-face='6'] {
+  --d6-rot: rotateY(180deg);
+}
+.d6-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  padding: 4px;
+  background: radial-gradient(125% 125% at 30% 24%, #2c1c09, #100a04 72%);
+  border: 1px solid var(--amber);
+  box-shadow:
+    inset 0 0 9px rgba(255, 176, 0, 0.2),
+    inset 0 0 2px rgba(255, 225, 166, 0.35);
+}
+.d6-f1 {
+  transform: translateZ(var(--ld-half));
+}
+.d6-f6 {
+  transform: rotateY(180deg) translateZ(var(--ld-half));
+}
+.d6-f2 {
+  transform: rotateY(90deg) translateZ(var(--ld-half));
+}
+.d6-f5 {
+  transform: rotateY(-90deg) translateZ(var(--ld-half));
+}
+.d6-f3 {
+  transform: rotateX(90deg) translateZ(var(--ld-half));
+}
+.d6-f4 {
+  transform: rotateX(-90deg) translateZ(var(--ld-half));
+}
+/* Pips are DOTS, sized to stay readable at gameplay size (the Gate-1
+   legibility correction), never glyphs in a shape. */
+.d6-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  place-self: center;
+  background: var(--ember);
+  box-shadow:
+    0 0 4px rgba(255, 176, 0, 0.9),
+    0 0 9px rgba(255, 176, 0, 0.45);
+}
+.d6-pa {
+  grid-area: 1 / 1;
+}
+.d6-pb {
+  grid-area: 1 / 3;
+}
+.d6-pc {
+  grid-area: 2 / 1;
+}
+.d6-pd {
+  grid-area: 2 / 2;
+}
+.d6-pe {
+  grid-area: 2 / 3;
+}
+.d6-pf {
+  grid-area: 3 / 1;
+}
+.d6-pg {
+  grid-area: 3 / 3;
+}
+
+/* ---- the shroud: the house's cup, with NOTHING under it ---- */
+.ld-shroud {
+  display: inline-block;
+  position: relative;
+  width: 42px;
+  height: 42px;
+}
+.ld-shroud-cup {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(16% 0, 84% 0, 100% 100%, 0 100%);
+  background: linear-gradient(180deg, #241704 0%, #150d05 62%, #0a0603 100%);
+  box-shadow:
+    inset 0 7px 11px rgba(0, 0, 0, 0.8),
+    0 0 9px rgba(255, 176, 0, 0.16);
+  border-top: 1px solid var(--amber-dim);
+}
+.ld-shroud-cup::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: 46%;
+  height: 1px;
+  background: var(--amber-dim);
+  opacity: 0.8;
+}
+.ld-die[data-peeked='1'] .d6-face {
+  border-color: var(--ember-hi);
+}
+
+/* ---- the table centre ---- */
+.ld-table {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+  padding: 8px 0;
+}
+.ld-bid {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 26px;
+  color: var(--ember);
+  text-shadow: var(--glow-hi);
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.ld-bid.empty {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--amber);
+  text-shadow: none;
+  opacity: 0.75;
+}
+.ld-x {
+  font-size: 15px;
+  color: var(--amber);
+}
+.ld-bid-owner {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+  align-self: center;
+}
+.ld-turn {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--amber);
+}
+.ld-turn[data-actor='player'] {
+  color: var(--ember);
+  text-shadow: var(--glow);
+}
+
+/* ---- the ledger: tokens with counts, not a table of bare numbers ---- */
+.ld-ledger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.ld-cell {
+  border: 1px solid var(--amber-dim);
+  padding: 2px 7px;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+.ld-cell b {
+  color: var(--ember);
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+/* ---- the public record ---- */
+.ld-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  max-height: 118px;
+  overflow-y: auto;
+}
+.ld-hrow {
+  display: grid;
+  grid-template-columns: 46px 62px 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 10.5px;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+  border-left: 2px solid var(--amber-dim);
+  padding-left: 7px;
+}
+.ld-hrow.you {
+  border-left-color: var(--ember);
+}
+.ld-hactor {
+  font-family: var(--font-display);
+  letter-spacing: 0.1em;
+  font-size: 9.5px;
+}
+.ld-hclaim {
+  color: var(--ember);
+}
+.ld-hante {
+  opacity: 0.8;
+}
+
+/* ---- the controls ---- */
+.ld-moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: flex-end;
+  justify-content: center;
+}
+.ld-input {
+  display: grid;
+  gap: 2px;
+}
+.ld-k {
+  color: var(--amber);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+}
+.ld-moves input {
+  width: 58px;
+  text-align: center;
+}
+.ld-moves .btn.ghost {
+  background: transparent;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+}
+
+/* ---- the settled frame ---- */
+.ld-reveal {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  border-top: 1px solid var(--amber);
+  padding-top: 9px;
+}
+.ld-verdict {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  color: var(--amber);
+  text-align: center;
+}
+.ld-verdict.won {
+  color: var(--ember);
+  text-shadow: var(--glow);
+}
+.ld-count b {
+  color: var(--ember);
+}
+.ld-deltas {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 11.5px;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+.ld-deltas b {
+  color: var(--ember);
 }
 
 /* =========================================================================

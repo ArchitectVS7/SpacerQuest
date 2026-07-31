@@ -17,8 +17,6 @@
 import {
   CREW_ROLES,
   EXPLORATION_FUEL_COST,
-  LOAN_MAX_PRINCIPAL,
-  LOAN_MIN_PRINCIPAL,
   NEMESIS_SYSTEM_ID,
   PURCHASABLE_PORTS,
   STAR_SYSTEMS,
@@ -47,8 +45,10 @@ import {
   shipyardFailure,
   serializeState,
   startDay,
+  loanBandFor,
   venueOffered,
   wagerBandFor,
+  legalDareMoves,
   type Edition,
   type GameEvent,
   type GameState,
@@ -540,6 +540,44 @@ export function legalActions(state: GameState): LegalActions {
     };
   }
 
+  // T-135 · AN OPEN LIAR'S DICE HAND, and the SAME SHAPE the encounter branch
+  // above takes, deliberately: the engine's gate 1 refuses every one of the six
+  // blockable verbs with `ActionBlocked{'active-dare-hand'}` while a hand stands,
+  // so advertising any of them — including the `VisitHangout{venue:'dare'}` that
+  // would open a second hand — would hand a headless driver a guaranteed refusal.
+  // That is the T-1101 law and the same drift the T-120 port mirror closed. Only
+  // the scene's own verb is offered, exactly as only `Combat` is offered above.
+  //
+  // The `move` domain is filtered through the engine's OWN `legalDareMoves` (§5.4),
+  // so there is one definition of legality across the engine's refusal, the
+  // dealer's choice, this advertisement and the sim's planner. 'peek' is dropped
+  // when no die is left, mirroring the resolver's own die check.
+  if (state.dareHand) {
+    const hand = state.dareHand;
+    const moveChoices = legalDareMoves(hand, 'player', player.credits).filter(
+      (move) => move !== 'peek' || hasDie,
+    );
+    const params: LegalActionSpec['params'] = {
+      move: { kind: 'enum', choices: moveChoices },
+      quantity: { kind: 'int', min: hand.bid ? hand.bid.quantity : 1, max: 8 },
+      face: { kind: 'int', min: hand.bid ? hand.bid.face : 1, max: 6 },
+    };
+    if (hasDie) params.spendDie = dieParam;
+    actions.push({
+      type: 'Dare',
+      params,
+      note: "One move in the open Liar's Dice hand. quantity/face are required for bid and the raises; a face raise moves the face up by exactly one and leaves quantity unchanged; a quantity raise leaves the face unchanged. spendDie applies to 'peek' only.",
+    });
+    return {
+      phase,
+      inEncounter: false,
+      diceRemaining,
+      actions,
+      canWait: true,
+      lifecycle: ['end-day'],
+    };
+  }
+
   // --- Trade -------------------------------------------------------------
   const fuelPrice = state.market.localFuelPrice || 5;
   const fuelCapacity = ship.maxFuel - ship.fuel;
@@ -811,16 +849,22 @@ export function legalActions(state: GameState): LegalActions {
     // all rather than advertised with an empty domain.
     if (venueChoices.length > 0) {
       const wagerBand = wagerBandFor(player.currentSystemId);
+      // T-133 · the PRINCIPAL domain is the port's too (owner ruling D7), read
+      // through the same `loanBandFor` accessor the resolver clamps with. A
+      // harness that advertised the global 250–5,000 at the garrison mess would
+      // hand a driver an `amount` the engine silently trims, which is the same
+      // class of drift as advertising a venue the house does not run.
+      const loanBand = loanBandFor(player.currentSystemId);
       actions.push({
         type: 'VisitHangout',
         params: {
           venue: { kind: 'enum', choices: venueChoices },
           opponentId: { kind: 'enum', choices: [...inSystemNpcIds] },
           wager: { kind: 'int', min: wagerBand.min, max: wagerBand.max },
-          amount: { kind: 'int', min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL },
+          amount: { kind: 'int', min: loanBand.min, max: loanBand.max },
           spendDie: dieParam,
         },
-        note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
+        note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
       });
     }
   }

@@ -34,12 +34,23 @@ describe('exploration — nav check reads PILOT', () => {
       new SeededRng(42),
     );
 
-    expect(low.events.some((e) => e.type === 'ExplorationFailed')).toBe(true);
+    // T-131 · BOTH CLAUSES NAME THE `nav-check` REASON RATHER THAN THE EVENT.
+    // Since owner ruling D1 a SUCCESSFUL sweep can also file an
+    // `ExplorationFailed` — `insufficient-dice`, when the drawn row's band wants
+    // `apCost` extra dice and this deliberately one-die hand has none left. That
+    // is a payment refusal on a real find, not a failed nav check, and this test
+    // is about the nav check. Asserting on the bare event type would have quietly
+    // turned it into an assertion about which band the seed happens to draw.
+    expect(low.events.some((e) => e.type === 'ExplorationFailed' && e.reason === 'nav-check')).toBe(
+      true,
+    );
     expect(low.events.some((e) => e.type === 'PoiDiscovered')).toBe(false);
     expect(low.state.player.charts.discoveredPois).toHaveLength(0);
 
     expect(high.events.some((e) => e.type === 'PoiDiscovered')).toBe(true);
-    expect(high.events.some((e) => e.type === 'ExplorationFailed')).toBe(false);
+    expect(
+      high.events.some((e) => e.type === 'ExplorationFailed' && e.reason === 'nav-check'),
+    ).toBe(false);
     expect(high.state.player.charts.discoveredPois).toHaveLength(1);
   });
 

@@ -41,13 +41,16 @@ import type { NpcArchetype } from './cast.js';
 import {
   BEFRIEND_DC,
   BEFRIEND_DISPOSITION,
+  DARE_FOLD_DISPOSITION,
   DARE_LOSS_DISPOSITION,
   DARE_MAX_WAGER,
   DARE_MIN_WAGER,
+  DARE_PEEK_DC,
   DARE_WIN_DISPOSITION,
   INSULT_DISPOSITION,
   MEET_DISPOSITION,
 } from './hangout.js';
+import { LOAN_MAX_PRINCIPAL, LOAN_MIN_PRINCIPAL } from './lending.js';
 
 /** The seven venues `resolveVisitHangout` already switches on. NOT a new
  *  vocabulary — the same seven strings the `PlayerAction` `VisitHangout` union
@@ -70,27 +73,38 @@ export type HangoutTone = 'everyday' | 'exotic' | 'dangerous' | 'comic';
  * T-122 … T-124 author against this table, and the `dare` row is the one
  * non-obvious cell: SUCCESS is the arm where the HOUSE prevails.
  *
- * | venue      | `dc`                        | `dispositionOnSuccess`        | `dispositionOnFailure`       |
- * | ---------- | --------------------------- | ----------------------------- | ---------------------------- |
- * | `dare`     | ignored — a Dare is OPPOSED, the dealer's live GUILE total IS the DC | player LOST the hand, dealer warms (`DARE_LOSS_DISPOSITION`) | player WON, the beaten dealer sours (`DARE_WIN_DISPOSITION`) |
- * | `befriend` | the GUILE charm DC          | applied on a passed check     | ignored — a flat charm does not sour |
- * | `insult`   | ignored — an insult never rolls | always applied            | ignored                      |
- * | `meet`     | ignored — an introduction never rolls | always applied      | ignored                      |
- * | `rumor`    | ignored                     | ignored                       | ignored                      |
- * | `borrow`   | ignored — the loan band is GLOBAL (§2.2 ruling 5) | ignored    | ignored                      |
- * | `repay`    | ignored                     | ignored                       | ignored                      |
+ * | venue      | `dc`                        | `dispositionOnSuccess`        | `dispositionOnFailure`       | `dispositionOnFold`          |
+ * | ---------- | --------------------------- | ----------------------------- | ---------------------------- | ---------------------------- |
+ * | `dare`     | T-135 · the PEEK DC (`DARE_PEEK_DC`) — the GUILE check that buys a look at one dealer die before the bidding opens. (It was ignored while a Dare was a single OPPOSED roll.) | player LOST the hand, dealer warms (`DARE_LOSS_DISPOSITION`) | player WON, the beaten dealer sours (`DARE_WIN_DISPOSITION`) | T-135 · player FOLDED (or dusk closed the hand): the dealer took the pot without a showdown (`DARE_FOLD_DISPOSITION`) |
+ * | `befriend` | the GUILE charm DC          | applied on a passed check     | ignored — a flat charm does not sour | ignored                |
+ * | `insult`   | ignored — an insult never rolls | always applied            | ignored                      | ignored                      |
+ * | `meet`     | ignored — an introduction never rolls | always applied      | ignored                      | ignored                      |
+ * | `rumor`    | ignored                     | ignored                       | ignored                      | ignored                      |
+ * | `borrow`   | ignored — the desk's one parameter is `loanBand`, not a DC (§2.2 ruling 5 as amended by D7) | ignored    | ignored                      | ignored                      |
+ * | `repay`    | ignored                     | ignored                       | ignored                      | ignored                      |
  *
  * A field a venue does not read is carried as `0` on the default row so the engine
  * accessor can return plain numbers rather than `number | undefined` — which is
  * what keeps the resolver from ever restating a constant as a `??` fallback.
+ *
+ * T-135 · FINDING F-134-3 — `wager` NOW MEANS TWO THINGS. `wager.max` is still the
+ * ceiling on a Dare SEED, and it is now ALSO the per-side ceiling on total
+ * exposure for a whole Liar's Dice hand (seed + every ante that side pays; see
+ * `wagerBandFor`'s doc comment and `docs/LIARS-DICE_REDESIGN.md` §4.3). The two are
+ * consistent — the second contains the first — but an author retuning a band for
+ * one reason now moves the other, and in particular decides how many raises a hand
+ * at this port can hold.
  */
 export interface HangoutVenueParams {
-  /** DC for venues that roll (today: `befriend` only). Ignored by venues that do not. */
+  /** DC for venues that roll (`befriend`'s charm check; T-135 adds `dare`'s Peek). */
   dc?: number;
   /** Disposition delta on the venue's SUCCESS arm (befriend-success, meet, insult, dare-LOSS). */
   dispositionOnSuccess?: number;
   /** Disposition delta on the venue's FAILURE arm (today only `dare`: the beaten dealer sours). */
   dispositionOnFailure?: number;
+  /** T-135 · Disposition delta when the PLAYER folds a Liar's Dice hand (including
+   *  the dusk timeout fold). Read by `dare` only; 0 on every other venue. */
+  dispositionOnFold?: number;
 }
 
 /**
@@ -139,6 +153,21 @@ export interface PortHangout {
   venues?: readonly HangoutVenueId[];
   /** The Dare stake band. Clamped FURTHER, by the engine, to what both sides can cover. */
   wager?: { min: number; max: number };
+  /**
+   * T-133 (owner ruling D7) · The Penny Wise PRINCIPAL band at this desk. Shaped
+   * exactly like `wager` — a WHOLE-OBJECT optional, resolved whole against
+   * `DEFAULT_PORT_HANGOUT` rather than field-wise, which is what makes a row that
+   * omits it inherit today's shipped `[LOAN_MIN_PRINCIPAL, LOAN_MAX_PRINCIPAL]`
+   * by construction.
+   *
+   * IT IS A DEPTH, NOT A PRICE. The engine clamps a requested principal into this
+   * band (`loanBandFor` → `resolveVisitHangout`'s `borrow` arm); the RATE
+   * (`LOAN_DAILY_RATE`), the TERM (`LOAN_TERM_DAYS`) and the LENDER (`LENDER_ID`)
+   * stay global, so there is still exactly one lender of record and exactly one
+   * `LoanState` slot. A port decides how deep the desk will go for you, never what
+   * it charges — see §2.2 ruling 5 as amended by D7.
+   */
+  loanBand?: { min: number; max: number };
   venueParams?: Partial<Record<HangoutVenueId, HangoutVenueParams>>;
   clientele?: HangoutClientele;
   prose: HangoutProse;
@@ -175,41 +204,55 @@ export const DEFAULT_PORT_HANGOUT: PortHangout = {
   systemId: -1,
   venues: ALL_HANGOUT_VENUES,
   wager: { min: DARE_MIN_WAGER, max: DARE_MAX_WAGER },
+  // T-133 · today's shipped principal band, IMPORTED from `lending.ts` and never
+  // restated. Every port that omits `loanBand` reads exactly the two constants the
+  // resolver clamped with before the band existed — the whole behaviour-preserving
+  // argument for the thirteen rows this task does not touch.
+  loanBand: { min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL },
   venueParams: {
     dare: {
-      dc: 0, // ignored by this venue — a Dare is opposed
+      // T-135 · the PEEK DC. This cell was `0`/ignored while a Dare was a single
+      // opposed roll; Liar's Dice gives it the one check a hand can emit.
+      dc: DARE_PEEK_DC,
       dispositionOnSuccess: DARE_LOSS_DISPOSITION, // the house prevailed; the dealer warms
       dispositionOnFailure: DARE_WIN_DISPOSITION, // the player prevailed; the dealer sours
+      dispositionOnFold: DARE_FOLD_DISPOSITION, // the player walked; the dealer took the pot unshown
     },
     meet: {
       dc: 0, // ignored by this venue
       dispositionOnSuccess: MEET_DISPOSITION,
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     befriend: {
       dc: BEFRIEND_DC,
       dispositionOnSuccess: BEFRIEND_DISPOSITION,
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     insult: {
       dc: 0, // ignored by this venue — an insult never rolls
       dispositionOnSuccess: INSULT_DISPOSITION,
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     rumor: {
       dc: 0, // ignored by this venue
       dispositionOnSuccess: 0, // ignored by this venue
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     borrow: {
-      dc: 0, // ignored by this venue — the loan band is global
+      dc: 0, // ignored by this venue — the desk's parameter is `loanBand`, above
       dispositionOnSuccess: 0, // ignored by this venue
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
     repay: {
       dc: 0, // ignored by this venue
       dispositionOnSuccess: 0, // ignored by this venue
       dispositionOnFailure: 0, // ignored by this venue
+      dispositionOnFold: 0, // ignored by this venue
     },
   },
   // Empty: `rankClientele` is the IDENTITY under the default row. Nothing about
@@ -439,30 +482,45 @@ const PROCYON_5_HANGOUT: PortHangout = {
 
 /**
  * T-123 · Arcturus-6 — the garrison mess (§6.3, pass 2). THE MEASURABLY HOSTILE
- * PORT, and the first port in the game to NARROW ITS VENUE SET.
+ * PORT.
+ *
+ * T-133 (2026-07-31, owner ruling D7) · RE-AUTHORED. This row used to withhold
+ * `borrow` and `repay` outright, because ruling 5 as originally written gave a
+ * port exactly one bit of lending control — whether the desk exists — and a
+ * garrison that would not lend was the only way to say "the credit here is
+ * tight". D7 amends that ruling: the RATE, the TERM and the LENDER stay global
+ * (one lender of record, one `LoanState`), but the PRINCIPAL BAND becomes a
+ * content field. So the desk comes BACK and the tightness moves into the number
+ * where it belongs — the garrison advances against fixed pay, so it will front a
+ * soldier a month's wages and not a hull.
  *
  * `content/ports.ts:223` gives Arcturus-6 to the `rebels`, so this is a garrison
  * of that allegiance rather than a neutral one: a room that already knows whose
  * side it is on before you walk in.
  *
- * AXIS VECTOR: venue set (no credit desk), stakes (a narrow, disciplined band),
- * difficulty (the hardest room in the galaxy to charm), consequence (punitive on
- * every arm), clientele (`veteran` + `fighter`). That is five of the six axes,
- * which is what §6.2's "strict garrison world" asks for — governance expressed
- * jointly through the mechanical four.
+ * AXIS VECTOR: credit (the tightest loan band in the galaxy), stakes (a narrow,
+ * disciplined band), difficulty (the hardest room in the galaxy to charm),
+ * consequence (punitive on every arm), clientele (`veteran` + `fighter`). That is
+ * five axes, which is what §6.2's "strict garrison world" asks for — governance
+ * expressed jointly through the mechanical ones. The venue-set axis is no longer
+ * one of them; Deneb-4's withheld `meet` and Spica-3's withheld `insult` now
+ * carry it alone, and they carry it for reasons that are not hostility, which is
+ * what makes the axis expressive rather than a synonym for the garrison.
  *
  * IT IS THE UNIQUE PER-AXIS MAXIMUM ON EVERY HOSTILITY AXIS, deliberately: the
  * highest `befriend.dc`, the most negative `insult`, the most negative
- * dare-failure arm, the lowest `meet`, and the fewest venues of any authored
- * port. That is what lets `hangoutContent.test.ts` assert "measurably hostile"
- * WITHOUT a threshold — it compares this port against the others and against the
- * default row, and never against a restated number.
+ * dare-failure arm, the lowest `meet`, and the lowest credit ceiling of any
+ * authored port. That is what lets `hangoutContent.test.ts` assert "measurably
+ * hostile" WITHOUT a threshold — it compares this port against the others and
+ * against the default row, and never against a restated number.
  *
  * Every deviation from the default, with its reason:
- *   - `venues` omits `borrow` AND `repay` — §6.2's strict garrison "no lending
- *     desk", and §2.2 ruling 5's exactly-one-bit of per-port lending control. The
- *     garrison does not run a credit desk; the loan BAND stays global, because a
- *     port may only decide whether the desk is there, never what it charges.
+ *   - `loanBand` 250/1000 — THE FIRST PER-PORT LOAN BAND IN THE GAME (T-133/D7).
+ *     The floor is the global one, imported rather than restated: the garrison
+ *     will not haggle below what any desk deals. The ceiling is a fifth of the
+ *     galaxy's 5,000cr, because a quartermaster advances against a pay packet and
+ *     nothing larger. A request above it is CLAMPED by the engine, never refused —
+ *     the desk simply counts out less than you asked for.
  *   - `wager` 100/400 — the narrowest band in the galaxy. Soldiers bet in fixed
  *     sums out of fixed pay, and the mess deals nothing below a hundred.
  *   - `befriend.dc` 16 (default 12) / `dispositionOnSuccess` 2 (default 3) — §6.1's
@@ -481,8 +539,9 @@ const PROCYON_5_HANGOUT: PortHangout = {
  */
 const ARCTURUS_6_HANGOUT: PortHangout = {
   systemId: 4,
-  venues: ['dare', 'meet', 'befriend', 'insult', 'rumor'],
+  venues: ALL_HANGOUT_VENUES,
   wager: { min: 100, max: 400 },
+  loanBand: { min: LOAN_MIN_PRINCIPAL, max: 1000 },
   venueParams: {
     dare: { dispositionOnSuccess: 1, dispositionOnFailure: -7 },
     meet: { dispositionOnSuccess: 0 },
@@ -502,6 +561,10 @@ const ARCTURUS_6_HANGOUT: PortHangout = {
         "A stranger buying rounds in a soldiers' mess is a stranger buying rounds, and they know it.",
       insult: 'A hard word here is not forgotten by one man; it is remembered by a garrison.',
       rumor: 'Talk stops when you pass and starts again behind you, which is its own kind of news.',
+      borrow:
+        'The quartermaster advances against a pay packet, counts it twice, and will not be argued up.',
+      repay:
+        'You put the money down, he strikes the line, and neither of you says anything about it.',
     },
   },
 };
@@ -946,8 +1009,10 @@ const POLLUX_7_HANGOUT: PortHangout = {
  *
  * Every deviation from the default, with its reason:
  *   - `venues` omits `insult` — §6.1's fourth named venue-set shape and the only
- *     one still unexercised after the garrison's withdrawn desk (4) and the
- *     partisan hall's withheld `meet` (5). The watch settles things at the table.
+ *     one still unexercised after the partisan hall's withheld `meet` (5). The
+ *     watch settles things at the table. (T-133 · this row and Deneb-4 now carry
+ *     the venue-set axis alone: the garrison's withdrawn desk came back under
+ *     owner ruling D7, expressed as a tight `loanBand` instead of an omission.)
  *   - `wager` 200/1800 — the fourth-highest floor and a ceiling well above the
  *     galaxy's. See the F-101-4 note below for WHY this row also carries a stakes
  *     identity rather than resting on the omission alone.
@@ -1011,14 +1076,29 @@ const SPICA_3_HANGOUT: PortHangout = {
  * (15–20), Andromeda (21–26), MALIGNA (27) and NEMESIS (28) are absent by design —
  * see the `hasHangout` note in `./systems.ts`.
  *
- * THE TABLE IS NOT UNIFORM IN ITS VENUE SET, at three ports and for three
- * different reasons (§6.1's venue-set axis, fully exercised): Arcturus-6 (4) omits
- * `borrow`/`repay` — the garrison runs no credit desk; Deneb-4 (5) omits `meet` —
- * the hall seats no stranger; Spica-3 (13) omits `insult` — the watch settles
- * things at the table. So `venueOffered` is not the identity, and the engine's
- * `'venue-not-offered'` refusal is reachable end to end. Readers that enumerate
- * venues — `protocol.ts`'s `legalActions`, the sim's lending planners, any future
- * pane — must ask `venueOffered` rather than assume all seven.
+ * THE TABLE IS NOT UNIFORM IN ITS VENUE SET, at two ports and for two different
+ * reasons (§6.1's venue-set axis): Deneb-4 (5) omits `meet` — the hall seats no
+ * stranger; Spica-3 (13) omits `insult` — the watch settles things at the table.
+ * So `venueOffered` is not the identity, and the engine's `'venue-not-offered'`
+ * refusal is reachable end to end. Readers that enumerate venues —
+ * `protocol.ts`'s `legalActions`, the sim's lending planners, the Hangout pane —
+ * must ask `venueOffered` rather than assume all seven.
+ *
+ * T-133 (owner ruling D7) · IT WAS THREE PORTS UNTIL THIS TASK. Arcturus-6 (4)
+ * used to omit `borrow`/`repay` as the only way content had of saying "the credit
+ * here is tight"; D7 gives a row its own `loanBand`, so the garrison runs its desk
+ * again and expresses the tightness as a 1,000cr ceiling instead of an absence.
+ * CONSEQUENCE, recorded rather than left to be discovered: no authored row
+ * withholds a LENDING venue any more, so the `LoanEvent{'venue-not-offered'}`
+ * variant is once again unreachable from content (the F-120-1 situation, restored
+ * by an amendment rather than by an oversight). The resolver arm and its schema
+ * mirror stay — a later row may withhold a desk — and the two social withholdings
+ * above still drive the `HangoutEvent` variant for real.
+ *
+ * THE TABLE IS NOT UNIFORM IN ITS LOAN BAND EITHER, at exactly one port: only
+ * Arcturus-6 authors `loanBand`, and every other row inherits
+ * `[LOAN_MIN_PRINCIPAL, LOAN_MAX_PRINCIPAL]` from the default row by construction.
+ * Readers must ask `loanBandFor`, never the two constants directly.
  *
  * THE REGISTER SPREAD, closed at pass 3: six `everyday` (1, 2, 3, 8, 9, 10), four
  * `exotic` (5, 11, 13, 14), two `dangerous` (4, 12), two `comic` (6, 7). All four

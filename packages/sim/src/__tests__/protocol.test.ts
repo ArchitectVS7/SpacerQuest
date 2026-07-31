@@ -2,8 +2,10 @@ import { Readable, Writable } from 'node:stream';
 import {
   DayPhase,
   SeededRng,
+  applyPlayerAction,
   createInitialState,
   endDay,
+  loanBandFor,
   quotePort,
   quoteShipyard,
   rollDawnHand,
@@ -19,6 +21,8 @@ import {
 } from '@spacerquest/engine';
 import {
   DEMO_FINAL_DAY,
+  LOAN_MAX_PRINCIPAL,
+  LOAN_MIN_PRINCIPAL,
   NEMESIS_SYSTEM_ID,
   PURCHASABLE_PORTS,
   STAR_SYSTEMS,
@@ -148,6 +152,30 @@ function fixtureEncounter(): EncounterState {
     round: 1,
     enemyHull: 1,
   };
+}
+
+/** T-135 · A DAY state carrying an OPEN Liar's Dice hand, produced by the REAL
+ *  open arm (`VisitHangout{venue:'dare'}` through `applyPlayerAction`) rather than
+ *  by assigning `state.dareHand` — a poked scene would prove nothing about what a
+ *  driver actually meets. Sun-3 (id 1) runs tables and seats the whole starting
+ *  cast, so the first co-located captain is a valid dealer. */
+function openDareHand(): GameState {
+  const state = createInitialState(9);
+  state.dayPhase = DayPhase.DAY;
+  state.player.credits = 10_000;
+  state.player.dawnHand = rollDawnHand(new SeededRng(9), { handSize: 5, floor: 0, rerolls: 0 });
+  const dealer = state.npcs.find(
+    (npc) => !npc.dead && npc.currentSystemId === state.player.currentSystemId,
+  );
+  if (!dealer) throw new Error('fixture: no co-located dealer at Sun-3');
+  dealer.credits = 5_000;
+  return applyPlayerAction(state, {
+    type: 'VisitHangout',
+    venue: 'dare',
+    opponentId: dealer.id,
+    wager: 100,
+    spendDie: 0,
+  }).state;
 }
 
 function dayStateWithEncounter(fuel: number): GameState {
@@ -281,6 +309,11 @@ describe('protocol deterministic replay', () => {
       Storylet: true,
       Explore: true,
       VisitHangout: true,
+      // T-135 · the Liar's Dice scene verb. Covered by the dedicated
+      // `legalActions` case below (a hand open ⇒ only `Dare` is advertised) and by
+      // the engine's own `liarsDice.test.ts`, which drives full hands through the
+      // real `applyPlayerAction` loop.
+      Dare: true,
       Reroll: true,
       Crew: true,
       Port: true,
@@ -620,6 +653,65 @@ describe('legal-actions enumerator', () => {
     if (stance?.kind === 'enum') {
       expect(stance.choices).toEqual(['talk']);
     }
+  });
+
+  // T-135 · THE LIAR'S DICE SCENE, advertised exactly as the encounter is. The
+  // engine's gate 1 refuses all six blockable verbs with
+  // `ActionBlocked{'active-dare-hand'}` while a hand stands, so advertising any of
+  // them — the `VisitHangout{venue:'dare'}` that would open a second hand most of
+  // all — would hand a headless driver a guaranteed refusal. Driven through the
+  // REAL open arm, never by poking `state.dareHand`.
+  it("while a Liar's Dice hand is open, only Dare is advertised", () => {
+    const opened = openDareHand();
+    expect(opened.dareHand).not.toBeNull();
+
+    const legal = legalActions(opened);
+    const types = legal.actions.map((action) => action.type);
+    expect(types).toEqual(['Dare']);
+    expect(types).not.toContain('VisitHangout');
+    expect(types).not.toContain('Trade');
+    expect(types).not.toContain('Travel');
+    expect(legal.lifecycle).toEqual(['end-day']);
+
+    // The `move` domain is the ENGINE's own `legalDareMoves`, not a restatement:
+    // before any bid the hand offers open / peek / fold and nothing else.
+    const dare = legal.actions.find((action) => action.type === 'Dare');
+    expect(dare?.params.move).toEqual({ kind: 'enum', choices: ['bid', 'peek', 'fold'] });
+    expect(dare?.params.quantity).toEqual({ kind: 'int', min: 1, max: 8 });
+    expect(dare?.params.face).toEqual({ kind: 'int', min: 1, max: 6 });
+  });
+
+  it('after a bid stands, the advertised move domain follows the lattice', () => {
+    const opened = openDareHand();
+    const bid = applyPlayerAction(opened, {
+      type: 'Dare',
+      move: 'bid',
+      quantity: 2,
+      face: 3,
+    }).state;
+    // The dealer answered inside that same call; if it ended the hand there is
+    // nothing left to advertise, so assert only when a hand still stands.
+    if (!bid.dareHand) return;
+
+    const dare = legalActions(bid).actions.find((action) => action.type === 'Dare');
+    const move = dare?.params.move;
+    expect(move?.kind).toBe('enum');
+    if (move?.kind === 'enum') {
+      // Peek's window closed with the opening bid; challenge and fold are always
+      // there once a claim stands.
+      expect(move.choices).not.toContain('peek');
+      expect(move.choices).not.toContain('bid');
+      expect(move.choices).toContain('challenge');
+      expect(move.choices).toContain('fold');
+    }
+    // The quantity/face floors are the standing bid's, so a driver cannot propose
+    // a claim below the one it is answering.
+    expect(dare?.params.quantity).toEqual({
+      kind: 'int',
+      min: bid.dareHand.bid?.quantity,
+      max: 8,
+    });
+    expect(dare?.params.face).toEqual({ kind: 'int', min: bid.dareHand.bid?.face, max: 6 });
   });
 
   it('a dice-exhausted state offers only day-end', () => {
@@ -1101,12 +1193,14 @@ describe('legal-actions enumerator', () => {
     }
   });
 
-  it('T-123 · at Arcturus-6 the harness advertises no credit desk, and the wager domain is the PORT band', () => {
-    // The protocol mirror of the engine's `venueOffered` gate, driven at the first
-    // port to narrow its venue set (`content/portHangouts.ts`, §6.2's garrison).
-    // Advertising `borrow` here would hand a UGT driver an action the resolver
-    // answers with `LoanEvent{'venue-not-offered'}` — the exact class of drift
-    // `hangoutPlay.failedVisits === 0` exists to forbid.
+  it('T-133 · at Arcturus-6 BOTH domains are the PORT’s — the stake band and the principal band', () => {
+    // T-123 asserted the opposite half of this: the garrison withheld its credit
+    // desk, so the harness advertised no `borrow`/`repay` at all. Owner ruling D7
+    // gives a row its own `loanBand` instead, so the desk is advertised again and
+    // what narrows is the AMOUNT domain. Advertising the global 250–5,000 here
+    // would hand a UGT driver an `amount` the resolver silently trims — the same
+    // class of drift as advertising a venue the house does not run, and the reason
+    // both domains are read through the engine's own accessors.
     const ARCTURUS_6 = 4;
     const state = createInitialState(1);
     state.dayPhase = DayPhase.DAY;
@@ -1123,16 +1217,38 @@ describe('legal-actions enumerator', () => {
     if (venue?.kind === 'enum') {
       expect(venue.choices).toContain('dare');
       expect(venue.choices).toContain('rumor');
-      expect(venue.choices).not.toContain('borrow');
+      // The desk is BACK (D7) — no loan yet, so it is the borrow half that shows.
+      expect(venue.choices).toContain('borrow');
       expect(venue.choices).not.toContain('repay');
     }
-    // …and the stake domain is the port's own band, read through the same accessor
+    // …and both domains are the port's own bands, read through the same accessors
     // the resolver clamps with rather than restated here.
     const band = wagerBandFor(ARCTURUS_6);
     expect(hangout?.params.wager).toEqual({ kind: 'int', min: band.min, max: band.max });
-    // NON-VACUITY: the port band must actually differ from the global one, or this
-    // assertion would pass against the default row.
+    const loan = loanBandFor(ARCTURUS_6);
+    expect(hangout?.params.amount).toEqual({ kind: 'int', min: loan.min, max: loan.max });
+    // NON-VACUITY: both port bands must actually differ from the global ones, or
+    // these assertions would pass against the default row.
     expect(JSON.stringify(band)).not.toBe(JSON.stringify(wagerBandFor(1)));
+    expect(loan.max).toBeLessThan(loanBandFor(1).max);
+  });
+
+  it('T-133 · …and at a port with no authored band the amount domain is the global one', () => {
+    // The control for the test above: the narrowing is ONE port's, and every other
+    // desk still advertises exactly what it advertised before D7 landed.
+    const SUN_3 = 1;
+    const state = createInitialState(1);
+    state.dayPhase = DayPhase.DAY;
+    state.player.currentSystemId = SUN_3;
+    state.npcs[0].currentSystemId = SUN_3;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+
+    const hangout = legalActions(state).actions.find((a) => a.type === 'VisitHangout');
+    expect(hangout?.params.amount).toEqual({
+      kind: 'int',
+      min: LOAN_MIN_PRINCIPAL,
+      max: LOAN_MAX_PRINCIPAL,
+    });
   });
 
   it('T-124 · at Spica-3 the harness advertises no insult, and the wager domain is the PORT band', () => {

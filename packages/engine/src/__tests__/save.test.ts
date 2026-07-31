@@ -440,7 +440,7 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     expect(() => loadSave(createSave(state, 14))).toThrow(SaveError);
   });
 
-  it('CURRENT_SAVE_VERSION is 13', () => {
+  it('CURRENT_SAVE_VERSION is 14', () => {
     // T-1401 bumped 5 → 6 (WireEntry.kind); T-1503 bumped 6 → 7 for the required
     // nested PlayerState.reputation container; T-1603b bumped 7 → 8 to re-derive
     // `registry.renownRank` + `player.tier` after the canonical
@@ -467,7 +467,13 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     // applies. These `CURRENT_SAVE_VERSION` pins move WITH an intended bump; they
     // are version pins, not thresholds, and none of them was touched to make a
     // measurement pass.
-    expect(CURRENT_SAVE_VERSION).toBe(13);
+    //
+    // T-135 bumped 13 → 14 for the ROOT-level `GameState.dareHand` — the open
+    // Liar's Dice scene (owner ruling D2, docs/LIARS-DICE_REDESIGN.md §11), the
+    // architectural twin of `encounter`. The same additive one-key `null` backfill,
+    // and `null` is a statement of fact for the third time: until T-135 no hand
+    // could exist, so no save that exists can hold one.
+    expect(CURRENT_SAVE_VERSION).toBe(14);
   });
 });
 
@@ -1070,9 +1076,10 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     // an unrelated reason — the renown re-derivation — T-1703 8 → 9 for the new
     // `edition` field, N1 9 → 10 for `NpcState.ship` and N10 10 → 11 for the
     // per-system job pool, N11 11 → 12 for `NpcState.registry` and T-111 12 → 13
-    // for `PlayerState.recovery`, so this pins the CURRENT version rather than
+    // for `PlayerState.recovery` and T-135 13 → 14 for the root-level
+    // `GameState.dareHand`, so this pins the CURRENT version rather than
     // claiming the fragment file caused it.)
-    expect(CURRENT_SAVE_VERSION).toBe(13);
+    expect(CURRENT_SAVE_VERSION).toBe(14);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -1118,9 +1125,10 @@ describe('save envelope — an ended career round-trips with no migration (T-150
     // Nothing needed a bump for any of it. (T-1603b later bumped 7 → 8 for the
     // unrelated renown re-derivation, T-1703 8 → 9 for the new `edition` field,
     // N1 9 → 10 for `NpcState.ship`, N10 10 → 11 for the per-system job pool,
-    // N11 11 → 12 for `NpcState.registry` and T-111 12 → 13 for
-    // `PlayerState.recovery`; this pins the CURRENT version.)
-    expect(CURRENT_SAVE_VERSION).toBe(13);
+    // N11 11 → 12 for `NpcState.registry`, T-111 12 → 13 for
+    // `PlayerState.recovery` and T-135 13 → 14 for `GameState.dareHand`; this
+    // pins the CURRENT version.)
+    expect(CURRENT_SAVE_VERSION).toBe(14);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {
@@ -1339,8 +1347,8 @@ describe('save envelope — v12 → v13 recovery migration (T-111)', () => {
 // deliberately untouched so a module-free career serializes byte-identically.
 // ---------------------------------------------------------------------------
 describe('save envelope — the explore-module fields round-trip with no migration (T-112)', () => {
-  it('CURRENT_SAVE_VERSION is STILL 13 — a pure addition owes no bump', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(13);
+  it('CURRENT_SAVE_VERSION is STILL the current one — a pure addition owes no bump', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(14);
   });
 
   it('round-trips a fitted module and a bonus tank through createSave → loadSave', () => {

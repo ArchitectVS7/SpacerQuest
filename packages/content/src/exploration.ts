@@ -16,9 +16,10 @@
  * engine rule from `valuePoints` (§3b, T-111).
  *
  * T-111 · THE VALUE BANDS (docs/EXPLORE_REDESIGN.md §5.2). `EXPLORE_VALUE_BANDS`
- * below is the ONLY place in the codebase a recovery day-count is written. The
- * engine's `bandFor`/`recoveryDays` (exploreOutcomes.ts) read it; no row carries
- * an N of its own, and the type is what enforces that.
+ * below is the ONLY place in the codebase a recovery day-count — or (T-131, owner
+ * ruling D1) an EXTRA-DICE COST — is written. The engine's
+ * `bandFor`/`recoveryDays`/`apCost` (exploreOutcomes.ts) read it; no row carries
+ * an N or an `apCost` of its own, and the type is what enforces that.
  *
  * T-113 · THE SPINE — pass 1 of 3 of the 100-row table (§5.3). The 34 rows of
  * bands 0 and 1 are authored below: 14 dead ends and 20 low finds (12 salvage,
@@ -74,9 +75,11 @@
  *    `extra-die` module) and 2 band-4 questlines. Zero engine-source lines.
  *    THE TABLE NOW TOTALS 100 AND EVERY ROW IS AUTHORED.
  *
- * THE LADDER IS NOW VISIBLE END TO END, and it is visible as a RULE: a band-4 row
- * costs six calendar days to recover and a dead end costs none, and no row
- * anywhere says so — `recoveryDays` reads the band table and nothing else.
+ * THE LADDER IS NOW VISIBLE END TO END, and it is visible as a RULE: bands 0-1
+ * cost nothing beyond the sweep's own die, a band-2 find costs ONE CALENDAR DAY,
+ * and a band-3/4 find costs TWO or THREE EXTRA DICE out of the same dawn hand
+ * (T-131, owner ruling D1, 2026-07-31) — and no row anywhere says so.
+ * `recoveryDays` and `apCost` read the band table and nothing else.
  */
 
 import { BEACON_FRAGMENT_POOL, DERELICT_FRAGMENT_POOL } from './nemesis.js';
@@ -890,8 +893,10 @@ const BAND2_LORE_EFFECT_ROWS: readonly ExploreOutcomeDefinition[] = [
 // 14 rows, `valuePoints` 31-60, and the CEILING they are authored against is
 // §5.2's band-3 column, transcribed onto `EXPLORE_VALUE_BANDS` below: +6
 // component strength / +40 maxFuel / +1 cargo pod for Class A, `reroll` for
-// Class B. N = 3: a band-3 find costs the ship three calendar days, which is the
-// ladder showing through as a rule rather than as a per-row dial.
+// Class B. T-131 (D1): a band-3 find costs the ship TWO EXTRA DICE out of the
+// same dawn hand, paid at claim — it no longer costs calendar days. That is the
+// ladder showing through as a rule rather than as a per-row dial; the number lives
+// in `EXPLORE_VALUE_BANDS.apCost` and nowhere else.
 //
 // 13 CLASS A + 1 CLASS B (`item-marked-ephemeris`, §4.2's item 2 of 3, in
 // `EXPLORE_ITEMS` since T-112 and granted by no row until now).
@@ -1146,7 +1151,8 @@ const BAND3_NPC_ROWS: readonly ExploreOutcomeDefinition[] = [
 
 // --- T-115 · BAND 4 — the top of the table (§4, §5.2) -----------------------
 //
-// 6 unique-item rows, `valuePoints` 61-100, N = 6. This band is 3% of successful
+// 6 unique-item rows, `valuePoints` 61-100, `apCost` 3 (T-131/D1 — it was N = 6
+// until the ruling retired the day cost). This band is 3% of successful
 // boards and its rows are the rarest content in the game, which is why the ceiling
 // is REACHED rather than approached: +10 component strength / +80 maxFuel / +1 pod
 // for Class A, `extra-die` for Class B. 5 CLASS A + 1 CLASS B
@@ -1223,8 +1229,9 @@ const BAND4_ITEM_ROWS: readonly ExploreOutcomeDefinition[] = [
 // --- T-115 · BAND 4 — the two questlines at the top of the ladder -----------
 //
 // 2 rows. Same shape as every other questline row; what makes them band 4 is the
-// weight of the decision the episode puts in front of the captain, and the six
-// calendar days the find costs before it is even opened.
+// weight of the decision the episode puts in front of the captain, and the three
+// extra dice the find costs out of the dawn hand before it is even opened
+// (T-131/D1 — it was six calendar days until the ruling retired the day cost).
 const BAND4_QUESTLINE_ROWS: readonly ExploreOutcomeDefinition[] = [
   {
     id: 'explore-quest-cold-fleet',
@@ -1616,10 +1623,14 @@ export const EXPLORE_ITEM_BY_ID: Record<string, ExploreItemDefinition> = Object.
  * same stub the finding above rejected.
  *
  * THE ENFORCEMENT, stated so it is not lost: `ExploreOutcomeDefinition` has NO
- * `recoveryDays` key and MUST NEVER GAIN ONE. A content author cannot hand-tune
- * one row's recovery clock because there is nowhere to write it — a missing field
- * is a compile error, which is stronger than any test. `grep recoveryDays
- * packages/content/src/exploration.ts` must hit ONLY inside EXPLORE_VALUE_BANDS.
+ * `recoveryDays` key and NO `apCost` key, and MUST NEVER GAIN EITHER. A content
+ * author cannot hand-tune one row's recovery clock or its dice cost because there
+ * is nowhere to write it — a missing field is a compile error, which is stronger
+ * than any test. The mechanically runnable form of the claim, scoped to a FIELD
+ * WRITE so that prose mentioning the names does not falsify it:
+ * `grep -n 'recoveryDays:' packages/content/src/exploration.ts` and
+ * `grep -n 'apCost:' packages/content/src/exploration.ts` must EACH hit only
+ * inside `EXPLORE_VALUE_BANDS` (plus the two interface declarations above it).
  *
  * IN-REPO PRECEDENT, deliberately copied: `RENOWN_DEED_THRESHOLDS` (deeds.ts) is
  * a content band table and `rankForDeedCount` (engine deeds.ts) is the one-line
@@ -1632,8 +1643,25 @@ export interface ExploreValueBand {
   band: number;
   /** Inclusive lower bound on `valuePoints`. Rows MUST be ordered ascending. */
   minValuePoints: number;
-  /** N — calendar days a find in this band takes to recover. 0 ⇒ same-day. */
+  /** N — calendar days a find in this band takes to recover. 0 ⇒ same-day.
+   *  D1 (2026-07-31) narrowed this to BAND 2: bands 3-4 charge `apCost` instead. */
   recoveryDays: number;
+  /**
+   * T-131 (owner ruling D1, 2026-07-31) · THE EXTRA DICE a find in this band
+   * costs AT CLAIM, on top of the sweep's own die, taken from the SAME dawn hand
+   * and paid immediately. 0 ⇒ the sweep's die is the whole cost.
+   *
+   * A BAND MAY NEVER CARRY BOTH `recoveryDays > 0` AND `apCost > 0` — asserted as
+   * a content-table test, not left as a comment. A band is drawn AFTER the nav
+   * check, with the sweep's die and the fuel already spent, so an `apCost` row can
+   * only ever resolve same-day: there is no later dusk with a dawn hand left to
+   * charge against.
+   *
+   * Same discipline as `recoveryDays`: a band-table rule, NEVER a per-row
+   * constant. `ExploreOutcomeDefinition` has no `apCost` key, so hand-tuning one
+   * row's dice cost is a compile error rather than a review catch.
+   */
+  apCost: number;
   /**
    * T-113 · WHICH PAYLOAD KINDS AN AUTHORED ROW IN THIS BAND MAY CARRY (§5.2).
    * Read by the content validator, which is what keeps a 100-row table from
@@ -1689,13 +1717,24 @@ export interface ExploreValueBand {
   weight: number;
 }
 
-// BALANCE: the day counts are VERBATIM docs/EXPLORE_REDESIGN.md §5.2. Bands 0-1
-// (58% of successful boards under §5.2's weights) recover same-day, so the common
-// find behaves exactly like today's instant loot — the audit measured a median
-// day-120 captain carrying 27 fuel, and a verb that always cost a multi-day
-// commitment on top of an 80-fuel gate would be unusable for the captain it is
-// meant to serve. Band 4's N is held at 6 so a day-24 find still reads as a
-// legible gamble against the day-30 Tour One marker.
+// BALANCE: the day counts for BANDS 0-2 are VERBATIM docs/EXPLORE_REDESIGN.md
+// §5.2. Bands 0-1 (58% of successful boards under §5.2's weights) recover
+// same-day, so the common find behaves exactly like today's instant loot — the
+// audit measured a median day-120 captain carrying 27 fuel, and a verb that always
+// cost a multi-day commitment on top of an 80-fuel gate would be unusable for the
+// captain it is meant to serve.
+//
+// T-131 · OWNER RULING D1 (`/bakeoff`, 2026-07-31) — BANDS 3 AND 4 NO LONGER PAY
+// IN DAYS. The §5.2 columns for them (N = 3 and N = 6) are RETIRED and replaced by
+// `apCost` 2 and 3: extra dice charged at claim out of the same dawn hand. Band 2
+// is UNTOUCHED (N = 1, `apCost: 0`) — the bakeoff measured 42.1% collection on it
+// and the ruling kept it deliberately. Band 4's old "N held at 6 against the day-30
+// Tour One marker" reasoning retires with the day cost it justified.
+//
+// THE TWO NUMBERS (2 and 3) ARE FIRST-PASS, TO BE MOVED BY PLAY. The ruling is
+// explicit that this is a playtest, not a re-derivation of the bakeoff's §5.5 EV
+// math — so they are not fitted to a credit-equivalent and must not be "corrected"
+// toward one. They will move when a playtest says so, per docs/BALANCE-POLICY.md.
 //
 // The Class-A ceilings and Class-B permissions are VERBATIM §5.2 as well. A
 // ceiling of 0 is "not permitted in this band"; an empty `classB` is "no die
@@ -1712,6 +1751,7 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
     band: 0,
     minValuePoints: 0,
     recoveryDays: 0,
+    apCost: 0,
     permittedKinds: ['lore'],
     classACeiling: { strength: 0, maxFuel: 0, cargoPods: 0 },
     classB: [],
@@ -1721,6 +1761,7 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
     band: 1,
     minValuePoints: 1,
     recoveryDays: 0,
+    apCost: 0,
     permittedKinds: ['salvage', 'lore'],
     classACeiling: { strength: 0, maxFuel: 0, cargoPods: 0 },
     classB: [],
@@ -1730,6 +1771,7 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
     band: 2,
     minValuePoints: 11,
     recoveryDays: 1,
+    apCost: 0,
     // F-114-A · `questline` is here, and §5.2's table cell is corrected in place
     // to match §5.3, §8 and T-114's charter. See the interface header above.
     permittedKinds: ['salvage', 'unique-item', 'npc', 'lore', 'questline'],
@@ -1740,7 +1782,8 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
   {
     band: 3,
     minValuePoints: 31,
-    recoveryDays: 3,
+    recoveryDays: 0,
+    apCost: 2,
     permittedKinds: ['unique-item', 'questline', 'npc'],
     classACeiling: { strength: 6, maxFuel: 40, cargoPods: 1 },
     classB: [{ kind: 'reroll' }],
@@ -1749,7 +1792,8 @@ export const EXPLORE_VALUE_BANDS: readonly ExploreValueBand[] = [
   {
     band: 4,
     minValuePoints: 61,
-    recoveryDays: 6,
+    recoveryDays: 0,
+    apCost: 3,
     permittedKinds: ['unique-item', 'questline'],
     classACeiling: { strength: 10, maxFuel: 80, cargoPods: 1 },
     classB: [{ kind: 'extra-die' }],

@@ -10,6 +10,7 @@ import {
 } from '@spacerquest/content';
 import { createInitialState } from '../state.js';
 import { resolveVisitHangout } from '../actions/hangout.js';
+import { loanBandFor } from '../hangoutRules.js';
 import { generateEncounter } from '../actions/travel.js';
 import { endDay } from '../day.js';
 import { SeededRng } from '../rng.js';
@@ -23,6 +24,9 @@ import { DawnHand, DayPhase, GameEvent, GameState, LoanState, PlayerAction } fro
 
 /** A DAY-phase state at Sun-3 (a hasHangout hub) with a hand-picked dawn hand so
  *  `spendDie` indices resolve to real, unspent dice. */
+/** Sun-3 — the state builder's port, named so `loanBandFor` reads as a decision. */
+const SUN_3 = 1;
+
 function lendingState(dice: number[] = [5, 5, 5, 5, 5]): GameState {
   const state = createInitialState(1);
   state.dayPhase = DayPhase.DAY;
@@ -110,19 +114,29 @@ describe('ledger — borrow → 10-dusk accrual → repay', () => {
   });
 
   it('borrow clamps the requested principal into the content band', () => {
+    // T-133 (owner ruling D7) · the band is the PORT's now, read through the same
+    // `loanBandFor` accessor the resolver clamps with rather than off the two
+    // global constants. `lendingState()` stands at Sun-3, whose row omits
+    // `loanBand`, so the two are the same numbers today — which is the point: this
+    // test still measures the CLAMP, and it keeps doing so if Sun-3 is ever given
+    // a band of its own. The per-port divergence itself is driven in
+    // `hangout.test.ts`'s T-133 block.
+    const band = loanBandFor(SUN_3);
+    expect(band).toEqual({ min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL });
+
     const below = resolveVisitHangout(
       lendingState(),
       loanAction('borrow', { amount: 1 }),
       new SeededRng(1),
     );
-    expect(below.state.player.loan?.principal).toBe(LOAN_MIN_PRINCIPAL);
+    expect(below.state.player.loan?.principal).toBe(band.min);
 
     const above = resolveVisitHangout(
       lendingState(),
       loanAction('borrow', { amount: 999999 }),
       new SeededRng(1),
     );
-    expect(above.state.player.loan?.principal).toBe(LOAN_MAX_PRINCIPAL);
+    expect(above.state.player.loan?.principal).toBe(band.max);
   });
 });
 

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { advanceDay, applyPlayerAction, endDay, startDay } from '../day.js';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import type { EncounterState, GameEvent, GameState } from '../types.js';
-import { outcomeById, recoveryDays } from '../exploreOutcomes.js';
 import { EXPLORE_VALUE_BANDS } from '@spacerquest/content';
 
 /**
@@ -31,11 +30,12 @@ import { EXPLORE_VALUE_BANDS } from '@spacerquest/content';
 //
 // The three ruling seeds open a BAND-2 row — N = 1. The rulings under test are all
 // clock-agnostic (`day >= dueDay`, a location compare, a slot compare), so N = 1
-// exercises them identically to N = 6, and a one-day clock keeps each test to the
-// smallest number of real days that can demonstrate it. SECTION 7 ADDS THE N = 6
-// CASE ON ITS OWN SEED, which is what T-115 owed: bands 3 and 4 are authored, so
-// the longest recovery on the ladder is drivable through the real loop for the
-// first time and no longer has to be argued by analogy.
+// exercises them identically to any longer clock, and a one-day clock keeps each
+// test to the smallest number of real days that can demonstrate it. SINCE T-131
+// N = 1 IS THE ONLY CLOCK THERE IS: owner ruling D1 zeroes `recoveryDays` for
+// bands 3-4, so band 2 is the whole of the recovery system. SECTION 7 still drives
+// the top of the ladder through the real loop — the thing T-115 owed — but now
+// against the price that replaced the clock.
 //
 // T-113 RE-SEEDED one seed of the three (4 → 36), because the authored band-1
 // beacon rows joined the beacon salvage leg and re-phased that board.
@@ -65,6 +65,20 @@ import { EXPLORE_VALUE_BANDS } from '@spacerquest/content';
 // row). Both are still read off CONTENT at payout, which is what they were there
 // to prove.
 
+// T-131 · NO SEED MOVED, AND ONE SECTION WAS REWRITTEN AROUND ITS SEED. Owner
+// ruling D1 (`/bakeoff`, 2026-07-31) sets bands 3-4 to `recoveryDays: 0` and
+// charges `apCost` extra dice at claim instead. THE THREE BAND-2 RULING SEEDS ARE
+// UNTOUCHED — 52, 10 and 12 all still open a one-day band-2 op on day 1, because
+// the ruling changed nothing about band 2, the draw, or the rng stream a board
+// consumes BEFORE the claim. That the whole of sections 1-6 passed unmodified is
+// the evidence for that, and is exactly the sentinel the task asked for.
+//
+// `SEED_BAND4` (2) is ALSO UNMOVED and still draws a band-4 row on day 1 —
+// re-scanned against the real loop under the same condition. What changed is what
+// that row now DOES, so SECTION 7 was rewritten in place: it used to drive the
+// six-day clock and now drives the four-dice payment. The coverage T-115 owed
+// (the top of the ladder, through the real loop, not by analogy) is kept.
+
 /** Opens a recovery on day 1 at Sun-3 with an authored band-2 SALVAGE row, and
  *  its day-1 Travel is INTERRUPTED. */
 const SEED_OPENS = 52;
@@ -72,8 +86,10 @@ const SEED_OPENS = 52;
 const SEED_TRAVELS_AWAY = 10;
 /** Opens a recovery on day 1 AND the planted dusk encounter lands a fatal blow. */
 const SEED_DIES = 12;
-/** T-115 · Opens a BAND-4 recovery on day 1 — N = 6, the longest clock on the
- *  ladder and the one no seed could reach until bands 3-4 were authored. */
+/** T-115 · Draws a BAND-4 row on day 1 — the top of the ladder, and the one no
+ *  seed could reach until bands 3-4 were authored. T-131 · it no longer opens a
+ *  recovery (owner ruling D1); the seed is unmoved and section 7 is rewritten
+ *  around what the row now costs. */
 const SEED_BAND4 = 2;
 
 // ---------------------------------------------------------------------------
@@ -371,11 +387,13 @@ describe('T-111 · §3.3(d) the Tour One marker does nothing to an open recovery
     });
     expect(opened.events.some((e) => e.type === 'RecoveryStarted')).toBe(true);
     const recovery = opened.state.player.recovery!;
-    // dueDay 31: seed 52's day-30 board draws a band-2 row (N = 1). That is a
-    // property of the seed, not of the table — bands 3 and 4 are authored now, so
-    // a day-30 board CAN open a six-day op. The ruling under test (the era flip
-    // does nothing to an open recovery) is clock-agnostic and is exercised
-    // identically either way; section 7 drives the N = 6 clock end to end.
+    // dueDay 31: seed 52's day-30 board draws a band-2 row (N = 1). Under owner
+    // ruling D1 (T-131) band 2 is the ONLY band that opens a recovery at all —
+    // bands 3-4 charge `apCost` dice at claim instead — so N = 1 is now a
+    // property of the TABLE as well as of the seed, and one day is the longest
+    // clock any board can open. The ruling under test (the era flip does nothing
+    // to an open recovery) is clock-agnostic and would be exercised identically
+    // at any N; section 7 drives what a band-4 find costs instead.
     expect(recovery.dueDay).toBe(31);
 
     const marker = endDay(opened.state);
@@ -480,63 +498,66 @@ describe('T-111 · a stored outcome id that no longer resolves', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7 · T-115 · THE LONGEST CLOCK ON THE LADDER, driven end to end
+// 7 · T-131 · THE TOP OF THE LADDER NO LONGER OPENS A CLOCK AT ALL
 // ---------------------------------------------------------------------------
 
-describe('T-115 · a BAND-4 find is a six-day commitment (§5.2, §5.4)', () => {
-  it('opens N = 6 from the band table alone, and pays out on the sixth dusk', () => {
-    // WHAT THIS PROVES, and why it could not be written before T-115: "the most
-    // powerful outcomes are the slowest to recover" has been asserted since T-111
-    // as a PROPERTY of the band table (`exploreOutcomes.test.ts`, §5.4). Until
-    // bands 3 and 4 were authored, no row in the game could reach N = 3 or N = 6,
-    // so the longest clock had never actually run through the real day loop. This
-    // runs it: dawn, the Explore verb, six real duskes, and the payout.
+describe('T-131 · owner ruling D1 — a BAND-4 find pays dice, not days', () => {
+  it('opens NO recovery, spends 1 + apCost dice, and resolves on the day of the board', () => {
+    // THE REWRITE OF T-115's 'a BAND-4 find is a six-day commitment'. That
+    // scenario no longer exists — owner ruling D1 (`/bakeoff`, 2026-07-31) sets
+    // bands 3-4 to `recoveryDays: 0` and charges `apCost` extra dice at claim
+    // instead — so the SECTION is rewritten rather than deleted, and it keeps the
+    // thing T-115 actually owed: the top of the ladder driven end to end through
+    // the real loop, not argued by analogy from band 2.
     //
-    // NOTHING HERE NAMES A NUMBER THE CONTENT DOES NOT. The expected `dueDay` is
-    // `day + recoveryDays(row.valuePoints)` read off the drawn row, so a re-banded
-    // row moves the test with it rather than breaking it — and the assertion that
-    // matters (`N === 6` at band 4) is checked against the BAND TABLE, which is
-    // the one place a day-count may be written.
-    const opened = openRecovery(SEED_BAND4);
-    const recovery = opened.state.player.recovery!;
-    const row = outcomeById(recovery.outcomeId)!;
-    expect(row, `${recovery.outcomeId} resolves to no content row`).toBeDefined();
+    // NOTHING HERE NAMES A NUMBER THE CONTENT DOES NOT. The expected dice cost is
+    // `1 + apCost(row.valuePoints)` read off the drawn row, so a re-banded row
+    // moves the test with it; the assertion that band 4 costs 3 is checked against
+    // the BAND TABLE, which is the one place the number may be written.
+    const dawn = startDay(createInitialState(SEED_BAND4));
+    const die = bestUnspentDie(dawn.state);
+    expect(die).toBeGreaterThanOrEqual(0);
+    const spentBefore = dawn.state.player.dawnHand!.spent.filter(Boolean).length;
 
-    const N = recoveryDays(row.valuePoints);
-    expect(N).toBe(EXPLORE_VALUE_BANDS[4].recoveryDays);
-    expect(N).toBe(6);
-    expect(recovery.dueDay).toBe(recovery.startedDay + N);
+    const res = applyPlayerAction(dawn.state, { type: 'Explore', spendDie: die });
 
-    // Six real duskes pass without paying (the predicate is `day >= dueDay`, and
-    // the day of the find is `dueDay - 6`), and the Explore verb is refused on
-    // every dawn in between — which is the cost the ladder charges for the top of
-    // the table, and the whole point of §5.4's correlation.
-    let live = opened.state;
-    for (let step = 0; step < N; step += 1) {
-      const dusk = endDay(live);
-      expect(
-        eventsOfType(dusk.events, 'RecoveryPaidOut'),
-        `paid early on step ${step}`,
-      ).toHaveLength(0);
-      expect(eventsOfType(dusk.events, 'RecoveryAbandoned')).toHaveLength(0);
-      expect(dusk.state.player.recovery).toEqual(recovery);
-      live = startDay(dusk.state).state;
-      const refused = applyPlayerAction(live, { type: 'Explore', spendDie: bestUnspentDie(live) });
-      expect(
-        refused.events.some(
-          (e) => e.type === 'ExplorationFailed' && e.reason === 'recovery-in-progress',
-        ),
-        `the verb was not refused on day ${live.day}`,
-      ).toBe(true);
-    }
+    // A real board, and a real find.
+    expect(eventsOfType(res.events, 'PoiDiscovered')).toHaveLength(1);
+    expect(res.events.some((e) => e.type === 'ExplorationFailed')).toBe(false);
 
-    // The sixth dusk is the one `day >= dueDay` is true on.
-    const payout = endDay(live);
-    const paid = eventsOfType(payout.events, 'RecoveryPaidOut');
-    expect(paid).toHaveLength(1);
-    expect(paid[0].day).toBe(recovery.dueDay);
-    expect(paid[0].outcomeId).toBe(recovery.outcomeId);
-    expect(paid[0].valuePoints).toBe(row.valuePoints);
-    expect(payout.state.player.recovery).toBeNull();
+    // THE CLOCK IS GONE. No slot, no RecoveryStarted, nothing to tick.
+    expect(res.state.player.recovery).toBeNull();
+    expect(eventsOfType(res.events, 'RecoveryStarted')).toHaveLength(0);
+    expect(EXPLORE_VALUE_BANDS[4].recoveryDays).toBe(0);
+
+    // THE DICE ARE THE PRICE. 1 (the sweep) + 3 (band 4's apCost), all off ONE
+    // player action, out of the hand `startDay` dealt.
+    const spentAfter = res.state.player.dawnHand!.spent.filter(Boolean).length;
+    expect(EXPLORE_VALUE_BANDS[4].apCost).toBe(3);
+    expect(spentAfter - spentBefore).toBe(1 + EXPLORE_VALUE_BANDS[4].apCost);
+
+    // …and it paid out TODAY. The dusk that used to deliver it has nothing to do.
+    const dusk = endDay(res.state);
+    expect(eventsOfType(dusk.events, 'RecoveryPaidOut')).toHaveLength(0);
+    expect(eventsOfType(dusk.events, 'RecoveryAbandoned')).toHaveLength(0);
+    expect(dusk.state.player.recovery).toBeNull();
+  });
+
+  it('and the verb is NOT refused the next dawn — there is nothing to hold station for', () => {
+    // The inverse of what section 7 used to assert. A band-4 find used to cost the
+    // next six dawns' Explores through the `recovery-in-progress` refusal; under
+    // D1 it costs dice on the day and the captain is free again at once.
+    const dawn = startDay(createInitialState(SEED_BAND4));
+    const res = applyPlayerAction(dawn.state, {
+      type: 'Explore',
+      spendDie: bestUnspentDie(dawn.state),
+    });
+    const next = startDay(endDay(res.state).state).state;
+    const again = applyPlayerAction(next, { type: 'Explore', spendDie: bestUnspentDie(next) });
+    expect(
+      again.events.some(
+        (e) => e.type === 'ExplorationFailed' && e.reason === 'recovery-in-progress',
+      ),
+    ).toBe(false);
   });
 });

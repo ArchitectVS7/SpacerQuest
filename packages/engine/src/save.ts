@@ -181,6 +181,24 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * `emptyDeedRegistry` pattern applies without exception: call the engine's own
  * constructor, never an inline literal.
  *
+ * T-135 bumped {@link CURRENT_SAVE_VERSION} to 14. The v13->v14 change is the
+ * SAME additive one-key backfill one level shallower: owner ruling D2 replaced the
+ * Spacer's Dare's single opposed GUILE check with a real Liar's Dice hand, and a
+ * hand is a SCENE that persists between actions — `GameState.dareHand`
+ * (types.ts `DareHandState`, docs/LIARS-DICE_REDESIGN.md §2), the architectural
+ * twin of `encounter`. The migration backfills `dareHand: null` at the root.
+ *
+ * NULL IS A STATEMENT OF FACT HERE TOO, and for the third time the same reason
+ * applies verbatim: no save that exists can contain an open hand, because until
+ * T-135 no hand could exist. So there is again no rule to call, and the moment
+ * this backfill becomes anything other than `null` the `emptyDeedRegistry` pattern
+ * applies without exception.
+ *
+ * `cloneState` needs NO change for it (clone.ts is a JSON round-trip of everything
+ * except `eventLog` and `npcs`, so a new plain-data top-level field is deep-copied
+ * for free). Stated here so nobody adds a branch: a hand-written clause there
+ * would be exactly the aliasing bug that module's header warns about.
+ *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
  * `targetVersion`, so a test can drive a dummy
@@ -392,9 +410,23 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
       },
     };
   },
+  // v13->v14: T-135 added the root-level `GameState.dareHand` (the open Liar's
+  // Dice scene, owner ruling D2). A v13 save has no `dareHand` key, so backfill it
+  // to null before schema validation — a statement of FACT, not a default: a v13
+  // save was written by an engine in which no hand could exist, so "there is no
+  // open hand" is true of that save rather than a value this migration is
+  // choosing. That is `MIGRATIONS[12]`'s own wording, and it is how the
+  // "a migration CALLS a rule, it never restates one" house rule is discharged
+  // here — the backfilled value is the literal `null`, so there is no rule to call.
+  // Idempotent: a state that already carries the key keeps it exactly, hidden dice
+  // and escrow included. The additive one-key shape of MIGRATIONS[8] (`edition`).
+  13: (v13State) => {
+    const s = v13State as { dareHand?: unknown };
+    return { ...(v13State as object), dareHand: s.dareHand ?? null };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 13;
+export const CURRENT_SAVE_VERSION = 14;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';

@@ -32,6 +32,7 @@ import {
   NpcArchetype,
   PORT_HANGOUTS,
   PortHangout,
+  Stat,
 } from '@spacerquest/content';
 import { GameState, NpcState, PlayerAction } from './types.js';
 
@@ -52,6 +53,7 @@ void _hangoutVenueIdsAgree;
  *  fallback of their own. Narrowed once here rather than at every accessor. */
 const DEFAULT_VENUES: readonly HangoutVenueId[] = DEFAULT_PORT_HANGOUT.venues ?? [];
 const DEFAULT_WAGER = DEFAULT_PORT_HANGOUT.wager ?? { min: 0, max: 0 };
+const DEFAULT_LOAN_BAND = DEFAULT_PORT_HANGOUT.loanBand ?? { min: 0, max: 0 };
 const DEFAULT_VENUE_PARAMS = DEFAULT_PORT_HANGOUT.venueParams ?? {};
 
 /**
@@ -64,11 +66,45 @@ export function portHangoutFor(systemId: number): PortHangout {
   return PORT_HANGOUTS[systemId] ?? { ...DEFAULT_PORT_HANGOUT, systemId };
 }
 
-/** The port's Dare stake band. The engine clamps a requested wager into this AND
- *  down to what both sides can cover — that second clamp is the resolver's, and it
- *  is a rule, not a parameter (§3.1 row 9). */
+/**
+ * The port's Dare stake band. The engine clamps a requested wager into this AND
+ * down to what both sides can cover — that second clamp is the resolver's, and it
+ * is a rule, not a parameter (§3.1 row 9).
+ *
+ * T-135 · FINDING F-134-3 — `band.max` NOW CARRIES TWO MEANINGS, and both are
+ * live:
+ *   1. the ceiling on a Dare SEED (its original job), and
+ *   2. the per-side ceiling on TOTAL EXPOSURE for a whole Liar's Dice hand — seed
+ *      plus every ante that side pays (`liarsDiceRules.ts` `headroomFor`,
+ *      `docs/LIARS-DICE_REDESIGN.md` §4.3).
+ * They are consistent (the second contains the first), but a content author
+ * retuning a band for a prose reason now also decides how many raises a hand at
+ * that port can hold. Said here and on `HangoutVenueParams` so neither reader can
+ * miss it.
+ */
 export function wagerBandFor(systemId: number): { min: number; max: number } {
   return portHangoutFor(systemId).wager ?? DEFAULT_WAGER;
+}
+
+/**
+ * T-133 (owner ruling D7) · The port's Penny Wise PRINCIPAL band. The engine
+ * clamps a requested principal into this in `resolveVisitHangout`'s `borrow` arm,
+ * exactly as it clamps a requested stake into `wagerBandFor` — same shape, same
+ * `??` resolution against the default row, same "content owns the instance, the
+ * engine owns the clamp" split.
+ *
+ * WHAT IT DOES NOT REACH. `LOAN_DAILY_RATE`, `LOAN_TERM_DAYS` and `LENDER_ID` stay
+ * global: there is still ONE lender of record and one `LoanState` slot, so a port
+ * decides how DEEP the desk will go, never what it charges. That is the whole of
+ * D7's narrowing of §2.2 ruling 5, and it is why a per-port band is a clamp rather
+ * than a second counterparty.
+ *
+ * A row that omits `loanBand` reads `[LOAN_MIN_PRINCIPAL, LOAN_MAX_PRINCIPAL]`,
+ * because the default row is BUILT from those two constants — which is what makes
+ * this extraction inert at the thirteen ports that do not author one.
+ */
+export function loanBandFor(systemId: number): { min: number; max: number } {
+  return portHangoutFor(systemId).loanBand ?? DEFAULT_LOAN_BAND;
 }
 
 /**
@@ -90,7 +126,26 @@ export function venueParamsFor(
     dc: row?.dc ?? fallback?.dc ?? 0,
     dispositionOnSuccess: row?.dispositionOnSuccess ?? fallback?.dispositionOnSuccess ?? 0,
     dispositionOnFailure: row?.dispositionOnFailure ?? fallback?.dispositionOnFailure ?? 0,
+    // T-135 · the Liar's Dice fold arm. The ten authored `dare` rows omit it and
+    // inherit `DARE_FOLD_DISPOSITION` field-wise, which is exactly the property
+    // this resolution order exists for — M4d authors no new port numbers.
+    dispositionOnFold: row?.dispositionOnFold ?? fallback?.dispositionOnFold ?? 0,
   };
+}
+
+/**
+ * GUILE score of the NPC behind a state id (via its profile — `NpcState` carries
+ * no stat block, only a `profileId`). Falls back to 0 for an unknown profile, the
+ * same defensive idiom `npcArchetype` below uses.
+ *
+ * T-135 moved this here from `actions/hangout.ts`, where it was module-private,
+ * BEHAVIOUR-IDENTICAL: `actions/dare.ts` needs the dealer's GUILE to feed
+ * `dealerMove`, and a second lookup in the resolver would be a second definition
+ * of the same rule. It sits beside `npcArchetype` because they are the same shape
+ * of read.
+ */
+export function npcGuile(npc: NpcState): number {
+  return ALL_NPC_PROFILES.find((p) => p.id === npc.profileId)?.stats[Stat.GUILE] ?? 0;
 }
 
 /**

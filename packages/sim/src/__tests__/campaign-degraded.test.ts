@@ -714,6 +714,170 @@ const UNCHANGED_POLICIES = [
  *    size from stream noise, re-pricing the Dare is R-owned per §8, and T-125 —
  *    the very next task — owns the milestone's single capstone, its sweep, its
  *    re-pinned baseline and its verdict.
+ *
+ * 21. T-131 — OWNER RULING D1: bands 3-4 of the Explore ladder pay in DICE, not
+ *    days. EXACTLY THE SAME TWO ROWS MOVE that entries 15 and 16 moved, and for
+ *    the same structural reason: only a policy that flies off-lane sweeps can
+ *    feel a change to what a board costs or yields.
+ *      explorer 2537a7aa5185d3fd -> cfe5aa73ce12c16f
+ *      smuggler faa0c778be299406 -> 50d24df7e9891d8f
+ *      trader / fighter / veteran / gambler / greedy — ALL UNCHANGED, byte for
+ *      byte. Five of seven identical is again the evidence that a verb-cost
+ *      change moved the CALLERS and not the world.
+ *
+ *    MECHANISM. ONE CONTENT edit and ONE ENGINE rule, and no sim edit at all:
+ *      (1) `EXPLORE_VALUE_BANDS` bands 3 and 4 go `recoveryDays` 3/6 -> 0 and
+ *          gain `apCost` 2/3.
+ *      (2) `claimOutcome` (engine `exploreOutcomes.ts`) grows a third branch: an
+ *          `apCost` row spends that many MORE dice from the same dawn hand,
+ *          lowest-value first, and resolves TODAY; a hand that cannot cover it
+ *          FORFEITS the find with the new typed
+ *          `ExplorationFailed{reason:'insufficient-dice'}`.
+ *    THREE CHANNELS REACH A CAMPAIGN, in descending order of effect:
+ *      (a) THE PAYOUT MOVES FORWARD. A band-3/4 find used to be delivered at the
+ *          dusk of dueDay, and only if the captain was still parked — so most of
+ *          them were forfeited by the §3.3(a) location predicate the moment the
+ *          policy travelled. They now pay on the day of the board, which is why
+ *          the explorer's mean and median both RISE.
+ *      (b) THE HAND SHRINKS on the day of a band-3/4 board (1 + 2 or 1 + 3 dice
+ *          off one action), so the rest of that day is played with fewer dice and
+ *          every subsequent action re-phases that seed's stream.
+ *      (c) THE `recovery-in-progress` REFUSAL FIRES FAR LESS. The slot is now
+ *          opened on 24% of successful boards instead of 42%, so the day AFTER a
+ *          good find is no longer spent held on station.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      explorer  final credits  median 10,553 -> 18,383   mean 15,693 -> 18,359
+ *      smuggler  final credits  median  7,492 ->  5,653   mean  6,440 ->  6,193
+ *      fragments acquired (sum) explorer 17 -> 16, smuggler 9 -> 9
+ *      fuel starvation days 0 -> 0 in both; subsistence days explorer 0 -> 1,
+ *      smuggler 0 -> 0.
+ *    THE DIRECTION IS UP FOR THE EXPLORER AND FLAT-TO-DOWN FOR THE SMUGGLER,
+ *    which is what (a) and (b) predict — the explorer boards often enough to
+ *    collect the top of the ladder it was previously losing, and the smuggler
+ *    boards rarely enough that the shorter hand is the only channel it feels.
+ *    NOTHING IS TUNED IN RESPONSE. The `apCost` numbers 2 and 3 are the owner's
+ *    first-pass values and D1 is explicit that they move by PLAYTEST, not by
+ *    fitting a five-seed campaign sample; five seeds cannot separate a shift of
+ *    this size from stream noise in any case, and the milestone's own sweep
+ *    capstone (`t131-explore-ap`, 8,000 rows) is what the eventual read is taken
+ *    against.
+ *
+ *    THE BAND-2 SENTINEL AT THE TOP OF THIS FILE IS UNMODIFIED AND STILL GREEN:
+ *    'every band-2 row is recoveryDays: 1'. D1 left band 2 alone deliberately and
+ *    that assertion is how this file proves it.
+ *
+ * 22. T-133 — OWNER RULING D7: THE PER-PORT LOAN BAND. EXACTLY ONE ROW MOVES,
+ *    AND IT MOVES BACK TO A HASH THIS FILE HAS SEEN BEFORE:
+ *      trader   7ee040b0931caff9 -> 1b4e953468311f40
+ *      fighter / explorer / veteran / smuggler / gambler / greedy — ALL
+ *      UNCHANGED, byte for byte.
+ *
+ *    READ THE NEW TRADER HASH AGAINST ENTRY 19. `1b4e953468311f40` is precisely
+ *    the value entry 19 moved the trader AWAY from when Arcturus-6 withdrew its
+ *    credit desk. T-133 gives the desk back — owner ruling D7 makes the PRINCIPAL
+ *    BAND a content field, so a garrison expresses tight credit with a 1,000cr
+ *    ceiling instead of an absence — and the trader lands exactly where it stood
+ *    before the withdrawal. A revert-shaped hash is the strongest available
+ *    statement that the channel is the one entry 19 named and that nothing else
+ *    came with it.
+ *
+ *    MECHANISM. ONE CONTENT edit, ONE ENGINE rule and ONE SIM mirror:
+ *      (1) `PortHangout` gains `loanBand`, `DEFAULT_PORT_HANGOUT` carries
+ *          `[LOAN_MIN_PRINCIPAL, LOAN_MAX_PRINCIPAL]` (imported, never restated),
+ *          and Arcturus-6's row re-adds `borrow`/`repay` alongside a 250/1000
+ *          band.
+ *      (2) `loanBandFor` (engine `hangoutRules.ts`) beside `wagerBandFor`, and
+ *          `resolveVisitHangout`'s borrow arm clamps against it instead of
+ *          against the two globals. `git diff --stat HEAD -- packages/engine/src
+ *          ':!*__tests__*'` prints 2 files, +33/-7 — no new branch, one accessor.
+ *      (3) `planLoanBorrow` and `legalActions` read the same accessor, the
+ *          F-121-1 "the policy's guards are the engine's guards" idiom applied to
+ *          an AMOUNT rather than to a gate.
+ *    TWO CHANNELS COULD REACH A CAMPAIGN, and the decomposition below says only
+ *    one of them did:
+ *      (a) THE DESK REACH, restored. `isLendingDeskSystem(4,'borrow')` is true
+ *          again, so the trader plans loans and repayments at Arcturus-6 as it
+ *          did before T-123 and its "head home to settle up" preference sees a
+ *          fourteenth desk again. THIS IS THE WHOLE OF THE DELTA.
+ *      (b) THE CLAMP. Arithmetically INERT in this window, and MEASURED rather
+ *          than assumed: re-running these exact five seeds with Arcturus-6's
+ *          `loanBand.max` temporarily widened to `LOAN_MAX_PRINCIPAL` reproduces
+ *          `1b4e953468311f40` for the trader and leaves all six other rows
+ *          untouched. So no policy's shortfall at that port ever exceeded 1,000cr
+ *          over 5 seeds x 40 days — the ceiling is authored content that no
+ *          campaign in this sample has yet paid for. The clamp itself is driven
+ *          for real in the engine suite (`hangout.test.ts`, T-133 block) and
+ *          through the terminal in `ui/e2e/hangout.spec.ts`.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      trader    final credits  median 16,667 -> 16,667   mean 14,809 -> 15,508
+ *      trader    loans taken 7 -> 7, cleared 7 -> 7, defaults 0 -> 0,
+ *                interest accrued 1,236 -> 1,107, principal borrowed 12,813
+ *      smuggler  median 5,653, mean 6,193, loans 8, interest 1,602 — IDENTICAL
+ *      gambler   median 6,314, mean 9,880, loans 5, interest 1,400 — IDENTICAL
+ *      failed Hangout visits 0 -> 0 for every policy, as the invariant requires;
+ *      re-confirmed at 10 seeds x 120 days across all seven policies: 40 loans
+ *      taken, ZERO refusals of either event variant.
+ *    The trader borrows the same seven times for slightly less total interest,
+ *    because the desk it needed is once again the desk it was standing next to.
+ *    NOTHING WAS TUNED TO PRODUCE THIS AND NOTHING IS TUNED IN RESPONSE: the
+ *    1,000cr ceiling is a first-pass CONTENT call, D7 is explicit that a band
+ *    moves by playtest rather than by fitting a five-seed sample, and T-150 —
+ *    which already depends on this task — owns the read.
+ *
+ *    F-123-2 IS CLOSED BY THIS ENTRY. `lending-property.test.ts` used to assert
+ *    that a captain stranded at the desk-less garrison stayed stranded; every
+ *    travelable port now runs a desk, and the test asserts the positive — that
+ *    the SHALLOWEST band in the galaxy still clears a strand.
+ *
+ * 23. T-135 — OWNER RULING D2: THE SPACER'S DARE BECOMES LIAR'S DICE. ALL SEVEN
+ *    ROWS MOVE, and the decomposition below shows that SIX of them move for a
+ *    reason that has nothing to do with the game:
+ *      trader    1b4e953468311f40 -> 9709fd22ff55bb3d
+ *      fighter   dc6ca4fbcce58659 -> 13b4155d3d53e543
+ *      explorer  cfe5aa73ce12c16f -> 0854b356ac9c8bce
+ *      veteran   f701430cfe32f7cb -> a0fee7f62c2167e3
+ *      smuggler  50d24df7e9891d8f -> e68b33db4f6149b4
+ *      gambler   0c0c4fc26124fbc0 -> 45dfa017875d0619
+ *      greedy    0f2ff82982dcbf2d -> 56df4d82dab33e08
+ *
+ *    TWO CHANNELS, SEPARATED BY MEASUREMENT RATHER THAN BY ARGUMENT. This
+ *    fingerprint hashes the WHOLE report JSON, and `HangoutPlayStats` gained one
+ *    new key — `dareGuardHits`, the runner's continuation-loop tripwire, which
+ *    §12.4 proves unreachable and which is therefore 0 on every row. Re-running
+ *    these exact five seeds and stripping `"dareGuardHits":0` from the hashed JSON
+ *    reproduces the OLD pin EXACTLY for six of the seven:
+ *      trader / fighter / explorer / veteran / smuggler / greedy — stripped hash
+ *      === the pre-T-135 value, byte for byte.
+ *    So for those six the ONLY delta is a report key. That is exactly what should
+ *    be true: `planDare` is called by `gamblerPolicy` and by nothing else
+ *    (`packages/sim/src/index.ts`, one call site), so no other policy has ever sat
+ *    at a table and none of them can feel a change to what happens there.
+ *
+ *    THE GAMBLER IS THE ONE REAL MOVE. Its stripped hash is 67423e42356a1e61 —
+ *    still not the old value, and correctly so: `VisitHangout{venue:'dare'}` now
+ *    OPENS a multi-turn scene instead of resolving one opposed GUILE roll, and the
+ *    runner plays the hand out through `planDareMove`. `planDare` itself is
+ *    UNCHANGED (same guards, same `wagerBandFor` stake sizing, same
+ *    `ledger.takeBest()`), and so is the gambler's two-hand loop — per §12.2, the
+ *    fix is a bounded continuation loop in the runner, never a policy rewrite.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days, gambler): 223 hands, 194
+ *    won, 29 lost, 87,126 wagered, +70,715 net, ZERO failed visits and ZERO
+ *    `dareGuardHits`. Over 10 seeds x 120 days: 1,204 hands, 93.9% player win
+ *    rate, +689cr EV per hand, again zero refusals and zero guard hits.
+ *
+ *    THE WIN RATE IS A REPORTED FINDING, NOT A TUNED NUMBER (F-135-1, see the
+ *    Delivered note and `docs/LIARS-DICE_REDESIGN.md` §1.3). Its cause was traced
+ *    rather than shrugged at: the baseline opener bids `(own(F*), F*)` — a claim
+ *    about dice it actually holds, so `actual >= quantity` is guaranteed — and the
+ *    dealer's §9.8 challenge test (`surplus > 1.5 - guile*0.15`) fires on a
+ *    two-of-a-kind opening whenever the dealer holds none of that face, which it
+ *    then loses by construction. Both halves are the specified policies,
+ *    implemented verbatim. §1.3 forbids retuning any constant in this spec to
+ *    reproduce an old figure, and T-137 is the named owner of the win-rate / EV /
+ *    fold-rate read, so nothing here was touched in response.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -721,17 +885,24 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // so the trader borrows and repays on the day it needs to rather than on the day
   // it gets home. Entry 19: re-derived again — Arcturus-6 withdraws its desk, and
   // the policy's lending guards now mirror the engine's `venueOffered` gate rather
-  // than queueing an action the resolver refuses.
-  trader: '7ee040b0931caff9',
-  fighter: 'dc6ca4fbcce58659',
+  // than queueing an action the resolver refuses. Entry 22: re-derived a THIRD
+  // time, and back to entry 17's value — owner ruling D7 restores that desk against
+  // a tight `loanBand`, so the withdrawal channel is exactly undone and the band
+  // itself is provably inert over these seeds.
+  // Entry 23: re-derived — the new `dareGuardHits` report key ONLY (see above).
+  trader: '9709fd22ff55bb3d',
+  fighter: '13b4155d3d53e543',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
-  // takes re-phases.
-  explorer: '2537a7aa5185d3fd',
-  veteran: 'f701430cfe32f7cb',
+  // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
+  // pay dice at claim instead of days, so the finds this policy used to open and
+  // then lose to the location predicate are now collected on the day.
+  explorer: '0854b356ac9c8bce',
+  veteran: 'a0fee7f62c2167e3',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
-  // as the trader.
-  smuggler: 'faa0c778be299406',
+  // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
+  // through the shorter hand on a band-3/4 board rather than through the payout.
+  smuggler: 'e68b33db4f6149b4',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sun-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -743,8 +914,10 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // own and there is no default-band port left for a stake to inherit. The only
   // row entry 20 moves, and the only row it CAN move: pass 3 withdraws no credit
   // desk, so nothing reaches the lending policies at all.
-  gambler: '0c0c4fc26124fbc0',
-  greedy: '0f2ff82982dcbf2d',
+  // Entry 23: re-derived a FIFTH time, and the only row entry 23 moves for a
+  // reason of its own — the Dare is now a Liar's Dice hand the runner plays out.
+  gambler: '45dfa017875d0619',
+  greedy: '56df4d82dab33e08',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;
