@@ -473,7 +473,17 @@ describe('save envelope — v4 → v5 ports migration (T-1307)', () => {
     // architectural twin of `encounter`. The same additive one-key `null` backfill,
     // and `null` is a statement of fact for the third time: until T-135 no hand
     // could exist, so no save that exists can hold one.
-    expect(CURRENT_SAVE_VERSION).toBe(14);
+    //
+    // T-145 bumped 14 → 15 for the whole fixed Liar's Dice roster's persisted
+    // state at once — `player.liarsDiceBeaten`, `player.liarsDiceGamesPlayed`, the
+    // root-level `GameState.liarsDicePurses` and five new `DareHandState` keys —
+    // in ONE migration, deliberately, so that T-146 and T-147 stay parallelizable
+    // without racing on this constant (docs/LIARS-DICE-PROGRESSION_SPEC.md §5).
+    // The first four are the by-now familiar additive backfills; the purse map is
+    // the first one in a while whose value is NOT a literal, so it CALLS a rule
+    // (`seedLiarsDicePurses`) rather than restating one, the MIGRATIONS[11] /
+    // `emptyDeedRegistry` pattern by name. This pin moved WITH an intended bump.
+    expect(CURRENT_SAVE_VERSION).toBe(15);
   });
 });
 
@@ -1077,9 +1087,10 @@ describe('save envelope — the full Nemesis file round-trips with no migration 
     // `edition` field, N1 9 → 10 for `NpcState.ship` and N10 10 → 11 for the
     // per-system job pool, N11 11 → 12 for `NpcState.registry` and T-111 12 → 13
     // for `PlayerState.recovery` and T-135 13 → 14 for the root-level
-    // `GameState.dareHand`, so this pins the CURRENT version rather than
+    // `GameState.dareHand` and T-145 14 → 15 for the fixed Liar's Dice roster's
+    // persisted state, so this pins the CURRENT version rather than
     // claiming the fragment file caused it.)
-    expect(CURRENT_SAVE_VERSION).toBe(14);
+    expect(CURRENT_SAVE_VERSION).toBe(15);
   });
 
   it('strict schema still rejects an unknown fragment source (drift protection covers it)', () => {
@@ -1126,9 +1137,10 @@ describe('save envelope — an ended career round-trips with no migration (T-150
     // unrelated renown re-derivation, T-1703 8 → 9 for the new `edition` field,
     // N1 9 → 10 for `NpcState.ship`, N10 10 → 11 for the per-system job pool,
     // N11 11 → 12 for `NpcState.registry`, T-111 12 → 13 for
-    // `PlayerState.recovery` and T-135 13 → 14 for `GameState.dareHand`; this
+    // `PlayerState.recovery`, T-135 13 → 14 for `GameState.dareHand` and T-145
+    // 14 → 15 for the fixed Liar's Dice roster's persisted state; this
     // pins the CURRENT version.)
-    expect(CURRENT_SAVE_VERSION).toBe(14);
+    expect(CURRENT_SAVE_VERSION).toBe(15);
   });
 
   it('strict schema still rejects an unknown ActionBlocked reason (drift protection)', () => {
@@ -1348,7 +1360,9 @@ describe('save envelope — v12 → v13 recovery migration (T-111)', () => {
 // ---------------------------------------------------------------------------
 describe('save envelope — the explore-module fields round-trip with no migration (T-112)', () => {
   it('CURRENT_SAVE_VERSION is STILL the current one — a pure addition owes no bump', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(14);
+    // Moved 14 → 15 by T-145's roster migration, which is an intended bump owed by
+    // a real save-shape change — not by this task's pure field addition.
+    expect(CURRENT_SAVE_VERSION).toBe(15);
   });
 
   it('round-trips a fitted module and a bonus tank through createSave → loadSave', () => {

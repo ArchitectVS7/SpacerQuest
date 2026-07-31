@@ -24,7 +24,12 @@
  * `balance-rig.test.ts`'s "classifies every engine source" check stays green.
  */
 
-import { DARE_ANTE_BAND_FRACTION } from '@spacerquest/content';
+import {
+  DARE_ANTE_BAND_FRACTION,
+  LIARS_DICE_OPPONENTS,
+  LiarsDiceMix,
+  LiarsDiceOpponent,
+} from '@spacerquest/content';
 import { wagerBandFor } from './hangoutRules.js';
 import { DareBid, DareHandState, DareMoveKind } from './types.js';
 
@@ -75,13 +80,55 @@ export function chargedAnte(nominal: number, headroom: number, actorCredits: num
 // §5 · The bid lattice — ONE definition of legality, three consumers
 // ---------------------------------------------------------------------------
 
-/** The quantity ceiling: eight dice are in play, so no claim can exceed eight. */
-export const DARE_MAX_QUANTITY = 8;
-/** The face ceiling: a d6. */
+/**
+ * T-145 · HOW MANY DICE EACH SIDE HOLDS AT AN UNLOCK TIER
+ * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.2, §4.3).
+ *
+ * 4 at tier 0, 5 at tier 1, **6 at tier 2 and at every tier above it — a HARD
+ * CAP, forever**. Six is the end of the ladder on this axis; a later milestone
+ * that wants a longer ladder must move a different number.
+ *
+ * PROVABLY INERT WHERE IT LANDS: `dicePerSideForTier(0) === 4`, which is exactly
+ * the constant this file already shipped, so introducing the function moves
+ * nothing. T-146 rewires the call sites and only THEN lets the tier move — the
+ * N3 `combatRules.ts` extract-before-add discipline.
+ */
+export function dicePerSideForTier(tier: number): number {
+  if (tier <= 0) return 4;
+  if (tier === 1) return 5;
+  return 6;
+}
+
+/**
+ * T-145 · THE CLAIM CEILING IS "EVERY DIE IN PLAY" (§4.3). Two sides, `n` dice
+ * each, so a claim can never exceed `2n`. That is exactly what the shipped
+ * `DARE_MAX_QUANTITY = 8` encodes at `n = 4`, which is why this rule is inert at
+ * tier 0 and can land ahead of the ladder that will move it.
+ */
+export function maxQuantityForDice(dicePerSide: number): number {
+  return 2 * dicePerSide;
+}
+
+/** Dice per side. Four each at tier 0, no wildcards — see §5.5, wildcards are
+ *  permanently out of scope and must not be added by a later milestone. The
+ *  constant STAYS (T-145 spec §8 row 2) and is now stated as its tier-0 value. */
+export const DARE_DICE_PER_SIDE = dicePerSideForTier(0);
+/** The quantity ceiling at tier 0: eight dice are in play, so no claim can exceed
+ *  eight. The constant STAYS (§8 row 1), redefined through the rule above. */
+export const DARE_MAX_QUANTITY = maxQuantityForDice(DARE_DICE_PER_SIDE);
+/**
+ * The face ceiling: a d6.
+ *
+ * **THIS IS A CONSTANT AT EVERY TIER, AND THAT IS AN EXPLICIT RULING** (§4.3).
+ * A coder auditing the ladder will find `dicePerSideForTier` / `maxQuantityForDice`
+ * beside it and be tempted to "complete the symmetry" with a `maxFaceForTier`.
+ * That would be a BUG, twice over: (a) it is a d6 — a seventh face is a different
+ * game, not a bigger die, and `SeededRng.d6` would have to become a parameterised
+ * roll for a reward the ladder never asked for; (b) the closed exploit's search
+ * space (§5.2 of the redesign) is bounded by the face ladder's length, and
+ * widening the face range reopens a search against a fix proven only over 1..6.
+ */
 export const DARE_MAX_FACE = 6;
-/** Dice per side. Four each, no wildcards — see §5.5, wildcards are permanently
- *  out of scope and must not be added by a later milestone. */
-export const DARE_DICE_PER_SIDE = 4;
 
 /**
  * THE SINGLE SOURCE OF LEGALITY (§5.4). `resolveDare` refuses a player move that
@@ -218,6 +265,105 @@ export function resolveChallenge(hand: DareHandState): {
 }
 
 // ---------------------------------------------------------------------------
+// T-145 · POOL A — the fixed roster (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §2, §7)
+// ---------------------------------------------------------------------------
+
+/**
+ * T-145 · The authored roster row for `opponentId` at `systemId`, or `undefined`.
+ *
+ * A RULE READING CONTENT, in this file's own idiom: the 42 rows are content
+ * (`packages/content/src/liarsDice.ts`), and this is the one accessor every engine
+ * and UI reader goes through rather than reaching into the table. It is keyed on
+ * BOTH the port and the id deliberately — an opponent authored at Deneb-4 is not
+ * seatable at Sun-3, and a lookup that ignored the port would let a stale UI
+ * selection open a hand at the wrong house.
+ */
+export function liarsDiceOpponentFor(
+  systemId: number,
+  opponentId: string,
+): LiarsDiceOpponent | undefined {
+  return LIARS_DICE_OPPONENTS[systemId]?.find((row) => row.id === opponentId);
+}
+
+/** T-145 · Every authored roster opponent at a port, in seat order. */
+export function liarsDiceOpponentsAt(systemId: number): readonly LiarsDiceOpponent[] {
+  return LIARS_DICE_OPPONENTS[systemId] ?? [];
+}
+
+/**
+ * T-145 · The full roster purse map, derived from the AUTHORED bankrolls (§5.4
+ * step 3). PURE: returns a NEW object and mutates nothing — the module's PURE
+ * header contract is preserved across the roster additions.
+ *
+ * **PRESERVES EVERY EXISTING KEY.** That is what makes it idempotent AND what
+ * makes a later content pass that adds a 4th opponent to a port need no further
+ * save version: the loader's backfill path picks the new id up with its authored
+ * bankroll and leaves every played-down balance exactly where it was.
+ *
+ * Called from exactly THREE places, deliberately: `MIGRATIONS[14]`,
+ * `createInitialState`, and `deserializeState`'s backfill path. That is the
+ * "a migration CALLS a rule, it never restates one" house rule discharged the way
+ * `MIGRATIONS[11]` discharged it with `emptyDeedRegistry`.
+ */
+export function seedLiarsDicePurses(existing?: Record<string, number>): Record<string, number> {
+  const purses: Record<string, number> = {};
+  for (const rows of Object.values(LIARS_DICE_OPPONENTS)) {
+    for (const row of rows) purses[row.id] = row.bankroll;
+  }
+  if (existing) {
+    for (const [id, balance] of Object.entries(existing)) {
+      if (typeof balance === 'number' && Number.isFinite(balance)) purses[id] = balance;
+    }
+  }
+  return purses;
+}
+
+// ---------------------------------------------------------------------------
+// T-145 · §3.1 · The shared probability model
+// (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.1)
+// ---------------------------------------------------------------------------
+
+/** `C(n, k)`, by the multiplicative recurrence so no factorial overflows. `n` is
+ *  at most 6 here, so this is exact in double precision. */
+function binomial(n: number, k: number): number {
+  if (k < 0 || k > n) return 0;
+  let result = 1;
+  for (let i = 1; i <= k; i += 1) {
+    result = (result * (n - k + i)) / i;
+  }
+  return result;
+}
+
+/**
+ * T-145 · `P(Binomial(u, 1/6) >= k)` — the chance that `u` unknown d6 show at
+ * least `k` of a given face. EXACT and closed-form; no rng, no state, no
+ * approximation, no table.
+ *
+ *   k <= 0  ->  1        (a claim of "at least zero" is free)
+ *   k > u   ->  0        (more of a face than there are dice)
+ *   else       sum_{j=k..u} C(u,j) (1/6)^j (5/6)^(u-j)
+ *
+ * `u` is the LIVE `dicePerSide` off the hand, never a constant — this function is
+ * total over u ∈ {4,5,6} and is unit-proven at all three even though T-145 only
+ * ever plays at 4, because T-146 must inherit it proven.
+ *
+ * THE ONE PROBABILITY MODEL EVERY ARCHETYPE USES. Seen from the dealer's seat,
+ * holding `own` dice of the claimed face, the truth probability of a standing
+ * claim `(q, f)` is `probAtLeast(q - own, dicePerSide)`. It assumes nothing about
+ * how the other side plays, which is precisely why it is implementable and
+ * testable without an opponent model.
+ */
+export function probAtLeast(k: number, u: number): number {
+  if (k <= 0) return 1;
+  if (k > u) return 0;
+  let total = 0;
+  for (let j = k; j <= u; j += 1) {
+    total += binomial(u, j) * Math.pow(1 / 6, j) * Math.pow(5 / 6, u - j);
+  }
+  return total;
+}
+
+// ---------------------------------------------------------------------------
 // §9.7 · The AI dealer — the anti-cheat shape IS the signature
 // ---------------------------------------------------------------------------
 
@@ -348,4 +494,268 @@ export function dealerMove(input: {
   // this branch always produces a legal move. That is the totality argument on
   // the dealer's side.
   return { move: 'challenge' };
+}
+
+// ---------------------------------------------------------------------------
+// T-145 · §3 · THE ROSTER ARCHETYPES — pool A's policies
+// (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §3.2–§3.6)
+//
+// A LABEL IS NOT A POLICY. Content owns the label on each of the 42 rows; this is
+// where each label becomes an executable rule. There is no unquantified
+// "heuristic" below, and every archetype asks `legalMovesFrom` for legality and
+// nowhere else, so §5.4's "one definition of legality" survives a second consumer.
+//
+// `dealerMove` above KEEPS ITS SHIPPED BODY, byte for byte (§3.8). A roster hand
+// never calls it; a roaming hand never calls `archetypeMove`. That is what keeps
+// T-137's 8,000-row pool-B baseline directly comparable rather than a fresh,
+// uncomparable sample — and it is why F-137-1 is discharged on the ROSTER PATH
+// ONLY (§3.9). Do not "fix" the roaming dealer here.
+// ---------------------------------------------------------------------------
+
+/**
+ * T-145 · How far over its own count `bad` will believe a claim before calling it.
+ *
+ * ONE. With four dice per side the unknown half contributes `4/6 ≈ 0.67` expected
+ * matches, so a threshold of "more than one over what I hold" makes `bad`
+ * challenge TRUE claims constantly at low quantities. That is the leak, stated as
+ * a number: `bad` plays as though the other side of the table were blank, which is
+ * the classic beginner error and is LEGIBLE — a player who watches a `bad`
+ * opponent learns to make tall true claims and let them call.
+ */
+export const BAD_CREDULITY = 1;
+
+/**
+ * T-145 · Resolve a `'mixed'` content row to ONE CONCRETE archetype, ONCE PER
+ * HAND, at open (§3.6).
+ *
+ * *Ruling, with its reason:* a mixed opponent that re-rolled its personality on
+ * every move would not be "unpredictable", it would be NOISE — the player could
+ * learn nothing from it within a hand, and T-146's "Read the Table" would have
+ * nothing true to say. Resolving once per hand makes a mixed opponent a genuine
+ * identity for the duration of a hand and a genuine unknown across a career.
+ *
+ * Cumulative thresholds in the FIXED KEY ORDER optimal, bad, random. **The order
+ * is part of the contract** — changing it changes every golden containing a mixed
+ * hand. Because the mix sums to exactly 100 (validator-enforced), the three
+ * branches partition 0..99 with no gap and no overlap, which is why the third
+ * needs no bound check. Returns a CONCRETE archetype; never `'mixed'`.
+ */
+export function resolveMixedArchetype(
+  mix: Readonly<LiarsDiceMix>,
+  roll: number,
+): 'optimal' | 'bad' | 'random' {
+  if (roll < mix.optimal) return 'optimal';
+  if (roll < mix.optimal + mix.bad) return 'bad';
+  return 'random';
+}
+
+/** The three cheapest lattice steps, with their nominal cost (§3.3's table). */
+interface RaiseCandidate {
+  move: 'raise-quantity' | 'raise-face' | 'raise-both';
+  quantity: number;
+  face: number;
+  cost: number;
+}
+
+/**
+ * The legal move kinds available to a ROSTER dealer, bounded by the hand's FROZEN
+ * `maxQuantity`.
+ *
+ * NOTE ON THE SIGNATURE, so T-146 changes nothing here: `legalMovesFrom` does not
+ * take a `maxQuantity` parameter until T-146's §8 row 3, so this asks it the
+ * shipped question and then applies the hand's own ceiling itself. Every archetype
+ * raise steps the quantity by exactly one, so "the raise fits" is
+ * `bid.quantity + 1 <= maxQuantity`. ARITHMETICALLY INERT at tier 0, where
+ * `maxQuantity === DARE_MAX_QUANTITY === 8` and this is exactly `legalMovesFrom`'s
+ * own `quantityRoom`.
+ */
+function archetypeChoices(
+  bid: DareBid,
+  ante: number,
+  headroom: number,
+  dealerCredits: number,
+  maxQuantity: number,
+): DareMoveKind[] {
+  // `peekUsed` is passed true because a Peek costs a DAWN DIE and the house has
+  // none — the same argument `dealerMove` makes.
+  const moves = legalMovesFrom(bid, ante, headroom, dealerCredits, true);
+  if (bid.quantity + 1 <= maxQuantity) return moves;
+  return moves.filter((move) => move !== 'raise-quantity' && move !== 'raise-both');
+}
+
+function raiseCandidates(bid: DareBid, ante: number, choices: DareMoveKind[]): RaiseCandidate[] {
+  const candidates: RaiseCandidate[] = [];
+  if (choices.includes('raise-quantity')) {
+    candidates.push({
+      move: 'raise-quantity',
+      quantity: bid.quantity + 1,
+      face: bid.face,
+      cost: ante,
+    });
+  }
+  if (choices.includes('raise-face')) {
+    candidates.push({ move: 'raise-face', quantity: bid.quantity, face: bid.face + 1, cost: ante });
+  }
+  if (choices.includes('raise-both')) {
+    candidates.push({
+      move: 'raise-both',
+      quantity: bid.quantity + 1,
+      face: bid.face + 1,
+      cost: 2 * ante,
+    });
+  }
+  return candidates;
+}
+
+/** The FIXED total order that breaks an EV tie, so `optimal` is a total function
+ *  of its inputs and its unit tests are stable (§3.3). */
+const OPTIMAL_TIE_BREAK: readonly DareMoveKind[] = [
+  'challenge',
+  'raise-quantity',
+  'raise-face',
+  'raise-both',
+  'fold',
+];
+
+/**
+ * T-145 · THE ROSTER DEALER'S POLICY — one entry point, three concrete archetypes.
+ *
+ * **THE ANTI-CHEAT DISCIPLINE, EXTENDED VERBATIM (§3.2).** There is no
+ * `playerDice`, no `GameState` and no `DareHandState` in this input, **and that
+ * absence IS the enforcement**: the function cannot read the player's hand because
+ * it cannot EXPRESS the player's hand. `liarsDice.test.ts` applies the same
+ * behavioural test it applies to `dealerMove` — vary the player's hidden dice
+ * across many values, hold everything else fixed, and assert the emitted move
+ * sequence never moves.
+ *
+ * `dealerDice` is `readonly` for the same reason as before: the policy reads the
+ * house's own hand and may not rearrange it.
+ *
+ * `archetype` is CONCRETE, never `'mixed'` — a mix is resolved at open by
+ * {@link resolveMixedArchetype} and the concrete result is stored on the hand.
+ * `bid` is never null: like the roaming dealer, the roster dealer is never asked
+ * to move before the player's opening bid (§9.9 ruling 1), so a null THROWS rather
+ * than silently inventing an opening policy that would hide a control-flow bug.
+ */
+export function archetypeMove(input: {
+  archetype: 'optimal' | 'bad' | 'random';
+  dealerDice: readonly number[];
+  dicePerSide: number;
+  maxQuantity: number;
+  bid: DareBid;
+  ante: number;
+  headroom: number;
+  dealerCredits: number;
+  /** ESCROW, and PUBLIC — both pots ride every `DareBidPlaced`, so reading them is
+   *  not hidden information. Needed because EV is a function of the pot. */
+  potPlayer: number;
+  potDealer: number;
+  /** 0..99, drawn by the CALLER from the action's forked rng. Keeps the policy a
+   *  total function of its inputs. `optimal` ignores it; the caller draws it
+   *  anyway (§3.7), so the rng stream never depends on the archetype. */
+  roll: number;
+}): DareMove {
+  const {
+    archetype,
+    dealerDice,
+    dicePerSide,
+    maxQuantity,
+    bid,
+    ante,
+    headroom,
+    dealerCredits,
+    potPlayer,
+    potDealer,
+    roll,
+  } = input;
+  if (bid === null || bid === undefined) {
+    throw new Error('archetypeMove called with no standing bid');
+  }
+
+  const choices = archetypeChoices(bid, ante, headroom, dealerCredits, maxQuantity);
+  const own = (face: number) => dealerDice.filter((die) => die === face).length;
+
+  if (archetype === 'random') {
+    // §3.5 · UNIFORM OVER THE LEGAL SET, using the ONE already-drawn roll — no
+    // extra rng draw, which is what keeps the per-move draw count identical across
+    // all three archetypes and across both pools. Genuinely uniform INCLUDING over
+    // `fold`, which makes `random` the only archetype that hands the player a free
+    // pot at meaningful frequency and the only one that will challenge a claim it
+    // should believe. Unreadable in both directions; that is the point.
+    const index = Math.floor((roll / 100) * choices.length);
+    const move = choices[Math.min(Math.max(index, 0), choices.length - 1)];
+    if (move === 'challenge' || move === 'fold') return { move };
+    const candidate = raiseCandidates(bid, ante, choices).find((c) => c.move === move);
+    // A raise kind takes the cheapest lattice step, exactly as §3.3's table.
+    if (candidate) {
+      return { move: candidate.move, quantity: candidate.quantity, face: candidate.face };
+    }
+    return { move: 'challenge' };
+  }
+
+  if (archetype === 'bad') {
+    // §3.4 · A SPECIFIED LEAK, not "worse random". `bad` reasons only from its own
+    // dice and never credits the unknown side with anything.
+    //
+    // IT NEVER FOLDS, and that is a property rather than an accident: `challenge`
+    // is unconditionally legal whenever a bid stands (§5.1), so branch 3 below is
+    // always reachable and the fold branch is unreachable by construction.
+    if (bid.quantity - own(bid.face) > BAD_CREDULITY && choices.includes('challenge')) {
+      return { move: 'challenge' };
+    }
+    const cheapest = raiseCandidates(bid, ante, choices)[0];
+    if (cheapest) {
+      return { move: cheapest.move, quantity: cheapest.quantity, face: cheapest.face };
+    }
+    return { move: 'challenge' };
+  }
+
+  // §3.3 · OPTIMAL — an EXPECTED-VALUE ARGMAX. Deterministic; the `roll` is
+  // ignored (see the input's own note on why it is drawn anyway).
+  //
+  // THE MODEL ASSUMPTION, STATED RATHER THAN HIDDEN: a raise is valued AS IF THE
+  // OPPONENT CHALLENGES IT IMMEDIATELY. This is a conservative, model-free
+  // valuation — it needs no belief about how the player plays, which is exactly
+  // why "optimal" here means "optimal against the information it has" and not
+  // "solves the game". It is honest, it is testable, and it is a genuinely strong
+  // policy: it will not over-challenge a claim `probAtLeast` says is likely true,
+  // which is the specific failure F-137-1 named on the roaming path.
+  //
+  // THE DOMINANCE PROOF, so nobody "improves" this by searching the whole lattice:
+  // a `raise-quantity` to any `q' > q` costs exactly `ante`, FLAT in `q'`, while
+  // `pOurs` is monotone non-increasing in `q'` (`probAtLeast` is non-increasing in
+  // `k`) and EV is monotone increasing in `pOurs` at fixed cost. So every
+  // `q' > q + 1` is weakly dominated by `q' = q + 1`, and the same argument applies
+  // to the quantity component of `raise-both`. The face component is already
+  // pinned to exactly `+1` by §5.2's exploit fix. The search space is PROVABLY
+  // THREE candidates, not O(maxQuantity), and the policy is O(1).
+  const pTrue = probAtLeast(bid.quantity - own(bid.face), dicePerSide);
+  const scored: Array<{ move: DareMove; ev: number }> = [
+    { move: { move: 'challenge' }, ev: (1 - pTrue) * potPlayer - pTrue * potDealer },
+    // A fold is legal while the hand is open, always. `optimal` folds only when
+    // `-potDealer` beats every alternative, which needs `pTrue` very high AND every
+    // raise unaffordable or worse. Rare but REACHABLE, and it must not be
+    // special-cased away.
+    { move: { move: 'fold' }, ev: -potDealer },
+  ];
+  for (const candidate of raiseCandidates(bid, ante, choices)) {
+    const pOurs = probAtLeast(candidate.quantity - own(candidate.face), dicePerSide);
+    scored.push({
+      move: { move: candidate.move, quantity: candidate.quantity, face: candidate.face },
+      ev: pOurs * potPlayer - (1 - pOurs) * (potDealer + candidate.cost),
+    });
+  }
+
+  let best = scored[0];
+  for (const entry of scored.slice(1)) {
+    if (entry.ev > best.ev) {
+      best = entry;
+      continue;
+    }
+    if (entry.ev === best.ev) {
+      const rank = (move: DareMoveKind) => OPTIMAL_TIE_BREAK.indexOf(move);
+      if (rank(entry.move.move) < rank(best.move.move)) best = entry;
+    }
+  }
+  return best.move;
 }

@@ -42,6 +42,7 @@ import {
   loanBandFor,
   venueOffered,
   wagerBandFor,
+  liarsDiceOpponentsAt,
   legalDareMoves,
   applyPlayerAction,
   weaponVolleyDamage,
@@ -3448,7 +3449,23 @@ const GAMBLER_MAX_DARES_PER_DAY = 2;
  * passes the DAWN credits for the first hand and subtracts each queued stake for
  * the next, because these planners are pure and read the dawn state.
  */
-function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerAction | null {
+function planDare(
+  state: GameState,
+  ledger: DieLedger,
+  credits: number,
+  /**
+   * T-145 · Roster opponents this day has ALREADY queued a hand against. These
+   * planners are pure and read the DAWN state, so `state.liarsDicePurses` is the
+   * purse at dawn — accurate for the first hand and stale for the second. A
+   * ROAMING dealer whose purse the first hand emptied is merely clamped to a
+   * zero-stake hand by the engine, but a ROSTER opponent is REFUSED outright with
+   * `HangoutEvent{failReason:'opponent-broke'}` (§7.4), and burning a die on a
+   * knowable refusal is exactly what `hangoutPlay.failedVisits === 0` forbids. So
+   * the caller carries the ids forward, the same way it already carries the
+   * credits the previous stake would leave behind.
+   */
+  committedRosterIds: ReadonlySet<string> = new Set(),
+): PlayerAction | null {
   if (state.encounter) return null;
   if (!isHangoutSystem(state.player.currentSystemId)) return null;
   // T-123 · THE PORT MUST ACTUALLY DEAL. Mirrors the engine's
@@ -3460,7 +3477,15 @@ function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerA
   // mirror while it is provably inert rather than after a later row makes it a bug.
   if (!venueOffered(state.player.currentSystemId, 'dare')) return null;
 
-  let dealer: GameState['npcs'][number] | null = null;
+  // T-145 · THE CANDIDATE SET NOW SPANS BOTH POOLS
+  // (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §8 row 38). Without this no sweep row
+  // and no deed-coverage career ever plays a roster opponent, and the whole
+  // milestone is unmeasured — which is why the row is T-145's rather than a later
+  // task's. The selection RULE is unchanged: the richest candidate, first-wins on
+  // a tie. The ordering is deterministic — the in-system NPCs are considered
+  // first, so at equal credits a roaming captain still wins the seat and the
+  // pre-T-145 behaviour survives wherever the roster does not out-bank the field.
+  let dealer: { id: string; credits: number } | null = null;
   for (const npc of state.npcs) {
     // F-121-1 · `!npc.dead` MIRRORS THE ENGINE'S N3 GUARD (`actions/hangout.ts`:
     // "a dead captain cannot deal a hand of Spacer's Dare"), and its absence here
@@ -3473,6 +3498,17 @@ function planDare(state: GameState, ledger: DieLedger, credits: number): PlayerA
     if (npc.dead) continue;
     if (npc.currentSystemId !== state.player.currentSystemId) continue;
     if (dealer === null || npc.credits > dealer.credits) dealer = npc;
+  }
+  // T-145 · Pool A, mirroring the engine's §7.4 broke refusal exactly the way the
+  // `!npc.dead` and `venueOffered` mirrors above already work: an opponent whose
+  // LIVE purse has fallen to zero will not sit, and advertising them here would
+  // burn a die on a guaranteed 'opponent-broke' — which is precisely what
+  // `hangoutPlay.failedVisits === 0` exists to forbid.
+  for (const opponent of liarsDiceOpponentsAt(state.player.currentSystemId)) {
+    if (committedRosterIds.has(opponent.id)) continue;
+    const purse = state.liarsDicePurses[opponent.id] ?? 0;
+    if (purse <= 0) continue;
+    if (dealer === null || purse > dealer.credits) dealer = { id: opponent.id, credits: purse };
   }
   if (dealer === null) return null;
   // T-121 · THE BAND IS THE PORT'S, read through the same engine accessor
@@ -3811,11 +3847,17 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // the worst case (a loss), so two queued stakes can never over-commit the purse.
   const dares: PlayerAction[] = [];
   let purse = state.player.credits - overhead.cost;
+  // T-145 · …and the same carry-forward for the ROSTER opponent's side of the
+  // table, for the reason `planDare`'s own parameter documents.
+  const committedRosterIds = new Set<string>();
   for (let hand = 0; hand < GAMBLER_MAX_DARES_PER_DAY; hand += 1) {
-    const dare = planDare(state, ledger, purse);
+    const dare = planDare(state, ledger, purse, committedRosterIds);
     if (!dare) break;
     dares.push(dare);
     purse -= dare.type === 'VisitHangout' ? (dare.wager ?? 0) : 0;
+    if (dare.type === 'VisitHangout' && dare.opponentId?.startsWith('ld-')) {
+      committedRosterIds.add(dare.opponentId);
+    }
   }
 
   const plan = [...dares, ...actions];

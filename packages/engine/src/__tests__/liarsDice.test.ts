@@ -5,6 +5,7 @@ import {
   DARE_LOSS_DISPOSITION,
   DARE_PEEK_DC,
   DARE_WIN_DISPOSITION,
+  LIARS_DICE_OPPONENTS,
   Stat,
 } from '@spacerquest/content';
 import { createInitialState, deserializeState, serializeState } from '../state.js';
@@ -13,13 +14,16 @@ import { venueParamsFor, wagerBandFor } from '../hangoutRules.js';
 import {
   anteFor,
   dealerMove,
+  dicePerSideForTier,
   headroomFor,
   legalDareMoves,
   legalMovesFrom,
+  maxQuantityForDice,
   resolveChallenge,
+  seedLiarsDicePurses,
 } from '../liarsDiceRules.js';
 import { CURRENT_SAVE_VERSION, MIGRATIONS, createSave, loadSave } from '../save.js';
-import { DawnHand, DayPhase, GameEvent, GameState } from '../types.js';
+import { DareOutcome, DawnHand, DayPhase, GameEvent, GameState, PlayerAction } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // T-135 · LIAR'S DICE (owner ruling D2, docs/LIARS-DICE_REDESIGN.md).
@@ -1104,8 +1108,13 @@ describe('T-135 · the hand survives serialization', () => {
     expect(loaded.state.dareHand).toEqual(state.dareHand);
   });
 
-  it('CURRENT_SAVE_VERSION is 14 and MIGRATIONS[13] backfills dareHand: null', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(14);
+  // T-145 · THIS IS THE INTENDED VERSION MOVE LANDING, not a golden edited to make
+  // a test pass. `CURRENT_SAVE_VERSION` went 14 → 15 with the fixed Liar's Dice
+  // roster's persisted state (docs/LIARS-DICE-PROGRESSION_SPEC.md §5), so the pin
+  // moves with it and MIGRATIONS[13]'s own behaviour is asserted unchanged beside
+  // the new MIGRATIONS[14].
+  it('CURRENT_SAVE_VERSION is 15 and MIGRATIONS[13] still backfills dareHand: null', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(15);
     const v13 = JSON.parse(serializeState(createInitialState(9))) as Record<string, unknown>;
     delete v13.dareHand;
     expect('dareHand' in v13).toBe(false);
@@ -1122,13 +1131,20 @@ describe('T-135 · the hand survives serialization', () => {
     expect(JSON.stringify(twice)).toBe(JSON.stringify(once));
   });
 
-  it('a v13 envelope loads to v14 with no open hand', () => {
+  it('a v13 envelope CHAINS through 13→14→15 and loads with no open hand', () => {
     const state = createInitialState(9);
     const raw = JSON.parse(serializeState(state)) as Record<string, unknown>;
     delete raw.dareHand;
+    delete (raw.player as Record<string, unknown>).liarsDiceBeaten;
+    delete (raw.player as Record<string, unknown>).liarsDiceGamesPlayed;
+    delete raw.liarsDicePurses;
     const v13 = JSON.stringify({ version: 13, state: raw, seed: 9 });
     const loaded = loadSave(v13);
     expect(loaded.state.dareHand).toBeNull();
+    // …and the v14→v15 step ran too, in the same sequential loop.
+    expect(loaded.state.player.liarsDiceBeaten).toEqual([]);
+    expect(loaded.state.player.liarsDiceGamesPlayed).toBe(0);
+    expect(Object.keys(loaded.state.liarsDicePurses)).toHaveLength(42);
   });
 });
 
@@ -1153,5 +1169,647 @@ describe('T-135 · resolveChallenge counts across all eight dice', () => {
       actualCount: 2,
       bidderWins: true,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-145 · POOL A — THE FIXED ROSTER (`docs/LIARS-DICE-PROGRESSION_SPEC.md`)
+//
+// Same discipline as the rest of this file: every hand is driven through the REAL
+// loop (`applyPlayerAction`), and the only direct writes to state are FIXTURE
+// SETUP before the first action — a live purse, a beaten list — which is exactly
+// what the shipped tests already do with `npc.credits`.
+// ---------------------------------------------------------------------------
+
+const SUN3_ROSTER = ['ld-1-1', 'ld-1-2', 'ld-1-3'] as const;
+
+/** Open a ROSTER hand through the real resolver. */
+function openRosterHand(state: GameState, opponentId: string, wager = 100, spendDie = 0) {
+  return applyPlayerAction(state, {
+    type: 'VisitHangout',
+    venue: 'dare',
+    opponentId,
+    wager,
+    spendDie,
+  });
+}
+
+/**
+ * Play one roster hand to settlement through the real loop, and report the
+ * conservation ledger across it. `script` is a move generator so a challenge can
+ * answer whatever bid actually stands.
+ */
+function playRosterHand(
+  seed: number,
+  opponentId: string,
+  systemId: number,
+  mode: 'challenge' | 'fold' | 'timeout',
+  wager = 100,
+): {
+  before: number;
+  after: number;
+  outcome: DareOutcome | null;
+  events: GameEvent[];
+  state: GameState;
+} {
+  let state = hangoutState(seed, [10, 10, 10, 10, 10], systemId);
+  const before = state.player.credits + state.liarsDicePurses[opponentId];
+  const opened = openRosterHand(state, opponentId, wager);
+  state = opened.state;
+  const events: GameEvent[] = [...opened.events];
+  if (!state.dareHand) {
+    return {
+      before,
+      after: state.player.credits + state.liarsDicePurses[opponentId],
+      outcome: null,
+      events,
+      state,
+    };
+  }
+  if (mode === 'timeout') {
+    // The dusk clause settles an open hand as a player fold. It draws no rng.
+    const dusk = endDay(state);
+    state = dusk.state;
+    events.push(...dusk.events);
+  } else if (mode === 'fold') {
+    const r = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+    state = r.state;
+    events.push(...r.events);
+  } else {
+    for (let step = 0; step < 24 && state.dareHand; step += 1) {
+      const action: PlayerAction =
+        state.dareHand.bid === null
+          ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+          : { type: 'Dare', move: 'challenge' };
+      const r = applyPlayerAction(state, action);
+      state = r.state;
+      events.push(...r.events);
+    }
+  }
+  const resolved = events.find(
+    (e): e is Extract<GameEvent, { type: 'DareHandResolved' }> => e.type === 'DareHandResolved',
+  );
+  return {
+    before,
+    after: state.player.credits + state.liarsDicePurses[opponentId],
+    outcome: resolved?.outcome ?? null,
+    events,
+    state,
+  };
+}
+
+describe('T-145 · the roster is reachable, and its identity survives the round trip', () => {
+  it('a roster opponent seats a hand tagged with the pool and a CONCRETE archetype', () => {
+    const opened = openRosterHand(hangoutState(3), 'ld-1-3').state;
+    const hand = opened.dareHand!;
+    expect(hand.dealerId).toBe('ld-1-3');
+    expect(hand.opponentKind).toBe('roster');
+    // Seat 3 is the house — always 'optimal', never the string 'mixed'.
+    expect(hand.opponentArchetype).toBe('optimal');
+    expect(hand.dicePerSide).toBe(4);
+    expect(hand.maxQuantity).toBe(8);
+    expect(hand.bandMax).toBe(wagerBandFor(SUN_3).max);
+    expect(hand.playerDice).toHaveLength(4);
+    expect(hand.dealerDice).toHaveLength(4);
+  });
+
+  it('a MIXED row is resolved ONCE at open and stores the concrete arm', () => {
+    // Seat 2 is 'mixed' at every port. Across seeds it must resolve to more than
+    // one arm (or the archetype roll is not being drawn), and it must NEVER store
+    // the literal 'mixed'.
+    const arms = new Set<string>();
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const hand = openRosterHand(hangoutState(seed), 'ld-1-2').state.dareHand!;
+      expect(hand.opponentArchetype).not.toBe('mixed');
+      expect(['optimal', 'bad', 'random']).toContain(hand.opponentArchetype);
+      arms.add(hand.opponentArchetype!);
+    }
+    expect(arms.size).toBeGreaterThan(1);
+  });
+
+  it('a roaming hand still carries the five fields, at their tier-0 values', () => {
+    // §5.6 ruling A: T-145 writes all five at EVERY open. Behaviour-preserving on
+    // the ladder axis — these are exactly the numbers the shipped engine computed.
+    const hand = openHand(hangoutState(222)).state.dareHand!;
+    expect(hand.opponentKind).toBe('roaming');
+    expect(hand.opponentArchetype).toBeNull();
+    expect(hand.dicePerSide).toBe(4);
+    expect(hand.maxQuantity).toBe(8);
+    expect(hand.bandMax).toBe(wagerBandFor(SUN_3).max);
+  });
+
+  it('a roster id at a SOCIAL venue is `no-opponent` — pool A has no NpcState', () => {
+    // A determined consequence, not an oversight: meet/befriend/insult all call
+    // `applyDisposition`, which needs a record to move.
+    for (const venue of ['meet', 'befriend', 'insult'] as const) {
+      const state = hangoutState(4);
+      const before = state.player.dawnHand!.spent.slice();
+      const r = applyPlayerAction(state, {
+        type: 'VisitHangout',
+        venue,
+        opponentId: 'ld-1-1',
+        spendDie: 0,
+      });
+      const fail = r.events.find((e) => e.type === 'HangoutEvent');
+      expect(fail).toMatchObject({ failReason: 'no-opponent' });
+      expect(r.state.player.dawnHand!.spent).toEqual(before);
+    }
+  });
+
+  it('a roster id from ANOTHER port is `no-opponent` at this one', () => {
+    const r = openRosterHand(hangoutState(4), 'ld-5-2');
+    expect(r.events.find((e) => e.type === 'HangoutEvent')).toMatchObject({
+      failReason: 'no-opponent',
+    });
+    expect(r.state.dareHand).toBeNull();
+  });
+});
+
+describe('T-145 · obligation 17 — a roster hand is ZERO-SUM against the persisted purse', () => {
+  it('conserves credits + purse at EVERY outcome, through the real action loop', () => {
+    const seen = new Set<DareOutcome>();
+    for (const opponentId of SUN3_ROSTER) {
+      for (let seed = 1; seed <= 40; seed += 1) {
+        for (const mode of ['challenge', 'fold', 'timeout'] as const) {
+          const run = playRosterHand(seed, opponentId, SUN_3, mode);
+          // THE ROSTER IS NEVER A MINT (§7.1): every credit the player takes came
+          // out of that opponent's own purse, and vice versa.
+          expect(run.after, `${opponentId} seed ${seed} ${mode}`).toBe(run.before);
+          expect(run.state.dareHand).toBeNull();
+          if (run.outcome) seen.add(run.outcome);
+        }
+      }
+    }
+    // …and the sweep is not vacuous: it reached every terminal arm the outcome
+    // union has. (Mira-9's seat 1 is the 'random' archetype, the only one that
+    // folds at a meaningful rate — see below for the dealer-fold arm.)
+    expect(seen).toContain('challenge-win');
+    expect(seen).toContain('challenge-loss');
+    expect(seen).toContain('player-fold');
+    expect(seen).toContain('timeout-fold');
+  });
+
+  it('reaches the dealer-fold arm too, and conserves there as well', () => {
+    // `bad` never folds and `optimal` folds only when `-potDealer` beats every
+    // alternative, so the reliable source of a dealer fold is the 'random' seat —
+    // Mira-9 (port 8) seat 1, the first port whose seat 1 is 'random' (§2.4).
+    let dealerFolds = 0;
+    for (let seed = 1; seed <= 120; seed += 1) {
+      const run = playRosterHand(seed, 'ld-8-1', 8, 'challenge', 100);
+      expect(run.after, `seed ${seed}`).toBe(run.before);
+      if (run.outcome === 'dealer-fold') dealerFolds += 1;
+    }
+    expect(dealerFolds).toBeGreaterThan(0);
+  });
+
+  it('the purse actually MOVES — conservation is not two zeroes', () => {
+    let moved = 0;
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const run = playRosterHand(seed, 'ld-1-1', SUN_3, 'challenge');
+      if (run.state.liarsDicePurses['ld-1-1'] !== 3000) moved += 1;
+    }
+    expect(moved).toBeGreaterThan(0);
+  });
+
+  it('a roaming hand never touches a roster purse', () => {
+    const run = openHand(hangoutState(222)).state;
+    expect(run.liarsDicePurses).toEqual(createInitialState(222).liarsDicePurses);
+  });
+});
+
+describe('T-145 · the solvency clamp reads the LIVE purse (§7.2)', () => {
+  it('caps the seed at whatever the opponent actually still holds', () => {
+    const state = hangoutState(9);
+    // FIXTURE SETUP, before any action — the same thing the shipped tests do with
+    // `npc.credits` to make a poor dealer. The clamp must read THIS number, not
+    // the authored 3,000 bankroll.
+    state.liarsDicePurses['ld-1-1'] = 137;
+    const band = wagerBandFor(SUN_3);
+    const opened = openRosterHand(state, 'ld-1-1', band.max).state;
+    expect(opened.dareHand!.seedWager).toBe(137);
+    // Both sides posted it, so the purse is exactly emptied and the escrow holds
+    // money that exists (§2.4).
+    expect(opened.liarsDicePurses['ld-1-1']).toBe(0);
+    expect(opened.dareHand!.potDealer).toBe(137);
+  });
+
+  it('sits BELOW the port’s band.min when that is all they have — no new branch (§7.3)', () => {
+    const state = hangoutState(9, [10, 10, 10, 10, 10], 11); // Regulus-6, band 500-3000
+    state.player.credits = 500_000;
+    state.liarsDicePurses['ld-11-1'] = 40;
+    const opened = openRosterHand(state, 'ld-11-1', 3000).state;
+    // The shipped clamp is `max(0, min(max(requested, band.min), cap))`, and `cap`
+    // has always been allowed to fall under `band.min` — this is already today's
+    // behaviour for a poor ROAMING dealer, and nothing about it changed.
+    expect(wagerBandFor(11).min).toBe(500);
+    expect(opened.dareHand!.seedWager).toBe(40);
+  });
+});
+
+describe('T-145 · obligation 18 — the broke refusal spends nothing and moves nothing', () => {
+  it('a purse at zero refuses with `opponent-broke`, BEFORE the die is spent', () => {
+    const state = hangoutState(9);
+    state.liarsDicePurses['ld-1-2'] = 0;
+    const credits = state.player.credits;
+    const r = openRosterHand(state, 'ld-1-2', 100);
+
+    expect(r.events.filter((e) => e.type === 'HangoutEvent')).toEqual([
+      {
+        type: 'HangoutEvent',
+        day: state.day,
+        venue: 'dare',
+        opponentId: 'ld-1-2',
+        failReason: 'opponent-broke',
+      },
+    ]);
+    // Nothing about the scene was started: no hand event of any kind.
+    expect(r.events.some((e) => e.type === 'DareHandStarted')).toBe(false);
+    // A refusal must never burn a dawn die — the invariant every pre-spend refusal
+    // in `resolveVisitHangout` upholds.
+    expect(r.state.player.dawnHand!.spent).toEqual([false, false, false, false, false]);
+    expect(r.state.dareHand).toBeNull();
+    expect(r.state.player.credits).toBe(credits);
+    expect(r.state.liarsDicePurses['ld-1-2']).toBe(0);
+  });
+
+  it('a NEGATIVE purse refuses the same way, and the OTHER two seats still sit', () => {
+    const state = hangoutState(9);
+    state.liarsDicePurses['ld-1-2'] = -5;
+    expect(openRosterHand(state, 'ld-1-2', 100).events[0]).toMatchObject({
+      failReason: 'opponent-broke',
+    });
+    expect(openRosterHand(state, 'ld-1-1', 100).state.dareHand).not.toBeNull();
+    expect(openRosterHand(state, 'ld-1-3', 100).state.dareHand).not.toBeNull();
+  });
+});
+
+describe('T-145 · obligation 19a — a beaten roster opponent is recorded EXACTLY ONCE', () => {
+  /** The first seed on which a scripted challenge hand against `opponentId` ends
+   *  in a PLAYER WIN. Scanned rather than pinned, so the test states the property
+   *  rather than depending on a lucky constant. */
+  function seedOfPlayerWin(opponentId: string, systemId = SUN_3): number {
+    for (let seed = 1; seed <= 400; seed += 1) {
+      const run = playRosterHand(seed, opponentId, systemId, 'challenge');
+      if (run.outcome === 'challenge-win' || run.outcome === 'dealer-fold') return seed;
+    }
+    throw new Error(`no player win found against ${opponentId} in 400 seeds`);
+  }
+
+  it('a win pushes the id; a REMATCH win against the same opponent does not duplicate', () => {
+    const seed = seedOfPlayerWin('ld-1-1');
+    const first = playRosterHand(seed, 'ld-1-1', SUN_3, 'challenge');
+    expect(first.state.player.liarsDiceBeaten).toEqual(['ld-1-1']);
+
+    // THE REMATCH, played through the real loop off the state the first hand
+    // returned — a fresh dawn hand is the only fixture, so the second hand is the
+    // same scene a player would sit down to on the next day.
+    let state = first.state;
+    state.player.dawnHand = {
+      dice: [10, 10, 10, 10, 10],
+      spent: [false, false, false, false, false],
+    } satisfies DawnHand;
+    const purseBefore = state.liarsDicePurses['ld-1-1'];
+    const creditsBefore = state.player.credits;
+    const opened = openRosterHand(state, 'ld-1-1', 100);
+    state = opened.state;
+    for (let step = 0; step < 24 && state.dareHand; step += 1) {
+      state = applyPlayerAction(
+        state,
+        state.dareHand.bid === null
+          ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+          : { type: 'Dare', move: 'challenge' },
+      ).state;
+    }
+    // The rematch is LEGAL and PAYS — it simply records nothing (§1 rule 3a).
+    expect(state.player.credits + state.liarsDicePurses['ld-1-1']).toBe(
+      creditsBefore + purseBefore,
+    );
+    expect(state.player.liarsDiceBeaten).toEqual(['ld-1-1']);
+    expect(state.player.liarsDiceBeaten).toHaveLength(1);
+  });
+
+  it('a LOSS records nothing at all', () => {
+    let losses = 0;
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const run = playRosterHand(seed, 'ld-1-3', SUN_3, 'challenge');
+      if (run.outcome === 'challenge-loss') {
+        losses += 1;
+        expect(run.state.player.liarsDiceBeaten).toEqual([]);
+      }
+      // A player fold never records either.
+      const folded = playRosterHand(seed, 'ld-1-3', SUN_3, 'fold');
+      expect(folded.state.player.liarsDiceBeaten).toEqual([]);
+    }
+    expect(losses).toBeGreaterThan(0);
+  });
+
+  it('the list is FIRST-DEFEAT ORDER across different opponents', () => {
+    // Two distinct wins, in the order they happened — not sorted, because it is a
+    // career record and a sort would destroy information.
+    const third = seedOfPlayerWin('ld-1-3');
+    let state = playRosterHand(third, 'ld-1-3', SUN_3, 'challenge').state;
+    expect(state.player.liarsDiceBeaten).toEqual(['ld-1-3']);
+    state.player.dawnHand = {
+      dice: [10, 10, 10, 10, 10],
+      spent: [false, false, false, false, false],
+    } satisfies DawnHand;
+    for (let seed = 1; seed <= 400 && state.player.liarsDiceBeaten.length < 2; seed += 1) {
+      let attempt = openRosterHand(state, 'ld-1-1', 100).state;
+      for (let step = 0; step < 24 && attempt.dareHand; step += 1) {
+        attempt = applyPlayerAction(
+          attempt,
+          attempt.dareHand.bid === null
+            ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+            : { type: 'Dare', move: 'challenge' },
+        ).state;
+      }
+      attempt.player.dawnHand = {
+        dice: [10, 10, 10, 10, 10],
+        spent: [false, false, false, false, false],
+      } satisfies DawnHand;
+      state = attempt;
+    }
+    expect(state.player.liarsDiceBeaten).toEqual(['ld-1-3', 'ld-1-1']);
+  });
+});
+
+describe('T-145 · obligation 20a — a ROAMING win never touches liarsDiceBeaten', () => {
+  it('over many seeds and every outcome, pool B writes nothing to the beaten set', () => {
+    let wins = 0;
+    for (let seed = 1; seed <= 80; seed += 1) {
+      let state = openHand(hangoutState(seed)).state;
+      for (let step = 0; step < 24 && state.dareHand; step += 1) {
+        state = applyPlayerAction(
+          state,
+          state.dareHand.bid === null
+            ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+            : { type: 'Dare', move: 'challenge' },
+        ).state;
+      }
+      if (state.player.credits > 20_000) wins += 1;
+      // §1 rule 3: pool B respawns its willingness to play every day, so counting
+      // it would turn a finite authored gauntlet into a grind timer.
+      expect(state.player.liarsDiceBeaten, `seed ${seed}`).toEqual([]);
+    }
+    expect(wins).toBeGreaterThan(0);
+  });
+});
+
+describe('T-145 · roster hands apply NO disposition (§7.6)', () => {
+  it('emit no DispositionChanged and carry dispositionDelta 0, at every outcome', () => {
+    for (const mode of ['challenge', 'fold', 'timeout'] as const) {
+      for (let seed = 1; seed <= 20; seed += 1) {
+        const run = playRosterHand(seed, 'ld-1-2', SUN_3, mode);
+        expect(run.events.some((e) => e.type === 'DispositionChanged')).toBe(false);
+        const resolved = run.events.find((e) => e.type === 'DareHandResolved');
+        expect(resolved).toMatchObject({ dispositionDelta: 0 });
+      }
+    }
+  });
+
+  it('the terminal HangoutEvent is UNCHANGED in shape (§7.7)', () => {
+    // Nine shipped readers key on it and none of them should learn about the
+    // roster. The pool split is derivable from `opponentId`'s `ld-` prefix alone.
+    const run = playRosterHand(1, 'ld-1-1', SUN_3, 'fold');
+    const terminal = run.events.filter((e) => e.type === 'HangoutEvent').at(-1)!;
+    expect(Object.keys(terminal).sort()).toEqual(
+      ['type', 'day', 'venue', 'opponentId', 'wager', 'playerWon', 'creditsDelta'].sort(),
+    );
+    expect(terminal).toMatchObject({ venue: 'dare', opponentId: 'ld-1-1', playerWon: false });
+  });
+
+  it('a ROAMING hand still applies disposition exactly as before', () => {
+    // Obligation 6's other half: nothing about pool B moved.
+    const run = openHand(hangoutState(1)).state;
+    const r = applyPlayerAction(run, { type: 'Dare', move: 'fold' });
+    const resolved = r.events.find((e) => e.type === 'DareHandResolved')!;
+    expect(resolved).toMatchObject({
+      dispositionDelta: venueParamsFor(SUN_3, 'dare').dispositionOnFold,
+    });
+  });
+});
+
+describe('T-145 · obligation 26 — the authored catchphrases ride the events', () => {
+  it('table talk rides DareHandStarted, and only for a roster hand', () => {
+    const roster = openRosterHand(hangoutState(3), 'ld-1-1');
+    const started = roster.events.find((e) => e.type === 'DareHandStarted')!;
+    expect(started).toMatchObject({
+      opponentLine: LIARS_DICE_OPPONENTS[1][0].lines.tableTalk,
+      dicePerSide: 4,
+    });
+
+    const roaming = openHand(hangoutState(222));
+    const roamingStarted = roaming.events.find((e) => e.type === 'DareHandStarted')!;
+    expect('opponentLine' in roamingStarted).toBe(false);
+    // …but the dice count rides BOTH, because the pane cannot render a table
+    // without it.
+    expect(roamingStarted).toMatchObject({ dicePerSide: 4 });
+  });
+
+  it('the win line rides a hand the OPPONENT took; the lose line one they lost', () => {
+    const row = LIARS_DICE_OPPONENTS[1][0];
+    let sawWin = false;
+    let sawLose = false;
+    for (let seed = 1; seed <= 80; seed += 1) {
+      const run = playRosterHand(seed, 'ld-1-1', SUN_3, 'challenge');
+      const resolved = run.events.find(
+        (e): e is Extract<GameEvent, { type: 'DareHandResolved' }> => e.type === 'DareHandResolved',
+      )!;
+      const playerWon = resolved.outcome === 'challenge-win' || resolved.outcome === 'dealer-fold';
+      // THEIR win line when THEY won; their lose line when they lost.
+      expect(resolved.opponentLine).toBe(playerWon ? row.lines.lose : row.lines.win);
+      if (playerWon) sawLose = true;
+      else sawWin = true;
+    }
+    expect(sawWin && sawLose).toBe(true);
+  });
+
+  it('a ROAMING resolution carries no opponentLine', () => {
+    const run = openHand(hangoutState(1)).state;
+    const r = applyPlayerAction(run, { type: 'Dare', move: 'fold' });
+    const resolved = r.events.find((e) => e.type === 'DareHandResolved')!;
+    expect('opponentLine' in resolved).toBe(false);
+  });
+});
+
+describe('T-145 · obligation 7(b) — the roster policy cannot read the player’s hand', () => {
+  it('varying the player’s hidden dice never changes the archetype’s moves', () => {
+    // The same experiment `dealerMove` already answers, extended verbatim to
+    // `archetypeMove`. Seed, port, opponent, dealer dice and the player's SCRIPT
+    // are fixed; only the hidden player dice vary. The one poke is writing the
+    // hidden hand BEFORE the first move — setting up the experiment, not driving
+    // the scene.
+    const variants: number[][] = [];
+    for (let a = 1; a <= 6; a += 1) {
+      for (const rest of [
+        [1, 1, 1],
+        [3, 4, 5],
+        [6, 6, 6],
+        [2, 2, 6],
+      ]) {
+        variants.push([a, ...rest]);
+      }
+    }
+    expect(variants.length).toBeGreaterThanOrEqual(20);
+
+    for (const opponentId of SUN3_ROSTER) {
+      const signatures = variants.map((playerDice) => {
+        let state = openRosterHand(hangoutState(222), opponentId).state;
+        const fixedDealerDice = [...state.dareHand!.dealerDice];
+        const archetype = state.dareHand!.opponentArchetype;
+        state.dareHand!.playerDice = [...playerDice]; // the experiment's only poke
+        const script = ['bid', 'raise-face', 'raise-quantity'] as const;
+        let endedAfter: number | null = null;
+        for (let i = 0; i < script.length; i += 1) {
+          if (!state.dareHand) {
+            endedAfter = i;
+            break;
+          }
+          const move = script[i];
+          const bid = state.dareHand.bid;
+          const quantity =
+            move === 'bid' ? 2 : move === 'raise-face' ? bid!.quantity : bid!.quantity + 1;
+          const face = move === 'bid' ? 3 : move === 'raise-quantity' ? bid!.face : bid!.face + 1;
+          state = applyPlayerAction(state, { type: 'Dare', move, quantity, face }).state;
+        }
+        const dealerMoves = state.dareHand
+          ? state.dareHand.history.filter((h) => h.actor === 'dealer')
+          : [];
+        return JSON.stringify({ dealerMoves, endedAfter, fixedDealerDice, archetype });
+      });
+      expect(new Set(signatures).size, opponentId).toBe(1);
+    }
+  });
+});
+
+describe('T-145 · obligation 4/5 — the v14→v15 migration', () => {
+  /** A v14-shaped raw state: today's serialization with the three T-145 keys
+   *  stripped, which is exactly what an engine that predates the roster wrote. */
+  function asV14(state: GameState): Record<string, unknown> {
+    const raw = JSON.parse(serializeState(state)) as Record<string, unknown>;
+    delete raw.liarsDicePurses;
+    const player = raw.player as Record<string, unknown>;
+    delete player.liarsDiceBeaten;
+    delete player.liarsDiceGamesPlayed;
+    if (raw.dareHand) {
+      const hand = raw.dareHand as Record<string, unknown>;
+      for (const key of [
+        'opponentKind',
+        'opponentArchetype',
+        'dicePerSide',
+        'maxQuantity',
+        'bandMax',
+      ]) {
+        delete hand[key];
+      }
+    }
+    return raw;
+  }
+
+  it('obligation 5 — createInitialState seeds 42 purses at the AUTHORED bankrolls', () => {
+    const purses = createInitialState(7).liarsDicePurses;
+    const rows = Object.values(LIARS_DICE_OPPONENTS).flat();
+    expect(Object.keys(purses)).toHaveLength(42);
+    for (const row of rows) expect(purses[row.id], row.id).toBe(row.bankroll);
+    expect(Object.values(purses).reduce((a, b) => a + b, 0)).toBe(280_800);
+    expect(createInitialState(7).player.liarsDiceBeaten).toEqual([]);
+    expect(createInitialState(7).player.liarsDiceGamesPlayed).toBe(0);
+  });
+
+  it('case 1 — a v14 save with NO open hand backfills all three keys', () => {
+    const v14 = asV14(createInitialState(9));
+    expect('liarsDicePurses' in v14).toBe(false);
+    const migrated = MIGRATIONS[14](v14) as {
+      liarsDicePurses: Record<string, number>;
+      player: { liarsDiceBeaten: string[]; liarsDiceGamesPlayed: number };
+      dareHand: unknown;
+    };
+    // STATEMENTS OF FACT about a v14 save, not defaults: no roster existed then.
+    expect(migrated.player.liarsDiceBeaten).toEqual([]);
+    expect(migrated.player.liarsDiceGamesPlayed).toBe(0);
+    expect(migrated.dareHand).toBeNull();
+    expect(Object.keys(migrated.liarsDicePurses)).toHaveLength(42);
+    for (const row of Object.values(LIARS_DICE_OPPONENTS).flat()) {
+      expect(migrated.liarsDicePurses[row.id], row.id).toBe(row.bankroll);
+    }
+    // …and it round-trips through the STRICT schema.
+    const loaded = loadSave(JSON.stringify({ version: 14, state: v14, seed: 9 }));
+    expect(Object.keys(loaded.state.liarsDicePurses)).toHaveLength(42);
+    expect(loaded.state.player.liarsDiceBeaten).toEqual([]);
+  });
+
+  it('case 2 — a v14 save with a MID-HAND open dareHand keeps every old key exactly', () => {
+    // Built by PLAYING, not by assembling a literal: a standing bid, non-zero
+    // escrow on both sides, a used peek and a non-empty history.
+    let live = openHand(hangoutState(222, [10, 20, 10, 10, 10])).state;
+    live = applyPlayerAction(live, { type: 'Dare', move: 'peek', spendDie: 1 }).state;
+    live = applyPlayerAction(live, { type: 'Dare', move: 'bid', quantity: 1, face: 1 }).state;
+    const bid = live.dareHand!.bid!;
+    live = applyPlayerAction(live, {
+      type: 'Dare',
+      move: 'raise-face',
+      quantity: bid.quantity,
+      face: bid.face + 1,
+    }).state;
+    expect(live.dareHand!.peekUsed).toBe(true);
+    expect(live.dareHand!.history.length).toBeGreaterThanOrEqual(2);
+    expect(live.dareHand!.potDealer).toBeGreaterThan(0);
+
+    const v14 = asV14(live);
+    const oldHand = { ...(v14.dareHand as Record<string, unknown>) };
+    const migrated = MIGRATIONS[14](v14) as { dareHand: Record<string, unknown> };
+
+    // The five new keys, at TIER-0 values derived from RULES, not literals.
+    expect(migrated.dareHand.opponentKind).toBe('roaming');
+    expect(migrated.dareHand.opponentArchetype).toBeNull();
+    expect(migrated.dareHand.dicePerSide).toBe(dicePerSideForTier(0));
+    expect(migrated.dareHand.maxQuantity).toBe(maxQuantityForDice(dicePerSideForTier(0)));
+    expect(migrated.dareHand.bandMax).toBe(wagerBandFor(live.dareHand!.systemId).max);
+    // EVERY pre-existing key byte-identical — hidden dice and escrow included.
+    for (const [key, value] of Object.entries(oldHand)) {
+      expect(migrated.dareHand[key], key).toEqual(value);
+    }
+
+    const loaded = loadSave(JSON.stringify({ version: 14, state: v14, seed: 222 }));
+    expect(loaded.state.dareHand!.dealerDice).toEqual(live.dareHand!.dealerDice);
+    expect(loaded.state.dareHand!.potPlayer).toBe(live.dareHand!.potPlayer);
+    expect(loaded.state.dareHand!.opponentKind).toBe('roaming');
+  });
+
+  it('case 3 — the migration is IDEMPOTENT, and preserves a played-down purse', () => {
+    const live = openRosterHand(hangoutState(3), 'ld-1-1', 250).state;
+    expect(live.liarsDicePurses['ld-1-1']).toBe(3000 - 250);
+    const raw = JSON.parse(serializeState(live)) as Record<string, unknown>;
+    const once = MIGRATIONS[14](raw) as Record<string, unknown>;
+    const twice = MIGRATIONS[14](once) as Record<string, unknown>;
+    expect(JSON.stringify(twice)).toBe(JSON.stringify(once));
+    // `seedLiarsDicePurses` PRESERVES EVERY EXISTING KEY — which is what makes it
+    // idempotent and what lets a later content pass add a fourth seat with no
+    // further save version.
+    expect((once.liarsDicePurses as Record<string, number>)['ld-1-1']).toBe(2750);
+    expect(seedLiarsDicePurses({ 'ld-1-1': 2750 })['ld-1-1']).toBe(2750);
+    expect(seedLiarsDicePurses({ 'ld-1-1': 2750 })['ld-1-2']).toBe(5000);
+    // A brand-new opponent id an older save has never seen arrives at its authored
+    // bankroll through the very same call.
+    expect(Object.keys(seedLiarsDicePurses({ 'ld-1-1': 2750 }))).toHaveLength(42);
+  });
+
+  it('a full save envelope round-trips a roster mid-hand scene', () => {
+    let live = openRosterHand(hangoutState(5), 'ld-1-2', 250).state;
+    live = applyPlayerAction(live, { type: 'Dare', move: 'bid', quantity: 2, face: 3 }).state;
+    if (!live.dareHand) return; // the dealer ended it; the no-hand case is covered above
+    const loaded = loadSave(createSave(live, 5));
+    expect(loaded.state.dareHand).toEqual(live.dareHand);
+    expect(loaded.state.liarsDicePurses).toEqual(live.liarsDicePurses);
+    expect(loaded.state.player.liarsDiceBeaten).toEqual(live.player.liarsDiceBeaten);
+  });
+
+  it('deserializeState performs the SAME backfill as the migration', () => {
+    const v14 = asV14(createInitialState(11));
+    const restored = deserializeState(JSON.stringify(v14));
+    expect(restored.player.liarsDiceBeaten).toEqual([]);
+    expect(restored.player.liarsDiceGamesPlayed).toBe(0);
+    expect(Object.keys(restored.liarsDicePurses)).toHaveLength(42);
+    expect(restored.liarsDicePurses['ld-11-3']).toBe(24_000);
   });
 });

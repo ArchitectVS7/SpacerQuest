@@ -5,6 +5,9 @@ export * from './disposition.js';
 export * from './factions.js';
 export * from './hangout.js';
 export * from './portHangouts.js';
+// T-145 · the fixed 42-opponent Liar's Dice roster (pool A) and its validator.
+export * from './liarsDice.js';
+export * from './liarsDiceValidation.js';
 export * from './lending.js';
 export * from './subsistence.js';
 export * from './guild.js';

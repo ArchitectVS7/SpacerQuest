@@ -523,11 +523,31 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  3405f608… -> 013f9cb5…   (events 72748730… UNCHANGED)
 //   STORYLET state  9e332c2e… -> cc9ea7c7…   (events 3e96fe90… UNCHANGED)
 // Regenerated via gen-day-loop-golden.ts.
+//
+// T-145 re-derivation (the fixed Liar's Dice roster): the STATE hashes move for
+// exactly one reason again — `createInitialState` now serializes THREE new keys
+// (`player.liarsDiceBeaten`, `player.liarsDiceGamesPlayed` and the root-level
+// `liarsDicePurses`, the 42 authored bankrolls). Nothing behavioural changed for
+// either script: neither contains a `VisitHangout`, so no hand is opened, no
+// archetype roll is drawn, and the roster's own money sites are unreachable
+// without one.
+//
+// THE EVENT HASHES ARE STILL THE TRIPWIRE, and both held for the third time. The
+// deal loop in `actions/hangout.ts` became `for i < dicePerSideForTier(0)` over
+// two hard-coded four-element literals, in the SAME player-first order — provably
+// inert at four dice — and the roster's per-move `roll` is drawn on both paths at
+// the same point the roaming path always drew it. A move here would have meant one
+// of those two re-phased a stream neither script visits. They came back
+// byte-identical from the regenerator. If either ever moves on a change of this
+// shape, that is the leak — fix the cause, never re-pin.
+//   DAY_LOOP state  013f9cb5… -> 328b37f5…   (events 72748730… UNCHANGED)
+//   STORYLET state  cc9ea7c7… -> b8bb9995…   (events 3e96fe90… UNCHANGED)
+// Regenerated via gen-day-loop-golden.ts.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '013f9cb5ab855a489ea7f230dfcbf10a0f889378895d0c1ac20e4ea44183a59e';
+  '328b37f5aea0c670733182a7e924726d37b00d356afa346307da54dd41331c6c';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   '7274873091b87cee192878a732e7ae8217575cc6650fd41f61290d2dfe1dbe71';
 export const STORYLET_GOLDEN_STATE_HASH =
-  'cc9ea7c748111bb6ba814621123a603a4946ae0ad917a65f8ad04aab7586d675';
+  'b8bb9995786ccb409014fb8af18bb32a170b7eb7923bd376e4cdbc5c8bda1374';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   '3e96fe90247b837cba773049e855623f0381bb5cd0f9cf41fda9d86982a8b50e';

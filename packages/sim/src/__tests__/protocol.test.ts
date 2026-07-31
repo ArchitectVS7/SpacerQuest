@@ -9,6 +9,7 @@ import {
   quotePort,
   quoteShipyard,
   rollDawnHand,
+  liarsDiceOpponentsAt,
   shipyardFailure,
   startDay,
   travelPreview,
@@ -1113,15 +1114,24 @@ describe('legal-actions enumerator', () => {
     const legal = legalActions(state);
     const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
     expect(hangout).toBeDefined();
-    // opponentId is enumerated to the ids of NPCs actually in-system.
+    // opponentId is enumerated to BOTH pools: the NPCs actually in-system, then —
+    // T-145 — the port's three fixed Liar's Dice roster opponents while their
+    // purses are above zero (docs/LIARS-DICE-PROGRESSION_SPEC.md §8 row 40).
+    // Without pool A here the UGT protocol could not reach the 42 at all and
+    // T-145's "all 42 reachable through the real UI" criterion would fail. This
+    // expectation moved because the enumerator's INPUT changed, not to fit a
+    // number: the roaming half below is asserted unchanged, in its original order.
     const opponentParam = hangout?.params.opponentId;
     expect(opponentParam?.kind).toBe('enum');
     if (opponentParam?.kind === 'enum') {
       const inSystemIds = state.npcs
         .filter((npc) => npc.currentSystemId === state.player.currentSystemId)
         .map((npc) => npc.id);
-      expect(opponentParam.choices).toEqual(inSystemIds);
+      const rosterIds = liarsDiceOpponentsAt(state.player.currentSystemId).map((o) => o.id);
+      expect(rosterIds).toHaveLength(3);
+      expect(opponentParam.choices).toEqual([...inSystemIds, ...rosterIds]);
       expect(opponentParam.choices).toContain('npc-iron-vex');
+      expect(opponentParam.choices).toContain('ld-1-1');
     }
     expect(hangout?.params.venue.kind).toBe('enum');
     expect(hangout?.params.spendDie.kind).toBe('die-index');
@@ -1140,7 +1150,7 @@ describe('legal-actions enumerator', () => {
     expect(legal.actions.some((action) => action.type === 'VisitHangout')).toBe(false);
   });
 
-  it('T-1304 · advertises VisitHangout (lending/rumor) with no in-system NPC, but not the social beats', () => {
+  it('T-1304/T-145 · with no in-system NPC: lending/rumor AND the roster dare, but not the social beats', () => {
     const state = createInitialState(1); // Sun-3
     state.dayPhase = DayPhase.DAY;
     state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
@@ -1150,21 +1160,53 @@ describe('legal-actions enumerator', () => {
     const legal = legalActions(state);
     const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
     // T-1304: Penny Wise is the lender-of-record (the desk), so the §7.5 loan out
-    // and the rumor host slot ARE reachable with no co-located NPC — but the
-    // opponent-driven beats (dare/meet/befriend/insult) are NOT offered.
+    // and the rumor host slot ARE reachable with no co-located NPC.
+    //
+    // T-145 · AND SO IS 'dare' NOW, and the split is the point rather than a
+    // loosening: the house's own three seats are ALWAYS at their port (§1 rule 1 —
+    // pool A has no `currentSystemId` and takes no part in the roam), so the
+    // tables are never empty. The three SOCIAL beats are still gated on a roaming
+    // captain, because `applyDisposition` needs an `NpcState` and pool A has none;
+    // the engine typed-fails a roster id at `meet`/`befriend`/`insult` with
+    // 'no-opponent', so advertising them here would burn a die on a knowable
+    // refusal. `befriend` staying out is what pins that half.
     expect(hangout).toBeDefined();
     const venue = hangout?.params.venue;
     expect(venue?.kind).toBe('enum');
     if (venue?.kind === 'enum') {
       expect(venue.choices).toContain('borrow'); // no loan yet → borrow offered
       expect(venue.choices).toContain('rumor');
-      expect(venue.choices).not.toContain('dare');
+      expect(venue.choices).toContain('dare');
       expect(venue.choices).not.toContain('befriend');
+      expect(venue.choices).not.toContain('meet');
+      expect(venue.choices).not.toContain('insult');
     }
-    // opponentId enumerates to the empty set (no one in-system).
+    // opponentId enumerates to pool A alone — no roaming captain is in-system.
     const opponentParam = hangout?.params.opponentId;
     if (opponentParam?.kind === 'enum') {
-      expect(opponentParam.choices).toHaveLength(0);
+      expect(opponentParam.choices).toEqual(
+        liarsDiceOpponentsAt(state.player.currentSystemId).map((o) => o.id),
+      );
+      expect(opponentParam.choices).toHaveLength(3);
+    }
+  });
+
+  it('T-145 · a BROKE roster opponent is not advertised at all', () => {
+    const state = createInitialState(1); // Sun-3
+    state.dayPhase = DayPhase.DAY;
+    state.player.dawnHand = rollDawnHand(new SeededRng(1), { handSize: 5, floor: 0, rerolls: 0 });
+    // The engine refuses a broke roster opponent with `HangoutEvent
+    // {failReason:'opponent-broke'}` before the die is spent (§7.4), so the
+    // harness must not offer one — the same mirror the `!npc.dead` filter is.
+    state.liarsDicePurses['ld-1-2'] = 0;
+
+    const legal = legalActions(state);
+    const hangout = legal.actions.find((action) => action.type === 'VisitHangout');
+    const opponentParam = hangout?.params.opponentId;
+    if (opponentParam?.kind === 'enum') {
+      expect(opponentParam.choices).toContain('ld-1-1');
+      expect(opponentParam.choices).not.toContain('ld-1-2');
+      expect(opponentParam.choices).toContain('ld-1-3');
     }
   });
 

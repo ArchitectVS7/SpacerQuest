@@ -95,6 +95,7 @@ import {
   recoveryReadout,
   hangoutOpen,
   hangoutNpcs,
+  hangoutRosterOpponents,
   hangoutHouse,
   hangoutVenueOffered,
   hangoutRumorLines,
@@ -1863,6 +1864,10 @@ function HangoutPanel({
 }) {
   const game = state.game;
   const npcs = hangoutNpcs(game);
+  // T-145 · The house's OWN three seats (pool A). A parallel list beside the
+  // roaming captains, never a replacement — the picker renders them as two
+  // separate sections, which is how all 42 become reachable through the real UI.
+  const roster = hangoutRosterOpponents(game);
   const rumors = hangoutRumorLines(game);
   const bounds = dareWagerBounds(game);
   const terms = lendingTerms(game);
@@ -1906,7 +1911,18 @@ function HangoutPanel({
 
   // A previously-chosen opponent may have wandered off between renders — only a
   // still-present NPC is a valid dealer (mirrors the engine's in-system guard).
-  const chosen = opponentId && npcs.some((n) => n.id === opponentId) ? opponentId : null;
+  //
+  // T-145 · …OR a non-broke roster opponent at this port. Two separate validities,
+  // deliberately: `chosenRoaming` is the one the SOCIAL venues need (they call
+  // `applyDisposition`, which needs an `NpcState`), and `chosen` is the wider one
+  // the Dare accepts. Without the wider one the commit button could never enable
+  // for a roster seat; without the narrower one the pane would offer
+  // meet/befriend/insult against a roster opponent and the engine would typed-fail
+  // it with 'no-opponent'.
+  const chosenRoaming = opponentId && npcs.some((n) => n.id === opponentId) ? opponentId : null;
+  const chosenRoster =
+    opponentId && roster.some((r) => r.id === opponentId && !r.broke) ? opponentId : null;
+  const chosen = chosenRoaming ?? chosenRoster;
   const dareDisabledReason = !armed
     ? 'Pick a die to wager'
     : !chosen
@@ -1914,10 +1930,10 @@ function HangoutPanel({
       : null;
   const loanDisabledReason = armed ? null : 'Pick a die first';
   // T-132 · the same shape as `dareDisabledReason` — a social venue needs an armed
-  // die and a captain who is still at the tables.
+  // die and a captain who is still at the tables. T-145: a ROAMING one.
   const socialDisabledReason = !armed
     ? 'Pick a die first'
-    : !chosen
+    : !chosenRoaming
       ? 'Choose someone at the tables'
       : null;
 
@@ -2001,6 +2017,49 @@ function HangoutPanel({
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {/* ---- T-145 · the house's own three seats (pool A) ----
+          A SECOND, VISUALLY SEPARATE SECTION. These are the fixed Liar's Dice
+          roster: they are always at their port (they take no part in the roam and
+          cannot die), they are beat-ONCE for the completion sets, and their purses
+          are finite and never regenerate. A beaten seat is marked and still
+          playable — a rematch pays normally, it simply records nothing. A BROKE
+          seat is disabled with its reason, because the engine refuses it with
+          `HangoutEvent{failReason:'opponent-broke'}` before the die is spent, and
+          a button that can only fail is the class of bug the venue gates exist to
+          prevent. */}
+      {!locked && roster.length > 0 && (
+        <div className="hp-section">
+          <div className="hp-shead">THE HOUSE&apos;S OWN</div>
+          <ul className="hp-npcs">
+            {roster.map((r) => (
+              <li key={r.id}>
+                <button
+                  className={chosen === r.id ? 'hp-npc on' : 'hp-npc'}
+                  data-testid="hangout-roster-opponent"
+                  data-npc-id={r.id}
+                  data-beaten={String(r.beaten)}
+                  data-broke={String(r.broke)}
+                  disabled={r.broke}
+                  aria-pressed={chosen === r.id}
+                  title={
+                    r.broke
+                      ? 'They are cleaned out — that seat will not take a wager.'
+                      : r.beaten
+                        ? 'Already beaten — a rematch pays, but records nothing.'
+                        : 'Sit down against the house'
+                  }
+                  onClick={() => setOpponentId(r.id)}
+                >
+                  <span className="hp-npc-name">{r.name}</span>
+                  {r.beaten && <span className="hp-npc-tag"> · beaten</span>}
+                  {r.broke && <span className="hp-npc-tag"> · cleaned out</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -2435,6 +2494,14 @@ function LiarsDiceScene({
         <div className="ld-seat" data-testid="dare-dealer-name">
           {dealerName.toUpperCase()}
         </div>
+        {/* T-145 · The roster opponent's authored TABLE TALK, printed verbatim
+            for the life of the hand. Absent on a roaming hand ⇒ nothing renders
+            here at all, never a placeholder — the `roomLine` convention. */}
+        {view?.tableTalk && (
+          <p className="ld-tabletalk" data-testid="dare-table-talk">
+            {view.tableTalk}
+          </p>
+        )}
         <div className="ld-dice">
           {Array.from({ length: dealerSlots }, (_, i) => {
             // THE ONLY TWO SOURCES OF A DEALER FACE, both from the engine:
@@ -2707,6 +2774,14 @@ function LiarsDiceScene({
               </span>
             )}
           </div>
+          {/* T-145 · The roster opponent's parting line — their `lines.win` when
+              they took the pot, `lines.lose` when the captain did. The ENGINE
+              picked the arm and put it on `DareHandResolved`; the pane prints it. */}
+          {reveal.opponentLine && (
+            <p className="ld-tabletalk" data-testid="dare-opponent-line">
+              {reveal.opponentLine}
+            </p>
+          )}
           <div className="ld-deltas">
             <span data-testid="dare-credits-delta" data-delta={String(reveal.creditsDelta)}>
               <b>{signedMargin(reveal.creditsDelta)}cr</b>

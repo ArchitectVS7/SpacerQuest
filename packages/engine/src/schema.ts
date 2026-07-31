@@ -519,6 +519,18 @@ const DareHandStateSchema = z
     peekUsed: z.boolean(),
     peekedDealerDie: z.object({ index: z.number(), value: z.number() }).strict().nullable(),
     history: z.array(DareBidEntrySchema),
+    // T-145 · the five fields the roster and the unlock ladder need on the hand
+    // (docs/LIARS-DICE-PROGRESSION_SPEC.md §5.3). ALL NON-OPTIONAL: from v15 on
+    // every open hand carries them (`actions/hangout.ts`'s open arm writes all
+    // five, and `MIGRATIONS[14]` backfills a v14 hand at tier-0 values), and
+    // `.strict()` plus a required key is what makes a half-done migration fail
+    // loudly instead of leaving a hand with no counterparty kind.
+    opponentKind: z.enum(['roaming', 'roster']),
+    opponentArchetype: z.enum(['optimal', 'bad', 'random']).nullable(),
+    dicePerSide: z.number(),
+    maxQuantity: z.number(),
+    // `null` IS the encoding of tier 5 (unlimited), not a missing value.
+    bandMax: z.number().nullable(),
   })
   .strict();
 
@@ -608,6 +620,11 @@ const PlayerStateSchema = z
     charts: ChartsStateSchema,
     nemesisFile: NemesisFileStateSchema,
     legacy: LegacyStateSchema,
+    // T-145: the roster career record. Non-optional — every v15+ save serializes
+    // both keys (v14 saves backfill them via the migration, and
+    // `deserializeState` performs the same backfill for the loader path).
+    liarsDiceBeaten: z.array(z.string()),
+    liarsDiceGamesPlayed: z.number(),
     // `activeContract?: CargoContract | null` — absent, null, or a contract.
     activeContract: CargoContractSchema.nullable().optional(),
   })
@@ -946,6 +963,11 @@ const GameEventSchema = z.discriminatedUnion('type', [
         'dare-hand-open',
         'no-dare-hand',
         'illegal-dare-move',
+        // T-145 · the roster's broke rule (§7.4). ADDED HERE AND IN types.ts's
+        // union in the same commit as the refusal that raises it — a value added
+        // to one and forgotten in the other sails past `AssertEventKeys` (which
+        // compares KEYS) and a save carrying it fails to parse at load.
+        'opponent-broke',
       ])
       .optional(),
   }),
@@ -962,6 +984,12 @@ const GameEventSchema = z.discriminatedUnion('type', [
     seedWager: z.number(),
     ante: z.number(),
     playerDice: z.array(z.number()),
+    // T-145 · both OPTIONAL, and that is load-bearing rather than lax: this union
+    // runs in STRIP mode, which drops unknown keys but does NOT tolerate a missing
+    // required one, so a required `dicePerSide` would make every v14 save's
+    // existing DareHandStarted entries fail to parse at v15.
+    dicePerSide: z.number().optional(),
+    opponentLine: z.string().optional(),
   }),
   z.object({
     // T-135 · a Peek was attempted (see types.ts DarePeeked).
@@ -1006,6 +1034,9 @@ const GameEventSchema = z.discriminatedUnion('type', [
     dealerDice: z.array(z.number()).optional(),
     creditsDelta: z.number(),
     dispositionDelta: z.number(),
+    // T-145 · the roster opponent's win/lose catchphrase; absent on a roaming
+    // hand. Optional for the same strip-mode reason as DareHandStarted's pair.
+    opponentLine: z.string().optional(),
   }),
   z.object({
     // T-1304 · a Penny Wise lending beat (see types.ts LoanEvent). Serialized in
@@ -1490,6 +1521,10 @@ export const GameStateSchema = z
     encounter: EncounterStateSchema.nullable(),
     // T-135 · the open Liar's Dice hand, beside its sibling scene.
     dareHand: DareHandStateSchema.nullable(),
+    // T-145 · the live purse of every fixed roster opponent, keyed by opponent id
+    // (docs/LIARS-DICE-PROGRESSION_SPEC.md §5.2). At the ROOT, beside `npcs`,
+    // because these balances belong to the counterparties rather than the captain.
+    liarsDicePurses: z.record(z.string(), z.number()),
     eraEvent: EraEventStateSchema.nullable(),
     lastEraEventEndedDay: z.number(),
     eventLog: z.array(GameEventSchema),

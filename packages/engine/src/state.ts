@@ -12,6 +12,7 @@ import { computeMatchCounts, emptyDeedRegistry, rankForDeedCount } from './deeds
 import { npcShipForProfile, seedNpcShip } from './npc.js';
 import { JOB_POOL_MAX_CLAIMS, calculateFuelCapacity, syncMaxFuel } from './economy.js';
 import { computePlayerTier, syncPlayerTier } from './tier.js';
+import { seedLiarsDicePurses } from './liarsDiceRules.js';
 
 /** The exact junker every spacer starts (and re-starts) with. SINGLE SOURCE OF
  *  TRUTH: createInitialState builds the opening ship from this, and T-108
@@ -139,6 +140,10 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
       // T-1503: a fresh spacer holds neutral standing with all four galactic
       // powers — reputation is earned/spent through organic play + questlines.
       reputation: { league: 0, dragons: 0, confederation: 0, rebels: 0 },
+      // T-145 · a fresh captain has beaten nobody in the fixed Liar's Dice roster
+      // and has played no hands. Pool A only (types.ts `liarsDiceBeaten`).
+      liarsDiceBeaten: [],
+      liarsDiceGamesPlayed: 0,
       stats: {
         [Stat.PILOT]: 1,
         [Stat.GUNS]: 0,
@@ -178,6 +183,10 @@ export function createInitialState(seed: number, edition: Edition = 'full'): Gam
     encounter: null,
     // T-135 · a career opens with no hand on the table, beside the sibling scene.
     dareHand: null,
+    // T-145 · the 42 fixed roster opponents open at their AUTHORED bankrolls —
+    // seeded through the engine's own rule, never an inline literal, so this site
+    // and the two save paths (`MIGRATIONS[14]`, `deserializeState`) cannot drift.
+    liarsDicePurses: seedLiarsDicePurses(),
     eraEvent: null,
     lastEraEventEndedDay: 0,
     eventLog: [],
@@ -300,6 +309,19 @@ export function deserializeState(json: string): GameState {
   parsed.player.reputation.dragons ??= 0;
   parsed.player.reputation.confederation ??= 0;
   parsed.player.reputation.rebels ??= 0;
+  // T-145 save-compat: pre-T-145 states carry none of the roster's three fields.
+  // The SAME backfill the v14→v15 migration applies for the envelope path (the
+  // loader path runs `migrate` → `validateGameState` and never comes through here,
+  // so both halves are owed). The two player fields are STATEMENTS OF FACT rather
+  // than defaults: a pre-T-145 save was written by an engine in which no roster
+  // existed, so "this captain has beaten nobody in the roster" and "has played
+  // zero hands under the new counter" are TRUE of that save. The purse map calls
+  // the rule (`seedLiarsDicePurses`), which preserves every balance already
+  // present — so this is also the path a later content pass's new opponent enters
+  // an existing save through, with no further version bump.
+  parsed.player.liarsDiceBeaten ??= [];
+  parsed.player.liarsDiceGamesPlayed ??= 0;
+  parsed.liarsDicePurses = seedLiarsDicePurses(parsed.liarsDicePurses);
   parsed.npcs ??= [];
   // COW-EXEMPT: these writes reach roster records raw, without `mutableNpc`, and
   // are legal ONLY because of the caller. `parsed` is a value this function just

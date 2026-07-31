@@ -7,7 +7,8 @@ import {
   type GameEvent,
   type GameState,
 } from '@spacerquest/engine';
-import { dareRevealFrom, dareScene } from '../format';
+import { LIARS_DICE_OPPONENTS } from '@spacerquest/content';
+import { dareRevealFrom, dareScene, hangoutNpcs, hangoutRosterOpponents } from '../format';
 
 // ---------------------------------------------------------------------------
 // T-136 · THE FOG PROJECTION, PROVED RATHER THAN CLAIMED
@@ -214,5 +215,141 @@ describe('T-136 · the settled frame comes off the event, never off state', () =
   it('is null when the action settled nothing', () => {
     const { state, events } = openHand(dayOneAtSun3(1));
     expect(dareRevealFrom(events, state)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-145 · POOL A IN THE PANE (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §8 rows 46a,
+// 49, 50). The unit half of obligations 25 and 26; the real-clicks half is
+// `packages/ui/e2e/liars-dice-roster.spec.ts`.
+// ---------------------------------------------------------------------------
+
+/** Open a hand against a fixed ROSTER opponent, the way the pane does. */
+function openRosterHand(
+  game: GameState,
+  opponentId: string,
+  wager = 100,
+  spendDie = 0,
+): { state: GameState; events: GameEvent[] } {
+  const out = applyPlayerAction(game, {
+    type: 'VisitHangout',
+    venue: 'dare',
+    opponentId,
+    wager,
+    spendDie,
+  });
+  expect(out.state.dareHand).not.toBeNull();
+  return out;
+}
+
+describe('T-145 · hangoutRosterOpponents lists the house’s own three seats', () => {
+  it('returns exactly the port’s authored roster, with names and live purses', () => {
+    const game = dayOneAtSun3(1);
+    const rows = hangoutRosterOpponents(game);
+    const authored = LIARS_DICE_OPPONENTS[SUN_3];
+    expect(rows).toHaveLength(3);
+    expect(rows.map((r) => r.id)).toEqual(authored.map((a) => a.id));
+    expect(rows.map((r) => r.name)).toEqual(authored.map((a) => a.name));
+    // The LIVE purse, which at day 1 is the authored bankroll.
+    expect(rows.map((r) => r.purse)).toEqual(authored.map((a) => a.bankroll));
+    expect(rows.every((r) => !r.beaten && !r.broke)).toBe(true);
+  });
+
+  it('is populated at EVERY hasHangout port, so all 42 are reachable', () => {
+    const game = dayOneAtSun3(1);
+    const seen = new Set<string>();
+    for (const systemId of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) {
+      const at = { ...game, player: { ...game.player, currentSystemId: systemId } };
+      const rows = hangoutRosterOpponents(at);
+      expect(rows, `port ${systemId}`).toHaveLength(3);
+      for (const row of rows) seen.add(row.id);
+    }
+    expect(seen.size).toBe(42);
+  });
+
+  it('marks a beaten seat and disables a broke one', () => {
+    const game = dayOneAtSun3(1);
+    const marked = {
+      ...game,
+      player: { ...game.player, liarsDiceBeaten: ['ld-1-1'] },
+      liarsDicePurses: { ...game.liarsDicePurses, 'ld-1-3': 0 },
+    };
+    const rows = hangoutRosterOpponents(marked);
+    expect(rows[0]).toMatchObject({ id: 'ld-1-1', beaten: true, broke: false });
+    expect(rows[1]).toMatchObject({ id: 'ld-1-2', beaten: false, broke: false });
+    // The engine refuses a purse <= 0 with `opponent-broke` before the die is
+    // spent, so the pane must not offer the row at all.
+    expect(rows[2]).toMatchObject({ id: 'ld-1-3', beaten: false, broke: true, purse: 0 });
+  });
+
+  it('hangoutNpcs is UNCHANGED — pool A never leaks into pool B’s list', () => {
+    const game = dayOneAtSun3(1);
+    for (const npc of hangoutNpcs(game)) expect(npc.id.startsWith('ld-')).toBe(false);
+  });
+});
+
+describe('T-145 · the scene shows the AUTHORED name, never the raw `ld-` id', () => {
+  it('resolves a roster dealer through the engine’s own accessor', () => {
+    const { state } = openRosterHand(dayOneAtSun3(1), 'ld-1-2');
+    const view = dareScene(state)!;
+    // The shipped `game.npcs.find(...)` fallback rendered `ld-1-2` at the table —
+    // pool A has no `NpcState` — which is the Accept failure row 49 exists to fix.
+    expect(view.dealerId).toBe('ld-1-2');
+    expect(view.dealerName).toBe(LIARS_DICE_OPPONENTS[SUN_3][1].name);
+    expect(view.dealerName).not.toBe('ld-1-2');
+    expect(view.opponentKind).toBe('roster');
+    // Obligation 26, table-talk arm.
+    expect(view.tableTalk).toBe(LIARS_DICE_OPPONENTS[SUN_3][1].lines.tableTalk);
+    // …and the hidden-dice discipline is unchanged for a roster hand.
+    expect(Object.keys(view)).not.toContain('dealerDice');
+    expect(view.dealerDieCount).toBe(state.dareHand!.dealerDice.length);
+  });
+
+  it('a ROAMING hand still resolves its captain and carries no table talk', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    const view = dareScene(state)!;
+    expect(view.dealerName).toBe(state.npcs.find((n) => n.id === DEALER)!.name);
+    expect(view.opponentKind).toBe('roaming');
+    expect(view.tableTalk).toBeNull();
+  });
+});
+
+describe('T-145 · obligation 26 — the reveal carries the win/lose line', () => {
+  it('shows the opponent’s LOSE line when the captain takes the pot', () => {
+    // A dealer-fold or challenge-win is the captain's; scan for one rather than
+    // pinning a lucky seed.
+    for (let seed = 1; seed <= 200; seed += 1) {
+      let { state } = openRosterHand(dayOneAtSun3(seed), 'ld-1-1');
+      let events: GameEvent[] = [];
+      for (let step = 0; step < 24 && state.dareHand; step += 1) {
+        const out = applyPlayerAction(
+          state,
+          state.dareHand.bid === null
+            ? { type: 'Dare', move: 'bid', quantity: 2, face: 3 }
+            : { type: 'Dare', move: 'challenge' },
+        );
+        state = out.state;
+        events = out.events;
+      }
+      const view = dareRevealFrom(events, state);
+      if (!view) continue;
+      const playerWon = view.outcome === 'challenge-win' || view.outcome === 'dealer-fold';
+      const row = LIARS_DICE_OPPONENTS[SUN_3][0];
+      expect(view.dealerName).toBe(row.name);
+      expect(view.opponentLine).toBe(playerWon ? row.lines.lose : row.lines.win);
+      // §7.6 — a roster hand moves no disposition, and a zero here is an honest
+      // nothing rather than a regression the pane should hide.
+      expect(view.dispositionDelta).toBe(0);
+      if (playerWon) return;
+    }
+    throw new Error('no player win against ld-1-1 in 200 seeds');
+  });
+
+  it('a ROAMING reveal carries no opponentLine, and its disposition still moves', () => {
+    const { state } = openHand(dayOneAtSun3(1));
+    const out = applyPlayerAction(state, { type: 'Dare', move: 'fold' });
+    const view = dareRevealFrom(out.events, out.state)!;
+    expect(view.opponentLine).toBeNull();
+    expect(view.dealerName).not.toMatch(/^ld-/);
   });
 });

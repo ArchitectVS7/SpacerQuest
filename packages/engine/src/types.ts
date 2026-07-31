@@ -300,6 +300,9 @@ export type ExplorationFailReason =
  *   - 'illegal-dare-move' — a `Dare` move that is not in `legalDareMoves`, or
  *     whose quantity/face arithmetic breaks §5.1's lattice. Refused rather than
  *     clamped into legality, and nothing is spent or moved.
+ *   - 'opponent-broke'    — T-145 · a `VisitHangout{venue:'dare'}` naming a ROSTER
+ *     opponent whose live purse is <= 0 (`docs/LIARS-DICE-PROGRESSION_SPEC.md`
+ *     §7.4). Refused BEFORE the die is spent, like every other pre-spend refusal.
  */
 export type HangoutFailReason =
   | 'no-die'
@@ -309,7 +312,8 @@ export type HangoutFailReason =
   | 'venue-not-offered'
   | 'dare-hand-open'
   | 'no-dare-hand'
-  | 'illegal-dare-move';
+  | 'illegal-dare-move'
+  | 'opponent-broke';
 
 /**
  * T-135 · One standing claim in a Liar's Dice hand: "there are at least
@@ -375,6 +379,36 @@ export interface DareHandState {
   /** The one dealer die a successful Peek revealed, or null. */
   peekedDealerDie: { index: number; value: number } | null;
   history: DareBidEntry[];
+  /**
+   * T-145 · Which POOL the counterparty came from
+   * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §5.3). Decides money routing (§7.1 —
+   * an `NpcState.credits` vs a `liarsDicePurses` entry), whether
+   * `applyDisposition` runs at all (§7.6), which policy answers the bid (§3.8)
+   * and whether the win writes to `liarsDiceBeaten` (§6.2).
+   */
+  opponentKind: 'roaming' | 'roster';
+  /**
+   * T-145 · The CONCRETE archetype for this hand, resolved ONCE at open (§3.6)
+   * and never re-rolled mid-hand. **Never the string `'mixed'`** — a mixed row is
+   * resolved through `resolveMixedArchetype` at open and the concrete result is
+   * what is stored. NULL iff `opponentKind === 'roaming'`.
+   */
+  opponentArchetype: 'optimal' | 'bad' | 'random' | null;
+  /**
+   * T-145 · FROZEN AT OPEN (§4.6): the number of dice on EACH side, and the
+   * length of both dice arrays. 4 | 5 | 6. A hand opened at four dice stays a
+   * four-dice hand until it settles, even if a settlement crosses a ladder
+   * threshold in between.
+   */
+  dicePerSide: number;
+  /** T-145 · FROZEN AT OPEN: `2 * dicePerSide`, the claim ceiling every legality
+   *  site reads instead of the `DARE_MAX_QUANTITY` constant (§4.6). */
+  maxQuantity: number;
+  /** T-145 · FROZEN AT OPEN: the effective wager ceiling for this hand. `null`
+   *  encodes tier 5 (unlimited — `headroomFor` returns MAX_SAFE_INTEGER and the
+   *  solvency clamp is the only cap). T-145 writes the port's `wager.max` at every
+   *  open; T-146 is what makes the value move. */
+  bandMax: number | null;
 }
 
 /** T-135 · The seven moves one `Dare` action can carry (§9.1). */
@@ -836,8 +870,20 @@ export type GameEvent =
       systemId: number;
       seedWager: number;
       ante: number;
-      /** The PLAYER's four dice. The dealer's are NEVER here. */
+      /** The PLAYER's dice. The dealer's are NEVER here. */
       playerDice: number[];
+      /**
+       * T-145 · The hand's FROZEN dice-per-side (§5.3). OPTIONAL, deliberately:
+       * `GameEventSchema` runs in Zod STRIP mode, which drops unknown keys but
+       * does NOT tolerate a missing REQUIRED one, so a required field here would
+       * make every v14 save's existing `DareHandStarted` entries fail to parse at
+       * v15. The live UI reads `hand.dicePerSide` off `DareHandState`, where it is
+       * required; this is the event-log copy.
+       */
+      dicePerSide?: number;
+      /** T-145 · The ROSTER opponent's authored `lines.tableTalk`, present iff the
+       *  counterparty is pool A (§8 row 17a). A roaming hand carries nothing. */
+      opponentLine?: string;
     }
   | {
       /** T-135 · A Peek was attempted (§8). One per hand, pass or fail; the die is
@@ -887,8 +933,14 @@ export type GameEvent =
        *  loss/fold (§6.3's ledger). */
       creditsDelta: number;
       /** The delta PASSED to applyDisposition (pre-clamp). The APPLIED delta is on
-       *  the neighbouring DispositionChanged, which is the existing convention. */
+       *  the neighbouring DispositionChanged, which is the existing convention.
+       *  T-145: legitimately 0 on EVERY roster hand — pool A is outside the NPC
+       *  economy, so there is no record to move (§7.6). Not a regression. */
       dispositionDelta: number;
+      /** T-145 · The ROSTER opponent's authored `lines.win` when THEY won, or
+       *  `lines.lose` when they lost; present iff pool A (§8 row 20c). Optional for
+       *  the same strip-mode reason as `DareHandStarted.dicePerSide`. */
+      opponentLine?: string;
     }
   | {
       /**
@@ -1916,6 +1968,26 @@ export interface PlayerState {
   nemesisFile: NemesisFileState;
   /** Legacy/succession bookkeeping — survives death (T-108). */
   legacy: LegacyState;
+  /**
+   * T-145 · Roster opponent ids the captain has beaten, in FIRST-DEFEAT ORDER
+   * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §5.1). A SET semantically, an array
+   * physically — no duplicates, ever, enforced at the single write site in
+   * `actions/dare.ts`'s `settleDareHand`.
+   *
+   * POOL A ONLY (§1 rule 3). A win over a roaming captain is NEVER written here,
+   * no matter how many times it happens: pool B respawns its willingness to play
+   * every day, so counting it would turn a finite authored gauntlet into a grind
+   * timer. Order is first-defeat order, not sorted — it is a career record, and a
+   * sort would destroy information for no gain.
+   *
+   * READERS: T-147's set-closure arithmetic (`LiarsDiceSetCleared`), and the UI's
+   * roster picker, which marks a beaten opponent.
+   */
+  liarsDiceBeaten: string[];
+  /** T-145 · Every SETTLED Liar's Dice hand against EITHER pool. Integer >= 0.
+   *  Drives the unlock ladder (§4); T-146 wires the increment into the single
+   *  settlement site. Initialised here so T-146 needs no save-version move. */
+  liarsDiceGamesPlayed: number;
   activeContract?: CargoContract | null;
 }
 
@@ -1997,6 +2069,21 @@ export interface GameState {
   /** T-135 · The open Liar's Dice hand, or null. A SCENE, not player-owned data —
    *  see the sibling `encounter` above and docs/LIARS-DICE_REDESIGN.md §2.1. */
   dareHand: DareHandState | null;
+  /**
+   * T-145 · The LIVE purse of every fixed Liar's Dice roster opponent, keyed by
+   * `LiarsDiceOpponent.id` (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §5.2, §7).
+   *
+   * AT THE ROOT, BESIDE `npcs` AND `dareHand`, AND NOT ON `player` — deliberately.
+   * These balances are not the captain's property; they belong to the
+   * counterparties, exactly as `npcs[].credits` does. Seeded from the authored
+   * bankrolls by `seedLiarsDicePurses` at new game, at load, and by the v14->v15
+   * migration.
+   *
+   * ZERO-SUM AND NEVER REGENERATING (§7.5). Every credit the player takes off a
+   * roster opponent came out of that opponent's authored bankroll, and 280,800 cr
+   * is the lifetime cap the whole gauntlet can transfer.
+   */
+  liarsDicePurses: Record<string, number>;
   /** The single active world economic event, or null (T-107). At most one is
    *  ever active; the seeded dusk scheduler owns its lifecycle. */
   eraEvent: EraEventState | null;

@@ -83,6 +83,11 @@ import {
   // re-derives legality or headroom; it asks the engine's own functions.
   headroomFor,
   legalDareMoves,
+  // T-145 · the ROSTER accessors. The pane resolves a pool-A opponent's authored
+  // name and lines through the engine, exactly as it reads `wagerBandFor` /
+  // `headroomFor` rather than re-deriving them.
+  liarsDiceOpponentFor,
+  liarsDiceOpponentsAt,
   dawnDiceModifiers,
   equipmentDiceBenefits,
   hasExploreModule,
@@ -397,6 +402,47 @@ export function hangoutNpcs(game: GameState): HangoutNpc[] {
   }));
 }
 
+/**
+ * T-145 · One row of the house's OWN table — a fixed Liar's Dice roster opponent
+ * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §8 row 46a).
+ *
+ * A PARALLEL PROJECTION beside {@link hangoutNpcs}, never a replacement:
+ * `hangoutNpcs` is unchanged, and the picker renders the two pools as two visually
+ * separated sections. This row is how "all 42 opponents are reachable through the
+ * real UI at their authored port" is actually satisfied.
+ */
+export interface HangoutRosterOpponent {
+  id: string;
+  name: string;
+  /** In `player.liarsDiceBeaten` — the captain has already taken a hand off them.
+   *  A rematch is perfectly legal and pays normally; it simply records nothing. */
+  beaten: boolean;
+  /** The LIVE purse (`GameState.liarsDicePurses`), not the authored bankroll. */
+  purse: number;
+  /** Purse <= 0. The engine refuses the sit-down with
+   *  `HangoutEvent{failReason:'opponent-broke'}` (§7.4), so the pane disables the
+   *  row rather than offering a button that can only fail. They never regenerate —
+   *  see the theorem at the refusal site for why that cannot lock an achievement. */
+  broke: boolean;
+}
+
+export function hangoutRosterOpponents(game: GameState): HangoutRosterOpponent[] {
+  const beaten = new Set(game.player.liarsDiceBeaten);
+  // In authored SEAT ORDER, straight off the engine's accessor — pool A has no
+  // `currentSystemId` and takes no part in the roam, so there is nothing to filter
+  // and no `rankClientele` to apply. The house's three are always at the house.
+  return liarsDiceOpponentsAt(game.player.currentSystemId).map((opponent) => {
+    const purse = game.liarsDicePurses[opponent.id] ?? 0;
+    return {
+      id: opponent.id,
+      name: opponent.name,
+      beaten: beaten.has(opponent.id),
+      purse,
+      broke: purse <= 0,
+    };
+  });
+}
+
 /** The rumor-table lines — a pure pass-through to the engine's own exported
  *  `hangoutRumors` (synthesized from live NPC state). The UI never re-synthesizes
  *  gossip; it renders exactly what the engine produces. Reader: the pane's rumor
@@ -471,16 +517,30 @@ export interface DareSceneView {
   legalMoves: DareMoveKind[];
   /** The port's Peek DC — DISPLAY ONLY; the engine rolls it. */
   peekDc: number;
+  /** T-145 · Which pool the counterparty came from, straight off the hand. */
+  opponentKind: 'roaming' | 'roster';
+  /** T-145 · The roster opponent's authored TABLE TALK, shown at the table for the
+   *  life of the hand. `null` on a roaming hand — pool B has no authored lines. */
+  tableTalk: string | null;
 }
 
 export function dareScene(game: GameState): DareSceneView | null {
   const hand = game.dareHand;
   if (!hand) return null;
-  const dealer = game.npcs.find((n) => n.id === hand.dealerId);
+  // T-145 · THE NAME MUST BE RESOLVED BY POOL. `game.npcs.find(...)` returns
+  // undefined for every roster hand — pool A has no `NpcState` at all — so the
+  // shipped fallback rendered the raw id (`ld-5-2`) at the table. Resolved through
+  // the engine's own `liarsDiceOpponentFor`, the same way this file already calls
+  // `wagerBandFor` / `headroomFor` rather than re-deriving them.
+  const roster =
+    hand.opponentKind === 'roster' ? liarsDiceOpponentFor(hand.systemId, hand.dealerId) : undefined;
+  const dealer = roster ?? game.npcs.find((n) => n.id === hand.dealerId);
   return {
     handId: hand.id,
     dealerId: hand.dealerId,
     dealerName: dealer?.name ?? hand.dealerId,
+    opponentKind: hand.opponentKind,
+    tableTalk: roster?.lines.tableTalk ?? null,
     playerDice: [...hand.playerDice],
     // `.length`, deliberately. Never a value, never a map over the array.
     dealerDieCount: hand.dealerDice.length,
@@ -519,8 +579,15 @@ export interface DareRevealView {
   /** null on BOTH fold arms. */
   dealerDice: number[] | null;
   creditsDelta: number;
+  /** T-145 · legitimately 0 on EVERY roster hand — pool A is outside the NPC
+   *  economy, so there is no disposition to move (§7.6). The pane already renders
+   *  a zero as an honest nothing, so this needs no new branch and gets none. */
   dispositionDelta: number;
   dealerName: string;
+  /** T-145 · The roster opponent's authored line for how the hand ended — their
+   *  `lines.win` when they won, `lines.lose` when they lost. `null` on a roaming
+   *  hand. Taken off the EVENT, never re-derived; the engine picked the arm. */
+  opponentLine: string | null;
 }
 
 export function dareRevealFrom(events: GameEvent[], game: GameState): DareRevealView | null {
@@ -528,7 +595,14 @@ export function dareRevealFrom(events: GameEvent[], game: GameState): DareReveal
     (e): e is Extract<GameEvent, { type: 'DareHandResolved' }> => e.type === 'DareHandResolved',
   );
   if (!resolved) return null;
-  const dealer = game.npcs.find((n) => n.id === resolved.opponentId);
+  // T-145 · the same by-pool name resolution as `dareScene`, off the event's
+  // `opponentId`. `game.dareHand` is null by the time this runs, so the systemId
+  // comes from the player's current port — which is the hand's port by
+  // construction: a hand can only settle where it was opened (a `VisitHangout` is
+  // the only opener, `Travel` is refused while a hand stands, and the dusk
+  // timeout-fold settles before any move).
+  const roster = liarsDiceOpponentFor(game.player.currentSystemId, resolved.opponentId);
+  const dealer = roster ?? game.npcs.find((n) => n.id === resolved.opponentId);
   return {
     outcome: resolved.outcome,
     bid: resolved.bid ? { ...resolved.bid } : null,
@@ -538,6 +612,7 @@ export function dareRevealFrom(events: GameEvent[], game: GameState): DareReveal
     creditsDelta: resolved.creditsDelta,
     dispositionDelta: resolved.dispositionDelta,
     dealerName: dealer?.name ?? resolved.opponentId,
+    opponentLine: resolved.opponentLine ?? null,
   };
 }
 
@@ -929,6 +1004,11 @@ export function hangoutFailExplanation(reason: HangoutFailReason): string {
       return 'There is no hand on the table to play.';
     case 'illegal-dare-move':
       return 'The house will not take that call.';
+    // T-145 · the roster's broke rule. They are cleaned out and will not sit; the
+    // purse never regenerates, so the line says "tonight" rather than promising a
+    // return the engine cannot make.
+    case 'opponent-broke':
+      return 'They are cleaned out — that seat will not take a wager.';
   }
 }
 

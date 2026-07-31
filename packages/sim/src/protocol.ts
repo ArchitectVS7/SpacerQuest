@@ -48,6 +48,7 @@ import {
   loanBandFor,
   venueOffered,
   wagerBandFor,
+  liarsDiceOpponentsAt,
   legalDareMoves,
   type Edition,
   type GameEvent,
@@ -824,6 +825,16 @@ export function legalActions(state: GameState): LegalActions {
   const inSystemNpcIds = state.npcs
     .filter((npc) => !npc.dead && npc.currentSystemId === player.currentSystemId)
     .map((npc) => npc.id);
+  // T-145 · POOL A, the fixed Liar's Dice roster. Without this the UGT protocol
+  // cannot reach the 42 authored opponents AT ALL, and T-145's own "all 42 are
+  // reachable through the real UI" criterion fails — which is exactly why this
+  // lands here rather than with the ladder. Broke opponents are dropped for the
+  // same reason a dead captain is: the engine refuses them with a typed
+  // 'opponent-broke' (§7.4) and advertising one would burn a die on a refusal that
+  // was knowable before it was sent.
+  const rosterOpponentIds = liarsDiceOpponentsAt(player.currentSystemId)
+    .filter((opponent) => (state.liarsDicePurses[opponent.id] ?? 0) > 0)
+    .map((opponent) => opponent.id);
   if (hasDie && STAR_SYSTEMS[player.currentSystemId]?.hasHangout) {
     // T-1304: the venue set depends on live state. 'rumor' is always available at
     // a Hangout; the social/dare beats need an in-system NPC to face; the Penny
@@ -835,6 +846,13 @@ export function legalActions(state: GameState): LegalActions {
     const liveVenues: HangoutVenueId[] = ['rumor', state.player.loan ? 'repay' : 'borrow'];
     if (inSystemNpcIds.length > 0) {
       liveVenues.unshift('dare', 'meet', 'befriend', 'insult');
+    } else if (rosterOpponentIds.length > 0) {
+      // T-145 · The house's own three seats are ALWAYS at their port, so 'dare' is
+      // possible at an otherwise-empty Hangout. The three SOCIAL beats are not:
+      // they need an `NpcState` for `applyDisposition`, which pool A does not have
+      // (§1 rule 1), and the engine typed-fails a roster id at a social venue with
+      // 'no-opponent'. So only 'dare' is advertised on this arm.
+      liveVenues.unshift('dare');
     }
     // T-120 · THE PORT MIRROR. Live state decides which beats are POSSIBLE (above);
     // the port's venue definition decides which it OFFERS. Advertising a venue the
@@ -859,12 +877,12 @@ export function legalActions(state: GameState): LegalActions {
         type: 'VisitHangout',
         params: {
           venue: { kind: 'enum', choices: venueChoices },
-          opponentId: { kind: 'enum', choices: [...inSystemNpcIds] },
+          opponentId: { kind: 'enum', choices: [...inSystemNpcIds, ...rosterOpponentIds] },
           wager: { kind: 'int', min: wagerBand.min, max: wagerBand.max },
           amount: { kind: 'int', min: loanBand.min, max: loanBand.max },
           spendDie: dieParam,
         },
-        note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
+        note: "opponentId required for dare/meet/befriend/insult; omitted for rumor/borrow/repay. The choices span BOTH pools: an in-system roaming NPC, or one of the port's three fixed Liar's Dice roster opponents (the 'ld-' ids, listed only while their purse is above zero). A roster id is valid for 'dare' ONLY — meet/befriend/insult need a roaming NPC. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
       });
     }
   }

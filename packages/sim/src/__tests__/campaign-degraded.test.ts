@@ -916,7 +916,20 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // desk, so nothing reaches the lending policies at all.
   // Entry 23: re-derived a FIFTH time, and the only row entry 23 moves for a
   // reason of its own — the Dare is now a Liar's Dice hand the runner plays out.
-  gambler: '45dfa017875d0619',
+  // Entry 24 (T-145): re-derived a SIXTH time, and again the only row that moves,
+  // for a reason of its own. `planDare`'s candidate set now spans BOTH pools — the
+  // in-system roaming captains AND the port's three fixed roster opponents
+  // (docs/LIARS-DICE-PROGRESSION_SPEC.md §8 row 38), because without it no sweep
+  // row and no deed-coverage career would ever play a roster hand and the whole
+  // milestone would be unmeasured. The SELECTION RULE is unchanged (richest,
+  // first-wins on a tie, roaming considered first so a tie still goes to a
+  // captain), but the roster's authored bankrolls are 3-8x a port's wager ceiling,
+  // so at most ports a roster seat is now the richest counterparty and the policy
+  // deals there instead. That re-phases every hand this policy plays. Measured
+  // over 300 days on seed 1: 446 dares, 186 of them against pool A for +199,617 cr
+  // — inside §2.6's 280,800 cr lifetime roster cap, as the zero-sum rule requires.
+  // Nothing was widened to make this pass; the input to the fingerprint changed.
+  gambler: 'f08a7285a5a7179f',
   greedy: '56df4d82dab33e08',
 };
 

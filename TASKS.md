@@ -2672,7 +2672,19 @@ got only a short cross-reference addendum pointing at the new file, and the pare
 existing §16 capstone was left untouched — implementation is T-145 onward, not this task.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `TASKS.md`'s M4e settled block, `docs/LIARS-DICE_REDESIGN.md`'s · attempts=2/4.
 
-### T-145 · Build the fixed opponent roster (content pass 1 of 1: 42) — `status: TODO` · `coder: opus` · `after: T-144`
+### T-145 · Build the fixed opponent roster (content pass 1 of 1: 42) — `status: DONE` · `coder: opus` · `after: T-144`
+
+**Delivered (2026-07-31):** Authored `packages/content/src/liarsDice.ts`'s 42-row fixed roster
+(3 per `hasHangout` port, seat/archetype/bankroll fully determined by port per T-144's table —
+bad x7 / random x7 / mixed x14 / optimal x14), validated by `liarsDiceValidation.ts`, and wired
+the engine's opponent resolver to look this table up alongside the existing 30-captain roaming
+path without touching it. Implemented the three concrete archetype policies plus the mixed
+meta-archetype, landed all new persisted state (`liarsDiceBeaten`, `liarsDiceGamesPlayed`,
+per-opponent purse balances) in the single save migration T-144 specced, and covered the roster
+with new engine/content/e2e tests. Deliberate scope boundary: this is content pass 1 of 1 for the
+42-opponent baseline only — growing the roster further, wiring the unlock ladder (T-146), and
+achievement hooks (T-147) are explicitly out of scope here and deferred to their own tasks.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/LIARS-DICE-PROGRESSION_SPEC.md` (the T-144 spec, which is · attempts=1/4.
 
 Author `packages/content/src/liarsDice.ts`'s 42 rows (3 per `hasHangout` port) per the spec, and
 wire the engine's opponent resolution (T-135's resolver) to look up this table alongside the

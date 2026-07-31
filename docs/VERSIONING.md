@@ -226,7 +226,7 @@ Release earns its keep, and the rules are: tick **"Set as a pre-release"** so it
 mistaken for a launch, attach the `electron-builder` artefacts, and let the notes be the
 changelog for that stage.
 
-## 2. Save schema version — a plain integer, currently `14`
+## 2. Save schema version — a plain integer, currently `15`
 
 **Answers: can this build read that save file?**
 
@@ -235,6 +235,21 @@ changelog for that stage.
 change no persisted shape, and some internal changes migrate state without being worth a
 release. Bump it when `GameState`'s persisted shape changes, and add the migration and
 its round-trip test in the same commit.
+
+**One bump per milestone, not one per task** (T-145, 2026-07-31). M4e's roster/ladder work
+spans four parallelizable tasks, and two of them would otherwise have raced on this
+constant. The whole milestone's persisted shape therefore lands in a single
+`MIGRATIONS[14]` — `player.liarsDiceBeaten`, `player.liarsDiceGamesPlayed`, the root-level
+`GameState.liarsDicePurses` and five new `DareHandState` keys — written by the FIRST task
+in the chain, at values the shipped engine already computed, so the later tasks read fields
+that already exist. Three things that look like schema changes and are not, recorded here
+because a careful coder will otherwise bump defensively: adding a `GameEvent` variant,
+adding an OPTIONAL field to an existing variant, and adding a `HangoutFailReason` value.
+`GameEventSchema` runs in Zod strip mode, so the append-only `eventLog` is
+forward-compatible; the obligation for all three is the compile-time drift guard in
+`schema.ts`, not a version move. (The fail-reason case is a two-file edit —
+`_covHangoutFailReason` pins the enum VALUE for value, and a value added to the union but
+not the schema sails past `AssertEventKeys` and fails to parse at load.)
 
 ## 3. Rules fingerprint — a content hash, not a number
 

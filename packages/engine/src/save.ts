@@ -6,6 +6,8 @@ import { emptyDeedRegistry, rankForDeedCount } from './deeds.js';
 import { computePlayerTier } from './tier.js';
 import { seedNpcShip } from './npc.js';
 import { JOB_POOL_MAX_CLAIMS } from './economy.js';
+import { dicePerSideForTier, maxQuantityForDice, seedLiarsDicePurses } from './liarsDiceRules.js';
+import { wagerBandFor } from './hangoutRules.js';
 
 // T-1401 · The v5→v6 WireEntry.kind migration's ONE legitimate, retro-only use of
 // the flaw-detail suffix heuristic. A v5 save's WireEntry events predate the typed
@@ -198,6 +200,40 @@ export type MigrationFn = (oldState: unknown) => unknown;
  * except `eventLog` and `npcs`, so a new plain-data top-level field is deep-copied
  * for free). Stated here so nobody adds a branch: a hand-written clause there
  * would be exactly the aliasing bug that module's header warns about.
+ *
+ * T-145 bumped {@link CURRENT_SAVE_VERSION} to 15, and this is THE ONLY VERSION
+ * MOVE IN MILESTONE M4e (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §5) — T-146 and
+ * T-147 read fields that already exist and must not move it, which is the ruling
+ * that stops two parallel tasks racing. The v14->v15 change lands the whole fixed
+ * Liar's Dice roster's persisted state at once, in FOUR additive steps:
+ *
+ *   1. the player's `liarsDiceBeaten` defaults to `[]`  (pool-A ids beaten so far)
+ *   2. the player's `liarsDiceGamesPlayed` defaults to 0 (settled hands, either pool)
+ *   3. `liarsDicePurses` comes from `seedLiarsDicePurses(v14's own map)`
+ *   4. an OPEN `dareHand` gets its five new keys backfilled at TIER-0 values
+ *
+ * STEPS 1 AND 2 ARE STATEMENTS OF FACT ABOUT A v14 SAVE, NOT DEFAULTS — the same
+ * wording MIGRATIONS[12] and [13] use, and for the same reason: a v14 save was
+ * written by an engine in which no roster existed, so "this captain has beaten
+ * nobody in the roster" and "has played zero hands under the new counter" are TRUE
+ * of that save rather than values this migration is picking.
+ *
+ * STEP 3 IS WHERE THE HOUSE RULE ACTUALLY BITES. Unlike the last three entries the
+ * backfilled value is NOT a literal, so there IS a rule to call, and it is called:
+ * `seedLiarsDicePurses` (liarsDiceRules.ts) — the SAME function `createInitialState`
+ * and `deserializeState` use, the `emptyDeedRegistry` pattern by name. It preserves
+ * every key already present, which is what makes it idempotent and what lets a
+ * later content pass add a fourth seat to a port with NO further save version.
+ *
+ * STEP 4 CALLS RULES TOO, never literals: `dicePerSideForTier(0)`,
+ * `maxQuantityForDice(...)` and `wagerBandFor(hand.systemId).max`, with
+ * `opponentKind: 'roaming'` (true by construction — no roster existed at v14) and
+ * `opponentArchetype: null` (required to be null for a roaming hand).
+ *
+ * `cloneState` needs NO change for `liarsDicePurses` either, for the third time and
+ * the same reason: it is a plain-data root field on a module that JSON round-trips
+ * everything except `eventLog` and `npcs`. A hand-written clone clause would be the
+ * aliasing bug that module's header warns about.
  *
  * SEAM: the migration machinery is also exercised WITHOUT relying on this
  * production entry. {@link migrate} takes an injectable `registry` +
@@ -424,9 +460,53 @@ export const MIGRATIONS: Record<number, MigrationFn> = {
     const s = v13State as { dareHand?: unknown };
     return { ...(v13State as object), dareHand: s.dareHand ?? null };
   },
+  // v14->v15: T-145 landed the fixed Liar's Dice roster (pool A) and ALL of its
+  // persisted state in one migration — the only version move in M4e. See the
+  // registry header above for the four steps and why each is a fact rather than a
+  // default. Idempotent: a state that already carries the keys keeps them exactly,
+  // hidden dice and escrow included.
+  14: (v14State) => {
+    const s = v14State as {
+      player?: Record<string, unknown>;
+      dareHand?: Record<string, unknown> | null;
+      liarsDicePurses?: Record<string, number>;
+    };
+    const player = s.player ?? {};
+
+    // Step 4 — an OPEN v14 hand. Every pre-existing key is carried through
+    // untouched; only the five new ones are written, and each from a RULE.
+    let dareHand = s.dareHand ?? null;
+    if (dareHand !== null && typeof dareHand === 'object') {
+      const dicePerSide =
+        typeof dareHand.dicePerSide === 'number' ? dareHand.dicePerSide : dicePerSideForTier(0);
+      dareHand = {
+        ...dareHand,
+        opponentKind: dareHand.opponentKind ?? 'roaming',
+        opponentArchetype: dareHand.opponentArchetype ?? null,
+        dicePerSide,
+        maxQuantity: dareHand.maxQuantity ?? maxQuantityForDice(dicePerSide),
+        bandMax:
+          dareHand.bandMax !== undefined
+            ? dareHand.bandMax
+            : wagerBandFor(Number(dareHand.systemId)).max,
+      };
+    }
+
+    return {
+      ...(v14State as object),
+      player: {
+        ...player,
+        liarsDiceBeaten: (player as { liarsDiceBeaten?: unknown }).liarsDiceBeaten ?? [],
+        liarsDiceGamesPlayed:
+          (player as { liarsDiceGamesPlayed?: unknown }).liarsDiceGamesPlayed ?? 0,
+      },
+      liarsDicePurses: seedLiarsDicePurses(s.liarsDicePurses),
+      dareHand,
+    };
+  },
 };
 
-export const CURRENT_SAVE_VERSION = 14;
+export const CURRENT_SAVE_VERSION = 15;
 
 export type SaveErrorCode =
   'corrupt-json' | 'bad-envelope' | 'no-migration' | 'future-version' | 'invalid-state';
