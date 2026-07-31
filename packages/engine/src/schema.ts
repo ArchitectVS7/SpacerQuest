@@ -12,6 +12,7 @@ import type {
   CargoContract,
   ChartsState,
   DiscoveredPoi,
+  ExplorationFailReason,
   LegacyState,
   LoanState,
   RecoveryState,
@@ -795,6 +796,8 @@ const GameEventSchema = z.discriminatedUnion('type', [
       'invalid-die-index',
       'die-already-spent',
       'recovery-in-progress',
+      // T-131 (D1) · the band-3/4 `apCost` the dawn hand could not cover.
+      'insufficient-dice',
     ]),
   }),
   z.object({
@@ -1498,6 +1501,17 @@ const _covEvRenownRankUp: AssertEventKeys<'RenownRankUp'> = true;
 const _covEvActionBlocked: AssertEventKeys<'ActionBlocked'> = true;
 const _covEvPoiDiscovered: AssertEventKeys<'PoiDiscovered'> = true;
 const _covEvExplorationFailed: AssertEventKeys<'ExplorationFailed'> = true;
+// T-131 · A VALUE-LEVEL GUARD, not a key-level one. `AssertEventKeys` compares
+// KEYS, so a reason added to `ExplorationFailReason` (types.ts) and forgotten in
+// the `z.enum` above would sail past it — and a save carrying the new reason
+// would then fail to parse at load. This pairs the named union with the schema's
+// own `reason` type, so the drift is a `tsc` error. It is the schema half of the
+// same class of hole T-131 closed in the UI, where `recovery-in-progress` had
+// rendered as silence since T-111.
+const _covExplorationFailReason: AssertEqual<
+  ExplorationFailReason,
+  SchemaEventVariant<'ExplorationFailed'>['reason']
+> = true;
 const _covEvSalvageRecovered: AssertEventKeys<'SalvageRecovered'> = true;
 const _covEvContrabandFound: AssertEventKeys<'ContrabandFound'> = true;
 const _covEvUniqueItemAcquired: AssertEventKeys<'UniqueItemAcquired'> = true;
@@ -1588,6 +1602,7 @@ void _covEvRenownRankUp;
 void _covEvActionBlocked;
 void _covEvPoiDiscovered;
 void _covEvExplorationFailed;
+void _covExplorationFailReason;
 void _covEvSalvageRecovered;
 void _covEvContrabandFound;
 void _covEvUniqueItemAcquired;

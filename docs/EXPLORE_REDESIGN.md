@@ -367,6 +367,15 @@ an outcome.**
 This implements **ruling 1** as ruled: the cost is calendar days, N scales with the outcome's
 power, and nothing charges a second die.
 
+**AMENDED (T-131, owner ruling D1, 2026-07-31) — the last clause of the sentence above.**
+Ruling 1 stands for **band 2**, which still pays one calendar day and still charges no second
+die. It does **not** stand for bands 3 and 4: D1 retired their day cost (`recoveryDays: 0`)
+and prices them in **extra dice out of the same dawn hand** (`apCost` 2 and 3), paid at claim.
+So the design named in the callout above is now the **band-2** design, and it covers 24% of
+successful boards rather than 42% (§3.2(b)). Everything §3.1-§3.4 rules about the slot — the
+anchor, the location predicate, the dusk payout, forfeiture, succession, the migration — is
+unchanged; there is simply one band that can open it instead of three.
+
 ### 3.1 (a) The state added, and exactly where
 
 ```ts
@@ -426,8 +435,8 @@ export const EXPLORE_VALUE_BANDS = [
   { band: 0, minValuePoints:  0, recoveryDays: 0, /* + the §5 columns */ },
   { band: 1, minValuePoints:  1, recoveryDays: 0 },
   { band: 2, minValuePoints: 11, recoveryDays: 1 },
-  { band: 3, minValuePoints: 31, recoveryDays: 3 },
-  { band: 4, minValuePoints: 61, recoveryDays: 6 },
+  { band: 3, minValuePoints: 31, recoveryDays: 0, apCost: 2 }, // T-131/D1: was N = 3
+  { band: 4, minValuePoints: 61, recoveryDays: 0, apCost: 3 }, // T-131/D1: was N = 6
 ] as const;
 ```
 
@@ -448,21 +457,36 @@ different table. Content owns where the bands sit; the engine owns what a band m
 type.** A content author cannot hand-tune a row's N because there is nowhere to write it.
 That is a stronger guarantee than a test — a test can be edited to accommodate a field; a
 missing field is a compile error. This is what T-111's and T-115's "never a per-row constant"
-acceptance is asking for, and it is how it should be checked: `grep recoveryDays
+acceptance is asking for, and it is how it should be checked: `grep 'recoveryDays:'
 packages/content/src/exploration.ts` must hit **only** inside `EXPLORE_VALUE_BANDS`.
+**T-131 · `apCost` joins it on identical terms** — no row may carry one, the type is again the
+enforcement, and `grep 'apCost:' packages/content/src/exploration.ts` is checked the same way.
+(Both greps name a *field write* rather than the bare word, because the file's own prose now
+legitimately mentions both names.)
 
 **`recoveryDays: 0` means resolved same-day**, so bands 0 and 1 — 58% of successful boards
 under §5's weights — behave exactly like today's instant loot and never touch
 `player.recovery`. That matters for reachability: the audit found the median day-120 captain
 carrying 27 fuel (p25 = 4), and a verb that always cost a multi-day commitment on top of an
-80-fuel gate would be unusable for exactly the captain it is meant to serve. **The slot is
-occupied on 42% of successful boards, i.e. 42% × 33.6% ≈ 14.1% of Explore attempts.**
+80-fuel gate would be unusable for exactly the captain it is meant to serve.
+
+**AMENDED (T-131, owner ruling D1, 2026-07-31).** The sentence this paragraph used to end on —
+"the slot is occupied on 42% of successful boards, i.e. 42% × 33.6% ≈ 14.1% of Explore
+attempts" — counted bands 2, 3 and 4 together. Bands 3-4 no longer open the slot, so:
+
+- **the slot is occupied on 24% of successful boards** (band 2's weight alone), i.e.
+  24% × 33.6% ≈ **8.1%** of Explore attempts;
+- **76% of successful boards now resolve same-day** — bands 0-1's 58% plus bands 3-4's 18% —
+  where the last 18% is *conditional on the hand*: a band-3/4 find resolves same-day only if the
+  dawn hand can still cover its `apCost`, and is forfeited otherwise. The unconditional figure
+  is the 58% the sentence above already gave.
 
 **The ordering property that makes T-115's whole-table test a property check rather than a
-tuning exercise:** `recoveryDays` and the effect ceiling (§5.2) are **both functions of the
-same band**, and both are monotone non-decreasing in `band`. So "the most powerful outcomes
-are the slowest to recover" is true *by construction* across any 100 rows anyone authors. See
-§5.4 for the exact assertion.
+tuning exercise:** the cost of a find and the effect ceiling (§5.2) are **both functions of the
+same band**, and both are monotone non-decreasing in `band`. So "the most powerful outcomes are
+the most expensive to bring home" is true *by construction* across any 100 rows anyone authors.
+See §5.4 for the exact assertion — and for what D1 did to which currency the claim is stated
+over.
 
 ### 3.3 (c) The four interaction answers
 
@@ -592,9 +616,15 @@ file:
 `debt`, and a recovery pays **credits**; credits become debt reduction only through a DAY-phase
 `pay-debt` act, which a dusk arrival is not. So a recovery whose `dueDay >= 30` is a
 **deliberate bet against the marker** — which is precisely the trade ruling 1 says the day
-cost exists to create, and it is the sharpest instance of it in the game. §5.2 keeps band-4's
-N at 6 days partly for this reason: a day-24 find must still read as a legible gamble rather
-than an unreadable one.
+cost exists to create, and it is the sharpest instance of it in the game.
+
+**AMENDED (T-131, owner ruling D1, 2026-07-31).** The paragraph above used to end: "§5.2 keeps
+band-4's N at 6 days partly for this reason: a day-24 find must still read as a legible gamble
+rather than an unreadable one." Bands 3 and 4 no longer carry an N at all (`recoveryDays: 0`,
+`apCost: 2` and `3`), so **band 2's one day is the longest clock any board can open** and the
+bet against the marker is now available on **day 29 alone**. The legibility the retired
+sentence was buying with a tuned N is delivered by the new rule instead: a one-day op
+straddling the marker is as short and as readable as this trade can be made.
 
 **Two adjacent edges, settled while here:**
 
@@ -605,10 +635,18 @@ than an unreadable one.
   shape) pays at the next dusk, because the predicate is `>=` and not `==`. Stating this is
   what stops someone writing `===` and creating a permanently stuck slot.
 
-**Test T-111 owes:** open a recovery on day 27 with N = 6 (`dueDay` 33), run the real loop
-across day 30, assert `TourOneResolved` fired, `era === 'VETERAN'`, and
-`player.recovery` is **still present and unchanged**; then run to day 33 and assert
+**Test T-111 owes:** open a recovery whose `dueDay` falls on the far side of the day-30
+marker, run the real loop across day 30, assert `TourOneResolved` fired, `era === 'VETERAN'`,
+and `player.recovery` is **still present and unchanged**; then run to that `dueDay` and assert
 `RecoveryPaidOut`.
+
+**AMENDED (T-131, owner ruling D1, 2026-07-31).** As originally written this owed a day-27
+open with N = 6 (`dueDay` 33) — a scenario **no authored content can construct any more**,
+because no band carries `recoveryDays: 6`. The straddle itself is still owed and still
+shipped: `packages/engine/src/__tests__/recovery.test.ts` section 5 opens the longest clock
+that now exists (seed 52's day-30 band-2 board, `dueDay` 31) and asserts exactly the four
+things above. Nothing weakened — the ruling under test is clock-agnostic, so the shortest
+straddle exercises it identically to the longest.
 
 ### 3.4 (d) Save version and migration
 
@@ -675,6 +713,31 @@ calendar days *instead of* a scaling die cost, so nothing may charge a die per r
 This is stated as a constraint because it is the easiest thing for an implementer to add "for
 flavour" and it would silently substitute the design the owner rejected.
 
+> [!IMPORTANT]
+> **AMENDED by owner ruling D1 (`/bakeoff`, 2026-07-31; `TASKS.md` D1 block, delivered by
+> T-131) — the paragraph above now governs BAND 2 ONLY.** Bands 3 and 4 no longer open a
+> recovery at all: they carry `recoveryDays: 0` and an `apCost` of **2** and **3** extra dice,
+> charged **at claim, out of the same dawn hand**, and they resolve same-day
+> (`exploreOutcomes.ts` `claimOutcome`; §5.2's table below). Band 2 is untouched — one calendar
+> day, the four interaction rulings in this section, `player.recovery`, `RecoveryState` and the
+> save v13 schema all exactly as T-111 built them.
+>
+> **The invariant survives, narrowed, rather than disappearing:** nothing charges a die per
+> recovery **day**. A same-day claim cost is not a per-day cost, and what ruling 1 banned — a
+> die cost that *scales with the clock* — is still banned. The mechanical form of the
+> distinction is asserted as a content-table test: **no band may carry both `recoveryDays > 0`
+> and `apCost > 0`**, because a band is drawn *after* the nav check with the sweep's die and the
+> fuel already spent, so an `apCost` row has no later dusk with a dawn hand left to charge
+> against.
+>
+> **A find whose hand cannot cover the `apCost` is FORFEITED** — `ExplorationFailed{reason:
+> 'insufficient-dice'}`, no downgrade and no partial payout. `PoiDiscovered` still fires: the
+> player is told what was found, only its recovery failed. "Downgrade instead of forfeit" is
+> logged as a revisit candidate, not built.
+>
+> The `apCost` numbers are **first-pass, to be moved by play** — the ruling is explicit that
+> this is a playtest, not a re-derivation of §5.5's EV math.
+
 ---
 
 ## §4 · Design 3 — the effect surface
@@ -715,15 +778,21 @@ Per **ruling 2**, an item grants a `DiceBenefit`
 `dawnDiceModifiers` at all three of its call sites: `day.ts` `startDay`,
 `actions/crew.ts` `resolveReroll`, and `packages/ui/src/format.ts` `dawnHandModifiers`.
 
-**The three worked items, ordered by power.** Each names its band, its N from §3b, and — the
-part that makes this a real mapping rather than a list — its interaction with the shipped crew
-roster it shares accumulators with.
+**The three worked items, ordered by power.** Each names its band, its claim cost from §3b,
+and — the part that makes this a real mapping rather than a list — its interaction with the
+shipped crew roster it shares accumulators with.
 
-| # | Item | Band / N | `DiceBenefit` | Why this kind, and its ceiling |
+**AMENDED (T-131, owner ruling D1, 2026-07-31).** The cost column read "Band / N" and gave
+items 2 and 3 as "band 3 / N = 3" and "band 4 / N = 6". Those N values are retired (§5.2:
+bands 3-4 are `recoveryDays: 0`, `apCost: 2` and `3`), so the column is the band's claim cost
+in whichever currency the band charges — days for band 2, extra dice for bands 3-4. **No
+item's band moved**; only what its band costs did.
+
+| # | Item | Band / claim cost | `DiceBenefit` | Why this kind, and its ceiling |
 | --- | --- | --- | --- | --- |
-| 1 | **a salvaged gunnery tally-slate** (low) | band 2 / **N = 1** | `{ kind: 'floor', floor: 3 }` | Floors take **MAX** (`floor = Math.max(floor, benefit.floor)`), and `crew-quartermaster` already grants **floor 5** at a 2,000cr hire — so this is strictly a poor captain's item and goes **completely inert** the day a quartermaster is aboard. `floor` is the **only** kind with an integer dial, so it is the only place fine power gradations can live. |
-| 2 | **an astrogator's marked ephemeris** (mid) | band 3 / **N = 3** | `{ kind: 'reroll' }` | Rerolls **SUM** and are unclamped, so this is strictly additive with `crew-navigator` and can never be redundant. That makes it the safest mid-tier grant and the one whose realized value does not depend on what the player has hired. |
-| 3 | **a Confederation staff pilot's berth-couch** (top) | band 4 / **N = 6** | `{ kind: 'extra-die' }` | The strongest benefit in the game — a whole extra action, priced at 3,000cr as `crew-second`. Extra dice **SUM then CLAMP**: with `crew-second` aboard the combined extra is 2 = `MAX_EXTRA_DICE`, hand size 7 = `MAX_DAWN_HAND_SIZE`. **The cap binds exactly here**, and a *second* extra-die item would be silently swallowed. That is the direct reason the tier is three items and not thirty. |
+| 1 | **a salvaged gunnery tally-slate** (low) | band 2 / **N = 1 day** | `{ kind: 'floor', floor: 3 }` | Floors take **MAX** (`floor = Math.max(floor, benefit.floor)`), and `crew-quartermaster` already grants **floor 5** at a 2,000cr hire — so this is strictly a poor captain's item and goes **completely inert** the day a quartermaster is aboard. `floor` is the **only** kind with an integer dial, so it is the only place fine power gradations can live. |
+| 2 | **an astrogator's marked ephemeris** (mid) | band 3 / **`apCost` 2 dice** | `{ kind: 'reroll' }` | Rerolls **SUM** and are unclamped, so this is strictly additive with `crew-navigator` and can never be redundant. That makes it the safest mid-tier grant and the one whose realized value does not depend on what the player has hired. |
+| 3 | **a Confederation staff pilot's berth-couch** (top) | band 4 / **`apCost` 3 dice** | `{ kind: 'extra-die' }` | The strongest benefit in the game — a whole extra action, priced at 3,000cr as `crew-second`. Extra dice **SUM then CLAMP**: with `crew-second` aboard the combined extra is 2 = `MAX_EXTRA_DICE`, hand size 7 = `MAX_DAWN_HAND_SIZE`. **The cap binds exactly here**, and a *second* extra-die item would be silently swallowed. That is the direct reason the tier is three items and not thirty. |
 
 The existing hand cap therefore still holds with an item equipped, which is T-112's
 acceptance — and it holds because `dawnDiceModifiers` clamps the **combined** sum, not each
@@ -800,15 +869,24 @@ than empirically guessed at (§5.3 does the arithmetic).
 
 ### 5.2 The band table, in full
 
-| band | `minValuePoints` | `recoveryDays` (N) | payload kinds permitted | Class-A ceiling | Class-B permitted | draw weight |
-| --- | --- | --- | --- | --- | --- | --- |
-| 0 | 0 | **0** | `lore` (dead end only) | — | — | **25** |
-| 1 | 1 | **0** | `salvage`, `lore` (+fragment) | — | — | **33** |
-| 2 | 11 | **1** | `salvage`, `unique-item`, `npc`, `lore`, `questline` | +1 strength / +20 `maxFuel` | `floor ≤ 3` | **24** |
-| 3 | 31 | **3** | `unique-item`, `questline`, `npc` | +6 strength / +40 `maxFuel` / +1 pod | `reroll` | **15** |
-| 4 | 61 | **6** | `unique-item`, `questline` | +10 strength / +80 `maxFuel` / +1 pod | `extra-die` | **3** |
+| band | `minValuePoints` | `recoveryDays` (N) | `apCost` | payload kinds permitted | Class-A ceiling | Class-B permitted | draw weight |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | 0 | **0** | **0** | `lore` (dead end only) | — | — | **25** |
+| 1 | 1 | **0** | **0** | `salvage`, `lore` (+fragment) | — | — | **33** |
+| 2 | 11 | **1** | **0** | `salvage`, `unique-item`, `npc`, `lore`, `questline` | +1 strength / +20 `maxFuel` | `floor ≤ 3` | **24** |
+| 3 | 31 | **0** | **2** | `unique-item`, `questline`, `npc` | +6 strength / +40 `maxFuel` / +1 pod | `reroll` | **15** |
+| 4 | 61 | **0** | **3** | `unique-item`, `questline` | +10 strength / +80 `maxFuel` / +1 pod | `extra-die` | **3** |
 
 Weights sum to 100, so a weight reads directly as a percentage of successful boards.
+
+**AMENDED (T-131, owner ruling D1, 2026-07-31) — the `apCost` column, and bands 3/4's `N`.**
+The table shipped with N = 3 and N = 6 at bands 3 and 4; D1 retires both and prices those bands
+in **extra dice from the same dawn hand, paid at claim** instead. Band 4's original justification
+("N held at 6 so a day-24 find still reads as a legible gamble against the day-30 Tour One
+marker") retires with the day cost it justified. **Band 2's N = 1 is deliberately unchanged** —
+the bakeoff measured 42.1% collection on it and the owner kept it. **No band may carry both a
+non-zero `N` and a non-zero `apCost`** (§3.3's amendment says why, and a content-table test
+asserts it). The two numbers are first-pass and expected to move by playtest.
 
 **CORRECTION (T-114, 2026-07-30) — finding F-114-A: band 2's `payload kinds permitted` cell
 gains `questline`, and it is corrected here in place.** As shipped, this table cell omitted
@@ -898,15 +976,28 @@ fix is to move a row between bands or re-cut a band weight, never to widen the t
 
 ### 5.4 Correlation is structural, not asserted per row
 
-`recoveryDays` and the effect ceiling are both functions of `band`, and `band` is a monotone
+The cost of a find and the effect ceiling are both functions of `band`, and `band` is a monotone
 function of `valuePoints`. So the correlation T-115 must demonstrate is **true by
 construction** for any 100 rows anyone authors. The assertion to write is a whole-table
-property, in two parts:
+property, in two parts.
+
+**RESTATED (T-131, owner ruling D1, 2026-07-31).** This section was written over `recoveryDays`
+alone. After D1 that is no longer the cost that scales with value — bands 3-4 pay `apCost` and
+band 2 pays a day, so `recoveryDays` is not even monotone any more (band 2 → band 3 falls 1 → 0)
+and the old part-2 would have gone **vacuous**, both quartile means at zero. The clause's real
+subject is *what a find costs to bring home*, which after D1 has two currencies:
+
+- `dieCost(v) = 1 + apCost(v)` — the sweep's own die plus the band's extra dice;
+- `dayCost(v) = recoveryDays(v)` — calendar days, band 2's alone.
 
 1. **Monotonicity:** for all pairs of rows, `a.valuePoints <= b.valuePoints ⇒
-   recoveryDays(a.valuePoints) <= recoveryDays(b.valuePoints)`.
-2. **Strictness where it matters:** the mean `recoveryDays` of the top `valuePoints` quartile
-   is strictly greater than that of the bottom quartile.
+   apCost(a.valuePoints) <= apCost(b.valuePoints)`; and every row that opens a clock at all is a
+   band-2 row.
+2. **Strictness where it matters:** the mean `dieCost` of the top `valuePoints` quartile is
+   strictly greater than that of the bottom quartile (1 + 3 against 1). The `dayCost` half keeps
+   the non-strict form it can still honestly carry — the bottom quartile never opens a clock, and
+   the top quartile's mean is at least as large — because the only clock left sits in the middle
+   of the table.
 
 Neither is a tuned threshold, so neither can rot — which is the point. (`docs/BALANCE-POLICY.md`
 and the standing constraint both forbid moving a band to make a test pass; a property that
@@ -940,6 +1031,16 @@ roughly 8–12× underwater to roughly 2.7–4.3×. Three honest caveats in both
 - Fragments and questlines are the payoffs the audit itself said were "player-scoped by
   design" and are not income at all. Explore is being rebuilt as **the lore-and-item faucet**,
   not as an income verb.
+
+**AMENDED (T-131, owner ruling D1, 2026-07-31) — caveat 1's figure, twice over.** The "14.1%
+of attempts open a recovery" above was already stale before D1 (§9.5 finding: the shipped
+table put `recoveryDays > 0` on bands 2-4, weight 42, and T-116 measured 42.5% of boards).
+D1 then moved bands 3-4 off days entirely, so the live figure is **band 2's weight alone —
+24% of boards, 24% × 33.6% ≈ 8.1% of attempts**, matching §3.2(b). The caveat itself still
+stands and simply changes currency: what bands 3-4 no longer cost in days they now cost in
+**extra dice** (`apCost` 2 and 3), which this credit-equivalent table does not price either.
+**The per-band credit-equivalents and the ≈447cr total are unchanged** — D1 repriced the cost
+of claiming a find, never the value of one.
 
 **This spec does not re-price fuel or the DC.** `TASKS.md`'s deferred list is explicit that
 "Explore being a net loss for the PLAYER as a balance question" is R-series work and an owner
@@ -1052,6 +1153,17 @@ The save-bump recommendation for T-102 to rule on is in §3d.
 **Measured 2026-07-30 by T-116, on HEAD after T-110…T-115 and T-117 all shipped.** This
 appendix answers the question that scoped the track — *is Explore still a net loss?* — and
 records the capstone the milestone owed. **It changes no constant.**
+
+**READ THIS APPENDIX AS A DATED MEASUREMENT, NOT AS CURRENT RULES (note added T-131,
+2026-07-31).** Every number below was measured against the pre-D1 band table, where bands 2, 3
+and 4 all opened recoveries at N = 1 / 3 / 6. **Owner ruling D1 acted on §9.6** — the 76%
+forfeiture leak measured here is precisely what it retired — by moving bands 3-4 to
+`recoveryDays: 0` with an `apCost` of 2 and 3 dice (§5.2). So the forward-looking sentences in
+§9.4-§9.6 ("bands 2, 3 and 4 (42% of the weight) defer their payout", the three-row payout-rate
+table, "whether 76% is the intended price is an owner call") are **answered, not current**.
+The measurements themselves are left exactly as taken — a measurement is what was measured,
+and re-writing one to match a later ruling would destroy the evidence that motivated it. The
+post-D1 re-measurement is T-131's own capstone, not this appendix.
 
 ### 9.1 The verdict, first
 

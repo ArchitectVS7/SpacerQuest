@@ -97,6 +97,7 @@ import {
   type FuelPurchaseQuote,
   type PortQuote,
   type PortEventFailReason,
+  type ExplorationFailReason,
   type SaveErrorCode,
 } from '@spacerquest/engine';
 import type { RenownRankId, AnonymousInterceptorKind } from '@spacerquest/content';
@@ -645,6 +646,40 @@ export function portFailureExplanation(failure: PortEventFailReason): string {
     case 'invalid-die-index':
     case 'die-already-spent':
       return 'Assign a die';
+  }
+}
+
+/**
+ * T-131 · Translate the engine's typed `ExplorationFailReason` into an honest
+ * visible notice — this project's "typed fails render as notices, never silence"
+ * rule. Pure display translation; re-derives no rule.
+ *
+ * EXHAUSTIVE BY COMPILATION, exactly as `portFailureExplanation` above is: no
+ * `default`, no trailing `return`, so an eighth reason added to the union fails
+ * `tsc` here ("function lacks ending return statement") until it is given a line.
+ * That is the mechanical half of closing the hole this task found — the UI's
+ * `explorationFailNoticeFrom` (store.ts) switched on the reason INLINE, handled
+ * five of the six shipped reasons, and fell through to `null` on the sixth, so
+ * `recovery-in-progress` had rendered as silence since T-111 despite the
+ * docstring claiming full coverage. Extracting it here makes that class of bug a
+ * compile error rather than a review catch, and testable without importing the
+ * store (`store.ts` runs `init()` at module load).
+ */
+export function explorationFailExplanation(reason: ExplorationFailReason): string {
+  switch (reason) {
+    case 'insufficient-fuel':
+      return 'Not enough fuel to reach an off-lane target.';
+    case 'nav-check':
+      return 'The sweep turned up nothing but static.';
+    case 'no-die':
+    case 'invalid-die-index':
+    case 'die-already-spent':
+      return 'That sweep needs a fresh die from the hand.';
+    // T-131 · the two that used to be silence, and the one this task adds.
+    case 'recovery-in-progress':
+      return 'The crew is holding station on a salvage op — no hands free for a sweep.';
+    case 'insufficient-dice':
+      return 'Charted it, but the hand was too thin to lift it — the find was left behind.';
   }
 }
 

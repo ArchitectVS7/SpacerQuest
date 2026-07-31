@@ -714,6 +714,58 @@ const UNCHANGED_POLICIES = [
  *    size from stream noise, re-pricing the Dare is R-owned per §8, and T-125 —
  *    the very next task — owns the milestone's single capstone, its sweep, its
  *    re-pinned baseline and its verdict.
+ *
+ * 21. T-131 — OWNER RULING D1: bands 3-4 of the Explore ladder pay in DICE, not
+ *    days. EXACTLY THE SAME TWO ROWS MOVE that entries 15 and 16 moved, and for
+ *    the same structural reason: only a policy that flies off-lane sweeps can
+ *    feel a change to what a board costs or yields.
+ *      explorer 2537a7aa5185d3fd -> cfe5aa73ce12c16f
+ *      smuggler faa0c778be299406 -> 50d24df7e9891d8f
+ *      trader / fighter / veteran / gambler / greedy — ALL UNCHANGED, byte for
+ *      byte. Five of seven identical is again the evidence that a verb-cost
+ *      change moved the CALLERS and not the world.
+ *
+ *    MECHANISM. ONE CONTENT edit and ONE ENGINE rule, and no sim edit at all:
+ *      (1) `EXPLORE_VALUE_BANDS` bands 3 and 4 go `recoveryDays` 3/6 -> 0 and
+ *          gain `apCost` 2/3.
+ *      (2) `claimOutcome` (engine `exploreOutcomes.ts`) grows a third branch: an
+ *          `apCost` row spends that many MORE dice from the same dawn hand,
+ *          lowest-value first, and resolves TODAY; a hand that cannot cover it
+ *          FORFEITS the find with the new typed
+ *          `ExplorationFailed{reason:'insufficient-dice'}`.
+ *    THREE CHANNELS REACH A CAMPAIGN, in descending order of effect:
+ *      (a) THE PAYOUT MOVES FORWARD. A band-3/4 find used to be delivered at the
+ *          dusk of dueDay, and only if the captain was still parked — so most of
+ *          them were forfeited by the §3.3(a) location predicate the moment the
+ *          policy travelled. They now pay on the day of the board, which is why
+ *          the explorer's mean and median both RISE.
+ *      (b) THE HAND SHRINKS on the day of a band-3/4 board (1 + 2 or 1 + 3 dice
+ *          off one action), so the rest of that day is played with fewer dice and
+ *          every subsequent action re-phases that seed's stream.
+ *      (c) THE `recovery-in-progress` REFUSAL FIRES FAR LESS. The slot is now
+ *          opened on 24% of successful boards instead of 42%, so the day AFTER a
+ *          good find is no longer spent held on station.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      explorer  final credits  median 10,553 -> 18,383   mean 15,693 -> 18,359
+ *      smuggler  final credits  median  7,492 ->  5,653   mean  6,440 ->  6,193
+ *      fragments acquired (sum) explorer 17 -> 16, smuggler 9 -> 9
+ *      fuel starvation days 0 -> 0 in both; subsistence days explorer 0 -> 1,
+ *      smuggler 0 -> 0.
+ *    THE DIRECTION IS UP FOR THE EXPLORER AND FLAT-TO-DOWN FOR THE SMUGGLER,
+ *    which is what (a) and (b) predict — the explorer boards often enough to
+ *    collect the top of the ladder it was previously losing, and the smuggler
+ *    boards rarely enough that the shorter hand is the only channel it feels.
+ *    NOTHING IS TUNED IN RESPONSE. The `apCost` numbers 2 and 3 are the owner's
+ *    first-pass values and D1 is explicit that they move by PLAYTEST, not by
+ *    fitting a five-seed campaign sample; five seeds cannot separate a shift of
+ *    this size from stream noise in any case, and the milestone's own sweep
+ *    capstone (`t131-explore-ap`, 8,000 rows) is what the eventual read is taken
+ *    against.
+ *
+ *    THE BAND-2 SENTINEL AT THE TOP OF THIS FILE IS UNMODIFIED AND STILL GREEN:
+ *    'every band-2 row is recoveryDays: 1'. D1 left band 2 alone deliberately and
+ *    that assertion is how this file proves it.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -726,12 +778,15 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   fighter: 'dc6ca4fbcce58659',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
-  // takes re-phases.
-  explorer: '2537a7aa5185d3fd',
+  // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
+  // pay dice at claim instead of days, so the finds this policy used to open and
+  // then lose to the location predicate are now collected on the day.
+  explorer: 'cfe5aa73ce12c16f',
   veteran: 'f701430cfe32f7cb',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
-  // as the trader.
-  smuggler: 'faa0c778be299406',
+  // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
+  // through the shorter hand on a band-3/4 board rather than through the payout.
+  smuggler: '50d24df7e9891d8f',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sun-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts

@@ -15,9 +15,14 @@
  *
  * T-111 · THE CLAIM/PAYOFF SPLIT. `resolveExploreOutcome` is unchanged and is the
  * PAYOFF resolver — the dusk payout in `day.ts` calls it too. In front of it sits
- * `claimOutcome`, which decides whether a drawn row is delivered today or opens
- * the multi-day recovery slot; `bandFor` / `recoveryDays` are the rule it reads
- * (docs/EXPLORE_REDESIGN.md §3).
+ * `claimOutcome`, which decides whether a drawn row is delivered today, delivered
+ * today for EXTRA DICE, or opens the multi-day recovery slot; `bandFor` /
+ * `recoveryDays` / `apCost` are the rule it reads (docs/EXPLORE_REDESIGN.md §3).
+ *
+ * T-131 (owner ruling D1, 2026-07-31) · THE CLAIM SPLIT IS THREE WAYS, NOT TWO.
+ * The multi-day recovery is now BAND 2 only; bands 3-4 charge `apCost` extra dice
+ * at claim and resolve same-day. See `claimOutcome`'s own header for the full
+ * rule and for what that does to the rng stream.
  *
  * T-117 · THE DRAW IS NOW ONE WEIGHTED ROW PER BOARD. `drawOutcome` replaces the
  * transitional three-leg `drawLegacyLoot`, which is deleted with the content table
@@ -42,6 +47,7 @@ import {
 } from '@spacerquest/content';
 import { DiscoveredPoi, GameEvent, GameState, ShipComponentId } from './types.js';
 import { SeededRng } from './rng.js';
+import { spendDie } from './dice.js';
 import { fitExploreModule } from './components.js';
 import { maxCargoPodsForShip } from './actions/shipyard.js';
 import { fragmentCount, grantFragment } from './nemesis.js';
@@ -106,9 +112,26 @@ function bandFor(valuePoints: number): ExploreValueBand {
  * hand-tuning one row's clock is a compile error rather than a review catch.
  *
  * 0 ⇒ resolved same-day, exactly like the pre-T-111 instant loot.
+ *
+ * T-131 (D1) · NARROWED TO BAND 2. Bands 3-4 return 0 here and charge `apCost`
+ * below instead.
  */
 export function recoveryDays(valuePoints: number): number {
   return bandFor(valuePoints).recoveryDays;
+}
+
+/**
+ * T-131 (owner ruling D1, 2026-07-31) · HOW MANY EXTRA DICE a find of this value
+ * costs AT CLAIM, on top of the sweep's own die, out of the SAME dawn hand
+ * (docs/EXPLORE_REDESIGN.md §3.3, §5.2). Sibling of `recoveryDays` in every
+ * respect: a rule over a content band table, NEVER a per-row constant —
+ * `ExploreOutcomeDefinition` has no `apCost` key, so hand-tuning one row's dice
+ * cost is a compile error rather than a review catch.
+ *
+ * 0 ⇒ the sweep's own die is the whole cost (bands 0-2).
+ */
+export function apCost(valuePoints: number): number {
+  return bandFor(valuePoints).apCost;
 }
 
 /**
@@ -361,19 +384,31 @@ export function resolveExploreOutcome(
 
 /**
  * T-111 · DELIVER A DRAWN ROW — the CLAIM half, sitting in front of the PAYOFF
- * half above (docs/EXPLORE_REDESIGN.md §3). One of two things happens:
+ * half above (docs/EXPLORE_REDESIGN.md §3). T-131 (owner ruling D1, 2026-07-31)
+ * makes this a THREE-way split, not a two-way one:
  *
- *  - `recoveryDays(valuePoints) === 0` (bands 0-1) → the row resolves TODAY,
+ *  - `recoveryDays === 0 && apCost === 0` (bands 0-1) → the row resolves TODAY,
  *    byte-for-byte as it did before T-111;
- *  - otherwise → the row OPENS the single recovery slot and is delivered N days
- *    from now, at the dusk of `dueDay`, by `day.ts` endDay.
+ *  - `recoveryDays > 0` (BAND 2 ONLY, since D1) → the row OPENS the single
+ *    recovery slot and is delivered N days from now, at the dusk of `dueDay`, by
+ *    `day.ts` endDay. Untouched by D1 in every particular;
+ *  - `apCost > 0` (BANDS 3-4, new at D1) → the row resolves TODAY, but only
+ *    after `apCost` MORE dice are spent out of the same dawn hand. If the hand
+ *    cannot cover it the find is FORFEITED — `ExplorationFailed{reason:
+ *    'insufficient-dice'}`, no downgrade and no partial payout.
  *
- * THE DEFER PATH CONSUMES NO RNG. That is load-bearing, not incidental — the
- * payload rolls at PAYOUT, off a fork of the dusk rng, which is what lets the
+ * THE BAND-2 DEFER PATH CONSUMES NO RNG. That is load-bearing, not incidental —
+ * the payload rolls at PAYOUT, off a fork of the dusk rng, which is what lets the
  * value be rolled fresh from the CURRENT content row rather than frozen onto the
- * save. The determinism contract at the top of this file is unchanged: a board
- * still draws (1) POI type, (2) flavour name, (3) outcome row, (4) any
+ * save. The determinism contract at the top of this file is unchanged for it: a
+ * board still draws (1) POI type, (2) flavour name, (3) outcome row, (4) any
  * within-payload roll — step (4) simply happens N days later.
+ *
+ * D1 · THE `apCost` PATH DOES CONSUME RNG AT CLAIM, and deliberately: it calls
+ * `resolveExploreOutcome` on the spot, exactly as a band-0/1 find does, so step
+ * (4) happens now. That is a real stream change for any seed whose board draws a
+ * band-3/4 row and it is why the sim replay goldens moved with this task. The
+ * FORFEIT path consumes none — nothing rolls, because nothing pays.
  *
  * T-117 · THE MULTI-LEG RE-PHASING IS GONE. While the transitional carrier lived,
  * a deferred row's skipped payload roll shifted every subsequent leg's chance roll
@@ -423,6 +458,59 @@ export function claimOutcome(
     });
     return;
   }
+
+  // T-131 (D1) · THE EXTRA-DICE CLAIM COST — bands 3-4. The sweep's own die is
+  // already spent by `resolveExploration`; this charges `apCost` MORE out of the
+  // same dawn hand, immediately.
+  const extraDice = apCost(outcome.valuePoints);
+  if (extraDice > 0) {
+    // THE PICK IS A RULE, not an implementation detail: the LOWEST-VALUE unspent
+    // dice first, ties broken by ascending index. The payment ignores die values
+    // entirely (any die pays), so spending the cheapest ones deterministically
+    // preserves the player's best dice for the checks still ahead in the day.
+    // Read off the PRE-PAYMENT hand — the sort must not run against a hand being
+    // mutated under it.
+    const hand = state.player.dawnHand;
+    const payable: number[] = [];
+    if (hand) {
+      for (let i = 0; i < hand.dice.length; i += 1) {
+        if (!hand.spent[i]) payable.push(i);
+      }
+      payable.sort((a, b) => hand.dice[a] - hand.dice[b] || a - b);
+    }
+
+    if (payable.length < extraDice) {
+      // FORFEITED. `dawnHand` is optional (`types.ts` `PlayerState`), and a
+      // missing hand counts as insufficient — it falls out of the same compare.
+      // `PoiDiscovered` and its wire line already fired upstream in
+      // `resolveExploration` and are untouched: the player is told what was
+      // found, only its recovery failed. No downgrade, no partial payout.
+      events.push({
+        type: 'ExplorationFailed',
+        day: state.day,
+        systemId: poi.systemId,
+        reason: 'insufficient-dice',
+      });
+      events.push({
+        type: 'WireEntry',
+        day: state.day,
+        kind: 'plain',
+        message:
+          `Player's crew could not raise the hands to lift the find off ${poi.name} — ` +
+          `the haul was left where it lay.`,
+      });
+      return;
+    }
+
+    // Loop the ONE existing spend primitive (`dice.ts` `spendDie`, one index at a
+    // time). There is deliberately no second multi-die spend surface.
+    let paid = state.player.dawnHand!;
+    for (const index of payable.slice(0, extraDice)) {
+      paid = spendDie(paid, index).hand;
+    }
+    state.player.dawnHand = paid;
+  }
+
   resolveExploreOutcome(state, outcome, poi, rng, events);
 }
 

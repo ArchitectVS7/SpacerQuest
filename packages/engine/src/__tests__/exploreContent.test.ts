@@ -16,7 +16,7 @@ import {
   StoryletDefinition,
 } from '@spacerquest/content';
 import { resolveExploration } from '../actions/exploration.js';
-import { recoveryDays } from '../exploreOutcomes.js';
+import { apCost, recoveryDays } from '../exploreOutcomes.js';
 import { applyPlayerAction, endDay, startDay } from '../day.js';
 import { refreshAvailableStorylets } from '../storylets.js';
 import { createInitialState } from '../state.js';
@@ -173,18 +173,52 @@ describe('T-113/T-114 · every authored explore row is well-formed', () => {
     }
   });
 
-  it('NO authored row carries a recoveryDays key, and its clock is its BAND‘s', () => {
-    // The compile-time absence of the key on `ExploreOutcomeDefinition` is the
+  it('NO authored row carries a recoveryDays or apCost key, and both are its BAND‘s', () => {
+    // The compile-time absence of the keys on `ExploreOutcomeDefinition` is the
     // real enforcement; this is the runtime belt.
     //
     // T-114 · the second clause was `=== 0` while bands 0-1 were the whole
     // table. It is now the general claim it always meant: a row's recovery clock
     // is a function of its BAND and of nothing else, so every band-2 row opens a
     // one-day op purely because band 2 says 1 — never because a row said so.
+    //
+    // T-131 · `apCost` joins it on identical terms (owner ruling D1). A row may
+    // no more hand-tune its dice cost than its day count, and the same two
+    // clauses say so.
     for (const row of authored) {
       expect(Object.keys(row)).not.toContain('recoveryDays');
+      expect(Object.keys(row)).not.toContain('apCost');
       expect(recoveryDays(row.valuePoints), `${row.id} clock`).toBe(bandOf(row).recoveryDays);
+      expect(apCost(row.valuePoints), `${row.id} dice cost`).toBe(bandOf(row).apCost);
     }
+  });
+
+  it('T-131 · NO band charges BOTH calendar days AND extra dice', () => {
+    // THE LOAD-BEARING INVARIANT of owner ruling D1, written as a test and not as
+    // a comment. WHY it holds and must keep holding: a band is drawn AFTER the
+    // nav check, with the sweep's own die and the 80 fuel already spent, and the
+    // `apCost` is charged out of THAT SAME dawn hand at claim. A row that also
+    // deferred N days would have to charge dice at a later dusk, when there is no
+    // dawn hand left to charge against — so an `apCost` row can only ever resolve
+    // same-day. The two costs are alternatives, never a sum.
+    for (const band of EXPLORE_VALUE_BANDS) {
+      expect(
+        band.recoveryDays > 0 && band.apCost > 0,
+        `band ${band.band} charges ${band.recoveryDays} days AND ${band.apCost} dice`,
+      ).toBe(false);
+    }
+  });
+
+  it('T-131 · every band‘s apCost is a non-negative integer, on the D1 ladder', () => {
+    for (const band of EXPLORE_VALUE_BANDS) {
+      expect(Number.isInteger(band.apCost), `band ${band.band} apCost`).toBe(true);
+      expect(band.apCost, `band ${band.band} apCost`).toBeGreaterThanOrEqual(0);
+    }
+    // The ladder D1 ruled, pinned by index: bands 0-2 free, band 3 two extra
+    // dice, band 4 three. These two numbers are FIRST-PASS and expected to move
+    // by playtest — when they do, this line moves with the band table and the
+    // ruling that authorises it, never on its own to make something else green.
+    expect(EXPLORE_VALUE_BANDS.map((band) => band.apCost)).toEqual([0, 0, 0, 2, 3]);
   });
 
   it('salvage rows declare an ordered credit band inside their OWN band‘s §5.2 range', () => {
@@ -604,7 +638,15 @@ describe('T-114 · every id an authored row names resolves against real content'
 function craftExploreState(die: number, pilot: number): GameState {
   const state = createInitialState(1);
   state.dayPhase = DayPhase.DAY;
-  state.player.dawnHand = { dice: [die], spent: [false] };
+  // T-131 (D1) · THE HAND CARRIES THREE SPARE DICE BEHIND THE CONTROLLED ONE.
+  // Bands 3-4 now charge `apCost` (2 and 3) EXTRA dice at claim, so a one-die
+  // hand would forfeit every top-of-ladder find and the reachability sweep below
+  // would silently stop reaching the rarest 33 rows in the table. The spares are
+  // at indices 1-3 and are never the die the nav check reads (`spendDie: 0`), so
+  // the check itself is unchanged; they exist only so the payment can be MADE.
+  // The forfeit path is proven on purpose in `exploreAp.test.ts`, not by accident
+  // here.
+  state.player.dawnHand = { dice: [die, 1, 1, 1], spent: [false, false, false, false] };
   state.player.stats[Stat.PILOT] = pilot;
   state.player.ship.fuel = 1000;
   return state;
@@ -644,13 +686,15 @@ describe('T-115 · EVERY row in the table resolves through the real Explore path
   // resolver, so what is asserted below is what a player can actually reach.
   //
   // TWO OBSERVATION CHANNELS, and between them they now cover the whole table:
-  //   - bands 0-1 are `recoveryDays: 0`, so the row resolves on the day of the
-  //     board and is seen through its own unique `wireFound` copy;
-  //   - bands 2-4 DEFER, so the row is seen through the `RecoveryStarted` it
-  //     opens. That is not a workaround, it is the design (T-111 §3): the CLAIM
-  //     half fires today and the PAYOFF lands at the dusk of `dueDay`. This sweep
-  //     drives the ACTION only; section 5 drives the payout half through a real
-  //     dusk.
+  //   - bands 0-1 and (since T-131/D1) bands 3-4 resolve on the day of the board,
+  //     so the row is seen through its own unique `wireFound` copy. Bands 3-4 pay
+  //     `apCost` extra dice out of the same hand first, which is why the helper
+  //     above deals four dice instead of one;
+  //   - BAND 2 alone DEFERS, so its rows are seen through the `RecoveryStarted`
+  //     they open. That is not a workaround, it is the design (T-111 §3, narrowed
+  //     to band 2 by owner ruling D1): the CLAIM half fires today and the PAYOFF
+  //     lands at the dusk of `dueDay`. This sweep drives the ACTION only; section
+  //     5 drives the payout half through a real dusk.
   const observed = new Map<string, { amount: number | null; poiName: string }>();
   let fragmentBoards = 0;
   let salvageBoards = 0;

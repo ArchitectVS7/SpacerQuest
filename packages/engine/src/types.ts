@@ -245,6 +245,43 @@ export type CrossingRefusal =
   | 'insufficient-stake'
   | 'ship-cannot-carry-the-burn';
 
+/**
+ * T-131 · The typed refusal reasons an `Explore` can resolve to (the
+ * `ExplorationFailed.reason` set). Kept as a NAMED ALIAS — the exact shape and
+ * for the exact reason `PortEventFailReason` (below) is one: the resolver, the
+ * zod enum (`schema.ts`) and the UI's notice mapper (`ui/format.ts`
+ * `explorationFailExplanation`) must all read ONE source of truth, and an
+ * exhaustive `switch` over a named union is a compile-time guarantee that a new
+ * reason cannot render as silence. (It regressed exactly that way once:
+ * `recovery-in-progress` shipped at T-111 and fell through the UI's switch to
+ * `null` until T-131 closed it.)
+ *
+ * THREE CLASSES, and which resources are charged differs per class:
+ *  - RESOLVED fails — `nav-check` / `insufficient-fuel`: a real detour was
+ *    attempted, so the die IS spent (and fuel burned, for `nav-check`).
+ *  - MALFORMED-input fails (T-1003) — `no-die` / `invalid-die-index` /
+ *    `die-already-spent`: the Explore action named no usable die, so there was
+ *    nothing to spend. NO die is spent and NO fuel is burned; these replace the
+ *    raw `Error`s that used to crash the UGT adapter, keeping the typed-fail-
+ *    event convention (every player-possible input is an event, never a throw).
+ *  - VERB-REFUSED (T-111) — `recovery-in-progress`: the ship is already
+ *    committed to an open recovery (`player.recovery !== null`), so the verb
+ *    itself is refused before any resource is touched. NO die, NO fuel.
+ *  - PAYMENT-REFUSED (T-131) — `insufficient-dice`: a class of its own, and the
+ *    ONLY one where the find was real. The detour flew, the nav check passed,
+ *    `PoiDiscovered` fired, the sweep's die and the fuel are spent — and the
+ *    drawn row's band carries an `apCost` the remaining dawn hand could not
+ *    cover, so the PAYOUT is forfeited. No downgrade, no partial payout.
+ */
+export type ExplorationFailReason =
+  | 'nav-check'
+  | 'insufficient-fuel'
+  | 'no-die'
+  | 'invalid-die-index'
+  | 'die-already-spent'
+  | 'recovery-in-progress'
+  | 'insufficient-dice';
+
 // Discriminator for game events
 export type GameEvent =
   | { type: 'DawnRoll'; day: number; hand: number[] }
@@ -485,32 +522,14 @@ export type GameEvent =
     }
   | {
       /**
-       * An Explore attempt produced nothing (T-111a). Two distinct classes:
-       *  - RESOLVED fails — `nav-check` / `insufficient-fuel`: a real detour was
-       *    attempted, so the die IS spent (and fuel burned, for nav-check).
-       *  - MALFORMED-input fails (T-1003) — `no-die` / `invalid-die-index` /
-       *    `die-already-spent`: the Explore action named no usable die, so there
-       *    was nothing to spend. NO die is spent and NO fuel is burned; these
-       *    replace the raw `Error`s that used to crash the UGT adapter, keeping
-       *    the typed-fail-event convention (every player-possible input is an
-       *    event, never a throw).
+       * An Explore attempt paid out nothing (T-111a). WHY is the `reason`, and
+       * the four classes it splits into — with which resources each charges —
+       * are documented once on `ExplorationFailReason` above.
        */
       type: 'ExplorationFailed';
       day: number;
       systemId: number;
-      reason:
-        | 'nav-check'
-        | 'insufficient-fuel'
-        | 'no-die'
-        | 'invalid-die-index'
-        | 'die-already-spent'
-        // T-111 · A THIRD CLASS, distinct from both above: the ship is already
-        // committed to an open recovery (`player.recovery !== null`), so the
-        // verb itself is refused before any resource is touched. NO die is spent
-        // and NO fuel is burned — the exact justification the `no-die` branch
-        // gives ("there was no usable die to spend on a detour"), for the same
-        // reason: there was nothing to fly, so there is nothing to charge.
-        | 'recovery-in-progress';
+      reason: ExplorationFailReason;
     }
   | {
       /** A boarded POI's loot roll yielded salvage — real credits (T-111b). */
@@ -1501,6 +1520,18 @@ export interface LoanState {
  * A RECOVERY IS A ZERO-DIE COMMITMENT after the initiating Explore die. Ruling 1
  * chose calendar days INSTEAD OF a scaling die cost; nothing may charge a die per
  * recovery day.
+ *
+ * AMENDED by D1 (owner ruling, `/bakeoff`, 2026-07-31) — THE PARAGRAPH ABOVE NOW
+ * GOVERNS BAND 2 ONLY. Bands 3 and 4 no longer open a recovery at all: they carry
+ * `recoveryDays: 0` and an `apCost` of 2 / 3 EXTRA dice, charged AT CLAIM from the
+ * same dawn hand and resolved same-day (`exploreOutcomes.ts` `claimOutcome`;
+ * docs/EXPLORE_REDESIGN.md §3.3, §5.2). The invariant SURVIVES EXACTLY AS WRITTEN
+ * for the recoveries that still exist — nothing charges a die per recovery *day*.
+ * Keep that distinction: a same-day claim cost is not a per-day cost, and the ban
+ * D1 narrowed is the ban on a die cost that SCALES WITH THE CLOCK. A band may
+ * never carry both `recoveryDays > 0` and `apCost > 0`; the content table asserts
+ * it (`__tests__/exploreContent.test.ts`), because a band drawn AFTER the nav
+ * check has no later dawn hand to charge against.
  *
  * READERS: `day.ts` endDay (the dusk tick — departure forfeit, then payout);
  * `legacy.ts` applySuccession (forfeit on death); `actions/exploration.ts` (the

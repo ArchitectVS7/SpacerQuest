@@ -42,9 +42,28 @@ because a sub-agent gets this file and its named pointers, and nothing else.
    **AMENDED by D1 (owner, 2026-07-31): this ruling now governs band 2 only.** Bands 3-4
    move to a same-day extra-dice cost (T-131, M4a) — the D1 bakeoff found their multi-day
    holds price the deep ladder upside-down (band 4: zero collections in 14,400 sim-days).
-   T-131 owes the matching dated amendments to the "zero-die commitment" comment at
-   `packages/engine/src/types.ts:1501-1503` and `docs/EXPLORE_REDESIGN.md` §3.3, which
-   both still state the unamended rule.
+   **DISCHARGED by T-131 (2026-07-31):** the dated amendments landed on the "zero-die
+   commitment" comment in `packages/engine/src/types.ts` (the `RecoveryState` header) and on
+   `docs/EXPLORE_REDESIGN.md` §3.3 — plus, in the same pass, §5.2's band table (an `apCost`
+   column, bands 3/4's `N` retired), §5.4 (the correlation restated over the combined cost,
+   which the old `recoveryDays`-only form would have made vacuous) and §3.2(b) (the sketch,
+   the grep clause and the same-day share, now 58% unconditional + 18% conditional on the
+   hand). The invariant survives narrowed to band 2: nothing charges a die per recovery *day*,
+   and a same-day claim cost is not a per-day cost.
+   **SWEEP COMPLETED (T-131 fix round 1, 2026-07-31)** — review found the first pass amended
+   the sections it edited but left four sibling passages asserting the retired rule as current
+   fact. All now carry dated D1 notes: `docs/EXPLORE_REDESIGN.md` **§3's opening** ("nothing
+   charges a second die" — true of band 2 only now), **§3.3(d)** (the band-4 `N = 6` marker
+   justification, and the test-owed scenario, which named a day-27 / N = 6 open no authored
+   content can construct any more — the shipped straddle test uses band 2's `dueDay` 31),
+   **§4.2's worked-item table** (items 2-3 read "band 3 / N = 3" and "band 4 / N = 6"; the
+   column is now the band's claim cost in its own currency), **§5.5's caveat 1** (the "14.1%
+   of attempts" figure, stale twice over — the live figure is band 2's 24% of boards ≈ 8.1% of
+   attempts), and a header on **§9** marking the whole T-116 appendix as a dated pre-D1
+   measurement whose §9.6 leak is what D1 answered — its numbers are left exactly as taken.
+   Also corrected: §3.2(b)'s same-day total read **82%**; 58 + 18 = **76%**, which is the
+   figure §9.6's own title independently carries. And `recovery.test.ts:394`'s cross-reference
+   to "section 7 drives the N = 6 clock" now names what section 7 actually tests.
 2. **A unique item's die effect uses the EXISTING, SHIPPED-EMPTY hook.** `DiceBenefit`
    (`packages/content/src/crew.ts`) is already
    `{ kind: 'extra-die' } | { kind: 'reroll' } | { kind: 'floor'; floor: number }`, and
@@ -1970,7 +1989,31 @@ mandatory gate** — the Gate block above is amended accordingly.
 
 ## M4a — D1's hybrid: action points for the deep end of the Explore ladder
 
-### T-131 · Bands 3-4 pay in dice, not days — `status: TODO` · `coder: opus` · `after: T-125`
+### T-131 · Bands 3-4 pay in dice, not days — `status: DONE` · `coder: opus` · `after: T-125`
+
+**Delivered (2026-07-31):** `ExploreValueBand` gained the `apCost` field alongside
+`recoveryDays` (band 2 untouched at `recoveryDays: 1, apCost: 0`; bands 3-4 flipped to
+`recoveryDays: 0, apCost: 2` and `apCost: 3`), with a content-table test asserting no band
+carries both fields non-zero. `claimOutcome` now splits three ways: bands 0-1 resolve
+same-day as before, band 2 still opens the untouched calendar-day recovery slot, and
+bands 3-4 spend `apCost` more dice out of the same dawn hand (lowest-value unspent dice
+first, looped through the existing single-index `spendDie`) and resolve immediately
+through `resolveExploreOutcome` — or, if the hand can't cover it, forfeit the find with a
+new `ExplorationFailed{reason:'insufficient-dice'}` and a real UI notice, while
+`PoiDiscovered` still fires either way. The pre-existing silent fallthrough for
+`'recovery-in-progress'` in `explorationFailNoticeFrom` was fixed in the same pass. The
+`types.ts`/`schema.ts` zero-die-commitment invariant and `docs/EXPLORE_REDESIGN.md` §3/§3.3
+carry the dated D1 amendment narrowing the rule to band 2, replay goldens were
+regenerated for the new at-claim RNG draw on bands 3-4, and `CURRENT_SAVE_VERSION` did not
+move since `apCost` is a content constant, not save state. Deliberate scope boundary: the
+band-2 calendar-day machinery, its four T-111 interaction rulings, and
+`campaign-degraded.test.ts:411`'s band-2 sentinel were left untouched per the owner's
+hybrid ruling — the rejected full-uniform-conversion alternative (band 2 folded in too,
+forcing a `player.recovery` schema removal) was logged, not built; the extra-dice
+values (2 and 3) are first-pass numbers to be tuned by playtest feel, not re-derived
+from the bakeoff's EV math; and the Explore-verb ledger row itself stays DEFERRED,
+re-asked only once T-150 hands back fresh post-fix numbers.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/EXPLORE_REDESIGN.md` §3/§5, `TASKS.md`'s D1 ruling block, and t · attempts=2/4.
 
 (Deliberately depends on T-125, not T-130 — T-130 is a still-open human gate with D2/D6/D7
 pending, but this task is self-contained and ready to run the moment the owner wants it,

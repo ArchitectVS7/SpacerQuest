@@ -17,6 +17,7 @@ import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerq
 import {
   careerTransferMessage,
   combatAftermathSummary,
+  explorationFailExplanation,
   explorationOutcome,
   nextOnboardingSeen,
   shipyardFailureExplanation,
@@ -443,26 +444,23 @@ function storyletBlockNoticeFrom(events: GameEvent[]): string | null {
 }
 
 /**
- * T-1403 · Translate the engine's typed `ExplorationFailed` refusal into an honest
- * visible notice — the "typed fails render as notices, never silence" guarantee.
- * Returns null when no sweep failure occurred (the detour discovered a POI). Every
- * `ExplorationFailed.reason` the resolver emits (exploration.ts) maps here. The
- * three UI-prevented reasons (no-die / invalid-die-index / die-already-spent) still
- * get a line so a race with state is never a silent no-op.
+ * T-1403 · FIND the `ExplorationFailed` in a returned event stream and render it.
+ * Returns null in EXACTLY ONE case — no `ExplorationFailed` is present at all (the
+ * detour discovered a POI and paid out). It is no longer possible for a present
+ * refusal to render as null.
+ *
+ * T-131 · THE PROSE LIVES IN `format.ts` `explorationFailExplanation`, which is an
+ * exhaustive `switch` over the named `ExplorationFailReason` union with no
+ * `default` — so a new reason is a compile error there rather than silence here.
+ * This function used to switch inline and covered five of six reasons;
+ * `recovery-in-progress` fell through to `null` from T-111 until T-131, despite
+ * this docstring claiming full coverage. It does not claim what it cannot enforce
+ * any more: the type does the enforcing.
  */
 function explorationFailNoticeFrom(events: GameEvent[]): string | null {
   for (const e of events) {
     if (e.type !== 'ExplorationFailed') continue;
-    switch (e.reason) {
-      case 'insufficient-fuel':
-        return 'Not enough fuel to reach an off-lane target.';
-      case 'nav-check':
-        return 'The sweep turned up nothing but static.';
-      case 'no-die':
-      case 'invalid-die-index':
-      case 'die-already-spent':
-        return 'That sweep needs a fresh die from the hand.';
-    }
+    return explorationFailExplanation(e.reason);
   }
   return null;
 }
@@ -1222,7 +1220,11 @@ export function explore(): void {
     const lastCheck = lastCheckFrom(events);
     const failNotice = explorationFailNoticeFrom(events);
     // On a discovery, summarise the loot; a failed sweep clears the outcome and
-    // speaks through the notice instead.
+    // speaks through the notice instead. T-131 · re-checked for the new
+    // `insufficient-dice` reason, where a POI genuinely WAS charted but nothing
+    // paid out: there is no loot to summarise, so `null` is the honest value and
+    // the notice carries the whole story. `committed` below stays true — the
+    // sweep's own die is spent either way.
     const outcome = failNotice ? null : explorationOutcome(events);
     // The engine spends the die BEFORE the fuel gate (exploration.ts), so an
     // insufficient-fuel refusal still burns it — a StatCheck-based signal would
