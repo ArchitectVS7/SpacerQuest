@@ -1576,6 +1576,15 @@ Two secondary readings from the same table:
 
 ### 10.4 Disposition in `chooseWeighted` — the headline
 
+> **RE-MEASURED AFTER THE LIAR'S DICE REDESIGN — see `docs/LIARS-DICE_REDESIGN.md` §16.6 (T-137,
+> 2026-07-31).** The AFTER column below was measured against the opposed-d20 Dare, which M4d
+> replaced. Same instrument, same 960-run arm, same seeds: the gambler's wronged-captain share
+> **rose from 29.28% to 47.50%** and inertness fell from 31.65% to 23.52%. §7.5's four preserved
+> properties all held, so this is the *distribution over the three arms* moving, not a property
+> violation — but §16.6 files it as **finding F-137-2**, because the growth is a symptom of the
+> broken 94.66% win rate (F-137-1) rather than an independent win: the lift over *uniform*, which
+> is the part that measures the weighting itself, slipped 2.956× → 2.623×. Nothing was retuned.
+
 **Method — a counterfactual RE-DERIVATION of the draw, never a re-roll.** For every
 `EncounterStarted` on the player's path — and there is exactly one emitter, `travel.ts:688`, so
 the pre-action state IS the state `selectEncounterInterceptor` was handed — the probe:

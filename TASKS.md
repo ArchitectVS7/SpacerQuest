@@ -2478,7 +2478,7 @@ boundary: capstone measurement of the new Dare's win-rate/EV is deliberately out
 left to T-137, which depends on this task.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/LIARS-DICE_REDESIGN.md`, the T-135 engine sources, and th · attempts=1/4.
 
-### T-137 · Capstone: measure the new Dare — `status: TODO` · `coder: opus` · `after: T-136`
+### T-137 · Capstone: measure the new Dare — `status: DONE` · `coder: opus` · `after: T-136`
 
 The old Dare's 57.3%-win-rate / +120-159cr-EV measurement is now irrelevant — this is a different
 game. Run a fresh balance-sim capstone (same shape as T-116/T-125's) measuring: the real player
@@ -2494,6 +2494,62 @@ above are reported in `docs/LIARS-DICE_REDESIGN.md` as a dated addendum, not ass
 evidence; no constant is retuned to chase a target number (a genuinely broken result is reported
 and left for a fresh owner call, per this whole track's "never edit a fingerprint, band, or
 threshold to make a test pass" rule); gate green.
+
+**Result (2026-07-31).** `npm run format` first — **zero files changed**. 8 × 1,000-seed × 120-day
+shards over all eight policies with `--milestone-days 21,29,30,41,60,120`, merged to
+`docs/balance/baseline-t137-liars-dice.json` with `[balance] wrote aggregate for 8000 rows`;
+`balance:extract --aggregate` re-stamped `docs/balance/smoke/tiers.json` to
+`sweepLabel: t137-liars-dice` / `runs: 8000` / `spreadSource: harvested`. **The three fingerprints
+did NOT move** (rules `a5ec29dba6457f77` / instrument `4de222a04b05a537` / docs `b8ed2b1cdefceaf7`)
+— T-135 already re-stamped them when it landed the engine (§15's "smoke re-extract only") and
+T-136 was UI-only, which is not hashed; T-137's contribution is the fresh aggregate underneath
+them. `balance:diff` from `t133-loanband` (the aggregate immediately before the engine landed)
+isolates the mechanic exactly: **precisely two rows move, `gambler` and `fleet`**, and the seven
+policies that never sit at a table are byte-identical. Baseline of record re-pinned in four places
+(`balance-targets.test.ts:103`, `docs/NPC_REDESIGN.md` ×2, `docs/balance/smoke/README.md` — the
+last was **stale at `baseline-t125-hangout.json`**, missed by both T-131 and T-133, corrected
+here). The `it.fails` trader tripwire stays correctly RED (median 21 at n=990) and was not
+flipped.
+
+**The measurement** is `docs/LIARS-DICE_REDESIGN.md` **§16** — 15,235 hands off a gitignored
+960-run probe (`.scratch/t137-liars-dice.ts`, seeds 1..120 × 120 days × 8 policies, descended from
+T-125's so §16.6 is like-for-like), **fidelity 5/5 MATCH** against `runCampaign` on five channels,
+`dareGuardHits` 0, `timeout-fold` 0. Headlines: **win rate 94.66%, EV/hand +737.53 cr**;
+**FOLD 0.03%** and — by derivation, since `EV_challenge − EV_fold = P_false · pot ≥ 0` always —
+**never strictly dominant, weakly dominated by CHALLENGE everywhere, strictly dominated wherever
+`P_false > 0`** (5/5 observed folds were in the strictly-dominated set; ablating FOLD entirely
+moves EV/hand by +0.16%); **RAISE BOTH 23.18% of dealer raises** (player-side 0 by construction,
+§12.5); **the ante clamp fires on 53.12% of the dealer's 16,485 decisions and 0.00% of the
+player's 1,570** — F-134-1 is now MEASURED, its ~69.7% prediction landing at 70.05%, and §4.4's
+0.64 derivation cross-checking with zero violations across 18,055 decision points.
+
+**Two findings filed and NOT fixed, per the Accept's "report and leave for a fresh owner call":**
+**F-137-1** (§16.2) — the baseline planner's opening claim is guaranteed true by construction
+(15,235/15,235 measured) and the dealer's terminal fallback is CHALLENGE, so the house volunteers
+a certain loss on 90.48% of its decisions and loses 94.68% of them; the gambler's
+`finalCredits.median` moved 56,686 → 94,798 (+67.2%). **F-137-2** (§16.6) — §7.5's interceptor
+lift GREW (gambler wronged-captain share 29.28% → 47.50%) as a symptom of F-137-1 rather than an
+independent win, while the lift over *uniform* slipped 2.956× → 2.623×. Both recommended for
+M4e's owner call. **Zero lines changed in `packages/engine/src`, `packages/content/src`,
+`packages/sim/src/index.ts` or `packages/sim/src/balance` (§16.7's `git diff --stat` proof); the
+only source line touched is the re-pin path string.**
+
+**Delivered (2026-07-31):** The M4d capstone measurement shipped end to end — `npm run format`
+clean, an 8 × 1,000-seed × 120-day sweep over all eight policies merged into
+`docs/balance/baseline-t137-liars-dice.json`, `docs/balance/smoke/tiers.json` re-extracted to
+`t137-liars-dice` / 8000 runs, and the baseline of record re-pinned in the four places that
+reference it (`balance-targets.test.ts`, `docs/NPC_REDESIGN.md` ×2, `docs/balance/smoke/README.md`
+— the last one caught and fixed a stale pointer left behind by T-131/T-133). The headline numbers
+— 94.66% win rate, +737.53cr EV/hand, FOLD taken 0.03% of the time and never dominant, RAISE BOTH
+at 23.18% of dealer raises, the ante clamp firing on 53.12% of dealer decisions — are written up
+as a dated addendum in `docs/LIARS-DICE_REDESIGN.md` §16, independently cross-validated against a
+gitignored 15,235-hand probe at 5/5 fidelity. Deliberate scope boundary: per the Accept criterion,
+two genuinely lopsided findings (F-137-1, the dealer's guaranteed-loss opening claim; F-137-2, the
+interceptor lift growing as a symptom rather than a win) were measured, filed, and left untouched
+rather than retuned to chase a nicer number — no line in `packages/engine/src`,
+`packages/content/src`, or `packages/sim/src/{index,balance}` was touched; the only source change
+is the re-pin path string, with both findings referred to M4e's owner call.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/LIARS-DICE_REDESIGN.md` (§1.3, §4.4/§4.5, §5.1, §6.1/§6.3 · attempts=1/4.
 
 ---
 

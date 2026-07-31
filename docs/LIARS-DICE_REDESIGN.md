@@ -204,8 +204,17 @@ result is downstream of steps 5 and 6 above and of nothing else the Hangout does
 
 The economy bakeoff measured the current Dare at a **57.3% player win rate** and **+120–159cr EV
 per dare** (`TASKS.md` D2). The owner's ruling was explicit that this is not a tuning problem —
-the mechanic is thin, not mis-numbered. **T-137 measures the new game from scratch**; none of the
+the mechanic is thin, not mis-numbered. **T-137 measured the new game from scratch**; none of the
 old figures is a target, and no constant in this spec may be retuned to reproduce them.
+
+> **MEASURED — see §16 (T-137 capstone, 2026-07-31).** The figures that replace the discarded
+> 57.3% / +120–159 cr are a **94.66% player win rate** and **+737.53 cr EV per hand** over
+> **15,235 hands** (`.scratch/t137-liars-dice.ts`, 960 runs, fidelity 5/5 against `runCampaign`),
+> against the 8,000-row capstone `docs/balance/baseline-t137-liars-dice.json`. **That is not an
+> improvement — it is worse, and by ~5× on EV.** §16.2 files it as **finding F-137-1** (the
+> baseline planner's opening claim is guaranteed true by construction, and the dealer's terminal
+> fallback is CHALLENGE, so the house volunteers a certain loss in 90.48% of its decisions).
+> Nothing was retuned in response; §16.7 carries the zero-line `git diff --stat` proof.
 
 ---
 
@@ -1572,7 +1581,16 @@ use (§5.4), so there is one definition of legality across all three consumers.
 
 ### Finding F-134-1 · The ante clamp is reachable only above a 64%-of-band seed — and the gambler sits just above it
 
-**Status: REPORTED, and it is T-137's to measure, not T-135's to fix.**
+**Status: MEASURED at §16.5 (T-137, 2026-07-31) — the clamp fires on 53.12% of the DEALER's
+16,485 decisions and on 0.00% of the player's 1,570.** F-134-1's own prediction lands almost
+exactly: the measured mean stake-to-band ratio is **70.05%** against its predicted ~69.7%, the
+median is **100.00%**, and **63.13%** of hands (9,618 / 15,235) are seeded above §4.4's
+0.64 × `band.max` threshold. §4.4's derivation cross-checks exactly — **zero** band-clamped
+decisions occurred at a seed ≤ 0.64 × `band.max` across 18,055 sampled decision points. The
+player-side zero is a selection effect explained at §16.5, and it is downstream of finding
+F-137-1. Nothing was retuned. *(Original text preserved below.)*
+
+**Status when filed: REPORTED, and it is T-137's to measure, not T-135's to fix.**
 
 §4.4 derives exactly when the headroom clamp can bind: `seed > (1 − 12 × 0.03) × band.max =
 0.64 × band.max`. The gambler's stake sizing (`min(band.max, floor((credits − GAMBLER_RESERVE) ×
@@ -1641,4 +1659,401 @@ One line each, so a later reader cannot mistake absence for oversight.
 | --- | --- |
 | **T-135** (engine) | §2 (state + schema), §3 (open arm rewrite), §4 (`anteFor`/`headroomFor`), §5 (`legalDareMoves`/`resolveChallenge`), §6 (settlement + the `endDay` clause), §7 (three arms + `dispositionOnFold` + `DARE_FOLD_DISPOSITION`), §8 (Peek + `DARE_PEEK_DC`), §9 (actions, gates, `liarsDiceRules.ts`, `actions/dare.ts`, `SeededRng.d6`, `dealerMove`), §10 (four events + all guards), §11 (migration + round-trip), §12 (runner loop + `planDareMove` + `legalActions`). Smoke re-extract only. |
 | **T-136** (UI) | The scene inside `HangoutPanel`, reading §2's state and §10's events. §10.2's hidden-dice discipline is an e2e assertion, not a claim. |
-| **T-137** (capstone) | The one `npm run format` → fingerprint re-extract → 8,000-row sweep for the whole milestone. Reports: win rate, EV per hand, fold rate (and whether FOLD is ever dominant/dominated), RAISE BOTH usage (dealer-side only, per §12.5), the ante-clamp fire rate (against F-134-1's 64% threshold), and — the §7.5 obligation — whether `docs/HANGOUT_REDESIGN.md` §10.4's interceptor lift survived. Appended to **this** document as a dated addendum. |
+| **T-137** (capstone) | **DELIVERED 2026-07-31 — see §16.** The one `npm run format` (zero files) → fixture re-extract → 8,000-row sweep (`baseline-t137-liars-dice.json`) for the whole milestone. Reported: win rate **94.66%**, EV/hand **+737.53 cr** (§16.1); FOLD rate **0.03%**, never strictly dominant and weakly dominated by CHALLENGE by derivation (§16.3); RAISE BOTH dealer-side **23.18%** of dealer raises, player-side 0 by construction (§16.4); ante clamp **53.12%** dealer / **0.00%** player (§16.5); §7.5's interceptor lift **grew** 29.28% → 47.50% (§16.6). Two findings filed and NOT fixed: **F-137-1** (§16.2) and **F-137-2** (§16.6). |
+
+---
+
+## §16 · T-137 capstone — the measured Dare (2026-07-31)
+
+**This section reports measurements. It changes no constant.** Every number below carries its
+`n` and the instrument that produced it; the figures that are *derived rather than sampled* say
+so. The two results that are genuinely broken — **F-137-1** (§16.2) and **F-137-2** (§16.6) —
+are written up as findings and left for a fresh owner call, per this track's standing "never
+edit a fingerprint, band or threshold to make a test pass" rule.
+
+### 16.0 Method — and the two limitations that bound everything after it
+
+**Read this before any headline.** The sim's baseline hand strategy (`planDareMove`,
+`sim/index.ts:3572`) declares two coverage gaps at §12.5, and both are in force here:
+
+1. **NO PEEK.** Dice are reserved at plan time, so the continuation loop never spends one on a
+   Peek. Measured: **0 `DarePeeked` events in 15,235 hands.** The Peek's value — and therefore
+   whether `DARE_PEEK_DC = 12` is priced right — is **unmeasured by this capstone** and is
+   T-144's business.
+2. **NO RAISE BOTH on the player's side.** `planDareMove` has no such branch. The player-side
+   RAISE BOTH count below is **0 by construction**, not a bug and not a finding; §16.4's figure
+   is a *dealer-side* measurement.
+
+**The gate work, in order.**
+
+| Step | Command | Result |
+| --- | --- | --- |
+| 1 | `npm run format` | **zero files changed** (prettier reported every file `(unchanged)`) |
+| 2 | 8 × `balance:sweep --label t137-liars-dice --seeds 1000 --days 120 --policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy --milestone-days 21,29,30,41,60,120 --shard i/8`, then `--merge` | `[balance] wrote aggregate for 8000 rows to …/docs/balance/baseline-t137-liars-dice.json` — 8 × 1,000, no short arm |
+| 3 | `balance:extract --aggregate docs/balance/baseline-t137-liars-dice.json` | `[smoke] 4 tiers, spreads harvested, rules a5ec29dba6457f77 / instrument 4de222a04b05a537 / docs b8ed2b1cdefceaf7` |
+| 4 | re-pin | `balance-targets.test.ts`, `docs/NPC_REDESIGN.md` ×2, `docs/balance/smoke/README.md` (the last was **stale at `baseline-t125-hangout.json`** — T-131 and T-133 both missed it; corrected here) |
+
+**The fingerprints did not move, and that is the honest reading.** T-135 already re-stamped
+`tiers.json` when it landed `liarsDiceRules.ts` / `actions/dare.ts` (§15's "smoke re-extract
+only"), and T-136 was UI-only, which `ENGINE_RULE_DIRECTORIES` does not hash. So the "one
+re-extract owed for the whole milestone" is discharged as a **provenance re-pin onto a fresh
+8,000-row aggregate**, not as a new hash. The milestone's rules hash moved at T-135; it is
+`a5ec29dba6457f77` and is unchanged at HEAD.
+
+**The sweep diff isolates the mechanic exactly.** Against `t133-loanband` — the aggregate
+measured immediately before the engine landed — `balance:diff` moves **precisely two rows,
+`gambler` and `fleet`**, and leaves `explorer`, `fighter`, `greedy`, `smuggler`, `trader`,
+`trader-degraded` and `veteran` byte-identical. Every policy that never sits at a table is
+unmoved. (Against the outgoing baseline of record `t131-explore-ap` five rows move, because that
+file also predates T-133's per-port loan band; the two-row result is the one that attributes.)
+
+**The probe.** `.scratch/t137-liars-dice.ts` (gitignored, read-only, descended from T-125's
+`.scratch/t125-hangout.ts` so §16.6's interceptor comparison is like-for-like). **960 runs =
+seeds 1..120 × 120 days × 8 policies**, the same arm shape T-125 used. Its one structural
+addition is the dare continuation loop, mirrored from `sim/index.ts:5047-5062`; without it every
+hand would end open and be dusk-folded and the probe would measure "the gambler folds every
+hand". **Fidelity: 5/5 MATCH on five channels** (final credits, deed count, `hangoutPlay.dares`,
+`daresWon`, `netCredits`) against `runCampaign` on (1,`gambler`), (2,`gambler`), (3,`gambler`),
+(4,`smuggler`), (5,`veteran`). `dareGuardHits` **0**, as `DARE_MAX_MOVES_PER_HAND`'s doc comment
+requires. The capstone aggregate cannot answer §16.1–§16.5: `SeedRow`
+(`sim/balance/aggregate.ts:250`) carries no dare field, and adding one would have moved
+`instrumentFingerprint` in the same commit that took the measurement — the T-116/T-125 split.
+
+**Only the `gambler` policy plays.** All 15,235 hands in the fleet total are the gambler's; the
+other seven policies opened zero. Fleet and gambler figures are therefore identical in
+§16.1–§16.5 and are quoted once.
+
+### 16.1 Win rate and EV per hand — the headline
+
+| Measure | Value (n = 15,235 hands, 120 runs) |
+| --- | --- |
+| **player win rate** | **94.66%** (14,421 / 15,235) |
+| **EV per hand** | **+737.53 cr** (net +11,236,324 cr) |
+| net / seed staked | **93.70%** (11,236,324 / 11,992,057) |
+| seed wager | min 0 · p25 226 · **median 500** · p75 1,000 · max 3,000 · mean **787.1** |
+| seed as a share of the port's `band.max` | mean **70.05%**, median **100.00%** |
+| **bids per hand** | mean **1.19**, median **1**, max 5 |
+| Peeks attempted | **0** (§16.0 limitation 1) |
+
+**Outcome mix over all five arms:**
+
+| outcome | count | share |
+| --- | --- | --- |
+| `challenge-win` | 14,421 | 94.66% |
+| `challenge-loss` | 809 | 5.31% |
+| `player-fold` | 5 | 0.03% |
+| `dealer-fold` | **0** | 0.00% |
+| `timeout-fold` | **0** | 0.00% |
+
+`timeout-fold = 0` is the check that the continuation loop drains every hand: no hand reached
+dusk open, so no measurement below is contaminated by a silent dusk forfeit. `dealer-fold = 0`
+is a real result, not an instrument gap — see §16.4.
+
+**Against the discarded figures.** §1.3 recorded the old opposed-d20 Dare at a **57.3% win rate**
+and **+120–159 cr EV**. Those were never a target and are not one now. The new game measures
+**94.66% / +737.53 cr** — the mechanic did not get closer to fair, it got **much** further from
+it, in the player's favour, and by roughly **5×** on EV.
+
+### 16.2 FINDING F-137-1 · The dealer challenges a claim that is true by construction
+
+**Status: REPORTED, NOT FIXED. This is a fresh owner call, and it is M4e's (T-144–T-148) natural
+home because it is a dealer-policy question.** No constant was touched.
+
+The 94.66% is not noise and not a lucky arm. It has a single mechanical cause, and both halves
+of it are individually defensible:
+
+1. **Every opening bid the baseline planner makes is guaranteed true.** `planDareMove` branch
+   (b) (`sim/index.ts:3593-3607`) opens at `quantity = max(1, own(bestFace))` on the face it
+   holds most of. `resolveChallenge` counts the face across **all eight** dice
+   (`liarsDiceRules.ts:214-217`), so `actualCount ≥ own(bestFace) = quantity` **always**; the
+   dealer's four dice can only add to it. With four dice over six faces `own(bestFace) ≥ 1`, so
+   the `max(1, …)` never binds either. **Measured: 15,235 / 15,235 opening bids (100.00%) were
+   guaranteed true.**
+2. **The dealer's terminal fallback is CHALLENGE.** `dealerMove` branch 4
+   (`liarsDiceRules.ts:345-350`) returns `{ move: 'challenge' }` whenever no earlier branch
+   fires — which §9.9 ruling 2 chose deliberately, because CHALLENGE is the one move that is
+   always legal and so makes the dealer's policy total. Against an opening bid of `(1, f)` or
+   `(2, f)` the surplus test (branch 1) cannot trip, the fold test (branch 2) needs
+   `quantity ≥ 5`, and the raise tests need dice the dealer usually does not hold — so the
+   fallback is where most hands land.
+
+**Put together, the dealer volunteers a certain loss.** Measured, splitting every showdown by
+who played CALL:
+
+| challenger | showdowns | challenger won |
+| --- | --- | --- |
+| **the DEALER** | 14,915 (90.48% of its 16,485 decisions) | **793 — 5.32%** |
+| the player | 315 | 299 — 94.92% |
+
+The dealer's own move mix says the same thing: `challenge` **14,915**, `raise-quantity` 857,
+`raise-both` 364, `raise-face` 349, `fold` **0**. Nine dealer decisions in ten are a challenge,
+and nineteen in twenty of those lose.
+
+**Why this is a design finding and not a tuning note.** Nothing here is mis-numbered. The
+lattice is sound, the ante is sound, `DARE_AI_CHALLENGE_MARGIN` is a reasonable margin. The
+defect is *structural*: a bidding game in which the opening claim can be made risk-free, against
+an opponent whose default answer is to call it, has no bluffing in it at all. **Three shapes
+that would each close it, none applied here:**
+
+- **the dealer's fallback** — make the terminal fallback the cheapest legal *raise* and reserve
+  CHALLENGE for the surplus test, so the dealer stops paying for information it already has;
+- **the opening lattice** — require an opening claim to exceed what the bidder holds (a
+  `quantity > own(face)` opening rule), which removes the risk-free claim at its source and is a
+  §5-level rule change, not a constant;
+- **the baseline planner** — teach `planDareMove` to open above its own count. This one is
+  **not** a fix: it would move the measurement without moving the game, since a human player
+  would simply keep opening truthfully.
+
+The first two are engine rules and belong to an owner. **Recommended: raise at M4e, alongside
+the archetype pass that already reshapes `DARE_AI_*`.**
+
+**What it costs the economy, from the 8,000-row capstone** (`balance:diff t133-loanband →
+t137-liars-dice`, `gambler` row):
+
+| gambler, n = 1,000 seeds | before (t133) | after (t137) |
+| --- | --- | --- |
+| `finalCredits.median` | 56,686 | **94,798** (+67.2%) |
+| `tourOneClearRate` | 0.8470 | **0.9520** (+12.4%) |
+| `debtClearedDay.median` | 25 | **22** (−12.0%) |
+| `portOwnershipRate` | 0.8330 | **0.9880** (+18.6%) |
+| `survival.shipsLost` | 26 | 47 (+80.8%) |
+
+The gambler is now the richest archetype in the fleet by a wide margin. (The rising death count
+is downstream of wealth, not of the tables: a rich gambler flies more and buys fights it would
+previously have avoided — `combatCells[*/unprepared].purseDelta.mean` all move sharply negative.)
+
+### 16.3 FOLD — the rate, and the dominance question settled
+
+**The rate: 5 folds in 15,235 hands — 0.03%.** All five were post-bid; **zero** pre-bid folds,
+because `planDareMove` branch (b) always opens rather than walking. Across 1,570 player decision
+points with a bid standing, FOLD was **legal at 100.00%** of them and taken at 0.32%.
+
+**Is FOLD ever strictly dominant? No — and it never can be. This is a derivation, not a sample.**
+
+The escrow is debited at contribution time (§2.4), so at any decision point the player's
+`potPlayer` is already spent. A fold forfeits it with certainty (§6.1) and CHALLENGE costs
+nothing, so with `P_false = P(actualCount < quantity)`:
+
+```
+EV_fold       = −potPlayer
+EV_challenge  = P_false·(+potDealer) + (1 − P_false)·(−potPlayer)
+EV_challenge − EV_fold = P_false · (potPlayer + potDealer)  ≥ 0   ALWAYS
+```
+
+**So FOLD is weakly dominated by CHALLENGE at every reachable state, and strictly dominated
+wherever `P_false > 0`** — i.e. everywhere except `quantity ≤ own(face)`, where the standing bid
+is guaranteed true and the two are exactly equal. It is *never* strictly better than CHALLENGE
+in credits, at any hand strength, at any pot size. Measured against the baseline's five actual
+folds: **5/5 (100.00%) fell in the strictly-dominated set** (`P_false > 0`), none in the tied
+set, and the summed `Σ P_false · pot` left on the table was **3,136 cr — 627.20 cr per fold**,
+0.21 cr per hand.
+
+**Across hand strengths, as a table.** `P_false` is computed analytically from
+`Binom(4, 1/6)` — the same four-unknown-dice model `dealerMove` reasons with
+(`liarsDiceRules.ts:299-303`) — never re-rolled. Cells are `n`, mean `P_false`, mean edge in
+credits:
+
+| `own(bid.face)` | q = 1–2 | q = 3–4 | q = 5–6 | q = 7–8 |
+| --- | --- | --- | --- | --- |
+| **0** | 346 · 0.68 · 695 cr | 244 · 0.99 · 964 cr | 5 · 1.00 · 627 cr | — |
+| **1** | 452 · 0.48 · 463 cr | 148 · 0.91 · 997 cr | 2 · 1.00 · 2,105 cr | — |
+| **2** | — | 343 · 0.48 · 432 cr | 10 · 0.98 · 1,159 cr | — |
+| **3** | — | 20 · 0.48 · 537 cr | — | — |
+| **4** | — | — | — | — |
+
+Every populated cell has a **non-negative** edge and every one of them is **strictly positive**.
+There is no corner of the hand-strength space where folding is the better credit play.
+
+**The two counterweights, stated honestly rather than declaring the mechanic broken.**
+
+1. **A fold pays disposition the credits-only EV ignores.** `DARE_FOLD_DISPOSITION = 1`
+   (`content/hangout.ts:132`) where a player *win* pays `DARE_WIN_DISPOSITION = −2`. Walking
+   away warms the dealer; beating them sours the dealer. That is a real payoff in a currency
+   this section does not price, and §16.6 shows the currency has teeth.
+2. **The "no reveal" benefit is mechanically inert today.** §6.1 says a fold conceals the
+   player's dice. Against the shipped house AI that buys nothing: `dealerMove`
+   (`liarsDiceRules.ts:274-283`) takes `dealerDice`, `bid`, `bidder`, `dealerGuile`, `ante`,
+   `headroom`, `dealerCredits` and `roll` — **no history parameter, no cross-hand memory, and no
+   `GameState`.** There is no channel through which a past reveal could reach a future decision.
+   Concealment will become worth something when M4e gives archetypes memory; it is worth nothing
+   now.
+
+**The counterfactual, and it is the empirical half of the answer.** The same 960 runs re-flown
+with a probe-local `planDareMoveNoFold` (identical to the shipped planner except branch (c1)
+returns `challenge`; the shipped function is untouched — T-116's ablation precedent):
+
+| | baseline | FOLD ablated |
+| --- | --- | --- |
+| hands | 15,235 | 15,216 |
+| win rate | 94.66% | 94.68% |
+| EV / hand | +737.53 cr | **+738.74 cr** |
+| mean final credits (gambler) | 93,487 | 93,178 |
+| `player-fold` outcomes | 5 | 0 |
+| dare disposition arm mix | `−7…+4`, 13,758 events | same shape, 13,729 events |
+
+**Removing FOLD from the player's repertoire entirely changes EV per hand by +0.16% and the
+gambler's mean final credits by −0.33%.** At the shipped baseline, FOLD is a *null* mechanic —
+neither a trap nor a tool. That is a coverage statement about the baseline planner as much as
+about the rule; a human player who folds often would be leaking the per-fold 627 cr edge above.
+
+### 16.4 RAISE BOTH — the 2× ante
+
+| | count |
+| --- | --- |
+| **player** `raise-both` | **0 — by construction** (§16.0 limitation 2) |
+| **dealer** `raise-both` | **364** |
+| as a share of the dealer's 1,570 raises | **23.18%** |
+| as a share of all 16,485 dealer decisions | **2.21%** |
+
+`DARE_AI_RAISE_BOTH_CHANCE = 8` (of 100, `liarsDiceRules.ts:238`), and the observed 2.21% sits
+below it exactly as expected: the branch is gated on `faceRoom && quantityRoom &&
+affordable(2 × ante)` *and* is reached only after the challenge and fold tests decline, and 90.48%
+of dealer decisions terminate at the challenge branch before the roll is ever consulted. Read
+against the raises only, 23.18% of dealer raises are the double — the move is rare but not
+vestigial.
+
+Full dealer bid mix: `raise-quantity` 857 · `raise-both` 364 · `raise-face` 349 (plus 14,915
+challenges and 0 folds). Full player bid mix: `bid` 15,235 · `raise-quantity` 1,250 ·
+`raise-face` 0 · `raise-both` 0.
+
+### 16.5 The ante clamp (F-134-1) — it fires hard on the house and never on the player
+
+**Both binders reported separately**, using the shipped accessors `headroomFor(hand, side)` and
+`chargedAnte` (`liarsDiceRules.ts:58-72`). *Band-clamped* = the lattice still allows a raise
+(`face < 6` or `quantity < 8`) but `headroom < ante`. *Solvency-clamped* = `credits < ante`.
+
+| | player | dealer |
+| --- | --- | --- |
+| decision points | 1,570 | 16,485 |
+| **band-clamped** | **0 (0.00%)** | **8,757 (53.12%)** |
+| **solvency-clamped** | **0 (0.00%)** | 2,127 (12.90%) |
+| RAISE BOTH priced out | 10 (0.64%) | — |
+| terminal CALL/FOLD made from a clamped state | 0 / 320 (0.00%) | — |
+
+- **Hands where §4.4 says the clamp *could* bind (seed > 0.64 × `band.max`): 9,618 / 15,235 =
+  63.13%.** F-134-1 predicted "just over the line" and it is: the measured **mean stake-to-band
+  ratio is 70.05%** against its predicted ~69.7%, and the **median is 100.00%** — the gambler
+  seeds at the full port ceiling more often than not.
+- **§4.4's arithmetic cross-checks exactly: 0 band-clamped decisions occurred at a seed
+  ≤ 0.64 × `band.max`.** The derivation holds against 18,055 sampled decision points.
+- **Why the player-side rate is 0.00% and it is not an instrument bug.** A player decision point
+  only exists when the *dealer* raised — the dealer's answer is synchronous, so a hand that ends
+  on the dealer's first move never returns control. But the dealer can only raise when *its own*
+  headroom covers an ante, and both sides seed the same `seedWager` against the same `band.max`,
+  so the very condition that would clamp the player is the condition that stops the dealer
+  handing control back. The clamp is real, reachable and firing at 53.12% — the player is
+  structurally never the one it fires on. **This is a selection effect, reported as one.**
+- **The answer to "does it fire often enough to matter": on the house, decisively yes; on the
+  player, not once in 1,570 opportunities.** It is not retuned here. Its rate is a consequence
+  of F-137-1 (hands are 1.19 bids long, so nobody spends their headroom) and re-measuring it is
+  owed to whichever task closes that finding.
+
+*One incidental note, not new:* `[A]`'s minimum seed wager is **0** — the pre-existing
+zero-credit-stake condition T-125 recorded as F-123-3 (the seed is clamped to the dealer's purse,
+and a broke dealer deals a free hand). Unchanged by this redesign, still not fixed here.
+
+### 16.6 The §7.5 obligation — did §10.4's interceptor lift survive?
+
+Same instrument, same seeds, same days, same policies as T-125, so this is like-for-like against
+`docs/HANGOUT_REDESIGN.md` §10.4's recorded AFTER column. Reconstruct misses **0 / 5,801**.
+
+| `gambler` (120 runs) | §10.4 AFTER (opposed-d20 Dare) | **T-137 (Liar's Dice)** |
+| --- | --- | --- |
+| named interceptions | 929 of 3,689 (25.18%) | 880 of 3,548 (24.80%) |
+| **inertness rate** | 31.65% | **23.52%** |
+| mean lift `P_w / P_u` | 1.4814× | **1.6649×** |
+| **chosen at disposition < 0** | 272 / 929 (**29.28%**) | **418 / 880 (47.50%)** |
+| analytic uniform expectation | 9.904% | 18.108% |
+| **wronged-captain lift** | 2.956× | **2.623×** |
+| mean disposition of the CHOSEN captain | −1.378 | **−2.453** |
+| mean disposition of their POOL | −0.294 | −0.764 |
+
+| fleet (960 runs) | §10.4 AFTER | **T-137** |
+| --- | --- | --- |
+| interceptions | 23,100 | 23,037 |
+| of which named | 5,706 (24.70%) | 5,801 (25.18%) |
+| inertness | 69.56% | **67.83%** |
+| chosen at disposition < 0 | 578 / 5,706 (10.13%) | **734 / 5,801 (12.65%)** |
+| analytic uniform expectation | 4.223% | 5.326% |
+| wronged-captain lift | 2.398× | **2.376×** |
+| mean disposition CHOSEN vs POOL | −0.402 / −0.102 | −0.534 / −0.161 |
+
+**§10.4's lift did not merely survive — it grew by roughly 60%, and §7.5 requires that to be
+reported as a finding rather than banked.** The gambler's headline was *nearly three in ten of
+its named interceptions are flown by someone it beat at cards* (**29.28%**). It now reads
+**47.50% — nearly one in two.** Inertness fell from 31.65% to **23.52%**, the mean disposition of
+the chosen captain deepened from −1.378 to **−2.453**, and the weighting lift `P_w/P_u` rose from
+1.4814× to **1.6649×**.
+
+§7.5's four preserved properties held exactly as written — the magnitudes are untouched, the
+cadence is still one `applyDisposition` per hand, hand volume per run is unchanged
+(`GAMBLER_MAX_DARES_PER_DAY` 2, one dawn die per hand), and the sign convention is the same. So
+the movement is **not** a property violation. It is the *distribution over the three arms*
+shifting, which §7.5 explicitly predicted would move and asked to have measured.
+
+**FINDING F-137-2 · The interceptor lift's growth is a symptom of F-137-1, not an independent
+win. Status: REPORTED, left for the same owner call.** The souring arm fires whenever the player
+wins, and the player now wins 94.66% of hands (§16.1). The wronged-captain share rose because
+the *win rate* is broken, not because disposition got better tuned. **The number to watch is the
+wronged-captain lift over uniform, which is the part that measures the weighting rather than the
+roster's mood: it went 2.956× → 2.623×, i.e. slightly DOWN.** The draw is doing marginally less
+work than it was; the roster is simply angrier. Anyone fixing F-137-1 should expect this figure
+to fall back toward 29% and must **not** read that as a regression in the interceptor draw.
+
+**The third arm is now visible in the mix.** `DispositionChanged{reason:'dare'}` fired 13,758
+times, by applied delta: `−7` 505 · `−6` 548 · `−5` 770 · `−4` 1,981 · `−3` 2,320 · `−2` 5,385 ·
+`−1` 1,435 · `+1` 248 · `+2` 412 · `+3` 93 · `+4` 61. **The souring arm carries 12,944 of 13,758
+(94.08%)** and the warming arms 814 (5.92%) — which is F-137-1 again, seen through disposition:
+the player wins 94.66% of hands, so the dealer is soured 94.08% of the time. The `+1` fold arm
+fired **248 times, 1.80%** of dare disposition movement.
+
+**No band and no disposition constant was touched.** Per §7.5's closing sentence, a materially
+moved lift is a finding for a fresh owner call and **not** a licence to retune
+`DARE_FOLD_DISPOSITION` or any port's `dare` arms. It moved; it is filed as F-137-2 above; and
+`DARE_WIN_DISPOSITION` (−2), `DARE_LOSS_DISPOSITION` (+2), `DARE_FOLD_DISPOSITION` (+1) and all
+fourteen authored `dare` rows sit at exactly the values T-135 inherited.
+
+### 16.7 What was NOT tuned
+
+`git diff --stat` for this commit, restricted to hashed rule and instrument sources:
+
+```
+$ git diff --stat -- packages/engine/src packages/content/src \
+                     packages/sim/src/index.ts packages/sim/src/balance
+(no output — zero files, zero lines)
+```
+
+The **only** source line this task touched is the baseline path string in
+`packages/sim/src/__tests__/balance-targets.test.ts:103`, which is a data re-pin the file's own
+header comment names as the single line to update. The `it.fails` tripwire at `:225` was checked
+and **stays correctly red**: the trader clears on day **21** against `[22, 30]` at **n = 990** on
+the new baseline (21 at n = 987 on the old), so it did not invert and was not flipped. No band,
+no threshold, no fingerprint and no golden was edited.
+
+**Constants left at their shipped values**, listed so a later reader can see the retune that did
+not happen: `DARE_ANTE_BAND_FRACTION` 0.03 · `DARE_PEEK_DC` 12 · `DARE_WIN_DISPOSITION` −2 ·
+`DARE_LOSS_DISPOSITION` +2 · `DARE_FOLD_DISPOSITION` +1 · `DARE_MIN_WAGER` 25 ·
+`DARE_MAX_WAGER` 1000 · `DARE_AI_CHALLENGE_MARGIN` 1.5 · `DARE_AI_GUILE_PATIENCE` 0.15 ·
+`DARE_AI_FOLD_QUANTITY` 5 · `DARE_AI_RAISE_BOTH_CHANCE` 8 · `DARE_AI_GUILE_BLUFF` 4 ·
+`DARE_AI_BLUFF_CHANCE` 20 · `DARE_MAX_QUANTITY` 8 · `DARE_MAX_FACE` 6 · `DARE_DICE_PER_SIDE` 4 ·
+`SIM_DARE_FOLD_QUANTITY` 5 · `SIM_DARE_CHALLENGE_MARGIN` 1.5 · `GAMBLER_BANKROLL_FRACTION` ·
+`GAMBLER_RESERVE` · `GAMBLER_MAX_DARES_PER_DAY` 2 · **all fourteen authored `wager` bands** in
+`content/portHangouts.ts`.
+
+### 16.8 What this capstone leaves open
+
+1. **F-137-1** (§16.2) — the risk-free opening claim against a challenge-happy dealer, and the
+   94.66% / +737.53 cr it produces. **An owner call.** Recommended home: M4e (T-144–T-148),
+   which already reshapes `DARE_AI_*`.
+2. **F-137-2** (§16.6) — the interceptor lift grew 29.28% → 47.50% as a *symptom* of F-137-1,
+   while the weighting's own lift over uniform slipped 2.956× → 2.623×. Same owner call; whoever
+   closes F-137-1 should expect this to fall back and must not read that as a regression.
+3. **The Peek is unmeasured** (§16.0). `DARE_PEEK_DC = 12` has never been exercised by any arm.
+   Whoever gives the baseline planner a Peek owes the measurement.
+4. **The player-side RAISE BOTH is unmeasured** (§16.0), for the same reason.
+5. **The clamp's player-side rate is 0 for a reason that is downstream of F-137-1** (§16.5) and
+   must be re-measured once hands run longer than 1.19 bids.
+6. **FOLD is a null mechanic at the shipped baseline** (§16.3) and is weakly dominated by
+   CHALLENGE by construction. Whether that is acceptable — a fold that is never the better
+   credit play, whose only positive payoff is `+1` disposition and whose stated concealment
+   benefit is inert against a memoryless dealer — is a design question, not a constant.
