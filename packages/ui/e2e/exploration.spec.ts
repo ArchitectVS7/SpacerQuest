@@ -8,14 +8,21 @@ import { EXPLORATION_NAV_DC, EXPLORATION_FUEL_COST } from '@spacerquest/content'
 // renders non-empty. A typed exploration fail renders as a visible notice.
 //
 // SEED FIXTURE (found via the exact UI dispatch path — startDay(createInitialState)
-// then applyPlayerAction Explore, the same fork stream the store calls): seed 45
-// deals the dawn hand [20,18,12,9,2] on Sol. Sweeping die 0 (value 20 → 20+PILOT 1
-// = 21, clears nav DC 12) discovers a DERELICT whose seeded loot roll yields BOTH a
-// Signal Fragment AND a sealed contraband pod. Die 3 (value 9 → 10 < 12) fails the
-// nav check — the typed ExplorationFailed(nav-check) path for the notice test.
-const SEED = 45;
-const HIGH_DIE = 0; // value 20 — clears the nav check, derelict + fragment + pod
-const LOW_DIE = 3; // value 9 — fails the nav check
+// then applyPlayerAction Explore, the same fork stream the store calls). Re-pinned
+// (seed 45 → 53): T-113/T-114/T-115's 100-row outcome table and T-117's single
+// band-weighted draw (docs/EXPLORE_REDESIGN.md §2.4) replaced the pre-T-110 legacy
+// loot table this fixture was drawn against, so seed 45's derelict board no longer
+// draws a fragment (it now draws a band-2 beacon-lore find that opens a multi-day
+// recovery instead). RE-SWEPT seeds 1..500, same dispatch path: seed 53 deals the
+// dawn hand [18,15,12,10,1] on Sol. Sweeping die 0 (value 18 → 18+PILOT 1 = 19,
+// clears nav DC 12) discovers a DERELICT whose seeded band-1 draw lands
+// `frag-nemesis-04` — one of the three fragment rows T-117 arms with the sealed
+// pod flag (`DERELICT_POD_EFFECTS`, content `exploration.ts`) — yielding BOTH a
+// Signal Fragment AND a sealed contraband pod. Die 3 (value 10 → 11 < 12) fails
+// the nav check — the typed ExplorationFailed(nav-check) path for the notice test.
+const SEED = 53;
+const HIGH_DIE = 0; // value 18 — clears the nav check, derelict + fragment + pod
+const LOW_DIE = 3; // value 10 — fails the nav check
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());

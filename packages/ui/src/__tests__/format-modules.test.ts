@@ -150,6 +150,41 @@ describe('T-112 · the moment of acquisition', () => {
   });
 });
 
+describe('T-117 · explorationOutcome names the sealed pod', () => {
+  const poi: GameEvent = {
+    type: 'PoiDiscovered',
+    day: 3,
+    poiId: 'poi-1-d3-e0-derelict',
+    poiType: 'derelict',
+    name: 'a gutted freighter hulk',
+    systemId: 1,
+  };
+
+  it('reads the flag-set event, not the retired ContrabandFound', () => {
+    const line = explorationOutcome([
+      poi,
+      { type: 'FragmentAcquired', day: 3, fragmentId: 'frag-nemesis-04', source: 'derelict', fragmentCount: 1, poiId: 'poi-1-d3-e0-derelict' },
+      {
+        type: 'StoryletEffectApplied',
+        day: 3,
+        storyletId: 'explore-lore-derelict-frag-nemesis-04',
+        choiceId: 'explore',
+        effect: 'flag',
+        flag: 'signal.contraband.pending',
+        value: true,
+      },
+    ]);
+    expect(line).toBe(
+      'Charted a gutted freighter hulk · a Signal Fragment recovered · a sealed pod bolted in the hold.',
+    );
+  });
+
+  it('says nothing about a pod when no pod flag fires', () => {
+    const line = explorationOutcome([poi]);
+    expect(line).toBe('Charted a gutted freighter hulk.');
+  });
+});
+
 describe('T-112 · the diceBenefitLabel extraction is inert', () => {
   it('crewBenefitLabel still returns the three legacy strings verbatim', () => {
     const byId = Object.fromEntries(CREW_ROLES.map((r) => [r.id, r]));

@@ -274,15 +274,26 @@ export function explorationOutcome(events: GameEvent[]): string | null {
   for (const e of events) if (e.type === 'SalvageRecovered') salvage += e.amount;
   if (salvage > 0) parts.push(`${salvage.toLocaleString()}cr in salvage`);
   if (events.some((e) => e.type === 'FragmentAcquired')) parts.push('a Signal Fragment recovered');
-  // T-117 · DEAD BUT NOT DELETED. `ContrabandFound` stopped being emitted when the
-  // transitional `contraband` payload kind retired with the three-leg draw
-  // (docs/EXPLORE_REDESIGN.md §2.4, finding F-113-B); the sealed pod is now armed
-  // by an authored `lore` row whose own `wireFound` speaks for it. The event
-  // VARIANT survives in the engine's `types.ts`/`schema.ts` because removing an
-  // event shape is save/schema surface, so this clause survives with it — a
-  // reader that silently dropped a shape the schema still admits would be the
-  // drift this file avoids everywhere else.
-  if (events.some((e) => e.type === 'ContrabandFound'))
+  // T-117 re-homed the sealed pod onto three authored derelict lore rows'
+  // `effects.flags` (content `exploration.ts` `DERELICT_POD_EFFECTS`), which sets
+  // `signal.contraband.pending` and arms the `derelict.sealed-pod` storylet — but
+  // the row's own `wireFound` prose (a manifest, a burn schedule, a survey file)
+  // never actually says "pod", so without this clause the pod's arrival was
+  // invisible everywhere: not in this summary, not in the wire log, only
+  // discoverable by noticing a new launcher in the hold dispatches. Read the
+  // flag-set event `applyEffects` emits (`StoryletEffectApplied` `effect: 'flag'`)
+  // rather than the retired `ContrabandFound` event, which stopped being emitted
+  // when the transitional `contraband` payload kind retired with the three-leg
+  // draw (docs/EXPLORE_REDESIGN.md §2.4, finding F-113-B) and would never fire here.
+  if (
+    events.some(
+      (e) =>
+        e.type === 'StoryletEffectApplied' &&
+        e.effect === 'flag' &&
+        e.flag === 'signal.contraband.pending' &&
+        e.value === true,
+    )
+  )
     parts.push('a sealed pod bolted in the hold');
   // T-111: a deferred find would otherwise read as "Charted X." with no payoff —
   // the commitment must be legible on the day it is made. Reads the event's own
@@ -2114,29 +2125,38 @@ export const ONBOARDING_PROMPTS: readonly OnboardingPrompt[] = [
 ];
 
 /**
- * The single prompt to show right now: the first registry prompt that is active
- * for this state AND not yet seen. Returns null when nothing is due — the callout
- * then renders nothing. At most one at a time (non-modal, no stacking).
+ * The prompt to show right now AT THIS MOUNT: the first registry prompt that is
+ * active for this state, not yet seen, AND routes to `mount` (`onboardingMount`).
+ * Returns null when nothing is due for this mount — the callout then renders
+ * nothing. Each of the three `OnboardingCallout` mounts asks for its own winner
+ * independently, so a winner routed to a closed-panel mount (e.g. `first-loan`
+ * inside the closed Hangout panel) cannot hold the slot and silently block a
+ * screen-mount prompt behind it (F-121-2). At most one prompt per mount at a
+ * time (non-modal, no stacking).
  */
 export function activeOnboardingPrompt(
   game: GameState,
   seen: Record<string, true>,
+  mount: OnboardingMount,
 ): OnboardingPrompt | null {
   for (const prompt of ONBOARDING_PROMPTS) {
-    if (!seen[prompt.id] && prompt.active(game)) return prompt;
+    if (seen[prompt.id] || !prompt.active(game)) continue;
+    if (onboardingMount(prompt.anchor) !== mount) continue;
+    return prompt;
   }
   return null;
 }
 
-/** T-1407 · Where a prompt's callout renders. The single global selector still
- *  picks at-most-one prompt anywhere; this routes the winner to the right mount so
- *  a prompt anchored to an overlaid surface is not hidden behind that overlay. */
+/** T-1407 · Where a prompt's callout renders. `activeOnboardingPrompt` is
+ *  mount-aware (F-121-2) — each mount computes its own winner rather than
+ *  filtering a single global one, so a prompt anchored to an overlaid surface
+ *  cannot be hidden behind that overlay nor block a different mount's prompt. */
 export type OnboardingMount = 'screen' | 'combat' | 'hangout';
 
 /** Derive the mount a prompt's anchor renders in: the combat coach rides inside
  *  the combat overlay, the loan nudge inside the open Hangout panel, everything
- *  else at cockpit screen level. Reader: `OnboardingCallout` (each of the three
- *  mounts asks whether the current winner belongs to it). */
+ *  else at cockpit screen level. Reader: `activeOnboardingPrompt` (each of the
+ *  three mounts asks for its own winner). */
 export function onboardingMount(anchor: OnboardingAnchor): OnboardingMount {
   if (anchor === 'combat') return 'combat';
   if (anchor === 'loan') return 'hangout';

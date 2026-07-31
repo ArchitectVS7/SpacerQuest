@@ -1426,7 +1426,7 @@ desk at a port that has none.** `packages/ui/src/format.ts:340` gates on `hasHan
 `store.ts`'s `borrowLoan` (`:1333`) / `repayLoan` (`:1369`) build the action unconditionally with
 **no `venueOffered` filter anywhere in the UI**; at Arcturus-6 the engine answers
 `venue-not-offered` and `loanFailNoticeFrom`'s `default:` arm (`:514`) renders the vague *"Penny
-Wise turned that request down."* Worse, `hangoutFailNoticeFrom` (`:478`) has **no arm** for
+Wise turned that request down."* Worse, `hangoutFailNoticeFrom` (`store.ts:478`) has **no arm** for
 `'venue-not-offered'`, so a social-venue refusal would render **silence** — a violation of the
 "typed fails render, never silence" guarantee, unreachable today only because the pane issues no
 social venue but `dare` (F-101-4), and Deneb-4's omitted `meet` is precisely the row that makes
