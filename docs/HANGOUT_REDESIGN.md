@@ -970,6 +970,11 @@ for **T-130** alongside F-101-4 and F-101-5 — the three are one surfacing job,
 
 ### Finding F-121-2 · The reach change put the onboarding coach out at 14 of 28 ports — **ESCALATED, NOT FIXED**
 
+> **RECORD CORRECTION (T-130 gate, 2026-07-31): CLOSED.** Fixed by commit `125fc84f`
+> (mount-aware onboarding coach); `onboarding.spec.ts` re-run at the gate, 14/14 green. The
+> heading above is kept as the historical record of the escalation; see `docs/0.5.2-REVIEW.md`
+> §8 for the closure evidence.
+
 **Found by T-122 while running the gate; reproduced at the T-121 commit with T-122's diff
 stashed, so it is a T-121 regression and not a consequence of any authored row.** Three
 `packages/ui/e2e/onboarding.spec.ts` tests are red on `main`'s branch head:
