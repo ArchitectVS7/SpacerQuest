@@ -158,6 +158,18 @@ The flag has **six independent readers** in `src`, and this list is what makes �
 
 ### 1.4 What the player can actually reach today — stated honestly, because §6 depends on it
 
+> **RECORD CORRECTION (T-132, 2026-07-31): NO LONGER TRUE, AND DELIBERATELY SO.** T-132 added
+> `visitSocial` (`packages/ui/src/store.ts`) and the `hangout-social` controls
+> (`packages/ui/src/App.tsx`), so the pane now exposes **six of the seven venues** — `dare`,
+> `meet`, `befriend`, `insult`, the free rumor table and Penny Wise's desk. The grep for
+> `befriend` / `insult` / `'meet'` under `packages/ui/src` now returns real dispatch sites. The
+> seventh, `rumor`, is still not dispatchable and never will be: it spends a die to emit exactly
+> the `hangoutRumors` lines the pane already renders for free every frame, so a paid control
+> would be strictly dominated by one already on screen. The paragraph below is kept as the
+> historical statement §6's argument was built on. Asserted by
+> `packages/ui/e2e/hangout.spec.ts` ("meet, befriend and insult are each dispatchable at the
+> Long Table").
+
 The T-1404 pane exposes **`dare`, the rumor table and the Penny Wise desk** and nothing else:
 `packages/ui/src/store.ts` builds exactly three venues (`:1269` `'dare'`, `:1342` `'borrow'`,
 `:1378` `'repay'`), and a grep for `befriend` / `insult` / `'meet'` under `packages/ui/src`
@@ -927,6 +939,14 @@ T-130 collects these; the owner rules on whether they earn a richer surface.
 
 ### Finding F-101-4 · Three of the six social venues have no player UI
 
+> **RECORD CORRECTION (T-132, 2026-07-31): CLOSED.** The three venues are dispatchable through
+> the real UI: `visitSocial` (`packages/ui/src/store.ts`) behind the `hangout-social` controls
+> in `HangoutPanel` (`packages/ui/src/App.tsx`), each gated on the engine's own `venueOffered`
+> so the pane can never advertise a venue the resolver would refuse. Asserted by
+> `packages/ui/e2e/hangout.spec.ts` — "meet, befriend and insult are each dispatchable at the
+> Long Table" (real clicks: pick the dealer, arm a die, click the venue, read the engine's
+> readout), plus "a hall that seats no stranger offers no introduction" for the withheld case.
+
 `meet`, `befriend` and `insult` are reachable from the engine, the schema and the UGT protocol
 but **not from the cockpit** (§1.4). A port that differentiates itself on those three venues'
 DCs and deltas differentiates itself for the simulation and not for the player.
@@ -938,6 +958,12 @@ in `befriend` / `insult` parameters while this is true.
 
 ### Finding F-101-5 · The pane's NPC list does not filter the dead
 
+> **RECORD CORRECTION (T-132, 2026-07-31): CLOSED.** `hangoutNpcs` (`packages/ui/src/format.ts`)
+> now filters `!n.dead` before handing the set to `rankClientele`, honouring that function's
+> stated contract ("the caller passes the ALREADY-FILTERED live in-system, non-dead set").
+> Asserted by `packages/ui/src/__tests__/hangout-pane.test.ts` over a mixed live/dead roster —
+> including a dead NPC OUT of system, so an accidentally-identity filter cannot pass.
+
 `hangoutNpcs` (`packages/ui/src/format.ts:277–281`) filters only on `currentSystemId`, while
 the engine's opponent resolution also requires `!n.dead` (`hangout.ts:176–178`). So the pane
 can offer a dead captain as a Dare opponent, and the engine correctly answers
@@ -947,6 +973,16 @@ folded into T-121's UI touch (it is the task that makes the pane reachable at sc
 reported to T-130 if T-121 chooses to keep its diff to the reach change alone.
 
 ### Finding F-101-6 · `prose` has no reader — every authored house is invisible
+
+> **RECORD CORRECTION (T-132, 2026-07-31): CLOSED.** All three prose fields now render.
+> `hangoutHouse` (`packages/ui/src/format.ts`) reads the row through the engine's
+> `portHangoutFor`, so a rowless port falls back to `DEFAULT_PORT_HANGOUT` rather than to a
+> UI-side default: `houseName` replaces the generic pane header (`hangout-house`), `roomLine`
+> is a standing line under it (`hangout-room-line`, rendered only when authored — never a
+> placeholder), and `flavour[venue]` renders beside each venue's controls (`hangout-flavour`,
+> `data-venue`). Asserted by `packages/ui/e2e/hangout.spec.ts` ("the house speaks", against the
+> content row rather than a literal) and by `packages/ui/src/__tests__/hangout-pane.test.ts`
+> (the authored port, a second differently-voiced port, and the rowless fallback).
 
 **Found by T-122, reported and not fixed.** `HangoutProse.houseName`, `.roomLine` and
 `.flavour` are authored by T-120 (Sun-3), by T-121 (thirteen baseline house names) and now by
@@ -1043,6 +1079,19 @@ captain cannot sit down at. T-125's deed coverage should therefore expect a Mira
 Regulus-6 saturation, and a Regulus-6 count that rises with career age rather than being flat.
 
 ### Finding F-123-1 · The Hangout pane offers a credit desk at a port that has none — **REPORTED, NOT FIXED**
+
+> **RECORD CORRECTION (T-132, 2026-07-31): CLOSED, both halves.** (1) The whole `hp-lending`
+> block is gated on `hangoutVenueOffered(game, 'borrow')` — a pure pass-through to the engine's
+> `venueOffered` — and the repay controls on `'repay'` independently, so Arcturus-6 shows no
+> desk at all rather than a desk that refuses. Asserted by `packages/ui/e2e/hangout.spec.ts`
+> ("a port with no credit desk shows none"; the offering case stays covered by the existing
+> Sun-3 loan test) and by the 14-ports × 7-venues agreement table in
+> `packages/ui/src/__tests__/hangout-pane.test.ts`. (2) The prose moved to
+> `hangoutFailExplanation` / `loanFailExplanation` (`packages/ui/src/format.ts`), both
+> exhaustive `switch`es with **no `default`** — the T-131 mechanism — so `'venue-not-offered'`
+> now renders *"No one here takes that kind of wager."* and *"There is no credit desk in this
+> room."* instead of `null` and of the misleading *"Penny Wise turned that request down."*
+> Asserted reason-by-reason over both full unions in `hangout-pane.test.ts`.
 
 **Found by T-123, whose Arcturus-6 row is the first to withhold a venue.** The cockpit gates the
 Penny Wise desk on `hangoutOpen` alone — `packages/ui/src/format.ts:340` reads

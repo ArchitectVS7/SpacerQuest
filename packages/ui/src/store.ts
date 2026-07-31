@@ -19,6 +19,8 @@ import {
   combatAftermathSummary,
   explorationFailExplanation,
   explorationOutcome,
+  hangoutFailExplanation,
+  loanFailExplanation,
   nextOnboardingSeen,
   shipyardFailureExplanation,
   successionSummary,
@@ -218,6 +220,29 @@ export interface CockpitState {
     creditsDelta: number;
   } | null;
   /**
+   * T-132 the three social venues (meet / befriend / insult). The honest readout of
+   * the LAST social beat: which venue, against whom, the GUILE check when the venue
+   * rolled one (`befriend` only — `meet` and `insult` never roll), and the SIGNED
+   * disposition delta the engine actually applied, read off its `DispositionChanged`
+   * and never recomputed. Like `dareOutcome` / `explorationOutcome` this is CLIENT
+   * presentation meta-state (NOT GameState), so a JSON round-trip of game state is
+   * unaffected and NO save migration is needed. READER: the Hangout pane's
+   * `social-outcome` block (`social-check` + `social-result`). Null until a social
+   * venue resolves; cleared alongside `dareOutcome` on selection / travel / new day.
+   */
+  socialOutcome: {
+    venue: 'meet' | 'befriend' | 'insult';
+    npcId: string;
+    npcName: string;
+    /** `befriend` only — the engine's player GUILE StatCheck against the PORT's DC.
+     *  Null for `meet` / `insult`, which land without a roll. */
+    check: { stat: Stat; result: CheckResult } | null;
+    /** The applied delta. 0 when the charm check failed (no disposition applied) or
+     *  when the port authors a zero — an HONEST zero, never a hidden one. */
+    dispositionDelta: number;
+    disposition: number;
+  } | null;
+  /**
    * T-1405 patrol contraband scan. The honest GUILE check the patrol rolled
    * against a smuggler's hold during the LAST jump, plus its consequence (caught +
    * fine + which cargo was seized) — built straight from the Travel action's typed
@@ -370,6 +395,7 @@ function init(): CockpitState {
     combatMalfunction: false,
     explorationOutcome: null,
     dareOutcome: null,
+    socialOutcome: null,
     patrolScan: null,
     onboardingSeen: readOnboarding(),
     seed,
@@ -466,52 +492,45 @@ function explorationFailNoticeFrom(events: GameEvent[]): string | null {
 }
 
 /**
- * T-1404 · Translate the engine's typed `HangoutEvent` fail (a social/Dare venue)
- * into an honest visible notice — the same "typed fails render, never silence"
- * guarantee. Returns null when no Hangout fail occurred (a successful venue carries
- * no `failReason`). `no-opponent` fires when the named dealer has wandered off; the
- * three malformed-die reasons are UI-prevented but still get a line so a race with
- * state is never a silent no-op.
+ * T-1404 · Find the engine's typed `HangoutEvent` fail (a social/Dare venue) and
+ * render it — the "typed fails render, never silence" guarantee. Returns null when
+ * no Hangout fail occurred (a successful venue carries no `failReason`).
+ *
+ * T-132 · The switch itself moved to `format.ts`'s `hangoutFailExplanation`, where
+ * it is exhaustive-by-compilation and unit-testable without booting the store
+ * (`init()` runs at module load here). This function is now purely the FINDER.
+ * Recorded because the move fixed a live hole: the old inline switch here covered
+ * `no-opponent` and the three malformed-die reasons and fell through to `null` on
+ * `'venue-not-offered'`, so a venue the port does not run refused in silence
+ * (F-123-1, the sibling of T-131's `recovery-in-progress`).
  */
 function hangoutFailNoticeFrom(events: GameEvent[]): string | null {
   for (const e of events) {
     if (e.type !== 'HangoutEvent' || !e.failReason) continue;
-    switch (e.failReason) {
-      case 'no-opponent':
-        return 'That spacer has left the tables — no one here to wager against.';
-      case 'no-die':
-      case 'invalid-die-index':
-      case 'die-already-spent':
-        return 'That table needs a fresh die from the hand.';
-    }
+    return hangoutFailExplanation(e.failReason);
   }
   return null;
 }
 
 /**
- * T-1404 · Translate a Penny Wise `LoanEvent{kind:'failed'}` refusal into an honest
- * visible notice. Returns null when the borrow/repay committed (a 'borrowed' /
- * 'repaid' event carries no `failReason`). Covers the lending preconditions
- * (already-has-loan / no-loan / insufficient-credits) that spend NO die, plus the
- * UI-prevented malformed-die reasons.
+ * T-1404 · Find a Penny Wise `LoanEvent{kind:'failed'}` refusal and render it.
+ * Returns null when the borrow/repay committed (a 'borrowed' / 'repaid' event
+ * carries no `failReason`).
+ *
+ * T-132 · The switch moved to `format.ts`'s `loanFailExplanation`. It no longer has
+ * (and must not regain) a `default` arm — the old one answered every unlisted
+ * reason with "Penny Wise turned that request down", which read as a REFUSAL when
+ * `'venue-not-offered'` actually means the port runs no desk at all.
  */
 function loanFailNoticeFrom(events: GameEvent[]): string | null {
   for (const e of events) {
     if (e.type !== 'LoanEvent' || e.kind !== 'failed') continue;
-    switch (e.failReason) {
-      case 'already-has-loan':
-        return 'You already carry a loan with Penny Wise — clear it before borrowing again.';
-      case 'no-loan':
-        return 'No loan to repay.';
-      case 'insufficient-credits':
-        return 'Not enough credits to make that payment.';
-      case 'no-die':
-      case 'invalid-die-index':
-      case 'die-already-spent':
-        return "Penny Wise's desk needs a fresh die from the hand.";
-      default:
-        return 'Penny Wise turned that request down.';
-    }
+    // The engine sets `failReason` on every 'failed' LoanEvent, but the field is
+    // OPTIONAL in the event type; this arm keeps that last structural gap from
+    // being the one place the desk goes quiet.
+    return e.failReason
+      ? loanFailExplanation(e.failReason)
+      : 'Penny Wise turned that request down.';
   }
   return null;
 }
@@ -893,6 +912,7 @@ export function newGame(seed: number): void {
     combatMalfunction: false,
     explorationOutcome: null,
     dareOutcome: null,
+    socialOutcome: null,
     patrolScan: null,
     onboardingSeen: {},
     // T-1605a: the boot's corrupt-save notice is stale the moment the player
@@ -922,6 +942,7 @@ export function selectDie(index: number): void {
     lastCheck: null,
     explorationOutcome: null,
     dareOutcome: null,
+    socialOutcome: null,
     patrolScan: null,
   });
 }
@@ -1181,6 +1202,7 @@ export function travelTo(destinationId: number): void {
       // readout (a jump can carry the player away from the Hangout).
       explorationOutcome: null,
       dareOutcome: null,
+      socialOutcome: null,
       patrolScan,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
@@ -1317,11 +1339,107 @@ export function visitDare(opponentId: string, wager: number): void {
       // the shared single-check readout — clear lastCheck so no stale check lingers.
       lastCheck: null,
       dareOutcome,
+      // T-132 · a fresh Dare clears any stale social readout: the two blocks sit in
+      // the same pane and a hand of cards must not read alongside last turn's
+      // introduction.
+      socialOutcome: null,
       onboardingSeen: reconcileOnboarding(state.game, next),
     });
     reactToEvents(events, committed);
   } catch (err) {
     set({ notice: err instanceof Error ? err.message : 'That wager could not be resolved.' });
+  }
+}
+
+/**
+ * T-132 · Meet, befriend or insult a co-located captain at the Hangout
+ * (PRD §7.1–§7.4; `docs/HANGOUT_REDESIGN.md` F-101-4). The three social venues the
+ * T-1404 pane authored numbers for at fourteen ports and then never offered.
+ *
+ * A pure CLIENT of the T-1303 `VisitHangout` venues, exactly like `visitDare`: arm
+ * a die, name an opponent, ONE engine call, and read the result off the typed
+ * events. The venue is a DISPATCH PARAMETER, not a rule branch — the three beats
+ * differ only in what the ENGINE does with them, so there is one function and not
+ * three. `befriend` rolls a GUILE check against the PORT's authored DC and the
+ * engine emits a `StatCheck`; it is captured into `socialOutcome.check` and
+ * rendered by `CheckReadout`, so the honest-dice signature holds here exactly as it
+ * does for the Dare. `meet` and `insult` never roll: their whole result is the
+ * `DispositionChanged` delta the engine wrote, read off the event and NEVER
+ * recomputed.
+ *
+ * NO 'rumor' DISPATCH, DELIBERATELY (the seventh venue). `VisitHangout{rumor}`
+ * spends a die to emit exactly the `hangoutRumors(state)` output the pane already
+ * renders for free every frame (`format.ts` `hangoutRumorLines`), so a paid
+ * affordance would be strictly dominated by the free one already on screen. That is
+ * why F-101-4 counts "three of six venues" over a SEVEN-member venue union.
+ *
+ * A typed fail (`no-opponent`, `venue-not-offered`, malformed die) spends NO die —
+ * read the authoritative spent flag rather than infer — keeps the selection, and
+ * surfaces a visible notice.
+ */
+export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: string): void {
+  const die = state.selectedDie;
+  if (die === null) {
+    set({ notice: 'Pick a die from the hand first, then approach the tables.' });
+    return;
+  }
+  try {
+    const { state: next, events } = applyPlayerAction(state.game, {
+      type: 'VisitHangout',
+      venue,
+      opponentId,
+      spendDie: die,
+    });
+    autosave(next, state.seed);
+    const committed = next.player.dawnHand?.spent[die] === true;
+    const failNotice = hangoutFailNoticeFrom(events);
+    let socialOutcome: CockpitState['socialOutcome'] = null;
+    if (committed && !failNotice) {
+      const hangout = events.find(
+        (e): e is Extract<GameEvent, { type: 'HangoutEvent' }> =>
+          e.type === 'HangoutEvent' && e.venue === venue,
+      );
+      // `befriend` is the only social venue that rolls; the other two produce no
+      // player StatCheck at all, and `check` stays null rather than being faked.
+      const playerCheck = events.find(
+        (e): e is Extract<GameEvent, { type: 'StatCheck' }> =>
+          e.type === 'StatCheck' && e.actor === 'Player',
+      );
+      // The applied delta, read off the engine's own event. Absent when the charm
+      // check failed (nothing was applied) — an honest zero, not a recomputation.
+      const shift = events.find(
+        (e): e is Extract<GameEvent, { type: 'DispositionChanged' }> =>
+          e.type === 'DispositionChanged' && e.npcId === opponentId,
+      );
+      if (hangout) {
+        const npc = next.npcs.find((n) => n.id === opponentId);
+        socialOutcome = {
+          venue,
+          npcId: opponentId,
+          npcName: npc?.name ?? opponentId,
+          check: playerCheck ? { stat: playerCheck.stat, result: playerCheck.result } : null,
+          dispositionDelta: shift?.delta ?? 0,
+          disposition: shift?.disposition ?? npc?.disposition ?? 0,
+        };
+      }
+    }
+    set({
+      game: next,
+      selectedDie: committed ? null : die,
+      bloomDie: committed ? die : null,
+      notice: failNotice,
+      // The befriend check rides `socialOutcome.check`, its own readout, not the
+      // shared single-check one — clear lastCheck so no stale check lingers.
+      lastCheck: null,
+      dareOutcome: null,
+      socialOutcome,
+      onboardingSeen: reconcileOnboarding(state.game, next),
+    });
+    reactToEvents(events, committed);
+  } catch (err) {
+    set({
+      notice: err instanceof Error ? err.message : 'That was not something the room allowed.',
+    });
   }
 }
 
@@ -1786,6 +1904,7 @@ export function endDay(): void {
       combatMalfunction: false,
       explorationOutcome: null,
       dareOutcome: null,
+      socialOutcome: null,
       patrolScan: null,
       onboardingSeen: reconcileOnboarding(state.game, dawn.state),
     });
@@ -1896,6 +2015,7 @@ export function loadSlot(n: number): void {
     succession: null,
     combatMalfunction: false,
     dareOutcome: null,
+    socialOutcome: null,
     patrolScan: null,
     // T-1605a: a slot load replaces the fallback career the boot notice was
     // explaining, so the notice is stale. (This path's OWN corrupt case has told
@@ -2019,6 +2139,7 @@ export async function importCareer(file: File): Promise<void> {
     combatMalfunction: false,
     explorationOutcome: null,
     dareOutcome: null,
+    socialOutcome: null,
     patrolScan: null,
     // The boot recovery notice (if any) described the career this one replaces.
     recovery: null,

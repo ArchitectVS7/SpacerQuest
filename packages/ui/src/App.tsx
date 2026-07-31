@@ -8,7 +8,13 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
-import { CARGO_TYPES, NEMESIS_SYSTEM_ID, RENOWN_RANKS, Stat } from '@spacerquest/content';
+import {
+  CARGO_TYPES,
+  NEMESIS_SYSTEM_ID,
+  RENOWN_RANKS,
+  Stat,
+  type HangoutVenueId,
+} from '@spacerquest/content';
 import type { GameState, CheckResult, StoryletOffer } from '@spacerquest/engine';
 import {
   subscribe,
@@ -24,6 +30,7 @@ import {
   travelTo,
   explore,
   visitDare,
+  visitSocial,
   borrowLoan,
   repayLoan,
   hireCrew,
@@ -61,6 +68,8 @@ import {
   recoveryReadout,
   hangoutOpen,
   hangoutNpcs,
+  hangoutHouse,
+  hangoutVenueOffered,
   hangoutRumorLines,
   dareWagerBounds,
   lendingTerms,
@@ -1749,15 +1758,53 @@ function StoryletPanel({
   );
 }
 
+/** T-132 · One authored `flavour` line beside its venue's controls. Renders NOTHING
+ *  when the port authors no line for that venue — never a placeholder, never the
+ *  default row's line reached for by hand (`portHangoutFor` already did the row
+ *  resolution; the default row's `flavour` is genuinely empty). */
+function VenueFlavour({ line, venue }: { line?: string; venue: HangoutVenueId }) {
+  if (!line) return null;
+  return (
+    <p className="hp-flavour" data-testid="hangout-flavour" data-venue={venue}>
+      {line}
+    </p>
+  );
+}
+
+/** T-132 · Display strings for the three social venues. Labels and tooltips ONLY —
+ *  they decide no outcome; the venue's numbers are the port's and its resolution is
+ *  the engine's. */
+const SOCIAL_LABELS: Record<'meet' | 'befriend' | 'insult', string> = {
+  meet: 'Introduce yourself',
+  befriend: 'Buy a round',
+  insult: 'Say the wrong thing',
+};
+const SOCIAL_TITLES: Record<'meet' | 'befriend' | 'insult', string> = {
+  meet: 'Give your name to the table (spends a die)',
+  befriend: 'Roll GUILE against the house DC to win them over (spends a die)',
+  insult: 'A hard word, no roll, and the room remembers (spends a die)',
+};
+
 // The Hangout & lending pane (T-1404). The Spacers Hangout as a visitable place:
 // the present-NPC list (from their simulated positions), the Spacer's Dare with a
-// die commitment and BOTH actors' opposed honest checks, the rumor table, and
-// Penny Wise's desk (borrow/repay with the interest schedule visible up front). It
-// is a pure CLIENT of the engine's T-1303 venues + T-1304 lending: every mutation
-// routes through the store (visitDare / borrowLoan / repayLoan), and every number
-// shown is read from an engine export, a content constant, or live engine-written
-// loan state — never recomputed. The HandDock stays reachable behind it, so a die
-// is armed exactly as in the storylet flow.
+// die commitment and BOTH actors' opposed honest checks, the three social venues
+// (T-132: meet / befriend / insult), the rumor table, and Penny Wise's desk
+// (borrow/repay with the interest schedule visible up front). It is a pure CLIENT
+// of the engine's T-1303 venues + T-1304 lending: every mutation routes through the
+// store (visitDare / visitSocial / borrowLoan / repayLoan), and every number shown
+// is read from an engine export, a content constant, or live engine-written loan
+// state — never recomputed. The HandDock stays reachable behind it, so a die is
+// armed exactly as in the storylet flow.
+//
+// T-132 · SIX OF SEVEN VENUES ARE SURFACED HERE, and the seventh is absent on
+// purpose: `rumor` spends a die to emit precisely the `hangoutRumors` output the
+// rumor table below already renders for free, so a paid control would be strictly
+// dominated (see `visitSocial`'s docstring in store.ts).
+//
+// EVERY per-port difference in this pane is a CONTENT field read through an engine
+// accessor — `hangoutHouse` (the authored prose) and `hangoutVenueOffered` (the
+// same `venueOffered` predicate `resolveVisitHangout` refuses on). There is no
+// per-port branch here and there must never be one.
 function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => void }) {
   const game = state.game;
   const npcs = hangoutNpcs(game);
@@ -1767,6 +1814,10 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
   const loan = game.player.loan;
   const armed = state.selectedDie !== null;
   const dareOutcome = state.dareOutcome;
+  const house = hangoutHouse(game);
+  const socialOutcome = state.socialOutcome;
+  const offers = (v: HangoutVenueId) => hangoutVenueOffered(game, v);
+  const socialVenues = (['meet', 'befriend', 'insult'] as const).filter(offers);
 
   const [opponentId, setOpponentId] = useState<string | null>(npcs[0]?.id ?? null);
   const [wager, setWager] = useState(bounds.min);
@@ -1791,6 +1842,13 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
       ? 'Choose an opponent from the tables'
       : null;
   const loanDisabledReason = armed ? null : 'Pick a die first';
+  // T-132 · the same shape as `dareDisabledReason` — a social venue needs an armed
+  // die and a captain who is still at the tables.
+  const socialDisabledReason = !armed
+    ? 'Pick a die first'
+    : !chosen
+      ? 'Choose someone at the tables'
+      : null;
 
   return (
     <section
@@ -1800,7 +1858,13 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
       aria-label="Spacers Hangout"
     >
       <header className="hp-head">
-        <h2 className="hp-title">Spacers Hangout · {systemName(game.player.currentSystemId)}</h2>
+        {/* T-132 (F-101-6) · The house's AUTHORED name, in place of the generic
+            literal that stood here since T-1404. Fourteen ports author one;
+            `hangoutHouse` falls back to the engine's DEFAULT_PORT_HANGOUT row at a
+            port that does not, so there is no UI-side default to drift. */}
+        <h2 className="hp-title" data-testid="hangout-house">
+          {house.houseName} · {systemName(game.player.currentSystemId)}
+        </h2>
         <button
           className="sl-close"
           data-testid="hangout-close"
@@ -1810,6 +1874,14 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
           &times;
         </button>
       </header>
+
+      {/* The room-establishing line, when the port authors one. Absent ⇒ nothing
+          renders here at all — never a placeholder. */}
+      {house.roomLine && (
+        <p className="hp-room-line" data-testid="hangout-room-line">
+          {house.roomLine}
+        </p>
+      )}
 
       {/* T-1407 · The loan coach mounts INSIDE the panel (the `loan` anchor →
           `hangout` mount), so it overlays the open panel rather than sitting
@@ -1854,6 +1926,7 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
       {/* ---- Spacer's Dare ---- */}
       <div className="hp-section hp-dare">
         <div className="hp-shead">SPACER&apos;S DARE</div>
+        <VenueFlavour line={house.flavour.dare} venue="dare" />
         <div className="hp-dare-controls">
           <label className="hp-wager">
             <span className="hp-k" data-testid="dare-wager-bounds">
@@ -1907,9 +1980,76 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
         )}
       </div>
 
-      {/* ---- rumor table (engine's own hangoutRumors) ---- */}
+      {/* ---- T-132 · the three social venues (F-101-4) ----
+          `meet` / `befriend` / `insult` — authored at all fourteen ports since
+          T-122–T-124 and, until this task, dispatchable from nowhere in the UI.
+          Each control is gated on the SAME `venueOffered` predicate the engine
+          refuses on, so a hall that seats no stranger simply shows no
+          introduction; the whole section disappears when a port runs none of the
+          three. No per-port branch: the gate is one call, evaluated identically
+          everywhere. */}
+      {socialVenues.length > 0 && (
+        <div className="hp-section hp-social">
+          <div className="hp-shead">THE ROOM</div>
+          {socialVenues.map((v) => (
+            <div key={v} className="hp-social-venue">
+              <button
+                className="btn"
+                data-testid="hangout-social"
+                data-venue={v}
+                disabled={socialDisabledReason !== null}
+                title={socialDisabledReason ?? SOCIAL_TITLES[v]}
+                onClick={() => chosen && visitSocial(v, chosen)}
+              >
+                {socialDisabledReason ?? SOCIAL_LABELS[v]}
+              </button>
+              <VenueFlavour line={house.flavour[v]} venue={v} />
+            </div>
+          ))}
+          {socialOutcome && (
+            <div
+              className="hp-social-result"
+              data-testid="social-outcome"
+              data-venue={socialOutcome.venue}
+            >
+              {/* `befriend` is the only social venue that rolls; its check rides the
+                  shared honest-dice readout exactly as the Dare's two do. */}
+              {socialOutcome.check && (
+                <CheckReadout
+                  key={`sc-${state.lastCheckKey}`}
+                  stat={socialOutcome.check.stat}
+                  result={socialOutcome.check.result}
+                  label={socialOutcome.npcName.toUpperCase()}
+                  testid="social-check"
+                />
+              )}
+              {/* Composed from the engine's numbers only. A zero delta is shown as a
+                  zero (a failed charm check, or a port that authors `meet: 0`) —
+                  an honest nothing, never a hidden one. */}
+              <div
+                className="hp-social-verdict"
+                data-testid="social-result"
+                data-delta={String(socialOutcome.dispositionDelta)}
+              >
+                {socialOutcome.npcName} ·{' '}
+                {socialOutcome.dispositionDelta === 0 ? (
+                  <b>no ground gained</b>
+                ) : (
+                  <b>{signedMargin(socialOutcome.dispositionDelta)} warmth</b>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---- rumor table (engine's own hangoutRumors) ----
+          T-132 · This table is a FREE read, rendered every frame — which is exactly
+          why the seventh venue, `VisitHangout{rumor}`, gets no control: it would
+          spend a die to produce these same lines. */}
       <div className="hp-section">
         <div className="hp-shead">RUMOR TABLE</div>
+        <VenueFlavour line={house.flavour.rumor} venue="rumor" />
         <ul className="hp-rumors" data-testid="hangout-rumors">
           {rumors.map((line, i) => (
             <li key={i} className="hp-rumor" data-testid="hangout-rumor">
@@ -1919,63 +2059,81 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
         </ul>
       </div>
 
-      {/* ---- Penny Wise's desk ---- */}
-      <div className="hp-section hp-lending">
-        <div className="hp-shead">PENNY WISE&apos;S DESK</div>
-        {/* The schedule, visible UP FRONT — all raw content constants, no projected
+      {/* ---- Penny Wise's desk ----
+          T-132 (F-123-1) · Gated on the SAME `venueOffered(systemId, 'borrow')`
+          predicate `resolveVisitHangout` refuses on and `sim/protocol.ts` filters
+          its legal actions with. Until this task the desk rendered unconditionally,
+          so Arcturus-6's garrison mess — a row that omits `borrow`/`repay` on
+          purpose — advertised a credit desk it does not run, and clicking it burned
+          the player's attention on a typed refusal. `repay` is gated independently
+          because a row may withhold either alone; both narrowings are CONTENT's. */}
+      {offers('borrow') && (
+        <div className="hp-section hp-lending">
+          <div className="hp-shead">PENNY WISE&apos;S DESK</div>
+          {/* The schedule, visible UP FRONT — all raw content constants, no projected
             total (the engine still computes the realized dusk accrual). */}
-        <div className="hp-terms" data-testid="loan-terms">
-          Penny Wise · {terms.minPrincipal}–{terms.maxPrincipal} cr · {terms.ratePercent}%/dusk ·{' '}
-          {terms.termDays}-dusk term
-        </div>
-        {loan ? (
-          <>
-            <div className="hp-loan-status" data-testid="loan-status" data-status={loan.status}>
-              OUTSTANDING <b>{loan.outstanding.toLocaleString()}cr</b> · borrowed{' '}
-              {loan.principal.toLocaleString()}cr · DUE D{loan.dueDay} · {loan.status.toUpperCase()}
-            </div>
+          <div className="hp-terms" data-testid="loan-terms">
+            Penny Wise · {terms.minPrincipal}–{terms.maxPrincipal} cr · {terms.ratePercent}%/dusk ·{' '}
+            {terms.termDays}-dusk term
+          </div>
+          <VenueFlavour line={house.flavour.borrow} venue="borrow" />
+          {loan ? (
+            <>
+              <div className="hp-loan-status" data-testid="loan-status" data-status={loan.status}>
+                OUTSTANDING <b>{loan.outstanding.toLocaleString()}cr</b> · borrowed{' '}
+                {loan.principal.toLocaleString()}cr · DUE D{loan.dueDay} ·{' '}
+                {loan.status.toUpperCase()}
+              </div>
+              {offers('repay') && (
+                <>
+                  <VenueFlavour line={house.flavour.repay} venue="repay" />
+                  <div className="hp-lend-controls">
+                    <input
+                      aria-label="repay amount"
+                      data-testid="loan-repay-amount"
+                      inputMode="numeric"
+                      value={repayAmount}
+                      onChange={(e) =>
+                        setRepayAmount(Math.max(0, Number.parseInt(e.target.value, 10) || 0))
+                      }
+                    />
+                    <button
+                      className="btn"
+                      data-testid="loan-repay"
+                      disabled={loanDisabledReason !== null || repayAmount <= 0}
+                      title={loanDisabledReason ?? 'Pay down the loan (spends a die)'}
+                      onClick={() => repayLoan(repayAmount)}
+                    >
+                      {loanDisabledReason ?? 'Repay'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
             <div className="hp-lend-controls">
               <input
-                aria-label="repay amount"
-                data-testid="loan-repay-amount"
+                aria-label="loan principal"
+                data-testid="loan-principal"
                 inputMode="numeric"
-                value={repayAmount}
+                value={principal}
                 onChange={(e) =>
-                  setRepayAmount(Math.max(0, Number.parseInt(e.target.value, 10) || 0))
+                  setPrincipal(Math.max(0, Number.parseInt(e.target.value, 10) || 0))
                 }
               />
               <button
                 className="btn"
-                data-testid="loan-repay"
-                disabled={loanDisabledReason !== null || repayAmount <= 0}
-                title={loanDisabledReason ?? 'Pay down the loan (spends a die)'}
-                onClick={() => repayLoan(repayAmount)}
+                data-testid="loan-borrow"
+                disabled={loanDisabledReason !== null}
+                title={loanDisabledReason ?? 'Take a loan at Penny Wise’s desk (spends a die)'}
+                onClick={() => borrowLoan(principal)}
               >
-                {loanDisabledReason ?? 'Repay'}
+                {loanDisabledReason ?? 'Borrow'}
               </button>
             </div>
-          </>
-        ) : (
-          <div className="hp-lend-controls">
-            <input
-              aria-label="loan principal"
-              data-testid="loan-principal"
-              inputMode="numeric"
-              value={principal}
-              onChange={(e) => setPrincipal(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
-            />
-            <button
-              className="btn"
-              data-testid="loan-borrow"
-              disabled={loanDisabledReason !== null}
-              title={loanDisabledReason ?? 'Take a loan at Penny Wise’s desk (spends a die)'}
-              onClick={() => borrowLoan(principal)}
-            >
-              {loanDisabledReason ?? 'Borrow'}
-            </button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

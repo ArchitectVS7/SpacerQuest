@@ -2114,7 +2114,38 @@ playtest read.
 
 ## M4b — D6: the Hangout pane finally speaks
 
-### T-132 · Surface the dark half of the Hangout — `status: TODO` · `coder: opus` · `after: T-125`
+### T-132 · Surface the dark half of the Hangout — `status: DONE` · `coder: opus` · `after: T-125`
+
+**Delivered (2026-07-31):** All four bundled findings shipped as one task. `visitSocial(venue,
+opponentId)` (`packages/ui/src/store.ts`) dispatches `meet`/`befriend`/`insult` through the exact
+`VisitHangout` shape `visitDare` already established — one function, venue as a parameter, no
+per-venue rule branch — with a new `socialOutcome` client-presentation slot (cleared alongside
+`dareOutcome` on selection/travel/new-day/a fresh Dare) carrying the honest engine-read
+`StatCheck` (`befriend` only) and signed `DispositionChanged` delta; matching buttons landed in
+`HangoutPanel` (`App.tsx`) beside the existing Dare controls, asserted end-to-end by real clicks
+in `packages/ui/e2e/hangout.spec.ts` (dice armed, buttons clicked, `social-outcome`/`social-check`
+readouts asserted — no API shortcut). `hangoutNpcs` (`format.ts`) now filters `!n.dead` before
+`rankClientele`, closing the dead-opponent hole against `hangoutRules.ts`'s own documented
+contract, unit-tested with a mixed live/dead roster in the new
+`packages/ui/src/__tests__/hangout-pane.test.ts`. The pane header now renders the port's authored
+`houseName` in place of the generic literal, a standing `roomLine` when authored, and a per-venue
+`flavour` line beside each venue's controls (nothing rendered when empty, never a placeholder) —
+all read through a new `hangoutHouse()` accessor over the engine's `portHangoutFor`, so the
+generic-house fallback is the engine's, not a UI restatement. The loan desk
+(`loan-terms`/`loan-borrow`/`loan-repay`) is now gated on `venueOffered(systemId, 'borrow')`, the
+same predicate applied to the three new social controls; both `hangoutFailNoticeFrom` and
+`loanFailNoticeFrom` moved their switches into new exhaustive-by-compilation `format.ts` functions
+(`hangoutFailExplanation`, `loanFailExplanation`) so a `'venue-not-offered'` reason can no longer
+fall through to silence (the old bug) or land the misleading "turned that request down" line (the
+old `default` arm) — each given an honest, house-voiced line and asserted by its own test. No
+per-port engine branch was added anywhere; every difference is a `PortHangout` content field. No
+save version bump — `socialOutcome` is client presentation state, not `GameState`. Deliberate
+scope boundary: the seventh venue, `'rumor'`, was NOT given a dispatch — `VisitHangout{rumor}`
+would spend a die to emit exactly the free `hangoutRumors` output the pane already renders every
+frame, so a paid affordance would be strictly dominated; a one-line comment marks the omission at
+the dispatch site rather than leaving it to be rediscovered as a gap. T-133's per-port loan band
+was left untouched, as scheduled.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
 Owner ruling (D6, 2026-07-31): fix the UI. Bundles **F-101-4, F-101-5, F-101-6, F-123-1** as
 **ONE task, not four** — this is `docs/0.5.2-REVIEW.md`'s own recommendation (the F-113-A

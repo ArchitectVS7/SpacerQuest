@@ -43,6 +43,8 @@ import {
   type CrewRole,
   type DiceBenefit,
   type ExploreModuleContentId,
+  type HangoutTone,
+  type HangoutVenueId,
 } from '@spacerquest/content';
 import {
   maxJumpDistance,
@@ -73,7 +75,9 @@ import {
   travelPreview,
   quoteFuelPurchase,
   hangoutRumors,
+  portHangoutFor,
   rankClientele,
+  venueOffered,
   wagerBandFor,
   dawnDiceModifiers,
   equipmentDiceBenefits,
@@ -370,7 +374,14 @@ export function hangoutNpcs(game: GameState): HangoutNpc[] {
   // order. It never adds an NPC, so the pane still lists exactly the captains the
   // Dare resolver will accept as an opponent. Under Sun-3's default (empty)
   // clientele it is the identity and this list is unchanged.
-  const present = game.npcs.filter((n) => n.currentSystemId === here);
+  //
+  // T-132 (F-101-5) · `!n.dead` is load-bearing, not defensive. `rankClientele`'s
+  // own contract states that the CALLER passes the already-filtered live,
+  // in-system, NON-DEAD set, and the engine's opponent resolution
+  // (`actions/hangout.ts`) filters `!n.dead` before matching `opponentId` — so a
+  // dead captain listed here was a button that could only ever return
+  // `no-opponent`. This caller was the one violating the contract.
+  const present = game.npcs.filter((n) => !n.dead && n.currentSystemId === here);
   return rankClientele(game, here, present).map((n) => ({
     id: n.id,
     name: n.name,
@@ -397,6 +408,54 @@ export interface DareWagerBounds {
 
 export function dareWagerBounds(game: GameState): DareWagerBounds {
   return wagerBandFor(game.player.currentSystemId);
+}
+
+/**
+ * T-132 (F-101-6) · The house's AUTHORED voice at the current port — the
+ * `HangoutProse` block every one of the fourteen rows carries and which, until
+ * this task, had no reader anywhere in the UI: the pane header was the literal
+ * "Spacers Hangout · {system}" and the room lines and per-venue flavour rendered
+ * nowhere at all.
+ *
+ * Read through the engine's own `portHangoutFor`, which resolves a rowless port to
+ * `DEFAULT_PORT_HANGOUT` wearing that id — so the generic house is the ENGINE's
+ * fallback, not a UI restatement of one. `DEFAULT_PORT_HANGOUT` is deliberately
+ * NOT imported here and `flavour` is deliberately NOT `??`-chained into it: the
+ * default row's `flavour` is `{}`, and reaching for it would be the pane redoing a
+ * resolution the accessor already did.
+ *
+ * `roomLine` is optional on a row: absent ⇒ null ⇒ the pane renders NOTHING extra,
+ * never a placeholder. READER: the Hangout pane's header, its standing room line,
+ * and the flavour line beside each venue's controls.
+ */
+export interface HangoutHouse {
+  houseName: string;
+  tone: HangoutTone;
+  roomLine: string | null;
+  flavour: Partial<Record<HangoutVenueId, string>>;
+}
+
+export function hangoutHouse(game: GameState): HangoutHouse {
+  const prose = portHangoutFor(game.player.currentSystemId).prose;
+  return {
+    houseName: prose.houseName,
+    tone: prose.tone,
+    roomLine: prose.roomLine ?? null,
+    flavour: prose.flavour,
+  };
+}
+
+/**
+ * T-132 (F-123-1) · Does this port run this venue? A pure pass-through to the
+ * engine's `venueOffered` — the SAME predicate `resolveVisitHangout` refuses on
+ * with a typed `'venue-not-offered'` and that `sim/protocol.ts` filters its legal
+ * actions with. The pane can therefore never advertise an affordance the engine
+ * would refuse: a garrison with no credit desk shows no desk, a hall that seats no
+ * stranger offers no introduction. READER: the pane's per-venue control gating
+ * (the three social venues and Penny Wise's desk).
+ */
+export function hangoutVenueOffered(game: GameState, venue: HangoutVenueId): boolean {
+  return venueOffered(game.player.currentSystemId, venue);
 }
 
 /** Penny Wise's up-front lending terms — the raw content constants the engine
@@ -680,6 +739,70 @@ export function explorationFailExplanation(reason: ExplorationFailReason): strin
       return 'The crew is holding station on a salvage op — no hands free for a sweep.';
     case 'insufficient-dice':
       return 'Charted it, but the hand was too thin to lift it — the find was left behind.';
+  }
+}
+
+/**
+ * T-132 · The two Hangout fail unions, DERIVED FROM THE EVENT SHAPES rather than
+ * imported as named engine types — on purpose. `packages/engine/src/types.ts` is a
+ * hashed rule source (`packages/sim/src/balance/rules-fingerprint.ts`: "types.ts is
+ * IN"), so naming these unions there would move `rulesFingerprint` and owe a
+ * capstone sweep for a UI-only change. `Extract` gives the same compile-time
+ * exhaustiveness at zero fingerprint cost, and still fails `tsc` the moment the
+ * engine adds a reason.
+ */
+type HangoutFailReason = NonNullable<Extract<GameEvent, { type: 'HangoutEvent' }>['failReason']>;
+type LoanFailReason = NonNullable<Extract<GameEvent, { type: 'LoanEvent' }>['failReason']>;
+
+/**
+ * T-132 · Translate the engine's typed `HangoutEvent` fail into an honest visible
+ * notice — this project's "typed fails render as notices, never silence" rule.
+ * Pure display translation; re-derives no rule.
+ *
+ * EXHAUSTIVE BY COMPILATION, the T-131 mechanism: no `default`, no trailing
+ * `return`, so a sixth reason fails `tsc` here until it is given a line. The hole
+ * this closes (F-123-1): the store's old inline switch covered four of the five
+ * shipped reasons and fell through to `null` on `'venue-not-offered'` — a port
+ * that runs no such venue refused the action and the pane said NOTHING.
+ */
+export function hangoutFailExplanation(reason: HangoutFailReason): string {
+  switch (reason) {
+    case 'no-opponent':
+      return 'That spacer has left the tables — no one here to wager against.';
+    case 'no-die':
+    case 'invalid-die-index':
+    case 'die-already-spent':
+      return 'That table needs a fresh die from the hand.';
+    // T-132 · the reason that used to be silence.
+    case 'venue-not-offered':
+      return 'No one here takes that kind of wager.';
+  }
+}
+
+/**
+ * T-132 · Translate a Penny Wise `LoanEvent{kind:'failed'}` refusal into an honest
+ * visible notice. Same exhaustive-by-compilation mechanism as its Hangout sibling
+ * above; the old inline switch had a `default` arm, which is why this one was never
+ * silent — but that arm answered `'venue-not-offered'` with "Penny Wise turned that
+ * request down", implying a REFUSAL where the truth is an ABSENT DESK (F-123-1).
+ * A `default` is not reinstated here: the whole point is that a new reason must
+ * fail the build rather than inherit a plausible-sounding wrong line.
+ */
+export function loanFailExplanation(reason: LoanFailReason): string {
+  switch (reason) {
+    case 'already-has-loan':
+      return 'You already carry a loan with Penny Wise — clear it before borrowing again.';
+    case 'no-loan':
+      return 'No loan to repay.';
+    case 'insufficient-credits':
+      return 'Not enough credits to make that payment.';
+    case 'no-die':
+    case 'invalid-die-index':
+    case 'die-already-spent':
+      return "Penny Wise's desk needs a fresh die from the hand.";
+    // T-132 · the reason the old `default` arm answered misleadingly.
+    case 'venue-not-offered':
+      return 'There is no credit desk in this room.';
   }
 }
 

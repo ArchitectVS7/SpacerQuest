@@ -3130,6 +3130,46 @@ body {
 .hp-loan-status[data-status='defaulted'] {
   color: var(--ember);
 }
+/* T-132 · the house's authored voice + the three social venues. Prose reuses the
+   dim/italic treatment already established for `.hp-terms`/`.hp-rumor`; the venue
+   rows reuse `.hp-dare-controls`' layout. No new colour tokens. */
+.hp-room-line {
+  color: var(--amber);
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-style: italic;
+  opacity: 0.9;
+  margin: 0;
+}
+.hp-flavour {
+  color: var(--amber);
+  font-size: 11px;
+  line-height: 1.35;
+  font-style: italic;
+  opacity: 0.75;
+  margin: 0;
+}
+.hp-social {
+  gap: 9px;
+}
+.hp-social-venue {
+  display: grid;
+  gap: 4px;
+}
+.hp-social-result {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+.hp-social-verdict {
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+.hp-social-verdict b {
+  color: var(--ember);
+}
 .hangout-panel .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
