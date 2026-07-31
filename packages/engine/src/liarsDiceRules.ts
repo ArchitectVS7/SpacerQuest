@@ -27,6 +27,8 @@
 import {
   DARE_ANTE_BAND_FRACTION,
   LIARS_DICE_OPPONENTS,
+  LIARS_DICE_RAISED_CEILING_MULT,
+  LIARS_DICE_UNLOCK_GAMES,
   LiarsDiceMix,
   LiarsDiceOpponent,
 } from '@spacerquest/content';
@@ -49,9 +51,26 @@ import { DareBid, DareHandState, DareMoveKind } from './types.js';
  *
  * Floored at 1 so a hypothetical band with a tiny ceiling still charges something
  * for a raise rather than making the whole lattice free.
+ *
+ * T-146 · THE ANTE NOW TAKES THE TIER (`docs/LIARS-DICE-PROGRESSION_SPEC.md`
+ * §4.7). An ante that stayed at 30 while the ceiling went to 3,000 would make
+ * raises nearly free relative to the pot and collapse the bid lattice into
+ * "always raise", so the ante scales with the ceiling the tier actually plays at.
+ *
+ * **`tier >= 4`, NOT `tier === 4`, AND THAT IS THE RULING, NOT A BUG.** Tier 5
+ * removes the band clamp entirely (§4.8), so there is no ceiling to take 3% of —
+ * an ante derived from an unbounded ceiling is undefined. Unlimited betting
+ * removes the SEED and EXPOSURE clamp; it does not and cannot remove the ante
+ * SCALE, which needs a finite reference. Freezing that reference at the tier-4
+ * ceiling is the only choice continuous with tier 4: a player crossing 80 games
+ * sees their ante stay put rather than jump or vanish.
+ *
+ * PROVABLY INERT AT TIER 0 — `tier <= 3` reproduces the shipped expression
+ * character for character.
  */
-export function anteFor(systemId: number): number {
-  return Math.max(1, Math.round(wagerBandFor(systemId).max * DARE_ANTE_BAND_FRACTION));
+export function anteFor(systemId: number, tier: number): number {
+  const mult = tier >= 4 ? LIARS_DICE_RAISED_CEILING_MULT : 1;
+  return Math.max(1, Math.round(wagerBandFor(systemId).max * mult * DARE_ANTE_BAND_FRACTION));
 }
 
 /**
@@ -61,8 +80,18 @@ export function anteFor(systemId: number): number {
  * (§4.3). A "5–200" dive bar can therefore never take 400 off a captain.
  */
 export function headroomFor(hand: DareHandState, side: 'player' | 'dealer'): number {
-  const max = wagerBandFor(hand.systemId).max;
-  return Math.max(0, max - (side === 'player' ? hand.potPlayer : hand.potDealer));
+  // T-146 · READS THE HAND'S **FROZEN** CEILING, never `wagerBandFor(hand.systemId)`
+  // (§8 row 6). The tier is frozen at open (§4.6): a hand opened at tier 3 keeps
+  // its tier-3 exposure ceiling even if the player's 40th game settles mid-scene,
+  // and a content edit across a reload cannot move the rules of a hand already in
+  // progress. INERT WHERE IT LANDS — T-145 wrote `bandMax` at exactly
+  // `wagerBandFor(systemId).max`.
+  //
+  // `bandMax === null` IS the encoding of tier 5 (§4.8). The band clamp is gone;
+  // `chargedAnte` already takes the min with the actor's credits, so the SOLVENCY
+  // CLAMP becomes the sole ceiling with no signature change anywhere.
+  if (hand.bandMax === null) return Number.MAX_SAFE_INTEGER;
+  return Math.max(0, hand.bandMax - (side === 'player' ? hand.potPlayer : hand.potDealer));
 }
 
 /**
@@ -130,6 +159,120 @@ export const DARE_MAX_QUANTITY = maxQuantityForDice(DARE_DICE_PER_SIDE);
  */
 export const DARE_MAX_FACE = 6;
 
+// ---------------------------------------------------------------------------
+// T-146 · §4 · THE UNLOCK LADDER
+// (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.1, §4.5, §4.7, §4.8)
+//
+// CONTENT OWNS THE THRESHOLDS AND THE MULTIPLIER (`LIARS_DICE_UNLOCK_GAMES`,
+// `LIARS_DICE_RAISED_CEILING_MULT`); the engine owns the arithmetic that reads
+// them. There is no `if (` deciding an outcome in `packages/content` and no
+// threshold literal in this file.
+//
+// **`liarsDiceTier` IS CALLED IN EXACTLY TWO PLACES IN THE WHOLE REPO** (§4.6):
+//   1. `actions/hangout.ts`'s `case 'dare'` open arm — the one site that FREEZES a
+//      tier's effects onto a hand.
+//   2. `packages/ui/src/format.ts`'s `dareWagerBounds` — the pre-hand stake input,
+//      legitimate precisely because there is no hand yet to read a frozen field
+//      off. Display only; the engine re-clamps at open.
+// A THIRD CALL SITE IS A BUG. If a site has a hand, it reads the frozen field
+// (`hand.maxQuantity`, `hand.dicePerSide`, `hand.bandMax`) — that ruling is what
+// collapses "every validation site must read the live tier" into a finite set of
+// constant-to-field substitutions.
+// ---------------------------------------------------------------------------
+
+/**
+ * T-146 · How many rungs of the ladder `gamesPlayed` cumulative settled hands have
+ * unlocked. Tier `n` is live at `gamesPlayed >= LIARS_DICE_UNLOCK_GAMES[n-1]`.
+ *
+ * THE OFF-BY-ONE, PINNED so it cannot be argued (§4.1): the SETTLEMENT of the 5th
+ * hand increments the counter to 5, which makes tier 1 live for the **6th** hand.
+ * A hand's tier is frozen at open, so the 5th hand itself is played entirely at
+ * tier 0.
+ *
+ * TOTAL over every number, including negatives, fractions and `Infinity` — a
+ * corrupt or hand-edited save must produce a tier, never a crash or a `NaN`.
+ */
+export function liarsDiceTier(gamesPlayed: number): 0 | 1 | 2 | 3 | 4 | 5 {
+  // `NaN` is the only value that compares false against every threshold AND
+  // against `<= 0`, so it is named rather than folded into an `isFinite` guard —
+  // an `isFinite` guard would send `Infinity` to tier 0, which is the wrong end of
+  // the ladder for "more games than a number can hold".
+  if (Number.isNaN(gamesPlayed) || gamesPlayed <= 0) return 0;
+  const rungs = LIARS_DICE_UNLOCK_GAMES.filter((threshold) => gamesPlayed >= threshold).length;
+  return rungs as 0 | 1 | 2 | 3 | 4 | 5;
+}
+
+/**
+ * T-146 · The wager band a hand OPENED AT `tier` plays inside (§4.2, §4.8).
+ *
+ *   tier <= 3 : the port's authored band, verbatim
+ *   tier == 4 : `{ min, max × LIARS_DICE_RAISED_CEILING_MULT }` — raised BOUNDED
+ *               betting. `headroomFor` reads the same number, so ×3 triples
+ *               per-side WHOLE-HAND exposure and not merely the seed (§4.4 records
+ *               this as a consequence of the ruling, not a reason to change it).
+ *   tier == 5 : `{ min: 0, max: null }` — the band clamp is removed at BOTH ends.
+ *               A veteran may sit at Regulus-6 for 10 credits if they want to; the
+ *               floor existed to stop a captain playing beneath a house's dignity,
+ *               and a captain 80 games in has earned the right to.
+ *
+ * `max === null` is the ONLY encoding of "unlimited" in the engine. THE SOLVENCY
+ * CLAMP IS NOT REMOVED and is not this function's business: the open arm still
+ * mins against both sides' live credits, and `chargedAnte` still mins against the
+ * actor's purse.
+ */
+export function effectiveWagerBand(
+  systemId: number,
+  tier: number,
+): { min: number; max: number | null } {
+  const band = wagerBandFor(systemId);
+  if (tier >= 5) return { min: 0, max: null };
+  if (tier === 4) return { min: band.min, max: band.max * LIARS_DICE_RAISED_CEILING_MULT };
+  return { min: band.min, max: band.max };
+}
+
+/** T-146 · The three "Read the Table" lines, exactly as authored (§4.5). */
+const READ_SAFE = 'This one plays it safe.';
+const READ_RECKLESS = "This one's reckless.";
+const READ_UNKNOWN = "Can't get a read on this one.";
+
+/**
+ * T-146 · "READ THE TABLE" — unlocked at tier ≥ 3, shown at open, before the first
+ * bid (§4.5).
+ *
+ * Pool A reads the hand's RESOLVED archetype (ruling 1): a `'mixed'` row is
+ * resolved to one concrete arm once at open, so a mixed opponent genuinely IS one
+ * of the three for the duration of the hand and the honest read is the resolved
+ * one. A mixed opponent may therefore read differently from one hand to the next,
+ * which is exactly what makes them unreadable over a career — at zero extra copy
+ * and with no lie ever told to the player.
+ *
+ * Pool B has no archetype, so its read is derived by rule from the profile's GUILE
+ * (ruling 2). Without this, tier 3 would unlock a feature DEAD at the pool that
+ * supplies most of the player's hands. The mapping is honest rather than
+ * decorative: `DARE_AI_GUILE_BLUFF` and `DARE_AI_GUILE_PATIENCE` mean a high-GUILE
+ * dealer bluffs more AND challenges sooner, so they genuinely are the careful one.
+ *
+ * **MATHEMATICALLY INERT, AND IT MUST STAY THAT WAY.** This touches no dice, no
+ * count, no cost, no legality and no probability — it is one string on one event.
+ * That inertness is exactly why the read was chosen over wildcards. A later task
+ * that makes it conditional on anything the resolver computes has stopped being
+ * inert and has changed the game.
+ */
+export function readTheTableLine(
+  kind: 'roster' | 'roaming',
+  archetypeOrGuile: 'optimal' | 'bad' | 'random' | number,
+): string {
+  if (kind === 'roster') {
+    if (archetypeOrGuile === 'optimal') return READ_SAFE;
+    if (archetypeOrGuile === 'bad') return READ_RECKLESS;
+    return READ_UNKNOWN;
+  }
+  const guile = typeof archetypeOrGuile === 'number' ? archetypeOrGuile : 0;
+  if (guile >= 4) return READ_SAFE;
+  if (guile <= 1) return READ_RECKLESS;
+  return READ_UNKNOWN;
+}
+
 /**
  * THE SINGLE SOURCE OF LEGALITY (§5.4). `resolveDare` refuses a player move that
  * is not in this list, `dealerMove` chooses only from this list, and the sim's
@@ -137,10 +280,14 @@ export const DARE_MAX_FACE = 6;
  * ends up with a move the player cannot answer.
  *
  * The lattice, stated as arithmetic (§5.1), with `(q, f)` the standing bid:
- *   - OPEN            — `bid === null`. Any `(q', f')` in `1..8 × 1..6`. Costs 0.
+ * T-146 · `Q` below is the HAND'S FROZEN `maxQuantity` (= `2 × dicePerSide`), which
+ * is 8 at tier 0 and 10 / 12 above it. The FACE ceiling is the constant 6 at every
+ * tier (§4.3).
+ *
+ *   - OPEN            — `bid === null`. Any `(q', f')` in `1..Q × 1..6`. Costs 0.
  *   - RAISE FACE      — `f' = f + 1` EXACTLY, `q' = q` EXACTLY. Costs `ante`.
- *   - RAISE QUANTITY  — `f' = f` EXACTLY, `q < q' <= 8`. Costs `ante`.
- *   - RAISE BOTH      — `f' = f + 1` EXACTLY **and** `q < q' <= 8`. Costs `2×ante`.
+ *   - RAISE QUANTITY  — `f' = f` EXACTLY, `q < q' <= Q`. Costs `ante`.
+ *   - RAISE BOTH      — `f' = f + 1` EXACTLY **and** `q < q' <= Q`. Costs `2×ante`.
  *   - CHALLENGE       — legal whenever a bid stands, unconditionally, at zero cost.
  *   - FOLD            — legal while the hand is open, always.
  *   - PEEK            — `bid === null` and not yet used. (The DIE check is the
@@ -163,7 +310,16 @@ export function legalDareMoves(
   side: 'player' | 'dealer',
   actorCredits: number,
 ): DareMoveKind[] {
-  return legalMovesFrom(hand.bid, hand.ante, headroomFor(hand, side), actorCredits, hand.peekUsed);
+  // T-146 · `hand.maxQuantity` — the hand's FROZEN claim ceiling (§8 row 4), not
+  // the `DARE_MAX_QUANTITY` constant. Inert at tier 0, where the two are equal.
+  return legalMovesFrom(
+    hand.bid,
+    hand.ante,
+    headroomFor(hand, side),
+    actorCredits,
+    hand.peekUsed,
+    hand.maxQuantity,
+  );
 }
 
 /**
@@ -180,6 +336,10 @@ export function legalMovesFrom(
   headroom: number,
   actorCredits: number,
   peekUsed: boolean,
+  /** T-146 · The hand's FROZEN claim ceiling (`DareHandState.maxQuantity`), never
+   *  the `DARE_MAX_QUANTITY` constant (§8 row 3). Every caller reads it off the
+   *  hand it was already handed; nothing here consults a live tier (§4.6). */
+  maxQuantity: number,
 ): DareMoveKind[] {
   const moves: DareMoveKind[] = [];
 
@@ -195,7 +355,7 @@ export function legalMovesFrom(
 
   const affordable = (nominal: number) => chargedAnte(nominal, headroom, actorCredits) === nominal;
   const faceRoom = bid.face < DARE_MAX_FACE;
-  const quantityRoom = bid.quantity < DARE_MAX_QUANTITY;
+  const quantityRoom = bid.quantity < maxQuantity;
   if (faceRoom && affordable(ante)) moves.push('raise-face');
   if (quantityRoom && affordable(ante)) moves.push('raise-quantity');
   if (faceRoom && quantityRoom && affordable(2 * ante)) moves.push('raise-both');
@@ -219,11 +379,20 @@ export function isLatticeMove(
   move: DareMoveKind,
   quantity: number | undefined,
   face: number | undefined,
+  /** T-146 · The hand's FROZEN claim ceiling (§8 row 5). A caller with a hand
+   *  passes `hand.maxQuantity`; nothing here reads a live tier (§4.6). */
+  maxQuantity: number,
 ): boolean {
   if (move === 'challenge' || move === 'fold' || move === 'peek') return true;
   if (quantity === undefined || face === undefined) return false;
   if (!Number.isInteger(quantity) || !Number.isInteger(face)) return false;
-  if (quantity < 1 || quantity > DARE_MAX_QUANTITY) return false;
+  if (quantity < 1 || quantity > maxQuantity) return false;
+  // T-146 · THE FACE BOUND STAYS THE CONSTANT, AT EVERY TIER, AND THAT IS AN
+  // EXPLICIT RULING (§4.3) — see `DARE_MAX_FACE`'s own comment. A reader who has
+  // just watched the quantity bound become a parameter will be tempted to
+  // "complete the symmetry" here. Do not: a seventh face is a different game, and
+  // widening the range reopens the §5.2 exploit search against a fix proven only
+  // over 1..6.
   if (face < 1 || face > DARE_MAX_FACE) return false;
 
   if (move === 'bid') return bid === null;
@@ -375,9 +544,18 @@ export const DARE_AI_CHALLENGE_MARGIN = 1.5;
 /** GUILE 5 lowers the challenge margin to 0.75 — a sharper dealer calls a shade
  *  sooner, since reading a bluff is exactly what GUILE is. */
 export const DARE_AI_GUILE_PATIENCE = 0.15;
-/** Holding none of the claimed face and facing a claim of 5+ across eight dice,
- *  the dealer's four dice cannot rescue the challenge; walking is cheaper than
- *  paying an ante to find out. */
+/**
+ * Holding none of the claimed face and facing a claim of 5+ across eight dice,
+ * the dealer's four dice cannot rescue the challenge; walking is cheaper than
+ * paying an ante to find out.
+ *
+ * T-146 · THIS IS THE **TIER-0 VALUE** of the live expression the dealer now
+ * evaluates, `round(5 × dicePerSide / 4)` (§8 row 8): the threshold is "5 out of a
+ * 4-dice hand", scaled so the same evidence bar holds at 5 and 6 dice. The constant
+ * STAYS exported, at exactly `round(5 × 4 / 4) = 5`, so the rewire is provably
+ * inert at four dice — which is what keeps T-137's 8,000-row pool-B baseline
+ * directly comparable rather than a fresh, uncomparable sample.
+ */
 export const DARE_AI_FOLD_QUANTITY = 5;
 /** Of 100. Rare by design — RAISE BOTH costs `2 × ante` and is always the riskier
  *  claim. T-137 measures how often it is actually taken. */
@@ -419,6 +597,10 @@ export interface DareMove {
  */
 export function dealerMove(input: {
   dealerDice: readonly number[];
+  /** T-146 · The hand's FROZEN dice-per-side (§8 row 8). Passed rather than read
+   *  off `dealerDice.length` so the policy's inputs stay explicit and the two
+   *  tier-derived numbers below have one named source. */
+  dicePerSide: number;
   bid: DareBid | null;
   bidder: 'player' | 'dealer' | null;
   dealerGuile: number;
@@ -428,7 +610,7 @@ export function dealerMove(input: {
   /** 0..99, drawn by the caller from the action's forked rng. Keeps the policy pure. */
   roll: number;
 }): DareMove {
-  const { dealerDice, bid, dealerGuile, ante, headroom, dealerCredits, roll } = input;
+  const { dealerDice, dicePerSide, bid, dealerGuile, ante, headroom, dealerCredits, roll } = input;
   if (bid === null) {
     // §9.9 ruling 1 · The dealer is NEVER asked to move before the player's
     // opening bid — there is nothing to fold to, and the flow provably cannot
@@ -440,11 +622,25 @@ export function dealerMove(input: {
   // Legality is asked of the SAME rule the player's moves go through
   // (`legalMovesFrom`, which `legalDareMoves` also delegates to). `peekUsed` is
   // passed true because a Peek costs a DAWN DIE and the house has none.
-  const choices = legalMovesFrom(bid, ante, headroom, dealerCredits, true);
+  const choices = legalMovesFrom(
+    bid,
+    ante,
+    headroom,
+    dealerCredits,
+    true,
+    // T-146 · the hand's frozen ceiling, derived from the same `dicePerSide` the
+    // caller froze at open. `maxQuantityForDice(4) === DARE_MAX_QUANTITY === 8`,
+    // so this is inert at tier 0.
+    maxQuantityForDice(dicePerSide),
+  );
 
   const own = dealerDice.filter((d) => d === bid.face).length;
-  // Four unknown dice on the other side, 1/6 each.
-  const unknownExpectation = DARE_DICE_PER_SIDE / DARE_MAX_FACE;
+  // `dicePerSide` unknown dice on the other side, 1/6 each. T-146: LIVE off the
+  // hand (§8 row 8), not the `DARE_DICE_PER_SIDE` constant — identical at 4.
+  const unknownExpectation = dicePerSide / DARE_MAX_FACE;
+  // T-146 · The fold bar, scaled to the hand's size. `DARE_AI_FOLD_QUANTITY` is
+  // exactly this expression's tier-0 value, so the rewire moves nothing at 4 dice.
+  const foldQuantity = Math.round((DARE_AI_FOLD_QUANTITY * dicePerSide) / 4);
   const expected = own + unknownExpectation;
   const surplus = bid.quantity - expected;
 
@@ -457,7 +653,7 @@ export function dealerMove(input: {
   }
 
   // 2. Hopeless and expensive: no matching dice and a large claim.
-  if (own === 0 && bid.quantity >= DARE_AI_FOLD_QUANTITY && choices.includes('fold')) {
+  if (own === 0 && bid.quantity >= foldQuantity && choices.includes('fold')) {
     return { move: 'fold' };
   }
 
@@ -561,13 +757,13 @@ interface RaiseCandidate {
  * The legal move kinds available to a ROSTER dealer, bounded by the hand's FROZEN
  * `maxQuantity`.
  *
- * NOTE ON THE SIGNATURE, so T-146 changes nothing here: `legalMovesFrom` does not
- * take a `maxQuantity` parameter until T-146's §8 row 3, so this asks it the
- * shipped question and then applies the hand's own ceiling itself. Every archetype
- * raise steps the quantity by exactly one, so "the raise fits" is
- * `bid.quantity + 1 <= maxQuantity`. ARITHMETICALLY INERT at tier 0, where
- * `maxQuantity === DARE_MAX_QUANTITY === 8` and this is exactly `legalMovesFrom`'s
- * own `quantityRoom`.
+ * T-146 · `legalMovesFrom` NOW TAKES THE CEILING ITSELF (§8 row 3), so the
+ * post-filter T-145 shipped here is gone. **That deletion is behaviour-preserving
+ * over the integers, not a change**: every archetype raise steps the quantity by
+ * exactly one, so T-145's guard was `bid.quantity + 1 <= maxQuantity`, and
+ * `legalMovesFrom`'s own `quantityRoom` is `bid.quantity < maxQuantity` — the same
+ * predicate on integers. This function is now a one-line pass-through and stays
+ * only because it names WHY `peekUsed` is passed true.
  */
 function archetypeChoices(
   bid: DareBid,
@@ -578,9 +774,7 @@ function archetypeChoices(
 ): DareMoveKind[] {
   // `peekUsed` is passed true because a Peek costs a DAWN DIE and the house has
   // none — the same argument `dealerMove` makes.
-  const moves = legalMovesFrom(bid, ante, headroom, dealerCredits, true);
-  if (bid.quantity + 1 <= maxQuantity) return moves;
-  return moves.filter((move) => move !== 'raise-quantity' && move !== 'raise-both');
+  return legalMovesFrom(bid, ante, headroom, dealerCredits, true, maxQuantity);
 }
 
 function raiseCandidates(bid: DareBid, ante: number, choices: DareMoveKind[]): RaiseCandidate[] {

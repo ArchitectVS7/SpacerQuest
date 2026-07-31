@@ -78,7 +78,6 @@ import {
   rankClientele,
   venueOffered,
   venueParamsFor,
-  wagerBandFor,
   // T-136 · The Liar's Dice RULES the fog projection reads. The pane never
   // re-derives legality or headroom; it asks the engine's own functions.
   headroomFor,
@@ -88,6 +87,11 @@ import {
   // `headroomFor` rather than re-deriving them.
   liarsDiceOpponentFor,
   liarsDiceOpponentsAt,
+  // T-146 · the UNLOCK LADDER. `liarsDiceTier` is read in exactly one place in
+  // this package (`dareWagerBounds`), for the reason stated there.
+  effectiveWagerBand,
+  liarsDiceTier,
+  readTheTableLine,
   dawnDiceModifiers,
   equipmentDiceBenefits,
   hasExploreModule,
@@ -424,10 +428,38 @@ export interface HangoutRosterOpponent {
    *  row rather than offering a button that can only fail. They never regenerate —
    *  see the theorem at the refusal site for why that cannot lock an achievement. */
   broke: boolean;
+  /**
+   * T-146 · The "Read the Table" line for this seat, present only at unlock
+   * tier ≥ 3 (§8 row 46b).
+   *
+   * **UNDEFINED ON A `'mixed'` ROW, DELIBERATELY, AND THAT IS A RULING** (§4.5
+   * ruling 1): a mix is resolved to a concrete arm at OPEN, so before the hand
+   * exists there is no resolved arm and therefore no honest read. The pane renders
+   * nothing (the `roomLine` convention — never a placeholder), and the mixed
+   * opponent's real read arrives at open on `DareHandStarted.opponentRead`.
+   * Mapping mixed to the `random` line here would be the pane inventing a read the
+   * engine never made.
+   */
+  read?: string;
+}
+
+/**
+ * T-146 · THE ONE LIVE-TIER READ IN THIS PACKAGE (§4.6). Both of its callers are
+ * PRE-HAND projections — the stake input and the opponent picker — which is
+ * exactly what makes a live read legitimate here: there is no hand yet to read a
+ * frozen field off. Every reader that HAS a hand reads the hand's frozen fields.
+ *
+ * Kept as one function so `liarsDiceTier` has exactly two call sites in the whole
+ * repo (this and `actions/hangout.ts`'s open arm), which is the invariant §4.6
+ * states and the one a reviewer greps for.
+ */
+function preHandTier(game: GameState): number {
+  return liarsDiceTier(game.player.liarsDiceGamesPlayed);
 }
 
 export function hangoutRosterOpponents(game: GameState): HangoutRosterOpponent[] {
   const beaten = new Set(game.player.liarsDiceBeaten);
+  const readUnlocked = preHandTier(game) >= 3;
   // In authored SEAT ORDER, straight off the engine's accessor — pool A has no
   // `currentSystemId` and takes no part in the roam, so there is nothing to filter
   // and no `rankClientele` to apply. The house's three are always at the house.
@@ -439,6 +471,11 @@ export function hangoutRosterOpponents(game: GameState): HangoutRosterOpponent[]
       beaten: beaten.has(opponent.id),
       purse,
       broke: purse <= 0,
+      // A 'mixed' row has no resolved arm before the hand exists — see `read`'s
+      // own note. `undefined` here, and the pane renders nothing.
+      ...(readUnlocked && opponent.archetype !== 'mixed'
+        ? { read: readTheTableLine('roster', opponent.archetype) }
+        : {}),
     };
   });
 }
@@ -452,16 +489,32 @@ export function hangoutRumorLines(game: GameState): string[] {
 }
 
 /** The Dare wager band — the same bounds the engine clamps a requested wager into.
- *  T-120: the band is now the PORT's (`wagerBandFor`), so a high table and a
- *  dockside room show different limits; the UI reads the engine's accessor rather
- *  than a bare constant. Reader: the pane's wager input + its label. */
+ *  T-120: the band is the PORT's, so a high table and a dockside room show
+ *  different limits; the UI reads the engine's accessor rather than a bare
+ *  constant. T-146: that accessor is now `effectiveWagerBand`, which layers the
+ *  live unlock tier over the port's authored band — this file no longer imports
+ *  `wagerBandFor` at all, because a raw port band is never the right answer here.
+ *  Reader: the pane's wager input + its label. */
 export interface DareWagerBounds {
   min: number;
-  max: number;
+  /** T-146 · `null` at unlock tier 5 — the band clamp is removed at both ends and
+   *  there is NO ceiling to render. The pane must branch on this rather than print
+   *  a blank number. The solvency clamp still applies; it is simply not a *band*. */
+  max: number | null;
 }
 
+/**
+ * T-146 · THE SECOND AND LAST LEGITIMATE `liarsDiceTier` CALL SITE IN THE REPO
+ * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.6, §8 row 51). Every other reader with
+ * a hand reads the hand's FROZEN `bandMax`; this one is legitimate precisely
+ * because there is no hand yet — the player is choosing a stake before the hand
+ * exists, so there is no frozen field to read off. A THIRD CALL SITE IS A BUG.
+ *
+ * DISPLAY ONLY. It decides nothing: the engine re-clamps the requested wager at
+ * open, against this same effective band AND against both sides' live credits.
+ */
 export function dareWagerBounds(game: GameState): DareWagerBounds {
-  return wagerBandFor(game.player.currentSystemId);
+  return effectiveWagerBand(game.player.currentSystemId, preHandTier(game));
 }
 
 // ---- T-136 · THE LIAR'S DICE FOG PROJECTION ------------------------------
@@ -499,8 +552,15 @@ export interface DareSceneView {
   /** PUBLIC — the player's own four dice, in roll order (never sorted: a sorted
    *  hand is a different hand to look at). */
   playerDice: number[];
-  /** A COUNT, never values. This field is the whole point of the projection. */
+  /** A COUNT, never values. This field is the whole point of the projection.
+   *  T-146 · already `hand.dealerDice.length`, so it is length-agnostic and needed
+   *  no ladder edit — confirmed, not changed (§8 row 49's confirm half). */
   dealerDieCount: number;
+  /** T-146 · The hand's FROZEN claim ceiling (`2 × dicePerSide`), so the pane's
+   *  stepper clamp and its `data-max` come off the HAND rather than the tier-0
+   *  `DARE_MAX_QUANTITY` constant (§8 rows 43, 45). The pane still decides no
+   *  legality of its own — it asks the engine's `isLatticeMove` with this. */
+  maxQuantity: number;
   /** The ONE dealer die a successful Peek revealed (§8.3), or null. */
   peeked: { index: number; value: number } | null;
   bid: DareBid | null;
@@ -522,6 +582,36 @@ export interface DareSceneView {
   /** T-145 · The roster opponent's authored TABLE TALK, shown at the table for the
    *  life of the hand. `null` on a roaming hand — pool B has no authored lines. */
   tableTalk: string | null;
+  /**
+   * T-146 · "READ THE TABLE" (§4.5, §8 row 47) — the line the ENGINE put on this
+   * hand's `DareHandStarted`, or `null` when the hand opened below unlock tier 3.
+   *
+   * READ OFF `state.eventLog`, NOT RE-DERIVED. The pane owns no rule here: it does
+   * not know the thresholds, does not call `liarsDiceTier`, and cannot map an
+   * archetype or a GUILE to a line — it renders the string the engine already
+   * emitted, keyed on this hand's own `handId`.
+   *
+   * WHY NOT THE STORE'S `dareBeats`, which also carry the event: the scene's beat
+   * effect calls `clearDareBeats()` on its very first run whenever the dealer has
+   * not answered — which is exactly the state at open — so a beat-sourced read
+   * would render for one paint and vanish. The event log is append-only and
+   * survives a reload, so the read is stable for the life of the hand, in the same
+   * way `tableTalk` above is.
+   */
+  opponentRead: string | null;
+}
+
+/** T-146 · This hand's "Read the Table" line, straight off the `DareHandStarted`
+ *  the engine emitted for it. Scanned from the tail because the log is
+ *  append-only and the newest matching hand is the live one. */
+function dareOpponentRead(game: GameState, handId: string): string | null {
+  for (let i = game.eventLog.length - 1; i >= 0; i -= 1) {
+    const event = game.eventLog[i];
+    if (event.type === 'DareHandStarted' && event.handId === handId) {
+      return event.opponentRead ?? null;
+    }
+  }
+  return null;
 }
 
 export function dareScene(game: GameState): DareSceneView | null {
@@ -541,9 +631,11 @@ export function dareScene(game: GameState): DareSceneView | null {
     dealerName: dealer?.name ?? hand.dealerId,
     opponentKind: hand.opponentKind,
     tableTalk: roster?.lines.tableTalk ?? null,
+    opponentRead: dareOpponentRead(game, hand.id),
     playerDice: [...hand.playerDice],
     // `.length`, deliberately. Never a value, never a map over the array.
     dealerDieCount: hand.dealerDice.length,
+    maxQuantity: hand.maxQuantity,
     peeked: hand.peekedDealerDie ? { ...hand.peekedDealerDie } : null,
     bid: hand.bid ? { ...hand.bid } : null,
     bidder: hand.bidder,
@@ -674,7 +766,7 @@ export function hangoutVenueOffered(game: GameState, venue: HangoutVenueId): boo
  *
  * T-133 (owner ruling D7) · THE BAND IS NOW THE PORT'S, read through the engine's
  * `loanBandFor` — the SAME accessor `resolveVisitHangout`'s `borrow` arm clamps
- * with — exactly as `dareWagerBounds` reads `wagerBandFor`. The garrison mess
+ * with — exactly as `dareWagerBounds` reads the engine's own band accessor. The garrison mess
  * fronts a soldier a month's wages and the home hall fronts a hull, and the pane
  * says so without a per-port branch of its own. The RATE, the TERM and the LENDER
  * stay global constants, because D7 narrowed ruling 5 rather than repealing it:

@@ -990,6 +990,10 @@ const GameEventSchema = z.discriminatedUnion('type', [
     // existing DareHandStarted entries fail to parse at v15.
     dicePerSide: z.number().optional(),
     opponentLine: z.string().optional(),
+    // T-146 · "Read the Table" (§8 row 30c). Optional for exactly the same
+    // strip-mode reason, which is also why it needs no version move: an optional
+    // key on an existing variant parses every prior save unchanged.
+    opponentRead: z.string().optional(),
   }),
   z.object({
     // T-135 · a Peek was attempted (see types.ts DarePeeked).

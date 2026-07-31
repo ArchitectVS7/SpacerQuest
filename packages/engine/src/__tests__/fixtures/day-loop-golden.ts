@@ -543,6 +543,39 @@ export function runDayLoopGolden(
 //   DAY_LOOP state  013f9cb5… -> 328b37f5…   (events 72748730… UNCHANGED)
 //   STORYLET state  cc9ea7c7… -> b8bb9995…   (events 3e96fe90… UNCHANGED)
 // Regenerated via gen-day-loop-golden.ts.
+//
+// T-146 · ALL FOUR HASHES HELD — NO RE-DERIVATION, and this entry records WHY
+// (2026-07-31, the unlock ladder, `docs/LIARS-DICE-PROGRESSION_SPEC.md` §4).
+//
+// T-146 is the largest change to the Dare's rules since T-135: the dice count, the
+// claim ceiling, the wager band, the ante and the dealer's fold bar all became
+// functions of a live unlock tier, and `settleDareHand` gained the odometer
+// increment that drives it. NOT ONE OF THOSE FOUR HASHES MOVED, and the argument
+// is structural rather than lucky:
+//
+//   1. NEITHER SCRIPT OPENS A HAND. There is no `VisitHangout` in either — the
+//      same fact that carried T-135 and T-145 — so `liarsDiceTier` is never
+//      called, no tier is ever frozen onto a hand, and every ladder-derived number
+//      is unreachable from here.
+//   2. NEITHER SCRIPT SETTLES ONE. `settleDareHand` runs from exactly two places:
+//      `resolveDare` and the dusk timeout clause, and the dusk clause is guarded
+//      WHOLE on `state.dareHand !== null`. With no hand ever opened, the new
+//      `liarsDiceGamesPlayed += 1` cannot execute — so `serializeState` emits the
+//      same `0` T-145 seeded, and the STATE hashes hold too. That is why this is
+//      the first Liar's Dice task in the series that moved NO hash at all: T-135
+//      and T-145 each added a serialized KEY; T-146 adds none.
+//   3. THE REWIRE WAS PROVED INERT BEFORE THE LADDER WAS SWITCHED ON. Every call
+//      site was moved off a constant and onto a frozen field with the tier still
+//      pinned at 0 — `dicePerSideForTier(0) === 4`, `maxQuantityForDice(4) === 8`,
+//      `effectiveWagerBand(sid, 0) === wagerBandFor(sid)`, `anteFor(sid, 0)` the
+//      shipped expression, `round(5 × 4 / 4) === 5` — and the whole battery,
+//      including the sim's pinned gambler behavioural fingerprint
+//      (`f08a7285a5a7179f`), came back byte-identical at that pin. Only then did
+//      the tier go live. The N3 `combatRules.ts` extract-before-add discipline.
+//
+// THE EVENT HASHES REMAIN THE TRIPWIRE. If a change of THIS shape ever moves one,
+// it means a ladder read leaked into a path neither script visits — fix the cause,
+// never re-pin.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
   '328b37f5aea0c670733182a7e924726d37b00d356afa346307da54dd41331c6c';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =

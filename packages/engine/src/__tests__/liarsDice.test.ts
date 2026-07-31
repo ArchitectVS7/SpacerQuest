@@ -12,6 +12,8 @@ import { createInitialState, deserializeState, serializeState } from '../state.j
 import { applyPlayerAction, endDay, startDay } from '../day.js';
 import { venueParamsFor, wagerBandFor } from '../hangoutRules.js';
 import {
+  DARE_DICE_PER_SIDE,
+  DARE_MAX_QUANTITY,
   anteFor,
   dealerMove,
   dicePerSideForTier,
@@ -106,11 +108,11 @@ describe('T-135 · the ante rides the port’s own band', () => {
   it('is round(band.max × DARE_ANTE_BAND_FRACTION) at all fourteen ports', () => {
     for (const [systemId, ante] of Object.entries(EXPECTED)) {
       const id = Number(systemId);
-      expect(anteFor(id)).toBe(ante);
+      expect(anteFor(id, 0)).toBe(ante);
       // …and it IS the formula, not a table: the same number falls out of the
       // port's own band and content's one fraction. This is the "no per-port
       // branch" proof — there is one rule and fourteen instances.
-      expect(anteFor(id)).toBe(
+      expect(anteFor(id, 0)).toBe(
         Math.max(1, Math.round(wagerBandFor(id).max * DARE_ANTE_BAND_FRACTION)),
       );
     }
@@ -118,7 +120,7 @@ describe('T-135 · the ante rides the port’s own band', () => {
 
   it('is resolved ONCE at open and frozen onto the hand', () => {
     const opened = openHand(hangoutState(222)).state;
-    expect(opened.dareHand?.ante).toBe(anteFor(SUN_3));
+    expect(opened.dareHand?.ante).toBe(anteFor(SUN_3, 0));
     expect(opened.dareHand?.systemId).toBe(SUN_3);
   });
 
@@ -127,7 +129,7 @@ describe('T-135 · the ante rides the port’s own band', () => {
     // BOTH costs exactly two steps' worth, so 12 × ante = 0.36 × band.max is the
     // most either side can ever pay in antes — the arithmetic F-134-1 rests on.
     for (const id of [1, 8, 11]) {
-      expect(12 * anteFor(id)).toBeLessThanOrEqual(Math.round(0.36 * wagerBandFor(id).max) + 12);
+      expect(12 * anteFor(id, 0)).toBeLessThanOrEqual(Math.round(0.36 * wagerBandFor(id).max) + 12);
     }
   });
 });
@@ -689,6 +691,7 @@ describe('T-135 · the dealer policy cannot read the player’s hand', () => {
   it('is a pure function of its declared inputs', () => {
     const input = {
       dealerDice: [3, 3, 5, 1] as const,
+      dicePerSide: DARE_DICE_PER_SIDE,
       bid: { quantity: 3, face: 3 },
       bidder: 'player' as const,
       dealerGuile: 2,
@@ -703,6 +706,7 @@ describe('T-135 · the dealer policy cannot read the player’s hand', () => {
   it('throws rather than inventing an opening policy it can never need (§9.9)', () => {
     expect(() =>
       dealerMove({
+        dicePerSide: DARE_DICE_PER_SIDE,
         dealerDice: [1, 2, 3, 4],
         bid: null,
         bidder: null,
@@ -725,6 +729,7 @@ describe('T-135 · the dealer policy cannot read the player’s hand', () => {
       [4, 3],
     ]) {
       const move = dealerMove({
+        dicePerSide: DARE_DICE_PER_SIDE,
         dealerDice: [1, 1, 1, 1],
         bid: { quantity, face },
         bidder: 'player',
@@ -750,6 +755,7 @@ describe('T-135 · the dealer policy cannot read the player’s hand', () => {
     for (let guile = 0; guile <= 5; guile += 1) {
       for (let quantity = 5; quantity <= 8; quantity += 1) {
         const move = dealerMove({
+          dicePerSide: DARE_DICE_PER_SIDE,
           dealerDice: [1, 1, 1, 1], // holds none of face 3
           bid: { quantity, face: 3 },
           bidder: 'player',
@@ -893,7 +899,7 @@ describe('T-135 · the Peek', () => {
 // ---------------------------------------------------------------------------
 
 describe('T-135 · the ante clamp closes the raising game, never the hand', () => {
-  const ante = anteFor(SUN_3);
+  const ante = anteFor(SUN_3, 0);
 
   it('an INSOLVENT actor is offered no raise, and a raise it cannot cover is refused', () => {
     // Driven, not poked: the fixture starts the captain on 910 credits and seeds
@@ -955,7 +961,7 @@ describe('T-135 · the ante clamp closes the raising game, never the hand', () =
     // this is one statement about all three consumers.
     const bid = { quantity: 3, face: 3 };
     const rich = 10_000;
-    expect(legalMovesFrom(bid, ante, ante * 2, rich, true)).toEqual([
+    expect(legalMovesFrom(bid, ante, ante * 2, rich, true, DARE_MAX_QUANTITY)).toEqual([
       'raise-face',
       'raise-quantity',
       'raise-both',
@@ -963,35 +969,46 @@ describe('T-135 · the ante clamp closes the raising game, never the hand', () =
       'fold',
     ]);
     // One ante of room: the single raises fit, the double does not.
-    expect(legalMovesFrom(bid, ante, ante, rich, true)).toEqual([
+    expect(legalMovesFrom(bid, ante, ante, rich, true, DARE_MAX_QUANTITY)).toEqual([
       'raise-face',
       'raise-quantity',
       'challenge',
       'fold',
     ]);
     // A hair under one ante: no raise is legal at any price.
-    expect(legalMovesFrom(bid, ante, ante - 1, rich, true)).toEqual(['challenge', 'fold']);
-    expect(legalMovesFrom(bid, ante, 0, rich, true)).toEqual(['challenge', 'fold']);
+    expect(legalMovesFrom(bid, ante, ante - 1, rich, true, DARE_MAX_QUANTITY)).toEqual([
+      'challenge',
+      'fold',
+    ]);
+    expect(legalMovesFrom(bid, ante, 0, rich, true, DARE_MAX_QUANTITY)).toEqual([
+      'challenge',
+      'fold',
+    ]);
     // Credits clamp identically to headroom — §4.3's insolvency rule.
-    expect(legalMovesFrom(bid, ante, 10_000, ante - 1, true)).toEqual(['challenge', 'fold']);
+    expect(legalMovesFrom(bid, ante, 10_000, ante - 1, true, DARE_MAX_QUANTITY)).toEqual([
+      'challenge',
+      'fold',
+    ]);
     // The lattice ceilings, independent of money.
-    expect(legalMovesFrom({ quantity: 8, face: 3 }, ante, 10_000, rich, true)).toEqual([
-      'raise-face',
-      'challenge',
-      'fold',
-    ]);
-    expect(legalMovesFrom({ quantity: 3, face: 6 }, ante, 10_000, rich, true)).toEqual([
-      'raise-quantity',
-      'challenge',
-      'fold',
-    ]);
-    expect(legalMovesFrom({ quantity: 8, face: 6 }, ante, 10_000, rich, true)).toEqual([
-      'challenge',
-      'fold',
-    ]);
+    expect(
+      legalMovesFrom({ quantity: 8, face: 3 }, ante, 10_000, rich, true, DARE_MAX_QUANTITY),
+    ).toEqual(['raise-face', 'challenge', 'fold']);
+    expect(
+      legalMovesFrom({ quantity: 3, face: 6 }, ante, 10_000, rich, true, DARE_MAX_QUANTITY),
+    ).toEqual(['raise-quantity', 'challenge', 'fold']);
+    expect(
+      legalMovesFrom({ quantity: 8, face: 6 }, ante, 10_000, rich, true, DARE_MAX_QUANTITY),
+    ).toEqual(['challenge', 'fold']);
     // Before any bid: open, peek (once) and fold — and never a raise.
-    expect(legalMovesFrom(null, ante, 10_000, rich, false)).toEqual(['bid', 'peek', 'fold']);
-    expect(legalMovesFrom(null, ante, 10_000, rich, true)).toEqual(['bid', 'fold']);
+    expect(legalMovesFrom(null, ante, 10_000, rich, false, DARE_MAX_QUANTITY)).toEqual([
+      'bid',
+      'peek',
+      'fold',
+    ]);
+    expect(legalMovesFrom(null, ante, 10_000, rich, true, DARE_MAX_QUANTITY)).toEqual([
+      'bid',
+      'fold',
+    ]);
   });
 });
 

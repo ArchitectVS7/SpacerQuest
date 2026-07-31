@@ -239,10 +239,25 @@ export function settleDareHand(state: GameState, outcome: DareOutcome, events: G
   // that exists for a named future reader — see schema.ts's `_cov*` guards).
   void justBeaten;
 
-  // ---- T-146 OWNS THE NEXT STATEMENT ------------------------------------
-  // `state.player.liarsDiceGamesPlayed += 1`, here and ONLY here — the single
-  // settlement site, so player folds, dealer folds, both challenge outcomes and
-  // the dusk `timeout-fold` all count and none can be missed (§8 row 20e).
+  // T-146 · THE UNLOCK LADDER'S ODOMETER, INCREMENTED HERE AND ONLY HERE
+  // (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.1, §8 row 20e).
+  //
+  // This is the SINGLE SETTLEMENT SITE in the engine, which is the whole argument
+  // for putting the counter here rather than at each outcome: player folds, dealer
+  // folds, both challenge arms and the dusk `timeout-fold` (`day.ts`'s call to
+  // this same function) all route through this statement, so every settled hand
+  // counts exactly once and none can be missed. A REFUSED move never reaches here
+  // and increments nothing.
+  //
+  // GLOBAL ACROSS BOTH POOLS, deliberately: a roster hand and a roaming hand move
+  // the same counter. That decoupling is what keeps the ladder off the 42-opponent
+  // bottleneck — a player who never sits at the house's own table still unlocks.
+  //
+  // The tier a hand PLAYS at is frozen at open (§4.6), so this increment can never
+  // move the rules of the hand it is settling: by the time it runs, the hand's
+  // `dicePerSide` / `maxQuantity` / `bandMax` have already done their work and
+  // `state.dareHand` is one statement from null.
+  state.player.liarsDiceGamesPlayed += 1;
 
   // ---- T-147 OWNS THE STATEMENT AFTER THAT ------------------------------
   // `if (justBeaten) { … }` — §6.2 steps 2 and 3, the set-closure arithmetic and
@@ -383,7 +398,10 @@ export function resolveDare(
   if (!legalDareMoves(hand, 'player', nextState.player.credits).includes(move)) {
     return refuse(nextState, 'illegal-dare-move');
   }
-  if (!isLatticeMove(hand.bid, move, action.quantity, action.face)) {
+  // T-146 · the ceiling is the hand's FROZEN `maxQuantity` (§8 row 21), never the
+  // `DARE_MAX_QUANTITY` constant and never a live tier — a hand opened at 4 dice
+  // still refuses a claim of 9 even if the player's 10th game settled mid-scene.
+  if (!isLatticeMove(hand.bid, move, action.quantity, action.face, hand.maxQuantity)) {
     return refuse(nextState, 'illegal-dare-move');
   }
 
@@ -464,6 +482,8 @@ export function resolveDare(
       : // `npcGuile` reads the profile; the POLICY never sees an NpcState (§9.7).
         dealerMove({
           dealerDice: hand.dealerDice,
+          // T-146 · the hand's FROZEN count (§8 row 8). Inert at four dice.
+          dicePerSide: hand.dicePerSide,
           bid: hand.bid,
           bidder: hand.bidder,
           dealerGuile: npcGuile(dealerNpc!),

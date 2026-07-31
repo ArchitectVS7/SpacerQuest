@@ -2711,7 +2711,42 @@ the broke-opponent rule behaves per spec (asserted); `CURRENT_SAVE_VERSION` bump
 new fields, backfill and round-trip test; the roaming-NPC Dare path is unchanged and its
 existing tests still pass; gate green.
 
-### T-146 · Build the unlock ladder — `status: TODO` · `coder: opus` · `after: T-145`
+### T-146 · Build the unlock ladder — `status: DONE` · `coder: opus` · `after: T-145`
+
+**Delivered (2026-07-31):** `player.liarsDiceGamesPlayed` now increments on every
+resolved hand, and `liarsDiceTier(gamesPlayed)` derives the five-rung doubling
+ladder (5/10/20/40/80) from `LIARS_DICE_UNLOCK_GAMES`, off-by-one pinned so the
+settling hand itself still plays at its old tier. `liarsDiceTier` is called at
+exactly two sites in the repo — `actions/hangout.ts`'s open arm (which freezes
+the tier's effects onto `dicePerSide`, `maxQuantity`, and `bandMax` once, at
+open, so a mid-hand threshold crossing or content edit can never move a hand
+already in progress) and `format.ts`'s pre-hand `dareWagerBounds` (legitimate
+because there is no hand yet to read a frozen field off) — a third call site is
+a bug per the spec's own ruling. Landed: dice count 4→5→6 (hard-capped at six
+forever), "Read the Table" (a mixed opponent's resolved archetype for the
+roster pool, a GUILE-derived read for the roaming pool, mathematically inert —
+one string, no dice/cost/legality change), the raised bounded-betting ceiling
+at tier 4 (`effectiveWagerBand` returns `max × LIARS_DICE_RAISED_CEILING_MULT`,
+and the ante scales with it so a raise doesn't go free relative to a tripled
+pot), and unlimited betting at tier 5 (`bandMax: null`, band clamp removed at
+both ends, the pre-existing solvency clamp is the sole remaining ceiling). No
+save-shape change — both fields shipped in T-145's migration; this task only
+reads and increments them, and `CURRENT_SAVE_VERSION` does not move. Also
+repaired a regression T-145 left in the smoke rig (F-146-0: a missing
+`--aggregate` flag had silently flipped `docs/balance/smoke/tiers.json`'s
+`spreadSource` from `harvested` to `estimated`; re-extracted with the M4d
+baseline named explicitly and restored `harvested`). New
+`packages/engine/src/__tests__/liarsDiceLadder.test.ts` (714 lines) drives every
+assertion through the real `applyPlayerAction` loop, covering each unlock at
+threshold−1/threshold, the six-dice hard cap, the tier-5 solvency clamp, the
+freeze-at-open behavior, the increment-once-per-hand invariant, and the save
+round-trip across tiers. Deliberate scope boundary: the sim and the UGT
+protocol still size every wager off the tier-0 band (F-146-1, `T-144 §4.6`'s
+ruling that a third `liarsDiceTier` call site is a bug forecloses adding one
+there), so no sweep row or UGT career will exercise the tier-4/5 ceiling as
+played — T-148 can only measure games-to-unlock pacing, not tiers 4/5 in
+actual play, and that gap is reported rather than routed around.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/LIARS-DICE-PROGRESSION_SPEC.md` §4/§5/§8/§9 (the T-144 sp · attempts=1/4.
 
 Implement `player.liarsDiceGamesPlayed`'s increment (every resolved hand, either opponent pool) and
 the five-threshold doubling ladder (5/10/20/40/80) gating: dice count (4→5→6, hard-capped at six),
@@ -2725,6 +2760,38 @@ by a test at threshold−1 and at threshold); dice count never exceeds six regar
 play; unlimited betting still respects the solvency clamp (a test asserting a wager can never
 exceed either side's actual credits); save round-trip covers `liarsDiceGamesPlayed` at various
 tiers; `CURRENT_SAVE_VERSION` does NOT move (the field shipped in T-145); gate green.
+
+**Findings — reported, not routed around:**
+
+- **F-146-0 (regression left by T-145, REPAIRED here).** T-145 ran `balance:extract` with **no
+  `--aggregate`**, so it defaulted to `docs/balance/baseline-n1.json` (`smoke-extract.ts:53`),
+  which carries no `fleet.milestones`. That flipped `provenance.spreadSource` from `harvested` to
+  `estimated` and replaced the harvested tier spreads with synthetic ones — a silent quality
+  regression in the smoke rig. T-146's re-extract names the M4d capstone explicitly
+  (`--aggregate docs/balance/baseline-t137-liars-dice.json`, which does carry milestones at days
+  21/29/30/41/60/120), and `docs/balance/smoke/tiers.json` is back to
+  `"spreadSource": "harvested"` / `"sweepLabel": "t137-liars-dice"`. **T-148 should assert
+  `spreadSource === 'harvested'` after its own extract** so this cannot recur silently.
+- **F-146-1 — the sim and the UGT protocol can never request a tier-4/5 stake.**
+  `sim/src/index.ts` `planDare` and `sim/src/protocol.ts:869` both size the `wager` domain off
+  `wagerBandFor(...)`, the tier-0 band. T-144 §8 assigns neither to T-146, and §4.6 rules that a
+  **third** `liarsDiceTier` call site is a bug, so no third one was added. Consequence, stated
+  because T-148 depends on it: no sweep row and no UGT career will ever exercise the raised ceiling
+  or the removed clamp, so **T-148 cannot measure tiers 4 and 5 as played** — only games-to-unlock
+  pacing (which the gambler does reach: `GAMBLER_MAX_DARES_PER_DAY = 2` × 120 days ≫ 80).
+  `planDare`'s `if (dealer.credits < band.min) return null` gate is wrong-ish at tier 5 for the
+  same reason. Needs a follow-up task or an explicit §4.6 amendment; not improvised here.
+- **F-146-2 — tier 4's ×3 triples per-side WHOLE-HAND exposure, not just the seed**, because
+  `headroomFor` reads the same ceiling (T-144 §4.4 records this as a consequence of the ruling, not
+  a reason to change it). T-148 owes mean-bids-per-hand at tier 0 vs tier 4 against T-137's
+  1.19 bids/hand baseline.
+- **F-146-3 — the ladder LOWERS the baseline's Dare win rate, and that is the honest direction.**
+  Measured on the pinned gambler fingerprint runs (5 seeds × 40 days), tier pinned at 0 vs. ladder
+  live: 299 → 284 hands, 82.6% → 80.6% player win rate, +109,380 → +61,134 net (EV/hand 366 → 215),
+  `dareGuardHits` 0 on every row at six dice as at four. Cause: the baseline opener claims
+  `(own(F*), F*)` — dice it actually holds, true by construction — and a bigger hand makes that
+  claim a smaller share of the dice in play, so the dealer believes it less often and the free wins
+  F-135-1 named get rarer. **Nothing was tuned in response**; T-148 owns the read.
 
 ### T-147 · Achievement hooks — `status: TODO` · `coder: opus` · `after: T-145`
 

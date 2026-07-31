@@ -884,6 +884,18 @@ export type GameEvent =
       /** T-145 · The ROSTER opponent's authored `lines.tableTalk`, present iff the
        *  counterparty is pool A (§8 row 17a). A roaming hand carries nothing. */
       opponentLine?: string;
+      /**
+       * T-146 · "READ THE TABLE" — one line naming how this opponent plays,
+       * present iff the hand OPENED at unlock tier ≥ 3 (§4.5, §8 row 17b). Pool A
+       * reads the resolved archetype; pool B is derived from the profile's GUILE.
+       *
+       * OPTIONAL for the same strip-mode reason as `dicePerSide` above, and that
+       * is what lets it land WITHOUT a save-version move: adding an optional field
+       * to an existing event variant is not a schema change (`docs/VERSIONING.md`
+       * §2). It is also MATHEMATICALLY INERT — one string on one event, touching
+       * no dice, cost, legality or probability, and it must stay that way.
+       */
+      opponentRead?: string;
     }
   | {
       /** T-135 · A Peek was attempted (§8). One per hand, pass or fail; the die is

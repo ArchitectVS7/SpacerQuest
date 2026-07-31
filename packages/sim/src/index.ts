@@ -3560,13 +3560,17 @@ const SIM_DARE_FOLD_QUANTITY = 5;
 /** Mirrors the engine dealer's `DARE_AI_CHALLENGE_MARGIN`, for the same reason. */
 const SIM_DARE_CHALLENGE_MARGIN = 1.5;
 /**
- * A TRIPWIRE, NOT A POLICY. The bid lattice bounds a hand at 12 raises (every
- * raise strictly increases quantity or face and decreases neither, with
- * quantity ≤ 8 and face ≤ 6), so with the opening bid and the terminal move a hand
- * is at most ~15 player actions long and this can never fire. `dareGuardHits` is
- * asserted ZERO by the sim suite precisely because the guard is provably
- * unreachable — a non-zero count is a bug worth failing on, never something to
- * swallow.
+ * A TRIPWIRE, NOT A POLICY. The bid lattice bounds a hand's raises: every raise
+ * strictly increases quantity or face and decreases neither, so the number of
+ * raises is bounded by `(maxQuantity - 1) + (DARE_MAX_FACE - 1)`.
+ *
+ * T-146 · STATED AT THE LADDER'S CEILING rather than at tier 0, because the hand's
+ * quantity bound is now the hand's frozen `maxQuantity` (4 → 5 → 6 dice per side,
+ * HARD-CAPPED AT SIX): at 6 dice that is `(12-1) + (6-1) = 16` raises, so with the
+ * opening bid and the terminal move a hand is at most ~18 player actions long.
+ * Still comfortably under 32, so the guard remains PROVABLY UNREACHABLE at every
+ * tier and `dareGuardHits === 0` stays an assertion rather than a hope. **The
+ * constant does not move** — only the argument for it got wider.
  */
 export const DARE_MAX_MOVES_PER_HAND = 32;
 
@@ -3580,9 +3584,11 @@ export const DARE_MAX_MOVES_PER_HAND = 32;
  * returned state is always player-to-act):
  *   (a) no hand              → `null`; the loop's condition is already false.
  *   (b) a hand, no bid       → an OPENING BID is always legal: any held face is in
- *                              1..6, `max(1, own(F*))` is in 1..4 ⊆ 1..8, and an
- *                              opening bid costs no ante, so neither headroom nor
- *                              credits can refuse it.
+ *                              1..6, `max(1, own(F*))` is in `1..dicePerSide` ⊆
+ *                              `1..maxQuantity` (T-146: `maxQuantity` is
+ *                              `2 × dicePerSide`, so the held count can never
+ *                              exceed it at ANY tier), and an opening bid costs no
+ *                              ante, so neither headroom nor credits can refuse it.
  *   (c) a hand, a bid stands → CHALLENGE is legal unconditionally (its single
  *                              precondition is `bid !== null`, it costs nothing,
  *                              and no clamp applies), and the fallback reaches it
@@ -3629,7 +3635,11 @@ export function planDareMove(state: GameState): PlayerAction | null {
   }
 
   const bid = hand.bid;
-  const expected = own(bid.face) + 4 / 6;
+  // T-146 · the unknown half is the HAND'S frozen `dicePerSide` (§8 row 39), not a
+  // hardcoded four — otherwise the baseline would systematically under-credit the
+  // other side of the table at tiers 1 and 2 and challenge true claims too often.
+  // Identical at four dice, so T-137's pool-B baseline stays comparable.
+  const expected = own(bid.face) + hand.dicePerSide / 6;
 
   // (c1) Hopeless: none of the claimed face and a tall claim.
   if (own(bid.face) === 0 && bid.quantity >= SIM_DARE_FOLD_QUANTITY && legal.includes('fold')) {

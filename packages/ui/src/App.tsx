@@ -2056,6 +2056,17 @@ function HangoutPanel({
                   <span className="hp-npc-name">{r.name}</span>
                   {r.beaten && <span className="hp-npc-tag"> · beaten</span>}
                   {r.broke && <span className="hp-npc-tag"> · cleaned out</span>}
+                  {/* T-146 · "Read the Table", at unlock tier ≥ 3 only. Absent on a
+                      'mixed' seat by ruling — that read does not exist until the
+                      hand resolves the mix at open, and it arrives then on
+                      `DareHandStarted.opponentRead`. Nothing renders, never a
+                      placeholder. */}
+                  {r.read && (
+                    <span className="hp-npc-tag" data-testid="hangout-roster-read">
+                      {' '}
+                      · {r.read}
+                    </span>
+                  )}
                 </button>
               </li>
             ))}
@@ -2075,8 +2086,14 @@ function HangoutPanel({
         {scene === null && state.dareReveal === null && (
           <div className="hp-dare-controls">
             <label className="hp-wager">
+              {/* T-146 · At unlock tier 5 the band clamp is gone at BOTH ends, so
+                  `bounds.max` is null and there is no ceiling to print — rendering
+                  the range would read "WAGER 0– cr". The solvency clamp still
+                  applies; it is simply not a band. */}
               <span className="hp-k" data-testid="dare-wager-bounds">
-                WAGER {bounds.min}–{bounds.max} cr
+                {bounds.max === null
+                  ? `WAGER ${bounds.min}+ cr · no ceiling`
+                  : `WAGER ${bounds.min}–${bounds.max} cr`}
               </span>
               <input
                 aria-label="wager amount"
@@ -2404,7 +2421,12 @@ function LiarsDiceScene({
     ? view.dealerDieCount
     : // A settled FOLD reveals nothing (§6.1), so there is no revealed row to size
       // from — the house always seats `DARE_DICE_PER_SIDE`, and the engine says so.
-      (revealedDealerDice?.length ?? DARE_DICE_PER_SIDE);
+      // T-146 · the house seats as many as the captain does, at every tier, so the
+      // player's own revealed row is the right size for the shroud row. Both
+      // arrays are always the same length and `DareHandResolved.playerDice` is
+      // always present, so no new event field is owed. The constant is the
+      // last-resort fallback only.
+      (revealedDealerDice?.length ?? reveal?.playerDice.length ?? DARE_DICE_PER_SIDE);
   const history = view?.history ?? [];
   const legal = view?.legalMoves ?? [];
 
@@ -2416,7 +2438,9 @@ function LiarsDiceScene({
     // Re-seed the composer whenever the standing claim moves: the cheapest legal
     // raise is the sensible default, and the ceiling is the ENGINE's constant.
     if (bid) {
-      setQuantity(Math.min(bid.quantity + 1, DARE_MAX_QUANTITY));
+      // T-146 · the ceiling is the LIVE HAND's frozen `maxQuantity` (§8 row 45);
+      // the constant is the fallback for the settled frame, where there is no view.
+      setQuantity(Math.min(bid.quantity + 1, view?.maxQuantity ?? DARE_MAX_QUANTITY));
       setFace(bid.face);
     } else {
       setQuantity(1);
@@ -2476,7 +2500,10 @@ function LiarsDiceScene({
   }, [reveal, reduced]);
 
   const canMove = (m: DareMoveKind) => legal.includes(m);
-  const claimOk = (m: DareMoveKind, q: number, f: number) => isLatticeMove(bid, m, q, f);
+  // T-146 · the engine's lattice, asked with the HAND's frozen ceiling. Still no
+  // arithmetic here deciding what may be claimed.
+  const claimOk = (m: DareMoveKind, q: number, f: number) =>
+    isLatticeMove(bid, m, q, f, view?.maxQuantity ?? DARE_MAX_QUANTITY);
 
   return (
     <div
@@ -2500,6 +2527,14 @@ function LiarsDiceScene({
         {view?.tableTalk && (
           <p className="ld-tabletalk" data-testid="dare-table-talk">
             {view.tableTalk}
+          </p>
+        )}
+        {/* T-146 · "READ THE TABLE" — the engine's own line, unlocked at tier ≥ 3.
+            Absent below that ⇒ nothing renders at all, never a placeholder. The
+            pane maps nothing here; it prints the string the engine emitted. */}
+        {view?.opponentRead && (
+          <p className="ld-tabletalk ld-read" data-testid="dare-table-read">
+            {view.opponentRead}
           </p>
         )}
         <div className="ld-dice">
@@ -2654,7 +2689,7 @@ function LiarsDiceScene({
                 aria-label="claim quantity"
                 data-testid="dare-quantity"
                 inputMode="numeric"
-                data-max={String(DARE_MAX_QUANTITY)}
+                data-max={String(view?.maxQuantity ?? DARE_MAX_QUANTITY)}
                 value={quantity}
                 onChange={(e) => setQuantity(Number.parseInt(e.target.value, 10) || 0)}
               />

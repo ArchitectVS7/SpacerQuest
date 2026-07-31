@@ -929,7 +929,43 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // over 300 days on seed 1: 446 dares, 186 of them against pool A for +199,617 cr
   // — inside §2.6's 280,800 cr lifetime roster cap, as the zero-sum rule requires.
   // Nothing was widened to make this pass; the input to the fingerprint changed.
-  gambler: 'f08a7285a5a7179f',
+  //
+  // Entry 25 (T-146): re-derived a SEVENTH time, and once more the ONLY row that
+  // moves — `planDare` is still called by `gamblerPolicy` and by nothing else, so
+  // no other policy has ever sat at a table and none of them can feel the ladder.
+  //
+  // THE CAUSE, STATED BEFORE THE NUMBER, because a re-pin without one is exactly
+  // the thing the standing constraint forbids: `player.liarsDiceGamesPlayed` now
+  // increments at every settled hand and drives a five-rung unlock ladder
+  // (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4). The gambler plays 49-70 hands per
+  // seed over 40 days, so EVERY fingerprint seed crosses rungs 1 (5 games, 5 dice
+  // a side), 2 (10, 6 dice — the hard cap), 3 (20, "Read the Table", one optional
+  // string on one event) and 4 (40, the wager ceiling x3). Rung 5 (80) is not
+  // reached at this length. Three of those four change what actually happens at
+  // the table, so every hand from the sixth on re-phases.
+  //
+  // THE REWIRE ITSELF WAS PROVED INERT FIRST, which is what separates a rule
+  // change from a regression. With the tier pinned at 0 and every call site
+  // already moved off its constant and onto the hand's frozen field, this exact
+  // fingerprint came back as `f08a7285a5a7179f` — the pre-T-146 value, byte for
+  // byte — along with all four day-loop golden hashes and the whole battery. Only
+  // then was the tier switched on. The N3 `combatRules.ts` extract-before-add
+  // discipline, and the reason this entry can name a cause rather than a guess.
+  //
+  // MEASURED across these exact five seeds x 40 days, tier pinned vs. ladder live:
+  //     hands      299  ->  284
+  //     won        247  ->  229      (82.6% -> 80.6%)
+  //     wagered  139,868 -> 108,440
+  //     net      109,380 ->  61,134  (EV/hand 366 -> 215)
+  //     dareGuardHits  0 ->  0       (on every row, at six dice as at four)
+  // The win rate and EV FELL, which is the honest direction and worth recording:
+  // the baseline opener claims `(own(F*), F*)` — dice it actually holds, so the
+  // claim is true by construction — and a bigger hand makes that opening claim a
+  // smaller share of the dice in play, so the dealer believes it less often and the
+  // free wins F-135-1 named get rarer. NOTHING WAS TUNED IN RESPONSE. T-148 owns
+  // the ladder-pacing read; §1.3 forbids retuning a spec constant to reproduce an
+  // old figure, and no constant was touched.
+  gambler: '63a80b1611bbded0',
   greedy: '56df4d82dab33e08',
 };
 

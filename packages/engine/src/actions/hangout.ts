@@ -18,12 +18,21 @@ import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { applyDisposition } from '../npc.js';
 import { cloneState } from '../clone.js';
-import { loanBandFor, venueOffered, venueParamsFor, wagerBandFor } from '../hangoutRules.js';
+import {
+  loanBandFor,
+  npcGuile,
+  venueOffered,
+  venueParamsFor,
+  wagerBandFor,
+} from '../hangoutRules.js';
 import {
   anteFor,
   dicePerSideForTier,
+  effectiveWagerBand,
   liarsDiceOpponentFor,
+  liarsDiceTier,
   maxQuantityForDice,
+  readTheTableLine,
   resolveMixedArchetype,
 } from '../liarsDiceRules.js';
 import { DareCounterparty, opponentCredits, payOpponent } from './dare.js';
@@ -330,6 +339,17 @@ export function resolveVisitHangout(
         ? { dealerId: rosterOpponent.id, opponentKind: 'roster' }
         : { dealerId: dealer!.id, opponentKind: 'roaming' };
 
+      // T-146 · THE ONE SITE THAT READS A LIVE TIER AND FREEZES ITS EFFECTS ONTO A
+      // HAND (§8 row 16b, §4.6). There is exactly one other `liarsDiceTier` call in
+      // the repo — `format.ts`'s pre-hand `dareWagerBounds`, which has no hand to
+      // read a frozen field off. A THIRD IS A BUG.
+      //
+      // The hand stores the tier's EFFECTS, never the tier: `dicePerSide`,
+      // `maxQuantity` and `bandMax` are written once, below, and never recomputed.
+      // A save/reload, a content edit, or a settlement that crosses a threshold
+      // mid-scene therefore cannot move the rules of a hand already in progress.
+      const tier = liarsDiceTier(nextState.player.liarsDiceGamesPlayed);
+
       // The clamp algebra, CHARACTER FOR CHARACTER as before (§3): the requested
       // stake, clamped into the PORT'S band and DOWN to what both sides can cover
       // (a stake a broke dealer cannot match is capped, never a crash). Both sides
@@ -340,10 +360,22 @@ export function resolveVisitHangout(
       // shipped algebra already lets `cap` fall under `band.min`, so a roster
       // opponent with a purse below the port's floor sits for whatever they have —
       // which is already today's behaviour for a poor roaming dealer.
-      const band = wagerBandFor(systemId);
-      const requested = action.wager ?? band.min;
+      //
+      // T-146 · THE BAND IS NOW THE TIER'S EFFECTIVE BAND (§8 row 13b). Tiers 0–3
+      // return the port's authored band verbatim, so this is inert until a rung
+      // unlocks; tier 4 raises the ceiling ×3; tier 5 removes both ends and leaves
+      // the SOLVENCY clamp (the two credit terms below) as the sole ceiling.
+      //
+      // RULING, RECORDED HERE BECAUSE IT LOOKS LIKE AN INCONSISTENCY: the DEFAULT
+      // wager still reads the PORT'S AUTHORED FLOOR (`wagerBandFor(systemId).min`),
+      // not `band.min`. At tier 5 `band.min` is 0, and defaulting an omitted wager
+      // to 0 would silently open FREE hands for a veteran — the clamp loses its
+      // floor (§4.8: "a veteran may sit at Regulus-6 for 10 credits"), the DEFAULT
+      // does not. Tiers 0–4 are byte-identical either way.
+      const band = effectiveWagerBand(systemId, tier);
+      const requested = action.wager ?? wagerBandFor(systemId).min;
       const cap = Math.min(
-        band.max,
+        band.max ?? Number.MAX_SAFE_INTEGER,
         nextState.player.credits,
         opponentCredits(nextState, counterparty),
       );
@@ -368,7 +400,10 @@ export function resolveVisitHangout(
       // At tier 0 against a roaming opponent both sequences are byte-identical to
       // what M4d shipped, which is why the goldens are provably inert until a
       // roster hand or a ladder unlock actually occurs.
-      const dicePerSide = dicePerSideForTier(0);
+      //
+      // T-146 · the count is now the LIVE tier's (4 → 5 → 6, hard-capped at six
+      // forever). Both loops and `maxQuantity` below follow from this one number.
+      const dicePerSide = dicePerSideForTier(tier);
       const playerDice: number[] = [];
       for (let i = 0; i < dicePerSide; i += 1) playerDice.push(rng.d6());
       const dealerDice: number[] = [];
@@ -400,7 +435,11 @@ export function resolveVisitHangout(
       // The ante is resolved ONCE, here, and stored — so a content edit between
       // two `applyPlayerAction` calls cannot move the price of a raise mid-hand.
       // `systemId` is frozen for the same reason.
-      const ante = anteFor(systemId);
+      // T-146 · the ante scales with the tier's ceiling (§4.7), so a raise never
+      // becomes free relative to a tripled pot. Tier 5 deliberately uses the
+      // TIER-4 ceiling — see `anteFor`'s own note for why an unbounded one is
+      // undefined.
+      const ante = anteFor(systemId, tier);
       nextState.dareHand = {
         id: `dare-${day}-${counterparty.dealerId}-${nextState.dayEventCount}`,
         systemId,
@@ -426,8 +465,12 @@ export function resolveVisitHangout(
         // The three LADDER values are written at tier-0 THROUGH THE RULES rather
         // than as literals — exactly the numbers the shipped engine already
         // computes, so the fields exist, the schema pins them, the migration
-        // backfills them, and nothing observable moves. T-146 changes one thing
-        // about this block: where the `0` comes from.
+        // backfills them, and nothing observable moves.
+        //
+        // T-146 CHANGED EXACTLY ONE THING ABOUT THIS BLOCK: where the tier comes
+        // from. No new key. The three ladder values are still written THROUGH THE
+        // RULES, from the `tier` frozen above — which is what §4.6 means by "the
+        // hand stores the tier's effects, never the tier".
         opponentKind: counterparty.opponentKind,
         opponentArchetype,
         dicePerSide,
@@ -454,6 +497,26 @@ export function resolveVisitHangout(
         // dice count is REQUIRED on the hand, which is what the live pane reads.
         dicePerSide,
         ...(rosterOpponent ? { opponentLine: rosterOpponent.lines.tableTalk } : {}),
+        // T-146 · "READ THE TABLE", unlocked at tier ≥ 3 (§4.5, §8 row 17b). Pool A
+        // reads the RESOLVED archetype — a 'mixed' row has already been collapsed
+        // to one concrete arm above, and the honest read is the resolved one. Pool
+        // B has no archetype, so its read is derived by rule from the profile's
+        // GUILE; without that mapping tier 3 would unlock a feature dead at the
+        // pool that supplies most of the player's hands.
+        //
+        // OPTIONAL on the event, for the same strip-mode reason as `dicePerSide`:
+        // `GameEventSchema` drops unknown keys but does NOT tolerate a missing
+        // required one, so a required key would make every existing save's
+        // DareHandStarted entries fail to parse. Adding an OPTIONAL field to an
+        // existing event variant is explicitly not a schema change
+        // (`docs/VERSIONING.md` §2) — CURRENT_SAVE_VERSION does not move.
+        ...(tier >= 3
+          ? {
+              opponentRead: rosterOpponent
+                ? readTheTableLine('roster', opponentArchetype!)
+                : readTheTableLine('roaming', npcGuile(dealer!)),
+            }
+          : {}),
       });
       break;
     }

@@ -196,7 +196,7 @@ function sweep(rng: SeededRng, n: number): SweepCase[] {
 }
 
 const legalFor = (c: SweepCase): DareMoveKind[] =>
-  legalMovesFrom(c.bid, c.ante, c.headroom, c.dealerCredits, true);
+  legalMovesFrom(c.bid, c.ante, c.headroom, c.dealerCredits, true, DARE_MAX_QUANTITY);
 
 describe('T-145 · every archetype only ever emits a move legalMovesFrom allows', () => {
   it('over 5,000 randomised positions, on all three policies (seed 42)', () => {

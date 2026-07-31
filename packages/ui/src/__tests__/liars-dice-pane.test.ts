@@ -4,11 +4,18 @@ import {
   createInitialState,
   legalDareMoves,
   startDay,
+  wagerBandFor,
   type GameEvent,
   type GameState,
 } from '@spacerquest/engine';
-import { LIARS_DICE_OPPONENTS } from '@spacerquest/content';
-import { dareRevealFrom, dareScene, hangoutNpcs, hangoutRosterOpponents } from '../format';
+import { LIARS_DICE_OPPONENTS, LIARS_DICE_RAISED_CEILING_MULT } from '@spacerquest/content';
+import {
+  dareRevealFrom,
+  dareScene,
+  dareWagerBounds,
+  hangoutNpcs,
+  hangoutRosterOpponents,
+} from '../format';
 
 // ---------------------------------------------------------------------------
 // T-136 · THE FOG PROJECTION, PROVED RATHER THAN CLAIMED
@@ -353,3 +360,140 @@ describe('T-145 · obligation 26 — the reveal carries the win/lose line', () =
     expect(view.dealerName).not.toMatch(/^ld-/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// T-146 · THE UNLOCK LADDER, AS THE PANE SEES IT
+// (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §8 rows 46b, 47, 48, 51).
+//
+// Row 48 is a CONFIRM-AND-EXTEND: the tier-0 `toHaveLength(4)` assertions above
+// stay valid and unchanged — a day-1 career IS a tier-0 career — and the ladder
+// gets its own cases beside them rather than an edit to theirs.
+//
+// `liarsDiceGamesPlayed` is set as FIXTURE SETUP before the first action, exactly
+// as this file already seats a dealer and sets a purse. Every hand is still opened
+// through the real `applyPlayerAction`.
+// ---------------------------------------------------------------------------
+
+/** A day-1 career already `games` hands into the ladder. */
+function atLadder(seed: number, games: number): GameState {
+  const game = dayOneAtSun3(seed);
+  game.player.liarsDiceGamesPlayed = games;
+  game.player.credits = 200_000;
+  const dealer = game.npcs.find((n) => n.id === DEALER)!;
+  dealer.credits = 200_000;
+  return game;
+}
+
+describe('T-146 · the scene projection follows the hand’s frozen dice count', () => {
+  it('projects 5 dice and a ceiling of 10 once the first rung is unlocked', () => {
+    const { state } = openHand(atLadder(1, 5));
+    const view = dareScene(state)!;
+    expect(view.dealerDieCount).toBe(5);
+    expect(view.maxQuantity).toBe(10);
+    expect(view.playerDice).toHaveLength(5);
+  });
+
+  it('projects 6 dice and a ceiling of 12 at the hard cap, and no further', () => {
+    for (const games of [10, 40, 80, 5_000]) {
+      const { state } = openHand(atLadder(1, games));
+      const view = dareScene(state)!;
+      expect(view.dealerDieCount, `${games} games`).toBe(6);
+      expect(view.maxQuantity, `${games} games`).toBe(12);
+      expect(view.playerDice, `${games} games`).toHaveLength(6);
+    }
+  });
+
+  it('still carries a COUNT and never the dealer’s values, at every tier', () => {
+    // The fog discipline is not a tier-0 property. Re-proved at six dice, where a
+    // careless "render the dealer's hand now that it is bigger" would show.
+    const { state } = openHand(atLadder(1, 10));
+    const view = dareScene(state)!;
+    expect(Object.keys(view)).not.toContain('dealerDice');
+    expect(dareScene(withDealerDice(state, [6, 6, 6, 6, 6, 6]))).toEqual(view);
+  });
+});
+
+describe('T-146 · dareWagerBounds is the EFFECTIVE band for the live tier', () => {
+  const band = wagerBandFor(SUN_3);
+
+  it('is the port’s own band below tier 4', () => {
+    for (const games of [0, 4, 5, 10, 20, 39]) {
+      expect(dareWagerBounds(atLadder(1, games)), `${games} games`).toEqual(band);
+    }
+  });
+
+  it('triples the ceiling at tier 4 and drops both ends at tier 5', () => {
+    expect(dareWagerBounds(atLadder(1, 40))).toEqual({
+      min: band.min,
+      max: band.max * LIARS_DICE_RAISED_CEILING_MULT,
+    });
+    expect(dareWagerBounds(atLadder(1, 79))).toEqual({
+      min: band.min,
+      max: band.max * LIARS_DICE_RAISED_CEILING_MULT,
+    });
+    // A null ceiling is the pane's cue to stop rendering a range at all.
+    expect(dareWagerBounds(atLadder(1, 80))).toEqual({ min: 0, max: null });
+  });
+});
+
+describe('T-146 · the roster picker carries a read only once tier 3 is live', () => {
+  it('carries no read at all below the threshold', () => {
+    for (const games of [0, 5, 10, 19]) {
+      for (const row of hangoutRosterOpponents(atLadder(1, games))) {
+        expect(row.read, `${row.id} at ${games} games`).toBeUndefined();
+      }
+    }
+  });
+
+  it('carries the archetype’s line at the threshold — except on the MIXED seat', () => {
+    const rows = hangoutRosterOpponents(atLadder(1, 20));
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      const authored = LIARS_DICE_OPPONENTS[SUN_3].find((r) => r.id === row.id)!;
+      if (authored.archetype === 'mixed') {
+        // THE RULING, ASSERTED DELIBERATELY (§4.5 ruling 1): a mix has no resolved
+        // arm before the hand exists, so the picker shows NOTHING rather than
+        // inventing the `random` line. The real read arrives at open, on
+        // `DareHandStarted.opponentRead`.
+        expect(row.read, row.id).toBeUndefined();
+      } else {
+        expect(row.read, row.id).toBeTruthy();
+      }
+    }
+  });
+});
+
+describe('T-146 · the scene shows the engine’s Read-the-Table line at open', () => {
+  it('is null below tier 3 and the engine’s own string at or above it', () => {
+    expect(dareScene(openHand(atLadder(1, 19)).state)!.opponentRead).toBeNull();
+    const read = dareScene(openHand(atLadder(1, 20)).state)!.opponentRead;
+    expect(read).toBeTruthy();
+    // The pane maps nothing: whatever it shows is byte-identical to what the
+    // engine put on the event.
+    expect(read).toBe(startedRead(openHand(atLadder(1, 20)).events));
+  });
+
+  it('shows a MIXED seat’s resolved read, which the picker could not know', () => {
+    const opened = openRosterHand(atLadder(1, 20), 'ld-1-2');
+    expect(dareScene(opened.state)!.opponentRead).toBe(startedRead(opened.events));
+    expect(dareScene(opened.state)!.opponentRead).toBeTruthy();
+  });
+
+  it('survives the whole hand — it is read off the log, not off a transient beat', () => {
+    const opened = openHand(atLadder(1, 20));
+    const bid = applyPlayerAction(opened.state, {
+      type: 'Dare',
+      move: 'bid',
+      quantity: 2,
+      face: 3,
+    });
+    if (bid.state.dareHand) {
+      expect(dareScene(bid.state)!.opponentRead).toBe(dareScene(opened.state)!.opponentRead);
+    }
+  });
+});
+
+function startedRead(events: GameEvent[]): string | undefined {
+  const started = events.find((e) => e.type === 'DareHandStarted');
+  return started && 'opponentRead' in started ? started.opponentRead : undefined;
+}
