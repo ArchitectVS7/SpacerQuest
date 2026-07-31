@@ -766,6 +766,70 @@ const UNCHANGED_POLICIES = [
  *    THE BAND-2 SENTINEL AT THE TOP OF THIS FILE IS UNMODIFIED AND STILL GREEN:
  *    'every band-2 row is recoveryDays: 1'. D1 left band 2 alone deliberately and
  *    that assertion is how this file proves it.
+ *
+ * 22. T-133 — OWNER RULING D7: THE PER-PORT LOAN BAND. EXACTLY ONE ROW MOVES,
+ *    AND IT MOVES BACK TO A HASH THIS FILE HAS SEEN BEFORE:
+ *      trader   7ee040b0931caff9 -> 1b4e953468311f40
+ *      fighter / explorer / veteran / smuggler / gambler / greedy — ALL
+ *      UNCHANGED, byte for byte.
+ *
+ *    READ THE NEW TRADER HASH AGAINST ENTRY 19. `1b4e953468311f40` is precisely
+ *    the value entry 19 moved the trader AWAY from when Arcturus-6 withdrew its
+ *    credit desk. T-133 gives the desk back — owner ruling D7 makes the PRINCIPAL
+ *    BAND a content field, so a garrison expresses tight credit with a 1,000cr
+ *    ceiling instead of an absence — and the trader lands exactly where it stood
+ *    before the withdrawal. A revert-shaped hash is the strongest available
+ *    statement that the channel is the one entry 19 named and that nothing else
+ *    came with it.
+ *
+ *    MECHANISM. ONE CONTENT edit, ONE ENGINE rule and ONE SIM mirror:
+ *      (1) `PortHangout` gains `loanBand`, `DEFAULT_PORT_HANGOUT` carries
+ *          `[LOAN_MIN_PRINCIPAL, LOAN_MAX_PRINCIPAL]` (imported, never restated),
+ *          and Arcturus-6's row re-adds `borrow`/`repay` alongside a 250/1000
+ *          band.
+ *      (2) `loanBandFor` (engine `hangoutRules.ts`) beside `wagerBandFor`, and
+ *          `resolveVisitHangout`'s borrow arm clamps against it instead of
+ *          against the two globals. `git diff --stat HEAD -- packages/engine/src
+ *          ':!*__tests__*'` prints 2 files, +33/-7 — no new branch, one accessor.
+ *      (3) `planLoanBorrow` and `legalActions` read the same accessor, the
+ *          F-121-1 "the policy's guards are the engine's guards" idiom applied to
+ *          an AMOUNT rather than to a gate.
+ *    TWO CHANNELS COULD REACH A CAMPAIGN, and the decomposition below says only
+ *    one of them did:
+ *      (a) THE DESK REACH, restored. `isLendingDeskSystem(4,'borrow')` is true
+ *          again, so the trader plans loans and repayments at Arcturus-6 as it
+ *          did before T-123 and its "head home to settle up" preference sees a
+ *          fourteenth desk again. THIS IS THE WHOLE OF THE DELTA.
+ *      (b) THE CLAMP. Arithmetically INERT in this window, and MEASURED rather
+ *          than assumed: re-running these exact five seeds with Arcturus-6's
+ *          `loanBand.max` temporarily widened to `LOAN_MAX_PRINCIPAL` reproduces
+ *          `1b4e953468311f40` for the trader and leaves all six other rows
+ *          untouched. So no policy's shortfall at that port ever exceeded 1,000cr
+ *          over 5 seeds x 40 days — the ceiling is authored content that no
+ *          campaign in this sample has yet paid for. The clamp itself is driven
+ *          for real in the engine suite (`hangout.test.ts`, T-133 block) and
+ *          through the terminal in `ui/e2e/hangout.spec.ts`.
+ *
+ *    MEASURED over these exact runs (5 seeds x 40 days each), before -> after:
+ *      trader    final credits  median 16,667 -> 16,667   mean 14,809 -> 15,508
+ *      trader    loans taken 7 -> 7, cleared 7 -> 7, defaults 0 -> 0,
+ *                interest accrued 1,236 -> 1,107, principal borrowed 12,813
+ *      smuggler  median 5,653, mean 6,193, loans 8, interest 1,602 — IDENTICAL
+ *      gambler   median 6,314, mean 9,880, loans 5, interest 1,400 — IDENTICAL
+ *      failed Hangout visits 0 -> 0 for every policy, as the invariant requires;
+ *      re-confirmed at 10 seeds x 120 days across all seven policies: 40 loans
+ *      taken, ZERO refusals of either event variant.
+ *    The trader borrows the same seven times for slightly less total interest,
+ *    because the desk it needed is once again the desk it was standing next to.
+ *    NOTHING WAS TUNED TO PRODUCE THIS AND NOTHING IS TUNED IN RESPONSE: the
+ *    1,000cr ceiling is a first-pass CONTENT call, D7 is explicit that a band
+ *    moves by playtest rather than by fitting a five-seed sample, and T-150 —
+ *    which already depends on this task — owns the read.
+ *
+ *    F-123-2 IS CLOSED BY THIS ENTRY. `lending-property.test.ts` used to assert
+ *    that a captain stranded at the desk-less garrison stayed stranded; every
+ *    travelable port now runs a desk, and the test asserts the positive — that
+ *    the SHALLOWEST band in the galaxy still clears a strand.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -773,8 +837,11 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // so the trader borrows and repays on the day it needs to rather than on the day
   // it gets home. Entry 19: re-derived again — Arcturus-6 withdraws its desk, and
   // the policy's lending guards now mirror the engine's `venueOffered` gate rather
-  // than queueing an action the resolver refuses.
-  trader: '7ee040b0931caff9',
+  // than queueing an action the resolver refuses. Entry 22: re-derived a THIRD
+  // time, and back to entry 17's value — owner ruling D7 restores that desk against
+  // a tight `loanBand`, so the withdrawal channel is exactly undone and the band
+  // itself is provably inert over these seeds.
+  trader: '1b4e953468311f40',
   fighter: 'dc6ca4fbcce58659',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy

@@ -52,6 +52,7 @@ void _hangoutVenueIdsAgree;
  *  fallback of their own. Narrowed once here rather than at every accessor. */
 const DEFAULT_VENUES: readonly HangoutVenueId[] = DEFAULT_PORT_HANGOUT.venues ?? [];
 const DEFAULT_WAGER = DEFAULT_PORT_HANGOUT.wager ?? { min: 0, max: 0 };
+const DEFAULT_LOAN_BAND = DEFAULT_PORT_HANGOUT.loanBand ?? { min: 0, max: 0 };
 const DEFAULT_VENUE_PARAMS = DEFAULT_PORT_HANGOUT.venueParams ?? {};
 
 /**
@@ -69,6 +70,27 @@ export function portHangoutFor(systemId: number): PortHangout {
  *  is a rule, not a parameter (§3.1 row 9). */
 export function wagerBandFor(systemId: number): { min: number; max: number } {
   return portHangoutFor(systemId).wager ?? DEFAULT_WAGER;
+}
+
+/**
+ * T-133 (owner ruling D7) · The port's Penny Wise PRINCIPAL band. The engine
+ * clamps a requested principal into this in `resolveVisitHangout`'s `borrow` arm,
+ * exactly as it clamps a requested stake into `wagerBandFor` — same shape, same
+ * `??` resolution against the default row, same "content owns the instance, the
+ * engine owns the clamp" split.
+ *
+ * WHAT IT DOES NOT REACH. `LOAN_DAILY_RATE`, `LOAN_TERM_DAYS` and `LENDER_ID` stay
+ * global: there is still ONE lender of record and one `LoanState` slot, so a port
+ * decides how DEEP the desk will go, never what it charges. That is the whole of
+ * D7's narrowing of §2.2 ruling 5, and it is why a per-port band is a clamp rather
+ * than a second counterparty.
+ *
+ * A row that omits `loanBand` reads `[LOAN_MIN_PRINCIPAL, LOAN_MAX_PRINCIPAL]`,
+ * because the default row is BUILT from those two constants — which is what makes
+ * this extraction inert at the thirteen ports that do not author one.
+ */
+export function loanBandFor(systemId: number): { min: number; max: number } {
+  return portHangoutFor(systemId).loanBand ?? DEFAULT_LOAN_BAND;
 }
 
 /**

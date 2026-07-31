@@ -42,7 +42,7 @@ import {
   STORYLETS,
   isPurchasablePort,
 } from '@spacerquest/content';
-import { crewCapacity, type GameState, type PlayerAction } from '@spacerquest/engine';
+import { crewCapacity, loanBandFor, type GameState, type PlayerAction } from '@spacerquest/engine';
 import type { StoryletDefinition } from '@spacerquest/content';
 import { traderPolicy, veteranPolicy, type SimPolicy } from '../../index.js';
 
@@ -306,10 +306,23 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
     // A Penny Wise advance at the ceiling is a legitimate Tour One out (PRD §7.5)
     // and doubles as the `first_marker` / `deep_water` acquisition. Taken early so
     // the whole principal can be traded on before the marker falls due.
+    //
+    // T-133 (owner ruling D7) · …AND WHILE `deep_water` IS STILL OUTSTANDING, AT A
+    // DESK THAT ACTUALLY REACHES THE CEILING. A port now carries its own
+    // `loanBand` and the engine CLAMPS an over-ask rather than refusing it, so a
+    // ceiling advance taken at a tight desk comes back short of `deep_water`'s
+    // `principal >= 5000` trigger with the one marker slot spent. The gate is the
+    // harness's and it is read through the engine's own accessor; content is not
+    // widened and the deed's threshold is not lowered to meet the harness. It is
+    // CONDITIONAL on the need, deliberately: once the deed is banked a shallow
+    // marker is still a perfectly good Tour One out, and refusing one would make
+    // this hunter worse at the rest of the slate for no gain.
+    const deskReachesCeiling = loanBandFor(state.player.currentSystemId).max >= LOAN_MAX_PRINCIPAL;
     if (
       !state.player.loan &&
       state.day <= TOUR_ONE_LAST_DAY - 5 &&
-      STAR_SYSTEMS[state.player.currentSystemId]?.hasHangout === true
+      STAR_SYSTEMS[state.player.currentSystemId]?.hasHangout === true &&
+      (deskReachesCeiling || !need('deep_water'))
     ) {
       const die = take();
       if (die !== undefined) {
@@ -442,12 +455,21 @@ export const deedHunterPolicy: SimPolicy = (ctx) => {
       if (wantsLoan && spare.length > 0) {
         const loan = state.player.loan;
         if (!loan) {
-          errand.push({
-            type: 'VisitHangout',
-            venue: 'borrow',
-            amount: LOAN_MAX_PRINCIPAL,
-            spendDie: spare.shift()!,
-          });
+          // T-133 · the same conditional ceiling gate as the Tour One leg above:
+          // while `deep_water` is outstanding the hunter holds out for a desk that
+          // sells the whole 5,000, because a tight desk would clamp the ask and
+          // spend the marker slot on a marker that cannot earn the deed.
+          if (
+            loanBandFor(state.player.currentSystemId).max >= LOAN_MAX_PRINCIPAL ||
+            !need('deep_water')
+          ) {
+            errand.push({
+              type: 'VisitHangout',
+              venue: 'borrow',
+              amount: LOAN_MAX_PRINCIPAL,
+              spendDie: spare.shift()!,
+            });
+          }
         } else if (
           // Hold the FIRST marker until the engine's own dusk sweep flips it to
           // 'defaulted' — that is what makes `bad_paper` reachable, since a policy

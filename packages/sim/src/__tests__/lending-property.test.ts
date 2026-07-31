@@ -2,6 +2,7 @@ import {
   applyDisposition,
   createInitialState,
   endDay,
+  loanBandFor,
   resolveVisitHangout,
   venueOffered,
   DayPhase,
@@ -112,16 +113,18 @@ describe('P1 — a loan lifecycle never drives credits or fuel negative', () => 
 
 describe('P2 — a loan is always an out, and default never strands', () => {
   it('a borrow within the band clears a state that cannot afford the cheapest jump — WHEREVER THE DESK IS', () => {
-    // T-123 · THE PRECONDITION IS NOW EXPLICIT, AND IT IS THE ENGINE'S OWN.
-    // Until T-123 every `hasHangout` port offered all seven venues, so "a loan is
-    // always an out" and "a loan is an out at every port" were the same sentence.
-    // Arcturus-6's garrison mess (`content/portHangouts.ts`, §6.2) withholds
-    // `borrow`, and `resolveVisitHangout` typed-refuses the action there BEFORE the
-    // die is spent. The property is therefore restated with the precondition the
-    // rule actually carries — `venueOffered(systemId,'borrow')` — rather than with
-    // a narrowed sample or a softened bound. The sample is unchanged in size except
-    // for the ports the engine now refuses, and the next test asserts what happens
-    // at those instead of quietly skipping them.
+    // T-123 · THE PRECONDITION IS EXPLICIT, AND IT IS THE ENGINE'S OWN. Until
+    // T-123 every `hasHangout` port offered all seven venues, so "a loan is always
+    // an out" and "a loan is an out at every port" were the same sentence; the
+    // garrison mess then withheld `borrow` and the two came apart. T-133 (owner
+    // ruling D7) closes them back up — no authored row withholds the desk any more
+    // — but the precondition STAYS WRITTEN DOWN rather than being simplified away,
+    // because it is the precondition the rule actually carries and a later row may
+    // exercise it again. The next test is the one that pins today's answer.
+    //
+    // T-133 · the amount asked for is the GLOBAL ceiling and the engine clamps it
+    // to each port's band, so at the tightest desk this is a 1,000cr rescue rather
+    // than a 5,000cr one — and it still has to clear the strand.
     const deskPorts = travelableSystemIds().filter((id) => venueOffered(id, 'borrow'));
     // NON-VACUITY: if a later content pass withdrew every desk, this loop would
     // pass while proving nothing.
@@ -140,31 +143,45 @@ describe('P2 — a loan is always an out, and default never strands', () => {
     }
   });
 
-  it('T-123 · at a port with NO desk the refusal is typed and costs nothing — and the strand persists (F-123-2)', () => {
-    // THE OTHER HALF OF THE PROPERTY, written down rather than left as a gap. At a
-    // port whose row omits `borrow` the §7.5 bad-day out is simply not available,
-    // so a captain who arrives with an empty purse and a dry tank stays stranded
-    // there. That is a real consequence of §6.2's strict garrison and it is
-    // REPORTED (`docs/HANGOUT_REDESIGN.md` §7, F-123-2), not tuned away: the fix
-    // would be either a predicate on the row (out by ruling 3) or a rule that no
-    // port may withhold the desk (out by §2.2 ruling 5, which grants exactly that
-    // bit). What IS asserted here is that the refusal is well-behaved — typed, no
-    // die spent, no credits moved, no loan written — so the dead end is a design
-    // question and never a crash or a silent burn.
+  it('T-133 · F-123-2 IS CLOSED — every port runs a desk, and the TIGHTEST one still clears a strand', () => {
+    // THE OTHER HALF OF THE PROPERTY, INVERTED BY OWNER RULING D7. Until T-133 the
+    // garrison mess withheld `borrow` outright, so a captain who arrived there with
+    // an empty purse and a dry tank stayed stranded — a real dead end, REPORTED as
+    // F-123-2 (`docs/HANGOUT_REDESIGN.md` §7) rather than tuned away, because the
+    // only fixes available under ruling 5 as written were out of bounds. D7 gives a
+    // row its own `loanBand` instead of an all-or-nothing desk, and the garrison
+    // re-opens against a tight ceiling. The dead end is gone, and this test is the
+    // place that says so.
+    //
+    // The claim is NOT "the refusal is unreachable" — a later row may close a desk
+    // again, and the resolver's typed refusal is pinned in the engine suite either
+    // way. The claim is that TODAY the §7.5 bad-day out exists at every port a
+    // captain can reach, and that the SHALLOWEST desk in the galaxy is still deep
+    // enough to be an out rather than a gesture.
     const deskless = travelableSystemIds().filter((id) => !venueOffered(id, 'borrow'));
-    expect(deskless.length).toBeGreaterThan(0); // non-vacuity, and it is Arcturus-6
-    for (const systemId of deskless) {
-      const state = driveableState(1, systemId);
-      state.player.credits = 0;
-      state.player.ship.fuel = 0;
-      expect(cannotAffordCheapestJump(state)).toBe(true);
+    expect(deskless, 'ports where the §7.5 out is unavailable').toEqual([]);
 
-      const refused = borrow(state, LOAN_MAX_PRINCIPAL, 1);
-      expect(refused.player.credits).toBe(0);
-      expect(refused.player.loan ?? null).toBeNull();
-      expect(refused.player.dawnHand?.spent[0]).toBe(false);
-      expect(cannotAffordCheapestJump(refused)).toBe(true);
-    }
+    // The tightest authored ceiling, found rather than named, so the assertion
+    // below is about the WORST case and not about Arcturus-6 in particular.
+    const ports = travelableSystemIds();
+    const tightest = ports.reduce((worst, id) =>
+      loanBandFor(id).max < loanBandFor(worst).max ? id : worst,
+    );
+    // NON-VACUITY: some port must actually deal below the global ceiling, or this
+    // is the first test over again.
+    expect(loanBandFor(tightest).max).toBeLessThan(LOAN_MAX_PRINCIPAL);
+
+    const state = driveableState(1, tightest);
+    state.player.credits = 0;
+    state.player.ship.fuel = 0;
+    expect(cannotAffordCheapestJump(state)).toBe(true);
+
+    // Ask for the galaxy's ceiling; the engine clamps to this desk's. The strand
+    // still clears, and the clamped advance is what did it.
+    const rescued = borrow(state, LOAN_MAX_PRINCIPAL, 1);
+    expect(rescued.player.loan?.principal).toBe(loanBandFor(tightest).max);
+    expect(cannotAffordCheapestJump(rescued)).toBe(false);
+    expect(rescued.player.credits).toBeGreaterThanOrEqual(0);
   });
 
   it('applying the default consequences never flips cannotAffordCheapestJump false → true', () => {

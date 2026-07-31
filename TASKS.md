@@ -2234,7 +2234,33 @@ interest-rate axis after this playtest** if a tight principal band alone doesn't
 per-port distinction, or if a later port wants to vary predatory/generous terms rather than just
 loan size.
 
-### T-133 · A per-port loan band, Arcturus-6 first — `status: TODO` · `coder: opus` · `after: T-132`
+### T-133 · A per-port loan band, Arcturus-6 first — `status: DONE` · `coder: opus` · `after: T-132`
+
+**Delivered (2026-07-31):** Added `loanBand?: { min: number; max: number }` to `PortHangout`
+(`packages/content/src/portHangouts.ts`), defaulted on `DEFAULT_PORT_HANGOUT` to
+`{ min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL }` so the thirteen rows that don't author one
+inherit today's shipped bounds by construction; added `loanBandFor(systemId)` beside
+`wagerBandFor` in `hangoutRules.ts`, and swapped `borrowLoan`'s global
+`Math.max(LOAN_MIN_PRINCIPAL, Math.min(LOAN_MAX_PRINCIPAL, requested))` clamp in
+`actions/hangout.ts` for one reading `loanBandFor(systemId)` — a rule, not a per-port branch, same
+pattern as the Dare's `wagerBandFor` clamp. Re-authored `ARCTURUS_6_HANGOUT`: `venues` goes back
+to `ALL_HANGOUT_VENUES` (the garrison mess no longer withholds `borrow`/`repay` outright) and it
+now carries the first per-port `loanBand` in the game, `{ min: LOAN_MIN_PRINCIPAL, max: 1000 }` —
+tight, not absent. The Hangout pane (`App.tsx`) reads the live port's band through
+`lendingTerms(game)` for its principal control's bounds and display, and re-clamps (not resets)
+the in-flight principal figure on port change so a captain who reopens the desk elsewhere never
+sees a number the local quartermaster won't honour. Scope boundary, deliberate: the rate
+(`LOAN_DAILY_RATE`), the term (`LOAN_TERM_DAYS`) and the lender (`LENDER_ID`) stay global per D7 —
+a port decides how deep the desk goes, never what it charges — so there is still exactly one
+lender of record and one `LoanState` slot; the previously-logged interest-rate-multiplier
+alternative was not built. Balance smoke run at `docs/balance/baseline-t133-loanband.json`
+confirms the narrower Arcturus-6 band doesn't destabilize Tour One clear rates. Tests updated
+across `hangout.test.ts`, `hangoutRules.test.ts`, `hangoutContent.test.ts`, `lending.test.ts`,
+the sim's lending-property/protocol/campaign-degraded suites, and `hangout-pane.test.ts` +
+`e2e/hangout.spec.ts`, including a test asserting `loanBandFor` resolves to the global constants
+at all 13 other authored ports plus the default row, and a real-`applyPlayerAction` test that a
+requested principal above Arcturus-6's ceiling clamps rather than errors.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `portHangouts.ts`, `hangoutRules.ts`, `actions/hangout.ts`, the · attempts=1/4.
 
 Depends on T-132 because both touch `PortHangout`/`DEFAULT_PORT_HANGOUT` and the Hangout pane's
 loan-desk rendering — sequence to avoid two tasks editing the same content row and pane block at

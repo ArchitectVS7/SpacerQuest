@@ -15,8 +15,6 @@ import {
   RUN_FUEL_COST,
   EXPLORATION_NAV_DC,
   EXPLORATION_FUEL_COST,
-  LOAN_MIN_PRINCIPAL,
-  LOAN_MAX_PRINCIPAL,
   LOAN_DAILY_RATE,
   LOAN_TERM_DAYS,
   LENDER_ID,
@@ -75,6 +73,7 @@ import {
   travelPreview,
   quoteFuelPurchase,
   hangoutRumors,
+  loanBandFor,
   portHangoutFor,
   rankClientele,
   venueOffered,
@@ -458,13 +457,24 @@ export function hangoutVenueOffered(game: GameState, venue: HangoutVenueId): boo
   return venueOffered(game.player.currentSystemId, venue);
 }
 
-/** Penny Wise's up-front lending terms — the raw content constants the engine
- *  advances against: the principal band, the per-dusk rate and the term. Shown
- *  BEFORE a loan is taken so the schedule is visible up front ("dice are honest"
- *  applied to money). `ratePercent` is `LOAN_DAILY_RATE * 100` — a pure format of
- *  the rate constant, NOT an accrual computation (the engine still computes the
- *  realized `ceil(principal * rate)` interest each dusk). Reader: the pane's
- *  Penny Wise desk terms line. */
+/**
+ * Penny Wise's up-front lending terms — what the engine will advance against:
+ * the principal band, the per-dusk rate and the term. Shown BEFORE a loan is
+ * taken so the schedule is visible up front ("dice are honest" applied to money).
+ * `ratePercent` is `LOAN_DAILY_RATE * 100` — a pure format of the rate constant,
+ * NOT an accrual computation (the engine still computes the realized
+ * `ceil(principal * rate)` interest each dusk).
+ *
+ * T-133 (owner ruling D7) · THE BAND IS NOW THE PORT'S, read through the engine's
+ * `loanBandFor` — the SAME accessor `resolveVisitHangout`'s `borrow` arm clamps
+ * with — exactly as `dareWagerBounds` reads `wagerBandFor`. The garrison mess
+ * fronts a soldier a month's wages and the home hall fronts a hull, and the pane
+ * says so without a per-port branch of its own. The RATE, the TERM and the LENDER
+ * stay global constants, because D7 narrowed ruling 5 rather than repealing it:
+ * one lender of record, one schedule, a per-port depth.
+ *
+ * Reader: the pane's Penny Wise desk terms line and its principal input bounds.
+ */
 export interface LendingTerms {
   lenderId: string;
   minPrincipal: number;
@@ -473,11 +483,12 @@ export interface LendingTerms {
   termDays: number;
 }
 
-export function lendingTerms(): LendingTerms {
+export function lendingTerms(game: GameState): LendingTerms {
+  const band = loanBandFor(game.player.currentSystemId);
   return {
     lenderId: LENDER_ID,
-    minPrincipal: LOAN_MIN_PRINCIPAL,
-    maxPrincipal: LOAN_MAX_PRINCIPAL,
+    minPrincipal: band.min,
+    maxPrincipal: band.max,
     ratePercent: LOAN_DAILY_RATE * 100,
     termDays: LOAN_TERM_DAYS,
   };

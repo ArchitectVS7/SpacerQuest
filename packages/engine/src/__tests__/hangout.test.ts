@@ -8,7 +8,7 @@ import {
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { applyPlayerAction } from '../day.js';
 import { resolveVisitHangout, hangoutRumors } from '../actions/hangout.js';
-import { venueOffered, wagerBandFor } from '../hangoutRules.js';
+import { loanBandFor, venueOffered, wagerBandFor } from '../hangoutRules.js';
 import { SeededRng } from '../rng.js';
 import { DawnHand, DayPhase, GameState } from '../types.js';
 
@@ -454,76 +454,38 @@ describe("T-120 · the 'venue-not-offered' refusal round-trips on both event sha
 // by the first task to author a port that withholds a beat
 // (`docs/HANGOUT_REDESIGN.md` §2.6, §6.2).
 //
-// THREE ports narrow their venue set, for three different reasons, and between
-// them they reach BOTH typed event variants at the resolver:
-//   * Arcturus-6 (4) — the garrison mess runs no credit desk, so 'borrow' and
-//     'repay' report a `LoanEvent{kind:'failed'}`;
+// TWO ports narrow their venue set, for two different reasons:
 //   * Deneb-4 (5) — the partisan hall will not seat a stranger, so 'meet' reports
-//     a `HangoutEvent`;
+//     a `HangoutEvent{kind:'failed'}`;
 //   * Spica-3 (13) — T-124's second watch tolerates no insults, so 'insult'
 //     reports a `HangoutEvent` too. Driven here because a SECOND social venue at a
 //     DIFFERENT port is what says the refusal is a property of `venueOffered`
 //     rather than of Deneb-4's row or of the `meet` arm in particular.
-// In every case the refusal lands BEFORE the die is spent, which is the property
+// In both cases the refusal lands BEFORE the die is spent, which is the property
 // that matters: nothing is charged for an act the house never offered.
 //
+// T-133 (owner ruling D7) · IT WAS THREE PORTS, AND THE THIRD WAS THE ONE THAT
+// REACHED THE `LoanEvent` VARIANT. Arcturus-6 (4) withheld 'borrow'/'repay'
+// because a withheld venue was the only per-port lending control ruling 5 granted;
+// D7 gives a row its own `loanBand`, so the garrison runs its desk again against a
+// tight ceiling and its two refusal tests have been REPLACED by the clamp tests in
+// the block below — the coverage moved with the content rather than being deleted.
+// CONSEQUENCE, recorded rather than discovered later: no authored row withholds a
+// lending venue any more, so `LoanEvent{failReason:'venue-not-offered'}` is once
+// again unreachable from content — the exact F-120-1 situation, restored by an
+// amendment rather than by an oversight. The resolver arm and its schema mirror
+// stay (a later row may close a desk), and the serialized-shape pins above are
+// again the whole of that variant's coverage.
+//
 // NO NUMBER FROM THE CONTENT ROWS IS RESTATED HERE. The tests read `venueOffered`
-// to state the precondition, so an author who later gives Arcturus-6 a desk gets a
-// failing precondition assertion rather than a silently vacuous test.
+// and `loanBandFor` to state their preconditions, so an author who later gives
+// Deneb-4 a `meet` — or widens the garrison's band — gets a failing precondition
+// assertion rather than a silently vacuous test.
 // ---------------------------------------------------------------------------
 describe('T-123 · a port that withholds a venue refuses it BEFORE the die is spent', () => {
   const ARCTURUS_6 = 4;
   const DENEB_4 = 5;
   const SPICA_3 = 13;
-
-  it('borrow at Arcturus-6 is a typed LoanEvent fail — no die, no loan, no credits moved', () => {
-    expect(venueOffered(ARCTURUS_6, 'borrow')).toBe(false);
-    const state = hangoutState([10, 3, 3, 3, 3], ARCTURUS_6);
-    const startCredits = state.player.credits;
-
-    const { state: after, events } = resolveVisitHangout(
-      state,
-      { type: 'VisitHangout', venue: 'borrow', amount: 500, spendDie: 0 },
-      new SeededRng(1),
-    );
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: 'LoanEvent',
-        kind: 'failed',
-        failReason: 'venue-not-offered',
-      }),
-    );
-    // The lending pair reports a LoanEvent, never the social HangoutEvent —
-    // `failVenue`'s whole reason for existing.
-    expect(events.some((e) => e.type === 'HangoutEvent')).toBe(false);
-    expect(after.player.dawnHand?.spent[0]).toBe(false);
-    expect(after.player.loan ?? null).toBeNull();
-    expect(after.player.credits).toBe(startCredits);
-  });
-
-  it('repay at Arcturus-6 is refused for the VENUE, not for the absent loan', () => {
-    // Ordering matters: the venue gate sits ABOVE the lending preconditions in the
-    // resolver, so a captain with no marker still gets 'venue-not-offered' rather
-    // than 'no-loan'. That is what makes the refusal a statement about the port.
-    expect(venueOffered(ARCTURUS_6, 'repay')).toBe(false);
-    const state = hangoutState([10, 3, 3, 3, 3], ARCTURUS_6);
-
-    const { state: after, events } = resolveVisitHangout(
-      state,
-      { type: 'VisitHangout', venue: 'repay', amount: 100, spendDie: 0 },
-      new SeededRng(1),
-    );
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: 'LoanEvent',
-        kind: 'failed',
-        failReason: 'venue-not-offered',
-      }),
-    );
-    expect(after.player.dawnHand?.spent[0]).toBe(false);
-  });
 
   it('meet at Deneb-4 is a typed HangoutEvent fail — no die spent, no disposition moved', () => {
     expect(venueOffered(DENEB_4, 'meet')).toBe(false);
@@ -573,8 +535,8 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
     expect(dealerOf(after).disposition).toBe(startDisposition);
   });
 
-  it('the beats those three ports DO run still resolve normally', () => {
-    // The control. Without it the four tests above would also pass at a port that
+  it('the beats those ports DO run still resolve normally', () => {
+    // The control. Without it the tests above would also pass at a port that
     // refused everything, and "narrowed" would be indistinguishable from "broken".
     const state = hangoutState([20, 3, 3, 3, 3], ARCTURUS_6);
     state.player.credits = 1000;
@@ -603,5 +565,87 @@ describe('T-123 · a port that withholds a venue refuses it BEFORE the die is sp
       watchEvents.some((e) => e.type === 'HangoutEvent' && e.failReason === 'venue-not-offered'),
     ).toBe(false);
     expect(afterWatch.player.dawnHand?.spent[0]).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-133 · THE PER-PORT LOAN BAND, DRIVEN THROUGH THE REAL ACTION PATH (owner
+// ruling D7, `docs/HANGOUT_REDESIGN.md` §2.2 ruling 5 as amended).
+//
+// The block above proves a withheld VENUE is refused. This one proves the thing
+// D7 replaced that mechanism with: a desk that is OPEN but shallow. An over-ask at
+// the garrison mess is CLAMPED, not refused — the die is spent, a marker is
+// written, and the captain walks out with less than they asked for. That
+// distinction is the whole ruling: a band is a clamp, not a counterparty.
+//
+// DRIVEN THROUGH `applyPlayerAction`, not through `resolveVisitHangout` directly,
+// because the Accept clause asks for the real path: the day-loop gates (hangout
+// system, encounter, phase) run first, and a clamp that only worked when the
+// resolver was called by hand would prove nothing about the game.
+//
+// EVERY EXPECTATION READS `loanBandFor`. Nothing here names 1,000 or 5,000, so the
+// authored ceiling can move without this file needing an edit — and if the two
+// ports ever stop differing, the non-vacuity assertion says so out loud instead of
+// the tests quietly agreeing with each other.
+// ---------------------------------------------------------------------------
+describe('T-133 · a requested principal clamps into the PORT’s band', () => {
+  const ARCTURUS_6 = 4;
+  const SUN_3 = 1;
+
+  /** The engine-written marker off a real `applyPlayerAction`, plus its event. */
+  function borrowAt(systemId: number, amount: number) {
+    const state = hangoutState([10, 3, 3, 3, 3], systemId);
+    const before = state.player.credits;
+    const { state: after, events } = applyPlayerAction(state, {
+      type: 'VisitHangout',
+      venue: 'borrow',
+      amount,
+      spendDie: 0,
+    });
+    return { after, events, before };
+  }
+
+  it('the garrison mess deals a tighter band than the home hall — the precondition', () => {
+    // NON-VACUITY. Every assertion below is a comparison between these two ports;
+    // if the content ever collapses them, this fails first and says why.
+    expect(venueOffered(ARCTURUS_6, 'borrow')).toBe(true);
+    expect(loanBandFor(ARCTURUS_6).max).toBeLessThan(loanBandFor(SUN_3).max);
+  });
+
+  it('an over-ask at Arcturus-6 CLAMPS to the port’s ceiling — it does not error', () => {
+    const ceiling = loanBandFor(ARCTURUS_6).max;
+    const { after, events, before } = borrowAt(ARCTURUS_6, loanBandFor(SUN_3).max);
+
+    // Not blocked, not refused: the desk is open and it answered.
+    expect(events.some((e) => e.type === 'ActionBlocked')).toBe(false);
+    expect(events.some((e) => e.type === 'LoanEvent' && e.kind === 'failed')).toBe(false);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'LoanEvent', kind: 'borrowed', principal: ceiling }),
+    );
+    expect(after.player.loan?.principal).toBe(ceiling);
+    expect(after.player.loan?.outstanding).toBe(ceiling);
+    // Credits moved by exactly the CLAMPED amount, not by the amount asked for.
+    expect(after.player.credits).toBe(before + ceiling);
+    // …and the die was spent, because the action resolved rather than refusing.
+    expect(after.player.dawnHand?.spent[0]).toBe(true);
+  });
+
+  it('an under-ask at Arcturus-6 clamps UP to the port’s floor', () => {
+    const floor = loanBandFor(ARCTURUS_6).min;
+    const { after, before } = borrowAt(ARCTURUS_6, 1);
+    expect(after.player.loan?.principal).toBe(floor);
+    expect(after.player.credits).toBe(before + floor);
+  });
+
+  it('THE SAME REQUEST AT SUN-3 IS NOT CLAMPED — the two ports diverge through one accessor', () => {
+    // The control, and the behaviour-preserving half of the Accept clause driven
+    // rather than asserted: the request that the garrison trims is honoured in
+    // full at every port that did not author a band.
+    const asked = loanBandFor(SUN_3).max;
+    const { after, before } = borrowAt(SUN_3, asked);
+    expect(after.player.loan?.principal).toBe(asked);
+    expect(after.player.credits).toBe(before + asked);
+    expect(asked).toBeGreaterThan(loanBandFor(ARCTURUS_6).max);
   });
 });

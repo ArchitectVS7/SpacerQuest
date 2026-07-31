@@ -3,8 +3,6 @@ import {
   EXPLORATION_FUEL_COST,
   FENCE_REP_FLAG,
   FLAWS,
-  LOAN_MAX_PRINCIPAL,
-  LOAN_MIN_PRINCIPAL,
   SPECIAL_EQUIPMENT,
   STAR_SYSTEMS,
   Stat,
@@ -41,6 +39,7 @@ import {
   startDay,
   travelDc,
   tributeForRound,
+  loanBandFor,
   venueOffered,
   wagerBandFor,
   applyPlayerAction,
@@ -2041,7 +2040,12 @@ const TRADER_LOAN_HOME_WINDOW = 5;
  * `resolveVisitHangout` + day.ts's hangout/encounter gates exactly, so the policy
  * can never burn a die on a typed refusal: a Hangout system, no live loan, no
  * encounter, a real shortfall, and a die left in the hand. The principal is
- * clamped with the CONTENT band constants (never restated numerically here).
+ * clamped with the PORT's own band (T-133 / owner ruling D7 — `loanBandFor`, the
+ * same accessor the resolver clamps with), never restated numerically here. A
+ * policy that asked for the global ceiling at a tight desk would still get a loan,
+ * because the engine clamps rather than refuses — but it would MIS-SIZE the day's
+ * shortfall plan, which is the F-121-1 "the policy's guards are the engine's
+ * guards" argument applied to an amount rather than to a gate.
  *
  * The die is the DULLEST remaining: borrowing rolls no check.
  *
@@ -2062,10 +2066,8 @@ function planLoanBorrow(
   // `resolveVisitHangout` — a Hangout is not automatically a credit desk.
   if (!isLendingDeskSystem(state.player.currentSystemId, 'borrow')) return null;
   if (!(shortfall >= 1)) return null;
-  const principal = Math.max(
-    LOAN_MIN_PRINCIPAL,
-    Math.min(LOAN_MAX_PRINCIPAL, Math.ceil(shortfall)),
-  );
+  const band = loanBandFor(state.player.currentSystemId);
+  const principal = Math.max(band.min, Math.min(band.max, Math.ceil(shortfall)));
   const die = ledger.takeWorst();
   if (die === undefined) return null;
   return {

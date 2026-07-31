@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialState, portHangoutFor, venueOffered } from '@spacerquest/engine';
+import { createInitialState, loanBandFor, portHangoutFor, venueOffered } from '@spacerquest/engine';
 import {
   DEFAULT_PORT_HANGOUT,
   PORT_HANGOUTS,
@@ -11,6 +11,7 @@ import {
   hangoutHouse,
   hangoutNpcs,
   hangoutVenueOffered,
+  lendingTerms,
   loanFailExplanation,
 } from '../format';
 
@@ -200,6 +201,14 @@ describe('T-132 · the pane reads the house’s authored voice', () => {
   });
 });
 
+/** A live state standing at a chosen port. The selectors under test are all
+ *  functions of `player.currentSystemId`, so this is the whole fixture. */
+function at(id: number) {
+  const game = createInitialState(1);
+  game.player.currentSystemId = id;
+  return game;
+}
+
 describe('T-132 · the pane never advertises a venue the engine would refuse', () => {
   it('agrees with the engine venue-for-venue at every core port', () => {
     // The pass-through can never drift: 14 ports × 7 venues against
@@ -213,25 +222,68 @@ describe('T-132 · the pane never advertises a venue the engine would refuse', (
     }
   });
 
-  it('reports the three authored narrowings, which are content’s and not the UI’s', () => {
-    const at = (id: number) => {
-      const game = createInitialState(1);
-      game.player.currentSystemId = id;
-      return game;
-    };
-    // Arcturus-6 runs no credit desk; Deneb-4 seats no stranger; Spica-3 takes no
-    // insult. Read off the rows so re-authoring moves the test with the content.
-    expect(hangoutVenueOffered(at(4), 'borrow')).toBe(false);
-    expect(hangoutVenueOffered(at(4), 'repay')).toBe(false);
+  it('reports the two authored narrowings, which are content’s and not the UI’s', () => {
+    // Deneb-4 seats no stranger; Spica-3 takes no insult. Read off the rows so
+    // re-authoring moves the test with the content.
+    //
+    // T-133 (owner ruling D7) · IT WAS THREE. Arcturus-6's garrison mess used to
+    // withhold the credit desk; it now runs it against a tighter `loanBand`, so
+    // the desk is back on screen there and the tightness is a number the terms
+    // line reports. Pinned positively below rather than deleted.
     expect(hangoutVenueOffered(at(5), 'meet')).toBe(false);
     expect(hangoutVenueOffered(at(13), 'insult')).toBe(false);
-    expect(portHangoutFor(4).venues).not.toContain('borrow');
     expect(portHangoutFor(5).venues).not.toContain('meet');
     expect(portHangoutFor(13).venues).not.toContain('insult');
+    expect(hangoutVenueOffered(at(4), 'borrow')).toBe(true);
+    expect(hangoutVenueOffered(at(4), 'repay')).toBe(true);
 
     // …and the home hall offers all four social venues plus the desk.
     for (const venue of ['dare', 'meet', 'befriend', 'insult', 'borrow', 'repay'] as const) {
       expect(hangoutVenueOffered(at(1), venue), venue).toBe(true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-133 · THE DESK'S TERMS ARE THE PORT'S (owner ruling D7).
+//
+// `lendingTerms` used to return four raw content constants and took no argument at
+// all, so Penny Wise's desk read identically at every port in the galaxy. D7 makes
+// the PRINCIPAL BAND content and leaves the price alone, and this block is the
+// assertion that says which half moved: the band follows the port, the rate, the
+// term and the lender do not.
+//
+// Threshold-free — nothing here names 1,000 or 5,000. The claim is a comparison
+// between two ports, read through the engine's own accessor.
+// ---------------------------------------------------------------------------
+describe('T-133 · the pane’s loan control reads the live port’s band', () => {
+  const SUN_3 = 1;
+  const ARCTURUS_6 = 4;
+
+  it('reports a lower ceiling at the garrison mess than at the home hall', () => {
+    const tight = lendingTerms(at(ARCTURUS_6));
+    const home = lendingTerms(at(SUN_3));
+    expect(tight.maxPrincipal).toBeLessThan(home.maxPrincipal);
+    expect(tight.minPrincipal).toBeGreaterThanOrEqual(home.minPrincipal);
+  });
+
+  it('agrees with the engine’s `loanBandFor` at every core port — no UI restatement', () => {
+    for (const id of CORE_HANGOUT_IDS) {
+      const band = loanBandFor(id);
+      const terms = lendingTerms(at(id));
+      expect({ min: terms.minPrincipal, max: terms.maxPrincipal }, `port ${id}`).toEqual(band);
+    }
+  });
+
+  it('…and the RATE, the TERM and the LENDER are still global — the half D7 did NOT move', () => {
+    const tight = lendingTerms(at(ARCTURUS_6));
+    const home = lendingTerms(at(SUN_3));
+    expect(tight.ratePercent).toBe(home.ratePercent);
+    expect(tight.termDays).toBe(home.termDays);
+    expect(tight.lenderId).toBe(home.lenderId);
+    // NON-VACUITY: a schedule of zeroes would satisfy the three equalities above.
+    expect(home.ratePercent).toBeGreaterThan(0);
+    expect(home.termDays).toBeGreaterThan(0);
+    expect(home.lenderId.length).toBeGreaterThan(0);
   });
 });

@@ -1,8 +1,6 @@
 import {
   LENDER_ID,
   LOAN_DAILY_RATE,
-  LOAN_MAX_PRINCIPAL,
-  LOAN_MIN_PRINCIPAL,
   LOAN_TERM_DAYS,
   ALL_NPC_PROFILES,
   RUMOR_EMPTY_LINE,
@@ -20,7 +18,7 @@ import { SeededRng } from '../rng.js';
 import { check, spendDie } from '../dice.js';
 import { applyDisposition, mutableNpc } from '../npc.js';
 import { cloneState } from '../clone.js';
-import { venueOffered, venueParamsFor, wagerBandFor } from '../hangoutRules.js';
+import { loanBandFor, venueOffered, venueParamsFor, wagerBandFor } from '../hangoutRules.js';
 
 function systemName(systemId: number): string {
   return STAR_SYSTEMS[systemId]?.name ?? `system ${systemId}`;
@@ -117,8 +115,9 @@ function npcGuile(npc: NpcState): number {
  * T-120 · PARAMETERISED PER PORT (docs/HANGOUT_REDESIGN.md ruling 3). Every number
  * this resolver used to read from a bare content constant now comes from the
  * port's row through `hangoutRules.ts` — `wagerBandFor` for the stake band,
- * `venueParamsFor` for the DCs and disposition deltas, `venueOffered` for whether
- * the house runs the beat at all. THE RULES DID NOT MOVE: the opposed-GUILE
+ * `loanBandFor` for the principal band (T-133 / owner ruling D7), `venueParamsFor`
+ * for the DCs and disposition deltas, `venueOffered` for whether the house runs
+ * the beat at all. THE RULES DID NOT MOVE: the opposed-GUILE
  * resolution, the clamp algebra, `applyDisposition`, `spendDie` and the loan ledger
  * are all still here, identical, and there is NO port-specific branch anywhere in
  * this file. A port is an instance; this is the rule that reads it.
@@ -397,11 +396,16 @@ export function resolveVisitHangout(
     case 'borrow': {
       // T-1304 · Take a loan at Penny Wise's desk. The already-has-loan case was
       // rejected above (no die spent). Clamp the requested principal into the
-      // content band and advance it: credits go UP by the principal, the loan is
+      // port's band and advance it: credits go UP by the principal, the loan is
       // recorded, interest accrues later at dusk (day.ts). Debt-as-ledger: the
       // advance ONLY adds credits — this is the §7.5 out, never a trap.
-      const requested = action.amount ?? LOAN_MIN_PRINCIPAL;
-      const principal = Math.max(LOAN_MIN_PRINCIPAL, Math.min(LOAN_MAX_PRINCIPAL, requested));
+      // T-133 · the two bounds are the PORT's (`loanBandFor`, owner ruling D7);
+      // the clamp ALGEBRA is the engine's rule and is unchanged, exactly as the
+      // dare's stake clamp reads `wagerBandFor` above. A request over the ceiling
+      // is CLAMPED, never refused — the desk counts out less than you asked for.
+      const loanBand = loanBandFor(systemId);
+      const requested = action.amount ?? loanBand.min;
+      const principal = Math.max(loanBand.min, Math.min(loanBand.max, requested));
       const dueDay = day + LOAN_TERM_DAYS;
       nextState.player.loan = {
         lender: LENDER_ID,

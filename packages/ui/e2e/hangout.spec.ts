@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import {
   DARE_MIN_WAGER,
   LOAN_MIN_PRINCIPAL,
+  LOAN_MAX_PRINCIPAL,
   LOAN_DAILY_RATE,
   LOAN_TERM_DAYS,
   PORT_HANGOUTS,
@@ -244,12 +245,24 @@ test('the house speaks: its name, its room line and its venue flavour', async ({
   await expect(flavour).toHaveText(String(prose.flavour.dare));
 });
 
-test('a port with no credit desk shows none, and still seats a stranger', async ({ page }) => {
+// T-133 (owner ruling D7) · INVERTED, deliberately. This test used to assert that
+// Arcturus-6's garrison mess showed NO credit desk at all — `venueOffered(4,
+// 'borrow')` was false, so the whole section was absent. D7 amends §2.2 ruling 5:
+// a row now carries its own `loanBand`, so the garrison runs its desk again and
+// says "tight credit" with a ceiling instead of an absence. What is asserted here
+// is STRONGER than what it replaced — an absence is proved by counting elements,
+// while a clamp has to be driven: fill the principal control with more than this
+// desk will front, arm a die, click Borrow, and read what the engine actually
+// wrote.
+//
+// NO NUMBER IS RESTATED. The ceiling comes off `PORT_HANGOUTS[4].loanBand`, so a
+// re-authoring pass moves this test with the content.
+test('a tight-credit port fronts less than you ask for, and says so up front', async ({ page }) => {
   await page.goto('/');
   await newGameSeed(page, SEED);
 
   // One clean, encounter-free hop to Arcturus-6 (id 4 — the garrison mess, and the
-  // only authored row that omits BOTH 'borrow' and 'repay'). Verified against the
+  // only authored row that carries a `loanBand` of its own). Verified against the
   // built engine on seed 1 with die 0: the jump arrives with no encounter.
   await page.getByTestId('die').nth(0).click();
   const dest = page.locator('[data-testid="starmap-system"][data-system-id="4"]');
@@ -263,14 +276,31 @@ test('a port with no credit desk shows none, and still seats a stranger', async 
   // The pane followed content to a second, differently-voiced house.
   await expect(page.getByTestId('hangout-house')).toContainText(PORT_HANGOUTS[4].prose.houseName);
 
-  // F-123-1 · The desk is gone entirely, because `venueOffered(4, 'borrow')` is
-  // false — not disabled, not refusing after the click: absent.
-  await expect(page.getByTestId('loan-terms')).toHaveCount(0);
-  await expect(page.getByTestId('loan-borrow')).toHaveCount(0);
-  await expect(page.getByTestId('loan-status')).toHaveCount(0);
+  // The band is the PORT's, visible before a credit changes hands — and it is
+  // genuinely tighter than the galaxy's, or this test would be measuring nothing.
+  const band = PORT_HANGOUTS[4].loanBand!;
+  expect(band.max).toBeLessThan(LOAN_MAX_PRINCIPAL);
+  const terms = page.getByTestId('loan-terms');
+  await expect(terms).toBeVisible();
+  await expect(terms).toContainText(`${band.max}`);
+  // …and the control itself carries the bounds, so the clamp is not prose only.
+  const input = page.getByTestId('loan-principal');
+  await expect(input).toHaveAttribute('data-max', String(band.max));
+  await expect(input).toHaveAttribute('data-min', String(band.min));
 
-  // …and the gate is PER-VENUE, not a blanket hide: the mess still seats a
-  // stranger, so `meet` is offered here.
+  // THE CLAMP, THROUGH THE TERMINAL. Ask for the galaxy's ceiling; the garrison
+  // counts out its own. Not an error, not a refusal notice — a smaller marker.
+  await input.fill(String(LOAN_MAX_PRINCIPAL));
+  await page.getByTestId('die').nth(1).click();
+  await page.getByTestId('loan-borrow').click();
+
+  const status = page.getByTestId('loan-status');
+  await expect(status).toBeVisible();
+  await expect(status).toContainText(`${band.max.toLocaleString()}cr`);
+  await expect(page.getByTestId('hangout-notice')).toHaveCount(0);
+
+  // …and the gate is still PER-VENUE, not a blanket show: the mess seats a
+  // stranger, so `meet` is offered here too.
   await expect(page.locator('[data-testid="hangout-social"][data-venue="meet"]')).toBeVisible();
 });
 

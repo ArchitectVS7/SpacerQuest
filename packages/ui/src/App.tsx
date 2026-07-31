@@ -1810,7 +1810,7 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
   const npcs = hangoutNpcs(game);
   const rumors = hangoutRumorLines(game);
   const bounds = dareWagerBounds(game);
-  const terms = lendingTerms();
+  const terms = lendingTerms(game);
   const loan = game.player.loan;
   const armed = state.selectedDie !== null;
   const dareOutcome = state.dareOutcome;
@@ -1832,6 +1832,18 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // T-133 (owner ruling D7) · the principal control tracks the LIVE port's band.
+  // `useState(terms.minPrincipal)` is only correct on the render that mounted the
+  // pane; a captain who closes the desk at the home hall, flies to the garrison
+  // mess and reopens it would otherwise be looking at a number the local
+  // quartermaster will not count out. Re-clamped rather than reset, so a figure
+  // the new desk CAN honour survives the move. The engine clamps regardless
+  // (`loanBandFor` in `resolveVisitHangout`) — this is the pane declining to
+  // display an ask the port would silently trim.
+  useEffect(() => {
+    setPrincipal((p) => Math.max(terms.minPrincipal, Math.min(terms.maxPrincipal, p)));
+  }, [terms.minPrincipal, terms.maxPrincipal]);
 
   // A previously-chosen opponent may have wandered off between renders — only a
   // still-present NPC is a valid dealer (mirrors the engine's in-system guard).
@@ -2062,16 +2074,26 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
       {/* ---- Penny Wise's desk ----
           T-132 (F-123-1) · Gated on the SAME `venueOffered(systemId, 'borrow')`
           predicate `resolveVisitHangout` refuses on and `sim/protocol.ts` filters
-          its legal actions with. Until this task the desk rendered unconditionally,
-          so Arcturus-6's garrison mess — a row that omits `borrow`/`repay` on
-          purpose — advertised a credit desk it does not run, and clicking it burned
-          the player's attention on a typed refusal. `repay` is gated independently
-          because a row may withhold either alone; both narrowings are CONTENT's. */}
+          its legal actions with. Until that task the desk rendered unconditionally,
+          so a row that omits `borrow`/`repay` advertised a credit desk it does not
+          run and clicking it burned the player's attention on a typed refusal.
+          `repay` is gated independently because a row may withhold either alone;
+          both narrowings are CONTENT's.
+          T-133 (owner ruling D7) · …and the BAND below is content's too. No
+          authored row withholds the desk any more — Arcturus-6's garrison mess,
+          which used to, now runs it against a 1,000cr ceiling instead — so the gate
+          is currently the identity at all fourteen ports and the per-port
+          difference the player actually sees is the principal band. The gate stays:
+          a later row may close a desk again, and the pane must follow content
+          either way. */}
       {offers('borrow') && (
         <div className="hp-section hp-lending">
           <div className="hp-shead">PENNY WISE&apos;S DESK</div>
-          {/* The schedule, visible UP FRONT — all raw content constants, no projected
-            total (the engine still computes the realized dusk accrual). */}
+          {/* The schedule, visible UP FRONT — no projected total (the engine still
+            computes the realized dusk accrual). T-133: the BAND is the live port's
+            (`lendingTerms` → `loanBandFor`); the rate and the term are still the
+            global constants, because D7 made the depth per-port and left the price
+            alone. */}
           <div className="hp-terms" data-testid="loan-terms">
             Penny Wise · {terms.minPrincipal}–{terms.maxPrincipal} cr · {terms.ratePercent}%/dusk ·{' '}
             {terms.termDays}-dusk term
@@ -2116,6 +2138,11 @@ function HangoutPanel({ state, onClose }: { state: CockpitState; onClose: () => 
                 aria-label="loan principal"
                 data-testid="loan-principal"
                 inputMode="numeric"
+                // T-133 · the DOM carries the PORT's band, so the bounds are
+                // assertable without reading prose. Read off `lendingTerms`
+                // (→ `loanBandFor`), never off a global constant.
+                data-min={terms.minPrincipal}
+                data-max={terms.maxPrincipal}
                 value={principal}
                 onChange={(e) =>
                   setPrincipal(Math.max(0, Number.parseInt(e.target.value, 10) || 0))

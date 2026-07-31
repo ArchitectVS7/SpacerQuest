@@ -13,7 +13,13 @@ import {
   type NpcArchetype,
   type PortHangout,
 } from '@spacerquest/content';
-import { portHangoutFor, venueOffered, venueParamsFor, wagerBandFor } from '../hangoutRules.js';
+import {
+  loanBandFor,
+  portHangoutFor,
+  venueOffered,
+  venueParamsFor,
+  wagerBandFor,
+} from '../hangoutRules.js';
 
 /**
  * T-122 … T-124 · THE CONTENT VALIDATOR for the authored Hangout port table
@@ -111,6 +117,11 @@ function axisVector(systemId: number): string {
   return JSON.stringify({
     venues: ALL_VENUES.filter((venue) => venueOffered(systemId, venue)),
     wager: wagerBandFor(systemId),
+    // T-133 · the credit axis. Without it a port distinguished ONLY by its loan
+    // band would read as a §6.4 collision, and Arcturus-6 — which traded its
+    // venue-set deviation for a band under owner ruling D7 — would silently drop
+    // an axis it still has.
+    loanBand: loanBandFor(systemId),
     params: Object.fromEntries(ALL_VENUES.map((venue) => [venue, venueParamsFor(systemId, venue)])),
     clientele: {
       regulars: [...(row.clientele?.regulars ?? [])].sort(),
@@ -139,6 +150,12 @@ function deviationAxes(systemId: number): string[] {
   if (offeredVenues(systemId).length !== offeredVenues(SUN_3).length) axes.push('venues');
   if (JSON.stringify(wagerBandFor(systemId)) !== JSON.stringify(wagerBandFor(SUN_3))) {
     axes.push('wager');
+  }
+  // T-133 (owner ruling D7): a port may narrow the DEPTH of its credit desk. This
+  // is the axis that replaced Arcturus-6's withdrawn desk, so it counts toward the
+  // ≥2-axes rule the tone block applies to every non-`everyday` port.
+  if (JSON.stringify(loanBandFor(systemId)) !== JSON.stringify(loanBandFor(SUN_3))) {
+    axes.push('loanBand');
   }
   if (ALL_VENUES.some((v) => venueParamsFor(systemId, v).dc !== venueParamsFor(SUN_3, v).dc)) {
     axes.push('dc');
@@ -328,7 +345,10 @@ describe('T-123 · the hostile port is hostile on its PARAMETERS', () => {
   it('Arcturus-6 is strictly harsher than the DEFAULT row on every hostility axis', () => {
     // §6.2's strict garrison, stated as five independent comparisons rather than
     // as a score: harder to charm, dearer to insult, dearer to beat at the table,
-    // colder to a stranger, and running fewer beats than the default house.
+    // colder to a stranger, and — T-133, owner ruling D7 — fronting less credit
+    // than any other house. The fifth comparison used to be "runs fewer beats than
+    // the default"; the garrison's desk came BACK under D7 and the tightness moved
+    // into the band, so the axis moved with it rather than being dropped.
     expect(venueParamsFor(THE_HOSTILE_PORT, 'befriend').dc).toBeGreaterThan(
       venueParamsFor(SUN_3, 'befriend').dc,
     );
@@ -341,7 +361,7 @@ describe('T-123 · the hostile port is hostile on its PARAMETERS', () => {
     expect(venueParamsFor(THE_HOSTILE_PORT, 'meet').dispositionOnSuccess).toBeLessThan(
       venueParamsFor(SUN_3, 'meet').dispositionOnSuccess,
     );
-    expect(offeredVenues(THE_HOSTILE_PORT).length).toBeLessThan(offeredVenues(SUN_3).length);
+    expect(loanBandFor(THE_HOSTILE_PORT).max).toBeLessThan(loanBandFor(SUN_3).max);
   });
 
   it('…and no other authored port is harsher on ANY of those axes — this is the "measurably"', () => {
@@ -367,20 +387,32 @@ describe('T-123 · the hostile port is hostile on its PARAMETERS', () => {
         `${portName(id)} is at least as cold to a stranger as the hostile port`,
       ).toBeGreaterThan(venueParamsFor(THE_HOSTILE_PORT, 'meet').dispositionOnSuccess);
       expect(
-        offeredVenues(id).length,
-        `${portName(id)} runs no more beats than the hostile port`,
-      ).toBeGreaterThan(offeredVenues(THE_HOSTILE_PORT).length);
+        loanBandFor(id).max,
+        `${portName(id)} fronts no more credit than the hostile port`,
+      ).toBeGreaterThan(loanBandFor(THE_HOSTILE_PORT).max);
     }
   });
 
-  it('it is the ONLY authored port that withholds the credit desk (§2.2 ruling 5)', () => {
-    // The one bit of per-port lending control the spec grants: whether the desk is
-    // there. The BAND stays global, which is why no assertion here touches it.
-    expect(venueOffered(THE_HOSTILE_PORT, 'borrow')).toBe(false);
-    expect(venueOffered(THE_HOSTILE_PORT, 'repay')).toBe(false);
+  it('T-133 · every port runs a credit desk, and it is the ONLY one that runs a TIGHT one', () => {
+    // §2.2 ruling 5 AS AMENDED BY OWNER RULING D7. The original ruling gave a port
+    // one bit of lending control — whether the desk existed — and kept the band
+    // global; Arcturus-6 was the one row that used that bit. D7 inverts the
+    // arrangement: the desk is open everywhere, and what a port owns is the
+    // PRINCIPAL BAND. The rate, the term and the lender are still global, so
+    // nothing here touches them.
+    expect(venueOffered(THE_HOSTILE_PORT, 'borrow')).toBe(true);
+    expect(venueOffered(THE_HOSTILE_PORT, 'repay')).toBe(true);
+    // Strictly inside the galaxy's band — stated as a comparison, never against a
+    // literal, so the authored ceiling can move.
+    expect(loanBandFor(THE_HOSTILE_PORT).min).toBeGreaterThanOrEqual(loanBandFor(SUN_3).min);
+    expect(loanBandFor(THE_HOSTILE_PORT).max).toBeLessThan(loanBandFor(SUN_3).max);
     for (const id of others) {
-      expect(venueOffered(id, 'borrow'), `${portName(id)} withholds 'borrow' too`).toBe(true);
-      expect(venueOffered(id, 'repay'), `${portName(id)} withholds 'repay' too`).toBe(true);
+      expect(venueOffered(id, 'borrow'), `${portName(id)} withholds 'borrow'`).toBe(true);
+      expect(venueOffered(id, 'repay'), `${portName(id)} withholds 'repay'`).toBe(true);
+      // …and every other desk is the DEFAULT desk: the deviation is one port's.
+      expect(loanBandFor(id), `${portName(id)} authored a loan band of its own`).toEqual(
+        loanBandFor(SUN_3),
+      );
     }
   });
 });
@@ -432,7 +464,6 @@ describe('T-123 · the exotic ports are exotic on their PARAMETERS', () => {
     expect(venueOffered(THE_NO_MEET_PORT, 'repay')).toBe(true);
     // It is the only port that withholds 'meet', so the axis reads unambiguously.
     for (const id of AUTHORED_PORTS.filter((p) => p !== THE_NO_MEET_PORT)) {
-      if (id === THE_HOSTILE_PORT) continue; // the garrison seats you, coldly (delta 0)
       expect(venueOffered(id, 'meet'), `${portName(id)} also withholds 'meet'`).toBe(true);
     }
   });
@@ -622,10 +653,9 @@ describe('T-124 · the tonal spread (§6.1)', () => {
     }
   });
 
-  it('the venue-set axis is exercised a THIRD time — Spica-3 tolerates no insults', () => {
-    // §6.1's fourth named venue-set shape and the last one unexercised after the
-    // garrison's withdrawn desk (4) and the hall's withheld `meet` (5). Mirrors the
-    // Deneb-4 block exactly, so the axis reads unambiguously across all three.
+  it('the venue-set axis is exercised a SECOND time — Spica-3 tolerates no insults', () => {
+    // §6.1's fourth named venue-set shape. Mirrors the Deneb-4 block exactly, so
+    // the axis reads unambiguously across both ports that use it.
     expect(venueOffered(THE_NO_INSULT_PORT, 'insult')).toBe(false);
     expect(venueOffered(THE_NO_INSULT_PORT, 'meet')).toBe(true);
     expect(venueOffered(THE_NO_INSULT_PORT, 'borrow')).toBe(true);
@@ -633,16 +663,19 @@ describe('T-124 · the tonal spread (§6.1)', () => {
     for (const id of AUTHORED_PORTS.filter((p) => p !== THE_NO_INSULT_PORT)) {
       expect(venueOffered(id, 'insult'), `${portName(id)} also withholds 'insult'`).toBe(true);
     }
-    // …and the three narrowings are three DIFFERENT withholdings, which is what
-    // makes the axis expressive rather than a synonym for hostility.
+    // …and the two narrowings are two DIFFERENT withholdings, which is what makes
+    // the axis expressive rather than a synonym for hostility.
+    //
+    // T-133 (owner ruling D7) · IT WAS THREE. Arcturus-6's withdrawn credit desk
+    // was the third, and it is gone — the garrison runs the desk again against a
+    // tight `loanBand` instead of not running it at all. STATED rather than
+    // silently dropped, because a set that quietly shrank from three to two is
+    // exactly how an axis dies without anyone deciding to retire it: the garrison
+    // now withholds NOTHING, and its identity moved to the credit axis pinned in
+    // the T-133 block of `hangoutRules.test.ts` and in the hostility block above.
     const withheld = (id: number) => ALL_VENUES.filter((v) => !venueOffered(id, v)).join('+');
-    expect(
-      new Set([
-        withheld(THE_HOSTILE_PORT),
-        withheld(THE_NO_MEET_PORT),
-        withheld(THE_NO_INSULT_PORT),
-      ]).size,
-    ).toBe(3);
+    expect(withheld(THE_HOSTILE_PORT)).toBe('');
+    expect(new Set([withheld(THE_NO_MEET_PORT), withheld(THE_NO_INSULT_PORT)]).size).toBe(2);
   });
 });
 

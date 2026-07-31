@@ -17,8 +17,6 @@
 import {
   CREW_ROLES,
   EXPLORATION_FUEL_COST,
-  LOAN_MAX_PRINCIPAL,
-  LOAN_MIN_PRINCIPAL,
   NEMESIS_SYSTEM_ID,
   PURCHASABLE_PORTS,
   STAR_SYSTEMS,
@@ -47,6 +45,7 @@ import {
   shipyardFailure,
   serializeState,
   startDay,
+  loanBandFor,
   venueOffered,
   wagerBandFor,
   type Edition,
@@ -811,16 +810,22 @@ export function legalActions(state: GameState): LegalActions {
     // all rather than advertised with an empty domain.
     if (venueChoices.length > 0) {
       const wagerBand = wagerBandFor(player.currentSystemId);
+      // T-133 · the PRINCIPAL domain is the port's too (owner ruling D7), read
+      // through the same `loanBandFor` accessor the resolver clamps with. A
+      // harness that advertised the global 250–5,000 at the garrison mess would
+      // hand a driver an `amount` the engine silently trims, which is the same
+      // class of drift as advertising a venue the house does not run.
+      const loanBand = loanBandFor(player.currentSystemId);
       actions.push({
         type: 'VisitHangout',
         params: {
           venue: { kind: 'enum', choices: venueChoices },
           opponentId: { kind: 'enum', choices: [...inSystemNpcIds] },
           wager: { kind: 'int', min: wagerBand.min, max: wagerBand.max },
-          amount: { kind: 'int', min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL },
+          amount: { kind: 'int', min: loanBand.min, max: loanBand.max },
           spendDie: dieParam,
         },
-        note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
+        note: "opponentId required for dare/meet/befriend/insult (an in-system NPC); omitted for rumor/borrow/repay. wager applies to 'dare' only (clamped to the port's band and to what both sides can cover). amount applies to borrow (principal, clamped to the port's loan band) and repay (credits to pay, default = full outstanding, clamped to credits).",
       });
     }
   }
