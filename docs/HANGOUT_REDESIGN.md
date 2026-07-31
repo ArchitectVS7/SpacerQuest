@@ -1183,8 +1183,9 @@ satisfy**, now enforced.
   constants keep their T-1603b values as `DEFAULT_PORT_HANGOUT`. Per-port bands are content
   authoring, not a re-tune of the default.
 - **Surfacing `meet` / `befriend` / `insult`** (F-101-4).
-- **The manifest version bump to 0.5.2.** `docs/VERSIONING.md` is explicit that it is its own
-  commit immediately before tagging. T-130 asks the owner.
+- **The manifest version.** Already at 0.5.2 (commit `9d9ff47e`). T-130 ruled: no advance to
+  0.5.3 and no tag until this track's own open findings close (`TASKS.md`, "Deliberately
+  deferred").
 - **Anything about Explore.** `docs/EXPLORE_REDESIGN.md` (T-100) owns it.
 
 **Crossover check for T-102, stated concretely** (the mirror of `EXPLORE_REDESIGN.md`

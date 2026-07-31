@@ -1017,8 +1017,9 @@ spec's design rather than left open — noted here so the audit trail is complet
   a step toward one.
 - **Explore's pricing.** `EXPLORATION_FUEL_COST = 80` and `EXPLORATION_NAV_DC = 12` are
   untouched. R-series, owner call. §5.5 predicts; T-116 measures.
-- **The manifest version bump to 0.5.2.** `docs/VERSIONING.md` is explicit that it is its own
-  commit immediately before tagging. T-130 asks the owner.
+- **The manifest version.** Already at 0.5.2 (commit `9d9ff47e`). T-130 ruled: no advance to
+  0.5.3 and no tag until this track's own open findings close (`TASKS.md`, "Deliberately
+  deferred").
 - **Anything about the Hangout.** `docs/HANGOUT_REDESIGN.md` (T-101) owns it.
 - **A scoping surface for `DiceBenefit`** (limit L4). A fresh owner call, per ruling 2.
 

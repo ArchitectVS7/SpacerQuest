@@ -1911,10 +1911,564 @@ Out of scope for 0.5.2 — recorded so a coder does not re-scope them in:
   owner sequencing call.
 - **Explore being a net loss for the PLAYER as a balance question.** T-116 re-measures it, but
   _re-pricing_ is R-series work and an owner call, not something a content pass does.
-- **The manifest version bump to 0.5.2.** `docs/VERSIONING.md` is explicit that bumping is "a
-  deliberate act, once per release cycle, as its own commit immediately before tagging" — so
-  the manifest stays at 0.5.1 until this track ships. T-130 asks the owner to confirm.
+- **The manifest version.** Already at 0.5.2 (commit `9d9ff47e`, 2026-07-30, under the amended
+  `docs/VERSIONING.md:53` policy — PATCH marks the active work track, not only a shipped one).
+  **T-130 ruling (owner, 2026-07-31): no advance to 0.5.3 and no tag while this track's own
+  findings are still open** — D1 (Explore time-cost rebalance), D2 (Dare redesign), D3 (the
+  Hangout faucet/`hasHangout` untangle, via `/bakeoff`), D6 (the Hangout UI surfacing job) and
+  D7 (Arcturus-6's credit desk) are all still outstanding. Re-check this bullet when they close.
 - **Anything R-owned:** R10's tier-1 hull cliff and the known-red `it.fails` tripwires.
+
+---
+
+## T-130 OWNER RULINGS — running log (owner, started 2026-07-31)
+
+Live status of the D1–D7 decisions `docs/0.5.2-REVIEW.md` §1 asked for. Updated in place as each
+closes; do not archive until every row is DONE or explicitly dropped. This is the log the owner
+asked to keep across a multi-session ruling process — check here before re-asking a question
+already answered below.
+
+| # | Decision | Status | Notes |
+| --- | --- | --- | --- |
+| **D1** | Re-rule the Explore parity-ledger row | **DECIDED (owner, 2026-07-31) — hybrid, scheduled as T-131** | Confirmed already-shipped and NOT part of the gap: per-route fuel cost already scales with distance (`economy.ts jumpFuelCost`), and pirate/encounter chance already varies by route (`SYSTEM_DANGER_LEVELS`, a distance bump, a loaded-run cargo bump, an era-event delta, feeding `ROUTE_DANGER_CHANCE` 0.30→0.60) — surfaced pre-jump in the route preview. **Bakeoff (3 independent reviewers)** converged: bands 3-4's calendar-day holds are the real failure (EV math: opportunity cost 475-1,480cr/day held vs. band-3/4 paying ~0 realized EV, 100% non-credit rows, band-4 never once collected in 14,400 sim-days) — the cost is *inverted*, not mistuned. A literal day→die 1:1 breaks on hand size (base 5, max 7). Split 2-1 on whether band 2 (1-day, 42.1% collection, not catastrophic) should also convert; **owner ruling: ship the hybrid** — band 2 stays on its existing, working calendar-day machinery untouched (no save-migration risk, death/travel-away forfeit code untouched); bands 3-4 move to a same-day action-point (extra dice) cost instead of calendar days. **Logged alternative, not chosen:** the full uniform conversion (all non-zero bands → same-day AP, band 2 included) — ranked below for now because it forces a `player.recovery` schema removal (v13→v14 migration) and a bigger single diff; revisit if the hybrid's own playtest shows band 2 still underpriced. **Owner: we will playtest this rather than pre-validate with a balance-sim rerun** — scheduled as **T-131** below, numbers to be tuned by feel |
+| **D2** | Re-rule the VisitHangout row | **CLOSED (owner, 2026-07-31) — replace the Dare with Liar's Dice, scheduled as two milestones (M4d: T-134-T-137 base game; M4e: T-144-T-148 roster/archetypes/unlock ladder)** | `executeSocialize` (NPC econ) confirmed NOT the same mechanic as the player's Dare. Bakeoff (4 reviewers, two rounds) on the current single-check Dare found it empirically favorable (57.3% win rate, +120-159cr EV/dare) and mechanically thin. **Owner rejected the "fix the check" path** ("kind of dumb") and chose **Liar's Dice**. Base ruleset in M4d (4d6/side, raise-face/quantity/both, challenge, fold, exploit closed by requiring fixed quantity + adjacent-face-only raises). A SECOND bakeoff round on top of that added: opponent AI archetypes (optimal/bad/random/mixed) + a new 3-per-port fixed opponent roster (42 total, beat-once, feeds new port-clear/game-clear achievements via the existing Deed/Registry system) layered alongside the existing 30 roaming `NPC_PROFILES` captains (unchanged, unlimited replay, not tracked); a doubling unlock ladder (5/10/20/40/80 games) for 5th die → 6th die (hard cap six) → "Read the Table" → bigger bounded bets → unlimited bets (band-clamp removed, solvency clamp kept). **Wildcards (ones-as-wild) are OUT OF SCOPE, permanently** — found to reopen a WORSE version of the already-closed exploit (a held 1 gives a guaranteed floor on every face at once, ~3.5x more common, unbounded in scope) that the existing fix does nothing against; replaced in the unlock ladder by **"Read the Table" — CONFIRMED by owner, 2026-07-31** (see the archetype before sitting down — mathematically inert, pays off the new archetype system; the second-Peek alternative was not chosen). "Ports get more dangerous with distance" clarified: no rim system has a Hangout today, so ante scaling rides each port's own already-authored wager band, not a literal distance formula. **GUILE-as-investable is CLOSED OUT OF THIS ITEM** — the owner reframed it as a bigger question (should ANY player stat be modifiable by equipment, not just GUILE) and asked for its own design track; see the new milestone **M6** below, not part of D2 |
+| **D3** | The NPC Hangout faucet | **CLOSED — scheduled as T-149 (confirmed present, M4f)** — ship the `hasHangout` gate now (`executeSocialize`, one boolean read + a re-flavored non-Hangout fallback line, zero save impact); defer closing the mint itself — three independent reviewers converged that it's <0.3% of NPC wealth by day 120 and not worth the architectural cost of breaking `resolveNpcDay`'s single-NPC-mutation model |
+| **D4** | The manifest version | **DONE** | Stale "stays at 0.5.1" sentence removed from `TASKS.md`, `docs/EXPLORE_REDESIGN.md`, `docs/HANGOUT_REDESIGN.md`. Ruling recorded above: no 0.5.3, no tag, until D1/D2/D3/D6/D7 close |
+| **D5** | Pull T-125's four levers | **CLOSED — extracted as T-150 (M4g)** | Of the four, two are already discharged by other tasks (F-101-4 by T-132, the faucet by T-149). The remaining two (F-116-1, F-123-3) plus a fresh named-pool-gate/decay-interval measurement are bundled into T-150, gated after every other fix task so it can't run before the tree is actually green — the original "hold until green" deferral, now a dependency instead of an open-ended note |
+| **D6** | The Hangout UI surfacing job (F-101-4/5/6, F-123-1) | **SCHEDULED — T-132** | Owner: yes, fix the UI. One task, not four, per the review's own recommendation — F-101-4 (meet/befriend/insult dispatch), F-101-5 (dead-NPC filter), F-101-6 (prose finally rendered), F-123-1 (loan desk gated on `venueOffered`, both notice helpers gain a `'venue-not-offered'` arm) |
+| **D7** | Arcturus-6's credit desk (F-123-2) | **DECIDED (owner, 2026-07-31) — scheduled as T-133** | **Confirmed direction: keep per-port variation, via a per-port loan principal band** (`PortHangout.loanBand`, mirroring the Dare's `wager` band) — Arcturus-6 keeps its desk, just a tighter one. **Logged alternative, not chosen (for the record, per owner's ask):** a per-port interest-rate multiplier on `LOAN_DAILY_RATE`, instead of or alongside the band — not ruled out, just not built first (the principal band reuses the `wager`-band pattern byte-for-byte, lowest engine risk). Revisit after this playtest if a tight band alone doesn't read as enough distinction |
+
+**Non-D findings from the same review, tracked here too since they're part of the same gate:**
+**V-1** (`docs/VERSIONING.md:229` stale "currently `12`") — **CLOSED, 2026-07-31.** One-line fix to
+`13` (matching `CURRENT_SAVE_VERSION`); verified no test asserts the stale text; `tsc -b` clean;
+full suite re-run green (1,638/1,638) after the change. **V-2** (a `format:check`-red commit landed
+because the orchestrator's format step is optional) — already closed at commit `125fc84f`, per its
+own original finding.
+
+---
+
+## M4a — D1's hybrid: action points for the deep end of the Explore ladder
+
+### T-131 · Bands 3-4 pay in dice, not days — `status: TODO` · `coder: opus` · `after: T-125`
+
+(Deliberately depends on T-125, not T-130 — T-130 is a still-open human gate with D2/D6/D7
+pending, but this task is self-contained and ready to run the moment the owner wants it,
+independent of when T-130 itself closes.)
+
+Owner ruling (D1, `/bakeoff`, 2026-07-31): the calendar-day recovery ladder T-111 shipped is
+kept for **band 2 only** (1 day, 42.1% measured collection — not broken). **Bands 3 and 4 stop
+opening a multi-day `player.recovery` and instead cost extra dice from the SAME dawn hand, paid
+immediately** — a band-3 find costs the sweep's own die plus **2 more**, a band-4 find costs the
+sweep's own die plus **3 more** (first-pass numbers, expected to move once played — this is a
+playtest, not a re-derivation of the bakeoff's EV math). This is the smaller of the two options
+the bakeoff scored: it leaves `player.recovery`, `RecoveryState`, the save v13 schema, and the
+travel-away/death/day-30 forfeit rulings (`docs/EXPLORE_REDESIGN.md` §3.3) **completely
+untouched** — they still govern band 2 exactly as T-111 built them. The **rejected alternative**
+(all non-zero bands converted, band 2 included) is logged above under D1 and is NOT this task;
+do not fold it in.
+
+**The mechanism, content side.** Add one new field to `ExploreValueBand`
+(`packages/content/src/exploration.ts`) — `apCost: number`, next to `recoveryDays`, following the
+exact discipline the file already enforces for `recoveryDays` itself (a band-table rule, never a
+per-row constant; the file's own comment says a `grep` for the field must hit only inside
+`EXPLORE_VALUE_BANDS`— extend that comment to cover `apCost` too). Bands 0/1/2 get `apCost: 0`
+(unchanged behaviour). Band 3 gets `recoveryDays: 0, apCost: 2`. Band 4 gets `recoveryDays: 0,
+apCost: 3`. **Assert the invariant a reviewer flagged as load-bearing: no band may have BOTH
+`recoveryDays > 0` AND `apCost > 0`** — an apCost row can only ever resolve same-day (bands are
+drawn AFTER the nav check, with the sweep's die and fuel already spent, so there is no dawn hand
+left to charge against at a later dusk). Write this as a content-table test
+(`exploreContent.test.ts` or wherever the band table's own shape is already asserted), not a
+comment.
+
+**The mechanism, engine side** (`packages/engine/src/exploreOutcomes.ts` `claimOutcome`). Add an
+`apCostFor(valuePoints)` reader beside `recoveryDays`, same shape. In `claimOutcome`, after the
+existing `recoveryDays > 0` branch (band 2, unchanged), add: if `apCost > 0`, attempt to spend
+that many MORE dice from `nextState.player.dawnHand` (which `claimOutcome` already has access to
+via `state` — no new parameter). If the hand has enough unspent dice, spend them and resolve the
+outcome today via the existing `resolveExploreOutcome`, exactly as a band-0/1 same-day find does.
+If it does not, the find is **forfeited** — no downgrade, no partial payout (a reviewer's
+alternative; log it as a design option to revisit if forfeiting reads badly in play, but build
+the simpler forfeit path first) — emit the new typed reason below. `PoiDiscovered` still fires
+either way: the player is told what was found, only its recovery failed.
+
+**New typed reason.** Extend `ExplorationFailed`'s `reason` union (`packages/engine/src/types.ts`
+~line 501, and the matching `schema.ts` variant) with `'insufficient-dice'`. Give it a real UI
+notice (`packages/ui/src/store.ts`'s `explorationFailNoticeFrom` or equivalent) — per this
+project's own "typed fails render, never silence" rule, this must NOT be the one reason that
+falls through to nothing.
+
+**Accept:** `apCost` lands on `ExploreValueBand` per the values above; a test asserts no band
+carries both `recoveryDays > 0` and `apCost > 0`; a band-3/4 discovery with enough remaining dice
+resolves same-day and spends exactly `1 + apCost` dice total, driven through the real
+`startDay`/`applyPlayerAction` loop (never by poking state), with a test for each band; a band-3/4
+discovery with an insufficient hand emits `ExplorationFailed{reason:'insufficient-dice'}`,
+`PoiDiscovered` still fires, no partial/downgraded payout, and the UI renders a real notice (not
+silence) — each asserted by a test; band 2's existing recovery path (T-111's four interaction
+rulings) is untouched and its existing tests still pass unmodified; `CURRENT_SAVE_VERSION` does
+NOT move (no state was added — `apCost` is a content constant, not a per-save field); gate green.
+Re-run the balance capstone (`rulesFingerprint` will move — expected, re-extract once per this
+track's own standing constraint) so the next measurement has a fresh baseline for the eventual
+playtest read.
+
+---
+
+## M4b — D6: the Hangout pane finally speaks
+
+### T-132 · Surface the dark half of the Hangout — `status: TODO` · `coder: opus` · `after: T-125`
+
+Owner ruling (D6, 2026-07-31): fix the UI. Bundles **F-101-4, F-101-5, F-101-6, F-123-1** as
+**ONE task, not four** — this is `docs/0.5.2-REVIEW.md`'s own recommendation (the F-113-A
+governance lesson: a finding whose fix is "a new task" gets scheduled as one, not left for the
+next pass to trip over), and the four defects are one underlying gap: **14 authored ports are
+not yet player-visible.** Independent of T-131 (different subsystem); depends only on T-125
+being functional, same reasoning as T-131.
+
+**F-101-4 — three of six venues have no player affordance.** `packages/ui/src/store.ts` dispatches
+`VisitHangout{venue: 'dare'}` (`:1269`), `'borrow'` (`:1342`), `'repay'` (`:1378`) — and nothing
+else. Add `meet`, `befriend`, and `insult` dispatch functions (mirroring `dare`'s shape: pick an
+opponent from `hangoutNpcs`, spend a die, read the resulting `HangoutEvent`) and the matching
+buttons/controls in `HangoutPanel` (`packages/ui/src/App.tsx`, beside the existing `hp-dare-controls`
+block, `:1857`). Reuse the existing venue-gating pattern already established for `borrow`/`repay`
+below.
+
+**F-101-5 — the opponent list can offer a dead captain.** `hangoutNpcs` (`packages/ui/src/format.ts:364-378`)
+filters live NPCs by `currentSystemId` only — no `!n.dead` check. The engine's own `rankClientele`
+doc comment (`packages/engine/src/hangoutRules.ts:116-117`) states its contract explicitly: *"the
+caller passes the ALREADY-FILTERED live in-system, non-dead set"* — the UI caller is the one
+violating it. One-line fix: filter `n.dead` out before ranking.
+
+**F-101-6 — every authored `HangoutProse` field renders nowhere.** The pane header
+(`packages/ui/src/App.tsx:1803`) is the literal `"Spacers Hangout · {systemName}"` — `houseName`,
+`roomLine`, and per-venue `flavour` (`packages/content/src/portHangouts.ts`'s `HangoutProse`,
+`:111-118`, authored at all 14 ports) have no reader anywhere in the UI. Render `houseName` in
+the header in place of the generic literal, `roomLine` as a standing line in the pane, and the
+relevant `flavour[venue]` line alongside each venue's controls when present (empty ⇒ render
+nothing extra, never a placeholder). This is the change most likely to move
+`packages/ui/e2e/hangout.spec.ts` — expected, update its assertions to match the new header/prose
+rather than working around them.
+
+**F-123-1 — a credit desk is offered at a port that has none, and a refusal for it would render
+silence.** Two parts:
+1. Gate the `loan-terms`/`loan-borrow`/`loan-repay` block (`App.tsx:1927+`) behind
+   `venueOffered(systemId, 'borrow')` (`packages/engine/src/hangoutRules.ts:103-106`) — the same
+   pattern this task is establishing for `meet`/`befriend`/`insult` above, applied to the desk
+   that's currently unconditional.
+2. `hangoutFailNoticeFrom` (`packages/ui/src/store.ts:478-491`) has **no case at all** for
+   `'venue-not-offered'` — its switch falls through and the loop returns `null`: silence, a direct
+   violation of this project's "typed fails render, never silence" rule. `loanFailNoticeFrom`
+   (`:500-519`) has a `default` arm covering it, so it isn't silent, but its message ("Penny Wise
+   turned that request down") is misleading — it implies a refusal, not an absent desk. Give BOTH
+   an honest `'venue-not-offered'` case in the house's own voice (e.g. "There is no credit desk in
+   this room." / "No one here takes that kind of wager.").
+
+**Accept:** `meet`/`befriend`/`insult` are each dispatchable through the real UI and asserted by an
+e2e test (real clicks, not an API call, per this project's standing UX-test rule); `hangoutNpcs`
+never offers a dead NPC (unit test with a mixed live/dead roster); the pane renders `houseName` and
+`roomLine` at a port that authors them and falls back to the generic default at one that doesn't
+(both asserted); at least one authored `flavour` line renders next to its venue; the loan desk
+controls render only where `venueOffered(..., 'borrow')` is true, asserted at both an offering and
+a non-offering port; both `hangoutFailNoticeFrom` and `loanFailNoticeFrom` render a real,
+venue-specific `'venue-not-offered'` notice (never `null`), each asserted by a test; no per-port
+engine branch is added anywhere (every difference is a `PortHangout` content field, per ruling 3);
+no save version bump; gate green, including `packages/ui/e2e/hangout.spec.ts` updated to match.
+
+---
+
+## M4c — D7: Arcturus-6 keeps its desk, on tighter terms
+
+Owner ruling (D7, 2026-07-31): **confirmed — keep the per-port credit desk variation.** Direction
+confirmed as proposed: a **per-port loan PRINCIPAL BAND**, mirroring the Dare's existing `wager`
+band exactly. `PortHangout` gains an optional `loanBand?: { min: number; max: number }` (alongside
+`wager`), defaulting through `DEFAULT_PORT_HANGOUT` to the current global
+`LOAN_MIN_PRINCIPAL`/`LOAN_MAX_PRINCIPAL` (`packages/content/src/lending.ts:76-77`) exactly as
+`wager` already defaults to `DARE_MIN_WAGER`/`DARE_MAX_WAGER` — so every port but Arcturus-6 is
+behaviour-preserving by construction. Arcturus-6 authors a tighter `loanBand` instead of omitting
+`'borrow'`/`'repay'` from its `venues` list, so the anti-poverty escape hatch (F-123-2) survives
+there, just at a stingier ceiling than the core-world default.
+
+**Logged alternative, not chosen (owner asked to keep this for the record):** a per-port INTEREST
+RATE multiplier on `LOAN_DAILY_RATE`, instead of or alongside the principal band. Not ruled out —
+the owner's exact words were "confirm the direction… is there something else we can vary" — but
+the principal band is the one being built first because it reuses the `wager`-band pattern
+byte-for-byte (lowest engine risk, F-101-1's own precedent for how a band clamps). **Revisit the
+interest-rate axis after this playtest** if a tight principal band alone doesn't read as enough
+per-port distinction, or if a later port wants to vary predatory/generous terms rather than just
+loan size.
+
+### T-133 · A per-port loan band, Arcturus-6 first — `status: TODO` · `coder: opus` · `after: T-132`
+
+Depends on T-132 because both touch `PortHangout`/`DEFAULT_PORT_HANGOUT` and the Hangout pane's
+loan-desk rendering — sequence to avoid two tasks editing the same content row and pane block at
+once. Add `loanBand?: { min: number; max: number }` to `PortHangout`
+(`packages/content/src/portHangouts.ts:133-145`), defaulted in `DEFAULT_PORT_HANGOUT` to
+`{ min: LOAN_MIN_PRINCIPAL, max: LOAN_MAX_PRINCIPAL }`. Add a `loanBandFor(systemId)` engine
+reader beside the existing `wagerBandFor` (`packages/engine/src/hangoutRules.ts`), and clamp
+`borrowLoan`'s requested principal to it in `packages/engine/src/actions/hangout.ts` the same way
+`dare`'s wager is clamped to `wagerBandFor` — a rule, not a per-port branch. Author Arcturus-6's
+row (`packages/content/src/portHangouts.ts`) with a tighter `loanBand` (e.g. a lower `max` than the
+global 5,000cr ceiling — exact number is a content call at authoring time, not specified here).
+Update the pane (from T-132) to read the port's own band for its principal-amount control instead
+of the global constants.
+
+**Accept:** every port but Arcturus-6 is behaviour-preserving (a test asserting `loanBandFor`
+resolves to the global constants at all 13 other authored ports plus the default row); Arcturus-6's
+band is tighter than the global default and a requested principal above its `max` clamps rather
+than errors (asserted by a test through the real `applyPlayerAction` path); the pane's loan control
+reflects the live port's band, not a hardcoded global; no per-port engine branch (the clamp reads
+`loanBandFor`, never an `if (systemId === ...)`); gate green.
+
+---
+
+## M4d — D2: the Spacer's Dare becomes Liar's Dice
+
+Owner ruling (D2, 2026-07-31, after a two-round `/bakeoff`): replace the Dare's single opposed
+GUILE check with a real Liar's Dice bluffing game. This is scoped as its own milestone — spec,
+then engine, then UI, then a capstone — because it is genuinely bigger than any other task in
+this track: a new persisted multi-turn scene (architecturally like Combat's `EncounterState`, not
+the Dare's current one-shot call), a real save migration, new `GameEvent` variants, a new AI
+dealer policy, a new animated-dice UI subsystem, and (per the owner's explicit "real dice,
+sci-fi themed, not just text" requirement) a new dependency this repo doesn't currently carry
+anywhere. Load `~/.claude/skills/tabletop-ui/SKILL.md` before any UI work here — it is this
+project's own house style for exactly this class of build.
+
+**THE SETTLED RULESET** (two bakeoff rounds; the first ruleset had a real exploit, found and
+closed — recorded here so it is never reintroduced):
+
+- **4 hidden d6 per side** (8 total), no wildcards, quantity capped at 8 (total dice in play),
+  face capped at 6. One hand = one Dare (not a Perudo-style dice-losing ladder across many hands).
+  Player opens.
+- Each turn, exactly one of:
+  1. **RAISE FACE** — move to **exactly the next face up** (F→F+1 only, never a further jump —
+     see the exploit note below), claimed quantity **stays exactly the same**.
+  2. **RAISE QUANTITY** — same face, quantity strictly increases (by any amount).
+  3. **RAISE BOTH** — face up by exactly one AND quantity up — costs **2× the normal ante**.
+  4. **CALL THE BLUFF** (challenge) — both hands reveal; actual count of the claimed face ≥
+     claimed quantity → bidder wins the pot, else the challenger wins.
+  5. **FOLD** — forfeit the hand without revealing. Costs the player the **seed wager plus every
+     ante-raise accumulated so far this hand**, paid to the opponent; no further penalty, no
+     reveal. (Deliberately more than "just the pot so far" — a free-to-walk-away fold would let a
+     player open a huge bluff and bail the instant it looked risky, hollowing out the ante.)
+- **THE EXPLOIT THIS CLOSES, stated so it is never reopened.** The original ruleset let a
+  face-raise DROP quantity, which meant "restate my own known count on a new face" was always a
+  risk-free claim (actual ≥ own count, always) — chainable until a player ran out of held faces.
+  Requiring quantity to stay **exactly the same** on a face-raise closes it (P(also holding the
+  same count on the next face) drops to single digits for any quantity ≥ 3, and is literally
+  impossible for quantity ≥ 3 with only 4 own dice on two faces at once). **The fix depends on
+  RAISE FACE being restricted to the immediate next face only** — allowing an arbitrary jump
+  (F→F+3, say) would let a player search across faces for one where their own count still
+  matches, partially reopening the same loophole. RAISE BOTH introduces no equivalent problem: a
+  free RAISE BOTH requires a strictly harder joint condition than a free RAISE FACE, so it is
+  always the objectively riskier claim, matched by its 2× cost.
+- **Ante**: proportional to the venue's own wager band (≈3% of `band.max`, floor 1cr), added to
+  the pot per raise (doubled for RAISE BOTH), clamped each raise against remaining headroom
+  (`band.max − potSoFar`) — once headroom hits zero, the next action must be CALL or FOLD, never
+  another free-of-clamp raise. This is how "ports further away/more dangerous carry steeper
+  stakes" is expressed: **not** a literal distance formula (no rim system has a Hangout today —
+  all 14 authored ports sit at `SYSTEM_DANGER_LEVELS` 1, i.e. core, uniform danger; there is no
+  existing distance gradient among Hangout ports to hook into), but each port's own already-authored
+  wager band, which already encodes a rough danger/exoticism gradient by content choice (Mira-9's
+  dive-bar 5-200 vs. Regulus-6's high table 500-3000). A stricter literal-distance re-author of
+  all 14 bands is logged as **optional future work, not part of this milestone**.
+- **GUILE — origin finding, worth recording.** The owner asked where GUILE's value comes from if
+  nothing can affect it. Confirmed: EVERY player stat (`PILOT`/`GUNS`/`TRADE`/`GRIT`/`GUILE`) is
+  set once at character creation and **never mutated anywhere in the shipped engine** — verified
+  by grep, zero writes to `player.stats[...]` anywhere outside `createInitialState`. NPC GUILE is
+  the same shape: a fixed, hand-authored 0-5 value per profile (`packages/content/src/cast.ts`),
+  a permanent personality trait, not something that grows. The game's ONE progression axis is the
+  **ship** (component upgrades, Class-A/B explore items) — character stats are a fixed sheet, like
+  a tabletop character's ability scores. So "GUILE modifiable by a unique item/questline" is **not
+  wiring up an existing vector — it would be a genuinely new kind of progression** the game has
+  nowhere else. Not required to ship the ruleset below (Peek works fine off a fixed GUILE, exactly
+  as the current Dare already reads a fixed GUILE) — **flagged as a separate, later decision**,
+  not blocking this milestone.
+- **GUILE integration: "Peek."** Spend a GUILE check (die + `playerGUILE` vs. a DC) at hand-open to
+  secretly see one of the opponent's four hidden dice before the first bid. Ranked above a passive
+  dealer-bluff-rate multiplier (no player agency) and a post-challenge "tell" (undermines the one
+  thing a dice game must protect — that the reveal is real).
+
+### T-134 · Spec the Liar's Dice Dare — `status: TODO` · `coder: opus` · `after: T-125`
+
+Write `docs/LIARS-DICE_REDESIGN.md`, settling everything the ruleset above leaves to
+implementation detail: the exact `DareHandState` shape (both hidden hands, current bid, whose
+turn, pot, resolved ante value, `peekedDealerDie`) and where it lives on `GameState` (a new
+top-level field, sibling to `encounter` — NOT nested under `player`, since a Dare hand is a scene
+like Combat, not player-owned data like `dawnHand`); the save-migration shape (`CURRENT_SAVE_VERSION`
+bump, `MIGRATIONS[n]` entry, `.strict()` zod schema); the new `GameEvent` variants needed (at
+minimum a bid-placed and a challenge-resolved shape — decide whether these fold into a richer
+`HangoutEvent` venue variant or are their own types) and their `schema.ts` coverage; the AI
+dealer's bid/raise/fold/challenge policy (a pure function of the dealer's hidden dice, the current
+bid, and `dealerGuile` — must never read the player's hidden dice, a distinct cheating-AI bug
+class from anything existing verbs guard against); the Peek check's exact DC; and the exact ante
+formula (`round(band.max * 0.03)`, floor 1, doubled for RAISE BOTH, clamped to remaining headroom
+per raise) as a `PortHangout`-readable rule, never a per-port constant. This is a spec only —
+no engine, content, sim, or UI source file touched, mirroring T-100/T-101's own precedent for a
+new subsystem in this track.
+
+**Accept:** `docs/LIARS-DICE_REDESIGN.md` settles every open shape above with no unresolved
+question left to the coder's judgement at implementation time; the exploit-closure reasoning
+(RAISE FACE restricted to F→F+1, quantity unchanged) is restated as a rule, not just referenced;
+FOLD's economics (seed + accumulated antes forfeited) are specified exactly; zero source files
+touched.
+
+### T-135 · Build the Liar's Dice engine — `status: TODO` · `coder: opus` · `after: T-134`
+
+Implement `docs/LIARS-DICE_REDESIGN.md` end to end on the engine side: the `dareHand` scene state,
+the multi-call resolver (open/bid/raise/raise-both/challenge/fold, each a separate
+`applyPlayerAction`, mirroring Combat's multi-turn shape), the AI dealer policy, the save migration
++ round-trip test, and the new typed events. The OLD single-check Dare (`hangout.ts`'s current
+`'dare'` case) is fully replaced, not kept alongside it — `venue: 'dare'` now opens a `dareHand`
+scene instead of resolving inline. Every port-authorable number (ante formula inputs, Peek DC) is
+a rule reading content, never a per-port branch, per this whole track's standing constraint.
+
+**Accept:** a full hand (open → several raises across FACE/QUANTITY/BOTH → a challenge or a fold)
+is driven end to end through the real `startDay`/`applyPlayerAction` loop in a test, never by
+poking state; a test asserts the exploit stays closed (a face-raise that changes quantity is
+rejected, a face-raise that jumps more than one value is rejected); FOLD forfeits exactly the seed
+wager plus accumulated antes, asserted by a test; the AI dealer's policy never reads the player's
+hidden dice (asserted by a test inspecting the function's inputs, not just its outputs); a save
+round-trip test covers a mid-hand `dareHand` surviving serialization; `CURRENT_SAVE_VERSION` bumps
+with a migration; gate green.
+
+### T-136 · Build the Liar's Dice UI — `status: TODO` · `coder: opus` · `after: T-135`
+
+Load `~/.claude/skills/tabletop-ui/SKILL.md` first. Build the visual scene inside `HangoutPanel`
+(`packages/ui/src/App.tsx`): real CSS-3D d6s (no WebGL/3D-engine dependency — `transform-style:
+preserve-3d`, sci-fi glow via gradient/filter, a reveal animation on challenge), the bid history,
+and the current-bid/whose-turn readout. The dealer's hidden dice must not exist face-up in the DOM
+until the reveal frame (the same "hidden until resolved" discipline the engine already keeps
+server-side). Per the tabletop-ui skill's prescribed stack, this is expected to add an animation
+dependency (e.g. GSAP) that is **new to this repo** — call this out explicitly in the PR/commit
+body as a dependency addition, not a silent one.
+
+**Accept:** a full hand is playable end to end through the real UI (real clicks, not an API call,
+per this project's standing UX-test rule) and asserted by an e2e test; the dealer's dice are
+verifiably absent from the DOM before reveal (an e2e assertion, not just a code-review claim); the
+new dependency (if any) is named in the commit; gate green.
+
+### T-137 · Capstone: measure the new Dare — `status: TODO` · `coder: opus` · `after: T-136`
+
+The old Dare's 57.3%-win-rate / +120-159cr-EV measurement is now irrelevant — this is a different
+game. Run a fresh balance-sim capstone (same shape as T-116/T-125's) measuring: the real player
+win rate and EV per hand under the settled ante/Peek-DC numbers; how often FOLD is taken and
+whether it is ever strictly dominant or dominated across hand strengths (the open risk the
+economy bakeoff flagged); how often the RAISE BOTH 2× ante is used; and whether the ante-clamp
+(forced CALL/FOLD once a port's band headroom is exhausted) fires often enough to matter. `npm run
+format` first, then re-extract `rulesFingerprint` once (this milestone's engine/content touch
+already moves it — this is the one capstone owed for the whole milestone, not one per task).
+
+**Accept:** a fresh `docs/balance/baseline-<label>-liars-dice.json` exists; the measured numbers
+above are reported in `docs/LIARS-DICE_REDESIGN.md` as a dated addendum, not asserted without
+evidence; no constant is retuned to chase a target number (a genuinely broken result is reported
+and left for a fresh owner call, per this whole track's "never edit a fingerprint, band, or
+threshold to make a test pass" rule); gate green.
+
+---
+
+## M4e — D2 continued: the opponent roster, archetypes, and the unlock ladder
+
+Owner ruling (2026-07-31, after a second `/bakeoff` round on top of M4d's base build). Depends on
+M4d (T-134-T-137) shipping first — this milestone adds a roster and a progression system on top
+of an already-working Liar's Dice engine, it does not change the core resolution rules again.
+
+**SETTLED, this round:**
+
+- **Wildcards (ones-as-wild) are OUT OF SCOPE, permanently, not deferred-quietly.** A dedicated
+  bakeoff pass found it reopens a WORSE version of the exploit M4d already closed: holding *m*
+  ones gives a guaranteed floor on every non-one face SIMULTANEOUSLY (not one adjacent pair), ~3.5x
+  more common than the closed exploit and unbounded in scope — the fixed-quantity/adjacent-face-only
+  fix does nothing against it, because the guarantee never comes from restating a known count on
+  one next face, it comes from every held 1 backing every face at once. Do not resurrect this
+  without a fresh, dedicated design pass — it is not a tuning knob.
+- **Two opponent pools, layered, not merged:**
+  1. **A new, dedicated, non-roaming roster: 3 fixed opponents per `hasHangout` port (42 total)**,
+     each with an AI bidding archetype (`'optimal' | 'bad' | 'random' | 'mixed'`, a mixed archetype
+     taking a percentage split across the other three) and three authored lines (table-talk,
+     win, lose). **Cannot be built on the existing simulated `NPC_PROFILES` cast** — verified: NPCs
+     move `currentSystemId` daily via the roam simulation and can die, so "fixed, always at this
+     port, beat-once-forever" is structurally impossible on that pool. New content table,
+     `PortHangout`-shaped (keyed by systemId), always resolvable, no `currentSystemId`, no dusk
+     mutation. **Beat-once tracked**: `player.liarsDiceBeaten: string[]`, a new persisted field
+     (save migration). Feeds the port-clear and whole-game-clear achievements — ONLY this pool
+     counts toward them.
+  2. **The existing 30 `NPC_PROFILES` roaming captains, unchanged mechanism.** Whoever's
+     simulated-present at a `hasHangout` port that day is Dare-able exactly as today (via
+     `hangoutNpcs`/`rankClientele`) — freely re-challengeable, NOT beat-once, NOT tracked toward
+     the roster achievements. A captain currently simulated at a rim system (no Hangout) is simply
+     unreachable that day — deliberate, accepted as in-fiction continuity ("that captain's out at
+     the rim right now"), not a bug to route around.
+- **`player.liarsDiceGamesPlayed: number`** — a global counter, EVERY Liar's Dice hand played
+  against EITHER pool, drives the unlock ladder below. Decoupled from the 42-opponent achievement
+  set on purpose: the roaming pool supplies effectively unlimited replay games, so the ladder is
+  never bottlenecked by the fixed roster's size.
+- **The unlock ladder — doubling, exact owner numbers: 5 / 10 / 20 / 40 / 80 cumulative games.**
+  In order: **5th die → 6th die (cap: six, never more) → "read the table" (see below, replaces
+  wildcards) → increased bounded betting (a raised, still-finite wager-band ceiling) → unlimited
+  betting (remove the port's wager-band MIN/MAX clamp only; the existing solvency clamp — capped
+  by what both sides can actually cover in credits — stays, so the pot can never literally run
+  away).**
+- **The wildcard slot's replacement: "Read the Table."** At unlock, before a hand's first bid the
+  player sees the dealer's AI archetype (not their dice) — "this one plays it safe / this one's
+  reckless / can't get a read on this one" for optimal/bad/random/mixed respectively. Chosen over
+  a second Peek (the alternative considered) because it is mathematically inert — touches no dice
+  or count logic at all, so it carries none of wildcards' risk — and it directly pays off the
+  archetype system this same round just designed, rather than doubling down on an already-shipped
+  mechanic.
+- **Achievement hooks reuse the existing Deed/Registry system, with one addition.** The current
+  `DeedDefinition`/`accrueDeeds` engine can only count MATCHING EVENTS, not a distinct set reaching
+  a known total — it cannot express "beat every opponent at this port" directly. Liar's Dice keeps
+  its own completion tracker (the `liarsDiceBeaten` set, sized against the authored roster per
+  port/globally) and emits a one-time synthesized signal (e.g. a `HangoutEvent`/state flag,
+  `portCleared: true` / `allBeaten: true`) once a set closes — an ordinary `equals: true` deed
+  trigger then fires on THAT signal. No change to the deed matcher DSL itself.
+
+### T-144 · Spec the roster & progression system — `status: TODO` · `coder: opus` · `after: T-137`
+
+Write the addendum to `docs/LIARS-DICE_REDESIGN.md` (or a new `docs/LIARS-DICE-PROGRESSION_SPEC.md`
+if it reads cleaner split out) settling: the new content table's exact shape and file
+(`packages/content/src/liarsDice.ts`, `LIARS_DICE_OPPONENTS: Readonly<Record<number,
+LiarsDiceOpponent[]>>`, 3 entries per of the 14 `hasHangout` ports); the AI archetype behaviors as
+concrete bid/raise/fold/challenge decision rules (not just labels — "optimal" needs an actual
+policy, not a vague better-than-random heuristic); the mixed-archetype percentage-split shape;
+`player.liarsDiceBeaten`/`liarsDiceGamesPlayed`'s exact types and the save migration (version bump,
+backfill, round-trip test per the `dareHand` precedent T-135 already set); the doubling ladder's
+five thresholds and what each unlock actually changes in the resolver (dice-count unlocks mean
+`DareHandState`'s dice arrays and the quantity/face caps become a function of live unlock tier, not
+a literal constant — every validation site needs to read it, not just the deal); "Read the Table"'s
+exact copy per archetype; "increased bounded betting"'s exact new ceiling multiplier; the
+achievement completion-signal shape and its two `DeedDefinition` entries (port-clear ×14, one
+whole-game-clear). Zero source files touched — spec only, same discipline as T-100/T-101/T-134.
+
+**Accept:** every shape above is settled with nothing left to the coder's judgement; the
+"beat-once tracked only for the 42-roster, not the 30 roaming captains" distinction is stated
+explicitly as a rule (not assumed); the dynamic-dice-count ripple into the resolver's validation
+sites is enumerated by file/function, not just asserted to exist; zero source files touched.
+
+### T-145 · Build the fixed opponent roster (content pass 1 of 1: 42) — `status: TODO` · `coder: opus` · `after: T-144`
+
+Author `packages/content/src/liarsDice.ts`'s 42 rows (3 per `hasHangout` port) per the spec, and
+wire the engine's opponent resolution (T-135's resolver) to look up this table alongside the
+existing roaming-NPC path — a parallel lookup branch, not a replacement of the roaming path.
+Implement the three concrete AI archetype policies (not placeholders). A LATER content pass can
+grow this toward more opponents per port; this task ships the full 3/port baseline, not a partial
+first slice.
+
+**Accept:** all 42 opponents are reachable through the real UI at their authored port (e2e-asserted
+for a sample, unit-asserted for full table shape/uniqueness); each archetype's policy is
+distinguishable by an actual behavioral test (e.g. "optimal" never takes a -EV line an "always
+fold on any risk" baseline would decline, "bad" measurably underperforms "optimal" over many
+simulated hands); catchphrases render at table-talk/win/lose per opponent; the roaming-NPC Dare
+path is unchanged and its existing tests still pass; gate green.
+
+### T-146 · Build the unlock ladder — `status: TODO` · `coder: opus` · `after: T-145`
+
+Implement `player.liarsDiceGamesPlayed`'s increment (every resolved hand, either opponent pool) and
+the five-threshold doubling ladder (5/10/20/40/80) gating: dice count (4→5→6, hard-capped at six),
+"Read the Table," the raised bounded-betting ceiling, and the unlimited-betting band-clamp removal
+(solvency clamp stays). Every gated behavior reads live unlock state, not a build-time constant —
+per T-144's enumerated ripple sites.
+
+**Accept:** each of the five unlocks is reachable ONLY at its threshold and never before (asserted
+by a test at threshold−1 and at threshold); dice count never exceeds six regardless of further
+play; unlimited betting still respects the solvency clamp (a test asserting a wager can never
+exceed either side's actual credits); save round-trip covers `liarsDiceGamesPlayed` at various
+tiers; `CURRENT_SAVE_VERSION` bumps (folds into T-135's bump if sequenced tightly, else its own);
+gate green.
+
+### T-147 · Achievement hooks — `status: TODO` · `coder: opus` · `after: T-145`
+
+Independent of T-146 (different subsystem — can run in parallel via `/orchestrate` once T-145 is
+done). Implement the completion-tracker-to-deed signal designed in T-144: a port-clear deed ×14
+(one per `hasHangout` port) and one whole-game-clear deed (all 42 beaten), each appearing in the
+existing Registry of Deeds UI with a real citation, per the established `DeedDefinition` pattern —
+no change to the deed matcher DSL itself.
+
+**Accept:** beating the last of a port's 3 opponents fires that port's deed exactly once (not once
+per remaining game against the roaming pool); beating all 42 across all 14 ports fires the
+whole-game deed exactly once; both render in the Registry with a citation, asserted by a test;
+gate green.
+
+### T-148 · Capstone: measure the roster & ladder — `status: TODO` · `coder: opus` · `after: T-146, T-147`
+
+Same discipline as T-137, extended: measure real games-to-unlock pacing against the doubling
+ladder (does a typical playstyle actually cross 80 games in a normal career, or does the ladder's
+top rung go the way of Explore's band-4 — authored but practically unreachable?), the realized
+win-rate per archetype (does "optimal" actually outperform "random" by a measurable margin,
+validating the archetypes aren't cosmetic labels), and how often the roaming-pool games vs. the
+fixed-roster games are actually played (does the unlimited-replay pool dominate play, leaving the
+42-opponent gauntlet mostly untouched — a real design question to report, not silently accept).
+`npm run format` first, re-extract `rulesFingerprint` once.
+
+**Accept:** a fresh dated addendum to the spec reports the measured numbers above, including
+naming any lever left unpulled (per this track's own house discipline — a bad number is reported,
+not silently tuned around); no constant is retuned to chase a target; gate green.
+
+---
+
+## M4f — D3: gate the NPC Hangout faucet on `hasHangout`
+
+Owner ruling (D3, via `/bakeoff`, 2026-07-31): ship the gate now, defer closing the mint. This was
+decided in the FIRST audit pass of this session but never actually scheduled as a task — logged
+here so it isn't lost. Independent of every other M4* task; can run any time after T-125.
+
+### T-149 · The Hangout coach knows where the bars aren't — `status: TODO` · `coder: opus` · `after: T-125`
+
+`executeSocialize` (`packages/engine/src/npc.ts:1824`) never reads `hasHangout`, so its "cleaned up
+at the {system} Hangout tables" / "bought a round at the {system} Hangout tables" flavor text
+(`npc.ts:1845,1851`) feeds the player-facing rumor mill (`hangoutRumors`, `actions/hangout.ts:81`)
+at 18 of 28 ports that the game's own UI tells the player have no bar. Add a
+`STAR_SYSTEMS[npc.currentSystemId]?.hasHangout` read before the roll; on `false`, still roll the
+same GUILE check (preserves the verb⟺StatCheck invariant) but emit new non-Hangout flavor text
+naming no venue (e.g. "swapped stories at the {system} docks" / "drank alone at {system}, poorer
+for it"). **Do not touch the credit mint itself** (`NPC_SOCIALIZE_WIN_CREDITS`/`LOSS_CREDITS`) —
+three independent bakeoff reviewers measured it at <0.3% of NPC wealth by day 120, not worth the
+architectural cost of breaking `resolveNpcDay`'s deliberately single-NPC-mutation model to make it
+zero-sum. This task is the fiction fix only.
+
+**Accept:** `executeSocialize` never narrates a Hangout at a `hasHangout: false` system (asserted
+by a test); the GUILE check still fires unconditionally (the verb⟺StatCheck invariant holds); no
+change to the credit amounts or the check's win/loss thresholds; no per-system engine branch (a
+single boolean read, not an `if (systemId === ...)` ladder); gate green.
+
+---
+
+## M4g — D5: the levers T-125 left on the desk
+
+Owner ruling (D5, 2026-07-31): extract this out of "deferred, no task" limbo into a real, properly
+gated task, so T-130 itself can close even though the actual measurement can't run yet. Of T-125's
+original four levers, two are ALREADY discharged by other tasks in this same set — **F-101-4**
+(surfacing befriend/meet/insult) by **T-132**, and **the NPC Hangout faucet** by **T-149** — so
+only two remain live here.
+
+### T-150 · Re-measure post-fix, and put the named-pool gate to the owner — `status: TODO` · `coder: opus` · `after: T-131, T-132, T-133, T-137, T-148, T-149`
+
+Gated after every fix/build task in M4a–M4f so it cannot run until the tree actually reflects all
+of them — this IS the "hold until green" deferral D5 named, just expressed as a dependency instead
+of prose. Three things, in order:
+
+1. **F-116-1** — `explorerPolicy` (`packages/sim/src/index.ts`, the Explore-queuing branch) queues
+   Explore actions without checking `state.player.recovery`, producing a measured 22.5% guaranteed
+   `recovery-in-progress` refusal rate. Add the check before queuing. One line, per the finding's
+   own sizing.
+2. **F-123-3** — **check whether this is still applicable before touching it.** As filed, it was
+   `planDare` picking the richest dealer once off dawn state, so a second hand of the day could be
+   a zero-stake wager if that dealer's purse drained in the first hand. **M4d/M4e replace the
+   single-check Dare's dealer-pick flow with the Liar's Dice resolver entirely** — if the sim's
+   equivalent dealer-selection logic for a Liar's Dice hand has the same shape (pick once off dawn
+   state, no re-check), re-derive the fix against the NEW resolver; if the new resolver's shape
+   already avoids it, say so and close the finding as moot rather than patching code that no longer
+   has the bug.
+3. **The 0.25 named-pool interceptor gate** (`travel.ts:389`) and `DISPOSITION_DECAY_INTERVAL_DAYS
+   = 3`. T-125 itself ruled this a DESIGN QUESTION, not a tuning knob — **this task does NOT change
+   either constant.** Re-run the balance capstone now that the faucet is gated, the Hangout UI
+   speaks, Explore's recovery model changed, and the Dare is Liar's Dice, and report the fresh
+   named-pool/decay numbers as a NEW finding for a fresh owner ruling — the same "measure, then
+   hand the ruling back" shape as every other lever in this track.
+
+**Accept:** F-116-1 is fixed and a test asserts the sim no longer queues an unpayable Explore;
+F-123-3 is either fixed against the real (possibly new) dealer-selection code path or explicitly
+closed as moot with the reasoning stated, not silently dropped; a fresh capstone dataset exists and
+the named-pool/decay question is restated with current numbers, still unruled (owner's call, not
+this task's); no constant is retuned to chase a target; gate green.
 
 ---
 
@@ -1992,3 +2546,48 @@ output is byte-for-byte identical to the same command run directly by hand; a `g
 panel's entry point under `packages/desktop`'s packaging config and any production build
 output returns nothing; no source file outside the panel's own new code is modified by
 running any panel action; gate green.
+
+---
+
+## M6 — Player-modifying trinkets (new initiative, out of D2's scope, no implementation yet)
+
+Owner ruling (2026-07-31): GUILE came up as a candidate for "investable" during the Liar's Dice
+design pass (D2), but every player stat (`PILOT`/`GUNS`/`TRADE`/`GRIT`/`GUILE`) is rolled once at
+character creation and never mutated anywhere in the shipped engine — verified by grep, zero
+writes to `player.stats[...]` outside `createInitialState`. The owner does not want a
+GUILE-only fix bolted on in isolation while every other stat stays frozen; this deserves its own
+complete design pass — rings, headbands, trinkets, and similar wearables that shift ANY player
+stat up or down, not just GUILE. **This milestone schedules the DESIGN step only. No
+implementation task exists yet** — what ships, if anything, is whatever this bakeoff and spec
+settle on.
+
+The closest existing precedent, worth citing to whichever coder/reviewer takes this: Explore's
+unique-item framework (`docs/EXPLORE_REDESIGN.md` §4, `packages/engine/src/exploreOutcomes.ts`
+`applyUniqueItem`) already splits a granted item into Class-A (bounded ship-ELEMENT deltas —
+component strength, maxFuel, cargo pods) and Class-B (a die-effect hook, `DiceBenefit`). A
+player-stat trinket is the same SHAPE of problem — a bounded delta to a named, engine-owned
+quantity — one class-A/class-B step removed from ship components to character stats. Ruling 2
+from this track's own header ("no new check-level modifier surface") was scoped to the Explore
+item system specifically; whether it also constrains a stat-trinket design, or whether a
+stat-modifying trinket IS the second surface ruling 2 explicitly reserved for "a fresh owner
+call," is exactly the kind of question this bakeoff should surface, not assume.
+
+### T-151 · Bakeoff + spec: player-modifying trinkets — `status: TODO` · `coder: opus` · `after: T-130`
+
+Run `/bakeoff` (or the coder's own equivalent independent-review process) on: what a trinket
+slot/economy looks like (how many worn at once, where they're found/bought — Explore items,
+Shipyard, a new Hangout venue, quest rewards), the bounds on a stat delta (a ±1-2 range, mirroring
+how ship-component deltas are bounded, vs. something else), whether ALL five stats are equally
+in-scope or some are deliberately excluded (does a GRIT trinket collide with anything
+`packages/engine`'s combat/life-support math assumes about GRIT being fixed?), and the exact
+engine/content split (a new `ExploreItemDefinition`-adjacent shape, or its own table). Produce a
+settled spec (`docs/PLAYER-TRINKETS_SPEC.md` or an addendum to an existing one) — this task does
+NOT implement anything.
+
+**Accept:** the bakeoff's independent reviews, agreement table, and (if a simulable subsystem
+exists) any measured comparison are reported per the skill's own reporting order; the spec settles
+slot count, delta bounds per stat, acquisition path, and the engine/content split with no open
+question left for an implementer; whether this needs a save-shape change is stated explicitly; NO
+engine/content/UI source file is touched by this task, per the skill's own "never implement during
+steps 1-3" rule; the design verdict and its blast radius are handed back to the owner for a
+ruling, not decided by the task itself.
