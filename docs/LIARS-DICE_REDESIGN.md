@@ -1661,6 +1661,26 @@ One line each, so a later reader cannot mistake absence for oversight.
 | **T-136** (UI) | The scene inside `HangoutPanel`, reading §2's state and §10's events. §10.2's hidden-dice discipline is an e2e assertion, not a claim. |
 | **T-137** (capstone) | **DELIVERED 2026-07-31 — see §16.** The one `npm run format` (zero files) → fixture re-extract → 8,000-row sweep (`baseline-t137-liars-dice.json`) for the whole milestone. Reported: win rate **94.66%**, EV/hand **+737.53 cr** (§16.1); FOLD rate **0.03%**, never strictly dominant and weakly dominated by CHALLENGE by derivation (§16.3); RAISE BOTH dealer-side **23.18%** of dealer raises, player-side 0 by construction (§16.4); ante clamp **53.12%** dealer / **0.00%** player (§16.5); §7.5's interceptor lift **grew** 29.28% → 47.50% (§16.6). Two findings filed and NOT fixed: **F-137-1** (§16.2) and **F-137-2** (§16.6). |
 
+### The layer above this one — M4e lives in its own file
+
+**This document specifies the GAME. `docs/LIARS-DICE-PROGRESSION_SPEC.md` (T-144) specifies the
+CAREER built on top of it** — the fixed 42-opponent roster (3 per `hasHangout` port, beat-once,
+with persisted per-opponent purses), the four AI archetypes as executable decision rules, the
+five-rung unlock ladder (5/10/20/40/80 games → 5th die → 6th die → "Read the Table" → a ×3 wager
+ceiling → the band clamp removed), the two new `PlayerState` fields and the single `v14 → v15`
+migration that lands them, and the port-clear / roster-clear achievements. It is implemented by
+**T-145–T-148** and its §12 is reserved for T-148's capstone, in §16's shape.
+
+It **adds to** this document and repeals nothing in it. Two clauses in particular carry across
+unchanged and are restated there rather than reinterpreted: **§5.5's permanent wildcard
+exclusion** (re-confirmed by the M4e bakeoff, which found ones-as-wild reopens a worse version of
+the exploit §5.2 closed — it is not a tuning knob), and **§9.7's anti-cheat signature discipline**,
+which the new `archetypeMove` inherits verbatim (no `playerDice`, no `GameState`, no
+`DareHandState` in its input). The one thing M4e changes about *this* file's rules is that four
+dice per side and a claim ceiling of eight become the **tier-0 case** of a function rather than
+constants; §16's baseline was measured at tier 0 against pool B, and both stay untouched so the
+comparison survives.
+
 ---
 
 ## §16 · T-137 capstone — the measured Dare (2026-07-31)

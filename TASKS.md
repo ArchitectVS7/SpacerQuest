@@ -2626,7 +2626,7 @@ of an already-working Liar's Dice engine, it does not change the core resolution
   added to `EVENT_PATHS`, and `packages/engine/src/__tests__/deeds.test.ts` asserts every shipped
   deed's paths against it — T-144 enumerates this exactly.
 
-### T-144 · Spec the roster & progression system — `status: TODO` · `coder: opus` · `after: T-137`
+### T-144 · Spec the roster & progression system — `status: DONE` · `coder: opus` · `after: T-137`
 
 Write the addendum to `docs/LIARS-DICE_REDESIGN.md` (or a new `docs/LIARS-DICE-PROGRESSION_SPEC.md`
 if it reads cleaner split out) settling: the new content table's exact shape and file
@@ -2655,6 +2655,22 @@ source files touched — spec only, same discipline as T-100/T-101/T-134.
 "beat-once tracked only for the 42-roster, not the 30 roaming captains" distinction is stated
 explicitly as a rule (not assumed); the dynamic-dice-count ripple into the resolver's validation
 sites is enumerated by file/function, not just asserted to exist; zero source files touched.
+
+**Delivered (2026-07-31):** wrote `docs/LIARS-DICE-PROGRESSION_SPEC.md` as the split-out M4e
+addendum (chosen over a §17 append because `LIARS-DICE_REDESIGN.md` closes on the dated §16
+capstone), settling every shape the task called for against ground truth re-verified at HEAD: the
+42-row `LIARS_DICE_OPPONENTS` content table shape (3 per of the 14 `hasHangout` ports), the four
+AI archetypes as concrete decision rules plus the mixed-archetype split, the exact types and the
+single `v14 → v15` migration for `player.liarsDiceBeaten`/`liarsDiceGamesPlayed`, the five-rung
+doubling unlock ladder and every resolver site the dynamic dice-count ripples into, "Read the
+Table" copy per archetype, the bounded-betting ceiling multiplier, the synthesized-`GameEvent`
+achievement signal with its two `DeedDefinition` entries and `EVENT_PATHS` addition against
+`deeds.test.ts`'s guard, and the persisted per-opponent purse model (save shape, starting
+bankrolls, broke-opponent rule, no regeneration on beaten-and-broke). Deliberate scope boundary,
+same discipline as T-100/T-101/T-134: zero source files touched, `docs/LIARS-DICE_REDESIGN.md`
+got only a short cross-reference addendum pointing at the new file, and the parent redesign doc's
+existing §16 capstone was left untouched — implementation is T-145 onward, not this task.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `TASKS.md`'s M4e settled block, `docs/LIARS-DICE_REDESIGN.md`'s · attempts=2/4.
 
 ### T-145 · Build the fixed opponent roster (content pass 1 of 1: 42) — `status: TODO` · `coder: opus` · `after: T-144`
 
