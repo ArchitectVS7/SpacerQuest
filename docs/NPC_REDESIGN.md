@@ -103,10 +103,20 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
-> **BASELINE OF RECORD RE-PINNED AT T-116** to
-> `docs/balance/baseline-t116-explore.json` (1,000 seeds × 120 days × 8 policies =
+> **BASELINE OF RECORD RE-PINNED AT T-125** to
+> `docs/balance/baseline-t125-hangout.json` (1,000 seeds × 120 days × 8 policies =
 > 8,000 runs, both `--milestone-days` and `--aggregate` honoured, fixture
 > re-extracted FROM it with `spreads harvested`). Fingerprints are rules
+> `6e8c9973fa7a4238` / instrument `4e7184c378da068f` / docs `1002d9efefacf7fb` — the
+> rules and docs hashes moved with T-120…T-124's Hangout extraction and the fourteen
+> authored port rows; the instrument hash moved with them because
+> `hangoutRules.ts` is classified engine source. The `balance:diff` against
+> `t116-explore` moves five rows — `fleet`, `gambler`, `smuggler`, `trader` and
+> `trader-degraded`, i.e. every policy that plays a table or a credit desk — and
+> leaves `explorer`, `fighter`, `greedy` and `veteran` byte-identical. The T-116
+> reading it supersedes is kept below for the trail.
+>
+> **PREVIOUSLY (T-116):** `docs/balance/baseline-t116-explore.json`, fingerprints rules
 > `bbf007a6bf38a932` / instrument `313fde95fc5ee9db` / docs `d8cec298cd93f909` —
 > **all three moved from N11's** `b6f27d2bceabde59` / `db515475e166a538` /
 > `118e033b2c04807a`, which is the expected reading: T-110…T-117 rewrote hashed rule
@@ -1979,10 +1989,12 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t116-explore.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at T-116 2026-07-30 — the M2 Explore
-   > rebuild shipped and moved the `explorer`, `smuggler` and `fleet` rows, so
-   > `baseline-n11-shipped` no longer describes HEAD).
+   > **Baseline of record is `docs/balance/baseline-t125-hangout.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-125 2026-07-30 — T-120…T-124
+   > shipped a parameterised Hangout at 14 ports where there was 1, and it moved the
+   > `fleet`, `gambler`, `smuggler`, `trader` and `trader-degraded` rows, so
+   > `baseline-t116-explore` no longer describes HEAD).
+   > `baseline-t116-explore`,
    > `baseline-n11-shipped`, `baseline-n10-shipped`, `baseline-t020-registry`,
    > `baseline-n4-shipped`, `baseline-r2c-explorer-remit`, `baseline-n2-final`,
    > `baseline-n9-shipped`, `baseline-r2c-final` and `baseline-vet-1k*` are its

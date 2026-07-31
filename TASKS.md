@@ -1660,7 +1660,7 @@ in either direction.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md` §6.1–§6.4/§7, the ten authored rows in `packages/content/src/portHangouts.ts`, and the T-122/T-123 delivered blocks in `TASKS.md` · attempts=1/4.
 
-### T-125 · Hangout: measure the reach, and re-read disposition — `status: TODO` · `coder: opus` · `after: T-124`
+### T-125 · Hangout: measure the reach, and re-read disposition — `status: DONE` · `coder: opus` · `after: T-124`
 
 Run `npm run format`, THEN one capstone for this milestone. Report what a reachable social
 system did: hangout usage per run, the disposition distribution across the cast before and
@@ -1674,6 +1674,117 @@ report.
 spread, and a measured statement about disposition's effect on interceptor selection; no
 threshold, band or constant was tuned to produce a result; if the baseline is re-pinned, both
 pointers move in the same commit; gate green.
+
+**Delivered (2026-07-30).** `npm run format` FIRST — it changed **zero files**, the tree was
+already clean — then the milestone's single capstone: `docs/balance/baseline-t125-hangout.json`,
+1,000 seeds × 120 days × 8 policies from eight **1-indexed** shards through `--merge`,
+`--milestone-days 21,29,30,41,60,120`, verbatim `[balance] wrote aggregate for 8000 rows`.
+Fixture re-extracted **from that file**: `[smoke] 4 tiers, spreads harvested, rules
+6e8c9973fa7a4238 / instrument 4e7184c378da068f / docs 1002d9efefacf7fb`; `tiers.json`
+`provenance` reads `sweepLabel: "t125-hangout"`, `runs: 8000`, `spreadSource: "harvested"`.
+The full write-up is `docs/HANGOUT_REDESIGN.md` **§10** (§10.0–§10.10), which replaces the
+reserved stub; §9's T-125 row is annotated and §5.1 / §5.2 carry forward pointers to §10.5 /
+§10.6.
+
+**The capstone aggregate cannot answer any of this task's five questions** — `SeedRow` carries
+no hangout and no disposition field, `MilestoneSample` no `npcDisposition`, and
+`CombatEncounterRecord` no interceptor id or `source`. Adding them would move
+`instrumentFingerprint` in the same commit that takes the capstone. So the capstone discharges
+the baseline/fixture obligation and a **gitignored two-arm probe** (`.scratch/t125-hangout.ts`,
+source fenced at §10.7) produces the result — the T-116 split exactly. Arms: HEAD vs
+**`e0dbd40a`** (T-116, Hangout at 1 of 28) in a `git worktree` built with its **own**
+`node_modules` and its own `tsc -b` output, because a shared `node_modules` resolves through
+`realpath` and would have run `e0dbd40a`'s sim against HEAD's engine. Seeds 1..120 × 120 days ×
+8 policies = **960 runs per arm**. Fidelity **5/5 MATCH in both arms** on four channels
+(`finalState.credits`, `deedCount`, `hangoutPlay.dares`, `combatEncounters.length`).
+
+**The verdict: YES, for the captain who plays the tables.** Named interceptions flown by a
+captain the player had **wronged**: `gambler` **4.22% → 29.28%** (n = 876 → 929) against an
+**analytic uniform counterfactual** over the same reconstructed pools of 1.78% → 9.90%, a
+**2.37× → 2.96× lift**; the chosen captain's mean disposition −0.067 → **−1.378** against a pool
+mean of −0.294. Fleet-wide 5.87% → **10.13%** against 2.76% → 4.22%. **The inertness rate is
+stated before the lift and bounds all of it:** only **24.70%** of the fleet's 23,100
+interceptions reach the named pool at all (the `rng.next() < 0.25` gate, `travel.ts:394`), and
+**69.56%** of those saw a pool where every candidate sat at 0 — a draw on which `chooseWeighted`
+is byte-identical to the old uniform pick. The gambler's inertness falls 76.26% → **31.65%**;
+`fighter`/`explorer`/`veteran`/`greedy` are **byte-identical across both arms** on every M5
+figure, the exact control. Also reported: `fighter` has the highest wronged share of any policy
+(35.14%) and got there entirely through violence — the shape of the problem §1.5 named.
+
+Hangout usage per run (fleet, 960 runs/arm): `VisitHangout` actions 4,276 → **16,783**, dares/run
+3.40 → **16.11**, `expectedValuePerDare` **+159.56 → +120.14**, and the gambler walks into
+**13.87 of the 14** ports per career (was 1.00 of 1). Disposition spread: non-neutral at day 120
+1.91% → **2.81%**, and the movement is **entirely in the grudge tail** — deeply negative
+(`d ≤ −5`) **20 → 143**, deeply positive 42 → 50 — which falls out of `DARE_WIN_DISPOSITION = −2`
+and a 57.3% player win rate. `DispositionChanged` by `reason`: **voluntary movement is now 28.49%
+of all non-decay disposition, up from 8.45%** — the single cleanest statement of what the reach
+bought, since §1.5 scoped the track on "the Hangout is the only voluntary input". Counter-evidence
+reported rather than buried: `BondIntervention` fired **42 → 34**, because the one reachable
+verb pushes standing *away* from the hook.
+
+**§5.1 discharged (§10.5):** over 15,461 dares the binding term of
+`min(bandMax, playerCredits, dealerCredits)` is the **BAND on 88.93%** and the **DEALER on
+10.97%**; the player's own credits bound **zero** stakes (`< 1/15,461`). Dealer purses at
+milestone dawn (n = 121,526): min 0 / p25 1,000 / median 5,000 / p75 17,228 / max 2,307,108.
+This confirms T-123's addendum at 11.7× its sample and **makes §5.1's third, load-bearing reason
+to defer the faucet the minor term**. **§5.2 discharged (§10.6): 95.91% → 37.96%** — the BEFORE
+arm re-measures the recorded figure at **96.07%**, within 0.16 points, which validates the
+method; the AFTER figure is well below §5.2's predicted ~50% because the cast concentrates on
+the core lane that gained the bars. Reported, not predicted.
+
+**Nothing was tuned, and the two things it was tempting to fix are filed.** `git diff --stat`
+shows **zero lines** under `packages/engine/src/`, `packages/content/src/`,
+`packages/sim/src/index.ts` and `packages/sim/src/balance/`; the only source change in the commit
+is the one re-pin path string in `balance-targets.test.ts:103`. `INTERCEPT_GRUDGE_WEIGHT` 1.5 /
+`INTERCEPT_FRIEND_WEIGHT` 0.15 / `INTERCEPT_MIN_WEIGHT` 0.1 /
+`DISPOSITION_DECAY_INTERVAL_DAYS` 3 / `DARE_MIN_WAGER` 25 / `DARE_MAX_WAGER` 1,000 /
+`DARE_WIN_DISPOSITION` −2 / `DARE_LOSS_DISPOSITION` +2, the 0.25 named-pool gate and all fourteen
+authored port rows are untouched at their shipped values. `CURRENT_SAVE_VERSION` stays **13**;
+no save shape moved, so no migration is owed. **F-123-3 re-measured at 413 of 15,461 hands
+(2.67%)** — stable against T-123's 2.6% — and **NOT fixed**, for the reason T-116 filed F-116-1:
+`planDare` is a shipped policy, `expectedValuePerDare` is a number this task is chartered to
+read, and the capstone is taken in this same commit. Routed to its own commit. **No new test
+file, deliberately:** a capstone may carry only the re-pin path string; anything else here would
+touch a hashed source or be a stub written to a checklist.
+
+**Baseline of record RE-PINNED** to `baseline-t125-hangout.json` under standing amendment 1
+("does the baseline describe HEAD?"). `balance:diff t116-explore → t125-hangout` moves exactly
+**five** rows — `fleet` (439), `gambler` (544), `smuggler` (527), `trader` (444),
+`trader-degraded` (451) — and leaves `explorer`, `fighter`, `greedy`, `veteran` with **zero**
+changed fields, the same control the probe found independently. Headlines: gambler
+`finalCredits.median` 45,343 → **56,634** (+24.9%) and `tourOneClearRate` 0.7790 → **0.8480**;
+fleet 34,213 → 37,961 and 0.5411 → 0.5670. **`trader` moved too, and through a verb it never
+plays** — zero dares, 289 lending actions — which is the Penny Wise desk, corroborated from the
+disposition side by `loan-default` collapsing 186 → **17**. The 5 reported shape changes are all
+sparse `renownRanks.*` histogram buckets, not an instrument change; no phantom `milestones[i]`
+paths appear. **All three pointers move in this commit:** `balance-targets.test.ts:103`,
+`docs/NPC_REDESIGN.md:107` + `:1992`, and `docs/balance/smoke/README.md:95`.
+
+**The `it.fails` clear-day tripwire is still correctly RED** — trader `debtClearedDay.median`
+**21** against `[22, 30]` at **n = 987**, unmoved from T-116 and N11. Not converted to `it`; the
+baseline was not chosen to make it pass. The live 40-seed block at `:180` is green.
+
+Gate: `npx tsc -b`, `npm run lint`, `npm run format:check` (`npm run format` was **not** re-run
+after the capstone) and all four workspaces' vitest suites green (**1,636 tests, 0 failures** —
+engine 1,051 / sim 326 / ui 157 / desktop 102), including `balance-smoke.test.ts` (71) and
+`balance-rig.test.ts` (52), which grade the newly extracted `tiers.json`, and
+`balance-targets.test.ts` (4), which reads the re-pinned baseline off disk.
+`packages/ui/e2e/hangout.spec.ts` green (3/3). The three `packages/ui/e2e/onboarding.spec.ts`
+failures are the pre-existing **F-121-2** T-121 regression, re-confirmed **unchanged in cause and
+count** (`:94`, `:243`, `:274`, each failing on the coach resolving to `first-hangout` where the
+spec expects `first-port` / `first-contraband`). This commit touches no UI source at all, so its
+state could not have moved; **still escalated rather than absorbed**, and no fixture was
+pre-seeded to route around it.
+
+**Four levers left on the owner's desk for T-130, none pulled:** (1) the **0.25 named-pool gate**
+and `DISPOSITION_DECAY_INTERVAL_DAYS` — three quarters of interceptions cannot see disposition
+at all and 69.56% of the rest are inert, both one constant; (2) **F-101-4** — surface
+`befriend`/`meet`/`insult`, since the only reachable Hangout verb pushes standing *down* and the
+bond hook fired *less* after the reach change; (3) **§5.1's faucet**, now re-arguable on a
+measured 10.97%; (4) **F-123-3**, a cheap sim-policy fix that needs a commit allowed to move a
+capstone.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented from `docs/HANGOUT_REDESIGN.md` §1.5/§4.2/§5/§9/§10, the T-116 capstone pr · attempts=1/4.
 
 ---
 

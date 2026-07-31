@@ -92,7 +92,7 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t116-explore.json`, re-pinned at T-116
+exactly like drift. The current baseline (`baseline-t125-hangout.json`, re-pinned at T-125
 2026-07-30) used `--milestone-days 21,29,30,41,60,120` over all eight policies including
 `trader-degraded` — the same shape every capstone back to `baseline-r2c-explorer-remit.json`.
 Note also that `docs/balance/` keeps every historical capstone: **`baseline-n9-shipped.json`

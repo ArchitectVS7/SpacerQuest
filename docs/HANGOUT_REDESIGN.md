@@ -586,6 +586,10 @@ zero-sum transfer (`hangout.ts:267–272`).
 **Obligation this track takes:** **T-125 must report the dealer-purse distribution beside
 hangout usage**, so T-130 rules on a measured number rather than on the 2026-07-30 figure.
 
+> **Obligation discharged at §10.5** (2026-07-30). Measured over 15,461 dares: the port's
+> **BAND** binds 88.93% of stakes and the **DEALER's purse only 10.97%** — so reason 3 above,
+> the load-bearing one, is now the minor term. Re-argue the deferral on that number.
+
 ### 5.2 The missing `hasHangout` check on the NPC path — **DEFERRED**
 
 **The defect.** `executeSocialize` never consults `STAR_SYSTEMS[...].hasHangout`, so
@@ -605,6 +609,11 @@ hangout usage**, so T-130 rules on a measured number rather than on the 2026-07-
 **Obligations this track takes:** **T-121 must not close it by accident** — setting
 `hasHangout` on 13 more systems must not be paired with an `npc.ts` edit — and **T-125 must
 re-measure the percentage** so T-130 rules on a current figure.
+
+> **Obligation discharged at §10.6** (2026-07-30). **95.91% → 37.96%** — well below the ~50%
+> this section predicted, because the cast concentrates on the core lane that gained the bars.
+> Reason 3 above still holds, but it is now a claim about deleting ~38% of the verb's
+> occurrences rather than ~96%.
 
 **And a fiction consequence this track CREATES, recorded because it is the strongest argument
 T-130 will have:** `executeSocialize`'s own prose reads *"cleaned up at the {system} Hangout
@@ -1216,13 +1225,713 @@ satisfy**, now enforced.
 | **T-122** | §6.3 pass 1, §6.4 | five everyday ports authored; distinctness asserted as a cardinality check over the axis tuples; Sun-3's mechanical tuple still the default row; no placeholder strings; zero lines under `packages/engine/src` |
 | **T-123** | §6.3 pass 2, §6.2 | five ports authored; at least one **measurably hostile** and one **measurably exotic** against §6.1's axes; the governance axis exercised without touching `isRim` / `allowsContraband`; **F-101-1's realized-vs-declared stake measurement reported** for the high-band port; any house rule wanted reported in F-101-3's format; zero engine changes |
 | **T-124** | §6.3 pass 3, §6.4 | the last four, including `tone: 'comic'`; the full 14 enumerated and distinct (cardinality 14); tonal spread asserted against the axes; zero engine changes. **Delivered as written, plus two things the criterion did not ask for and the work required:** the T-121 baseline-row builder is DELETED and its "the unauthored rows are still baseline rows" test inverted rather than emptied (§6.3 correction (e)), and **F-124-1** closes the frozen-quest-captain `regulars` trap with an `isSimulatedCaptain` assertion |
-| **T-125** | §4.2, §5.1's and §5.2's obligations, §10 | `npm run format`, THEN the milestone's single capstone; 8,000 merged rows from 1-indexed shards through `--merge`; fixture re-extracted with `spreads harvested`; reports hangout usage per run, the before/after disposition spread, **the dealer-purse distribution** (§5.1), **the re-measured off-Hangout Socialize percentage** (§5.2), and a measured statement about disposition's effect on `chooseWeighted`'s interceptor draw; appends to §10; **tunes nothing to reach a result**, and escalates rather than adjusts if `balance-targets.test.ts:180` went red |
+| **T-125** | §4.2, §5.1's and §5.2's obligations, §10 | `npm run format`, THEN the milestone's single capstone; 8,000 merged rows from 1-indexed shards through `--merge`; fixture re-extracted with `spreads harvested`; reports hangout usage per run, the before/after disposition spread, **the dealer-purse distribution** (§5.1), **the re-measured off-Hangout Socialize percentage** (§5.2), and a measured statement about disposition's effect on `chooseWeighted`'s interceptor draw; appends to §10; **tunes nothing to reach a result**, and escalates rather than adjusts if `balance-targets.test.ts:180` went red. **Delivered 2026-07-30** — `baseline-t125-hangout.json` (8,000 rows, `spreads harvested`), baseline of record re-pinned, and a two-arm probe (HEAD vs `e0dbd40a`, 960 runs each) run in the T-116 shape. **The verdict is YES for the captain who plays the tables**: wronged-captain named interceptions 4.22% → **29.28%** on the `gambler` arm against a 9.90% uniform counterfactual, with the inertness rate falling 76.26% → **31.65%** — but disposition still reaches the draw only ~25% of the time and is inert on 69.56% of fleet named draws. §5.1's obligation discharged at §10.5 (the BAND binds 88.93% of stakes, the DEALER 10.97%), §5.2's at §10.6 (**95.91% → 37.96%**). **Zero constants, bands, DCs, thresholds, goldens or fingerprints edited**; F-123-3 re-measured (2.67%) and filed, not fixed |
 
 ---
 
 ## §10 · Appendix: T-125 re-measurement
 
-*(Reserved. T-125 appends the measured reach result — hangout usage per run, the before/after
-disposition spread across the cast, the dealer-purse distribution, the re-measured
-off-Hangout `Socialize` percentage, and the statement about disposition's effect on
-interceptor selection — with provenance, here.)*
+**Measured 2026-07-30 by T-125, on HEAD after T-120…T-124 all shipped.** This appendix answers
+the question that scoped the track — *has who hunts you started to depend on how you have
+treated people?* — discharges §5.1's and §5.2's measurement obligations, and records the
+capstone the milestone owed. **It changes no constant, no band, no DC and no threshold.**
+
+### 10.0 The verdict, first
+
+**YES — for a captain who actually plays the tables, and only for that captain. The share of
+NAMED interceptions flown by a captain the player had wronged went 4.22% → 29.28% on the
+`gambler` arm (n = 876 → 929 named draws), against an analytic uniform counterfactual of 1.78%
+→ 9.90% over the same reconstructed pools — a 2.37× → 2.96× lift. Fleet-wide the same number
+is 5.87% → 10.13%.**
+
+The honest qualifier, stated before anything else because it bounds every figure below:
+**disposition still reaches the draw only ~25% of the time, and on ~70% of the draws it does
+reach, it is exactly inert.** `selectEncounterInterceptor` (`travel.ts:394`) only enters the
+named pool on `rng.next() < 0.25`, and 24.70% of the fleet's 23,100 player interceptions were
+named. Of those 5,706 named draws, **3,969 (69.56%) saw a pool in which every candidate sat at
+disposition 0** — a draw on which `chooseWeighted` is byte-identical to the old uniform pick, by
+its own doc comment (`travel.ts:325–337`).
+
+So the reach change did not make disposition matter *more often*; it made it matter *more
+sharply where it already could*. The gambler's inertness rate is the number that carries that:
+**76.26% → 31.65%**. On the four policies that never open a Hangout — `fighter`, `explorer`,
+`veteran`, `greedy` — every M5 figure is **byte-identical across the two arms**, which is the
+control that says the movement is the Hangout and nothing else.
+
+### 10.1 Method
+
+**The probe.** `.scratch/t125-hangout.ts` (gitignored; source fenced at §10.7). It plans,
+applies and reads the event stream, and adds nothing but counters — no action is added,
+removed or reordered, and no rng is drawn.
+
+**The loop is hand-rolled, and that is forced, not a shortcut.** `resolvePolicy`
+(`packages/sim/src/index.ts:4638`) returns `dawnBlind: true` for any *function* policy, so
+wrapping a named policy in an observer lambda and handing it to `runCampaign` would silently
+plan it against the **pre-`startDay`** state. The probe resolves the NAME and calls
+`resolved.policy` with `resolved.dawnBlind` honoured, reproducing `runCampaign`'s
+dawn → actions → dusk order and its `policy / day-N / index-i` rng forks exactly.
+
+**Two arms, same file, same seeds.**
+
+| | arm BEFORE | arm AFTER |
+| --- | --- | --- |
+| commit | **`e0dbd40a`** (T-116) | HEAD (T-124 + this commit's docs) |
+| Hangout reach | **1 of 28** (Sun-3) | **14 of 28** (ids 1–14) |
+| built in | a `git worktree` with its **own** `node_modules` (third-party symlinked, `@spacerquest/*` pointed at the worktree's own packages) and its own `tsc -b` output | the repo |
+| sample | seeds 1..120 × 120 days × 8 policies = **960 runs** | identical |
+
+The isolated `node_modules` matters and is stated because the naïve symlink is wrong: the
+workspace links resolve through `realpath`, so a shared `node_modules` would have run
+`e0dbd40a`'s `sim` against **HEAD's** engine and content.
+
+Everything that exists only at HEAD — `wagerBandFor`, `venueOffered`, `PORT_HANGOUTS` — is
+reached through a namespace import and feature-gated, so **one file runs unmodified in both
+arms**. The probe prints which surfaces it found (`wagerBandFor=false venueOffered=false` on
+the BEFORE arm), so the gating is visible in the output rather than assumed.
+
+**Fidelity check, output verbatim (2026-07-30).** The hand-rolled loop is admissible only if it
+is byte-equal to the sim's own `runCampaign` on the NAMED policy, on every channel this probe
+reports off. Run on `gambler`, the hangout-heaviest policy, on four channels
+(`finalState.credits`, `deedCount`, `hangoutPlay.dares`, `combatEncounters.length`):
+
+```
+--- fidelity (gambler, the hangout-heaviest policy) --- [AFTER arm, HEAD]
+fidelity seed 1: credits 35241/35241 · deeds 23/23 · dares 141/141 · encounters 29/29 -> MATCH
+fidelity seed 2: credits 36622/36622 · deeds 22/22 · dares 117/117 · encounters 35/35 -> MATCH
+fidelity seed 3: credits 85218/85218 · deeds 26/26 · dares 151/151 · encounters 27/27 -> MATCH
+fidelity seed 4: credits 45282/45282 · deeds 22/22 · dares 133/133 · encounters 32/32 -> MATCH
+fidelity seed 5: credits 60999/60999 · deeds 25/25 · dares 142/142 · encounters 29/29 -> MATCH
+
+--- fidelity (gambler, the hangout-heaviest policy) --- [BEFORE arm, e0dbd40a]
+fidelity seed 1: credits 67621/67621 · deeds 24/24 · dares 40/40 · encounters 27/27 -> MATCH
+fidelity seed 2: credits 55681/55681 · deeds 25/25 · dares 20/20 · encounters 34/34 -> MATCH
+fidelity seed 3: credits 43719/43719 · deeds 26/26 · dares 27/27 · encounters 35/35 -> MATCH
+fidelity seed 4: credits 39878/39878 · deeds 23/23 · dares 24/24 · encounters 37/37 -> MATCH
+fidelity seed 5: credits 20663/20663 · deeds 22/22 · dares 18/18 · encounters 37/37 -> MATCH
+```
+
+**Why the capstone aggregate cannot answer any of this, stated plainly.** `SeedRow`
+(`balance/aggregate.ts:250–294`) carries no hangout and no disposition field; `MilestoneSample`
+(`sim/index.ts:692–750`) carries `npcCredits` but no `npcDisposition`; `CombatEncounterRecord`
+(`sim/index.ts:377–449`) carries `interceptorTier` but no interceptor id and no `source`.
+Adding those fields would move `instrumentFingerprint` and fill `balance:diff` with thousands
+of phantom shape deltas **in the same commit that takes the capstone**. So the capstone is
+owed for the baseline/fixture obligation (§10.9) and the probe is what produces the result —
+exactly the split T-116 used.
+
+### 10.2 Hangout usage per run (fleet, 960 runs per arm)
+
+| quantity | **BEFORE** (1 port) | **AFTER** (14 ports) |
+| --- | --- | --- |
+| `VisitHangout` actions issued | dare 3,264 · borrow 512 · repay 500 = **4,276** | dare 15,461 · borrow 666 · repay 656 = **16,783** |
+| of which REFUSED (any typed fail or `ActionBlocked`) | **0** | **0** |
+| dares / run — mean | 3.40 | **16.11** (4.74×) |
+| dares / run — median · p90 | 0 · 22 | **0 · 120** |
+| distinct hangout ports a verb resolved at, per run | 0.50 of 1 | **2.71 of 14** |
+| credits wagered, total | 2,146,722 | **11,539,030** |
+| net to the player, total | +520,820 | **+1,857,478** |
+| **`expectedValuePerDare`** | **+159.56** (n = 3,264) | **+120.14** (n = 15,461) |
+| `socialBeats` (meet + befriend + insult) | 0 | 0 |
+| `failedVisits` | 0 | 0 |
+| `venue-not-offered` refusals | 0 of 4,276 | **0 of 16,783** (i.e. `< 1/16,783`) |
+| `ActionBlocked{'no-hangout'}` | 0 | 0 |
+
+The fleet median is 0 because six of the eight policies never open a Hangout at all. The
+number that means anything is the **gambler's**:
+
+| gambler (120 runs per arm) | **BEFORE** | **AFTER** |
+| --- | --- | --- |
+| dares / run — mean · median · p90 | 27.20 · 28 · 36 | **128.84 · 131 · 142** |
+| distinct hangout ports walked into / run | 1.00 of 1 (max 1) | **13.87 of 14 (max 14)** |
+| borrow · repay actions | 126 · 126 | 135 · 135 |
+
+**A reachable Hangout is a hangout the player actually walks into.** The gambler reaches 13.87
+of the 14 authored ports in a 120-day career — the reach change is not theoretical headroom,
+it is exercised almost exhaustively. And the tables stopped being free money in the way T-121
+first saw at 10 seeds: `expectedValuePerDare` falls **159.56 → 120.14**, still firmly positive,
+because the law of large numbers finally reaches a verb that could previously be played 27
+times in a career.
+
+**Three of the six venues report a structural zero, not a rate.** `meet`, `befriend` and
+`insult` were issued **0 times in 16,783 `VisitHangout` actions across both arms** — but this
+is an absence by construction, not a measured rate: no shipped sim policy plans them and no
+player UI offers them (**F-101-4**). Nothing in this appendix speaks to what those three venues
+would do if surfaced. That is T-130's question.
+
+**`venue-not-offered` re-confirmed at 3.9× T-123's sample and still zero.** T-123 authored
+Arcturus-6 with no credit desk and measured zero refusals in driven careers; at 16,783 actions
+the count is still 0, so the honest statement is `< 1/16,783` (< 0.006%), per standing
+amendment 1's corollary. The reason is structural rather than lucky: `isLendingDeskSystem`
+(`sim/index.ts:857`) and `planDare` both mirror the engine's `venueOffered` gate, which is what
+T-120/T-121 built them to do.
+
+### 10.3 The disposition spread, before and after
+
+#### B1 · Within-career (HEAD arm)
+
+**The "before" is degenerate and this is stated rather than dressed up:** day-0 dispositions are
+all zero by construction (`packages/engine/src/state.ts`), and the probe asserts it and throws
+if not. The interesting reading is the day-120 spread.
+
+Day-120 `npc.disposition` histogram over the whole roster, 960 runs × **41** records
+(the roster carries 41: the 30 simulated captains of `NPC_PROFILES` plus the 11 frozen
+`QUEST_PROFILES`, which take no turn and sit permanently at 0 unless a storylet moves them):
+
+| disposition | −10 | −9 | −8 | −7 | −6 | −5 | −4 | −3 | −2 | −1 | **0** | +1 | +2 | +3 | +4 | +5 | +6 | +7 | +9 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **BEFORE** | 0 | 2 | 3 | 2 | 8 | 5 | 26 | 36 | 24 | 233 | 38,607 | 146 | 146 | 36 | 44 | 31 | 10 | 1 | 0 |
+| **AFTER** | 1 | 25 | 28 | 26 | 26 | 37 | 64 | 82 | 80 | 285 | 38,254 | 152 | 151 | 51 | 48 | 37 | 10 | 2 | 1 |
+
+| | **BEFORE** | **AFTER** |
+| --- | --- | --- |
+| non-neutral at day 120 | 753 / 39,360 (**1.91%**) | 1,106 / 39,360 (**2.81%**) |
+| of which NEGATIVE | 339 | **654** |
+| of which POSITIVE | 414 | 452 |
+| deeply negative (`d ≤ −5`) | **20** | **143** (7.15×) |
+| deeply positive (`d ≥ +5`) | 42 | 50 |
+| max \|disposition\| seen at any dusk | 10 | 10 |
+| captains ever crossing \|5\| (per run) | 2.260 | **3.468** |
+| captains reaching their **own** `bondHook.activateAt` (total) | 583 | 553 |
+| `BondIntervention` events fired (total) | 42 | 34 |
+
+**The reach change grew the GRUDGE tail and left the friendship tail almost exactly where it
+was.** Deep negatives went 20 → 143; deep positives 42 → 50. That is not an accident and it is
+not a defect — it falls directly out of the shipped arithmetic: `dare` is the only Hangout verb
+any policy plays, and it applies `DARE_WIN_DISPOSITION = −2` when the player WINS the hand
+(`content/hangout.ts:78`, the beaten dealer sours). The player won **8,859 of 15,461 hands
+(57.3%)**, so the modal outcome of a night at the tables is a slightly angrier dealer.
+
+**The bond hook is the counter-evidence and it is reported because it cuts against the track.**
+`BondIntervention` fired 42 → **34** times; captains reaching their own `activateAt` went
+583 → **553**. The bond hook is a `disposition >= activateAt` gate (`day.ts:527`), so the one
+voluntary verb the player has access to pushes standing *away* from it on 57% of plays. T-1204's
+decay rebalance made the hook reachable at all; the reach change did **not** make it more
+reachable. **This is the strongest single argument for surfacing `befriend`/`meet` (F-101-4) as
+a T-130 item** — the only verbs that can move standing upward are the three with no UI.
+
+If the 11 frozen quest captains are excluded from the denominator the AFTER figure has a
+ceiling of 1,106 / 28,800 = **3.84%**; the true figure sits between 2.81% and 3.84%, because
+a storylet can still move a quest captain. Both bounds are given rather than one guessed.
+
+#### B2 · The `reason` attribution — the cleanest statement of what the reach bought
+
+Every `DispositionChanged` event over the 960 runs, by `reason` (`types.ts:355–371`):
+
+| reason | **BEFORE** | **AFTER** | class |
+| --- | --- | --- | --- |
+| `decay` | 59,016 | 76,014 | (excluded — it is the fade, not an input) |
+| `contract-sniped` | 23,227 | 23,190 | involuntary — competition |
+| `storylet` | 9,511 | 9,560 | involuntary — narrative |
+| `tribute` | 3,077 | 2,913 | involuntary — violence |
+| `player-fled` | 860 | 804 | involuntary — violence |
+| `defeat` | 725 | 725 | involuntary — violence |
+| **`dare`** | **3,264** | **14,803** | **VOLUNTARY** |
+| **`loan-default`** | **186** | **17** | **VOLUNTARY** |
+| `befriend` / `insult` / `meet` | 0 | 0 | voluntary, but unreachable (F-101-4) |
+| `contraband-caught` | 0 | 0 | involuntary |
+| **non-decay total** | **40,850** | **52,012** | |
+| **voluntary share of non-decay movement** | **8.45%** | **28.49%** | |
+
+**§1.5 scoped this whole track on "the Hangout is the only voluntary input to disposition". It
+now carries 28.49% of all non-decay disposition movement, up from 8.45% — a 3.4× increase in
+the share of the player's standing with the cast that the player CHOSE.** That is the single
+cleanest number in this appendix.
+
+Two secondary readings from the same table:
+
+- **`loan-default` collapsed 186 → 17.** This corroborates T-121's headline from an angle T-121
+  could not see: the Penny Wise desk stopped being a trap because a captain can now repay where
+  it stands, so it stopped being a *disposition* faucet too.
+- **`decay` rose 59,016 → 76,014** because there is simply more standing to fade. That is the
+  decay rule working, not drift.
+
+### 10.4 Disposition in `chooseWeighted` — the headline
+
+**Method — a counterfactual RE-DERIVATION of the draw, never a re-roll.** For every
+`EncounterStarted` on the player's path — and there is exactly one emitter, `travel.ts:688`, so
+the pre-action state IS the state `selectEncounterInterceptor` was handed — the probe:
+
+1. records `encounter.interceptor.source` and `.tier`;
+2. for `named` picks, reconstructs `buildNamedCandidates(pre, chosen.tier)` exactly (live NPCs
+   whose `NPC_PROFILES[profileId].tier === chosen.tier`, `travel.ts:275–301`);
+3. computes the shipped weights over that pool from the shipped constants —
+   `INTERCEPT_GRUDGE_WEIGHT` 1.5 / `INTERCEPT_FRIEND_WEIGHT` 0.15 / `INTERCEPT_MIN_WEIGHT` 0.1
+   (`content/disposition.ts:58–60`), **imported, never restated**;
+4. compares `P_weighted(chosen)` with `P_uniform(chosen) = 1/n` and computes the
+   wronged-captain share against an **analytically summed** uniform expectation.
+
+The reconstruction found the chosen captain in the reconstructed pool on **every one of the
+11,566 named draws across both arms** (`pool-reconstruct misses 0`), which is the check that
+says the pool being scored is the pool the engine drew from.
+
+**The inertness rate first, because it bounds everything after it.**
+
+| fleet (960 runs per arm) | **BEFORE** | **AFTER** |
+| --- | --- | --- |
+| player interceptions | 23,094 | 23,100 |
+| of which **named** | 5,860 (**25.37%**) | 5,706 (**24.70%**) |
+| **named draws where EVERY candidate sat at 0** | 4,550 (**77.65%**) | 3,969 (**69.56%**) |
+| mean named pool size | 7.09 | 7.17 |
+| mean `P_weighted(chosen)` | 0.22759 | 0.23409 |
+| mean `P_uniform(chosen)` | 0.21223 | 0.20614 |
+| **mean lift** | **1.0723×** | **1.1356×** |
+| **chosen captain at disposition < 0** | 344 / 5,860 (**5.87%**) | 578 / 5,706 (**10.13%**) |
+| analytic UNIFORM expectation over the same pools | 2.762% | 4.223% |
+| **wronged-captain lift** | **2.125×** | **2.398×** |
+| mean disposition of the CHOSEN captain | −0.178 | **−0.402** |
+| mean disposition of their POOL | −0.050 | −0.102 |
+
+**The sentence the task asked for, fleet-wide:** *10.13% of named interceptions were flown by a
+captain the player had wronged; uniform selection over the same reconstructed pools predicts
+4.22%; the lift is 2.40× — up from 5.87% against 2.76% (2.13×) before the reach change.*
+
+**And the same sentence for the captain who actually plays the tables, where it is a different
+result entirely:**
+
+| **`gambler`** (120 runs per arm) | **BEFORE** | **AFTER** |
+| --- | --- | --- |
+| named interceptions | 876 of 3,603 (24.31%) | 929 of 3,689 (25.18%) |
+| **inertness rate** | **76.26%** | **31.65%** |
+| mean lift `P_w / P_u` | 1.0431× | **1.4814×** |
+| **chosen at disposition < 0** | 37 / 876 (**4.22%**) | 272 / 929 (**29.28%**) |
+| analytic uniform expectation | 1.783% | 9.904% |
+| **wronged-captain lift** | **2.369×** | **2.956×** |
+| mean disposition of the CHOSEN captain | −0.067 | **−1.378** |
+| mean disposition of their POOL | +0.003 | −0.294 |
+
+**Nearly three in ten of the gambler's named interceptions are now flown by someone it beat at
+cards, against one in twenty-four before — and only one in ten would be, if the draw were
+uniform.** The chosen captain's mean disposition (−1.378) is **4.7× more hostile than their
+pool's** (−0.294), which is the weighting doing visible work rather than the roster merely
+being angrier.
+
+**The control, and it is exact.** `fighter`, `explorer`, `veteran` and `greedy` never open a
+Hangout, and every M5 figure for them is **byte-identical across the two arms** — same
+interception counts, same named counts, same inertness, same wronged share (e.g. `fighter`:
+2,020 interceptions / 535 named / 51.03% inert / 35.14% wronged, in *both* arms). This is the
+same moved/unchanged split the capstone `balance:diff` reports (§10.9), from a completely
+independent instrument.
+
+`fighter` is worth one sentence on its own: it has the highest wronged share of any policy
+(**35.14%**) and the lowest inertness (**51.03%**) — and it got there entirely through violence
+(`defeat` / `player-fled` / `tribute`), not choice, and it is unmoved by this track. **That is
+the shape of the problem §1.5 named: before the Hangout was reachable, the only way to make the
+interceptor draw mean anything was to shoot people.**
+
+**The lever this leaves on the owner's desk, filed and NOT pulled.** The binding constraint is
+not the weighting, it is the **0.25 named-pool gate** at `travel.ts:394` and the
+**`DISPOSITION_DECAY_INTERVAL_DAYS = 3`** fade. Three quarters of interceptions can never see
+disposition at all, and 69.56% of the ones that can are inert. Both are single constants and
+**neither was touched**. Whether the named-pool share should rise is a design ruling for T-130,
+not a tuning knob for a measurement task.
+
+### 10.5 The dealer-purse distribution — *discharges §5.1's obligation*
+
+`npc.credits` for every LIVE captain sitting at a `hasHangout` system, sampled at each milestone
+dawn (days 21, 29, 30, 41, 60, 120):
+
+| | **BEFORE** (n = 13,383) | **AFTER** (n = 121,526) |
+| --- | --- | --- |
+| min | 0 | 0 |
+| p25 | 962 | 1,000 |
+| median | 5,000 | 5,000 |
+| p75 | 5,000 | **17,228** |
+| max | 2,149,459 | 2,307,108 |
+| mean | 39,867 | 57,479 |
+
+The BEFORE column samples only the captains who happened to be at Sun-3; the AFTER column
+samples the captains at any of 14 ports. **They are different populations, not a time series**,
+which is why only the shape is comparable and not the level. The shape that matters is the
+same in both: a median dealer carries 5,000 credits against a default band ceiling of
+`DARE_MAX_WAGER = 1,000`.
+
+**The number T-130 rules on — which of the three clamp terms actually binds.** For every
+resolved dare the probe recomputes `min(bandMax, playerCredits, dealerCredits)`
+(`hangout.ts:263`) from the pre-action state and records which term is the argmin
+(HEAD only; `wagerBandFor` does not exist at `e0dbd40a`):
+
+| binding term | count | share of 15,461 dares |
+| --- | --- | --- |
+| **the port's `wager.max` (the BAND)** | 13,749 | **88.93%** |
+| **the DEALER's purse** | 1,696 | **10.97%** |
+| the PLAYER's credits | **0** | **0.00%** (`< 1/15,461`) |
+| tie (two or more terms equal) | 16 | 0.10% |
+
+Realised stakes: min 0 · p25 208 · median 441 · p75 1,000 · max 3,000 · mean 746.3.
+
+**This CONFIRMS T-123's addendum at 11.7× its sample and closes F-101-1 as a live concern.**
+T-123 measured the dealer's purse binding on ~5% of hands at three ports; across all 14 ports
+and 15,461 hands it binds on **10.97%**, and **the band binds on 88.93%**. §5.1's third and
+load-bearing reason to defer the faucet — *"the faucet is what keeps dealer purses solvent, and
+the dealer's purse is the binding cap on the player's wager"* — is **now measured as the minor
+term.** Closing the NPC-side faucet would shrink realisable stakes on roughly one hand in nine,
+not on the modal hand. That materially weakens the argument for deferral, and it is handed to
+T-130 as a measured number rather than as an assumption.
+
+**The player's own credits never bound a single one of 15,461 stakes.** That is the gambler
+policy being solvent by construction, not a claim about a human player.
+
+**F-123-3 re-measured, and NOT fixed here.** T-123 measured 34 of 1,319 hands (2.6%) settling
+at a **zero** stake, caused by `planDare` picking the richest dealer once off the DAWN state
+while `GAMBLER_MAX_DARES_PER_DAY = 2` lets the first hand empty that dealer. Re-measured at
+this sample: **413 of 15,461 hands (2.67%)** — the rate is stable to within 0.07 points, so the
+defect is exactly as characterised and has not been made worse by the reach change.
+
+F-123-3's own recommended resolution names T-125 as the owner of the repair. **It is
+deliberately not taken here, for the identical reason T-116 filed F-116-1 rather than fixing
+it:** `planDare` is a *shipped policy*, `expectedValuePerDare` is one of the numbers this task
+is chartered to read, and the capstone in §10.9 is taken **in this same commit**. Landing a
+policy change here would make the capstone describe a policy that never shipped and would
+invalidate the 120.14 figure in §10.2 in the same breath as reporting it. **Routed to its own
+commit, which is allowed to move a capstone.**
+
+### 10.6 The off-Hangout `Socialize` percentage — *discharges §5.2's obligation*
+
+**95.91% → 37.96%.**
+
+Method: after every dusk, for every LIVE captain whose `lastAction.type === 'Socialize'`, test
+`STAR_SYSTEMS[npc.currentSystemId].hasHangout`. `resolveNpcDay` writes `lastAction` once per
+captain per dusk (`npc.ts:2005`), so this is exactly one observation per captain-day.
+
+| | **BEFORE** (`e0dbd40a`) | **AFTER** (HEAD) |
+| --- | --- | --- |
+| `Socialize` captain-days | 368,389 | 368,346 |
+| at a system with **no** Hangout | 353,913 | 139,815 |
+| **share** | **96.07%** | **37.96%** |
+
+**The BEFORE arm re-measures the recorded 95.91% at 96.07% — within 0.16 points — which is the
+validation of the method, not a coincidence.** The figure in §1.5 was measured by a different
+rig on a different sample; that two independent instruments agree to a sixth of a point is what
+licenses the AFTER column.
+
+**§5.2 predicted "~96% → roughly ~50% by construction". The measured answer is 37.96%, and the
+gap is the finding.** Flagging 14 of 28 systems predicts 50% only if captains were uniformly
+distributed over the map; they are not. The cast's own travel policies concentrate it on the
+core lane, which is exactly the 14 systems that gained bars — so the reach change caught
+**more** of the verb than the arithmetic suggested. The number is stable across all eight player
+policies (37.40% – 38.53%), which is expected: this is a cast-side measurement and the player's
+policy barely perturbs it.
+
+**Still open, and now cheaper to close than §5.2 assumed.** Closing the defect deletes ~38% of
+the verb's occurrences rather than ~96%. §5.2's third reason to defer — *"it deletes ~96% of the
+verb's occurrences, so it moves the verb mix and owes a capstone"* — is now a claim about a
+number 2.5× smaller. It still owes a capstone. It is still T-130's.
+
+And the fiction consequence T-121 knowingly created is now quantified: **139,815 captain-days
+per 960 runs of rumour-mill prose naming a Hangout at a port where the player is told there is
+none** (`npc.ts:1845`, `:1851` → `lastAction.details` → `hangoutRumors`, `hangout.ts:88`).
+
+### 10.7 The probe source
+
+Fenced so the measurement is reproducible without the gitignored file (T-010 / T-116
+precedent). The console formatting is elided; every counter and every sample point is here.
+
+```ts
+// .scratch/t125-hangout.ts — READ-ONLY. Runs unmodified at HEAD and at e0dbd40a.
+import * as ENGINE from '../packages/engine/src/index.js';
+import * as CONTENT from '../packages/content/src/index.js';
+import { resolvePolicy, runCampaign } from '../packages/sim/src/index.js';
+
+const { createInitialState, startDay, endDay, applyPlayerAction, SeededRng } = ENGINE;
+const { STAR_SYSTEMS, NPC_PROFILES } = CONTENT;
+const { INTERCEPT_GRUDGE_WEIGHT, INTERCEPT_FRIEND_WEIGHT, INTERCEPT_MIN_WEIGHT } = CONTENT;
+
+// HEAD-only surfaces, feature-gated so the e0dbd40a arm still runs.
+const wagerBandFor = (ENGINE as Record<string, unknown>).wagerBandFor as
+  | ((systemId: number) => { min: number; max: number }) | undefined;
+
+const MILESTONE_DAYS = new Set([21, 29, 30, 41, 60, 120]);
+
+/** The shipped weight function, from the shipped CONSTANTS — imported, never
+ *  restated. Mirrors chooseWeighted (actions/travel.ts). */
+function interceptWeight(d: number): number {
+  if (d < 0) return 1 + INTERCEPT_GRUDGE_WEIGHT * -d;
+  if (d > 0) return Math.max(INTERCEPT_MIN_WEIGHT, 1 - INTERCEPT_FRIEND_WEIGHT * d);
+  return 1;
+}
+
+function run(seed: number, days: number, policyName: string) {
+  const resolved = resolvePolicy(policyName);          // dawnBlind:false for the six competent ones
+  let state = createInitialState(seed);
+  // ... counters (see the tables above for every one) ...
+  if (state.npcs.some((n) => n.disposition !== 0)) throw new Error('day-0 roster not all-neutral');
+
+  for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
+    const startingDay = state.day;
+    // M3 · SAMPLE POINT A — dealer purses at milestone dawn.
+    if (MILESTONE_DAYS.has(startingDay)) {
+      for (const npc of state.npcs) {
+        if (!npc.dead && STAR_SYSTEMS[npc.currentSystemId]?.hasHangout) purses.push(npc.credits);
+      }
+    }
+    const rng = new SeededRng(seed)
+      .fork('policy').fork(`day-${startingDay}`).fork(`index-${dayIndex}`);
+    const dawnState = state;
+    const dawn = startDay(state);
+    let dayState = dawn.state;
+    const events: GameEvent[] = [...dawn.events];
+    const actions = resolved.policy({
+      state: resolved.dawnBlind ? dawnState : dayState, dayIndex, rng,
+    });
+
+    for (const action of actions) {
+      if (action.type === 'Combat' && !dayState.encounter) continue;
+      // SAMPLE POINT B — the roster the engine will draw from, and the purses the
+      // wager clamp will read. Taken BEFORE the step, exactly where runCampaign
+      // takes its own pre-action sample.
+      const pre = dayState;
+      const stepped = applyPlayerAction(dayState, action);
+      dayState = stepped.state;
+      events.push(...stepped.events);
+
+      if (action.type === 'VisitHangout') {
+        // M1 · per-venue attribution off the ACTION (so borrow/repay, which report a
+        // LoanEvent rather than a HangoutEvent, are counted), plus the refusal split
+        // and the distinct-port set.
+        bump(venueActions, action.venue);
+        const refused = stepped.events.some(
+          (e) => ((e.type === 'HangoutEvent' || e.type === 'LoanEvent') && e.failReason !== undefined)
+            || e.type === 'ActionBlocked');
+        if (!refused) { bump(venueResolved, action.venue); portsUsed.add(pre.player.currentSystemId); }
+        // ... venue-not-offered / no-hangout counters ...
+
+        // M3 · which of the three clamp terms bound this stake? (hangout.ts:263)
+        if (action.venue === 'dare' && wagerBandFor) {
+          const ev = stepped.events.find((e) => e.type === 'HangoutEvent' && e.venue === 'dare');
+          const dealer = pre.npcs.find((n) => n.id === action.opponentId);
+          if (ev && ev.failReason === undefined && dealer) {
+            const band = wagerBandFor(pre.player.currentSystemId);
+            const terms = [band.max, pre.player.credits, dealer.credits];
+            const cap = Math.min(...terms);
+            // argmin -> capBandMax / capPlayer / capDealer / capTies
+            realisedWagers.push(ev.wager ?? 0);
+            if ((ev.wager ?? 0) === 0) zeroStakes += 1;      // F-123-3
+          }
+        }
+      }
+
+      // M5 · the interceptor draw. EncounterStarted has exactly ONE emitter
+      // (travel.ts:688, the player's own jump), so `pre` IS the state
+      // selectEncounterInterceptor was handed.
+      for (const e of stepped.events) {
+        if (e.type !== 'EncounterStarted') continue;
+        const chosen = e.encounter.interceptor;
+        interceptions += 1;
+        bump(tierCounts, `${chosen.source}-t${chosen.tier}`);
+        if (chosen.source !== 'named') continue;            // anonymous weights are exactly 1
+        namedInterceptions += 1;
+        // Reconstruct buildNamedCandidates(pre, chosen.tier) exactly (travel.ts:275-301).
+        const pool = pre.npcs.filter((npc) => !npc.dead
+          && NPC_PROFILES.find((c) => c.id === npc.profileId)?.tier === chosen.tier);
+        if (!pool.some((npc) => npc.id === chosen.id)) { reconstructMiss += 1; continue; }
+        const ds = pool.map((npc) => npc.disposition);
+        if (ds.every((d) => d === 0)) namedInert += 1;      // THE INERTNESS RATE
+        const w = ds.map(interceptWeight);
+        const total = w.reduce((a, b) => a + b, 0);
+        const i = pool.findIndex((npc) => npc.id === chosen.id);
+        pWeighted.push(w[i] / total);
+        pUniform.push(1 / pool.length);
+        chosenDisposition.push(ds[i]);
+        poolMeanDisposition.push(ds.reduce((a, b) => a + b, 0) / pool.length);
+        if (ds[i] < 0) chosenWronged += 1;
+        // The ANALYTIC uniform counterfactual — summed, never re-rolled.
+        uniformWrongedExpectation += ds.filter((d) => d < 0).length / pool.length;
+      }
+    }
+
+    const dusk = endDay(dayState);
+    state = dusk.state;
+    events.push(...dusk.events);
+
+    for (const e of events) {
+      // M1 · the shipped HangoutEvent fold, byte-for-byte from sim/index.ts:1156-1176.
+      // M2 · DispositionChanged by `reason`.  Also BondIntervention.
+    }
+    // M2 · SAMPLE POINT C — |d| >= 5, own bondHook.activateAt, max|d|.
+    // M4 · one action per LIVE captain per day, off the dusk-written lastAction.
+    for (const npc of state.npcs) {
+      if (npc.dead || npc.lastAction?.type !== 'Socialize') continue;
+      socializeNpcDays += 1;
+      if (STAR_SYSTEMS[npc.currentSystemId]?.hasHangout !== true) socializeOffHangout += 1;
+    }
+  }
+  return { credits: state.player.credits, /* ...every counter above... */ };
+}
+
+// FIDELITY: admissible only if byte-equal to runCampaign on the NAMED policy.
+for (let s = 1; s <= 5; s += 1) {
+  const mine = run(s, 120, 'gambler');
+  const theirs = runCampaign(s, 120, 'gambler');
+  const ok = mine.credits === theirs.finalState.credits
+    && mine.deedCount === theirs.deedCount
+    && mine.dares === theirs.hangoutPlay.dares
+    && mine.combatEncounters === theirs.combatEncounters.length;
+  console.log(`fidelity seed ${s}: ... -> ${ok ? 'MATCH' : 'MISMATCH'}`);
+}
+for (const policy of POLICIES) for (let s = 1; s <= 120; s += 1) all.push(run(s, 120, policy));
+```
+
+### 10.8 Honesty caveats
+
+1. **The two arms are rng-paired for four policies and not for the other four, and this is
+   measured rather than assumed.** `fighter`, `explorer`, `veteran` and `greedy` never issue a
+   `VisitHangout`, and every one of their M5 and M4 figures is byte-identical across the arms —
+   so for them the comparison is a true control. `trader`, `trader-degraded`, `smuggler` and
+   `gambler` plan differently from the first day a bar appears on their route, so their arms
+   are different samples of a changed world, not a paired difference. That is exactly the
+   moved/unchanged row split the capstone diff reports independently (§10.9). Read every
+   before/after figure for those four distributionally.
+2. **M4 attributes one action per captain-day off `lastAction`, so a captain who travelled and
+   then socialised is attributed to the DESTINATION.** `resolveNpcDay` resolves exactly one
+   action per captain per dusk and writes it to `lastAction` (`npc.ts:2005`), so the count is
+   neither double- nor under-counted — but the *system* it is attributed to is where the
+   captain ended the day. The 0.16-point agreement with the independently-measured 95.91%
+   bounds how much that can be worth.
+3. **Queued ≠ resolved, and both denominators are named.** Every per-dare figure in §10.2 and
+   §10.5 states its `n`. `failedVisits` and `venue-not-offered` are both 0, so on this sample
+   the two denominators coincide — but they are counted separately and reported separately, and
+   a future policy drift would show up as a gap rather than as silence.
+4. **A zero is reported as `< 1/n`, never as 0.00%** (standing amendment 1's corollary), *except*
+   where the zero is structural rather than sampled: `meet` / `befriend` / `insult` are
+   0 because nothing can issue them (F-101-4), and that is an absence by construction, stated
+   as such.
+5. **The six sim policies are PLAYER policies and the cast has no Hangout verb.** §8 defers
+   "whether NPCs interact with the Hangout". Nothing in this appendix says anything about
+   NPC-side Hangout use, and the NPC-side `Socialize` verb measured in §10.6 is a *different*
+   verb that happens to share the fiction.
+6. **The dealer-purse columns in §10.5 sample different populations across the arms** (captains
+   at 1 port vs at 14), so only the shape is comparable, not the level. The clamp-term split is
+   HEAD-only by necessity: `wagerBandFor` does not exist at `e0dbd40a`.
+7. **The disposition histogram's denominator is the 41-record roster, not the 30 simulated
+   captains.** Both bounds are given in §10.3 rather than one being chosen.
+8. **M5's pool reconstruction assumes the primary draw path.** `selectEncounterInterceptor` has
+   a third, band-widening branch that fires only when BOTH the named and anonymous pools are
+   empty at the target tier, and which would mix tiers. The reconstruction found the chosen
+   captain in the single-tier pool on **11,566 of 11,566** named draws, so if that branch fired
+   at all it did not produce a pool this reduction misread.
+9. **`expectedValuePerDare` is contaminated by F-123-3 in both arms**, at 2.6% and 2.67% of
+   hands respectively. The rate is stable, so the 159.56 → 120.14 movement is not an artifact of
+   it — but the level is depressed in both columns by roughly the same small amount.
+
+### 10.9 Capstone provenance
+
+| | |
+| --- | --- |
+| label | `t125-hangout` |
+| file | `docs/balance/baseline-t125-hangout.json` |
+| shape | 1,000 seeds × 120 days × 8 policies = **8,000 runs**, 8 shards (1-indexed) + `--merge` |
+| `--milestone-days` | `21,29,30,41,60,120` (identical to T-116 and N11) |
+| `--policies` | `trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy` |
+| taken | **after** `npm run format` (which changed zero files — the tree was already clean) |
+
+Merge output, verbatim:
+
+```
+[balance] wrote aggregate for 8000 rows to /Users/vs7/Dev/Games/SpacerQuest/docs/balance/baseline-t125-hangout.json
+```
+
+Fixture re-extracted **from that file**, never bare:
+
+```
+[smoke] 4 tiers, spreads harvested, rules 6e8c9973fa7a4238 / instrument 4e7184c378da068f / docs 1002d9efefacf7fb -> /Users/vs7/Dev/Games/SpacerQuest/docs/balance/smoke/tiers.json (880 ms)
+```
+
+`docs/balance/smoke/tiers.json` `provenance` now reads `sweepLabel: "t125-hangout"`,
+`runs: 8000`, `seeds: 1000`, `days: 120`, `spreadSource: "harvested"`.
+
+**`balance:diff baseline-t116-explore → baseline-t125-hangout`, headline:** exactly **five** rows
+carry changed fields — `fleet` (439), `gambler` (544), `smuggler` (527), `trader` (444) and
+`trader-degraded` (451). **`explorer`, `fighter`, `greedy` and `veteran` have zero changed
+fields**, which is the expected shape and the control: those four are the policies that never
+play a table or open a credit desk.
+
+| row | metric | T-116 → T-125 |
+| --- | --- | --- |
+| fleet | `tourOneClearRate` | 0.5411 → **0.5670** |
+| fleet | `debtClearedDay.median` | 25 → **24** |
+| fleet | `finalCredits.median` | 34,213 → **37,961** |
+| fleet | `portOwnershipRate` | 0.4657 → **0.5055** |
+| **gambler** | `tourOneClearRate` | 0.7790 → **0.8480** |
+| **gambler** | `finalCredits.median` | 45,343 → **56,634** (+24.9%) |
+| **gambler** | `debtClearedDay.median` | 27 → **25** |
+| **gambler** | `portOwnershipRate` | 0.6770 → **0.8330** |
+| smuggler | `tourOneClearRate` | 0.6670 → **0.7530** |
+| smuggler | `finalCredits.median` | 37,610 → **41,080** |
+| trader | `tourOneClearRate` | 0.9130 → **0.9260** |
+| trader | `finalCredits.median` | 51,561 → **52,177** (+1.2%) |
+| trader-degraded | `tourOneClearRate` | 0.7750 → **0.8140** |
+| trader-degraded | `finalCredits.median` | 35,343 → **37,772** |
+
+**The predicted shape held, with one correction worth its own paragraph.** `gambler` moved most,
+as the reach change predicts. But **`trader` moved too, and it moved through a verb it never
+plays**: the trader issues zero dares and 289 lending actions across 120 runs, and its
+`finalCredits.median` rises only 1.2% while its `tourOneClearRate` rises 1.4 points. That is
+the **Penny Wise desk**, not the tables — a captain who can repay where it stands rather than
+only where it started. §10.3's `loan-default` collapse (186 → 17) is the same effect seen from
+the disposition side. The trader's row moving is therefore *not* a surprise to be explained
+away; it is the second, quieter half of what the reach change bought.
+
+The diff also reports **5 shape changes**, all of them `renownRanks.*` histogram keys appearing
+or disappearing (`gambler.COMMODORE`, `gambler.CAPTAIN`, `smuggler.TOP_DOG`,
+`trader-degraded.CAPTAIN` gone; `trader.COMMODORE` new). These are a sparse histogram's buckets,
+not an instrument change — milestone days and the policy list are identical on both sides, so
+**no phantom `milestones[i]` paths appear**.
+
+**Baseline of record RE-PINNED** to `baseline-t125-hangout.json`, under standing amendment 1's
+rule ("does the baseline describe HEAD?"): T-120…T-124 shipped a parameterised Hangout at 14
+ports where there was 1, and it demonstrably moved five rows, so `baseline-t116-explore` no
+longer describes HEAD. **All three pointers move in this same commit:**
+
+1. `packages/sim/src/__tests__/balance-targets.test.ts:103` (the runtime path)
+2. `docs/NPC_REDESIGN.md:1982` (standing amendment 1's blockquote) **and** `:107` (the status
+   banner)
+3. `docs/balance/smoke/README.md:95` (the "current baseline" sentence)
+
+Fingerprints moved rules `bbf007a6bf38a932 → 6e8c9973fa7a4238` / instrument
+`313fde95fc5ee9db → 4e7184c378da068f` / docs `d8cec298cd93f909 → 1002d9efefacf7fb`. All three
+are expected: T-120 added `hangoutRules.ts` (classified engine source, hence the instrument
+hash), T-121…T-124 rewrote `portHangouts.ts` and `systems.ts` (hashed content), and this track
+rewrote four spec documents.
+
+**The `it.fails` clear-day tripwire remains correctly RED on the new capstone:** the trader's
+`debtClearedDay.median` is **21** against `[22, 30]`, at **n = 987**, unmoved from T-116 and
+from N11. It was **not** converted to `it`, and the baseline was **not** chosen to make it pass.
+The live 40-seed "the trader clears the marker, and clears it fastest" block at `:180` is green.
+
+### 10.10 What was NOT changed
+
+**No constant, DC, price, band weight, threshold, golden or fingerprint was edited to reach any
+answer above.** `git diff --stat` shows **zero lines** changed under `packages/engine/src/`,
+`packages/content/src/`, `packages/sim/src/index.ts` and `packages/sim/src/balance/`. The only
+source change in this commit is **one path string** in
+`packages/sim/src/__tests__/balance-targets.test.ts`, and it is the re-pin.
+
+Specifically unchanged at their shipped values: `INTERCEPT_GRUDGE_WEIGHT` **1.5**,
+`INTERCEPT_FRIEND_WEIGHT` **0.15**, `INTERCEPT_MIN_WEIGHT` **0.1**
+(`content/disposition.ts:58–60`), `DISPOSITION_DECAY_INTERVAL_DAYS` **3**
+(`content/disposition.ts:48`), `DARE_MIN_WAGER` **25** / `DARE_MAX_WAGER` **1,000** /
+`DARE_WIN_DISPOSITION` **−2** / `DARE_LOSS_DISPOSITION` **+2** (`content/hangout.ts:65–79`), the
+0.25 named-pool gate (`travel.ts:394`), and **every one of the fourteen authored port rows** in
+`packages/content/src/portHangouts.ts`. `CURRENT_SAVE_VERSION` stays **13** and no save shape
+moved, so no migration is owed.
+
+**No new test file, and that is deliberate.** A capstone is a measurement; the only code change
+it may carry is the re-pin path string. An engine, content or sim test added here would either
+touch a hashed source (moving the fingerprint of the capstone taken in the same commit) or be a
+stub written to satisfy a checklist, which the standing constraints forbid. What grades this
+work is already in the suite: `balance-smoke.test.ts` + `balance-rig.test.ts` grade the newly
+extracted `tiers.json`, and `balance-targets.test.ts` reads the baseline of record off disk at
+line 103 — a missing or misnamed baseline fails loudly there, which is the guard that the
+re-pin was done correctly.
+
+**Four levers left on the owner's desk for T-130, none pulled:**
+
+1. **The 0.25 named-pool gate and the decay interval** (§10.4). Three quarters of interceptions
+   cannot see disposition at all, and 69.56% of those that can are inert. Both are one constant.
+2. **F-101-4 — surface `befriend` / `meet` / `insult`** (§10.3). The bond hook fired *less* after
+   the reach change (42 → 34) because `dare` is the only reachable Hangout verb and it pushes
+   standing *down* on 57.3% of plays. The three verbs that can push it up have no UI.
+3. **§5.1's faucet, re-argued on a measured number** (§10.5). The dealer's purse binds 10.97% of
+   stakes and the band binds 88.93%, so the third reason to defer is now the minor term.
+4. **F-123-3** (`planDare`'s once-per-day dealer pick, 2.67% zero stakes) — a sim-policy fix,
+   cheap, and it should land in a commit that is allowed to move a capstone.
