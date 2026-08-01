@@ -158,6 +158,19 @@ export const SIM_NON_INSTRUMENT_SOURCES: Readonly<Record<string, string>> = {
     'the hash on the pure side.',
   'balance/diff.ts': 'Reads two finished aggregates and reports. It cannot produce a number.',
   'balance/diff-cli.ts': 'The argv/filesystem half of the above.',
+  'balance/report-model.ts':
+    'T-142 · The telemetry report VIEWER, pure half. It reads finished aggregates, finished ' +
+    'trace files and finished playtest exports and turns them into counts and sorted bars. Same ' +
+    'reason as `balance/diff.ts`: it cannot produce a number, only re-describe one that already ' +
+    'exists. A change here alters what a REPORT says, never what a career does or what a sweep ' +
+    'measures.',
+  'balance/report-html.ts':
+    'T-142 · The same viewer, markup half. It renders a view model as HTML and SVG; it does not ' +
+    'even read the artefacts. Nothing it can do is visible to a sweep.',
+  'balance/report-cli.ts':
+    'T-142 · The argv/filesystem half of the report generator. Reads inputs, writes one HTML file ' +
+    'into a gitignored directory. Same split, same reason as `balance/sweep.ts` and ' +
+    '`balance/diff-cli.ts`.',
   'balance/resolve-artifact.ts':
     'One path rule shared by the two CLIs above. Filesystem plumbing; it resolves where an ' +
     'artefact lives, never what is in it.',

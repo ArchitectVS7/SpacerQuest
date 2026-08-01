@@ -3368,7 +3368,7 @@ filesystem. Deliberate scope boundary: no network call exists anywhere on this p
 the only way data leaves the machine — and no engine source file or save-version was touched.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
-### T-142 · Build the Tier 1 telemetry report generator — `status: TODO` · `coder: opus` · `after: T-140, T-141`
+### T-142 · Build the Tier 1 telemetry report generator — `status: DONE` · `coder: opus` · `after: T-140, T-141`
 
 Implement `docs/TELEMETRY-REPORT_SPEC.md` end to end: the leaderboard, option-frequency, and
 before/after views (§1) over the real inputs T-140/T-141 now produce (§2), generated as
@@ -3381,6 +3381,87 @@ sample inputs from T-140/T-141's output; a report comparing two aggregates with 
 alongside the numbers (no bare-delta display); nothing is committed to the repo by running
 the generator; read-only over its inputs — no source file it reads is modified by running it;
 gate green.
+
+**Delivered (2026-08-01):** Shipped the Tier 1 report generator as three flat, non-instrument
+files under `packages/sim/src/balance/` — `report-model.ts` (pure: parsers, counters, view
+models; no `node:fs`, no clock), `report-html.ts` (pure: one self-contained HTML string, inline
+`<style>` + inline `<svg>`, **zero JavaScript**, `<title>` marks as the no-script hover layer),
+and `report-cli.ts` (argv + filesystem, modelled line for line on `diff-cli.ts`) — plus
+`balance:report` scripts at both the workspace and repo root. Charts follow the `dataviz` skill:
+its categorical palette re-validated through `scripts/validate_palette.js` in both modes (ALL
+CHECKS PASS light and dark), bars ≤24px with a 4px rounded data-end, hairline solid axes, a 2px
+surface gap between the offered/chosen pair, a legend plus a direct value label on every bar
+(never colour-alone), a `<details>` table view under every chart, and dark mode as its own
+selected steps. Colour follows the ENTITY — a policy/archetype is assigned a slot once from the
+sorted union of every name in the report, so `explorer` is the same hue in the leaderboard and in
+the trace charts; past the eighth slot names fold to a neutral rather than generating a ninth hue.
+Two judgment calls worth naming: the leaderboard scales to the BAR maximum and reports the pooled
+fleet figure as an off-scale caption for row-summed metrics (folding a sum-of-all-bars into the
+scale squashed all eight bars against the axis), and the before/after view is built ON
+`diffAggregates` rather than reimplementing it — `diff.ts` was read, reused, and not modified.
+
+**Zero fingerprints moved, so no capstone and no re-extract is owed.** `computeRulesFingerprint` /
+`computeInstrumentFingerprint` / `computeDocsFingerprint` re-computed on the working tree still
+return `f36d71f863a8ebe7` / `d50b03a8ca4323d8` / `c944fdb764c48484` — the values committed in
+`docs/balance/smoke/tiers.json` — because all three new files are classified in
+`SIM_NON_INSTRUMENT_SOURCES` on `diff.ts`'s own reason ("it cannot produce a number"), and that
+map's own file is self-excluded from every hash. No save-shape change: nothing under
+`packages/engine` was touched and no migration is owed.
+
+**Verified by hand on the real artefacts.** `npm run balance:report -- --aggregate
+docs/balance/baseline-t150-postfix.json --compare-to docs/balance/baseline-tour-one.json --traces
+.scratch/balance/t142-tracedir --playtest-log <jsonl> --playtest-log <csv> --provenance
+docs/balance/smoke/tiers.json` wrote 148,064 bytes to
+`.scratch/balance/reports/t142-final.html`, parsing all **22,357** lines of the real T-140 trace
+(0 skipped) and both flavours of a genuine T-141 export — produced by driving real
+`applyPlayerAction` calls through `@spacerquest/engine` and recording them through
+`packages/ui/src/playtestLog.ts`'s real `recordAction`/`recordError`/`recordAnnotation` and its
+real `toJsonl`/`toCsv` (the storage seam shimmed with an in-memory `window.localStorage`; the
+throwaway rig lives in `.scratch/`, never in the repo). The page was OPENED and looked at in both
+themes at 1180px: 0 external requests, 0 console errors, no horizontal body overflow, no clipped
+labels. `git status --porcelain` after the run shows only the intended source edits, and
+`git check-ignore -v .scratch/balance/reports/x.html` answers `.gitignore:29:.scratch/` — no
+`.gitignore` change was needed or made. Gate: `npm test` 4/4 workspaces green (Test Files 7 + 48 +
+29 + 16, exit 0, including 37 new tests in
+`packages/sim/src/__tests__/balance-report.test.ts`), `npx tsc -b` clean, `npm run lint` clean,
+`npm run format` run and `npm run format:check` clean.
+
+**Finding reported, not fixed — F-142-1.** Spec §3's parenthetical is wrong: an aggregate does
+**not** "already carry" its `rulesFingerprint`/`gitCommit`. `BaselineAggregate` has seven
+top-level keys (`label, policies, seeds, days, runs, fleet, byPolicy`) and every committed
+`docs/balance/baseline-*.json` carries only those; the stamps live on the smoke FIXTURE
+(`docs/balance/smoke/tiers.json`), a different artefact. Per spec §6 this is reported rather than
+fixed by quietly adding a field to `aggregate.ts`. The consequence is visible on the page: a
+report over two committed aggregates renders the loud **"RULESET UNKNOWN FOR ONE OR BOTH
+INPUTS"** banner, because `compareRulesets` is three-state and `unknown` may never render as
+`same`. The mitigation shipped is `--provenance` / `--compare-provenance`, which attribute a
+sidecar's stamps with a visible "declared by `<file>` — NOT by the aggregate itself" so a
+hand-supplied stamp cannot masquerade as intrinsic; the reader also picks stamps up for free the
+day a sweep writes them. Recommended resolution belongs to a sweep-side task: `sweep.ts --merge`
+stamping the aggregate at write time. Two further deliberate constraints, both from the §0(2)
+trap: the generator NEVER attaches the current tree's fingerprint to an input (that would
+manufacture provenance — `docs/VERSIONING.md`, "the rule that matters most"), and the footer's
+figures are labelled "the tree this report was generated on — NOT the ruleset of any input above."
+
+**T-140's two findings are carried into the page rather than papered over.** F-140-2: contract
+options are BOARD INDICES, so the axis is labelled "board index — which offer on that day's
+board, never which cargo (F-140-2)" and an index is never pretty-printed as a good. F-140-1: a
+trace line carries no seed and no policy, so grouping is by archetype × kind only, attribution is
+file-level (parsed from `traces-<label>-shard<i>of<N>.jsonl`), and the page says so in its own
+caveat list. A third thing the real data surfaced and the page now states out loud: several
+smuggler contract options are CHOSEN more often than they were reachable (`chosen > offered`,
+share above 100%) — the all-weights-zero corner handing back a weight-0 option. That is a finding
+about the decision function, not about preference, and it is left visible rather than clamped.
+
+**No bare deltas, enforced in the type.** Every `BeforeAfterRow` carries non-optional
+`beforeSeeds`/`afterSeeds`/`beforeRuns`/`afterRuns` (plus `beforeN`/`afterN` for distributions),
+so a renderer physically cannot emit a delta without them; a test regexes each rendered row block
+for both seed counts alongside the delta. `sampleWarning` is labelled on the page as a DISPLAY
+HEURISTIC and explicitly not one of `docs/BALANCE-POLICY.md`'s governed bands, and the section
+copy quotes the `docs/BALANCE-REDESIGN-WORKLIST.md` Appendix A lesson (passed at n=100, failed at
+n=1,000). `shapeChanges` get their own block — the real pair (7 policies/500 seeds vs 8/1,000)
+exercises it — and `formatAggregateDiff`'s "NO MEASURED VALUE MOVED" distinction is preserved.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
 ### T-143 · Build the Tier 1.5 dev control panel — `status: TODO` · `coder: opus` · `after: T-142`
 
