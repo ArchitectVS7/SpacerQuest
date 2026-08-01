@@ -81,6 +81,10 @@ import {
   importCareer,
   setReducedMotion,
   setTextSize,
+  // T-141 · The opt-in playtest log's player-facing controls (spec §3/§5).
+  setPlaytestLogging,
+  flagPlaytestMoment,
+  exportPlaytestLog,
   type CockpitState,
   type SlotSummary,
   type TextSize,
@@ -206,6 +210,11 @@ import { BUILD_VERSION } from './version';
 // which is the only place a player can read them — and a licence notice that
 // never reaches the player is not an attribution that shipped.
 import { CREDITS, creditDetail, creditLine } from './credits';
+// T-141 · The two settled strings the Playtest row must show. Imported rather
+// than re-typed: `docs/PLAYTEST-TELEMETRY_SPEC.md` §3 settles the disclosure
+// wording, and a golden test pins it — a literal copy here could drift from the
+// promise the spec makes without failing anything.
+import { PLAYTEST_DISCLOSURE, PLAYTEST_TOGGLE_LABEL } from './playtestLog';
 
 const DIE_MIME = 'application/x-sq-die';
 
@@ -359,8 +368,104 @@ function SettingsPanel({ state, onClose }: { state: CockpitState; onClose: () =>
       <StorageRow />
       <BuildRow />
       <SteamRow state={state} />
+      <PlaytestPanel state={state} />
       <CreditsPanel />
       <SavesPanel state={state} />
+    </div>
+  );
+}
+
+// T-141 · OPT-IN PLAYTEST LOGGING — the consent surface.
+//
+// The player-facing whole of `docs/PLAYTEST-TELEMETRY_SPEC.md`: the toggle (§3),
+// the disclosure that must sit beside it (§3), the "flag this moment"
+// annotation (§1) and the player-triggered export (§5). Placed after Steam and
+// before Credits, in the run of Settings sections that describe THE BUILD, and
+// before the save slots, which stay the panel's last block on the rule
+// `CreditsPanel` already states.
+//
+// OFF BY DEFAULT AND VISIBLY SO. The toggle reads `state.playtestLogging`, which
+// `store.ts`'s `init()` seeds from `storage.ts`'s `KeyValueStore` — never from
+// the save file, so a save round-trip cannot turn capture on (spec §3, asserted
+// by `__tests__/playtest-log.test.ts`).
+//
+// THE DISCLOSURE IS ALWAYS RENDERED, not only when enabled: a player deciding
+// whether to opt in is exactly the player who needs to read what is captured.
+// Its text comes from `playtestLog.ts`'s `PLAYTEST_DISCLOSURE` constant, so this
+// component owns no prose of its own — the same rule `SteamRow` follows with
+// `presenceLine`.
+//
+// The flag and export controls appear ONLY when logging is on: a button that
+// would refuse is worse than a button that is not there, and the store's actions
+// still say why if either is reached another way.
+function PlaytestPanel({ state }: { state: CockpitState }) {
+  const [note, setNote] = useState('');
+  const submitNote = () => {
+    flagPlaytestMoment(note);
+    setNote('');
+  };
+  return (
+    <div className="set-section" data-testid="playtest-panel">
+      <span className="set-head">Playtest</span>
+      <div className="set-row">
+        <span className="set-label">{PLAYTEST_TOGGLE_LABEL}</span>
+        <button
+          className={state.playtestLogging ? 'set-toggle on' : 'set-toggle'}
+          data-testid="set-playtest-logging"
+          aria-pressed={state.playtestLogging}
+          onClick={() => setPlaytestLogging(!state.playtestLogging)}
+        >
+          {state.playtestLogging ? 'On' : 'Off'}
+        </button>
+      </div>
+      <span className="set-note" data-testid="playtest-disclosure">
+        {PLAYTEST_DISCLOSURE}
+      </span>
+      {state.playtestLogging ? (
+        <>
+          <div className="set-row">
+            <span className="set-label">Flag this moment</span>
+            <span className="set-value" data-testid="playtest-entry-count">
+              {state.playtestLogEntries} captured
+            </span>
+          </div>
+          <div className="set-row">
+            <input
+              className="set-input"
+              data-testid="playtest-flag-input"
+              aria-label="Note for this moment"
+              placeholder="What happened?"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitNote();
+              }}
+            />
+            <button className="btn small" data-testid="playtest-flag" onClick={submitNote}>
+              Flag
+            </button>
+          </div>
+          <div className="set-row">
+            <span className="set-label">Export Playtest Log</span>
+            <span className="set-acts">
+              <button
+                className="btn small"
+                data-testid="playtest-export-json"
+                onClick={() => exportPlaytestLog('json')}
+              >
+                JSONL
+              </button>
+              <button
+                className="btn small"
+                data-testid="playtest-export-csv"
+                onClick={() => exportPlaytestLog('csv')}
+              >
+                CSV
+              </button>
+            </span>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

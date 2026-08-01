@@ -81,6 +81,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createSaveStore, type SaveStore } from './saveStore';
+// T-141 · The opt-in playtest log's append-only session file
+// (`docs/PLAYTEST-TELEMETRY_SPEC.md` §4). Pure Node, like `saveStore.ts`, and
+// reached only through the sender-validated channel below.
+import { openPlaytestLog, type PlaytestLog } from './playtestLog';
 import { initUpdater, type UpdaterStatus } from './updater';
 import {
   createRecordingClient,
@@ -167,6 +171,12 @@ const CHANNELS = {
   // sender-validated and payload-validated — "fire and forget" is a statement
   // about the REPLY, not about trust.
   presence: 'sq-steam:presence',
+  // T-141 · Append one line to the opt-in playtest log
+  // (`docs/PLAYTEST-TELEMETRY_SPEC.md` §4). THE THIRD ASYNCHRONOUS CHANNEL, on
+  // exactly the terms of the two above: nothing in the cockpit reads a result,
+  // and a synchronous file append on every player action would put a diagnostic
+  // on the hot path. Still sender-validated and payload-validated.
+  playtestLog: 'sq-playtest:append',
 } as const;
 
 /** What the `about` channel answers with. TWIN: `preload.ts`'s `ShellAbout` and
@@ -214,6 +224,28 @@ const SAFE_ACHIEVEMENT = /^[A-Z][A-Z0-9_]{0,63}$/;
 const MAX_PRESENCE_SYSTEM = 64;
 
 /**
+ * T-141 · A playtest session id, as the renderer is allowed to send it.
+ *
+ * Same discipline and same reason as {@link SAFE_ACHIEVEMENT}: this string
+ * arrives FROM THE RENDERER and is about to become part of a FILENAME. The shape
+ * is exactly what `packages/ui/src/playtestLog.ts` mints (a `crypto.randomUUID`,
+ * or the `sq-<base36>-<base36>` fallback), so nothing legitimate is excluded.
+ * `playtestLog.ts` validates again on its own side — this guard protects the
+ * process, that one protects the path.
+ */
+const SAFE_PLAYTEST_SESSION = /^[A-Za-z0-9-]{1,64}$/;
+
+/**
+ * T-141 · The longest playtest log line this channel accepts.
+ *
+ * One line is one action plus the engine events it produced. 256 KiB is orders
+ * of magnitude above the largest real entry and is here to bound a hostile or
+ * runaway sender, not a real one — the same job {@link MAX_PRESENCE_SYSTEM}
+ * does for the presence string.
+ */
+const MAX_PLAYTEST_LINE = 256 * 1024;
+
+/**
  * The reply shape for every channel. The bridge turns `{ ok: false }` back into
  * a THROWN error in the renderer, which is what preserves `localStorage`'s
  * throwing contract and keeps `store.ts`'s `saveWriteFailed` / `recovery`
@@ -228,6 +260,15 @@ type StoreReply<T> = { ok: true; value: T } | { ok: false; error: string };
 const trustedContents = new Set<number>();
 
 let saveStore: SaveStore | null = null;
+/**
+ * T-141 · The opt-in playtest log's append surface, or `null` before
+ * `whenReady` (`app.getPath('userData')` is not answerable until then).
+ *
+ * Opened on the same tick as {@link saveStore} and guarded the same way at the
+ * IPC edge: a message that somehow arrives first is dropped rather than
+ * crashing, which is the same silent-drop rule the whole channel follows.
+ */
+let playtestLog: PlaytestLog | null = null;
 let mainWindow: BrowserWindow | null = null;
 
 /**
@@ -317,6 +358,24 @@ let presenceSession: PresenceSession = initPresence({ client: null });
  */
 function resolveSaveDir(): string {
   return process.env.SQ_SAVE_DIR ?? join(app.getPath('userData'), 'saves');
+}
+
+/**
+ * T-141 · Where the opt-in playtest logs live.
+ *
+ * The direct analog of {@link resolveSaveDir}, and named as such by
+ * `docs/PLAYTEST-TELEMETRY_SPEC.md` §4: "a sibling `SQ_LOG_DIR` (or a `logs/`
+ * subfolder of the same root) is the direct analog". Both, in fact — the env var
+ * for tests, the `logs/` subfolder of `userData` for players.
+ *
+ * A SIBLING OF `saves/`, NOT A SUBFOLDER OF IT, so nothing that enumerates the
+ * save directory ever sees a log file: `saveStore.ts`'s `keys()` is a plain
+ * `readdirSync` of its own dir and would report a stray `playtest-*.jsonl` as a
+ * save key. Keeping the two apart is what stops a diagnostic from becoming a
+ * phantom career.
+ */
+function resolveLogDir(): string {
+  return process.env.SQ_LOG_DIR ?? join(app.getPath('userData'), 'logs');
 }
 
 /**
@@ -486,6 +545,45 @@ function registerSteamIpc(): void {
     if (system.length > MAX_PRESENCE_SYSTEM) return;
     if (typeof day !== 'number' || !Number.isSafeInteger(day) || day <= 0) return;
     presenceSession.set(system, day);
+  });
+}
+
+/**
+ * T-141 · THE PLAYTEST LOG CHANNEL (`docs/PLAYTEST-TELEMETRY_SPEC.md` §4).
+ *
+ * THE THIRD ASYNCHRONOUS CHANNEL, and it is asynchronous for the reason the two
+ * Steam channels are plus one of its own: this fires on EVERY player action when
+ * a tester has opted in, and a `sendSync` file append would put a diagnostic
+ * squarely on the action path — the exact cost `docs/BALANCE-TELEMETRY_SPEC.md`
+ * refuses to pay for the NPC trace. So: `ipcMain.on`, NO `event.returnValue`.
+ *
+ * STILL SENDER-VALIDATED AND PAYLOAD-VALIDATED, on the rule `registerSteamIpc`
+ * states: "fire and forget" is a statement about the REPLY, not about trust, and
+ * this handler is a FILE-WRITE PRIMITIVE for anything that gets a frame into
+ * this process. The session id becomes part of a filename, so it is checked here
+ * AND again in `playtestLog.ts` — this guard protects the process, that one
+ * protects the path.
+ *
+ * SILENT DROPS rather than throws, again for the stated reason: there is no
+ * reply channel to fail on, and a throw here would surface as an unhandled
+ * main-process error. `openPlaytestLog` itself never swallows; this is the one
+ * edge that does, and the renderer's own buffer still holds the entry either
+ * way, so an export loses nothing.
+ */
+function registerPlaytestLogIpc(): void {
+  ipcMain.on(CHANNELS.playtestLog, (event, sessionId: unknown, line: unknown) => {
+    if (!trustedContents.has(event.sender.id)) return;
+    if (typeof sessionId !== 'string' || !SAFE_PLAYTEST_SESSION.test(sessionId)) return;
+    if (typeof line !== 'string' || line.length === 0 || line.length > MAX_PLAYTEST_LINE) return;
+    if (/[\r\n]/.test(line)) return;
+    if (!playtestLog) return;
+    try {
+      playtestLog.append(sessionId, line);
+    } catch {
+      // A full disk or a read-only profile dir must not take the shell down for
+      // a diagnostic. The player's saves are unaffected — they go through a
+      // different directory and a throwing contract.
+    }
   });
 }
 
@@ -692,9 +790,15 @@ if (!app.requestSingleInstanceLock()) {
 
   registerStorageIpc();
   registerSteamIpc();
+  registerPlaytestLogIpc();
 
   void app.whenReady().then(() => {
     saveStore = createSaveStore(resolveSaveDir());
+    // T-141 · Opened beside the save store, in a SIBLING directory (see
+    // `resolveLogDir`). Creating the object costs nothing and touches no disk —
+    // the directory appears only on the first append, which only happens if a
+    // tester opted in.
+    playtestLog = openPlaytestLog(resolveLogDir());
 
     // T-1702a · Resolve Steam BEFORE the window, because the cockpit reads
     // `about()` at MODULE SCOPE (`storage.ts`'s `selectStorage`) — a window

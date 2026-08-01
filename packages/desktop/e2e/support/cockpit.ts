@@ -96,6 +96,19 @@ export interface LaunchOpts {
    * T-1701a/T-1702a tests honest evidence for "runs identically without Steam".
    */
   steamFakeCloud?: string;
+  /**
+   * T-141 · Directory the shell writes opt-in playtest logs into
+   * (`docs/PLAYTEST-TELEMETRY_SPEC.md` §4, `SQ_LOG_DIR`). Test-only, and the
+   * sibling of {@link LaunchOpts.saveDir} — in a real install it is `logs/`
+   * beside `saves/` under `userData`.
+   *
+   * ABSENT BY DEFAULT, like the Steam options above and for the same reason: a
+   * launch that does not ask for it must behave exactly as every pre-existing
+   * launch in this suite does. Even when it IS set, nothing is written unless
+   * the player turns the toggle on in Settings — that is the property the test
+   * that uses this exists to prove.
+   */
+  logDir?: string;
 }
 
 /** One line of the shell's recording client log. Achievements and presence share
@@ -161,6 +174,8 @@ export async function launch(opts: LaunchOpts): Promise<{ app: ElectronApplicati
       ...(opts.steamFakeLog ? { SQ_STEAM_FAKE: opts.steamFakeLog } : {}),
       // T-1702b · Absent by default too, for the same reason.
       ...(opts.steamFakeCloud ? { SQ_STEAM_FAKE_CLOUD: opts.steamFakeCloud } : {}),
+      // T-141 · Absent by default too, on the same terms.
+      ...(opts.logDir ? { SQ_LOG_DIR: opts.logDir } : {}),
     },
   });
   const page = await app.firstWindow();

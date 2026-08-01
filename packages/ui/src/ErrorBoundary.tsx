@@ -1,5 +1,5 @@
 import { Component, Fragment, type ErrorInfo, type ReactNode } from 'react';
-import { quarantineAndClearAutosave } from './store';
+import { quarantineAndClearAutosave, recordPlaytestCrash } from './store';
 
 /**
  * T-1605a · CRASH RECOVERY.
@@ -26,6 +26,19 @@ import { quarantineAndClearAutosave } from './store';
  * SCOPE: this is UI-layer only. No engine file is touched, no rule is added, and
  * `console.error` here is a client concern — the no-I/O purity constraint governs
  * the engine, which this never calls.
+ *
+ * T-141 · THE BOUNDARY ALSO FEEDS THE OPT-IN PLAYTEST LOG.
+ * `docs/PLAYTEST-TELEMETRY_SPEC.md` §1 requires that anything caught here be
+ * appended as its own entry kind, "so a crash is in the exported log even if the
+ * player never thinks to flag it". {@link ErrorBoundary.componentDidCatch}
+ * therefore calls the store's `recordPlaytestCrash` alongside its existing
+ * `console.error`. Three properties keep that from eroding the HARD RULE above:
+ * it is MESSAGE-ONLY and REDACTED (`playtestLog.ts`'s `redactErrorMessage`
+ * strips path-shaped text, which is what would otherwise leak the player's OS
+ * username); it is a NO-OP unless the player turned logging on in Settings; and
+ * it reads NO game state here — the store looks up the day on its own side,
+ * inside a `try/catch` that swallows, so nothing on this file's recovery path
+ * can fault. `CrashScreen` is untouched and still formats no numbers.
  */
 
 interface BoundaryState {
@@ -48,6 +61,10 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, BoundarySt
     // The fault is never swallowed: it reaches the console with its component
     // stack so a player's report is reproducible.
     console.error('[T-1605a] cockpit fault', error, info.componentStack);
+    // T-141 · …and into the opt-in playtest log, message-only and redacted (see
+    // the header). A no-op when the player never enabled logging; never throws,
+    // because the store's own entry point swallows.
+    recordPlaytestCrash(error);
   }
 
   private readonly resume = (): void => {

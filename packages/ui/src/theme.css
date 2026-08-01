@@ -1687,6 +1687,52 @@ body {
   color: var(--tube);
   font-weight: 600;
 }
+/* T-141 · The Settings "Playtest" section. Three additions, all of them
+   presentation for controls the rest of the panel already has vocabulary for:
+
+   `.set-note` is the DISCLOSURE line that must sit beside the opt-in toggle
+   (`docs/PLAYTEST-TELEMETRY_SPEC.md` §3). It is styled like `.credit-detail` —
+   a full-width caveat under a row rather than a right-aligned value — because
+   it is a sentence the player is meant to READ before deciding, not a value
+   they glance at. Selectable, on the same reasoning as the save path above.
+
+   `.set-input` is the free-text field for "flag this moment". It is the first
+   text input in the panel; the console has no other, so it borrows the bezel's
+   data font and the toggle's hairline border rather than inventing a look.
+
+   `.set-acts` groups the two export buttons so a row can hold a pair of them
+   without the flex row spreading them to opposite edges. */
+.set-note {
+  font-family: var(--font-data);
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--amber);
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.set-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: 11px;
+  background: rgba(20, 12, 5, 0.6);
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 5px 8px;
+}
+.set-input::placeholder {
+  color: var(--amber);
+  opacity: 0.45;
+}
+.set-input:focus {
+  outline: none;
+  border-color: var(--ember);
+}
+.set-acts {
+  display: inline-flex;
+  gap: 6px;
+}
 .save-slot {
   display: grid;
   gap: 6px;

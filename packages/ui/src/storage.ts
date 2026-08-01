@@ -32,14 +32,20 @@
 // thrown Error for exactly this reason. Every existing `try/catch` in `store.ts`
 // and `sound.ts` is therefore preserved verbatim.
 //
-// T-1702a ADDED THE FIRST EXCEPTION AND T-1702b THE SECOND, both stated rather
-// than smuggled: {@link unlockAchievement} and {@link setRichPresence} SWALLOW.
-// Neither is storage — nothing is persisted, nothing is read back, and no cockpit
-// behaviour keys off either. The rule above exists because a lost SAVE must be
-// visible; a lost achievement (or a stale friends-list line) is cosmetic, and
-// letting one throw would let a Steam hiccup cost a player their action. The
-// asymmetry is the point: everything that can lose a career throws, and the two
-// things that cannot, do not. Steam CLOUD is not on this list at all — it is
+// T-1702a ADDED THE FIRST EXCEPTION, T-1702b THE SECOND AND T-141 THE THIRD, all
+// stated rather than smuggled: {@link unlockAchievement}, {@link setRichPresence}
+// and {@link appendPlaytestLogLine} SWALLOW.
+// None is storage — nothing is persisted THAT THE COCKPIT READS BACK, and no
+// cockpit behaviour keys off any of them. The rule above exists because a lost
+// SAVE must be visible; a lost achievement (or a stale friends-list line) is
+// cosmetic, and letting one throw would let a Steam hiccup cost a player their
+// action. The THIRD is the opt-in playtest log line
+// (`docs/PLAYTEST-TELEMETRY_SPEC.md` §4): a lost log line is DIAGNOSTIC, a lost
+// save is a CAREER, and a diagnostic that can throw into an action is a bug
+// generator rather than a bug finder. The in-renderer buffer in
+// `playtestLog.ts` still holds the entry either way, so an export loses nothing.
+// The asymmetry is the point: everything that can lose a career throws, and the
+// three things that cannot, do not. Steam CLOUD is not on this list at all — it is
 // performed entirely in the shell's main process, off the storage path, and
 // reaches the cockpit only as the read-only {@link cloudStatus} /
 // {@link cloudRestored} pair.
@@ -194,6 +200,21 @@ export interface DesktopStorageBridge {
    * `sq-steam:presence` handler → `presence.ts`'s `PresenceSession.set`.
    */
   setPresence(system: string, day: number): void;
+  /**
+   * T-141 · Append one JSONL line to this session's opt-in playtest log file.
+   *
+   * The THIRD deliberate exception to this file's "throwing is the contract"
+   * rule, on the terms the header states: a lost log line is diagnostic, a lost
+   * save is a career. Also `ipcRenderer.send`, so there is no reply to fail.
+   *
+   * NOT A STORAGE METHOD, even though it writes a file — nothing is keyed,
+   * nothing is read back, and the cockpit never asks the shell what is in the
+   * log. It is a SINK, exactly like {@link DesktopStorageBridge.unlockAchievement}.
+   *
+   * READER of the values sent here: `packages/desktop/src/main.ts`'s
+   * `sq-playtest:append` handler → `playtestLog.ts`'s `PlaytestLog.append`.
+   */
+  appendPlaytestLog(sessionId: string, line: string): void;
 }
 
 /** The window shape this module reads. Kept minimal so the unit test can hand in
@@ -370,6 +391,17 @@ export interface SelectedStorage {
    * other field, so the unit test can drive it with a fake window.
    */
   setRichPresence: (system: string, day: number) => void;
+  /**
+   * T-141 · The opt-in playtest log sink for this process: the shell bridge
+   * under Electron (which appends to a per-session JSONL file under
+   * `userData`, spec §4), a no-op in a browser tab (which has no filesystem, so
+   * the log lives only in `playtestLog.ts`'s buffer until the player exports
+   * it, spec §4's browser half).
+   *
+   * Resolved as a VALUE here, like every other field, so the unit test can drive
+   * it with a fake window rather than a real bridge.
+   */
+  appendPlaytestLog: (sessionId: string, line: string) => void;
 }
 
 /** The web build's achievement sink. Not a stub awaiting an implementation — a
@@ -383,6 +415,16 @@ function noUnlock(): void {
  *  publish to, and the Settings row says exactly that. */
 function noPresence(): void {
   /* no Steam in a browser tab — see `format.ts`'s `presenceMessage(null, …)` */
+}
+
+/** T-141 · The web build's playtest-log sink. Sibling of {@link noUnlock} and
+ *  {@link noPresence}, and honest for the same reason: a browser tab has no
+ *  filesystem to append to. `docs/PLAYTEST-TELEMETRY_SPEC.md` §4 settles that
+ *  case explicitly — on the web the log accumulates in memory for the session
+ *  and is only ever materialized at export time, which is exactly what
+ *  `playtestLog.ts`'s buffer does with or without this sink. */
+function noPlaytestLog(): void {
+  /* no filesystem in a browser tab — the in-memory buffer is the whole record */
 }
 
 /**
@@ -466,6 +508,17 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
           /* a friends-list line is not worth an action — see the header */
         }
       },
+      // T-141 · The third swallowing call, on the same terms as the first two.
+      // The `try` also covers a preload OLDER than this method (where
+      // `bridge.appendPlaytestLog` is `undefined`), which is the shape a
+      // version-skewed shell takes.
+      appendPlaytestLog: (sessionId, line) => {
+        try {
+          bridge.appendPlaytestLog(sessionId, line);
+        } catch {
+          /* a log line is not worth an action — see the header */
+        }
+      },
     };
   }
   if (win && safeLocalStorage(win)) {
@@ -477,6 +530,7 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
       shell: null,
       unlockAchievement: noUnlock,
       setRichPresence: noPresence,
+      appendPlaytestLog: noPlaytestLog,
     };
   }
   return {
@@ -487,6 +541,7 @@ export function selectStorage(win: StorageWindow | null): SelectedStorage {
     shell: null,
     unlockAchievement: noUnlock,
     setRichPresence: noPresence,
+    appendPlaytestLog: noPlaytestLog,
   };
 }
 
@@ -582,3 +637,21 @@ export const cloudRestored: number = selected.shell?.cloudRestored ?? 0;
  * `syncPresence`, which is its only caller and dedupes before it gets here.
  */
 export const setRichPresence: (system: string, day: number) => void = selected.setRichPresence;
+
+/**
+ * T-141 · Append one JSONL line to this session's opt-in playtest log file
+ * (`docs/PLAYTEST-TELEMETRY_SPEC.md` §4).
+ *
+ * A NO-OP ON WEB (there is no filesystem in a browser tab, so the log lives in
+ * `playtestLog.ts`'s buffer until the player exports it) and a swallowing send
+ * under the shell — it never throws, by contract (see the header's THIRD stated
+ * exception). READER: `playtestLog.ts`'s recorders, which are its only callers
+ * and which check the opt-in toggle before they get here.
+ *
+ * NOTHING IS UPLOADED. This writes a local file on the player's own machine,
+ * through the shell's main process. Spec §5 settles submission as an explicit
+ * player-triggered export; there is no network path in or out of this seam, and
+ * `__tests__/playtest-no-network.test.ts` scans for one.
+ */
+export const appendPlaytestLogLine: (sessionId: string, line: string) => void =
+  selected.appendPlaytestLog;

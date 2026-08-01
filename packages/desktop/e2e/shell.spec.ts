@@ -109,11 +109,14 @@ test.describe('T-1701a · the Electron shell', () => {
       Object.keys((window as unknown as { sqDesktop: object }).sqDesktop).sort(),
     );
     // T-1701b added `about`; T-1702a added `unlockAchievement`; T-1702b added
-    // `setPresence`. The list is asserted EXACTLY so the three twins
-    // (`preload.ts`, `storage.ts`'s `DesktopStorageBridge`, this) cannot drift —
-    // which is why each task UPDATES it rather than loosening it.
+    // `setPresence`; T-141 added `appendPlaytestLog` (the opt-in playtest log's
+    // desktop sink, `docs/PLAYTEST-TELEMETRY_SPEC.md` §4). The list is asserted
+    // EXACTLY so the three twins (`preload.ts`, `storage.ts`'s
+    // `DesktopStorageBridge`, this) cannot drift — which is why each task
+    // UPDATES it rather than loosening it.
     expect(bridgeMethods).toEqual([
       'about',
+      'appendPlaytestLog',
       'dir',
       'getItem',
       'keys',
@@ -615,5 +618,93 @@ test.describe('T-1702b · Steam Cloud & rich presence', () => {
     // process on the player's friends list.
     await app.close();
     expect(presenceLog(steamFakeLog).at(-1)).toEqual({ key: 'steam_display', value: null });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+test.describe('T-141 · opt-in playtest logging', () => {
+  // `docs/PLAYTEST-TELEMETRY_SPEC.md` §4 names the desktop store as the shipping
+  // target: "an append-only JSONL file under the existing
+  // `app.getPath('userData')` directory … Rotate per session". The unit suites
+  // own the module (`src/__tests__/playtest-log.test.ts`) and the bridge
+  // (`packages/ui/src/__tests__/storage.test.ts`); THIS owns the link between
+  // them — the real preload, the real sender-validated IPC channel, the real
+  // file — driven by a player who opens Settings and presses the toggle.
+
+  test('writes nothing until the player opts in, then appends the real action stream', async () => {
+    const saveDir = join(tempDir('saves'), 'saves');
+    const userDataDir = tempDir('userdata');
+    const logDir = join(tempDir('logs'), 'logs');
+
+    const { app, page } = await launch({ saveDir, userDataDir, logDir });
+    await startCareer(page, 141);
+
+    // --- OFF BY DEFAULT, and off means NOTHING ON DISK ----------------------
+    await payDebt(page, 100);
+    expect(existsSync(logDir)).toBe(false);
+
+    await openSettings(page);
+    const toggle = page.getByTestId('set-playtest-logging');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    // The sentence is SPELLED OUT here rather than imported from
+    // `packages/ui/src/playtestLog.ts`, unlike the web spec's copy: this package
+    // must not grow a source dependency on the cockpit. A literal is safe
+    // BECAUSE it fails loudly on drift — the golden in
+    // `packages/ui/src/__tests__/playtest-log.test.ts` is the authority, and if
+    // the spec's wording ever changes, both this and that must move together.
+    await expect(page.getByTestId('playtest-disclosure')).toHaveText(
+      'Gameplay actions only — no personally identifying information, no location.',
+    );
+
+    // --- the player opts in --------------------------------------------------
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await closeSettings(page);
+
+    // --- a real action, taken the way a player takes it ---------------------
+    await payDebt(page, 100);
+
+    // The file is named for the session and appended line by line, so the last
+    // line before a crash is already on disk.
+    await expect
+      .poll(() => (existsSync(logDir) ? readdirSync(logDir) : []), { timeout: 10_000 })
+      .toHaveLength(1);
+    const [file] = readdirSync(logDir);
+    expect(file).toMatch(/^playtest-[A-Za-z0-9-]{1,64}\.jsonl$/);
+
+    const entries = readFileSync(join(logDir, file), 'utf8')
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { kind: string; day: number; action?: { type: string } });
+    expect(entries).toHaveLength(1); // the action taken AFTER opting in, and only it
+    expect(entries[0].kind).toBe('action');
+    expect(entries[0].day).toBe(1);
+    expect(entries[0].action?.type).toBe('Trade');
+
+    // --- and a flagged moment lands in the same file -------------------------
+    await openSettings(page);
+    await page.getByTestId('playtest-flag-input').fill('the debt row read oddly');
+    await page.getByTestId('playtest-flag').click();
+    await closeSettings(page);
+
+    await expect
+      .poll(() => readFileSync(join(logDir, file), 'utf8').trimEnd().split('\n').length, {
+        timeout: 10_000,
+      })
+      .toBe(2);
+    const flagged = JSON.parse(
+      readFileSync(join(logDir, file), 'utf8').trimEnd().split('\n')[1],
+    ) as { kind: string; note: string };
+    expect(flagged).toMatchObject({ kind: 'annotation', note: 'the debt row read oddly' });
+
+    // --- no PII: the OS username never reaches the file ---------------------
+    // Spec §2 excludes it outright, and the session id is minted fresh rather
+    // than derived from anything about the machine.
+    const raw = readFileSync(join(logDir, file), 'utf8');
+    expect(raw).not.toContain(userDataDir);
+    expect(raw).not.toContain(saveDir);
+
+    await app.close();
   });
 });

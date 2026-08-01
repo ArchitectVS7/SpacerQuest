@@ -12,6 +12,10 @@ import {
   type GameEvent,
   type CheckResult,
   type DareMoveKind,
+  // T-141 · TYPE-ONLY, deliberately: the playtest tap below names the engine's
+  // own action union so the seam stays typed, and a type import compiles away —
+  // no engine source file is touched by the telemetry feature (spec §7).
+  type PlayerAction,
 } from '@spacerquest/engine';
 import type { Stat } from '@spacerquest/content';
 import type { ShipComponentId, SpecialEquipmentId, ShipyardFail } from '@spacerquest/engine';
@@ -42,6 +46,13 @@ import * as steam from './steam';
 // the store must never reach around it (structurally asserted in
 // `__tests__/storage.test.ts`).
 import { storage } from './storage';
+// T-141 · The opt-in playtest log (`docs/PLAYTEST-TELEMETRY_SPEC.md`). Like
+// `sound.ts` and `steam.ts`, a pure CLIENT of what the store already has: it
+// reads the action and the events the engine already returned, owns no rule, and
+// adds no `GameState` field. OFF BY DEFAULT — every recorder re-checks the
+// player's toggle at call time, so with logging off this import costs one
+// `storage.getItem` per action and stores nothing.
+import * as playtest from './playtestLog';
 // T-1703 · THIS BUNDLE'S EDITION, compiled in by Vite. The store is the only
 // place that stamps it: `newGame` births a career in it, and every load path
 // (`init` / `loadSlot` / `importCareer`) runs the loaded career through the
@@ -365,6 +376,38 @@ export interface CockpitState {
    * T-312.
    */
   saveWriteFailed: boolean;
+  /**
+   * T-141 · Whether the opt-in playtest log is capturing (spec §3).
+   *
+   * OFF BY DEFAULT, persisted under `sq.playtest.logging` through the SAME
+   * `storage.ts` `KeyValueStore` `fx` / `reducedMotion` / `textSize` use. Like
+   * every one of those, this is CLIENT presentation state, NOT `GameState`: a
+   * JSON round-trip of game state is unaffected, `CURRENT_SAVE_VERSION` does not
+   * move and NO save migration is owed. Spec §3 requires exactly that — the
+   * toggle "must not round-trip through the save file".
+   *
+   * READER: `App.tsx`'s Settings → Playtest row (`set-playtest-logging`), which
+   * also renders `PLAYTEST_DISCLOSURE` beside it.
+   */
+  playtestLogging: boolean;
+  /**
+   * T-141 · How many entries this session has captured.
+   *
+   * It exists so capture is VISIBLE: a tester who enabled logging an hour ago
+   * needs to see the count moving to trust that the export will contain
+   * anything. Client presentation state on exactly the terms
+   * {@link CockpitState.playtestLogging} states; it is never persisted at all
+   * (the buffer is per-session by design, spec §2's per-session id).
+   *
+   * RECONCILED IN `set()`, the store's one state-update choke point, so it is
+   * live the moment a Settings popover opens rather than stale until the player
+   * touches a control. `playtestLog.ts`'s `playtestLogSize` is O(1) precisely so
+   * that can be true without putting the log on the hot path — a diagnostic that
+   * costs the cockpit a frame is a diagnostic nobody leaves on.
+   *
+   * READER: `App.tsx`'s Settings → Playtest row (`playtest-entry-count`).
+   */
+  playtestLogEntries: number;
 }
 
 let state: CockpitState = init();
@@ -423,6 +466,11 @@ function init(): CockpitState {
     // about. A blocked/full store raises it on the first autosave instead — and a
     // blocked READ is already `recovery: 'storage-unavailable'`.
     saveWriteFailed: false,
+    // T-141 · The consent flag, read from the local-preference layer. A virgin
+    // profile has no key, which reads as OFF — the spec's default, discharged by
+    // the read rather than by a constant.
+    playtestLogging: playtest.isPlaytestLoggingEnabled(),
+    playtestLogEntries: 0,
   };
 }
 
@@ -640,7 +688,15 @@ function emit(): void {
   for (const l of listeners) l();
 }
 function set(patch: Partial<CockpitState>): void {
-  state = { ...state, ...patch };
+  // T-141 · The captured-entry count is refreshed HERE, at the same one
+  // state-update choke point rich presence uses and for the same argument: the
+  // count must be live the moment a Settings popover opens, and reconciling it
+  // at ~20 action call sites would be twenty places to forget. `playtestLogSize`
+  // is O(1) by design (never `snapshotPlaytestLog`, which copies) and reads a
+  // module-local array length, so an ordinary UI-only patch pays one integer
+  // compare. It goes AFTER the patch so a caller can never accidentally pin a
+  // stale count.
+  state = { ...state, ...patch, playtestLogEntries: playtest.playtestLogSize() };
   // T-1702b · Rich presence, at the store's ONE state-update choke point rather
   // than at ~20 action call sites — the same argument that folded the achievement
   // mirror into `reactToEvents`: an action added later cannot forget it.
@@ -895,6 +951,42 @@ function reconcileOnboarding(prev: GameState, next: GameState): Record<string, t
   return seen;
 }
 
+/**
+ * T-141 · THE ONE PLACE THE COCKPIT CALLS THE ENGINE'S ACTION ENTRY POINT.
+ *
+ * Behaviour-preserving by construction: it takes the action, hands it to
+ * `applyPlayerAction` against the live `state.game`, and returns exactly what
+ * the engine returned. Every one of the 20 action thunks below used to call the
+ * engine inline with the live state as its first argument; they now call this
+ * wrapper with the action alone, which is a rename at each site and nothing else.
+ *
+ * WHY IT EXISTS. `docs/PLAYTEST-TELEMETRY_SPEC.md` §1 taps "every `PlayerAction`
+ * passed to `applyPlayerAction`" — the existing, single, typed seam. Twenty
+ * inline call sites are twenty places a later action can forget the tap; one
+ * choke point is one. This is the same argument `reactToEvents` above makes for
+ * the audio/achievement clients, and it is why the capture hook lives HERE
+ * rather than in each thunk.
+ *
+ * THE ENGINE IS UNTOUCHED. `applyPlayerAction` is the engine's own public
+ * surface and `PlayerAction` is a type-only import — no engine source file is
+ * modified by the telemetry feature (spec §7).
+ */
+function applyAction(action: PlayerAction): { state: GameState; events: GameEvent[] } {
+  const result = applyPlayerAction(state.game, action);
+  // T-141 · The opt-in playtest tap. A NO-OP unless the player turned logging on
+  // in Settings — `playtest.recordAction` re-reads the toggle on every call. It
+  // may never throw into the action, for the same reason `storage.ts`'s
+  // `unlockAchievement` may not: a diagnostic must not be able to cost a player
+  // their turn. The PRE-action day is recorded, because that is the day the
+  // player took the action on.
+  try {
+    playtest.recordAction(state.game.day, action, result.events);
+  } catch {
+    /* a lost log line is diagnostic; a lost action is a turn — see playtestLog.ts */
+  }
+  return result;
+}
+
 // ---- actions ------------------------------------------------------------
 
 export function newGame(seed: number): void {
@@ -972,7 +1064,7 @@ export function signContract(contractIndex: number): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'sign-contract',
       contractIndex,
@@ -1018,7 +1110,7 @@ export function abandonContract(): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'abandon-contract',
       spendDie: die,
@@ -1053,7 +1145,7 @@ export function buyFuel(amount: number): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'buy-fuel',
       fuelAmount: amount,
@@ -1085,7 +1177,7 @@ export function buyFuel(amount: number): void {
  */
 export function payDebt(amount: number): void {
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'pay-debt',
       amount,
@@ -1114,7 +1206,7 @@ export function haggleContract(contractIndex: number): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Trade',
       action: 'haggle',
       contractIndex,
@@ -1160,7 +1252,7 @@ export function travelTo(destinationId: number): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Travel',
       destinationId,
       spendDie: die,
@@ -1252,7 +1344,7 @@ export function explore(): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Explore',
       spendDie: die,
     });
@@ -1338,7 +1430,7 @@ export function visitDare(opponentId: string, wager: number): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue: 'dare',
       opponentId,
@@ -1402,7 +1494,7 @@ export function dareMove(move: DareMoveKind, quantity?: number, face?: number): 
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Dare',
       move,
       ...(quantity !== undefined ? { quantity } : {}),
@@ -1453,7 +1545,7 @@ export function darePeek(): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Dare',
       move: 'peek',
       spendDie: die,
@@ -1531,7 +1623,7 @@ export function visitSocial(venue: 'meet' | 'befriend' | 'insult', opponentId: s
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue,
       opponentId,
@@ -1605,7 +1697,7 @@ export function borrowLoan(amount: number): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue: 'borrow',
       amount,
@@ -1641,7 +1733,7 @@ export function repayLoan(amount: number): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'VisitHangout',
       venue: 'repay',
       amount,
@@ -1679,7 +1771,7 @@ export function hireCrew(roleId: string): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Crew',
       action: 'hire',
       roleId,
@@ -1713,7 +1805,7 @@ export function dismissCrew(roleId: string): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Crew',
       action: 'dismiss',
       roleId,
@@ -1745,7 +1837,7 @@ export function dismissCrew(roleId: string): void {
  */
 export function reroll(dieIndex: number): void {
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Reroll',
       dieIndex,
     });
@@ -1780,7 +1872,7 @@ export function buyPort(): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Port',
       action: 'buy',
       systemId: state.game.player.currentSystemId,
@@ -1824,7 +1916,7 @@ export function combat(stance: 'run' | 'talk' | 'fight'): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Combat',
       stance,
       targetId: encounter.interceptor.id,
@@ -1927,7 +2019,7 @@ export function shipyard(request: ShipyardRequest): void {
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Shipyard',
       action: request.action,
       component: request.component,
@@ -1977,7 +2069,7 @@ export function resolveStorylet(storyletId: string, choiceId: string, needsDie: 
     return;
   }
   try {
-    const { state: next, events } = applyPlayerAction(state.game, {
+    const { state: next, events } = applyAction({
       type: 'Storylet',
       storyletId,
       choiceId,
@@ -2330,6 +2422,135 @@ export function setTextSize(size: TextSize): void {
     /* ignore */
   }
   set({ textSize: size });
+}
+
+// ---- T-141 opt-in playtest logging --------------------------------------
+//
+// The player-operated half of `docs/PLAYTEST-TELEMETRY_SPEC.md`. Four actions,
+// all of them Settings-panel controls, none of them on the hot path:
+//
+//   * `setPlaytestLogging` — the consent toggle (OFF by default, spec §3);
+//   * `flagPlaytestMoment` — the "flag this moment" annotation (spec §1);
+//   * `recordPlaytestCrash` — the `ErrorBoundary`'s entry point (spec §1);
+//   * `exportPlaytestLog`   — the player-triggered export (spec §5).
+//
+// NO NETWORK CALL EXISTS ANYWHERE IN THIS FEATURE. Spec §5 settles submission as
+// an explicit export the player performs, because this repository has no server
+// to submit to and standing one up is a separate, larger feature with its own
+// disclosure and retention policy. `__tests__/playtest-no-network.test.ts` scans
+// this file for every transport by name (its FORBIDDEN list is the authority),
+// and `__tests__/playtest-log.test.ts` runs a real export with throwing spies
+// installed on all of them.
+
+/**
+ * Turn playtest capture on or off, and persist the answer.
+ *
+ * The one place consent is granted or withdrawn. Turning it OFF stops capture
+ * immediately — `playtestLog.ts`'s recorders re-read the key on every call — and
+ * deliberately does NOT discard what was already captured: a tester who toggles
+ * off to end a session still wants to export it.
+ */
+export function setPlaytestLogging(on: boolean): void {
+  playtest.setPlaytestLoggingEnabled(on);
+  set({
+    playtestLogging: on,
+    notice: on
+      ? `Playtest logging on. ${playtest.PLAYTEST_DISCLOSURE}`
+      : 'Playtest logging off. Nothing further will be recorded.',
+  });
+}
+
+/**
+ * T-141 · "Flag this moment" — tag the current point in the stream with the
+ * tester's own words (spec §1).
+ *
+ * WITH LOGGING OFF THIS IS NOT SILENT. The note would be dropped by the recorder
+ * (correctly — capture is opt-in), so the player is told why instead, on the
+ * same "every refusal reaches the player, never a silent no-op" rule the engine
+ * refusals follow. An empty note is likewise reported rather than swallowed.
+ */
+export function flagPlaytestMoment(note: string): void {
+  if (!playtest.isPlaytestLoggingEnabled()) {
+    set({ notice: 'Turn on Playtest logging in Settings first — nothing is being recorded.' });
+    return;
+  }
+  const before = playtest.playtestLogSize();
+  playtest.recordAnnotation(state.game.day, note);
+  set({
+    notice:
+      playtest.playtestLogSize() > before
+        ? `Moment flagged on day ${state.game.day}.`
+        : 'Write a note to flag first.',
+  });
+}
+
+/**
+ * T-141 · Record a caught render fault into the playtest log (spec §1).
+ *
+ * THE ENTRY POINT `ErrorBoundary` CALLS, and it lives here rather than in the
+ * boundary on purpose: the boundary's hard rule is that its crash screen reads
+ * NO game state and formats NO numbers, because a recovery screen that re-enters
+ * the code that just failed is not a recovery screen. The day the entry needs is
+ * read HERE, inside a `try/catch` that swallows, so the boundary hands over an
+ * error and nothing else.
+ *
+ * NEVER THROWS. A logger that faults while logging a fault would turn one crash
+ * into two, and the second would land outside any boundary.
+ */
+export function recordPlaytestCrash(error: unknown): void {
+  try {
+    playtest.recordError(state.game.day, error);
+  } catch {
+    /* a crash must not be able to crash the crash handler */
+  }
+}
+
+/**
+ * T-141 · Write the session's captured log out as a file the player keeps
+ * (spec §5).
+ *
+ * A CLONE OF `exportCareer` ABOVE, deliberately and structurally: Blob → object
+ * URL → synthetic anchor click → revoke on the next tick. That path works
+ * identically on the web build and inside the Electron shell (a Chromium
+ * renderer with a real download manager), which is why this task adds no
+ * save-dialog IPC channel. Nothing here reaches a network.
+ *
+ * `json` writes JSONL bytes — spec §6 settles JSONL as THE format and §5's
+ * "JSON or CSV" is the two flavours of that one record (see
+ * `playtestLogFileName`).
+ *
+ * Never throws into the caller: a failed export is a notice, not a lost turn.
+ */
+export function exportPlaytestLog(format: 'json' | 'csv'): void {
+  const entries = playtest.snapshotPlaytestLog();
+  if (entries.length === 0) {
+    // An empty file is worse than a refusal: the tester attaches it to a report
+    // and nobody notices it says nothing until the triage call.
+    set({
+      notice: playtest.isPlaytestLoggingEnabled()
+        ? 'Nothing captured yet — take an action first.'
+        : 'Playtest logging is off, so there is nothing to export.',
+    });
+    return;
+  }
+  try {
+    const body = format === 'csv' ? playtest.toCsv(entries) : playtest.toJsonl(entries);
+    const blob = new Blob([body], {
+      type: format === 'csv' ? 'text/csv' : 'application/x-ndjson',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = playtest.playtestLogFileName(format, entries.length);
+    anchor.click();
+    // Revoke on the next tick, for the reason `exportCareer` states.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    set({
+      notice: `Playtest log exported — ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}.`,
+    });
+  } catch {
+    set({ notice: 'That playtest log could not be exported.' });
+  }
 }
 
 export function clearBloom(): void {

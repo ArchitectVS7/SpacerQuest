@@ -3338,7 +3338,7 @@ shipped game supplies no sink — grep returns nothing under `packages/ui` and
 **The commit body must state THREE fingerprint moves, not one**, name
 `instrumentFingerprint` as the deviation from §6, and point at §7.6.
 
-### T-141 · Implement opt-in playtest logging — `status: TODO` · `coder: opus` · `after: T-130`
+### T-141 · Implement opt-in playtest logging — `status: DONE` · `coder: opus` · `after: T-130`
 
 Implement `docs/PLAYTEST-TELEMETRY_SPEC.md` end to end: the settings toggle (OFF by default,
 disclosure copy per §3), the local JSONL capture over `applyPlayerAction` plus the manual
@@ -3352,6 +3352,21 @@ drives real actions through `applyPlayerAction` and asserts the resulting JSONL 
 shape; the flag-action and `ErrorBoundary` entry kinds are each asserted by a test; export
 produces a file with no network call anywhere in the feature; the disclosure copy matches
 what's settled in the spec; no save version bump; no engine source file touched; gate green.
+
+**Delivered (2026-08-01):** Shipped the full opt-in playtest-logging feature per
+`docs/PLAYTEST-TELEMETRY_SPEC.md`: a Settings "Playtest" panel with a toggle defaulting OFF and
+persisted through `storage.ts`'s `KeyValueStore` (never the save file), the disclosure copy
+rendered unconditionally beside it, a "flag this moment" free-text annotation, JSONL capture
+tapped off `applyPlayerAction` via a new `playtestLog.ts` in both `ui` and `desktop`, an
+`ErrorBoundary`-fed crash entry kind that is message-only and redacted, and a player-triggered
+JSON/CSV export. The desktop shell writes the append-only session log to a `logs/` directory
+kept as a sibling of `saves/` (never inside it, so save enumeration can't pick up a log file)
+through a new sender- and payload-validated `sq-playtest:append` IPC channel that silently
+drops rather than throws, matching the existing swallow-on-write contract for non-career data;
+the web build holds the same log in an in-memory buffer only, since a browser tab has no
+filesystem. Deliberate scope boundary: no network call exists anywhere on this path — export is
+the only way data leaves the machine — and no engine source file or save-version was touched.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
 ### T-142 · Build the Tier 1 telemetry report generator — `status: TODO` · `coder: opus` · `after: T-140, T-141`
 

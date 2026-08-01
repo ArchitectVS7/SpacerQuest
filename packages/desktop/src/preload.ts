@@ -9,8 +9,9 @@
 // can say whether this build updates itself and whether achievements are being
 // recorded. It is READ-ONLY and touches no store.
 //
-// THE SEVENTH AND EIGHTH — `unlockAchievement` (T-1702a) and `setPresence`
-// (T-1702b) — ARE THE TWO ASYNCHRONOUS METHODS, and the asymmetry is deliberate.
+// THE SEVENTH, EIGHTH AND NINTH — `unlockAchievement` (T-1702a), `setPresence`
+// (T-1702b) and `appendPlaytestLog` (T-141) — ARE THE ASYNCHRONOUS METHODS, and
+// the asymmetry is deliberate.
 // Storage is `sendSync` because `store.ts` runs `init()` at MODULE SCOPE and has
 // ~25 synchronous call sites (see `packages/ui/src/storage.ts`'s header); neither
 // of these has any such constraint, and a synchronous native Steam call on every
@@ -35,11 +36,12 @@
 // swallowed would make the desktop build silently lose careers, which is the
 // exact class of bug T-1605a/c existed to end.
 //
-// `unlockAchievement` AND `setPresence` ARE THE EXCEPTIONS, stated rather than
-// smuggled, and they are exceptions for the SAME reason: no cockpit behaviour
-// keys off either, nothing is lost when either fails, and a failed achievement
-// (or a friends-list line that did not update) must never be able to cost a
-// player their action. Both use `ipcRenderer.send`, which has no reply to fail.
+// `unlockAchievement`, `setPresence` AND `appendPlaytestLog` ARE THE EXCEPTIONS,
+// stated rather than smuggled, and they are exceptions for the SAME reason: no
+// cockpit behaviour keys off any of them, nothing a player can lose is lost when
+// one fails, and a failed achievement (or a friends-list line that did not
+// update, or a dropped diagnostic line) must never be able to cost a player
+// their action. All three use `ipcRenderer.send`, which has no reply to fail.
 //
 // CommonJS, not ESM: an Electron preload must be CJS unless `sandbox: false`,
 // and trading the sandbox for import syntax is not a trade worth making.
@@ -58,6 +60,9 @@ const CHANNELS = {
   unlockAchievement: 'sq-steam:unlock',
   // T-1702b · The second of the two. Same terms.
   presence: 'sq-steam:presence',
+  // T-141 · The third. Same terms again — one line of the opt-in playtest log,
+  // appended by the main process to a per-session file under `userData`.
+  playtestLog: 'sq-playtest:append',
 } as const;
 
 type StoreReply<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -108,6 +113,19 @@ const bridge = {
   // SENDER and both payload fields on the far side.
   setPresence: (system: string, day: number): void => {
     ipcRenderer.send(CHANNELS.presence, system, day);
+  },
+  // T-141 · Append one JSONL line to this session's opt-in playtest log
+  // (`docs/PLAYTEST-TELEMETRY_SPEC.md` §4). The third fire-and-forget method,
+  // with the same asymmetries and the same reasoning as the two above: no reply,
+  // no throw, no return value, and `main.ts` still validates the SENDER and both
+  // payload fields on the far side — the session id becomes part of a FILENAME,
+  // so it is checked there and again in `playtestLog.ts`.
+  //
+  // NOTHING IS UPLOADED HERE OR ANYWHERE. This crosses one process boundary to
+  // a local file; spec §5 settles submission as an explicit, player-triggered
+  // export, and no network transport exists in the feature.
+  appendPlaytestLog: (sessionId: string, line: string): void => {
+    ipcRenderer.send(CHANNELS.playtestLog, sessionId, line);
   },
 };
 
