@@ -900,4 +900,213 @@ export const DEEDS: readonly DeedDefinition[] = defineDeeds([
       count: { gte: 3 },
     },
   },
+
+  // --- T-147 · Liar's Dice set completion (`docs/LIARS-DICE-PROGRESSION_SPEC.md`
+  //     §6.4). Fifteen deeds off ONE engine signal: `LiarsDiceSetCleared`, emitted
+  //     by `settleDareHand` on the hand that beats the last unbeaten seat of a set.
+  //     The engine owns "what closes a set" (`liarsDicePortCleared` /
+  //     `liarsDiceRosterCleared`); these rows are pure INSTANCES — a scope, a port
+  //     id and a citation, with no predicate of their own.
+  //
+  //     `scope` is what keeps the two families apart: a port clear carries
+  //     `scope:'port'`, so `liars_dice_grand_slam` cannot be earned by clearing one
+  //     house. NONE of the fifteen carries a `count` — each fires on its own
+  //     one-time event, and the emitter's `includes` guard (T-145 §6.2 step 1) is
+  //     what makes that once-ever rather than once-per-rematch.
+  //
+  //     APPENDED, never interleaved: `docs/STEAM-ACHIEVEMENTS.md`'s parity test
+  //     asserts its rows against DEEDS ORDER, so a contiguous block at the end is
+  //     one contiguous block of new rows in the partner table.
+  {
+    id: 'liars_dice_cleared_sun_3',
+    title: 'The Long Table Swept',
+    citationTemplate:
+      'On day {day}, the last cup at the Long Table came up short, and Sun-3 had nobody left to sit down.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 1 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_aldebaran_1',
+    title: 'The Weighbridge Swept',
+    citationTemplate:
+      'On day {day}, the Weighbridge weighed three losing claims in a row and booked every one of them against the house.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 2 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_altair_3',
+    title: 'The Waypost Swept',
+    citationTemplate:
+      'On day {day}, the Waypost’s regulars ran out of dice to hide behind, one bench at a time.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 3 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_arcturus_6',
+    title: 'The Garrison Mess Swept',
+    citationTemplate:
+      'On day {day}, the Garrison Mess lost its last hand to a civilian, and not one hand went near a sidearm.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 4 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_deneb_4',
+    title: 'The Standing Hall Swept',
+    citationTemplate:
+      'On day {day}, the Standing Hall went quiet: every cup on the long stone had been called, and every one of them had lied.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 5 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_denebola_5',
+    title: 'The Incident Book Swept',
+    citationTemplate:
+      'On day {day}, the Incident Book took three fresh entries, all of them about the same captain winning.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 6 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_fomalhaut_2',
+    title: 'The Fittings Swept',
+    citationTemplate:
+      'On day {day}, the Fittings ran out of people willing to lose at their own table, and everyone there discovered urgent work.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 7 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_mira_9',
+    title: 'The Dry Tank Swept',
+    citationTemplate:
+      'On day {day}, the Dry Tank lived up to its name — every seat at that table had been drained.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 8 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_pollux_7',
+    title: 'The Turnaround Swept',
+    citationTemplate:
+      'On day {day}, the whole shift at the Turnaround had been called and caught, between one departure and the next.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 9 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_procyon_5',
+    title: 'The Bonded Room Swept',
+    citationTemplate:
+      'On day {day}, the Bonded Room stamped its last losing claim and closed the book on its own house.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 10 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_regulus_6',
+    title: 'The High Table Swept',
+    citationTemplate:
+      'On day {day}, the High Table was beaten end to end, and its silver cups were rinsed out by a rim hauler.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 11 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_rigel_8',
+    title: 'The Underhold Swept',
+    citationTemplate:
+      'On day {day}, the Underhold’s last player pushed the pot across and let this captain walk back up the stairs.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 12 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_spica_3',
+    title: 'The Second Watch Swept',
+    citationTemplate:
+      'On day {day}, the Second Watch called its last bluff into the dark and lost it, along with the two before it.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 13 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_cleared_vega_6',
+    title: 'The Long Room Swept',
+    citationTemplate:
+      'On day {day}, the Long Room ran the whole length of its table and found nobody who could beat this captain.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [
+        { path: 'scope', equals: 'port' },
+        { path: 'systemId', equals: 14 },
+      ],
+    },
+  },
+  {
+    id: 'liars_dice_grand_slam',
+    title: 'The Whole Circuit',
+    citationTemplate:
+      'By day {day}, there was no house left on the circuit holding a player this captain had not called and caught.',
+    trigger: {
+      eventType: 'LiarsDiceSetCleared',
+      match: [{ path: 'scope', equals: 'roster' }],
+    },
+  },
 ]);

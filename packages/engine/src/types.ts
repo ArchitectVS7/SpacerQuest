@@ -956,6 +956,39 @@ export type GameEvent =
     }
   | {
       /**
+       * T-147 · A LIAR'S DICE SET CLOSED — the one-time completion signal
+       * (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §6.2 steps 2-3).
+       *
+       * EMITTER: `settleDareHand` (`actions/dare.ts`), and nowhere else. It fires
+       * only on the hand that writes the LAST missing id into
+       * `player.liarsDiceBeaten` — T-145's `includes` guard makes a rematch win
+       * silent and a ROAMING win never reaches the branch at all, so "exactly
+       * once, ever" is a property of the emission site rather than of any de-dup
+       * bookkeeping downstream.
+       *
+       * READERS: the fifteen completion deeds in `packages/content/src/deeds.ts`
+       * (fourteen `liars_dice_cleared_<port>` + `liars_dice_grand_slam`), which
+       * reach it through `evaluateDeeds` and the `EVENT_PATHS` allowlist entry in
+       * `deeds.ts`. `scope` is the discriminator between the two families;
+       * `systemId` is what tells the fourteen apart.
+       *
+       * When a port clear and the whole-roster clear land on the SAME hand, two
+       * events are emitted — `port` first, then `roster`, the order a player
+       * experiences them.
+       */
+      type: 'LiarsDiceSetCleared';
+      day: number;
+      /** `'port'` — every seat at ONE house. `'roster'` — every seat everywhere. */
+      scope: 'port' | 'roster';
+      /** The port whose set closed; for `scope:'roster'`, the port of the final win. */
+      systemId: number;
+      /** Whose defeat closed the set. */
+      opponentId: string;
+      /** `liarsDiceBeaten.length` AFTER the write that closed it. */
+      beatenCount: number;
+    }
+  | {
+      /**
        * T-1304 · A Penny Wise lending beat (PRD §7.5). One event covers the whole
        * loan lifecycle via the `kind` sub-discriminator:
        *   - 'borrowed'  — a loan was taken. `principal`, `outstanding` (= principal

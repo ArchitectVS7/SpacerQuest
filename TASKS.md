@@ -2793,7 +2793,7 @@ tiers; `CURRENT_SAVE_VERSION` does NOT move (the field shipped in T-145); gate g
   claim a smaller share of the dice in play, so the dealer believes it less often and the free wins
   F-135-1 named get rarer. **Nothing was tuned in response**; T-148 owns the read.
 
-### T-147 · Achievement hooks — `status: TODO` · `coder: opus` · `after: T-145`
+### T-147 · Achievement hooks — `status: DONE` · `coder: opus` · `after: T-145`
 
 Independent of T-146 (different subsystem — can run in parallel via `/orchestrate` once T-145 is
 done; neither task touches the save shape, which shipped with T-145). Implement the
@@ -2809,6 +2809,20 @@ the established `DeedDefinition` pattern — no change to the deed matcher DSL i
 per remaining game against the roaming pool); beating all 42 across all 14 ports fires the
 whole-game deed exactly once; both render in the Registry with a citation, asserted by a test;
 gate green.
+
+**Delivered (2026-07-31):** Wired the completion-signal-to-deed path designed in T-144: `settleDareHand`
+now emits a one-time `LiarsDiceSetCleared` event (`scope:'port'`, then `scope:'roster'` when it's also
+the 42nd) driven by two new pure engine rules, `liarsDicePortCleared` and `liarsDiceRosterCleared` in
+`liarsDiceRules.ts`, both derived from the authored roster rather than a literal count so a later
+content pass can't silently desync them. Fifteen new `DeedDefinition` rows in `packages/content/src/deeds.ts`
+(14 port-clear + 1 whole-roster) consume that event via a new `EVENT_PATHS` allowlist entry — no change
+to the deed matcher DSL itself — and render in the existing Registry of Deeds UI with real citations.
+One-time-ness rides entirely on T-145's existing `includes` de-dup guard and the roaming-pool gate; this
+block deliberately adds no de-dup logic of its own. Deliberate scope boundary: T-148's roster/ladder
+pacing measurement is explicitly out of scope here and stays deferred to its own task, as T-147's
+description specified.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/LIARS-DICE-PROGRESSION_SPEC.md` §6/§8 and the real call s · attempts=1/4.
 
 ### T-148 · Capstone: measure the roster & ladder — `status: TODO` · `coder: opus` · `after: T-146, T-147`
 

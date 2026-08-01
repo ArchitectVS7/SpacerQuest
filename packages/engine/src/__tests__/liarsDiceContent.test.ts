@@ -10,6 +10,7 @@ import {
   type LiarsDiceOpponent,
 } from '@spacerquest/content';
 import { wagerBandFor } from '../hangoutRules.js';
+import { liarsDicePortCleared, liarsDiceRosterCleared } from '../liarsDiceRules.js';
 
 // ---------------------------------------------------------------------------
 // T-145 · THE FIXED 42-OPPONENT ROSTER, as authored
@@ -222,5 +223,74 @@ describe('T-145 · the two ladder constants ship with the table (inert until T-1
   it('are the authored thresholds and multiplier', () => {
     expect(LIARS_DICE_UNLOCK_GAMES).toEqual([5, 10, 20, 40, 80]);
     expect(LIARS_DICE_RAISED_CEILING_MULT).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-147 · THE TWO SET-CLOSURE PREDICATES
+// (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §6.2). They live in the engine because
+// "what closes a set" is a RULE; the rows they read are content. Every expected
+// value below is DERIVED from `LIARS_DICE_OPPONENTS` rather than written as a
+// literal 3 or 42 — a test that hardcoded the roster size would stop testing the
+// shipped roster the moment a content pass grew it, which is the exact failure
+// mode these two functions exist to avoid.
+// ---------------------------------------------------------------------------
+
+describe('T-147 · liarsDicePortCleared', () => {
+  const port = HANGOUT_PORTS[0];
+  const seats = LIARS_DICE_OPPONENTS[port].map((row) => row.id);
+
+  it('is false one seat short and true on the last seat', () => {
+    expect(seats.length).toBeGreaterThan(1);
+    expect(liarsDicePortCleared(port, seats.slice(0, -1))).toBe(false);
+    expect(liarsDicePortCleared(port, seats)).toBe(true);
+  });
+
+  it('is false for an EMPTY beaten set — the vacuous-truth trap, from the other side', () => {
+    expect(liarsDicePortCleared(port, [])).toBe(false);
+  });
+
+  it('ignores seats beaten at OTHER ports', () => {
+    const elsewhere = ALL_ROWS.filter((row) => !seats.includes(row.id)).map((row) => row.id);
+    expect(liarsDicePortCleared(port, elsewhere)).toBe(false);
+    expect(liarsDicePortCleared(port, [...elsewhere, ...seats])).toBe(true);
+  });
+
+  it('is FALSE at a port with no authored house, even against the whole roster', () => {
+    // THE TRAP THIS GUARD EXISTS FOR. `liarsDiceOpponentsAt` answers `[]` there and
+    // `[].every(…)` is vacuously true, so without the non-empty guard a port-clear
+    // would fire at a rim system that never had a table.
+    const noHouse = Object.values(STAR_SYSTEMS)
+      .filter((system) => system.hasHangout !== true)
+      .map((system) => system.id);
+    expect(noHouse.length).toBeGreaterThan(0);
+    const everyone = ALL_ROWS.map((row) => row.id);
+    for (const systemId of noHouse) {
+      expect(liarsDicePortCleared(systemId, everyone), `system ${systemId}`).toBe(false);
+    }
+  });
+});
+
+describe('T-147 · liarsDiceRosterCleared', () => {
+  const everyone = ALL_ROWS.map((row) => row.id);
+
+  it('is false one seat short of the whole authored roster, and true on it', () => {
+    expect(liarsDiceRosterCleared([])).toBe(false);
+    expect(liarsDiceRosterCleared(everyone.slice(0, -1))).toBe(false);
+    expect(liarsDiceRosterCleared(everyone)).toBe(true);
+  });
+
+  it('is false with every port but one cleared', () => {
+    const lastPort = HANGOUT_PORTS[HANGOUT_PORTS.length - 1];
+    const allButOne = ALL_ROWS.filter(
+      (row) => !LIARS_DICE_OPPONENTS[lastPort].some((seat) => seat.id === row.id),
+    ).map((row) => row.id);
+    expect(liarsDiceRosterCleared(allButOne)).toBe(false);
+  });
+
+  it('is DERIVED from content — a beaten set the size of the roster but not OF it fails', () => {
+    const impostors = everyone.map((id) => `${id}-impostor`);
+    expect(impostors).toHaveLength(everyone.length);
+    expect(liarsDiceRosterCleared(impostors)).toBe(false);
   });
 });

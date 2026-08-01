@@ -1,6 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 import { DEMO_FINAL_DAY } from '@spacerquest/content';
 import { createInitialState, createSave, startDay, type GameState } from '@spacerquest/engine';
+// T-147 · The two denominators below are DERIVED from the manifest, not typed.
+// They used to be the literals 44 and 45; the slate grew by fifteen deeds and a
+// pair of hand-typed counts would have reddened this spec for no defect — the
+// same lesson `progression.spec.ts` records against its port price (T-1603b).
+// The claim under test is the DIFFERENCE between the two editions, and that is
+// what the derivation preserves.
+import { achievementManifest } from '../src/steam';
 
 // ---------------------------------------------------------------------------
 // T-1703 · THE DEMO GATE, PROVED THROUGH THE REAL COCKPIT.
@@ -95,10 +102,11 @@ test('the demo gates ports, crew hiring and the Conqueror capstone; the full bui
   // The build says what it is, without dev tools.
   await openSettings(page);
   await expect(page.getByTestId('build-edition')).toHaveAttribute('data-edition', 'demo');
-  // The achievement denominator is edition-scoped: 44 in the demo, 45 in the full
-  // build — the player-visible half of the Conqueror lock.
+  // The achievement denominator is edition-scoped: the demo is the full set MINUS
+  // the Conqueror capstone — the player-visible half of the Conqueror lock.
   const demoAchievements = (await page.getByTestId('steam-achievements').textContent()) ?? '';
-  expect(demoAchievements).toContain('of 44');
+  expect(achievementManifest('demo')).toHaveLength(achievementManifest('full').length - 1);
+  expect(demoAchievements).toContain(`of ${achievementManifest('demo').length}`);
   await closeSettings(page);
 
   // The licence itself is on screen, counting down.
@@ -138,7 +146,9 @@ test('the demo gates ports, crew hiring and the Conqueror capstone; the full bui
 
   await openSettings(page);
   await expect(page.getByTestId('build-edition')).toHaveAttribute('data-edition', 'full');
-  expect((await page.getByTestId('steam-achievements').textContent()) ?? '').toContain('of 45');
+  expect((await page.getByTestId('steam-achievements').textContent()) ?? '').toContain(
+    `of ${achievementManifest('full').length}`,
+  );
   await closeSettings(page);
 
   // No licence banner at all — the full cockpit is unchanged.

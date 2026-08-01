@@ -556,6 +556,21 @@ function hangoutDare(wager: number, playerWon: boolean): GameEvent {
   };
 }
 
+/** T-147 · actions/dare.ts `settleDareHand` — a Liar's Dice set closing. The
+ *  shape is copied from the emitter: `opponentId`/`beatenCount` ride along even
+ *  though no deed names them (they are deliberately absent from EVENT_PATHS), so
+ *  a matcher that reached for one would fail here rather than in a career. */
+function liarsDiceSetCleared(scope: 'port' | 'roster', systemId: number): GameEvent {
+  return {
+    type: 'LiarsDiceSetCleared',
+    day: 1,
+    scope,
+    systemId,
+    opponentId: `ld-${systemId}-3`,
+    beatenCount: scope === 'roster' ? 42 : 3,
+  };
+}
+
 /** actions/lending.ts — the Penny Wise desk advancing a marker. */
 function loanBorrowed(principal: number): GameEvent {
   return {
@@ -773,6 +788,26 @@ const NET_NEW_DEED_CASES: readonly DeedCase[] = [
   { deedId: 'toll_paid', events: [tributePaid(300)] },
   { deedId: 'signal_hunter', events: [fragmentAcquired(1)] },
   { deedId: 'cold_case', events: repeat(3, (index) => fragmentAcquired(index)) },
+  // --- T-147 · Liar's Dice set completion -----------------------------------
+  // One row per port, plus the roster capstone. The PORT rows are fed a
+  // `scope:'port'` event at their own systemId, which is also what proves the
+  // `systemId` matcher is load-bearing: `liars_dice_grand_slam` is NOT in any of
+  // their batches, and the negative direction is asserted below.
+  { deedId: 'liars_dice_cleared_sun_3', events: [liarsDiceSetCleared('port', 1)] },
+  { deedId: 'liars_dice_cleared_aldebaran_1', events: [liarsDiceSetCleared('port', 2)] },
+  { deedId: 'liars_dice_cleared_altair_3', events: [liarsDiceSetCleared('port', 3)] },
+  { deedId: 'liars_dice_cleared_arcturus_6', events: [liarsDiceSetCleared('port', 4)] },
+  { deedId: 'liars_dice_cleared_deneb_4', events: [liarsDiceSetCleared('port', 5)] },
+  { deedId: 'liars_dice_cleared_denebola_5', events: [liarsDiceSetCleared('port', 6)] },
+  { deedId: 'liars_dice_cleared_fomalhaut_2', events: [liarsDiceSetCleared('port', 7)] },
+  { deedId: 'liars_dice_cleared_mira_9', events: [liarsDiceSetCleared('port', 8)] },
+  { deedId: 'liars_dice_cleared_pollux_7', events: [liarsDiceSetCleared('port', 9)] },
+  { deedId: 'liars_dice_cleared_procyon_5', events: [liarsDiceSetCleared('port', 10)] },
+  { deedId: 'liars_dice_cleared_regulus_6', events: [liarsDiceSetCleared('port', 11)] },
+  { deedId: 'liars_dice_cleared_rigel_8', events: [liarsDiceSetCleared('port', 12)] },
+  { deedId: 'liars_dice_cleared_spica_3', events: [liarsDiceSetCleared('port', 13)] },
+  { deedId: 'liars_dice_cleared_vega_6', events: [liarsDiceSetCleared('port', 14)] },
+  { deedId: 'liars_dice_grand_slam', events: [liarsDiceSetCleared('roster', 14)] },
 ];
 
 /** The count-gated deeds, with the threshold RE-STATED here and cross-checked
@@ -961,6 +996,23 @@ describe('T-1504 deed slate', () => {
     expect(
       earnedFrom([{ type: 'HangoutEvent', day: 1, venue: 'dare', failReason: 'no-opponent' }]),
     ).toHaveLength(0);
+  });
+
+  it('T-147 · the two LiarsDiceSetCleared scopes are actually discriminated', () => {
+    // Both families ride ONE event type, so `scope` is the only thing keeping a
+    // port clear from paying out the whole-roster capstone. Asserted in BOTH
+    // directions, because a missing matcher fails silently in only one of them.
+    const port = earnedFrom([liarsDiceSetCleared('port', 1)]);
+    expect(port).toContain('liars_dice_cleared_sun_3');
+    expect(port).not.toContain('liars_dice_grand_slam');
+    // ...and a port clear at Sun-3 earns no OTHER port's deed.
+    expect(port.filter((id) => id.startsWith('liars_dice_cleared_'))).toEqual([
+      'liars_dice_cleared_sun_3',
+    ]);
+
+    const roster = earnedFrom([liarsDiceSetCleared('roster', 14)]);
+    expect(roster).toContain('liars_dice_grand_slam');
+    expect(roster.filter((id) => id.startsWith('liars_dice_cleared_'))).toEqual([]);
   });
 
   it('files no citation for any typed-fail event', () => {

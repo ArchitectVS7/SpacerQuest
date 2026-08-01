@@ -116,7 +116,7 @@ that no code can produce. Achievement names and descriptions are **not** repeate
 here: they are `docs/STEAM-ACHIEVEMENTS.md`, generated from
 `packages/ui/src/steam.ts`.
 
-Achievement icons: **90 files (45 achievements × 2 states)**, 64×64 PNG each —
+Achievement icons: **120 files (60 achievements × 2 states)**, 64×64 PNG each —
 one achieved and one unachieved per row of the manifest. That count is derived
 from `ACHIEVEMENT_MANIFEST.length` and asserted by
 `release-checklist.test.ts`, so adding a Deed later reddens the art order instead
@@ -314,7 +314,7 @@ this document is only its input.
 | C7 | Who cuts the trailer, under what music licence? | |
 | C8 | Who produces the `.ico`/`.icns` app icon? | |
 | C9 | Does the demo get its own capsule set? | |
-| D1 | Confirm the 45 achievements are entered, not hidden. | |
+| D1 | Confirm the 60 achievements are entered, not hidden. | |
 | D2 | Confirm the rich-presence token is registered. | |
 | D3 | Confirm Cloud quota 128 MiB / 32 files, Auto-Cloud off. | |
 | D4 | Full-game Steam app id? | |

@@ -26,6 +26,42 @@ import { deedHunterPolicy, HUNTER_TARGET_DEED_IDS } from './support/deed-hunter.
 // re-runs the hunt. The hunt was run once, out of tree, in throwaway `.scratch/`
 // scripts; the seeds it found are pinned below with their provenance.
 //
+// ================= SWEEP PROVENANCE (2026-07-31, T-147) ====================
+// NOTHING MOVED. Recorded anyway, because the slate grew by a third and a reader
+// who finds an unchanged range under a 34% bigger `DEEDS` is owed the measurement
+// that says it is still the right range.
+// MECHANISM: T-147 adds FIFTEEN deeds — one per `hasHangout` port for clearing
+//        that house's three authored Liar's Dice seats, plus `liars_dice_grand_slam`
+//        for all 42 — earned off the new `LiarsDiceSetCleared` event. They are the
+//        first deeds in the slate that need a FINITE AUTHORED GAUNTLET rather than
+//        a repeatable verb, so `deed-hunter.ts` gains a ROSTER TOUR errand: sit at
+//        the local house's unbeaten, non-broke seats (up to two hands a day, at the
+//        port band's minimum stake), and on an idle day with no signed contract fly
+//        to the nearest port that still owes seats.
+// RE-SWEPT over seeds 1..65 of this exact driver at this exact horizon, in
+//        .scratch/ against a freshly built dist/, and compared against the SAME
+//        sweep run at HEAD~ (44 deeds, no tour):
+//          · UNION 59/59 — every one of the fifteen new deeds is reachable through
+//            play, and nothing that used to be reachable stopped being so;
+//          · FOUR careers are individually total (34, 45, 51, 57), against TWO
+//            (16, 39) on the 44-deed baseline. The `>= 2` count therefore has more
+//            margin after the change than before it, which is why neither
+//            COVERAGE_SEEDS nor HORIZON moved;
+//          · the long pole is UNCHANGED IN CHARACTER: `slipped_the_scan` is missed
+//            by 59 of 65 careers, exactly as on the baseline (also 59 of 65). The
+//            new deeds are nowhere near it — 61 of 65 careers close the WHOLE
+//            42-seat roster, so the gauntlet is comfortably inside the horizon.
+// ONE MEASURED DESIGN CALL, recorded because the first version failed: the tour
+//        originally returned a STANDALONE tables-day (the shape the Hangout errand
+//        uses for its four one-off gambling deeds). That errand fires twice a
+//        career; this one fires on the order of thirty days, and thirty
+//        non-travelling days starved every deed that lives downstream of FLYING —
+//        `slipped_the_scan` fell to ONE career in sixty-five. Riding the veteran's
+//        spare dice instead (dares unshifted ahead of the day's jump, travel only
+//        on a day the veteran planned none) costs the tour a little speed and costs
+//        the rest of the slate nothing. NO ASSERTION WAS TOUCHED in either version.
+// MEASURED COST: 65 careers in ~39s, against ~31s before the tour.
+//
 // ================= SWEEP PROVENANCE (re-pinned 2026-07-26, T-1603c) ========
 // RE-PIN (seeds [1,6] -> [2,5]; the CONQUEROR `it` moves 1 -> 2).
 // MECHANISM: T-1603c's combat-tuning levers (`docs/balance/TUNING-T-1603.md`

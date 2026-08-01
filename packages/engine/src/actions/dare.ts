@@ -36,6 +36,8 @@ import {
   isLatticeMove,
   legalDareMoves,
   liarsDiceOpponentFor,
+  liarsDicePortCleared,
+  liarsDiceRosterCleared,
   nominalCost,
   resolveChallenge,
 } from '../liarsDiceRules.js';
@@ -235,10 +237,6 @@ export function settleDareHand(state: GameState, outcome: DareOutcome, events: G
     state.player.liarsDiceBeaten.push(hand.dealerId);
     justBeaten = true;
   }
-  // Kept live for T-147 (the `void` is this file's existing idiom for a binding
-  // that exists for a named future reader — see schema.ts's `_cov*` guards).
-  void justBeaten;
-
   // T-146 · THE UNLOCK LADDER'S ODOMETER, INCREMENTED HERE AND ONLY HERE
   // (`docs/LIARS-DICE-PROGRESSION_SPEC.md` §4.1, §8 row 20e).
   //
@@ -259,11 +257,37 @@ export function settleDareHand(state: GameState, outcome: DareOutcome, events: G
   // `state.dareHand` is one statement from null.
   state.player.liarsDiceGamesPlayed += 1;
 
-  // ---- T-147 OWNS THE STATEMENT AFTER THAT ------------------------------
-  // `if (justBeaten) { … }` — §6.2 steps 2 and 3, the set-closure arithmetic and
-  // the one or two `LiarsDiceSetCleared` emissions (§8 row 20f). Between T-145 and
-  // T-147 the beaten set is CORRECT and simply nothing fires; that intermediate
-  // state is coherent and shippable by design, which is what makes the split legal.
+  // T-147 · §6.2 STEPS 2 AND 3 — THE COMPLETION SIGNAL (§8 row 20f).
+  //
+  // ONE-TIME-NESS IS BY CONSTRUCTION, and this block carries NO de-dup logic of
+  // its own — deliberately, because a second mechanism would be a second thing to
+  // keep true. Two facts from step 1 above discharge it entirely:
+  //   · a REMATCH win leaves `justBeaten` false (the `includes` guard), so a
+  //     player who keeps sitting at a cleared house fires nothing;
+  //   · a ROAMING win never sets `justBeaten` at all (the `roster` gate), so the
+  //     infinite pool-B pool can never re-fire a deed that a finite authored
+  //     gauntlet earned — which is exactly the "not once per remaining game
+  //     against the roaming pool" the acceptance names.
+  //
+  // ORDER IS PORT THEN ROSTER: the wire reads in the order a player experiences
+  // it. A roster clear implies this port's set is closed too, so nesting the
+  // second test inside the first is equivalent to two siblings — nested because
+  // that equivalence is a fact about the sets, not an ordering coincidence.
+  if (justBeaten) {
+    const beaten = state.player.liarsDiceBeaten;
+    if (liarsDicePortCleared(hand.systemId, beaten)) {
+      const closure = {
+        day: state.day,
+        systemId: hand.systemId,
+        opponentId: hand.dealerId,
+        beatenCount: beaten.length,
+      } as const;
+      events.push({ type: 'LiarsDiceSetCleared', scope: 'port', ...closure });
+      if (liarsDiceRosterCleared(beaten)) {
+        events.push({ type: 'LiarsDiceSetCleared', scope: 'roster', ...closure });
+      }
+    }
+  }
 
   state.dareHand = null;
 }

@@ -1043,6 +1043,19 @@ const GameEventSchema = z.discriminatedUnion('type', [
     opponentLine: z.string().optional(),
   }),
   z.object({
+    // T-147 · a Liar's Dice set closed (see types.ts LiarsDiceSetCleared). It is
+    // serialized into `eventLog` like every other player-action event, so a
+    // mid-day save taken on the hand that closed a set would fail to PARSE at load
+    // without this member — which is why it is mandatory rather than optional.
+    // No GameState field is added, so CURRENT_SAVE_VERSION does not move.
+    type: z.literal('LiarsDiceSetCleared'),
+    day: z.number(),
+    scope: z.enum(['port', 'roster']),
+    systemId: z.number(),
+    opponentId: z.string(),
+    beatenCount: z.number(),
+  }),
+  z.object({
     // T-1304 · a Penny Wise lending beat (see types.ts LoanEvent). Serialized in
     // eventLog, so a mid-day save round-trips it; the drift guard below keeps this
     // in lockstep with the interface.
@@ -1706,6 +1719,9 @@ const _covEvDareHandStarted: AssertEventKeys<'DareHandStarted'> = true;
 const _covEvDarePeeked: AssertEventKeys<'DarePeeked'> = true;
 const _covEvDareBidPlaced: AssertEventKeys<'DareBidPlaced'> = true;
 const _covEvDareHandResolved: AssertEventKeys<'DareHandResolved'> = true;
+// T-147 · the completion signal. Pairs types.ts's variant with the schema member
+// above; without both, `_covEventTypes` below is already a tsc error.
+const _covEvLiarsDiceSetCleared: AssertEventKeys<'LiarsDiceSetCleared'> = true;
 const _covEvLoanEvent: AssertEventKeys<'LoanEvent'> = true;
 const _covEvDiceRerolled: AssertEventKeys<'DiceRerolled'> = true;
 const _covEvCrewEvent: AssertEventKeys<'CrewEvent'> = true;
@@ -1805,6 +1821,7 @@ void _covEvDareHandStarted;
 void _covEvDarePeeked;
 void _covEvDareBidPlaced;
 void _covEvDareHandResolved;
+void _covEvLiarsDiceSetCleared;
 void _covEvLoanEvent;
 void _covEvDiceRerolled;
 void _covEvCrewEvent;

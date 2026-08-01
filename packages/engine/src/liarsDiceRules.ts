@@ -460,6 +460,46 @@ export function liarsDiceOpponentsAt(systemId: number): readonly LiarsDiceOppone
 }
 
 /**
+ * T-147 · Is this port's WHOLE authored set beaten?
+ *
+ * A RULE, not a count: the engine owns "what closes a set" and content owns the
+ * rows, so `packages/content` carries no `if (` deciding this. READER: the
+ * `LiarsDiceSetCleared{scope:'port'}` emission in `actions/dare.ts`'s
+ * `settleDareHand`, which is the only caller.
+ *
+ * THE NON-EMPTY GUARD IS LOAD-BEARING. `liarsDiceOpponentsAt` answers `[]` for
+ * any port with no authored house, and `[].every(…)` is VACUOUSLY TRUE — so a
+ * bare `.every()` would declare a set closed at a port that never had one. The
+ * guard is what makes "cleared" mean "beat somebody".
+ */
+export function liarsDicePortCleared(systemId: number, beaten: readonly string[]): boolean {
+  const seats = liarsDiceOpponentsAt(systemId);
+  if (seats.length === 0) return false;
+  const set = new Set(beaten);
+  return seats.every((seat) => set.has(seat.id));
+}
+
+/**
+ * T-147 · Is the WHOLE authored roster beaten — every seat at every house?
+ *
+ * DERIVED FROM CONTENT, never from a literal 42, using the same wholesale
+ * iteration idiom `seedLiarsDicePurses` uses above. A later content pass that
+ * adds a fourth seat to a port, or a fifteenth house, moves this rule with it
+ * rather than silently leaving the capstone earnable one seat early.
+ *
+ * READER: the `LiarsDiceSetCleared{scope:'roster'}` emission in `settleDareHand`.
+ */
+export function liarsDiceRosterCleared(beaten: readonly string[]): boolean {
+  const set = new Set(beaten);
+  for (const rows of Object.values(LIARS_DICE_OPPONENTS)) {
+    for (const row of rows) {
+      if (!set.has(row.id)) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * T-145 · The full roster purse map, derived from the AUTHORED bankrolls (§5.4
  * step 3). PURE: returns a NEW object and mutates nothing — the module's PURE
  * header contract is preserved across the roster additions.
