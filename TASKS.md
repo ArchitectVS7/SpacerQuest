@@ -3463,7 +3463,7 @@ n=1,000). `shapeChanges` get their own block — the real pair (7 policies/500 s
 exercises it — and `formatAggregateDiff`'s "NO MEASURED VALUE MOVED" distinction is preserved.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
-### T-143 · Build the Tier 1.5 dev control panel — `status: TODO` · `coder: opus` · `after: T-142`
+### T-143 · Build the Tier 1.5 dev control panel — `status: DONE` · `coder: opus` · `after: T-142`
 
 Implement `docs/DEV-CONTROL-PANEL_SPEC.md` end to end: the five-command surface (§1), shard
 orchestration for `balance:sweep` (§2), gitignored-by-default run output with a deliberate
@@ -3478,7 +3478,123 @@ panel's entry point under `packages/desktop`'s packaging config and any producti
 output returns nothing; no source file outside the panel's own new code is modified by
 running any panel action; gate green.
 
----
+**Delivered (2026-08-01):** Shipped as a **new sixth workspace, `packages/devpanel/`**, with
+**zero runtime dependencies and zero workspace dependencies** — seven source files
+(`commands.ts`, `runs.ts`, `runner.ts`, `panel-html.ts`, `server.ts`, `main.ts`, plus five test
+suites) and a `node:http` server with no framework, no bundler and no client library (the live
+stream is SSE, which the browser implements natively as `EventSource`). Root wiring is three
+lines: `dev:panel` and the missing `balance:sweep` alias in the root `package.json`, and a
+`references` entry in the root `tsconfig.json`.
+
+**Why not under `packages/sim/src`, which is where the balance CLIs live.** That directory is a
+HASHED ROOT with a totality guard — `assertNoUndeclaredSubdirectory` (the OI-6 block in
+`rules-fingerprint.ts`) THROWS on any undeclared subdirectory under it, and `packages/sim/src` is
+also the instrument root, so a `devpanel/` there would either break every fingerprint computation
+or fold a process-spawning dev tool into `instrumentFingerprint`. A `tools/` directory at the repo
+root was rejected for the opposite reason: neither `eslint.config.mjs` (`packages/*/src/**`) nor
+`tsc -b` would cover it without editing the two files that decide what the gate checks. A
+workspace is covered by lint, typecheck and `npm test --workspaces` for free, and is invisible to
+packaging.
+
+**§5's open question, SETTLED: `lint:fix` and `format` are EXCLUDED; `lint`/`format:check` are
+in.** Recorded in full in the spec's new **§7** and in `commands.ts`'s header. Four reasons: (1)
+§6's own criterion forbids them — "no source file outside the panel's own new code is modified by
+running any panel action", and both modify source by definition; (2) §5's misclick argument for
+excluding `package:*`/`release:*` applies unchanged — a button that rewrites every file in the repo
+beside a read-only sweep button is the same hazard with a smaller blast radius; (3) **a
+repo-specific trap the spec does not name** — TASKS.md's standing constraints require
+`npm run format` BEFORE a batch capstone and `docsFingerprint` is a raw-byte hash over the hashed
+sources, so a one-click formatter beside a one-click sweep *manufactures* the exact ordering
+mistake that constraint exists to prevent; (4) §5's counter-argument (git-diff-visible, never a
+silent balance edit) is true and insufficient — visibility is a *recovery* property, and (3) is
+invisible in a diff. **Enforced in code**: `assertNoWritingCommands` runs at module load and
+throws on any `package:*`/`release:*`/`format`/`lint:fix` row; `commands.test.ts` asserts the guard
+has teeth.
+
+**Every §6 criterion has a named test, and each is proved rather than asserted.** *Flag subset*
+(`commands.test.ts`): each of sweep/diff/extract/report is SPAWNED against its real parser with
+**every** panel flag present at once and asserted to produce no `Unknown argument:` /
+`Missing value for` / `requires a value` — with a **negative control in the same test** (the same
+script rejects `--not-a-real-flag`), because the positive assertion alone would also pass against a
+parser that validated nothing. The panel-built merge argv is verified the same way, since nobody
+types it. *Concurrency* (`sharding.test.ts`): a **barrier** `SpawnFn` whose children only exit once
+N are simultaneously live — a serial implementation deadlocks and times out, so the serial case is
+an outright failure rather than a slower pass — plus a **real-process** run recording each child's
+wall clock and asserting the two intervals overlap. *Byte-for-byte* (`byte-identical.test.ts`):
+`balance:diff` run through the runner and through a plain hand-typed `spawn`, stdout compared as
+raw **Buffers** (`Buffer.equals`, exact); a real sweep run both ways into two temp dirs with
+`rows-*.json` and `baseline-*.json` compared byte-for-byte, unmasked. stderr is compared with
+`\d+m\d\ds` masked and the test says why in its own comment: `sweep.ts` writes `... elapsed`, so the
+CLI's stderr is not byte-stable **against itself** — a property of the instrument, not a concession,
+and explicitly not licence to widen the stdout/artifact comparisons. *Isolation*
+(`isolation.test.ts`): `git status --porcelain` snapshotted, a real 2-shard sweep + merge + diff +
+extract + report run end to end, snapshot compared — identical. *Not shipped*
+(`not-shipped.test.ts`): both electron-builder configs re-read and asserted free of the needle, no
+workspace lists `@spacerquest/devpanel`, and eight build-output directories recursively grepped with
+**`absent (not built)` recorded per directory in the assertion message** so a green result is never
+mistaken for "there was nothing to check".
+
+**Three security properties, because a dev tool that spawns processes is not an ordinary page.**
+`listen(port, '127.0.0.1')` — the host argument is not optional and the test asserts the address
+actually bound, since Node's default publishes to the LAN. A `Host`-header allowlist, because
+loopback binding alone does not stop **DNS rebinding**. A per-process random token on every POST
+(the only verbs that spawn or copy). Plus `shell: false` everywhere, a `resolve()`-then-`startsWith(root + sep)`
+traversal guard on the static route, and a pure `assertPromotionTarget` allowlist on the one write
+that leaves `.scratch/`.
+
+**§3's two load-bearing behaviours.** A blank `--out`/`--aggregate-out` is pointed at the run
+directory by the panel — `sweep.ts`'s own `--aggregate-out` default is `docs/balance`, so a panel
+sweep on defaults would drop a committed-looking baseline into the repo on every ad hoc click. That
+injection is the ONE place the panel adds a flag and it is rendered in the UI before the run and
+stored in `run.json`. Promotion requires the exact `baseline-<label>.json` **typed back**, copies
+one guarded file, and **never runs git** — it returns the `git add`/`git commit` lines as text
+(`docs/VERSIONING.md`: a pointer move is its own deliberate commit). All paths are emitted
+absolute, because `npm run … -w @spacerquest/sim` runs with cwd = `packages/sim` and `sweep.ts`
+resolves `--out` with a bare `resolve()`, so a relative path would land in `packages/sim/.scratch/`.
+
+**Driven BY HAND THROUGH THE UI, not the API** (Playwright against a real Chromium, throwaway
+driver in `.scratch`, never committed). Clicked the Run Sweep summary, filled the form, clicked
+**Preview command**, clicked **Run**: 4 shards of 40 seeds × 20 days × 3 policies spawned
+concurrently, streamed live, merged to `baseline-t143-uat.json` in **1.8 s wall clock** into
+`.scratch/balance/panel-runs/t143-uat-20260801-130002/` (4 × 30 rows → 120-row aggregate, every
+exit code 0). Clicked **View Report** — 22,809 bytes written and linked. Clicked **Promote**, typed
+the WRONG filename first (stream said `cancelled (filename did not match)`, nothing copied), then
+the right one: `docs/balance/baseline-t143-uat.json` appeared in `git status` as `??` — visible,
+uncommitted, awaiting the developer's own `git add`, exactly as §3 requires — and the git lines were
+printed rather than run. **0 external requests, 0 console errors.** The UAT surfaced and fixed two
+real defects: an SSE response that never ended on `done` (leaving `EventSource` reconnecting
+forever and any non-browser reader hanging), and every command line printed twice in the stream
+(client echo plus SSE replay). All UAT artifacts removed; `git status --porcelain` after shows only
+the intended edits.
+
+**Zero fingerprints moved, so NO capstone and NO `balance:extract` is owed.**
+`computeRulesFingerprint`/`computeInstrumentFingerprint`/`computeDocsFingerprint` recomputed on the
+working tree still return `f36d71f863a8ebe7` / `d50b03a8ca4323d8` / `c944fdb764c48484`, equal to
+`docs/balance/smoke/tiers.json` — nothing under `packages/{engine,content,sim,ui,desktop}` was
+touched. No save-shape change, so no migration and `CURRENT_SAVE_VERSION` stays 12. No `.gitignore`
+edit was needed or made: `git check-ignore -v` answers `.gitignore:29:.scratch/`, proved in the
+test rather than claimed. Gate: `npm test` **5/5 workspaces green** (desktop 7 files/110, **devpanel
+5/61 new**, engine 48/1274, sim 29/377, ui 16/257), `npx tsc -b` clean, `npm run lint` clean,
+`npm run format` run BEFORE the gate and `npm run format:check` clean. Packaging grep pasted: zero
+hits for `devpanel`/`dev:panel`/`SPACERQUEST_DEV_PANEL_ENTRY` in either electron-builder config and
+0 hits across all seven present build-output directories (`renderer-demo` absent, recorded).
+
+**Findings reported, not silently fixed.** **F-143-1**: spec §1's table is stale against the real
+parsers — it omits `sweep.ts`'s `--trace-npc-decisions`, and presents `balance:diff` as flag-only
+when `parseDiffArgs` requires two POSITIONAL paths ("Expected exactly two aggregate paths"). The
+registry follows the parsers; the table gets a correction note in the new §7 rather than a silent
+divergence. **F-143-2**: `balance:sweep` had no root-level npm script despite §1 quoting the root
+form — fixed here as a one-line alias, the precedent T-142 set for `balance:report`. **F-142-1
+inherited**: `sweep.ts --merge` still does not stamp `rulesFingerprint`/`gitCommit` onto the
+aggregate, so a panel-PROMOTED baseline inherits that gap and a report over it renders T-142's
+"RULESET UNKNOWN" banner. Not fixed here — it is a sweep-side change and touching `sweep.ts` would
+move `instrumentFingerprint`, which this task must not do. **A third, found by the version test
+rather than by review**: `packages/ui/src/__tests__/version.test.ts` asserts exactly ONE workspace
+declares a version in `package-lock.json`. The new manifest initially declared `0.5.2` and broke it;
+the fix was to drop the field (a private, never-published dev tool has no product version to state)
+rather than widen the invariant.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/DEV-CONTROL-PANEL_SPEC.md`, the four balance CLIs' real a · attempts=1/4.
 
 ## M6 — Player-modifying trinkets (new initiative, out of D2's scope, no implementation yet)
 

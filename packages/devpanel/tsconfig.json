@@ -1,0 +1,26 @@
+{
+  // T-143 · The dev control panel.
+  //
+  // NO `references`: this package has ZERO WORKSPACE DEPENDENCIES, by design and
+  // not by accident. `docs/DEV-CONTROL-PANEL_SPEC.md` §0 forbids it from
+  // reimplementing any balance logic — it only ever spawns the existing scripts
+  // as child processes — so it must never be able to `import` from
+  // `@spacerquest/sim`, `@spacerquest/engine` or `@spacerquest/content`. Not
+  // listing them is what makes that constraint enforceable rather than aspirational.
+  //
+  // AND IT DELIBERATELY LIVES OUTSIDE `packages/sim/src`: that directory is a
+  // HASHED ROOT with a totality guard (`assertNoUndeclaredSubdirectory` in
+  // `packages/sim/src/balance/rules-fingerprint.ts`, the OI-6 block), so a
+  // `packages/sim/src/devpanel/` would either throw on every fingerprint
+  // computation or move `instrumentFingerprint` — and a dev tool that spawns
+  // child processes decides no game outcome and must move no fingerprint at all.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node"],
+    "lib": ["ESNext"]
+  },
+  "include": ["src/**/*"]
+}

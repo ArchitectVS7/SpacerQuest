@@ -26,7 +26,13 @@
     // shell knows nothing about the engine, and `packages/ui` knows nothing
     // about the shell beyond the `window.sqDesktop` shape it duplicates.
     { "path": "./packages/desktop" },
-    { "path": "./packages/desktop/e2e" }
+    { "path": "./packages/desktop/e2e" },
+    // T-143 · The dev control panel. A workspace with ZERO workspace
+    // dependencies and zero runtime dependencies, referenced here only so
+    // `tsc -b` type-checks it. Deliberately NOT under `packages/sim/src`: that
+    // is a hashed root whose totality guard would either throw on it or fold a
+    // dev tool into `instrumentFingerprint`.
+    { "path": "./packages/devpanel" }
   ],
   "exclude": ["node_modules", "dist"]
 }
