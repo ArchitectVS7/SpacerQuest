@@ -80,6 +80,26 @@ describe('N7 · the fixture describes the ruleset in the working tree', () => {
     expect(fixture.checkpoints.length).toBeGreaterThan(0);
   });
 
+  it('pins the committed fixture to a HARVESTED spread (F-146-0)', () => {
+    // F-146-0, filed by T-146 and made loud here by T-148. `balance:extract`
+    // takes `--aggregate <path>`; OMITTING it does not fail — it silently falls
+    // back to `docs/balance/baseline-n1.json` and flips `spreadSource` to
+    // 'estimated', which downgrades every tier spread in the rig from a sample of
+    // a real career to a guess, WITHOUT moving a fingerprint and therefore
+    // WITHOUT tripping the freshness check above.
+    //
+    // The assertion directly above is deliberately left as it is: it documents
+    // the enum's LEGAL RANGE (a fixture may legitimately be estimated during
+    // bring-up, before any sweep exists to harvest from). THIS one documents the
+    // COMMITTED rig's state, which is a different claim — the shipped fixture is
+    // harvested, and a re-extract that quietly drops `--aggregate` must fail here
+    // rather than be discovered a milestone later.
+    //
+    // THE REMEDY IS NEVER TO EDIT THIS LINE. Re-run:
+    //   npm run balance:extract -w @spacerquest/sim -- --aggregate docs/balance/<baseline>.json
+    expect(fixture.provenance.spreadSource).toBe('harvested');
+  });
+
   it('seeds every rung of every tier spread', () => {
     // A ladder rung with no seed on it is a captain the tier claims to exercise
     // and does not — and the rung most easily dropped is `max`, the only one

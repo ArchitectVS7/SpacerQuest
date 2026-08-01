@@ -103,7 +103,25 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
-> **BASELINE OF RECORD RE-PINNED AT T-137 (2026-07-31)** to
+> **BASELINE OF RECORD RE-PINNED AT T-148 (2026-08-01)** to
+> `docs/balance/baseline-t148-roster-ladder.json` — M4e (T-144…T-148) added the 42-seat
+> fixed roster, the 5/10/20/40/80 unlock ladder and the fifteen completion deeds, so
+> `baseline-t137-liars-dice` predates the whole progression system. Same shape as every
+> capstone back to `baseline-r2c-explorer-remit` (1,000 seeds × 120 days × 8 policies =
+> 8,000 runs, 8 1-indexed shards through `--merge` reporting `wrote aggregate for 8000
+> rows`, both `--milestone-days 21,29,30,41,60,120` and `--aggregate` honoured, fixture
+> re-extracted FROM it with `spreads harvested`). Fingerprints are rules
+> `09deb1e41c99bdeb` / instrument `c80ebc59869406bb` / docs `350d78708243b524` — **all
+> three UNMOVED by this extract**, because T-145/T-146/T-147 each re-stamped them as they
+> landed; T-148's contribution is the fresh 8,000-row aggregate underneath them, not a new
+> hash. `balance:diff` from `t137-liars-dice` isolates the milestone exactly: **it moves
+> precisely TWO rows, `gambler` and `fleet`,** and leaves `explorer`, `fighter`, `greedy`,
+> `smuggler`, `trader`, `trader-degraded` and `veteran` byte-identical — every policy that
+> never sits at a table. NOTHING WAS TUNED IN RESPONSE; the measured numbers are written up
+> as §12 of `docs/LIARS-DICE-PROGRESSION_SPEC.md` and the bad ones are filed as findings
+> F-148-1…F-148-5 for a fresh owner call.
+>
+> **PREVIOUSLY RE-PINNED AT T-137 (2026-07-31)** to
 > `docs/balance/baseline-t137-liars-dice.json` — M4d (T-134…T-137) replaced the
 > opposed-d20 Dare with the Liar's Dice scene, so `baseline-t131-explore-ap` predates
 > the whole mechanic and no longer describes HEAD. Same shape as every capstone back
@@ -2024,11 +2042,14 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t137-liars-dice.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at T-137 2026-07-31 — M4d replaced the
+   > **Baseline of record is `docs/balance/baseline-t148-roster-ladder.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-148 2026-08-01 — M4e added the
+   > 42-seat roster, the unlock ladder and the fifteen completion deeds, which moves exactly
+   > the `gambler` and `fleet` rows against `t137-liars-dice`, so `baseline-t137-liars-dice`
+   > no longer describes HEAD).
+   > `baseline-t137-liars-dice` (re-pinned at T-137 2026-07-31 — M4d replaced the
    > opposed-d20 Dare with the Liar's Dice scene, which moves exactly the `gambler` and
-   > `fleet` rows against `t133-loanband`, so `baseline-t131-explore-ap` no longer
-   > describes HEAD).
+   > `fleet` rows against `t133-loanband`),
    > `baseline-t131-explore-ap` (re-pinned at T-131 2026-07-31 — owner ruling D1
    > repriced Explore bands 3-4 from calendar days to extra dice, which moved the
    > `explorer`, `smuggler` and `fleet` rows),

@@ -2824,7 +2824,7 @@ description specified.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/LIARS-DICE-PROGRESSION_SPEC.md` §6/§8 and the real call s · attempts=1/4.
 
-### T-148 · Capstone: measure the roster & ladder — `status: TODO` · `coder: opus` · `after: T-146, T-147`
+### T-148 · Capstone: measure the roster & ladder — `status: DONE` · `coder: opus` · `after: T-146, T-147`
 
 Same discipline as T-137, extended: measure real games-to-unlock pacing against the doubling
 ladder (does a typical playstyle actually cross 80 games in a normal career, or does the ladder's
@@ -2838,6 +2838,118 @@ fixed-roster games are actually played (does the unlimited-replay pool dominate 
 **Accept:** a fresh dated addendum to the spec reports the measured numbers above, including
 naming any lever left unpulled (per this track's own house discipline — a bad number is reported,
 not silently tuned around); no constant is retuned to chase a target; gate green.
+
+**Result.** Delivered as **`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12 (dated 2026-08-01)**,
+replacing the reserved stub and mirroring `docs/LIARS-DICE_REDESIGN.md` §16's shape. §11's T-148
+row now reads DELIVERED and points at it; the redesign's §15 table carries one M4e cross-reference
+row (§16 itself is history and its numbers are untouched).
+
+**The gate work, in order.** `npm run format` FIRST — **zero files changed**. 8 × `balance:sweep
+--label t148-roster-ladder --seeds 1000 --days 120 --policies trader,trader-degraded,fighter,
+explorer,veteran,smuggler,gambler,greedy --milestone-days 21,29,30,41,60,120 --shard i/8` (1-indexed)
+then `--merge` → `[balance] wrote aggregate for 8000 rows`. `balance:diff` from `t137-liars-dice`
+**moves precisely two rows, `gambler` and `fleet`**, and leaves `explorer`, `fighter`, `greedy`,
+`smuggler`, `trader`, `trader-degraded`, `veteran` **byte-identical** — the prediction stated
+before the run (M4e adds no rule a non-gambler career touches; seeding 42 purse keys perturbs no
+rng stream). ONE `balance:extract --aggregate …` → `4 tiers, spreads harvested, rules
+09deb1e41c99bdeb / instrument c80ebc59869406bb / docs 350d78708243b524`. **All three fingerprints
+UNMOVED**, because T-145/T-146/T-147 each re-stamped `tiers.json` as they landed; the milestone's
+one extract is discharged as a provenance re-pin onto a fresh 8,000-row aggregate. Baseline of
+record re-pinned in all four places (`balance-targets.test.ts:103`, `docs/NPC_REDESIGN.md` ×2,
+`docs/balance/smoke/README.md:95`).
+
+**The instrument.** `.scratch/t148-roster-ladder.ts` (gitignored), descended from
+`.scratch/t137-liars-dice.ts` with T-125's interceptor block kept verbatim, so §12.6 is
+like-for-like. **Fidelity 5/5 on SIX channels** — T-137's five plus Σ of the per-hand `creditsDelta`
+joined by `handId`, the channel that proves the join is lossless. Join misses **0**, hands left open
+**0**, arithmetic-tier vs frozen-field disagreements **0**, `dareGuardHits` **0**, `timeout-fold`
+**0**. `liarsDiceTier` was NOT called a third time (§4.6): the probe derives the tier from the
+imported `LIARS_DICE_UNLOCK_GAMES` and cross-checks it against the hand's frozen
+`dicePerSide`/`bandMax`. Two arms: **Arm 1** = seeds 1..120 × 120 days × 8 policies (960 runs,
+20,477 hands, T-137's exact shape); **Arm 2** = `gambler` × seeds 1..600 (600 runs, **101,904
+hands**) for cell depth. Smallest reported cell `n = 6,577` hands, past the `n ≥ 1,000` sizing rule;
+no cell needed widening and no claim was softened.
+
+**What it measured.**
+- **Ladder pacing (§12.1).** Rung 5 (80 games) is crossed by **99.50%** of dice careers at **median
+  day 55**; the median career finishes at **171 games**. Tier 5 carries **53.04%** of all hands — the
+  top rung is the *default state* of a dice career, not its endgame, so it does **not** go the way of
+  Explore's band-4. **Bounded, and said so:** seven of eight shipped policies play **zero** hands
+  (`planDare` has one call site, `gamblerPolicy`), so this is the maximal playstyle, not a typical
+  one. The analytic read-across is given (`day 80/k` at `k` hands/day; measured 1.415/day).
+- **Archetypes (§12.2) — the verdict comes back INVERTED.** Player win rate **84.69%** vs `optimal`
+  (n 42,494) and **68.78%** vs `bad` (n 9,054): **z = −30.76**, replicated independently in Arm 1 at
+  z = −12.88. `optimal` (84.69%) is softer than the *undesigned* roaming dealer (76.91%). Not
+  cosmetic — backwards. Mechanism traced to F-137-1's guaranteed-true opener, not to `archetypeMove`.
+- **Pool share (§12.3) — the opposite of the fear.** The 42-seat gauntlet takes **57.04%** of hands
+  (72.62% in days 1-30, decaying to 47.89% by days 61-120) because `planDare` seats the *richest*
+  candidate and roster bankrolls out-bank roaming captains early. But it is **played, not
+  completed**: median **29 of 42** seats beaten, **3 of 14** ports cleared, **0 grand slams in 720
+  careers**, and median **0** seats drained.
+- **Tier shape (§12.4, discharging F-146-2).** Like-for-like inside the roaming pool (T-137's 1.19
+  was 100% roaming × 100% tier 0): **1.527 → 2.194 bids/hand, +43.7%**. Mean frozen `bandMax`
+  1,248 → 3,541 cr (2.837×) and mean ante 37 → 106 cr (2.86×) — both just under ×3 because tier 4 is
+  reached at a different port mix. All 54,047 tier-5 hands carry `bandMax: null`.
+- **`netCredits` split (§12.5).** roaming **39.77%** / roster **60.23%**, reconciling exactly to
+  `hangoutPlay.netCredits`. §2.6's cap **summed from the table = 280,800 cr, AGREES with the prose**;
+  realised draw 2.58% (day 30) → 8.89% (day 60) → **20.24%** (day 120).
+- **Interceptor (§12.6) — F-137-2 got BETTER.** Wronged-captain share **47.50% → 26.19%** (back
+  below T-125's 29.28%) and the lift over uniform **2.623× → 2.875×** (back toward T-125's 2.956×) —
+  exactly the fall-back §16.6 warned not to read as a regression. Mechanism split by pool as §7.6
+  requires: 57.55% of hands are roster hands that move **zero** disposition, and the win rate fell.
+  `DispositionChanged{dare}` 13,758 → **7,949** off a third *more* hands; souring share 94.08% →
+  **75.78%**.
+- **CONQUEROR (§12.7).** **Unreached at 120 days by every policy, dice or not.** `gambler` deedCount
+  median 25 → **28** (max 34 at n=1,000, GIGA_HERO 129, CONQUEROR **0**); controls `veteran` 20,
+  `trader` 20. Reported, not retuned — the threshold was sized off a **300-day** arm this rig does
+  not run.
+
+**Five findings filed, NOT fixed (§12.9): F-148-1** (archetype ordering inverted; `optimal` is the
+softest seat) · **F-148-2** (the gauntlet is played but never completed; `liars_dice_grand_slam`
+unreachable through the sim's seating policy) · **F-148-3** (the roster is the softer *and* richer
+pool) · **F-148-4** (F-146-1 confirmed with exact scope — the raised ceiling is never staked into;
+fixing it needs a §4.6 amendment first, since it would be a third `liarsDiceTier` read) ·
+**F-148-5** (CONQUEROR unreached at this horizon). §12.9 also carries a table of **ten levers
+considered and deliberately left alone**, each against the number that tempted it:
+`LIARS_DICE_UNLOCK_GAMES`, `LIARS_DICE_RAISED_CEILING_MULT`, `planDare`'s richest-candidate rule,
+`planDare`'s tier-0 band sizing, `dealerMove`/`DARE_AI_*`, `BAD_CREDULITY`+`archetypeMove`, the four
+tone mixes, the 42-row bankroll table, `RENOWN_DEED_THRESHOLDS.CONQUEROR`, `GAMBLER_MAX_DARES_PER_DAY`.
+
+**What was NOT tuned (§12.8).** `git diff --stat -- packages/engine/src packages/content/src
+packages/sim/src/index.ts packages/sim/src/protocol.ts packages/sim/src/balance packages/ui/src`
+→ **zero files, zero lines**. The only shipped-source line changed is the baseline path string at
+`balance-targets.test.ts:103`. One assertion was **ADDED** (never widened) at
+`balance-smoke.test.ts` — `provenance.spreadSource === 'harvested'`, F-146-0's explicit ask, so an
+extract that silently drops `--aggregate` fails loudly instead of surviving a milestone **without
+moving a fingerprint**; the pre-existing enum assertion stayed, because it documents the enum's
+legal range and the new one documents the committed rig's state. Both test files are outside all
+three hashed corpora. The `it.fails` trader tripwire stays correctly **RED** (day 21 vs [22,30] at
+n=990, identical to the outgoing baseline); the two combat-survival tripwires stay red. No band,
+threshold, fingerprint or golden was edited.
+
+**Gate:** `npm test` **exit 0 — 1,918 tests, 95 files, zero failures** · `npx tsc -b` 0 ·
+`npm run lint` 0 · `npm run format:check` 0.
+
+**Deliverable grepped at its named call site:** `grep -n "^## §12" docs/LIARS-DICE-PROGRESSION_SPEC.md`
+→ line 1495; `grep -rn "baseline-t148-roster-ladder" packages docs` → the test path re-pin plus the
+four doc pins; `jq '.provenance' docs/balance/smoke/tiers.json` → `sweepLabel t148-roster-ladder`,
+`runs 8000`, `spreadSource harvested`.
+
+**Delivered (2026-07-31):** Shipped `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12, the capstone
+measurement addendum that extends T-137's discipline to the full roster and unlock ladder off a
+fresh 8,000-row `t148-roster-ladder` sweep: rung-5 pacing (99.50% of careers cross it by median day
+55, tier 5 carrying 53.04% of hands), an archetype verdict that comes back inverted (`optimal` is
+softer than the undesigned roaming dealer, z = −30.76), pool share (the 42-seat gauntlet takes
+57.04% of hands but is played, not completed — 0 grand slams in 720 careers), tier-shape and
+`netCredits` splits, an interceptor re-read, and CONQUEROR still unreached at 120 days. Five
+findings (F-148-1..F-148-5) were filed and left unfixed, and a table of ten tempting levers was
+recorded as deliberately left alone. Deliberate scope boundary: no constant was retuned to chase a
+target — `git diff --stat` over all shipped-source packages is zero files, zero lines, with the
+only production-facing change being the baseline path re-pin and one added (never widened) test
+assertion; the CONQUEROR read stays bounded to this rig's 120-day horizon rather than being
+re-sized to the 300-day arm that would actually exercise it.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `docs/LIARS-DICE-PROGRESSION_SPEC.md` (§1, §2.6, §3.9, §4.4/§4. · attempts=1/4.
 
 ---
 

@@ -1432,7 +1432,7 @@ disagree, §8 wins (§5.6's opening note).
 | **T-145** · the roster, the archetypes, the purse, the one migration | §2 (the whole content table, all 42 rows, the validator), §3 in full (`probAtLeast`, `archetypeMove`, the three policies, `resolveMixedArchetype`, the draw-order ruling), §5 (**the only version bump in M4e**, `CURRENT_SAVE_VERSION 14→15`, `MIGRATIONS[14]`, and the **full** `DareHandState` shape — real `opponentKind`/`opponentArchetype`, tier-0 ladder values), §6.2 **step 1 only**, §7.1–§7.6 (zero-sum routing, the live-balance clamp, the clamped sit-down, the broke refusal + its theorem, the no-disposition rule) | 1, 2, 9a, 10–13a, 15, 16a, 17a, 18, 19, 20a–20d, 22, 23, 27–30b, 31, 32, 34, 36, 37, 38, 40, 46a, 49, 50 |
 | **T-146** · the ladder | §4 in full (all five tiers, the ×3 multiplier, the ante rule, Read the Table), the `liarsDiceGamesPlayed` increment | 3–8, 9b, 13b, 14, 16b, 17b, 20e, 21, 26, 30c, 39, 43–45, 46b, 47, 48, 51. **No save-shape change** |
 | **T-147** · the achievements | §6 minus step 1 (the event, the closure arithmetic, the `EVENT_PATHS` entry, the 15 deeds, **the `deed-hunter.ts` extension**) | 20f, 30d, 33, 35, 41. **No save-version change** |
-| **T-148** · the capstone | §12 below. Owes: the win-rate/EV split by `opponentKind` **and** by archetype (§3.9); bids-per-hand at tier 0 vs tier 4 (§4.4); `hangoutPlay.netCredits` split by pool (§7.7); the interceptor lift split by pool (§7.6); the roster's realised share of the 280,800 cr cap (§2.6); the CONQUEROR crossing day for a dice career vs a non-dice career (§6.6) | — |
+| **T-148** · the capstone | **DELIVERED 2026-08-01 — see §12.** Every owed measurement discharged: the win-rate/EV split by `opponentKind` **and** by archetype (§12.2 — and §3.9's verdict comes back **inverted**, z = −30.76, filed as F-148-1); bids-per-hand at tier 0 vs tier 4 (§12.4 — 1.527 → 2.194 like-for-like, +43.7%, discharging F-146-2); `hangoutPlay.netCredits` split by pool (§12.5 — roaming 39.77% / roster 60.23%); the interceptor lift split by pool (§12.6 — the wronged share fell 47.50% → 26.19% and the lift over uniform ROSE 2.623× → 2.875×, which is F-137-2 getting better); the roster's realised share of the 280,800 cr cap (§12.5 — 20.24% at day 120); the CONQUEROR crossing day (§12.7 — **unreached at 120 days by every policy, dice or not**). Plus the two the task added: ladder pacing (§12.1 — rung 5 crossed by 99.50% of dice careers at median day 55) and the pool share of hands actually played (§12.3 — the gauntlet takes **57.04%**, not the roaming pool). Five findings filed and NOT fixed: **F-148-1…F-148-5** (§12.9), each with its lever named and left alone. | — |
 
 ### 11.1 The reconciliation, recorded — why T-145 is this large
 
@@ -1492,7 +1492,581 @@ already populated, has found the intended state of the tree, not a task boundary
 
 ---
 
-## §12 · T-148 capstone — reserved
+## §12 · T-148 capstone — the measured roster and ladder (2026-08-01)
 
-*(To be written by T-148, mirroring `docs/LIARS-DICE_REDESIGN.md` §16: measurements with their `n`
-and their instrument, findings filed and not silently fixed, constants reported and not retuned.)*
+### 12.0 Method — and the three limitations that bound everything after it
+
+**Read this before any headline.** Three constraints are in force, and each one narrows what a
+number below is allowed to mean.
+
+1. **Seven of the eight shipped policies play zero hands.** `planDare` (`sim/index.ts:3452`) has
+   exactly one call site: `gamblerPolicy` (`:3864`). `trader`, `trader-degraded`, `fighter`,
+   `explorer`, `veteran`, `smuggler` and `greedy` opened **0 hands** across 840 runs. So **"does a
+   typical playstyle cross 80 games in a normal career" is not measurable from this rig.** What is
+   measurable is the *maximal dice-playing* playstyle — an upper bound. §12.1 therefore reports the
+   pacing as a bound and gives the analytic read-across (`day 80/k` for a career playing `k`
+   hands/day) so a lighter playstyle can be read off the same table.
+2. **F-146-1 is in force, and it is narrower than its own summary.** `planDare` sizes the *seed*
+   off `wagerBandFor(systemId)` — the **tier-0** band — at every tier, so the raised *stake* is
+   never requested. But `resolveVisitHangout` freezes `effectiveWagerBand(systemId, tier).max` onto
+   `hand.bandMax` and `anteFor(systemId, tier)` onto `hand.ante` at open, and `headroomFor` reads
+   the frozen ceiling. **So the tier-4 whole-hand exposure ceiling and the tier-scaled ante DO move
+   in played hands, and §4.4's obligation IS measurable** — see §12.4. What is unmeasured is the
+   raised seed, and only that.
+3. **The synthesized-state caveat**, inherited unchanged from the smoke rig
+   (`docs/balance/smoke/README.md`): the fixture's mid-game tiers are synthesized starting states,
+   never balance verdicts. Nothing in §12 is measured off the fixture; it is measured off the sweep
+   and off the probe.
+
+**The gate work, in order.**
+
+| Step | Command | Result |
+| --- | --- | --- |
+| 1 | `npm run format` | **zero files changed** (prettier reported every file `(unchanged)`) |
+| 2 | 8 × `balance:sweep --label t148-roster-ladder --seeds 1000 --days 120 --policies trader,trader-degraded,fighter,explorer,veteran,smuggler,gambler,greedy --milestone-days 21,29,30,41,60,120 --shard i/8`, then `--merge` | `[balance] wrote aggregate for 8000 rows to …/docs/balance/baseline-t148-roster-ladder.json` — 8 × 1,000, 1-indexed, no short arm |
+| 3 | `balance:diff docs/balance/baseline-t137-liars-dice.json docs/balance/baseline-t148-roster-ladder.json` | `MOVED ROWS (2): fleet, gambler` · `UNCHANGED ROWS: header, explorer, fighter, greedy, smuggler, trader, trader-degraded, veteran` |
+| 4 | `balance:extract --aggregate docs/balance/baseline-t148-roster-ladder.json` | `[smoke] 4 tiers, spreads harvested, rules 09deb1e41c99bdeb / instrument c80ebc59869406bb / docs 350d78708243b524` |
+| 5 | re-pin | `balance-targets.test.ts:103`, `docs/NPC_REDESIGN.md` ×2, `docs/balance/smoke/README.md:95` |
+
+**The fingerprints did not move, and that is the honest reading.** T-145, T-146 and T-147 each
+re-extracted `tiers.json` as they landed, so the hashed corpora were already stamped at HEAD before
+this capstone ran. The "one re-extract owed for the whole milestone" is discharged as a
+**provenance re-pin onto a fresh 8,000-row aggregate** (`sweepLabel` `t137-liars-dice` →
+`t148-roster-ladder`, `gitCommit` `a876b4f7` → `c27cf3bc`, `runs` 8,000, `spreadSource`
+`harvested`), not as a new hash. Milestone-batching the capstone remains correct; it simply had
+nothing left to re-stamp.
+
+**The sweep diff isolates the milestone exactly, and the prediction was stated before it ran.**
+M4e adds no rule any non-gambler career touches — the roster is only reachable through
+`VisitHangout{venue:'dare'}`, the fifteen deeds only through `LiarsDiceSetCleared`, and the ladder
+only through `liarsDiceGamesPlayed`. The diff moves **precisely two rows, `gambler` and `fleet`**,
+and leaves the other seven **byte-identical**. In particular `createInitialState` now seeds 42
+purse keys and that perturbs **no** rng stream. Three "shape changes" are reported and are all the
+same benign kind — `byPolicy[gambler].renownRanks.GIGA_HERO` and two
+`milestones[i].npcRenownRanks.ADMIRAL` keys are *newly present* because the gambler's deed count
+rose into a rank bucket that had zero occupants before (§12.7).
+
+**The probe.** `.scratch/t148-roster-ladder.ts` — gitignored, read-only, descended from
+`.scratch/t137-liars-dice.ts`, which descends from `.scratch/t125-hangout.ts`. The M5 interceptor
+block is kept **verbatim** through both generations, which is what makes §12.6 like-for-like
+against §16.6 rather than a new number off a new instrument. Its structural additions over T-137
+are four, all counters: a hand-open snapshot joined by `handId` (the pool and the resolved
+archetype exist **only** on `state.dareHand`; `DareHandResolved` carries neither), a tier derived
+two independent ways, day-loop purse/ladder/deed tracking, and one fix — T-137's probe read
+`wagerBandFor(hand.systemId).max` at each decision point, which stopped being the hand's ceiling
+when T-146 froze `bandMax`.
+
+**`liarsDiceTier` was NOT called a third time.** §4.6 rules a third call site a bug. The probe
+derives the tier arithmetically from the **imported** `LIARS_DICE_UNLOCK_GAMES` and cross-checks it
+against the hand's frozen `dicePerSide`/`bandMax`, which turns the constraint into a free
+correctness check on the freeze-at-open behaviour.
+
+**Fidelity: 5/5 MATCH on SIX channels** against `runCampaign` on (1,`gambler`), (2,`gambler`),
+(3,`gambler`), (4,`smuggler`), (5,`veteran`) — final credits, deed count, `hangoutPlay.dares`,
+`daresWon`, `netCredits`, and **Σ of the per-hand `creditsDelta` joined by `handId`**, the sixth
+channel T-148 adds because every split below rests on that join being lossless. Over both arms:
+**join misses 0, hands left open 0, tier/freeze disagreements 0, `dareGuardHits` 0, `timeout-fold`
+0.**
+
+**The two arms.**
+
+| Arm | Shape | Hands | Purpose |
+| --- | --- | --- | --- |
+| **1** | seeds 1..120 × 120 days × 8 policies = **960 runs** | **20,477** | Identical shape to T-137's probe arm, so §12.6's interceptor figures are directly comparable |
+| **2** | `gambler` only, seeds 1..600 × 120 days = **600 runs** | **101,904** | Depth, to fill the archetype and tier cells past the `n ≥ 1,000 hands` sizing rule |
+
+**Sizing rule, stated as discipline and not post-hoc:** every reported cell carries its `n`; no rate
+is reported as `0.00` off a small arm — a zero is written `< 1/n` (NPC_REDESIGN standing amendment
+1). Arm 2's smallest archetype cell is `random` at **n = 6,577 hands**, comfortably past the
+threshold; no cell needed widening and no claim was softened. Where Arm 1 and Arm 2 both measure a
+quantity, both are given and they agree.
+
+---
+
+### 12.1 Pacing against the doubling ladder (5 / 10 / 20 / 40 / 80)
+
+Arm 2, `gambler`, **n = 600 careers × 120 days**.
+
+| Rung | Tier | Games | Careers reaching it | Crossing day (median) | p25 / p75 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 1 (5th die) | 5 | **600 / 600 (100.00%)** | **4** | 4 / 5 |
+| 2 | 2 (6th die) | 10 | 599 / 600 (99.83%) | **8** | 7 / 9 |
+| 3 | 3 (Read the Table) | 20 | 599 / 600 (99.83%) | **14** | 13 / 15 |
+| 4 | 4 (×3 ceiling) | 40 | 598 / 600 (99.67%) | **27** | 25 / 29 |
+| 5 | 5 (clamp removed) | 80 | **597 / 600 (99.50%)** | **55** | 52 / 57 |
+
+| Checkpoint | `liarsDiceGamesPlayed` (median) | p25 / p75 | Tier of the median career |
+| --- | --- | --- | --- |
+| day 21 | 31 | 29 / 33 | 3 |
+| day 30 | 45 | 42 / 48 | 4 |
+| **day 35** (Tour One's horizon) | **52** | 49 / 55 | **4** |
+| day 60 | 87 | 84 / 91 | **5** |
+| day 120 | **171** | 165 / 177 | 5 |
+
+**The verdict on the brief's own question: rung 5 does NOT go the way of Explore's band-4 — for a
+dice-playing career.** 99.50% of `gambler` careers cross 80 games, at a median of day 55, less than
+half way through the horizon. The ladder's top rung is not merely reachable; **it is where a dice
+career spends most of its life** — 53.04% of all hands played in Arm 2 were played at tier 5 (§12.4),
+and the median career finishes at **171 games, more than twice the top rung**. If anything the
+ladder is *short*, not long.
+
+**But that answer is bounded by limitation 1 and must not be read as "a typical playstyle".** The
+arm measures a career that plays `GAMBLER_MAX_DARES_PER_DAY = 2` hands on most days — measured
+**1.415 hands/day**. The analytic read-across, so the owner can price a lighter playstyle without a
+new sweep: a career playing `k` hands/day crosses rung 5 at **day `80/k`**.
+
+| Hands/day | Day rung 5 opens | Inside a 120-day career? | Inside Tour One (day 35)? |
+| --- | --- | --- | --- |
+| 1.415 (measured, maximal) | 57 | yes | no |
+| 1.0 | 80 | yes | no |
+| 0.67 (two hands every third day) | 120 | **borderline** | no |
+| 0.5 | 160 | **no** | no |
+| 0.25 | 320 | no | no |
+
+So the honest shape of the finding is: **the ladder is correctly sized for a dedicated dice
+career and out of reach for a casual one, and there is no playstyle in the shipped policy set that
+sits between those two** — every non-gambler policy plays exactly zero hands. That gap is an
+instrument gap, not a design verdict, and it is named in §12.9.
+
+---
+
+### 12.2 Win rate and EV per hand, split by pool and by archetype
+
+Arm 2, **n = 101,904 hands**. `±` is the binomial standard error on the win rate.
+
+| Cell | n hands | share | player win rate | EV / hand | bids / hand | mean ante |
+| --- | --- | --- | --- | --- | --- | --- |
+| **roaming** (pool B) | 43,779 | 42.96% | **76.91%** ± 0.20 | **+516.5 cr** | 2.127 | 88 |
+| **roster** (pool A), all | 58,125 | 57.04% | **82.44%** ± 0.16 | **+589.3 cr** | 1.881 | 89 |
+| roster · `optimal` | 42,494 | 41.70% | **84.69%** ± 0.17 | +632.2 cr | 1.801 | 91 |
+| roster · `bad` | 9,054 | 8.88% | **68.78%** ± 0.49 | +286.0 cr | 2.063 | 77 |
+| roster · `random` | 6,577 | 6.45% | **86.71%** ± 0.42 | +729.4 cr | 2.152 | 92 |
+
+Arm 1 replicates it at n = 20,477: roaming 77.85%, roster 82.41%, `optimal` 84.44%, `bad` 69.53%,
+`random` 86.39%.
+
+**The headline, against T-137.** The whole-mechanic figures moved in the direction F-146-3
+predicted and by less than its 5-seed pilot suggested:
+
+| | T-137 (M4d) | **T-148 (M4e)** |
+| --- | --- | --- |
+| player win rate | 94.66% | **80.07%** (Arm 2) · 80.48% (Arm 1) |
+| EV / hand | +737.53 cr | **+558.00 cr** (Arm 2) · +562.63 cr (Arm 1) |
+| net / seed staked | 93.70% | **61.12%** |
+| `player-fold` rate | 0.03% | 0.55% |
+| `dealer-fold` | 0 (0.00%) | 2,205 (2.16%) |
+| opening bids guaranteed true | 100.00% | **100.00%** (F-137-1 untouched, by design) |
+
+F-146-3's pilot predicted EV/hand 366 → 215. The direction is confirmed at n = 101,904; the
+**magnitude was overstated by the pilot** (the real fall is 737.53 → 558.00, −24.3%, not −41%).
+That is what a 5-seed pilot is for and why it was not banked.
+
+#### §3.9's verdict, as a number — and it comes back INVERTED
+
+§3.9 asks: *"If the roster's `optimal` seat does not measurably beat the `bad` seat, the policy is
+wrong and that is a finding, not a tuning knob."*
+
+```
+player win rate vs optimal  84.69%  (n = 42,494)
+player win rate vs bad      68.78%  (n =  9,054)
+bad − optimal = −15.92 pp,  SE = 0.52 pp,  z = −30.76
+```
+
+Arm 1 replicates the sign and the magnitude independently: −14.91 pp, SE 1.16 pp, **z = −12.88**.
+
+**The archetypes are emphatically not cosmetic — |z| is 30, not 2 — but the ordering is backwards.**
+`bad` is the hardest seat at the table and `optimal` is the softest. Worse, **`optimal` (84.69%) is
+softer than the undesigned roaming dealer (76.91%)**, so the 14 `optimal` rows and the `optimal`
+arm of the 14 `mixed` rows are, in play, the *easiest* opponents in the game. Filed as **F-148-1**.
+Nothing was tuned; `BAD_CREDULITY`, `archetypeMove` and the four mix tables sit at their shipped
+values.
+
+**The mechanism, from the same data.** `bad` challenges on `BAD_CREDULITY = 1` — "more than one
+over what I hold" — against the baseline planner's opener, which is `(own(F*), F*)`: a claim of
+dice the player is **holding**, true by construction (F-137-1, still 100.00% of openers). A
+credulous, challenge-happy `bad` therefore walks into a claim it cannot beat far *less* often than
+`optimal`'s EV comparison does, because `optimal` correctly computes that a low claim is probably
+true and **raises** instead — extending the hand into the lattice, where the player's
+raise-quantity ladder and the guaranteed-true floor keep compounding. `bad` ends hands early and
+cheaply (2.063 bids/hand, EV +286 cr); `optimal` plays them long and loses more (1.801 bids/hand,
+EV +632 cr). **The archetype policies are working exactly as specified; what they are playing
+against is F-137-1.** That is why F-148-1's recommended home is the same owner call as F-137-1 and
+not a knob on `archetypeMove`.
+
+---
+
+### 12.3 Roaming pool vs fixed roster — which one is actually played
+
+Arm 2, **n = 101,904 hands over 600 careers**.
+
+| | hands | share |
+| --- | --- | --- |
+| **roster** (the 42-seat gauntlet) | **58,125** | **57.04%** |
+| **roaming** (the unlimited-replay pool) | 43,779 | 42.96% |
+
+| Day bucket | hands | roster share |
+| --- | --- | --- |
+| 1 – 30 | 26,913 | **72.62%** |
+| 31 – 60 | 25,130 | 58.50% |
+| 61 – 120 | 49,861 | **47.89%** |
+
+**So the answer to the brief's design question is the opposite of the one it feared.** The
+unlimited-replay pool does **not** dominate play and leave the gauntlet untouched. The gauntlet
+takes the *majority* of hands, and takes nearly three quarters of them in the first thirty days.
+
+**The mechanism, read off the source rather than guessed.** `planDare` picks the **richest
+candidate**, considering roaming NPCs first and first-wins on ties (`sim/index.ts:3487-3513`).
+Roster bankrolls are authored at `3× / 5× / 8× wagerBandFor(systemId).max`, which out-banks most
+roaming captains early in a career; as the roaming NPC economy accumulates credits over 120 days
+the fixed purses lose the comparison and the roster's share decays — 72.62% → 47.89%. The purses
+are zero-sum and never regenerate, so a drained seat is skipped forever; in practice **that almost
+never happens** (median 0 seats at purse ≤ 0 by day 120, max 4 of 42), because the roster's share
+falls off for the bankroll-comparison reason long before a purse empties.
+
+**But the gauntlet is played, not completed** — and that is the finding.
+
+| Per career (n = 600) | median | p75 | max | of |
+| --- | --- | --- | --- | --- |
+| distinct seats ever seated | **31** | — | 36 | 42 |
+| seats **beaten** (`liarsDiceBeaten`) | **29** | 31 | 36 | 42 |
+| seats drained to purse ≤ 0 | 0 | — | 4 | 42 |
+| **ports cleared** (all 3 seats) | **3** | — | 8 | **14** |
+| **grand slam** (all 42) | — | — | — | **0 / 600 careers (< 0.17%)** |
+
+Careers clearing at least one port: **581 / 600 (96.83%)**. Arm 1 agrees: median 3 ports, max 8,
+grand slam 0 / 120.
+
+**What this implies for T-147's fifteen deeds, stated plainly.** A maximal dice career playing 171
+hands over 120 days beats **29 of 42 seats** and clears **3 of the 14 ports**. So of the fifteen
+completion deeds, roughly **three of the fourteen `liars_dice_cleared_<port>` rows fire for a median
+career**, and `liars_dice_grand_slam` fired **zero times in 720 careers across both arms**. The
+gap is not that the roster is unplayed — it is that hands are spread across seats by a *bankroll*
+rule that has no idea a set exists, so a career touches 31 of 42 seats and finishes none of the
+remaining eleven ports. Filed as **F-148-2**. `planDare`'s selection rule was **not** changed.
+
+---
+
+### 12.4 Tier 0 vs tier 4 — the hand shape (§4.4, discharging F-146-2)
+
+The plain tier cut, Arm 2:
+
+| Tier | n hands | share | bids / hand | mean ante | mean seed | player win rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | 3,000 | 2.94% | 1.710 | 37 | 251 | 80.10% |
+| 1 | 2,997 | 2.94% | 1.732 | 37 | 281 | 82.38% |
+| 2 | 5,990 | 5.88% | 1.841 | 36 | 289 | 83.42% |
+| 3 | 11,977 | 11.75% | 1.831 | 36 | 327 | 83.57% |
+| **4** | 23,893 | 23.45% | **2.020** | **106** | 973 | 79.62% |
+| 5 | 54,047 | **53.04%** | 2.052 | 104 | 1,157 | 78.99% |
+
+**That cut is confounded twice over and must not be quoted alone.** The tier applies to **both**
+pools, the pool mix shifts across a career (§12.3), and the seed is bankroll-driven so a later tier
+is also a richer captain. The like-for-like cell against T-137 — whose 1.19 bids/hand was measured
+on a mix that was 100% roaming and 100% tier 0 — is the **roaming column**:
+
+| Tier | roaming n | bids / hand | ante | roster n | bids / hand | ante |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | 1,119 | **1.527** | 17 | 1,881 | 1.819 | 50 |
+| 1 | 936 | 1.485 | 20 | 2,061 | 1.844 | 45 |
+| 2 | 1,366 | 1.919 | 20 | 4,624 | 1.818 | 41 |
+| 3 | 3,005 | 1.937 | 27 | 8,972 | 1.795 | 39 |
+| **4** | 9,411 | **2.194** | 96 | 14,482 | 1.907 | 113 |
+| 5 | 27,942 | 2.180 | 101 | 26,105 | 1.915 | 108 |
+
+**§4.4's obligation, discharged: within the roaming pool, tier 4 lengthens the hand from 1.527 to
+2.194 bids, +43.7%.** §4.4 predicted "roughly triples how many raises a hand can physically hold";
+the realised effect is a **44% increase in bids actually placed**, not a tripling — because
+headroom was rarely the binding constraint at tier 0 in the first place (player band-clamp rate
+**0.00%**, dealer 2.15%, §12.8's untouched `[D]` block).
+
+The two frozen quantities that carry the ×3, measured directly:
+
+| | tier 0 | tier 4 | ratio |
+| --- | --- | --- | --- |
+| mean frozen `bandMax` (per-side exposure ceiling) | 1,248 cr | 3,541 cr | **2.837×** |
+| mean frozen `ante` | 37 cr | 106 cr | **2.86×** |
+| mean `seedWager` **requested** | 251 cr | 973 cr | 3.88× *(bankroll, not the tier)* |
+
+Both frozen quantities land just under `LIARS_DICE_RAISED_CEILING_MULT = 3`; the shortfall is the
+**port mix**, not an arithmetic error — tier 4 is reached later in a career, at a different
+distribution of ports, and the ratio is of two different port samples. **Tier 5 carries
+`bandMax: null` on all 54,047 of its hands**, confirming the clamp is genuinely removed and not
+merely widened.
+
+**F-146-1 is confirmed and its scope is now exact.** The raised *stake* is never requested: the
+tier-0 and tier-4 seed columns move only because the gambler is richer, and `planDare` still asks
+for `min(wagerBandFor(systemId).max, …)`. What the ladder *does* exercise in play is the frozen
+ceiling and the ante — both measured above. Filed forward as **F-148-4**; `planDare` was not
+changed and no third `liarsDiceTier` call site was added.
+
+---
+
+### 12.5 The pool split of `hangoutPlay.netCredits` (§7.7) and the roster's realised share of the cap (§2.6)
+
+**The split §7.7 demands**, Arm 2:
+
+| pool | net to the player | share |
+| --- | --- | --- |
+| roaming (B) | 22,611,560 cr | 39.77% |
+| **roster (A)** | **34,251,375 cr** | **60.23%** |
+| total | 56,862,935 cr | — |
+
+The total reconciles **exactly** to `hangoutPlay.netCredits` (56,862,935 cr) — that equality is the
+sixth fidelity channel. Arm 1 agrees: roaming 39.83% / roster 60.17%.
+
+**The blended `hangoutPlay.netCredits` describes neither pool**, exactly as §7.7 warned: pool A
+supplies 57.04% of hands and 60.23% of the money, at a win rate 5.5 pp higher and an EV/hand 14%
+higher than pool B.
+
+**§2.6's one-time cap.** Σ of the 42 authored bankrolls, **summed from `LIARS_DICE_OPPONENTS`
+rather than copied from the prose**, is **280,800 cr** — it **AGREES** with §2.6's stated total, so
+there is no discrepancy to file.
+
+| | Σ purses remaining (median) | **realised draw** (median) | as a share of the 280,800 cr cap | mean | max |
+| --- | --- | --- | --- | --- | --- |
+| day 30 | 273,573 cr | **7,236 cr** | **2.58%** | 8,062 | 34,108 |
+| day 60 | 255,850 cr | **24,961 cr** | **8.89%** | 25,653 | 61,901 |
+| day 120 | 224,086 cr | **56,841 cr** | **20.24%** | 57,086 | 110,110 |
+
+*(The two medians in that table are medians of different orderings and do not subtract to each
+other exactly — `280,800 − 224,086 = 56,714` against the printed 56,841. The probe's percentile
+picks index `floor(0.5 n)` on each series independently, and `drawn = 280,800 − remaining` reverses
+the sort order, so the two land one rank apart. A 127 cr gap on a 280,800 cr cap; recorded rather
+than quietly reconciled.)*
+
+**A 120-day dice career does not out-earn the cap** — it draws roughly a fifth of it. Per career it
+banks 94,772 cr net from the tables, of which **57,086 cr (60.2%) is pool A's**, against a
+per-career pool-A ceiling of 280,800 cr (**20.33%**). Extrapolating the day-60→120 draw rate
+(≈ 531 cr/day) the cap would bind around **day 540** — far outside any measured horizon, but inside
+the 300-day-plus veteran horizon §6.5's own arithmetic reasons about. **The cap is real and it is
+not close to binding at 120 days.** No bankroll was touched.
+
+---
+
+### 12.6 The §7.5 / §7.6 interceptor obligation — split by pool, and it moved back
+
+Same instrument, same seeds, same days, same policies as T-125 and T-137, so this is like-for-like.
+Arm 1, `gambler`, 120 runs. Reconstruct misses **0 / 886**.
+
+| `gambler` (120 runs) | §10.4 AFTER (opposed-d20) | T-137 (Liar's Dice) | **T-148 (roster + ladder)** |
+| --- | --- | --- | --- |
+| named interceptions | 929 of 3,689 (25.18%) | 880 of 3,548 (24.80%) | **886 of 3,524 (25.14%)** |
+| inertness rate | 31.65% | 23.52% | **43.23%** |
+| mean lift `P_w / P_u` | 1.4814× | 1.6649× | **1.4029×** |
+| **chosen at disposition < 0** | 272 / 929 (**29.28%**) | 418 / 880 (**47.50%**) | **232 / 886 (26.19%)** |
+| analytic uniform expectation | 9.904% | 18.108% | **9.108%** |
+| **wronged-captain lift** | 2.956× | 2.623× | **2.875×** |
+| mean disposition of the CHOSEN captain | −1.378 | −2.453 | **−1.237** |
+| mean disposition of their POOL | −0.294 | −0.764 | **−0.330** |
+
+| fleet (960 runs) | §10.4 AFTER | T-137 | **T-148** |
+| --- | --- | --- | --- |
+| interceptions | 23,100 | 23,037 | **23,013** |
+| of which named | 5,706 (24.70%) | 5,801 (25.18%) | **5,807 (25.23%)** |
+| inertness | 69.56% | 67.83% | **70.79%** |
+| chosen at disposition < 0 | 578 / 5,706 (10.13%) | 734 / 5,801 (12.65%) | **548 / 5,807 (9.44%)** |
+| analytic uniform expectation | 4.223% | 5.326% | **3.966%** |
+| wronged-captain lift | 2.398× | 2.376× | **2.379×** |
+
+**The direction predicted by §7.6 is exactly what happened, and F-137-2 got BETTER, not worse.**
+The wronged-captain share fell 47.50% → **26.19%**, back *below* T-125's 29.28%. And **F-137-2's
+own "number to watch" — the lift over uniform, the part that measures the weighting rather than the
+roster's mood — rose 2.623× → 2.875×, back toward T-125's 2.956×.** F-137-2 warned that whoever
+made the win rate less lopsided should expect the share to fall back toward 29% and must not read
+that as a regression in the interceptor draw. That is precisely the reading here: the draw is doing
+**more** of the work than it was at T-137, not less.
+
+**The split by pool, which §7.6 requires before any of that may be read.** Two mechanisms, both
+§7.6's:
+
+- **Roster hands apply no disposition at all.** 11,785 of Arm 1's 20,477 hands (**57.55%**) are
+  roster hands and moved **zero** dispositions, by rule.
+- **The win rate fell**, so the souring arm fires relatively less often.
+
+`DispositionChanged{reason:'dare'}` fell from **13,758** (T-137, over 15,235 hands) to **7,949**
+(T-148, over **20,477** hands) — a third fewer disposition moves off a third more hands. Cross-check:
+7,949 moves over 8,692 **roaming** hands = **91.45%**; the 8.55% residual is `applyDisposition`
+returning without emitting when the target is already saturated at ±10 (`npc.ts:705`), not a
+missing event.
+
+By applied delta: `−7` 350 · `−6` 288 · `−5` 281 · `−4` 704 · `−3` 997 · `−2` 2,521 · `−1` 883 ·
+`+1` 576 · `+2` 994 · `+3` 271 · `+4` 84. **The souring arm now carries 6,024 of 7,949 (75.78%)**,
+down from T-137's 94.08%, and the warming arms 1,925 (**24.22%**), up from 5.92%. The `+1` fold arm
+fired **576 times (7.25%)**, up from 248 (1.80%) — the fold rate rose from 0.03% to 0.55%.
+
+**No disposition constant and no port's `dare` arms were touched.** `DARE_WIN_DISPOSITION` (−2),
+`DARE_LOSS_DISPOSITION` (+2), `DARE_FOLD_DISPOSITION` (+1), `INTERCEPT_GRUDGE_WEIGHT`,
+`INTERCEPT_FRIEND_WEIGHT` and `INTERCEPT_MIN_WEIGHT` all sit at the values T-125 inherited.
+
+---
+
+### 12.7 CONQUEROR — the crossing day, reported and not retuned (§6.6)
+
+**No policy reaches `RENOWN_DEED_THRESHOLDS.CONQUEROR = 38` inside 120 days — dice-playing or
+not.** Arm 1, seeds 1..120 × 120 days, all eight policies:
+
+| policy | hands played (median) | deedCount median | p75 | max | reached 38? |
+| --- | --- | --- | --- | --- | --- |
+| **`gambler`** (the dice career) | **171** | **28** | 29 | 33 | **0 / 120 (< 0.83%)** |
+| `smuggler` | 0 | 28 | 29 | 32 | 0 / 120 |
+| `explorer` | 0 | 27 | 28 | 31 | 0 / 120 |
+| **`veteran`** (control) | 0 | **20** | 21 | 22 | 0 / 120 |
+| **`trader`** (control) | 0 | **20** | 21 | 23 | 0 / 120 |
+| `trader-degraded` | 0 | 19 | 20 | 23 | 0 / 120 |
+| `fighter` | 0 | 11 | 17 | 19 | 0 / 120 |
+| `greedy` | 0 | 9 | 10 | 13 | 0 / 120 |
+
+The 8,000-row sweep agrees at n = 1,000 per policy: `gambler` deedCount median **28** (p90 31, max
+34, mean 27.893), `veteran` 20, `trader` 20. `renownRanks` for the gambler: MEGA_HERO 726,
+GRAND_MUFTI 143, **GIGA_HERO 129 (31 deeds)**, TOP_DOG 2 — **CONQUEROR: 0**.
+
+**§6.6 asked whether the ladder becomes materially easier for a dice-playing captain. Measurably
+yes, and measurably not enough to matter at this horizon.** Against T-137 the gambler's deedCount
+median moved **25 → 28** (the diff's +12.0%), which is the fifteen new deeds landing — but 28 is
+still **ten short** of 38, and the non-dice controls sit at 20. So the fifteen deeds bought the
+dice career a **+8-deed lead over a trader** where it had a +5 lead before, and CONQUEROR stayed
+out of reach for everyone.
+
+**This is a horizon mismatch, not a break, and it is reported rather than retuned.** `CONQUEROR:
+38` was sized (T-1603b, recorded in its own comment) off a **300-day** measurement in which each
+career banked all 44 authored deeds and crossed 38 on days 87–88. The slate is now **59** deeds and
+the measurement horizon here is **120 days**. Nothing in this capstone licenses moving the
+threshold — the number that would decide it is a 300-day arm this rig does not run. Filed as
+**F-148-5**; `RENOWN_DEED_THRESHOLDS` was not touched.
+
+---
+
+### 12.8 What was NOT tuned
+
+`git diff --stat` for this commit, restricted to hashed rule and instrument sources:
+
+```
+$ git diff --stat -- packages/engine/src packages/content/src \
+                     packages/sim/src/index.ts packages/sim/src/protocol.ts \
+                     packages/sim/src/balance packages/ui/src
+(no output — zero files, zero lines)
+```
+
+The **only** shipped-source line this task changed is the baseline path string in
+`packages/sim/src/__tests__/balance-targets.test.ts:103`, which that file's own header comment
+names as the single line to update on a re-pin. One assertion was **added** (never widened) in
+`packages/sim/src/__tests__/balance-smoke.test.ts`, pinning `provenance.spreadSource ===
+'harvested'` so F-146-0's silent downgrade — a `balance:extract` run that drops `--aggregate`
+defaults to `baseline-n1.json` and flips the rig to `estimated` **without moving a fingerprint** —
+fails loudly instead of surviving a milestone. The pre-existing enum assertion was left exactly as
+it is: it documents the enum's legal range, which is a different claim from the committed rig's
+state. Both files are outside all three hashed corpora (`SIM_INSTRUMENT_DIRECTORIES = ['',
+'balance']`), so neither edit can move a fingerprint.
+
+**The `it.fails` tripwire at `balance-targets.test.ts:225` was checked and stays correctly RED**:
+the trader clears the debt marker on day **21** against `[22, 30]` at **n = 990** on the new
+baseline — identical to the outgoing one (21 at n = 990). It did not invert and it was not flipped.
+`balance-combat-survival.test.ts`'s two tripwires likewise stay red.
+
+**No band, no threshold, no fingerprint and no golden was edited.** Constants left at their shipped
+values, listed so a later reader can see the retune that did not happen:
+`LIARS_DICE_UNLOCK_GAMES` `[5, 10, 20, 40, 80]` · `LIARS_DICE_RAISED_CEILING_MULT` 3 ·
+`BAD_CREDULITY` 1 · the four tone mixes (`EVERYDAY` 40/40/20, `EXOTIC` 60/20/20, `DANGEROUS`
+70/10/20, `COMIC` 20/40/40) · **all 42 authored bankrolls** · `RENOWN_DEED_THRESHOLDS.CONQUEROR` 38
+· `DARE_ANTE_BAND_FRACTION` 0.03 · `DARE_PEEK_DC` 12 · `DARE_WIN_DISPOSITION` −2 ·
+`DARE_LOSS_DISPOSITION` +2 · `DARE_FOLD_DISPOSITION` +1 · every `DARE_AI_*` · `GAMBLER_RESERVE` ·
+`GAMBLER_BANKROLL_FRACTION` · `GAMBLER_MAX_DARES_PER_DAY` 2 · all fourteen authored `wager` bands.
+
+Gate: `npm test` **exit 0 (1,918 tests, 95 files, zero failures)** · `npx tsc -b` **0** ·
+`npm run lint` **0** · `npm run format:check` **0**.
+
+---
+
+### 12.9 Findings filed, not fixed — and every lever left unpulled
+
+Per this track's house discipline, a bad number is **reported**, not tuned around. Five findings,
+each with its mechanism, its recommendation, and an explicit owner call.
+
+**F-148-1 · The archetype ordering is inverted: `optimal` is the softest seat in the game.**
+Status: REPORTED, NOT FIXED. The player wins **84.69%** against `optimal` and **68.78%** against
+`bad` (z = −30.76, n = 51,548), and `optimal` (84.69%) is softer than the *undesigned* roaming
+dealer (76.91%). Mechanism (§12.2): `optimal`'s EV comparison correctly declines to challenge the
+baseline planner's guaranteed-true opener and raises instead, extending the hand into a lattice
+where the player compounds; `bad`'s `BAD_CREDULITY = 1` makes it end hands early and cheaply. **The
+archetype policies are behaving as specified; what they are playing against is F-137-1.**
+Recommendation: **do not touch `archetypeMove` or `BAD_CREDULITY` first.** Close F-137-1 (the
+guaranteed-true opener) and re-measure; if the inversion survives that, the archetypes are the
+right place to look. **Left for an owner call — the same one F-137-1 is waiting on.**
+
+**F-148-2 · The gauntlet is played but never completed; `liars_dice_grand_slam` is unreachable
+through play.** Status: REPORTED, NOT FIXED. A maximal dice career beats **29 of 42** seats and
+clears **3 of 14** ports in 120 days; the grand slam fired **0 times in 720 careers**. Mechanism
+(§12.3): `planDare` picks the richest candidate and has no idea a *set* exists, so hands scatter
+across 31 distinct seats and finish neither the eleven remaining ports nor the roster. **Not a
+purse-depletion problem** — median 0 seats drained. Recommendation: this is a *policy* gap
+(`planDare` is the sim's baseline, not the game's rule) but it is also a real player-facing
+question — a human hunting the deed would seat deliberately, and the deed's reachability for a
+human is therefore **unmeasured by this rig**. Either give `planDare` a set-completion preference
+(an instrument change, which owes its own inert-first commit) or accept the deeds as
+deliberate-play rewards and say so in the spec. **Left for an owner call.**
+
+**F-148-3 · The roster is the softer and richer pool, which is backwards for a gauntlet.** Status:
+REPORTED, NOT FIXED. Pool A supplies 57.04% of hands, 60.23% of the money, a win rate 5.5 pp higher
+and an EV/hand 14% higher than pool B. A fixed roster of named characters with authored bankrolls
+reads as the *challenge* content; it currently measures as the *easy* content. This is F-148-1
+seen through the wallet and shares its recommendation. **Left for the same owner call.**
+
+**F-148-4 · F-146-1 confirmed, with its scope now exact: the raised ceiling is never staked into.**
+Status: REPORTED, NOT FIXED. `planDare` and `protocol.ts:869` both size the wager domain off
+`wagerBandFor(...)` — the tier-0 band — so no sweep row and no UGT career ever *requests* a tier-4
+or tier-5 stake. What the ladder does exercise is the frozen `bandMax` and the tier-scaled `ante`,
+both measured in §12.4. Consequence: **the ×3 ceiling and the removed clamp are, in play today,
+worth +43.7% bids per hand and nothing else.** Recommendation: teaching `planDare` the effective
+band needs a third `liarsDiceTier` call site, which §4.6 rules a bug — so this needs either an
+explicit §4.6 amendment or a rule that hands the effective band out without a third read. **Not
+improvised here. Left for an owner call**, and it is the natural companion to T-150's parity row.
+
+**F-148-5 · CONQUEROR = 38 is unreached at 120 days by every policy, dice or not.** Status:
+REPORTED, NOT FIXED, exactly as §6.6 instructs. The gambler's median moved 25 → 28; the controls sit
+at 20; nobody reaches 38. The threshold was sized off a **300-day** measurement against a **44**-deed
+slate and is now being read against a 120-day horizon and a **59**-deed slate. Recommendation: the
+number that would settle it is a 300-day arm, which this rig does not run. **Do not rescale the
+threshold off a 120-day capstone.** Left for an owner call.
+
+#### Levers considered and deliberately left alone
+
+Every one of these was examined against a number above and **not touched**. Naming them is the
+point: a capstone that reports a bad number and quietly moves a constant has failed the task.
+
+| Lever | Where | The number that tempted it | Why it was left |
+| --- | --- | --- | --- |
+| `LIARS_DICE_UNLOCK_GAMES` `[5,10,20,40,80]` | `content/liarsDice.ts:89` | Rung 5 opens at median day 55 and carries 53% of all hands — the top rung is the *default* state, not the endgame | Widening it would be tuning to the maximal playstyle, the only one the rig can see (§12.0 limitation 1). Owner call. |
+| `LIARS_DICE_RAISED_CEILING_MULT` = 3 | `content/liarsDice.ts:93` | ×3 buys only +43.7% bids/hand, less than §4.4 predicted | The shortfall is F-148-4's (the seed is never raised), not the multiplier's. Fixing the wrong one first would hide the real gap. |
+| `planDare`'s richest-candidate rule | `sim/index.ts:3487-3513` | Drives both the 57%/43% pool split (§12.3) and F-148-2's zero grand slams | It is the *instrument's* policy, not the game's rule; changing it re-bases every baseline in the same commit that measures it. |
+| `planDare`'s tier-0 band sizing | `sim/index.ts:3524` | F-148-4 / F-146-1 | Needs a third `liarsDiceTier` call site, which §4.6 forbids. Amendment first, edit second. |
+| `dealerMove`'s F-137-1 opener + all `DARE_AI_*` | `engine/liarsDiceRules.ts` | 100.00% of openers still guaranteed true; it is the root cause under F-148-1 and F-148-3 | §3.9 and §10.5 both explicitly scope it out of M4e. It is an owner call and always was. |
+| `BAD_CREDULITY` = 1 and `archetypeMove` | `engine/liarsDiceRules.ts:761` | The inverted ordering, z = −30.76 | The policies do what they are specified to do. Retuning them would paper over F-137-1. |
+| The four tone mixes | `content/liarsDice.ts:97-100` | `random` is only 6.45% of hands and `bad` 8.88% | Reweighting toward the *harder* seat means reweighting toward `bad`, which is only harder *because* of F-137-1. Circular. |
+| The 42-row bankroll table (280,800 cr) | `content/liarsDice.ts:107+` | Only 20.24% of the cap is drawn in 120 days | The cap is doing its job — it is a ceiling, not a target, and it is nowhere near binding. |
+| `RENOWN_DEED_THRESHOLDS.CONQUEROR` = 38 | `content/deeds.ts:289` | Unreached by every policy at 120 days | §6.6: report, do not retune. It was sized off a 300-day arm; a 120-day arm cannot overrule it. |
+| `GAMBLER_MAX_DARES_PER_DAY` = 2 | `sim/index.ts` | Sets the 1.415 hands/day that decides all of §12.1 | It is the instrument's throttle. Changing it would move the pacing answer by fiat. |
+
+---
+
+### 12.10 What this capstone leaves open — for T-150
+
+1. **F-148-1 / F-148-3 / F-137-1 are one owner call, not three.** The archetype inversion, the
+   roster-is-easier result and the guaranteed-true opener share a single root. Whoever takes it
+   should close F-137-1 first and re-run this capstone's Arm 2 before touching `archetypeMove`.
+2. **F-148-2's deed reachability is unmeasured for a human player.** The rig's `planDare` seats by
+   bankroll; a person hunting `liars_dice_grand_slam` would seat by set. The deeds may be perfectly
+   reachable deliberately and merely invisible to this instrument — that distinction needs either a
+   set-seeking probe arm or an explicit spec sentence saying the fifteen deeds are deliberate-play
+   content.
+3. **F-148-4 needs a §4.6 amendment before it needs code.** The raised ceiling cannot be staked
+   into without a third `liarsDiceTier` read, which §4.6 rules a bug.
+4. **No playstyle sits between "1.4 hands a day" and "zero".** Seven of eight policies never sit at
+   a table, so every pacing number here is an upper bound with nothing to interpolate against. A
+   casual-dice policy would make §12.1's read-across a measurement instead of an extrapolation.
+5. **The Peek and the player-side RAISE BOTH remain unmeasured**, unchanged from §16.0's
+   limitations 1 and 2 — `planDareMove` still never peeks (0 `DarePeeked` in 122,381 hands across
+   both arms) and still has no raise-both branch.
+6. **CONQUEROR needs a 300-day arm**, not a 120-day one, before anyone may rescale it.
+7. **§10's item 4 — whether the 42 get `VisitHangout` cast parity — is still D2's deferred row and
+   is T-150's to re-ask** against the finished system, now with §12.3's numbers underneath it.
+
