@@ -103,7 +103,34 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
-> **BASELINE OF RECORD RE-PINNED AT T-148 (2026-08-01)** to
+> **BASELINE OF RECORD RE-PINNED AT T-150 (2026-08-01)** to
+> `docs/balance/baseline-t150-postfix.json` — the M4a–M4f post-fix capstone. T-150 closed
+> **F-116-1** (`explorerPolicy` queued Explores on a day carrying an open recovery, a
+> guaranteed `ExplorationFailed{'recovery-in-progress'}`) and **F-123-3** (`planDare` picked
+> the richest ROAMING dealer once off the dawn purse, so the day's second hand could be a
+> zero- or sub-floor stake), so `baseline-t148-roster-ladder` no longer describes HEAD. Same
+> shape as every capstone back to `baseline-r2c-explorer-remit` (1,000 seeds × 120 days × 8
+> policies = 8,000 runs, 8 1-indexed shards through `--merge` reporting `wrote aggregate for
+> 8000 rows`, both `--milestone-days 21,29,30,41,60,120` and `--aggregate` honoured, fixture
+> re-extracted FROM it with `spreads harvested`). Fingerprints are rules
+> `30956ac30326f246` / instrument `342e248189f7ac34` / docs `a3ef073897c54166`. **rules is
+> UNMOVED BY THIS TASK** and was verified so against a worktree at the parent commit —
+> T-150 edits no engine and no content source at all, and the move away from T-148's
+> `09deb1e41c99bdeb` belongs to T-149. **instrument MOVED**, correctly: `packages/sim/src/index.ts`
+> is inside the instrument corpus, and this is exactly the "a stale fixture gets a new
+> capstone" case that forced the fixes and the capstone into one task. **docs MOVED** (raw
+> bytes; the new comments alone move it). `balance:diff` from `t148-roster-ladder` isolates
+> the two fixes exactly, and the prediction was written down BEFORE the run: **it moves
+> precisely THREE rows, `explorer`, `gambler` and `fleet`,** and leaves `fighter`, `greedy`,
+> `smuggler`, `trader`, `trader-degraded` and `veteran` byte-identical — the Explore guard is
+> a term inside `explorerPolicy`'s own loop and `planDare` has exactly one caller. NOTHING
+> WAS TUNED IN RESPONSE: `git diff --stat` over `packages/engine/src`, `packages/content/src`
+> and `packages/ui/src` is zero files and zero lines. The fresh named-pool and decay numbers
+> are written up as `docs/HANGOUT_REDESIGN.md` §11 and filed as **F-150-1** — a DESIGN
+> QUESTION for the owner, with neither `0.25` nor `DISPOSITION_DECAY_INTERVAL_DAYS` touched —
+> and §11.4 RE-ASKS the two vacated PARITY LEDGER rows with those numbers beside them.
+>
+> **PREVIOUSLY RE-PINNED AT T-148 (2026-08-01)** to
 > `docs/balance/baseline-t148-roster-ladder.json` — M4e (T-144…T-148) added the 42-seat
 > fixed roster, the 5/10/20/40/80 unlock ladder and the fifteen completion deeds, so
 > `baseline-t137-liars-dice` predates the whole progression system. Same shape as every
@@ -278,8 +305,8 @@ ruling; it is what makes the fast-forward honest).
 | Travel | real fuel, real routes, real encounters, real permanent death | shipped (N3) |
 | Combat | interdiction on the SHARED rules, one-tick — same DC, tribute, damage, salvage, retreat. **NOT `resolveCombat`**: gives up die CHOICE only, closed by N13. **GAP FOUND AT N4:** that is the verb a captain is FORCED into; the one they CHOOSE (`executeCombat`) is still the pre-N3 abstract GUNS check + flat `150 × tier`, with no interceptor, no damage and no ship loss — so the six fighters take 6.4 interdictions each and **0 deaths** | shipped (N3) · N13 closes the die gap · **`executeCombat` still owed** |
 | Shipyard | full price/gate parity via `ShipyardActor`, and since N11 the RENOWN GATE IS EXERCISED AND MEASURED: the refit ladder asks for rank-gated special equipment and is refused or served by the player's own `requiredRank` check, on the standing the captain earned — no NPC branch, **42.8 gated purchases per run at the N11 capstone**. Still **spends no die** where a player burns 1 of 5 even on a refusal (watch item **OI-9**, argued under N2's Result) | shipped (N2) · **gate shipped (N11)** · OI-9 open |
-| Explore | never for the cast. The 2026-07-30 exclusion is **VACATED**: it was ruled against an Explore that is being replaced (0.5.2). The measurement that decided it — a net credit SINK, 53.8cr/attempt against 400–640cr of fuel — stands as a fact about the OLD verb and is the reason for the redesign | **DEFERRED (owner 2026-07-30)** — re-ruled after the 0.5.2 Explore system ships |
-| VisitHangout | the cast plays a stub of it (`executeSocialize`). The 2026-07-30 lending exclusion is **VACATED** — ruled against a Hangout that exists at ONE system of 28 and is being rebuilt as a parameterised system across all 14 spaceports (0.5.2). **Three defects found while ruling it, all still true and all deferred with it:** the NPC verb is a pure faucet (+4.86cr/captain-day, no counterparty, where the player's dare is zero-sum), 95.91% of its actions resolve where there is no Hangout, and the 150cr ante locks out the destitute captains it would help most | **DEFERRED (owner 2026-07-30)** — re-ruled after the 0.5.2 Hangout system ships |
+| Explore | never for the cast. The 2026-07-30 exclusion is **VACATED**: it was ruled against an Explore that is being replaced (0.5.2). The measurement that decided it — a net credit SINK, 53.8cr/attempt against 400–640cr of fuel — stands as a fact about the OLD verb and is the reason for the redesign | **RE-ASKED at T-150 (2026-08-01) — still DEFERRED pending owner ruling.** The 0.5.2 Explore system has now shipped (T-110…T-117, owner ruling D1, T-131) and the question is restated against it with fresh per-attempt economics in `docs/EXPLORE_REDESIGN.md` §10. Unruled: owner's call, not T-150's |
+| VisitHangout | the cast plays a stub of it (`executeSocialize`). The 2026-07-30 lending exclusion is **VACATED** — ruled against a Hangout that exists at ONE system of 28 and is being rebuilt as a parameterised system across all 14 spaceports (0.5.2). **Three defects found while ruling it, all still true and all deferred with it:** the NPC verb is a pure faucet (+4.86cr/captain-day, no counterparty, where the player's dare is zero-sum), 95.91% of its actions resolve where there is no Hangout, and the 150cr ante locks out the destitute captains it would help most | **RE-ASKED at T-150 (2026-08-01) — still DEFERRED pending owner ruling.** The 0.5.2 Hangout has now shipped (14 ports, Liar's Dice, the 42-seat roster and the unlock ladder, T-132's dispatch surfacing, T-133's per-port loan band, T-149's `hasHangout` gate) and the question is restated against it — with all three deferred defects re-measured — in `docs/HANGOUT_REDESIGN.md` §11.4. Unruled: owner's call, not T-150's |
 | Crew | never (meaningless without a hand) | N13 decides |
 | Port | never — the player is the only possible port owner | **N12** |
 | Reroll | n/a without a hand | N13 decides |
@@ -308,6 +335,20 @@ N12.
 > N8 therefore waits on the 0.5.2 track as well as on N12. Storylet's exclusion is
 > UNAFFECTED — its deciding ground (the shared once-only `completed` ledger) is structural
 > and no redesign is scoped against it.
+>
+> **UPDATE — T-150 (2026-08-01): THE RE-ASK HAS NOW BEEN MADE, AND BOTH ROWS REMAIN
+> UNRULED.** The precondition this block set is met: both 0.5.2 systems are functional and
+> capstoned. T-150 re-ran the balance capstone against them and restated each row against the
+> systems AS THEY NOW ARE, with the fresh numbers beside it — Explore in
+> `docs/EXPLORE_REDESIGN.md` §10, VisitHangout (with all three defects deferred alongside it
+> re-measured) in `docs/HANGOUT_REDESIGN.md` §11.4. **T-150 deliberately rules NEITHER.**
+> Restating a question with current evidence is a build task; answering it is the owner's,
+> and this whole ledger exists because that distinction was worth writing down.
+>
+> **N8 UN-GATES ON THE OWNER'S RULING, NOT ON T-150.** No N-series task's status is changed
+> by the re-ask, and none should be until the two rows above read as ruled rather than
+> re-asked. The 0.5.2 half of N8's precondition is now DISCHARGED — the systems exist and are
+> measured; what remains is the ruling itself, plus N12, exactly as this block set out.
 
 **THE LEDGER WAS FULLY RULED FOR ONE AFTERNOON (2026-07-30); two rows are now DEFERRED.** The
 three rows that were deliberately not defaulted — "most" is only honest if every exclusion
@@ -2048,11 +2089,14 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-t148-roster-ladder.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at T-148 2026-08-01 — M4e added the
+   > **Baseline of record is `docs/balance/baseline-t150-postfix.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-150 2026-08-01 — the M4a–M4f
+   > post-fix capstone; F-116-1's recovery guard and F-123-3's roaming-dealer stake
+   > carry-forward move exactly the `explorer`, `gambler` and `fleet` rows against
+   > `t148-roster-ladder`, so `baseline-t148-roster-ladder` no longer describes HEAD).
+   > `baseline-t148-roster-ladder` (re-pinned at T-148 2026-08-01 — M4e added the
    > 42-seat roster, the unlock ladder and the fifteen completion deeds, which moves exactly
-   > the `gambler` and `fleet` rows against `t137-liars-dice`, so `baseline-t137-liars-dice`
-   > no longer describes HEAD).
+   > the `gambler` and `fleet` rows against `t137-liars-dice`),
    > `baseline-t137-liars-dice` (re-pinned at T-137 2026-07-31 — M4d replaced the
    > opposed-d20 Dare with the Liar's Dice scene, which moves exactly the `gambler` and
    > `fleet` rows against `t133-loanband`),

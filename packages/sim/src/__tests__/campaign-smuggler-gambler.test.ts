@@ -14,7 +14,9 @@ import {
 import {
   applyPlayerAction,
   createInitialState,
+  endDay,
   legalDareMoves,
+  SeededRng,
   startDay,
   wagerBandFor,
   type GameState,
@@ -349,4 +351,129 @@ describe('T-1601b smuggler & gambler policies', () => {
     expect(gambler.player.credits).toBeGreaterThan(0);
     expect(gambler.player.debt).toBe(0);
   }, 60000);
+});
+
+// ---------------------------------------------------------------------------
+// T-150 · F-123-3 — THE DEALER'S PURSE IS CARRIED FORWARD ACROSS THE DAY'S HANDS.
+//
+// APPLICABILITY WAS CHECKED, NOT ASSUMED. M4d/M4e replaced the HAND (the single
+// opposed-GUILE check became the full Liar's Dice bid/raise/challenge resolver);
+// they did not touch the DEALER PICK, which still runs once off the dawn state.
+// T-145 fixed the ROSTER half (a broke roster seat is a hard 'opponent-broke'
+// refusal) and deliberately left the ROAMING half, where the engine merely clamps
+// the seed to the dealer's purse — so `planDare`'s own parameter doc and
+// `docs/LIARS-DICE_REDESIGN.md` §16 both record the roaming case as surviving the
+// redesign. It does. T-150 threads the queued stake through the roaming pick.
+//
+// `planDare` is module-private, so both arms go through the exported policy.
+// ---------------------------------------------------------------------------
+
+/** A dawn state at the starting Hangout port with EXACTLY ONE fundable roaming
+ *  seat, every roster purse at that port zeroed, and the player's bankroll sized
+ *  so the wager lands on the port's `band.min` — which makes the dealer's purse
+ *  the only thing that can decide whether a second hand is planned. */
+function oneRoamingDealerDawn(seed: number, dealerCredits: number): GameState {
+  const fresh = createInitialState(seed);
+  const port = fresh.player.currentSystemId;
+  // bankroll = credits − GAMBLER_RESERVE (3,000); wager = max(band.min,
+  // min(band.max, ⌊bankroll × 0.1⌋)). At 3,200 credits that is ⌊20⌋ → clamped up
+  // to band.min, and the purse still funds a SECOND hand — so the player's side
+  // is never the binding constraint in either arm.
+  fresh.player.credits = 3_200;
+  fresh.player.ship.fuel = fresh.player.ship.maxFuel;
+  let seated = false;
+  for (const npc of fresh.npcs) {
+    if (npc.dead || npc.currentSystemId !== port) continue;
+    if (!seated) {
+      npc.credits = dealerCredits;
+      seated = true;
+    } else {
+      npc.credits = 0;
+    }
+  }
+  if (!seated) throw new Error('fixture: no co-located roaming captain at the starting port');
+  // Pool A out of the picture — a roster seat out-banking the field would take the
+  // chair and the arms would measure the wrong pool.
+  for (const id of Object.keys(fresh.liarsDicePurses)) fresh.liarsDicePurses[id] = 0;
+  return startDay(fresh).state;
+}
+
+const dareActions = (plan: readonly { type: string }[]) =>
+  plan.filter(
+    (a): a is { type: 'VisitHangout'; venue: string; opponentId?: string; wager?: number } =>
+      a.type === 'VisitHangout' && (a as { venue?: string }).venue === 'dare',
+  );
+
+describe('T-150 · F-123-3 · the gambler never queues a hand its dealer cannot cover', () => {
+  it('stops at one hand when the first stake would drain the only dealer below the port floor', () => {
+    for (let seed = 1; seed <= 3; seed += 1) {
+      const band = wagerBandFor(createInitialState(seed).player.currentSystemId);
+
+      // THE F-123-3 SCENARIO. The sole dealer can cover ONE minimum stake and no
+      // more: `band.min <= credits < 2 × band.min`. Before the fix the dawn read
+      // said "richer than band.min" twice and the second hand was clamped by the
+      // engine to a sub-floor (or zero) stake.
+      const starved = oneRoamingDealerDawn(seed, band.min + Math.floor(band.min * 0.6));
+      const starvedPlan = gamblerPolicy({
+        state: starved,
+        dayIndex: 0,
+        rng: new SeededRng(seed).fork('policy').fork(`day-${starved.day}`).fork('index-0'),
+      });
+      const starvedDares = dareActions(starvedPlan);
+      expect(starvedDares).toHaveLength(1);
+      expect(starvedDares[0].wager).toBeGreaterThanOrEqual(band.min);
+
+      // THE NON-VACUOUS CONTROL. Identical state, the same dealer made rich: TWO
+      // hands. This is what proves the arm above is measuring the purse rule and
+      // not some unrelated refusal (no die left, no venue, no bankroll).
+      const rich = oneRoamingDealerDawn(seed, 500_000);
+      const richPlan = gamblerPolicy({
+        state: rich,
+        dayIndex: 0,
+        rng: new SeededRng(seed).fork('policy').fork(`day-${rich.day}`).fork('index-0'),
+      });
+      expect(dareActions(richPlan)).toHaveLength(2);
+    }
+  }, 30000);
+
+  it('holds at campaign scale: every queued dare clears its port floor', () => {
+    // The PROPERTY, over real careers. `wager` is what the policy ASKS for; the
+    // engine re-clamps it against both purses, so this asserts the ask is never
+    // itself worthless — which is the whole of F-123-3.
+    let queued = 0;
+    for (let seed = 1; seed <= 5; seed += 1) {
+      let state = createInitialState(seed);
+      for (let dayIndex = 0; dayIndex < 120; dayIndex += 1) {
+        const rng = new SeededRng(seed)
+          .fork('policy')
+          .fork(`day-${state.day}`)
+          .fork(`index-${dayIndex}`);
+        const dawn = startDay(state);
+        let dayState = dawn.state;
+        const actions = gamblerPolicy({ state: dayState, dayIndex, rng });
+        const floor = wagerBandFor(dayState.player.currentSystemId).min;
+        for (const dare of dareActions(actions)) {
+          queued += 1;
+          expect(dare.wager ?? 0).toBeGreaterThan(0);
+          expect(dare.wager ?? 0).toBeGreaterThanOrEqual(floor);
+        }
+        for (const action of actions) {
+          if (action.type === 'Combat' && !dayState.encounter) continue;
+          if (action.type === 'Dare' && !dayState.dareHand) continue;
+          dayState = applyPlayerAction(dayState, action).state;
+          let dareGuard = 0;
+          while (dayState.dareHand && dareGuard < DARE_MAX_MOVES_PER_HAND) {
+            dareGuard += 1;
+            const move = planDareMove(dayState);
+            if (!move) break;
+            dayState = applyPlayerAction(dayState, move).state;
+          }
+        }
+        state = endDay(dayState).state;
+      }
+    }
+    // NON-VACUOUS: hands must actually have been queued, or the loop above asserts
+    // nothing at all.
+    expect(queued).toBeGreaterThan(0);
+  }, 180000);
 });

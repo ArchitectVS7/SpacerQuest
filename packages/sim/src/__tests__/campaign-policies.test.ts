@@ -1,12 +1,25 @@
 import { STAR_SYSTEMS } from '@spacerquest/content';
+import {
+  applyPlayerAction,
+  createInitialState,
+  endDay,
+  SeededRng,
+  startDay,
+  type GameState,
+  type RecoveryState,
+} from '@spacerquest/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  DARE_MAX_MOVES_PER_HAND,
   explorerPolicy,
   fighterPolicy,
+  planDareMove,
   reportToJson,
   runCampaign,
+  smugglerPolicy,
   traderPolicy,
   type CampaignStatsReport,
+  type SimPolicy,
 } from '../index.js';
 import { driveCompetentCampaign, longestZeroIncomeStreak } from './support/campaign-drivers.js';
 
@@ -338,4 +351,165 @@ describe('T-201 competent policies', () => {
     expect(state.player.debt).toBe(0);
     expect(state.player.credits).toBeGreaterThan(0);
   }, 30000);
+});
+
+// ---------------------------------------------------------------------------
+// T-150 · F-116-1 — THE SIM NEVER QUEUES AN UNPAYABLE EXPLORE.
+//
+// `packages/engine/src/actions/exploration.ts:52` refuses `Explore` outright with
+// `ExplorationFailed{'recovery-in-progress'}` whenever `player.recovery !== null`
+// — no die spent, no fuel burned, nothing gained. `sim/protocol.ts`'s
+// `legalActions` already withheld the verb on that condition, but `runCampaign`
+// never calls `legalActions`, so the gate was not on the path the sim takes.
+// T-150 put the mirror in the two policies that plan Explores directly.
+//
+// EVERY ASSERTION BELOW IS PAIRED WITH ITS OWN NON-VACUOUS CONTROL, in the same
+// `it`, so a precondition that quietly stopped holding can never make the guard
+// look effective for free.
+// ---------------------------------------------------------------------------
+
+/** A well-formed OPEN recovery anchored at the state's own port, in the shape
+ *  `RecoveryState` documents (content id + clock only; the payload is looked up
+ *  at payout and never stored). Three days out, so it cannot pay out at dusk. */
+function openRecovery(state: GameState): RecoveryState {
+  return {
+    outcomeId: 'derelict-hulk',
+    poiId: 'poi-t150',
+    systemId: state.player.currentSystemId,
+    startedDay: state.day,
+    dueDay: state.day + 3,
+  };
+}
+
+/** A fuelled, solvent DAWN state — the only condition under which the policy's
+ *  Explore loop runs at all, so the control arm is guaranteed to be live. */
+function fuelledSolventDawn(seed: number): GameState {
+  const initial = createInitialState(seed);
+  const primed: GameState = {
+    ...initial,
+    player: {
+      ...initial.player,
+      credits: 200_000,
+      ship: { ...initial.player.ship, fuel: initial.player.ship.maxFuel },
+    },
+  };
+  return startDay(primed).state;
+}
+
+const policyRng = (seed: number, day: number, dayIndex: number) =>
+  new SeededRng(seed).fork('policy').fork(`day-${day}`).fork(`index-${dayIndex}`);
+
+describe('T-150 · F-116-1 · explorerPolicy never queues an Explore the engine will refuse', () => {
+  // SCOPED TO THE EXPLORER, and the scope is itself a measured decision.
+  // `smugglerPolicy` carries a byte-identical Explore loop with the same missing
+  // guard; T-150 wrote that fix, measured it, and BACKED IT OUT — it re-seeds the
+  // smuggler's stream onto a pre-existing five-day stall in the SHARED
+  // `planPacifistCombat` (seed 3, days 45-49) that trips the poverty-trap
+  // invariant below. Filed as F-150-2 (docs/EXPLORE_REDESIGN.md §10) for a task
+  // allowed to move every policy fingerprint. See the note at that loop in
+  // `sim/index.ts`. `smugglerPolicy` is deliberately NOT in this table.
+  const POLICIES: [string, SimPolicy][] = [['explorerPolicy', explorerPolicy]];
+
+  for (const [name, policy] of POLICIES) {
+    it(`${name} queues no Explore while a recovery is open, and still explores when none is`, () => {
+      for (let seed = 1; seed <= 5; seed += 1) {
+        const dawn = fuelledSolventDawn(seed);
+        const rng = () => policyRng(seed, dawn.day, 0);
+
+        // THE ASSERTION THE ACCEPTANCE NAMES.
+        const blocked: GameState = {
+          ...dawn,
+          player: { ...dawn.player, recovery: openRecovery(dawn) },
+        };
+        const blockedPlan = policy({ state: blocked, dayIndex: 0, rng: rng() });
+        expect(blockedPlan.filter((a) => a.type === 'Explore')).toHaveLength(0);
+
+        // THE NON-VACUOUS CONTROL — same state, no recovery. Without this an
+        // all-false precondition (no fuel, no credits, no dice) would pass the
+        // assertion above for free and prove nothing.
+        const freePlan = policy({ state: dawn, dayIndex: 0, rng: rng() });
+        expect(freePlan.filter((a) => a.type === 'Explore').length).toBeGreaterThan(0);
+
+        // The guard is scoped to the Explore QUEUE, not to the whole policy: a
+        // recovery day must still trade, refuel, hire and remit, or the fix would
+        // have invented a poverty trap.
+        expect(blockedPlan.length).toBeGreaterThan(0);
+        expect(blockedPlan.some((a) => a.type === 'Wait')).toBe(false);
+      }
+    });
+  }
+
+  it('holds at campaign scale: no dawn state with an open recovery ever plans an Explore', () => {
+    // The PROPERTY the fix actually establishes, asserted over real careers rather
+    // than over a poked state. Deliberately NOT asserted against the engine's
+    // refusal count: these planners are pure and read the DAWN state, so a band-2
+    // find claimed by the first Explore of a day opens a recovery mid-batch and a
+    // second Explore queued in the same plan can still be refused. That residual is
+    // a bounded, documented limitation of the dawn-pure policy contract
+    // (docs/EXPLORE_REDESIGN.md §10), not a hole in this property.
+    let daysWithOpenRecovery = 0;
+    let exploresOnRecoveryDawns = 0;
+
+    for (const policy of [explorerPolicy]) {
+      for (let seed = 1; seed <= 5; seed += 1) {
+        let state = createInitialState(seed);
+        for (let dayIndex = 0; dayIndex < 120; dayIndex += 1) {
+          const rng = policyRng(seed, state.day, dayIndex);
+          const dawn = startDay(state);
+          let dayState = dawn.state;
+          const hadRecovery = dayState.player.recovery !== null;
+          const actions = policy({ state: dayState, dayIndex, rng });
+          if (hadRecovery) {
+            daysWithOpenRecovery += 1;
+            exploresOnRecoveryDawns += actions.filter((a) => a.type === 'Explore').length;
+          }
+          for (const action of actions) {
+            // The two mid-batch guards `runCampaign` and `driveFrom` both carry.
+            if (action.type === 'Combat' && !dayState.encounter) continue;
+            if (action.type === 'Dare' && !dayState.dareHand) continue;
+            dayState = applyPlayerAction(dayState, action).state;
+            let dareGuard = 0;
+            while (dayState.dareHand && dareGuard < DARE_MAX_MOVES_PER_HAND) {
+              dareGuard += 1;
+              const move = planDareMove(dayState);
+              if (!move) break;
+              dayState = applyPlayerAction(dayState, move).state;
+            }
+          }
+          state = endDay(dayState).state;
+        }
+      }
+    }
+
+    // NON-VACUOUS: recoveries must actually open in these careers, or the property
+    // above is a statement about the empty set. Band 2 is the only band that still
+    // opens one at all (owner ruling D1 moved bands 3-4 onto same-day `apCost`), so
+    // this bar is deliberately low — it asserts the sample exists, not its size.
+    expect(daysWithOpenRecovery).toBeGreaterThan(0);
+    expect(exploresOnRecoveryDawns).toBe(0);
+  }, 180000);
+
+  it('F-150-2 TRIPWIRE · smugglerPolicy still queues the refusable Explore, on purpose', () => {
+    // NOT AN ENDORSEMENT — a PIN. `smugglerPolicy`'s Explore loop is F-116-1's
+    // twin and is knowingly unguarded (full reasoning at that loop in
+    // `sim/index.ts` and in docs/EXPLORE_REDESIGN.md §10, finding F-150-2): adding
+    // the guard re-seeds the smuggler's stream onto a pre-existing five-day stall
+    // in the shared `planPacifistCombat`, which trips the poverty-trap invariant.
+    //
+    // This assertion exists so the finding cannot be quietly closed. Whoever fixes
+    // F-150-2 must DELETE this test deliberately and, in the same change, fix the
+    // combat stall that the guard exposes. A silent flip here would mean the twin
+    // was patched without its consequence being dealt with.
+    const dawn = fuelledSolventDawn(1);
+    const blocked: GameState = {
+      ...dawn,
+      player: { ...dawn.player, recovery: openRecovery(dawn) },
+    };
+    const plan = smugglerPolicy({
+      state: blocked,
+      dayIndex: 0,
+      rng: policyRng(1, blocked.day, 0),
+    });
+    expect(plan.filter((a) => a.type === 'Explore').length).toBeGreaterThan(0);
+  });
 });

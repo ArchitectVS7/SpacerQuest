@@ -1144,6 +1144,7 @@ The save-bump recommendation for T-102 to rule on is in §3d.
 | **T-114** | §5.3 pass 2 | 33 rows = band 2 exactly; questlines resolve into the real storylet system; NPC ids resolve against `ALL_NPC_PROFILES`; **F-113-D discharged** — `legacy-salvage-derelict` deleted and the derelict salvage leg re-pointed at the 14 authored derelict rows (`rich_hulk` P(≥400) 0.302 → 0.384). §5.2 corrected in place (**F-114-A**); the two effect-ceiling columns landed; zero engine lines **(delivered)** |
 | **T-117** | §2.4's draw flip, §5.1 | The dedicated engine task F-113-A asked for, inserted between T-114 and T-115. **F-113-A and F-113-B discharged** — `weight` on the band table, `drawOutcome` in the engine (two engine-source files, no others), the three-leg carrier and the `contraband` payload kind deleted, the sealed pod re-homed onto three authored band-1 lore rows (20% → 4.4% of boards). No save bump **(delivered)** |
 | **T-115** | §5.3 pass 3, §5.4 | 33 rows = bands 3 + 4; **table totals 100 and carries no `legacy-` row**; the two-part monotonicity property of §5.4; the reachability sweep at the size §5.3 computes, now finding **all 100 rows**. **F-114-B closed by authoring**, no ceiling moved; zero engine-source lines **(delivered)** |
+| **T-150** | §9.7's open finding, §10 | The post-fix re-measurement and the M4a–M4f capstone. **Delivered 2026-08-01** — `baseline-t150-postfix.json` (8,000 rows, 8 1-indexed shards, `spreads harvested`), baseline of record re-pinned in all four places, `balance:diff` moving exactly the predicted `explorer` / `gambler` / `fleet` rows. **F-116-1 CLOSED — fixed**, with the rate re-measured against the POST-D1 recovery model (band 2 only) rather than §9.7's stale 22.5%; the within-day residual named as a bounded limitation; **F-150-2** filed for the identical defect in `smugglerPolicy` (measured, deliberately not fixed — it re-seeds onto a shared-combat-planner stall). **Zero engine, content or UI lines**; the pricing lever stays an owner call and §10.4 re-asks the Explore parity row, unruled |
 | **T-116** | §5.5, §9 | Capstone after `npm run format`; re-run the ablation; append the before/after to §9. **Delivered 2026-07-30** — `baseline-t116-explore.json` (8,000 rows, `spreads harvested`), baseline of record re-pinned, ablation re-run in the documented shape. **The verdict is that Explore is STILL a net loss** (85/120 seeds richer without it, down from 101/120). **Zero constants, DCs, prices, bands, thresholds, goldens or fingerprints edited**; the lever stays an owner call, and **F-116-1** is filed, not fixed |
 
 ---
@@ -1394,6 +1395,17 @@ commit and (b) make the ablation measure a policy that never shipped rather than
 that did. T-116's mandate is measure-only. **Filed for the owner alongside the pricing
 lever.**
 
+> **CLOSED AT T-150 (2026-08-01) — FIXED. SEE §10.** The guard shipped in the commit that
+> also took the capstone, which is the commit shape this paragraph asked for.
+> **THE 22.5% ABOVE IS A PRE-T-131 NUMBER AND MUST NOT BE RESTATED AS CURRENT:** owner ruling
+> D1 moved bands 3 and 4 off calendar recoveries onto same-day `apCost` dice, so
+> `player.recovery` now governs **band 2 alone** and the rate was re-measured against the
+> current model rather than carried forward. Post-fix, `explorerPolicy` queues **0 of 101,557**
+> Explores on a recovery dawn (was 3,204 of 23,858), and the guaranteed-refusal rate against
+> queued Explores halves. §10.2 names the within-day residual the dawn-pure policy contract
+> leaves open; §10.3 files **F-150-2**, the same defect in `smugglerPolicy`, measured and
+> deliberately not fixed.
+
 ### 9.8 The five honesty caveats
 
 The three from T-010's memo, carried forward verbatim because the verdict is hedged by them:
@@ -1493,3 +1505,184 @@ routed it. Two things are now on the owner's desk instead of one:
    realised salvage per flown attempt.
 2. **F-116-1** (`explorerPolicy`'s missing recovery gate) — a sim-policy fix, cheap, and it
    should land in a commit that is allowed to move a capstone.
+   **— CLOSED AT T-150 (2026-08-01), fixed in exactly such a commit. See §10.1.**
+   Lever 1, the pricing lever, is **still open and still unpulled**; §10.4 re-asks the Explore
+   PARITY LEDGER row beside it, also unruled.
+
+---
+
+## §10 · Appendix: T-150 post-fix re-measurement
+
+**Measured 2026-08-01 by T-150, on HEAD after every fix and build task in M4a–M4f shipped
+(T-131, T-132, T-133, T-137, T-148, T-149).** This appendix closes **F-116-1**, records the
+one residual the fix deliberately leaves open, files the twin defect the fix uncovered in
+`smugglerPolicy`, and re-states the Explore PARITY LEDGER row for the owner. **It changes no
+constant.**
+
+### 10.1 F-116-1 — **CLOSED, FIXED**
+
+`explorerPolicy`'s off-lane Explore loop (`packages/sim/src/index.ts`) now carries
+`state.player.recovery === null` as a term of its `while` condition. The engine refuses the
+verb outright while a recovery is open (`packages/engine/src/actions/exploration.ts:52` →
+`ExplorationFailed{'recovery-in-progress'}`, spending neither die nor fuel), and
+`packages/sim/src/protocol.ts`'s `legalActions` already withheld it on exactly that
+condition — but **`runCampaign` never calls `legalActions`**, so that gate was never on the
+path the sim actually takes. This is the mirror landing on the path the sim takes, the same
+shape as `planDare`'s `!npc.dead` (F-121-1) and `venueOffered` mirrors.
+
+The guard is a term of the **Explore loop**, not an early return from the policy: the contract
+run, the refuel, the captain's overhead, the yard buy and `planDebtPayment` all still run on a
+recovery day. Gating the whole policy would have invented a poverty trap.
+
+#### §9.7's 22.5% IS A PRE-T-131 NUMBER AND IS NOT RESTATED
+
+**Read this before comparing anything to §9.7.** That figure was measured against the pre-D1
+band table, where bands 2, 3 and 4 all opened calendar recoveries. **Owner ruling D1 moved
+bands 3 and 4 onto same-day `apCost` dice**, so `player.recovery` now governs **band 2 alone**
+(said at the definition site, `packages/engine/src/types.ts` `RecoveryState`). The recovery
+model changed underneath the finding, so the honest thing is a fresh measurement of the
+current model, not a forward-carried number.
+
+**Method — a two-arm HEAD-vs-parent probe**, in the shape T-116 and T-125 used. `.scratch/t150-postfix.ts`
+(descended from `.scratch/t148-roster-ladder.ts`, M5 block carried verbatim) counts queued
+`Explore` actions and `ExplorationFailed{'recovery-in-progress'}` events, splitting refusals by
+whether the recovery was **already open at dawn** or was **opened mid-batch**. The BEFORE arm
+ran the identical probe inside a `git worktree` at the parent commit. Seeds 1..120 × 120 days.
+
+| `explorerPolicy` | **BEFORE** (parent) | **AFTER** (HEAD) |
+| --- | --- | --- |
+| policy-days | 14,400 | 14,400 |
+| dawns carrying an open recovery | 1,333 (9.26%) | 1,302 (9.04%) |
+| `Explore` actions queued | 23,858 | 20,515 |
+| **queued on a recovery dawn** | **3,204 (13.43%)** | **0 (0.00%)** |
+| engine refusals `recovery-in-progress` | 3,450 (**14.46%** of queued) | 1,577 (**7.69%** of queued) |
+|  — of those, DAWN-OPEN (*the finding*) | 1,778 (7.45%) | **0 (0.00%)** |
+|  — of those, WITHIN-DAY (*the residual*) | 1,672 (7.01%) | 1,577 (7.69%) |
+
+**The finding's channel is closed exactly: 3,204 → 0 queued, 1,778 → 0 refused.** The
+guaranteed-refusal rate against queued Explores halves, 14.46% → 7.69%, and **every refusal that
+remains is the residual below**, not the defect. n ≥ 20,000 queued Explores on both arms.
+
+Note the queued count itself falls (23,858 → 20,515). That is not the guard deleting work: the
+guard removes ~3,204 plans directly, and the freed dice re-phase every subsequent day, so the
+two arms are different careers from the first recovery onward. The aggregate agrees the change
+is real but small — median `finalCredits` 59,320 → 60,638 (+2.2%), `tourOneClearRate`
+0.8080 → 0.7950.
+
+### 10.2 The residual, named rather than closed
+
+**7.69% of queued Explores are still refused, and that is a bounded, deliberate limitation of
+the dawn-pure policy contract — not a hole in the fix.** These planners are pure and read the
+DAWN state. A band-2 find claimed by the **first** Explore of a day opens a 1-day recovery
+*mid-batch*, so a **second** Explore queued in the same plan can still meet it.
+
+Two closures were available and both were refused, for reasons this repo has already ruled:
+
+- **Re-planning mid-batch.** Refused for the reason T-135 gives for not re-invoking a policy
+  mid-batch (it changes every planner's contract, not just this one's).
+- **Capping the loop at one Explore per day.** Refused as a **pacing change by fiat** — the same
+  class of move `docs/LIARS-DICE-PROGRESSION_SPEC.md` §12.9 declined for
+  `GAMBLER_MAX_DARES_PER_DAY`. It would also delete legitimate multi-sweep days.
+
+The refusals cost no die and no fuel, so they do not distort the credit column; they inflate the
+*queued* denominator, which is why the table above reports both.
+
+### 10.3 Finding F-150-2 · `smugglerPolicy` carries the same unguarded loop — **FILED, MEASURED, NOT FIXED**
+
+`smugglerPolicy` has a byte-identical Explore loop with the same missing guard. **T-150 wrote
+that fix, measured it, and backed it out**, and the measurement is why:
+
+| `smugglerPolicy` (HEAD, unguarded) | value |
+| --- | --- |
+| policy-days | 14,400 |
+| dawns carrying an open recovery | 1,754 (12.18%) |
+| `Explore` actions queued | 23,192 |
+| **queued on a recovery dawn** | **3,891 (16.78%)** |
+| engine refusals `recovery-in-progress` | 4,151 (17.90% of queued) — DAWN-OPEN 2,398 (10.34%) + WITHIN-DAY 1,753 (7.56%) |
+
+So the defect is real and is *larger* here than it was in the explorer. **Adding the guard
+re-seeds the smuggler's deterministic stream onto a PRE-EXISTING stall in the SHARED
+`planPacifistCombat`:** seed 3, Sirius-16, days 45–49 — one interceptor (`anon-rim-pirate-15`)
+escalates rounds 2 → 10 while the tribute climbs 2,000 → 10,000 against a 1,071-credit purse, so
+`canPay` is false at every dawn and the policy plays **five consecutive `run` stances**. A `run`
+is not an income action, so `longestZeroIncomeStreak` reaches 5 and the poverty-trap invariant
+in `campaign-smuggler-gambler.test.ts` goes red.
+
+**The stall is not an Explore problem.** `smugglerPolicy` returns at
+`if (state.encounter) return withReroll(state, planPacifistCombat(...))` long before the Explore
+loop is reached, and `player.recovery` is `null` on all five days. That test file's own header
+already records the same pathology at seed 19 of the T-1601b 300-day sweep; the guard only moves
+which seed meets it.
+
+**Why it is not fixed here.** The root is `planPacifistCombat`, shared by the trader, explorer,
+veteran, smuggler and gambler. Touching it moves **every** policy's fingerprint, which would
+destroy this task's containment claim (§11.5 of `docs/HANGOUT_REDESIGN.md`) and invalidate the
+capstone taken in the same commit. **Filed for a task that is allowed to move every fingerprint,
+and pinned so it cannot be closed by accident:** `campaign-policies.test.ts` carries an explicit
+F-150-2 tripwire asserting the smuggler still queues the refusable Explore, which whoever fixes
+it must delete deliberately — in the same change that deals with the combat stall.
+
+### 10.4 The Explore PARITY LEDGER row, RE-ASKED — **still UNRULED**
+
+`docs/NPC_REDESIGN.md`'s ledger row for **Explore** has read *"DEFERRED (owner 2026-07-30) —
+re-ruled after the 0.5.2 Explore system ships"* since the day it was vacated. **The 0.5.2 system
+has now shipped and been capstoned** (T-110…T-117 built it, owner ruling D1 repriced bands 3–4,
+T-131 re-measured it), so the precondition is met and the question is restated here with current
+numbers beside it.
+
+**The question, restated against the system as it now is.** Should the 30 NPCs perform the
+`Explore` verb? The original exclusion was ruled on a measurement of the OLD verb — **53.8cr
+gross salvage per attempt against 400–640cr of fuel**, a pure credit sink, and removing it from
+`explorerPolicy` left that policy *richer*. What has changed underneath that ruling:
+
+- **The outcome table is now 100 authored rows** across five bands, not a hard-coded type
+  ternary with a three-leg loot branch (§2, T-110/T-113/T-114/T-115/T-117).
+- **Bands 3 and 4 no longer defer their payout at all** (owner ruling D1): they cost 2 and 3
+  EXTRA dice at claim and resolve same-day. §9.6's 76% forfeiture leak — the single biggest
+  reason the old verb measured as a sink — is retired by construction.
+- **Band 2 is the only band that still opens a calendar recovery**, and at HEAD it does so on
+  **9.04% of explorer dawns** with a mean of ~1 day.
+- **The per-attempt price is UNCHANGED.** `EXPLORATION_FUEL_COST` is still **80** and
+  `EXPLORATION_NAV_DC` is still **12**. The R-series pricing lever named in §9.10 is still open
+  and still unpulled.
+
+**The evidence to rule on, at HEAD** (`baseline-t150-postfix.json`, 1,000 seeds × 120 days):
+`explorer` finishes at a median **60,638cr** with a `tourOneClearRate` of **0.795** and
+**26.53** deeds — a solvent, competent career. Against that: the verb still costs 80 fuel
+(≈400–640cr) per attempt, and **7.69% of what the fixed policy queues is still refused** by the
+within-day residual above.
+
+**Three things the owner would be ruling on, stated separately because they can be ruled
+separately:**
+
+1. **Should the cast Explore at all?** The verb is now a real content system with 100 rows, so
+   "there is nothing there to find" is no longer a reason. But a cast that Explores draws from
+   the same `EXPLORE_OUTCOMES` table the player draws from, and several rows are **unique**
+   (questlines, NPC introductions, Signal fragments) — so cast participation would be
+   **SUBTRACTIVE in the same way Storylet is**, which is the exact ground on which Storylet's
+   exclusion was ruled and *stands*. That parallel is the strongest argument in the file for
+   excluding Explore again, and it did not exist when the row was first ruled.
+2. **If yes, at what fidelity?** The parity ruling forbids a private parallel model, so a
+   cast Explore must go through `resolveExploration` / `drawOutcome` / `claimOutcome` with an
+   actor parameter — not an abstract credit roll. That is an N-series build, not a content pass.
+3. **If yes, does the cast also carry `player.recovery`?** `RecoveryState` is a single-slot
+   player field. A cast that opens recoveries needs the same slot per captain, which is a
+   **save-shape change** and owes a migration and a round-trip test.
+
+**LEFT UNRULED. This is the owner's call, not T-150's.** T-150's charter is to measure and hand
+the ruling back; ruling it here is what would un-gate **N8**, and that is not a build task's move
+to make. See `docs/HANGOUT_REDESIGN.md` §11.4 for the companion re-ask of the VisitHangout row,
+which is deferred on the same terms.
+
+### 10.5 What was NOT changed
+
+**No constant, DC, price, band weight, threshold, golden or fingerprint was edited.**
+`EXPLORATION_FUEL_COST` is still **80**, `EXPLORATION_NAV_DC` is still **12**,
+`EXPLORE_VALUE_BANDS`'s weights, `recoveryDays` and `apCost` are untouched, and
+`git diff --stat` over `packages/engine/src`, `packages/content/src` and `packages/ui/src`
+shows **zero files and zero lines**. `CURRENT_SAVE_VERSION` is unmoved and **no migration is
+owed** — both fixes are sim-policy-only and touch no save shape.
+
+The only shipped-source change is the one term added to `explorerPolicy`'s loop condition (plus
+`planDare`'s roaming carry-forward, which belongs to `docs/HANGOUT_REDESIGN.md` §11.2), the
+baseline-of-record re-pin, and new tests.

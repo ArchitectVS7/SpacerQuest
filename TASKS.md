@@ -1937,11 +1937,21 @@ Out of scope for 0.5.2 — recorded so a coder does not re-scope them in:
 - **Whether NPCs interact with Explore or the Hangout.** The owner's explicit sequencing: the
   systems become functional first, and only then is the cast question asked. This gates
   re-ruling the two vacated PARITY LEDGER rows, and therefore gates **N8**.
+  **UPDATE (T-150, 2026-08-01): the sequencing precondition is MET and the re-ask has been
+  MADE.** Both systems are functional and capstoned, and T-150 restated each row against them
+  with current numbers (`docs/HANGOUT_REDESIGN.md` §11.4, `docs/EXPLORE_REDESIGN.md` §10.4).
+  **Both rows remain UNRULED — N8 un-gates on the owner's ruling, not on T-150.**
 - **The three Hangout defects — status updated at the T-130 gate (2026-07-31):** the missing
   `hasHangout` check is now SCHEDULED (T-149, the fiction fix only); the faucet's mint stays
   deferred by D3's ruling (<0.3% of NPC wealth, not worth breaking `resolveNpcDay`'s
   single-NPC-mutation model); the 150cr ante lockout stays deferred by explicit owner ruling
   (see the D3 log row). The two deferred halves ride the cast question above, re-asked at T-150.
+  **RE-MEASURED AT T-150 (2026-08-01) and all three still open:** the `hasHangout` gate shipped,
+  but it fixed the FICTION and not the VERB — the off-Hangout Socialize share is unmoved at
+  **37.97%**; the mint re-measures at **+3.44cr/captain-day**, i.e. **0.22%** of terminal NPC
+  wealth, so D3's "<0.3%" verdict stands; and the 150cr ante locks out **17.49%** of live
+  captain-days, five-sixths of that from the undocumented inline `+ 50` rather than the named
+  `NPC_BROKE_CREDITS` floor. All three ride the still-unruled cast question.
 - **The rest of the N-series: N12 (NPCs buy ports), N13 (dawn-hand parity), N5 (proficiency),
   N8 (re-pin).** N12's FIRST TASK is already done, so that step is ready to resume when this
   track ends.
@@ -1973,9 +1983,17 @@ already answered below.
 | **D2** | Re-rule the VisitHangout row | **CLOSED (owner, 2026-07-31) — replace the Dare with Liar's Dice, scheduled as two milestones (M4d: T-134-T-137 base game; M4e: T-144-T-148 roster/archetypes/unlock ladder)** | `executeSocialize` (NPC econ) confirmed NOT the same mechanic as the player's Dare. Bakeoff (4 reviewers, two rounds) on the current single-check Dare found it empirically favorable (57.3% win rate, +120-159cr EV/dare) and mechanically thin. **Owner rejected the "fix the check" path** ("kind of dumb") and chose **Liar's Dice**. Base ruleset in M4d (4d6/side, raise-face/quantity/both, challenge, fold, exploit closed by requiring fixed quantity + adjacent-face-only raises). A SECOND bakeoff round on top of that added: opponent AI archetypes (optimal/bad/random/mixed) + a new 3-per-port fixed opponent roster (42 total, beat-once, feeds new port-clear/game-clear achievements via the existing Deed/Registry system) layered alongside the existing 30 roaming `NPC_PROFILES` captains (unchanged, unlimited replay, not tracked); a doubling unlock ladder (5/10/20/40/80 games) for 5th die → 6th die (hard cap six) → "Read the Table" → bigger bounded bets → unlimited bets (band-clamp removed, solvency clamp kept). **Wildcards (ones-as-wild) are OUT OF SCOPE, permanently** — found to reopen a WORSE version of the already-closed exploit (a held 1 gives a guaranteed floor on every face at once, ~3.5x more common, unbounded in scope) that the existing fix does nothing against; replaced in the unlock ladder by **"Read the Table" — CONFIRMED by owner, 2026-07-31** (see the archetype before sitting down — mathematically inert, pays off the new archetype system; the second-Peek alternative was not chosen). "Ports get more dangerous with distance" clarified: no rim system has a Hangout today, so ante scaling rides each port's own already-authored wager band, not a literal distance formula. **GUILE-as-investable is CLOSED OUT OF THIS ITEM** — the owner reframed it as a bigger question (should ANY player stat be modifiable by equipment, not just GUILE) and asked for its own design track; see the new milestone **M6** below, not part of D2. **The ledger row ITSELF (does the cast get VisitHangout?) stays DEFERRED (owner, 2026-07-31)** — same sequencing as D1: the cast question is re-asked at T-150, against the Liar's Dice system rather than the stub |
 | **D3** | The NPC Hangout faucet | **CLOSED — scheduled as T-149 (confirmed present, M4f)** — ship the `hasHangout` gate now (`executeSocialize`, one boolean read + a re-flavored non-Hangout fallback line, zero save impact); defer closing the mint itself — three independent reviewers converged that it's <0.3% of NPC wealth by day 120 and not worth the architectural cost of breaking `resolveNpcDay`'s single-NPC-mutation model. **The review's THIRD sub-decision here — the 150cr socialize ante (`npc.ts:1831`'s inline `+ 50` over `NPC_BROKE_CREDITS = 100`) that locks destitute captains out — is explicitly DEFERRED with the cast question (owner, 2026-07-31)**, same class as the mint; it rides the parity-ledger re-ask at T-150, not any M4 task |
 | **D4** | The manifest version | **DONE** | Stale "stays at 0.5.1" sentence removed from `TASKS.md`, `docs/EXPLORE_REDESIGN.md`, `docs/HANGOUT_REDESIGN.md`. Ruling recorded above: no 0.5.3, no tag, until D1/D2/D3/D6/D7 close |
-| **D5** | Pull T-125's four levers | **CLOSED — extracted as T-150 (M4g)** | Of the four, two are already discharged by other tasks (F-101-4 by T-132, the faucet by T-149). The remaining two (F-116-1, F-123-3) plus a fresh named-pool-gate/decay-interval measurement are bundled into T-150, gated after every other fix task so it can't run before the tree is actually green — the original "hold until green" deferral, now a dependency instead of an open-ended note |
+| **D5** | Pull T-125's four levers | **CLOSED — extracted as T-150 (M4g); DISCHARGED at T-150, 2026-08-01** | Of the four, two are already discharged by other tasks (F-101-4 by T-132, the faucet by T-149). The remaining two (F-116-1, F-123-3) plus a fresh named-pool-gate/decay-interval measurement are bundled into T-150, gated after every other fix task so it can't run before the tree is actually green — the original "hold until green" deferral, now a dependency instead of an open-ended note. **T-150 delivered (2026-08-01): F-116-1 and F-123-3 both FIXED with tests; the named-pool-gate/decay measurement re-filed as F-150-1 for a fresh owner ruling with NEITHER constant touched; a twin defect found and filed as F-150-2. All four levers now accounted for.** |
 | **D6** | The Hangout UI surfacing job (F-101-4/5/6, F-123-1) | **SCHEDULED — T-132** | Owner: yes, fix the UI. One task, not four, per the review's own recommendation — F-101-4 (meet/befriend/insult dispatch), F-101-5 (dead-NPC filter), F-101-6 (prose finally rendered), F-123-1 (loan desk gated on `venueOffered`, both notice helpers gain a `'venue-not-offered'` arm) |
 | **D7** | Arcturus-6's credit desk (F-123-2) | **DECIDED (owner, 2026-07-31) — scheduled as T-133** | **Confirmed direction: keep per-port variation, via a per-port loan principal band** (`PortHangout.loanBand`, mirroring the Dare's `wager` band) — Arcturus-6 keeps its desk, just a tighter one. **Logged alternative, not chosen (for the record, per owner's ask):** a per-port interest-rate multiplier on `LOAN_DAILY_RATE`, instead of or alongside the band — not ruled out, just not built first (the principal band reuses the `wager`-band pattern byte-for-byte, lowest engine risk). Revisit after this playtest if a tight band alone doesn't read as enough distinction |
+
+**Findings filed BY T-150 and handed to the owner (2026-08-01) — the open items this track ends on:**
+
+| # | Finding | Status | Where |
+| --- | --- | --- | --- |
+| **F-150-1** | The **0.25 named-pool interceptor gate** (`actions/travel.ts`) and **`DISPOSITION_DECAY_INTERVAL_DAYS = 3`** (`content/disposition.ts`), read together now that the faucet is gated, the UI speaks, Explore's recovery model changed and the Dare is Liar's Dice | **OPEN — a DESIGN QUESTION for the owner, not a tuning knob (T-125's own ruling). NEITHER CONSTANT CHANGED BY T-150.** Measured: named share **25.07%** vs the analytic 25.00%, inertness **71.52%**, wronged-captain lift **2.358×**; the cast sits at exactly 0 on **96.52%** of live captain-days and a standing survives a **median 3 days**, with decay outrunning interaction **1.53 : 1** — so widening the gate alone would mostly buy more *inert* draws | `docs/HANGOUT_REDESIGN.md` §11.3, with a levers-not-pulled table |
+| **F-150-2** | `smugglerPolicy` carries a byte-identical copy of F-116-1's unguarded Explore loop (**3,891 of 23,192 queued on a recovery dawn**) | **OPEN — the fix was written, MEASURED, and deliberately backed out.** It re-seeds that policy's stream onto a pre-existing five-day stall in the SHARED `planPacifistCombat`, tripping the poverty-trap invariant; root-fixing that means editing a planner five policies share, which would move every fingerprint and destroy T-150's containment claim. **Pinned by an explicit tripwire test** so it cannot be closed by accident | `docs/EXPLORE_REDESIGN.md` §10.3 |
+| **The two PARITY LEDGER rows** | **Explore** and **VisitHangout**, RE-ASKED against the systems as they now are, with fresh numbers beside them and the three VisitHangout-deferred defects re-measured (faucet **+3.44cr/captain-day = 0.22%** of terminal NPC wealth; off-Hangout Socialize **37.97%** — T-149 fixed the FICTION, not the VERB; the 150cr ante locks out **17.49%** of live captain-days) | **STILL DEFERRED — UNRULED. Owner's call, not a build task's.** This is what un-gates **N8**; no N-series task's status was changed | `docs/HANGOUT_REDESIGN.md` §11.4, `docs/EXPLORE_REDESIGN.md` §10.4, and the two ledger rows in `docs/NPC_REDESIGN.md` |
 
 **Non-D findings from the same review, tracked here too since they're part of the same gate:**
 **V-1** (`docs/VERSIONING.md:229` stale "currently `12`") — **CLOSED, 2026-07-31.** One-line fix to
@@ -3009,7 +3027,7 @@ original four levers, two are ALREADY discharged by other tasks in this same set
 (surfacing befriend/meet/insult) by **T-132**, and **the NPC Hangout faucet** by **T-149** — so
 only two remain live here.
 
-### T-150 · Re-measure post-fix, and put the named-pool gate to the owner — `status: TODO` · `coder: opus` · `after: T-131, T-132, T-133, T-137, T-148, T-149`
+### T-150 · Re-measure post-fix, and put the named-pool gate to the owner — `status: DONE` · `coder: opus` · `after: T-131, T-132, T-133, T-137, T-148, T-149`
 
 Gated after every fix/build task in M4a–M4f so it cannot run until the tree actually reflects all
 of them — this IS the "hold until green" deferral D5 named, just expressed as a dependency instead
@@ -3042,6 +3060,115 @@ F-123-3 is either fixed against the real (possibly new) dealer-selection code pa
 closed as moot with the reasoning stated, not silently dropped; a fresh capstone dataset exists and
 the named-pool/decay question is restated with current numbers, still unruled (owner's call, not
 this task's); no constant is retuned to chase a target; gate green.
+
+**Result.** Delivered as **two fixes, one 8,000-row capstone and three write-ups**:
+`docs/EXPLORE_REDESIGN.md` **§10** and `docs/HANGOUT_REDESIGN.md` **§11** (both dated 2026-08-01),
+plus the ledger and baseline updates in `docs/NPC_REDESIGN.md`.
+
+**What was delivered.**
+1. **F-116-1 — CLOSED, FIXED.** `explorerPolicy`'s Explore loop now carries
+   `state.player.recovery === null` as a term of its `while` condition, mirroring the engine's
+   `ExplorationFailed{'recovery-in-progress'}` refusal onto the path `runCampaign` actually takes
+   (`sim/protocol.ts`'s `legalActions` already had the gate, but the runner never calls it).
+   Scoped to the Explore QUEUE, not the policy, so a recovery day still trades, refuels, hires and
+   remits. **§9.7's 22.5% was NOT restated** — owner ruling D1 moved bands 3-4 off calendar
+   recoveries, so `player.recovery` now governs band 2 alone and the rate was re-measured against
+   the current model: **3,204 of 23,858 queued Explores landed on a recovery dawn before, 0 of
+   101,557 after**, and the guaranteed-refusal rate against queued Explores halves 14.46% → 7.85%.
+2. **F-123-3 — CLOSED, FIXED, and applicability CHECKED rather than assumed.** It was NOT moot:
+   M4d/M4e replaced the HAND, not the DEALER PICK, and both T-145's own parameter doc and
+   `docs/LIARS-DICE_REDESIGN.md` §16 record the ROAMING case as surviving the redesign. Fixed by
+   the finding's option A — `planDare` takes a `committedStakes` map and the roaming loop reads the
+   dealer's purse net of stakes already queued against them, the same worst-case convention the
+   caller applies to the player's own purse. Option B (`GAMBLER_MAX_DARES_PER_DAY`) was refused as
+   a pacing change by fiat, per PROGRESSION §12.9.
+3. **The capstone.** `docs/balance/baseline-t150-postfix.json`, baseline of record re-pinned in all
+   four places.
+
+**The gate work, in order.** `npm run format` FIRST (every file unchanged; **not** re-run
+afterwards — only markdown was touched after the capstone, and markdown is in no fingerprint
+corpus) → 8 **1-indexed** shards → `--merge` printing **`wrote aggregate for 8000 rows`** →
+`balance:diff` with the moved set **written down before the run** → one `--aggregate` extract
+printing **`spreads harvested`**. **The prediction held exactly: MOVED = `{explorer, gambler,
+fleet}`; `trader`, `trader-degraded`, `fighter`, `veteran`, `smuggler` and `greedy` came back
+byte-identical.** Fingerprints, verified against a `git worktree` at the parent commit rather than
+asserted: **rules `30956ac30326f246` UNMOVED** (this task edits no engine and no content source;
+the move away from T-148's recorded value belongs to T-149), **instrument
+`c80ebc59869406bb` → `342e248189f7ac34` MOVED** (`sim/src/index.ts` is inside the instrument
+corpus — the "stale fixture gets a new capstone" case that forced the fixes and the capstone into
+one task), **docs MOVED** (raw bytes; informational, never a failure).
+
+**What it measured.** Named-pool share **25.07%** against the analytic 25.00%; inertness
+**71.52%** of named draws; wronged-captain share **9.61%** against a uniform **4.075%** — a
+**2.358×** lift, all like-for-like against HANGOUT §10.4's AFTER column and unmoved by everything
+M4a–M4f shipped. Decay: the cast sits at exactly 0 on **96.52%** of live captain-days, a nonzero
+standing survives a **median of 3 days** (one decay interval), and decay outruns interaction
+**1.53 : 1**. The `gambler` arm is the existence proof the system is reachable — 41.46% inertness
+and a 2.806× lift. Zero-stake hands: **0 of 101,791**, reported as **`< 1/101,791`** and never as
+0.00%, with the honest finding recorded that **T-145's two-pool candidate set, not this fix, is
+what collapsed the rate** — the fix is preventive and structural, and `expectedValuePerDare` did
+not measurably move.
+
+**Findings filed, not fixed.**
+- **F-150-1** (`HANGOUT §11.3`) — the **0.25 named-pool gate** and **`DISPOSITION_DECAY_INTERVAL_DAYS
+  = 3`** read together, with the numbers above and a **levers-not-pulled table** in PROGRESSION
+  §12.9's shape (four levers, each against the number that tempted it). **Stated as a DESIGN
+  QUESTION, not a tuning knob — T-125's own ruling. NEITHER CONSTANT CHANGED.**
+- **F-150-2** (`EXPLORE §10.3`) — `smugglerPolicy` carries a byte-identical unguarded Explore loop
+  (**3,891 of 23,192 queued on a recovery dawn, 17.90% refused**). The fix was written, **measured,
+  and backed out**: it re-seeds that policy's stream onto a PRE-EXISTING five-day stall in the
+  SHARED `planPacifistCombat` (seed 3, Sirius-16, days 45-49 — one interceptor escalating rounds
+  2 → 10 while the tribute climbs 2,000 → 10,000 against a 1,071cr purse, five consecutive `run`
+  stances), which trips the poverty-trap invariant. The stall is not an Explore problem — the
+  policy returns at `if (state.encounter)` long before that loop. Root-fixing it means editing a
+  planner five policies share, which would move every fingerprint and destroy this task's own
+  containment claim. **Pinned by an explicit tripwire test so it cannot be closed by accident.**
+- **The two PARITY LEDGER re-asks** (`HANGOUT §11.4`, `EXPLORE §10.4`) — restated against the
+  systems as they now are, with the three defects deferred alongside the VisitHangout row
+  re-measured: the faucet is **+3.44cr/captain-day** and **0.22%** of terminal NPC wealth (D3's
+  "under 0.3%" verdict re-measures and stands); the off-Hangout Socialize share is **37.97%**, i.e.
+  **T-149 fixed the FICTION, not the VERB**; and the **150cr ante** locks out **17.49%** of live
+  captain-days, five-sixths of that from the undocumented inline `+ 50`. **Both rows LEFT UNRULED —
+  owner's call, not this task's.**
+
+**D5 is discharged.** All four of its levers are now accounted for: F-101-4 shipped at T-132, the
+NPC faucet was gated at T-149, and the remaining two (the 0.25 gate + decay interval, and F-123-3)
+are respectively re-filed as F-150-1 for a fresh owner ruling and fixed here. **N8 un-gates on the
+owner's ruling, not on this task** — no N-series task's status was changed.
+
+**What was NOT tuned.** `git diff --stat` over `packages/engine/src`, `packages/content/src` and
+`packages/ui/src` is **zero files, zero lines** (asserted, not claimed). The only shipped-source
+diff is `packages/sim/src/index.ts`, the baseline path re-pin and new tests.
+`CURRENT_SAVE_VERSION` is unmoved and **no migration is owed** — both fixes are sim-policy-only and
+touch no save shape, stated explicitly because the absence of a migration is a claim here, not an
+omission. Two `campaign-degraded.test.ts` fingerprints were re-pinned (`explorer`, `gambler`) with
+a dated entry naming the cause of each and the five rows that did not move — never by widening an
+assertion. The three known-red `it.fails` tripwires were not touched and are still correctly red.
+
+**Gate:** `npm test` **exit 0 — 1,929 tests, 95 files, zero failures** · `npx tsc -b` 0 ·
+`npm run lint` 0 · `npm run format:check` 0.
+
+**Deliverable grepped at its named call site:** `grep -n "player.recovery" packages/sim/src/index.ts`
+→ the term inside `explorerPolicy`'s Explore loop; `grep -n "committedStakes" packages/sim/src/index.ts`
+→ `planDare`'s signature, its roaming loop and the `gamblerPolicy` call site;
+`grep -n "^## §11" docs/HANGOUT_REDESIGN.md` and `grep -n "^## §10" docs/EXPLORE_REDESIGN.md` → the
+two appendices; `grep -rn "baseline-t150-postfix" packages docs` → the test path re-pin plus the
+three doc pins and the aggregate; `jq '.provenance' docs/balance/smoke/tiers.json` →
+`sweepLabel t150-postfix`, `runs 8000`, `spreadSource harvested`.
+
+**Delivered (2026-07-31):** Both fixes from T-125's four-lever list shipped with tests —
+`explorerPolicy` now halts its Explore queue on `state.player.recovery`, and `planDare`'s
+roaming dealer pick reads a `committedStakes` map instead of a stale dawn-state purse — plus a
+fresh 8,000-row post-fix capstone (`docs/balance/baseline-t150-postfix.json`, re-pinned in all
+four places) that restates the named-pool/decay numbers and the two vacated PARITY LEDGER rows
+for a fresh owner ruling, and files a twin defect (F-150-2) discovered along the way. Deliberate
+scope boundary: the 0.25 named-pool gate and the 3-day decay interval are measured and reported,
+never retuned — T-125 ruled that a design question, not a tuning knob, and this task does not
+relitigate it; F-150-2's own root fix (editing the five-policy-shared `planPacifistCombat`) was
+written, measured, and explicitly backed out rather than shipped, to avoid moving every other
+policy's fingerprint.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `TASKS.md` (T-131/T-137/T-148/T-149/T-150 blocks + D1/D2/D3/D5 · attempts=1/4.
 
 ---
 

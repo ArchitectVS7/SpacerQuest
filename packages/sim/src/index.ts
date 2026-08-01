@@ -3369,6 +3369,33 @@ export const smugglerPolicy: SimPolicy = ({ state }) => {
   const exploreFloor = actions.some(isIncomeAction)
     ? SMUGGLER_EXPLORE_RESERVE
     : SMUGGLER_IDLE_EXPLORE_RESERVE;
+  // F-150-2 · THIS LOOP IS F-116-1's TWIN, AND IT IS DELIBERATELY LEFT UNGUARDED.
+  // It is byte-identical in shape to `explorerPolicy`'s Explore loop and carries
+  // the same missing `state.player.recovery === null` term, so it too queues
+  // Explores the engine will refuse with `ExplorationFailed{'recovery-in-progress'}`.
+  //
+  // T-150 WROTE THE FIX, MEASURED IT, AND BACKED IT OUT. The guard is correct on
+  // its own terms and costs nothing, but adding it re-seeds the smuggler's
+  // deterministic stream, and seed 3 then lands on a PRE-EXISTING stall in the
+  // SHARED `planPacifistCombat`: at Sirius-16, days 45-49, one interceptor
+  // (`anon-rim-pirate-15`) escalates rounds 2 → 10 while the tribute climbs
+  // 2,000 → 10,000 against a 1,071-credit purse, so `canPay` is false every dawn
+  // and the policy plays five consecutive `run` stances. A `run` is not an income
+  // action, so `longestZeroIncomeStreak` hits 5 and the poverty-trap invariant in
+  // `campaign-smuggler-gambler.test.ts` goes red.
+  //
+  // THE STALL IS NOT AN EXPLORE PROBLEM. `smugglerPolicy` returns at
+  // `if (state.encounter) return withReroll(state, planPacifistCombat(...))` long
+  // before this loop is reached, and `player.recovery` is null on all five days.
+  // This file's own header already records the same pathology at seed 19 of the
+  // T-1601b 300-day sweep; the guard merely moves which seed meets it.
+  //
+  // WHY IT IS NOT FIXED HERE. The root is `planPacifistCombat`, which is shared by
+  // the trader, explorer, veteran, smuggler and gambler — touching it moves EVERY
+  // policy's fingerprint and would destroy this task's containment prediction (that
+  // only the policies it edits may move) and the capstone taken in the same commit.
+  // Filed as F-150-2 in `docs/EXPLORE_REDESIGN.md` §10 for a task that is allowed
+  // to move every fingerprint, and NOT silently dropped.
   while (
     state.player.credits + borrowed - refuelCost - repaid - overhead.cost > exploreFloor &&
     projectedFuel >= EXPLORATION_FUEL_COST &&
@@ -3465,6 +3492,30 @@ function planDare(
    * credits the previous stake would leave behind.
    */
   committedRosterIds: ReadonlySet<string> = new Set(),
+  /**
+   * F-123-3 (docs/HANGOUT_REDESIGN.md §7, fixed at T-150) · THE ROAMING HALF of
+   * the same carry-forward, and the half T-145 deliberately left. Credits this
+   * day's already-queued hands could take OFF each dealer, keyed by NPC id.
+   *
+   * STILL APPLICABLE AFTER THE LIAR'S DICE REDESIGN — checked, not assumed. M4d/M4e
+   * replaced the HAND (the single opposed-GUILE check became the full bid/raise/
+   * challenge resolver); they did not touch the DEALER PICK, which still runs once
+   * off the dawn state right here. `docs/LIARS-DICE_REDESIGN.md` §16 re-confirms it
+   * under the new resolver: "the seed is clamped to the dealer's purse, and a broke
+   * dealer deals a free hand. Unchanged by this redesign, still not fixed here."
+   *
+   * THE WORST CASE IS THE DEALER LOSING THE QUEUED STAKE, which is the identical
+   * convention the caller already applies to the player's own purse (`purse -=
+   * dare.wager`). The symmetry is the argument: a planner that will not over-commit
+   * the player's credits must not over-commit the other side of the table either.
+   *
+   * TWO MECHANISMS, TWO REASONS, both kept: `committedRosterIds` is CATEGORICAL (a
+   * roster seat at purse <= 0 is REFUSED outright with `HangoutEvent{failReason:
+   * 'opponent-broke'}`), this map is QUANTITATIVE (a drained roaming dealer is
+   * merely clamped to a worthless sub-floor or zero stake). Collapsing them would
+   * lose the distinction the engine itself draws.
+   */
+  committedStakes: ReadonlyMap<string, number> = new Map(),
 ): PlayerAction | null {
   if (state.encounter) return null;
   if (!isHangoutSystem(state.player.currentSystemId)) return null;
@@ -3497,7 +3548,14 @@ function planDare(
     // the gambler at a table on most days instead of a handful.
     if (npc.dead) continue;
     if (npc.currentSystemId !== state.player.currentSystemId) continue;
-    if (dealer === null || npc.credits > dealer.credits) dealer = npc;
+    // F-123-3 · the purse this dealer would still have AFTER losing every stake
+    // today's earlier hands already committed against them. Reading `npc.credits`
+    // raw is what made the second hand of the day a zero-stake wager (34 of 1,319
+    // hands at T-123, 2.67% at T-125) — the dawn purse is accurate for the first
+    // hand and stale for the second.
+    const purse = npc.credits - (committedStakes.get(npc.id) ?? 0);
+    if (purse <= 0) continue;
+    if (dealer === null || purse > dealer.credits) dealer = { id: npc.id, credits: purse };
   }
   // T-145 · Pool A, mirroring the engine's §7.4 broke refusal exactly the way the
   // `!npc.dead` and `venueOffered` mirrors above already work: an opponent whose
@@ -3522,6 +3580,10 @@ function planDare(
   // while it is provably inert, ahead of the authored bands at T-123.
   const band = wagerBandFor(state.player.currentSystemId);
   // A dealer who cannot cover the minimum stake makes a zero-EV hand — skip it.
+  // F-123-3 · with `dealer.credits` now carrying the day's committed stakes, this
+  // ONE pre-existing guard closes BOTH halves of the finding for free: the zero
+  // stake (34 of 1,319 hands) and the sub-floor stake (3 more) it also measured.
+  // No new downstream guard is owed.
   if (dealer.credits < band.min) return null;
 
   const bankroll = credits - GAMBLER_RESERVE;
@@ -3860,13 +3922,23 @@ export const gamblerPolicy: SimPolicy = ({ state }) => {
   // T-145 · …and the same carry-forward for the ROSTER opponent's side of the
   // table, for the reason `planDare`'s own parameter documents.
   const committedRosterIds = new Set<string>();
+  // F-123-3 · …and the DEALER's side of the same carry-forward, for the roaming
+  // pool T-145's set does not cover. Worst case per dealer = they lose every stake
+  // queued against them today, the same convention `purse` above applies to the
+  // player. See `planDare`'s parameter doc for why the two mechanisms stay
+  // separate rather than being collapsed into one.
+  const committedStakes = new Map<string, number>();
   for (let hand = 0; hand < GAMBLER_MAX_DARES_PER_DAY; hand += 1) {
-    const dare = planDare(state, ledger, purse, committedRosterIds);
+    const dare = planDare(state, ledger, purse, committedRosterIds, committedStakes);
     if (!dare) break;
     dares.push(dare);
     purse -= dare.type === 'VisitHangout' ? (dare.wager ?? 0) : 0;
-    if (dare.type === 'VisitHangout' && dare.opponentId?.startsWith('ld-')) {
-      committedRosterIds.add(dare.opponentId);
+    if (dare.type === 'VisitHangout' && dare.opponentId !== undefined) {
+      committedStakes.set(
+        dare.opponentId,
+        (committedStakes.get(dare.opponentId) ?? 0) + (dare.wager ?? 0),
+      );
+      if (dare.opponentId.startsWith('ld-')) committedRosterIds.add(dare.opponentId);
     }
   }
 
@@ -4461,7 +4533,35 @@ export const explorerPolicy: SimPolicy = ({ state }) => {
     if (actions.some((action) => action.type === 'Travel')) {
       projectedFuel -= playerJumpFuel(state, 5);
     }
+    // F-116-1 (docs/EXPLORE_REDESIGN.md §9.7, fixed at T-150) · THE RECOVERY
+    // GATE. `packages/engine/src/actions/exploration.ts:52` refuses the verb with
+    // `ExplorationFailed{'recovery-in-progress'}` while `player.recovery !== null`
+    // — no die spent, no fuel burned, nothing gained. `packages/sim/src/protocol.ts`
+    // (`legalActions`) already withholds Explore on exactly this condition and its
+    // comment names this exact risk, but `runCampaign` NEVER CALLS `legalActions`,
+    // so that gate was never on the path the sim actually takes. This line is the
+    // mirror landing on the path the sim takes — the same "policy guard mirrors the
+    // engine guard" shape as `planDare`'s `!npc.dead` (F-121-1) and its
+    // `venueOffered` mirror.
+    //
+    // THE 22.5% IN §9.7 IS A PRE-T-131 NUMBER and must not be restated as current:
+    // D1 moved bands 3 and 4 off calendar recoveries onto same-day `apCost` dice, so
+    // `player.recovery` now governs BAND 2 ONLY (`engine/src/types.ts` RecoveryState).
+    // The post-fix rate is re-measured in §10 of the same doc.
+    //
+    // SCOPED TO THE EXPLORE QUEUE, deliberately: it is a term of THIS loop and not
+    // an early return from the policy, so the contract run, the refuel, the
+    // captain's overhead, the yard buy and `planDebtPayment` all still run on a
+    // recovery day. Gating the whole policy would invent a poverty-trap regression.
+    //
+    // RESIDUAL, NAMED NOT CLOSED: these planners are pure and read the DAWN state,
+    // so a band-2 find claimed by the FIRST Explore of a day opens a recovery
+    // mid-batch and a second queued Explore can still be refused. Mid-day
+    // re-planning is refused for the reason T-135 gives for not re-invoking a policy
+    // mid-batch, and capping the loop at one Explore per day would be a pacing
+    // change by fiat. Measured and reported in §10 as a bounded limitation.
     while (
+      state.player.recovery === null &&
       state.player.credits - overhead.cost > EXPLORER_RESERVE &&
       projectedFuel >= EXPLORATION_FUEL_COST &&
       ledger.remaining() > 0

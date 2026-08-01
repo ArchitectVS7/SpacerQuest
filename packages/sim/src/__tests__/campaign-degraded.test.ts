@@ -878,6 +878,72 @@ const UNCHANGED_POLICIES = [
  *    implemented verbatim. §1.3 forbids retuning any constant in this spec to
  *    reproduce an old figure, and T-137 is the named owner of the win-rate / EV /
  *    fold-rate read, so nothing here was touched in response.
+ *
+ *    (Entries 24 and 25 — T-145's two-pool candidate set and T-146's unlock ladder
+ *    — moved the gambler row alone and are recorded at that row rather than here.)
+ *
+ * 26. T-150 — TWO POLICY GUARDS, AND THE CONTAINMENT IS THE POINT. EXACTLY TWO
+ *    ROWS MOVE, one per guard, and the five that must not move do not:
+ *      explorer  0854b356ac9c8bce -> d83421a02caaaffc   (F-116-1)
+ *      gambler   63a80b1611bbded0 -> 37cb7e36ce127d96   (F-123-3)
+ *      trader / trader-degraded / fighter / veteran / smuggler / greedy —
+ *      BYTE-IDENTICAL, re-measured on these exact five seeds x 40 days.
+ *
+ *    THE CAUSES, ONE PER ROW, STATED BEFORE THE NUMBERS.
+ *
+ *    EXPLORER — F-116-1 (docs/EXPLORE_REDESIGN.md §9.7, closed in §10). Its
+ *    Explore loop tested credits, projected fuel and the die ledger and never
+ *    `state.player.recovery`, so on a day with an open salvage op it queued a verb
+ *    `actions/exploration.ts:52` was certain to refuse with
+ *    `ExplorationFailed{'recovery-in-progress'}`. `sim/protocol.ts` already
+ *    withheld the verb on exactly that condition, but `runCampaign` never calls
+ *    `legalActions`, so that gate was not on the sim's path. The guard is one term
+ *    added to the loop condition; it removes plans, never adds them, so a die that
+ *    used to be thrown at a guaranteed refusal is now spent on the rest of the day
+ *    and every subsequent day re-phases. Scoped to the Explore QUEUE and not to
+ *    the policy: the contract run, refuel, captain's overhead, yard buy and debt
+ *    remittance all still run on a recovery day.
+ *
+ *    GAMBLER — F-123-3 (docs/HANGOUT_REDESIGN.md §7, closed in §11.2). `planDare`
+ *    picked the richest ROAMING dealer off the dawn purse once per day, so with
+ *    `GAMBLER_MAX_DARES_PER_DAY = 2` the first hand could drain that dealer and the
+ *    second was clamped by the engine to a sub-floor — or zero — stake. T-145 had
+ *    already fixed the ROSTER half (a broke roster seat is a hard 'opponent-broke'
+ *    refusal); the roaming half was deliberately left and is what moves here. The
+ *    caller now carries a per-dealer committed-stake map forward, worst case being
+ *    that the dealer LOSES every stake queued against them — the identical
+ *    convention it already applied to the player's own purse. The pre-existing
+ *    `dealer.credits < band.min` guard then closes both the zero-stake and the
+ *    sub-floor case with no new downstream check.
+ *
+ *    WHY THE OTHER FIVE CANNOT MOVE, and this is the containment claim: the
+ *    Explore guard is a term inside `explorerPolicy`'s own loop, and `planDare` is
+ *    called by `gamblerPolicy` and by nothing else (one call site in
+ *    `packages/sim/src/index.ts`). No shared helper, no engine file and no content
+ *    file is touched by either edit — `git diff --stat` over `packages/engine/src`,
+ *    `packages/content/src` and `packages/ui/src` is zero files and zero lines.
+ *    The five unmoved rows are the proof, not the assumption.
+ *
+ *    THE SMUGGLER'S UNMOVED ROW IS ITSELF A FINDING (F-150-2). `smugglerPolicy`
+ *    carries a byte-identical copy of the explorer's Explore loop with the same
+ *    missing guard. The fix was written and MEASURED, and then BACKED OUT: adding
+ *    it re-seeds that policy's stream onto a pre-existing stall in the SHARED
+ *    `planPacifistCombat` — seed 3, Sirius-16, days 45-49, one interceptor
+ *    escalating rounds 2 -> 10 while the tribute climbs 2,000 -> 10,000 against a
+ *    1,071-credit purse, so `canPay` is false every dawn and the policy plays five
+ *    consecutive `run` stances. A `run` is not an income action, so
+ *    `longestZeroIncomeStreak` reaches 5 and the poverty-trap invariant in
+ *    `campaign-smuggler-gambler.test.ts` goes red. The stall is NOT an Explore
+ *    problem (the policy returns at `if (state.encounter)` long before that loop,
+ *    and `player.recovery` is null on all five days) — the same pathology that
+ *    file's header already records at seed 19 of the T-1601b 300-day sweep. Root-
+ *    fixing it means editing a planner five policies share, which would move every
+ *    row above and destroy this very containment claim. Filed for a task allowed
+ *    to do that, pinned by a tripwire test, and NOT silently dropped.
+ *
+ *    NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED. The two pins below are
+ *    re-derived because the input to the hash changed, which is the only admissible
+ *    reason for a re-pin.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -897,7 +963,10 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
   // pay dice at claim instead of days, so the finds this policy used to open and
   // then lose to the location predicate are now collected on the day.
-  explorer: '0854b356ac9c8bce',
+  // Entry 26 (T-150): re-derived a THIRD time — F-116-1's recovery guard. The
+  // policy no longer queues an Explore on a day whose dawn carries an open salvage
+  // op, so the die that used to buy a guaranteed refusal is spent elsewhere.
+  explorer: 'd83421a02caaaffc',
   veteran: 'a0fee7f62c2167e3',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
@@ -965,7 +1034,13 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // free wins F-135-1 named get rarer. NOTHING WAS TUNED IN RESPONSE. T-148 owns
   // the ladder-pacing read; §1.3 forbids retuning a spec constant to reproduce an
   // old figure, and no constant was touched.
-  gambler: '63a80b1611bbded0',
+  //
+  // Entry 26 (T-150): re-derived an EIGHTH time, and once more the only row that
+  // moves for a reason of its own — F-123-3's roaming-dealer stake carry-forward.
+  // `planDare` is still called by `gamblerPolicy` alone, so no other policy can
+  // feel it. The second hand of a day is no longer planned against a dealer the
+  // first hand would have drained below the port's floor.
+  gambler: '37cb7e36ce127d96',
   greedy: '56df4d82dab33e08',
 };
 
