@@ -12,6 +12,9 @@ import {
   NpcArchetype,
   NAV_FUEL_FLOOR,
   NPC_CHECK_DCS,
+  // T-149 · the socialize mint, pinned unchanged on both sides of the hasHangout read
+  NPC_SOCIALIZE_WIN_CREDITS,
+  NPC_SOCIALIZE_LOSS_CREDITS,
   ALL_NPC_PROFILES,
   NpcIntentType,
   STAR_SYSTEMS,
@@ -646,6 +649,149 @@ describe('T-1201 NPCs roll real checks', () => {
     // ...and the DCs are pulled from the content table.
     expect(source).toMatch(/NPC_CHECK_DCS/);
     expect(source).toMatch(/from '@spacerquest\/content'/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-149 · THE RUMOR MILL KNOWS WHERE THE BARS AREN'T.
+//
+// `executeSocialize`'s `details` clause is interpolated VERBATIM into the
+// player-facing rumor mill (`actions/hangout.ts` `hangoutRumors` →
+// RUMOR_TEMPLATES.Socialize), so before this fix the wire told the player a
+// captain "cleaned up at the Antares-5 Hangout tables" at a port the game's own
+// UI (`ui/format.ts` `hangoutOpen`) tells them has no bar at all. Fourteen of
+// the twenty-eight systems carry `hasHangout`, and the cast flies ids 1-20, so
+// six reachable rim ports have none.
+//
+// The fix is FICTION ONLY: one boolean read off content selects prose. The roll,
+// the DC, and the credit mint are identical on both sides — which is exactly what
+// these tests pin, in both directions.
+// ---------------------------------------------------------------------------
+describe('T-149 Socialize flavor respects hasHangout', () => {
+  /** Derived from content, never restated as literals — if the rim is ever
+   *  flagged `hasHangout` these sets move with it rather than going stale. Only
+   *  ids 1-20 matter: that is the cast's route pool (`NPC_SYSTEM_IDS`). */
+  const REACHABLE = Object.values(STAR_SYSTEMS).filter((s) => s.id <= 20);
+  const OFF_HANGOUT_IDS = REACHABLE.filter((s) => s.hasHangout !== true).map((s) => s.id);
+  const HANGOUT_IDS = REACHABLE.filter((s) => s.hasHangout === true).map((s) => s.id);
+  /** GUILE-leaning, the same driver the T-1201 DC test uses for Socialize. */
+  const SOCIALIZER = 'npc-silk-dagger';
+  /** Any venue word. The rumor mill must name none of these off-Hangout. */
+  const VENUE = /hangout|\bbar\b|tables?/i;
+
+  it('has both port sets non-empty, so nothing below can pass vacuously', () => {
+    expect(OFF_HANGOUT_IDS.length).toBeGreaterThan(0);
+    expect(HANGOUT_IDS.length).toBeGreaterThan(0);
+  });
+
+  it('never narrates a Hangout at a port with no bar, on either outcome branch', () => {
+    for (const id of OFF_HANGOUT_IDS) {
+      let sawWin = false;
+      let sawLoss = false;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const before = npcFor(SOCIALIZER, { currentSystemId: id });
+        const startCredits = before.credits;
+        const { npc } = resolveNpcDay(before, new SeededRng(seed), NO_BOARD);
+        if (npc.lastAction?.type !== 'Socialize') continue;
+        const details = npc.lastAction.details ?? '';
+        expect(details, `${STAR_SYSTEMS[id].name} (seed ${seed}) has no bar`).not.toMatch(VENUE);
+        // ...and it still says WHERE, so the rumor line keeps its place.
+        expect(details).toContain(STAR_SYSTEMS[id].name);
+        if (npc.credits > startCredits) sawWin = true;
+        else if (npc.credits < startCredits) sawLoss = true;
+      }
+      // Both branches must have been exercised, or one flavor line is unasserted.
+      expect(sawWin, `saw a socialize win at ${STAR_SYSTEMS[id].name}`).toBe(true);
+      expect(sawLoss, `saw a socialize loss at ${STAR_SYSTEMS[id].name}`).toBe(true);
+    }
+  });
+
+  it('still names the Hangout where there is one, on either outcome branch', () => {
+    // The contrapositive: the fix must not be "delete the word Hangout everywhere".
+    for (const id of HANGOUT_IDS.slice(0, 2)) {
+      let sawWin = false;
+      let sawLoss = false;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const before = npcFor(SOCIALIZER, { currentSystemId: id });
+        const startCredits = before.credits;
+        const { npc } = resolveNpcDay(before, new SeededRng(seed), NO_BOARD);
+        if (npc.lastAction?.type !== 'Socialize') continue;
+        expect(npc.lastAction.details ?? '').toMatch(/Hangout/);
+        if (npc.credits > startCredits) sawWin = true;
+        else if (npc.credits < startCredits) sawLoss = true;
+      }
+      expect(sawWin).toBe(true);
+      expect(sawLoss).toBe(true);
+    }
+  });
+
+  it('still fires the GUILE check at a port with no bar (verb ⟺ StatCheck holds)', () => {
+    for (const id of OFF_HANGOUT_IDS) {
+      let socializeDays = 0;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const { npc, events } = resolveNpcDay(
+          npcFor(SOCIALIZER, { currentSystemId: id }),
+          new SeededRng(seed),
+          NO_BOARD,
+        );
+        if (npc.lastAction?.type !== 'Socialize') continue;
+        socializeDays += 1;
+        const checks = events.filter(
+          (e) => e.type === 'StatCheck' && e.actionContext === VERB_CONTEXT.Socialize,
+        );
+        expect(checks, `one npc-socialize check at ${STAR_SYSTEMS[id].name}`).toHaveLength(1);
+        const check = checks[0];
+        if (check.type !== 'StatCheck') throw new Error('unreachable');
+        expect(check.dc).toBe(NPC_CHECK_DCS.Socialize);
+        expect(check.stat).toBe(INTENT_STAT_AFFINITY.Socialize);
+      }
+      expect(socializeDays).toBeGreaterThan(0);
+    }
+  });
+
+  it('pays the identical mint on both sides of the boolean', () => {
+    // 400cr: above the 150cr ante, below NPC_YARD_RESERVE (1000), so
+    // `considerRefit` returns early and the socialize mint is the day's ONLY
+    // credit mutation. One rim id and one core id, so the amounts are pinned
+    // across the branch rather than only inside it.
+    const probes = [OFF_HANGOUT_IDS[0], HANGOUT_IDS[0]];
+    for (const id of probes) {
+      let sawWin = false;
+      let sawLoss = false;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const { npc } = resolveNpcDay(
+          npcFor(SOCIALIZER, { currentSystemId: id, credits: 400 }),
+          new SeededRng(seed),
+          NO_BOARD,
+        );
+        if (npc.lastAction?.type !== 'Socialize') continue;
+        const delta = npc.credits - 400;
+        if (delta > 0) {
+          expect(delta).toBe(NPC_SOCIALIZE_WIN_CREDITS);
+          sawWin = true;
+        } else {
+          expect(delta).toBe(-NPC_SOCIALIZE_LOSS_CREDITS);
+          sawLoss = true;
+        }
+      }
+      expect(sawWin, `saw a win at system ${id}`).toBe(true);
+      expect(sawLoss, `saw a loss at system ${id}`).toBe(true);
+    }
+  });
+
+  it('gates on a single content boolean, never a per-system id ladder', () => {
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../npc.ts'),
+      'utf8',
+    );
+    // Comments are prose about the rule; the guard is about the CODE, so strip
+    // them first (otherwise this passes or fails on documentation edits).
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code.match(/hasHangout/g) ?? []).toHaveLength(1);
+    expect(code).toMatch(/STAR_SYSTEMS\[npc\.currentSystemId\]\?\.hasHangout === true/);
+    // No id ladder may ever stand in for the flag.
+    expect(code).not.toMatch(/currentSystemId\s*===\s*\d/);
+    expect(code).not.toMatch(/systemId\s*===\s*\d/);
   });
 });
 

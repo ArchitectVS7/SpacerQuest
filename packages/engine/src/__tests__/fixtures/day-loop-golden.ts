@@ -576,11 +576,27 @@ export function runDayLoopGolden(
 // THE EVENT HASHES REMAIN THE TRIPWIRE. If a change of THIS shape ever moves one,
 // it means a ladder read leaked into a path neither script visits — fix the cause,
 // never re-pin.
+//
+// T-149 RE-DERIVATION (the hasHangout-aware Socialize flavor). All four hashes
+// move, and unlike the T-146 entry above the EVENT hashes move too — which is
+// expected here rather than alarming, because an NPC's `lastAction.details`
+// string is carried in the dusk `WireEntry`/`NpcAction` payloads as well as in
+// the serialized state. What matters is WHICH bytes moved, and that was measured
+// rather than assumed: both scripts were replayed against the pre-change engine
+// and the post-change engine, and with the four socialize clause families
+// (`cleaned up at the … Hangout tables` / `bought a round at the … Hangout` /
+// `swapped stories at the … docks` / `drank alone at …, poorer for it`)
+// normalized out, ALL FOUR streams — both states and both event logs — are
+// byte-for-byte EQUAL. No credit, fuel level, system id, rng state, event type or
+// event ordering moved; `executeSocialize` still rolls the same GUILE check at the
+// same DC and mints the same ±credits on both sides of the new `hasHangout` read.
+// A residual diff after that normalization would have meant the boolean changed an
+// OUTCOME rather than a sentence; that is the regression to chase.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '328b37f5aea0c670733182a7e924726d37b00d356afa346307da54dd41331c6c';
+  '6a0c88dce76a4fcc2afd620507e0e755328c85fe9e9570f29ae4a06a523d6ba0';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '7274873091b87cee192878a732e7ae8217575cc6650fd41f61290d2dfe1dbe71';
+  '5aac441d3f8439f3b5f808310c59e6628bf83afcb900567ce87ded2e358543d2';
 export const STORYLET_GOLDEN_STATE_HASH =
-  'b8bb9995786ccb409014fb8af18bb32a170b7eb7923bd376e4cdbc5c8bda1374';
+  '8c38a6f55ba0343e7631b4650048e8ee8aacc718a7cebd82336e33e25a52fd4f';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  '3e96fe90247b837cba773049e855623f0381bb5cd0f9cf41fda9d86982a8b50e';
+  'aef069bcc75f07a9ccb0cb479a3a92780a66af3aa6d5c1f6a5d4d5c19ffd66cd';

@@ -2959,7 +2959,7 @@ Owner ruling (D3, via `/bakeoff`, 2026-07-31): ship the gate now, defer closing 
 decided in the FIRST audit pass of this session but never actually scheduled as a task — logged
 here so it isn't lost. Independent of every other M4* task; can run any time after T-125.
 
-### T-149 · The rumor mill knows where the bars aren't — `status: TODO` · `coder: opus` · `after: T-125`
+### T-149 · The rumor mill knows where the bars aren't — `status: DONE` · `coder: opus` · `after: T-125`
 
 `executeSocialize` (`packages/engine/src/npc.ts:1824`) never reads `hasHangout`, so its "cleaned up
 at the {system} Hangout tables" / "bought a round at the {system} Hangout tables" flavor text
@@ -2978,6 +2978,26 @@ zero-sum. This task is the fiction fix only.
 by a test); the GUILE check still fires unconditionally (the verb⟺StatCheck invariant holds); no
 change to the credit amounts or the check's win/loss thresholds; no per-system engine branch (a
 single boolean read, not an `if (systemId === ...)` ladder); gate green.
+
+**Delivered (2026-07-31):** `executeSocialize` (`packages/engine/src/npc.ts`) now reads a single
+`STAR_SYSTEMS[npc.currentSystemId]?.hasHangout` boolean above the existing Socialize (GUILE) roll
+and branches only the flavor text: at a `hasHangout: false` port the win/loss lines become
+"swapped stories at the {system} docks" / "drank alone at {system}, poorer for it", naming no
+venue, while `hasHangout: true` ports keep the original "cleaned up at the {system} Hangout
+tables" / "bought a round at the {system} Hangout" lines — since `hangoutRumors`
+(`actions/hangout.ts`) interpolates `lastAction.details` verbatim into the player-facing rumor
+mill, this closes the fiction contradiction at the six reachable bar-less rim ports (Antares-5,
+Capella-4, Polaris-1, Mizar-9, Achernar-5, Algol-2). The roll itself sits above and outside the
+`hasBar` branch on purpose, so the verb⟺StatCheck invariant holds and both branches pay the
+identical `NPC_SOCIALIZE_WIN_CREDITS`/`LOSS_CREDITS` mint. Six new tests in `npc.test.ts` cover
+both outcome branches on both port sets, the non-vacuous-port-set precondition, and the
+single-boolean-not-a-ladder shape. Scope boundary, deliberate: the credit mint itself
+(`NPC_SOCIALIZE_WIN_CREDITS`/`LOSS_CREDITS`) is untouched — three independent bakeoff reviewers
+measured it at <0.3% of NPC wealth by day 120, not worth breaking `resolveNpcDay`'s
+single-NPC-mutation model to zero out; this task is the fiction fix only, and the 150cr socialize
+ante rides the T-150 parity-ledger re-ask instead.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `npc.ts` `executeSocialize`, `actions/hangout.ts` `hangoutRumor · attempts=1/4.`
 
 ---
 

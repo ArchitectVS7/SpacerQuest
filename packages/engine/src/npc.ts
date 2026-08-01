@@ -1834,21 +1834,41 @@ function executeSocialize(
     // verb⟺StatCheck invariant).
     return brokeIdle(npc, rng, ctx.day, events);
   }
-  // A night at the Hangout: a Socialize (GUILE) check through the shared
-  // check() to come out ahead at the tables (T-1201, replacing a raw inline
-  // d20+GUILE threshold of 14 — the DC now lives in content NPC_CHECK_DCS).
+  // T-149 · Does this port actually HAVE a bar? Fourteen of the twenty-eight
+  // systems carry `hasHangout`, and the cast flies ids 1-20, so six reachable
+  // rim ports (Antares-5, Capella-4, Polaris-1, Mizar-9, Achernar-5, Algol-2)
+  // have none. The `details` clause below is interpolated VERBATIM into the
+  // player-facing rumor mill (`actions/hangout.ts` `hangoutRumors` →
+  // RUMOR_TEMPLATES.Socialize), so narrating "the Hangout tables" at a port the
+  // game's own UI tells the player has no bar is a fiction contradiction. One
+  // boolean read off content — the SAME source `day.ts` gates `VisitHangout` on
+  // and `ui/format.ts`'s `hangoutOpen` reads — never a per-system id ladder.
+  const hasBar = STAR_SYSTEMS[npc.currentSystemId]?.hasHangout === true;
+  // A night out: a Socialize (GUILE) check through the shared check() to come
+  // out ahead — at the tables where there are tables, over a bottle on the
+  // docks where there aren't (T-1201, replacing a raw inline d20+GUILE
+  // threshold of 14 — the DC now lives in content NPC_CHECK_DCS).
+  //
+  // The roll sits ABOVE and OUTSIDE `hasBar` ON PURPOSE: the T-1201
+  // verb⟺StatCheck invariant requires a returned `Socialize` action to always
+  // carry exactly one `npc-socialize` StatCheck. `hasBar` selects PROSE, never
+  // an outcome — same rng draw, same DC, same credit mint on both sides.
   const result = rollNpcCheck(npc, profile, 'Socialize', rng, events);
   if (result.success) {
     npc.credits += NPC_SOCIALIZE_WIN_CREDITS;
     return {
       type: 'Socialize',
-      details: `cleaned up at the ${systemName(npc.currentSystemId)} Hangout tables`,
+      details: hasBar
+        ? `cleaned up at the ${systemName(npc.currentSystemId)} Hangout tables`
+        : `swapped stories at the ${systemName(npc.currentSystemId)} docks`,
     };
   }
   npc.credits -= NPC_SOCIALIZE_LOSS_CREDITS;
   return {
     type: 'Socialize',
-    details: `bought a round at the ${systemName(npc.currentSystemId)} Hangout`,
+    details: hasBar
+      ? `bought a round at the ${systemName(npc.currentSystemId)} Hangout`
+      : `drank alone at ${systemName(npc.currentSystemId)}, poorer for it`,
   };
 }
 
