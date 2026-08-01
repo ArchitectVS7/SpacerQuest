@@ -3708,6 +3708,65 @@ Take the invariant set already used in the T-1604a UGT campaign (`docs/playtests
 **Delivered (2026-08-01):** Nine named `assert*` predicates plus an `EXPECTED_EVENT_RATES` table now live in the new pure `packages/sim/src/balance/gate.ts` (T-1602b pure/IO split, mirroring `aggregate.ts`); `sweep.ts` calls each by name from `runGate`, collects `SweepViolation`s per report, sets a non-zero exit code on any violation or out-of-band rate, and writes a `gate-*.json` report alongside the sweep's row output. `gate.ts` is registered NON-INSTRUMENT in `rules-fingerprint.ts` since it asserts about measurements rather than producing one. `longestZeroIncomeStreak` moved into `gate.ts` and is re-exported from `campaign-drivers.ts` so the test suite and the gate share one definition instead of two copies that could disagree. CI wiring is `.github/workflows/sweep-gate.yml`: a `gate` job on every push/PR (small fixed 2-shard + merge sample, sized so no rate check reports SKIPPED) and a `deep` job on nightly cron + `workflow_dispatch` (tour-one and veteran arms). `docs/TESTING-STRATEGY.md` Part D records the as-built mechanism, including the three T-1604a invariants (`inv_blocked_from_legal_non_increasing`, `inv_protocol_errors_non_increasing`, `inv_dice_bounds`) that are protocol-seam statements a sweep cannot observe — declared `not-observable` in `SWEEP_INVARIANT_DISPOSITIONS` with T-154/T-155 named as owner, not faked into a green check. Scope boundary: the gate found a real bug on its first run (`fighterPolicy` idling up to 32 consecutive days on a 35-day horizon because it never applies the T-1104 relaxation `trader`/`smuggler`/`explorer` carry) and this task deliberately does not fix it — the fix touches `index.ts`, a hashed instrument source, which the standing constraints reserve for a milestone's final capstone task; the `gate` CI job is therefore expected to stay red until that fix lands as its own task. T-153 is the follow-on that proves the gate catches seeded-bad fixtures.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
+### T-159 · Fix: fighterPolicy's missing T-1104 relaxation, plus an archetype fallback-spread audit — `status: TODO` · `coder: opus` · `after: T-152`
+
+**The bug, precisely.** `fighterPolicy` (`packages/sim/src/index.ts`, contract-signing branch ~4144-4177)
+filters `rankedContracts` to `signFuelCap = maxFuel * SIGN_FUEL_FRACTION` (0.6) and, unlike every other
+gated archetype, has **no fallback when that filtered set is empty**. `traderPolicy` (`~2556-2567`),
+`smugglerPolicy` (`~3104-3112`), `gamblerPolicy` (`~3792-3796`) and `explorerPolicy` (`~4436-4452`) all
+carry the identical, explicitly `T-1104`-commented two-pass pattern: if the 0.6-margin filter finds
+nothing, relax to `signableWithin(ship.maxFuel)` (full tank, thinner re-flight margin, but always
+non-empty for any contract the engine actually rolled from that origin). `fighterPolicy` never gained
+this second pass. At a rim port where every reachable leg's fuel exceeds the 0.6 margin, `reachable`
+stays empty every day until the ship's `maxFuel` changes some other way — refuel/equipment/upgrade/
+overhead/debt-payment actions may still queue, but none of them are income actions
+(`isIncomeAction`, `index.ts:1659-1665`), so the streak keeps climbing. This is what
+`assertNoIncomeStall` caught on the gate's first CI run: seed 35, 30 consecutive zero-income days
+(limit 5), `fighter` archetype.
+
+**The fix:** add the same `if (reachable.length === 0)` full-tank relaxation branch to
+`fighterPolicy`'s contract-signing path, mirroring the other four policies' pattern byte-for-byte
+where reasonable (same helper, same margin constants). Do not touch the combat branch (interceptor
+fight-or-`planPacifistCombat` logic, `~4122-4137`) — that path is untouched by this bug and stays as
+is.
+
+**The owner's caveat this task also owes an answer to** (raised when the CI failure surfaced): is
+`fighter` — or any other archetype — effectively a monoculture that only pursues its headline verb
+and never "plays the rest of the game"? A pre-fix research pass already characterized all 8 policies'
+primary + fallback action mix (`resolvePolicy`, `index.ts:4943-4992`; `POLICY_NAMES`, `index.ts:821-
+832`) and found the answer is **already no** for every gated archetype — `fighter` already falls back
+to trade/refuel/equipment/upgrades/overhead/debt-payment when not fighting (this task's fix only
+repairs the *reachability* of that fallback, not its existence); `trader`/`smuggler`/`explorer` already
+carry non-headline fallbacks (loan repay, upgrades, storylets); `gambler` has an explicit anti-idle
+travel-toward-Hangout fallback with its own code comment ("`Travel` IS an income action, and without
+it a rich gambler simply stops," `index.ts:~3891-3916`). `veteran`'s narrower stall tolerance (6-8
+days) is an already-recorded, deliberate exemption (`gate.ts` `GATE_COMPETENT_POLICIES` comment,
+`~174-189`), not an oversight; `greedy` is intentionally the naive/degenerate baseline and is excluded
+from the gate on purpose. **Confirm this reading holds** (re-check current code, not just the prior
+pass) and **record the "one prime focus + a spread of secondary actions, never a single-verb
+monoculture" property explicitly** — in `docs/TESTING-STRATEGY.md` Part C or `docs/BALANCE-POLICY.md`,
+wherever the existing per-archetype notes already live — so it's a stated norm future archetype work
+is checked against, not a fact that has to be re-derived from the source every time it's asked. If the
+re-check finds a REAL monoculture gap anywhere else, file it as a finding rather than fixing it here —
+this task's code-change scope is the fighter relaxation only.
+
+**Fingerprint discipline (per T-140/§7.7's repaired `docs/BALANCE-TELEMETRY_SPEC.md` §6):** this edits
+`packages/sim/src/index.ts`, an instrument-hashed file — `rulesFingerprint`, `instrumentFingerprint`,
+`docsFingerprint` and `provenance.gitCommit` will all move on re-extraction. State each moved value in
+the commit body per the repaired §6 wording; no other fingerprint, checkpoint, seed list or tier spread
+should move, and if one does, name it and the file responsible rather than letting it pass unremarked.
+
+**Do NOT touch** `smugglerPolicy`'s already-filed, deliberately-not-fixed `planPacifistCombat` stall
+(F-150-2, `docs/EXPLORE_REDESIGN.md` §10.3) — a different defect in a function five policies share,
+explicitly backed out once already because root-fixing it moves every fingerprint; out of scope here.
+
+**Accept:** `fighterPolicy` gains the full-tank relaxation fallback, mirroring the other four policies'
+pattern; a re-run of `npm run balance:sweep -w @spacerquest/sim -- --label ci-gate --seeds 60 --days 35
+--shard 1/2 --milestone-days 10,30` (the exact CI invocation) shows `assertNoIncomeStall` PASS for
+`fighter`, and the `.github/workflows/sweep-gate.yml` `gate` job goes green on this branch; the
+archetype fallback-spread read (or a filed gap) is recorded in the relevant doc; gate green
+(`npm test`, `tsc -b`, `lint`, `format:check`).
+
 ### T-153 · Validate: prove the sweep gate catches known regressions — `status: TODO` · `coder: opus` · `after: T-152`
 Build one seeded-bad fixture per invariant class from T-152 (e.g. a synthetic state with negative credits, a synthetic event log reading 0% against an expected ~30% rate) plus one clean/current-state fixture, and write a committed, automated test suite that runs the gate against all of them. This suite is permanent — it runs as part of `npm test` going forward, so the gate's own correctness is continuously re-verified rather than confirmed once and trusted forever. Also confirm the CI/scheduled wiring from T-152 actually executes the gate script (a dry run or CI log), not merely references it.
 **Accept:** a committed test file (e.g. `packages/sim/src/__tests__/sweep-gate.test.ts`) asserts every seeded-bad fixture fails the gate (non-zero exit / thrown assertion) and the clean fixture passes (zero exit); this test file runs under `npm test`; CI/scheduled-job evidence (log or dry run) shows the wiring from T-152 actually fires, not just exists.
