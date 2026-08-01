@@ -17,6 +17,7 @@ import {
   NPC_SOCIALIZE_LOSS_CREDITS,
   ALL_NPC_PROFILES,
   NpcIntentType,
+  NpcProfile,
   STAR_SYSTEMS,
   distance,
   // N3
@@ -32,9 +33,13 @@ import {
   applyDisposition,
   npcDrives,
   npcShipForProfile,
+  pickContract,
   pickIntent,
   resolveNpcDay,
   NpcDayContext,
+  // T-140 · the decision-trace surface (docs/BALANCE-TELEMETRY_SPEC.md §3)
+  type NpcDecisionEvidence,
+  type NpcDecisionTrace,
 } from '../npc.js';
 import { componentTierForStrength, maxCargoPodsForShip } from '../actions/shipyard.js';
 // N3 · the interceptor pool (dead-captain skip) and the shared tribute schedule
@@ -63,7 +68,7 @@ const MAX_NPC_ROUTE_DISTANCE = Math.max(
 );
 import { createInitialState, deserializeState, serializeState } from '../state.js';
 import { SeededRng } from '../rng.js';
-import { GameEvent, NpcState, SpecialEquipmentId } from '../types.js';
+import { CargoContract, GameEvent, NpcState, SpecialEquipmentId } from '../types.js';
 
 /** The eight ship components, in content order — the fit an N2 captain buys
  *  across. Named here so the assertions below read as "the whole ship". */
@@ -1249,6 +1254,239 @@ describe('N4 · the intent blend', () => {
       }
     } finally {
       ARCHETYPE_INTENT_MULTIPLIERS['fighter'] = saved;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-140 · NPC DECISION TRACING (docs/BALANCE-TELEMETRY_SPEC.md §6).
+// ---------------------------------------------------------------------------
+//
+// The spec's §2 finding is that `pickIntent` and `pickContract` compute a full
+// distribution and then throw everything but the winner away. These cases assert
+// that the trace recovers it — against a KNOWN weight table, not against the
+// function's own arithmetic re-derived in the test, which would only assert that
+// the code equals itself.
+//
+// The last case is the one that matters most: a sink must not be able to perturb
+// the run. Everything else in this file, every golden and every balance fixture,
+// rests on that.
+
+describe('T-140 · decision tracing', () => {
+  /** A synthetic Ideal so the weight table under test is stated here, not read
+   *  out of shipped content (which would make the assertion move with a content
+   *  edit). Same injection shape as the all-zero corner above. */
+  const T140_IDEAL = '__t140__';
+  const T140_WEIGHTS = { Trade: 6, Travel: 2, Combat: 0, Patrol: 1, Socialize: 1 } as const;
+
+  /** `trader` multiplies Trade by 2 and leaves the rest at 1, so the table above
+   *  becomes {12,2,0,1,1} — total 16. That is the owner ruling's own worked
+   *  example (ideals.ts:164), which is why this row was chosen. */
+  const EXPECTED_CANDIDATES = [
+    { option: 'Trade', weight: 12 },
+    { option: 'Travel', weight: 2 },
+    { option: 'Combat', weight: 0 },
+    { option: 'Patrol', weight: 1 },
+    { option: 'Socialize', weight: 1 },
+  ];
+
+  function withSyntheticIdeal<T>(
+    weights: Record<NpcIntentType, number>,
+    body: (profile: NpcProfile) => T,
+  ): T {
+    IDEAL_WEIGHTS[T140_IDEAL] = { ...weights };
+    try {
+      const base = ALL_NPC_PROFILES.find((p) => p.id === 'npc-cargo-king')!;
+      return body({ ...base, ideal: T140_IDEAL });
+    } finally {
+      delete IDEAL_WEIGHTS[T140_IDEAL];
+    }
+  }
+
+  /** One `pickIntent` call, returning both halves: what it answered and what it
+   *  reported answering. */
+  function tracedIntent(
+    profile: NpcProfile,
+    credits: number,
+    rng: SeededRng,
+  ): { chosen: NpcIntentType | 'Idle'; entries: NpcDecisionEvidence[] } {
+    const entries: NpcDecisionEvidence[] = [];
+    const chosen = pickIntent(profile, credits, rng, (evidence) => entries.push(evidence));
+    return { chosen, entries };
+  }
+
+  it('reports the whole distribution the draw was made from, in content order', () => {
+    withSyntheticIdeal({ ...T140_WEIGHTS }, (profile) => {
+      const rng = new SeededRng(20260731);
+      for (let i = 0; i < 200; i++) {
+        const { chosen, entries } = tracedIntent(profile, 5000, rng);
+        expect(entries).toHaveLength(1);
+        const entry = entries[0];
+        expect(entry.kind).toBe('intent');
+        expect(entry.candidates).toEqual(EXPECTED_CANDIDATES);
+        // §3: `chosen` is the same value the function returns today.
+        expect(entry.chosen).toBe(chosen);
+        // §3: `roll` is `rng.next() * total`, so it lives in [0, 16).
+        expect(entry.roll).not.toBeNull();
+        expect(entry.roll!).toBeGreaterThanOrEqual(0);
+        expect(entry.roll!).toBeLessThan(16);
+
+        // THE ASSERTION THAT MAKES THIS A TRACE AND NOT A RE-DERIVATION: the
+        // prefix-sum bucket the reported roll lands in must be the reported
+        // winner. A trace that recomputed the distribution instead of recording
+        // the actual draw would pass every line above and fail this one.
+        let cumulative = 0;
+        let bucket = '';
+        for (const candidate of entry.candidates) {
+          cumulative += candidate.weight;
+          if (entry.roll! < cumulative) {
+            bucket = candidate.option;
+            break;
+          }
+        }
+        expect(bucket).toBe(entry.chosen);
+      }
+    });
+  });
+
+  it('shows poverty pressure as a WEIGHT on Trade, leaving every other candidate alone', () => {
+    withSyntheticIdeal({ ...T140_WEIGHTS }, (profile) => {
+      const solvent = tracedIntent(profile, 5000, new SeededRng(11)).entries[0];
+      const broke = tracedIntent(profile, 0, new SeededRng(11)).entries[0];
+      const weightOf = (entry: NpcDecisionEvidence, option: string) =>
+        entry.candidates.find((c) => c.option === option)!.weight;
+
+      // 12 x NPC_POVERTY_TRADE_MULTIPLIER (3, documented at its declaration in
+      // npc.ts and deliberately a multiplier rather than a flat term). This line
+      // moves only when that pacing constant is deliberately re-tuned.
+      expect(weightOf(broke, 'Trade')).toBe(weightOf(solvent, 'Trade') * 3);
+      for (const intent of NPC_INTENT_TYPES) {
+        if (intent === 'Trade') continue;
+        expect(weightOf(broke, intent), `${intent} under poverty`).toBe(weightOf(solvent, intent));
+      }
+    });
+  });
+
+  it('records the Idle corner as a decision with no draw behind it', () => {
+    withSyntheticIdeal({ Trade: 0, Travel: 0, Combat: 0, Patrol: 0, Socialize: 0 }, (profile) => {
+      const { chosen, entries } = tracedIntent(profile, 0, new SeededRng(3));
+      expect(chosen).toBe('Idle');
+      expect(entries).toHaveLength(1);
+      expect(entries[0].chosen).toBe('Idle');
+      // Nothing was drawn, so nothing is reported. This is why §3 types `roll`
+      // `number | null` rather than defaulting it to 0 — a 0 would read as a draw.
+      expect(entries[0].roll).toBeNull();
+      expect(entries[0].candidates.map((c) => c.weight)).toEqual([0, 0, 0, 0, 0]);
+    });
+  });
+
+  // A board built so that one archetype has a strict argmax and another has a
+  // real tie — the tie is the thing §2 says is discarded today. Origin is Sun-3.
+  const OFFERS: CargoContract[] = [
+    { destination: 2, cargoType: 9, payment: 40000, pods: 4 },
+    { destination: 2, cargoType: 1, payment: 20000, pods: 2 },
+    { destination: 20, cargoType: 5, payment: 30000, pods: 3 },
+    { destination: 15, cargoType: 10, payment: 25000, pods: 2 },
+  ];
+  const ORIGIN = 1;
+
+  function tracedContract(
+    archetype: NpcArchetype,
+    rng: SeededRng,
+  ): { chosen: number; entry: NpcDecisionEvidence } {
+    const entries: NpcDecisionEvidence[] = [];
+    const chosen = pickContract(archetype, OFFERS, ORIGIN, rng, (evidence) =>
+      entries.push(evidence),
+    );
+    expect(entries).toHaveLength(1);
+    return { chosen, entry: entries[0] };
+  }
+
+  it("reports a trader's per-offer scores — which are the cheques themselves", () => {
+    const { chosen, entry } = tracedContract('trader', new SeededRng(42));
+    expect(entry.kind).toBe('contract');
+    expect(entry.candidates).toEqual([
+      { option: '0', weight: 40000 },
+      { option: '1', weight: 20000 },
+      { option: '2', weight: 30000 },
+      { option: '3', weight: 25000 },
+    ]);
+    // §3: the same value the function returns today — an INDEX (F-140-2).
+    expect(entry.chosen).toBe(String(chosen));
+    expect(entry.chosen).toBe('0');
+  });
+
+  it("makes the fighter's TIE visible, which is exactly what is discarded today", () => {
+    const { chosen, entry } = tracedContract('fighter', new SeededRng(42));
+    // The fighter scores by destination danger: offers 2 and 3 are both rim, so
+    // the score table shows two equal maxima and the return value alone cannot
+    // tell you the choice was uniform between them.
+    const weights = entry.candidates.map((c) => c.weight);
+    const best = Math.max(...weights);
+    expect(weights.filter((w) => w === best)).toHaveLength(2);
+    expect(['2', '3']).toContain(entry.chosen);
+    expect(entry.chosen).toBe(String(chosen));
+    // For a contract the roll is the TIE-BREAK draw over the tied set, not a
+    // weighted draw over the board — `rng.next() * ties`.
+    expect(entry.roll!).toBeGreaterThanOrEqual(0);
+    expect(entry.roll!).toBeLessThan(2);
+    expect(Math.floor(entry.roll!)).toBe(['2', '3'].indexOf(entry.chosen));
+  });
+
+  it('binds day/npcId/archetype/ideal once per captain-day, in resolveNpcDay', () => {
+    // The identity half of a §3 entry. `pickContract` is handed an archetype and
+    // nothing else, so if this were bound anywhere but here the contract entries
+    // would carry no captain.
+    const entries: NpcDecisionTrace[] = [];
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === 'npc-cargo-king')!;
+    for (let seed = 1; seed <= 40; seed++) {
+      resolveNpcDay(npcFor('npc-cargo-king', { credits: 0 }), new SeededRng(seed), {
+        ...NO_BOARD,
+        day: 17,
+        npcDecisionTrace: (entry) => entries.push(entry),
+      });
+    }
+    expect(entries.length).toBeGreaterThan(40);
+    for (const entry of entries) {
+      expect(entry.day).toBe(17);
+      expect(entry.npcId).toBe('npc-cargo-king');
+      expect(entry.archetype).toBe(profile.archetype);
+      expect(entry.ideal).toBe(profile.ideal);
+    }
+    // A broke trader trades most days, so both kinds are reachable from one run
+    // of this loop — the contract entries are the ones that prove the binding.
+    expect(entries.some((e) => e.kind === 'intent')).toBe(true);
+    expect(entries.some((e) => e.kind === 'contract')).toBe(true);
+  });
+
+  it('leaves resolveNpcDay byte-identical whether or not a sink is attached', () => {
+    for (let seed = 1; seed <= 25; seed++) {
+      const quiet = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), NO_BOARD);
+      const loud = resolveNpcDay(npcFor('npc-iron-vex'), new SeededRng(seed), {
+        ...NO_BOARD,
+        npcDecisionTrace: () => {},
+      });
+      expect(JSON.stringify(loud)).toBe(JSON.stringify(quiet));
+    }
+  });
+
+  it('cannot perturb the run: same answers AND the same rng state, sink or no sink', () => {
+    // The inertness claim at its narrowest point. If tracing drew, skipped or
+    // reordered a single rng call, every golden in this repo would move.
+    const profile = ALL_NPC_PROFILES.find((p) => p.id === 'npc-iron-vex')!;
+    const quiet = new SeededRng(4242);
+    const loud = new SeededRng(4242);
+    for (let i = 0; i < 100; i++) {
+      expect(pickIntent(profile, i % 2 === 0 ? 0 : 5000, loud, () => {})).toBe(
+        pickIntent(profile, i % 2 === 0 ? 0 : 5000, quiet),
+      );
+      expect(loud.getState()).toBe(quiet.getState());
+    }
+    for (const archetype of ['trader', 'fighter', 'smuggler', 'explorer'] as const) {
+      expect(pickContract(archetype, OFFERS, ORIGIN, loud, () => {})).toBe(
+        pickContract(archetype, OFFERS, ORIGIN, quiet),
+      );
+      expect(loud.getState()).toBe(quiet.getState());
     }
   });
 });

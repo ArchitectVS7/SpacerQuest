@@ -500,6 +500,83 @@ const NPC_ODD_JOB_CREDITS = 25;
 const NPC_COMBAT_FUEL = 50;
 const NPC_PATROL_FUEL = 10;
 
+// ---------------------------------------------------------------------------
+// T-140 · NPC DECISION TRACING (docs/BALANCE-TELEMETRY_SPEC.md).
+// ---------------------------------------------------------------------------
+//
+// The spec's §2 finding: `pickIntent` computes a full weighted distribution and
+// `pickContract` scores every offer on the board — and BOTH throw everything but
+// the winner away the instant they return. So "is the Justice idealist actually
+// idling instead of trading?" cannot be answered by reading return values; it
+// needs the discarded distribution. These types are that distribution, escaping.
+//
+// THE §4(1) RULING — design (a), CALLBACK INJECTION, not (b) always-return-the-
+// distribution. Recorded here because the spec asked for the reason, not just the
+// choice (the long form is docs/BALANCE-TELEMETRY_SPEC.md §7):
+//
+//   1. §4(5) decides it. "Provably free when the flag is off (no allocation on
+//      the hot path)" is a hard clause, and (b) cannot honour it: it would have
+//      to materialise a `{option, weight}` array per decision on every captain-
+//      day whether or not anyone asked — millions of throwaway arrays in one
+//      capstone sweep. Under (a) every allocation sits inside `if (trace)`, so
+//      the untraced path allocates exactly what it allocated before T-140.
+//   2. (b) does not avoid a sink, it moves it up. A §3 entry needs `day`,
+//      `npcId`, `archetype` and `ideal`; `pickContract` is handed only the
+//      archetype and is called from `executeTrade`, not from `resolveNpcDay`. So
+//      (b) costs TWO return-type widenings (`pickContract` and `executeTrade`)
+//      and STILL needs a sink on `NpcDayContext` for the forwarding. Strictly
+//      more engine surface, not less.
+//   3. Inertness is easier to prove. An optional trailing parameter leaves every
+//      existing call site and every existing assertion untouched; (b) rewrites
+//      ~25 assertions, and every rewritten assertion is a place inertness could
+//      hide.
+//   4. The task's own accept criterion is written in (a)'s language ("a grep for
+//      the trace-sink PARAMETER under packages/ui and packages/desktop returns
+//      nothing"). Under (b) there is no parameter and the criterion is vacuous.
+//
+// The counter-argument the spec raises against (a) — "it changes signatures and
+// therefore moves `rulesFingerprint`" — does not discriminate: (b) edits this
+// same file and moves it too, and §4(2) accepts that cost either way.
+
+/** One option a decision function considered, with the weight/score it carried. */
+export interface NpcDecisionCandidate {
+  /** The option's identity. For `kind: 'intent'` this is the {@link NpcIntentType}
+   *  (or `'Idle'`); for `kind: 'contract'` it is the BOARD INDEX as a string, because
+   *  the index is what `pickContract` returns. */
+  option: string;
+  weight: number;
+}
+
+/** §3 of docs/BALANCE-TELEMETRY_SPEC.md — one entry per NPC decision point. */
+export interface NpcDecisionTrace {
+  day: number;
+  npcId: string;
+  archetype: NpcArchetype;
+  ideal: string;
+  kind: 'intent' | 'contract';
+  /** The distribution that is discarded today. */
+  candidates: NpcDecisionCandidate[];
+  /** The draw, when one happened. `null` in the all-weights-zero Idle corner,
+   *  where `pickIntent` returns before drawing anything. */
+  roll: number | null;
+  /** The same value the function returns today (stringified). */
+  chosen: string;
+}
+
+/**
+ * What a traced run supplies. `undefined` everywhere else BY CONSTRUCTION: the
+ * ONLY supplier in the repository is `packages/sim`'s sweep runner behind its
+ * explicit `--trace-npc-decisions` flag. The shipped game never sets one —
+ * `packages/ui/src/__tests__/npc-trace-absent.test.ts` is the assertion.
+ */
+export type NpcDecisionTraceSink = (entry: NpcDecisionTrace) => void;
+
+/** The half of a §3 entry a decision function can fill in for itself. Identity
+ *  (`day`/`npcId`/`archetype`/`ideal`) is bound once by {@link resolveNpcDay},
+ *  which is the only frame that knows both the day and the captain. */
+export type NpcDecisionEvidence = Pick<NpcDecisionTrace, 'kind' | 'candidates' | 'roll' | 'chosen'>;
+export type NpcDecisionEvidenceSink = (evidence: NpcDecisionEvidence) => void;
+
 export interface NpcDayContext {
   day: number;
   /** The player's live manifest board when this NPC is allowed to claim from
@@ -537,6 +614,19 @@ export interface NpcDayContext {
    * the cast from this cap in a code comment; that exemption is not re-granted.
    */
   edition: Edition;
+  /**
+   * T-140 · Where this captain's decision traces go, when anybody asked for them.
+   *
+   * ABSENT ON EVERY ORDINARY CALL, and that is the whole design: the ONE supplier
+   * in the repository is `packages/sim/src/balance/sweep.ts` behind its explicit
+   * `--trace-npc-decisions` flag, which threads it through `runCampaign`'s extras
+   * and `endDay`'s options. The shipped game (`packages/ui`, `packages/desktop`)
+   * never sets it — spec §4(3), asserted by `npc-trace-absent.test.ts`.
+   *
+   * Undefined is not merely the default, it is the free path: nothing below
+   * allocates a closure, a candidate array or an entry unless this is set.
+   */
+  npcDecisionTrace?: NpcDecisionTraceSink;
 }
 
 export interface NpcDayResult {
@@ -601,6 +691,13 @@ export function pickIntent(
   profile: NpcProfile,
   credits: number,
   rng: SeededRng,
+  /** T-140 · Optional decision trace (docs/BALANCE-TELEMETRY_SPEC.md §3). Supplied
+   *  only by a `--trace-npc-decisions` sweep, via {@link NpcDayContext}. Nothing is
+   *  allocated and nothing is computed for it when it is absent, which is spec
+   *  §4(5); the draw itself is untouched either way, which is spec §5. WHY this is
+   *  a parameter rather than a widened return type is the §4(1) ruling, recorded in
+   *  full at {@link NpcDecisionTrace} above and in the spec's own §7. */
+  trace?: NpcDecisionEvidenceSink,
 ): NpcIntentType | 'Idle' {
   const base = IDEAL_WEIGHTS[profile.ideal] ?? DEFAULT_IDEAL_WEIGHTS;
   const archetype = ARCHETYPE_INTENT_MULTIPLIERS[profile.archetype] ?? NEUTRAL_INTENT_MULTIPLIERS;
@@ -624,15 +721,48 @@ export function pickIntent(
     // a verb the table forbade. Unreachable with the current tables (every Ideal
     // has a positive weight and no multiplier is 0), but future content must not
     // break it, which is why the branch exists and is tested.
+    //
+    // T-140 · `roll: null` is the honest record of this corner and is exactly why
+    // spec §3 types the field `number | null`: nothing was drawn, so reporting a
+    // number here would invent one.
+    trace?.({ kind: 'intent', candidates: traceCandidates(weighted), roll: null, chosen: 'Idle' });
     return 'Idle';
   }
 
-  let roll = rng.next() * total;
+  // T-140 · The DRAW is captured before the loop consumes it. `roll` below is
+  // decremented in place, so by the time the winner is known the variable no
+  // longer holds `rng.next() * total` — which is the number spec §3 names. The
+  // local is read-only and costs nothing when untraced.
+  const drawn = rng.next() * total;
+  let roll = drawn;
   for (const entry of weighted) {
     roll -= entry.weight;
-    if (roll < 0) return entry.intent;
+    if (roll < 0) {
+      trace?.({
+        kind: 'intent',
+        candidates: traceCandidates(weighted),
+        roll: drawn,
+        chosen: entry.intent,
+      });
+      return entry.intent;
+    }
   }
-  return weighted[weighted.length - 1].intent;
+  const fallback = weighted[weighted.length - 1].intent;
+  trace?.({
+    kind: 'intent',
+    candidates: traceCandidates(weighted),
+    roll: drawn,
+    chosen: fallback,
+  });
+  return fallback;
+}
+
+/** T-140 · The weighted intent table as §3 candidates. Called ONLY from inside a
+ *  `trace?.(...)` argument list, so an untraced day never builds the array. */
+function traceCandidates(
+  weighted: readonly { intent: NpcIntentType; weight: number }[],
+): NpcDecisionCandidate[] {
+  return weighted.map((entry) => ({ option: entry.intent, weight: entry.weight }));
 }
 
 /** Clamp-and-apply a disposition change, emitting a typed event when the
@@ -1411,6 +1541,20 @@ export function pickContract(
   offers: readonly CargoContract[],
   originSystemId: number,
   rng: SeededRng,
+  /**
+   * T-140 · Optional decision trace (docs/BALANCE-TELEMETRY_SPEC.md §3). Two things
+   * about the emitted entry are specific to a contract and are recorded here rather
+   * than left to be re-derived by a reader:
+   *
+   *   - `roll` is the TIE-BREAK draw over the tied-best set (`rng.next() * ties`),
+   *     not a weighted draw over the whole board. This function argmaxes and only
+   *     then rolls; the score IS the preference.
+   *   - `option`/`chosen` are BOARD INDICES, stringified, because §3 defines
+   *     `chosen` as "the same value the function returns today" and that value is
+   *     an index. F-140-2: the board itself is not recorded, so an entry says
+   *     "which of the offers presented that day", never "which cargo".
+   */
+  trace?: NpcDecisionEvidenceSink,
 ): number {
   // THE ORIGIN IS A PARAMETER, and the reverted attempt is why it is spelled out
   // here: it measured every archetype's distance reasoning as
@@ -1444,8 +1588,13 @@ export function pickContract(
 
   let best = -Infinity;
   const candidates: number[] = [];
+  // T-140 · The per-offer scores, kept ONLY when somebody asked. `null` when
+  // untraced, so the loop below allocates nothing and pushes nothing — the
+  // argmax runs exactly as it did before this parameter existed.
+  const scores: number[] | null = trace === undefined ? null : [];
   for (let i = 0; i < offers.length; i++) {
     const value = score(offers[i]);
+    scores?.push(value);
     if (value > best) {
       best = value;
       candidates.length = 0;
@@ -1455,7 +1604,15 @@ export function pickContract(
     }
   }
 
-  return candidates[Math.floor(rng.next() * candidates.length)];
+  const tieBreak = rng.next() * candidates.length;
+  const chosen = candidates[Math.floor(tieBreak)];
+  trace?.({
+    kind: 'contract',
+    candidates: (scores ?? []).map((weight, index) => ({ option: String(index), weight })),
+    roll: tieBreak,
+    chosen: String(chosen),
+  });
+  return chosen;
 }
 
 function executeTrade(
@@ -1466,6 +1623,8 @@ function executeTrade(
   events: GameEvent[],
   /** N11 · The captain's LOCAL deed-source batch — see {@link resolveNpcDay}. */
   deedSource: GameEvent[],
+  /** T-140 · Forwarded, unread, to whichever `pickContract` call this day takes. */
+  trace?: NpcDecisionEvidenceSink,
 ): { action: NpcAction; claimedContractIndex?: number; claimedFromPool?: number } {
   // THE SHARED JOB POOL (T-106, generalised by N10). A captain trading anywhere
   // works the same per-system pool the player's board is drawn from, through the
@@ -1495,6 +1654,7 @@ function executeTrade(
       ctx.claimableBoard,
       npc.currentSystemId,
       rng,
+      trace,
     );
     contract = ctx.claimableBoard[claimedContractIndex]!;
   } else {
@@ -1511,7 +1671,8 @@ function executeTrade(
       jobPoolDepth(ctx.jobPoolClaims, npc.currentSystemId),
       ctx.eraEvent,
     );
-    contract = localBoard[pickContract(profile.archetype, localBoard, npc.currentSystemId, rng)]!;
+    contract =
+      localBoard[pickContract(profile.archetype, localBoard, npc.currentSystemId, rng, trace)]!;
     claimedFromPool = npc.currentSystemId;
   }
 
@@ -1902,9 +2063,25 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
     throw new Error(`Profile not found for NPC ${updatedNpc.id}`);
   }
 
+  // T-140 · IDENTITY IS BOUND ONCE PER CAPTAIN-DAY, here, because this is the only
+  // frame that knows both the day and whose day it is (`pickContract` is handed an
+  // archetype and nothing else). When no sink was supplied this is one comparison
+  // and no closure — spec §4(5)'s "free when the flag is off".
+  const trace: NpcDecisionEvidenceSink | undefined =
+    ctx.npcDecisionTrace === undefined
+      ? undefined
+      : (evidence) =>
+          ctx.npcDecisionTrace!({
+            day: ctx.day,
+            npcId: updatedNpc.id,
+            archetype: profile.archetype,
+            ideal: profile.ideal,
+            ...evidence,
+          });
+
   // 1. Intent — content weight tables (Ideal x stats), replacing the old
   //    3-branch stat comparison.
-  const intent = pickIntent(profile, updatedNpc.credits, rng);
+  const intent = pickIntent(profile, updatedNpc.credits, rng, trace);
 
   // 2. The Flaw Check — only when the day's intent touches the flaw
   // (PRD §6: flaws override optimal play when a decision touches them,
@@ -1956,7 +2133,7 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
       updatedNpc.ship.fuel = Math.max(0, updatedNpc.ship.fuel + flawDef.fuel);
     }
   } else if (intent === 'Trade') {
-    const result = executeTrade(updatedNpc, profile, rng, ctx, events, deedSource);
+    const result = executeTrade(updatedNpc, profile, rng, ctx, events, deedSource, trace);
     action = result.action;
     claimedContractIndex = result.claimedContractIndex;
     claimedFromPool = result.claimedFromPool;

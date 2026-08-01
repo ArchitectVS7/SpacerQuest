@@ -49,6 +49,7 @@ import {
   SeededRng,
   type GameEvent,
   type GameState,
+  type NpcDecisionTraceSink,
   type NpcState,
   type PlayerAction,
   type PortStake,
@@ -759,8 +760,8 @@ export interface MilestoneSample {
   npcPortCount: number[];
 }
 
-/** N7 · Optional extras for `runCampaign`. Both are absent on every ordinary
- *  call, and both leave the report JSON byte-identical when absent. */
+/** N7 · Optional extras for `runCampaign`. All are absent on every ordinary
+ *  call, and all leave the report JSON byte-identical when absent. */
 export interface RunCampaignExtras {
   /**
    * Start from THIS state instead of `createInitialState(seed)`. The one and only
@@ -771,6 +772,28 @@ export interface RunCampaignExtras {
   /** Days (by `state.day`, sampled at dawn before the day is played) to record a
    *  {@link MilestoneSample} for. */
   milestoneDays?: readonly number[];
+  /**
+   * T-140 · A sink for the dusk's NPC decision traces
+   * (docs/BALANCE-TELEMETRY_SPEC.md). Set ONLY by
+   * `balance/sweep.ts --trace-npc-decisions`; every other caller of `runCampaign`
+   * leaves it absent, and when absent nothing on the day loop's hot path changes —
+   * the report JSON is byte-identical, exactly as `milestoneDays` promises above.
+   *
+   * It is an OBSERVATION channel: the engine reads it to decide whether to build a
+   * trace entry, never to decide what a captain does, so a traced run and an
+   * untraced run of the same seed play the same career.
+   *
+   * F-140-3 · THIS FIELD IS WHY `instrumentFingerprint` MOVED, and that is worth
+   * saying at the site rather than only in a doc. This file is INSTRUMENT-hashed
+   * (`balance/rules-fingerprint.ts`, `SIM_INSTRUMENT_DIRECTORIES`), so adding the
+   * field and the branch at the `endDay` call below re-hashed the instrument —
+   * which `rules-fingerprint.ts` reads out as "the measurement changed". Here it
+   * did not: an untraced 350-run sweep is sha256-identical across the move, and
+   * every measured number in `docs/balance/smoke/tiers.json` is unchanged by the
+   * re-extraction. See `docs/BALANCE-TELEMETRY_SPEC.md` §7.5 for the evidence and
+   * §7.6 for why no arrangement of design (a) or (b) avoids it.
+   */
+  npcDecisionTrace?: NpcDecisionTraceSink;
 }
 
 export type SimPolicy = (context: {
@@ -5234,7 +5257,12 @@ export function runCampaign(
     // and `resolveNpcDay` assigns a `structuredClone` copy back, so this total is a
     // reading of the field BEFORE the dusk and cannot be mutated out from under us.
     const preDuskGatedWorn = gatedEquipmentWorn(dayState);
-    const dusk = endDay(dayState);
+    // T-140 · The options object is built ONLY for a traced run; an ordinary sweep
+    // still calls the one-argument `endDay(dayState)` it always called.
+    const dusk =
+      extras.npcDecisionTrace === undefined
+        ? endDay(dayState)
+        : endDay(dayState, { npcDecisionTrace: extras.npcDecisionTrace });
     state = dusk.state;
     dayEvents.push(...dusk.events);
     // T-1603a: dusk closes encounters (a bond drive-off's `resolveInterceptorFled`)

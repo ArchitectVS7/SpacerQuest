@@ -50,6 +50,16 @@
  *   npm run balance:sweep -w @spacerquest/sim -- --label veteran --seeds 100 --days 120 --shard 1/4
  *   npm run balance:sweep -w @spacerquest/sim -- --label veteran --merge
  *
+ *   # T-140 · A TRACED run (docs/BALANCE-TELEMETRY_SPEC.md) — one JSONL line per NPC
+ *   # captain decision, beside the rows file:
+ *   npm run balance:sweep -w @spacerquest/sim -- --label npc-trace --seeds 3 --days 30 \
+ *     --shard 1/1 --trace-npc-decisions
+ *
+ *   A traced run is FOR DIAGNOSIS, NEVER FOR A CAPSTONE. The career it plays is
+ *   identical (tracing is observation only, and the untraced/traced row files are
+ *   byte-identical), but it writes tens of thousands of extra lines to disk, so keep
+ *   it small and keep it out of the 8,000-run baseline path.
+ *
  * Raw rows land in `.scratch/balance/` (gitignored — 3,500 runs of raw encounter
  * and route records are not a repo artifact). The merge step writes the COMMITTED
  * aggregate to `docs/balance/baseline-<label>.json`, which is what T-1603b/T-1603c
@@ -58,9 +68,19 @@
  * Progress goes to stderr; stdout stays clean so `--merge` output can be piped.
  */
 
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import type { NpcDecisionTrace } from '@spacerquest/engine';
 
 import { runCampaign, type SimPolicyName } from '../index.js';
 import { aggregate, summarizeReport, type SeedRow } from './aggregate.js';
@@ -119,6 +139,12 @@ export interface SweepOptions {
    * to re-cut the fixtures passes the smoke tiers' start days.
    */
   milestoneDays: number[];
+  /**
+   * T-140 · Write one JSONL line per NPC captain decision beside the rows file
+   * (docs/BALANCE-TELEMETRY_SPEC.md §4(4)). Off by default so the routine capstone
+   * neither slows down nor changes shape — spec §4(3). Diagnosis only.
+   */
+  traceNpcDecisions: boolean;
 }
 
 function usage(): string {
@@ -136,6 +162,10 @@ function usage(): string {
     '  --milestone-days a,b  N7: record a milestone sample at the dawn of each day, so the',
     '                        capstone harvests the real progression spread the smoke fixtures',
     '                        are seeded from. Off by default (rows stay pre-N7 shaped).',
+    '  --trace-npc-decisions T-140: also write traces-<label>-shard<i>of<N>.jsonl to the raw',
+    '                        row directory — one line per NPC captain decision, with the',
+    '                        distribution the engine otherwise discards. Off by default;',
+    '                        diagnosis only, never a capstone. Cannot be combined with --merge.',
     '  --merge               Do not sweep: read every shard row file for --label,',
     '                        aggregate, and write docs/balance/baseline-<label>.json.',
     '  --help',
@@ -209,6 +239,7 @@ export function parseSweepArgs(argv: readonly string[]): SweepOptions | { help: 
     aggregateDir: DEFAULT_AGGREGATE_DIR,
     merge: false,
     milestoneDays: [],
+    traceNpcDecisions: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -216,6 +247,8 @@ export function parseSweepArgs(argv: readonly string[]): SweepOptions | { help: 
     if (arg === '--help') return { help: true };
     if (arg === '--merge') {
       options.merge = true;
+    } else if (arg === '--trace-npc-decisions') {
+      options.traceNpcDecisions = true;
     } else if (arg === '--label') {
       const value = argv[index + 1];
       if (value === undefined || value.trim() === '') throw new Error('Missing value for --label');
@@ -258,6 +291,16 @@ export function parseSweepArgs(argv: readonly string[]): SweepOptions | { help: 
     }
   }
 
+  // T-140 · THROW, never fall through — the same rule `parsePolicies` above states
+  // and for the same reason. `--merge` re-reads finished row files and plays no
+  // career, so it can produce no traces; silently ignoring the flag would let a
+  // run report success while having traced nothing at all.
+  if (options.merge && options.traceNpcDecisions) {
+    throw new Error(
+      '--trace-npc-decisions cannot be combined with --merge (a merge plays no days)',
+    );
+  }
+
   return options;
 }
 
@@ -271,6 +314,48 @@ function inShard(seed: number, options: SweepOptions): boolean {
 
 function rowsFileName(options: SweepOptions): string {
   return `rows-${options.label}-shard${options.shardIndex}of${options.shardCount}.json`;
+}
+
+/** T-140 · spec §4(4)'s location convention — a sibling of the rows file, under the
+ *  same gitignored `.scratch/balance/`, for the same reason: raw per-decision
+ *  records are not a repo artifact. */
+function tracesFileName(options: SweepOptions): string {
+  return `traces-${options.label}-shard${options.shardIndex}of${options.shardCount}.jsonl`;
+}
+
+/** How many JSONL lines are buffered before a `writeSync`. */
+const TRACE_FLUSH_LINES = 1000;
+
+/**
+ * T-140 · A STREAMING JSONL writer, and streaming is not a nicety here: one shard
+ * of the veteran arm is ~30 captains x ~1-2 decisions x 120 days x 250 seeds x 7
+ * policies of entries, which no in-memory array survives. Opened before the seed
+ * loop, flushed every {@link TRACE_FLUSH_LINES}, closed after it.
+ */
+function openTraceWriter(target: string): {
+  sink: (entry: NpcDecisionTrace) => void;
+  close: () => number;
+} {
+  const fd = openSync(target, 'w');
+  let buffer: string[] = [];
+  let written = 0;
+  const flush = (): void => {
+    if (buffer.length === 0) return;
+    writeSync(fd, `${buffer.join('\n')}\n`);
+    buffer = [];
+  };
+  return {
+    sink: (entry) => {
+      buffer.push(JSON.stringify(entry));
+      written += 1;
+      if (buffer.length >= TRACE_FLUSH_LINES) flush();
+    },
+    close: () => {
+      flush();
+      closeSync(fd);
+      return written;
+    },
+  };
 }
 
 function formatElapsed(ms: number): string {
@@ -294,19 +379,26 @@ function runSweep(options: SweepOptions): void {
       `${planned} runs (${options.days} days, ${options.policies.join(',')})\n`,
   );
 
+  // T-140 · The file is opened ONCE, before the seed loop, and only when asked.
+  mkdirSync(options.rowsDir, { recursive: true });
+  const traceTarget = join(options.rowsDir, tracesFileName(options));
+  const traceWriter = options.traceNpcDecisions ? openTraceWriter(traceTarget) : null;
+  if (traceWriter) {
+    process.stderr.write(`[balance] tracing NPC decisions to ${traceTarget}\n`);
+  }
+  // The extras object handed to an UNTRACED run is byte-for-byte the one this file
+  // built before T-140 — the traced branch is a separate object, so the ordinary
+  // path cannot acquire a field by accident.
+  const milestoneExtras =
+    options.milestoneDays.length === 0 ? {} : { milestoneDays: options.milestoneDays };
+  const extras = traceWriter
+    ? { ...milestoneExtras, npcDecisionTrace: traceWriter.sink }
+    : milestoneExtras;
+
   for (let seed = options.seedStart; seed <= lastSeed; seed += 1) {
     if (!inShard(seed, options)) continue;
     for (const policy of options.policies) {
-      rows.push(
-        summarizeReport(
-          runCampaign(
-            seed,
-            options.days,
-            policy,
-            options.milestoneDays.length === 0 ? {} : { milestoneDays: options.milestoneDays },
-          ),
-        ),
-      );
+      rows.push(summarizeReport(runCampaign(seed, options.days, policy, extras)));
       completed += 1;
       if (completed % 25 === 0 || completed === planned) {
         process.stderr.write(
@@ -317,12 +409,18 @@ function runSweep(options: SweepOptions): void {
     }
   }
 
-  mkdirSync(options.rowsDir, { recursive: true });
+  const tracedEntries = traceWriter?.close();
+
   const target = join(options.rowsDir, rowsFileName(options));
   writeFileSync(target, `${JSON.stringify(rows)}\n`, 'utf8');
   process.stderr.write(
     `[balance] wrote ${rows.length} rows to ${target} in ${formatElapsed(Date.now() - started)}\n`,
   );
+  if (tracedEntries !== undefined) {
+    process.stderr.write(
+      `[balance] wrote ${tracedEntries} NPC decision traces to ${traceTarget}\n`,
+    );
+  }
 }
 
 function mergeShards(options: SweepOptions): void {

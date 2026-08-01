@@ -273,6 +273,36 @@ describe('T-1603a sweep CLI argument parsing', () => {
     expect(() => parseSweepArgs(['--seeds', '0'])).toThrow(/must be an integer >= 1/);
     expect(() => parseSweepArgs(['--nope'])).toThrow(/Unknown argument/);
   });
+
+  // T-140 · docs/BALANCE-TELEMETRY_SPEC.md §4(3): the flag is OFF by default, so a
+  // routine capstone neither slows down nor changes shape.
+  it('leaves NPC decision tracing off unless it is asked for by name', () => {
+    const off = parseSweepArgs([]);
+    if ('help' in off) throw new Error('unreachable');
+    expect(off.traceNpcDecisions).toBe(false);
+
+    const on = parseSweepArgs(['--trace-npc-decisions']);
+    if ('help' in on) throw new Error('unreachable');
+    expect(on.traceNpcDecisions).toBe(true);
+    // A bare flag: it consumes no value, so the argument after it still parses.
+    const withValue = parseSweepArgs(['--trace-npc-decisions', '--seeds', '3']);
+    if ('help' in withValue) throw new Error('unreachable');
+    expect(withValue.seeds).toBe(3);
+    expect(withValue.traceNpcDecisions).toBe(true);
+  });
+
+  it('THROWS when tracing is asked of a --merge, instead of silently tracing nothing', () => {
+    // Same rule as the invalid-policy throw above: a merge re-reads finished row
+    // files and plays no day, so it can emit no trace. Falling through would let
+    // the run report success while the JSONL the operator asked for never existed.
+    expect(() => parseSweepArgs(['--merge', '--trace-npc-decisions'])).toThrow(
+      /--trace-npc-decisions cannot be combined with --merge/,
+    );
+    expect(() => parseSweepArgs(['--trace-npc-decisions', '--merge'])).toThrow(
+      /--trace-npc-decisions cannot be combined with --merge/,
+    );
+    expect(() => parseSweepArgs(['--merge'])).not.toThrow();
+  });
 });
 
 describe('T-1603a report blocks are populated by ordinary play and consumed', () => {

@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { NEMESIS_SYSTEM_ID, isGatedDestination } from '@spacerquest/content';
+import { NEMESIS_SYSTEM_ID, isGatedDestination, isSimulatedCaptain } from '@spacerquest/content';
 import { advanceDay, applyPlayerAction, endDay, startDay } from '../day.js';
+import type { NpcDecisionTrace } from '../npc.js';
 import { createInitialState, serializeState, deserializeState } from '../state.js';
-import { DayPhase, PlayerAction } from '../types.js';
+import { DayPhase, GameState, PlayerAction } from '../types.js';
 import {
   DAY_LOOP_GOLDEN_EVENTS_HASH,
   DAY_LOOP_GOLDEN_STATE_HASH,
@@ -317,5 +318,53 @@ describe('Destination gate (T-1101)', () => {
     // The destination genuinely IS gated — the ordering, not the target, is what
     // decides which refusal the player sees.
     expect(isGatedDestination(21)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-140 · The dusk hands the trace sink down (docs/BALANCE-TELEMETRY_SPEC.md).
+// ---------------------------------------------------------------------------
+//
+// `endDay` is the only door between a run and `resolveNpcDay`, so this is where
+// the sink either reaches the cast or does not. Two claims, and the second is the
+// load-bearing one: the day a traced dusk plays is the day an untraced dusk plays.
+
+describe('T-140 · endDay decision tracing', () => {
+  /** A DAY-phase state whose dusk will actually run the cast. */
+  function duskReady(seed = 20260731): GameState {
+    return startDay(createInitialState(seed)).state;
+  }
+
+  it('collects entries for the simulated captains and nobody else', () => {
+    const state = duskReady();
+    const entries: NpcDecisionTrace[] = [];
+    const before = state.day;
+    const dusk = endDay(state, { npcDecisionTrace: (entry) => entries.push(entry) });
+
+    expect(entries.length).toBeGreaterThan(0);
+    const traced = new Set(entries.map((entry) => entry.npcId));
+    for (const id of traced) {
+      const npc = state.npcs.find((candidate) => candidate.id === id)!;
+      expect(npc, `${id} is on the roster`).toBeDefined();
+      // Quest characters and the dead take no turn, so they can author no entry.
+      expect(isSimulatedCaptain(npc.profileId), `${id} is simulated`).toBe(true);
+      expect(npc.dead ?? false, `${id} is alive`).toBe(false);
+    }
+    // §3's `day` is the day the decision was MADE — the pre-dusk day, not the
+    // dawn `endDay` rolls the state into.
+    for (const entry of entries) expect(entry.day).toBe(before);
+    expect(dusk.state.day).toBe(before + 1);
+  });
+
+  it('is inert: a traced dusk produces the same state and the same events', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const quiet = endDay(duskReady(seed));
+      const loud = endDay(duskReady(seed), { npcDecisionTrace: () => {} });
+      const empty = endDay(duskReady(seed), {});
+      expect(JSON.stringify(loud.state)).toBe(JSON.stringify(quiet.state));
+      expect(JSON.stringify(loud.events)).toBe(JSON.stringify(quiet.events));
+      expect(JSON.stringify(empty.state)).toBe(JSON.stringify(quiet.state));
+      expect(JSON.stringify(empty.events)).toBe(JSON.stringify(quiet.events));
+    }
   });
 });

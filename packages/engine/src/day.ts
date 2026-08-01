@@ -21,7 +21,7 @@ import { SeededRng } from './rng.js';
 import { dawnDiceModifiers, equipmentDiceBenefits, rollDawnHand } from './dice.js';
 import { autoRepairRegen, lifeSupportCritical } from './components.js';
 import { applySuccession } from './legacy.js';
-import { applyDisposition, mutableNpc, resolveNpcDay } from './npc.js';
+import { applyDisposition, mutableNpc, resolveNpcDay, type NpcDecisionTraceSink } from './npc.js';
 import {
   debitJobPool,
   generateManifestBoard,
@@ -532,7 +532,25 @@ export function applyPlayerAction(
   return { state: resolvedState, events };
 }
 
-export function endDay(state: GameState): { state: GameState; events: GameEvent[] } {
+/**
+ * T-140 · Diagnostic-only options for {@link endDay}. Absent on every ordinary
+ * call — the parameter defaults to `{}` precisely so that every existing caller
+ * (the cockpit's `endDay(state)`, the sim's day loop, ~120 tests) compiles and
+ * behaves untouched, which is what makes the addition provably inert.
+ */
+export interface EndDayOptions {
+  /**
+   * Where the dusk's NPC decision traces go (docs/BALANCE-TELEMETRY_SPEC.md).
+   * Supplied ONLY by `packages/sim`'s sweep runner behind `--trace-npc-decisions`;
+   * `packages/ui` and `packages/desktop` never pass one.
+   */
+  npcDecisionTrace?: NpcDecisionTraceSink;
+}
+
+export function endDay(
+  state: GameState,
+  options: EndDayOptions = {},
+): { state: GameState; events: GameEvent[] } {
   const events: GameEvent[] = [];
   let nextState = cloneState(state);
 
@@ -855,6 +873,10 @@ export function endDay(state: GameState): { state: GameState; events: GameEvent[
       // N11 · Same argument for the licence: the demo's CONQUEROR ceiling is a
       // property of the world, so a captain's deed accrual meets it too.
       edition: nextState.edition,
+      // T-140 · Undefined on every ordinary dusk. Observation only: `resolveNpcDay`
+      // reads this to decide whether to build an entry, never to decide anything a
+      // captain does.
+      npcDecisionTrace: options.npcDecisionTrace,
     });
 
     // N10 · The pool claim: a captain trading anywhere but under the player's nose

@@ -3187,7 +3187,7 @@ task touches engine/content source.
 labeled `M5` to avoid a duplicate heading, since the orchestrator resolves a milestone scope
 by heading-text match and two identical headings would be ambiguous.
 
-### T-140 · Implement NPC decision tracing — `status: TODO` · `coder: opus` · `after: T-130`
+### T-140 · Implement NPC decision tracing — `status: DONE` · `coder: opus` · `after: T-130`
 
 Implement `docs/BALANCE-TELEMETRY_SPEC.md` end to end: settle §4's open design question (the
 callback-injection vs. always-return-the-distribution choice for `pickIntent`/`pickContract`)
@@ -3202,6 +3202,141 @@ is the ONLY expected diff in `docs/balance/smoke/tiers.json` when re-extracted, 
 explicitly in the commit body; a `grep` for the trace-sink parameter under `packages/ui` and
 `packages/desktop` returns nothing; a dedicated traced sweep run produces the gitignored
 JSONL; gate green.
+
+**Delivered (2026-08-01):** The §3 shape (`NpcDecisionTrace` / `NpcDecisionCandidate` /
+`NpcDecisionTraceSink` / `NpcDecisionEvidence(Sink)`) lands in `packages/engine/src/npc.ts`,
+emitted from `pickIntent` and `pickContract` behind an optional trailing sink parameter and
+identity-bound once per captain-day in `resolveNpcDay`. `endDay` gained an `EndDayOptions`
+parameter defaulting to `{}`; `packages/sim`'s `runCampaign` gained
+`RunCampaignExtras.npcDecisionTrace`; `balance/sweep.ts` gained `--trace-npc-decisions`, off
+by default, throwing rather than no-opping when combined with `--merge`, streaming JSONL to
+the gitignored `.scratch/balance/traces-<label>-shard<i>of<N>.jsonl`. §4's two open design
+questions are settled with reasons in `docs/BALANCE-TELEMETRY_SPEC.md` §7.1 (design **(a)**,
+callback injection) and §7.2 (the optional committed aggregate **declined**).
+
+**THIS TASK IS `BLOCKED`, NOT DONE. One Accept clause is unmet and the implementation may
+not rule on its own deviation — finding F-140-3, spec §7.3, evidenced in §7.5/§7.6, put to
+the owner as a question in §7.7.** §6 expected `rulesFingerprint` to be the ONLY fingerprint
+to move in `docs/balance/smoke/tiers.json`. **Three moved**, plus `provenance.gitCommit`:
+`rulesFingerprint 30956ac30326f246 → f36d71f863a8ebe7`,
+`instrumentFingerprint 342e248189f7ac34 → d50b03a8ca4323d8`,
+`docsFingerprint a3ef073897c54166 → c944fdb764c48484`. `docsFingerprint` is the raw-byte
+shadow of the other two and moved at T-110 as well (`3468ef5f`), so it is not a separate
+event. **`instrumentFingerprint` is the real deviation**: the T-110 precedent §6 cites left
+it identical (`313fde95fc5ee9db → 313fde95fc5ee9db`) because that task never touched
+`packages/sim/src`, and this one must — the sink has to reach `endDay`, and `endDay`'s only
+caller **on the sweep path** is `runCampaign` in the instrument-hashed
+`packages/sim/src/index.ts`. (Fix round 1 wrote "the only caller of `endDay` in the sim",
+which is false: `packages/sim/src/protocol.ts:1156` calls it too and is deliberately NOT
+instrument-hashed. It is the UGT external-client adapter — no sweep, smoke or capstone number
+is produced through it, so it is not a route the sink could take, and taking it *because* it
+sits on the cheap side of a hash boundary would be the same metric-gaming §7.6(2) rejects.)
+§7.6 records why the one arrangement that would keep the hash still (engine-level ambient
+state set from the un-hashed `sweep.ts`) was rejected: it buys a still hash with hidden
+mutable state in a deterministic engine, which is choosing code structure to control a metric.
+
+**WHY IT IS BLOCKED RATHER THAN NOTED.** Fix round 1 headed §7.6 "discharged" and argued the
+deviation away in this block. That is a coder self-approving a miss against a settled bar,
+which is the move `docs/VERSIONING.md`'s "the rule that matters most" and this file's
+standing constraint on fingerprints exist to prevent — the argument was sound, but soundness
+is not the same as authority. Per the `[BLOCKED BY = ...]` convention T-158 uses (and that
+T-156 used until the N13 ruling converted it to a normal build task), the run halts here and
+the owner rules. This is a ONE-DECISION gate, not a re-open of the task: the code, tests,
+measurements and gate are all green and unchanged by this round — see the fingerprint note
+under THE RULING.
+
+**THE FACT THAT MAKES THE RULING EASY — half-seen by fix round 1, never followed through.**
+Fix round 1 noticed that `docsFingerprint` "moved at T-110 as well (`3468ef5f`)" and used it
+only to excuse one of the three moves. It never asked what that implies about §6. §6's bullet
+cites T-110 as its precedent, and **it contradicts that precedent.** T-110's real
+`tiers.json` diff (`git show 3468ef5f -- docs/balance/smoke/tiers.json`) moved FOUR fields:
+`productVersion`, `rulesFingerprint`, `docsFingerprint` and `gitCommit`. Two of those move
+unconditionally on any extraction — `checkpoints.ts` re-stamps `gitCommit` from `HEAD`, and
+`computeDocsFingerprint` hashes the raw bytes of the same sources `rulesFingerprint` hashes
+semantically, so it moves in lockstep with it. **"`rulesFingerprint`'s move is the ONLY
+expected diff" is therefore unsatisfiable by any re-extraction this repo has ever taken,
+including the one it cites.** T-110's own F-110-C states the property the precedent actually
+set, and states it correctly — *"fingerprints + `gitCommit` + `productVersion` and every
+recorded checkpoint number is identical, which is itself evidence of inertness"*. §6
+compressed that into a stronger claim than the evidence supports. **The defect is a
+transcription, not a design bar.** Against the precedent's real property T-140 passes and
+then some; against §6's literal words T-140 fails, as would T-110.
+
+**RULED (owner, 2026-08-01): (A) — accept the deviation.** §6's third bullet is repaired in
+`docs/BALANCE-TELEMETRY_SPEC.md` §6 (see §7.7's recorded ruling) to the property T-110 actually
+established: fingerprints and `provenance` move, every recorded measurement stays
+byte-identical, and any fingerprint beyond `rulesFingerprint` that moves is named in the
+commit body with the file responsible. T-140 meets the repaired bar and exceeds it (§7.5's
+row-level sha256 identity on 8,052,023 bytes of sweep output, pre/post). No further code
+change is owed; this track's remaining fingerprint-moving tasks inherit the repaired wording.
+
+**THE RULING, for the owner — two options, spec §7.7 carries the long form:**
+**(A) ACCEPT and repair the acceptance shape** (recommended): re-word §6's third bullet, for
+*future* tasks only, to the property it meant — the re-extraction moves fingerprints and
+provenance only, every recorded measurement is byte-identical, and any fingerprint beyond
+`rulesFingerprint` that moves is named in the commit body with the file that moved it. That
+wording is *stricter* where it matters and honest where §6 was not.
+**(B) REJECT and require an untouched instrument**: a live option whose price should be read
+first — per §7.6 no arrangement of §4's design (a) or (b) reaches `endDay` from `sweep.ts`
+without editing `packages/sim/src/index.ts`, so (B) means ruling FOR the ambient-state design
+§7.6(2) rejects, or ruling that `packages/sim/src/index.ts` leave
+`SIM_INSTRUMENT_DIRECTORIES` — which takes the sim's day loop and policies out of the
+instrument hash and is the too-NARROW direction `rules-fingerprint.ts` names as the
+correctness failure. Both are the owner's to take; neither is this task's.
+**§6 and the Accept clause above are left exactly as written by this task** — editing the
+criterion to match what shipped is moving the goalpost, and under (B) the criterion stands
+and the implementation changes instead.
+
+**Fix round 2 changed ZERO hashed bytes**, deliberately, so the owner rules against the same
+numbers the review saw: it touched only `TASKS.md` and `docs/BALANCE-TELEMETRY_SPEC.md`,
+neither of which any fingerprint covers. Re-computed on the working tree,
+`computeRulesFingerprint` / `computeInstrumentFingerprint` / `computeDocsFingerprint` still
+return `f36d71f863a8ebe7` / `d50b03a8ca4323d8` / `c944fdb764c48484` — the three values
+committed in `docs/balance/smoke/tiers.json`. Gate re-run and green: 1,944 tests across the
+four workspaces (0 failures), `tsc -b`, `lint` and `format:check` all clean.
+
+**The move is provably cosmetic, measured not argued (§7.5).** A detached worktree at the
+pre-change commit `d85aaf9a` was built and swept beside the working tree with identical args
+(`--seeds 50 --days 120 --shard 1/1 --milestone-days 21,29,41`, default policies =
+**350 runs / 42,000 simulated days**). Both row files are 8,052,023 bytes and hash to
+`c0d26f1531936a677ee63bace8fdfe2342dc7e4c0c91ae3dbfb49954c7ca6d47` — §6's byte-identity
+clause discharged by `cmp`, not by inspection. Wall clock, best of three per tree:
+**64.1s traced-off vs 67.0s pre-change**, read as *no measurable cost* rather than *faster*
+(one 108.1s outlier shows the noise band is wider than any difference) — which is §4(5),
+which had until now been answered only by the short-circuit argument in §7.1. And in the
+re-extracted fixture the three fingerprints plus `provenance.gitCommit` are the **entire**
+diff: no checkpoint value, seed list or tier spread moved.
+
+**Fix round 3 (2026-07-31): the review failure IS the blocker, and the blocker stands.**
+Round 3 re-diagnosed the review's named unmet criterion and confirms the root cause is not
+a code defect but the open F-140-3 ruling itself — the review says so in its own text
+("a self-reported, correctly-flagged blocker, not a code defect"), and the GATE ran green
+beside it. Verified this round: **no owner ruling on F-140-3 exists anywhere** — `git log
+--all --grep` finds only the N13 and D1-D7 ruling commits (other findings, both predating
+this block), and `F-140-3` appears in no file beyond this one and the spec that poses the
+question. Every path that would turn the review green without a ruling is one a standing
+constraint forbids this coder to take: re-wording §6 is editing a criterion to force a pass
+(that is option (A), the owner's); the ambient-state rework and the
+`SIM_INSTRUMENT_DIRECTORIES` narrowing are option (B)'s two shapes, both already rejected
+on correctness grounds in §7.6 and takeable only by the owner. Zero hashed bytes changed
+again this round — `computeRulesFingerprint` / `computeInstrumentFingerprint` /
+`computeDocsFingerprint` re-computed on the working tree still return `f36d71f863a8ebe7` /
+`d50b03a8ca4323d8` / `c944fdb764c48484`, the values committed in
+`docs/balance/smoke/tiers.json`, so the owner still rules against the same numbers every
+round has seen. Per the Orchestrator protocol's "one fix round, then escalate, then halt"
+and the `[BLOCKED BY = Owner ruling]` convention, this round ESCALATES AND HALTS: T-140
+stays `BLOCKED`, and the next action belongs to the owner — pick (A) or (B) in spec §7.7.
+
+Two further findings reported not fixed: **F-140-1** (a §3 entry carries no seed or policy,
+so a merged multi-shard JSONL cannot attribute a decision to its career — filed against the
+report generator) and **F-140-2** (`kind: 'contract'` records BOARD INDICES with no board, so
+an entry means "which offer that day", never "which cargo"). No save-shape change:
+`CURRENT_SAVE_VERSION` stays 15, `save.ts`/`schema.ts` untouched, no migration owed. The
+shipped game supplies no sink — grep returns nothing under `packages/ui` and
+`packages/desktop`, now pinned by `packages/ui/src/__tests__/npc-trace-absent.test.ts`.
+
+**The commit body must state THREE fingerprint moves, not one**, name
+`instrumentFingerprint` as the deviation from §6, and point at §7.6.
 
 ### T-141 · Implement opt-in playtest logging — `status: TODO` · `coder: opus` · `after: T-130`
 
