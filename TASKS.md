@@ -3696,10 +3696,13 @@ skill's `[BLOCKED BY = ...]` convention — neither is this track's to decide, a
 each rather than guessing: **T-156** is `NPC_REDESIGN.md`'s own N13 ruling, explicitly recorded as
 "the owner's, made at step start and recorded here — not drifted into" (`NPC_REDESIGN.md:1477-1479`)
 — it is not new scope, just scheduled here so it isn't skipped. **T-158** is the owner's first UAT
-pass, which Part G's own analysis says neither the sweep nor an LLM pilot can substitute for. T-154
-and T-155 (the native LLM pilot) are resequenced to run **after** T-158, not before — Part G's
+pass, which Part G's own analysis says neither the sweep nor an LLM pilot can substitute for.
+**T-155** (running the native LLM pilot) is resequenced to run **after** T-158, not before — Part G's
 recommendation #6: the owner's own first UAT is a better first Tier-2 pass than a cold LLM run, and
-funding the pilot before knowing what a human finds risks measuring the wrong thing.
+funding the pilot before knowing what a human finds risks measuring the wrong thing. **T-154**
+(building the driver) is **not** part of that gate (owner, 2026-08-01) — Part G's argument is about
+not *running* the pilot cold, which doesn't bear on standing up the code; see the resequencing note on
+T-154 itself.
 
 ### T-152 · Build: fold sweep invariants into a pass/fail gate — `status: DONE` · `coder: opus` · `after: T-130`
 Take the invariant set already used in the T-1604a UGT campaign (`docs/playtests/T-1604a-ugt-campaign.md` §4 — credits floor, no-negative-cargo, and the rest of the 8) and wire them into `packages/sim/src/balance/sweep.ts` as hard assertions the sweep run itself fails on, not just numbers it reports. Add a statistical-anomaly check for any event whose expected rate is known (e.g. an encounter type expected at ~30% reading 0% across a full shard) so a probability regression fails the run instead of silently changing the reported baseline. Wire this sweep-as-gate into CI (or document why it's too slow for CI and instead into a scheduled/nightly job) so Tier-1 coverage (`docs/TESTING-STRATEGY.md` Part D) runs without a human remembering to invoke it. This task builds the mechanism only — T-153 proves it works.
@@ -3780,10 +3783,21 @@ Owner ruling recorded 2026-07-31 (`NPC_REDESIGN.md` N13 section and STATUS BOARD
 **Accept:** the virtual-hand function exists, is grep-able, and is flagged at its definition site as the sanctioned abstraction; `NPC_REDESIGN.md`'s PARITY LEDGER records `Crew`/`Reroll` as ruled exclusions (not TODO/gap rows); a sweep-based capstone reports the variance decomposition per the doc's "Simulate/Proves/Disproves" spec, with the result (proved or disproved) reported plainly either way; gate green.
 
 ### T-158 · CHECKPOINT — human UAT, plus a recorded ruling on Combat's chosen branch — `status: TODO` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141` · `[BLOCKED BY = Human UAT]`
-Per `docs/TESTING-STRATEGY.md` Part G: neither the sweep nor an LLM pilot can judge whether pacing or dice-tension *feels* right, and `docs/RELEASE-CHECKLIST.md` already states "nobody has played this build end to end yet." Automated preparation: confirm the build is green, confirm T-140/T-141 (decision tracing, opt-in playtest logging) are wired and active so the owner's session produces a reviewable log rather than only an impression, and assemble a short pre-UAT brief naming what's known-uncovered going in (Combat's chosen `executeCombat` branch is still an abstract GUNS check with 0 modeled deaths per `NPC_REDESIGN.md`'s Parity Ledger; Explore/VisitHangout have zero fleet coverage; N13's status per T-156). Then halt for the owner's own UAT pass, and — per Part G item 4 — a deliberate, recorded ruling on Combat's chosen branch, even if the ruling is "not fixing the model this pass." This is a hard gate: T-154/T-155 (the native LLM pilot) are sequenced after it and must not start until it closes.
+Per `docs/TESTING-STRATEGY.md` Part G: neither the sweep nor an LLM pilot can judge whether pacing or dice-tension *feels* right, and `docs/RELEASE-CHECKLIST.md` already states "nobody has played this build end to end yet." Automated preparation: confirm the build is green, confirm T-140/T-141 (decision tracing, opt-in playtest logging) are wired and active so the owner's session produces a reviewable log rather than only an impression, and assemble a short pre-UAT brief naming what's known-uncovered going in (Combat's chosen `executeCombat` branch is still an abstract GUNS check with 0 modeled deaths per `NPC_REDESIGN.md`'s Parity Ledger; Explore/VisitHangout have zero fleet coverage; N13's status per T-156). Then halt for the owner's own UAT pass, and — per Part G item 4 — a deliberate, recorded ruling on Combat's chosen branch, even if the ruling is "not fixing the model this pass." This is a hard gate: **T-155** (running the native LLM pilot for real) is sequenced after it and must not start until it closes. **T-154 (building the driver) is NOT gated on this** — see the resequencing note on T-154 below.
 **Accept:** (human-checked) the pre-UAT brief is committed; T-140/T-141 confirmed active; the run halts with this task `BLOCKED`, never self-approved; closes only once the owner has both played a UAT pass and recorded a Combat-branch ruling (fix, defer, or accept-as-is all count as a ruling).
 
-### T-154 · Build: native LLM pilot policy for the player seat — `status: TODO` · `coder: opus` · `after: T-158`
+### T-154 · Build: native LLM pilot policy for the player seat — `status: TODO` · `coder: opus` · `after: T-130`
+
+**RESEQUENCED (owner, 2026-08-01):** originally `after: T-158`, matching Part G recommendation #6
+("run the pilot after the first human UAT, not before"). On review, that reasoning is a
+*prioritization* argument about the pilot **run** (T-155) — don't spend a cold Tier-2 pass before you
+know what the owner finds by hand — not a technical or data dependency of the **driver build** itself.
+Neither this task's Accept criteria nor T-155's reference anything T-158 produces. Split accordingly:
+T-154 (build only) now runs as soon as its real prerequisites (T-130) are met, so the driver exists
+before UAT rather than after it; **T-155 stays gated on T-158**, preserving the actual intent — the
+pilot's first real run still waits so it can reproduce/extend what the owner's own UAT surfaces
+instead of running cold.
+
 Implement a `SimPolicy` (or a driver against `packages/sim/src/protocol-stdio.ts`) that has an LLM pick the player's actions each day from the real legal-actions list, in-repo — no dependency on the external UGT package. Reuse the adapter discipline from `packages/sim/PROTOCOL.md`: an unmapped/illegal action must be rejected, never fabricated. Log state deltas per action (mirroring T-1604a's JSONL shape) so a run's findings are reviewable after the fact. Note the bridge-blind-spot risk recorded in the UGT after-action report (`/Users/vs7/Dev/Games/_UGT Universal Game Tester/AFTER-ACTION-REPORT.md` §Addendum): a protocol/state-level driver like this one cannot see UI-only bugs (a real browser/DOM-level check is a separate, still-open need, not covered by this task). This task builds the driver only — T-155 proves it's trustworthy before it's relied on.
 **Accept:** the driver runs against the real engine via the protocol seam and produces a reviewable action/state-delta log; illegal-action attempts are rejected and logged, never silently applied; a short README documents how to invoke a run and states plainly that this covers protocol/state-level behaviour only, not the UI.
 
