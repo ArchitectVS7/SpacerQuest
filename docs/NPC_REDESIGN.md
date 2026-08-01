@@ -74,7 +74,7 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 | **N10 — NPCs work the contract board** | **SHIPPED 2026-07-29** | **CHANGE ACCEPTED · HYPOTHESIS DISPROVED** — the shared per-system pool is built and the cast works it galaxy-wide, but competition is not a force: cast demand is ~6% of the galaxy's job supply, and neither throttle was ever the binding constraint. The step's real effect was the parity gap it was not looking for — the cast now CHOOSES its contract (`pickContract`), worth +247% on cast median wealth. **The non-trader floor did not move (p10 126 → 126)** |
 | **N11 — NPCs earn deeds and Renown** | **SHIPPED 2026-07-30** | **CHANGE ACCEPTED · HYPOTHESIS HELD, BOTH DISPROVES LIMBS SURVIVED** — the −1 dead end is gone (98.7% of cast slots hold an earned rank at day 120, 42.8 gated purchases per run), the median captain sits **two rungs BELOW** a competent player (COMMODORE vs TOP_DOG), and nobody accrues zero. **The floor did not move for the THIRD time (p10 126 → 126) and the structural reason is now known: a deed pays no credits — rank is a spending unlock, not income**, so cast median wealth FELL 76,049 → 55,437 |
 | **N12 — NPCs buy ports** | **TODO · MUST-HAVE** · FIRST TASK DONE | lands BEFORE N8. Its FIRST TASK — the aggregate learning to see ports, player AND per-NPC — **landed ahead of the step (2026-07-30)**, so the step can measure its own effect. **N11 hands it the sharpened question:** the floor has now failed to move three times, and a port must be BOUGHT, so measure port ownership PER ARCHETYPE from the first sweep — fleet-wide would hide a two-archetype economy |
-| **N13 — NPC decision surface (dawn-hand parity)** | **TODO · MUST-HAVE** | literal reduced hand vs algorithmic equivalent — owner accepts algorithmic fast-forward; gates N5 |
+| **N13 — NPC decision surface (dawn-hand parity)** | **TODO · MUST-HAVE** · design RULED 2026-07-31 | **(b) algorithmic virtual hand** — `Crew`/`Reroll` ruled exclusions, not gaps; scheduled `TASKS.md` T-156; gates N5 |
 | **N14 — captain voice: the daily wire boast** | **TODO · EXPERIMENT** | owner spec 2026-07-29 — 3 boasts × 30 captains, top-3 candidates, one per day, 2-day cooldown + line rotation; **not** PvP messaging (PRD non-goal) |
 | **N9 — the instrument's three unplayed actions** | **SHIPPED** | **hypothesis REJECTED** — verbs cost 38% of fleet cash, not gain; found the aggregate cannot see an asset |
 | N8 — re-pin against a living field | TODO | **ledger rulings discharged 2026-07-30; the aggregate now sees ports**; re-pin against the post-N9 instrument; **follows N10–N12** (owner ruling 2026-07-29) |
@@ -1486,7 +1486,7 @@ N10's 9/80).
 > the capstone, or the step cannot see its own effect.** `contractClaims` / `boardDepth`
 > on `PolicyAggregate` are the worked example to copy for `ports`.
 
-### N13 — The NPC decision surface: dawn-hand parity (MUST-HAVE · owner ruling 2026-07-29 · GATES N5)
+### N13 — The NPC decision surface: dawn-hand parity (MUST-HAVE · owner ruling 2026-07-29, design ruled 2026-07-31 · GATES N5)
 
 - **The gap, in this track's own words:** the preamble says *"the NPC field does not face
   the game's central decision"* — and no step before this one addressed it. N5's premise
@@ -1507,6 +1507,12 @@ N10's 9/80).
     at its definition site as the one sanctioned abstraction in the parity design, and
     `Crew`/`Reroll` then stay player-only, which the PARITY LEDGER must record as a ruled
     exclusion rather than a gap.
+- **Owner ruling on the (a)/(b) choice (2026-07-31): (b), the algorithmic equivalent.**
+  Envelope-cheap and already the pre-approved fast-forward; N5 gets the decision-quality
+  medium it needs either way. `Crew` and `Reroll` are therefore a **ruled exclusion**, not
+  a gap — record them as such in THE PARITY LEDGER when N13 ships, not silently. Scheduled
+  as `TASKS.md` T-156, decoupled from N12 (port-buying is a separate, orthogonal system;
+  nothing about the virtual-hand mechanism reads NPC port state).
 - **Simulate:** full sweep + per-captain outcome variance decomposition (verb-weight luck
   vs skill).
 - **Proves:** NPC day outcomes gain a skill-sensitive spread that N5 can then widen;
