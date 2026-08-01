@@ -66,6 +66,43 @@
  * diff against.
  *
  * Progress goes to stderr; stdout stays clean so `--merge` output can be piped.
+ *
+ * ------------------------------------------------------------------------
+ * T-152 · THE GATE — this run can now FAIL, not only report.
+ *
+ * `docs/TESTING-STRATEGY.md` Part D, Tier 1. Every sweep and every `--merge`
+ * evaluates the invariant set and the expected-event-rate table and sets a
+ * non-zero exit code on any violation. There is no `--no-gate` flag and no
+ * environment escape hatch, deliberately — see the header of `./gate.ts`.
+ *
+ * THE DEFINITIONS ARE NOT HERE. They live in the pure `./gate.js`, the same
+ * T-1602b split this file already keeps with `./aggregate.js`: CI and a local
+ * re-run must not be able to reach different verdicts from the same rows. This
+ * file owns the CALLS, the file writes and the exit code. The manifest:
+ *
+ *   INVARIANT (per finished `CampaignStatsReport`, inside the seed loop)
+ *     assertNoNegativeResources ............ UGT inv_no_negative_resources
+ *     assertFuelWithinTank ................. UGT inv_fuel_within_tank
+ *     assertDayMonotonic ................... UGT inv_day_monotonic
+ *     assertOneSamplePerDay ................ UGT inv_phaseday_binary (analogue)
+ *     assertProgressRatchetsNeverReverse ... UGT inv_era_one_way (generalised)
+ *     assertNoIncomeStall .................. T-201/T-1605b poverty trap
+ *     assertCombatRecordsWellFormed ........ sweep-native
+ *     assertRouteRecordsWellFormed ......... sweep-native
+ *     assertBoardDepthWithinPoolBounds ..... sweep-native (N10)
+ *
+ *   RATE (per shard, and again over the merged rows)
+ *     EXPECTED_EVENT_RATES — 8 entries, each with a named band and a `minSample`
+ *     below which it reports SKIPPED rather than failing on noise.
+ *
+ *   NOT OBSERVABLE HERE — SWEEP_INVARIANT_DISPOSITIONS names the three UGT
+ *   predicates the sweep cannot see (`inv_blocked_from_legal_non_increasing`,
+ *   `inv_protocol_errors_non_increasing`, `inv_dice_bounds`) and the task that
+ *   owns each. Declared, never faked into a green check.
+ *
+ * Each run writes `gate-<label>-shard<i>of<N>.json` (or `gate-<label>-merged.json`)
+ * beside the rows, in the same gitignored directory and for the same reason.
+ * ------------------------------------------------------------------------
  */
 
 import {
@@ -82,8 +119,23 @@ import { fileURLToPath } from 'node:url';
 
 import type { NpcDecisionTrace } from '@spacerquest/engine';
 
-import { runCampaign, type SimPolicyName } from '../index.js';
+import { runCampaign, type CampaignStatsReport, type SimPolicyName } from '../index.js';
 import { aggregate, summarizeReport, type SeedRow } from './aggregate.js';
+import {
+  assertBoardDepthWithinPoolBounds,
+  assertCombatRecordsWellFormed,
+  assertDayMonotonic,
+  assertFuelWithinTank,
+  assertNoIncomeStall,
+  assertNoNegativeResources,
+  assertOneSamplePerDay,
+  assertProgressRatchetsNeverReverse,
+  assertRouteRecordsWellFormed,
+  buildGateReport,
+  checkExpectedEventRates,
+  formatGateReport,
+  type SweepViolation,
+} from './gate.js';
 
 /** The default fleet: the six competent policies (the balance instruments) plus
  *  `greedy` as a naive control, so the memo can say what "playing badly" costs.
@@ -363,6 +415,69 @@ function formatElapsed(ms: number): string {
   return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, '0')}s`;
 }
 
+// ---------------------------------------------------------------------------
+// T-152 · The gate
+// ---------------------------------------------------------------------------
+
+/**
+ * Run every flat invariant against ONE finished report.
+ *
+ * EXPLICIT CALLS, NOT A LOOP OVER AN ARRAY OF FUNCTION REFERENCES. A table-driven
+ * `for (const check of CHECKS)` would be tidier and would erase every invariant
+ * name from this file — and the acceptance criterion is that `sweep.ts` names
+ * them, so that `grep assert packages/sim/src/balance/sweep.ts` answers "which
+ * invariants does the sweep enforce?" without a second hop.
+ */
+function runGate(report: CampaignStatsReport): SweepViolation[] {
+  return [
+    ...assertNoNegativeResources(report),
+    ...assertFuelWithinTank(report),
+    ...assertDayMonotonic(report),
+    ...assertOneSamplePerDay(report),
+    ...assertProgressRatchetsNeverReverse(report),
+    ...assertNoIncomeStall(report),
+    ...assertCombatRecordsWellFormed(report),
+    ...assertRouteRecordsWellFormed(report),
+    ...assertBoardDepthWithinPoolBounds(report),
+  ];
+}
+
+function gateFileName(options: SweepOptions, merged: boolean): string {
+  return merged
+    ? `gate-${options.label}-merged.json`
+    : `gate-${options.label}-shard${options.shardIndex}of${options.shardCount}.json`;
+}
+
+/**
+ * Evaluate the rate table, print the verdict, write the JSON report, and FAIL the
+ * process on any violation.
+ *
+ * `process.exitCode` rather than `process.exit()`: the rows file and the
+ * aggregate are already on disk by the time this runs, and an abrupt exit would
+ * risk truncating a buffered write. A failing gate must still leave behind the
+ * artefact that explains why it failed.
+ */
+function reportGate(
+  options: SweepOptions,
+  scope: string,
+  rows: readonly SeedRow[],
+  violations: readonly SweepViolation[],
+): void {
+  const report = buildGateReport(
+    options.label,
+    scope,
+    rows.length,
+    violations,
+    checkExpectedEventRates(rows),
+  );
+  process.stderr.write(`${formatGateReport(report)}\n`);
+  const target = join(options.rowsDir, gateFileName(options, options.merge));
+  mkdirSync(options.rowsDir, { recursive: true });
+  writeFileSync(target, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  process.stderr.write(`[gate] wrote ${target}\n`);
+  if (!report.passed) process.exitCode = 1;
+}
+
 function runSweep(options: SweepOptions): void {
   const rows: SeedRow[] = [];
   const started = Date.now();
@@ -395,10 +510,18 @@ function runSweep(options: SweepOptions): void {
     ? { ...milestoneExtras, npcDecisionTrace: traceWriter.sink }
     : milestoneExtras;
 
+  // T-152 · Violations only, never reports. A shard of the veteran arm holds
+  // 250 x 7 reports each carrying 120 `CampaignDayStats` plus every encounter and
+  // route record; retaining them to gate at the end would multiply the sweep's
+  // peak memory for no gain, since a flat invariant is a function of one report.
+  const violations: SweepViolation[] = [];
+
   for (let seed = options.seedStart; seed <= lastSeed; seed += 1) {
     if (!inShard(seed, options)) continue;
     for (const policy of options.policies) {
-      rows.push(summarizeReport(runCampaign(seed, options.days, policy, extras)));
+      const report = runCampaign(seed, options.days, policy, extras);
+      violations.push(...runGate(report));
+      rows.push(summarizeReport(report));
       completed += 1;
       if (completed % 25 === 0 || completed === planned) {
         process.stderr.write(
@@ -421,6 +544,10 @@ function runSweep(options: SweepOptions): void {
       `[balance] wrote ${tracedEntries} NPC decision traces to ${traceTarget}\n`,
     );
   }
+
+  // T-152 · The gate runs AFTER the rows are on disk, so a failing sweep still
+  // leaves the sample that produced the failure available to re-read.
+  reportGate(options, `shard ${options.shardIndex}/${options.shardCount}`, rows, violations);
 }
 
 function mergeShards(options: SweepOptions): void {
@@ -453,6 +580,20 @@ function mergeShards(options: SweepOptions): void {
   const target = join(options.aggregateDir, `baseline-${options.label}.json`);
   writeFileSync(target, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
   process.stderr.write(`[balance] wrote aggregate for ${rows.length} rows to ${target}\n`);
+
+  // T-152 · The rate table runs AGAIN over the merged rows, and this is the
+  // sample that actually matters: `minSample` is a denominator floor, and a
+  // four-way split can leave every shard below it while the union is comfortably
+  // above.
+  //
+  // THE FLAT INVARIANTS DO NOT RE-RUN HERE, and the limitation is stated rather
+  // than papered over: `SeedRow` deliberately does not carry `daily[]` (see its
+  // definition in `./aggregate.ts` — it carries `boardDepths` and the raw record
+  // arrays, not the per-day series), so a merge has no calendar, no credits curve
+  // and no income series to assert against. It does not need one: the shard that
+  // produced any offending row already failed on it, and a shard's non-zero exit
+  // is not something a later merge can launder away.
+  reportGate(options, 'merged', rows, []);
 }
 
 export function main(argv: string[] = process.argv.slice(2)): void {

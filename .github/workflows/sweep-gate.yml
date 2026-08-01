@@ -1,0 +1,274 @@
+# T-152 · The balance sweep, run AS A GATE.
+#
+# `docs/TESTING-STRATEGY.md` Part D, Tier 1: the invariants the T-1604a UGT
+# campaign swept by hand are now hard assertions inside the sweep itself
+# (`packages/sim/src/balance/gate.ts`), and a sweep that violates one — or whose
+# measured event rates fall outside their bands — exits non-zero. This workflow is
+# what makes that run without a human remembering to invoke it, which is the other
+# half of the acceptance line.
+#
+# ---------------------------------------------------------------------------
+# WHY BOTH A PUSH JOB AND A NIGHTLY, AND WHY NOT DISPATCH-ONLY
+# ---------------------------------------------------------------------------
+# This repo has already paid for that mistake once — see the round-2 correction at
+# the top of `e2e-flake.yml`. A `workflow_dispatch`-only workflow cannot be started
+# from a feature branch (GitHub only dispatches workflows already on the DEFAULT
+# branch: `gh workflow run` answers 404), so the very commit whose acceptance needs
+# the evidence cannot produce it. And dispatch-only means a human has to remember:
+# "a stability gate that only runs when somebody thinks to run it is not a gate."
+#
+# So the gate splits by SAMPLE SIZE, not by trigger convenience:
+#
+#   `gate`  — every push and PR. A small, fixed, fully-reproducible sample sized so
+#             every expected-event-rate check clears its `minSample` and none has to
+#             report SKIPPED. This is the regression detector.
+#   `deep`  — nightly, plus `workflow_dispatch`. The production-shaped arms. This is
+#             where a rate band gets a sample big enough to argue with.
+#
+# `gate` is a SEPARATE JOB from `ci.yml`'s `ci`, deliberately: that job runs real
+# multi-hundred-day Monte-Carlo campaigns, already clocks ~14 min against a 30 min
+# timeout, and its own comment says to split heavy sim work into a parallel job
+# rather than raise the ceiling again.
+#
+# ---------------------------------------------------------------------------
+# RUNTIME BUDGET — measured, not asserted
+# ---------------------------------------------------------------------------
+# `runCampaign` is roughly QUADRATIC in days (`packages/sim/src/balance/sweep.ts`'s
+# header records the curve: 35d=283ms … 150d=3,322ms on the authoring machine), so
+# the horizon, not the seed count, is what makes a sweep expensive.
+#
+# Measured for the `gate` shape below on the authoring machine (2026-08-01, macOS,
+# node 22): 210 runs per shard (30 seeds x 7 policies at 35 days) in **11.3s**, so
+# both shards plus the merge are well under a minute of sweep. A GitHub runner is
+# slower; `timeout-minutes: 20` leaves order-of-magnitude headroom while still
+# tripping fast on a genuine hang.
+#
+# WHY THE FULL 8,000-RUN CAPSTONE SHAPE IS NOT THE NIGHTLY DEFAULT. That is
+# 1,000 seeds x 8 policies x 120 days — measured at 207s wall clock across EIGHT
+# concurrent shards on a 10-core box (`docs/balance/smoke/README.md`), which a
+# 2-core `ubuntu-latest` runner cannot reproduce; single-threaded, the same header
+# puts a 120-day arm at ~2.3s/run, i.e. ~5 hours. It is therefore a
+# `workflow_dispatch` input (`seeds`) rather than the nightly default, and the
+# nightly runs the smaller veteran-arm shape that fits comfortably in a runner.
+#
+# ---------------------------------------------------------------------------
+# KNOWN RED AT LANDING — read before assuming this workflow is broken
+# ---------------------------------------------------------------------------
+# The `gate` job FAILS on today's tree, and it fails for a real reason it found on
+# its first honest run: `assertNoIncomeStall` catches `fighterPolicy` sitting idle
+# for up to 32 consecutive days on a 35-day horizon. Measured incidence across
+# seeds 1..200 at 35 days, per policy, longest zero-income streak:
+#
+#     trader 3 · explorer 4 · smuggler 3 · gambler 2 · fighter 32 (6 seeds >= 5:
+#     35, 54, 75, 80, 115, 181)
+#
+# Root cause, diagnosed: `fighterPolicy` filters the board to contracts inside
+# `SIGN_FUEL_FRACTION` of the tank but never applies the T-1104 RELAXATION that
+# `traderPolicy`, `smugglerPolicy` and `explorerPolicy` all carry ("when nothing
+# fits the margin cap, relax to the FULL tank rather than idle"). Stranded at a rim
+# port where every lane exceeds the cap, it signs nothing and Waits forever while
+# the Guild marker compounds (seed 35: parked at Algol-2 from day 7 with 2,825cr
+# and a live 2-4 offer board, debt 20,970 -> 23,156 by day 36).
+#
+# THE FIX IS NOT IN THIS TASK, and not because it is hard — it is one line with
+# three verbatim precedents in the same file. `packages/sim/src/index.ts` is a
+# HASHED INSTRUMENT SOURCE: changing it moves `instrumentFingerprint`, stales
+# `docs/balance/smoke/tiers.json`, and owes a capstone re-measure plus a differ
+# run. TASKS.md's standing constraints reserve capstones for a milestone's FINAL
+# task ("Batch it… re-extract ONCE, at the end"), so folding a balance change into
+# a testing-infrastructure task is exactly the entanglement they forbid.
+#
+# The gate was NOT weakened to hide this. Not a widened threshold, not a
+# hand-picked seed range that dodges seed 35, not an allowlist — see the header of
+# `packages/sim/src/balance/gate.ts` for why there is deliberately no escape hatch
+# to reach for. A gate that goes red on a real defect the day it lands is the gate
+# working; this note is here so the red reads as a finding rather than as a broken
+# workflow.
+
+name: Sweep gate
+
+on:
+  push:
+    branches: [main, rimward-redesign, redesign/explore-hangout]
+  pull_request:
+  schedule:
+    # 04:20 UTC nightly. Off the hour, so it does not queue behind the crowd of
+    # cron jobs every public runner pool sees at :00.
+    - cron: '20 4 * * *'
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: Seeds per arm for the deep job (the capstone shape is 1000)
+        required: false
+        default: '120'
+
+# NO `concurrency` block, and for the reason `e2e-flake.yml` states about its own
+# matrix: a cancel-in-progress group would let a second push kill a sweep half-way
+# and leave a verdict built on a truncated sample. Two overlapping runs are cheap;
+# a silently truncated measurement is not.
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Sweep gate (push/PR sample)
+    # Same-repo PRs are already covered by the push-triggered run of the same
+    # commit — the rule `ci.yml` applies to all three of its jobs. Fork PRs
+    # produce no push run here, so they still get gated.
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      # Same reasoning as `ci.yml`: this job never launches Electron, so skip the
+      # ~100 MB binary download.
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
+      - name: Typecheck & build
+        run: npx tsc -b
+
+      # TWO SHARDS PLUS A MERGE, not one flat run. The standing constraint's sweep
+      # shape is `--shard i/N` (1-INDEXED) followed by `--merge`, and running it at
+      # CI scale on every push is what keeps the sharding and the merge path from
+      # rotting between capstones — a merge that silently reads zero row files
+      # would otherwise only be discovered by the milestone that needed it.
+      #
+      # `--milestone-days` is load-bearing here, not decoration: it is what makes
+      # the EXACT `fuel <= maxFuel` branch of `assertFuelWithinTank` execute. Rows
+      # without milestone samples only ever reach the weak absolute-ceiling tier.
+      #
+      # `--out` / `--aggregate-out` BOTH point at $RUNNER_TEMP. CI must never write
+      # into `docs/balance/` — the default `--aggregate-out` — or a green run would
+      # quietly overwrite a committed baseline with a 210-row sample.
+      - name: Sweep gate — shard 1/2
+        run: |
+          npm run balance:sweep -w @spacerquest/sim -- \
+            --label ci-gate --seeds 60 --days 35 --shard 1/2 \
+            --milestone-days 10,30 \
+            --out "$RUNNER_TEMP/balance" --aggregate-out "$RUNNER_TEMP/balance"
+
+      - name: Sweep gate — shard 2/2
+        run: |
+          npm run balance:sweep -w @spacerquest/sim -- \
+            --label ci-gate --seeds 60 --days 35 --shard 2/2 \
+            --milestone-days 10,30 \
+            --out "$RUNNER_TEMP/balance" --aggregate-out "$RUNNER_TEMP/balance"
+
+      # The merge re-runs the expected-event-rate table over the UNION, which is
+      # the sample that actually matters: `minSample` is a denominator floor and a
+      # split can leave a shard below it while the union is comfortably above.
+      - name: Sweep gate — merge
+        run: |
+          npm run balance:sweep -w @spacerquest/sim -- \
+            --label ci-gate --merge \
+            --out "$RUNNER_TEMP/balance" --aggregate-out "$RUNNER_TEMP/balance"
+
+      # `always()` so a FAILING gate still yields the report that says why — which
+      # is exactly when it is worth reading. `if-no-files-found: error` so the
+      # artifact criterion cannot silently rot into an empty upload, the same guard
+      # `ci.yml`'s Tour One report uses.
+      - name: Upload gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-gate-reports
+          path: ${{ runner.temp }}/balance/gate-*.json
+          if-no-files-found: error
+
+  deep:
+    name: Sweep gate (deep sample)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # A 120-day arm is ~8x the per-run cost of the 35-day one (the quadratic
+    # day-cost in sweep.ts's header). Sized for the dispatch input to be raised to
+    # the capstone's 1,000 seeds without editing this file.
+    timeout-minutes: 240
+    strategy:
+      # A failing arm is the DATUM, not a reason to abandon the other one.
+      fail-fast: false
+      matrix:
+        include:
+          # The two arms the baseline itself is taken as (sweep.ts header): the
+          # Tour One arm answers clear-day / combat EV / death rate / early deed
+          # pacing, the veteran arm answers everything past day 30.
+          - arm: tour-one
+            days: 35
+          - arm: veteran
+            days: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
+      - name: Typecheck & build
+        run: npx tsc -b
+
+      # FOUR SHARDS CONCURRENTLY, then merge. `wait` without `-n` returns the
+      # first non-zero status among the background jobs, and `set -e` is on by
+      # default in a `run:` block — so a shard whose GATE failed still fails this
+      # step rather than being swallowed by a successful merge.
+      #
+      # `inputs.seeds` is null on a `schedule` event and renders as the empty
+      # string there, so the default is resolved with `||` at the expression level
+      # — the exact trap `e2e-flake.yml`'s `env: RUNS:` line documents.
+      - name: Sweep gate — ${{ matrix.arm }} arm, 4 shards
+        env:
+          SEEDS: ${{ inputs.seeds || '120' }}
+          ARM: ${{ matrix.arm }}
+          DAYS: ${{ matrix.days }}
+        run: |
+          case "$SEEDS" in
+            ''|*[!0-9]*)
+              echo "seeds must be a whole number, got '$SEEDS'" >&2
+              exit 1
+              ;;
+          esac
+          for shard in 1 2 3 4; do
+            npm run balance:sweep -w @spacerquest/sim -- \
+              --label "nightly-$ARM" --seeds "$SEEDS" --days "$DAYS" \
+              --shard "$shard/4" --milestone-days 10,30 \
+              --out "$RUNNER_TEMP/balance" --aggregate-out "$RUNNER_TEMP/balance" &
+          done
+          wait
+
+      - name: Sweep gate — ${{ matrix.arm }} arm, merge
+        run: |
+          npm run balance:sweep -w @spacerquest/sim -- \
+            --label "nightly-${{ matrix.arm }}" --merge \
+            --out "$RUNNER_TEMP/balance" --aggregate-out "$RUNNER_TEMP/balance"
+
+      # The aggregate goes up beside the gate reports: when a nightly rate check
+      # fails, the next question is always "by how much, and in which policy row",
+      # and that is a `BaselineAggregate` question. It is an ARTIFACT, never a
+      # commit — `docs/balance/baseline-*.json` is the capstone's to write.
+      - name: Upload gate reports and aggregate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-gate-deep-${{ matrix.arm }}
+          path: |
+            ${{ runner.temp }}/balance/gate-*.json
+            ${{ runner.temp }}/balance/baseline-*.json
+          if-no-files-found: error

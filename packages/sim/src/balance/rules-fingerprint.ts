@@ -156,6 +156,14 @@ export const SIM_NON_INSTRUMENT_SOURCES: Readonly<Record<string, string>> = {
     'The I/O half of the sweep (argv, sharding, file writes). The arithmetic it invokes lives ' +
     'in `balance/aggregate.ts`, which IS hashed — the T-1602b pure/IO split, used here to keep ' +
     'the hash on the pure side.',
+  'balance/gate.ts':
+    'T-152 · The sweep GATE — pure predicates over finished reports and finished rows, plus the ' +
+    'expected-event-rate table they are checked against. Same class as `balance/diff.ts` below: ' +
+    'it reads measurements and asserts about them, and cannot produce one. A change here alters ' +
+    'whether a sweep FAILS, never what a career does or what the sweep measures — so folding it ' +
+    'in would invalidate every committed smoke fixture on a widened band, which is churn with no ' +
+    'signal in it. (The bands themselves are held honest by the no-editing-to-pass rule stated ' +
+    'in that file and at the top of this one, not by a hash.)',
   'balance/diff.ts': 'Reads two finished aggregates and reports. It cannot produce a number.',
   'balance/diff-cli.ts': 'The argv/filesystem half of the above.',
   'balance/report-model.ts':
