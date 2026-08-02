@@ -103,6 +103,27 @@ fully ruled as of 2026-07-30**, so N8 now waits on N12 alone.
 > in git at the pointer each carries. One `it.fails` tripwire was filed at N4 — see
 > that Result; it is still correctly red at N10's widened sample.
 >
+> **BASELINE OF RECORD RE-PINNED AT T-182 (2026-08-02)** to
+> `docs/balance/baseline-t182-reroll-fix.json` — the F-156-1 capstone. `dice.ts` `spendDie`
+> stopped dropping `rerollsRemaining` from the hand it returns, which moves
+> `rulesFingerprint` (`50f24146a366b558` -> `d0388cb50b0f9a11`) and therefore obliges a
+> capstone whether or not a number moves. **NOTHING MOVED — `balance:diff` from
+> `n13-shipped` reports "NOTHING MOVED. Every compared field is equal on both sides"
+> across all 8,000 careers, and that was PREDICTED IN ADVANCE rather than discovered:**
+> the sim's `withReroll` (`packages/sim/src/index.ts`) PREPENDS its `Reroll` to the
+> dawn batch, and `runCampaign` asks a policy for the whole day once at dawn, so no
+> policy has ever read `rerollsRemaining` AFTER a die was spent — which is the only
+> window in which the bug existed. The fix restores a charge the instrument cannot
+> reach. `greedy`, the attribution control that never rerolls, is unmoved as expected.
+> `instrumentFingerprint` is UNCHANGED at `e81bc730c94b1fce` (no instrument source was
+> touched); `docsFingerprint` moved to `023f6e5df3ac738f`, which is a NOTE and not a
+> failure — the `spendDie` contract block is commentary, and comments decide no
+> outcomes. Same shape as every capstone back to `baseline-r2c-explorer-remit`
+> (1,000 seeds × 120 days × 8 policies = 8,000 runs, 8 1-indexed shards through
+> `--merge` reporting `wrote aggregate for 8000 rows`, both
+> `--milestone-days 21,29,30,41,60,120` and `--aggregate` honoured, fixture re-extracted
+> FROM it with `spreads harvested`). The merged gate PASSES with 0 invariant violations.
+>
 > **BASELINE OF RECORD RE-PINNED AT T-156 (2026-08-02)** to
 > `docs/balance/baseline-n13-shipped.json` — the N13 dawn-hand-parity capstone. The 30
 > captains now hold a five-die virtual hand and spend it at both of `npc.ts`'s check sites
@@ -2295,8 +2316,13 @@ every step in this document and, on resumption, every R step in `BALANCE-REDESIG
    cargo" headline was a sampling artifact (19 ships and 17 routes at n=1,000). **Corollary
    for every future step: never report a rate as 0.00 off a small arm — report `< 1/n`, or
    re-run bigger.**
-   > **Baseline of record is `docs/balance/baseline-n13-shipped.json`** (1,000 seeds ×
-   > 120 days × 8 policies = 8,000 runs, re-pinned at T-156 2026-08-02 — the N13
+   > **Baseline of record is `docs/balance/baseline-t182-reroll-fix.json`** (1,000 seeds ×
+   > 120 days × 8 policies = 8,000 runs, re-pinned at T-182 2026-08-02 — the F-156-1
+   > `spendDie` capstone; `rulesFingerprint` moved, so a capstone was owed, but
+   > `balance:diff` from `n13-shipped` reports NOTHING MOVED, so this file and
+   > `n13-shipped` describe the same 8,000 careers and differ only in which one
+   > describes HEAD).
+   > `baseline-n13-shipped` (re-pinned at T-156 2026-08-02 — the N13
    > dawn-hand-parity capstone; the cast's checks now spend from a virtual hand, which
    > moves ALL NINE rows against `t150-postfix`, so that file no longer describes HEAD).
    > `baseline-n13-control.json` and `baseline-n13-pre.json` sit beside it as N13's other

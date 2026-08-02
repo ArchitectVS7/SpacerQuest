@@ -251,6 +251,59 @@ describe('T-1306 · dawn-die reroll', () => {
     expect(bad.state.player.dawnHand!.rerollsRemaining).toBe(1); // charge intact
   });
 
+  // T-182 · F-156-1 END TO END. Every step is a verb a player presses — hire,
+  // sleep, buy fuel, reroll — because the defect lived in the SEAM between the
+  // spend and the reroll, not in either one alone. On the unfixed tree the
+  // buy-fuel at step 4 destroyed the charge and step 5 refused with `no-charge`.
+  it('T-182 · hire the reroll role → next dawn → spend a die on a real action → Reroll still succeeds', () => {
+    // 6,000 credits: 2,500 to hire plus wage runway through the dusk.
+    const day1 = dayState(42, (s) => {
+      s.player.credits = 6000;
+    });
+    expect(day1.player.dawnHand!.rerollsRemaining).toBe(0); // no crew yet
+
+    const hired = applyPlayerAction(day1, {
+      type: 'Crew',
+      action: 'hire',
+      roleId: 'crew-navigator',
+      spendDie: 0,
+    }).state;
+    expect(hired.player.crew).toEqual([{ roleId: 'crew-navigator', hiredDay: 1 }]);
+
+    // Sleep on it — the charge is dealt at the NEXT dawn, off the new roster.
+    const day2 = startDay(endDay(hired).state).state;
+    expect(day2.player.dawnHand!.rerollsRemaining).toBe(1);
+
+    // 4. Spend a die on an ASSIGN-family action. THIS is where the charge died.
+    const idx = firstUnspent(day2);
+    const spent = applyPlayerAction(day2, {
+      type: 'Trade',
+      action: 'buy-fuel',
+      fuelAmount: 1,
+      spendDie: idx,
+    }).state;
+    expect(spent.player.dawnHand!.spent[idx]).toBe(true);
+    expect(spent.player.dawnHand!.rerollsRemaining).toBe(1);
+
+    // 5. The charge the player hired is still spendable.
+    const rerollIdx = firstUnspent(spent);
+    const { state: rolled, events } = applyPlayerAction(spent, {
+      type: 'Reroll',
+      dieIndex: rerollIdx,
+    });
+    const rr = events.find((e) => e.type === 'DiceRerolled') as Extract<
+      GameEvent,
+      { type: 'DiceRerolled' }
+    >;
+    expect(rr).toBeDefined();
+    expect(rr.failReason).toBeUndefined();
+    expect(rr.dieIndex).toBe(rerollIdx);
+    expect(rr.result).toBeGreaterThanOrEqual(1);
+    expect(rr.result).toBeLessThanOrEqual(20);
+    expect(rolled.player.dawnHand!.dice[rerollIdx]).toBe(rr.result);
+    expect(rolled.player.dawnHand!.rerollsRemaining).toBe(0);
+  });
+
   it('a crew with no reroll role banks no charge, so Reroll typed-fails no-charge', () => {
     const state = dayState(42); // no crew
     expect(state.player.dawnHand!.rerollsRemaining).toBe(0);

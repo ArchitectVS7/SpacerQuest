@@ -154,6 +154,53 @@ describe('Dice', () => {
     expect(isDayOver(hand)).toBe(true);
     expect(remainingDice(hand)).toHaveLength(0);
   });
+
+  // --- T-182 · F-156-1: `spendDie` returns a COMPLETE copy of the hand ------
+  // The old rebuild listed `dice` and `spent` only, so it silently dropped the
+  // `rerollsRemaining` field T-1306 added — and every call site that assigned the
+  // returned hand back onto the save destroyed the day's re-roll charges with the
+  // first die spent. These three pin the contract documented at `spendDie`.
+
+  it('T-182 · preserves the day’s re-roll charges across every spend', () => {
+    const rng = new SeededRng(1);
+    let hand = rollDawnHand(rng, { handSize: 3, floor: 0, rerolls: 1 });
+    expect(hand.rerollsRemaining).toBe(1);
+
+    hand = spendDie(hand, 1).hand;
+    expect(hand.rerollsRemaining).toBe(1);
+
+    hand = spendDie(hand, 0).hand;
+    hand = spendDie(hand, 2).hand;
+    expect(isDayOver(hand)).toBe(true);
+    expect(hand.rerollsRemaining).toBe(1); // survives a fully spent hand
+  });
+
+  it('T-182 · preserves ABSENCE of the charge field (no `rerollsRemaining: 0` invented)', () => {
+    // The inline `{ dice, spent }` construction the field's `types.ts` comment names.
+    const hand = spendDie({ dice: [5, 6], spent: [false, false] }, 0).hand;
+    expect(hand.rerollsRemaining).toBeUndefined();
+    expect('rerollsRemaining' in hand).toBe(false);
+    expect(JSON.parse(JSON.stringify(hand))).toEqual({ dice: [5, 6], spent: [true, false] });
+  });
+
+  it('T-182 · the two call-site families are equivalent: assign-the-return === mutate-in-place', () => {
+    // The documented reconciliation, made executable. `spendDie` copies `spent`
+    // before writing it, so a caller that discards the return value and marks
+    // `spent[index]` on its live hand lands in exactly the same place.
+    const source = { dice: [12, 7, 3], spent: [false, false, false], rerollsRemaining: 1 };
+
+    const assigned = spendDie(structuredClone(source), 0).hand;
+
+    const mutated = structuredClone(source);
+    mutated.spent[0] = true;
+
+    expect(assigned).toStrictEqual(mutated);
+
+    // …and the input hand really is untouched, which is what makes that true.
+    const input = structuredClone(source);
+    spendDie(input, 0);
+    expect(input).toStrictEqual(source);
+  });
 });
 
 // --- T-1601c · the dice-progression extensibility hook ----------------------

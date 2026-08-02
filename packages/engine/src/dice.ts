@@ -185,6 +185,54 @@ export function check(die: number, statValue: number, dc: number): CheckResult {
   };
 }
 
+/**
+ * Spend one die out of the dawn hand, returning the face and a NEW hand with that
+ * index marked spent. The input hand is never mutated.
+ *
+ * CONTRACT — THE RETURNED HAND IS A COMPLETE COPY OF THE INPUT HAND. Every field
+ * of {@link DawnHand} is carried across; nothing is dropped. This is a COPY, not a
+ * re-derivation: any field added to `DawnHand` in future MUST be carried here.
+ *
+ * T-182 · F-156-1, the bug this contract exists to prevent recurring. The rebuild
+ * below used to list `dice` and `spent` only, so it silently omitted
+ * `rerollsRemaining` — a field added later, by T-1306. The result was that the
+ * FIRST die a player spent on any assign-the-returned-hand action destroyed the
+ * day's re-roll charges, and `actions/crew.ts` `resolveReroll` then refused with
+ * `no-charge` for a charge the player had hired (`content/crew.ts` `crew-navigator`,
+ * `{ kind: 'reroll' }`) or recovered (`EXPLORE_MODULE_DICE_BENEFITS`
+ * `module-marked-ephemeris`). A field-by-field rebuild that omits a field is the
+ * failure mode; carrying every field is the fix.
+ *
+ * `rerollsRemaining` is carried AS-IS, NOT coerced with `?? 0`: a hand built
+ * without the key (the inline `{ dice, spent }` test constructions the field's
+ * `types.ts` comment names) comes back without the key, so no serialization gains
+ * a `"rerollsRemaining":0` it never had. Typing the literal as `DawnHand` is what
+ * makes preserving `undefined` safe. Key order matches {@link rollDawnHand}, since
+ * hands are serialized into the golden STATE hashes.
+ *
+ * TWO CALL-SITE FAMILIES, RECONCILED BY THIS INVARIANT RATHER THAN BY REWRITING
+ * EITHER (T-182). Both are correct precisely because the returned hand is complete
+ * and the input is untouched:
+ *
+ *  - ASSIGN the returned hand back onto the save — `actions/trade.ts:23,76,122,163`,
+ *    `actions/travel.ts:586`, `actions/shipyard.ts:629`, `actions/exploration.ts:115`,
+ *    `actions/combat.ts:267`, `storylets.ts:238`, and `exploreOutcomes.ts:509` (the
+ *    multi-die recovery payment, which folds the returned hand through a loop).
+ *    These are the sites F-156-1 broke.
+ *  - CALL FOR THE FACE AND THE GUARDS ONLY, then mark `spent[index]` in place on the
+ *    live state hand — `actions/crew.ts:138,161`, `actions/port.ts:66`,
+ *    `actions/hangout.ts:319`, `actions/dare.ts:380`. They hold `hand` as a live
+ *    reference and interleave other mutations around it. Because `spent` is copied
+ *    before it is written, the input hand is never touched, so discarding the
+ *    return value is equivalent to assigning it. Proven, not asserted:
+ *    `__tests__/dice.test.ts` asserts the two forms produce equal hands.
+ *
+ *  - `npcHand.ts:181` (`allocateVirtualDie`) is a third, inert caller: the virtual
+ *    hand is transient (never serialized) and always carries `rerollsRemaining: 0`.
+ *
+ * `__tests__/spend-die-rerolls.test.ts` drives every assign-family site through
+ * `applyPlayerAction` and guards the list above against drift.
+ */
 export function spendDie(hand: DawnHand, index: number): { die: number; hand: DawnHand } {
   if (index < 0 || index >= hand.dice.length) {
     throw new Error('Invalid die index');
@@ -193,9 +241,13 @@ export function spendDie(hand: DawnHand, index: number): { die: number; hand: Da
     throw new Error('Die already spent');
   }
 
-  const newHand = {
+  const newHand: DawnHand = {
     dice: [...hand.dice],
     spent: [...hand.spent],
+    // Conditional so ABSENCE is preserved as absence, not as an explicit
+    // `rerollsRemaining: undefined` key. Spread last, so key order matches
+    // `rollDawnHand` for the serialized hand.
+    ...(hand.rerollsRemaining === undefined ? {} : { rerollsRemaining: hand.rerollsRemaining }),
   };
   newHand.spent[index] = true;
 

@@ -96,12 +96,17 @@ different instrument.
 **BR-14 — Re-pinning the baseline of record moves ALL its pointers in the same commit.**
 (T-116, T-125) Under standing amendment 1's "does the baseline describe HEAD?" rule:
 `packages/sim/src/__tests__/balance-targets.test.ts`, amendment 1's own pointer,
-`docs/NPC_REDESIGN.md`'s status banner, and `docs/balance/smoke/README.md`'s "current
-baseline" line — with the smoke fixture re-extracted FROM the new capstone file. Recorded
+`docs/NPC_REDESIGN.md`'s status banner, `docs/balance/smoke/README.md`'s "current
+baseline" line, and — added at T-182 — **this rule's own "current baseline of record"
+sentence below** — with the smoke fixture re-extracted FROM the new capstone file. Recorded
 because the last pointer was missed twice (T-131 and T-133 both left it stale). The current
-baseline of record is `docs/balance/baseline-n13-shipped.json` (8,000 rows, 8 one-indexed
-shards, spreads harvested, `sweepLabel n13-shipped`; re-pinned at T-156 2026-08-02, all four
-pointers moved in the same change).
+baseline of record is `docs/balance/baseline-t182-reroll-fix.json` (8,000 rows, 8 one-indexed
+shards, spreads harvested, `sweepLabel t182-reroll-fix`; re-pinned at T-182 2026-08-02, all
+four pointers moved in the same change — plus THIS line, which is a FIFTH pointer the rule's
+own text carries and which BR-14 did not previously name. T-182 adds it to the list: a rule
+that says "move all the pointers" while its own copy of the baseline name goes stale is the
+failure it exists to prevent. Before that: `baseline-n13-shipped.json`, re-pinned at T-156
+2026-08-02.)
 
 **BR-15 — A known-failing balance target stays an `it.fails` tripwire across every
 re-pin — never converted, never deleted — and the re-pin is explicitly re-read against it in

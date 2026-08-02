@@ -603,11 +603,34 @@ export function runDayLoopGolden(
 // `gen-day-loop-golden.ts` — NOT hand-edited, and never edited to make a red test
 // green. The behaviour-preserving THREADING of the ledger was proved separately
 // and left all four hashes at their T-149 values; only the live deal moved them.
+// T-182 RE-DERIVATION (F-156-1 · `spendDie` stopped dropping `rerollsRemaining`),
+// 2026-08-02. THE TWO STATE HASHES MOVE; BOTH EVENT HASHES ARE BYTE-IDENTICAL,
+// and that split is the whole verification, not a footnote:
+//   DAY_LOOP state  616c14ae… -> 816a1e2a…   (events 2cea1c44… UNCHANGED)
+//   STORYLET state  b2bd3caa… -> e81bfa05…   (events e9092e60… UNCHANGED)
+//
+// WHY THE STATE MOVED, exactly. `dice.ts` `spendDie` rebuilt the hand as
+// `{ dice, spent }`, silently omitting the `rerollsRemaining` key T-1306 added.
+// Both scripts spend dice through assign-the-returned-hand call sites, and
+// `endDay` marks the hand fully spent WITHOUT nulling it (`day.ts`), so
+// `serializeState(finalState)` carries that hand. The key used to VANISH on the
+// first spend and now survives as `0` — a serialization delta of one key, on a
+// crew-free run whose charge count is 0 either way.
+//
+// WHY THE EVENTS DID NOT, and why that is the tripwire. No event payload carries
+// the dawn hand, and no OUTCOME depends on the charge: neither script hires
+// `crew-navigator` or fits `module-marked-ephemeris`, so `rerollsRemaining` is 0
+// throughout and `resolveReroll` was — and remains — unreachable from here. A
+// moved EVENT hash on a change of this shape would have meant the restored charge
+// had leaked into a resolution path; that is the regression to chase, and the
+// reason both event hashes are asserted unchanged rather than merely regenerated.
+//
+// Regenerated via gen-day-loop-golden.ts. Never hand-edited.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '616c14aeb24a4573dc996a93dfd5ad390946c01cce5345da501bde98ffa487be';
+  '816a1e2a8ef5d4a5dd191a5a6ae1034c74f7d256dcae678d21473bccafb84eeb';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
   '2cea1c44ec61a39c1a13de7ec9a50f8af9140b13ea08713b623428565e8d7a0a';
 export const STORYLET_GOLDEN_STATE_HASH =
-  'b2bd3caadf02fc983e6e6591d06477b1604440133aeda2caa642615385a3a635';
+  'e81bfa052cc6404e6497ad18c68b5f1fd61b7e8a9c6add6de1888458c819d2c3';
 export const STORYLET_GOLDEN_EVENTS_HASH =
   'e9092e600bcc04c5d9ebc72989bbdfb3701c56a498932a27c6ff786bb58824fe';
