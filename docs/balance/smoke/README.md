@@ -92,9 +92,9 @@ a diff, never an assumption.
 **Re-measuring? Match the outgoing capstone's shape.** Pass the same `--milestone-days` and
 `--policies` the baseline of record was measured with — a different milestone set shifts
 every `milestones[i]` index and fills the diff with thousands of phantom deltas that look
-exactly like drift. The current baseline (`baseline-t150-postfix.json`, re-pinned at T-150 2026-08-01;
-before that `baseline-t148-roster-ladder.json` at T-148 and `baseline-t137-liars-dice.json` at
-T-137, and this line was left stale at
+exactly like drift. The current baseline (`baseline-n13-shipped.json`, re-pinned at T-156 2026-08-02;
+before that `baseline-t150-postfix.json` at T-150, `baseline-t148-roster-ladder.json` at T-148
+and `baseline-t137-liars-dice.json` at T-137, and this line was left stale at
 `baseline-t125-hangout.json` through T-131 and T-133 before being corrected at T-137) used
 `--milestone-days 21,29,30,41,60,120` over all eight policies including
 `trader-degraded` — the same shape every capstone back to `baseline-r2c-explorer-remit.json`.

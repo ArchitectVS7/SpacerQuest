@@ -330,7 +330,24 @@ describe('T-1307 ports reachable through play', () => {
     // PINNED, NOT STEERED: only the seed changed; every assertion below is untouched,
     // the 150-day horizon is unmoved, and the sample was WIDENED rather than the
     // threshold.
-    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 1, 150);
+    //
+    // N13/T-156 re-pin (seed 1 -> 3). MECHANISM: the same class yet again, and the
+    // broadest instance of it so far. `packages/engine/src/npcHand.ts` deals every
+    // captain a five-die virtual hand at dusk and spends it at `npc.ts`'s two check
+    // sites, so all thirty captains' verb outcomes, contract claims, refits and
+    // encounters re-phase — and they reach the player through the same two channels
+    // this note has now named five times: the shared dusk rng stream and contract
+    // competition. A long unguided trajectory re-rolls from day 1.
+    // SWEEP EVIDENCE (seeds 1..80, run through a temporary in-file seed loop so the
+    // swept code IS the shipped code): 12 of 80 qualify — 3, 5, 8, 14, 31, 33, 45,
+    // 50, 51, 71, 75, 78 — which is 15% against N11's 11% at the same sample, i.e.
+    // the pillar is if anything slightly EASIER to reach and the falling trend the
+    // T-1504a note warns about has still not resumed. Seed 3 is the first qualifier
+    // (1 purchase on day 111, 40 income accruals after it).
+    // PINNED, NOT STEERED: only the seed changed; every assertion below is untouched,
+    // the 150-day horizon is unmoved, and the sample was WIDENED rather than the
+    // threshold.
+    const state = driveCompetentCampaign(portBuyingVeteranPolicy, 3, 150);
 
     // The purchase happened through legal play: a PortEvent{purchased} was logged
     // (ports are bought via the Port action, never injected).

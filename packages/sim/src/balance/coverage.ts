@@ -84,11 +84,19 @@ import type { SimPolicyName } from '../index.js';
 // ---------------------------------------------------------------------------
 
 /**
- * The four states a ledger row can be in. The names are the ones Part C's mirror
+ * The five states a ledger row can be in. The names are the ones Part C's mirror
  * table prints in bold, lowercased — so the drift test can compare the two without
  * a translation layer that could itself be edited to agree.
+ *
+ * N13/T-156 ADDED `'excluded'`, and the distinction it draws from `'deferred'` is
+ * the whole reason the ledger exists: a DEFERRED row is an open question nobody
+ * has answered yet (Explore, VisitHangout — both awaiting an owner ruling); an
+ * EXCLUDED row has been RULED, and the answer is "the cast will never play this".
+ * Neither counts as covered, so `COVERED_STATUS` is unaffected — an excluded verb
+ * is still a verb a sweep is silent about. What changes is what a reader is being
+ * told to do about it: nothing, in the excluded case.
  */
-export type VerbParityStatus = 'shipped' | 'partial' | 'deferred' | 'undecided';
+export type VerbParityStatus = 'shipped' | 'partial' | 'deferred' | 'undecided' | 'excluded';
 
 /** One player verb's NPC-parity status, with its provenance attached. A status
  *  with no cited row is a guess with better manners. */
@@ -177,8 +185,8 @@ export const VERB_PARITY: readonly VerbParityRow[] = [
     status: 'partial',
     ledgerRow: `${LEDGER} · \`| Combat |\``,
     mirror: PART_C,
-    asOf: 'forced branch shipped at N3 (2026-07-29); chosen branch still owed as of 2026-08-02',
-    why: 'Ledger: "shipped (N3) · N13 closes the die gap · **`executeCombat` still owed**" — the FORCED interdiction branch is on the shared rules; the branch a captain CHOOSES is still an abstract GUNS check with no interceptor, no damage and no ship loss (six fighters, 6.4 interdictions each, 0 deaths).',
+    asOf: 'forced branch shipped at N3 (2026-07-29), die gap closed at N13 / T-156 (2026-08-02); chosen branch still owed',
+    why: 'Ledger: "shipped (N3) · die gap CLOSED at N13 (T-156) · **`executeCombat` still owed**" — the FORCED interdiction branch is on the shared rules and, since N13, its stance checks spend from the captain\'s virtual hand (`npcHand.ts`) instead of drawing a bare d20; the branch a captain CHOOSES is still an abstract GUNS check with no interceptor, no damage and no ship loss (six fighters, 6.4 interdictions each, 0 deaths).',
   },
   {
     verb: 'Explore',
@@ -203,19 +211,19 @@ export const VERB_PARITY: readonly VerbParityRow[] = [
   },
   {
     verb: 'Crew',
-    status: 'undecided',
+    status: 'excluded',
     ledgerRow: `${LEDGER} · \`| Crew |\``,
     mirror: PART_C,
-    asOf: 'N13 decides; design ruled 2026-07-31, step not shipped',
-    why: 'Ledger: "N13 decides" — meaningless without a hand. Part C calls the dawn-hand gap "the single biggest fidelity gap between NPC and player today".',
+    asOf: 'EXCLUDED by owner ruling 2026-07-31, shipped at N13 / T-156 (2026-08-02)',
+    why: 'Ledger: "**EXCLUDED (owner ruling 2026-07-31, shipped at N13 / T-156)**" — design (b) keeps the coarse one-verb day, so crew hiring has no NPC decision to attach to. A ruled exclusion, not a gap.',
   },
   {
     verb: 'Reroll',
-    status: 'undecided',
+    status: 'excluded',
     ledgerRow: `${LEDGER} · \`| Reroll |\``,
     mirror: PART_C,
-    asOf: 'N13 decides; design ruled 2026-07-31, step not shipped',
-    why: 'Ledger: "N13 decides" — n/a without a hand.',
+    asOf: 'EXCLUDED by owner ruling 2026-07-31, shipped at N13 / T-156 (2026-08-02)',
+    why: 'Ledger: "**EXCLUDED (owner ruling 2026-07-31, shipped at N13 / T-156)**" — and this one is STRUCTURAL rather than merely ruled: `npcHand.ts` deals every captain\'s virtual hand with `rerolls: 0`, so the exclusion lives in the data and not in a branch that could be flipped.',
   },
 ];
 
@@ -224,7 +232,9 @@ const PARITY_BY_VERB = new Map(VERB_PARITY.map((row) => [row.verb, row]));
 
 /** The status a defining verb must hold for its archetype to count as covered.
  *  Part C's own words: treat sweep results "as authoritative for the verbs marked
- *  Shipped above, and as silent (not 'passing', *silent*) for everything else". */
+ *  Shipped above, and as silent (not 'passing', *silent*) for everything else".
+ *  N13/T-156: `'excluded'` deliberately does NOT join this — a ruled exclusion
+ *  settles the QUESTION, it does not manufacture coverage. */
 const COVERED_STATUS: VerbParityStatus = 'shipped';
 
 // ---------------------------------------------------------------------------

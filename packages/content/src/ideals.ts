@@ -51,6 +51,37 @@ export const NPC_CHECK_DCS: Record<NpcIntentType, number> = {
   Socialize: 14, // was the inline `>= 14`
 };
 
+/**
+ * N13 · THE VIRTUAL HAND'S CALIBRATION — the two numbers, and only the two
+ * numbers, behind a captain's die allocation. The RULE that reads them is the
+ * engine's (`packages/engine/src/npcHand.ts`); this file holds the data, per the
+ * standing constraint. There is deliberately no `if` here and no third magnitude.
+ *
+ * `NPC_ALLOCATION_PIVOT_STAT` is the roster's MEDIAN stat, measured rather than
+ * chosen: over the 41 shipped profiles' 205 stat entries the median is 2 and the
+ * mean 2.156 (histogram 0:30 · 1:47 · 2:44 · 3:40 · 4:33 · 5:11). It is the stat
+ * value at which a captain's allocation is NEUTRAL — they take the middle of what
+ * their hand has left.
+ *
+ * WHY NEUTRAL AT THE PIVOT IS THE WHOLE CALIBRATION, and why "always take the
+ * best" was not on the table. The expected value of the MIDDLE of five sorted
+ * d20s is 10.5 — exactly a plain d20's mean. So a median captain rolls the same
+ * distribution N13 replaced, and the step moves the SPREAD of outcomes without
+ * moving the fleet economy. Allocating the sharpest die every time averages ~17.4
+ * (+7 on every check in the game) and would detonate every band in
+ * `balance-targets.test.ts` — which would make the variance decomposition
+ * unreadable, because an economy-wide shift swamps the effect being attributed.
+ *
+ * `NPC_ALLOCATION_SHARPNESS_PER_STAT` is how much one point of the check's
+ * affinity stat bends that neutrality, as a probability: a stat-5 captain reaches
+ * for the sharpest remaining die 30% of the time, a stat-0 captain reaches for the
+ * dullest 20% of the time, and everyone else sits proportionally between. The
+ * engine clamps the product into [-1, 1], so a future stat ladder wider than 0-5
+ * cannot make this a certainty by arithmetic accident.
+ */
+export const NPC_ALLOCATION_PIVOT_STAT = 2;
+export const NPC_ALLOCATION_SHARPNESS_PER_STAT = 0.1;
+
 /** Extra fuel an NPC burns on a FAILED Travel (PILOT) check (T-1201): a rough
  *  jump costs more than a clean one. Clamped at the tank floor by the engine.
  *

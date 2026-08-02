@@ -943,7 +943,31 @@ const UNCHANGED_POLICIES = [
  *
  *    NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED. The two pins below are
  *    re-derived because the input to the hash changed, which is the only admissible
- *    reason for a re-pin.
+ *    reason for a re-pin. *
+ *    ENTRY 27 (T-156 / N13 — THE NPC VIRTUAL HAND). ALL SEVEN ROWS MOVE, and for
+ *    once that is the correct result rather than a containment failure. Every
+ *    earlier entry could name one policy or one helper as the channel; this one
+ *    cannot, because the change is not in a policy at all — it is in the WORLD the
+ *    policies are played against. `packages/engine/src/npcHand.ts` deals each of
+ *    the thirty captains a five-die virtual hand at dusk and spends it at
+ *    `npc.ts`'s two check sites, so every captain's rng stream, verb outcome,
+ *    contract claim, refit and encounter re-phases. The cast writes the shared job
+ *    pool the player's manifest board is sized from (`jobPoolClaims`), so a
+ *    different cast day is a different board on the next dawn — for EVERY policy,
+ *    with no shared planner involved. A row that had NOT moved would be the
+ *    finding here: it would mean that policy is not reading the live world.
+ *
+ *    THE THREADING WAS PROVED INERT FIRST, exactly as entry 26's rewire was. With
+ *    the die ledger threaded through all seven `npc.ts` call sites but
+ *    `allocateVirtualDie` still returning the same `rng.d20()`, all four day-loop
+ *    golden hashes were unmoved, the engine battery stayed green, and a full
+ *    1,000-seed x 120-day x 8-policy sweep produced raw shard rows BYTE-IDENTICAL
+ *    to the same sweep at the parent commit. Only then was the deal switched on.
+ *
+ *    NO BAND, THRESHOLD, GOLDEN OR CONSTANT WAS EDITED TO REACH THIS. The seven
+ *    pins are re-derived because the input to the hash changed — the only
+ *    admissible reason — and the calibration was chosen for mean-neutrality at the
+ *    roster's median stat before the capstone was taken, not after a red band.
  * ---------------------------------------------------------------------------
  */
 const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> = {
@@ -956,7 +980,8 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // a tight `loanBand`, so the withdrawal channel is exactly undone and the band
   // itself is provably inert over these seeds.
   // Entry 23: re-derived — the new `dareGuardHits` report key ONLY (see above).
-  trader: '9709fd22ff55bb3d',
+  // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
+  trader: '94a572d632425a4a',
   // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
   // cross-check that this was a fighter change and nothing else: `trader`,
   // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
@@ -985,7 +1010,8 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // that is actually powered — the 420-row CI gate at 60 seeds x 35 days — the
   // whole rate table is unchanged to four decimals except `board-depth-mean`
   // (3.7822 -> 3.7820), and every invariant went from one violation to zero.
-  fighter: 'f3e2714c7973c78c',
+  // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
+  fighter: '9f6ba12170aeb321',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4
@@ -994,12 +1020,15 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // Entry 26 (T-150): re-derived a THIRD time — F-116-1's recovery guard. The
   // policy no longer queues an Explore on a day whose dawn carries an open salvage
   // op, so the die that used to buy a guaranteed refusal is spent elsewhere.
-  explorer: 'd83421a02caaaffc',
-  veteran: 'a0fee7f62c2167e3',
+  // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
+  explorer: 'e95dc20a64a47039',
+  // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
+  veteran: '8db1029399f20ed8',
   // Entry 16: re-derived (Explore); entry 17: re-derived again, same desk reach
   // as the trader. Entry 21: re-derived a third time — the same D1 ruling, felt
   // through the shorter hand on a band-3/4 board rather than through the payout.
-  smuggler: 'e68b33db4f6149b4',
+  // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
+  smuggler: '4f7889b339f76741',
   // Entry 17: re-derived — the tables are open on most docked days now, not only
   // when the route passes Sun-3. Entry 18: re-derived again — three of the
   // fourteen ports now deal in their OWN wager band, so the stake this policy puts
@@ -1068,8 +1097,10 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // `planDare` is still called by `gamblerPolicy` alone, so no other policy can
   // feel it. The second hand of a day is no longer planned against a dealer the
   // first hand would have drained below the port's floor.
-  gambler: '37cb7e36ce127d96',
-  greedy: '56df4d82dab33e08',
+  // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
+  gambler: 'f2b995349354f178',
+  // Entry 27 (T-156): re-derived — the NPC virtual hand (see the header).
+  greedy: 'eacbf64644ccde5c',
 };
 
 const FINGERPRINT_SEEDS = [1, 2, 3, 4, 5] as const;

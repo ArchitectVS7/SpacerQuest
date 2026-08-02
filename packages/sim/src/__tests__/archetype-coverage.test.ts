@@ -370,7 +370,11 @@ describe('T-157 · the transcription still matches its named sources', () => {
     //   shipped   ⇒ says shipped, and owes nothing further
     //   partial   ⇒ says shipped AND says something is still owed (Combat today)
     //   deferred  ⇒ says DEFERRED (Explore and VisitHangout today)
-    //   undecided ⇒ says "N13 decides" (Crew, Reroll)
+    //   undecided ⇒ says "N13 decides" (no rows today — kept because a future
+    //               ledger row can be opened without being ruled, and a status
+    //               with no live row is cheaper than a status that has to be
+    //               re-invented)
+    //   excluded  ⇒ says EXCLUDED (Crew and Reroll, ruled 2026-07-31 / N13)
     const ledger = sectionBetween(
       readDoc('NPC_REDESIGN.md'),
       '### THE PARITY LEDGER',
@@ -415,6 +419,9 @@ describe('T-157 · the transcription still matches its named sources', () => {
           break;
         case 'undecided':
           expect(/N13 decides/.test(cell), message).toBe(true);
+          break;
+        case 'excluded':
+          expect(/EXCLUDED/.test(cell), message).toBe(true);
           break;
       }
     }

@@ -537,7 +537,20 @@ describe('T-142 · the ruleset banner', () => {
       path: 'docs/balance/smoke/tiers.json',
       parsed: JSON.parse(sidecarRaw) as unknown,
     });
-    expect(provenance.rulesFingerprint).toBe('f36d71f863a8ebe7');
+    // READ FROM THE SIDECAR, NOT TRANSCRIBED. This test is about ATTRIBUTION —
+    // which file declared the stamp — and a hardcoded literal made it a SECOND
+    // copy of the smoke fixture's fingerprint, so every legitimate re-extract
+    // turned it red and invited someone to "fix" it by pasting a new hash in.
+    // (It did exactly that at T-156.) Asserting equality with the sidecar's own
+    // field is the stronger statement anyway, and the two assertions below pin
+    // the part that could actually regress: the value is real, and it did not
+    // come from the aggregate.
+    const sidecarStamp = (JSON.parse(sidecarRaw) as { rulesFingerprint?: string }).rulesFingerprint;
+    expect(sidecarStamp).toMatch(/^[0-9a-f]{16}$/);
+    expect(provenance.rulesFingerprint).toBe(sidecarStamp);
+    expect(provenance.rulesFingerprint).not.toBe(
+      (parsed as { rulesFingerprint?: string }).rulesFingerprint,
+    );
     expect(provenance.declaredBy).toBe('docs/balance/smoke/tiers.json');
     const html = render(provenance, provenance);
     expect(html).toContain('declared by');

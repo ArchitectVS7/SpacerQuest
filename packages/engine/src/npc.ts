@@ -53,6 +53,7 @@ import {
 } from './types.js';
 import { SeededRng } from './rng.js';
 import { check } from './dice.js';
+import { npcVirtualHand, type NpcVirtualHand } from './npcHand.js';
 import { weaponVolleyDamage } from './components.js';
 // N3 · The interdiction reaches the engine's own encounter machinery. `travel.ts`
 // does NOT import this file, so this direction closes no cycle (unlike
@@ -1082,20 +1083,28 @@ function considerRefit(npc: NpcState, profile: NpcProfile, day: number, events: 
  *   · the fuel prices — RUN_FUEL_COST / FIGHT_FUEL_COST
  *   · the post-kill escape — the opposed PILOT roll with RETREAT_KILL_EDGE
  *
- * ── THE ONE SANCTIONED ABSTRACTION, NAMED AT ITS DEFINITION SITE ─────────────
+ * ── THE DIE GAP, CLOSED AT N13 (T-156, 2026-08-02) ───────────────────────────
  * OWNER RULING (2026-07-29): this does NOT call `resolveCombat`. It cannot — that
- * function spends a die from `player.dawnHand`, and the cast holds no hand until
- * N13 builds them a decision surface. So the fight runs here, on the primitives
- * above, and gives up EXACTLY ONE THING: **die CHOICE**. A player picks which of
- * five visible dice to spend, which is the game's central decision; a captain in the
- * coarse one-verb day has no hand to pick from, so its die is `rng.d20()`.
+ * function spends a die from `player.dawnHand`, and until N13 the cast held no
+ * hand at all, so the fight ran here on the primitives above and gave up EXACTLY
+ * ONE THING: **die CHOICE**. Every stance check below drew a bare `rng.d20()`.
  *
- * That is a real gap and it is not to be described as parity. **N13 is the step
- * that closes it** — when the cast holds a hand, the stance picker below reads it
- * instead of drawing raw, and this note comes out. Until then the PARITY LEDGER
- * says "shared primitives, one-tick", never "full parity via resolveCombat"; the
- * 2026-07-29 audit found that exact false claim in this document and it is not to
- * be re-introduced.
+ * **THAT IS NO LONGER TRUE, AND THIS NOTE IS THE PROMISED REPLACEMENT.** N13
+ * dealt the cast a virtual hand, and {@link rollEncounterCheck} now spends from
+ * it — `hand.allocateVirtualDie(statValue)`, the same ledger the day's verb check
+ * spends from, threaded in from `resolveNpcDay`. A captain's stance roll is
+ * therefore drawn from five dice under the player's own `rollDawnHand` /
+ * `spendDie` discipline, with the reach for a sharper or duller die scaled by the
+ * stat the check is on.
+ *
+ * WHAT IS STILL GIVEN UP, because the honest sentence is shorter but not empty:
+ * the PICK is modelled rather than chosen — `packages/engine/src/npcHand.ts`
+ * carries that flag as THE ONE SANCTIONED ABSTRACTION in the parity design, and it
+ * is the file to read before describing any of this as parity. The PARITY LEDGER
+ * still says "shared primitives, one-tick", never "full parity via
+ * resolveCombat"; the 2026-07-29 audit found that exact false claim in this
+ * document and it is not to be re-introduced. `executeCombat` — the branch a
+ * captain CHOOSES — remains a flat GUNS check and is still owed.
  *
  * The second, smaller abstraction: the encounter resolves in ONE tick rather than
  * spanning days on a fresh hand. `NPC_ENCOUNTER_MAX_ROUNDS` bounds it, and a captain
@@ -1110,6 +1119,9 @@ function resolveNpcEncounter(
    *  danger level, the same rule the player's loaded run obeys. */
   haulingTo: number | undefined,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day — every stance check below spends
+   *  from it. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
   /** N11 · The captain's LOCAL deed-source batch. See {@link resolveNpcDay} for why
@@ -1163,7 +1175,7 @@ function resolveNpcEncounter(
         profile,
         Stat.TRADE,
         'npc-encounter-talk',
-        rng,
+        hand,
         events,
         interceptor,
       );
@@ -1180,7 +1192,7 @@ function resolveNpcEncounter(
         profile,
         Stat.PILOT,
         'npc-encounter-run',
-        rng,
+        hand,
         events,
         interceptor,
       );
@@ -1195,7 +1207,7 @@ function resolveNpcEncounter(
         profile,
         Stat.GUNS,
         'npc-encounter-fight',
-        rng,
+        hand,
         events,
         interceptor,
       );
@@ -1372,12 +1384,13 @@ function rollEncounterCheck(
   profile: NpcProfile,
   stat: Stat,
   actionContext: 'npc-encounter-talk' | 'npc-encounter-run' | 'npc-encounter-fight',
-  rng: SeededRng,
+  hand: NpcVirtualHand,
   events: GameEvent[],
   interceptor: EncounterInterceptorState,
 ): CheckResult {
   const dc = 10 + interceptor.tier;
-  const result = check(rng.d20(), profile.stats[stat], dc);
+  const statValue = profile.stats[stat];
+  const result = check(hand.allocateVirtualDie(statValue), statValue, dc);
   events.push({ type: 'StatCheck', actor: npc.id, stat, dc, result, actionContext });
   return result;
 }
@@ -1477,17 +1490,21 @@ const NPC_CHECK_CONTEXT: Record<
  * one of the five verbs ⟺ exactly one StatCheck was emitted. Every broke /
  * underfunded fallback returns Idle/FlawOverride and rolls NOTHING, so the
  * wire's trade-failure rate and the acceptance test's denominator stay honest.
+ * N13 · THAT INVARIANT IS WHY THE VIRTUAL HAND IS DEALT LAZILY. `hand` holds no
+ * dice until the first allocation asks for them, so a day that rolls nothing
+ * still consumes nothing — see {@link npcVirtualHand}.
  */
 function rollNpcCheck(
   npc: NpcState,
   profile: NpcProfile,
   intent: NpcIntentType,
-  rng: SeededRng,
+  hand: NpcVirtualHand,
   events: GameEvent[],
 ): CheckResult {
   const stat = INTENT_STAT_AFFINITY[intent];
   const dc = NPC_CHECK_DCS[intent];
-  const result = check(rng.d20(), profile.stats[stat], dc);
+  const statValue = profile.stats[stat];
+  const result = check(hand.allocateVirtualDie(statValue), statValue, dc);
   events.push({
     type: 'StatCheck',
     actor: npc.id,
@@ -1619,6 +1636,8 @@ function executeTrade(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
   /** N11 · The captain's LOCAL deed-source batch — see {@link resolveNpcDay}. */
@@ -1736,6 +1755,7 @@ function executeTrade(
       contract.destination,
       contract.destination,
       rng,
+      hand,
       ctx,
       events,
       deedSource,
@@ -1783,7 +1803,7 @@ function executeTrade(
   });
   npc.credits += contract.payment;
 
-  const result = rollNpcCheck(npc, profile, 'Trade', rng, events);
+  const result = rollNpcCheck(npc, profile, 'Trade', hand, events);
   // N11 · THE DELIVERY, emitted AFTER the check so no unresolved outcome is stamped
   // — the reverted attempt's defect #5 fixed at its root rather than by flipping a
   // flag. `success: true` is the honest value on two pieces of evidence:
@@ -1833,6 +1853,8 @@ function executeTravel(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
   /** N11 · The captain's LOCAL deed-source batch — see {@link resolveNpcDay}. */
@@ -1864,7 +1886,18 @@ function executeTravel(
   // N3 · The lane can be interdicted. A captain who loses the ship here is done —
   // no verb resolves, and their day ends with the wreck.
   if (
-    resolveNpcEncounter(npc, profile, origin, destination, undefined, rng, ctx, events, deedSource)
+    resolveNpcEncounter(
+      npc,
+      profile,
+      origin,
+      destination,
+      undefined,
+      rng,
+      hand,
+      ctx,
+      events,
+      deedSource,
+    )
   ) {
     // N11 · The wreck's leg, in the player's interrupted-jump shape. No arrival, so
     // `success: false` matches none of the TravelEvent deeds.
@@ -1880,7 +1913,7 @@ function executeTravel(
     return { type: 'Travel', details: `was lost on the run to ${systemName(destination)}` };
   }
   // A Travel (PILOT) check decides a clean jump vs a rough one (T-1201).
-  const result = rollNpcCheck(npc, profile, 'Travel', rng, events);
+  const result = rollNpcCheck(npc, profile, 'Travel', hand, events);
   if (result.success) {
     // N11 · The arrival. Same shape and same reasoning as the Trade leg's jump: an
     // ordinary player jump always arrives (T-1605), so a captain's arrival is
@@ -1922,6 +1955,8 @@ function executeCombat(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
 ): NpcAction {
@@ -1939,7 +1974,7 @@ function executeCombat(
   // values sized for player encounters — fed into a 30-NPC daily sim they
   // would swamp trade income. 150×tier keeps fighting a living, not a
   // money printer, next to the shared contract-payment formula.
-  const result = rollNpcCheck(npc, profile, 'Combat', rng, events);
+  const result = rollNpcCheck(npc, profile, 'Combat', hand, events);
   if (result.success) {
     const bounty = 150 * profile.tier;
     npc.credits += bounty;
@@ -1958,6 +1993,8 @@ function executePatrol(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
 ): NpcAction {
@@ -1967,7 +2004,7 @@ function executePatrol(
   npc.ship.fuel = Math.max(0, npc.ship.fuel - NPC_PATROL_FUEL);
   // A Patrol (GRIT) check decides a productive sweep vs a costly quiet day
   // (T-1201).
-  const result = rollNpcCheck(npc, profile, 'Patrol', rng, events);
+  const result = rollNpcCheck(npc, profile, 'Patrol', hand, events);
   if (result.success) {
     npc.credits += NPC_PATROL_SUCCESS_CREDITS;
     return {
@@ -1986,6 +2023,8 @@ function executeSocialize(
   npc: NpcState,
   profile: NpcProfile,
   rng: SeededRng,
+  /** N13 · The captain's die ledger for the day. See {@link npcVirtualHand}. */
+  hand: NpcVirtualHand,
   ctx: NpcDayContext,
   events: GameEvent[],
 ): NpcAction {
@@ -2014,7 +2053,7 @@ function executeSocialize(
   // verb⟺StatCheck invariant requires a returned `Socialize` action to always
   // carry exactly one `npc-socialize` StatCheck. `hasBar` selects PROSE, never
   // an outcome — same rng draw, same DC, same credit mint on both sides.
-  const result = rollNpcCheck(npc, profile, 'Socialize', rng, events);
+  const result = rollNpcCheck(npc, profile, 'Socialize', hand, events);
   if (result.success) {
     npc.credits += NPC_SOCIALIZE_WIN_CREDITS;
     return {
@@ -2079,6 +2118,13 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
             ...evidence,
           });
 
+  // N13 · THE CAPTAIN'S DIE LEDGER FOR THE DAY. Constructed unconditionally and
+  // dealt LAZILY (see {@link npcVirtualHand}): a captain whose day ends in
+  // Idle / FlawOverride / a broke fallback rolls NOTHING from it, which is the
+  // invariant `rollNpcCheck` records above and which several tests and the wire's
+  // failure-rate denominator depend on.
+  const hand = npcVirtualHand(rng);
+
   // 1. Intent — content weight tables (Ideal x stats), replacing the old
   //    3-branch stat comparison.
   const intent = pickIntent(profile, updatedNpc.credits, rng, trace);
@@ -2133,18 +2179,18 @@ export function resolveNpcDay(npc: NpcState, rng: SeededRng, ctx: NpcDayContext)
       updatedNpc.ship.fuel = Math.max(0, updatedNpc.ship.fuel + flawDef.fuel);
     }
   } else if (intent === 'Trade') {
-    const result = executeTrade(updatedNpc, profile, rng, ctx, events, deedSource, trace);
+    const result = executeTrade(updatedNpc, profile, rng, hand, ctx, events, deedSource, trace);
     action = result.action;
     claimedContractIndex = result.claimedContractIndex;
     claimedFromPool = result.claimedFromPool;
   } else if (intent === 'Travel') {
-    action = executeTravel(updatedNpc, profile, rng, ctx, events, deedSource);
+    action = executeTravel(updatedNpc, profile, rng, hand, ctx, events, deedSource);
   } else if (intent === 'Combat') {
-    action = executeCombat(updatedNpc, profile, rng, ctx, events);
+    action = executeCombat(updatedNpc, profile, rng, hand, ctx, events);
   } else if (intent === 'Patrol') {
-    action = executePatrol(updatedNpc, profile, rng, ctx, events);
+    action = executePatrol(updatedNpc, profile, rng, hand, ctx, events);
   } else if (intent === 'Socialize') {
-    action = executeSocialize(updatedNpc, profile, rng, ctx, events);
+    action = executeSocialize(updatedNpc, profile, rng, hand, ctx, events);
   } else {
     // 'Idle' — the all-weights-zero corner of pickIntent: a true no-op day.
     action = {

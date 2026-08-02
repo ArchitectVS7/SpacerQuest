@@ -592,11 +592,22 @@ export function runDayLoopGolden(
 // same DC and mints the same ±credits on both sides of the new `hasHangout` read.
 // A residual diff after that normalization would have meant the boolean changed an
 // OUTCOME rather than a sentence; that is the regression to chase.
+//
+// N13/T-156 RE-DERIVATION (the NPC virtual hand). All four hashes move, and this
+// time that IS a rule change rather than a re-wording: the cast's checks are no
+// longer `rng.d20()` at `npc.ts`'s two spend sites — they spend from a five-die
+// virtual hand dealt through the player's own `rollDawnHand` (`npcHand.ts`). Both
+// scripts run ten and two days with the dusk NPC tick live, so every captain's
+// draw sequence moves and with it the dusk wire and the serialized cast. This is
+// the fixture header's own "deliberate rebalance" case, regenerated with
+// `gen-day-loop-golden.ts` — NOT hand-edited, and never edited to make a red test
+// green. The behaviour-preserving THREADING of the ledger was proved separately
+// and left all four hashes at their T-149 values; only the live deal moved them.
 export const DAY_LOOP_GOLDEN_STATE_HASH =
-  '6a0c88dce76a4fcc2afd620507e0e755328c85fe9e9570f29ae4a06a523d6ba0';
+  '616c14aeb24a4573dc996a93dfd5ad390946c01cce5345da501bde98ffa487be';
 export const DAY_LOOP_GOLDEN_EVENTS_HASH =
-  '5aac441d3f8439f3b5f808310c59e6628bf83afcb900567ce87ded2e358543d2';
+  '2cea1c44ec61a39c1a13de7ec9a50f8af9140b13ea08713b623428565e8d7a0a';
 export const STORYLET_GOLDEN_STATE_HASH =
-  '8c38a6f55ba0343e7631b4650048e8ee8aacc718a7cebd82336e33e25a52fd4f';
+  'b2bd3caadf02fc983e6e6591d06477b1604440133aeda2caa642615385a3a635';
 export const STORYLET_GOLDEN_EVENTS_HASH =
-  'aef069bcc75f07a9ccb0cb479a3a92780a66af3aa6d5c1f6a5d4d5c19ffd66cd';
+  'e9092e600bcc04c5d9ebc72989bbdfb3701c56a498932a27c6ff786bb58824fe';

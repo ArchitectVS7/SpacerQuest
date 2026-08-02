@@ -99,8 +99,9 @@ different instrument.
 `docs/NPC_REDESIGN.md`'s status banner, and `docs/balance/smoke/README.md`'s "current
 baseline" line — with the smoke fixture re-extracted FROM the new capstone file. Recorded
 because the last pointer was missed twice (T-131 and T-133 both left it stale). The current
-baseline of record is `docs/balance/baseline-t150-postfix.json` (8,000 rows, 8 one-indexed
-shards, spreads harvested, `sweepLabel t150-postfix`).
+baseline of record is `docs/balance/baseline-n13-shipped.json` (8,000 rows, 8 one-indexed
+shards, spreads harvested, `sweepLabel n13-shipped`; re-pinned at T-156 2026-08-02, all four
+pointers moved in the same change).
 
 **BR-15 — A known-failing balance target stays an `it.fails` tripwire across every
 re-pin — never converted, never deleted — and the re-pin is explicitly re-read against it in

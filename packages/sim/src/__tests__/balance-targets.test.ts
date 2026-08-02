@@ -100,7 +100,7 @@ const TRADER_CLEAR_DAY_MAX = 30;
  * `docs/NPC_REDESIGN.md`'s standing amendment 1.
  */
 const BASELINE_OF_RECORD_PATH = fileURLToPath(
-  new URL('../../../../docs/balance/baseline-t150-postfix.json', import.meta.url),
+  new URL('../../../../docs/balance/baseline-n13-shipped.json', import.meta.url),
 );
 const BASELINE_OF_RECORD = JSON.parse(readFileSync(BASELINE_OF_RECORD_PATH, 'utf8')) as {
   label: string;
@@ -190,22 +190,30 @@ describe('T-1603b balance targets (pinned slice of the committed sweep)', () => 
     ).toBeGreaterThan(0.5);
     expect(trader.debtClearedDay.n).toBeGreaterThan(SEEDS.length / 2);
 
-    // The marker is a real 30-day clock, not a formality: the trader is the
-    // FASTEST of the three policies here, and the other two sit at or past it.
-    // If a tuning change ever made a different line strictly better than trading
-    // at clearing the marker, that is a balance finding, and it lands here.
-    // This comparison is ROBUST at n=40 in a way the band is not: it is an
-    // ordering between three medians measured on identical seeds, not the
-    // absolute position of one of them.
-    for (const policy of POLICIES) {
-      if (policy === 'trader') continue;
-      const row = policyRow(policy);
-      if (row.debtClearedDay.n === 0) continue;
-      expect(
-        row.debtClearedDay.median,
-        `${policy} now clears the marker faster than the trader`,
-      ).toBeGreaterThanOrEqual(trader.debtClearedDay.median);
-    }
+    // THE ORDERING ASSERTION MOVED OUT OF THIS 40-SEED ARM AT T-156, for exactly
+    // the reason the band moved out before it: THE SAMPLE CANNOT RESOLVE IT. Its
+    // old comment claimed the comparison was "ROBUST at n=40 in a way the band is
+    // not"; N13 re-phased the cast and the 40-seed slice promptly reported the
+    // gambler clearing on day 19 against the trader's 22 — an inversion that does
+    // not exist at any sample large enough to see. Measured on this exact driver
+    // at 35 days, seeds 1..N, AFTER N13:
+    //     N=40  trader 22 · gambler 19 · smuggler 26
+    //     N=80  trader 22 · gambler 20 · smuggler 26
+    //     N=120 trader 21 · gambler 20 · smuggler 26
+    //     N=200 trader 21 · gambler 20 · smuggler 26
+    //     N=300 trader 21 · gambler 21 · smuggler 25   <- the ordering holds
+    // and at CAPSTONE scale (1,000 seeds x 120 days) the trader and the gambler
+    // are EXACTLY TIED on 21 in ALL THREE N13 arms — pre, control and shipped —
+    // so N13 did not move this at all. The assertion is re-homed below onto the
+    // committed capstone, which is the only sample that resolves it, rather than
+    // widened here (300 seeds x 3 policies would multiply this file's runtime by
+    // 7.5 to re-derive a number the capstone already holds).
+    //
+    // THE REAL FINDING, RECORDED RATHER THAN PAPERED OVER: "the trader clears it
+    // FASTEST" is not what the capstone says. It says the trader and the gambler
+    // are tied at 21, and have been for at least three arms. The trader is the
+    // fastest-or-equal line, not the fastest one, and if that is not the intended
+    // shape it is a balance question for R2.5, not a test to re-tune.
   });
 });
 
@@ -241,6 +249,36 @@ describe('T-1603b · the [22, 30] band, graded on the committed capstone', () =>
       `trader median debt-clear day ${trader.debtClearedDay.median} outside [${TRADER_CLEAR_DAY_MIN}, ${TRADER_CLEAR_DAY_MAX}]`,
     ).toBeGreaterThanOrEqual(TRADER_CLEAR_DAY_MIN);
     expect(trader.debtClearedDay.median).toBeLessThanOrEqual(TRADER_CLEAR_DAY_MAX);
+  });
+
+  it('no competing line clears the Guild marker faster than the trader', () => {
+    // MOVED HERE FROM THE 40-SEED ARM AT T-156 — see the note there for the
+    // measurement that showed n=40 cannot resolve a one-day ordering. Graded on
+    // the committed capstone at n ~ 1,000 clearing careers per policy, which can.
+    const rowFor = (
+      policy: string,
+    ): { policy: string; debtClearedDay: { median: number; n: number } } => {
+      const row = BASELINE_OF_RECORD.byPolicy.find((candidate) => candidate.policy === policy);
+      if (!row) throw new Error(`baseline of record has no '${policy}' row`);
+      return row;
+    };
+    const trader = rowFor('trader');
+    // Non-degeneracy, same guard the band above carries: an ordering read off a
+    // thin arm is not an ordering.
+    expect(trader.debtClearedDay.n).toBeGreaterThan(500);
+
+    for (const policy of POLICIES) {
+      if (policy === 'trader') continue;
+      const row = rowFor(policy);
+      if (row.debtClearedDay.n <= 500) continue;
+      // `>=` allows a TIE deliberately, and the gambler currently takes it (21 vs
+      // 21). What this forbids is a competing line being strictly FASTER, which
+      // would be a real balance finding about what the marker rewards.
+      expect(
+        row.debtClearedDay.median,
+        `${policy} clears the marker faster than the trader (${row.debtClearedDay.median} vs ${trader.debtClearedDay.median}) on the baseline of record`,
+      ).toBeGreaterThanOrEqual(trader.debtClearedDay.median);
+    }
   });
 
   it('no single route dominates the fleet', () => {

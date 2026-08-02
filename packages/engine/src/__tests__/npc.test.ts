@@ -23,6 +23,8 @@ import {
   // N3
   COMBAT_SALVAGE_PER_TIER,
   NPC_ENCOUNTER_MAX_ROUNDS,
+  // N13/T-156 · the virtual hand's size, read from the same constant the deal uses
+  DAWN_BASE_HAND_SIZE,
   // N11 · the ONE deed slate — a captain's earned ids are asserted to be members of it
   DEEDS,
   // N11/T-021 · the gated rows the captain's refit ladder now asks the yard for
@@ -56,6 +58,7 @@ import {
 import { accrueDeeds, emptyDeedRegistry, rankForDeedCount } from '../deeds.js';
 import { hasSpecialEquipment, navFuelFactor } from '../components.js';
 import { advanceDay } from '../day.js';
+import { CURRENT_SAVE_VERSION } from '../save.js';
 
 /** Longest route the cast can fly (systems 1-20): Cygnus-16 → Rigel-19. The
  *  worst case the hull-derived fuel ceiling has to clear — computed from the
@@ -1711,6 +1714,110 @@ describe('N11 · the Renown gate is reachable from the captain’s own day', () 
         (id) => npc.ship[id].strength !== twin.ship[id].strength,
       );
       expect(movedComponent || npc.ship.cargoPods !== twin.ship.cargoPods).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N13 · THE VIRTUAL HAND, AS THE DAY LOOP SEES IT (T-156).
+//
+// `npc-virtual-hand.test.ts` pins the mechanism in isolation. These pin the three
+// properties that are only visible from `resolveNpcDay`: the deal is LAZY, the
+// day's allocations account for exactly the checks it rolled, and nothing about
+// the hand reaches the save.
+// ---------------------------------------------------------------------------
+describe('N13 · the virtual hand inside resolveNpcDay', () => {
+  it('a day that rolls nothing deals nothing — no rng is consumed by the hand', () => {
+    // The invariant `rollNpcCheck` records: "Every broke / underfunded fallback
+    // returns Idle/FlawOverride and rolls NOTHING". An EAGER deal would burn five
+    // rng values on those days and move every seeded career; this is the test that
+    // would catch it, stated against the rng STATE rather than against an outcome.
+    let checkedIdle = 0;
+    let checkedOverride = 0;
+    for (const profile of ALL_NPC_PROFILES) {
+      for (let seed = 1; seed <= 6; seed += 1) {
+        const broke = npcFor(profile.id, { credits: 30, fuel: 5 });
+        const live = new SeededRng(seed);
+        const { npc, events } = resolveNpcDay(broke, live, NO_BOARD);
+        const type = npc.lastAction?.type;
+        if (type !== 'Idle' && type !== 'FlawOverride') continue;
+        const verbChecks = events.filter(
+          (e) => e.type === 'StatCheck' && e.actor === npc.id,
+        ).length;
+        expect(verbChecks).toBe(0);
+
+        // The counterfactual: the same day with the hand's five d20s drawn up
+        // front would leave the rng in a DIFFERENT place. Re-running the identical
+        // day off a stream that has been advanced by a deal must therefore diverge
+        // from the real one — which is only a meaningful statement because the
+        // real day left the stream where it did.
+        const replay = new SeededRng(seed);
+        const { npc: again } = resolveNpcDay(npcFor(profile.id, { credits: 30, fuel: 5 }), replay, {
+          ...NO_BOARD,
+        });
+        expect(again.lastAction?.type).toBe(type);
+        expect(replay.getState()).toBe(live.getState());
+        if (type === 'Idle') checkedIdle += 1;
+        else checkedOverride += 1;
+      }
+    }
+    expect(checkedIdle).toBeGreaterThan(0);
+    expect(checkedOverride).toBeGreaterThan(0);
+  });
+
+  it("a captain's day spends one die per check it rolled, and the surplus is the documented raw-d20 fallback", () => {
+    // Allocations are not observable from outside `resolveNpcDay` — but every one
+    // of them emits a StatCheck tagged with the captain as actor (the day's verb
+    // plus each interdiction stance round), so the EVENTS are an exact census of
+    // them. Five dice cover the overwhelming majority of days; the rest fall
+    // through to the raw d20 named as boundary 2 at `npcHand.ts`'s definition
+    // site, and this test measures that rather than assuming it.
+    let days = 0;
+    let allocations = 0;
+    let overflow = 0;
+    let deepestDay = 0;
+    for (const profile of ALL_NPC_PROFILES) {
+      for (let seed = 1; seed <= 30; seed += 1) {
+        const { npc, events } = resolveNpcDay(
+          npcFor(profile.id, { credits: 50000, fuel: 1000 }),
+          new SeededRng(seed),
+          NO_BOARD,
+        );
+        const checks = events.filter((e) => e.type === 'StatCheck' && e.actor === npc.id).length;
+        days += 1;
+        allocations += checks;
+        overflow += Math.max(0, checks - DAWN_BASE_HAND_SIZE);
+        deepestDay = Math.max(deepestDay, checks);
+      }
+    }
+    expect(days).toBeGreaterThan(1000);
+    expect(allocations).toBeGreaterThan(0);
+    // The census is bounded by the day's shape: one verb check plus at most
+    // NPC_ENCOUNTER_MAX_ROUNDS interdiction rounds.
+    expect(deepestDay).toBeLessThanOrEqual(1 + NPC_ENCOUNTER_MAX_ROUNDS);
+    // And exhaustion is real but rare — reported, never hidden.
+    expect(overflow / allocations).toBeLessThan(0.05);
+  });
+
+  it('adds no field to the save: NpcState is unchanged and CURRENT_SAVE_VERSION is not bumped', () => {
+    // The hand is per-captain-day and never persisted, so N13 owes no migration
+    // and no round-trip test. Asserted rather than asserted-in-prose.
+    //
+    // The number is 15, not the 12 `TASKS.md`'s standing constraint names — that
+    // constraint records where the 0.5.2 track STARTED, and three later tasks
+    // bumped it legitimately. What N13 claims is that it added none of them.
+    expect(CURRENT_SAVE_VERSION).toBe(15);
+    const before = npcFor('npc-cargo-king', { credits: 50000, fuel: 1000 });
+    const { npc } = resolveNpcDay(before, new SeededRng(4), NO_BOARD);
+    // `lastAction` is the ONE key a resolved day is supposed to write that a
+    // fresh fixture does not carry; anything else would be N13 leaking.
+    const gained = Object.keys(npc).filter((key) => !(key in before));
+    expect(gained).toEqual(['lastAction']);
+    // …and no hand/die/reroll field anywhere on the persisted record.
+    const serialized = JSON.stringify(npc);
+    expect(JSON.parse(serialized)).toEqual(npc);
+    for (const key of Object.keys(JSON.parse(serialized) as Record<string, unknown>)) {
+      expect(/hand|dice|die|reroll/i.test(key), `NpcState gained "${key}"`).toBe(false);
     }
   });
 });
