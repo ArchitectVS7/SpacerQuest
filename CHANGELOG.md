@@ -2,25 +2,25 @@
 
 ## 0.5.2
 - Explore and Socialize redesign arc
-- Rebuilt Explore: outcome framework extracted behaviour-preserving, ~100 authored
-  outcomes across three content passes, a real time cost for recovery, and a
-  unique-item effect surface
-- Rebuilt the Hangout: engine split from content and parameterised per port, a bar
-  at all 14 spaceports (the reach change), and the dark half of the bar surfaced
-- Added the Liar's Dice Dare — spec, engine and UI — with a capstone measurement pass
-- Added a fixed 42-opponent roster, an unlock ladder, and achievement hooks
-- Owner rulings D1–D7 closed the mid-arc checkpoint: bands 3–4 now pay in dice
-  rather than days, plus a per-port loan band and a rumor mill that knows where the
-  bars aren't
-- Telemetry and dev tooling: NPC decision tracing, opt-in playtest logging, a Tier 1
-  telemetry report generator, and a Tier 1.5 dev control panel
-- Folded the balance sweep's invariants into a pass/fail CI gate; on its first run it
-  caught a real fighter-archetype stall (32 idle days against a limit of 5), now fixed,
-  and the "one prime focus, never a single-verb monoculture" property is a stated norm
-- Specced player-modifying trinkets off a simulated bakeoff
-- Versioning: patch now marks the work track, with the phase ladder recorded
-- Still open in this arc — the gate's own regression suite, the coverage matrix, N13
-  dawn-hand parity, the native LLM pilot, and a first human UAT pass; see TASKS.md
+- Explore rebuilt: 100 things to find out there, from quiet lore to real salvage, plus
+  28 unique fittings — spare tankage, gunner's sight rings, hull doubler plates — that
+  change how your ship flies
+- Good finds now cost you something. A decent haul lays you up for a day; the best ones
+  are paid for in dice on the day you claim them, and you forfeit if your hand can't
+  cover it
+- All 14 spaceports now have a bar, each with its own regulars, rumors and atmosphere —
+  including the business you'd rather not be seen doing
+- Liar's Dice comes to the bar: 42 named opponents, three at every port, who bluff and
+  needle you differently. Beat them to climb an unlock ladder and earn achievements
+- Ports now set their own loan terms, Arcturus-6 first — and the rumor mill finally
+  knows which ports have no bar at all
+- Telemetry and dev tooling, NPC decision tracking for debug
+- Fixed a fighter captain who could get stranded at a rim port and sit idle for weeks
+- Balance checks now run on every build and fail it when the economy drifts
+- Designed, but not yet built: trinkets that modify the player rather than the ship
+- Versioning: patch now marks the work track
+- Still to come in this arc: rival captains drawing their own dice each dawn, an AI test
+  pilot, and the first full human playthrough
 
 ## 0.5.1
 - Split the NPC redesign into its own task
