@@ -957,7 +957,35 @@ const PINNED_FINGERPRINTS: Record<(typeof UNCHANGED_POLICIES)[number], string> =
   // itself is provably inert over these seeds.
   // Entry 23: re-derived — the new `dareGuardHits` report key ONLY (see above).
   trader: '9709fd22ff55bb3d',
-  fighter: '13b4155d3d53e543',
+  // Entry 27 (T-159): re-derived — and the ONLY row that moves, which is the
+  // cross-check that this was a fighter change and nothing else: `trader`,
+  // `explorer`, `veteran`, `smuggler`, `gambler` and `greedy` all came back byte
+  // for byte.
+  //
+  // THE CAUSE, STATED BEFORE THE NUMBER. `fighterPolicy` gained the two branches
+  // it was missing at its contract-signing path: (a) the T-1104 full-tank
+  // relaxation the other four gated policies have always carried, and (b) an
+  // explicit anti-idle homeward burn for the harder corner where NO leg on the
+  // board fits even a full tank. Both only ever fire on a day the fighter would
+  // otherwise have taken no income action at all, so they cannot displace a run —
+  // but a day that used to be a `Wait` is now a sign+travel or a repositioning
+  // jump, and from there the career re-phases (different port, different board,
+  // different dusk rng draws).
+  //
+  // MEASURED across these exact five seeds x 40 days, before -> after:
+  //     zero-income days (all seeds)   4  ->  1
+  //     longest zero-income streak     1  ->  1   (this sample never held a
+  //                                                stalled seed; the strand is
+  //                                                seeds 35/54/75/80/115/181)
+  //     credits at day 40, summed  21,657 -> 23,386
+  //     deeds, summed                 60  ->  56
+  //     fuel-starvation days           0  ->  0
+  // Deeds fall and two seeds' Tour One balances end slightly higher: that is
+  // re-phasing, not a regression, and NOTHING WAS TUNED IN RESPONSE. On the sample
+  // that is actually powered — the 420-row CI gate at 60 seeds x 35 days — the
+  // whole rate table is unchanged to four decimals except `board-depth-mean`
+  // (3.7822 -> 3.7820), and every invariant went from one violation to zero.
+  fighter: 'f3e2714c7973c78c',
   // Entry 16: re-derived — T-117's single band-weighted draw replaces the
   // three-leg carrier and T-115 fills bands 3-4, so every board this policy
   // takes re-phases. Entry 21: re-derived again — owner ruling D1 makes bands 3-4

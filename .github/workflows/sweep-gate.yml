@@ -52,38 +52,54 @@
 # nightly runs the smaller veteran-arm shape that fits comfortably in a runner.
 #
 # ---------------------------------------------------------------------------
-# KNOWN RED AT LANDING — read before assuming this workflow is broken
+# WAS RED AT LANDING (T-152), FIXED BY T-159 ON 2026-08-01 — the evidence, kept
 # ---------------------------------------------------------------------------
-# The `gate` job FAILS on today's tree, and it fails for a real reason it found on
-# its first honest run: `assertNoIncomeStall` catches `fighterPolicy` sitting idle
-# for up to 32 consecutive days on a 35-day horizon. Measured incidence across
-# seeds 1..200 at 35 days, per policy, longest zero-income streak:
+# This block used to say the `gate` job fails on today's tree. It no longer does.
+# The measurement is kept because it is the evidence, not decoration: a future
+# regression is recognised by these numbers coming back.
 #
-#     trader 3 · explorer 4 · smuggler 3 · gambler 2 · fighter 32 (6 seeds >= 5:
-#     35, 54, 75, 80, 115, 181)
+# THE RED. On its first honest run the gate's `assertNoIncomeStall` caught
+# `fighterPolicy` sitting idle for up to 32 consecutive days on a 35-day horizon.
+# Measured across seeds 1..200 at 35 days, longest zero-income streak per policy:
 #
-# Root cause, diagnosed: `fighterPolicy` filters the board to contracts inside
-# `SIGN_FUEL_FRACTION` of the tank but never applies the T-1104 RELAXATION that
-# `traderPolicy`, `smugglerPolicy` and `explorerPolicy` all carry ("when nothing
-# fits the margin cap, relax to the FULL tank rather than idle"). Stranded at a rim
-# port where every lane exceeds the cap, it signs nothing and Waits forever while
-# the Guild marker compounds (seed 35: parked at Algol-2 from day 7 with 2,825cr
-# and a live 2-4 offer board, debt 20,970 -> 23,156 by day 36).
+#     BEFORE  trader 3 · explorer 4 · smuggler 3 · gambler 2 ·
+#             fighter 32 (6 seeds >= 5: 35, 54, 75, 80, 115, 181)
+#     AFTER   trader 3 · explorer 4 · smuggler 3 · gambler 2 ·
+#             fighter 19 (1 seed >= 5: 157)
 #
-# THE FIX IS NOT IN THIS TASK, and not because it is hard — it is one line with
-# three verbatim precedents in the same file. `packages/sim/src/index.ts` is a
-# HASHED INSTRUMENT SOURCE: changing it moves `instrumentFingerprint`, stales
-# `docs/balance/smoke/tiers.json`, and owes a capstone re-measure plus a differ
-# run. TASKS.md's standing constraints reserve capstones for a milestone's FINAL
-# task ("Batch it… re-extract ONCE, at the end"), so folding a balance change into
-# a testing-infrastructure task is exactly the entanglement they forbid.
+# Seed 35 was the picture: parked at Algol-2 from day 7 with 2,825cr and a live
+# 2-4 offer board it could not sign from, debt compounding 20,970 -> 23,156 by
+# day 36. It is now 0 consecutive zero-income days.
 #
-# The gate was NOT weakened to hide this. Not a widened threshold, not a
+# THE FIX (T-159, `packages/sim/src/index.ts`, `fighterPolicy`) is two branches,
+# because diagnosis found two corners, not one:
+#   1. The T-1104 full-tank RELAXATION the other four gated policies already
+#      carried verbatim ("when nothing fits the margin cap, relax to the FULL tank
+#      rather than idle"). This alone took seed 35 from 32 days to 8.
+#   2. An explicit ANTI-IDLE HOMEWARD BURN for the harder corner the relaxation
+#      cannot reach: after a succession left the ship on a 240-unit tank and a
+#      junker drive, EVERY leg the board offered cost 252-602 fuel, so `reachable`
+#      was empty even at `maxFuel` and there was no filter left to relax. Same
+#      shape as the gambler's travel-toward-Hangout fallback.
+# The property both branches serve is now a stated norm in `docs/BALANCE-POLICY.md`
+# D.2a ("one prime focus, a spread of secondary actions, never a monoculture").
+#
+# STILL OPEN, and deliberately out of this fix's scope — see D.2a's findings list:
+#   F-159-1  `veteranPolicy` carries the same un-relaxed filter. It is EXEMPT from
+#            this gate at its own definition site, so it is not a CI failure, but
+#            measured at 31 days / 197 of 200 seeds >= 5 it is worse than its
+#            exemption note claims.
+#   F-159-2  Seed 157's remaining 19-day fighter stall is a DIFFERENT mechanism —
+#            combat damage shrinks `maxFuel` 270 -> 90, below the cheapest jump in
+#            the map, so `cannotAffordCheapestJump` is true and the engine would
+#            refuse every jump a policy could queue. Outside the gate's 1..60 seed
+#            range; no policy branch can escape it.
+#
+# The gate was NOT weakened, then or now. Not a widened threshold, not a
 # hand-picked seed range that dodges seed 35, not an allowlist — see the header of
 # `packages/sim/src/balance/gate.ts` for why there is deliberately no escape hatch
 # to reach for. A gate that goes red on a real defect the day it lands is the gate
-# working; this note is here so the red reads as a finding rather than as a broken
-# workflow.
+# working, and this block is what a closed one looks like.
 
 name: Sweep gate
 

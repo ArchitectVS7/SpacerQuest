@@ -176,6 +176,88 @@ encounter deeds, a deliberate low-fuel arrival for `fuel_fumes_arrival`), tradin
 renown-gated fit up to `ASTRAXIAL_HULL`. **Deliberately excluded from `COMPETENT_POLICIES`**
 and exempt from the poverty-trap sweep — it is a reachability instrument, not a lean baseline.
 
+### D.2a The one-prime-focus property — a norm, not an observation (T-159)
+
+> Line numbers in D.2 above are as of the original authoring pass and have drifted; the
+> anchors in THIS subsection were re-derived against the tree on **2026-08-01**.
+
+**Every archetype has one prime focus and a spread of secondary actions. None is a
+single-verb monoculture.** The name is the *emphasis*, not the action set. Re-checked
+against current source, not carried forward from a prior pass:
+
+| policy | anchor | prime focus | the secondary spread that is already there |
+| --- | --- | --- | --- |
+| `trader` | `index.ts:2515` | richest net contract run | rim preference once the marker clears, head-home-to-settle routing, Penny Wise advance + early repay, captain overhead, Guild remittance |
+| `fighter` | `index.ts:4100` | fight the ones it can drop | a funding contract run every day, special equipment (debt-gated), component tiers, captain overhead, debt payment, and — from T-159 — a homeward repositioning burn |
+| `smuggler` | `index.ts:3010` | contraband | ordinary rim runs, sealed pods sold to Ray, Guild remittance, upgrades, an idle-day Explore floor |
+| `explorer` | `index.ts:4396` | Explore sweeps | one funding contract run a day, decode storylets, a drives upgrade it buys **only** on a day that produced no income (`index.ts:3336`), arc pursuit to Polaris-1 |
+| `gambler` | `index.ts:3767` | the tables | a full trader working day planned FIRST, then the wagers; plus an explicit anti-idle travel-toward-Hangout (`index.ts:3899`) |
+| `veteran` | `index.ts:4817` | deed-registry steering | trades to fund a renown-gated fit — **exempt** from the stall gate at its own definition site (`balance/gate.ts:163-189`) |
+| `greedy` | `index.ts:1579` | naive control | none, on purpose — it accumulates nothing, and it is excluded from the gate for exactly that reason |
+
+**Why this must hold, mechanically.** `isIncomeAction` (`packages/sim/src/index.ts:1659`)
+counts only four verbs: sign-contract, `Travel`, `Explore`, and `Combat` at `fight`/`talk`.
+A policy whose only income verb is gated — by fuel, by renown, by an encounter that did not
+roll — therefore has **no income action at all** on a gated day, and `assertNoIncomeStall`
+(`packages/sim/src/balance/gate.ts:447`, `INCOME_STALL_LIMIT = 5`) fires. A monoculture is
+not a style choice; it is a poverty trap with a rationale attached.
+
+**The check any new or edited archetype owes.** Every gate on the headline verb needs a
+non-empty fallback, and there are exactly two accepted shapes in this file:
+
+1. **A second-pass relaxation of the gate** — the T-1104 full-tank pattern, now carried by
+   all five gated policies (`trader`, `smuggler`, `gambler`, `explorer`, and, from T-159,
+   `fighter`): when nothing fits the `SIGN_FUEL_FRACTION` re-flight margin, relax to the
+   full tank and take the run the ship can actually complete.
+2. **An explicit anti-idle move** — the gambler's travel-toward-Hangout, the explorer's
+   income-day-only drives refit, the fighter's homeward repositioning burn. Each fires only
+   when the day has queued no income action at all, so it can never displace real work.
+
+**T-159 is the case that proved the norm.** `fighter` already had the spread — it falls back
+to trade, refuel, equipment, component tiers, overhead and debt payment when it is not
+fighting — but it lacked the *reachability* of that spread: stranded at a rim port where
+every leg exceeded 0.6 of the tank, the contract filter came back empty every day and the
+policy read as a monoculture from the outside for exactly one missing branch. The audit
+answer is therefore **no, none of the archetypes is a monoculture**, and the property is
+recorded here so it is a stated norm rather than a fact re-derived from source each time it
+is asked.
+
+**The two exclusions are deliberate and already stated elsewhere; do not re-litigate them
+here.** `veteran` is exempt at its own definition site (an endgame grinder banking dice for a
+gated refit — see `GATE_COMPETENT_POLICIES` in `balance/gate.ts`), and `greedy` is the naive
+control whose whole job is to show what playing badly costs.
+
+#### Findings opened by the T-159 audit — recorded, not fixed
+
+**F-159-1 · `veteranPolicy` carries the last un-relaxed contract filter (reachability gap,
+NOT a monoculture).** `index.ts:4903-4909` filters `rankedContracts` to
+`ship.maxFuel * SIGN_FUEL_FRACTION` and `net > 0` with **no second pass** — structurally the
+identical defect T-159 repaired in the fighter. (`reachableByFullTank` exists two lines below
+but only vets a *deed-steered* pick; it never relaxes the default filter.) It is out of
+`GATE_COMPETENT_POLICIES` by recorded exemption, so it is not a gate failure. **Measured**
+over seeds 1..200 × 35 days on the post-T-159 tree: longest zero-income streak **31**, with
+**197 of 200 seeds at ≥ 5** — materially worse than the "6-8 consecutive zero-income days"
+the exemption comment records, which is itself a reason to look again rather than to widen
+anything. Say which kind of gap this is when citing it: a **reachability** gap, exactly like
+the fighter's, not a contradiction of D.2a — the veteran's secondary spread is present and
+healthy. Not fixed here because T-159's code scope is the fighter relaxation only; closing it
+belongs to a task allowed to move the veteran's day-loop fingerprint
+(`campaign-degraded.test.ts` `PINNED_FINGERPRINTS.veteran`) and re-extract alongside it.
+
+**F-159-2 · A fuel-starvation strand no policy branch can escape (T-1004 mechanism).** On the
+post-T-159 tree, seed 157 × 35 days is the single remaining `fighter` stall at ≥ 5
+(19 consecutive zero-income days) and it is **not** a reachability failure. Repeated
+interceptions at Regulus-6 chip the hull until `maxFuel` falls 270 → 210 → 150 → 90; the
+ship then arrives at Achernar-5 (a rim port) where the cheapest jump in the map exceeds a *full* 90-unit
+tank, so `cannotAffordCheapestJump` (`index.ts:919`) is true for 19 straight days and the
+engine would refuse every jump the policy could queue. Both T-159 branches behave correctly
+here: the relaxation finds nothing because nothing is flyable, and the anti-idle burn
+correctly refuses to queue a jump the tank cannot fund. The only escapes are a hull/drive
+tier that lifts the fuel ceiling or a port-side earner, and the day the ship arrived it spent
+its purse down to 400 credits on a component tier plus a debt payment. Outside the gate's
+seed range (1..60), so it does not fail CI. Filed for whoever owns the fighter's spend
+ordering under duress; not fixed here.
+
 ### D.3 What every matrix column measures
 
 | column | source | meaning |

@@ -2,8 +2,8 @@
   "productVersion": "0.5.2",
   "saveSchemaVersion": 15,
   "rulesFingerprint": "f36d71f863a8ebe7",
-  "instrumentFingerprint": "d50b03a8ca4323d8",
-  "docsFingerprint": "c944fdb764c48484",
+  "instrumentFingerprint": "e81bc730c94b1fce",
+  "docsFingerprint": "2e849e60e0973831",
   "provenance": {
     "sweepLabel": "t150-postfix",
     "seeds": 1000,
@@ -20,7 +20,7 @@
       "veteran"
     ],
     "extractedOn": "2026-08-01",
-    "gitCommit": "d85aaf9a9c5f60d8089d6d97a02f9c49f785b99c",
+    "gitCommit": "62604c0409398732161244bc8976e5f148ee0d76",
     "spreadSource": "harvested",
     "note": "Tier spreads are milestone samples harvested from the named sweep. They are still SYNTHESIZED starting states and are never balance verdicts — see docs/balance/smoke/README.md."
   },
@@ -1433,17 +1433,17 @@
           "runs": 7,
           "endDay": 44,
           "creditsMin": 100,
-          "creditsMedian": 5130,
+          "creditsMedian": 4992,
           "creditsMax": 44778,
           "debtTotal": 3096,
-          "incomeDays": 20,
-          "encounters": 2,
+          "incomeDays": 21,
+          "encounters": 3,
           "shipsLost": 0,
-          "deliveredLegs": 14,
+          "deliveredLegs": 13,
           "fuelStarvationDays": 3,
           "deedsEarned": 39,
           "tourOneResolved": 0,
-          "outcomeHash": "7f91ccb706b27698"
+          "outcomeHash": "036435ce599858a9"
         },
         {
           "policy": "explorer",

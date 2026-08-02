@@ -47,6 +47,8 @@ The N-series work (`docs/NPC_REDESIGN.md`) put ~30 NPCs on the same rules a play
 
 **Implication:** "run the cast through hundreds of games" is already mostly true for Trade/Travel/Shipyard/economy bugs, and not yet true for Combat's chosen branch, Explore, VisitHangout, or the core dice-allocation decision. Treat sweep results as authoritative for the verbs marked Shipped above, and as silent (not "passing," *silent*) for everything else until the corresponding N-series parity work lands.
 
+**A different axis, recorded elsewhere — the sim POLICIES' action spread.** The table above is about *NPC verb parity* (which verbs the ~30 cast members can take at all). The sibling question — whether a sim archetype pursues only its headline verb — is answered as a stated norm in **`docs/BALANCE-POLICY.md` D.2a, "The one-prime-focus property"**: every archetype has one prime focus and a spread of secondary actions, none is a single-verb monoculture, and every gate on a headline verb owes either a second-pass relaxation or an explicit anti-idle move. That norm is what `assertNoIncomeStall` (`packages/sim/src/balance/gate.ts`) enforces from the sweep side, and it is the check any new or edited archetype is graded against — do not re-derive it from `index.ts` each time it is asked.
+
 ## Part D — Proposed model: two tiers, both native, no external dependency
 
 **Tier 1 — bulk/regression, cheap, mostly already built.** Explicitly reframe the balance sweep as a testing surface, not only a tuning tool:

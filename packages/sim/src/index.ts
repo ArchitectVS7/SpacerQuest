@@ -4151,7 +4151,36 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
   // intent while refusing the unwinnable rim temptation.
   const ranked = rankedContracts(state);
   const signFuelCap = state.player.ship.maxFuel * SIGN_FUEL_FRACTION;
-  const reachable = ranked.filter((c) => c.fuel <= signFuelCap);
+  let reachable = ranked.filter((c) => c.fuel <= signFuelCap);
+  // T-159: the T-1104 full-tank RELAXATION, ported (not invented) from the four
+  // policies that already carry it verbatim — `traderPolicy`, `smugglerPolicy`,
+  // `gamblerPolicy` and `explorerPolicy`. The fighter was the last gated policy
+  // without it, and the omission read from the outside as a monoculture: parked
+  // at a RIM port where every reachable leg exceeds 0.6 of the tank, `reachable`
+  // comes back empty every day, so the fighter signs nothing and Waits.
+  //
+  // Why the streak climbs instead of self-correcting: refuel, special equipment,
+  // component tiers, captain overhead and debt payment all still QUEUE below, so
+  // the ship looks busy — but none of them is an income action (`isIncomeAction`,
+  // this file, ~L1659-1665, counts only sign-contract / Travel / Explore /
+  // fight-or-talk). A busy, earning-nothing day is still a zero-income day.
+  //
+  // Measured before this line (the sweep gate's own first honest CI run, seeds
+  // 1..200 at 35 days): fighter's longest zero-income streak 32 against a limit
+  // of 5, with six seeds >= 5 (35, 54, 75, 80, 115, 181) — every other gated
+  // policy sat at 2-4. Seed 35 is the picture: parked at Algol-2 from day 7 with
+  // 2,825cr and a live 2-4 offer board it could not sign from, debt compounding
+  // 20,970 -> 23,156 by day 36.
+  //
+  // The trade this accepts is the SAME one T-1104 argued for in the trader: a
+  // full-tank run leaves a thinner re-flight margin after an interrupted
+  // delivery. Taking the completable run beats idling at the rim.
+  //
+  // Readers: `assertNoIncomeStall` / `INCOME_STALL_LIMIT` in `balance/gate.ts`,
+  // and the `< 5` poverty-trap invariant in `campaign-policies.test.ts`.
+  if (reachable.length === 0) {
+    reachable = ranked.filter((c) => c.fuel <= state.player.ship.maxFuel);
+  }
   if (state.player.activeContract) {
     const die = ledger.takeBest();
     if (die !== undefined) {
@@ -4173,6 +4202,69 @@ export const fighterPolicy: SimPolicy = ({ state }) => {
         spendDie: signDie,
       });
       actions.push({ type: 'Travel', destinationId: best.destination, spendDie: travelDie });
+    }
+  }
+
+  // ---- T-159 (second pass) · NOTHING ON THE BOARD IS FLYABLE AT ALL: FLY HOME
+  // The relaxation above closes the case where the margin cap is the only thing
+  // in the way. It CANNOT close the harder rim corner, and measurement said so:
+  // with the relaxation alone, seed 35's fighter still sat 8 consecutive
+  // zero-income days at Algol-2 (system 20) because after a succession left it on
+  // a 240-unit tank and a junker drive, EVERY leg the board offered cost 252-602
+  // fuel — `reachable` is empty even at `maxFuel`, so there is no filter to relax.
+  //
+  // So this is the gambler's fallback, not the trader's: an explicit ANTI-IDLE
+  // MOVE (`index.ts` gamblerPolicy, "Nothing to fly? Go where the tables are" —
+  // "`Travel` IS an income action, and without it a rich gambler simply stops").
+  // The fighter's version of "where the tables are" is HOMEWARD: the lanes around
+  // the Hangout, where the legs are short enough that a junker drive can fly them
+  // and where the interceptor traffic this policy exists to shoot actually is.
+  //
+  // Three guards keep this a repositioning burn and not a metric-gaming twitch:
+  //   1. It fires ONLY when the day has queued no income action at all, so it can
+  //      never displace a run the fighter could have flown.
+  //   2. The destination must be affordable on the tank the day will ACTUALLY
+  //      have (`availableFuel`, post-refuel) — never a leg the engine refuses.
+  //   3. STRICT PROGRESS: the target must be closer to a Hangout than the current
+  //      port is, so a stranded fighter walks in toward the core instead of
+  //      ping-ponging between two rim ports to keep an income counter warm.
+  // Readers: `assertNoIncomeStall` in `balance/gate.ts`, and the `< 5`
+  // poverty-trap invariant in `campaign-policies.test.ts`.
+  if (!state.player.activeContract && !actions.some(isIncomeAction)) {
+    const from = state.player.currentSystemId;
+    const homewardDistance = (systemId: number): number =>
+      Math.min(...hangoutSystemIds().map((id) => systemDistance(systemId, id)));
+    const boughtFuel = refuel ? refuel.cost / fuelPrice(state) : 0;
+    const availableFuel = Math.min(state.player.ship.maxFuel, state.player.ship.fuel + boughtFuel);
+    const currentHomeward = homewardDistance(from);
+    let target: number | null = null;
+    let targetHomeward = currentHomeward;
+    let targetFuel = Infinity;
+    for (const id of travelableSystemIds()) {
+      if (id === from) continue;
+      const jumpFuel = playerJumpFuel(state, systemDistance(from, id));
+      if (jumpFuel > availableFuel) continue;
+      const homeward = homewardDistance(id);
+      // Guard 3 in code: a candidate no closer to the desk than the current port
+      // is not a repositioning burn, it is a twitch, and is never taken.
+      if (homeward >= currentHomeward) continue;
+      // Closest to the desk wins; ties go to the cheaper burn, then to the lower
+      // id (loop order) so the choice is deterministic.
+      if (
+        target === null ||
+        homeward < targetHomeward ||
+        (homeward === targetHomeward && jumpFuel < targetFuel)
+      ) {
+        target = id;
+        targetHomeward = homeward;
+        targetFuel = jumpFuel;
+      }
+    }
+    if (target !== null) {
+      const die = ledger.takeBest();
+      if (die !== undefined) {
+        actions.push({ type: 'Travel', destinationId: target, spendDie: die });
+      }
     }
   }
 

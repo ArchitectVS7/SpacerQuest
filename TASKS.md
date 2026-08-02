@@ -3711,7 +3711,7 @@ Take the invariant set already used in the T-1604a UGT campaign (`docs/playtests
 **Delivered (2026-08-01):** Nine named `assert*` predicates plus an `EXPECTED_EVENT_RATES` table now live in the new pure `packages/sim/src/balance/gate.ts` (T-1602b pure/IO split, mirroring `aggregate.ts`); `sweep.ts` calls each by name from `runGate`, collects `SweepViolation`s per report, sets a non-zero exit code on any violation or out-of-band rate, and writes a `gate-*.json` report alongside the sweep's row output. `gate.ts` is registered NON-INSTRUMENT in `rules-fingerprint.ts` since it asserts about measurements rather than producing one. `longestZeroIncomeStreak` moved into `gate.ts` and is re-exported from `campaign-drivers.ts` so the test suite and the gate share one definition instead of two copies that could disagree. CI wiring is `.github/workflows/sweep-gate.yml`: a `gate` job on every push/PR (small fixed 2-shard + merge sample, sized so no rate check reports SKIPPED) and a `deep` job on nightly cron + `workflow_dispatch` (tour-one and veteran arms). `docs/TESTING-STRATEGY.md` Part D records the as-built mechanism, including the three T-1604a invariants (`inv_blocked_from_legal_non_increasing`, `inv_protocol_errors_non_increasing`, `inv_dice_bounds`) that are protocol-seam statements a sweep cannot observe — declared `not-observable` in `SWEEP_INVARIANT_DISPOSITIONS` with T-154/T-155 named as owner, not faked into a green check. Scope boundary: the gate found a real bug on its first run (`fighterPolicy` idling up to 32 consecutive days on a 35-day horizon because it never applies the T-1104 relaxation `trader`/`smuggler`/`explorer` carry) and this task deliberately does not fix it — the fix touches `index.ts`, a hashed instrument source, which the standing constraints reserve for a milestone's final capstone task; the `gate` CI job is therefore expected to stay red until that fix lands as its own task. T-153 is the follow-on that proves the gate catches seeded-bad fixtures.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
-### T-159 · Fix: fighterPolicy's missing T-1104 relaxation, plus an archetype fallback-spread audit — `status: TODO` · `coder: opus` · `after: T-152`
+### T-159 · Fix: fighterPolicy's missing T-1104 relaxation, plus an archetype fallback-spread audit — `status: DONE` · `coder: opus` · `after: T-152`
 
 **The bug, precisely.** `fighterPolicy` (`packages/sim/src/index.ts`, contract-signing branch ~4144-4177)
 filters `rankedContracts` to `signFuelCap = maxFuel * SIGN_FUEL_FRACTION` (0.6) and, unlike every other
@@ -3769,6 +3769,61 @@ pattern; a re-run of `npm run balance:sweep -w @spacerquest/sim -- --label ci-ga
 `fighter`, and the `.github/workflows/sweep-gate.yml` `gate` job goes green on this branch; the
 archetype fallback-spread read (or a filed gap) is recorded in the relevant doc; gate green
 (`npm test`, `tsc -b`, `lint`, `format:check`).
+
+**Delivered (2026-08-01):** `fighterPolicy` gained the T-1104 full-tank relaxation, ported verbatim from
+the four policies that already carried it (`packages/sim/src/index.ts`, `if (reachable.length === 0)` at
+the contract-signing path). **The brief's one-branch diagnosis was incomplete, and measurement said so
+before the commit did:** the relaxation alone took seed 35 from 32 consecutive zero-income days to 8 —
+still over the limit of 5 — because after a succession left the ship on a 240-unit tank and a junker
+drive, EVERY leg the board offered at Algol-2 cost 252-602 fuel. `reachable` was empty even at
+`maxFuel`, so there was no filter left to relax. A second branch closes that corner: an explicit
+anti-idle **homeward burn**, the gambler's `travel-toward-Hangout` pattern rather than the trader's
+filter pattern, guarded three ways (fires only when the day queued no income action at all; the
+destination must be affordable on the post-refuel tank; and it must be strictly closer to a Hangout
+than the current port, so a stranded fighter walks in toward the core instead of ping-ponging between
+two rim ports to keep an income counter warm). Measured seeds 1..200 × 35 days, fighter's longest
+zero-income streak **32 → 19**, seeds ≥ 5 **six (35, 54, 75, 80, 115, 181) → one (157)**; seed 35
+itself is now 0. The exact CI invocation (`--label ci-gate --seeds 60 --days 35 --shard 1/2` then
+`2/2` then `--merge`, `--milestone-days 10,30`, both outputs to a scratch dir, never `docs/balance/`)
+is **PASS on all three legs** — 0 invariant violations, all eight rate checks in band, 420 rows merged.
+On that 420-row sample the whole rate table is unchanged to four decimals except `board-depth-mean`
+(3.7822 → 3.7820). Two re-pins, both with the cause stated before the number and neither weakened:
+`campaign-degraded.test.ts` `PINNED_FINGERPRINTS.fighter` `13b4155d3d53e543 → f3e2714c7973c78c`
+(entry 27; the ONLY row that moved — trader/explorer/veteran/smuggler/gambler/greedy all came back byte
+for byte, which is the cross-check that this was a fighter change and nothing else), and a re-extract
+of `docs/balance/smoke/tiers.json` from the SAME aggregate (`--aggregate docs/balance/baseline-t150-postfix.json`,
+so provenance stays `t150-postfix`/8,000 runs) which moved exactly one `expected` row — `days-41-43` ·
+`fighter`, `incomeDays 20 → 21` (the fix, visible in the fixture), `creditsMedian 5130 → 4992`,
+`encounters 2 → 3`, `deliveredLegs 14 → 13`, `outcomeHash 7f91ccb706b27698 → 036435ce599858a9`. No tier
+spread moved; no threshold, band, seed list or golden was edited. **The brief's fingerprint prediction
+was one value too many and is corrected here:** `rulesFingerprint` did NOT move and could not —
+`computeRulesFingerprint` hashes only `packages/engine/src` rule dirs plus `packages/content/src`, and
+this task touched neither, so it stands at `f36d71f863a8ebe7`. What moved is `instrumentFingerprint`
+`d50b03a8ca4323d8 → e81bc730c94b1fce`, `docsFingerprint` `c944fdb764c48484 → 2e849e60e0973831` and
+`provenance.gitCommit` (unconditional), all attributable to `packages/sim/src/index.ts`. Both were
+re-extracted AFTER `npm run format`, never before: the formatter rewraps `index.ts`, which is itself a
+hashed instrument source, so extracting first would have committed a fixture that goes stale on the
+next `format` run. Because the
+`rulesFingerprint` branch of `fixtureFreshness` never fired, the documented remedy was a re-extract, not
+a 1,000-seed capstone — so no capstone, and no `npm run format` ordering constraint, applied.
+The archetype audit was re-run against current source, not carried forward: the answer is **no
+monoculture anywhere**, and the property is now a stated norm at `docs/BALANCE-POLICY.md` **D.2a**
+("one prime focus + a spread of secondary actions"), with the per-policy anchor table re-derived, the
+mechanical reason spelled out (`isIncomeAction` counts four verbs; a policy whose only income verb is
+gated has none on a gated day), and the two accepted fallback shapes named as the check any new
+archetype owes. `docs/TESTING-STRATEGY.md` Part C points at it and states why it is a different axis
+from the NPC verb-parity table. `.github/workflows/sweep-gate.yml`'s "KNOWN RED AT LANDING" block is
+rewritten as a dated was-red/now-fixed note keeping every measured number. Two findings filed, not
+fixed: **F-159-1** — `veteranPolicy` (`index.ts:4903-4909`) is the last un-relaxed contract filter in
+the file, structurally identical to the fighter's defect, measured at 31 days / 197 of 200 seeds ≥ 5
+(materially worse than the "6-8 days" its exemption note claims); it is a **reachability** gap, not a
+monoculture, and closing it belongs to a task allowed to move the veteran's fingerprint. **F-159-2** —
+seed 157's residual 19-day stall is a different mechanism entirely (combat damage shrinks `maxFuel`
+270 → 90, below the cheapest jump in the map, so `cannotAffordCheapestJump` is true and the engine
+would refuse every jump a policy could queue); both T-159 branches behave correctly there, and it sits
+outside the gate's 1..60 seed range. `smugglerPolicy`'s F-150-2 `planPacifistCombat` stall was not
+touched.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
 ### T-153 · Validate: prove the sweep gate catches known regressions — `status: TODO` · `coder: opus` · `after: T-152`
 Build one seeded-bad fixture per invariant class from T-152 (e.g. a synthetic state with negative credits, a synthetic event log reading 0% against an expected ~30% rate) plus one clean/current-state fixture, and write a committed, automated test suite that runs the gate against all of them. This suite is permanent — it runs as part of `npm test` going forward, so the gate's own correctness is continuously re-verified rather than confirmed once and trusted forever. Also confirm the CI/scheduled wiring from T-152 actually executes the gate script (a dry run or CI log), not merely references it.
