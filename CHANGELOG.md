@@ -22,6 +22,27 @@
 - Still to come in this arc: rival captains drawing their own dice each dawn, an AI test
   pilot, and the first full human playthrough
 
+
+
+  ┌────────────────────────┬────────────────────────────┬───────┬────────────────────────────────────────────────────────────────┐
+  │          Term          │           Where            │ Count │                         What they are                          │
+  ├────────────────────────┼────────────────────────────┼───────┼────────────────────────────────────────────────────────────────┤
+  │                        │                            │       │ Named rivals who fly real ships and play by the player's rules │
+  │ The captains           │ cast.ts → NPC_PROFILES     │ 30    │  — the N-series parity track. Iron Vex, Cargo King, Admiral    │
+  │                        │                            │       │ Stern… These are the Honor List.                               │
+  ├────────────────────────┼────────────────────────────┼───────┼────────────────────────────────────────────────────────────────┤
+  │                        │                            │       │ Same NpcProfile shape, but story-only. Silk Dagger, Lucky      │
+  │ Quest cast             │ cast.ts → QUEST_PROFILES   │ 11    │ Seven, Doc Salvage, The Broker… ALL_NPC_PROFILES = 30 + 11 =   │
+  │                        │                            │       │ 41.                                                            │
+  ├────────────────────────┼────────────────────────────┼───────┼────────────────────────────────────────────────────────────────┤
+  │ Pirates (properly:     │ cast.ts →                  │       │ Not people — kinds. PIRATE ×9, PATROL ×11, RIM_PIRATE ×21,     │
+  │ anonymous              │ ANONYMOUS_INTERCEPTORS     │ 65    │ BRIGAND ×12, REPTILOID ×12. Unnamed combat-encounter fodder.   │
+  │ interceptors)          │                            │       │                                                                │
+  ├────────────────────────┼────────────────────────────┼───────┼────────────────────────────────────────────────────────────────┤
+  │ Liar's Dice opponents  │ liarsDice.ts →             │ 42    │ 14 ports × 3 seats. Bar patrons who never fly anything — Hob   │
+  │                        │ LIARS_DICE_OPPONENTS       │       │ Trellis, Auntie Sorrow, The Duty Clerk.                        │
+  └────────────────────────┴────────────────────────────┴───────┴────────────────────────────────────────────────────────────────┘
+  
 ## 0.5.1
 - Split the NPC redesign into its own task
 - Completed bulk of the NPC base work, discovered two major gaps (Explore, Socialize)
