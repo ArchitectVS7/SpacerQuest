@@ -164,6 +164,14 @@ export const SIM_NON_INSTRUMENT_SOURCES: Readonly<Record<string, string>> = {
     'in would invalidate every committed smoke fixture on a widened band, which is churn with no ' +
     'signal in it. (The bands themselves are held honest by the no-editing-to-pass rule stated ' +
     'in that file and at the top of this one, not by a hash.)',
+  'balance/coverage.ts':
+    "T-157 · The COVERAGE MATRIX — a transcription of `docs/NPC_REDESIGN.md`'s PARITY LEDGER and " +
+    "`docs/BALANCE-POLICY.md` D.2a's archetype table, plus the pure cross-reference between them. " +
+    'Same class as `balance/gate.ts` above: it asserts about what the sweep MEASURED (is this ' +
+    "archetype's headline verb even testable?), and cannot change a career or a measurement. " +
+    'Folding it in would invalidate every committed smoke fixture the day a ledger row is ruled, ' +
+    'which is churn with no signal in it. The table is held honest by the drift check in ' +
+    '`../__tests__/archetype-coverage.test.ts`, which parses both source documents, not by a hash.',
   'balance/diff.ts': 'Reads two finished aggregates and reports. It cannot produce a number.',
   'balance/diff-cli.ts': 'The argv/filesystem half of the above.',
   'balance/report-model.ts':

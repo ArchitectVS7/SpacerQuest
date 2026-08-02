@@ -30,6 +30,18 @@
  * ruling and a re-measured band with cited evidence — see
  * {@link EXPECTED_EVENT_RATES}.
  *
+ * T-157 · THE COVERAGE MATRIX RIDES IN THIS REPORT, BUT LIVES NEXT DOOR. The
+ * question "is this archetype's headline verb even testable?" is answered by
+ * `./coverage.ts` against `docs/NPC_REDESIGN.md`'s PARITY LEDGER, and its results
+ * are carried on {@link GateReport.coverage} and printed by
+ * {@link formatGateReport}. It is deliberately NOT an `assert*` export here: those
+ * are per-report predicates that `runGate` composes and `sweep-gate.test.ts`
+ * enumerates, whereas coverage is a RUN-level check over the policy set. Its
+ * warn-versus-fail rule is stated once, at `./coverage.ts`'s header; the only part
+ * that binds this file is that a coverage FAILURE (an unclassified policy, or an
+ * uncovered one with no acknowledged, owner-named gap) sets `passed` false, while
+ * an acknowledged gap prints a named warning and does not.
+ *
  * READERS (constraint 7): `./sweep.ts` (calls every function below by name),
  * `../__tests__/support/campaign-drivers.ts` (re-exports
  * {@link longestZeroIncomeStreak}), and — from T-153 — the behavioural suite that
@@ -52,6 +64,7 @@ import type {
   SimPolicyName,
 } from '../index.js';
 import { isCombatWin, type SeedRow } from './aggregate.js';
+import { coverageFailures, formatCoverageLines, type ArchetypeCoverageResult } from './coverage.js';
 
 // ---------------------------------------------------------------------------
 // The violation record
@@ -1005,23 +1018,38 @@ export interface GateReport {
   violationCount: number;
   violations: ViolationSummaryRow[];
   rates: ExpectedEventRateResult[];
+  /** T-157 · one row per policy the sample actually contained. */
+  coverage: ArchetypeCoverageResult[];
 }
 
+/**
+ * `coverage` is the OPTIONAL sixth parameter, defaulting to the empty set, and the
+ * default is not laziness: every existing caller in `sweep-gate.test.ts` builds a
+ * report about a hand-seeded fixture whose policy set is not the sweep's fleet, and
+ * an empty coverage table is the honest answer for "no policies were graded here".
+ * `./sweep.ts` — the one caller that knows which policies actually ran — always
+ * passes it.
+ */
 export function buildGateReport(
   label: string,
   scope: string,
   rowCount: number,
   violations: readonly SweepViolation[],
   rates: readonly ExpectedEventRateResult[],
+  coverage: readonly ArchetypeCoverageResult[] = [],
 ): GateReport {
   return {
     label,
     scope,
     rows: rowCount,
-    passed: violations.length === 0 && !rates.some((rate) => rate.status === 'fail'),
+    passed:
+      violations.length === 0 &&
+      !rates.some((rate) => rate.status === 'fail') &&
+      coverageFailures(coverage).length === 0,
     violationCount: violations.length,
     violations: summarizeViolations(violations),
     rates: [...rates],
+    coverage: [...coverage],
   };
 }
 
@@ -1052,5 +1080,6 @@ export function formatGateReport(report: GateReport): string {
   for (const rate of report.rates) {
     lines.push(`[gate] rate ${rate.id}: ${rate.status.toUpperCase()} — ${rate.detail}`);
   }
+  lines.push(...formatCoverageLines(report.coverage));
   return lines.join('\n');
 }

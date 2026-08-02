@@ -121,6 +121,7 @@ import type { NpcDecisionTrace } from '@spacerquest/engine';
 
 import { runCampaign, type CampaignStatsReport, type SimPolicyName } from '../index.js';
 import { aggregate, summarizeReport, type SeedRow } from './aggregate.js';
+import { checkArchetypeCoverage } from './coverage.js';
 import {
   assertBoardDepthWithinPoolBounds,
   assertCombatRecordsWellFormed,
@@ -141,8 +142,12 @@ import {
  *  `greedy` as a naive control, so the memo can say what "playing badly" costs.
  *  `idle` and `random` are deliberately out — they are protocol/robustness
  *  instruments, not balance ones, and would drag every fleet distribution toward
- *  noise. Both remain available via `--policies`. */
-const DEFAULT_POLICIES: readonly SimPolicyName[] = [
+ *  noise. Both remain available via `--policies`.
+ *
+ *  EXPORTED FOR T-157 (constraint 7 · readers):
+ *  `../__tests__/archetype-coverage.test.ts` asserts every default-fleet member has
+ *  a coverage-matrix row, against THIS list rather than a second copy of it. */
+export const DEFAULT_POLICIES: readonly SimPolicyName[] = [
   'trader',
   'fighter',
   'explorer',
@@ -472,6 +477,12 @@ function gateFileName(options: SweepOptions, merged: boolean): string {
  * sweep emit a negative-credits row would require breaking the engine. So the
  * DETECTION is proven on seeded reports and the EXIT-CODE PLUMBING is proven here,
  * on the one function every sweep path routes its verdict through.
+ *
+ * T-157 · IT ALSO EVALUATES THE COVERAGE MATRIX, and it does so from the ROWS, not
+ * from `options.policies`: the printed verdict must describe the sample that was
+ * actually measured, and a `--merge` leg's rows can carry a fleet no single shard's
+ * argv named. Because every shard and every merge routes through here, both legs of
+ * `.github/workflows/sweep-gate.yml` run the check with no workflow change.
  */
 export function reportGate(
   options: SweepOptions,
@@ -479,12 +490,14 @@ export function reportGate(
   rows: readonly SeedRow[],
   violations: readonly SweepViolation[],
 ): void {
+  const policies = rows.map((row) => row.policy);
   const report = buildGateReport(
     options.label,
     scope,
     rows.length,
     violations,
     checkExpectedEventRates(rows),
+    checkArchetypeCoverage(policies),
   );
   process.stderr.write(`${formatGateReport(report)}\n`);
   const target = join(options.rowsDir, gateFileName(options, options.merge));

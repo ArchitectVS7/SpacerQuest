@@ -3933,9 +3933,255 @@ is a merge decision T-153 does not hold — T-153 validates the gate, it does no
 every commit on this branch, and the fix is a zero-line change (the file merges as-is). Re-check when
 `redesign/explore-hangout` merges: the first `schedule`-event run in `gh run list` closes it.
 
-### T-157 · Coverage-matrix gate: cross-check sweep archetypes against verb parity — `status: TODO` · `coder: opus` · `after: T-153`
+### T-157 · Coverage-matrix gate: cross-check sweep archetypes against verb parity — `status: BLOCKED(one Accept clause unmet — "passes cleanly for gambler"; needs an owner ruling on NPC_REDESIGN.md's VisitHangout parity row. ESCALATED, confirmed at fix round 3 — three fix rounds are spent and none could move it, because no code change can: see THE RULING)` · `coder: opus` · `after: T-153` · `[BLOCKED BY = Owner ruling — the VisitHangout parity-ledger row]`
 Per `docs/TESTING-STRATEGY.md` Part C, the sweep's 8 policies (trader, trader-degraded, fighter, explorer, veteran, smuggler, gambler, greedy) each have a defining verb, and two of them (fighter → Combat's chosen branch, explorer → Explore) currently have no real NPC parity per `NPC_REDESIGN.md`'s Parity Ledger. Build a small script/test that cross-references each sweep archetype against its defining verb's current parity status and fails or emits a named warning when a headline verb isn't marked Shipped, so "is archetype balance actually tested" is something CI asserts instead of something re-derived by reading two documents side by side. Wire it into the same gate as T-152/T-153.
 **Accept:** the check is committed and runs under `npm test` or the sweep gate; it fails/warns (documented which) for `fighter` and `explorer` against the parity status as of this task; it passes cleanly for `trader`, `trader-degraded`, `veteran`, `smuggler`, `gambler`, `greedy`; the parity-status source it reads from is named so it can be kept current as `NPC_REDESIGN.md`'s ledger changes.
+
+**Delivered (2026-08-02):** The coverage matrix is `packages/sim/src/balance/coverage.ts`, and its
+entry point is called at its named call site — `grep -n checkArchetypeCoverage
+packages/sim/src/balance/sweep.ts` answers on lines 124 and 500, the latter inside `reportGate`. That
+is the one function
+every sweep path routes its verdict through, so **both** legs of `.github/workflows/sweep-gate.yml`
+(every shard and every `--merge`) evaluate it with **no workflow edit**, and the result is carried on
+`GateReport.coverage` into every `gate-*.json`. It also runs under `npm test`:
+`packages/sim/src/__tests__/archetype-coverage.test.ts`, **16 tests, 204ms** (15 at fix round 1; the
+sixteenth is F-157-2's figure-pin drift check), collected like any other
+`*.test.ts`. Both halves of the Accept clause's "under `npm test` **or** the sweep gate" are therefore
+satisfied, not one.
+**Warn, not fail — and the rule is written down four places.** An `uncovered` archetype whose gap is in
+`ACKNOWLEDGED_COVERAGE_GAPS` prints a named `[gate] coverage <policy>: UNCOVERED (warn)` line and
+**does not** set a non-zero exit; an `uncovered` archetype with **no** acknowledgement, or an
+`unclassified` policy with no matrix row, sets `GateReport.passed = false` and exits 1. `exempt`
+(`greedy`) is its own third value, printed on its own line, never folded into a pass — the discipline
+`checkExpectedEventRates` applies to SKIPPED. The reason warnings do not exit non-zero: all three of
+today's gaps are **recorded, owner-gated deferrals** whose closure is not in any build task's gift, and
+a gate permanently red for a documented deferral trains people to ignore it. Same disposition
+`gate.ts` already takes for its three `not-observable` UGT predicates — declared with an owner named,
+never faked green, never allowed to fail the run. Stated in `coverage.ts`'s header, in the printed line
+itself, in `docs/TESTING-STRATEGY.md` Part D ("The coverage matrix (T-157)"), and here.
+**The two named sources are machine-checked, in both directions.** `VERB_PARITY` transcribes ten verbs
+from `docs/NPC_REDESIGN.md`'s PARITY LEDGER, each row carrying its exact ledger row, its Part C mirror
+and the date of the ruling it reflects; the archetype → defining-verb mapping quotes
+`docs/BALANCE-POLICY.md` D.2a's prime-focus column verbatim. Three drift tests parse the actual
+documents: Part C's table is asserted **equal in both directions** to `VERB_PARITY` (a verb added there
+and never transcribed fails, and so does a transcribed verb Part C stops carrying); each ledger row's
+"owed by" cell is matched against its status keyword under a stated mapping (`shipped` ⇒ says shipped
+and owes nothing further; `partial` ⇒ says shipped AND "still owed" — `Combat` today; `deferred` ⇒ says
+DEFERRED; `undecided` ⇒ says "N13 decides"), with `Renown` held to its **prose** anchor because N11
+removed its row rather than skipped; and every D.2a prime focus is asserted still present in D.2a.
+`Port` and `Storylet` are deliberately out of the table (ledger rows, but absent from Part C and not
+any archetype's prime focus) and the reason is stated at the constant, not left as a silent gap.
+**A FOURTH drift test since fix round 2 (F-157-2): the MAGNITUDES, not only the statuses.** Every
+measured figure an acknowledgement quotes carries a `QuotedFigure` pin — document, section heading,
+table row, and the value that row's last column holds — resolved against the live file, with the pin
+and the prose asserted to agree; `gambler`'s three are pinned to `docs/HANGOUT_REDESIGN.md` §11.4, and
+`fighter`/`explorer` carry a **checked empty** list with the reason stated at each site. Checking only
+the status was not enough: a ledger row can hold a settled status while its prose carries a figure a
+companion document has since re-measured, which is exactly what `| VisitHangout |` does.
+**Behavioural coverage, not observation.** Three seeded-bad cases prove the check CATCHES: an
+unclassified policy fails; an `uncovered` result with `acknowledged: false` fails; and today's real
+matrix does **not** fail (`buildGateReport(...).passed === true` with three warnings live). The wiring
+test drives the real `reportGate` with two real careers (`trader`, `gambler`), reads the written
+`gate-t157-wiring-shard1of1.json` back and asserts the coverage block, the verdicts and
+`passed: true` — `process.exitCode` saved/restored in a `finally`, temp dir removed, nothing written
+near `docs/balance/`. Totality: `satisfies Record<SimPolicyName, ArchetypeCoverageRow>` makes a
+forgotten policy a **compile** error (no runtime list to maintain), plus runtime assertions that every
+`DEFAULT_POLICIES` member is a graded archetype and that `SWEEP_ARCHETYPES` is exactly Part G's eight.
+**Extraction proved inert before anything was added.** `buildGateReport` takes `coverage` as an
+**optional sixth parameter** defaulting to `[]`, so all five existing `buildGateReport(...)` calls in
+`sweep-gate.test.ts` compile and pass unchanged (35/35 green). `DEFAULT_POLICIES` went
+module-private → `export` (one word plus a readers note). **All three fingerprints are UNMOVED** —
+`rulesFingerprint f36d71f863a8ebe7` / `instrumentFingerprint e81bc730c94b1fce` / `docsFingerprint
+2e849e60e0973831`, byte-identical to T-153's recorded values — because `coverage.ts` is declared
+NON-INSTRUMENT in `balance/rules-fingerprint.ts` (with its reason, which is also what satisfies the
+undeclared-file guard over `packages/sim/src/balance/` and keeps `balance-rig.test.ts`'s
+classification-totality test green). **No capstone is owed and none was taken.**
+**Live evidence — the exact CI invocation, run locally on today's tree (2026-08-02), 1-indexed shards
+through `--merge` with `--milestone-days`:** `--label ci-gate --seeds 60 --days 35 --shard 1/2
+--milestone-days 10,30` → **PASS, 210 rows**; `--shard 2/2` → **PASS, 210 rows**; `--label ci-gate
+--merge` → **PASS, 420 merged rows**, 0 violations, 8/8 rates in band, **exit 0 on all three legs**,
+with all seven coverage lines printed on every leg — verbatim from the merge:
+`[gate] coverage explorer: UNCOVERED (warn) — Explore is deferred, not shipped (docs/NPC_REDESIGN.md ·
+THE PARITY LEDGER · | Explore |)`, the same for `fighter` (Combat is partial) and `gambler`
+(VisitHangout is deferred), `[gate] coverage greedy: EXEMPT`, and `COVERED` for `smuggler`, `trader`
+and `veteran`. `trader-degraded` does not appear because it is not in `DEFAULT_POLICIES` — the check
+reads the policies the ROWS actually contain, not argv, which is deliberate: the printed verdict must
+describe the sample that was measured.
+**THIS TASK IS `BLOCKED`, NOT DONE. One Accept clause is unmet and the implementation may not rule on
+its own deviation — finding F-157-1, put to the owner as a question under THE RULING below.**
+*"It passes cleanly for … `gambler`"* does **not** hold: `gambler` warns.
+`docs/BALANCE-POLICY.md` D.2a gives its prime focus as **"the tables"**
+(`index.ts:3767`, with an anti-idle *travel-toward-Hangout* branch at `index.ts:3899`) — the
+**VisitHangout** verb — and Part C files VisitHangout in the same **Deferred** row as Explore. The
+mapping was **not** gerrymandered onto `Trade` (its secondary spread) to make the list green; that is
+the same move as widening a band to clear a gate, and `gate.ts`'s own header forbids the class. The
+honest rule was implemented and the third row reported — the gate doing its job on its first run,
+exactly as T-152's gate caught `fighterPolicy`.
+
+**WHY IT IS BLOCKED RATHER THAN NOTED — and why the first pass was wrong to mark it DONE.** The first
+pass reported the miss transparently (this block, plus F-157-1) and then set `status: DONE` anyway,
+under a Bug Discovery Policy rule-3 scope call. **Rule 3 is the wrong instrument for this class.** It
+governs deferring a *bug found along the way*; the thing being deferred here is *this task's own
+settled acceptance bar*, and a coder does not hold authority to grade a miss against it as acceptable
+— however sound the argument. That is precisely the move this file has already rejected twice:
+**F-115-A** ("a task may not amend its own acceptance criteria in the same commit as the work being
+judged"; the clause was restored verbatim and the engine work got its own task, T-117) and **T-140**
+("fix round 1 headed §7.6 *discharged* and argued the deviation away … the argument was sound, but
+soundness is not the same as authority" — that task halted, the owner ruled, and only then did it
+close). Reporting a miss and self-approving it is still self-approval. So the run halts here under the
+`[BLOCKED BY = ...]` convention T-158 uses and T-140/T-156 used before it, and the owner rules.
+**This is a ONE-DECISION gate, not a re-open of the task:** the code, the tests, the drift checks, the
+wiring and the gate are all green and are **unchanged by this fix round** — see "Fix round 1 changed
+zero code" below. Nothing downstream is stranded: `T-158` is the only task naming `T-157` in its
+`after:` field, and T-158 is itself `[BLOCKED BY = Human UAT]`, so the run halts at the same place it
+was always going to halt — with one extra question in the owner's hands when it does.
+
+**THE ACCEPT CLAUSE ABOVE IS LEFT EXACTLY AS WRITTEN.** Editing *"passes cleanly for … `gambler`"*
+down to "warns for three" is moving the goalpost to match what shipped — the same class as editing a
+band to clear a gate, which this file's standing constraints and `docs/VERSIONING.md` forbid. Under
+ruling **(B)** the criterion stands unchanged and the *world* changes instead; under **(A)** the owner
+repairs the criterion, which is the owner's to do and not this task's.
+
+**THE RULING, for the owner — two options. Either closes this task; neither is a code change.**
+**(A) RULE THE LEDGER ROW** (the substantive option): rule `NPC_REDESIGN.md`'s PARITY LEDGER
+`| VisitHangout |` row, whose re-ask — with all three deferred defects re-measured against the shipped
+14-port Liar's Dice system — is already written and waiting at `docs/HANGOUT_REDESIGN.md` §11.4, and
+which that document records as *"Unruled: owner's call, not T-150's."* If the ruling is **Shipped**,
+`VERB_PARITY` is re-transcribed from the ruled row, `gambler` becomes `covered` **by re-measurement**,
+and the Accept clause is met as literally written. If the ruling is **still Deferred** (or Partial),
+the clause cannot be met as written and the correct repair is **(B)**.
+**(B) CORRECT THE ACCEPT CLAUSE, with the correction dated and signed by the owner**: move `gambler`
+out of the "passes cleanly" list and into the fails/warns list, so the clause reads *warns for
+`fighter`, `explorer` and `gambler`; passes cleanly for `trader`, `trader-degraded`, `veteran`,
+`smuggler`, `greedy`*. This is the honest repair if the deferral stands, and it is the same shape as
+T-140's ruling (A): the criterion was transcribed from a **summary** — `docs/TESTING-STRATEGY.md`
+Part G's "the two most distinctive ones" — rather than from the two source documents it points at, and
+the summary was wrong by one row. **The defect is a transcription, not a design bar.** Against the
+sources the delivered check is exactly right; against the clause's literal words it is one row short.
+**Not an option: re-mapping `gambler` onto `Trade`.** Its secondary spread is not its prime focus, D.2a
+says so in the column the code quotes, and choosing a mapping because it happens to be green is
+gaming the check the task exists to build.
+
+**Fix round 1 changed ZERO code and zero hashed bytes**, deliberately, so the owner rules against the
+same numbers the review saw: this round touched `TASKS.md` only — no fingerprint covers it. All three
+fingerprints stand at `rulesFingerprint f36d71f863a8ebe7` / `instrumentFingerprint e81bc730c94b1fce` /
+`docsFingerprint 2e849e60e0973831`, and the gate was re-run green (`npm test`, `npx tsc -b`,
+`npm run lint`, `npm run format:check` all exit 0).
+
+**FIX ROUND 2 (2026-08-02) — the blocking clause is UNCHANGED and still the owner's; one REAL defect
+the review surfaced is fixed.** The review graded `pass=false` on the same unmet clause and said so
+explicitly — *"no code fix is being requested here — the halt itself is the correct disposition and
+should not be 'fixed' by re-mapping `gambler` onto a verb that happens to be green."* That is honoured:
+**the mapping, the statuses, the verdicts, the warn/fail split and the Accept clause are all
+byte-unchanged**, and the task stays `BLOCKED`. What the review DID find is a genuine defect in this
+task's own deliverable, and it is fixed rather than logged — see **F-157-2**: the acknowledgement
+quoted the PARITY LEDGER's *ruling-time* magnitudes as current when the re-ask document the ledger
+points at had already re-measured two of them. Root cause: the transcription's STATUS half was
+machine-checked from the first pass and its EVIDENCE half was trusted prose, so a stale number had
+nothing to fail against — the same defect class this task exists to remove, one field over. The repair
+closes the class, not the instance: `AcknowledgedCoverageGap` gains `figures: QuotedFigure[]` (doc ·
+section · table row · the value that row's last column holds), a new drift test resolves every pin
+against the live document and asserts the prose still quotes it, and both directions are proven by
+seeded-bad runs. **Sixteen tests, up from fifteen.** `docs/TESTING-STRATEGY.md` gains a matching Part D
+bullet and a dated **AMENDED** paragraph under Part G's correction (original text left standing above
+it, per the same convention fix round 1 used). **`docs/NPC_REDESIGN.md` is deliberately NOT edited** —
+its ledger row is the very row THE RULING asks the owner to rule, and re-writing its prose while asking
+for a ruling on it is the class of move F-115-A forbids. **Fingerprints: all three STILL UNMOVED** at
+`rulesFingerprint f36d71f863a8ebe7` / `instrumentFingerprint e81bc730c94b1fce` / `docsFingerprint
+2e849e60e0973831` — `balance/coverage.ts` is declared NON-INSTRUMENT and `packages/sim/src/__tests__`
+and `docs/` are hashed by none of the three. **No capstone is owed and none was taken.** Gate re-run
+green end to end.
+**Discipline:** no band, threshold, fingerprint, golden or `it.fails` tripwire edited; no sample
+widened; no engine or content source touched; F-153-1, F-159-1, F-159-2 and F-150-2 untouched;
+`packages/sim/src/index.ts` deliberately not edited (it is a hashed instrument source and even an added
+export would stale every committed smoke fixture). `docs/TESTING-STRATEGY.md` gains a Part D block, a
+dated correction under Part G's archetype-balance bullet (original sentence left standing above it) and
+a note on Part C's table recording that its statuses are now machine-read and by which parser.
+Gate: `npx tsc -b` clean · `npm run lint` clean · `npm run format:check` clean · full `npm test` green.
+
+**F-157-1 · FILED, NOT FIXED (2026-08-02) — the archetype/verb coverage gap is THREE archetypes, not
+two.** `docs/TESTING-STRATEGY.md` Part G names `fighter` and `explorer` as "the two most distinctive
+ones", and this task's Accept clause inherited that count. Reading the two source documents instead of
+the summary gives three: `docs/BALANCE-POLICY.md` D.2a records `gambler`'s prime focus as **"the
+tables"** (VisitHangout), and `docs/NPC_REDESIGN.md`'s PARITY LEDGER still reads **"RE-ASKED at T-150
+(2026-08-01) — still DEFERRED pending owner ruling"** for the `| VisitHangout |` row, with its three
+measured defects all still **open**: a counterparty-less faucet where the player's dare is zero-sum, a
+majority of cast Socialize actions resolving where there is no Hangout, and a **150cr ante** that locks
+out the destitute captains it would help most. *(Magnitudes AMENDED by fix round 2 — this filing
+originally quoted the ledger row's ruling-time figures as current; see **F-157-2** and the pinned
+values at HEAD: **+3.44cr / captain-day**, **37.97%**, **17.49%** locked out. The magnitudes moved; the
+STATUS, which is the only thing this finding turns on, did not.)* The check therefore warns for all
+three, and Part G's bullet now carries a dated
+correction rather than a silent edit. **Closing it is an OWNER RULING, not a build task** — the re-ask
+with all three defects re-measured against the shipped 14-port Liar's Dice system is
+`docs/HANGOUT_REDESIGN.md` §11.4, and `NPC_REDESIGN.md` records it as *"Unruled: owner's call, not
+T-150's."* If the owner rules that the 42-seat roster satisfies the cast's counterparty requirement,
+the fix is to **rule the ledger row**, at which point `VERB_PARITY` is re-transcribed from it and the
+warning clears by re-measurement — never by re-mapping the archetype onto a verb that happens to be
+green. **This finding is what T-157 now HALTS on — it is not deferred (correction, fix round 1).** The
+original filing closed with a Bug Discovery Policy rule-3 scope call and "re-check at T-158", and left
+the task `DONE`. That was the wrong instrument twice over: rule 3 governs deferring a *bug found along
+the way*, not grading a miss against *this task's own* Accept clause, and rule 3's own condition (b)
+was argued about the warning's visibility while the thing actually being carried forward was an unmet
+acceptance criterion. Both halves of the finding stand exactly as measured — T-157 genuinely does not
+hold authority to rule a parity ledger row, and the ledger says so itself — but the consequence is a
+**halt for an owner ruling**, not a deferral past a green tick. See THE RULING above for the two ways
+to close it. `fighter`'s and `explorer`'s identical gaps are **not** in the same position: they are
+acknowledged gaps the Accept clause explicitly expects to warn, so they are correctly `warn`-and-carry.
+Only `gambler` contradicts a written criterion, and only `gambler` blocks.
+
+**F-157-2 · FOUND AT REVIEW, FIXED IN FIX ROUND 2 (2026-08-02) — a ledger row's STATUS and its
+MAGNITUDES are not the same currency, and only the first was machine-checked.** The review that graded
+fix round 1 found that `ACKNOWLEDGED_COVERAGE_GAPS.gambler`'s `evidence` quoted the PARITY LEDGER's
+figures — **+4.86cr/captain-day** and **95.91%** — as *"still true"*, when `docs/HANGOUT_REDESIGN.md`
+§11.4, the re-ask the ledger row itself points at, had already re-measured them at **+3.44cr /
+captain-day** and **37.97%** before this task ran. `TASKS.md` had recorded the second in its own words
+at T-125 (*"§5.2 discharged (§10.6): 95.91% → 37.96%"*), so the correct number was in this file the
+whole time. **Root cause, and it is this task's, not the ledger's:** the first pass transcribed the
+ledger row's prose verbatim and trusted its *"all still true"* summary. That phrase is accurate about
+the three defects being **open** and stale about how big two of them are — and the transcription had no
+parse behind it, so nothing could catch it. The status half of `coverage.ts` was machine-checked from
+the first pass; the evidence half was prose, which is the same defect class the task exists to remove,
+one field over. **Fixed, not noted:** `AcknowledgedCoverageGap` now carries `figures: QuotedFigure[]`
+— document, section heading, table row and the value that row's last column holds — and a new drift
+test (`archetype-coverage.test.ts`, section E, *"pins every measured figure …"*) resolves each pin
+against the live document AND asserts the prose still quotes it, so the pin and the sentence cannot
+drift apart either. **Proven by seeded-bad, in both directions:** re-pinning the mint to the old
+`+4.86cr / captain-day` fails with *"row 'the mint' now reads '+3.44cr / captain-day' … never edit the
+document to match the code"*, and rewording the evidence's `37.97%` to `38%` fails with *"evidence no
+longer quotes the pinned figure"*. An **empty** `figures` list is a checked CLAIM, not a blank field
+(`fighter` and `explorer` both carry one, each with the reason stated at the site), and the suite
+asserts at least one pin actually resolved so it cannot pass vacuously the day every list is emptied.
+**What this does NOT change: the STATUS.** `| VisitHangout |` is still **DEFERRED**, `gambler` still
+warns, and F-157-1 still blocks — the finding turns on the row's status, which no re-measurement
+touched. Fixing the magnitudes makes the warning honest; it does not clear it, and it was not allowed
+to. **Upstream, and deliberately NOT edited here:** `docs/NPC_REDESIGN.md`'s ledger row still carries
+the ruling-time figures under *"all still true"*. That row is owner-gated — it is the exact row
+**THE RULING** above asks the owner to rule — and re-writing its prose while asking for a ruling on it
+is the same class of move as amending an Accept clause to match what shipped. It is repaired **by**
+ruling (A), which re-writes the row anyway; until then the code cites §11.4 for magnitudes and the
+ledger for status, and says at the site why. The consumers of the stale figures that ARE in this
+task's gift — `coverage.ts` (two strings) and `docs/TESTING-STRATEGY.md` Part G's correction — are
+fixed, with the original text left standing above a dated amendment rather than silently edited.
+
+**FIX ROUND 3 (2026-08-02) — ZERO defects found, ZERO changes made; the block is CONFIRMED, not
+re-argued.** The round-3 review independently re-verified every code-side claim against source and
+found **no new defect anywhere**: criteria 1, 2 and 4 fully met (16 tests counted in the file; the
+`checkArchetypeCoverage` call sites at `sweep.ts` 124/500 confirmed by grep; the warn rule found in
+all four documented places; every `VERB_PARITY` row and all three `QuotedFigure` pins verified
+byte-for-byte against the live documents); the standing constraints confirmed clean (no edit to
+`NPC_REDESIGN.md` or `index.ts`, no band/threshold/fingerprint/golden touched, extraction proven
+inert, `coverage.ts` correctly NON-INSTRUMENT, no capstone taken). The sole `pass=false` input is the
+same owner-gated clause as rounds 1 and 2, and the review's own recommendation to the orchestrator is
+verbatim: *"do not spend a further fix round on T-157 attempting a code change — none exists that
+satisfies criterion 3 without gaming the archetype-to-verb mapping."* This round honours that: **no
+source file, test, mapping, status, verdict or Accept clause was touched — this dated paragraph in
+`TASKS.md` is the round's entire diff.** Gate re-verified on today's tree before writing it: full
+`npm test` green across all workspaces (incl. `archetype-coverage.test.ts` 16/16), `npx tsc -b`
+exit 0, `npm run lint` exit 0, `npm run format:check` exit 0; all three fingerprints necessarily
+unmoved (no hashed byte changed). The task remains `BLOCKED` awaiting THE RULING — (A) rule the
+`| VisitHangout |` ledger row, or (B) owner-signed correction of the Accept clause. Further fix
+rounds cannot converge and should not be scheduled; the next actor is the owner.
 
 ### T-156 · Build: N13 dawn-hand parity — the algorithmic virtual hand — `status: TODO` · `coder: opus` · `after: T-130`
 Owner ruling recorded 2026-07-31 (`NPC_REDESIGN.md` N13 section and STATUS BOARD): design **(b)**, the algorithmic equivalent. Keep the NPC's one-verb day; derive the day's quality from a virtual hand drawn under the same RNG discipline the player's hand uses, with N5's proficiency lever (`PilotDegradationProfile`, once N5 lands) expressed as allocation noise on that virtual hand. Flag the virtual-hand function at its definition site as the one sanctioned abstraction in the parity design — a comment or doc-block making clear it is a MODEL of the decision, not the decision itself, so it doesn't get mistaken for real parity later. `Crew` and `Reroll` stay player-only as a **ruled exclusion**: update THE PARITY LEDGER in `NPC_REDESIGN.md` to record both rows as excluded-by-ruling rather than open gaps. This task is **not gated on N12** (port-buying) — the run order in `NPC_REDESIGN.md` sequences N12 before N13 for measurement-sequencing reasons, not a technical dependency; the virtual-hand mechanism doesn't read NPC port state. Simulate per the doc's own spec: full sweep + per-captain outcome variance decomposition (verb-weight luck vs. skill).
@@ -4052,6 +4298,15 @@ otherwise the owner's first read of the bar is a read of a defect already known 
 gate is in the field, not prose, per the T-155 lesson. (T-161 is deliberately NOT named here — it
 is sim-side only and cannot affect what the owner plays; it precedes this task by file order
 alone.)
+**POINTER, NOT AN AMENDMENT (2026-08-02): a third ruling ask is now pending, and it lands BEFORE this
+checkpoint, not inside it.** T-157 is `BLOCKED` on a one-decision owner ruling — the PARITY LEDGER's
+`| VisitHangout |` row, re-asked with all three defects re-measured at `docs/HANGOUT_REDESIGN.md`
+§11.4 — because one of its Accept clauses (`gambler` "passes cleanly") is unmet as written; see
+**F-157-1** and THE RULING in T-157's block for the two ways to close it. `T-157` is already named in
+this task's `after:` field, so the ordering is machine-enforced: this checkpoint cannot open until
+that ruling is taken. **This task's Accept clause is NOT amended** — the ask belongs to T-157 and is
+graded there; it is recorded here only so the owner arriving at the UAT checkpoint sees the queue it
+is already gated on.
 Per `docs/TESTING-STRATEGY.md` Part G: neither the sweep nor an LLM pilot can judge whether pacing or dice-tension *feels* right, and `docs/RELEASE-CHECKLIST.md` already states "nobody has played this build end to end yet." Automated preparation: confirm the build is green, confirm T-140/T-141 (decision tracing, opt-in playtest logging) are wired and active so the owner's session produces a reviewable log rather than only an impression, and assemble a short pre-UAT brief naming what's known-uncovered going in (Combat's chosen `executeCombat` branch is still an abstract GUNS check with 0 modeled deaths per `NPC_REDESIGN.md`'s Parity Ledger; Explore/VisitHangout have zero fleet coverage; N13's status per T-156). **The brief also carries two items added 2026-08-02 so the owner's play pass meets them with numbers in hand:** (a) **Explore is still a net credit loss** — T-116's re-measure: 85 of 120 seeds richer WITHOUT the verb (down from 101/120 pre-rebuild), with the non-credit payoff (unique items, POI fragments) stated beside it and re-pricing (`EXPLORATION_FUEL_COST` 80, `EXPLORATION_NAV_DC` 12) an open R-series owner call per `docs/EXPLORE_REDESIGN.md` §10.4 — UAT is the "playtest by feel" D1 chose over sim pre-validation, so the feel-read belongs in the session notes; (b) **F-150-1's disposition-inertness numbers** (`docs/HANGOUT_REDESIGN.md` §11.3): the cast sits at exactly 0 disposition on 96.52% of live captain-days, a nonzero standing survives a median 3 days, decay outruns interaction 1.53:1, and 71.52% of named-pool draws are inert — with T-125's own ruling that this is a design question, not a knob, and the levers-not-pulled table attached. Then halt for the owner's own UAT pass, and — per Part G item 4, extended 2026-08-02 — **two deliberate, recorded rulings**: one on Combat's chosen branch, and one on F-150-1 (the 0.25 named-pool gate + `DISPOSITION_DECAY_INTERVAL_DAYS = 3`, read together), even if either ruling is "not this pass." This is a hard gate: **T-155** (running the native LLM pilot for real) is sequenced after it and must not start until it closes. **T-154 (building the driver) is NOT gated on this** — see the resequencing note on T-154, which as of 2026-08-02 sits ABOVE this block precisely so this task's halt cannot strand it.
 **Accept:** (human-checked) the pre-UAT brief is committed and includes the Explore net-loss and F-150-1 items with their numbers; T-140/T-141 confirmed active; the run halts with this task `BLOCKED`, never self-approved; closes only once the owner has played a UAT pass and recorded BOTH rulings — Combat's chosen branch and F-150-1 (fix, defer, or accept-as-is all count as a ruling for each).
 
