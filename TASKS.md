@@ -3850,9 +3850,88 @@ outside the gate's 1..60 seed range. `smugglerPolicy`'s F-150-2 `planPacifistCom
 touched.
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root · attempts=1/4.
 
-### T-153 · Validate: prove the sweep gate catches known regressions — `status: TODO` · `coder: opus` · `after: T-152`
+### T-153 · Validate: prove the sweep gate catches known regressions — `status: DONE` · `coder: opus` · `after: T-152`
 Build one seeded-bad fixture per invariant class from T-152 (e.g. a synthetic state with negative credits, a synthetic event log reading 0% against an expected ~30% rate) plus one clean/current-state fixture, and write a committed, automated test suite that runs the gate against all of them. This suite is permanent — it runs as part of `npm test` going forward, so the gate's own correctness is continuously re-verified rather than confirmed once and trusted forever. Also confirm the CI/scheduled wiring from T-152 actually executes the gate script (a dry run or CI log), not merely references it.
 **Accept:** a committed test file (e.g. `packages/sim/src/__tests__/sweep-gate.test.ts`) asserts every seeded-bad fixture fails the gate (non-zero exit / thrown assertion) and the clean fixture passes (zero exit); this test file runs under `npm test`; CI/scheduled-job evidence (log or dry run) shows the wiring from T-152 actually fires, not just exists.
+
+**Delivered (2026-08-02):** The gate now has a gate of its own —
+`packages/sim/src/__tests__/sweep-gate.test.ts` (**35 tests, 5.4s**, fixtures in
+`packages/sim/src/__tests__/support/gate-fixtures.ts`), collected by `npm test` like any other
+`*.test.ts`, so the gate's correctness is re-verified continuously instead of confirmed once.
+**The extraction came first and was proved inert before anything was added:** `runGate` and
+`reportGate` in `balance/sweep.ts` went from module-private to `export`, two words plus a readers
+note each, and nothing else. `sweep.ts` is in `SIM_NON_INSTRUMENT_SOURCES`, so all three fingerprints
+are byte-identical across the move — `rulesFingerprint f36d71f863a8ebe7` (still T-159's value),
+`instrumentFingerprint e81bc730c94b1fce`, `docsFingerprint 2e849e60e0973831`, measured before and
+after — and the suite was green at 29 files / 377 tests with the export applied and no new test
+present. The suite drives the sweep's OWN `runGate` rather than re-listing the nine calls, because a
+test that re-composes them proves the test's composition, not the sweep's.
+**Fixture inventory.** Every seeded-bad fixture is ONE NAMED MUTATION off a real current-state
+`CampaignStatsReport` (or off a real 104-row sample), never a hand-built literal: 9 invariant classes
+(13 fixtures — both limbs of `assertNoNegativeResources`, both TIERS of `assertFuelWithinTank`
+including the exact `fuel <= maxFuel` branch that only `--milestone-days 10,30` makes reachable, both
+limbs of `assertDayMonotonic`, all three limbs of `assertProgressRatchetsNeverReverse`, five
+malformed-combat cases, three malformed-leg cases, both sides of the board-depth bounds); 8 rate bands
+(one per `EXPECTED_EVENT_RATES` entry, including the task's named example — an expected rate reading
+0% across a full shard); the SKIPPED case; and the clean current-state fixture. Each invariant fixture
+asserts four things: the named `assert*` fires, EVERY violation it returns carries that function's own
+name, `runGate` surfaces it, and `buildGateReport().passed` is false. Each rate fixture asserts
+**exactly one** band fails, so a fixture cannot pass by breaking everything. Two totality guards:
+a kitchen-sink report proves `runGate` reaches every `assert*` `gate.ts` exports (a tenth invariant
+wired into neither would fail there rather than silently never run), and the disposition table is
+asserted honest — 8 unique predicates, every `mapped`/`analogue` row naming a real exported function,
+all 3 `not-observable` rows carrying `coveredBy: null` and an owning task. `GATE_COMPETENT_POLICIES`'
+exact membership is pinned, with a NEGATIVE CONTROL: the identical stall on `veteran` and `greedy`
+returns zero violations, which is what makes the E4 scoping deliberate rather than accidental.
+**The clean fixture must pass WITHOUT SKIPPING.** The 104-row sample (52 seeds x trader/fighter x 35
+days = 3,640 sim-days) is sized to clear every `minSample` floor at once — measured 159.1 / 672.5 /
+0.977 / 0.290 / 0.000 / 0.644 / 1.000 / 3.789, all eight in band, none skipped. A clean fixture that
+skips is green-but-hollow (Part A's opening failure mode). **Four exit-code tests, observed codes:**
+a real 4-run sweep through `main()` → **0**, `passed: true`; seeded-bad rows through the real `--merge`
+CLI → **1**, with `travel-encounter-rate-per-1k-sim-days` the sole `fail`; the clean 104 rows through
+`--merge` → **0**, 8/8 rates pass; a seeded negative-credits report through `reportGate` → **1**, the
+written `gate-*.json` naming `assertNoNegativeResources` with zero rate failures. `process.exitCode`
+is saved and restored in a `finally` around every one, and every path writes to `mkdtemp` through BOTH
+`--out` and `--aggregate-out`, with a closing assertion that nothing leaked into `docs/balance/`.
+**Two limitations recorded, not worked around:** the flat invariants' end-to-end exit is proven via
+`reportGate` (they are functions of a report the real engine produced — making a real sweep emit a
+negative-credits row would require breaking the engine), and `--merge` deliberately does not re-run
+them (`SeedRow` carries no `daily[]`), so the merge leg rests on the rate table.
+**CI evidence — the wiring fires, it is not merely referenced.** Runner log, run
+[30704784303](https://github.com/ArchitectVS7/SpacerQuest/actions/runs/30704784303) (`redesign/explore-hangout`,
+push, 2026-08-01), verbatim: `[gate] ci-gate · shard 1/2 · 210 rows · FAIL` / `[gate] invariants: 1
+violations` / `[gate]   assertNoIncomeStall · fighter · 1` / `[gate]     seed 35 · 30 consecutive
+zero-income days (limit 5)` / eight `[gate] rate …: PASS` lines / `[gate] wrote
+/home/runner/work/_temp/balance/gate-ci-gate-shard1of2.json` — i.e. the workflow executed the gate
+script and a non-zero exit failed the job. Plus a **local dry run of the exact CI invocation on
+today's post-T-159 tree** (2026-08-02), 1-indexed shards through `--merge` with `--milestone-days`:
+`--label ci-gate --seeds 60 --days 35 --shard 1/2 --milestone-days 10,30` → PASS, 210 rows; `--shard
+2/2` → PASS, 210 rows; `--label ci-gate --merge` → **PASS, 420 merged rows**, 0 violations, 8/8 rates
+in band, exit 0 on all three legs. No fresh CI run was captured: this session does not push, and
+`origin/redesign/explore-hangout` is behind local, so the newest remote run predates T-159's fix. The
+criterion rests on the runner log above plus the dry run; **no green CI run is claimed that was not
+observed.** F-153-1 (below) records the one half of T-152's wiring that is NOT live.
+**Discipline:** no capstone taken, no fixture re-extracted, no band / threshold / `minSample` /
+`INCOME_STALL_LIMIT` / `GATE_COMPETENT_POLICIES` / golden edited to make anything pass; no file added
+under `packages/sim/src/balance/` (the undeclared-file guard's territory); F-159-1, F-159-2 and
+F-150-2 untouched. `docs/TESTING-STRATEGY.md` Part D gains a "Tier 1, proven (T-153)" block and — flagged
+as a correction rather than a silent edit — the stale "the `gate` job is **red until it lands**"
+sentence is rewritten as a dated was-red/now-green note keeping every measured number.
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked; absent), so I oriented by reading `packages/sim/src/balance/gate.ts`, `packages/sim/src/balance/s · attempts=1/4.
+
+**F-153-1 · FILED, NOT FIXED (2026-08-02) — the `deep` job's nightly cron has never fired and cannot
+fire from this branch.** GitHub schedules `cron:` only from a repository's DEFAULT branch, and
+`.github/workflows/sweep-gate.yml` is not on it: `git ls-tree origin/main --name-only
+.github/workflows/` answers `ci.yml` and `e2e-flake.yml` only. Corroborated by
+`gh run list --workflow=sweep-gate.yml`, which lists three runs (30704361829, 30704751032,
+30704784303) all on `redesign/explore-hangout` with event `push` — no `schedule` event, and the `deep`
+job has never run once. The PUSH half of T-152's wiring is proven live (T-153's §CI evidence quotes the
+runner's own `[gate]` output); the SCHEDULED half is inert until this branch merges to `main`.
+**Scope call (Bug Discovery Policy rule 3):** (a) fixing it means landing the workflow on `main`, which
+is a merge decision T-153 does not hold — T-153 validates the gate, it does not own branch topology;
+(b) deferring compounds nothing: no task builds on the nightly's output, the push job already covers
+every commit on this branch, and the fix is a zero-line change (the file merges as-is). Re-check when
+`redesign/explore-hangout` merges: the first `schedule`-event run in `gh run list` closes it.
 
 ### T-157 · Coverage-matrix gate: cross-check sweep archetypes against verb parity — `status: TODO` · `coder: opus` · `after: T-153`
 Per `docs/TESTING-STRATEGY.md` Part C, the sweep's 8 policies (trader, trader-degraded, fighter, explorer, veteran, smuggler, gambler, greedy) each have a defining verb, and two of them (fighter → Combat's chosen branch, explorer → Explore) currently have no real NPC parity per `NPC_REDESIGN.md`'s Parity Ledger. Build a small script/test that cross-references each sweep archetype against its defining verb's current parity status and fails or emits a named warning when a headline verb isn't marked Shipped, so "is archetype balance actually tested" is something CI asserts instead of something re-derived by reading two documents side by side. Wire it into the same gate as T-152/T-153.

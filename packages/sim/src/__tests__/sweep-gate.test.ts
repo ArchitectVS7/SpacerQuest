@@ -1,0 +1,756 @@
+// ---------------------------------------------------------------------------
+// T-153 · THE GATE'S OWN CORRECTNESS, RE-VERIFIED ON EVERY `npm test`.
+//
+// T-152 built the sweep gate (`../balance/gate.ts` + `../balance/sweep.ts`'s
+// `runGate`/`reportGate`). This file is the evidence that it CATCHES things. The
+// distinction is the whole point of the task: a gate confirmed once by hand and
+// trusted forever is indistinguishable, six months later, from a gate whose
+// predicates silently stopped firing. So the proof is a permanent suite, not a
+// paragraph in a Delivered block.
+//
+// HOW THE FIXTURES ARE MADE. Each seeded-bad fixture is ONE NAMED MUTATION off a
+// REAL current-state `CampaignStatsReport` (or off a real 104-row sample) — see
+// `./support/gate-fixtures.ts`, which states why nothing here is hand-built. The
+// clean fixture is therefore literally the current state, and each bad fixture
+// says exactly which defect class it models.
+//
+// WHAT IS ASSERTED, per invariant class:
+//   1. the specific `assert*` function returns >= 1 violation;
+//   2. EVERY violation it returns is labelled with that function's own name (no
+//      cross-talk, no mislabelled provenance — the `invariant` field is what makes
+//      a printed report grep-able back to a definition site);
+//   3. the sweep's OWN composition (`runGate`, exported from `sweep.ts` for this
+//      suite) also surfaces it — a test that re-lists the nine calls would prove
+//      the TEST's composition, not the sweep's;
+//   4. `buildGateReport(...).passed` is false.
+//
+// NOTHING IN THIS FILE, IN `gate.ts`, OR IN THE FIXTURES MAY BE EDITED TO MAKE
+// THIS SUITE PASS. Not a band, not a `minSample`, not `INCOME_STALL_LIMIT`, not
+// `GATE_COMPETENT_POLICIES`, not a seed range chosen to dodge a failure. If the
+// clean 104-row sample ever lands a rate out of band, the remedies are a BIGGER
+// SAMPLE or a FILED FINDING, in that order — `gate.ts`'s "there is no opt-out"
+// rule applies to the gate's test as much as to the gate.
+//
+// TWO HONEST LIMITATIONS, stated here rather than discovered later:
+//   * The flat invariants' END-TO-END non-zero exit is proven through `reportGate`,
+//     not through a full `main()` sweep. They are functions of a report the real
+//     engine produced, so making a real sweep emit a negative-credits row would
+//     require breaking the engine. The DETECTION is proven on seeded reports; the
+//     EXIT-CODE PLUMBING is proven on the exact function every sweep path routes
+//     its verdict through.
+//   * `--merge` deliberately does not re-run the flat invariants, because `SeedRow`
+//     carries no `daily[]`. That limitation is stated at `sweep.ts`'s `mergeShards`
+//     and is NOT worked around here. The merge leg is proven on the RATE table,
+//     which is what a merge actually re-evaluates.
+// ---------------------------------------------------------------------------
+
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { JOB_POOL_BOARD_SIZE } from '@spacerquest/engine';
+import { beforeAll, describe, expect, it } from 'vitest';
+
+import type { CampaignStatsReport, SimPolicyName } from '../index.js';
+import { isCombatWin, type SeedRow } from '../balance/aggregate.js';
+import * as gateModule from '../balance/gate.js';
+import {
+  ABSOLUTE_MAX_FUEL,
+  GATE_COMPETENT_POLICIES,
+  INCOME_STALL_LIMIT,
+  SWEEP_INVARIANT_DISPOSITIONS,
+  assertBoardDepthWithinPoolBounds,
+  assertCombatRecordsWellFormed,
+  assertDayMonotonic,
+  assertFuelWithinTank,
+  assertNoIncomeStall,
+  assertNoNegativeResources,
+  assertOneSamplePerDay,
+  assertProgressRatchetsNeverReverse,
+  assertRouteRecordsWellFormed,
+  buildGateReport,
+  checkExpectedEventRates,
+  formatGateReport,
+  type ExpectedEventRateResult,
+  type GateReport,
+  type SweepViolation,
+} from '../balance/gate.js';
+import { main, parseSweepArgs, reportGate, runGate } from '../balance/sweep.js';
+import {
+  cleanReport,
+  cleanRows,
+  corrupt,
+  corruptRows,
+  encounterRecord,
+  legRecord,
+  rankOneRungBelow,
+} from './support/gate-fixtures.js';
+
+/** Step the LAST day's renown rank one rung below its predecessor's — a genuine
+ *  one-way-ratchet reversal on any career that climbed at all. See
+ *  {@link rankOneRungBelow} for why the mutation runs downward from a late day
+ *  rather than upward from day 1. */
+function regressLastRenownRank(report: CampaignStatsReport): void {
+  const last = report.daily.length - 1;
+  report.daily[last].renownRank = rankOneRungBelow(report.daily[last - 1].renownRank);
+}
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+const DOCS_BALANCE = join(REPO_ROOT, 'docs', 'balance');
+
+/** Every fixture label this suite writes is prefixed so it can never collide with
+ *  a committed baseline, and so the "nothing leaked into docs/balance" guard at
+ *  the bottom has something exact to look for. */
+const LABEL_PREFIX = 't153';
+
+/** Building the clean sample takes ~5.4s; vitest's default hook timeout is 5s. */
+const SAMPLE_TIMEOUT_MS = 180_000;
+
+// ---------------------------------------------------------------------------
+// Shared assertions
+// ---------------------------------------------------------------------------
+
+/**
+ * The four-part contract stated in the header, applied to one seeded-bad report.
+ * Returns the violations so a caller can assert on their `detail` text.
+ */
+function expectCaughtBy(
+  report: CampaignStatsReport,
+  check: (report: CampaignStatsReport) => SweepViolation[],
+  name: string,
+): SweepViolation[] {
+  const found = check(report);
+  expect(found.length).toBeGreaterThan(0);
+  // (2) provenance: nothing else may borrow this invariant's name, and this
+  // function may not report under somebody else's.
+  for (const violated of found) expect(violated.invariant).toBe(name);
+  // (3) the SWEEP's composition, not a re-composition assembled here.
+  const throughSweep = runGate(report);
+  expect(throughSweep.map((violated) => violated.invariant)).toContain(name);
+  // (4) the verdict the sweep would actually reach.
+  expect(buildGateReport(LABEL_PREFIX, 'fixture', 1, throughSweep, []).passed).toBe(false);
+  return found;
+}
+
+/** A clean base report per policy, with the shared cache warmed once. */
+function base(policy: SimPolicyName = 'trader'): CampaignStatsReport {
+  return cleanReport(policy);
+}
+
+/** The ids of every rate the table FAILED. Exactly-one-failure is the property
+ *  each rate fixture is graded on — a fixture that passes by breaking everything
+ *  would prove nothing about the band it names. */
+function failedRateIds(results: readonly ExpectedEventRateResult[]): string[] {
+  return results.filter((rate) => rate.status === 'fail').map((rate) => rate.id);
+}
+
+/**
+ * Run something against a fresh temp directory, ALWAYS restoring `process.exitCode`.
+ *
+ * A leaked `1` from a deliberately-failing fixture would fail the whole vitest
+ * process for tests that passed, which is the one way this suite could make the
+ * repo LESS trustworthy than it was before.
+ */
+function withTempDir<T>(run: (dir: string) => T): T {
+  const dir = mkdtempSync(join(tmpdir(), 'sq-t153-'));
+  const previousExitCode = process.exitCode;
+  try {
+    return run(dir);
+  } finally {
+    process.exitCode = previousExitCode;
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function readGateReport(dir: string, fileName: string): GateReport {
+  return JSON.parse(readFileSync(join(dir, fileName), 'utf8')) as GateReport;
+}
+
+// ---------------------------------------------------------------------------
+// A · One seeded-bad fixture per invariant class
+// ---------------------------------------------------------------------------
+
+describe('T-153 · seeded-bad fixtures, one per invariant class', () => {
+  it('assertNoNegativeResources catches a negative-credits day (T-1604a Finding F1)', () => {
+    // F1 is a `credits = -40` state reached in legs 3 and 4 of the UGT campaign —
+    // the shape this invariant exists for, transcribed rather than invented.
+    const found = expectCaughtBy(
+      corrupt(base(), (report) => {
+        report.daily[3].credits = -40;
+      }),
+      assertNoNegativeResources,
+      'assertNoNegativeResources',
+    );
+    expect(found.some((violated) => violated.detail === 'credits -40')).toBe(true);
+  });
+
+  it('assertNoNegativeResources checks finalState, a different moment from daily', () => {
+    // `daily` is sampled after the dusk, `finalState` after the horizon's post-loop
+    // flush. A fixture that only ever corrupted `daily` would leave the second limb
+    // of this invariant unproven.
+    const found = expectCaughtBy(
+      corrupt(base(), (report) => {
+        report.finalState.debt = -1;
+      }),
+      assertNoNegativeResources,
+      'assertNoNegativeResources',
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].detail).toBe('finalState.debt -1');
+  });
+
+  it('assertFuelWithinTank catches a day above the ABSOLUTE ceiling (the weak tier)', () => {
+    const found = expectCaughtBy(
+      corrupt(base(), (report) => {
+        report.daily[2].fuel = ABSOLUTE_MAX_FUEL + 1;
+      }),
+      assertFuelWithinTank,
+      'assertFuelWithinTank',
+    );
+    expect(found[0].detail).toContain('absolute ceiling');
+  });
+
+  it('assertFuelWithinTank catches fuel > maxFuel on a milestone (the EXACT tier)', () => {
+    // The exact `fuel <= maxFuel` form is only reachable through `milestones[]`,
+    // which is why the fixtures are built with the CI job's `--milestone-days`.
+    // The two tiers must stay distinguishable in a failure report, so the detail
+    // text is asserted, not just the count.
+    const bad = corrupt(base(), (report) => {
+      const milestone = report.milestones?.[0];
+      if (milestone === undefined) throw new Error('fixture built without milestone samples');
+      milestone.player.fuel = milestone.player.maxFuel + 1;
+    });
+    expect(bad.milestones?.length).toBeGreaterThan(0);
+    const found = expectCaughtBy(bad, assertFuelWithinTank, 'assertFuelWithinTank');
+    expect(found[0].detail).toContain('milestone');
+  });
+
+  it('assertDayMonotonic catches the calendar running backwards', () => {
+    const found = expectCaughtBy(
+      corrupt(base(), (report) => {
+        report.daily[10].day = report.daily[9].day - 1;
+      }),
+      assertDayMonotonic,
+      'assertDayMonotonic',
+    );
+    expect(found.some((violated) => violated.detail.includes('was followed by'))).toBe(true);
+  });
+
+  it('assertDayMonotonic catches a TRUNCATED daily series', () => {
+    // The second limb, and the one that matters most: a silently-short `daily`
+    // would weaken every other per-day invariant on the page without breaking any.
+    const found = expectCaughtBy(
+      corrupt(base(), (report) => {
+        report.daily.pop();
+      }),
+      assertDayMonotonic,
+      'assertDayMonotonic',
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].detail).toContain('entries for a');
+  });
+
+  it('assertOneSamplePerDay catches a duplicated day sample', () => {
+    // This mutation also trips `assertDayMonotonic` (a repeated day is not a +1
+    // step), which is exactly why the two functions are separate: they answer
+    // MULTIPLICITY and ORDERING. The isolated call below is what proves the
+    // multiplicity check fires on its own.
+    const bad = corrupt(base(), (report) => {
+      report.daily[7].day = report.daily[6].day;
+    });
+    const found = expectCaughtBy(bad, assertOneSamplePerDay, 'assertOneSamplePerDay');
+    expect(found[0].detail).toContain('sampled more than once');
+    expect(assertDayMonotonic(bad).length).toBeGreaterThan(0);
+  });
+
+  it('assertProgressRatchetsNeverReverse catches a deedCount drop', () => {
+    expectCaughtBy(
+      corrupt(base(), (report) => {
+        // A large step so the drop at day 6 is guaranteed regardless of how many
+        // deeds the seeded career happens to earn in its first week.
+        report.daily[5].deedCount = 100;
+      }),
+      assertProgressRatchetsNeverReverse,
+      'assertProgressRatchetsNeverReverse',
+    );
+  });
+
+  it('assertProgressRatchetsNeverReverse catches a renown rank regression', () => {
+    // The rung is taken from the ENGINE's `RENOWN_RANK_ORDER`, never spelled as a
+    // rank string: `content/src/deeds.ts` owns that ladder and appended a rung once
+    // already (T-1308).
+    const found = expectCaughtBy(
+      corrupt(base(), regressLastRenownRank),
+      assertProgressRatchetsNeverReverse,
+      'assertProgressRatchetsNeverReverse',
+    );
+    expect(found.some((violated) => violated.detail.includes('renownRank'))).toBe(true);
+  });
+
+  it('assertProgressRatchetsNeverReverse catches a fold that drifted from its own series', () => {
+    const found = expectCaughtBy(
+      corrupt(base(), (report) => {
+        report.deedCount += 1;
+      }),
+      assertProgressRatchetsNeverReverse,
+      'assertProgressRatchetsNeverReverse',
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].detail).toContain('disagrees with the last daily');
+  });
+
+  it('assertNoIncomeStall catches a competent policy stranded for the limit', () => {
+    const found = expectCaughtBy(
+      corrupt(base('trader'), (report) => {
+        for (let index = 0; index < INCOME_STALL_LIMIT; index += 1) {
+          report.daily[index].incomeActionCount = 0;
+        }
+      }),
+      assertNoIncomeStall,
+      'assertNoIncomeStall',
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].detail).toContain(`limit ${INCOME_STALL_LIMIT}`);
+  });
+
+  it('assertNoIncomeStall is SCOPED — the identical stall is exempt for veteran and greedy', () => {
+    // The negative control that makes the scoping real rather than accidental.
+    // Both exemptions are recorded rulings (`docs/BALANCE-POLICY.md` E4, and
+    // `veteranPolicy`'s own definition site); this is what stops a future edit
+    // from quietly widening or narrowing the membership without a test noticing.
+    for (const policy of ['veteran', 'greedy'] as const) {
+      const exempt = corrupt(base('trader'), (report) => {
+        report.policy = policy;
+        for (let index = 0; index < INCOME_STALL_LIMIT * 2; index += 1) {
+          report.daily[index].incomeActionCount = 0;
+        }
+      });
+      expect(assertNoIncomeStall(exempt)).toEqual([]);
+      expect(runGate(exempt).map((violated) => violated.invariant)).not.toContain(
+        'assertNoIncomeStall',
+      );
+    }
+    expect([...GATE_COMPETENT_POLICIES]).toEqual([
+      'trader',
+      'fighter',
+      'explorer',
+      'smuggler',
+      'gambler',
+    ]);
+  });
+
+  it('assertCombatRecordsWellFormed catches every malformed-record limb', () => {
+    // PUSHED, not mutated: a seeded career need not have fought, and a fixture that
+    // depends on it having done so is a fixture that rots on a balance change.
+    //
+    // The two tier cases are cast through `never` because 0 and 6 are deliberately
+    // OUTSIDE the `PowerTier` union — which is the point. The compiler already
+    // forbids them at an engine call site; what it cannot police is a row read back
+    // from a JSON file on disk, which is exactly what the sweep gates.
+    const cases: { detail: string; record: Parameters<typeof encounterRecord>[0] }[] = [
+      { detail: 'rounds -1', record: { rounds: -1 } },
+      { detail: 'interceptorTier 0', record: { interceptorTier: 0 as never } },
+      { detail: 'playerTier 6', record: { playerTier: 6 as never } },
+      { detail: 'tributeCredits -5', record: { tributeCredits: -5 } },
+    ];
+    for (const { detail, record } of cases) {
+      const found = expectCaughtBy(
+        corrupt(base(), (report) => {
+          report.combatEncounters.push(encounterRecord(record));
+        }),
+        assertCombatRecordsWellFormed,
+        'assertCombatRecordsWellFormed',
+      );
+      expect(found.some((violated) => violated.detail === detail)).toBe(true);
+    }
+  });
+
+  it('assertCombatRecordsWellFormed catches the two folds disagreeing about a loss', () => {
+    const found = expectCaughtBy(
+      corrupt(base(), (report) => {
+        report.survival.shipsLost = 0;
+        report.combatEncounters.push(encounterRecord({ shipLost: true, resolution: 'ship-lost' }));
+      }),
+      assertCombatRecordsWellFormed,
+      'assertCombatRecordsWellFormed',
+    );
+    expect(found.some((violated) => violated.detail.includes('survival.shipsLost is 0'))).toBe(
+      true,
+    );
+  });
+
+  it('assertRouteRecordsWellFormed catches every malformed-leg limb', () => {
+    const cases: { needle: string; leg: Parameters<typeof legRecord>[0] }[] = [
+      // The silent-swallow class the invariant exists for: `routeEv` answers null
+      // for a leg with no payment, and a DELIVERED leg would then vanish from
+      // `routeEvPerDay` while still counting in `routesDelivered`.
+      { needle: 'has paidPayment null', leg: { paidPayment: null } },
+      { needle: 'delivered on day', leg: { signedDay: 9, deliveredDay: 4 } },
+      { needle: 'carries paidPayment', leg: { outcome: 'lost', paidPayment: 500 } },
+    ];
+    for (const { needle, leg } of cases) {
+      const found = expectCaughtBy(
+        corrupt(base(), (report) => {
+          report.routeLegs.push(legRecord(leg));
+        }),
+        assertRouteRecordsWellFormed,
+        'assertRouteRecordsWellFormed',
+      );
+      expect(found.some((violated) => violated.detail.includes(needle))).toBe(true);
+    }
+  });
+
+  it('assertBoardDepthWithinPoolBounds catches both sides of the pool bounds', () => {
+    const found = expectCaughtBy(
+      corrupt(base(), (report) => {
+        report.daily[1].boardDepth = JOB_POOL_BOARD_SIZE + 1;
+        report.daily[2].boardDepth = -1;
+      }),
+      assertBoardDepthWithinPoolBounds,
+      'assertBoardDepthWithinPoolBounds',
+    );
+    expect(found).toHaveLength(2);
+  });
+
+  it('the clean, current-state report violates nothing', () => {
+    for (const policy of ['trader', 'fighter'] as const) {
+      const report = base(policy);
+      expect(runGate(report)).toEqual([]);
+      expect(buildGateReport(LABEL_PREFIX, 'fixture', 1, runGate(report), []).passed).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A2 · Totality — the guards that keep the gate honest as it grows
+// ---------------------------------------------------------------------------
+
+describe('T-153 · the gate is TOTAL over its own definitions', () => {
+  /** Every `assert*` function `gate.ts` exports, read off the module rather than
+   *  transcribed — a transcribed list would agree with the file right up until
+   *  somebody added a tenth invariant. */
+  const exportedAssertNames = Object.entries(gateModule)
+    .filter(([name, value]) => name.startsWith('assert') && typeof value === 'function')
+    .map(([name]) => name)
+    .sort();
+
+  it('runGate reaches EVERY invariant gate.ts exports (the kitchen sink)', () => {
+    // The sweep-gate analogue of `balance-rig.test.ts`'s classification-totality
+    // guard, and the thing that now holds `runGate`'s "EXPLICIT CALLS, NOT A LOOP"
+    // promise honest: a tenth invariant added to `gate.ts` and never wired into
+    // `sweep.ts` fails HERE instead of silently never running.
+    const kitchenSink = corrupt(base('trader'), (report) => {
+      report.daily[3].credits = -40; // assertNoNegativeResources
+      report.daily[2].fuel = ABSOLUTE_MAX_FUEL + 1; // assertFuelWithinTank
+      report.daily[10].day = report.daily[9].day - 1; // assertDayMonotonic
+      report.daily[7].day = report.daily[6].day; // assertOneSamplePerDay
+      regressLastRenownRank(report); // assertProgressRatchetsNeverReverse
+      for (let index = 0; index < INCOME_STALL_LIMIT; index += 1) {
+        report.daily[index].incomeActionCount = 0; // assertNoIncomeStall
+      }
+      report.combatEncounters.push(encounterRecord({ rounds: -1 }));
+      report.routeLegs.push(legRecord({ paidPayment: null }));
+      report.daily[1].boardDepth = JOB_POOL_BOARD_SIZE + 1;
+    });
+
+    const reached = [...new Set(runGate(kitchenSink).map((violated) => violated.invariant))].sort();
+    expect(reached).toEqual(exportedAssertNames);
+    expect(exportedAssertNames).toHaveLength(9);
+  });
+
+  it('SWEEP_INVARIANT_DISPOSITIONS is honest about all eight UGT predicates', () => {
+    // The three protocol-seam predicates have no sweep observable. This test is
+    // what stops them from being quietly "upgraded" to fake coverage — the
+    // green-but-hollow failure mode `docs/TESTING-STRATEGY.md` Part A opens with.
+    expect(SWEEP_INVARIANT_DISPOSITIONS).toHaveLength(8);
+    const predicates = SWEEP_INVARIANT_DISPOSITIONS.map((row) => row.ugtPredicate);
+    expect(new Set(predicates).size).toBe(predicates.length);
+
+    for (const row of SWEEP_INVARIANT_DISPOSITIONS) {
+      if (row.disposition === 'not-observable') {
+        expect(row.coveredBy).toBeNull();
+        // A disposition without an owner is an omission with better manners.
+        expect(row.why).toMatch(/T-15[45]/);
+      } else {
+        expect(row.coveredBy).not.toBeNull();
+        expect(exportedAssertNames).toContain(row.coveredBy);
+      }
+    }
+    expect(
+      SWEEP_INVARIANT_DISPOSITIONS.filter((row) => row.disposition === 'not-observable'),
+    ).toHaveLength(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B · One seeded-bad fixture per expected-event-rate band
+// ---------------------------------------------------------------------------
+
+describe('T-153 · seeded-bad fixtures, one per expected-event-rate band', () => {
+  let rows: SeedRow[];
+
+  beforeAll(() => {
+    rows = cleanRows();
+  }, SAMPLE_TIMEOUT_MS);
+
+  it('the clean sample passes every band, and SKIPS none of them', () => {
+    // A clean fixture that skips is green-but-hollow: it would prove the gate can
+    // decline to answer, not that it answers correctly. The sample is sized in
+    // `gate-fixtures.ts` precisely so this holds.
+    const results = checkExpectedEventRates(rows);
+    expect(results).toHaveLength(8);
+    for (const rate of results) {
+      expect(`${rate.id}:${rate.status}`).toBe(`${rate.id}:pass`);
+    }
+    expect(buildGateReport(LABEL_PREFIX, 'merged', rows.length, [], results).passed).toBe(true);
+  });
+
+  it('travel-encounter-rate: an expected rate reading 0% across a full shard', () => {
+    // THE TASK'S NAMED EXAMPLE, and `docs/TESTING-STRATEGY.md` Part D's: *"an
+    // expected ~30% event rate reading 0% across a full shard should fail the run,
+    // the same way a broken unit test does."*
+    const results = checkExpectedEventRates(
+      corruptRows(rows, (row) => {
+        row.combat = [];
+      }),
+    );
+    expect(failedRateIds(results)).toEqual(['travel-encounter-rate-per-1k-sim-days']);
+  });
+
+  it('route-leg-signing-rate: the board stops producing signable work', () => {
+    const results = checkExpectedEventRates(
+      corruptRows(rows, (row) => {
+        row.routes = [];
+      }),
+    );
+    expect(failedRateIds(results)).toEqual(['route-leg-signing-rate-per-1k-sim-days']);
+  });
+
+  it('route-delivery-share: deliveries stop resolving', () => {
+    // Only the FLOOR is fixtured. The `max: 1` ceiling is arithmetically
+    // unreachable — the numerator is a subset of the denominator by construction —
+    // so a ceiling fixture would have to fake the fold rather than seed a defect.
+    const results = checkExpectedEventRates(
+      corruptRows(rows, (row) => {
+        for (const leg of row.routes) leg.outcome = 'lost';
+      }),
+    );
+    expect(failedRateIds(results)).toEqual(['route-delivery-share']);
+  });
+
+  it('combat-win-share: combat resolution stops producing wins', () => {
+    // The losing resolution is chosen by ASKING `isCombatWin`, not by assuming
+    // which strings it rejects.
+    const losing = 'talked-down' as const;
+    expect(isCombatWin(encounterRecord({ resolution: losing }))).toBe(false);
+    const results = checkExpectedEventRates(
+      corruptRows(rows, (row) => {
+        for (const record of row.combat) record.resolution = losing;
+      }),
+    );
+    expect(failedRateIds(results)).toEqual(['combat-win-share']);
+  });
+
+  it('ship-loss-share: lethality saturates (the ceiling limb — this band has no floor)', () => {
+    const results = checkExpectedEventRates(
+      corruptRows(rows, (row) => {
+        row.shipsLost = row.combat.length;
+      }),
+    );
+    expect(failedRateIds(results)).toEqual(['ship-loss-share-of-encounters']);
+  });
+
+  it('tour-one-clear-share: Tour One becomes unclearable', () => {
+    const results = checkExpectedEventRates(
+      corruptRows(rows, (row) => {
+        if (row.tourOneOutcome !== null) row.tourOneOutcome = 'unpaid';
+      }),
+    );
+    expect(failedRateIds(results)).toEqual(['tour-one-clear-share']);
+  });
+
+  it('runs-earning-any-deed-share: deeds become unreachable', () => {
+    const results = checkExpectedEventRates(
+      corruptRows(rows, (row) => {
+        row.deedCount = 0;
+      }),
+    );
+    expect(failedRateIds(results)).toEqual(['runs-earning-any-deed-share']);
+  });
+
+  it('board-depth-mean: the N10 "boards empty" Disproves limb', () => {
+    const results = checkExpectedEventRates(
+      corruptRows(rows, (row) => {
+        row.boardDepths = row.boardDepths.map(() => 1);
+      }),
+    );
+    expect(failedRateIds(results)).toEqual(['board-depth-mean']);
+  });
+
+  it('SKIPPED is a third value, not a quiet pass', () => {
+    // A 2-row developer sweep must not be able to FAIL on sampling noise, and must
+    // not be able to report PASS either — `status` is three-valued for exactly this
+    // reason and `formatGateReport` prints it on its own line.
+    const tiny = checkExpectedEventRates(rows.slice(0, 2));
+    for (const rate of tiny) {
+      expect(rate.denominator).toBeLessThan(rate.minSample);
+      expect(`${rate.id}:${rate.status}`).toBe(`${rate.id}:skipped`);
+      expect(rate.detail).toContain('minSample');
+    }
+    expect(buildGateReport(LABEL_PREFIX, 'shard 1/1', 2, [], tiny).passed).toBe(true);
+  });
+
+  it('formatGateReport keeps a failure GREP-ABLE back to its definition site', () => {
+    // T-152's acceptance rests on the printed table naming the offending invariant
+    // and the offending rate id; the CI job's evidence is a `grep '\[gate\]'`.
+    const violations = runGate(
+      corrupt(base(), (report) => {
+        report.daily[3].credits = -40;
+      }),
+    );
+    const rates = checkExpectedEventRates(
+      corruptRows(rows, (row) => {
+        row.combat = [];
+      }),
+    );
+    const text = formatGateReport(
+      buildGateReport(LABEL_PREFIX, 'merged', rows.length, violations, rates),
+    );
+    expect(text).toContain('assertNoNegativeResources');
+    expect(text).toContain('travel-encounter-rate-per-1k-sim-days');
+    expect(text).toContain('FAIL');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C · The exit-code leg — through the entry points CI actually invokes
+// ---------------------------------------------------------------------------
+
+describe('T-153 · the gate sets a non-zero exit code, and only when it should', () => {
+  let rows: SeedRow[];
+
+  beforeAll(() => {
+    rows = cleanRows();
+  }, SAMPLE_TIMEOUT_MS);
+
+  it('a clean sweep through main() exits ZERO', () => {
+    withTempDir((dir) => {
+      main([
+        '--label',
+        `${LABEL_PREFIX}-clean`,
+        '--seeds',
+        '2',
+        '--days',
+        '35',
+        '--policies',
+        'trader,fighter',
+        '--shard',
+        '1/1',
+        '--milestone-days',
+        '10,30',
+        '--out',
+        dir,
+        '--aggregate-out',
+        dir,
+      ]);
+      expect(process.exitCode ?? 0).toBe(0);
+      // Four real runs is far below every `minSample`, so the rates report SKIPPED
+      // here — correctly, and it is exactly why the in-band clean-rate assertion
+      // lives in its own 104-row test above rather than being folded into this one.
+      const report = readGateReport(dir, `gate-${LABEL_PREFIX}-clean-shard1of1.json`);
+      expect(report.passed).toBe(true);
+      expect(report.violationCount).toBe(0);
+      expect(report.rows).toBe(4);
+    });
+  }, 120_000);
+
+  it('a seeded-bad row set through the real --merge CLI exits NON-ZERO', () => {
+    withTempDir((dir) => {
+      const bad = corruptRows(rows, (row) => {
+        row.combat = [];
+      });
+      writeFileSync(
+        join(dir, `rows-${LABEL_PREFIX}-bad-shard1of1.json`),
+        `${JSON.stringify(bad)}\n`,
+        'utf8',
+      );
+      main(['--merge', '--label', `${LABEL_PREFIX}-bad`, '--out', dir, '--aggregate-out', dir]);
+      expect(process.exitCode).toBe(1);
+      const report = readGateReport(dir, `gate-${LABEL_PREFIX}-bad-merged.json`);
+      expect(report.passed).toBe(false);
+      expect(failedRateIds(report.rates)).toEqual(['travel-encounter-rate-per-1k-sim-days']);
+    });
+  }, 120_000);
+
+  it('a clean row set through the real --merge CLI exits ZERO', () => {
+    withTempDir((dir) => {
+      writeFileSync(
+        join(dir, `rows-${LABEL_PREFIX}-clean-merge-shard1of1.json`),
+        `${JSON.stringify(rows)}\n`,
+        'utf8',
+      );
+      main([
+        '--merge',
+        '--label',
+        `${LABEL_PREFIX}-clean-merge`,
+        '--out',
+        dir,
+        '--aggregate-out',
+        dir,
+      ]);
+      expect(process.exitCode ?? 0).toBe(0);
+      const report = readGateReport(dir, `gate-${LABEL_PREFIX}-clean-merge-merged.json`);
+      expect(report.passed).toBe(true);
+      expect(report.rows).toBe(rows.length);
+      for (const rate of report.rates) {
+        expect(`${rate.id}:${rate.status}`).toBe(`${rate.id}:pass`);
+      }
+    });
+  }, 120_000);
+
+  it('a seeded invariant violation exits NON-ZERO through reportGate', () => {
+    // WHY THIS LEG GOES THROUGH `reportGate` AND NOT A FULL `main()` SWEEP: see the
+    // file header. The flat invariants are functions of a report the real engine
+    // produced, so a real sweep cannot be made to emit a negative-credits row
+    // without breaking the engine. And `--merge` deliberately does not re-run them
+    // (`SeedRow` carries no `daily[]` — stated at `sweep.ts`'s `mergeShards`), which
+    // is a limitation this suite records rather than "fixes".
+    withTempDir((dir) => {
+      const parsed = parseSweepArgs([
+        '--label',
+        `${LABEL_PREFIX}-invariant`,
+        '--out',
+        dir,
+        '--aggregate-out',
+        dir,
+      ]);
+      expect('help' in parsed).toBe(false);
+      if ('help' in parsed) return;
+
+      const violations = runGate(
+        corrupt(base(), (report) => {
+          report.daily[3].credits = -40;
+        }),
+      );
+      reportGate(parsed, 'shard 1/1', rows, violations);
+      expect(process.exitCode).toBe(1);
+
+      const report = readGateReport(dir, `gate-${LABEL_PREFIX}-invariant-shard1of1.json`);
+      expect(report.passed).toBe(false);
+      expect(report.violations.map((row) => row.invariant)).toContain('assertNoNegativeResources');
+      // The rows are the CLEAN sample, so the verdict is FAIL on the invariant
+      // alone — no rate is doing the work.
+      expect(failedRateIds(report.rates)).toEqual([]);
+    });
+  }, 120_000);
+
+  it('wrote nothing into the committed docs/balance/ directory', () => {
+    // Every path above points BOTH `--out` and `--aggregate-out` at a mkdtemp dir,
+    // because `--aggregate-out` defaults to `docs/balance/` and a merge writes
+    // `baseline-<label>.json` there. A green run that quietly overwrote a committed
+    // baseline with a 104-row sample is the accident this asserts against.
+    const leaked = readdirSync(DOCS_BALANCE).filter((name) => name.includes(LABEL_PREFIX));
+    expect(leaked).toEqual([]);
+  });
+});

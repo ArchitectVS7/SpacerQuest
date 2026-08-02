@@ -427,8 +427,16 @@ function formatElapsed(ms: number): string {
  * name from this file — and the acceptance criterion is that `sweep.ts` names
  * them, so that `grep assert packages/sim/src/balance/sweep.ts` answers "which
  * invariants does the sweep enforce?" without a second hop.
+ *
+ * EXPORTED FOR T-153 (constraint 7 · readers): the behavioural suite
+ * `../__tests__/sweep-gate.test.ts` drives THIS function rather than re-listing
+ * the nine calls itself, because a test that re-composes them proves the TEST's
+ * composition, not the sweep's. Its kitchen-sink case is what now holds the
+ * "explicit calls, not a loop" promise above honest — a tenth invariant added to
+ * `./gate.ts` and never wired in here fails that test instead of silently never
+ * running.
  */
-function runGate(report: CampaignStatsReport): SweepViolation[] {
+export function runGate(report: CampaignStatsReport): SweepViolation[] {
   return [
     ...assertNoNegativeResources(report),
     ...assertFuelWithinTank(report),
@@ -456,8 +464,16 @@ function gateFileName(options: SweepOptions, merged: boolean): string {
  * aggregate are already on disk by the time this runs, and an abrupt exit would
  * risk truncating a buffered write. A failing gate must still leave behind the
  * artefact that explains why it failed.
+ *
+ * EXPORTED FOR T-153 (constraint 7 · readers): `../__tests__/sweep-gate.test.ts`
+ * closes the "seeded invariant violation ⇒ non-zero exit" leg through this exact
+ * function. It cannot be closed through a full `main()` sweep, because the flat
+ * invariants are functions of a report the real engine produced — making a real
+ * sweep emit a negative-credits row would require breaking the engine. So the
+ * DETECTION is proven on seeded reports and the EXIT-CODE PLUMBING is proven here,
+ * on the one function every sweep path routes its verdict through.
  */
-function reportGate(
+export function reportGate(
   options: SweepOptions,
   scope: string,
   rows: readonly SeedRow[],
