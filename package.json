@@ -13,6 +13,7 @@
     "balance:report": "npm run balance:report -w @spacerquest/sim --",
     "balance:extract": "npm run balance:extract -w @spacerquest/sim --",
     "balance:smoke": "npm run balance:smoke -w @spacerquest/sim",
+    "pilot": "npm run pilot -w @spacerquest/sim --",
     "dev:panel": "npm run dev:panel -w @spacerquest/devpanel --",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "tsc -b",

@@ -152,6 +152,20 @@ export const SIM_NON_INSTRUMENT_SOURCES: Readonly<Record<string, string>> = {
     'The UGT protocol adapter — an external-client surface. `runCampaign` never calls it, so ' +
     'no sweep or smoke number can depend on it.',
   'protocol-stdio.ts': 'The stdio wrapper around the above. Transport, not measurement.',
+  'pilot.ts':
+    "T-154 · The Tier-2 LLM pilot's pure core. It drives the protocol seam (`protocol.ts`, already " +
+    'non-instrument for the same reason) and never participates in a campaign: `runCampaign` does ' +
+    'not call it and `index.ts` does not export it, so no sweep or smoke number can depend on it. ' +
+    'What it produces is a JSONL trail for a human to read, which is the `balance/diff.ts` class of ' +
+    'artefact, not a measurement.',
+  'pilot-anthropic.ts':
+    "T-154 · The pilot's live LLM brain — a network client. It decides which of the actions the " +
+    'engine already advertised a pilot run picks, and nothing whatsoever about what a day produces. ' +
+    'It is also the one file here that cannot run offline, which is a second reason no measurement ' +
+    'may ever depend on it.',
+  'pilot-cli.ts':
+    'T-154 · The argv/filesystem half of the pilot — same pure/IO split, and the same reason, as ' +
+    '`balance/sweep.ts` above.',
   'balance/sweep.ts':
     'The I/O half of the sweep (argv, sharding, file writes). The arithmetic it invokes lives ' +
     'in `balance/aggregate.ts`, which IS hashed — the T-1602b pure/IO split, used here to keep ' +

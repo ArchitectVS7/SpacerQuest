@@ -11,14 +11,16 @@
     "balance:diff": "tsx src/balance/diff-cli.ts",
     "balance:report": "tsx src/balance/report-cli.ts",
     "balance:extract": "tsx src/balance/smoke-extract.ts",
+    "pilot": "tsx src/pilot-cli.ts",
     "balance:smoke": "vitest run src/__tests__/balance-smoke.test.ts src/__tests__/balance-rig.test.ts",
     "test": "vitest run"
   },
   "dependencies": {
-    "@spacerquest/engine": "*",
-    "@spacerquest/content": "*"
+    "@spacerquest/content": "*",
+    "@spacerquest/engine": "*"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@types/node": "^22.10.0",
     "tsx": "^4.20.6",
     "typescript": "^5.4.0",
