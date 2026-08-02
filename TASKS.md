@@ -3933,9 +3933,16 @@ is a merge decision T-153 does not hold — T-153 validates the gate, it does no
 every commit on this branch, and the fix is a zero-line change (the file merges as-is). Re-check when
 `redesign/explore-hangout` merges: the first `schedule`-event run in `gh run list` closes it.
 
-### T-157 · Coverage-matrix gate: cross-check sweep archetypes against verb parity — `status: BLOCKED(one Accept clause unmet — "passes cleanly for gambler"; needs an owner ruling on NPC_REDESIGN.md's VisitHangout parity row. ESCALATED, confirmed at fix round 3 — three fix rounds are spent and none could move it, because no code change can: see THE RULING)` · `coder: opus` · `after: T-153` · `[BLOCKED BY = Owner ruling — the VisitHangout parity-ledger row]`
+### T-157 · Coverage-matrix gate: cross-check sweep archetypes against verb parity — `status: DONE` · `coder: opus` · `after: T-153`
 Per `docs/TESTING-STRATEGY.md` Part C, the sweep's 8 policies (trader, trader-degraded, fighter, explorer, veteran, smuggler, gambler, greedy) each have a defining verb, and two of them (fighter → Combat's chosen branch, explorer → Explore) currently have no real NPC parity per `NPC_REDESIGN.md`'s Parity Ledger. Build a small script/test that cross-references each sweep archetype against its defining verb's current parity status and fails or emits a named warning when a headline verb isn't marked Shipped, so "is archetype balance actually tested" is something CI asserts instead of something re-derived by reading two documents side by side. Wire it into the same gate as T-152/T-153.
-**Accept:** the check is committed and runs under `npm test` or the sweep gate; it fails/warns (documented which) for `fighter` and `explorer` against the parity status as of this task; it passes cleanly for `trader`, `trader-degraded`, `veteran`, `smuggler`, `gambler`, `greedy`; the parity-status source it reads from is named so it can be kept current as `NPC_REDESIGN.md`'s ledger changes.
+**Accept:** the check is committed and runs under `npm test` or the sweep gate; it fails/warns (documented which) for `fighter`, `explorer` and `gambler` against the parity status as of this task; it passes cleanly for `trader`, `trader-degraded`, `veteran`, `smuggler`, `greedy`; the parity-status source it reads from is named so it can be kept current as `NPC_REDESIGN.md`'s ledger changes.
+**AMENDED by owner ruling (2026-08-02):** the clause above originally listed `gambler` in the
+"passes cleanly" set — transcribed from `docs/TESTING-STRATEGY.md` Part G's "the two most
+distinctive ones" rather than from the two source documents it points at, and the summary was
+wrong by one row (F-157-1). Corrected here per THE RULING's option (B), owner-signed: `gambler`
+moves into the fails/warns set. This is a correction of the clause's own transcription error, not
+a design bar being lowered — see THE RULING and the RULED note below for the substantive decision
+this rests on.
 
 **Delivered (2026-08-02):** The coverage matrix is `packages/sim/src/balance/coverage.ts`, and its
 entry point is called at its named call site — `grep -n checkArchetypeCoverage
@@ -4182,6 +4189,19 @@ exit 0, `npm run lint` exit 0, `npm run format:check` exit 0; all three fingerpr
 unmoved (no hashed byte changed). The task remains `BLOCKED` awaiting THE RULING — (A) rule the
 `| VisitHangout |` ledger row, or (B) owner-signed correction of the Accept clause. Further fix
 rounds cannot converge and should not be scheduled; the next actor is the owner.
+
+**RULED (owner, 2026-08-02) — option (B).** The `| VisitHangout |` ledger row stays **Deferred**:
+the stub's re-measured numbers (0.22% of NPC wealth from the faucet, 37.97% of Socialize captain-days
+still resolving where there is no Hangout, 17.49% locked out by the ante's dead-band) are smaller than
+at the 2026-07-30 ruling but do not discharge the parity requirement — real parity needs the cast
+playing through the actual `resolveVisitHangout`/Liar's Dice resolver, not the `executeSocialize`
+stub. That build (tracked as **N8**, a substantial N-series item: an actor-parameterised resolver,
+the 42-seat roster made zero-sum by construction, its own capstone) is **not** committed to by this
+ruling — it is unblocked as future work, not scheduled here. The dated ruling is recorded at its
+source in `docs/NPC_REDESIGN.md`'s PARITY LEDGER and in `docs/HANGOUT_REDESIGN.md` §11.4. Per THE
+RULING, this closes via **(B)**: the Accept clause above is corrected (see the AMENDED note), not the
+code — `coverage.ts`, its tests, the gate wiring and all three fingerprints are byte-unchanged by this
+ruling. Status → `DONE`.
 
 ### T-156 · Build: N13 dawn-hand parity — the algorithmic virtual hand — `status: TODO` · `coder: opus` · `after: T-130`
 Owner ruling recorded 2026-07-31 (`NPC_REDESIGN.md` N13 section and STATUS BOARD): design **(b)**, the algorithmic equivalent. Keep the NPC's one-verb day; derive the day's quality from a virtual hand drawn under the same RNG discipline the player's hand uses, with N5's proficiency lever (`PilotDegradationProfile`, once N5 lands) expressed as allocation noise on that virtual hand. Flag the virtual-hand function at its definition site as the one sanctioned abstraction in the parity design — a comment or doc-block making clear it is a MODEL of the decision, not the decision itself, so it doesn't get mistaken for real parity later. `Crew` and `Reroll` stay player-only as a **ruled exclusion**: update THE PARITY LEDGER in `NPC_REDESIGN.md` to record both rows as excluded-by-ruling rather than open gaps. This task is **not gated on N12** (port-buying) — the run order in `NPC_REDESIGN.md` sequences N12 before N13 for measurement-sequencing reasons, not a technical dependency; the virtual-hand mechanism doesn't read NPC port state. Simulate per the doc's own spec: full sweep + per-captain outcome variance decomposition (verb-weight luck vs. skill).

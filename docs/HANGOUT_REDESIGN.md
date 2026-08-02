@@ -2434,6 +2434,16 @@ charter is to re-ask with current numbers and hand the ruling back. Ruling it is
 **N8** and the N-series resumption, and a build task does not get to do that. The companion
 re-ask of the **Explore** row is `docs/EXPLORE_REDESIGN.md` §10.4, deferred on the same terms.
 
+**RULED (owner, 2026-08-02): still Deferred.** All three re-measured defects above are smaller
+than at the 2026-07-30 ruling but none are discharged — the faucet's wealth share, the off-Hangout
+resolution share and the ante lockout are all still nonzero, and the `executeSocialize` stub is
+still not the real resolver. The gap stays open. **N8 (the actor-parameterised resolver, the
+42-seat roster made zero-sum by construction, its own capstone) is unblocked as future N-series
+work** — this ruling does not schedule it, only clears the way for it. Recorded at its source in
+`docs/NPC_REDESIGN.md`'s PARITY LEDGER `| VisitHangout |` row. This closes T-157 via THE RULING's
+option (B): the coverage gate's Accept clause is corrected to match this status, not the gate's
+logic — see `TASKS.md`.
+
 ### 11.5 What was NOT tuned
 
 **No constant, DC, price, band weight, threshold, golden or fingerprint was edited to reach any
