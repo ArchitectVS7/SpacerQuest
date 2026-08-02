@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.3
+- The focusing arc: prove the game before growing it — no new systems this track
+- An outside review of 0.5.2 set the agenda, and its findings are now scheduled: the
+  bar's dealer stops calling honest bids (it was losing 19 of 20 challenges it started),
+  and a veteran captain stranded at a rim port gets the same rescue the fighter got
+- The balance safety net must now prove itself: seeded regressions have to fail the
+  gate, and archetype coverage is cross-checked against what the cast can really do
+- Rival captains will draw their own dice each dawn — closing the last big gap between
+  how you play a day and how they do
+- An AI test pilot learns to fly the player's seat, and a browser-level long-haul check
+  watches for the crashes scripted tests can't anticipate
+- Then everything halts for the first full human playthrough: pacing, dice tension, and
+  two open design calls (combat's depth, how long a grudge should last) get judged by
+  feel, with the numbers laid out beside the controls
+
 ## 0.5.2
 - Explore and Socialize redesign arc
 - Explore rebuilt: 100 things to find out there, from quiet lore to real salvage, plus

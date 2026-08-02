@@ -1960,12 +1960,23 @@ Out of scope for 0.5.2 — recorded so a coder does not re-scope them in:
   owner sequencing call.
 - **Explore being a net loss for the PLAYER as a balance question.** T-116 re-measures it, but
   _re-pricing_ is R-series work and an owner call, not something a content pass does.
+  **UPDATE (2026-08-02): named in T-158's pre-UAT brief** — still deferred as a build item, but
+  the owner's UAT pass now meets it with T-116's numbers (85/120 seeds richer without the verb)
+  in hand, since UAT is the "playtest by feel" D1 chose over sim pre-validation.
 - **The manifest version.** Already at 0.5.2 (commit `9d9ff47e`, 2026-07-30, under the amended
   `docs/VERSIONING.md:53` policy — PATCH marks the active work track, not only a shipped one).
   **T-130 ruling (owner, 2026-07-31): no advance to 0.5.3 and no tag while this track's own
   findings are still open** — D1 (Explore time-cost rebalance), D2 (Dare redesign), D3 (the
   Hangout faucet/`hasHangout` untangle, via `/bakeoff`), D6 (the Hangout UI surfacing job) and
   D7 (Arcturus-6's credit desk) are all still outstanding. Re-check this bullet when they close.
+  **RE-CHECKED AND ADVANCED (owner, 2026-08-02): 0.5.3.** The ruling's own condition is
+  discharged — all five named findings closed (D1→T-131, D2→M4d/M4e, D3→T-149, D6→T-132,
+  D7→T-133) — and the owner directed the bump. Under the amended `docs/VERSIONING.md` policy
+  PATCH marks the active work track: **0.5.3 is the M7 focusing arc** (T-153…T-162: sweep-gate
+  proof, dawn-hand parity, the F-137-1/F-159-1 fixes, the LLM pilot, and the T-158 UAT halt).
+  Bumped via the documented one-command procedure (both manifests + regenerated lockfile).
+  **Still no tag** — a tag is a stage marker cut by the ceremony, and the first (`alpha`) waits
+  on T-158's own UAT pass per `docs/VERSIONING.md`'s stage table.
 - **Anything R-owned:** R10's tier-1 hull cliff and the known-red `it.fails` tripwires.
 
 ---
@@ -1991,7 +2002,7 @@ already answered below.
 
 | # | Finding | Status | Where |
 | --- | --- | --- | --- |
-| **F-150-1** | The **0.25 named-pool interceptor gate** (`actions/travel.ts`) and **`DISPOSITION_DECAY_INTERVAL_DAYS = 3`** (`content/disposition.ts`), read together now that the faucet is gated, the UI speaks, Explore's recovery model changed and the Dare is Liar's Dice | **OPEN — a DESIGN QUESTION for the owner, not a tuning knob (T-125's own ruling). NEITHER CONSTANT CHANGED BY T-150.** Measured: named share **25.07%** vs the analytic 25.00%, inertness **71.52%**, wronged-captain lift **2.358×**; the cast sits at exactly 0 on **96.52%** of live captain-days and a standing survives a **median 3 days**, with decay outrunning interaction **1.53 : 1** — so widening the gate alone would mostly buy more *inert* draws | `docs/HANGOUT_REDESIGN.md` §11.3, with a levers-not-pulled table |
+| **F-150-1** | The **0.25 named-pool interceptor gate** (`actions/travel.ts`) and **`DISPOSITION_DECAY_INTERVAL_DAYS = 3`** (`content/disposition.ts`), read together now that the faucet is gated, the UI speaks, Explore's recovery model changed and the Dare is Liar's Dice | **OPEN — a DESIGN QUESTION for the owner, not a tuning knob (T-125's own ruling). NEITHER CONSTANT CHANGED BY T-150.** Measured: named share **25.07%** vs the analytic 25.00%, inertness **71.52%**, wronged-captain lift **2.358×**; the cast sits at exactly 0 on **96.52%** of live captain-days and a standing survives a **median 3 days**, with decay outrunning interaction **1.53 : 1** — so widening the gate alone would mostly buy more *inert* draws. **SCHEDULED FOR A RECORDED RULING AT T-158 (2026-08-02)** — the UAT checkpoint's brief now carries these numbers and its Accept requires the ruling | `docs/HANGOUT_REDESIGN.md` §11.3, with a levers-not-pulled table |
 | **F-150-2** | `smugglerPolicy` carries a byte-identical copy of F-116-1's unguarded Explore loop (**3,891 of 23,192 queued on a recovery dawn**) | **OPEN — the fix was written, MEASURED, and deliberately backed out.** It re-seeds that policy's stream onto a pre-existing five-day stall in the SHARED `planPacifistCombat`, tripping the poverty-trap invariant; root-fixing that means editing a planner five policies share, which would move every fingerprint and destroy T-150's containment claim. **Pinned by an explicit tripwire test** so it cannot be closed by accident | `docs/EXPLORE_REDESIGN.md` §10.3 |
 | **The two PARITY LEDGER rows** | **Explore** and **VisitHangout**, RE-ASKED against the systems as they now are, with fresh numbers beside them and the three VisitHangout-deferred defects re-measured (faucet **+3.44cr/captain-day = 0.22%** of terminal NPC wealth; off-Hangout Socialize **37.97%** — T-149 fixed the FICTION, not the VERB; the 150cr ante locks out **17.49%** of live captain-days) | **STILL DEFERRED — UNRULED. Owner's call, not a build task's.** This is what un-gates **N8**; no N-series task's status was changed | `docs/HANGOUT_REDESIGN.md` §11.4, `docs/EXPLORE_REDESIGN.md` §10.4, and the two ledger rows in `docs/NPC_REDESIGN.md` |
 
@@ -3704,6 +3715,20 @@ funding the pilot before knowing what a human finds risks measuring the wrong th
 not *running* the pilot cold, which doesn't bear on standing up the code; see the resequencing note on
 T-154 itself.
 
+**ADDED 2026-08-02 (owner-directed, from the outside assessment of the 0.5.2 arc): T-160, T-161,
+T-162, plus amendments to T-158.** The assessment's five attention items land here as follows.
+(1) **T-160** fixes F-137-1 (the Liar's Dice dealer's certain-loss structure) and runs BEFORE the
+UAT halt — the owner's first human read of the bar must not be taken against a dealer who plays to
+lose; T-158's `after:` names it, machine-enforced per the T-155 lesson. (2) N13 and the two
+distinctive verbs' fleet coverage were already captured (T-156, T-157, and T-158's brief) — no new
+task. (3) Explore's still-net-loss status and (4) F-150-1's disposition-inertness numbers join
+T-158's pre-UAT brief, and F-150-1 is promoted to a second recorded-ruling ask at that checkpoint,
+alongside Combat's. (5) **T-161** closes F-159-1 (veteranPolicy, the last un-relaxed contract
+filter — sim-side only, so it sits above T-158 for run order but does NOT gate it) and **T-162**
+finally gives the TESTING-STRATEGY bridge-blind-spot's "still-open" browser/DOM-level check an
+owner (after T-158, so it cannot compete with pre-UAT work). Resulting run order:
+T-153 → T-157 → T-156 → T-154 → T-160 → T-161 → T-158 (halt for UAT) → T-155, T-162.
+
 ### T-152 · Build: fold sweep invariants into a pass/fail gate — `status: DONE` · `coder: opus` · `after: T-130`
 Take the invariant set already used in the T-1604a UGT campaign (`docs/playtests/T-1604a-ugt-campaign.md` §4 — credits floor, no-negative-cargo, and the rest of the 8) and wire them into `packages/sim/src/balance/sweep.ts` as hard assertions the sweep run itself fails on, not just numbers it reports. Add a statistical-anomaly check for any event whose expected rate is known (e.g. an encounter type expected at ~30% reading 0% across a full shard) so a probability regression fails the run instead of silently changing the reported baseline. Wire this sweep-as-gate into CI (or document why it's too slow for CI and instead into a scheduled/nightly job) so Tier-1 coverage (`docs/TESTING-STRATEGY.md` Part D) runs without a human remembering to invoke it. This task builds the mechanism only — T-153 proves it works.
 **Accept:** `sweep.ts` contains a named assertion function per invariant, each grep-able by name; an expected-event-rate table with named thresholds exists for the anomaly check; a CI workflow file or documented scheduled-job config invokes the gate.
@@ -3859,9 +3884,97 @@ companion fix is on T-155, whose `after:` now names T-158 explicitly rather than
 Implement a `SimPolicy` (or a driver against `packages/sim/src/protocol-stdio.ts`) that has an LLM pick the player's actions each day from the real legal-actions list, in-repo — no dependency on the external UGT package. Reuse the adapter discipline from `packages/sim/PROTOCOL.md`: an unmapped/illegal action must be rejected, never fabricated. Log state deltas per action (mirroring T-1604a's JSONL shape) so a run's findings are reviewable after the fact. Note the bridge-blind-spot risk recorded in the UGT after-action report (`/Users/vs7/Dev/Games/_UGT Universal Game Tester/AFTER-ACTION-REPORT.md` §Addendum): a protocol/state-level driver like this one cannot see UI-only bugs (a real browser/DOM-level check is a separate, still-open need, not covered by this task). This task builds the driver only — T-155 proves it's trustworthy before it's relied on.
 **Accept:** the driver runs against the real engine via the protocol seam and produces a reviewable action/state-delta log; illegal-action attempts are rejected and logged, never silently applied; a short README documents how to invoke a run and states plainly that this covers protocol/state-level behaviour only, not the UI.
 
-### T-158 · CHECKPOINT — human UAT, plus a recorded ruling on Combat's chosen branch — `status: TODO` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141` · `[BLOCKED BY = Human UAT]`
-Per `docs/TESTING-STRATEGY.md` Part G: neither the sweep nor an LLM pilot can judge whether pacing or dice-tension *feels* right, and `docs/RELEASE-CHECKLIST.md` already states "nobody has played this build end to end yet." Automated preparation: confirm the build is green, confirm T-140/T-141 (decision tracing, opt-in playtest logging) are wired and active so the owner's session produces a reviewable log rather than only an impression, and assemble a short pre-UAT brief naming what's known-uncovered going in (Combat's chosen `executeCombat` branch is still an abstract GUNS check with 0 modeled deaths per `NPC_REDESIGN.md`'s Parity Ledger; Explore/VisitHangout have zero fleet coverage; N13's status per T-156). Then halt for the owner's own UAT pass, and — per Part G item 4 — a deliberate, recorded ruling on Combat's chosen branch, even if the ruling is "not fixing the model this pass." This is a hard gate: **T-155** (running the native LLM pilot for real) is sequenced after it and must not start until it closes. **T-154 (building the driver) is NOT gated on this** — see the resequencing note on T-154, which as of 2026-08-02 sits immediately ABOVE this block precisely so this task's halt cannot strand it.
-**Accept:** (human-checked) the pre-UAT brief is committed; T-140/T-141 confirmed active; the run halts with this task `BLOCKED`, never self-approved; closes only once the owner has both played a UAT pass and recorded a Combat-branch ruling (fix, defer, or accept-as-is all count as a ruling).
+### T-160 · Fix F-137-1: the dealer's certain-loss structure — bakeoff the two sanctioned shapes, ship the winner — `status: TODO` · `coder: opus` · `after: T-148`
+
+**Scheduled 2026-08-02 (owner-directed): runs BEFORE the T-158 UAT halt**, because UAT's whole
+purpose is the owner's first honest read of pacing and dice-tension, and the bar as shipped
+distorts that read — playing it now means paying for a second UAT pass on the game's biggest new
+system after the fix lands anyway.
+
+**The finding** (`docs/LIARS-DICE_REDESIGN.md` §16.2, filed at T-137; still live at T-148 per
+`docs/LIARS-DICE-PROGRESSION_SPEC.md` §12 — win rate 80.07% post-roster, 100.00% of pool-B openers
+still guaranteed true): the defect is the *conjunction* of two individually-defensible choices.
+`planDareMove` branch (b) (`packages/sim/src/index.ts:~3593-3607`) opens at
+`quantity = own(bestFace)`, which `resolveChallenge`'s eight-dice count makes guaranteed true; and
+`dealerMove`'s terminal fallback (`packages/engine/src/liarsDiceRules.ts:~345-350`) is CHALLENGE —
+so the dealer challenged a true claim on 90.48% of its decisions and lost 94.68% of those. Result
+at T-137: 94.66% player win rate, +737.53cr EV/hand, gambler `finalCredits.median` +67.2%. §16.2's
+own verdict: "a bidding game in which the opening claim can be made risk-free, against an opponent
+whose default answer is to call it, has no bluffing in it at all."
+
+**The two candidates are §16.2's first two shapes, verbatim — no third:** (a) **the dealer's
+fallback** — terminal fallback becomes the cheapest legal *raise*, CHALLENGE reserved for the
+surplus test; (b) **the opening lattice** — an opening claim must exceed what the bidder holds
+(`quantity > own(face)`), removing the risk-free claim at its source. §16.2's third shape (teach
+the baseline planner to lie) is explicitly NOT a candidate — it moves the measurement without
+moving the game. Bakeoff both per the /bakeoff discipline: implement each candidate in isolation,
+simulate, and judge on named criteria — the conjunction is broken (openers no longer risk-free, or
+the dealer no longer auto-calls them); the win rate lands in a defensible band; the challenger-won
+split is no longer 5.32%-vs-94.92% lopsided; **F-137-2's wronged share is EXPECTED TO FALL and
+must not be read as a regression** (§16.8 item 2, pre-committed here); FOLD and the player-side
+clamp re-measured (§16.8 items 5-6 — if FOLD is still dead post-fix, that is a finding to FILE for
+the owner, not a license to redesign FOLD in this task). If the numbers cannot arbitrate between
+the shapes — i.e. both close the defect and the residual difference is player-experience taste —
+HALT and escalate to the owner rather than picking; log the not-chosen shape either way, per the
+D1/D7 precedent.
+
+**Cost discipline:** shape (b), and possibly (a), edits `packages/engine/src` — `rulesFingerprint`
+MOVES, so this task takes its own capstone (implement + 8,000-row re-pin in ONE task, per the
+batch rule; `npm run format` BEFORE extraction). Predict the moved rows before the run: expect
+`gambler` and `fleet`, expect the gambler median to FALL from t148's level, and expect the
+archetype ordering re-check to come back un-inverted (F-148-1 traced the `optimal`-softer-than-
+`bad` inversion to F-137-1; if it survives the fix, that is a distinct finding to file). Also
+restate `liars_dice_grand_slam` reachability (0 in 720 careers at T-148) on the post-fix arm — a
+harder dealer makes it *less* reachable, and the owner should get that number next to the ruling
+it will eventually need.
+
+**Accept:** the shipped shape is grep-able at its named site (`dealerMove`'s fallback or the
+opening-lattice rule); a capstone re-measures win rate, EV/hand, dealer-challenge share and the
+challenger-won split against `baseline-t148-roster-ladder.json`, with moved rows predicted before
+the run; F-137-2 re-read with the expected fall-back stated as such; FOLD and clamp restated
+post-fix (fixed or filed); the archetype-ordering re-check reported either way;
+`docs/LIARS-DICE_REDESIGN.md` §16.2's status updated to fixed-at-T-160 with the not-chosen shape
+logged; gate green.
+
+### T-161 · Fix F-159-1: veteranPolicy's un-relaxed contract filter — the last of the class — `status: TODO` · `coder: opus` · `after: T-159`
+
+**Scheduled 2026-08-02 (owner-directed).** F-159-1 (filed at T-159, recorded at
+`docs/BALANCE-POLICY.md` D.2a): `veteranPolicy` (`packages/sim/src/index.ts:~4903-4909`) is the
+last un-relaxed contract filter in the file, structurally identical to the fighter defect T-159
+fixed — measured at 31-day stalls on **197 of 200 seeds ≥ 5**, materially worse than the "6-8
+days" its exemption note in `gate.ts` `GATE_COMPETENT_POLICIES` claims. Sim-side only, so it does
+not gate UAT (T-158's `after:` deliberately omits it); it sits above T-158 for run order, and if
+ever reordered below the halt it simply runs post-UAT — acceptable, documented here.
+
+Port the T-1104 full-tank relaxation (the same two-pass pattern all five other gated policies now
+carry). **Measure before assuming one branch suffices** — T-159's brief was one branch short and
+its commit says so; check whether veteran also needs the anti-idle homeward-burn second branch on
+the same seeds-1..200 × 35-day rig. Then correct the stale "6-8 days" exemption comment in
+`gate.ts` to post-fix measured reality, and decide WITH the measurement whether veteran now joins
+`GATE_COMPETENT_POLICIES` or keeps a re-justified, re-numbered exemption — either is fine; an
+exemption whose stated number is off by 4x is not. Fingerprint discipline per T-159's precedent
+exactly: `instrumentFingerprint`/`docsFingerprint`/`provenance.gitCommit` move, `rulesFingerprint`
+must NOT (sim only); expect exactly the veteran row of `campaign-degraded.test.ts`
+`PINNED_FINGERPRINTS` to move, all other archetypes byte-identical as the containment cross-check.
+**Do NOT touch** F-150-2 (`smugglerPolicy`/`planPacifistCombat`, pinned by tripwire) — same
+out-of-scope reason as at T-159.
+
+**Accept:** the relaxation (and, if measurement demands it, the second branch) is grep-able in
+`veteranPolicy`; seeds 1..200 × 35 days re-measured with the streak table restated against the
+before-numbers (31 days / 197 of 200 ≥ 5); the `gate.ts` exemption comment matches post-fix
+reality, with veteran either joining the gate or carrying a re-justified exemption; F-159-1's
+record in `docs/BALANCE-POLICY.md` updated to fixed; the exact CI sweep-gate invocation PASS on
+all legs; only the veteran fingerprint row moves; gate green.
+
+### T-158 · CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 — `status: TODO` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141, T-160` · `[BLOCKED BY = Human UAT]`
+**`after:` gained T-160 (2026-08-02, owner-directed):** UAT must be played against the fixed
+Liar's Dice dealer, not the F-137-1 one that volunteers a certain loss on nine decisions in ten —
+otherwise the owner's first read of the bar is a read of a defect already known and scheduled. The
+gate is in the field, not prose, per the T-155 lesson. (T-161 is deliberately NOT named here — it
+is sim-side only and cannot affect what the owner plays; it precedes this task by file order
+alone.)
+Per `docs/TESTING-STRATEGY.md` Part G: neither the sweep nor an LLM pilot can judge whether pacing or dice-tension *feels* right, and `docs/RELEASE-CHECKLIST.md` already states "nobody has played this build end to end yet." Automated preparation: confirm the build is green, confirm T-140/T-141 (decision tracing, opt-in playtest logging) are wired and active so the owner's session produces a reviewable log rather than only an impression, and assemble a short pre-UAT brief naming what's known-uncovered going in (Combat's chosen `executeCombat` branch is still an abstract GUNS check with 0 modeled deaths per `NPC_REDESIGN.md`'s Parity Ledger; Explore/VisitHangout have zero fleet coverage; N13's status per T-156). **The brief also carries two items added 2026-08-02 so the owner's play pass meets them with numbers in hand:** (a) **Explore is still a net credit loss** — T-116's re-measure: 85 of 120 seeds richer WITHOUT the verb (down from 101/120 pre-rebuild), with the non-credit payoff (unique items, POI fragments) stated beside it and re-pricing (`EXPLORATION_FUEL_COST` 80, `EXPLORATION_NAV_DC` 12) an open R-series owner call per `docs/EXPLORE_REDESIGN.md` §10.4 — UAT is the "playtest by feel" D1 chose over sim pre-validation, so the feel-read belongs in the session notes; (b) **F-150-1's disposition-inertness numbers** (`docs/HANGOUT_REDESIGN.md` §11.3): the cast sits at exactly 0 disposition on 96.52% of live captain-days, a nonzero standing survives a median 3 days, decay outruns interaction 1.53:1, and 71.52% of named-pool draws are inert — with T-125's own ruling that this is a design question, not a knob, and the levers-not-pulled table attached. Then halt for the owner's own UAT pass, and — per Part G item 4, extended 2026-08-02 — **two deliberate, recorded rulings**: one on Combat's chosen branch, and one on F-150-1 (the 0.25 named-pool gate + `DISPOSITION_DECAY_INTERVAL_DAYS = 3`, read together), even if either ruling is "not this pass." This is a hard gate: **T-155** (running the native LLM pilot for real) is sequenced after it and must not start until it closes. **T-154 (building the driver) is NOT gated on this** — see the resequencing note on T-154, which as of 2026-08-02 sits ABOVE this block precisely so this task's halt cannot strand it.
+**Accept:** (human-checked) the pre-UAT brief is committed and includes the Explore net-loss and F-150-1 items with their numbers; T-140/T-141 confirmed active; the run halts with this task `BLOCKED`, never self-approved; closes only once the owner has played a UAT pass and recorded BOTH rulings — Combat's chosen branch and F-150-1 (fix, defer, or accept-as-is all count as a ruling for each).
 
 ### T-155 · Validate: run the pilot end-to-end and confirm it's trustworthy — `status: TODO` · `coder: opus` · `after: T-154, T-158`
 **`after:` corrected (2026-08-02):** this field previously read `after: T-154` alone, and the T-158
@@ -3871,3 +3984,33 @@ machine-enforced — it was masked only by T-158 happening to halt the run first
 the field, so the gate holds regardless of block ordering.
 Run the T-154 driver for real: at least 30 simulated days across at least 3 seeds. Confirm zero illegal/fabricated actions were accepted and zero crashes or hangs occurred. Then run one seed twice, independently, and confirm the two runs produce identical action sequences (the same determinism check T-1604a used on the UGT side) — an audit tool that isn't reproducible can't be trusted to diagnose a regression later. If any part of the pipeline is inherently nondeterministic (e.g. the LLM call itself), the run log must document exactly what's pinned/replayable and what isn't, rather than silently passing on a lucky match. Only once this task's Accept criteria are met does M7 close; update Part D of `docs/TESTING-STRATEGY.md` with the confirmed cadence and the exact command to invoke a run.
 **Accept:** a committed run artifact (e.g. under `docs/playtests/` or a `packages/sim` output path) shows ≥30 days × ≥3 seeds completed with zero illegal actions and zero crashes; a same-seed determinism check shows two independent runs producing identical action sequences, or the run log explicitly documents which part of the pipeline is nondeterministic and how that's bounded; `docs/TESTING-STRATEGY.md` Part D updated with the confirmed cadence and invocation command.
+
+### T-162 · Build: the browser/DOM-level long-horizon check — the bridge blind spot gets an owner — `status: TODO` · `coder: opus` · `after: T-158`
+
+**Scheduled 2026-08-02 (owner-directed): until now, no task owned this.**
+`docs/TESTING-STRATEGY.md`'s bridge-blind-spot warning calls "a real browser/DOM-level check" a
+"distinct, still-open need — do not fold it into Tier 2 by assumption," citing the worldbreaker
+precedent where a protocol-level tier missed a client-crashing type error that only a real-browser
+audit caught — yet the item appeared in no task's Accept criteria anywhere in this file. It is
+sequenced after T-158 so it cannot compete with pre-UAT work, and it **complements T-155, never
+substitutes for it** (nor the reverse — the two cover disjoint failure classes by construction).
+
+**Scope it honestly against what already exists.** The repo already has 111 real-Chromium
+Playwright specs including a scripted 30-day `tour-one-career.spec.ts` and a 20-run flake gate —
+so the still-open need is NOT "any browser test." It is the class those specs cannot catch:
+scripted scenarios assert only what they were written to see, while the blind-spot bug class is
+the *unanticipated* client-side crash deep into a career. Build the long-horizon counterpart:
+either (a) drive the T-154 pilot's action choices through the real DOM instead of the protocol
+seam, or (b) a long-horizon invariant sweep in Playwright — randomized-but-legal play over ≥30
+in-game days holding blanket invariants (zero console errors, zero uncaught exceptions/crashes,
+no dead affordance: every enabled control dispatches, every blocked action shows its reason, per
+the existing `action-blocked-parity` pattern). Pick whichever is cheaper to make reliable and say
+why; log the other as the not-chosen shape. Any bug it finds is filed per the Bug Discovery
+Policy before the run continues. Then update the TESTING-STRATEGY blind-spot paragraph from
+"still-open need" to a pointer at this task and its shipped mechanism.
+
+**Accept:** a committed run artifact shows ≥30 in-game days driven through the real DOM with the
+invariant set named and green (or any violation filed as a finding, not skipped past); the
+invocation and its cadence (CI, nightly, or manual — stated which, with the reason) are
+documented; `docs/TESTING-STRATEGY.md`'s bridge-blind-spot paragraph points at this task instead
+of calling the need still-open; the not-chosen shape is logged; gate green.
