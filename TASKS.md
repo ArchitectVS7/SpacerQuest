@@ -566,7 +566,7 @@ other archetypes byte-identical.
 
 Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked); oriented directly from `packages/sim/src/index.ts`, `balance/gate.ts`, `docs/BALANCE-POLICY.md`  · attempts=1/4.
 
-### T-158 · CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 — `status: TODO` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141, T-160` · `[BLOCKED BY = Human UAT]`
+### T-158 · CHECKPOINT — human UAT, plus recorded rulings on Combat's chosen branch and F-150-1 — `status: BLOCKED(Human UAT)` · `coder: sonnet` · `after: T-150, T-153, T-157, T-140, T-141, T-160` · `[BLOCKED BY = Human UAT]`
 **`after:` gained T-160 (2026-08-02, owner-directed):** UAT must be played against the fixed
 Liar's Dice dealer, not the F-137-1 one that volunteers a certain loss on nine decisions in ten —
 otherwise the owner's first read of the bar is a read of a defect already known and scheduled. The
@@ -584,6 +584,117 @@ graded there; it is recorded here only so the owner arriving at the UAT checkpoi
 is already gated on.
 Per `docs/TESTING-STRATEGY.md` Part G: neither the sweep nor an LLM pilot can judge whether pacing or dice-tension *feels* right, and `docs/RELEASE-CHECKLIST.md` already states "nobody has played this build end to end yet." Automated preparation: confirm the build is green, confirm T-140/T-141 (decision tracing, opt-in playtest logging) are wired and active so the owner's session produces a reviewable log rather than only an impression, and assemble a short pre-UAT brief naming what's known-uncovered going in (Combat's chosen `executeCombat` branch is still an abstract GUNS check with 0 modeled deaths per `NPC_REDESIGN.md`'s Parity Ledger; Explore/VisitHangout have zero fleet coverage; N13's status per T-156). **The brief also carries two items added 2026-08-02 so the owner's play pass meets them with numbers in hand:** (a) **Explore is still a net credit loss** — T-116's re-measure: 85 of 120 seeds richer WITHOUT the verb (down from 101/120 pre-rebuild), with the non-credit payoff (unique items, POI fragments) stated beside it and re-pricing (`EXPLORATION_FUEL_COST` 80, `EXPLORATION_NAV_DC` 12) an open R-series owner call per `docs/EXPLORE_REDESIGN.md` §10.4 — UAT is the "playtest by feel" D1 chose over sim pre-validation, so the feel-read belongs in the session notes; (b) **F-150-1's disposition-inertness numbers** (`docs/HANGOUT_REDESIGN.md` §11.3): the cast sits at exactly 0 disposition on 96.52% of live captain-days, a nonzero standing survives a median 3 days, decay outruns interaction 1.53:1, and 71.52% of named-pool draws are inert — with T-125's own ruling that this is a design question, not a knob, and the levers-not-pulled table attached. Then halt for the owner's own UAT pass, and — per Part G item 4, extended 2026-08-02 — **two deliberate, recorded rulings**: one on Combat's chosen branch, and one on F-150-1 (the 0.25 named-pool gate + `DISPOSITION_DECAY_INTERVAL_DAYS = 3`, read together), even if either ruling is "not this pass." This is a hard gate: **T-155** (running the native LLM pilot for real) is sequenced after it and must not start until it closes. **T-154 (building the driver) is NOT gated on this** — see the resequencing note on T-154, which as of 2026-08-02 sits ABOVE this block precisely so this task's halt cannot strand it.
 **Accept:** (human-checked) the pre-UAT brief is committed and includes the Explore net-loss and F-150-1 items with their numbers; T-140/T-141 confirmed active; the run halts with this task `BLOCKED`, never self-approved; closes only once the owner has played a UAT pass and recorded BOTH rulings — Combat's chosen branch and F-150-1 (fix, defer, or accept-as-is all count as a ruling for each).
+
+**Delivered (2026-08-02, PRE-UAT HALF ONLY — this task is NOT done and was not self-approved):**
+The automated half of the checkpoint is complete and the run **halts here**. What landed:
+
+- **The brief: `docs/playtests/T-158-pre-uat-brief.md`.** Nine sections: what closes the task; the
+  runbook (launch, turning logging on, flagging a moment, the concrete macOS log path, export, and
+  how to turn the export into a report); a suggested-not-scripted pass; **§4 what is known-uncovered
+  going in** (Combat's chosen branch, Explore/VisitHangout zero fleet coverage with T-157's
+  three-not-two correction and the owner's 2026-08-02 option-(B) ruling recorded as **closed**, N13's
+  residual, and the fact that the bar being played is the **fixed** T-160 one with F-160-1/2/3 still
+  open); **§5 the Explore net-loss item**; **§6 the F-150-1 item**; §7 the instrumentation evidence;
+  §8 a session-notes template with the Bug Discovery Policy pointer; **§9 the two empty ruling slots**
+  in `RELEASE-CHECKLIST.md` §G's verbatim idiom.
+- **§5, with its numbers, all transcribed from `docs/EXPLORE_REDESIGN.md` itself:** `85 of 120`
+  seeds richer without the verb, down from `101 of 120` (§9.1) — **carrying §9's own pre-D1 caveat,
+  because no post-D1 sign count exists**; the current-at-HEAD read from §10.4 (median `60,638cr`,
+  `tourOneClearRate` `0.795`, `26.53` deeds, `7.69%` of queued Explores still refused); the
+  non-credit payoff (100 authored rows, several unique) and why that same fact argues for keeping
+  the cast out; and the still-unpulled R-series levers `EXPLORATION_FUEL_COST` **80** /
+  `EXPLORATION_NAV_DC` **12**.
+- **§6, with its numbers, all transcribed from `docs/HANGOUT_REDESIGN.md` §11.3:** 0 disposition on
+  **96.52%** of live captain-days, a standing surviving a **median 3 days**, decay outrunning
+  interaction **1.53 : 1**, **71.52%** of named-pool draws inert against a **25.07%** named share
+  (analytic 25.00%) — so disposition alters roughly **7%** of interceptions — with the `gambler`
+  counter-case (**41.46%** inertness, **2.806×** lift), T-125's design-question ruling restated, and
+  §11.3's **levers-not-pulled table reproduced in full**. §11.4's companion figures (+3.44cr faucet /
+  0.22% of NPC wealth, 37.97% off-Hangout, 17.49% ante lockout) are carried as context.
+- **T-141 CONFIRMED ACTIVE**, by grep at each named call site, not by reading its task block:
+  `packages/ui/src/playtestLog.ts:88,96,207,219,235,307,345`; `packages/ui/src/App.tsx:402` with
+  `set-playtest-logging` :415, the always-rendered disclosure :422-423, `playtest-flag-input` :436 /
+  `playtest-flag` :445, `playtest-export-json` :454 / `playtest-export-csv` :461;
+  `packages/ui/src/store.ts:2453,2472,2524`; `packages/desktop/src/main.ts:179,377-378,574,801`
+  (`SQ_LOG_DIR ?? userData/logs`, and `app.setName('Rimward')` at :753 fixes the macOS path to
+  `~/Library/Application Support/Rimward/logs`). Its three suites are green in the gate run below.
+- **T-140 CONFIRMED WIRED, and its client absence recorded as a RULED LIMITATION rather than filed
+  as a gap.** Live at `packages/engine/src/npc.ts:552-578,630,2110-2113` →
+  `packages/engine/src/day.ts:547,879` → `packages/sim/src/index.ts:797,5442` →
+  `packages/sim/src/balance/sweep.ts:204,299,307,529,539`, behind `--trace-npc-decisions`.
+  **It is `packages/sim`-only by T-140's own Accept criterion**, which required that a grep for the
+  trace-sink parameter under `packages/ui` / `packages/desktop` return nothing — re-run here, and it
+  still does (only `packages/ui/src/__tests__/npc-trace-absent.test.ts`, the test enforcing the
+  absence). So **a human UAT session produces a T-141 export and no NPC decision trace**; the brief
+  §7 says so in those words, and `docs/TESTING-STRATEGY.md` Part G item 5 is annotated with the same
+  correction (its sentence is true of the *pair*, not of one human session — the F-157-2 drift class).
+  **No trace sink was wired into the client and no bug was filed for its absence.**
+- **New test: `packages/sim/src/__tests__/uat-brief-figures.test.ts`** (3 tests). It pins **26**
+  measured figures in **both directions**: each `section` heading must still exist in the live source
+  document, each `value` must appear **inside that section** (heading → next same-or-shallower
+  heading, so `####` subsections stay in — deliberately NOT `coverage.ts`'s last-column table
+  resolver, which would read §11.3's decay table's `explorer only` 96.47% instead of the fleet's
+  96.52%), and each `value` must still appear **in the brief**, so a pin cannot outlive the prose it
+  guards. Non-vacuity is asserted (`pinned === UAT_BRIEF_FIGURES.length`), and a third test asserts
+  both ruling slots exist and their answer cells are **empty** — a filled cell that no owner wrote is
+  a self-waiver and fails the suite. The file header states the no-escape-hatch rule explicitly.
+- **Annotations:** `docs/TESTING-STRATEGY.md` Part G item 5 (dated, with the T-140 correction) and
+  one sentence in `docs/RELEASE-CHECKLIST.md`'s ⛔ pre-alpha header pointing at the brief. **No §G row
+  or Status cell was touched.**
+
+**Gate transcript, run BEFORE writing anything and again AFTER, so a pre-existing red could not be
+mis-attributed.** BEFORE: `npm test` → **110 files / 2,185 tests passing, 0 failing**
+(7/110 · 5/61 · 50/1313 · 32/444 · 16/257 across the workspaces). AFTER: **111 files / 2,188 tests
+passing, 0 failing** — exactly this task's one new file and its three tests
+(`packages/sim` 32/444 → 33/447), nothing else moved. The known-red `it.fails` tripwires behaved as
+expected-red on both runs and none flipped to unexpectedly passing. `npx tsc -b`, `npm run lint` and
+`npm run format:check` exit 0 on both runs.
+
+**NO FINGERPRINT MOVED, NO CAPSTONE IS OWED, AND NO SWEEP WAS RUN — stated rather than left
+unaddressed.** Every edit is under `docs/` (not hashed at all) or `packages/sim/src/__tests__/`
+(`__tests__` is in `HASHED_ROOT_IGNORED_DIRECTORIES`, `rules-fingerprint.ts:250-254`). So
+`rulesFingerprint`, `instrumentFingerprint` and `docsFingerprint` are all unmoved, the baseline of
+record is untouched, and **`CURRENT_SAVE_VERSION` stays 15 with no migration owed** — no persisted
+shape changed. No new non-test module was added under `packages/sim/src`, so no
+`SIM_NON_INSTRUMENT_SOURCES` entry is owed; the figure table lives inside the test file for exactly
+that reason. **No constant, band, threshold, golden or fingerprint was edited**, and nothing under
+`packages/engine`, `packages/content`, `packages/ui` or `packages/desktop` was changed
+(`executeCombat`, `rng.next() < 0.25`, `DISPOSITION_DECAY_INTERVAL_DAYS`, `EXPLORATION_FUEL_COST`
+and `EXPLORATION_NAV_DC` are all untouched).
+
+**TO CLOSE THIS TASK — where each ruling gets transcribed when it arrives.** Do not re-derive this
+after the halt; it is written down here on purpose.
+
+1. **R1 (Combat's chosen branch)** → (a) `ACKNOWLEDGED_COVERAGE_GAPS.fighter.owner` in
+   `packages/sim/src/balance/coverage.ts:442-443`, whose text already reads *"scheduled for a
+   recorded ruling at T-158"* — that string is the machine-checked receipt and must be updated to the
+   ruling actually taken; (b) the `| Combat |` row of `docs/NPC_REDESIGN.md`'s PARITY LEDGER; (c) the
+   **`executeCombat`'s missing shared rules** bullet under this file's "Deliberately deferred".
+2. **R2 (F-150-1)** → (a) the **STATUS** line at `docs/HANGOUT_REDESIGN.md` §11.3; (b) the
+   **F-150-1** row in this file's "Findings filed BY T-150" table; (c) **if and only if the ruling is
+   "fix"**, a new task block — never a constant edited inline, because either constant moves every
+   disposition-reading system at once and owes its own capstone.
+3. Then update `packages/sim/src/__tests__/uat-brief-figures.test.ts`'s third test, which currently
+   asserts both ruling cells are **empty**.
+4. **The third ruling ask this block's POINTER paragraph flagged is ALREADY CLOSED** — T-157 option
+   (B), commit `75004d33`: the PARITY LEDGER's `| VisitHangout |` row stays Deferred and N8 is
+   unblocked-but-unscheduled. **The queue at this checkpoint is TWO rulings, not three.**
+
+**THE HALT.** Nothing further is done on this task by any coder. `T-155` and `T-162` stay `TODO` and
+must not start. Neither ruling was made, guessed at, paraphrased or implied by this pass — the coder
+does not self-waive, and the two empty cells in the brief's §9 are the record that it did not.
+
+**Prepared (2026-08-02):** This automated pass wrote `docs/playtests/T-158-pre-uat-brief.md` (the
+UAT runbook, the known-uncovered-going-in list, the Explore net-loss and F-150-1 figure sections, and
+two empty ruling slots for Combat's chosen branch and F-150-1), added
+`packages/sim/src/__tests__/uat-brief-figures.test.ts` (3 tests pinning 26 measured figures back to
+their source documents in both directions and asserting both ruling cells stay empty), confirmed by
+grep at each named call site that T-140 and T-141 are wired and active, added one pointer sentence
+each to `docs/TESTING-STRATEGY.md` Part G and `docs/RELEASE-CHECKLIST.md`, and set this task's status
+in `TASKS.md` to `BLOCKED(Human UAT)`. No gameplay constant, fingerprint, or persisted-shape file was
+touched, and no ruling was recorded by this pass. The task now awaits: Human UAT.
+
+Orchestration: graphify=none — no `graphify-out/graph.json` in the repo root (checked, absent); oriented from `TASKS.md`, `docs/TESTING-STRATEGY.md` Part G, `docs/EXPLORE_REDESIGN.md`  · attempts=1/4 · HUMAN-GATE HALT.
 
 ### T-155 · Validate: run the pilot end-to-end and confirm it's trustworthy — `status: TODO` · `coder: opus` · `after: T-154, T-158`
 **`after:` corrected (2026-08-02):** this field previously read `after: T-154` alone, and the T-158

@@ -8,6 +8,10 @@
 > and — the plain one — **nobody has played this build end to end yet**. The next
 > milestone is not a tag; it is the owner's own UAT.
 >
+> **That UAT now has a brief: `docs/playtests/T-158-pre-uat-brief.md`** (T-158, 2026-08-02) — the
+> runbook, what is known-uncovered going in, and the two rulings the pass has to record before
+> `TASKS.md` T-158 can close.
+>
 > **Do not run `npm run release:rc`.** See `docs/VERSIONING.md` for the stage ladder and
 > the criteria for leaving pre-alpha.
 >
